@@ -101,9 +101,6 @@ module Instructions =
     let (|CMPZ|_|) data =
         if (data &&& 0b1111111100000000) = 0b0000110000000000 then
             let zz =  (data &&& 0b0000000011000000) >>> 6
-            printfn "data : %s" data.toBits
-            printfn "mask : %s" (data &&& 0b0000000011000000).toBits
-            printfn "shift: %s" ((data &&& 0b0000000011000000) >>> 6).toBits
             let ddd = (data &&& 0b0000000000111000) >>> 3
             let DDD = (data &&& 0b0000000000000111)
             Some(zz,ddd,DDD)
