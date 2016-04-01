@@ -367,7 +367,10 @@ type Cpu =
             | 0b111uy -> 
                 match reg2 with
                 | 0b000uy -> failwith "not implemented" //(xxx).W
-                | 0b001uy -> failwith "not implemented" //(xxx).L
+                | 0b001uy ->
+                    
+                    failwith "not implemented" //(xxx).L
+                    
                 | 0b010uy -> //(d16,PC)
                     //PC + displacement
                     //TODO: ensure sign extended
@@ -462,17 +465,15 @@ type Cpu =
         ()
     member x.DisplayRegisters =
         sprintf """
-    --------------------------------------------------------
-    D0:%x D1:%x D2:%x D3:%x D4:%x D5:%x D6:%x D7:%x
-    A0:%x A1:%x A2:%x A3:%x A4:%x A5:%x A6:%x A7:%x
-         TTSM IPM   XNZVC
-    CCR: %s   Trace: %A   ActiveStack: %A
-    PC: %x
-    --------------------------------------------------------
-    """ 
-         x.D0 x.D1 x.D2 x.D3 x.D4 x.D5 x.D6 x.D7
-         x.A0 x.A1 x.A2 x.A3 x.A4 x.A5 x.A6 x.A7
-         x.CCR.toBits x.TraceMode x.ActiveStack x.PC
+D0:%08x D1:%08x D2:%08x D3:%08x
+D4:%08x D5:%08x D6:%08x D7:%08x
+A0:%08x A1:%08x A2:%08x A3:%08x
+A4:%08x A5:%08x A6:%08x A7:%08x
+     TTSM IPM   XNZVC
+CCR: %s
+PC: %08x""" x.D0 x.D1 x.D2 x.D3 x.D4 x.D5 x.D6 x.D7
+            x.A0 x.A1 x.A2 x.A3 x.A4 x.A5 x.A6 x.A7
+            x.CCR.toBits (*x.TraceMode x.ActiveStack*) x.PC
 
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath) =
@@ -485,10 +486,18 @@ type AtartSt(romPath) =
     
     member x.Step() =
         cpu <- cpu.Step()
-        printfn "CPU Registers:%A" cpu
+        printfn """
+-------------
+CPU Registers
+%A
+-------------""" cpu
     
     member x.Debug =
-       sprintf "CPU Registers:%A" cpu
+       sprintf """
+-------------
+CPU Registers
+%A
+-------------""" cpu
         
 let st = AtartSt("/Users/dave/Desktop/100uk.img")
 st.Reset()
