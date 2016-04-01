@@ -189,6 +189,16 @@ module Instructions =
             Some(register, opmode, eamode, eareg)
         else None
         
+    let (|JMP|_|) data =
+        //0100111011sssSSS
+        //sample: 0100111011 010 110 = An Mode, register A6
+        //sss = effective address mode
+        //SSS = effective address register
+        if data &&& 0b1111111111000000 = 0b0100111011000000 then
+            let eaMode = byte (data >>> 3) &&& 0b111uy
+            let eaReg = byte (data &&& 0b111)
+            Some(eaMode, eaReg)
+        else None
     
 [<StructuredFormatDisplay("{DisplayRegisters}")>]
 type Cpu =
@@ -303,7 +313,6 @@ type Cpu =
                     let source = x.MMU.ReadLong(x.PC+2)
                     let destreg = x.MMU.ReadLong(x.PC+6)
                     let dest = x.MMU.ReadLong(destreg)
-                    printfn "cmpi.l #$%x,$%x" source destreg
                     //subtract 
                     let result = dest - source
                     
@@ -315,6 +324,7 @@ type Cpu =
                     if ((dest^^^source) < 0 && (source^^^result) >= 0) then ccr <- ccr ||| 0x2s //V
                     if ((result&&&source) < 0 || (~~~dest &&& (result ||| source)) < 0) then ccr <- ccr ||| 0x1s //C
 
+                    printfn "cmpi.l #$%x,$%x" source destreg
                     {x with PC = x.PC + 10
                             CCR = ccr }
                   //mode 5
@@ -337,9 +347,9 @@ type Cpu =
                     if result = 0 then ccr <- ccr ||| 0x4s //Z
                     if ((dest^^^source) < 0 && (source^^^result) >= 0) then ccr <- ccr ||| 0x2s //V
                     if ((result&&&source) < 0 || (~~~dest &&& (result ||| source)) < 0) then ccr <- ccr ||| 0x1s //C
-                    printfn "cmp.l #$%x,(A%u,$%x) == $%x" sourceAddr register displacement dest
+                    printfn "cmpi.l #$%x,(A%u,$%x) == $%x" sourceAddr register displacement dest
                     
-                    {x with PC = x.PC + 10
+                    {x with PC = x.PC + 8
                             CCR = ccr }
                 | _ -> failwithf "cmpi Unknown mode: %x" mode
             | _ -> failwithf "Inknown size: %x" size
@@ -414,33 +424,35 @@ type Cpu =
                     let dest = x.AddressFromByte address
                     let source = x.AddressFromByte eareg
                     let result = dest - source
-                    //TODO refactor calc flags dupe code
-                    let mutable ccr =   x.CCR &&& (~~~0x31s ||| 0x16s)
-
-                    if (result &&& 0x80000000) <> 0 then ccr <- ccr ||| 0x8s //N
-                    if result = 0 then ccr <- ccr ||| 0x4s //Z
-                    if ((dest^^^source) < 0 && (source^^^result) >= 0) then ccr <- ccr ||| 0x2s //V
-                    if ((result&&&source) < 0 || (~~~dest &&& (result ||| source)) < 0) then ccr <- ccr ||| 0x1s //C
+                    
+                    //Note: suba does not affect the ccr flags!
                     
                     //TODO update target address better than this!
                     let newCpu = 
                         match address with
-                        | 0x0uy -> {x with PC = x.PC+2;CCR=ccr; A0 = result}
-                        | 0x1uy -> {x with PC = x.PC+2;CCR=ccr; A1 = result}
-                        | 0x2uy -> {x with PC = x.PC+2;CCR=ccr; A2 = result}
-                        | 0x3uy -> {x with PC = x.PC+2;CCR=ccr; A3 = result}
-                        | 0x4uy -> {x with PC = x.PC+2;CCR=ccr; A4 = result}
-                        | 0x5uy -> {x with PC = x.PC+2;CCR=ccr; A5 = result}
-                        | 0x6uy -> {x with PC = x.PC+2;CCR=ccr; A6 = result}
-                        | 0x7uy -> {x with PC = x.PC+2;CCR=ccr; A7 = result}
+                        | 0x0uy -> {x with PC = x.PC+2; A0 = result}
+                        | 0x1uy -> {x with PC = x.PC+2; A1 = result}
+                        | 0x2uy -> {x with PC = x.PC+2; A2 = result}
+                        | 0x3uy -> {x with PC = x.PC+2; A3 = result}
+                        | 0x4uy -> {x with PC = x.PC+2; A4 = result}
+                        | 0x5uy -> {x with PC = x.PC+2; A5 = result}
+                        | 0x6uy -> {x with PC = x.PC+2; A6 = result}
+                        | 0x7uy -> {x with PC = x.PC+2; A7 = result}
                         | _ -> failwithf "Invalid destination register %uy" address
                     printfn "suba.%s A%u, A%u" (if opmode = 0x7uy then "l" else "w" ) address eareg
                     newCpu
                 | _ -> failwithf "Not implmented eamode %uy, eareg %uy" eamode eareg 
             | _ -> failwithf "Not implemented op mode %uy" opmode //word operation
-            
+        | JMP(eamode, eareg) ->
+            match eamode with
+            | 0b010uy ->
+                let jump = x.AddressFromByte eareg
+                let newCpu = {x with PC = jump}
+                printfn "jmp.l A%u" eareg
+                newCpu
+            | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg  
         | other ->
-            failwithf "unknown instruction:\n%x\n%s" instruction instruction.toBits
+            failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
             
     member x.Run(cycles) =
         //TODO
@@ -480,6 +492,6 @@ type AtartSt(romPath) =
         
 let st = AtartSt("/Users/dave/Desktop/100uk.img")
 st.Reset()
-for _ in 1..10 do
+for _ in 1..100 do
     st.Step()
 
