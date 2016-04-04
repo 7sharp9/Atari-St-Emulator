@@ -1,6 +1,50 @@
 ﻿namespace Atari
 open System
 open Bits
+
+[<RequireQualifiedAccess>] 
+type Condition =
+    | T =     0b0000
+    | F =     0b0001
+    | H =     0b0010
+    | LS =    0b0011
+    | CC_HI = 0b0100
+    | CC_LO = 0b0101
+    | NE =    0b0110
+    | EQ =    0b0111
+    | VC =    0b1000
+    | VS =    0b1001
+    | PL =    0b1010
+    | MI =    0b1011
+    | GE =    0b1100
+    | LT =    0b1101
+    | GT =    0b1110
+    | LE =    0b1111
+    
+[<RequireQualifiedAccess>] 
+type OperandSize =
+    | Byte | Word | Long | Single | Double | Extended | Packed
+    
+type AddressingModes =
+    | Dn of byte
+    | An of byte
+    | An_Indirect of byte
+    | An_PostIncrement of byte
+    | An_PreDecrement of byte
+    | An_Displacement of byte
+    | An_ByteDisplacement of byte
+    | PC_Indirect_Word_Displacement of int16
+    | PC_Indirect_Byte_Displacement of byte
+    | Absolute_Short of int16
+    | Absolute_Long of int
+    | Immediate of OperandSize
+    //| An_BaseDisplacement of byte * byte //68020+
+    //| MemoryIndirect_PostIndexed ////68020+
+    //| MemoryIndirect_PreIndexed ////68020+
+    //| PC_Indirect_Base_Displacement ////68020+
+    //| PC_Indirect_PostIndexed ////68020+
+    //| PC_Indirect_PreIndexed ////68020+
+    
 module Instructions =
     let (|Move2SR|_|) data =
         if ((data >>> 6) = 0b0100011011) then
@@ -79,7 +123,9 @@ module Instructions =
             let eaReg = byte (data &&& 0b111)
             Some(eaMode, eaReg)
         else None
-        
+    
+    ///Represents the move instuction
+    ///size, dest_reg, dest_mode, source_mode, source_reg 
     let (|Move|_|) data = 
         //00ssdddDDDsssSSS
         if data &&& 0b1100000000000000 = 0b0000000000000000 then

@@ -1,4 +1,13 @@
-﻿namespace Atari        
+﻿#if INTERACTIVE
+#load "Extensions.fs"
+#load "MMU.fs"
+#load "Instructions.fs"
+#load "68k.fs"
+open Atari
+#else
+namespace Atari
+#endif
+
 open System
 open Bits
 open Instructions
@@ -23,10 +32,18 @@ CPU Registers
 %A
 -------------""" cpu
 
+#if INTERACTIVE 
+let st = AtartSt("/Users/dave/Desktop/100uk.img")
+st.Reset()
+for _ in 1..100 do
+    st.Step()
+#else
 module Main =
     let main args = 
         let st = AtartSt("/Users/dave/Desktop/100uk.img")
         st.Reset()
         for _ in 1..100 do
             st.Step()
-    
+            
+#endif
+()

@@ -1,6 +1,8 @@
 ﻿namespace Atari
 open System
 open Bits
+open Instructions
+
 [<RequireQualifiedAccess>]      
 type TraceMode =
     | No_Trace
@@ -10,49 +12,6 @@ type TraceMode =
         
 type ActiveStack =
     | USP | ISP | MSP
-   
-[<RequireQualifiedAccess>] 
-type Condition =
-    | T =     0b0000
-    | F =     0b0001
-    | H =     0b0010
-    | LS =    0b0011
-    | CC_HI = 0b0100
-    | CC_LO = 0b0101
-    | NE =    0b0110
-    | EQ =    0b0111
-    | VC =    0b1000
-    | VS =    0b1001
-    | PL =    0b1010
-    | MI =    0b1011
-    | GE =    0b1100
-    | LT =    0b1101
-    | GT =    0b1110
-    | LE =    0b1111
-   
-[<RequireQualifiedAccess>] 
-type OperandSize =
-    | Byte | Word | Long | Single | Double | Extended | Packed
-    
-type AddressingModes =
-    | Dn of byte
-    | An of byte
-    | An_Indirect of byte
-    | An_PostIncrement of byte
-    | An_PreDecrement of byte
-    | An_Displacement of byte
-    | An_ByteDisplacement of byte
-    | PC_Indirect_Word_Displacement of int16
-    | PC_Indirect_Byte_Displacement of byte
-    | Absolute_Short of int16
-    | Absolute_Long of int
-    | Immediate of OperandSize
-    //| An_BaseDisplacement of byte * byte //68020+
-    //| MemoryIndirect_PostIndexed ////68020+
-    //| MemoryIndirect_PreIndexed ////68020+
-    //| PC_Indirect_Base_Displacement ////68020+
-    //| PC_Indirect_PostIndexed ////68020+
-    //| PC_Indirect_PreIndexed ////68020+
     
 [<StructuredFormatDisplay("{DisplayRegisters}")>]
 type Cpu =
@@ -171,7 +130,7 @@ type Cpu =
                     let result = dest - source
                     
                     //unset all flag bits apart from x
-                    let mutable ccr =  = x.CCR &&& (~~~0x31s ||| 0x16s)
+                    let mutable ccr = x.CCR &&& (~~~0x31s ||| 0x16s)
 
                     if (result &&& 0x80000000) <> 0 then ccr <- ccr ||| 0x8s //N
                     if result = 0 then ccr <- ccr ||| 0x4s //Z
@@ -195,7 +154,7 @@ type Cpu =
                     
                     //todo refactor dupe
                     //unset all flag bits apart from x
-                    let mutable ccr =  =   x.CCR &&& (~~~0x31s ||| 0x16s)
+                    let mutable ccr = x.CCR &&& (~~~0x31s ||| 0x16s)
 
                     if (result &&& 0x80000000) <> 0 then ccr <- ccr ||| 0x8s //N
                     if result = 0 then ccr <- ccr ||| 0x4s //Z
@@ -256,8 +215,8 @@ type Cpu =
         | BCC(cond,disp) ->
             printfn "bcc %A %A" cond disp
             match disp with
-            | Displacement.Byte -> failwith "Not supprted"
-            | Displacement.Word ->
+            | OperandSize.Byte -> failwith "Not supprted"
+            | OperandSize.Word ->
                 match cond with
                 | Condition.T ->   
                     let disp = x.MMU.ReadWord(x.PC+2)
@@ -265,7 +224,8 @@ type Cpu =
                     printfn "bra.w $%x" displacedPC
                     {x with PC = displacedPC }
                 | _ -> failwith "Not implemented"
-            | Displacement.Long -> failwith "Not supprted"
+            | OperandSize.Long -> failwith "Not yet supprted"
+            | other -> failwithf "Unsupported displacement %A" other
         
         | SUB(address, opmode, eamode, eareg) ->
             //0x9bcd
@@ -311,6 +271,8 @@ type Cpu =
                 printfn "jmp.l A%u" eareg
                 newCpu
             | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg  
+        | M
+            
         | other ->
             failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
             
@@ -327,7 +289,6 @@ D4:%08x D5:%08x D6:%08x D7:%08x
 A0:%08x A1:%08x A2:%08x A3:%08x
 A4:%08x A5:%08x A6:%08x A7:%08x
      TTSM IPM   XNZVC
-CCR: %s
-PC: %08x""" x.D0 x.D1 x.D2 x.D3 x.D4 x.D5 x.D6 x.D7
+CCR: %s               PC: %08x""" x.D0 x.D1 x.D2 x.D3 x.D4 x.D5 x.D6 x.D7
             x.A0 x.A1 x.A2 x.A3 x.A4 x.A5 x.A6 x.A7
             x.CCR.toBits (*x.TraceMode x.ActiveStack*) x.PC

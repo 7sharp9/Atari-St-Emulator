@@ -44,8 +44,8 @@
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Extensions.fs" />
     <Compile Include="MMU.fs" />
-    <Compile Include="68k.fs" />
     <Compile Include="Instructions.fs" />
+    <Compile Include="68k.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup />
