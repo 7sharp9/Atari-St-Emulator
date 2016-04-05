@@ -271,8 +271,49 @@ type Cpu =
                 printfn "jmp.l A%u" eareg
                 newCpu
             | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg  
-        | M
-            
+        | Move(size, dReg, dMode, sMode, sReg) ->
+
+            //Note CCR: N,Z are set as appropriate.  V and C set to 0. X =N/A
+            match size with
+            //For immediate data, byte size operations
+            //only use the byte portion of the "extension word"
+            | OperandSize.Byte ->
+                let source = 
+                    match sMode with
+                    | 0b111uy -> x.MMU.ReadWord(x.PC+2) &&& 0xff
+                    | other -> failwithf  "Move address mode %u not implemented" other
+                
+                match dMode with
+                | 0b010uy ->
+                    let newCpu =
+                        
+                        //leave X untouched
+                        let mutable ccr = x.CCR &&& (~~~0x31s ||| 0x16s)
+                        //set N,Z 
+                        if (source &&& 0x80000000) <> 0 then ccr <- ccr ||| 0x8s //N
+                        if source = 0 then ccr <- ccr ||| 0x4s //Z
+                        //clear V,C
+                        ccr <- ccr &&& ~~~0x2s //V
+                        ccr <- ccr &&& ~~~0x1s //C
+                        
+                        match dReg with
+                        | 0b000uy -> {x with PC=x.PC+4; A0=source; CCR=ccr}
+                        | 0b001uy -> {x with PC=x.PC+4; A1=source; CCR=ccr}
+                        | 0b010uy -> {x with PC=x.PC+4; A2=source; CCR=ccr}
+                        | 0b011uy -> {x with PC=x.PC+4; A3=source; CCR=ccr}
+                        | 0b100uy -> {x with PC=x.PC+4; A4=source; CCR=ccr}
+                        | 0b101uy -> {x with PC=x.PC+4; A5=source; CCR=ccr}
+                        | 0b110uy -> {x with PC=x.PC+4; A6=source; CCR=ccr}
+                        | 0b111uy -> {x with PC=x.PC+4; A7=source; CCR=ccr}
+                        | other -> failwithf "Invalid dest reg %u" other
+                    printfn "move.b #%u A%u" source dReg
+                    newCpu
+                | _ -> failwithf "Move with dest mode %u dest reg %u not implemented" dMode dReg
+                    
+            | OperandSize.Word -> failwith "Move.w not implemented"
+            | OperandSize.Long -> failwith "Move.l not implemented"
+            | other -> failwithf "Move invalid operand size %A" other
+
         | other ->
             failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
             

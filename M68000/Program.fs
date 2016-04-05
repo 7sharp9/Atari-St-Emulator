@@ -39,11 +39,13 @@ for _ in 1..100 do
     st.Step()
 #else
 module Main =
+    [<EntryPoint>]
     let main args = 
         let st = AtartSt("/Users/dave/Desktop/100uk.img")
         st.Reset()
         for _ in 1..100 do
             st.Step()
+        0
             
 #endif
 ()

@@ -127,14 +127,16 @@ module Instructions =
     ///Represents the move instuction
     ///size, dest_reg, dest_mode, source_mode, source_reg 
     let (|Move|_|) data = 
-        //00ssdddDDDsssSSS
+        //00zzdddDDDsssSSS
+        //0001000010111100
         if data &&& 0b1100000000000000 = 0b0000000000000000 then
             let size =
-              match (byte (data >>> 12) &&& 0b11uy) with
-              | 0b01uy -> OperandSize.Byte
-              | 0b11uy -> OperandSize.Word
-              | 0b10uy -> OperandSize.Long
-              | other -> failwithf "Invalid operand size %u" other
+                let s = (data >>> 12) &&& 0b0000000000000011
+                match s with
+                | 0b01 -> OperandSize.Byte
+                | 0b11 -> OperandSize.Word
+                | 0b10 -> OperandSize.Long
+                | other -> failwithf "Invalid operand size %u" other
               
             let dest_reg    = byte (data >>> 9) &&& 0b111uy
             let dest_mode   = byte (data >>> 6) &&& 0b111uy
