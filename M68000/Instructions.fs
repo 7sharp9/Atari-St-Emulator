@@ -126,12 +126,14 @@ module Instructions =
     
     ///Represents the move instuction
     ///size, dest_reg, dest_mode, source_mode, source_reg 
-    let (|Move|_|) data = 
-        //00zzdddDDDsssSSS
-        //0001000010111100
-        if data &&& 0b1100000000000000 = 0b0000000000000000 then
+    ///00zzdddDDDsssSSS
+    let (|Move|_|) (data:int) = 
+        let inline byteWordOrLong b =
+            match b with 0b01 | 0b11 | 0b10 -> true | _ -> false
+            
+        if data &&& 0b1100000000000000 = 0 && byteWordOrLong (data >>> 12) then
             let size =
-                let s = (data >>> 12) &&& 0b0000000000000011
+                let s = data >>> 12 &&& 0b11
                 match s with
                 | 0b01 -> OperandSize.Byte
                 | 0b11 -> OperandSize.Word
@@ -157,3 +159,15 @@ module Instructions =
             
             Some(size, dest_reg, dest_mode, source_mode, source_reg)
         else None
+        
+    /// 0000 1000 00ss sSSS:00: BTST    #1,s[!Areg]
+    ///return EA mode, EA register
+    let (|``BTST Immediate``|_|) data =
+        if data &&& 0b1111111111000000 = 0b0000100000000000 then
+            let mode = byte (data >>> 3) &&& 0b111uy
+            let register = byte data &&& 0b111uy
+            Some(mode,register)
+        else None
+    
+    
+    /// 0000 rrr1 00ss sSSS:00: BTST    Dr,s[!Areg]

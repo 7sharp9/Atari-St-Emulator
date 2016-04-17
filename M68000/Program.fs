@@ -15,7 +15,8 @@ open Instructions
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath) =
     let rom = IO.File.ReadAllBytes(romPath)
-    let mmu = MMU(rom, [||])
+    let ram = Array.create (1024 * 1024) 0uy
+    let mmu = MMU(rom, ram)
     let mutable cpu = Cpu.Create(mmu)
     
     member x.Reset() = cpu <- cpu.Reset()
@@ -40,7 +41,7 @@ for _ in 1..100 do
 #else
 module Main =
     [<EntryPoint>]
-    let main args = 
+    let main arg=
         let st = AtartSt("/Users/dave/Desktop/100uk.img")
         st.Reset()
         for _ in 1..100 do

@@ -3,15 +3,37 @@ open System
 open Bits
 open Instructions
 
-[<RequireQualifiedAccess>]      
 type TraceMode =
     | No_Trace
     | Trace_On_Any_Instruction
     | Trace_On_Change_of_Flow
-    | Undefined
+    | Undefined_Trace
         
 type ActiveStack =
     | USP | ISP | MSP
+    
+module CCR =
+    let Subtract_IgnoringX currentCCR dest source =
+        //unset all flag bits apart from x
+        let mutable ccr = currentCCR &&& (~~~0x31s ||| 0x16s)
+        let result = dest - source
+        if (result &&& 0x80000000) <> 0 then ccr <- ccr ||| 0x8s //N
+        if result = 0 then ccr <- ccr ||| 0x4s //Z
+        if ((dest^^^source) < 0 && (source^^^result) >= 0) then ccr <- ccr ||| 0x2s //V
+        if ((result&&&source) < 0 || (~~~dest &&& (result ||| source)) < 0) then ccr <- ccr ||| 0x1s //C
+        ccr
+        
+    ///Calculate CCR
+    let IgnoreX_ZeroV_And_ZeroC currentCCR (input:int16) =
+        //TODO: Expand logic as more variations of flag ignorance is needed
+        let mutable ccr = currentCCR &&& (~~~0x31s ||| 0x16s)
+        //set N,Z 
+        if (input &&& 0x8000s) <> 0s then ccr <- ccr ||| 0x8s //N
+        if input = 0s then ccr <- ccr ||| 0x4s //Z
+        //clear V,C
+        ccr <- ccr &&& ~~~0x2s //V
+        ccr <- ccr &&& ~~~0x1s //C
+        ccr
     
 [<StructuredFormatDisplay("{DisplayRegisters}")>]
 type Cpu =
@@ -20,10 +42,6 @@ type Cpu =
      PC : int
      CCR : int16
      MMU: MMU }
-     
-     //CCR
-     //T1 T2 S M 0 IPM 0 0 0 X N Z V C
-     //0  0  0 0 0 000 0 0 0 0 0 0 0 0
 
     static member Create(mmu:MMU) =
         //TODO review MMU creation / ownership
@@ -41,129 +59,89 @@ type Cpu =
     member x.S = not (x.CCR &&& 0x2000s = 0s)
     member x.T0 = not (x.CCR &&& 0x4000s = 0s)
     member x.T1 = not (x.CCR &&& 0x8000s = 0s)
-    member x.AddressFromByte register =
+    member x.AddressRegister register =
         match register with
-        | 0uy -> x.A0 
-        | 1uy -> x.A1
-        | 2uy -> x.A2
-        | 3uy -> x.A3
-        | 4uy -> x.A4
-        | 5uy -> x.A5
-        | 6uy -> x.A6
-        | 7uy -> x.A7
+        | 0uy -> x.A0 | 1uy -> x.A1 | 2uy -> x.A2 | 3uy -> x.A3
+        | 4uy -> x.A4 | 5uy -> x.A5 | 6uy -> x.A6 | 7uy -> x.A7
         | _ -> failwithf "Invalid register %uy" register
         
-    member x.DataFromByte register =
+    member x.DataRegister register =
         match register with
-        | 0uy -> x.D0 
-        | 1uy -> x.D1
-        | 2uy -> x.D2
-        | 3uy -> x.D3
-        | 4uy -> x.D4
-        | 5uy -> x.D5
-        | 6uy -> x.D6
-        | 7uy -> x.D7
+        | 0uy -> x.D0 | 1uy -> x.D1 | 2uy -> x.D2 | 3uy -> x.D3
+        | 4uy -> x.D4 | 5uy -> x.D5 | 6uy -> x.D6 | 7uy -> x.D7
         | _ -> failwithf "Invalid register %uy" register
       
     member x.TraceMode =
         match (x.T1, x.T0) with
-        |    false, false -> TraceMode.No_Trace
-        |    true,  false -> TraceMode.Trace_On_Any_Instruction
-        |    false, true ->  TraceMode.Trace_On_Change_of_Flow
-        |    true,  true ->  TraceMode.Undefined
+        | false, false -> No_Trace
+        | true,  false -> Trace_On_Any_Instruction
+        | false, true ->  Trace_On_Change_of_Flow
+        | true,  true ->  Undefined_Trace
         
     member x.ActiveStack =
         match x.S, x.M with
         | false, _ -> USP
         | true, false -> ISP
-        | true, tru -> MSP
+        | true, true -> MSP
         
     member x.Reset() =
         //SSP is loaded form $0
         //PC is loaded from $4
         //reset and CCR setup should come from rom (first 8 bytes copied to $0-$8)
-        { x with A7= x.MMU.ReadLong 0 ; PC= x.MMU.ReadLong 4 }
+        { x with A7 = x.MMU.ReadLong 0u
+                 PC = x.MMU.ReadLong 4u }
     
     member x.Step() =
     //TODO implement prefetch ops
-        let instruction = x.MMU.ReadWord x.PC
+        let instruction = x.MMU.ReadWord (uint32 x.PC)
         match instruction with
         | Move2SR(mode, register) ->
             //Hack, not sure about this
-            if mode = 0b111 && register = 0b100 then
+            if mode = 0x7 && register = 0b100 then
                 //load data
-                let register = int16 <| x.MMU.ReadWord (x.PC + 2)
+                let register = int16 (x.MMU.ReadWord (uint32 (x.PC+2)))
                 printfn "move #%0x, sr" register
-                
-                {x with PC = x.PC + 4
-                        CCR = register }
+                {x with PC = x.PC + 4; CCR = register }
             else
                 failwithf "mode %A, register %A not implemented for move2sr" mode register
         | Reset ->
-            if x.S then
-                printfn "reset"
+            if x.S then printfn "reset"
                 //Asserted for 124 cycles
-            else
-                printfn "TRAP: Not supervisor"
+            else printfn "TRAP: Not supervisor"
             {x with PC = x.PC + 2}
-        | CMPI(size, mode , register) -> 
+        | CMPI(size, mode , register) ->
             match size with
-            | 0b00000000uy ->
+            | 0b000uy ->
                 failwith "Not implemented"
                 //TODO byte op 
-            | 0b00000001uy ->
+            | 0b001uy ->
                 failwith "Not implemented"
                 //TODO word op
-            | 0b00000010uy ->
+            | 0b010uy ->
                 match mode with
-                //| 0b00000000uy -> //Dn
-                //| 0b00000010uy -> //(An)
-                //| 0b00000011uy -> //(AN)+
-                //| 0b00000100uy -> //-(An)
-                //| 0b00000110uy -> //(d8,An,Xn)
-                | 0b00000111uy ->
-                    //(xxx).W
-                    let source = x.MMU.ReadLong(x.PC+2)
-                    let destreg = x.MMU.ReadLong(x.PC+6)
-                    let dest = x.MMU.ReadLong(destreg)
-                    //subtract 
-                    let result = dest - source
-                    
-                    //unset all flag bits apart from x
-                    let mutable ccr = x.CCR &&& (~~~0x31s ||| 0x16s)
-
-                    if (result &&& 0x80000000) <> 0 then ccr <- ccr ||| 0x8s //N
-                    if result = 0 then ccr <- ccr ||| 0x4s //Z
-                    if ((dest^^^source) < 0 && (source^^^result) >= 0) then ccr <- ccr ||| 0x2s //V
-                    if ((result&&&source) < 0 || (~~~dest &&& (result ||| source)) < 0) then ccr <- ccr ||| 0x1s //C
-
+                //| 0b000uy -> //Dn
+                //| 0b010uy -> //(An)
+                //| 0b011uy -> //(AN)+
+                //| 0b100uy -> //-(An)
+                //| 0b110uy -> //(d8,An,Xn)
+                | 0b111uy -> //(xxx).W
+                    let source = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let destreg = x.MMU.ReadLong(uint32 (x.PC+6))
+                    let dest = x.MMU.ReadLong(uint32 destreg)
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
                     printfn "cmpi.l #$%x,$%x" source destreg
-                    {x with PC = x.PC + 10
-                            CCR = ccr }
+                    {x with PC = x.PC + 10; CCR = ccr }
                   //mode 5
-                | 0b00000101uy -> // (d16, An)
-                    //$00fc05da : 0cad 7520 19f3 0420
-                    //cmpi.l    #$752019f3,$420(a5)
-                    //16 bit displacement
-                    let sourceAddr = x.MMU.ReadLong(x.PC+2)
-                    let source = x.MMU.ReadLong(sourceAddr)
+                | 0b101uy -> // (d16, An)
+                    let sourceAddr = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let source = x.MMU.ReadLong(uint32 sourceAddr)
                     
-                    let displacement = x.MMU.ReadWord(x.PC+6)
-                    let dest = x.AddressFromByte register + displacement
-                    let result = source - dest
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+6)))
+                    let dest = x.AddressRegister register + int displacement
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
                     
-                    //todo refactor dupe
-                    //unset all flag bits apart from x
-                    let mutable ccr = x.CCR &&& (~~~0x31s ||| 0x16s)
-
-                    if (result &&& 0x80000000) <> 0 then ccr <- ccr ||| 0x8s //N
-                    if result = 0 then ccr <- ccr ||| 0x4s //Z
-                    if ((dest^^^source) < 0 && (source^^^result) >= 0) then ccr <- ccr ||| 0x2s //V
-                    if ((result&&&source) < 0 || (~~~dest &&& (result ||| source)) < 0) then ccr <- ccr ||| 0x1s //C
                     printfn "cmpi.l #$%x,(A%u,$%x) == $%x" sourceAddr register displacement dest
-                    
-                    {x with PC = x.PC + 8
-                            CCR = ccr }
+                    {x with PC = x.PC + 8; CCR = ccr }
                 | _ -> failwithf "cmpi Unknown mode: %x" mode
             | _ -> failwithf "Inknown size: %x" size
         | BNES(disp) ->
@@ -182,17 +160,15 @@ type Cpu =
                 | 0b000uy -> failwith "not implemented" //(xxx).W
                 | 0b001uy -> //(xxx).L
                     //load the next long into A0
-                    let addr = x.MMU.ReadLong(x.PC+2)
+                    let addr = x.MMU.ReadLong(uint32 (x.PC+2))
                     let newCpu = {x with PC = x.PC+6; A0 = addr}
                     printfn "lea %x, A0" addr
                     newCpu
                     
                 | 0b010uy -> //(d16,PC)
-                    //PC + displacement
-                    //TODO: ensure sign extended
                     let displacedPC =
-                        let disp = x.MMU.ReadWord(x.PC+2)
-                        x.PC + 2 + disp //pc+2 because thats the point we finished reading the first part
+                        let disp = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                        (x.PC+2) + int disp
                     let newCpu =
                         match a_reg with
                         | 0b000uy -> {x with PC = x.PC + 4; A0 = displacedPC}
@@ -204,7 +180,6 @@ type Cpu =
                         | 0b110uy -> {x with PC = x.PC + 4; A6 = displacedPC}
                         | 0b111uy -> {x with PC = x.PC + 4; A7 = displacedPC}
                         | _ -> failwithf "Unknown address register %uy" a_reg
-                    printfn "new PC=%x" newCpu.PC
                     printfn "lea $%x,a%i" displacedPC a_reg
                     newCpu
                     
@@ -215,38 +190,34 @@ type Cpu =
         | BCC(cond,disp) ->
             printfn "bcc %A %A" cond disp
             match disp with
-            | OperandSize.Byte -> failwith "Not supprted"
             | OperandSize.Word ->
                 match cond with
                 | Condition.T ->   
-                    let disp = x.MMU.ReadWord(x.PC+2)
-                    let displacedPC = (x.PC+2) + disp
+                    let disp = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let displacedPC = (x.PC+2) + int disp
                     printfn "bra.w $%x" displacedPC
                     {x with PC = displacedPC }
                 | _ -> failwith "Not implemented"
             | OperandSize.Long -> failwith "Not yet supprted"
+            | OperandSize.Byte -> failwith "Not supprted"
             | other -> failwithf "Unsupported displacement %A" other
         
         | SUB(address, opmode, eamode, eareg) ->
-            //0x9bcd
-            //1001101111001101
+            //1001regopmEAmEAr
             //----reg
             //-------opm
             //----------EAm
             //-------------EAr
-            //5 opmode: 7 eamode: 1 eareg: 5
+
             match opmode with
             | 0b111uy -> //long op mode
                 //
                 match eamode with
                 | 0b001uy ->
                     //An addressing mode
-                    let dest = x.AddressFromByte address
-                    let source = x.AddressFromByte eareg
+                    let dest = x.AddressRegister address
+                    let source = x.AddressRegister eareg
                     let result = dest - source
-                    
-                    //Note: suba does not affect the ccr flags!
-                    
                     //TODO update target address better than this!
                     let newCpu = 
                         match address with
@@ -266,47 +237,41 @@ type Cpu =
         | JMP(eamode, eareg) ->
             match eamode with
             | 0b010uy ->
-                let jump = x.AddressFromByte eareg
+                let jump = x.AddressRegister eareg
                 let newCpu = {x with PC = jump}
                 printfn "jmp.l A%u" eareg
                 newCpu
             | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg  
         | Move(size, dReg, dMode, sMode, sReg) ->
 
+                
             //Note CCR: N,Z are set as appropriate.  V and C set to 0. X =N/A
             match size with
             //For immediate data, byte size operations
             //only use the byte portion of the "extension word"
             | OperandSize.Byte ->
                 let source = 
-                    match sMode with
-                    | 0b111uy -> x.MMU.ReadWord(x.PC+2) &&& 0xff
-                    | other -> failwithf  "Move address mode %u not implemented" other
-                
+                    match sMode, sReg with
+                    | 0b111uy, 0b100uy -> int16 (x.MMU.ReadWord(uint32 (x.PC+2) ) &&& 0xff)
+                    | otherMode, otherReg ->
+                        failwithf  "Move address mode %u, reg %u not implemented"
+                            otherMode otherReg
+
                 match dMode with
                 | 0b010uy ->
-                    let newCpu =
-                        
-                        //leave X untouched
-                        let mutable ccr = x.CCR &&& (~~~0x31s ||| 0x16s)
-                        //set N,Z 
-                        if (source &&& 0x80000000) <> 0 then ccr <- ccr ||| 0x8s //N
-                        if source = 0 then ccr <- ccr ||| 0x4s //Z
-                        //clear V,C
-                        ccr <- ccr &&& ~~~0x2s //V
-                        ccr <- ccr &&& ~~~0x1s //C
-                        
-                        match dReg with
-                        | 0b000uy -> {x with PC=x.PC+4; A0=source; CCR=ccr}
-                        | 0b001uy -> {x with PC=x.PC+4; A1=source; CCR=ccr}
-                        | 0b010uy -> {x with PC=x.PC+4; A2=source; CCR=ccr}
-                        | 0b011uy -> {x with PC=x.PC+4; A3=source; CCR=ccr}
-                        | 0b100uy -> {x with PC=x.PC+4; A4=source; CCR=ccr}
-                        | 0b101uy -> {x with PC=x.PC+4; A5=source; CCR=ccr}
-                        | 0b110uy -> {x with PC=x.PC+4; A6=source; CCR=ccr}
-                        | 0b111uy -> {x with PC=x.PC+4; A7=source; CCR=ccr}
-                        | other -> failwithf "Invalid dest reg %u" other
+                    let destEA = uint32 (x.AddressRegister dReg)
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR source
+                    x.MMU.WriteWord destEA source
+                    let newCpu = {x with PC=x.PC+4; CCR=ccr}
                     printfn "move.b #%u A%u" source dReg
+                    newCpu
+                | 0b101uy -> 
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
+                    let destEA = uint32 (x.AddressRegister dReg + int displacement)
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR source
+                    x.MMU.WriteWord destEA source
+                    let newCpu = {x with PC=x.PC+6; CCR=ccr}
+                    printfn "move.b #$%x,%i(a%i) == $%x" source displacement dReg destEA
                     newCpu
                 | _ -> failwithf "Move with dest mode %u dest reg %u not implemented" dMode dReg
                     
@@ -314,6 +279,22 @@ type Cpu =
             | OperandSize.Long -> failwith "Move.l not implemented"
             | other -> failwithf "Move invalid operand size %A" other
 
+        | ``BTST Immediate``(eamode,eareg) ->
+            let bitnumber = x.MMU.ReadWord (uint32 (x.PC+2)) &&& 0xFF
+            //ccr z flag is set if zero, no others
+            match eamode with
+            | 0b111uy ->
+                match eareg with
+                | 0b010uy -> //d16, PC
+                    let displacement = int16 (x.MMU.ReadWord (uint32 (x.PC+4)))
+                    let ea = (x.PC+4) + int displacement
+                    
+                    printfn "disp %x, %x" displacement ea
+                    failwith "TODO"
+                    x
+                | other -> failwithf "BTST.b EA reg %u not supported" other
+            | other -> failwithf "BTST.b EA mode %u not supported" other
+            
         | other ->
             failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
             
@@ -325,11 +306,10 @@ type Cpu =
         ()
     member x.DisplayRegisters =
         sprintf """
-D0:%08x D1:%08x D2:%08x D3:%08x
-D4:%08x D5:%08x D6:%08x D7:%08x
-A0:%08x A1:%08x A2:%08x A3:%08x
-A4:%08x A5:%08x A6:%08x A7:%08x
+D0:%08x D1:%08x D2:%08x D3:%08x D4:%08x D5:%08x D6:%08x D7:%08x
+A0:%08x A1:%08x A2:%08x A3:%08x A4:%08x A5:%08x A6:%08x A7:%08x
      TTSM IPM   XNZVC
-CCR: %s               PC: %08x""" x.D0 x.D1 x.D2 x.D3 x.D4 x.D5 x.D6 x.D7
+CCR: %s
+PC: %08x""" x.D0 x.D1 x.D2 x.D3 x.D4 x.D5 x.D6 x.D7
             x.A0 x.A1 x.A2 x.A3 x.A4 x.A5 x.A6 x.A7
             x.CCR.toBits (*x.TraceMode x.ActiveStack*) x.PC
