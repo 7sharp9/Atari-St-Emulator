@@ -46,6 +46,7 @@ type AddressingModes =
     //| PC_Indirect_PreIndexed ////68020+
     
 module Instructions =
+
     let (|Move2SR|_|) data =
         if ((data >>> 6) = 0b0100011011) then
             let mode = (data &&& 0b0000000000111000) >>> 3
@@ -78,7 +79,6 @@ module Instructions =
     let (|LEA|_|) data =
         //0100 rrr1 11ss sSSS
         if data &&& 0b1111000111000000 = 0b0100000111000000 then
-            printfn "read %x" data
             let register = byte (data >>> 9) &&& 0b111uy
             let mode = byte (data >>> 3) &&& 0b111uy
             let register2 = byte data &&& 0b111uy
@@ -88,14 +88,11 @@ module Instructions =
     let (|BCC|_|) data =
         //sample:
         //0110000000000000
-        //0110conddisp----
+        //0110CondDisp----
         
         if data &&& 0b1111000000000000 = 0b0110000000000000 then
             let condition : Condition = enum (data &&& 0b0000111100000000) >>> 8
-            match data &&& 0b0000000011111111 with
-            | 0x00 -> Some(condition, OperandSize.Word)//16bit disp
-            | 0xFF -> Some(condition, OperandSize.Long)//32bit disp
-            | _ ->    Some(condition, OperandSize.Byte)//8bit disp
+            Some(condition, byte (data &&& 0b0000000011111111))
         else None
         
     let (|SUB|_|) data =
@@ -109,7 +106,7 @@ module Instructions =
             let opmode = byte (data >>> 6) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            printfn "%s" data.toBits
+            //printfn "%s" data.toBits
             Some(register, opmode, eamode, eareg)
         else None
         
@@ -144,7 +141,7 @@ module Instructions =
             let dest_mode   = byte (data >>> 6) &&& 0b111uy
             let destEA =
                 match dest_mode with
-                | 0b000uy -> AddressingModes.Dn(dest_mode)
+                | 0b000uy -> AddressingModes.Dn(dest_reg)
                 | 0b010uy -> AddressingModes.An_Indirect(dest_reg)
                 | 0b011uy -> AddressingModes.An_PostIncrement(dest_reg)
                 | 0b100uy -> AddressingModes.An_PreDecrement(dest_reg)

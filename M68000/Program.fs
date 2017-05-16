@@ -15,7 +15,7 @@ open Instructions
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath) =
     let rom = IO.File.ReadAllBytes(romPath)
-    let ram = Array.create (1024 * 1024) 0uy
+    let ram = Array.create 1048576 0uy
     let mmu = MMU(rom, ram)
     let mutable cpu = Cpu.Create(mmu)
     
@@ -24,7 +24,7 @@ type AtartSt(romPath) =
     
     member x.Step() =
         cpu <- cpu.Step()
-        printfn "%A" x
+        //printfn "%A" x
     
     member x.Debug =
        sprintf """
@@ -33,8 +33,10 @@ CPU Registers
 %A
 -------------""" cpu
 
+    member x.Cpu = cpu
+
 #if INTERACTIVE 
-let st = AtartSt("/Users/dave/Desktop/100uk.img")
+let st = AtartSt("/Users/7sharp9/Desktop/TOS100UK.IMG")
 st.Reset()
 for _ in 1..100 do
     st.Step()
@@ -42,10 +44,20 @@ for _ in 1..100 do
 module Main =
     [<EntryPoint>]
     let main arg=
-        let st = AtartSt("/Users/dave/Desktop/100uk.img")
+        let st = AtartSt("/Users/7sharp9/Desktop/TOS100UK.IMG")
         st.Reset()
-        for _ in 1..100 do
-            st.Step()
+        for i in 1..20 do st.Step()
+        let rec loop() =
+            match Console.ReadLine() with
+            | "s" ->
+                st.Step()
+                loop()
+            | "r" ->
+                printfn "%s" st.Debug
+                loop()
+            | "q" -> ()
+            | _ -> ()
+        loop()
         0
             
 #endif

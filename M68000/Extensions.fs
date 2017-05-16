@@ -1,5 +1,7 @@
 ﻿namespace Atari
 open System
+open System.Numerics
+
 module Bits =
     
     ///Logical shift to the right
@@ -13,22 +15,29 @@ module Bits =
         
     type Byte with
         member x.toBits = Convert.ToString(x,2).PadLeft(8, '0')
+        member x.isset i = x &&& (1uy <<< i) <> 0uy
+        member x.isnotset i = (x &&& (1uy <<< i)) <> 1uy
         
     type Int32 with
         member x.setBit i = x ||| (1 <<< i)
         member x.toBits = Convert.ToString(x, 2).PadLeft(32, '0')
-        
+        member x.isset i = x &&& (1 <<< i) <> 0
+
     type UInt32 with
         member x.setBit i = x ||| (1u <<< i)
         member x.toBits = Convert.ToString(int64 x, 2).PadLeft(32, '0')
+        member x.isSet i = x &&& (1u <<< i) <> 0u
         
     type Int16 with
         member x.setBit i = x ||| (1s <<< i)
         member x.toBits = Convert.ToString(x, 2).PadLeft(16, '0')
+        member x.isset i = x &&& (1s <<< i) <> 0s
+        member x.isset_be i = x &&& (1s >>> i) <> 0s
         
     type UInt16 with
         member x.setBit i = x ||| (1us <<< i)
         member x.toBits = Convert.ToString(int64 x, 2).PadLeft(16, '0')
+        member x.isset i = x &&& (1us <<< i) <> 0us
         
     let tobits (tw:IO.TextWriter) (i:int16) =
         tw.Write(Convert.ToString(i,2).PadLeft(16, '0'))
