@@ -94,7 +94,7 @@ module Instructions =
             let condition : Condition = enum (data &&& 0b0000111100000000) >>> 8
             Some(condition, byte (data &&& 0b0000000011111111))
         else None
-        
+  
     let (|SUB|_|) data =
         //1001101111001101
         //----reg
@@ -141,12 +141,12 @@ module Instructions =
             let dest_mode   = byte (data >>> 6) &&& 0b111uy
             let destEA =
                 match dest_mode with
-                | 0b000uy -> AddressingModes.Dn(dest_reg)
-                | 0b010uy -> AddressingModes.An_Indirect(dest_reg)
-                | 0b011uy -> AddressingModes.An_PostIncrement(dest_reg)
-                | 0b100uy -> AddressingModes.An_PreDecrement(dest_reg)
-                | 0b101uy -> AddressingModes.An_Displacement(dest_reg)
-                | 0b110uy -> AddressingModes.An_ByteDisplacement(dest_reg)
+                | 0b000uy -> Dn(dest_reg)
+                | 0b010uy -> An_Indirect(dest_reg)
+                | 0b011uy -> An_PostIncrement(dest_reg)
+                | 0b100uy -> An_PreDecrement(dest_reg)
+                | 0b101uy -> An_Displacement(dest_reg)
+                | 0b110uy -> An_ByteDisplacement(dest_reg)
                 | 0b111uy when dest_reg = 0b0uy -> Immediate(OperandSize.Word)
                 | 0b111uy when dest_reg = 0b1uy -> Immediate(OperandSize.Long)
                 | _ -> failwithf "Invalid destination effective address: mode: %u, reg: %u"  dest_mode dest_reg
