@@ -36,7 +36,7 @@ CPU Registers
     member x.Cpu = cpu
 
 #if INTERACTIVE 
-let st = AtartSt("/Users/7sharp9/Desktop/TOS100UK.IMG")
+let st = AtartSt("TOS100UK.IMG")
 st.Reset()
 for _ in 1..100 do
     st.Step()
@@ -44,7 +44,7 @@ for _ in 1..100 do
 module Main =
     [<EntryPoint>]
     let main arg=
-        let st = AtartSt("/Users/7sharp9/Desktop/TOS100UK.IMG")
+        let st = AtartSt("TOS100UK.IMG")
         st.Reset()
         for i in 1..20 do st.Step()
         let rec loop() =
