@@ -49,16 +49,15 @@ module Main =
         for i in 1..20 do st.Step()
         let rec loop() =
             match Console.ReadLine() with
-            | "s" ->
+            | "help" | "h" -> printfn "s = step, r = print registers, q = quit, help = this"
+            | "step" | "s" ->
                 st.Step()
                 loop()
-            | "r" ->
+            | "registers" | "r" ->
                 printfn "%s" st.Debug
                 loop()
-            | "q" -> ()
+            | "quit" | "q" -> ()
             | _ -> ()
         loop()
-        0
-            
+        0   
 #endif
-()
