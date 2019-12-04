@@ -4,20 +4,24 @@ type MMU(rom:byte array, ram: byte array) =
 
     let memoryConfiguration = 0xFF8000u
 
-    let videoDisplayRegisterStart, videoDisplayRegisterEnd = 0xFF8200u, 0xFF8260u
+    let videoDisplayRegisterStart = 0xFF8200u
+    let videoDisplayRegisterEnd =  0xFF8260u
     let videoDisplayRegisterMemory = Array.create 96 0uy
 
     let reserved = 0xFF8400u
     let dma_diskcontroller = 0xFF8600u
 
     let ym2149IOMemory = Array.create 4 0uy
-    let ym2149Start, ym2149End = 0xFF8800u, 0xFF8804u
+    let ym2149Start = 0xFF8800u
+    let ym2149End =  0xFF8804u
 
     let mpf68901 = 0xFFFA00u
     let midi = 0xFFFC00u
 
-    let romStart, romEnd = 0xfc0000u, 0xff0000u
-    let cartStart, cartEnd = 0xfa0000u, 0xfc0000u
+    let romStart = 0xfc0000u
+    let romEnd = 0xff0000u
+    let cartStart = 0xfa0000u
+    let cartEnd =  0xfc0000u
 
     let maxMemory = 0xffffffu
 
@@ -86,7 +90,7 @@ type MMU(rom:byte array, ram: byte array) =
         | Cart ->  0xffffffff
           //failwithf "Not implemented read long from cart: %x" address
         | YM2149 ->
-            let ttt = int (address-ym2149Start)
-            let tttt = sprintf "%x" ttt
+            let test = int (address-ym2149Start)
+            let _ = sprintf "%x" test
             readBigEndianLWord ym2149IOMemory (uint32 (int (address-ym2149Start)))
         | _ -> readBigEndianLWord ram (address &&& 0xffffffu)
