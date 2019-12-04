@@ -59,7 +59,7 @@ type Cpu =
      CCR : int16
      MMU: MMU }
 
-    static member Create(mmu:MMU) =
+    static member Create(mmu: MMU) =
         //TODO review MMU creation / ownership
         { D0=0; D1=0; D2=0; D3=0; D4=0; D5=0; D6=0; D7=0
           A0=0; A1=0; A2=0; A3=0; A4=0; A5=0; A6=0; A7=0
@@ -75,13 +75,13 @@ type Cpu =
     member x.S = not (x.CCR &&& 0x2000s = 0s)
     member x.T0 = not (x.CCR &&& 0x4000s = 0s)
     member x.T1 = not (x.CCR &&& 0x8000s = 0s)
-    member x.AddressRegister register =
+    member x.AddressRegister (register: byte) =
         match register with
         | 0uy -> x.A0 | 1uy -> x.A1 | 2uy -> x.A2 | 3uy -> x.A3
         | 4uy -> x.A4 | 5uy -> x.A5 | 6uy -> x.A6 | 7uy -> x.A7
         | _ -> failwithf "Invalid register %uy" register
         
-    member x.DataRegister register =
+    member x.DataRegister (register: byte) =
         match register with
         | 0uy -> x.D0 | 1uy -> x.D1 | 2uy -> x.D2 | 3uy -> x.D3
         | 4uy -> x.D4 | 5uy -> x.D5 | 6uy -> x.D6 | 7uy -> x.D7
@@ -166,7 +166,7 @@ type Cpu =
             printfn "bne.s #$%x (%A)" ((x.PC + 2) + disp) (condition)
             {x with PC = newPC}
             
-        | LEA(a_reg,eamode,eareg) ->
+        | LEA(a_reg, eamode,eareg) ->
             match eamode with
             | 0b010uy -> failwith "not implemented" //reg. number:An
             | 0b101uy -> failwith "not implemented" //reg. number:An
@@ -213,7 +213,7 @@ type Cpu =
                 | _ -> failwithf "unknown Register %x for mode %x" eareg eamode
             | _ -> failwithf "lea: unknown mode %x" eamode
             
-        | BCC(cond,disp) ->
+        | BCC(cond, disp) ->
             match disp with
             | 0x00uy ->
                 match cond with
@@ -349,7 +349,7 @@ type Cpu =
             | OperandSize.Long -> failwith "Move.l not implemented"
             | other -> failwithf "Move invalid operand size %A" other
 
-        | ``BTST Immediate``(eamode,eareg) ->
+        | BTSTImmediate(eamode, eareg) ->
             let bitnumber = x.MMU.ReadWord (uint32 (x.PC+2)) &&& 0xFF
             //ccr z flag is set if zero, no others
             match eamode with
@@ -372,7 +372,7 @@ type Cpu =
         | other ->
             failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
             
-    member x.Run(cycles) =
+    member x.Run(cycles: int) =
         //TODO
         //while cycles left
         //get instruction
