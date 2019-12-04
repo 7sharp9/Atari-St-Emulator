@@ -25,8 +25,8 @@ type MMU(rom:byte array) =
 
     let maxMemory = 0xffffffu
 
-    let between (starta:uint32) (enda:uint32) (address:uint32) =
-        if address >= starta && address <= enda then Some() else None
+    let between (startAddress:uint32) (endAddress:uint32) (address:uint32) =
+        if address >= startAddress && address <= endAddress then Some() else None
 
     let (|YM2149|_|) = between ym2149Start ym2149End
     let (|Rom|_|) = between romStart romEnd
@@ -35,7 +35,7 @@ type MMU(rom:byte array) =
 
     let ram = Array.create 1048576 0uy
         
-    member x.ReadByte (address:uint32) =
+    member x.ReadByte (address: uint32) =
         match address with
         | a when a <= 7u ->
             //Read from roms first 8 bytes
@@ -50,21 +50,21 @@ type MMU(rom:byte array) =
             //TODO: otherwise read from mem area
             0uy 
     
-    member x.ReadWord (address:uint32) =
+    member x.ReadWord (address: uint32) =
         let address = address &&& maxMemory
         match address with
         | a when a < 7u -> 
             ((int rom.[int a]) <<< 8) |||
             (int rom.[int a+1])
         | Rom ->
-            readBigEndianWord rom (address &&& 0x3ffffu)
+            BigEndian.readWord rom (address &&& 0x3ffffu)
         | Cart -> failwithf "not implemented read from cart: %x" address
         | VideoDisplayRegister ->
             let indexIntoVReg = address - videoDisplayRegisterStart
-            readBigEndianWord videoDisplayRegisterMemory indexIntoVReg
-        | a -> readBigEndianWord ram (a &&& 0xffffffu)
+            BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
+        | a -> BigEndian.readWord ram (a &&& 0xffffffu)
         
-    member x.WriteWord (addr:uint32) input =
+    member x.WriteWord (addr: uint32) (input: int16) =
         let address = uint32 (uint16 (addr &&& maxMemory)) //clip to max mem
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
@@ -79,7 +79,7 @@ type MMU(rom:byte array) =
             ram.[int address]   <- byte (input >>> 8)
             ram.[int (address+1u)] <- byte (input &&& 0xffs)
                
-    member x.ReadLong (address:uint32) =
+    member x.ReadLong (address: uint32) =
         match address with
         //The first 8 bytes (2 long Words) are mirrored from the rom area
         | a when a = 0u || a = 4u ->
@@ -89,11 +89,11 @@ type MMU(rom:byte array) =
            ((int rom.[int a+2]) <<<  8) |||
            ( int rom.[int a+3])
         | Rom ->
-            readBigEndianLWord rom (address &&& 0x3ffffu)
+            BigEndian.readLongWord rom (address &&& 0x3ffffu)
         | Cart ->  0xffffffff
           //failwithf "Not implemented read long from cart: %x" address
         | YM2149 ->
             let test = int (address-ym2149Start)
             let _ = sprintf "%x" test
-            readBigEndianLWord ym2149IOMemory (uint32 (int (address-ym2149Start)))
-        | _ -> readBigEndianLWord ram (address &&& 0xffffffu)
+            BigEndian.readLongWord ym2149IOMemory (uint32 (int (address-ym2149Start)))
+        | _ -> BigEndian.readLongWord ram (address &&& 0xffffffu)

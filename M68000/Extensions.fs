@@ -41,12 +41,14 @@ module Bits =
         
     let tobits (tw:IO.TextWriter) (i:int16) =
         tw.Write(Convert.ToString(i,2).PadLeft(16, '0'))
+     
         
-    let readBigEndianWord (bytes: byte array) (a:uint32) =
+module BigEndian =
+    let readWord (bytes: byte array) (a:uint32) =
         ((int bytes.[int a]) <<< 8) |||
         (int  bytes.[int a+1])
             
-    let readBigEndianLWord (bytes: byte array) (a:uint32) =
+    let readLongWord (bytes: byte array) (a:uint32) =
         ((int bytes.[int a])   <<< 24) |||
         ((int bytes.[int a+1]) <<< 16) |||
         ((int bytes.[int a+2]) <<<  8) |||
