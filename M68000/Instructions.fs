@@ -159,7 +159,7 @@ module Instructions =
         
     /// 0000 1000 00ss sSSS:00: BTST    #1,s[!Areg]
     ///return EA mode, EA register
-    let (|``BTST Immediate``|_|) data =
+    let (|BTSTImmediate|_|) data =
         if data &&& 0b1111111111000000 = 0b0000100000000000 then
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
