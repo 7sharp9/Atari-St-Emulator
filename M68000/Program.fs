@@ -15,12 +15,13 @@ open Instructions
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath: string) =
     let rom = IO.File.ReadAllBytes(romPath)
-    let ram = Array.create 1048576 0uy
-    let mmu = MMU(rom, ram)
+    let mmu = MMU(rom)
     let mutable cpu = Cpu.Create(mmu)
     
-    member x.Reset() = cpu <- cpu.Reset()
-    member x.Rom = rom
+    member x.Reset() =
+        cpu <- cpu.Reset()
+    member x.Rom =
+        rom
     
     member x.Step() =
         cpu <- cpu.Step()
