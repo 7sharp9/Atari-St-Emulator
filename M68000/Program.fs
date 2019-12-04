@@ -13,7 +13,7 @@ open Bits
 open Instructions
 
 [<StructuredFormatDisplay("{Debug}")>]
-type AtartSt(romPath) =
+type AtartSt(romPath: string) =
     let rom = IO.File.ReadAllBytes(romPath)
     let ram = Array.create 1048576 0uy
     let mmu = MMU(rom, ram)
@@ -43,21 +43,28 @@ for _ in 1..100 do
 #else
 module Main =
     [<EntryPoint>]
-    let main arg=
+    let main arg =
         let st = AtartSt("TOS100UK.IMG")
         st.Reset()
         for i in 1..20 do st.Step()
         let rec loop() =
             match Console.ReadLine() with
-            | "help" | "h" -> printfn "s = step, r = print registers, q = quit, help = this"
-            | "step" | "s" ->
+            | "help"
+            | "h" ->
+                printfn "s = step, r = print registers, q = quit, help = this"
+            | "step"
+            | "s" ->
                 st.Step()
                 loop()
-            | "registers" | "r" ->
+            | "registers"
+            | "r" ->
                 printfn "%s" st.Debug
                 loop()
-            | "quit" | "q" -> ()
-            | _ -> ()
+            | "quit"
+            | "q" ->
+                ()
+            | _ ->
+                ()
         loop()
         0   
 #endif
