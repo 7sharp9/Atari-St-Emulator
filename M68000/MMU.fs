@@ -1,6 +1,6 @@
 ﻿namespace Atari
 open Bits
-type MMU(rom:byte array, ram: byte array) =
+type MMU(rom:byte array) =
 
     let memoryConfiguration = 0xFF8000u
 
@@ -32,6 +32,8 @@ type MMU(rom:byte array, ram: byte array) =
     let (|Rom|_|) = between romStart romEnd
     let (|Cart|_|) = between cartStart cartEnd
     let (|VideoDisplayRegister|_|) = between videoDisplayRegisterStart videoDisplayRegisterEnd
+
+    let ram = Array.create 1048576 0uy
         
     member x.ReadByte (address:uint32) =
         match address with
@@ -69,9 +71,10 @@ type MMU(rom:byte array, ram: byte array) =
         | Rom -> failwithf "Attempt to write to Rom: $%08x" address
         | Cart -> failwithf "Attempt to write to Cart: $%08x" address
         | VideoDisplayRegister ->
-            failwithf "not implemented write to %x" address
-        | YM2149 -> ym2149IOMemory.[int (address-ym2149Start)] <- byte (input >>> 8)
-                    ym2149IOMemory.[int (address-ym2149Start+1u)] <- byte input
+            failwithf "not implemented write to Video Display Register: %x" address
+        | YM2149 ->
+            ym2149IOMemory.[int (address-ym2149Start)] <- byte (input >>> 8)
+            ym2149IOMemory.[int (address-ym2149Start+1u)] <- byte input
         | _ ->
             ram.[int address]   <- byte (input >>> 8)
             ram.[int (address+1u)] <- byte (input &&& 0xffs)
