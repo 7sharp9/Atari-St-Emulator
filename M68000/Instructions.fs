@@ -124,7 +124,7 @@ module Instructions =
     ///Represents the move instuction
     ///size, dest_reg, dest_mode, source_mode, source_reg 
     ///00zzdddDDDsssSSS
-    let (|Move|_|) (data:int) = 
+    let (|Move|_|) (data: int) = 
         let inline byteWordOrLong b =
             match b with 0b01 | 0b11 | 0b10 -> true | _ -> false
             
