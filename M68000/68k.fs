@@ -53,10 +53,10 @@ module CCR =
            
 [<StructuredFormatDisplay("{DisplayRegisters}")>]
 type Cpu =
-    {D0:int; D1:int; D2:int; D3:int; D4:int; D5:int; D6:int; D7:int
-     A0:int; A1:int; A2:int; A3:int; A4:int; A5:int; A6:int; A7:int //USP
-     PC : int
-     CCR : int16
+    {D0: int; D1: int; D2: int; D3: int; D4: int; D5: int; D6: int; D7: int
+     A0: int; A1: int; A2: int; A3: int; A4: int; A5: int; A6: int; A7: int //USP
+     PC: int
+     CCR: int16
      MMU: MMU }
 
     static member Create(mmu: MMU) =
