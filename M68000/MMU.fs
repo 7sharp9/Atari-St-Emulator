@@ -1,6 +1,6 @@
 ﻿namespace Atari
 open Bits
-type MMU(rom:byte array) =
+type MMU(rom: byte array) =
 
     let memoryConfiguration = 0xFF8000u
 
