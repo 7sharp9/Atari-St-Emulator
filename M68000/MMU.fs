@@ -79,6 +79,19 @@ type MMU(rom: byte array) =
             ram.[int address]   <- byte (input >>> 8)
             ram.[int (address+1u)] <- byte (input &&& 0xffs)
                
+    member x.WriteByte (addr: uint32) (input: byte) =
+        let address = uint32 (uint16 (addr &&& maxMemory)) //clip to max mem
+        match address with
+        | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
+        | Rom -> failwithf "Attempt to write to Rom: $%08x" address
+        | Cart -> failwithf "Attempt to write to Cart: $%08x" address
+        | VideoDisplayRegister ->
+            failwithf "not implemented write to Video Display Register: %x" address
+        | YM2149 ->
+            ym2149IOMemory.[int (address-ym2149Start)] <- input
+        | _ ->
+            ram.[int address] <- input
+
     member x.WriteLong (addr: uint32) (input: int) =
         x.WriteWord addr (int16 (input >>> 16))
         x.WriteWord (addr+2u) (int16 input)

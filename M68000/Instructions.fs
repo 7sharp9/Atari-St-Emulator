@@ -54,8 +54,25 @@ module Instructions =
             Some(mode,reg)
         else None
     
+    /// 0100 0000 11 mmm rrr : MOVE SR,<ea>
+    let (|MoveFromSR|_|) data =
+        if data &&& 0b1111111111000000 = 0b0100000011000000 then
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(eamode, eareg)
+        else None
+
+    /// 0000 0000 0111 1100 : ORI #<data>,SR
+    let (|OriToSR|_|) data =
+        if data = 0b0000000001111100 then Some()
+        else None
+
     let (|Reset|_|) data =
         if data = 0b0100111001110000 then Some()
+        else None
+
+    let (|RTS|_|) data =
+        if data = 0b0100111001110101 then Some()
         else None
         
     let (|CMPI|_|) data =
@@ -66,6 +83,24 @@ module Instructions =
             Some(size, mode, register)
         else None
         
+    /// 0000 0010 ss mmm rrr : ANDI #<data>,<ea>
+    let (|ANDI|_|) data =
+        if data &&& 0b1111111100000000 = 0b0000001000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let mode = byte (data >>> 3) &&& 0b111uy
+            let register = byte data &&& 0b111uy
+            Some(size, mode, register)
+        else None
+
+    /// 0000 0110 ss mmm rrr : ADDI #<data>,<ea>
+    let (|ADDI|_|) data =
+        if data &&& 0b1111111100000000 = 0b0000011000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let mode = byte (data >>> 3) &&& 0b111uy
+            let register = byte data &&& 0b111uy
+            Some(size, mode, register)
+        else None
+
     //0110 <4:cond> <8:displacement>  Bcc.B   #I
     let (|BNES|_|) data =
         if data >>> 12 = 0b0000000000000110 then
@@ -110,6 +145,100 @@ module Instructions =
             Some(register, opmode, eamode, eareg)
         else None
         
+    /// 1100 xxx1 ooooo yyy : EXG (mode: 01000=Dx,Dy 01001=Ax,Ay 10001=Dx,Ay)
+    /// Shares AND's top nibble but occupies EA-mode values that are otherwise illegal for AND,
+    /// so this must be tried before the generic AND pattern.
+    /// 1110 ccc d ss i TT rrr : Shift/Rotate register
+    /// (d: 0=right,1=left; i: 0=immediate count,1=register count; TT: 00=AS,01=LS,10=ROX,11=RO)
+    /// size=11 is the memory-shift form (different EA-based layout) and is excluded here.
+    let (|ShiftRotate|_|) data =
+        if data &&& 0b1111000000000000 = 0b1110000000000000 && (byte (data >>> 6) &&& 0b11uy) <> 0b11uy then
+            let countOrReg = byte (data >>> 9) &&& 0b111uy
+            let direction = byte (data >>> 8) &&& 0b1uy
+            let size = byte (data >>> 6) &&& 0b11uy
+            let useRegisterCount = byte (data >>> 5) &&& 0b1uy
+            let shiftType = byte (data >>> 3) &&& 0b11uy
+            let register = byte data &&& 0b111uy
+            Some(countOrReg, direction, size, useRegisterCount, shiftType, register)
+        else None
+
+    /// 0000 rrr1 oo mmm rrr : BTST/BCHG/BCLR/BSET Dn,<ea>  (oo: 00=BTST,01=BCHG,10=BCLR,11=BSET)
+    /// EAmode=001 (An) is illegal for bit ops and is reserved for MOVEP instead - excluded here.
+    let (|BitOpDynamic|_|) data =
+        if data &&& 0b1111000100000000 = 0b0000000100000000 then
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            if eamode <> 0b001uy then
+                let register = byte (data >>> 9) &&& 0b111uy
+                let opmode = byte (data >>> 6) &&& 0b11uy
+                let eareg = byte data &&& 0b111uy
+                Some(register, opmode, eamode, eareg)
+            else None
+        else None
+
+    /// 0101 ddd0 ssmmmrrr : ADDQ #<data>,<ea>  (size 11 is reserved for Scc/DBcc, excluded here)
+    let (|ADDQ|_|) data =
+        if data &&& 0b1111000100000000 = 0b0101000000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            if size <> 0b11uy then
+                let quickData = byte (data >>> 9) &&& 0b111uy
+                let eamode = byte (data >>> 3) &&& 0b111uy
+                let eareg = byte data &&& 0b111uy
+                Some(quickData, size, eamode, eareg)
+            else None
+        else None
+
+    let (|OR|_|) data =
+        //1000 reg opm EAm EAr : OR/DIVU/DIVS
+        //----reg
+        //-------opm
+        //----------EAm
+        //-------------EAr
+        if data &&& 0b1111000000000000 = 0b1000000000000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let opmode = byte (data >>> 6) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(register, opmode, eamode, eareg)
+        else None
+
+    let (|EXG|_|) data =
+        if data &&& 0b1111000100000000 = 0b1100000100000000 then
+            let mode = byte (data >>> 3) &&& 0b11111uy
+            if mode = 0b01000uy || mode = 0b01001uy || mode = 0b10001uy then
+                let rx = byte (data >>> 9) &&& 0b111uy
+                let ry = byte data &&& 0b111uy
+                Some(rx, mode, ry)
+            else None
+        else None
+
+    let (|AND|_|) data =
+        //1100 reg opm EAm EAr : AND/MULU/MULS
+        //----reg
+        //-------opm
+        //----------EAm
+        //-------------EAr
+        if data &&& 0b1111000000000000 = 0b1100000000000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let opmode = byte (data >>> 6) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(register, opmode, eamode, eareg)
+        else None
+
+    let (|ADD|_|) data =
+        //1101 reg opm EAm EAr : ADD/ADDA/ADDX
+        //----reg
+        //-------opm
+        //----------EAm
+        //-------------EAr
+        if data &&& 0b1111000000000000 = 0b1101000000000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let opmode = byte (data >>> 6) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(register, opmode, eamode, eareg)
+        else None
+
     /// 0101 cccc 11001 rrr : DBcc Dr,<disp>
     let (|DBcc|_|) data =
         if data &&& 0b1111000011111000 = 0b0101000011001000 then
@@ -210,4 +339,32 @@ module Instructions =
         else None
     
     
+    /// 0100 0010 ss mmm rrr : CLR
+    let (|CLR|_|) data =
+        if data &&& 0b1111111100000000 = 0b0100001000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(size, eamode, eareg)
+        else None
+
+    /// 0000 ddd1 oo 001 aaa : MOVEP
+    let (|MOVEP|_|) data =
+        if data &&& 0b1111000100111000 = 0b0000000100001000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let opmode = byte (data >>> 6) &&& 0b111uy
+            let addressReg = byte data &&& 0b111uy
+            Some(register, opmode, addressReg)
+        else None
+
+    /// 0100 1d00 1s mmm rrr : MOVEM  (d: 0=reg->mem, 1=mem->reg; s: 0=word, 1=long)
+    let (|MOVEM|_|) data =
+        if data &&& 0b1111101110000000 = 0b0100100010000000 then
+            let direction = byte (data >>> 10) &&& 0b1uy
+            let size = byte (data >>> 6) &&& 0b1uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(direction, size, eamode, eareg)
+        else None
+
     /// 0000 rrr1 00ss sSSS:00: BTST    Dr,s[!Areg]
