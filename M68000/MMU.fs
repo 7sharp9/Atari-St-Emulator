@@ -16,7 +16,8 @@ type MMU(rom: byte array) =
     let ym2149End =  0xFF8804u
 
     let mpf68901 = 0xFFFA00u
-    let midi = 0xFFFC00u
+    let aciaStart = 0xFFFC00u
+    let aciaEnd = 0xFFFC07u //keyboard ACIA (FC00 ctrl/status, FC02 data) + MIDI ACIA (FC04 ctrl/status, FC06 data)
 
     let romStart = 0xfc0000u
     let romEnd = 0xff0000u
@@ -32,10 +33,12 @@ type MMU(rom: byte array) =
     let (|Rom|_|) = between romStart romEnd
     let (|Cart|_|) = between cartStart cartEnd
     let (|VideoDisplayRegister|_|) = between videoDisplayRegisterStart videoDisplayRegisterEnd
+    let (|Acia|_|) = between aciaStart aciaEnd
 
     let ram = Array.create 1048576 0uy
         
     member x.ReadByte (address: uint32) =
+        let address = address &&& maxMemory
         match address with
         | a when a <= 7u ->
             //Read from roms first 8 bytes
@@ -46,9 +49,17 @@ type MMU(rom: byte array) =
             failwith "not implemented"
         | VideoDisplayRegister ->
             failwith "not implemented"
-        | _ -> 
+        | Acia ->
+            //Minimal stub: no real keyboard/MIDI ACIA emulation. Always reports
+            //"transmitter ready" (TDRE, bit1) so ROM code polling to send a byte doesn't
+            //spin forever; "receiver ready" (RDRF, bit0) stays clear since we never have
+            //real data for it to read. If future ROM code waits to *receive* a byte
+            //(keyboard input, MIDI data) rather than just polling status, this will need
+            //real ACIA emulation instead of this stub.
+            0x02uy
+        | _ ->
             //TODO: otherwise read from mem area
-            0uy 
+            0uy
     
     member x.ReadWord (address: uint32) =
         let address = address &&& maxMemory
@@ -62,6 +73,9 @@ type MMU(rom: byte array) =
         | VideoDisplayRegister ->
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
+        | Acia ->
+            //See ReadByte's Acia case: minimal status-only stub, no real ACIA emulation.
+            0x0002
         | a -> BigEndian.readWord ram (a &&& 0xffffffu)
         
     member x.WriteWord (addr: uint32) (input: int16) =

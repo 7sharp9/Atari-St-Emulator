@@ -187,6 +187,18 @@ module Instructions =
             else None
         else None
 
+    /// 0101 ddd1 ssmmmrrr : SUBQ #<data>,<ea>  (size 11 is reserved for Scc/DBcc, excluded here)
+    let (|SUBQ|_|) data =
+        if data &&& 0b1111000100000000 = 0b0101000100000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            if size <> 0b11uy then
+                let quickData = byte (data >>> 9) &&& 0b111uy
+                let eamode = byte (data >>> 3) &&& 0b111uy
+                let eareg = byte data &&& 0b111uy
+                Some(quickData, size, eamode, eareg)
+            else None
+        else None
+
     let (|OR|_|) data =
         //1000 reg opm EAm EAr : OR/DIVU/DIVS
         //----reg
