@@ -35,6 +35,18 @@ type MMU(rom: byte array) =
     let (|VideoDisplayRegister|_|) = between videoDisplayRegisterStart videoDisplayRegisterEnd
     let (|Acia|_|) = between aciaStart aciaEnd
 
+    ///Minimal peripheral stub table, keyed by exact address: no real ACIA emulation, just enough
+    ///for ROM code polling "can I send a byte" to not spin forever. Control/status registers
+    ///report transmitter-ready (TDRE, bit1); anything else in the Acia range (data registers)
+    ///falls through to the 0 default below since there's never real data waiting. If future ROM
+    ///code waits to *receive* a byte (keyboard input, MIDI data) this needs real ACIA emulation,
+    ///not more table entries - see [[atari-st-emulator-next-instructions]] memory for the note.
+    let ioStubs : Map<uint32, byte> =
+        Map.ofList [
+            0xFFFC00u, 0x02uy //keyboard ACIA control/status
+            0xFFFC04u, 0x02uy //MIDI ACIA control/status
+        ]
+
     let ram = Array.create 1048576 0uy
         
     member x.ReadByte (address: uint32) =
@@ -50,13 +62,10 @@ type MMU(rom: byte array) =
         | VideoDisplayRegister ->
             failwith "not implemented"
         | Acia ->
-            //Minimal stub: no real keyboard/MIDI ACIA emulation. Always reports
-            //"transmitter ready" (TDRE, bit1) so ROM code polling to send a byte doesn't
-            //spin forever; "receiver ready" (RDRF, bit0) stays clear since we never have
-            //real data for it to read. If future ROM code waits to *receive* a byte
-            //(keyboard input, MIDI data) rather than just polling status, this will need
-            //real ACIA emulation instead of this stub.
-            0x02uy
+            //See ioStubs above.
+            match ioStubs.TryFind address with
+            | Some v -> v
+            | None -> 0uy
         | _ ->
             //TODO: otherwise read from mem area
             0uy
@@ -74,8 +83,10 @@ type MMU(rom: byte array) =
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
         | Acia ->
-            //See ReadByte's Acia case: minimal status-only stub, no real ACIA emulation.
-            0x0002
+            //See ioStubs above.
+            match ioStubs.TryFind address with
+            | Some v -> int v
+            | None -> 0
         | a -> BigEndian.readWord ram (a &&& 0xffffffu)
         
     member x.WriteWord (addr: uint32) (input: int16) =
@@ -109,6 +120,16 @@ type MMU(rom: byte array) =
     member x.WriteLong (addr: uint32) (input: int) =
         x.WriteWord addr (int16 (input >>> 16))
         x.WriteWord (addr+2u) (int16 input)
+
+    ///Deep-copies the mutable memory-backed regions (not `rom`, which is never written).
+    ///Used to roll back side effects after a speculative preview run - see `AtartSt.Preview`.
+    member x.SnapshotRam() : byte[] * byte[] * byte[] =
+        (Array.copy ram, Array.copy videoDisplayRegisterMemory, Array.copy ym2149IOMemory)
+
+    member x.RestoreRam((ramSnapshot, videoSnapshot, ym2149Snapshot): byte[] * byte[] * byte[]) =
+        Array.blit ramSnapshot 0 ram 0 ramSnapshot.Length
+        Array.blit videoSnapshot 0 videoDisplayRegisterMemory 0 videoSnapshot.Length
+        Array.blit ym2149Snapshot 0 ym2149IOMemory 0 ym2149Snapshot.Length
 
     member x.ReadLong (address: uint32) =
         match address with
