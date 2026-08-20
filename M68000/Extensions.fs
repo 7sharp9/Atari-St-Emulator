@@ -16,7 +16,7 @@ module Bits =
     type Byte with
         member x.toBits = Convert.ToString(x,2).PadLeft(8, '0')
         member x.isset i = x &&& (1uy <<< i) <> 0uy
-        member x.isnotset i = (x &&& (1uy <<< i)) <> 1uy
+        member x.isnotset i = (x &&& (1uy <<< i)) = 0uy
         
     type Int32 with
         member x.setBit i = x ||| (1 <<< i)
