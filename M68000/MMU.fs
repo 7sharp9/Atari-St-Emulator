@@ -79,6 +79,10 @@ type MMU(rom: byte array) =
             ram.[int address]   <- byte (input >>> 8)
             ram.[int (address+1u)] <- byte (input &&& 0xffs)
                
+    member x.WriteLong (addr: uint32) (input: int) =
+        x.WriteWord addr (int16 (input >>> 16))
+        x.WriteWord (addr+2u) (int16 input)
+
     member x.ReadLong (address: uint32) =
         match address with
         //The first 8 bytes (2 long Words) are mirrored from the rom area
