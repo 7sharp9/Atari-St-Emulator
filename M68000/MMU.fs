@@ -61,11 +61,23 @@ type MMU(rom: byte array) =
     let ramMask = uint32 (ram.Length - 1)
     let aliasIntoRam (address: uint32) = address < cartStart
 
+    ///Real ST hardware mirrors only the CPU's own 8-byte reset-vector fetch (SSP at $0, PC at $4)
+    ///at low memory - see [[atari-st-emulator-next-instructions]]. But TOS's own ROM header is
+    ///deliberately crafted so those 8 bytes double as valid code (the first word decodes as a
+    ///branch into real early-boot init code a little further along), and a critical error raised
+    ///before TOS installs the real exception-vector table (still early boot - `etv_critic` at $404
+    ///reads as 0) jumps through that uninitialized vector to address 0, relying on this trick as a
+    ///soft-restart. Extending the mirror just far enough to cover that short init snippet (through
+    ///the point it jumps back to a real high ROM address) lets that path play out like real
+    ///hardware, without shadowing the wider low-memory range TOS later writes real vector-table
+    ///data into - deliberately narrow, not a general ROM/RAM overlay bank-switch.
+    let lowRomMirrorEnd = 0x100u
+
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
         match address with
-        | a when a <= 7u ->
-            //Read from roms first 8 bytes
+        | a when a < lowRomMirrorEnd ->
+            //Mirror ROM at low memory - see lowRomMirrorEnd's comment above.
             rom.[int a]
         | Rom ->
             rom.[int (address &&& 0x3ffffu)]
@@ -85,7 +97,7 @@ type MMU(rom: byte array) =
     member x.ReadWord (address: uint32) =
         let address = address &&& maxMemory
         match address with
-        | a when a < 7u ->
+        | a when a < lowRomMirrorEnd ->
             ((int rom.[int a]) <<< 8) |||
             (int rom.[int a+1])
         | Rom ->
@@ -109,7 +121,8 @@ type MMU(rom: byte array) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
-        | Rom -> failwithf "Attempt to write to Rom: $%08x" address
+        | a when a < lowRomMirrorEnd -> () //mirrors ROM at low memory - see lowRomMirrorEnd's comment
+        | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
         | Cart -> failwithf "Attempt to write to Cart: $%08x" address
         | VideoDisplayRegister ->
             let i = int (address - videoDisplayRegisterStart)
@@ -129,7 +142,8 @@ type MMU(rom: byte array) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
-        | Rom -> failwithf "Attempt to write to Rom: $%08x" address
+        | a when a < lowRomMirrorEnd -> () //mirrors ROM at low memory - see lowRomMirrorEnd's comment
+        | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
         | Cart -> failwithf "Attempt to write to Cart: $%08x" address
         | VideoDisplayRegister ->
             videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)] <- input
@@ -156,9 +170,8 @@ type MMU(rom: byte array) =
     member x.ReadLong (address: uint32) =
         let address = address &&& maxMemory //clip to the 24-bit address bus, matching Read/WriteByte/Word
         match address with
-        //The first 8 bytes (2 long Words) are mirrored from the rom area
-        | a when a = 0u || a = 4u ->
-           //read from rom as first 8 bytes mirrored
+        | a when a < lowRomMirrorEnd ->
+            //Mirror ROM at low memory - see lowRomMirrorEnd's comment above.
            ((int rom.[int a])   <<< 24) |||
            ((int rom.[int a+1]) <<< 16) |||
            ((int rom.[int a+2]) <<<  8) |||
