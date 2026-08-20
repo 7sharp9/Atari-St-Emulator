@@ -110,6 +110,39 @@ module Instructions =
             Some(register, opmode, eamode, eareg)
         else None
         
+    /// 0101 cccc 11001 rrr : DBcc Dr,<disp>
+    let (|DBcc|_|) data =
+        if data &&& 0b1111000011111000 = 0b0101000011001000 then
+            let condition : Condition = enum (data &&& 0b0000111100000000) >>> 8
+            let register = byte data &&& 0b111uy
+            Some(condition, register)
+        else None
+
+    /// 0101 cccc 11 EEE eee : Scc <ea> (EAmode=001 is DBcc instead, not Scc)
+    let (|Scc|_|) data =
+        if data &&& 0b1111000011000000 = 0b0101000011000000 then
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            if eamode <> 0b001uy then
+                let condition : Condition = enum (data &&& 0b0000111100000000) >>> 8
+                let eareg = byte data &&& 0b111uy
+                Some(condition, eamode, eareg)
+            else None
+        else None
+
+    let (|CMP|_|) data =
+        //1011 rrr opm EAmEAr : CMP/CMPA/EOR
+        //----reg
+        //-------opm
+        //----------EAm
+        //-------------EAr
+        if data &&& 0b1111000000000000 = 0b1011000000000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let opmode = byte (data >>> 6) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(register, opmode, eamode, eareg)
+        else None
+
     let (|JMP|_|) data =
         //0100111011sssSSS
         //sample: 0100111011 010 110 = An Mode, register A6
@@ -142,6 +175,7 @@ module Instructions =
             let destEA =
                 match dest_mode with
                 | 0b000uy -> Dn(dest_reg)
+                | 0b001uy -> An(dest_reg) //MOVEA
                 | 0b010uy -> An_Indirect(dest_reg)
                 | 0b011uy -> An_PostIncrement(dest_reg)
                 | 0b100uy -> An_PreDecrement(dest_reg)
@@ -164,6 +198,15 @@ module Instructions =
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
             Some(mode,register)
+        else None
+
+    /// 0111 rrr0 dddddddd: MOVEQ #<data>,Dr
+    ///return dest register, 8-bit signed data
+    let (|MOVEQ|_|) data =
+        if data &&& 0b1111000100000000 = 0b0111000000000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let data8 = sbyte (data &&& 0xff)
+            Some(register, data8)
         else None
     
     
