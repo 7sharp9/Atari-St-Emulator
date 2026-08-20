@@ -6,7 +6,7 @@ type MMU(rom: byte array) =
 
     let videoDisplayRegisterStart = 0xFF8200u
     let videoDisplayRegisterEnd =  0xFF8260u
-    let videoDisplayRegisterMemory = Array.create 96 0uy
+    let videoDisplayRegisterMemory = Array.create 98 0uy
 
     let reserved = 0xFF8400u
     let dma_diskcontroller = 0xFF8600u
@@ -48,7 +48,19 @@ type MMU(rom: byte array) =
         ]
 
     let ram = Array.create 1048576 0uy
-        
+
+    ///Real ST hardware only has `ram.Length` bytes of RAM physically installed, but the GLUE/MMU's
+    ///address decoding for that bank doesn't stop at the installed size - addresses between the top
+    ///of RAM and the start of cartridge/ROM space (cartStart) alias back into the same RAM chips
+    ///rather than going to an unmapped/bus-error bus. This is why TOS's own boot ROM can safely use
+    ///the raw reset-vector SSP ($601E0100, masked to $1E0100 - well above `ram.Length`) as scratch
+    ///stack space for early hardware-probe code, before it sets up a real stack: on real hardware
+    ///that address mirrors back into installed RAM. Only applies below cartStart - genuinely
+    ///unmapped/unemulated peripheral gaps above ROM (e.g. mpf68901) still fall through to the 0/drop
+    ///default further down, since aliasing those into RAM would be a worse stub than a flat 0.
+    let ramMask = uint32 (ram.Length - 1)
+    let aliasIntoRam (address: uint32) = address < cartStart
+
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
         match address with
@@ -58,27 +70,27 @@ type MMU(rom: byte array) =
         | Rom ->
             rom.[int (address &&& 0x3ffffu)]
         | Cart ->
-            failwith "not implemented"
+            0xffuy //no cartridge present
         | VideoDisplayRegister ->
-            failwith "not implemented"
+            videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)]
         | Acia ->
             //See ioStubs above.
             match ioStubs.TryFind address with
             | Some v -> v
             | None -> 0uy
         | _ ->
-            //TODO: otherwise read from mem area
-            0uy
-    
+            if aliasIntoRam address then ram.[int (address &&& ramMask)]
+            else 0uy //genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap)
+
     member x.ReadWord (address: uint32) =
         let address = address &&& maxMemory
         match address with
-        | a when a < 7u -> 
+        | a when a < 7u ->
             ((int rom.[int a]) <<< 8) |||
             (int rom.[int a+1])
         | Rom ->
             BigEndian.readWord rom (address &&& 0x3ffffu)
-        | Cart -> failwithf "not implemented read from cart: %x" address
+        | Cart -> 0xffff //no cartridge present
         | VideoDisplayRegister ->
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
@@ -87,35 +99,45 @@ type MMU(rom: byte array) =
             match ioStubs.TryFind address with
             | Some v -> int v
             | None -> 0
-        | a -> BigEndian.readWord ram (a &&& 0xffffffu)
-        
+        | a ->
+            if aliasIntoRam a then
+                let masked = a &&& ramMask
+                ((int ram.[int masked]) <<< 8) ||| (int ram.[int ((masked+1u) &&& ramMask)])
+            else 0 //genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap)
+
     member x.WriteWord (addr: uint32) (input: int16) =
-        let address = uint32 (uint16 (addr &&& maxMemory)) //clip to max mem
+        let address = addr &&& maxMemory //clip to the 24-bit address bus
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> failwithf "Attempt to write to Rom: $%08x" address
         | Cart -> failwithf "Attempt to write to Cart: $%08x" address
         | VideoDisplayRegister ->
-            failwithf "not implemented write to Video Display Register: %x" address
+            let i = int (address - videoDisplayRegisterStart)
+            videoDisplayRegisterMemory.[i]   <- byte (input >>> 8)
+            videoDisplayRegisterMemory.[i+1] <- byte (input &&& 0xffs)
         | YM2149 ->
             ym2149IOMemory.[int (address-ym2149Start)] <- byte (input >>> 8)
             ym2149IOMemory.[int (address-ym2149Start+1u)] <- byte input
         | _ ->
-            ram.[int address]   <- byte (input >>> 8)
-            ram.[int (address+1u)] <- byte (input &&& 0xffs)
-               
+            if aliasIntoRam address then
+                let masked = address &&& ramMask
+                ram.[int masked] <- byte (input >>> 8)
+                ram.[int ((masked+1u) &&& ramMask)] <- byte (input &&& 0xffs)
+            //else: genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap) - write ignored
+
     member x.WriteByte (addr: uint32) (input: byte) =
-        let address = uint32 (uint16 (addr &&& maxMemory)) //clip to max mem
+        let address = addr &&& maxMemory //clip to the 24-bit address bus
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> failwithf "Attempt to write to Rom: $%08x" address
         | Cart -> failwithf "Attempt to write to Cart: $%08x" address
         | VideoDisplayRegister ->
-            failwithf "not implemented write to Video Display Register: %x" address
+            videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)] <- input
         | YM2149 ->
             ym2149IOMemory.[int (address-ym2149Start)] <- input
         | _ ->
-            ram.[int address] <- input
+            if aliasIntoRam address then ram.[int (address &&& ramMask)] <- input
+            //else: genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap) - write ignored
 
     member x.WriteLong (addr: uint32) (input: int) =
         x.WriteWord addr (int16 (input >>> 16))
@@ -132,6 +154,7 @@ type MMU(rom: byte array) =
         Array.blit ym2149Snapshot 0 ym2149IOMemory 0 ym2149Snapshot.Length
 
     member x.ReadLong (address: uint32) =
+        let address = address &&& maxMemory //clip to the 24-bit address bus, matching Read/WriteByte/Word
         match address with
         //The first 8 bytes (2 long Words) are mirrored from the rom area
         | a when a = 0u || a = 4u ->
@@ -148,4 +171,11 @@ type MMU(rom: byte array) =
             let test = int (address-ym2149Start)
             let _ = sprintf "%x" test
             BigEndian.readLongWord ym2149IOMemory (uint32 (int (address-ym2149Start)))
-        | _ -> BigEndian.readLongWord ram (address &&& 0xffffffu)
+        | _ ->
+            if aliasIntoRam address then
+                let masked = address &&& ramMask
+                (int ram.[int masked]           <<< 24) |||
+                (int ram.[int ((masked+1u) &&& ramMask)] <<< 16) |||
+                (int ram.[int ((masked+2u) &&& ramMask)] <<<  8) |||
+                (int ram.[int ((masked+3u) &&& ramMask)])
+            else 0 //genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap)
