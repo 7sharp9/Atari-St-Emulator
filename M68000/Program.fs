@@ -17,13 +17,53 @@ type AtartSt(romPath: string) =
     let rom = IO.File.ReadAllBytes(romPath)
     let mmu = MMU(rom)
     let mutable cpu = Cpu.Create(mmu)
-    
+
+    //Loop detection: the (PC, all registers, CCR) tuple after each step is deterministic given
+    //the current MMU state, so seeing the exact same tuple twice means execution is provably
+    //stuck forever from there (e.g. polling an MMU address whose value never changes) - not
+    //merely a slow bounded loop, which would show a changing register (like a loop counter) on
+    //every pass. Registers alone are NOT enough, though: a shared subroutine called from two
+    //different call sites with identical register inputs reaches the same PC with the same
+    //registers on both calls, but returns to a different place each time (the return address
+    //sitting in memory at the stack pointer, not in any register) - so the top-of-stack long is
+    //folded into the key too, to tell those apart. Even with that, this only inspects a slice of
+    //memory near A7, not the full MMU state, so it can in principle miss a loop whose exit
+    //depends on other memory content; that's an acceptable gap for a diagnostic tool used to
+    //steer instruction implementation, not for emulator correctness.
+    //A state repeating exactly once is common and often innocent (see stateKey's comment on why:
+    //a coincidental match on the compared slice of state while something else, outside that
+    //slice, is still genuinely progressing - confirmed empirically: a one-off "repeat" here
+    //turned out to just be a subroutine re-entered with matching visible state, which then
+    //diverged and made real progress on its very next step). A truly stuck loop, by contrast,
+    //revisits the same state indefinitely, so requiring several repeats before concluding "stuck
+    //forever" filters out the coincidental case almost for free while still catching real loops
+    //within a handful of extra iterations.
+    let loopThreshold = 8
+    let seenStateCounts = Collections.Generic.Dictionary<string, int>()
+    let stateKey (c: Cpu) =
+        //A7 can transiently point outside the emulated RAM array (e.g. the raw reset-vector SSP,
+        //before the ROM's own early boot code replaces it with something sane), which makes
+        //ReadLong throw. That's a real gap in MMU's bounds checking, not something to paper over
+        //there - but this diagnostic only needs "some distinguishing value," so falling back to 0
+        //on a bad read is fine here specifically.
+        let topOfStack = try c.MMU.ReadLong (uint32 c.A7) with _ -> 0
+        sprintf "%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%04x|%08x"
+            c.PC c.D0 c.D1 c.D2 c.D3 c.D4 c.D5 c.D6 c.D7
+            c.A0 c.A1 c.A2 c.A3 c.A4 c.A5 c.A6 c.A7 c.CCR topOfStack
+
     member x.Reset() =
         cpu <- cpu.Reset()
     member x.Rom =
         rom
-    
+
     member x.Step() =
+        let key = stateKey cpu
+        let visits = (match seenStateCounts.TryGetValue key with true, n -> n | false, _ -> 0) + 1
+        seenStateCounts.[key] <- visits
+        if visits = loopThreshold then
+            eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact register/CCR/top-of-stack state has now been visited %d times, so execution is stuck and can never leave this loop; further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC visits
+            eprintfn "%A" cpu
+            failwithf "Loop detected at PC=$%08x" cpu.PC
         try
             cpu <- cpu.Step()
         with e ->
@@ -45,7 +85,23 @@ type AtartSt(romPath: string) =
             eprintfn "%A" cpu
             reraise()
         //printfn "%A" x
-    
+
+    ///Runs up to n further steps, then unconditionally rolls back all CPU registers and memory
+    ///to exactly what they were before the call - even if a step failed (the diagnostics are
+    ///still printed, same as a normal Step() failure, but execution isn't left stuck at the
+    ///failing instruction). Useful from the REPL to look ahead without disturbing the real run.
+    member x.Preview(n: int) =
+        let savedCpu = cpu
+        let savedRam = mmu.SnapshotRam()
+        printfn "--- preview: up to %d step(s), state will be restored afterward ---" n
+        (try
+            for _ in 1 .. n do x.Step()
+         with e ->
+            printfn "--- preview stopped early: %s ---" e.Message)
+        cpu <- savedCpu
+        mmu.RestoreRam savedRam
+        printfn "--- preview done, state restored to PC=$%08x ---" cpu.PC
+
     member x.Debug =
        sprintf """
 -------------
@@ -78,6 +134,38 @@ module Main =
             let steps = int stepsArg
             for _ in 1 .. steps do st.Step()
             0
+        | [| stepsArg; "checkpoint" |] ->
+            //Runs N steps (or until failure), then saves the resulting register/PC/CCR dump as a
+            //golden snapshot for regression checking (see "verify" below), instead of relying on
+            //manually eyeballing two dumps to confirm an instruction fix didn't regress a
+            //previous one. checkpoint.txt is local/untracked working data, like TOS100UK.IMG -
+            //not meant to be committed, since it encodes both this ROM and whatever opcode
+            //coverage exists right now.
+            let steps = int stepsArg
+            (try for _ in 1 .. steps do st.Step() with _ -> ())
+            IO.File.WriteAllText("checkpoint.txt", st.Debug)
+            printfn "Checkpoint written to checkpoint.txt at step count %d (PC=$%08x)" steps st.Cpu.PC
+            0
+        | [| stepsArg; "verify" |] ->
+            //Runs N steps (or until failure), then diffs the resulting dump against
+            //checkpoint.txt. Exit code reflects the result (0 = match), so this is scriptable
+            //rather than needing a human to compare two register dumps by eye.
+            let steps = int stepsArg
+            (try for _ in 1 .. steps do st.Step() with _ -> ())
+            if not (IO.File.Exists "checkpoint.txt") then
+                eprintfn "No checkpoint.txt found - run with 'checkpoint' instead of 'verify' first"
+                1
+            else
+                let expected = IO.File.ReadAllText "checkpoint.txt"
+                let actual = st.Debug
+                if actual = expected then
+                    printfn "VERIFY PASS at step count %d (PC=$%08x)" steps st.Cpu.PC
+                    0
+                else
+                    printfn "VERIFY FAIL at step count %d" steps
+                    printfn "--- expected (checkpoint.txt) ---%s" expected
+                    printfn "--- actual ---%s" actual
+                    1
         | _ ->
             for i in 1..20000 do st.Step()
             let rec loop() =
@@ -87,13 +175,16 @@ module Main =
                     else input.Split(' ') |> Array.filter (fun s -> s <> "")
                 match parts with
                 | [| "help" |] | [| "h" |] ->
-                    printfn "s [n] = step (n times, default 1), r = print registers, m <hexaddr> <len> = dump memory bytes, q = quit, help = this"
+                    printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), r = print registers, m <hexaddr> <len> = dump memory bytes, q = quit, help = this"
                     loop()
                 | [| "step" |] | [| "s" |] ->
                     st.Step()
                     loop()
                 | [| "step"; n |] | [| "s"; n |] ->
                     for _ in 1 .. int n do st.Step()
+                    loop()
+                | [| "peek"; n |] | [| "p"; n |] ->
+                    st.Preview (int n)
                     loop()
                 | [| "registers" |] | [| "r" |] ->
                     printfn "%s" st.Debug
