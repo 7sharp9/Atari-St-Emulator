@@ -67,6 +67,11 @@ module Instructions =
         if data = 0b0000000001111100 then Some()
         else None
 
+    /// 0000 1010 0011 1100 : EORI #<data>,CCR
+    let (|EoriToCcr|_|) data =
+        if data = 0b0000101000111100 then Some()
+        else None
+
     let (|Reset|_|) data =
         if data = 0b0100111001110000 then Some()
         else None
@@ -95,6 +100,15 @@ module Instructions =
     /// 0000 0110 ss mmm rrr : ADDI #<data>,<ea>
     let (|ADDI|_|) data =
         if data &&& 0b1111111100000000 = 0b0000011000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let mode = byte (data >>> 3) &&& 0b111uy
+            let register = byte data &&& 0b111uy
+            Some(size, mode, register)
+        else None
+
+    /// 0000 1010 ss mmm rrr : EORI #<data>,<ea>
+    let (|EORI|_|) data =
+        if data &&& 0b1111111100000000 = 0b0000101000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
@@ -205,12 +219,23 @@ module Instructions =
         //-------opm
         //----------EAm
         //-------------EAr
+        //opmode 011 and 111 are reserved for DIVU/DIVS, not OR - see (|DIVU|_|)
         if data &&& 0b1111000000000000 = 0b1000000000000000 then
             let register = byte (data >>> 9) &&& 0b111uy
             let opmode = byte (data >>> 6) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(register, opmode, eamode, eareg)
+            if opmode = 0b011uy || opmode = 0b111uy then None
+            else Some(register, opmode, eamode, eareg)
+        else None
+
+    let (|DIVU|_|) data =
+        //1000 reg 011 EAm EAr : DIVU.W <ea>,Dn
+        if data &&& 0b1111000111000000 = 0b1000000011000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(register, eamode, eareg)
         else None
 
     let (|EXG|_|) data =
@@ -229,12 +254,23 @@ module Instructions =
         //-------opm
         //----------EAm
         //-------------EAr
+        //opmode 011 and 111 are reserved for MULU/MULS, not AND - see (|MULU|_|)
         if data &&& 0b1111000000000000 = 0b1100000000000000 then
             let register = byte (data >>> 9) &&& 0b111uy
             let opmode = byte (data >>> 6) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(register, opmode, eamode, eareg)
+            if opmode = 0b011uy || opmode = 0b111uy then None
+            else Some(register, opmode, eamode, eareg)
+        else None
+
+    let (|MULU|_|) data =
+        //1100 reg 011 EAm EAr : MULU.W <ea>,Dn
+        if data &&& 0b1111000111000000 = 0b1100000011000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(register, eamode, eareg)
         else None
 
     let (|ADD|_|) data =
@@ -282,6 +318,15 @@ module Instructions =
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
             Some(register, opmode, eamode, eareg)
+        else None
+
+    let (|JSR|_|) data =
+        //0100111010sssSSS
+        //sss = effective address mode, SSS = effective address register
+        if data &&& 0b1111111111000000 = 0b0100111010000000 then
+            let eaMode = byte (data >>> 3) &&& 0b111uy
+            let eaReg = byte (data &&& 0b111)
+            Some(eaMode, eaReg)
         else None
 
     let (|JMP|_|) data =
@@ -360,6 +405,15 @@ module Instructions =
             Some(size, eamode, eareg)
         else None
 
+    /// 0100 1010 ss mmm rrr : TST
+    let (|TST|_|) data =
+        if data &&& 0b1111111100000000 = 0b0100101000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(size, eamode, eareg)
+        else None
+
     /// 0000 ddd1 oo 001 aaa : MOVEP
     let (|MOVEP|_|) data =
         if data &&& 0b1111000100111000 = 0b0000000100001000 then
@@ -370,13 +424,26 @@ module Instructions =
         else None
 
     /// 0100 1d00 1s mmm rrr : MOVEM  (d: 0=reg->mem, 1=mem->reg; s: 0=word, 1=long)
+    /// EAmode=000 (Dn direct) is illegal for MOVEM's memory-list operand and is reserved for EXT
+    /// instead - see [[68k-opcode-space-aliasing]]. Excluded here so the two patterns are
+    /// mutually exclusive by construction.
     let (|MOVEM|_|) data =
         if data &&& 0b1111101110000000 = 0b0100100010000000 then
-            let direction = byte (data >>> 10) &&& 0b1uy
-            let size = byte (data >>> 6) &&& 0b1uy
             let eamode = byte (data >>> 3) &&& 0b111uy
-            let eareg = byte data &&& 0b111uy
-            Some(direction, size, eamode, eareg)
+            if eamode <> 0b000uy then
+                let direction = byte (data >>> 10) &&& 0b1uy
+                let size = byte (data >>> 6) &&& 0b1uy
+                let eareg = byte data &&& 0b111uy
+                Some(direction, size, eamode, eareg)
+            else None
+        else None
+
+    /// 0100 1000 1s 000 rrr : EXT (s: 0=EXT.W byte->word, 1=EXT.L word->long, sign-extend Dn in place)
+    let (|EXT|_|) data =
+        if data &&& 0b1111111110111000 = 0b0100100010000000 then
+            let size = byte (data >>> 6) &&& 0b1uy
+            let register = byte data &&& 0b111uy
+            Some(size, register)
         else None
 
     /// 0000 rrr1 00ss sSSS:00: BTST    Dr,s[!Areg]
