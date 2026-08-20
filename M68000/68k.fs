@@ -721,19 +721,12 @@ type Cpu =
                     printfn "move.b %s,$%x.l" sourceDesc destEA
                     newCpu
                 | 0b110uy -> //(d8,An,Xn)
-                    let extWord = x.MMU.ReadWord(uint32 destBase)
-                    let indexIsAddress = extWord &&& 0x8000 <> 0
-                    let indexReg = byte ((extWord >>> 12) &&& 0x7)
-                    let useLong = extWord &&& 0x0800 <> 0
-                    let disp = int (sbyte (extWord &&& 0xff))
-                    let indexValue =
-                        let raw = if indexIsAddress then x.AddressRegister indexReg else x.DataRegister indexReg
-                        if useLong then raw else int (int16 raw)
-                    let destEA = uint32 (x.AddressRegister dReg + indexValue + disp)
+                    let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 destBase))
+                    let destEA = uint32 (x.AddressRegister dReg + ext.Offset)
                     let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR source
                     x.MMU.WriteByte destEA (byte source)
                     let newCpu = {x with PC=destBase+2; CCR=ccr}
-                    printfn "move.b %s,%i(a%u,%s%u.%s)" sourceDesc disp dReg (if indexIsAddress then "a" else "d") indexReg (if useLong then "l" else "w")
+                    printfn "move.b %s,%s" sourceDesc (x.DescribeIndexed dReg ext)
                     newCpu
                 | _ -> failwithf "Move with dest mode %u dest reg %u not implemented" dMode dReg
                     
@@ -939,19 +932,12 @@ type Cpu =
                     printfn "cmp.b (a%u),D%u" eareg register
                     {x with PC = x.PC+2; CCR = ccr}
                 | 0b110uy -> //(d8,An,Xn)
-                    let extWord = x.MMU.ReadWord(uint32 (x.PC+2))
-                    let indexIsAddress = extWord &&& 0x8000 <> 0
-                    let indexReg = byte ((extWord >>> 12) &&& 0x7)
-                    let useLong = extWord &&& 0x0800 <> 0
-                    let disp = int (sbyte (extWord &&& 0xff))
-                    let indexValue =
-                        let raw = if indexIsAddress then x.AddressRegister indexReg else x.DataRegister indexReg
-                        if useLong then raw else int (int16 raw)
-                    let addr = x.AddressRegister eareg + indexValue + disp
+                    let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = x.AddressRegister eareg + ext.Offset
                     let dest = int (sbyte (x.DataRegister register))
                     let source = int (sbyte (x.MMU.ReadByte(uint32 addr)))
                     let ccr = CCR.Subtract_IgnoringX x.CCR dest source
-                    printfn "cmp.b %i(a%u,%s%u.%s),D%u" disp eareg (if indexIsAddress then "a" else "d") indexReg (if useLong then "l" else "w") register
+                    printfn "cmp.b %s,D%u" (x.DescribeIndexed eareg ext) register
                     {x with PC = x.PC+4; CCR = ccr}
                 | _ -> failwithf "cmp.b eamode %u not implemented" eamode
             | 0b111uy -> //CMPA.L An,<ea>
