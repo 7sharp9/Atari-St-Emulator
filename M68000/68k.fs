@@ -500,6 +500,14 @@ type Cpu =
                 let newCpu = {x with PC = x.PC+4; CCR = ccr}
                 printfn "tst.w %i(a%u)" displacement eareg
                 newCpu
+            | 0b101uy, 0b10uy -> //(d16,An), long
+                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                let addr = x.AddressRegister eareg + int displacement
+                let value = x.MMU.ReadLong(uint32 addr)
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR value
+                let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                printfn "tst.l %i(a%u)" displacement eareg
+                newCpu
             | _ -> failwithf "tst: not implemented for mode %x size %x" eamode size
 
         | MOVEP(register, opmode, addressReg) ->
@@ -1350,6 +1358,14 @@ type Cpu =
                         let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
                         let newCpu = {x with PC = x.PC+6; CCR = ccr}
                         printfn "move.w %i(a%u),%i(a%u)" displacement sReg destDisplacement dReg
+                        newCpu
+
+                    | 0b010uy -> //(An)
+                        let destEA = uint32 (x.AddressRegister dReg)
+                        x.MMU.WriteWord destEA sourceContents
+                        let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
+                        let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                        printfn "move.w %i(a%u),(a%u)" displacement sReg dReg
                         newCpu
 
                     | _ -> failwith "Not implemented"
