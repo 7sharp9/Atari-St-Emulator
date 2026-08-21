@@ -12,58 +12,95 @@ open System
 open Bits
 open Instructions
 
+///Plain snapshot of every CPU-visible register - a struct, so comparing/copying it is a handful
+///of int compares, not an allocation. Exists solely for the loop detector below.
+[<Struct>]
+type MachineState =
+    { PC: int; CCR: int16; USP: int
+      D0: int; D1: int; D2: int; D3: int; D4: int; D5: int; D6: int; D7: int
+      A0: int; A1: int; A2: int; A3: int; A4: int; A5: int; A6: int; A7: int }
+    static member Of (c: Cpu) =
+        { PC = c.PC; CCR = c.CCR; USP = c.USP
+          D0 = c.D0; D1 = c.D1; D2 = c.D2; D3 = c.D3; D4 = c.D4; D5 = c.D5; D6 = c.D6; D7 = c.D7
+          A0 = c.A0; A1 = c.A1; A2 = c.A2; A3 = c.A3; A4 = c.A4; A5 = c.A5; A6 = c.A6; A7 = c.A7 }
+    ///Explicit, PC-first comparison rather than relying on F#'s generated structural equality -
+    ///short-circuits on the field most likely to differ, and this stays on the fast/unboxed path
+    ///for certain regardless of how the compiler happens to implement `=` for the record.
+    member a.SameAs (b: MachineState) =
+        a.PC = b.PC && a.A7 = b.A7 && a.CCR = b.CCR && a.USP = b.USP
+        && a.D0 = b.D0 && a.D1 = b.D1 && a.D2 = b.D2 && a.D3 = b.D3
+        && a.D4 = b.D4 && a.D5 = b.D5 && a.D6 = b.D6 && a.D7 = b.D7
+        && a.A0 = b.A0 && a.A1 = b.A1 && a.A2 = b.A2 && a.A3 = b.A3
+        && a.A4 = b.A4 && a.A5 = b.A5 && a.A6 = b.A6
+
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath: string) =
     let rom = IO.File.ReadAllBytes(romPath)
     let mmu = MMU(rom)
     let mutable cpu = Cpu.Create(mmu)
 
-    //Loop detection: the (PC, all registers, CCR) tuple after each step is deterministic given
-    //the current MMU state, so seeing the exact same tuple twice means execution is provably
-    //stuck forever from there (e.g. polling an MMU address whose value never changes) - not
-    //merely a slow bounded loop, which would show a changing register (like a loop counter) on
-    //every pass. Registers alone are NOT enough, though: a shared subroutine called from two
-    //different call sites with identical register inputs reaches the same PC with the same
-    //registers on both calls, but returns to a different place each time (the return address
-    //sitting in memory at the stack pointer, not in any register) - so the top-of-stack long is
-    //folded into the key too, to tell those apart. Even with that, this only inspects a slice of
-    //memory near A7, not the full MMU state, so it can in principle miss a loop whose exit
-    //depends on other memory content; that's an acceptable gap for a diagnostic tool used to
-    //steer instruction implementation, not for emulator correctness.
-    //A state repeating exactly once is common and often innocent (see stateKey's comment on why:
-    //a coincidental match on the compared slice of state while something else, outside that
-    //slice, is still genuinely progressing - confirmed empirically: a one-off "repeat" here
-    //turned out to just be a subroutine re-entered with matching visible state, which then
-    //diverged and made real progress on its very next step). A truly stuck loop, by contrast,
-    //revisits the same state indefinitely, so requiring several repeats before concluding "stuck
-    //forever" filters out the coincidental case almost for free while still catching real loops
-    //within a handful of extra iterations.
-    let loopThreshold = 8
-    let seenStateCounts = Collections.Generic.Dictionary<string, int>()
-    let stateKey (c: Cpu) =
-        //A7 can transiently point outside the emulated RAM array (e.g. the raw reset-vector SSP,
-        //before the ROM's own early boot code replaces it with something sane), which makes
-        //ReadLong throw. That's a real gap in MMU's bounds checking, not something to paper over
-        //there - but this diagnostic only needs "some distinguishing value," so falling back to 0
-        //on a bad read is fine here specifically.
-        let topOfStack = try c.MMU.ReadLong (uint32 c.A7) with _ -> 0
-        sprintf "%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%08x|%04x|%08x"
-            c.PC c.D0 c.D1 c.D2 c.D3 c.D4 c.D5 c.D6 c.D7
-            c.A0 c.A1 c.A2 c.A3 c.A4 c.A5 c.A6 c.A7 c.CCR topOfStack
+    //Loop detection: Cpu.Step() is a pure function of (Cpu, MMU state) - no other mutable state
+    //exists anywhere in the interpreter (every `mutable` in 68k.fs is a local inside a CCR/EA
+    //helper, not instance state; Instructions.fs/Extensions.fs hold none at all). So if the full
+    //CPU state matches an earlier snapshot AND the MMU provably mutated nothing since that
+    //snapshot was taken (MMU.Mutations unchanged), execution is PROVABLY stuck in an infinite
+    //loop - not a heuristic guess from "this exact state has now recurred N times", which is what
+    //this used to be: a `sprintf`-formatted string key in a `Dictionary<string,int>` that lived
+    //(and grew) for the entire run, with a `loopThreshold` constant that had to be reactively
+    //raised (8 -> 750) whenever a new peripheral stub changed how many times a legitimate poll
+    //revisits the same state before making real progress. That old design also folded the
+    //top-of-stack long into its key to distinguish a shared subroutine reached from two different
+    //call sites (same registers, different return address) - under the mutation-counter design
+    //that's subsumed for free: writing a different return address is itself a real mutation, so
+    //the two calls are never compared against each other in the first place, and the old need to
+    //require "several repeats before concluding stuck" (to filter out that kind of coincidental,
+    //not-actually-stuck match) goes away with it - a match now IS a proof, first time it happens.
+    //
+    //Implementation is Brent's cycle-detection algorithm: keep one saved "anchor" state and
+    //compare the current state against it every step. If MMU.Mutations hasn't moved since the
+    //anchor was taken and the state matches, that's the proof. If Mutations *has* moved, some
+    //real change happened somewhere since the anchor (RAM, a peripheral register, anything
+    //backing it), so the epoch restarts with a fresh anchor. O(1) space and O(1) time per step
+    //(one uint64 compare, then at most 19 int compares, usually far fewer thanks to PC-first
+    //short-circuiting in SameAs) - versus the old design's per-step string format + dictionary
+    //probe and its unbounded (one entry per distinct state ever visited across the whole run)
+    //memory growth.
+    let mutable loopAnchor = Unchecked.defaultof<MachineState>
+    let mutable loopAnchorMutations = UInt64.MaxValue //sentinel: forces a fresh epoch on step 1
+    let mutable loopPower = 1
+    let mutable loopLambda = 0
+
+    ///Resets the loop detector's epoch. Must be called after anything that changes CPU/MMU state
+    ///without going through Step() - currently Reset() and Preview's post-rollback restore -
+    ///otherwise the saved anchor describes a state from before/outside the real run, and a
+    ///genuinely-progressing later step could spuriously "match" it.
+    let resetLoopDetector() =
+        loopAnchorMutations <- UInt64.MaxValue
 
     member x.Reset() =
         cpu <- cpu.Reset()
+        resetLoopDetector()
     member x.Rom =
         rom
 
     member x.Step() =
-        let key = stateKey cpu
-        let visits = (match seenStateCounts.TryGetValue key with true, n -> n | false, _ -> 0) + 1
-        seenStateCounts.[key] <- visits
-        if visits = loopThreshold then
-            eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact register/CCR/top-of-stack state has now been visited %d times, so execution is stuck and can never leave this loop; further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC visits
+        let state = MachineState.Of cpu
+        let currentMutations = mmu.Mutations
+        if currentMutations <> loopAnchorMutations then
+            loopAnchor <- state
+            loopAnchorMutations <- currentMutations
+            loopPower <- 1
+            loopLambda <- 0
+        elif state.SameAs loopAnchor then
+            eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact CPU state has recurred with a provably unchanged MMU (no RAM/peripheral state has moved since the last snapshot), so execution is stuck in an infinite loop; further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC
             eprintfn "%A" cpu
             failwithf "Loop detected at PC=$%08x" cpu.PC
+        else
+            loopLambda <- loopLambda + 1
+            if loopLambda >= loopPower then
+                loopAnchor <- state
+                loopPower <- min (loopPower * 2) 0x40000000
+                loopLambda <- 0
         //Every instruction's own printfn (in 68k.fs) prints its disassembly text and a trailing
         //newline; prefixing the PC here with printf (no newline) - one call site, instead of
         //touching every printfn in 68k.fs - makes a captured trace directly greppable/correlatable
@@ -106,6 +143,7 @@ type AtartSt(romPath: string) =
             printfn "--- preview stopped early: %s ---" e.Message)
         cpu <- savedCpu
         mmu.RestoreRam savedRam
+        resetLoopDetector() //the anchor may describe a state from the just-reverted speculative branch
         printfn "--- preview done, state restored to PC=$%08x ---" cpu.PC
 
     member x.Debug =

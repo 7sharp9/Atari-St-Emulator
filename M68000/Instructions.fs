@@ -79,6 +79,39 @@ module Instructions =
     let (|RTS|_|) data =
         if data = 0b0100111001110101 then Some()
         else None
+
+    let (|RTE|_|) data =
+        if data = 0b0100111001110011 then Some()
+        else None
+
+    /// 0100 1110 0100 nnnn : TRAP #<vector>
+    let (|TRAP|_|) data =
+        if data &&& 0b1111111111110000 = 0b0100111001000000 then
+            let vector = byte data &&& 0b1111uy
+            Some(vector)
+        else None
+
+    /// 0100 1110 0110 d rrr : MOVE An,USP (d=0) / MOVE USP,An (d=1)
+    let (|MoveUsp|_|) data =
+        if data &&& 0b1111111111110000 = 0b0100111001100000 then
+            let direction = byte (data >>> 3) &&& 0b1uy
+            let register = byte data &&& 0b111uy
+            Some(direction, register)
+        else None
+
+    /// 0100 1110 0101 0 rrr : LINK An,#<displacement>
+    let (|LINK|_|) data =
+        if data &&& 0b1111111111111000 = 0b0100111001010000 then
+            let register = byte data &&& 0b111uy
+            Some(register)
+        else None
+
+    /// 0100 1110 0101 1 rrr : UNLK An
+    let (|UNLK|_|) data =
+        if data &&& 0b1111111111111000 = 0b0100111001011000 then
+            let register = byte data &&& 0b111uy
+            Some(register)
+        else None
         
     let (|CMPI|_|) data =
         if (data &&& 0b1111111100000000) = 0b0000110000000000 then
@@ -257,6 +290,15 @@ module Instructions =
     let (|MULU|_|) data =
         //1100 reg 011 EAm EAr : MULU.W <ea>,Dn
         if data &&& 0b1111000111000000 = 0b1100000011000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(register, eamode, eareg)
+        else None
+
+    let (|MULS|_|) data =
+        //1100 reg 111 EAm EAr : MULS.W <ea>,Dn
+        if data &&& 0b1111000111000000 = 0b1100000111000000 then
             let register = byte (data >>> 9) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
