@@ -254,7 +254,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, q = quit, help = this"
+                printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, snap <path> = save current state to a snapshot file, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -277,6 +277,10 @@ module Main =
             | [| "m"; addr; len |] ->
                 printfn "%s" (st.DumpMemory (Convert.ToUInt32(addr, 16)) (int len))
                 loop()
+            | [| "snap"; path |] ->
+                st.SaveState path
+                printfn "Snapshot written to %s at PC=$%08x" path st.Cpu.PC
+                loop()
             | [| "quit" |] | [| "q" |] ->
                 ()
             | _ ->
@@ -285,6 +289,14 @@ module Main =
 
     [<EntryPoint>]
     let main argv =
+        //Every executed instruction calls printfn (221 call sites in 68k.fs) to build the
+        //PC-tagged trace this project's debugging workflow depends on - see
+        //atari-st-emulator-efficiency-tooling. That's the right default, but it means tracing
+        //cost is paid on every step even for bulk snapshot/resume runs where nobody reads the
+        //output. ATARI_NOTRACE=1 redirects Console.Out to a null sink so printfn's formatting
+        //and I/O are skipped entirely, without touching any of the 221 call sites.
+        if not (isNull (Environment.GetEnvironmentVariable "ATARI_NOTRACE")) then
+            Console.SetOut(IO.TextWriter.Null)
         let st = AtartSt("TOS100UK.IMG")
         match argv with
         | [| stepsArg |] ->
