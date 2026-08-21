@@ -115,16 +115,6 @@ module Instructions =
             Some(size, mode, register)
         else None
 
-    //0110 <4:cond> <8:displacement>  Bcc.B   #I
-    let (|BNES|_|) data =
-        if data >>> 12 = 0b0000000000000110 then
-            let displacement = data &&& 0b0000000011111111
-            let condition : Condition = enum (data &&& 0b0000111100000000) >>> 8  
-            if condition = Condition.NE && displacement <> 0x0 then
-                Some(displacement)
-            else None
-        else None
-        
     let (|LEA|_|) data =
         //0100 rrr1 11ss sSSS
         if data &&& 0b1111000111000000 = 0b0100000111000000 then

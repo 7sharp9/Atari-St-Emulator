@@ -64,6 +64,12 @@ type AtartSt(romPath: string) =
             eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact register/CCR/top-of-stack state has now been visited %d times, so execution is stuck and can never leave this loop; further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC visits
             eprintfn "%A" cpu
             failwithf "Loop detected at PC=$%08x" cpu.PC
+        //Every instruction's own printfn (in 68k.fs) prints its disassembly text and a trailing
+        //newline; prefixing the PC here with printf (no newline) - one call site, instead of
+        //touching every printfn in 68k.fs - makes a captured trace directly greppable/correlatable
+        //against ROM addresses, instead of needing a separate disassembly pass just to figure out
+        //which address a given trace line came from (a real time sink in past debugging sessions).
+        printf "$%06x: " cpu.PC
         try
             cpu <- cpu.Step()
         with e ->
@@ -113,6 +119,22 @@ CPU Registers
 
     member x.DumpMemory (addr: uint32) (length: int) =
         String.concat " " [ for i in 0 .. length - 1 -> sprintf "%02x" (cpu.MMU.ReadByte (addr + uint32 i)) ]
+
+    ///Steps until PC reaches `target` or `maxSteps` real steps have run, whichever first - lets
+    ///you get straight to a known address of interest (e.g. "right before the instruction I'm
+    ///investigating") without hand-counting how many steps that takes, or editing the REPL's
+    ///hardcoded entry step count and rebuilding just to inspect one spot (the previous workflow).
+    ///maxSteps is a safety cap, not a target - if PC never reaches `target` this stops with a
+    ///clear message rather than spinning indefinitely.
+    member x.Until (target: uint32) (maxSteps: int) =
+        let mutable stepsRun = 0
+        while stepsRun < maxSteps && uint32 cpu.PC <> target do
+            x.Step()
+            stepsRun <- stepsRun + 1
+        if uint32 cpu.PC = target then
+            printfn "--- reached PC=$%08x after %d step(s) ---" cpu.PC stepsRun
+        else
+            printfn "--- gave up after %d step(s), PC=$%08x never reached (still at $%08x) ---" stepsRun target cpu.PC
 
 #if INTERACTIVE
 let st = AtartSt("TOS100UK.IMG")
@@ -166,8 +188,17 @@ module Main =
                     printfn "--- expected (checkpoint.txt) ---%s" expected
                     printfn "--- actual ---%s" actual
                     1
-        | _ ->
-            for i in 1..20000 do st.Step()
+        | args ->
+            //Interactive REPL. Entry step count defaults to 20000 (`dotnet run --no-build`) but
+            //can be overridden with `dotnet run --no-build -- <n> repl` - previously this required
+            //hand-editing the hardcoded `20000` below and rebuilding just to inspect state at a
+            //specific point, then editing it back afterward (an easy step to forget, and a real
+            //time sink across past debugging sessions).
+            let entrySteps =
+                match args with
+                | [| stepsArg; "repl" |] -> int stepsArg
+                | _ -> 20000
+            (try for _ in 1..entrySteps do st.Step() with _ -> ())
             let rec loop() =
                 let input = Console.ReadLine()
                 let parts =
@@ -175,7 +206,7 @@ module Main =
                     else input.Split(' ') |> Array.filter (fun s -> s <> "")
                 match parts with
                 | [| "help" |] | [| "h" |] ->
-                    printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), r = print registers, m <hexaddr> <len> = dump memory bytes, q = quit, help = this"
+                    printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, q = quit, help = this"
                     loop()
                 | [| "step" |] | [| "s" |] ->
                     st.Step()
@@ -185,6 +216,12 @@ module Main =
                     loop()
                 | [| "peek"; n |] | [| "p"; n |] ->
                     st.Preview (int n)
+                    loop()
+                | [| "until"; addr |] | [| "u"; addr |] ->
+                    st.Until (Convert.ToUInt32(addr, 16)) 200000
+                    loop()
+                | [| "until"; addr; maxSteps |] | [| "u"; addr; maxSteps |] ->
+                    st.Until (Convert.ToUInt32(addr, 16)) (int maxSteps)
                     loop()
                 | [| "registers" |] | [| "r" |] ->
                     printfn "%s" st.Debug

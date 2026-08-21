@@ -392,12 +392,6 @@ type Cpu =
                     {x with PC = x.PC + 8; CCR = ccr }
                 | _ -> failwithf "cmpi Unknown mode: %x" mode
             | _ -> failwithf "Inknown size: %x" size
-        | BNES(disp) ->
-            let condition = not x.Z
-            let newPC = if condition then (x.PC + 2) + disp else x.PC + 2
-            printfn "bne.s #$%x (%A)" ((x.PC + 2) + disp) (condition)
-            {x with PC = newPC}
-            
         | LEA(a_reg, eamode,eareg) ->
             match eamode with
             | 0b010uy -> //(An)
