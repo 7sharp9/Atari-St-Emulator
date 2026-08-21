@@ -478,4 +478,24 @@ module Instructions =
             Some(size, register)
         else None
 
+    /// 0100 1000 0100 0 rrr : SWAP Dn (swap the two 16-bit halves of a data register)
+    let (|SWAP|_|) data =
+        if data &&& 0b1111111111111000 = 0b0100100001000000 then
+            let register = byte data &&& 0b111uy
+            Some register
+        else None
+
+    /// 0100 1000 01 mmm rrr : PEA <ea> (push the effective address, not its contents, onto the stack)
+    /// EAmode=000 (Dn direct) is illegal for PEA (control addressing modes only) and is reserved
+    /// for SWAP instead - see [[68k-opcode-space-aliasing]]. Excluded here so the two patterns are
+    /// mutually exclusive by construction.
+    let (|PEA|_|) data =
+        if data &&& 0b1111111111000000 = 0b0100100001000000 then
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            if eamode <> 0b000uy then
+                let eareg = byte data &&& 0b111uy
+                Some(eamode, eareg)
+            else None
+        else None
+
     /// 0000 rrr1 00ss sSSS:00: BTST    Dr,s[!Areg]
