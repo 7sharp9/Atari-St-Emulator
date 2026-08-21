@@ -1,5 +1,14 @@
 ﻿namespace Atari
 open Bits
+
+///Everything SnapshotRam/RestoreRam need to roll back a speculative run exactly - previously just
+///the three byte arrays, which silently missed the MFP's register bank and Timer B's scalar state
+///(tbcr/tbdr/tbdrReload/tbdrReadCount). A Preview that touched the MFP would permanently corrupt
+///the real run's timer state on "rollback", contradicting Preview's own "state restored" claim.
+type MmuSnapshot =
+    { Ram: byte[]; VideoDisplayRegisters: byte[]; Ym2149: byte[]; MfpRegisters: byte[]
+      Tbcr: byte; Tbdr: byte; TbdrReload: byte; TbdrReadCount: uint32 }
+
 type MMU(rom: byte array) =
 
     let memoryConfiguration = 0xFF8000u
@@ -16,6 +25,9 @@ type MMU(rom: byte array) =
     let ym2149End =  0xFF8804u
 
     let mpf68901 = 0xFFFA00u
+    let mfpEnd = 0xFFFA2Fu //last of the MC68901's byte-wide registers (base+$00 to base+$2F)
+    let mfpTbcr = 0xFFFA1Bu //Timer B control register
+    let mfpTbdr = 0xFFFA21u //Timer B data register
     let aciaStart = 0xFFFC00u
     let aciaEnd = 0xFFFC07u //keyboard ACIA (FC00 ctrl/status, FC02 data) + MIDI ACIA (FC04 ctrl/status, FC06 data)
 
@@ -34,6 +46,24 @@ type MMU(rom: byte array) =
     let (|Cart|_|) = between cartStart cartEnd
     let (|VideoDisplayRegister|_|) = between videoDisplayRegisterStart videoDisplayRegisterEnd
     let (|Acia|_|) = between aciaStart aciaEnd
+    let (|Mfp|_|) = between mpf68901 mfpEnd
+
+    ///Counts every actual emulator-visible state change (a byte store that changes a value, or an
+    ///internal side effect - like the TBDR poll's read-triggered countdown - that could change
+    ///future behavior even though it isn't itself directly readable). Consumed by the loop
+    ///detector in Program.fs: if this hasn't moved between two points where the full CPU state is
+    ///identical, the machine is PROVABLY stuck (Step() is a pure function of Cpu + this MMU's
+    ///state, and nothing else in the interpreter holds any other mutable state - verified by
+    ///inspection of 68k.fs/Instructions.fs/Extensions.fs), not just "probably" stuck from having
+    ///revisited a state many times. See the loop-detection comment in Program.fs for the full
+    ///reasoning. Soundness of that proof depends on every real state change in this file bumping
+    ///this counter - route new mutable peripheral state through `store` (byte arrays) or bump
+    ///explicitly (scalar fields like tbcr/tbdr) rather than writing around it.
+    let mutable mutations = 0UL
+    let store (arr: byte[]) (i: int) (v: byte) =
+        if arr.[i] <> v then
+            arr.[i] <- v
+            mutations <- mutations + 1UL
 
     ///Minimal peripheral stub table, keyed by exact address: no real ACIA emulation, just enough
     ///for ROM code polling "can I send a byte" to not spin forever. Control/status registers
@@ -46,6 +76,33 @@ type MMU(rom: byte array) =
             0xFFFC00u, 0x02uy //keyboard ACIA control/status
             0xFFFC04u, 0x02uy //MIDI ACIA control/status
         ]
+
+    ///Minimal MFP Timer B stub: real hardware decrements TBDR on each external clock event
+    ///(HBLANK in event-count mode, much slower than CPU instruction execution) and reloads it from
+    ///the last-armed value on underflow. We have no real clock source, so instead decrement TBDR
+    ///once every `tbdrDecrementPeriod` CPU reads of it while armed (tbcr <> 0uy), rather than on
+    ///every read - this reproduces both properties ROM code depends on: a poll spinning on TBDR
+    ///eventually observes it count down to any given terminal value, AND two back-to-back reads a
+    ///few instructions apart (a "has it changed" debounce idiom the boot ROM also uses) normally
+    ///see the same value, matching real hardware where a tick is rare relative to instruction
+    ///execution. The period is an arbitrary tuning constant, not a real HBLANK-accurate rate (this
+    ///emulator has no cycle counting to derive one from) - picked only to comfortably exceed the
+    ///longest known back-to-back read run in the boot ROM's debounce loop (~617 reads). Every
+    ///other MFP register (GPIP, AER, DDR, interrupt enable/pending/in-service/mask, vector
+    ///register, Timer A/C/D control and data, USART control/status/data, etc.) is backed by plain
+    ///read/write storage instead - accurate for what the CPU sees on a bare register access (their
+    ///special behavior - interrupts actually firing, the USART actually shifting bits, timers
+    ///actually counting - is not modeled, but nothing in the boot ROM so far depends on that, only
+    ///on writes to these registers being readable back). Confirmed necessary, not speculative: the
+    ///ROM write/read-verifies several MFP registers in a loop (TADR/TBDR/TCDR/TDDR among them) as
+    ///part of its own hardware-presence check, and got stuck forever on any of them that still
+    ///silently dropped writes.
+    let tbdrDecrementPeriod = 700u
+    let mfpRegisters = Array.create (int (mfpEnd - mpf68901) + 1) 0uy
+    let mutable tbcr = 0uy
+    let mutable tbdr = 0uy
+    let mutable tbdrReload = 0uy
+    let mutable tbdrReadCount = 0u
 
     let ram = Array.create 1048576 0uy
 
@@ -73,6 +130,21 @@ type MMU(rom: byte array) =
             0xffuy //no cartridge present
         | VideoDisplayRegister ->
             videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)]
+        | a when a = mfpTbdr ->
+            let v = tbdr
+            if tbcr <> 0uy then
+                //tbdrReadCount always changes on every armed read, even on passes where tbdr
+                //itself doesn't - that's still a real change to state that affects when the next
+                //visible decrement happens, so it must count as a mutation for the loop detector
+                //to stay sound (see the field's comment above).
+                mutations <- mutations + 1UL
+                tbdrReadCount <- tbdrReadCount + 1u
+                if tbdrReadCount >= tbdrDecrementPeriod then
+                    tbdrReadCount <- 0u
+                    tbdr <- (if tbdr = 0uy then tbdrReload else tbdr - 1uy)
+            v
+        | a when a = mfpTbcr -> tbcr
+        | Mfp -> mfpRegisters.[int (address - mpf68901)]
         | Acia ->
             //See ioStubs above.
             match ioStubs.TryFind address with
@@ -94,6 +166,12 @@ type MMU(rom: byte array) =
         | VideoDisplayRegister ->
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
+        | Mfp ->
+            //Same asymmetry bug as WriteWord had (see its comment): word/long access to the MFP's
+            //byte-wide registers used to fall through to the generic 0/unmapped default instead of
+            //actually reading TBDR/TBCR/mfpRegisters. Delegate byte-by-byte to ReadByte so any
+            //address-specific side effect (TBDR's countdown) fires exactly once, at the right byte.
+            (int (x.ReadByte address) <<< 8) ||| int (x.ReadByte (address+1u))
         | Acia ->
             //See ioStubs above.
             match ioStubs.TryFind address with
@@ -110,19 +188,27 @@ type MMU(rom: byte array) =
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
-        | Cart -> failwithf "Attempt to write to Cart: $%08x" address
+        | Cart -> () //no cartridge present; writes go nowhere, matching the read side's fixed $ff(ff) stub
         | VideoDisplayRegister ->
             let i = int (address - videoDisplayRegisterStart)
-            videoDisplayRegisterMemory.[i]   <- byte (input >>> 8)
-            videoDisplayRegisterMemory.[i+1] <- byte (input &&& 0xffs)
+            store videoDisplayRegisterMemory i (byte (input >>> 8))
+            store videoDisplayRegisterMemory (i+1) (byte (input &&& 0xffs))
         | YM2149 ->
-            ym2149IOMemory.[int (address-ym2149Start)] <- byte (input >>> 8)
-            ym2149IOMemory.[int (address-ym2149Start+1u)] <- byte input
+            store ym2149IOMemory (int (address-ym2149Start)) (byte (input >>> 8))
+            store ym2149IOMemory (int (address-ym2149Start+1u)) (byte input)
+        | Mfp ->
+            //Bug fix: this case didn't exist before, so word writes to any MFP register (TBDR/
+            //TBCR included) were silently dropped while byte writes worked - a real asymmetry, not
+            //just a missing feature, since ROM code that happened to use a word-sized MOVE here
+            //would have looked "stuck" for no visible reason. Delegate byte-by-byte to WriteByte
+            //so TBDR/TBCR's arm/reload semantics and mutation-bumping stay in one place.
+            x.WriteByte address (byte (input >>> 8))
+            x.WriteByte (address+1u) (byte input)
         | _ ->
             if aliasIntoRam address then
                 let masked = address &&& ramMask
-                ram.[int masked] <- byte (input >>> 8)
-                ram.[int ((masked+1u) &&& ramMask)] <- byte (input &&& 0xffs)
+                store ram (int masked) (byte (input >>> 8))
+                store ram (int ((masked+1u) &&& ramMask)) (byte (input &&& 0xffs))
             //else: genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap) - write ignored
 
     member x.WriteByte (addr: uint32) (input: byte) =
@@ -130,28 +216,62 @@ type MMU(rom: byte array) =
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
-        | Cart -> failwithf "Attempt to write to Cart: $%08x" address
+        | Cart -> () //no cartridge present; writes go nowhere, matching the read side's fixed $ff(ff) stub
         | VideoDisplayRegister ->
-            videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)] <- input
+            store videoDisplayRegisterMemory (int (address - videoDisplayRegisterStart)) input
         | YM2149 ->
-            ym2149IOMemory.[int (address-ym2149Start)] <- input
+            store ym2149IOMemory (int (address-ym2149Start)) input
+        | a when a = mfpTbdr ->
+            //Writing the *same* value still resets tbdrReadCount, which is a real state change
+            //(it re-phases the next visible decrement) even when tbdr/tbdrReload don't move - so
+            //this can't be a plain `store`-style value compare, it needs the count folded in too.
+            if tbdr <> input || tbdrReload <> input || tbdrReadCount <> 0u then
+                mutations <- mutations + 1UL
+            tbdr <- input
+            tbdrReload <- input
+            tbdrReadCount <- 0u
+        | a when a = mfpTbcr ->
+            if tbcr <> input || tbdrReadCount <> 0u then
+                mutations <- mutations + 1UL
+            tbcr <- input
+            tbdrReadCount <- 0u
+        | Mfp -> store mfpRegisters (int (address - mpf68901)) input
         | _ ->
-            if aliasIntoRam address then ram.[int (address &&& ramMask)] <- input
+            if aliasIntoRam address then store ram (int (address &&& ramMask)) input
             //else: genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap) - write ignored
 
     member x.WriteLong (addr: uint32) (input: int) =
         x.WriteWord addr (int16 (input >>> 16))
         x.WriteWord (addr+2u) (int16 input)
 
-    ///Deep-copies the mutable memory-backed regions (not `rom`, which is never written).
-    ///Used to roll back side effects after a speculative preview run - see `AtartSt.Preview`.
-    member x.SnapshotRam() : byte[] * byte[] * byte[] =
-        (Array.copy ram, Array.copy videoDisplayRegisterMemory, Array.copy ym2149IOMemory)
+    ///How many emulator-visible state changes have happened so far - see the field's own comment
+    ///above. Consumed by Program.fs's loop detector.
+    member x.Mutations = mutations
 
-    member x.RestoreRam((ramSnapshot, videoSnapshot, ym2149Snapshot): byte[] * byte[] * byte[]) =
-        Array.blit ramSnapshot 0 ram 0 ramSnapshot.Length
-        Array.blit videoSnapshot 0 videoDisplayRegisterMemory 0 videoSnapshot.Length
-        Array.blit ym2149Snapshot 0 ym2149IOMemory 0 ym2149Snapshot.Length
+    ///Deep-copies every mutable memory-backed and scalar peripheral region (not `rom`, which is
+    ///never written) - see `MmuSnapshot`. Used to roll back side effects after a speculative
+    ///preview run - see `AtartSt.Preview`.
+    member x.SnapshotRam() : MmuSnapshot =
+        { Ram = Array.copy ram
+          VideoDisplayRegisters = Array.copy videoDisplayRegisterMemory
+          Ym2149 = Array.copy ym2149IOMemory
+          MfpRegisters = Array.copy mfpRegisters
+          Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount }
+
+    member x.RestoreRam(snapshot: MmuSnapshot) =
+        Array.blit snapshot.Ram 0 ram 0 snapshot.Ram.Length
+        Array.blit snapshot.VideoDisplayRegisters 0 videoDisplayRegisterMemory 0 snapshot.VideoDisplayRegisters.Length
+        Array.blit snapshot.Ym2149 0 ym2149IOMemory 0 snapshot.Ym2149.Length
+        Array.blit snapshot.MfpRegisters 0 mfpRegisters 0 snapshot.MfpRegisters.Length
+        tbcr <- snapshot.Tbcr
+        tbdr <- snapshot.Tbdr
+        tbdrReload <- snapshot.TbdrReload
+        tbdrReadCount <- snapshot.TbdrReadCount
+        //Restoring bypasses every write path above, so none of it bumped `mutations` on the way in
+        //- that's correct (a rollback isn't itself a "real" forward mutation to prove anything
+        //against), but it does mean the loop detector's anchor may now describe a state from the
+        //just-reverted speculative branch. AtartSt.Preview resets the detector's epoch right after
+        //calling this, for exactly that reason.
 
     member x.ReadLong (address: uint32) =
         let address = address &&& maxMemory //clip to the 24-bit address bus, matching Read/WriteByte/Word
@@ -170,6 +290,11 @@ type MMU(rom: byte array) =
             let test = int (address-ym2149Start)
             let _ = sprintf "%x" test
             BigEndian.readLongWord ym2149IOMemory (uint32 (int (address-ym2149Start)))
+        | Mfp -> //same reasoning as ReadWord's Mfp case above
+            (int (x.ReadByte address) <<< 24) |||
+            (int (x.ReadByte (address+1u)) <<< 16) |||
+            (int (x.ReadByte (address+2u)) <<< 8) |||
+            (int (x.ReadByte (address+3u)))
         | _ ->
             if aliasIntoRam address then
                 let masked = address &&& ramMask
