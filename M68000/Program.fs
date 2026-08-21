@@ -146,6 +146,67 @@ type AtartSt(romPath: string) =
         resetLoopDetector() //the anchor may describe a state from the just-reverted speculative branch
         printfn "--- preview done, state restored to PC=$%08x ---" cpu.PC
 
+    ///Serializes full CPU + MMU state (registers, RAM, video/YM2149/MFP register banks, Timer B
+    ///scalars) to a binary file, so a later run can jump straight to this point instead of
+    ///replaying every step from address 0 - see LoadState. Self-describing (array lengths are
+    ///written alongside the data) so it isn't brittle against MMU's array sizes changing later.
+    member x.SaveState(path: string) =
+        use fs = IO.File.Create(path)
+        use w = new IO.BinaryWriter(fs)
+        w.Write("A68S".ToCharArray())
+        w.Write(1uy) //format version
+        for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
+                    cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
+                    cpu.USP; cpu.PC |] do w.Write(v: int)
+        w.Write(cpu.CCR)
+        let snap = mmu.SnapshotRam()
+        let writeArr (a: byte[]) =
+            w.Write(a.Length)
+            w.Write(a)
+        writeArr snap.Ram
+        writeArr snap.VideoDisplayRegisters
+        writeArr snap.Ym2149
+        writeArr snap.MfpRegisters
+        w.Write(snap.Tbcr)
+        w.Write(snap.Tbdr)
+        w.Write(snap.TbdrReload)
+        w.Write(snap.TbdrReadCount)
+        printfn "--- state saved to %s: PC=$%08x ---" path cpu.PC
+
+    ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
+    ///first; the caller decides whether to Reset() or LoadState(), never both). Resets the loop
+    ///detector's epoch afterward for the same reason Preview does: the saved anchor would
+    ///otherwise describe a state from outside this run.
+    member x.LoadState(path: string) =
+        use fs = IO.File.OpenRead(path)
+        use r = new IO.BinaryReader(fs)
+        let magic = String(r.ReadChars(4))
+        if magic <> "A68S" then failwithf "Not a valid state file (bad magic): %s" path
+        r.ReadByte() |> ignore //format version, only one exists so far
+        let regs = [| for _ in 1..18 -> r.ReadInt32() |]
+        let ccr = r.ReadInt16()
+        cpu <-
+            { cpu with
+                D0=regs.[0]; D1=regs.[1]; D2=regs.[2]; D3=regs.[3]; D4=regs.[4]; D5=regs.[5]; D6=regs.[6]; D7=regs.[7]
+                A0=regs.[8]; A1=regs.[9]; A2=regs.[10]; A3=regs.[11]; A4=regs.[12]; A5=regs.[13]; A6=regs.[14]; A7=regs.[15]
+                USP=regs.[16]; PC=regs.[17]; CCR=ccr }
+        let readArr() =
+            let len = r.ReadInt32()
+            r.ReadBytes(len)
+        let ramArr = readArr()
+        let vidArr = readArr()
+        let ymArr = readArr()
+        let mfpArr = readArr()
+        let tbcr = r.ReadByte()
+        let tbdr = r.ReadByte()
+        let tbdrReload = r.ReadByte()
+        let tbdrReadCount = r.ReadUInt32()
+        mmu.RestoreRam
+            { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
+              Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount }
+        resetLoopDetector()
+        printfn "--- state loaded from %s: PC=$%08x ---" path cpu.PC
+
     member x.Debug =
        sprintf """
 -------------
@@ -181,16 +242,57 @@ for _ in 1..100 do
     st.Step()
 #else
 module Main =
+
+    ///Interactive REPL command loop - factored out so both the plain entry (`repl`, Reset()+N
+    ///steps) and the snapshot-resuming entry (`resume <path> repl`, LoadState() instead) can share
+    ///it instead of duplicating the command dispatch.
+    let runRepl (st: AtartSt) =
+        let rec loop() =
+            let input = Console.ReadLine()
+            let parts =
+                if isNull input then [||]
+                else input.Split(' ') |> Array.filter (fun s -> s <> "")
+            match parts with
+            | [| "help" |] | [| "h" |] ->
+                printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, q = quit, help = this"
+                loop()
+            | [| "step" |] | [| "s" |] ->
+                st.Step()
+                loop()
+            | [| "step"; n |] | [| "s"; n |] ->
+                for _ in 1 .. int n do st.Step()
+                loop()
+            | [| "peek"; n |] | [| "p"; n |] ->
+                st.Preview (int n)
+                loop()
+            | [| "until"; addr |] | [| "u"; addr |] ->
+                st.Until (Convert.ToUInt32(addr, 16)) 200000
+                loop()
+            | [| "until"; addr; maxSteps |] | [| "u"; addr; maxSteps |] ->
+                st.Until (Convert.ToUInt32(addr, 16)) (int maxSteps)
+                loop()
+            | [| "registers" |] | [| "r" |] ->
+                printfn "%s" st.Debug
+                loop()
+            | [| "m"; addr; len |] ->
+                printfn "%s" (st.DumpMemory (Convert.ToUInt32(addr, 16)) (int len))
+                loop()
+            | [| "quit" |] | [| "q" |] ->
+                ()
+            | _ ->
+                ()
+        loop()
+
     [<EntryPoint>]
     let main argv =
         let st = AtartSt("TOS100UK.IMG")
-        st.Reset()
         match argv with
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until
             //an unimplemented instruction fails - Step() prints diagnostics and reraises) then
             //exit. No stdin required, so this can be driven from a plain shell command with no
             //piping and no risk of hanging on Console.ReadLine if the run completes cleanly.
+            st.Reset()
             let steps = int stepsArg
             for _ in 1 .. steps do st.Step()
             0
@@ -201,6 +303,7 @@ module Main =
             //previous one. checkpoint.txt is local/untracked working data, like TOS100UK.IMG -
             //not meant to be committed, since it encodes both this ROM and whatever opcode
             //coverage exists right now.
+            st.Reset()
             let steps = int stepsArg
             (try for _ in 1 .. steps do st.Step() with _ -> ())
             IO.File.WriteAllText("checkpoint.txt", st.Debug)
@@ -210,6 +313,7 @@ module Main =
             //Runs N steps (or until failure), then diffs the resulting dump against
             //checkpoint.txt. Exit code reflects the result (0 = match), so this is scriptable
             //rather than needing a human to compare two register dumps by eye.
+            st.Reset()
             let steps = int stepsArg
             (try for _ in 1 .. steps do st.Step() with _ -> ())
             if not (IO.File.Exists "checkpoint.txt") then
@@ -226,51 +330,45 @@ module Main =
                     printfn "--- expected (checkpoint.txt) ---%s" expected
                     printfn "--- actual ---%s" actual
                     1
+        | [| stepsArg; "snapshot"; path |] ->
+            //Runs N steps from address 0 (or until failure - in which case nothing is saved, same
+            //as a normal failing run), then saves full CPU+MMU state to `path`. Exists because
+            //replaying millions of already-correct steps from scratch on every single instruction
+            //fix is the dominant cost of this project's ROM-driven debugging loop once boot
+            //progresses past a few million steps (measured: the last several fixes in the twelfth
+            //pass each replayed ~4.4M steps just to reach a wall a handful of instructions further
+            //out) - see 'resume' below for the other half of this workflow.
+            st.Reset()
+            let steps = int stepsArg
+            for _ in 1 .. steps do st.Step()
+            st.SaveState(path)
+            0
+        | [| stepsArg; "resume"; path |] ->
+            //Loads state saved by 'snapshot' and runs N further steps (or until failure) from
+            //there, instead of from address 0 - the counterpart to 'snapshot' above.
+            st.LoadState(path)
+            let steps = int stepsArg
+            for _ in 1 .. steps do st.Step()
+            0
+        | [| "resume"; path; "repl" |] ->
+            //Same as the plain REPL entry below, but starting from a saved snapshot instead of
+            //Reset()+N steps - for interactively poking around near a resume point without paying
+            //the full replay cost first.
+            st.LoadState(path)
+            runRepl st
+            0
         | args ->
             //Interactive REPL. Entry step count defaults to 20000 (`dotnet run --no-build`) but
             //can be overridden with `dotnet run --no-build -- <n> repl` - previously this required
             //hand-editing the hardcoded `20000` below and rebuilding just to inspect state at a
             //specific point, then editing it back afterward (an easy step to forget, and a real
             //time sink across past debugging sessions).
+            st.Reset()
             let entrySteps =
                 match args with
                 | [| stepsArg; "repl" |] -> int stepsArg
                 | _ -> 20000
             (try for _ in 1..entrySteps do st.Step() with _ -> ())
-            let rec loop() =
-                let input = Console.ReadLine()
-                let parts =
-                    if isNull input then [||]
-                    else input.Split(' ') |> Array.filter (fun s -> s <> "")
-                match parts with
-                | [| "help" |] | [| "h" |] ->
-                    printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, q = quit, help = this"
-                    loop()
-                | [| "step" |] | [| "s" |] ->
-                    st.Step()
-                    loop()
-                | [| "step"; n |] | [| "s"; n |] ->
-                    for _ in 1 .. int n do st.Step()
-                    loop()
-                | [| "peek"; n |] | [| "p"; n |] ->
-                    st.Preview (int n)
-                    loop()
-                | [| "until"; addr |] | [| "u"; addr |] ->
-                    st.Until (Convert.ToUInt32(addr, 16)) 200000
-                    loop()
-                | [| "until"; addr; maxSteps |] | [| "u"; addr; maxSteps |] ->
-                    st.Until (Convert.ToUInt32(addr, 16)) (int maxSteps)
-                    loop()
-                | [| "registers" |] | [| "r" |] ->
-                    printfn "%s" st.Debug
-                    loop()
-                | [| "m"; addr; len |] ->
-                    printfn "%s" (st.DumpMemory (Convert.ToUInt32(addr, 16)) (int len))
-                    loop()
-                | [| "quit" |] | [| "q" |] ->
-                    ()
-                | _ ->
-                    ()
-            loop()
+            runRepl st
             0
 #endif
