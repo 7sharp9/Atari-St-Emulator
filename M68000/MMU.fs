@@ -248,6 +248,27 @@ type MMU(rom: byte array) =
     ///above. Consumed by Program.fs's loop detector.
     member x.Mutations = mutations
 
+    ///Read-only peeks at Timer B's registers, for the CPU-level busy-wait fast-forward (see
+    ///Cpu.TryFastForwardTbdrPoll) - unlike ReadByte's TBDR case, these have no side effects, so
+    ///they're safe to use to *check* whether a poll would resolve without also advancing state.
+    member x.PeekTbcr = tbcr
+    member x.PeekTbdr = tbdr
+    member x.TbdrAddress = mfpTbdr
+
+    ///Resolves a TBDR busy-wait in one step instead of interpreting every intervening read. Real
+    ///Timer B ticks on actual elapsed time (external HBLANK pulses); this model only advances on
+    ///demand, once per `tbdrDecrementPeriod` reads (see that field's comment), so a tight poll has
+    ///no way to "skip ahead" through its own artificial read-count clock on its own. Called only
+    ///after the CPU has confirmed the exact "read TBDR / compare against a fixed target / branch
+    ///back if unequal" instruction shape, so this is equivalent to letting that specific loop run
+    ///to completion: its only externally-visible effect is TBDR eventually reading as `target`, so
+    ///jump straight there instead of counting through every intervening read.
+    member x.FastForwardTbdrTo (target: byte) =
+        if tbcr <> 0uy && tbdr <> target then
+            tbdr <- target
+            tbdrReadCount <- 0u
+            mutations <- mutations + 1UL
+
     ///Deep-copies every mutable memory-backed and scalar peripheral region (not `rom`, which is
     ///never written) - see `MmuSnapshot`. Used to roll back side effects after a speculative
     ///preview run - see `AtartSt.Preview`.

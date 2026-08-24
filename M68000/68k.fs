@@ -253,8 +253,44 @@ type Cpu =
         { x with A7 = x.MMU.ReadLong 0u
                  PC = x.MMU.ReadLong 4u }
     
+    ///See MMU.FastForwardTbdrTo's comment for the "why". Peeks (without executing or mutating
+    ///state) at the instruction the CPU is about to run and, only if it's exactly the "read TBDR
+    ///cmp.b against a fixed register / branch back to the read if unequal" 3-instruction shape,
+    ///resolves the whole busy-wait in one step instead of interpreting every intervening
+    ///iteration. Deliberately narrow: TOS also uses this same register for a debounce idiom
+    ///(snapshot TBDR once, then re-check across many reads that it hasn't changed), but that
+    ///compares against a value snapshotted at runtime rather than a fixed compare wired into this
+    ///exact loop shape, so it can never match here and keeps running for real - which it must, to
+    ///actually do its job of confirming the value is stable.
+    member x.TryFastForwardTbdrPoll() : Cpu option =
+        match x.MMU.ReadWord (uint32 x.PC) with
+        | Move(OperandSize.Byte, dReg, 0b000uy, 0b010uy, sReg)
+                when (uint32 (x.AddressRegister sReg) &&& 0xFFFFFFu) = x.MMU.TbdrAddress
+                     && x.MMU.PeekTbcr <> 0uy ->
+            match x.MMU.ReadWord (uint32 (x.PC + 2)) with
+            | CMP(cmpDest, 0b000uy, 0b000uy, cmpSource) when cmpDest = dReg ->
+                match x.MMU.ReadWord (uint32 (x.PC + 4)) with
+                | BCC(Condition.NE, disp) when disp <> 0x00uy && disp <> 0xFFuy
+                                                && x.PC + 6 + int (sbyte disp) = x.PC ->
+                    let target = byte (x.DataRegister cmpSource)
+                    if x.MMU.PeekTbdr = target then
+                        None //already converged - let the normal single-step path exit it
+                    else
+                        x.MMU.FastForwardTbdrTo target
+                        let newValue = (x.DataRegister dReg &&& ~~~0xff) ||| int target
+                        let ccr = CCR.Subtract_IgnoringX_Byte x.CCR target target
+                        let newCpu = {x.WithDataRegister dReg newValue with PC = x.PC + 6; CCR = ccr}
+                        printfn "fastforward: tbdr poll -> D%u=$%02x (skipped busy-wait)" dReg target
+                        Some newCpu
+                | _ -> None
+            | _ -> None
+        | _ -> None
+
     member x.Step() =
     //TODO implement prefetch ops
+        match x.TryFastForwardTbdrPoll() with
+        | Some fastForwarded -> fastForwarded
+        | None ->
         let instruction = x.MMU.ReadWord (uint32 x.PC)
         //printfn "instruction: %x" instruction
         match instruction with
