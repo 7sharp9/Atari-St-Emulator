@@ -20,8 +20,8 @@ type Condition =
     | LT =    0b1101
     | GT =    0b1110
     | LE =    0b1111
-    
-[<RequireQualifiedAccess>] 
+
+[<RequireQualifiedAccess>]
 type OperandSize =
     | Byte | Word | Long | Single | Double | Extended | Packed
     
@@ -46,6 +46,20 @@ type AddressingModes =
     //| PC_Indirect_PreIndexed ////68020+
     
 module Instructions =
+
+    ///Fast, non-reflective condition-code mnemonic for trace/disassembly text. F#'s %A format
+    ///specifier goes through StructuredPrintfImpl's fully generic formatter (union/record/enum/etc.
+    ///detection via .NET reflection on every single call, uncached) - measured via dotnet-trace to
+    ///account for over 95% of this interpreter's total runtime once used inside a hot per-instruction
+    ///printfn (Bcc/Scc/DBcc are extremely common), since ATARI_NOTRACE only discards the built
+    ///string, it doesn't skip building it.
+    let conditionName (c: Condition) =
+        match c with
+        | Condition.T -> "T" | Condition.F -> "F" | Condition.H -> "H" | Condition.LS -> "LS"
+        | Condition.CC_HI -> "CC_HI" | Condition.CC_LO -> "CC_LO" | Condition.NE -> "NE" | Condition.EQ -> "EQ"
+        | Condition.VC -> "VC" | Condition.VS -> "VS" | Condition.PL -> "PL" | Condition.MI -> "MI"
+        | Condition.GE -> "GE" | Condition.LT -> "LT" | Condition.GT -> "GT" | Condition.LE -> "LE"
+        | _ -> string (int c)
 
     let (|Move2SR|_|) data =
         if ((data >>> 6) = 0b0100011011) then
@@ -121,6 +135,15 @@ module Instructions =
             Some(size, mode, register)
         else None
         
+    /// 0000 0000 ss mmm rrr : ORI #<data>,<ea>
+    let (|ORI|_|) data =
+        if data &&& 0b1111111100000000 = 0b0000000000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let mode = byte (data >>> 3) &&& 0b111uy
+            let register = byte data &&& 0b111uy
+            Some(size, mode, register)
+        else None
+
     /// 0000 0010 ss mmm rrr : ANDI #<data>,<ea>
     let (|ANDI|_|) data =
         if data &&& 0b1111111100000000 = 0b0000001000000000 then

@@ -154,7 +154,7 @@ type AtartSt(romPath: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(1uy) //format version
+        w.Write(2uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.PC |] do w.Write(v: int)
@@ -171,6 +171,11 @@ type AtartSt(romPath: string) =
         w.Write(snap.Tbdr)
         w.Write(snap.TbdrReload)
         w.Write(snap.TbdrReadCount)
+        w.Write(snap.FdcSelectedReg)
+        w.Write(snap.FdcStatus)
+        w.Write(snap.FdcTrack)
+        w.Write(snap.FdcSector)
+        w.Write(snap.FdcData)
         printfn "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
@@ -182,7 +187,7 @@ type AtartSt(romPath: string) =
         use r = new IO.BinaryReader(fs)
         let magic = String(r.ReadChars(4))
         if magic <> "A68S" then failwithf "Not a valid state file (bad magic): %s" path
-        r.ReadByte() |> ignore //format version, only one exists so far
+        let version = r.ReadByte()
         let regs = [| for _ in 1..18 -> r.ReadInt32() |]
         let ccr = r.ReadInt16()
         cpu <-
@@ -201,9 +206,16 @@ type AtartSt(romPath: string) =
         let tbdr = r.ReadByte()
         let tbdrReload = r.ReadByte()
         let tbdrReadCount = r.ReadUInt32()
+        //v1 snapshots (format version 1) predate FDC emulation - default to "idle, no command
+        //issued yet", matching the always-0 status those snapshots were actually captured with.
+        let fdcSelectedReg, fdcStatus, fdcTrack, fdcSector, fdcData =
+            if version >= 2uy then r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte()
+            else 0uy, 0uy, 0uy, 0uy, 0uy
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
-              Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount }
+              Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
+              FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
+              FdcSector = fdcSector; FdcData = fdcData }
         resetLoopDetector()
         printfn "--- state loaded from %s: PC=$%08x ---" path cpu.PC
 
@@ -254,7 +266,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, snap <path> = save current state to a snapshot file, q = quit, help = this"
+                printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -280,6 +292,19 @@ module Main =
             | [| "snap"; path |] ->
                 st.SaveState path
                 printfn "Snapshot written to %s at PC=$%08x" path st.Cpu.PC
+                loop()
+            | [| "watch"; addr |] ->
+                let a = Convert.ToUInt32(addr, 16)
+                st.Cpu.MMU.SetWatch a a
+                printfn "Watching $%08x (stderr, survives ATARI_NOTRACE)" a
+                loop()
+            | [| "watch"; addr; len |] ->
+                let a = Convert.ToUInt32(addr, 16)
+                st.Cpu.MMU.SetWatch a (a + uint32 (int len - 1))
+                printfn "Watching [$%08x,$%08x] (stderr, survives ATARI_NOTRACE)" a (a + uint32 (int len - 1))
+                loop()
+            | [| "unwatch" |] ->
+                st.Cpu.MMU.ClearWatch()
                 loop()
             | [| "quit" |] | [| "q" |] ->
                 ()

@@ -7,7 +7,27 @@ open Bits
 ///the real run's timer state on "rollback", contradicting Preview's own "state restored" claim.
 type MmuSnapshot =
     { Ram: byte[]; VideoDisplayRegisters: byte[]; Ym2149: byte[]; MfpRegisters: byte[]
-      Tbcr: byte; Tbdr: byte; TbdrReload: byte; TbdrReadCount: uint32 }
+      Tbcr: byte; Tbdr: byte; TbdrReload: byte; TbdrReadCount: uint32
+      FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte }
+
+///Real 68000 hardware cannot perform a word/long-sized bus access to an odd address - it traps
+///to the Address Error vector (vector 3) instead of completing the access. Raised by
+///ReadWord/WriteWord/ReadLong (WriteLong composes from two WriteWord calls, so it's covered
+///for free) so Cpu.Step() can catch it and push an exception frame the way TRAP does, instead of
+///the previous behavior of silently performing the misaligned access and continuing with
+///corrupted state - see [[atari-st-emulator-next-instructions]]'s nineteenth pass, found via a
+///differential comparison against a real 68000 core (dmcoles/estyjs).
+exception AddressError of address: uint32
+
+///Real 68000 hardware bus-errors (vector 2) on any access to an address no device claims -
+///DTACK never asserts, so the bus controller aborts the cycle rather than letting it complete.
+///Raised by the genuinely-unmapped fallback case in ReadByte/ReadWord/ReadLong/WriteByte/WriteWord
+///(previously: reads silently returned 0 and writes were silently dropped, both explicitly
+///commented "genuinely unmapped bus" - a real gap, not a typo, dating back to the earliest
+///out-of-range-RAM-aliasing work) - see [[atari-st-emulator-next-instructions]]'s twentieth pass,
+///found by tracing a garbage `rte` target ($56780000, well outside ROM/RAM/cart/peripheral space)
+///straight into an opcode-decode failure instead of a hardware fault.
+exception BusError of address: uint32
 
 type MMU(rom: byte array) =
 
@@ -19,6 +39,8 @@ type MMU(rom: byte array) =
 
     let reserved = 0xFF8400u
     let dma_diskcontroller = 0xFF8600u
+    let fdcAccess = 0xFF8604u //WD1772 register access byte - which of its 4 registers this hits is selected via fdcModeSelect
+    let fdcModeSelect = 0xFF8606u //DMA mode register; bits 1-2 select status/cmd, track, sector, or data register
 
     let ym2149IOMemory = Array.create 4 0uy
     let ym2149Start = 0xFF8800u
@@ -60,6 +82,20 @@ type MMU(rom: byte array) =
     ///this counter - route new mutable peripheral state through `store` (byte arrays) or bump
     ///explicitly (scalar fields like tbcr/tbdr) rather than writing around it.
     let mutable mutations = 0UL
+
+    ///Ad-hoc debug watchpoint (REPL `watch`/`unwatch`, see Program.fs) - prints via eprintfn (so it
+    ///survives ATARI_NOTRACE) whenever a write touches [lo,hi]. Added after repeatedly hand-editing
+    ///WriteByte/WriteWord with a temporary eprintfn to answer "does anything ever write $4C2" -
+    ///style questions (see [[atari-st-emulator-next-instructions]]'s seventeenth-pass finding) -
+    ///promoted to a permanent, always-available tool instead of re-adding and reverting the same
+    ///throwaway edit next time the same kind of question comes up.
+    let mutable watchRange : (uint32 * uint32) option = None
+    let checkWatch (address: uint32) (label: string) (value: uint32) =
+        match watchRange with
+        | Some(lo, hi) when address >= lo && address <= hi ->
+            eprintfn "WATCH: %s $%08x <- $%x" label address value
+        | _ -> ()
+
     let store (arr: byte[]) (i: int) (v: byte) =
         if arr.[i] <> v then
             arr.[i] <- v
@@ -104,6 +140,41 @@ type MMU(rom: byte array) =
     let mutable tbdrReload = 0uy
     let mutable tbdrReadCount = 0u
 
+    ///WD1772 FDC + DMA mode-select emulation. Real hardware accesses all 4 FDC registers (status-
+    ///or-command, track, sector, data) through the single access byte at $FFFF8604; the DMA mode
+    ///register at $FFFF8606 selects which one a subsequent $FFFF8604 access hits, via its bits 1-2
+    ///(see FD-HD_Programming.pdf, "Accessing FDC Registers": $x80=status/command, $x82=track,
+    ///$x84=sector, $x86=data). Previously neither address had any emulation at all - both fell
+    ///through to the generic "genuinely unmapped, return 0" default in Read/WriteByte, so every
+    ///status read always came back 0. On a real WD1772, a status register of 0 means "not busy, no
+    ///errors" - i.e. success - which is backwards for "no disk present": this emulator has no
+    ///disk-image support, so every floppy command should report the failure real hardware would
+    ///report with an empty drive, not silent success. NOTE: an earlier version of this comment
+    ///claimed this always-0 status was the cause of the boot-reset loop (via a bogus disk-present
+    ///bit reaching TOS's boot-device check) - that was the initial hypothesis, but a later same-session
+    ///trace comparison (with this fix in place vs without) showed the reset-cycle boundaries were
+    ///byte-for-byte identical either way, disproving it. This fix is still correct and worth keeping
+    ///(a status of 0 is genuinely wrong for an empty drive), just not the explanation for that bug -
+    ///see [[atari-st-emulator-next-instructions]]'s fifteenth-pass section for the actual finding.
+    let mutable fdcSelectedReg = 0uy //bits 1-2 of the last fdcModeSelect write: 0=status/cmd, 1=track, 2=sector, 3=data
+    let mutable fdcStatus = 0uy
+    let mutable fdcTrack = 0uy
+    let mutable fdcSector = 0uy
+    let mutable fdcData = 0uy
+
+    ///Per FD-HD_Programming.pdf's "Status Register Summary": Type I commands (Restore/Seek/Step -
+    ///opcode top bit clear) only need the mechanical track-00 sensor, which works with no disk
+    ///present, so real hardware reports success (TR00 set, bit 2) regardless of whether a disk is
+    ///in the drive. Type II/III commands (Read/Write Sector, Read Address/Track, Write Track -
+    ///opcode top bit set, excluding Force Interrupt $D0-$DF) need to find a real ID field on the
+    ///media; with no disk image loaded there is nothing to find, so real hardware reports Record
+    ///Not Found (bit 4) after searching. Force Interrupt just goes idle. Busy (bit 0) is always
+    ///clear on read-back - this emulator has no command timing, every command completes instantly.
+    let fdcCommandStatus (command: byte) =
+        if command < 0x80uy then 0x04uy //Type I: TR00 set, no seek error, not busy
+        elif command >= 0xd0uy && command < 0xe0uy then 0uy //Force Interrupt: idle
+        else 0x10uy //Type II/III: Record Not Found, not busy
+
     let ram = Array.create 1048576 0uy
 
     ///Real ST hardware only has `ram.Length` bytes of RAM physically installed, but the GLUE/MMU's
@@ -130,6 +201,14 @@ type MMU(rom: byte array) =
             0xffuy //no cartridge present
         | VideoDisplayRegister ->
             videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)]
+        | YM2149 ->
+            //Real device, just missing from this one access-width's match arms - previously fell
+            //through to the generic "genuinely unmapped" default (silently 0), which happened to
+            //read back the chip's real reset-state value here but only by coincidence, not because
+            //this was actually unmapped bus. Surfaced as a false BusError once that default started
+            //raising instead of returning 0 - see [[atari-st-emulator-next-instructions]]'s
+            //twentieth pass.
+            ym2149IOMemory.[int (address-ym2149Start)]
         | a when a = mfpTbdr ->
             let v = tbdr
             if tbcr <> 0uy then
@@ -145,6 +224,13 @@ type MMU(rom: byte array) =
             v
         | a when a = mfpTbcr -> tbcr
         | Mfp -> mfpRegisters.[int (address - mpf68901)]
+        | a when a = fdcAccess ->
+            match fdcSelectedReg with
+            | 0uy -> fdcStatus
+            | 1uy -> fdcTrack
+            | 2uy -> fdcSector
+            | _ -> fdcData
+        | a when a = fdcModeSelect -> fdcSelectedReg <<< 1
         | Acia ->
             //See ioStubs above.
             match ioStubs.TryFind address with
@@ -152,10 +238,11 @@ type MMU(rom: byte array) =
             | None -> 0uy
         | _ ->
             if aliasIntoRam address then ram.[int (address &&& ramMask)]
-            else 0uy //genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap)
+            else raise (BusError address)
 
     member x.ReadWord (address: uint32) =
         let address = address &&& maxMemory
+        if address % 2u <> 0u then raise (AddressError address)
         match address with
         | a when a < 7u ->
             ((int rom.[int a]) <<< 8) |||
@@ -166,12 +253,30 @@ type MMU(rom: byte array) =
         | VideoDisplayRegister ->
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
+        | YM2149 ->
+            //Same gap as ReadByte's YM2149 case - see its comment.
+            BigEndian.readWord ym2149IOMemory (address-ym2149Start)
         | Mfp ->
             //Same asymmetry bug as WriteWord had (see its comment): word/long access to the MFP's
             //byte-wide registers used to fall through to the generic 0/unmapped default instead of
             //actually reading TBDR/TBCR/mfpRegisters. Delegate byte-by-byte to ReadByte so any
             //address-specific side effect (TBDR's countdown) fires exactly once, at the right byte.
             (int (x.ReadByte address) <<< 8) ||| int (x.ReadByte (address+1u))
+        | a when a = fdcAccess ->
+            //FD-HD_Programming.pdf, "$FF8604 R/W (16 bits)": "The DMA interface only uses 8 bits
+            //when writing and therefore the upper byte is ignored and when reading the 8 upper
+            //bits consistently reads 1." - a genuine 8-bit device on the low data-bus byte, not
+            //two independently byte-addressable registers at `address`/`address+1` like the Mfp
+            //case above. The old byte-by-byte split put the real status byte in the HIGH half of
+            //the word instead, so every ROM `move.w $ffff8604.l,Dn` / `btst #n,Dn` check (which
+            //only ever tests the low byte) always saw zero - see [[atari-st-emulator-next-instructions]]'s
+            //seventeenth-pass finding for the full trace-verified diagnosis.
+            0xFF00 ||| int (x.ReadByte address)
+        | a when a = fdcModeSelect ->
+            //Same low-byte-device reasoning as fdcAccess above, minus the "upper bits read as 1"
+            //quirk (not documented for this register - FD-HD_Programming.pdf only states real
+            //content, status bits 0-2, in the low byte).
+            int (x.ReadByte address)
         | Acia ->
             //See ioStubs above.
             match ioStubs.TryFind address with
@@ -181,10 +286,12 @@ type MMU(rom: byte array) =
             if aliasIntoRam a then
                 let masked = a &&& ramMask
                 ((int ram.[int masked]) <<< 8) ||| (int ram.[int ((masked+1u) &&& ramMask)])
-            else 0 //genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap)
+            else raise (BusError a)
 
     member x.WriteWord (addr: uint32) (input: int16) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
+        if address % 2u <> 0u then raise (AddressError address)
+        checkWatch address "WriteWord" (uint32 (uint16 input))
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
@@ -204,15 +311,32 @@ type MMU(rom: byte array) =
             //so TBDR/TBCR's arm/reload semantics and mutation-bumping stay in one place.
             x.WriteByte address (byte (input >>> 8))
             x.WriteByte (address+1u) (byte input)
+        | a when a = fdcAccess || a = fdcModeSelect ->
+            //See ReadWord's matching case just above - a single 8-bit device on the low
+            //data-bus byte, per FD-HD_Programming.pdf's explicit "the upper byte is ignored"
+            //for $FF8604 (applied to $FF8606 too, on the same low-byte-device reasoning). The
+            //old code wrote the word's HIGH byte to `address` (the only byte that has any
+            //effect, since `address+1u` doesn't match anything) - exactly backwards from what
+            //its own comment claimed, and from what the ROM's low-byte-only writes actually need.
+            x.WriteByte address (byte input)
+        | Acia ->
+            //No real ACIA write emulation (see ioStubs' comment on the read side) - a real, mapped
+            //device, so writes are accepted and ignored rather than bus-erroring. Previously this
+            //fell through to the generic "genuinely unmapped, write ignored" default, which had the
+            //same observable effect (silently ignored) but for the wrong reason - now raises
+            //BusError instead, so it needs its own case. See [[atari-st-emulator-next-instructions]]'s
+            //twentieth pass.
+            ()
         | _ ->
             if aliasIntoRam address then
                 let masked = address &&& ramMask
                 store ram (int masked) (byte (input >>> 8))
                 store ram (int ((masked+1u) &&& ramMask)) (byte (input &&& 0xffs))
-            //else: genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap) - write ignored
+            else raise (BusError address)
 
     member x.WriteByte (addr: uint32) (input: byte) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
+        checkWatch address "WriteByte" (uint32 input)
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
@@ -236,9 +360,28 @@ type MMU(rom: byte array) =
             tbcr <- input
             tbdrReadCount <- 0u
         | Mfp -> store mfpRegisters (int (address - mpf68901)) input
+        | a when a = fdcModeSelect ->
+            let selected = (input >>> 1) &&& 0x3uy
+            if selected <> fdcSelectedReg then mutations <- mutations + 1UL
+            fdcSelectedReg <- selected
+        | a when a = fdcAccess ->
+            match fdcSelectedReg with
+            | 0uy ->
+                let status = fdcCommandStatus input
+                if status <> fdcStatus then mutations <- mutations + 1UL
+                fdcStatus <- status
+            | 1uy -> if input <> fdcTrack then mutations <- mutations + 1UL
+                     fdcTrack <- input
+            | 2uy -> if input <> fdcSector then mutations <- mutations + 1UL
+                     fdcSector <- input
+            | _ -> if input <> fdcData then mutations <- mutations + 1UL
+                   fdcData <- input
+        | Acia ->
+            //See WriteWord's matching case just above.
+            ()
         | _ ->
             if aliasIntoRam address then store ram (int (address &&& ramMask)) input
-            //else: genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap) - write ignored
+            else raise (BusError address)
 
     member x.WriteLong (addr: uint32) (input: int) =
         x.WriteWord addr (int16 (input >>> 16))
@@ -247,6 +390,10 @@ type MMU(rom: byte array) =
     ///How many emulator-visible state changes have happened so far - see the field's own comment
     ///above. Consumed by Program.fs's loop detector.
     member x.Mutations = mutations
+
+    ///REPL `watch <hexaddr> [len]` - see `checkWatch` above. `hi` is inclusive.
+    member x.SetWatch (lo: uint32) (hi: uint32) = watchRange <- Some(lo, hi)
+    member x.ClearWatch() = watchRange <- None
 
     ///Read-only peeks at Timer B's registers, for the CPU-level busy-wait fast-forward (see
     ///Cpu.TryFastForwardTbdrPoll) - unlike ReadByte's TBDR case, these have no side effects, so
@@ -277,7 +424,9 @@ type MMU(rom: byte array) =
           VideoDisplayRegisters = Array.copy videoDisplayRegisterMemory
           Ym2149 = Array.copy ym2149IOMemory
           MfpRegisters = Array.copy mfpRegisters
-          Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount }
+          Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
+          FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
+          FdcSector = fdcSector; FdcData = fdcData }
 
     member x.RestoreRam(snapshot: MmuSnapshot) =
         Array.blit snapshot.Ram 0 ram 0 snapshot.Ram.Length
@@ -288,6 +437,11 @@ type MMU(rom: byte array) =
         tbdr <- snapshot.Tbdr
         tbdrReload <- snapshot.TbdrReload
         tbdrReadCount <- snapshot.TbdrReadCount
+        fdcSelectedReg <- snapshot.FdcSelectedReg
+        fdcStatus <- snapshot.FdcStatus
+        fdcTrack <- snapshot.FdcTrack
+        fdcSector <- snapshot.FdcSector
+        fdcData <- snapshot.FdcData
         //Restoring bypasses every write path above, so none of it bumped `mutations` on the way in
         //- that's correct (a rollback isn't itself a "real" forward mutation to prove anything
         //against), but it does mean the loop detector's anchor may now describe a state from the
@@ -296,6 +450,7 @@ type MMU(rom: byte array) =
 
     member x.ReadLong (address: uint32) =
         let address = address &&& maxMemory //clip to the 24-bit address bus, matching Read/WriteByte/Word
+        if address % 2u <> 0u then raise (AddressError address)
         match address with
         | a when a = 0u || a = 4u ->
            //read from rom as first 8 bytes mirrored
@@ -316,6 +471,10 @@ type MMU(rom: byte array) =
             (int (x.ReadByte (address+1u)) <<< 16) |||
             (int (x.ReadByte (address+2u)) <<< 8) |||
             (int (x.ReadByte (address+3u)))
+        | a when a = fdcAccess -> //same low-byte-device reasoning as ReadWord's Fdc case above
+            0xFFFFFF00 ||| int (x.ReadByte address)
+        | a when a = fdcModeSelect -> //same reasoning, minus fdcAccess's documented "reads as 1" quirk
+            int (x.ReadByte address)
         | _ ->
             if aliasIntoRam address then
                 let masked = address &&& ramMask
@@ -323,4 +482,4 @@ type MMU(rom: byte array) =
                 (int ram.[int ((masked+1u) &&& ramMask)] <<< 16) |||
                 (int ram.[int ((masked+2u) &&& ramMask)] <<<  8) |||
                 (int ram.[int ((masked+3u) &&& ramMask)])
-            else 0 //genuinely unmapped bus (beyond ROM/cart, e.g. an unemulated peripheral gap)
+            else raise (BusError address)
