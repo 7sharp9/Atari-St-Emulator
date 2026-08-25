@@ -154,7 +154,7 @@ type AtartSt(romPath: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(2uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount
+        w.Write(3uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.PC |] do w.Write(v: int)
@@ -176,6 +176,9 @@ type AtartSt(romPath: string) =
         w.Write(snap.FdcTrack)
         w.Write(snap.FdcSector)
         w.Write(snap.FdcData)
+        w.Write(snap.DmaAddrHigh)
+        w.Write(snap.DmaAddrMid)
+        w.Write(snap.DmaAddrLow)
         printfn "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
@@ -211,11 +214,18 @@ type AtartSt(romPath: string) =
         let fdcSelectedReg, fdcStatus, fdcTrack, fdcSector, fdcData =
             if version >= 2uy then r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte()
             else 0uy, 0uy, 0uy, 0uy, 0uy
+        //v1/v2 snapshots predate the DMA address counter registers - default to 0, matching the
+        //chip's own power-on reset state (and what those snapshots were actually captured with,
+        //since nothing could set them to anything else before this fix existed).
+        let dmaAddrHigh, dmaAddrMid, dmaAddrLow =
+            if version >= 3uy then r.ReadByte(), r.ReadByte(), r.ReadByte()
+            else 0uy, 0uy, 0uy
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
               Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
               FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
-              FdcSector = fdcSector; FdcData = fdcData }
+              FdcSector = fdcSector; FdcData = fdcData
+              DmaAddrHigh = dmaAddrHigh; DmaAddrMid = dmaAddrMid; DmaAddrLow = dmaAddrLow }
         resetLoopDetector()
         printfn "--- state loaded from %s: PC=$%08x ---" path cpu.PC
 
