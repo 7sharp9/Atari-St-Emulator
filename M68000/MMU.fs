@@ -8,7 +8,8 @@ open Bits
 type MmuSnapshot =
     { Ram: byte[]; VideoDisplayRegisters: byte[]; Ym2149: byte[]; MfpRegisters: byte[]
       Tbcr: byte; Tbdr: byte; TbdrReload: byte; TbdrReadCount: uint32
-      FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte }
+      FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte
+      DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte }
 
 ///Real 68000 hardware cannot perform a word/long-sized bus access to an odd address - it traps
 ///to the Address Error vector (vector 3) instead of completing the access. Raised by
@@ -41,6 +42,9 @@ type MMU(rom: byte array) =
     let dma_diskcontroller = 0xFF8600u
     let fdcAccess = 0xFF8604u //WD1772 register access byte - which of its 4 registers this hits is selected via fdcModeSelect
     let fdcModeSelect = 0xFF8606u //DMA mode register; bits 1-2 select status/cmd, track, sector, or data register
+    let dmaAddrHigh = 0xFF8609u //DMA Address Counter, high byte - real, documented, byte-wide-only (odd address) register
+    let dmaAddrMid = 0xFF860Bu //DMA Address Counter, middle byte
+    let dmaAddrLow = 0xFF860Du //DMA Address Counter, low byte
 
     let ym2149IOMemory = Array.create 4 0uy
     let ym2149Start = 0xFF8800u
@@ -162,6 +166,17 @@ type MMU(rom: byte array) =
     let mutable fdcSector = 0uy
     let mutable fdcData = 0uy
 
+    ///The DMA Address Counter's three bytes (FD-HD_Programming.pdf: "DMA Registers Address Map") -
+    ///a real, 22-bits-used-of-24 internal address register the DMA chip uses to know where in RAM
+    ///to read/write during a floppy transfer. Boot ROM routinely writes this (in the documented
+    ///Low/Mid/High order) before starting any FDC command, even though this emulator has no actual
+    ///DMA-driven memory transfer to point it at (FDC completion is an instant, always-computed
+    ///status byte - see fdcCommandStatus's comment) - so these three bytes just need to exist as
+    ///real, addressable storage rather than falling through to "genuinely unmapped bus".
+    let mutable dmaAddrHighByte = 0uy
+    let mutable dmaAddrMidByte = 0uy
+    let mutable dmaAddrLowByte = 0uy
+
     ///Per FD-HD_Programming.pdf's "Status Register Summary": Type I commands (Restore/Seek/Step -
     ///opcode top bit clear) only need the mechanical track-00 sensor, which works with no disk
     ///present, so real hardware reports success (TR00 set, bit 2) regardless of whether a disk is
@@ -231,6 +246,9 @@ type MMU(rom: byte array) =
             | 2uy -> fdcSector
             | _ -> fdcData
         | a when a = fdcModeSelect -> fdcSelectedReg <<< 1
+        | a when a = dmaAddrHigh -> dmaAddrHighByte
+        | a when a = dmaAddrMid -> dmaAddrMidByte
+        | a when a = dmaAddrLow -> dmaAddrLowByte
         | Acia ->
             //See ioStubs above.
             match ioStubs.TryFind address with
@@ -376,6 +394,15 @@ type MMU(rom: byte array) =
                      fdcSector <- input
             | _ -> if input <> fdcData then mutations <- mutations + 1UL
                    fdcData <- input
+        | a when a = dmaAddrHigh ->
+            if input <> dmaAddrHighByte then mutations <- mutations + 1UL
+            dmaAddrHighByte <- input
+        | a when a = dmaAddrMid ->
+            if input <> dmaAddrMidByte then mutations <- mutations + 1UL
+            dmaAddrMidByte <- input
+        | a when a = dmaAddrLow ->
+            if input <> dmaAddrLowByte then mutations <- mutations + 1UL
+            dmaAddrLowByte <- input
         | Acia ->
             //See WriteWord's matching case just above.
             ()
@@ -426,7 +453,8 @@ type MMU(rom: byte array) =
           MfpRegisters = Array.copy mfpRegisters
           Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
           FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
-          FdcSector = fdcSector; FdcData = fdcData }
+          FdcSector = fdcSector; FdcData = fdcData
+          DmaAddrHigh = dmaAddrHighByte; DmaAddrMid = dmaAddrMidByte; DmaAddrLow = dmaAddrLowByte }
 
     member x.RestoreRam(snapshot: MmuSnapshot) =
         Array.blit snapshot.Ram 0 ram 0 snapshot.Ram.Length
@@ -442,6 +470,9 @@ type MMU(rom: byte array) =
         fdcTrack <- snapshot.FdcTrack
         fdcSector <- snapshot.FdcSector
         fdcData <- snapshot.FdcData
+        dmaAddrHighByte <- snapshot.DmaAddrHigh
+        dmaAddrMidByte <- snapshot.DmaAddrMid
+        dmaAddrLowByte <- snapshot.DmaAddrLow
         //Restoring bypasses every write path above, so none of it bumped `mutations` on the way in
         //- that's correct (a rollback isn't itself a "real" forward mutation to prove anything
         //against), but it does mean the loop detector's anchor may now describe a state from the
