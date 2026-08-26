@@ -3397,6 +3397,14 @@ type Cpu =
                 let newCpu = {x.WithDataRegister register result with PC = x.PC+4; CCR = ccr}
                 printfn "muls.w %i(a%u),D%u" displacement eareg register
                 newCpu
+            | 0b010uy -> //(An)
+                let source = int (int16 (x.MMU.ReadWord(uint32 (x.AddressRegister eareg))))
+                let dest = int (int16 (x.DataRegister register))
+                let result = source * dest
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                let newCpu = {x.WithDataRegister register result with PC = x.PC+2; CCR = ccr}
+                printfn "muls.w (a%u),D%u" eareg register
+                newCpu
             | 0b111uy when eareg = 0b001uy -> //(xxx).L
                 let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
                 let source = int (int16 (x.MMU.ReadWord addr))
