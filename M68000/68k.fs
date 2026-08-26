@@ -3772,6 +3772,15 @@ type Cpu =
                     let newCpu = {x.WithAddressRegister address result with PC = x.PC+6}
                     printfn "adda.l $%x.l,A%u" addr address
                     newCpu
+                | 0b101uy -> //(d16,An)
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.AddressRegister eareg + int displacement)
+                    let dest = x.AddressRegister address
+                    let source = x.MMU.ReadLong addr
+                    let result = dest + source
+                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+4}
+                    printfn "adda.l %i(a%u),A%u" displacement eareg address
+                    newCpu
                 | _ -> failwithf "adda.l not implemented for eamode %x" eamode
             | 0b101uy -> //ADD.W Dn,<ea> (ea+Dn->ea, result written to memory)
                 match eamode with
