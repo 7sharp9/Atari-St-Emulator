@@ -591,6 +591,16 @@ type Cpu =
                     let newCpu = {x with PC = x.PC+6; CCR = ccr}
                     printfn "andi.w #$%x,%i(a%u)" immediate displacement register
                     newCpu
+                | 0b010uy -> //(An)
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.AddressRegister register)
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = dest &&& immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    x.MMU.WriteWord addr result
+                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                    printfn "andi.w #$%x,(a%u)" immediate register
+                    newCpu
                 | _ -> failwithf "andi.w not implemented for mode %x" mode
             | _ -> failwithf "andi: not implemented for size %x" size
 
