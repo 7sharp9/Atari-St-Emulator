@@ -1325,6 +1325,15 @@ type Cpu =
                         printfn "move.w A%u,$%x.l" sReg destEA
                         newCpu
 
+                    | 0b101uy -> //(d16,An)
+                        let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                        let destEA = uint32 (x.AddressRegister dReg + int displacement)
+                        x.MMU.WriteWord destEA sourceContents
+                        let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
+                        let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                        printfn "move.w A%u,%i(a%u)" sReg displacement dReg
+                        newCpu
+
                     | _ -> failwith "Not implemented"
                 | 0b011uy -> //(AN)+
                     let sourceAddress = x.AddressRegister sReg
