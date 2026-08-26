@@ -371,7 +371,13 @@ module Main =
         //and I/O are skipped entirely, without touching any of the 221 call sites.
         if not (isNull (Environment.GetEnvironmentVariable "ATARI_NOTRACE")) then
             Console.SetOut(IO.TextWriter.Null)
-        let st = AtartSt("TOS100UK.IMG")
+        //ATARI_ROM_PATH lets a caller point this at a different ROM dump (e.g. for an A/B
+        //comparison against a different TOS revision) without touching the default TOS100UK.IMG.
+        let romPath =
+            match Environment.GetEnvironmentVariable "ATARI_ROM_PATH" with
+            | null | "" -> "TOS100UK.IMG"
+            | p -> p
+        let st = AtartSt(romPath)
         match argv with
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until

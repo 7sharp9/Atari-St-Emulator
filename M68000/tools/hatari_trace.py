@@ -36,14 +36,16 @@ def main():
     p.add_argument("--trace", default="cpu_exception", help="Hatari --trace flags, comma-separated (default: cpu_exception)")
     p.add_argument("--out", required=True, help="path to write the trace file to")
     p.add_argument("--hatari-dir", default=str(DEFAULT_HATARI_DIR), help="directory containing hatari.exe and tos.img")
+    p.add_argument("--tos-file", default="tos.img", help="ROM filename within --hatari-dir, for comparing a different TOS revision without disturbing the default tos.img")
     p.add_argument("--memsize", default="1", help="ST RAM in MB (default: 1, matching this project's target machine)")
     p.add_argument("--machine", default="st", help="Hatari --machine value (default: st, i.e. plain STF)")
     p.add_argument("--timeout", type=int, default=180, help="subprocess timeout in seconds (default: 180)")
+    p.add_argument("--disk-a", default=None, help="path to a floppy disk image (.st/.msa) to mount in drive A - omit for a diskless boot")
     args = p.parse_args()
 
     hatari_dir = pathlib.Path(args.hatari_dir)
     hatari_exe = hatari_dir / "hatari.exe"
-    tos_img = hatari_dir / "tos.img"
+    tos_img = hatari_dir / args.tos_file
     if not hatari_exe.exists():
         sys.exit(f"hatari.exe not found at {hatari_exe} - pass --hatari-dir")
     if not tos_img.exists():
@@ -60,6 +62,8 @@ def main():
         "--trace", args.trace,
         "--trace-file", str(out_path),
     ]
+    if args.disk_a:
+        cmd += ["--disk-a", str(pathlib.Path(args.disk_a).resolve())]
     result = subprocess.run(cmd, cwd=str(hatari_dir), capture_output=True, text=True, timeout=args.timeout)
     if result.returncode != 0:
         sys.exit(f"hatari.exe exited {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}")
