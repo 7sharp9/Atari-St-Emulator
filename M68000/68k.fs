@@ -3333,15 +3333,24 @@ type Cpu =
                     let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
                     printfn "and.w #$%x,D%u" source register
                     newCpu
-                | 0b111uy when eareg = 0b001uy -> //(xxx).W - absolute short, sign-extended to form the address
-                    let addr = uint32 (int32 (int16 (x.MMU.ReadWord(uint32 (x.PC+2)))))
+                | 0b111uy when eareg = 0b001uy -> //(xxx).L - absolute long; this was previously
+                    //mislabeled/implemented as absolute SHORT (mode 7 reg 0, not reg 1 - see
+                    //[[68k-opcode-space-aliasing]]), which both computed the wrong address (a
+                    //sign-extended single word instead of the real 32-bit long) and only consumed
+                    //4 bytes of PC instead of the correct 6, desyncing every instruction decoded
+                    //afterward - the real root cause behind a genuine, repeating Bus Error this
+                    //project's own emulator was hitting that TOS's own recovery handler ($fc0a1a)
+                    //was correctly (if silently) catching by terminating and hard-resetting, which
+                    //is what looked like "GEM.PRG restarting the desktop" from the GEMDOS call
+                    //trace alone.
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
                     let source = int16 (x.MMU.ReadWord addr)
                     let dest = int16 (x.DataRegister register)
                     let result = source &&& dest
                     let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
                     let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "and.w $%x.w,D%u" addr register
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+6; CCR = ccr}
+                    printfn "and.w $%x.l,D%u" addr register
                     newCpu
                 | 0b101uy -> //(d16,An)
                     let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
