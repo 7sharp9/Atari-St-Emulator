@@ -1892,6 +1892,17 @@ type Cpu =
                 let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
                 printfn "neg.b D%u" eareg
                 newCpu
+            | 0b101uy, 0b01uy -> //(d16,An), word
+                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                let addr = uint32 (x.AddressRegister eareg + int displacement)
+                let source = int16 (x.MMU.ReadWord addr)
+                let result = int16 (0 - int source)
+                let ccr = CCR.Subtract_IgnoringX_Word x.CCR 0s source
+                let ccr = if ccr &&& 0x1s <> 0s then ccr ||| 0x10s else ccr &&& ~~~0x10s
+                x.MMU.WriteWord addr result
+                let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                printfn "neg.w %i(a%u)" displacement eareg
+                newCpu
             | _ -> failwithf "neg: not implemented for mode %x size %x" eamode size
 
         | NOT(size, eamode, eareg) ->
