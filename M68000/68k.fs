@@ -2875,6 +2875,15 @@ type Cpu =
                     let newCpu = {x.WithDataRegister address result with PC = x.PC+4; CCR = ccr}
                     printfn "sub.l %i(a%u),D%u" displacement eareg address
                     newCpu
+                | 0b111uy when eareg = 0b001uy -> //(xxx).L
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                    let dest = x.DataRegister address
+                    let source = x.MMU.ReadLong addr
+                    let result = dest - source
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
+                    let newCpu = {x.WithDataRegister address result with PC = x.PC+6; CCR = ccr}
+                    printfn "sub.l $%x.l,D%u" addr address
+                    newCpu
                 | _ -> failwithf "sub.l(ea->dn) not implemented for eamode %x" eamode
             | 0b001uy -> //SUB.W ea-Dn->Dn
                 match eamode with
@@ -3157,6 +3166,13 @@ type Cpu =
                     let ccr = CCR.Subtract_IgnoringX x.CCR dest source
                     printfn "cmpa.l %i(a%u),A%u" displacement eareg register
                     {x with PC = x.PC+4; CCR = ccr}
+                | 0b111uy when eareg = 0b001uy -> //(xxx).L
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                    let dest = x.AddressRegister register
+                    let source = x.MMU.ReadLong addr
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
+                    printfn "cmpa.l $%x.l,A%u" addr register
+                    {x with PC = x.PC+6; CCR = ccr}
                 | _ -> failwithf "cmpa.l eamode %u not implemented" eamode
             | 0b011uy -> //CMPA.W <ea>,An - source is word-sized, sign-extended to long before the compare
                 match eamode with
