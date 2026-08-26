@@ -1294,6 +1294,14 @@ type Cpu =
                             let newCpu = {x.WithAddressRegister dReg signExtended with PC = x.PC+4}
                             printfn "movea.w %i(pc,%s%u.%s),A%u" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") dReg
                             newCpu
+                        | 0b101uy -> //(d16,An)
+                            let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
+                            let destEA = uint32 (x.AddressRegister dReg + int displacement)
+                            let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 value)
+                            x.MMU.WriteWord destEA (int16 value)
+                            let newCpu = {x with PC = x.PC+6; CCR = ccr}
+                            printfn "move.w %i(pc,%s%u.%s),%i(a%u)" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") displacement dReg
+                            newCpu
                         | _ -> failwith "Not implemented"
                     | _ -> failwith "Not implemented"
                 | 0b001uy -> //An - a legal MOVE source (unlike MOVEA, which cares about the dest
