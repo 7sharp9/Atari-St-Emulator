@@ -195,6 +195,22 @@ type Cpu =
         if x.S = willBeSupervisor then {x with CCR = newCcr}
         elif willBeSupervisor then {x with CCR = newCcr; USP = x.A7; A7 = x.SSP}
         else {x with CCR = newCcr; SSP = x.A7; A7 = x.USP}
+
+    ///Shared "plain 6-byte-frame" software-trap machinery: enters supervisor mode via WithSR
+    ///(pushing onto the correct, just-switched-to stack - see WithSR's comment for why that
+    ///order matters), pushes the caller-supplied return PC and the pre-trap CCR, then jumps to
+    ///the vector table entry at vectorNumber*4. Used by TRAP #n and the Line-A/Line-F emulator
+    ///traps (vectors 10/11) - all three are real 68000 vectors sharing this exact frame shape.
+    member x.EnterVector (vectorNumber: int) (returnPC: int) : Cpu =
+        let vectorAddr = uint32 (vectorNumber * 4)
+        let switched = x.WithSR (x.CCR ||| 0x2000s)
+        let pcPushAddr = switched.A7 - 4
+        x.MMU.WriteLong (uint32 pcPushAddr) returnPC
+        let srPushAddr = pcPushAddr - 2
+        x.MMU.WriteWord (uint32 srPushAddr) x.CCR
+        let newPC = x.MMU.ReadLong vectorAddr
+        {switched with A7 = srPushAddr; PC = newPC}
+
     member x.AddressRegister (register: byte) =
         match register with
         | 0uy -> x.A0 | 1uy -> x.A1 | 2uy -> x.A2 | 3uy -> x.A3
@@ -336,10 +352,26 @@ type Cpu =
             | 0x7 -> x.DecodeBucket7 instruction
             | 0x8 -> x.DecodeBucket8 instruction
             | 0x9 -> x.DecodeBucket9 instruction
+            | 0xA -> //Line-A emulator trap (vector 10, $028) - real 68000 hardware traps
+                     //unconditionally on any top-nibble-0xA opcode; the ST uses this for VDI
+                     //linkage. Confirmed against Atari's own "Atari ST Internals" exception
+                     //vector table and cross-checked against Hatari's newcpu.c cycle table.
+                     let newCpu = x.EnterVector 10 (x.PC+2)
+                     printfn "line-a $%04x" instruction
+                     newCpu
             | 0xB -> x.DecodeBucketB instruction
             | 0xC -> x.DecodeBucketC instruction
             | 0xD -> x.DecodeBucketD instruction
             | 0xE -> x.DecodeBucketE instruction
+            | 0xF -> //Line-F emulator trap (vector 11, $02C) - same unconditional-trap hardware
+                     //behavior as Line-A above; the ST uses this for AES linkage, with the low
+                     //12 bits of the opcode itself carrying parameters the installed handler
+                     //reads back from its own return address (confirmed live: TOS installs a
+                     //real handler at $FC9C48 into vector 11 immediately before executing one
+                     //of these, not a dead/default vector).
+                     let newCpu = x.EnterVector 11 (x.PC+2)
+                     printfn "line-f $%04x" instruction
+                     newCpu
             | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
         with
         | AddressError faultAddress ->
@@ -461,6 +493,15 @@ type Cpu =
                 | _ -> failwithf "andi.b not implemented for mode %x" mode
             | 0b01uy -> //word
                 match mode with
+                | 0b000uy -> //Dn
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let dest = int16 (x.DataRegister register)
+                    let result = dest &&& immediate
+                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
+                    printfn "andi.w #$%x,D%u" immediate register
+                    newCpu
                 | 0b101uy -> //(d16,An)
                     let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
                     let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
@@ -523,6 +564,16 @@ type Cpu =
                     let ccr = CCR.Add_IgnoringX x.CCR dest immediate
                     let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
                     printfn "addi.l #$%x,D%u" immediate register
+                    newCpu
+                | 0b010uy -> //(An)
+                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let addr = uint32 (x.AddressRegister register)
+                    let dest = x.MMU.ReadLong addr
+                    let result = dest + immediate
+                    let ccr = CCR.Add_IgnoringX x.CCR dest immediate
+                    x.MMU.WriteLong addr result
+                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
+                    printfn "addi.l #$%x,(a%u)" immediate register
                     newCpu
                 | _ -> failwithf "addi.l not implemented for mode %x" mode
             | _ -> failwithf "addi: not implemented for size %x" size
@@ -1295,6 +1346,11 @@ type Cpu =
                 let register = int16 (x.MMU.ReadWord (uint32 (x.PC+2)))
                 printfn "move #%0x, sr" register
                 {x.WithSR register with PC = x.PC + 4}
+            elif mode = 0x0 then //Dn
+                let reg = byte register
+                let newCcr = int16 (x.DataRegister reg)
+                printfn "move D%u,sr" reg
+                {x.WithSR newCcr with PC = x.PC + 2}
             elif mode = 0x3 then //(An)+
                 let reg = byte register
                 let addr = x.AddressRegister reg
@@ -1710,21 +1766,10 @@ type Cpu =
 
         | TRAP(vector) ->
             //Pushes return PC then SR (SR ends up on top, matching RTE's SR@SP/PC@SP+2 layout),
-            //enters supervisor mode, and jumps to the vector table entry at (32+n)*4. Real
-            //hardware swaps A7 over to the supervisor stack as part of taking the trap - the frame
-            //is pushed onto THAT stack, never the stack that was active a moment ago - so callers
-            //relying on `move usp,An` afterward (as GEMDOS's own trap#1 handler does, to reach the
-            //caller's arguments) see the value A7 actually held right before the trap, not stale
-            //data from some earlier, unrelated supervisor-stack use. If already supervisor (nested
-            //trap), no swap happens - same stack just keeps being used, matching real hardware.
-            let vectorAddr = uint32 ((32 + int vector) * 4)
-            let switched = x.WithSR (x.CCR ||| 0x2000s)
-            let pcPushAddr = switched.A7 - 4
-            x.MMU.WriteLong (uint32 pcPushAddr) (x.PC+2)
-            let srPushAddr = pcPushAddr - 2
-            x.MMU.WriteWord (uint32 srPushAddr) x.CCR
-            let newPC = x.MMU.ReadLong vectorAddr
-            let newCpu = {switched with A7 = srPushAddr; PC = newPC}
+            //enters supervisor mode, and jumps to the vector table entry at (32+n)*4 - see
+            //EnterVector's comment for why the privilege swap has to happen before the push
+            //(GEMDOS's trap#1 handler's `move usp,An` depends on it).
+            let newCpu = x.EnterVector (32 + int vector) (x.PC+2)
             printfn "trap #%u" vector
             newCpu
 
