@@ -169,7 +169,7 @@ type AtartSt(romPath: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(5uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP
+        w.Write(6uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.SSP; cpu.PC |] do w.Write(v: int)
@@ -195,6 +195,7 @@ type AtartSt(romPath: string) =
         w.Write(snap.DmaAddrMid)
         w.Write(snap.DmaAddrLow)
         w.Write(snap.MemConfig)
+        w.Write(stepCount)
         printfn "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
@@ -245,6 +246,12 @@ type AtartSt(romPath: string) =
         //cold-reset value (see MMU.fs's memConfigByte comment), matching what those snapshots were
         //actually captured with since nothing could set it to anything else before this fix existed.
         let memConfig = if version >= 4uy then r.ReadByte() else 0uy
+        //v1-v5 snapshots predate stepCount being persisted - default to 0, matching the bug this
+        //field's addition fixes (a resumed run's VBL-injection phase, `stepCount % vblPeriod`,
+        //restarting from 0 instead of continuing from the point the snapshot was taken at, which is
+        //exactly the resume/cold-boot step-count divergence this fix targets). Snapshots taken
+        //before this fix can't recover their true step count and stay subject to the old bug.
+        stepCount <- if version >= 6uy then r.ReadUInt64() else 0UL
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
               Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
