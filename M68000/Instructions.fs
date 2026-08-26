@@ -229,6 +229,20 @@ module Instructions =
     /// 1110 ccc d ss i TT rrr : Shift/Rotate register
     /// (d: 0=right,1=left; i: 0=immediate count,1=register count; TT: 00=AS,01=LS,10=ROX,11=RO)
     /// size=11 is the memory-shift form (different EA-based layout) and is excluded here.
+    /// 1110 ooo d 11 mmm rrr : ASd/LSd/ROXd/ROd <ea> - memory-operand shift/rotate: always word-size,
+    /// always exactly 1 bit (no count field), EA restricted to memory addressing modes on real
+    /// hardware. Distinct from ShiftRotate below (the Dn-direct, immediate/register-count form),
+    /// which explicitly excludes this size=11 encoding - see that pattern's own comment.
+    /// (ooo: 000=AS,001=LS,010=ROXd,011=ROd; d: 0=right,1=left)
+    let (|MemoryShiftRotate|_|) data =
+        if data &&& 0b1111000011000000 = 0b1110000011000000 then
+            let shiftType = byte (data >>> 9) &&& 0b111uy
+            let direction = byte (data >>> 8) &&& 0b1uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(shiftType, direction, eamode, eareg)
+        else None
+
     let (|ShiftRotate|_|) data =
         if data &&& 0b1111000000000000 = 0b1110000000000000 && (byte (data >>> 6) &&& 0b11uy) <> 0b11uy then
             let countOrReg = byte (data >>> 9) &&& 0b111uy
@@ -466,6 +480,18 @@ module Instructions =
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
             Some(mode,register)
+        else None
+
+    /// 0000 1000 oo mmm rrr : BCHG/BCLR/BSET #<bit>,<ea>  (oo: 01=BCHG,10=BCLR,11=BSET - oo=00 is
+    /// BTST, already handled by the dedicated BTSTImmediate above)
+    let (|BitOpImmediate|_|) data =
+        if data &&& 0b1111111100000000 = 0b0000100000000000 then
+            let opmode = byte (data >>> 6) &&& 0b11uy
+            if opmode <> 0b00uy then
+                let mode = byte (data >>> 3) &&& 0b111uy
+                let register = byte data &&& 0b111uy
+                Some(opmode, mode, register)
+            else None
         else None
 
     /// 0111 rrr0 dddddddd: MOVEQ #<data>,Dr
