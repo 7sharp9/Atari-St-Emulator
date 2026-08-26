@@ -154,7 +154,7 @@ type AtartSt(romPath: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(3uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those
+        w.Write(4uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.PC |] do w.Write(v: int)
@@ -179,6 +179,7 @@ type AtartSt(romPath: string) =
         w.Write(snap.DmaAddrHigh)
         w.Write(snap.DmaAddrMid)
         w.Write(snap.DmaAddrLow)
+        w.Write(snap.MemConfig)
         printfn "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
@@ -220,12 +221,17 @@ type AtartSt(romPath: string) =
         let dmaAddrHigh, dmaAddrMid, dmaAddrLow =
             if version >= 3uy then r.ReadByte(), r.ReadByte(), r.ReadByte()
             else 0uy, 0uy, 0uy
+        //v1-v3 snapshots predate the MMU memory-config register - default to 0, its real
+        //cold-reset value (see MMU.fs's memConfigByte comment), matching what those snapshots were
+        //actually captured with since nothing could set it to anything else before this fix existed.
+        let memConfig = if version >= 4uy then r.ReadByte() else 0uy
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
               Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
               FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
               FdcSector = fdcSector; FdcData = fdcData
-              DmaAddrHigh = dmaAddrHigh; DmaAddrMid = dmaAddrMid; DmaAddrLow = dmaAddrLow }
+              DmaAddrHigh = dmaAddrHigh; DmaAddrMid = dmaAddrMid; DmaAddrLow = dmaAddrLow
+              MemConfig = memConfig }
         resetLoopDetector()
         printfn "--- state loaded from %s: PC=$%08x ---" path cpu.PC
 
@@ -276,7 +282,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -298,6 +304,12 @@ module Main =
                 loop()
             | [| "m"; addr; len |] ->
                 printfn "%s" (st.DumpMemory (Convert.ToUInt32(addr, 16)) (int len))
+                loop()
+            | [| "w"; addr; value |] ->
+                //Direct memory-write for debugging (e.g. patching a resumed snapshot's system
+                //variables to test a hypothesis without needing a fresh cold boot to produce them).
+                //Writes a longword via the same MMU path real 68k code would use.
+                st.Cpu.MMU.WriteLong (Convert.ToUInt32(addr, 16)) (Convert.ToInt32(value, 16))
                 loop()
             | [| "snap"; path |] ->
                 st.SaveState path

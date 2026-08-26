@@ -9,7 +9,8 @@ type MmuSnapshot =
     { Ram: byte[]; VideoDisplayRegisters: byte[]; Ym2149: byte[]; MfpRegisters: byte[]
       Tbcr: byte; Tbdr: byte; TbdrReload: byte; TbdrReadCount: uint32
       FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte
-      DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte }
+      DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte
+      MemConfig: byte }
 
 ///Real 68000 hardware cannot perform a word/long-sized bus access to an odd address - it traps
 ///to the Address Error vector (vector 3) instead of completing the access. Raised by
@@ -32,7 +33,16 @@ exception BusError of address: uint32
 
 type MMU(rom: byte array) =
 
-    let memoryConfiguration = 0xFF8000u
+    ///The MMU bank-size configuration register (real hardware: byte-wide, only the odd address
+    ///$FF8001 is wired up - see stMemory.c's STMemory_MMU_Config_ReadByte/WriteByte, fetched from
+    ///github.com/hatari/hatari for a ground-truth check since the local progref.txt's table for
+    ///this register is column-garbled). Bits 2-3 = bank 0 size, bits 0-1 = bank 1 size, each 2 bits
+    ///decoding 00=128KB 01=512KB 10=2048KB 11=reserved. TOS's own cold-boot RAM-sizing routine
+    ///writes a candidate value here and probes real RAM to see what actually holds - previously
+    ///unmapped (fell through to BusError, added in the twentieth pass), which crashed cold boot
+    ///almost immediately at `$fc00e2: move.b #$a,$ffff8001.l` (confirmed via `tools/disassemble.py`)
+    ///before TOS could even begin that probe - see [[atari-st-emulator-next-instructions]].
+    let memConfig = 0xFF8001u
 
     let videoDisplayRegisterStart = 0xFF8200u
     let videoDisplayRegisterEnd =  0xFF8260u
@@ -177,6 +187,11 @@ type MMU(rom: byte array) =
     let mutable dmaAddrMidByte = 0uy
     let mutable dmaAddrLowByte = 0uy
 
+    ///Real hardware resets this to 0 on cold boot (stMemory.c: "0xFF8001 is set to 0 on cold reset
+    ///but keep its value on warm reset") - this emulator only ever cold-boots, so 0 is always the
+    ///right starting value, matching real hardware rather than the project's actual installed RAM.
+    let mutable memConfigByte = 0uy
+
     ///Per FD-HD_Programming.pdf's "Status Register Summary": Type I commands (Restore/Seek/Step -
     ///opcode top bit clear) only need the mechanical track-00 sensor, which works with no disk
     ///present, so real hardware reports success (TR00 set, bit 2) regardless of whether a disk is
@@ -203,6 +218,73 @@ type MMU(rom: byte array) =
     ///default further down, since aliasing those into RAM would be a worse stub than a flat 0.
     let ramMask = uint32 (ram.Length - 1)
     let aliasIntoRam (address: uint32) = address < cartStart
+
+    ///Real STF hardware's MMU decodes RAM addresses using the *configured* bank sizes from
+    ///`memConfigByte` ($FF8001), not a flat modulus - each bank's CAS/RAS address lines are reused
+    ///differently depending on whether the MMU is told the bank is 128KB/512KB/2048KB, so a bank
+    ///that's physically smaller than configured genuinely shows address-line aliasing at its real
+    ///boundary. That aliasing is exactly the signal TOS's own cold-boot RAM-sizing probe depends on
+    ///to discover the real installed size - the previous flat `address &&& ramMask` scheme masked
+    ///identically regardless of `memConfigByte`, so that probe could never observe a real mismatch
+    ///and TOS ended up believing whatever the largest candidate it tried ($0A = 2048KB+2048KB) was
+    ///correct - see [[atari-st-emulator-next-instructions]]'s twenty-third pass.
+    ///Ported directly from Hatari's `STMemory_MMU_Translate_Addr`/`_STF` (github.com/hatari/hatari,
+    ///src/stMemory.c) - this project only ever has 512KB physical RAM per bank (`ram.Length` = 1MB
+    ///total), so only the "RAM bank = 512KB" row of Hatari's full 128/512/2048-by-128/512/2048
+    ///table is ported; the other two physical-size rows don't apply to any RAM size this project
+    ///models.
+    let ramBankPhysicalSize = uint32 (ram.Length / 2)
+
+    let mmuBankSizeBytes (code: int) =
+        match code with
+        | 0 -> 0x20000u  //128KB
+        | 1 -> 0x80000u  //512KB
+        | _ -> 0x200000u //2048KB ($FF8001 code 2; code 3/"11" is real hardware's documented-reserved value, never written by this ROM, folded in here rather than left as a dead branch
+
+    ///STF address-line remapping for one bank, given the bank's real physical size (always 512KB
+    ///in this project) and the size the MMU is currently configured to believe it is.
+    let stfTranslateWithinBank (addrInBank: uint32) (mmuBankSize: uint32) =
+        let remapped =
+            if mmuBankSize = 0x200000u then //MMU thinks 2048KB, bank is really 512KB: C9/R9 don't exist
+                ((addrInBank &&& 0xff800u) >>> 1) ||| (addrInBank &&& 0x3ffu)
+            elif mmuBankSize = 0x80000u then //MMU config matches the real 512KB bank exactly
+                addrInBank
+            else //MMU thinks 128KB, bank is really 512KB: C8/R8 get folded back in too
+                ((addrInBank &&& 0x3fe00u) <<< 1) ||| (addrInBank &&& 0x3ffu)
+        remapped &&& (ramBankPhysicalSize - 1u)
+
+    ///Full bank0/bank1 routing, mirroring Hatari's `STMemory_MMU_Translate_Addr` wrapper: which
+    ///bank an address falls in depends on the *configured* (not physical) bank sizes, but where
+    ///that bank actually starts inside the real `ram` array depends on the *physical* size instead.
+    ///Returns `None` for addresses beyond the MMU's configured total - genuinely open bus, no
+    ///device backs them - rather than the old flat mirror.
+    ///
+    ///Traced (twenty-third pass) exactly how TOS's own cold-boot phystop probe works, and it's
+    ///simpler than first guessed: `$fc0166`-`$fc0186` writes a 43-word evolving pattern at the
+    ///current candidate top-of-RAM address, then immediately reads it back and compares - a plain,
+    ///in-band software self-consistency check, NOT a CPU-level Bus Error trap (the vector-2 handler
+    ///it installs a few instructions earlier is for something else; this loop never faults on real
+    ///hardware, it just needs writes to genuinely open bus to not read back what was written). It
+    ///climbs in fixed $20000 steps, so the first block that actually probes past a real 1MB machine
+    ///starts at `$120000` (`$100000+$20000`) - well below the `$1E0100`-ish region the raw
+    ///reset-vector SSP still uses as scratch stack at this point in boot (confirmed via a fresh
+    ///trace: no instruction writes `A7` anywhere in the first 200,000 steps), so making this
+    ///specific range open-bus doesn't collide with that stack use, unlike the earlier same-pass
+    ///attempt that raised a real `BusError` here (which regressed cold boot - see
+    ///[[atari-st-emulator-next-instructions]] - because the CPU's OWN exception-frame push for that
+    ///fault used the same not-yet-relocated stack, a genuine fault-during-fault-handling case this
+    ///emulator doesn't model). No exception needed this time: open-bus reads just return a fixed
+    ///value that can never match an evolving write pattern, and open-bus writes are no-ops.
+    let translateRamAddress (address: uint32) =
+        let conf = int memConfigByte
+        let bank0Mmu = mmuBankSizeBytes ((conf >>> 2) &&& 3)
+        let bank1Mmu = mmuBankSizeBytes (conf &&& 3)
+        if address < bank0Mmu then
+            Some (stfTranslateWithinBank address bank0Mmu)
+        elif address < bank0Mmu + bank1Mmu then
+            Some (ramBankPhysicalSize + stfTranslateWithinBank (address - bank0Mmu) bank1Mmu)
+        else
+            None
 
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
@@ -249,13 +331,17 @@ type MMU(rom: byte array) =
         | a when a = dmaAddrHigh -> dmaAddrHighByte
         | a when a = dmaAddrMid -> dmaAddrMidByte
         | a when a = dmaAddrLow -> dmaAddrLowByte
+        | a when a = memConfig -> memConfigByte
         | Acia ->
             //See ioStubs above.
             match ioStubs.TryFind address with
             | Some v -> v
             | None -> 0uy
         | _ ->
-            if aliasIntoRam address then ram.[int (address &&& ramMask)]
+            if aliasIntoRam address then
+                match translateRamAddress address with
+                | Some idx -> ram.[int idx]
+                | None -> 0uy //open bus, no device backs this address
             else raise (BusError address)
 
     member x.ReadWord (address: uint32) =
@@ -302,8 +388,8 @@ type MMU(rom: byte array) =
             | None -> 0
         | a ->
             if aliasIntoRam a then
-                let masked = a &&& ramMask
-                ((int ram.[int masked]) <<< 8) ||| (int ram.[int ((masked+1u) &&& ramMask)])
+                let byteAt addr = match translateRamAddress addr with Some idx -> ram.[int idx] | None -> 0uy
+                ((int (byteAt a)) <<< 8) ||| (int (byteAt (a+1u)))
             else raise (BusError a)
 
     member x.WriteWord (addr: uint32) (input: int16) =
@@ -347,9 +433,9 @@ type MMU(rom: byte array) =
             ()
         | _ ->
             if aliasIntoRam address then
-                let masked = address &&& ramMask
-                store ram (int masked) (byte (input >>> 8))
-                store ram (int ((masked+1u) &&& ramMask)) (byte (input &&& 0xffs))
+                let storeAt addr v = match translateRamAddress addr with Some idx -> store ram (int idx) v | None -> ()
+                storeAt address (byte (input >>> 8))
+                storeAt (address+1u) (byte (input &&& 0xffs))
             else raise (BusError address)
 
     member x.WriteByte (addr: uint32) (input: byte) =
@@ -403,11 +489,17 @@ type MMU(rom: byte array) =
         | a when a = dmaAddrLow ->
             if input <> dmaAddrLowByte then mutations <- mutations + 1UL
             dmaAddrLowByte <- input
+        | a when a = memConfig ->
+            if input <> memConfigByte then mutations <- mutations + 1UL
+            memConfigByte <- input
         | Acia ->
             //See WriteWord's matching case just above.
             ()
         | _ ->
-            if aliasIntoRam address then store ram (int (address &&& ramMask)) input
+            if aliasIntoRam address then
+                match translateRamAddress address with
+                | Some idx -> store ram (int idx) input
+                | None -> () //open bus, no device backs this address
             else raise (BusError address)
 
     member x.WriteLong (addr: uint32) (input: int) =
@@ -454,7 +546,8 @@ type MMU(rom: byte array) =
           Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
           FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
           FdcSector = fdcSector; FdcData = fdcData
-          DmaAddrHigh = dmaAddrHighByte; DmaAddrMid = dmaAddrMidByte; DmaAddrLow = dmaAddrLowByte }
+          DmaAddrHigh = dmaAddrHighByte; DmaAddrMid = dmaAddrMidByte; DmaAddrLow = dmaAddrLowByte
+          MemConfig = memConfigByte }
 
     member x.RestoreRam(snapshot: MmuSnapshot) =
         Array.blit snapshot.Ram 0 ram 0 snapshot.Ram.Length
@@ -473,6 +566,7 @@ type MMU(rom: byte array) =
         dmaAddrHighByte <- snapshot.DmaAddrHigh
         dmaAddrMidByte <- snapshot.DmaAddrMid
         dmaAddrLowByte <- snapshot.DmaAddrLow
+        memConfigByte <- snapshot.MemConfig
         //Restoring bypasses every write path above, so none of it bumped `mutations` on the way in
         //- that's correct (a rollback isn't itself a "real" forward mutation to prove anything
         //against), but it does mean the loop detector's anchor may now describe a state from the
@@ -508,9 +602,9 @@ type MMU(rom: byte array) =
             int (x.ReadByte address)
         | _ ->
             if aliasIntoRam address then
-                let masked = address &&& ramMask
-                (int ram.[int masked]           <<< 24) |||
-                (int ram.[int ((masked+1u) &&& ramMask)] <<< 16) |||
-                (int ram.[int ((masked+2u) &&& ramMask)] <<<  8) |||
-                (int ram.[int ((masked+3u) &&& ramMask)])
+                let byteAt addr = match translateRamAddress addr with Some idx -> ram.[int idx] | None -> 0uy
+                (int (byteAt address)      <<< 24) |||
+                (int (byteAt (address+1u)) <<< 16) |||
+                (int (byteAt (address+2u)) <<<  8) |||
+                (int (byteAt (address+3u)))
             else raise (BusError address)
