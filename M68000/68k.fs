@@ -2777,6 +2777,16 @@ type Cpu =
                 | _ -> failwithf "or.b not implemented for eamode %x" eamode
             | 0b101uy -> //OR.W Dn,ea -> ea
                 match eamode with
+                | 0b010uy -> //(An)
+                    let addr = uint32 (x.AddressRegister eareg)
+                    let source = int16 (x.DataRegister register)
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = source ||| dest
+                    x.MMU.WriteWord addr result
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    let newCpu = {x with PC = x.PC+2; CCR = ccr}
+                    printfn "or.w D%u,(a%u)" register eareg
+                    newCpu
                 | 0b101uy -> //(d16,An)
                     let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
                     let addr = uint32 (x.AddressRegister eareg + int displacement)
