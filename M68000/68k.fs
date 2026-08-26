@@ -2324,6 +2324,14 @@ type Cpu =
                 x.MMU.WriteLong (uint32 newSP) returnAddr
                 printfn "jsr $%x.l" target
                 {x with PC = target; A7 = newSP}
+            | 0b110uy -> //(d8,An,Xn)
+                let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
+                let target = x.AddressRegister eareg + ext.Offset
+                let returnAddr = x.PC + 4
+                let newSP = x.A7 - 4
+                x.MMU.WriteLong (uint32 newSP) returnAddr
+                printfn "jsr %s" (x.DescribeIndexed eareg ext)
+                {x with PC = target; A7 = newSP}
             | _ -> failwithf "JSR not implemented for eamode %u reg %u" eamode eareg
 
         | JMP(eamode, eareg) ->
@@ -3918,6 +3926,26 @@ type Cpu =
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
                 printfn "ror.%s D%u,D%u" sizeChar countOrReg register
+                newCpu
+            | 0uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b11uy -> //ROR.B/W/L #imm,Dn
+                let amount = if countOrReg = 0uy then 8 else int countOrReg
+                let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
+                let signBit = match size with 0b00uy -> 0x80 | 0b01uy -> 0x8000 | _ -> 1 <<< 31
+                let mutable v = x.DataRegister register &&& bitMask
+                let mutable carryOut = false
+                for _ in 1 .. amount do
+                    let bottomBit = v &&& 1 <> 0
+                    carryOut <- bottomBit
+                    v <- ((v >>> 1) ||| (if bottomBit then signBit else 0)) &&& bitMask
+                let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
+                let mutable ccr = x.CCR
+                ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
+                if v &&& signBit <> 0 then ccr <- ccr ||| 0x8s //N
+                if v = 0 then ccr <- ccr ||| 0x4s //Z
+                if amount > 0 && carryOut then ccr <- ccr ||| 0x1s //C only - X is unaffected by plain rotate
+                let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
+                let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
+                printfn "ror.%s #%u,D%u" sizeChar amount register
                 newCpu
             | _ -> failwithf "shift/rotate not implemented for direction %x size %x useRegCount %x type %x" direction size useRegisterCount shiftType
 
