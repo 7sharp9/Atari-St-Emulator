@@ -2228,6 +2228,19 @@ type Cpu =
                 let newCpu = {cpu.WithAddressRegister eareg addr with PC = x.PC+4}
                 printfn "movem.l (a%u)+,#$%04x" eareg mask
                 newCpu
+            | 1uy, 0uy, 0b011uy -> //MOVEM.W (An)+,reglist - each word sign-extends to fill its register
+                let mutable addr = x.AddressRegister eareg
+                let mutable cpu = x
+                for bit in 0 .. 15 do
+                    if (mask >>> bit) &&& 1us = 1us then
+                        let value = int (int16 (x.MMU.ReadWord(uint32 addr)))
+                        cpu <-
+                            if bit < 8 then cpu.WithDataRegister (byte bit) value
+                            else cpu.WithAddressRegister (byte (bit - 8)) value
+                        addr <- addr + 2
+                let newCpu = {cpu.WithAddressRegister eareg addr with PC = x.PC+4}
+                printfn "movem.w (a%u)+,#$%04x" eareg mask
+                newCpu
             | 0uy, 1uy, 0b111uy when eareg = 0b001uy -> //MOVEM.L reglist,(xxx).L
                 let target = x.MMU.ReadLong(uint32 (x.PC+4))
                 let mutable addr = uint32 target
