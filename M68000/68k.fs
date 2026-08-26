@@ -2154,6 +2154,18 @@ type Cpu =
                 let newCpu = {x.WithAddressRegister eareg addr with PC = x.PC+4}
                 printfn "movem.l #$%04x,-(a%u)" mask eareg
                 newCpu
+            | 0uy, 0uy, 0b100uy -> //MOVEM.W reglist,-(An)
+                let mutable addr = x.AddressRegister eareg
+                for bit in 0 .. 15 do
+                    if (mask >>> bit) &&& 1us = 1us then
+                        addr <- addr - 2
+                        let value =
+                            if bit < 8 then x.AddressRegister (byte (7 - bit))
+                            else x.DataRegister (byte (15 - bit))
+                        x.MMU.WriteWord (uint32 addr) (int16 value)
+                let newCpu = {x.WithAddressRegister eareg addr with PC = x.PC+4}
+                printfn "movem.w #$%04x,-(a%u)" mask eareg
+                newCpu
             | 0uy, 1uy, 0b101uy -> //MOVEM.L reglist,(d16,An)
                 let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
                 let mutable addr = x.AddressRegister eareg + int displacement
