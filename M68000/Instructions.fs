@@ -531,6 +531,15 @@ module Instructions =
             Some(size, eamode, eareg)
         else None
 
+    /// 0100 0100 ss mmm rrr : NEG (two's complement negation)
+    let (|NEG|_|) data =
+        if data &&& 0b1111111100000000 = 0b0100010000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(size, eamode, eareg)
+        else None
+
     /// 0100 0110 ss mmm rrr : NOT (one's complement)
     let (|NOT|_|) data =
         if data &&& 0b1111111100000000 = 0b0100011000000000 then
