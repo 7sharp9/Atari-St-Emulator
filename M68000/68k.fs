@@ -148,11 +148,19 @@ type IndexedAddressing =
 type Cpu =
     {D0: int; D1: int; D2: int; D3: int; D4: int; D5: int; D6: int; D7: int
      A0: int; A1: int; A2: int; A3: int; A4: int; A5: int; A6: int; A7: int
-     //Separate from A7: this emulator has no real supervisor/user stack switching (see TRAP's
-     //comment) - A7 is used as the one shared stack pointer throughout. USP only exists to give
-     //MOVE USP,An/MOVE An,USP somewhere to read and write, matching what that specific instruction
-     //does without implying any broader dual-stack model.
+     //A7 always holds whichever physical stack pointer is "live" right now, mirroring real 68000
+     //hardware register banking - USP/SSP are shadow copies of the *other* one, updated only at
+     //the moment a privilege-mode transition (TRAP/exception entry, RTE) swaps which stack A7
+     //refers to. This used to be a single shared A7 with USP existing only so MOVE USP,An/MOVE
+     //An,USP had somewhere to read and write ("this emulator has no real supervisor/user stack
+     //switching") - that simplification broke down once real ROM code (GEMDOS's trap#1 handler)
+     //relied on the hardware swap to bridge from its own supervisor stack back to the caller's:
+     //it does `move usp,An` expecting USP to hold the value A7 had the instant before the trap,
+     //which is only true if trap entry actually performed the swap. See
+     //[[atari-st-emulator-next-instructions]]'s twenty-fifth pass for the live trace that caught
+     //this (cmpi comparing a function-code word against stale/zero data at the "wrong" address).
      USP: int
+     SSP: int
      PC: int
      CCR: int16
      MMU: MMU }
@@ -161,7 +169,7 @@ type Cpu =
         //TODO review MMU creation / ownership
         { D0=0; D1=0; D2=0; D3=0; D4=0; D5=0; D6=0; D7=0
           A0=0; A1=0; A2=0; A3=0; A4=0; A5=0; A6=0; A7=0
-          USP=0
+          USP=0; SSP=0
           PC=0; CCR=0s; MMU=mmu}
           
     member x.C = not (x.CCR &&& 0x1s = 0s)
@@ -174,6 +182,19 @@ type Cpu =
     member x.S = not (x.CCR &&& 0x2000s = 0s)
     member x.T0 = not (x.CCR &&& 0x4000s = 0s)
     member x.T1 = not (x.CCR &&& 0x8000s = 0s)
+
+    ///Applies real 68000 privilege-mode stack switching for any place the full SR gets replaced
+    ///(TRAP/exception entry, RTE, or a direct MOVE-to-SR that changes the S bit) - entering or
+    ///leaving supervisor mode swaps which physical stack A7 refers to, parking the outgoing one
+    ///in USP/SSP so it's there to restore the next time that mode is re-entered. No swap at all
+    ///if the S bit isn't actually changing (staying supervisor across a nested trap, or a
+    ///MOVE-to-SR that only touches other bits) - same as real hardware only re-maps A7 on an
+    ///actual transition. See the record's USP/SSP field comment for the bug this fixes.
+    member x.WithSR (newCcr: int16) : Cpu =
+        let willBeSupervisor = not (newCcr &&& 0x2000s = 0s)
+        if x.S = willBeSupervisor then {x with CCR = newCcr}
+        elif willBeSupervisor then {x with CCR = newCcr; USP = x.A7; A7 = x.SSP}
+        else {x with CCR = newCcr; SSP = x.A7; A7 = x.USP}
     member x.AddressRegister (register: byte) =
         match register with
         | 0uy -> x.A0 | 1uy -> x.A1 | 2uy -> x.A2 | 3uy -> x.A3
@@ -250,8 +271,16 @@ type Cpu =
         //SSP is loaded form $0
         //PC is loaded from $4
         //reset and CCR setup should come from rom (first 8 bytes copied to $0-$8)
+        //Real 68000 RESET forces supervisor mode with interrupts fully masked (S=1, IPL=7, T=0)
+        //as part of loading the initial SSP/PC from vectors 0/1 - CCR previously defaulted to 0
+        //(S=0) here, which never mattered while no code path checked S, but WithSR's introduction
+        //(see its comment) makes S's starting value load-bearing: without this, the ROM's own
+        //first instruction (`move #$2700,sr`, redundantly re-asserting the same state real
+        //hardware already establishes) would misread the reset-loaded SSP as a *user* stack to
+        //park and replace A7 with the still-empty SSP shadow instead of just keeping it.
         { x with A7 = x.MMU.ReadLong 0u
-                 PC = x.MMU.ReadLong 4u }
+                 PC = x.MMU.ReadLong 4u
+                 CCR = 0x2700s }
     
     ///See MMU.FastForwardTbdrTo's comment for the "why". Peeks (without executing or mutating
     ///state) at the instruction the CPU is about to run and, only if it's exactly the "read TBDR
@@ -324,13 +353,16 @@ type Cpu =
             //(dmcoles/estyjs) - see [[atari-st-emulator-next-instructions]]'s nineteenth pass:
             //without this, a misaligned access was silently performed instead of trapping,
             //diverging from what real hardware (and TOS's own error handler) would do.
+            //Entering supervisor mode (see TRAP below for why this swap matters) - if already
+            //supervisor (nested fault), the supervisor stack just keeps being used as-is.
             let vectorAddr = 3u * 4u
-            let pcPushAddr = x.A7 - 4
+            let switched = x.WithSR (x.CCR ||| 0x2000s)
+            let pcPushAddr = switched.A7 - 4
             x.MMU.WriteLong (uint32 pcPushAddr) x.PC
             let srPushAddr = pcPushAddr - 2
             x.MMU.WriteWord (uint32 srPushAddr) x.CCR
             let newPC = x.MMU.ReadLong vectorAddr
-            let newCpu = {x.WithAddressRegister 0b111uy srPushAddr with PC = newPC; CCR = x.CCR ||| 0x2000s}
+            let newCpu = {switched with A7 = srPushAddr; PC = newPC}
             printfn "address error: misaligned access at $%08x -> vector 3 ($%08x)" faultAddress newPC
             newCpu
         | BusError faultAddress ->
@@ -343,12 +375,13 @@ type Cpu =
             //into whatever garbage that produced (e.g. an `rte` to a genuinely unmapped address) as
             //if it were valid code, instead of giving TOS's own bus-error handler a chance to run.
             let vectorAddr = 2u * 4u
-            let pcPushAddr = x.A7 - 4
+            let switched = x.WithSR (x.CCR ||| 0x2000s)
+            let pcPushAddr = switched.A7 - 4
             x.MMU.WriteLong (uint32 pcPushAddr) x.PC
             let srPushAddr = pcPushAddr - 2
             x.MMU.WriteWord (uint32 srPushAddr) x.CCR
             let newPC = x.MMU.ReadLong vectorAddr
-            let newCpu = {x.WithAddressRegister 0b111uy srPushAddr with PC = newPC; CCR = x.CCR ||| 0x2000s}
+            let newCpu = {switched with A7 = srPushAddr; PC = newPC}
             printfn "bus error: unmapped access at $%08x -> vector 2 ($%08x)" faultAddress newPC
             newCpu
 
@@ -362,6 +395,41 @@ type Cpu =
 
         | ORI(size, mode, register) ->
             match size with
+            | 0b00uy -> //byte
+                match mode with
+                | 0b000uy -> //Dn
+                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
+                    let dest = byte (x.DataRegister register)
+                    let result = dest ||| immediate
+                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
+                    printfn "ori.b #$%x,D%u" immediate register
+                    newCpu
+                | _ -> failwithf "ori.b not implemented for mode %x" mode
+            | 0b01uy -> //word
+                match mode with
+                | 0b000uy -> //Dn
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let dest = int16 (x.DataRegister register)
+                    let result = dest ||| immediate
+                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
+                    printfn "ori.w #$%x,D%u" immediate register
+                    newCpu
+                | 0b101uy -> //(d16,An)
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
+                    let addr = x.AddressRegister register + int displacement
+                    let dest = int16 (x.MMU.ReadWord(uint32 addr))
+                    let result = dest ||| immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    x.MMU.WriteWord (uint32 addr) result
+                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
+                    printfn "ori.w #$%x,%i(a%u)" immediate displacement register
+                    newCpu
+                | _ -> failwithf "ori.w not implemented for mode %x" mode
             | 0b10uy -> //long
                 match mode with
                 | 0b111uy when register = 0b001uy -> //(xxx).L
@@ -483,6 +551,14 @@ type Cpu =
                     let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest immediate
                     printfn "cmpi.b #$%x,(a%u) == $%x" immediate register dest
                     {x with PC = x.PC + 4; CCR = ccr}
+                | 0b101uy -> //(d16,An)
+                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
+                    let addr = uint32 (x.AddressRegister register + int displacement)
+                    let dest = x.MMU.ReadByte addr
+                    let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest immediate
+                    printfn "cmpi.b #$%x,%i(a%u) == $%x" immediate displacement register dest
+                    {x with PC = x.PC + 6; CCR = ccr}
                 | _ -> failwithf "cmpi.b mode %u not implemented" mode
             | 0b001uy ->
                 match mode with
@@ -971,6 +1047,15 @@ type Cpu =
                         printfn "movea.w D%u,A%u" sReg dReg
                         newCpu
 
+                    | 0b010uy -> //(An)
+                        let destAddress = x.AddressRegister dReg
+                        x.MMU.WriteWord (uint32 destAddress) sourceContents
+
+                        let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
+                        let newCpu = {x with PC = x.PC + 2; CCR = ccr}
+                        printfn "move.w D%u,(a%u)" sReg dReg
+                        newCpu
+
                     | 0b011uy -> //(AN)+
                         let destAddress = x.AddressRegister dReg
                         x.MMU.WriteWord (uint32 destAddress) sourceContents
@@ -1201,23 +1286,27 @@ type Cpu =
         match instruction with
         | Move2SR(mode, register) ->
             //Hack, not sure about this
+            //Goes through WithSR (not a plain `CCR = newCcr`) because this instruction can change
+            //the S bit directly, without going through TRAP/RTE - real TOS's own boot code does
+            //exactly this as its very first instruction (`move #$2700,sr`), which must swap A7
+            //over to the supervisor stack same as a trap would (see USP/SSP field comment).
             if mode = 0x7 && register = 0b100 then
                 //load data
                 let register = int16 (x.MMU.ReadWord (uint32 (x.PC+2)))
                 printfn "move #%0x, sr" register
-                {x with PC = x.PC + 4; CCR = register }
+                {x.WithSR register with PC = x.PC + 4}
             elif mode = 0x3 then //(An)+
                 let reg = byte register
                 let addr = x.AddressRegister reg
                 let newCcr = int16 (x.MMU.ReadWord(uint32 addr))
-                let newCpu = {x.WithAddressRegister reg (addr + 2) with PC = x.PC + 2; CCR = newCcr}
+                let newCpu = {(x.WithSR newCcr).WithAddressRegister reg (addr + 2) with PC = x.PC + 2}
                 printfn "move (a%u)+,sr" reg
                 newCpu
             elif mode = 0x7 && register = 0b001 then //(xxx).L
                 let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
                 let newCcr = int16 (x.MMU.ReadWord addr)
                 printfn "move $%x.l,sr" addr
-                {x with PC = x.PC + 6; CCR = newCcr}
+                {x.WithSR newCcr with PC = x.PC + 6}
             else
                 failwithf "mode %A, register %A not implemented for move2sr" mode register
         | MoveFromSR(eamode, eareg) ->
@@ -1240,6 +1329,9 @@ type Cpu =
             if x.S then printfn "reset"
                 //Asserted for 124 cycles
             else printfn "TRAP: Not supervisor"
+            {x with PC = x.PC + 2}
+        | NOP ->
+            printfn "nop"
             {x with PC = x.PC + 2}
         | LEA(a_reg, eamode,eareg) ->
             match eamode with
@@ -1603,25 +1695,36 @@ type Cpu =
             newCpu
 
         | RTE ->
-            //Inverse of TRAP's push order: SR at [A7], PC(long) at [A7+2], SP += 6.
+            //Inverse of TRAP's push order: SR at [A7], PC(long) at [A7+2], SP += 6. RTE only ever
+            //executes in supervisor mode, so x.A7 here is always the supervisor stack; the popped
+            //SR's own S-bit decides whether we're staying supervisor (nested trap returning to
+            //another supervisor context - no stack swap, just keep using the now-popped pointer)
+            //or dropping back to user mode (swap A7 over to USP, and park the popped supervisor
+            //pointer in SSP for whenever a later trap re-enters supervisor mode).
             let sr = int16 (x.MMU.ReadWord(uint32 x.A7))
             let pc = x.MMU.ReadLong(uint32 (x.A7+2))
-            let newCpu = {x.WithAddressRegister 0b111uy (x.A7+6) with PC = pc; CCR = sr}
+            let poppedCpu = {x with A7 = x.A7 + 6}
+            let newCpu = {poppedCpu.WithSR sr with PC = pc}
             printfn "rte"
             newCpu
 
         | TRAP(vector) ->
             //Pushes return PC then SR (SR ends up on top, matching RTE's SR@SP/PC@SP+2 layout),
-            //enters supervisor mode, and jumps to the vector table entry at (32+n)*4. This
-            //emulator doesn't model separate USP/SSP - see the type's ActiveStack comment - so the
-            //push just uses the single shared A7, same simplification RTS/JSR/BSR already make.
+            //enters supervisor mode, and jumps to the vector table entry at (32+n)*4. Real
+            //hardware swaps A7 over to the supervisor stack as part of taking the trap - the frame
+            //is pushed onto THAT stack, never the stack that was active a moment ago - so callers
+            //relying on `move usp,An` afterward (as GEMDOS's own trap#1 handler does, to reach the
+            //caller's arguments) see the value A7 actually held right before the trap, not stale
+            //data from some earlier, unrelated supervisor-stack use. If already supervisor (nested
+            //trap), no swap happens - same stack just keeps being used, matching real hardware.
             let vectorAddr = uint32 ((32 + int vector) * 4)
-            let pcPushAddr = x.A7 - 4
+            let switched = x.WithSR (x.CCR ||| 0x2000s)
+            let pcPushAddr = switched.A7 - 4
             x.MMU.WriteLong (uint32 pcPushAddr) (x.PC+2)
             let srPushAddr = pcPushAddr - 2
             x.MMU.WriteWord (uint32 srPushAddr) x.CCR
             let newPC = x.MMU.ReadLong vectorAddr
-            let newCpu = {x.WithAddressRegister 0b111uy srPushAddr with PC = newPC; CCR = x.CCR ||| 0x2000s}
+            let newCpu = {switched with A7 = srPushAddr; PC = newPC}
             printfn "trap #%u" vector
             newCpu
 
@@ -1819,6 +1922,30 @@ type Cpu =
                     printfn "subq.l #%u,D%u" amount eareg
                     newCpu
                 | _ -> failwithf "subq not implemented for size %x on Dn" size
+            | 0b010uy -> //(An)
+                let addr = x.AddressRegister eareg
+                match size with
+                | 0b01uy -> //word
+                    let dest = int16 (x.MMU.ReadWord(uint32 addr))
+                    let result = dest - int16 amount
+                    let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest (int16 amount)
+                    x.MMU.WriteWord (uint32 addr) result
+                    printfn "subq.w #%u,(a%u)" amount eareg
+                    {x with PC = x.PC+2; CCR = ccr}
+                | 0b00uy -> //byte
+                    let dest = x.MMU.ReadByte(uint32 addr)
+                    let result = dest - byte amount
+                    let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest (byte amount)
+                    x.MMU.WriteByte (uint32 addr) result
+                    printfn "subq.b #%u,(a%u)" amount eareg
+                    {x with PC = x.PC+2; CCR = ccr}
+                | _ -> //long
+                    let dest = x.MMU.ReadLong(uint32 addr)
+                    let result = dest - amount
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest amount
+                    x.MMU.WriteLong (uint32 addr) result
+                    printfn "subq.l #%u,(a%u)" amount eareg
+                    {x with PC = x.PC+2; CCR = ccr}
             | 0b101uy -> //(d16,An)
                 match size with
                 | 0b01uy -> //word
@@ -1859,6 +1986,23 @@ type Cpu =
                 x.MMU.WriteByte destEA value
                 printfn "s%s $%x.l" (conditionName cond) destEA
                 {x with PC = x.PC+6}
+            | 0b100uy -> //-(An) - A7 predecrements by 2 (word-aligned stack), others by 1
+                let step = if eareg = 0b111uy then 2 else 1
+                let destEA = x.AddressRegister eareg - step
+                x.MMU.WriteByte (uint32 destEA) value
+                let newCpu = x.WithAddressRegister eareg destEA
+                printfn "s%s -(a%u)" (conditionName cond) eareg
+                {newCpu with PC = x.PC+2}
+            | 0b010uy -> //(An)
+                let destEA = uint32 (x.AddressRegister eareg)
+                x.MMU.WriteByte destEA value
+                printfn "s%s (a%u)" (conditionName cond) eareg
+                {x with PC = x.PC+2}
+            | 0b000uy -> //Dn - only the low byte is affected
+                let newValue = (x.DataRegister eareg &&& ~~~0xff) ||| int value
+                let newCpu = x.WithDataRegister eareg newValue
+                printfn "s%s D%u" (conditionName cond) eareg
+                {newCpu with PC = x.PC+2}
             | _ -> failwithf "Scc eamode %u not implemented" eamode
 
         | DBcc(cond, register) ->
@@ -2322,6 +2466,16 @@ type Cpu =
                     let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
                     printfn "and.w #$%x,D%u" source register
                     newCpu
+                | 0b111uy when eareg = 0b001uy -> //(xxx).W - absolute short, sign-extended to form the address
+                    let addr = uint32 (int32 (int16 (x.MMU.ReadWord(uint32 (x.PC+2)))))
+                    let source = int16 (x.MMU.ReadWord addr)
+                    let dest = int16 (x.DataRegister register)
+                    let result = source &&& dest
+                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
+                    printfn "and.w $%x.w,D%u" addr register
+                    newCpu
                 | _ -> failwithf "and.w(ea->dn) not implemented for eamode %x" eamode
             | 0b100uy -> //AND.B Dn,ea -> ea
                 match eamode with
@@ -2568,6 +2722,31 @@ type Cpu =
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
                 printfn "lsl.%s #%u,D%u" sizeChar amount register
                 newCpu
+            | 1uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b00uy -> //ASL.B/W/L Dn,Dn - shift count taken from a register, mod 64
+                let amount = (x.DataRegister countOrReg) &&& 0x3F
+                let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
+                let signBit = match size with 0b00uy -> 0x80 | 0b01uy -> 0x8000 | _ -> 1 <<< 31
+                let mutable v = x.DataRegister register &&& bitMask
+                let mutable carryOut = false
+                let mutable overflow = false
+                for _ in 1 .. amount do
+                    let beforeSign = v &&& signBit <> 0
+                    carryOut <- beforeSign
+                    v <- (v <<< 1) &&& bitMask
+                    if (v &&& signBit <> 0) <> beforeSign then overflow <- true
+                let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
+                let mutable ccr = x.CCR
+                ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
+                if v &&& signBit <> 0 then ccr <- ccr ||| 0x8s //N
+                if v = 0 then ccr <- ccr ||| 0x4s //Z
+                if overflow then ccr <- ccr ||| 0x2s //V
+                if amount > 0 then
+                    if carryOut then ccr <- ccr ||| 0x1s ||| 0x10s //C and X
+                    else ccr <- ccr &&& ~~~0x10s //X follows C
+                let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
+                let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
+                printfn "asl.%s D%u,D%u" sizeChar countOrReg register
+                newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b00uy -> //ASR.B/W/L Dn,Dn - shift count taken from a register, mod 64
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
                 let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
@@ -2651,8 +2830,10 @@ D0:%08x D1:%08x D2:%08x D3:%08x
 D4:%08x D5:%08x D6:%08x D7:%08x
 A0:%08x A1:%08x A2:%08x A3:%08x
 A4:%08x A5:%08x A6:%08x A7:%08x
+USP:%08x SSP:%08x
      TTSM IPM   XNZVC
 CCR: %s
 PC: %08x""" x.D0 x.D1 x.D2 x.D3 x.D4 x.D5 x.D6 x.D7
             x.A0 x.A1 x.A2 x.A3 x.A4 x.A5 x.A6 x.A7
+            x.USP x.SSP
             x.CCR.toBits (*x.TraceMode x.ActiveStack*) x.PC

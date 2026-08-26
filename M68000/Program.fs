@@ -16,18 +16,18 @@ open Instructions
 ///of int compares, not an allocation. Exists solely for the loop detector below.
 [<Struct>]
 type MachineState =
-    { PC: int; CCR: int16; USP: int
+    { PC: int; CCR: int16; USP: int; SSP: int
       D0: int; D1: int; D2: int; D3: int; D4: int; D5: int; D6: int; D7: int
       A0: int; A1: int; A2: int; A3: int; A4: int; A5: int; A6: int; A7: int }
     static member Of (c: Cpu) =
-        { PC = c.PC; CCR = c.CCR; USP = c.USP
+        { PC = c.PC; CCR = c.CCR; USP = c.USP; SSP = c.SSP
           D0 = c.D0; D1 = c.D1; D2 = c.D2; D3 = c.D3; D4 = c.D4; D5 = c.D5; D6 = c.D6; D7 = c.D7
           A0 = c.A0; A1 = c.A1; A2 = c.A2; A3 = c.A3; A4 = c.A4; A5 = c.A5; A6 = c.A6; A7 = c.A7 }
     ///Explicit, PC-first comparison rather than relying on F#'s generated structural equality -
     ///short-circuits on the field most likely to differ, and this stays on the fast/unboxed path
     ///for certain regardless of how the compiler happens to implement `=` for the record.
     member a.SameAs (b: MachineState) =
-        a.PC = b.PC && a.A7 = b.A7 && a.CCR = b.CCR && a.USP = b.USP
+        a.PC = b.PC && a.A7 = b.A7 && a.CCR = b.CCR && a.USP = b.USP && a.SSP = b.SSP
         && a.D0 = b.D0 && a.D1 = b.D1 && a.D2 = b.D2 && a.D3 = b.D3
         && a.D4 = b.D4 && a.D5 = b.D5 && a.D6 = b.D6 && a.D7 = b.D7
         && a.A0 = b.A0 && a.A1 = b.A1 && a.A2 = b.A2 && a.A3 = b.A3
@@ -154,10 +154,10 @@ type AtartSt(romPath: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(4uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those
+        w.Write(5uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
-                    cpu.USP; cpu.PC |] do w.Write(v: int)
+                    cpu.USP; cpu.SSP; cpu.PC |] do w.Write(v: int)
         w.Write(cpu.CCR)
         let snap = mmu.SnapshotRam()
         let writeArr (a: byte[]) =
@@ -192,13 +192,18 @@ type AtartSt(romPath: string) =
         let magic = String(r.ReadChars(4))
         if magic <> "A68S" then failwithf "Not a valid state file (bad magic): %s" path
         let version = r.ReadByte()
-        let regs = [| for _ in 1..18 -> r.ReadInt32() |]
+        //v1-v4 snapshots predate SSP (the supervisor-stack shadow WithSR introduced) - one fewer
+        //int in the register block, and PC shifts down by one slot to match.
+        let regCount = if version >= 5uy then 19 else 18
+        let regs = [| for _ in 1..regCount -> r.ReadInt32() |]
         let ccr = r.ReadInt16()
         cpu <-
             { cpu with
                 D0=regs.[0]; D1=regs.[1]; D2=regs.[2]; D3=regs.[3]; D4=regs.[4]; D5=regs.[5]; D6=regs.[6]; D7=regs.[7]
                 A0=regs.[8]; A1=regs.[9]; A2=regs.[10]; A3=regs.[11]; A4=regs.[12]; A5=regs.[13]; A6=regs.[14]; A7=regs.[15]
-                USP=regs.[16]; PC=regs.[17]; CCR=ccr }
+                USP=regs.[16]
+                SSP=(if version >= 5uy then regs.[17] else 0)
+                PC=regs.[regCount-1]; CCR=ccr }
         let readArr() =
             let len = r.ReadInt32()
             r.ReadBytes(len)

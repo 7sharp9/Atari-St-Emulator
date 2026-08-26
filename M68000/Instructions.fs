@@ -90,6 +90,10 @@ module Instructions =
         if data = 0b0100111001110000 then Some()
         else None
 
+    let (|NOP|_|) data =
+        if data = 0b0100111001110001 then Some()
+        else None
+
     let (|RTS|_|) data =
         if data = 0b0100111001110101 then Some()
         else None
