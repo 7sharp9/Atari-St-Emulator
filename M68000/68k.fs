@@ -2771,6 +2771,15 @@ type Cpu =
                     let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                     printfn "or.w D%u,D%u" eareg register
                     newCpu
+                | 0b111uy when eareg = 0b100uy -> //#imm
+                    let source = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let dest = int16 (x.DataRegister register)
+                    let result = source ||| dest
+                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
+                    printfn "or.w #$%x,D%u" source register
+                    newCpu
                 | _ -> failwithf "or.w(ea->dn) not implemented for eamode %x" eamode
             | 0b100uy -> //OR.B Dn,ea -> ea
                 match eamode with
