@@ -2042,6 +2042,13 @@ type Cpu =
                 let newCpu = {x.WithAddressRegister eareg (addr+4) with PC = x.PC+2; CCR = ccr}
                 printfn "tst.l (a%u)+" eareg
                 newCpu
+            | 0b011uy, 0b01uy -> //(An)+, word
+                let addr = x.AddressRegister eareg
+                let value = int16 (x.MMU.ReadWord(uint32 addr))
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR value
+                let newCpu = {x.WithAddressRegister eareg (addr+2) with PC = x.PC+2; CCR = ccr}
+                printfn "tst.w (a%u)+" eareg
+                newCpu
             | 0b101uy, 0b01uy -> //(d16,An), word
                 let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
                 let addr = x.AddressRegister eareg + int displacement
@@ -3133,6 +3140,16 @@ type Cpu =
                     printfn "cmpa.l %i(a%u),A%u" displacement eareg register
                     {x with PC = x.PC+4; CCR = ccr}
                 | _ -> failwithf "cmpa.l eamode %u not implemented" eamode
+            | 0b011uy -> //CMPA.W <ea>,An - source is word-sized, sign-extended to long before the compare
+                match eamode with
+                | 0b111uy when eareg = 0b001uy -> //(xxx).L
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                    let dest = x.AddressRegister register
+                    let source = int (int16 (x.MMU.ReadWord addr))
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
+                    printfn "cmpa.w $%x.l,A%u" addr register
+                    {x with PC = x.PC+6; CCR = ccr}
+                | _ -> failwithf "cmpa.w eamode %u not implemented" eamode
             | 0b101uy -> //EOR.W Dn,<ea>-><ea> - except eamode=001 (the "An-direct" EA slot, illegal
                          //as a real EOR destination), which real hardware repurposes for
                          //CMPM.W (An)+,(An)+ instead - NOT eamode=011 (plain (An)+, which stays a
@@ -3581,6 +3598,14 @@ type Cpu =
                     let result = dest + source
                     let newCpu = {x.WithAddressRegister address result with PC = x.PC+4}
                     printfn "adda.w %i(pc,%s%u.%s),A%u" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") address
+                    newCpu
+                | 0b111uy when eareg = 0b001uy -> //(xxx).L
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                    let dest = x.AddressRegister address
+                    let source = int (int16 (x.MMU.ReadWord addr))
+                    let result = dest + source
+                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+6}
+                    printfn "adda.w $%x.l,A%u" addr address
                     newCpu
                 | _ -> failwithf "adda.w not implemented for eamode %x" eamode
             | 0b111uy -> //ADDA.L
