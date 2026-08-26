@@ -4035,6 +4035,27 @@ type Cpu =
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
                 printfn "lsr.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
+            | 1uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b01uy -> //LSL.B/W/L Dn,Dn - shift count taken from a register, mod 64
+                let amount = (x.DataRegister countOrReg) &&& 0x3F
+                let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
+                let signBit = match size with 0b00uy -> 0x80 | 0b01uy -> 0x8000 | _ -> 1 <<< 31
+                let mutable v = x.DataRegister register &&& bitMask
+                let mutable carryOut = false
+                for _ in 1 .. amount do
+                    carryOut <- v &&& signBit <> 0
+                    v <- (v <<< 1) &&& bitMask
+                let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
+                let mutable ccr = x.CCR
+                ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
+                if v &&& signBit <> 0 then ccr <- ccr ||| 0x8s //N
+                if v = 0 then ccr <- ccr ||| 0x4s //Z
+                if amount > 0 then
+                    if carryOut then ccr <- ccr ||| 0x1s ||| 0x10s //C and X
+                    else ccr <- ccr &&& ~~~0x10s //X follows C
+                let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
+                let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
+                printfn "lsl.%s D%u,D%u" sizeChar countOrReg register
+                newCpu
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b10uy -> //ROXL.B/W/L #imm,Dn - rotates through the X flag
                 let amount = if countOrReg = 0uy then 8 else int countOrReg
                 let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
