@@ -68,6 +68,15 @@ module Instructions =
             Some(mode,reg)
         else None
     
+    /// 0100 0100 11 mmm rrr : MOVE <ea>,CCR (unprivileged, unlike MOVE <ea>,SR - only the low
+    /// byte of the source word replaces the condition codes, S/T/interrupt-mask are untouched)
+    let (|Move2CCR|_|) data =
+        if data &&& 0b1111111111000000 = 0b0100010011000000 then
+            let mode = byte (data >>> 3) &&& 0b111uy
+            let register = byte data &&& 0b111uy
+            Some(mode, register)
+        else None
+
     /// 0100 0000 11 mmm rrr : MOVE SR,<ea>
     let (|MoveFromSR|_|) data =
         if data &&& 0b1111111111000000 = 0b0100000011000000 then
@@ -79,6 +88,11 @@ module Instructions =
     /// 0000 0000 0111 1100 : ORI #<data>,SR
     let (|OriToSR|_|) data =
         if data = 0b0000000001111100 then Some()
+        else None
+
+    /// 0000 0010 0111 1100 : ANDI #<data>,SR
+    let (|AndiToSR|_|) data =
+        if data = 0b0000001001111100 then Some()
         else None
 
     /// 0000 1010 0011 1100 : EORI #<data>,CCR
@@ -282,6 +296,15 @@ module Instructions =
     let (|DIVU|_|) data =
         //1000 reg 011 EAm EAr : DIVU.W <ea>,Dn
         if data &&& 0b1111000111000000 = 0b1000000011000000 then
+            let register = byte (data >>> 9) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(register, eamode, eareg)
+        else None
+
+    let (|DIVS|_|) data =
+        //1000 reg 111 EAm EAr : DIVS.W <ea>,Dn
+        if data &&& 0b1111000111000000 = 0b1000000111000000 then
             let register = byte (data >>> 9) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
