@@ -1249,6 +1249,36 @@ type Cpu =
                             newCpu
                         | _ -> failwith "Not implemented"
                     | _ -> failwith "Not implemented"
+                | 0b001uy -> //An - a legal MOVE source (unlike MOVEA, which cares about the dest
+                             //side only; reading an address register's low word is ordinary here)
+                    let sourceContents = int16 (x.AddressRegister sReg)
+
+                    match dMode with
+                    | 0b000uy -> //Dn
+                        let currentValue = x.DataRegister dReg
+                        let newValue = (currentValue &&& ~~~0xffff) ||| (int sourceContents &&& 0xffff)
+                        let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
+                        let newCpu = {x.WithDataRegister dReg newValue with PC = x.PC+2; CCR = ccr}
+                        printfn "move.w A%u,D%u" sReg dReg
+                        newCpu
+
+                    | 0b010uy -> //(An)
+                        let destEA = uint32 (x.AddressRegister dReg)
+                        x.MMU.WriteWord destEA sourceContents
+                        let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
+                        let newCpu = {x with PC = x.PC+2; CCR = ccr}
+                        printfn "move.w A%u,(a%u)" sReg dReg
+                        newCpu
+
+                    | 0b111uy when dReg = 0b001uy -> //(xxx).L
+                        let destEA = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                        x.MMU.WriteWord destEA sourceContents
+                        let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
+                        let newCpu = {x with PC = x.PC+6; CCR = ccr}
+                        printfn "move.w A%u,$%x.l" sReg destEA
+                        newCpu
+
+                    | _ -> failwith "Not implemented"
                 | 0b011uy -> //(AN)+
                     let sourceAddress = x.AddressRegister sReg
                     let sourceContents = int16 (x.MMU.ReadWord (uint32 sourceAddress))
@@ -2694,6 +2724,15 @@ type Cpu =
                     let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
                     printfn "or.w %i(a%u),D%u" displacement eareg register
                     newCpu
+                | 0b000uy -> //Dn
+                    let source = int16 (x.DataRegister eareg)
+                    let dest = int16 (x.DataRegister register)
+                    let result = source ||| dest
+                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
+                    printfn "or.w D%u,D%u" eareg register
+                    newCpu
                 | _ -> failwithf "or.w(ea->dn) not implemented for eamode %x" eamode
             | 0b100uy -> //OR.B Dn,ea -> ea
                 match eamode with
@@ -2862,6 +2901,17 @@ type Cpu =
                     x.MMU.WriteWord addr result
                     let newCpu = {x with PC = x.PC+2; CCR = ccr}
                     printfn "sub.w D%u,(a%u)" address eareg
+                    newCpu
+                | 0b101uy -> //(d16,An)
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.AddressRegister eareg + int displacement)
+                    let source = int16 (x.DataRegister address)
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = dest - source
+                    let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest source
+                    x.MMU.WriteWord addr result
+                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                    printfn "sub.w D%u,%i(a%u)" address displacement eareg
                     newCpu
                 | _ -> failwithf "sub.w(dn->ea) not implemented for eamode %x" eamode
             | 0b011uy -> //SUBA.W (source sign-extended to 32 bits before subtracting)
@@ -3184,6 +3234,16 @@ type Cpu =
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
                 let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
                 printfn "mulu.w $%x.l,D%u" addr register
+                newCpu
+            | 0b101uy -> //(d16,An)
+                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                let addr = x.AddressRegister eareg + int displacement
+                let source = uint32 (uint16 (x.MMU.ReadWord(uint32 addr)))
+                let dest = uint32 (uint16 (x.DataRegister register))
+                let result = int (source * dest)
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                let newCpu = {x.WithDataRegister register result with PC = x.PC+4; CCR = ccr}
+                printfn "mulu.w %i(a%u),D%u" displacement eareg register
                 newCpu
             | _ -> failwithf "mulu.w not implemented for eamode %x" eamode
 
