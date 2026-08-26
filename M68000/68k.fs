@@ -656,6 +656,28 @@ type Cpu =
                     printfn "addi.b #$%x,D%u" immediate register
                     newCpu
                 | _ -> failwithf "addi.b not implemented for mode %x" mode
+            | 0b01uy -> //word
+                match mode with
+                | 0b000uy -> //Dn
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let dest = int16 (x.DataRegister register)
+                    let result = dest + immediate
+                    let ccr = CCR.Add_IgnoringX_Word x.CCR dest immediate
+                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
+                    printfn "addi.w #$%x,D%u" immediate register
+                    newCpu
+                | 0b010uy -> //(An)
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.AddressRegister register)
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = dest + immediate
+                    let ccr = CCR.Add_IgnoringX_Word x.CCR dest immediate
+                    x.MMU.WriteWord addr result
+                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                    printfn "addi.w #$%x,(a%u)" immediate register
+                    newCpu
+                | _ -> failwithf "addi.w not implemented for mode %x" mode
             | 0b10uy -> //long
                 match mode with
                 | 0b000uy -> //Dn
