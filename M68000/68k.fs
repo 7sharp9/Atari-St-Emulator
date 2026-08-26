@@ -1755,6 +1755,34 @@ type Cpu =
                 | _ -> failwithf "unknown Register %x for mode %x" eareg eamode
             | _ -> failwithf "lea: unknown mode %x" eamode
 
+        | NOT(size, eamode, eareg) ->
+            //One's complement. CCR: N/Z from result, V/C cleared, X unaffected - same helper
+            //shape as CLR uses, just complementing instead of zeroing.
+            match eamode, size with
+            | 0b000uy, 0b10uy -> //Dn, long
+                let result = ~~~(x.DataRegister eareg)
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                let newCpu = {x.WithDataRegister eareg result with PC = x.PC+2; CCR = ccr}
+                printfn "not.l D%u" eareg
+                newCpu
+            | 0b000uy, 0b01uy -> //Dn, word
+                let currentValue = x.DataRegister eareg
+                let result = ~~~(int16 currentValue)
+                let newValue = (currentValue &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
+                printfn "not.w D%u" eareg
+                newCpu
+            | 0b000uy, 0b00uy -> //Dn, byte
+                let currentValue = x.DataRegister eareg
+                let result = ~~~(byte currentValue)
+                let newValue = (currentValue &&& ~~~0xff) ||| int result
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
+                let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
+                printfn "not.b D%u" eareg
+                newCpu
+            | _ -> failwithf "not: not implemented for mode %x size %x" eamode size
+
         | CLR(size, eamode, eareg) ->
             match eamode, size with
             | 0b011uy, 0b10uy -> //(An)+, long
@@ -3133,6 +3161,33 @@ type Cpu =
 
     member x.DecodeBucketD (instruction: int) : Cpu =
         match instruction with
+        | ADDX(registerX, size, usePredecrement, registerY) ->
+            //Extend-aware add, used for multi-precision arithmetic: adds the X flag into the sum,
+            //and - the real 68000 quirk that distinguishes ADDX from plain ADD - Z is only ever
+            //CLEARED on a nonzero result, never SET on a zero one, so a chain of ADDX calls across
+            //a multi-word value can tell whether the WHOLE value came out zero, not just this word.
+            if usePredecrement then failwith "ADDX -(An),-(An) (memory form) not implemented"
+            let extend = if x.X then 1 else 0
+            match size with
+            | 0b01uy -> //word
+                let dest = int16 (x.DataRegister registerX)
+                let source = int16 (x.DataRegister registerY)
+                let wide = int dest + int source + extend
+                let result = int16 wide
+                let newValue = (x.DataRegister registerX &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                let carryOut = (uint32 (uint16 dest) + uint32 (uint16 source) + uint32 extend) > 0xffffu
+                let overflow = ((dest >= 0s) = (source >= 0s)) && ((result >= 0s) <> (dest >= 0s))
+                let mutable ccr = x.CCR
+                ccr <- ccr &&& ~~~0x8s &&& ~~~0x2s &&& ~~~0x1s &&& ~~~0x10s
+                if result < 0s then ccr <- ccr ||| 0x8s //N
+                if result <> 0s then ccr <- ccr &&& ~~~0x4s //Z: clear on nonzero, leave alone otherwise
+                if overflow then ccr <- ccr ||| 0x2s //V
+                if carryOut then ccr <- ccr ||| 0x1s ||| 0x10s //C and X
+                let newCpu = {x.WithDataRegister registerX newValue with PC = x.PC+2; CCR = ccr}
+                printfn "addx.w D%u,D%u" registerY registerX
+                newCpu
+            | _ -> failwithf "addx not implemented for size %x" size
+
         | ADD(address, opmode, eamode, eareg) ->
             match opmode with
             | 0b000uy -> //ADD.B ea+Dn->Dn
@@ -3507,6 +3562,46 @@ type Cpu =
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
                 printfn "lsr.%s D%u,D%u" sizeChar countOrReg register
+                newCpu
+            | 1uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b10uy -> //ROXL.B/W/L #imm,Dn - rotates through the X flag
+                let amount = if countOrReg = 0uy then 8 else int countOrReg
+                let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
+                let signBit = match size with 0b00uy -> 0x80 | 0b01uy -> 0x8000 | _ -> 1 <<< 31
+                let mutable v = x.DataRegister register &&& bitMask
+                let mutable xFlag = x.X
+                for _ in 1 .. amount do
+                    let newX = v &&& signBit <> 0
+                    v <- ((v <<< 1) ||| (if xFlag then 1 else 0)) &&& bitMask
+                    xFlag <- newX
+                let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
+                let mutable ccr = x.CCR
+                ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s &&& ~~~0x10s
+                if v &&& signBit <> 0 then ccr <- ccr ||| 0x8s //N
+                if v = 0 then ccr <- ccr ||| 0x4s //Z
+                if xFlag then ccr <- ccr ||| 0x1s ||| 0x10s //C mirrors the resulting X, even at amount=0 - a real ROXd quirk
+                let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
+                let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
+                printfn "roxl.%s #%u,D%u" sizeChar amount register
+                newCpu
+            | 1uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b11uy -> //ROL.B/W/L Dn,Dn - rotate count from register, mod 64. Plain rotate: X unaffected, C mirrors the bit rotated out.
+                let amount = (x.DataRegister countOrReg) &&& 0x3F
+                let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
+                let signBit = match size with 0b00uy -> 0x80 | 0b01uy -> 0x8000 | _ -> 1 <<< 31
+                let mutable v = x.DataRegister register &&& bitMask
+                let mutable carryOut = false
+                for _ in 1 .. amount do
+                    let topBit = v &&& signBit <> 0
+                    carryOut <- topBit
+                    v <- ((v <<< 1) ||| (if topBit then 1 else 0)) &&& bitMask
+                let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
+                let mutable ccr = x.CCR
+                ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
+                if v &&& signBit <> 0 then ccr <- ccr ||| 0x8s //N
+                if v = 0 then ccr <- ccr ||| 0x4s //Z
+                if amount > 0 && carryOut then ccr <- ccr ||| 0x1s //C only - X is unaffected by plain rotate
+                let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
+                let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
+                printfn "rol.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | _ -> failwithf "shift/rotate not implemented for direction %x size %x useRegCount %x type %x" direction size useRegisterCount shiftType
 

@@ -369,6 +369,24 @@ module Instructions =
             Some(register, eamode, eareg)
         else None
 
+    /// 1101 xxx 1 ss 00 0 yyy : ADDX.size Dy,Dx (register-direct form)
+    /// 1101 xxx 1 ss 00 1 yyy : ADDX.size -(Ay),-(Ax) (memory, predecrement form)
+    /// Opcode-space alias: opmode 100/101/110 (byte/word/long, Dn->ea direction) combined with
+    /// eamode 000/001 is reserved for ADDX, not plain ADD - must be tried before the generic ADD
+    /// pattern below, same reasoning as EXG vs AND - see [[68k-opcode-space-aliasing]].
+    let (|ADDX|_|) data =
+        if data &&& 0b1111000100110000 = 0b1101000100000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            //size=11 in this bit shape is opmode 111 (ADDA.L Dn,An / An,An), not ADDX - real
+            //hardware has no long-invalid ADDX size, so this combination must fall through to ADD.
+            if size <> 0b11uy then
+                let registerX = byte (data >>> 9) &&& 0b111uy
+                let usePredecrement = data &&& 0b0000000000001000 <> 0
+                let registerY = byte data &&& 0b111uy
+                Some(registerX, size, usePredecrement, registerY)
+            else None
+        else None
+
     let (|ADD|_|) data =
         //1101 reg opm EAm EAr : ADD/ADDA/ADDX
         //----reg
@@ -507,6 +525,15 @@ module Instructions =
     /// 0100 0010 ss mmm rrr : CLR
     let (|CLR|_|) data =
         if data &&& 0b1111111100000000 = 0b0100001000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(size, eamode, eareg)
+        else None
+
+    /// 0100 0110 ss mmm rrr : NOT (one's complement)
+    let (|NOT|_|) data =
+        if data &&& 0b1111111100000000 = 0b0100011000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
