@@ -2389,6 +2389,12 @@ type Cpu =
                 let newCpu = {x with PC = jump}
                 printfn "jmp $%x.l" jump
                 newCpu
+            | 0b101uy -> //(d16,An)
+                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                let jump = x.AddressRegister eareg + int displacement
+                let newCpu = {x with PC = jump}
+                printfn "jmp %i(a%u)" displacement eareg
+                newCpu
             | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
