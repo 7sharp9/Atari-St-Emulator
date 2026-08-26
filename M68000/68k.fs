@@ -211,6 +211,27 @@ type Cpu =
         let newPC = x.MMU.ReadLong vectorAddr
         {switched with A7 = srPushAddr; PC = newPC}
 
+    ///Real 68000 autovectored interrupt entry (levels 1-7, vector = 24+level - e.g. VBL is level 4
+    ///= vector 28, the MFP is level 6 = vector 30, matching Hatari's own exception trace for this
+    ///same ROM - see [[atari-st-emulator-next-instructions]]'s twenty-eighth pass). Unlike
+    ///EnterVector's software traps (TRAP/Line-A/Line-F), a real interrupt exception ALSO raises the
+    ///CCR's own interrupt-priority mask to `level` (masking further same-or-lower-priority
+    ///interrupts until software explicitly lowers it again) and clears the trace bit - both are
+    ///real hardware side effects of interrupt entry specifically, not shared with software traps.
+    ///The pushed SR is the CALLER's original `x.CCR` (matching EnterVector) - only the *resulting*
+    ///CPU state carries the raised mask/cleared trace bit, exactly like real hardware pushes the
+    ///pre-exception SR and only then updates the live one. Returns the PC unchanged as the return
+    ///address (an interrupt doesn't complete or skip whatever instruction was about to run).
+    member x.EnterInterrupt (level: int) (vectorNumber: int) : Cpu =
+        let raisedCcr = (x.CCR &&& ~~~0x8700s) ||| 0x2000s ||| int16 (level <<< 8)
+        let switched = x.WithSR raisedCcr
+        let pcPushAddr = switched.A7 - 4
+        x.MMU.WriteLong (uint32 pcPushAddr) x.PC
+        let srPushAddr = pcPushAddr - 2
+        x.MMU.WriteWord (uint32 srPushAddr) x.CCR
+        let newPC = x.MMU.ReadLong (uint32 (vectorNumber * 4))
+        {switched with A7 = srPushAddr; PC = newPC}
+
     member x.AddressRegister (register: byte) =
         match register with
         | 0uy -> x.A0 | 1uy -> x.A1 | 2uy -> x.A2 | 3uy -> x.A3
@@ -337,6 +358,17 @@ type Cpu =
 
     member x.Step() =
     //TODO implement prefetch ops
+        let pendingLevel = x.MMU.PendingInterruptLevel
+        if pendingLevel > 0 && int16 (pendingLevel <<< 8) > x.InterruptMask then
+            //Real 68000 hardware samples IPL2-0 between instructions and takes any request whose
+            //level exceeds the current mask (or is level 7, always taken - not modeled separately
+            //since no level-7 source exists yet) - see EnterInterrupt's own comment for why this
+            //needs different handling than TRAP/Line-A/Line-F's shared EnterVector path.
+            let vector = x.MMU.PendingInterruptVector
+            x.MMU.AcknowledgeInterrupt()
+            printfn "interrupt: level %d -> vector %d" pendingLevel vector
+            x.EnterInterrupt pendingLevel vector
+        else
         try
             let instruction = x.MMU.ReadWord (uint32 x.PC)
             match x.TryFastForwardTbdrPoll(instruction) with
@@ -2014,6 +2046,30 @@ type Cpu =
                     printfn "subq.l #%u,%i(a%u)" amount displacement eareg
                     newCpu
                 | _ -> failwithf "subq not implemented for size %x on (d16,An)" size
+            | 0b111uy when eareg = 0b001uy -> //(xxx).L
+                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                match size with
+                | 0b01uy -> //word
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = dest - int16 amount
+                    let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest (int16 amount)
+                    x.MMU.WriteWord addr result
+                    printfn "subq.w #%u,$%x.l" amount addr
+                    {x with PC = x.PC+6; CCR = ccr}
+                | 0b00uy -> //byte
+                    let dest = x.MMU.ReadByte addr
+                    let result = dest - byte amount
+                    let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest (byte amount)
+                    x.MMU.WriteByte addr result
+                    printfn "subq.b #%u,$%x.l" amount addr
+                    {x with PC = x.PC+6; CCR = ccr}
+                | _ -> //long
+                    let dest = x.MMU.ReadLong addr
+                    let result = dest - amount
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest amount
+                    x.MMU.WriteLong addr result
+                    printfn "subq.l #%u,$%x.l" amount addr
+                    {x with PC = x.PC+6; CCR = ccr}
             | _ -> failwithf "subq not implemented for eamode %x" eamode
 
         | Scc(cond, eamode, eareg) ->
@@ -2190,6 +2246,20 @@ type Cpu =
                     printfn "or.b D%u,(a%u)" register eareg
                     newCpu
                 | _ -> failwithf "or.b not implemented for eamode %x" eamode
+            | 0b101uy -> //OR.W Dn,ea -> ea
+                match eamode with
+                | 0b101uy -> //(d16,An)
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.AddressRegister eareg + int displacement)
+                    let source = int16 (x.DataRegister register)
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = source ||| dest
+                    x.MMU.WriteWord addr result
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                    printfn "or.w D%u,%i(a%u)" register displacement eareg
+                    newCpu
+                | _ -> failwithf "or.w(dn->ea) not implemented for eamode %x" eamode
             | _ -> failwithf "or: not implemented for opmode %x" opmode
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x

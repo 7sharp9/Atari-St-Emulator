@@ -70,6 +70,17 @@ type AtartSt(romPath: string) =
     let mutable loopPower = 1
     let mutable loopLambda = 0
 
+    ///Periodic VBL (autovector level 4, vector 28) trigger - see MMU's `pendingInterruptLevel`
+    ///comment for what this is for and, importantly, what it turned out NOT to fix (the IPL=7 lock
+    ///that originally motivated it - level 4 can't preempt level 7, confirmed by testing, not just
+    ///reasoned about). Kept because it's real, correct, necessary infrastructure regardless - any
+    ///future keyboard/IKBD work needs working interrupt delivery to reach TOS's own ISRs at all.
+    ///This project has no cycle-accurate timing to derive a true 50Hz-at-8MHz period from (every
+    ///instruction costs a different number of real cycles, and none of that is counted anywhere),
+    ///so `vblPeriod` is a deliberate approximation, not a real-timing claim.
+    let vblPeriod = 2000UL
+    let mutable stepCount = 0UL
+
     ///Resets the loop detector's epoch. Must be called after anything that changes CPU/MMU state
     ///without going through Step() - currently Reset() and Preview's post-rollback restore -
     ///otherwise the saved anchor describes a state from before/outside the real run, and a
@@ -79,11 +90,15 @@ type AtartSt(romPath: string) =
 
     member x.Reset() =
         cpu <- cpu.Reset()
+        stepCount <- 0UL
         resetLoopDetector()
     member x.Rom =
         rom
 
     member x.Step() =
+        stepCount <- stepCount + 1UL
+        if stepCount % vblPeriod = 0UL then
+            mmu.RaiseInterrupt 4 28
         let state = MachineState.Of cpu
         let currentMutations = mmu.Mutations
         if currentMutations <> loopAnchorMutations then

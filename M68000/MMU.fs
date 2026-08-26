@@ -103,6 +103,29 @@ type MMU(rom: byte array) =
     ///style questions (see [[atari-st-emulator-next-instructions]]'s seventeenth-pass finding) -
     ///promoted to a permanent, always-available tool instead of re-adding and reverting the same
     ///throwaway edit next time the same kind of question comes up.
+    ///Pending-interrupt line, modeling the CPU's IPL2-0 input pins: 0 = no interrupt asserted.
+    ///Raised by a peripheral-timing source (currently just the VBL trigger in Program.fs's step
+    ///loop - see [[atari-st-emulator-next-instructions]]'s twenty-eighth pass). Real, necessary
+    ///infrastructure on its own merits (any future keyboard/IKBD work needs real interrupt
+    ///delivery to reach TOS's own ISRs at all) - but NOT, on its own, the fix for the IPL=7 lock
+    ///that motivated adding it: level 4 (VBL) and level 6 (MFP) requests are mechanically incapable
+    ///of preempting an IPL=7 mask (only a genuine level-7/NMI request could, and none exists on
+    ///this hardware), confirmed directly by instrumenting this exact mechanism - interrupts fire
+    ///and get taken correctly right up until the mask locks to 7, then sit pending forever exactly
+    ///as real 68000 semantics require. The real recovery mechanism, found via a Hatari instruction
+    ///trace of the same ROM, is an ordinary (non-exception) instruction TOS itself executes shortly
+    ///after the point where this project's own emulation currently diverges - see the twenty-eighth
+    ///pass's final entry for the precise divergence point and next step. `Cpu.Step()` checks this
+    ///each step against the live interrupt mask and, if unmasked, consumes it via
+    ///AcknowledgeInterrupt and enters it as a real autovectored exception (`Cpu.EnterInterrupt`).
+    ///Real hardware would let a higher-priority request preempt a lower still-pending one and hold multiple sources
+    ///independently (per-source pending bits with priority arbitration) - this collapses to "the
+    ///single highest level asserted right now, whatever raised it last," a deliberate
+    ///simplification since only one source (VBL) exists yet; revisit if/when the MFP's own
+    ///independent interrupt sources (timers, ACIA) are added.
+    let mutable pendingInterruptLevel = 0
+    let mutable pendingInterruptVector = 0
+
     let mutable watchRange : (uint32 * uint32) option = None
     let checkWatch (address: uint32) (label: string) (value: uint32) =
         match watchRange with
@@ -513,6 +536,24 @@ type MMU(rom: byte array) =
     ///REPL `watch <hexaddr> [len]` - see `checkWatch` above. `hi` is inclusive.
     member x.SetWatch (lo: uint32) (hi: uint32) = watchRange <- Some(lo, hi)
     member x.ClearWatch() = watchRange <- None
+
+    ///See `pendingInterruptLevel`'s own comment above. Only replaces the pending request if the
+    ///new one is strictly higher priority - matches real hardware's arbitration (a lower-priority
+    ///request never displaces one still waiting to be serviced) even though this simplified model
+    ///only tracks one source today.
+    member x.RaiseInterrupt (level: int) (vector: int) =
+        if level > pendingInterruptLevel then
+            pendingInterruptLevel <- level
+            pendingInterruptVector <- vector
+            mutations <- mutations + 1UL
+    member x.PendingInterruptLevel = pendingInterruptLevel
+    member x.PendingInterruptVector = pendingInterruptVector
+    ///Called by `Cpu.Step()` once it has decided to actually take the pending interrupt (i.e. it
+    ///cleared the current IPL mask) - clears the request the same way real hardware's interrupt
+    ///acknowledge cycle does, so the same VBL pulse isn't re-taken on the next `Step()`.
+    member x.AcknowledgeInterrupt() =
+        pendingInterruptLevel <- 0
+        mutations <- mutations + 1UL
 
     ///Read-only peeks at Timer B's registers, for the CPU-level busy-wait fast-forward (see
     ///Cpu.TryFastForwardTbdrPoll) - unlike ReadByte's TBDR case, these have no side effects, so
