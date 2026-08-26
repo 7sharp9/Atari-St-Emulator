@@ -2122,6 +2122,14 @@ type Cpu =
                 let newCpu = {x with PC = x.PC+4; CCR = ccr}
                 printfn "tst.w %i(a%u)" displacement eareg
                 newCpu
+            | 0b101uy, 0b00uy -> //(d16,An), byte
+                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                let addr = x.AddressRegister eareg + int displacement
+                let value = x.MMU.ReadByte(uint32 addr)
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR value
+                let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                printfn "tst.b %i(a%u)" displacement eareg
+                newCpu
             | 0b101uy, 0b10uy -> //(d16,An), long
                 let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
                 let addr = x.AddressRegister eareg + int displacement
