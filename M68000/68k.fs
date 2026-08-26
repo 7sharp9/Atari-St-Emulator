@@ -11,7 +11,17 @@ type TraceMode =
         
 type ActiveStack =
     | USP | ISP | MSP
-    
+
+module Diag =
+    ///`ATARI_TRACE_GEMDOS=1` prints every GEMDOS trap#1 call's PC and function code to stderr
+    ///(survives ATARI_NOTRACE, like `watch` - see [[atari-st-emulator-efficiency-tooling]]). Added
+    ///after this exact print, added ad-hoc, was what cracked a real bug (TOS's own boot-supervisor
+    ///restarting the whole Pexec/Pterm0 desktop-launch cycle every ~650,000 steps, something a
+    ///per-instruction disasm trace alone was too noisy to spot) - kept as a permanent, opt-in tool
+    ///instead of being thrown away, since "which GEMDOS calls happened, in what order, how often"
+    ///is a question likely to come up again for any future GEMDOS-level investigation.
+    let traceGemdos = not (isNull (Environment.GetEnvironmentVariable "ATARI_TRACE_GEMDOS"))
+
 module CCR =
     let Subtract_IgnoringX currentCCR dest source =
         //unset all flag bits apart from x
@@ -2255,6 +2265,9 @@ type Cpu =
             //enters supervisor mode, and jumps to the vector table entry at (32+n)*4 - see
             //EnterVector's comment for why the privilege swap has to happen before the push
             //(GEMDOS's trap#1 handler's `move usp,An` depends on it).
+            if Diag.traceGemdos && vector = 1uy then
+                let func = x.MMU.ReadWord(uint32 x.A7)
+                eprintfn "GEMDOS_CALL pc=$%08x func=$%04x" x.PC (uint16 func)
             let newCpu = x.EnterVector (32 + int vector) (x.PC+2)
             printfn "trap #%u" vector
             newCpu
