@@ -3231,6 +3231,14 @@ type Cpu =
                 | _ -> failwithf "sub.b(ea->dn) not implemented for eamode %x" eamode
             | 0b010uy -> //SUB.L Dn-ea->Dn
                 match eamode with
+                | 0b000uy -> //Dn
+                    let source = x.DataRegister eareg
+                    let dest = x.DataRegister address
+                    let result = dest - source
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
+                    let newCpu = {x.WithDataRegister address result with PC = x.PC+2; CCR = ccr}
+                    printfn "sub.l D%u,D%u" eareg address
+                    newCpu
                 | 0b111uy when eareg = 0b100uy -> //#imm
                     let dest = x.DataRegister address
                     let source = x.MMU.ReadLong(uint32 (x.PC+2))
@@ -3511,6 +3519,20 @@ type Cpu =
                     let ccr = CCR.Subtract_IgnoringX x.CCR dest source
                     printfn "cmp.l D%u,D%u" eareg register
                     {x with PC = x.PC+2; CCR = ccr}
+                | 0b010uy -> //(An)
+                    let dest = x.DataRegister register
+                    let source = x.MMU.ReadLong(uint32 (x.AddressRegister eareg))
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
+                    printfn "cmp.l (a%u),D%u" eareg register
+                    {x with PC = x.PC+2; CCR = ccr}
+                | 0b011uy -> //(An)+ - long postincrements by 4
+                    let addr = x.AddressRegister eareg
+                    let dest = x.DataRegister register
+                    let source = x.MMU.ReadLong(uint32 addr)
+                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
+                    let newCpu = {x.WithAddressRegister eareg (addr+4) with PC = x.PC+2; CCR = ccr}
+                    printfn "cmp.l (a%u)+,D%u" eareg register
+                    newCpu
                 | _ -> failwithf "cmp.l eamode %u not implemented" eamode
             | 0b111uy -> //CMPA.L An,<ea>
                 match eamode with
