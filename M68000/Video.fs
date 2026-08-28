@@ -151,12 +151,19 @@ let run (step: unit -> unit) (mmu: Atari.MMU) =
     let mutable mdy = 0
     let mutable mouseButtons = 0 // bit0 = right, bit1 = left (IKBD relative-packet header bits)
 
-    let sendMousePacket () =
-        if mdx <> 0 || mdy <> 0 || true then
+    // `force` = a button-state change happened, so a packet must reach TOS even with zero motion;
+    // the per-frame flush passes false so an idle mouse produces no traffic (the real IKBD only
+    // reports on movement or a button edge - a 50Hz stream of F8 00 00 packets is not hardware
+    // behaviour and needlessly wakes the ISR + MFP interrupt every frame).
+    let sendMousePacket (force: bool) =
+        if mdx <> 0 || mdy <> 0 || force then
             let mutable rx = mdx
             let mutable ry = mdy
-            // Split into chunks each axis can represent.
-            while rx <> 0 || ry <> 0 do
+            // Always emit at least one packet (that is the point of `force`); then keep emitting
+            // while either axis still has delta that didn't fit in the -128..127 byte range.
+            let mutable first = true
+            while first || rx <> 0 || ry <> 0 do
+                first <- false
                 let cx = max -128 (min 127 rx)
                 let cy = max -128 (min 127 ry)
                 mmu.EnqueueIkbd [| byte (0xF8 ||| mouseButtons); byte (sbyte cx); byte (sbyte cy) |]
@@ -165,17 +172,7 @@ let run (step: unit -> unit) (mmu: Atari.MMU) =
             mdx <- 0
             mdy <- 0
 
-    let sw = Stopwatch.StartNew()
-    // No cycle-accurate timing yet: run a fixed instruction budget per frame and pace to ~50Hz.
-    // The budget is generous (the emulator runs far faster than an 8MHz 68000) so a frame's worth
-    // of ROM work - VBL handler, AES event loop, any keypress the ISR just queued - always
-    // completes.
-    let stepsPerFrame = 300_000
-    let frameMs = 20.0 // 50 Hz
-
-    while running do
-        let frameStart = sw.Elapsed.TotalMilliseconds
-
+    let pollEvents () =
         while sdl.PollEvent(&ev) = 1 do
             match enum<EventType> (int ev.Type) with
             | EventType.Quit -> running <- false
@@ -198,16 +195,35 @@ let run (step: unit -> unit) (mmu: Atari.MMU) =
             | EventType.Mousebuttondown ->
                 if int ev.Button.Button = int Sdl.ButtonLeft then mouseButtons <- mouseButtons ||| 0x02
                 elif int ev.Button.Button = int Sdl.ButtonRight then mouseButtons <- mouseButtons ||| 0x01
-                sendMousePacket ()
+                sendMousePacket true
             | EventType.Mousebuttonup ->
                 if int ev.Button.Button = int Sdl.ButtonLeft then mouseButtons <- mouseButtons &&& ~~~0x02
                 elif int ev.Button.Button = int Sdl.ButtonRight then mouseButtons <- mouseButtons &&& ~~~0x01
-                sendMousePacket ()
+                sendMousePacket true
             | _ -> ()
 
-        for _ in 1 .. stepsPerFrame do step ()
+    let sw = Stopwatch.StartNew()
+    // No cycle-accurate timing yet: run a fixed instruction budget per rendered frame and pace to
+    // ~50Hz. The budget is generous (the emulator runs far faster than an 8MHz 68000 - a real
+    // frame is only ~40k instructions) so a frame's worth of ROM work (VBL handler, AES event
+    // loop, any input the ISR just queued) always completes.
+    // The budget is split into slices: input is polled and mouse deltas delivered between slices,
+    // not once per frame, so the pointer follows the host mouse with sub-frame latency instead of
+    // lagging a whole 20ms behind.
+    let stepsPerFrame = 300_000
+    let slices = 6
+    let sliceSteps = stepsPerFrame / slices
+    let frameMs = 20.0 // 50 Hz
 
-        sendMousePacket ()
+    while running do
+        let frameStart = sw.Elapsed.TotalMilliseconds
+
+        for _ in 1 .. slices do
+            pollEvents ()
+            // Deliver accumulated motion BEFORE the slice runs so the ROM processes it now, not
+            // in a later slice/frame.
+            sendMousePacket false
+            for _ in 1 .. sliceSteps do step ()
 
         decodeFramebuffer mmu pixels
         use p = fixed pixels
