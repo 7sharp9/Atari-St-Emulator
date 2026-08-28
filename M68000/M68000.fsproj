@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Live SDL2 window (Video.fs); opt-in via `dotnet run -- window`. Silk.NET.SDL pulls the
+    <!-- Live SDL2 window (Video.fs), opt-in via the `window` CLI arg. Silk.NET.SDL pulls the
          SDL2 native binary transitively (Ultz.Native.SDL). Headless mode needs none of this. -->
     <PackageReference Include="Silk.NET.SDL" Version="2.22.0" />
   </ItemGroup>
