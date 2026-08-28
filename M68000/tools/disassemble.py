@@ -13,6 +13,8 @@ Usage:
                                                   # ignoring branches (for tracing a fixed byte range,
                                                   # e.g. the low-memory ROM mirror/reset trampoline)
     python disassemble.py --rom path\to\rom.img fc159e   # override the ROM path
+    python disassemble.py --callers fca612               # find real callers of an address (JSR/JMP
+                                                           # abs.long only - see the mode's own gap note)
 
 Known gaps (extend as needed, following the same "verify against Instructions.fs first" discipline):
 TAS's ea-operand form, line-A/line-F opcodes, ABCD/SBCD/NBCD, CHK, TRAPV, RESET's operands (none),
@@ -381,6 +383,38 @@ class Disassembler:
         return lines
 
 
+def find_callers(rom, rom_base, target):
+    """Scans the whole ROM for absolute-long JSR ($4EB9) and JMP ($4EF9) references to `target` -
+    added in the thirty-third pass of atari-st-emulator-next-instructions after doing exactly this
+    by hand (a raw byte search for 4E B9 + the 4-byte target) to find who calls the shared
+    Bconstat/Bconin console-check utility at $fca612. Real, not speculative: this is the only way
+    this ROM's cross-module shared-subroutine calls were findable at all, short of a full linear
+    disassembly of the entire ROM.
+
+    Known gap, not fixed: only catches absolute-long JSR/JMP (opcode + 4-byte target, easy to find
+    via a raw byte scan). Does NOT catch PC-relative BSR/Bcc references (displacement is relative
+    to the *branch instruction's* address, so finding these needs decoding every instruction in the
+    ROM, not just pattern-matching bytes) - fine for finding callers of a shared subroutine reached
+    from scattered, distant call sites (the common case for something worth cross-referencing), but
+    a *local* caller a few instructions away will more likely show up via a plain BSR you'd spot
+    just by reading the surrounding disassembly directly instead.
+    """
+    results = []
+    for opcode, mnemonic in ((0x4EB9, 'jsr'), (0x4EF9, 'jmp')):
+        needle = bytes([opcode >> 8, opcode & 0xff,
+                         (target >> 24) & 0xff, (target >> 16) & 0xff,
+                         (target >> 8) & 0xff, target & 0xff])
+        idx = 0
+        while True:
+            idx = rom.find(needle, idx)
+            if idx == -1:
+                break
+            print(f"  ${rom_base + idx:06x}: {mnemonic} ${target:x}.l")
+            idx += 1
+            results.append(rom_base + idx)
+    return results
+
+
 def main():
     args = sys.argv[1:]
     rom_path = DEFAULT_ROM_PATH
@@ -389,7 +423,16 @@ def main():
         rom_path = args[i + 1]
         args = args[:i] + args[i + 2:]
 
-    dis = Disassembler(load_rom(rom_path))
+    rom = load_rom(rom_path)
+    dis = Disassembler(rom)
+
+    if args and args[0] == '--callers':
+        target = int(args[1], 16)
+        print(f"=== callers of ${target:x} (JSR/JMP abs.long only) ===")
+        found = find_callers(rom, ROM_BASE, target)
+        if not found:
+            print("  (none found - target may only be reached via PC-relative BSR/Bcc, not scanned)")
+        return
 
     if args and args[0] == '--linear':
         addr = int(args[1], 16)
