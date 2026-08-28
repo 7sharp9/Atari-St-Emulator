@@ -658,7 +658,75 @@ type Cpu =
                     let newCpu = {x with PC = x.PC+8; CCR = ccr}
                     printfn "eori.w #$%x,$%x.l" immediate addr
                     newCpu
+                | 0b000uy -> //Dn
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let dest = int16 (x.DataRegister register)
+                    let result = dest ^^^ immediate
+                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
+                    printfn "eori.w #$%x,D%u" immediate register
+                    newCpu
+                | 0b010uy -> //(An)
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.AddressRegister register)
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = dest ^^^ immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    x.MMU.WriteWord addr result
+                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
+                    printfn "eori.w #$%x,(a%u)" immediate register
+                    newCpu
+                | 0b101uy -> //(d16,An)
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
+                    let addr = uint32 (x.AddressRegister register + int displacement)
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = dest ^^^ immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    x.MMU.WriteWord addr result
+                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
+                    printfn "eori.w #$%x,%i(a%u)" immediate displacement register
+                    newCpu
                 | _ -> failwithf "eori.w not implemented for mode %x" mode
+            | 0b10uy -> //long
+                match mode with
+                | 0b000uy -> //Dn
+                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let result = x.DataRegister register ^^^ immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                    let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
+                    printfn "eori.l #$%x,D%u" immediate register
+                    newCpu
+                | 0b010uy -> //(An)
+                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let addr = uint32 (x.AddressRegister register)
+                    let result = x.MMU.ReadLong addr ^^^ immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                    x.MMU.WriteLong addr result
+                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
+                    printfn "eori.l #$%x,(a%u)" immediate register
+                    newCpu
+                | 0b101uy -> //(d16,An)
+                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+6)))
+                    let addr = uint32 (x.AddressRegister register + int displacement)
+                    let result = x.MMU.ReadLong addr ^^^ immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                    x.MMU.WriteLong addr result
+                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
+                    printfn "eori.l #$%x,%i(a%u)" immediate displacement register
+                    newCpu
+                | 0b111uy when register = 0b001uy -> //(xxx).L
+                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+6)))
+                    let result = x.MMU.ReadLong addr ^^^ immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                    x.MMU.WriteLong addr result
+                    let newCpu = {x with PC = x.PC+10; CCR = ccr}
+                    printfn "eori.l #$%x,$%x.l" immediate addr
+                    newCpu
+                | _ -> failwithf "eori.l not implemented for mode %x" mode
             | _ -> failwithf "eori: not implemented for size %x" size
 
         | ADDI(size, mode, register) ->

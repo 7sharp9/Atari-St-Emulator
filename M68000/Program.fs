@@ -93,14 +93,17 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let mutable stepCount = 0UL
 
     ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in
-    ///main). Raw IKBD serial bytes - make/break scancodes, 3-byte mouse packets - to drop into
-    ///the ACIA receive FIFO once `stepCount` reaches `keyInjectAt`, which needs to be past the
-    ///point where TOS has master-reset and configured the ACIA (~2.5M steps for a cold boot to
-    ///the desktop) or the bytes get flushed. Independent of any window - the REPL `kbd` command
-    ///does the same thing interactively. Empty (the default) injects nothing.
-    let mutable keyInject : byte[] = [||]
-    let mutable keyInjectAt = 0UL
-    let mutable keyInjected = false
+    ///main). Raw IKBD serial bytes - make/break scancodes, 3-byte mouse packets - dropped into
+    ///the ACIA receive FIFO. The first burst must land past the point where TOS has master-reset
+    ///and configured the ACIA (~2.5M steps for a cold boot to the desktop) or the bytes get
+    ///flushed. Independent of any window - the REPL `kbd` command does the same interactively.
+    ///
+    ///Scheduled IKBD bursts, each (absolute step at which to enqueue it, the raw bytes). Groups
+    ///come from `;`-separated sections of ATARI_KEY_INPUT and fire `ATARI_KEY_DELAY` steps apart,
+    ///so a scripted interaction can move the pointer, let the desktop react, then click - a single
+    ///burst would be drained by the ISR in one go and the ROM would only ever see the final state.
+    ///Empty (the default) injects nothing.
+    let mutable keyInjectGroups : (uint64 * byte[]) list = []
 
     ///Resets the loop detector's epoch. Must be called after anything that changes CPU/MMU state
     ///without going through Step() - currently Reset() and Preview's post-rollback restore -
@@ -114,11 +117,10 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         stepCount <- 0UL
         resetLoopDetector()
 
-    ///See `keyInject`. Arms the headless key-injection hook.
-    member x.QueueKeyInput (bytes: byte[]) (atStep: uint64) =
-        keyInject <- bytes
-        keyInjectAt <- atStep
-        keyInjected <- false
+    ///See `keyInjectGroups`. Arms the headless key-injection hook: group i fires at
+    ///`firstStep + i*gap`.
+    member x.QueueKeyInput (groups: byte[] list) (firstStep: uint64) (gap: uint64) =
+        keyInjectGroups <- groups |> List.mapi (fun i g -> (firstStep + uint64 i * gap, g))
     member x.Rom =
         rom
 
@@ -126,10 +128,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         stepCount <- stepCount + 1UL
         if stepCount % vblPeriod = 0UL then
             mmu.RaiseInterrupt 4 28
-        if not keyInjected && keyInject.Length > 0 && stepCount >= keyInjectAt then
-            keyInjected <- true
-            mmu.EnqueueIkbd keyInject
-            eprintfn "ATARI_KEY_INPUT: injected %d IKBD byte(s) at step %d" keyInject.Length stepCount
+        match keyInjectGroups with
+        | (at, bytes) :: rest when stepCount >= at ->
+            keyInjectGroups <- rest
+            mmu.EnqueueIkbd bytes
+            eprintfn "ATARI_KEY_INPUT: injected %d IKBD byte(s) at step %d (%d group(s) left)" bytes.Length stepCount rest.Length
+        | _ -> ()
         let state = MachineState.Of cpu
         let currentMutations = mmu.Mutations
         if currentMutations <> loopAnchorMutations then
@@ -438,19 +442,24 @@ module Main =
             | m -> Some m
         let st = AtartSt(romPath, ?diskAPath = diskAPath, ?monitor = monitor)
         //ATARI_KEY_INPUT: space/comma-separated hex bytes (raw IKBD serial - make/break
-        //scancodes, mouse packets) injected into the ACIA FIFO once ATARI_KEY_DELAY steps have
-        //run (default 2,500,000 - past the boot-time ACIA master reset). See AtartSt.QueueKeyInput.
+        //scancodes, mouse packets). A ';' starts a new burst: bursts fire ATARI_KEY_DELAY steps
+        //apart (first one at ATARI_KEY_DELAY, default 2,500,000 - past the boot-time ACIA master
+        //reset), so a scripted move / react / click sequence works. See AtartSt.QueueKeyInput.
         match Environment.GetEnvironmentVariable "ATARI_KEY_INPUT" with
         | null | "" -> ()
         | s ->
-            let bytes =
-                s.Split([| ' '; ','; ';' |], StringSplitOptions.RemoveEmptyEntries)
-                |> Array.map (fun t -> Convert.ToByte(t, 16))
-            let atStep =
+            let groups =
+                s.Split(';')
+                |> Array.map (fun g ->
+                    g.Split([| ' '; ','; '\t' |], StringSplitOptions.RemoveEmptyEntries)
+                    |> Array.map (fun t -> Convert.ToByte(t, 16)))
+                |> Array.filter (fun g -> g.Length > 0)
+                |> Array.toList
+            let gap =
                 match Environment.GetEnvironmentVariable "ATARI_KEY_DELAY" with
                 | null | "" -> 2500000UL
                 | d -> uint64 d
-            st.QueueKeyInput bytes atStep
+            st.QueueKeyInput groups gap gap
         match argv with
         | [| "window" |] ->
             //Opt-in live SDL2 window (see Video.fs): cold-boots then runs the emulator with a
