@@ -34,7 +34,7 @@ type MachineState =
         && a.A4 = b.A4 && a.A5 = b.A5 && a.A6 = b.A6
 
 [<StructuredFormatDisplay("{Debug}")>]
-type AtartSt(romPath: string, ?diskAPath: string) =
+type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let rom = IO.File.ReadAllBytes(romPath)
     let mmu = MMU(rom)
     do
@@ -43,6 +43,11 @@ type AtartSt(romPath: string, ?diskAPath: string) =
         match diskAPath with
         | Some p when not (String.IsNullOrEmpty p) -> mmu.LoadDiskA (Some (IO.File.ReadAllBytes p))
         | _ -> ()
+        //Monitor type for MFP GPIP bit 7 (see MMU.SetMonitor). Anything other than "mono"
+        //(case-insensitive) is treated as colour, which is also the default when unset.
+        match monitor with
+        | Some m when m.Trim().ToLowerInvariant() = "mono" -> mmu.SetMonitor false
+        | _ -> mmu.SetMonitor true
     let mutable cpu = Cpu.Create(mmu)
 
     //Loop detection: Cpu.Step() is a pure function of (Cpu, MMU state) - no other mutable state
@@ -389,7 +394,13 @@ module Main =
             match Environment.GetEnvironmentVariable "ATARI_DISK_A" with
             | null | "" -> None
             | p -> Some p
-        let st = AtartSt(romPath, ?diskAPath = diskAPath)
+        //ATARI_MONITOR=colour|mono (default colour) - drives MFP GPIP bit 7, which the boot ROM
+        //at $fc0366 uses to pick colour rez vs forced high-res mono. See MMU.SetMonitor.
+        let monitor =
+            match Environment.GetEnvironmentVariable "ATARI_MONITOR" with
+            | null | "" -> None
+            | m -> Some m
+        let st = AtartSt(romPath, ?diskAPath = diskAPath, ?monitor = monitor)
         match argv with
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until

@@ -1302,6 +1302,13 @@ type Cpu =
                             let newCpu = {x with PC = x.PC+6; CCR = ccr}
                             printfn "move.w %i(pc,%s%u.%s),%i(a%u)" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") displacement dReg
                             newCpu
+                        | 0b011uy -> //(An)+
+                            let destAddress = x.AddressRegister dReg
+                            x.MMU.WriteWord (uint32 destAddress) (int16 value)
+                            let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 value)
+                            let newCpu = {x.WithAddressRegister dReg (destAddress + 2) with PC = x.PC+4; CCR = ccr}
+                            printfn "move.w %i(pc,%s%u.%s),(a%u)+" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") dReg
+                            newCpu
                         | _ -> failwith "Not implemented"
                     | _ -> failwith "Not implemented"
                 | 0b001uy -> //An - a legal MOVE source (unlike MOVEA, which cares about the dest
@@ -4156,6 +4163,26 @@ type Cpu =
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
                 printfn "ror.%s #%u,D%u" sizeChar amount register
+                newCpu
+            | 1uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b11uy -> //ROL.B/W/L #imm,Dn - mirror of ROR #imm just above, rotating left like ROL Dn,Dn
+                let amount = if countOrReg = 0uy then 8 else int countOrReg
+                let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
+                let signBit = match size with 0b00uy -> 0x80 | 0b01uy -> 0x8000 | _ -> 1 <<< 31
+                let mutable v = x.DataRegister register &&& bitMask
+                let mutable carryOut = false
+                for _ in 1 .. amount do
+                    let topBit = v &&& signBit <> 0
+                    carryOut <- topBit
+                    v <- ((v <<< 1) ||| (if topBit then 1 else 0)) &&& bitMask
+                let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
+                let mutable ccr = x.CCR
+                ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
+                if v &&& signBit <> 0 then ccr <- ccr ||| 0x8s //N
+                if v = 0 then ccr <- ccr ||| 0x4s //Z
+                if amount > 0 && carryOut then ccr <- ccr ||| 0x1s //C only - X is unaffected by plain rotate
+                let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
+                let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
+                printfn "rol.%s #%u,D%u" sizeChar amount register
                 newCpu
             | _ -> failwithf "shift/rotate not implemented for direction %x size %x useRegCount %x type %x" direction size useRegisterCount shiftType
 

@@ -226,6 +226,15 @@ type MMU(rom: byte array) =
     ///right starting value, matching real hardware rather than the project's actual installed RAM.
     let mutable memConfigByte = 0uy
 
+    ///Monitor type reported through MFP GPIP bit 7 ($FFFFFA01). `true` = colour monitor (bit 7
+    ///set), `false` = monochrome (bit 7 clear). The boot ROM at $fc0366 does
+    ///`move.b $fffffa01.l,D0 / bmi $fc0386`: bit 7 set keeps the power-on rez, bit 7 clear falls
+    ///through to $fc0376 which forces rez 2 (640x400 mono). Real hardware drives this line purely
+    ///from which monitor is physically plugged in; nothing ever writes GPIP, so it can't be
+    ///storage-backed - the ReadByte GPIP case synthesises it. Set from Program.fs's ATARI_MONITOR
+    ///env var (default colour), mirroring LoadDiskA. Hatari also defaults to colour here.
+    let mutable colourMonitor = true
+
     ///Per FD-HD_Programming.pdf's "Status Register Summary": Type I commands (Restore/Seek/Step -
     ///opcode top bit clear) only need the mechanical track-00 sensor, which works with no disk
     ///present, so real hardware reports success (TR00 set, bit 2) regardless of whether a disk is
@@ -378,6 +387,20 @@ type MMU(rom: byte array) =
                     tbdr <- (if tbdr = 0uy then tbdrReload else tbdr - 1uy)
             v
         | a when a = mfpTbcr -> tbcr
+        | a when a = 0xFFFA01u ->
+            //MFP GPIP - eight read-only hardware input lines, not a writable register. Two bits
+            //matter to boot and are synthesised here rather than read from stored zeros:
+            //  bit 7 = monochrome-monitor-detect, INVERTED: 1 = colour monitor attached, 0 = mono
+            //          (ROM $fc036c `bmi` forces rez 2 when this is clear). Driven by `colourMonitor`.
+            //  bit 4 = keyboard/MIDI ACIA interrupt request, active-LOW: 1 = no ACIA IRQ pending.
+            //          Forced to 1 for now (no real ACIA RX/interrupt path yet); the IKBD input
+            //          work will drive this from real ACIA RDRF state - see
+            //          [[atari-st-emulator-next-instructions]] pass 34 step 2.
+            //Every other GPIP bit (0 centronics busy, 1 RS232 DCD, 2 RS232 CTS, 3 blitter done,
+            //5 FDC/HDC IRQ, 6 RS232 ring) still comes from stored mfpRegisters unchanged.
+            let stored = mfpRegisters.[int (address - mpf68901)]
+            let stored = if colourMonitor then stored ||| 0x80uy else stored &&& 0x7Fuy
+            stored ||| 0x10uy
         | Mfp -> mfpRegisters.[int (address - mpf68901)]
         | a when a = fdcAccess ->
             match fdcSelectedReg with
@@ -602,6 +625,11 @@ type MMU(rom: byte array) =
                 let spt = int bytes.[24] ||| (int bytes.[25] <<< 8)
                 if spt >= 1 && spt <= 48 then spt else 9
             | _ -> 9
+
+    ///Selects the monitor type reported through MFP GPIP bit 7 - see `colourMonitor`. `true` =
+    ///colour (the default and Hatari's default), `false` = monochrome. Like LoadDiskA this is
+    ///external physical-world state, deliberately not part of MmuSnapshot.
+    member x.SetMonitor (isColour: bool) = colourMonitor <- isColour
 
     ///See `pendingInterruptLevel`'s own comment above. Only replaces the pending request if the
     ///new one is strictly higher priority - matches real hardware's arbitration (a lower-priority

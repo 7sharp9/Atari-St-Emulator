@@ -47,15 +47,12 @@ def ste_colour(word):
     r = (word >> 8) & 0xF
     g = (word >> 4) & 0xF
     b = word & 0xF
-    # STF uses only 3 bits: value 0..7 in the low 3 bits, MSB-first ordering means
-    # the classic remap is ((v & 1) << 3) | (v >> 1); but many dumps are already
-    # STE-style 0..15. Detect: if any gun > 7 assume STE 4-bit, else STF 3-bit.
-    def stf(v):
-        v &= 7
-        return ((v << 1) | (v >> 2)) * 17 // 3  # 0..7 -> 0..255-ish
+    # STF: 3 bits per gun (value 0..7), a near-linear DAC - so v*255/7 (7 -> full
+    # 0xFF white, 0 -> black). STE adds a 4th, least-significant bit at nibble bit 3;
+    # detect it by any gun exceeding 7 and treat the gun as a linear 4-bit value.
     if r > 7 or g > 7 or b > 7:
-        return (r * 17, g * 17, b * 17)
-    return (stf(r), stf(g), stf(b))
+        return (r * 255 // 15, g * 255 // 15, b * 255 // 15)
+    return (r * 255 // 7, g * 255 // 7, b * 255 // 7)
 
 
 def main():
