@@ -34,9 +34,15 @@ type MachineState =
         && a.A4 = b.A4 && a.A5 = b.A5 && a.A6 = b.A6
 
 [<StructuredFormatDisplay("{Debug}")>]
-type AtartSt(romPath: string) =
+type AtartSt(romPath: string, ?diskAPath: string) =
     let rom = IO.File.ReadAllBytes(romPath)
     let mmu = MMU(rom)
+    do
+        //Optional real floppy image for drive A (see MMU.LoadDiskA) - mirrors romPath's own
+        //"load bytes from a path supplied by the caller" shape exactly.
+        match diskAPath with
+        | Some p when not (String.IsNullOrEmpty p) -> mmu.LoadDiskA (Some (IO.File.ReadAllBytes p))
+        | _ -> ()
     let mutable cpu = Cpu.Create(mmu)
 
     //Loop detection: Cpu.Step() is a pure function of (Cpu, MMU state) - no other mutable state
@@ -377,7 +383,13 @@ module Main =
             match Environment.GetEnvironmentVariable "ATARI_ROM_PATH" with
             | null | "" -> "TOS100UK.IMG"
             | p -> p
-        let st = AtartSt(romPath)
+        //ATARI_DISK_A mounts a real disk image in drive A (see MMU.LoadDiskA) - unset (the
+        //default) preserves the existing diskless-boot behavior exactly.
+        let diskAPath =
+            match Environment.GetEnvironmentVariable "ATARI_DISK_A" with
+            | null | "" -> None
+            | p -> Some p
+        let st = AtartSt(romPath, ?diskAPath = diskAPath)
         match argv with
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until

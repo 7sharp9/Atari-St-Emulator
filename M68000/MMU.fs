@@ -210,6 +210,17 @@ type MMU(rom: byte array) =
     let mutable dmaAddrMidByte = 0uy
     let mutable dmaAddrLowByte = 0uy
 
+    ///Real disk image mounted in drive A, if any - see LoadDiskA (set from Program.fs's
+    ///ATARI_DISK_A env var, mirroring ATARI_ROM_PATH). `None` (the default) preserves every
+    ///existing "no disk" behavior documented on fdcCommandStatus/tryReadSector below - this is
+    ///purely additive. Real hardware selects side 0/1 via a PSG port A bit (Hatari's
+    ///FDC_SetDriveSide, src/fdc.c) that this emulator's YM2149 handling doesn't model with real
+    ///register-select semantics yet, so only single-sided images are supported for now (confirmed
+    ///a valid single-sided image is sufficient to exercise real GEMDOS boot-time sector reads via
+    ///a live Hatari trace - see [[atari-st-emulator-next-instructions]]).
+    let mutable diskA : byte[] option = None
+    let mutable diskASectorsPerTrack = 9
+
     ///Real hardware resets this to 0 on cold boot (stMemory.c: "0xFF8001 is set to 0 on cold reset
     ///but keep its value on warm reset") - this emulator only ever cold-boots, so 0 is always the
     ///right starting value, matching real hardware rather than the project's actual installed RAM.
@@ -308,6 +319,30 @@ type MMU(rom: byte array) =
             Some (ramBankPhysicalSize + stfTranslateWithinBank (address - bank0Mmu) bank1Mmu)
         else
             None
+
+    ///Copies a real 512-byte sector from the mounted disk-A image into RAM at `dmaAddr` (the DMA
+    ///Address Counter's current value), if a disk is loaded and (track,sector) is a valid location
+    ///on it (`sector` is the WD1772's real 1-based sector number). Returns whether the copy
+    ///happened, so the caller can choose the FDC status byte accordingly - success, or fall back to
+    ///the existing Record Not Found stub for anything a real drive couldn't find either (no disk,
+    ///or a request past the image's own geometry). Writes go straight through translateRamAddress
+    ///rather than the full WriteByte dispatch, matching WriteByte's own "aliasIntoRam" fallback -
+    ///real DMA transfers only ever target RAM, never memory-mapped I/O.
+    let tryReadSector (track: byte) (sector: byte) (dmaAddr: uint32) =
+        match diskA with
+        | None -> false
+        | Some bytes ->
+            let s = int sector
+            if s < 1 || s > diskASectorsPerTrack then false
+            else
+                let offset = (int track * diskASectorsPerTrack + (s - 1)) * 512
+                if offset < 0 || offset + 512 > bytes.Length then false
+                else
+                    for i in 0 .. 511 do
+                        match translateRamAddress (dmaAddr + uint32 i) with
+                        | Some idx -> store ram (int idx) bytes.[offset + i]
+                        | None -> ()
+                    true
 
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
@@ -494,7 +529,21 @@ type MMU(rom: byte array) =
         | a when a = fdcAccess ->
             match fdcSelectedReg with
             | 0uy ->
-                let status = fdcCommandStatus input
+                //Type II Read Sector: top 3 bits "100", bottom 2 bits "00" (FD-HD_Programming.pdf's
+                //FDC Command Summary table - the m/h/e flag bits 4/3/2 don't affect this
+                //classification). With a disk image mounted, copy the real requested sector
+                //straight into RAM at the already-programmed DMA address counter (real boot-ROM
+                //sequences always set Track/Sector/DMA-address before issuing the command - FD-HD
+                //Programming.pdf's own DMA programming tips) and report success, instead of the
+                //always-Record-Not-Found stub every other command still uses. This project has no
+                //command timing or real WD1772 seek/settle modeling, so - matching every other FDC
+                //command here - the whole operation completes synchronously on this one write.
+                let isReadSector = (input &&& 0xE3uy) = 0x80uy
+                let dmaAddr =
+                    (uint32 dmaAddrHighByte <<< 16) ||| (uint32 dmaAddrMidByte <<< 8) ||| uint32 dmaAddrLowByte
+                let status =
+                    if isReadSector && tryReadSector fdcTrack fdcSector dmaAddr then 0uy
+                    else fdcCommandStatus input
                 if status <> fdcStatus then mutations <- mutations + 1UL
                 fdcStatus <- status
             | 1uy -> if input <> fdcTrack then mutations <- mutations + 1UL
@@ -536,6 +585,23 @@ type MMU(rom: byte array) =
     ///REPL `watch <hexaddr> [len]` - see `checkWatch` above. `hi` is inclusive.
     member x.SetWatch (lo: uint32) (hi: uint32) = watchRange <- Some(lo, hi)
     member x.ClearWatch() = watchRange <- None
+
+    ///Mounts (or unmounts, on `None`) a real disk image in drive A - see `diskA`'s own comment
+    ///above for the single-sided-only caveat. Reads the image's own boot-sector BPB for its real
+    ///sectors-per-track (offset 24-25, little-endian - Hatari's src/floppy.c
+    ///Floppy_FindDiskDetails and src/createBlankImage.c both use this exact offset), falling back
+    ///to the standard 9 if the image is too short or the field looks invalid, rather than trusting
+    ///arbitrary image content. Deliberately NOT part of MmuSnapshot/SaveState - like `rom` itself,
+    ///which disk is in a drive is external, physical-world state, not something a state save
+    ///should capture or a state load should disturb.
+    member x.LoadDiskA (data: byte[] option) =
+        diskA <- data
+        diskASectorsPerTrack <-
+            match data with
+            | Some bytes when bytes.Length >= 26 ->
+                let spt = int bytes.[24] ||| (int bytes.[25] <<< 8)
+                if spt >= 1 && spt <= 48 then spt else 9
+            | _ -> 9
 
     ///See `pendingInterruptLevel`'s own comment above. Only replaces the pending request if the
     ///new one is strictly higher priority - matches real hardware's arbitration (a lower-priority
