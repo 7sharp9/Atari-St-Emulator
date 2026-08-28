@@ -206,13 +206,17 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
 
     let sw = Stopwatch.StartNew()
     // One host frame == one emulated video frame. Run instructions up to the next VBL boundary
-    // (stepCount() a multiple of instructionsPerFrame), then decode: that lands the capture right
-    // after the previous frame's VBL cursor redraw has settled and before the next VBL starts, so
-    // the pointer is never caught mid-erase (the window-cursor-tearing bug). Emulated time now
-    // advances at the same rate the ROM thinks it does, so the render is real-time when the host
-    // can keep up and cleanly slow (not torn) when it cannot.
-    // Each frame is split into slices: input is polled and mouse deltas delivered between slices,
-    // not once per frame, so the pointer follows the host mouse with sub-frame latency.
+    // (stepCount() a multiple of instructionsPerFrame), then decode.
+    //
+    // Cursor tearing: TOS redraws the VDI mouse cursor (save-under, mask-clear to colour 0, then
+    // the arrow shape) whenever it processes a mouse packet - a multi-thousand-instruction BitBlt.
+    // If a packet is delivered late in the frame the redraw can still be in progress at the VBL
+    // boundary, so the decode catches a half-drawn cursor (a white mask block, colour index 0).
+    // Fix: deliver ALL accumulated host mouse motion once, at the very start of the frame, so the
+    // redraw happens with the whole rest of the frame (~10k instructions) as settling runway
+    // before the capture. Costs up to one frame (20 ms) of pointer latency, which is what real
+    // hardware feels like anyway. Events are still polled every slice so keyboard/quit stay
+    // responsive; only the mouse flush is front-loaded.
     let slices = 6
     let ipf = uint64 instructionsPerFrame
     let sliceSteps = uint64 (max 1 (instructionsPerFrame / slices))
@@ -224,11 +228,10 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
         // Next VBL boundary at or after the current position (handles a resumed snapshot whose
         // stepCount is not frame-aligned - the first frame is just short).
         let target = (stepCount() / ipf + 1UL) * ipf
+        pollEvents ()
+        sendMousePacket false // front-loaded: see the tearing note above
         while running && stepCount() < target do
             pollEvents ()
-            // Deliver accumulated motion BEFORE the slice runs so the ROM processes it now, not
-            // in a later slice/frame.
-            sendMousePacket false
             let sliceEnd = min target (stepCount() + sliceSteps)
             while stepCount() < sliceEnd do step ()
 
