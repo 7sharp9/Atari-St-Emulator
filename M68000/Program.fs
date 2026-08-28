@@ -452,6 +452,18 @@ module Main =
                 | d -> uint64 d
             st.QueueKeyInput bytes atStep
         match argv with
+        | [| "window" |] ->
+            //Opt-in live SDL2 window (see Video.fs): cold-boots then runs the emulator with a
+            //~50Hz render loop, feeding real host keyboard/mouse in as IKBD packets. F12 or the
+            //window close button exits. Everything else here stays headless by default.
+            st.Reset()
+            Video.run st.Step st.Cpu.MMU
+            0
+        | [| "window"; "resume"; path |] ->
+            //Same window, but starting from a snapshot instead of a cold boot.
+            st.LoadState path
+            Video.run st.Step st.Cpu.MMU
+            0
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until
             //an unimplemented instruction fails - Step() prints diagnostics and reraises) then

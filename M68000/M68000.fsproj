@@ -1,8 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,7 +12,14 @@
     <Compile Include="MMU.fs" />
     <Compile Include="Instructions.fs" />
     <Compile Include="68k.fs" />
+    <Compile Include="Video.fs" />
     <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Live SDL2 window (Video.fs); opt-in via `dotnet run -- window`. Silk.NET.SDL pulls the
+         SDL2 native binary transitively (Ultz.Native.SDL). Headless mode needs none of this. -->
+    <PackageReference Include="Silk.NET.SDL" Version="2.22.0" />
   </ItemGroup>
 
 </Project>
