@@ -92,6 +92,16 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let vblPeriod = 2000UL
     let mutable stepCount = 0UL
 
+    ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in
+    ///main). Raw IKBD serial bytes - make/break scancodes, 3-byte mouse packets - to drop into
+    ///the ACIA receive FIFO once `stepCount` reaches `keyInjectAt`, which needs to be past the
+    ///point where TOS has master-reset and configured the ACIA (~2.5M steps for a cold boot to
+    ///the desktop) or the bytes get flushed. Independent of any window - the REPL `kbd` command
+    ///does the same thing interactively. Empty (the default) injects nothing.
+    let mutable keyInject : byte[] = [||]
+    let mutable keyInjectAt = 0UL
+    let mutable keyInjected = false
+
     ///Resets the loop detector's epoch. Must be called after anything that changes CPU/MMU state
     ///without going through Step() - currently Reset() and Preview's post-rollback restore -
     ///otherwise the saved anchor describes a state from before/outside the real run, and a
@@ -103,6 +113,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         cpu <- cpu.Reset()
         stepCount <- 0UL
         resetLoopDetector()
+
+    ///See `keyInject`. Arms the headless key-injection hook.
+    member x.QueueKeyInput (bytes: byte[]) (atStep: uint64) =
+        keyInject <- bytes
+        keyInjectAt <- atStep
+        keyInjected <- false
     member x.Rom =
         rom
 
@@ -110,6 +126,10 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         stepCount <- stepCount + 1UL
         if stepCount % vblPeriod = 0UL then
             mmu.RaiseInterrupt 4 28
+        if not keyInjected && keyInject.Length > 0 && stepCount >= keyInjectAt then
+            keyInjected <- true
+            mmu.EnqueueIkbd keyInject
+            eprintfn "ATARI_KEY_INPUT: injected %d IKBD byte(s) at step %d" keyInject.Length stepCount
         let state = MachineState.Of cpu
         let currentMutations = mmu.Mutations
         if currentMutations <> loopAnchorMutations then
@@ -180,7 +200,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(6uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig
+        w.Write(7uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.SSP; cpu.PC |] do w.Write(v: int)
@@ -207,6 +227,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         w.Write(snap.DmaAddrLow)
         w.Write(snap.MemConfig)
         w.Write(stepCount)
+        w.Write(snap.KbdAciaControl)
+        writeArr snap.IkbdRxFifo
         printfn "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
@@ -263,13 +285,19 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         //exactly the resume/cold-boot step-count divergence this fix targets). Snapshots taken
         //before this fix can't recover their true step count and stay subject to the old bug.
         stepCount <- if version >= 6uy then r.ReadUInt64() else 0UL
+        //v1-v6 snapshots predate the keyboard ACIA receive path - default to "control register 0,
+        //empty FIFO", matching what those snapshots were captured with (no RX path existed).
+        let kbdAciaControl, ikbdRxFifo =
+            if version >= 7uy then r.ReadByte(), readArr()
+            else 0uy, [||]
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
               Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
               FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
               FdcSector = fdcSector; FdcData = fdcData
               DmaAddrHigh = dmaAddrHigh; DmaAddrMid = dmaAddrMid; DmaAddrLow = dmaAddrLow
-              MemConfig = memConfig }
+              MemConfig = memConfig
+              KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo }
         resetLoopDetector()
         printfn "--- state loaded from %s: PC=$%08x ---" path cpu.PC
 
@@ -366,6 +394,14 @@ module Main =
             | [| "unwatch" |] ->
                 st.Cpu.MMU.ClearWatch()
                 loop()
+            | _ when parts.Length >= 2 && (parts.[0] = "kbd" || parts.[0] = "key") ->
+                //Enqueue raw IKBD serial bytes into the keyboard ACIA FIFO (and raise the MFP
+                //channel-6 interrupt) - e.g. `kbd 1f 9f` = press+release the 'A' key ($1f make,
+                //$9f break), `kbd fa 05 00` = a mouse-move-right packet. See MMU.EnqueueIkbd.
+                let bytes = parts.[1..] |> Array.map (fun s -> Convert.ToByte(s, 16))
+                st.Cpu.MMU.EnqueueIkbd bytes
+                printfn "enqueued %d IKBD byte(s): %s" bytes.Length (bytes |> Array.map (sprintf "%02x") |> String.concat " ")
+                loop()
             | [| "quit" |] | [| "q" |] ->
                 ()
             | _ ->
@@ -401,6 +437,20 @@ module Main =
             | null | "" -> None
             | m -> Some m
         let st = AtartSt(romPath, ?diskAPath = diskAPath, ?monitor = monitor)
+        //ATARI_KEY_INPUT: space/comma-separated hex bytes (raw IKBD serial - make/break
+        //scancodes, mouse packets) injected into the ACIA FIFO once ATARI_KEY_DELAY steps have
+        //run (default 2,500,000 - past the boot-time ACIA master reset). See AtartSt.QueueKeyInput.
+        match Environment.GetEnvironmentVariable "ATARI_KEY_INPUT" with
+        | null | "" -> ()
+        | s ->
+            let bytes =
+                s.Split([| ' '; ','; ';' |], StringSplitOptions.RemoveEmptyEntries)
+                |> Array.map (fun t -> Convert.ToByte(t, 16))
+            let atStep =
+                match Environment.GetEnvironmentVariable "ATARI_KEY_DELAY" with
+                | null | "" -> 2500000UL
+                | d -> uint64 d
+            st.QueueKeyInput bytes atStep
         match argv with
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until

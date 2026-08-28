@@ -602,6 +602,25 @@ type Cpu =
                     printfn "andi.w #$%x,(a%u)" immediate register
                     newCpu
                 | _ -> failwithf "andi.w not implemented for mode %x" mode
+            | 0b10uy -> //long
+                match mode with
+                | 0b000uy -> //Dn
+                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let result = x.DataRegister register &&& immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                    let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
+                    printfn "andi.l #$%x,D%u" immediate register
+                    newCpu
+                | 0b111uy when register = 0b001uy -> //(xxx).L
+                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+6)))
+                    let result = x.MMU.ReadLong addr &&& immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
+                    x.MMU.WriteLong addr result
+                    let newCpu = {x with PC = x.PC+10; CCR = ccr}
+                    printfn "andi.l #$%x,$%x.l" immediate addr
+                    newCpu
+                | _ -> failwithf "andi.l not implemented for mode %x" mode
             | _ -> failwithf "andi: not implemented for size %x" size
 
         | EoriToCcr ->

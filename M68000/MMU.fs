@@ -10,7 +10,8 @@ type MmuSnapshot =
       Tbcr: byte; Tbdr: byte; TbdrReload: byte; TbdrReadCount: uint32
       FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte
       DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte
-      MemConfig: byte }
+      MemConfig: byte
+      KbdAciaControl: byte; IkbdRxFifo: byte[] }
 
 ///Real 68000 hardware cannot perform a word/long-sized bus access to an odd address - it traps
 ///to the Address Error vector (vector 3) instead of completing the access. Raised by
@@ -123,8 +124,17 @@ type MMU(rom: byte array) =
     ///single highest level asserted right now, whatever raised it last," a deliberate
     ///simplification since only one source (VBL) exists yet; revisit if/when the MFP's own
     ///independent interrupt sources (timers, ACIA) are added.
-    let mutable pendingInterruptLevel = 0
-    let mutable pendingInterruptVector = 0
+    ///Two independent pending-interrupt slots, replacing the earlier single "highest level
+    ///asserted" scalar (per that comment's own TODO). Real hardware holds a pending bit per
+    ///source with priority arbitration; the two sources that actually exist here are the VBL
+    ///(autovectored level 4, vector 28) and the MFP (vectored level 6 - currently only the
+    ///keyboard ACIA on channel 6, vector $46). One slot each is enough and, crucially, keeps a
+    ///periodic VBL from silently displacing a still-pending keystroke interrupt (the single-slot
+    ///model dropped whichever was lower). `PendingInterruptLevel`/`Vector` report the higher of
+    ///whatever is asserted; `AcknowledgeInterrupt` clears only that one.
+    let mutable vblPending = false
+    let mutable mfpPending = false
+    let mutable mfpVector = 0
 
     let mutable watchRange : (uint32 * uint32) option = None
     let checkWatch (address: uint32) (label: string) (value: uint32) =
@@ -146,9 +156,33 @@ type MMU(rom: byte array) =
     ///not more table entries - see [[atari-st-emulator-next-instructions]] memory for the note.
     let ioStubs : Map<uint32, byte> =
         Map.ofList [
-            0xFFFC00u, 0x02uy //keyboard ACIA control/status
-            0xFFFC04u, 0x02uy //MIDI ACIA control/status
+            0xFFFC04u, 0x02uy //MIDI ACIA control/status - no receive path (nothing generates MIDI in)
         ]
+
+    ///Keyboard ACIA (MC6850) receive path - see [[atari-st-emulator-next-instructions]] pass 34
+    ///step 2. Real ST wiring: the IKBD's 7812.5-baud serial output feeds the keyboard ACIA at
+    ///$FFFC00 (control/status) / $FFFC02 (data). A received byte sets RDRF (status bit 0); with
+    ///the RX interrupt enabled (control bit 7, which TOS sets via its `move.b #$96,$fffc00`
+    ///write) that also drives the ACIA IRQ output (status bit 7) low, which is MFP GPIP bit 4,
+    ///which is MFP interrupt channel 6, which is 68000 IPL 6, vectored through address $118
+    ///(vector $46 = MFP VR base $40 | channel 6). TOS's ISR at $fc281c reads status then data
+    ///and loops while GPIP bit 4 stays low, so RDRF / the GPIP bit / the pending interrupt must
+    ///all track this FIFO or the ISR spins or drops bytes. This models only the ACIA end; there
+    ///is no emulated 6301 IKBD MCU, so nothing here synthesises the power-on $F1 reset reply
+    ///(TOS doesn't block waiting for it - the diskless boot already reaches the desktop without
+    ///one). Callers inject real make/break scancodes and 3-byte mouse packets via EnqueueIkbd.
+    let ikbdRxFifo = System.Collections.Generic.Queue<byte>()
+    let mutable kbdAciaControl = 0uy //last value written to $FFFC00; bit 7 = RX interrupt enable
+
+    ///Status byte the CPU reads at $FFFC00. TDRE (bit 1) is always set - nothing holds the
+    ///transmitter here. RDRF (bit 0) tracks the FIFO. IRQ (bit 7) = RDRF AND RX-interrupt-enabled,
+    ///matching the real 6850's IRQ output, and is what GPIP bit 4 and the ISR's `btst #7` test.
+    let keyboardAciaStatus () =
+        let mutable sr = 0x02uy
+        if ikbdRxFifo.Count > 0 then
+            sr <- sr ||| 0x01uy
+            if kbdAciaControl &&& 0x80uy <> 0uy then sr <- sr ||| 0x80uy
+        sr
 
     ///Minimal MFP Timer B stub: real hardware decrements TBDR on each external clock event
     ///(HBLANK in event-count mode, much slower than CPU instruction execution) and reloads it from
@@ -392,15 +426,14 @@ type MMU(rom: byte array) =
             //matter to boot and are synthesised here rather than read from stored zeros:
             //  bit 7 = monochrome-monitor-detect, INVERTED: 1 = colour monitor attached, 0 = mono
             //          (ROM $fc036c `bmi` forces rez 2 when this is clear). Driven by `colourMonitor`.
-            //  bit 4 = keyboard/MIDI ACIA interrupt request, active-LOW: 1 = no ACIA IRQ pending.
-            //          Forced to 1 for now (no real ACIA RX/interrupt path yet); the IKBD input
-            //          work will drive this from real ACIA RDRF state - see
-            //          [[atari-st-emulator-next-instructions]] pass 34 step 2.
+            //  bit 4 = keyboard/MIDI ACIA interrupt request, active-LOW: 0 = an ACIA IRQ is
+            //          pending, 1 = none. Driven from keyboardAciaStatus; TOS's ISR at $fc281c
+            //          loops (`btst #4 / beq`) while this bit is 0, servicing the ACIA until drained.
             //Every other GPIP bit (0 centronics busy, 1 RS232 DCD, 2 RS232 CTS, 3 blitter done,
             //5 FDC/HDC IRQ, 6 RS232 ring) still comes from stored mfpRegisters unchanged.
             let stored = mfpRegisters.[int (address - mpf68901)]
             let stored = if colourMonitor then stored ||| 0x80uy else stored &&& 0x7Fuy
-            stored ||| 0x10uy
+            if keyboardAciaStatus() &&& 0x80uy <> 0uy then stored &&& 0xEFuy else stored ||| 0x10uy
         | Mfp -> mfpRegisters.[int (address - mpf68901)]
         | a when a = fdcAccess ->
             match fdcSelectedReg with
@@ -413,8 +446,15 @@ type MMU(rom: byte array) =
         | a when a = dmaAddrMid -> dmaAddrMidByte
         | a when a = dmaAddrLow -> dmaAddrLowByte
         | a when a = memConfig -> memConfigByte
+        | a when a = 0xFFFC00u -> keyboardAciaStatus () //keyboard ACIA control/status
+        | a when a = 0xFFFC02u -> //keyboard ACIA receive data - pop one byte from the IKBD FIFO
+            if ikbdRxFifo.Count > 0 then
+                let b = ikbdRxFifo.Dequeue()
+                mutations <- mutations + 1UL
+                b
+            else 0uy
         | Acia ->
-            //See ioStubs above.
+            //MIDI ACIA (and any other address in range) - see ioStubs above.
             match ioStubs.TryFind address with
             | Some v -> v
             | None -> 0uy
@@ -462,8 +502,13 @@ type MMU(rom: byte array) =
             //quirk (not documented for this register - FD-HD_Programming.pdf only states real
             //content, status bits 0-2, in the low byte).
             int (x.ReadByte address)
+        | a when a = 0xFFFC00u || a = 0xFFFC02u ->
+            //Keyboard ACIA - an 8-bit device on the upper data-bus byte (even address). TOS only
+            //ever byte-accesses it; a word read still needs to not bus-error, so put the register
+            //in the high byte with the unmapped low byte reading as 1s.
+            (int (x.ReadByte address) <<< 8) ||| 0xFF
         | Acia ->
-            //See ioStubs above.
+            //MIDI ACIA / rest of range - see ioStubs above.
             match ioStubs.TryFind address with
             | Some v -> int v
             | None -> 0
@@ -587,8 +632,17 @@ type MMU(rom: byte array) =
         | a when a = memConfig ->
             if input <> memConfigByte then mutations <- mutations + 1UL
             memConfigByte <- input
+        | a when a = 0xFFFC00u ->
+            //Keyboard ACIA control register. Bits 1-0 = 11 is a master reset (flush the receiver);
+            //bit 7 is the RX interrupt enable that keyboardAciaStatus / GPIP bit 4 depend on. TOS
+            //writes $03 (reset) then $96 (÷64, 8N1, RX interrupt on) at boot. The transmit side is
+            //still a no-op - nothing here consumes bytes TOS sends to the IKBD.
+            if input &&& 0x03uy = 0x03uy then ikbdRxFifo.Clear()
+            if input <> kbdAciaControl then mutations <- mutations + 1UL
+            kbdAciaControl <- input
         | Acia ->
-            //See WriteWord's matching case just above.
+            //MIDI ACIA control / transmit, keyboard ACIA transmit ($FFFC02) - no-ops, see
+            //WriteWord's matching case just above.
             ()
         | _ ->
             if aliasIntoRam address then
@@ -631,23 +685,44 @@ type MMU(rom: byte array) =
     ///external physical-world state, deliberately not part of MmuSnapshot.
     member x.SetMonitor (isColour: bool) = colourMonitor <- isColour
 
-    ///See `pendingInterruptLevel`'s own comment above. Only replaces the pending request if the
-    ///new one is strictly higher priority - matches real hardware's arbitration (a lower-priority
-    ///request never displaces one still waiting to be serviced) even though this simplified model
-    ///only tracks one source today.
+    ///Asserts an interrupt line - see the `vblPending`/`mfpPending` comment. Level 4 = VBL,
+    ///level 6 = MFP (the `vector` is the MFP channel's own vector number, e.g. $46 for the
+    ///keyboard ACIA on channel 6); any other level is ignored, as no other source exists.
     member x.RaiseInterrupt (level: int) (vector: int) =
-        if level > pendingInterruptLevel then
-            pendingInterruptLevel <- level
-            pendingInterruptVector <- vector
-            mutations <- mutations + 1UL
-    member x.PendingInterruptLevel = pendingInterruptLevel
-    member x.PendingInterruptVector = pendingInterruptVector
+        match level with
+        | 4 ->
+            if not vblPending then
+                vblPending <- true
+                mutations <- mutations + 1UL
+        | 6 ->
+            if not mfpPending || mfpVector <> vector then
+                mfpPending <- true
+                mfpVector <- vector
+                mutations <- mutations + 1UL
+        | _ -> () //no other interrupt source on this hardware
+    member x.PendingInterruptLevel = if mfpPending then 6 elif vblPending then 4 else 0
+    member x.PendingInterruptVector = if mfpPending then mfpVector elif vblPending then 28 else 0
     ///Called by `Cpu.Step()` once it has decided to actually take the pending interrupt (i.e. it
-    ///cleared the current IPL mask) - clears the request the same way real hardware's interrupt
-    ///acknowledge cycle does, so the same VBL pulse isn't re-taken on the next `Step()`.
+    ///cleared the current IPL mask) - clears only the slot being taken (the higher one), so a
+    ///lower still-pending source stays pending, matching real interrupt-acknowledge behaviour.
     member x.AcknowledgeInterrupt() =
-        pendingInterruptLevel <- 0
+        if mfpPending then mfpPending <- false
+        elif vblPending then vblPending <- false
         mutations <- mutations + 1UL
+
+    ///Injects raw IKBD serial bytes into the keyboard ACIA receive FIFO - real make/break
+    ///scancodes (make = scancode, break = scancode ||| $80) and 3-byte relative mouse packets
+    ///(header $F8-$FB, then signed dx, dy). See `ikbdRxFifo`. Raises the MFP channel-6 interrupt
+    ///(IPL 6, vector $46) so TOS's ACIA ISR runs and drains what was queued. Used by the REPL
+    ///`kbd` command and, later, the live window's real keyboard/mouse handler.
+    member x.EnqueueIkbd (bytes: byte seq) =
+        let mutable added = false
+        for b in bytes do
+            ikbdRxFifo.Enqueue b
+            added <- true
+        if added then
+            mutations <- mutations + 1UL
+            x.RaiseInterrupt 6 0x46
 
     ///Read-only peeks at Timer B's registers, for the CPU-level busy-wait fast-forward (see
     ///Cpu.TryFastForwardTbdrPoll) - unlike ReadByte's TBDR case, these have no side effects, so
@@ -682,7 +757,8 @@ type MMU(rom: byte array) =
           FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
           FdcSector = fdcSector; FdcData = fdcData
           DmaAddrHigh = dmaAddrHighByte; DmaAddrMid = dmaAddrMidByte; DmaAddrLow = dmaAddrLowByte
-          MemConfig = memConfigByte }
+          MemConfig = memConfigByte
+          KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo.ToArray() }
 
     member x.RestoreRam(snapshot: MmuSnapshot) =
         Array.blit snapshot.Ram 0 ram 0 snapshot.Ram.Length
@@ -702,6 +778,9 @@ type MMU(rom: byte array) =
         dmaAddrMidByte <- snapshot.DmaAddrMid
         dmaAddrLowByte <- snapshot.DmaAddrLow
         memConfigByte <- snapshot.MemConfig
+        kbdAciaControl <- snapshot.KbdAciaControl
+        ikbdRxFifo.Clear()
+        for b in snapshot.IkbdRxFifo do ikbdRxFifo.Enqueue b
         //Restoring bypasses every write path above, so none of it bumped `mutations` on the way in
         //- that's correct (a rollback isn't itself a "real" forward mutation to prove anything
         //against), but it does mean the loop detector's anchor may now describe a state from the
