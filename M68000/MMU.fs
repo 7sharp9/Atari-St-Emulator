@@ -124,17 +124,20 @@ type MMU(rom: byte array) =
     ///single highest level asserted right now, whatever raised it last," a deliberate
     ///simplification since only one source (VBL) exists yet; revisit if/when the MFP's own
     ///independent interrupt sources (timers, ACIA) are added.
-    ///Two independent pending-interrupt slots, replacing the earlier single "highest level
+    ///Three independent pending-interrupt slots, replacing the earlier single "highest level
     ///asserted" scalar (per that comment's own TODO). Real hardware holds a pending bit per
-    ///source with priority arbitration; the two sources that actually exist here are the VBL
-    ///(autovectored level 4, vector 28) and the MFP (vectored level 6 - currently only the
-    ///keyboard ACIA on channel 6, vector $46). One slot each is enough and, crucially, keeps a
-    ///periodic VBL from silently displacing a still-pending keystroke interrupt (the single-slot
-    ///model dropped whichever was lower). `PendingInterruptLevel`/`Vector` report the higher of
-    ///whatever is asserted; `AcknowledgeInterrupt` clears only that one.
+    ///source with priority arbitration; the sources that exist here are the VBL (autovectored
+    ///level 4, vector 28), the keyboard ACIA (MFP channel 6, level 6, vector $46) and MFP Timer C
+    ///(channel 5, level 6, vector $45 -> the 200Hz system tick that drives etv_timer and, through
+    ///it, the AES's double-click / click-release timeout countdown). A separate slot each is
+    ///needed so a periodic tick never silently displaces a still-pending keystroke: when both MFP
+    ///channels are asserted the ACIA (higher channel number) is taken first, matching the 68901's
+    ///own priority order. `PendingInterruptLevel`/`Vector` report the highest asserted;
+    ///`AcknowledgeInterrupt` clears only that one.
     let mutable vblPending = false
     let mutable mfpPending = false
     let mutable mfpVector = 0
+    let mutable timerCPending = false
 
     let mutable watchRange : (uint32 * uint32) option = None
     let checkWatch (address: uint32) (label: string) (value: uint32) =
@@ -700,13 +703,29 @@ type MMU(rom: byte array) =
                 mfpVector <- vector
                 mutations <- mutations + 1UL
         | _ -> () //no other interrupt source on this hardware
-    member x.PendingInterruptLevel = if mfpPending then 6 elif vblPending then 4 else 0
-    member x.PendingInterruptVector = if mfpPending then mfpVector elif vblPending then 28 else 0
+    ///Asserts MFP Timer C (channel 5, level 6, vector $45). Gated on the same enable/mask the real
+    ///68901 checks: Timer C's channel bit in IERB (bit 5) and IMRB (bit 5) - TOS programs both
+    ///during MFP init, so before that a stray tick is simply not raised (its vector at $114 may
+    ///not be installed yet). The ACIA still wins arbitration when both are pending - see
+    ///`vblPending`/`mfpPending`/`timerCPending`.
+    member x.RaiseTimerC() =
+        let ierb = mfpRegisters.[int (0xFFFA09u - mpf68901)]
+        let imrb = mfpRegisters.[int (0xFFFA15u - mpf68901)]
+        if ierb &&& 0x20uy <> 0uy && imrb &&& 0x20uy <> 0uy && not timerCPending then
+            timerCPending <- true
+            mutations <- mutations + 1UL
+    member x.PendingInterruptLevel = if mfpPending || timerCPending then 6 elif vblPending then 4 else 0
+    member x.PendingInterruptVector =
+        if mfpPending then mfpVector
+        elif timerCPending then 0x45
+        elif vblPending then 28
+        else 0
     ///Called by `Cpu.Step()` once it has decided to actually take the pending interrupt (i.e. it
-    ///cleared the current IPL mask) - clears only the slot being taken (the higher one), so a
+    ///cleared the current IPL mask) - clears only the slot being taken (the highest one), so a
     ///lower still-pending source stays pending, matching real interrupt-acknowledge behaviour.
     member x.AcknowledgeInterrupt() =
         if mfpPending then mfpPending <- false
+        elif timerCPending then timerCPending <- false
         elif vblPending then vblPending <- false
         mutations <- mutations + 1UL
 

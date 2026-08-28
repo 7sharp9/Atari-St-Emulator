@@ -90,6 +90,14 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///instruction costs a different number of real cycles, and none of that is counted anywhere),
     ///so `vblPeriod` is a deliberate approximation, not a real-timing claim.
     let vblPeriod = 2000UL
+    ///MFP Timer C is the 200Hz system tick on real hardware - 4x the ~50Hz VBL. Keeping that 4:1
+    ///ratio is what matters here (not the absolute rate): it's what advances etv_timer and, through
+    ///it, the AES double-click / click-release timeout countdown, so a *stationary* mouse click
+    ///(press and release with no motion between) actually completes instead of hanging forever
+    ///waiting for a tick that never comes. Without this, only a click with >2px of motion in the
+    ///same packet ever posts (the AES flushes those early), which is why menu-item selection and
+    ///form_alert buttons "needed many clicks".
+    let timerCPeriod = vblPeriod / 4UL
     let mutable stepCount = 0UL
 
     ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in
@@ -128,6 +136,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         stepCount <- stepCount + 1UL
         if stepCount % vblPeriod = 0UL then
             mmu.RaiseInterrupt 4 28
+        if stepCount % timerCPeriod = 0UL then
+            mmu.RaiseTimerC()
         match keyInjectGroups with
         | (at, bytes) :: rest when stepCount >= at ->
             keyInjectGroups <- rest
