@@ -601,6 +601,16 @@ type Cpu =
                     let newCpu = {x with PC = x.PC+4; CCR = ccr}
                     printfn "andi.w #$%x,(a%u)" immediate register
                     newCpu
+                | 0b111uy when register = 0b001uy -> //(xxx).L - BIOS 200Hz clock masking packed date/time fields
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = dest &&& immediate
+                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
+                    x.MMU.WriteWord addr result
+                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
+                    printfn "andi.w #$%x,$%x.l" immediate addr
+                    newCpu
                 | _ -> failwithf "andi.w not implemented for mode %x" mode
             | 0b10uy -> //long
                 match mode with
@@ -764,6 +774,16 @@ type Cpu =
                     let newCpu = {x with PC = x.PC+4; CCR = ccr}
                     printfn "addi.w #$%x,(a%u)" immediate register
                     newCpu
+                | 0b111uy when register = 0b001uy -> //(xxx).L - the BIOS 200Hz clock bumping packed date/time fields
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = dest + immediate
+                    let ccr = CCR.Add_IgnoringX_Word x.CCR dest immediate
+                    x.MMU.WriteWord addr result
+                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
+                    printfn "addi.w #$%x,$%x.l" immediate addr
+                    newCpu
                 | _ -> failwithf "addi.w not implemented for mode %x" mode
             | 0b10uy -> //long
                 match mode with
@@ -846,6 +866,16 @@ type Cpu =
                     x.MMU.WriteWord addr result
                     let newCpu = {x with PC = x.PC+4; CCR = ccr}
                     printfn "subi.w #$%x,(a%u)" immediate register
+                    newCpu
+                | 0b111uy when register = 0b001uy -> //(xxx).L - BIOS 200Hz clock's `subi.w #$7d0,$415a.l` (2000ms carry)
+                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
+                    let dest = int16 (x.MMU.ReadWord addr)
+                    let result = int16 (int dest - int immediate)
+                    let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest immediate
+                    x.MMU.WriteWord addr result
+                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
+                    printfn "subi.w #$%x,$%x.l" immediate addr
                     newCpu
                 | _ -> failwithf "subi.w not implemented for mode %x" mode
             | 0b10uy -> //long
@@ -4198,6 +4228,16 @@ type Cpu =
                 | _ -> failwithf "add.w(dn->ea) not implemented for eamode %x" eamode
             | 0b110uy -> //ADD.L Dn,<ea> (ea+Dn->ea, result written to memory)
                 match eamode with
+                | 0b111uy when eareg = 0b001uy -> //(xxx).L - the BIOS 200Hz clock's `add.l D0,$5ffa.l` ms accumulator
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                    let source = x.DataRegister address
+                    let dest = x.MMU.ReadLong addr
+                    let result = dest + source
+                    let ccr = CCR.Add_IgnoringX x.CCR dest source
+                    x.MMU.WriteLong addr result
+                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
+                    printfn "add.l D%u,$%x.l" address addr
+                    newCpu
                 | 0b101uy -> //(d16,An)
                     let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
                     let addr = uint32 (x.AddressRegister eareg + int displacement)
@@ -4544,6 +4584,23 @@ type Cpu =
                     printfn "lsl.w %i(a%u)" displacement eareg
                     newCpu
                 | _ -> failwithf "lsl.w(memory) not implemented for eamode %x" eamode
+            | 0b011uy, 1uy -> //ROL.W <ea> - rotate memory word left 1, C = bit rotated out, X untouched
+                match eamode, eareg with
+                | 0b111uy, 0b001uy -> //(xxx).L - the Timer C ISR's `rol $e42.l` (200Hz-tick rate divider)
+                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                    let v = uint16 (x.MMU.ReadWord addr)
+                    let carryOut = v &&& 0x8000us <> 0us
+                    let result = int16 ((v <<< 1) ||| (if carryOut then 1us else 0us))
+                    x.MMU.WriteWord addr result
+                    let mutable ccr = x.CCR
+                    ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
+                    if result < 0s then ccr <- ccr ||| 0x8s //N
+                    if result = 0s then ccr <- ccr ||| 0x4s //Z
+                    if carryOut then ccr <- ccr ||| 0x1s //C only - plain rotate leaves X alone
+                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
+                    printfn "rol.w $%x.l" addr
+                    newCpu
+                | _ -> failwithf "rol.w(memory) not implemented for eamode %x reg %x" eamode eareg
             | _ -> failwithf "memory shift/rotate not implemented for type %x direction %x" shiftType direction
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
