@@ -180,6 +180,15 @@ module Instructions =
             Some(size, mode, register)
         else None
 
+    /// 0000 0100 ss mmm rrr : SUBI #<data>,<ea>
+    let (|SUBI|_|) data =
+        if data &&& 0b1111111100000000 = 0b0000010000000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let mode = byte (data >>> 3) &&& 0b111uy
+            let register = byte data &&& 0b111uy
+            Some(size, mode, register)
+        else None
+
     /// 0000 1010 ss mmm rrr : EORI #<data>,<ea>
     let (|EORI|_|) data =
         if data &&& 0b1111111100000000 = 0b0000101000000000 then
