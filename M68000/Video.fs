@@ -119,9 +119,11 @@ let decodeFramebuffer (mmu: Atari.MMU) (pixels: byte[]) =
 let inline private nullPtr<'T when 'T: unmanaged> : nativeptr<'T> = NativePtr.ofNativeInt 0n
 
 /// Opens the window and runs the emulator/render/input loop until the window is closed. `step`
-/// advances the CPU one instruction; `mmu` is used both to read the framebuffer and to enqueue
-/// IKBD input.
-let run (step: unit -> unit) (mmu: Atari.MMU) =
+/// advances the CPU one instruction; `stepCount` reads the emulator's running instruction total
+/// and `instructionsPerFrame` is one emulated ~50 Hz video frame (see Program.fs's emulated-time
+/// block) - together they let the render loop run exactly one frame per host frame and decode the
+/// framebuffer on the VBL boundary; `mmu` reads the framebuffer and enqueues IKBD input.
+let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: int) (mmu: Atari.MMU) =
     let sdl = Sdl.GetApi()
     if sdl.Init(Sdl.InitVideo ||| Sdl.InitEvents) <> 0 then
         failwithf "SDL_Init failed: %s" (sdl.GetErrorS())
@@ -203,27 +205,32 @@ let run (step: unit -> unit) (mmu: Atari.MMU) =
             | _ -> ()
 
     let sw = Stopwatch.StartNew()
-    // No cycle-accurate timing yet: run a fixed instruction budget per rendered frame and pace to
-    // ~50Hz. The budget is generous (the emulator runs far faster than an 8MHz 68000 - a real
-    // frame is only ~40k instructions) so a frame's worth of ROM work (VBL handler, AES event
-    // loop, any input the ISR just queued) always completes.
-    // The budget is split into slices: input is polled and mouse deltas delivered between slices,
-    // not once per frame, so the pointer follows the host mouse with sub-frame latency instead of
-    // lagging a whole 20ms behind.
-    let stepsPerFrame = 300_000
+    // One host frame == one emulated video frame. Run instructions up to the next VBL boundary
+    // (stepCount() a multiple of instructionsPerFrame), then decode: that lands the capture right
+    // after the previous frame's VBL cursor redraw has settled and before the next VBL starts, so
+    // the pointer is never caught mid-erase (the window-cursor-tearing bug). Emulated time now
+    // advances at the same rate the ROM thinks it does, so the render is real-time when the host
+    // can keep up and cleanly slow (not torn) when it cannot.
+    // Each frame is split into slices: input is polled and mouse deltas delivered between slices,
+    // not once per frame, so the pointer follows the host mouse with sub-frame latency.
     let slices = 6
-    let sliceSteps = stepsPerFrame / slices
+    let ipf = uint64 instructionsPerFrame
+    let sliceSteps = uint64 (max 1 (instructionsPerFrame / slices))
     let frameMs = 20.0 // 50 Hz
 
     while running do
         let frameStart = sw.Elapsed.TotalMilliseconds
 
-        for _ in 1 .. slices do
+        // Next VBL boundary at or after the current position (handles a resumed snapshot whose
+        // stepCount is not frame-aligned - the first frame is just short).
+        let target = (stepCount() / ipf + 1UL) * ipf
+        while running && stepCount() < target do
             pollEvents ()
             // Deliver accumulated motion BEFORE the slice runs so the ROM processes it now, not
             // in a later slice/frame.
             sendMousePacket false
-            for _ in 1 .. sliceSteps do step ()
+            let sliceEnd = min target (stepCount() + sliceSteps)
+            while stepCount() < sliceEnd do step ()
 
         decodeFramebuffer mmu pixels
         use p = fixed pixels

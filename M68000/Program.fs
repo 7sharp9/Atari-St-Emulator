@@ -81,23 +81,33 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let mutable loopPower = 1
     let mutable loopLambda = 0
 
-    ///Periodic VBL (autovector level 4, vector 28) trigger - see MMU's `pendingInterruptLevel`
-    ///comment for what this is for and, importantly, what it turned out NOT to fix (the IPL=7 lock
-    ///that originally motivated it - level 4 can't preempt level 7, confirmed by testing, not just
-    ///reasoned about). Kept because it's real, correct, necessary infrastructure regardless - any
-    ///future keyboard/IKBD work needs working interrupt delivery to reach TOS's own ISRs at all.
-    ///This project has no cycle-accurate timing to derive a true 50Hz-at-8MHz period from (every
-    ///instruction costs a different number of real cycles, and none of that is counted anywhere),
-    ///so `vblPeriod` is a deliberate approximation, not a real-timing claim.
-    let vblPeriod = 2000UL
-    ///MFP Timer C is the 200Hz system tick on real hardware - 4x the ~50Hz VBL. Keeping that 4:1
-    ///ratio is what matters here (not the absolute rate): it's what advances etv_timer and, through
-    ///it, the AES double-click / click-release timeout countdown, so a *stationary* mouse click
-    ///(press and release with no motion between) actually completes instead of hanging forever
-    ///waiting for a tick that never comes. Without this, only a click with >2px of motion in the
-    ///same packet ever posts (the AES flushes those early), which is why menu-item selection and
-    ///form_alert buttons "needed many clicks".
-    let timerCPeriod = vblPeriod / 4UL
+    // --- Emulated time --------------------------------------------------------
+    //
+    // There is still no per-instruction cycle counting here (every 68000 opcode
+    // costs a different number of clocks and none of that is tracked). What this
+    // block does instead is derive *every* periodic event from one constant, so
+    // their rates stay consistent with each other and roughly real-time, rather
+    // than three unrelated magic numbers drifting apart.
+    //
+    // The unit is "one emulator step == one instruction". Measured against real
+    // Hatari on this same ROM (tools/hatari_trace.py --trace cpu_disasm, boot to
+    // 120 VBLs): ~12,000 instructions execute between consecutive VBLs, i.e. per
+    // ~50 Hz PAL video frame. That is the anchor.
+    //
+    //   - VBL (autovector level 4, vector 28): once per frame, 50 Hz.
+    //   - MFP Timer C (channel 5, level 6, vector $45): the 200 Hz system tick,
+    //     exactly 4x the frame rate. This is what advances etv_timer and the
+    //     GEMDOS/BIOS software clock, and the AES double-click timeout - keeping
+    //     it a fixed 4:1 against the VBL is what makes a stationary click
+    //     complete and keeps the TOS clock from drifting against wall time.
+    //   - The live window (Video.fs) renders one host frame per emulated frame
+    //     and decodes the framebuffer exactly on the VBL boundary (see below).
+    //
+    // 12,000 is an estimate, not a cycle-accurate figure - within ~2x is enough
+    // for "the clock ticks at roughly the right rate and the sub-rates agree".
+    let instructionsPerFrame = 12000UL
+    /// Timer C is 4x the VBL rate; the 4:1 ratio is the invariant, not the absolute period.
+    let timerCPeriod = instructionsPerFrame / 4UL
     let mutable stepCount = 0UL
 
     ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in
@@ -132,9 +142,15 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     member x.Rom =
         rom
 
+    ///Total instructions executed since the last Reset()/LoadState() - the emulated-time base.
+    ///The live window uses this to align framebuffer capture to the VBL boundary.
+    member x.StepCount = stepCount
+    ///See the emulated-time block above: instructions per ~50 Hz video frame.
+    member x.InstructionsPerFrame = int instructionsPerFrame
+
     member x.Step() =
         stepCount <- stepCount + 1UL
-        if stepCount % vblPeriod = 0UL then
+        if stepCount % instructionsPerFrame = 0UL then
             mmu.RaiseInterrupt 4 28
         if stepCount % timerCPeriod = 0UL then
             mmu.RaiseTimerC()
@@ -294,7 +310,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         //actually captured with since nothing could set it to anything else before this fix existed.
         let memConfig = if version >= 4uy then r.ReadByte() else 0uy
         //v1-v5 snapshots predate stepCount being persisted - default to 0, matching the bug this
-        //field's addition fixes (a resumed run's VBL-injection phase, `stepCount % vblPeriod`,
+        //field's addition fixes (a resumed run's VBL-injection phase, `stepCount % instructionsPerFrame`,
         //restarting from 0 instead of continuing from the point the snapshot was taken at, which is
         //exactly the resume/cold-boot step-count divergence this fix targets). Snapshots taken
         //before this fix can't recover their true step count and stay subject to the old bug.
@@ -476,12 +492,12 @@ module Main =
             //~50Hz render loop, feeding real host keyboard/mouse in as IKBD packets. F12 or the
             //window close button exits. Everything else here stays headless by default.
             st.Reset()
-            Video.run st.Step st.Cpu.MMU
+            Video.run st.Step (fun () -> st.StepCount) st.InstructionsPerFrame st.Cpu.MMU
             0
         | [| "window"; "resume"; path |] ->
             //Same window, but starting from a snapshot instead of a cold boot.
             st.LoadState path
-            Video.run st.Step st.Cpu.MMU
+            Video.run st.Step (fun () -> st.StepCount) st.InstructionsPerFrame st.Cpu.MMU
             0
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until
