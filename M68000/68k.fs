@@ -2730,6 +2730,26 @@ type Cpu =
             printfn "rte"
             newCpu
 
+        | RTR ->
+            //Pop the condition codes (low byte of a word; only bits 0-4 are implemented, the rest
+            //read 0) then the return PC (long); SP += 6. The system byte of SR is left untouched -
+            //RTR restores CCR only, not privilege/mask/trace.
+            let poppedCcr = int16 (x.MMU.ReadWord(uint32 x.A7) &&& 0x1f)
+            let pc = x.MMU.ReadLong(uint32 (x.A7+2))
+            let newCcr = (x.CCR &&& ~~~0x1fs) ||| poppedCcr
+            printfn "rtr"
+            {x with A7 = x.A7 + 6; PC = pc; CCR = newCcr}
+
+        | TRAPV ->
+            //Trap to vector 7 when V is set, otherwise fall through. The stacked return PC is the
+            //instruction after TRAPV (a completed instruction, unlike an address error).
+            if x.CCR &&& 0x2s <> 0s then
+                printfn "trapv (taken)"
+                x.EnterVector 7 (x.PC+2)
+            else
+                printfn "trapv (not taken)"
+                {x with PC = x.PC+2}
+
         | TRAP(vector) ->
             //Pushes return PC then SR (SR ends up on top, matching RTE's SR@SP/PC@SP+2 layout),
             //enters supervisor mode, and jumps to the vector table entry at (32+n)*4 - see

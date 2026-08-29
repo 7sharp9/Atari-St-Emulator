@@ -131,6 +131,16 @@ module Instructions =
         if data = 0b0100111001110011 then Some()
         else None
 
+    /// 0100 1110 0111 0111 : RTR - restore CCR and PC from the stack
+    let (|RTR|_|) data =
+        if data = 0b0100111001110111 then Some()
+        else None
+
+    /// 0100 1110 0111 0110 : TRAPV - trap to vector 7 if V is set
+    let (|TRAPV|_|) data =
+        if data = 0b0100111001110110 then Some()
+        else None
+
     /// 0100 1110 0100 nnnn : TRAP #<vector>
     let (|TRAP|_|) data =
         if data &&& 0b1111111111110000 = 0b0100111001000000 then
