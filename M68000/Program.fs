@@ -515,10 +515,9 @@ for _ in 1..100 do
 ///`*.json` / `*.json.gz` vector files; the optional substring filters by file name (e.g. `lsr`,
 ///`shift` won't match - use `lsr`, `ror`). Fetch the vectors with `tools/fetch_680x0_tests.py`.
 ///
-///Deliberate scope limits - a case that trips one is SKIPPED (counted, not failed):
-/// - Only the low 1 MB of address space is backed here, as flat identity-mapped RAM (`memConfig`
-///   = $05). A case whose PC or listed RAM addresses fall outside [$8, $100000) is skipped. The
-///   overwhelming majority of register/immediate/near-stack cases still run.
+///The CPU runs against a flat 16 MB big-endian RAM (`MMU(_, flatTestBus = true)`) - no I/O, no
+///ROM, no aliasing, no bus errors - since these vectors test pure CPU semantics, not the ST
+///memory map. The only SKIP left is a null-page address (PC or a RAM ref < $8), plus an odd PC.
 ///Known imperfections that surface as real FAILs (gaps to close, not harness bugs):
 /// - No prefetch queue: `pc` is checked as "address of the next instruction", correct for this
 ///   interpreter, but a few instruction classes still differ by the 68000's real prefetch amount.
@@ -566,12 +565,14 @@ module SelfTest =
     type private Outcome = Pass | Skip | Fail of FailKind * string
 
     let private runCase (ini: St) (fin: St) : Outcome =
-        let outOfRange (a: uint32) = a < 8u || a >= 0x100000u
+        // The flat 16 MB test bus (MMU flatTestBus) backs the whole 24-bit space, so the only
+        // reason left to skip is a genuine null-page address (< 8) - the vectors' operand
+        // addresses are otherwise uniform across 24 bits and used to be ~1/3 of the suite.
+        let outOfRange (a: uint32) = a < 8u
         let refAddrs = Array.append (ini.Ram |> Array.map fst) (fin.Ram |> Array.map fst)
         if ini.Pc % 2 <> 0 || outOfRange (uint32 ini.Pc) || Array.exists outOfRange refAddrs then Skip
         else
-        let mmu = MMU(zeroRom)
-        mmu.WriteByte 0xFF8001u 0x05uy   // bank0 = bank1 = 512 KB -> identity RAM map over the low 1 MB
+        let mmu = MMU(zeroRom, flatTestBus = true)
         mmu.WriteWord (uint32 ini.Pc) (int16 ini.Prefetch.[0])
         mmu.WriteWord (uint32 ini.Pc + 2u) (int16 ini.Prefetch.[1])
         for (a, v) in ini.Ram do mmu.WriteByte a v
@@ -639,11 +640,12 @@ module SelfTest =
     let private zeroTally = { Pass = 0; Skip = 0; Wrong = 0; Frame = 0; Unimpl = 0 }
     let private totalFail t = t.Wrong + t.Frame + t.Unimpl
 
-    let private runFile (path: string) (maxReport: int) : Tally =
+    /// Runs one vector file. Pure apart from disk read - returns the tally and the lines it would
+    /// print (FAIL samples WrongAnswer-first, then the one-line summary), so `run` can fan the
+    /// files out across cores with `Array.Parallel` and still emit output in a stable order.
+    let private runFile (path: string) (maxReport: int) : Tally * string list =
         use doc = loadDoc path
         let mutable t = zeroTally
-        // Collect failing samples, then print them WrongAnswer-first - those are the actionable ones,
-        // and the 5-line cap otherwise fills up with the (large, known) frame / unimplemented classes.
         let samples = ResizeArray<int * string * string>()   // rank, name, msg  (rank: 0=wrong 1=frame 2=unimpl)
         for caseEl in doc.RootElement.EnumerateArray() do
             match runCase (parseSt (caseEl.GetProperty("initial"))) (parseSt (caseEl.GetProperty("final"))) with
@@ -656,11 +658,12 @@ module SelfTest =
                     | ExceptionFrame -> t <- { t with Frame  = t.Frame  + 1 }; 1
                     | Unimplemented -> t <- { t with Unimpl = t.Unimpl + 1 }; 2
                 samples.Add(rank, caseEl.GetProperty("name").GetString(), msg)
-        for (_, name, msg) in samples |> Seq.sortBy (fun (r, _, _) -> r) |> Seq.truncate maxReport do
-            Diag.result "    FAIL  %s :: %s" name msg
-        Diag.result "%-14s  %5d pass  %5d fail (%5d wrong %5d frame %5d unimpl)  %5d skip"
-            (baseName path) t.Pass (totalFail t) t.Wrong t.Frame t.Unimpl t.Skip
-        t
+        let lines =
+            [ for (_, name, msg) in samples |> Seq.sortBy (fun (r, _, _) -> r) |> Seq.truncate maxReport ->
+                sprintf "    FAIL  %s :: %s" name msg
+              yield sprintf "%-14s  %5d pass  %5d fail (%5d wrong %5d frame %5d unimpl)  %5d skip"
+                        (baseName path) t.Pass (totalFail t) t.Wrong t.Frame t.Unimpl t.Skip ]
+        t, lines
 
     /// `pathArg` = a directory of `*.json` / `*.json.gz` vector files, or a single such file.
     /// `filter` (may be "") keeps only files whose name contains it, case-insensitively.
@@ -678,11 +681,16 @@ module SelfTest =
             Diag.result "selftest: no matching .json / .json.gz vector files under %s" pathArg
             2
         else
+            // Files are independent (fresh MMU per case, Cpu.Step is pure over Cpu+MMU) - fan them
+            // out across cores. Single-file runs stay sequential (nothing to gain, cleaner errors).
+            let results =
+                if files.Length > 1 then files |> Array.Parallel.map (fun f -> baseName f, runFile f maxReport)
+                else files |> Array.map (fun f -> baseName f, runFile f maxReport)
             let mutable g = zeroTally
             let perFile = ResizeArray<string * Tally>()
-            for file in files do
-                let t = runFile file maxReport
-                perFile.Add(baseName file, t)
+            for (name, (t, lines)) in results do
+                for l in lines do Diag.result "%s" l
+                perFile.Add(name, t)
                 g <- { Pass = g.Pass + t.Pass; Skip = g.Skip + t.Skip
                        Wrong = g.Wrong + t.Wrong; Frame = g.Frame + t.Frame; Unimpl = g.Unimpl + t.Unimpl }
             Diag.result "----"
@@ -844,6 +852,8 @@ module Main =
             SelfTest.run pathArg "" 5
         | [| "selftest"; pathArg; filter |] ->
             SelfTest.run pathArg filter 5
+        | [| "selftest"; pathArg; filter; n |] ->
+            SelfTest.run pathArg filter (int n)   // 3rd arg = per-file FAIL sample lines to print
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until
             //an unimplemented instruction fails - Step() prints diagnostics and reraises) then

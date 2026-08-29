@@ -33,7 +33,18 @@ exception AddressError of address: uint32
 ///straight into an opcode-decode failure instead of a hardware fault.
 exception BusError of address: uint32
 
-type MMU(rom: byte array) =
+/// `flatTestBus` (default false) turns the MMU into a plain big-endian 24-bit RAM (sparse -
+/// unwritten addresses read 0) with no I/O regions, no ROM, no address aliasing and no bus errors
+/// - ONLY for the `selftest` harness, whose 680x0 ProcessorTests vectors place operands anywhere
+/// in the 24-bit space and test pure CPU semantics, not the ST memory map. Address errors (odd
+/// word/long access) are still raised, since the vectors do test those. Sparse (a Dictionary, not
+/// a 16 MB array) so a fresh MMU per case is cheap and GC-friendly under `Array.Parallel`.
+/// Nothing in the real emulator passes this flag.
+type MMU(rom: byte array, ?flatTestBus: bool) =
+
+    let flatBus = defaultArg flatTestBus false
+    let flatMem = System.Collections.Generic.Dictionary<uint32, byte>()
+    let flatGet (a: uint32) = match flatMem.TryGetValue a with | true, v -> v | _ -> 0uy
 
     ///`ATARI_TRACE_FDC=1` logs every FDC register/command write and every sector-read attempt to
     ///stderr (so it survives ATARI_NOTRACE), the way `ATARI_TRACE_GEMDOS` does for GEMDOS traps -
@@ -360,7 +371,7 @@ type MMU(rom: byte array) =
         elif command >= 0xd0uy && command < 0xe0uy then 0uy //Force Interrupt: idle
         else 0x10uy //Type II/III: Record Not Found, not busy
 
-    let ram = Array.create 1048576 0uy
+    let ram = Array.create 0x100000 0uy
 
     ///Real ST hardware only has `ram.Length` bytes of RAM physically installed, but the GLUE/MMU's
     ///address decoding for that bank doesn't stop at the installed size - addresses between the top
@@ -476,6 +487,7 @@ type MMU(rom: byte array) =
 
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
+        if flatBus then flatGet address else
         match address with
         | a when a <= 7u ->
             //Read from roms first 8 bytes
@@ -555,6 +567,7 @@ type MMU(rom: byte array) =
     member x.ReadWord (address: uint32) =
         let address = address &&& maxMemory
         if address % 2u <> 0u then raise (AddressError address)
+        if flatBus then (int (flatGet address) <<< 8) ||| int (flatGet ((address + 1u) &&& maxMemory)) else
         match address with
         | a when a < 7u ->
             ((int rom.[int a]) <<< 8) |||
@@ -610,6 +623,10 @@ type MMU(rom: byte array) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
         if address % 2u <> 0u then raise (AddressError address)
         checkWatch address "WriteWord" (uint32 (uint16 input))
+        if flatBus then
+            flatMem.[address] <- byte (int input >>> 8)
+            flatMem.[(address + 1u) &&& maxMemory] <- byte input
+        else
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
@@ -655,6 +672,7 @@ type MMU(rom: byte array) =
     member x.WriteByte (addr: uint32) (input: byte) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
         checkWatch address "WriteByte" (uint32 input)
+        if flatBus then flatMem.[address] <- input else
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
@@ -972,6 +990,10 @@ type MMU(rom: byte array) =
     member x.ReadLong (address: uint32) =
         let address = address &&& maxMemory //clip to the 24-bit address bus, matching Read/WriteByte/Word
         if address % 2u <> 0u then raise (AddressError address)
+        if flatBus then
+            (int (flatGet address) <<< 24) ||| (int (flatGet ((address + 1u) &&& maxMemory)) <<< 16)
+            ||| (int (flatGet ((address + 2u) &&& maxMemory)) <<< 8) ||| int (flatGet ((address + 3u) &&& maxMemory))
+        else
         match address with
         | a when a = 0u || a = 4u ->
            //read from rom as first 8 bytes mirrored
