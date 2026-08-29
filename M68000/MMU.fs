@@ -688,10 +688,22 @@ type MMU(rom: byte array) =
                 //real hardware - see fdcCommandStatus.
                 let count = if multiRecord then max 1 (int dmaSectorCount) else 1
                 let mutable ok = isReadSector
-                let mutable i = 0
-                while ok && i < count do
-                    ok <- tryReadSector fdcTrack (fdcSector + byte i) (dmaAddr + uint32 (i * 512))
-                    i <- i + 1
+                let mutable transferred = 0
+                while ok && transferred < count do
+                    ok <- tryReadSector fdcTrack (fdcSector + byte transferred) (dmaAddr + uint32 (transferred * 512))
+                    if ok then transferred <- transferred + 1
+                //Real hardware advances the DMA address counter ($FF8609/B/D) by one per byte
+                //actually transferred and decrements the DMA sector-count register; GEMDOS reads
+                //both back after a transfer to see where it ended (FD-HD_Programming.pdf, "DMA
+                //Registers Address Map" + hatari FDC_WriteDMAAddress). The counter is word-aligned
+                //(low bit forced to 0). No-op when nothing transferred (Record Not Found).
+                if transferred > 0 then
+                    let advanced = (dmaAddr + uint32 (transferred * 512)) &&& 0xFFFFFEu
+                    dmaAddrHighByte <- byte (advanced >>> 16)
+                    dmaAddrMidByte <- byte (advanced >>> 8)
+                    dmaAddrLowByte <- byte advanced
+                    dmaSectorCount <- byte (max 0 (int dmaSectorCount - transferred))
+                    mutations <- mutations + 1UL
                 let status = if ok then 0uy else fdcCommandStatus input
                 if status <> fdcStatus then mutations <- mutations + 1UL
                 fdcStatus <- status
