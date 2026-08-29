@@ -2171,6 +2171,21 @@ type Cpu =
                 let newCpu = {x.WithAddressRegister eareg (addr+4) with PC = x.PC+2; CCR = ccr}
                 printfn "clr.l (a%u)+" eareg
                 newCpu
+            | 0b011uy, 0b01uy -> //(An)+, word
+                let addr = x.AddressRegister eareg
+                x.MMU.WriteWord (uint32 addr) 0s
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR 0s
+                let newCpu = {x.WithAddressRegister eareg (addr+2) with PC = x.PC+2; CCR = ccr}
+                printfn "clr.w (a%u)+" eareg
+                newCpu
+            | 0b011uy, 0b00uy -> //(An)+, byte - A7 postincrements by 2 (word-aligned stack), others by 1
+                let addr = x.AddressRegister eareg
+                x.MMU.WriteByte (uint32 addr) 0uy
+                let step = if eareg = 7uy then 2 else 1
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR 0uy
+                let newCpu = {x.WithAddressRegister eareg (addr+step) with PC = x.PC+2; CCR = ccr}
+                printfn "clr.b (a%u)+" eareg
+                newCpu
             | 0b000uy, 0b10uy -> //Dn, long
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR 0
                 let newCpu = {x.WithDataRegister eareg 0 with PC = x.PC+2; CCR = ccr}
