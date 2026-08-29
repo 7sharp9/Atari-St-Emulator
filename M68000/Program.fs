@@ -195,8 +195,16 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         //against ROM addresses, instead of needing a separate disassembly pass just to figure out
         //which address a given trace line came from (a real time sink in past debugging sessions).
         printf "$%06x: " cpu.PC
+        //Structured flow-event trace (ATARI_TRACE_EVENTS) - one emission point, here, rather than
+        //the 221 printfn sites. Capture the pre-step PC/opcode and the interrupt-ack count, then
+        //classify the transition once cpu.Step() has produced the new PC. See Atari.TraceEvents.
+        let preEventsPc = cpu.PC
+        let preEventsOpcode = if TraceEvents.enabled then int (mmu.ReadWord (uint32 cpu.PC)) else 0
+        let preEventsAcks = mmu.InterruptAcks
         try
             cpu <- cpu.Step()
+            if TraceEvents.enabled then
+                TraceEvents.record stepCount preEventsPc preEventsOpcode cpu.PC (mmu.InterruptAcks <> preEventsAcks)
         with e ->
             //Diagnostics for implementing the next instruction: the opcode word, its common
             //sub-fields (most 68k formats split a word into these positions, though which fields
@@ -650,6 +658,9 @@ module Main =
         //null sink - result output (REPL replies, verify/selftest verdicts) prints through
         //Diag.result so ATARI_NOTRACE only silences the per-instruction trace. See Diag.
         Diag.captureResultOut()
+        //Flush/close the structured flow-event log (ATARI_TRACE_EVENTS) on any process exit,
+        //including the reraise path when an unimplemented instruction aborts the run.
+        AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> TraceEvents.close())
         //Every executed instruction calls printfn (221 call sites in 68k.fs) to build the
         //PC-tagged trace this project's debugging workflow depends on - see
         //atari-st-emulator-efficiency-tooling. That's the right default, but it means tracing

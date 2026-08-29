@@ -32,6 +32,106 @@ module Diag =
     let captureResultOut () = resultOut <- Console.Out
     let result fmt = Printf.kprintf resultOut.WriteLine fmt
 
+///Structured, machine-readable execution trace for program analysis (control-flow reconstruction,
+///basic blocks, call graphs, coverage) - a compact binary alternative to the 221 per-instruction
+///`printfn` disassembly sites, which are meant for a human reading a text trace, not for tooling.
+///
+///`ATARI_TRACE_EVENTS=<path>` writes a binary record per flow-control instruction (or per
+///instruction, with `ATARI_TRACE_EVENTS_ALL=1`). It writes straight to its own file via a
+///`BinaryWriter`, so it is unaffected by `ATARI_NOTRACE` (which only redirects `Console.Out`).
+///
+///File layout (little-endian, matching `BinaryWriter` on x86/x64):
+///  header: "A68E" (4 bytes) · version:u8 (=1) · recLen:u8 (=20) · reserved:u16 · startStep:u64
+///  record x N: stepCount:u64 · pc:u32 · target:u32 · opcode:u16 · kind:u8 · flags:u8 (=0)
+///`pc` is the executing instruction's address; `target` is the address actually executed next
+///(post-step PC); `kind` classifies the flow effect (see the byte constants below).
+///
+///Post-processor: `tools/trace_cfg.py`.
+module TraceEvents =
+    // kind byte values - keep in sync with tools/trace_cfg.py
+    let KSeq = 0uy             // linear fall-through (only emitted with ATARI_TRACE_EVENTS_ALL)
+    let KBranchTaken = 1uy     // Bcc/DBcc taken, BRA, JMP, or an unclassified non-linear jump
+    let KBranchNotTaken = 2uy  // Bcc/DBcc fell through to the next instruction
+    let KCall = 3uy            // BSR / JSR
+    let KRet = 4uy             // RTS / RTE / RTR
+    let KTrap = 5uy            // TRAP #n, TRAPV (taken), Line-A, Line-F, ILLEGAL, CHK (taken), address/bus error
+    let KInterrupt = 6uy       // a hardware interrupt was taken before this instruction ran
+
+    let private path = Environment.GetEnvironmentVariable "ATARI_TRACE_EVENTS"
+    let enabled = not (String.IsNullOrWhiteSpace path)
+    let private logAll = not (isNull (Environment.GetEnvironmentVariable "ATARI_TRACE_EVENTS_ALL"))
+
+    let mutable private writer : IO.BinaryWriter = null
+    let mutable private sinceFlush = 0
+
+    let private ensureOpen (startStep: uint64) =
+        if isNull writer then
+            let fs = IO.File.Create path
+            writer <- new IO.BinaryWriter(fs)
+            writer.Write("A68E".ToCharArray())
+            writer.Write(1uy)
+            writer.Write(20uy)
+            writer.Write(0us)
+            writer.Write(startStep)
+
+    ///Classify an executed instruction purely from its opcode word and the PC transition. The
+    ///bit patterns mirror the active extractors in Instructions.fs (BCC/DBcc/JSR/JMP/RTS/TRAP).
+    ///`inRange` = the post-step PC advanced linearly by a plausible instruction length; anything
+    ///non-linear that isn't a recognised branch opcode (address/bus error, a decode we don't model
+    ///as flow) is reported as KBranchTaken so the post-processor still sees a block boundary.
+    let classify (opcode: int) (pc: int) (newPc: int) (interruptTaken: bool) : byte =
+        if interruptTaken then KInterrupt else
+        let inRange = newPc >= pc && newPc <= pc + 16
+        match (opcode >>> 12) &&& 0xF with
+        | 0xA | 0xF -> KTrap
+        | 0x6 ->
+            let cond = (opcode >>> 8) &&& 0xF
+            if cond = 1 then KCall                       // BSR
+            elif cond = 0 then KBranchTaken              // BRA (unconditional)
+            else
+                let len = match opcode &&& 0xFF with 0x00 -> 4 | 0xFF -> 6 | _ -> 2
+                if newPc = pc + len then KBranchNotTaken else KBranchTaken
+        | 0x4 ->
+            if opcode = 0x4E75 || opcode = 0x4E73 || opcode = 0x4E77 then KRet          // RTS / RTE / RTR
+            elif (opcode &&& 0xFFC0) = 0x4E80 then KCall                                // JSR
+            elif (opcode &&& 0xFFC0) = 0x4EC0 then KBranchTaken                         // JMP
+            elif (opcode &&& 0xFFF0) = 0x4E40 then KTrap                                // TRAP #n
+            elif opcode = 0x4E76 then (if inRange then KSeq else KTrap)                 // TRAPV
+            elif opcode = 0x4AFC then KTrap                                             // ILLEGAL
+            elif (opcode &&& 0xF1C0) = 0x4180 then (if inRange then KSeq else KTrap)    // CHK
+            elif inRange then KSeq
+            else KBranchTaken
+        | 0x5 ->
+            if (opcode &&& 0xF0F8) = 0x50C8 then                                        // DBcc
+                if newPc = pc + 4 then KBranchNotTaken else KBranchTaken
+            elif inRange then KSeq
+            else KBranchTaken
+        | _ ->
+            if inRange then KSeq else KBranchTaken
+
+    ///Called once per executed instruction from AtartSt.Step(). No-op unless ATARI_TRACE_EVENTS is set.
+    let record (stepCount: uint64) (pc: int) (opcode: int) (newPc: int) (interruptTaken: bool) =
+        if enabled then
+            ensureOpen stepCount
+            let kind = classify opcode pc newPc interruptTaken
+            if logAll || kind <> KSeq then
+                writer.Write(stepCount)
+                writer.Write(uint32 pc)
+                writer.Write(uint32 newPc)
+                writer.Write(uint16 opcode)
+                writer.Write(kind)
+                writer.Write(0uy)
+                sinceFlush <- sinceFlush + 1
+                if sinceFlush >= 65536 then
+                    writer.Flush()
+                    sinceFlush <- 0
+
+    let close () =
+        if not (isNull writer) then
+            writer.Flush()
+            writer.Dispose()
+            writer <- null
+
 module CCR =
     let Subtract_IgnoringX currentCCR dest source =
         //unset all flag bits apart from x
