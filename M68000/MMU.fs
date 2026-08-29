@@ -7,6 +7,7 @@ open Bits
 ///the real run's timer state on "rollback", contradicting Preview's own "state restored" claim.
 type MmuSnapshot =
     { Ram: byte[]; VideoDisplayRegisters: byte[]; Ym2149: byte[]; MfpRegisters: byte[]
+      PsgSelectedReg: byte; PsgReadData: byte
       Tbcr: byte; Tbdr: byte; TbdrReload: byte; TbdrReadCount: uint32
       FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte
       DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte
@@ -57,7 +58,32 @@ type MMU(rom: byte array) =
     let dmaAddrMid = 0xFF860Bu //DMA Address Counter, middle byte
     let dmaAddrLow = 0xFF860Du //DMA Address Counter, low byte
 
-    let ym2149IOMemory = Array.create 4 0uy
+    ///YM2149 PSG. Real chip: a write to $FF8800 selects one of the 16 registers, a write to
+    ///$FF8802 sets the selected register's value, and a read of $FF8800 returns the last value
+    ///latched into the read port (the selected register's contents at select time, or a data
+    ///write's raw value - mirrors Hatari's `PSGRegisterReadData`, src/psg.c). The address vs data
+    ///port is picked by address bit 1 ($FF8800 = select, $FF8802 = data); the chip sits on the
+    ///upper data-bus byte so only even-address byte accesses are real. Previously modelled as a
+    ///raw 4-byte array indexed by `address - $FF8800`, so a read of $FF8800 returned the last
+    ///*register number* written, not the register's contents - which broke TOS's `giaccess`
+    ///read-modify-write of port A ($fc1c60: `move.b #$e,$ff8800; move.b $ff8800,D1; and.b #$f8,D1;
+    ///or.b D0,D1; move.b D1,$ff8802`) for bits 3-7. Only register 14 (I/O port A) matters past
+    ///sound: bit 0 = floppy side-select (side = ~portA & 1, per hatari FDC_SetDriveSide), bits 1-2
+    ///= drive-select, active low (bit 1 clear = drive 0, else bit 2 clear = drive 1, else none).
+    let psgRegs = Array.create 16 0uy
+    let mutable psgSelectedReg = 0uy       //0..15 selects a register; >=16 is invalid (reads 0xFF)
+    let mutable psgReadData = 0xFFuy       //value returned by a read of $FF8800
+    let mutable fdcSide = 0                //PSG port-A bit 0: floppy head side 0 or 1
+    let mutable fdcDrive = -1              //PSG port-A bits 1-2: selected drive (0, 1, or -1 = none)
+    ///Recompute the derived side/drive-select signals from PSG register 14 (I/O port A).
+    let updateDriveSide () =
+        let portA = psgRegs.[14]
+        fdcSide <- int ((~~~portA) &&& 1uy)
+        fdcDrive <-
+            if portA &&& 0x02uy = 0uy then 0
+            elif portA &&& 0x04uy = 0uy then 1
+            else -1
+    do psgRegs.[14] <- 0xFFuy; updateDriveSide ()   //cold-reset port A: no drive selected, side 0
     let ym2149Start = 0xFF8800u
     let ym2149End =  0xFF8804u
 
@@ -99,6 +125,25 @@ type MMU(rom: byte array) =
     let mutable mutations = 0UL
     ///See `InterruptAcks` - count of interrupts actually taken, for the loop detector.
     let mutable interruptAcks = 0UL
+
+    ///Write to a PSG port. `sel` picks the address ($FF8800) vs data ($FF8802) register. See the
+    ///psgRegs comment above.
+    let psgWrite (sel: bool) (input: byte) =
+        if sel then
+            if psgSelectedReg <> input then mutations <- mutations + 1UL
+            psgSelectedReg <- input
+            psgReadData <- if input < 16uy then psgRegs.[int input] else 0xFFuy
+        elif psgSelectedReg < 16uy then
+            let reg = int psgSelectedReg
+            let masked =
+                match reg with
+                | 1 | 3 | 5 | 13 -> input &&& 0x0Fuy       //channel A/B/C coarse tune, envelope shape
+                | 6 | 8 | 9 | 10 -> input &&& 0x1Fuy       //noise period, channel A/B/C amplitude
+                | _ -> input
+            if psgRegs.[reg] <> masked || psgReadData <> input then mutations <- mutations + 1UL
+            psgRegs.[reg] <- masked
+            psgReadData <- input                            //raw value, like hatari's PSGRegisterReadData
+            if reg = 14 then updateDriveSide ()
 
     ///Ad-hoc debug watchpoint (REPL `watch`/`unwatch`, see Program.fs) - prints via eprintfn (so it
     ///survives ATARI_NOTRACE) whenever a write touches [lo,hi]. Added after repeatedly hand-editing
@@ -269,6 +314,7 @@ type MMU(rom: byte array) =
     ///a live Hatari trace - see [[atari-st-emulator-next-instructions]]).
     let mutable diskA : byte[] option = None
     let mutable diskASectorsPerTrack = 9
+    let mutable diskASides = 1
 
     ///Real hardware resets this to 0 on cold boot (stMemory.c: "0xFF8001 is set to 0 on cold reset
     ///but keep its value on warm reset") - this emulator only ever cold-boots, so 0 is always the
@@ -389,11 +435,16 @@ type MMU(rom: byte array) =
     let tryReadSector (track: byte) (sector: byte) (dmaAddr: uint32) =
         match diskA with
         | None -> false
+        | Some _ when fdcDrive <> 0 -> false     //only drive A is backed by an image
+        | Some _ when fdcSide >= diskASides -> false
         | Some bytes ->
             let s = int sector
             if s < 1 || s > diskASectorsPerTrack then false
             else
-                let offset = (int track * diskASectorsPerTrack + (s - 1)) * 512
+                //Interleave the two sides for a double-sided image: track 0 side 0, track 0 side 1,
+                //track 1 side 0, ... - the standard .ST layout (hatari src/floppy.c).
+                let logicalSector = (int track * diskASides + fdcSide) * diskASectorsPerTrack + (s - 1)
+                let offset = logicalSector * 512
                 if offset < 0 || offset + 512 > bytes.Length then false
                 else
                     for i in 0 .. 511 do
@@ -415,13 +466,10 @@ type MMU(rom: byte array) =
         | VideoDisplayRegister ->
             videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)]
         | YM2149 ->
-            //Real device, just missing from this one access-width's match arms - previously fell
-            //through to the generic "genuinely unmapped" default (silently 0), which happened to
-            //read back the chip's real reset-state value here but only by coincidence, not because
-            //this was actually unmapped bus. Surfaced as a false BusError once that default started
-            //raising instead of returning 0 - see [[atari-st-emulator-next-instructions]]'s
-            //twentieth pass.
-            ym2149IOMemory.[int (address-ym2149Start)]
+            //Both the address port ($FF8800) and the data port ($FF8802) read back the last
+            //latched read-data value - see the psgRegs comment. (Real hardware only truly drives
+            //data on a read of $FF8800; $FF8802 reads are undefined. TOS only ever reads $FF8800.)
+            psgReadData
         | a when a = mfpTbdr ->
             let v = tbdr
             if tbcr <> 0uy then
@@ -494,8 +542,9 @@ type MMU(rom: byte array) =
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
         | YM2149 ->
-            //Same gap as ReadByte's YM2149 case - see its comment.
-            BigEndian.readWord ym2149IOMemory (address-ym2149Start)
+            //Byte-wide device on the upper data-bus byte - compose from ReadByte, register in the
+            //high half. TOS only ever byte-accesses the PSG.
+            (int (x.ReadByte address) <<< 8) ||| int (x.ReadByte (address+1u))
         | Mfp ->
             //Same asymmetry bug as WriteWord had (see its comment): word/long access to the MFP's
             //byte-wide registers used to fall through to the generic 0/unmapped default instead of
@@ -546,8 +595,8 @@ type MMU(rom: byte array) =
             store videoDisplayRegisterMemory i (byte (input >>> 8))
             store videoDisplayRegisterMemory (i+1) (byte (input &&& 0xffs))
         | YM2149 ->
-            store ym2149IOMemory (int (address-ym2149Start)) (byte (input >>> 8))
-            store ym2149IOMemory (int (address-ym2149Start+1u)) (byte input)
+            //Byte-wide device on the upper data-bus byte - only the high byte reaches the chip.
+            x.WriteByte address (byte (input >>> 8))
         | Mfp ->
             //Bug fix: this case didn't exist before, so word writes to any MFP register (TBDR/
             //TBCR included) were silently dropped while byte writes worked - a real asymmetry, not
@@ -589,7 +638,7 @@ type MMU(rom: byte array) =
         | VideoDisplayRegister ->
             store videoDisplayRegisterMemory (int (address - videoDisplayRegisterStart)) input
         | YM2149 ->
-            store ym2149IOMemory (int (address-ym2149Start)) input
+            psgWrite (address &&& 0x2u = 0u) input
         | a when a = mfpTbdr ->
             //Writing the *same* value still resets tbdrReadCount, which is a real state change
             //(it re-phases the next visible decrement) even when tbdr/tbdrReload don't move - so
@@ -711,6 +760,12 @@ type MMU(rom: byte array) =
                 let spt = int bytes.[24] ||| (int bytes.[25] <<< 8)
                 if spt >= 1 && spt <= 48 then spt else 9
             | _ -> 9
+        diskASides <-
+            match data with
+            | Some bytes when bytes.Length >= 28 ->
+                let heads = int bytes.[26] ||| (int bytes.[27] <<< 8)   //BPB "number of heads", offset 26
+                if heads = 1 || heads = 2 then heads else 1
+            | _ -> 1
 
     ///Selects the monitor type reported through MFP GPIP bit 7 - see `colourMonitor`. `true` =
     ///colour (the default and Hatari's default), `false` = monochrome. Like LoadDiskA this is
@@ -806,7 +861,8 @@ type MMU(rom: byte array) =
     member x.SnapshotRam() : MmuSnapshot =
         { Ram = Array.copy ram
           VideoDisplayRegisters = Array.copy videoDisplayRegisterMemory
-          Ym2149 = Array.copy ym2149IOMemory
+          Ym2149 = Array.copy psgRegs
+          PsgSelectedReg = psgSelectedReg; PsgReadData = psgReadData
           MfpRegisters = Array.copy mfpRegisters
           Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
           FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
@@ -818,7 +874,10 @@ type MMU(rom: byte array) =
     member x.RestoreRam(snapshot: MmuSnapshot) =
         Array.blit snapshot.Ram 0 ram 0 snapshot.Ram.Length
         Array.blit snapshot.VideoDisplayRegisters 0 videoDisplayRegisterMemory 0 snapshot.VideoDisplayRegisters.Length
-        Array.blit snapshot.Ym2149 0 ym2149IOMemory 0 snapshot.Ym2149.Length
+        Array.blit snapshot.Ym2149 0 psgRegs 0 (min snapshot.Ym2149.Length psgRegs.Length)
+        psgSelectedReg <- snapshot.PsgSelectedReg
+        psgReadData <- snapshot.PsgReadData
+        updateDriveSide ()
         Array.blit snapshot.MfpRegisters 0 mfpRegisters 0 snapshot.MfpRegisters.Length
         tbcr <- snapshot.Tbcr
         tbdr <- snapshot.Tbdr
@@ -857,9 +916,10 @@ type MMU(rom: byte array) =
         | Cart ->  0xffffffff
           //failwithf "Not implemented read long from cart: %x" address
         | YM2149 ->
-            let test = int (address-ym2149Start)
-            let _ = sprintf "%x" test
-            BigEndian.readLongWord ym2149IOMemory (uint32 (int (address-ym2149Start)))
+            (int (x.ReadByte address) <<< 24) |||
+            (int (x.ReadByte (address+1u)) <<< 16) |||
+            (int (x.ReadByte (address+2u)) <<< 8) |||
+            (int (x.ReadByte (address+3u)))
         | Mfp -> //same reasoning as ReadWord's Mfp case above
             (int (x.ReadByte address) <<< 24) |||
             (int (x.ReadByte (address+1u)) <<< 16) |||

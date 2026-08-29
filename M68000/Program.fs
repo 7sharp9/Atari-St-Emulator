@@ -331,7 +331,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(7uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount
+        w.Write(8uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.SSP; cpu.PC |] do w.Write(v: int)
@@ -360,6 +360,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         w.Write(stepCount)
         w.Write(snap.KbdAciaControl)
         writeArr snap.IkbdRxFifo
+        w.Write(snap.PsgSelectedReg)
+        w.Write(snap.PsgReadData)
         Diag.result "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
@@ -421,8 +423,15 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let kbdAciaControl, ikbdRxFifo =
             if version >= 7uy then r.ReadByte(), readArr()
             else 0uy, [||]
+        //v1-v7 snapshots stored the PSG as a raw 4-byte port array, not the 16-register file - a
+        //restored v7 blob won't reproduce PSG state (they are scratchpad-local and never carried
+        //between sessions anyway). Default the select/read-data bytes to the cold-reset values.
+        let psgSelectedReg, psgReadData =
+            if version >= 8uy then r.ReadByte(), r.ReadByte()
+            else 0uy, 0xFFuy
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
+              PsgSelectedReg = psgSelectedReg; PsgReadData = psgReadData
               Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
               FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
               FdcSector = fdcSector; FdcData = fdcData
