@@ -2849,7 +2849,10 @@ type Cpu =
             //Push An, then An = (new, post-push) SP, then SP += sign-extended displacement.
             let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
             let newSP = x.A7 - 4
-            x.MMU.WriteLong (uint32 newSP) (x.AddressRegister register)
+            //The SP pre-decrement happens before An is read, so LINK A7 pushes the already
+            //decremented SP, not the entry value.
+            let pushed = if register = 0b111uy then newSP else x.AddressRegister register
+            x.MMU.WriteLong (uint32 newSP) pushed
             let newCpu = (x.WithAddressRegister register newSP).WithAddressRegister 0b111uy (newSP + int displacement)
             let newCpu = {newCpu with PC = x.PC+4}
             printfn "link A%u,#%d" register displacement
