@@ -2796,7 +2796,8 @@ type Cpu =
             //another supervisor context - no stack swap, just keep using the now-popped pointer)
             //or dropping back to user mode (swap A7 over to USP, and park the popped supervisor
             //pointer in SSP for whenever a later trap re-enters supervisor mode).
-            let sr = int16 (x.MMU.ReadWord(uint32 x.A7))
+            //Mask to the implemented SR bits (T, S, I2-I0, CCR); the unused ones read back as 0.
+            let sr = int16 (x.MMU.ReadWord(uint32 x.A7) &&& 0xA71F)
             let pc = x.MMU.ReadLong(uint32 (x.A7+2))
             let poppedCpu = {x with A7 = x.A7 + 6}
             let newCpu = {poppedCpu.WithSR sr with PC = pc}
