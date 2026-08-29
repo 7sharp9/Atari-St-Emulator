@@ -224,15 +224,15 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     member x.Preview(n: int) =
         let savedCpu = cpu
         let savedRam = mmu.SnapshotRam()
-        printfn "--- preview: up to %d step(s), state will be restored afterward ---" n
+        Diag.result "--- preview: up to %d step(s), state will be restored afterward ---" n
         (try
             for _ in 1 .. n do x.Step()
          with e ->
-            printfn "--- preview stopped early: %s ---" e.Message)
+            Diag.result "--- preview stopped early: %s ---" e.Message)
         cpu <- savedCpu
         mmu.RestoreRam savedRam
         resetLoopDetector() //the anchor may describe a state from the just-reverted speculative branch
-        printfn "--- preview done, state restored to PC=$%08x ---" cpu.PC
+        Diag.result "--- preview done, state restored to PC=$%08x ---" cpu.PC
 
     ///Serializes full CPU + MMU state (registers, RAM, video/YM2149/MFP register banks, Timer B
     ///scalars) to a binary file, so a later run can jump straight to this point instead of
@@ -271,7 +271,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         w.Write(stepCount)
         w.Write(snap.KbdAciaControl)
         writeArr snap.IkbdRxFifo
-        printfn "--- state saved to %s: PC=$%08x ---" path cpu.PC
+        Diag.result "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
     ///first; the caller decides whether to Reset() or LoadState(), never both). Resets the loop
@@ -341,7 +341,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
               MemConfig = memConfig
               KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo }
         resetLoopDetector()
-        printfn "--- state loaded from %s: PC=$%08x ---" path cpu.PC
+        Diag.result "--- state loaded from %s: PC=$%08x ---" path cpu.PC
 
     member x.Debug =
        sprintf """
@@ -367,9 +367,9 @@ CPU Registers
             x.Step()
             stepsRun <- stepsRun + 1
         if uint32 cpu.PC = target then
-            printfn "--- reached PC=$%08x after %d step(s) ---" cpu.PC stepsRun
+            Diag.result "--- reached PC=$%08x after %d step(s) ---" cpu.PC stepsRun
         else
-            printfn "--- gave up after %d step(s), PC=$%08x never reached (still at $%08x) ---" stepsRun target cpu.PC
+            Diag.result "--- gave up after %d step(s), PC=$%08x never reached (still at $%08x) ---" stepsRun target cpu.PC
 
 #if INTERACTIVE
 let st = AtartSt("TOS100UK.IMG")
@@ -377,6 +377,162 @@ st.Reset()
 for _ in 1..100 do
     st.Step()
 #else
+///Table-driven CPU regression harness. Runs the SingleStepTests/ProcessorTests 68000 vectors
+///(github.com/SingleStepTests/ProcessorTests, `680x0/68000/v1/*.json.gz` - one file per opcode,
+///~8000 randomised cases each carrying an initial machine state and the expected final
+///registers / SR / memory) straight against `Cpu.Step`. This is the regression net the project
+///has never had: the silent-for-many-passes shift bug (`LSR.L`/`ROR.L` smearing bit 31 down via
+///F#'s arithmetic `>>>`, only found on the 39th pass) would have failed thousands of `LSR.l` /
+///`ROR.l` cases the instant it was written.
+///
+///Usage: `dotnet exec M68000.dll selftest <dir-or-file> [name-substring]`. `<dir>` is a folder of
+///`*.json` / `*.json.gz` vector files; the optional substring filters by file name (e.g. `lsr`,
+///`shift` won't match - use `lsr`, `ror`). Fetch the vectors with `tools/fetch_680x0_tests.py`.
+///
+///Deliberate scope limits - a case that trips one is SKIPPED (counted, not failed):
+/// - Only the low 1 MB of address space is backed here, as flat identity-mapped RAM (`memConfig`
+///   = $05). A case whose PC or listed RAM addresses fall outside [$8, $100000) is skipped. The
+///   overwhelming majority of register/immediate/near-stack cases still run.
+///Known imperfections that surface as real FAILs (gaps to close, not harness bugs):
+/// - No prefetch queue: `pc` is checked as "address of the next instruction", correct for this
+///   interpreter, but a few instruction classes still differ by the 68000's real prefetch amount.
+/// - Exception entry uses the project's simplified 6-byte frame, so TRAP / CHK / privilege /
+///   address-error cases mismatch on the stacked frame.
+/// - Where the 68000 officially leaves a flag undefined, the vectors encode the real chip's
+///   actual behaviour and this core may pick a different (still-legal) value.
+module SelfTest =
+    open System
+    open System.IO
+    open System.IO.Compression
+    open System.Text.Json
+
+    /// One decoded processor-state object (the `initial` or `final` half of a case).
+    type private St =
+        { D: int[]; A: int[]; Usp: int; Ssp: int; Sr: int; Pc: int
+          Prefetch: int[]; Ram: (uint32 * byte)[] }
+
+    /// Register values are unsigned 32-bit in the JSON; keep the bit pattern as a native int.
+    let private u32 (e: JsonElement) = int (uint32 (e.GetInt64()))
+
+    let private parseSt (o: JsonElement) : St =
+        { D = [| for i in 0..7 -> u32 (o.GetProperty("d" + string i)) |]
+          A = [| for i in 0..6 -> u32 (o.GetProperty("a" + string i)) |]
+          Usp = u32 (o.GetProperty("usp"))
+          Ssp = u32 (o.GetProperty("ssp"))
+          Sr = o.GetProperty("sr").GetInt32() &&& 0xFFFF
+          Pc = u32 (o.GetProperty("pc"))
+          Prefetch = [| for p in o.GetProperty("prefetch").EnumerateArray() -> p.GetInt32() |]
+          Ram = [| for pair in o.GetProperty("ram").EnumerateArray() ->
+                     uint32 (pair.[0].GetInt64()), byte (pair.[1].GetInt32()) |] }
+
+    /// Shared zero "ROM": each case builds a fresh MMU so its RAM starts clean, but the ROM image
+    /// is immutable and never written, so one copy is safe to share across every case.
+    let private zeroRom : byte[] = Array.zeroCreate 0x40000
+
+    type private Outcome = Pass | Skip | Fail of string
+
+    let private runCase (ini: St) (fin: St) : Outcome =
+        let outOfRange (a: uint32) = a < 8u || a >= 0x100000u
+        let refAddrs = Array.append (ini.Ram |> Array.map fst) (fin.Ram |> Array.map fst)
+        if ini.Pc % 2 <> 0 || outOfRange (uint32 ini.Pc) || Array.exists outOfRange refAddrs then Skip
+        else
+        let mmu = MMU(zeroRom)
+        mmu.WriteByte 0xFF8001u 0x05uy   // bank0 = bank1 = 512 KB -> identity RAM map over the low 1 MB
+        mmu.WriteWord (uint32 ini.Pc) (int16 ini.Prefetch.[0])
+        mmu.WriteWord (uint32 ini.Pc + 2u) (int16 ini.Prefetch.[1])
+        for (a, v) in ini.Ram do mmu.WriteByte a v
+        let supervisor = ini.Sr &&& 0x2000 <> 0
+        let cpu0 =
+            { Cpu.Create(mmu) with
+                D0 = ini.D.[0]; D1 = ini.D.[1]; D2 = ini.D.[2]; D3 = ini.D.[3]
+                D4 = ini.D.[4]; D5 = ini.D.[5]; D6 = ini.D.[6]; D7 = ini.D.[7]
+                A0 = ini.A.[0]; A1 = ini.A.[1]; A2 = ini.A.[2]; A3 = ini.A.[3]
+                A4 = ini.A.[4]; A5 = ini.A.[5]; A6 = ini.A.[6]
+                A7 = (if supervisor then ini.Ssp else ini.Usp)
+                USP = ini.Usp; SSP = ini.Ssp
+                PC = ini.Pc; CCR = int16 ini.Sr }
+        match (try Choice1Of2 (cpu0.Step()) with e -> Choice2Of2 e) with
+        | Choice2Of2 e ->
+            // A raised exception here is the emulator refusing to decode this opcode/EA-mode
+            // combination (ROM-driven scope - many modes simply aren't implemented yet), not a
+            // wrong-answer bug. Report it distinctly so the two are easy to tell apart.
+            let firstLine = e.Message.Split('\n').[0]
+            Fail (sprintf "Cpu.Step raised (unimplemented?): %s" (firstLine.Substring(0, min 100 firstLine.Length)))
+        | Choice1Of2 cpu ->
+        let diffs = ResizeArray<string>()
+        let cmp label (act: int) (exp: int) =
+            if act <> exp then diffs.Add(sprintf "%s exp=%08x act=%08x" label exp act)
+        let dn = [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7 |]
+        let an = [| cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6 |]
+        for i in 0..7 do cmp ("d" + string i) dn.[i] fin.D.[i]
+        for i in 0..6 do cmp ("a" + string i) an.[i] fin.A.[i]
+        cmp "pc" cpu.PC fin.Pc
+        // The emulator keeps the live stack in A7 and shadows the *other* mode's pointer in
+        // USP/SSP; recover both real pointers from the post-step S bit to compare against the case.
+        cmp "usp" (if cpu.S then cpu.USP else cpu.A7) fin.Usp
+        cmp "ssp" (if cpu.S then cpu.A7 else cpu.SSP) fin.Ssp
+        let actSr = int cpu.CCR &&& 0xFFFF
+        if actSr <> fin.Sr then diffs.Add(sprintf "sr exp=%04x act=%04x" fin.Sr actSr)
+        for (a, v) in fin.Ram do
+            let got = mmu.ReadByte a
+            if got <> v then diffs.Add(sprintf "ram[%06x] exp=%02x act=%02x" a v got)
+        if diffs.Count = 0 then Pass else Fail (String.concat ", " diffs)
+
+    let private loadDoc (path: string) : JsonDocument =
+        if path.EndsWith(".gz") then
+            use fs = File.OpenRead path
+            use gz = new GZipStream(fs, CompressionMode.Decompress)
+            use ms = new MemoryStream()
+            gz.CopyTo ms
+            ms.Position <- 0L
+            JsonDocument.Parse ms
+        else
+            use fs = File.OpenRead path
+            JsonDocument.Parse fs
+
+    let private baseName (path: string) =
+        Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension path)  // strips .json.gz
+
+    let private runFile (path: string) (maxReport: int) =
+        use doc = loadDoc path
+        let mutable p, f, s = 0, 0, 0
+        let mutable reported = 0
+        for caseEl in doc.RootElement.EnumerateArray() do
+            match runCase (parseSt (caseEl.GetProperty("initial"))) (parseSt (caseEl.GetProperty("final"))) with
+            | Pass -> p <- p + 1
+            | Skip -> s <- s + 1
+            | Fail msg ->
+                f <- f + 1
+                if reported < maxReport then
+                    Diag.result "    FAIL  %s :: %s" (caseEl.GetProperty("name").GetString()) msg
+                    reported <- reported + 1
+        Diag.result "%-14s  %5d pass  %5d fail  %5d skip" (baseName path) p f s
+        p, f, s
+
+    /// `pathArg` = a directory of `*.json` / `*.json.gz` vector files, or a single such file.
+    /// `filter` (may be "") keeps only files whose name contains it, case-insensitively.
+    let run (pathArg: string) (filter: string) (maxReport: int) : int =
+        let keep (name: string) =
+            filter = "" || name.ToLowerInvariant().Contains(filter.ToLowerInvariant())
+        let files =
+            if Directory.Exists pathArg then
+                Directory.GetFiles pathArg
+                |> Array.filter (fun f -> (f.EndsWith(".json") || f.EndsWith(".json.gz")) && keep (Path.GetFileName f))
+                |> Array.sort
+            elif File.Exists pathArg then [| pathArg |]
+            else [||]
+        if files.Length = 0 then
+            Diag.result "selftest: no matching .json / .json.gz vector files under %s" pathArg
+            2
+        else
+            let mutable tp, tf, ts = 0, 0, 0
+            for file in files do
+                let p, f, s = runFile file maxReport
+                tp <- tp + p; tf <- tf + f; ts <- ts + s
+            Diag.result "----"
+            Diag.result "TOTAL  %d pass  %d fail  %d skip  across %d file(s)" tp tf ts files.Length
+            if tf > 0 then 1 else 0
+
 module Main =
 
     ///Interactive REPL command loop - factored out so both the plain entry (`repl`, Reset()+N
@@ -390,7 +546,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                printfn "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -408,10 +564,10 @@ module Main =
                 st.Until (Convert.ToUInt32(addr, 16)) (int maxSteps)
                 loop()
             | [| "registers" |] | [| "r" |] ->
-                printfn "%s" st.Debug
+                Diag.result "%s" st.Debug
                 loop()
             | [| "m"; addr; len |] ->
-                printfn "%s" (st.DumpMemory (Convert.ToUInt32(addr, 16)) (int len))
+                Diag.result "%s" (st.DumpMemory (Convert.ToUInt32(addr, 16)) (int len))
                 loop()
             | [| "w"; addr; value |] ->
                 //Direct memory-write for debugging (e.g. patching a resumed snapshot's system
@@ -421,17 +577,17 @@ module Main =
                 loop()
             | [| "snap"; path |] ->
                 st.SaveState path
-                printfn "Snapshot written to %s at PC=$%08x" path st.Cpu.PC
+                Diag.result "Snapshot written to %s at PC=$%08x" path st.Cpu.PC
                 loop()
             | [| "watch"; addr |] ->
                 let a = Convert.ToUInt32(addr, 16)
                 st.Cpu.MMU.SetWatch a a
-                printfn "Watching $%08x (stderr, survives ATARI_NOTRACE)" a
+                Diag.result "Watching $%08x (stderr, survives ATARI_NOTRACE)" a
                 loop()
             | [| "watch"; addr; len |] ->
                 let a = Convert.ToUInt32(addr, 16)
                 st.Cpu.MMU.SetWatch a (a + uint32 (int len - 1))
-                printfn "Watching [$%08x,$%08x] (stderr, survives ATARI_NOTRACE)" a (a + uint32 (int len - 1))
+                Diag.result "Watching [$%08x,$%08x] (stderr, survives ATARI_NOTRACE)" a (a + uint32 (int len - 1))
                 loop()
             | [| "unwatch" |] ->
                 st.Cpu.MMU.ClearWatch()
@@ -442,7 +598,7 @@ module Main =
                 //$9f break), `kbd fa 05 00` = a mouse-move-right packet. See MMU.EnqueueIkbd.
                 let bytes = parts.[1..] |> Array.map (fun s -> Convert.ToByte(s, 16))
                 st.Cpu.MMU.EnqueueIkbd bytes
-                printfn "enqueued %d IKBD byte(s): %s" bytes.Length (bytes |> Array.map (sprintf "%02x") |> String.concat " ")
+                Diag.result "enqueued %d IKBD byte(s): %s" bytes.Length (bytes |> Array.map (sprintf "%02x") |> String.concat " ")
                 loop()
             | [| "quit" |] | [| "q" |] ->
                 ()
@@ -452,6 +608,10 @@ module Main =
 
     [<EntryPoint>]
     let main argv =
+        //Capture the real stdout before the ATARI_NOTRACE redirect below can replace it with a
+        //null sink - result output (REPL replies, verify/selftest verdicts) prints through
+        //Diag.result so ATARI_NOTRACE only silences the per-instruction trace. See Diag.
+        Diag.captureResultOut()
         //Every executed instruction calls printfn (221 call sites in 68k.fs) to build the
         //PC-tagged trace this project's debugging workflow depends on - see
         //atari-st-emulator-efficiency-tooling. That's the right default, but it means tracing
@@ -511,6 +671,11 @@ module Main =
             st.LoadState path
             Video.run st.Step (fun () -> st.StepCount) st.InstructionsPerFrame st.Cpu.MMU
             0
+        | [| "selftest"; pathArg |] ->
+            //680x0 instruction-level regression vectors against Cpu.Step - see the SelfTest module.
+            SelfTest.run pathArg "" 5
+        | [| "selftest"; pathArg; filter |] ->
+            SelfTest.run pathArg filter 5
         | [| stepsArg |] ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until
             //an unimplemented instruction fails - Step() prints diagnostics and reraises) then
@@ -531,7 +696,7 @@ module Main =
             let steps = int stepsArg
             (try for _ in 1 .. steps do st.Step() with _ -> ())
             IO.File.WriteAllText("checkpoint.txt", st.Debug)
-            printfn "Checkpoint written to checkpoint.txt at step count %d (PC=$%08x)" steps st.Cpu.PC
+            Diag.result "Checkpoint written to checkpoint.txt at step count %d (PC=$%08x)" steps st.Cpu.PC
             0
         | [| stepsArg; "verify" |] ->
             //Runs N steps (or until failure), then diffs the resulting dump against
@@ -547,12 +712,12 @@ module Main =
                 let expected = IO.File.ReadAllText "checkpoint.txt"
                 let actual = st.Debug
                 if actual = expected then
-                    printfn "VERIFY PASS at step count %d (PC=$%08x)" steps st.Cpu.PC
+                    Diag.result "VERIFY PASS at step count %d (PC=$%08x)" steps st.Cpu.PC
                     0
                 else
-                    printfn "VERIFY FAIL at step count %d" steps
-                    printfn "--- expected (checkpoint.txt) ---%s" expected
-                    printfn "--- actual ---%s" actual
+                    Diag.result "VERIFY FAIL at step count %d" steps
+                    Diag.result "--- expected (checkpoint.txt) ---%s" expected
+                    Diag.result "--- actual ---%s" actual
                     1
         | [| stepsArg; "snapshot"; path |] ->
             //Runs N steps from address 0 (or until failure - in which case nothing is saved, same
@@ -632,7 +797,7 @@ module Main =
                 let mcsAddr = mmu.ReadLong 0x27F2u
                 eprintfn "frame %3d: newx=%d newy=%d mcs.len=%d mcs.flags=$%02x mcs.addr=$%06x"
                     f (rw 0x27E2u) (rw 0x27E4u) (rw 0x27F0u) (mmu.ReadByte 0x27F6u) mcsAddr
-            printfn "teartest: wrote %d frames to %s/" frames outDir
+            Diag.result "teartest: wrote %d frames to %s/" frames outDir
             0
         | args ->
             //Interactive REPL. Entry step count defaults to 20000 (`dotnet run --no-build`) but

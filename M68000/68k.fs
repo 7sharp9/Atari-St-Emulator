@@ -22,6 +22,16 @@ module Diag =
     ///is a question likely to come up again for any future GEMDOS-level investigation.
     let traceGemdos = not (isNull (Environment.GetEnvironmentVariable "ATARI_TRACE_GEMDOS"))
 
+    ///Result output (REPL replies, `verify`/`selftest` verdicts, snapshot/until status lines) goes
+    ///through `result` so it survives `ATARI_NOTRACE`. That env var redirects `Console.Out` to a
+    ///null sink to skip the per-instruction trace's formatting cost - which also silenced the
+    ///output you actually asked for, a recurring foot-gun (see [[atari-st-emulator-efficiency-tooling]]).
+    ///`captureResultOut` is called once at the very top of `main`, before the redirect, so the
+    ///captured writer is the real stdout regardless of when this module's initializer ran.
+    let mutable private resultOut : IO.TextWriter = Console.Out
+    let captureResultOut () = resultOut <- Console.Out
+    let result fmt = Printf.kprintf resultOut.WriteLine fmt
+
 module CCR =
     let Subtract_IgnoringX currentCCR dest source =
         //unset all flag bits apart from x
