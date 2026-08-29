@@ -100,6 +100,21 @@ module Instructions =
         if data = 0b0000101000111100 then Some()
         else None
 
+    /// 0000 0000 0011 1100 : ORI #<data>,CCR
+    let (|OriToCcr|_|) data =
+        if data = 0b0000000000111100 then Some()
+        else None
+
+    /// 0000 0010 0011 1100 : ANDI #<data>,CCR
+    let (|AndiToCcr|_|) data =
+        if data = 0b0000001000111100 then Some()
+        else None
+
+    /// 0000 1010 0111 1100 : EORI #<data>,SR
+    let (|EoriToSR|_|) data =
+        if data = 0b0000101001111100 then Some()
+        else None
+
     let (|Reset|_|) data =
         if data = 0b0100111001110000 then Some()
         else None

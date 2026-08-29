@@ -488,7 +488,9 @@ type Cpu =
     member x.DecodeBucket0 (instruction: int) : Cpu =
         match instruction with
         | OriToSR ->
-            let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+            //Mask the immediate to the bits the 68000 SR actually implements (T=15, S=13, I=10..8,
+            //CCR=4..0) so an OR can never leave the unused bits set - the 680x0 vectors check this.
+            let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xA71F)
             let newCcr = x.CCR ||| immediate
             printfn "ori #$%x,SR" immediate
             {x with PC = x.PC+4; CCR = newCcr}
@@ -501,6 +503,27 @@ type Cpu =
             let newCcr = x.CCR &&& immediate
             let switched = x.WithSR newCcr
             printfn "andi #$%x,SR" immediate
+            {switched with PC = x.PC+4}
+
+        | OriToCcr ->
+            //Opcode-space alias of ORI's mode=111/reg=100 EA slot (see [[68k-opcode-space-aliasing]]).
+            //Byte operation on the condition-code half of SR; the unused CCR bits 5-7 stay 0.
+            let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0x1f)
+            printfn "ori #$%x,CCR" immediate
+            {x with PC = x.PC+4; CCR = x.CCR ||| immediate}
+
+        | AndiToCcr ->
+            let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
+            printfn "andi #$%x,CCR" immediate
+            {x with PC = x.PC+4; CCR = x.CCR &&& (immediate ||| 0xff00s)}
+
+        | EoriToSR ->
+            //Privileged word operation on the whole SR; an EOR can flip the S bit, so route the
+            //result through WithSR (matches AndiToSR / RTE), which swaps A7/USP/SSP on a mode change.
+            //Mask to the implemented SR bits so the unused ones can't be toggled (see OriToSR).
+            let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xA71F)
+            let switched = x.WithSR (x.CCR ^^^ immediate)
+            printfn "eori #$%x,SR" immediate
             {switched with PC = x.PC+4}
 
         | ORI(size, mode, register) ->
@@ -655,9 +678,10 @@ type Cpu =
 
         | EoriToCcr ->
             //Opcode-space alias: mode=111/reg=100 in EORI's general EA encoding is reserved for
-            //this dedicated "EORI to CCR" form - see [[68k-opcode-space-aliasing]]. Byte operation:
-            //only the low byte of the word immediate is used (matches the flag bits in CCR).
-            let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
+            //this dedicated "EORI to CCR" form - see [[68k-opcode-space-aliasing]]. Byte operation
+            //on the condition codes; only the 5 implemented CCR bits can be toggled, the unused
+            //bits 5-7 stay 0 (the 680x0 vectors check this).
+            let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0x1f)
             let newCcr = x.CCR ^^^ immediate
             printfn "eori #$%x,CCR" immediate
             {x with PC = x.PC+4; CCR = newCcr}
