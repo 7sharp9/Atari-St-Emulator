@@ -142,7 +142,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let basepageSidecar =
         match Environment.GetEnvironmentVariable "ATARI_TRACE_EVENTS" with
         | null | "" -> None
-        | p -> Some (p + ".basepages.json")
+        | p ->
+            let sidecar = p + ".basepages.json"
+            //Written incrementally with AppendAllText, so a stale file from a previous run would
+            //produce a second unterminated JSON array. Start clean.
+            if IO.File.Exists sidecar then IO.File.Delete sidecar
+            Some sidecar
     //A stack, not a single slot: TOS's mode-4/6 Pexec ("just go") never returns to its caller, so
     //a single pending slot would be pinned forever and block detection of every later Pexec -
     //including a mode-0 load launched by the running shell (e.g. \AUTO\*.PRG). Entries that never
