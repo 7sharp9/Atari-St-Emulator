@@ -1987,7 +1987,21 @@ type Cpu =
                 let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0xffs)
                 printfn "move #$%x,ccr" source
                 {x with PC = x.PC+4; CCR = newCcr}
-            | _ -> failwithf "move2ccr not implemented for mode %x" mode
+            | _ ->
+                //Memory source: MOVE <ea>,CCR reads a word, only the low byte reaches the CCR.
+                let addr, pcAdv, regFix =
+                    match mode with
+                    | 0b010uy -> uint32 (x.AddressRegister register), 2, id                                  //(An)
+                    | 0b011uy -> uint32 (x.AddressRegister register), 2, (fun (c: Cpu) -> c.WithAddressRegister register (x.AddressRegister register + 2)) //(An)+
+                    | 0b100uy -> uint32 (x.AddressRegister register - 2), 2, (fun (c: Cpu) -> c.WithAddressRegister register (x.AddressRegister register - 2)) //-(An)
+                    | 0b101uy -> uint32 (x.AddressRegister register + int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))), 4, id //(d16,An)
+                    | 0b111uy when register = 0b000uy -> uint32 (int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))), 4, id  //(xxx).W
+                    | 0b111uy when register = 0b001uy -> uint32 (x.MMU.ReadLong(uint32 (x.PC+2))), 6, id               //(xxx).L
+                    | _ -> failwithf "move2ccr not implemented for mode %x" mode
+                let source = int16 (x.MMU.ReadWord addr)
+                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0xffs)
+                printfn "move <ea mode %x reg %u>,ccr" mode register
+                { regFix x with PC = x.PC + pcAdv; CCR = newCcr }
 
         | Move2SR(mode, register) ->
             //Hack, not sure about this
