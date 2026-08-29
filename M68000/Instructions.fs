@@ -242,6 +242,21 @@ module Instructions =
             Some(condition, byte (data &&& 0b0000000011111111))
         else None
   
+    /// 1001 xxx 1 ss 00 0 yyy : SUBX.size Dy,Dx  /  ...00 1 yyy : SUBX.size -(Ay),-(Ax)
+    /// Same opcode-space alias as ADDX vs ADD: opmode 100/101/110 (Dn->ea direction) with eamode
+    /// 000/001 is reserved for SUBX, so it must be tried before the generic SUB pattern below.
+    /// size=11 is opmode 111 (SUBA.L), not a SUBX size - falls through to SUB.
+    let (|SUBX|_|) data =
+        if data &&& 0b1111000100110000 = 0b1001000100000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            if size <> 0b11uy then
+                let registerX = byte (data >>> 9) &&& 0b111uy
+                let usePredecrement = data &&& 0b0000000000001000 <> 0
+                let registerY = byte data &&& 0b111uy
+                Some(registerX, size, usePredecrement, registerY)
+            else None
+        else None
+
     let (|SUB|_|) data =
         //1001101111001101
         //----reg

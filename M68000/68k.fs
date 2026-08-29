@@ -157,7 +157,36 @@ module CCR =
 
     let ClearZero ccr =
         ccr &&& ~~~0x4s //Z
- 
+
+///Size-code helpers shared by the extended-arith instructions (ADDX/SUBX; 00=byte, 01=word, 10=long).
+module ExtendedArith =
+    ///(operand mask, sign bit) for a two-bit size code. The long mask is -1 (all 32 bits).
+    let sizeInfo (size: byte) =
+        match size with
+        | 0b00uy -> 0xff, 0x80
+        | 0b01uy -> 0xffff, 0x8000
+        | _      -> -1, (1 <<< 31)
+    let sizeChar (size: byte) = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
+
+    ///One ADDX/SUBX step. `dest`/`source` must already be masked to `m`. Returns (result, newCCR).
+    ///Z is only ever cleared here, never set - the multi-precision quirk that lets a chain across a
+    ///wider value report whether the whole thing came out zero. X mirrors carry/borrow.
+    let step (isAdd: bool) (m: int) (sb: int) (curCCR: int16) (xFlag: bool) (dest: int) (source: int) =
+        let e = if xFlag then 1 else 0
+        let result = (if isAdd then dest + source + e else dest - source - e) &&& m
+        let carry =
+            if isAdd then uint64 (uint32 dest) + uint64 (uint32 source) + uint64 e > uint64 (uint32 m)
+            else uint64 (uint32 source) + uint64 e > uint64 (uint32 dest)
+        let overflow =
+            let dsSame = (dest &&& sb) = (source &&& sb)
+            (if isAdd then dsSame else not dsSame) && ((result &&& sb) <> (dest &&& sb))
+        let mutable ccr = curCCR &&& ~~~0x8s &&& ~~~0x2s &&& ~~~0x1s &&& ~~~0x10s
+        if (result &&& sb) <> 0 then ccr <- ccr ||| 0x8s //N
+        if result <> 0 then ccr <- ccr &&& ~~~0x4s //Z
+        if overflow then ccr <- ccr ||| 0x2s //V
+        if carry then ccr <- ccr ||| 0x1s ||| 0x10s //C and X
+        result, ccr
+
 //type AddressRegister =
     //| A0 of int
     //| A1 of int
@@ -286,6 +315,37 @@ type Cpu =
         | 4uy -> {x with D4 = value} | 5uy -> {x with D5 = value} | 6uy -> {x with D6 = value} | 7uy -> {x with D7 = value}
         | _ -> failwithf "Invalid register %uy" register
       
+    ///ADDX / SUBX, both the Dy,Dx register form and the -(Ay),-(Ax) memory predecrement form.
+    ///`isAdd` picks the operation; `size` is the 2-bit size code. PC always advances by 2.
+    member x.ExtendedArith (isAdd: bool) (size: byte) (usePredecrement: bool) (rx: byte) (ry: byte) : Cpu =
+        let m, sb = ExtendedArith.sizeInfo size
+        let mnem = (if isAdd then "addx." else "subx.") + ExtendedArith.sizeChar size
+        if usePredecrement then
+            // -(Ay),-(Ax): decrement Ay and read source, then decrement Ax and read dest, write back
+            // to (Ax). A7 steps by 2 even for a byte op. Ay and Ax can alias (both decrement it).
+            let stepFor r = match size with 0b10uy -> 4 | 0b01uy -> 2 | _ -> (if r = 7uy then 2 else 1)
+            let read a = match size with 0b10uy -> x.MMU.ReadLong a | 0b01uy -> x.MMU.ReadWord a &&& 0xffff | _ -> int (x.MMU.ReadByte a)
+            let yAddr = x.AddressRegister ry - stepFor ry
+            let afterY = x.WithAddressRegister ry yAddr
+            let source = read (uint32 yAddr) &&& m
+            let xAddr = afterY.AddressRegister rx - stepFor rx
+            let afterX = afterY.WithAddressRegister rx xAddr
+            let dest = read (uint32 xAddr) &&& m
+            let result, ccr = ExtendedArith.step isAdd m sb x.CCR x.X dest source
+            match size with
+            | 0b10uy -> x.MMU.WriteLong (uint32 xAddr) result
+            | 0b01uy -> x.MMU.WriteWord (uint32 xAddr) (int16 result)
+            | _      -> x.MMU.WriteByte (uint32 xAddr) (byte result)
+            printfn "%s -(a%u),-(a%u)" mnem ry rx
+            {afterX with PC = x.PC+2; CCR = ccr}
+        else
+            let dest = x.DataRegister rx &&& m
+            let source = x.DataRegister ry &&& m
+            let result, ccr = ExtendedArith.step isAdd m sb x.CCR x.X dest source
+            let newValue = (x.DataRegister rx &&& ~~~m) ||| result
+            printfn "%s D%u,D%u" mnem ry rx
+            {x.WithDataRegister rx newValue with PC = x.PC+2; CCR = ccr}
+
     ///Decodes a (d8,An,Xn) brief extension word. Index register is D/A bit15, register bits14-12,
     ///W/L bit11 (sign-extend word vs full long), displacement is the low signed byte.
     member x.DecodeBriefExtension (extWord: int) : IndexedAddressing =
@@ -3370,6 +3430,10 @@ type Cpu =
 
     member x.DecodeBucket9 (instruction: int) : Cpu =
         match instruction with
+        | SUBX(registerX, size, usePredecrement, registerY) ->
+            //Extend-aware subtract, dest - source - X (see ExtendedArith.step for the Z quirk).
+            x.ExtendedArith false size usePredecrement registerX registerY
+
         | SUB(address, opmode, eamode, eareg) ->
             //1001regopmEAmEAr
             //----reg
@@ -4150,31 +4214,8 @@ type Cpu =
     member x.DecodeBucketD (instruction: int) : Cpu =
         match instruction with
         | ADDX(registerX, size, usePredecrement, registerY) ->
-            //Extend-aware add, used for multi-precision arithmetic: adds the X flag into the sum,
-            //and - the real 68000 quirk that distinguishes ADDX from plain ADD - Z is only ever
-            //CLEARED on a nonzero result, never SET on a zero one, so a chain of ADDX calls across
-            //a multi-word value can tell whether the WHOLE value came out zero, not just this word.
-            if usePredecrement then failwith "ADDX -(An),-(An) (memory form) not implemented"
-            let extend = if x.X then 1 else 0
-            match size with
-            | 0b01uy -> //word
-                let dest = int16 (x.DataRegister registerX)
-                let source = int16 (x.DataRegister registerY)
-                let wide = int dest + int source + extend
-                let result = int16 wide
-                let newValue = (x.DataRegister registerX &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                let carryOut = (uint32 (uint16 dest) + uint32 (uint16 source) + uint32 extend) > 0xffffu
-                let overflow = ((dest >= 0s) = (source >= 0s)) && ((result >= 0s) <> (dest >= 0s))
-                let mutable ccr = x.CCR
-                ccr <- ccr &&& ~~~0x8s &&& ~~~0x2s &&& ~~~0x1s &&& ~~~0x10s
-                if result < 0s then ccr <- ccr ||| 0x8s //N
-                if result <> 0s then ccr <- ccr &&& ~~~0x4s //Z: clear on nonzero, leave alone otherwise
-                if overflow then ccr <- ccr ||| 0x2s //V
-                if carryOut then ccr <- ccr ||| 0x1s ||| 0x10s //C and X
-                let newCpu = {x.WithDataRegister registerX newValue with PC = x.PC+2; CCR = ccr}
-                printfn "addx.w D%u,D%u" registerY registerX
-                newCpu
-            | _ -> failwithf "addx not implemented for size %x" size
+            //Extend-aware add for multi-precision arithmetic (see ExtendedArith.step for the Z quirk).
+            x.ExtendedArith true size usePredecrement registerX registerY
 
         | ADD(address, opmode, eamode, eareg) ->
             match opmode with
