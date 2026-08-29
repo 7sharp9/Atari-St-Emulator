@@ -1660,7 +1660,10 @@ type Cpu =
 
                     match dMode with
                     | 0b011uy -> //(AN)+
-                        let destAddress = x.AddressRegister dReg
+                        //Source postincrement completes before the destination address is formed,
+                        //so (An)+,(An)+ on the same register writes to sourceAddress+2 and leaves
+                        //the register incremented twice.
+                        let destAddress = if sReg = dReg then sourceAddress + 2 else x.AddressRegister dReg
                         x.MMU.WriteWord (uint32 destAddress) sourceContents
 
                         let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
@@ -1681,7 +1684,9 @@ type Cpu =
                         newCpu
 
                     | 0b100uy -> //-(An)
-                        let destAddress = x.AddressRegister dReg - 2
+                        //Same-register (An)+,-(An): source increments to sourceAddress+2, then the
+                        //destination predecrement brings it back to sourceAddress.
+                        let destAddress = if sReg = dReg then sourceAddress else x.AddressRegister dReg - 2
                         x.MMU.WriteWord (uint32 destAddress) sourceContents
 
                         let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
@@ -1693,7 +1698,9 @@ type Cpu =
                         newCpu
 
                     | 0b010uy -> //(An)
-                        let destAddress = x.AddressRegister dReg
+                        //Same-register (An)+,(An): the source's postincrement lands before the
+                        //destination address is taken.
+                        let destAddress = if sReg = dReg then sourceAddress + 2 else x.AddressRegister dReg
                         x.MMU.WriteWord (uint32 destAddress) sourceContents
 
                         let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
@@ -3875,7 +3882,9 @@ type Cpu =
                 | 0b001uy -> //CMPM.W (An)+,(An)+ - both sides always postincrement by 2
                     let srcAddr = x.AddressRegister eareg
                     let source = int16 (x.MMU.ReadWord(uint32 srcAddr))
-                    let destAddr = x.AddressRegister register
+                    //The source postincrement completes before the destination is read, so when
+                    //both operands name the same register the destination reads the next word.
+                    let destAddr = if eareg = register then srcAddr + 2 else x.AddressRegister register
                     let dest = int16 (x.MMU.ReadWord(uint32 destAddr))
                     let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest source
                     let newCpu =
@@ -3938,10 +3947,12 @@ type Cpu =
                 | 0b001uy -> //CMPM.B (An)+,(An)+ - A7 postincrements by 2, others by 1
                     let srcAddr = x.AddressRegister eareg
                     let source = x.MMU.ReadByte(uint32 srcAddr)
-                    let destAddr = x.AddressRegister register
+                    let sStep = if eareg = 0b111uy then 2 else 1
+                    //Source postincrement completes before the destination read; same register on
+                    //both operands means the destination reads srcAddr + the source's step.
+                    let destAddr = if eareg = register then srcAddr + sStep else x.AddressRegister register
                     let dest = x.MMU.ReadByte(uint32 destAddr)
                     let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest source
-                    let sStep = if eareg = 0b111uy then 2 else 1
                     let dStep = if register = 0b111uy then 2 else 1
                     let newCpu =
                         (x.WithAddressRegister eareg (srcAddr+sStep)).WithAddressRegister register (destAddr+dStep)
