@@ -1,0 +1,38 @@
+# TOS 1.00 UK ROM symbol map — addr<TAB>name, one per line, '#' comments.
+# Consumed by tools/trace_cfg.py (auto-loaded when --names is not given) so CFG /
+# call-graph / block output reads in names instead of bare $fcXXXX addresses.
+#
+# These are reverse-engineered from tracing, not an official map — add to this
+# file whenever a pass identifies a routine (cross-check with tools/disassemble.py
+# and a live Hatari trace before trusting a label). RAM addresses (< $fc0000) are
+# TOS variables / the loaded program and are deliberately omitted.
+
+# --- floppy / FDC driver (44th pass) ---
+00fc0e80	getbpb
+00fc1530	read_le_word          # (byte[1]<<8)|byte[0] from a pointer arg
+00fc1a34	flop_rw               # floppy read/write core (_flopio); args on the stack
+00fc1b7a	flop_seek             # Type I Seek to target track (in 2500(A5)), via flop_cmd
+00fc1bb6	flop_cmd              # issue an FDC command, wait for GPIP-5 IRQ, return status in D7
+00fc1c14	flop_select           # PSG drive/side select + write Track/Sector regs + DMA address
+00fc1c60	giaccess              # PSG (YM2149) register access; RMW of port A for drive/side bits
+00fc1c86	fdc_write_cmd         # move.w D6,$ffff8604 (+ settle delay)
+00fc1c90	fdc_write_reg         # move.w D7,$ffff8604 (+ settle delay)
+00fc1c9a	fdc_read_reg          # move.w $ffff8604,D7 (+ settle delay)
+00fc1ca4	fdc_read_status       # move.w $ffff8604,D0 (+ settle delay)
+
+# --- boot / process ---
+00fc0a1a	tos_crash_handler     # TOS's own Bus/Address-error catcher
+00fc0b4c	boot_pexec_create     # Pexec mode 5 (create basepage) for the desktop
+00fc0b6a	boot_pexec_go         # Pexec mode 4 (just go) into the shell
+00fc0bc2	auto_fsfirst          # Fsfirst("\AUTO\*.PRG")
+00fc0bfe	auto_pexec            # Pexec mode 0 of each \AUTO\*.PRG
+00fc043a	desktop_pexec_create  # Pexec mode 5 for the GEM desktop
+00fc045e	desktop_pexec_go      # Pexec mode 4 into the GEM desktop
+
+# --- MFP / interrupts / idle (37th-39th pass) ---
+00fc2f1e	timer_c_handler       # MFP channel 5, 200 Hz system tick (etv_timer feed)
+00fc281c	acia_isr              # keyboard/MIDI ACIA interrupt service (MFP channel 6)
+00fca5d0	etv_timer             # 200 Hz timer vector chain
+00fca61c	bconstat2_poll        # Bconstat(2) - the healthy AES idle-loop poll
+00fed69a	vex_timv              # AES timer-vector hook
+00fcb07a	vsm_string            # VDI opcode 31 (sampled, non-blocking)

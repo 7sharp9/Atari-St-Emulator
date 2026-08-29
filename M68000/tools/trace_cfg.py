@@ -327,8 +327,14 @@ def coverage(recs, lo, hi, exact):
 
 # --- names -------------------------------------------------------------------------------
 
+DEFAULT_SYM = os.path.join(os.path.dirname(__file__), "..", "tos100uk.sym")
+
+
 def load_names(path):
     names = {}
+    # Auto-load the checked-in ROM symbol map unless the caller points --names elsewhere.
+    if not path and os.path.exists(DEFAULT_SYM):
+        path = DEFAULT_SYM
     if not path:
         return names
     with open(path) as f:

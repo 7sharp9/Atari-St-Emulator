@@ -123,7 +123,9 @@ CFG and a call graph (Graphviz DOT), and an executed-address coverage map, from
 the event stream alone - no re-execution. Block boundaries are derived, not
 disassembled, so cross-check them with `tools/disassemble.py` (`--disasm` does
 this for ROM blocks). Flow-only logs give approximate byte coverage;
-`ATARI_TRACE_EVENTS_ALL=1` makes it exact at ~20 bytes/step.
+`ATARI_TRACE_EVENTS_ALL=1` makes it exact at ~20 bytes/step. `M68000/tos100uk.sym`
+(`addr<TAB>name`) is auto-loaded so ROM routines show by name - extend it as
+passes identify routines; `--names <file>` overrides.
 
 `ATARI_TRACE_GEMDOS=1` additionally decodes `Pexec` (GEMDOS $4B) calls and dumps
 the loaded program's basepage (TEXT/DATA/BSS base+len) so trace PCs map back to
