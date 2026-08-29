@@ -4279,6 +4279,11 @@ type Cpu =
     member x.DecodeBucketE (instruction: int) : Cpu =
         match instruction with
         | ShiftRotate(countOrReg, direction, size, useRegisterCount, shiftType, register) ->
+            // Logical right shift by 1. F#'s `>>>` on `int` is arithmetic (sign-propagating), so
+            // for a .L operand with bit 31 set `v >>> 1` smears 1s down from the top - wrong for
+            // LSR/ROR (fine for ASR, which wants the sign fill). Route the shift through uint32.
+            // Byte/word operands are already masked non-negative, so this is a no-op for them.
+            let lsr1 (v: int) = int (uint32 v >>> 1)
             match direction, size, useRegisterCount, shiftType with
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b00uy -> //ASL.B/W/L #imm,Dn
                 let amount = if countOrReg = 0uy then 8 else int countOrReg
@@ -4409,7 +4414,7 @@ type Cpu =
                 let mutable carryOut = false
                 for _ in 1 .. amount do
                     carryOut <- v &&& 1 <> 0
-                    v <- (v >>> 1) &&& bitMask
+                    v <- (lsr1 v) &&& bitMask
                 let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
                 let mutable ccr = x.CCR
                 ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
@@ -4430,7 +4435,7 @@ type Cpu =
                 let mutable carryOut = false
                 for _ in 1 .. amount do
                     carryOut <- v &&& 1 <> 0
-                    v <- (v >>> 1) &&& bitMask
+                    v <- (lsr1 v) &&& bitMask
                 let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
                 let mutable ccr = x.CCR
                 ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
@@ -4513,7 +4518,7 @@ type Cpu =
                 for _ in 1 .. amount do
                     let bottomBit = v &&& 1 <> 0
                     carryOut <- bottomBit
-                    v <- ((v >>> 1) ||| (if bottomBit then signBit else 0)) &&& bitMask
+                    v <- ((lsr1 v) ||| (if bottomBit then signBit else 0)) &&& bitMask
                 let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
                 let mutable ccr = x.CCR
                 ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
@@ -4533,7 +4538,7 @@ type Cpu =
                 for _ in 1 .. amount do
                     let bottomBit = v &&& 1 <> 0
                     carryOut <- bottomBit
-                    v <- ((v >>> 1) ||| (if bottomBit then signBit else 0)) &&& bitMask
+                    v <- ((lsr1 v) ||| (if bottomBit then signBit else 0)) &&& bitMask
                 let newValue = (x.DataRegister register &&& ~~~bitMask) ||| v
                 let mutable ccr = x.CCR
                 ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s

@@ -569,6 +569,59 @@ module Main =
             st.LoadState(path)
             runRepl st
             0
+        | [| "teartest"; snapPath; framesArg |] ->
+            //Headless reproduction of the live window's mouse-cursor path, for the cursor-tearing
+            //investigation (see atari-st-emulator-next-instructions). Mirrors Video.run's frame
+            //loop exactly - front-load one coalesced IKBD mouse packet at frame start, run to the
+            //next VBL boundary, decode the framebuffer - but drives a synthetic per-frame pointer
+            //drift instead of host input and writes each decoded frame as a 24-bit BMP. The white
+            //trailing block, if present, shows up in the frame sequence; no live window needed.
+            st.LoadState snapPath
+            let frames = int framesArg
+            let ipf = uint64 st.InstructionsPerFrame
+            // TEARTEST_PHASE = signed step offset from the VBL boundary at which to decode the
+            // framebuffer (0 = on the boundary, exactly as Video.run does today). Sweeping this
+            // finds a tear-free capture phase.
+            let phase =
+                match Environment.GetEnvironmentVariable "TEARTEST_PHASE" with
+                | null | "" -> 0L
+                | s -> int64 s
+            let mmu = st.Cpu.MMU
+            let W, H = 640, 400
+            let pixels = Array.zeroCreate<byte> (W * H * 4) // ARGB8888 = B,G,R,A in memory
+            let outDir = "teartest_out"
+            IO.Directory.CreateDirectory outDir |> ignore
+            let writeBmp (path: string) =
+                use fs = IO.File.Create path
+                use w = new IO.BinaryWriter(fs)
+                let rowBytes = W * 3 // 1920, already a multiple of 4 - no padding
+                let imgSize = rowBytes * H
+                w.Write("BM".ToCharArray())
+                w.Write(14 + 40 + imgSize)
+                w.Write(0); w.Write(54)
+                w.Write(40); w.Write(W); w.Write(H)
+                w.Write(1s); w.Write(24s); w.Write(0); w.Write(imgSize)
+                w.Write(2835); w.Write(2835); w.Write(0); w.Write(0)
+                for y in H - 1 .. -1 .. 0 do // BMP rows are bottom-up
+                    for x in 0 .. W - 1 do
+                        let o = (y * W + x) * 4
+                        w.Write(pixels.[o]); w.Write(pixels.[o + 1]); w.Write(pixels.[o + 2])
+            for f in 0 .. frames - 1 do
+                // A hand-waggle: drift right for 20 frames, left for 20, repeat - a fresh packet
+                // every frame so TOS keeps redrawing the cursor (a lone packet barely moves it).
+                let dx = if (f / 20) % 2 = 0 then 6y else -6y
+                let boundary = (st.StepCount / ipf + 1UL) * ipf
+                let target = uint64 (max 1L (int64 boundary + phase))
+                mmu.EnqueueIkbd [| 0xF8uy; byte dx; 2uy |] // front-loaded, exactly as Video.run does
+                while st.StepCount < target do st.Step()
+                Video.decodeFramebuffer mmu pixels
+                writeBmp (IO.Path.Combine(outDir, sprintf "frame_%03d.bmp" f))
+                let rw a = mmu.ReadWord a &&& 0xFFFF
+                let mcsAddr = mmu.ReadLong 0x27F2u
+                eprintfn "frame %3d: newx=%d newy=%d mcs.len=%d mcs.flags=$%02x mcs.addr=$%06x"
+                    f (rw 0x27E2u) (rw 0x27E4u) (rw 0x27F0u) (mmu.ReadByte 0x27F6u) mcsAddr
+            printfn "teartest: wrote %d frames to %s/" frames outDir
+            0
         | args ->
             //Interactive REPL. Entry step count defaults to 20000 (`dotnet run --no-build`) but
             //can be overridden with `dotnet run --no-build -- <n> repl` - previously this required
