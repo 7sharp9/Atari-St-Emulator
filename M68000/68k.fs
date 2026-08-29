@@ -2083,12 +2083,16 @@ type Cpu =
             match mode with
             | 0b000uy -> //Dn
                 let source = int16 (x.DataRegister register)
-                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0xffs)
+                //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
+                //(they read back as 0), same masking bug as commit a4f473e for the -to-CCR immediates.
+                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0x1fs)
                 printfn "move D%u,ccr" register
                 {x with PC = x.PC+2; CCR = newCcr}
             | 0b111uy when register = 0b100uy -> //#imm
                 let source = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0xffs)
+                //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
+                //(they read back as 0), same masking bug as commit a4f473e for the -to-CCR immediates.
+                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0x1fs)
                 printfn "move #$%x,ccr" source
                 {x with PC = x.PC+4; CCR = newCcr}
             | _ ->
@@ -2103,7 +2107,9 @@ type Cpu =
                     | 0b111uy when register = 0b001uy -> uint32 (x.MMU.ReadLong(uint32 (x.PC+2))), 6, id               //(xxx).L
                     | _ -> failwithf "move2ccr not implemented for mode %x" mode
                 let source = int16 (x.MMU.ReadWord addr)
-                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0xffs)
+                //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
+                //(they read back as 0), same masking bug as commit a4f473e for the -to-CCR immediates.
+                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0x1fs)
                 printfn "move <ea mode %x reg %u>,ccr" mode register
                 { regFix x with PC = x.PC + pcAdv; CCR = newCcr }
 
@@ -2113,26 +2119,33 @@ type Cpu =
             //the S bit directly, without going through TRAP/RTE - real TOS's own boot code does
             //exactly this as its very first instruction (`move #$2700,sr`), which must swap A7
             //over to the supervisor stack same as a trap would (see USP/SSP field comment).
+            //Only SR bits T(15), S(13), I2-I0(10-8) and CCR(4-0) are implemented on the 68000;
+            //bits 14,12,11,7,6,5 read back as 0, so mask every written value to 0xA71F - same
+            //unused-bit-leak bug as commit a4f473e (ORI/ANDI/EORI to SR).
             if mode = 0x7 && register = 0b100 then
                 //load data
-                let register = int16 (x.MMU.ReadWord (uint32 (x.PC+2)))
+                let register = int16 (x.MMU.ReadWord (uint32 (x.PC+2)) &&& 0xA71F)
                 printfn "move #%0x, sr" register
                 {x.WithSR register with PC = x.PC + 4}
             elif mode = 0x0 then //Dn
                 let reg = byte register
-                let newCcr = int16 (x.DataRegister reg)
+                let newCcr = int16 (x.DataRegister reg &&& 0xA71F)
                 printfn "move D%u,sr" reg
                 {x.WithSR newCcr with PC = x.PC + 2}
             elif mode = 0x3 then //(An)+
                 let reg = byte register
                 let addr = x.AddressRegister reg
-                let newCcr = int16 (x.MMU.ReadWord(uint32 addr))
-                let newCpu = {(x.WithSR newCcr).WithAddressRegister reg (addr + 2) with PC = x.PC + 2}
+                let newCcr = int16 (x.MMU.ReadWord(uint32 addr) &&& 0xA71F)
+                //Post-increment BEFORE the privilege switch: for MOVE (A7)+,SR the bump must land
+                //on the stack we actually popped from (the pre-switch A7), leaving the other
+                //stack pointer untouched. WithSR then swaps A7/USP/SSP from that bumped state.
+                let bumped = x.WithAddressRegister reg (addr + 2)
+                let newCpu = {bumped.WithSR newCcr with PC = x.PC + 2}
                 printfn "move (a%u)+,sr" reg
                 newCpu
             elif mode = 0x7 && register = 0b001 then //(xxx).L
                 let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                let newCcr = int16 (x.MMU.ReadWord addr)
+                let newCcr = int16 (x.MMU.ReadWord addr &&& 0xA71F)
                 printfn "move $%x.l,sr" addr
                 {x.WithSR newCcr with PC = x.PC + 6}
             else
