@@ -96,6 +96,40 @@ shift and rotate forms pass ~100%; `.w` memory forms and the arithmetic/move
 families still carry real gaps. Drive the numbers down in future correctness
 passes.
 
+## Program analysis: `ATARI_TRACE_EVENTS` + `tools/trace_cfg.py`
+
+For reverse-engineering a program's control flow (rather than closing ROM
+instruction gaps). `ATARI_TRACE_EVENTS=<path>` makes `AtartSt.Step` write a
+compact binary record per **flow-control** instruction - or per instruction with
+`ATARI_TRACE_EVENTS_ALL=1` - straight to its own file, so it is unaffected by
+`ATARI_NOTRACE`. One emission point (`Atari.TraceEvents`), not the 221 `printfn`
+sites.
+
+Record: `stepCount, pc, target` (address actually executed next), `opcode`, and a
+`kind` byte classified from the opcode + PC transition
+(`seq / branch-taken / branch-not-taken / call / ret / trap / interrupt`).
+Interrupt is detected via an `MMU.InterruptAcks` delta.
+
+```
+ATARI_TRACE_EVENTS=boot.evt ./run.ps1 -NoBuild snap 3000000 t.snap
+python tools/trace_cfg.py boot.evt                      # summary + coverage map
+python tools/trace_cfg.py boot.evt --cfg cfg.dot --callgraph cg.dot --blocks b.txt
+python tools/trace_cfg.py boot.evt --range fc0700 fc0900 --disasm   # windowed, annotated
+dot -Tsvg cfg.dot -o cfg.svg
+```
+
+`trace_cfg.py` reconstructs basic blocks (real start/end addrs + hit counts), a
+CFG and a call graph (Graphviz DOT), and an executed-address coverage map, from
+the event stream alone - no re-execution. Block boundaries are derived, not
+disassembled, so cross-check them with `tools/disassemble.py` (`--disasm` does
+this for ROM blocks). Flow-only logs give approximate byte coverage;
+`ATARI_TRACE_EVENTS_ALL=1` makes it exact at ~20 bytes/step.
+
+`ATARI_TRACE_GEMDOS=1` additionally decodes `Pexec` (GEMDOS $4B) calls and, on
+return, dumps the loaded program's basepage (TEXT/DATA/BSS base+len) so trace PCs
+map back to file offsets - and, when `ATARI_TRACE_EVENTS` is also set, writes a
+`<path>.basepages.json` sidecar next to the event log.
+
 ## Other tools
 
 See the `atari-st-emulator-efficiency-tooling` memory for the full list.

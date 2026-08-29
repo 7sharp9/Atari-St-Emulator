@@ -132,6 +132,50 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///Empty (the default) injects nothing.
     let mutable keyInjectGroups : (uint64 * byte[]) list = []
 
+    ///Pexec / basepage hook (gated on ATARI_TRACE_GEMDOS, like the GEMDOS_CALL trace it extends).
+    ///When a `trap #1` with function $4B (Pexec) is about to execute, we stash the mode, the
+    ///filename, and the address execution will return to; once the CPU is back there we read D0 as
+    ///the candidate basepage pointer and, if it looks like a real basepage, dump its
+    ///TEXT/DATA/BSS layout (so a later trace PC in that program maps back to a file offset) and
+    ///append it to `<ATARI_TRACE_EVENTS>.basepages.json` when that log is being written.
+    let traceGemdos = Diag.traceGemdos
+    let basepageSidecar =
+        match Environment.GetEnvironmentVariable "ATARI_TRACE_EVENTS" with
+        | null | "" -> None
+        | p -> Some (p + ".basepages.json")
+    let mutable pexecPending : (int * int * string) option = None  // (returnPC, mode, filename)
+    let mutable basepagesWritten = 0
+
+    let readCString (addr: int) =
+        if addr <= 0 then ""
+        else
+            let sb = Text.StringBuilder()
+            let mutable a = uint32 addr
+            let mutable go = sb.Length < 128
+            while go do
+                let b = mmu.ReadByte a
+                if b = 0uy || sb.Length >= 128 then go <- false
+                else
+                    sb.Append(if b >= 0x20uy && b < 0x7fuy then char b else '?') |> ignore
+                    a <- a + 1u
+            sb.ToString()
+
+    ///Reads the 8 standard basepage longwords at `bp`. Returns None unless they are internally
+    ///consistent (lowtpa < hitpa, text base inside the TPA) - so a stale/garbage D0 on a
+    ///non-load Pexec mode doesn't produce a bogus record.
+    let readBasepage (bp: int) =
+        if bp < 0x700 || (bp &&& 1) <> 0 then None
+        else
+            let rl off = mmu.ReadLong (uint32 (bp + off))
+            let lowtpa, hitpa = rl 0x00, rl 0x04
+            let tbase, tlen = rl 0x08, rl 0x0C
+            let dbase, dlen = rl 0x10, rl 0x14
+            let bbase, blen = rl 0x18, rl 0x1C
+            if lowtpa > 0 && lowtpa < hitpa && tbase >= lowtpa && tbase < hitpa
+               && tlen >= 0 && dlen >= 0 && blen >= 0 && tlen < 0x400000 then
+                Some (lowtpa, hitpa, tbase, tlen, dbase, dlen, bbase, blen)
+            else None
+
     ///Resets the loop detector's epoch. Must be called after anything that changes CPU/MMU state
     ///without going through Step() - currently Reset() and Preview's post-rollback restore -
     ///otherwise the saved anchor describes a state from before/outside the real run, and a
@@ -143,6 +187,16 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         cpu <- cpu.Reset()
         stepCount <- 0UL
         resetLoopDetector()
+
+    ///Flush the structured trace outputs on shutdown: close the JSON array in the basepage
+    ///sidecar (it is written incrementally with AppendAllText) and the flow-event BinaryWriter.
+    member x.CloseTraces() =
+        if basepagesWritten > 0 then
+            match basepageSidecar with
+            | Some path -> IO.File.AppendAllText(path, "\n]\n")
+            | None -> ()
+            basepagesWritten <- 0
+        TraceEvents.close()
 
     ///See `keyInjectGroups`. Arms the headless key-injection hook: group i fires at
     ///`firstStep + i*gap`.
@@ -201,10 +255,37 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let preEventsPc = cpu.PC
         let preEventsOpcode = if TraceEvents.enabled then int (mmu.ReadWord (uint32 cpu.PC)) else 0
         let preEventsAcks = mmu.InterruptAcks
+        //Pexec detection: a `trap #1` ($4E41) whose GEMDOS function word on the caller stack is
+        //$4B. Record where it will return to and the args; the basepage is read back on return.
+        if traceGemdos && pexecPending.IsNone && int (mmu.ReadWord (uint32 cpu.PC)) = 0x4E41
+           && (int (mmu.ReadWord (uint32 cpu.A7)) &&& 0xFFFF) = 0x004B then
+            let mode = int (mmu.ReadWord (uint32 (cpu.A7 + 2)))
+            let fname = readCString (mmu.ReadLong (uint32 (cpu.A7 + 4)))
+            pexecPending <- Some (cpu.PC + 2, mode, fname)
+            eprintfn "GEMDOS Pexec mode=%d file=\"%s\" pc=$%08x" mode fname cpu.PC
         try
             cpu <- cpu.Step()
             if TraceEvents.enabled then
                 TraceEvents.record stepCount preEventsPc preEventsOpcode cpu.PC (mmu.InterruptAcks <> preEventsAcks)
+            match pexecPending with
+            | Some (retpc, mode, fname) when cpu.PC = retpc ->
+                pexecPending <- None
+                eprintfn "GEMDOS Pexec mode=%d returned d0=$%08x" mode cpu.D0
+                match readBasepage cpu.D0 with
+                | Some (lowtpa, hitpa, tbase, tlen, dbase, dlen, bbase, blen) ->
+                    eprintfn "GEMDOS Pexec basepage=$%08x tpa=$%08x..$%08x text=$%08x+$%x data=$%08x+$%x bss=$%08x+$%x (\"%s\")"
+                        cpu.D0 lowtpa hitpa tbase tlen dbase dlen bbase blen fname
+                    match basepageSidecar with
+                    | Some path ->
+                        let sep = if basepagesWritten = 0 then "[\n" else ",\n"
+                        let json =
+                            sprintf "%s  {\"step\":%d,\"mode\":%d,\"file\":\"%s\",\"basepage\":%d,\"lowtpa\":%d,\"hitpa\":%d,\"tbase\":%d,\"tlen\":%d,\"dbase\":%d,\"dlen\":%d,\"bbase\":%d,\"blen\":%d}"
+                                sep stepCount mode (fname.Replace("\\", "\\\\").Replace("\"", "\\\"")) cpu.D0 lowtpa hitpa tbase tlen dbase dlen bbase blen
+                        IO.File.AppendAllText(path, json)
+                        basepagesWritten <- basepagesWritten + 1
+                    | None -> ()
+                | None -> ()
+            | _ -> ()
         with e ->
             //Diagnostics for implementing the next instruction: the opcode word, its common
             //sub-fields (most 68k formats split a word into these positions, though which fields
@@ -688,6 +769,7 @@ module Main =
             | null | "" -> None
             | m -> Some m
         let st = AtartSt(romPath, ?diskAPath = diskAPath, ?monitor = monitor)
+        AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> st.CloseTraces())
         //ATARI_KEY_INPUT: space/comma-separated hex bytes (raw IKBD serial - make/break
         //scancodes, mouse packets). A ';' starts a new burst: bursts fire ATARI_KEY_DELAY steps
         //apart (first one at ATARI_KEY_DELAY, default 2,500,000 - past the boot-time ACIA master
