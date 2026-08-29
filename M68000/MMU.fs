@@ -35,6 +35,12 @@ exception BusError of address: uint32
 
 type MMU(rom: byte array) =
 
+    ///`ATARI_TRACE_FDC=1` logs every FDC register/command write and every sector-read attempt to
+    ///stderr (so it survives ATARI_NOTRACE), the way `ATARI_TRACE_GEMDOS` does for GEMDOS traps -
+    ///the tool for watching the disk-load path against a Hatari `--trace fdc` ground truth.
+    let traceFdc = not (isNull (System.Environment.GetEnvironmentVariable "ATARI_TRACE_FDC"))
+    let fdcLog (s: string) = if traceFdc then eprintfn "FDC %s" s
+
     ///The MMU bank-size configuration register (real hardware: byte-wide, only the odd address
     ///$FF8001 is wired up - see stMemory.c's STMemory_MMU_Config_ReadByte/WriteByte, fetched from
     ///github.com/hatari/hatari for a ground-truth check since the local progref.txt's table for
@@ -283,6 +289,17 @@ type MMU(rom: byte array) =
     let mutable fdcSector = 0uy
     let mutable fdcData = 0uy
 
+    ///The DMA status register read at $FF8606 (write = DMA mode/control - see fdcModeSelect). Only
+    ///the low 3 bits are real (hatari src/fdc.c FDC_DmaStatus_ReadWord): bit 0 = 1 when the last
+    ///DMA transfer had no error (real reset value is 1 = "no error"), bit 1 = 1 when the DMA
+    ///sector-count register is non-zero, bit 2 = FDC DRQ (always 0 on the ST, the 16-byte DMA FIFO
+    ///hides it). Previously $FF8606 read echoed the mode-select bits (`fdcSelectedReg <<< 1`), so
+    ///bit 0 was always 0 - which TOS's floppy read completion check at $fc1628 (`move.w $ff8606,D0
+    //// btst #0,D0 / beq retry`) reads as a permanent DMA error, retrying every sector read ~25
+    ///times then giving up. That is the real cause of the "this disk may be damaged" alert on any
+    ///disk access past the boot sector.
+    let mutable dmaNoError = true
+
     ///The DMA Address Counter's three bytes (FD-HD_Programming.pdf: "DMA Registers Address Map") -
     ///a real, 22-bits-used-of-24 internal address register the DMA chip uses to know where in RAM
     ///to read/write during a floppy transfer. Boot ROM routinely writes this (in the documented
@@ -433,25 +450,29 @@ type MMU(rom: byte array) =
     ///rather than the full WriteByte dispatch, matching WriteByte's own "aliasIntoRam" fallback -
     ///real DMA transfers only ever target RAM, never memory-mapped I/O.
     let tryReadSector (track: byte) (sector: byte) (dmaAddr: uint32) =
-        match diskA with
-        | None -> false
-        | Some _ when fdcDrive <> 0 -> false     //only drive A is backed by an image
-        | Some _ when fdcSide >= diskASides -> false
-        | Some bytes ->
-            let s = int sector
-            if s < 1 || s > diskASectorsPerTrack then false
-            else
-                //Interleave the two sides for a double-sided image: track 0 side 0, track 0 side 1,
-                //track 1 side 0, ... - the standard .ST layout (hatari src/floppy.c).
-                let logicalSector = (int track * diskASides + fdcSide) * diskASectorsPerTrack + (s - 1)
-                let offset = logicalSector * 512
-                if offset < 0 || offset + 512 > bytes.Length then false
+        let r =
+            match diskA with
+            | None -> false
+            | Some _ when fdcDrive <> 0 -> false     //only drive A is backed by an image
+            | Some _ when fdcSide >= diskASides -> false
+            | Some bytes ->
+                let s = int sector
+                if s < 1 || s > diskASectorsPerTrack then false
                 else
-                    for i in 0 .. 511 do
-                        match translateRamAddress (dmaAddr + uint32 i) with
-                        | Some idx -> store ram (int idx) bytes.[offset + i]
-                        | None -> ()
-                    true
+                    //Interleave the two sides for a double-sided image: track 0 side 0, track 0
+                    //side 1, track 1 side 0, ... - the standard .ST layout (hatari src/floppy.c).
+                    let logicalSector = (int track * diskASides + fdcSide) * diskASectorsPerTrack + (s - 1)
+                    let offset = logicalSector * 512
+                    if offset < 0 || offset + 512 > bytes.Length then false
+                    else
+                        for i in 0 .. 511 do
+                            match translateRamAddress (dmaAddr + uint32 i) with
+                            | Some idx -> store ram (int idx) bytes.[offset + i]
+                            | None -> ()
+                        true
+        fdcLog (sprintf "read  track=%d side=%d sector=%d dma=$%06x -> %s"
+                    (int track) fdcSide (int sector) dmaAddr (if r then "OK" else "no data"))
+        r
 
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
@@ -504,7 +525,10 @@ type MMU(rom: byte array) =
             | 1uy -> fdcTrack
             | 2uy -> fdcSector
             | _ -> fdcData
-        | a when a = fdcModeSelect -> fdcSelectedReg <<< 1
+        | a when a = fdcModeSelect ->
+            //DMA status: bit 0 = no DMA error, bit 1 = DMA sector count non-zero, bit 2 = DRQ
+            //(always 0 on the ST). See dmaNoError.
+            (if dmaNoError then 0x01uy else 0uy) ||| (if dmaSectorCount <> 0uy then 0x02uy else 0uy)
         | a when a = dmaAddrHigh -> dmaAddrHighByte
         | a when a = dmaAddrMid -> dmaAddrMidByte
         | a when a = dmaAddrLow -> dmaAddrLowByte
@@ -660,11 +684,13 @@ type MMU(rom: byte array) =
             if selected <> fdcSelectedReg || scSelected <> dmaScSelected then mutations <- mutations + 1UL
             fdcSelectedReg <- selected
             dmaScSelected <- scSelected
+            fdcLog (sprintf "mode  $8606<-$%02x  reg=%d sectorCount=%b" input selected scSelected)
         | a when a = fdcAccess && dmaScSelected ->
             //$FF8606 bit 4 is set: this $FF8604 write is the DMA sector-count register, not an FDC
             //register. See dmaSectorCount's comment.
             if input <> dmaSectorCount then mutations <- mutations + 1UL
             dmaSectorCount <- input
+            fdcLog (sprintf "count $8604<-$%02x" input)
         | a when a = fdcAccess ->
             match fdcSelectedReg with
             | 0uy ->
@@ -707,10 +733,19 @@ type MMU(rom: byte array) =
                 let status = if ok then 0uy else fdcCommandStatus input
                 if status <> fdcStatus then mutations <- mutations + 1UL
                 fdcStatus <- status
+                //A read-sector command drives the DMA, so it sets the $FF8606 DMA-error bit;
+                //Type I commands (which also land here, isReadSector=false) leave it untouched.
+                if isReadSector && dmaNoError <> ok then
+                    dmaNoError <- ok
+                    mutations <- mutations + 1UL
+                fdcLog (sprintf "cmd   $8604<-$%02x  %s multi=%b count=%d transferred=%d status=$%02x"
+                            input (if isReadSector then "READ-SECTOR" else "(other)") multiRecord count transferred status)
             | 1uy -> if input <> fdcTrack then mutations <- mutations + 1UL
                      fdcTrack <- input
+                     fdcLog (sprintf "track $8604<-%d" (int input))
             | 2uy -> if input <> fdcSector then mutations <- mutations + 1UL
                      fdcSector <- input
+                     fdcLog (sprintf "sector $8604<-%d" (int input))
             | _ -> if input <> fdcData then mutations <- mutations + 1UL
                    fdcData <- input
         | a when a = dmaAddrHigh ->
