@@ -531,6 +531,16 @@ module Instructions =
         else None
     
     
+    /// 0100 0000 ss mmm rrr : NEGX (negate with extend: dest = 0 - dest - X).
+    /// size 11 in this shape is MOVE from SR (0100 0000 11 mmm rrr), not NEGX - excluded.
+    let (|NEGX|_|) data =
+        if data &&& 0b1111111100000000 = 0b0100000000000000 && data &&& 0b0000000011000000 <> 0b0000000011000000 then
+            let size = byte (data >>> 6) &&& 0b11uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(size, eamode, eareg)
+        else None
+
     /// 0100 0010 ss mmm rrr : CLR
     let (|CLR|_|) data =
         if data &&& 0b1111111100000000 = 0b0100001000000000 then

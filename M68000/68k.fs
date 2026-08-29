@@ -2090,6 +2090,55 @@ type Cpu =
                 | _ -> failwithf "unknown Register %x for mode %x" eareg eamode
             | _ -> failwithf "lea: unknown mode %x" eamode
 
+        | NEGX(size, eamode, eareg) ->
+            //Negate with extend: dest = 0 - dest - X. CCR: N/V from the result, C+X set on borrow
+            //(which happens unless both the operand and X are 0), and Z is only ever *cleared*
+            //(left unchanged when the result is 0) so it accumulates across a multi-word negate.
+            let xin = if x.X then 1 else 0
+            let oldZ = x.CCR &&& 0x4s
+            let opBits = match size with 0b00uy -> 8 | 0b01uy -> 16 | _ -> 32
+            let signBit = 1 <<< (opBits - 1)
+            let mask = if opBits = 32 then -1 else (1 <<< opBits) - 1
+            // resolve the operand: value read, a write-back fn, PC advance, An side effect
+            let src, writeBack, pcAdv, regFix =
+                match eamode with
+                | 0b000uy -> (x.DataRegister eareg &&& mask), (fun (c: Cpu) r -> c.WithDataRegister eareg ((c.DataRegister eareg &&& ~~~mask) ||| (r &&& mask))), 2, id
+                | 0b010uy ->
+                    let a = uint32 (x.AddressRegister eareg)
+                    (match size with 0b00uy -> int (x.MMU.ReadByte a) | 0b01uy -> int (x.MMU.ReadWord a) &&& 0xffff | _ -> x.MMU.ReadLong a),
+                    (fun (c: Cpu) r -> (match size with 0b00uy -> c.MMU.WriteByte a (byte r) | 0b01uy -> c.MMU.WriteWord a (int16 r) | _ -> c.MMU.WriteLong a r); c), 2, id
+                | 0b011uy ->
+                    let a = uint32 (x.AddressRegister eareg)
+                    let step = if eareg = 7uy && size = 0b00uy then 2 else opBits / 8
+                    (match size with 0b00uy -> int (x.MMU.ReadByte a) | 0b01uy -> int (x.MMU.ReadWord a) &&& 0xffff | _ -> x.MMU.ReadLong a),
+                    (fun (c: Cpu) r -> (match size with 0b00uy -> c.MMU.WriteByte a (byte r) | 0b01uy -> c.MMU.WriteWord a (int16 r) | _ -> c.MMU.WriteLong a r); c), 2,
+                    (fun (c: Cpu) -> c.WithAddressRegister eareg (x.AddressRegister eareg + step))
+                | 0b100uy ->
+                    let step = if eareg = 7uy && size = 0b00uy then 2 else opBits / 8
+                    let a = uint32 (x.AddressRegister eareg - step)
+                    (match size with 0b00uy -> int (x.MMU.ReadByte a) | 0b01uy -> int (x.MMU.ReadWord a) &&& 0xffff | _ -> x.MMU.ReadLong a),
+                    (fun (c: Cpu) r -> (match size with 0b00uy -> c.MMU.WriteByte a (byte r) | 0b01uy -> c.MMU.WriteWord a (int16 r) | _ -> c.MMU.WriteLong a r); c), 2,
+                    (fun (c: Cpu) -> c.WithAddressRegister eareg (x.AddressRegister eareg - step))
+                | 0b101uy ->
+                    let a = uint32 (x.AddressRegister eareg + int (int16 (x.MMU.ReadWord(uint32 (x.PC+2)))))
+                    (match size with 0b00uy -> int (x.MMU.ReadByte a) | 0b01uy -> int (x.MMU.ReadWord a) &&& 0xffff | _ -> x.MMU.ReadLong a),
+                    (fun (c: Cpu) r -> (match size with 0b00uy -> c.MMU.WriteByte a (byte r) | 0b01uy -> c.MMU.WriteWord a (int16 r) | _ -> c.MMU.WriteLong a r); c), 4, id
+                | 0b111uy when eareg = 0b001uy ->
+                    let a = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                    (match size with 0b00uy -> int (x.MMU.ReadByte a) | 0b01uy -> int (x.MMU.ReadWord a) &&& 0xffff | _ -> x.MMU.ReadLong a),
+                    (fun (c: Cpu) r -> (match size with 0b00uy -> c.MMU.WriteByte a (byte r) | 0b01uy -> c.MMU.WriteWord a (int16 r) | _ -> c.MMU.WriteLong a r); c), 6, id
+                | _ -> failwithf "negx: not implemented for mode %x size %x" eamode size
+            let result = (0 - src - xin) &&& mask
+            let borrow = (src &&& mask) <> 0 || x.X
+            let mutable ccr = x.CCR &&& ~~~0xFs
+            if result &&& signBit <> 0 then ccr <- ccr ||| 0x8s //N
+            if result <> 0 then ccr <- ccr &&& ~~~0x4s else ccr <- ccr ||| oldZ //Z: clear on nonzero, else keep
+            if (src &&& signBit <> 0) && (result &&& signBit <> 0) then ccr <- ccr ||| 0x2s //V
+            if borrow then ccr <- ccr ||| 0x1s ||| 0x10s else ccr <- ccr &&& ~~~0x10s //C and X=C
+            let newCpu = { regFix (writeBack x result) with PC = x.PC + pcAdv; CCR = ccr }
+            printfn "negx.%s <ea mode %x reg %u>" (match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l") eamode eareg
+            newCpu
+
         | NEG(size, eamode, eareg) ->
             //Two's complement negation (0 - operand). Reuses the existing Subtract_IgnoringX_*
             //helpers for N/Z/V/C (dest=0), then sets X to match C - the one real difference from
@@ -2160,7 +2209,37 @@ type Cpu =
                 let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
                 printfn "not.b D%u" eareg
                 newCpu
-            | _ -> failwithf "not: not implemented for mode %x size %x" eamode size
+            | _ ->
+                //Memory destination (alterable modes 2-6 and (xxx).W/.L). Read-modify-write the
+                //operand with its one's complement; A7 byte pre/post-steps by 2, others by 1.
+                let opBytes = match size with 0b00uy -> 1 | 0b01uy -> 2 | _ -> 4
+                let step = if eareg = 7uy && opBytes = 1 then 2 else opBytes
+                let addr, pcAdv, writeReg =
+                    match eamode with
+                    | 0b010uy -> uint32 (x.AddressRegister eareg), 2, id                                   //(An)
+                    | 0b011uy -> uint32 (x.AddressRegister eareg), 2, (fun (c: Cpu) -> c.WithAddressRegister eareg (x.AddressRegister eareg + step)) //(An)+
+                    | 0b100uy -> uint32 (x.AddressRegister eareg - step), 2, (fun (c: Cpu) -> c.WithAddressRegister eareg (x.AddressRegister eareg - step)) //-(An)
+                    | 0b101uy -> uint32 (x.AddressRegister eareg + int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))), 4, id //(d16,An)
+                    | 0b111uy when eareg = 0b000uy -> uint32 (int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))), 4, id  //(xxx).W
+                    | 0b111uy when eareg = 0b001uy -> uint32 (x.MMU.ReadLong(uint32 (x.PC+2))), 6, id               //(xxx).L
+                    | _ -> failwithf "not: not implemented for mode %x size %x" eamode size
+                let ccr, name =
+                    match size with
+                    | 0b00uy ->
+                        let r = ~~~(byte (x.MMU.ReadByte addr))
+                        x.MMU.WriteByte addr r
+                        CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR r, "not.b"
+                    | 0b01uy ->
+                        let r = ~~~(int16 (x.MMU.ReadWord addr))
+                        x.MMU.WriteWord addr r
+                        CCR.IgnoreX_ZeroV_And_ZeroC x.CCR r, "not.w"
+                    | _ ->
+                        let r = ~~~(x.MMU.ReadLong addr)
+                        x.MMU.WriteLong addr r
+                        CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR r, "not.l"
+                let newCpu = {writeReg x with PC = x.PC + pcAdv; CCR = ccr}
+                printfn "%s <ea mode %x reg %u>" name eamode eareg
+                newCpu
 
         | CLR(size, eamode, eareg) ->
             match eamode, size with
