@@ -470,8 +470,8 @@ type MMU(rom: byte array) =
                             | Some idx -> store ram (int idx) bytes.[offset + i]
                             | None -> ()
                         true
-        fdcLog (sprintf "read  track=%d side=%d sector=%d dma=$%06x -> %s"
-                    (int track) fdcSide (int sector) dmaAddr (if r then "OK" else "no data"))
+        fdcLog (sprintf "read  drive=%d track=%d side=%d sector=%d dma=$%06x -> %s"
+                    fdcDrive (int track) fdcSide (int sector) dmaAddr (if r then "OK" else "no data"))
         r
 
     member x.ReadByte (address: uint32) =
@@ -693,6 +693,26 @@ type MMU(rom: byte array) =
             fdcLog (sprintf "count $8604<-$%02x" input)
         | a when a = fdcAccess ->
             match fdcSelectedReg with
+            | 0uy when input < 0x80uy ->
+                //Type I commands (Restore/Seek/Step/Step-in/Step-out) move the head and, when done,
+                //leave the Track register holding the new physical track. TOS's floppy driver
+                //($fc1c14/$fc1b7a) writes the *current* head position to the Track register and the
+                //*target* track to the Data register, then issues a Seek - so without modelling
+                //this a later Read Sector reads the stale Track register (usually 0), not the track
+                //TOS sought to. Step-rate / settle / verify flags don't matter to this synchronous
+                //model; every command reports "not busy, TR00" like the other stub commands.
+                let newTrack =
+                    match input &&& 0xF0uy with
+                    | 0x00uy -> 0uy                                          //Restore -> track 0
+                    | 0x10uy -> fdcData                                      //Seek -> Data register
+                    | 0x40uy when input &&& 0x10uy <> 0uy -> fdcTrack + 1uy  //Step-in with update
+                    | 0x60uy when input &&& 0x10uy <> 0uy && fdcTrack > 0uy -> fdcTrack - 1uy
+                    | _ -> fdcTrack
+                let newStatus = fdcCommandStatus input
+                if newTrack <> fdcTrack || newStatus <> fdcStatus then mutations <- mutations + 1UL
+                fdcLog (sprintf "cmd   type I $%02x -> track %d" input (int newTrack))
+                fdcTrack <- newTrack
+                fdcStatus <- newStatus
             | 0uy ->
                 //Type II Read Sector: top 3 bits "100", bottom 2 bits "00" (FD-HD_Programming.pdf's
                 //FDC Command Summary table - the m/h/e flag bits 4/3/2 don't affect this
@@ -733,8 +753,9 @@ type MMU(rom: byte array) =
                 let status = if ok then 0uy else fdcCommandStatus input
                 if status <> fdcStatus then mutations <- mutations + 1UL
                 fdcStatus <- status
-                //A read-sector command drives the DMA, so it sets the $FF8606 DMA-error bit;
-                //Type I commands (which also land here, isReadSector=false) leave it untouched.
+                //Only a Read Sector actually runs a DMA transfer, so only it moves the $FF8606
+                //DMA-error bit; other Type II/III commands (Write Sector, Read Address, Force
+                //Interrupt) leave it where the last transfer left it.
                 if isReadSector && dmaNoError <> ok then
                     dmaNoError <- ok
                     mutations <- mutations + 1UL
