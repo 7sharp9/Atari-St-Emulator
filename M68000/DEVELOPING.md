@@ -125,15 +125,44 @@ disassembled, so cross-check them with `tools/disassemble.py` (`--disasm` does
 this for ROM blocks). Flow-only logs give approximate byte coverage;
 `ATARI_TRACE_EVENTS_ALL=1` makes it exact at ~20 bytes/step.
 
-`ATARI_TRACE_GEMDOS=1` additionally decodes `Pexec` (GEMDOS $4B) calls and, on
-return, dumps the loaded program's basepage (TEXT/DATA/BSS base+len) so trace PCs
-map back to file offsets - and, when `ATARI_TRACE_EVENTS` is also set, writes a
-`<path>.basepages.json` sidecar next to the event log.
+`ATARI_TRACE_GEMDOS=1` additionally decodes `Pexec` (GEMDOS $4B) calls and dumps
+the loaded program's basepage (TEXT/DATA/BSS base+len) so trace PCs map back to
+file offsets - and, when `ATARI_TRACE_EVENTS` is also set, writes a
+`<path>.basepages.json` sidecar next to the event log. `Pexec` tracking is a
+stack (mode 4/6 "just go" never returns); for mode 0/1 (load and run) the
+basepage is sampled from `act_pd` ($602C) while the child is live, since their D0
+on return is the exit code, not the basepage.
+
+## Running a program off a disk image
+
+`ATARI_DISK_A=<file.st>` mounts a real `.ST` floppy image in drive A. The FDC
+models single- and double-sided images, PSG side/drive select, Type I head
+movement (seek/restore/step), the DMA address counter and the `$FF8606` DMA
+status register - enough for TOS to read a FAT12 filesystem and `Pexec` a
+program. `ATARI_TRACE_FDC=1` logs every FDC register/command write and sector
+read to stderr (compare against `tools/hatari_trace.py --trace fdc`).
+
+Build a disk with a program TOS will auto-run at boot:
+
+```
+python tools/make_blank_disk.py blank.st                 # empty FAT12 image
+python tools/make_test_prg.py TEST.PRG                    # or bring your own .PRG
+python tools/add_file_to_disk.py blank.st TEST.PRG --auto --out auto.st
+ATARI_DISK_A=auto.st ATARI_TRACE_GEMDOS=1 ATARI_TRACE_EVENTS=run.evt \
+  ./run.ps1 -NoBuild snap 12000000 t.snap
+python tools/trace_cfg.py run.evt --steps <lo> <hi> --range <tbase> <tend> --cfg prg.dot
+```
+
+`M68000/auto_test.st` is the committed ready-to-use image (`blank_80ss.st` +
+`\AUTO\TEST.PRG`, the loop-and-Pterm0 program from `make_test_prg.py`). Use
+`--steps` to isolate the program's own run - once it terminates, TOS reuses its
+TPA addresses for the desktop.
 
 ## Other tools
 
 See the `atari-st-emulator-efficiency-tooling` memory for the full list.
 `tools/disassemble.py`, `tools/hatari_trace.py` (headless real Hatari on the same
-ROM), `tools/screendump.py`, `tools/make_blank_disk.py`. Snapshots (`*.snap`) are
+ROM), `tools/screendump.py`, `tools/make_blank_disk.py`,
+`tools/add_file_to_disk.py`, `tools/make_test_prg.py`. Snapshots (`*.snap`) are
 session-local working data, keyed to a ROM + opcode-coverage point - not
 committed, retake per session.
