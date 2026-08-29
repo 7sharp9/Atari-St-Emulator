@@ -429,7 +429,15 @@ module SelfTest =
     /// is immutable and never written, so one copy is safe to share across every case.
     let private zeroRom : byte[] = Array.zeroCreate 0x40000
 
-    type private Outcome = Pass | Skip | Fail of string
+    /// How a failing case failed - so triage can tell the real wrong-answers apart from the two
+    /// large known-structural classes at a glance:
+    ///  - Unimplemented: Cpu.Step threw (opcode / EA-mode not decoded yet - ROM-driven scope).
+    ///  - ExceptionFrame: the vectors expect this instruction to fault and push a frame; we push a
+    ///    simplified 6-byte frame (not the real 14-byte group-0 one) or don't fault at all. One fix
+    ///    (a real exception frame) clears the whole class - see the memory notes.
+    ///  - WrongAnswer: a genuine flag / register / memory divergence. THESE are the ones to chase.
+    type private FailKind = Unimplemented | ExceptionFrame | WrongAnswer
+    type private Outcome = Pass | Skip | Fail of FailKind * string
 
     let private runCase (ini: St) (fin: St) : Outcome =
         let outOfRange (a: uint32) = a < 8u || a >= 0x100000u
@@ -457,7 +465,7 @@ module SelfTest =
             // combination (ROM-driven scope - many modes simply aren't implemented yet), not a
             // wrong-answer bug. Report it distinctly so the two are easy to tell apart.
             let firstLine = e.Message.Split('\n').[0]
-            Fail (sprintf "Cpu.Step raised (unimplemented?): %s" (firstLine.Substring(0, min 100 firstLine.Length)))
+            Fail (Unimplemented, sprintf "Cpu.Step raised (unimplemented?): %s" (firstLine.Substring(0, min 100 firstLine.Length)))
         | Choice1Of2 cpu ->
         let diffs = ResizeArray<string>()
         let cmp label (act: int) (exp: int) =
@@ -476,7 +484,14 @@ module SelfTest =
         for (a, v) in fin.Ram do
             let got = mmu.ReadByte a
             if got <> v then diffs.Add(sprintf "ram[%06x] exp=%02x act=%02x" a v got)
-        if diffs.Count = 0 then Pass else Fail (String.concat ", " diffs)
+        if diffs.Count = 0 then Pass
+        else
+            // The vectors expect an exception if the final state entered/stayed supervisor AND the
+            // supervisor stack moved DOWN (a frame was pushed). Our simplified 6-byte frame vs the
+            // real 14-byte group-0 frame makes every legitimate address/bus-error case diverge on
+            // ssp + stacked bytes; bucket those separately from real wrong-answers.
+            let expectedException = (fin.Sr &&& 0x2000 <> 0) && fin.Ssp < ini.Ssp
+            Fail ((if expectedException then ExceptionFrame else WrongAnswer), String.concat ", " diffs)
 
     let private loadDoc (path: string) : JsonDocument =
         if path.EndsWith(".gz") then
@@ -493,21 +508,33 @@ module SelfTest =
     let private baseName (path: string) =
         Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension path)  // strips .json.gz
 
-    let private runFile (path: string) (maxReport: int) =
+    /// Per-file tally: pass / skip / and fails split three ways (see FailKind).
+    type Tally = { Pass: int; Skip: int; Wrong: int; Frame: int; Unimpl: int }
+    let private zeroTally = { Pass = 0; Skip = 0; Wrong = 0; Frame = 0; Unimpl = 0 }
+    let private totalFail t = t.Wrong + t.Frame + t.Unimpl
+
+    let private runFile (path: string) (maxReport: int) : Tally =
         use doc = loadDoc path
-        let mutable p, f, s = 0, 0, 0
-        let mutable reported = 0
+        let mutable t = zeroTally
+        // Collect failing samples, then print them WrongAnswer-first - those are the actionable ones,
+        // and the 5-line cap otherwise fills up with the (large, known) frame / unimplemented classes.
+        let samples = ResizeArray<int * string * string>()   // rank, name, msg  (rank: 0=wrong 1=frame 2=unimpl)
         for caseEl in doc.RootElement.EnumerateArray() do
             match runCase (parseSt (caseEl.GetProperty("initial"))) (parseSt (caseEl.GetProperty("final"))) with
-            | Pass -> p <- p + 1
-            | Skip -> s <- s + 1
-            | Fail msg ->
-                f <- f + 1
-                if reported < maxReport then
-                    Diag.result "    FAIL  %s :: %s" (caseEl.GetProperty("name").GetString()) msg
-                    reported <- reported + 1
-        Diag.result "%-14s  %5d pass  %5d fail  %5d skip" (baseName path) p f s
-        p, f, s
+            | Pass -> t <- { t with Pass = t.Pass + 1 }
+            | Skip -> t <- { t with Skip = t.Skip + 1 }
+            | Fail (kind, msg) ->
+                let rank =
+                    match kind with
+                    | WrongAnswer   -> t <- { t with Wrong  = t.Wrong  + 1 }; 0
+                    | ExceptionFrame -> t <- { t with Frame  = t.Frame  + 1 }; 1
+                    | Unimplemented -> t <- { t with Unimpl = t.Unimpl + 1 }; 2
+                samples.Add(rank, caseEl.GetProperty("name").GetString(), msg)
+        for (_, name, msg) in samples |> Seq.sortBy (fun (r, _, _) -> r) |> Seq.truncate maxReport do
+            Diag.result "    FAIL  %s :: %s" name msg
+        Diag.result "%-14s  %5d pass  %5d fail (%5d wrong %5d frame %5d unimpl)  %5d skip"
+            (baseName path) t.Pass (totalFail t) t.Wrong t.Frame t.Unimpl t.Skip
+        t
 
     /// `pathArg` = a directory of `*.json` / `*.json.gz` vector files, or a single such file.
     /// `filter` (may be "") keeps only files whose name contains it, case-insensitively.
@@ -525,13 +552,24 @@ module SelfTest =
             Diag.result "selftest: no matching .json / .json.gz vector files under %s" pathArg
             2
         else
-            let mutable tp, tf, ts = 0, 0, 0
+            let mutable g = zeroTally
+            let perFile = ResizeArray<string * Tally>()
             for file in files do
-                let p, f, s = runFile file maxReport
-                tp <- tp + p; tf <- tf + f; ts <- ts + s
+                let t = runFile file maxReport
+                perFile.Add(baseName file, t)
+                g <- { Pass = g.Pass + t.Pass; Skip = g.Skip + t.Skip
+                       Wrong = g.Wrong + t.Wrong; Frame = g.Frame + t.Frame; Unimpl = g.Unimpl + t.Unimpl }
             Diag.result "----"
-            Diag.result "TOTAL  %d pass  %d fail  %d skip  across %d file(s)" tp tf ts files.Length
-            if tf > 0 then 1 else 0
+            Diag.result "TOTAL  %d pass  %d fail  %d skip  across %d file(s)" g.Pass (totalFail g) g.Skip files.Length
+            Diag.result "       fail breakdown: %d wrong-answer  %d exception-frame  %d unimplemented"
+                g.Wrong g.Frame g.Unimpl
+            // The actionable digest: files with genuine wrong-answers, worst first. An empty list
+            // here means every remaining failure is a known structural class (frame / unimplemented).
+            let wrongFiles = perFile |> Seq.filter (fun (_, t) -> t.Wrong > 0) |> Seq.sortByDescending (fun (_, t) -> t.Wrong) |> Seq.toList
+            if not wrongFiles.IsEmpty then
+                Diag.result "       wrong-answer files (chase these): %s"
+                    (wrongFiles |> List.map (fun (n, t) -> sprintf "%s(%d)" n t.Wrong) |> String.concat " ")
+            if totalFail g > 0 then 1 else 0
 
 module Main =
 
@@ -709,9 +747,13 @@ module Main =
                 eprintfn "No checkpoint.txt found - run with 'checkpoint' instead of 'verify' first"
                 1
             else
+                // Normalise line endings: st.Debug's "%A cpu" template picks up whatever the source
+                // file used (LF vs CRLF), and checkpoint.txt can have been written by a build with
+                // the other convention - a spurious mismatch on otherwise-identical register dumps.
+                let norm (s: string) = s.Replace("\r\n", "\n")
                 let expected = IO.File.ReadAllText "checkpoint.txt"
                 let actual = st.Debug
-                if actual = expected then
+                if norm actual = norm expected then
                     Diag.result "VERIFY PASS at step count %d (PC=$%08x)" steps st.Cpu.PC
                     0
                 else

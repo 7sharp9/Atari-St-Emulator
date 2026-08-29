@@ -57,8 +57,21 @@ python tools/fetch_680x0_tests.py --only LSR ROR
 ./run.ps1 selftest tests/680x0 lsr           # filter by file-name substring
 ```
 
-Output is one line per opcode (`pass / fail / skip`) plus the first few failing
-cases, and a non-zero exit code if anything failed.
+Output is one line per opcode with the failures split three ways -
+`fail (N wrong  N frame  N unimpl)` - plus up to 5 sample `FAIL` lines
+(**wrong-answers first** - those are the actionable ones), a `TOTAL` with the
+same breakdown, and a **`wrong-answer files (chase these)`** digest listing every
+file that still has a genuine flag/register bug, worst first. An empty digest
+means all that is left is the two known structural classes. Non-zero exit if
+anything failed.
+
+The three failure classes:
+- **`wrong`** - a real flag / register / memory divergence. Fix these.
+- **`frame`** - the vectors expect the instruction to fault and push a frame; we
+  push the simplified 6-byte frame (not the real 14-byte group-0 one) or do not
+  fault. One fix (a real exception frame) clears the whole class.
+- **`unimpl`** - `Cpu.Step` threw: opcode / EA-mode not decoded yet (ROM-driven
+  scope). Add the mode when a real target needs it.
 
 What it does and does not cover:
 
@@ -66,17 +79,17 @@ What it does and does not cover:
   (`memConfig = $05`). A case whose PC or listed RAM addresses fall outside
   `[$8, $100000)` is **skipped** - that is most absolute-addressing cases, but
   nearly all register / immediate / near-stack cases run.
-- **Real failures it surfaces** (fix these, they are not harness bugs):
-  - unimplemented opcode / addressing-mode combinations - reported as
-    `Cpu.Step raised (unimplemented?)`, expected while scope is ROM-driven;
-  - wrong flag results, e.g. `ADD` not setting `X = C`, `ASL` overflow (`V`);
-  - a few genuine logic bugs in partially-implemented instructions.
+- **Real failures it surfaces** (the `wrong` count - fix these):
+  - unimplemented opcode / addressing-mode combinations (the `unimpl` count) -
+    expected while scope is ROM-driven, add the mode when a target needs it;
+  - wrong flag / register / memory results in an implemented instruction.
 - **Known harness-side imprecision** (also shows as `fail`, lower priority):
   - no prefetch queue, so `pc` is compared as "next instruction address" -
     right for this interpreter, off by the real prefetch amount for a few
     instruction classes;
   - exception entry uses the project's simplified 6-byte frame, so
-    TRAP / CHK / privilege / address-error cases mismatch on the stacked frame.
+    TRAP / CHK / privilege / address-error cases mismatch on the stacked frame
+    (the `frame` count).
 
 Baseline (25 shift/logic/move opcodes, Aug 2026): register-operand `.b` / `.l`
 shift and rotate forms pass ~100%; `.w` memory forms and the arithmetic/move
