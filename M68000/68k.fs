@@ -4492,6 +4492,7 @@ type Cpu =
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
                 let bitMask = match size with 0b00uy -> 0xff | 0b01uy -> 0xffff | _ -> -1
                 let signBit = match size with 0b00uy -> 0x80 | 0b01uy -> 0x8000 | _ -> 1 <<< 31
+                let width  = match size with 0b00uy -> 8   | 0b01uy -> 16     | _ -> 32
                 let mutable v = x.DataRegister register &&& bitMask
                 let originalSignSet = v &&& signBit <> 0
                 let mutable carryOut = false
@@ -4503,7 +4504,12 @@ type Cpu =
                 ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
                 if v &&& signBit <> 0 then ccr <- ccr ||| 0x8s //N
                 if v = 0 then ccr <- ccr ||| 0x4s //Z
-                if amount > 0 then
+                if amount > width then
+                    // Real 68000: once the count exceeds the operand width the value has saturated
+                    // to all sign bits and C / X both come out 0, even for a negative operand (the
+                    // 680x0 vectors are explicit - X is cleared, not just left unchanged).
+                    ccr <- ccr &&& ~~~0x1s &&& ~~~0x10s
+                elif amount > 0 then
                     if carryOut then ccr <- ccr ||| 0x1s ||| 0x10s //C and X
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
