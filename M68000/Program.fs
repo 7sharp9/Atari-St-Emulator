@@ -143,8 +143,15 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         match Environment.GetEnvironmentVariable "ATARI_TRACE_EVENTS" with
         | null | "" -> None
         | p -> Some (p + ".basepages.json")
-    let mutable pexecPending : (int * int * string) option = None  // (returnPC, mode, filename)
+    //A stack, not a single slot: TOS's mode-4/6 Pexec ("just go") never returns to its caller, so
+    //a single pending slot would be pinned forever and block detection of every later Pexec -
+    //including a mode-0 load launched by the running shell (e.g. \AUTO\*.PRG). Entries that never
+    //return (mode 4/6) simply sit at the bottom; the ones we care about (load modes) are LIFO.
+    let mutable pexecStack : (int * int * string) list = []  // (returnPC, mode, filename)
     let mutable basepagesWritten = 0
+    //Set once we've dumped the basepage for the load-and-go Pexec currently on top of the stack,
+    //keyed by its return PC, so the per-step $602C sample doesn't re-dump it every instruction.
+    let mutable basepageCapturedFor = -1
 
     let readCString (addr: int) =
         if addr <= 0 then ""
@@ -175,6 +182,25 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                && tlen >= 0 && dlen >= 0 && blen >= 0 && tlen < 0x400000 then
                 Some (lowtpa, hitpa, tbase, tlen, dbase, dlen, bbase, blen)
             else None
+
+    ///Emits the basepage record (stderr + JSON sidecar) for a loaded program. `step` is the
+    ///emulated-time stamp; `bp` is the basepage pointer.
+    let dumpBasepage (step: uint64) (mode: int) (fname: string) (bp: int) =
+        match readBasepage bp with
+        | Some (lowtpa, hitpa, tbase, tlen, dbase, dlen, bbase, blen) ->
+            eprintfn "GEMDOS Pexec basepage=$%08x tpa=$%08x..$%08x text=$%08x+$%x data=$%08x+$%x bss=$%08x+$%x (\"%s\")"
+                bp lowtpa hitpa tbase tlen dbase dlen bbase blen fname
+            match basepageSidecar with
+            | Some path ->
+                let sep = if basepagesWritten = 0 then "[\n" else ",\n"
+                let json =
+                    sprintf "%s  {\"step\":%d,\"mode\":%d,\"file\":\"%s\",\"basepage\":%d,\"lowtpa\":%d,\"hitpa\":%d,\"tbase\":%d,\"tlen\":%d,\"dbase\":%d,\"dlen\":%d,\"bbase\":%d,\"blen\":%d}"
+                        sep step mode (fname.Replace("\\", "\\\\").Replace("\"", "\\\"")) bp lowtpa hitpa tbase tlen dbase dlen bbase blen
+                IO.File.AppendAllText(path, json)
+                basepagesWritten <- basepagesWritten + 1
+            | None -> ()
+            true
+        | None -> false
 
     ///Resets the loop detector's epoch. Must be called after anything that changes CPU/MMU state
     ///without going through Step() - currently Reset() and Preview's post-rollback restore -
@@ -257,34 +283,31 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let preEventsAcks = mmu.InterruptAcks
         //Pexec detection: a `trap #1` ($4E41) whose GEMDOS function word on the caller stack is
         //$4B. Record where it will return to and the args; the basepage is read back on return.
-        if traceGemdos && pexecPending.IsNone && int (mmu.ReadWord (uint32 cpu.PC)) = 0x4E41
+        if traceGemdos && int (mmu.ReadWord (uint32 cpu.PC)) = 0x4E41
            && (int (mmu.ReadWord (uint32 cpu.A7)) &&& 0xFFFF) = 0x004B then
             let mode = int (mmu.ReadWord (uint32 (cpu.A7 + 2)))
             let fname = readCString (mmu.ReadLong (uint32 (cpu.A7 + 4)))
-            pexecPending <- Some (cpu.PC + 2, mode, fname)
+            pexecStack <- (cpu.PC + 2, mode, fname) :: pexecStack
             eprintfn "GEMDOS Pexec mode=%d file=\"%s\" pc=$%08x" mode fname cpu.PC
         try
             cpu <- cpu.Step()
             if TraceEvents.enabled then
                 TraceEvents.record stepCount preEventsPc preEventsOpcode cpu.PC (mmu.InterruptAcks <> preEventsAcks)
-            match pexecPending with
-            | Some (retpc, mode, fname) when cpu.PC = retpc ->
-                pexecPending <- None
+            match pexecStack with
+            | (retpc, mode, fname) :: rest when cpu.PC = retpc ->
+                pexecStack <- rest
                 eprintfn "GEMDOS Pexec mode=%d returned d0=$%08x" mode cpu.D0
-                match readBasepage cpu.D0 with
-                | Some (lowtpa, hitpa, tbase, tlen, dbase, dlen, bbase, blen) ->
-                    eprintfn "GEMDOS Pexec basepage=$%08x tpa=$%08x..$%08x text=$%08x+$%x data=$%08x+$%x bss=$%08x+$%x (\"%s\")"
-                        cpu.D0 lowtpa hitpa tbase tlen dbase dlen bbase blen fname
-                    match basepageSidecar with
-                    | Some path ->
-                        let sep = if basepagesWritten = 0 then "[\n" else ",\n"
-                        let json =
-                            sprintf "%s  {\"step\":%d,\"mode\":%d,\"file\":\"%s\",\"basepage\":%d,\"lowtpa\":%d,\"hitpa\":%d,\"tbase\":%d,\"tlen\":%d,\"dbase\":%d,\"dlen\":%d,\"bbase\":%d,\"blen\":%d}"
-                                sep stepCount mode (fname.Replace("\\", "\\\\").Replace("\"", "\\\"")) cpu.D0 lowtpa hitpa tbase tlen dbase dlen bbase blen
-                        IO.File.AppendAllText(path, json)
-                        basepagesWritten <- basepagesWritten + 1
-                    | None -> ()
-                | None -> ()
+                //Mode 3 (load, don't run) returns the basepage in D0. Modes 0/1 (load and run)
+                //return the *child's exit code* - their basepage was captured below while the
+                //child was live.
+                if mode = 3 || mode = 4 || mode = 6 then dumpBasepage stepCount mode fname cpu.D0 |> ignore
+                if basepageCapturedFor = retpc then basepageCapturedFor <- -1
+            | (retpc, mode, fname) :: _ when (mode = 0 || mode = 1) && basepageCapturedFor <> retpc ->
+                //Load-and-run: the child is executing now. GEMDOS keeps the running process's
+                //basepage pointer at act_pd ($602C - see [[atari-st-emulator-next-instructions]]);
+                //sample it until it resolves to a valid basepage, then stop.
+                let actpd = mmu.ReadLong 0x602Cu
+                if dumpBasepage stepCount mode fname actpd then basepageCapturedFor <- retpc
             | _ -> ()
         with e ->
             //Diagnostics for implementing the next instruction: the opcode word, its common

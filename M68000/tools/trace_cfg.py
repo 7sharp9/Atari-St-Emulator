@@ -430,6 +430,9 @@ def main():
     ap.add_argument("--names", help="addr<TAB>name sidecar, used for graph labels")
     ap.add_argument("--range", nargs=2, metavar=("LO", "HI"),
                     help="restrict to PC window [LO,HI) (hex)")
+    ap.add_argument("--steps", nargs=2, metavar=("LO", "HI"), type=int,
+                    help="restrict to the step-count window [LO,HI) - use to isolate one loaded "
+                         "program's run when a later program reuses the same TPA addresses")
     ap.add_argument("--disasm", action="store_true",
                     help="annotate ROM blocks via tools/disassemble.py")
     ap.add_argument("--rom", default=os.path.join(os.path.dirname(__file__), "..", "TOS100UK.IMG"))
@@ -441,6 +444,9 @@ def main():
         hi = int(args.range[1], 16)
 
     ver, start, recs = load(args.log)
+    if args.steps:
+        s_lo, s_hi = args.steps
+        recs = [r for r in recs if s_lo <= r[0] < s_hi]
     names = load_names(args.names)
     blocks, edges, call_edges, func_hits, leaders, kc = reconstruct(recs, lo, hi)
 
