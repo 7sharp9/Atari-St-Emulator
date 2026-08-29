@@ -97,6 +97,8 @@ type MMU(rom: byte array) =
     ///this counter - route new mutable peripheral state through `store` (byte arrays) or bump
     ///explicitly (scalar fields like tbcr/tbdr) rather than writing around it.
     let mutable mutations = 0UL
+    ///See `InterruptAcks` - count of interrupts actually taken, for the loop detector.
+    let mutable interruptAcks = 0UL
 
     ///Ad-hoc debug watchpoint (REPL `watch`/`unwatch`, see Program.fs) - prints via eprintfn (so it
     ///survives ATARI_NOTRACE) whenever a write touches [lo,hi]. Added after repeatedly hand-editing
@@ -728,6 +730,13 @@ type MMU(rom: byte array) =
         elif timerCPending then timerCPending <- false
         elif vblPending then vblPending <- false
         mutations <- mutations + 1UL
+        interruptAcks <- interruptAcks + 1UL
+
+    ///Count of interrupts actually taken (autovector VBL, MFP ACIA/Timer C). Distinct from
+    ///`Mutations`: the loop detector uses this to tell "spinning until a scheduled interrupt
+    ///arrives" (e.g. TOS's `vsync` waiting on the VBL to bump `frclock`) apart from a genuine
+    ///stuck loop - a spin that an interrupt keeps rescuing is not provably stuck.
+    member x.InterruptAcks = interruptAcks
 
     ///Injects raw IKBD serial bytes into the keyboard ACIA receive FIFO - real make/break
     ///scancodes (make = scancode, break = scancode ||| $80) and 3-byte relative mouse packets

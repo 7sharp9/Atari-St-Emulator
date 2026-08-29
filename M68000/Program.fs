@@ -80,6 +80,15 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let mutable loopAnchorMutations = UInt64.MaxValue //sentinel: forces a fresh epoch on step 1
     let mutable loopPower = 1
     let mutable loopLambda = 0
+    //Blind spot in the pure-state proof: Step()'s own scheduled interrupts (VBL, Timer C) are an
+    //external input not captured in (Cpu, MMU) state. TOS's `vsync` ($fc0726) spins reading
+    //`frclock` until the VBL ISR bumps it - a pure, memory-read-only cycle that recurs in a few
+    //steps and looks "provably stuck" even though the VBL will break it within one frame. Track
+    //the last step at which an interrupt was actually taken; only declare a loop once a whole
+    //frame has passed with none (i.e. interrupts have genuinely stopped - an IPL-masked lock -
+    //not just "we haven't reached the next VBL boundary yet").
+    let mutable loopLastAckCount = 0UL
+    let mutable loopLastAckStep = 0UL
 
     // --- Emulated time --------------------------------------------------------
     //
@@ -162,13 +171,16 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         | _ -> ()
         let state = MachineState.Of cpu
         let currentMutations = mmu.Mutations
+        if mmu.InterruptAcks <> loopLastAckCount then
+            loopLastAckCount <- mmu.InterruptAcks
+            loopLastAckStep <- stepCount
         if currentMutations <> loopAnchorMutations then
             loopAnchor <- state
             loopAnchorMutations <- currentMutations
             loopPower <- 1
             loopLambda <- 0
-        elif state.SameAs loopAnchor then
-            eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact CPU state has recurred with a provably unchanged MMU (no RAM/peripheral state has moved since the last snapshot), so execution is stuck in an infinite loop; further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC
+        elif state.SameAs loopAnchor && stepCount - loopLastAckStep >= instructionsPerFrame then
+            eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact CPU state has recurred with a provably unchanged MMU (no RAM/peripheral state has moved since the last snapshot) and no interrupt has been taken for a full frame, so execution is stuck in an infinite loop; further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC
             eprintfn "%A" cpu
             failwithf "Loop detected at PC=$%08x" cpu.PC
         else
