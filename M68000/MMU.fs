@@ -249,6 +249,16 @@ type MMU(rom: byte array) =
     let mutable dmaAddrMidByte = 0uy
     let mutable dmaAddrLowByte = 0uy
 
+    ///The DMA sector-count register. On real hardware $FF8606 bit 4 (`$x90` vs `$x80`) switches the
+    ///$FF8604 access between "an FDC/HDC register" and "the DMA sector-count register"; the boot ROM
+    ///and GEMDOS write the count here (verified against a live Hatari `--trace fdc` run - see
+    ///[[atari-st-emulator-reversing-goal]]) before every Read/Write Sector command, then the WD1772
+    ///transfers that many consecutive sectors when the command's multi-record (`m`) bit is set.
+    ///Not in MmuSnapshot: it is re-written before every command, so a resumed snapshot re-derives it.
+    ///`dmaScSelected` tracks the last $FF8606 bit-4 state so the next $FF8604 write is routed right.
+    let mutable dmaSectorCount = 0uy
+    let mutable dmaScSelected = false
+
     ///Real disk image mounted in drive A, if any - see LoadDiskA (set from Program.fs's
     ///ATARI_DISK_A env var, mirroring ATARI_ROM_PATH). `None` (the default) preserves every
     ///existing "no disk" behavior documented on fdcCommandStatus/tryReadSector below - this is
@@ -597,8 +607,15 @@ type MMU(rom: byte array) =
         | Mfp -> store mfpRegisters (int (address - mpf68901)) input
         | a when a = fdcModeSelect ->
             let selected = (input >>> 1) &&& 0x3uy
-            if selected <> fdcSelectedReg then mutations <- mutations + 1UL
+            let scSelected = input &&& 0x10uy <> 0uy
+            if selected <> fdcSelectedReg || scSelected <> dmaScSelected then mutations <- mutations + 1UL
             fdcSelectedReg <- selected
+            dmaScSelected <- scSelected
+        | a when a = fdcAccess && dmaScSelected ->
+            //$FF8606 bit 4 is set: this $FF8604 write is the DMA sector-count register, not an FDC
+            //register. See dmaSectorCount's comment.
+            if input <> dmaSectorCount then mutations <- mutations + 1UL
+            dmaSectorCount <- input
         | a when a = fdcAccess ->
             match fdcSelectedReg with
             | 0uy ->
@@ -612,11 +629,21 @@ type MMU(rom: byte array) =
                 //command timing or real WD1772 seek/settle modeling, so - matching every other FDC
                 //command here - the whole operation completes synchronously on this one write.
                 let isReadSector = (input &&& 0xE3uy) = 0x80uy
+                let multiRecord = input &&& 0x10uy <> 0uy
                 let dmaAddr =
                     (uint32 dmaAddrHighByte <<< 16) ||| (uint32 dmaAddrMidByte <<< 8) ||| uint32 dmaAddrLowByte
-                let status =
-                    if isReadSector && tryReadSector fdcTrack fdcSector dmaAddr then 0uy
-                    else fdcCommandStatus input
+                //With the multi-record (`m`) bit set the WD1772 keeps reading consecutive sectors
+                //on the same track until the DMA sector-count register is exhausted (GEMDOS issues
+                //a fresh command per track boundary). Without it, exactly one sector. Any sector the
+                //drive couldn't find stops the run and reports that sector's error status, matching
+                //real hardware - see fdcCommandStatus.
+                let count = if multiRecord then max 1 (int dmaSectorCount) else 1
+                let mutable ok = isReadSector
+                let mutable i = 0
+                while ok && i < count do
+                    ok <- tryReadSector fdcTrack (fdcSector + byte i) (dmaAddr + uint32 (i * 512))
+                    i <- i + 1
+                let status = if ok then 0uy else fdcCommandStatus input
                 if status <> fdcStatus then mutations <- mutations + 1UL
                 fdcStatus <- status
             | 1uy -> if input <> fdcTrack then mutations <- mutations + 1UL
