@@ -77,6 +77,16 @@ module Instructions =
             Some(mode, register)
         else None
 
+    /// 0100 ddd 110 mmm rrr : CHK.W <ea>,Dn - trap to vector 6 if Dn.w < 0 or Dn.w > <ea>.w
+    /// (size bits [8-7] = 11 for .w on the 68000; 10 = .l is 68020+, not decoded here).
+    let (|CHK|_|) data =
+        if data &&& 0b1111000111000000 = 0b0100000110000000 then
+            let dn = byte (data >>> 9) &&& 0b111uy
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(dn, eamode, eareg)
+        else None
+
     /// 0100 0000 11 mmm rrr : MOVE SR,<ea>
     let (|MoveFromSR|_|) data =
         if data &&& 0b1111111111000000 = 0b0100000011000000 then

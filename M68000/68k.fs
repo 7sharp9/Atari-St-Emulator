@@ -1818,8 +1818,11 @@ type Cpu =
                         newCpu
 
                     | 0b101uy -> //(d16,An)
+                        //Same-register (An)+,(d16,An): the source's postincrement completes before
+                        //the destination base is read, so the displacement is off (sourceAddress+2).
                         let destDisplacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                        let destEA = uint32 (x.AddressRegister dReg + int destDisplacement)
+                        let destBase = if sReg = dReg then sourceAddress + 2 else x.AddressRegister dReg
+                        let destEA = uint32 (destBase + int destDisplacement)
                         x.MMU.WriteWord destEA sourceContents
                         let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR sourceContents
                         let newCpu = {x.WithAddressRegister sReg (sourceAddress + 2) with PC = x.PC+4; CCR = ccr}
@@ -2287,6 +2290,52 @@ type Cpu =
         | NOP ->
             printfn "nop"
             {x with PC = x.PC + 2}
+        | CHK(dn, eamode, eareg) ->
+            //CHK.W <ea>,Dn: trap to vector 6 if Dn.w < 0 or Dn.w > <ea>.w. Flags (matching MAME's
+            //68000 core): Z = (Dn.w == 0) always, V = C = 0 always, X untouched; N is left alone
+            //when in range, else set to (Dn.w < 0). The stacked PC is the address of the next
+            //instruction (CHK completes before trapping).
+            let src = int (int16 (x.DataRegister dn))
+            let ext () = x.MMU.ReadWord (uint32 (x.PC + 2))
+            let bound, afterEA =
+                match eamode with
+                | 0b000uy -> int (int16 (x.DataRegister eareg)), { x with PC = x.PC + 2 }
+                | 0b010uy -> int (int16 (x.MMU.ReadWord (uint32 (x.AddressRegister eareg)))), { x with PC = x.PC + 2 }
+                | 0b011uy ->
+                    let a = x.AddressRegister eareg
+                    int (int16 (x.MMU.ReadWord (uint32 a))), { x.WithAddressRegister eareg (a + 2) with PC = x.PC + 2 }
+                | 0b100uy ->
+                    let a = x.AddressRegister eareg - 2
+                    int (int16 (x.MMU.ReadWord (uint32 a))), { x.WithAddressRegister eareg a with PC = x.PC + 2 }
+                | 0b101uy ->
+                    let a = x.AddressRegister eareg + int (int16 (ext ()))
+                    int (int16 (x.MMU.ReadWord (uint32 a))), { x with PC = x.PC + 4 }
+                | 0b110uy ->
+                    let idx = x.DecodeBriefExtension (int (ext ()))
+                    int (int16 (x.MMU.ReadWord (uint32 (x.AddressRegister eareg + idx.Offset)))), { x with PC = x.PC + 4 }
+                | 0b111uy when eareg = 0b000uy -> //(xxx).W
+                    int (int16 (x.MMU.ReadWord (uint32 (int (int16 (ext ())))))), { x with PC = x.PC + 4 }
+                | 0b111uy when eareg = 0b001uy -> //(xxx).L
+                    int (int16 (x.MMU.ReadWord (uint32 (x.MMU.ReadLong (uint32 (x.PC + 2)))))), { x with PC = x.PC + 6 }
+                | 0b111uy when eareg = 0b010uy -> //(d16,PC)
+                    let a = (x.PC + 2) + int (int16 (ext ()))
+                    int (int16 (x.MMU.ReadWord (uint32 a))), { x with PC = x.PC + 4 }
+                | 0b111uy when eareg = 0b011uy -> //(d8,PC,Xn)
+                    let idx = x.DecodeBriefExtension (int (ext ()))
+                    int (int16 (x.MMU.ReadWord (uint32 ((x.PC + 2) + idx.Offset)))), { x with PC = x.PC + 4 }
+                | 0b111uy when eareg = 0b100uy -> //#imm.w
+                    int (int16 (ext ())), { x with PC = x.PC + 4 }
+                | _ -> failwithf "chk.w not implemented for eamode %x reg %x" eamode eareg
+            let z16 = (src &&& 0xFFFF) = 0
+            let ccr0 =
+                let c = if z16 then afterEA.CCR ||| 0x4s else afterEA.CCR &&& ~~~0x4s
+                c &&& ~~~0x3s  // V = C = 0
+            printfn "chk.w <ea mode %x reg %x>,D%u" eamode eareg dn
+            if src >= 0 && src <= bound then
+                { afterEA with CCR = ccr0 }
+            else
+                let ccrTrap = if src < 0 then ccr0 ||| 0x8s else ccr0 &&& ~~~0x8s
+                ({ afterEA with CCR = ccrTrap }).EnterVector 6 afterEA.PC
         | LEA(a_reg, eamode,eareg) ->
             match eamode with
             | 0b010uy -> //(An)
