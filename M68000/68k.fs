@@ -3772,84 +3772,21 @@ type Cpu =
                     printfn "cmp.l (a%u)+,D%u" eareg register
                     newCpu
                 | _ -> failwithf "cmp.l eamode %u not implemented" eamode
-            | 0b111uy -> //CMPA.L An,<ea>
-                match eamode with
-                | 0b000uy -> //Dn
-                    let dest = x.AddressRegister register
-                    let source = x.DataRegister eareg
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
-                    printfn "cmpa.l D%u,A%u" eareg register
-                    {x with PC = x.PC+2; CCR = ccr}
-                | 0b001uy -> //An
-                    let dest = x.AddressRegister register
-                    let source = x.AddressRegister eareg
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
-                    printfn "cmpa.l A%u,A%u" eareg register
-                    {x with PC = x.PC+2; CCR = ccr}
-                | 0b111uy when eareg = 0b100uy -> //#imm
-                    let dest = x.AddressRegister register
-                    let source = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
-                    printfn "cmpa.l #$%x,A%u" source register
-                    {x with PC = x.PC+6; CCR = ccr}
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = x.AddressRegister eareg + int displacement
-                    let dest = x.AddressRegister register
-                    let source = x.MMU.ReadLong(uint32 addr)
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
-                    printfn "cmpa.l %i(a%u),A%u" displacement eareg register
-                    {x with PC = x.PC+4; CCR = ccr}
-                | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                    let dest = x.AddressRegister register
-                    let source = x.MMU.ReadLong addr
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
-                    printfn "cmpa.l $%x.l,A%u" addr register
-                    {x with PC = x.PC+6; CCR = ccr}
-                | _ -> failwithf "cmpa.l eamode %u not implemented" eamode
-            | 0b011uy -> //CMPA.W <ea>,An - source is word-sized, sign-extended to long before the compare
-                //Full 32-bit compare against An; X untouched (CMP-family). Mirrors CMPA.L above.
-                let cmp (source: int) pcAdv addrAdj =
-                    let dest = x.AddressRegister register
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
-                    let stepped = match addrAdj with Some (r, d) -> x.WithAddressRegister r d | None -> x
-                    {stepped with PC = x.PC + pcAdv; CCR = ccr}
-                match eamode with
-                | 0b000uy -> //Dn
-                    printfn "cmpa.w D%u,A%u" eareg register
-                    cmp (int (int16 (x.DataRegister eareg))) 2 None
-                | 0b001uy -> //An
-                    printfn "cmpa.w A%u,A%u" eareg register
-                    cmp (int (int16 (x.AddressRegister eareg))) 2 None
-                | 0b010uy -> //(An)
-                    printfn "cmpa.w (a%u),A%u" eareg register
-                    cmp (int (int16 (x.MMU.ReadWord(uint32 (x.AddressRegister eareg))))) 2 None
-                | 0b011uy -> //(An)+ - word postincrement by 2
-                    let addr = x.AddressRegister eareg
-                    printfn "cmpa.w (a%u)+,A%u" eareg register
-                    cmp (int (int16 (x.MMU.ReadWord(uint32 addr)))) 2 (Some (eareg, addr + 2))
-                | 0b100uy -> //-(An) - predecrement by 2
-                    let addr = x.AddressRegister eareg - 2
-                    printfn "cmpa.w -(a%u),A%u" eareg register
-                    cmp (int (int16 (x.MMU.ReadWord(uint32 addr)))) 2 (Some (eareg, addr))
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = x.AddressRegister eareg + int displacement
-                    printfn "cmpa.w %i(a%u),A%u" displacement eareg register
-                    cmp (int (int16 (x.MMU.ReadWord(uint32 addr)))) 4 None
-                | 0b111uy when eareg = 0b100uy -> //#imm.W
-                    printfn "cmpa.w #imm,A%u" register
-                    cmp (int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))) 4 None
-                | 0b111uy when eareg = 0b000uy -> //(xxx).W
-                    let addr = uint32 (int (int16 (x.MMU.ReadWord(uint32 (x.PC+2)))))
-                    printfn "cmpa.w $%x.w,A%u" addr register
-                    cmp (int (int16 (x.MMU.ReadWord addr))) 4 None
-                | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                    printfn "cmpa.w $%x.l,A%u" addr register
-                    cmp (int (int16 (x.MMU.ReadWord addr))) 6 None
-                | _ -> failwithf "cmpa.w eamode %u not implemented" eamode
+            | 0b111uy -> //CMPA.L <ea>,An - full 32-bit compare against An; X untouched. Shared EA decoder.
+                let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
+                let source = x.ReadEa OperandSize.Long loc
+                let ccr = CCR.Subtract_IgnoringX x.CCR (x.AddressRegister register) source
+                let newCpu = { regUpdate x with PC = x.PC + 2 + extBytes; CCR = ccr }
+                printfn "cmpa.l %s,A%u" desc register
+                newCpu
+            | 0b011uy -> //CMPA.W <ea>,An - source word sign-extended to long, full 32-bit compare
+                //against An; X untouched (CMP-family). Migrated to the shared EA decoder.
+                let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
+                let source = int (int16 (x.ReadEa OperandSize.Word loc))
+                let ccr = CCR.Subtract_IgnoringX x.CCR (x.AddressRegister register) source
+                let newCpu = { regUpdate x with PC = x.PC + 2 + extBytes; CCR = ccr }
+                printfn "cmpa.w %s,A%u" desc register
+                newCpu
             | 0b101uy -> //EOR.W Dn,<ea>-><ea> - except eamode=001 (the "An-direct" EA slot, illegal
                          //as a real EOR destination), which real hardware repurposes for
                          //CMPM.W (An)+,(An)+ instead - NOT eamode=011 (plain (An)+, which stays a
