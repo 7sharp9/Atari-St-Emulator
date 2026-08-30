@@ -1414,21 +1414,17 @@ type Cpu =
 
         | PEA(eamode, eareg) ->
             //PEA: pushes the effective address itself (not its contents) onto the stack. CCR unaffected.
-            match eamode with
-            | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                let addr = x.MMU.ReadLong(uint32 (x.PC+2))
-                let newSP = x.A7 - 4
-                x.MMU.WriteLong (uint32 newSP) addr
-                printfn "pea $%x.l" addr
-                {x with PC = x.PC+6; A7 = newSP}
-            | 0b111uy when eareg = 0b010uy -> //(d16,PC)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = uint32 ((x.PC+2) + int displacement)
+            //Only the control addressing modes are legal here, so the shared EA decoder always
+            //resolves to an EaMem address - push that, no operand read. `extBytes` carries the PC
+            //advance for whichever mode's extension words were consumed.
+            let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
+            match loc with
+            | EaMem addr ->
                 let newSP = x.A7 - 4
                 x.MMU.WriteLong (uint32 newSP) (int addr)
-                printfn "pea %i(pc) == $%x" displacement addr
-                {x with PC = x.PC+4; A7 = newSP}
-            | _ -> failwithf "pea not implemented for eamode %x" eamode
+                printfn "pea %s == $%x" desc addr
+                {x with PC = x.PC + 2 + extBytes; A7 = newSP}
+            | _ -> failwithf "pea: illegal addressing mode %x/%x" eamode eareg
 
         | RTS ->
             let returnAddr = x.MMU.ReadLong(uint32 x.A7)
