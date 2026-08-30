@@ -2536,106 +2536,36 @@ type Cpu =
             newCpu
 
         | NEG(size, eamode, eareg) ->
-            //Two's complement negation (0 - operand). Reuses the existing Subtract_IgnoringX_*
-            //helpers for N/Z/V/C (dest=0), then sets X to match C - the one real difference from
-            //a plain CMP/SUB-style subtract: X isn't ignored here, it mirrors the result's carry.
-            match eamode, size with
-            | 0b000uy, 0b10uy -> //Dn, long
-                let source = x.DataRegister eareg
-                let result = 0 - source
-                let ccr = CCR.Subtract x.CCR 0 source
-                let ccr = if ccr &&& 0x1s <> 0s then ccr ||| 0x10s else ccr &&& ~~~0x10s
-                let newCpu = {x.WithDataRegister eareg result with PC = x.PC+2; CCR = ccr}
-                printfn "neg.l D%u" eareg
-                newCpu
-            | 0b000uy, 0b01uy -> //Dn, word
-                let source = int16 (x.DataRegister eareg)
-                let result = int16 (0 - int source)
-                let newValue = (x.DataRegister eareg &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                let ccr = CCR.Subtract_Word x.CCR 0s source
-                let ccr = if ccr &&& 0x1s <> 0s then ccr ||| 0x10s else ccr &&& ~~~0x10s
-                let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
-                printfn "neg.w D%u" eareg
-                newCpu
-            | 0b000uy, 0b00uy -> //Dn, byte
-                let source = byte (x.DataRegister eareg)
-                let result = byte (0 - int source)
-                let newValue = (x.DataRegister eareg &&& ~~~0xff) ||| int result
-                let ccr = CCR.Subtract_Byte x.CCR 0uy source
-                let ccr = if ccr &&& 0x1s <> 0s then ccr ||| 0x10s else ccr &&& ~~~0x10s
-                let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
-                printfn "neg.b D%u" eareg
-                newCpu
-            | 0b101uy, 0b01uy -> //(d16,An), word
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = uint32 (x.AddressRegister eareg + int displacement)
-                let source = int16 (x.MMU.ReadWord addr)
-                let result = int16 (0 - int source)
-                let ccr = CCR.Subtract_Word x.CCR 0s source
-                let ccr = if ccr &&& 0x1s <> 0s then ccr ||| 0x10s else ccr &&& ~~~0x10s
-                x.MMU.WriteWord addr result
-                let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                printfn "neg.w %i(a%u)" displacement eareg
-                newCpu
-            | _ -> failwithf "neg: not implemented for mode %x size %x" eamode size
+            //Two's complement negation (0 - operand). Reuses the existing Subtract_* helpers for
+            //N/Z/V/C (dest=0); those already fold C into X, and NEG wants X=C, so no extra work.
+            //Migrated to the shared EA decoder - one path covers Dn and every alterable memory mode.
+            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "neg: bad size %x" size
+            let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
+            let raw = x.ReadEa sz loc
+            let result, ccr =
+                match sz with
+                | OperandSize.Byte -> let s = byte raw in int (byte (0 - int s)), CCR.Subtract_Byte x.CCR 0uy s
+                | OperandSize.Word -> let s = int16 raw in (int (int16 (0 - int s)) &&& 0xffff), CCR.Subtract_Word x.CCR 0s s
+                | _ -> let s = raw in (0 - s), CCR.Subtract x.CCR 0 s
+            let ccr = if ccr &&& 0x1s <> 0s then ccr ||| 0x10s else ccr &&& ~~~0x10s
+            let newCpu = { x.WriteEa sz loc result (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
+            printfn "neg.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
+            newCpu
 
         | NOT(size, eamode, eareg) ->
-            //One's complement. CCR: N/Z from result, V/C cleared, X unaffected - same helper
-            //shape as CLR uses, just complementing instead of zeroing.
-            match eamode, size with
-            | 0b000uy, 0b10uy -> //Dn, long
-                let result = ~~~(x.DataRegister eareg)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                let newCpu = {x.WithDataRegister eareg result with PC = x.PC+2; CCR = ccr}
-                printfn "not.l D%u" eareg
-                newCpu
-            | 0b000uy, 0b01uy -> //Dn, word
-                let currentValue = x.DataRegister eareg
-                let result = ~~~(int16 currentValue)
-                let newValue = (currentValue &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
-                printfn "not.w D%u" eareg
-                newCpu
-            | 0b000uy, 0b00uy -> //Dn, byte
-                let currentValue = x.DataRegister eareg
-                let result = ~~~(byte currentValue)
-                let newValue = (currentValue &&& ~~~0xff) ||| int result
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
-                let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
-                printfn "not.b D%u" eareg
-                newCpu
-            | _ ->
-                //Memory destination (alterable modes 2-6 and (xxx).W/.L). Read-modify-write the
-                //operand with its one's complement; A7 byte pre/post-steps by 2, others by 1.
-                let opBytes = match size with 0b00uy -> 1 | 0b01uy -> 2 | _ -> 4
-                let step = if eareg = 7uy && opBytes = 1 then 2 else opBytes
-                let addr, pcAdv, writeReg =
-                    match eamode with
-                    | 0b010uy -> uint32 (x.AddressRegister eareg), 2, id                                   //(An)
-                    | 0b011uy -> uint32 (x.AddressRegister eareg), 2, (fun (c: Cpu) -> c.WithAddressRegister eareg (x.AddressRegister eareg + step)) //(An)+
-                    | 0b100uy -> uint32 (x.AddressRegister eareg - step), 2, (fun (c: Cpu) -> c.WithAddressRegister eareg (x.AddressRegister eareg - step)) //-(An)
-                    | 0b101uy -> uint32 (x.AddressRegister eareg + int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))), 4, id //(d16,An)
-                    | 0b111uy when eareg = 0b000uy -> uint32 (int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))), 4, id  //(xxx).W
-                    | 0b111uy when eareg = 0b001uy -> uint32 (x.MMU.ReadLong(uint32 (x.PC+2))), 6, id               //(xxx).L
-                    | _ -> failwithf "not: not implemented for mode %x size %x" eamode size
-                let ccr, name =
-                    match size with
-                    | 0b00uy ->
-                        let r = ~~~(byte (x.MMU.ReadByte addr))
-                        x.MMU.WriteByte addr r
-                        CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR r, "not.b"
-                    | 0b01uy ->
-                        let r = ~~~(int16 (x.MMU.ReadWord addr))
-                        x.MMU.WriteWord addr r
-                        CCR.IgnoreX_ZeroV_And_ZeroC x.CCR r, "not.w"
-                    | _ ->
-                        let r = ~~~(x.MMU.ReadLong addr)
-                        x.MMU.WriteLong addr r
-                        CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR r, "not.l"
-                let newCpu = {writeReg x with PC = x.PC + pcAdv; CCR = ccr}
-                printfn "%s <ea mode %x reg %u>" name eamode eareg
-                newCpu
+            //One's complement. CCR: N/Z from result, V/C cleared, X unaffected. Migrated to the
+            //shared EA decoder (one path for Dn and every alterable memory mode).
+            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "not: bad size %x" size
+            let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
+            let raw = x.ReadEa sz loc
+            let result, ccr =
+                match sz with
+                | OperandSize.Byte -> let r = ~~~(byte raw) in int r, CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR r
+                | OperandSize.Word -> let r = ~~~(int16 raw) in (int r &&& 0xffff), CCR.IgnoreX_ZeroV_And_ZeroC x.CCR r
+                | _ -> let r = ~~~raw in r, CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR r
+            let newCpu = { x.WriteEa sz loc result (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
+            printfn "not.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
+            newCpu
 
         | CLR(size, eamode, eareg) ->
             //CLR: writes 0 to the destination, sets Z, clears N/V/C, leaves X. Migrated to the
