@@ -287,6 +287,49 @@ module ExtendedArith =
         if carry then ccr <- ccr ||| 0x1s ||| 0x10s //C and X
         result, ccr
 
+module Bcd =
+    ///One ABCD / SBCD packed-BCD byte step, transcribed from the WinUAE 68000 core (gencpu.c
+    ///i_ABCD / i_SBCD, `cpu_level` 0) - the same CPU model Hatari runs and what the SingleStepTests
+    ///68000 vectors are generated against, so it reproduces the N and V results the real 68000
+    ///produces even though the manual calls them undefined. `dest` / `source` are the operand low
+    ///bytes; `xFlag` is the incoming X. Z is accumulative - only ever cleared, never set - the same
+    ///multi-precision quirk ExtendedArith.step has. Returns (result byte, new CCR).
+    ///The intermediate arithmetic is done in plain (signed) int: every test the model applies is a
+    ///low-bit mask (& 0xF0 / 0x80 / 0x100 / 0x300 / 0x3F0), where two's complement makes a negative
+    ///int and WinUAE's uae_u16 agree bit-for-bit.
+    let step (isAdd: bool) (curCCR: int16) (xFlag: bool) (dest: int) (source: int) : int * int16 =
+        let x1 = if xFlag then 1 else 0
+        let d = dest &&& 0xff
+        let s = source &&& 0xff
+        let mutable newv = 0
+        let mutable tmp = 0
+        let mutable carry = false
+        if isAdd then
+            let lo = (s &&& 0xF) + (d &&& 0xF) + x1
+            newv <- ((s &&& 0xF0) + (d &&& 0xF0)) + lo
+            tmp <- newv
+            if lo > 9 then newv <- newv + 6
+            carry <- (newv &&& 0x3F0) > 0x90
+            if carry then newv <- newv + 0x60
+        else
+            let lo = (d &&& 0xF) - (s &&& 0xF) - x1
+            newv <- ((d &&& 0xF0) - (s &&& 0xF0)) + lo
+            tmp <- newv
+            let mutable bcd = 0
+            if lo &&& 0xF0 <> 0 then newv <- newv - 6; bcd <- 6
+            if ((d - s - x1) &&& 0x100) > 0xFF then newv <- newv - 0x60
+            carry <- ((d - s - bcd - x1) &&& 0x300) > 0xFF
+        let result = newv &&& 0xFF
+        let vFlag =
+            if isAdd then (tmp &&& 0x80) = 0 && (newv &&& 0x80) <> 0
+            else (tmp &&& 0x80) <> 0 && (newv &&& 0x80) = 0
+        let mutable ccr = curCCR &&& ~~~0x8s &&& ~~~0x2s &&& ~~~0x1s &&& ~~~0x10s
+        if newv &&& 0x80 <> 0 then ccr <- ccr ||| 0x8s       //N
+        if result <> 0 then ccr <- ccr &&& ~~~0x4s           //Z  (accumulative)
+        if vFlag then ccr <- ccr ||| 0x2s                    //V
+        if carry then ccr <- ccr ||| 0x1s ||| 0x10s          //C and X
+        result, ccr
+
 //type AddressRegister =
     //| A0 of int
     //| A1 of int
@@ -455,6 +498,33 @@ type Cpu =
             let source = x.DataRegister ry &&& m
             let result, ccr = ExtendedArith.step isAdd m sb x.CCR x.X dest source
             let newValue = (x.DataRegister rx &&& ~~~m) ||| result
+            printfn "%s D%u,D%u" mnem ry rx
+            {x.WithDataRegister rx newValue with PC = x.PC+2; CCR = ccr}
+
+    ///ABCD / SBCD, both the Dy,Dx register form and the -(Ay),-(Ax) predecrement form (byte only).
+    ///`isAdd` picks ABCD vs SBCD. Mirrors x.ExtendedArith: predecrement reads source from -(Ay)
+    ///then dest from -(Ax) and writes the result back to (Ax); A7 steps by 2 even for this byte op;
+    ///Ay and Ax may alias (both decrement it). PC always advances by 2. See Bcd.step for the flag
+    ///semantics (accumulative Z, Musashi's undefined N/V).
+    member x.BcdOp (isAdd: bool) (usePredecrement: bool) (rx: byte) (ry: byte) : Cpu =
+        let mnem = if isAdd then "abcd" else "sbcd"
+        if usePredecrement then
+            let stepFor (r: byte) = if r = 7uy then 2 else 1
+            let yAddr = x.AddressRegister ry - stepFor ry
+            let afterY = x.WithAddressRegister ry yAddr
+            let source = int (x.MMU.ReadByte (uint32 yAddr))
+            let xAddr = afterY.AddressRegister rx - stepFor rx
+            let afterX = afterY.WithAddressRegister rx xAddr
+            let dest = int (x.MMU.ReadByte (uint32 xAddr))
+            let result, ccr = Bcd.step isAdd x.CCR x.X dest source
+            x.MMU.WriteByte (uint32 xAddr) (byte result)
+            printfn "%s -(a%u),-(a%u)" mnem ry rx
+            {afterX with PC = x.PC+2; CCR = ccr}
+        else
+            let dest = x.DataRegister rx &&& 0xff
+            let source = x.DataRegister ry &&& 0xff
+            let result, ccr = Bcd.step isAdd x.CCR x.X dest source
+            let newValue = (x.DataRegister rx &&& ~~~0xff) ||| result
             printfn "%s D%u,D%u" mnem ry rx
             {x.WithDataRegister rx newValue with PC = x.PC+2; CCR = ccr}
 
@@ -1867,10 +1937,10 @@ type Cpu =
 
         | OR(register, opmode, eamode, eareg) ->
             //Plain OR reg forms via the shared EA decoder. opmode 011/111 are DIVU/DIVS (their own
-            //patterns, matched first). opmode 100 with eamode 000/001 is the SBCD opcode slot (no
-            //handler yet) - keep the old failure rather than silently doing an OR there.
+            //patterns, matched first). opmode 100 with eamode 000/001 is the SBCD opcode slot:
+            //1000 Rx 10000 M Ry, M (eamode bit 0) = 0 -> Dy,Dx, = 1 -> -(Ay),-(Ax).
             if opmode = 0b100uy && eamode < 0b010uy then
-                failwithf "or.b not implemented for eamode %x" eamode
+                x.BcdOp false (eamode = 0b001uy) register eareg
             else
                 x.RegEaOp "or" opmode register eamode eareg true
                     (fun sz dest source -> let r = dest ||| source in r, x.LogicalCcr sz r)
@@ -2117,10 +2187,10 @@ type Cpu =
 
         | AND(register, opmode, eamode, eareg) ->
             //Plain AND reg forms via the shared EA decoder. opmode 011/111 are MULU/MULS (their
-            //own patterns, matched first). opmode 100 with eamode 000/001 is the ABCD opcode slot
-            //(no handler yet) - keep the old failure rather than silently doing an AND there.
+            //own patterns, matched first). opmode 100 with eamode 000/001 is the ABCD opcode slot:
+            //1100 Rx 10000 M Ry, M (eamode bit 0) = 0 -> Dy,Dx, = 1 -> -(Ay),-(Ax).
             if opmode = 0b100uy && eamode < 0b010uy then
-                failwithf "and.b not implemented for eamode %x" eamode
+                x.BcdOp true (eamode = 0b001uy) register eareg
             else
                 x.RegEaOp "and" opmode register eamode eareg true
                     (fun sz dest source -> let r = dest &&& source in r, x.LogicalCcr sz r)
