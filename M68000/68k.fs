@@ -3444,62 +3444,38 @@ type Cpu =
 
         | MemoryShiftRotate(shiftType, direction, eamode, eareg) ->
             //Always word-size, always exactly 1 bit - the count/register-size variation only
-            //applies to the Dn-direct ShiftRotate form above.
-            match shiftType, direction with
-            | 0b001uy, 0uy -> //LSR.W <ea>
-                match eamode with
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister eareg + int displacement)
-                    let v = uint16 (x.MMU.ReadWord addr)
-                    let carryOut = v &&& 1us <> 0us
-                    let result = int16 (v >>> 1)
-                    x.MMU.WriteWord addr result
-                    let mutable ccr = x.CCR
-                    ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
-                    if result < 0s then ccr <- ccr ||| 0x8s //N
-                    if result = 0s then ccr <- ccr ||| 0x4s //Z
-                    if carryOut then ccr <- ccr ||| 0x1s ||| 0x10s else ccr <- ccr &&& ~~~0x10s //C and X
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "lsr.w %i(a%u)" displacement eareg
-                    newCpu
-                | _ -> failwithf "lsr.w(memory) not implemented for eamode %x" eamode
-            | 0b001uy, 1uy -> //LSL.W <ea>
-                match eamode with
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister eareg + int displacement)
-                    let v = uint16 (x.MMU.ReadWord addr)
-                    let carryOut = v &&& 0x8000us <> 0us
-                    let result = int16 (v <<< 1)
-                    x.MMU.WriteWord addr result
-                    let mutable ccr = x.CCR
-                    ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
-                    if result < 0s then ccr <- ccr ||| 0x8s //N
-                    if result = 0s then ccr <- ccr ||| 0x4s //Z
-                    if carryOut then ccr <- ccr ||| 0x1s ||| 0x10s else ccr <- ccr &&& ~~~0x10s //C and X
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "lsl.w %i(a%u)" displacement eareg
-                    newCpu
-                | _ -> failwithf "lsl.w(memory) not implemented for eamode %x" eamode
-            | 0b011uy, 1uy -> //ROL.W <ea> - rotate memory word left 1, C = bit rotated out, X untouched
-                match eamode, eareg with
-                | 0b111uy, 0b001uy -> //(xxx).L - the Timer C ISR's `rol $e42.l` (200Hz-tick rate divider)
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                    let v = uint16 (x.MMU.ReadWord addr)
-                    let carryOut = v &&& 0x8000us <> 0us
-                    let result = int16 ((v <<< 1) ||| (if carryOut then 1us else 0us))
-                    x.MMU.WriteWord addr result
-                    let mutable ccr = x.CCR
-                    ccr <- ccr &&& ~~~0x8s &&& ~~~0x4s &&& ~~~0x2s &&& ~~~0x1s
-                    if result < 0s then ccr <- ccr ||| 0x8s //N
-                    if result = 0s then ccr <- ccr ||| 0x4s //Z
-                    if carryOut then ccr <- ccr ||| 0x1s //C only - plain rotate leaves X alone
-                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                    printfn "rol.w $%x.l" addr
-                    newCpu
-                | _ -> failwithf "rol.w(memory) not implemented for eamode %x reg %x" eamode eareg
-            | _ -> failwithf "memory shift/rotate not implemented for type %x direction %x" shiftType direction
+            //applies to the Dn-direct ShiftRotate form above. EA is a memory-alterable mode, so
+            //ResolveEa yields EaMem; `regUpdate` carries any (An)+/-(An) writeback, `extBytes` the
+            //PC advance. shiftType: 000=AS 001=LS 010=ROX 011=RO; direction: 0=right 1=left.
+            let left = direction = 1uy
+            let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
+            let v = x.ReadEa OperandSize.Word loc &&& 0xffff
+            let msb = v &&& 0x8000 <> 0
+            let lsb = v &&& 1 <> 0
+            let xIn = if x.X then 1 else 0
+            let result, carry, affectX, mnem =
+                match shiftType, left with
+                | 0b000uy, true  -> (v <<< 1) &&& 0xffff, msb, true, "asl"                     // ASL
+                | 0b000uy, false -> (v >>> 1) ||| (if msb then 0x8000 else 0), lsb, true, "asr" // ASR (sign fill)
+                | 0b001uy, true  -> (v <<< 1) &&& 0xffff, msb, true, "lsl"                     // LSL
+                | 0b001uy, false -> v >>> 1, lsb, true, "lsr"                                  // LSR
+                | 0b010uy, true  -> ((v <<< 1) ||| xIn) &&& 0xffff, msb, true, "roxl"          // ROXL
+                | 0b010uy, false -> (v >>> 1) ||| (xIn <<< 15), lsb, true, "roxr"              // ROXR
+                | 0b011uy, true  -> ((v <<< 1) ||| (if msb then 1 else 0)) &&& 0xffff, msb, false, "rol" // ROL
+                | 0b011uy, false -> (v >>> 1) ||| (if lsb then 0x8000 else 0), lsb, false, "ror"         // ROR
+                | _ -> failwithf "memory shift/rotate: bad type %x" shiftType
+            //V is only ever set by ASL (MSB changed during the shift); for a 1-bit shift that is
+            //bit15 != bit14 of the original. Every other form clears V.
+            let overflow = shiftType = 0b000uy && left && (msb <> (v &&& 0x4000 <> 0))
+            let after = x.WriteEa OperandSize.Word loc result (regUpdate x)
+            let mutable ccr = x.CCR &&& ~~~0xFs
+            if int16 result < 0s then ccr <- ccr ||| 0x8s //N
+            if result = 0 then ccr <- ccr ||| 0x4s //Z
+            if overflow then ccr <- ccr ||| 0x2s //V
+            if carry then ccr <- ccr ||| 0x1s //C
+            if affectX then (if carry then ccr <- ccr ||| 0x10s else ccr <- ccr &&& ~~~0x10s) //X follows C (not for plain rotate)
+            printfn "%s.w %s" mnem desc
+            { after with PC = x.PC + 2 + extBytes; CCR = ccr }
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
