@@ -511,18 +511,22 @@ for _ in 1..100 do
 ///F#'s arithmetic `>>>`, only found on the 39th pass) would have failed thousands of `LSR.l` /
 ///`ROR.l` cases the instant it was written.
 ///
-///Usage: `dotnet exec M68000.dll selftest <dir-or-file> [name-substring]`. `<dir>` is a folder of
-///`*.json` / `*.json.gz` vector files; the optional substring filters by file name (e.g. `lsr`,
-///`shift` won't match - use `lsr`, `ror`). Fetch the vectors with `tools/fetch_680x0_tests.py`.
+///Usage: `dotnet exec M68000.dll selftest <dir-or-file> [name-substring] [fail-samples]`. `<dir>`
+///is a folder of `*.json` / `*.json.gz` vector files; the substring filters by file name; the
+///3rd arg (default 5) sets how many FAIL lines each file prints. Fetch with
+///`tools/fetch_680x0_tests.py`. Files run in parallel (`Array.Parallel`, output in file order) -
+///a full run is ~70 s.
 ///
-///The CPU runs against a flat 16 MB big-endian RAM (`MMU(_, flatTestBus = true)`) - no I/O, no
-///ROM, no aliasing, no bus errors - since these vectors test pure CPU semantics, not the ST
-///memory map. The only SKIP left is a null-page address (PC or a RAM ref < $8), plus an odd PC.
+///The CPU runs against a sparse big-endian 24-bit RAM (`MMU(_, flatTestBus = true)` - a
+///Dictionary, unwritten addresses read 0) - no I/O, no ROM, no aliasing, no bus errors - since
+///these vectors test pure CPU semantics, not the ST memory map. The only SKIP left is a
+///null-page address (PC or a RAM ref < $8) or an odd PC.
 ///Known imperfections that surface as real FAILs (gaps to close, not harness bugs):
 /// - No prefetch queue: `pc` is checked as "address of the next instruction", correct for this
 ///   interpreter, but a few instruction classes still differ by the 68000's real prefetch amount.
-/// - Exception entry uses the project's simplified 6-byte frame, so TRAP / CHK / privilege /
-///   address-error cases mismatch on the stacked frame.
+/// - Exception entry uses the project's simplified 6-byte frame, so an instruction that faults
+///   on an address/bus error (real 14-byte group-0 frame) mismatches on ssp + stacked bytes -
+///   ~98k cases, classified `frame`, see the memory notes' deferred lane.
 /// - Where the 68000 officially leaves a flag undefined, the vectors encode the real chip's
 ///   actual behaviour and this core may pick a different (still-legal) value.
 module SelfTest =
