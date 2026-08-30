@@ -1,0 +1,56 @@
+# start   end      count    terminator
+0000a30e 0000a318        4  bne
+0000a31a 0000a32c        3  jmp
+0000a32e 0000a332        1  beq
+0000a330 0000a330        1  trap #1
+0000a332 0000a334        1  split
+0000a334 0000a336        1  jsr
+0000a33c 0000a342        1  trap #1
+0000a344 0000a346        1  split
+0000a346 0000a358        1  split
+0000a346 0000a34a        1  rts
+0000a358 0000a362       31  beq
+0000a364 0000a36a       30  trap #1
+0000a36c 0000a37c       30  trap #1
+0000a37e 0000a388       30  trap #1
+0000a38a 0000a396       30  jsr
+0000a398 0000a39a       30  beq
+0000a3aa 0000a3ac       30  bra
+0000a3ae 0000a3b6       30  trap #1
+0000a3b8 0000a3ba       30  bra
+0000a3bc 0000a3c8        1  rts
+0000a3ca 0000a3d2        1  rts
+0000a3d4 0000a3dc        1  rts
+0000a3de 0000a3ec        1  rts
+0000a3ee 0000a3fe        1  rts
+0000a400 0000a408        1  rts
+0000a40a 0000a412        1  rts
+0000a414 0000a41e        1  rts
+0000a420 0000a43e        1  rts
+0000a440 0000a45a        1  rts
+0000a45c 0000a476        1  rts
+0000a478 0000a48a        1  rts
+0000a48c 0000a494        1  rts
+0000a496 0000a49e        1  rts
+0000a4a0 0000a4aa        1  rts
+0000a4ac 0000a4c6        1  rts
+0000a4c8 0000a4de        1  rts
+0000a4e0 0000a4f4        1  rts
+0000a4f6 0000a4fc        1  rts
+0000a4fe 0000a504        1  rts
+0000a506 0000a526        1  rts
+0000a528 0000a530        1  rts
+0000a532 0000a53a        1  rts
+0000a53c 0000a55e        1  rts
+0000a560 0000a568        1  rts
+0000a56a 0000a578        1  rts
+0000a57a 0000a5a0        1  rts
+0000a5a2 0000a5d8        1  rts
+0000a5da 0000a614        1  rts
+0000a616 0000a650        1  rts
+0000a652 0000a680        1  rts
+00fc4d86 00fc4d94      121  rte
+00fe34ae 00fe34b6        1  line-f $f9a0
+00fe34dc 00fe34e0        1  line-f $f001
+00fee800 00fee80e        1  line-f $f12c
+00fee810 00fee81e        1  line-f $f10c
