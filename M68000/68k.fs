@@ -1864,7 +1864,10 @@ type Cpu =
     member x.DecodeBucket8 (instruction: int) : Cpu =
         match instruction with
         | DIVU(register, eamode, eareg) ->
-            let doDivide divisor pcAdvance desc =
+            //Word divisor from any data-addressing mode (not An direct); dividend is the full 32-bit
+            //Dn. Source EA resolved through the shared decoder - `regUpdate` carries the (An)+/-(An)
+            //writeback, `extBytes` the PC advance past the extension words.
+            let doDivide (divisor: uint32) (regUpdate: Cpu -> Cpu) extBytes desc =
                 if divisor = 0u then failwith "DIVU: divide by zero (trap not implemented)"
                 let dividend = uint32 (x.DataRegister register)
                 let quotient = dividend / divisor
@@ -1872,27 +1875,17 @@ type Cpu =
                 if quotient > 0xffffu then failwith "DIVU: quotient overflow (V flag not implemented)"
                 let result = int ((remainder <<< 16) ||| quotient)
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 quotient)
-                let newCpu = {x.WithDataRegister register result with PC = x.PC + pcAdvance; CCR = ccr}
+                let newCpu = {(regUpdate x).WithDataRegister register result with PC = x.PC + 2 + extBytes; CCR = ccr}
                 printfn "divu.w %s,D%u" desc register
                 newCpu
-            match eamode with
-            | 0b000uy -> //Dn
-                doDivide (uint32 (uint16 (x.DataRegister eareg))) 2 (sprintf "D%u" eareg)
-            | 0b010uy -> //(An)
-                let divisor = uint32 (uint16 (x.MMU.ReadWord(uint32 (x.AddressRegister eareg))))
-                doDivide divisor 2 (sprintf "(a%u)" eareg)
-            | 0b101uy -> //(d16,An)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + int displacement
-                let divisor = uint32 (uint16 (x.MMU.ReadWord(uint32 addr)))
-                doDivide divisor 4 (sprintf "%i(a%u)" displacement eareg)
-            | _ -> failwithf "divu.w not implemented for eamode %x" eamode
+            let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
+            doDivide (uint32 (uint16 (x.ReadEa OperandSize.Word loc))) regUpdate extBytes desc
 
         | DIVS(register, eamode, eareg) ->
             //Truncating division/remainder (F#'s / and % on signed ints truncate toward zero) is
             //exactly real 68000 DIVS.W semantics: quotient truncates toward zero, remainder takes
             //the dividend's sign - so no extra sign-fixup is needed beyond what DIVU already does.
-            let doDivide (divisor: int16) pcAdvance desc =
+            let doDivide (divisor: int16) (regUpdate: Cpu -> Cpu) extBytes desc =
                 if divisor = 0s then failwith "DIVS: divide by zero (trap not implemented)"
                 let dividend = x.DataRegister register
                 let quotient = dividend / int divisor
@@ -1900,27 +1893,11 @@ type Cpu =
                 if quotient > 32767 || quotient < -32768 then failwith "DIVS: quotient overflow (V flag not implemented)"
                 let result = ((remainder &&& 0xffff) <<< 16) ||| (quotient &&& 0xffff)
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 quotient)
-                let newCpu = {x.WithDataRegister register result with PC = x.PC + pcAdvance; CCR = ccr}
+                let newCpu = {(regUpdate x).WithDataRegister register result with PC = x.PC + 2 + extBytes; CCR = ccr}
                 printfn "divs.w %s,D%u" desc register
                 newCpu
-            match eamode with
-            | 0b000uy -> //Dn
-                doDivide (int16 (x.DataRegister eareg)) 2 (sprintf "D%u" eareg)
-            | 0b010uy -> //(An)
-                doDivide (int16 (x.MMU.ReadWord(uint32 (x.AddressRegister eareg)))) 2 (sprintf "(a%u)" eareg)
-            | 0b111uy when eareg = 0b100uy -> //#imm
-                let divisor = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                doDivide divisor 4 (sprintf "#$%x" divisor)
-            | 0b101uy -> //(d16,An)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + int displacement
-                let divisor = int16 (x.MMU.ReadWord(uint32 addr))
-                doDivide divisor 4 (sprintf "%i(a%u)" displacement eareg)
-            | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                let divisor = int16 (x.MMU.ReadWord addr)
-                doDivide divisor 6 (sprintf "$%x.l" addr)
-            | _ -> failwithf "divs.w not implemented for eamode %x" eamode
+            let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
+            doDivide (int16 (x.ReadEa OperandSize.Word loc)) regUpdate extBytes desc
 
         | OR(register, opmode, eamode, eareg) ->
             match opmode with
