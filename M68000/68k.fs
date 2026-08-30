@@ -1282,132 +1282,71 @@ type Cpu =
             newCpu
 
         | MOVEM(direction, size, eamode, eareg) ->
+            //MOVEM through the shared EA decoder. The reg-list itself is not an EA mode ResolveEa
+            //knows, and the two register-stepped modes (-(An) reg->mem, (An)+ mem->reg) walk An once
+            //per listed register rather than once total, so those stay inline; every control mode
+            //((An), (d16,An), (d8,An,Xn), (xxx).W/.L, (d16,PC), (d8,PC,Xn)) goes through ResolveEa
+            //for its base address. The mask word sits at PC+2, so the EA's extension words start at
+            //PC+4 and the PC advance is PC + 4 + extBytes.
             let mask = uint16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-            match direction, size, eamode with
-            | 0uy, 1uy, 0b100uy -> //MOVEM.L reglist,-(An)
+            let sz = if size = 1uy then OperandSize.Long else OperandSize.Word
+            let step = if size = 1uy then 4 else 2
+            let szChar = if size = 1uy then "l" else "w"
+            //load: MOVEM.W sign-extends each word to fill the whole register, for An and Dn alike.
+            let loadValue (addr: uint32) =
+                if size = 1uy then x.MMU.ReadLong addr else int (int16 (x.MMU.ReadWord addr))
+            let storeValue (addr: uint32) (v: int) =
+                if size = 1uy then x.MMU.WriteLong addr v else x.MMU.WriteWord addr (int16 v)
+            //ascending (control / postincrement) order: bit 0..7 -> D0..D7, bit 8..15 -> A0..A7.
+            let ascReadReg bit =
+                if bit < 8 then x.DataRegister (byte bit) else x.AddressRegister (byte (bit - 8))
+            let ascWriteReg (c: Cpu) bit v =
+                if bit < 8 then c.WithDataRegister (byte bit) v else c.WithAddressRegister (byte (bit - 8)) v
+            match direction, eamode with
+            | 0uy, 0b100uy -> //reglist,-(An) : predecrement, mask order reversed (bit0 = A7 .. bit15 = D0)
                 let mutable addr = x.AddressRegister eareg
                 for bit in 0 .. 15 do
                     if (mask >>> bit) &&& 1us = 1us then
-                        addr <- addr - 4
+                        addr <- addr - step
                         let value =
                             if bit < 8 then x.AddressRegister (byte (7 - bit))
                             else x.DataRegister (byte (15 - bit))
-                        x.MMU.WriteLong (uint32 addr) value
-                let newCpu = {x.WithAddressRegister eareg addr with PC = x.PC+4}
-                printfn "movem.l #$%04x,-(a%u)" mask eareg
-                newCpu
-            | 0uy, 0uy, 0b100uy -> //MOVEM.W reglist,-(An)
-                let mutable addr = x.AddressRegister eareg
-                for bit in 0 .. 15 do
-                    if (mask >>> bit) &&& 1us = 1us then
-                        addr <- addr - 2
-                        let value =
-                            if bit < 8 then x.AddressRegister (byte (7 - bit))
-                            else x.DataRegister (byte (15 - bit))
-                        x.MMU.WriteWord (uint32 addr) (int16 value)
-                let newCpu = {x.WithAddressRegister eareg addr with PC = x.PC+4}
-                printfn "movem.w #$%04x,-(a%u)" mask eareg
-                newCpu
-            | 0uy, 1uy, 0b101uy -> //MOVEM.L reglist,(d16,An)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                let mutable addr = x.AddressRegister eareg + int displacement
-                for bit in 0 .. 15 do
-                    if (mask >>> bit) &&& 1us = 1us then
-                        let value =
-                            if bit < 8 then x.DataRegister (byte bit)
-                            else x.AddressRegister (byte (bit - 8))
-                        x.MMU.WriteLong (uint32 addr) value
-                        addr <- addr + 4
-                let newCpu = {x with PC = x.PC+6}
-                printfn "movem.l #$%04x,%i(a%u)" mask displacement eareg
-                newCpu
-            | 1uy, 1uy, 0b101uy -> //MOVEM.L (d16,An),reglist
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                let mutable addr = x.AddressRegister eareg + int displacement
-                let mutable cpu = x
-                for bit in 0 .. 15 do
-                    if (mask >>> bit) &&& 1us = 1us then
-                        let value = x.MMU.ReadLong(uint32 addr)
-                        cpu <-
-                            if bit < 8 then cpu.WithDataRegister (byte bit) value
-                            else cpu.WithAddressRegister (byte (bit - 8)) value
-                        addr <- addr + 4
-                let newCpu = {cpu with PC = x.PC+6}
-                printfn "movem.l %i(a%u),#$%04x" displacement eareg mask
-                newCpu
-            | 1uy, 1uy, 0b011uy -> //MOVEM.L (An)+,reglist
+                        storeValue (uint32 addr) value
+                printfn "movem.%s #$%04x,-(a%u)" szChar mask eareg
+                {x.WithAddressRegister eareg addr with PC = x.PC+4}
+            | 1uy, 0b011uy -> //(An)+,reglist : postincrement, ascending mask order
                 let mutable addr = x.AddressRegister eareg
                 let mutable cpu = x
                 for bit in 0 .. 15 do
                     if (mask >>> bit) &&& 1us = 1us then
-                        let value = x.MMU.ReadLong(uint32 addr)
-                        cpu <-
-                            if bit < 8 then cpu.WithDataRegister (byte bit) value
-                            else cpu.WithAddressRegister (byte (bit - 8)) value
-                        addr <- addr + 4
-                let newCpu = {cpu.WithAddressRegister eareg addr with PC = x.PC+4}
-                printfn "movem.l (a%u)+,#$%04x" eareg mask
-                newCpu
-            | 1uy, 0uy, 0b011uy -> //MOVEM.W (An)+,reglist - each word sign-extends to fill its register
-                let mutable addr = x.AddressRegister eareg
-                let mutable cpu = x
-                for bit in 0 .. 15 do
-                    if (mask >>> bit) &&& 1us = 1us then
-                        let value = int (int16 (x.MMU.ReadWord(uint32 addr)))
-                        cpu <-
-                            if bit < 8 then cpu.WithDataRegister (byte bit) value
-                            else cpu.WithAddressRegister (byte (bit - 8)) value
-                        addr <- addr + 2
-                let newCpu = {cpu.WithAddressRegister eareg addr with PC = x.PC+4}
-                printfn "movem.w (a%u)+,#$%04x" eareg mask
-                newCpu
-            | 0uy, 1uy, 0b111uy when eareg = 0b001uy -> //MOVEM.L reglist,(xxx).L
-                let target = x.MMU.ReadLong(uint32 (x.PC+4))
-                let mutable addr = uint32 target
-                for bit in 0 .. 15 do
-                    if (mask >>> bit) &&& 1us = 1us then
-                        let value =
-                            if bit < 8 then x.DataRegister (byte bit)
-                            else x.AddressRegister (byte (bit - 8))
-                        x.MMU.WriteLong addr value
-                        addr <- addr + 4u
-                let newCpu = {x with PC = x.PC+8}
-                printfn "movem.l #$%04x,$%x.l" mask target
-                newCpu
-            | 1uy, 1uy, 0b111uy when eareg = 0b001uy -> //MOVEM.L (xxx).L,reglist
-                let source = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                let mutable addr = source
-                let mutable cpu = x
-                for bit in 0 .. 15 do
-                    if (mask >>> bit) &&& 1us = 1us then
-                        let value = x.MMU.ReadLong(uint32 addr)
-                        cpu <-
-                            if bit < 8 then cpu.WithDataRegister (byte bit) value
-                            else cpu.WithAddressRegister (byte (bit - 8)) value
-                        addr <- addr + 4u
-                let newCpu = {cpu with PC = x.PC+8}
-                printfn "movem.l $%x.l,#$%04x" source mask
-                newCpu
-            | 1uy, 1uy, 0b111uy when eareg = 0b010uy -> //MOVEM.L (d16,PC),reglist
-                //PC-relative displacement is relative to the address of the extension word itself
-                //(PC+4: PC+2 holds the register mask, PC+4 holds the displacement) - see LEA's
-                //(d16,PC) case above for the same convention.
-                let extAddr = x.PC + 4
-                let displacement = int16 (x.MMU.ReadWord(uint32 extAddr))
-                let source = uint32 (extAddr + int displacement)
-                let mutable addr = source
-                let mutable cpu = x
-                for bit in 0 .. 15 do
-                    if (mask >>> bit) &&& 1us = 1us then
-                        let value = x.MMU.ReadLong(uint32 addr)
-                        cpu <-
-                            if bit < 8 then cpu.WithDataRegister (byte bit) value
-                            else cpu.WithAddressRegister (byte (bit - 8)) value
-                        addr <- addr + 4u
-                let newCpu = {cpu with PC = x.PC+6}
-                printfn "movem.l %d(pc),#$%04x == $%x" displacement mask source
-                newCpu
-            | _ -> failwithf "movem: not implemented for direction %x size %x mode %x" direction size eamode
+                        cpu <- ascWriteReg cpu bit (loadValue (uint32 addr))
+                        addr <- addr + step
+                printfn "movem.%s (a%u)+,#$%04x" szChar eareg mask
+                {cpu.WithAddressRegister eareg addr with PC = x.PC+4}
+            | _ ->
+                let loc, extBytes, desc, _ = x.ResolveEa sz eamode eareg (x.PC + 4)
+                let baseAddr =
+                    match loc with
+                    | EaMem a -> a
+                    | other -> failwithf "movem: EA %A is not a valid list operand (mode %x)" other eamode
+                match direction with
+                | 0uy -> //reglist -> control-mode memory, ascending
+                    let mutable addr = baseAddr
+                    for bit in 0 .. 15 do
+                        if (mask >>> bit) &&& 1us = 1us then
+                            storeValue addr (ascReadReg bit)
+                            addr <- addr + uint32 step
+                    printfn "movem.%s #$%04x,%s" szChar mask desc
+                    {x with PC = x.PC + 4 + extBytes}
+                | _ -> //control-mode memory -> reglist, ascending
+                    let mutable addr = baseAddr
+                    let mutable cpu = x
+                    for bit in 0 .. 15 do
+                        if (mask >>> bit) &&& 1us = 1us then
+                            cpu <- ascWriteReg cpu bit (loadValue addr)
+                            addr <- addr + uint32 step
+                    printfn "movem.%s %s,#$%04x" szChar desc mask
+                    {cpu with PC = x.PC + 4 + extBytes}
 
         | EXT(size, register) ->
             //EXT: sign-extends the low half of Dn into the high half, in place. N/Z set from the
