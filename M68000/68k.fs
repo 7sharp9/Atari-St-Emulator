@@ -3122,37 +3122,12 @@ type Cpu =
 
         | Scc(cond, eamode, eareg) ->
             //Scc: sets the byte at <ea> to $FF if cond is true, $00 otherwise. CCR unaffected.
-            let value = if x.EvaluateCondition cond then 0xffuy else 0x00uy
-            match eamode with
-            | 0b101uy -> //(d16,An)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let destEA = uint32 (x.AddressRegister eareg + int displacement)
-                x.MMU.WriteByte destEA value
-                printfn "s%s %i(a%u)" (conditionName cond) displacement eareg
-                {x with PC = x.PC+4}
-            | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                let destEA = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                x.MMU.WriteByte destEA value
-                printfn "s%s $%x.l" (conditionName cond) destEA
-                {x with PC = x.PC+6}
-            | 0b100uy -> //-(An) - A7 predecrements by 2 (word-aligned stack), others by 1
-                let step = if eareg = 0b111uy then 2 else 1
-                let destEA = x.AddressRegister eareg - step
-                x.MMU.WriteByte (uint32 destEA) value
-                let newCpu = x.WithAddressRegister eareg destEA
-                printfn "s%s -(a%u)" (conditionName cond) eareg
-                {newCpu with PC = x.PC+2}
-            | 0b010uy -> //(An)
-                let destEA = uint32 (x.AddressRegister eareg)
-                x.MMU.WriteByte destEA value
-                printfn "s%s (a%u)" (conditionName cond) eareg
-                {x with PC = x.PC+2}
-            | 0b000uy -> //Dn - only the low byte is affected
-                let newValue = (x.DataRegister eareg &&& ~~~0xff) ||| int value
-                let newCpu = x.WithDataRegister eareg newValue
-                printfn "s%s D%u" (conditionName cond) eareg
-                {newCpu with PC = x.PC+2}
-            | _ -> failwithf "Scc eamode %u not implemented" eamode
+            //Byte-only, alterable modes; migrated to the shared EA decoder.
+            let value = if x.EvaluateCondition cond then 0xff else 0x00
+            let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Byte eamode eareg (x.PC + 2)
+            let newCpu = { x.WriteEa OperandSize.Byte loc value (regUpdate x) with PC = x.PC + 2 + extBytes }
+            printfn "s%s %s" (conditionName cond) desc
+            newCpu
 
         | DBcc(cond, register) ->
             if x.EvaluateCondition cond then
