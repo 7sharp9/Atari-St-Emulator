@@ -3563,30 +3563,14 @@ type Cpu =
                     printfn "sub.w D%u,%i(a%u)" address displacement eareg
                     newCpu
                 | _ -> failwithf "sub.w(dn->ea) not implemented for eamode %x" eamode
-            | 0b011uy -> //SUBA.W (source sign-extended to 32 bits before subtracting)
-                match eamode with
-                | 0b000uy -> //Dn
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.DataRegister eareg))
-                    let result = dest - source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+2}
-                    printfn "suba.w D%u,A%u" eareg address
-                    newCpu
-                | 0b001uy -> //An
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.AddressRegister eareg))
-                    let result = dest - source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+2}
-                    printfn "suba.w A%u,A%u" eareg address
-                    newCpu
-                | 0b111uy when eareg = 0b100uy -> //#imm.W
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))
-                    let result = dest - source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+4}
-                    printfn "suba.w #$%x,A%u" source address
-                    newCpu
-                | _ -> failwithf "suba.w not implemented for eamode %x" eamode
+            | 0b011uy -> //SUBA.W - operand's low word sign-extended to 32 bits, subtracted from An, no flags
+                let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
+                let source = int (int16 (x.ReadEa OperandSize.Word loc))
+                let afterEa = regUpdate x
+                let result = afterEa.AddressRegister address - source
+                let newCpu = { afterEa.WithAddressRegister address result with PC = x.PC + 2 + extBytes }
+                printfn "suba.w %s,A%u" desc address
+                newCpu
             | 0b110uy -> //SUB.L Dn,<ea> (ea-Dn->ea, result written to memory)
                 match eamode with
                 | 0b010uy -> //(An)
@@ -4406,56 +4390,14 @@ type Cpu =
                     printfn "add.l $%x.l,D%u" addr address
                     newCpu
                 | _ -> failwithf "add.l not implemented for eamode %x" eamode
-            | 0b011uy -> //ADDA.W
-                match eamode with
-                | 0b000uy -> //Dn
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.DataRegister eareg))
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+2}
-                    printfn "adda.w D%u,A%u" eareg address
-                    newCpu
-                | 0b001uy -> //An
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.AddressRegister eareg))
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+2}
-                    printfn "adda.w A%u,A%u" eareg address
-                    newCpu
-                | 0b111uy when eareg = 0b100uy -> //#imm
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+4}
-                    printfn "adda.w #$%x,A%u" source address
-                    newCpu
-                | 0b111uy when eareg = 0b011uy -> //(d8,PC,Xn)
-                    let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = (x.PC+2) + ext.Offset
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.MMU.ReadWord(uint32 addr)))
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+4}
-                    printfn "adda.w %i(pc,%s%u.%s),A%u" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") address
-                    newCpu
-                | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.MMU.ReadWord addr))
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+6}
-                    printfn "adda.w $%x.l,A%u" addr address
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister eareg + int displacement)
-                    let dest = x.AddressRegister address
-                    let source = int (int16 (x.MMU.ReadWord addr))
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+4}
-                    printfn "adda.w %i(a%u),A%u" displacement eareg address
-                    newCpu
-                | _ -> failwithf "adda.w not implemented for eamode %x" eamode
+            | 0b011uy -> //ADDA.W - operand's low word sign-extended to 32 bits, added to An, no flags
+                let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
+                let source = int (int16 (x.ReadEa OperandSize.Word loc))
+                let afterEa = regUpdate x
+                let result = afterEa.AddressRegister address + source
+                let newCpu = { afterEa.WithAddressRegister address result with PC = x.PC + 2 + extBytes }
+                printfn "adda.w %s,A%u" desc address
+                newCpu
             | 0b111uy -> //ADDA.L
                 match eamode with
                 | 0b111uy when eareg = 0b100uy -> //#imm
