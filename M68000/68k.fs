@@ -570,6 +570,37 @@ type Cpu =
             cpu
         | EaImm _ -> failwith "WriteEa: immediate operand is not a valid destination"
 
+    ///Shared "#imm <op> <ea>" decoder for the bucket-0 immediates (ORI/ANDI/EORI/ADDI/SUBI/CMPI).
+    ///The immediate is at PC+2 (one word for byte/word, one long for long); the destination EA's
+    ///extension words follow it. `combine size dest imm -> result * ccr` does the op at the masked
+    ///size and computes the CCR; `write` is false for CMPI (compare only). `(An)+ / -(An)` register
+    ///updates are applied after any result write, exactly as the shared EA decoder intends.
+    member x.ImmediateToEa (mnemonic: string) (sizeCode: byte) (mode: byte) (reg: byte)
+                           (write: bool) (combine: OperandSize -> int -> int -> int * int16) : Cpu =
+        let size =
+            match sizeCode with
+            | 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long
+            | s -> failwithf "%s: bad size %x" mnemonic s
+        let immBytes = match size with OperandSize.Long -> 4 | _ -> 2
+        let imm =
+            match size with
+            | OperandSize.Byte -> x.MMU.ReadWord (uint32 (x.PC + 2)) &&& 0xff
+            | OperandSize.Word -> x.MMU.ReadWord (uint32 (x.PC + 2)) &&& 0xffff
+            | _ -> x.MMU.ReadLong (uint32 (x.PC + 2))
+        let loc, extBytes, desc, regUpdate = x.ResolveEa size mode reg (x.PC + 2 + immBytes)
+        let dest = x.ReadEa size loc
+        let result, ccr = combine size dest imm
+        let after = if write then x.WriteEa size loc result (regUpdate x) else regUpdate x
+        printfn "%s.%s #$%x,%s" mnemonic (match size with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") imm desc
+        { after with PC = x.PC + 2 + immBytes + extBytes; CCR = ccr }
+
+    ///N/Z from a logical result at `size`, V and C cleared, X untouched - the ORI/ANDI/EORI CCR.
+    member x.LogicalCcr (size: OperandSize) (v: int) : int16 =
+        match size with
+        | OperandSize.Byte -> CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR (byte v)
+        | OperandSize.Word -> CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 v)
+        | _ -> CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR v
+
     member x.EvaluateCondition (cond: Condition) =
         match cond with
         | Condition.T -> true
@@ -796,154 +827,12 @@ type Cpu =
             {switched with PC = x.PC+4}
 
         | ORI(size, mode, register) ->
-            match size with
-            | 0b00uy -> //byte
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let dest = byte (x.DataRegister register)
-                    let result = dest ||| immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "ori.b #$%x,D%u" immediate register
-                    newCpu
-                | _ -> failwithf "ori.b not implemented for mode %x" mode
-            | 0b01uy -> //word
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let dest = int16 (x.DataRegister register)
-                    let result = dest ||| immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "ori.w #$%x,D%u" immediate register
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                    let addr = x.AddressRegister register + int displacement
-                    let dest = int16 (x.MMU.ReadWord(uint32 addr))
-                    let result = dest ||| immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord (uint32 addr) result
-                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                    printfn "ori.w #$%x,%i(a%u)" immediate displacement register
-                    newCpu
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest ||| immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
-                    printfn "ori.w #$%x,$%x.l" immediate addr
-                    newCpu
-                | 0b010uy -> //(An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest ||| immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "ori.w #$%x,(a%u)" immediate register
-                    newCpu
-                | _ -> failwithf "ori.w not implemented for mode %x" mode
-            | 0b10uy -> //long
-                match mode with
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+6)))
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest ||| immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+10; CCR = ccr}
-                    printfn "ori.l #$%x,$%x.l" immediate addr
-                    newCpu
-                | _ -> failwithf "ori.l not implemented for mode %x" mode
-            | _ -> failwithf "ori: not implemented for size %x" size
+            x.ImmediateToEa "ori" size mode register true
+                (fun sz dest imm -> let r = dest ||| imm in r, x.LogicalCcr sz r)
 
         | ANDI(size, mode, register) ->
-            match size with
-            | 0b00uy -> //byte
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let dest = byte (x.DataRegister register)
-                    let result = dest &&& immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "andi.b #$%x,D%u" immediate register
-                    newCpu
-                | _ -> failwithf "andi.b not implemented for mode %x" mode
-            | 0b01uy -> //word
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let dest = int16 (x.DataRegister register)
-                    let result = dest &&& immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "andi.w #$%x,D%u" immediate register
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                    let addr = x.AddressRegister register + int displacement
-                    let dest = int16 (x.MMU.ReadWord(uint32 addr))
-                    let result = dest &&& immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord (uint32 addr) result
-                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                    printfn "andi.w #$%x,%i(a%u)" immediate displacement register
-                    newCpu
-                | 0b010uy -> //(An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest &&& immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "andi.w #$%x,(a%u)" immediate register
-                    newCpu
-                | 0b111uy when register = 0b001uy -> //(xxx).L - BIOS 200Hz clock masking packed date/time fields
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest &&& immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
-                    printfn "andi.w #$%x,$%x.l" immediate addr
-                    newCpu
-                | _ -> failwithf "andi.w not implemented for mode %x" mode
-            | 0b10uy -> //long
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let result = x.DataRegister register &&& immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
-                    printfn "andi.l #$%x,D%u" immediate register
-                    newCpu
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+6)))
-                    let result = x.MMU.ReadLong addr &&& immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+10; CCR = ccr}
-                    printfn "andi.l #$%x,$%x.l" immediate addr
-                    newCpu
-                | _ -> failwithf "andi.l not implemented for mode %x" mode
-            | _ -> failwithf "andi: not implemented for size %x" size
+            x.ImmediateToEa "andi" size mode register true
+                (fun sz dest imm -> let r = dest &&& imm in r, x.LogicalCcr sz r)
 
         | EoriToCcr ->
             //Opcode-space alias: mode=111/reg=100 in EORI's general EA encoding is reserved for
@@ -956,395 +845,30 @@ type Cpu =
             {x with PC = x.PC+4; CCR = newCcr}
 
         | EORI(size, mode, register) ->
-            match size with
-            | 0b00uy -> //byte
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let dest = byte (x.DataRegister register)
-                    let result = dest ^^^ immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "eori.b #$%x,D%u" immediate register
-                    newCpu
-                | _ -> failwithf "eori.b not implemented for mode %x" mode
-            | 0b01uy -> //word
-                match mode with
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest ^^^ immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
-                    printfn "eori.w #$%x,$%x.l" immediate addr
-                    newCpu
-                | 0b000uy -> //Dn
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let dest = int16 (x.DataRegister register)
-                    let result = dest ^^^ immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "eori.w #$%x,D%u" immediate register
-                    newCpu
-                | 0b010uy -> //(An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest ^^^ immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "eori.w #$%x,(a%u)" immediate register
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                    let addr = uint32 (x.AddressRegister register + int displacement)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest ^^^ immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                    printfn "eori.w #$%x,%i(a%u)" immediate displacement register
-                    newCpu
-                | _ -> failwithf "eori.w not implemented for mode %x" mode
-            | 0b10uy -> //long
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let result = x.DataRegister register ^^^ immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
-                    printfn "eori.l #$%x,D%u" immediate register
-                    newCpu
-                | 0b010uy -> //(An)
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = uint32 (x.AddressRegister register)
-                    let result = x.MMU.ReadLong addr ^^^ immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                    printfn "eori.l #$%x,(a%u)" immediate register
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+6)))
-                    let addr = uint32 (x.AddressRegister register + int displacement)
-                    let result = x.MMU.ReadLong addr ^^^ immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
-                    printfn "eori.l #$%x,%i(a%u)" immediate displacement register
-                    newCpu
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+6)))
-                    let result = x.MMU.ReadLong addr ^^^ immediate
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+10; CCR = ccr}
-                    printfn "eori.l #$%x,$%x.l" immediate addr
-                    newCpu
-                | _ -> failwithf "eori.l not implemented for mode %x" mode
-            | _ -> failwithf "eori: not implemented for size %x" size
+            x.ImmediateToEa "eori" size mode register true
+                (fun sz dest imm -> let r = dest ^^^ imm in r, x.LogicalCcr sz r)
 
         | ADDI(size, mode, register) ->
-            match size with
-            | 0b00uy -> //byte
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let dest = byte (x.DataRegister register)
-                    let result = dest + immediate
-                    let ccr = CCR.Add_Byte x.CCR dest immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "addi.b #$%x,D%u" immediate register
-                    newCpu
-                | _ -> failwithf "addi.b not implemented for mode %x" mode
-            | 0b01uy -> //word
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let dest = int16 (x.DataRegister register)
-                    let result = dest + immediate
-                    let ccr = CCR.Add_Word x.CCR dest immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "addi.w #$%x,D%u" immediate register
-                    newCpu
-                | 0b010uy -> //(An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest + immediate
-                    let ccr = CCR.Add_Word x.CCR dest immediate
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "addi.w #$%x,(a%u)" immediate register
-                    newCpu
-                | 0b111uy when register = 0b001uy -> //(xxx).L - the BIOS 200Hz clock bumping packed date/time fields
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest + immediate
-                    let ccr = CCR.Add_Word x.CCR dest immediate
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
-                    printfn "addi.w #$%x,$%x.l" immediate addr
-                    newCpu
-                | _ -> failwithf "addi.w not implemented for mode %x" mode
-            | 0b10uy -> //long
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let dest = x.DataRegister register
-                    let result = dest + immediate
-                    let ccr = CCR.Add x.CCR dest immediate
-                    let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
-                    printfn "addi.l #$%x,D%u" immediate register
-                    newCpu
-                | 0b010uy -> //(An)
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest + immediate
-                    let ccr = CCR.Add x.CCR dest immediate
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                    printfn "addi.l #$%x,(a%u)" immediate register
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+6)))
-                    let addr = uint32 (x.AddressRegister register + int displacement)
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest + immediate
-                    let ccr = CCR.Add x.CCR dest immediate
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
-                    printfn "addi.l #$%x,%i(a%u)" immediate displacement register
-                    newCpu
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+6)))
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest + immediate
-                    let ccr = CCR.Add x.CCR dest immediate
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+10; CCR = ccr}
-                    printfn "addi.l #$%x,$%x.l" immediate addr
-                    newCpu
-                | _ -> failwithf "addi.l not implemented for mode %x" mode
-            | _ -> failwithf "addi: not implemented for size %x" size
+            //ADDI folds C into X (CCR.Add*), unlike ADDA/ADDQ-to-An which touch no flags.
+            x.ImmediateToEa "addi" size mode register true (fun sz dest imm ->
+                match sz with
+                | OperandSize.Byte -> let d, i = byte dest, byte imm in int (d + i), CCR.Add_Byte x.CCR d i
+                | OperandSize.Word -> let d, i = int16 dest, int16 imm in int (d + i), CCR.Add_Word x.CCR d i
+                | _ -> dest + imm, CCR.Add x.CCR dest imm)
 
         | SUBI(size, mode, register) ->
-            //Mirrors ADDI above. Like the SUB handler in DecodeBucket9, X is left untouched
-            //(routed through Subtract_IgnoringX_*) - real hardware also sets X=C for SUBI, but
-            //this project's subtract path has never modelled X; keep it consistent here.
-            match size with
-            | 0b00uy -> //byte
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let dest = byte (x.DataRegister register)
-                    let result = dest - immediate
-                    let ccr = CCR.Subtract_Byte x.CCR dest immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "subi.b #$%x,D%u" immediate register
-                    newCpu
-                | _ -> failwithf "subi.b not implemented for mode %x" mode
-            | 0b01uy -> //word
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let dest = int16 (x.DataRegister register)
-                    let result = int16 (int dest - int immediate)
-                    let ccr = CCR.Subtract_Word x.CCR dest immediate
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "subi.w #$%x,D%u" immediate register
-                    newCpu
-                | 0b010uy -> //(An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = int16 (int dest - int immediate)
-                    let ccr = CCR.Subtract_Word x.CCR dest immediate
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "subi.w #$%x,(a%u)" immediate register
-                    newCpu
-                | 0b111uy when register = 0b001uy -> //(xxx).L - BIOS 200Hz clock's `subi.w #$7d0,$415a.l` (2000ms carry)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = int16 (int dest - int immediate)
-                    let ccr = CCR.Subtract_Word x.CCR dest immediate
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
-                    printfn "subi.w #$%x,$%x.l" immediate addr
-                    newCpu
-                | _ -> failwithf "subi.w not implemented for mode %x" mode
-            | 0b10uy -> //long
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let dest = x.DataRegister register
-                    let result = dest - immediate
-                    let ccr = CCR.Subtract x.CCR dest immediate
-                    let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
-                    printfn "subi.l #$%x,D%u" immediate register
-                    newCpu
-                | 0b010uy -> //(An)
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest - immediate
-                    let ccr = CCR.Subtract x.CCR dest immediate
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                    printfn "subi.l #$%x,(a%u)" immediate register
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+6)))
-                    let addr = uint32 (x.AddressRegister register + int displacement)
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest - immediate
-                    let ccr = CCR.Subtract x.CCR dest immediate
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+8; CCR = ccr}
-                    printfn "subi.l #$%x,%i(a%u)" immediate displacement register
-                    newCpu
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+6)))
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest - immediate
-                    let ccr = CCR.Subtract x.CCR dest immediate
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+10; CCR = ccr}
-                    printfn "subi.l #$%x,$%x.l" immediate addr
-                    newCpu
-                | _ -> failwithf "subi.l not implemented for mode %x" mode
-            | _ -> failwithf "subi: not implemented for size %x" size
+            x.ImmediateToEa "subi" size mode register true (fun sz dest imm ->
+                match sz with
+                | OperandSize.Byte -> let d, i = byte dest, byte imm in int (d - i), CCR.Subtract_Byte x.CCR d i
+                | OperandSize.Word -> let d, i = int16 dest, int16 imm in int (int16 (int d - int i)), CCR.Subtract_Word x.CCR d i
+                | _ -> dest - imm, CCR.Subtract x.CCR dest imm)
 
-        | CMPI(size, mode , register) ->
-            match size with
-            | 0b000uy ->
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let dest = byte (x.DataRegister register)
-                    let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest immediate
-                    printfn "cmpi.b #$%x,D%u" immediate register
-                    {x with PC = x.PC + 4; CCR = ccr}
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                    let dest = x.MMU.ReadByte addr
-                    let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest immediate
-                    printfn "cmpi.b #$%x,$%x.l" immediate addr
-                    {x with PC = x.PC + 8; CCR = ccr}
-                | 0b010uy -> //(An)
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = x.MMU.ReadByte addr
-                    let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest immediate
-                    printfn "cmpi.b #$%x,(a%u) == $%x" immediate register dest
-                    {x with PC = x.PC + 4; CCR = ccr}
-                | 0b101uy -> //(d16,An)
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                    let addr = uint32 (x.AddressRegister register + int displacement)
-                    let dest = x.MMU.ReadByte addr
-                    let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest immediate
-                    printfn "cmpi.b #$%x,%i(a%u) == $%x" immediate displacement register dest
-                    {x with PC = x.PC + 6; CCR = ccr}
-                | 0b011uy -> //(An)+ - A7 postincrements by 2 (word-aligned stack), others by 1
-                    let immediate = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let addr = x.AddressRegister register
-                    let dest = x.MMU.ReadByte(uint32 addr)
-                    let ccr = CCR.Subtract_IgnoringX_Byte x.CCR dest immediate
-                    let step = if register = 0b111uy then 2 else 1
-                    let newCpu = {x.WithAddressRegister register (addr+step) with PC = x.PC + 4; CCR = ccr}
-                    printfn "cmpi.b #$%x,(a%u)+" immediate register
-                    newCpu
-                | _ -> failwithf "cmpi.b mode %u not implemented" mode
-            | 0b001uy ->
-                match mode with
-                | 0b000uy -> //Dn
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let dest = int16 (x.DataRegister register)
-                    let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest immediate
-                    printfn "cmpi.w #$%x,D%u" immediate register
-                    {x with PC = x.PC + 4; CCR = ccr}
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest immediate
-                    printfn "cmpi.w #$%x,$%x.l" immediate addr
-                    {x with PC = x.PC + 8; CCR = ccr}
-                | 0b101uy -> //(d16,An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                    let addr = uint32 (x.AddressRegister register + int displacement)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest immediate
-                    printfn "cmpi.w #$%x,%i(a%u) == $%x" immediate displacement register dest
-                    {x with PC = x.PC + 6; CCR = ccr}
-                | 0b010uy -> //(An)
-                    let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest immediate
-                    printfn "cmpi.w #$%x,(a%u) == $%x" immediate register dest
-                    {x with PC = x.PC + 4; CCR = ccr}
-                | _ -> failwithf "cmpi.w mode %u not implemented" mode
-            | 0b010uy ->
-                match mode with
-                //| 0b000uy -> //Dn
-                | 0b010uy -> //(An)
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let dest = x.MMU.ReadLong(uint32 (x.AddressRegister register))
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest immediate
-                    printfn "cmpi.l #$%x,(a%u) == $%x" immediate register dest
-                    {x with PC = x.PC + 6; CCR = ccr}
-                | 0b011uy -> //(An)+
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let addr = x.AddressRegister register
-                    let dest = x.MMU.ReadLong(uint32 addr)
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest immediate
-                    let newCpu = {x.WithAddressRegister register (addr+4) with PC = x.PC+6; CCR = ccr}
-                    printfn "cmpi.l #$%x,(a%u)+ == $%x" immediate register dest
-                    newCpu
-                //| 0b100uy -> //-(An)
-                //| 0b110uy -> //(d8,An,Xn)
-                | 0b111uy when register = 0b001uy -> //(xxx).L
-                    let source = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let destreg = x.MMU.ReadLong(uint32 (x.PC+6))
-                    let dest = x.MMU.ReadLong(uint32 destreg)
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest source
-                    printfn "cmpi.l #$%x,$%x" source destreg
-                    {x with PC = x.PC + 10; CCR = ccr }
-                  //mode 5
-                | 0b101uy -> // (d16, An)
-                    let immediate = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+6)))
-                    let addr = uint32 (x.AddressRegister register + int displacement)
-                    let dest = x.MMU.ReadLong addr
-                    let ccr = CCR.Subtract_IgnoringX x.CCR dest immediate
-                    printfn "cmpi.l #$%x,(A%u,$%x) == $%x" immediate register displacement dest
-                    {x with PC = x.PC + 8; CCR = ccr }
-                | _ -> failwithf "cmpi Unknown mode: %x" mode
-            | _ -> failwithf "Inknown size: %x" size
+        | CMPI(size, mode, register) ->
+            x.ImmediateToEa "cmpi" size mode register false (fun sz dest imm ->
+                match sz with
+                | OperandSize.Byte -> 0, CCR.Subtract_IgnoringX_Byte x.CCR (byte dest) (byte imm)
+                | OperandSize.Word -> 0, CCR.Subtract_IgnoringX_Word x.CCR (int16 dest) (int16 imm)
+                | _ -> 0, CCR.Subtract_IgnoringX x.CCR dest imm)
         | MOVEP(register, opmode, addressReg) ->
             match opmode with
             | 0b111uy -> //MOVEP.L Dx,(d16,Ay)
