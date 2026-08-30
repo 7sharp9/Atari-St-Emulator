@@ -303,6 +303,18 @@ module ExtendedArith =
 type IndexedAddressing =
     { Disp: int; Offset: int; IndexIsAddress: bool; IndexReg: byte; UseLong: bool }
 
+///A resolved effective-address operand (see Cpu.ResolveEa). The address arithmetic and any
+///extension-word reads are already done; `EaMem` carries the final byte address. Auto
+///pre-decrement / post-increment is NOT applied to the register here - it is returned as a
+///separate `Cpu -> Cpu` writeback so the instruction can order it against its own result write
+///(e.g. a read-modify-write on `-(An)` must decrement once, then read and write that address).
+type EaResolved =
+    | EaDn of byte      // Dn  - low byte/word or full long, per the access size
+    | EaAn of byte      // An  - always the full 32-bit register
+    | EaMem of uint32   // any memory operand: (An), (An)+, -(An), (d16,An), (d8,An,Xn),
+                        // (xxx).W, (xxx).L, (d16,PC), (d8,PC,Xn) - address already formed
+    | EaImm of int      // #imm - zero-extended to the access size
+
 [<StructuredFormatDisplay("{DisplayRegisters}")>]
 type Cpu =
     {D0: int; D1: int; D2: int; D3: int; D4: int; D5: int; D6: int; D7: int
@@ -460,6 +472,103 @@ type Cpu =
 
     member x.DescribeIndexed (baseReg: byte) (ext: IndexedAddressing) =
         sprintf "%i(a%u,%s%u.%s)" ext.Disp baseReg (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w")
+
+    ///Bytes an operand of this access size occupies in memory / an immediate consumes as extension.
+    static member private EaOpBytes (size: OperandSize) =
+        match size with
+        | OperandSize.Byte -> 1 | OperandSize.Word -> 2 | OperandSize.Long -> 4
+        | other -> failwithf "ResolveEa: unsupported access size %A" other
+
+    ///Shared effective-address decoder for the classic 68000 modes. Given the 3-bit mode and
+    ///register fields, the access size, and the address of this operand's first extension word
+    ///(`extAddr`, normally `x.PC + 2`; for a MOVE destination it is past the source's extension
+    ///words), returns:
+    ///  - the resolved operand (`EaResolved`): a register selector, a formed memory address, or an
+    ///    immediate value already masked to `size`;
+    ///  - `extBytes`: how many bytes of extension words this operand consumed (add to the PC);
+    ///  - a short description string for the instruction trace;
+    ///  - a `Cpu -> Cpu` writeback applying the `(An)+` / `-(An)` register update (identity for
+    ///    every other mode). Apply it once, after any result write, so a read-modify-write on
+    ///    `-(An)` decrements exactly once.
+    ///This is the replacement for the per-instruction hand-decoded `match eamode, eareg` ladders;
+    ///migrate instruction buckets onto it one at a time (the 30M diskless boot must stay
+    ///byte-identical after each). Unknown modes still `failwithf`, same as before.
+    member x.ResolveEa (size: OperandSize) (mode: byte) (reg: byte) (extAddr: int) : EaResolved * int * string * (Cpu -> Cpu) =
+        let readW a = x.MMU.ReadWord (uint32 a)
+        let readL a = x.MMU.ReadLong (uint32 a)
+        match mode, reg with
+        | 0b000uy, r -> EaDn r, 0, sprintf "D%u" r, id
+        | 0b001uy, r -> EaAn r, 0, sprintf "A%u" r, id
+        | 0b010uy, r -> EaMem (uint32 (x.AddressRegister r)), 0, sprintf "(a%u)" r, id
+        | 0b011uy, r ->
+            let a = x.AddressRegister r
+            let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
+            EaMem (uint32 a), 0, sprintf "(a%u)+" r, (fun (c: Cpu) -> c.WithAddressRegister r (a + step))
+        | 0b100uy, r ->
+            let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
+            let a = x.AddressRegister r - step
+            EaMem (uint32 a), 0, sprintf "-(a%u)" r, (fun (c: Cpu) -> c.WithAddressRegister r a)
+        | 0b101uy, r ->
+            let d = int (int16 (readW extAddr))
+            EaMem (uint32 (x.AddressRegister r + d)), 2, sprintf "%i(a%u)" d r, id
+        | 0b110uy, r ->
+            let ext = x.DecodeBriefExtension (readW extAddr)
+            EaMem (uint32 (x.AddressRegister r + ext.Offset)), 2, x.DescribeIndexed r ext, id
+        | 0b111uy, 0b000uy ->
+            let a = int (int16 (readW extAddr))
+            EaMem (uint32 a), 2, sprintf "$%x.w" a, id
+        | 0b111uy, 0b001uy ->
+            let a = readL extAddr
+            EaMem (uint32 a), 4, sprintf "$%x.l" a, id
+        | 0b111uy, 0b010uy ->
+            let d = int (int16 (readW extAddr))
+            EaMem (uint32 (extAddr + d)), 2, sprintf "%i(pc)" d, id
+        | 0b111uy, 0b011uy ->
+            let ext = x.DecodeBriefExtension (readW extAddr)
+            EaMem (uint32 (extAddr + ext.Offset)), 2,
+                (sprintf "%i(pc,%s%u.%s)" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w")), id
+        | 0b111uy, 0b100uy ->
+            match size with
+            | OperandSize.Byte -> EaImm (readW extAddr &&& 0xff), 2, sprintf "#$%x" (readW extAddr &&& 0xff), id
+            | OperandSize.Word -> EaImm (readW extAddr &&& 0xffff), 2, sprintf "#$%x" (readW extAddr &&& 0xffff), id
+            | _ -> EaImm (readL extAddr), 4, sprintf "#$%x" (readL extAddr), id
+        | _ -> failwithf "ResolveEa: unimplemented addressing mode %d reg %d" mode reg
+
+    ///Read a resolved operand, returning the value zero-extended to `size`
+    ///(byte -> 0..255, word -> 0..65535, long -> full 32 bits).
+    member x.ReadEa (size: OperandSize) (loc: EaResolved) : int =
+        let mask v = match size with OperandSize.Byte -> v &&& 0xff | OperandSize.Word -> v &&& 0xffff | _ -> v
+        match loc with
+        | EaDn r -> mask (x.DataRegister r)
+        | EaAn r -> mask (x.AddressRegister r)
+        | EaImm i -> i
+        | EaMem a ->
+            match size with
+            | OperandSize.Byte -> int (x.MMU.ReadByte a)
+            | OperandSize.Word -> x.MMU.ReadWord a &&& 0xffff
+            | _ -> x.MMU.ReadLong a
+
+    ///Write `value` to a resolved operand at `size`. Register writes preserve the unaffected high
+    ///bits (byte/word); memory writes go straight through the MMU. Returns the updated Cpu.
+    ///An `EaImm` destination is a decode bug and throws.
+    member x.WriteEa (size: OperandSize) (loc: EaResolved) (value: int) (cpu: Cpu) : Cpu =
+        match loc with
+        | EaDn r ->
+            let cur = cpu.DataRegister r
+            let nv =
+                match size with
+                | OperandSize.Byte -> (cur &&& ~~~0xff) ||| (value &&& 0xff)
+                | OperandSize.Word -> (cur &&& ~~~0xffff) ||| (value &&& 0xffff)
+                | _ -> value
+            cpu.WithDataRegister r nv
+        | EaAn r -> cpu.WithAddressRegister r value
+        | EaMem a ->
+            (match size with
+             | OperandSize.Byte -> x.MMU.WriteByte a (byte value)
+             | OperandSize.Word -> x.MMU.WriteWord a (int16 value)
+             | _ -> x.MMU.WriteLong a value)
+            cpu
+        | EaImm _ -> failwith "WriteEa: immediate operand is not a valid destination"
 
     member x.EvaluateCondition (cond: Condition) =
         match cond with
@@ -2654,130 +2763,19 @@ type Cpu =
 
         | TST(size, eamode, eareg) ->
             //TST: sets N/Z from the operand, clears V/C, X unaffected. CCR-only, no write-back.
-            match eamode, size with
-            | 0b000uy, 0b10uy -> //Dn, long
-                let value = x.DataRegister eareg
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR value
-                let newCpu = {x with PC = x.PC+2; CCR = ccr}
-                printfn "tst.l D%u" eareg
-                newCpu
-            | 0b000uy, 0b01uy -> //Dn, word
-                let value = int16 (x.DataRegister eareg)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR value
-                let newCpu = {x with PC = x.PC+2; CCR = ccr}
-                printfn "tst.w D%u" eareg
-                newCpu
-            | 0b000uy, 0b00uy -> //Dn, byte
-                let value = byte (x.DataRegister eareg)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR value
-                let newCpu = {x with PC = x.PC+2; CCR = ccr}
-                printfn "tst.b D%u" eareg
-                newCpu
-            | 0b010uy, 0b10uy -> //(An), long
-                let addr = x.AddressRegister eareg
-                let value = x.MMU.ReadLong(uint32 addr)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR value
-                let newCpu = {x with PC = x.PC+2; CCR = ccr}
-                printfn "tst.l (a%u)" eareg
-                newCpu
-            | 0b010uy, 0b01uy -> //(An), word
-                let addr = x.AddressRegister eareg
-                let value = int16 (x.MMU.ReadWord(uint32 addr))
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR value
-                let newCpu = {x with PC = x.PC+2; CCR = ccr}
-                printfn "tst.w (a%u)" eareg
-                newCpu
-            | 0b010uy, 0b00uy -> //(An), byte
-                let addr = x.AddressRegister eareg
-                let value = x.MMU.ReadByte(uint32 addr)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR value
-                let newCpu = {x with PC = x.PC+2; CCR = ccr}
-                printfn "tst.b (a%u)" eareg
-                newCpu
-            | 0b011uy, 0b10uy -> //(An)+, long
-                let addr = x.AddressRegister eareg
-                let value = x.MMU.ReadLong(uint32 addr)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR value
-                let newCpu = {x.WithAddressRegister eareg (addr+4) with PC = x.PC+2; CCR = ccr}
-                printfn "tst.l (a%u)+" eareg
-                newCpu
-            | 0b011uy, 0b01uy -> //(An)+, word
-                let addr = x.AddressRegister eareg
-                let value = int16 (x.MMU.ReadWord(uint32 addr))
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR value
-                let newCpu = {x.WithAddressRegister eareg (addr+2) with PC = x.PC+2; CCR = ccr}
-                printfn "tst.w (a%u)+" eareg
-                newCpu
-            | 0b101uy, 0b01uy -> //(d16,An), word
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + int displacement
-                let value = int16 (x.MMU.ReadWord(uint32 addr))
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR value
-                let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                printfn "tst.w %i(a%u)" displacement eareg
-                newCpu
-            | 0b101uy, 0b00uy -> //(d16,An), byte
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + int displacement
-                let value = x.MMU.ReadByte(uint32 addr)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR value
-                let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                printfn "tst.b %i(a%u)" displacement eareg
-                newCpu
-            | 0b101uy, 0b10uy -> //(d16,An), long
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + int displacement
-                let value = x.MMU.ReadLong(uint32 addr)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR value
-                let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                printfn "tst.l %i(a%u)" displacement eareg
-                newCpu
-            | 0b111uy, 0b01uy when eareg = 0b001uy -> //(xxx).L, word
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                let value = int16 (x.MMU.ReadWord addr)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR value
-                let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                printfn "tst.w $%x.l" addr
-                newCpu
-            | 0b111uy, 0b00uy when eareg = 0b001uy -> //(xxx).L, byte
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                let value = x.MMU.ReadByte addr
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR value
-                let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                printfn "tst.b $%x.l" addr
-                newCpu
-            | 0b111uy, 0b10uy when eareg = 0b001uy -> //(xxx).L, long
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                let value = x.MMU.ReadLong addr
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR value
-                let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                printfn "tst.l $%x.l" addr
-                newCpu
-            | 0b110uy, 0b10uy -> //(d8,An,Xn), long
-                let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + ext.Offset
-                let value = x.MMU.ReadLong(uint32 addr)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR value
-                let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                printfn "tst.l %s" (x.DescribeIndexed eareg ext)
-                newCpu
-            | 0b110uy, 0b01uy -> //(d8,An,Xn), word
-                let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + ext.Offset
-                let value = int16 (x.MMU.ReadWord(uint32 addr))
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR value
-                let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                printfn "tst.w %s" (x.DescribeIndexed eareg ext)
-                newCpu
-            | 0b110uy, 0b00uy -> //(d8,An,Xn), byte
-                let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + ext.Offset
-                let value = x.MMU.ReadByte(uint32 addr)
-                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR value
-                let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                printfn "tst.b %s" (x.DescribeIndexed eareg ext)
-                newCpu
-            | _ -> failwithf "tst: not implemented for mode %x size %x" eamode size
+            //Migrated to the shared EA decoder (x.ResolveEa / x.ReadEa) - one path covers every
+            //classic 68000 mode plus (xxx).W, which the old hand-rolled ladder was missing.
+            let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "tst: bad size %x" size
+            let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
+            let raw = x.ReadEa sz loc
+            let ccr =
+                match sz with
+                | OperandSize.Byte -> CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR (byte raw)
+                | OperandSize.Word -> CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 raw)
+                | _ -> CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR raw
+            let newCpu = { regUpdate x with PC = x.PC + 2 + extBytes; CCR = ccr }
+            printfn "tst.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
+            newCpu
 
         | MOVEM(direction, size, eamode, eareg) ->
             let mask = uint16 (x.MMU.ReadWord(uint32 (x.PC+2)))
