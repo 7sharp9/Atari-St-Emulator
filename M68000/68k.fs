@@ -601,6 +601,30 @@ type Cpu =
         | OperandSize.Word -> CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 v)
         | _ -> CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR v
 
+    ///Shared BTST / BCHG / BCLR / BSET (`opmode` 00/01/10/11), both the Dn-bit-number (dynamic) and
+    ///immediate-bit-number (static) encodings - the caller supplies the already-extracted bit number
+    ///and the address of the EA's first extension word (`extAddr` = PC+2 dynamic, PC+4 static, which
+    ///also fixes the PC advance since the opcode+immediate size is baked into `extAddr`). A Dn
+    ///destination is 32 bits wide with the bit number taken mod 32; every memory destination is a
+    ///byte with the bit number mod 8. Z is set from the *old* value of the addressed bit (Z <- ~bit);
+    ///no other CCR bit is touched. BTST performs no write.
+    member x.BitOp (mnemonic: string) (opmode: byte) (bitNumber: int) (eamode: byte) (eareg: byte) (extAddr: int) : Cpu =
+        let isReg = eamode = 0b000uy
+        let size = if isReg then OperandSize.Long else OperandSize.Byte
+        let bit = bitNumber &&& (if isReg then 31 else 7)
+        let loc, extBytes, desc, regUpdate = x.ResolveEa size eamode eareg extAddr
+        let current = x.ReadEa size loc
+        let mask = 1 <<< bit
+        let ccr = if current &&& mask <> 0 then CCR.ClearZero x.CCR else CCR.SetZero x.CCR
+        let after =
+            match opmode with
+            | 0b00uy -> regUpdate x                                              // BTST
+            | 0b01uy -> x.WriteEa size loc (current ^^^ mask) (regUpdate x)      // BCHG
+            | 0b10uy -> x.WriteEa size loc (current &&& ~~~mask) (regUpdate x)   // BCLR
+            | _      -> x.WriteEa size loc (current ||| mask) (regUpdate x)      // BSET
+        printfn "%s %s" mnemonic desc
+        { after with PC = extAddr + extBytes; CCR = ccr }
+
     member x.EvaluateCondition (cond: Condition) =
         match cond with
         | Condition.T -> true
@@ -885,212 +909,19 @@ type Cpu =
             | _ -> failwithf "movep: not implemented for opmode %x" opmode
 
         | BitOpDynamic(register, opmode, eamode, eareg) ->
-            let bitnum = int (x.DataRegister register) &&& 7 //memory destination: byte-sized, bit number mod 8
-            match eamode with
-            | 0b000uy -> //Dn - long-sized destination, bit number mod 32
-                let bitnum32 = int (x.DataRegister register) &&& 31
-                let current = x.DataRegister eareg
-                let mask = 1 <<< bitnum32
-                let bitWasSet = (current &&& mask) <> 0
-                let ccr = if bitWasSet then CCR.ClearZero x.CCR else CCR.SetZero x.CCR
-                let newCpu =
-                    match opmode with
-                    | 0b00uy -> //BTST
-                        printfn "btst D%u,D%u" register eareg
-                        {x with PC = x.PC+2; CCR = ccr}
-                    | 0b01uy -> //BCHG
-                        let newCpu = x.WithDataRegister eareg (current ^^^ mask)
-                        printfn "bchg D%u,D%u" register eareg
-                        {newCpu with PC = x.PC+2; CCR = ccr}
-                    | 0b10uy -> //BCLR
-                        let newCpu = x.WithDataRegister eareg (current &&& ~~~mask)
-                        printfn "bclr D%u,D%u" register eareg
-                        {newCpu with PC = x.PC+2; CCR = ccr}
-                    | _ -> //BSET
-                        let newCpu = x.WithDataRegister eareg (current ||| mask)
-                        printfn "bset D%u,D%u" register eareg
-                        {newCpu with PC = x.PC+2; CCR = ccr}
-                newCpu
-            | 0b010uy -> //(An)
-                let addr = uint32 (x.AddressRegister eareg)
-                let current = x.MMU.ReadByte addr
-                let mask = byte (1 <<< bitnum)
-                let bitWasSet = (current &&& mask) <> 0uy
-                let ccr = if bitWasSet then CCR.ClearZero x.CCR else CCR.SetZero x.CCR
-                let newCpu =
-                    match opmode with
-                    | 0b00uy -> //BTST
-                        printfn "btst D%u,(a%u)" register eareg
-                        {x with PC = x.PC+2; CCR = ccr}
-                    | 0b01uy -> //BCHG
-                        x.MMU.WriteByte addr (current ^^^ mask)
-                        printfn "bchg D%u,(a%u)" register eareg
-                        {x with PC = x.PC+2; CCR = ccr}
-                    | 0b10uy -> //BCLR
-                        x.MMU.WriteByte addr (current &&& ~~~mask)
-                        printfn "bclr D%u,(a%u)" register eareg
-                        {x with PC = x.PC+2; CCR = ccr}
-                    | _ -> //BSET
-                        x.MMU.WriteByte addr (current ||| mask)
-                        printfn "bset D%u,(a%u)" register eareg
-                        {x with PC = x.PC+2; CCR = ccr}
-                newCpu
-            | 0b101uy -> //(d16,An)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = uint32 (x.AddressRegister eareg + int displacement)
-                let current = x.MMU.ReadByte addr
-                let mask = byte (1 <<< bitnum)
-                let bitWasSet = (current &&& mask) <> 0uy
-                let ccr = if bitWasSet then CCR.ClearZero x.CCR else CCR.SetZero x.CCR
-                let newCpu =
-                    match opmode with
-                    | 0b00uy -> //BTST
-                        printfn "btst D%u,%i(a%u)" register displacement eareg
-                        {x with PC = x.PC+4; CCR = ccr}
-                    | 0b01uy -> //BCHG
-                        x.MMU.WriteByte addr (current ^^^ mask)
-                        printfn "bchg D%u,%i(a%u)" register displacement eareg
-                        {x with PC = x.PC+4; CCR = ccr}
-                    | 0b10uy -> //BCLR
-                        x.MMU.WriteByte addr (current &&& ~~~mask)
-                        printfn "bclr D%u,%i(a%u)" register displacement eareg
-                        {x with PC = x.PC+4; CCR = ccr}
-                    | _ -> //BSET
-                        x.MMU.WriteByte addr (current ||| mask)
-                        printfn "bset D%u,%i(a%u)" register displacement eareg
-                        {x with PC = x.PC+4; CCR = ccr}
-                newCpu
-            | _ -> failwithf "bit op not implemented for eamode %x" eamode
+            let mnem = match opmode with 0b00uy -> "btst" | 0b01uy -> "bchg" | 0b10uy -> "bclr" | _ -> "bset"
+            x.BitOp mnem opmode (int (x.DataRegister register)) eamode eareg (x.PC + 2)
 
         | BitOpImmediate(opmode, eamode, eareg) ->
-            //Static-bit-number BCHG/BCLR/BSET - same op table as BitOpDynamic above, but the bit
-            //number is a literal extension word (at PC+2) instead of a data register.
-            let bitnumber = x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff
-            match eamode with
-            | 0b000uy -> //Dn - long-sized destination, bit number mod 32
-                let bitnum32 = bitnumber % 32
-                let current = x.DataRegister eareg
-                let mask = 1 <<< bitnum32
-                let bitWasSet = (current &&& mask) <> 0
-                let ccr = if bitWasSet then CCR.ClearZero x.CCR else CCR.SetZero x.CCR
-                match opmode with
-                | 0b01uy -> //BCHG
-                    let newCpu = x.WithDataRegister eareg (current ^^^ mask)
-                    printfn "bchg #$%x,D%u" bitnumber eareg
-                    {newCpu with PC = x.PC+4; CCR = ccr}
-                | 0b10uy -> //BCLR
-                    let newCpu = x.WithDataRegister eareg (current &&& ~~~mask)
-                    printfn "bclr #$%x,D%u" bitnumber eareg
-                    {newCpu with PC = x.PC+4; CCR = ccr}
-                | _ -> //BSET
-                    let newCpu = x.WithDataRegister eareg (current ||| mask)
-                    printfn "bset #$%x,D%u" bitnumber eareg
-                    {newCpu with PC = x.PC+4; CCR = ccr}
-            | 0b010uy -> //(An) - byte-sized destination, bit number mod 8
-                let addr = uint32 (x.AddressRegister eareg)
-                let current = x.MMU.ReadByte addr
-                let mask = byte (1 <<< (bitnumber % 8))
-                let bitWasSet = (current &&& mask) <> 0uy
-                let ccr = if bitWasSet then CCR.ClearZero x.CCR else CCR.SetZero x.CCR
-                match opmode with
-                | 0b01uy -> //BCHG
-                    x.MMU.WriteByte addr (current ^^^ mask)
-                    printfn "bchg #$%x,(a%u)" bitnumber eareg
-                    {x with PC = x.PC+4; CCR = ccr}
-                | 0b10uy -> //BCLR
-                    x.MMU.WriteByte addr (current &&& ~~~mask)
-                    printfn "bclr #$%x,(a%u)" bitnumber eareg
-                    {x with PC = x.PC+4; CCR = ccr}
-                | _ -> //BSET
-                    x.MMU.WriteByte addr (current ||| mask)
-                    printfn "bset #$%x,(a%u)" bitnumber eareg
-                    {x with PC = x.PC+4; CCR = ccr}
-            | 0b101uy -> //(d16,An) - byte-sized destination, bit number mod 8
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                let addr = uint32 (x.AddressRegister eareg + int displacement)
-                let current = x.MMU.ReadByte addr
-                let mask = byte (1 <<< (bitnumber % 8))
-                let bitWasSet = (current &&& mask) <> 0uy
-                let ccr = if bitWasSet then CCR.ClearZero x.CCR else CCR.SetZero x.CCR
-                match opmode with
-                | 0b01uy -> //BCHG
-                    x.MMU.WriteByte addr (current ^^^ mask)
-                    printfn "bchg #$%x,%i(a%u)" bitnumber displacement eareg
-                    {x with PC = x.PC+6; CCR = ccr}
-                | 0b10uy -> //BCLR
-                    x.MMU.WriteByte addr (current &&& ~~~mask)
-                    printfn "bclr #$%x,%i(a%u)" bitnumber displacement eareg
-                    {x with PC = x.PC+6; CCR = ccr}
-                | _ -> //BSET
-                    x.MMU.WriteByte addr (current ||| mask)
-                    printfn "bset #$%x,%i(a%u)" bitnumber displacement eareg
-                    {x with PC = x.PC+6; CCR = ccr}
-            | 0b111uy when eareg = 0b001uy -> //(xxx).L, byte-sized destination, bit number mod 8
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+4)))
-                let current = x.MMU.ReadByte addr
-                let mask = byte (1 <<< (bitnumber % 8))
-                let bitWasSet = (current &&& mask) <> 0uy
-                let ccr = if bitWasSet then CCR.ClearZero x.CCR else CCR.SetZero x.CCR
-                match opmode with
-                | 0b01uy -> //BCHG
-                    x.MMU.WriteByte addr (current ^^^ mask)
-                    printfn "bchg #$%x,$%x.l" bitnumber addr
-                    {x with PC = x.PC+8; CCR = ccr}
-                | 0b10uy -> //BCLR
-                    x.MMU.WriteByte addr (current &&& ~~~mask)
-                    printfn "bclr #$%x,$%x.l" bitnumber addr
-                    {x with PC = x.PC+8; CCR = ccr}
-                | _ -> //BSET
-                    x.MMU.WriteByte addr (current ||| mask)
-                    printfn "bset #$%x,$%x.l" bitnumber addr
-                    {x with PC = x.PC+8; CCR = ccr}
-            | _ -> failwithf "static bit op not implemented for eamode %x" eamode
+            //Static bit number: a literal byte in the extension word at PC+2, so the EA's own
+            //extension words start at PC+4. opmode is never 00 here (that is BTSTImmediate).
+            let mnem = match opmode with 0b01uy -> "bchg" | 0b10uy -> "bclr" | _ -> "bset"
+            let bitnumber = x.MMU.ReadWord (uint32 (x.PC + 2)) &&& 0xff
+            x.BitOp mnem opmode bitnumber eamode eareg (x.PC + 4)
 
         | BTSTImmediate(eamode, eareg) ->
-            let bitnumber = x.MMU.ReadWord (uint32 (x.PC+2)) &&& 0xFF
-            //ccr z flag is set if zero, no others
-            match eamode with
-            | 0b000uy -> //Dn - bit number taken modulo 32, tests the whole long register
-                let bit = bitnumber % 32
-                let regValue = x.DataRegister eareg
-                let bitZeroSet = not (regValue.isset bit)
-                printfn "BTST.B #$%x,D%u" bitnumber eareg
-                {x with PC=x.PC+4; CCR= if bitZeroSet then CCR.SetZero x.CCR else CCR.ClearZero x.CCR }
-            | 0b010uy -> //(An) - byte-only, bit number taken modulo 8
-                let ea = uint32 (x.AddressRegister eareg)
-                let eaVal = x.MMU.ReadByte ea
-                let bitZeroSet = eaVal.isnotset (bitnumber % 8)
-                printfn "BTST.B #$%x,(a%u)" bitnumber eareg
-                {x with PC=x.PC+4; CCR= if bitZeroSet then CCR.SetZero x.CCR else CCR.ClearZero x.CCR }
-            | 0b101uy -> //(d16,An) - byte-only, bit number taken modulo 8
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+4)))
-                let ea = uint32 (x.AddressRegister eareg + int displacement)
-                let eaVal = x.MMU.ReadByte ea
-                let bitZeroSet = eaVal.isnotset (bitnumber % 8)
-                printfn "BTST.B #$%x,%i(a%u)" bitnumber displacement eareg
-                {x with PC=x.PC+6; CCR= if bitZeroSet then CCR.SetZero x.CCR else CCR.ClearZero x.CCR }
-            | 0b111uy ->
-                match eareg with
-                | 0b010uy -> //d16, PC
-                    let displacement = int16 (x.MMU.ReadWord (uint32 (x.PC+4)))
-                    let ea = (x.PC+4) + int displacement
-
-                    printfn "BTST.B #$%04x,(PC,$%x) == $%08x" bitnumber displacement ea
-                    // Data register direct can be used for long only; all others are byte only.
-                    let eaVal = x.MMU.ReadByte (uint32 ea)
-                    let bitZeroSet = eaVal.isnotset (bitnumber % 8)
-
-                    {x with PC=x.PC+6; CCR= if bitZeroSet then CCR.SetZero x.CCR else CCR.ClearZero x.CCR }
-
-                | 0b001uy -> //(xxx).L
-                    let ea = uint32 (x.MMU.ReadLong (uint32 (x.PC+4)))
-                    let eaVal = x.MMU.ReadByte ea
-                    let bitZeroSet = eaVal.isnotset (bitnumber % 8)
-                    printfn "BTST.B #$%04x,$%x.l" bitnumber ea
-                    {x with PC=x.PC+8; CCR= if bitZeroSet then CCR.SetZero x.CCR else CCR.ClearZero x.CCR }
-
-                | other -> failwithf "BTST.b EA reg %u not supported" other
-            | other -> failwithf "BTST.b EA mode %u not supported" other
+            let bitnumber = x.MMU.ReadWord (uint32 (x.PC + 2)) &&& 0xff
+            x.BitOp "btst" 0b00uy bitnumber eamode eareg (x.PC + 4)
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
