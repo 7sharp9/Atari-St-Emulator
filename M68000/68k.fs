@@ -625,6 +625,33 @@ type Cpu =
         printfn "%s %s" mnemonic desc
         { after with PC = extAddr + extBytes; CCR = ccr }
 
+    ///Shared "<ea> op Dn -> Dn" / "Dn op <ea> -> <ea>" decoder for the register data buckets
+    ///(OR bucket 8, SUB 9, CMP/EOR B, AND C, ADD D). `opmode` is the raw 3-bit opmode field: the
+    ///low two bits are the size (00/01/10 = byte/word/long), bit 2 the direction - 0 means the EA
+    ///is the source and Dn the destination (`<ea> op Dn -> Dn`), 1 means the EA is the destination
+    ///(`Dn op <ea> -> <ea>`). `combine size dest source -> result * ccr` performs the op at the
+    ///masked size and computes the CCR; `dest` is the current value of whichever operand is written
+    ///back (Dn in the ea->Dn direction, the EA otherwise) and `source` is the other operand. `write`
+    ///is false for CMP (flags only). ADDX/SUBX/ABCD/SBCD/CMPM/EXG share this opcode space and must
+    ///be matched by their own patterns first. The `(An)+` / `-(An)` writeback is applied after the
+    ///result write, exactly as the shared EA decoder intends.
+    member x.RegEaOp (mnemonic: string) (opmode: byte) (dn: byte) (eamode: byte) (eareg: byte)
+                     (write: bool) (combine: OperandSize -> int -> int -> int * int16) : Cpu =
+        let size =
+            match opmode &&& 0b011uy with
+            | 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | _ -> OperandSize.Long
+        let eaToDn = opmode &&& 0b100uy = 0uy
+        let loc, extBytes, desc, regUpdate = x.ResolveEa size eamode eareg (x.PC + 2)
+        let eaVal = x.ReadEa size loc
+        let dnVal = x.ReadEa size (EaDn dn)
+        let dest, source, target = if eaToDn then dnVal, eaVal, EaDn dn else eaVal, dnVal, loc
+        let result, ccr = combine size dest source
+        let after = if write then x.WriteEa size target result (regUpdate x) else regUpdate x
+        printfn "%s.%s %s" mnemonic
+            (match size with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l")
+            (if eaToDn then sprintf "%s,D%u" desc dn else sprintf "D%u,%s" dn desc)
+        { after with PC = x.PC + 2 + extBytes; CCR = ccr }
+
     member x.EvaluateCondition (cond: Condition) =
         match cond with
         | Condition.T -> true
@@ -1900,158 +1927,14 @@ type Cpu =
             doDivide (int16 (x.ReadEa OperandSize.Word loc)) regUpdate extBytes desc
 
         | OR(register, opmode, eamode, eareg) ->
-            match opmode with
-            | 0b000uy -> //OR.B ea+Dn->Dn
-                match eamode with
-                | 0b000uy -> //Dn
-                    let source = byte (x.DataRegister eareg)
-                    let dest = byte (x.DataRegister register)
-                    let result = source ||| dest
-                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
-                    printfn "or.b D%u,D%u" eareg register
-                    newCpu
-                | 0b111uy when eareg = 0b100uy -> //#imm
-                    let source = byte (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-                    let dest = byte (x.DataRegister register)
-                    let result = source ||| dest
-                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "or.b #$%x,D%u" source register
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = x.AddressRegister eareg + int displacement
-                    let source = x.MMU.ReadByte(uint32 addr)
-                    let dest = byte (x.DataRegister register)
-                    let result = source ||| dest
-                    let newValue = (x.DataRegister register &&& ~~~0xff) ||| int result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "or.b %i(a%u),D%u" displacement eareg register
-                    newCpu
-                | _ -> failwithf "or.b(ea->dn) not implemented for eamode %x" eamode
-            | 0b001uy -> //OR.W ea+Dn->Dn
-                match eamode with
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = x.AddressRegister eareg + int displacement
-                    let source = int16 (x.MMU.ReadWord(uint32 addr))
-                    let dest = int16 (x.DataRegister register)
-                    let result = source ||| dest
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "or.w %i(a%u),D%u" displacement eareg register
-                    newCpu
-                | 0b000uy -> //Dn
-                    let source = int16 (x.DataRegister eareg)
-                    let dest = int16 (x.DataRegister register)
-                    let result = source ||| dest
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
-                    printfn "or.w D%u,D%u" eareg register
-                    newCpu
-                | 0b111uy when eareg = 0b100uy -> //#imm
-                    let source = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let dest = int16 (x.DataRegister register)
-                    let result = source ||| dest
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+4; CCR = ccr}
-                    printfn "or.w #$%x,D%u" source register
-                    newCpu
-                | 0b011uy -> //(An)+ - A7 postincrements by 2, others by 2 (word)
-                    let addr = x.AddressRegister eareg
-                    let source = int16 (x.MMU.ReadWord(uint32 addr))
-                    let dest = int16 (x.DataRegister register)
-                    let result = source ||| dest
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {(x.WithDataRegister register newValue).WithAddressRegister eareg (addr+2) with PC = x.PC+2; CCR = ccr}
-                    printfn "or.w (a%u)+,D%u" eareg register
-                    newCpu
-                | 0b010uy -> //(An)
-                    let addr = uint32 (x.AddressRegister eareg)
-                    let source = int16 (x.MMU.ReadWord addr)
-                    let dest = int16 (x.DataRegister register)
-                    let result = source ||| dest
-                    let newValue = (x.DataRegister register &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
-                    printfn "or.w (a%u),D%u" eareg register
-                    newCpu
-                | _ -> failwithf "or.w(ea->dn) not implemented for eamode %x" eamode
-            | 0b100uy -> //OR.B Dn,ea -> ea
-                match eamode with
-                | 0b010uy -> //(An)
-                    let source = byte (x.DataRegister register)
-                    let addr = uint32 (x.AddressRegister eareg)
-                    let dest = x.MMU.ReadByte addr
-                    let result = source ||| dest
-                    x.MMU.WriteByte addr result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR result
-                    let newCpu = {x with PC = x.PC+2; CCR = ccr}
-                    printfn "or.b D%u,(a%u)" register eareg
-                    newCpu
-                | _ -> failwithf "or.b not implemented for eamode %x" eamode
-            | 0b101uy -> //OR.W Dn,ea -> ea
-                match eamode with
-                | 0b010uy -> //(An)
-                    let addr = uint32 (x.AddressRegister eareg)
-                    let source = int16 (x.DataRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = source ||| dest
-                    x.MMU.WriteWord addr result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x with PC = x.PC+2; CCR = ccr}
-                    printfn "or.w D%u,(a%u)" register eareg
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister eareg + int displacement)
-                    let source = int16 (x.DataRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = source ||| dest
-                    x.MMU.WriteWord addr result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "or.w D%u,%i(a%u)" register displacement eareg
-                    newCpu
-                | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                    let source = int16 (x.DataRegister register)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = source ||| dest
-                    x.MMU.WriteWord addr result
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR result
-                    let newCpu = {x with PC = x.PC+6; CCR = ccr}
-                    printfn "or.w D%u,$%x.l" register addr
-                    newCpu
-                | _ -> failwithf "or.w(dn->ea) not implemented for eamode %x" eamode
-            | 0b010uy -> //OR.L ea+Dn->Dn
-                match eamode with
-                | 0b000uy -> //Dn
-                    let source = x.DataRegister eareg
-                    let dest = x.DataRegister register
-                    let result = source ||| dest
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    let newCpu = {x.WithDataRegister register result with PC = x.PC+2; CCR = ccr}
-                    printfn "or.l D%u,D%u" eareg register
-                    newCpu
-                | 0b111uy when eareg = 0b100uy -> //#imm
-                    let source = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let dest = x.DataRegister register
-                    let result = source ||| dest
-                    let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
-                    let newCpu = {x.WithDataRegister register result with PC = x.PC+6; CCR = ccr}
-                    printfn "or.l #$%x,D%u" source register
-                    newCpu
-                | _ -> failwithf "or.l(ea->dn) not implemented for eamode %x" eamode
-            | _ -> failwithf "or: not implemented for opmode %x" opmode
+            //Plain OR reg forms via the shared EA decoder. opmode 011/111 are DIVU/DIVS (their own
+            //patterns, matched first). opmode 100 with eamode 000/001 is the SBCD opcode slot (no
+            //handler yet) - keep the old failure rather than silently doing an OR there.
+            if opmode = 0b100uy && eamode < 0b010uy then
+                failwithf "or.b not implemented for eamode %x" eamode
+            else
+                x.RegEaOp "or" opmode register eamode eareg true
+                    (fun sz dest source -> let r = dest ||| source in r, x.LogicalCcr sz r)
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
