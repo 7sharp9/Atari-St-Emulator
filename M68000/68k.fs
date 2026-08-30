@@ -2557,6 +2557,17 @@ type Cpu =
             printfn "clr.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
             newCpu
 
+        | TAS(eamode, eareg) ->
+            //TAS: byte-only atomic test-and-set. Read the operand byte, set N/Z from it (V/C
+            //cleared, X untouched - same as TST), then write it back with bit 7 forced to 1.
+            let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Byte eamode eareg (x.PC + 2)
+            let value = byte (x.ReadEa OperandSize.Byte loc)
+            let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR value
+            let written = x.WriteEa OperandSize.Byte loc (int (value ||| 0x80uy)) (regUpdate x)
+            let newCpu = { written with PC = x.PC + 2 + extBytes; CCR = ccr }
+            printfn "tas %s" desc
+            newCpu
+
         | TST(size, eamode, eareg) ->
             //TST: sets N/Z from the operand, clears V/C, X unaffected. CCR-only, no write-back.
             //Migrated to the shared EA decoder (x.ResolveEa / x.ReadEa) - one path covers every

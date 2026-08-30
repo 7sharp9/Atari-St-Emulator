@@ -620,11 +620,22 @@ module Instructions =
 
     /// 0100 1010 ss mmm rrr : TST
     let (|TST|_|) data =
-        if data &&& 0b1111111100000000 = 0b0100101000000000 then
+        // size = 0b11 in this opcode slot is TAS (byte test-and-set), not TST - matched separately
+        // below so TST only ever sees the .b/.w/.l sizes.
+        if data &&& 0b1111111100000000 = 0b0100101000000000 && (byte (data >>> 6) &&& 0b11uy) <> 0b11uy then
             let size = byte (data >>> 6) &&& 0b11uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
             Some(size, eamode, eareg)
+        else None
+
+    /// 0100 1010 11 mmm rrr : TAS - byte test-and-set. Reads the operand byte, sets N/Z from it,
+    /// then writes it back with bit 7 forced to 1. mmm=111,rrr=100 (0x4AFC) is ILLEGAL, not TAS.
+    let (|TAS|_|) data =
+        if data &&& 0b1111111111000000 = 0b0100101011000000 && data <> 0x4AFC then
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(eamode, eareg)
         else None
 
     /// 0000 ddd1 oo 001 aaa : MOVEP
