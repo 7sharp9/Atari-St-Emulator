@@ -12,7 +12,8 @@
 #   ./run.ps1 <subcommand> [args]        build (unless -NoBuild), then run
 #   ./run.ps1 -NoBuild <subcommand> ...  skip the build
 #   ./run.ps1 -Trace <subcommand> ...    keep the per-instruction trace (default: ATARI_NOTRACE=1)
-#   ./run.ps1 -DiskA <path> <subcmd> ... mount a real .ST floppy image in drive A
+#   ./run.ps1 <subcmd> ... -DiskA <path>  mount a real .ST floppy image in drive A
+#                                         (-DiskA goes after the subcommand, or anywhere in its args)
 #
 # Subcommands (thin aliases over Program.fs's argv modes):
 #   boot   <N>                 run N steps from cold boot (trace ON by default here)
@@ -31,13 +32,20 @@
 param(
     [switch] $NoBuild,
     [switch] $Trace,
-    [string] $DiskA,     # mount a real .ST image in drive A (passed through as --disk-a)
     [string] $Command
 )
 
-# Leftover positional args land in $args (plain script, no CmdletBinding - so piped
-# stdin passes straight through to `dotnet exec` for the REPL).
-$Rest = $args
+# This is a plain script (no CmdletBinding) so piped stdin passes straight through
+# to `dotnet exec` for the REPL and leftover positional args land in $args. That
+# means every declared [string] param takes a positional slot in order - so -DiskA
+# is NOT a param (an earlier version declared it before $Command and it swallowed
+# the subcommand). Pull it out of $args by hand instead: `-DiskA <path>` anywhere.
+$Rest = @()
+$DiskA = $null
+for ($i = 0; $i -lt $args.Count; $i++) {
+    if ($args[$i] -eq '-DiskA') { $DiskA = $args[++$i] }
+    else { $Rest += $args[$i] }
+}
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dll = Join-Path $here 'bin/Debug/net8.0/M68000.dll'
