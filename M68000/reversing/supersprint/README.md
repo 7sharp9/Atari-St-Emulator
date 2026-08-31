@@ -74,13 +74,21 @@ OS   3000158  Setscreen(log=$f8000, phys=$f8000)   /  flip every emulated frame,
               …  in between (title screen sitting still)
 ```
 
-The loop repeats a ~4.5M-step cycle (≈375 emulated frames) of animation-burst then
-hold, forever. The game **never polls the keyboard** (no `Bconstat` / `Cconis` /
+The loop repeats a ~4.5M-step cycle (≈375 emulated frames) forever, cycling through
+the title screen, an in-attract **gameplay demo** (drone cars running Track 1), and
+the credits screen. The game **never polls the keyboard** (no `Bconstat` / `Cconis` /
 `Kbshift` anywhere in a 40M-step run) — it is a pure timed attract sequence.
-`title.png` is the framebuffer (`$f8000`, low-res, 16-colour) dumped at step
-27 900 000: the "SUPER SPRINT / Software Studios / a Software Studios production /
-TM © 1986 Atari Games, licensed to Electric Dreams" credits screen, rendered
-correctly.
+
+- `title.png` — framebuffer (`$f8000`, low-res, 16-colour) at step 34 000 000: the
+  "SUPER SPRINT / © 1986 Atari Games" logo screen (F1 car bursting through), correct.
+- `gameplay.png` — step 26 000 000: the overhead Track 1 with cars, barriers and
+  trees, correct playfield. The **top status bar** (per-car `LAP` counters) looks
+  wrong — garbled multicolour pixels along the top rows. Cause not yet pinned down:
+  no HBL handler is installed (vector `$68` = ROM default), so it is *not* a raster
+  palette split; candidates are a half-captured `Setpalette`, a plane-data / screen
+  base-offset bug in that region, or a real content bug. Not investigated this pass.
+  (An earlier capture at step 27 900 000 caught a sparse screen-wipe frame —
+  mid-transition, not a bug.)
 
 ## How the CFG was built
 
@@ -130,6 +138,7 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 | `callgraph.dot` / `callgraph.svg` | call graph, whole program |
 | `cfg.dot` / `cfg.svg` | control-flow graph, `$15300`–`$16800` |
 | `blocks.txt` | executed basic-block table with hit counts (coverage map) |
-| `title.png` | framebuffer at step 27 900 000 — the rendered credits screen |
+| `title.png` | framebuffer at step 34 000 000 — the "SUPER SPRINT / © 1986 Atari Games" logo screen |
+| `gameplay.png` | framebuffer at step 26 000 000 — the in-attract Track 1 demo (status bar has a rendering glitch, see above) |
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.
