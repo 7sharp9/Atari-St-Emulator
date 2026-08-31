@@ -192,11 +192,51 @@ python tools/trace_cfg.py run.evt --steps <lo> <hi> --range <tbase> <tend> --cfg
 `--steps` to isolate the program's own run - once it terminates, TOS reuses its
 TPA addresses for the desktop.
 
+## Graphics/palette explorer: `tools/gfxview.py`
+
+`screendump.py` shows the *live framebuffer*. `gfxview.py` shows everything else -
+the bitmaps, sprites, fonts, tiles and palettes a program has decoded into RAM but
+not yet drawn. It reads a `.snap` directly (the whole 1 MB RAM image is in there -
+`load_ram` parses the `A68S` header: magic, version byte, 19 int32 regs, int16
+CCR, then the length-prefixed RAM array first) or any raw binary with `--raw`
+`--base <hex>`.
+
+```
+python tools/gfxview.py game.snap --html game.html          # interactive viewer
+python tools/gfxview.py game.snap --contact ram.png         # whole-RAM overview PNG
+python tools/gfxview.py blob.bin --raw --base 21100 --html b.html
+```
+
+It auto-detects and prints (to stderr, and bakes into the HTML as jump targets):
+
+* **palettes** - runs of 16 `$0RGB` words. STF (every gun nibble 0..7) by default;
+  `--ste` also reports STE-style ones (noisier). Packed palette *tables* are
+  common - Super Sprint keeps a 19-entry title-screen fade ramp near `$1d3xx`.
+* **data spans** - 2 KB blocks holding non-trivial data (not mostly `$00`/`$FF`,
+  graphics-ish byte entropy), merged into runs. Advisory, just to aim the viewer.
+
+The `--html` output is one self-contained file (RAM base64-embedded, JS decoder,
+no server). Live controls: base address, width, rows, bpp (1/2/4/8), zoom, palette
+(dropdown of every detected palette + greyscale), and the plane layout:
+
+* `st-interleaved` - standard ST screen memory, bitplanes interleaved per 16-px
+  word group (what the shifter reads, what `screendump.py` decodes).
+* `planar-linear` - bitplanes stored contiguously, each a plain 1bpp bitmap;
+  plane `p` at `base + p*plane_stride`, rows every `row_stride` bytes. Super
+  Sprint's transposed sprite blitter (`$15436`) uses `plane_stride 8`,
+  `row_stride 1` (planes at `src+8/+16/+24`, source `+1` byte/row) - the
+  "SS sprite tile 8x8x4" preset.
+* `chunky8` - one byte per pixel.
+
+The viewer's decoder is verified byte-identical to `screendump.py` /
+`Instructions.fs`. Worked example with example PNGs:
+`reversing/supersprint/gfxview.md`.
+
 ## Other tools
 
 See the `atari-st-emulator-efficiency-tooling` memory for the full list.
 `tools/disassemble.py`, `tools/hatari_trace.py` (headless real Hatari on the same
-ROM), `tools/screendump.py`, `tools/make_blank_disk.py`,
+ROM), `tools/screendump.py`, `tools/gfxview.py`, `tools/make_blank_disk.py`,
 `tools/add_file_to_disk.py`, `tools/make_test_prg.py`. Snapshots (`*.snap`) are
 session-local working data, keyed to a ROM + opcode-coverage point - not
 committed, retake per session.

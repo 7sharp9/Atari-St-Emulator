@@ -152,5 +152,6 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 | `blocks.txt` | executed basic-block table with hit counts (coverage map) |
 | `title.png` | framebuffer at step 34 000 000 — the "SUPER SPRINT / © 1986 Atari Games" logo screen |
 | `gameplay.png` | framebuffer during the in-attract Track 1 drone-car demo (the top band is the grandstand crowd, not a glitch — see above) |
+| `gfxview.md` + `gfx_*.png` | looking at the palettes and decoded bitmaps in RAM with `tools/gfxview.py` (54th pass) — the `$1d3xx` title-fade palette ramp, a whole-RAM contact sheet, the title bitmap decoded from `$f8000` |
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.
