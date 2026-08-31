@@ -194,6 +194,12 @@ deterministic and committed disk artefacts stay byte-stable. `ATARI_TRACE_FDC=1`
 logs every FDC register/command write and every sector read/write to stderr
 (compare against `tools/hatari_trace.py --trace fdc`).
 
+**Bootable disks work too, unchanged.** The real TOS ROM loads sector 0, verifies
+the `$1234` word-sum and jumps to the boot code itself - the emulator only serves
+the sectors. `A_013.ST` (a bootable "Automation"-style menu disk with LSD-packed
+games) boots to its menu, and selecting a game runs its in-place depacker and the
+game with no emulator change - see `reversing/a_013/`.
+
 Build a disk with a program TOS will auto-run at boot:
 
 ```

@@ -1,0 +1,7 @@
+0000a304	menu13_entry
+0000a458	lsd_unpack_loop
+0000a5f4	lsd_read_bits
+0000c446	was_crt0
+0000c55c	lsd_depack
+0000c600	lsd_refill_longword
+0000c60c	lsd_read_bits_was
