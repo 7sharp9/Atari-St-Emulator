@@ -153,8 +153,7 @@ the PC is a known routine entry (silenced with the rest of the trace under
 `ATARI_NOTRACE`).
 
 ```
-ATARI_TRACE_OS=1 ATARI_DISK_A=inttest_disk.st \
-  ./run.ps1 -NoBuild snap 12000000 t.snap 2>&1 | grep '^OS '
+ATARI_TRACE_OS=1 ./run.ps1 -NoBuild -DiskA inttest_disk.st snap 12000000 t.snap 2>&1 | grep '^OS '
 #   OS   1871131     Cconws("Test '")
 #   OS   1871324       Bconout(dev=2, c='T')
 #   OS   1873215     = $00fc0005
@@ -164,7 +163,9 @@ ATARI_TRACE_OS=1 ATARI_DISK_A=inttest_disk.st \
 
 ## Running a program off a disk image
 
-`ATARI_DISK_A=<file.st>` mounts a real `.ST` floppy image in drive A. The FDC
+`./run.ps1 -DiskA <file.st> <subcommand> ...` (or the `--disk-a <file.st>` argv
+switch, or the `ATARI_DISK_A=<file.st>` env var as a fallback) mounts a real
+`.ST` floppy image in drive A. The FDC
 models single- and double-sided images, PSG side/drive select, Type I head
 movement (seek/restore/step), the DMA address counter and the `$FF8606` DMA
 status register - enough for TOS to read a FAT12 filesystem and `Pexec` a
@@ -181,8 +182,8 @@ Build a disk with a program TOS will auto-run at boot:
 python tools/make_blank_disk.py blank.st                 # empty FAT12 image
 python tools/make_test_prg.py TEST.PRG                    # or bring your own .PRG
 python tools/add_file_to_disk.py blank.st TEST.PRG --auto --out auto.st
-ATARI_DISK_A=auto.st ATARI_TRACE_GEMDOS=1 ATARI_TRACE_EVENTS=run.evt \
-  ./run.ps1 -NoBuild snap 12000000 t.snap
+ATARI_TRACE_GEMDOS=1 ATARI_TRACE_EVENTS=run.evt \
+  ./run.ps1 -NoBuild -DiskA auto.st snap 12000000 t.snap
 python tools/trace_cfg.py run.evt --steps <lo> <hi> --range <tbase> <tend> --cfg prg.dot
 ```
 

@@ -12,6 +12,7 @@
 #   ./run.ps1 <subcommand> [args]        build (unless -NoBuild), then run
 #   ./run.ps1 -NoBuild <subcommand> ...  skip the build
 #   ./run.ps1 -Trace <subcommand> ...    keep the per-instruction trace (default: ATARI_NOTRACE=1)
+#   ./run.ps1 -DiskA <path> <subcmd> ... mount a real .ST floppy image in drive A
 #
 # Subcommands (thin aliases over Program.fs's argv modes):
 #   boot   <N>                 run N steps from cold boot (trace ON by default here)
@@ -30,6 +31,7 @@
 param(
     [switch] $NoBuild,
     [switch] $Trace,
+    [string] $DiskA,     # mount a real .ST image in drive A (passed through as --disk-a)
     [string] $Command
 )
 
@@ -71,6 +73,10 @@ $argv =
         'dll'      { Write-Output $dll; exit 0 }
         default    { Write-Error "unknown subcommand '$Command' (run ./run.ps1 with no args for help)"; exit 2 }
     }
+
+# Program.fs strips --disk-a from anywhere in argv before its positional subcommand match,
+# so appending it here is safe regardless of subcommand.
+if ($DiskA) { $argv = @($argv) + @('--disk-a', $DiskA) }
 
 Push-Location $here
 try {

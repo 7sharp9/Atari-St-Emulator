@@ -860,8 +860,24 @@ module Main =
                 ()
         loop()
 
+    ///Pulls `--disk-a <path>` / `--disk-a=<path>` out of the raw argv, returning the value (last
+    ///wins) and argv with those tokens removed so the positional subcommand matching below is
+    ///unaffected. A CLI switch is less error-prone than exporting ATARI_DISK_A for every run; the
+    ///env var still works and is the fallback when the switch is absent.
+    let extractDiskA (argv: string[]) =
+        let mutable v = None
+        let rest = ResizeArray<string>()
+        let mutable i = 0
+        while i < argv.Length do
+            match argv.[i] with
+            | "--disk-a" when i + 1 < argv.Length -> v <- Some argv.[i + 1]; i <- i + 2
+            | s when s.StartsWith "--disk-a=" -> v <- Some (s.Substring 9); i <- i + 1
+            | s -> rest.Add s; i <- i + 1
+        v, rest.ToArray()
+
     [<EntryPoint>]
-    let main argv =
+    let main rawArgv =
+        let diskASwitch, argv = extractDiskA rawArgv
         //Capture the real stdout before the ATARI_NOTRACE redirect below can replace it with a
         //null sink - result output (REPL replies, verify/selftest verdicts) prints through
         //Diag.result so ATARI_NOTRACE only silences the per-instruction trace. See Diag.
@@ -883,12 +899,15 @@ module Main =
             match Environment.GetEnvironmentVariable "ATARI_ROM_PATH" with
             | null | "" -> "TOS100UK.IMG"
             | p -> p
-        //ATARI_DISK_A mounts a real disk image in drive A (see MMU.LoadDiskA) - unset (the
-        //default) preserves the existing diskless-boot behavior exactly.
+        //Drive A disk image (see MMU.LoadDiskA) - `--disk-a <path>` takes precedence, else the
+        //ATARI_DISK_A env var, else unset (which preserves diskless-boot behavior exactly).
         let diskAPath =
-            match Environment.GetEnvironmentVariable "ATARI_DISK_A" with
-            | null | "" -> None
-            | p -> Some p
+            match diskASwitch with
+            | Some p when p <> "" -> Some p
+            | _ ->
+                match Environment.GetEnvironmentVariable "ATARI_DISK_A" with
+                | null | "" -> None
+                | p -> Some p
         //ATARI_MONITOR=colour|mono (default colour) - drives MFP GPIP bit 7, which the boot ROM
         //at $fc0366 uses to pick colour rez vs forced high-res mono. See MMU.SetMonitor.
         let monitor =
