@@ -1,0 +1,113 @@
+# start   end      count    terminator
+0000a304 0000a330        1  trap #1
+0000a332 0000a336        1  jsr
+0000a33c 0000a342        1  trap #1
+0000a344 0000a35c        1  trap #1
+0000a35e 0000a362        1  beq
+0000a370 0000a374        1  rts
+0000a376 0000a378        1  jsr
+0000a37e 0000a380        1  ble
+0000a39e 0000a3a6        1  trap #1
+0000a3a8 0000a3ac        1  beq
+0000a3be 0000a3c6        1  trap #1
+0000a3c8 0000a3ce        1  beq
+0000a3e0 0000a3e8        1  trap #1
+0000a3ea 0000a3ee        1  beq
+0000a402 0000a40c        1  trap #1
+0000a40e 0000a412        1  beq
+0000a426 0000a42c        1  jsr
+0000a432 0000a434        1  bne
+0000a448 0000a450        1  trap #1
+0000a452 0000a458        1  beq
+0000a46c 0000a474        1  trap #1
+0000a476 0000a47a        1  beq
+0000a48e 0000a498        1  trap #1
+0000a49a 0000a49e        1  beq
+0000a4b2 0000a4ba        1  jsr
+0000a4c0 0000a4c2        1  beq
+0000a4d6 0000a4de        1  trap #1
+0000a4e0 0000a4e4        1  beq
+0000a4f8 0000a502        1  trap #1
+0000a504 0000a508        1  beq
+0000a51c 0000a522        1  jsr
+0000a528 0000a52a        1  beq
+0000a53e 0000a546        1  trap #1
+0000a548 0000a54c        1  beq
+0000a560 0000a568        1  trap #1
+0000a56a 0000a570        1  beq
+0000a584 0000a58c        1  trap #1
+0000a58e 0000a592        1  beq
+0000a5a6 0000a5b0        1  trap #1
+0000a5b2 0000a5b6        1  bne
+0000a5b8 0000a5bc        1  beq
+0000a5d0 0000a5d6        1  trap #1
+0000a5d8 0000a5dc        1  beq
+0000a5f0 0000a5f2        1  bra
+0000a5f6 0000a616        1  split
+0000a616 0000a618       24  dbf
+0000a61c 0000a624        1  trap #1
+0000a626 0000a62a        1  bge
+0000a63a 0000a640        1  rts
+0000a642 0000a652        1  trap #1
+0000a654 0000a65e        1  beq
+0000a670 0000a676        1  trap #1
+0000a678 0000a67e        1  beq
+0000a690 0000a69a        1  trap #1
+0000a69c 0000a6a0        1  bge
+0000a6b2 0000a6c0        1  trap #1
+0000a6c2 0000a6cc        1  bne
+0000a6ce 0000a6d6        1  jsr
+0000a6dc 0000a6de        1  beq
+0000a6f2 0000a702        1  trap #1
+0000a704 0000a70a        1  beq
+0000a71e 0000a724        1  trap #1
+0000a726 0000a72c        1  beq
+0000a740 0000a748        1  trap #1
+0000a74a 0000a750        1  beq
+0000a764 0000a76c        1  trap #1
+0000a76e 0000a774        1  bne
+0000a788 0000a78a        1  bra
+0000a78e 0000a7a2        1  trap #1
+0000a7a4 0000a7a8        1  beq
+0000a7b6 0000a7ba        1  rts
+0000a7bc 0000a7c2        1  trap #1
+0000a7c4 0000a7c8        1  bgt
+0000a7da 0000a7e4        1  trap #1
+0000a7e6 0000a7ee        1  bne
+0000a7f0 0000a7f0        1  jsr
+0000a7f6 0000a7fa        1  bne
+0000a80c 0000a812        1  trap #1
+0000a814 0000a820        1  trap #1
+0000a822 0000a826        1  beq
+0000a83a 0000a83c        1  bra
+0000a840 0000a854        1  split
+0000a854 0000a85e        4  beq
+0000a860 0000a866        3  trap #1
+0000a868 0000a878        3  trap #1
+0000a87a 0000a884        3  trap #1
+0000a886 0000a892        3  jsr
+0000a894 0000a896        3  beq
+0000a8a6 0000a8a8        3  bra
+0000a8aa 0000a8b2        3  trap #1
+0000a8b4 0000a8b6        3  bra
+0000a8b8 0000a8c4        1  rts
+0000a8c6 0000a8c8        1  rts
+0000a8ca 0000a8ce        3  split
+0000a8ce 0000a8d2       11  bne
+0000a8d4 0000a8d6       10  bne
+0000a8d8 0000a8da        2  split
+0000a8da 0000a8dc        3  rts
+0000a8de 0000a8e2        8  bra
+0000a8e4 0000a8ea        1  bra
+0000a8ec 0000a8f0        1  beq
+0000a8f6 0000a8f8        1  rts
+0000a8fa 0000a904        1  split
+0000a904 0000a906       24  beq
+0000a908 0000a90c       23  bne
+0000a90e 0000a912       23  bra
+0000a914 0000a91e        1  rts
+00fc4d86 00fc4d94       38  rte
+00fc4daa 00fc4db8        1  rte
+00fc4de4 00fc4de8        1  rte
+00fc4df4 00fc4df6        1  rte
+00fc4df6 00fc4df6        2  rte

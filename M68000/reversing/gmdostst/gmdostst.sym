@@ -1,0 +1,10 @@
+00a30e	crt0
+00a344	tst_directories
+00a5f6	tst_files
+00a78e	tst_sys
+00a840	main
+00a8c6	get_sr
+00a8ca	strcmp
+00a8ec	strlen
+00a8fa	memcmp
+00fc4cee	Cconws_rom

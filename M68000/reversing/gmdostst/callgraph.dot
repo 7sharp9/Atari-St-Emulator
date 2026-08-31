@@ -1,0 +1,26 @@
+digraph callgraph {
+  node [shape=ellipse fontname="monospace" fontsize=9];
+  entry [label="ENTRY\nx1"];
+  f_fc4cee [label="Cconws_rom\nx43"];
+  f_00a344 [label="tst_directories\nx1"];
+  f_00a5f6 [label="tst_files\nx1"];
+  f_00a78e [label="tst_sys\nx1"];
+  f_00a840 [label="main\nx1"];
+  f_00a8c6 [label="get_sr\nx1"];
+  f_00a8ca [label="strcmp\nx3"];
+  f_00a8ec [label="strlen\nx1"];
+  f_00a8fa [label="memcmp\nx1"];
+  f_00a344 -> f_fc4cee [label="x15" fontsize=8];
+  f_00a840 -> f_fc4cee [label="x12" fontsize=8];
+  f_00a5f6 -> f_fc4cee [label="x9" fontsize=8];
+  f_00a78e -> f_fc4cee [label="x5" fontsize=8];
+  f_00a344 -> f_00a8ca [label="x3" fontsize=8];
+  entry -> f_fc4cee [label="x2" fontsize=8];
+  entry -> f_00a840 [label="x1" fontsize=8];
+  f_00a840 -> f_00a344 [label="x1" fontsize=8];
+  f_00a344 -> f_00a8ec [label="x1" fontsize=8];
+  f_00a840 -> f_00a5f6 [label="x1" fontsize=8];
+  f_00a5f6 -> f_00a8fa [label="x1" fontsize=8];
+  f_00a840 -> f_00a78e [label="x1" fontsize=8];
+  f_00a78e -> f_00a8c6 [label="x1" fontsize=8];
+}
