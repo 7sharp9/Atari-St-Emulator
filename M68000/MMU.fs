@@ -485,6 +485,41 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     fdcDrive (int track) fdcSide (int sector) dmaAddr (if r then "OK" else "no data"))
         r
 
+    ///Symmetric to tryReadSector: copies a real 512-byte sector *out* of RAM (at the DMA Address
+    ///Counter's current value) *into* the mounted disk-A image - the RAM->media direction of a
+    ///WD1772 Write Sector ($Ax) command. Same geometry (1-based sector, .ST side interleave) and
+    ///the same synchronous FAT12-only model as the read path; mirrors Hatari's
+    ///FDC_WriteSector_ST -> Floppy_WriteSectors (src/fdc.c).
+    ///
+    ///Deliberately in-memory only: it mutates the `diskA` byte array (so a read-back later in the
+    ///same run sees the write), but nothing ever writes the host .ST file. That keeps every run
+    ///deterministic - a run can't silently rewrite its own input - and keeps the committed
+    ///reversing/*/*.st CFG artefacts byte-stable. GEMDOS test programs (Dcreate/Fwrite/Fseek/...)
+    ///and control-flow reconstruction only need within-run persistence, which this gives. A
+    ///persistent write-through to the host file would be a separate, explicit feature.
+    let tryWriteSector (track: byte) (sector: byte) (dmaAddr: uint32) =
+        let r =
+            match diskA with
+            | None -> false
+            | Some _ when fdcDrive <> 0 -> false     //only drive A is backed by an image
+            | Some _ when fdcSide >= diskASides -> false
+            | Some bytes ->
+                let s = int sector
+                if s < 1 || s > diskASectorsPerTrack then false
+                else
+                    let logicalSector = (int track * diskASides + fdcSide) * diskASectorsPerTrack + (s - 1)
+                    let offset = logicalSector * 512
+                    if offset < 0 || offset + 512 > bytes.Length then false
+                    else
+                        for i in 0 .. 511 do
+                            match translateRamAddress (dmaAddr + uint32 i) with
+                            | Some idx -> bytes.[offset + i] <- ram.[int idx]
+                            | None -> ()
+                        true
+        fdcLog (sprintf "write drive=%d track=%d side=%d sector=%d dma=$%06x -> %s"
+                    fdcDrive (int track) fdcSide (int sector) dmaAddr (if r then "OK" else "no data"))
+        r
+
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
         if flatBus then flatGet address else
@@ -732,16 +767,19 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 fdcTrack <- newTrack
                 fdcStatus <- newStatus
             | 0uy ->
-                //Type II Read Sector: top 3 bits "100", bottom 2 bits "00" (FD-HD_Programming.pdf's
+                //Type II sector transfer: Read Sector ($8x, media -> RAM) or Write Sector ($Ax,
+                //RAM -> media). Top 3 bits "100"/"101", bottom 2 bits "00" (FD-HD_Programming.pdf's
                 //FDC Command Summary table - the m/h/e flag bits 4/3/2 don't affect this
-                //classification). With a disk image mounted, copy the real requested sector
-                //straight into RAM at the already-programmed DMA address counter (real boot-ROM
-                //sequences always set Track/Sector/DMA-address before issuing the command - FD-HD
-                //Programming.pdf's own DMA programming tips) and report success, instead of the
-                //always-Record-Not-Found stub every other command still uses. This project has no
-                //command timing or real WD1772 seek/settle modeling, so - matching every other FDC
-                //command here - the whole operation completes synchronously on this one write.
+                //classification). With a disk image mounted, the transfer runs against the
+                //already-programmed DMA address counter (real boot-ROM / GEMDOS sequences always
+                //set Track/Sector/DMA-address before issuing the command - FD-HD Programming.pdf's
+                //own DMA programming tips) and reports success, instead of the always-Record-Not-
+                //Found stub every other command still uses. This project has no command timing or
+                //real WD1772 seek/settle modeling, so - matching every other FDC command here - the
+                //whole operation completes synchronously on this one write. See tryReadSector /
+                //tryWriteSector and Hatari FDC_Update{Read,Write}SectorsCmd (src/fdc.c).
                 let isReadSector = (input &&& 0xE3uy) = 0x80uy
+                let isWriteSector = (input &&& 0xE0uy) = 0xA0uy   //Hatari src/fdc.c: (Command & 0xe0) == 0xa0
                 let multiRecord = input &&& 0x10uy <> 0uy
                 let dmaAddr =
                     (uint32 dmaAddrHighByte <<< 16) ||| (uint32 dmaAddrMidByte <<< 8) ||| uint32 dmaAddrLowByte
@@ -751,10 +789,11 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 //drive couldn't find stops the run and reports that sector's error status, matching
                 //real hardware - see fdcCommandStatus.
                 let count = if multiRecord then max 1 (int dmaSectorCount) else 1
-                let mutable ok = isReadSector
+                let xfer t s a = if isWriteSector then tryWriteSector t s a else tryReadSector t s a
+                let mutable ok = isReadSector || isWriteSector
                 let mutable transferred = 0
                 while ok && transferred < count do
-                    ok <- tryReadSector fdcTrack (fdcSector + byte transferred) (dmaAddr + uint32 (transferred * 512))
+                    ok <- xfer fdcTrack (fdcSector + byte transferred) (dmaAddr + uint32 (transferred * 512))
                     if ok then transferred <- transferred + 1
                 //Real hardware advances the DMA address counter ($FF8609/B/D) by one per byte
                 //actually transferred and decrements the DMA sector-count register; GEMDOS reads
@@ -771,14 +810,16 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 let status = if ok then 0uy else fdcCommandStatus input
                 if status <> fdcStatus then mutations <- mutations + 1UL
                 fdcStatus <- status
-                //Only a Read Sector actually runs a DMA transfer, so only it moves the $FF8606
-                //DMA-error bit; other Type II/III commands (Write Sector, Read Address, Force
-                //Interrupt) leave it where the last transfer left it.
-                if isReadSector && dmaNoError <> ok then
+                //Read Sector and Write Sector both run a DMA transfer, so both move the $FF8606
+                //DMA-error bit; other Type II/III commands (Read Address, Force Interrupt) leave it
+                //where the last transfer left it.
+                if (isReadSector || isWriteSector) && dmaNoError <> ok then
                     dmaNoError <- ok
                     mutations <- mutations + 1UL
                 fdcLog (sprintf "cmd   $8604<-$%02x  %s multi=%b count=%d transferred=%d status=$%02x"
-                            input (if isReadSector then "READ-SECTOR" else "(other)") multiRecord count transferred status)
+                            input
+                            (if isReadSector then "READ-SECTOR" elif isWriteSector then "WRITE-SECTOR" else "(other)")
+                            multiRecord count transferred status)
             | 1uy -> if input <> fdcTrack then mutations <- mutations + 1UL
                      fdcTrack <- input
                      fdcLog (sprintf "track $8604<-%d" (int input))

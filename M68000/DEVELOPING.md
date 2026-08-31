@@ -166,8 +166,12 @@ ATARI_TRACE_OS=1 ATARI_DISK_A=inttest_disk.st \
 models single- and double-sided images, PSG side/drive select, Type I head
 movement (seek/restore/step), the DMA address counter and the `$FF8606` DMA
 status register - enough for TOS to read a FAT12 filesystem and `Pexec` a
-program. `ATARI_TRACE_FDC=1` logs every FDC register/command write and sector
-read to stderr (compare against `tools/hatari_trace.py --trace fdc`).
+program. Write Sector (`$Ax`) is also modelled, so GEMDOS can create
+directories and write files (`Dcreate`/`Fcreate`/`Fwrite`/`Fseek`); writes hit
+the in-memory image only - the host `.ST` file is never modified, so runs stay
+deterministic and committed disk artefacts stay byte-stable. `ATARI_TRACE_FDC=1`
+logs every FDC register/command write and every sector read/write to stderr
+(compare against `tools/hatari_trace.py --trace fdc`).
 
 Build a disk with a program TOS will auto-run at boot:
 
