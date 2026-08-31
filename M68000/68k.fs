@@ -1021,6 +1021,45 @@ type Cpu =
             (if eaToDn then sprintf "%s,D%u" desc dn else sprintf "D%u,%s" dn desc)
         { after with PC = x.PC + 2 + extBytes; CCR = ccr }
 
+    ///Shared ADDQ / SUBQ (`isAdd` selects). An destination (word/long encodings only) is a plain
+    ///32-bit add/subtract with CCR untouched, exactly like ADDA/SUBA; every other mode reads,
+    ///adds/subtracts `amount` at the encoded size and sets the full ADD/SUB CCR, all through the
+    ///shared EA decoder. Size 00/01/10 = byte/word/long; `amount` 0 encodes 8.
+    member x.AddSubQ (isAdd: bool) (quickData: byte) (size: byte) (eamode: byte) (eareg: byte) : Cpu =
+        let amount = if quickData = 0uy then 8 else int quickData
+        let mn = if isAdd then "addq" else "subq"
+        let szName = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
+        match eamode with
+        | 0b001uy -> //An - 32-bit, CCR unaffected
+            let result = x.AddressRegister eareg + (if isAdd then amount else -amount)
+            printfn "%s.%s #%u,A%u" mn szName amount eareg
+            { x.WithAddressRegister eareg result with PC = x.PC + 2 }
+        | _ ->
+            let sz =
+                match size with
+                | 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long
+                | s -> failwithf "%s: bad size %x" mn s
+            let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
+            let dest = x.ReadEa sz loc
+            let result, ccr =
+                match sz with
+                | OperandSize.Byte ->
+                    let d = byte dest
+                    let a = byte amount
+                    (if isAdd then int (d + a) else int (d - a)),
+                    (if isAdd then CCR.Add_Byte x.CCR d a else CCR.Subtract_Byte x.CCR d a)
+                | OperandSize.Word ->
+                    let d = int16 dest
+                    let a = int16 amount
+                    (if isAdd then int (d + a) &&& 0xffff else int (d - a) &&& 0xffff),
+                    (if isAdd then CCR.Add_Word x.CCR d a else CCR.Subtract_Word x.CCR d a)
+                | _ ->
+                    (if isAdd then dest + amount else dest - amount),
+                    (if isAdd then CCR.Add x.CCR dest amount else CCR.Subtract x.CCR dest amount)
+            let after = x.WriteEa sz loc result (regUpdate x)
+            printfn "%s.%s #%u,%s" mn szName amount desc
+            { after with PC = x.PC + 2 + extBytes; CCR = ccr }
+
     member x.EvaluateCondition (cond: Condition) =
         match cond with
         | Condition.T -> true
@@ -1872,230 +1911,10 @@ type Cpu =
     member x.DecodeBucket5 (instruction: int) : Cpu =
         match instruction with
         | ADDQ(quickData, size, eamode, eareg) ->
-            let amount = if quickData = 0uy then 8 else int quickData
-            match eamode with
-            | 0b001uy -> //An - always a 32-bit add, CCR unaffected (like ADDA)
-                let dest = x.AddressRegister eareg
-                let result = dest + amount
-                let newCpu = {x.WithAddressRegister eareg result with PC = x.PC+2}
-                printfn "addq.%s #%u,A%u" (match size with 0uy -> "b" | 1uy -> "w" | _ -> "l") amount eareg
-                newCpu
-            | 0b000uy -> //Dn
-                match size with
-                | 0b01uy -> //word
-                    let dest = int16 (x.DataRegister eareg)
-                    let result = dest + int16 amount
-                    let ccr = CCR.Add_Word x.CCR dest (int16 amount)
-                    let newValue = (x.DataRegister eareg &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
-                    printfn "addq.w #%u,D%u" amount eareg
-                    newCpu
-                | 0b00uy -> //byte
-                    let dest = byte (x.DataRegister eareg)
-                    let result = dest + byte amount
-                    let ccr = CCR.Add_Byte x.CCR dest (byte amount)
-                    let newValue = (x.DataRegister eareg &&& ~~~0xff) ||| int result
-                    let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
-                    printfn "addq.b #%u,D%u" amount eareg
-                    newCpu
-                | _ -> //long
-                    let dest = x.DataRegister eareg
-                    let result = dest + amount
-                    let ccr = CCR.Add x.CCR dest amount
-                    let newCpu = {x.WithDataRegister eareg result with PC = x.PC+2; CCR = ccr}
-                    printfn "addq.l #%u,D%u" amount eareg
-                    newCpu
-            | 0b010uy -> //(An)
-                let addr = x.AddressRegister eareg
-                match size with
-                | 0b01uy -> //word
-                    let dest = int16 (x.MMU.ReadWord(uint32 addr))
-                    let result = dest + int16 amount
-                    let ccr = CCR.Add_Word x.CCR dest (int16 amount)
-                    x.MMU.WriteWord (uint32 addr) result
-                    printfn "addq.w #%u,(a%u)" amount eareg
-                    {x with PC = x.PC+2; CCR = ccr}
-                | 0b00uy -> //byte
-                    let dest = x.MMU.ReadByte(uint32 addr)
-                    let result = dest + byte amount
-                    let ccr = CCR.Add_Byte x.CCR dest (byte amount)
-                    x.MMU.WriteByte (uint32 addr) result
-                    printfn "addq.b #%u,(a%u)" amount eareg
-                    {x with PC = x.PC+2; CCR = ccr}
-                | _ -> //long
-                    let dest = x.MMU.ReadLong(uint32 addr)
-                    let result = dest + amount
-                    let ccr = CCR.Add x.CCR dest amount
-                    x.MMU.WriteLong (uint32 addr) result
-                    printfn "addq.l #%u,(a%u)" amount eareg
-                    {x with PC = x.PC+2; CCR = ccr}
-            | 0b101uy -> //(d16,An)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + int displacement
-                match size with
-                | 0b01uy -> //word
-                    let dest = int16 (x.MMU.ReadWord(uint32 addr))
-                    let result = dest + int16 amount
-                    let ccr = CCR.Add_Word x.CCR dest (int16 amount)
-                    x.MMU.WriteWord (uint32 addr) result
-                    printfn "addq.w #%u,%i(a%u)" amount displacement eareg
-                    {x with PC = x.PC+4; CCR = ccr}
-                | 0b00uy -> //byte
-                    let dest = x.MMU.ReadByte(uint32 addr)
-                    let result = dest + byte amount
-                    let ccr = CCR.Add_Byte x.CCR dest (byte amount)
-                    x.MMU.WriteByte (uint32 addr) result
-                    printfn "addq.b #%u,%i(a%u)" amount displacement eareg
-                    {x with PC = x.PC+4; CCR = ccr}
-                | _ -> //long
-                    let dest = x.MMU.ReadLong(uint32 addr)
-                    let result = dest + amount
-                    let ccr = CCR.Add x.CCR dest amount
-                    x.MMU.WriteLong (uint32 addr) result
-                    printfn "addq.l #%u,%i(a%u)" amount displacement eareg
-                    {x with PC = x.PC+4; CCR = ccr}
-            | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                match size with
-                | 0b01uy -> //word
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest + int16 amount
-                    let ccr = CCR.Add_Word x.CCR dest (int16 amount)
-                    x.MMU.WriteWord addr result
-                    printfn "addq.w #%u,$%x.l" amount addr
-                    {x with PC = x.PC+6; CCR = ccr}
-                | 0b00uy -> //byte
-                    let dest = x.MMU.ReadByte addr
-                    let result = dest + byte amount
-                    let ccr = CCR.Add_Byte x.CCR dest (byte amount)
-                    x.MMU.WriteByte addr result
-                    printfn "addq.b #%u,$%x.l" amount addr
-                    {x with PC = x.PC+6; CCR = ccr}
-                | _ -> //long
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest + amount
-                    let ccr = CCR.Add x.CCR dest amount
-                    x.MMU.WriteLong addr result
-                    printfn "addq.l #%u,$%x.l" amount addr
-                    {x with PC = x.PC+6; CCR = ccr}
-            | _ -> failwithf "addq not implemented for eamode %x" eamode
+            x.AddSubQ true quickData size eamode eareg
 
         | SUBQ(quickData, size, eamode, eareg) ->
-            let amount = if quickData = 0uy then 8 else int quickData
-            match eamode with
-            | 0b001uy -> //An - always a 32-bit subtract, CCR unaffected (like SUBA)
-                let dest = x.AddressRegister eareg
-                let result = dest - amount
-                let newCpu = {x.WithAddressRegister eareg result with PC = x.PC+2}
-                printfn "subq.%s #%u,A%u" (match size with 0uy -> "b" | 1uy -> "w" | _ -> "l") amount eareg
-                newCpu
-            | 0b000uy -> //Dn
-                match size with
-                | 0b01uy -> //word
-                    let dest = int16 (x.DataRegister eareg)
-                    let result = dest - int16 amount
-                    let ccr = CCR.Subtract_Word x.CCR dest (int16 amount)
-                    let newValue = (x.DataRegister eareg &&& ~~~0xffff) ||| (int result &&& 0xffff)
-                    let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
-                    printfn "subq.w #%u,D%u" amount eareg
-                    newCpu
-                | 0b00uy -> //byte
-                    let dest = byte (x.DataRegister eareg)
-                    let result = dest - byte amount
-                    let ccr = CCR.Subtract_Byte x.CCR dest (byte amount)
-                    let newValue = (x.DataRegister eareg &&& ~~~0xff) ||| int result
-                    let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2; CCR = ccr}
-                    printfn "subq.b #%u,D%u" amount eareg
-                    newCpu
-                | 0b10uy -> //long
-                    let dest = x.DataRegister eareg
-                    let result = dest - amount
-                    let ccr = CCR.Subtract x.CCR dest amount
-                    let newCpu = {x.WithDataRegister eareg result with PC = x.PC+2; CCR = ccr}
-                    printfn "subq.l #%u,D%u" amount eareg
-                    newCpu
-                | _ -> failwithf "subq not implemented for size %x on Dn" size
-            | 0b010uy -> //(An)
-                let addr = x.AddressRegister eareg
-                match size with
-                | 0b01uy -> //word
-                    let dest = int16 (x.MMU.ReadWord(uint32 addr))
-                    let result = dest - int16 amount
-                    let ccr = CCR.Subtract_Word x.CCR dest (int16 amount)
-                    x.MMU.WriteWord (uint32 addr) result
-                    printfn "subq.w #%u,(a%u)" amount eareg
-                    {x with PC = x.PC+2; CCR = ccr}
-                | 0b00uy -> //byte
-                    let dest = x.MMU.ReadByte(uint32 addr)
-                    let result = dest - byte amount
-                    let ccr = CCR.Subtract_Byte x.CCR dest (byte amount)
-                    x.MMU.WriteByte (uint32 addr) result
-                    printfn "subq.b #%u,(a%u)" amount eareg
-                    {x with PC = x.PC+2; CCR = ccr}
-                | _ -> //long
-                    let dest = x.MMU.ReadLong(uint32 addr)
-                    let result = dest - amount
-                    let ccr = CCR.Subtract x.CCR dest amount
-                    x.MMU.WriteLong (uint32 addr) result
-                    printfn "subq.l #%u,(a%u)" amount eareg
-                    {x with PC = x.PC+2; CCR = ccr}
-            | 0b101uy -> //(d16,An)
-                match size with
-                | 0b01uy -> //word
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister eareg + int displacement)
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest - int16 amount
-                    let ccr = CCR.Subtract_Word x.CCR dest (int16 amount)
-                    x.MMU.WriteWord addr result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "subq.w #%u,%i(a%u)" amount displacement eareg
-                    newCpu
-                | 0b10uy -> //long
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister eareg + int displacement)
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest - amount
-                    let ccr = CCR.Subtract x.CCR dest amount
-                    x.MMU.WriteLong addr result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "subq.l #%u,%i(a%u)" amount displacement eareg
-                    newCpu
-                | _ -> //byte
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister eareg + int displacement)
-                    let dest = x.MMU.ReadByte addr
-                    let result = dest - byte amount
-                    let ccr = CCR.Subtract_Byte x.CCR dest (byte amount)
-                    x.MMU.WriteByte addr result
-                    let newCpu = {x with PC = x.PC+4; CCR = ccr}
-                    printfn "subq.b #%u,%i(a%u)" amount displacement eareg
-                    newCpu
-            | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                match size with
-                | 0b01uy -> //word
-                    let dest = int16 (x.MMU.ReadWord addr)
-                    let result = dest - int16 amount
-                    let ccr = CCR.Subtract_Word x.CCR dest (int16 amount)
-                    x.MMU.WriteWord addr result
-                    printfn "subq.w #%u,$%x.l" amount addr
-                    {x with PC = x.PC+6; CCR = ccr}
-                | 0b00uy -> //byte
-                    let dest = x.MMU.ReadByte addr
-                    let result = dest - byte amount
-                    let ccr = CCR.Subtract_Byte x.CCR dest (byte amount)
-                    x.MMU.WriteByte addr result
-                    printfn "subq.b #%u,$%x.l" amount addr
-                    {x with PC = x.PC+6; CCR = ccr}
-                | _ -> //long
-                    let dest = x.MMU.ReadLong addr
-                    let result = dest - amount
-                    let ccr = CCR.Subtract x.CCR dest amount
-                    x.MMU.WriteLong addr result
-                    printfn "subq.l #%u,$%x.l" amount addr
-                    {x with PC = x.PC+6; CCR = ccr}
-            | _ -> failwithf "subq not implemented for eamode %x" eamode
+            x.AddSubQ false quickData size eamode eareg
 
         | Scc(cond, eamode, eareg) ->
             //Scc: sets the byte at <ea> to $FF if cond is true, $00 otherwise. CCR unaffected.
