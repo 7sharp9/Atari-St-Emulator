@@ -202,6 +202,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable mfpPending = false
     let mutable mfpVector = 0
     let mutable timerCPending = false
+    let mutable timerBPending = false
 
     let mutable watchRange : (uint32 * uint32) option = None
     ///PC of the instruction currently executing, pushed in from Program.fs's Step() before each
@@ -944,9 +945,22 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if ierb &&& 0x20uy <> 0uy && imrb &&& 0x20uy <> 0uy && not timerCPending then
             timerCPending <- true
             mutations <- mutations + 1UL
-    member x.PendingInterruptLevel = if mfpPending || timerCPending then 6 elif vblPending then 4 else 0
+    ///Asserts MFP Timer B (channel 8, level 6, vector $48 -> $120). Gated on Timer B being armed
+    ///(TBCR non-zero and not in output-reset $10) and its channel enabled+unmasked in IERA/IMRA
+    ///bit 0 - TOS leaves Timer B off, games (Super Sprint's post-attract engine) turn it on for a
+    ///raster palette split. This is a COARSE tick like RaiseTimerC, delivered on an instruction
+    ///count, not a per-scanline HBL event - enough to run an ISR that only advances a counter, not
+    ///enough to place a mid-frame $ff8240 write at the right raster line.
+    member x.RaiseTimerB() =
+        let iera = mfpRegisters.[int (0xFFFA07u - mpf68901)]
+        let imra = mfpRegisters.[int (0xFFFA13u - mpf68901)]
+        if tbcr &&& 0x0Fuy <> 0uy && iera &&& 0x01uy <> 0uy && imra &&& 0x01uy <> 0uy && not timerBPending then
+            timerBPending <- true
+            mutations <- mutations + 1UL
+    member x.PendingInterruptLevel = if mfpPending || timerBPending || timerCPending then 6 elif vblPending then 4 else 0
     member x.PendingInterruptVector =
         if mfpPending then mfpVector
+        elif timerBPending then 0x48
         elif timerCPending then 0x45
         elif vblPending then 28
         else 0
@@ -955,6 +969,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///lower still-pending source stays pending, matching real interrupt-acknowledge behaviour.
     member x.AcknowledgeInterrupt() =
         if mfpPending then mfpPending <- false
+        elif timerBPending then timerBPending <- false
         elif timerCPending then timerCPending <- false
         elif vblPending then vblPending <- false
         mutations <- mutations + 1UL

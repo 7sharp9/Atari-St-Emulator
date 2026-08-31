@@ -1,10 +1,18 @@
-# supersprint — a real 1986 commercial game running to its attract mode
+# supersprint — a real 1986 commercial game, driven into a live race
 
 The first **commercial** disk-loaded program the emulator runs, as opposed to the GPL
 Hatari test binaries in `../int_test/` and `../gmdostst/`. Super Sprint's `\AUTO\SSPRINT.PRG`
-loads through the real TOS 1.00 ROM, pulls in its data files, and runs its
-intro/credits sequence and double-buffered attract loop indefinitely with no
-instruction wall and no crash.
+loads through the real TOS 1.00 ROM, pulls in its data files, runs its
+intro/credits sequence and double-buffered attract loop, and — with injected
+IKBD input (55th pass) — leaves attract, walks its track-select / "PREPARE TO
+RACE" menu, and starts an actual Track 1 race that runs with a live drone car,
+lap counting and race timer. No instruction wall, no crash.
+
+The one caveat is the in-race raster palette: the race engine drives a full-frame
+MFP Timer B raster split (`movem.l <16 words>,$ffff8240` per scanline group) that
+this emulator delivers only as a coarse periodic tick, so the road/sky gradient is
+a flat colour rather than a banded one. Getting that right needs the per-scanline
+chip scheduler this project has deliberately not built.
 
 ## The program
 
@@ -37,16 +45,27 @@ same Pexec(0) path `int_test` and `gmdostst` already use.
 
 ## What it needed from the emulator
 
+### To reach attract (52nd pass)
+
 Two commits, both plain addressing-mode gaps, both routed through the shared EA
 decoder (`x.ResolveEa` / `x.ReadEa` / `x.WriteEa`) — the same migration the
 45th–49th passes did for the other instruction families. **No cycle-scheduler
-work**; the game's attract loop is driven entirely by `Vsync` / VBL counting,
-which the instruction-counted timing already models.
+work**; the attract loop is driven entirely by `Vsync` / VBL counting, which the
+instruction-counted timing already models.
 
 | commit | wall | fix |
 |--------|------|-----|
 | `2d466ce` | `jsr $cc(a5)` (JSR eamode 5); later `mulu.w #4,d1` (MULU immediate) | JSR/JMP and the MULU.w/MULS.w source operand onto the shared EA decoder |
 | `ccbae25` | `addq #n,(d8,An,Xn)` (ADDQ eamode 6) | ADDQ/SUBQ onto the shared EA decoder (new `x.AddSubQ` helper) |
+
+### To reach a race (55th pass)
+
+No instruction walls. Two peripheral-behaviour gaps:
+
+| commit | wall | fix |
+|--------|------|-----|
+| `dab30e5` | a joystick report ($FE/$FF + state byte) only ever delivered its header byte | the keyboard ACIA re-raises its MFP channel-6 IRQ while bytes remain in the RX FIFO, so the game's own single-byte-per-interrupt IKBD handler at `$104b6` sees the whole packet (EnqueueIkbd drops a packet in at once; real bytes arrive 1.28 ms / one IRQ apart) |
+| *this commit* | on leaving attract the game installs its own VBL + **MFP Timer B** event-count handler (vector `$120`) and its engine never advanced without Timer B ticks | a **coarse** Timer B interrupt, delivered on an instruction count like the existing Timer C — enough to run the game's counter-only Timer B ISR and unblock the engine, not enough to place a mid-frame `$ffff8240` write at a specific raster line |
 
 ## How it was run
 
@@ -75,15 +94,51 @@ OS   3000158  Setscreen(log=$f8000, phys=$f8000)   /  flip every emulated frame,
               …  in between (title screen sitting still)
 ```
 
-The loop repeats a ~4.5M-step cycle (≈375 emulated frames) forever, cycling through
-the title screen, an in-attract **gameplay demo** (drone cars running Track 1), and
-the credits screen. The game **never polls the keyboard** (no `Bconstat` / `Cconis` /
-`Kbshift` anywhere in a 40M-step run) — it is a pure timed attract sequence.
+The loop repeats a ~4.5M-step cycle (≈375 emulated frames), cycling through the
+title screen, an in-attract **gameplay demo** (drone cars running Track 1), and the
+credits screen. It uses no GEMDOS/BIOS keyboard call (no `Bconstat` / `Cconis` /
+`Kbshift` in a 40M-step run) — but it is **not** input-blind: it installs its own
+IKBD ACIA interrupt handler at `$104b6` (vector `$118`) that maintains a scancode
+key-state table at `-4802(a4)` and a 2-byte joystick-state table at `-4804(a4)`,
+and the attract loop polls the joystick table for a fire press.
 
 - `title.png` — framebuffer (`$f8000`, low-res, 16-colour) at step 34 000 000: the
   "SUPER SPRINT / © 1986 Atari Games" logo screen (F1 car bursting through), correct.
 - `gameplay.png` — the overhead Track 1 attract demo (drone cars mid-lap): correct
   playfield, cars, barriers, trees, shadows, `TRACK 1` / `DRONE LAP` text.
+
+## Driving it into a race (55th pass)
+
+The IKBD handler at `$104b6` decodes the IKBD "joystick event reporting" packet
+format: a `$FE` (joystick 0) or `$FF` (joystick 1) header byte, then one state
+byte (bit 7 = fire, bits 0–3 = directions), and stores the state byte at
+`-4804(a4)` / `-4803(a4)`. Keyboard bytes go through the same handler into
+`keytable[scancode]` (`$3` on make, bit 0 cleared on break). A helper at `$105a0`
+reads "input channel N": N=0 synthesises a joystick byte from specific keys
+(`$1E`/`$2C`/`$26` → left, `$20`/`$2D`/`$28` → right, LShift/RShift/Alt → fire —
+no accelerate bit), N=2/3 return the raw joystick-0/1 bytes. The menu maps player
+0 to channel 0 (keyboard), players 1–2 to the joysticks.
+
+So a run driven purely by injected IKBD packets (`kbd` in the REPL, or
+`ATARI_KEY_INPUT`):
+
+1. **attract → track select:** inject `fe 80` (joystick-0 fire). The game runs
+   `Supexec($f988)` (installs the VBL + Timer B raster handlers) and
+   `Supexec($12b9c)` (PSG sound init) and draws the **SELECT TRACK** screen —
+   `trackselect.png`.
+2. **join players:** `kbd 2a` (LShift = keyboard fire) adds player 0; `fe 80` adds
+   a joystick player. Each joined slot switches from "PRESS ACCELERATE TO PLAY" to
+   "PREPARE TO RACE" and the screen becomes the three-cars ready screen with a
+   countdown — `prepare.png`.
+3. **race:** the countdown expires, the game flood-fills the track bitmap into a
+   collision map (`$15080`), and Track 1 starts — `race.png`: correct playfield,
+   HUD (`BLUE CAR` / `RED CAR` / `DRONE` lap panels), grandstands, trees, the drone
+   car doing timed laps. Stable over 15M+ steps of racing.
+
+The keyboard channel has no accelerate bit, so the human car mostly sits on the
+grid while the drone races; wiring the live SDL2 window's real joystick axis into
+channel 2/3 would make it fully playable. The road/sky palette is flat, not
+banded — see the raster-split caveat at the top.
 
 ### The "status bar glitch" — investigated 53rd pass, not an emulator bug
 
@@ -152,6 +207,9 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 | `blocks.txt` | executed basic-block table with hit counts (coverage map) |
 | `title.png` | framebuffer at step 34 000 000 — the "SUPER SPRINT / © 1986 Atari Games" logo screen |
 | `gameplay.png` | framebuffer during the in-attract Track 1 drone-car demo (the top band is the grandstand crowd, not a glitch — see above) |
+| `trackselect.png` | the **SELECT TRACK** screen, reached from attract by injecting a joystick fire press (55th pass) |
+| `prepare.png` | the three-cars "PREPARE TO RACE" ready screen with the pre-race countdown (55th pass) |
+| `race.png` | a live Track 1 race frame — HUD lap panels, grandstands, the drone car mid-lap (55th pass) |
 | `gfxview.md` + `gfx_*.png` | looking at the palettes and decoded bitmaps in RAM with `tools/gfxview.py` (54th pass) — the `$1d3xx` title-fade palette ramp, a whole-RAM contact sheet, the title bitmap decoded from `$f8000` |
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.

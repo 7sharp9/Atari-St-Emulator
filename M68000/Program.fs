@@ -117,6 +117,10 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let instructionsPerFrame = 12000UL
     /// Timer C is 4x the VBL rate; the 4:1 ratio is the invariant, not the absolute period.
     let timerCPeriod = instructionsPerFrame / 4UL
+    /// Timer B (games' raster-split palette timer, off unless armed). A real event-count Timer B at
+    /// TBDR=2 fires ~156x/frame; this is a coarse fraction of that - enough to run a counter-only
+    /// ISR, not to place a mid-frame palette write at a specific scanline (see MMU.RaiseTimerB).
+    let timerBPeriod = instructionsPerFrame / 32UL
     let mutable stepCount = 0UL
 
     ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in
@@ -284,6 +288,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             mmu.RaiseInterrupt 4 28
         if stepCount % timerCPeriod = 0UL then
             mmu.RaiseTimerC()
+        if stepCount % timerBPeriod = 0UL then
+            mmu.RaiseTimerB()
         match keyInjectGroups with
         | (at, bytes) :: rest when stepCount >= at ->
             keyInjectGroups <- rest
