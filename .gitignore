@@ -5,10 +5,30 @@
 #  - *.snap        : CPU/RAM state snapshots, session-local, keyed to a ROM + opcode-coverage point
 #  - tests/680x0/  : downloaded 680x0 ProcessorTests vectors (fetch with tools/fetch_680x0_tests.py)
 #  - *_out/        : teartest / screendump frame dumps
+#  - scratchpad/   : per-session working files (drive scripts, PNGs, .gfx, .html dumps)
+#  - *.gfx         : gfxview sidecar, produced per run by ATARI_GFX_SIDECAR
 *.snap
 M68000/tests/680x0/
 *_out/
 __pycache__/
+M68000/scratchpad/
+*.gfx
+
+# Copyrighted binaries - ROM images and commercial game disks/archives, copied in
+# per checkout, never committed (see the reversing/ READMEs for sha256s). Listed
+# by name rather than by glob so a new committed test .ST / test ROM still works.
+*.IMG
+/A_013.ST
+/Super Sprint.zip
+/Super Sprint.ST
+M68000/Super Sprint.ST
+M68000/Super Sprint.zip
+M68000/checkpoint.txt
+M68000/file_id.*
+M68000/ram.png
+M68000/ss.html
+M68000PRM.md
+M68000PRM.pdf
 
 # User-specific files
 *.suo
