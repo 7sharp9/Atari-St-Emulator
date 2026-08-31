@@ -676,6 +676,11 @@ type Cpu =
      SSP: int
      PC: int
      CCR: int16
+     //Set by STOP #imm, cleared when an interrupt wakes the CPU (see Step()). While true, Step()
+     //does not fetch - it idles until a pending interrupt outranks the mask STOP loaded into SR.
+     //Deliberately NOT in the snapshot format (a snapshot taken on the exact STOP idle would just
+     //re-run one iteration of a wait loop on resume - negligible, and it keeps the format stable).
+     Stopped: bool
      MMU: MMU }
 
     static member Create(mmu: MMU) =
@@ -683,7 +688,7 @@ type Cpu =
         { D0=0; D1=0; D2=0; D3=0; D4=0; D5=0; D6=0; D7=0
           A0=0; A1=0; A2=0; A3=0; A4=0; A5=0; A6=0; A7=0
           USP=0; SSP=0
-          PC=0; CCR=0s; MMU=mmu}
+          PC=0; CCR=0s; Stopped=false; MMU=mmu}
           
     member x.C = not (x.CCR &&& 0x1s = 0s)
     member x.V = not (x.CCR &&& 0x2s = 0s)
@@ -1148,7 +1153,13 @@ type Cpu =
     member x.Step() =
     //TODO implement prefetch ops
         let pendingLevel = x.MMU.PendingInterruptLevel
-        if pendingLevel > 0 && int16 (pendingLevel <<< 8) > x.InterruptMask then
+        let takeable = pendingLevel > 0 && int16 (pendingLevel <<< 8) > x.InterruptMask
+        if x.Stopped && not takeable then
+            //STOP #imm is in effect and nothing outranks the mask yet - idle, exactly as the real
+            //CPU would between instruction boundaries. Interrupt acks still tick (Timer C etc.), so
+            //the loop detector sees this as "waiting on a scheduled interrupt", not a stuck spin.
+            x
+        elif takeable then
             //Real 68000 hardware samples IPL2-0 between instructions and takes any request whose
             //level exceeds the current mask (or is level 7, always taken - not modeled separately
             //since no level-7 source exists yet) - see EnterInterrupt's own comment for why this
@@ -1156,7 +1167,7 @@ type Cpu =
             let vector = x.MMU.PendingInterruptVector
             x.MMU.AcknowledgeInterrupt()
             printfn "interrupt: level %d -> vector %d" pendingLevel vector
-            x.EnterInterrupt pendingLevel vector
+            (if x.Stopped then { x with Stopped = false } else x).EnterInterrupt pendingLevel vector
         else
         try
             let instruction = x.MMU.ReadWord (uint32 x.PC)
@@ -1329,19 +1340,32 @@ type Cpu =
                 | OperandSize.Word -> 0, CCR.Subtract_IgnoringX_Word x.CCR (int16 dest) (int16 imm)
                 | _ -> 0, CCR.Subtract_IgnoringX x.CCR dest imm)
         | MOVEP(register, opmode, addressReg) ->
-            match opmode with
-            | 0b111uy -> //MOVEP.L Dx,(d16,Ay)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister addressReg + int displacement
-                let value = x.DataRegister register
-                x.MMU.WriteByte (uint32 addr) (byte (value >>> 24))
-                x.MMU.WriteByte (uint32 (addr+2)) (byte (value >>> 16))
-                x.MMU.WriteByte (uint32 (addr+4)) (byte (value >>> 8))
-                x.MMU.WriteByte (uint32 (addr+6)) (byte value)
-                let newCpu = {x with PC = x.PC+4}
-                printfn "movep.l D%u,%i(a%u)" register displacement addressReg
-                newCpu
-            | _ -> failwithf "movep: not implemented for opmode %x" opmode
+            //Transfer between Dx and alternate (every-other) bytes of memory from (d16,Ay), high
+            //byte first. opmode bit 1 = size (0 word / 1 long), bit 0 = direction (0 mem->reg /
+            //1 reg->mem). Games poke the byte-wide PSG/MFP this way; Super Hang-On's music ISR
+            //does movep.l then movep.w to $ffff8800.
+            let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
+            let addr = uint32 (x.AddressRegister addressReg + int displacement)
+            let isLong = opmode &&& 0b001uy <> 0uy   //opmode 4/6 word, 5/7 long
+            let regToMem = opmode &&& 0b010uy <> 0uy //opmode 4/5 mem->reg, 6/7 reg->mem
+            let nbytes = if isLong then 4 else 2
+            let newCpu =
+                if regToMem then
+                    let value = x.DataRegister register
+                    for i in 0 .. nbytes - 1 do
+                        let shift = (nbytes - 1 - i) * 8
+                        x.MMU.WriteByte (addr + uint32 (i * 2)) (byte (value >>> shift))
+                    x
+                else
+                    let mutable acc = 0
+                    for i in 0 .. nbytes - 1 do
+                        acc <- (acc <<< 8) ||| int (x.MMU.ReadByte (addr + uint32 (i * 2)))
+                    let cur = x.DataRegister register
+                    let merged = if isLong then acc else (cur &&& ~~~0xffff) ||| (acc &&& 0xffff)
+                    x.WithDataRegister register merged
+            if regToMem then printfn "movep.%s D%u,%i(a%u)" (if isLong then "l" else "w") register displacement addressReg
+            else printfn "movep.%s %i(a%u),D%u" (if isLong then "l" else "w") displacement addressReg register
+            { newCpu with PC = x.PC + 4 }
 
         | BitOpDynamic(register, opmode, eamode, eareg) ->
             let mnem = match opmode with 0b00uy -> "btst" | 0b01uy -> "bchg" | 0b10uy -> "bclr" | _ -> "bset"
@@ -1571,7 +1595,11 @@ type Cpu =
                 newCpu
             | 0b111uy ->
                 match eareg with
-                | 0b000uy -> failwith "not implemented" //(xxx).W
+                | 0b000uy -> //(xxx).W - sign-extend the next word to a 32-bit address
+                    let addr = int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))
+                    let newCpu = {x.WithAddressRegister a_reg addr with PC = x.PC+4}
+                    printfn "lea $%x.w,a%i" addr a_reg
+                    newCpu
                 | 0b001uy -> //(xxx).L
                     //load the next long into a_reg
                     let addr = x.MMU.ReadLong(uint32 (x.PC+2))
@@ -1587,7 +1615,12 @@ type Cpu =
                     printfn "lea $%x,a%i" displacedPC a_reg
                     newCpu
                     
-                | 0b011uy -> failwith "not implemented" //(d8,PC,Xn)
+                | 0b011uy -> //(d8,PC,Xn)
+                    let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
+                    let addr = (x.PC+2) + ext.Offset
+                    let newCpu = {x.WithAddressRegister a_reg addr with PC = x.PC+4}
+                    printfn "lea %i(pc,%s%u.%s),a%i" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") a_reg
+                    newCpu
                 | _ -> failwithf "unknown Register %x for mode %x" eareg eamode
             | _ -> failwithf "lea: unknown mode %x" eamode
 
@@ -1906,6 +1939,19 @@ type Cpu =
                 printfn "jmp %s == $%x" desc jump
                 {x with PC = int jump}
             | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg
+        | _ when instruction &&& 0xFFFF = 0x4E72 ->
+            //STOP #imm: load the immediate word into SR, then halt until an interrupt of level
+            //higher than the new mask (or reset). Privileged. The idle spin and the wake live in
+            //Step() via Cpu.Stopped. Used by raster/music handlers to sync to the next HBL/VBL -
+            //without a per-scanline chip scheduler the sync is only interrupt-granular, so a raster
+            //palette split still comes out flat (the accepted limitation), but the code runs on.
+            if not x.S then
+                printfn "stop (privilege violation)"
+                x.EnterVector 8 x.PC
+            else
+                let imm = int16 (x.MMU.ReadWord (uint32 (x.PC + 2)) &&& 0xA71F)
+                printfn "stop #$%04x" (uint16 imm)
+                { x.WithSR imm with PC = x.PC + 4; Stopped = true }
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
     member x.DecodeBucket5 (instruction: int) : Cpu =
@@ -2246,55 +2292,21 @@ type Cpu =
 
         | ADD(address, opmode, eamode, eareg) ->
             match opmode with
-            | 0b011uy -> //ADDA.W - operand's low word sign-extended to 32 bits, added to An, no flags
-                let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
-                let source = int (int16 (x.ReadEa OperandSize.Word loc))
+            | 0b011uy | 0b111uy -> //ADDA.W / ADDA.L - source added to An, no flags. .W sign-extends
+                //its low word to 32 bits. Any addressing mode, via the shared EA decoder (the old
+                //hand-rolled .L ladder was missing (An)+/-(An)/(d8,An,Xn) - Super Hang-On's LSD
+                //depacker uses adda.l (a0)+,an).
+                let size = if opmode = 0b011uy then OperandSize.Word else OperandSize.Long
+                let loc, extBytes, desc, regUpdate = x.ResolveEa size eamode eareg (x.PC + 2)
+                let source =
+                    match size with
+                    | OperandSize.Word -> int (int16 (x.ReadEa OperandSize.Word loc))
+                    | _ -> x.ReadEa OperandSize.Long loc
                 let afterEa = regUpdate x
                 let result = afterEa.AddressRegister address + source
                 let newCpu = { afterEa.WithAddressRegister address result with PC = x.PC + 2 + extBytes }
-                printfn "adda.w %s,A%u" desc address
+                printfn "adda.%s %s,A%u" (if size = OperandSize.Word then "w" else "l") desc address
                 newCpu
-            | 0b111uy -> //ADDA.L
-                match eamode with
-                | 0b111uy when eareg = 0b100uy -> //#imm
-                    let dest = x.AddressRegister address
-                    let source = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+6}
-                    printfn "adda.l #$%x,A%u" source address
-                    newCpu
-                | 0b000uy -> //Dn
-                    let dest = x.AddressRegister address
-                    let source = x.DataRegister eareg
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+2}
-                    printfn "adda.l D%u,A%u" eareg address
-                    newCpu
-                | 0b001uy -> //An
-                    let dest = x.AddressRegister address
-                    let source = x.AddressRegister eareg
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+2}
-                    printfn "adda.l A%u,A%u" eareg address
-                    newCpu
-                | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                    let dest = x.AddressRegister address
-                    let source = x.MMU.ReadLong addr
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+6}
-                    printfn "adda.l $%x.l,A%u" addr address
-                    newCpu
-                | 0b101uy -> //(d16,An)
-                    let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = uint32 (x.AddressRegister eareg + int displacement)
-                    let dest = x.AddressRegister address
-                    let source = x.MMU.ReadLong addr
-                    let result = dest + source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+4}
-                    printfn "adda.l %i(a%u),A%u" displacement eareg address
-                    newCpu
-                | _ -> failwithf "adda.l not implemented for eamode %x" eamode
             | _ ->
                 //ADD.B/W/L in both directions via the shared EA decoder. ADDX already claimed
                 //eamode 000/001 of the Dn->ea direction with its own pattern (matched first).

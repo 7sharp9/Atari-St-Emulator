@@ -121,6 +121,11 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     /// TBDR=2 fires ~156x/frame; this is a coarse fraction of that - enough to run a counter-only
     /// ISR, not to place a mid-frame palette write at a specific scanline (see MMU.RaiseTimerB).
     let timerBPeriod = instructionsPerFrame / 32UL
+    /// Timer A (games' free application timer, off unless armed). Super Hang-On's intro runs a
+    /// software-synth music player off Timer A at ~15 kHz and busy-waits on the counter its ISR
+    /// bumps; this coarse ~64x/frame tick is enough to advance that counter (wrong tempo, same
+    /// deliberate limitation as Timer B - see MMU.RaiseTimerA).
+    let timerAPeriod = instructionsPerFrame / 64UL
     let mutable stepCount = 0UL
 
     ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in
@@ -308,6 +313,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             mmu.RaiseTimerC()
         if stepCount % timerBPeriod = 0UL then
             mmu.RaiseTimerB()
+        if stepCount % timerAPeriod = 0UL then
+            mmu.RaiseTimerA()
         match keyInjectGroups with
         | (at, bytes) :: rest when stepCount >= at ->
             keyInjectGroups <- rest
@@ -531,7 +538,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 A0=regs.[8]; A1=regs.[9]; A2=regs.[10]; A3=regs.[11]; A4=regs.[12]; A5=regs.[13]; A6=regs.[14]; A7=regs.[15]
                 USP=regs.[16]
                 SSP=(if version >= 5uy then regs.[17] else 0)
-                PC=regs.[regCount-1]; CCR=ccr }
+                PC=regs.[regCount-1]; CCR=ccr; Stopped=false }
         let readArr() =
             let len = r.ReadInt32()
             r.ReadBytes(len)

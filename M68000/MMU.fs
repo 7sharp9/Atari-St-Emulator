@@ -102,7 +102,12 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             else -1
     do psgRegs.[14] <- 0xFFuy; updateDriveSide ()   //cold-reset port A: no drive selected, side 0
     let ym2149Start = 0xFF8800u
-    let ym2149End =  0xFF8804u
+    //Only bits 0-1 of $FF88xx reach the YM2149, so $FF8804-$FF88FF mirror $FF8800-$FF8803
+    //(Hatari psg.c, same note). Bit 1 selects address-register ($FF8800) vs data ($FF8802);
+    //bit 0 is the shadow. Games use this: Super Hang-On's music ISR does `movep.l Dn,$ff8800`
+    //to poke $8800/$8802/$8804/$8806 = select/data/select/data in one instruction. Without the
+    //mirror the $8806 access bus-errored and the ISR looped on vector 2 forever.
+    let ym2149End =  0xFF88FFu
 
     let mpf68901 = 0xFFFA00u
     let mfpEnd = 0xFFFA2Fu //last of the MC68901's byte-wide registers (base+$00 to base+$2F)
@@ -203,6 +208,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable mfpVector = 0
     let mutable timerCPending = false
     let mutable timerBPending = false
+    let mutable timerAPending = false
 
     let mutable watchRange : (uint32 * uint32) option = None
     ///PC of the instruction currently executing, pushed in from Program.fs's Step() before each
@@ -957,9 +963,23 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if tbcr &&& 0x0Fuy <> 0uy && iera &&& 0x01uy <> 0uy && imra &&& 0x01uy <> 0uy && not timerBPending then
             timerBPending <- true
             mutations <- mutations + 1UL
-    member x.PendingInterruptLevel = if mfpPending || timerBPending || timerCPending then 6 elif vblPending then 4 else 0
+    ///Asserts MFP Timer A (channel 13, level 6, vector $4D -> $134). Gated on Timer A being armed
+    ///(TACR mode bits non-zero) and its channel enabled+unmasked in IERA/IMRA bit 5 - TOS leaves
+    ///Timer A off (the classic "free" application timer), games turn it on. Super Hang-On's intro
+    ///drives a software-synth music player off Timer A and busy-waits on the tick counter its ISR
+    ///increments. COARSE like RaiseTimerB/C: delivered on an instruction count, so the music tempo
+    ///is wrong but the intro sequence advances instead of hanging. Vector $4D = VR($40) | channel 13.
+    member x.RaiseTimerA() =
+        let tacr = mfpRegisters.[int (0xFFFA19u - mpf68901)]
+        let iera = mfpRegisters.[int (0xFFFA07u - mpf68901)]
+        let imra = mfpRegisters.[int (0xFFFA13u - mpf68901)]
+        if tacr &&& 0x0Fuy <> 0uy && iera &&& 0x20uy <> 0uy && imra &&& 0x20uy <> 0uy && not timerAPending then
+            timerAPending <- true
+            mutations <- mutations + 1UL
+    member x.PendingInterruptLevel = if mfpPending || timerAPending || timerBPending || timerCPending then 6 elif vblPending then 4 else 0
     member x.PendingInterruptVector =
-        if mfpPending then mfpVector
+        if timerAPending then 0x4D
+        elif mfpPending then mfpVector
         elif timerBPending then 0x48
         elif timerCPending then 0x45
         elif vblPending then 28
@@ -968,7 +988,8 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///cleared the current IPL mask) - clears only the slot being taken (the highest one), so a
     ///lower still-pending source stays pending, matching real interrupt-acknowledge behaviour.
     member x.AcknowledgeInterrupt() =
-        if mfpPending then mfpPending <- false
+        if timerAPending then timerAPending <- false
+        elif mfpPending then mfpPending <- false
         elif timerBPending then timerBPending <- false
         elif timerCPending then timerCPending <- false
         elif vblPending then vblPending <- false
@@ -1080,6 +1101,14 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             BigEndian.readLongWord rom (address &&& 0x3ffffu)
         | Cart ->  0xffffffff
           //failwithf "Not implemented read long from cart: %x" address
+        | VideoDisplayRegister ->
+            //ReadWord/WriteWord/WriteLong all handle the shifter register block; ReadLong was the
+            //one gap, so `move.l $ffff8244,Dn` (Super Hang-On's raster palette handler reads two
+            //palette words at once) bus-errored into vector 2. Compose byte-wise like YM2149/MFP.
+            (int (x.ReadByte address) <<< 24) |||
+            (int (x.ReadByte (address+1u)) <<< 16) |||
+            (int (x.ReadByte (address+2u)) <<< 8) |||
+            (int (x.ReadByte (address+3u)))
         | YM2149 ->
             (int (x.ReadByte address) <<< 24) |||
             (int (x.ReadByte (address+1u)) <<< 16) |||
