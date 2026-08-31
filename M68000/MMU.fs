@@ -590,6 +590,16 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             if ikbdRxFifo.Count > 0 then
                 let b = ikbdRxFifo.Dequeue()
                 mutations <- mutations + 1UL
+                //The 6850 keeps its IRQ line asserted while RDRF stays set. On real hardware IKBD
+                //bytes arrive ~1.28 ms apart so each is its own MFP channel-6 edge; EnqueueIkbd
+                //instead delivers a whole packet at once. Re-raise the interrupt while bytes
+                //remain so a handler that reads exactly one byte per interrupt - Super Sprint's own
+                //IKBD ISR at $104b6, which does not loop like TOS's - still sees every byte of a
+                //multi-byte packet ($FE/$FF + joystick state, 3-byte mouse packets). The final
+                //byte leaves the FIFO empty, so at most one extra interrupt follows a burst and it
+                //hits the handler's "no data" guard.
+                if ikbdRxFifo.Count > 0 && kbdAciaControl &&& 0x80uy <> 0uy then
+                    x.RaiseInterrupt 6 0x46
                 b
             else 0uy
         | Acia ->
