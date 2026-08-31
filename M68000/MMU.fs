@@ -204,10 +204,15 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable timerCPending = false
 
     let mutable watchRange : (uint32 * uint32) option = None
+    ///PC of the instruction currently executing, pushed in from Program.fs's Step() before each
+    ///cpu.Step(). Only used to annotate WATCH lines with the offending instruction address - the
+    ///MMU has no other need to know the PC, so this stays a plain debug aid.
+    let mutable watchPc = 0
+    let mutable watchStep = 0UL
     let checkWatch (address: uint32) (label: string) (value: uint32) =
         match watchRange with
         | Some(lo, hi) when address >= lo && address <= hi ->
-            eprintfn "WATCH: %s $%08x <- $%x" label address value
+            eprintfn "WATCH: step=%d pc=$%06x %s $%08x <- $%x" watchStep watchPc label address value
         | _ -> ()
 
     let store (arr: byte[]) (i: int) (v: byte) =
@@ -870,6 +875,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///REPL `watch <hexaddr> [len]` - see `checkWatch` above. `hi` is inclusive.
     member x.SetWatch (lo: uint32) (hi: uint32) = watchRange <- Some(lo, hi)
     member x.ClearWatch() = watchRange <- None
+    ///See `watchPc` - Program.fs pushes the executing instruction's PC here so WATCH lines can name it.
+    member x.WatchPc with get () = watchPc and set v = watchPc <- v
+    ///See `watchStep` - Program.fs pushes the current emulated step count here for WATCH lines.
+    member x.WatchStep with get () = watchStep and set v = watchStep <- v
 
     ///Mounts (or unmounts, on `None`) a real disk image in drive A - see `diskA`'s own comment
     ///above for the single-sided-only caveat. Reads the image's own boot-sector BPB for its real

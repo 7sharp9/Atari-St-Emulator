@@ -241,6 +241,14 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///genuinely-progressing later step could spuriously "match" it.
     let resetLoopDetector() =
         loopAnchorMutations <- UInt64.MaxValue
+        //Re-arm the "no interrupt taken for a full frame" gate against the *current* step count.
+        //loopLastAckStep is initialised to 0; after LoadState restores a large stepCount, leaving
+        //it at 0 makes `stepCount - loopLastAckStep >= instructionsPerFrame` trivially true, so the
+        //very first recurring memory-read cycle after a resume (e.g. TOS vsync spinning on frclock
+        //a few steps before the next VBL) is misreported as a hang. Reset() hits this too in
+        //principle; there stepCount is 0 so it is harmless, but keeping the two in step is simplest.
+        loopLastAckStep <- stepCount
+        loopLastAckCount <- mmu.InterruptAcks
 
     member x.Reset() =
         cpu <- cpu.Reset()
@@ -282,6 +290,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             mmu.EnqueueIkbd bytes
             eprintfn "ATARI_KEY_INPUT: injected %d IKBD byte(s) at step %d (%d group(s) left)" bytes.Length stepCount rest.Length
         | _ -> ()
+        mmu.WatchPc <- cpu.PC
+        mmu.WatchStep <- stepCount
         let state = MachineState.Of cpu
         let currentMutations = mmu.Mutations
         if mmu.InterruptAcks <> loopLastAckCount then
