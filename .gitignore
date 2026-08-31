@@ -18,11 +18,9 @@ M68000/scratchpad/
 # per checkout, never committed (see the reversing/ READMEs for sha256s). Listed
 # by name rather than by glob so a new committed test .ST / test ROM still works.
 *.IMG
-/A_013.ST
-/Super Sprint.zip
-/Super Sprint.ST
-M68000/Super Sprint.ST
-M68000/Super Sprint.zip
+A_013.ST
+Super Sprint.zip
+Super Sprint.ST
 M68000/checkpoint.txt
 M68000/file_id.*
 M68000/ram.png
