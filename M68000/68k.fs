@@ -132,6 +132,218 @@ module TraceEvents =
             writer.Dispose()
             writer <- null
 
+///"Trace narrator" - turns a run into a readable log of the OS calls it makes
+///(`Cconws("Loading...")`, `Fopen("DATA.BIN", mode=$0)`, `Rwabs(mode=1, buf=$0007a000, ...)`)
+///instead of a wall of `trap #1` lines and raw PCs. Covers GEMDOS (trap #1), BIOS (trap #13)
+///and XBIOS (trap #14); the return value (with the GEMDOS error name, if negative) is printed
+///by the caller when the trap returns. `ATARI_TRACE_OS=1`. Purely additive stderr output, gated
+///on the env var like ATARI_TRACE_GEMDOS / ATARI_TRACE_FDC - it reads emulated memory through
+///the passed-in closures and never touches CPU/MMU state.
+///
+///Calling convention for all three trap families: the caller pushes args right-to-left, then a
+///function-number word, then `trap #n`. At the trap instruction A7 -> function word, A7+2 ->
+///first arg. The arg specs below consume 2 bytes (W/D) or 4 bytes (L/P/S) each, in order.
+///AES/VDI (trap #2, register-selected, parameter-block arrays) is not decoded here yet.
+module OsCalls =
+    let enabled = not (isNull (Environment.GetEnvironmentVariable "ATARI_TRACE_OS"))
+
+    /// One argument slot. The string is a display label; `S` (C-string pointer) shows just the
+    /// quoted text when its label is "".
+    type private A =
+        | W of string      // word, unsigned hex
+        | C of string      // word holding a character code, shown as 'x' (code)
+        | D of string      // word, signed decimal (handles, modes, small counts)
+        | L of string      // long, unsigned hex
+        | P of string      // long, shown as a $xxxxxxxx pointer
+        | S of string      // long pointer, dereferenced to a quoted C string
+
+    let private cstr (rb: uint32 -> byte) (ptr: int) =
+        if ptr <= 0 then "?"
+        else
+            let sb = Text.StringBuilder()
+            let mutable a = uint32 ptr
+            let mutable go = true
+            while go do
+                let b = rb a
+                if b = 0uy || sb.Length >= 64 then go <- false
+                else
+                    sb.Append(
+                        match b with
+                        | 0x0Auy -> "\\n" | 0x0Duy -> "\\r" | 0x09uy -> "\\t"
+                        | c when c >= 0x20uy && c < 0x7Fuy -> string (char c)
+                        | c -> sprintf "\\x%02x" c) |> ignore
+                    a <- a + 1u
+            sb.ToString()
+
+    let private fmtArgs (rb: uint32 -> byte) (rw: uint32 -> int) (rl: uint32 -> int)
+                        (start: int) (spec: A list) =
+        let mutable p = start
+        spec
+        |> List.map (fun a ->
+            match a with
+            | W lbl -> let v = rw (uint32 p) &&& 0xFFFF in p <- p + 2; sprintf "%s=$%x" lbl v
+            | C lbl ->
+                let v = rw (uint32 p) &&& 0xFFFF
+                p <- p + 2
+                let shown = if v >= 0x20 && v < 0x7F then sprintf "'%c'" (char v) else sprintf "$%x" v
+                sprintf "%s=%s" lbl shown
+            | D lbl -> let v = int (int16 (rw (uint32 p))) in p <- p + 2; sprintf "%s=%d" lbl v
+            | L lbl -> let v = rl (uint32 p) in p <- p + 4; sprintf "%s=$%x" lbl (uint32 v)
+            | P lbl -> let v = rl (uint32 p) in p <- p + 4; sprintf "%s=$%08x" lbl (uint32 v)
+            | S lbl ->
+                let v = rl (uint32 p)
+                p <- p + 4
+                if lbl = "" then sprintf "\"%s\"" (cstr rb v) else sprintf "%s=\"%s\"" lbl (cstr rb v))
+        |> String.concat ", "
+
+    let private gemdos : Collections.Generic.IDictionary<int, string * A list> =
+        dict [
+            0x00, ("Pterm0",   [])
+            0x01, ("Cconin",   [])
+            0x02, ("Cconout",  [C "c"])
+            0x03, ("Cauxin",   [])
+            0x04, ("Cauxout",  [C "c"])
+            0x05, ("Cprnout",  [C "c"])
+            0x06, ("Crawio",   [C "c"])
+            0x07, ("Crawcin",  [])
+            0x08, ("Cnecin",   [])
+            0x09, ("Cconws",   [S ""])
+            0x0A, ("Cconrs",   [P "buf"])
+            0x0B, ("Cconis",   [])
+            0x0E, ("Dsetdrv",  [D "drv"])
+            0x10, ("Cconos",   [])
+            0x11, ("Cprnos",   [])
+            0x12, ("Cauxis",   [])
+            0x13, ("Cauxos",   [])
+            0x19, ("Dgetdrv",  [])
+            0x1A, ("Fsetdta",  [P "dta"])
+            0x20, ("Super",    [L "stack"])
+            0x2A, ("Tgetdate", [])
+            0x2B, ("Tsetdate", [W "date"])
+            0x2C, ("Tgettime", [])
+            0x2D, ("Tsettime", [W "time"])
+            0x2F, ("Fgetdta",  [])
+            0x30, ("Sversion", [])
+            0x31, ("Ptermres", [L "keep"; D "rc"])
+            0x36, ("Dfree",    [P "buf"; D "drv"])
+            0x39, ("Dcreate",  [S ""])
+            0x3A, ("Ddelete",  [S ""])
+            0x3B, ("Dsetpath", [S ""])
+            0x3C, ("Fcreate",  [S ""; W "attr"])
+            0x3D, ("Fopen",    [S ""; W "mode"])
+            0x3E, ("Fclose",   [D "h"])
+            0x3F, ("Fread",    [D "h"; L "count"; P "buf"])
+            0x40, ("Fwrite",   [D "h"; L "count"; P "buf"])
+            0x41, ("Fdelete",  [S ""])
+            0x42, ("Fseek",    [L "off"; D "h"; D "mode"])
+            0x43, ("Fattrib",  [S ""; W "wflag"; W "attr"])
+            0x45, ("Fdup",     [D "h"])
+            0x46, ("Fforce",   [D "stdh"; D "nonstdh"])
+            0x47, ("Dgetpath", [P "buf"; D "drv"])
+            0x48, ("Malloc",   [L "amount"])
+            0x49, ("Mfree",    [L "addr"])
+            0x4A, ("Mshrink",  [W "resv"; L "block"; L "newsiz"])
+            0x4B, ("Pexec",    [D "mode"; S ""; P "cmdline"; P "env"])
+            0x4C, ("Pterm",    [D "rc"])
+            0x4E, ("Fsfirst",  [S ""; W "attr"])
+            0x4F, ("Fsnext",   [])
+            0x56, ("Frename",  [W "resv"; S "old"; S "new"])
+            0x57, ("Fdatime",  [P "buf"; D "h"; W "wflag"])
+        ]
+
+    let private bios : Collections.Generic.IDictionary<int, string * A list> =
+        dict [
+            0x00, ("Getmpb",   [P "mpb"])
+            0x01, ("Bconstat", [D "dev"])
+            0x02, ("Bconin",   [D "dev"])
+            0x03, ("Bconout",  [D "dev"; C "c"])
+            0x04, ("Rwabs",    [D "mode"; P "buf"; D "count"; D "recno"; D "dev"])
+            0x05, ("Setexc",   [W "vec"; L "addr"])
+            0x06, ("Tickcal",  [])
+            0x07, ("Getbpb",   [D "dev"])
+            0x08, ("Bcostat",  [D "dev"])
+            0x09, ("Mediach",  [D "dev"])
+            0x0A, ("Drvmap",   [])
+            0x0B, ("Kbshift",  [W "mode"])
+        ]
+
+    let private xbios : Collections.Generic.IDictionary<int, string * A list> =
+        dict [
+            0x00, ("Initmous",  [D "type"; P "param"; L "vec"])
+            0x02, ("Physbase",  [])
+            0x03, ("Logbase",   [])
+            0x04, ("Getrez",    [])
+            0x05, ("Setscreen", [L "log"; L "phys"; D "rez"])
+            0x06, ("Setpalette",[P "pal"])
+            0x07, ("Setcolor",  [D "num"; W "color"])
+            0x08, ("Floprd",    [P "buf"; L "resv"; D "dev"; D "sect"; D "track"; D "side"; D "count"])
+            0x09, ("Flopwr",    [P "buf"; L "resv"; D "dev"; D "sect"; D "track"; D "side"; D "count"])
+            0x0A, ("Flopfmt",   [P "buf"; L "resv"; D "dev"; D "spt"; D "track"; D "side"; D "ilv"; L "magic"; W "virgin"])
+            0x0C, ("Midiws",    [D "cnt"; P "ptr"])
+            0x0D, ("Mfpint",    [D "no"; L "vec"])
+            0x0E, ("Iorec",     [D "dev"])
+            0x0F, ("Rsconf",    [D "speed"; D "flow"; W "ucr"; W "rsr"; W "tsr"; W "scr"])
+            0x10, ("Keytbl",    [L "unshift"; L "shift"; L "caps"])
+            0x11, ("Random",    [])
+            0x12, ("Protobt",   [P "buf"; L "serial"; D "type"; D "exec"])
+            0x13, ("Flopver",   [P "buf"; L "resv"; D "dev"; D "sect"; D "track"; D "side"; D "count"])
+            0x14, ("Scrdmp",    [])
+            0x15, ("Cursconf",  [D "mode"; D "rate"])
+            0x16, ("Settime",   [L "datetime"])
+            0x17, ("Gettime",   [])
+            0x18, ("Bioskeys",  [])
+            0x19, ("Ikbdws",    [D "cnt"; P "ptr"])
+            0x1A, ("Jdisint",   [D "no"])
+            0x1B, ("Jenabint",  [D "no"])
+            0x1C, ("Giaccess",  [W "data"; D "reg"])
+            0x1D, ("Offgibit",  [D "bit"])
+            0x1E, ("Ongibit",   [D "bit"])
+            0x1F, ("Xbtimer",   [D "timer"; W "ctrl"; W "data"; L "vec"])
+            0x20, ("Dosound",   [P "ptr"])
+            0x21, ("Setprt",    [W "config"])
+            0x22, ("Kbdvbase",  [])
+            0x23, ("Kbrate",    [D "initial"; D "repeat"])
+            0x25, ("Vsync",     [])
+            0x26, ("Supexec",   [L "code"])
+            0x27, ("Puntaes",   [])
+        ]
+
+    let private errNames : Collections.Generic.IDictionary<int, string> =
+        dict [ -1,"ERROR"; -32,"EINVFN"; -33,"EFILNF"; -34,"EPTHNF"; -35,"ENHNDL"
+               -36,"EACCDN"; -37,"EIHNDL"; -39,"ENSMEM"; -40,"EIMBA"; -46,"EDRIVE"
+               -49,"ENMFIL"; -64,"ERANGE"; -65,"EINTRN"; -66,"EPLFMT"; -67,"EGSBF" ]
+
+    ///Parenthetical note for a trap's D0 return value: a GEMDOS-style negative error, named.
+    let retNote (d0: int) =
+        if d0 < 0 && d0 >= -256 then
+            match errNames.TryGetValue d0 with
+            | true, n -> sprintf " (%d %s)" d0 n
+            | _ -> sprintf " (%d)" d0
+        else ""
+
+    ///Describe the OS call at `sp` (= A7) for `trapNo` (1 GEMDOS / 13 BIOS / 14 XBIOS), or
+    ///None if it isn't one of those. Reads emulated memory via the closures; the caller wraps
+    ///this in a try/with so a bad pointer can never break the run.
+    let describe (rb: uint32 -> byte) (rw: uint32 -> int) (rl: uint32 -> int)
+                 (trapNo: int) (sp: uint32) : string option =
+        if sp % 2u <> 0u then None else
+        let picked =
+            match trapNo with
+            | 1  -> Some ("GEMDOS", gemdos)
+            | 13 -> Some ("BIOS", bios)
+            | 14 -> Some ("XBIOS", xbios)
+            | _  -> None
+        match picked with
+        | None -> None
+        | Some (fam, tbl) ->
+            let fn = rw sp &&& 0xFFFF
+            let argStart = int sp + 2
+            match tbl.TryGetValue fn with
+            | true, (name, spec) -> Some (sprintf "%s(%s)" name (fmtArgs rb rw rl argStart spec))
+            | _ ->
+                let raw = [ for i in 0..3 -> sprintf "$%x" (rw (uint32 (argStart + i * 2)) &&& 0xFFFF) ]
+                Some (sprintf "%s $%02x(?: %s)" fam fn (String.concat ", " raw))
+
 module CCR =
     let Subtract_IgnoringX currentCCR dest source =
         //unset all flag bits apart from x

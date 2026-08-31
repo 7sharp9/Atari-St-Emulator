@@ -135,6 +135,31 @@ stack (mode 4/6 "just go" never returns); for mode 0/1 (load and run) the
 basepage is sampled from `act_pd` ($602C) while the child is live, since their D0
 on return is the exit code, not the basepage.
 
+`ATARI_TRACE_OS=1` is the **trace narrator**: it turns the run into a readable log
+of the OS calls it makes instead of a wall of `trap #1` lines. GEMDOS (trap #1),
+BIOS (trap #13) and XBIOS (trap #14) are decoded into `name(arg=value, ...)` with
+string pointers dereferenced and quoted and character codes shown as `'x'`; the
+`= $xxxxxxxx` line under each call is its D0 return (with the GEMDOS error name,
+e.g. `(-33 EFILNF)`, when negative). Nested calls (a `Pexec`'d child's own
+traffic) indent under their parent; a call that never returns (`Pexec` "just go",
+an unbalanced `Super`) is swept when an outer call returns so the indent can't run
+away. `Atari.OsCalls` holds the function tables - extend them as needed; AES/VDI
+(trap #2) is not decoded yet. Stderr, like the other `ATARI_TRACE_*` switches, and
+it does not touch CPU/MMU state. Independently, `tos100uk.sym` is loaded by the
+emulator itself now: the per-instruction trace prefix shows `<flop_rw>` etc. when
+the PC is a known routine entry (silenced with the rest of the trace under
+`ATARI_NOTRACE`).
+
+```
+ATARI_TRACE_OS=1 ATARI_DISK_A=inttest_disk.st \
+  ./run.ps1 -NoBuild snap 12000000 t.snap 2>&1 | grep '^OS '
+#   OS   1871131     Cconws("Test '")
+#   OS   1871324       Bconout(dev=2, c='T')
+#   OS   1873215     = $00fc0005
+#   OS    353215   Fsfirst("\AUTO\*.PRG", attr=$7)
+#   OS    356874   = $ffffffdf (-33 EFILNF)
+```
+
 ## Running a program off a disk image
 
 `ATARI_DISK_A=<file.st>` mounts a real `.ST` floppy image in drive A. The FDC

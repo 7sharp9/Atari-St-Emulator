@@ -158,6 +158,34 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     //keyed by its return PC, so the per-step $602C sample doesn't re-dump it every instruction.
     let mutable basepageCapturedFor = -1
 
+    ///Trace narrator (ATARI_TRACE_OS - see Atari.OsCalls). A stack of (returnPC, callText) for
+    ///the OS calls currently in flight, so the return value can be printed against the call and
+    ///nested calls (a Pexec'd child's own GEMDOS traffic) indent under their parent. Mode-4/6
+    ///Pexec never returns, so its entry just sits at the bottom - the depth is capped so that
+    ///can't grow without bound.
+    let traceOs = OsCalls.enabled
+    let mutable osCallStack : (int * string) list = []
+
+    ///Exact-match ROM/OS symbol names for the per-instruction trace prefix, loaded once from
+    ///`tos100uk.sym` (`addr<TAB>name`, '#' comments) if it is beside the working dir - the same
+    ///file tools/trace_cfg.py auto-loads. Silenced with the rest of the trace under ATARI_NOTRACE
+    ///(Console.Out is redirected), so this is opt-in by virtue of running with the trace on.
+    let symbols =
+        let d = Collections.Generic.Dictionary<int, string>()
+        try
+            if IO.File.Exists "tos100uk.sym" then
+                for line in IO.File.ReadAllLines "tos100uk.sym" do
+                    let t = line.Trim()
+                    if t.Length > 0 && not (t.StartsWith "#") then
+                        match t.Split('\t') with
+                        | [| a; n |] ->
+                            match Int32.TryParse(a.Trim(), Globalization.NumberStyles.HexNumber, Globalization.CultureInfo.InvariantCulture) with
+                            | true, v -> d.[v] <- (n.Trim().Split(' ').[0])
+                            | _ -> ()
+                        | _ -> ()
+        with _ -> ()
+        d
+
     let readCString (addr: int) =
         if addr <= 0 then ""
         else
@@ -280,6 +308,13 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         //against ROM addresses, instead of needing a separate disassembly pass just to figure out
         //which address a given trace line came from (a real time sink in past debugging sessions).
         printf "$%06x: " cpu.PC
+        //Symbol label when the PC is a known routine entry (tos100uk.sym). Only fires on exact
+        //matches - enough to see "<flop_rw>" as execution enters it - and only when the trace is
+        //on (Console.Out is a null sink under ATARI_NOTRACE, so this costs a dict lookup at most).
+        if symbols.Count > 0 then
+            match symbols.TryGetValue (int cpu.PC) with
+            | true, n -> printf "<%s> " n
+            | _ -> ()
         //Structured flow-event trace (ATARI_TRACE_EVENTS) - one emission point, here, rather than
         //the 221 printfn sites. Capture the pre-step PC/opcode and the interrupt-ack count, then
         //classify the transition once cpu.Step() has produced the new PC. See Atari.TraceEvents.
@@ -294,6 +329,23 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             let fname = readCString (mmu.ReadLong (uint32 (cpu.A7 + 4)))
             pexecStack <- (cpu.PC + 2, mode, fname) :: pexecStack
             eprintfn "GEMDOS Pexec mode=%d file=\"%s\" pc=$%08x" mode fname cpu.PC
+        //Trace narrator (ATARI_TRACE_OS): decode a GEMDOS/BIOS/XBIOS trap into a readable call
+        //line, print it, and remember where it returns so the return value can be shown against
+        //it. See Atari.OsCalls; the whole thing is wrapped so a bad stack pointer can't break the run.
+        if traceOs then
+            try
+                let op = int (mmu.ReadWord (uint32 cpu.PC)) &&& 0xFFFF
+                let trapNo =
+                    match op with
+                    | 0x4E41 -> 1 | 0x4E4D -> 13 | 0x4E4E -> 14 | _ -> 0
+                if trapNo <> 0 then
+                    match OsCalls.describe mmu.ReadByte mmu.ReadWord mmu.ReadLong trapNo (uint32 cpu.A7) with
+                    | Some text ->
+                        let depth = List.length osCallStack
+                        eprintfn "OS %9d %s%s" stepCount (String.replicate depth "  ") text
+                        if depth < 48 then osCallStack <- (cpu.PC + 2, text) :: osCallStack
+                    | None -> ()
+            with _ -> ()
         try
             cpu <- cpu.Step()
             if TraceEvents.enabled then
@@ -314,6 +366,17 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 let actpd = mmu.ReadLong 0x602Cu
                 if dumpBasepage stepCount mode fname actpd then basepageCapturedFor <- retpc
             | _ -> ()
+            //Trace narrator: an OS call returned. Match the newest pending call with this return
+            //PC; anything pushed *after* it that's still open never came back (Pexec "just go", a
+            //Super() with no restoring Super, a longjmp) - sweep those too so the indent can't
+            //run away.
+            if traceOs then
+                match osCallStack |> List.tryFindIndex (fun (rp, _) -> rp = cpu.PC) with
+                | Some idx ->
+                    let rest = List.skip (idx + 1) osCallStack
+                    osCallStack <- rest
+                    eprintfn "OS %9d %s= $%08x%s" stepCount (String.replicate (List.length rest) "  ") (uint32 cpu.D0) (OsCalls.retNote cpu.D0)
+                | None -> ()
         with e ->
             //Diagnostics for implementing the next instruction: the opcode word, its common
             //sub-fields (most 68k formats split a word into these positions, though which fields
