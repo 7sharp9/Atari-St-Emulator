@@ -143,8 +143,10 @@ string pointers dereferenced and quoted and character codes shown as `'x'`; the
 e.g. `(-33 EFILNF)`, when negative). Nested calls (a `Pexec`'d child's own
 traffic) indent under their parent; a call that never returns (`Pexec` "just go",
 an unbalanced `Super`) is swept when an outer call returns so the indent can't run
-away. `Atari.OsCalls` holds the function tables - extend them as needed; AES/VDI
-(trap #2) is not decoded yet. Stderr, like the other `ATARI_TRACE_*` switches, and
+away. AES and VDI (`trap #2`, family in D0, parameter block in D1) are decoded
+too: `AES $0a appl_init(int_in=0, int_out=1, ...)`, `VDI $06 v_pline(handle=1,
+nintin=0, nptsin=2)` - opcode name plus the `control[]` counts. `Atari.OsCalls`
+holds the function tables - extend them as needed. Stderr, like the other `ATARI_TRACE_*` switches, and
 it does not touch CPU/MMU state. Independently, `tos100uk.sym` is loaded by the
 emulator itself now: the per-instruction trace prefix shows `<flop_rw>` etc. when
 the PC is a known routine entry (silenced with the rest of the trace under

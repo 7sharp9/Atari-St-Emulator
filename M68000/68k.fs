@@ -143,7 +143,9 @@ module TraceEvents =
 ///Calling convention for all three trap families: the caller pushes args right-to-left, then a
 ///function-number word, then `trap #n`. At the trap instruction A7 -> function word, A7+2 ->
 ///first arg. The arg specs below consume 2 bytes (W/D) or 4 bytes (L/P/S) each, in order.
-///AES/VDI (trap #2, register-selected, parameter-block arrays) is not decoded here yet.
+///AES (trap #2, D0=$C8) and VDI (trap #2, D0=$73) are also decoded: D1 points at the
+///parameter block, whose first long is the control[] array - control[0] is the opcode, and
+///control[1..] the int_in/int_out/ptsin/... counts (see describeTrap2).
 module OsCalls =
     let enabled = not (isNull (Environment.GetEnvironmentVariable "ATARI_TRACE_OS"))
 
@@ -343,6 +345,91 @@ module OsCalls =
             | _ ->
                 let raw = [ for i in 0..3 -> sprintf "$%x" (rw (uint32 (argStart + i * 2)) &&& 0xFFFF) ]
                 Some (sprintf "%s $%02x(?: %s)" fam fn (String.concat ", " raw))
+
+    // AES opcode -> name, keyed by opcode (transcribed from Hatari src/vdi.c AESName_10).
+    let private aesNames : Collections.Generic.IDictionary<int, string> =
+        dict [
+            0x0A,"appl_init"; 0x0B,"appl_read"; 0x0C,"appl_write"; 0x0D,"appl_find"
+            0x0E,"appl_tplay"; 0x0F,"appl_trecord"; 0x12,"appl_search"; 0x13,"appl_exit"
+            0x14,"evnt_keybd"; 0x15,"evnt_button"; 0x16,"evnt_mesag"; 0x17,"evnt_mesag"
+            0x18,"evnt_timer"; 0x19,"evnt_multi"; 0x1A,"evnt_dclick"
+            0x1E,"menu_bar"; 0x1F,"menu_icheck"; 0x20,"menu_ienable"; 0x21,"menu_tnormal"
+            0x22,"menu_text"; 0x23,"menu_register"; 0x24,"menu_popup"; 0x25,"menu_attach"
+            0x26,"menu_istart"; 0x27,"menu_settings"
+            0x28,"objc_add"; 0x29,"objc_delete"; 0x2A,"objc_draw"; 0x2B,"objc_find"
+            0x2C,"objc_offset"; 0x2D,"objc_order"; 0x2E,"objc_edit"; 0x2F,"objc_change"
+            0x30,"objc_sysvar"
+            0x32,"form_do"; 0x33,"form_dial"; 0x34,"form_alert"; 0x35,"form_error"
+            0x36,"form_center"; 0x37,"form_keybd"; 0x38,"form_button"
+            0x46,"graf_rubberbox"; 0x47,"graf_dragbox"; 0x48,"graf_movebox"; 0x49,"graf_growbox"
+            0x4A,"graf_shrinkbox"; 0x4B,"graf_watchbox"; 0x4C,"graf_slidebox"; 0x4D,"graf_handle"
+            0x4E,"graf_mouse"; 0x4F,"graf_mkstate"
+            0x50,"scrp_read"; 0x51,"scrp_write"; 0x5A,"fsel_input"; 0x5B,"fsel_exinput"
+            0x64,"wind_create"; 0x65,"wind_open"; 0x66,"wind_close"; 0x67,"wind_delete"
+            0x68,"wind_get"; 0x69,"wind_set"; 0x6A,"wind_find"; 0x6B,"wind_update"
+            0x6C,"wind_calc"; 0x6D,"wind_new"
+            0x6E,"rsrc_load"; 0x6F,"rsrc_free"; 0x70,"rsrc_gaddr"; 0x71,"rsrc_saddr"
+            0x72,"rsrc_obfix"; 0x73,"rsrc_rcfix"
+            0x78,"shel_read"; 0x79,"shel_write"; 0x7A,"shel_get"; 0x7B,"shel_put"
+            0x7C,"shel_find"; 0x7D,"shel_envrn"; 0x82,"appl_getinfo" ]
+
+    // VDI opcode -> name (Hatari src/vdi.c names_0 for 1..39, names_100 for 100..131).
+    let private vdiNames : Collections.Generic.IDictionary<int, string> =
+        dict [
+            1,"v_opnwk"; 2,"v_clswk"; 3,"v_clrwk"; 4,"v_updwk"; 5,"escape"; 6,"v_pline"
+            7,"v_pmarker"; 8,"v_gtext"; 9,"v_fillarea"; 10,"v_cellarray"; 11,"gdp"
+            12,"vst_height"; 13,"vst_rotation"; 14,"vs_color"; 15,"vsl_type"; 16,"vsl_width"
+            17,"vsl_color"; 18,"vsm_type"; 19,"vsm_height"; 20,"vsm_color"; 21,"vst_font"
+            22,"vst_color"; 23,"vsf_interior"; 24,"vsf_style"; 25,"vsf_color"; 26,"vq_color"
+            27,"vq_cellarray"; 28,"vrq/sm_locator"; 29,"vrq/sm_valuator"; 30,"vrq/sm_choice"
+            31,"vrq/sm_string"; 32,"vswr_mode"; 33,"vsin_mode"; 35,"vql_attributes"
+            36,"vqm_attributes"; 37,"vqf_attributes"; 38,"vqt_attributes"; 39,"vst_alignment"
+            100,"v_opnvwk"; 101,"v_clsvwk"; 102,"vq_extnd"; 103,"v_contourfill"
+            104,"vsf_perimeter"; 105,"v_get_pixel"; 106,"vst_effects"; 107,"vst_point"
+            108,"vsl_ends"; 109,"vro_cpyfm"; 110,"vr_trnfm"; 111,"vsc_form"; 112,"vsf_udpat"
+            113,"vsl_udsty"; 114,"vr_recfl"; 115,"vqin_mode"; 116,"vqt_extent"; 117,"vqt_width"
+            118,"vex_timv"; 119,"vst_load_fonts"; 120,"vst_unload_fonts"; 121,"vrt_cpyfm"
+            122,"v_show_c"; 123,"v_hide_c"; 124,"vq_mouse"; 125,"vex_butv"; 126,"vex_motv"
+            127,"vex_curv"; 128,"vq_key_s"; 129,"vs_clip"; 130,"vqt_name"; 131,"vqt_fontinfo" ]
+
+    // VDI opcode-5 (escape) and opcode-11 (generalised drawing primitive) sub-opcode names.
+    let private vdiEscapeNames = [|
+        "<no subcode>"; "vq_chcells"; "v_exit_cur"; "v_enter_cur"; "v_curup"; "v_curdown"
+        "v_curright"; "v_curleft"; "v_curhome"; "v_eeos"; "v_eeol"; "vs_curaddress"
+        "v_curtext"; "v_rvon"; "v_rvoff"; "vq_curaddress"; "vq_tabstatus"; "v_hardcopy"
+        "v_dspcur"; "v_rmcur"; "v_form_adv"; "v_output_window"; "v_clear_disp_list"
+        "v_bit_image"; "vq_scan"; "v_alpha_text" |]
+    let private vdiGdpNames = [|
+        "<no subcode>"; "v_bar"; "v_arc"; "v_pieslice"; "v_circle"; "v_ellipse"; "v_ellarc"
+        "v_ellpie"; "v_rbox"; "v_rfbox"; "v_justified"; "???"; "v_bez_on/off" |]
+
+    ///Decode an AES/VDI `trap #2` call: D0 selects the family ($C8 = AES, $73 = VDI), D1 points
+    ///at the parameter block whose first long is the control[] array (control[0] = opcode,
+    ///control[1..4] = the int_in/int_out/addr_in/addr_out or ptsin/ptsout/intin/intout counts).
+    ///Same closure-only memory reads as `describe`; wrapped in try/with by the caller.
+    let describeTrap2 (rw: uint32 -> int) (rl: uint32 -> int) (d0: int) (d1: int) : string option =
+        let call = d0 &&& 0xFFFF
+        if call <> 0xC8 && call <> 0x73 then None
+        elif d1 <= 0 then None
+        else
+            let control = rl (uint32 d1)
+            if control <= 0 then None else
+            let cw i = rw (uint32 (control + 2 * i)) &&& 0xFFFF
+            let opcode = cw 0
+            if call = 0xC8 then
+                let name = match aesNames.TryGetValue opcode with | true, n -> n | _ -> "???"
+                Some (sprintf "AES $%02x %s(int_in=%d, int_out=%d, addr_in=%d, addr_out=%d)"
+                          opcode name (cw 1) (cw 2) (cw 3) (cw 4))
+            else
+                let sub = cw 5
+                let name =
+                    match opcode with
+                    | 5  -> if sub < vdiEscapeNames.Length then vdiEscapeNames.[sub] else "escape"
+                    | 11 -> if sub < vdiGdpNames.Length then vdiGdpNames.[sub] else "gdp"
+                    | _  -> match vdiNames.TryGetValue opcode with | true, n -> n | _ -> "???"
+                let sfx = if opcode = 5 || opcode = 11 then sprintf "/%d" sub else ""
+                Some (sprintf "VDI $%02x%s %s(handle=%d, nintin=%d, nptsin=%d)"
+                          opcode sfx name (cw 6) (cw 3) (cw 1))
 
 module CCR =
     let Subtract_IgnoringX currentCCR dest source =

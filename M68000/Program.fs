@@ -338,8 +338,13 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 let trapNo =
                     match op with
                     | 0x4E41 -> 1 | 0x4E4D -> 13 | 0x4E4E -> 14 | _ -> 0
-                if trapNo <> 0 then
-                    match OsCalls.describe mmu.ReadByte mmu.ReadWord mmu.ReadLong trapNo (uint32 cpu.A7) with
+                let decoded =
+                    if trapNo <> 0 then
+                        OsCalls.describe mmu.ReadByte mmu.ReadWord mmu.ReadLong trapNo (uint32 cpu.A7)
+                    elif op = 0x4E42 then
+                        OsCalls.describeTrap2 mmu.ReadWord mmu.ReadLong (int cpu.D0) (int cpu.D1)
+                    else None
+                match decoded with
                     | Some text ->
                         let depth = List.length osCallStack
                         eprintfn "OS %9d %s%s" stepCount (String.replicate depth "  ") text
