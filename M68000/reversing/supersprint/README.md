@@ -52,8 +52,9 @@ which the instruction-counted timing already models.
 
 ```
 unzip "Super Sprint.zip"
-ATARI_NOTRACE=1 ATARI_TRACE_OS=1 ATARI_DISK_A="Super Sprint.ST" \
-  dotnet exec bin/Debug/net8.0/M68000.dll 40000000
+ATARI_NOTRACE=1 ATARI_TRACE_OS=1 \
+  dotnet exec bin/Debug/net8.0/M68000.dll 40000000 --disk-a "Super Sprint.ST"
+# or:  ./run.ps1 -DiskA "Super Sprint.ST" -Trace boot 40000000
 ```
 
 `ATARI_TRACE_OS=1` narrates the run. Trace summary:
@@ -81,20 +82,31 @@ the credits screen. The game **never polls the keyboard** (no `Bconstat` / `Ccon
 
 - `title.png` — framebuffer (`$f8000`, low-res, 16-colour) at step 34 000 000: the
   "SUPER SPRINT / © 1986 Atari Games" logo screen (F1 car bursting through), correct.
-- `gameplay.png` — step 26 000 000: the overhead Track 1 with cars, barriers and
-  trees, correct playfield. The **top status bar** (per-car `LAP` counters) looks
-  wrong — garbled multicolour pixels along the top rows. Cause not yet pinned down:
-  no HBL handler is installed (vector `$68` = ROM default), so it is *not* a raster
-  palette split; candidates are a half-captured `Setpalette`, a plane-data / screen
-  base-offset bug in that region, or a real content bug. Not investigated this pass.
-  (An earlier capture at step 27 900 000 caught a sparse screen-wipe frame —
-  mid-transition, not a bug.)
+- `gameplay.png` — the overhead Track 1 attract demo (drone cars mid-lap): correct
+  playfield, cars, barriers, trees, shadows, `TRACK 1` / `DRONE LAP` text.
+
+### The "status bar glitch" — investigated 53rd pass, not an emulator bug
+
+The 52nd pass flagged the top band (the three `BLUE/RED/YELLOW CAR` panels with
+their lap-time readouts) as "garbled multicolour pixels". It isn't a rendering
+fault: that band is the **grandstand crowd** — hundreds of 1–2px spectator sprites
+on white bench rows, drawn by the glyph/sprite blitters at `$152xx`–`$154xx`. At
+320×200 shown small it reads as speckle; zoom in and it is a coherent crowd, and it
+is drawn identically across all three panels (a decode bug would corrupt them
+unevenly — it doesn't). Every text glyph, the lap-time digits, the car icons and
+the whole playfield render correctly, and the CPU selftest wrong-answer lane is
+unchanged. Confirmed by tracing every write into `$f8000`+`$21100` rows 0–29 over
+several frames: the only writers are that crowd/glyph blitter and the per-frame
+dirty-rect restore (`movem.l` copy at `$14252` from the offscreen HUD stash at
+`$59736`) — no stray blit, no wrong screen base, no half-applied `Setpalette`.
+(The RED/centre panel showing a clean readout box + a TV-monitor icon while the
+other two sit on crowd texture is the intended attract layout, not a defect.)
 
 ## How the CFG was built
 
 ```
-ATARI_NOTRACE=1 ATARI_TRACE_GEMDOS=1 ATARI_DISK_A="Super Sprint.ST" \
-  ATARI_TRACE_EVENTS=ss_events.bin dotnet exec bin/Debug/net8.0/M68000.dll 30000000
+ATARI_NOTRACE=1 ATARI_TRACE_GEMDOS=1 ATARI_TRACE_EVENTS=ss_events.bin \
+  dotnet exec bin/Debug/net8.0/M68000.dll 30000000 --disk-a "Super Sprint.ST"
 
 python tools/trace_cfg.py ss_events.bin --steps 1811361 12000000 \
   --range a300 1c000 --names supersprint.sym \
@@ -139,6 +151,6 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 | `cfg.dot` / `cfg.svg` | control-flow graph, `$15300`–`$16800` |
 | `blocks.txt` | executed basic-block table with hit counts (coverage map) |
 | `title.png` | framebuffer at step 34 000 000 — the "SUPER SPRINT / © 1986 Atari Games" logo screen |
-| `gameplay.png` | framebuffer at step 26 000 000 — the in-attract Track 1 demo (status bar has a rendering glitch, see above) |
+| `gameplay.png` | framebuffer during the in-attract Track 1 drone-car demo (the top band is the grandstand crowd, not a glitch — see above) |
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.
