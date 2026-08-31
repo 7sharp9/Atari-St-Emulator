@@ -423,8 +423,14 @@ def main():
         rom_path = args[i + 1]
         args = args[:i] + args[i + 2:]
 
+    rom_base = ROM_BASE
+    if '--base' in args:
+        i = args.index('--base')
+        rom_base = int(args[i + 1], 16)
+        args = args[:i] + args[i + 2:]
+
     rom = load_rom(rom_path)
-    dis = Disassembler(rom)
+    dis = Disassembler(rom, rom_base=rom_base)
 
     if args and args[0] == '--callers':
         target = int(args[1], 16)
