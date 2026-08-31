@@ -197,8 +197,21 @@ logs every FDC register/command write and every sector read/write to stderr
 **Bootable disks work too, unchanged.** The real TOS ROM loads sector 0, verifies
 the `$1234` word-sum and jumps to the boot code itself - the emulator only serves
 the sectors. `A_013.ST` (a bootable "Automation"-style menu disk with LSD-packed
-games) boots to its menu, and selecting a game runs its in-place depacker and the
-game with no emulator change - see `reversing/a_013/`.
+games) boots to its menu; menu game 2 (Super Sprint) runs straight through, and
+menu game 1 (Super Hang-On) reaches its title screen after seven general 68000/ST
+fixes (STOP, MOVEP, ADDA.L/LEA modes, a coarse MFP Timer A for its software-synth
+music, PSG `$FF88xx` mirror, ReadLong shifter-register case). Hang-On then stops
+at a Timer-B-event-count raster palette split that needs the per-scanline chip
+scheduler this project has deliberately not built. See `reversing/a_013/`.
+
+**MFP timers.** Timer C is the system tick (`instructionsPerFrame/4`). Timer B
+(`/32`) and Timer A (`/64`) are off until a program arms them (gated on the
+control register plus the channel's IERA/IMRA bit, which TOS never sets for A/B),
+then tick on an instruction count - coarse, not per-scanline. Enough to run a
+counter-only ISR (a music tempo counter, a raster-line counter); not enough to
+place a mid-frame `$ffff8240` palette write at a specific scanline, so raster
+splits render flat. `STOP #imm` is modelled as an idle (`Cpu.Stopped`) that spins
+until a pending interrupt outranks the mask STOP loaded into SR.
 
 Build a disk with a program TOS will auto-run at boot:
 

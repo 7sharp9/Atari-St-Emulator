@@ -2,14 +2,16 @@
 
 `A_013.ST` is a **bootable** "Automation"-style compilation disk: a custom 68k boot
 sector, an `\AUTO\MENU13.PRG` menu, and four crunched games. It is the first disk
-the emulator runs that is *booted* rather than loaded through a `\AUTO\*.PRG` — and
-the whole chain (boot sector → menu → game select → in-place depack → running
-game) works with **no emulator code change at all**. Every earlier `reversing/`
-target needed at least one instruction or peripheral fix; this one needed none.
+the emulator runs that is *booted* rather than loaded through a `\AUTO\*.PRG`. The
+delivery chain (boot sector → menu → game select → in-place LSD depack → running
+game) needs **no emulator code change** — the real TOS ROM does the sector-0
+`$1234` boot and the depackers are plain 68000.
 
-The game reached is Super Sprint again — `SPSPRINT.WAS` is a packed copy of the
-same engine `../supersprint/` already drove — so this artefact documents the
-*delivery mechanism* (boot sector, menu, LSD depacker) rather than the game.
+**Menu game 2, Super Sprint** (`SPSPRINT.WAS`) is a packed copy of the engine
+`../supersprint/` already drove, so it runs straight through to its attract loop
+and track-select. **Menu game 1, Super Hang-On** (`SPHANGON.WAS`) is a different
+engine and did need seven general 68000/ST fixes (commit after `5f33079`) to
+reach its title screen — see "Menu game 1: Super Hang-On" below.
 
 ## The disk
 
@@ -144,6 +146,42 @@ dot -Gnslimit=1 -Gmclimit=1 -Tsvg reversing/a_013/cfg.dot       -o reversing/a_0
 1-instruction "(interrupt)" blocks in the CFG are Timer-C ticks splitting a real
 block, not distinct code.
 
+## Menu game 1: Super Hang-On
+
+Selecting `1` at the menu (`kbd 02` / `kbd 82`) runs `SPHANGON.WAS` through the
+same `$c55c` LSD depacker, then a genuinely different engine from Super Sprint.
+It walled seven times on the way to a running program — every wall a general
+68000/ST gap, none Hang-On-specific:
+
+| # | wall | fix |
+|---|------|-----|
+| 1 | `adda.l (a0)+,an` in the `.WAS` depacker (ADDA.L eamode 3) | ADDA.W/.L onto the shared EA decoder; the old hand-rolled `.L` ladder had no `(An)+` / `-(An)` / `(d8,An,Xn)` |
+| 2 | `lea $xxxx.w,an` / `lea d(pc,Xn),an` (LEA eamode 7 regs 0 and 3) | both were `failwith "not implemented"` |
+| 3 | music ISR at `$800` never runs → busy-wait on the tick counter at `$89e` hangs | **MFP Timer A** coarse tick (`MMU.RaiseTimerA`, `instructionsPerFrame/64`), gated on `TACR!=0` + `IERA`/`IMRA` bit 5 so TOS never arms it. The ISR is a ~15 kHz software synth; the wait loop reads `(a0)+` timestamps and spins on `cmp.l $89e.w,d6 / bhi` |
+| 4 | `movep.w D0,$0(a3)` after `movep.l` (MOVEP opmode 6) | MOVEP: all four opmodes (only `.L` reg→mem existed) |
+| 5 | `movep.l Dn,$ffff8800` pokes `$8800/$8802/$8804/$8806`; `$8806` bus-errors → vector-2 loop | PSG decode widened to `$FF8800-$FF88FF` (only bits 0–1 reach the YM2149, so `$FF8804+` mirror `$FF8800-$FF8803` — Hatari `psg.c` says the same) |
+| 6 | `move.l $ffff8244,D0` in the raster palette handler bus-errors (ReadLong had no shifter-register case) | added `VideoDisplayRegister` to `MMU.ReadLong` (ReadWord/WriteWord/WriteLong already had it) |
+| 7 | `stop #$2100` — opcode `$4e72`, decoded as "unknown instruction" | **STOP** implemented via a new `Cpu.Stopped` flag: `Step()` idles until a pending interrupt outranks the mask STOP loaded into SR, then wakes and takes it |
+
+After all seven, Super Hang-On depacks, initialises, plays its Timer-A music and
+renders its title screen correctly (`hangon_title.png` — "SUPER HANG-ON", rider,
+"A SOFTWARE STUDIOS PRODUCTION", SEGA, "Press SPACE").
+
+**Where it stops:** pressing SPACE moves it to a post-title screen driven entirely
+by a VBL handler (`$15b6`) plus a **Timer-B-event-count raster palette-split**
+handler (`$1ae2`–`$1b36`). That handler programs `TBDR` (`$fffffa21`) with a
+scanline count and `stop #$2100`s to wait for Timer B to fire exactly that many
+HBLs later, walking a per-line palette script. The coarse Timer B this emulator
+delivers (~32/frame, not per-scanline, no `TBDR` event counting) can't drive it,
+so the script walk never signals "frame complete" and the main state machine —
+which is itself `stop`'d waiting for that signal — never advances to the next
+screen (it stays black). This is the per-scanline chip scheduler the project has
+deliberately not built; the STOP-condition, not a missing instruction.
+
+Run it: REPL `s 10000000` to the menu, `kbd 02` / `kbd 82`, then keep stepping.
+The title appears around 100M–150M steps in (most of that is STOP-idle time while
+the coarse Timer A music player crawls through the intro sequence).
+
 ## Files
 
 | file | what |
@@ -153,7 +191,8 @@ block, not distinct code.
 | `cfg.dot` / `.svg` | control-flow graph of MENU13's text during the menu phase |
 | `blocks.txt` | executed basic-block table with hit counts (coverage map) |
 | `menu.png` | the MENU13 screen — panels overlap (layout is imperfect: an overscan/raster detail the flat timing model doesn't place; the text is all legible) |
-| `attract.png` | the depacked Super Sprint running its Track 1 attract demo |
-| `prepare.png` | the "PREPARE TO RACE" screen, reached by injecting joystick + keyboard fire |
+| `attract.png` | menu game 2 (Super Sprint) running its Track 1 attract demo |
+| `prepare.png` | Super Sprint's "PREPARE TO RACE" screen, reached by injecting joystick + keyboard fire |
+| `hangon_title.png` | menu game 1 (Super Hang-On) title screen — reached after the seven fixes above |
 
 Game binaries and `A_013.ST` are **not** included.
