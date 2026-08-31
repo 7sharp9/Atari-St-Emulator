@@ -3,10 +3,11 @@
 The first **commercial** disk-loaded program the emulator runs, as opposed to the GPL
 Hatari test binaries in `../int_test/` and `../gmdostst/`. Super Sprint's `\AUTO\SSPRINT.PRG`
 loads through the real TOS 1.00 ROM, pulls in its data files, runs its
-intro/credits sequence and double-buffered attract loop, and — with injected
-IKBD input (55th pass) — leaves attract, walks its track-select / "PREPARE TO
-RACE" menu, and starts an actual Track 1 race that runs with a live drone car,
-lap counting and race timer. No instruction wall, no crash.
+intro/credits sequence and double-buffered attract loop, and — with IKBD input
+(injected 55th pass, wired to the live window's arrow keys 56th pass) — leaves
+attract, walks its track-select / "PREPARE TO RACE" menu, starts an actual Track 1
+race, and lets a window player drive the joystick car a full lap. No instruction
+wall, no crash.
 
 The one caveat is the in-race raster palette: the race engine drives a full-frame
 MFP Timer B raster split (`movem.l <16 words>,$ffff8240` per scanline group) that
@@ -135,10 +136,36 @@ So a run driven purely by injected IKBD packets (`kbd` in the REPL, or
    HUD (`BLUE CAR` / `RED CAR` / `DRONE` lap panels), grandstands, trees, the drone
    car doing timed laps. Stable over 15M+ steps of racing.
 
-The keyboard channel has no accelerate bit, so the human car mostly sits on the
-grid while the drone races; wiring the live SDL2 window's real joystick axis into
-channel 2/3 would make it fully playable. The road/sky palette is flat, not
-banded — see the raster-split caveat at the top.
+The road/sky palette is flat, not banded — see the raster-split caveat at the top.
+
+## Playing it from the live window (56th pass)
+
+The 55th pass left the human car sitting on the grid: the SDL2 window fed the
+keyboard and mouse into IKBD but never sent a joystick report, and the keyboard
+synth (channel 0) has no accelerate bit. `Video.fs` now also emits a joystick-0
+report (`$FE` + state byte, coalesced to one packet per frame on any key edge,
+exactly like the mouse packet) from the arrow cluster:
+
+| host key | joystick bit | effect |
+|----------|-------------|--------|
+| Up arrow    | `$80` (fire) | **accelerate** — Super Sprint reads the fire bit as the gas pedal |
+| Left arrow  | `$04`        | steer left |
+| Right arrow | `$08`        | steer right |
+| Down arrow  | `$02`        | joystick "down" (unused by Super Sprint; brake/reverse in games that read it) |
+
+So from the window: boot with `--disk-a "Super Sprint.ST"`, tap **Up** once to
+leave attract, tap **Up** again to join as the joystick player (the centre "PRESS
+ACCELERATE TO PLAY" slot, channel 2), wait out the countdown, then hold **Up** to
+drive and **Left**/**Right** to steer.
+
+Verified headlessly through the same `EnqueueIkbd` path: injecting `fe 80` in a
+race puts `$80` in the joytable at `-4804(a4)` and the joined car pulls off the
+grid; `fe 00` leaves it parked. Holding fire with periodic `fe 84` / `fe 88`
+steering drives the red player car a full lap of Track 1 (grid → up the left side
+→ across the top → down the right → along the bottom → back past the gantry, DRONE
+LAP advancing 0→2) with no instruction wall. `race.png` is a real frame from that
+run — the red car on the top straight approaching a wrench bonus, drones spread
+around the circuit.
 
 ### The "status bar glitch" — investigated 53rd pass, not an emulator bug
 
@@ -209,7 +236,7 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 | `gameplay.png` | framebuffer during the in-attract Track 1 drone-car demo (the top band is the grandstand crowd, not a glitch — see above) |
 | `trackselect.png` | the **SELECT TRACK** screen, reached from attract by injecting a joystick fire press (55th pass) |
 | `prepare.png` | the three-cars "PREPARE TO RACE" ready screen with the pre-race countdown (55th pass) |
-| `race.png` | a live Track 1 race frame — HUD lap panels, grandstands, the drone car mid-lap (55th pass) |
+| `race.png` | a live Track 1 race frame — the red player car mid-lap on the top straight, driven from injected joystick-0 packets (56th pass); HUD lap panels, grandstands, drones spread round the circuit |
 | `gfxview.md` + `gfx_*.png` | looking at the palettes and decoded bitmaps in RAM with `tools/gfxview.py` (54th pass) — the `$1d3xx` title-fade palette ramp, a whole-RAM contact sheet, the title bitmap decoded from `$f8000` |
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.

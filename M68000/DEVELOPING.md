@@ -30,6 +30,24 @@ for the full subcommand list.
 The raw form still works: `dotnet exec bin/Debug/net8.0/M68000.dll <argv>` where
 `<argv>` is any of the modes in `Program.fs`'s `main`.
 
+## Live window input (`Video.fs`)
+
+`./run.ps1 window` (or `window resume <snap>`) opens the SDL2 window and feeds
+host input back to the emulator as IKBD serial packets:
+
+- **keyboard** - physical-position scancode map (`scancodeMap`), make on keydown,
+  break (`| $80`) on keyup. Covers the typing area, arrow/edit cluster, function
+  row, Help/Undo. F12 or closing the window quits.
+- **mouse** - relative mode; motion is accumulated and flushed as `$F8`-header
+  relative packets once per frame (front-loaded, to avoid catching a half-drawn
+  VDI cursor at the VBL). Button edges send immediately.
+- **joystick 0** - the arrow cluster is also mapped to a joystick-0 state byte
+  (`joyBitMap`): Up = fire bit `$80`, Down = `$02`, Left = `$04`, Right = `$08`.
+  Emitted as a `$FE` + state-byte report on any key edge, coalesced to one packet
+  per frame like the mouse. This is what makes Super Sprint playable from the
+  window - it reads the fire bit as the accelerator (see
+  `reversing/supersprint/README.md`).
+
 ## `ATARI_NOTRACE`
 
 `ATARI_NOTRACE=1` redirects `Console.Out` to a null sink so the ~221 per-step

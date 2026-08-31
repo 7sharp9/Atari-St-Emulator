@@ -65,6 +65,25 @@ let private scancodeMap =
         Scancode.ScancodePagedown, 0x62uy  // ST Help
     ]
 
+/// Host physical-key -> joystick-0 state-byte bit. An IKBD joystick report is `$FE` (joystick 0)
+/// or `$FF` (joystick 1) followed by one state byte: bit0 up, bit1 down, bit2 left, bit3 right,
+/// bit7 fire. Super Sprint's own IKBD handler ($104b6) stashes that byte in its joytable, and the
+/// game reads a raw joystick channel (2 = joy0) for players 1-2 - the only way a window player
+/// gets an accelerate input, since the keyboard synth (channel 0) has no way to reach it.
+///
+/// In Super Sprint the fire bit ($80) is the accelerator pedal (verified in-race: holding it
+/// drives the joined car off the grid and round the circuit, the direction bits steer), so Up is
+/// mapped to fire rather than to the largely-unused up bit. The arrow keys still also emit their
+/// ST cursor scancodes via scancodeMap; harmless, nothing on channel 0 uses them. Each host key
+/// owns a distinct bit so the keyup edge can clear exactly that bit.
+let private joyBitMap =
+    dict [
+        Scancode.ScancodeUp, 0x80uy      // accelerator pedal (Super Sprint reads fire as the gas)
+        Scancode.ScancodeDown, 0x02uy    // joystick "down" (brake / reverse where a game uses it)
+        Scancode.ScancodeLeft, 0x04uy
+        Scancode.ScancodeRight, 0x08uy
+    ]
+
 let private gun3 (v: int) = (v &&& 7) * 255 / 7
 let private gun4 (v: int) = (v &&& 0xF) * 255 / 15
 
@@ -153,6 +172,17 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
     let mutable mdy = 0
     let mutable mouseButtons = 0 // bit0 = right, bit1 = left (IKBD relative-packet header bits)
 
+    // Joystick-0 state byte (see joyBitMap) plus a dirty flag. Like the mouse, the real IKBD only
+    // reports joystick 0 on a state change, so a packet is emitted only when a mapped key edge
+    // actually changed a bit, coalesced to at most one per frame in the front-loaded flush below.
+    let mutable joyState = 0uy
+    let mutable joyDirty = false
+
+    let sendJoyPacket () =
+        if joyDirty then
+            mmu.EnqueueIkbd [| 0xFEuy; joyState |]
+            joyDirty <- false
+
     // `force` = a button-state change happened, so a packet must reach TOS even with zero motion;
     // the per-frame flush passes false so an idle mouse produces no traffic (the real IKBD only
     // reports on movement or a button edge - a 50Hz stream of F8 00 00 packets is not hardware
@@ -186,10 +216,16 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
                         match scancodeMap.TryGetValue sc with
                         | true, st -> mmu.EnqueueIkbd [| st |]
                         | _ -> ()
+                        match joyBitMap.TryGetValue sc with
+                        | true, bit when joyState &&& bit = 0uy -> joyState <- joyState ||| bit; joyDirty <- true
+                        | _ -> ()
             | EventType.Keyup ->
                 let sc = ev.Key.Keysym.Scancode
                 match scancodeMap.TryGetValue sc with
                 | true, st -> mmu.EnqueueIkbd [| st ||| 0x80uy |]
+                | _ -> ()
+                match joyBitMap.TryGetValue sc with
+                | true, bit when joyState &&& bit <> 0uy -> joyState <- joyState &&& ~~~bit; joyDirty <- true
                 | _ -> ()
             | EventType.Mousemotion ->
                 mdx <- mdx + ev.Motion.Xrel
@@ -230,6 +266,7 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
         let target = (stepCount() / ipf + 1UL) * ipf
         pollEvents ()
         sendMousePacket false // front-loaded: see the tearing note above
+        sendJoyPacket ()      // at most one joystick-0 report per frame, only on a state change
         while running && stepCount() < target do
             pollEvents ()
             let sliceEnd = min target (stepCount() + sliceSteps)
