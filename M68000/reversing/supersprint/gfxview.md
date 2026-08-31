@@ -71,6 +71,49 @@ row. In the viewer that is layout `planar-linear` with `plane_stride 8`,
 the strides, but a clean full rip needs the per-object width/height from the sprite
 table, which is a separate reverse-engineering job.
 
+## The `.gfx` sidecar producer (56th pass) - `obs_palettes.png`
+
+`ATARI_GFX_SIDECAR=<snap>.gfx` makes the emulator record, as it runs, every
+address the program hands to **XBIOS Setpalette** (`palette $xxxxxxxx`) and the
+log / phys bases from every **XBIOS Setscreen** (`pointer screen_log|screen_phys
+$xxxxxxxx`, a `$ffffffff` "query" arg skipped). Both are plain XBIOS arguments -
+no game knowledge in the emulator. It is behaviourally inert, exactly like
+`ATARI_TRACE_OS`: the file is the only thing it writes. `gfxview.py` auto-loads
+`<snap>.gfx`, tags matching detected palettes `(observed Setpalette)`, and
+**force-includes** any observed address the `$0RGB`-run heuristic missed - the
+game told us that exact address is a palette, so it is authoritative.
+
+```
+ATARI_NOTRACE=1 ATARI_GFX_SIDECAR=ss.snap.gfx \
+  dotnet exec bin/Debug/net8.0/M68000.dll 6000000 snapshot ss.snap --disk-a "Super Sprint.ST"
+$ cat ss.snap.gfx
+palette $0002102c
+palette $0001d590
+pointer screen_log  $00021100
+pointer screen_phys $00021100
+pointer screen_log  $000f8000
+pointer screen_phys $000f8000
+palette $0001d610
+```
+
+`$21100` / `$f8000` are exactly the two buffers the attract loop flips between.
+None of the three Setpalette addresses were auto-detected (the heuristic finds
+the `$1d3xx` fade-ramp *table*, not these live 16-word windows), so the sidecar
+is what surfaces them. `obs_palettes.png` is those three decoded: `$1d590` and
+`$1d610` are full game palettes (car reds/oranges/yellows, track greys, sky
+blue, white); `$2102c`, staged just before the `$21100` framebuffer, is a
+sparser partial.
+
+## Tile-sheet layout mode (56th pass)
+
+The viewer gained a **`tiles 8x8x4`** layout: a sheet of 32-byte planar cells
+(4 planes of 8 bytes, one byte per row, planes contiguous), `width/8` cells per
+row - the standard packed layout for 4-plane fonts and small tiles. Decoder
+unit-checked against hand-built cells. Super Sprint's own sprite/tile source
+does *not* use it (it is the transposed `planar-linear 8/1` format described
+above), so this is a general-purpose addition rather than the key to SS's art;
+the "tile sheet 32x32 cells" preset drives it.
+
 ## Files
 
 | file | what |
@@ -78,3 +121,4 @@ table, which is a separate reverse-engineering job.
 | `gfx_palette_ramp.png` | `$f8000` (step 34M) through all 19 detected `$1d3xx` fade-ramp palettes |
 | `gfx_title.png` | `$f8000` (step 34M) via `st-interleaved` 320x200x4 + palette `$1d4da` |
 | `gfx_ram_contact.png` | whole-RAM contact sheet (grey, 512 bytes/row) |
+| `obs_palettes.png` | the three Setpalette blocks the `.gfx` sidecar producer captured on a 6M-step run, decoded |

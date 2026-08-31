@@ -33,6 +33,10 @@ Layouts the viewer understands:
     1bpp bitmap; plane p at base + p*plane_stride, rows every row_stride bytes.
     Super Sprint's transposed sprite blitter ($15436) uses this with
     plane_stride 8, row_stride 1 (planes at src+8/+16/+24, source +1 byte/row).
+  * tiles 8x8x4     - a sheet of 32-byte planar cells: each cell is 4 planes of
+    8 bytes (one byte per row), planes contiguous. Cells tile left-to-right then
+    top-to-bottom, (width/8) cells per sheet row. For browsing packed character /
+    tile / small-sprite data (e.g. Super Sprint's $21000-$61000 span) as a grid.
   * chunky8         - one byte per pixel, straight palette index.
 """
 import argparse
@@ -254,6 +258,7 @@ HTML = r"""<!doctype html><html><head><meta charset=utf-8>
 <label>plane layout</label><select id=mode>
  <option value=st>st-interleaved (screen RAM)</option>
  <option value=lin>planar-linear (contiguous planes)</option>
+ <option value=tiles>tiles 8x8x4 (32-byte planar cells)</option>
  <option value=chunky>chunky8 (1 byte/pixel)</option></select>
 <div class=row><div><label>plane stride (hex, lin)</label><input id=ps value="0"></div>
 <div><label>row stride (hex, 0=auto)</label><input id=rs value="0"></div></div>
@@ -264,6 +269,7 @@ HTML = r"""<!doctype html><html><head><meta charset=utf-8>
  <option value="st,640,400,1">ST mono screen 640x400x1</option>
  <option value="lin,8,8,4,8,1">SS sprite tile 8x8x4 (stride 8/1)</option>
  <option value="lin,16,16,4,32,2">SS sprite 16x16x4 (stride 32/2)</option>
+ <option value="tiles,256,256,4">tile sheet 32x32 cells (8x8x4)</option>
  <option value="chunky,256,256,8">chunky 256x256</option></select>
 <h3>palette</h3>
 <select id=pal></select>
@@ -310,6 +316,16 @@ function buildJumps(){
 function pixel(base,x,y,bpp,mode,W,ps,rs){
   let idx=0;
   if(mode==="chunky"){ let o=base+y*(rs||W)+x; return o<RAM.length?RAM[o]:0; }
+  if(mode==="tiles"){
+    // 8x8x4 planar cells, 32 bytes each: plane p = 8 bytes (1/row) at cell+p*8.
+    // Cells tile left-to-right, top-to-bottom, (W/8) cells per sheet row.
+    let cols=W/8|0; if(cols<1) cols=1;
+    let tx=x/8|0, ty=y/8|0, px=x&7, py=y&7;
+    let cell=base+(ty*cols+tx)*32;
+    for(let p=0;p<4;p++){ let o=cell+p*8+py;
+      if(o>=RAM.length) continue; idx|=((RAM[o]>>(7-px))&1)<<p; }
+    return idx;
+  }
   if(mode==="st"){
     let rowBytes = rs || (W/16|0)*2*bpp;
     let wg=x/16|0, bit=15-(x&15);
@@ -333,6 +349,7 @@ function draw(){
   let mode=$('mode').value, z=$('zoom').value|0;
   let ps=parseInt($('ps').value,16)||0, rs=parseInt($('rs').value,16)||0;
   if(mode==="chunky") bpp=8;
+  if(mode==="tiles") bpp=4;
   let cols=curPal(bpp);
   let cv=$('c'); cv.width=W; cv.height=H; cv.style.width=(W*z)+"px"; cv.style.height=(H*z)+"px";
   let ctx=cv.getContext('2d'), im=ctx.createImageData(W,H), d=im.data;
@@ -342,7 +359,8 @@ function draw(){
     let o=(y*W+x)*4; d[o]=c[0]; d[o+1]=c[1]; d[o+2]=c[2]; d[o+3]=255;
   }
   ctx.putImageData(im,0,0);
-  let rowBytes = mode==="chunky"?(rs||W): mode==="st"?(rs||(W/16|0)*2*bpp):(rs||(W/8|0));
+  let rowBytes = mode==="chunky"?(rs||W): mode==="tiles"?((W/8|0)*32):
+                 mode==="st"?(rs||(W/16|0)*2*bpp):(rs||(W/8|0));
   $('status').textContent =
     `base ${hx(base)}  ${W}x${H}x${bpp}  ${mode}\nrow stride ${hx(rowBytes)}  frame ${hx(rowBytes*H)}  end ${hx(base+rowBytes*H)}`;
 }
@@ -362,7 +380,7 @@ document.addEventListener('keydown',e=>{
   if(/input|select/i.test(e.target.tagName)&&e.target.id!=="base") return;
   let base=parseInt($('base').value,16)||0;
   let W=$('w').value|0,bpp=$('bpp').value|0,mode=$('mode').value;
-  let rb = mode==="chunky"?W: mode==="st"?(W/16|0)*2*bpp:(W/8|0);
+  let rb = mode==="chunky"?W: mode==="tiles"?(W/8|0)*32: mode==="st"?(W/16|0)*2*bpp:(W/8|0);
   let step={ArrowRight:rb,ArrowLeft:-rb,ArrowDown:1,ArrowUp:-1,PageUp:-0x1000,PageDown:0x1000}[e.key];
   if(step===undefined) return;
   e.preventDefault(); $('base').value=Math.max(0,base+step).toString(16); draw();
@@ -374,7 +392,7 @@ function report(ev){
   let x=Math.floor((ev.clientX-r.left)/z), y=Math.floor((ev.clientY-r.top)/z);
   let base=parseInt($('base').value,16)||0;
   let W=$('w').value|0,bpp=$('bpp').value|0,mode=$('mode').value;
-  let rb=parseInt($('rs').value,16)|| (mode==="chunky"?W: mode==="st"?(W/16|0)*2*bpp:(W/8|0));
+  let rb=parseInt($('rs').value,16)|| (mode==="chunky"?W: mode==="tiles"?(W/8|0)*32: mode==="st"?(W/16|0)*2*bpp:(W/8|0));
   let ps=parseInt($('ps').value,16)||0;
   let i=pixel(base,x,y,bpp,mode,W,ps,parseInt($('rs').value,16)||0);
   $('status').textContent=`x=${x} y=${y}  index=${i}\nrow byte ${hx(base+y*rb)}  (base ${hx(base)} + ${hx(y*rb)})`;
@@ -428,13 +446,14 @@ def load_sidecar(path):
     """`<snap>.gfx` text sidecar: lines `palette <hex>` / `pointer <name> <hex>`.
     Behaviourally inert - the emulator only writes it, this only reads it."""
     out = {"palettes": [], "pointers": []}
+    h = lambda s: int(s[1:] if s.startswith("$") else s, 16)
     try:
         for ln in open(path):
             t = ln.split()
             if len(t) >= 2 and t[0] == "palette":
-                out["palettes"].append(int(t[1], 16))
+                out["palettes"].append(h(t[1]))
             elif len(t) >= 3 and t[0] == "pointer":
-                out["pointers"].append((t[1], int(t[2], 16)))
+                out["pointers"].append((t[1], h(t[2])))
     except FileNotFoundError:
         pass
     return out
@@ -471,11 +490,23 @@ def main():
     palettes, spans = [], []
     if not args.no_detect:
         palettes = detect_palettes(ram, base, allow_ste=args.ste)
-        # tag the sidecar-observed Setpalette addresses
+        # tag the sidecar-observed Setpalette addresses; force-include any the
+        # heuristic missed (the emulator saw the game hand this exact address to
+        # XBIOS Setpalette, so it is authoritative - decode 16 words there).
         obs = set(sidecar["palettes"])
+        found = {p["addr"] for p in palettes}
         for p in palettes:
             if p["addr"] in obs:
                 p["note"] = "(observed Setpalette)"
+        for addr in sorted(obs - found):
+            off = addr - base
+            if 0 <= off <= len(ram) - 32:
+                words = [int.from_bytes(ram[off + k*2: off + k*2 + 2], "big") for k in range(16)]
+                palettes.append({
+                    "addr": addr, "type": "obs", "words": words,
+                    "colors": [ste_colour(x) for x in words],
+                    "distinct": len(set(words)), "note": "(observed Setpalette)"})
+        palettes.sort(key=lambda c: c["addr"])
         spans = detect_spans(ram, base)
         print(f"  {len(palettes)} palette(s):", file=sys.stderr)
         for p in palettes[:16]:

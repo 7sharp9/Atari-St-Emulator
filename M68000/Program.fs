@@ -162,6 +162,24 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     //keyed by its return PC, so the per-step $602C sample doesn't re-dump it every instruction.
     let mutable basepageCapturedFor = -1
 
+    ///Graphics sidecar (ATARI_GFX_SIDECAR=<path>). Behaviourally inert, like ATARI_TRACE_OS - the
+    ///emulator only ever writes this file. Every XBIOS Setpalette ($06) records its palette-block
+    ///address as `palette $xxxxxxxx`; every XBIOS Setscreen ($05) records the log / phys screen
+    ///bases as `pointer screen_log|screen_phys $xxxxxxxx` (a $ffffffff "query, do not change"
+    ///argument is skipped). Both are plain XBIOS arguments - no game-specific knowledge. Each
+    ///distinct line is written once. tools/gfxview.py's load_sidecar reads `<snap>.gfx`.
+    let gfxSidecar =
+        match Environment.GetEnvironmentVariable "ATARI_GFX_SIDECAR" with
+        | null | "" -> None
+        | p ->
+            if IO.File.Exists p then IO.File.Delete p
+            Some p
+    let gfxSidecarSeen = System.Collections.Generic.HashSet<string>()
+    let gfxEmit (line: string) =
+        match gfxSidecar with
+        | Some p when gfxSidecarSeen.Add line -> IO.File.AppendAllText(p, line + "\n")
+        | _ -> ()
+
     ///Trace narrator (ATARI_TRACE_OS - see Atari.OsCalls). A stack of (returnPC, callText) for
     ///the OS calls currently in flight, so the return value can be printed against the call and
     ///nested calls (a Pexec'd child's own GEMDOS traffic) indent under their parent. Mode-4/6
@@ -345,6 +363,22 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             let fname = readCString (mmu.ReadLong (uint32 (cpu.A7 + 4)))
             pexecStack <- (cpu.PC + 2, mode, fname) :: pexecStack
             eprintfn "GEMDOS Pexec mode=%d file=\"%s\" pc=$%08x" mode fname cpu.PC
+        //Graphics sidecar (ATARI_GFX_SIDECAR): capture XBIOS Setpalette / Setscreen arguments. An
+        //XBIOS call ($4E4E) passes its function number as a word at A7, arguments right after it.
+        match gfxSidecar with
+        | Some _ when int (mmu.ReadWord (uint32 cpu.PC)) &&& 0xFFFF = 0x4E4E ->
+            try
+                match int (mmu.ReadWord (uint32 cpu.A7)) &&& 0xFFFF with
+                | 0x06 ->
+                    gfxEmit (sprintf "palette $%08x" (uint32 (mmu.ReadLong (uint32 (cpu.A7 + 2)))))
+                | 0x05 ->
+                    let log = uint32 (mmu.ReadLong (uint32 (cpu.A7 + 2)))
+                    let phys = uint32 (mmu.ReadLong (uint32 (cpu.A7 + 6)))
+                    if log <> 0xFFFFFFFFu then gfxEmit (sprintf "pointer screen_log $%08x" log)
+                    if phys <> 0xFFFFFFFFu then gfxEmit (sprintf "pointer screen_phys $%08x" phys)
+                | _ -> ()
+            with _ -> ()
+        | _ -> ()
         //Trace narrator (ATARI_TRACE_OS): decode a GEMDOS/BIOS/XBIOS trap into a readable call
         //line, print it, and remember where it returns so the return value can be shown against
         //it. See Atari.OsCalls; the whole thing is wrapped so a bad stack pointer can't break the run.

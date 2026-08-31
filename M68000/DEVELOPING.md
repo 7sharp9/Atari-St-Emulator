@@ -244,11 +244,21 @@ no server). Live controls: base address, width, rows, bpp (1/2/4/8), zoom, palet
   Sprint's transposed sprite blitter (`$15436`) uses `plane_stride 8`,
   `row_stride 1` (planes at `src+8/+16/+24`, source `+1` byte/row) - the
   "SS sprite tile 8x8x4" preset.
+* `tiles 8x8x4` - a sheet of 32-byte planar cells (4 planes of 8 bytes, one byte
+  per row, planes contiguous), `width/8` cells per row. The usual packed layout
+  for 4-plane fonts / tilesets. "tile sheet 32x32 cells" preset.
 * `chunky8` - one byte per pixel.
 
+`ATARI_GFX_SIDECAR=<snap>.gfx` makes the emulator write a `.gfx` sidecar as it
+runs: `palette $xxxxxxxx` for every XBIOS Setpalette address, `pointer
+screen_log|screen_phys $xxxxxxxx` for every XBIOS Setscreen base. Behaviourally
+inert (only writes the file), like `ATARI_TRACE_OS`. `gfxview.py` auto-loads
+`<input>.gfx`, adds the pointers as jump targets, and force-includes any observed
+palette address the `$0RGB`-run heuristic didn't find on its own.
+
 The viewer's decoder is verified byte-identical to `screendump.py` /
-`Instructions.fs`. Worked example with example PNGs:
-`reversing/supersprint/gfxview.md`.
+`Instructions.fs` (the `tiles` mode unit-checked separately). Worked example with
+example PNGs: `reversing/supersprint/gfxview.md`.
 
 ## Other tools
 
