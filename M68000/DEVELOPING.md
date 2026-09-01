@@ -223,9 +223,10 @@ enough for a counter-only ISR (a music tempo counter), wrong tempo.
 
 Timer B in **event-count mode** (`TBCR` low nibble `$08`) is the exception: it is
 driven scanline-accurately. `Program.fs` calls `mmu.HblTick()` once per
-`instructionsPerLine` (`instructionsPerFrame/313`, ~38 instructions), and
-`HblTick` decrements a live counter seeded from `TBDR`, raising the Timer B
-interrupt on each underflow, so a raster ISR fires at the scanline the game
+`instructionsPerLine` (`instructionsPerFrame/300` = 40 - a divisor that lands line
+0 on the VBL boundary for the recorder), and `HblTick` decrements a live counter
+seeded from `TBDR`, raising the Timer B interrupt on each underflow so a raster
+ISR fires at the scanline the game
 programmed rather than at an arbitrary instruction count. Super Sprint's in-race
 Timer B ISR, Super Hang-On's post-title split and Impossamole's attract all run
 `TBCR=$08` and are driven by this. The counter is not in `MmuSnapshot` (TOS
