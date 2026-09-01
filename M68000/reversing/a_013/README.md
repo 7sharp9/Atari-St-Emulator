@@ -11,7 +11,10 @@ game) needs **no emulator code change** — the real TOS ROM does the sector-0
 `../supersprint/` already drove, so it runs straight through to its attract loop
 and track-select. **Menu game 1, Super Hang-On** (`SPHANGON.WAS`) is a different
 engine and did need seven general 68000/ST fixes (commit after `5f33079`) to
-reach its title screen — see "Menu game 1: Super Hang-On" below.
+reach its title screen — see "Menu game 1: Super Hang-On" below. **Menu games 3
+and 4, ST Karate and Electronic Pool**, are two more distinct engines and both
+run into full gameplay with **no emulator code change at all** — see "Menu games
+3 & 4" below.
 
 ## The disk
 
@@ -182,6 +185,61 @@ Run it: REPL `s 10000000` to the menu, `kbd 02` / `kbd 82`, then keep stepping.
 The title appears around 100M–150M steps in (most of that is STOP-idle time while
 the coarse Timer A music player crawls through the intro sequence).
 
+## Menu games 3 & 4: ST Karate and Electronic Pool
+
+Both selected the same way (`kbd 03`/`kbd 83` for `3`, `kbd 04`/`kbd 84` for `4`),
+both depack through the `$c55c` LSD depacker, both are engines unrelated to Super
+Sprint or Hang-On, and **both run into full gameplay with zero emulator changes**
+— no instruction walls, no loop-detector trips, no scheduler stop condition. The
+only friction was learning each game's input scheme.
+
+### ST Karate (`STKARATE.WAS`)
+
+After the depacker prints `LSD DECOMPACTING...` the `.WAS` stub does a
+`Bconin(2)` — it **waits for a keypress** before installing itself. Send any key
+(`kbd 39`/`kbd b9`) and it continues: `Initmous`, `Setpalette`, `Setexc` for
+vectors `$2a`/`$2b`/`$2f`, `Ikbdws`, then its own menu.
+
+- **Input is joystick 1** (`$FF` IKBD packets, not `$FE`). Its reader at `$1e76c`
+  decodes `$27cd4` (joystick 1) into the low byte of the result and `$27cd3`
+  (joystick 0) into the high byte; the menu loop at `$1c8ce` only tests the low
+  byte, so joystick-0 fire is ignored and joystick-1 fire (`kbd ff 80`) selects.
+- Menu (START GAME / 1 PLAYER / EFFECTS / MUSIC / CREDITS / HI SCORE, over a row
+  of fighters) renders correctly. Fire on START GAME → the fight screen
+  (`karate.png`: ENERGY/SCORE/LIVES/LEVEL HUD, a Buddha statue, temple, two
+  fighters). Direction + fire packets (`kbd ff 88` etc.) drive the player,
+  land hits and score. Stable over 25M+ steps of combat input.
+
+### Electronic Pool (`POOL1/2/3.WAS`, `ELECPOOL.BOB`, © Microdeal)
+
+Loads `POOL1.WAS`..`POOL3.WAS`, renders its **title screen** correctly (the
+`POOL` logo, `1 Player`/`2 Player` box, ball-count row, cue and `microdeal`
+logo). Then it idles vsync-locked in a mouse-cursor loop.
+
+- **Input is the mouse, in IKBD "buttons act as keys" mode.** At startup the game
+  sends IKBD command `$07 $04` (set mouse button action → left press = key `$74`,
+  left release = `$F4`, right = `$75`/`$F5`). Its packet handler (`$608a2` on
+  vector `$118`) accumulates relative-mouse `$F8..$FB` packets so the dx/dy bytes
+  land straight in the cursor-delta accumulators at `$60925`/`$60926`, and its
+  dispatcher `$6061c` turns the synthetic `$74`/`$75` key codes into the button
+  flags `526(a5)` / `528(a5)`.
+- **The emulator does not interpret IKBD commands** (there is no 6301 model — see
+  `MMU.fs`, the `$FFFC02` transmit case is a no-op), and the live SDL window
+  (`Video.fs`) only emits `$F8|buttons` relative packets, never the `$74` key
+  codes. So from the live window Pool's menu can't be clicked yet. Headless it
+  works by injecting the synthetic code directly: poke the cursor position
+  (`w 619d0 09000100` = X=$0900 Y=$0100, both inside the on-screen clamp range
+  the menu loop enforces at `$616fe`/`$61726`), then `kbd 74` / `kbd f4`.
+- That click leaves the player-select and enters a **game of pool** (`pool.png`:
+  top-down table, cue ball, racked balls, `PLAYER 1`/`PLAYER 2`/`TABLE`/`HIGHEST`
+  HUD, aiming cursor). Stable over 25M+ steps.
+
+**Follow-up (not done):** a minimal IKBD command interpreter in `MMU.fs` (track
+mouse-button-action mode from the `$FFFC02` byte stream) plus a `Video.fs` change
+to emit `$74`/`$F4`/`$75`/`$F5` when that mode is set, would make Pool — and other
+mouse-button-as-key ST software — playable from the live window. It touches the
+regression-sensitive input path, so it is a deliberate feature, not a wall fix.
+
 ## Files
 
 | file | what |
@@ -194,5 +252,7 @@ the coarse Timer A music player crawls through the intro sequence).
 | `attract.png` | menu game 2 (Super Sprint) running its Track 1 attract demo |
 | `prepare.png` | Super Sprint's "PREPARE TO RACE" screen, reached by injecting joystick + keyboard fire |
 | `hangon_title.png` | menu game 1 (Super Hang-On) title screen — reached after the seven fixes above |
+| `karate.png` | menu game 3 (ST Karate) — the fight screen, driven from joystick-1 packets |
+| `pool.png` | menu game 4 (Electronic Pool) — an in-progress game, reached through the mouse menu |
 
 Game binaries and `A_013.ST` are **not** included.
