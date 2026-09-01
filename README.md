@@ -30,13 +30,10 @@ of scope until a per-instruction cycle scheduler exists. See "Known gaps" in
 ## Requirements
 
 - **.NET 8 SDK**
-- **PowerShell 7** for the `run.ps1` wrapper (the raw `dotnet exec` form works
-  without it)
-- **SDL2** native library on the path, for the `window` mode (the `Silk.NET.SDL`
-  NuGet package is restored automatically)
-- A **TOS 1.00 UK ROM dump** named `TOS100UK.IMG` (196608 bytes) placed in
-  `M68000/`. It is copyrighted and is not distributed here. Point
-  `ATARI_ROM_PATH` at a different dump to override the name.
+- **PowerShell 7** for the `run.ps1` wrapper (the raw `dotnet exec` form works without it)
+- **SDL2** native library on the path, for the `window` mode (the `Silk.NET.SDL` NuGet package is restored automatically)
+- A **TOS 1.00 UK ROM dump** named `TOS100UK.IMG` (196608 bytes) placed in `M68000/`. It is copyrighted and is not distributed here. 
+  Point `ATARI_ROM_PATH` at a different dump to override the name.
 
 ## Quick start
 
@@ -51,16 +48,13 @@ cd M68000
 ./run.ps1 selftest tests/680x0   # 68000 ProcessorTests vectors vs the CPU core
 ```
 
-`checkpoint.txt` is keyed to your ROM dump and is not committed, so run `check`
-once before `verify`.
+`checkpoint.txt` is keyed to your ROM dump and is not committed, so run `check` once before `verify`.
 
-`run.ps1` builds `M68000.fsproj` once (skip with `-NoBuild`) and then `dotnet
-exec`s the DLL from `M68000/` so the ROM and `checkpoint.txt` resolve. Trace is on
-for `boot` / `trace` and off elsewhere; `-Trace` forces it on. Run `./run.ps1`
-with no arguments for the full subcommand list.
+`run.ps1` builds `M68000.fsproj` once (skip with `-NoBuild`) and then `dotnet exec`s the DLL from 
+`M68000/` so the ROM and `checkpoint.txt` resolve. Trace is on for `boot` / `trace` and off elsewhere;
+`-Trace` forces it on. Run `./run.ps1` with no arguments for the full subcommand list.
 
-The `selftest` vectors are ~190 MB and are not committed. Fetch them once with
-`python tools/fetch_680x0_tests.py`.
+The `selftest` vectors are ~190 MB and are not committed. Fetch them once with `python tools/fetch_680x0_tests.py`.
 
 ### Running a program off a disk
 
@@ -108,16 +102,11 @@ M68000/
   tests/680x0/      SingleStepTests vectors (downloaded, git-ignored)
 ```
 
-`tools/hatari_trace.py` drives a local Hatari build as a CPU/OS-trace oracle for
-ground-truth peripheral and TOS behaviour; supply your own Hatari.
+`tools/hatari_trace.py` drives a local Hatari build as a CPU/OS-trace oracle for ground-truth peripheral and TOS behaviour; supply your own Hatari.
 
 ## Further reading
 
-- [`M68000/DEVELOPING.md`](M68000/DEVELOPING.md) is the working reference: the
-  ROM-driven loop, every `ATARI_*` env switch, `selftest` classification, the
-  `ATARI_TRACE_EVENTS` + `trace_cfg.py` analysis pipeline, `gfxview.py`, and the
-  regression net that every emulator-behaviour change has to pass.
-- [`M68000/reversing/*/README.md`](M68000/reversing/) each walk one program from
-  load to running, with the disassembly and the walls that were fixed to get
-  there.
+- [`M68000/DEVELOPING.md`](M68000/DEVELOPING.md) is the working reference: the ROM-driven loop, every `ATARI_*` env switch, `selftest` classification, the
+  `ATARI_TRACE_EVENTS` + `trace_cfg.py` analysis pipeline, `gfxview.py`, and the regression net that every emulator-behaviour change has to pass.
+- [`M68000/reversing/*/README.md`](M68000/reversing/) each walk one program from load to running, with the disassembly and the walls that were fixed to get there.
 - 68000 Programmer's Reference: <https://www.nxp.com/files/archives/doc/ref_manual/M68000PRM.pdf>
