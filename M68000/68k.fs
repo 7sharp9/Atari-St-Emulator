@@ -1552,54 +1552,16 @@ type Cpu =
                 let ccrTrap = if src < 0 then ccr0 ||| 0x8s else ccr0 &&& ~~~0x8s
                 ({ afterEA with CCR = ccrTrap }).EnterVector 6 afterEA.PC
         | LEA(a_reg, eamode,eareg) ->
-            match eamode with
-            | 0b010uy -> //(An)
-                let addr = x.AddressRegister eareg
-                let newCpu = {x.WithAddressRegister a_reg addr with PC = x.PC+2}
-                printfn "lea (a%u),a%i" eareg a_reg
-                newCpu
-            | 0b101uy -> //(d16,An)
-                let displacement = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + int displacement
-                let newCpu = {x.WithAddressRegister a_reg addr with PC = x.PC+4}
-                printfn "lea %i(a%u),a%i" displacement eareg a_reg
-                newCpu
-            | 0b110uy -> //(d8,An,Xn)
-                let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
-                let addr = x.AddressRegister eareg + ext.Offset
-                let newCpu = {x.WithAddressRegister a_reg addr with PC = x.PC+4}
-                printfn "lea %s,a%i" (x.DescribeIndexed eareg ext) a_reg
-                newCpu
-            | 0b111uy ->
-                match eareg with
-                | 0b000uy -> //(xxx).W - sign-extend the next word to a 32-bit address
-                    let addr = int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))
-                    let newCpu = {x.WithAddressRegister a_reg addr with PC = x.PC+4}
-                    printfn "lea $%x.w,a%i" addr a_reg
-                    newCpu
-                | 0b001uy -> //(xxx).L
-                    //load the next long into a_reg
-                    let addr = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let newCpu = {x.WithAddressRegister a_reg addr with PC = x.PC+6}
-                    printfn "lea %x, A%i" addr a_reg
-                    newCpu
-
-                | 0b010uy -> //(d16,PC)
-                    let displacedPC =
-                        let disp = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                        (x.PC+2) + int disp
-                    let newCpu = {x.WithAddressRegister a_reg displacedPC with PC = x.PC + 4}
-                    printfn "lea $%x,a%i" displacedPC a_reg
-                    newCpu
-                    
-                | 0b011uy -> //(d8,PC,Xn)
-                    let ext = x.DecodeBriefExtension (x.MMU.ReadWord(uint32 (x.PC+2)))
-                    let addr = (x.PC+2) + ext.Offset
-                    let newCpu = {x.WithAddressRegister a_reg addr with PC = x.PC+4}
-                    printfn "lea %i(pc,%s%u.%s),a%i" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") a_reg
-                    newCpu
-                | _ -> failwithf "unknown Register %x for mode %x" eareg eamode
-            | _ -> failwithf "lea: unknown mode %x" eamode
+            //LEA: loads the effective address itself (not its contents) into An. CCR unaffected.
+            //Only (An) and the control addressing modes are legal, so the shared EA decoder always
+            //resolves to an EaMem address - take that, no operand read. `extBytes` carries the PC
+            //advance for whichever mode's extension words were consumed.
+            let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
+            match loc with
+            | EaMem addr ->
+                printfn "lea %s,a%i" desc a_reg
+                { x.WithAddressRegister a_reg (int addr) with PC = x.PC + 2 + extBytes }
+            | _ -> failwithf "lea: illegal addressing mode %x/%x" eamode eareg
 
         | NEGX(size, eamode, eareg) ->
             //Negate with extend: dest = 0 - dest - X. CCR: N/V from the result, C+X set on borrow
