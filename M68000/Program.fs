@@ -185,6 +185,21 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         | Some p when gfxSidecarSeen.Add line -> IO.File.AppendAllText(p, line + "\n")
         | _ -> ()
 
+    ///Headless frame recorder (ATARI_FRAME_DIR=<dir>, optional ATARI_FRAME_EVERY=<n> frames,
+    ///default 1). Behaviourally inert - the emulator only ever writes files. At each VBL boundary
+    ///it dumps `<dir>/fNNNNNN.bin` = [rez:1][palette:32 (16 big-endian $0RGB words)][screen:32000],
+    ///the exact bytes tools/screendump.py wants. tools/frames_to_video.py batch-renders + stitches.
+    let frameDir =
+        match Environment.GetEnvironmentVariable "ATARI_FRAME_DIR" with
+        | null | "" -> None
+        | d -> IO.Directory.CreateDirectory d |> ignore; Some d
+    let frameEvery =
+        match Environment.GetEnvironmentVariable "ATARI_FRAME_EVERY" with
+        | null | "" -> 1
+        | n -> match Int32.TryParse n with | true, v when v > 0 -> v | _ -> 1
+    let mutable frameSeq = 0
+    let mutable frameCounter = 0
+
     ///Trace narrator (ATARI_TRACE_OS - see Atari.OsCalls). A stack of (returnPC, callText) for
     ///the OS calls currently in flight, so the return value can be printed against the call and
     ///nested calls (a Pexec'd child's own GEMDOS traffic) indent under their parent. Mode-4/6
@@ -309,6 +324,23 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         stepCount <- stepCount + 1UL
         if stepCount % instructionsPerFrame = 0UL then
             mmu.RaiseInterrupt 4 28
+            match frameDir with
+            | Some d ->
+                frameCounter <- frameCounter + 1
+                if frameCounter % frameEvery = 0 then
+                    let baseAddr = uint32 (mmu.ReadLong 0x44Eu)
+                    let rez = byte (int (mmu.ReadByte 0xFFFF8260u) &&& 3)
+                    let buf = Array.zeroCreate (1 + 32 + 32000)
+                    buf.[0] <- rez
+                    for i in 0 .. 15 do
+                        let w = int (uint16 (mmu.ReadWord (0xFFFF8240u + uint32 (i * 2))))
+                        buf.[1 + i * 2] <- byte (w >>> 8)
+                        buf.[2 + i * 2] <- byte w
+                    for i in 0 .. 31999 do
+                        buf.[33 + i] <- mmu.ReadByte (baseAddr + uint32 i)
+                    IO.File.WriteAllBytes(IO.Path.Combine(d, sprintf "f%06d.bin" frameSeq), buf)
+                    frameSeq <- frameSeq + 1
+            | None -> ()
         if stepCount % timerCPeriod = 0UL then
             mmu.RaiseTimerC()
         if stepCount % timerBPeriod = 0UL then

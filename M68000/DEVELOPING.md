@@ -279,6 +279,27 @@ The viewer's decoder is verified byte-identical to `screendump.py` /
 `Instructions.fs` (the `tiles` mode unit-checked separately). Worked example with
 example PNGs: `reversing/supersprint/gfxview.md`.
 
+## Recording a video
+
+`ATARI_FRAME_DIR=<dir>` (optional `ATARI_FRAME_EVERY=<n>`, default 1) makes the
+emulator dump one `fNNNNNN.bin` per captured VBL - `[rez:1][palette:32][screen:32000]`,
+the bytes `screendump.py` wants. Behaviourally inert, like `ATARI_GFX_SIDECAR`
+(only writes files; 30M diskless boot stays byte-identical). Works under
+`boot`/`rrepl`/any mode that steps the CPU, so you can drive with `kbd` in a REPL
+run and capture at the same time.
+
+```
+$env:ATARI_FRAME_DIR="frames"; $env:ATARI_FRAME_EVERY="2"
+#   ... rrepl / boot run, injecting kbd input ...
+python tools/frames_to_video.py frames --out race.mp4 --fps 24 --scale 3
+```
+
+`frames_to_video.py` decodes each dump with the same planar logic as
+`screendump.py`, writes scaled PNGs, and runs ffmpeg to stitch them (`--no-video`
+stops at the PNGs). Mid-`Setpalette` frames can come out momentarily wrong - a
+brightness filter to drop them is a one-liner (see the script's caller in git
+history).
+
 ## Other tools
 
 See the `atari-st-emulator-efficiency-tooling` memory for the full list.
