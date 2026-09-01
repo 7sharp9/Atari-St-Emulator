@@ -289,6 +289,14 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable tbdr = 0uy
     let mutable tbdrReload = 0uy
     let mutable tbdrReadCount = 0u
+    ///Live down-counter for MFP Timer B in EVENT-COUNT mode ($08), advanced one tick per emulated
+    ///scanline by HblTick - the HBLANK clock source the coarse read-driven `tbdr`/`tbdrReadCount`
+    ///pair (kept for the ROM's MFP-presence check) can't model. 0 = "not seeded yet"; the first
+    ///HblTick after Timer B is armed loads it from `tbdrReload`, and each underflow reloads and
+    ///raises the Timer B interrupt. Deliberately NOT in MmuSnapshot: TOS never arms event-count
+    ///Timer B so it stays 0 on the diskless path (keeps that snapshot byte-identical), and a
+    ///mid-split resume losing one scanline of counter phase is immaterial.
+    let mutable tbCounter = 0
 
     ///WD1772 FDC + DMA mode-select emulation. Real hardware accesses all 4 FDC registers (status-
     ///or-command, track, sector, data) through the single access byte at $FFFF8604; the DMA mode
@@ -742,16 +750,18 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             //Writing the *same* value still resets tbdrReadCount, which is a real state change
             //(it re-phases the next visible decrement) even when tbdr/tbdrReload don't move - so
             //this can't be a plain `store`-style value compare, it needs the count folded in too.
-            if tbdr <> input || tbdrReload <> input || tbdrReadCount <> 0u then
+            if tbdr <> input || tbdrReload <> input || tbdrReadCount <> 0u || tbCounter <> 0 then
                 mutations <- mutations + 1UL
             tbdr <- input
             tbdrReload <- input
             tbdrReadCount <- 0u
+            tbCounter <- 0 //re-seed the HBL counter from the new reload on the next HblTick
         | a when a = mfpTbcr ->
-            if tbcr <> input || tbdrReadCount <> 0u then
+            if tbcr <> input || tbdrReadCount <> 0u || tbCounter <> 0 then
                 mutations <- mutations + 1UL
             tbcr <- input
             tbdrReadCount <- 0u
+            tbCounter <- 0 //arming/re-arming Timer B restarts the HBL event count
         | Mfp -> store mfpRegisters (int (address - mpf68901)) input
         | a when a = fdcModeSelect ->
             let selected = (input >>> 1) &&& 0x3uy
@@ -951,18 +961,39 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if ierb &&& 0x20uy <> 0uy && imrb &&& 0x20uy <> 0uy && not timerCPending then
             timerCPending <- true
             mutations <- mutations + 1UL
-    ///Asserts MFP Timer B (channel 8, level 6, vector $48 -> $120). Gated on Timer B being armed
-    ///(TBCR non-zero and not in output-reset $10) and its channel enabled+unmasked in IERA/IMRA
-    ///bit 0 - TOS leaves Timer B off, games (Super Sprint's post-attract engine) turn it on for a
-    ///raster palette split. This is a COARSE tick like RaiseTimerC, delivered on an instruction
-    ///count, not a per-scanline HBL event - enough to run an ISR that only advances a counter, not
-    ///enough to place a mid-frame $ff8240 write at the right raster line.
+    ///Asserts MFP Timer B (channel 8, level 6, vector $48 -> $120) for the TBCR DELAY / PULSE modes
+    ///($01-$07, $09-$0F) only - a COARSE tick delivered on an instruction count (Program.fs's
+    ///`timerBPeriod`), enough for an ISR that just advances a counter. EVENT-COUNT mode ($08),
+    ///which every raster-split game uses, is handled scanline-accurately in HblTick instead, so it
+    ///is excluded here. Gated like the others on IERA/IMRA bit 0; TOS leaves Timer B off entirely.
     member x.RaiseTimerB() =
         let iera = mfpRegisters.[int (0xFFFA07u - mpf68901)]
         let imra = mfpRegisters.[int (0xFFFA13u - mpf68901)]
-        if tbcr &&& 0x0Fuy <> 0uy && iera &&& 0x01uy <> 0uy && imra &&& 0x01uy <> 0uy && not timerBPending then
+        let mode = tbcr &&& 0x0Fuy
+        if mode <> 0uy && mode <> 0x08uy && iera &&& 0x01uy <> 0uy && imra &&& 0x01uy <> 0uy && not timerBPending then
             timerBPending <- true
             mutations <- mutations + 1UL
+    ///Called once per emulated scanline (~313x/frame) from Program.fs's Step loop - the HBLANK
+    ///granularity the coarse instruction-count ticks lack. Drives MFP Timer B in EVENT-COUNT mode
+    ///(TBCR low nibble = $08), where each HBLANK pulse is one count event: seed the live counter
+    ///from the programmed TBDR on the first tick after arming, decrement it every scanline, and on
+    ///underflow reload it and raise the Timer B interrupt - so a game's raster ISR fires at the
+    ///scanline it programmed (Super Sprint's in-race palette ISR, Super Hang-On's post-title split,
+    ///Impossamole's attract animation all use TBCR=$08). Gated identically to RaiseTimerB (mode +
+    ///IERA/IMRA bit 0), so TOS - Timer B off - never sees a tick and the diskless boot stays
+    ///byte-identical.
+    member x.HblTick() =
+        if tbcr &&& 0x0Fuy = 0x08uy then
+            let iera = mfpRegisters.[int (0xFFFA07u - mpf68901)]
+            let imra = mfpRegisters.[int (0xFFFA13u - mpf68901)]
+            if iera &&& 0x01uy <> 0uy && imra &&& 0x01uy <> 0uy then
+                if tbCounter <= 0 then
+                    tbCounter <- (if tbdrReload = 0uy then 256 else int tbdrReload)
+                tbCounter <- tbCounter - 1
+                mutations <- mutations + 1UL
+                if tbCounter <= 0 then
+                    tbCounter <- (if tbdrReload = 0uy then 256 else int tbdrReload)
+                    if not timerBPending then timerBPending <- true
     ///Asserts MFP Timer A (channel 13, level 6, vector $4D -> $134). Gated on Timer A being armed
     ///(TACR mode bits non-zero) and its channel enabled+unmasked in IERA/IMRA bit 5 - TOS leaves
     ///Timer A off (the classic "free" application timer), games turn it on. Super Hang-On's intro

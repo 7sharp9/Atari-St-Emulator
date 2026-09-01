@@ -205,23 +205,35 @@ the `$1234` word-sum and jumps to the boot code itself - the emulator only serve
 the sectors. `A_013.ST` (a bootable "Automation"-style menu disk with LSD-packed
 games) boots to its menu; menu game 2 (Super Sprint) runs straight through,
 menu games 3 and 4 (ST Karate, Electronic Pool) run into full gameplay with no
-emulator change, and menu game 1 (Super Hang-On) reaches its title screen after
-seven general 68000/ST fixes (STOP, MOVEP, ADDA.L/LEA modes, a coarse MFP Timer A
-for its software-synth music, PSG `$FF88xx` mirror, ReadLong shifter-register
-case). Hang-On then stops at a Timer-B-event-count raster palette split that
-needs the per-scanline chip scheduler this project has deliberately not built.
+emulator change, and menu game 1 (Super Hang-On) needs seven general 68000/ST
+fixes (STOP, MOVEP, ADDA.L/LEA modes, a coarse MFP Timer A for its software-synth
+music, PSG `$FF88xx` mirror, ReadLong shifter-register case). Hang-On's intro
+crawls through a long software-synth sequence on the coarse Timer A tick and is
+slow to reach its title; its post-title raster split uses event-count Timer B,
+now driven per-scanline (see MFP timers below).
 Pool's mouse menu is not clickable from the live SDL window yet - it uses the
 IKBD "mouse buttons act as keys" mode ($07 $04) and the emulator does not
 interpret IKBD commands. See `reversing/a_013/`.
 
-**MFP timers.** Timer C is the system tick (`instructionsPerFrame/4`). Timer B
-(`/32`) and Timer A (`/64`) are off until a program arms them (gated on the
-control register plus the channel's IERA/IMRA bit, which TOS never sets for A/B),
-then tick on an instruction count - coarse, not per-scanline. Enough to run a
-counter-only ISR (a music tempo counter, a raster-line counter); not enough to
-place a mid-frame `$ffff8240` palette write at a specific scanline, so raster
-splits render flat. `STOP #imm` is modelled as an idle (`Cpu.Stopped`) that spins
-until a pending interrupt outranks the mask STOP loaded into SR.
+**MFP timers.** Timer C is the system tick (`instructionsPerFrame/4`). Timer A
+(`/64`) and Timer B's delay / pulse modes are off until a program arms them
+(gated on the control register plus the channel's IERA/IMRA bit, which TOS never
+sets for A/B), then tick on an instruction count - coarse, not per-scanline;
+enough for a counter-only ISR (a music tempo counter), wrong tempo.
+
+Timer B in **event-count mode** (`TBCR` low nibble `$08`) is the exception: it is
+driven scanline-accurately. `Program.fs` calls `mmu.HblTick()` once per
+`instructionsPerLine` (`instructionsPerFrame/313`, ~38 instructions), and
+`HblTick` decrements a live counter seeded from `TBDR`, raising the Timer B
+interrupt on each underflow, so a raster ISR fires at the scanline the game
+programmed rather than at an arbitrary instruction count. Super Sprint's in-race
+Timer B ISR, Super Hang-On's post-title split and Impossamole's attract all run
+`TBCR=$08` and are driven by this. The counter is not in `MmuSnapshot` (TOS
+never arms event-count Timer B, so the diskless boot stays byte-identical; a
+mid-split resume loses at most one scanline of counter phase).
+
+`STOP #imm` is modelled as an idle (`Cpu.Stopped`) that spins until a pending
+interrupt outranks the mask STOP loaded into SR.
 
 Build a disk with a program TOS will auto-run at boot:
 
@@ -292,11 +304,19 @@ example PNGs: `reversing/supersprint/gfxview.md`.
 ## Recording a video
 
 `ATARI_FRAME_DIR=<dir>` (optional `ATARI_FRAME_EVERY=<n>`, default 1) makes the
-emulator dump one `fNNNNNN.bin` per captured VBL - `[rez:1][palette:32][screen:32000]`,
-the bytes `screendump.py` wants. Behaviourally inert, like `ATARI_GFX_SIDECAR`
-(only writes files; 30M diskless boot stays byte-identical). Works under
-`boot`/`rrepl`/any mode that steps the CPU, so you can drive with `kbd` in a REPL
-run and capture at the same time.
+emulator dump one `fNNNNNN.bin` per captured VBL:
+
+```
+[rez:1][screen:32000][200 x row-record], row-record = [baseHi:1][baseLo:1][palette:32]
+```
+
+one row-record per visible scanline, captured on that line's HBL crossing, so a
+mid-frame raster palette split renders with the right colours per band instead of
+one flat palette. Behaviourally inert, like `ATARI_GFX_SIDECAR` (only writes
+files; 30M diskless boot stays byte-identical). Works under `boot`/`rrepl`/any
+mode that steps the CPU, so you can drive with `kbd` in a REPL run and capture at
+the same time. (Per-row *screen-base* changes are recorded but not honoured - the
+screen is one VBL-time grab; palette splits are the common case and are exact.)
 
 ```
 $env:ATARI_FRAME_DIR="frames"; $env:ATARI_FRAME_EVERY="2"
@@ -305,18 +325,18 @@ python tools/frames_to_video.py frames --out race.mp4 --fps 24 --scale 3
 ```
 
 `frames_to_video.py` decodes each dump with the same planar logic as
-`screendump.py`, writes scaled PNGs, and runs ffmpeg to stitch them (`--no-video`
-stops at the PNGs). Mid-`Setpalette` frames can come out momentarily wrong - a
-brightness filter to drop them is a one-liner (see the script's caller in git
-history).
+`screendump.py` (applying each scanline's own captured palette), writes scaled
+PNGs, and runs ffmpeg to stitch them (`--no-video` stops at the PNGs). It also
+still reads the legacy `[rez][palette:32][screen]` layout - told apart purely by
+total length (38801 vs 32033). Mid-`Setpalette` frames can come out momentarily
+wrong - a brightness filter to drop them is a one-liner (see the script's caller
+in git history).
 
 The capture reads the shifter's own video-base bytes (`$FFFF8201`/`$8203`), not
 TOS's `_v_bas_ad` at `$44E`: games that set the screen address straight through
 the hardware registers (Impossamole, most demos) never touch `$44E`, so a `$44E`
 capture would dump a stale/black buffer. TOS keeps the two in sync, so ROM-driven
-frames are unaffected. It is still a single palette per frame - a mid-frame
-raster palette split (Super Sprint's road/sky, Super Hang-On's post-title) needs
-the per-scanline capture that does not exist yet.
+frames are unaffected.
 
 ## Other tools
 

@@ -126,6 +126,11 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     /// bumps; this coarse ~64x/frame tick is enough to advance that counter (wrong tempo, same
     /// deliberate limitation as Timer B - see MMU.RaiseTimerA).
     let timerAPeriod = instructionsPerFrame / 64UL
+    /// One emulated scanline == one HBLANK. PAL is 313 lines per frame, so at 12,000
+    /// instructions/frame that is ~38 instructions/line. Drives mmu.HblTick() (event-count Timer B
+    /// and the per-scanline frame recorder). Coarse like every period here - the ratio to the frame
+    /// is the invariant, not the absolute count.
+    let instructionsPerLine = instructionsPerFrame / 313UL
     let mutable stepCount = 0UL
 
     ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in
@@ -199,6 +204,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         | n -> match Int32.TryParse n with | true, v when v > 0 -> v | _ -> 1
     let mutable frameSeq = 0
     let mutable frameCounter = 0
+    ///Per-scanline palette + screen-base snapshots for the frame recorder. 200 visible lines x a
+    ///34-byte row-record ([baseHi:1][baseLo:1][palette:32]), captured on each HBL crossing and
+    ///written after the screen bytes at the VBL, so a rendered PNG can reproduce a mid-frame raster
+    ///palette split instead of applying one flat palette to the whole frame. Rewritten every frame;
+    ///only touched when frameDir is set. See tools/frames_to_video.py's per-scanline decode branch.
+    let frameRowRecs : byte[] = Array.zeroCreate (200 * 34)
 
     ///Trace narrator (ATARI_TRACE_OS - see Atari.OsCalls). A stack of (returnPC, callText) for
     ///the OS calls currently in flight, so the return value can be printed against the call and
@@ -337,16 +348,33 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                         ((uint32 (mmu.ReadByte 0xFFFF8201u) <<< 16)
                          ||| (uint32 (mmu.ReadByte 0xFFFF8203u) <<< 8))
                     let rez = byte (int (mmu.ReadByte 0xFFFF8260u) &&& 3)
-                    let buf = Array.zeroCreate (1 + 32 + 32000)
+                    //Layout: [rez:1][screen:32000][200 x 34-byte row-record]. The standalone
+                    //palette the old format carried is now line 0's row-record; a decoder that
+                    //doesn't know the new format is told apart purely by total length (38801 vs
+                    //32033). The screen is grabbed once here from the VBL-time base; per-row base
+                    //changes are recorded for reference but a single-buffer grab can't honour them.
+                    let buf = Array.zeroCreate (1 + 32000 + 200 * 34)
                     buf.[0] <- rez
-                    for i in 0 .. 15 do
-                        let w = int (uint16 (mmu.ReadWord (0xFFFF8240u + uint32 (i * 2))))
-                        buf.[1 + i * 2] <- byte (w >>> 8)
-                        buf.[2 + i * 2] <- byte w
                     for i in 0 .. 31999 do
-                        buf.[33 + i] <- mmu.ReadByte (baseAddr + uint32 i)
+                        buf.[1 + i] <- mmu.ReadByte (baseAddr + uint32 i)
+                    Array.blit frameRowRecs 0 buf 32001 (200 * 34)
                     IO.File.WriteAllBytes(IO.Path.Combine(d, sprintf "f%06d.bin" frameSeq), buf)
                     frameSeq <- frameSeq + 1
+            | None -> ()
+        if instructionsPerLine > 0UL && stepCount % instructionsPerLine = 0UL then
+            mmu.HblTick()
+            match frameDir with
+            | Some _ ->
+                //Which visible scanline this crossing marks, within the current frame.
+                let line = int ((stepCount % instructionsPerFrame) / instructionsPerLine)
+                if line >= 0 && line < 200 then
+                    let o = line * 34
+                    frameRowRecs.[o] <- mmu.ReadByte 0xFFFF8201u
+                    frameRowRecs.[o + 1] <- mmu.ReadByte 0xFFFF8203u
+                    for i in 0 .. 15 do
+                        let w = int (uint16 (mmu.ReadWord (0xFFFF8240u + uint32 (i * 2))))
+                        frameRowRecs.[o + 2 + i * 2] <- byte (w >>> 8)
+                        frameRowRecs.[o + 3 + i * 2] <- byte w
             | None -> ()
         if stepCount % timerCPeriod = 0UL then
             mmu.RaiseTimerC()
