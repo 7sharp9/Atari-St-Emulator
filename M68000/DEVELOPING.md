@@ -83,6 +83,12 @@ file that still has a genuine flag/register bug, worst first. An empty digest
 means all that is left is the two known structural classes. Non-zero exit if
 anything failed.
 
+As of the 59th pass the wrong-answer lane is **clean** (0 wrong across all
+124 files); the residual fails are all `frame` (169k, the 14-byte group-0 frame)
+and `unimpl` (33k, undecoded opcodes/modes). `skip` includes two corrupt
+`ASL.b.json` vectors (opcode `$E502` expects a byte shift to rewrite all 32 bits
+of D2 - see `isCorruptVector` in `Program.fs`).
+
 The three failure classes:
 - **`wrong`** - a real flag / register / memory divergence. Fix these.
 - **`frame`** - the vectors expect the instruction to fault and push a frame; we
@@ -197,12 +203,16 @@ logs every FDC register/command write and every sector read/write to stderr
 **Bootable disks work too, unchanged.** The real TOS ROM loads sector 0, verifies
 the `$1234` word-sum and jumps to the boot code itself - the emulator only serves
 the sectors. `A_013.ST` (a bootable "Automation"-style menu disk with LSD-packed
-games) boots to its menu; menu game 2 (Super Sprint) runs straight through, and
-menu game 1 (Super Hang-On) reaches its title screen after seven general 68000/ST
-fixes (STOP, MOVEP, ADDA.L/LEA modes, a coarse MFP Timer A for its software-synth
-music, PSG `$FF88xx` mirror, ReadLong shifter-register case). Hang-On then stops
-at a Timer-B-event-count raster palette split that needs the per-scanline chip
-scheduler this project has deliberately not built. See `reversing/a_013/`.
+games) boots to its menu; menu game 2 (Super Sprint) runs straight through,
+menu games 3 and 4 (ST Karate, Electronic Pool) run into full gameplay with no
+emulator change, and menu game 1 (Super Hang-On) reaches its title screen after
+seven general 68000/ST fixes (STOP, MOVEP, ADDA.L/LEA modes, a coarse MFP Timer A
+for its software-synth music, PSG `$FF88xx` mirror, ReadLong shifter-register
+case). Hang-On then stops at a Timer-B-event-count raster palette split that
+needs the per-scanline chip scheduler this project has deliberately not built.
+Pool's mouse menu is not clickable from the live SDL window yet - it uses the
+IKBD "mouse buttons act as keys" mode ($07 $04) and the emulator does not
+interpret IKBD commands. See `reversing/a_013/`.
 
 **MFP timers.** Timer C is the system tick (`instructionsPerFrame/4`). Timer B
 (`/32`) and Timer A (`/64`) are off until a program arms them (gated on the
