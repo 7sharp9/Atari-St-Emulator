@@ -341,10 +341,12 @@ time. (Per-row *screen-base* changes are recorded but not honoured - the screen
 is one VBL-time grab; palette splits are the common case and are exact.)
 
 Verified 63rd pass: Super Sprint's SELECT TRACK / "PREPARE TO RACE" menu screens
-render their three ready-cars blue / yellow / red purely via this split (one
-sprite bitmap, identical indices, 3-4 palette bands) - `reversing/supersprint/`
-has the split-vs-flat pair. The on-track race is flat (zero `$ffff8240` writes
-while racing).
+render their three ready-cars blue / yellow / red via this split (3-4 palette
+bands) - `reversing/supersprint/` has the split-vs-flat pair. The split is
+*visible* but not scanline-stable: the band boundaries jitter ~18 rows frame to
+frame (instruction-count tick vs real HBLANK, and the /300 divisor vs ~313 real
+lines), so on some frames a boundary cuts through the top cars. The on-track
+race is flat (zero `$ffff8240` writes while racing).
 
 ```
 $env:ATARI_FRAME_DIR="frames"; $env:ATARI_FRAME_EVERY="2"

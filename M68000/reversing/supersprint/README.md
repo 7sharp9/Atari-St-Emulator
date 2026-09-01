@@ -20,12 +20,21 @@ payoff by frame-diffing:
 
 - **`raster_split.png` vs `raster_flat.png`** — the "PREPARE TO RACE" ready
   screen rendered with the per-scanline palettes vs with one flat VBL-time
-  palette. The three ready-cars are one sprite bitmap blitted three times with
-  **identical colour indices**; the 3–4 band raster split is the whole reason
-  they read as blue / yellow / red. With a flat palette the bottom (red) car
-  and the centre text come out blue/olive. ~4.6 % of the frame's pixels differ
-  between the two renders, concentrated on the bottom car body. The SELECT
-  TRACK screen splits the same way (blue / red / yellow column headings).
+  palette. The three ready-cars (blue / yellow / red is the correct Super
+  Sprint lineup) get their colours from a 3–4 band raster split; with a flat
+  palette the bottom car and the centre text come out blue/olive. ~4.6 % of the
+  frame's pixels differ between the two renders. The SELECT TRACK screen splits
+  the same way.
+- **But the split is not scanline-stable.** Across the captured prep frames the
+  middle band boundary jitters between row ~35 and row ~53 (and the lower one
+  between ~113 and ~149) frame to frame — on the row-35 frames it cuts through
+  the two top cars and mis-colours them (the "two red cars" look). Real
+  hardware places the `$ffff8240` write on the exact scanline the game's TBDR
+  count selects, every frame. Our Timer B is still an instruction-count tick
+  (`HblTick` every `instructionsPerFrame/300` steps, and 300 ≠ the real ~313
+  lines/frame), so the split lands within a band or two of where it should but
+  wobbles. `raster_split.png` is a good-case frame. A jitter-free split needs
+  the real per-instruction cycle budget the project has not built.
 - **The on-track race itself is flat.** Across 80+ consecutive captured race
   frames every scanline carries the same palette, and a `watch $ffff8240`
   during racing catches **zero** writes — the in-race Timer B ISR is
