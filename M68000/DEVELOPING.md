@@ -329,11 +329,22 @@ emulator dump one `fNNNNNN.bin` per captured VBL:
 
 one row-record per visible scanline, captured on that line's HBL crossing, so a
 mid-frame raster palette split renders with the right colours per band instead of
-one flat palette. Behaviourally inert, like `ATARI_GFX_SIDECAR` (only writes
-files; 30M diskless boot stays byte-identical). Works under `boot`/`rrepl`/any
-mode that steps the CPU, so you can drive with `kbd` in a REPL run and capture at
-the same time. (Per-row *screen-base* changes are recorded but not honoured - the
-screen is one VBL-time grab; palette splits are the common case and are exact.)
+one flat palette. Each dump is written at the VBL *after* the frame it describes,
+so the screen grab and the 200 row-records come from the same frame (before the
+63rd pass the row-records lagged the screen by one frame - fine for a static
+screen, wrong for anything that repaints its palette every frame; it mis-read
+Super Sprint's raster split in the 61st pass). The last frame is held pending and
+never flushed. Behaviourally inert, like `ATARI_GFX_SIDECAR` (only writes files;
+30M diskless boot stays byte-identical). Works under `boot`/`rrepl`/any mode that
+steps the CPU, so you can drive with `kbd` in a REPL run and capture at the same
+time. (Per-row *screen-base* changes are recorded but not honoured - the screen
+is one VBL-time grab; palette splits are the common case and are exact.)
+
+Verified 63rd pass: Super Sprint's SELECT TRACK / "PREPARE TO RACE" menu screens
+render their three ready-cars blue / yellow / red purely via this split (one
+sprite bitmap, identical indices, 3-4 palette bands) - `reversing/supersprint/`
+has the split-vs-flat pair. The on-track race is flat (zero `$ffff8240` writes
+while racing).
 
 ```
 $env:ATARI_FRAME_DIR="frames"; $env:ATARI_FRAME_EVERY="2"

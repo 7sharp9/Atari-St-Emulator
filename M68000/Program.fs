@@ -192,9 +192,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         | _ -> ()
 
     ///Headless frame recorder (ATARI_FRAME_DIR=<dir>, optional ATARI_FRAME_EVERY=<n> frames,
-    ///default 1). Behaviourally inert - the emulator only ever writes files. At each VBL boundary
-    ///it dumps `<dir>/fNNNNNN.bin` = [rez:1][palette:32 (16 big-endian $0RGB words)][screen:32000],
-    ///the exact bytes tools/screendump.py wants. tools/frames_to_video.py batch-renders + stitches.
+    ///default 1). Behaviourally inert - the emulator only ever writes files. It dumps
+    ///`<dir>/fNNNNNN.bin` = [rez:1][screen:32000][200 x 34-byte row-record], one per captured VBL
+    ///(minus the last, held pending at exit). tools/frames_to_video.py batch-renders + stitches.
     let frameDir =
         match Environment.GetEnvironmentVariable "ATARI_FRAME_DIR" with
         | null | "" -> None
@@ -205,6 +205,13 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         | n -> match Int32.TryParse n with | true, v when v > 0 -> v | _ -> 1
     let mutable frameSeq = 0
     let mutable frameCounter = 0
+    ///A frame's screen bytes ([rez:1][screen:32000]) grabbed at its own VBL, held back one
+    ///frame so it can be paired with the per-scanline row-records that are only complete at the
+    ///*next* VBL (frameRowRecs is written across the frame that follows the grab). Without this
+    ///hold, file(N) carried screen(N) beside frame (N-1)'s palettes - fine for a static screen,
+    ///wrong for anything that animates its palette every frame (it mis-diagnosed Super Sprint's
+    ///raster split in the 61st pass). Cost: the final frame at exit is never flushed.
+    let mutable pendingFrame : (byte[] * int) option = None
     ///Per-scanline palette + screen-base snapshots for the frame recorder. 200 visible lines x a
     ///34-byte row-record ([baseHi:1][baseLo:1][palette:32]), captured on each HBL crossing and
     ///written after the screen bytes at the VBL, so a rendered PNG can reproduce a mid-frame raster
@@ -338,6 +345,18 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             mmu.RaiseInterrupt 4 28
             match frameDir with
             | Some d ->
+                //Flush the frame grabbed at the previous VBL: its row-records (frameRowRecs) were
+                //filled across the frame just ended and are only now complete. Layout:
+                //[rez:1][screen:32000][200 x 34-byte row-record]. A decoder tells the format apart
+                //from the old [rez][pal:32][screen] purely by total length (38801 vs 32033).
+                match pendingFrame with
+                | Some (hdr, seq) ->
+                    let buf = Array.zeroCreate (1 + 32000 + 200 * 34)
+                    Array.blit hdr 0 buf 0 (1 + 32000)
+                    Array.blit frameRowRecs 0 buf 32001 (200 * 34)
+                    IO.File.WriteAllBytes(IO.Path.Combine(d, sprintf "f%06d.bin" seq), buf)
+                | None -> ()
+                pendingFrame <- None
                 frameCounter <- frameCounter + 1
                 if frameCounter % frameEvery = 0 then
                     //Read the shifter's own video-base high/mid bytes ($FFFF8201/8203, low byte
@@ -349,17 +368,14 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                         ((uint32 (mmu.ReadByte 0xFFFF8201u) <<< 16)
                          ||| (uint32 (mmu.ReadByte 0xFFFF8203u) <<< 8))
                     let rez = byte (int (mmu.ReadByte 0xFFFF8260u) &&& 3)
-                    //Layout: [rez:1][screen:32000][200 x 34-byte row-record]. The standalone
-                    //palette the old format carried is now line 0's row-record; a decoder that
-                    //doesn't know the new format is told apart purely by total length (38801 vs
-                    //32033). The screen is grabbed once here from the VBL-time base; per-row base
-                    //changes are recorded for reference but a single-buffer grab can't honour them.
-                    let buf = Array.zeroCreate (1 + 32000 + 200 * 34)
-                    buf.[0] <- rez
+                    //Grab this frame's screen now (from its own VBL-time base); the file is written
+                    //at the next VBL, once its per-scanline row-records exist. Per-row base changes
+                    //are recorded for reference but a single-buffer grab can't honour them.
+                    let hdr = Array.zeroCreate (1 + 32000)
+                    hdr.[0] <- rez
                     for i in 0 .. 31999 do
-                        buf.[1 + i] <- mmu.ReadByte (baseAddr + uint32 i)
-                    Array.blit frameRowRecs 0 buf 32001 (200 * 34)
-                    IO.File.WriteAllBytes(IO.Path.Combine(d, sprintf "f%06d.bin" frameSeq), buf)
+                        hdr.[1 + i] <- mmu.ReadByte (baseAddr + uint32 i)
+                    pendingFrame <- Some (hdr, frameSeq)
                     frameSeq <- frameSeq + 1
             | None -> ()
         if instructionsPerLine > 0UL && stepCount % instructionsPerLine = 0UL then

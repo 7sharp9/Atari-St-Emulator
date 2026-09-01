@@ -9,11 +9,34 @@ attract, walks its track-select / "PREPARE TO RACE" menu, starts an actual Track
 race, and lets a window player drive the joystick car a full lap. No instruction
 wall, no crash.
 
-The one caveat is the in-race raster palette: the race engine drives a full-frame
-MFP Timer B raster split (`movem.l <16 words>,$ffff8240` per scanline group) that
-this emulator delivers only as a coarse periodic tick, so the road/sky gradient is
-a flat colour rather than a banded one. Getting that right needs the per-scanline
-chip scheduler this project has deliberately not built.
+## The MFP Timer B raster split (built 61st pass, verified 63rd)
+
+Super Sprint installs an MFP Timer B event-count ISR (`$f9ea`, vector `$120`,
+`TBCR=$08`) that rewrites the `$ffff8240` palette from a `movem.l <16 words>`
+table. The 61st pass built the per-scanline scheduler that drives it
+(`MMU.HblTick`, one tick per `instructionsPerFrame/300` steps), and the frame
+recorder gained a per-scanline palette row-record. The 63rd pass verified the
+payoff by frame-diffing:
+
+- **`raster_split.png` vs `raster_flat.png`** — the "PREPARE TO RACE" ready
+  screen rendered with the per-scanline palettes vs with one flat VBL-time
+  palette. The three ready-cars are one sprite bitmap blitted three times with
+  **identical colour indices**; the 3–4 band raster split is the whole reason
+  they read as blue / yellow / red. With a flat palette the bottom (red) car
+  and the centre text come out blue/olive. ~4.6 % of the frame's pixels differ
+  between the two renders, concentrated on the bottom car body. The SELECT
+  TRACK screen splits the same way (blue / red / yellow column headings).
+- **The on-track race itself is flat.** Across 80+ consecutive captured race
+  frames every scanline carries the same palette, and a `watch $ffff8240`
+  during racing catches **zero** writes — the in-race Timer B ISR is
+  counter-only. So the earlier "road/sky gradient is a flat colour" caveat was
+  right about the race, wrong about the cause: it is Super Sprint's design, not
+  a missing scheduler.
+
+(The 61st-pass note that the split's changed palette entries "aren't painted by
+any on-screen pixel" was an artefact of the recorder writing a frame's screen
+beside the *previous* frame's row-records; fixed 63rd pass — the write is now
+held back one frame so screen and row-records match.)
 
 ## The program
 
@@ -237,6 +260,7 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 | `trackselect.png` | the **SELECT TRACK** screen, reached from attract by injecting a joystick fire press (55th pass) |
 | `prepare.png` | the three-cars "PREPARE TO RACE" ready screen with the pre-race countdown (55th pass) |
 | `race.png` | a live Track 1 race frame — the red player car mid-lap on the top straight, driven from injected joystick-0 packets (56th pass); HUD lap panels, grandstands, drones spread round the circuit |
+| `raster_split.png` / `raster_flat.png` | the "PREPARE TO RACE" ready screen rendered with the per-scanline Timer B palette split vs one flat palette (63rd pass) — the split is what colours the three ready-cars blue / yellow / red |
 | `gfxview.md` + `gfx_*.png` | looking at the palettes and decoded bitmaps in RAM with `tools/gfxview.py` (54th pass) — the `$1d3xx` title-fade palette ramp, a whole-RAM contact sheet, the title bitmap decoded from `$f8000` |
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.
