@@ -328,7 +328,14 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             | Some d ->
                 frameCounter <- frameCounter + 1
                 if frameCounter % frameEvery = 0 then
-                    let baseAddr = uint32 (mmu.ReadLong 0x44Eu)
+                    //Read the shifter's own video-base high/mid bytes ($FFFF8201/8203, low byte
+                    //forced to 0) rather than TOS's `_v_bas_ad` at $44E: games that set the screen
+                    //address straight through the hardware registers (Impossamole, most demos)
+                    //never touch $44E, so $44E would dump a stale/black buffer. TOS itself keeps
+                    //$8201/8203 in sync with $44E, so ROM-driven frames are unaffected.
+                    let baseAddr =
+                        ((uint32 (mmu.ReadByte 0xFFFF8201u) <<< 16)
+                         ||| (uint32 (mmu.ReadByte 0xFFFF8203u) <<< 8))
                     let rez = byte (int (mmu.ReadByte 0xFFFF8260u) &&& 3)
                     let buf = Array.zeroCreate (1 + 32 + 32000)
                     buf.[0] <- rez

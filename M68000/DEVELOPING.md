@@ -310,6 +310,14 @@ stops at the PNGs). Mid-`Setpalette` frames can come out momentarily wrong - a
 brightness filter to drop them is a one-liner (see the script's caller in git
 history).
 
+The capture reads the shifter's own video-base bytes (`$FFFF8201`/`$8203`), not
+TOS's `_v_bas_ad` at `$44E`: games that set the screen address straight through
+the hardware registers (Impossamole, most demos) never touch `$44E`, so a `$44E`
+capture would dump a stale/black buffer. TOS keeps the two in sync, so ROM-driven
+frames are unaffected. It is still a single palette per frame - a mid-frame
+raster palette split (Super Sprint's road/sky, Super Hang-On's post-title) needs
+the per-scanline capture that does not exist yet.
+
 ## Other tools
 
 See the `atari-st-emulator-efficiency-tooling` memory for the full list.
