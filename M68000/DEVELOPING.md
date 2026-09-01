@@ -230,8 +230,10 @@ cracktro key-wait. There is no per-command WD1772 state machine (Hatari's
 `src/fdc.c` has one), so the delay is bucketed: a Read/Write Sector that moved
 data raises INTRQ immediately (bytes are already in RAM - a per-sector delay
 would add tens of millions of steps to a big load), a Seek/Step gets ~4000
-steps, a Restore / failed-search / Read Address gets ~40000 (above the
-self-test's ~30000-step deadline, far below the GEMDOS `$40000` poll budget).
+steps, a Restore / failed-search / Read Address gets ~120000 (~4x the
+self-test's ~30000-step deadline, ~1/12 of the GEMDOS `$40000`-iteration poll
+budget). `$fc04d6` issues a Restore first every self-test iteration, so that
+bucket is what times the self-test out; verified `$fc04cc` runs 0 times.
 The boot timeline shifted ~1.4M steps (the self-test now spins instead of
 short-circuiting), so the diskless-boot checkpoint was re-baselined this pass.
 

@@ -353,15 +353,21 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///    ms, well inside the self-test deadline, and the real read path does one before most
     ///    sector reads so this must stay cheap.
     ///  - anything else - Restore (Type I $0x), a sector command that found nothing, Read Address/
-    ///    Track: `fdcIrqSlowSteps`, chosen to sit above the self-test's ~30000-step (`_hz_200`+10)
-    ///    deadline and far below the GEMDOS `$40000`-iteration poll budget. The self-test's first
-    ///    polled command is a Restore, so this is what makes it time out like real hardware; the
-    ///    real read path issues a Restore only a couple of times per load.
+    ///    Track: `fdcIrqSlowSteps`. `$fc04d6` issues a hardcoded Restore ($01) as its first command
+    ///    every self-test iteration (the following `move.l D0,(A5)` lands in the DMA sector-count
+    ///    register, not the command register - `$fc0518` set `$8606` bit 4 first), so that Restore's
+    ///    slow bucket is what times the self-test out every iteration. Verified: `$fc04cc` (the
+    ///    boot-sector re-exec) is reached 0 times, the loop exits at `$fc04d4`.
     ///Not in MmuSnapshot: a settled machine read its status register (INTRQ cleared) long ago, like
     ///Timer B's tbCounter.
     let mutable fdcIrq = false            //true = INTRQ asserted = GPIP bit 5 reads 0
     let mutable fdcIrqPending = 0         //steps until INTRQ asserts; 0 = not counting
-    let fdcIrqSlowSteps = 40000           //> self-test's ~30000-step deadline, << GEMDOS poll budget
+    //The slow bucket must exceed the self-test's per-poll deadline (`_hz_200`+10 ticks, ~30000
+    //steps at the fixed timerCPeriod=3000) and stay well under the GEMDOS sector poll's
+    //`$40000`-iteration budget (~1.5M steps). 120000 is ~4x the deadline and ~1/12 the budget -
+    //wide enough that a slower Timer C ISR path can't close the gap, cheap enough that the two
+    //Restores a real disk load issues cost ~0.24M steps total.
+    let fdcIrqSlowSteps = 120000
     let fdcIrqFastSteps = 4000            //a real adjacent-track seek, well inside the self-test deadline
 
     ///The DMA Address Counter's three bytes (FD-HD_Programming.pdf: "DMA Registers Address Map") -
