@@ -215,6 +215,22 @@ Pool's mouse menu is not clickable from the live SDL window yet - it uses the
 IKBD "mouse buttons act as keys" mode ($07 $04) and the emulator does not
 interpret IKBD commands. See `reversing/a_013/`.
 
+**Known limitation - FDC completion signalling.** MFP GPIP bit 5 (the FDC/HDC
+interrupt line, active-low) is hardwired to 0 ("command complete") in
+`MMU.ReadByte`'s `$FFFA01` case. Every ROM "is the FDC finished?" spin
+(`btst #5,$fffffa01`) therefore succeeds instantly, which is what makes normal
+GEMDOS reads fast, but it also means a raw register poke that issues *no* real
+command still reads back as "done, no error". TOS's post-autoboot FDC self-test
+loop at `$fc04a8` (8 iterations, one per WD1772 command type) relies on those
+bogus commands *failing*: on real hardware the read at `$fc04d6` times out via
+the `_hz_200` counter and the loop exits after 8 tries; here each iteration
+reports success, re-`jsr`s the still-valid boot sector in `_dskbufp`, and the
+boot code's `move.w #$ff,d7` clobbers the ROM loop's `add.b #$20,d7 / bne`
+counter so it never terminates. This hangs the PowerMonger `[cr Replicants]`
+crack (its TDT "ALTAIR ANTI VIRUS" boot sector) in an infinite "CHECK OK:"
+print. A proper fix needs real WD1772 IRQ semantics on GPIP 5 (idle-high,
+pulsed low only on genuine command completion, cleared on status read).
+
 **MFP timers.** Timer C is the system tick (`instructionsPerFrame/4`). Timer A
 (`/64`) and Timer B's delay / pulse modes are off until a program arms them
 (gated on the control register plus the channel's IERA/IMRA bit, which TOS never
