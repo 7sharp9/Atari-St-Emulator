@@ -1553,14 +1553,18 @@ type Cpu =
                 ({ afterEA with CCR = ccrTrap }).EnterVector 6 afterEA.PC
         | LEA(a_reg, eamode,eareg) ->
             //LEA: loads the effective address itself (not its contents) into An. CCR unaffected.
-            //Only (An) and the control addressing modes are legal, so the shared EA decoder always
-            //resolves to an EaMem address - take that, no operand read. `extBytes` carries the PC
-            //advance for whichever mode's extension words were consumed.
-            let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
-            match loc with
-            | EaMem addr ->
-                printfn "lea %s,a%i" desc a_reg
-                { x.WithAddressRegister a_reg (int addr) with PC = x.PC + 2 + extBytes }
+            //Legal modes are (An) and the four control modes only. (An)+ / -(An) also resolve to
+            //EaMem, so guard the mode explicitly first - the old ladder rejected everything else
+            //with a failwith and that "we've run off into data" signal is worth keeping.
+            match eamode, eareg with
+            | 0b010uy, _ | 0b101uy, _ | 0b110uy, _
+            | 0b111uy, 0b000uy | 0b111uy, 0b001uy | 0b111uy, 0b010uy | 0b111uy, 0b011uy ->
+                let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
+                match loc with
+                | EaMem addr ->
+                    printfn "lea %s,a%i" desc a_reg
+                    { x.WithAddressRegister a_reg (int addr) with PC = x.PC + 2 + extBytes }
+                | _ -> failwithf "lea: EA did not resolve to memory (%x/%x)" eamode eareg
             | _ -> failwithf "lea: illegal addressing mode %x/%x" eamode eareg
 
         | NEGX(size, eamode, eareg) ->
@@ -1760,16 +1764,19 @@ type Cpu =
 
         | PEA(eamode, eareg) ->
             //PEA: pushes the effective address itself (not its contents) onto the stack. CCR unaffected.
-            //Only the control addressing modes are legal here, so the shared EA decoder always
-            //resolves to an EaMem address - push that, no operand read. `extBytes` carries the PC
-            //advance for whichever mode's extension words were consumed.
-            let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
-            match loc with
-            | EaMem addr ->
-                let newSP = x.A7 - 4
-                x.MMU.WriteLong (uint32 newSP) (int addr)
-                printfn "pea %s == $%x" desc addr
-                {x with PC = x.PC + 2 + extBytes; A7 = newSP}
+            //Legal modes are (An) and the four control modes only. (An)+ / -(An) also resolve to
+            //EaMem, so guard the mode explicitly first (same as LEA).
+            match eamode, eareg with
+            | 0b010uy, _ | 0b101uy, _ | 0b110uy, _
+            | 0b111uy, 0b000uy | 0b111uy, 0b001uy | 0b111uy, 0b010uy | 0b111uy, 0b011uy ->
+                let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
+                match loc with
+                | EaMem addr ->
+                    let newSP = x.A7 - 4
+                    x.MMU.WriteLong (uint32 newSP) (int addr)
+                    printfn "pea %s == $%x" desc addr
+                    {x with PC = x.PC + 2 + extBytes; A7 = newSP}
+                | _ -> failwithf "pea: EA did not resolve to memory (%x/%x)" eamode eareg
             | _ -> failwithf "pea: illegal addressing mode %x/%x" eamode eareg
 
         | RTS ->
