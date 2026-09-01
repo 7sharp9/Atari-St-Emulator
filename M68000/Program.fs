@@ -126,11 +126,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     /// bumps; this coarse ~64x/frame tick is enough to advance that counter (wrong tempo, same
     /// deliberate limitation as Timer B - see MMU.RaiseTimerA).
     let timerAPeriod = instructionsPerFrame / 64UL
-    /// One emulated scanline == one HBLANK. PAL is 313 lines per frame, so at 12,000
-    /// instructions/frame that is ~38 instructions/line. Drives mmu.HblTick() (event-count Timer B
-    /// and the per-scanline frame recorder). Coarse like every period here - the ratio to the frame
-    /// is the invariant, not the absolute count.
-    let instructionsPerLine = instructionsPerFrame / 313UL
+    /// One emulated scanline == one HBLANK. PAL is ~313 lines/frame; this uses 300 so it divides
+    /// instructionsPerFrame exactly (12000/300 = 40) - that alignment matters: line 0's crossing
+    /// then coincides with the VBL boundary, so the per-scanline frame recorder captures line 0
+    /// instead of leaving it stale (an un-aligned divisor skips it on most frames). Drives
+    /// mmu.HblTick() (event-count Timer B + the recorder). Coarse like every period here.
+    let instructionsPerLine = instructionsPerFrame / 300UL
     let mutable stepCount = 0UL
 
     ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in

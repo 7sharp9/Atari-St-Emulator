@@ -750,12 +750,14 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             //Writing the *same* value still resets tbdrReadCount, which is a real state change
             //(it re-phases the next visible decrement) even when tbdr/tbdrReload don't move - so
             //this can't be a plain `store`-style value compare, it needs the count folded in too.
-            if tbdr <> input || tbdrReload <> input || tbdrReadCount <> 0u || tbCounter <> 0 then
+            if tbdr <> input || tbdrReload <> input || tbdrReadCount <> 0u then
                 mutations <- mutations + 1UL
             tbdr <- input
             tbdrReload <- input
             tbdrReadCount <- 0u
-            tbCounter <- 0 //re-seed the HBL counter from the new reload on the next HblTick
+            //Do NOT touch tbCounter here: real MFP leaves a running timer's main counter alone on a
+            //TxDR write and only loads the new value at the next time-out (HblTick's underflow branch
+            //already reloads from tbdrReload). Only a TCR write from stop->run reloads immediately.
         | a when a = mfpTbcr ->
             if tbcr <> input || tbdrReadCount <> 0u || tbCounter <> 0 then
                 mutations <- mutations + 1UL
@@ -990,10 +992,15 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 if tbCounter <= 0 then
                     tbCounter <- (if tbdrReload = 0uy then 256 else int tbdrReload)
                 tbCounter <- tbCounter - 1
-                mutations <- mutations + 1UL
                 if tbCounter <= 0 then
                     tbCounter <- (if tbdrReload = 0uy then 256 else int tbdrReload)
-                    if not timerBPending then timerBPending <- true
+                    //Bump `mutations` only on the pending false->true edge, exactly like
+                    //RaiseTimerA/B/C - a bare counter decrement is not a CPU-visible change, and
+                    //bumping it every scanline would re-anchor the loop detector (Program.fs) each
+                    //tick and stop it ever proving a genuine IPL-masked spin is stuck.
+                    if not timerBPending then
+                        timerBPending <- true
+                        mutations <- mutations + 1UL
     ///Asserts MFP Timer A (channel 13, level 6, vector $4D -> $134). Gated on Timer A being armed
     ///(TACR mode bits non-zero) and its channel enabled+unmasked in IERA/IMRA bit 5 - TOS leaves
     ///Timer A off (the classic "free" application timer), games turn it on. Super Hang-On's intro
