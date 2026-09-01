@@ -380,6 +380,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             | None -> ()
         if instructionsPerLine > 0UL && stepCount % instructionsPerLine = 0UL then
             mmu.HblTick()
+            mmu.FdcTick(int instructionsPerLine)
             match frameDir with
             | Some _ ->
                 //Which visible scanline this crossing marks, within the current frame.

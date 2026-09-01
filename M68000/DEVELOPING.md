@@ -215,21 +215,29 @@ Pool's mouse menu is not clickable from the live SDL window yet - it uses the
 IKBD "mouse buttons act as keys" mode ($07 $04) and the emulator does not
 interpret IKBD commands. See `reversing/a_013/`.
 
-**Known limitation - FDC completion signalling.** MFP GPIP bit 5 (the FDC/HDC
-interrupt line, active-low) is hardwired to 0 ("command complete") in
-`MMU.ReadByte`'s `$FFFA01` case. Every ROM "is the FDC finished?" spin
-(`btst #5,$fffffa01`) therefore succeeds instantly, which is what makes normal
-GEMDOS reads fast, but it also means a raw register poke that issues *no* real
-command still reads back as "done, no error". TOS's post-autoboot FDC self-test
-loop at `$fc04a8` (8 iterations, one per WD1772 command type) relies on those
-bogus commands *failing*: on real hardware the read at `$fc04d6` times out via
-the `_hz_200` counter and the loop exits after 8 tries; here each iteration
-reports success, re-`jsr`s the still-valid boot sector in `_dskbufp`, and the
-boot code's `move.w #$ff,d7` clobbers the ROM loop's `add.b #$20,d7 / bne`
-counter so it never terminates. This hangs the PowerMonger `[cr Replicants]`
-crack (its TDT "ALTAIR ANTI VIRUS" boot sector) in an infinite "CHECK OK:"
-print. A proper fix needs real WD1772 IRQ semantics on GPIP 5 (idle-high,
-pulsed low only on genuine command completion, cleared on status read).
+**FDC completion signalling (WD1772 INTRQ / MFP GPIP bit 5).** GPIP bit 5 (FDC
+interrupt line, active-low) is now idle-high and re-raises a coarse delay after a
+command, cleared on a status read or a new command (`MMU`'s `fdcIrq` /
+`FdcTick`). Before the 63rd pass it was hardwired 0 ("always complete"): raw
+register pokes that issued no real command read back "done", so TOS's
+post-autoboot FDC self-test at `$fc04a8` (8 bogus WD1772 commands, expecting each
+to still be running when its `_hz_200`+10 poll expires) re-`jsr`d the boot sector
+in `_dskbufp` every iteration, and a crack whose boot sector checksums to `$1234`
+(PowerMonger `[cr Replicants]`, TDT "ALTAIR ANTI VIRUS") looped forever. With the
+delay the self-test's first polled command (a Restore) times out like real
+hardware and the loop exits; `[cr Replicants]` now boots to the Replicants
+cracktro key-wait. There is no per-command WD1772 state machine (Hatari's
+`src/fdc.c` has one), so the delay is bucketed: a Read/Write Sector that moved
+data raises INTRQ immediately (bytes are already in RAM - a per-sector delay
+would add tens of millions of steps to a big load), a Seek/Step gets ~4000
+steps, a Restore / failed-search / Read Address gets ~40000 (above the
+self-test's ~30000-step deadline, far below the GEMDOS `$40000` poll budget).
+The boot timeline shifted ~1.4M steps (the self-test now spins instead of
+short-circuiting), so the diskless-boot checkpoint was re-baselined this pass.
+
+Not yet fixed: past the cracktro key-wait `[cr Replicants]` loads ~1 MB of game
+data (all FDC reads OK) then its depacker derails to `PC=$20` - the same
+undiagnosed class as `[cr Empire]`'s WARI.PRG and the 60th-pass HxC WAR.PRG.
 
 **MFP timers.** Timer C is the system tick (`instructionsPerFrame/4`). Timer A
 (`/64`) and Timer B's delay / pulse modes are off until a program arms them

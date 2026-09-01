@@ -331,6 +331,39 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///disk access past the boot sector.
     let mutable dmaNoError = true
 
+    ///WD1772 INTRQ, seen by the CPU as MFP GPIP bit 5 (active-LOW: line low = interrupt asserted).
+    ///Real hardware pulses INTRQ when a command finishes; it is cleared by reading the status
+    ///register or writing a new command. TOS polls `btst #5,$fffffa01` in two very different ways:
+    ///  - the boot-time FDC self-test at ROM $fc04a8 (via $fc04d6) polls with a ~10-tick `_hz_200`
+    ///    deadline (~30000 steps here) and EXPECTS the commands to still be running when it expires,
+    ///    so it can prove the FDC is merely present without a formatted disk;
+    ///  - the real GEMDOS read/write paths ($fc15e6 / $fc16d4 / $fc1be2) poll a bare `$40000`+
+    ///    software loop, which on real hardware easily outlasts a real command.
+    ///Before the 63rd pass GPIP bit 5 was hardwired 0 ("INTRQ always pending"): the self-test's
+    ///polls returned success instantly, its `jsr (A0)` re-ran the boot sector, and a crack whose
+    ///boot sector checksums to $1234 (PowerMonger `[cr Replicants]`) looped forever. Now INTRQ is
+    ///idle-high and re-raises on a coarse delay after a command (FdcTick counts it down). This
+    ///emulator has no per-command WD1772 state machine (Hatari's src/fdc.c does; that is the
+    ///re-architecture this project has not built), so the delay is bucketed by command:
+    ///  - a Read/Write Sector that actually moved data: INTRQ immediately - the bytes are already
+    ///    in RAM, and a real WD1772 asserts INTRQ the moment the DMA transfer ends. Keeps disk
+    ///    loading fast (a per-sector delay here would make a 200 KB file take tens of millions of
+    ///    extra steps).
+    ///  - a Seek / Step (Type I $1x-$7x): `fdcIrqFastSteps` - a real adjacent-track seek is a few
+    ///    ms, well inside the self-test deadline, and the real read path does one before most
+    ///    sector reads so this must stay cheap.
+    ///  - anything else - Restore (Type I $0x), a sector command that found nothing, Read Address/
+    ///    Track: `fdcIrqSlowSteps`, chosen to sit above the self-test's ~30000-step (`_hz_200`+10)
+    ///    deadline and far below the GEMDOS `$40000`-iteration poll budget. The self-test's first
+    ///    polled command is a Restore, so this is what makes it time out like real hardware; the
+    ///    real read path issues a Restore only a couple of times per load.
+    ///Not in MmuSnapshot: a settled machine read its status register (INTRQ cleared) long ago, like
+    ///Timer B's tbCounter.
+    let mutable fdcIrq = false            //true = INTRQ asserted = GPIP bit 5 reads 0
+    let mutable fdcIrqPending = 0         //steps until INTRQ asserts; 0 = not counting
+    let fdcIrqSlowSteps = 40000           //> self-test's ~30000-step deadline, << GEMDOS poll budget
+    let fdcIrqFastSteps = 4000            //a real adjacent-track seek, well inside the self-test deadline
+
     ///The DMA Address Counter's three bytes (FD-HD_Programming.pdf: "DMA Registers Address Map") -
     ///a real, 22-bits-used-of-24 internal address register the DMA chip uses to know where in RAM
     ///to read/write during a floppy transfer. Boot ROM routinely writes this (in the documented
@@ -580,15 +613,25 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             //  bit 4 = keyboard/MIDI ACIA interrupt request, active-LOW: 0 = an ACIA IRQ is
             //          pending, 1 = none. Driven from keyboardAciaStatus; TOS's ISR at $fc281c
             //          loops (`btst #4 / beq`) while this bit is 0, servicing the ACIA until drained.
+            //  bit 5 = FDC/HDC interrupt request, active-LOW: 0 = INTRQ asserted (command done),
+            //          1 = idle. Driven by `fdcIrq` - see its comment. HDC is not modelled.
             //Every other GPIP bit (0 centronics busy, 1 RS232 DCD, 2 RS232 CTS, 3 blitter done,
-            //5 FDC/HDC IRQ, 6 RS232 ring) still comes from stored mfpRegisters unchanged.
+            //6 RS232 ring) still comes from stored mfpRegisters unchanged.
             let stored = mfpRegisters.[int (address - mpf68901)]
             let stored = if colourMonitor then stored ||| 0x80uy else stored &&& 0x7Fuy
+            let stored = if fdcIrq then stored &&& 0xDFuy else stored ||| 0x20uy
             if keyboardAciaStatus() &&& 0x80uy <> 0uy then stored &&& 0xEFuy else stored ||| 0x10uy
         | Mfp -> mfpRegisters.[int (address - mpf68901)]
         | a when a = fdcAccess ->
             match fdcSelectedReg with
-            | 0uy -> fdcStatus
+            | 0uy ->
+                //Reading the WD1772 status register clears INTRQ (GPIP bit 5 back to idle-high),
+                //exactly like issuing a new command - see fdcIrq. A pending assertion is cancelled.
+                if fdcIrq || fdcIrqPending <> 0 then
+                    fdcIrq <- false
+                    fdcIrqPending <- 0
+                    mutations <- mutations + 1UL
+                fdcStatus
             | 1uy -> fdcTrack
             | 2uy -> fdcSector
             | _ -> fdcData
@@ -796,10 +839,16 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     | 0x60uy when input &&& 0x10uy <> 0uy && fdcTrack > 0uy -> fdcTrack - 1uy
                     | _ -> fdcTrack
                 let newStatus = fdcCommandStatus input
-                if newTrack <> fdcTrack || newStatus <> fdcStatus then mutations <- mutations + 1UL
+                //Restore ($0x) takes the slow bucket the boot FDC self-test relies on timing out;
+                //a Seek/Step is a cheap adjacent move. See fdcIrq.
+                let delay = if input &&& 0xF0uy = 0uy then fdcIrqSlowSteps else fdcIrqFastSteps
+                if newTrack <> fdcTrack || newStatus <> fdcStatus || fdcIrq || fdcIrqPending <> delay then
+                    mutations <- mutations + 1UL
                 fdcLog (sprintf "cmd   type I $%02x -> track %d" input (int newTrack))
                 fdcTrack <- newTrack
                 fdcStatus <- newStatus
+                fdcIrq <- false
+                fdcIrqPending <- delay
             | 0uy ->
                 //Type II sector transfer: Read Sector ($8x, media -> RAM) or Write Sector ($Ax,
                 //RAM -> media). Top 3 bits "100"/"101", bottom 2 bits "00" (FD-HD_Programming.pdf's
@@ -854,6 +903,19 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                             input
                             (if isReadSector then "READ-SECTOR" elif isWriteSector then "WRITE-SECTOR" else "(other)")
                             multiRecord count transferred status)
+                //INTRQ. Force Interrupt ($D0-$DF): $D8-$DF assert immediately, $D0-$D7 terminate with
+                //none. A Read/Write Sector that moved data asserts INTRQ now (bytes are already in
+                //RAM). Everything else - a sector command that found nothing, Read Address/Track -
+                //takes the slow bucket that makes the boot FDC self-test time out. See fdcIrq.
+                if input >= 0xD0uy && input < 0xE0uy then
+                    fdcIrq <- input &&& 0x08uy <> 0uy
+                    fdcIrqPending <- 0
+                elif (isReadSector || isWriteSector) && transferred > 0 then
+                    fdcIrq <- true
+                    fdcIrqPending <- 0
+                else
+                    fdcIrq <- false
+                    fdcIrqPending <- fdcIrqSlowSteps
             | 1uy -> if input <> fdcTrack then mutations <- mutations + 1UL
                      fdcTrack <- input
                      fdcLog (sprintf "track $8604<-%d" (int input))
@@ -1001,6 +1063,17 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     if not timerBPending then
                         timerBPending <- true
                         mutations <- mutations + 1UL
+    ///Counts down a pending WD1772 INTRQ. Called from Program.fs's Step loop at the same cadence as
+    ///HblTick (`steps` = instructionsPerLine), so a CPU polling `btst #5,$fffffa01` sees the line
+    ///drop after the command's fast/slow bucket has elapsed. See fdcIrq for why the delay exists.
+    member x.FdcTick(steps: int) =
+        if fdcIrqPending > 0 then
+            fdcIrqPending <- fdcIrqPending - steps
+            if fdcIrqPending <= 0 then
+                fdcIrqPending <- 0
+                if not fdcIrq then
+                    fdcIrq <- true
+                    mutations <- mutations + 1UL
     ///Asserts MFP Timer A (channel 13, level 6, vector $4D -> $134). Gated on Timer A being armed
     ///(TACR mode bits non-zero) and its channel enabled+unmasked in IERA/IMRA bit 5 - TOS leaves
     ///Timer A off (the classic "free" application timer), games turn it on. Super Hang-On's intro
