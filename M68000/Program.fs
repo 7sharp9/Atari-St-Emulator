@@ -725,6 +725,15 @@ module SelfTest =
     type private FailKind = Unimplemented | ExceptionFrame | WrongAnswer
     type private Outcome = Pass | Skip | Fail of FailKind * string
 
+    /// Two vectors in ASL.b.json are corrupt: opcode $E502 is `ASL.b #2,D2`, a byte operation that
+    /// physically cannot alter D2 bits 8-31, yet both expect the whole register rewritten
+    /// (cdfb7fbe -> 2e5e4304, 417c7e7d -> 6461d390). Our answer (upper 24 bits preserved) is the
+    /// correct one. Skip them so the wrong-answer lane stays a real to-do list rather than carrying
+    /// two permanent false positives. Keyed on the structural impossibility, not on magic values.
+    let private isCorruptVector (ini: St) (fin: St) =
+        ini.Prefetch.Length > 0 && ini.Prefetch.[0] = 0xE502
+        && (ini.D.[2] &&& 0xFFFFFF00) <> (fin.D.[2] &&& 0xFFFFFF00)
+
     let private runCase (ini: St) (fin: St) : Outcome =
         // The flat 16 MB test bus (MMU flatTestBus) backs the whole 24-bit space, so the only
         // reason left to skip is a genuine null-page address (< 8) - the vectors' operand
@@ -732,6 +741,7 @@ module SelfTest =
         let outOfRange (a: uint32) = a < 8u
         let refAddrs = Array.append (ini.Ram |> Array.map fst) (fin.Ram |> Array.map fst)
         if ini.Pc % 2 <> 0 || outOfRange (uint32 ini.Pc) || Array.exists outOfRange refAddrs then Skip
+        elif isCorruptVector ini fin then Skip
         else
         let mmu = MMU(zeroRom, flatTestBus = true)
         mmu.WriteWord (uint32 ini.Pc) (int16 ini.Prefetch.[0])
