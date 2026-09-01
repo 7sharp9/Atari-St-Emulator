@@ -976,23 +976,42 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if tacr &&& 0x0Fuy <> 0uy && iera &&& 0x20uy <> 0uy && imra &&& 0x20uy <> 0uy && not timerAPending then
             timerAPending <- true
             mutations <- mutations + 1UL
-    member x.PendingInterruptLevel = if mfpPending || timerAPending || timerBPending || timerCPending then 6 elif vblPending then 4 else 0
+    ///The single place the interrupt-source priority order is written down. Highest-priority
+    ///currently-asserted source: 0 = Timer A, 1 = MFP/ACIA, 2 = Timer B, 3 = Timer C, 4 = VBL,
+    ///5 = none. `PendingInterruptLevel` / `PendingInterruptVector` / `AcknowledgeInterrupt` all
+    ///dispatch on this so the three can never drift out of sync. Allocation-free (checked every
+    ///`Cpu.Step()`).
+    member private x.TopPendingInterrupt =
+        if timerAPending then 0
+        elif mfpPending then 1
+        elif timerBPending then 2
+        elif timerCPending then 3
+        elif vblPending then 4
+        else 5
+    member x.PendingInterruptLevel =
+        match x.TopPendingInterrupt with
+        | 5 -> 0    // nothing asserted
+        | 4 -> 4    // VBL is autovector level 4
+        | _ -> 6    // every MFP source is level 6
     member x.PendingInterruptVector =
-        if timerAPending then 0x4D
-        elif mfpPending then mfpVector
-        elif timerBPending then 0x48
-        elif timerCPending then 0x45
-        elif vblPending then 28
-        else 0
+        match x.TopPendingInterrupt with
+        | 0 -> 0x4D
+        | 1 -> mfpVector
+        | 2 -> 0x48
+        | 3 -> 0x45
+        | 4 -> 28
+        | _ -> 0
     ///Called by `Cpu.Step()` once it has decided to actually take the pending interrupt (i.e. it
     ///cleared the current IPL mask) - clears only the slot being taken (the highest one), so a
     ///lower still-pending source stays pending, matching real interrupt-acknowledge behaviour.
     member x.AcknowledgeInterrupt() =
-        if timerAPending then timerAPending <- false
-        elif mfpPending then mfpPending <- false
-        elif timerBPending then timerBPending <- false
-        elif timerCPending then timerCPending <- false
-        elif vblPending then vblPending <- false
+        (match x.TopPendingInterrupt with
+         | 0 -> timerAPending <- false
+         | 1 -> mfpPending <- false
+         | 2 -> timerBPending <- false
+         | 3 -> timerCPending <- false
+         | 4 -> vblPending <- false
+         | _ -> ())
         mutations <- mutations + 1UL
         interruptAcks <- interruptAcks + 1UL
 
