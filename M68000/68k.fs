@@ -1990,11 +1990,29 @@ type Cpu =
             //Dn. Source EA resolved through the shared decoder - `regUpdate` carries the (An)+/-(An)
             //writeback, `extBytes` the PC advance past the extension words.
             let doDivide (divisor: uint32) (regUpdate: Cpu -> Cpu) extBytes desc =
-                if divisor = 0u then failwith "DIVU: divide by zero (trap not implemented)"
+                if divisor = 0u then
+                    //Divide by zero -> vector 5, standard 68000 group-2 frame (SR + PC of the next
+                    //instruction), same shape as CHK/TRAPV via EnterVector. The SingleStepTests
+                    //carry no zero-divisor vectors so this path is unchecked by selftest, but it
+                    //matches the 68000 manual and a real program (PowerMonger's isometric renderer)
+                    //hits it. The EA writeback (regUpdate) still applies first.
+                    printfn "divu.w %s,D%u (divide by zero -> vector 5)" desc register
+                    (regUpdate x).EnterVector 5 (x.PC + 2 + extBytes)
+                else
                 let dividend = uint32 (x.DataRegister register)
                 let quotient = dividend / divisor
                 let remainder = dividend % divisor
-                if quotient > 0xffffu then failwith "DIVU: quotient overflow (V flag not implemented)"
+                if quotient > 0xffffu then
+                    //Quotient does not fit in 16 bits: V<-1, C<-0, N/Z/X and Dn left untouched, PC
+                    //still advances past the instruction (no trap - this is not divide-by-zero).
+                    //Matches the SingleStepTests 68000 vectors exactly (every overflow case there
+                    //sets only V and clears C; hatari's setdivuflags forces N=1/Z=0, a different
+                    //chip revision). The EA writeback (regUpdate) still applies.
+                    let ccr = (x.CCR ||| 0x2s) &&& ~~~0x1s
+                    let newCpu = { (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
+                    printfn "divu.w %s,D%u (overflow)" desc register
+                    newCpu
+                else
                 let result = int ((remainder <<< 16) ||| quotient)
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 quotient)
                 let newCpu = {(regUpdate x).WithDataRegister register result with PC = x.PC + 2 + extBytes; CCR = ccr}
@@ -2008,11 +2026,26 @@ type Cpu =
             //exactly real 68000 DIVS.W semantics: quotient truncates toward zero, remainder takes
             //the dividend's sign - so no extra sign-fixup is needed beyond what DIVU already does.
             let doDivide (divisor: int16) (regUpdate: Cpu -> Cpu) extBytes desc =
-                if divisor = 0s then failwith "DIVS: divide by zero (trap not implemented)"
+                if divisor = 0s then
+                    //Divide by zero -> vector 5 (see the DIVU note above).
+                    printfn "divs.w %s,D%u (divide by zero -> vector 5)" desc register
+                    (regUpdate x).EnterVector 5 (x.PC + 2 + extBytes)
+                else
                 let dividend = x.DataRegister register
-                let quotient = dividend / int divisor
+                //int64 division dodges the CLR-exception F# raises for Int32.MinValue / -1, which
+                //is itself one of the overflow cases the check below catches.
+                let quotient64 = int64 dividend / int64 (int divisor)
+                if quotient64 > 32767L || quotient64 < -32768L then
+                    //Quotient does not fit in signed 16 bits (0x80000000 / -1 included): V<-1, C<-0,
+                    //N/Z/X and Dn left untouched, PC still advances. Matches the SingleStepTests
+                    //68000 vectors exactly (overflow sets only V, clears C).
+                    let ccr = (x.CCR ||| 0x2s) &&& ~~~0x1s
+                    let newCpu = { (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
+                    printfn "divs.w %s,D%u (overflow)" desc register
+                    newCpu
+                else
+                let quotient = int quotient64
                 let remainder = dividend % int divisor
-                if quotient > 32767 || quotient < -32768 then failwith "DIVS: quotient overflow (V flag not implemented)"
                 let result = ((remainder &&& 0xffff) <<< 16) ||| (quotient &&& 0xffff)
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 quotient)
                 let newCpu = {(regUpdate x).WithDataRegister register result with PC = x.PC + 2 + extBytes; CCR = ccr}
