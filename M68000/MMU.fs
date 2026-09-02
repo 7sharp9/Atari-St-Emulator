@@ -294,6 +294,38 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable ikbdMouseButtonAction = 0uy    // $07 param: bit2 set => buttons report as keys $74 (left) / $75 (right)
     let mutable ikbdJoystickReports = true     // $14 auto-report on (default) / $15 / $1A off
 
+    ///The 6301's internal absolute mouse position. Real hardware maintains this continuously, even
+    ///in relative report mode, and a program reads it with the $0D "interrogate mouse position"
+    ///command (PowerMonger's menus poll $0D + $16 every frame and never process the relative $F8
+    ///packets at all). Updated by MoveMouse (REPL `mouse move`, the live window) and by the $0E
+    ///"load mouse position" command; clamped to [0,max]. Button state is the live up/down;
+    ///mousePrevReadButtons is the $0D up/down-since-last edge mask (init $0A = "don't report a
+    ///button-up on the first interrogation", matching Hatari ikbd.c ABS_PREVBUTTONS). joyState0/1
+    ///hold the last joystick-0/1 state byte seen, for the $16 "interrogate joystick" reply. All of
+    ///this is populated only by injected input, never by a diskless TOS boot (which sends $08 and
+    ///never interrogates), so like the rest of the IKBD state it is deliberately NOT in MmuSnapshot
+    ///and cannot perturb the 30M diskless boot snapshot.
+    let mutable mouseAbsX = 0
+    let mutable mouseAbsY = 0
+    let mutable mouseAbsMaxX = 320   // ABS_MAX_X_ONRESET (Hatari ikbd.c); $09 absolute-mouse-mode overrides
+    let mutable mouseAbsMaxY = 200   // ABS_MAY_Y_ONRESET
+    let mutable mouseLeftDown = false
+    let mutable mouseRightDown = false
+    let mutable mousePrevReadButtons = 0x0A
+    let mutable joyState0 = 0uy
+    let mutable joyState1 = 0uy
+
+    ///Queue bytes the 6301 sends back to the CPU (a command reply) into the ACIA receive FIFO and
+    ///assert MFP channel 6 (the keyboard-ACIA interrupt), exactly as EnqueueIkbd does for injected
+    ///input - but callable from the `let`-bound command interpreter below, which runs before the
+    ///`member`s. Mirrors RaiseInterrupt 6 $46's pending/vector/mutation bookkeeping.
+    let ikbdReply (bytes: byte list) =
+        for b in bytes do ikbdRxFifo.Enqueue b
+        if not mfpPending || mfpVector <> 0x46 then
+            mfpPending <- true
+            mfpVector <- 0x46
+        mutations <- mutations + 1UL
+
     ///Total message length (opcode + parameters) for a recognised IKBD command, or None for a
     ///byte that is not a command opcode. Values from Hatari src/ikbd.c KeyboardCommands[].
     let ikbdCmdLen (op: byte) =
@@ -318,7 +350,12 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             ikbdMouseButtonAction <- msg.[1]
             ikbdLog (sprintf "$07 set mouse button action $%02x (buttons-as-keys=%b)" msg.[1] (msg.[1] &&& 0x04uy <> 0uy))
         | 0x08 -> ikbdMouseMode <- 0uy; ikbdLog "$08 relative mouse mode"
-        | 0x09 -> ikbdMouseMode <- 1uy; ikbdLog "$09 absolute mouse mode"
+        | 0x09 ->
+            ikbdMouseMode <- 1uy
+            if msg.Length >= 5 then
+                mouseAbsMaxX <- (int msg.[1] <<< 8) ||| int msg.[2]
+                mouseAbsMaxY <- (int msg.[3] <<< 8) ||| int msg.[4]
+            ikbdLog (sprintf "$09 absolute mouse mode, range %d x %d" mouseAbsMaxX mouseAbsMaxY)
         | 0x0A when msg.Length >= 3 ->
             //Cursor-keycode mouse mode. Only the mode flag is tracked - no target here streams
             //motion in this mode, so the dx/dy "units per keypress" params aren't modelled.
@@ -328,6 +365,32 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | 0x14 -> ikbdJoystickReports <- true;  ikbdLog "$14 joystick auto-report on"
         | 0x15 -> ikbdJoystickReports <- false; ikbdLog "$15 joystick interrogation mode (auto-report off)"
         | 0x1A -> ikbdJoystickReports <- false; ikbdLog "$1A joysticks disabled"
+        | 0x0D ->
+            //Interrogate mouse position. Reply: $F7, button-edge byte, then X and Y as big-endian
+            //words. The button byte is %0000dcba (a=right-down, b=right-up, c=left-down, d=left-up)
+            //*since the last interrogation*, masked so a state that was already reported is not
+            //repeated - transcribed from Hatari src/ikbd.c IKBD_Cmd_ReadAbsMousePos.
+            let raw =
+                (if mouseRightDown then 0x01 else 0x02)
+                ||| (if mouseLeftDown then 0x04 else 0x08)
+            let edges = raw &&& ~~~mousePrevReadButtons
+            mousePrevReadButtons <- raw
+            ikbdReply [ 0xF7uy; byte edges
+                        byte (mouseAbsX >>> 8); byte mouseAbsX
+                        byte (mouseAbsY >>> 8); byte mouseAbsY ]
+            ikbdLog (sprintf "$0D interrogate mouse -> ($F7 %02x) %d,%d" edges mouseAbsX mouseAbsY)
+        | 0x16 ->
+            //Interrogate joystick. Reply: $FD, joystick-0 state, joystick-1 state (Hatari
+            //IKBD_Cmd_ReturnJoystick). We stream auto-report packets rather than tracking a live
+            //pad, so this just echoes the last state byte each stick was last set to.
+            ikbdReply [ 0xFDuy; joyState0; joyState1 ]
+            ikbdLog (sprintf "$16 interrogate joystick -> ($FD %02x %02x)" joyState0 joyState1)
+        | 0x0E when msg.Length >= 6 ->
+            //Load mouse position (msg = $0E $00 XMSB XLSB YMSB YLSB) - a program placing the 6301's
+            //internal cursor where it wants it, e.g. after switching screens.
+            mouseAbsX <- ((int msg.[2] <<< 8) ||| int msg.[3])
+            mouseAbsY <- ((int msg.[4] <<< 8) ||| int msg.[5])
+            ikbdLog (sprintf "$0E load mouse position %d,%d" mouseAbsX mouseAbsY)
         | other -> ikbdLog (sprintf "unhandled command $%02x (%d byte msg)" other msg.Length)
 
     ///Feed one byte the CPU wrote to the keyboard ACIA transmit register ($FFFC02) into the IKBD
@@ -1238,13 +1301,36 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///(IPL 6, vector $46) so TOS's ACIA ISR runs and drains what was queued. Used by the REPL
     ///`kbd` command and, later, the live window's real keyboard/mouse handler.
     member x.EnqueueIkbd (bytes: byte seq) =
+        let arr = Array.ofSeq bytes
+        //Keep the 6301's internal state that the $0D / $16 interrogation replies read (see the
+        //mouseAbs* / joyState* fields) in sync with the packets callers stream in: a relative mouse
+        //packet ($F8-$FB, then signed dx/dy) also advances the absolute position and sets the live
+        //button state; a joystick auto-report packet ($FE/$FF, then state) records that stick's byte.
+        match arr with
+        | [| header; dx; dy |] when header >= 0xF8uy && header <= 0xFBuy ->
+            mouseAbsX <- max 0 (min mouseAbsMaxX (mouseAbsX + int (sbyte dx)))
+            mouseAbsY <- max 0 (min mouseAbsMaxY (mouseAbsY + int (sbyte dy)))
+            mouseRightDown <- header &&& 0x01uy <> 0uy
+            mouseLeftDown  <- header &&& 0x02uy <> 0uy
+        | [| 0xFEuy; st |] -> joyState0 <- st
+        | [| 0xFFuy; st |] -> joyState1 <- st
+        | _ -> ()
         let mutable added = false
-        for b in bytes do
+        for b in arr do
             ikbdRxFifo.Enqueue b
             added <- true
         if added then
             mutations <- mutations + 1UL
             x.RaiseInterrupt 6 0x46
+
+    ///Move the 6301's internal absolute mouse cursor by (dx,dy), clamped to [0,max], and stream the
+    ///matching relative packet ($F8|buttons, dx, dy) so both interrogation-mode ($0D) and
+    ///relative-packet-mode programs see the motion. The REPL `mouse move` command and the live
+    ///window use this instead of hand-building the packet.
+    member x.MoveMouse (dx: int) (dy: int) =
+        let clampByte v = max -128 (min 127 v)
+        let header = 0xF8uy ||| (if mouseRightDown then 0x01uy else 0uy) ||| (if mouseLeftDown then 0x02uy else 0uy)
+        x.EnqueueIkbd [| header; byte (sbyte (clampByte dx)); byte (sbyte (clampByte dy)) |]
 
     ///The IKBD report mode the running program selected, for `ATARI_TRACE_IKBD` / callers that
     ///want to adapt what they synthesise: 0 = relative mouse (power-on default), 1 = absolute,
@@ -1266,11 +1352,14 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///header) is still sent alongside it, matching a real 6301's IKBD_SendOnMouseAction.
     member x.MouseButtonsReportAsKeys = ikbdMouseButtonAction &&& 0x04uy <> 0uy
 
-    ///Feed one mouse-button edge to the IKBD. In buttons-as-keys mode this enqueues $74/$F4
-    ///(left) or $75/$F5 (right) - make on press, break (code | $80) on release. Otherwise it does
-    ///nothing: the caller's relative-mouse packet already carries the button state in its header.
+    ///Feed one mouse-button edge to the IKBD. Always updates the live button state that the $0D
+    ///interrogation reply and the relative-packet header carry (PowerMonger's menus read the mouse
+    ///buttons only through $0D). In buttons-as-keys mode ($07 bit 2) it additionally enqueues
+    ///$74/$F4 (left) or $75/$F5 (right) - make on press, break on release - which is how Electronic
+    ///Pool reads a click.
     ///Split out from EnqueueIkbd so the live window and the REPL `mouse` command share one policy.
     member x.EnqueueMouseButton (isLeft: bool) (pressed: bool) =
+        if isLeft then mouseLeftDown <- pressed else mouseRightDown <- pressed
         if x.MouseButtonsReportAsKeys then
             let code = if isLeft then 0x74uy else 0x75uy
             x.EnqueueIkbd [| (if pressed then code else code ||| 0x80uy) |]

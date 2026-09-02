@@ -1006,7 +1006,7 @@ module Main =
                 | [| "move"; dxs; dys |] ->
                     let dx = int dxs
                     let dy = int dys
-                    st.Cpu.MMU.EnqueueIkbd [| 0xF8uy; byte (sbyte (max -128 (min 127 dx))); byte (sbyte (max -128 (min 127 dy))) |]
+                    st.Cpu.MMU.MoveMouse dx dy
                     Diag.result "mouse move dx=%d dy=%d" dx dy
                 | [| ("down"|"up") as ud; ("l"|"r"|"left"|"right") as lr |] ->
                     let isLeft = lr.StartsWith "l"
