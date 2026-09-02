@@ -294,16 +294,18 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable ikbdMouseButtonAction = 0uy    // $07 param: bit2 set => buttons report as keys $74 (left) / $75 (right)
     let mutable ikbdJoystickReports = true     // $14 auto-report on (default) / $15 / $1A off
 
+    ///Total message length (opcode + parameters) for a recognised IKBD command, or None for a
+    ///byte that is not a command opcode. Values from Hatari src/ikbd.c KeyboardCommands[].
     let ikbdCmdLen (op: byte) =
         match int op with
-        | 0x80 -> 2 | 0x07 -> 2 | 0x08 -> 1 | 0x09 -> 5 | 0x0A -> 3
-        | 0x0B -> 3 | 0x0C -> 3 | 0x0D -> 1 | 0x0E -> 6 | 0x0F -> 1
-        | 0x10 -> 1 | 0x11 -> 1 | 0x12 -> 1 | 0x13 -> 1 | 0x14 -> 1
-        | 0x15 -> 1 | 0x16 -> 1 | 0x17 -> 2 | 0x18 -> 1 | 0x19 -> 7
-        | 0x1A -> 1 | 0x1B -> 7 | 0x1C -> 1 | 0x20 -> 4 | 0x21 -> 3 | 0x22 -> 3
+        | 0x80 -> Some 2 | 0x07 -> Some 2 | 0x08 -> Some 1 | 0x09 -> Some 5 | 0x0A -> Some 3
+        | 0x0B -> Some 3 | 0x0C -> Some 3 | 0x0D -> Some 1 | 0x0E -> Some 6 | 0x0F -> Some 1
+        | 0x10 -> Some 1 | 0x11 -> Some 1 | 0x12 -> Some 1 | 0x13 -> Some 1 | 0x14 -> Some 1
+        | 0x15 -> Some 1 | 0x16 -> Some 1 | 0x17 -> Some 2 | 0x18 -> Some 1 | 0x19 -> Some 7
+        | 0x1A -> Some 1 | 0x1B -> Some 7 | 0x1C -> Some 1 | 0x20 -> Some 4 | 0x21 -> Some 3 | 0x22 -> Some 3
         | 0x87 | 0x88 | 0x89 | 0x8A | 0x8B | 0x8C | 0x8F | 0x90
-        | 0x92 | 0x94 | 0x95 | 0x99 | 0x9A -> 1
-        | _ -> 1                               // unknown opcode - consume it alone and log
+        | 0x92 | 0x94 | 0x95 | 0x99 | 0x9A -> Some 1
+        | _ -> None
 
     let ikbdCmdBuf = System.Collections.Generic.List<byte>()
 
@@ -330,15 +332,20 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
 
     ///Feed one byte the CPU wrote to the keyboard ACIA transmit register ($FFFC02) into the IKBD
     ///command parser. Buffers until a full message (opcode + its fixed parameter count) is present,
-    ///then dispatches it.
+    ///then dispatches it. A byte that arrives when the buffer is empty and is not a recognised
+    ///opcode is dropped rather than started as a command - so a stray write (or an opcode whose
+    ///real length differs from the table) can't silently consume the next real opcode as a
+    ///parameter and desync every command after it.
     let ikbdTransmit (b: byte) =
-        ikbdCmdBuf.Add b
-        let expected = ikbdCmdLen ikbdCmdBuf.[0]
-        if ikbdCmdBuf.Count >= expected then
-            let msg = ikbdCmdBuf.ToArray()
-            ikbdCmdBuf.Clear()
-            if traceIkbd then ikbdLog (sprintf "cmd %s" (msg |> Array.map (sprintf "%02x") |> String.concat " "))
-            ikbdDispatch msg
+        match (if ikbdCmdBuf.Count = 0 then ikbdCmdLen b else ikbdCmdLen ikbdCmdBuf.[0]) with
+        | None -> ikbdLog (sprintf "ignoring stray byte $%02x (not a command opcode)" b)
+        | Some expected ->
+            ikbdCmdBuf.Add b
+            if ikbdCmdBuf.Count >= expected then
+                let msg = ikbdCmdBuf.ToArray()
+                ikbdCmdBuf.Clear()
+                if traceIkbd then ikbdLog (sprintf "cmd %s" (msg |> Array.map (sprintf "%02x") |> String.concat " "))
+                ikbdDispatch msg
 
     ///Minimal MFP Timer B stub: real hardware decrements TBDR on each external clock event
     ///(HBLANK in event-count mode, much slower than CPU instruction execution) and reloads it from
