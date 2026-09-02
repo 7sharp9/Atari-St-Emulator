@@ -1,84 +1,137 @@
-# powermonger — the FDC self-test hang, and how far `[cr Replicants]` now gets
+# powermonger — two emulator bugs the cracks exposed, and how far it runs now
 
-PowerMonger (© 1990 Bullfrog / Electronic Arts). Driven from the scene crack
-`Powermonger (1990)(Bullfrog)[cr Replicants].zip` (Replicants / Illegal). This
-folder documents an emulator bug the crack exposed and the fix, not a full
-control-flow reconstruction — the game does not yet run to its title.
+PowerMonger (© 1990 Bullfrog / Electronic Arts). Driven from two scene cracks.
+This folder documents three emulator bugs the cracks exposed and their fixes, not
+a full control-flow reconstruction — the game now runs its title + credits +
+intro sequence but has not been driven into gameplay (its map screen is
+mouse-menu driven).
 
-**The disk is not committed** (commercial). To reproduce:
+**The disks are not committed** (commercial). To reproduce:
 
 ```
 unzip "Powermonger (1990)(Bullfrog)[cr Replicants].zip"
-#   Powermonger (1990)(Bullfrog)[cr Replicants].st
 #   sha256 2099be892f49d779bbdf6f5d397b160c3048647c1d3c73d1fba2c0552cb02b31   819200 bytes
+unzip "Powermonger (1990)(Bullfrog)[cr Empire].zip"
+#   Powermonger (1990)(Bullfrog)[cr Empire].st                               829440 bytes
 ```
 
-820 KB, double-sided, 80 track / 10 sector / 2 head, **bootable** (boot-sector
-word-sum `$1234`). Root: `MREP` + `WAR` markers, `AUTO\POWER.PRG`, `DATA\*.DAT`.
-The boot sector is TDT's "ALTAIR ANTI VIRUS V3.00".
+Replicants: 820 KB, double-sided 80/10/2, bootable (boot-sector word-sum
+`$1234`), boot sector = TDT "ALTAIR ANTI VIRUS V3.00". Empire: 810 KB, `AUTO\`
+`WARI.PRG` is the game, "SK Micro Intro 6.0 (C) 1990 YODA" cracktro.
 
-## The hang (62nd pass diagnosis, 63rd pass fix)
+### Drive recipes
 
-Booted with this disk, TOS printed "TDT ALTAIR ANTI VIRUS V3.00: CHECK OK:"
-forever, filling the screen. Root cause, traced against a real Hatari
-`cpu_disasm`:
+```
+# Replicants -> PowerMonger title/credits/intro
+./run.ps1 -NoBuild repl 1 -DiskA "Powermonger (1990)(Bullfrog)[cr Replicants].st"
+  s 15000000        # -> Replicants cracktro key-wait
+  kbd 1c            # RETURN advances it (space misbehaves)
+  s 55000000        # loads ~1 MB, depacks, runs -> "Powermonger" title + scrolling credits
+
+# Empire -> PowerMonger title + "Pondering over the map..." intro
+./run.ps1 -NoBuild repl 1 -DiskA "Powermonger (1990)(Bullfrog)[cr Empire].st"
+  s 8000000         # -> Empire / YODA cracktro key-wait
+  kbd 39 b9         # SPACE advances it (return does nothing)
+  s 45000000        # -> title, then the pre-game narrative screen
+```
+
+---
+
+## Bug 1 — FDC self-test hang (62nd pass diagnosis, 63rd pass fix)
+
+Booted with the Replicants disk, TOS printed "TDT ALTAIR ANTI VIRUS V3.00:
+CHECK OK:" forever. Root cause, traced against a real Hatari `cpu_disasm`:
 
 After the primary autoboot, TOS runs an **FDC self-test loop at ROM `$fc04a8`** —
-8 iterations, each calling `$fc04d6` to fire one raw WD1772 command type
-(Restore / Step / Step-in / Step-out / ReadSector / WriteSector / ReadAddr /
-ReadTrack) and poll `$fc0580: btst #5,$fffffa01 / beq` for completion, with a
-`_hz_200 + 10` (~50 ms) deadline. The loop is a *presence* check: on real
-hardware those bare commands are still running when the deadline expires, each
-poll times out, `$fc04d6` returns failure, and the loop exits after 8 tries
-without ever running its `$fc04cc: jsr (A0)`.
+8 iterations, each firing one raw WD1772 command and polling
+`$fc0580: btst #5,$fffffa01 / beq` for completion with a `_hz_200 + 10` (~50 ms)
+deadline. It is a *presence* check: on real hardware those bare commands are
+still running when the deadline expires, every poll times out, and the loop
+exits after 8 tries without ever running its `$fc04cc: jsr (A0)`.
 
-This emulator hardwired **MFP GPIP bit 5 (the FDC IRQ line, active-low) to 0** —
-"a command is always complete". So every poll returned success instantly,
-`$fc04d6` reported success, and `$fc04cc: jsr (A0)` re-executed the still-valid
-`$1234` boot sector in `_dskbufp` on every iteration. The boot sector's own
-`move.w #$ff,d7` then clobbered the ROM loop's `add.b #$20,d7 / bne` counter, so
-the loop never terminated. (A plain TOS boot survived only because the buffer it
-re-ran didn't checksum to `$1234`; this crack's boot sector does.)
+This emulator hardwired **MFP GPIP bit 5 (FDC IRQ, active-low) to 0** — "a
+command is always complete" — so every poll succeeded instantly and
+`$fc04cc: jsr (A0)` re-executed the still-valid `$1234` boot sector in
+`_dskbufp` every iteration. The boot sector's own `move.w #$ff,d7` clobbered the
+ROM loop's `add.b #$20,d7 / bne` counter, so the loop never terminated. (A plain
+TOS boot survived only because its buffer didn't checksum to `$1234`; this
+crack's boot sector does.)
 
-Hatari for the same boot: `$fc04d6` called 8×, `$fc04cc` **0×**, clean exit.
+**Fix:** `MMU`'s `fdcIrq` / `FdcTick`. GPIP bit 5 idle-high, re-raises INTRQ on a
+coarse bucketed delay after a command (immediate for a Read/Write Sector that
+moved data, ~4000 steps for a Seek/Step, ~40000+ for a Restore / failed search /
+Read Address). The self-test's first polled command is a Restore, so it times
+out and the loop exits. Diskless-boot `checkpoint.txt` re-baselined.
 
-### Fix
+## Bugs 2 & 3 — the depacker derail (64th pass)
 
-`MMU`'s `fdcIrq` / `FdcTick` (commit *"MMU: give WD1772 INTRQ / GPIP bit 5 real
-completion timing"*). GPIP bit 5 is idle-high and re-raises INTRQ on a coarse
-delay after a command, cleared on a status-register read or a new command. No
-per-command WD1772 state machine (Hatari's `src/fdc.c` has one, ~2000 lines);
-the delay is bucketed instead:
+Past the cracktro, both cracks load ~1 MB of game data (hundreds of successful
+double-sided FDC reads) and hand off to an **ICE depacker** ("Ice!" magic
+`$49636521`, the plain-68000 self-decompressor at `$70880` in the Replicants
+build). Depacking completed cleanly; execution then derailed — Replicants to
+`PC=$20` (running the exception vector table as code → `WriteEa: immediate
+operand is not a valid destination`), Empire to low RAM `$5a6`.
 
-| command | INTRQ after | why |
-|---------|-------------|-----|
-| Read/Write Sector that moved data | immediately | bytes are already in RAM; a per-sector delay adds tens of millions of steps to a big load |
-| Seek / Step (Type I `$1x`–`$7x`) | ~4000 steps | a real adjacent-track seek is a few ms; the real read path does one before most sector reads |
-| Restore (`$0x`), failed search, Read Address/Track | ~40000 steps | above the self-test's ~30000-step deadline, far below the GEMDOS `$40000`-iteration poll budget |
+Traced the Replicants derail instruction-by-instruction from the depacker's
+`rts`. The cracktro's installed VBL handler at `$660` does:
 
-The self-test's first polled command is a Restore, so it now times out and the
-loop exits. The boot timeline moves ~1.4M steps later (spin instead of
-short-circuit), so the diskless-boot `checkpoint.txt` was re-baselined.
+```
+$660  move.l  D0,$2ca2
+$666  move    usp,A0
+$668  move.l  A0,$2c9c
+$66e  movem.l $ffff8240,#$00ff        ; read the 16 palette words
+$676  movem.l #$00ff,$2caa            ; stash them
+$67e  move.l  #$00078000,$ffff8260.w  ; <-- long write to the shifter res register
+```
 
-## How far it gets now
+The `move.l` to `$ffff8260` writes four bytes: `$ff8260`/`$ff8261` (the GLUE +
+shifter resolution registers) and **`$ff8262`/`$ff8263`**. This emulator's
+video-register region ended at `$ff8260`, so the second word hit the generic
+`raise (BusError …)` fall-through. That bus error vectored through a cracktro
+vector table that doesn't handle it → garbage PC → the vector-table-as-code
+crash. Empire's `$5a6` derail is the same bus error landing on a different bogus
+vector.
 
-1. Boots. The ALTAIR boot sector runs once, the self-test exits, TOS
-   `Pexec`s `\AUTO\POWER.PRG`.
-2. **Replicants / Illegal cracktro** — "The masters and The replicants /
-   Savagely present Powermonger / Cracked by Illegal / … / hi to : …". A
-   `Bconin(2)` key-wait (`cracktro.png`). This is the 62nd-pass success target.
-3. A key advances to a second screen ("IMPORTED BY THE MASTERS / BROKEN BY
-   ILLEGAL!").
-4. Past that it loads **~1 MB of game data** — hundreds of successful
-   double-sided FDC reads to `$04xxxx` — then its depacker **derails to
-   `PC=$20`** (executes the exception vector table as code; the next opcode is
-   an illegal write-to-immediate). All FDC reads succeeded, so this is not the
-   floppy path. It is the same undiagnosed class as `[cr Empire]`'s WARI.PRG
-   (62nd pass) and the 60th-pass HxC WAR.PRG self-decompressor — a bad control
-   transfer out of a depacker, cause not yet found.
+On a plain ST the shifter chip is selected for the whole `$ff8200`–`$ff827f`
+page but decodes no register in `$ff8262`–`$ff827f`; accesses there are harmless.
+Hatari's `IoMemTable_ST` marks exactly this: `{ 0xff8262, 30, IoMem_VoidRead,
+IoMem_VoidWrite }` with the comment *"No bus errors here"* (`$ff8261` is also a
+real register there, `Video_ResShifter`, which this emulator was also
+bus-erroring on).
+
+**Fix 2** (`MMU.fs`): `videoDisplayRegisterEnd` `$ff8260` → `$ff8261` (the
+shifter-only res register is real), and a new `ShifterVoid` region
+`$ff8262`–`$ff827f` — reads return open-bus `$ff`, writes are dropped, no bus
+error. The `videoDisplayRegisterMemory` array is unchanged (98 bytes), so the
+snapshot format and the byte-identical diskless boot are untouched.
+
+**Fix 3** (`68k.fs` `DecodeBucket9`): with the bus error gone the Replicants
+depacked code next hit `suba.l (d16,PC),A5` — the hand-coded SUBA.L handler only
+covered `Dn` / `An` / `#imm.L` / `(xxx).L` and bus-errored on every other mode.
+Replaced the whole `match eamode` block with the shared EA decoder
+(`x.ResolveEa` / `x.ReadEa`), mirroring the CMPA.L / SUBA.W arms directly above
+it. Selftest pass count rose ~3000 (previously-`unimpl` SUBA.L modes now correct)
+with the wrong-answer lane still at 0.
+
+## How far it runs now
+
+1. Boots. ALTAIR / YODA boot runs, FDC self-test exits, TOS `Pexec`s the game.
+2. Cracktro key-wait (`cracktro.png` = Replicants).
+3. ~1 MB load + ICE depack, no wall.
+4. **PowerMonger title** — "Powermonger" logo + Electronic Arts, then a scrolling
+   credits sequence ("Special Thanks to…", "Designed by Bullfrog", "Programmed by
+   Peter Molyneux / Glenn Corpes", …) — `title.png`, `credits.png`.
+5. Empire runs on to the pre-game narrative screen — "Pondering over the map, you
+   prepare plans for battle…" (`empire_intro.png`).
+6. Not yet driven into gameplay: the map / plan screen is mouse-menu driven and
+   the emulator does not interpret IKBD mouse-mode commands. A CFG / sym
+   reconstruction is deferred until it can be driven that far.
 
 ## Files
 
 | file | what |
 |------|------|
-| `cracktro.png` | the Replicants cracktro key-wait reached after the self-test fix |
+| `cracktro.png` | Replicants cracktro key-wait (after the FDC self-test fix) |
+| `title.png` | PowerMonger title, reached after the depacker-derail fixes |
+| `credits.png` | the scrolling credits sequence |
+| `empire_intro.png` | Empire build, the "Pondering over the map…" intro screen |
