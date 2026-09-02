@@ -9,6 +9,16 @@ attract, walks its track-select / "PREPARE TO RACE" menu, starts an actual Track
 race, and lets a window player drive the joystick car a full lap. No instruction
 wall, no crash.
 
+## Race mechanics + drone-car AI — see `mechanics.md`
+
+**`mechanics.md` (66th pass)** reverse-engineers the in-race model from a live
+Track-1 race: the per-frame update loop `$df18`, the per-car state struct, and
+the drone AI — a **fixed 42-waypoint racing line** (table base at `-4084(A4)`,
+count `$54` at `-4076(A4)`, 16-byte records of X / Y / speed / heading) followed
+by `$ec52` with a per-car speed cap at `-3874(A4)` that takes **zero writes
+during racing** (no speed rubber-band in this ST build). Symbols added to
+`supersprint.sym`.
+
 ## The MFP Timer B raster split (built 61st pass, verified 63rd)
 
 Super Sprint installs an MFP Timer B event-count ISR (`$f9ea`, vector `$120`,

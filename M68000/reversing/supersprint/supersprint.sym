@@ -2,3 +2,17 @@
 0000a30a	thunk_table
 0000a562	crt0
 0001399e	hot_driver
+0000df18	race_frame_update
+0000e8e6	car_car_collision
+0000e940	car_car_collision_pair
+0000e84c	sprite_depth_sort
+0000eaea	per_car_control
+0000ec52	waypoint_follow
+0000f2dc	waypoint_reached_test
+0000ee86	heading_turn
+0000f0a0	motion_integrator
+0000b798	track_surface_sample
+0000bda4	obstacle_collision
+0000b3fc	viewport_wrap_respawn
+000149b8	car_sprite_render
+0000e5d6	car_reset

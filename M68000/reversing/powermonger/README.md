@@ -1,10 +1,16 @@
-# powermonger — two emulator bugs the cracks exposed, and how far it runs now
+# powermonger — the emulator bugs the cracks exposed, and how far it runs now
 
 PowerMonger (© 1990 Bullfrog / Electronic Arts). Driven from two scene cracks.
-This folder documents three emulator bugs the cracks exposed and their fixes, not
-a full control-flow reconstruction — the game now runs its title + credits +
-intro sequence but has not been driven into gameplay (its map screen is
-mouse-menu driven).
+This folder documents the emulator bugs the cracks exposed and their fixes.
+
+**66th pass: [cr Replicants] now runs all the way into the game.** credits →
+`SPACE` → "What Is Thy Name Oh Lord" name entry → type a name + `RETURN` →
+"Welcome to the World of PowerMonger / select option" menu → click **START NEW
+CONQUEST** → the campaign **world map** (green landmasses on blue sea, cursor
+tracks the mouse). See "66th pass — reached the game" below. The isometric battle
+view is one world-map territory-click further and has not been pinned down yet
+(the click target needs the cursor exactly on a land pixel, PM validating
+land-vs-sea).
 
 **The disks are not committed** (commercial). To reproduce:
 
@@ -123,9 +129,71 @@ with the wrong-answer lane still at 0.
    Peter Molyneux / Glenn Corpes", …) — `title.png`, `credits.png`.
 5. Empire runs on to the pre-game narrative screen — "Pondering over the map, you
    prepare plans for battle…" (`empire_intro.png`).
-6. Not yet driven into gameplay: the map / plan screen is mouse-menu driven and
-   the emulator does not interpret IKBD mouse-mode commands. A CFG / sym
-   reconstruction is deferred until it can be driven that far.
+
+## 66th pass — reached the game ([cr Replicants])
+
+The 65th-pass "post-credits derail to `PC=$240000fc`" turned out to be **a
+resume-without-`-DiskA` artefact plus the wrong key** (`RETURN`, which the credits
+VBL handler at `$2c8a` ignores — it tests `cmpi.b #$39,$fffc02` = **SPACE**).
+With the disk mounted and `SPACE`, PM's post-credits loader (`$12e8` → `$57032`
+path parses `data\sprite40.dat` and issues its own raw multi-sector FDC reads,
+which our WD1772 model already serves — `transferred=10 status=$00`) relocates
+the game to `$1050` and runs on with no derail.
+
+The one real emulator gap was input: PM's menus poll the IKBD every frame with
+`$0D` "interrogate mouse position" and `$16` "interrogate joystick" and never
+touch the relative `$F8` packets. The interpreter had no reply path, so the mouse
+froze. Fixed in commit `MMU: answer the IKBD $0D / $16 interrogation commands`
+(66th pass) — the interpreter now maintains the 6301's internal absolute mouse
+position + button state and replies `$F7`/`$FD` packets.
+
+Drive recipe (Replicants, 66th pass):
+
+```
+./run.ps1 -NoBuild repl 1 -DiskA "Powermonger (1990)(Bullfrog)[cr Replicants].st"
+  s 15000000                     # -> Replicants cracktro key-wait
+  kbd 1c                         # RETURN advances the cracktro
+  s 55000000                     # -> "Powermonger" title + scrolling credits ($12aa loop)
+  kbd 39                         # SPACE  -> past the credits (RETURN is ignored here)
+  s 80000000                     # loads data\*.dat, relocates -> "What Is Thy Name Oh Lord"
+  kbd 20 <settle> a0 <settle> …  # type a name SLOWLY (one make/break per s ~800000 - the
+                                 #   handler drops bytes that arrive back-to-back), then
+  kbd 1c 9c                      # RETURN -> "Welcome to the World of PowerMonger" menu
+  mouse move 100 50 / 55 35      # cursor onto START NEW CONQUEST (~155,85 in 320-space)
+  mouse down l / mouse up l      # -> the campaign world map
+```
+
+Snapshots this pass: `pm66_credits` / `pm66_name2` ("dave" typed) / `pm66_map`
+(menu) / `pm66_newconq` (world map). Screens: `name_entry.png`, `menu.png`,
+`world_map.png`.
+
+### Graphics pipeline — what is visible so far (Q2)
+
+The **isometric zoomable battle view** — the thing Dave's Q2 is about — is a
+separate code overlay PM loads when you enter a territory, and it was not reached
+live this pass (see the world-map click note above), so its rasteriser could not
+be profiled with real hit counts. What *is* observable:
+
+- **Credits / name-dialog / menu compositor** — heavy time in `$88ac`–`$8960`,
+  a 4-bitplane word compositor: `move.w (A0)+,D4 / rol.w Dn,D4 / andi.w #$f000,D4`
+  for each of 4 planes, OR-combined, `move.w D4,(A5)+`, unrolled ×6 with a
+  `lea 152(A5),A5` row stride and a `dbf D6` outer loop, driven by a command
+  stream at `A4`. A chunky/indexed → 4-plane blit.
+- **World-map frame refresh** — `$11422`: `lea $3f364,A0` (an off-screen composed
+  buffer) → `mulu #$a0,D0` (row = index × 160) → `movem.l (A0)+,#$7cf8` /
+  `movem.l #$7cf8,(A1)` (44 bytes/`movem`), 58 inner × 3 outer. A straight
+  register-blit of the composed viewport strip to the shifter buffer each VBL.
+  On the static world map PM does this once/frame then idles in the `$1870`
+  VBL-wait spin (~1.9 M of ~2 M sampled steps).
+- **Screen output** is direct-to-shifter: the displayed base is read from
+  `$FFFF8201/8203` (`$024400` at the menus, `$01c700` after transitions), not
+  `_v_bas_ad` at `$44E` — screendump / the frame recorder must use the shifter
+  base for PM.
+
+A profile of the isometric terrain renderer (vertex projection MULS/DIVS, terrain
+fill, sprite painter's-sort, per-zoom LOD) needs PM one territory-click deeper —
+carried to the next pass. See `graphics.md` for the "what a modern port would do"
+notes, which stand on the design regardless.
 
 ## Files
 
@@ -135,3 +203,6 @@ with the wrong-answer lane still at 0.
 | `title.png` | PowerMonger title, reached after the depacker-derail fixes |
 | `credits.png` | the scrolling credits sequence |
 | `empire_intro.png` | Empire build, the "Pondering over the map…" intro screen |
+| `name_entry.png` | "What Is Thy Name Oh Lord" — keyboard dialog (66th pass) |
+| `menu.png` | "Welcome to the World of PowerMonger" option menu (66th pass) |
+| `world_map.png` | the campaign world map — PM in-game (66th pass) |
