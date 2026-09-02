@@ -7,10 +7,17 @@ This folder documents the emulator bugs the cracks exposed and their fixes.
 `SPACE` → "What Is Thy Name Oh Lord" name entry → type a name + `RETURN` →
 "Welcome to the World of PowerMonger / select option" menu → click **START NEW
 CONQUEST** → the campaign **world map** (green landmasses on blue sea, cursor
-tracks the mouse). See "66th pass — reached the game" below. The isometric battle
-view is one world-map territory-click further and has not been pinned down yet
-(the click target needs the cursor exactly on a land pixel, PM validating
-land-vs-sea).
+tracks the mouse). See "66th pass — reached the game" below.
+
+**67th pass: past the world map into the mission-briefing screen** — clicking the
+scroll icon at the world map's top-left corner (~18,18 in 320-space) advances to
+the "Between Pages 1-5" briefing (three commanders behind a stone table, a
+territory preview, "How many People in this land?" with two OK buttons). Getting
+there needed three 68000 divide fixes the isometric-view setup code exercises
+(DIVU/DIVS quotient-overflow, DIVU/DIVS divide-by-zero → vector 5; see "Bug 4"
+below). The briefing → isometric battle view transition is **not yet found**: the
+OK-button clicks reach PM's mouse state machine correctly but the data-driven
+dialog hit-test at `$7298` doesn't fire on any position tried. `briefing.png`.
 
 **The disks are not committed** (commercial). To reproduce:
 
@@ -118,6 +125,60 @@ Replaced the whole `match eamode` block with the shared EA decoder
 (`x.ResolveEa` / `x.ReadEa`), mirroring the CMPA.L / SUBA.W arms directly above
 it. Selftest pass count rose ~3000 (previously-`unimpl` SUBA.L modes now correct)
 with the wrong-answer lane still at 0.
+
+## Bug 4 — the isometric-view setup code needs real 68000 DIVU/DIVS (67th pass)
+
+Clicking the world-map scroll icon loads the mission-setup overlay above `$1050`,
+which does isometric vertex projection with `DIVU` / `DIVS`. Two `failwith`s in
+`68k.fs` `DecodeBucket8` stopped it dead:
+
+- **Quotient overflow.** `DIVU D0,D1` with `D1/D0 > 0xffff` (and the DIVS
+  equivalent) was `failwith "quotient overflow (V flag not implemented)"`. The
+  SingleStepTests 68000 vectors are unambiguous: on overflow the 68000 sets
+  **V=1, C=0** and leaves **N, Z, X and the destination register untouched**, PC
+  still advancing past the instruction (no trap — this is not divide-by-zero).
+  That is what the fix does. (Hatari's `setdivuflags`/`setdivsflags` force
+  `N=1/Z=0` for its "68000" branch — a different chip revision from the one
+  TomHarte captured; every overflow vector in the suite only touches V and C.)
+  The DIVS check runs in `int64` so `Int32.MinValue / -1` is caught as overflow
+  instead of raising a CLR exception.
+
+- **Divide by zero.** `DIVU D0,D1` with `D0.w = 0` was
+  `failwith "divide by zero (trap not implemented)"`. Now traps to **vector 5**
+  with the standard 68000 group-2 frame (SR + PC-of-next-instruction) via
+  `EnterVector`, same shape as CHK/TRAPV. The SingleStepTests carry no
+  zero-divisor vectors so this path is unchecked by selftest, but it matches the
+  68000 manual and PM's renderer hits it for real.
+
+Selftest after the fix: DIVU 2494→4963 pass, DIVS ~2500→4992 pass, **0 wrong,
+0 unimplemented** for both (the residual `frame` fails are the pre-existing
+odd-address address-error cases, unchanged). 30M diskless boot byte-identical.
+
+## PM's mouse dialog state machine (67th pass RE, for the next attempt)
+
+PM's own IKBD ISR is at `$18be` (vector `$46`, i.e. `[$118]`). It parses the
+`$F7` absolute-position reply (our `$0D` interrogation answer):
+
+| RAM addr | holds |
+|----------|-------|
+| `$1c48f` | the `$F7` button-edge byte (`%0000dcba`: c=left-down, d=left-up) |
+| `$2df92` | cursor **X** (word) |
+| `$2df94` | cursor **Y** (word) |
+| `$2df8e` | cursor position **latched at the moment of a click** (long, = `$2df92`) |
+| `$2df96` | **left-click pending** edge flag — set 1 on a left-down, consumed+cleared by whichever dialog owns the click |
+| `$2df9c` | left-button level (1 while held) |
+| `$2df98` / `$2df9e` | the right-button pending / level pair |
+
+The VBL handler `$1270` dispatches on `$1c48f` through a jump table at `$12ac`
+(word offsets, index = `button_byte * 2`): button `4` (left-down) → `$1330`,
+which sets `$2df96=1` and latches `$2df8e`. Verified working: a synthesised
+`mouse down l` produces exactly one `$F7 04` poll, `$2df96` goes to 1, position
+latches. The briefing screen's consumer is the data-driven hit-test at `$7298`
+(`tst.w $2df96` → `movem.w $2df8e,#$0003` into D0/D1 → rectangle loop over a menu
+descriptor based at `$7a36`). No click position tried made it accept — the menu
+descriptor layout (offsets ~374 bytes into `$7a36`) still needs decoding, or the
+population value must be non-zero first, or it wants a double-click the 6301
+model isn't delivering.
 
 ## How far it runs now
 

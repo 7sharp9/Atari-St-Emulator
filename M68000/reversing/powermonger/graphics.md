@@ -1,15 +1,18 @@
 # PowerMonger ST — the graphics pipeline, and what a modern port would change
 
-## Status (66th pass)
+## Status (67th pass)
 
-PM [cr Replicants] is driven into the game as far as the **campaign world map**
-(see `README.md`). The **isometric zoomable battle view** — the renderer Dave's
-Q2 is actually about, and the one that visibly slows when you zoom out — is a
-code overlay PM loads on entering a territory, and the world-map → territory
-click was not pinned down this pass, so **the terrain rasteriser has not been
-profiled with real hit counts yet**. Everything below the "observed" line is
-grounded in routines seen running; the "modern port" section is design analysis
-that holds regardless of the profiling gap.
+PM [cr Replicants] is driven past the campaign world map (click the top-left
+scroll icon) into the **mission-briefing screen** ("Between Pages 1-5", three
+commanders, a stone table, "How many People in this land?"). Reaching it needed
+three 68000 divide fixes (DIVU/DIVS quotient-overflow + divide-by-zero → vector
+5) that the isometric-view setup overlay exercises — see `README.md` "Bug 4".
+The briefing → **isometric zoomable battle view** transition (the renderer Q2 is
+about) is still not found: the OK-button clicks reach PM's mouse state machine
+but the data-driven dialog hit-test doesn't accept them. So **the terrain
+rasteriser still has not been profiled with real hit counts**. Everything below
+the "observed" line is grounded in routines seen running; the "modern port"
+section is design analysis that holds regardless of the profiling gap.
 
 ## Observed renderers (world map / menus)
 
@@ -70,8 +73,12 @@ plane fills), not in general knowledge:
 
 ## To finish Q2
 
-Reach a territory: from `pm66_newconq.snap` (world map), the click that zooms
-into the iso view. Then `ATARI_TRACE_EVENTS` over ~10 frames zoomed-in vs
-zoomed-out, `trace_cfg.py --blocks`, and compare hot-block hit counts + dropped
-VBLs between the two zooms to quantify each stage. The renderer overlay loads
-above `$1050`; disassemble from the loaded RAM at that point.
+Get past the briefing screen into the iso view. From `pm66_newconq.snap` (world
+map): `mouse move` onto the top-left scroll icon (~18,18 in 320-space) +
+`mouse down l`/`up l` → the "How many People in this land?" briefing. Then the
+open problem is the briefing's OK-button (or population-arrow) click — decode the
+menu descriptor at `$7a36` that the hit-test at `$7298` walks (see README "PM's
+mouse dialog state machine"), or find whether a non-zero population / double-click
+is the precondition. Once in the iso view: `ATARI_TRACE_EVENTS` over ~10 frames
+zoomed-in vs zoomed-out, `trace_cfg.py --blocks`, compare hot-block hit counts +
+dropped VBLs between the two zooms. The renderer overlay loads above `$1050`.
