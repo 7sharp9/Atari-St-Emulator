@@ -5,8 +5,9 @@
 PM [cr Replicants] is driven past the campaign world map (click the top-left
 scroll icon) into the **mission-briefing screen** ("Between Pages 1-5", three
 commanders, a stone table, "How many People in this land?"). Reaching it needed
-three 68000 divide fixes (DIVU/DIVS quotient-overflow + divide-by-zero → vector
-5) that the isometric-view setup overlay exercises — see `README.md` "Bug 4".
+two 68000 divide fixes (DIVU/DIVS quotient-overflow, and divide-by-zero to
+vector 5) that the isometric-view setup overlay exercises; see `README.md`
+"Bug 4".
 The briefing → **isometric zoomable battle view** transition (the renderer Q2 is
 about) is still not found: the OK-button clicks reach PM's mouse state machine
 but the data-driven dialog hit-test doesn't accept them. So **the terrain

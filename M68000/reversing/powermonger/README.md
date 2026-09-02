@@ -9,15 +9,16 @@ This folder documents the emulator bugs the cracks exposed and their fixes.
 CONQUEST** → the campaign **world map** (green landmasses on blue sea, cursor
 tracks the mouse). See "66th pass — reached the game" below.
 
-**67th pass: past the world map into the mission-briefing screen** — clicking the
+**67th pass: past the world map into the mission-briefing screen.** Clicking the
 scroll icon at the world map's top-left corner (~18,18 in 320-space) advances to
 the "Between Pages 1-5" briefing (three commanders behind a stone table, a
 territory preview, "How many People in this land?" with two OK buttons). Getting
-there needed three 68000 divide fixes the isometric-view setup code exercises
-(DIVU/DIVS quotient-overflow, DIVU/DIVS divide-by-zero → vector 5; see "Bug 4"
-below). The briefing → isometric battle view transition is **not yet found**: the
-OK-button clicks reach PM's mouse state machine correctly but the data-driven
-dialog hit-test at `$7298` doesn't fire on any position tried. `briefing.png`.
+there needed two 68000 divide fixes the isometric-view setup code exercises:
+DIVU/DIVS quotient-overflow, and DIVU/DIVS divide-by-zero to vector 5 (see
+"Bug 4" below). The briefing to isometric battle view transition is **not yet
+found**: the OK-button clicks reach PM's mouse state machine correctly but the
+data-driven dialog hit-test at `$7298` doesn't fire on any position tried.
+`briefing.png`.
 
 **The disks are not committed** (commercial). To reproduce:
 
@@ -136,9 +137,9 @@ which does isometric vertex projection with `DIVU` / `DIVS`. Two `failwith`s in
   equivalent) was `failwith "quotient overflow (V flag not implemented)"`. The
   SingleStepTests 68000 vectors are unambiguous: on overflow the 68000 sets
   **V=1, C=0** and leaves **N, Z, X and the destination register untouched**, PC
-  still advancing past the instruction (no trap — this is not divide-by-zero).
+  still advancing past the instruction (no trap; this is not divide-by-zero).
   That is what the fix does. (Hatari's `setdivuflags`/`setdivsflags` force
-  `N=1/Z=0` for its "68000" branch — a different chip revision from the one
+  `N=1/Z=0` for its "68000" branch, a different chip revision from the one
   TomHarte captured; every overflow vector in the suite only touches V and C.)
   The DIVS check runs in `int64` so `Int32.MinValue / -1` is caught as overflow
   instead of raising a CLR exception.
@@ -165,7 +166,7 @@ PM's own IKBD ISR is at `$18be` (vector `$46`, i.e. `[$118]`). It parses the
 | `$2df92` | cursor **X** (word) |
 | `$2df94` | cursor **Y** (word) |
 | `$2df8e` | cursor position **latched at the moment of a click** (long, = `$2df92`) |
-| `$2df96` | **left-click pending** edge flag — set 1 on a left-down, consumed+cleared by whichever dialog owns the click |
+| `$2df96` | **left-click pending** edge flag, set 1 on a left-down, consumed and cleared by whichever dialog owns the click |
 | `$2df9c` | left-button level (1 while held) |
 | `$2df98` / `$2df9e` | the right-button pending / level pair |
 
@@ -175,10 +176,10 @@ which sets `$2df96=1` and latches `$2df8e`. Verified working: a synthesised
 `mouse down l` produces exactly one `$F7 04` poll, `$2df96` goes to 1, position
 latches. The briefing screen's consumer is the data-driven hit-test at `$7298`
 (`tst.w $2df96` → `movem.w $2df8e,#$0003` into D0/D1 → rectangle loop over a menu
-descriptor based at `$7a36`). No click position tried made it accept — the menu
-descriptor layout (offsets ~374 bytes into `$7a36`) still needs decoding, or the
-population value must be non-zero first, or it wants a double-click the 6301
-model isn't delivering.
+descriptor based at `$7a36`). No click position tried made it accept. Next:
+decode the menu descriptor layout (offsets ~374 bytes into `$7a36`), or check
+whether the population value must be non-zero first, or whether it wants a
+double-click the 6301 model isn't delivering.
 
 ## How far it runs now
 
@@ -267,3 +268,4 @@ notes, which stand on the design regardless.
 | `name_entry.png` | "What Is Thy Name Oh Lord" — keyboard dialog (66th pass) |
 | `menu.png` | "Welcome to the World of PowerMonger" option menu (66th pass) |
 | `world_map.png` | the campaign world map — PM in-game (66th pass) |
+| `briefing.png` | "Between Pages 1-5" mission-briefing screen, reached past the world map (67th pass) |
