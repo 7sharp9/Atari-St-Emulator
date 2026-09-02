@@ -531,23 +531,17 @@ module Instructions =
               
             let dest_reg    = byte (data >>> 9) &&& 0b111uy
             let dest_mode   = byte (data >>> 6) &&& 0b111uy
-            let destEA =
-                match dest_mode with
-                | 0b000uy -> Dn(dest_reg)
-                | 0b001uy -> An(dest_reg) //MOVEA
-                | 0b010uy -> An_Indirect(dest_reg)
-                | 0b011uy -> An_PostIncrement(dest_reg)
-                | 0b100uy -> An_PreDecrement(dest_reg)
-                | 0b101uy -> An_Displacement(dest_reg)
-                | 0b110uy -> An_ByteDisplacement(dest_reg)
-                | 0b111uy when dest_reg = 0b0uy -> Immediate(OperandSize.Word)
-                | 0b111uy when dest_reg = 0b1uy -> Immediate(OperandSize.Long)
-                | _ -> failwithf "Invalid destination effective address: mode: %u, reg: %u"  dest_mode dest_reg
-            
             let source_mode = byte (data >>> 3) &&& 0b111uy
             let source_reg = byte (data &&& 0b111)
-            
-            Some(size, dest_reg, dest_mode, source_mode, source_reg)
+
+            //In mode 7 only reg 0 ((xxx).W) and reg 1 ((xxx).L) are legal MOVE destinations;
+            //reg 2-7 (PC-relative, immediate) can never be a destination on a 68000, so a word
+            //with those bits simply isn't a MOVE - decline the match. This used to be a failwithf,
+            //which crashed inside the TryFastForwardTbdrPoll probe (68k.fs) before the normal
+            //decode path could run and raise an exception the program might handle. The main
+            //decoder resolves the destination EA itself via ResolveEa and never consumed this.
+            if dest_mode = 0b111uy && dest_reg > 0b001uy then None
+            else Some(size, dest_reg, dest_mode, source_mode, source_reg)
         else None
         
     /// 0000 1000 00ss sSSS:00: BTST    #1,s[!Areg]
