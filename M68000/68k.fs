@@ -499,6 +499,26 @@ module CCR =
         ccr <- ccr &&& ~~~0x1s //C
         ccr
 
+    ///DIVU/DIVS quotient-overflow result: V<-1, C<-0, N/Z/X left as they were (and
+    ///the destination register is left unwritten). Matches every DIVU/DIVS overflow
+    ///vector in the SingleStepTests 68000 set.
+    let SetV_ClearC (currentCCR: int16) = (currentCCR ||| 0x2s) &&& ~~~0x1s
+
+    ///DIVU/DIVS divide-by-zero CCR (68000): clear C/V/Z/N (keep X), then DIVS sets
+    ///Z; DIVU sets N or Z from the sign / zeroness of the dividend's high word.
+    ///Transcribed from hatari src/cpu/newcpu_common.c divbyzero_special, 68000/010
+    ///branch. (The suite carries no zero-divisor vectors, so this is unchecked by
+    ///selftest - hence the line-for-line transcription per the standing rule.)
+    let DivByZero (currentCCR: int16) (isSigned: bool) (dividend: int) =
+        let mutable ccr = currentCCR &&& ~~~0xFs
+        if isSigned then
+            ccr <- ccr ||| 0x4s //Z
+        else
+            let hi = int16 (dividend >>> 16)
+            if hi < 0s then ccr <- ccr ||| 0x8s      //N
+            elif hi = 0s then ccr <- ccr ||| 0x4s    //Z
+        ccr
+
     // ADD / ADDI / ADDQ set X the same as C (unlike ADDA, which touches no flags, and CMP/CMPA,
     // which set NZVC but leave X - those use the Subtract_IgnoringX helpers). These were once named
     // Add_IgnoringX and left X untouched, which was wrong: the 680x0 vectors fail ~1 in 4 cases when
@@ -1992,12 +2012,15 @@ type Cpu =
             let doDivide (divisor: uint32) (regUpdate: Cpu -> Cpu) extBytes desc =
                 if divisor = 0u then
                     //Divide by zero -> vector 5, standard 68000 group-2 frame (SR + PC of the next
-                    //instruction), same shape as CHK/TRAPV via EnterVector. The SingleStepTests
-                    //carry no zero-divisor vectors so this path is unchecked by selftest, but it
-                    //matches the 68000 manual and a real program (PowerMonger's isometric renderer)
-                    //hits it. The EA writeback (regUpdate) still applies first.
+                    //instruction), same shape as CHK/TRAPV via EnterVector. The 68000 updates the
+                    //CCR *before* stacking SR (CCR.DivByZero: C/V/Z/N cleared, then N/Z from the
+                    //dividend's high word for DIVU) - CHK does the same, setting its CCR before
+                    //EnterVector. The SingleStepTests carry no zero-divisor vectors so this path is
+                    //unchecked by selftest; a real program (PowerMonger's isometric renderer) hits
+                    //it. The EA writeback (regUpdate) still applies first.
+                    let trapCcr = CCR.DivByZero x.CCR false (x.DataRegister register)
                     printfn "divu.w %s,D%u (divide by zero -> vector 5)" desc register
-                    (regUpdate x).EnterVector 5 (x.PC + 2 + extBytes)
+                    ({ regUpdate x with CCR = trapCcr }).EnterVector 5 (x.PC + 2 + extBytes)
                 else
                 let dividend = uint32 (x.DataRegister register)
                 let quotient = dividend / divisor
@@ -2008,7 +2031,7 @@ type Cpu =
                     //Matches the SingleStepTests 68000 vectors exactly (every overflow case there
                     //sets only V and clears C; hatari's setdivuflags forces N=1/Z=0, a different
                     //chip revision). The EA writeback (regUpdate) still applies.
-                    let ccr = (x.CCR ||| 0x2s) &&& ~~~0x1s
+                    let ccr = CCR.SetV_ClearC x.CCR
                     let newCpu = { (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
                     printfn "divu.w %s,D%u (overflow)" desc register
                     newCpu
@@ -2027,9 +2050,11 @@ type Cpu =
             //the dividend's sign - so no extra sign-fixup is needed beyond what DIVU already does.
             let doDivide (divisor: int16) (regUpdate: Cpu -> Cpu) extBytes desc =
                 if divisor = 0s then
-                    //Divide by zero -> vector 5 (see the DIVU note above).
+                    //Divide by zero -> vector 5 (see the DIVU note above). DIVS's divbyzero_special
+                    //just sets Z (dividend value unused).
+                    let trapCcr = CCR.DivByZero x.CCR true 0
                     printfn "divs.w %s,D%u (divide by zero -> vector 5)" desc register
-                    (regUpdate x).EnterVector 5 (x.PC + 2 + extBytes)
+                    ({ regUpdate x with CCR = trapCcr }).EnterVector 5 (x.PC + 2 + extBytes)
                 else
                 let dividend = x.DataRegister register
                 //int64 division dodges the CLR-exception F# raises for Int32.MinValue / -1, which
@@ -2039,7 +2064,7 @@ type Cpu =
                     //Quotient does not fit in signed 16 bits (0x80000000 / -1 included): V<-1, C<-0,
                     //N/Z/X and Dn left untouched, PC still advances. Matches the SingleStepTests
                     //68000 vectors exactly (overflow sets only V, clears C).
-                    let ccr = (x.CCR ||| 0x2s) &&& ~~~0x1s
+                    let ccr = CCR.SetV_ClearC x.CCR
                     let newCpu = { (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
                     printfn "divs.w %s,D%u (overflow)" desc register
                     newCpu
