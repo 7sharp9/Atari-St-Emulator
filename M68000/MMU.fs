@@ -64,8 +64,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let memConfig = 0xFF8001u
 
     let videoDisplayRegisterStart = 0xFF8200u
-    let videoDisplayRegisterEnd =  0xFF8261u //$FF8200-$FF825F video-base/counter/sync/palette, then $FF8260 (GLUE+shifter res) and $FF8261 (shifter-only res)
-    let videoDisplayRegisterMemory = Array.create 98 0uy
+    let videoDisplayRegisterEnd =  0xFF8261u //$FF8200-$FF825F video-base/counter/sync/palette, then $FF8260 (GLUE+shifter res) and $FF8261 (shifter-only res, Video_ResShifter). Video.fs only ever reads $FF8260 - a program that sets the mode via $FF8261 alone (GLUE/shifter sync trick) stores here but the renderer ignores it, which is still better than the pre-64th-pass bus error.
+    //Size derived from the range so a later end bump can't leave the index math (address - start) short.
+    let videoDisplayRegisterMemory = Array.create (int (videoDisplayRegisterEnd - videoDisplayRegisterStart) + 1) 0uy
 
     ///$FF8262-$FF827F: on a plain ST the shifter chip is selected for this whole slice but decodes
     ///no register here, so accesses are harmless - "No bus errors here" in Hatari's IoMemTable_ST
@@ -703,7 +704,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | VideoDisplayRegister ->
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
-        | ShifterVoid -> 0xFFFF //undecoded shifter slice - no bus error, open-bus
+        | ShifterVoid ->
+            //Compose from ReadByte like the YM2149/Mfp arms so a word straddling the end of the
+            //void slice dispatches its high half correctly instead of this masking a bus error.
+            (int (x.ReadByte address) <<< 8) ||| int (x.ReadByte (address+1u))
         | YM2149 ->
             //Byte-wide device on the upper data-bus byte - compose from ReadByte, register in the
             //high half. TOS only ever byte-accesses the PSG.
@@ -1259,7 +1263,12 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             (int (x.ReadByte (address+1u)) <<< 16) |||
             (int (x.ReadByte (address+2u)) <<< 8) |||
             (int (x.ReadByte (address+3u)))
-        | ShifterVoid -> 0xFFFFFFFF //undecoded shifter slice - no bus error, open-bus
+        | ShifterVoid -> //compose from ReadByte (see ReadWord's ShifterVoid arm) so a long straddling
+                         //the end of the void slice dispatches each byte rather than masking a bus error
+            (int (x.ReadByte address) <<< 24) |||
+            (int (x.ReadByte (address+1u)) <<< 16) |||
+            (int (x.ReadByte (address+2u)) <<< 8) |||
+            (int (x.ReadByte (address+3u)))
         | YM2149 ->
             (int (x.ReadByte address) <<< 24) |||
             (int (x.ReadByte (address+1u)) <<< 16) |||
