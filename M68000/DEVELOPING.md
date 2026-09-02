@@ -40,13 +40,39 @@ host input back to the emulator as IKBD serial packets:
   row, Help/Undo. F12 or closing the window quits.
 - **mouse** - relative mode; motion is accumulated and flushed as `$F8`-header
   relative packets once per frame (front-loaded, to avoid catching a half-drawn
-  VDI cursor at the VBL). Button edges send immediately.
+  VDI cursor at the VBL). Button edges send immediately. If the running program
+  put the IKBD into "buttons report as keycodes" mode (command `$07` bit 2, e.g.
+  Electronic Pool), a left/right button edge is *also* delivered as key
+  `$74`/`$F4` / `$75`/`$F5` via `MMU.EnqueueMouseButton` - a no-op in every other
+  mode, so no existing target is affected.
 - **joystick 0** - the arrow cluster is also mapped to a joystick-0 state byte
   (`joyBitMap`): Up = fire bit `$80`, Down = `$02`, Left = `$04`, Right = `$08`.
   Emitted as a `$FE` + state-byte report on any key edge, coalesced to one packet
   per frame like the mouse. This is what makes Super Sprint playable from the
   window - it reads the fire bit as the accelerator (see
   `reversing/supersprint/README.md`).
+
+## IKBD command interpreter (`MMU.fs`)
+
+There is no emulated 6301, but the bytes the CPU sends to the keyboard ACIA
+transmit register (`$FFFC02`) are now parsed (`ikbdTransmit` / `ikbdDispatch`,
+command lengths transcribed from Hatari `src/ikbd.c`). It tracks only what target
+programs set: the mouse report mode (`$08`/`$09`/`$0A`/`$12`), the mouse
+button-action mode (`$07` - bit 2 = "buttons report as keycodes `$74`/`$75`",
+what Electronic Pool uses), the joystick auto-report flag (`$14`/`$15`/`$1A`),
+and `$80 $01` reset. Nothing here is read back by the CPU, so it is **not** in
+`MmuSnapshot` and the 30M diskless boot stays byte-identical.
+
+`ATARI_TRACE_IKBD=1` logs every completed command and every state change to
+stderr (survives `ATARI_NOTRACE`) - use it to see which input mode a program
+actually asks for. The REPL gets a `mouse` command that goes through the same
+mode-aware synthesis the live window uses:
+
+```
+mouse move <dx> <dy>     relative motion -> $F8 dx dy packet
+mouse down l|r           button press    -> $74/$75 keycode in buttons-as-keys mode, else nothing
+mouse up   l|r           button release
+```
 
 ## `ATARI_NOTRACE`
 

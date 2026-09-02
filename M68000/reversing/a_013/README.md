@@ -223,22 +223,24 @@ logo). Then it idles vsync-locked in a mouse-cursor loop.
   land straight in the cursor-delta accumulators at `$60925`/`$60926`, and its
   dispatcher `$6061c` turns the synthetic `$74`/`$75` key codes into the button
   flags `526(a5)` / `528(a5)`.
-- **The emulator does not interpret IKBD commands** (there is no 6301 model — see
-  `MMU.fs`, the `$FFFC02` transmit case is a no-op), and the live SDL window
-  (`Video.fs`) only emits `$F8|buttons` relative packets, never the `$74` key
-  codes. So from the live window Pool's menu can't be clicked yet. Headless it
-  works by injecting the synthetic code directly: poke the cursor position
-  (`w 619d0 09000100` = X=$0900 Y=$0100, both inside the on-screen clamp range
-  the menu loop enforces at `$616fe`/`$61726`), then `kbd 74` / `kbd f4`.
+- **The emulator now interprets the IKBD command stream** (65th pass, `MMU.fs`:
+  `ikbdTransmit` parses the `$FFFC02` bytes; `ATARI_TRACE_IKBD=1` logs them). It
+  sees Pool's `$07 $04` and sets `MouseButtonsReportAsKeys`. `Video.fs` (live
+  window) and the REPL `mouse` command then deliver a left click as `$74`/`$F4`
+  and a right click as `$75`/`$F5` through `EnqueueMouseButton`; the `$F8` motion
+  packet is unchanged. Headless drive:
+
+  ```
+  s 10000000 ; kbd 05 ; kbd 85            # select menu game 4
+  s 60000000                              # depack + title; Pool sends $80 01 then $07 04
+  w 619d0 09000100                        # poke cursor X=$0900 Y=$0100 (inside the $616fe/$61726 clamp)
+  mouse down l ; s 800000 ; mouse up l    # -> $74 / $F4 via the interpreter
+  s 12000000                              # -> a game of pool
+  ```
 - That click leaves the player-select and enters a **game of pool** (`pool.png`:
   top-down table, cue ball, racked balls, `PLAYER 1`/`PLAYER 2`/`TABLE`/`HIGHEST`
-  HUD, aiming cursor). Stable over 25M+ steps.
-
-**Follow-up (not done):** a minimal IKBD command interpreter in `MMU.fs` (track
-mouse-button-action mode from the `$FFFC02` byte stream) plus a `Video.fs` change
-to emit `$74`/`$F4`/`$75`/`$F5` when that mode is set, would make Pool — and other
-mouse-button-as-key ST software — playable from the live window. It touches the
-regression-sensitive input path, so it is a deliberate feature, not a wall fix.
+  HUD, aiming cursor). Stable over 25M+ steps. From `./run.ps1 window` a real
+  left-click now does the same.
 
 ## Files
 

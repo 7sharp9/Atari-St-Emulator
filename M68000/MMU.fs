@@ -274,6 +274,72 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             if kbdAciaControl &&& 0x80uy <> 0uy then sr <- sr ||| 0x80uy
         sr
 
+    ///`ATARI_TRACE_IKBD=1` logs every command byte the CPU transmits to the IKBD ($FFFC02) and
+    ///every state change the interpreter below makes, to stderr (survives ATARI_NOTRACE) - the
+    ///tool for seeing which input mode a target program actually asks the keyboard for.
+    let traceIkbd = not (isNull (System.Environment.GetEnvironmentVariable "ATARI_TRACE_IKBD"))
+    let ikbdLog (s: string) = if traceIkbd then eprintfn "IKBD %s" s
+
+    ///IKBD (HD6301) command interpreter. On a real ST the CPU sends command bytes to the keyboard
+    ///ACIA transmit register ($FFFC02) and the 6301 MCU changes how it reports keyboard / mouse /
+    ///joystick events. This emulator has no 6301, and the input-synthesis path (EnqueueIkbd, the
+    ///live SDL window, the REPL `kbd` command) always injected one hardcoded packet format. This
+    ///models only the state the target programs set: the active mouse report mode, whether the two
+    ///mouse buttons are reported as keycodes $74/$75 (command $07 bit 2), and whether joystick
+    ///auto-reporting is on. Nothing here is read back by the CPU (no new $FFFC00/$FFFC02 read
+    ///values), so it is deliberately NOT in MmuSnapshot and cannot perturb the diskless boot
+    ///snapshot - it only changes what the mouse/joystick input synthesis produces. Command
+    ///lengths are transcribed from Hatari src/ikbd.c KeyboardCommands[].
+    let mutable ikbdMouseMode = 0uy            // 0 = relative (power-on default), 1 = absolute, 2 = keycode, 3 = disabled
+    let mutable ikbdMouseButtonAction = 0uy    // $07 param: bit2 set => buttons report as keys $74 (left) / $75 (right)
+    let mutable ikbdJoystickReports = true     // $14 auto-report on (default) / $15 / $1A off
+
+    let ikbdCmdLen (op: byte) =
+        match int op with
+        | 0x80 -> 2 | 0x07 -> 2 | 0x08 -> 1 | 0x09 -> 5 | 0x0A -> 3
+        | 0x0B -> 3 | 0x0C -> 3 | 0x0D -> 1 | 0x0E -> 6 | 0x0F -> 1
+        | 0x10 -> 1 | 0x11 -> 1 | 0x12 -> 1 | 0x13 -> 1 | 0x14 -> 1
+        | 0x15 -> 1 | 0x16 -> 1 | 0x17 -> 2 | 0x18 -> 1 | 0x19 -> 7
+        | 0x1A -> 1 | 0x1B -> 7 | 0x1C -> 1 | 0x20 -> 4 | 0x21 -> 3 | 0x22 -> 3
+        | 0x87 | 0x88 | 0x89 | 0x8A | 0x8B | 0x8C | 0x8F | 0x90
+        | 0x92 | 0x94 | 0x95 | 0x99 | 0x9A -> 1
+        | _ -> 1                               // unknown opcode - consume it alone and log
+
+    let ikbdCmdBuf = System.Collections.Generic.List<byte>()
+
+    let ikbdDispatch (msg: byte[]) =
+        match int msg.[0] with
+        | 0x80 when msg.Length >= 2 && msg.[1] = 0x01uy ->
+            ikbdMouseMode <- 0uy; ikbdMouseButtonAction <- 0uy; ikbdJoystickReports <- true
+            ikbdLog "reset ($80 $01) -> relative mouse, joystick auto"
+        | 0x07 when msg.Length >= 2 ->
+            ikbdMouseButtonAction <- msg.[1]
+            ikbdLog (sprintf "$07 set mouse button action $%02x (buttons-as-keys=%b)" msg.[1] (msg.[1] &&& 0x04uy <> 0uy))
+        | 0x08 -> ikbdMouseMode <- 0uy; ikbdLog "$08 relative mouse mode"
+        | 0x09 -> ikbdMouseMode <- 1uy; ikbdLog "$09 absolute mouse mode"
+        | 0x0A when msg.Length >= 3 ->
+            //Cursor-keycode mouse mode. Only the mode flag is tracked - no target here streams
+            //motion in this mode, so the dx/dy "units per keypress" params aren't modelled.
+            ikbdMouseMode <- 2uy
+            ikbdLog (sprintf "$0A keycode mouse mode dx=%d dy=%d" (int msg.[1]) (int msg.[2]))
+        | 0x12 -> ikbdMouseMode <- 3uy; ikbdLog "$12 mouse disabled"
+        | 0x14 -> ikbdJoystickReports <- true;  ikbdLog "$14 joystick auto-report on"
+        | 0x15 -> ikbdJoystickReports <- false; ikbdLog "$15 joystick interrogation mode (auto-report off)"
+        | 0x1A -> ikbdJoystickReports <- false; ikbdLog "$1A joysticks disabled"
+        | other -> ikbdLog (sprintf "unhandled command $%02x (%d byte msg)" other msg.Length)
+
+    ///Feed one byte the CPU wrote to the keyboard ACIA transmit register ($FFFC02) into the IKBD
+    ///command parser. Buffers until a full message (opcode + its fixed parameter count) is present,
+    ///then dispatches it.
+    let ikbdTransmit (b: byte) =
+        ikbdCmdBuf.Add b
+        let expected = ikbdCmdLen ikbdCmdBuf.[0]
+        if ikbdCmdBuf.Count >= expected then
+            let msg = ikbdCmdBuf.ToArray()
+            ikbdCmdBuf.Clear()
+            if traceIkbd then ikbdLog (sprintf "cmd %s" (msg |> Array.map (sprintf "%02x") |> String.concat " "))
+            ikbdDispatch msg
+
     ///Minimal MFP Timer B stub: real hardware decrements TBDR on each external clock event
     ///(HBLANK in event-count mode, much slower than CPU instruction execution) and reloads it from
     ///the last-armed value on underflow. We have no real clock source, so instead decrement TBDR
@@ -963,14 +1029,17 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | a when a = 0xFFFC00u ->
             //Keyboard ACIA control register. Bits 1-0 = 11 is a master reset (flush the receiver);
             //bit 7 is the RX interrupt enable that keyboardAciaStatus / GPIP bit 4 depend on. TOS
-            //writes $03 (reset) then $96 (÷64, 8N1, RX interrupt on) at boot. The transmit side is
-            //still a no-op - nothing here consumes bytes TOS sends to the IKBD.
+            //writes $03 (reset) then $96 (÷64, 8N1, RX interrupt on) at boot.
             if input &&& 0x03uy = 0x03uy then ikbdRxFifo.Clear()
             if input <> kbdAciaControl then mutations <- mutations + 1UL
             kbdAciaControl <- input
+        | a when a = 0xFFFC02u ->
+            //Keyboard ACIA transmit register - the CPU sends 6301 IKBD command bytes here. Parsed
+            //by ikbdTransmit so mouse/joystick report modes actually take effect (see the command
+            //interpreter above). Not stored, not read back.
+            ikbdTransmit input
         | Acia ->
-            //MIDI ACIA control / transmit, keyboard ACIA transmit ($FFFC02) - no-ops, see
-            //WriteWord's matching case just above.
+            //MIDI ACIA control / transmit ($FFFC04/$FFFC06) - no receive/transmit path, ignored.
             ()
         | _ ->
             if aliasIntoRam address then
@@ -1169,6 +1238,35 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if added then
             mutations <- mutations + 1UL
             x.RaiseInterrupt 6 0x46
+
+    ///The IKBD report mode the running program selected, for `ATARI_TRACE_IKBD` / callers that
+    ///want to adapt what they synthesise: 0 = relative mouse (power-on default), 1 = absolute,
+    ///2 = cursor-keycode, 3 = mouse disabled ($12).
+    member x.IkbdMouseMode = ikbdMouseMode
+
+    ///Whether the IKBD is in joystick auto-report mode ($14, the state after the IKBD's own reset)
+    ///rather than interrogation/disabled ($15 / $1A). TOS's boot sends $1A, so this is false on
+    ///the desktop; a game that wants joystick packets re-enables with $14. The joystick synthesis
+    ///path does NOT yet gate on this (Super Sprint / ST Karate read joysticks without re-sending
+    ///$14, relying on the emulator streaming packets unconditionally) - exposed for tracing and
+    ///for a future, verified tightening of that path.
+    member x.IkbdJoystickReports = ikbdJoystickReports
+
+    ///True when the running program put the IKBD into "mouse buttons report as keycodes" mode
+    ///(command $07 with bit 2 set) - e.g. Electronic Pool, which then reads a left click as key
+    ///$74 and a right click as $75. In this mode the live window / REPL must deliver a button
+    ///edge as that key code; the normal relative-mouse packet (with the buttons in its $F8
+    ///header) is still sent alongside it, matching a real 6301's IKBD_SendOnMouseAction.
+    member x.MouseButtonsReportAsKeys = ikbdMouseButtonAction &&& 0x04uy <> 0uy
+
+    ///Feed one mouse-button edge to the IKBD. In buttons-as-keys mode this enqueues $74/$F4
+    ///(left) or $75/$F5 (right) - make on press, break (code | $80) on release. Otherwise it does
+    ///nothing: the caller's relative-mouse packet already carries the button state in its header.
+    ///Split out from EnqueueIkbd so the live window and the REPL `mouse` command share one policy.
+    member x.EnqueueMouseButton (isLeft: bool) (pressed: bool) =
+        if x.MouseButtonsReportAsKeys then
+            let code = if isLeft then 0x74uy else 0x75uy
+            x.EnqueueIkbd [| (if pressed then code else code ||| 0x80uy) |]
 
     ///Read-only peeks at Timer B's registers, for the CPU-level busy-wait fast-forward (see
     ///Cpu.TryFastForwardTbdrPoll) - unlike ReadByte's TBDR case, these have no side effects, so

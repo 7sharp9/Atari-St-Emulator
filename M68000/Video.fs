@@ -231,13 +231,23 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
                 mdx <- mdx + ev.Motion.Xrel
                 mdy <- mdy + ev.Motion.Yrel
             | EventType.Mousebuttondown ->
-                if int ev.Button.Button = int Sdl.ButtonLeft then mouseButtons <- mouseButtons ||| 0x02
-                elif int ev.Button.Button = int Sdl.ButtonRight then mouseButtons <- mouseButtons ||| 0x01
+                let isLeft = int ev.Button.Button = int Sdl.ButtonLeft
+                let isRight = int ev.Button.Button = int Sdl.ButtonRight
+                if isLeft then mouseButtons <- mouseButtons ||| 0x02
+                elif isRight then mouseButtons <- mouseButtons ||| 0x01
                 sendMousePacket true
+                // Programs that asked for "buttons as keycodes" (IKBD $07 bit 2, e.g. Electronic
+                // Pool) also need the $74/$75 key code on the edge - a no-op in every other mode.
+                if isLeft then mmu.EnqueueMouseButton true true
+                elif isRight then mmu.EnqueueMouseButton false true
             | EventType.Mousebuttonup ->
-                if int ev.Button.Button = int Sdl.ButtonLeft then mouseButtons <- mouseButtons &&& ~~~0x02
-                elif int ev.Button.Button = int Sdl.ButtonRight then mouseButtons <- mouseButtons &&& ~~~0x01
+                let isLeft = int ev.Button.Button = int Sdl.ButtonLeft
+                let isRight = int ev.Button.Button = int Sdl.ButtonRight
+                if isLeft then mouseButtons <- mouseButtons &&& ~~~0x02
+                elif isRight then mouseButtons <- mouseButtons &&& ~~~0x01
                 sendMousePacket true
+                if isLeft then mmu.EnqueueMouseButton true false
+                elif isRight then mmu.EnqueueMouseButton false false
             | _ -> ()
 
     let sw = Stopwatch.StartNew()

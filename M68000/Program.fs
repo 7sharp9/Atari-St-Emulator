@@ -996,6 +996,25 @@ module Main =
                 st.Cpu.MMU.EnqueueIkbd bytes
                 Diag.result "enqueued %d IKBD byte(s): %s" bytes.Length (bytes |> Array.map (sprintf "%02x") |> String.concat " ")
                 loop()
+            | _ when parts.Length >= 2 && parts.[0] = "mouse" ->
+                //Headless mouse events through the same IKBD path the live window uses, honouring
+                //the mode the running program set (see MMU's IKBD command interpreter):
+                //  mouse move <dx> <dy>   relative motion  -> $F8 dx dy packet
+                //  mouse down l|r         button press     -> $F4/$74 keycode in buttons-as-keys mode
+                //  mouse up   l|r         button release
+                match parts.[1..] with
+                | [| "move"; dxs; dys |] ->
+                    let dx = int dxs
+                    let dy = int dys
+                    st.Cpu.MMU.EnqueueIkbd [| 0xF8uy; byte (sbyte (max -128 (min 127 dx))); byte (sbyte (max -128 (min 127 dy))) |]
+                    Diag.result "mouse move dx=%d dy=%d" dx dy
+                | [| ("down"|"up") as ud; ("l"|"r"|"left"|"right") as lr |] ->
+                    let isLeft = lr.StartsWith "l"
+                    st.Cpu.MMU.EnqueueMouseButton isLeft (ud = "down")
+                    Diag.result "mouse %s %s (buttons-as-keys=%b)" ud (if isLeft then "left" else "right") st.Cpu.MMU.MouseButtonsReportAsKeys
+                | _ ->
+                    Diag.result "usage: mouse move <dx> <dy> | mouse down|up l|r"
+                loop()
             | [| "quit" |] | [| "q" |] ->
                 ()
             | _ ->
