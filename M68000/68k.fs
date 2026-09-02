@@ -2055,39 +2055,16 @@ type Cpu =
                 let newCpu = { afterEa.WithAddressRegister address result with PC = x.PC + 2 + extBytes }
                 printfn "suba.w %s,A%u" desc address
                 newCpu
-            | 0b111uy -> //SUBA.L - full 32-bit subtract from An, no flags
-                match eamode with
-                | 0b000uy -> //Dn addressing mode
-                    let dest = x.AddressRegister address
-                    let source = x.DataRegister eareg
-                    let result = dest - source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+2}
-                    printfn "suba.l D%u,A%u" eareg address
-                    newCpu
-                | 0b001uy ->
-                    //An addressing mode
-                    let dest = x.AddressRegister address
-                    let source = x.AddressRegister eareg
-                    let result = dest - source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+2}
-                    printfn "suba.%s A%u, A%u" (if opmode = 0x7uy then "l" else "w" ) address eareg
-                    newCpu
-                | 0b111uy when eareg = 0b100uy -> //#imm.L
-                    let dest = x.AddressRegister address
-                    let source = x.MMU.ReadLong(uint32 (x.PC+2))
-                    let result = dest - source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+6}
-                    printfn "suba.l #$%x,A%u" source address
-                    newCpu
-                | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                    let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                    let dest = x.AddressRegister address
-                    let source = x.MMU.ReadLong addr
-                    let result = dest - source
-                    let newCpu = {x.WithAddressRegister address result with PC = x.PC+6}
-                    printfn "suba.l $%x.l,A%u" addr address
-                    newCpu
-                | _ -> failwithf "Not implmented eamode %uy, eareg %uy" eamode eareg
+            | 0b111uy -> //SUBA.L <ea>,An - full 32-bit subtract from An, no flags. Shared EA decoder,
+                //mirroring CMPA.L / SUBA.W above (the old hand-coded match only covered Dn/An/#imm/
+                //(xxx).L and bus-errored on PC-relative, which PowerMonger's cracktro exercises).
+                let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
+                let source = x.ReadEa OperandSize.Long loc
+                let afterEa = regUpdate x
+                let result = afterEa.AddressRegister address - source
+                let newCpu = { afterEa.WithAddressRegister address result with PC = x.PC + 2 + extBytes }
+                printfn "suba.l %s,A%u" desc address
+                newCpu
             | _ ->
                 //SUB.B/W/L in both directions via the shared EA decoder. SUBX already consumed
                 //eamode 000/001 of the Dn->ea direction with its own pattern (matched first), so

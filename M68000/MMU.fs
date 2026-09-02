@@ -64,8 +64,17 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let memConfig = 0xFF8001u
 
     let videoDisplayRegisterStart = 0xFF8200u
-    let videoDisplayRegisterEnd =  0xFF8260u
+    let videoDisplayRegisterEnd =  0xFF8261u //$FF8200-$FF825F video-base/counter/sync/palette, then $FF8260 (GLUE+shifter res) and $FF8261 (shifter-only res)
     let videoDisplayRegisterMemory = Array.create 98 0uy
+
+    ///$FF8262-$FF827F: on a plain ST the shifter chip is selected for this whole slice but decodes
+    ///no register here, so accesses are harmless - "No bus errors here" in Hatari's IoMemTable_ST
+    ///($FF8262, size 30, IoMem_VoidRead/IoMem_VoidWrite): reads return $FF bytes, writes are dropped.
+    ///PowerMonger's Replicants cracktro does `move.l #$00078000,$ffff8260.w`, whose low word lands on
+    ///$FF8262 - which used to fall through to BusError, derailing the CPU into the vector table
+    ///(PC=$20). See [[atari-st-emulator-next-instructions]].
+    let shifterVoidStart = 0xFF8262u
+    let shifterVoidEnd =   0xFF827Fu
 
     let reserved = 0xFF8400u
     let dma_diskcontroller = 0xFF8600u
@@ -130,6 +139,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let (|Rom|_|) = between romStart romEnd
     let (|Cart|_|) = between cartStart cartEnd
     let (|VideoDisplayRegister|_|) = between videoDisplayRegisterStart videoDisplayRegisterEnd
+    let (|ShifterVoid|_|) = between shifterVoidStart shifterVoidEnd
     let (|Acia|_|) = between aciaStart aciaEnd
     let (|Mfp|_|) = between mpf68901 mfpEnd
 
@@ -592,6 +602,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             0xffuy //no cartridge present
         | VideoDisplayRegister ->
             videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)]
+        | ShifterVoid -> 0xFFuy //undecoded shifter slice - no bus error, reads as open-bus $FF
         | YM2149 ->
             //Both the address port ($FF8800) and the data port ($FF8802) read back the last
             //latched read-data value - see the psgRegs comment. (Real hardware only truly drives
@@ -692,6 +703,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | VideoDisplayRegister ->
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
+        | ShifterVoid -> 0xFFFF //undecoded shifter slice - no bus error, open-bus
         | YM2149 ->
             //Byte-wide device on the upper data-bus byte - compose from ReadByte, register in the
             //high half. TOS only ever byte-accesses the PSG.
@@ -749,6 +761,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             let i = int (address - videoDisplayRegisterStart)
             store videoDisplayRegisterMemory i (byte (input >>> 8))
             store videoDisplayRegisterMemory (i+1) (byte (input &&& 0xffs))
+        | ShifterVoid -> () //undecoded shifter slice - no bus error, write dropped
         | YM2149 ->
             //Byte-wide device on the upper data-bus byte - only the high byte reaches the chip.
             x.WriteByte address (byte (input >>> 8))
@@ -793,6 +806,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | Cart -> () //no cartridge present; writes go nowhere, matching the read side's fixed $ff(ff) stub
         | VideoDisplayRegister ->
             store videoDisplayRegisterMemory (int (address - videoDisplayRegisterStart)) input
+        | ShifterVoid -> () //undecoded shifter slice - no bus error, write dropped
         | YM2149 ->
             psgWrite (address &&& 0x2u = 0u) input
         | a when a = mfpTbdr ->
@@ -1245,6 +1259,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             (int (x.ReadByte (address+1u)) <<< 16) |||
             (int (x.ReadByte (address+2u)) <<< 8) |||
             (int (x.ReadByte (address+3u)))
+        | ShifterVoid -> 0xFFFFFFFF //undecoded shifter slice - no bus error, open-bus
         | YM2149 ->
             (int (x.ReadByte address) <<< 24) |||
             (int (x.ReadByte (address+1u)) <<< 16) |||
