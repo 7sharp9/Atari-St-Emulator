@@ -186,9 +186,13 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 5. Empire: on to the "Pondering over the map…" narrative screen (`empire_intro.png`).
 6. Replicants: name entry (`name_entry.png`) → option menu (`menu.png`) → world
    map (`world_map.png`) → mission briefing (`briefing.png`) → **isometric battle
-   view** (`iso_view.png`). Static while no input is given (PM recomposites the
-   terrain only on scroll / rotate / zoom / unit movement); driving it further
-   needs PM's in-game key handling reversed, see `graphics.md` "To finish Q2".
+   view** (`iso_view.png`). The 69th pass reversed PM's in-game key handling (ISR
+   `$18be`, the `$2de6c` key array, the right-shift gate at `$13762`) and drove
+   the camera: rotation re-projects the whole terrain (`iso_rotated.png`); keypad
+   scroll and keypad zoom write their variables but have no effect (scroll is
+   cursor-driven, keypad zoom never calls the `$fe04` geometry rebuild). Renderer
+   profiled settled vs moving — see `graphics.md` "In-game camera control" and
+   "To finish Q2".
 
 ## Files
 
@@ -200,4 +204,5 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `name_entry.png` / `menu.png` / `world_map.png` | name dialog, option menu, campaign world map (66th) |
 | `briefing.png` | "Between Pages 1-5" mission briefing (67th) |
 | `iso_view.png` | isometric battle view, past the briefing OK button (68th) |
-| `graphics.md` | the graphics pipeline + measured renderer profile + modern-port notes |
+| `iso_rotated.png` | iso view after ~5 keypad rotation steps (`$ff9a` $f0→$a0), 69th |
+| `graphics.md` | the graphics pipeline + measured renderer profile + camera control + modern-port notes |
