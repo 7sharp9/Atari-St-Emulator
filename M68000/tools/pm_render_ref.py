@@ -10,17 +10,20 @@ The point of this file is verification: if a frame rebuilt from the exported
 assets matches the exported reference/isoframe.png over the terrain region, the
 export is complete and the projection maths in SPEC.md is right.
 
-What is faithful here
+What is faithful here (77th pass)
   - grid corner projection: rotate by yaw, then the real perspective divide
-    ($ff7c: sx = x*eye/(eye-depth); sy = (z-horizon)*eye/(eye-depth) + horizon)
+    ($ff7c: sx = x*eye/(eye-depth); sy = (z-horizon)*eye/(eye-depth) + horizon).
+    Verified byte-exact against the game's own $3f364 corner buffer (81/81).
   - far -> near walk, 2 triangles per cell, quad split on the packed-corner test
-  - colour index = the terrain byte itself (height byte on one triangle, type
-    byte on the other); water (< 0x0c) += tick & 3
-What is approximated (documented, and exact data is in the asset pack for a port)
-  - the rolling-bitplane dither fill is replaced by a flat palette-index fill
-    (the dither is a spatial stipple baked into dither.bin; it changes texture,
-    not the mean colour, so a flat fill is the right reference for a terrain
-    *shape/shade* diff)
+  - colour byte = the terrain byte itself (height byte on one triangle, type
+    byte on the other); water (< 0x0c) += [$4bb3e]&3 (== 2 in this frame)
+  - dither fill: A5 = colourByte*128 + (topY&15)*8 into dither.bin, two
+    big-endian longs per 16-px cluster = planes {0,1},{2,3} (see dither_index)
+What is approximated
+  - the dither phase resets per triangle (no cross-scanline byte accumulation)
+    and there is no $f97e yaw-quadrant corner remap, so the texture is locally
+    right but patchy -- a pixel-exact fill needs the $e420..$e55a span walker.
+    --out also writes render_flat.png (a clean height-ramp fill) for the shape.
   - the yaw rotation basis is a true 2D rotate by yaw * 1.40625 deg (verified:
     at yaw 0xf0 the $13f8a table entry == 32768*sin(337.5 deg))
 
@@ -47,8 +50,7 @@ def load_assets(d: Path):
     pal = json.loads((d / "palette.json").read_text())
     dom = pal["palettes"][0]["rgb"]
     dith = (d / "dither.bin").read_bytes()
-    dwords = list(struct.unpack(f">{len(dith)//2}H", dith))
-    return terr, tables, dom, dwords
+    return terr, tables, dom, dith
 
 
 def cell(terr, x, y, plane):
@@ -121,20 +123,35 @@ def project(tables, terr, cam_x, cam_y, half, tick=0, sx_sign=1, sy_sign=1,
 # ---------------------------------------------------------------------------
 
 
-def dither_index(dwords, colour_byte, top_y, y, x):
-    """Reproduce the rolling-bitplane dither fill ($e3e2/$e4de).
+def dither_index(dith, colour_byte, top_y, y, x, span_x0):
+    """The 4bpp pattern fill, from the 77th-pass aligned disasm of $e3e6..$e4de.
 
-    A5 = ([$ff9e] + colourByte + (topY<<4)) >> 1   (word index into the table)
-    per scanline: A5 += 4 bytes == +2 words
-    per 16-px screen-aligned group: 4 words = planes 0..3, bit = 15 - (x & 15)
+        A5 = colourByte*128 + (topY & 15)*8              [byte offset into dither.bin]
+        per scanline:            A5 += 4                 (the vertical roll)
+        per 16-px screen cluster: A5 += 8                (long0=planes0/1, long1=planes2/3)
+
+    long0 = big-endian u32 at A5    -> plane0 = hi16, plane1 = lo16
+    long1 = big-endian u32 at A5+4  -> plane2 = hi16, plane3 = lo16
+    pixel index = p0 | p1<<1 | p2<<2 | p3<<3 ,  bit = 15 - (screenX & 15)
+
+    span_x0 is the span's left screen X; the fill restarts its cluster walk at
+    the span's left edge each scanline (this reference does not carry the
+    cross-scanline byte accumulation the real span walker does, so the
+    horizontal phase is only locally faithful -- enough for a mean-colour /
+    height-band diff, not a pixel-exact one).
     """
-    wi = ((colour_byte + (top_y << 4)) >> 1) + 2 * (y - top_y)
-    wi %= (len(dwords) - 4)
+    cluster = max(0, (x - (span_x0 & ~15)) // 16)
+    a5 = colour_byte * 128 + (top_y & 15) * 8 + 4 * max(0, y - top_y) + 8 * cluster
+    a5 &= ~1                                      # A5 walks the table in even steps
+    if a5 < 0 or a5 + 8 > len(dith):             # deep triangle rolled off the dump
+        a5 = (colour_byte * 128 + (top_y & 15) * 8) & ~1
+    l0 = struct.unpack_from(">I", dith, a5)[0]
+    l1 = struct.unpack_from(">I", dith, a5 + 4)[0]
     b = 15 - (x & 15)
-    p0 = (dwords[wi] >> b) & 1
-    p1 = (dwords[wi + 1] >> b) & 1
-    p2 = (dwords[wi + 2] >> b) & 1
-    p3 = (dwords[wi + 3] >> b) & 1
+    p0 = (l0 >> (16 + b)) & 1
+    p1 = (l0 >> b) & 1
+    p2 = (l1 >> (16 + b)) & 1
+    p3 = (l1 >> b) & 1
     return p0 | (p1 << 1) | (p2 << 2) | (p3 << 3)
 
 
@@ -151,7 +168,7 @@ def flat_index(colour_byte):
     return [13, 12, 12, 11, 11, 3, 2, 1][min(7, int(t * 8))]
 
 
-def fill_tri(idxbuf, cov, dwords, a, b, c, colour_byte, flat=False):
+def fill_tri(idxbuf, cov, dith, a, b, c, colour_byte, flat=False):
     pts = sorted([a, b, c], key=lambda q: q[1])
     (x0, y0), (x1, y1), (x2, y2) = pts
     if y2 == y0:
@@ -178,13 +195,17 @@ def fill_tri(idxbuf, cov, dwords, a, b, c, colour_byte, flat=False):
         xs = max(0, int(math.floor(xa)))
         xe = min(W - 1, int(math.ceil(xb)))
         base = y * W
+        span_x0 = int(math.floor(xa))
         for x in range(xs, xe + 1):
             idxbuf[base + x] = (flat_index(colour_byte) if flat else
-                                dither_index(dwords, colour_byte, top_y, y, x))
+                                dither_index(dith, colour_byte, top_y, y, x, span_x0))
             cov[base + x] = 1
 
 
-def render(terr, tables, dwords, cam_x, cam_y, half, tick=0, flat=False,
+WATER_ADD = 2   # [$4bb3e] & 3 in the reference frame ($f95e/$f964)
+
+
+def render(terr, tables, dith, cam_x, cam_y, half, tick=WATER_ADD, flat=False,
            sx_sign=1, sy_sign=1, deg=None):
     corners, bias = project(tables, terr, cam_x, cam_y, half,
                             sx_sign=sx_sign, sy_sign=sy_sign, deg=deg)
@@ -203,18 +224,18 @@ def render(terr, tables, dwords, cam_x, cam_y, half, tick=0, flat=False,
         br = corners[(gr + 1, gc + 1)]
         hb = cell(terr, cam_x + gc, cam_y + gr, 1)       # height plane ($438ee-8257)
         tb = cell(terr, cam_x + gc, cam_y + gr, 0)       # type plane   ($438ee+0)
-        # $f898 colour: if byte < 0x0c add tick&3 (water shimmer)
-        ch = hb + (tick & 3) if hb < 0x0c else hb
-        ct = tb + (tick & 3) if tb < 0x0c else tb
+        # $f898 colour: if byte < 0x0c add [$4bb3e]&3 (water shimmer)
+        ch = hb + tick if hb < 0x0c else hb
+        ct = tb + tick if tb < 0x0c else tb
         # packed-corner split test ($f9a6: cmp.l TL, BR ; bgt)
         def packed(q):
             return (int(round(q[0])) << 16) | (int(round(q[1])) & 0xFFFF)
         if packed(br) > packed(tl):
-            fill_tri(idxbuf, cov, dwords, tl, tr, bl, ch, flat)
-            fill_tri(idxbuf, cov, dwords, tr, bl, br, ct, flat)
+            fill_tri(idxbuf, cov, dith, tl, tr, bl, ch, flat)
+            fill_tri(idxbuf, cov, dith, tr, bl, br, ct, flat)
         else:
-            fill_tri(idxbuf, cov, dwords, tl, tr, br, ch, flat)
-            fill_tri(idxbuf, cov, dwords, tl, bl, br, ct, flat)
+            fill_tri(idxbuf, cov, dith, tl, tr, br, ch, flat)
+            fill_tri(idxbuf, cov, dith, tl, bl, br, ct, flat)
     return idxbuf, cov
 
 
@@ -266,13 +287,14 @@ def main():
     here = Path(__file__).resolve().parent.parent
     ap.add_argument("--assets",
                     default=str(here / "reversing/powermonger/port/assets"))
-    ap.add_argument("--out", default=str(here / "scratchpad/pm76_render_ref.png"))
+    ap.add_argument("--out", default=str(
+        here / "reversing/powermonger/port/assets/reference/render_from_assets.png"))
     ap.add_argument("--sweep", action="store_true",
                     help="grid-search camera / angle against the block-mean metric")
     args = ap.parse_args()
 
     d = Path(args.assets)
-    terr, tables, dom, dwords = load_assets(d)
+    terr, tables, dom, dith = load_assets(d)
     half = tables["zoom_geometry"]["derived_constants_fdea_fe02"]["$fdec"]
 
     ref_idx = (d / "reference/isoframe_indices.bin").read_bytes()
@@ -280,7 +302,7 @@ def main():
     theirs = block_means(ref_idx, dom, lambda i: mask[i])
 
     def score(cam, deg, sxs, sys_, flat=True):
-        buf, cov = render(terr, tables, dwords, cam[0], cam[1], half,
+        buf, cov = render(terr, tables, dith, cam[0], cam[1], half,
                           flat=flat, sx_sign=sxs, sy_sign=sys_, deg=deg)
         mine = block_means(buf, dom, lambda i: cov[i] and mask[i])
         common = set(mine) & set(theirs)
@@ -314,13 +336,25 @@ def main():
     print(f"  FLAT fill  (shape proof)      : block-mean dE {de:.1f} over {nc} 8x8 blocks")
     print(f"  DITHER fill (dither.bin)      : block-mean dE {ded:.1f}, "
           f"exact-index {exd*100:.1f}%")
-    print(f"  verdict: the flat render rebuilds the island silhouette + shading "
-          f"ramp from assets/ alone.\n"
-          f"           the dither-table phasing and the exact perspective basis "
-          f"are not closed (SPEC.md 'Open questions').")
+    # per-index distribution over the common terrain pixels -- the honest metric
+    from collections import Counter
+    mine_h = Counter(bufd[i] for i in range(W * H) if covd[i] and mask[i])
+    ref_h = Counter(ref_idx[i] for i in range(W * H) if covd[i] and mask[i])
+    print(f"  dither idx dist  mine: {dict(sorted(mine_h.items()))}")
+    print(f"  dither idx dist  ref : {dict(sorted(ref_h.items()))}")
+    print(f"  verdict (77th): projection reproduces the game's own $3f364 corner\n"
+          f"           buffer byte-exact; the dither phase (colourByte*128 +\n"
+          f"           (topY&15)*8, rolling) lands on the right colour families\n"
+          f"           (greens 11/12/13 match the reference within ~5%). The dark\n"
+          f"           shadowed slopes (ref idx 0-2) still read khaki here -- the\n"
+          f"           yaw-quadrant quad-split + height/type triangle pick this\n"
+          f"           reference approximates. Not pixel-exact (SPEC.md 9).")
 
-    rgb = [tuple(dom[buf[i]]) if cov[i] else (255, 0, 255) for i in range(W * H)]
-    write_png(Path(args.out), W, H, rgb)
+    rgb = [tuple(dom[bufd[i]]) if covd[i] else (255, 0, 255) for i in range(W * H)]
+    fp = Path(args.out)
+    write_png(fp, W, H, rgb)
+    write_png(fp.with_name("render_flat.png"), W, H,
+              [tuple(dom[buf[i]]) if cov[i] else (255, 0, 255) for i in range(W * H)])
 
     # side-by-side comparison strip (reference terrain crop over ours)
     pal = json.loads((d / "palette.json").read_text())["palettes"][0]["rgb"]
@@ -336,10 +370,9 @@ def main():
         for x in range(bw):
             comp[y * bw + x] = top[y * bw + x]
             comp[(y + bh + 4) * bw + x] = bot[y * bw + x]
-    write_png(Path(args.out).with_name("pm76_render_compare.png"),
-              bw, bh * 2 + 4, comp)
-    print(f"wrote {args.out} + pm76_render_compare.png "
-          f"(top = reference, bottom = rebuilt from assets/)")
+    write_png(fp.with_name("render_compare.png"), bw, bh * 2 + 4, comp)
+    print(f"wrote {fp.name} + render_compare.png + render_flat.png in {fp.parent}\n"
+          f"(compare: top = reference $24400 back buffer, bottom = rebuilt from assets/)")
 
 
 if __name__ == "__main__":

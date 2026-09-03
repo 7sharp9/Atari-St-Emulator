@@ -286,11 +286,16 @@ def export_palette(frame_path: Path, out: Path, man: list):
 
 def export_dither(ram: Ram, out: Path, man: list):
     base = ram.u32(0xff9e)
-    # length: the fill consumes 4 u16/scanline and advances 2 u16/scanline, so the
-    # deepest phase for a 200-line screen with topY up to ~180 is
-    # colourByte/2 + 4*(y+topY) bytes ~= 4*380 = 1520. Dump a generous window and
-    # let the renderer/inspection decide the true period.
-    LEN = 2048
+    # 77th-pass correction. The fill ($e3e6..$e4de, aligned disasm) computes its
+    # read pointer as
+    #     A5 = base + colourByte*128 + (topY & 15)*8            [byte address]
+    # and then advances +4 bytes per scanline while each 16-px screen cluster
+    # consumes 8 bytes (two 32-bit longs: long0 = {plane0:plane1},
+    # long1 = {plane2:plane3}).  colourByte is the raw terrain byte (max 62 on
+    # mission 1) plus the water shimmer (+[$4bb3e]&3), so the deepest base offset
+    # is ~ (62+2)*128 = 8192, plus (15*8) + a ~50-line triangle's 200 bytes of
+    # roll.  Dump 16 KiB so the whole addressable span is covered.
+    LEN = 0x4000
     tbl = ram.blk(base, LEN)
     (out / "dither.bin").write_bytes(tbl)
 
@@ -305,25 +310,28 @@ def export_dither(ram: Ram, out: Path, man: list):
                                for c in range(16)])
     write_png(out / "dither.png", 16, 4 * scan, planes_img)
 
-    # find the true period (smallest s>0 with tbl[i]==tbl[i+s] for all i in a window)
-    period = None
-    for s in range(4, LEN // 2, 2):
-        if all(tbl[i] == tbl[i + s] for i in range(0, LEN - s)):
-            period = s
-            break
+    # the table is indexed absolutely (colourByte*128), not cyclically -- there is
+    # no meaningful global period. Report the per-colourByte slot size instead.
+    period = 128
 
     man.append({
         "file": "dither.bin",
         "provenance": (
-            f"cyclic 16-bit bitplane-mask table at ${base:x} (= long at $ff9e). "
-            "Read by pm_span_driver ($e3e2) / pm_span_fill ($e4de): A5 starts at "
-            "(base + colourByte/2 + 8*topY) >> 1 and advances +4 bytes/scanline "
-            "while consuming 8 bytes/scanline, so planes 2&3 of line y become "
-            "planes 0&1 of line y+1 (the 'rolling bitplane' dither)."),
-        "format": (f"{LEN} bytes dumped; u16 big-endian words, 4 words = one 16px "
-                   f"tile's planes 0..3. Detected repeat period: "
-                   f"{period if period else 'none within window'} bytes."),
+            f"4bpp pattern table at ${base:x} (= long at $ff9e). Read by the span "
+            "fill ($e3e6 setup, $e4de/$e4a6 inner loops -- 77th-pass aligned "
+            "disasm). Per triangle: A5 = base + colourByte*128 + (topY & 15)*8 "
+            "(byte address). Per 16-px screen cluster the fill reads two 32-bit "
+            "big-endian longs: long0 = {plane0<<16 | plane1}, long1 at A5+4 = "
+            "{plane2<<16 | plane3}; pixel index = plane0.bit | plane1.bit<<1 | "
+            "plane2.bit<<2 | plane3.bit<<3 with bit = 15-(screenX & 15). A5 then "
+            "advances +4 bytes/scanline (the roll) and +8 bytes/cluster."),
+        "format": (f"{LEN} bytes dumped ({LEN//128} colourByte slots of 128 bytes "
+                   "= 16 eight-byte sub-patterns each; sub-pattern picked by "
+                   "(topY & 15), rolled +4 B/line). Big-endian. colourByte->index: "
+                   "0x08-0x0b water (14/15), 0x18-0x1c rock (1-3/6), 0x24-0x2c "
+                   "grass ramp (13/12/11), 0x3e brightest (9/10/11)."),
         "table_base_addr": f"${base:x}",
+        "water_shimmer_add": ram.u32(0x4bb3e) & 3,
     })
     man.append({"file": "dither.png",
                 "provenance": "dither.bin as 4 stacked 1bpp planes",
@@ -727,8 +735,12 @@ def export_reference(frame_path: Path, out: Path, man: list, dom_pal):
     (rd / "isoframe_indices.bin").write_bytes(idxmap)
     man.append({
         "file": "reference/isoframe.png",
-        "provenance": f"screen buffer from {frame_path.name} ($2df7c front buffer, "
-                      "base $1c700), decoded with the captured palette",
+        "provenance": (
+            f"live shifter output from {frame_path.name}. 77th: verified equal to "
+            "the RAM snapshot's BACK buffer $24400 to 231/64000 px (moving "
+            "sprites only) -- so it is consistent with the $3f364 corner buffer "
+            "and is the right target for the pm_render_ref.py diff. The front "
+            "buffer $1c700 is the previous (mid-animation) frame."),
         "format": "320 x 200 RGB PNG; isoframe_indices.bin = 1 byte palette index/px",
     })
 

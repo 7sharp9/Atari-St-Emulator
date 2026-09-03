@@ -19,10 +19,10 @@
 0000ff7c	pm_perspective_div     # sx = x*$ff98/($ff98-z) ; sy = (z-$ff96)*$ff98/($ff98-z)+$ff96
 0000ef62	pm_tri_raster          # triangle: bounds-check + sort 3 Y, $f000 edge slopes; writes colour byte + top-Y to the span record, emits per-scanline edge stream
 0000f000	pm_edge_slopes         # fixed-point dy/dx setup for a pair of triangle edges (divu)
-0000e3e2	pm_span_driver         # walk the edge stream; A5 = dither-table base + colourByte/2 + 4*(y+topY); per scanline A5 += 4 (planes roll up line to line)
-0000e4de	pm_span_fill           # Duff-device move.l D0/D1,(A2)+; D0/D1 = movem.l (A5) = 4 bitplane-mask words of one 16px tile, repeated; ends via edge masks $ec62/$eca2
-0000ffa2	g_dither_addr_scratch  # holds 2 * [$ff9e]; $e3e2 does (this + colourByte) >> 1 to land back on the dither-table base
-0000ff9e	g_misc_data_base       # long: base of a shared data block; +0 region = the ~240-byte cyclic bitplane-mask dither table ($2e000 in pm71/pm74 snaps); also used PC-relative by the sound mixer ($1abaa)
+0000e3e6	pm_span_setup         # 77th: fill entry (74th's $e3e2 was mis-aligned). A5 = [$ff9e] + colourByte*128 + (topY&15)*8; A1 = backbuf + topY*160
+0000e4de	pm_span_fill           # per 16-px cluster: two big-endian longs from (A5)/(A5+4) = planes {0,1},{2,3}; A5 += 8/cluster, += 4/scanline; ends via edge masks $ec62/$eca2
+0000ffa2	g_dither_addr_scratch  # holds 2 * [$ff9e]; $e3e6 does (this + colourByte*256) >> 1 to land on the table base + colourByte*128
+0000ff9e	g_dither_table_ptr     # long: base of the 4bpp pattern table ($2e000 in pm71/pm74 snaps); ~8.5 KB span for mission 1, absolutely indexed by colourByte*128; also read PC-relative by the sound mixer ($1abaa)
 0000ff96	g_proj_horizon         # projection: horizon screen-Y = 130 (PC-relative read in $ff7c: sub 12(PC), add 4(PC))
 0000ff98	g_proj_eyedist         # projection: eye distance = 320 (PC-relative read in $ff7c: 26(PC))
 0000ff9a	g_cam_yaw              # camera rotation, 16 steps of $10 (& $f0); $fecc indexes $13f8a by yaw*2
@@ -33,11 +33,14 @@
 0000fdea	g_zoom_geometry_consts # 13 words $fdea..$fe02 derived by $fe04 from (grid half-extent, tile px); grid-buffer strides + loop bounds + screen offsets
 0004bb3a	g_cam_cell_x           # camera grid cell X ($fecc offsets by -$57ffc)
 0004bb3c	g_cam_cell_y           # camera grid cell Y
-0003f364	g_grid_corner_buf      # projected grid corners, 2 words (screenX, screenY) per vertex, row stride 64 bytes (9 used at zoom 4)
-0002e000	g_dither_table         # the ~2KB cyclic 16-bit bitplane-mask stipple table (= [$ff9e]); phase = colourByte + topY<<4, +4 bytes/scanline
+0003f364	g_grid_corner_buf      # projected grid corners, 2 words (screenX, screenY) per vertex, row stride 64 bytes (9 used at zoom 4); 77th: pm_render_ref.py reproduces all 81 byte-exact
+0002e000	g_dither_table         # 4bpp pattern table (= [$ff9e]); A5 = base + colourByte*128 + (topY&15)*8, +4 B/line +8 B/cluster; 128 B/colourByte = 16 sub-patterns; 0x24-2c green, 0x08-0b water, 0x18-1c rock
 00017878	pm_render_setup_b       # rotation-indexed row table select ($17ad8)
-000115e0	pm_draw_cell_entities   # walk $47970[cell] bucket; per entity 2-stage jump table on category (primary+overlay)
-00011f82	pm_blit_minisprite      # 1bpp masked sprite from $33000 sheet ($37 B/frame); shift+mask word loop
+000115e0	pm_draw_cell_entities   # walk $47970[cell] bucket; per entity byte6=category -> jump table 1 $1162e (prepare) + jump table 2 $1165a (blit)
+0001162e	t_sprite_cat_prepare    # 16 per-category "prepare" handlers: cat0=$11c8a men, cat4=$11a86 animals, cat2=$1168c, cat3/12=$117b0, cat5=$11772, cat6=$11bbc, cat7=$11bf4, cat8=$1192e, cat9=$11c36, cat10=$11b3c, cat11=$11b2a, cat13=$1174e, cat14=$11b0c, cat15=$1198a
+0001165a	t_sprite_cat_blit      # per-category blitter: cat0=$1187c (men), most others=$11f78 (~$11f82 mini-sprite), +17=$1168a, +19=$12258
+00011f82	pm_blit_minisprite      # 1bpp masked sprite from $33000 sheet ($37 B/frame, 11 rows); per row 1 AND-mask byte then N OR-data bytes, rol.w (8-(x&15)); dest row stride $98
+0001187c	pm_blit_man_sprite     # cat-0 (men) sprite path from $115e0 jump table 2
 00033000	g_minisprite_sheet      # mini-sprite sheet, $37 (55) bytes per frame (11 rows x 5 bytes)
 00016738	pm_pick_sprite_frame    # heading -> frame via $16754 table (-1 = no sprite this facing) -> $e6ee
 0000e6ee	pm_blit_hud_sprite      # wider multi-plane blitter for HUD glyphs / the selected-unit marker

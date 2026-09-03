@@ -15,13 +15,32 @@ mission-1 iso view (`scratchpad/pm74_late.ram`, PC `$124c0`) and cross-checked
 against the disassembly in `../graphics.md`. Addresses are in the relocated game
 image (link base `$1050`).
 
-Verification status: `tools/pm_render_ref.py` rebuilds the frame from `assets/`
-alone. The **island silhouette, footprint orientation and height shading**
-reproduce (see `assets/reference/render_compare.png`). Two things are **not**
-closed to a pixel diff and are flagged under "Open questions": the exact
-vertical calibration of the perspective divide, and the phase into the dither
-table. Neither blocks a port — a modern port replaces the dither with a shader
-and re-tunes the camera against a screenshot.
+Verification status (77th pass): `tools/pm_render_ref.py` rebuilds the frame from
+`assets/` alone.
+
+- **Projection — closed.** The reference renderer's projected 9×9 vertex grid
+  reproduces the game's own `$3f364` corner buffer **byte-exact** (all 81
+  vertices). The 76th-pass "island sits ~15-20 px low" was a bad diff: it
+  compared against a *live* frame dump (`pm76_fr/f000100.bin`) whose camera had
+  drifted a little from the RAM snapshot the geometry was read from. The
+  consistent reference is the snapshot's own **back buffer `$24400`**, which
+  equals `assets/reference/isoframe.png` to 231 / 64000 px (moving sprites
+  only). `EYE` and `HORIZON` are confirmed `$ff98`=320 / `$ff96`=130 from the
+  aligned `$ff7c` disasm (PC-relative operands `26(PC)`→`$ff98`,
+  `12(PC)`/`4(PC)`→`$ff96`).
+- **Dither phase — formula closed, pixel match partial.** The 77th aligned
+  disasm of `$e3e6..$e4de` gives the real phase (§4). Decoding the table at
+  `colourByte*128` now lands on the correct palette families: `0x24-0x2c` →
+  green ramp 11/12/13, `0x08-0x0b` → water 14/15, `0x18-0x1c` → rock 1-3/6. The
+  rebuilt greens match the reference distribution within ~5 % (11/12/13 =
+  1649/4009/1407 px vs reference 1644/4585/912). The residual gap is the dark
+  shadowed lower-left slopes (reference idx 0-2 heavy, this renderer draws them
+  khaki) — that needs the yaw-quadrant quad-split corner remap (`$f97e` jump
+  table) and the exact height-vs-type triangle pick, which this reference
+  renderer approximates. Not pixel-exact; see `assets/reference/render_compare.png`.
+
+Neither residual blocks a port — a modern port replaces the dither with a shader
+and the yaw-quadrant split with a real mesh.
 
 ---
 
@@ -134,6 +153,15 @@ All arithmetic is 16.16-ish fixed point on the 68000 (`muls`/`divs`, `>>15` via
 `add.l`+`swap`). A port does it in float; the `>>15` after the rotate keeps
 `rx, ry` in world-pixel units.
 
+**Verified byte-exact (77th):** running this maths in integer for the 9×9 grid
+of `pm74_late.ram` (camCell 36,47; YAW 0xf0; ZOOM 21; HBIAS 4) reproduces every
+one of the 81 `(screenX, screenY)` pairs in the game's own `$3f364` corner
+buffer. `$ff7c`'s PC-relative operands resolve to `26(PC)`→`$ff98` (EYE) and
+`12(PC)`/`4(PC)`→`$ff96` (HORIZON). The loop is 9×9 vertices at zoom 4 (`$fdec`
+= HALF = 4), row/col counters `-4..+4`, `A1` walking the `$3f86c` control plane
+forward from the camera cell (row stride 64), corner buffer `$3f364` row stride
+64 bytes (9 × 4 used). `tools/pm_render_ref.py`'s float version matches to ≤1 px.
+
 The projection **is perspective** (`x / (EYE - depth)`), not an affine 2:1 iso.
 The "isometric" look is a fixed camera pitch baked into the fixed `HORIZON`/`EYE`
 pair plus the 16-step yaw. A port that wants true axonometric can drop the
@@ -186,32 +214,48 @@ Because sprites are drawn immediately after their cell's terrain, in far→near
 order, the painter's algorithm is free: no sprite ever floats over a hill it
 should be behind.
 
-### The fill: rolling-bitplane dither (`$ef62 → $e3e2 → $e4de`)
+### The fill: 4bpp pattern table (`$ef62 → $e3e6 → $e4de`, 77th-pass aligned disasm)
 
 PowerMonger has **no flat fill and no texture map**. Every triangle span is
-stippled from one ~2 KB cyclic table of 16-bit bitplane masks
-(`assets/dither.bin`, base = the long at `$ff9e`):
+painted from one pattern table (`assets/dither.bin`, base = the long at
+`$ff9e` = `$2e000`; the 76th dumped only 2 KB — the phase reaches ~8.5 KB, so
+this is now a 16 KB dump). The table is **absolutely indexed by colour**, not
+cyclic:
 
 ```
-// phase into the table, per triangle:
-A5_bytes = (dither_base + colourByte + (topY << 4)) >> 1      // $e3e8..$e3fa
-// per scanline y (from topY down):
-A5_bytes += 4                                                 // $e44a: +2 u16 words
-// per 16-px SCREEN-ALIGNED group in the span:
-w = table_u16[ A5_bytes/2 .. A5_bytes/2 + 3 ]                 // planes 0..3
-for column c in the group (bit b = 15 - (screenX & 15)):
-    idx = w0.b | (w1.b << 1) | (w2.b << 2) | (w3.b << 3)
+// per triangle ($e3e6..$e3fa):
+A5 = ditherBase + colourByte*128 + (topY & 15)*8              // BYTE address
+// per scanline (from topY down), $e44a:  A5 += 4              // the vertical "roll"
+// per 16-px screen-aligned cluster in the span, $e470/$e4a6:  A5 += 8
+//   long0 = big-endian u32 at A5      -> plane0 = hi16, plane1 = lo16
+//   long1 = big-endian u32 at A5 + 4  -> plane2 = hi16, plane3 = lo16
+for column c in the cluster (bit b = 15 - (screenX & 15)):
+    idx = plane0.b | (plane1.b << 1) | (plane2.b << 2) | (plane3.b << 3)
 ```
 
-The cursor advances **2 words/scanline while consuming 4**, so scanline *y*'s
-planes 2 & 3 are re-read as *y+1*'s planes 0 & 1 — the pattern "rolls up"
-through the bitplanes, which is why the dither is 2-scanline coherent (a CRT's
-line blur averages the pair). `colourByte` and `topY` are only a **phase
-offset** into this one shared stream: terrain shading / height banding is a
-*phase shift of a single fixed dither texture*, not distinct flat colours.
+`colourByte` is the raw terrain byte (`$f9ae`: height plane for triangle 1,
+`$f9cc`: type plane for triangle 2), **+ `[$4bb3e] & 3`** if `< 0x0c` (water
+shimmer — a fixed +2 in the reference frame, not `tick&3`). Each `colourByte`
+owns a **128-byte slot = 16 eight-byte sub-patterns**; `(topY & 15)` picks the
+starting sub-pattern and the `+4/scanline` roll walks through them, so a tall
+triangle's shading drifts toward the next colour's slot (the height band).
 
-Observed result on mission 1: grass cells resolve to palette indices **11/12/13**
-(the green ramp), water to **14/15** (blue), slopes pick up **1/2/3** (khaki).
+Decoding `assets/dither.bin` at `colourByte*128` (verified against reference
+pixels):
+
+| colourByte | palette indices | terrain |
+|-----------|-----------------|---------|
+| `0x08`–`0x0b` | 14, 15 (+ 4) | water |
+| `0x18`–`0x1c` | 1, 2, 3, 6 | rock / dark earth |
+| `0x24`–`0x28` | 13, 12 | grass (dark→mid) |
+| `0x2c` | 11, 12 | grass (light) |
+| `0x30`–`0x3c` | 7, 9, 11, 12 mixed | bright slope |
+| `0x3e` | 9, 10, 11 | brightest ridge |
+
+`tools/pm_render_ref.py` reproduces the colour families but resets the phase
+per triangle (no cross-scanline carry, no `$f97e` yaw-quadrant corner remap),
+so its texture is locally right but patchy; a pixel-exact match needs the real
+span walker (`$e420`–`$e55a`) ported.
 
 **A modern port should not reproduce this.** Replace it with either:
 - a flat fill using a height→palette ramp (see `flat_index()` in
@@ -267,31 +311,43 @@ frame = [ 0xff,5,15,8,10,5,16,0xff, 0xff,8,10,15,12,5,16,0xff ][heading & 0x0f]
          frames + a horizontal flip)
 ```
 
+### Category dispatch (`$115e0`, 77th-pass trace)
+
+Per bucket entity, `$115e0` reads object-record **byte 6 = category** and calls
+two per-category handlers via jump tables:
+
+| table | addr | target = base + `word[addr + cat]` | role |
+|-------|------|-----------|------|
+| 1 | `$1162e` | `cat 0`→`$11c8a`, `4`→`$11a86`, `2`→`$1168c`, `3`/`12`→`$117b0`, `5`→`$11772`, `6`→`$11bbc`, `7`→`$11bf4`, `8`→`$1192e`, `9`→`$11c36`, `10`→`$11b3c`, `11`→`$11b2a`, `13`→`$1174e`, `14`→`$11b0c`, `15`→`$1198a` | position / prepare |
+| 2 | `$1165a` | `cat 0`→`$1187c` (men-special); `4,5,7,8,11,12,13,14,15,18`→`$11f78` (≈ `$11f82`); `+17`→`$1168a`; `+19`→`$12258` | blit |
+
+`cat 0` = men, `cat 4` = animals; the rest are trees / buildings / effects /
+markers. Which frame each handler picks (from `$16754`, the heading table, and
+the entity mode) → still to be mapped into `assets/sprite_triggers.json`.
+
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
 The little men / animals are **1-bitplane masked silhouettes**, `0x37` (55)
-bytes per frame = 11 rows x 5 bytes:
+bytes per frame = 11 rows:
 
 ```
-per row: alternating (AND-mask, OR-data) bytes -> two+ 8-px columns
-    D0 = 8 - (destX & 7)                       // sub-word shift
-    mask = rol.w D0, next_byte                 // 1 byte -> shifted 16-bit AND mask
-    data = rol.w D0, next_byte                 // 1 byte -> shifted 16-bit OR data
-    dst = (dst & mask) | data                  // punch + paint one word
-row stride in the back buffer: += 0x98 (after the sprite width)
+A1 = $33000 + frame*0x37                        // frame stride 55, 11 rows
+per row: 1 AND-mask byte, then successive OR-data bytes ($11ff2..):
+    D0   = 8 - (destX & 15)                     // sub-word shift
+    mask = rol.w D0, mask_byte    (D2 = -1 first, so vacated bits read as keep)
+    for each data byte: data = rol.w D0, data_byte
+        dst_word = (dst_word & mask) | data     // one screen word / data byte
+row stride in the compose buffer: 0x98 (152)    // $11fe8
 ```
 
-The sprite carries no colour — it is punched into whatever plane the blitter is
-pointed at, so the man's colour comes from the plane / the terrain underneath.
-Anchor: the entity's projected `(screenX, screenY)` from §3, sprite drawn
-up-left of the anchor (foot at the cell).
+The exact data-bytes-per-row (→ sprite width) per category still needs the
+`$11fe4`–`$12070` loop traced; `decode_minisprite()` in `pm_export.py`'s
+`[m,d,m,d,x]` split is a first guess. The sprite carries no colour — punched
+into whatever plane the blitter targets. Anchor: the entity's projected
+`(screenX, screenY)` from §3, drawn up-left of the anchor (foot at the cell).
 
-`$33000` is a **multi-category sheet** (men / animals / trees / buildings blit
-at different strides). `assets/sprites/sheet_raw.bin` is the first 64 frames at
-the 55-byte men stride (raw — decode with `decode_minisprite()` in
-`pm_export.py`); `sheet_contact.png` is a preview. The 5-bytes-per-row split
-(alternating AND-mask / OR-data) is approximate; a full per-category rip is
-deferred (same as the Super Sprint sprite rip).
+`$33000` is a **multi-category sheet**; `assets/sprites/sheet_raw.bin` is the
+first 64 frames at the 55-byte men stride. A full per-category rip is deferred.
 
 ### HUD / selected-unit marker (`$e6ee`)
 
@@ -358,37 +414,53 @@ Palette: one 16-colour shifter palette for the whole iso view
 | element | faithful (emulate) | modern port |
 |---------|--------------------|-------------|
 | geometry | 9x9..15x15 projected grid, per-frame `divs` per corner | `ArrayMesh` heightfield, or sample `terrain.bin` in a vertex shader; project once, scroll by pixel delta |
-| fill | rolling-bitplane dither from `dither.bin` | height-ramp fragment shader over the 16-colour palette, optional ordered dither for the look |
+| fill | 4bpp pattern table `dither.bin`, indexed `colourByte*128 + (topY&15)*8`, rolling | height-ramp fragment shader over the 16-colour palette, optional ordered dither for the look |
 | draw order | far→near grid walk, sprites inline | **keep this** — per-cell (terrain then occupants); do not add a separate sorted sprite pass |
 | zoom | 7 discrete geometry sets, `$fe04` | 7 camera distances (or continuous); same mesh |
 | rotation | 16 yaw steps, `$13f8a` sine table | continuous yaw; `sin`/`cos` |
-| water | `colourByte += tick&3`, fill-driven, still-camera gated | palette-index animation or a small UV scroll in the shader |
+| water | `colourByte += [$4bb3e]&3`, fill-driven, still-camera gated | palette-index animation or a small UV scroll in the shader |
 | perspective | real `x/(EYE-depth)` divide | keep for PM's look (free in a vertex shader), or go axonometric |
 
 ---
 
-## 9. Open questions (not closed this pass)
+## 9. Open questions
 
-1. **Vertical calibration of the perspective divide.** `pm_render_ref.py` with
-   the constants above reproduces the island *shape and orientation* but places
-   it ~15-20 px lower than the reference and slightly larger. Candidates: the
-   `HORIZON`/`EYE` pair is read PC-relative in `$ff7c` and may not be exactly
-   `$ff96`/`$ff98` (re-disassemble `$ff7c`'s PC-relative operands against a
-   fresh linear disasm — the 74th-pass `pm74_disasm.txt` is misaligned in the
-   `$e000..$f000` region); or the camera-cell offset includes a term this pass
-   missed; or `screenY = 0x7c - sy` uses a different Y flip origin.
-2. **Dither phase.** `dither_index()` in `pm_render_ref.py` phases `dither.bin`
-   by `(colourByte + topY*16) >> 1` +`2/scanline` and lands on blue/brown
-   entries, not the green ramp the reference shows. Either the table base
-   (`$ff9e` = `$2e000`) is stale in this snapshot (it is shared with the sound
-   mixer — capture it fresh via a `watch $ff9e` during a camera move), or the
-   `>>1` in `$e3e8` means the phase is in half-units and the real word index is
-   `>> 2`, or the plane→index bit order is reversed. Resolve by disassembling
-   `$e3e2`/`$e4de` from a correctly-aligned image.
-3. **Full sprite sheet.** `$33000` past frame ~16 is other categories at other
-   strides; only the men are decoded. Same deferral as the Super Sprint rip.
-4. **HUD art.** `$e6ee` descriptor table is dumped raw; the glyph sheet address
-   needs resolving from a live snapshot.
+1. **Vertical calibration — CLOSED (77th).** The projection was already right.
+   `pm_render_ref.py`'s 9×9 projected grid matches the game's own `$3f364`
+   corner buffer **byte-exact** at all 81 vertices. `EYE`/`HORIZON` are
+   `$ff98`=320 / `$ff96`=130, confirmed from the aligned `$ff7c` disasm. The
+   76th's "15-20 px low" came from diffing against a live frame dump whose
+   camera had drifted from the RAM snapshot; the consistent reference is the
+   snapshot's own back buffer `$24400` (≈ `isoframe.png`).
+2. **Dither phase — formula CLOSED (77th), pixel match partial.** Real phase
+   (§4): `A5 = ditherBase + colourByte*128 + (topY & 15)*8`, `+4 B/scanline`,
+   `+8 B/cluster`, two big-endian longs per 16-px cluster = planes {0,1},{2,3}.
+   The 76th's `(colourByte + topY*16) >> 1` was a near-zero offset — that is
+   why it landed on blue/brown. The table at `$2e000` is **not** stale here
+   (it holds coherent 4bpp patterns; decoding at `colourByte*128` gives the
+   right palette families). `dither.bin` was truncated at 2 KB — now 16 KB.
+   Residual: `pm_render_ref.py` resets the phase per triangle and skips the
+   `$f97e` yaw-quadrant corner remap, so the texture is patchy. A pixel-exact
+   fill needs the `$e420`–`$e55a` span walker ported (carries `A5` continuously
+   across the whole triangle). A modern port replaces the fill with a shader,
+   so this does not block the port.
+3. **Full sprite sheet — category dispatch mapped (77th), rip still deferred.**
+   `$115e0` dispatches on object-record byte 6 (category) through two jump
+   tables: **table 1 `$1162e`** (16 per-category "prepare" handlers —
+   `cat 0`→`$11c8a` men, `cat 4`→`$11a86` animals, `cat 2`→`$1168c`,
+   `cat 3`/`12`→`$117b0`, `cat 5`→`$11772`, `cat 6`→`$11bbc`, `cat 7`→`$11bf4`,
+   `cat 8`→`$1192e`, `cat 9`→`$11c36`, `cat 10`→`$11b3c`, `cat 11`→`$11b2a`,
+   `cat 13`→`$1174e`, `cat 14`→`$11b0c`, `cat 15`→`$1198a`) and **table 2
+   `$1165a`** (blitter: `cat 0`→`$1187c` men-special, most others→`$11f78`
+   ≈ the `$11f82` mini-sprite blitter, `+17`→`$1168a`, `+19`→`$12258`).
+   `$11f82`: `A1 = $33000 + frame*0x37`, 11 rows, per row **1 AND-mask byte
+   then successive OR-data bytes**, each `rol.w (8 - (screenX & 15))`,
+   destination row stride `0x98`. The exact bytes-per-row (and hence sprite
+   width) per category needs the `$11fe4`–`$12070` inner loop traced. Rip
+   deferred (as the SS rip).
+4. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
+   needs resolving from a live snapshot. Deferred.
+5. **Border / stone-table master, world-map minimap + compass panel.** Not
+   started — `$e0d4` master + the left-strip compositor. Deferred.
 
-None of these block starting the Godot port: items 1-2 are a camera/​shader
-re-tune against a screenshot, which a modern port does anyway.
+None of items 3-5 block the Godot port (terrain + camera are the port's spine).

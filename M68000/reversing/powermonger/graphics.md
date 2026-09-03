@@ -1,5 +1,29 @@
 # PowerMonger ST — the graphics pipeline, and what a modern port would change
 
+## Status (73rd pass; dither corrected 74th; projection + dither phase corrected 77th)
+
+**77th-pass corrections** (aligned re-disasm of `$fecc`/`$ff7c`/`$e3e6..$e4de`,
+folded into `port/SPEC.md` §3-4/§9):
+
+- **Projection is exact, not "~15-20 px low".** Running the `$fecc`/`$ff7c`
+  maths in integer for the 9×9 grid reproduces the game's own `$3f364` corner
+  buffer **byte-for-byte** (81/81 vertices). `EYE` = `$ff98` = 320, `HORIZON`
+  = `$ff96` = 130, confirmed from `$ff7c`'s PC-relative operands. The 76th's
+  low-island claim was a diff against a live frame dump whose camera had drifted
+  from the RAM snapshot.
+- **Dither phase is `colourByte*128 + (topY & 15)*8`, not `(colourByte + topY*16) >> 1`.**
+  The table (`$2e000` = `[$ff9e]`) is **absolutely indexed by colour** — 128
+  bytes / colourByte = 16 eight-byte sub-patterns, `(topY & 15)` picks the
+  first, `+4 B/scanline` rolls through them, `+8 B` per 16-px screen cluster.
+  Each cluster reads two big-endian longs = planes {0,1} then {2,3}. Decoding
+  at `colourByte*128`: `0x24-0x2c` → green ramp 11/12/13, `0x08-0x0b` → water
+  14/15, `0x18-0x1c` → rock 1-3/6. The table is **not** ~240 bytes and **not**
+  cyclic — it spans ~8.5 KB for mission 1's colour range.
+- **Sprite category dispatch mapped** (`$115e0` → jump tables `$1162e` /
+  `$1165a`): `cat 0` men (`$11c8a` / `$1187c`), `cat 4` animals (`$11a86`),
+  most others share the `$11f78` ≈ `$11f82` mini-sprite blitter. Full frame rip
+  still deferred.
+
 ## Status (73rd pass, dither corrected 74th)
 
 The 73rd pass added **"The terrain mechanism"** below (the 69th pass had a
@@ -121,7 +145,21 @@ banding *is* the shading, there is no separate light model. One triangle of the
 split takes the **height** byte, the other takes the **type** byte, which is why
 a sloped grass cell shows a subtle two-tone split.
 
-### `$ef62` → `$e3e2` → `$e4de` — the rolling-bitplane dither fill
+### `$ef62` → `$e3e6` → `$e4de` — the 4bpp pattern fill
+
+> **77th-pass correction.** The 74th's aligned-disasm entry here read a
+> mis-aligned image (`$e3e2` is the tail of an int→ASCII routine; the fill
+> entry is `$e3e6`). Corrected facts: the phase is
+> `A5 = [$ff9e] + colourByte*128 + (topY & 15)*8` (byte address); the table is
+> **absolutely indexed by colour** (128 B / colourByte = 16 sub-patterns),
+> **not** a ~240-byte cyclic loop — it spans ~8.5 KB for mission 1. Per 16-px
+> screen cluster the fill reads **two** big-endian longs: `long0` at A5 =
+> `{plane0<<16 | plane1}`, `long1` at A5+4 = `{plane2<<16 | plane3}`, then A5 +=
+> 8; A5 also += 4 per scanline (the roll). Decoding the real table:
+> `0x24-0x2c` → green ramp, `0x08-0x0b` → water, `0x18-0x1c` → rock. The
+> paragraphs below (from the 74th) are kept for the edge-mask / Duff-device
+> detail but their phase formula and "≈240 bytes / not per-colour" claims are
+> superseded — see `port/SPEC.md` §4.
 
 `$ef62` bounds-checks and sorts the 3 screen-Y corners, sets up two edge slopes
 with `$f000` (fixed-point `dy/dx` via `divu`), writes the **colour byte** to

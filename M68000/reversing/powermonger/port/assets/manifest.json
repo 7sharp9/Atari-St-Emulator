@@ -50,14 +50,15 @@
   },
   {
    "file": "dither.bin",
-   "provenance": "cyclic 16-bit bitplane-mask table at $2e000 (= long at $ff9e). Read by pm_span_driver ($e3e2) / pm_span_fill ($e4de): A5 starts at (base + colourByte/2 + 8*topY) >> 1 and advances +4 bytes/scanline while consuming 8 bytes/scanline, so planes 2&3 of line y become planes 0&1 of line y+1 (the 'rolling bitplane' dither).",
-   "format": "2048 bytes dumped; u16 big-endian words, 4 words = one 16px tile's planes 0..3. Detected repeat period: none within window bytes.",
-   "table_base_addr": "$2e000"
+   "provenance": "4bpp pattern table at $2e000 (= long at $ff9e). Read by the span fill ($e3e6 setup, $e4de/$e4a6 inner loops -- 77th-pass aligned disasm). Per triangle: A5 = base + colourByte*128 + (topY & 15)*8 (byte address). Per 16-px screen cluster the fill reads two 32-bit big-endian longs: long0 = {plane0<<16 | plane1}, long1 at A5+4 = {plane2<<16 | plane3}; pixel index = plane0.bit | plane1.bit<<1 | plane2.bit<<2 | plane3.bit<<3 with bit = 15-(screenX & 15). A5 then advances +4 bytes/scanline (the roll) and +8 bytes/cluster.",
+   "format": "16384 bytes dumped (128 colourByte slots of 128 bytes = 16 eight-byte sub-patterns each; sub-pattern picked by (topY & 15), rolled +4 B/line). Big-endian. colourByte->index: 0x08-0x0b water (14/15), 0x18-0x1c rock (1-3/6), 0x24-0x2c grass ramp (13/12/11), 0x3e brightest (9/10/11).",
+   "table_base_addr": "$2e000",
+   "water_shimmer_add": 2
   },
   {
    "file": "dither.png",
    "provenance": "dither.bin as 4 stacked 1bpp planes",
-   "format": "16 x 1024 PNG (4 planes stacked vertically)"
+   "format": "16 x 8192 PNG (4 planes stacked vertically)"
   },
   {
    "file": "sprites/sheet_raw.bin + sprites/sheet_contact.png",
@@ -96,7 +97,7 @@
   },
   {
    "file": "reference/isoframe.png",
-   "provenance": "screen buffer from f000100.bin ($2df7c front buffer, base $1c700), decoded with the captured palette",
+   "provenance": "live shifter output from f000100.bin. 77th: verified equal to the RAM snapshot's BACK buffer $24400 to 231/64000 px (moving sprites only) -- so it is consistent with the $3f364 corner buffer and is the right target for the pm_render_ref.py diff. The front buffer $1c700 is the previous (mid-animation) frame.",
    "format": "320 x 200 RGB PNG; isoframe_indices.bin = 1 byte palette index/px"
   }
  ]

@@ -21,21 +21,32 @@ python3 tools/pm_render_ref.py             # rebuild a frame from assets/ alone,
 
 `pm_export.py` reads `scratchpad/pm74_late.ram` (the settled mission-1 iso view;
 regenerate per `../README.md` if it is gone) and a frame-dump record for the
-live palette. `pm_render_ref.py` writes `scratchpad/pm76_render_compare.png` —
-reference terrain (top) over the same frame rebuilt from `assets/` (bottom).
+live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png`
+(dither fill), `render_flat.png` (height-ramp fill), and `render_compare.png` —
+reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
+prints the block-mean dE and the per-index distribution vs the reference.
 
-## Verification status
+## Verification status (77th pass)
 
-`pm_render_ref.py` reproduces the **island silhouette, footprint orientation
-and height shading** from `assets/` alone (`assets/reference/render_compare.png`).
-That proves the export is complete: every input the renderer needs is present
-and produces a recognisable mission-1 island.
-
-**Not closed to a pixel diff** (see `SPEC.md` section 9): the vertical
-calibration of the perspective divide (island sits ~15-20 px low) and the phase
-into the dither table (lands on blue/brown, not the green ramp). Both are a
-camera/shader re-tune that a modern port does against a screenshot anyway;
-neither blocks starting the port.
+- **Projection: closed.** `pm_render_ref.py`'s projected 9×9 vertex grid equals
+  the game's own `$3f364` corner buffer **byte-exact** (81/81 vertices).
+  `EYE`/`HORIZON` confirmed `$ff98`=320 / `$ff96`=130 from the aligned `$ff7c`
+  disasm. The 76th's "island ~15-20 px low" was a bad diff against a live frame
+  whose camera had drifted from the RAM snapshot; the consistent reference is
+  the snapshot's own back buffer `$24400` (= `isoframe.png`, 231/64000 px).
+- **Dither: formula closed, pixel match partial.** Real phase (`SPEC.md` §4):
+  `A5 = ditherBase + colourByte*128 + (topY & 15)*8`, `+4 B/line`, `+8 B/16-px
+  cluster`, two big-endian longs/cluster = planes {0,1},{2,3}. `dither.bin` was
+  truncated at 2 KB (phase reaches ~8.5 KB) — now a 16 KB dump. Decoding at
+  `colourByte*128` lands on the right palette families (green ramp, water, rock)
+  and the rebuilt greens match the reference within ~5 %. `pm_render_ref.py`
+  resets the phase per triangle and skips the `$f97e` yaw-quadrant corner remap,
+  so its texture is patchy (`assets/reference/render_compare.png`); a
+  pixel-exact fill needs the `$e420`–`$e55a` span walker ported. A modern port
+  replaces the fill with a shader, so this does not block the port.
+- **Sprites / HUD / border / minimap:** category dispatch (`$115e0`) mapped
+  (`SPEC.md` §6/§9); the per-category frame rip, HUD glyphs, `$e0d4` master and
+  the minimap compositor are still deferred.
 
 ## Why F# for logic, C# for Godot glue, no GDScript
 
@@ -79,10 +90,13 @@ the next steps, and `SPEC.md` is the spec for them.
 ## Next steps (in `SPEC.md` order)
 
 1. Port `Projection.projectGrid` into the mesh build (replace the trivial
-   `x, h, y` vertices with the projected corners) and re-tune `Eye`/`Horizon`
-   against `assets/reference/isoframe.png` — closes Open Question 1.
-2. Fragment-shader the height ramp (drop the dither) — `Terrain.flatPaletteIndex`
-   is the ramp; `assets/palette.json` is the 16 colours.
+   `x, h, y` vertices with the projected corners). The maths is exact
+   (`SPEC.md` §3 — reproduces the game's `$3f364` byte-for-byte), so no
+   `Eye`/`Horizon` re-tune is needed; just feed `EYE`=320 `HORIZON`=130.
+2. Fragment-shader the height ramp (drop the dither) — either
+   `Terrain.flatPaletteIndex`, or the `colourByte`→index table in `SPEC.md` §4
+   (which is what the real dither resolves to); `assets/palette.json` is the
+   16 colours. `assets/dither.bin` is there for a faithful stipple.
 3. Sprites: `assets/sprites/` + `assets/headings.json`, drawn per-cell inline in
    the grid walk (painter's order — do not add a separate sorted pass).
 4. Camera: 16 yaw steps, 7 zoom levels (`assets/tables.json → zoom_geometry`).

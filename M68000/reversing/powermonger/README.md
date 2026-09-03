@@ -293,6 +293,21 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     exact vertical calibration and the dither phase are left open (`SPEC.md` §9).
     `port/godot/` stands up a Godot 4.x + F# skeleton (F# = terrain decode +
     projection, C# = the thin node layer; the F# lib builds clean).
+15. The 77th pass **closes the projection** and **corrects the dither phase**
+    (doc + tooling only; aligned re-disasm of `$fecc`/`$ff7c`/`$e3e6..$e4de`).
+    The projection maths reproduces the game's own `$3f364` corner buffer
+    **byte-exact** (81/81 vertices) — the 76th's "island 15-20 px low" was a bad
+    diff against a live frame whose camera had drifted from the RAM snapshot
+    (the consistent reference is the snapshot's back buffer `$24400`). The real
+    dither phase is `A5 = [$ff9e] + colourByte*128 + (topY & 15)*8`, rolling
+    `+4 B/line` `+8 B/16-px-cluster`, two big-endian longs/cluster = planes
+    {0,1},{2,3}; `dither.bin` was truncated at 2 KB (phase reaches ~8.5 KB) and
+    is now a 16 KB dump. Decoding at `colourByte*128` lands on the right palette
+    families (`0x24-2c` green ramp, `0x08-0b` water, `0x18-1c` rock) and
+    `pm_render_ref.py`'s greens match the reference within ~5 %; a pixel-exact
+    fill still needs the `$e420`-`$e55a` span walker ported (`SPEC.md` §9). The
+    `$115e0` sprite category dispatch is mapped (`SPEC.md` §6); the per-category
+    frame rip, HUD glyphs and the `$e0d4` border master remain deferred.
 
 ## Files
 
@@ -311,4 +326,4 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |
 | `economy.md` | the economy (complete, 74th-75th): the **goods** ledger — `pm_leader.goods[0..7]` (`$4e514` +24), fed by the shepherd FSM (`$5ec6`→modes `$3e`/`$44`/`$42`→`$60dc`), circulated by porters (`$159de`/`$159a4`), spent on unit equipment tiers by the army-supply subsystem (`$6352`/`$638c` = "invention"); the **separate** manpower ledger (`$4e514` +6/+8) and its full flow table incl. the per-settlement upkeep drain (`$163b8`); the per-settlement heartbeat (mode `$7c`, `$157e6`) and the loyalty/defection accumulator (`$4e514` +14 → `$550e`); the `$4f916` settlement records + builders `$2fc0`/`$2984`; world-gen (`$10d1e` / `$ffa6` / `$4592f`); and the characterised-benign `$163ea` write aliasing |
 | `powermonger.sym` | `addr<TAB>name` symbol table for `trace_cfg.py --names` (routines + data tables named across all five docs) |
-| `port/` | **iso-renderer port precursor (76th pass).** `port/assets/` = every asset + constant the terrain renderer reads, extracted from a live RAM image (`tools/pm_export.py`), with `manifest.json` provenance. `port/SPEC.md` = the porting contract (coordinate systems, the `$fecc`/`$ff7c` projection with exact constants, the rolling-bitplane dither, sprites, zoom, frame pipeline). `port/godot/` = a Godot 4.x + F# skeleton (F# logic lib, C# node glue, one heightmap mesh). `tools/pm_render_ref.py` rebuilds a frame from `port/assets/` alone: the island silhouette + shading reproduce (`port/assets/reference/render_compare.png`); the exact perspective calibration + dither phase are open (`SPEC.md` §9). |
+| `port/` | **iso-renderer port precursor (76th pass).** `port/assets/` = every asset + constant the terrain renderer reads, extracted from a live RAM image (`tools/pm_export.py`), with `manifest.json` provenance. `port/SPEC.md` = the porting contract (coordinate systems, the `$fecc`/`$ff7c` projection with exact constants, the rolling-bitplane dither, sprites, zoom, frame pipeline). `port/godot/` = a Godot 4.x + F# skeleton (F# logic lib, C# node glue, one heightmap mesh). `tools/pm_render_ref.py` rebuilds a frame from `port/assets/` alone. **77th:** the projection now reproduces the game's `$3f364` corner buffer byte-exact and the dither phase is corrected (`colourByte*128 + (topY&15)*8`, rolling); the colour families match the reference, a pixel-exact fill needs the span walker ported (`SPEC.md` §9). |
