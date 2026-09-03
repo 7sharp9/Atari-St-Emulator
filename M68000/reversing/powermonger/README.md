@@ -209,6 +209,16 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    `$57fba`, reduced by `$d23a` to a UI-only strength ratio `$57fce`. Mission
    1's enemy captain never issues an autonomous order in ~1000 traced ticks; the
    `$6564` path was confirmed by forcing a command slot ready.
+9. The 72nd pass tightened the **scheduler** (the sim tick `$13000`
+   disassembled and its cadence measured — 13 ticks / 250 VBLs ≈ 2.6 Hz,
+   compute-bound; corrected the 70th/71st call-order), reclassified **combat**
+   (`$5778` is contact bookkeeping, *not* a battle resolver — casualties are
+   attrition via `$5c80`/`$5bd2`, projectiles via `$57f0`, and capture via
+   `$1d70`; a 166-tick forced mission-1 fight produced engagement + 5 captures
+   + 0 field deaths), decoded the **campaign hook** `$6762`/`$67d0`, and settled
+   the **RNG** question (`$57fec` is the low bits of a tick counter — the AI is
+   deterministic; `$57ff6` is a sound-only LCG). All in `strategy.md`; a
+   `powermonger.sym` symbol table was added for `trace_cfg.py --names`.
 
 ## Files
 
@@ -224,4 +234,5 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `iso_zoom_in.png` / `iso_zoom_out.png` | iso view at zoom index 1 / 7 (69th, `$fe04` patched via `$13bbe`) |
 | `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |
 | `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads |
-| `strategy.md` | the strategic layer: the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, and what fired vs didn't in mission 1 |
+| `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |
+| `powermonger.sym` | `addr<TAB>name` symbol table for `trace_cfg.py --names` (routines + data tables named across all four docs) |
