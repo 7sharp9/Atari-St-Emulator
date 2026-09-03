@@ -15,10 +15,19 @@ the "Between Pages 1-5" briefing (three commanders behind a stone table, a
 territory preview, "How many People in this land?" with two OK buttons). Getting
 there needed two 68000 divide fixes the isometric-view setup code exercises:
 DIVU/DIVS quotient-overflow, and DIVU/DIVS divide-by-zero to vector 5 (see
-"Bug 4" below). The briefing to isometric battle view transition is **not yet
-found**: the OK-button clicks reach PM's mouse state machine correctly but the
-data-driven dialog hit-test at `$7298` doesn't fire on any position tried.
-`briefing.png`.
+"Bug 4" below). `briefing.png`.
+
+**68th pass: clicking OK on the briefing drops PM into the isometric battle
+view.** `iso_view.png`: the height-mapped terrain on the stone table, the
+commander portrait, the mini-map, the full command UI. No emulator code change:
+the 67th pass had the dialog hit-test decoded correctly but the OK-button
+click positions tried were outside the panel's grid and the jump-table base
+used to read the per-dialog OK handler was mis-computed by four bytes. The
+briefing panel is a 24x32 grid of 4x6-pixel cells anchored at screen (0,0);
+the left OK button's clickable cells sit at grid col 3-6 / row 28-29, i.e.
+screen x 16-24, y 174-180. A left click there runs `$b814`, which commits the
+population and sets `$1c48a=1` to advance the state machine. See "PM's mouse
+dialog state machine" below for the full decode.
 
 **The disks are not committed** (commercial). To reproduce:
 
@@ -155,7 +164,22 @@ Selftest after the fix: DIVU 2494→4963 pass, DIVS ~2500→4992 pass, **0 wrong
 0 unimplemented** for both (the residual `frame` fails are the pre-existing
 odd-address address-error cases, unchanged). 30M diskless boot byte-identical.
 
-## PM's mouse dialog state machine (67th pass RE, for the next attempt)
+### Drive recipe (68th pass, briefing to isometric view)
+
+```
+# from the "Between Pages 1-5" briefing (scratchpad/pm67_p4c.snap, PC $e450):
+./run.ps1 -NoBuild rrepl scratchpad/pm67_p4c.snap -DiskA scratchpad/pm63/pm_replicants.st
+  w 2df92 001400b1      # cursor X=$14 (20), Y=$b1 (177) - inside the left OK button
+  w 2df8e 001400b1      # latched click position (same)
+  w 2df96 00010001      # left-click-pending edge flag
+  s 12000000            # -> the isometric battle view (iso_view.png), $14e4e = $2c
+```
+
+The `w` pokes stand in for a real click delivered through PM's mouse state
+machine; a live `mouse move` / `mouse down l` to the same screen position does
+the same thing. `snap` at the end for `pm68_isoview.snap`.
+
+## PM's mouse dialog state machine (67th pass RE, completed 68th)
 
 PM's own IKBD ISR is at `$18be` (vector `$46`, i.e. `[$118]`). It parses the
 `$F7` absolute-position reply (our `$0D` interrogation answer):
@@ -172,14 +196,60 @@ PM's own IKBD ISR is at `$18be` (vector `$46`, i.e. `[$118]`). It parses the
 
 The VBL handler `$1270` dispatches on `$1c48f` through a jump table at `$12ac`
 (word offsets, index = `button_byte * 2`): button `4` (left-down) → `$1330`,
-which sets `$2df96=1` and latches `$2df8e`. Verified working: a synthesised
-`mouse down l` produces exactly one `$F7 04` poll, `$2df96` goes to 1, position
-latches. The briefing screen's consumer is the data-driven hit-test at `$7298`
-(`tst.w $2df96` → `movem.w $2df8e,#$0003` into D0/D1 → rectangle loop over a menu
-descriptor based at `$7a36`). No click position tried made it accept. Next:
-decode the menu descriptor layout (offsets ~374 bytes into `$7a36`), or check
-whether the population value must be non-zero first, or whether it wants a
-double-click the 6301 model isn't delivering.
+which sets `$2df96=1` and latches `$2df8e`.
+
+### The briefing dialog hit-test (`$7298`), decoded
+
+`$7298` runs when `$2df96 != 0`. It loads D0=X, D1=Y from the latched click
+(`movem.w $2df8e,#$0003`) and walks the four 8-byte entries of the dialog
+descriptor at `$7a36`:
+
+| entry word | meaning |
+|------------|---------|
+| word 0 (`D2`) | offset from `$7a36` to this panel's `{widthCells:b, heightCells:b}` pair, then its cell grid; `0` = inactive entry |
+| word 1 (`D3`) | packed rectangle origin: `left = ((D3>>8) & 0x1f) * 16`, `top = D3 & 0xff` |
+
+The briefing has one active entry (`$7a36` = `0176 0000 ...`): panel at screen
+`(0,0)`, `descriptor+$176` = `{06, 20}` so the grid is **24 cols x 32 rows of
+4x6-pixel cells**, covering screen x 0-95, y 0-191. A hit computes
+`col = (X-left) >> 2`, `row = (Y-top) / 6`, fetches `grid[row*24 + col]`:
+
+- cell `>= $20` (text / button glyphs incl. `$80`-`$87`) -> handler `$7658`
+- cell `$01`-`$1f` -> small jump table at `$735e` (border cells `$01`-`$0b` ->
+  `$739e` "click-anywhere confirm"; `$10`/`$11` -> `$73d4`/`$740e` digit
+  up/down on the population counter)
+
+Grid layout (row : screen-y):
+
+```
+r28 y168:  . .   80 81 81 82 . . .   10 10 10 10 . . .   80 81 81 82 . .   ($10 = population up-arrows)
+r29 y174:  . .   83 4f 4b 84 . . .   30 30 30 30 . . .   83 4f 4b 84 . .   ("OK" text, "0000" digits)
+r30 y180:  . .   85 86 86 87 . . .   11 11 11 11 . . .   85 86 86 87 . .   ($11 = population down-arrows)
+```
+
+`$7658` re-walks from the clicked cell to the enclosing `$80` cell (top-left of
+a button widget), gets its grid offset in D3 (left OK = `$2a3`, right OK =
+`$2b1`), plays a click sound, then `jmp` through a **per-dialog** table:
+`D0 = word[$76fa + $7a3c]`, `jmp $76fe + D0`. `$7a3c` is the dialog id; the
+briefing's is `$0a`, and `word[$76fa + $0a] = word[$7704] = $0186` ->
+`jmp $7884`:
+
+```
+$7884  cmpi.w #$2a3,D3 ; beq $7890     ; left OK
+$788a  cmpi.w #$2b1,D3 ; bne $7896     ; right OK
+$7890  jsr $b814
+```
+
+`$b814` parses the population digit string, then **unconditionally** (the crack
+nopped the "must enter a value" check at `$b842`: `moveq #0,D0 / nop / bne`)
+writes `population + $2c` to `$14e4e` (the gate the `$739e` handler and `$7774`
+test), copies the game-state seed table `$584c4` -> `$580a0`, `jsr $13b9a`
+(world generation / `$10d1e` load path), and `move.w #$1,$1c48a` to advance the
+main state machine. One frame later PM is compositing the isometric view.
+
+The 67th-pass "no click accepted" was two mistakes: click positions outside the
+`(0,0)`-anchored grid, and reading the per-dialog OK table with the base four
+bytes low so `$7a3c=$0a` appeared to route to a handler that ignores OK.
 
 ## How far it runs now
 
@@ -191,6 +261,12 @@ double-click the 6301 model isn't delivering.
    Peter Molyneux / Glenn Corpes", …) — `title.png`, `credits.png`.
 5. Empire runs on to the pre-game narrative screen — "Pondering over the map, you
    prepare plans for battle…" (`empire_intro.png`).
+6. Replicants: name entry -> option menu -> world map -> mission briefing ->
+   **isometric battle view** (`iso_view.png`) with the height-mapped terrain,
+   commander portrait, mini-map and command UI. The view is static while no
+   input is given (PM only recomposites the terrain on scroll / rotate / zoom /
+   unit movement); driving it further needs PM's in-game key handling reversed,
+   which is a separate job.
 
 ## 66th pass — reached the game ([cr Replicants])
 
@@ -252,10 +328,11 @@ be profiled with real hit counts. What *is* observable:
   `_v_bas_ad` at `$44E` — screendump / the frame recorder must use the shifter
   base for PM.
 
-A profile of the isometric terrain renderer (vertex projection MULS/DIVS, terrain
-fill, sprite painter's-sort, per-zoom LOD) needs PM one territory-click deeper —
-carried to the next pass. See `graphics.md` for the "what a modern port would do"
-notes, which stand on the design regardless.
+The isometric terrain renderer was reached and profiled in the 68th pass, see
+`graphics.md` for the grounded routine-by-routine breakdown (`$14b62` entity /
+projection loop, `$163ea` shift-add iso projection, `$1648e` terrain sampler,
+`$164bc` DIVU edge-slope, `$16738` sprite blit, `$12ce0` bulk buffer -> screen
+copy).
 
 ## Files
 
@@ -269,3 +346,4 @@ notes, which stand on the design regardless.
 | `menu.png` | "Welcome to the World of PowerMonger" option menu (66th pass) |
 | `world_map.png` | the campaign world map — PM in-game (66th pass) |
 | `briefing.png` | "Between Pages 1-5" mission-briefing screen, reached past the world map (67th pass) |
+| `iso_view.png` | the isometric battle view, reached by clicking OK on the briefing (68th pass) |
