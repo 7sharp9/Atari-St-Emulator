@@ -187,12 +187,13 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 6. Replicants: name entry (`name_entry.png`) → option menu (`menu.png`) → world
    map (`world_map.png`) → mission briefing (`briefing.png`) → **isometric battle
    view** (`iso_view.png`). The 69th pass reversed PM's in-game key handling (ISR
-   `$18be`, the `$2de6c` key array, the right-shift gate at `$13762`) and drove
-   the camera: rotation re-projects the whole terrain (`iso_rotated.png`); keypad
-   scroll and keypad zoom write their variables but have no effect (scroll is
-   cursor-driven, keypad zoom never calls the `$fe04` geometry rebuild). Renderer
-   profiled settled vs moving — see `graphics.md` "In-game camera control" and
-   "To finish Q2".
+   `$18be`, the `$2de6c` key array, the right-shift gate at `$13762`), drove the
+   camera (rotation re-projects the whole terrain — `iso_rotated.png`), and
+   **closed Q2**: the renderer is profiled at both zoom extremes
+   (`iso_zoom_in.png` / `iso_zoom_out.png`) in `graphics.md`. Keypad scroll and
+   keypad zoom write their variables but have no effect (scroll is cursor-driven,
+   keypad zoom never calls the `$fe04` geometry rebuild — the real zoom path is
+   `$13f60` → `$fe04`).
 
 ## Files
 
@@ -205,4 +206,5 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `briefing.png` | "Between Pages 1-5" mission briefing (67th) |
 | `iso_view.png` | isometric battle view, past the briefing OK button (68th) |
 | `iso_rotated.png` | iso view after ~5 keypad rotation steps (`$ff9a` $f0→$a0), 69th |
-| `graphics.md` | the graphics pipeline + measured renderer profile + camera control + modern-port notes |
+| `iso_zoom_in.png` / `iso_zoom_out.png` | iso view at zoom index 1 / 7 (69th, `$fe04` patched via `$13bbe`) |
+| `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |

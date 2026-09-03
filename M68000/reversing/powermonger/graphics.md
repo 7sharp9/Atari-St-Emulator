@@ -9,12 +9,13 @@ renderer composites the land onto the stone table. Recipe and the dialog decode
 that found the OK click are in `README.md`.
 
 The 69th pass reversed PM's in-game key handling (the "input-gated idle"
-blocker), drove the camera, and profiled the renderer settled vs moving. The
-literal zoomed-in / zoomed-out hit-count table is **not delivered**: this build's
-keypad zoom is a latent no-op and the functional zoom path needs a
-snapshot-register harness to trigger. What that path is, and why the settled
-view is not actually idle, is below ("In-game camera control" and "To finish
-Q2").
+blocker), drove the camera, and profiled the renderer at both zoom extremes.
+**Q2 is closed:** the zoomed-in vs zoomed-out hit-count comparison is in "Q2
+zoom comparison — measured" below; the camera-control decode and the settled-vs-
+moving profile are in "In-game camera control" and "Isometric renderer,
+measured". Headline: zoom-in is fill/sprite/entity bound, zoom-out is slope-
+divide bound (`$f000`, 9×), and on this early map zoom-out is ~8% cheaper
+overall.
 
 ## Pipeline shape (world map / menus / iso view all share it)
 
@@ -72,10 +73,11 @@ instruction-weighted, 30 frames settled vs 30 with the rotate key poked):
    imprecise — the flush is periodic, and unit-animation projection runs every
    frame.
 
-The zoomed-out slowdown on real hardware is fill-rate and primitive-count bound
-(more terrain cells + more sprites + more overdraw, 8 MHz 68000, no blitter on a
-plain STF), not logic bound. Zoom is a discrete 7-level LOD select
-(`$13f83` table `[_,84,42,28,21,17,14,12]`, index → `$fe04`).
+Zoom is a discrete 7-level LOD select (`$13f83` table `[_,84,42,28,21,17,14,12]`,
+index → `$fe04` → the 13 constants at `$fdea`–`$fe02`). The "zoomed-out
+slowdown" players report is the `$f000` slope-divide cost (9× more edges to set
+up for many small tiles) once the map is dense enough to outweigh the
+entity/sprite/fill saving — see "Q2 zoom comparison — measured".
 
 ## What a modern port would do differently
 
@@ -149,27 +151,56 @@ What actually moves the view:
   geometry (`$fdea`–`$fe02`) is never recomputed. 11 increments → byte-identical
   frame. The only real reader of `$ff9c` is a coincidental data constant.
 
-## To finish Q2: the zoom comparison
+## Q2 zoom comparison — measured (69th pass)
 
-The functional zoom path is **`$13f60`** (reached from the `$13212` mouse-cursor
-command dispatch, cases `$13386` / `$1338a` / `$1338e` / `$133a0`): it sets
-`$ff9c = $13f83[index]` **and** `jsr $fe04` with `D1 = index` (1–7). `$fe04`
-derives the 13 render constants at `$fdea`–`$fe02`. Current state = index 4
-(`$fdea..$fe02` == the D1=4 row; formulas transcribed in a comment in
-`scratchpad/`).
+**How zoom is set.** The functional path is `$13f60` (from the `$13212`
+mouse-cursor command dispatch, cases `$13386` / `$1338a` / `$1338e` / `$133a0`):
+it sets `$ff9c = $13f83[index]` **and** `jsr $fe04` with `D1 = index` (1–7).
+`$fe04` derives the 13 render constants at `$fdea`–`$fe02` (formulas in
+`scratchpad/pm69_fe04_notes.txt`). `$13b9a` (the mission-view build, run on the
+briefing OK click) itself does this at `$13bbe` with a hard `#$4`. To reach the
+two extremes without the mouse dispatch: from `pm67_p4c.snap` (briefing, pre-OK)
+patch the `$13bbe` immediate — `w 13bc0 000<idx>33c1` and `w 13bb8 00<tab>0000`
+— then run the OK click. `iso_zoom_in.png` = index 1, `iso_zoom_out.png` = index
+7 (`pm69_zi1.snap` / `pm69_zi7.snap`); both re-render cleanly, `$fdea`–`$fe02`
+land exactly on the D1=1 / D1=7 rows. (Hand-poking `$fdea`–`$fe02` instead is
+unsafe — an inconsistent stride sends the `$e4de` filler into code at `$f0xx`;
+not an emulator gap, `$f0xx` is never written in normal play.)
 
-Hand-poking `$fdea`–`$fe02` to another index's constants is **unsafe**: an
-inconsistent stride sends the `$e4de` span filler past its buffer into code at
-`$f0xx`, and the emulator then executes the corrupted word (`$4c45`) as an
-illegal instruction. This is the filler scribbling on itself, **not** an
-emulator gap — `$f0xx` is never written during normal play (`watch` clean over
-settled + rotating runs).
+**Result** (`trace_cfg.py --blocks`, instruction-weighted, 30 VBLs each, no
+dropped frames at either zoom):
 
-Next: a snapshot register-edit harness — load `pm68_isoview.snap`, set
-`PC = $fe04`, `D1 = 1` (or `7`), run to the `rts` at `$fe8c`, restore PC, then
-force a re-render with a rotation step and capture `ATARI_TRACE_EVENTS`. Compare
-`$e4de` / `$fe8e` / `$163ea` / `$16738` / `$12ce0` instruction-weight and the
-`$1270` VBL cadence at index 1 vs index 7. The renderer-cost model above
-predicts index 7 (zoomed out, small tiles, more cells) shifts weight from
-`$e4de` fills toward `$fe8e` / projection but stays within frame budget on this
-sparse early-mission map.
+| region | zoom-in (idx 1) | zoom-out (idx 7) | out / in |
+|--------|----------------:|-----------------:|---------:|
+| `$14b62` entity driver          |  6196 |  1032 | 0.17× |
+| `$16738` sprite blit            |   650 |   109 | 0.17× |
+| `$163ea` projection             |  1062 |   374 | 0.35× |
+| `$1648e` terrain sampler        |   417 |   118 | 0.28× |
+| `$164bc` edge DIVU              |    14 |     0 | —     |
+| `$e4de` span filler            | 42396 | 32772 | 0.77× |
+| **`$f000` fixed-point slope divide** |  2253 | **20867** | **9.26×** |
+| `$1af32` timer ISR (fixed)      | 47806 | 48624 | 1.02× |
+| **total instr-equiv**          | **423527** | **391580** | **0.92×** |
+| with one rotation step / frame  | 428162 | 392576 | (rot re-scan `$fe8e` 3545 → 12483) |
+
+**Findings.**
+
+1. **The bottleneck swaps sides with zoom.** Zoom-**in** is fill-rate + sprite +
+   entity bound: big tile spans (`$e4de`), big sprites (`$16738`), and far more
+   on-screen entities to process (`$14b62` 6×). Zoom-**out** is geometry bound:
+   ~9× the `$f000` slope divides, because many small tiles = many more quad
+   edges to set up, even though each span is short.
+2. **Zoom-out is ~8% cheaper here, not more expensive** — on this sparse
+   first-mission island the entity/sprite/fill saving beats the extra edge
+   math. On a dense late-game map the `$f000` 9× would invert that (this is the
+   "zoomed-out slowdown" players report). The 69th-pass prediction that weight
+   shifts toward `$fe8e` / projection was half right: it shifts to `$f000`, and
+   `$163ea` projection actually *drops*.
+3. **Rotation stays absorbed at both zooms.** A rotation step adds ~3.5k
+   (`idx 1`) / ~12.5k (`idx 7`) `$fe8e` cell-scan iterations but total load
+   barely moves (both within 1% of settled) — the `$1870` / `$e4xx` idle spin
+   still has the headroom. No dropped VBLs at either zoom in any run.
+4. **Instruction-count model, not cycles.** The ratios are meaningful; "within
+   frame budget" is soft (this emulator is instruction-counted). A `divu` is
+   ~140 cycles on a real 68000, so `$f000`'s 9× at zoom-out is heavier in
+   wall-clock than the instruction weight suggests — reinforces finding 2.
