@@ -79,7 +79,7 @@
 000057f0	pm_spawn_projectile    # spawn into $4be00 effect array; vel toward target /$78, life $14, type=D1
 0000596a	pm_effect_update       # per-tick projectile loop over $4be00..$4c110; life--; type $12 -> area hit on impact
 00016778	pm_bucket_unlink       # remove one object from its $47970 cell chain
-00004be00	g_effect_slots         # 48 slots x $10 bytes: projectiles / effects (slot 0 of $4bdf0 = template w/ reload byte)
+0004be00	g_effect_slots         # 48 slots x $10 bytes: projectiles / effects (slot 0 of $4bdf0 = template w/ reload byte)
 00015302	pm_reached_enemy       # mode $2e: snap to target, mode $32, maybe $56a6
 00003c08	pm_group_restructure   # scatter/rebuild a group after a rout or a lost besiege
 00005c80	pm_upkeep              # per-entity upkeep: survivability[flags&$1f] - wear*4 < 0 -> $5bd2; morale += $57fec&1
@@ -144,8 +144,8 @@
 00057fec	g_tick_rng            # free-running counter, ++ in $1abc0; low bits used as "random" (deterministic)
 00057ff6	g_sound_lcg           # 13-bit sound LCG state
 0002df70	g_sim_clock           # ++ each running tick
-00004bb3e	g_master_tick         # long master tick counter, ++ at $013034
-00002df72	g_game_clock          # compared against objective wait-until timestamps
+0004bb3e	g_master_tick         # long master tick counter, ++ at $013034
+0002df72	g_game_clock          # compared against objective wait-until timestamps
 00057fee	g_game_speed          # $57ff0 reload (tick subdivision; 1:1 at normal speed)
 00057ff0	g_tick_subdiv         # counts down each $13000; underflow -> present + reload
 00057ff2	g_paused              # nonzero = paused (skips the AI + render, not the executor)
