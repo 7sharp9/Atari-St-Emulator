@@ -14,14 +14,15 @@
 0001abaa	pm_sound_ambient        # NOT economy: sound LCG x16 + $ff9e sample mix + one $4d252 wildlife poke
 0001abc0	pm_rng_step             # $57fec++ (tick-count "RNG") + $57ff6 sound LCG x=(x*$24a1+$24df)&$1fff
 000178ae	pm_render_setup_a       # per-frame render prep (group $4c exec sub-record)
-0000f898	pm_render_terrain       # walk the heightmap grid far->near, 2 flat triangles per cell + cell sprite
+0000f898	pm_render_terrain       # walk the heightmap grid far->near, 2 rolling-bitplane-dithered triangles per cell + cell sprite; sets $ffa2 = 2*[$ff9e] (dither-table base) on first call
 0000fec6	pm_project_grid        # project grid corners -> $3f364 (rotate by $ff9a, perspective divide $ff7c)
 0000ff7c	pm_perspective_div     # sx = x*$ff98/($ff98-z) ; sy = (z-$ff96)*$ff98/($ff98-z)+$ff96
-0000ef62	pm_tri_raster          # flat triangle: bounds-check + sort 3 Y, $f000 edge slopes, emit span stream
+0000ef62	pm_tri_raster          # triangle: bounds-check + sort 3 Y, $f000 edge slopes; writes colour byte + top-Y to the span record, emits per-scanline edge stream
 0000f000	pm_edge_slopes         # fixed-point dy/dx setup for a pair of triangle edges (divu)
-0000e3e2	pm_span_driver         # walk the span command stream; A5 -> $ffa2 colour pattern; 2-line dither
-0000e4de	pm_span_fill           # Duff-device move.l D0/D1,(A2)+ solid fill; edge masks $ece2+/-
-0000ffa2	g_colour_patterns      # pre-expanded 4-plane bit patterns per colour index (built by $fec6)
+0000e3e2	pm_span_driver         # walk the edge stream; A5 = dither-table base + colourByte/2 + 4*(y+topY); per scanline A5 += 4 (planes roll up line to line)
+0000e4de	pm_span_fill           # Duff-device move.l D0/D1,(A2)+; D0/D1 = movem.l (A5) = 4 bitplane-mask words of one 16px tile, repeated; ends via edge masks $ec62/$eca2
+0000ffa2	g_dither_addr_scratch  # holds 2 * [$ff9e]; $e3e2 does (this + colourByte) >> 1 to land back on the dither-table base
+0000ff9e	g_misc_data_base       # long: base of a shared data block; +0 region = the ~240-byte cyclic bitplane-mask dither table ($2e000 in pm71/pm74 snaps); also used PC-relative by the sound mixer ($1abaa)
 0000ff96	g_proj_horizon         # projection: horizon screen-Y (PC-relative read in $ff7c)
 0000ff98	g_proj_eyedist         # projection: eye distance (PC-relative read in $ff7c)
 00017878	pm_render_setup_b       # rotation-indexed row table select ($17ad8)

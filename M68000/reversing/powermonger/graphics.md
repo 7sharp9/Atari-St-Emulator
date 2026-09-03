@@ -1,6 +1,6 @@
 # PowerMonger ST — the graphics pipeline, and what a modern port would change
 
-## Status (73rd pass)
+## Status (73rd pass, dither corrected 74th)
 
 The 73rd pass added **"The terrain mechanism"** below (the 69th pass had a
 profile, not the mechanism): PM's iso view is a **software heightmap-grid
@@ -10,6 +10,14 @@ per cell** with the terrain byte as the colour index, and cell sprites are drawn
 inline in the same walk. No mesh, no texture, no light model, no palette
 cycling (frame-diff confirmed). Sprites + draw order + the frame pipeline are
 Pass 4 (still open).
+
+**74th-pass correction** (`$ef62` → `$e3e2` → `$e4de` section below): the span
+fill is not a "pre-expanded per-colour 4-plane pattern" with a "2-line vertical
+dither" — it reads a **single ≈240-byte cyclic table of raw 16-bit bitplane
+masks** whose base is the long at `$ff9e`, and the colour byte / triangle top-Y
+only phase-shift the read cursor into it. The dither is 2-scanline-coherent
+because the cursor advances half a tile per line, so each scanline's high two
+planes are the next scanline's low two.
 
 ## Status (69th pass)
 
