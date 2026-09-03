@@ -29,23 +29,23 @@ individual men then follow their own state machines toward the goal.
 
 ### The simulation tick
 
-`$14b62` is **not** called every VBL. The main loop `$13000` decrements
-`$57ff0`; when it underflows it reloads from `$57fee` (the game-speed setting,
-~21 on normal) and runs the slow block, which ends:
+`$14b62` runs once per pass through the sim-tick body `$13000` — see
+`strategy.md` "Where it runs — the sim tick `$13000`, disassembled" for the full
+call order and the 72nd-pass correction. In short: `$13000` **is** the tick;
+`$14b62` (at `$130c2`) and the executor `$6a3a` (at `$130c8`) run on *every*
+`$13000` call, not behind the `$57ff0`/`$57fee` gate (that gate is only the
+present-rate divider — `$1870` / `$12ce0` / the two renderers).
 
-```
-$130bc  jsr $165b2          ; world / terrain animation
-$130c2  jsr $14b62          ; << the entity iterator
-$130c8  jsr $6a3a / $7a56   ; sound, UI
-```
-
-Measured: `$14b62` ran **97 times in 25M instructions** — one pass every
-~254k instructions, ~21 display frames, i.e. a **~2.4 Hz game turn**. The
-renderer (`graphics.md`) runs every VBL and interpolates; the AI is a coarse
-tick underneath it. `$4bb3e` (long) is the master tick counter, bumped at
-`$013034`; its low word `$4bb40` is the wrapping value the iterator uses for
-animation phase. `$14e4e` (population, written by the briefing OK click — see
-`README.md`) non-zero is the "a game is running" gate at `$1303a`.
+Measured (72nd pass, 3M-instruction trace): the tick body runs **13× per 250
+VBLs** — about once per 19 displayed frames, ≈ **2.6 Hz**. The tick is
+compute-bound in this instruction-counted emulator (one full body ≈ 19 VBLs of
+instructions; `$1870` only waits one VBL edge). The 70th-pass "97 in 25M / ~2.4
+Hz" is consistent. `$4bb3e` (long) is the master tick counter, bumped at
+`$013034`; its low word `$4bb40` is the wrapping animation-phase value the
+iterator uses. `$14e4e` (population, written by the briefing OK click — see
+`README.md`) non-zero is the "a game is running" gate at `$1303a`; `$57ff2`
+non-zero (paused) skips the AI + accounting + renderers but **not** the
+executor `$6a3a` or the entity iterator.
 
 ## The iterator — `$14b62`
 
@@ -211,8 +211,9 @@ the settled first-mission view.
 | `$28`/`$2a` | `$15282` | – | **besiege** the target record `46(A1)`: while its group state (`$51538`) is 3, decrement its garrison `46(A0)` each tick; at 0, decrement the settlement's troop count in `$4e514` and `jsr $1d70` (capture) |
 | `$2c` | – (`$153b2`→) | – | fighting hold; mode `$36` counts down back to `$2c` |
 | `$32` | `$15302`+ | – | reached an enemy: snap to its position, mode → `$32`, and if it is engageable (`31(A3) > $2c`, `30(A3) >= $3c`) `jsr $56a6` |
-| — | `$56a6` | – | **engagement**: if flag bit6 + a linked enemy `28(A3)` within `$fff` world units → `jsr $5778` (resolve a combat round); set the enemy's mode to `$32` |
-| — | `$5778` | – | combat resolution proper (not decoded this pass) |
+| — | `$56a6` | – | **engagement**: if flag bit6 + a linked enemy `28(A3)` within `$fff` world units → `jsr $5778`; set both mode bytes to `$32`, link the attacker into `48(A3)` |
+| — | `$5778` | – | **contact bookkeeping, not a battle resolver** — see `strategy.md` "Combat". Marks an engaged garrison's flags `$11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify). Casualties happen elsewhere: attrition in `$5c80`/`$5bd2`, capture in `$1d70` |
+| — | `$57f0` | – | **spawn a projectile** into the `$4bdf0` effect array (`$30`×`$10`): copy position, life `$14` ticks, `type = D1` (weapon/invention tier), velocity toward target via `divu #$78`. Flies as its own object record |
 
 ### Group orders (the "commander AI")
 
@@ -349,8 +350,13 @@ which feed a UI mood indicator (`$57fce`), not the AI.
   there: tracing the AI from a *live* enemy captain (mission 1's never issues an
   autonomous order), the `$67d0` campaign-order hook, and the `$580a6` per-side
   assessment / diplomacy subsystem (`$2200`–`$3500`).
-- `$5778` combat resolution (odds, casualties, the role of `16(A1)` weapon/tool
-  state, invention level).
+- `$5778` — **reclassified** (72nd pass, `strategy.md` "Combat"): it is contact
+  bookkeeping, not a resolver. The casualty mechanic (`$5c80` survivability
+  table `$5ccc` minus a `byte14` wear counter, → `$5bd2` removal → leader /
+  group troop-count decrement) is decoded statically but **no field death fired
+  in 166 traced ticks** of a forced mission-1 fight — captures (`$1d70` ×5)
+  carried it instead. Still open: what raises `byte14` during combat, the
+  projectile-impact link, and the invention-level → projectile-`type` mapping.
 - `$51538` group-order record: `strategy.md` has the stride (`$13c`), the header
   (pending long / type / param), the six interleaved objective slots and the
   `base+$4c` / `base+$64` execution sub-records. Still open: the full field set.
