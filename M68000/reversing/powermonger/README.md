@@ -194,6 +194,13 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    keypad zoom write their variables but have no effect (scroll is cursor-driven,
    keypad zoom never calls the `$fe04` geometry rebuild — the real zoom path is
    `$13f60` → `$fe04`).
+7. The 70th pass reversed the **entity / commander decision loop** — the
+   per-entity behaviour state machine driven once per ~2.4 Hz simulation tick by
+   the iterator `$14b62` and its 75-entry mode table `$14bb4` (`ai.md`). Object
+   records at `$51b66`, spatial buckets at `$47970`, group orders at `$51538`,
+   nations at `$4f916`. Target selection is local: bucket-proximity contact,
+   adjacent-settlement siege, and a group-order destination cell. The strategic
+   layer above it (`$6522` / `$d322` / `$3e06`) is the next target.
 
 ## Files
 
@@ -208,3 +215,4 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `iso_rotated.png` | iso view after ~5 keypad rotation steps (`$ff9a` $f0→$a0), 69th |
 | `iso_zoom_in.png` / `iso_zoom_out.png` | iso view at zoom index 1 / 7 (69th, `$fe04` patched via `$13bbe`) |
 | `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |
+| `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads |
