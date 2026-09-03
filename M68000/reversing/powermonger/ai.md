@@ -121,6 +121,59 @@ effect reuse the same bytes for different things. This is the common layout:
 | 46 | word | offset into `$4e514` (leader table), or a siege garrison count |
 | 48 | word | link to the **target** object record (the entity being chased / attacked) |
 
+### As a C struct
+
+Every offset below is confirmed by disassembly of a handler that touches it.
+The comment says which handler / routine pins it. `//` = decoded; `// ??` = seen
+referenced but purpose not proven. The record is a tagged union on `category`
+(byte 6): a man, a boat, a projectile and a "pending group order" all share the
+50 bytes and reinterpret the tail.
+
+```c
+typedef struct pm_object {           // array $51b66, stride 50, slots 1..510
+/* 0*/  u16  bucket_next;            // $163ea: next in this cell's $47970 chain (byte offset into $51b66, 0 = tail)
+/* 2*/  u16  bucket_prev;            // $163ea / $16778: prev in chain
+/* 4*/  u8   _pad4;                  // ?? (never read in the traced handlers)
+/* 5*/  s8   owner;                  // $14b72: 0 = free slot, >0 = live (commander colour 1..4 / small count), <0 = dying
+/* 6*/  u8   category;               // dispatch tag: $00 man, $02 tree/obstacle, $04, $0a loose, $0e army node,
+                                     //   $10, $18, $1e, $20, $2c corpse-in-decay, $3c
+/* 7*/  u8   flags;                  // bit4 = in-formation / stamped by lead ($d322,$14f08); bit5 = blocked-needs-repath;
+                                     //   bit6 = can-fight ($56a6); bit7 = render-cull / don't-count ($d322)
+/* 8*/  s16  world_x;                // 0..$3fff   (movem.w 8(A1),D6/D7 at the top of every handler)
+/*10*/  s16  world_y;                // 0..$1f40
+/*12*/  s8   step_x;                 // signed per-tick velocity, added to world_x by nearly every handler
+/*13*/  s8   step_y;
+/*14*/  u8   anim_wear;              // $14b9a: ++ once per animation cycle. Doubles as the $5c80 wear counter
+                                     //   (survivability collapses once anim_wear-$3c > 0). Not reset by the handlers seen.
+/*15*/  u8   _pad15;                 // ??
+/*16*/  u8   speed;                  // $164bc divisor (step magnitude); 0 for a stationary entity
+/*17*/  u8   heading;                // 0..15, from $14262; picks the sprite and feeds $12d56
+/*18*/  s16  dwell;                  // mode dwell timer: subq #1 / bge|bgt|bne at the head of the timed modes
+/*20*/  s16  target_x;               // movement goal. Also reused as {packed cell x:6, hi $70/$80/$90} by $56/$5c
+/*22*/  s16  target_y;
+/*24*/  u16  anim_phase;             // $14b84: added to $4bb40 before the animation-trigger compare
+/*28*/  u16  link_related;           // group lead / boat being boarded / obstacle-avoid target ($14d7c,$1597a)
+/*30*/  u8   prev_mode;              // saved before a transition; $14f08 branches on ==$2e, $15302 sets $32
+/*31*/  u8   mode;                   // <<< the FSM dispatch key: jmp $14bb4 + word[$14bb4 + mode]
+/*32*/  u8   anim_sub;               // $1623c / $16260: 0..3 rotating animation phase
+/*33*/  u8   order_class;            // $0a = "hold / defensive" — special-cased in $14c92,$14d32,$14f08,...
+/*34*/  u16  nation_off;             // byte offset into the nation/settlement table $4f916
+/*36*/  u16  origin_x;               // $14e56: saved (x,y) at the start of a patrol; also a packed dest cell
+/*38*/  u16  origin_y;
+/*40*/  u16  path_cursor;            // $14e70: byte cursor into the patrol-path table $168ee.
+                                     //   $158da ($48): the obstacle-sweep angle instead.
+/*42*/  u16  group_off;              // byte offset into the group-order table $51538 (== the group id).
+                                     //   Low 6 bits + next 7 bits also decode as a packed muster cell {x:6,y:7}.
+/*44*/  u8   msg_code;               // pending "under attack" message, consumed + cleared by $16260 / $159a4
+/*45*/  s8   morale;                 // combat HP in melee: $1533c drains it, <=0 -> $5590 (kill/rout). $5c80 creeps it up.
+/*46*/  u16  garrison_or_leader;     // $15282: besiege garrison count; $5bd2: offset into $4e514 for the kill credit
+/*48*/  u16  link_target;            // the entity being chased / attacked ($14f08 mode $10, $15302, $56a6)
+} pm_object;                         // sizeof == 50
+```
+
+The projectile / effect reinterpretation of the same slot is in `## Combat`
+below (`pm_effect`).
+
 ## Spatial primitives
 
 The handlers share five routines. None of the movement math uses the isometric
@@ -210,10 +263,33 @@ the settled first-mission view.
 |------|---------|-----:|-----------|
 | `$28`/`$2a` | `$15282` | – | **besiege** the target record `46(A1)`: while its group state (`$51538`) is 3, decrement its garrison `46(A0)` each tick; at 0, decrement the settlement's troop count in `$4e514` and `jsr $1d70` (capture) |
 | `$2c` | – (`$153b2`→) | – | fighting hold; mode `$36` counts down back to `$2c` |
-| `$32` | `$15302`+ | – | reached an enemy: snap to its position, mode → `$32`, and if it is engageable (`31(A3) > $2c`, `30(A3) >= $3c`) `jsr $56a6` |
-| — | `$56a6` | – | **engagement**: if flag bit6 + a linked enemy `28(A3)` within `$fff` world units → `jsr $5778`; set both mode bytes to `$32`, link the attacker into `48(A3)` |
-| — | `$5778` | – | **contact bookkeeping, not a battle resolver** — see `strategy.md` "Combat". Marks an engaged garrison's flags `$11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify). Casualties happen elsewhere: attrition in `$5c80`/`$5bd2`, capture in `$1d70` |
-| — | `$57f0` | – | **spawn a projectile** into the `$4bdf0` effect array (`$30`×`$10`): copy position, life `$14` ticks, `type = D1` (weapon/invention tier), velocity toward target via `divu #$78`. Flies as its own object record |
+| `$2e` | `$15302` | – | **reached the target** `48(A1)`: snap `(D6,D7)` onto it, set both mode bytes `$32`; if engageable (`mode(target) > $2c`, `prev_mode(target) >= $3c`) `jsr $56a6` |
+| `$32` | `$1533c` | – | **melee**: face the target (`heading + $80`); if it isn't already in `$32`, `jsr $56a6`. Then **drain the target's `morale` (byte 45)** by `(min(msg_code,6) >> 1) + 1` per tick (1..4). At `morale <= 0` → `jsr $5590` (kill-or-rout). Target dead first → mode `$2c` for both |
+| `$34`/`$36` | `$153b2`/`$153cc` | – | fight recoil / hold; `$36` counts `dwell` back down to `$2c` |
+| — | `$56a6` | – | **engage**: if `flags.bit6` and the linked enemy `28(A3)` is within `$fff` (Manhattan-max) → `jsr $5778`; then set both mode bytes `$32`, link attacker into `48(A3)`, and pick the attacker's `garrison_or_leader` (`46`) either from `28(A1)` or the target's leader record |
+| — | `$5778` | – | **contact bookkeeping, not a resolver** — see `strategy.md` "Combat". Marks an engaged garrison `flags = $11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify) |
+| — | `$5590` | – | **kill-or-rout roll** (from mode `$32` when `morale <= 0`): `morale := 0`; `D0 := $30fe(group) = group.field60 - 2` (or `$57fec`-parity if the attacker isn't in a group). `D0==0` → **KILL** (`owner` negated, `category := $c` corpse, `dwell := $a0` 160-tick decay); `D0==2` or the parity fails → **ROUT** (`$3c08` restructures the unit's group, `prev_mode := $3c`, `category := 0`, unit survives scattered). `flags.bit5` set forces KILL |
+| — | `$57f0` | – | **spawn a projectile** into the `$4bdf0` effect array (slot 0 is a header; 48 slots × 16 B from `$4be00`): copy position, `life := $14` (20 ticks), `type := D1` (weapon / invention tier), `shooter := A1-$51b66`, velocity toward the resolved target cell via `divu #$78`. Shooter's `dwell` set from the slot's reload byte |
+| — | `$596a` | – | **projectile update loop** (every tick): `life--`; at 0, if `type == $12` the projectile does an **area hit** on whatever entity stands in its cell (stamp `category := $2`, `flags := $a`, `speed := 0` — i.e. disable/rout it) then lingers 4 more ticks; other types just unlink (`$16778`) and free the slot |
+
+The effect slot reinterprets the first 16 bytes of an object-record-sized area
+(array `$4bdf0`, but the loop iterates `$4be00`..`$4c110` = 48 usable slots of
+16 B; slot 0 is a template holding the per-weapon `reload` byte at +15):
+
+```c
+typedef struct pm_effect {           // $4be00, stride 16, 48 slots
+/* 0*/  u16  bucket_next;             // shares the $47970 chain machinery
+/* 2*/  u16  bucket_prev;
+/* 4*/  u8   _pad4[2];
+/* 6*/  u8   type;                    // D1 at spawn: weapon / invention tier. $12 = area-effect on expiry
+/* 7*/  u8   _pad7;
+/* 8*/  s16  world_x;                 // copied from the shooter at spawn
+/*10*/  s16  world_y;
+/*12*/  u16  shooter_off;             // offset into $51b66 of the firing unit
+/*14*/  s16  life;                    // $14 at spawn; --/tick in $596a; 0 -> impact; -4 = "area lingering"; <0 fade
+/*15*/  u8   reload;                  // (template slot only) ticks written back into shooter->dwell
+} pm_effect;
+```
 
 ### Group orders (the "commander AI")
 
@@ -252,6 +328,319 @@ object record; `36(A3)` a running total).
 
 Modes not listed (`$1f`…`$92` sparse entries, indices > `$94` alias into
 following code and are never selected) were catalogued by address only.
+
+The full table (`$14bb4`, `handler = $14bb4 + (s16)word[$14bb4 + mode]`) was
+re-dumped this pass; every valid entry `$00`..`$94` resolves inside the handler
+block `$14c48`..`$1620e`. Entries `$96`+ point back into the dispatch prologue
+or into `$19434`/`$1acb4`/`$1b2b4` (unrelated code) and are dead — `mode` is
+never written a value above `$92` by any handler.
+
+## The entity FSM
+
+The transitions below are exactly what the handlers write to `mode` (byte 31),
+with the branch condition that selects each edge. Only the load-bearing modes
+and their reachable neighbours are drawn; `$5c80` upkeep and the `$163ea`
+relink happen on the epilogue of *every* state and are not edges.
+
+```mermaid
+stateDiagram-v2
+    [*] --> S00 : slot spawned
+
+    state "00 idle" as S00
+    state "8C hold-position" as S8C
+    state "0A pre-move dwell" as S0A
+    state "08 walk-to-linked-entity" as S08
+    state "06 step+repath" as S06
+    state "02 step-until-blocked" as S02
+    state "0C load-patrol" as S0C
+    state "0E patrol / march spline" as S0E
+    state "10 advance-to-target" as S10
+    state "12 halt / cool-down" as S12
+    state "48 obstacle-avoidance sweep" as S48
+    state "4A set-up sweep" as S4A
+    state "2E reached-target" as S2E
+    state "32 melee" as S32
+    state "2C fighting-hold" as S2C
+    state "36 fight recoil" as S36
+    state "28 besiege settlement" as S28
+    state "68 in-formation (follower)" as S68
+    state "8A garrison" as S8A
+    state "18 group: begin route" as S18
+    state "1A group: absorb reinforcements" as S1A
+    state "1C group: detach raiding party" as S1C
+    state "26 group: unpack dest -> march" as S26
+    state "56 regroup: unpack muster cell" as S56
+    state "58 regroup: settle" as S58
+    state "5A regroup: proximity gate" as S5A
+    state "5C regroup: move to settlement" as S5C
+    state "60 regroup: register w/ settlement" as S60
+    state "62 group idle" as S62
+    state "92 -> free slot, mode 00" as S92
+    state "$15302 reached (routine)" as S15302
+    state "$1518a $4bc8 reconcile" as S18A
+    state "$5590 kill / rout" as S5590
+    state "$1d70 capture" as S1D70
+    state "$3c08 restructure" as S3C08
+    state "$35f4 free group slot" as S35F4
+
+    S00 --> S8C : order_class == 0A
+    S00 --> S0A : else (face + fidget, dwell 20)
+    S8C --> S10 : pushed off terrain
+    S8C --> S06 : pushed, blocked
+    S0A --> S08 : dwell 0 && link_related != 0
+    S0A --> S10 : dwell 0 && no link
+    S08 --> S06 : arrived at linked entity
+    S02 --> S06 : hit obstacle
+    S06 --> S00 : path clear && order_class != 0A
+    S06 --> S02 : path clear && order_class == 0A
+    S06 --> S08 : blocked, dwell 0 (repath)
+    S0C --> S0E : always (saves origin, loads path)
+    S0E --> S0E : segment end word == $7D01 (loop)
+    S0E --> S92 : segment end word == $7D02+n, n>0
+    S0E --> S0E : dwell > 0 (integrate step)
+    S10 --> S15302 : $164bc says target reached
+    S10 --> S4A : terrain probe blocked ahead
+    S10 --> S12 : arrived, order_class 0A / group not state 8
+    S10 --> S18A : group state 8 && dwell <= $12 (hand to $1518a)
+    S12 --> S10 : dwell expired
+    S4A --> S48 : copies target, sweep = 8
+    S48 --> S48 : still blocked -> widen sweep angle
+    S48 --> S4A : sweep exhausted one way
+    S48 --> S12 : gave up (D2 < 0)
+    S2E --> S32 : snap to target; engageable -> $56a6
+    S32 --> S32 : target still alive, morale > 0 (drain it)
+    S32 --> S2C : target dead / not engageable
+    S32 --> S5590 : target morale <= 0 (kill-or-rout roll)
+    S2C --> S36 : (via $153b2)
+    S36 --> S2C : recoil dwell 0
+    S28 --> S1D70 : garrison count hits 0 -> capture
+    S28 --> S3C08 : group left besiege state
+    S18 --> S0C : always (40 := $50)
+    S1A --> S26 : group state == $C, dwell $23
+    S1A --> S35F4 : group state != $C (free slot)
+    S1C --> S28 : always (garrison := reserve >> roll, dwell $32)
+    S26 --> S10 : group state $C -> unpack origin as dest cell
+    S56 --> S10 : always, prev_mode := $58, target := muster cell
+    S58 --> S5A : dwell $A
+    S5A --> S62 : neighbour of category $18/$20 found, or timeout
+    S5C --> S60 : $164bc arrival at settlement
+    S60 --> S62 : arrival; leader.field6 += 4
+    S62 --> S62 : dwell > 0
+    S68 --> S68 : always (upkeep only; position stamped by lead)
+    S8A --> S8A : always (upkeep only)
+```
+
+`$92` (`$1615c`) frees the group slot (`$35f4`) and drops to mode `$0` — the
+terminal patrol state. `$1518a` is `$4bc8` (contact reconcile) then epilogue.
+`$5590`, `$1d70`, `$3c08`, `$35f4`, `$15302` are routines, not modes, but sit
+on FSM edges and are listed in the symbol table.
+
+## Load-bearing handlers — pseudocode
+
+Faithful to the disassembly of `scratchpad/pm70_iso.ram`. `A1` = the current
+object record; `D6/D7` = its `world_x/world_y` (loaded at `$14ba0`, written back
+by the epilogue). "epilogue X" = `bra $161c4` (clamp + terrain-test + relink,
+revert to mode `$0` if the new cell is impassable) or `bra $16202` (clamp +
+relink, no terrain veto) or `bra $1622c` (straight to next record).
+
+```c
+// ---- $14c92  mode $00 : idle ----------------------------------------------
+void h_idle(pm_object *A1) {
+    if (A1->order_class == 0x0a) {                 // player "hold" order
+        A1->mode = 0x8c;  A1->flags |= BIT5;
+        goto epilogue_16202;
+    }
+    A1->mode  = 0x0a;                              // -> pre-move dwell
+    A1->dwell = 0x14;
+    int d;
+    if (A1->flags & BIT6)                          // "can fight": face a fixed way
+        d = A1->heading + (A1->target_x < 0 ? +7 : -7);
+    else
+        d = jsr_12c9a();                           // else a pseudo-random-ish heading
+    A1->heading = d;
+    D2 = d;  D1 = -(u8)A1->speed;  D0 = 0;
+    jsr_12d56(&D0,&D1, D2);                        // heading -> velocity vector
+    A1->step_x = D0;  A1->step_y = D1;
+    goto epilogue_161c4;
+}
+
+// ---- $14e70  mode $0E : patrol / march along the spline $168ee -------------
+void h_patrol(pm_object *A1) {
+    D6 += (s8)A1->step_x;   D7 += (s8)A1->step_y;   // integrate one tick
+    if (--A1->dwell != 0) goto epilogue_16202;      // still walking this segment
+
+    s16 *path = (s16*)0x168ee;
+    int c = A1->path_cursor;
+    D6 += path[c/2 + 0] ... ;                       // (movem.w 0(A0,D2),D6/D7): snap to segment start
+    D7 += ...;
+    c += 4;
+  next_seg:
+    s16 sx = path[c/2], sy = path[c/2 + 1];         // (movem.w 0(A0,D2),D0/D1)
+    if ((u16)sx >= 0x7d00) goto seg_terminator;
+    A1->path_cursor = c;
+    // step toward (origin + seg) from here, /8, and a heading:
+    s16 dx = (A1->origin_x + sx - D6) >> 3;
+    s16 dy = (A1->origin_y + sy - D7) >> 3;
+    A1->step_x = dx;  A1->step_y = dy;
+    A1->heading = jsr_14262(dx, -dy);
+    A1->dwell = 8;
+    goto epilogue_16202;
+  seg_terminator:
+    if (sx == 0x7d01) { c -= sy; goto next_seg; }   // loop the path
+    if (sx >= 0x7d02) { A1->mode = sx - 0x7d02; goto epilogue_161c4; }  // jump to an explicit mode
+    A1->mode = 0x92;                                // $7d00 : end -> free the group slot
+    goto epilogue_161c4;
+}
+
+// ---- $14f08  mode $10 : advance to the target ----------------------------
+void h_advance(pm_object *A1) {
+    if (A1->prev_mode == 0x2e) {                    // chasing a live entity, not a fixed cell
+        pm_object *e = &obj[A1->link_target];
+        if (e->owner <= 0 || e->prev_mode == 0x3c) {// target gone / already a corpse
+            A1->mode = A1->prev_mode = 0x2c;        // -> fighting-hold
+            goto epilogue_161c4;
+        }
+        *(u32*)&A1->target_x = *(u32*)&e->world_x;  // track its live position
+        if (jsr_164bc(A1, e->world_x, e->world_y) == REACHED) goto reached_$15302;
+        A1->dwell = 3;                              // D2 = probe depth
+        goto move_body;
+    }
+    if (jsr_164bc(A1, A1->target_x, A1->target_y) == REACHED) goto arrived_$14fdc;
+  move_body:
+    if (A1->order_class != 0x0a) {
+        int probe = A1->dwell - 1;                  // look 2..3 cells ahead along (step_x,step_y)
+        int x=D6,y=D7;
+        do { x += A1->step_x; y += A1->step_y; } while (--probe >= 0 && terrain_ok($1648e,x,y));
+        if (probe >= 0) { A1->mode = 0x4a; goto next_record; }   // blocked -> obstacle avoidance
+    }
+    // arrival bookkeeping when this lead man belongs to a live group order:
+    if ((A1->flags & BIT4) && A1->group_off != 0
+        && group[A1->group_off].exec_state == 8) {
+        if (A1->dwell <= 0x12) { jsr_1518a(); return; }         // $4bc8 reconcile
+        A1->dwell >>= 1;
+    }
+    A1->mode = 0x12;                                // -> halt / cool-down
+    goto tail_of_$14ff8;
+  arrived_$14fdc:
+    A1->mode = A1->prev_mode;                       // resume the previous state
+    D6 = A1->target_x;  D7 = A1->target_y;          // snap exactly onto it
+    goto (A1->flags & BIT5 ? epilogue_16202 : epilogue_161c4);
+}
+
+// ---- $14ff8  mode $12 : halt / cool-down --------------------------------
+void h_halt(pm_object *A1) {
+    D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
+    if (--A1->dwell > 0) goto epilogue_161c4;
+    A1->mode = 0x10;                                // resume advancing
+    goto epilogue_161c4;
+}
+
+// ---- $150c0  mode $1A : group absorbs reinforcements ---------------------
+void h_absorb(pm_object *A1) {
+    (*(u16*)0x12a24)++;                             // a UI/stat counter
+    group *g   = &group[A1->group_off];
+    pm_object *lead = &obj[g->lead_off];
+    int roll = jsr_30fe(A1);                        // = group.field60 - 2  (a shift amount)
+    lead->reinf_march_14 += (0x10 >> roll);         // move a slice of the reserve...
+    u16 slice = lead->reinf_reserve_6 >> roll;
+    lead->reinf_reserve_6 -= slice;
+    g->running_total_36  += slice;
+    jsr_34f2();                                     // recompute derived group totals
+    if (g->exec_state == 0x0c) { A1->mode = 0x26; A1->dwell = 0x23; }
+    else jsr_35f4();                                // group order done -> free the slot
+    goto epilogue_161c4;
+}
+
+// ---- $15122  mode $1C : group detaches a raiding party -------------------
+void h_detach(pm_object *A1) {
+    group *g   = &group[A1->group_off];
+    pm_object *lead = &obj[g->lead_off];
+    int roll = jsr_30fe(A1);
+    A1->garrison_or_leader = lead->troops_8 >> roll; // size the raiding party
+    jsr_34f2();
+    A1->mode  = 0x28;                                // -> besiege
+    A1->dwell = 0x32;
+    goto epilogue_161c4;
+}
+
+// ---- $15264 / $15282  mode $28/$2A : besiege a settlement ---------------
+void h_besiege(pm_object *A1) {                      // handler = $15282 for $2a
+    if (A1->dwell == 0x32) {                         // one "assault pulse" per 50 ticks
+        pm_object *garr = &obj[A1->garrison_or_leader];
+        if (garr->owner > 0 && group[garr->group_off].exec_state == 3) {
+            if (--garr->garrison_or_leader >= 0) {   // still defenders left
+                nation *n   = &nation[A1->nation_off];
+                leader *L   = &leader_by_off(n->leader_off);   // via $1b2a
+                if (found) { L->troops_8 -= 1; jsr_1d70(A1); } // capture
+            }
+        }
+    }
+    if (--A1->dwell > 0) goto epilogue_161c4;
+    jsr_3c08(&group[A1->group_off]);                 // pulse over -> restructure group
+    goto epilogue_161c4;
+}
+
+// ---- $16048  mode $68 : formation follower -----------------------------
+void h_formation(pm_object *A1) {
+    jsr_5c80(A1);                                    // upkeep only
+    A1->step_x = 0;  A1->heading = 0;                // never moves itself
+    goto next_record;                               // position is stamped by the group lead
+}
+
+// ---- $161b2  mode $8A : garrison -------------------------------------
+void h_garrison(pm_object *A1) { jsr_5c80(A1); goto next_record; }
+
+// ---- $15b94  mode $56 : regroup -- unpack the muster cell ------------
+void h_regroup_unpack(pm_object *A1) {
+    if (--A1->dwell >= 0) goto epilogue_161c4;
+    A1->target_x_lo = A1->group_off & 0x3f;          // {x:6} of the packed muster cell
+    A1->b21 = 0x70;                                  // sprite tag "friendly muster"
+    cellctrl *cc = &cellctrl[A1->group_off];         // per-cell control byte, $3f86c
+    if (cc->byte1 || cc->byte65) A1->b21 = 0x90;     // "contested muster"
+    A1->target_y = ((A1->group_off & 0x1fc0) << 2) + 0x80;   // {y:7} -> world_y centre
+    A1->prev_mode = 0x58;
+    A1->mode      = 0x10;                            // march to the muster cell
+    goto epilogue_161c4;
+}
+
+// ---- $15c46  mode $5A : regroup -- proximity gate -------------------
+void h_regroup_gate(pm_object *A1) {
+    if (--A1->dwell >= 0) goto next_record;
+    for (pm_object *p = bucket_head($47970, A1->group_off); p; p = &obj[p->bucket_next]) {
+        if (p->category == 0x18 && (p->flags == 0x10)) goto found;
+        if (p->category == 0x20) goto found;
+    }
+    A1->dwell = 0x64;  A1->mode = 0x62;  goto next_record;   // timeout -> idle
+  found:
+    p->category = 0x20;                              // claim it
+    A1->flags |= BIT5;
+    // then a $12c9a-driven random nudge of (D6,D7) by $20, $15fa8 on-screen test ...
+    ...
+}
+
+// ---- $15d66 / $15ddc  mode $5C -> $60 : move to & register with a settlement
+void h_regroup_move(pm_object *A1) {                 // $15d66
+    D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
+    if (on_screen_test($15fa8) == 0 && --A1->dwell >= 0) goto epilogue_16202;
+    A1->mode = 0x60;
+    // re-derive target from the packed cell + $3f86c control byte (same as $56):
+    A1->target_x_lo = A1->group_off & 0x3f;
+    A1->b21 = (cellctrl[A1->group_off].byte1 || cellctrl[...].byte65) ? 0x90 : 0x70;
+    A1->target_y = ((A1->group_off & 0x1fc0) << 2) + 0x80;
+    jsr_164bc(A1, A1->target_x, A1->target_y);
+    goto epilogue_16202;
+}
+void h_regroup_register(pm_object *A1) {             // $15ddc  mode $60
+    D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
+    if (--A1->dwell >= 0) goto epilogue_16202;
+    if (jsr_164bc(A1, A1->target_x, A1->target_y) != REACHED) goto epilogue_16202;
+    nation *n = &nation[A1->nation_off];
+    leader[n->leader_off].field6 += 4;               // "a detachment has arrived"
+    A1->mode = 0x62;
+    D6 = A1->target_x;  D7 = A1->target_y;
+    goto epilogue_16202;
+}
+```
 
 ## Where target selection happens, and what it reads
 
@@ -344,19 +733,55 @@ which feed a UI mood indicator (`$57fce`), not the AI.
   — `$163ea` relink 1806 calls, `$1648e` 1979, `$164bc` 213. Consistent with
   `graphics.md`: the sim tick is cheap, the per-VBL fill is not.
 
+### The re-armed fight (73rd pass) — the melee casualty mechanic seen
+
+66M-step traced resume from `pm71_slot4.snap` re-arming slot 1's `byte4 := 4`
+every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`, `trace_cfg.py --blocks`).
+~276 sim ticks.
+
+| routine | hits | reading |
+|---------|-----:|---------|
+| `$6522` decide | 276 | once/tick |
+| `$661a` primary-slot decide | **2** | re-arming `byte4` mostly does *not* re-trip `$661a` — the objective slot's `active`/`force` fields stop qualifying after the first order. Only 2 autonomous primary decisions in 276 ticks |
+| `$68fe` / `$68ee` | 2 / 2 | the two decisions; both scored in budget |
+| `$15302` reached-enemy | 41 | men closing on enemy positions |
+| `$56a6` engage | 9 | contacts made |
+| `$5778` bookkeep | 2 | gated hard on `flags.bit6` + `d < $fff` |
+| `$1533c` melee (mode `$32`) | present | morale-drain rounds |
+| **`$5590` kill-or-rout** | **10** | first field-combat resolutions ever traced |
+| — of those, KILL (`$55f2`) | **0** | |
+| — of those, ROUT (`$560a`) | **10** | `$30fe` returned `2` every time (`group.field60 == 4`) → always rout |
+| `$5bd2` wear removal | **0** | `anim_wear` never crossed `$3c` in ~276 ticks |
+| `$57f0` projectile | 3 | |
+| `$1d70` capture | **15** | the decisive mechanic |
+| `$4bc8` contact reconcile | 1 | one nation-pair peace break |
+| `$5c80` upkeep | 2136 | ~8 entities/tick |
+
+**Finding.** PowerMonger's battlefield death is a **morale-grind**, not an odds
+roll: mode `$32` (`$1533c`) subtracts 1–4 from the enemy's `morale` byte every
+tick a unit stays in contact; at `morale <= 0` `$5590` rolls **kill vs rout**
+off `group.field60` (a per-group discipline/cohesion value) and the tick-counter
+parity. In mission 1 every routed unit *survived* (`field60 == 4` → the roll is
+pinned to "rout"), scattered by `$3c08`. The `$5c80`/`$5bd2` **wear** path
+(`anim_wear - $3c`, survivability table `$5ccc`) is a slow second channel that a
+short fight never reaches — `anim_wear` is only bumped by the iterator's
+animation-advance (`$14b9a`, ~once per animation cycle) and is not reset by any
+handler, so it is a lifetime-exhaustion counter, relevant only over a long
+campaign. So the 72nd pass's "no casualties" was right about *deaths* but missed
+that **routing is the real outcome** and it fired ten times. Kills need either a
+disciplined attacker group (`field60 != 4`) or `flags.bit5` (encircled).
+
 ## Open threads
 
-- **The strategic layer** — decoded in `strategy.md` (71st pass). Still open
-  there: tracing the AI from a *live* enemy captain (mission 1's never issues an
-  autonomous order), the `$67d0` campaign-order hook, and the `$580a6` per-side
-  assessment / diplomacy subsystem (`$2200`–`$3500`).
-- `$5778` — **reclassified** (72nd pass, `strategy.md` "Combat"): it is contact
-  bookkeeping, not a resolver. The casualty mechanic (`$5c80` survivability
-  table `$5ccc` minus a `byte14` wear counter, → `$5bd2` removal → leader /
-  group troop-count decrement) is decoded statically but **no field death fired
-  in 166 traced ticks** of a forced mission-1 fight — captures (`$1d70` ×5)
-  carried it instead. Still open: what raises `byte14` during combat, the
-  projectile-impact link, and the invention-level → projectile-`type` mapping.
+- **The strategic layer** — decoded in `strategy.md`. Still open there: tracing
+  the AI from a *live* enemy captain, the `$67d0` campaign hook mission-file
+  format, and the `$580a6` per-side assessment / diplomacy subsystem
+  (`$2200`–`$3500`).
+- **`$5778` / combat — mechanism now closed** (73rd pass, above + `strategy.md`
+  "Combat"). Remaining static-only: the `msg_code`→damage mapping range (why
+  `min(.,6)`), the `group.field60` discipline value's own source, and the
+  invention level → projectile `type` byte (only `type $12` was seen; it is the
+  one type that does an area hit on expiry).
 - `$51538` group-order record: `strategy.md` has the stride (`$13c`), the header
   (pending long / type / param), the six interleaved objective slots and the
   `base+$4c` / `base+$64` execution sub-records. Still open: the full field set.

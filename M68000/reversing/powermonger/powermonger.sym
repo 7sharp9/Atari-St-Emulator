@@ -63,13 +63,18 @@
 0000c5ee	pm_notify_player       # "war has been declared" style player message
 
 # ---- combat (strategy.md "Combat", ai.md "Combat") ----
+0001533c	pm_melee               # mode $32 handler: drain target morale (byte45) 1..4/tick; <=0 -> $5590
+00005590	pm_kill_or_rout        # morale depleted: roll $30fe (group.field60-2) -> KILL($55f2, corpse) or ROUT($560a, $3c08 scatter)
 000056a6	pm_engage              # engagement: dist<$fff + can-fight -> $5778, set mode $32, link attacker
 00005778	pm_engage_bookkeep     # contact/ownership bookkeeping (state 6 mark, state $d record, else $4bc8)
-000057f0	pm_spawn_projectile    # spawn into $4bdf0 effect array; vel toward target /$78, life $14, type=D1
-00004bdf0	g_effect_array         # $30 slots x $10 bytes: projectiles / effects
-00015302	pm_reached_enemy       # snap to target, mode $32, maybe $56a6
+000057f0	pm_spawn_projectile    # spawn into $4be00 effect array; vel toward target /$78, life $14, type=D1
+0000596a	pm_effect_update       # per-tick projectile loop over $4be00..$4c110; life--; type $12 -> area hit on impact
+00016778	pm_bucket_unlink       # remove one object from its $47970 cell chain
+00004be00	g_effect_slots         # 48 slots x $10 bytes: projectiles / effects (slot 0 of $4bdf0 = template w/ reload byte)
+00015302	pm_reached_enemy       # mode $2e: snap to target, mode $32, maybe $56a6
+00003c08	pm_group_restructure   # scatter/rebuild a group after a rout or a lost besiege
 00005c80	pm_upkeep              # per-entity upkeep: survivability[flags&$1f] - wear*4 < 0 -> $5bd2; morale += $57fec&1
-00005ccc	t_survivability        # data: 18 bytes, flags&$1f -> survivability (0,1,2,4,8,16 -> 90,82,69,79,72,95)
+00005ccc	t_survivability        # data: 17 sparse bytes, flags&$1f in {0,1,2,4,8,$10}->{90,82,69,79,72,95}, else 0; $11->0
 00005bd2	pm_unit_remove         # remove a spent unit: decrement leader troops (8($4e514)) or group force (-24($51538)); $5c10
 00005c10	pm_unit_to_corpse      # neg byte5, morale 0, category $c, countdown $a0
 00005c2c	pm_owner_reconcile     # settlement owner changed -> $4bc8 or adopt owner + $25d6
@@ -86,7 +91,22 @@
 0003f86c	g_cell_control         # per-cell influence/ownership byte
 0004e514	g_leader_table         # 32-byte per-lord: troop counts (+6,+8), message counters, name index
 000168ee	g_patrol_paths         # {dx,dy} word lists, terminated by a word >= $7d00
-00014bb4	t_mode_handlers        # data: 75-entry mode -> handler word-offset table
+00014bb4	t_mode_handlers        # data: mode $00..$94 -> handler word-offset table (handler = $14bb4 + s16 word[$14bb4+mode])
+00014c92	h_mode00_idle          # face + fidget -> mode $0a, or mode $8c if order_class $a
+00014e70	h_mode0e_patrol        # march the $168ee spline; seg word >=$7d00 = terminator (loop/jump-mode/end)
+00014f08	h_mode10_advance       # advance to target_x/y (or chase link_target); probe ahead -> $4a; reached -> $15302
+00014ff8	h_mode12_halt          # cool-down dwell -> mode $10
+000150c0	h_mode1a_absorb        # group absorbs reinforcements: slice reserve_6 -> march_14 by ($30fe) shift
+00015122	h_mode1c_detach        # size a raiding party (troops_8 >> $30fe) -> mode $28 besiege
+00015264	h_mode28_besiege       # assault pulse: garrison-- while group state 3; at 0 leader troops-- + $1d70
+00015282	h_mode2a_besiege       # $28 variant
+0001533c	h_mode32_melee         # = pm_melee
+00015b94	h_mode56_regroup       # unpack packed muster cell {x:6,y:7} + $3f86c control byte -> mode $10
+00015c46	h_mode5a_proxgate      # wait for a category $18/$20 neighbour in the cell bucket, else timeout -> mode $62
+00015d66	h_mode5c_tosettle      # move toward the settlement, re-derive target -> mode $60
+00015ddc	h_mode60_register      # arrive: leader.reserve_6 += 4, mode $62
+00016048	h_mode68_formation     # follower: $5c80 upkeep only; position stamped by the lead
+000161b2	h_mode8a_garrison      # $5c80 upkeep only
 0001648e	pm_terrain_sample      # terrain sample at (D6,D7); Z <=> type 0 (water/impassable)
 000164bc	pm_step_toward         # one step toward (D0,D1) via divu 16(A1); Z <=> reached
 00014262	pm_heading             # (dx,dy) -> 16-dir heading

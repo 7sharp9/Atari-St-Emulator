@@ -122,6 +122,93 @@ rest is ~15 parallel **6-word arrays** — six "objective slots" per group. The
 Plus the group's **execution sub-records**: state word at `base+$4c`, target
 cell word at `base+$64` — written by `$4b80` (below).
 
+## Data structures (C)
+
+Offsets confirmed by disassembly of `scratchpad/pm70_iso.ram`; `// ??` marks a
+field seen referenced but not proven. The object record and the effect slot are
+in `ai.md`.
+
+```c
+// ---- command buffer : $58016, 5 slots x 6 bytes -------------------------
+typedef struct pm_cmd_slot {          // one per side; $6a3a walks slots 1..4
+/* 0*/  u8   commander;               // x $13c -> the $51538 record. Sign: <0 attack |id|, 0 neutral, >0 own
+/* 1*/  u8   order_type;              // even $00..$32; $00 = none. Cleared by $6a3a after the executor reads it
+/* 2*/  u16  param;                   // packed cell {x: bits 0-5, y: bits 6-12} for a movement order
+/* 4*/  u8   slot_state;              // 0/2/4/6/8/$a. $6a3a advances it each tick; $6522 issues only when == 4
+/* 5*/  u8   _pad5;
+} pm_cmd_slot;
+
+// ---- group-order record : $51538, 5 x $13c bytes ----------------------
+// The AI ($6564) walks it as SIX interleaved objective slots: for slot i (0..5)
+// the field logically at n(A1) lives at  base + n - 2*i  (A1 = base + 10 - 2i).
+// So each "field" below is really a 6-entry s16 array packed backwards from a
+// base offset. Header + execution sub-records are plain (not interleaved).
+typedef struct pm_group {             // base = $51538 + group_id
+/* +0*/   u32  queued_flag;           // player / script order channel: nonzero -> a queued order in +1/+2
+/* +1*/   u8   queued_type;
+/* +2*/   u16  queued_param;
+          // --- exec sub-record (written by $4b80 / $6a3a) ---
+/* +$4c*/ u16  exec_state;            // 2/3/8/9/$a/$c ... the live group state; entity modes key off this
+/* +$64*/ u16  exec_target_cell;
+          // --- the six interleaved objective-slot arrays (index [i], i=0..5) ---
+/* +4 */  s16  obj_link   [6];        // slot-index / link, written back by $6822
+/* +28*/  s16  obj_active  [6];       // <= 0 -> skip this objective
+/* +52*/  s16  obj_force   [6];       // troops committed to the objective
+/* +76*/  s16  obj_state   [6];       // $6 idle/patrol, $9, $d support
+/* +100*/ s16  obj_unit    [6];       // $68fe/$6762: the object-record offset assigned to the objective
+/* +112*/ s16  obj_budget  [6];       // range / patience; drained by $3e06; underflow -> objective expires
+/* +136*/ s16  obj_substate[6];       // AI scratch (campaign sub-mode lands here)
+/* +256*/ s16  obj_wait_at [6];       // timestamp vs $2df72
+/* +268*/ s16  obj_camp_id [6];       // matched against $67d0.campaignId
+/* +280*/ s16  obj_camp_ph [6];       // campaign phase / sub-order
+/* +292*/ s16  obj_escort  [6];       // escort-target object offset
+          // ... $13c total; other parallel arrays (waypoint cursor $40-equiv, field60
+          //     discipline used by $30fe, running-total +36-equiv) not fully mapped
+} pm_group;
+// $30fe returns  group.field_60 - 2  as the kill/rout + reinforcement-slice shift.
+//   field_60 == 4 (mission 1) -> always "2" -> rout, never kill.
+
+// ---- leader / lord record : $4e514, 32 x 32 bytes -------------------
+typedef struct pm_leader {
+/* 0*/  u8   nation;                  // side id 1..5; 0 = empty slot (loop terminator, array ends $4f914)
+/* 1*/  u8   _b1;                     // ?? (== 3 for both mission-1 sub-leaders)
+/* 2*/  u16  _w2;                     // ??
+/* 4*/  u16  cell;                    // packed {x: bits 0-5, y: bits 6-12} of the lord's position
+/* 6*/  u16  troops_reserve;          // $d322: += into $57fba[side].word2 ; $15e18/$15760: += 4 on arrival
+/* 8*/  u16  troops_field;            // $d322: += into $57fba[side].word0 ; sieges/$5bd2 decrement it; $68fe scores vs it
+/*10*/  u8   _b10[4];                 // ??
+/*14*/  u16  nation_off;              // back-link: byte offset into $4f916 for this lord's home settlement
+/*16*/  u8   _b16[7];                 // ??
+/*23*/  u8   msg_count [1];           // $16376/$159a4: "under attack" / order message counters (indexed run)
+/*24*/  u8   speech_ctr[8];           // $159de: divu #6 index -> speech-line countdown table
+} pm_leader;                          // sizeof 32
+
+// ---- nation / settlement record : $4f916, 18 bytes ------------------
+typedef struct pm_nation {            // object.nation_off and leader.nation_off index this
+/* 0*/  u16  _w0;                     // ??
+/* 2*/  u16  chain_next;              // $5cde: settlement chain (walk while byte7 != 7)
+/* 4*/  u8   _b4;
+/* 5*/  u8   owner;                   // commander colour holding the settlement; copied into object.owner ($1501a,$5c2c)
+/* 6*/  u8   _b6;
+/* 7*/  u8   kind;                    // $5cde: == 7 terminates the settlement walk (capital?)
+/* 8*/  u16  linked_obj;              // object-record offset of the settlement's own marker
+/*10*/  u8   _b10[2];
+/*12*/  u16  dest_cell;               // mode $52: the nation's ordered destination (packed cell)
+/*14*/  u16  leader_off;              // byte offset into $4e514 for this settlement's lord
+/*16*/  u16  _w16;
+} pm_nation;                          // sizeof 18
+
+// ---- per-side assessment block : $580a6, 5 x $20 bytes -------------
+typedef struct pm_assess {            // index by side id: $580a6 + side*$20
+/* 0*/  u16  decay_period;            // $3e06: objective budget decays every this-many ticks
+/* 2*/  u8   _b2[4];
+/* 6*/  u8   relation_bits;           // $4c2a: bclr peace bit per other side; $3154 friend/foe sign source
+/* 7*/  u8   _b7[8];
+/*15*/  u8   assess_in [1];           // $311a writes here: clamped 15(A5,other*$20) + delta, range $ff9c..$64
+/*16*/  u8   assess_out;              // $68fe reads (16(A4, target*$20 - 1)) >> 2 as the targeting weight
+/*17*/  u8   _b17[15];
+} pm_assess;                          // sizeof $20; $2200-$3500 cluster owns the rest
+
 ## `$6522` — the commander AI
 
 Outer loop over the 5 command slots. A slot with `4(A0) != 4` is skipped
@@ -289,13 +376,70 @@ the nearest enemy leader" — there is still **no build / recruit / invention
 reasoning** in the strategic layer; those orders, if a campaign uses them, come
 through `$67d0`.
 
-## Combat (72nd pass — pipeline traced, casualty maths static)
+## Combat (73rd pass — mechanism closed, rout is the real outcome)
 
 The 70th/71st passes flagged "`$5778` combat resolution" as the biggest open
 gap and assumed it was a battle resolver with odds and casualty rolls.
-**It is not.** PowerMonger has no discrete battle resolver. Combat is four
+**It is not.** PowerMonger has no discrete battle resolver. Combat is a set of
 loosely-coupled mechanisms, all running at the entity level in `ai.md`'s
-`$14b62` tick:
+`$14b62` tick. The 73rd pass traced the first real field fight (`$5590` fired
+ten times) and found the decisive one is a **morale grind ending in a rout**,
+not the wear-attrition path the 72nd pass focused on.
+
+### 0. The melee grind (`$1533c`, mode `$32`) — the primary mechanic
+
+Once two units are in mode `$32` (locked in contact via `$15302` → `$56a6`),
+`$1533c` runs every tick for the attacker:
+
+```c
+void h_melee(obj *A1 /*attacker*/) {              // $1533c
+    obj *T = &obj[A1->link_target_48];
+    if (T->owner <= 0 || T->prev_mode == 0x3c) {  // target already a corpse/routed
+        A1->mode = A1->prev_mode = 0x2c; return;  // fighting-hold
+    }
+    T->heading = A1->heading + 0x80;              // face the attacker
+    if (T->mode != 0x32) pm_engage(T /*A3*/, A1); // drag the target into the fight
+    int dmg = min((u8)A1->msg_code, 6) >> 1;      // 0..3
+    dmg += 1;                                     // 1..4 per tick
+    T->morale -= dmg;                             // <<< byte 45 is the melee HP
+    if (T->morale <= 0) { pm_kill_or_rout(A1, T); return; }  // -> $5590
+    A1->link_into(T);  T->mode = 0x32;            // keep grinding
+}
+```
+
+`$5590` — reached when a unit's `morale` is ground to `<= 0`:
+
+```c
+void pm_kill_or_rout(obj *A1 /*attacker*/, obj *A3 /*loser*/) {
+    A3->morale = 0;
+    int roll = 0;
+    if ((A1->flags & BIT4) ? A1->group_off != 0 : (A1->flags & BIT6)) {
+        obj *lead = A1->link_related ? &obj[A1->link_related] : A1;
+        if (lead->owner > 0) roll = pm_30fe(lead);   // = lead's group.field_60 - 2
+    }
+    bool kill;
+    if      (roll == 0) kill = true;
+    else if (roll == 2) kill = false;                // <-- mission 1: field_60 == 4 -> roll 2 -> always rout
+    else kill = ((g_tick_rng + A1->anim_phase) & 2) == 0;
+    if (A3->flags & BIT5) kill = true;               // encircled: no escape
+
+    if (kill) {                                      // $55f2
+        A3->owner = -A3->owner;                      // negative owner = dying
+        A3->anim_sub = 0;  A3->category = 0x0c;      // corpse
+        A3->dwell = 0xa0;                            // 160-tick decay to a free slot
+    } else {                                         // $560a  ROUT
+        pm_3c08(&group[A3->group_off]);              // restructure/scatter the loser's group
+        A3->prev_mode = 0x3c;  A3->category = 0;     // survives, disorganised
+    }
+    // then: adjust the loser's group committed-force counter (42/-24) either way
+}
+```
+
+The `group.field_60` term is a per-group **discipline / cohesion** value.
+Mission 1's groups all carry `field_60 == 4`, so `pm_30fe` returns `2` and the
+roll is pinned to **rout** — ten routs, zero kills in the 73rd-pass fight.
+A disciplined attacking group (`field_60 != 4`) or an encircled loser
+(`flags.bit5`) gets kills.
 
 ### 1. Contact → engage (`$56a6`, from mode `$32`)
 
@@ -366,30 +510,38 @@ an enemy cell it flips that entity toward removal (mechanism 4). The `type`
 byte selects the sprite and, indirectly, the lethality — higher invention
 levels issue faster / deadlier projectile types.
 
-### 4. Attrition — `$5c80` upkeep → `$5bd2` removal
+### 4. Attrition — `$5c80` upkeep → `$5bd2` removal (the slow second channel)
 
 `$5c80` runs once per tick for every moving or garrison entity:
 
 ```c
-int pm_upkeep(obj *A1) {
-    int surv = t_survivability[A1->flags & 0x1f];       // table at $5ccc, 18 bytes
-    int wear = A1->byte14 - 0x3c;                        // byte14 doubles as a wear counter
-    if (wear >= 0) {
+int pm_upkeep(obj *A1) {                                // $5c80, exactly
+    int surv = t_survivability[A1->flags & 0x1f];       // inline table at $5ccc
+    int wear = (u8)A1->anim_wear - 0x3c;
+    if (wear >= 0) {                                    // bmi skips otherwise
         surv -= wear * 4;
-        if (surv < 0) pm_unit_remove(A1);               // -> $5bd2, the unit is spent
+        if (surv < 0) { pm_unit_remove(A1); }           // -> $5bd2
     }
-    int morale = (int8)A1->byte45;
-    if (morale >= 0 && surv > morale)
-        A1->byte45 += (g_tick_rng & 1);                  // morale creeps up, 1-bit "random"
-    return surv > morale;
+    int morale = (s8)A1->morale;
+    if (morale < 0) { A1->morale = 0; return 1; }
+    if (surv > morale) { A1->morale += (g_tick_rng & 1); return 1; }  // creep up
+    return 0;                                           // surv <= morale: spent, no recovery
 }
 ```
 
-`t_survivability` (`$5ccc`, indexed by `flags & $1f`): the flag low bits are a
-small enum, not a bitfield — values `0/1/2/4/8/16` map to `90/82/69/79/72/95`.
-`$5778` stamps an engaged garrison's flags to `$11` (17) → `t_survivability[17]
-= 0`, so an engaged unit has zero survivability and stops recovering morale;
-it is removed the moment its wear counter (`byte14`) crosses `$3c`.
+`t_survivability` (`$5ccc`) is a sparse **17-byte** table indexed by
+`flags & $1f` (a small enum, not a bitfield): index `0/1/2/4/8/$10` →
+`90/82/69/79/72/95`; every other index is `0` (and `>= 17` reads into the next
+routine's code — never happens, the enum only takes those six values plus
+`$11`). `$5778` stamps an engaged garrison's flags to `$11` → survivability `0`,
+so it stops recovering morale and is removed once `anim_wear` crosses `$3c`.
+
+`anim_wear` (object byte 14) is only ever **incremented** — by the iterator's
+animation-advance at `$14b9a`, roughly once per animation cycle for a
+moving/animating unit — and **never reset** by any handler. It is a lifetime
+counter: a unit that has been continuously active for ~`$3c` animation cycles
+becomes attrition-vulnerable. This is why the wear path is a long-campaign
+mechanic and fired **zero** times in the 73rd-pass 276-tick fight.
 
 `$5bd2` (removal) decrements the parent's strength — a **group follower**
 (`flags & BIT6`) decrements the group's committed-force counter
@@ -405,34 +557,44 @@ transfers ownership *and* procedurally renames the territory (it walks a
 `'C'`-delimited name-fragment table at `$1e9e`, indexed by the capturing
 group's `44(lead)` field and the target's own name bytes).
 
-### Measured — the forced mission-1 fight (72nd pass)
+### Measured — the re-armed mission-1 fight (73rd pass)
 
-40M-instruction traced resume from `pm71_slot4.snap` (slot 1 `byte4` forced to
-4 once; ~166 sim ticks):
+66M-instruction traced resume from `pm71_slot4.snap`, re-arming slot 1's
+`byte4 := 4` every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`,
+`trace_cfg.py --blocks`), ~276 sim ticks. (The 72nd pass ran 40M / 166 ticks
+with a single poke; the counts that overlap match.)
 
 | routine | hits | reading |
 |---------|-----:|---------|
-| `$6522` decide | 166 | once/tick |
-| `$661a` primary-slot decide | **1** | the one forced decision; never re-armed |
-| `$68fe` find enemy leader | 1 | picked the nearer of the two `$4e514` sub-leaders |
-| `$6a3a` executor | 166 | once/tick |
-| `$56a6` engage | 9 | the armies did make contact |
-| `$5778` bookkeep | 2 | gated hard on `flags & BIT6` + `d < $fff` |
-| `$15302` reached-enemy | 41 | men repeatedly closing on enemy positions |
-| `$57f0` spawn projectile | 3 | three shots fired |
-| `$1d70` capture settlement | **5** | five territories changed hands |
+| `$6522` decide | 276 | once/tick |
+| `$661a` primary-slot decide | **2** | re-arming `byte4` mostly does *not* re-trip `$661a` — the objective slot's `obj_active`/`obj_force` stop qualifying after the first order issues. Only 2 autonomous primary decisions in 276 ticks |
+| `$68fe` / `$68ee` | 2 / 2 | both decisions scored inside budget |
+| `$15302` reached-enemy | 41 | men closing on enemy positions |
+| `$56a6` engage | 9 | contacts made |
+| `$5778` bookkeep | 2 | gated hard on `flags.bit6` + `d < $fff` |
+| **`$5590` kill-or-rout** | **10** | first field-combat resolutions ever traced |
+| — KILL (`$55f2`) | **0** | |
+| — ROUT (`$560a`) | **10** | `$30fe` → `2` every time (`group.field_60 == 4`) |
+| `$5bd2` wear removal | **0** | `anim_wear` never crossed `$3c` in 276 ticks |
+| `$57f0` spawn projectile | 3 | |
+| `$1d70` capture settlement | **15** | the decisive mechanic |
 | `$4bc8` contact reconcile | 1 | one nation-pair peace break |
-| `$5bd2` unit removal | **0** | **no field casualty in 166 ticks** |
-| `$5c80` upkeep | 1015 | ~6 entities/tick |
+| `$5c80` upkeep | 2136 | ~8 entities/tick |
 
-So a forced attack in mission 1 produces engagement, a few projectiles, and
-territory capture — but **zero battlefield deaths** over ~166 ticks. Field
-attrition in PowerMonger is genuinely slow: it needs an engaged unit's `byte14`
-wear counter to climb past `$3c` while `t_survivability[flags]` stays low, and
-in a brief skirmish that threshold is never reached. The decisive mechanic in a
-short fight is **capture** (`$1d70`), not casualties. The casualty formula in
-mechanism 4 is decoded from the disassembly only — **not trace-confirmed**,
-because no `$5bd2` fired.
+**Reading.** A forced attack in mission 1 produces engagement, a handful of
+projectiles, ten **routs** (units scattered by `$3c08`, none killed), and
+fifteen **captures**. So territory changes hands and armies get broken up, but
+almost nobody dies on the field — because mission 1's group discipline
+(`field_60 == 4`) pins the `$5590` roll to "rout", and the wear channel is far
+too slow for a 276-tick fight. The 72nd pass's "no casualties" verdict was right
+about deaths and wrong about outcome: **routing is what combat does here**, and
+it fired ten times. The kill branch of `$5590` and the whole `$5bd2` wear path
+remain decoded-not-traced.
+
+Re-arming the *primary objective slot* directly (rather than `byte4`) to force
+repeated `$661a` decisions across a moving front, or reaching mission 2+ with a
+disciplined enemy, is still what's needed to exercise the kill branch and to
+histogram `$68fe`/`$68ee` across many decisions.
 
 ## RNG and determinism (72nd pass)
 

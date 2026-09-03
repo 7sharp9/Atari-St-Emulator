@@ -219,6 +219,15 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    the **RNG** question (`$57fec` is the low bits of a tick counter — the AI is
    deterministic; `$57ff6` is a sound-only LCG). All in `strategy.md`; a
    `powermonger.sym` symbol table was added for `trace_cfg.py --names`.
+10. The 73rd pass finished the **AI** deliverable: every object-record field and
+    the command-slot / group-order / leader / nation / assessment / effect
+    structures as C structs, the entity FSM as a state diagram, per-handler
+    pseudocode for the load-bearing modes, and a re-armed 276-tick mission-1
+    fight that traced the **melee casualty mechanic** for the first time.
+    Combat is a **morale grind**: mode `$32` drains the enemy's morale byte 1–4
+    per tick; at zero `$5590` rolls kill-vs-rout off the group's discipline
+    value, which in mission 1 pins every result to **rout** — ten routs, zero
+    kills, fifteen captures over the fight. `ai.md` / `strategy.md`.
 
 ## Files
 
