@@ -227,7 +227,13 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     Combat is a **morale grind**: mode `$32` drains the enemy's morale byte 1–4
     per tick; at zero `$5590` rolls kill-vs-rout off the group's discipline
     value, which in mission 1 pins every result to **rout** — ten routs, zero
-    kills, fifteen captures over the fight. `ai.md` / `strategy.md`.
+    kills, fifteen captures over the fight. It also sketched **mission setup**
+    (`$13b9a` → `$10d1e`/`$2266`: "Between Pages 1-5" is procedurally generated,
+    which arms the enemy command slots and explains the inert `$67d0` hook),
+    ruled `$1abaa` out as the economy engine (it is sound + ambient wildlife),
+    and added an **AI reconstruction** section — the whole autonomous layer as
+    modern pseudocode plus what a modern version changes. `ai.md` /
+    `strategy.md`.
 
 ## Files
 

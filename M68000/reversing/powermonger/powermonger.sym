@@ -11,7 +11,7 @@
 00006522	pm_cmd_decide           # per-commander order pipeline (the commander AI)
 0000d322	pm_force_accum          # per-side troop totals -> $57fba
 00003e06	pm_flag_health          # morale->UI + per-objective budget decay + $57fba objective term
-0001abaa	pm_housekeeping         # phase accumulator; gates $57fec++ and the sound LCG
+0001abaa	pm_sound_ambient        # NOT economy: sound LCG x16 + $ff9e sample mix + one $4d252 wildlife poke
 0001abc0	pm_rng_step             # $57fec++ (tick-count "RNG") + $57ff6 sound LCG x=(x*$24a1+$24df)&$1fff
 000178ae	pm_render_setup_a       # per-frame render prep (group $4c exec sub-record)
 0000f898	pm_render_terrain       # terrain raster driver
@@ -120,6 +120,16 @@
 00013762	pm_camera_keys         # per-frame keypad camera loop (gated on key array slot 54)
 00013f60	pm_zoom_set           # zoom preset 1..7 -> $ff9c + jsr $fe04
 0000fe04	pm_zoom_geometry      # zoom index -> 13 render constants $fdea..$fe02
+
+# ---- mission / world setup (strategy.md "Mission / world setup") ----
+00013b9a	pm_world_build         # briefing OK -> build the mission: $10d1e or procedural, then nation/objective seeding
+00010d1e	pm_mission_params      # fill $58146.. parameter block (procedural: seed/size/lord count/placement stream)
+00002266	pm_place_nations       # consume the $58152 placement stream; arm enemy command slots (slot_state:=4)
+00058146	g_world_params         # $58146 seed, $58148 size, $5814a lords, $5814c/e coords, $58150 settlements
+00058152	g_placement_stream     # 4-byte {x,y,id,kind} records; kind $10 = lord, <$10 = player start, 0 = end
+0004d252	g_wildlife             # ambient/wildlife array, stride 12, count $4e512/$c (sheep etc.)
+0001ba3e	pm_sound_mix           # sample-table mix into the audio buffers
+0001a856	pm_sound_cue           # ambient sound cue (bleat / call)
 
 # ---- RNG / clocks ----
 00057fec	g_tick_rng            # free-running counter, ++ in $1abc0; low bits used as "random" (deterministic)

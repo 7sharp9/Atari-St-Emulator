@@ -640,8 +640,227 @@ Snapshots: `scratchpad/pm71_run1.snap` (settled, ~677M), `pm71_run2.snap`
 `$6522`). 72nd-pass traces: `scratchpad/pm72_sched.evt` (3M, cadence),
 `scratchpad/pm72_fight2.evt` (40M from `pm71_slot4`, the forced fight).
 
+## Mission / world setup (73rd pass)
+
+The briefing OK click (`$b814`, README) copies a mission descriptor
+`$584c4 → $580a0` and calls **`$13b9a`**, the world-build dispatcher:
+
+```
+$13b9a  ff9c := $15 ; jsr $fe04 (zoom index 4)      ; render geometry
+        $51536 := $12                               ; group-order table live count
+        $57fd0 := ($58146 & 3) * 2                  ; a rotating sub-phase seed
+        if ($580a0 != 0)  jsr $10d1e                 ; <- DEFINED mission -> parse it
+        else              jsr $df52 / $10a46 / $10410 ; <- procedural fallback
+        jsr $2266 / $ac20 / $1073c / $10058 / $4672  ; nation + placement + terrain init
+        jsr $2984 / $238c / $2906                    ; objective-slot + assessment seeding
+        ...
+        $57fee := 1 ; $57ff0 := 1 ; ff9a := $fff0    ; speed = normal, camera reset
+```
+
+**"Between Pages 1-5" takes the procedural path** — `$580a0` is a small
+descriptor, and `$10d1e` fills a parameter block from the RNG, not from a byte
+script:
+
+| addr | filled with | meaning |
+|------|-------------|---------|
+| `$58146` | `$12c9a` | world RNG seed |
+| `$58148` | `$5809c` override, else `rand & $7fff + $1500` | map size / richness; `< $2000` ⇒ "small" preset |
+| `$5814a` | `(rand & 7) + (small ? $a : 2)` | lord count (≈10–12 small, 2–9 large) |
+| `$5814c` / `$5814e` | `rand & $3f` / `rand & $7f` | seed cell coords |
+| `$58150` | `(rand&3) + 2 + (small ? $a : 2)` | settlement count knob |
+| `$58152…` | a stream of 4-byte `{x, y, id, kind}` placement records built by `$111e2` + a loop | the "unit list" |
+
+`$2266` then consumes the `$58152` stream: a record with `kind == $10` is a
+**lord** — it writes `id` into `$58016[id].commander` and, if the slot isn't
+already armed, sets `slot_state := 4`. **This is where the enemy command slots
+are armed at mission start** (and why a fresh procedural mission's enemy has a
+slot ready but — per "What actually fired" — its objective fields never
+re-qualify `$661a` after the opening move). Records with `kind < $10` seed the
+player start position; `kind == 0` ends the stream. `$2266` then appends
+procedurally-placed settlements (`kind $10`, random cells `rand%$30+8`,
+`rand%$70+8`).
+
+A **defined campaign mission** would ship `$580a0` non-zero pointing at a real
+byte script, `$10d1e` would parse that instead of rolling dice, and the
+objective-setup calls (`$2984`/`$238c`/`$2906`) would seed `obj_camp_id` and the
+global `$67d0` from it. That path is **not exercised by this entry point**, so
+`$67d0` stays zero and the campaign hook stays inert — consistent with the 72nd
+pass. Reversing the real mission-file grammar needs a mission that uses it (a
+later "Between Pages" or the Conquest campaign proper), not mission 1.
+
+## What `$1abaa` actually is — sound + ambient, not economy (73rd pass)
+
+`$1abaa` (`$130b0` in the tick) was a candidate for the economy/growth engine.
+It is not. It is a phase-gated block that: steps the 13-bit sound LCG `$57ff6`
+16× and mixes `$ff9e`-relative sample tables into the audio buffers
+(`$1ba3e`/`$1a856` are sound); and, once per LCG wrap, pokes **one** random
+record in the `$4d252` array (stride 12, count `$4e512 / $c`) — if its `byte7 ==
+$d` it becomes `$e + (byte10 & 3)`. `$4d252` is the **wildlife / ambient** array
+(sheep, etc.); the poke is a cosmetic behaviour nudge, and the rest of the block
+is a "sheep bleats / bird calls" ambient trigger. `$57fec` (the tick-count
+"RNG") and the animation phase `$4bb42`/`$4bb44` are also serviced here. No
+population, food or invention maths anywhere in it.
+
+## The AI as modern pseudocode (73rd pass)
+
+Everything above, decoupled from the 68000 and from the 2.6 Hz tick, as one
+loop. This is the whole autonomous AI — there is nothing else.
+
+```python
+# ---- once per simulation tick (~2.6 Hz on the ST; compute-bound) --------
+def sim_tick(world):
+    for side in world.sides:                       # $6522: the "commander AI"
+        slot = world.cmd_buffer[side]
+        if slot.state != READY:                    # 4
+            continue
+        group = world.groups[slot.commander]
+        if group.queued_order:                     # player click / mission script
+            slot.emit(group.queued_order); group.queued_order = None
+            continue
+        # --- synthesise one order ($6564) ---
+        for i, obj in enumerate(group.objectives): # exactly 6 slots
+            if not obj.active or obj.link != 0:
+                continue
+            # 1. scripted campaign order, if this mission has one ($6762)
+            if obj.state == PATROL and world.clock >= obj.wait_at + 20:
+                if world.campaign_order.id == obj.camp_id:
+                    obj.substate = world.campaign_order.sub or (world.tick & 3) + 2
+                    slot.emit(BESIEGE, obj.leader_cell); break
+            # 2. strong enough to storm a keep ($69b4)
+            if obj.force >= 22:
+                tgt = nearest_enemy_leader(obj, weight=lambda L: L.troops)
+                if tgt: slot.emit(BESIEGE, tgt.cell); break     # -> group state 3
+            # 3. escort the objective ahead of me, if it's a support slot
+            if i > 0 and group.objectives[i-1].state in (SUPPORT, CAMP4):
+                slot.emit(MARCH, obj.escort_target.cell); break
+            # 4. primary slot: march at the nearest enemy leader ($661a/$68fe/$68ee)
+            if i == 0 and obj.force - 4 > 0:
+                tgt = nearest_enemy_leader(obj,
+                        weight=lambda L: assessment[side][L.side].out >> 2)
+                if tgt:
+                    score = (dist(obj, tgt) // 2) * (tgt.troops // 8 + 1)   # $68ee
+                    if score <= obj.budget:                                  # patience
+                        group.state = 4
+                        slot.emit(MARCH, tgt.cell); break        # -> group state 8
+
+    for side in world.sides:                       # $6a3a: order executor
+        slot = world.cmd_buffer[side]
+        handler = ORDER_TABLE[slot.order_type]     # 26-entry jump table
+        handler(world.groups[slot.commander], slot.param)   # e.g. commit_group_target
+        slot.order_type = NONE; slot.param = 0     # consumed
+
+    # $d322 + $3e06: rebuild per-side force totals, decay objective budgets
+    force = [0]*5
+    for L in world.leaders:
+        force[L.side] += L.troops_field + L.troops_reserve
+    for group in world.groups:
+        for obj in group.objectives:
+            if not obj.active: continue
+            force[group.side] += obj.force
+            if world.tick % assessment[group.side].decay_period == 0:
+                obj.budget -= obj.force // 8 + 1               # big army -> impatient
+                if obj.budget < 0: obj.expire()                # re-pick a patrol waypoint
+
+    # $d23a: UI-only mood ratio (the AI never reads it back)
+    enemy = sum(force[s] for s in other_sides) + 1
+    ui.mood = clamp(0, 4, (2*force[me] + enemy//4) // enemy)
+
+    # $14b62: the entity FSM  (ai.md) -- one tick of every active object
+    for obj in world.objects:
+        if not obj.active: continue
+        MODE_TABLE[obj.mode](obj)                  # 75-entry jump table; see ai.md FSM
+
+    projectiles_update(world)                      # $596a
+```
+
+`commit_group_target` (the `MARCH`/`$0c` handler, via `$3154` → `$4b80`):
+
+```python
+def commit_group_target(group, packed_cell):
+    x, y = packed_cell & 0x3f, (packed_cell >> 6) & 0x7f
+    entity = world.cell_buckets[y*64 + x]          # who's standing there
+    if sign(group.commander_id) < 0 and entity and entity.side == abs(...):
+        pass                                       # foe: attack it
+    group.exec_state = 8
+    lead = group.lead_object
+    lead.prev_mode, lead.mode = 0x30, 0x10         # advance-to-target
+    lead.target = (x*256 + 128, y*256 + 128)       # cell centre, world coords
+    # from here the entity FSM walks the lead there; followers (mode $68) are
+    # stamped from the lead; bucket proximity flips men to melee (mode $32).
+```
+
+Combat, in full (`ai.md` + "Combat" above):
+
+```python
+def melee_tick(attacker):                          # entity mode $32 / $1533c
+    T = attacker.target
+    if T.dead: attacker.mode = FIGHT_HOLD; return
+    dmg = (min(attacker.msg_code, 6) >> 1) + 1     # 1..4 per tick
+    T.morale -= dmg
+    if T.morale <= 0:                              # $5590
+        roll = attacker.group.discipline - 2       # field_60 - 2
+        kill = (roll == 0) or (roll not in (0,2) and (world.tick + attacker.phase) & 2 == 0)
+        if attacker.target.encircled: kill = True
+        if kill: T.to_corpse(decay=160)
+        else:    T.rout()                          # scattered, survives
+    # slow second channel, $5c80: survivability[flags] - (age-60)*4 < 0 -> removed
+```
+
+## What's crude, and what a modern version changes
+
+Read against a contemporary RTS AI, PM's autonomous layer is deliberately thin —
+it fits the "you are the influence, not the general" design, but several parts
+are limitations rather than choices:
+
+1. **Targeting is nearest-enemy-leader, full stop.** `$68fe` picks the smallest
+   `max(|dx|,|dy|)` (weighted by a single relationship byte); `$68ee` scores it
+   only on raw distance × a coarse troop bucket. No terrain cost, no
+   choke-point awareness, no "is this the *valuable* target", no coordination
+   between a side's own groups. A modern version would run an **influence /
+   threat map** and score targets on expected gain vs. expected loss, and let a
+   side's groups deconflict (one besieges, one screens).
+
+2. **No economy in the decision loop at all.** The AI never reasons about
+   population, food, invention or building — those orders can only come from a
+   scripted campaign hook (`$67d0`), which mission 1 doesn't use. A modern
+   version needs a real economic planner: grow settlements, tech up, *then*
+   attack, with the military goal chosen to serve the economic one.
+
+3. **The "patience budget" is the only pacing knob.** `obj.budget` drained by
+   `force/8 + 1` per decay period is a neat trick — big armies commit fast,
+   small ones dither — but it's a scalar with no situational input. Replace with
+   a proper utility model: commit when `P(win) * value > opportunity_cost`.
+
+4. **2.6 Hz, and compute-bound.** The whole sim — every entity, both renderers —
+   runs in one thread at whatever rate a frame builds. Decisions land ~2.5 s
+   apart and combat resolves in ~1–4 morale/tick. A modern port decouples the
+   sim tick from the render, runs the AI on its own budget, and can afford
+   per-frame steering while keeping the coarse "issue an order every few
+   seconds" cadence that gives PM its feel.
+
+5. **Deterministic tick-count "RNG".** `$57fec` is just the low bits of the tick
+   counter (`ai.md`), so the AI and combat replay identically from a save.
+   Fine for the kill/rout roll's *flavour*, but it means no genuine uncertainty
+   — a human learns the exact outcome of a given engagement. Keep the trick for
+   cosmetic jitter; use a real seeded PRNG for anything the player can exploit.
+
+6. **Rout, not attrition, decides fights — and rout is pinned.** `group.field_60
+   == 4` in mission 1 forces every morale-kill into a rout. Whether that's
+   tuning or a bug in the procedural generator, the effect is that field combat
+   almost never kills; territory changes hands by **capture** (`$1d70`) while
+   armies just get scattered and re-form. A modern version would make the
+   discipline value depend on training / leadership / recent losses so that
+   fights have consequences.
+
 ## Open threads
 
+- **Economy / population / invention — not started.** Confirmed *not* in the
+  per-tick path (`$1abaa` is sound, `$3e06` is budget-decay + morale-UI,
+  `$d322` is force-totalling). Initial population/settlement counts come from
+  the `$10d1e`/`$2266` procedural generator. Growth and invention are either
+  event-driven (via `$1d70` capture → `$25d6`) or live in the setup-time
+  cluster `$2984`/`$238c`/`$2906`/`$ac20` which may also run periodically —
+  none of that code is mapped. This is the largest remaining subsystem.
 - **Trace the AI from a live enemy.** Still needs a later campaign mission where
   the enemy captain's command slot reaches `byte4 == 4` on its own. The 72nd
   pass ran the forced fight *for 166 ticks* (not a single-shot poke) — that gave
@@ -649,21 +868,18 @@ Snapshots: `scratchpad/pm71_run1.snap` (settled, ~677M), `pm71_run2.snap`
   `$661a` re-decision and no `$5bd2` casualty. To measure `$68fe` target
   choice and `$68ee` budget maths across repeated decisions, either re-arm
   `byte4` every N ticks with a watch-poke, or reach mission 2+.
-- **`$5778` combat — reclassified, not closed.** Pipeline (contact → `$56a6` →
-  projectile `$57f0` → attrition `$5c80`/`$5bd2` → capture `$1d70`) is decoded
-  and mostly traced. Still static-only: the `byte14` wear-counter increment
-  during combat (what raises it, how fast), the projectile-impact → removal
-  link, the `t_survivability` enum meaning (terrain? posture? weapon tier?),
-  and the role of invention level in the projectile `type` byte.
-- `$67d0` campaign hook: decoded (above). Open: the mission-file byte layout
-  that `$13b9a` / `$10d1e` parse to seed `$67d0` and the per-objective
-  `camp_id_268`.
-- `$580a6` per-side assessment block: the `$2200`–`$3500` writers, what `+16`
-  (the targeting weight) and `+6` (the relationship bits `$4c2a` clears) mean,
-  and whether diplomacy ever flips the friend/foe sign `$3154` uses.
-- `$3c08` (order `$08` besiege setup) and `$30fe`/`$39d4` (order `$10` regroup)
-  — first-look only.
-- Economy: settlement population / food / sheep growth, where invention is
-  modelled and unlocked, the muster/regroup group modes `$56`/`$5a`/`$5c`/`$60`
-  (`ai.md`). None of this is in the strategic layer — it must be in the
-  `$3e06`-adjacent or `$2200`–`$3500` code, still unmapped.
+- **Combat — mechanism closed** (73rd, see "Combat" + `ai.md`). Static-only
+  remainder: the kill branch of `$5590` (needs a disciplined attacker group),
+  the `$5c80`/`$5bd2` wear path (needs a long fight), and the projectile
+  `type` → invention-level mapping (only `type $12`, the area-effect one, seen).
+- **Mission-file grammar** — the procedural generator (`$10d1e`/`$2266`) is
+  sketched (above). The real byte-script path (`$580a0 != 0` → `$10d1e` parses
+  it; objective setup `$2984`/`$238c`/`$2906` seeds `obj_camp_id` + `$67d0`) is
+  unexercised by "Between Pages 1-5" and needs a mission that uses it.
+- `$580a6` per-side assessment block: `$311a` writes `+15`/`+16` (clamp
+  `$ff9c..$64`, a signed −100..+100 relationship), `$4c2a` clears `+6` peace
+  bits, `$3154` reads the sign for friend/foe. The `$2200`–`$3500` seeders and
+  the per-tick incremental writers (`$139dc`/`$13a3e`/`$13b20`) are still
+  unmapped — this is the diplomacy/spy-report subsystem.
+- `$3c08` (rout / besiege-fail group restructure) and `$39d4` (order `$10`
+  regroup march) — first-look only.
