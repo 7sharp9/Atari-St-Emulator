@@ -308,7 +308,7 @@ livestock system and (presumably) any growth payoff read. `$4672` then scatters
 - `scratchpad/pm74_late.snap` (`pm71_run1` + 400M steps, PC `$000124c0`) and
   `pm74_run1.ram` / `pm74_late.ram` — the settle-diff (biggest movers: `$4c5f4`
   151 B, `$4d252` breed bytes → `$0d`, `$4e514` leader pools).
-- `scratchpad/pm74_watch{1,4}.err` — the `watch` hit logs (`$1507c`/`$15e18`
+- `scratchpad/pm74_watch.err` / `pm74_watch4.err` — the `watch` hit logs (`$1507c`/`$15e18`
   reserve growth; `$163ea` settlement-tail writes).
 - `scratchpad/pm74_disasm.txt` — linear disassembly `$1000`..~`$45000` of
   `pm70_iso.ram`, for grepping.
