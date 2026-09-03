@@ -14,9 +14,18 @@
 0001abaa	pm_sound_ambient        # NOT economy: sound LCG x16 + $ff9e sample mix + one $4d252 wildlife poke
 0001abc0	pm_rng_step             # $57fec++ (tick-count "RNG") + $57ff6 sound LCG x=(x*$24a1+$24df)&$1fff
 000178ae	pm_render_setup_a       # per-frame render prep (group $4c exec sub-record)
-0000f898	pm_render_terrain       # terrain raster driver
+0000f898	pm_render_terrain       # walk the heightmap grid far->near, 2 flat triangles per cell + cell sprite
+0000fec6	pm_project_grid        # project grid corners -> $3f364 (rotate by $ff9a, perspective divide $ff7c)
+0000ff7c	pm_perspective_div     # sx = x*$ff98/($ff98-z) ; sy = (z-$ff96)*$ff98/($ff98-z)+$ff96
+0000ef62	pm_tri_raster          # flat triangle: bounds-check + sort 3 Y, $f000 edge slopes, emit span stream
+0000f000	pm_edge_slopes         # fixed-point dy/dx setup for a pair of triangle edges (divu)
+0000e3e2	pm_span_driver         # walk the span command stream; A5 -> $ffa2 colour pattern; 2-line dither
+0000e4de	pm_span_fill           # Duff-device move.l D0/D1,(A2)+ solid fill; edge masks $ece2+/-
+0000ffa2	g_colour_patterns      # pre-expanded 4-plane bit patterns per colour index (built by $fec6)
+0000ff96	g_proj_horizon         # projection: horizon screen-Y (PC-relative read in $ff7c)
+0000ff98	g_proj_eyedist         # projection: eye distance (PC-relative read in $ff7c)
 00017878	pm_render_setup_b       # rotation-indexed row table select ($17ad8)
-000165b2	pm_water_anim           # selected-group water / terrain animation
+000165b2	pm_group_marker         # pulsing marker over the SELECTED group's lead ($57fd2); NOT water anim
 00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md)
 00006a3a	pm_order_exec           # order executor: consume $58016, drive group state + lead mode
 00007a56	pm_render_sprites_hud   # sprite / HUD compositor into offscreen+32000

@@ -1,5 +1,16 @@
 # PowerMonger ST — the graphics pipeline, and what a modern port would change
 
+## Status (73rd pass)
+
+The 73rd pass added **"The terrain mechanism"** below (the 69th pass had a
+profile, not the mechanism): PM's iso view is a **software heightmap-grid
+rasteriser** — `$fec6` projects the grid corners (rotate + perspective divide),
+`$f898` walks the grid far→near drawing **two flat, 2-line-dithered triangles
+per cell** with the terrain byte as the colour index, and cell sprites are drawn
+inline in the same walk. No mesh, no texture, no light model, no palette
+cycling (frame-diff confirmed). Sprites + draw order + the frame pipeline are
+Pass 4 (still open).
+
 ## Status (69th pass)
 
 PM [cr Replicants] is driven all the way into the **isometric battle view**
@@ -31,6 +42,118 @@ straight to `$FFFF8240`. No XBIOS `Setscreen` / `Setpalette`. The whole pipeline
 is: build the frame into an off-screen RAM buffer with software plane blits,
 then one bulk `movem` copy to the shifter buffer, double-buffered via the
 shifter base register.
+
+## The terrain mechanism (73rd pass)
+
+The 68th–69th passes *profiled* the isometric renderer (fill-bound, `$f000`
+slope-divide heavy at zoom-out). This section is the *mechanism* — what it
+actually draws and how — from disassembly of `scratchpad/pm70_iso.ram` plus a
+consecutive-frame diff of the settled view.
+
+### It is a software heightmap grid, not a polygon mesh
+
+There is **no vertex list in RAM**. The terrain model is the two 8 KB planes at
+`$438ee` (`ai.md`): a **type** byte at `0(A1)` (grass / rock / water) and a
+**height** byte at `-8257(A1)`, plus a per-cell flag byte at `+8257(A1)`. The
+per-cell *control* array `$3f86c` is reused by the projector as the height
+source. Corners are generated on the fly during the draw walk — the "mesh" is
+implicit in the grid.
+
+### `$fec6` — project the grid corners (once per camera / rotation / zoom change)
+
+```c
+// A0 = $3f364 vertex buffer (2 words/corner: screenX, screenY)
+// A1 = $3f86c + camera offset  (height source)
+// D7 = rotated {cos, sin} pair from the $13f8a table, indexed by $ff9a
+for (row = -H; row <= H; row++)             // H = $fdec, zoom-dependent half-extent
+  for (col = -H; col <= H; col++) {
+     int z = (cellHeight - $fec4) * $ff9c >> 4;          // height, scaled by zoom
+     int wx = -col * $ff9c,  wy = -row * $ff9c;          // grid pos in world units
+     int rx = wx*cos - wy*sin,  ry = wx*sin + wy*cos;    // rotate by $ff9a
+     // $ff7c: perspective divide -- NOT a pure 2:1 iso
+     int sx = rx * $ff98 / ($ff98 - ry);
+     int sy = (z - $ff96) * $ff98 / ($ff98 - ry) + $ff96;
+     *A0++ = sx + 0x80;                                  // + screen centre X
+     *A0++ = 0x7c - sy;                                  // flip Y
+  }
+```
+
+Two corrections to the 69th pass fall out of this:
+
+- **`$ff96` / `$ff98` are not dead scroll variables** — they are the
+  **projection parameters** (`$ff96` = horizon Y, `$ff98` = eye distance). The
+  69th pass missed them because `$ff7c` reads them **PC-relative** (`4(PC)`,
+  `12(PC)`, `26(PC)`), not as absolute addresses, and because `$f898`'s
+  change-detector doesn't list them, so poking them without also forcing a
+  `$fec6` rebuild changed nothing. They are set at zoom time and left alone.
+- The projection **is perspective** (`x / (d - z)`), not an affine 2:1 iso. The
+  "isometric" look is a fixed camera pitch plus the 16-step yaw (`$ff9a`). This
+  is where a chunk of the `$f000` / DIVS cost the 68th pass measured actually
+  goes — `$ff7c` does two `divs` per grid corner.
+
+### `$f898` — walk the grid far→near, two flat triangles per cell
+
+```c
+for (D7 = rows; ...; A0 += $fdf4, A1 += $fdf2)          // next grid row
+  for (D6 = cols; ...; A0 += 4, A1 += 1, A2 += 2) {     // next cell
+     if (A1[+8257] & 0x80) continue;                    // <-- per-cell "unchanged" skip
+     // the cell's quad = 4 projected corners from the $3f364 buffer:
+     int yTL=A0[0], yTR=A0[4], yBL=A0[64], yBR=A0[68];  // 64 = one grid row
+     // split the quad on the diagonal that follows the slope:
+     if (yBR > yTL) { tri(yTL,yTR,yBL, colour(A1[-8257]));    // height plane
+                      tri(yTR,yBL,yBR, colour(A1[0])); }      // type plane
+     else           { tri(yTL,yTR,yBR, ...); tri(yTL,yBL,yBR, ...); }
+     if (A2[0] != 0) draw_cell_entity($115e0);          // sprite over this cell
+  }
+```
+
+`colour(h)`: `h` is the terrain byte; if `h < 0x0c` (water) `h += masterTick & 3`.
+So the colour index is **the terrain height / type value directly** — height
+banding *is* the shading, there is no separate light model. One triangle of the
+split takes the **height** byte, the other takes the **type** byte, which is why
+a sloped grass cell shows a subtle two-tone split.
+
+### `$ef62` → `$e3e2` → `$e4de` — flat + 2-scanline-dither fill
+
+`$ef62` bounds-checks and sorts the 3 screen-Y corners, sets up two edge slopes
+with `$f000` (fixed-point `dy/dx` via `divu`), tags the span with the colour
+byte, and emits a scanline command stream. `$e3e2` walks it: for each colour it
+points `A5` at a **pre-expanded 4-plane bit pattern** in the table at `$ffa2`
+(built by `$fec6` from the palette), then per scanline runs `$e45a` /
+the `$e4de` Duff-device (`move.l D0,(A2)+ / move.l D1,(A2)+` × ~40). `D0`/`D1`
+are the two constant longwords = the solid colour packed across 16 px; the ends
+of each span are masked with partial-word tables at `$ece2±`. **`A5` is nudged
+(`>>1`, `+8`) every scanline**, selecting between *two* pattern rows — so the
+fill is a **2-line vertical dither** between adjacent colour indices, not a pure
+flat fill. That dither is PM's soft-terrain look. **No texture map is read
+anywhere in the terrain path.**
+
+### Frame diff — the settled sea does not animate
+
+`ATARI_FRAME_DIR` capture of 249 consecutive frames from `pm71_run1.snap`
+(`ATARI_FRAME_EVERY=1`, `scratchpad/pm73_fr/`):
+
+- **Palette: byte-identical across every frame** (all 200 per-line palette
+  row-records unchanged). PM's water is **not** palette cycling.
+- **Screen: 77 bytes changed over 240 frames**, all in two small clusters
+  (y16–27 and y56–59) — moving unit sprites and the selected-group marker
+  blink. The sea is completely static.
+- Frame-to-frame screen deltas are 0 for ~19 frames then a ~120–170 byte burst
+  — the sim-tick cadence (2.6 Hz), i.e. only unit animation.
+
+So the `h += masterTick & 3` water-shimmer path exists but is gated out by the
+per-cell `+8257 & 0x80` "unchanged" flag that `$fec6` sets when a corner didn't
+move: a still camera skips the terrain fill entirely (matching the 69th-pass
+"recomputes nothing while still"). Water only re-colours while the camera is
+moving. On this sparse first map that is barely visible; on a water-heavy map it
+would be the familiar shoreline shimmer, but still driven by the fill, not by
+`$FFFF8240`.
+
+### `$165b2` is the selected-group marker, not water animation
+
+Corrected: `$165b2` (`$130bc` in the tick) draws the pulsing marker over the
+**selected group's lead** (`$51538[$57fd2]` → lead object → world x/y), sprite
+toggled by `$4bb41` bit 0. The sym file's old `pm_water_anim` name was wrong.
 
 ## Isometric renderer, measured (68th–69th pass)
 
@@ -143,9 +266,11 @@ What actually moves the view:
 - **`$ff9a` (rotation) is the only live camera parameter.** Poking it via the
   keypad path re-projects the whole terrain (full-screen frame diff, visually
   confirmed — `iso_rotated.png`). 16 discrete angles.
-- **`$ff96` / `$ff98` (scroll) have no reader** in the loaded iso overlay
-  (checked abs-long and abs-short). 20 keypad increments → byte-identical frame.
-  Iso-view scrolling is cursor/edge driven (`$13118`+), not these vars.
+- **`$ff96` / `$ff98` are the projection parameters, not scroll** (73rd-pass
+  correction — see "The terrain mechanism"). The 69th-pass abs-address search
+  missed them because `$ff7c` reads them PC-relative; poking them without also
+  forcing a `$fec6` rebuild is inert, which is why the keypad increments gave a
+  byte-identical frame. Iso-view scrolling is cursor/edge driven (`$13118`+).
 - **`$ff9c` (keypad zoom) is a latent no-op.** `$137da` / `$137e8` bump `$ff9c`
   but — unlike the rotate/commander cases — **never call `$fe04`**, so the tile
   geometry (`$fdea`–`$fe02`) is never recomputed. 11 increments → byte-identical
