@@ -25,7 +25,14 @@
 0000ff96	g_proj_horizon         # projection: horizon screen-Y (PC-relative read in $ff7c)
 0000ff98	g_proj_eyedist         # projection: eye distance (PC-relative read in $ff7c)
 00017878	pm_render_setup_b       # rotation-indexed row table select ($17ad8)
-000165b2	pm_group_marker         # pulsing marker over the SELECTED group's lead ($57fd2); NOT water anim
+000115e0	pm_draw_cell_entities   # walk $47970[cell] bucket; per entity 2-stage jump table on category (primary+overlay)
+00011f82	pm_blit_minisprite      # 1bpp masked sprite from $33000 sheet ($37 B/frame); shift+mask word loop
+00033000	g_minisprite_sheet      # mini-sprite sheet, $37 (55) bytes per frame (11 rows x 5 bytes)
+00016738	pm_pick_sprite_frame    # heading -> frame via $16754 table (-1 = no sprite this facing) -> $e6ee
+0000e6ee	pm_blit_hud_sprite      # wider multi-plane blitter for HUD glyphs / the selected-unit marker
+00016754	t_heading_frame        # data: heading (0..15) -> mini-sprite frame index, $ff = skip
+0000187a	pm_present             # swap $2df7c<->$2df78, write (front>>8) to $FFFF8200 (double-buffer flip)
+0000e0d4	g_terrain_master       # composed full-terrain buffer; $12ce0'd into the back buffer each present
 00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md)
 00006a3a	pm_order_exec           # order executor: consume $58016, drive group state + lead mode
 00007a56	pm_render_sprites_hud   # sprite / HUD compositor into offscreen+32000

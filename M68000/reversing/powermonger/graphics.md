@@ -155,6 +155,104 @@ Corrected: `$165b2` (`$130bc` in the tick) draws the pulsing marker over the
 **selected group's lead** (`$51538[$57fd2]` → lead object → world x/y), sprite
 toggled by `$4bb41` bit 0. The sym file's old `pm_water_anim` name was wrong.
 
+## Sprites and draw order (73rd pass)
+
+### Sprites are drawn inline in the terrain walk — `$115e0`
+
+`$f898`'s per-cell loop ends with `if ($47970[cell] != 0) jsr $115e0` (see "The
+terrain mechanism"). `$115e0` walks that cell's bucket chain and, per entity,
+does a **two-stage jump-table dispatch on `category` (byte 6)**:
+
+```c
+void draw_cell_entities(int cell) {
+    for (obj *e = &obj[$47970[cell]]; e; e = &obj[e->bucket_next]) {
+        DRAW_PRIMARY [e->category]();     // table at ~$11630: body sprite
+        DRAW_OVERLAY [e->category]();     // table at ~$11664: shadow / banner / bar (0 = none)
+    }
+}
+```
+
+Because the grid is walked **far cell → near cell**, and each cell's sprites are
+drawn immediately after that cell's terrain triangles, the **painter's
+algorithm falls straight out of the walk order** — there is no depth sort and no
+Z buffer. A near hill's terrain is drawn after (over) a far unit; a unit in a
+near cell is drawn after the near hill. This is why PM never has a sprite
+"floating" over a hill it should be behind: draw order *is* world order.
+(Contrast the 68th-pass note on Super Sprint's full `exg` sort network every
+frame — PM doesn't need one.)
+
+### The mini-sprite blitter — `$11f82`
+
+The little men / animals / trees are **1-bitplane masked sprites**:
+
+```
+A1 = $33000 + frame * 0x37        ; sprite sheet, 0x37 (55) bytes per frame
+                                  ; = 11 rows x 5 bytes  (1 plane, ~16 px wide + mask)
+A0 = dest word in the back buffer ; from the entity's projected screen (x,y)
+per row (D2 = 11, clipped to screen top/bottom):
+    D0 = 8 - (x & 7)              ; sub-word shift
+    mask = rol.w D0, (A1)+        ; 1 byte -> shifted 16-bit AND mask
+    data = rol.w D0, (A1)+        ; 1 byte -> shifted 16-bit OR data
+    (A0) = ((A0) & mask) | data   ; punch + paint, one word
+    ... repeated across the sprite width, then A0 += 0x98 (row stride - width)
+```
+
+So a mini-sprite is a **monochrome silhouette** punched into whatever plane the
+blitter is pointed at (the entity's colour comes from which plane / the terrain
+underneath, not from the sprite data). Frame selection is by the entity's
+`heading` (byte 17) — `$16738` indexes a per-heading frame table (`$16754`),
+`-1` meaning "no sprite for this facing" (the 16 headings fold to ~8–9 drawn
+frames + horizontal flip). A full pixel-accurate rip needs the per-category
+frame counts and the sheet extent — deferred, same as the Super Sprint rip.
+
+### The HUD / marker blitter — `$e6ee`
+
+A separate, wider multi-plane blitter (`add.w D0,D0 / add.w D0,D0 / move.l
+110(PC,D0),D0` → a 4-long-per-entry descriptor table; `lsl.w #5,D1` = 32-byte
+row stride) used by `$16738` for the selected-unit marker (`$165b2`) and the
+on-screen HUD glyphs. Not on the terrain hot path.
+
+### Trees / buildings / mountains
+
+Mountains are **terrain**, not sprites — a mountain is just a run of high cells,
+drawn by the same `$f898` triangle fill with a high colour index. Trees and
+buildings are **bucket sprites** (`$115e0`, their own `category` values) drawn
+over the terrain cell they occupy — which is why they pop in/out cleanly at the
+cell granularity when the camera rotates.
+
+## The frame pipeline (73rd pass)
+
+Screen output is direct-to-shifter, double-buffered by the base register. Two
+compose buffers, `$2df7c` (on screen) and `$2df78` (back); a **master terrain
+buffer** at `$e0d4`.
+
+```
+  once per mission ($13b9a):  build terrain master -> $12ce0 copy into BOTH buffers
+
+  per simulation tick ($13000), present rate gated by $57ff0/$57fee (= 1 normally):
+    $1870   spin until the VBL flag $2df8c is set                 ; frame sync
+    $12ce0  copy terrain master ($e0d4) -> back buffer ($2df78)   ; 500 rows, movem, ~1/3 frames
+    $178ae  render setup A  (group exec sub-record)
+    $f898   terrain: per-cell "+8257 & $80 unchanged" skip -> often a near-no-op
+            ($fec6 re-projects the grid only if camera / $ff9a / zoom changed)
+  --- ungated (every tick) ---
+    $14b62  entity FSM      (ai.md)  -- also relinks $47970 buckets via $163ea
+    $6a3a   order executor
+    $7a56   sprite / HUD compositor  -> draws sprites into the back buffer
+    $165b2  selected-group marker
+    ... at the VBL ISR: $187a swaps $2df7c <-> $2df78, writes ($2df7c >> 8) to $FFFF8200
+```
+
+The zoom LOD (`$fe04`, 7 levels → 13 constants `$fdea..$fe02`) only changes the
+grid extent / stride / the `$ff9c` scale factor `$fec6` multiplies by — it does
+**not** switch to different tile art. Every zoom draws the same triangle fill
+with more or fewer, larger or smaller cells (69th-pass "Q2 zoom comparison").
+
+Measured cadence is in "Isometric renderer, measured" and "Q2 zoom comparison":
+the settled view costs ~nothing (terrain skipped, ~4 sprites/frame, `$12ce0`
+every ~3 frames); a moving camera pays the full `$fec6` re-projection + `$f898`
+fill; the fill (`$e4de`) is ~40 % of all instructions when it runs.
+
 ## Isometric renderer, measured (68th–69th pass)
 
 Profiled from `pm67_p4c.snap` / `pm68_isoview.snap` + the OK click:
@@ -202,6 +300,58 @@ slowdown" players report is the `$f000` slope-divide cost (9× more edges to set
 up for many small tiles) once the map is dense enough to outweigh the
 entity/sprite/fill saving — see "Q2 zoom comparison — measured".
 
+## The renderer as modern pseudocode (73rd pass)
+
+The whole terrain + sprite path, decoupled from the ST:
+
+```python
+def build_projection(camera):                 # $fec6 -- only on camera/yaw/zoom change
+    cos, sin = ROT_TABLE[camera.yaw]          # 16 discrete yaw steps
+    for row in range(-H, H+1):                # H, strides from the zoom LOD ($fe04)
+        for col in range(-H, H+1):
+            h  = heightmap[camera.y+row][camera.x+col]
+            z  = (h - H_BIAS) * camera.zoom_scale >> 4
+            wx, wy = -col*camera.zoom_scale, -row*camera.zoom_scale
+            rx = wx*cos - wy*sin
+            ry = wx*sin + wy*cos
+            sx = rx * EYE / (EYE - ry)                 # $ff98 = EYE  -- true perspective
+            sy = (z - HORIZON) * EYE / (EYE - ry) + HORIZON
+            corner[row][col] = (sx + 128, 124 - sy)
+            dirty[row][col]  = (corner[row][col] != old_corner[row][col])
+
+def draw_terrain(camera):                     # $f898
+    blit(back_buffer, terrain_master)         # $12ce0: start from the cached full terrain
+    for row in far_to_near:                   # painter's order
+        for col in far_to_near:
+            if not dirty[row][col]:           # +8257 & 0x80 -- still camera => skip
+                continue
+            c = corner  # 4 projected corners of this cell's quad
+            split = 'TL-BR' if c[BR].y > c[TL].y else 'TR-BL'   # follow the slope
+            h, t = heightmap[...][...], typemap[...][...]
+            if h < WATER_LEVEL: h += (tick & 3)                 # shoreline shimmer
+            fill_tri(c0, c1, c2, colour_index=h)                # $ef62 -> $e4de
+            fill_tri(c1, c2, c3, colour_index=t)                # 2nd tri uses the type byte
+            for e in cell_bucket[row][col]:                     # $115e0, same walk
+                blit_sprite(back_buffer, SHEET[frame_for(e)],   # $11f82: 1bpp masked
+                            project(e.world_x, e.world_y))
+
+def fill_tri(a, b, c, colour_index):          # $ef62 / $e3e2 / $e4de
+    pat0, pat1 = COLOUR_PATTERNS[colour_index]        # pre-expanded 4-plane words ($ffa2)
+    for y in scanlines(a, b, c):                      # edges via fixed-point dy/dx ($f000)
+        xL, xR = edge_x(y)
+        row_pat = pat0 if (y & 1) else pat1           # 2-line vertical dither
+        span_fill(back_buffer, y, xL, xR, row_pat)    # constant longwords + end masks
+
+def present():                                # $1870 + $187a
+    wait_vblank()
+    swap(front_buffer, back_buffer)
+    shifter_base = front_buffer >> 8
+```
+
+Everything the AI/sim does is one layer up (`ai.md` / `strategy.md`); the
+renderer only *reads* `heightmap` / `typemap` / `cell_bucket` / each entity's
+`world_x/y` + `heading`.
+
 ## What a modern port would do differently
 
 Grounded in the pipeline above (off-screen compose + bulk blit + software plane
@@ -214,20 +364,30 @@ fills):
 2. **Span / occlusion buffer.** The `$88ac`-style blit writes every plane word
    whether or not it is later covered. A per-scanline span buffer drawn
    front-to-back removes the overdraw that dominates the zoomed-out frame.
-3. **Scroll the previous buffer.** PM recomputes nothing while the camera is
-   still (finding 2) but does a full rebuild the moment it moves. Scroll the old
-   buffer and redraw only the newly-exposed edge strip + the cells under moving
-   sprites.
-4. **Per-zoom tile LOD as real assets.** Ship pre-rendered tile art per zoom
-   level (PM half-does this); at the furthest zoom draw flat coloured cells with
-   no per-vertex math.
-5. **Blitter-shaped fills.** The hand-unrolled `movem`/`rol`/`and` word pushers
-   become blitter ops / a single `memcpy`-class span fill on an STE or a modern
-   target, roughly 4–8× off the fill cost.
-6. **Separate the sprite sort from the redraw.** Sprites move a few pixels/frame
-   and their back-to-front order rarely changes, insertion-sort the few that
-   moved (same mistake as Super Sprint's `$e84c`, a full `exg` network every
-   frame).
+3. **Scroll the previous buffer.** PM already keeps a terrain master (`$e0d4`)
+   and re-copies it whole (`$12ce0`) every present, then re-fills every dirty
+   cell. On a camera move that's a full re-projection + full re-fill. A modern
+   version scrolls the master by the pixel delta and re-fills only the newly
+   exposed edge strip + the cells under moving sprites.
+4. **Per-zoom tile LOD as real assets.** The 7 zoom levels are the same triangle
+   fill at different scales (73rd pass) — no art switch. Ship pre-rendered tile
+   art per zoom; at the furthest zoom draw flat coloured cells with no
+   per-vertex math and no `$ff7c` perspective divide.
+5. **Blitter-shaped fills.** The hand-unrolled `move.l D0/D1,(A2)+` span pusher
+   and the 2-line dither become blitter ops / a `memcpy`-class span fill on an
+   STE or a modern target, roughly 4–8× off the fill cost. Or drop the software
+   rasteriser entirely for a GPU heightmap mesh + a per-vertex colour ramp,
+   keeping the flat-shaded look.
+6. **The draw order is already right — keep it.** Unlike Super Sprint's full
+   `exg` sort network every frame (`$e84c`), PM needs no sprite sort: the
+   far→near grid walk with sprites drawn inline (`$115e0`) *is* the Z order.
+   A modern port should preserve that structure (draw per-cell, terrain then
+   occupants) rather than reintroducing a separate sorted sprite pass.
+7. **Perspective, not iso.** `$ff7c` does a real `x/(EYE-z)` divide per corner
+   (two `divs`). If the design can accept true axonometric (no foreshortening)
+   the divide goes away and corners become an affine transform — but PM's subtle
+   perspective is part of its look, so a GPU port would just do it in the vertex
+   shader for free.
 
 ## In-game camera control (69th pass)
 

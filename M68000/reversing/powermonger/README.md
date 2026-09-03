@@ -234,6 +234,16 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     and added an **AI reconstruction** section — the whole autonomous layer as
     modern pseudocode plus what a modern version changes. `ai.md` /
     `strategy.md`.
+11. The 73rd pass also finished the **rendering mechanism** (`graphics.md` had a
+    profile, not the mechanism). PM's iso view is a **software heightmap-grid
+    rasteriser**: `$fec6` rotates + perspective-projects the grid corners,
+    `$f898` walks the grid far→near drawing **two flat, 2-line-dithered
+    triangles per cell** (colour index = the terrain byte itself), and cell
+    sprites (1bpp masked, `$33000` sheet) are blitted inline in the same walk so
+    the painter's order is free — no mesh, no texture, no light model, no
+    palette cycling (frame-diff confirmed). Frame pipeline: terrain master →
+    per-present `$12ce0` copy → dirty-cell re-fill → sprite overlay → VBL buffer
+    flip. A renderer-as-pseudocode reconstruction is in `graphics.md`.
 
 ## Files
 
