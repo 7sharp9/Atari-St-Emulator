@@ -199,8 +199,16 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    the iterator `$14b62` and its 75-entry mode table `$14bb4` (`ai.md`). Object
    records at `$51b66`, spatial buckets at `$47970`, group orders at `$51538`,
    nations at `$4f916`. Target selection is local: bucket-proximity contact,
-   adjacent-settlement siege, and a group-order destination cell. The strategic
-   layer above it (`$6522` / `$d322` / `$3e06`) is the next target.
+   adjacent-settlement siege, and a group-order destination cell.
+8. The 71st pass reversed the **strategic layer** (`strategy.md`): the
+   per-commander order pipeline `$6522` (decide) → `$58016` command buffer →
+   `$6a3a` (execute) → `$4b80` (stamp the group lead into mode `$10`). The
+   autonomous decision (`$6522`'s `$6564` branch) is "march at the nearest enemy
+   leader if strong enough and it's within a force-scaled budget" — no economy
+   or build reasoning. `$d322` + `$3e06` build the per-side force totals
+   `$57fba`, reduced by `$d23a` to a UI-only strength ratio `$57fce`. Mission
+   1's enemy captain never issues an autonomous order in ~1000 traced ticks; the
+   `$6564` path was confirmed by forcing a command slot ready.
 
 ## Files
 
@@ -216,3 +224,4 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `iso_zoom_in.png` / `iso_zoom_out.png` | iso view at zoom index 1 / 7 (69th, `$fe04` patched via `$13bbe`) |
 | `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |
 | `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads |
+| `strategy.md` | the strategic layer: the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, and what fired vs didn't in mission 1 |

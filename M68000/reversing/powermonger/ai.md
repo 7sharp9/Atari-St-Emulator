@@ -317,7 +317,13 @@ destination cell and enter mode `$10`; on arrival register with the settlement
 The lords' strategic choices — *declare* an attack, *pick* which village,
 *decide* to recruit or build — live one level up, in `$6522` / `$d322` /
 `$3e06` (called from `$13040` every tick, operating on `$51538` and `$4f916`).
-That layer is the natural next target.
+**That layer is decoded in `strategy.md` (71st pass):** `$6522`'s `$6564`
+branch is the commander AI — it picks the nearest enemy leader (`$68fe`),
+scores it against a force-scaled patience budget (`$68ee` vs objective field
+`112()`), and issues order `$0c` → group state 8 → the group lead enters mode
+`$10` toward that cell (via `$6a3a` → `$4b80`). No economy or build reasoning
+at that layer. `$d322` + `$3e06` only build the per-side force totals `$57fba`,
+which feed a UI mood indicator (`$57fce`), not the AI.
 
 ## Measured
 
@@ -339,13 +345,15 @@ That layer is the natural next target.
 
 ## Open threads
 
-- **The strategic layer** (`$6522` / `$d322` / `$3e06` off `$13040`): how a lord
-  decides to attack, and how a destination cell is chosen and written into
-  `$51538` / `$4f916`. This is the "commander AI" proper.
+- **The strategic layer** — decoded in `strategy.md` (71st pass). Still open
+  there: tracing the AI from a *live* enemy captain (mission 1's never issues an
+  autonomous order), the `$67d0` campaign-order hook, and the `$580a6` per-side
+  assessment / diplomacy subsystem (`$2200`–`$3500`).
 - `$5778` combat resolution (odds, casualties, the role of `16(A1)` weapon/tool
   state, invention level).
-- `$51538` group-order record: exact stride and the full field set (state enum
-  values 3 / 8 / `$c`, the negative offsets `-24` / `-36`).
+- `$51538` group-order record: `strategy.md` has the stride (`$13c`), the header
+  (pending long / type / param), the six interleaved objective slots and the
+  `base+$4c` / `base+$64` execution sub-records. Still open: the full field set.
 - `$3f86c` per-cell control byte: how influence spreads and what `bit0` / `65`
   mean to the regroup modes.
 - Whether byte 33 `== $a` ("hold") is the player's "defend" order or an AI
