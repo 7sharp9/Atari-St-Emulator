@@ -5,7 +5,7 @@
 The 73rd pass added **"The terrain mechanism"** below (the 69th pass had a
 profile, not the mechanism): PM's iso view is a **software heightmap-grid
 rasteriser** — `$fec6` projects the grid corners (rotate + perspective divide),
-`$f898` walks the grid far→near drawing **two flat, 2-line-dithered triangles
+`$f898` walks the grid far→near drawing **two rolling-bitplane-dithered triangles
 per cell** with the terrain byte as the colour index, and cell sprites are drawn
 inline in the same walk. No mesh, no texture, no light model, no palette
 cycling (frame-diff confirmed). Sprites + draw order + the frame pipeline are
@@ -91,7 +91,7 @@ Two corrections to the 69th pass fall out of this:
   is where a chunk of the `$f000` / DIVS cost the 68th pass measured actually
   goes — `$ff7c` does two `divs` per grid corner.
 
-### `$f898` — walk the grid far→near, two flat triangles per cell
+### `$f898` — walk the grid far→near, two dithered triangles per cell
 
 ```c
 for (D7 = rows; ...; A0 += $fdf4, A1 += $fdf2)          // next grid row
@@ -113,20 +113,57 @@ banding *is* the shading, there is no separate light model. One triangle of the
 split takes the **height** byte, the other takes the **type** byte, which is why
 a sloped grass cell shows a subtle two-tone split.
 
-### `$ef62` → `$e3e2` → `$e4de` — flat + 2-scanline-dither fill
+### `$ef62` → `$e3e2` → `$e4de` — the rolling-bitplane dither fill
 
 `$ef62` bounds-checks and sorts the 3 screen-Y corners, sets up two edge slopes
-with `$f000` (fixed-point `dy/dx` via `divu`), tags the span with the colour
-byte, and emits a scanline command stream. `$e3e2` walks it: for each colour it
-points `A5` at a **pre-expanded 4-plane bit pattern** in the table at `$ffa2`
-(built by `$fec6` from the palette), then per scanline runs `$e45a` /
-the `$e4de` Duff-device (`move.l D0,(A2)+ / move.l D1,(A2)+` × ~40). `D0`/`D1`
-are the two constant longwords = the solid colour packed across 16 px; the ends
-of each span are masked with partial-word tables at `$ece2±`. **`A5` is nudged
-(`>>1`, `+8`) every scanline**, selecting between *two* pattern rows — so the
-fill is a **2-line vertical dither** between adjacent colour indices, not a pure
-flat fill. That dither is PM's soft-terrain look. **No texture map is read
-anywhere in the terrain path.**
+with `$f000` (fixed-point `dy/dx` via `divu`), writes the **colour byte** to
+`0(A0)` and the triangle's **top screen-Y** to `2(A0)` of the span record
+(`$f1e2`), and emits a per-scanline edge stream. `$e3e2` walks it; the span
+middle is the `$e4de` Duff device (`move.l D0,(A2)+ / move.l D1,(A2)+` × ~40),
+the ends are composited through the partial-word edge-mask tables at
+`$ec62`/`$eca2` and the x-fraction table `$ece2` (`A6`).
+
+**What `D0`/`D1` are, exactly.** They are `movem.l (A5),#$0003` — two consecutive
+longwords from a **cyclic table of 16-bit bitplane masks** whose base is the
+long at `$ff9e` (`$2e000` in `pm71_run1`/`pm74_late`; `$ffa2` holds `2×` that for
+the `add.l/​lsr.l` addressing idiom in `$e3e2`). The table is **≈240 bytes and
+repeats** (`$2e0f0 == $2e000`). It is **not** per-colour and **not** "solid
+colour packed across 16 px" — most words are mixed-bit stipples like `$ff0d`,
+`$a8ff`, `$1bfd`.
+
+The fill writes `D0` then `D1` per 16-px group and the Duff device just repeats
+that pair, so **every span is a horizontally-periodic-16 stipple**: for column
+`c` (bit `b = 15-c`) the palette index is
+`p3·8 + p2·4 + p1·2 + p0`, with `p0 = word[k]·b`, `p1 = word[k+1]·b`,
+`p2 = word[k+2]·b`, `p3 = word[k+3]·b` (`word[]` = the table as u16s, `k` the
+scanline's start index).
+
+**The addressing is the whole trick:**
+
+```
+A5  =  ( [$ff9e]  +  colourByte  +  (topY << 4) )  >> 1          ; $e3e8..$e3fa
+per scanline:  A5 = ((A5<<1) + 8) >> 1   ==   A5 + 4             ; $e44a..$e452
+```
+
+`A5 += 4` is **+2 u16 words per scanline**, while each scanline consumes 4 words.
+So **scanline y's planes 2 & 3 are re-read as scanline y+1's planes 0 & 1** — the
+pattern *rolls upward through the bitplanes*, which is what makes the dither
+2-scanline-coherent (a monitor's line blur averages the pair). And `colourByte`
+plus `topY` only add a **phase offset** into this one shared stream
+(`colourByte/2 + 8·topY` bytes, i.e. `colourByte/2 + 4·(y + topY)` total). So
+terrain "shading" / height banding is a **phase shift of a single fixed dither
+texture**, not distinct flat colours — hence the woven look at height
+transitions, and hence the 73rd-pass frame-diff finding *no* palette animation
+(the shimmer is spatial and baked into this table, not cycled).
+
+For `colourByte = 0, topY = 0` the emitted tile indices roll through the set
+`{0, 3, 8, B, E, F}` — e.g. column 0 down successive scanlines is
+`F, B, E, 3, 0, 8, E, …` (decoded from `$2e000`; `scratchpad/pm74_disasm.txt`
+context + the table dump). The two 16-bit halves of each `D0`/`D1` longword are
+usually equal (`$ff0dff0d`) → `plane0 == plane1`, `plane2 == plane3` for a
+uniform run; the "transition" words (`$a800`, `$000d`) are where the two 16-px
+sub-tiles differ, i.e. the band edge. **No texture map is read anywhere in the
+terrain path** — this table is the entire surface-appearance model.
 
 ### Frame diff — the settled sea does not animate
 
@@ -329,18 +366,21 @@ def draw_terrain(camera):                     # $f898
             split = 'TL-BR' if c[BR].y > c[TL].y else 'TR-BL'   # follow the slope
             h, t = heightmap[...][...], typemap[...][...]
             if h < WATER_LEVEL: h += (tick & 3)                 # shoreline shimmer
-            fill_tri(c0, c1, c2, colour_index=h)                # $ef62 -> $e4de
-            fill_tri(c1, c2, c3, colour_index=t)                # 2nd tri uses the type byte
+            fill_tri(c0, c1, c2, colour_index=h, topY=min_y(c0,c1,c2))   # $ef62 -> $e4de
+            fill_tri(c1, c2, c3, colour_index=t, topY=min_y(c1,c2,c3))   # 2nd tri: the type byte
             for e in cell_bucket[row][col]:                     # $115e0, same walk
                 blit_sprite(back_buffer, SHEET[frame_for(e)],   # $11f82: 1bpp masked
                             project(e.world_x, e.world_y))
 
-def fill_tri(a, b, c, colour_index):          # $ef62 / $e3e2 / $e4de
-    pat0, pat1 = COLOUR_PATTERNS[colour_index]        # pre-expanded 4-plane words ($ffa2)
+def fill_tri(a, b, c, colour_index, topY):    # $ef62 / $e3e2 / $e4de
+    DITHER = u16_table_at(mem_long[0x00ff9e])         # ~240-byte cyclic bitplane-mask stream
+    k0 = (colour_index // 2) + 8*topY                 # phase offset (bytes) into the stream
     for y in scanlines(a, b, c):                      # edges via fixed-point dy/dx ($f000)
         xL, xR = edge_x(y)
-        row_pat = pat0 if (y & 1) else pat1           # 2-line vertical dither
-        span_fill(back_buffer, y, xL, xR, row_pat)    # constant longwords + end masks
+        k = (k0 // 2) + 2*y                           # +2 u16 words per scanline (A5 += 4)
+        p0,p1,p2,p3 = DITHER[k], DITHER[k+1], DITHER[k+2], DITHER[k+3]   # planes 0..3
+        # every 16-px group of the span is this same 4-word tile; y+1 reuses p2,p3 as its p0,p1
+        span_fill_bitplanes(back_buffer, y, xL, xR, (p0,p1,p2,p3))       # ends via $ec62/$eca2 masks
 
 def present():                                # $1870 + $187a
     wait_vblank()
@@ -374,7 +414,7 @@ fills):
    art per zoom; at the furthest zoom draw flat coloured cells with no
    per-vertex math and no `$ff7c` perspective divide.
 5. **Blitter-shaped fills.** The hand-unrolled `move.l D0/D1,(A2)+` span pusher
-   and the 2-line dither become blitter ops / a `memcpy`-class span fill on an
+   and the rolling-bitplane dither become blitter ops / a `memcpy`-class span fill on an
    STE or a modern target, roughly 4–8× off the fill cost. Or drop the software
    rasteriser entirely for a GPU heightmap mesh + a per-vertex colour ramp,
    keeping the flat-shaded look.
