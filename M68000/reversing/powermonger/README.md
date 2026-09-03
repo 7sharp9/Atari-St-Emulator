@@ -244,6 +244,21 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     palette cycling (frame-diff confirmed). Frame pipeline: terrain master →
     per-present `$12ce0` copy → dirty-cell re-fill → sprite overlay → VBL buffer
     flip. A renderer-as-pseudocode reconstruction is in `graphics.md`.
+12. The 74th pass opened the **economy** (`economy.md`, pass 1 of 2). PM has no
+    single "economy tick"; the subsystems are diffuse. A town's manpower is
+    `pm_leader.troops_reserve` / `.troops_field` (`$4e514` +6/+8) — it fills when
+    soldiers walk home (entity modes `$16`/`$60`, +2/+4) and empties when a
+    captain recruits (mode `$1a`); nothing grew it passively in 400M traced
+    steps. Food is **sheep herded to towns**: the `$4d252` herd array, the
+    `$57f68` herding-operation array, the `$4c5f4` moving markers, and the
+    per-tick servicer `$4342` (a child of `$3e06`) that animates the delivery —
+    but the delivery *payoff* was not observed and is pass 2's first target.
+    "Invention" as the player sees it is object byte 44 (weapon grade): it drives
+    melee damage (`min(grade,6)`) and projectile type, is stamped once at unit
+    spawn (`6` for leads, `0` for tutorial followers), and **no routine advances
+    it**. Settlements are `$4f916` (18-byte, ≤240, chained per nation, built by
+    `$2fc0`). Also flagged: `$163ea` bucket-relink writes landing in the `$4f916`
+    region for some dead object slots — needs verification.
 
 ## Files
 
@@ -260,4 +275,5 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |
 | `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads |
 | `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |
-| `powermonger.sym` | `addr<TAB>name` symbol table for `trace_cfg.py --names` (routines + data tables named across all four docs) |
+| `economy.md` | the economy (pass 1 of 2): the `pm_leader` manpower ledger (`$4e514` +6/+8) and its unit-flow inputs, the sheep/livestock herding system (`$4d252` / `$57f68` / `$4c5f4` / the per-tick servicer `$4342`), the `$4f916` settlement records + builder `$2fc0`, weapon grade (object byte 44) as the player-facing "invention", world-gen of the initial economy (`$10d1e` / `$ffa6` / `$4592f`), and the open questions for pass 2 |
+| `powermonger.sym` | `addr<TAB>name` symbol table for `trace_cfg.py --names` (routines + data tables named across all five docs) |

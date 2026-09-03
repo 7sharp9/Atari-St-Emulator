@@ -102,7 +102,8 @@
 00051b66	g_object_records       # 511 x 50-byte object records, slots 1..511
 00047970	g_cell_buckets         # per-cell entity linked-list heads (broad phase), stride 2
 000438ee	g_terrain              # type plane at 0, height/flag plane at +-8257 (dual 8 KB planes)
-0004f916	g_nation_table         # 18-byte nation/settlement records
+0004f916	g_settlement_table     # 18-byte per-settlement records, <=240, chained per nation (+8 chain_next); count $51536. economy.md
+00051536	g_settlement_count     # live byte-length of g_settlement_table
 00051538	g_group_orders         # 5 x $13c group-order records
 0003f86c	g_cell_control         # per-cell influence/ownership byte
 0004e514	g_leader_table         # 32-byte per-lord: troop counts (+6,+8), message counters, name index
@@ -143,9 +144,26 @@
 00002266	pm_place_nations       # consume the $58152 placement stream; arm enemy command slots (slot_state:=4)
 00058146	g_world_params         # $58146 seed, $58148 size, $5814a lords, $5814c/e coords, $58150 settlements
 00058152	g_placement_stream     # 4-byte {x,y,id,kind} records; kind $10 = lord, <$10 = player start, 0 = end
-0004d252	g_wildlife             # ambient/wildlife array, stride 12, count $4e512/$c (sheep etc.)
 0001ba3e	pm_sound_mix           # sample-table mix into the audio buffers
 0001a856	pm_sound_cue           # ambient sound cue (bleat / call)
+
+# ---- economy: manpower / livestock / settlements (economy.md, 74th pass) ----
+0004d252	g_herd_array           # wildlife/livestock records, stride 12, live length $4e512, cap 400. +2 shepherd obj, +6 cat $4, +7 breed $e-$11 / $0d claimed, +10 packed cell = liveness
+0004e512	g_herd_count           # live byte-length of g_herd_array (init $c, += $c per animal)
+00057f68	g_herd_ops             # herding operations, stride 8, live length $57fb8, <=10. +0 target cell, +4 -> g_herd_array, +6 -> g_herd_markers
+00057fb8	g_herd_ops_len         # live byte-length of g_herd_ops
+0004c5f4	g_herd_markers         # moving on-screen herd-drive markers, stride 22, <=80, live length $4ccd4. +15 signed progress $d0->$30, +20 chain link
+0004ccd4	g_herd_markers_len     # live byte-length of g_herd_markers
+00004342	pm_herd_service        # per-tick (from $3e06): animate herd markers toward destination towns; delivery payoff NOT yet found
+00004672	pm_world_features_seed # world-build: scatter 10 clusters of animals + herd markers over buildable cells
+00004788	pm_seed_animal         # place one g_herd_array entry on a buildable land cell; link it into a g_herd_ops entry
+00005ec6	pm_shepherd_assign     # entity mode setup: bind a unit to a specific animal + give it a herding patrol path
+00002fc0	pm_build_settlements   # world-build: consume the 3-byte settlement stream, chain g_settlement_table per nation
+0000ffa6	pm_seed_cell_control   # seed $3f86c fertility plane from $4592f base map + richness byte $5814b
+0004592f	g_fertility_basemap    # per-cell base fertility/flags map, read by pm_seed_cell_control
+0000b8f4	pm_stats_collect       # count live projectiles + live animals into a caller buffer (UI/score screen)
+0000b940	pm_atoi                # ASCII digit string -> integer (briefing population entry, from $b814)
+00015042	h_mode16_disband       # entity mode $16: unit goes home -> leader.troops_reserve += 2 (+2 more if order_class 8)
 
 # ---- RNG / clocks ----
 00057fec	g_tick_rng            # free-running counter, ++ in $1abc0; low bits used as "random" (deterministic)
