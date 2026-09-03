@@ -1,12 +1,22 @@
 # PowerMonger ST — the economy: manpower, livestock, settlements, invention
 
-Reverse-engineered 74th pass (pass 1 of 2), continuing `ai.md` / `strategy.md`.
-Those two files cover the autonomous military layer and confirm it has **no**
-economic reasoning; this file covers what the economy actually is and where its
-numbers live. Same method: disassembly of `scratchpad/pm70_iso.ram` (game image
-at its absolute addresses, base `$1050`), block traces, and field `watch`es
-driven from `scratchpad/pm71_run1.snap` / `pm74_late.snap` ("Between Pages 1-5",
-the procedurally-generated tutorial mission).
+Reverse-engineered 74th–75th pass, continuing `ai.md` / `strategy.md`. Those two
+files cover the autonomous military layer and confirm it has **no** economic
+reasoning; this file covers what the economy actually is and where its numbers
+live. Same method: disassembly of `scratchpad/pm70_iso.ram` (game image at its
+absolute addresses, base `$1050`), block traces, and field `watch`es driven from
+`scratchpad/pm71_run1.snap` / `pm74_late.snap` ("Between Pages 1-5", the
+procedurally-generated tutorial mission).
+
+**75th-pass summary.** All five pass-2 questions closed. The livestock payoff is
+`+1` to one of `pm_leader.goods[0..7]` (§2a) — eight per-lord counters, one for
+each of Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon, shown in the lord panel,
+shuffled between lords by porter units (§2b), and spent to equip and upgrade
+field units (§2c). "Invention" is that upgrade step (`$638c`), not a research
+timer. Manpower is a **separate** ledger with **no growth term** (§6) — it is
+conservation of soldiers minus a per-settlement upkeep drain (`$163b8`). The
+"periodic settlement update" is entity mode `$7c` (§3a). The `$163ea` write
+aliasing is characterised and benign (§3b).
 
 ## Headline
 
@@ -17,18 +27,22 @@ the entity level by the same `$14b62` FSM that runs everything else:
 
 | subsystem | where the number lives | how it moves | status |
 |-----------|------------------------|--------------|--------|
-| **manpower** (a town's available men) | `pm_leader.troops_reserve` = `$4e514`+6, `.troops_field` = +8 | soldiers walking home add 2–4; recruiting an army subtracts a discipline-scaled fraction; a battlefield/garrison loss subtracts 1 | **traced** |
-| **livestock / food gathering** | `$4d252` herd array + `$57f68` herding-operation array + `$4c5f4` herd-marker array | shepherd units drive animals to towns; `$4342` animates the delivery once per sim tick | structure traced, delivery payoff **static-only** |
-| **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation | created at world-build from the mission stream; ownership changes on capture (`$1d70`/`$25d6`) | **static** |
-| **weapon grade** ("invention" as the player sees it) | object record byte 44 | set once at unit spawn from a mission-setup constant; feeds melee damage and projectile type | **traced (effect), static (source)** |
-| **passive population growth** | — | **not found** — see "What is not here" | — |
+| **manpower** (a lord's available men) | `pm_leader.troops_reserve` = `$4e514`+6, `.troops_field` = +8 | soldiers walking home add 2–4; a disbanding group returns a discipline-scaled slice; recruiting subtracts one; each settlement pulse drains one (`$163b8`); a battlefield/garrison loss subtracts 1 | **traced** |
+| **goods** ("livestock", "invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed herd-drive credits `+1` to one counter (`$60dc`), heavily throttled; porter units shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
+| **livestock** (the herds that feed the goods counters) | `$4d252` herd array + `$57f68` herding ops + `$4c5f4` markers | shepherd FSM (modes `$3e`→`$44`→`$42`) drives an animal home, marks it consumed (`breed:=$d`), credits the goods counter; `$4342` only animates the on-screen marker | **traced** |
+| **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes on capture (`$1d70`/`$25d6`) | **traced** |
+| **weapon grade** ("invention") | `pm_object` byte 44 (items 1–6) / byte 33 (items 7–8) | stamped at spawn (`6` for leads, `0` for tutorial followers); **advanced by the army-supply subsystem** (`$638c`: `if slot < delivered_item: slot := delivered_item`) — no research timer | **traced (mechanism); dormant in mission 1** |
+| **passive population growth** | — | **does not exist** — manpower is strict conservation-of-soldiers (see §6) | **traced negative** |
 
-Over a **400M-instruction** (~1670-tick, ~10 game-minutes) traced settle from
-`pm71_run1.snap`, the only writes to any `troops_reserve` were `+2`/`+4` at unit
-arrivals. Nothing grew a town on its own. Either passive growth is gated on the
-livestock-delivery payoff (untested — no herd completed a delivery in the quiet
-view), needs a far longer timescale, or only a scripted campaign mission enables
-it. Pass 2's job is to settle that.
+Manpower and goods are **two separate ledgers**. Goods never become soldiers and
+soldiers never become goods. Over a ~1-billion-instruction watched resume from
+`pm74_late.snap` (`pm75_big.err`) plus a 135M cross-check (`pm75_w1.err`), every
+`troops_reserve` / `troops_field` write came from the fixed set in §6; no counter
+grew a lord's manpower on its own, and **no lord's side byte was written once**.
+The 74th pass's "delivery payoff not observed" is resolved:
+the payoff is a `+1` to a goods counter, and in the tutorial the food-tier herd
+throttle (`$580a6[side].word8 + $2000` ≈ 8200 ticks, ~1 game-hour) is why the
+400M window saw none complete.
 
 ## 1. The manpower ledger — `pm_leader.troops_reserve` / `.troops_field`
 
@@ -37,13 +51,24 @@ strategic layer actually reads (`$d322` sums both fields per side into
 `$57fba`; `$68fe`/`$69b4` score enemy leaders on `troops_field`).
 
 ```c
-// $4e514, 32-byte records (ai.md / strategy.md: pm_leader). Economy-relevant fields:
+// $4e514, 32-byte records (ai.md / strategy.md: pm_leader). Economy fields (75th):
+/* 0*/  u8   side;             // owning commander (1..4); $550e rewrites it on a defection
+/* 1*/  u8   order_class;
+/* 2*/  u16  chain_head;       // -> $4f916 first settlement of this lord's nation (walk via +8)
 /* 4*/  u16  cell;             // packed {x:6,y:7}
-/* 6*/  u16  troops_reserve;   // <<< the town's men-at-home pool
+/* 6*/  u16  troops_reserve;   // <<< the lord's men-at-home pool
 /* 8*/  u16  troops_field;     // <<< men currently in an army / garrison
-/*14*/  u16  nation_off;       // -> $4f916 home-settlement record
+/*12*/  u16  gather_kind;      // $5ec6: $2/$4/../$e -- which of goods[] this lord's herds yield now
+/*14*/  s16  loyalty_pressure; // ramps +2 (field*4 >= reserve) / -1 per settlement pulse; >=600 -> $550e defection, reset 300
+/*16*/  u16  herd_throttle;    // $60dc countdown; reload $580a6[side].word8 + 4 (+$2000 if gather_kind>=$e)
+/*20*/  u16  shepherd_obj;     // $5ec6: $51b66 offset of the unit assigned to gather
 /*22*/  u16  nearest_herd;     // $2906: byte offset into $57f68 of the closest herding op
+/*24*/  u8   goods[8];         // <<< Pike,Sword,Bow,Plough,Boat,Pot,Catapult,Cannon counts (0..255)
 ```
+
+The 74th pass's `pm_leader` guesses at +14 (`nation_off`) were wrong: the
+settlement chain head is at **+2**, and **+14 is the loyalty / recruitment-pressure
+accumulator** (§6). +24..31 are the goods counters (§2a).
 
 ### The flows (all traced, `watch $4e51a` / `$4e53a` over 80–400M steps)
 
@@ -52,15 +77,23 @@ strategic layer actually reads (`$d322` sums both fields per side into
 | `$1507c` | `$15042`, entity **mode `$16`** ("disband — go home") | `troops_reserve += 2` (`+= 2` again if `order_class == 8`) |
 | `$15e18` | `$15ddc`, entity **mode `$60`** ("register with settlement") | `troops_reserve += 4` |
 | `$150f2` | `$150c0`, entity **mode `$1a`** ("group absorbs reinforcements") | `slice = troops_reserve >> (group.discipline-2)`; `troops_reserve -= slice`; the slice goes to the group lead's marching pool (`14(lead)`) and the group total (`36(group)`) |
+| `$3bc0` | `$3c08`/`$35f4` group teardown | `troops_reserve += group.force >> discipline` — a disbanding army returns a slice of its men (75th) |
+| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.troops_reserve -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks (75th) |
+| `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.troops_reserve -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
+| `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group |
+| `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
 | `$2644` | `$25d6` (capture consequence) | old owner's `troops_field -= 1` (the fallen garrison) |
 | `$42be` | `$3e06` tail, courier/arrow array | a `$51b66` object died and credited a leader: `troops_field += 1` |
 | — | `$d322` per tick | reads both, never writes; totals into `$57fba` |
 
 So a PM "population" is a bucket that fills when soldiers walk home
-(`$16`/`$60`) and empties when a captain recruits (`$1a`). In the tutorial the
-enemy's two sub-leaders (`$4e514[0]`, `[1]`, both side 2) sat with
-`troops_reserve` ramping `$46 → $84` purely from returning patrol detachments;
-the player's manpower is held the same way in the player's own leader record.
+(`$16`/`$60`) or an army disbands (`$3bc0`), and empties through recruiting
+(`$1a`), besieging (`$603e`), and a slow constant per-settlement drain
+(`$163b8`). It is **strict conservation of soldiers** — nothing manufactures a
+man from nothing (§6). In the tutorial the enemy's two sub-leaders
+(`$4e514[0]`, `[1]`, both side 2) sat with `troops_reserve` between 0 and `$a6`,
+each unit return nudging it up and each settlement pulse nudging it down; the
+player's manpower is held the same way in the player's own leader record.
 
 **Mode `$16` disband** (`$15042`, the "go home" path):
 
@@ -163,16 +196,124 @@ void pm_herd_service(void) {                    // $4342
 }
 ```
 
-What `$4342` does **not** contain: any add to `troops_reserve`, any food
-counter, any population maths. The delivery payoff (what a completed herd-drive
-gives the town) was not observed — no `$4c5f4` marker reached `byte15 == 0` in
-the quiet view, so this is the top item for pass 2: `watch` a marker's `byte15`
-and the leader pools across a run where a herd actually completes, or force one.
+What `$4342` does **not** contain: any add to `troops_reserve`, any goods
+counter, any population maths. `$4342` is **only the animation** — it walks the
+`$4c5f4` marker sprite from the animal's cell toward the destination town
+(`$164bc` one step per `18(marker)` dwell), and at arrival (`$44c6`: `$164bc`
+returns 0) it does exactly two things — `bset #7, breed_state` of the animal and
+`jsr $16778` to unlink the marker's screen object. The economic credit is
+elsewhere, in the shepherd unit's own FSM (§2a).
 
-`$5ec6` is the matching entity mode: it assigns a unit (`20(herd_op)` ← the
-shepherd) to a specific animal and gives it a patrol path (`$16964`-relative)
-and a target from `$580a6[side]+8`. The shepherd/hunter behaviour proper is
-another mode chain not yet walked.
+### 2a. The shepherd FSM and the real delivery payoff (75th pass)
+
+The unit that herds an animal runs a four-mode chain. `$5ec6` (`pm_shepherd_assign`)
+kicks it off: it binds the unit to an animal (`20(herd_op)` ← shepherd object),
+gives it a `$16964`-relative patrol path, and — the part that matters — sets
+**`pm_leader.gather_kind` (`$4e514`+12)** to one of `$2/$4/$6/$8/$a/$c/$e` from
+the `$3f86c` terrain-control byte at the lord's cell plus the animal's flags.
+That value picks which of the eight goods the lord's herds currently yield.
+
+| mode | handler | what it does |
+|------|---------|--------------|
+| `$3e` | `$155ac` | scan `$4d252` for a live animal near the lord's herd cell (`breed_state` in `$0e..$11`); set it as `target`, → mode `$10` (walk), `prev_mode := $44` |
+| `$44` | `$156be` | on arrival: 4-tick countdown (`byte 39`), then `animal.breed_state := $0d` (**consumed**); re-target the deposit object (`46(A1)`), → mode `$6a` body → mode `$46` → mode `$10`, `prev_mode := $42` |
+| `$42` | `$15736` → `$600a` | dispatch on `pm_leader.gather_kind`; every non-idle case calls **`$60dc`** then re-arms the chain (`prev_mode := $3e`/`$40`/`$c`) |
+| `$46` | `$15724` | short dwell (`18(A1)`) then → mode `$10` |
+
+**`$60dc` is the payoff:**
+
+```c
+void pm_deliver_goods(pm_leader *L) {           // $60dc, from $600a (mode $42)
+    if (--L->herd_throttle /*+16*/ != 0) return;         // one delivery per throttle window
+    L->herd_throttle = side_assess(L->side)->word8 + 4;  // $580a6[side].word8 + 4
+    int kind = L->gather_kind;                           // +12
+    if (kind >= 0x0e) L->herd_throttle += 0x2000;        // "food"-tier herds are ~4x rarer
+    int r = (kind >> 1) - 1;                             // 0..6
+    if (L->goods[r] /*byte 24+r*/ != 0xff) L->goods[r] += 1;   // <<< the credit
+}
+```
+
+So a completed herd-drive is worth **exactly +1 to one of `pm_leader.goods[0..7]`**,
+and the throttle (`+16`, reload `$580a6[side].word8 + 4`, `+$2000` for `gather_kind
+≥ $e`) is why deliveries are so rare in the settled view. In `pm75_big.err` the
+`$6120` credit fired 3 times in the first ~40M instructions; `$4e544` (a lord's
+`+16` throttle) reloads to `~$1fc9`, i.e. ~8100 ticks (~1 game-hour) between
+food deliveries.
+
+The eight `goods[]` slots map 1:1 to the `$a242` string table used for the unit
+"carrying …" clause, and are read straight back out for the player in the lord /
+settlement info panel:
+
+```c
+// $9bae  --  the granary line of the lord info panel
+for (int i = 0; i < 8; i++)
+    if (L->goods[i]) emit("%d %s%s", L->goods[i], a242[i+1], L->goods[i]==1 ? "" : "s");
+// a242[1..8] = Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon
+```
+
+### 2b. Goods circulation — porter units
+
+Goods do not stay where they are produced. A separate carrier FSM (modes
+`$4e`/`$50`/`$52`/`$54`/`$5e`) moves counts between a nation's lords, biasing the
+flow toward the capital:
+
+| routine | direction | effect |
+|---------|-----------|--------|
+| `$159de` | pick up | `r = $57fec % 6`; if `src_leader.goods[r] != 0`: `goods[r] -= 1`, stamp the carried code `(r+1)*2` onto the porter's byte 44 (r<3) or byte 33 (r≥3) |
+| `$159a4` | drop off | read the carried code off byte 33 / byte 44, `dst_leader.goods[(code>>1)-1] += 1` (cap `$ff`), clear the byte |
+
+`$57fec` (the deterministic tick counter) round-robins the resource, so over time
+every counter is sampled. This is what makes a lord's `goods[]` oscillate ±1 in a
+long trace (`pm75_big.err`: `$0159f0`/`$0159ba` on `$4e530`) rather than ramp.
+
+### 2c. Goods → equipment — the army-supply subsystem and "invention"
+
+The player-facing "your men have invented Swords / Bows / Cannon" is **not** a
+research timer. It is the moment a higher-tier item first reaches a lord's
+`goods[]` and its field units get re-equipped from it.
+
+`pm_object` carries the unit's equipment in **byte 44** (tier for items 1..6 —
+Pike/Sword/Bow/Plough/Boat/Pot) and **byte 33** (tier for items 7..8 —
+Catapult/Cannon). `$1533c` (melee) reads byte 44 as `damage = (min(v,6) >> 1) + 1`;
+`$52fc` reads it for the projectile type.
+
+The distribution runs from the commander-AI group-supply routine (`$61f8`, ahead
+of `$6522`) and from the group-teardown family (`$3a66`/`$3aee`/`$3b32`, reached
+via `$3c08`/`$35f4`):
+
+```c
+// per group-order record, D0 = shift from group discipline ($30fe)
+for (int i = 0; i < 8; i++) {
+    int take = L->goods[i] >> D0;      L->goods[i] -= take;      // spend a discipline-scaled slice
+    grp->supply_acc[i] /*word[84 + i*12]*/ += push_to_units(i+1, take);   // $6352
+}
+// $638c, per candidate field unit, slot = (item <= 6 ? byte44 : byte33):
+//   if unit.slot == 0      -> unit.slot = item          (equip)
+//   else if unit.slot < item -> unit.slot = item; recycle the displaced lower item   (UPGRADE)
+//   else                    -> no change
+```
+
+Two more modes close the loop:
+
+* **mode `$78`** (`$15772` → `$63f4`): deposit a group's `supply_acc[]` back into
+  `L->goods[]` (cap `$ff`), then → mode `$92` (free the group slot).
+* **mode `$76`** (`$15754` → `$33b0`): weighted sum of *this-tick* deliveries
+  (`supply_acc[i] × weight[$3498]`) `+` the assessment byte toward a target side
+  `- 2`; if `≥ 0` issue **attack order `$2a`** (or `$34a8` = declare war); if `< 0`
+  free the group. **This is the game's only economy → strategy coupling**: a lord
+  that is being kept well-supplied turns aggressive.
+
+All of `$61f8` / `$638c` / modes `$76`–`$78` sit in the strategic layer that
+`strategy.md` measured as **near-dormant in "Between Pages 1-5"** (the enemy
+captain issues no autonomous orders in ~1000 ticks). So in the tutorial, tier
+byte 44 keeps its spawn value and the 74th pass's "no routine advances byte 44"
+is *practically* true there — but the mechanism is fully present and would fire
+in a live campaign.
+
+One salvage path *does* fire in the tutorial: mode `$90` (`$160f2`, a
+unit-removal handler) does `owner_leader.goods[(byte44>>1)-1] += 1` at `$1611a`
+before clearing the dead unit's byte 44 — a fallen unit's weapon returns to the
+lord's stockpile. `pm75_big.err` caught this (`$01611a`, 7×).
 
 `$b8f4` is a **statistics collector** for the UI/score screen: it counts live
 projectiles (`$4ccd6`, type `$11`/`$12`) and live animals (`$4d252`,
@@ -206,58 +347,105 @@ its cells in `$3f86c`.
 
 Capture (`$1d70` → `$25d6`, `ai.md`/`strategy.md`) flips `owner`, decrements the
 loser's `troops_field`, and spins up a garrison objective for the new owner. It
-does **not** transfer a stored population — the settlement's future production
-follows the ownership byte.
+does **not** transfer a stored population or goods — the settlement's future
+production follows the ownership byte, and the goods sit on the *lord* record
+(`$4e514`), not the settlement.
 
-### The `$163ea` aliasing observation (needs verification, pass 2)
+### 3a. The per-settlement heartbeat — entity mode `$7c` (75th pass, task 4)
 
-`watch $4f916 240` over 90M steps showed a steady stream of writes at PC
-`$01643c` / `$016482` / `$01645c` landing on `$4f916 + i*$12 + {2, 20}` for many
-`i`. Those PCs are inside **`$163ea` (`pm_relink_bucket`)** — the `$47970`
-doubly-linked-cell-bucket maintenance — writing `bucket_prev` (`2(A3)`, A3 =
-`$51b66 + link`) and the bucket head (`0(A2,D7.w)`, A2 = `$47970`). For those
-writes to reach `$4f916` the link word or the cell index must be far out of the
-legal range (`$47970` is only ~4–5 KB of buckets; object links are byte offsets
-into a ~$63CE-byte array, so bit 15 is never legitimately set).
+There is no global "settlement update" routine. Each settlement's map marker
+(`$51b66` object, spawned by `$2984`) sits in **entity mode `$7c`**
+(`t_mode_handlers[$7c]` → `$157ba`, body at `$157e6`) and pulses once every
+`$580a6[side].word0` ticks (the same interval `strategy.md` calls the
+objective-budget decay period). One pulse:
 
-Reading: a set of **dead / never-initialised object slots** with stale large
-`world_x/world_y` or link words are being relinked into out-of-bounds bucket
-positions that alias the `$4f916`/`$4e514`/`$4d252` block. It is very likely
-benign (those slots have `owner == 0`, never render, and the garbage they write
-into the settlement tail is `_w0`/`_w2`/`_w16` — fields nothing reads), but it
-should be confirmed against a real-Hatari trace before it is trusted as
-harmless, and it means **the 73rd pass's `pm_nation.chain_next` at +2 was
-wrong** (the real chain link is +8; +2 is scratch that `$163ea` scribbles).
+```c
+void h_mode7c_settlement(pm_object *M) {           // $157e6
+    if (--M->dwell > 0) return;
+    jsr_16848(M);  jsr_5c80(M);                    // group detach + upkeep (morale creep)
+    M->dwell = side_assess(M->side)->word0;
+    pm_leader *L = &leader_of(M->settlement);      // $163b8:
+    if (L->troops_reserve) L->troops_reserve--;    //   << the constant manpower drain
+    pm_settlement *S = &settlements[M->settlement];
+    if (S->nation_kind == 0x0a) {                  // "under construction"
+        if (++S->build_progress /*+16*/ >= 0x78) { // 120 pulses to finish
+            S->nation_kind = S->dest_cell % 10;    // pseudo-random final kind from map position
+            if (S->nation_kind == 7) S->kind = 0x10;   // 1-in-10 becomes a capital
+            S->build_progress = 0;
+        }
+        return;
+    }
+    // loyalty / recruitment-pressure accumulator (see §6)
+    if (L->troops_field * 4 >= L->troops_reserve) L->loyalty_pressure += 2;
+    else                                          L->loyalty_pressure -= 1;
+    if (L->loyalty_pressure >= 600) revolt(L, M);  // $550e
+}
+```
+
+So the "periodic settlement update" the 74th pass hunted for is this: **it is
+per-settlement, entity-driven, and it does three things — bleed one man from the
+lord's reserve, advance construction, and accumulate loyalty pressure.** It
+never adds manpower and never touches `goods[]`.
+
+### 3b. The `$163ea` aliasing — characterised, benign (75th pass, task 5)
+
+`watch $4f916 240` (`pm75_w2.err`) confirms the writes land on
+**`$4f916 + i*$12 + 2`** (i.e. `pm_settlement._w2`) for i ≈ 1..11, from PCs
+`$1643c` / `$16482` / `$1645c` inside **`$163ea`**. Disassembly resolves it
+cleanly: `$163ea` is a textbook doubly-linked-list relink of the `$47970` cell
+buckets —
+
+```
+$1643c  move.w 2(A1),2(A3)     ; A3 = $51b66 + word[A1+0]   ; next->prev = my prev
+$16482  move.w D0,2(A3)        ; A3 = $51b66 + new-head-link ; old head->prev = me
+$1645c  clr.w  2(A3)           ; A3 = $51b66 + word[A1+0]   ; new head->prev = 0
+```
+
+Every one is `node.prev := …` at `$51b66 + link`. It reaches `$4f916` only when
+the source object's forward-link word (`word[A1+0]`) is **sign-extended
+negative** (`adda.w D5,A3` with `D5 ≈ $DDC2`): `$51b66 - $223E = $4F928`. The
+values written are legitimate small link offsets (multiples of 50, the object
+stride: `$32 $64 $fa $12c $190 $1f4 $258`) with occasional garbage
+(`$b184`, `$af48`).
+
+Conclusion: **`$163ea` is not at fault** — it only propagates links. The fault
+is *upstream*: one or more object slots hold a corrupt bit-15 forward link, and
+because the emulator zero-inits RAM that link was *written* by some instruction
+(a bad `$2e1e` allocation index, or a stale link on a freed slot re-walked).
+The damage is confined to `pm_settlement._w2`, which **nothing reads** (the chain
+link is `+8`, cell is `+12`, owner `+5`). A real-Hatari cross-check is blocked by
+the same limitation as all PM analysis — PM cannot be driven to the iso view
+headlessly in Hatari — so this is downgraded from "needs verification" to
+**characterised, benign, low priority**. It does confirm the 73rd pass's
+`pm_nation.chain_next @ +2` was wrong (real link `+8`; `+2` is scratch).
 
 ## 4. Weapon grade — "invention" as the game surfaces it
 
-The player-facing "your men have invented pikes / bows / cannon" is represented
-as **object record byte 44** (`pm_object`, wrongly named `msg_code` in the 70th
-pass — it is dual-purpose: a transient message code in the `$16260` notify path,
-and, for a combat unit, its weapon tier).
+**`pm_object` byte 44 is triple-purpose** (70th "msg_code", 74th "weapon tier",
+and now a third role): a transient notify code in `$16260`; the equipment tier
+for item types 1..6 on a combat unit; and a transient *carried-item* tag on a
+porter unit (§2b). Byte **33** is the tier for item types 7..8 (Catapult, Cannon).
 
 | site | reads byte 44 as | effect |
 |------|------------------|--------|
-| `$1533c` (melee, mode `$32`) | weapon tier | `damage = (min(grade, 6) >> 1) + 1` per tick → 1..4; the `min(.,6)` caps the melee benefit at tier 6 |
-| `$52fc` / `$5318` (`$5188`/`$532e` projectile spawn) | weapon tier | projectile **type** `D1`: default `$12` (the area-effect arrow), `$28` when `byte44 == $6` |
-| `$3ffc` (`$3e06` speed calc) | `byte44 >= $e` → `+$10` force bonus | tilts the objective-unit speed term |
-| `$9846` / `$9dc6` (`$a242` string table) | index | the "carrying …" clause in the on-screen unit description |
+| `$1533c` (melee, mode `$32`) | tier | `damage = (min(grade, 6) >> 1) + 1` per tick → 1..4 |
+| `$52fc` / `$5318` (projectile spawn) | tier | projectile **type**: default `$12`, `$28` when `byte44 == $6` |
+| `$3ffc` (`$3e06` speed calc) | `byte44 >= $e` → `+$10` force bonus | speed term |
+| `$9846` / `$9dc6` (`$a242`) | index | the "carrying …" clause in the unit description |
 
-Where it is **set**: only at unit creation.
-- `$245c` (`$238c` setup): every group **lead** gets `byte44 := 6` unconditionally
-  (the `move.b 21(A2),44(A1)` one instruction earlier is immediately clobbered).
-- `$2500` (`$238c` setup): every **follower** gets `byte44 := 23($580a6 + side*$20)`
-  — and `$10d1e` clears assessment bytes 16..23 to zero, so tutorial followers
-  start at grade **0**.
+Where it is **set**:
+- **at spawn** — `$245c` stamps `6` on every group lead; `$2500` gives followers
+  `byte44 := $580a6[side].byte23`, which `$10d1e` zeroes in the tutorial, so
+  tutorial followers start at **0**.
+- **advanced by supply** — `$638c` (§2c): when a lord's `goods[]` gets spent on
+  its field units, `if unit.tier < delivered_item: unit.tier := delivered_item`.
+  This is the whole of "invention" — there is **no research counter and no
+  per-town invention percentage**. A unit improves iff a higher-tier item
+  reaches its lord's stockpile and the supply subsystem runs (dormant in mission
+  1, so pass 1's "never advances" holds *for the tutorial*).
 
-No routine was found that *advances* byte 44 over time — there is no research
-counter, no per-town invention percentage in the mapped structures, and the
-`$67d0` campaign hook (`strategy.md`) is the only path by which a scripted
-mission could bump it. So in the procedural tutorial, weapon grade is a fixed
-per-unit stamp (`6` for leads, `0` for followers) and never improves. Whether a
-real campaign mission carries an invention-progression subsystem, or whether
-grade is re-stamped from the home settlement at recruit time (mode `$1a`), is a
-pass-2 question — the recruit path (`$150c0`) does **not** touch byte 44 today.
+The recruit path (mode `$1a`, `$150c0`) does not touch byte 44 — a fresh recruit
+keeps whatever tier the group lead's supply run has given the group.
 
 ## 5. World-generation of the initial economy
 
@@ -273,42 +461,104 @@ table). The economy-relevant ones:
 
 `$ffa6` seeds the per-cell control plane `$3f86c` ($1fff cells) from a base map
 at `$4592f`, offset by `$5814b`, gated by `bit 1` of `$4592f`-plane flags, then
-clamps every cell `>= 0`. This is the fertility / carrying-capacity field the
-livestock system and (presumably) any growth payoff read. `$4672` then scatters
+clamps every cell `>= 0`. The 75th pass corrects the pass-1 guess: `$3f86c` is
+the **influence / carrying-capacity** field, not a fertility input to a growth
+payoff (there is no growth payoff). It is read by `$5ec6` to pick `gather_kind`,
+by the regroup modes (`$15b94`) for sprite selection, and by the strategy layer
+for territory ownership — not by any manpower or goods maths. `$4672` scatters
 10 clusters of animals (`$4788`) and herd markers across buildable cells.
 
-## What is not here (pass-2 targets, in priority order)
+`$2984` (task 4, now disassembled) is **world-build settlement-garrison spawn**,
+not a periodic pass: per lord it walks the settlement chain, allocates a `$51b66`
+marker per settlement (guarded by the object high-water `$57f66 < $5460`),
+`owner_leader.troops_field += 1`, and seeds the marker's morale byte 45. It runs
+once, alongside `$238c`.
 
-1. **The livestock-delivery payoff.** Force a `$4c5f4` herd marker to `byte15
-   == 0` (or watch one that completes over a very long run) and capture what it
-   adds — to `troops_reserve`? to a food counter? Watch the leader pools and the
-   `$3f86c` fertility cells around the destination town at the moment of
-   arrival. This is the missing link between "sheep" and "population".
-2. **Passive population growth.** Run 1–2 **billion** instructions from a settled
-   snapshot with `watch $4e514 64` and `watch` on any settlement scalar, and see
-   whether `troops_reserve` ever moves without a unit-return event. If it never
-   does, PM has no free growth and manpower is purely a conservation-of-soldiers
-   system — a real finding worth stating.
-3. **Invention progression.** Confirm byte 44 is never advanced (billion-step
-   watch on a combat unit's `+44`), then check whether a *campaign* mission
-   (`$580a0 != 0`, a real byte script) seeds `$67d0` with an invention order, or
-   whether `$2984` (still not disassembled) stamps a per-nation tech level that
-   recruits inherit.
-4. **`$2984` / `$3338` / `$3528` / `$37f6`** — the un-mapped `$4f916` readers in
-   the `$2200`–`$3500` cluster. `$2984` runs at world-build alongside `$238c`;
-   the others may be the periodic settlement update this pass failed to find.
-5. **Verify the `$163ea` aliasing** against a real-Hatari `cpu_disasm` trace of
-   `$163ea` — rule it in or out as an emulator bug.
+## 6. Manpower is conservation-of-soldiers — there is no growth (75th, task 2)
 
-## Traces / artefacts (74th pass)
+Combining §1's flow table with the `pm75_big.err` (~1B steps) / `pm75_w1.err`
+(135M steps) watches from `pm74_late.snap` (`watch $4e514 160` / `128`):
 
-- `scratchpad/pm74_quiet.evt` (352 MB, 150M steps from `pm71_run1`), processed to
-  `pm74_blocks.txt` / `pm74_cg.dot` with `pm74.names`. Confirms `$4342` is a
-  per-tick child of `$3e06`; no economy-shaped routine outside the known tick.
-- `scratchpad/pm74_late.snap` (`pm71_run1` + 400M steps, PC `$000124c0`) and
-  `pm74_run1.ram` / `pm74_late.ram` — the settle-diff (biggest movers: `$4c5f4`
-  151 B, `$4d252` breed bytes → `$0d`, `$4e514` leader pools).
-- `scratchpad/pm74_watch.err` / `pm74_watch4.err` — the `watch` hit logs (`$1507c`/`$15e18`
-  reserve growth; `$163ea` settlement-tail writes).
-- `scratchpad/pm74_disasm.txt` — linear disassembly `$1000`..~`$45000` of
-  `pm70_iso.ram`, for grepping.
+**Every** write to any lord's `troops_reserve` / `troops_field` came from this
+closed set — `$1507c` (`+2`, mode `$16`), `$15e18` (`+4`, mode `$60`), `$3bc0`
+(`+= force>>disc`, group teardown), `$1c04` (`+1`, capture — new owner), `$42be`
+(`+1`, kill credit); `$150f2` (`-=`, recruit), `$603e` (`-2`, besiege), `$163b8`
+(`-1`, settlement pulse), `$382a` / `$2644` (`-1`, re-parent / old owner on
+capture). There is **no accumulator, no per-tick `+n`, no birth rate**. A
+nation's total manpower can only be redistributed among its lords and slowly bled
+by garrison upkeep; it grows only by winning battles (men who would have died
+walk home instead) and shrinks by losing them.
+
+The one thing that *looks* like a growth counter — `pm_leader.loyalty_pressure`
+(`+14`) — is the opposite. It ramps `+2` whenever `troops_field*4 >= troops_reserve`
+(the lord's standing army has outgrown its manpower base) and `-1` otherwise,
+one step per settlement pulse (`$15886` / `$158a8`, both traced). At **≥ 600** the
+settlement pulse calls `$550e` — **this branch is static-only, never reached in
+any trace** (see the caveat below the code):
+
+```c
+void revolt(pm_leader *L, pm_object *marker) {     // $550e
+    u8 new_side = (marker->field8 % 4) + 1;        // pseudo-random 1..4
+    L->side = new_side;                            // the lord defects
+    L->loyalty_pressure = 300;                     // reset, half-way
+    for (pm_settlement *s = chain(L); s; s = next(s))
+        s->owner = new_side;                       // and every settlement with him
+    reconcile_owner(...);                          // $5c2c
+}
+```
+
+Read statically, this is a **rebellion-from-militarism** mechanic: over-militarise
+a territory (big army, empty coffers, sustained) and the lord and all his
+settlements switch allegiance. Caveat: `$550e` writes `leader.side` and every
+`settlement.owner` in the chain to `(marker.field8 % 4) + 1` and resets
+`loyalty_pressure` to 300 — but in the tutorial `loyalty_pressure` only
+oscillated 296–306 and **no side byte was written once** across ~1B traced
+instructions, so the `≥ 600` path and the exact `new_side` formula are inferred
+from the disassembly, not observed. It fits PowerMonger's theme (the manual's
+"the people will turn against a cruel ruler") and is the natural pressure-release
+for a system with no growth term, but a live campaign trace would confirm it.
+
+## Complete picture
+
+```
+   HERDS ($4d252)                                    ARMIES (groups, $51538)
+      │  shepherd FSM  $3e→$44→$42                       │
+      ▼                                                  │ group teardown $3c08/$35f4
+   pm_leader.goods[0..7]  ($4e514 +24)  ◄───────────────┤ ($3b5a deposit remainder)
+      │  ▲                                               │
+      │  │ porters (modes $4e/$50/$52/$54/$5e)           │ army-supply $61f8 / $6352
+      │  │ $159de pick up  /  $159a4 drop off            ▼
+      │  └──────────────────────────────────►  $638c  equip / UPGRADE unit tier
+      │                                          (pm_object byte 44 / byte 33)
+      │  displayed:  $9bae  "n Swords" in the lord panel
+      ▼
+   $33b0 (mode $76): weighted delivery total + hostility  ─►  attack order $2a / declare war
+
+
+   pm_leader.troops_reserve / .troops_field  ($4e514 +6/+8)   ── SEPARATE LEDGER ──
+      +2  mode $16 disband-home ($1507c)          -1  settlement pulse upkeep ($163b8, mode $7c)
+      +4  mode $60 register     ($15e18)          -2  mode $42 besiege        ($603e)
+      +f  group teardown        ($3bc0)           -n  mode $1a recruit        ($150f2)
+      +1  kill credit           ($42be)           -1  capture / re-parent     ($2644/$382a)
+                                (no birth term — §6)
+```
+
+## Traces / artefacts
+
+75th pass:
+- `scratchpad/pm75_big.err` — `watch $4e514 160`, ~1B steps from `pm74_late.snap`
+  (the §6 conservation evidence; `$6120` goods credit fires ~3×/40M).
+- `scratchpad/pm75_w1.err` — `watch $4e514 128`, 135M steps (`$163b8` reserve
+  drain 273×, `$60dc` throttle, mode `$16`/`$60` returns).
+- `scratchpad/pm75_w2.err` — `watch $4f916 240` (the §3b `$163ea`→`_w2` writes,
+  refined to `+2` only + the multiples-of-50 link values). NOTE: the double-`watch`
+  form (two regions) suppressed the `$4e514` events in that run — **`watch` is
+  reliable for one region at a time**; use separate runs.
+- `scratchpad/pm75_w3.out` — `m 4e514 128` dumps (leader field map verification).
+
+74th pass:
+- `scratchpad/pm74_quiet.evt` (352 MB, 150M steps from `pm71_run1`) →
+  `pm74_blocks.txt` / `pm74_cg.dot` / `pm74.names`. `$4342` per-tick child of `$3e06`.
+- `scratchpad/pm74_late.snap` (`pm71_run1` + 400M, PC `$000124c0`),
+  `pm74_run1.ram` / `pm74_late.ram`.
+- `scratchpad/pm74_disasm.txt` — linear disasm `$1000`..~`$45000` of `pm70_iso.ram`.

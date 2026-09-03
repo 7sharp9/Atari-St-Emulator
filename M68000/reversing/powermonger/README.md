@@ -259,6 +259,24 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     it**. Settlements are `$4f916` (18-byte, ≤240, chained per nation, built by
     `$2fc0`). Also flagged: `$163ea` bucket-relink writes landing in the `$4f916`
     region for some dead object slots — needs verification.
+13. The 75th pass closed the **economy** (`economy.md` is now complete). The
+    "livestock payoff" is `+1` to one of `pm_leader.goods[0..7]` (`$4e514` +24) —
+    eight per-lord counters, one for each item type (Pike, Sword, Bow, Plough,
+    Boat, Pot, Catapult, Cannon), heavily throttled (`$60dc`). They are shown in
+    the lord panel (`$9bae`), shuffled between a nation's lords by porter units
+    (`$159de`/`$159a4`), and spent by the army-supply subsystem (`$6352`/`$638c`)
+    to equip and **upgrade** field units — which is the whole of "invention":
+    `if unit_tier < delivered_item: unit_tier := delivered_item`, no research
+    timer. All of that is in the strategic layer that is dormant in mission 1, so
+    the tutorial never exercises it. **Manpower is a completely separate ledger
+    with no growth term** — strict conservation of soldiers minus a per-settlement
+    upkeep drain (`$163b8`, one man per settlement per `$580a6[side].word0`
+    ticks). The "periodic settlement update" turned out to be entity **mode `$7c`**
+    (`$157e6`), which also runs a loyalty accumulator (`pm_leader` +14): at ≥ 600
+    (army too big for the manpower base, sustained) the lord and all its
+    settlements **defect** (`$550e`). `$2984` is world-build garrison spawn; the
+    `$163ea` write aliasing is characterised (a corrupt object forward-link, not a
+    fault in `$163ea`) and benign (`pm_settlement._w2`, which nothing reads).
 
 ## Files
 
@@ -275,5 +293,5 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |
 | `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads |
 | `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |
-| `economy.md` | the economy (pass 1 of 2): the `pm_leader` manpower ledger (`$4e514` +6/+8) and its unit-flow inputs, the sheep/livestock herding system (`$4d252` / `$57f68` / `$4c5f4` / the per-tick servicer `$4342`), the `$4f916` settlement records + builder `$2fc0`, weapon grade (object byte 44) as the player-facing "invention", world-gen of the initial economy (`$10d1e` / `$ffa6` / `$4592f`), and the open questions for pass 2 |
+| `economy.md` | the economy (complete, 74th-75th): the **goods** ledger — `pm_leader.goods[0..7]` (`$4e514` +24), fed by the shepherd FSM (`$5ec6`→modes `$3e`/`$44`/`$42`→`$60dc`), circulated by porters (`$159de`/`$159a4`), spent on unit equipment tiers by the army-supply subsystem (`$6352`/`$638c` = "invention"); the **separate** manpower ledger (`$4e514` +6/+8) and its full flow table incl. the per-settlement upkeep drain (`$163b8`); the per-settlement heartbeat (mode `$7c`, `$157e6`) and the loyalty/defection accumulator (`$4e514` +14 → `$550e`); the `$4f916` settlement records + builders `$2fc0`/`$2984`; world-gen (`$10d1e` / `$ffa6` / `$4592f`); and the characterised-benign `$163ea` write aliasing |
 | `powermonger.sym` | `addr<TAB>name` symbol table for `trace_cfg.py --names` (routines + data tables named across all five docs) |

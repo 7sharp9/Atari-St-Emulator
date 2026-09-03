@@ -148,20 +148,44 @@
 0001ba3e	pm_sound_mix           # sample-table mix into the audio buffers
 0001a856	pm_sound_cue           # ambient sound cue (bleat / call)
 
-# ---- economy: manpower / livestock / settlements (economy.md, 74th pass) ----
-0004d252	g_herd_array           # wildlife/livestock records, stride 12, live length $4e512, cap 400. +2 shepherd obj, +6 cat $4, +7 breed $e-$11 / $0d claimed, +10 packed cell = liveness
+# ---- economy: goods / livestock / settlements (economy.md, 74th-75th pass) ----
+# pm_leader ($4e514, stride 32): +0 side, +2 chain_head->g_settlement_table, +4 cell, +6 troops_reserve,
+#   +8 troops_field, +12 gather_kind, +14 loyalty_pressure (>=600 -> $550e defection), +16 herd_throttle,
+#   +20 shepherd_obj, +22 nearest_herd, +24..31 goods[8] = Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon counts
+0004d252	g_herd_array           # wildlife/livestock records, stride 12, live length $4e512, cap 400. +2 shepherd obj, +6 cat $4, +7 breed $e-$11 / $0d claimed/consumed, +10 packed cell = liveness
 0004e512	g_herd_count           # live byte-length of g_herd_array (init $c, += $c per animal)
-00057f68	g_herd_ops             # herding operations, stride 8, live length $57fb8, <=10. +0 target cell, +4 -> g_herd_array, +6 -> g_herd_markers
-00057fb8	g_herd_ops_len         # live byte-length of g_herd_ops
-0004c5f4	g_herd_markers         # moving on-screen herd-drive markers, stride 22, <=80, live length $4ccd4. +15 signed progress $d0->$30, +20 chain link
-0004ccd4	g_herd_markers_len     # live byte-length of g_herd_markers
-00004342	pm_herd_service        # per-tick (from $3e06): animate herd markers toward destination towns; delivery payoff NOT yet found
+00057f68	g_herd_ops             # herding operations, stride 8, <=10 (ends at $57fb8). +0 target cell, +4 -> g_herd_array, +6 -> g_herd_markers
+0004c5f4	g_herd_markers         # moving on-screen herd-drive markers, stride 22, <=80 (ends at $4ccd4). +15 signed progress, +20 chain link. COSMETIC ONLY
+00004342	pm_herd_service        # per-tick (from $3e06): animate herd markers toward towns; at arrival ($44c6) just sets breed bit7 + unlinks the marker sprite. NO economic effect
 00004672	pm_world_features_seed # world-build: scatter 10 clusters of animals + herd markers over buildable cells
 00004788	pm_seed_animal         # place one g_herd_array entry on a buildable land cell; link it into a g_herd_ops entry
-00005ec6	pm_shepherd_assign     # entity mode setup: bind a unit to a specific animal + give it a herding patrol path
-00002fc0	pm_build_settlements   # world-build: consume the 3-byte settlement stream, chain g_settlement_table per nation
-0000ffa6	pm_seed_cell_control   # seed $3f86c fertility plane from $4592f base map + richness byte $5814b
-0004592f	g_fertility_basemap    # per-cell base fertility/flags map, read by pm_seed_cell_control
+00005ec6	pm_shepherd_assign     # bind a unit to an animal, set leader.gather_kind from $3f86c control byte + animal flags, -> shepherd FSM mode $3e
+000155ac	h_mode3e_findanimal    # shepherd: find a live animal near the lord's herd cell -> target, mode $10, prev $44
+000156be	h_mode44_collect       # shepherd arrives: 4-tick countdown then animal.breed_state := $0d (consumed); head to deposit, prev $42
+00015736	h_mode42_deliver       # shepherd delivery: -> $600a
+0000600a	pm_deliver_dispatch    # dispatch on leader.gather_kind ($6062 table); every non-idle case -> $60dc
+000060dc	pm_deliver_goods       # THE payoff: throttled by leader+16 (reload $580a6[side].word8+4, +$2000 if kind>=$e); leader.goods[(kind>>1)-1] += 1 (cap $ff)
+000159de	pm_porter_pickup       # r = $57fec%6; src_leader.goods[r] -= 1; stamp code (r+1)*2 onto porter byte 44 (r<3) / byte 33
+000159a4	pm_porter_dropoff      # read carried code off byte 33/44; dst_leader.goods[(code>>1)-1] += 1 (cap $ff); clear the byte
+00015a60	h_mode50_deposit       # porter FSM: arrive at leader, $159a4, -> mode $52
+00015ad2	h_mode54_pickup        # porter FSM: walk to a nation leader, $159de, -> mode $50
+00015a0e	h_mode4e_deposit       # porter FSM: $159a4 into the settlement's owner leader -> mode $54 (or $7c while world building)
+000061f8	pm_army_supply         # mode $6e (from $15740): spend leader.goods[i] >> discipline into group supply_acc, -> $6352/$638c, then $35f4
+00006352	pm_supply_push         # add to group-order supply_acc[i] (word[84 + i*12]); overflow -> $638c
+0000638c	pm_equip_unit          # if unit tier slot ($21 items>6 / $2c items<=6) < delivered item -> upgrade; recycle displaced item. THIS IS "INVENTION"
+000063f4	pm_supply_deposit      # mode $78: supply_acc[] -> leader.goods[] (cap $ff), then free the group slot
+000033b0	pm_prosperity_trigger  # mode $76: weighted this-tick delivery total + assessment byte - 2 >= 0 -> attack order $2a / $34a8 declare war. economy->strategy coupling
+00003498	t_supply_weights       # data: 8 words, per-resource weight for the $33b0 prosperity sum
+0000a242	t_item_names           # data: string table, entries 1..8 = Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon
+000157e6	h_mode7c_settlement    # per-settlement heartbeat (mode $7c body): every $580a6[side].word0 ticks -> $163b8, build progress, loyalty accumulator
+000163b8	pm_settlement_upkeep   # owner_leader.troops_reserve -= 1 (floored) -- per-settlement manpower drain / desertion
+0000550e	pm_revolt              # loyalty_pressure >= 600: lord + all its settlements defect to side (marker.field8 % 4)+1; reset loyalty to 300
+00003bc0	pm_group_return_men    # group teardown: leader.troops_reserve += group.force >> discipline
+000034f2	pm_rally_garrisons     # order every garrison in a nation's settlement chain to march to a cell (mode $10, prev $14)
+00002984	pm_spawn_garrisons     # world-build: allocate a $51b66 marker per settlement (guard $57f66<$5460), owner_leader.troops_field += 1, seed morale
+00002fc0	pm_build_settlements   # world-build: consume the 3-byte settlement stream, chain g_settlement_table per nation (+8)
+0000ffa6	pm_seed_cell_control   # seed $3f86c influence/carrying-capacity plane from $4592f base map + richness byte $5814b
+0004592f	g_terrain_influence_base # per-cell base influence/flags map, read by pm_seed_cell_control
 0000b8f4	pm_stats_collect       # count live projectiles + live animals into a caller buffer (UI/score screen)
 0000b940	pm_atoi                # ASCII digit string -> integer (briefing population entry, from $b814)
 00015042	h_mode16_disband       # entity mode $16: unit goes home -> leader.troops_reserve += 2 (+2 more if order_class 8)
