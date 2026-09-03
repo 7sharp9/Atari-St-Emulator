@@ -1,0 +1,23 @@
+{
+ "table_addr": "$e6ee+110 (PC-relative, read by pm_blit_hud_sprite)",
+ "row_stride": 32,
+ "entries": [
+  "$101fefe",
+  "$fefe0000",
+  "$8",
+  "$10",
+  "$18",
+  "$20",
+  "$28",
+  "$30",
+  "$38",
+  "$0",
+  "$10008",
+  "$10010",
+  "$10018",
+  "$10020",
+  "$10028",
+  "$10030"
+ ],
+ "note": "each entry is a 4-long descriptor; one long is the source glyph sheet address. Resolve against a live snapshot before ripping the HUD -- not needed for the terrain-layer proof."
+}

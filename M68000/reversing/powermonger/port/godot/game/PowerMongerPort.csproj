@@ -1,0 +1,18 @@
+<Project Sdk="Godot.NET.Sdk/4.3.0">
+
+  <!-- Godot node layer: [Export], _Process, input. References the F# logic lib.
+       Godot's source generators only run on C#, so the MonoBehaviour-equivalent
+       classes must be here, kept thin — they delegate to PmLogic. -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PowerMongerPort</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\logic\PmLogic.fsproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pure logic library: terrain decode, projection maths, entity stepping,
+       heightmap sampling. NO Godot reference — Godot's source generators are
+       C#-only, so anything touching Node/[Export]/_Process lives in the C#
+       project (../game) which references this. -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <WarningsAsErrors>false</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Terrain.fs" />
+    <Compile Include="Projection.fs" />
+  </ItemGroup>
+
+</Project>

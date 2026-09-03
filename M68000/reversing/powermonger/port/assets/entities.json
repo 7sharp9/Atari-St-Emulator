@@ -1,0 +1,2328 @@
+{
+ "note": "one frame of live entity state from the settled iso view. world coords pack as {x: low byte, y: high byte}; the renderer maps (worldX, worldY) -> grid cell via cell = ((worldY & 0xff00) >> 2) + (worldX & 0xff) (pm_relink_bucket $163ea).",
+ "object_record_stride": 50,
+ "objects": [
+  {
+   "bucket_next": 0,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 6304,
+   "world_y": 11648,
+   "step_x12": -32,
+   "step_y13": 0,
+   "heading17": 192,
+   "prev_mode30": 66,
+   "mode31": 18,
+   "nation_off34": 18,
+   "group_off42": 2707,
+   "raw": "000000640002000418a02d80e000280020c0000117802d800000000000004212000000120528000400000a93004fddf80000",
+   "slot": 1
+  },
+  {
+   "bucket_next": 50,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 6336,
+   "world_y": 11648,
+   "step_x12": -32,
+   "step_y13": 0,
+   "heading17": 192,
+   "prev_mode30": 66,
+   "mode31": 18,
+   "nation_off34": 18,
+   "group_off42": 5163,
+   "raw": "003200000002000118c02d80e000190020c0000217802d8000320000000042120000001205282b040070142b0052ddf80000",
+   "slot": 2
+  },
+  {
+   "bucket_next": 300,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 6080,
+   "world_y": 11648,
+   "step_x12": -32,
+   "step_y13": 0,
+   "heading17": 192,
+   "prev_mode30": 66,
+   "mode31": 16,
+   "nation_off34": 36,
+   "group_off42": 5419,
+   "raw": "012c00000002000117c02d80e000140020c0000017802d8000000000000042100000002405282b040064152b0052ddf80000",
+   "slot": 3
+  },
+  {
+   "bucket_next": 400,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 5992,
+   "world_y": 11840,
+   "step_x12": -4,
+   "step_y13": 32,
+   "heading17": 133,
+   "prev_mode30": 68,
+   "mode31": 18,
+   "nation_off34": 36,
+   "group_off42": 2644,
+   "raw": "019000000002000417682e40fc20230020850016168034800096000000004412000000240648000100000a54004fddf80000",
+   "slot": 4
+  },
+  {
+   "bucket_next": 48304,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 5344,
+   "world_y": 12544,
+   "step_x12": 24,
+   "step_y13": -32,
+   "heading17": 26,
+   "prev_mode30": 66,
+   "mode31": 18,
+   "nation_off34": 54,
+   "group_off42": 40,
+   "raw": "bcb000000002000814e0310018e02100201a000c17802d8000000000000042120000003605c40003000000280048ddf80000",
+   "slot": 5
+  },
+  {
+   "bucket_next": 450,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 5952,
+   "world_y": 11648,
+   "step_x12": -32,
+   "step_y13": 0,
+   "heading17": 192,
+   "prev_mode30": 94,
+   "mode31": 18,
+   "nation_off34": 54,
+   "group_off42": 2770,
+   "raw": "01c200960002000417402d80e000150020c0000615802d8000fa000000005e1200000036054c000100000ad2004fddf80000",
+   "slot": 6
+  },
+  {
+   "bucket_next": 56824,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 6016,
+   "world_y": 11648,
+   "step_x12": -6,
+   "step_y13": -32,
+   "heading17": 248,
+   "prev_mode30": 62,
+   "mode31": 16,
+   "nation_off34": 72,
+   "group_off42": 0,
+   "raw": "ddf801c20002000217802d80fae01f0020f8000017802d800000000000003e100000004806540003000000000045ddf80000",
+   "slot": 7
+  },
+  {
+   "bucket_next": 500,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 5965,
+   "world_y": 11808,
+   "step_x12": 10,
+   "step_y13": -32,
+   "heading17": 12,
+   "prev_mode30": 66,
+   "mode31": 18,
+   "nation_off34": 72,
+   "group_off42": 2586,
+   "raw": "01f400c800020004174d2e200ae02700200c000117802d80015e00000000421200000048063c000100000a1a004fddf80000",
+   "slot": 8
+  },
+  {
+   "bucket_next": 350,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 6016,
+   "world_y": 11648,
+   "step_x12": -6,
+   "step_y13": -32,
+   "heading17": 248,
+   "prev_mode30": 62,
+   "mode31": 70,
+   "nation_off34": 90,
+   "group_off42": 2833,
+   "raw": "015e012c0002000417802d80fae00f0020f8000217802d800000000000003e460000005a0654000300000b11004fddf80000",
+   "slot": 9
+  },
+  {
+   "bucket_next": 0,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 5975,
+   "world_y": 11776,
+   "step_x12": 10,
+   "step_y13": -32,
+   "heading17": 12,
+   "prev_mode30": 66,
+   "mode31": 16,
+   "nation_off34": 90,
+   "group_off42": 2588,
+   "raw": "000001900002000417572e000ae02700200c000017802d8001c20000000042100000005a063c000100000a1c004fddf80000",
+   "slot": 10
+  },
+  {
+   "bucket_next": 47680,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 8252,
+   "world_y": 18752,
+   "step_x12": 6,
+   "step_y13": 32,
+   "heading17": 120,
+   "prev_mode30": 68,
+   "mode31": 18,
+   "nation_off34": 108,
+   "group_off42": 4261,
+   "raw": "ba40000000020004203c4940062013002078000420804a8000000000000044120000006c036c0003001010a5004fde520000",
+   "slot": 11
+  },
+  {
+   "bucket_next": 47644,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 8576,
+   "world_y": 18560,
+   "step_x12": 12,
+   "step_y13": 32,
+   "heading17": 113,
+   "prev_mode30": 66,
+   "mode31": 70,
+   "nation_off34": 108,
+   "group_off42": 4373,
+   "raw": "ba1c000000020004218048800c202400207100031e803e8002260000000042460000006c0330000200001115004fde520000",
+   "slot": 12
+  },
+  {
+   "bucket_next": 47524,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 8284,
+   "world_y": 17184,
+   "step_x12": -12,
+   "step_y13": -32,
+   "heading17": 241,
+   "prev_mode30": 66,
+   "mode31": 18,
+   "nation_off34": 126,
+   "group_off42": 7228,
+   "raw": "b9a4000000020001205c4320f4e01c0020f100111e803e8000000000000042120000007e02b83c0100701c3c0052de520000",
+   "slot": 13
+  },
+  {
+   "bucket_next": 0,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 7871,
+   "world_y": 16224,
+   "step_x12": 9,
+   "step_y13": 32,
+   "heading17": 118,
+   "prev_mode30": 68,
+   "mode31": 18,
+   "nation_off34": 126,
+   "group_off42": 4326,
+   "raw": "00000000000200041ebf3f6009200e002076002121804880028a0000000044120000007e03300001000810e6004fde520000",
+   "slot": 14
+  },
+  {
+   "bucket_next": 47704,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 8304,
+   "world_y": 19008,
+   "step_x12": 7,
+   "step_y13": 32,
+   "heading17": 120,
+   "prev_mode30": 68,
+   "mode31": 16,
+   "nation_off34": 144,
+   "group_off42": 6973,
+   "raw": "ba5800000002000120704a4007201b002078000020804a80000000000000441000000090036c3d0300701b3d0052de520000",
+   "slot": 15
+  },
+  {
+   "bucket_next": 47584,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 9516,
+   "world_y": 17952,
+   "step_x12": -28,
+   "step_y13": -32,
+   "heading17": 227,
+   "prev_mode30": 66,
+   "mode31": 18,
+   "nation_off34": 144,
+   "group_off42": 6974,
+   "raw": "b9e0000000020001252c4620e4e0150020e3001d1e803e8002ee0000000042120000009002f43e0100701b3e0052de520000",
+   "slot": 16
+  },
+  {
+   "bucket_next": 950,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 7867,
+   "world_y": 16096,
+   "step_x12": -19,
+   "step_y13": -32,
+   "heading17": 235,
+   "prev_mode30": 66,
+   "mode31": 16,
+   "nation_off34": 162,
+   "group_off42": 4502,
+   "raw": "03b60000000200041ebb3ee0ede01e0020eb00001e803e800000000000004210000000a20318000200001196004fde520000",
+   "slot": 17
+  },
+  {
+   "bucket_next": 47512,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 8760,
+   "world_y": 17088,
+   "step_x12": 28,
+   "step_y13": 32,
+   "heading17": 99,
+   "prev_mode30": 68,
+   "mode31": 18,
+   "nation_off34": 162,
+   "group_off42": 4391,
+   "raw": "b998000000020004223842c01c2028002063000e258046800352000000004412000000a202f4000200001127004fde520000",
+   "slot": 18
+  },
+  {
+   "bucket_next": 56914,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 7808,
+   "world_y": 16000,
+   "step_x12": -20,
+   "step_y13": -32,
+   "heading17": 233,
+   "prev_mode30": 62,
+   "mode31": 70,
+   "nation_off34": 180,
+   "group_off42": 4567,
+   "raw": "de520352000200041e803e80ece0160020e900051e803e800000000000003e46000000b403180002000011d7004fde520000",
+   "slot": 19
+  },
+  {
+   "bucket_next": 0,
+   "active5": 2,
+   "category6": 0,
+   "world_x": 8004,
+   "world_y": 16224,
+   "step_x12": -28,
+   "step_y13": -32,
+   "heading17": 227,
+   "prev_mode30": 66,
+   "mode31": 18,
+   "nation_off34": 180,
+   "group_off42": 7232,
+   "raw": "00000000000200011f443f60e4e0190020e300031e803e8003b6000000004212000000b402f4400100701c400052de520000",
+   "slot": 20
+  },
+  {
+   "bucket_next": 56950,
+   "active5": 1,
+   "category6": 0,
+   "world_x": 10360,
+   "world_y": 13176,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 138,
+   "mode31": 138,
+   "nation_off34": 198,
+   "group_off42": 392,
+   "raw": "de76000000010010287833780000150030000000000000000000000000008a8a000000c60000000000000188065f00000000",
+   "slot": 21
+  },
+  {
+   "bucket_next": 0,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10365,
+   "world_y": 13399,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0000047e00010e40287d345700001a0030000000287d3457041a0000041a2068000000c60000000000000000025a00000000",
+   "slot": 22
+  },
+  {
+   "bucket_next": 1100,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10414,
+   "world_y": 13393,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "044c04b000010e4028ae3451000017003000000028ae3451044c044c041a2068000000c60000000000000000025a00000000",
+   "slot": 23
+  },
+  {
+   "bucket_next": 1150,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10465,
+   "world_y": 13373,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "047e08fc00010e4028e1343d000029003000000028e1343d047e047e041a2068000000c60000000000000000025a00000000",
+   "slot": 24
+  },
+  {
+   "bucket_next": 0,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10510,
+   "world_y": 13341,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0000000000010e40290e341d0000260030000000290e341d04b004b0041a2068000000c60000000000000000025a00000000",
+   "slot": 25
+  },
+  {
+   "bucket_next": 0,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10546,
+   "world_y": 13300,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0000054600010e40293233f40000120030000000293233f404e204e2041a2068000000c60000000000000000025a00000000",
+   "slot": 26
+  },
+  {
+   "bucket_next": 1300,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10570,
+   "world_y": 13251,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0514057800010e40294a33c30000120030000000294a33c305140514041a2068000000c60000000000000000025a00000000",
+   "slot": 27
+  },
+  {
+   "bucket_next": 1350,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10582,
+   "world_y": 13197,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "054605aa00010e402956338d00002000300000002956338d05460546041a2068000000c60000000000000000025a00000000",
+   "slot": 28
+  },
+  {
+   "bucket_next": 1400,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10582,
+   "world_y": 13148,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "057805dc00010e402956335c00001d00300000002956335c05780578041a2068000000c60000000000000000025a00000000",
+   "slot": 29
+  },
+  {
+   "bucket_next": 1450,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10568,
+   "world_y": 13095,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "05aa000000010e402948332700002c00300000002948332705aa05aa041a2068000000c60000000000000000025a00000000",
+   "slot": 30
+  },
+  {
+   "bucket_next": 0,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10543,
+   "world_y": 13047,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0000064000010e40292f32f700001a0030000000292f32f705dc05dc041a2068000000c60000000000000000025a00000000",
+   "slot": 31
+  },
+  {
+   "bucket_next": 1550,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10506,
+   "world_y": 13006,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "060e000000010e40290a32ce00001f0030000000290a32ce060e060e041a2068000000c60000000000000000025a00000000",
+   "slot": 32
+  },
+  {
+   "bucket_next": 0,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10460,
+   "world_y": 12975,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "000006a400010e4028dc32af000029003000000028dc32af06400640041a2068000000c60000000000000000025a00000000",
+   "slot": 33
+  },
+  {
+   "bucket_next": 1650,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10409,
+   "world_y": 12957,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "067206d600010e4028a9329d000016003000000028a9329d06720672041a2068000000c60000000000000000025a00000000",
+   "slot": 34
+  },
+  {
+   "bucket_next": 1700,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10354,
+   "world_y": 12952,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "06a4070800010e402872329800001e00300000002872329806a406a4041a2068000000c60000000000000000025a00000000",
+   "slot": 35
+  },
+  {
+   "bucket_next": 1750,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10305,
+   "world_y": 12958,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "06d6073a00010e402841329e00001800300000002841329e06d606d6041a2068000000c60000000000000000025a00000000",
+   "slot": 36
+  },
+  {
+   "bucket_next": 1800,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10254,
+   "world_y": 12978,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0708000000010e40280e32b200001b0030000000280e32b207080708041a2068000000c60000000000000000025a00000000",
+   "slot": 37
+  },
+  {
+   "bucket_next": 0,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10209,
+   "world_y": 13010,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0000079e00010e4027e132d2000021003000000027e132d2073a073a041a2068000000c60000000000000000025a00000000",
+   "slot": 38
+  },
+  {
+   "bucket_next": 1900,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10173,
+   "world_y": 13051,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "076c000000010e4027bd32fb000010003000000027bd32fb076c076c041a2068000000c60000000000000000025a00000000",
+   "slot": 39
+  },
+  {
+   "bucket_next": 0,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10149,
+   "world_y": 13100,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0000080200010e4027a5332c00001a003000000027a5332c079e079e041a2068000000c60000000000000000025a00000000",
+   "slot": 40
+  },
+  {
+   "bucket_next": 2000,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10137,
+   "world_y": 13154,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "07d0083400010e402799336200002100300000002799336207d007d0041a2068000000c60000000000000000025a00000000",
+   "slot": 41
+  },
+  {
+   "bucket_next": 2050,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10137,
+   "world_y": 13203,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0802086600010e402799339300001d00300000002799339308020802041a2068000000c60000000000000000025a00000000",
+   "slot": 42
+  },
+  {
+   "bucket_next": 2100,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10151,
+   "world_y": 13256,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0834089800010e4027a733c800001f003000000027a733c808340834041a2068000000c60000000000000000025a00000000",
+   "slot": 43
+  },
+  {
+   "bucket_next": 2150,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10176,
+   "world_y": 13304,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0866000000010e4027c033f8000014003000000027c033f808660866041a2068000000c60000000000000000025a00000000",
+   "slot": 44
+  },
+  {
+   "bucket_next": 0,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10213,
+   "world_y": 13345,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "0000000000010e4027e5342100002c003000000027e5342108980898041a2068000000c60000000000000000025a00000000",
+   "slot": 45
+  },
+  {
+   "bucket_next": 1200,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10259,
+   "world_y": 13376,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "04b0092e00010e402813344000001900300000002813344008ca08ca041a2068000000c60000000000000000025a00000000",
+   "slot": 46
+  },
+  {
+   "bucket_next": 2300,
+   "active5": 1,
+   "category6": 14,
+   "world_x": 10310,
+   "world_y": 13394,
+   "step_x12": 0,
+   "step_y13": 0,
+   "heading17": 0,
+   "prev_mode30": 32,
+   "mode31": 104,
+   "nation_off34": 198,
+   "group_off42": 0,
+   "raw": "08fc000000010e402846345200001b00300000002846345208fc08fc041a2068000000c60000000000000000025a00000000",
+   "slot": 47
+  }
+ ],
+ "settlements": [
+  {
+   "slot": 1,
+   "raw": "0000000000020209002400640b5600000000",
+   "owner5": 2,
+   "kind7": 9,
+   "cell": 2902,
+   "leader14": 0
+  },
+  {
+   "slot": 2,
+   "raw": "0000000000020203003600c80b1600000000",
+   "owner5": 2,
+   "kind7": 3,
+   "cell": 2838,
+   "leader14": 0
+  },
+  {
+   "slot": 3,
+   "raw": "00000000000202050048012c0b5500000000",
+   "owner5": 2,
+   "kind7": 5,
+   "cell": 2901,
+   "leader14": 0
+  },
+  {
+   "slot": 4,
+   "raw": "0000015e00021007005a01900b5700000000",
+   "owner5": 2,
+   "kind7": 7,
+   "cell": 2903,
+   "leader14": 0
+  },
+  {
+   "slot": 5,
+   "raw": "000000000002020a000001f40b9600000000",
+   "owner5": 2,
+   "kind7": 10,
+   "cell": 2966,
+   "leader14": 0
+  },
+  {
+   "slot": 6,
+   "raw": "0000000000020209007e02580f9d00200000",
+   "owner5": 2,
+   "kind7": 9,
+   "cell": 3997,
+   "leader14": 32
+  },
+  {
+   "slot": 7,
+   "raw": "0000000000020203009002bc0f5d00200000",
+   "owner5": 2,
+   "kind7": 3,
+   "cell": 3933,
+   "leader14": 32
+  },
+  {
+   "slot": 8,
+   "raw": "000000000002020500a203200f9c00200000",
+   "owner5": 2,
+   "kind7": 5,
+   "cell": 3996,
+   "leader14": 32
+  },
+  {
+   "slot": 9,
+   "raw": "000003b60002100700b403840f9e00200000",
+   "owner5": 2,
+   "kind7": 7,
+   "cell": 3998,
+   "leader14": 32
+  },
+  {
+   "slot": 10,
+   "raw": "000000000002020a000003e80fdd00200100",
+   "owner5": 2,
+   "kind7": 10,
+   "cell": 4061,
+   "leader14": 32
+  },
+  {
+   "slot": 11,
+   "raw": "0000041a0001020b0000092e0ce800400000",
+   "owner5": 1,
+   "kind7": 11,
+   "cell": 3304,
+   "leader14": 64
+  }
+ ],
+ "leaders": [
+  {
+   "slot": 0,
+   "raw": "020300120b560000000a0000000a012b00080000642200200000000007000000",
+   "side": 3,
+   "cell": 2902,
+   "troops_reserve": 0,
+   "troops_field": 10,
+   "goods": [
+    0,
+    0,
+    0,
+    0,
+    7,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "slot": 1,
+   "raw": "0203006c0f9d0063000a00000002012a000d0000641200100400000000000000",
+   "side": 3,
+   "cell": 3997,
+   "troops_reserve": 99,
+   "troops_field": 10,
+   "goods": [
+    4,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "slot": 2,
+   "raw": "010600c60ce80016000000000000000000000000000000080000000000000000",
+   "side": 6,
+   "cell": 3304,
+   "troops_reserve": 22,
+   "troops_field": 0,
+   "goods": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  }
+ ],
+ "herd": [
+  {
+   "slot": 1,
+   "raw": "000000000000048e001812e0",
+   "category6": 4,
+   "breed7": 142,
+   "packed_cell": 4832
+  },
+  {
+   "slot": 2,
+   "raw": "000000000000040e002411dc",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4572
+  },
+  {
+   "slot": 3,
+   "raw": "000000000000040e003011df",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4575
+  },
+  {
+   "slot": 4,
+   "raw": "000000000000040e003c11e4",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4580
+  },
+  {
+   "slot": 5,
+   "raw": "00000000000004100048121c",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 4636
+  },
+  {
+   "slot": 6,
+   "raw": "000000000000040e00541220",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4640
+  },
+  {
+   "slot": 7,
+   "raw": "0000b74c0000040e00601224",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4644
+  },
+  {
+   "slot": 8,
+   "raw": "b74000000000040e006c1224",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4644
+  },
+  {
+   "slot": 9,
+   "raw": "00000000000004100078125c",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 4700
+  },
+  {
+   "slot": 10,
+   "raw": "0000ba280000040e0084125f",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4703
+  },
+  {
+   "slot": 11,
+   "raw": "000000000000041100901262",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4706
+  },
+  {
+   "slot": 12,
+   "raw": "000000000000040e009c1263",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4707
+  },
+  {
+   "slot": 13,
+   "raw": "000000000000040e00a812a3",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4771
+  },
+  {
+   "slot": 14,
+   "raw": "0000ba640000040e00b412a4",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4772
+  },
+  {
+   "slot": 15,
+   "raw": "000000000000040e00c012de",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4830
+  },
+  {
+   "slot": 16,
+   "raw": "0000b7b80000040e00cc12df",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4831
+  },
+  {
+   "slot": 17,
+   "raw": "b7ac00000000040e00d812df",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4831
+  },
+  {
+   "slot": 18,
+   "raw": "000000000000040e00e412e2",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4834
+  },
+  {
+   "slot": 19,
+   "raw": "000000000000040e00f012e3",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4835
+  },
+  {
+   "slot": 20,
+   "raw": "000000000000040e000012e4",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4836
+  },
+  {
+   "slot": 21,
+   "raw": "000000000000049101080b67",
+   "category6": 4,
+   "breed7": 145,
+   "packed_cell": 2919
+  },
+  {
+   "slot": 22,
+   "raw": "0000b8000000041101140aa9",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2729
+  },
+  {
+   "slot": 23,
+   "raw": "b7f400000000040f01200aa9",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 2729
+  },
+  {
+   "slot": 24,
+   "raw": "000000000000040f012c0ae3",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 2787
+  },
+  {
+   "slot": 25,
+   "raw": "000000000000041101380ae7",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2791
+  },
+  {
+   "slot": 26,
+   "raw": "000000000000041101440ae9",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2793
+  },
+  {
+   "slot": 27,
+   "raw": "000000000000041101500aea",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2794
+  },
+  {
+   "slot": 28,
+   "raw": "0000000000000411015c0b26",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2854
+  },
+  {
+   "slot": 29,
+   "raw": "000000000000041101680b29",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2857
+  },
+  {
+   "slot": 30,
+   "raw": "000000000000041101740b65",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2917
+  },
+  {
+   "slot": 31,
+   "raw": "000000000000041101800b66",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2918
+  },
+  {
+   "slot": 32,
+   "raw": "0000b87800000411018c0b68",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2920
+  },
+  {
+   "slot": 33,
+   "raw": "b86c00000000041101980b68",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2920
+  },
+  {
+   "slot": 34,
+   "raw": "0000b8900000041101a40b69",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2921
+  },
+  {
+   "slot": 35,
+   "raw": "b884b1700000041101b00b69",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2921
+  },
+  {
+   "slot": 36,
+   "raw": "000000000000041101bc0ba6",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2982
+  },
+  {
+   "slot": 37,
+   "raw": "000000000000041001c80ba7",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 2983
+  },
+  {
+   "slot": 38,
+   "raw": "000000000000041101d40ba8",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2984
+  },
+  {
+   "slot": 39,
+   "raw": "0000b8cc0000041101e00ba9",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2985
+  },
+  {
+   "slot": 40,
+   "raw": "b8c000000000041101ec0ba9",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2985
+  },
+  {
+   "slot": 41,
+   "raw": "000000000000041101f80bab",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 2987
+  },
+  {
+   "slot": 42,
+   "raw": "000000000000041102040be6",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3046
+  },
+  {
+   "slot": 43,
+   "raw": "000000000000041102100be8",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3048
+  },
+  {
+   "slot": 44,
+   "raw": "0000b90800000411021c0be9",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3049
+  },
+  {
+   "slot": 45,
+   "raw": "b8fc00000000041102280be9",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3049
+  },
+  {
+   "slot": 46,
+   "raw": "0000b9200000040e02340bea",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3050
+  },
+  {
+   "slot": 47,
+   "raw": "b91400000000041102400bea",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3050
+  },
+  {
+   "slot": 48,
+   "raw": "0000b93800000411024c0c26",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3110
+  },
+  {
+   "slot": 49,
+   "raw": "b92c00000000041102580c26",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3110
+  },
+  {
+   "slot": 50,
+   "raw": "000000000000041102640c28",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3112
+  },
+  {
+   "slot": 51,
+   "raw": "000000000000041102700c29",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3113
+  },
+  {
+   "slot": 52,
+   "raw": "0000000000000411027c0c2b",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3115
+  },
+  {
+   "slot": 53,
+   "raw": "000000000000041102880c65",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3173
+  },
+  {
+   "slot": 54,
+   "raw": "000000000000041100000c69",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3177
+  },
+  {
+   "slot": 55,
+   "raw": "0000b98c0000040d02a011a3",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 4515
+  },
+  {
+   "slot": 56,
+   "raw": "b98000000000040d02ac11a3",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 4515
+  },
+  {
+   "slot": 57,
+   "raw": "000003840000040d02b810a2",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 4258
+  },
+  {
+   "slot": 58,
+   "raw": "0000028a0000041102c410e0",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4320
+  },
+  {
+   "slot": 59,
+   "raw": "000000000000040d02d010e3",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 4323
+  },
+  {
+   "slot": 60,
+   "raw": "000000000000041102dc1124",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4388
+  },
+  {
+   "slot": 61,
+   "raw": "000000000000040d02e81161",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 4449
+  },
+  {
+   "slot": 62,
+   "raw": "000000000000040d02f4119f",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 4511
+  },
+  {
+   "slot": 63,
+   "raw": "0000032000000411030011a5",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4517
+  },
+  {
+   "slot": 64,
+   "raw": "000000000000040f030c11e1",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 4577
+  },
+  {
+   "slot": 65,
+   "raw": "000000000000040f031811e2",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 4578
+  },
+  {
+   "slot": 66,
+   "raw": "0000000000000411032411e3",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4579
+  },
+  {
+   "slot": 67,
+   "raw": "000000000000040d033011e7",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 4583
+  },
+  {
+   "slot": 68,
+   "raw": "0000025800000410033c1221",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 4641
+  },
+  {
+   "slot": 69,
+   "raw": "b764ba34000004110348125f",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4703
+  },
+  {
+   "slot": 70,
+   "raw": "ba280000000004110354125f",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4703
+  },
+  {
+   "slot": 71,
+   "raw": "000002260000041103601260",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4704
+  },
+  {
+   "slot": 72,
+   "raw": "0000000000000410036c1264",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 4708
+  },
+  {
+   "slot": 73,
+   "raw": "000002ee00000411037812a0",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4768
+  },
+  {
+   "slot": 74,
+   "raw": "b794000000000411000012a4",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4772
+  },
+  {
+   "slot": 75,
+   "raw": "000000000000048e03900d58",
+   "category6": 4,
+   "breed7": 142,
+   "packed_cell": 3416
+  },
+  {
+   "slot": 76,
+   "raw": "000000000000040e039c0c57",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3159
+  },
+  {
+   "slot": 77,
+   "raw": "000000000000040e03a80c58",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3160
+  },
+  {
+   "slot": 78,
+   "raw": "0000bcc80000040e03b40c59",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3161
+  },
+  {
+   "slot": 79,
+   "raw": "000000000000040e03c00c5b",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3163
+  },
+  {
+   "slot": 80,
+   "raw": "0000bd040000040e03cc0cd4",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3284
+  },
+  {
+   "slot": 81,
+   "raw": "0000bac40000040e03d80cd6",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3286
+  },
+  {
+   "slot": 82,
+   "raw": "bab800000000040e03e40cd6",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3286
+  },
+  {
+   "slot": 83,
+   "raw": "000000000000040e03f00cd9",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3289
+  },
+  {
+   "slot": 84,
+   "raw": "000000000000040e03fc0cdb",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3291
+  },
+  {
+   "slot": 85,
+   "raw": "000000000000040e04080d17",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3351
+  },
+  {
+   "slot": 86,
+   "raw": "0000bb000000040e04140d18",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3352
+  },
+  {
+   "slot": 87,
+   "raw": "baf4bd400000040e04200d18",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3352
+  },
+  {
+   "slot": 88,
+   "raw": "0000bb180000040e042c0d19",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3353
+  },
+  {
+   "slot": 89,
+   "raw": "bb0c00000000040e04380d19",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3353
+  },
+  {
+   "slot": 90,
+   "raw": "000000000000040e04440d1c",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3356
+  },
+  {
+   "slot": 91,
+   "raw": "000000000000040e04500d56",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3414
+  },
+  {
+   "slot": 92,
+   "raw": "000000000000040e045c0d59",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3417
+  },
+  {
+   "slot": 93,
+   "raw": "000000000000040e04680d5a",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3418
+  },
+  {
+   "slot": 94,
+   "raw": "000000000000040e04740d5b",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3419
+  },
+  {
+   "slot": 95,
+   "raw": "000000000000040e04800d95",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3477
+  },
+  {
+   "slot": 96,
+   "raw": "0000bb780000040e048c0d96",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3478
+  },
+  {
+   "slot": 97,
+   "raw": "bb6c00000000040e04980d96",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3478
+  },
+  {
+   "slot": 98,
+   "raw": "000000000000040e04a40d9a",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3482
+  },
+  {
+   "slot": 99,
+   "raw": "000000000000040f04b00d9b",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3483
+  },
+  {
+   "slot": 100,
+   "raw": "000000000000040e04bc0dd4",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3540
+  },
+  {
+   "slot": 101,
+   "raw": "000000000000040e04c80dd5",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3541
+  },
+  {
+   "slot": 102,
+   "raw": "000000000000040e04d40ddb",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3547
+  },
+  {
+   "slot": 103,
+   "raw": "000000000000040f04e00e16",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3606
+  },
+  {
+   "slot": 104,
+   "raw": "000000000000040e04ec0e17",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3607
+  },
+  {
+   "slot": 105,
+   "raw": "000000000000040e04f80e55",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3669
+  },
+  {
+   "slot": 106,
+   "raw": "000000000000040e05040e56",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3670
+  },
+  {
+   "slot": 107,
+   "raw": "000000000000040e00000e5a",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3674
+  },
+  {
+   "slot": 108,
+   "raw": "000000000000048d051c0b13",
+   "category6": 4,
+   "breed7": 141,
+   "packed_cell": 2835
+  },
+  {
+   "slot": 109,
+   "raw": "000000000000040d05280b53",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 2899
+  },
+  {
+   "slot": 110,
+   "raw": "000000000000040d05340b59",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 2905
+  },
+  {
+   "slot": 111,
+   "raw": "000000000000041005400bd2",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3026
+  },
+  {
+   "slot": 112,
+   "raw": "0000bc380000040d054c0bd6",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 3030
+  },
+  {
+   "slot": 113,
+   "raw": "bc2c00000000041005580bd6",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3030
+  },
+  {
+   "slot": 114,
+   "raw": "000000000000041005640bd8",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3032
+  },
+  {
+   "slot": 115,
+   "raw": "000000000000041005700bd9",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3033
+  },
+  {
+   "slot": 116,
+   "raw": "000000000000040d057c0bda",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 3034
+  },
+  {
+   "slot": 117,
+   "raw": "000000000000040d05880c13",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 3091
+  },
+  {
+   "slot": 118,
+   "raw": "000000000000041005940c17",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3095
+  },
+  {
+   "slot": 119,
+   "raw": "0000bc8c0000041005a00c18",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3096
+  },
+  {
+   "slot": 120,
+   "raw": "bc8000000000040d05ac0c18",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 3096
+  },
+  {
+   "slot": 121,
+   "raw": "000000000000040e05b80c19",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3097
+  },
+  {
+   "slot": 122,
+   "raw": "000000000000040d05c40c53",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 3155
+  },
+  {
+   "slot": 123,
+   "raw": "000000fa0000041005d00c54",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3156
+  },
+  {
+   "slot": 124,
+   "raw": "000000000000041105dc0c56",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3158
+  },
+  {
+   "slot": 125,
+   "raw": "ba9400000000040d05e80c59",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 3161
+  },
+  {
+   "slot": 126,
+   "raw": "000000000000041005f40c97",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3223
+  },
+  {
+   "slot": 127,
+   "raw": "000000000000041006000c99",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3225
+  },
+  {
+   "slot": 128,
+   "raw": "0000000000000410060c0c9a",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3226
+  },
+  {
+   "slot": 129,
+   "raw": "000000000000041006180cd2",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3282
+  },
+  {
+   "slot": 130,
+   "raw": "baac00000000041006240cd4",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3284
+  },
+  {
+   "slot": 131,
+   "raw": "000000000000041006300cda",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3290
+  },
+  {
+   "slot": 132,
+   "raw": "000000000000040d063c0d14",
+   "category6": 4,
+   "breed7": 13,
+   "packed_cell": 3348
+  },
+  {
+   "slot": 133,
+   "raw": "000000000000041006480d15",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3349
+  },
+  {
+   "slot": 134,
+   "raw": "000000000000040f06540d16",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3350
+  },
+  {
+   "slot": 135,
+   "raw": "bb0000000000041000000d18",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3352
+  },
+  {
+   "slot": 136,
+   "raw": "000000000000048f066c0dc9",
+   "category6": 4,
+   "breed7": 143,
+   "packed_cell": 3529
+  },
+  {
+   "slot": 137,
+   "raw": "000000000000040f06780cca",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3274
+  },
+  {
+   "slot": 138,
+   "raw": "000000000000040f06840d09",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3337
+  },
+  {
+   "slot": 139,
+   "raw": "0000bd7c0000040f06900d0d",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3341
+  },
+  {
+   "slot": 140,
+   "raw": "bd7000000000040f069c0d0d",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3341
+  },
+  {
+   "slot": 141,
+   "raw": "000000000000040f06a80d47",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3399
+  },
+  {
+   "slot": 142,
+   "raw": "000000000000041106b40d4b",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3403
+  },
+  {
+   "slot": 143,
+   "raw": "000000000000040f06c00d4d",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3405
+  },
+  {
+   "slot": 144,
+   "raw": "000000000000040f06cc0d88",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3464
+  },
+  {
+   "slot": 145,
+   "raw": "000000000000040f06d80d89",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3465
+  },
+  {
+   "slot": 146,
+   "raw": "000000000000040f06e40dc7",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3527
+  },
+  {
+   "slot": 147,
+   "raw": "000000000000040f06f00dc8",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3528
+  },
+  {
+   "slot": 148,
+   "raw": "0000bde80000040f06fc0dca",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3530
+  },
+  {
+   "slot": 149,
+   "raw": "bddc00000000040f07080dca",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3530
+  },
+  {
+   "slot": 150,
+   "raw": "000000000000040f07140dcc",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3532
+  },
+  {
+   "slot": 151,
+   "raw": "000000000000040f07200e08",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3592
+  },
+  {
+   "slot": 152,
+   "raw": "000000000000040f072c0e09",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3593
+  },
+  {
+   "slot": 153,
+   "raw": "000000000000040f07380e0b",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3595
+  },
+  {
+   "slot": 154,
+   "raw": "0000be300000040f07440e4d",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3661
+  },
+  {
+   "slot": 155,
+   "raw": "be2400000000040e00000e4d",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3661
+  },
+  {
+   "slot": 156,
+   "raw": "000000000000048f075c0d21",
+   "category6": 4,
+   "breed7": 143,
+   "packed_cell": 3361
+  },
+  {
+   "slot": 157,
+   "raw": "000000000000041007680c1d",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3101
+  },
+  {
+   "slot": 158,
+   "raw": "000000000000040f07740c1f",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3103
+  },
+  {
+   "slot": 159,
+   "raw": "000000000000040e07800c21",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3105
+  },
+  {
+   "slot": 160,
+   "raw": "000000000000040f078c0c22",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3106
+  },
+  {
+   "slot": 161,
+   "raw": "000000000000040f07980c5d",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3165
+  },
+  {
+   "slot": 162,
+   "raw": "000000000000040f07a40c5e",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3166
+  },
+  {
+   "slot": 163,
+   "raw": "000000000000040f07b00c5f",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3167
+  },
+  {
+   "slot": 164,
+   "raw": "000000000000040f07bc0c61",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3169
+  },
+  {
+   "slot": 165,
+   "raw": "000000000000040f07c80c62",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3170
+  },
+  {
+   "slot": 166,
+   "raw": "000000000000040f07d40c64",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3172
+  },
+  {
+   "slot": 167,
+   "raw": "000000000000040f07e00ca1",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3233
+  },
+  {
+   "slot": 168,
+   "raw": "000000000000040f07ec0ce1",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3297
+  },
+  {
+   "slot": 169,
+   "raw": "000000000000040f07f80ce2",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3298
+  },
+  {
+   "slot": 170,
+   "raw": "000000000000040f08040d22",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3362
+  },
+  {
+   "slot": 171,
+   "raw": "000000000000041008100d25",
+   "category6": 4,
+   "breed7": 16,
+   "packed_cell": 3365
+  },
+  {
+   "slot": 172,
+   "raw": "0000000000000411081c0d5e",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 3422
+  },
+  {
+   "slot": 173,
+   "raw": "000000000000040f08280d62",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3426
+  },
+  {
+   "slot": 174,
+   "raw": "000000000000040e08340d64",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 3428
+  },
+  {
+   "slot": 175,
+   "raw": "000000000000040f08400d65",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3429
+  },
+  {
+   "slot": 176,
+   "raw": "000000000000040f084c0d9d",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3485
+  },
+  {
+   "slot": 177,
+   "raw": "000000000000040f08580d9e",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3486
+  },
+  {
+   "slot": 178,
+   "raw": "000000000000040f08640da1",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3489
+  },
+  {
+   "slot": 179,
+   "raw": "000000000000040f08700da3",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3491
+  },
+  {
+   "slot": 180,
+   "raw": "0000bf680000040f087c0e21",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3617
+  },
+  {
+   "slot": 181,
+   "raw": "bf5c00000000040f08880e21",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3617
+  },
+  {
+   "slot": 182,
+   "raw": "000000000000040f08940e22",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3618
+  },
+  {
+   "slot": 183,
+   "raw": "000000000000040f00000e24",
+   "category6": 4,
+   "breed7": 15,
+   "packed_cell": 3620
+  },
+  {
+   "slot": 184,
+   "raw": "000000000000049108ac1197",
+   "category6": 4,
+   "breed7": 145,
+   "packed_cell": 4503
+  },
+  {
+   "slot": 185,
+   "raw": "000000000000041108b810d8",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4312
+  },
+  {
+   "slot": 186,
+   "raw": "000000000000041108c41116",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4374
+  },
+  {
+   "slot": 187,
+   "raw": "000000000000041108d01117",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4375
+  },
+  {
+   "slot": 188,
+   "raw": "000000000000041108dc1119",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4377
+  },
+  {
+   "slot": 189,
+   "raw": "000000000000041108e8111b",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4379
+  },
+  {
+   "slot": 190,
+   "raw": "000000000000041108f41156",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4438
+  },
+  {
+   "slot": 191,
+   "raw": "000000000000041109001158",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4440
+  },
+  {
+   "slot": 192,
+   "raw": "0000bff800000411090c115b",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4443
+  },
+  {
+   "slot": 193,
+   "raw": "bfec0000000004110918115b",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4443
+  },
+  {
+   "slot": 194,
+   "raw": "000000000000041109241198",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4504
+  },
+  {
+   "slot": 195,
+   "raw": "0000c01c0000041109301199",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4505
+  },
+  {
+   "slot": 196,
+   "raw": "c010000000000411093c1199",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4505
+  },
+  {
+   "slot": 197,
+   "raw": "0000c034000004110948119a",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4506
+  },
+  {
+   "slot": 198,
+   "raw": "c0280000000004110954119a",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4506
+  },
+  {
+   "slot": 199,
+   "raw": "0000000000000411096011d8",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4568
+  },
+  {
+   "slot": 200,
+   "raw": "0000c05800000411096c11da",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4570
+  },
+  {
+   "slot": 201,
+   "raw": "c04c00000000040e097811da",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4570
+  },
+  {
+   "slot": 202,
+   "raw": "0000c07000000411098411db",
+   "category6": 4,
+   "breed7": 17,
+   "packed_cell": 4571
+  },
+  {
+   "slot": 203,
+   "raw": "c06400000000040e000011db",
+   "category6": 4,
+   "breed7": 14,
+   "packed_cell": 4571
+  }
+ ],
+ "effects": []
+}

@@ -277,6 +277,22 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     settlements **defect** (`$550e`). `$2984` is world-build garrison spawn; the
     `$163ea` write aliasing is characterised (a corrupt object forward-link, not a
     fault in `$163ea`) and benign (`pm_settlement._w2`, which nothing reads).
+14. The 76th pass is a **port precursor** (`port/`, doc + tooling only, no
+    emulator change). `tools/pm_export.py` extracts the iso renderer's whole
+    input set from a live RAM image into `port/assets/` (terrain heightmap +
+    type + flag + control planes, the single 16-colour palette, the 2 KB dither
+    table, 64 mini-sprite frames + the heading→frame table, the projection /
+    zoom / rotation constants, one frame of entity state, the reference frame).
+    `port/SPEC.md` writes the projection as exact fixed-point maths: rotate by
+    `yaw * 1.40625 deg` (the `$13f8a` table is a plain sine table — verified),
+    then `sx = x*EYE/(EYE-depth)`, `sy = (z-HORIZON)*EYE/(EYE-depth) + HORIZON`
+    with `EYE=320, HORIZON=130`; the fill is a rolling-bitplane stipple (a
+    modern port replaces it with a height-ramp shader). `tools/pm_render_ref.py`
+    rebuilds the frame from `port/assets/` alone — the island silhouette,
+    orientation and shading reproduce (proving the export is complete); the
+    exact vertical calibration and the dither phase are left open (`SPEC.md` §9).
+    `port/godot/` stands up a Godot 4.x + F# skeleton (F# = terrain decode +
+    projection, C# = the thin node layer; the F# lib builds clean).
 
 ## Files
 
@@ -295,3 +311,4 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |
 | `economy.md` | the economy (complete, 74th-75th): the **goods** ledger — `pm_leader.goods[0..7]` (`$4e514` +24), fed by the shepherd FSM (`$5ec6`→modes `$3e`/`$44`/`$42`→`$60dc`), circulated by porters (`$159de`/`$159a4`), spent on unit equipment tiers by the army-supply subsystem (`$6352`/`$638c` = "invention"); the **separate** manpower ledger (`$4e514` +6/+8) and its full flow table incl. the per-settlement upkeep drain (`$163b8`); the per-settlement heartbeat (mode `$7c`, `$157e6`) and the loyalty/defection accumulator (`$4e514` +14 → `$550e`); the `$4f916` settlement records + builders `$2fc0`/`$2984`; world-gen (`$10d1e` / `$ffa6` / `$4592f`); and the characterised-benign `$163ea` write aliasing |
 | `powermonger.sym` | `addr<TAB>name` symbol table for `trace_cfg.py --names` (routines + data tables named across all five docs) |
+| `port/` | **iso-renderer port precursor (76th pass).** `port/assets/` = every asset + constant the terrain renderer reads, extracted from a live RAM image (`tools/pm_export.py`), with `manifest.json` provenance. `port/SPEC.md` = the porting contract (coordinate systems, the `$fecc`/`$ff7c` projection with exact constants, the rolling-bitplane dither, sprites, zoom, frame pipeline). `port/godot/` = a Godot 4.x + F# skeleton (F# logic lib, C# node glue, one heightmap mesh). `tools/pm_render_ref.py` rebuilds a frame from `port/assets/` alone: the island silhouette + shading reproduce (`port/assets/reference/render_compare.png`); the exact perspective calibration + dither phase are open (`SPEC.md` §9). |

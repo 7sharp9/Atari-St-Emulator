@@ -1,0 +1,6 @@
+# assets/ is copied or symlinked from ../assets at setup time (see ../README.md).
+/assets/
+/.godot/
+/bin/
+/obj/
+*.user

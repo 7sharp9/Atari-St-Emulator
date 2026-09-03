@@ -1,0 +1,22 @@
+; PowerMonger iso-renderer port — Godot 4.x (.NET / C# + F#) skeleton.
+; Targeted at Godot 4.3-stable mono. `godot --version` was not on PATH when this
+; was written; bump `config_version` / re-save from the editor if 4.4+ needs it.
+;
+; This is a SKELETON: it proves the toolchain (F# logic lib loads, assets load,
+; one heightmap renders). It is not the full renderer — see ../SPEC.md.
+
+config_version=5
+
+[application]
+
+config/name="PowerMonger Port (skeleton)"
+config/features=PackedStringArray("4.3", "C#", "Forward Plus")
+run/main_scene="res://scenes/Main.tscn"
+
+[dotnet]
+
+project/assembly_name="PowerMongerPort"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
