@@ -15,8 +15,18 @@ mission-1 iso view (`scratchpad/pm74_late.ram`, PC `$124c0`) and cross-checked
 against the disassembly in `../graphics.md`. Addresses are in the relocated game
 image (link base `$1050`).
 
-Verification status (77th pass): `tools/pm_render_ref.py` rebuilds the frame from
-`assets/` alone.
+Verification status (78th pass): `tools/pm_render_ref.py --ram <settled.ram>`
+now ports the real quadrant-3 grid walk (`$fccc`) + the `$ef62` colour/winding
+rules and renders from the game's own `$3f364` corner buffer, diffed against the
+`$1c700`/`$24400` compose buffer in the same RAM. **65.8 % exact palette index,
+93.2 % within ±1** over the drawn terrain (`scratchpad/pm78_settle.ram`, a
+freshly-settled snapshot). The remaining gap is the sea fill inside the iso
+window (§7 -- NOT the grid walk) and `$e420`'s sub-pixel edge coverage (§4).
+Trace-verified this pass: the walk's cell↔corner↔colour mapping (3 sampled
+cells), the `$ef62` "force colourByte `0x1c`" coast rule (cell (37,47) entered
+`$ef62` with colour `0x2b`, reached the fill with `0x1c`), and the **+64 px
+draw inset** (the `$e420` draw pointer `$e3e2` is `buffer + 0x20` bytes; a sweep
+confirms `+64` px is the unique optimum).
 
 - **Projection — closed.** The reference renderer's projected 9×9 vertex grid
   reproduces the game's own `$3f364` corner buffer **byte-exact** (all 81
@@ -148,6 +158,12 @@ sy = ((z - HORIZON) * EYE) / d + HORIZON
 screenX = sx + 0x80                               // + screen centre  ($ff54)
 screenY = 0x7c - sy                               // flip Y           ($ff5c)
 ```
+
+**Draw inset (78th).** The corners in `$3f364` are relative to the **iso window
+origin**, not the screen. The `$e420` fill writes to `$e3e2` (a runtime-patched
+pointer) = `compose_buffer + 0x20` bytes = **+64 screen pixels**. So the final
+`screenX = $3f364.sx + 64`. The left 64 px is the HUD portrait / compass strip.
+`pm_render_ref.py` reads the inset back as `($e3e2 & 0x3f) * 2`.
 
 All arithmetic is 16.16-ish fixed point on the 68000 (`muls`/`divs`, `>>15` via
 `add.l`+`swap`). A port does it in float; the `>>15` after the rotate keeps
@@ -283,20 +299,46 @@ camera rotates. This is why `pm_render_ref.py`'s naive
 quadrant-0 assignment. Porting the four handlers is the remaining work for a
 pixel-exact terrain layer.
 
-Per cell each handler does (quadrant 3 shown, `$fccc`):
+**Quadrant 3 (`$fccc`), fully ported + trace-verified (78th).** The walk is
+`for k in 0..7 (D7): for j in 0..7 (D6)`, `A0` at `$3f364 + $fe02(=0x1c=28 B =
+corner col 7)`, `A1` at the type plane `$438ee + camCell + 7`, both advancing
+`+64` per inner step (corner row +1 / cellY +1) and `-513` / `-516` per outer
+step (cellX -1 / corner col -1). So
 
 ```
-if  8257(A1) bit 7 set:  skip (corner unmoved)
-D2 = (A0) ; D1 = 68(A0) ; D0 = 4(A0)          // TL / BR / TR
-D3 = 0(A1)        ; if D3 < 0x0c: D3 += [$4bb3e]&3
-$ef62(D0, D1, D2, colour = D3)                // "type" triangle
-exg D1, D2 ; D0 = 64(A0)                      // BL
-D3 = -8257(A1)    ; if D3 < 0x0c: D3 += …
-$ef62(D0, D1, D2, colour = D3)                // "height" triangle
+cell (cx, cy)   = (camCellX + col, camCellY + row)     col = 7-k, row = j
+corner names    C00=(A0)  C10=4(A0)  C01=64(A0)  C11=68(A0)   [(row,col) .. (row+1,col+1)]
 ```
 
-`$ef62` splits the quad along whichever diagonal the projected corners imply
-(`cmp.l D1,D2 ; bgt`) before emitting the two triangles.
+Per cell, `8257(A1)` bit 7 (**not** "corner unmoved" -- it is the **diagonal
+selector**, a per-cell heightmap-derived bit; both branches draw):
+
+```
+bit 7 CLEAR ($fcea): split on the C00-C11 diagonal
+    $ef62(C10, C11, C00, colour = type_plane[cell])       // NE triangle
+    $ef62(C01, C00, C11, colour = height_plane[cell])     // SW triangle
+bit 7 SET   ($fd2e): split on the C10-C01 diagonal, sub-order by packed(C01) vs packed(C10)
+    if packed(C01) <= packed(C10):
+        $ef62(C00, C10, C01, height) ; $ef62(C11, C01, C10, type)
+    else:
+        $ef62(C11, C01, C10, type)   ; $ef62(C00, C10, C01, height)
+```
+
+colour = `type_plane` (`$438ee+0`) or `height_plane` (`$438ee-8257`), `+
+[$4bb3e]&3` if `< 0x0c`. **Verified** against a live trace at cells (43,47),
+(38,47), (37,47): the corner indices, the flag-bit branch, and both plane reads
+match byte-for-byte. `pm_render_ref.py`'s `walk_q3` is this, exactly.
+
+### `$ef62` -- the "force `0x1c`" rule (78th, trace-verified)
+
+`$ef62` writes `colourByte` to the record at `$efd8` **before** the flat/general
+split, then at `$f06c`/`$f154` it forces the record's colour byte to **`0x1c`**
+(dark khaki, dither slot 0x1c → palette 1-3) whenever the input winding already
+has vertex 1 on the **left** (general: edge-2 slope > edge-1 slope; flat-top:
+`sx1 < sx0`). This is not a bug -- it is how PM shades the **coastal / front
+triangles** dark. Trace: cell (37,47)'s SW triangle entered `$ef62` with
+`colourByte = 0x2b` (green) and reached `$e3e6` with the record holding `0x1c`.
+`pm_render_ref.py`'s `ef62_raster` implements both variants.
 
 ### The triangle rasteriser (`$ef62` → `$e420`)
 
@@ -327,6 +369,19 @@ fills:
 `k` bits; `$eca2` (`0x80008000, 0xc000c000, … 0xffffffff`) keeps the leftmost
 `k+1` — the two partial-word edge-coverage masks, each replicated into both
 words of the long (same mask for the plane pair). `k = (accumulator >> 1) & 15`.
+
+**Coordinate resolution (78th).** The X accumulators `D4`/`D5` start at the
+record's `topX` (integer screen X, e.g. 54) and each scanline do
+`D = swap(swap(D) + slope)` (16.8 slope in the low word, integer carry into the
+high word) plus a transient `lsr.w #1` / `add.w D4,D4` around the table lookup.
+Net: `D4.w` at the lookup = `2 * screenX`. `$ece2` is **word-indexed** (byte
+offset `2*screenX` → word `screenX`), and `$ece2[screenX] = (screenX >> 4) * 8`
+bytes = the containing 16-px cluster. **The `2×` and the word-index cancel:
+`screen_x == corner_sx` (+ the §3 inset), no scale.** An earlier "factor of 2"
+worry is closed. `pm_render_ref.py` uses a plain `floor()`'d span (no DDA); a
+pixel-exact port needs the `slope`-stepped accumulator + the `$ec62`/`$eca2`
+partial-word masks + the `$e4de` Duff middle, but the *coordinate mapping* is
+now settled.
 
 Decoding `assets/dither.bin` at `colourByte*128` (verified against reference
 pixels):
@@ -473,6 +528,17 @@ Screen output is **direct-to-shifter**, double-buffered by the base register
 (no XBIOS). Two compose buffers `$2df7c` (front) / `$2df78` (back), plus a
 **terrain master** `$e0d4` built once per mission.
 
+**The `$78000` master (78th, trace).** `$12ce0` copies from `A0 = $78000`
+(32000 B) to the back buffer every ~3rd frame. `$78000` is the **HUD + border
+frame with a solid black diamond where the iso view goes** — it does NOT contain
+the terrain. So the island + the sea inside the diamond are (re)drawn every
+frame by `$f898`; on a still camera `$f898` skips cells whose content did not
+change (moving units, the marker, water near units), and the static island +
+sea persist in the compose buffer from earlier frames. The sea *fill* inside
+the diamond is drawn by neither the `$78000` copy nor the quadrant walk — its
+source (a candidate: the `$f922` `$11f82` call with frame `0x149`) is still
+unmapped and is the main blocker for a from-scratch pixel-exact frame.
+
 ```
 once per mission ($13b9a):
     build terrain master -> $12ce0 copy into both compose buffers
@@ -525,18 +591,20 @@ Palette: one 16-colour shifter palette for the whole iso view
 
 ## 9. Open questions
 
-1. **Vertical calibration — CLOSED (77th); quadrant grid walk — OPEN.** The
-   per-vertex projection is right: `pm_render_ref.py`'s 9×9 grid matches the
-   game's `$3f364` corner buffer **byte-exact** at all 81 vertices.
-   `EYE`/`HORIZON` = `$ff98`=320 / `$ff96`=130 (aligned `$ff7c`). The 76th's
-   "15-20 px low" was a diff against a drifted live frame; the consistent
-   reference is the back buffer `$24400` (≈ `isoframe.png`).
-   **Still open:** `$f898` walks the grid through one of **4 rotation-quadrant
-   handlers** (`$f98c` / `$fa98` / `$fbb2` / `$fccc`), each with its own start
-   offset, 7-not-8 iteration count and corner→vertex assignment (§4 "yaw-
-   quadrant grid walk"). `pm_render_ref.py` uses only the quadrant-0 mapping,
-   so it draws a slightly shifted cell set and misses the sea wedge + the
-   shadowed NW slope. Porting the 4 handlers is the 78th's first job.
+1. **Quadrant-3 walk + projection — CLOSED (78th).** `pm_render_ref.py`
+   `--ram` ports `$fccc` exactly (cell↔corner↔colour, the flag-bit diagonal,
+   both plane reads -- all trace-verified) and the `$ef62` colour/winding rules,
+   reads the game's own `$3f364` corners, applies the **+64 px §3 inset**, and
+   scores **65.8 % exact / 93.2 % within ±1** vs the compose buffer. The other
+   three quadrant handlers (`$f98c`/`$fa98`/`$fbb2`, for yaw ≠ 0xf0) are
+   disassembled (§4) but not ported -- only needed for camera rotation.
+   **Still open for pixel-exact:**
+   - the **sea fill inside the iso diamond** (§7 -- not the walk, not the
+     `$78000` master; candidate `$f922`/`$11f82` frame `0x149`),
+   - `$e420`'s **sub-pixel edge coverage** (`$ec62`/`$eca2` masks + the
+     slope-stepped accumulator; `pm_render_ref.py` uses `floor()`'d spans),
+   - the exact dither phase on the dark front slopes (the `0x1c` triangles land
+     ~1 index off in places).
 2. **Dither phase — CLOSED (77th).** Full span walker disassembled
    (`$e3e6`→`$e5a6`). Real phase (§4): `A5(y) = ditherBase + colourByte*128 +
    (topY & 15)*8 + 8*(y - topY)` — the whole span on one scanline is a single

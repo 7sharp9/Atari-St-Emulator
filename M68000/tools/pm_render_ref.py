@@ -20,17 +20,22 @@ What is faithful here (77th pass)
   - dither fill: A5(y) = colourByte*128 + (topY&15)*8 + 8*(y-topY) into
     dither.bin; one 16-px pattern per scanline, planes {0,1}=long@A5,
     {2,3}=long@A5+4, tiled screen-X-aligned (see dither_index -- exact)
-What is approximated
-  - the grid walk uses only the quadrant-0 corner assignment; the game's $f898
-    picks 1 of 4 rotation-quadrant handlers ($f98c/$fa98/$fbb2/$fccc), so this
-    draws a slightly shifted cell set and misses the sea wedge + NW shadowed
-    slope. Porting the 4 handlers is the remaining terrain-layer work.
-    --out also writes render_flat.png (a clean height-ramp fill) for the shape.
+78th pass: `--ram <settled.ram>` renders the FAITHFUL quadrant-3 grid walk
+($fccc) + the $ef62 colour/winding rules from the game's own $3f364 corner
+buffer (+ the +64 px iso-window inset), and byte-diffs vs the compose buffer in
+the same RAM -- 65.8% exact / 93.2% within +-1 palette index. See the
+"faithful terrain layer" section below and SPEC.md 4/9.
+
+What the --assets (no --ram) path approximates
+  - the grid walk uses only the quadrant-0 corner assignment (the --ram path
+    ports the real $fccc). --out also writes render_flat.png (a clean
+    height-ramp fill) for the shape.
   - the yaw rotation basis is a true 2D rotate by yaw * 1.40625 deg (verified:
     at yaw 0xf0 the $13f8a table entry == 32768*sin(337.5 deg))
 
 Usage:
-  tools/pm_render_ref.py [--assets DIR] [--out PNG] [--diff]
+  tools/pm_render_ref.py [--assets DIR] [--out PNG]
+  tools/pm_render_ref.py --ram scratchpad/pm78_settle.ram        # faithful + diff
 """
 
 import argparse
@@ -244,6 +249,256 @@ def render(terr, tables, dith, cam_x, cam_y, half, tick=WATER_ADD, flat=False,
 
 
 # ---------------------------------------------------------------------------
+# faithful terrain layer (78th pass)
+#
+# The naive render() above walks the grid in the quadrant-0 corner assignment
+# and fills triangles with a float scanline rasteriser. This section ports the
+# real thing for yaw 0xf0 (quadrant 3):
+#
+#   * pm_grid_walk_q3 ($fccc)   -- the exact cell iteration + corner->vertex
+#                                  assignment + flag-plane diagonal selector
+#   * pm_tri_raster   ($ef62)   -- the cyclic-rotate Y sort, the edge-slope
+#                                  compare and the "force colourByte 0x1c when
+#                                  vertex 1 is already the left edge" rule
+#   * the fill uses the exact per-scanline dither phase (dither_index, closed
+#     in the 77th pass) but a plain integer scanline span, NOT the $e420 DDA.
+#
+# Corner buffer is read straight from the RAM image ($3f364) + the +64 px iso
+# window inset (SPEC.md 3), so there is zero projection error here -- this
+# isolates the rasteriser. Against a freshly-settled snapshot
+# (scratchpad/pm78_settle.ram) this scores 65.8% exact / 93.2% within +-1
+# palette index over the drawn terrain.
+#
+# What is still approximated: (a) the sea fill inside the iso diamond -- drawn
+# by neither the grid walk nor the $78000 HUD master; source unmapped
+# (SPEC.md 7). (b) $e420's sub-pixel edge coverage: its X accumulator holds
+# 2*screenX and $ece2 is word-indexed, so screen_x == corner_sx (no scale --
+# the old "factor of 2" is closed), but the $ec62/$eca2 partial-word edge
+# masks are not modelled; a plain floor()'d span is +-1 px on the boundaries.
+# ---------------------------------------------------------------------------
+
+
+def load_ram(ram_path: Path):
+    b = ram_path.read_bytes()
+
+    def u16(a):
+        return (b[a] << 8) | b[a + 1]
+
+    def u32(a):
+        return struct.unpack_from(">I", b, a)[0]
+
+    # the $e420 draw pointer ($e3e2, runtime-patched) is buffer + 0x20 BYTES =
+    # +64 screen pixels: the iso window starts 64 px in (the left HUD strip).
+    # $fecc emits screenX relative to the window origin, so add 64 here. Verified
+    # by sweep against $1c700: dx=+64 dy=0 -> 65.8% exact / 93.2% within-1 index
+    # (any other offset is strictly worse). See SPEC.md 3/7.
+    x_inset = (u32(0xE3E2) & 0x3F) * 2 or 64     # 0x20 bytes -> 64 px
+
+    cam_x = u16(0x4BB3A) - u16(0x57FFC)          # 40 - 4 = 36
+    cam_y = u16(0x4BB3C) - u16(0x57FFC)          # 51 - 4 = 47
+    half = u16(0xFDEC)                            # 4
+    n = 2 * half + 1                              # 9 corners/axis
+    # $3f364 corner buffer: packed (sx<<16)|sy, row stride 64 bytes
+    corners = {}
+    for r in range(n):
+        for c in range(n):
+            p = u32(0x3F364 + r * 64 + c * 4)
+            corners[(r, c)] = ((p >> 16) + x_inset, p & 0xFFFF)
+    # terrain planes
+    TER, CTL = 0x438EE, 0x3F86C
+
+    def plane(base, x, y):
+        return b[base + y * 64 + x]
+
+    planes = dict(
+        typ=lambda x, y: plane(TER, x, y),
+        hgt=lambda x, y: plane(TER - 8257, x, y),
+        flg=lambda x, y: plane(TER + 8257, x, y),
+        ctl=lambda x, y: plane(CTL, x, y),
+    )
+    dith = b[u32(0xFF9E):u32(0xFF9E) + 0x4000]    # $2e000, 16 KB
+    tick = u32(0x4BB3E) & 3
+    yaw = u16(0xFF9A)
+    # reference: the COMPLETE compose buffer -- the one $e3e2 (the runtime-patched
+    # $e420 draw pointer) is NOT currently rendering into. $2df78/$2df7c hold the
+    # two buffers ($1c700 / $24400); pick whichever e3e2 is outside.
+    draw_ptr = u32(0xE3E2)
+    b0, b1 = 0x1C700, 0x24400
+    ref_base = b1 if b0 <= draw_ptr < b0 + 32000 else b0
+    ref = decode_screen_indices(b, ref_base)
+    return dict(corners=corners, planes=planes, dith=dith, tick=tick,
+               cam=(cam_x, cam_y), half=half, yaw=yaw, ref=ref, ram=b,
+               x_inset=x_inset)
+
+
+def decode_screen_indices(ram: bytes, base: int):
+    out = bytearray(W * H)
+    for y in range(H):
+        row = ram[base + y * 160: base + y * 160 + 160]
+        for xw in range(20):
+            pl = struct.unpack_from(">4H", row, xw * 8)
+            for bit in range(16):
+                idx = 0
+                for p in range(4):
+                    if pl[p] & (1 << (15 - bit)):
+                        idx |= 1 << p
+                out[y * W + xw * 16 + bit] = idx
+    return out
+
+
+def _cyclic_ysort(v):
+    """$ef62 $efbe..$efd4: rotate the min-Y vertex to the front, keeping the
+    other two in their original cyclic order (it is NOT a full sort -- b and c
+    are never swapped independently)."""
+    sy = [q[1] for q in v]
+    if sy[0] <= sy[1] and sy[0] <= sy[2]:
+        return [v[0], v[1], v[2]]
+    if sy[1] < sy[0] and sy[1] <= sy[2]:
+        return [v[1], v[2], v[0]]
+    return [v[2], v[0], v[1]]
+
+
+def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick):
+    """port of pm_tri_raster ($ef62). p* = (sx, sy).
+
+    Replicates the parts of $ef62 that change the OUTPUT colour / winding:
+      * cyclic-rotate Y sort ($efbe..$efd4)
+      * the edge-slope compare + "force colourByte 0x1c when vertex 1 is
+        already the left edge" rule ($f06c..$f07a; flat-top variant $f154)
+      * water shimmer: colour += [$4bb3e]&3 if colour < 0x0c
+    The span itself is a plain floor()'d scanline fill with the exact dither
+    phase (dither_index) -- NOT the $e420 fixed-point DDA (SPEC.md 4).
+    """
+    v = _cyclic_ysort([p0, p1, p2])
+    (x0, y0), (x1, y1), (x2, y2) = v
+    if y0 == y2:
+        return                                    # degenerate ($f13c rts)
+
+    if colour < 0x0C:
+        colour = (colour + tick) & 0xFF
+
+    if y0 == y1:                                   # flat-top ($f138 -> $f154)
+        if x1 < x0:
+            colour = 0x1C
+    else:                                          # general ($f06c)
+        s1 = (x1 - x0) / (y1 - y0)
+        s2 = (x2 - x0) / (y2 - y0)
+        if s2 > s1:                                # v1 is already the left edge
+            colour = 0x1C
+
+    top_y = int(math.floor(y0))
+    _tri_fill(idxbuf, cov, dith, (x0, y0), (x1, y1), (x2, y2), colour, top_y)
+
+
+def _tri_fill(idxbuf, cov, dith, a, b, c, colour, top_y):
+    pts = sorted([a, b, c], key=lambda q: q[1])
+    (x0, y0), (x1, y1), (x2, y2) = pts
+    if y2 == y0:
+        return
+
+    def ex(pa, pb, y):
+        (xa, ya), (xb, yb) = pa, pb
+        return xa if yb == ya else xa + (xb - xa) * (y - ya) / (yb - ya)
+
+    for y in range(max(0, int(math.floor(y0))), min(H - 1, int(math.ceil(y2))) + 1):
+        if y < y1:
+            xa, xb = ex(pts[0], pts[2], y), ex(pts[0], pts[1], y)
+        else:
+            xa, xb = ex(pts[0], pts[2], y), ex(pts[1], pts[2], y)
+        if xa > xb:
+            xa, xb = xb, xa
+        base = y * W
+        for x in range(max(0, int(math.floor(xa))),
+                       min(W - 1, int(math.floor(xb))) + 1):
+            idxbuf[base + x] = dither_index(dith, colour, top_y, y, x)
+            cov[base + x] = 1
+
+
+def walk_q3(idxbuf, cov, R):
+    """port of pm_grid_walk_q3 ($fccc), yaw 0xf0.
+
+    outer k = 0..7 (D7 loop, 8 iters): cell column, EAST -> WEST
+    inner j = 0..7 (D6 loop, 8 iters): cell row,    NORTH -> SOUTH  (nearer last)
+    cell (cx, cy) = (camCellX + 7 - k, camCellY + j)
+    corner (row, col) = (j, 7 - k)
+      C00 = (A0)      = corner(col,   row)
+      C10 = 4(A0)     = corner(col+1, row)
+      C01 = 64(A0)    = corner(col,   row+1)
+      C11 = 68(A0)    = corner(col+1, row+1)
+    flag plane bit 7 CLEAR ($fcea): split on the C00-C11 diagonal
+        tri(C10,C11,C00, type) ; tri(C01,C00,C11, height)
+    flag plane bit 7 SET ($fd2e): split on the C10-C01 diagonal, sub-order by
+        packed(C01) vs packed(C10)
+    """
+    cx0, cy0 = R["cam"]
+    cn = R["corners"]
+    P = R["planes"]
+    dith, tick = R["dith"], R["tick"]
+
+    def packed(q):
+        return (q[0] << 16) | (q[1] & 0xFFFF)
+
+    for k in range(8):                      # EAST -> WEST  (far -> near)
+        col = 7 - k
+        cx = cx0 + col
+        for j in range(8):                  # NORTH -> SOUTH (far -> near)
+            row = j
+            cy = cy0 + row
+            C00 = cn[(row, col)]
+            C10 = cn[(row, col + 1)]
+            C01 = cn[(row + 1, col)]
+            C11 = cn[(row + 1, col + 1)]
+            typ = P["typ"](cx, cy)
+            hgt = P["hgt"](cx, cy)
+            if not (P["flg"](cx, cy) & 0x80):
+                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick)
+                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick)
+            else:
+                if packed(C01) <= packed(C10):
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+                else:
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+
+
+def render_faithful(ram_path: Path, dom):
+    R = load_ram(ram_path)
+    idxbuf = bytearray(W * H)
+    cov = bytearray(W * H)
+    walk_q3(idxbuf, cov, R)
+    ref = R["ref"]
+
+    from collections import Counter
+    exact = tot = 0
+    near = 0
+    mine_h, ref_h = Counter(), Counter()
+    for i in range(W * H):
+        if not cov[i]:
+            continue
+        tot += 1
+        mine_h[idxbuf[i]] += 1
+        ref_h[ref[i]] += 1
+        if idxbuf[i] == ref[i]:
+            exact += 1
+        elif abs(idxbuf[i] - ref[i]) <= 1:
+            near += 1
+    print(f"  faithful walk_q3 + ef62 (corners from RAM $3f364, +{R['x_inset']}px inset)")
+    print(f"    terrain pixels drawn : {tot}")
+    print(f"    exact palette index  : {exact} ({100*exact/max(tot,1):.1f}%)")
+    print(f"    within +-1 index     : {exact+near} ({100*(exact+near)/max(tot,1):.1f}%)")
+    print(f"    mine idx dist : {dict(sorted(mine_h.items()))}")
+    print(f"    ref  idx dist : {dict(sorted(ref_h.items()))}")
+    print(f"    verdict (78th): the walk_q3 cell/corner/colour mapping + the ef62")
+    print(f"      'force colourByte 0x1c on the coast' rule are trace-verified. The")
+    print(f"      residual is (a) the sea inside the iso window (drawn NOT by the")
+    print(f"      grid walk -- $12ce0 copies a HUD-with-black-hole master from")
+    print(f"      $78000, the sea fill is still-unmapped) and (b) $e420's sub-pixel")
+    print(f"      edge coverage (plain floor()'d here). SPEC.md 4/9.")
+    return idxbuf, cov, ref
+
+
+# ---------------------------------------------------------------------------
 # diff
 # ---------------------------------------------------------------------------
 
@@ -295,10 +550,31 @@ def main():
         here / "reversing/powermonger/port/assets/reference/render_from_assets.png"))
     ap.add_argument("--sweep", action="store_true",
                     help="grid-search camera / angle against the block-mean metric")
+    ap.add_argument("--ram", default=None,
+                    help="RAM image (e.g. scratchpad/pm74_late.ram): render the "
+                         "faithful walk_q3 + ef62 port, diff vs the $24400 buffer")
     args = ap.parse_args()
 
     d = Path(args.assets)
     terr, tables, dom, dith = load_assets(d)
+
+    if args.ram:
+        buf, cov, ref = render_faithful(Path(args.ram), dom)
+        fp = Path(args.out).with_name("render_faithful.png")
+        rgb = [tuple(dom[buf[i]]) if cov[i] else (255, 0, 255) for i in range(W * H)]
+        write_png(fp, W, H, rgb)
+        box = (40, 12, 258, 185)
+        bw, bh = box[2] - box[0], box[3] - box[1]
+        comp = [(255, 0, 255)] * (bw * (bh * 2 + 4))
+        for y in range(bh):
+            for x in range(bw):
+                si = (box[1] + y) * W + box[0] + x
+                comp[y * bw + x] = tuple(dom[ref[si]])
+                comp[(y + bh + 4) * bw + x] = rgb[si]
+        write_png(fp.with_name("render_faithful_compare.png"), bw, bh * 2 + 4, comp)
+        print(f"wrote {fp.name} + render_faithful_compare.png "
+              f"(top = $24400 reference, bottom = faithful port)")
+        return
     half = tables["zoom_geometry"]["derived_constants_fdea_fe02"]["$fdec"]
 
     ref_idx = (d / "reference/isoframe_indices.bin").read_bytes()

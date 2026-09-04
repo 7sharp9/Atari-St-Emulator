@@ -305,14 +305,27 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     (`long0` @ A5 = planes {0,1}, `long1` @ A5+4 = planes {2,3}) tiled
     screen-X-aligned. `dither.bin` 2 KB → 16 KB. `colourByte 0` → palette 14/15
     = how the open sea is drawn. `pm_render_ref.py`'s `dither_index()` is exact
-    (exact-index 11.9 %→18.5 %); the last terrain gap is the quadrant grid walk
-    (`$f898` picks 1 of `$f98c`/`$fa98`/`$fbb2`/`$fccc`) — `pm_render_ref.py`
-    uses only quadrant 0, so it misses the sea wedge + NW slope. Porting the 4
-    handlers + `$ef62` + `$e420` = pixel-exact terrain (`SPEC.md` §4).
+    (exact-index 11.9 %→18.5 %).
     **`$11f82` decode corrected:** 8×11 four-bitplane, `[mask,p0,p1,p2,p3]` per
     row, opaque where mask bit 0 (not a 1bpp silhouette) — `sheet_contact.png`
-    decodes as the men, 4 faction-colour blocks of 16. HUD glyphs, per-category
-    frame rip, `$e0d4` border master, minimap still deferred.
+    decodes as the men, 4 faction-colour blocks of 16.
+16. The 78th pass **ports the quadrant-3 grid walk to a verifiable terrain
+    layer** (doc + tooling only). `tools/pm_render_ref.py --ram <settled.ram>`
+    ports `$fccc` (cell↔corner↔colour + the flag-bit diagonal, all
+    trace-verified) + the `$ef62` colour/winding rules + the **+64 px iso-window
+    inset** (`$e420` draws to `buffer + 0x20` bytes), reads the game's own
+    `$3f364` corners, and scores **65.8 % exact / 93.2 % within ±1 palette
+    index** vs the `$1c700`/`$24400` compose buffer (`scratchpad/pm78_settle.ram`,
+    a fresh settled snapshot). Trace findings: the `$438ee` flag-plane bit 7 is
+    the **diagonal selector**, not a skip; `$ef62` **forces `colourByte 0x1c`**
+    on the coast-side triangle (cell (37,47): `0x2b` in → `0x1c` at the fill) —
+    that is the dark front shading; `$e420`'s X accumulator is `2*screenX` and
+    `$ece2` is word-indexed so **`screen_x == corner_sx`** (the old "factor of
+    2" is closed); `$12ce0` copies a HUD-with-black-diamond master from
+    **`$78000`** (no terrain in it). Still open for pixel-exact: the sea fill
+    inside the diamond (source unmapped), `$e420`'s sub-pixel edge masks, the
+    other 3 quadrant handlers (rotation). HUD glyphs, per-category sprite frame
+    rip, minimap, `sprite_triggers.json` — **not started** (SPEC.md §9 3-5).
 
 ## Files
 

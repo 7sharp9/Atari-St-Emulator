@@ -18,13 +18,14 @@
 0000f98c	pm_grid_walk_q0        # yaw-quadrant 0 grid-walk handler (corner->vertex assignment A)
 0000fa98	pm_grid_walk_q1        # yaw-quadrant 1
 0000fbb2	pm_grid_walk_q2        # yaw-quadrant 2
-0000fccc	pm_grid_walk_q3        # yaw-quadrant 3 (yaw $f0): A0+=[$fe02] A1+=[$fdf0]=7, 7 iters, TL=(A0) BR=68(A0) TR=4(A0) BL=64(A0)
+0000fccc	pm_grid_walk_q3        # yaw-quadrant 3 (yaw $f0), PORTED+trace-verified 78th: A0=$3f364+$fe02(col7) A1=type plane cam+7; for k,j in 0..7: cell(camX+7-k,camY+j) corner(j,7-k); C00=(A0) C10=4(A0) C01=64(A0) C11=68(A0); $438ee+8257 bit7 = DIAGONAL SELECTOR (clear: C00-C11 split, tri(C10,C11,C00)=type tri(C01,C00,C11)=height; set: C10-C01 split); colour +[$4bb3e]&3 if <$0c
 0000fec6	pm_project_grid        # project grid corners -> $3f364 (rotate by $ff9a, perspective divide $ff7c)
 0000ff7c	pm_perspective_div     # sx = x*$ff98/($ff98-z) ; sy = (z-$ff96)*$ff98/($ff98-z)+$ff96
-0000ef62	pm_tri_raster          # sort 3 Y, build span record @ $f1e2 (colour, topY, topX, 2 16.8 edge slopes via $f000, mid-seg switch + slope-of-slope), bra $e3e6
+0000ef62	pm_tri_raster          # cyclic-rotate min-Y to front, write colour to record @ $f1e2, then FORCE record colour = $1c when vertex1 is already the left edge (slope2>slope1 / flat-top sx1<sx0) = the dark coast/front shading (78th, trace-verified); 2 16.8 edge slopes via $f000; bra $e3e6
 0000f000	pm_edge_slope          # 16.8 fixed dy/dx: lsl.l #8 then divu, V-clamp to $10000
 0000e3e6	pm_span_setup         # 77th: fill entry (74th's $e3e2 was mis-aligned). A5 = [$ff9e] + colourByte*128 + (topY&15)*8; A1 = backbuf + topY*160
-0000e420	pm_span_walker        # DDA: 2 edge X accumulators stepped by 16.8 slopes; run-stepped (u16 run, i32 slope) stream in A0; A5 += 8/scanline; frac->byteoff via $ece2
+0000e420	pm_span_walker        # DDA: 2 edge X accumulators; 78th: acc holds 2*screenX, $ece2 word-indexed -> screen_x == corner_sx (no scale); run-stepped (u16 run,i32 slope) stream in A0; A5 += 8/scanline; $ec62/$eca2 partial-word edge masks
+0000e3e2	g_span_drawbuf_ptr     # runtime-patched long BEFORE $e3e6 (movea.l -10(PC)): the $e420 fill target = compose buffer + $20 bytes = +64 screen px (the iso window origin; left 64px is HUD)
 0000e4de	pm_span_fill_mid      # Duff device: move.l D0/D1,(A2)+ repeated; D0/D1 = movem.l (A5) = one 16px pattern {planes01, planes23}, tiled; jmp $e52e+(-(width>>1))
 0000ec62	t_edge_mask_left      # 16 longs, clear leftmost k bits: ffffffff 7fff7fff ... 00010001; index (D4&30)*2
 0000eca2	t_edge_mask_right     # 16 longs, keep leftmost k+1 bits: 80008000 c000c000 ... ffffffff; index (D5&30)*2
@@ -41,8 +42,9 @@
 0000fdea	g_zoom_geometry_consts # 13 words $fdea..$fe02 derived by $fe04 from (grid half-extent, tile px); grid-buffer strides + loop bounds + screen offsets
 0004bb3a	g_cam_cell_x           # camera grid cell X ($fecc offsets by -$57ffc)
 0004bb3c	g_cam_cell_y           # camera grid cell Y
-0003f364	g_grid_corner_buf      # projected grid corners, 2 words (screenX, screenY) per vertex, row stride 64 bytes (9 used at zoom 4); 77th: pm_render_ref.py reproduces all 81 byte-exact
+0003f364	g_grid_corner_buf      # projected grid corners, 2 words (screenX,screenY)/vertex, row stride 64 B (9 used at zoom 4); screenX is iso-WINDOW-relative -> final screen X = sx + 64 ($e420 draws to buffer+$20 bytes); 78th: pm_render_ref.py --ram scores 65.8% exact / 93.2% within-1
 0002e000	g_dither_table         # 4bpp pattern table (= [$ff9e]); A5 = base + colourByte*128 + (topY&15)*8, +4 B/line +8 B/cluster; 128 B/colourByte = 16 sub-patterns; 0x24-2c green, 0x08-0b water, 0x18-1c rock
+00078000	g_hud_master           # 32000-B HUD + border frame with a solid black diamond where the iso view goes (NO terrain); $12ce0 copies it -> back buffer ~1/3 frames, then $f898 fills the diamond (78th)
 00017878	pm_render_setup_b       # rotation-indexed row table select ($17ad8)
 000115e0	pm_draw_cell_entities   # walk $47970[cell] bucket; per entity byte6=category -> jump table 1 $1162e (prepare) + jump table 2 $1165a (blit)
 0001162e	t_sprite_cat_prepare    # 16 per-category "prepare" handlers: cat0=$11c8a men, cat4=$11a86 animals, cat2=$1168c, cat3/12=$117b0, cat5=$11772, cat6=$11bbc, cat7=$11bf4, cat8=$1192e, cat9=$11c36, cat10=$11b3c, cat11=$11b2a, cat13=$1174e, cat14=$11b0c, cat15=$1198a
