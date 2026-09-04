@@ -17,6 +17,9 @@ module Projection =
         static member Mission1 =
             { Eye = 320.0; Horizon = 130.0; Zoom = 21.0; YawSteps = 15; Half = 4 }
 
+        /// C#-friendly copy-with (F#'s `{ p with ... }` isn't callable from C#).
+        member p.WithYaw(yawSteps: int) = { p with YawSteps = yawSteps }
+
     let private deg2rad d = d * System.Math.PI / 180.0
 
     /// theta = yaw * 1.40625 deg  (the $13f8a table is a plain sine table).

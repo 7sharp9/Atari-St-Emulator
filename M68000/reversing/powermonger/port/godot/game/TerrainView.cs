@@ -15,8 +15,10 @@ namespace PowerMongerPort;
 /// the closest shape to PM's own direct-to-shifter pipeline and is the only
 /// shape that keeps the dither pattern.
 ///
-/// Scope: the terrain layer only, quadrant 3 (yaw fixed at $f0, the only grid
-/// walk ported so far — see SPEC.md section 4 "the yaw-quadrant grid walk").
+/// Scope: the terrain layer only. All 4 yaw-quadrant grid-walk handlers are
+/// now ported (Fill.walk dispatches on yawSteps the same way $f97e/$f982
+/// does — see SPEC.md section 4 "the yaw-quadrant grid walk"), so PageUp/
+/// PageDown rotate the camera through all 16 yaw steps live.
 /// Uncovered pixels (the $78000 master: HUD, stone border, pre-baked sea) are
 /// not exported yet (Task 2, SPEC.md section 6/9) so they are left magenta,
 /// same "uncovered" convention as assets/reference/render_faithful.png.
@@ -28,18 +30,22 @@ public partial class TerrainView : Node2D
     [Export] public string AssetsDir = "res://assets";
     [Export] public int CamCellX = 36; // $4bb3a - $57ffc, mission-1 start
     [Export] public int CamCellY = 47; // $4bb3c - $57ffc
+    [Export] public int YawSteps = 15; // $ff9a >> 4 (0..15); 15 = $f0, quadrant 3, mission-1 start
     [Export] public int PixelScale = 3;
 
     private static readonly Color Uncovered = new(1f, 0f, 1f); // magenta, matches render_faithful.png
+    private static readonly string[] QuadrantNames = { "q0", "q1", "q2", "q3" };
 
     private Terrain.Map _map = null!;  // set in _Ready, before any other use
     private byte[] _dither = System.Array.Empty<byte>();
     private Color[] _palette = new Color[16];
-    private readonly PmProjection.Params _proj = PmProjection.Params.Mission1; // Eye 320, Horizon 130, Zoom 21, yaw=0xf0 (quadrant 3), Half 4
 
     private TextureRect _rect = null!; // set in _Ready
     private Label _label = null!;      // set in _Ready
-    private int _camX, _camY;
+    private int _camX, _camY, _yawSteps;
+
+    // Eye 320, Horizon 130, Zoom 21, Half 4 (zoom index 4) — only YawSteps varies live.
+    private PmProjection.Params Proj => PmProjection.Params.Mission1.WithYaw(_yawSteps);
 
     // grid walk reads cells [camX .. camX+7] x [camY .. camY+7] (Fill.walkQ3) and
     // projects corners [camX .. camX+8] x [camY .. camY+8] (Projection.projectGrid,
@@ -61,6 +67,7 @@ public partial class TerrainView : Node2D
 
         _camX = Mathf.Clamp(CamCellX, MinCamX, MaxCamX);
         _camY = Mathf.Clamp(CamCellY, MinCamY, MaxCamY);
+        _yawSteps = ((YawSteps % 16) + 16) % 16;
 
         _rect = new TextureRect
         {
@@ -80,12 +87,15 @@ public partial class TerrainView : Node2D
         if (ev is not InputEventKey { Pressed: true, Echo: false } key) return;
         int dx = key.Keycode switch { Key.Left => -1, Key.Right => 1, _ => 0 };
         int dy = key.Keycode switch { Key.Up => -1, Key.Down => 1, _ => 0 };
-        if (dx == 0 && dy == 0) return;
+        int dyaw = key.Keycode switch { Key.Pageup => 1, Key.Pagedown => -1, _ => 0 };
+        if (dx == 0 && dy == 0 && dyaw == 0) return;
         int nx = Mathf.Clamp(_camX + dx, MinCamX, MaxCamX);
         int ny = Mathf.Clamp(_camY + dy, MinCamY, MaxCamY);
-        if (nx == _camX && ny == _camY) return;
+        int nyaw = ((_yawSteps + dyaw) % 16 + 16) % 16; // $ff9a's 16-step wrap
+        if (nx == _camX && ny == _camY && nyaw == _yawSteps) return;
         _camX = nx;
         _camY = ny;
+        _yawSteps = nyaw;
         RenderFrame();
     }
 
@@ -103,9 +113,10 @@ public partial class TerrainView : Node2D
 
     private void RenderFrame()
     {
-        var corners = PmProjection.projectGrid(_proj, _map, _camX, _camY);
+        var proj = Proj;
+        var corners = PmProjection.projectGrid(proj, _map, _camX, _camY);
         var buf = Fill.Buffer.Create();
-        Fill.walkQ3(buf, _dither, corners, _map, _camX, _camY, tick: 0);
+        Fill.walk(buf, _dither, corners, _map, _camX, _camY, 0, _yawSteps);
 
         var img = Image.CreateEmpty(Fill.ScreenWidth, Fill.ScreenHeight, false, Image.Format.Rgb8);
         for (int y = 0; y < Fill.ScreenHeight; y++)
@@ -117,6 +128,9 @@ public partial class TerrainView : Node2D
             }
         }
         _rect.Texture = ImageTexture.CreateFromImage(img);
-        _label.Text = $"camCell ({_camX},{_camY}) — arrow keys pan; yaw fixed to quadrant 3 ($f0)";
+        int yaw = _yawSteps * 16;
+        int quadrant = (((yaw + 8) >> 5) & 6) >> 1;
+        _label.Text = $"camCell ({_camX},{_camY}) yaw {_yawSteps}/16 (${yaw:x2}, {QuadrantNames[quadrant]}) — "
+                      + "arrows pan, PgUp/PgDn rotate";
     }
 }

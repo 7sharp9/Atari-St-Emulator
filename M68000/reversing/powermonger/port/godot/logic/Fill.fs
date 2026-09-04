@@ -240,3 +240,127 @@ module Fill =
                 else
                     ef62Raster buf dith c11 c01 c10 typ tick
                     ef62Raster buf dith c00 c10 c01 hgt tick
+
+    /// pm_grid_walk_q0 ($f98e -- NOT $f98c; powermonger.sym's old address was
+    /// 2 bytes low, landing on the tail of the jump table itself, fixed 83rd
+    /// pass), yaw in {$00,$10,$20,$30}. Live-trace-verified (83rd,
+    /// scratchpad/pm83_q0c.ram, cell (36,49)): the CLEAR "else" branch's
+    /// first ef62 call landed with D0=C11 D1=C00 D2=C10 D3=$2c, matching
+    /// tri(C11,C00,C10,type) exactly (packed C11 > packed C00 at that cell).
+    ///
+    ///   outer m = 0..7: cell row,    NORTH -> SOUTH (far -> near)
+    ///   inner n = 0..7: cell column, WEST  -> EAST  (far -> near)
+    ///   cell (cx, cy) = (camX + n, camY + m)   ; corner (row, col) = (m, n)
+    ///     (no start offset -- A0/A1/A2 are already at the camCell base)
+    ///   flag CLEAR: split C00-C11, sub-order by packed(C00) vs packed(C11)
+    ///     (q3 leaves CLEAR unconditional and sub-orders SET instead)
+    ///   flag SET: unconditional, split C10-C01
+    let walkQ0 (buf: Buffer) (dith: byte[]) (corners: Projection.Corner[,]) (m: Terrain.Map)
+               (camX: int) (camY: int) (tick: int) =
+        let packed (c: Projection.Corner) =
+            (int (System.Math.Round(c.X: float)) <<< 16) ||| (int (System.Math.Round(c.Y: float)) &&& 0xFFFF)
+        for row in 0 .. 7 do
+            let cy = camY + row
+            for col in 0 .. 7 do
+                let cx = camX + col
+                let c00 = corners.[row, col]
+                let c10 = corners.[row, col + 1]
+                let c01 = corners.[row + 1, col]
+                let c11 = corners.[row + 1, col + 1]
+                let typ = m.TypeAt(cx, cy)
+                let hgt = m.HeightAt(cx, cy)
+                if not (m.DiagonalSelector(cx, cy)) then
+                    if packed c11 <= packed c00 then
+                        ef62Raster buf dith c00 c11 c01 hgt tick
+                        ef62Raster buf dith c00 c10 c11 typ tick
+                    else
+                        ef62Raster buf dith c11 c00 c10 typ tick
+                        ef62Raster buf dith c11 c01 c00 hgt tick
+                else
+                    ef62Raster buf dith c00 c10 c01 hgt tick
+                    ef62Raster buf dith c11 c01 c10 typ tick
+
+    /// pm_grid_walk_q1 ($fa9a), yaw in {$40,$50,$60,$70}. Live-trace-verified
+    /// (83rd, scratchpad/pm83_q1c.ram, cell (40,50)): the CLEAR branch's
+    /// first ef62 call landed with D0=C01 D1=C00 D2=C11 D3=$29, matching
+    /// tri(C01,C00,C11,height) exactly (hgt(40,50) = $29).
+    ///
+    ///   outer m = 0..7: cell column, WEST  -> EAST  (far -> near)
+    ///   inner n = 0..7: cell row,    SOUTH -> NORTH (far -> near)
+    ///   cell (cx, cy) = (camX + m, camY + (7-n))
+    ///     corner (row, col) = (7-n, m)   ; start offset row7,col0
+    ///   flag CLEAR: unconditional, split C00-C11
+    ///   flag SET: split C10-C01, sub-order by packed(C01) vs packed(C10)
+    ///     (same diagonal/condition as q3's SET branch)
+    let walkQ1 (buf: Buffer) (dith: byte[]) (corners: Projection.Corner[,]) (m: Terrain.Map)
+               (camX: int) (camY: int) (tick: int) =
+        let packed (c: Projection.Corner) =
+            (int (System.Math.Round(c.X: float)) <<< 16) ||| (int (System.Math.Round(c.Y: float)) &&& 0xFFFF)
+        for col in 0 .. 7 do
+            let cx = camX + col
+            for n in 0 .. 7 do
+                let row = 7 - n
+                let cy = camY + row
+                let c00 = corners.[row, col]
+                let c10 = corners.[row, col + 1]
+                let c01 = corners.[row + 1, col]
+                let c11 = corners.[row + 1, col + 1]
+                let typ = m.TypeAt(cx, cy)
+                let hgt = m.HeightAt(cx, cy)
+                if not (m.DiagonalSelector(cx, cy)) then
+                    ef62Raster buf dith c01 c00 c11 hgt tick
+                    ef62Raster buf dith c10 c11 c00 typ tick
+                elif packed c01 < packed c10 then
+                    ef62Raster buf dith c00 c10 c01 hgt tick
+                    ef62Raster buf dith c11 c01 c10 typ tick
+                else
+                    ef62Raster buf dith c11 c01 c10 typ tick
+                    ef62Raster buf dith c00 c10 c01 hgt tick
+
+    /// pm_grid_walk_q2 ($fbb4), yaw in {$80,$90,$a0,$b0}. Live-trace-verified
+    /// (83rd, scratchpad/pm83_q2c.ram, cell (40,47)): the CLEAR "if" branch's
+    /// first ef62 call landed with D0=C01 D1=C00 D2=C11 D3=$2b, matching
+    /// tri(C01,C00,C11,height) exactly (packed C11 <= packed C00, hgt(40,47) = $2b).
+    ///
+    ///   outer m = 0..7: cell row,    SOUTH -> NORTH (far -> near)
+    ///   inner n = 0..7: cell column, EAST  -> WEST  (far -> near)
+    ///   cell (cx, cy) = (camX + (7-n), camY + (7-m))
+    ///     corner (row, col) = (7-m, 7-n)   ; start offset row7,col7
+    ///   flag CLEAR: split C00-C11, sub-order by packed(C00) vs packed(C11)
+    ///     (mirrors q0's CLEAR branch)
+    ///   flag SET: unconditional, split C10-C01
+    let walkQ2 (buf: Buffer) (dith: byte[]) (corners: Projection.Corner[,]) (m: Terrain.Map)
+               (camX: int) (camY: int) (tick: int) =
+        let packed (c: Projection.Corner) =
+            (int (System.Math.Round(c.X: float)) <<< 16) ||| (int (System.Math.Round(c.Y: float)) &&& 0xFFFF)
+        for outerM in 0 .. 7 do
+            let row = 7 - outerM
+            let cy = camY + row
+            for n in 0 .. 7 do
+                let col = 7 - n
+                let cx = camX + col
+                let c00 = corners.[row, col]
+                let c10 = corners.[row, col + 1]
+                let c01 = corners.[row + 1, col]
+                let c11 = corners.[row + 1, col + 1]
+                let typ = m.TypeAt(cx, cy)
+                let hgt = m.HeightAt(cx, cy)
+                if not (m.DiagonalSelector(cx, cy)) then
+                    if packed c11 <= packed c00 then
+                        ef62Raster buf dith c01 c00 c11 hgt tick
+                        ef62Raster buf dith c10 c11 c00 typ tick
+                    else
+                        ef62Raster buf dith c10 c11 c00 typ tick
+                        ef62Raster buf dith c01 c00 c11 hgt tick
+                else
+                    ef62Raster buf dith c11 c01 c10 typ tick
+                    ef62Raster buf dith c00 c10 c01 hgt tick
+
+    /// port of $f97e/$f982's dispatch: q = ((yaw+8)>>5)&6, handler = q>>1.
+    /// yaw here is yawSteps*16 (Projection.Params.YawSteps, 0..15).
+    let walk (buf: Buffer) (dith: byte[]) (corners: Projection.Corner[,]) (m: Terrain.Map)
+             (camX: int) (camY: int) (tick: int) (yawSteps: int) =
+        let yaw = yawSteps * 16
+        let q = ((yaw + 8) >>> 5) &&& 6
+        let handler = [| walkQ0; walkQ1; walkQ2; walkQ3 |].[q >>> 1]
+        handler buf dith corners m camX camY tick

@@ -10,7 +10,7 @@ renderer, a porting spec, and a toolchain skeleton.
 |------|------|
 | `assets/` | everything the iso renderer reads, extracted from a live RAM image. `manifest.json` gives one line of provenance per file. |
 | `SPEC.md` | the porting contract: coordinate systems, projection with exact constants, the triangle/dither rasteriser, sprites, zoom, the frame pipeline, and what a modern port should replace. Written to be implementable without the disassembly. |
-| `godot/` | Godot 4.x (.NET) + F# skeleton. Proves the toolchain — F# logic lib loads, assets load, one heightmap mesh renders. `godot/logic/Fill.fs` (81st) is a byte-exact port of the closed rasteriser (`walk_q3` + `ef62_raster` + the `$e420` DDA + the dither fill); not yet wired into `TerrainView.cs`. |
+| `godot/` | Godot 4.x (.NET) + F# skeleton, **running live**. `godot/logic/Fill.fs` ports the closed rasteriser (`ef62_raster` + the `$e420` DDA + the dither fill) and all 4 yaw-quadrant grid walks (`walkQ0`-`walkQ3`, dispatched by `walk`); `godot/game/TerrainView.cs` wires it into a real scene — arrow keys pan the camera, PageUp/PageDown rotate it through all 16 yaw steps. |
 
 Regenerate the assets:
 
@@ -25,6 +25,40 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 (dither fill), `render_flat.png` (height-ramp fill), and `render_compare.png` —
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
+
+## Verification status (83rd pass)
+
+- **All 4 yaw-quadrant grid-walk handlers are ported and wired in.**
+  `Fill.walkQ0`/`walkQ1`/`walkQ2` join the 78th/80th's `walkQ3`, dispatched by
+  `Fill.walk` (mirrors `$f97e`/`$f982`'s `((yaw+8)>>5)&6` select). `TerrainView`
+  now has real camera rotation: PageUp/PageDown step `YawSteps` through all 16
+  values (arrow keys still pan the camera cell).
+- **Trace-verified, not guessed.** For each of q0/q1/q2, rotated the live
+  camera via the keypad-poke recipe (below) to a yaw in that quadrant's range,
+  captured RAM, resumed to the settled PC, and dumped registers at the first
+  `$ef62` call — the vertex assignment (which corner went to D0/D1/D2) and the
+  colour-plane choice (type vs height) matched the disassembly-derived port
+  exactly at every cell checked (one per quadrant; SPEC.md §4 has the
+  addresses and register values). Also fixed a stale-address bug this
+  surfaced: the true entry points are `$f98e`/`$fa9a`/`$fbb4`, not the
+  `$f98c`/`$fa98`/`$fbb2` an earlier pass recorded (2 bytes low each).
+- **Cross-checked against the F# port byte-exact** on synthetic corner/terrain
+  data designed to exercise every CLEAR/SET branch and both comparison
+  directions (`scratchpad/pm83_synth_check.py` + `.fsx`, `dotnet fsi`, same
+  method as the 81st's `walkQ3` check) — identical covered-pixel sets for all
+  three new handlers.
+- **Re-verified live in Godot with real GPU screenshots** at two more camera
+  angles: yaw step 3 (quadrant 0, `$30`) and yaw step 11 (quadrant 2, `$b0`) —
+  `assets/reference/godot_screenshot_yaw{3_q0,11_q2}.png`. Both show a
+  distinctly different island silhouette from the mission-1-start q3 shots,
+  through the same `RenderFrame()` path.
+- **Score against real captures is lower for the new quadrants** (35-50 %
+  exact-index vs q3's 94 %, `pm_render_ref.py --ram` on
+  `scratchpad/pm83_q{0,1,2}c.ram`) — this is the *already-documented* residual
+  (tall coast-slope dither needs a multi-segment DDA chain the port doesn't
+  model, SPEC.md §9 item 1) showing up more at these camera angles, not a new
+  geometry bug: the live-trace check above confirms the vertex/colour
+  assignment is exact.
 
 ## Verification status (82nd pass)
 
@@ -149,12 +183,13 @@ under 4.7.2 with no re-save needed; if a future Godot major bump complains,
 open once in the editor and let it re-save `project.godot`. .NET 8 SDK is
 assumed (`net8.0`, roll-forward covers newer installed SDKs fine).
 
-Expected result: the mission-1 island, dithered, at camera cell (36,47) — see
-`assets/reference/godot_screenshot_cam36_47.png`. Arrow keys pan the camera
-(clamped to the terrain planes' bounds) and re-render live. Magenta =
-uncovered (the `$78000` master — HUD, stone border, baked sea — isn't
-exported yet, Task 2). Yaw is fixed to quadrant 3 (`$f0`); the other 3
-grid-walk handlers aren't ported so arbitrary rotation isn't wired up.
+Expected result: the mission-1 island, dithered, at camera cell (36,47), yaw
+`$f0` — see `assets/reference/godot_screenshot_cam36_47.png`. Arrow keys pan
+the camera (clamped to the terrain planes' bounds); PageUp/PageDown rotate it
+through all 16 yaw steps (`assets/reference/godot_screenshot_yaw{3_q0,
+11_q2}.png` show two rotated views), all live re-render. Magenta = uncovered
+(the `$78000` master — HUD, stone border, baked sea — isn't exported yet,
+Task 2).
 
 ## Next steps (in `SPEC.md` order)
 
@@ -170,9 +205,16 @@ grid-walk handlers aren't ported so arbitrary rotation isn't wired up.
    stub, 81st), drawn per-cell inline in the grid walk (painter's order — do
    not add a separate sorted pass). Frame base/count per category still needs
    the rip (Task 2 / `SPEC.md` §9 item 3).
-3. Camera: 16 yaw steps, 7 zoom levels (`assets/tables.json → zoom_geometry`).
-   `Projection.projectVertex` already takes an arbitrary `theta`; the gap is
-   the other 3 `pm_grid_walk_q*` handlers (`$f98c`/`$fa98`/`$fbb2`) — SPEC.md
-   §4 "the yaw-quadrant grid walk" — which `Fill.walkQ3` only covers one of.
+3. ~~Camera: the other 3 `pm_grid_walk_q*` handlers~~ — **done, 83rd pass**
+   (`Fill.walkQ0`/`walkQ1`/`walkQ2`, dispatched by `Fill.walk`; PageUp/PageDown
+   in `TerrainView.cs`). Remaining camera gap: **zoom** — 7 discrete geometry
+   sets (`assets/tables.json → zoom_geometry`), `Projection.Params.Zoom`/`Half`
+   are wired but only the zoom-index-4 constants have been exported/tested.
 4. The `$78000` master (HUD + stone border + baked sea) isn't exported —
    `TerrainView`'s uncovered pixels stay magenta until it is (Task 2).
+5. The residual rasteriser inaccuracy (SPEC.md §9 item 1: the tall `0x1c`
+   coast-slope multi-segment dither spread) is more exposed at yaws other than
+   `$f0` (35-50% exact-index at q0/q1/q2 vs q3's 94%, `pm_render_ref.py --ram`
+   on `scratchpad/pm83_q{0,1,2}c.ram`) — LOW priority per the 81st/82nd's own
+   framing, but now affects most of the camera's range, not just the ~6%
+   residual at the mission-1 start yaw.

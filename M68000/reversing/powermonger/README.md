@@ -375,6 +375,34 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     C#-side change would be unverified; left as the next step (`port/README.md`
     "Next steps"). `PmLogic.fsproj` builds clean (`dotnet build`, net8.0).
 
+20. The 83rd pass **ports the other 3 yaw-quadrant grid-walk handlers**
+    (doc + tooling + port only — no emulator change), unlocking real camera
+    rotation in the live Godot view the 82nd pass wired up. `Fill.walkQ0`/
+    `walkQ1`/`walkQ2` join `walkQ3` behind a new `Fill.walk` dispatcher
+    (mirrors `$f97e`/`$f982`'s `((yaw+8)>>5)&6` handler select); `pm_render_ref
+    .py` gets matching `walk_q0`/`walk_q1`/`walk_q2`/`walk_by_yaw`. **Found and
+    fixed a stale-address bug along the way**: the 3 handlers' entry points
+    were recorded as `$f98c`/`$fa98`/`$fbb2` by an earlier pass — the real
+    jump table at `$f986` (`jmp 2(PC,D0.w)`, offsets `$8`/`$114`/`$22e`/`$346`)
+    gives `$f98e`/`$fa9a`/`$fbb4`; the old addresses landed on the RTS of the
+    *preceding* handler (or, for `$f98c`, a byte inside the table itself).
+    **Trace-verified, not guessed**: rotated the live camera via the keypad-
+    poke recipe to a yaw in each of q0/q1/q2's range, captured RAM, and dumped
+    registers at the first `$ef62` call after resuming to the settled PC — the
+    vertex assignment and colour-plane choice (type vs height) matched the
+    disassembly-derived port exactly at every cell checked. **Cross-checked
+    byte-exact against the F# port** on synthetic data exercising every
+    CLEAR/SET branch and both comparison directions (`dotnet fsi`, same method
+    as the 81st). **Re-verified live in Godot** with real GPU screenshots at
+    two more yaw steps (quadrant 0 and quadrant 2), each a distinct island
+    silhouette through the same `TerrainView.RenderFrame()` path; PageUp/
+    PageDown now rotate the camera in the live scene. The already-documented
+    residual rasteriser inaccuracy (tall coast-slope dither spread, `SPEC.md`
+    §9 item 1) scores much lower against real captures at these new yaws
+    (35-50% exact-index vs quadrant 3's 94%) — confirmed to be that same
+    known, low-priority limitation showing up more at other camera angles,
+    not a new geometry bug, via the live-trace check above.
+
 ## Files
 
 | file | what |

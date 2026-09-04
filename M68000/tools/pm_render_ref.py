@@ -589,6 +589,165 @@ def walk_q3(idxbuf, cov, R):
                     ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
 
 
+def walk_q0(idxbuf, cov, R):
+    """port of pm_grid_walk_q0 ($f98e -- NOT $f98c, see note below), yaw in
+    {0x00,0x10,0x20,0x30}.
+
+    $f986's jump table holds *offsets from itself* ($8/$114/$22e/$346 for
+    q0..q3), so the real handler entry points are $f986+offset =
+    $f98e/$fa9a/$fbb4/$fccc -- the powermonger.sym addresses $f98c/$fa98/
+    $fbb2 (2 bytes low) were the RTS of the *previous* handler (or, for
+    $f98c, a byte inside the jump table itself), not an entry point. Fixed
+    83rd pass, disasm of scratchpad/pm78_settle.ram $f95e..$fdea.
+
+    outer m = 0..7 (D7 loop): cell row,    NORTH -> SOUTH (far -> near)
+    inner n = 0..7 (D6 loop): cell column, WEST  -> EAST  (far -> near)
+    cell (cx, cy) = (camCellX + n, camCellY + m)      (no start offset --
+      A0/A1/A2 are already at the camCell base when $f898 dispatches here)
+    corner (row, col) = (m, n)
+      C00 = (A0)  C10 = 4(A0)  C01 = 64(A0)  C11 = 68(A0)   (same layout as q3)
+    flag plane bit 7 CLEAR ($f9a0): split on the C00-C11 diagonal, sub-order
+        by packed(C00) vs packed(C11) (opposite of q3, which sub-orders the
+        SET branch and leaves CLEAR unconditional):
+        if packed(C11) <= packed(C00): tri(C00,C11,C01,height); tri(C00,C10,C11,type)
+        else:                          tri(C11,C00,C10,type);   tri(C11,C01,C00,height)
+    flag plane bit 7 SET ($fa26): unconditional, split on the C10-C01 diagonal
+        tri(C00,C10,C01,height); tri(C11,C01,C10,type)
+    """
+    cx0, cy0 = R["cam"]
+    cn = R["corners"]
+    P = R["planes"]
+    dith, tick = R["dith"], R["tick"]
+
+    def packed(q):
+        return (q[0] << 16) | (q[1] & 0xFFFF)
+
+    for m in range(8):                       # NORTH -> SOUTH (far -> near)
+        row = m
+        cy = cy0 + row
+        for n in range(8):                   # WEST -> EAST (far -> near)
+            col = n
+            cx = cx0 + col
+            C00 = cn[(row, col)]
+            C10 = cn[(row, col + 1)]
+            C01 = cn[(row + 1, col)]
+            C11 = cn[(row + 1, col + 1)]
+            typ = P["typ"](cx, cy)
+            hgt = P["hgt"](cx, cy)
+            if not (P["flg"](cx, cy) & 0x80):
+                if packed(C11) <= packed(C00):
+                    ef62_raster(idxbuf, cov, dith, C00, C11, C01, hgt, tick)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C11, typ, tick)
+                else:
+                    ef62_raster(idxbuf, cov, dith, C11, C00, C10, typ, tick)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C00, hgt, tick)
+            else:
+                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+
+
+def walk_q1(idxbuf, cov, R):
+    """port of pm_grid_walk_q1 ($fa9a), yaw in {0x40,0x50,0x60,0x70}.
+
+    outer m = 0..7 (D7 loop): cell column, WEST  -> EAST  (far -> near)
+    inner n = 0..7 (D6 loop): cell row,    SOUTH -> NORTH (far -> near)
+    cell (cx, cy) = (camCellX + m, camCellY + (7 - n))
+      start offset $fdf8/$fdf6 = 448 = 7*64+0 -> A0/A1/A2 start at row 7, col 0
+    corner (row, col) = (7 - n, m)
+      C00 = (A0)  C10 = 4(A0)  C01 = 64(A0)  C11 = 68(A0)
+    flag plane bit 7 CLEAR ($fab8): unconditional, split on the C00-C11 diagonal
+        tri(C01,C00,C11, height); tri(C10,C11,C00, type)
+    flag plane bit 7 SET ($fafc): split on the C10-C01 diagonal, sub-order by
+        packed(C01) vs packed(C10) (same diagonal/condition as q3's SET branch)
+        if packed(C01) < packed(C10): tri(C00,C10,C01,height); tri(C11,C01,C10,type)
+        else:                         tri(C11,C01,C10,type);   tri(C00,C10,C01,height)
+    """
+    cx0, cy0 = R["cam"]
+    cn = R["corners"]
+    P = R["planes"]
+    dith, tick = R["dith"], R["tick"]
+
+    def packed(q):
+        return (q[0] << 16) | (q[1] & 0xFFFF)
+
+    for m in range(8):                       # WEST -> EAST (far -> near)
+        col = m
+        cx = cx0 + col
+        for n in range(8):                   # SOUTH -> NORTH (far -> near)
+            row = 7 - n
+            cy = cy0 + row
+            C00 = cn[(row, col)]
+            C10 = cn[(row, col + 1)]
+            C01 = cn[(row + 1, col)]
+            C11 = cn[(row + 1, col + 1)]
+            typ = P["typ"](cx, cy)
+            hgt = P["hgt"](cx, cy)
+            if not (P["flg"](cx, cy) & 0x80):
+                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick)
+                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick)
+            else:
+                if packed(C01) < packed(C10):
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+                else:
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+
+
+def walk_q2(idxbuf, cov, R):
+    """port of pm_grid_walk_q2 ($fbb4), yaw in {0x80,0x90,0xa0,0xb0}.
+
+    outer m = 0..7 (D7 loop): cell row,    SOUTH -> NORTH (far -> near)
+    inner n = 0..7 (D6 loop): cell column, EAST  -> WEST  (far -> near)
+    cell (cx, cy) = (camCellX + (7 - n), camCellY + (7 - m))
+      start offset $fe00/$fdfe = 476 = 7*64+28 -> A0/A1/A2 start at row 7, col 7
+    corner (row, col) = (7 - m, 7 - n)
+      C00 = (A0)  C10 = 4(A0)  C01 = 64(A0)  C11 = 68(A0)
+    flag plane bit 7 CLEAR ($fbd4): split on the C00-C11 diagonal, sub-order by
+        packed(C00) vs packed(C11) (mirrors q0's CLEAR branch)
+        if packed(C11) <= packed(C00): tri(C01,C00,C11,height); tri(C10,C11,C00,type)
+        else:                          tri(C10,C11,C00,type);   tri(C01,C00,C11,height)
+    flag plane bit 7 SET ($fc5a): unconditional, split on the C10-C01 diagonal
+        tri(C11,C01,C10,type); tri(C00,C10,C01,height)
+    """
+    cx0, cy0 = R["cam"]
+    cn = R["corners"]
+    P = R["planes"]
+    dith, tick = R["dith"], R["tick"]
+
+    def packed(q):
+        return (q[0] << 16) | (q[1] & 0xFFFF)
+
+    for m in range(8):                       # SOUTH -> NORTH (far -> near)
+        row = 7 - m
+        cy = cy0 + row
+        for n in range(8):                   # EAST -> WEST (far -> near)
+            col = 7 - n
+            cx = cx0 + col
+            C00 = cn[(row, col)]
+            C10 = cn[(row, col + 1)]
+            C01 = cn[(row + 1, col)]
+            C11 = cn[(row + 1, col + 1)]
+            typ = P["typ"](cx, cy)
+            hgt = P["hgt"](cx, cy)
+            if not (P["flg"](cx, cy) & 0x80):
+                if packed(C11) <= packed(C00):
+                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick)
+                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick)
+                else:
+                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick)
+                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick)
+            else:
+                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+
+
+def walk_by_yaw(idxbuf, cov, R):
+    """port of $f97e/$f982's dispatch: q = ((yaw+8)>>5)&6, handler = q>>1."""
+    q = ((R["yaw"] + 8) >> 5) & 6
+    [walk_q0, walk_q1, walk_q2, walk_q3][q >> 1](idxbuf, cov, R)
+
+
 def _score(idxbuf, cov, ref):
     from collections import Counter
     exact = near = tot = 0
@@ -611,11 +770,13 @@ def render_faithful(ram_path: Path, dom):
     ref = R["ref"]
     idxbuf = bytearray(W * H)
     cov = bytearray(W * H)
-    walk_q3(idxbuf, cov, R)
+    q = ((R["yaw"] + 8) >> 5) & 6
+    handler = [walk_q0, walk_q1, walk_q2, walk_q3][q >> 1]
+    handler(idxbuf, cov, R)
     exact, near, tot, mine_h, ref_h = _score(idxbuf, cov, ref)
 
-    print(f"  faithful walk_q3 + ef62 + $e420 DDA (corners from RAM $3f364, "
-          f"+{R['x_inset']}px inset)")
+    print(f"  faithful {handler.__name__} (yaw ${R['yaw']:02x}) + ef62 + $e420 DDA "
+          f"(corners from RAM $3f364, +{R['x_inset']}px inset)")
     print(f"    terrain pixels drawn : {tot}")
     print(f"    exact palette index  : {exact} ({100*exact/max(tot,1):.1f}%)")
     print(f"    within +-1 index     : {exact+near} "

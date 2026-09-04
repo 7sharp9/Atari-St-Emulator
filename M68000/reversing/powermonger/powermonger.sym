@@ -15,9 +15,10 @@
 0001abc0	pm_rng_step             # $57fec++ (tick-count "RNG") + $57ff6 sound LCG x=(x*$24a1+$24df)&$1fff
 000178ae	pm_render_setup_a       # per-frame render prep (group $4c exec sub-record)
 0000f898	pm_render_terrain       # $f97e picks 1 of 4 yaw-quadrant grid-walk handlers by ((yaw+8)>>5)&6; sets $ffa2 = 2*[$ff9e] on first call
-0000f98c	pm_grid_walk_q0        # yaw-quadrant 0 grid-walk handler (corner->vertex assignment A)
-0000fa98	pm_grid_walk_q1        # yaw-quadrant 1
-0000fbb2	pm_grid_walk_q2        # yaw-quadrant 2
+0000f986	pm_grid_walk_dispatch_table    # 4 words, offsets from $f986 itself: $8/$114/$22e/$346 -> q0/q1/q2/q3 entry points (NOT the $f98c/$fa98/$fbb2 guesses of earlier passes -- those were the RTS of the PRECEDING handler / a byte inside this table; fixed 83rd via jmp 2(PC,D0.w) at $f982)
+0000f98e	pm_grid_walk_q0        # yaw-quadrant 0 ($00/$10/$20/$30), PORTED+trace-verified 83rd (pm83_q0c.ram cell 36,49): no start offset; outer m=0..7 row N->S, inner n=0..7 col W->E; cell(camX+n,camY+m) corner(m,n); flag CLEAR: split C00-C11, sub-order by packed(C00) vs packed(C11); flag SET: unconditional, split C10-C01
+0000fa9a	pm_grid_walk_q1        # yaw-quadrant 1 ($40/$50/$60/$70), PORTED+trace-verified 83rd (pm83_q1c.ram cell 40,50): start row7,col0; outer m=0..7 col W->E, inner n=0..7 row S->N; cell(camX+m,camY+7-n) corner(7-n,m); flag CLEAR: unconditional, split C00-C11; flag SET: split C10-C01, sub-order by packed(C01) vs packed(C10)
+0000fbb4	pm_grid_walk_q2        # yaw-quadrant 2 ($80/$90/$a0/$b0), PORTED+trace-verified 83rd (pm83_q2c.ram cell 40,47): start row7,col7; outer m=0..7 row S->N, inner n=0..7 col E->W; cell(camX+7-n,camY+7-m) corner(7-m,7-n); flag CLEAR: split C00-C11, sub-order by packed(C00) vs packed(C11); flag SET: unconditional, split C10-C01
 0000fccc	pm_grid_walk_q3        # yaw-quadrant 3 (yaw $f0), PORTED+trace-verified 78th: A0=$3f364+$fe02(col7) A1=type plane cam+7; for k,j in 0..7: cell(camX+7-k,camY+j) corner(j,7-k); C00=(A0) C10=4(A0) C01=64(A0) C11=68(A0); $438ee+8257 bit7 = DIAGONAL SELECTOR (clear: C00-C11 split, tri(C10,C11,C00)=type tri(C01,C00,C11)=height; set: C10-C01 split); colour +[$4bb3e]&3 if <$0c
 0000fec6	pm_project_grid        # project grid corners -> $3f364 (rotate by $ff9a, perspective divide $ff7c)
 0000ff7c	pm_perspective_div     # sx = x*$ff98/($ff98-z) ; sy = (z-$ff96)*$ff98/($ff98-z)+$ff96

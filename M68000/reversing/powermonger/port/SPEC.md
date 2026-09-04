@@ -15,8 +15,27 @@ mission-1 iso view (`scratchpad/pm74_late.ram`, PC `$124c0`) and cross-checked
 against the disassembly in `../graphics.md`. Addresses are in the relocated game
 image (link base `$1050`).
 
+Verification status (83rd pass): **all 4 yaw-quadrant grid-walk handlers are
+now ported** (`Fill.walkQ0`/`walkQ1`/`walkQ2`/`walkQ3`, dispatched by
+`Fill.walk` the same way `$f97e`/`$f982` picks a handler from yaw) and wired
+into `TerrainView.cs` — PageUp/PageDown rotate the live camera through all 16
+yaw steps. `walkQ0`/`walkQ1`/`walkQ2` are each live-trace-verified against a
+real RAM capture at that quadrant's yaw range (register dump at the first
+`$ef62` call matched the predicted vertex/colour assignment exactly — see §4
+and `powermonger.sym`) and cross-checked byte-exact against a synthetic-data
+F#-vs-Python run (`scratchpad/pm83_synth_check.{py,fsx}`, every CLEAR/SET and
+both comparison directions exercised). **Also fixed a stale-address bug**:
+the three handlers' entry points were recorded as `$f98c`/`$fa98`/`$fbb2` by
+an earlier pass's imprecise read — the real jump table at `$f986` (read via
+`jmp 2(PC,D0.w)`) gives `$f98e`/`$fa9a`/`$fbb4`; the old addresses landed on
+the RTS of the *preceding* handler (or, for `$f98c`, a byte inside the table
+itself). Re-verified live in Godot with real GPU screenshots at yaw steps 3
+(quadrant 0) and 11 (quadrant 2) — two more distinct island silhouettes from
+the same `RenderFrame()` path (`assets/reference/godot_screenshot_yaw{3_q0,
+11_q2}.png`).
+
 Verification status (82nd pass): `Fill.walkQ3` + `Projection.projectGrid` are
-now **wired into and run live inside Godot 4.7.2-stable mono**
+**wired into and run live inside Godot 4.7.2-stable mono**
 (`port/godot/game/TerrainView.cs`, the software-layer shape — a `TextureRect`
 fed an `Image` built per-frame from `Fill.Buffer` through `assets/palette.json`).
 Verified with real screenshots (`--write-movie`, GPU-rendered, not headless —
@@ -339,8 +358,14 @@ pixels):
 
 ```
 q = ((YAW + 8) >> 5) & 6           // yaw 0xf0 -> q = 6 -> handler index 3
-handler = [$f98c, $fa98, $fbb2, $fccc][q >> 1]     // jump via the $f986 word table
+handler = [$f98e, $fa9a, $fbb4, $fccc][q >> 1]     // jump via the $f986 word table
 ```
+
+(83rd pass: the entry points are `$f98e`/`$fa9a`/`$fbb4`/`$fccc`, read exactly
+from the jump table at `$f986` — `jmp 2(PC,D0.w)` with offsets `$8`/`$114`/
+`$22e`/`$346` from `$f986` itself. Earlier passes recorded `$f98c`/`$fa98`/
+`$fbb2`, each 2 bytes low: those land on the RTS of the *preceding* handler
+(`$fbb2`/`$fa98`), or, for `$f98c`, a byte inside the jump table.)
 
 Each handler walks the **projected corner buffer `$3f364` and the terrain
 planes `$438ee` together**, but with a quadrant-specific **start offset**
@@ -350,8 +375,41 @@ different D0/D1/D2 slots), so the far→near painter order stays correct as the
 camera rotates. This is why `pm_render_ref.py`'s naive
 `cell(camCell + gc, camCell + gr)` walk draws a slightly different cell set
 (and misses the sea wedge + the shadowed NW slope) — it always uses the
-quadrant-0 assignment. Porting the four handlers is the remaining work for a
-pixel-exact terrain layer.
+quadrant-0 assignment.
+
+**All 4 handlers are ported (83rd pass)** — `pm_render_ref.py`'s `walk_q0` /
+`walk_q1` / `walk_q2` / `walk_q3`, dispatched by `walk_by_yaw`, and their F#
+twins `Fill.walkQ0`/`walkQ1`/`walkQ2`/`walkQ3` behind `Fill.walk`. Each cell's
+corners are named the same way as q3's (`C00`/`C10`/`C01`/`C11` = the 2×2
+corner block for that cell — see the q3 write-up below); only the loop order,
+start point, and which branch (CLEAR vs SET) carries the sub-order comparison
+differ:
+
+| quadrant | yaw range | outer loop | inner loop | cell (cx,cy) | CLEAR branch | SET branch |
+|----------|-----------|-----------|-----------|--------------|--------------|------------|
+| q0 (`$f98e`) | `$00-$30` | row 0→7 (N→S) | col 0→7 (W→E) | `(camX+col, camY+row)` | split C00-C11, sub-order by packed(C00) vs packed(C11) | unconditional, split C10-C01 |
+| q1 (`$fa9a`) | `$40-$70` | col 0→7 (W→E) | row 7→0 (S→N) | `(camX+col, camY+row)` | unconditional, split C00-C11 | split C10-C01, sub-order by packed(C01) vs packed(C10) |
+| q2 (`$fbb4`) | `$80-$b0` | row 7→0 (S→N) | col 7→0 (E→W) | `(camX+col, camY+row)` | split C00-C11, sub-order by packed(C00) vs packed(C11) | unconditional, split C10-C01 |
+| q3 (`$fccc`) | `$c0-$f0` | col 7→0 (E→W) | row 0→7 (N→S) | `(camX+col, camY+row)` | unconditional, split C00-C11 | split C10-C01, sub-order by packed(C01) vs packed(C10) |
+
+q0/q2 and q1/q3 pair up (same CLEAR/SET shape, mirrored start point and loop
+direction) — a symmetry that fell out of the derivation, not an assumption
+going in. **Trace-verified (83rd)**: for each of q0/q1/q2, a live RAM capture
+at a yaw in that quadrant's range (`scratchpad/pm83_q{0,1,2}c.ram`, rotated
+via the keypad-poke recipe below) plus a register dump at the first `$ef62`
+call after resuming to the settled PC matched the derived vertex assignment
+and colour-plane choice (type vs height) exactly — e.g. q1 at cell (40,50):
+`D0=C01 D1=C00 D2=C11 D3=$29`, and `hgt(40,50) == $29`. Cross-checked
+byte-exact against the F# port on synthetic data exercising every branch
+(`scratchpad/pm83_synth_check.py` / `.fsx`).
+
+**Not modelled by this table**: the residual ~6% rasteriser inaccuracy (the
+`0x1c` coast slope's multi-segment dither spread, §9 item 1) is *more*
+exposed at non-`$f0` yaws — q0/q1/q2 scored 35-50% exact-index against their
+own live captures (vs q3's 94%) despite the geometry trace-verifying exactly,
+because a different camera angle puts more triangle edges into the unmodelled
+tall-coast-slope case. This is the same known `ef62Raster`/DDA limitation,
+not a new bug in the quadrant walk — see §9 item 1.
 
 **Quadrant 3 (`$fccc`), fully ported + trace-verified (78th).** The walk is
 `for k in 0..7 (D7): for j in 0..7 (D6)`, `A0` at `$3f364 + $fe02(=0x1c=28 B =
@@ -633,24 +691,32 @@ Palette: one 16-colour shifter palette for the whole iso view
 
 ## 9. Open questions
 
-1. **Quadrant-3 walk + rasteriser — CLOSED (78th walk, 80th rasteriser).**
-   `pm_render_ref.py --ram` ports `$fccc` exactly (cell↔corner↔colour, the
-   flag-bit diagonal, both plane reads), the `$ef62` colour/winding + coast
-   rule, and the `$e420` 16.16 DDA span walker (`_fixed_slope`, `_dda_walk`),
-   reading the game's own `$3f364` corners with the **+64 px §3 inset**.
-   Covers **96 %** of the game's real per-frame terrain layer (composed frame
-   vs the `$78000` master; 614 / 14 417 px missed at edges), scoring **~94 %
-   exact / ~95 % within ±1** palette index. The other three quadrant handlers
-   (`$f98c`/`$fa98`/`$fbb2`, yaw ≠ 0xf0) are disassembled (§4) but not ported —
-   only needed for camera rotation. **The "sea fill inside the diamond" (78th's
-   open item) does not exist** — the sea is baked into the `$78000` master (§7).
-   **Residual (≈6 %):** unit sprites on the hill (`walk_q3` is terrain-only),
-   the tall `0x1c` coast slopes (the game dithers idx 1-7, the port lands nearer
+1. **All 4 quadrant walks + the rasteriser — CLOSED (78th q3 walk, 80th
+   rasteriser, 83rd q0/q1/q2 walks).** `pm_render_ref.py --ram` auto-selects
+   the right handler from the RAM's own yaw (`walk_by_yaw`) and ports each
+   exactly (cell↔corner↔colour, the flag-bit diagonal, both plane reads), the
+   `$ef62` colour/winding + coast rule, and the `$e420` 16.16 DDA span walker
+   (`_fixed_slope`, `_dda_walk`), reading the game's own `$3f364` corners with
+   the **+64 px §3 inset**. Against `pm78_settle.ram` (yaw `$f0`, q3) it covers
+   **96 %** of the game's real per-frame terrain layer (composed frame vs the
+   `$78000` master; 614 / 14 417 px missed at edges), scoring **~94 % exact /
+   ~95 % within ±1** palette index. q0/q1/q2 are live-trace-verified exactly
+   (register dump at the first `$ef62` call matches the predicted vertex +
+   colour-plane assignment — §4) but score lower against their own live
+   captures (**35-50 % exact-index**, `pm83_q{0,1,2}c.ram`) because the
+   residual item below (tall coast-slope dither spread) is more exposed at
+   those camera angles — not a new bug, see §4's closing note. **The "sea fill
+   inside the diamond" (78th's open item) does not exist** — the sea is baked
+   into the `$78000` master (§7). **Residual (≈6 % at yaw `$f0`, larger at
+   other yaws):** unit sprites on the hill (the walk is terrain-only), the
+   tall `0x1c` coast slopes (the game dithers idx 1-7, the port lands nearer
    flat idx 1 — needs the multi-segment slope-of-slope chain past the single
    mid-vertex switch `_dda_walk` models), and a ~1 px NE island edge.
    **81st: ported to F# unchanged** — `port/godot/logic/Fill.fs`, cross-verified
-   byte-exact against `pm_render_ref.py` (see the verification-status note at
-   the top of this file). Not yet wired into a Godot scene.
+   byte-exact against `pm_render_ref.py` on synthetic data. **83rd: q0/q1/q2
+   added to `Fill.fs` the same way**, wired into `TerrainView.cs` behind
+   `Fill.walk`/PageUp/PageDown, and verified with real Godot screenshots at
+   yaw steps 3 and 11 (`assets/reference/godot_screenshot_yaw{3_q0,11_q2}.png`).
 2. **Dither phase — CLOSED (80th).** Full span walker disassembled
    (`$e3e6`→`$e5a6`) and live single-stepped. `A5` wraps **modulo 128** inside
    the colour's slot (`$e44a`'s `addq.b #8` on `2*A5` byte-overflows at
