@@ -1,0 +1,28 @@
+<Project Sdk="Godot.NET.Sdk/4.3.0">
+
+  <!-- Godot node layer: [Export], _Process, input. References the F# logic lib.
+       Godot's source generators only run on C#, so the MonoBehaviour-equivalent
+       classes must be here, kept thin — they delegate to PmLogic.
+
+       Lives at the project root (alongside project.godot), NOT in game/, even
+       though the source files stay in game/ (default SDK-style glob picks
+       them up from here). 82nd pass: Godot.NET.Sdk writes its build output to
+       $(MSBuildProjectDirectory)/.godot/mono/temp/bin/<config>/, and the
+       runtime loader only looks under the actual Godot project root's
+       .godot/mono/temp/bin/ — with the csproj inside game/, the DLL landed in
+       game/.godot/... and every script failed to load ("Cannot instantiate
+       C# script ... class could not be found"). Verified live in Godot
+       4.7.2-stable mono; the csproj must sit next to project.godot. -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PowerMongerPort</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="logic\PmLogic.fsproj" />
+  </ItemGroup>
+
+</Project>

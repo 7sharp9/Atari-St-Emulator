@@ -105,6 +105,11 @@
    "provenance": "79th: pm_render_ref.py --ram scratchpad/pm78_settle.ram. The $78000 master (HUD + stone border + pre-rendered open sea + island-shaped hole) with the ported quadrant-3 terrain layer (walk_q3 + ef62_raster + dither_index) drawn over the hole -- i.e. a full from-scratch frame, exactly how the game composes it. ~78% exact / 93% within-1 palette index on the terrain region.",
    "format": "320 x 200 RGB PNG",
    "companions": "render_faithful.png (terrain layer alone, magenta = uncovered); render_faithful_compare.png (3-panel: reference $1c700 / composite / exact-index diff)"
+  },
+  {
+   "file": "reference/godot_screenshot_cam36_47.png + godot_screenshot_cam28_40.png",
+   "provenance": "82nd pass: real screenshots (`--write-movie`, 5 frames, last frame kept) of godot/scenes/Main.tscn running in Godot 4.7.2-stable mono, PmLogic.Fill.walkQ3 + Projection.projectGrid wired live into godot/TerrainView.cs (a TextureRect fed an Image built per-frame from Fill.Buffer through assets/palette.json). Two different CamCellX/CamCellY exports prove the wiring re-projects and re-rasterises live, not a cached static blit -- the second shows a different island slice (coast/water visible top-left) from the same code path _UnhandledInput's arrow-key panning calls.",
+   "format": "1152 x 648 RGB PNG (window size); magenta = uncovered ($78000 master not exported yet, Task 2)"
   }
  ]
 }

@@ -26,6 +26,47 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (82nd pass)
+
+- **`Fill.walkQ3` + `Projection.projectGrid` are wired into `TerrainView.cs`
+  and run live in real Godot — verified with actual screenshots, not just a
+  build.** Godot 4.7.2-stable mono is installed at
+  `C:\Users\Dave\Documents\GitHub\Godot_v4.7.2-stable_mono_win64` (the 81st
+  pass's environment didn't have it on `PATH`; this one does). Shape (1) from
+  "Next steps" below: `TerrainView` (now `Node2D`, was `Node3D`) builds a
+  `Fill.Buffer` from `Projection.projectGrid` + `Fill.walkQ3` each time the
+  camera cell changes, blits `Index` through `assets/palette.json` into an
+  `Image`, and shows it on a `TextureRect` (`TextureFilter = Nearest`, magenta
+  = uncovered, same convention as `render_faithful.png`). Arrow keys pan
+  `CamCellX`/`CamCellY` (clamped to the terrain planes' bounds) and re-render
+  — yaw is fixed to quadrant 3 (`$f0`), the only grid-walk handler ported.
+- **Verified two ways:** `dotnet build PowerMongerPort.sln` (0 errors), and
+  real GPU screenshots — `godot.exe --quit-after 5 --write-movie <path>.png`
+  (NOT `--headless`: headless maps to the `dummy` rendering driver, which
+  returns a null image from `get_viewport().get_texture().get_image()`; the
+  normal `windows`/Vulkan driver renders for real even with no interactive
+  session). Two camera cells (`36,47` mission-1 start; `28,40`) produce two
+  different island slices from the same `RenderFrame()` code path —
+  `assets/reference/godot_screenshot_cam36_47.png` /
+  `_cam28_40.png`. The `36,47` shot's island silhouette and dither texture
+  match `assets/reference/render_faithful.png` (the Python reference render)
+  by eye — same shape, same dark-ridge patch, same speckle pattern.
+- **Found and fixed a real structural bug, not a porting bug:**
+  `Godot.NET.Sdk` writes its C# build output to
+  `$(MSBuildProjectDirectory)/.godot/mono/temp/bin/<config>/`, i.e. relative
+  to wherever the `.csproj` itself sits — NOT to the Godot project root found
+  by walking up to `project.godot`. The skeleton's original layout put
+  `PowerMongerPort.csproj` inside `game/`, so the build output landed in
+  `game/.godot/mono/temp/bin/Debug/` while Godot's runtime script loader only
+  ever looks under the *project root's* `.godot/mono/temp/bin/Debug/` — every
+  script instantiation failed with "Cannot instantiate C# script ... class
+  could not be found", silently, with no build error (`dotnet build` and even
+  `godot --build-solutions` both "succeed"). Fixed by moving the `.csproj` to
+  the project root (`port/godot/PowerMongerPort.csproj`); the `.cs` sources
+  stay in `game/` (default SDK glob still finds them). This was exactly the
+  kind of thing the 81st pass's "ship unverified C#" concern was about — it
+  would not have been caught without an actual Godot install.
+
 ## Verification status (81st pass)
 
 - **`godot/logic/Fill.fs`: the closed rasteriser is now F#, byte-exact.**
@@ -85,8 +126,10 @@ hit sharp edges (generic node methods, the `partial` requirement). So:
   terrain decode, the projection, the entity step (`$14b62`-style), sampling.
   F#'s records + pattern matching fit the 68000 struct/FSM shape well.
 - **`godot/game/` (C#)** — thin node layer. `TerrainView.cs` is the only class:
-  it calls `PmLogic`, builds an `ArrayMesh`, adds a camera. Keep every node
-  class here small and delegating.
+  it calls `PmLogic` and blits the result to screen. Keep every node class
+  here small and delegating. The `.csproj` itself lives at the Godot project
+  root (`godot/PowerMongerPort.csproj`), not inside `game/` — see "Verification
+  (82nd pass)" above for why that placement matters (it's not cosmetic).
 - **No GDScript** — a second language with no share of the logic, and it can't
   call the F# lib without a C# shim anyway.
 
@@ -100,34 +143,36 @@ dotnet build PowerMongerPort.sln
 godot4 --path . scenes/Main.tscn      # or open project.godot in the editor
 ```
 
-`godot --version` was not on PATH when this was written; the project targets
-**Godot 4.3-stable mono**. If you have 4.4+, open in the editor once and let it
-re-save `project.godot` / the `Godot.NET.Sdk` version in
-`game/PowerMongerPort.csproj`. .NET 8 SDK is assumed (the repo's machine had
-9.0/10.0, which roll-forward-covered `net8.0` fine).
+Confirmed 82nd pass with a real install: **Godot 4.7.2-stable mono**. The
+project's `config_version`/features still say 4.3 and loaded/built/ran fine
+under 4.7.2 with no re-save needed; if a future Godot major bump complains,
+open once in the editor and let it re-save `project.godot`. .NET 8 SDK is
+assumed (`net8.0`, roll-forward covers newer installed SDKs fine).
 
-Expected result: a flat-shaded green heightmap of the mission-1 island (64x128
-grid, island cells x8..45 y41..75), lit by one directional light, viewed from a
-fixed 45-degree camera. No dither, no sprites, no PM projection yet — those are
-the next steps, and `SPEC.md` is the spec for them.
+Expected result: the mission-1 island, dithered, at camera cell (36,47) — see
+`assets/reference/godot_screenshot_cam36_47.png`. Arrow keys pan the camera
+(clamped to the terrain planes' bounds) and re-render live. Magenta =
+uncovered (the `$78000` master — HUD, stone border, baked sea — isn't
+exported yet, Task 2). Yaw is fixed to quadrant 3 (`$f0`); the other 3
+grid-walk handlers aren't ported so arbitrary rotation isn't wired up.
 
 ## Next steps (in `SPEC.md` order)
 
-1. **Wire `Projection.projectGrid` + `Fill.walkQ3` into `TerrainView.cs`.**
-   Both are done and byte-exact/cross-verified (see above) — this is now pure
-   glue, not a porting problem. Two shapes work: (a) a **software layer** —
-   call `Fill.walkQ3` each frame into a `Fill.Buffer`, blit `Index` through
-   `assets/palette.json` into an `Image`/`ImageTexture`, show it on a
-   `TextureRect` or in a `SubViewport` (closest to PM's own direct-to-shifter
-   pipeline, keeps the dither if wanted); or (b) feed `Projection.projectGrid`'s
-   corners into the existing `ArrayMesh` build and drop `Fill.fs`'s per-pixel
-   dither for a fragment-shader height ramp (`Terrain.flatPaletteIndex`, or the
-   `colourByte`→index table in `SPEC.md` §4). **Not attempted this pass** —
-   Godot isn't installed in this environment (`godot --version` not on PATH,
-   `PowerMongerPort.csproj`'s Godot package reference can't be restored/built
-   here), so a C#-side change would ship unverified.
+1. ~~Wire `Projection.projectGrid` + `Fill.walkQ3` into `TerrainView.cs`~~ —
+   **done, 82nd pass** (software-layer shape: `Fill.Buffer` → `Image` →
+   `TextureRect`). Two follow-ups if wanted, not required: (a) drop the
+   per-pixel dither for a fragment-shader height ramp (shape (b) from the
+   81st's options — `Terrain.flatPaletteIndex`, or the `colourByte`→index
+   table in `SPEC.md` §4), or (b) a `SubViewport` instead of a scaled
+   `TextureRect` if the port ever needs the raster to composite with other
+   Godot nodes (UI, sprites) rather than being the whole screen.
 2. Sprites: `assets/sprites/` + `assets/headings.json` + `Sprites.fs` (decode
    stub, 81st), drawn per-cell inline in the grid walk (painter's order — do
    not add a separate sorted pass). Frame base/count per category still needs
    the rip (Task 2 / `SPEC.md` §9 item 3).
 3. Camera: 16 yaw steps, 7 zoom levels (`assets/tables.json → zoom_geometry`).
+   `Projection.projectVertex` already takes an arbitrary `theta`; the gap is
+   the other 3 `pm_grid_walk_q*` handlers (`$f98c`/`$fa98`/`$fbb2`) — SPEC.md
+   §4 "the yaw-quadrant grid walk" — which `Fill.walkQ3` only covers one of.
+4. The `$78000` master (HUD + stone border + baked sea) isn't exported —
+   `TerrainView`'s uncovered pixels stay magenta until it is (Task 2).

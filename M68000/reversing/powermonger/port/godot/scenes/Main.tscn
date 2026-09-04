@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://game/TerrainView.cs" id="1"]
 
-[node name="Main" type="Node3D"]
+[node name="Main" type="Node2D"]
 
-[node name="TerrainView" type="Node3D" parent="."]
+[node name="TerrainView" type="Node2D" parent="."]
 script = ExtResource("1")

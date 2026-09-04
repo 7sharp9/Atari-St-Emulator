@@ -15,13 +15,26 @@ mission-1 iso view (`scratchpad/pm74_late.ram`, PC `$124c0`) and cross-checked
 against the disassembly in `../graphics.md`. Addresses are in the relocated game
 image (link base `$1050`).
 
+Verification status (82nd pass): `Fill.walkQ3` + `Projection.projectGrid` are
+now **wired into and run live inside Godot 4.7.2-stable mono**
+(`port/godot/game/TerrainView.cs`, the software-layer shape — a `TextureRect`
+fed an `Image` built per-frame from `Fill.Buffer` through `assets/palette.json`).
+Verified with real screenshots (`--write-movie`, GPU-rendered, not headless —
+see `assets/reference/godot_screenshot_*.png`), at two different camera cells,
+proving live re-projection/re-rasterisation, not a static blit. Fixed a real
+structural bug found in the process: `Godot.NET.Sdk` writes its build output
+relative to the **csproj's own directory**, not the Godot project root, so a
+csproj inside `game/` (the skeleton's original layout) never loads at runtime
+("Cannot instantiate C# script ... class could not be found") — the csproj now
+lives at the Godot project root (`port/godot/PowerMongerPort.csproj`), sources
+stay in `game/`. See `port/README.md` "Verification (82nd pass)".
+
 Verification status (81st pass): the rasteriser this section documents is now
 ported to F# — `port/godot/logic/Fill.fs`'s `walkQ3`/`ef62Raster`/`fixedSlope`/
 `ditherIndex` are a 1:1 port of the functions below, cross-checked byte-exact
 against `pm_render_ref.py` on synthetic triangles/grids (every code path: general
 split, flat-top, the `$f134` reorder, the coast-force, the mid-vertex switch,
-water shimmer, both `walk_q3` diagonal branches). Not yet wired into a Godot
-scene — see `port/README.md` "Next steps".
+water shimmer, both `walk_q3` diagonal branches).
 
 Verification status (80th pass): `tools/pm_render_ref.py --ram <settled.ram>`
 ports the real quadrant-3 grid walk (`$fccc`) + the `$ef62` triangle setup +
