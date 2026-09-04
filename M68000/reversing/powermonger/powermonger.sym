@@ -14,13 +14,21 @@
 0001abaa	pm_sound_ambient        # NOT economy: sound LCG x16 + $ff9e sample mix + one $4d252 wildlife poke
 0001abc0	pm_rng_step             # $57fec++ (tick-count "RNG") + $57ff6 sound LCG x=(x*$24a1+$24df)&$1fff
 000178ae	pm_render_setup_a       # per-frame render prep (group $4c exec sub-record)
-0000f898	pm_render_terrain       # walk the heightmap grid far->near, 2 rolling-bitplane-dithered triangles per cell + cell sprite; sets $ffa2 = 2*[$ff9e] (dither-table base) on first call
+0000f898	pm_render_terrain       # $f97e picks 1 of 4 yaw-quadrant grid-walk handlers by ((yaw+8)>>5)&6; sets $ffa2 = 2*[$ff9e] on first call
+0000f98c	pm_grid_walk_q0        # yaw-quadrant 0 grid-walk handler (corner->vertex assignment A)
+0000fa98	pm_grid_walk_q1        # yaw-quadrant 1
+0000fbb2	pm_grid_walk_q2        # yaw-quadrant 2
+0000fccc	pm_grid_walk_q3        # yaw-quadrant 3 (yaw $f0): A0+=[$fe02] A1+=[$fdf0]=7, 7 iters, TL=(A0) BR=68(A0) TR=4(A0) BL=64(A0)
 0000fec6	pm_project_grid        # project grid corners -> $3f364 (rotate by $ff9a, perspective divide $ff7c)
 0000ff7c	pm_perspective_div     # sx = x*$ff98/($ff98-z) ; sy = (z-$ff96)*$ff98/($ff98-z)+$ff96
-0000ef62	pm_tri_raster          # triangle: bounds-check + sort 3 Y, $f000 edge slopes; writes colour byte + top-Y to the span record, emits per-scanline edge stream
-0000f000	pm_edge_slopes         # fixed-point dy/dx setup for a pair of triangle edges (divu)
+0000ef62	pm_tri_raster          # sort 3 Y, build span record @ $f1e2 (colour, topY, topX, 2 16.8 edge slopes via $f000, mid-seg switch + slope-of-slope), bra $e3e6
+0000f000	pm_edge_slope          # 16.8 fixed dy/dx: lsl.l #8 then divu, V-clamp to $10000
 0000e3e6	pm_span_setup         # 77th: fill entry (74th's $e3e2 was mis-aligned). A5 = [$ff9e] + colourByte*128 + (topY&15)*8; A1 = backbuf + topY*160
-0000e4de	pm_span_fill           # per 16-px cluster: two big-endian longs from (A5)/(A5+4) = planes {0,1},{2,3}; A5 += 8/cluster, += 4/scanline; ends via edge masks $ec62/$eca2
+0000e420	pm_span_walker        # DDA: 2 edge X accumulators stepped by 16.8 slopes; run-stepped (u16 run, i32 slope) stream in A0; A5 += 8/scanline; frac->byteoff via $ece2
+0000e4de	pm_span_fill_mid      # Duff device: move.l D0/D1,(A2)+ repeated; D0/D1 = movem.l (A5) = one 16px pattern {planes01, planes23}, tiled; jmp $e52e+(-(width>>1))
+0000ec62	t_edge_mask_left      # 16 longs, clear leftmost k bits: ffffffff 7fff7fff ... 00010001; index (D4&30)*2
+0000eca2	t_edge_mask_right     # 16 longs, keep leftmost k+1 bits: 80008000 c000c000 ... ffffffff; index (D5&30)*2
+0000ece2	t_frac_byteoff        # 32 words [0]*16 [8]*16; fixed X frac (doubled) -> 0 or 8 byte offset in the row
 0000ffa2	g_dither_addr_scratch  # holds 2 * [$ff9e]; $e3e6 does (this + colourByte*256) >> 1 to land on the table base + colourByte*128
 0000ff9e	g_dither_table_ptr     # long: base of the 4bpp pattern table ($2e000 in pm71/pm74 snaps); ~8.5 KB span for mission 1, absolutely indexed by colourByte*128; also read PC-relative by the sound mixer ($1abaa)
 0000ff96	g_proj_horizon         # projection: horizon screen-Y = 130 (PC-relative read in $ff7c: sub 12(PC), add 4(PC))

@@ -17,12 +17,14 @@ What is faithful here (77th pass)
   - far -> near walk, 2 triangles per cell, quad split on the packed-corner test
   - colour byte = the terrain byte itself (height byte on one triangle, type
     byte on the other); water (< 0x0c) += [$4bb3e]&3 (== 2 in this frame)
-  - dither fill: A5 = colourByte*128 + (topY&15)*8 into dither.bin, two
-    big-endian longs per 16-px cluster = planes {0,1},{2,3} (see dither_index)
+  - dither fill: A5(y) = colourByte*128 + (topY&15)*8 + 8*(y-topY) into
+    dither.bin; one 16-px pattern per scanline, planes {0,1}=long@A5,
+    {2,3}=long@A5+4, tiled screen-X-aligned (see dither_index -- exact)
 What is approximated
-  - the dither phase resets per triangle (no cross-scanline byte accumulation)
-    and there is no $f97e yaw-quadrant corner remap, so the texture is locally
-    right but patchy -- a pixel-exact fill needs the $e420..$e55a span walker.
+  - the grid walk uses only the quadrant-0 corner assignment; the game's $f898
+    picks 1 of 4 rotation-quadrant handlers ($f98c/$fa98/$fbb2/$fccc), so this
+    draws a slightly shifted cell set and misses the sea wedge + NW shadowed
+    slope. Porting the 4 handlers is the remaining terrain-layer work.
     --out also writes render_flat.png (a clean height-ramp fill) for the shape.
   - the yaw rotation basis is a true 2D rotate by yaw * 1.40625 deg (verified:
     at yaw 0xf0 the $13f8a table entry == 32768*sin(337.5 deg))
@@ -123,28 +125,31 @@ def project(tables, terr, cam_x, cam_y, half, tick=0, sx_sign=1, sy_sign=1,
 # ---------------------------------------------------------------------------
 
 
-def dither_index(dith, colour_byte, top_y, y, x, span_x0):
-    """The 4bpp pattern fill, from the 77th-pass aligned disasm of $e3e6..$e4de.
+def dither_index(dith, colour_byte, top_y, y, x):
+    """The 4bpp pattern fill, from the 77th-pass aligned disasm of the whole
+    span walker ($e420..$e5a6).
 
-        A5 = colourByte*128 + (topY & 15)*8              [byte offset into dither.bin]
-        per scanline:            A5 += 4                 (the vertical roll)
-        per 16-px screen cluster: A5 += 8                (long0=planes0/1, long1=planes2/3)
+    The setup ($e3e6) is A5 = base + colourByte*128 + (topY & 15)*8, and the
+    walker advances A5 by +8 bytes EVERY scanline (+4 roll at $e44a, +4 from the
+    right-edge `and.l (A5)+`). Within one scanline the ENTIRE span is one 16-px
+    pattern: planes 0/1 = the long at A5, planes 2/3 = the long at A5+4, tiled
+    screen-X-aligned across the whole span (left/right edges only add a
+    partial-word coverage mask, $ec62/$eca2 -- they do not change the pattern).
+    So the phase depends only on (colourByte, scanline y, topY):
 
-    long0 = big-endian u32 at A5    -> plane0 = hi16, plane1 = lo16
-    long1 = big-endian u32 at A5+4  -> plane2 = hi16, plane3 = lo16
-    pixel index = p0 | p1<<1 | p2<<2 | p3<<3 ,  bit = 15 - (screenX & 15)
+        A5 = colourByte*128 + (topY & 15)*8 + 8*(y - topY)
+           = colourByte*128 + 8*y - 128*(topY >> 4)
 
-    span_x0 is the span's left screen X; the fill restarts its cluster walk at
-    the span's left edge each scanline (this reference does not carry the
-    cross-scanline byte accumulation the real span walker does, so the
-    horizontal phase is only locally faithful -- enough for a mean-colour /
-    height-band diff, not a pixel-exact one).
+    long0 @ A5   -> plane0 = hi16, plane1 = lo16
+    long1 @ A5+4 -> plane2 = hi16, plane3 = lo16
+    index = p0 | p1<<1 | p2<<2 | p3<<3 ,  bit = 15 - (screenX & 15)
     """
-    cluster = max(0, (x - (span_x0 & ~15)) // 16)
-    a5 = colour_byte * 128 + (top_y & 15) * 8 + 4 * max(0, y - top_y) + 8 * cluster
-    a5 &= ~1                                      # A5 walks the table in even steps
-    if a5 < 0 or a5 + 8 > len(dith):             # deep triangle rolled off the dump
-        a5 = (colour_byte * 128 + (top_y & 15) * 8) & ~1
+    a5 = colour_byte * 128 + 8 * y - 128 * (top_y >> 4)
+    a5 &= ~1
+    if a5 < 0:
+        a5 = colour_byte * 128 + 8 * (y & 15)         # clamp into the colour's slot
+    if a5 + 8 > len(dith):
+        a5 = (len(dith) - 8) & ~1
     l0 = struct.unpack_from(">I", dith, a5)[0]
     l1 = struct.unpack_from(">I", dith, a5 + 4)[0]
     b = 15 - (x & 15)
@@ -195,10 +200,9 @@ def fill_tri(idxbuf, cov, dith, a, b, c, colour_byte, flat=False):
         xs = max(0, int(math.floor(xa)))
         xe = min(W - 1, int(math.ceil(xb)))
         base = y * W
-        span_x0 = int(math.floor(xa))
         for x in range(xs, xe + 1):
             idxbuf[base + x] = (flat_index(colour_byte) if flat else
-                                dither_index(dith, colour_byte, top_y, y, x, span_x0))
+                                dither_index(dith, colour_byte, top_y, y, x))
             cov[base + x] = 1
 
 
@@ -343,12 +347,12 @@ def main():
     print(f"  dither idx dist  mine: {dict(sorted(mine_h.items()))}")
     print(f"  dither idx dist  ref : {dict(sorted(ref_h.items()))}")
     print(f"  verdict (77th): projection reproduces the game's own $3f364 corner\n"
-          f"           buffer byte-exact; the dither phase (colourByte*128 +\n"
-          f"           (topY&15)*8, rolling) lands on the right colour families\n"
-          f"           (greens 11/12/13 match the reference within ~5%). The dark\n"
-          f"           shadowed slopes (ref idx 0-2) still read khaki here -- the\n"
-          f"           yaw-quadrant quad-split + height/type triangle pick this\n"
-          f"           reference approximates. Not pixel-exact (SPEC.md 9).")
+          f"           buffer byte-exact; the dither phase is exact per scanline\n"
+          f"           (A5 = colourByte*128 + (topY&15)*8 + 8*(y-topY)) -- greens\n"
+          f"           and the height gradient match. Missing: the sea wedge and\n"
+          f"           the NW shadowed slope, which are on cells the naive grid\n"
+          f"           walk skips -- the game's $f898 uses 1 of 4 yaw-quadrant\n"
+          f"           handlers ($f98c/$fa98/$fbb2/$fccc). SPEC.md 4/9.")
 
     rgb = [tuple(dom[bufd[i]]) if covd[i] else (255, 0, 255) for i in range(W * H)]
     fp = Path(args.out)

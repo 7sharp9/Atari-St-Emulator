@@ -11,14 +11,24 @@ folded into `port/SPEC.md` §3-4/§9):
   = `$ff96` = 130, confirmed from `$ff7c`'s PC-relative operands. The 76th's
   low-island claim was a diff against a live frame dump whose camera had drifted
   from the RAM snapshot.
-- **Dither phase is `colourByte*128 + (topY & 15)*8`, not `(colourByte + topY*16) >> 1`.**
-  The table (`$2e000` = `[$ff9e]`) is **absolutely indexed by colour** — 128
-  bytes / colourByte = 16 eight-byte sub-patterns, `(topY & 15)` picks the
-  first, `+4 B/scanline` rolls through them, `+8 B` per 16-px screen cluster.
-  Each cluster reads two big-endian longs = planes {0,1} then {2,3}. Decoding
-  at `colourByte*128`: `0x24-0x2c` → green ramp 11/12/13, `0x08-0x0b` → water
-  14/15, `0x18-0x1c` → rock 1-3/6. The table is **not** ~240 bytes and **not**
-  cyclic — it spans ~8.5 KB for mission 1's colour range.
+- **Dither phase is `A5(y) = colourByte*128 + (topY & 15)*8 + 8*(y - topY)`.**
+  Whole span walker disassembled (`$e3e6`→`$e5a6`). The table (`$2e000` =
+  `[$ff9e]`) is **absolutely indexed by colour** — 128 B / colourByte = 16
+  sub-patterns. A5 advances **+8 every scanline** (+4 roll `$e44a`, +4 from the
+  right-edge `and.l (A5)+`), and the **whole span on one scanline is one 16-px
+  pattern** (`long0` @ A5 = planes {0,1}, `long1` @ A5+4 = planes {2,3}), tiled
+  screen-X-aligned; the Duff middle repeats it, the edges only AND a partial
+  mask (`$ec62`/`$eca2`). Decoding at `colourByte*128`: **`0x00` → sea (idx
+  14/15)** — that is how water is drawn, colourByte 0, no flag; `0x24-2c` →
+  green 11/12/13, `0x18-1c` → rock 1-3/6. Not ~240 B, not cyclic (~8.5 KB).
+- **`$f898` uses 1 of 4 yaw-quadrant grid-walk handlers** (`$f97e` →
+  `$f98c` / `$fa98` / `$fbb2` / `$fccc` by `((yaw+8)>>5)&6`), each with its own
+  grid start offset, 7-not-8 iteration count and corner→vertex assignment (keeps
+  the far→near painter order across rotation). `$ef62` builds a span record at
+  `$f1e2` (colour, topY, topX, two 16.8 edge slopes via `$f000`, a mid-segment
+  switch height + slope-of-slope); the `$e420` DDA walker fills it. Full field /
+  table layout in `port/SPEC.md` §4. **pm_render_ref.py still uses only the
+  quadrant-0 walk — that is the last terrain-layer gap (missing sea + NW slope).**
 - **Sprite category dispatch mapped** (`$115e0` → jump tables `$1162e` /
   `$1165a`): `cat 0` men (`$11c8a` / `$1187c`), `cat 4` animals (`$11a86`),
   most others share the `$11f78` ≈ `$11f82` mini-sprite blitter.
