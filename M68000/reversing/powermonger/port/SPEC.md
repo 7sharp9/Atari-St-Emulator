@@ -327,27 +327,39 @@ the entity mode) → still to be mapped into `assets/sprite_triggers.json`.
 
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
-The little men / animals are **1-bitplane masked silhouettes**, `0x37` (55)
-bytes per frame = 11 rows:
+**77th-pass, from the aligned `$11fe4`–`$12034` loop.** Each frame is an
+**8 × 11 four-bitplane (16-colour) sprite**, `0x37` (55) bytes = 11 rows of
+**5 bytes: `[AND-mask, plane0, plane1, plane2, plane3]`**:
 
 ```
-A1 = $33000 + frame*0x37                        // frame stride 55, 11 rows
-per row: 1 AND-mask byte, then successive OR-data bytes ($11ff2..):
-    D0   = 8 - (destX & 15)                     // sub-word shift
-    mask = rol.w D0, mask_byte    (D2 = -1 first, so vacated bits read as keep)
-    for each data byte: data = rol.w D0, data_byte
-        dst_word = (dst_word & mask) | data     // one screen word / data byte
-row stride in the compose buffer: 0x98 (152)    // $11fe8
+A1 = $33000 + frame*0x37
+D0 = 8 - (screenX & 15)                         // sub-word rotate ($11fe4 case, X&15<8;
+                                                //  $12036 handles ==8, $12070 handles >8)
+per row:
+    mask = rol.w D0, (0xFF00 | mask_byte)       // D2 = -1 first -> vacated bits keep bg
+    for plane in 0..3:
+        data = rol.w D0, plane_byte
+        screen_word[plane] = (screen_word[plane] & mask) | data
+    A0 += 0x98                                  // + 152 = 160 (screen row) - 8 already stepped
 ```
 
-The exact data-bytes-per-row (→ sprite width) per category still needs the
-`$11fe4`–`$12070` loop traced; `decode_minisprite()` in `pm_export.py`'s
-`[m,d,m,d,x]` split is a first guess. The sprite carries no colour — punched
-into whatever plane the blitter targets. Anchor: the entity's projected
+`dst = (dst & mask) | data`, so a pixel is **opaque where the mask bit is 0**.
+The 4 planes are the 4 interleaved screen words of one 16-px group → a real
+16-colour sprite, not a silhouette. Anchor: the entity's projected
 `(screenX, screenY)` from §3, drawn up-left of the anchor (foot at the cell).
 
-`$33000` is a **multi-category sheet**; `assets/sprites/sheet_raw.bin` is the
-first 64 frames at the 55-byte men stride. A full per-category rip is deferred.
+`assets/sprites/sheet_contact.png` (first 64 frames) decodes cleanly as the
+little men: **4 faction-colour blocks of 16** (khaki / blue / orange / yellow),
+each block = 8 headings × {stand, walk}. `$33000` continues past frame 64 with
+the animal / tree / building / effect categories at the same 55-byte stride;
+each category's frame base + count lives in its `$1162e` handler and is not yet
+ripped.
+
+Two frame-selection paths exist and are not fully separated: `$16738` computes
+`t_heading_frame[heading + flipHalf]` (16-entry table at `$1675a`, `flipHalf` =
+0 or 8) and blits via **`$e6ee`**; `$115e0`'s category dispatch blits via
+`$11f82`. Which path draws the terrain men vs. the marker/overlay still needs a
+trace.
 
 ### HUD / selected-unit marker (`$e6ee`)
 
@@ -453,11 +465,12 @@ Palette: one 16-colour shifter palette for the whole iso view
    `cat 13`→`$1174e`, `cat 14`→`$11b0c`, `cat 15`→`$1198a`) and **table 2
    `$1165a`** (blitter: `cat 0`→`$1187c` men-special, most others→`$11f78`
    ≈ the `$11f82` mini-sprite blitter, `+17`→`$1168a`, `+19`→`$12258`).
-   `$11f82`: `A1 = $33000 + frame*0x37`, 11 rows, per row **1 AND-mask byte
-   then successive OR-data bytes**, each `rol.w (8 - (screenX & 15))`,
-   destination row stride `0x98`. The exact bytes-per-row (and hence sprite
-   width) per category needs the `$11fe4`–`$12070` inner loop traced. Rip
-   deferred (as the SS rip).
+   `$11f82` decode is **closed** (aligned `$11fe4`–`$12034`): 8 × 11, four
+   bitplanes, 5 bytes/row `[mask, p0, p1, p2, p3]`, opaque where mask bit 0,
+   `rol.w (8 - (screenX & 15))`, dest row stride `0x98`. `sheet_contact.png`
+   decodes as the men (4 faction-colour blocks of 16). Still open: the
+   per-category frame base/count in each `$1162e` handler, and which of
+   `$16738`→`$e6ee` vs `$115e0`→`$11f82` draws the terrain men.
 4. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
    needs resolving from a live snapshot. Deferred.
 5. **Border / stone-table master, world-map minimap + compass panel.** Not

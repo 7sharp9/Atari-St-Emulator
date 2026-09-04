@@ -39,11 +39,12 @@
 000115e0	pm_draw_cell_entities   # walk $47970[cell] bucket; per entity byte6=category -> jump table 1 $1162e (prepare) + jump table 2 $1165a (blit)
 0001162e	t_sprite_cat_prepare    # 16 per-category "prepare" handlers: cat0=$11c8a men, cat4=$11a86 animals, cat2=$1168c, cat3/12=$117b0, cat5=$11772, cat6=$11bbc, cat7=$11bf4, cat8=$1192e, cat9=$11c36, cat10=$11b3c, cat11=$11b2a, cat13=$1174e, cat14=$11b0c, cat15=$1198a
 0001165a	t_sprite_cat_blit      # per-category blitter: cat0=$1187c (men), most others=$11f78 (~$11f82 mini-sprite), +17=$1168a, +19=$12258
-00011f82	pm_blit_minisprite      # 1bpp masked sprite from $33000 sheet ($37 B/frame, 11 rows); per row 1 AND-mask byte then N OR-data bytes, rol.w (8-(x&15)); dest row stride $98
+00011f82	pm_blit_minisprite      # 77th: 8x11 4-bitplane sprite from $33000 ($37 B/frame = 11 rows x [mask,p0,p1,p2,p3]); opaque where mask bit 0; rol.w (8-(x&15)); dest row stride $98; frames 0-63 = men, 4 faction blocks of 16
 0001187c	pm_blit_man_sprite     # cat-0 (men) sprite path from $115e0 jump table 2
 00033000	g_minisprite_sheet      # mini-sprite sheet, $37 (55) bytes per frame (11 rows x 5 bytes)
-00016738	pm_pick_sprite_frame    # heading -> frame via $16754 table (-1 = no sprite this facing) -> $e6ee
-0000e6ee	pm_blit_hud_sprite      # wider multi-plane blitter for HUD glyphs / the selected-unit marker
+00016738	pm_pick_sprite_frame    # frame = t_heading_frame[heading + flipHalf(0|8)] ($1675a, 16 entries, $ff = skip); blits via $e6ee (NOT $11f82 -- two sprite paths, not yet separated)
+0001675a	t_heading_frame        # 16 bytes: [ff,05,0f,08,0a,05,10,ff, ff,08,0a,0f,0c,05,10,ff]; index = heading + flipHalf
+0000e6ee	pm_blit_hud_sprite      # wider multi-plane blitter; HUD glyphs + selected-unit marker + (via $16738) terrain-man sprites
 00016754	t_heading_frame        # data: heading (0..15) -> mini-sprite frame index, $ff = skip
 0000187a	pm_present             # swap $2df7c<->$2df78, write (front>>8) to $FFFF8200 (double-buffer flip)
 0000e0d4	g_terrain_master       # composed full-terrain buffer; $12ce0'd into the back buffer each present

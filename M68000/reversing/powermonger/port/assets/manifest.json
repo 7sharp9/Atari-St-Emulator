@@ -63,9 +63,9 @@
   {
    "file": "sprites/sheet_raw.bin + sprites/sheet_contact.png",
    "frames": 64,
-   "provenance": "g_minisprite_sheet at $33000, 0x37 bytes/frame (11 rows x 5 bytes), 1bpp masked. Blitted by pm_blit_minisprite ($11f82) inline in the terrain walk ($115e0).",
-   "format": "sheet_raw.bin = 64 x 55 raw bytes (decode with decode_minisprite() in pm_export.py: per row, alternating AND-mask / OR-data bytes). sheet_contact.png = 8-wide contact sheet, 6x, index-15 = set / black = opaque-dark.",
-   "note": "$33000 past frame ~16 is other categories at other strides; only the men stride is decoded here (deferred, as the SS rip)."
+   "provenance": "g_minisprite_sheet at $33000, 0x37 bytes/frame. Blitted by pm_blit_minisprite ($11f82), reached from $115e0's category dispatch (jump tables $1162e / $1165a).",
+   "format": "sheet_raw.bin = 64 x 55 raw bytes. 77th (aligned $11fe4..$12034): each frame is 8 x 11 FOUR-bitplane (16-colour), 5 bytes/row = [AND-mask, plane0, plane1, plane2, plane3]; mask bit 1 = opaque, shared across planes. Blitter rotates by (8 - (screenX & 15)), writes 4 interleaved screen words/row, dest row advance $98. sheet_contact.png = 8-wide, 6x, real palette / magenta = clear.",
+   "note": "$33000 holds other categories past the men frames; each category's frame base + count is in its $1162e handler (not yet ripped)."
   },
   {
    "file": "headings.json",

@@ -21,8 +21,13 @@ folded into `port/SPEC.md` §3-4/§9):
   cyclic — it spans ~8.5 KB for mission 1's colour range.
 - **Sprite category dispatch mapped** (`$115e0` → jump tables `$1162e` /
   `$1165a`): `cat 0` men (`$11c8a` / `$1187c`), `cat 4` animals (`$11a86`),
-  most others share the `$11f78` ≈ `$11f82` mini-sprite blitter. Full frame rip
-  still deferred.
+  most others share the `$11f78` ≈ `$11f82` mini-sprite blitter.
+- **`$11f82` mini-sprite decode corrected** (not "1bpp masked silhouette"):
+  8 × 11, **four bitplanes**, 55 bytes/frame = 11 rows × `[AND-mask, plane0,
+  plane1, plane2, plane3]`, opaque where the mask bit is 0. `sheet_contact.png`
+  now decodes as the little men — 4 faction-colour blocks (khaki/blue/orange/
+  yellow) of 16. Per-category frame base/count + the `$16738`→`$e6ee` vs
+  `$115e0`→`$11f82` split still deferred.
 
 ## Status (73rd pass, dither corrected 74th)
 

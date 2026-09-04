@@ -346,39 +346,38 @@ def export_dither(ram: Ram, out: Path, man: list):
 SPRITE_SHEET = 0x33000
 SPRITE_FRAME_BYTES = 0x37   # 55 = 11 rows x 5 bytes
 SPRITE_ROWS = 11
+SPRITE_W = 8
 
 
 def decode_minisprite(frame: bytes):
-    """11 rows. Per row: byte0 = AND mask, byte1 = OR data, then 3 more bytes that
-    extend the sprite to the right (mask,data,mask... -- see $11f82). We treat the
-    5 bytes/row as: [m0,d0,m1,d1,x] where (m,d) are two 8-px columns punched into
-    the plane. Returns an 11 x 24 array: 0 = transparent, 1 = set."""
-    px = [[0] * 24 for _ in range(SPRITE_ROWS)]
-    msk = [[0] * 24 for _ in range(SPRITE_ROWS)]
+    """8 x 11 four-bitplane sprite (77th-pass, from the aligned $11fe4..$12034
+    blitter loop). Per row = 5 bytes: [AND-mask, plane0, plane1, plane2, plane3].
+    The mask is shared across all four planes. `dst = (dst & mask) | data`: a
+    mask bit of 1 keeps the background pixel, a bit of 0 clears it so the plane
+    data shows. So a pixel is **opaque where the mask bit == 0**.
+
+    Returns (px[11][8] palette index 0..15, msk[11][8] 1 = opaque)."""
+    px = [[0] * SPRITE_W for _ in range(SPRITE_ROWS)]
+    msk = [[0] * SPRITE_W for _ in range(SPRITE_ROWS)]
     for r in range(SPRITE_ROWS):
-        row = frame[r * 5:r * 5 + 5]
-        # $11f82: mask = rol.w D0,(A1)+ ; data = rol.w D0,(A1)+ ; punch+paint one word.
-        # The sheet stores alternating mask/data bytes. 5 bytes = 2 (m,d) pairs + 1.
-        pairs = [(row[0], row[1]), (row[2], row[3]), (row[4], 0)]
-        for pi, (m, d) in enumerate(pairs):
-            for b in range(8):
-                bit = (d >> (7 - b)) & 1
-                setb = ((m >> (7 - b)) & 1) == 0  # AND mask 0 => opaque pixel
-                col = pi * 8 + b
-                if col < 24:
-                    msk[r][col] = 1 if setb else 0
-                    px[r][col] = bit
+        m, p0, p1, p2, p3 = frame[r * 5:r * 5 + 5]
+        for b in range(SPRITE_W):
+            bit = 7 - b
+            msk[r][b] = 1 - ((m >> bit) & 1)
+            px[r][b] = (((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1) |
+                        (((p2 >> bit) & 1) << 2) | (((p3 >> bit) & 1) << 3))
     return px, msk
 
 
 def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
     sd = out / "sprites"
     sd.mkdir(exist_ok=True)
-    # $33000 is a multi-category sheet (men / animals / trees / buildings blit
-    # with different strides). The 0x37-byte frame stride is what pm_blit_minisprite
-    # ($11f82) uses for the little men, and the $1675a heading table only indexes
-    # frames 0..0x10. Export the first 64 frames at that stride -- covers the men
-    # + margin; a full per-category rip is deferred (same as the Super Sprint rip).
+    # $33000 is a multi-category sheet. $11f82 (the mini-sprite blitter shared by
+    # animals / trees / buildings / effects, and the men via $1187c) reads 0x37
+    # (55) bytes/frame = 11 rows x [AND-mask, plane0..3]. 77th: export the first
+    # 64 frames at that stride as an 8x11 4bpp contact sheet. A full per-category
+    # rip (each category's frame base + count -- see the $1162e handlers) is
+    # still deferred.
     max_frames = 64
     frames = [ram.blk(SPRITE_SHEET + f * SPRITE_FRAME_BYTES, SPRITE_FRAME_BYTES)
               for f in range(max_frames)]
@@ -388,20 +387,18 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
     (sd / "sheet_raw.bin").write_bytes(
         ram.blk(SPRITE_SHEET, nframes * SPRITE_FRAME_BYTES))
 
-    # one contact sheet PNG: 8 cols, each frame 24x11, 2px gutter, 6x upscaled.
-    fg = dom_pal_rgb(dom_pal, 15)
+    pal_rgb = [stf_rgb(w) for w in dom_pal]
     up = 6
     cols = 8
     rowsN = (nframes + cols - 1) // cols
-    cw, chh = 24 * up + 4, SPRITE_ROWS * up + 4
+    cw, chh = SPRITE_W * up + 4, SPRITE_ROWS * up + 4
     sheet = [[(40, 40, 40)] * (cols * cw) for _ in range(rowsN * chh)]
     for i, fr in enumerate(frames):
         px, msk = decode_minisprite(fr)
         ox, oy = (i % cols) * cw + 2, (i // cols) * chh + 2
         for r in range(SPRITE_ROWS):
-            for c in range(24):
-                col = (fg if (msk[r][c] and px[r][c]) else
-                       ((0, 0, 0) if msk[r][c] else (60, 0, 60)))
+            for c in range(SPRITE_W):
+                col = pal_rgb[px[r][c]] if msk[r][c] else (60, 0, 60)
                 for dy in range(up):
                     for dx in range(up):
                         sheet[oy + r * up + dy][ox + c * up + dx] = col
@@ -423,15 +420,20 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
         "file": "sprites/sheet_raw.bin + sprites/sheet_contact.png",
         "frames": nframes,
         "provenance": (
-            f"g_minisprite_sheet at $33000, {SPRITE_FRAME_BYTES:#x} bytes/frame "
-            f"({SPRITE_ROWS} rows x 5 bytes), 1bpp masked. Blitted by "
-            "pm_blit_minisprite ($11f82) inline in the terrain walk ($115e0)."),
-        "format": (f"sheet_raw.bin = {nframes} x {SPRITE_FRAME_BYTES} raw bytes "
-                   "(decode with decode_minisprite() in pm_export.py: per row, "
-                   "alternating AND-mask / OR-data bytes). sheet_contact.png = "
-                   "8-wide contact sheet, 6x, index-15 = set / black = opaque-dark."),
-        "note": ("$33000 past frame ~16 is other categories at other strides; "
-                 "only the men stride is decoded here (deferred, as the SS rip)."),
+            f"g_minisprite_sheet at $33000, {SPRITE_FRAME_BYTES:#x} bytes/frame. "
+            "Blitted by pm_blit_minisprite ($11f82), reached from $115e0's "
+            "category dispatch (jump tables $1162e / $1165a)."),
+        "format": (
+            f"sheet_raw.bin = {nframes} x {SPRITE_FRAME_BYTES} raw bytes. "
+            f"77th (aligned $11fe4..$12034): each frame is {SPRITE_W} x "
+            f"{SPRITE_ROWS} FOUR-bitplane (16-colour), 5 bytes/row = "
+            "[AND-mask, plane0, plane1, plane2, plane3]; mask bit 1 = opaque, "
+            "shared across planes. Blitter rotates by (8 - (screenX & 15)), "
+            "writes 4 interleaved screen words/row, dest row advance $98. "
+            "sheet_contact.png = 8-wide, 6x, real palette / magenta = clear."),
+        "note": ("$33000 holds other categories past the men frames; each "
+                 "category's frame base + count is in its $1162e handler "
+                 "(not yet ripped)."),
     })
     man.append({"file": "headings.json",
                 "provenance": "heading->frame table at $1675a, read by $16738",
