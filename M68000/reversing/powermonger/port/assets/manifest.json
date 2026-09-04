@@ -99,6 +99,12 @@
    "file": "reference/isoframe.png",
    "provenance": "live shifter output from f000100.bin. 77th: verified equal to the RAM snapshot's BACK buffer $24400 to 231/64000 px (moving sprites only) -- so it is consistent with the $3f364 corner buffer and is the right target for the pm_render_ref.py diff. The front buffer $1c700 is the previous (mid-animation) frame.",
    "format": "320 x 200 RGB PNG; isoframe_indices.bin = 1 byte palette index/px"
+  },
+  {
+   "file": "reference/render_faithful_composite.png",
+   "provenance": "79th: pm_render_ref.py --ram scratchpad/pm78_settle.ram. The $78000 master (HUD + stone border + pre-rendered open sea + island-shaped hole) with the ported quadrant-3 terrain layer (walk_q3 + ef62_raster + dither_index) drawn over the hole -- i.e. a full from-scratch frame, exactly how the game composes it. ~78% exact / 93% within-1 palette index on the terrain region.",
+   "format": "320 x 200 RGB PNG",
+   "companions": "render_faithful.png (terrain layer alone, magenta = uncovered); render_faithful_compare.png (3-panel: reference $1c700 / composite / exact-index diff)"
   }
  ]
 }

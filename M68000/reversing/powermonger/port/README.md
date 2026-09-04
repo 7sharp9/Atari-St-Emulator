@@ -26,29 +26,31 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
-## Verification status (77th pass)
+## Verification status (79th pass)
 
 - **Projection: closed.** `pm_render_ref.py`'s projected 9×9 vertex grid equals
   the game's own `$3f364` corner buffer **byte-exact** (81/81 vertices).
-  `EYE`/`HORIZON` confirmed `$ff98`=320 / `$ff96`=130 from the aligned `$ff7c`
-  disasm. The 76th's "island ~15-20 px low" was a bad diff against a live frame
-  whose camera had drifted from the RAM snapshot; the consistent reference is
-  the snapshot's own back buffer `$24400` (= `isoframe.png`, 231/64000 px).
-- **Dither: exact (`SPEC.md` §4).** Whole span walker disassembled
-  (`$e3e6`→`$e5a6`). `A5(y) = ditherBase + colourByte*128 + (topY & 15)*8 +
-  8*(y - topY)`; the whole span on one scanline is a single 16-px pattern
-  (`long0` @ A5 = planes {0,1}, `long1` @ A5+4 = planes {2,3}) tiled
-  screen-X-aligned; edges only add a partial-word mask. `dither.bin` 2 KB →
-  16 KB. `pm_render_ref.py`'s `dither_index()` implements it exactly
-  (exact-index on the covered terrain 11.9 % → 18.5 %). `colourByte 0` →
-  palette 14/15 is how the **open sea** is drawn.
-- **Remaining terrain gap: the yaw-quadrant grid walk.** `$f898` picks 1 of 4
-  handlers (`$f98c` / `$fa98` / `$fbb2` / `$fccc`) by `((yaw+8)>>5)&6`; each
-  has its own grid start offset, iteration count and corner→vertex assignment.
-  `pm_render_ref.py` uses only quadrant 0, so it misses the sea wedge and the
-  NW shadowed slope. Porting the 4 handlers + `$ef62` (span record) + `$e420`
-  (DDA walker) is the pixel-exact terrain layer — everything needed is in
-  `SPEC.md` §4.
+  `EYE`/`HORIZON` confirmed `$ff98`=320 / `$ff96`=130.
+- **Quadrant-3 grid walk: ported, 96 % coverage.** `pm_render_ref.py --ram`
+  ports `$fccc` + `$ef62` from the game's own `$3f364` corners (+64 px inset).
+  Against `scratchpad/pm78_settle.ram` it covers 96 % of the game's real
+  per-frame terrain layer and scores **~78 % exact / ~93 % within ±1** palette
+  index (the `--assets` path still uses the naive quadrant-0 walk).
+- **No "sea fill" (79th).** The composed `$1c700` buffer differs from the
+  `$78000` master **only** in the island blob + a few sprites — the open sea
+  (idx 14/15) is byte-identical, **baked into the master** (`$13b9a`, once per
+  mission). A per-frame port draws only the projected 8×8 grid; a full frame
+  composites that over the master. `render_faithful_composite.png` shows it.
+- **Dither: formula exact, −1 phase knob (`SPEC.md` §4).** Span walker
+  disassembled (`$e3e6`→`$e5a6`); setup verified byte-exact vs the live `$f1e2`
+  record: `A5(y) = $2e000 + colourByte*128 + (topY & 15)*8 + 8*(y - topY)`
+  (`[$ffa2]` = `$5c000` = doubled `$2e000`, `>>1`). `dither_index()` still needs
+  a uniform empirical `colourByte − 1` (`DITHER_COLOUR_BIAS`) — greens rendered
+  one step light; it lifts exact-index 65.8 % → 78 %. Root cause narrowed to the
+  roll/topY term (the setup is exact), open.
+- **Remaining pixel-exact gap:** `$e420`'s sub-pixel edge masks
+  (`$ec62`/`$eca2` — the NE-edge diff band), the dither-phase root cause, and
+  the other 3 quadrant handlers (`$f98c`/`$fa98`/`$fbb2`, camera rotation).
 - **Sprites: `$11f82` decode closed** (8×11 four-bitplane, `[mask,p0,p1,p2,p3]`
   per row; `sheet_contact.png` decodes as the 4 faction-colour man blocks).
   **HUD / border / minimap:** category dispatch (`$115e0`) mapped

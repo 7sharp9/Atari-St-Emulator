@@ -15,18 +15,37 @@ mission-1 iso view (`scratchpad/pm74_late.ram`, PC `$124c0`) and cross-checked
 against the disassembly in `../graphics.md`. Addresses are in the relocated game
 image (link base `$1050`).
 
-Verification status (78th pass): `tools/pm_render_ref.py --ram <settled.ram>`
-now ports the real quadrant-3 grid walk (`$fccc`) + the `$ef62` colour/winding
+Verification status (79th pass): `tools/pm_render_ref.py --ram <settled.ram>`
+ports the real quadrant-3 grid walk (`$fccc`) + the `$ef62` colour/winding
 rules and renders from the game's own `$3f364` corner buffer, diffed against the
-`$1c700`/`$24400` compose buffer in the same RAM. **65.8 % exact palette index,
-93.2 % within ±1** over the drawn terrain (`scratchpad/pm78_settle.ram`, a
-freshly-settled snapshot). The remaining gap is the sea fill inside the iso
-window (§7 -- NOT the grid walk) and `$e420`'s sub-pixel edge coverage (§4).
-Trace-verified this pass: the walk's cell↔corner↔colour mapping (3 sampled
-cells), the `$ef62` "force colourByte `0x1c`" coast rule (cell (37,47) entered
-`$ef62` with colour `0x2b`, reached the fill with `0x1c`), and the **+64 px
-draw inset** (the `$e420` draw pointer `$e3e2` is `buffer + 0x20` bytes; a sweep
-confirms `+64` px is the unique optimum).
+`$1c700` compose buffer in the same RAM. **~78 % exact palette index, 93 %
+within ±1** over the drawn terrain (`scratchpad/pm78_settle.ram`; +12-13 pts
+each on `pm74_late` / `pm70_iso` too). `walk_q3` covers **96 %** of the game's
+actual per-frame terrain layer (614 px missed at edges, of 14 417).
+
+**79th-pass correction -- there is NO "sea fill inside the iso diamond".** The
+composed frame (`$1c700`) differs from the `$78000` master **only** in the
+island terrain blob (idx 6/7/11/12/13, ~14.4 k px) plus a handful of sprites.
+The sea (idx 14/15, ~2 460 px in the viewport) is **byte-identical** between the
+composed frame and the master — it is pre-rendered into the master, which
+`$13b9a` builds once at mission load. The 78th's "sea fill drawn by neither the
+walk nor the master, source unmapped, main blocker" was a misdiagnosis. So a
+per-frame renderer only draws the island; a from-scratch full frame composites
+that over the master (which carries the HUD + border + sea + the black diamond
+edge). See `assets/reference/render_faithful_composite.png`.
+
+**79th-pass dither phase.** `dither_index()` gains `DITHER_COLOUR_BIAS = -1`
+(colourByte − 1, ≡ A5 − 128): the greens came out one shade too light
+everywhere; the −1 lifts exact-index 65.8 % → 78 % with within-1 unchanged (a
+pure phase shift). The `$e3e6` setup formula is verified byte-exact from the
+live `$f1e2` record and the roll is +8/scanline, so the −1 is in the roll/topY
+term or the unmodelled `$ece2`/`$ec62`/`$eca2` sub-scanline maths, not the
+setup. Kept as an explicit knob, not silently baked in.
+
+Trace-verified (78th, still holds): the walk's cell↔corner↔colour mapping (3
+sampled cells), the `$ef62` "force colourByte `0x1c`" coast rule, and the
+**+64 px draw inset** (`$e420` draw pointer `$e3e2` = `buffer + 0x20` bytes; a
+sweep re-confirms +64 px is the unique optimum on `pm78_settle`).
 
 - **Projection — closed.** The reference renderer's projected 9×9 vertex grid
   reproduces the game's own `$3f364` corner buffer **byte-exact** (all 81
@@ -233,27 +252,37 @@ should be behind.
 ### The fill: 4bpp pattern table (`$ef62 → $e3e6 → $e4de`, 77th-pass aligned disasm)
 
 PowerMonger has **no flat fill and no texture map**. Every triangle span is
-painted from one pattern table (`assets/dither.bin`, base = the long at
-`$ff9e` = `$2e000`; the 76th dumped only 2 KB — the phase reaches ~8.5 KB, so
-this is now a 16 KB dump). The table is **absolutely indexed by colour**, not
-cyclic:
+painted from one pattern table (`assets/dither.bin`, 16 KB from `$2e000`).
 
 ```
-// per triangle ($e3e6..$e3fa):
-A5 = ditherBase + colourByte*128 + (topY & 15)*8              // BYTE address
-// per scanline (from topY down):  A5 += 8
-//   +4 at $e44a (the "roll"), +4 from the right-edge `and.l (A5)+` at $e544
+// per triangle ($e3e6..$e3fa), from the live $f1e2 record (colour 0x1c,
+// topY 75 -> A5 = $2ee58, byte-exact):
+//   D6 = record[0]<<8                       ; colourByte in the HIGH byte
+//   D6 += [$ffa2]  (= $5c000 = 2 * [$ff9e]) ; NB: the doubled base
+//   D6 += (topY << 4) & 0xff                ; = (topY & 15) << 4  (add.b)
+//   A5 = D6 >> 1
+// == $2e000 + colourByte*128 + (topY & 15)*8              // BYTE address
+//    [ $5c000 >> 1 == $2e000; the >>1 turns colourByte*256 into *128 ]
+// per scanline (from topY down):  A5 += 8   (+4 roll $e44a, +4 edge `and.l (A5)+`)
 // long0 = big-endian u32 at A5      -> plane0 = hi16, plane1 = lo16
 // long1 = big-endian u32 at A5 + 4  -> plane2 = hi16, plane3 = lo16
 // -- the ENTIRE span on one scanline is this ONE 16-px pattern, tiled
 //    screen-X-aligned; the left/right edges only AND a partial-word coverage
 //    mask ($ec62 / $eca2), the Duff-device middle ($e4de) just repeats
 //    (long0, long1). So the pattern is a pure function of colourByte and y:
-//        A5(y) = colourByte*128 + (topY & 15)*8 + 8*(y - topY)
-//              = colourByte*128 + 8*y - 128*(topY >> 4)
+//        A5(y) = $2e000 + colourByte*128 + (topY & 15)*8 + 8*(y - topY)
+//              = $2e000 + colourByte*128 + 8*y - 128*(topY >> 4)
 for column c in the span (bit b = 15 - (screenX & 15)):
     idx = plane0.b | (plane1.b << 1) | (plane2.b << 2) | (plane3.b << 3)
 ```
+
+`$5c000` (the raw `[$ffa2]` value) is a **different** table — small signed ints,
+looks like a slope/delta table — not the dither patterns; it is only used here
+as the doubled base constant. `pm_render_ref.py`'s `dither_index()` also carries
+`DITHER_COLOUR_BIAS = -1` (79th, empirical): with the formula above the greens
+render one palette step too light everywhere, and colourByte − 1 fixes it
+(exact-index 65.8 % → 78 %, within-1 flat). The setup is verified exact, so the
+−1 lives in the roll/topY term or the unmodelled `$ece2` sub-scanline offset.
 
 `colourByte` is the raw terrain byte (`$f9ae` / handler variants: height plane
 `$438ee-8257` for one triangle, type plane `$438ee+0` for the other), **+
@@ -528,20 +557,31 @@ Screen output is **direct-to-shifter**, double-buffered by the base register
 (no XBIOS). Two compose buffers `$2df7c` (front) / `$2df78` (back), plus a
 **terrain master** `$e0d4` built once per mission.
 
-**The `$78000` master (78th, trace).** `$12ce0` copies from `A0 = $78000`
-(32000 B) to the back buffer every ~3rd frame. `$78000` is the **HUD + border
-frame with a solid black diamond where the iso view goes** — it does NOT contain
-the terrain. So the island + the sea inside the diamond are (re)drawn every
-frame by `$f898`; on a still camera `$f898` skips cells whose content did not
-change (moving units, the marker, water near units), and the static island +
-sea persist in the compose buffer from earlier frames. The sea *fill* inside
-the diamond is drawn by neither the `$78000` copy nor the quadrant walk — its
-source (a candidate: the `$f922` `$11f82` call with frame `0x149`) is still
-unmapped and is the main blocker for a from-scratch pixel-exact frame.
+**The `$78000` master (78th trace, 79th corrected).** `$12ce0` copies from
+`A0 = $78000` (32000 B) to the back buffer every ~3rd frame. `$78000` is the
+**HUD + stone border + the pre-rendered open sea + a hole where the island
+goes** — built once at mission load by `$13b9a`. It is NOT "a solid black
+diamond with no terrain": the sea (palette idx 14/15) is baked into it.
+
+Per frame, `$f898` redraws **only the island** into that hole (verified: the
+composed `$1c700` buffer differs from the `$78000` master **only** in idx
+6/7/11/12/13 pixels — the island — plus a few unit sprites; the ~2 460 water
+pixels in the viewport are byte-identical to the master across `pm78_settle` /
+`pm74_late` / `pm70_iso`). On a still camera `$f898` skips cells whose projected
+corners did not move, so even the island mostly persists from earlier frames.
+
+Consequence for a port: the per-frame renderer draws the projected 8×8 terrain
+grid and nothing else. A from-scratch full frame composites that over the master
+(HUD + border + sea). The `$f922` `jsr $11f82` with frame `0x149` and
+`D0 = camCellX-3` is **not** a sea fill — `$11f82` is the 8×11 four-plane
+mini-sprite blitter (`mulu #$37,D2`, `$33000` base, D0/D1 = screen x/y), so this
+draws sprite frame 329 at a camera-derived screen position (a small overlay /
+marker).
 
 ```
 once per mission ($13b9a):
-    build terrain master -> $12ce0 copy into both compose buffers
+    build the $78000 master (HUD + stone border + open sea + island-shaped hole)
+    -> $12ce0 copy into both compose buffers
 
 per simulation tick ($13000), present rate gated by $57ff0/$57fee (=1 normally):
     $1870   spin until the VBL flag                       ; frame sync
@@ -591,31 +631,32 @@ Palette: one 16-colour shifter palette for the whole iso view
 
 ## 9. Open questions
 
-1. **Quadrant-3 walk + projection — CLOSED (78th).** `pm_render_ref.py`
-   `--ram` ports `$fccc` exactly (cell↔corner↔colour, the flag-bit diagonal,
-   both plane reads -- all trace-verified) and the `$ef62` colour/winding rules,
-   reads the game's own `$3f364` corners, applies the **+64 px §3 inset**, and
-   scores **65.8 % exact / 93.2 % within ±1** vs the compose buffer. The other
-   three quadrant handlers (`$f98c`/`$fa98`/`$fbb2`, for yaw ≠ 0xf0) are
+1. **Quadrant-3 walk + projection — CLOSED (78th), coverage confirmed (79th).**
+   `pm_render_ref.py --ram` ports `$fccc` exactly (cell↔corner↔colour, the
+   flag-bit diagonal, both plane reads -- all trace-verified) and the `$ef62`
+   colour/winding rules, reads the game's own `$3f364` corners, applies the
+   **+64 px §3 inset**, and covers **96 %** of the game's real per-frame terrain
+   layer (composed frame vs the `$78000` master; 614 / 14 417 px missed at
+   edges), scoring **~78 % exact / 93 % within ±1** palette index. The other
+   three quadrant handlers (`$f98c`/`$fa98`/`$fbb2`, yaw ≠ 0xf0) are
    disassembled (§4) but not ported -- only needed for camera rotation.
-   **Still open for pixel-exact:**
-   - the **sea fill inside the iso diamond** (§7 -- not the walk, not the
-     `$78000` master; candidate `$f922`/`$11f82` frame `0x149`),
+   **The "sea fill inside the diamond" (78th's open item) does not exist** — the
+   sea is baked into the `$78000` master (§7). **Still open for pixel-exact:**
    - `$e420`'s **sub-pixel edge coverage** (`$ec62`/`$eca2` masks + the
-     slope-stepped accumulator; `pm_render_ref.py` uses `floor()`'d spans),
-   - the exact dither phase on the dark front slopes (the `0x1c` triangles land
-     ~1 index off in places).
-2. **Dither phase — CLOSED (77th).** Full span walker disassembled
-   (`$e3e6`→`$e5a6`). Real phase (§4): `A5(y) = ditherBase + colourByte*128 +
-   (topY & 15)*8 + 8*(y - topY)` — the whole span on one scanline is a single
-   16-px pattern (`long0` @ A5 = planes {0,1}, `long1` @ A5+4 = planes {2,3}),
-   tiled screen-X-aligned; edges only add a partial-word mask (`$ec62`/`$eca2`).
-   `pm_render_ref.py`'s `dither_index()` implements this exactly (exact-index
-   match on the covered terrain rose 11.9 % → 18.5 %). The 76th's
-   `(colourByte + topY*16) >> 1` was a near-zero offset. `dither.bin` truncated
-   at 2 KB → 16 KB. **Residual is item 1's quadrant walk**, not the phase:
-   the sea (colourByte 0 → idx 14/15) and the shadowed NW slope are on cells
-   the naive walk doesn't visit.
+     slope-stepped accumulator; `pm_render_ref.py` uses `floor()`'d spans) —
+     accounts for the NE-edge diff band,
+   - the dither phase: `DITHER_COLOUR_BIAS = -1` is an empirical fix (65.8 % →
+     78 %); the residual is the brightest ridges (idx 13 over-drawn) and the
+     dark `0x1c` coast triangles (game spreads idx 1-7, port draws ~idx 1 flat).
+2. **Dither phase — formula CLOSED (77th), −1 phase knob (79th).** Full span
+   walker disassembled (`$e3e6`→`$e5a6`). Real phase (§4):
+   `A5(y) = $2e000 + colourByte*128 + (topY & 15)*8 + 8*(y - topY)` — verified
+   byte-exact against the live `$f1e2` record (`[$ffa2]` = `$5c000` doubled base,
+   `>>1`). The whole span on one scanline is a single 16-px pattern (`long0` @ A5
+   = planes {0,1}, `long1` @ A5+4 = planes {2,3}), tiled screen-X-aligned; edges
+   only AND a partial-word mask (`$ec62`/`$eca2`). `dither_index()` implements
+   this; a uniform `colourByte − 1` was still needed empirically (greens one step
+   too light) — narrowed to the roll/topY term, not the setup.
 3. **Full sprite sheet — category dispatch mapped (77th), rip still deferred.**
    `$115e0` dispatches on object-record byte 6 (category) through two jump
    tables: **table 1 `$1162e`** (16 per-category "prepare" handlers —

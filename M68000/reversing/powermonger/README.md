@@ -310,22 +310,31 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     row, opaque where mask bit 0 (not a 1bpp silhouette) — `sheet_contact.png`
     decodes as the men, 4 faction-colour blocks of 16.
 16. The 78th pass **ports the quadrant-3 grid walk to a verifiable terrain
-    layer** (doc + tooling only). `tools/pm_render_ref.py --ram <settled.ram>`
-    ports `$fccc` (cell↔corner↔colour + the flag-bit diagonal, all
-    trace-verified) + the `$ef62` colour/winding rules + the **+64 px iso-window
-    inset** (`$e420` draws to `buffer + 0x20` bytes), reads the game's own
-    `$3f364` corners, and scores **65.8 % exact / 93.2 % within ±1 palette
-    index** vs the `$1c700`/`$24400` compose buffer (`scratchpad/pm78_settle.ram`,
-    a fresh settled snapshot). Trace findings: the `$438ee` flag-plane bit 7 is
-    the **diagonal selector**, not a skip; `$ef62` **forces `colourByte 0x1c`**
-    on the coast-side triangle (cell (37,47): `0x2b` in → `0x1c` at the fill) —
-    that is the dark front shading; `$e420`'s X accumulator is `2*screenX` and
-    `$ece2` is word-indexed so **`screen_x == corner_sx`** (the old "factor of
-    2" is closed); `$12ce0` copies a HUD-with-black-diamond master from
-    **`$78000`** (no terrain in it). Still open for pixel-exact: the sea fill
-    inside the diamond (source unmapped), `$e420`'s sub-pixel edge masks, the
-    other 3 quadrant handlers (rotation). HUD glyphs, per-category sprite frame
-    rip, minimap, `sprite_triggers.json` — **not started** (SPEC.md §9 3-5).
+    layer** (`tools/pm_render_ref.py --ram <settled.ram>`: `$fccc` +
+    `$ef62` + the **+64 px iso-window inset**, from the game's own `$3f364`
+    corners). Trace findings: `$438ee` flag-plane bit 7 = **diagonal selector**,
+    not a skip; `$ef62` **forces `colourByte 0x1c`** on the coast-side triangle
+    (the dark front shading); `$e420` X accumulator = `2*screenX`, `$ece2`
+    word-indexed → **`screen_x == corner_sx`**.
+17. The 79th pass **kills the "sea fill" myth + fixes the dither phase** (doc +
+    tooling only). Pixel analysis of the composed `$1c700` buffer vs the
+    `$78000` master across three RAM images: they differ **only** in the island
+    terrain blob (idx 6/7/11/12/13) + a few sprites — **the open sea (idx 14/15)
+    is byte-identical, baked into the master**, which `$13b9a` builds once at
+    mission load. There is no per-frame sea fill; the 78th's "unmapped sea fill,
+    main blocker" was a misdiagnosis (`$f922`'s `jsr $11f82` frame `0x149` is the
+    8×11 mini-sprite blitter, not a fill). `walk_q3` covers **96 %** of the
+    game's real terrain layer. The `$e3e6` dither setup is verified byte-exact
+    against the live `$f1e2` record (`[$ffa2]` = `$5c000` = doubled `$2e000`
+    base, `(2·base + colourByte·256 + rowbits) >> 1` = `$2e000 + colourByte·128
+    + (topY&15)·8`), but a uniform empirical `colourByte − 1`
+    (`DITHER_COLOUR_BIAS`) was still needed — greens rendered one step too light;
+    it lifts exact-index **65.8 % → ~78 %** (within-1 flat at ~93 %) on
+    `pm78_settle` and +12-13 pts on `pm74_late` / `pm70_iso`. Still open for
+    pixel-exact: `$e420`'s sub-pixel edge masks (`$ec62`/`$eca2`, the NE-edge
+    diff band), the dither-phase root cause, the other 3 quadrant handlers
+    (rotation). HUD glyphs, per-category sprite frame rip, minimap,
+    `sprite_triggers.json` — **not started** (SPEC.md §9 3-5).
 
 ## Files
 

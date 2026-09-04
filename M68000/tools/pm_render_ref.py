@@ -23,8 +23,16 @@ What is faithful here (77th pass)
 78th pass: `--ram <settled.ram>` renders the FAITHFUL quadrant-3 grid walk
 ($fccc) + the $ef62 colour/winding rules from the game's own $3f364 corner
 buffer (+ the +64 px iso-window inset), and byte-diffs vs the compose buffer in
-the same RAM -- 65.8% exact / 93.2% within +-1 palette index. See the
-"faithful terrain layer" section below and SPEC.md 4/9.
+the same RAM. See the "faithful terrain layer" section below and SPEC.md 4/7/9.
+
+79th pass: two corrections. (1) There is NO "sea fill inside the iso diamond".
+The composed frame ($1c700) differs from the $78000 master ONLY in the island
+terrain blob (idx 6/7/11/12/13, ~14.4k px) + a few sprites; the sea (idx 14/15,
+~2460 px in the viewport) is byte-identical between the two -- it is baked into
+the master, which $13b9a builds once at mission load. walk_q3 covers 96% of the
+game's real terrain layer. (2) DITHER_COLOUR_BIAS -1 (empirical) lifts the
+exact-palette-index match 65.8% -> ~78% (within-1 unchanged). Verified across
+pm78_settle / pm74_late / pm70_iso.
 
 What the --assets (no --ram) path approximates
   - the grid walk uses only the quadrant-0 corner assignment (the --ram path
@@ -130,25 +138,42 @@ def project(tables, terr, cam_x, cam_y, half, tick=0, sx_sign=1, sy_sign=1,
 # ---------------------------------------------------------------------------
 
 
+# Empirical dither-phase correction (79th pass). The $e3e6 setup expands to
+#   A5 = ([$ffa2] + (colourByte << 8) + ((topY & 15) << 4)) >> 1
+#      = $2e000 + colourByte*128 + (topY & 15)*8          [ $5c000 >> 1 == $2e000 ]
+# -- verified byte-exact against the live span record at $f1e2 (colour 0x1c,
+# topY 75 -> A5 $2ee58) -- and the roll is +8 bytes/scanline in every fill path
+# ($e44a +4, edge `and.l (A5)+` +4). Yet the rendered greens come out one shade
+# too light everywhere (11 where the game has 12, 12 where it has 13): a uniform
+# colourByte-1 (== A5 - 128 == 16 scanlines further along the roll) lifts the
+# exact-palette-index match 65.8% -> 78.1% on pm78_settle and +12-13 pts on
+# pm74_late / pm70_iso too (within-1 unchanged, so it is a pure phase shift, not
+# geometry). Root cause narrowed to the roll/topY term, not the setup; the
+# remaining suspects are the $ece2 sub-scanline byte offset and the $ec62/$eca2
+# edge masks (neither modelled here -- SPEC.md 4/9). Kept as an explicit knob.
+DITHER_COLOUR_BIAS = -1
+
+
 def dither_index(dith, colour_byte, top_y, y, x):
-    """The 4bpp pattern fill, from the 77th-pass aligned disasm of the whole
-    span walker ($e420..$e5a6).
+    """The 4bpp pattern fill, from the aligned disasm of the whole span walker
+    ($e3e6 setup, $e420..$e5a6 walker).
 
-    The setup ($e3e6) is A5 = base + colourByte*128 + (topY & 15)*8, and the
-    walker advances A5 by +8 bytes EVERY scanline (+4 roll at $e44a, +4 from the
-    right-edge `and.l (A5)+`). Within one scanline the ENTIRE span is one 16-px
-    pattern: planes 0/1 = the long at A5, planes 2/3 = the long at A5+4, tiled
-    screen-X-aligned across the whole span (left/right edges only add a
-    partial-word coverage mask, $ec62/$eca2 -- they do not change the pattern).
-    So the phase depends only on (colourByte, scanline y, topY):
+    Within one scanline the ENTIRE span is one 16-px pattern: planes 0/1 = the
+    long at A5, planes 2/3 = the long at A5+4, tiled screen-X-aligned across the
+    whole span (left/right edges only AND a partial-word coverage mask,
+    $ec62/$eca2 -- they do not change the pattern). So the phase depends only on
+    (colourByte, scanline y, topY):
 
-        A5 = colourByte*128 + (topY & 15)*8 + 8*(y - topY)
-           = colourByte*128 + 8*y - 128*(topY >> 4)
+        A5 = $2e000 + colourByte*128 + (topY & 15)*8 + 8*(y - topY)
+           = $2e000 + colourByte*128 + 8*y - 128*(topY >> 4)
+
+    See DITHER_COLOUR_BIAS above for the 79th-pass empirical -1 correction.
 
     long0 @ A5   -> plane0 = hi16, plane1 = lo16
     long1 @ A5+4 -> plane2 = hi16, plane3 = lo16
     index = p0 | p1<<1 | p2<<2 | p3<<3 ,  bit = 15 - (screenX & 15)
     """
+    colour_byte = max(0, colour_byte + DITHER_COLOUR_BIAS)
     a5 = colour_byte * 128 + 8 * y - 128 * (top_y >> 4)
     a5 &= ~1
     if a5 < 0:
@@ -316,6 +341,10 @@ def load_ram(ram_path: Path):
         flg=lambda x, y: plane(TER + 8257, x, y),
         ctl=lambda x, y: plane(CTL, x, y),
     )
+    # dither pattern table. $e3e6 reads [$ffa2] (= $5c000 = 2 * [$ff9e]) and does
+    # (2*base + colourByte*256 + rowbits) >> 1, which lands in the [$ff9e] = $2e000
+    # data at colourByte*128 + (topY&15)*8 -- so this $2e000 dump is the right
+    # bytes. ($5c000 itself is a different, small-int table -- NOT the patterns.)
     dith = b[u32(0xFF9E):u32(0xFF9E) + 0x4000]    # $2e000, 16 KB
     tick = u32(0x4BB3E) & 3
     yaw = u16(0xFF9A)
@@ -489,13 +518,14 @@ def render_faithful(ram_path: Path, dom):
     print(f"    within +-1 index     : {exact+near} ({100*(exact+near)/max(tot,1):.1f}%)")
     print(f"    mine idx dist : {dict(sorted(mine_h.items()))}")
     print(f"    ref  idx dist : {dict(sorted(ref_h.items()))}")
-    print(f"    verdict (78th): the walk_q3 cell/corner/colour mapping + the ef62")
-    print(f"      'force colourByte 0x1c on the coast' rule are trace-verified. The")
-    print(f"      residual is (a) the sea inside the iso window (drawn NOT by the")
-    print(f"      grid walk -- $12ce0 copies a HUD-with-black-hole master from")
-    print(f"      $78000, the sea fill is still-unmapped) and (b) $e420's sub-pixel")
-    print(f"      edge coverage (plain floor()'d here). SPEC.md 4/9.")
-    return idxbuf, cov, ref
+    print(f"    verdict (79th): walk_q3 covers 96% of the game's actual terrain")
+    print(f"      layer (composed frame vs the $78000 master differ ONLY in the")
+    print(f"      island blob + sprites -- there is NO separate 'sea fill inside")
+    print(f"      the diamond'; the sea + border + black are all baked into the")
+    print(f"      $78000 master, built once at mission load). The residual is the")
+    print(f"      dither phase (DITHER_COLOUR_BIAS -1, empirical) + $e420 sub-pixel")
+    print(f"      edges (floor()'d here). SPEC.md 4/7/9.")
+    return idxbuf, cov, ref, R
 
 
 # ---------------------------------------------------------------------------
@@ -559,21 +589,42 @@ def main():
     terr, tables, dom, dith = load_assets(d)
 
     if args.ram:
-        buf, cov, ref = render_faithful(Path(args.ram), dom)
+        buf, cov, ref, R = render_faithful(Path(args.ram), dom)
         fp = Path(args.out).with_name("render_faithful.png")
         rgb = [tuple(dom[buf[i]]) if cov[i] else (255, 0, 255) for i in range(W * H)]
         write_png(fp, W, H, rgb)
-        box = (40, 12, 258, 185)
+
+        # composite: the $78000 master (HUD + border + sea + island hole) with
+        # our terrain layer drawn over the hole -- a full from-scratch frame
+        # (79th: the game does exactly this; nothing else fills the diamond).
+        master = decode_screen_indices(R["ram"], 0x78000)
+        composite = [tuple(dom[buf[i]]) if cov[i] else tuple(dom[master[i]])
+                     for i in range(W * H)]
+        write_png(fp.with_name("render_faithful_composite.png"), W, H, composite)
+
+        box = (44, 10, 262, 188)
         bw, bh = box[2] - box[0], box[3] - box[1]
-        comp = [(255, 0, 255)] * (bw * (bh * 2 + 4))
+        gap = 4
+        comp = [(255, 0, 255)] * (bw * (bh * 3 + gap * 2))
         for y in range(bh):
             for x in range(bw):
                 si = (box[1] + y) * W + box[0] + x
-                comp[y * bw + x] = tuple(dom[ref[si]])
-                comp[(y + bh + 4) * bw + x] = rgb[si]
-        write_png(fp.with_name("render_faithful_compare.png"), bw, bh * 2 + 4, comp)
-        print(f"wrote {fp.name} + render_faithful_compare.png "
-              f"(top = $24400 reference, bottom = faithful port)")
+                comp[y * bw + x] = tuple(dom[ref[si]])                 # reference
+                comp[(y + bh + gap) * bw + x] = composite[si]          # our composite
+                if not cov[si]:
+                    d = (25, 25, 25)
+                elif buf[si] == ref[si]:
+                    d = (0, 150, 0)
+                elif abs(buf[si] - ref[si]) <= 1:
+                    d = (150, 150, 0)
+                else:
+                    d = (200, 0, 0)
+                comp[(y + 2 * (bh + gap)) * bw + x] = d                # exact-index diff
+        write_png(fp.with_name("render_faithful_compare.png"), bw, bh * 3 + gap * 2, comp)
+        print(f"wrote {fp.name} + render_faithful_composite.png + "
+              f"render_faithful_compare.png\n"
+              f"(compare panels: reference $1c700 / our composite / exact-index "
+              f"diff green=match yellow=+-1 red=wrong)")
         return
     half = tables["zoom_geometry"]["derived_constants_fdea_fe02"]["$fdec"]
 
@@ -622,13 +673,13 @@ def main():
     ref_h = Counter(ref_idx[i] for i in range(W * H) if covd[i] and mask[i])
     print(f"  dither idx dist  mine: {dict(sorted(mine_h.items()))}")
     print(f"  dither idx dist  ref : {dict(sorted(ref_h.items()))}")
-    print(f"  verdict (77th): projection reproduces the game's own $3f364 corner\n"
-          f"           buffer byte-exact; the dither phase is exact per scanline\n"
-          f"           (A5 = colourByte*128 + (topY&15)*8 + 8*(y-topY)) -- greens\n"
-          f"           and the height gradient match. Missing: the sea wedge and\n"
-          f"           the NW shadowed slope, which are on cells the naive grid\n"
-          f"           walk skips -- the game's $f898 uses 1 of 4 yaw-quadrant\n"
-          f"           handlers ($f98c/$fa98/$fbb2/$fccc). SPEC.md 4/9.")
+    print(f"  verdict: this --assets path uses the NAIVE quadrant-0 walk + a\n"
+          f"           float scanline fill -- a shape proof only. Use --ram for\n"
+          f"           the faithful quadrant-3 port (~78%% exact-index, 96%%\n"
+          f"           terrain coverage). The dither phase formula is\n"
+          f"           A5 = $2e000 + colourByte*128 + (topY&15)*8 + 8*(y-topY),\n"
+          f"           verified byte-exact vs the live $f1e2 record, + an\n"
+          f"           empirical colourByte-1 (DITHER_COLOUR_BIAS). SPEC.md 4/7/9.")
 
     rgb = [tuple(dom[bufd[i]]) if covd[i] else (255, 0, 255) for i in range(W * H)]
     fp = Path(args.out)
