@@ -16,6 +16,8 @@
   <ItemGroup>
     <Compile Include="Terrain.fs" />
     <Compile Include="Projection.fs" />
+    <Compile Include="Fill.fs" />
+    <Compile Include="Sprites.fs" />
   </ItemGroup>
 
 </Project>

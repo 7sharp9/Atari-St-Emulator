@@ -351,6 +351,29 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     `pm78_settle`; 93.9 % / 93.4 % on `pm74_late` / `pm70_iso`. Residual: unit
     sprites (`walk_q3` is terrain-only), the tall `0x1c` coast slopes (game
     dithers idx 1-7, port lands nearer flat), a ~1 px NE edge.
+19. The 81st pass **folds the closed rasteriser into `port/godot/logic/Fill.fs`**
+    (doc + tooling only — no emulator change). `port/godot/logic/Fill.fs` is a
+    1:1 F# port of `pm_render_ref.py`'s `walk_q3` / `ef62_raster` /
+    `_fixed_slope` / `_dda_walk` / `dither_index` — this was explicitly blocked
+    on the 80th's DDA landing cleanly (no fudge or `floor()`'d span left to
+    carry over). **Cross-verified byte-exact against `pm_render_ref.py`**: five
+    synthetic triangles exercising every rasteriser path (general split,
+    flat-top, the `$f134` reorder, the `0x1c` coast-force, the mid-vertex
+    slope switch, water shimmer) plus a synthetic 9×9-corner/8×8-cell grid
+    exercising both `walk_q3` diagonal-selector branches — F# and Python
+    produce identical coverage counts and pixel-index hashes on every case
+    (`dotnet fsi` against the same synthetic inputs; scripts not committed,
+    throwaway). `Terrain.Map`'s flag-plane accessor renamed `SeaStatic` →
+    `DiagonalSelector` to match the 78th's trace finding (it was still named
+    for the stale "corners unmoved, skip fill" reading `Fill.fs` would have
+    inherited); `SPEC.md` §2's flag-plane row corrected to match. Added a
+    `Sprites.fs` decode stub (`$11f82`'s 8×11 four-bitplane frame format +
+    `t_heading_frame`) so terrain and sprite compositing have a shared home;
+    not wired into a blitter yet. **Not done this pass:** wiring `Fill.fs`
+    into `TerrainView.cs` (a software layer into a `SubViewport`, or an
+    `ArrayMesh` + shader) — Godot isn't installed in this environment, so any
+    C#-side change would be unverified; left as the next step (`port/README.md`
+    "Next steps"). `PmLogic.fsproj` builds clean (`dotnet build`, net8.0).
 
 ## Files
 

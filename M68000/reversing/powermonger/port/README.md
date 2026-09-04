@@ -10,7 +10,7 @@ renderer, a porting spec, and a toolchain skeleton.
 |------|------|
 | `assets/` | everything the iso renderer reads, extracted from a live RAM image. `manifest.json` gives one line of provenance per file. |
 | `SPEC.md` | the porting contract: coordinate systems, projection with exact constants, the triangle/dither rasteriser, sprites, zoom, the frame pipeline, and what a modern port should replace. Written to be implementable without the disassembly. |
-| `godot/` | Godot 4.x (.NET) + F# skeleton. Proves the toolchain — F# logic lib loads, assets load, one heightmap mesh renders. Not the full renderer. |
+| `godot/` | Godot 4.x (.NET) + F# skeleton. Proves the toolchain — F# logic lib loads, assets load, one heightmap mesh renders. `godot/logic/Fill.fs` (81st) is a byte-exact port of the closed rasteriser (`walk_q3` + `ef62_raster` + the `$e420` DDA + the dither fill); not yet wired into `TerrainView.cs`. |
 
 Regenerate the assets:
 
@@ -26,7 +26,21 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
-## Verification status (80th pass)
+## Verification status (81st pass)
+
+- **`godot/logic/Fill.fs`: the closed rasteriser is now F#, byte-exact.**
+  `walkQ3` / `ef62Raster` / `fixedSlope` / `ditherIndex` are a 1:1 port of
+  `tools/pm_render_ref.py`'s `walk_q3` / `ef62_raster` / `_fixed_slope` /
+  `dither_index` — cross-checked against the Python reference on synthetic
+  triangles (every rasteriser path: general split, flat-top, the `$f134`
+  reorder, the `0x1c` coast-force, the mid-vertex slope switch, water
+  shimmer) and a synthetic 8×8-cell grid (both `walk_q3` diagonal-selector
+  branches): identical coverage counts and pixel-index hashes. `PmLogic.fsproj`
+  builds clean. Not yet wired into `TerrainView.cs` — see "Next steps".
+- `Terrain.Map`'s flag-plane accessor renamed `SeaStatic` → `DiagonalSelector`
+  (it was still named for the pre-78th "corners unmoved, skip fill" reading).
+
+### 80th-pass verification status (superseded above for the rasteriser; still current for projection/dither/sea)
 
 - **Projection: closed.** `pm_render_ref.py`'s projected 9×9 vertex grid equals
   the game's own `$3f364` corner buffer **byte-exact** (81/81 vertices).
@@ -99,14 +113,21 @@ the next steps, and `SPEC.md` is the spec for them.
 
 ## Next steps (in `SPEC.md` order)
 
-1. Port `Projection.projectGrid` into the mesh build (replace the trivial
-   `x, h, y` vertices with the projected corners). The maths is exact
-   (`SPEC.md` §3 — reproduces the game's `$3f364` byte-for-byte), so no
-   `Eye`/`Horizon` re-tune is needed; just feed `EYE`=320 `HORIZON`=130.
-2. Fragment-shader the height ramp (drop the dither) — either
-   `Terrain.flatPaletteIndex`, or the `colourByte`→index table in `SPEC.md` §4
-   (which is what the real dither resolves to); `assets/palette.json` is the
-   16 colours. `assets/dither.bin` is there for a faithful stipple.
-3. Sprites: `assets/sprites/` + `assets/headings.json`, drawn per-cell inline in
-   the grid walk (painter's order — do not add a separate sorted pass).
-4. Camera: 16 yaw steps, 7 zoom levels (`assets/tables.json → zoom_geometry`).
+1. **Wire `Projection.projectGrid` + `Fill.walkQ3` into `TerrainView.cs`.**
+   Both are done and byte-exact/cross-verified (see above) — this is now pure
+   glue, not a porting problem. Two shapes work: (a) a **software layer** —
+   call `Fill.walkQ3` each frame into a `Fill.Buffer`, blit `Index` through
+   `assets/palette.json` into an `Image`/`ImageTexture`, show it on a
+   `TextureRect` or in a `SubViewport` (closest to PM's own direct-to-shifter
+   pipeline, keeps the dither if wanted); or (b) feed `Projection.projectGrid`'s
+   corners into the existing `ArrayMesh` build and drop `Fill.fs`'s per-pixel
+   dither for a fragment-shader height ramp (`Terrain.flatPaletteIndex`, or the
+   `colourByte`→index table in `SPEC.md` §4). **Not attempted this pass** —
+   Godot isn't installed in this environment (`godot --version` not on PATH,
+   `PowerMongerPort.csproj`'s Godot package reference can't be restored/built
+   here), so a C#-side change would ship unverified.
+2. Sprites: `assets/sprites/` + `assets/headings.json` + `Sprites.fs` (decode
+   stub, 81st), drawn per-cell inline in the grid walk (painter's order — do
+   not add a separate sorted pass). Frame base/count per category still needs
+   the rip (Task 2 / `SPEC.md` §9 item 3).
+3. Camera: 16 yaw steps, 7 zoom levels (`assets/tables.json → zoom_geometry`).

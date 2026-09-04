@@ -15,6 +15,14 @@ mission-1 iso view (`scratchpad/pm74_late.ram`, PC `$124c0`) and cross-checked
 against the disassembly in `../graphics.md`. Addresses are in the relocated game
 image (link base `$1050`).
 
+Verification status (81st pass): the rasteriser this section documents is now
+ported to F# — `port/godot/logic/Fill.fs`'s `walkQ3`/`ef62Raster`/`fixedSlope`/
+`ditherIndex` are a 1:1 port of the functions below, cross-checked byte-exact
+against `pm_render_ref.py` on synthetic triangles/grids (every code path: general
+split, flat-top, the `$f134` reorder, the coast-force, the mid-vertex switch,
+water shimmer, both `walk_q3` diagonal branches). Not yet wired into a Godot
+scene — see `port/README.md` "Next steps".
+
 Verification status (80th pass): `tools/pm_render_ref.py --ram <settled.ram>`
 ports the real quadrant-3 grid walk (`$fccc`) + the `$ef62` triangle setup +
 the `$e420` 16.16 DDA span walker, and renders from the game's own `$3f364`
@@ -114,7 +122,7 @@ Two parallel data sets, both 64 x 128 cells, row-major, stride 64:
 |-------|-------------|----------|
 | **type** | `$438ee + 0` | colour of the *second* triangle of each cell; terrain class |
 | **height (438ee)** | `$438ee - 8257` | colour of the *first* triangle; entity-side terrain sampling |
-| **flag** | `$438ee + 8257` | bit 7 = "this cell's projected corners did not move this frame" → skip its fill (still-camera optimisation) |
+| **flag** | `$438ee + 8257` | bit 7 = **diagonal selector** (78th-pass correction — earlier read as "corners unmoved, skip fill"; see section 4) |
 | **control / height (3f86c)** | `$3f86c + 0` | the height the **projector** reads for cell Z. On mission 1 it tracks the 438ee height plane closely but is the authoritative geometry source. |
 
 `terrain.bin` interleaves all four as `[type, height, flag, control]` per cell,
@@ -627,6 +635,9 @@ Palette: one 16-colour shifter palette for the whole iso view
    the tall `0x1c` coast slopes (the game dithers idx 1-7, the port lands nearer
    flat idx 1 — needs the multi-segment slope-of-slope chain past the single
    mid-vertex switch `_dda_walk` models), and a ~1 px NE island edge.
+   **81st: ported to F# unchanged** — `port/godot/logic/Fill.fs`, cross-verified
+   byte-exact against `pm_render_ref.py` (see the verification-status note at
+   the top of this file). Not yet wired into a Godot scene.
 2. **Dither phase — CLOSED (80th).** Full span walker disassembled
    (`$e3e6`→`$e5a6`) and live single-stepped. `A5` wraps **modulo 128** inside
    the colour's slot (`$e44a`'s `addq.b #8` on `2*A5` byte-overflows at

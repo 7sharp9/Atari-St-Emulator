@@ -14,12 +14,18 @@ module Terrain =
     let WaterLevel = 0x0cuy
 
     [<Literal>]
-    let SeaStaticBit = 0x80uy
+    let DiagonalSelectorBit = 0x80uy
 
     type Map =
         { Type: byte[]        // terrain class / colour of the "type" triangle
           HeightPlane: byte[] // $438ee height plane
-          Flag: byte[]        // bit7 = corner-unmoved skip
+          // bit7 was read as "corner unmoved this frame -> skip fill" (76th
+          // pass); the 78th pass's live trace of pm_grid_walk_q3 ($fccc)
+          // corrected this — it is the per-cell DIAGONAL SELECTOR the walk
+          // uses to pick which pair of corners the two triangles split on
+          // (see Fill.walkQ3 / ../../SPEC.md section 4). Both branches draw;
+          // it is not a skip.
+          Flag: byte[]
           Control: byte[] }   // $3f86c — the height the projector reads
 
         member m.Index(x, y) = y * Width + x
@@ -27,7 +33,7 @@ module Terrain =
         member m.TypeAt(x, y) = int m.Type.[m.Index(x, y)]
         member m.HeightAt(x, y) = int m.HeightPlane.[m.Index(x, y)]
         member m.IsWater(x, y) = m.HeightPlane.[m.Index(x, y)] < WaterLevel
-        member m.SeaStatic(x, y) = m.Flag.[m.Index(x, y)] &&& SeaStaticBit <> 0uy
+        member m.DiagonalSelector(x, y) = m.Flag.[m.Index(x, y)] &&& DiagonalSelectorBit <> 0uy
 
     /// Parse the interleaved [type,height,flag,control] byte stream.
     let parse (raw: byte[]) : Map =
