@@ -298,16 +298,21 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     The projection maths reproduces the game's own `$3f364` corner buffer
     **byte-exact** (81/81 vertices) — the 76th's "island 15-20 px low" was a bad
     diff against a live frame whose camera had drifted from the RAM snapshot
-    (the consistent reference is the snapshot's back buffer `$24400`). The real
-    dither phase is `A5 = [$ff9e] + colourByte*128 + (topY & 15)*8`, rolling
-    `+4 B/line` `+8 B/16-px-cluster`, two big-endian longs/cluster = planes
-    {0,1},{2,3}; `dither.bin` was truncated at 2 KB (phase reaches ~8.5 KB) and
-    is now a 16 KB dump. Decoding at `colourByte*128` lands on the right palette
-    families (`0x24-2c` green ramp, `0x08-0b` water, `0x18-1c` rock) and
-    `pm_render_ref.py`'s greens match the reference within ~5 %; a pixel-exact
-    fill still needs the `$e420`-`$e55a` span walker ported (`SPEC.md` §9). The
-    `$115e0` sprite category dispatch is mapped (`SPEC.md` §6); the per-category
-    frame rip, HUD glyphs and the `$e0d4` border master remain deferred.
+    (the consistent reference is the snapshot's back buffer `$24400`). The whole fill
+    (`$e3e6`→`$e5a6`) + the 4 yaw-quadrant grid-walk handlers are disassembled.
+    Exact dither phase: `A5(y) = [$ff9e] + colourByte*128 + (topY & 15)*8 +
+    8*(y - topY)`; the whole span on one scanline is a single 16-px pattern
+    (`long0` @ A5 = planes {0,1}, `long1` @ A5+4 = planes {2,3}) tiled
+    screen-X-aligned. `dither.bin` 2 KB → 16 KB. `colourByte 0` → palette 14/15
+    = how the open sea is drawn. `pm_render_ref.py`'s `dither_index()` is exact
+    (exact-index 11.9 %→18.5 %); the last terrain gap is the quadrant grid walk
+    (`$f898` picks 1 of `$f98c`/`$fa98`/`$fbb2`/`$fccc`) — `pm_render_ref.py`
+    uses only quadrant 0, so it misses the sea wedge + NW slope. Porting the 4
+    handlers + `$ef62` + `$e420` = pixel-exact terrain (`SPEC.md` §4).
+    **`$11f82` decode corrected:** 8×11 four-bitplane, `[mask,p0,p1,p2,p3]` per
+    row, opaque where mask bit 0 (not a 1bpp silhouette) — `sheet_contact.png`
+    decodes as the men, 4 faction-colour blocks of 16. HUD glyphs, per-category
+    frame rip, `$e0d4` border master, minimap still deferred.
 
 ## Files
 

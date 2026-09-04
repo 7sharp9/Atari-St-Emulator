@@ -34,19 +34,26 @@ prints the block-mean dE and the per-index distribution vs the reference.
   disasm. The 76th's "island ~15-20 px low" was a bad diff against a live frame
   whose camera had drifted from the RAM snapshot; the consistent reference is
   the snapshot's own back buffer `$24400` (= `isoframe.png`, 231/64000 px).
-- **Dither: formula closed, pixel match partial.** Real phase (`SPEC.md` §4):
-  `A5 = ditherBase + colourByte*128 + (topY & 15)*8`, `+4 B/line`, `+8 B/16-px
-  cluster`, two big-endian longs/cluster = planes {0,1},{2,3}. `dither.bin` was
-  truncated at 2 KB (phase reaches ~8.5 KB) — now a 16 KB dump. Decoding at
-  `colourByte*128` lands on the right palette families (green ramp, water, rock)
-  and the rebuilt greens match the reference within ~5 %. `pm_render_ref.py`
-  resets the phase per triangle and skips the `$f97e` yaw-quadrant corner remap,
-  so its texture is patchy (`assets/reference/render_compare.png`); a
-  pixel-exact fill needs the `$e420`–`$e55a` span walker ported. A modern port
-  replaces the fill with a shader, so this does not block the port.
-- **Sprites / HUD / border / minimap:** category dispatch (`$115e0`) mapped
-  (`SPEC.md` §6/§9); the per-category frame rip, HUD glyphs, `$e0d4` master and
-  the minimap compositor are still deferred.
+- **Dither: exact (`SPEC.md` §4).** Whole span walker disassembled
+  (`$e3e6`→`$e5a6`). `A5(y) = ditherBase + colourByte*128 + (topY & 15)*8 +
+  8*(y - topY)`; the whole span on one scanline is a single 16-px pattern
+  (`long0` @ A5 = planes {0,1}, `long1` @ A5+4 = planes {2,3}) tiled
+  screen-X-aligned; edges only add a partial-word mask. `dither.bin` 2 KB →
+  16 KB. `pm_render_ref.py`'s `dither_index()` implements it exactly
+  (exact-index on the covered terrain 11.9 % → 18.5 %). `colourByte 0` →
+  palette 14/15 is how the **open sea** is drawn.
+- **Remaining terrain gap: the yaw-quadrant grid walk.** `$f898` picks 1 of 4
+  handlers (`$f98c` / `$fa98` / `$fbb2` / `$fccc`) by `((yaw+8)>>5)&6`; each
+  has its own grid start offset, iteration count and corner→vertex assignment.
+  `pm_render_ref.py` uses only quadrant 0, so it misses the sea wedge and the
+  NW shadowed slope. Porting the 4 handlers + `$ef62` (span record) + `$e420`
+  (DDA walker) is the pixel-exact terrain layer — everything needed is in
+  `SPEC.md` §4.
+- **Sprites: `$11f82` decode closed** (8×11 four-bitplane, `[mask,p0,p1,p2,p3]`
+  per row; `sheet_contact.png` decodes as the 4 faction-colour man blocks).
+  **HUD / border / minimap:** category dispatch (`$115e0`) mapped
+  (`SPEC.md` §6/§9); per-category frame rip, HUD glyphs, `$e0d4` master and the
+  minimap compositor are still deferred.
 
 ## Why F# for logic, C# for Godot glue, no GDScript
 
