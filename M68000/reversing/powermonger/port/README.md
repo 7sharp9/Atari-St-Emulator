@@ -26,36 +26,37 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
-## Verification status (79th pass)
+## Verification status (80th pass)
 
 - **Projection: closed.** `pm_render_ref.py`'s projected 9×9 vertex grid equals
   the game's own `$3f364` corner buffer **byte-exact** (81/81 vertices).
   `EYE`/`HORIZON` confirmed `$ff98`=320 / `$ff96`=130.
-- **Quadrant-3 grid walk: ported, 96 % coverage.** `pm_render_ref.py --ram`
-  ports `$fccc` + `$ef62` from the game's own `$3f364` corners (+64 px inset).
-  Against `scratchpad/pm78_settle.ram` it covers 96 % of the game's real
-  per-frame terrain layer and scores **~78 % exact / ~93 % within ±1** palette
-  index (the `--assets` path still uses the naive quadrant-0 walk).
+- **Quadrant-3 walk + rasteriser: closed, 96 % coverage, ~94 % exact-index.**
+  `pm_render_ref.py --ram` ports `$fccc` + `$ef62` + the real `$e420` 16.16 DDA
+  span walker (`_fixed_slope`, `_dda_walk`) from the game's own `$3f364`
+  corners (+64 px inset). Against `scratchpad/pm78_settle.ram` it covers 96 %
+  of the game's real per-frame terrain layer and scores **~94 % exact / ~95 %
+  within ±1** palette index (`pm74_late` 93.9 %, `pm70_iso` 93.4 %). The
+  `--assets` path still uses the naive quadrant-0 walk (shape proof only).
 - **No "sea fill" (79th).** The composed `$1c700` buffer differs from the
   `$78000` master **only** in the island blob + a few sprites — the open sea
   (idx 14/15) is byte-identical, **baked into the master** (`$13b9a`, once per
   mission). A per-frame port draws only the projected 8×8 grid; a full frame
   composites that over the master. `render_faithful_composite.png` shows it.
-- **Dither: formula exact, −1 phase knob (`SPEC.md` §4).** Span walker
-  disassembled (`$e3e6`→`$e5a6`); setup verified byte-exact vs the live `$f1e2`
-  record: `A5(y) = $2e000 + colourByte*128 + (topY & 15)*8 + 8*(y - topY)`
-  (`[$ffa2]` = `$5c000` = doubled `$2e000`, `>>1`). `dither_index()` still needs
-  a uniform empirical `colourByte − 1` (`DITHER_COLOUR_BIAS`) — greens rendered
-  one step light; it lifts exact-index 65.8 % → 78 %. Root cause narrowed to the
-  roll/topY term (the setup is exact), open.
-- **Remaining pixel-exact gap:** `$e420`'s sub-pixel edge masks
-  (`$ec62`/`$eca2` — the NE-edge diff band), the dither-phase root cause, and
-  the other 3 quadrant handlers (`$f98c`/`$fa98`/`$fbb2`, camera rotation).
+- **Dither phase: closed (80th).** Live single-step of `$e420` showed `A5`
+  wraps **modulo 128** inside the colour's slot (`SPEC.md` §4): `A5 =
+  $2e000 + colourByte*128 + ((8*y) mod 128)`. This killed the 79th's empirical
+  `DITHER_COLOUR_BIAS = -1`, which was compensating for the missing wrap and
+  only happened to be right for 16–32 px-tall triangles.
+- **Residual (≈6 %):** unit sprites on the hill (`walk_q3` is terrain-only),
+  the tall `0x1c` coast slopes (game dithers idx 1-7, port lands nearer flat),
+  a ~1 px NE island edge, and the other 3 quadrant handlers
+  (`$f98c`/`$fa98`/`$fbb2`, camera rotation — not ported).
 - **Sprites: `$11f82` decode closed** (8×11 four-bitplane, `[mask,p0,p1,p2,p3]`
   per row; `sheet_contact.png` decodes as the 4 faction-colour man blocks).
   **HUD / border / minimap:** category dispatch (`$115e0`) mapped
-  (`SPEC.md` §6/§9); per-category frame rip, HUD glyphs, `$e0d4` master and the
-  minimap compositor are still deferred.
+  (`SPEC.md` §6/§9); per-category frame rip, HUD glyphs, the `$78000` master
+  build and the minimap compositor are still deferred (Task 2, not started).
 
 ## Why F# for logic, C# for Godot glue, no GDScript
 

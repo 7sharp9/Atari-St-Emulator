@@ -335,6 +335,22 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     diff band), the dither-phase root cause, the other 3 quadrant handlers
     (rotation). HUD glyphs, per-category sprite frame rip, minimap,
     `sprite_triggers.json` — **not started** (SPEC.md §9 3-5).
+18. The 80th pass **ports the real `$e420` DDA span walker + closes the dither
+    phase** (doc + tooling only). `_fixed_slope` (`$f000`) + `_dda_walk`
+    (`$e420`) replace the float+`floor()`'d spans: two 16.16 edge X
+    accumulators, the shorter edge bending to the far vertex at its own
+    scanline; the `$ec62`/`$eca2` partial-word masks reduce exactly to
+    "draw pixel x iff `ixL <= x <= ixR`". Live single-stepping `$e420` (cell
+    topY 75, colour `0x26`: `A5 = 2f358 2f360 2f368 2f370 2f378 → 2f300 2f308
+    2f310 2f318`) showed **`A5` wraps modulo 128 inside the colour's slot** —
+    the `$e44a` roll's `addq.b #8` on `2*A5` byte-overflows at `A5&0x7f==124` —
+    so the phase is `colourByte*128 + ((8*y) mod 128)`, the `topY` term
+    dropping out entirely. That kills the 79th's empirical
+    `DITHER_COLOUR_BIAS = -1` (it only happened to be right for 16-32 px-tall
+    triangles). Exact-palette-index **78 % → 94 %** (within-1 93 % → 95 %) on
+    `pm78_settle`; 93.9 % / 93.4 % on `pm74_late` / `pm70_iso`. Residual: unit
+    sprites (`walk_q3` is terrain-only), the tall `0x1c` coast slopes (game
+    dithers idx 1-7, port lands nearer flat), a ~1 px NE edge.
 
 ## Files
 

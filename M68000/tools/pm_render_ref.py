@@ -17,22 +17,28 @@ What is faithful here (77th pass)
   - far -> near walk, 2 triangles per cell, quad split on the packed-corner test
   - colour byte = the terrain byte itself (height byte on one triangle, type
     byte on the other); water (< 0x0c) += [$4bb3e]&3 (== 2 in this frame)
-  - dither fill: A5(y) = colourByte*128 + (topY&15)*8 + 8*(y-topY) into
-    dither.bin; one 16-px pattern per scanline, planes {0,1}=long@A5,
-    {2,3}=long@A5+4, tiled screen-X-aligned (see dither_index -- exact)
+  - dither fill: A5(y) = colourByte*128 + ((8*y) mod 128) into dither.bin; one
+    16-px pattern per scanline, planes {0,1}=long@A5, {2,3}=long@A5+4, tiled
+    screen-X-aligned (see dither_index -- live-traced from $e420, exact)
 78th pass: `--ram <settled.ram>` renders the FAITHFUL quadrant-3 grid walk
 ($fccc) + the $ef62 colour/winding rules from the game's own $3f364 corner
 buffer (+ the +64 px iso-window inset), and byte-diffs vs the compose buffer in
 the same RAM. See the "faithful terrain layer" section below and SPEC.md 4/7/9.
 
-79th pass: two corrections. (1) There is NO "sea fill inside the iso diamond".
-The composed frame ($1c700) differs from the $78000 master ONLY in the island
-terrain blob (idx 6/7/11/12/13, ~14.4k px) + a few sprites; the sea (idx 14/15,
-~2460 px in the viewport) is byte-identical between the two -- it is baked into
-the master, which $13b9a builds once at mission load. walk_q3 covers 96% of the
-game's real terrain layer. (2) DITHER_COLOUR_BIAS -1 (empirical) lifts the
-exact-palette-index match 65.8% -> ~78% (within-1 unchanged). Verified across
-pm78_settle / pm74_late / pm70_iso.
+79th pass: there is NO "sea fill inside the iso diamond". The composed frame
+($1c700) differs from the $78000 master ONLY in the island terrain blob
+(idx 6/7/11/12/13, ~14.4k px) + a few sprites; the sea (idx 14/15, ~2460 px in
+the viewport) is byte-identical between the two -- it is baked into the master,
+which $13b9a builds once at mission load. walk_q3 covers 96% of the game's real
+terrain layer.
+
+80th pass: ported the $e420 16.16 DDA span walker (_fixed_slope, _dda_walk)
+in place of the float+floor()'d spans, and live-traced the dither phase: A5
+wraps modulo 128 inside the colour's 128-byte slot (the $e44a roll's `addq.b`
+byte-overflows), so the phase is just colourByte*128 + ((8*y) mod 128) -- the
+topY term drops out. That kills the 79th's empirical DITHER_COLOUR_BIAS -1
+(which was compensating for the missing wrap). exact-palette-index 78% -> 94%,
+within-1 93% -> 95%, across pm78_settle / pm74_late / pm70_iso.
 
 What the --assets (no --ram) path approximates
   - the grid walk uses only the quadrant-0 corner assignment (the --ram path
@@ -138,46 +144,46 @@ def project(tables, terr, cam_x, cam_y, half, tick=0, sx_sign=1, sy_sign=1,
 # ---------------------------------------------------------------------------
 
 
-# Empirical dither-phase correction (79th pass). The $e3e6 setup expands to
-#   A5 = ([$ffa2] + (colourByte << 8) + ((topY & 15) << 4)) >> 1
-#      = $2e000 + colourByte*128 + (topY & 15)*8          [ $5c000 >> 1 == $2e000 ]
-# -- verified byte-exact against the live span record at $f1e2 (colour 0x1c,
-# topY 75 -> A5 $2ee58) -- and the roll is +8 bytes/scanline in every fill path
-# ($e44a +4, edge `and.l (A5)+` +4). Yet the rendered greens come out one shade
-# too light everywhere (11 where the game has 12, 12 where it has 13): a uniform
-# colourByte-1 (== A5 - 128 == 16 scanlines further along the roll) lifts the
-# exact-palette-index match 65.8% -> 78.1% on pm78_settle and +12-13 pts on
-# pm74_late / pm70_iso too (within-1 unchanged, so it is a pure phase shift, not
-# geometry). Root cause narrowed to the roll/topY term, not the setup; the
-# remaining suspects are the $ece2 sub-scanline byte offset and the $ec62/$eca2
-# edge masks (neither modelled here -- SPEC.md 4/9). Kept as an explicit knob.
-DITHER_COLOUR_BIAS = -1
+# 80th pass: DITHER_COLOUR_BIAS is GONE. It was compensating for a missing
+# modulo-128 wrap in the dither phase -- the 79th narrowed it to "the roll/topY
+# term" and that was right. Live single-step of $e420 (cell topY 75, colour
+# 0x26): A5 = 2f358 2f360 2f368 2f370 2f378 -> 2f300 2f308 ... it WRAPS back to
+# the start of the colour's 128-byte slot, it never advances into slot cb+1.
+# The $e44a roll does `move.l A5,D6 ; add.l D6,D6 ; addq.b #8,D6 ; lsr.l #1,D6`:
+# the `addq.b` is a BYTE add on the low byte of 2*A5, so it overflows (mod 256,
+# no carry) exactly when A5 & 0x7f reaches 124 -- pinning A5 inside
+# [slotBase, slotBase + 128).  (My 79th analysis wrongly assumed the phase never
+# lands on 124..127; with the fill's own `and.l (A5)+` +4 it lands on 124 every
+# 16th scanline.)  So:
+#
+#   A5 offset = colourByte*128 + (( (topY&15)*8 + 8*(y - topY) ) mod 128)
+#             = colourByte*128 + ((8*y) mod 128)      [ 128*(topY>>4) drops out ]
+#
+# i.e. the phase depends only on colourByte and the absolute scanline y.
+# DITHER_COLOUR_BIAS -1 == a5 - 128 was right only for 16..32px-tall triangles
+# (where the port had over-run by exactly one slot); it over-corrected the many
+# ~13px cells and under-corrected the tall coast slopes -- hence the residual.
 
 
-def dither_index(dith, colour_byte, top_y, y, x):
-    """The 4bpp pattern fill, from the aligned disasm of the whole span walker
-    ($e3e6 setup, $e420..$e5a6 walker).
+def dither_index(dith, colour_byte, y, x):
+    """The 4bpp pattern fill, from the aligned disasm + live trace of the span
+    walker ($e3e6 setup, $e420..$e5a6 walker).
 
     Within one scanline the ENTIRE span is one 16-px pattern: planes 0/1 = the
     long at A5, planes 2/3 = the long at A5+4, tiled screen-X-aligned across the
     whole span (left/right edges only AND a partial-word coverage mask,
-    $ec62/$eca2 -- they do not change the pattern). So the phase depends only on
-    (colourByte, scanline y, topY):
+    $ec62/$eca2 -- they do not change the pattern; and that mask reduces exactly
+    to "pixel x drawn iff ixL <= x <= ixR", see _dda_walk).  The $e44a roll wraps
+    A5 modulo 128 inside the colour's slot, so:
 
-        A5 = $2e000 + colourByte*128 + (topY & 15)*8 + 8*(y - topY)
-           = $2e000 + colourByte*128 + 8*y - 128*(topY >> 4)
-
-    See DITHER_COLOUR_BIAS above for the 79th-pass empirical -1 correction.
+        A5 = $2e000 + colourByte*128 + ((8*y) mod 128)        (y = absolute scanline)
 
     long0 @ A5   -> plane0 = hi16, plane1 = lo16
     long1 @ A5+4 -> plane2 = hi16, plane3 = lo16
     index = p0 | p1<<1 | p2<<2 | p3<<3 ,  bit = 15 - (screenX & 15)
     """
-    colour_byte = max(0, colour_byte + DITHER_COLOUR_BIAS)
-    a5 = colour_byte * 128 + 8 * y - 128 * (top_y >> 4)
-    a5 &= ~1
-    if a5 < 0:
-        a5 = colour_byte * 128 + 8 * (y & 15)         # clamp into the colour's slot
+    colour_byte = max(0, colour_byte)
+    a5 = colour_byte * 128 + ((8 * y) & 0x7F)
     if a5 + 8 > len(dith):
         a5 = (len(dith) - 8) & ~1
     l0 = struct.unpack_from(">I", dith, a5)[0]
@@ -232,7 +238,7 @@ def fill_tri(idxbuf, cov, dith, a, b, c, colour_byte, flat=False):
         base = y * W
         for x in range(xs, xe + 1):
             idxbuf[base + x] = (flat_index(colour_byte) if flat else
-                                dither_index(dith, colour_byte, top_y, y, x))
+                                dither_index(dith, colour_byte, y, x))
             cov[base + x] = 1
 
 
@@ -274,7 +280,7 @@ def render(terr, tables, dith, cam_x, cam_y, half, tick=WATER_ADD, flat=False,
 
 
 # ---------------------------------------------------------------------------
-# faithful terrain layer (78th pass)
+# faithful terrain layer (78th - 80th pass)
 #
 # The naive render() above walks the grid in the quadrant-0 corner assignment
 # and fills triangles with a float scanline rasteriser. This section ports the
@@ -285,21 +291,24 @@ def render(terr, tables, dith, cam_x, cam_y, half, tick=WATER_ADD, flat=False,
 #   * pm_tri_raster   ($ef62)   -- the cyclic-rotate Y sort, the edge-slope
 #                                  compare and the "force colourByte 0x1c when
 #                                  vertex 1 is already the left edge" rule
-#   * the fill uses the exact per-scanline dither phase (dither_index, closed
-#     in the 77th pass) but a plain integer scanline span, NOT the $e420 DDA.
+#   * _fixed_slope ($f000) + _dda_walk ($e420) -- 80th: the real 16.16 DDA span
+#     walker, two edge accumulators stepped one slope/scanline, the shorter edge
+#     bending toward the far vertex at its own scanline. The $ec62/$eca2
+#     partial-word masks reduce to "pixel x drawn iff ixL <= x <= ixR" (ixL/ixR
+#     = the accumulators truncated >>16), so no planar masking is needed.
+#   * the dither phase (dither_index) -- 80th: live-traced, A5 wraps mod 128
+#     inside the colour's slot: colourByte*128 + ((8*y) mod 128).
 #
 # Corner buffer is read straight from the RAM image ($3f364) + the +64 px iso
 # window inset (SPEC.md 3), so there is zero projection error here -- this
 # isolates the rasteriser. Against a freshly-settled snapshot
-# (scratchpad/pm78_settle.ram) this scores 65.8% exact / 93.2% within +-1
-# palette index over the drawn terrain.
+# (scratchpad/pm78_settle.ram) this scores ~94% exact / ~95% within +-1 palette
+# index over the drawn terrain.
 #
-# What is still approximated: (a) the sea fill inside the iso diamond -- drawn
-# by neither the grid walk nor the $78000 HUD master; source unmapped
-# (SPEC.md 7). (b) $e420's sub-pixel edge coverage: its X accumulator holds
-# 2*screenX and $ece2 is word-indexed, so screen_x == corner_sx (no scale --
-# the old "factor of 2" is closed), but the $ec62/$eca2 partial-word edge
-# masks are not modelled; a plain floor()'d span is +-1 px on the boundaries.
+# Residual: unit sprites (walk_q3 is terrain-only, so units on the hill diff),
+# the tall 0x1c coast slopes (the game spreads idx 1-7, we land nearer flat),
+# and a ~1px NE island edge. The "sea fill inside the diamond" does NOT exist --
+# it is baked into the $78000 master (79th, SPEC.md 7).
 # ---------------------------------------------------------------------------
 
 
@@ -387,59 +396,148 @@ def _cyclic_ysort(v):
     return [v[2], v[0], v[1]]
 
 
-def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick):
-    """port of pm_tri_raster ($ef62). p* = (sx, sy).
+def _fixed_slope(dx, dy):
+    """port of $f000 -- the 16.16 fixed-point edge slope magnitude, sign of dx.
+    dy is the (positive) run in scanlines.
 
-    Replicates the parts of $ef62 that change the OUTPUT colour / winding:
+      steep  (dy <= |dx|, |slope| >= 1):  ((|dx| << 8) // dy) << 8   ($f01a: the
+             two-stage divide -- lsl.l #8, divu, then <<8; overflow -> exactly
+             $10000 = 1.0)
+      shallow(dy >  |dx|, |slope| <  1):  (|dx| << 16) // dy         ($f00e)
+
+    The steep path truncates at the //dy step *before* the final <<8, so it is
+    NOT the same as (|dx|<<16)//dy -- this exact rounding matters for the span
+    endpoints.  Result is a signed 32-bit 16.16 value.
+    """
+    adx = abs(dx)
+    if dy <= adx:                                  # steep
+        q = (adx << 8) // dy
+        val = 0x10000 if q > 0xFFFF else (q & 0xFFFF) << 8
+    else:                                          # shallow
+        val = ((adx << 16) // dy) & 0xFFFF
+    return -val if dx < 0 else val
+
+
+def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick):
+    """port of pm_tri_raster ($ef62) -> the $e420 DDA span walker.
+
+    $ef62 ($efbe..$f1de): cyclic-rotate Y sort, then build a span record and
+    fall into $e3e6/$e420.  This ports the whole thing:
       * cyclic-rotate Y sort ($efbe..$efd4)
-      * the edge-slope compare + "force colourByte 0x1c when vertex 1 is
-        already the left edge" rule ($f06c..$f07a; flat-top variant $f154)
-      * water shimmer: colour += [$4bb3e]&3 if colour < 0x0c
-    The span itself is a plain floor()'d scanline fill with the exact dither
-    phase (dither_index) -- NOT the $e420 fixed-point DDA (SPEC.md 4).
+      * general vs flat-top split ($efe0..$f13c)
+      * per-edge 16.16 slope via _fixed_slope ($f000)
+      * the "force colourByte 0x1c" rule ($f072/$f154): general -> when
+        slope(top->bot) > slope(top->mid) i.e. the mid vertex is a LEFT vertex;
+        flat-top -> when the right apex X < the left apex X
+      * the mid-vertex slope switch: the edge on the mid vertex's side reloads
+        its slope to slope(mid->bot) at scanline (mid.y - top.y) ($e42a/$e43e
+        run-counter expiry consuming record[20]/[22])
+      * water shimmer: colour += tick if colour < 0x0c  ($fccc adds this before
+        the call; kept here since walk_q3 passes the raw plane byte)
+
+    The $e420 partial-word edge masks ($ec62 clears the leftmost k bits, $eca2
+    keeps the leftmost k+1) reduce -- for a per-pixel index buffer -- to exactly
+    "pixel x is drawn iff ixL <= x <= ixR", where ixL/ixR are the 16.16 edge
+    accumulators truncated to integer (>>16).  So _dda_walk needs only the DDA;
+    no planar masking.
     """
     v = _cyclic_ysort([p0, p1, p2])
+    v = [(int(round(x)), int(round(y))) for (x, y) in v]
     (x0, y0), (x1, y1), (x2, y2) = v
-    if y0 == y2:
-        return                                    # degenerate ($f13c rts)
+    if y0 == y2 and y0 == y1:
+        return                                     # degenerate ($f13c rts)
 
     if colour < 0x0C:
         colour = (colour + tick) & 0xFF
 
-    if y0 == y1:                                   # flat-top ($f138 -> $f154)
-        if x1 < x0:
+    # ---- flat-top ($f138), incl. the $f134 reorder when bot.y == top.y ----
+    if y1 == y0 or y2 == y0:
+        if y2 == y0 and y1 != y0:                   # $f134: (top,mid,bot)->(bot,top,mid)
+            (x0, y0), (x1, y1), (x2, y2) = (x2, y2), (x0, y0), (x1, y1)
+        if y1 != y0:
+            return
+        h = y2 - y0
+        if h <= 0:
+            return
+        xl, xr = x0, x1
+        if xr < xl:                                 # $f154
+            xl, xr = xr, xl
             colour = 0x1C
-    else:                                          # general ($f06c)
-        s1 = (x1 - x0) / (y1 - y0)
-        s2 = (x2 - x0) / (y2 - y0)
-        if s2 > s1:                                # v1 is already the left edge
-            colour = 0x1C
-
-    top_y = int(math.floor(y0))
-    _tri_fill(idxbuf, cov, dith, (x0, y0), (x1, y1), (x2, y2), colour, top_y)
-
-
-def _tri_fill(idxbuf, cov, dith, a, b, c, colour, top_y):
-    pts = sorted([a, b, c], key=lambda q: q[1])
-    (x0, y0), (x1, y1), (x2, y2) = pts
-    if y2 == y0:
+        _dda_walk(idxbuf, cov, dith, colour, y0, h,
+                  xl, _fixed_slope(x2 - xl, h), None, 0,
+                  xr, _fixed_slope(x2 - xr, h), None, 0)
         return
 
-    def ex(pa, pb, y):
-        (xa, ya), (xb, yb) = pa, pb
-        return xa if yb == ya else xa + (xb - xa) * (y - ya) / (yb - ya)
+    # ---- general: apex v0, other two = v1 (cyclic 2nd), v2 (cyclic 3rd) ----
+    # $ef62 does NOT fully sort -- the cyclic Y sort only rotates the min-Y
+    # vertex to the front, so y2 >= y1 is NOT guaranteed. Both non-apex edges
+    # are walked from the apex ($f000 for v1 -> D4, $f036 for v2 -> D5) and the
+    # run counters record[8]=dy1 / record[14]=dy2 decide (via $e42a/$e43e) which
+    # edge reloads its slope first -- i.e. the shorter edge bends toward the
+    # farther vertex at its own scanline. Triangle height = max(dy1, dy2).
+    dy1 = y1 - y0
+    dy2 = y2 - y0
+    s1 = _fixed_slope(x1 - x0, dy1)                 # apex -> v1  ($f000 -> D4)
+    s2 = _fixed_slope(x2 - x0, dy2)                 # apex -> v2  ($f036 -> D5)
+    if s1 == s2:
+        return                                     # $f06e beq $f13c
 
-    for y in range(max(0, int(math.floor(y0))), min(H - 1, int(math.ceil(y2))) + 1):
-        if y < y1:
-            xa, xb = ex(pts[0], pts[2], y), ex(pts[0], pts[1], y)
-        else:
-            xa, xb = ex(pts[0], pts[2], y), ex(pts[1], pts[2], y)
-        if xa > xb:
-            xa, xb = xb, xa
+    # $f072 bgt $f07a: D5 > D4 i.e. s2 > s1 -> v1 is the LEFT vertex, force 0x1c,
+    # no exg. else -> exg (v2 is the left vertex).
+    #   edge = (startX, slope, run, nearVertex, farVertex)
+    if s2 > s1:
+        colour = 0x1C
+        left = (x0, s1, dy1, (x1, y1), (x2, y2))
+        right = (x0, s2, dy2, (x2, y2), (x1, y1))
+    else:
+        left = (x0, s2, dy2, (x2, y2), (x1, y1))
+        right = (x0, s1, dy1, (x1, y1), (x2, y2))
+
+    total_rows = max(dy1, dy2)
+
+    def edge(e):
+        xs, sl, run, (ax, ay), (bx, by) = e
+        if run < total_rows and by > ay:           # bends at its own scanline
+            return xs, sl, run, _fixed_slope(bx - ax, by - ay)
+        return xs, sl, None, 0
+
+    xLs, sL, swL, sL2 = edge(left)
+    xRs, sR, swR, sR2 = edge(right)
+    _dda_walk(idxbuf, cov, dith, colour, y0, total_rows,
+              xLs, sL, swL, sL2, xRs, sR, swR, sR2)
+
+
+def _dda_walk(idxbuf, cov, dith, colour, top_y, total_rows,
+              xL, sL, switchL, sL2, xR, sR, switchR, sR2):
+    """port of $e420. Two 16.16 X accumulators stepped one slope per scanline;
+    the switching edge reloads its slope at row `switch`.  Row 0 (top_y) uses
+    the initial X with no step ($e41a `bra $e456`).  Per scanline fill the
+    integer span [ixL, ixR]; abort the whole triangle if ixR < ixL
+    ($e466 sub / $e468 bra $e41e)."""
+    pL = xL << 16
+    pR = xR << 16
+    for row in range(total_rows + 1):
+        if row:
+            pL += sL
+            pR += sR
+        if switchL is not None and row == switchL:
+            sL = sL2
+        if switchR is not None and row == switchR:
+            sR = sR2
+        y = top_y + row
+        if not (0 <= y < H):
+            continue
+        ixL = pL >> 16
+        ixR = pR >> 16
+        if ixR < ixL:
+            return
+        if ixL > 0xFF:                             # $ef62 clip: screenX <= 255
+            continue                               # wholly past the iso window
+        xs = max(0, ixL)
+        xe = min(W - 1, min(ixR, 0xFF))            # clamp to the iso window edge
         base = y * W
-        for x in range(max(0, int(math.floor(xa))),
-                       min(W - 1, int(math.floor(xb))) + 1):
-            idxbuf[base + x] = dither_index(dith, colour, top_y, y, x)
+        for x in range(xs, xe + 1):
+            idxbuf[base + x] = dither_index(dith, colour, y, x)
             cov[base + x] = 1
 
 
@@ -491,16 +589,9 @@ def walk_q3(idxbuf, cov, R):
                     ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
 
 
-def render_faithful(ram_path: Path, dom):
-    R = load_ram(ram_path)
-    idxbuf = bytearray(W * H)
-    cov = bytearray(W * H)
-    walk_q3(idxbuf, cov, R)
-    ref = R["ref"]
-
+def _score(idxbuf, cov, ref):
     from collections import Counter
-    exact = tot = 0
-    near = 0
+    exact = near = tot = 0
     mine_h, ref_h = Counter(), Counter()
     for i in range(W * H):
         if not cov[i]:
@@ -512,19 +603,29 @@ def render_faithful(ram_path: Path, dom):
             exact += 1
         elif abs(idxbuf[i] - ref[i]) <= 1:
             near += 1
-    print(f"  faithful walk_q3 + ef62 (corners from RAM $3f364, +{R['x_inset']}px inset)")
+    return exact, near, tot, mine_h, ref_h
+
+
+def render_faithful(ram_path: Path, dom):
+    R = load_ram(ram_path)
+    ref = R["ref"]
+    idxbuf = bytearray(W * H)
+    cov = bytearray(W * H)
+    walk_q3(idxbuf, cov, R)
+    exact, near, tot, mine_h, ref_h = _score(idxbuf, cov, ref)
+
+    print(f"  faithful walk_q3 + ef62 + $e420 DDA (corners from RAM $3f364, "
+          f"+{R['x_inset']}px inset)")
     print(f"    terrain pixels drawn : {tot}")
     print(f"    exact palette index  : {exact} ({100*exact/max(tot,1):.1f}%)")
-    print(f"    within +-1 index     : {exact+near} ({100*(exact+near)/max(tot,1):.1f}%)")
+    print(f"    within +-1 index     : {exact+near} "
+          f"({100*(exact+near)/max(tot,1):.1f}%)")
     print(f"    mine idx dist : {dict(sorted(mine_h.items()))}")
     print(f"    ref  idx dist : {dict(sorted(ref_h.items()))}")
-    print(f"    verdict (79th): walk_q3 covers 96% of the game's actual terrain")
-    print(f"      layer (composed frame vs the $78000 master differ ONLY in the")
-    print(f"      island blob + sprites -- there is NO separate 'sea fill inside")
-    print(f"      the diamond'; the sea + border + black are all baked into the")
-    print(f"      $78000 master, built once at mission load). The residual is the")
-    print(f"      dither phase (DITHER_COLOUR_BIAS -1, empirical) + $e420 sub-pixel")
-    print(f"      edges (floor()'d here). SPEC.md 4/7/9.")
+    print(f"    80th: $e420 DDA span walker + the mod-128 dither wrap ported; "
+          f"DITHER_COLOUR_BIAS removed.")
+    print(f"    residual: unit sprites (walk_q3 is terrain-only) + the tall "
+          f"0x1c coast slopes (game spreads idx 1-7) + a ~1px NE edge.")
     return idxbuf, cov, ref, R
 
 
@@ -675,11 +776,11 @@ def main():
     print(f"  dither idx dist  ref : {dict(sorted(ref_h.items()))}")
     print(f"  verdict: this --assets path uses the NAIVE quadrant-0 walk + a\n"
           f"           float scanline fill -- a shape proof only. Use --ram for\n"
-          f"           the faithful quadrant-3 port (~78%% exact-index, 96%%\n"
-          f"           terrain coverage). The dither phase formula is\n"
-          f"           A5 = $2e000 + colourByte*128 + (topY&15)*8 + 8*(y-topY),\n"
-          f"           verified byte-exact vs the live $f1e2 record, + an\n"
-          f"           empirical colourByte-1 (DITHER_COLOUR_BIAS). SPEC.md 4/7/9.")
+          f"           the faithful quadrant-3 port + the $e420 DDA span walker\n"
+          f"           (~94%% exact-index, 92%% terrain coverage). The dither\n"
+          f"           phase is A5 = $2e000 + colourByte*128 + ((8*y) mod 128),\n"
+          f"           live-traced from $e420 (the roll wraps inside the\n"
+          f"           colour's 128-byte slot). SPEC.md 4/7/9.")
 
     rgb = [tuple(dom[bufd[i]]) if covd[i] else (255, 0, 255) for i in range(W * H)]
     fp = Path(args.out)
