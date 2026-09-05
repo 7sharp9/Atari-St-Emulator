@@ -725,6 +725,61 @@ Palette: one 16-colour shifter palette for the whole iso view
    tall `0x1c` coast slopes (the game dithers idx 1-7, the port lands nearer
    flat idx 1 — needs the multi-segment slope-of-slope chain past the single
    mid-vertex switch `_dda_walk` models), and a ~1 px NE island edge.
+   **85th (continued): the `0x1c` coast-slope theory is WRONG for yaw `$f0`
+   — corrected, don't reuse.** Instrumented `walk_q3` to track, per final
+   pixel, which draw call last owns it (proper painter's-order occlusion,
+   cross-checked against the official 14469-pixel score). Result: every
+   tall `0x1c`-forced triangle checked (up to 32 scanlines, both in
+   `pm78_settle` and `pm83_q1c`) has **zero surviving pixels** in the final
+   composite — nearer cells always fully overdraw them. Across the whole
+   `pm78_settle` frame only **12 of 14469** drawn pixels are finally
+   `0x1c`-owned; that colour doesn't even appear in the top mismatch list.
+   **The real yaw-`$f0` residual is overwhelmingly unit sprites**: mismatched
+   pixels (810 total, 5.6% of drawn) form **44 connected components, and just
+   8 of them account for 94% of all mismatches** — several with bounding
+   boxes matching the documented 8×11 sprite format almost exactly (e.g. 8×11
+   at (128,78), 9×8 at (109,93)); the largest few (35×15, 18×12) plausibly
+   read as clusters of adjacent sprites (a group of units/animals), not
+   terrain. This means Task 2 (sprite rip, §9 item 3, still NOT STARTED) is
+   the actual path to closing yaw-`$f0`'s ≈6% gap, not further rasteriser
+   work — also ruled out (live-checked, not guessed) two more candidate
+   causes for the record[20]/[22] mechanism: `$e420`'s edge-reload loop reads
+   an arbitrary-length (run,slope) stream from a single pointer shared
+   between both edges, terminating the WHOLE triangle on any zero run-count
+   — a mechanism that could in principle read stale garbage past `$ef62`'s
+   documented 26-byte record and draw a spurious 3rd segment, but the 6
+   spare bytes at record offset 26-31 read **consistently zero across 8 live
+   triangle draws**, so this never fires in practice. Also checked the dither
+   setup's `move.w (A0)+,D6` at `$e3e6`, which reads a WORD at record offset
+   0-1 even though `$ef62` only ever writes the BYTE at offset 0 (colour) —
+   offset 1 could in principle carry stale garbage into the A5 phase
+   calculation, but it reads **consistently `$00` across 6 live triangle
+   draws** too. Neither mechanism is the cause.
+   **New, unresolved lead: q0/q1/q2 have a qualitatively different, much
+   bigger mismatch than yaw `$f0`'s sprite-shaped blobs.** Same
+   connected-component analysis on `pm83_q{0,1,2}c.ram`: 95-97% of all
+   mismatched pixels form **one single giant connected region** spanning
+   most of the drawable window (e.g. q1: 9101 of 9552 mismatched px in one
+   175-225px-wide blob), not sprite-sized clusters. `render_faithful_compare
+   .png` for q1 shows why by eye: the island *silhouette* matches closely,
+   but the real frame's dither shading has a pronounced diagonal banding
+   texture the port's reproduces much more faintly — the diff panel shows
+   diagonal red/green *stripes* over most of the hill, not a uniform wash.
+   The error-magnitude histogram is bimodal: ~52% of mismatches are exactly
+   ±1 index (consistent with a phase-off-by-a-bit issue), but ~39% are large
+   swaps (mostly ref 6-13 steps *darker* than the port, echoing the 84th's
+   "green vs black" framing at a much larger scale) — suggests the shared
+   `ef62Raster`/`ddaWalk` dither-phase formula (verified only against ONE
+   live-traced yaw-`$f0` triangle, 80th pass) may not generalise to whatever
+   `colourByte`/`topY`/`HBIAS` combinations these other yaws actually
+   produce. **Not yet traced** — needs a live single-step of an actual q1/q2
+   triangle's dither A5 sequence compared row-by-row against
+   `pm_render_ref.py`'s computed sequence for the same triangle, which is a
+   fresh investigation, not a continuation of the (now closed) `0x1c`
+   coast-slope lane. This is very likely also the real explanation for the
+   84th's green-vs-black anomaly (same "port lighter than ref" direction,
+   same camera-anchor region falls inside q2's giant blob) but that
+   connection is inferred, not traced — don't state it as confirmed.
    **84th: an unexplained green-vs-black mismatch**, found but not resolved —
    on `pm83_q2c.ram`, screen rows y≥155 near the iso window's right edge
    render solid green in the port where the reference shows near-black, for

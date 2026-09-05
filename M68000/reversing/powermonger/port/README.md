@@ -28,6 +28,30 @@ prints the block-mean dE and the per-index distribution vs the reference.
 
 ## Verification status (85th pass)
 
+- **Continued (same pass): the `0x1c` coast-slope residual theory is wrong,
+  corrected.** Instrumented `walk_q3` with proper painter's-order occlusion
+  tracking (cross-checked against the official pixel count). Every tall
+  `0x1c`-forced coast triangle checked has **zero surviving pixels** in the
+  final composite (nearer cells always fully overdraw them) — only 12/14469
+  drawn pixels in `pm78_settle` end up `0x1c`-owned. **The real yaw-`$f0`
+  residual is unit sprites**: 8 of 44 connected mismatch components account
+  for 94% of all mismatches, several matching the documented 8×11 sprite
+  bounding box almost exactly. Task 2 (sprite rip, never started) is the
+  real path to closing this gap, not more rasteriser work. Also live-ruled-
+  out two more candidate causes for a hidden multi-segment mechanism (an
+  arbitrary-length edge-reload stream reading stale data past `$ef62`'s
+  record, and a garbage byte at record offset 1) — both read consistently
+  zero across 6-8 live triangle draws, neither fires in practice.
+  **New open lead, not yet traced**: q0/q1/q2 have a qualitatively different
+  mismatch — 95-97% of their mismatched pixels form ONE giant connected
+  region (not sprite-sized blobs), and the diff panel shows a diagonal
+  stripe/banding pattern suggesting the shared dither-phase formula
+  (verified against only one yaw-`$f0` triangle in the 80th pass) may not
+  generalise to other yaws' colour/topY/HBIAS combinations. This plausibly
+  subsumes the 84th's green-vs-black anomaly but that link is inferred, not
+  traced. See SPEC.md §9 item 1 for the full breakdown. No code changed this
+  half of the pass — findings only.
+
 - **Found + fixed a real ~64px right-edge under-clip / left-shift framing bug**
   (distinct from, and not the explanation for, the 84th's unexplained
   green-vs-black anomaly — see below). SPEC.md §3 already documents that
