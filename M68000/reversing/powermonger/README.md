@@ -403,6 +403,34 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     known, low-priority limitation showing up more at other camera angles,
     not a new geometry bug, via the live-trace check above.
 
+21. The 85th pass **fixes a real right-edge clip/framing bug** (doc + tooling
+    + port only — no emulator change) found while chasing the 84th's
+    unexplained green-vs-black anomaly. `SPEC.md` §3 already documented that
+    `$ef62`'s own `screenX <= 255` clip runs on the *raw* `$3f364` vertex,
+    before the `+64` HUD-strip inset applied later via the `$e420` draw
+    pointer — but `pm_render_ref.py --ram`'s scoring path baked the inset
+    into the corners *before* rasterising and then applied that same `<=255`
+    bound, truncating the true window's right ~64px on every score.
+    `ef62_raster`/`_dda_walk` now take an `x_inset` parameter so the clip
+    bound shifts with the coordinate space it's given. `TerrainView.cs` had
+    the mirror bug at the opposite end of the port's pipeline — `Fill.fs`/
+    `Projection.fs` stay in raw space throughout (matching `$ef62` itself),
+    but the Godot blit read the buffer at `(x,y)` instead of `(x-64,y)`,
+    rendering the whole terrain layer 64px too far left. Fixed the same way
+    (shift at blit time) and **verified with a real GPU screenshot** at yaw
+    step 11 — the island silhouette visibly shifts right by the expected
+    amount. Cross-checked the two fixes are the same fix at different
+    pipeline stages: a synthetic triangle straddling the raw X=255 boundary
+    produces identical covered-pixel sets in raw mode and inset mode, up to
+    the expected `+64` shift. **Exact-index score does not improve for
+    q0/q1/q2** from this — it's a coverage fix, not an accuracy fix, and the
+    newly-drawn strip is dominated by the still-open coast-slope dither
+    residual — but the absolute count of correctly-matched pixels goes up for
+    every capture. **Ruled out both of the 84th's candidate causes for the
+    green-vs-black anomaly**: neither `$f202` nor this clip bug can be it —
+    the affected cells' own vertices never approach either clip boundary in
+    either direction. That anomaly's cause remains open (`SPEC.md` §9 item 1).
+
 ## Files
 
 | file | what |

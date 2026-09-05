@@ -26,6 +26,65 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (85th pass)
+
+- **Found + fixed a real ~64px right-edge under-clip / left-shift framing bug**
+  (distinct from, and not the explanation for, the 84th's unexplained
+  green-vs-black anomaly — see below). SPEC.md §3 already documents that
+  `$ef62`'s own clip check (`screenX <= 255`) runs on the *raw* `$3f364`
+  vertex, before the `+64` HUD-strip inset that only gets applied later via
+  the `$e420` draw pointer (`$e3e2`). `pm_render_ref.py --ram`'s `load_ram`
+  bakes the `+64` inset into the corners *before* calling `ef62_raster`, so
+  its old hardcoded `screenX <= 0xFF` clip was checking the wrong
+  (already-shifted) coordinate — truncating the real iso window's right
+  ~64px on every `--ram` score. `ef62_raster`/`_dda_walk` now take an
+  `x_inset` parameter and clip against `[x_inset, x_inset+0xFF]`; callers on
+  raw (non-inset) coordinates default to the old `[0, 0xFF]` behaviour
+  unchanged (verified byte-exact equivalent to the raw-space clip shifted by
+  `+64`, `scratchpad/` synthetic check). `TerrainView.cs` had the mirror bug
+  the other way — `Fill.fs`/`Projection.fs` stay in raw (pre-inset) space
+  throughout (matching `$ef62`'s own clip), so the live Godot blit was
+  reading the buffer at `(x, y)` directly instead of `(x - 64, y)`, rendering
+  the whole terrain layer 64px too far left and leaving the true right ~64px
+  of the window always magenta. Fixed the same way (shift at blit time,
+  mirroring the real `$e3e2` pointer offset) and **verified with a real GPU
+  screenshot** at yaw step 11 (q2): the island silhouette visibly shifts
+  right by the expected amount vs the 83rd's pre-fix shot
+  (`assets/reference/godot_screenshot_yaw11_q2_85th.png` vs `_yaw11_q2.png`).
+- **Effect on scoring is mixed, and that's expected, not a red flag.**
+  `pm78_settle` (q3, yaw `$f0`) ticks up slightly (94.0% -> 94.4% exact-index,
+  regression gate held). q0/q1/q2 exact-index moves *down*
+  (49.7%->46.6%, 47.3%->44.6%) or flat (35.4%->35.4%) even though the
+  **absolute count of correctly-matched pixels went up for every capture**
+  (q0 6436->6815, q1 7050->7690, q2 3952->4386) — the fix draws ~1200-2300
+  more pixels per capture in the newly-un-clipped right strip, most of which
+  really are terrain in the reference frame (51-70% idx 11-13 in that strip,
+  confirmed against the real captured `$1c700`/`$24400` buffer, not
+  inferred), but that strip is dominated by the *already-documented*,
+  *still-open* coast-slope dither residual (SPEC.md §9 item 1), so its
+  per-pixel accuracy is low. The exact-index percentage is the wrong lens for
+  this fix; treat it as closing a real geometry gap, not as progress on the
+  dither residual.
+- **Did NOT explain the 84th's specific green-vs-black anomaly** (cells
+  (36,47)/(37,47)/(38,47) in `pm83_q2c.ram`, screen y>=155 near the iso
+  window's right edge). Checked directly: those cells' own raw
+  (pre-inset) screen-X tops out around 210 — nowhere near either the old
+  (255) or corrected (255, same bound, just applied in the right space)
+  clip boundary, in either direction. **Also ruled out `$f202`
+  vertex-clip-and-resubmit for these specific cells** the same way: none of
+  their corners' raw X/Y ever leaves `$ef62`'s `[0,255]x[0,199]` in-bounds
+  test, so the real hardware never routes them through `$f202` either. The
+  anomaly's actual cause is still open — see SPEC.md §9 item 1 for the
+  current best guess (still the coast-slope dither residual, now more
+  exposed since more of the true drawing area is attempted).
+- `pm_render_ref.py`'s cross-check: a synthetic triangle straddling the raw
+  X=255 boundary, rasterised once in raw mode (`x_inset=0`) and once in
+  inset mode (`x_inset=64`, corners pre-shifted +64 like `load_ram` does) —
+  the two covered-pixel sets are identical after a `+64` shift (56/56 pixels,
+  exact), proving the `pm_render_ref.py`-side fix and the `TerrainView.cs`
+  shift-at-blit fix are the same fix applied at two different pipeline
+  stages, not two different behaviours.
+
 ## Verification status (83rd pass)
 
 - **All 4 yaw-quadrant grid-walk handlers are ported and wired in.**

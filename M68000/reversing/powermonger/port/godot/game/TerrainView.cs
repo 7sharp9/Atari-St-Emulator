@@ -118,13 +118,23 @@ public partial class TerrainView : Node2D
         var buf = Fill.Buffer.Create();
         Fill.walk(buf, _dither, corners, _map, _camX, _camY, 0, _yawSteps);
 
+        // Fill.Buffer is in RAW $3f364 coordinates (0..255, same space $ef62's
+        // own clip checks) -- Projection.fs does NOT add the +64px HUD-strip
+        // inset (SPEC.md 3 "Draw inset": screenX = $3f364.sx + 64, applied at
+        // $e420's own draw pointer, not baked into the vertex/accumulator).
+        // Reading buf at (x - XInset) here does the same shift the real
+        // hardware's $e3e2 pointer offset does (85th pass -- previously this
+        // read buf at (x,y) directly, rendering the terrain 64px too far left
+        // and leaving the true right ~64px of the window always blank).
+        const int XInset = 64;
         var img = Image.CreateEmpty(Fill.ScreenWidth, Fill.ScreenHeight, false, Image.Format.Rgb8);
         for (int y = 0; y < Fill.ScreenHeight; y++)
         {
             for (int x = 0; x < Fill.ScreenWidth; x++)
             {
-                int i = y * Fill.ScreenWidth + x;
-                img.SetPixel(x, y, buf.Covered[i] ? _palette[buf.Index[i] & 0x0f] : Uncovered);
+                int bx = x - XInset;
+                bool covered = bx >= 0 && bx < Fill.ScreenWidth && buf.Covered[y * Fill.ScreenWidth + bx];
+                img.SetPixel(x, y, covered ? _palette[buf.Index[y * Fill.ScreenWidth + bx] & 0x0f] : Uncovered);
             }
         }
         _rect.Texture = ImageTexture.CreateFromImage(img);

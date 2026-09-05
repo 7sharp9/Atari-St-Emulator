@@ -418,7 +418,7 @@ def _fixed_slope(dx, dy):
     return -val if dx < 0 else val
 
 
-def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick):
+def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick, x_inset=0):
     """port of pm_tri_raster ($ef62) -> the $e420 DDA span walker.
 
     $ef62 ($efbe..$f1de): cyclic-rotate Y sort, then build a span record and
@@ -440,6 +440,14 @@ def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick):
     "pixel x is drawn iff ixL <= x <= ixR", where ixL/ixR are the 16.16 edge
     accumulators truncated to integer (>>16).  So _dda_walk needs only the DDA;
     no planar masking.
+
+    `x_inset` (85th pass): $ef62's own clip (screenX <= 255, SPEC.md 4) is
+    checked against the RAW $3f364 vertex -- p0/p1/p2 here are ALREADY +64
+    px inset (load_ram adds it before building the corners dict, SPEC.md 3,
+    "Draw inset") when called from the --ram path, so the window in THIS
+    coordinate space is [x_inset, x_inset+0xFF], not [0, 0xFF]. Callers on
+    raw (non-inset) coordinates -- the synthetic cross-checks -- pass the
+    default 0 and get the old [0, 0xFF] behaviour unchanged.
     """
     v = _cyclic_ysort([p0, p1, p2])
     v = [(int(round(x)), int(round(y))) for (x, y) in v]
@@ -465,7 +473,8 @@ def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick):
             colour = 0x1C
         _dda_walk(idxbuf, cov, dith, colour, y0, h,
                   xl, _fixed_slope(x2 - xl, h), None, 0,
-                  xr, _fixed_slope(x2 - xr, h), None, 0)
+                  xr, _fixed_slope(x2 - xr, h), None, 0,
+                  x_inset=x_inset)
         return
 
     # ---- general: apex v0, other two = v1 (cyclic 2nd), v2 (cyclic 3rd) ----
@@ -504,16 +513,24 @@ def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick):
     xLs, sL, swL, sL2 = edge(left)
     xRs, sR, swR, sR2 = edge(right)
     _dda_walk(idxbuf, cov, dith, colour, y0, total_rows,
-              xLs, sL, swL, sL2, xRs, sR, swR, sR2)
+              xLs, sL, swL, sL2, xRs, sR, swR, sR2,
+              x_inset=x_inset)
 
 
 def _dda_walk(idxbuf, cov, dith, colour, top_y, total_rows,
-              xL, sL, switchL, sL2, xR, sR, switchR, sR2):
+              xL, sL, switchL, sL2, xR, sR, switchR, sR2, x_inset=0):
     """port of $e420. Two 16.16 X accumulators stepped one slope per scanline;
     the switching edge reloads its slope at row `switch`.  Row 0 (top_y) uses
     the initial X with no step ($e41a `bra $e456`).  Per scanline fill the
     integer span [ixL, ixR]; abort the whole triangle if ixR < ixL
-    ($e466 sub / $e468 bra $e41e)."""
+    ($e466 sub / $e468 bra $e41e).
+
+    $ef62's clip window is [0, 0xFF] in RAW $3f364 space; if the caller's
+    coordinates are already +x_inset (--ram path, see ef62_raster's doc),
+    the window shifts to [x_inset, x_inset+0xFF] (85th pass -- previously
+    this clipped at the wrong, un-shifted bound, truncating the iso window's
+    right ~x_inset px on every --ram score)."""
+    win_lo, win_hi = x_inset, x_inset + 0xFF
     pL = xL << 16
     pR = xR << 16
     for row in range(total_rows + 1):
@@ -531,10 +548,10 @@ def _dda_walk(idxbuf, cov, dith, colour, top_y, total_rows,
         ixR = pR >> 16
         if ixR < ixL:
             return
-        if ixL > 0xFF:                             # $ef62 clip: screenX <= 255
+        if ixL > win_hi:                            # $ef62 clip: screenX <= 255
             continue                               # wholly past the iso window
-        xs = max(0, ixL)
-        xe = min(W - 1, min(ixR, 0xFF))            # clamp to the iso window edge
+        xs = max(0, win_lo, ixL)
+        xe = min(W - 1, win_hi, ixR)                # clamp to the iso window edge
         base = y * W
         for x in range(xs, xe + 1):
             idxbuf[base + x] = dither_index(dith, colour, y, x)
@@ -561,6 +578,7 @@ def walk_q3(idxbuf, cov, R):
     cn = R["corners"]
     P = R["planes"]
     dith, tick = R["dith"], R["tick"]
+    xi = R.get("x_inset", 0)
 
     def packed(q):
         return (q[0] << 16) | (q[1] & 0xFFFF)
@@ -578,15 +596,15 @@ def walk_q3(idxbuf, cov, R):
             typ = P["typ"](cx, cy)
             hgt = P["hgt"](cx, cy)
             if not (P["flg"](cx, cy) & 0x80):
-                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick)
-                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick)
+                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi)
+                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi)
             else:
                 if packed(C01) <= packed(C10):
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
                 else:
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
 
 
 def walk_q0(idxbuf, cov, R):
@@ -618,6 +636,7 @@ def walk_q0(idxbuf, cov, R):
     cn = R["corners"]
     P = R["planes"]
     dith, tick = R["dith"], R["tick"]
+    xi = R.get("x_inset", 0)
 
     def packed(q):
         return (q[0] << 16) | (q[1] & 0xFFFF)
@@ -636,14 +655,14 @@ def walk_q0(idxbuf, cov, R):
             hgt = P["hgt"](cx, cy)
             if not (P["flg"](cx, cy) & 0x80):
                 if packed(C11) <= packed(C00):
-                    ef62_raster(idxbuf, cov, dith, C00, C11, C01, hgt, tick)
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C11, typ, tick)
+                    ef62_raster(idxbuf, cov, dith, C00, C11, C01, hgt, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C11, typ, tick, x_inset=xi)
                 else:
-                    ef62_raster(idxbuf, cov, dith, C11, C00, C10, typ, tick)
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C00, hgt, tick)
+                    ef62_raster(idxbuf, cov, dith, C11, C00, C10, typ, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C00, hgt, tick, x_inset=xi)
             else:
-                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
-                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
+                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
 
 
 def walk_q1(idxbuf, cov, R):
@@ -666,6 +685,7 @@ def walk_q1(idxbuf, cov, R):
     cn = R["corners"]
     P = R["planes"]
     dith, tick = R["dith"], R["tick"]
+    xi = R.get("x_inset", 0)
 
     def packed(q):
         return (q[0] << 16) | (q[1] & 0xFFFF)
@@ -683,15 +703,15 @@ def walk_q1(idxbuf, cov, R):
             typ = P["typ"](cx, cy)
             hgt = P["hgt"](cx, cy)
             if not (P["flg"](cx, cy) & 0x80):
-                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick)
-                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick)
+                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi)
+                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi)
             else:
                 if packed(C01) < packed(C10):
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
                 else:
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
 
 
 def walk_q2(idxbuf, cov, R):
@@ -714,6 +734,7 @@ def walk_q2(idxbuf, cov, R):
     cn = R["corners"]
     P = R["planes"]
     dith, tick = R["dith"], R["tick"]
+    xi = R.get("x_inset", 0)
 
     def packed(q):
         return (q[0] << 16) | (q[1] & 0xFFFF)
@@ -732,14 +753,14 @@ def walk_q2(idxbuf, cov, R):
             hgt = P["hgt"](cx, cy)
             if not (P["flg"](cx, cy) & 0x80):
                 if packed(C11) <= packed(C00):
-                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick)
-                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick)
+                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi)
                 else:
-                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick)
-                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick)
+                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi)
             else:
-                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick)
-                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick)
+                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
+                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
 
 
 def walk_by_yaw(idxbuf, cov, R):

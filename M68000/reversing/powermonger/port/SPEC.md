@@ -236,6 +236,19 @@ pointer) = `compose_buffer + 0x20` bytes = **+64 screen pixels**. So the final
 `screenX = $3f364.sx + 64`. The left 64 px is the HUD portrait / compass strip.
 `pm_render_ref.py` reads the inset back as `($e3e2 & 0x3f) * 2`.
 
+**The clip check runs on the RAW, pre-inset value (85th).** `$ef62`'s own
+`screenX <= 255` clip (§4) applies to `$3f364.sx` directly, before the `+64`
+above -- i.e. the real window is `raw sx in [0,255]`, which is `absolute
+screenX in [64,319]`, not `[0,255]`. `pm_render_ref.py`'s `--ram` path used to
+apply the `<=255` bound to the already-inset-shifted coordinate, truncating
+the true window's right ~64 px on every score; fixed by threading `x_inset`
+through `ef62_raster`/`_dda_walk` so the clip bound shifts with the
+coordinate space it's given (`port/README.md` 85th). `Fill.fs`/`Projection.fs`
+never had this bug -- they stay in raw space throughout, matching `$ef62`
+itself -- but `TerrainView.cs`'s blit read the buffer at `(x,y)` instead of
+`(x-64,y)`, which is the same bug at the opposite end of the pipeline (fixed
+the same pass, verified with a real screenshot).
+
 All arithmetic is 16.16-ish fixed point on the 68000 (`muls`/`divs`, `>>15` via
 `add.l`+`swap`). A port does it in float; the `>>15` after the rotate keeps
 `rx, ry` in world-pixel units.
@@ -712,11 +725,35 @@ Palette: one 16-colour shifter palette for the whole iso view
    tall `0x1c` coast slopes (the game dithers idx 1-7, the port lands nearer
    flat idx 1 — needs the multi-segment slope-of-slope chain past the single
    mid-vertex switch `_dda_walk` models), and a ~1 px NE island edge.
+   **84th: an unexplained green-vs-black mismatch**, found but not resolved —
+   on `pm83_q2c.ram`, screen rows y≥155 near the iso window's right edge
+   render solid green in the port where the reference shows near-black, for
+   large (33-36 scanline) legitimately-grass cells right at the camera-anchor
+   corner ((36,47)/(37,47)/(38,47)). **85th ruled out both of the 84th's
+   candidate causes**: `$f202` vertex-clip-and-resubmit never fires for these
+   cells (their raw screenX tops out ≈210, well inside `$ef62`'s [0,255]
+   bound), and the right-edge clip/framing bug fixed this pass doesn't touch
+   this region either (same reason — nowhere near either clip boundary). Cause
+   still open; next candidate is the coast-slope dither residual itself
+   (spreading further at this camera angle than modelled) or a capture-
+   specific settle artifact (`pm83_q2c.ram` was reached via 16 synthetic
+   rotation pulses, not natural mission startup like `pm78_settle.ram`).
    **81st: ported to F# unchanged** — `port/godot/logic/Fill.fs`, cross-verified
    byte-exact against `pm_render_ref.py` on synthetic data. **83rd: q0/q1/q2
    added to `Fill.fs` the same way**, wired into `TerrainView.cs` behind
    `Fill.walk`/PageUp/PageDown, and verified with real Godot screenshots at
    yaw steps 3 and 11 (`assets/reference/godot_screenshot_yaw{3_q0,11_q2}.png`).
+   **85th: fixed a real, separate right-edge clip/framing bug** (the window's
+   true right edge is absolute screenX 319, not 255 — see "The clip check
+   runs on the RAW, pre-inset value" above) in both `pm_render_ref.py --ram`
+   and `TerrainView.cs`'s blit, verified with a real Godot screenshot showing
+   the expected shift. Exact-index score on q0/q1/q2 does **not** improve
+   from this (it is a coverage fix, not an accuracy fix, and the newly-drawn
+   strip is dominated by the residual below) — see `port/README.md` 85th for
+   the full breakdown. Still does **not** explain the specific
+   green-vs-black mismatch noted below (checked and ruled out: those cells'
+   own vertices never approach either the old or the corrected clip
+   boundary).
 2. **Dither phase — CLOSED (80th).** Full span walker disassembled
    (`$e3e6`→`$e5a6`) and live single-stepped. `A5` wraps **modulo 128** inside
    the colour's slot (`$e44a`'s `addq.b #8` on `2*A5` byte-overflows at
