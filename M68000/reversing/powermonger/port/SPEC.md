@@ -966,11 +966,28 @@ Palette: one 16-colour shifter palette for the whole iso view
    (with a selected-group gate). **Four sheets, all decoded**: `$33000` 8x11
    byte-planes (352 frames), `$312a0` 16x16 and `$37c7c` 32x24 word-planes --
    the last two decode cleanly as small structures/siege-engines and
-   buildings/trees. **Still open (88th):** exact frame *counts* per category;
-   the cat-2 `[$57fd0]` offset table; the `$11886` goods table; cat 1/15
-   detail; the packed-corner word order (X hi vs lo -- resolve on wiring);
-   then `pm_render_ref.py` entity compositing + `Sprites.fs` wiring + a
-   byte-exact cross-check (Targets 3-4, not started).
+   buildings/trees.
+   **87th (cont.): `pm_render_ref.py` grew an entity compositor** --
+   `_decode_frame_byte`/`_decode_frame_word` (all 3 sheets), object-record
+   parse from `$51b66`, per-cell bucketing, the `$11f1a` sub-cell lerp + a
+   4-corner centroid, and `_entity_frame` (cats 0/2/3/4/7/13/14). It runs as a
+   **diagnostic only** (on a copy -- it currently *lowers* the score, 94.4% ->
+   92.3%, so it is not composited into the output). **Two blockers found:**
+   (a) `pm78_settle`'s dominant visible entity is a **26-record cat-14
+   marching group** (`b31 = 0x68`, chained across cells 39-41 / 50-52) whose
+   **draw path is not confirmed** -- `$11b0c` (the disasm-derived cat-14
+   handler) had **zero calls** in the 87th's frame trace, so cat 14 is drawn
+   some other way (the `$16738`/`$e6ee` group path is the prime suspect --
+   `$16738` positions by `record[8]` as a *descriptor-table index*, not a
+   pixel); (b) the cat-2 buildings + cat-7 markers seen in the trace (~20 +
+   ~35 per frame) are **not in `$51b66`** -- they come from a separate scenery
+   / settlement array (`$4f916`?) that also feeds the `$47970` buckets.
+   **88th:** live-trace what actually draws the cat-14 group and the scenery,
+   fix `_entity_frame` + the anchor, get the re-score to climb, then
+   `Sprites.fs` wiring + a byte-exact cross-check.
+   **Also still open:** exact frame *counts* per category; the cat-2 `[$57fd0]`
+   offset table; the `$11886` goods table; cat 1/15 detail; the packed-corner
+   word order (X hi vs lo).
 4. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
    needs resolving from a live snapshot. Deferred.
 5. **Border / stone-table master, world-map minimap + compass panel.** Not

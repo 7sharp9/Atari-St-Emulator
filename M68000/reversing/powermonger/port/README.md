@@ -58,11 +58,20 @@ prints the block-mean dE and the per-index distribution vs the reference.
   word-planes (small structures / siege engines / effects), `$37c7c` 32×24
   word-planes (buildings + trees), plus the `$e6ee` glyph path. Contact PNGs
   for all three (`*_sheet_contact.png`).
-- **Not done this pass (88th):** exact frame *counts* per category; the cat-2
-  `[$57fd0]` offset table; the `$11886` goods table; cat 1/15 detail; then
-  `pm_render_ref.py` entity compositing + `Sprites.fs` wiring + a byte-exact
-  cross-check (Targets 3–4). No emulator or port-runtime code changed —
-  asset/tooling/doc only.
+- **`pm_render_ref.py` grew an entity compositor** (`_decode_frame_byte` /
+  `_decode_frame_word` for all 3 sheets, `$51b66` record parse, per-cell
+  bucketing, the `$11f1a` sub-cell lerp + a centroid, `_entity_frame` for cats
+  0/2/3/4/7/13/14). It runs as a **diagnostic only** — it currently *lowers*
+  the score (94.4% → 92.3%) so it is not composited in. Two blockers:
+  (a) `pm78_settle`'s main visible entity is a **26-record cat-14 marching
+  group** whose draw path is unconfirmed (`$11b0c` had zero trace calls —
+  cat 14 is drawn some other way); (b) the trace's cat-2/cat-7 scenery is
+  **not in `$51b66`** (a separate settlement/scenery array feeds the buckets).
+- **Not done (88th):** trace the cat-14 + scenery draw paths, fix the
+  compositor, get the re-score climbing; exact frame counts; the cat-2
+  `[$57fd0]` table; the `$11886` goods table; then `Sprites.fs` wiring + a
+  byte-exact cross-check. No emulator or port-runtime code changed —
+  tooling/asset/doc only; the tracked terrain 94.4% is untouched.
 
 ## Verification status (86th pass)
 

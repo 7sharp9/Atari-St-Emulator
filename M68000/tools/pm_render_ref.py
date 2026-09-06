@@ -383,6 +383,31 @@ def load_ram(ram_path: Path):
     phase_bias = (u32(0xFFA2) >> 1) - u32(0xFF9E)
     tick = u32(0x4BB3E) & 3
     yaw = u16(0xFF9A)
+
+    # -- entities ($51b66 object records, 50 B, slots 1..511 -- SPEC.md 6) -----
+    # 87th: drawn by $115e0 INLINE per cell in the grid walk. Bucket by cell and
+    # composite over the finished terrain layer in the same far->near order.
+    objs = []
+    for slot in range(1, 512):
+        o = 0x51B66 + slot * 50
+        rec = b[o:o + 50]
+        wx = (rec[8] << 8) | rec[9]
+        wy = (rec[10] << 8) | rec[11]
+        if wx == 0 and wy == 0:
+            continue
+        objs.append(dict(
+            slot=slot, cat=rec[6], b5=rec[5], b7=rec[7], b14=rec[14],
+            b17=rec[17], b31=rec[31], b32=rec[32], b33=rec[33], b44=rec[44],
+            wx=wx, wy=wy, fx=rec[9], fy=rec[11],
+            cell_x=wx >> 8, cell_y=wy >> 8,
+            group=(rec[42] << 8) | rec[43]))
+    anim = b[0x4BB41] & 1
+    sel_group = u16(0x57FFE)
+    ent = dict(objs=objs, anim=anim, sel_group=sel_group,
+               sheet33=b[0x33000:0x33000 + 0x160 * 55],
+               sheet_prop=b[0x37C7C:0x37C7C + 28 * 480],
+               sheet_struct=b[0x312A0:0x312A0 + 47 * 160],
+               ram=b)
     # reference: the COMPLETE compose buffer -- the one $e3e2 (the runtime-patched
     # $e420 draw pointer) is NOT currently rendering into. $2df78/$2df7c hold the
     # two buffers ($1c700 / $24400); pick whichever e3e2 is outside.
@@ -392,7 +417,151 @@ def load_ram(ram_path: Path):
     ref = decode_screen_indices(b, ref_base)
     return dict(corners=corners, planes=planes, dith=dith, tick=tick,
                cam=(cam_x, cam_y), half=half, yaw=yaw, ref=ref, ram=b,
-               x_inset=x_inset, phase_bias=phase_bias)
+               x_inset=x_inset, phase_bias=phase_bias, ent=ent)
+
+
+# ---------------------------------------------------------------------------
+# entity (sprite) compositing -- 87th, SPEC.md 6 / assets/sprites/sprite_triggers.json
+# ---------------------------------------------------------------------------
+
+
+def _decode_frame_byte(sheet, idx, w=8, h=11):
+    """$33000 sheet: 55 B/frame, 5 B/row [mask,p0,p1,p2,p3], byte planes."""
+    o = idx * 55
+    px = [[-1] * w for _ in range(h)]
+    if o + 55 > len(sheet):
+        return px
+    for r in range(h):
+        m, p0, p1, p2, p3 = sheet[o + r * 5: o + r * 5 + 5]
+        for x in range(w):
+            bit = 7 - x
+            if not ((m >> bit) & 1):
+                px[r][x] = (((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1) |
+                            (((p2 >> bit) & 1) << 2) | (((p3 >> bit) & 1) << 3))
+    return px
+
+
+def _decode_frame_word(sheet, idx, w, h, fb):
+    """$312a0 (16x16, 160 B) / $37c7c (32x24, 480 B): rows of w//16 groups of
+    5 big-endian words [mask,p0,p1,p2,p3]."""
+    groups = w // 16
+    o = idx * fb
+    px = [[-1] * w for _ in range(h)]
+    if o + fb > len(sheet):
+        return px
+    for r in range(h):
+        for g in range(groups):
+            go = o + r * groups * 10 + g * 10
+            m, p0, p1, p2, p3 = struct.unpack_from(">5H", sheet, go)
+            for b in range(16):
+                bit = 15 - b
+                if not ((m >> bit) & 1):
+                    px[r][g * 16 + b] = (
+                        ((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1) |
+                        (((p2 >> bit) & 1) << 2) | (((p3 >> bit) & 1) << 3))
+    return px
+
+
+def _entity_frame(o, ent, yaw):
+    """(sheet_key, frame_idx, w, h) for an object record, or None if it draws
+    nothing / is a category we haven't ported. SPEC.md 6."""
+    cat = o["cat"]
+    anim = ent["anim"]
+    if cat == 0:                                   # man / troop
+        if o["b31"] in (0x32, 0x34):               # melee -- base 0x80, skip (rare)
+            return None
+        facing = ((o["b17"] + yaw + 0x10) & 0xFF) >> 5
+        f = (o["b5"] - 1) * 16 + facing * 2
+        bit4 = (o["b7"] >> 4) & 1
+        bit7 = (o["b7"] >> 7) & 1
+        grp = 0
+        if bit7:
+            ga = 0x51538 + o["group"] - 48
+            if 0 <= ga + 1 < len(ent["ram"]):
+                grp = (ent["ram"][ga] << 8) | ent["ram"][ga + 1]
+        if bit4 and (not bit7 or grp == ent["sel_group"]):
+            f += 0x40
+        return ("33", f + anim, 8, 11)
+    if cat == 4:                                   # animal
+        return ("33", 0x117 + (((o["b17"] + yaw) & 0xFF) >> 5) * 2 + anim, 8, 11)
+    if cat in (3, 12):                             # settlement marker
+        f = o["b7"] + 0x100
+        if f == 0x112:
+            f += (ent["ram"][0x57FED]) & 3
+        return ("33", f, 8, 11)
+    if cat == 7:                                   # flag / banner
+        return ("33", (o["b5"] & 0xFF) + 0x13E, 8, 11)
+    if cat == 13:                                  # faction marker
+        return ("33", (o["b5"] & 0xFF) + 0x149 + anim, 8, 11)
+    if cat == 14:                                  # unit group member (a man)
+        if o["b5"] > 0:
+            return ("33", 0x14E + (ent["ram"][0x57FED] & 1), 8, 11)
+        return ("33", 0x150, 8, 11)
+    if cat == 2:                                   # building / tree
+        f = o["b7"]
+        return ("prop", f, 32, 24) if f < 28 else None
+    return None                                    # 1/5/6/8/9/10/11/15 -- 88th
+
+
+def _packed_lerp(c00, c10, c01, c11, fx, fy):
+    def lp(a, b, t):
+        return (a[0] + ((b[0] - a[0]) * t >> 8), a[1] + ((b[1] - a[1]) * t >> 8))
+    top = lp(c00, c10, fx)
+    bot = lp(c01, c11, fx)
+    return lp(top, bot, fy)
+
+
+def draw_entities(idxbuf, cov, R, ecov):
+    """Composite the object records over the finished terrain layer, per cell,
+    far->near (walk_q3 order for yaw 0xf0). `ecov` marks entity pixels so the
+    score can be split terrain-only vs terrain+entities."""
+    ent = R["ent"]
+    cn = R["corners"]
+    cx0, cy0 = R["cam"]
+    yaw = R["yaw"]
+    by_cell = {}
+    for o in ent["objs"]:
+        by_cell.setdefault((o["cell_x"], o["cell_y"]), []).append(o)
+
+    def blit(px, sx, sy):
+        for r, rowpx in enumerate(px):
+            yy = sy + r
+            if not (0 <= yy < H):
+                continue
+            for cc, v in enumerate(rowpx):
+                if v < 0:
+                    continue
+                xx = sx + cc
+                if 0 <= xx < W:
+                    i = yy * W + xx
+                    idxbuf[i] = v
+                    cov[i] = 1
+                    ecov[i] = 1
+
+    for k in range(8):                             # far -> near (E->W)
+        col = 7 - k
+        for j in range(8):                         # far -> near (N->S)
+            row = j
+            cx, cy = cx0 + col, cy0 + row
+            for o in by_cell.get((cx, cy), []):
+                fr = _entity_frame(o, ent, yaw)
+                if fr is None:
+                    continue
+                kind, fi, w, h = fr
+                try:
+                    c00 = cn[(row, col)]; c10 = cn[(row, col + 1)]
+                    c01 = cn[(row + 1, col)]; c11 = cn[(row + 1, col + 1)]
+                except KeyError:
+                    continue
+                if kind == "33":
+                    px, py = _packed_lerp(c00, c10, c01, c11, o["fx"], o["fy"])
+                    frame = _decode_frame_byte(ent["sheet33"], fi)
+                    blit(frame, px - 4, py - 8)
+                else:                              # centred prop
+                    px = (c00[0] + c10[0] + c01[0] + c11[0]) >> 2
+                    py = (c00[1] + c10[1] + c01[1] + c11[1]) >> 2
+                    frame = _decode_frame_word(ent["sheet_prop"], fi, w, h, 480)
+                    blit(frame, px - w // 2, py - h)
 
 
 def decode_screen_indices(ram: bytes, base: int):
@@ -830,6 +999,31 @@ def render_faithful(ram_path: Path, dom):
           f"({100*(exact+near)/max(tot,1):.1f}%)")
     print(f"    mine idx dist : {dict(sorted(mine_h.items()))}")
     print(f"    ref  idx dist : {dict(sorted(ref_h.items()))}")
+
+    # 87th: entity-sprite compositing -- DIAGNOSTIC ONLY for now (runs on a copy,
+    # does not touch idxbuf/cov or the committed reference PNGs). The $33000
+    # decode + sub-cell lerp + bucketing work, but the dominant visible entity in
+    # pm78_settle is a 26-record cat-14 marching group whose DRAW PATH is not yet
+    # confirmed ($11b0c, the disasm-derived cat-14 handler, had ZERO calls in the
+    # 87th's frame trace -- so cat 14 is drawn some other way, maybe via the
+    # $16738/$e6ee group path). Positions land ~10-20px off and frame 0x14e is
+    # probably wrong. So this currently LOWERS the score; wire it in for real
+    # once the cat-14 path is traced (88th). See SPEC.md 9 item 3.
+    ei = bytearray(idxbuf)
+    ec = bytearray(cov)
+    ecov = bytearray(W * H)
+    draw_entities(ei, ec, R, ecov)
+    e_exact, _, e_tot, _, _ = _score(ei, ec, ref)
+    ep = sum(ecov)
+    e_hit = sum(1 for i in range(W * H) if ecov[i] and ei[i] == ref[i])
+    drawn = sum(1 for o in R['ent']['objs']
+                if _entity_frame(o, R['ent'], R['yaw']))
+    print(f"  + entities [DIAGNOSTIC, not composited]: "
+          f"{len(R['ent']['objs'])} records, {drawn} drawn, {ep} px")
+    print(f"    terrain+entity exact : {100*e_exact/max(e_tot,1):.1f}% "
+          f"(vs {100*exact/max(tot,1):.1f}% terrain-only) -- "
+          f"{e_hit}/{ep} entity px match ({100*e_hit/max(ep,1):.0f}%). "
+          f"cat-14 draw path unconfirmed, 88th.")
     print(f"    80th: $e420 DDA span walker + the mod-128 dither wrap ported; "
           f"DITHER_COLOUR_BIAS removed.")
     print(f"    residual: unit sprites (walk_q3 is terrain-only) + the tall "
