@@ -526,6 +526,28 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     **89th did not reach** Task 3 (minimap) or Task 4 (`Fill.fs`/
     `TerrainView.cs` wiring). Detail in `port/SPEC.md` §6 / §9 items 3-4.
 
+26. The 90th pass **closes the HUD minimap's mapping + raster path (Task 3) and
+    ports + byte-exact cross-checks the per-cell entity pass (Task 4)** (tooling
+    + asset + doc + `Terrain.fs`/`Sprites.fs`/`pm_render_ref.py`/`TerrainView.cs`;
+    no emulator or port-runtime behaviour change). **Task 3:** live-traced
+    `pm67_ok_pre` through the briefing-OK click into `$13b9a` + a full-frame
+    trace of `pm88_f1` — the minimap is **baked once into the `$78000` master by
+    `$13b9a`, not per-frame** (a settled compose buffer's minimap region is
+    byte-identical to the master). `$13b9a` builds a 64 × 128 byte per-cell
+    source buffer at `$418ae` (≈ the terrain type plane) and `$e6ee`
+    (`pm_blit_hud_sprite`) rasters it **1:1 at screen origin `(cellX+1,
+    cellY+6)`** (98.8 % land/water agreement), LUT'ing the source byte to a
+    palette-index elevation ramp. Ported: `pm_render_ref.draw_minimap`
+    (100 % vs the master from `$418ae`, 94.5 % from the type plane) +
+    `TerrainView.cs` minimap panel with a live camera-window box, verified with
+    a real Godot screenshot. **Task 4:** `Sprites.fs` gains `EntityRec` /
+    `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`; a `dotnet fsi`
+    harness vs a `pm_render_ref.draw_entities` import on identical synthetic
+    data is **13/13 cases byte-exact** for `byte6 ∈ {0,4,8,14,24}`. Not wired
+    into a live Godot frame (no object-record source in the port yet). **Still
+    open:** the minimap's per-event ownership/dots overlay; per-category frame
+    counts; the goods table. Detail in `port/SPEC.md` §6 / §9 item 6.
+
 ## Files
 
 | file | what |

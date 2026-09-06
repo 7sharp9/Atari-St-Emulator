@@ -26,6 +26,47 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (90th pass) — Task 3 (HUD minimap) + Task 4 (the entity pass, ported + cross-checked)
+
+Tooling + asset + doc + `Terrain.fs` / `Sprites.fs` / `pm_render_ref.py` /
+`TerrainView.cs`; **no emulator change** (regression net skipped; selftest
+807124 / 0 / 8, unchanged since the 67th). Terrain 94.4% and the
+`COMPOSITE_CATS = {14}` 94.9% are untouched.
+
+- **Task 3 — the HUD world minimap. Mapping + raster path CLOSED.** Live-traced
+  `scratchpad/pm67_ok_pre.snap` through the briefing-OK poke into `$13b9a`, plus
+  a full-frame trace of `pm88_f1`:
+  - It is **baked once into the `$78000` master by `$13b9a`, not drawn per
+    frame** — a settled compose buffer's minimap region is byte-identical to
+    the master (`pm88_f1`: 0 px diff; the only per-frame change near it is a
+    generic `$11f82` 8 × 11 sprite ≈ screen `(37..47, 46..60)`).
+  - `$13b9a` `$df8c`-copies a frame bitmap, then builds a **64 × 128 byte
+    per-cell source buffer at `$418ae`** (≈ the terrain type plane) and
+    **`$e6ee` rasters it 1:1** into the master. **Mapping: `screen = (cellX + 1,
+    cellY + 6)`, no scaling** (98.8% land/water agreement, 2442 cells).
+  - `$e6ee` LUTs the source byte → shifter palette index (100% deterministic):
+    `Terrain.minimapPaletteIndex` / `pm_render_ref._minimap_palette_index`.
+  - **Ported**: `pm_render_ref.draw_minimap` (diagnostic — **100%** vs the
+    master from the `$418ae` buffer, 94.5% from the type plane) and
+    `TerrainView.cs` draws the minimap + a live camera-window box into the
+    top-left, verified with a real Godot `--write-movie` screenshot
+    (`assets/reference/godot_screenshot_minimap_90th.png`).
+  - **Still open**: the per-event overlay (territory tint + lord dots + a
+    fuller viewport rect) — drawn on game events, not in a still frame.
+- **Task 4 — the per-cell entity pass, ported + cross-checked byte-exact.**
+  `Sprites.fs` gains `EntityRec` / `EntityCtx` / `entityFrame` / `blitEntity` /
+  `drawEntities` (replays `$115e0` as a post-terrain far→near pass in `walkQ3`
+  cell order, the same approximation `pm_render_ref` uses). A `dotnet fsi`
+  harness (`scratchpad/pm90_xcheck.fsx`) vs a `pm_render_ref` import
+  (`pm90_xcheck.py`) on identical synthetic corners + record fields:
+  **13/13 cases identical covered-pixel sets + indices**, `byte6 ∈ {0, 4, 8,
+  14, 24}` — men (incl. the `+0x40` armed gate and the melee→nothing case),
+  props (`r7 ∈ {0x0d, 0x0e}` special-cases + the tile-set offset), animals,
+  banners, and the `$1182a` centroid markers. `pm_render_ref.draw_entities`
+  was aligned to use the centroid for `byte6 6/24` to match. **Not wired into
+  a live Godot frame** — the from-scratch port has no object-record source; the
+  call site + record-field contract are documented inline in `TerrainView.cs`.
+
 ## Verification status (89th pass) — Task 2: the `byte6 == 4` building/tree frame formula is pinned + live-verified
 
 Tooling + asset + doc + `Sprites.fs`; no emulator or port-runtime change. The

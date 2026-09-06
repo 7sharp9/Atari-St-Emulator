@@ -667,6 +667,18 @@ by ~14.6 k px (`$115e0` redraws a *subset* of entities per frame, double
 buffered), so neither reference buffer holds all 25 trees. Scoring it needs a
 clean single-buffer populated capture (§9 item 4 / Task 1).
 
+**90th (Task 4):** the per-cell entity pass is now ported to `Sprites.fs`
+(`EntityRec` / `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`) and
+**cross-checked byte-exact** against `pm_render_ref.draw_entities` on synthetic
+corners + record fields — 13/13 cases, `byte6 ∈ {0, 4, 8, 14, 24}`, covering the
+melee→nothing case, the prop `r7 ∈ {0x0d, 0x0e}` special-cases, animal/banner
+facing, and the centroid markers (`scratchpad/pm90_xcheck.fsx` / `.py`).
+`drawEntities` replays `$115e0` as a post-terrain far→near pass in `walkQ3` cell
+order (same approximation `pm_render_ref` uses); `byte6 6/24` use the `$1182a`
+centroid, everything else the `$11f1a` sub-cell lerp. Not wired into a live
+Godot frame — the from-scratch port has no object-record source yet; the call
+site + the record-field contract are documented in `TerrainView.cs`.
+
 Still open: per-category frame *counts*; the `$11886` goods table (byte6 16 =
 `$1192e`, loops `[$4e514 + record[14]]` goods[0..7]); byte6 1/15 (`$312a0`)
 detail.
@@ -1075,7 +1087,40 @@ Palette: one 16-colour shifter palette for the whole iso view
    settle it long enough for the entity layer to stabilise.
 5. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
    needs resolving from a live snapshot. Deferred.
-6. **Border / stone-table master, world-map minimap + compass panel.** Not
-   started — `$e0d4` master + the left-strip compositor. Deferred (89th Task 3).
+6. **HUD world minimap — mapping + raster path CLOSED (90th, Task 3); the
+   ownership overlay still open.** Live-traced `scratchpad/pm67_ok_pre.snap`
+   through the briefing-OK click into `$13b9a`, then a full-frame trace of
+   `pm88_f1`:
+   - **The minimap is baked once into the `$78000` master by `$13b9a`, NOT
+     drawn per frame.** On a settled still-camera frame the minimap region of
+     the composed buffer is byte-identical to the master (frame diff: 0 px in
+     `pm88_f1`; `pm78_settle`/`pm89_pan_e` differ only by a ~11 × 14 generic
+     `$11f82` mini-sprite near screen `(37..47, 46..60)` — the selected-unit
+     marker, not a minimap raster).
+   - `$13b9a` first `$df8c`-copies a pre-built frame bitmap (resource dispatch
+     via the `$e040`/`$e084`/`$e0c4` tables), then builds a **64 × 128 byte
+     per-cell source buffer at `$418ae`** (stride 64, `src == type` for
+     7424/8192 cells, `type − 1..4` for a shaded coastal fringe) and
+     **`$e6ee` (`pm_blit_hud_sprite`) rasters it 1:1** into the master.
+   - **Mapping: `screen_x = cellX + 1`, `screen_y = cellY + 6`** — 1:1, no
+     scaling, origin at screen pixel `(1, 6)` (98.8 % land/water agreement over
+     2442 cells; `pm_render_ref.py` sweep). The HUD chrome clips the visible
+     part to roughly `y ≤ 82`.
+   - **`$e6ee` LUTs the source byte to a shifter palette index** (100 %
+     deterministic — reconstructed in `Terrain.minimapPaletteIndex` /
+     `pm_render_ref._minimap_palette_index`): `0 → 14` (sea); `≤ 0x1c → 3`;
+     `0x1d → 2`; `0x1e,0x28 → 12`; `0x23–0x27 → 13`; `0x29–0x2c → 11`;
+     `0x2d–0x38 → 10`; `0x39 → 6`; `0x3a → 7`; `0x3b+ → 9` (gold coast/peaks).
+     A terrain-elevation ramp, same idea as `Terrain.flatPaletteIndex`.
+   - **Port**: `pm_render_ref.draw_minimap` (diagnostic — 100 % vs the master
+     from the `$418ae` buffer, 94.5 % from the type plane) and `TerrainView.cs`
+     draws it into the top-left with a live camera-window box
+     (`assets/reference/godot_screenshot_minimap_90th.png`).
+   - **Still open**: the per-event overlay (territory-ownership tint + lord
+     dots + a fuller viewport rect). Not seen in a still-settled trace, so it is
+     drawn on game events (lord moves cell / territory captured / camera moves)
+     — a separate pass to trace.
+7. **Border / stone-table master, compass panel.** Not started — `$e0d4`
+   master + the left-strip compositor. Deferred.
 
-None of items 3-6 block the Godot port (terrain + camera are the port's spine).
+None of items 3-7 block the Godot port (terrain + camera are the port's spine).

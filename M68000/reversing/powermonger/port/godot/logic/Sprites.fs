@@ -168,6 +168,16 @@ module Sprites =
         let x, y = entityScreenPos c00 c10 c01 c11 fx fy
         x - 4, y - 8
 
+    /// Centroid screen position ($1182a): the mean of the four projected
+    /// corners, then +0x38 X / -8 Y. Used by byte6 == 6 / 24 (settlement &
+    /// territory markers, $117b0) instead of the sub-cell lerp. `>>> 2` matches
+    /// the 68k `asr #2` (floor).
+    let centroidScreenPos
+            (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int) : int * int =
+        let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
+        let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
+        cx + 0x38, cy - 8
+
     /// Decode frame `index` from the raw sheet (assets/sprites/sheet_raw.bin).
     /// Ports $11f82's row layout: [AND-mask, plane0, plane1, plane2, plane3],
     /// mask/plane bytes are read as the high byte of a byte-wide row (8px);
@@ -219,3 +229,139 @@ module Sprites =
                                 ||| (((p2 >>> bit) &&& 1) <<< 2)
                                 ||| (((p3 >>> bit) &&& 1) <<< 3)
         pixels, w, h
+
+    /// Raw bilinear lerp of the four projected corners by the sub-cell
+    /// fraction (fx, fy) — $11f1a WITHOUT the sprite anchor offset. Matches
+    /// pm_render_ref._packed_lerp (floor `>>> 8`, done on each axis).
+    let packedLerp
+            (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int)
+            (fx: int) (fy: int) : int * int =
+        let lerp (a: int) (b: int) (t: int) = a + (((b - a) * t) >>> 8)
+        let lx (a: int * int) (b: int * int) t = lerp (fst a) (fst b) t, lerp (snd a) (snd b) t
+        let top = lx c00 c10 fx
+        let bot = lx c01 c11 fx
+        lerp (fst top) (fst bot) fy, lerp (snd top) (snd bot) fy
+
+    // -- the per-cell entity pass (Task 4) ---------------------------------
+    // 87th/88th/89th: $115e0 walks the $47970 cell bucket and dispatches each
+    // record on byte6 (even, 0..30). pm_render_ref.py's draw_entities replays
+    // this as a post-terrain far->near pass (walkQ3 cell order); this mirrors
+    // that so the two can be cross-checked byte-exact. The blit anchors match
+    // pm_render_ref's `_packed_lerp` result plus:
+    //   byte6 0/8/14  (sheet $33000, 8x11)  : (px - 4,  py - 8)
+    //   byte6 6/24    (sheet $33000, 8x11)  : centroid + (0x38, -8)  ($1182a)
+    //   byte6 4       (sheet $37c7c, 32x24) : (px - 8,  py - 16), fx/fy = jitter
+    // Feed corners in the SAME coordinate convention on both sides of the
+    // cross-check (pm_render_ref uses the +64-inset $3f364 corners).
+
+    /// One object record, only the fields the drawn categories read.
+    type EntityRec =
+        { B6: int; B5: int; B7: int; B14: int; B17: int; B31: int
+          Fx: int; Fy: int          // record[9] / record[11]
+          Fx4: int; Fy4: int        // byte6 == 4 address-jitter (propJitter)
+          Group: int
+          Wcx: int; Wcy: int }      // world cell
+
+    /// Per-frame constants shared by every record.
+    type EntityCtx =
+        { Yaw: int; Anim: bool; SelGroup: int; TileOff: int; RotPhase: int
+          Sheet33: byte[]; SheetProp: byte[]
+          Ram: byte[] }             // for the men $51538 group-word probe; may be [||]
+
+    /// (isProp, frameIndex) for a record, or None if it draws nothing / is a
+    /// category not ported. Mirrors pm_render_ref._entity_frame exactly.
+    let entityFrame (ctx: EntityCtx) (r: EntityRec) : (bool * int) option =
+        let anim = if ctx.Anim then 1 else 0
+        match r.B6 with
+        | 0 ->
+            if r.B31 = 0x32 || r.B31 = 0x34 then None
+            else
+                let facing = ((r.B17 + ctx.Yaw + 0x10) &&& 0xFF) >>> 5
+                let mutable f = (r.B5 - 1) * 16 + facing * 2
+                let bit4 = (r.B7 >>> 4) &&& 1
+                let bit7 = (r.B7 >>> 7) &&& 1
+                let mutable grp = 0
+                if bit7 = 1 && ctx.Ram.Length > 0 then
+                    let ga = 0x51538 + r.Group - 48
+                    if ga >= 0 && ga + 1 < ctx.Ram.Length then
+                        grp <- (int ctx.Ram.[ga] <<< 8) ||| int ctx.Ram.[ga + 1]
+                if bit4 = 1 && (bit7 = 0 || grp = ctx.SelGroup) then f <- f + 0x40
+                Some(false, f + anim)
+        | 8 -> Some(false, 0x117 + (((r.B14 + ctx.Yaw) &&& 0xFF) >>> 5) * 2 + anim)
+        | 6 | 24 ->
+            let mutable f = r.B7 + 0x100
+            if f = 0x112 then f <- f + (ctx.RotPhase &&& 3)
+            Some(false, f)
+        | 14 -> Some(false, (r.B5 &&& 0xFF) + 0x13E)
+        | 26 -> Some(false, (r.B5 &&& 0xFF) + 0x149 + anim)
+        | 28 -> Some(false, (if r.B5 > 0 then 0x14E + (ctx.RotPhase &&& 1) else 0x150))
+        | 4 ->
+            let r7 = r.B7
+            let f =
+                if r7 = 0x0D then 0x0D
+                elif (r7 &&& 0x7F) = 0x0E then 0x0E
+                else (r7 &&& 0x7F) + ctx.TileOff
+            if f < 28 then Some(true, f) else None
+        | _ -> None
+
+    /// Blit one entity over `buf`, given its cell's four projected corners
+    /// (same convention as pm_render_ref: +64-inset $3f364 packed corners).
+    let blitEntity (buf: Fill.Buffer) (ctx: EntityCtx)
+                   (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int)
+                   (r: EntityRec) =
+        match entityFrame ctx r with
+        | None -> ()
+        | Some(isProp, fi) ->
+            let blit (px: int[]) (w: int) (h: int) (ox: int) (oy: int) =
+                for row in 0 .. h - 1 do
+                    let yy = oy + row
+                    if yy >= 0 && yy < Fill.ScreenHeight then
+                        for cc in 0 .. w - 1 do
+                            let v = px.[row * w + cc]
+                            if v >= 0 then buf.Set(ox + cc, yy, byte v)
+            if isProp then
+                let px, py = packedLerp c00 c10 c01 c11 r.Fx4 r.Fy4
+                let pix, w, h = decodeFrameWord ctx.SheetProp fi 32 24 480
+                blit pix w h (px - 8) (py - 16)
+            else
+                // blit top-left, in the +64-inset corner convention:
+                //   men/animal/banner : sub-cell lerp anchor, then (-4, -8)
+                //   markers (6/24)     : centroid anchor ($1182a +0x38/-8 over
+                //                        raw corners == -8/-8 over +64 corners)
+                let px, py =
+                    if r.B6 = 6 || r.B6 = 24 then
+                        let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
+                        let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
+                        cx - 8, cy - 8
+                    else
+                        let lx, ly = packedLerp c00 c10 c01 c11 r.Fx r.Fy
+                        lx - 4, ly - 8
+                let f = decodeFrame ctx.Sheet33 fi
+                blit f.Pixels FrameWidth FrameHeight px py
+
+    /// Replay $115e0 as a post-terrain far->near pass over walkQ3's cell order.
+    /// `corners` = Projection.projectGrid's [gr, gc] array (2*Half+1 square);
+    /// `recs` are the records already bucketed to their world cell. Cross-check
+    /// target: pm_render_ref.py draw_entities.
+    let drawEntities (buf: Fill.Buffer) (ctx: EntityCtx) (corners: Projection.Corner[,])
+                     (camX: int) (camY: int) (recs: EntityRec list) =
+        let byCell = System.Collections.Generic.Dictionary<int * int, ResizeArray<EntityRec>>()
+        for r in recs do
+            match byCell.TryGetValue((r.Wcx, r.Wcy)) with
+            | true, l -> l.Add r
+            | _ -> let l = ResizeArray<EntityRec>() in l.Add r; byCell.[(r.Wcx, r.Wcy)] <- l
+        let corner (gr: int) (gc: int) =
+            let c = corners.[gr, gc]
+            int (System.Math.Round c.X), int (System.Math.Round c.Y)
+        for k in 0 .. 7 do
+            let col = 7 - k
+            for j in 0 .. 7 do
+                let row = j
+                match byCell.TryGetValue((camX + col, camY + row)) with
+                | true, l ->
+                    let c00 = corner row col
+                    let c10 = corner row (col + 1)
+                    let c01 = corner (row + 1) col
+                    let c11 = corner (row + 1) (col + 1)
+                    for r in l do blitEntity buf ctx c00 c10 c01 c11 r
+                | _ -> ()

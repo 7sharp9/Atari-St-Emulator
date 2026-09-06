@@ -634,7 +634,14 @@ def draw_entities(idxbuf, cov, R, ecov, cats=COMPOSITE_CATS):
                 except KeyError:
                     continue
                 if kind == "33":
-                    px, py = _packed_lerp(c00, c10, c01, c11, o["fx"], o["fy"])
+                    if o["b6"] in (6, 24):
+                        # settlement / territory marker: centroid ($1182a),
+                        # +0x38/-8 over raw corners == -8/-8 over +64 corners.
+                        cx = (c00[0] + c10[0] + c01[0] + c11[0]) >> 2
+                        cy = (c00[1] + c10[1] + c01[1] + c11[1]) >> 2
+                        px, py = cx - 8 + 4, cy - 8 + 8   # +4/+8 cancels the -4/-8 below
+                    else:
+                        px, py = _packed_lerp(c00, c10, c01, c11, o["fx"], o["fy"])
                     frame = _decode_frame_byte(ent["sheet33"], fi)
                     blit(frame, px - 4, py - 8)
                 else:                              # prop ($37c7c, byte6 == 4)
@@ -645,6 +652,53 @@ def draw_entities(idxbuf, cov, R, ecov, cats=COMPOSITE_CATS):
                     px, py = _packed_lerp(c00, c10, c01, c11, o["fx4"], o["fy4"])
                     frame = _decode_frame_word(ent["sheet_prop"], fi, w, h, 480)
                     blit(frame, px - 8, py - 16)
+
+
+# ---------------------------------------------------------------------------
+# HUD world minimap -- 90th, SPEC.md 9 item 6
+# ---------------------------------------------------------------------------
+# Live-traced pm67_ok_pre -> the briefing-OK click -> $13b9a: the minimap is
+# baked ONCE into the $78000 master, not drawn per frame ($13b9a builds a
+# 64x128 byte per-cell source buffer at $418ae ~= the terrain type plane, then
+# $e6ee rasters it 1:1 into the master at screen origin (1, 6)). $e6ee LUTs the
+# source byte to a shifter palette index; the table below is reconstructed from
+# the trace (100% against pm88_f1's $78000 master; from the type plane instead
+# of $418ae it is 93.7%, the shaded coastal fringe being the only miss).
+MINIMAP_ORIGIN = (1, 6)
+
+
+def _minimap_palette_index(src_byte):
+    s = src_byte & 0xFF
+    if s == 0:      return 14           # sea
+    if s <= 0x1C:   return 3            # lowest land
+    if s == 0x1D:   return 2
+    if s == 0x1E:   return 12
+    if s <= 0x22:   return 1
+    if s <= 0x27:   return 13           # dark green
+    if s == 0x28:   return 12
+    if s <= 0x2C:   return 11           # light green
+    if s <= 0x38:   return 10           # yellow
+    if s == 0x39:   return 6
+    if s == 0x3A:   return 7            # brown
+    return 9                            # gold (coast / peaks)
+
+
+def draw_minimap(idxbuf, cov, R, src="type"):
+    """Plot the world minimap 1:1 into idxbuf (mirrors $e6ee). `src` = "type"
+    (the from-scratch stand-in) or "418ae" (replay $13b9a's exact buffer)."""
+    ox, oy = MINIMAP_ORIGIN
+    ram = R["ram"]
+    for wy in range(128):
+        for wx in range(64):
+            if src == "418ae":
+                sb = ram[0x418AE + wy * 64 + wx]
+            else:
+                sb = R["planes"]["typ"](wx, wy)
+            sx, sy = wx + ox, wy + oy
+            if 0 <= sx < W and 0 <= sy < H:
+                i = sy * W + sx
+                idxbuf[i] = _minimap_palette_index(sb)
+                cov[i] = 1
 
 
 def decode_screen_indices(ram: bytes, base: int):
@@ -1118,6 +1172,25 @@ def render_faithful(ram_path: Path, dom):
     print(f"    residual: byte6 4 (buildings/trees $37c7c) frame formula +"
           f" decode + position all verified (89th); not composited -- pm78_settle's"
           f" two buffers disagree on the entity layer, needs a clean capture.")
+
+    # 90th diagnostic: the HUD world minimap ($78000 top-left, baked by $13b9a).
+    # Compare our from-the-type-plane raster vs the master's baked one, and vs
+    # the exact $418ae-buffer replay.
+    master = decode_screen_indices(R["ram"], 0x78000)
+    for name, srcmode in (("type plane", "type"), ("$418ae buffer", "418ae")):
+        mm = bytearray(W * H); mc = bytearray(W * H)
+        draw_minimap(mm, mc, R, src=srcmode)
+        ok = tot = 0
+        for i in range(W * H):
+            if not mc[i]:
+                continue
+            # only score inside the drawn minimap rect (skip HUD-covered edges)
+            if master[i] in (0, 1, 4, 5, 6, 7):
+                continue
+            tot += 1
+            ok += (mm[i] == master[i])
+        print(f"  + minimap (origin {MINIMAP_ORIGIN}, $e6ee 1:1 raster) from the "
+              f"{name}: {ok}/{tot} = {100*ok/max(tot,1):.1f}% vs the $78000 master")
     return idxbuf, cov, ref, R
 
 

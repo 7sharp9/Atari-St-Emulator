@@ -69,3 +69,56 @@ module Terrain =
             let lo, hi = 0x1c, 0x40
             let t = max 0.0 (min 1.0 (float (colourByte - lo) / float (hi - lo)))
             [| 13; 12; 12; 11; 11; 3; 2; 1 |].[min 7 (int (t * 8.0))]
+
+    // -- HUD world minimap ($78000 top-left corner) -------------------------
+    // 90th (live-traced pm67_ok_pre -> the briefing-OK click -> $13b9a): the
+    // minimap is NOT drawn per frame. $13b9a bakes it once into the $78000
+    // master (SPEC.md section 7): it builds a 64x128 byte per-cell source
+    // buffer at $418ae (stride 64, ~= the terrain type plane; `src - type` is
+    // 0 for 7424/8192 cells, -1..-4 for a shaded coastal fringe), then $e6ee
+    // (pm_blit_hud_sprite) rasters it 1:1 into the master at screen origin
+    // (1, 6): cell (wx, wy) -> screen pixel (wx + 1, wy + 6), colour =
+    // MinimapRamp[src byte]. On a settled still frame the composed buffer's
+    // minimap region is byte-identical to the master (verified by frame diff);
+    // the per-frame $11f82 8x11 sprite near it (~screen 33..47, 46..60) is a
+    // generic HUD marker, not a minimap raster.
+
+    [<Literal>]
+    let MinimapOriginX = 1
+
+    [<Literal>]
+    let MinimapOriginY = 6
+
+    /// $e6ee's source-byte -> shifter palette-index lookup, reconstructed from
+    /// a live trace of the $13b9a minimap raster (every source byte mapped to
+    /// exactly one palette index; 100% against pm88_f1's $78000 master). The
+    /// source byte is a terrain elevation/type value: 0 = sea, then a khaki ->
+    /// green -> yellow -> gold ramp with height. A from-scratch port that does
+    /// not replay $13b9a's $418ae buffer feeds `TypeAt` here instead (93.7%
+    /// against the master -- the shaded fringe is the only miss).
+    let minimapPaletteIndex (srcByte: int) : int =
+        let s = srcByte &&& 0xFF
+        if s = 0 then 14                     // sea
+        elif s <= 0x1C then 3               // lowest land (khaki)
+        elif s = 0x1D then 2
+        elif s = 0x1E then 12
+        elif s <= 0x22 then 1              // (sparse, HUD-adjacent)
+        elif s <= 0x27 then 13            // dark green
+        elif s = 0x28 then 12
+        elif s <= 0x2C then 11           // light green
+        elif s <= 0x38 then 10          // yellow
+        elif s = 0x39 then 6
+        elif s = 0x3A then 7          // brown
+        else 9                        // gold (coast / peaks)
+
+    /// Render the minimap into a caller-supplied 320x200 palette-index buffer
+    /// (only the covered cells are written; `set` is `x y idx -> unit`). Mirrors
+    /// $e6ee's 1:1 plot. `src` is the per-cell source byte (default: the type
+    /// plane, the from-scratch stand-in for $418ae).
+    let renderMinimap (m: Map) (set: int -> int -> int -> unit) =
+        for wy in 0 .. Height - 1 do
+            for wx in 0 .. Width - 1 do
+                let sx = wx + MinimapOriginX
+                let sy = wy + MinimapOriginY
+                if sx >= 0 && sx < 320 && sy >= 0 && sy < 200 then
+                    set sx sy (minimapPaletteIndex (m.TypeAt(wx, wy)))

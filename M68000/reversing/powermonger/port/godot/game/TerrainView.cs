@@ -137,6 +137,47 @@ public partial class TerrainView : Node2D
                 img.SetPixel(x, y, covered ? _palette[buf.Index[y * Fill.ScreenWidth + bx] & 0x0f] : Uncovered);
             }
         }
+        // HUD world minimap (SPEC.md section 9 item 6): the game bakes this into
+        // the $78000 master once, via $e6ee, as a 1:1 per-cell plot at screen
+        // origin (1, 6). Here it is redrawn every frame from the type plane
+        // (the from-scratch stand-in for $13b9a's $418ae buffer -- ~94% of the
+        // baked pixels). A real port would also overlay the camera viewport box
+        // and the lord dots (an event-driven pass, not yet reversed).
+        for (int wy = 0; wy < Terrain.Height; wy++)
+        for (int wx = 0; wx < Terrain.Width; wx++)
+        {
+            int sx = wx + Terrain.MinimapOriginX, sy = wy + Terrain.MinimapOriginY;
+            if (sx < 0 || sx >= Fill.ScreenWidth || sy < 0 || sy >= Fill.ScreenHeight)
+                continue;
+            int idx = Terrain.minimapPaletteIndex(_map.TypeAt(wx, wy));
+            img.SetPixel(sx, sy, _palette[idx & 0x0f]);
+        }
+        // camera window outline on the minimap: cells [camX..camX+7] x [camY..camY+7]
+        for (int d = 0; d < 8; d++)
+        {
+            foreach (var (cx, cy) in new[] {
+                (_camX + d, _camY), (_camX + d, _camY + 7),
+                (_camX, _camY + d), (_camX + 7, _camY + d) })
+            {
+                int sx = cx + Terrain.MinimapOriginX, sy = cy + Terrain.MinimapOriginY;
+                if (sx >= 0 && sx < Fill.ScreenWidth && sy >= 0 && sy < Fill.ScreenHeight)
+                    img.SetPixel(sx, sy, _palette[0]); // black box, like the game's
+            }
+        }
+
+        // Per-cell entity pass (SPEC.md section 6 / Task 4): Sprites.drawEntities
+        // replays $115e0 as a post-terrain far->near pass, and is byte-exact
+        // against tools/pm_render_ref.py draw_entities (scratchpad/pm90_xcheck.*,
+        // 13/13 synthetic cases for byte6 0/4/8/14/24). It draws into a
+        // Fill.Buffer, so the call site is right after Fill.walk and before the
+        // img blit above; a from-scratch port has no live object-record source
+        // yet, so it is not called here. To enable: build a
+        // List<Sprites.EntityRec> from a record stream (byte6 + the sub-cell
+        // fraction + the frame fields per SPEC.md 6) and call
+        //   Sprites.drawEntities(buf, ctx, corners, _camX, _camY, recs);
+        // before the "for (int y...)" loop, where ctx carries the sprite sheets
+        // + yaw + anim + selGroup + tileOff.
+
         _rect.Texture = ImageTexture.CreateFromImage(img);
         int yaw = _yawSteps * 16;
         int quadrant = (((yaw + 8) >> 5) & 6) >> 1;
