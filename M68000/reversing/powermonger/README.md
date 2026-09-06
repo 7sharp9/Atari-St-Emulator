@@ -580,6 +580,40 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       `ai.md`/`economy.md`/`strategy.md` re-tagged as **Observed** (bounded
       mission-1 traces, not exhaustive proofs).
 
+28. The 92nd pass **builds the differential-test substrate (RIDER 3b) and proves
+    the first PM routine against the real 68000** (2 emulator commits `f6d574f` +
+    `df140df`; then tooling + doc). New emulator primitive **`callcap <addr>
+    [maxSteps] [out|-] [Rn=hex ...]`** — calls a subroutine in isolation from a
+    captured state (sentinel return address, IPL-masked, register presets),
+    captures its full register + changed-memory delta + a per-step trace hash,
+    then snapshot-restores through the 91st's verified-identity path so the REPL
+    session is untouched (`detcheck` still replays byte-identically after two
+    `callcap`s). Regression net for both commits: `verify 5M` PASS, 30M diskless
+    boot snapshot byte-identical, selftest 807124/0/8 unchanged, build clean.
+    - **Routine 1 — `$fecc` grid-corner projector: PROVEN vs the real 68000.**
+      `callcap` surfaced the entry contract (`A3` = `&$13f8a` sine table; a bare
+      `bsr` runs it on garbage — 158/162 corner bytes wrong). With `A3` set, the
+      freshly recomputed `$3f364` is **byte-identical to the stored buffer**
+      across `pm78_settle`/`pm88_f1`/`pm73_fight`/`pm74_late` — this **closes the
+      "circular verification" concern** that passes 77–90 leaned on the in-RAM
+      corner buffer (it *is* the projection output, reproducibly). A
+      from-disassembly **integer** reconstruction (`scratchpad/pm92/proj_ref.py`
+      — `$fecc` + `$fe8e` HBIAS + `$ff7c` divide, transcribed line-for-line, no
+      float `sin`/`cos`, zero fudge) matches the real `$fecc` over **36 generated
+      camera-cell states + 4 natural captures: 3240/3240 vertices exact**, full
+      corner-buffer comparison (`scratchpad/pm92/diff_fecc.py`). Pre-registered
+      falsifier (any vertex off by ≥1) / bar (100% over ≥30 states): PASS.
+    - **`$14b62` (entity FSM tick), `$4342` / `$163b8` (economy servicers),
+      `$fe8e` (HBIAS leaf):** `callcap`-clean and deterministic (identical trace
+      hash on repeat), reconstructions deferred. **`$5590` (combat roll):** needs
+      combatant-record pointers on entry — a bare call from `pm73_fight` throws
+      after 1701 steps (deterministically). Per-routine entry-contract discovery
+      is the gating step for each remaining differential test.
+    - **Still open:** RIDER 3b routines 2–5 (full reconstruction diffs of
+      `$14b62` / `$5590` / an economy servicer); RIDER 3c (14-byte group-0
+      exception frame — own emulator pass); RIDER 3d (fault-corpus writeup);
+      RIDER 3e (Diabolus / `geogeo28` / Ghidra); Task 1's territory-flip capture.
+
 ## Files
 
 | file | what |

@@ -262,6 +262,29 @@ buffer. `$ff7c`'s PC-relative operands resolve to `26(PC)`→`$ff98` (EYE) and
 forward from the camera cell (row stride 64), corner buffer `$3f364` row stride
 64 bytes (9 × 4 used). `tools/pm_render_ref.py`'s float version matches to ≤1 px.
 
+**Proven vs the real 68000 (92nd, RIDER 3b — evidence level: Proven).** Using the
+emulator's new `callcap` primitive (call a routine in isolation from a captured
+state, capture its full register + changed-memory delta, snapshot-restore):
+
+- **Entry contract:** `$fecc` reads `0(A3,D0.w)` with `D0 = YAW*2` on entry, so
+  **`A3` must point at the sine table `$13f8a`**. Everything else (YAW/ZOOM/HALF
+  at `$ff9a`/`$ff9c`/`$fdec`, the camera cell at `$4bb3a`/`$4bb3c`, `$57ffc`, the
+  strides `$fdea`/`$fdee`, the control plane `$3f86c`) is from fixed memory. A
+  bare `bsr $fecc` with a garbage `A3` produces 158/162 wrong corner bytes — this
+  is what `callcap` surfaces, and why per-routine entry-contract discovery is the
+  first step of any differential test.
+- With `A3 = $13f8a`, the freshly recomputed `$3f364` is **byte-identical to the
+  stored buffer** across `pm78_settle` / `pm88_f1` / `pm73_fight` / `pm74_late`.
+  This closes the "circular verification" concern that passes 77–90 relied on the
+  in-RAM corner buffer: that buffer *is* the projection output, reproducibly.
+- A from-disassembly integer reconstruction (`scratchpad/pm92/proj_ref.py` —
+  `$fecc` + `$fe8e` HBIAS + `$ff7c` divide, transcribed line-for-line, **no float
+  `sin`/`cos`, zero fudge factors**) matches the real `$fecc` output over **36
+  generated camera-cell states + 4 natural captures: 3240/3240 vertices exact**,
+  full corner-buffer comparison (`scratchpad/pm92/diff_fecc.py`).
+- Pre-registered falsifier: any single vertex X or Y off by ≥1. Pass bar: 100%
+  exact over ≥30 generated states + all 4 natural captures. Result: PASS.
+
 The projection **is perspective** (`x / (EYE - depth)`), not an affine 2:1 iso.
 The "isometric" look is a fixed camera pitch baked into the fixed `HORIZON`/`EYE`
 pair plus the 16-step yaw. A port that wants true axonometric can drop the
@@ -836,7 +859,11 @@ Palette: one 16-colour shifter palette for the whole iso view
 the projection maths (§3) and the `$ef62`/`$e420` rasteriser (§4) are **Proven**
 for the traced captures (86th: every triangle input + every scanline's DDA span
 + dither phase byte-exact vs a live single-step; 77th: all 81 projected vertices
-byte-exact). The sprite frame formulas + the `$115e0` bucket walk (§6) are
+byte-exact). **92nd (RIDER 3b): the projection §3 is now Proven vs the real 68000
+independently** — a from-disasm integer reconstruction matches `$fecc` called in
+isolation (emulator `callcap`) over 40 states / 3240 vertices, full corner-buffer
+comparison, zero fudge (see §3 "Proven vs the real 68000"). The sprite frame
+formulas + the `$115e0` bucket walk (§6) are
 **Corroborated** (disassembly + a live register/`$11f88` probe + the F#↔Python
 byte-exact cross-check). The "no per-frame sea fill" / "minimap baked once"
 claims are **Observed** (true for `pm78_settle`/`pm88_f1`/`pm73_fight`/
