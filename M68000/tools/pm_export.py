@@ -348,6 +348,126 @@ SPRITE_FRAME_BYTES = 0x37   # 55 = 11 rows x 5 bytes
 SPRITE_ROWS = 11
 SPRITE_W = 8
 
+# The bigger prop sheet: category 2 (trees / obstacles) blits from here via the
+# $1227c/$124a8 wide blitter (mulu #$1e0,D2 -> 0x1e0 = 480 bytes/frame). 87th:
+# stride confirmed by a live trace ($012288: mulu.w #$1e0,D2 ; adda.w D2,A1 with
+# A1 = $37c7c). Row layout not yet decoded (deferred to the 88th).
+SPRITE2_SHEET = 0x37c7c
+SPRITE2_FRAME_BYTES = 0x1e0
+
+# 87th pass -- the $115e0 per-cell entity dispatch, ripped from the jump tables in
+# RAM ($1162e prepare, $1165c blit -- SPEC.md said $1165a, off by 2) plus a
+# disassembly of each per-category "prepare" handler and a live trace of the men
+# path (cat 0) from scratchpad/pm78_settle.snap. Every frame-index formula below
+# is the D2 value handed to the blitter. `[$xxxx]` = a live word read; byte N =
+# object record ($51b66, stride 50) field N. See SPEC.md section 6.
+#
+# Shared by every $33000-sheet prepare handler: the entity's screen position is a
+# bilinear lerp of the cell's 4 projected corners (from the $3f364 buffer, packed
+# (screenX<<16)|screenY) by (fx,fy) = (byte8 & 0xff, byte10 & 0xff), then
+# screenX += 0x3c, screenY -= 8  ($11f1a, verified: a0 at entry points at
+# &$3f364[cellRow*64 + cellCol*4], the cell's TL corner).
+SPRITE_TRIGGERS = {
+    "note": (
+        "PowerMonger per-cell entity (sprite) dispatch. $115e0 (pm_draw_cell_"
+        "entities) is called INLINE per cell from the terrain grid-walk handler "
+        "(q3: $fdbc), right after that cell's two triangles, in far->near "
+        "painter's order -- so no sprite floats over a hill it is behind. This is "
+        "the path that draws the little men / animals / trees / buildings ON the "
+        "iso terrain. $16738->$e6ee is a SEPARATE pass ($165b2, selected-group "
+        "marker + HUD glyphs), positioned by raw cell coordinate + a fixed "
+        "per-frame descriptor X -- NOT the iso entities. (87th live trace, "
+        "scratchpad/pm78_settle.snap.)"),
+    "dispatch": {
+        "record_category_field": 6,
+        "prepare_table_addr": "$1162e",
+        "blit_table_addr": "$1165c",
+        "prepare_target": "$1162e + word[$1162e + category]",
+        "blit_target": "$1165c + word[$1165c + category]  (word 0 => handler "
+                       "blits inline or draws nothing)",
+    },
+    "position_lerp": {
+        "routine": "$11f1a",
+        "corners": "a0 = &$3f364[cellRow*64 + cellCol*4]; C00=(a0) C10=4(a0) "
+                   "C01=64(a0) C11=68(a0); each packed (screenX<<16)|screenY",
+        "frac": "(fx, fy) = (record[8] & 0xff, record[10] & 0xff)",
+        "formula": "pos = lerp(lerp(C00,C10,fx/256), lerp(C01,C11,fx/256), "
+                   "fy/256); screenX = pos.x + 0x3c; screenY = pos.y - 8",
+    },
+    "categories": {
+        "0": {"name": "man / troop", "prepare": "$11c8a",
+              "blit": "$11f78 -> $11f82", "sheet": "$33000", "frame_bytes": 55,
+              "frame": "(record[5]-1)*16 + (((record[17] + [$ff9a] + 0x10) & "
+                       "0xff) >> 5)*2   [+0x40 armed/variant, +1 if [$4bb41]&1 "
+                       "walk-anim]. record[5]=faction (blocks of 16), record[17]"
+                       "=heading, [$ff9a]=camera yaw => facing is YAW-RELATIVE. "
+                       "modes 0x32/0x34/0x06/0x46 (byte 31) take melee/dying "
+                       "branches -- not yet ripped. Live: frame 64 for a faction-"
+                       "1 man facing 0, armed.",
+              "verified": "live trace + disasm"},
+        "1": {"name": "?", "prepare": "$117d8", "blit": "none",
+              "frame": "not ripped"},
+        "2": {"name": "tree / obstacle", "prepare": "$1168c",
+              "blit": "inline via $1227c/$124a8", "sheet": "$37c7c",
+              "frame_bytes": 480,
+              "frame": "from record[7], + a [$57fd0]-indexed offset "
+                       "($116c6..$116d0); special-cases record[7] == 0x0d, 0x0e. "
+                       "Row layout of the 480-byte frame not yet decoded.",
+              "verified": "live trace (stride) + partial disasm"},
+        "3": {"name": "? (== cat 12)", "prepare": "$117b0", "blit": "$11f78",
+              "sheet": "$33000", "frame_bytes": 55,
+              "frame": "record[7] + 0x100; if == 0x112 then + ([$57fec] & 3) "
+                       "(4-frame animation)",
+              "verified": "disasm"},
+        "4": {"name": "animal", "prepare": "$11a86", "blit": "$11f78",
+              "sheet": "$33000", "frame_bytes": 55,
+              "frame": "(((record[14] + [$ff9a]) & 0xff) >> 5)*2 + 0x117   "
+                       "[+1 if [$4bb41]&1]. record[14]=heading, yaw-relative. "
+                       "=> 16 frames at base 0x117 (8 facings x {a,b}).",
+              "verified": "disasm"},
+        "5": {"name": "?", "prepare": "$11772", "blit": "$11f78 (x2)",
+              "sheet": "$33000", "frame_bytes": 55,
+              "frame": "if record[33]: ((record[33]-8) >> 1) + 0x10f  (blit); "
+                       "then if record[44]: (record[44] >> 1) + 0x142  (blit)",
+              "verified": "disasm"},
+        "6": {"name": "?", "prepare": "$11bbc", "blit": "$11f78 (x2)",
+              "sheet": "$33000", "frame_bytes": 55,
+              "frame": "underlay (0x103 - record[5]) then main (record[32] + "
+                       "0x100); screenY -= (0xa0 - record[18])",
+              "verified": "disasm"},
+        "7": {"name": "?", "prepare": "$11bf4", "blit": "$11f78",
+              "sheet": "$33000", "frame_bytes": 55,
+              "frame": "record[5] + 0x13e   (faction-indexed). Side effect: if "
+                       "[$14d12+316] == 0x60 the handler rewrites record[6] "
+                       "(category) -- a state transition, ignore for rendering.",
+              "verified": "disasm"},
+        "8": {"name": "?", "prepare": "$1192e", "blit": "none",
+              "frame": "not ripped"},
+        "9": {"name": "?", "prepare": "$11c36", "blit": "none",
+              "frame": "not ripped"},
+        "10": {"name": "?", "prepare": "$11b3c", "blit": "$11f78",
+               "sheet": "$33000", "frame_bytes": 55, "frame": "not ripped"},
+        "11": {"name": "?", "prepare": "$11b2a", "blit": "$11f78",
+               "sheet": "$33000", "frame_bytes": 55, "frame": "not ripped"},
+        "12": {"name": "== cat 3", "prepare": "$117b0", "blit": "$11f78",
+               "sheet": "$33000", "frame_bytes": 55, "frame": "see cat 3"},
+        "13": {"name": "?", "prepare": "$1174e", "blit": "$11f78",
+               "sheet": "$33000", "frame_bytes": 55, "frame": "not ripped"},
+        "14": {"name": "?", "prepare": "$11b0c", "blit": "$11f78",
+               "sheet": "$33000", "frame_bytes": 55,
+               "frame": "0x150 default; if record[5] > 0 then ([$57fec] & 1) + "
+                        "0x14e",
+               "verified": "disasm"},
+        "15": {"name": "?", "prepare": "$1198a", "blit": "none",
+               "frame": "not ripped"},
+        "16": {"name": "?", "blit": "$1168a", "frame": "not ripped"},
+        "17": {"name": "?", "blit": "$11f78", "sheet": "$33000",
+               "frame_bytes": 55, "frame": "not ripped"},
+        "18": {"name": "?", "blit": "$12258", "frame": "not ripped"},
+        "19": {"name": "?", "blit": "$12258", "frame": "not ripped"},
+    },
+}
+
 
 def decode_minisprite(frame: bytes):
     """8 x 11 four-bitplane sprite (77th-pass, from the aligned $11fe4..$12034
@@ -372,24 +492,22 @@ def decode_minisprite(frame: bytes):
 def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
     sd = out / "sprites"
     sd.mkdir(exist_ok=True)
-    # $33000 is a multi-category sheet. $11f82 (the mini-sprite blitter shared by
-    # animals / trees / buildings / effects, and the men via $1187c) reads 0x37
-    # (55) bytes/frame = 11 rows x [AND-mask, plane0..3]. 77th: export the first
-    # 64 frames at that stride as an 8x11 4bpp contact sheet. A full per-category
-    # rip (each category's frame base + count -- see the $1162e handlers) is
-    # still deferred.
-    max_frames = 64
-    frames = [ram.blk(SPRITE_SHEET + f * SPRITE_FRAME_BYTES, SPRITE_FRAME_BYTES)
-              for f in range(max_frames)]
-    nframes = len(frames)
 
-    # raw sheet bytes (the authoritative export -- decode with decode_minisprite)
+    # -- $33000 mini-sprite sheet (men / animals / small props / effects) --------
+    # 87th: the category handlers ($11c8a men, $11a86 animals, $11b0c ... -- see
+    # SPRITE_TRIGGERS) reach frame bases up to 0x150. Rip 0x160 frames (an upper
+    # bound -- the exact count per category is still open); past ~0x150+count the
+    # address space runs into the $37c7c prop sheet. Was: first 64 (men only).
+    # $11f82 reads 0x37 (55) B/frame = 11 rows x [AND-mask, plane0..3].
+    nframes = 0x160
+    frames = [ram.blk(SPRITE_SHEET + f * SPRITE_FRAME_BYTES, SPRITE_FRAME_BYTES)
+              for f in range(nframes)]
     (sd / "sheet_raw.bin").write_bytes(
         ram.blk(SPRITE_SHEET, nframes * SPRITE_FRAME_BYTES))
 
     pal_rgb = [stf_rgb(w) for w in dom_pal]
     up = 6
-    cols = 8
+    cols = 16
     rowsN = (nframes + cols - 1) // cols
     cw, chh = SPRITE_W * up + 4, SPRITE_ROWS * up + 4
     sheet = [[(40, 40, 40)] * (cols * cw) for _ in range(rowsN * chh)]
@@ -404,39 +522,72 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
                         sheet[oy + r * up + dy][ox + c * up + dx] = col
     write_png(sd / "sheet_contact.png", cols * cw, rowsN * chh, sheet)
 
-    # heading -> frame table
+    # -- $37c7c prop sheet (category 2: trees / obstacles) ----------------------
+    # 480 B/frame, wide blitter $1227c/$124a8. Row layout not decoded yet, and the
+    # frame count is unknown -- rip a bounded 48-frame sample so the 88th can work
+    # the layout out offline.
+    n2 = 48
+    (sd / "prop_sheet_raw.bin").write_bytes(
+        ram.blk(SPRITE2_SHEET, n2 * SPRITE2_FRAME_BYTES))
+
+    # -- heading -> frame table (used only by the $e6ee marker/HUD path) --------
     ht = ram.blk(0x1675a, 16)
     headings = {h: (None if ht[h] == 0xff else ht[h]) for h in range(16)}
     (out / "headings.json").write_text(json.dumps({
         "table_addr": "$1675a",
-        "note": ("heading (byte 17 of the object record, 0..15) -> mini-sprite "
-                 "frame index. 0xff = do not draw a sprite for this facing. "
-                 "Read by pm_pick_sprite_frame ($16738)."),
+        "note": ("heading (byte 17 of the object record, 0..15) -> frame index "
+                 "for pm_pick_sprite_frame ($16738), which blits via $e6ee. "
+                 "0xff = draw nothing for this facing. 87th: this is the "
+                 "$165b2 selected-group-marker / HUD path -- NOT the iso-terrain "
+                 "entity path. The terrain men use cat 0's own yaw-relative "
+                 "formula (see sprites/sprite_triggers.json)."),
         "heading_to_frame": headings,
         "raw": ht.hex(),
     }, indent=1))
+
+    # -- the category dispatch (the actual iso-entity draw path) ----------------
+    (sd / "sprite_triggers.json").write_text(json.dumps(SPRITE_TRIGGERS, indent=1))
 
     man.append({
         "file": "sprites/sheet_raw.bin + sprites/sheet_contact.png",
         "frames": nframes,
         "provenance": (
             f"g_minisprite_sheet at $33000, {SPRITE_FRAME_BYTES:#x} bytes/frame. "
-            "Blitted by pm_blit_minisprite ($11f82), reached from $115e0's "
-            "category dispatch (jump tables $1162e / $1165a)."),
+            "Blitted by $11f82, reached from $115e0's per-cell category dispatch "
+            "(jump tables $1162e prepare / $1165c blit). 87th: full populated "
+            "sheet (was: first 64 = men only)."),
         "format": (
             f"sheet_raw.bin = {nframes} x {SPRITE_FRAME_BYTES} raw bytes. "
-            f"77th (aligned $11fe4..$12034): each frame is {SPRITE_W} x "
-            f"{SPRITE_ROWS} FOUR-bitplane (16-colour), 5 bytes/row = "
-            "[AND-mask, plane0, plane1, plane2, plane3]; mask bit 1 = opaque, "
-            "shared across planes. Blitter rotates by (8 - (screenX & 15)), "
-            "writes 4 interleaved screen words/row, dest row advance $98. "
-            "sheet_contact.png = 8-wide, 6x, real palette / magenta = clear."),
-        "note": ("$33000 holds other categories past the men frames; each "
-                 "category's frame base + count is in its $1162e handler "
-                 "(not yet ripped)."),
+            f"Each frame is {SPRITE_W} x {SPRITE_ROWS} FOUR-bitplane (16-colour), "
+            "5 bytes/row = [AND-mask, plane0..3]; opaque where mask bit == 0. "
+            "sheet_contact.png = 16-wide, 6x, real palette / magenta = clear. "
+            "Frames 0-63 = men (4 faction blocks of 16); 0x117 = animals; "
+            "0x100/0x10f/0x13e/0x14e/0x150 = other categories -- see "
+            "sprite_triggers.json for each category's base."),
+    })
+    man.append({
+        "file": "sprites/prop_sheet_raw.bin",
+        "frames": n2,
+        "provenance": (
+            f"category-2 (tree/obstacle) sheet at $37c7c, "
+            f"{SPRITE2_FRAME_BYTES:#x} (480) B/frame. Blitted inline by $1168c "
+            "via $1227c/$124a8. 87th: stride confirmed by live trace "
+            "($012288: mulu.w #$1e0,D2)."),
+        "format": "raw bytes only -- row layout of the 480-byte frame not yet "
+                  "decoded (deferred to the 88th).",
+    })
+    man.append({
+        "file": "sprites/sprite_triggers.json",
+        "provenance": ("87th: $115e0 category dispatch. Jump tables $1162e / "
+                       "$1165c read from RAM; per-category frame formulas from a "
+                       "disassembly of each prepare handler + a live men-path "
+                       "trace (scratchpad/pm78_settle.snap)."),
+        "format": "dispatch + position_lerp + per-category {prepare, blit, "
+                  "sheet, frame formula, verified}",
     })
     man.append({"file": "headings.json",
-                "provenance": "heading->frame table at $1675a, read by $16738",
+                "provenance": "heading->frame table at $1675a, read by $16738 "
+                              "($e6ee marker/HUD path, not the iso entities)",
                 "format": "heading_to_frame: {0..15: frame|null}"})
     return nframes
 

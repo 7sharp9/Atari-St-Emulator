@@ -47,15 +47,17 @@
 0002e000	g_dither_table         # 4bpp pattern table (= [$ff9e]); 80th (live-traced $e420): A5 = $2e000 + colourByte*128 + ((8*y) mod 128) -- the roll wraps INSIDE the 128-B colour slot, never advances to slot cb+1, so the topY term drops out; 128 B/colourByte = 16 8-byte sub-patterns (long0=planes{0,1}, long1=planes{2,3}); 0x24-2c green, 0x08-0b water, 0x18-1c rock; ~8.5 KB span, absolutely indexed
 00078000	g_hud_master           # 32000-B HUD + stone border + the pre-rendered OPEN SEA + an island-shaped hole; built once at mission load ($13b9a). $12ce0 copies it -> back buffer ~1/3 frames, then $f898 redraws ONLY the island into the hole. NO per-frame sea fill (79th: composed frame vs this master differ only in the island blob + sprites)
 00017878	pm_render_setup_b       # rotation-indexed row table select ($17ad8)
-000115e0	pm_draw_cell_entities   # walk $47970[cell] bucket; per entity byte6=category -> jump table 1 $1162e (prepare) + jump table 2 $1165a (blit)
-0001162e	t_sprite_cat_prepare    # 16 per-category "prepare" handlers: cat0=$11c8a men, cat4=$11a86 animals, cat2=$1168c, cat3/12=$117b0, cat5=$11772, cat6=$11bbc, cat7=$11bf4, cat8=$1192e, cat9=$11c36, cat10=$11b3c, cat11=$11b2a, cat13=$1174e, cat14=$11b0c, cat15=$1198a
-0001165a	t_sprite_cat_blit      # per-category blitter: cat0=$1187c (men), most others=$11f78 (~$11f82 mini-sprite), +17=$1168a, +19=$12258
-00011f82	pm_blit_minisprite      # 77th: 8x11 4-bitplane sprite from $33000 ($37 B/frame = 11 rows x [mask,p0,p1,p2,p3]); opaque where mask bit 0; rol.w (8-(x&15)); dest row stride $98; frames 0-63 = men, 4 faction blocks of 16
-0001187c	pm_blit_man_sprite     # cat-0 (men) sprite path from $115e0 jump table 2
-00033000	g_minisprite_sheet      # mini-sprite sheet, $37 (55) bytes per frame (11 rows x 5 bytes)
-00016738	pm_pick_sprite_frame    # frame = t_heading_frame[heading + flipHalf(0|8)] ($1675a, 16 entries, $ff = skip); blits via $e6ee (NOT $11f82 -- two sprite paths, not yet separated)
+000115e0	pm_draw_cell_entities   # 87th: called INLINE per cell from the grid walk ($fccc at $fdbc), after that cell's triangles, far->near painter order = the iso-terrain entity path. per entity byte6=category -> $1162e prepare + $1165c blit
+0001162e	t_sprite_cat_prepare    # 16 per-category "prepare" handlers (interpolate pos via $11f1a, pick frame -> D2): cat0=$11c8a men, cat4=$11a86 animals, cat2=$1168c, cat3/12=$117b0, cat5=$11772, cat6=$11bbc, cat7=$11bf4, cat8=$1192e, cat9=$11c36, cat10=$11b3c, cat11=$11b2a, cat13=$1174e, cat14=$11b0c, cat15=$1198a. frame formulas in assets/sprites/sprite_triggers.json
+0001165c	t_sprite_cat_blit      # 87th (was recorded $1165a, 2 low): per-category blitter. cat0=$11f78->$11f82 (NOT $1187c), cats 3/4/6/7/10/11/12/13/14/17=$11f78, cat16=$1168a, cat18/19=$12258, word 0 = no separate blit
+00011f1a	pm_entity_cell_lerp     # 87th: bilinear lerp of the 4 projected cell corners (a0=&$3f364[cellRow*64+cellCol*4]; C00/C10/C01/C11) by (record[8]&0xff, record[10]&0xff); then screenX+=$3c, screenY-=8
+00011f82	pm_blit_minisprite      # 77th: 8x11 4-bitplane sprite from $33000 ($37 B/frame = 11 rows x [mask,p0,p1,p2,p3]); opaque where mask bit 0; rol.w (8-(x&15)); dest row stride $98. frames 0-127 men (4 faction blocks), 0x117 animals, 0x100+ glyphs
+0001187c	pm_blit_man_sprite     # men melee/dying sub-case blitter, from $11c8a's mode branches (byte31 in {$32,$34,$06,$46}) -- NOT the normal men path ($1165c cat0 = $11f78)
+00033000	g_minisprite_sheet      # mini-sprite sheet, $37 (55) bytes per frame (11 rows x 5 bytes); ~352 populated frames
+00037c7c	g_prop_sheet            # 87th: category-2 (tree/obstacle) sheet, $1e0 (480) bytes per frame; blitted inline by $1168c via $1227c/$124a8; row layout not decoded
+00016738	pm_pick_sprite_frame    # 87th: the $165b2 selected-group-marker / HUD path (NOT the iso entities). frame = t_heading_frame[heading + flipHalf(0|15)] ($1675a, $ff = skip); blits via $e6ee at raw cell coord (record[8], record[10]+6)
 0001675a	t_heading_frame        # 16 bytes: [ff,05,0f,08,0a,05,10,ff, ff,08,0a,0f,0c,05,10,ff]; index = heading + flipHalf
-0000e6ee	pm_blit_hud_sprite      # wider multi-plane blitter; HUD glyphs + selected-unit marker + (via $16738) terrain-man sprites
+0000e6ee	pm_blit_hud_sprite      # wider multi-plane blitter, 32-byte glyph row stride, 4-long descriptor table at $e6ee+110; HUD glyphs + the $165b2 selected-group marker (via $16738). NOT the iso-terrain entities (that is $115e0 -> $11f82)
 00016754	t_heading_frame        # data: heading (0..15) -> mini-sprite frame index, $ff = skip
 0000187a	pm_present             # swap $2df7c<->$2df78, write (front>>8) to $FFFF8200 (double-buffer flip)
 0000e0d4	g_terrain_master       # composed full-terrain buffer; $12ce0'd into the back buffer each present

@@ -451,6 +451,29 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     is a clean natural-rotation capture or Task 2 (sprite rip), not a 7th
     rasteriser hypothesis. Detail in `port/SPEC.md` §9 item 1.
 
+23. The 87th pass **starts Task 2 (the sprite rip) and settles which blit path
+    draws the iso-terrain entities** (doc + tooling only — no emulator or port
+    code change). Live-traced one frame of `scratchpad/pm78_settle.snap`:
+    **`$115e0` (`pm_draw_cell_entities`) is the iso path** — called inline per
+    cell from the grid walk (`$fdbc`), after the cell's triangles, far→near, so
+    painter's order is free. `$16738`→`$e6ee` is NOT it: in `pm78_settle` it
+    fires only from `$165b2` (the selected-group marker — one glyph per record
+    whose byte 5 == `[$57ffe]`, positioned by raw cell coord, blinking via
+    `$4bb41` bit 0), plus HUD glyphs. Ripped from the RAM jump tables + a
+    disasm of each prepare handler + the men-path trace: the dispatch is
+    `$1162e` prepare / **`$1165c`** blit (SPEC said `$1165a`, 2 low); cat 0
+    (men) blits via `$11f78`→`$11f82`, **not `$1187c`** (a melee/dying
+    sub-case); position is a bilinear lerp of the 4 projected cell corners
+    (`$11f1a`) by the entity's sub-cell fraction; and the frame-index formulas
+    for cats 0, 2, 3, 4, 5, 6, 7, 12, 14 (men use a **camera-yaw-relative**
+    facing: `(faction−1)*16 + (((heading + [$ff9a] + 0x10) & 0xff) >> 5)*2`).
+    All in `port/assets/sprites/sprite_triggers.json`. `pm_export.py` now rips
+    the full 352-frame `$33000` sheet (was 64) + a 48-frame sample of the
+    `$37c7c` 480-byte cat-2 sheet. Still open (88th): per-category frame
+    counts, cats 1/8/9/10/11/13/15, the cat-2 row layout, and the actual
+    `pm_render_ref.py` + `Sprites.fs` compositing (Targets 3–4). Detail in
+    `port/SPEC.md` §6 / §9 item 3.
+
 ## Files
 
 | file | what |

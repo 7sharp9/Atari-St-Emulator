@@ -1,0 +1,168 @@
+{
+ "note": "PowerMonger per-cell entity (sprite) dispatch. $115e0 (pm_draw_cell_entities) is called INLINE per cell from the terrain grid-walk handler (q3: $fdbc), right after that cell's two triangles, in far->near painter's order -- so no sprite floats over a hill it is behind. This is the path that draws the little men / animals / trees / buildings ON the iso terrain. $16738->$e6ee is a SEPARATE pass ($165b2, selected-group marker + HUD glyphs), positioned by raw cell coordinate + a fixed per-frame descriptor X -- NOT the iso entities. (87th live trace, scratchpad/pm78_settle.snap.)",
+ "dispatch": {
+  "record_category_field": 6,
+  "prepare_table_addr": "$1162e",
+  "blit_table_addr": "$1165c",
+  "prepare_target": "$1162e + word[$1162e + category]",
+  "blit_target": "$1165c + word[$1165c + category]  (word 0 => handler blits inline or draws nothing)"
+ },
+ "position_lerp": {
+  "routine": "$11f1a",
+  "corners": "a0 = &$3f364[cellRow*64 + cellCol*4]; C00=(a0) C10=4(a0) C01=64(a0) C11=68(a0); each packed (screenX<<16)|screenY",
+  "frac": "(fx, fy) = (record[8] & 0xff, record[10] & 0xff)",
+  "formula": "pos = lerp(lerp(C00,C10,fx/256), lerp(C01,C11,fx/256), fy/256); screenX = pos.x + 0x3c; screenY = pos.y - 8"
+ },
+ "categories": {
+  "0": {
+   "name": "man / troop",
+   "prepare": "$11c8a",
+   "blit": "$11f78 -> $11f82",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "(record[5]-1)*16 + (((record[17] + [$ff9a] + 0x10) & 0xff) >> 5)*2   [+0x40 armed/variant, +1 if [$4bb41]&1 walk-anim]. record[5]=faction (blocks of 16), record[17]=heading, [$ff9a]=camera yaw => facing is YAW-RELATIVE. modes 0x32/0x34/0x06/0x46 (byte 31) take melee/dying branches -- not yet ripped. Live: frame 64 for a faction-1 man facing 0, armed.",
+   "verified": "live trace + disasm"
+  },
+  "1": {
+   "name": "?",
+   "prepare": "$117d8",
+   "blit": "none",
+   "frame": "not ripped"
+  },
+  "2": {
+   "name": "tree / obstacle",
+   "prepare": "$1168c",
+   "blit": "inline via $1227c/$124a8",
+   "sheet": "$37c7c",
+   "frame_bytes": 480,
+   "frame": "from record[7], + a [$57fd0]-indexed offset ($116c6..$116d0); special-cases record[7] == 0x0d, 0x0e. Row layout of the 480-byte frame not yet decoded.",
+   "verified": "live trace (stride) + partial disasm"
+  },
+  "3": {
+   "name": "? (== cat 12)",
+   "prepare": "$117b0",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "record[7] + 0x100; if == 0x112 then + ([$57fec] & 3) (4-frame animation)",
+   "verified": "disasm"
+  },
+  "4": {
+   "name": "animal",
+   "prepare": "$11a86",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "(((record[14] + [$ff9a]) & 0xff) >> 5)*2 + 0x117   [+1 if [$4bb41]&1]. record[14]=heading, yaw-relative. => 16 frames at base 0x117 (8 facings x {a,b}).",
+   "verified": "disasm"
+  },
+  "5": {
+   "name": "?",
+   "prepare": "$11772",
+   "blit": "$11f78 (x2)",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "if record[33]: ((record[33]-8) >> 1) + 0x10f  (blit); then if record[44]: (record[44] >> 1) + 0x142  (blit)",
+   "verified": "disasm"
+  },
+  "6": {
+   "name": "?",
+   "prepare": "$11bbc",
+   "blit": "$11f78 (x2)",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "underlay (0x103 - record[5]) then main (record[32] + 0x100); screenY -= (0xa0 - record[18])",
+   "verified": "disasm"
+  },
+  "7": {
+   "name": "?",
+   "prepare": "$11bf4",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "record[5] + 0x13e   (faction-indexed). Side effect: if [$14d12+316] == 0x60 the handler rewrites record[6] (category) -- a state transition, ignore for rendering.",
+   "verified": "disasm"
+  },
+  "8": {
+   "name": "?",
+   "prepare": "$1192e",
+   "blit": "none",
+   "frame": "not ripped"
+  },
+  "9": {
+   "name": "?",
+   "prepare": "$11c36",
+   "blit": "none",
+   "frame": "not ripped"
+  },
+  "10": {
+   "name": "?",
+   "prepare": "$11b3c",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "not ripped"
+  },
+  "11": {
+   "name": "?",
+   "prepare": "$11b2a",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "not ripped"
+  },
+  "12": {
+   "name": "== cat 3",
+   "prepare": "$117b0",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "see cat 3"
+  },
+  "13": {
+   "name": "?",
+   "prepare": "$1174e",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "not ripped"
+  },
+  "14": {
+   "name": "?",
+   "prepare": "$11b0c",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "0x150 default; if record[5] > 0 then ([$57fec] & 1) + 0x14e",
+   "verified": "disasm"
+  },
+  "15": {
+   "name": "?",
+   "prepare": "$1198a",
+   "blit": "none",
+   "frame": "not ripped"
+  },
+  "16": {
+   "name": "?",
+   "blit": "$1168a",
+   "frame": "not ripped"
+  },
+  "17": {
+   "name": "?",
+   "blit": "$11f78",
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "not ripped"
+  },
+  "18": {
+   "name": "?",
+   "blit": "$12258",
+   "frame": "not ripped"
+  },
+  "19": {
+   "name": "?",
+   "blit": "$12258",
+   "frame": "not ripped"
+  }
+ }
+}

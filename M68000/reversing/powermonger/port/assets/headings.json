@@ -1,6 +1,6 @@
 {
  "table_addr": "$1675a",
- "note": "heading (byte 17 of the object record, 0..15) -> mini-sprite frame index. 0xff = do not draw a sprite for this facing. Read by pm_pick_sprite_frame ($16738).",
+ "note": "heading (byte 17 of the object record, 0..15) -> frame index for pm_pick_sprite_frame ($16738), which blits via $e6ee. 0xff = draw nothing for this facing. 87th: this is the $165b2 selected-group-marker / HUD path -- NOT the iso-terrain entity path. The terrain men use cat 0's own yaw-relative formula (see sprites/sprite_triggers.json).",
  "heading_to_frame": {
   "0": null,
   "1": 5,

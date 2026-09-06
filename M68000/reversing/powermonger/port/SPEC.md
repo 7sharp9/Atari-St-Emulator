@@ -544,31 +544,83 @@ Every zoom draws the same triangle fill with more/fewer, larger/smaller cells.
 
 ## 6. Sprites
 
-### Selection
+### Two separate sprite paths — settled by a live trace (87th)
 
-Each entity has a `heading` byte (object record +17, 0..15 — sometimes stored
-`<< 4`). `pm_pick_sprite_frame` `$16738` maps it through
-`assets/headings.json` (`t_heading_frame` at `$1675a`):
+The 87th pass live-traced one frame of `scratchpad/pm78_settle.snap` to answer
+the long-standing "which path draws the terrain men" question. The answer:
+
+- **`$115e0` (`pm_draw_cell_entities`) is the iso-terrain entity path.** It is
+  called **inline, per cell, from the terrain grid-walk handler** (`$fccc` for
+  q3, at `$fdbc`) — right after that cell's two triangles are filled, in
+  far→near painter's order. So a man / animal / tree / building is composited
+  immediately over its own cell's terrain and correctly occluded by nearer
+  cells drawn later. This draws **everything that stands on the hill.**
+- **`$16738` → `$e6ee` is NOT that path.** In `pm78_settle` it fires only from
+  `$165b2` (the selected-group marker) — a flat scan over every object record
+  (`$16626` loop, stride 50, to `$57f66`) that draws one glyph per record whose
+  **byte 5 == `[$57ffe]`** (the selected group id), positioned by *raw cell
+  coordinate* (`record[8]`, `record[10]+6`) plus a fixed per-frame descriptor X,
+  not by a projected position. It blinks via `$4bb41` bit 0 (which flips
+  `flipHalf` 0↔15; `flipHalf` 15 pushes every heading to the `0xff` "draw
+  nothing" table slot — that is the "off" phase). `$e6ee` is also the HUD-glyph
+  blitter. `assets/headings.json` feeds *this* path only.
+
+### Category dispatch (`$115e0` → `$1162e` / `$1165c`)
+
+Per bucket entity, `$115e0` reads object-record **byte 6 = category**, then:
+
+| table | addr | target | role |
+|-------|------|--------|------|
+| prepare | `$1162e` | `$1162e + word[$1162e + cat]` | interpolate screen position, pick a frame index (into D2), sometimes blit inline |
+| blit | `$1165c` | `$1165c + word[$1165c + cat]`; **word 0 ⇒ no separate blit** | hand D2 to a blitter |
+
+**Corrections to earlier passes (verified from the RAM tables + a disasm of each
+handler, 87th):** the blit table is at **`$1165c`**, not `$1165a`. Category 0
+(men) blits via **`$11f78` → `$11f82`** (the 55-byte mini-sprite path), *not*
+`$1187c` — `$1187c` (`pm_blit_man_sprite`) is not referenced by the blit table
+at all and is reached only from `$11c8a`'s melee/dying mode branches (record
+byte 31 ∈ {`$32`,`$34`,`$06`,`$46`}). `$115e0`'s dispatch is `$1162e`'s 16
+prepare handlers exactly as the previous table listed (re-read from RAM, all
+confirmed), plus `cat 16`→`$1168a`, `cat 17`→`$11f78`, `cat 18/19`→`$12258` in
+the blit table.
+
+### Position — bilinear over the projected cell corners (`$11f1a`)
+
+Every `$33000`-sheet prepare handler places the entity by interpolating the
+cell's four **projected** corners (from `$3f364`, packed `(screenX<<16)|screenY`
+— §3) by the entity's sub-cell fraction:
 
 ```
-frame = [ 0xff,5,15,8,10,5,16,0xff, 0xff,8,10,15,12,5,16,0xff ][heading & 0x0f]
-0xff  => draw no sprite for this facing (the 16 headings fold to ~8 drawn
-         frames + a horizontal flip)
+a0 = &$3f364[cellRow*64 + cellCol*4]          // the cell's TL corner
+C00 = (a0)   C10 = 4(a0)   C01 = 64(a0)   C11 = 68(a0)
+fx  = record[8]  & 0xff                        // low byte of the world_x word
+fy  = record[10] & 0xff
+pos = lerp( lerp(C00, C10, fx/256), lerp(C01, C11, fx/256), fy/256 )   // parallel 16-bit halves
+screenX = pos.x + 0x3c                         // sprite anchor (cf terrain +64; −4 = ½ frame)
+screenY = pos.y - 8
 ```
 
-### Category dispatch (`$115e0`, 77th-pass trace)
+(Verified: `a0` at `$11c8a` entry = `$3f474` for a cell at camera-offset
+`(+4,+4)` = `$3f364 + 4*64 + 4*4`.)
 
-Per bucket entity, `$115e0` reads object-record **byte 6 = category** and calls
-two per-category handlers via jump tables:
+### Frame index per category
 
-| table | addr | target = base + `word[addr + cat]` | role |
-|-------|------|-----------|------|
-| 1 | `$1162e` | `cat 0`→`$11c8a`, `4`→`$11a86`, `2`→`$1168c`, `3`/`12`→`$117b0`, `5`→`$11772`, `6`→`$11bbc`, `7`→`$11bf4`, `8`→`$1192e`, `9`→`$11c36`, `10`→`$11b3c`, `11`→`$11b2a`, `13`→`$1174e`, `14`→`$11b0c`, `15`→`$1198a` | position / prepare |
-| 2 | `$1165a` | `cat 0`→`$1187c` (men-special); `4,5,7,8,11,12,13,14,15,18`→`$11f78` (≈ `$11f82`); `+17`→`$1168a`; `+19`→`$12258` | blit |
+`assets/sprites/sprite_triggers.json` carries the full ripped dispatch + every
+per-category frame formula. The important ones:
 
-`cat 0` = men, `cat 4` = animals; the rest are trees / buildings / effects /
-markers. Which frame each handler picks (from `$16754`, the heading table, and
-the entity mode) → still to be mapped into `assets/sprite_triggers.json`.
+| cat | name | sheet | frame (D2) |
+|-----|------|-------|------------|
+| 0 | man / troop | `$33000` /55 | `(faction−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. faction = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative.** |
+| 2 | tree / obstacle | `$37c7c` /480 | from record[7] + a `[$57fd0]`-indexed offset; blit inline via `$1227c`/`$124a8`. Row layout of the 480-byte frame not decoded yet. |
+| 3, 12 | (settlement marker?) | `$33000` /55 | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Frames 0x100+ are the number/flag glyphs. |
+| 4 | animal | `$33000` /55 | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. |
+| 5 | — | `$33000` /55 | `((record[33]−8) >> 1) + 0x10f`, then `(record[44] >> 1) + 0x142` (two blits) |
+| 6 | — | `$33000` /55 | underlay `0x103 − record[5]`, main `record[32] + 0x100` |
+| 7 | — | `$33000` /55 | `record[5] + 0x13e` (faction-indexed) |
+| 14 | — | `$33000` /55 | `0x150`, or `(0x57fec & 1) + 0x14e` if `record[5] > 0` |
+
+Cats 1, 8, 9, 10, 11, 13, 15 have a prepare handler but their frame formula is
+not yet ripped (88th).
 
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
@@ -593,18 +645,13 @@ The 4 planes are the 4 interleaved screen words of one 16-px group → a real
 16-colour sprite, not a silhouette. Anchor: the entity's projected
 `(screenX, screenY)` from §3, drawn up-left of the anchor (foot at the cell).
 
-`assets/sprites/sheet_contact.png` (first 64 frames) decodes cleanly as the
-little men: **4 faction-colour blocks of 16** (khaki / blue / orange / yellow),
-each block = 8 headings × {stand, walk}. `$33000` continues past frame 64 with
-the animal / tree / building / effect categories at the same 55-byte stride;
-each category's frame base + count lives in its `$1162e` handler and is not yet
-ripped.
-
-Two frame-selection paths exist and are not fully separated: `$16738` computes
-`t_heading_frame[heading + flipHalf]` (16-entry table at `$1675a`, `flipHalf` =
-0 or 8) and blits via **`$e6ee`**; `$115e0`'s category dispatch blits via
-`$11f82`. Which path draws the terrain men vs. the marker/overlay still needs a
-trace.
+`assets/sprites/sheet_contact.png` now shows the **full populated sheet** (352
+frames, 16 wide; 87th — was the first 64 only). Frames 0–127 = the four
+faction man blocks (khaki / blue / orange / yellow), stand/walk + armed
+variants; 128–287 = the melee/action man poses; `0x117`+ = animals (sheep);
+`0x100`+ = number / flag glyphs; `0x13e`/`0x14e`/`0x150` = crest / icon frames.
+`assets/sprites/prop_sheet_raw.bin` is a 48-frame sample of the separate
+`$37c7c` 480-byte category-2 (tree/obstacle) sheet — row layout not decoded.
 
 ### HUD / selected-unit marker (`$e6ee`)
 
@@ -882,21 +929,25 @@ Palette: one 16-colour shifter palette for the whole iso view
    79th's empirical `DITHER_COLOUR_BIAS = -1` (which only happened to be right
    for 16–32 px-tall triangles). Trace: cell topY 75, colour `0x26` → `A5` =
    `2f358 2f360 2f368 2f370 2f378 2f300 2f308 2f310 2f318` across 9 scanlines.
-3. **Full sprite sheet — category dispatch mapped (77th), rip still deferred.**
-   `$115e0` dispatches on object-record byte 6 (category) through two jump
-   tables: **table 1 `$1162e`** (16 per-category "prepare" handlers —
-   `cat 0`→`$11c8a` men, `cat 4`→`$11a86` animals, `cat 2`→`$1168c`,
-   `cat 3`/`12`→`$117b0`, `cat 5`→`$11772`, `cat 6`→`$11bbc`, `cat 7`→`$11bf4`,
-   `cat 8`→`$1192e`, `cat 9`→`$11c36`, `cat 10`→`$11b3c`, `cat 11`→`$11b2a`,
-   `cat 13`→`$1174e`, `cat 14`→`$11b0c`, `cat 15`→`$1198a`) and **table 2
-   `$1165a`** (blitter: `cat 0`→`$1187c` men-special, most others→`$11f78`
-   ≈ the `$11f82` mini-sprite blitter, `+17`→`$1168a`, `+19`→`$12258`).
-   `$11f82` decode is **closed** (aligned `$11fe4`–`$12034`): 8 × 11, four
-   bitplanes, 5 bytes/row `[mask, p0, p1, p2, p3]`, opaque where mask bit 0,
-   `rol.w (8 - (screenX & 15))`, dest row stride `0x98`. `sheet_contact.png`
-   decodes as the men (4 faction-colour blocks of 16). Still open: the
-   per-category frame base/count in each `$1162e` handler, and which of
-   `$16738`→`$e6ee` vs `$115e0`→`$11f82` draws the terrain men.
+3. **Sprites — the iso-entity path is settled (87th); frame formulas mostly
+   ripped; per-category counts + the cat-2 layout still open.** Which path
+   draws the terrain men: **`$115e0`, inline per cell in the grid walk** (not
+   `$16738`→`$e6ee`, which is the `$165b2` selected-group marker + HUD). The
+   dispatch (`$1162e` prepare / **`$1165c`** blit — the old `$1165a` was 2
+   bytes low), the `$11f1a` bilinear-over-projected-corners positioning, and
+   the frame-index formulas for cats 0, 2, 3, 4, 5, 6, 7, 12, 14 are ripped
+   into `assets/sprites/sprite_triggers.json` (§6). Cat 0 (men) blits via
+   `$11f78`→`$11f82`, **not `$1187c`** (which is a melee/dying sub-case only).
+   `$11f82` decode is closed (8 × 11, four bitplanes, 5 bytes/row
+   `[mask, p0..p3]`, opaque where mask bit 0, `rol.w (8 − (screenX & 15))`,
+   dest row stride `0x98`). `assets/sprites/sheet_raw.bin` is now the full
+   352-frame sheet; `prop_sheet_raw.bin` is a 48-frame sample of the `$37c7c`
+   480-byte cat-2 sheet. **Still open (88th):** the exact frame *count* per
+   category; the frame formulas for cats 1, 8, 9, 10, 11, 13, 15; the cat-2
+   480-byte frame row layout; the `+0x40` "armed" trigger bit; the packed
+   corner word order (X hi vs lo) — resolve on wiring; and then the actual
+   `pm_render_ref.py` entity compositing + `Sprites.fs` wiring + a byte-exact
+   cross-check (Targets 3–4, not started).
 4. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
    needs resolving from a live snapshot. Deferred.
 5. **Border / stone-table master, world-map minimap + compass panel.** Not

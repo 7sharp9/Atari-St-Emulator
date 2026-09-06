@@ -26,6 +26,41 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (87th pass) — Task 2 started: the sprite rip
+
+- **Settled which blit path draws the iso-terrain entities** with a live trace
+  of one frame of `scratchpad/pm78_settle.snap`. It is **`$115e0`
+  (`pm_draw_cell_entities`), called inline per cell from the terrain grid-walk
+  handler** (`$fccc` at `$fdbc`) — right after the cell's two triangles, in
+  far→near order, so a man/tree/building is composited over its own cell and
+  occluded by nearer cells drawn later. `$16738`→`$e6ee` is a **separate
+  pass**: in `pm78_settle` it runs only from `$165b2` (the selected-group
+  marker — one glyph per object record whose byte 5 == `[$57ffe]`, positioned
+  by *raw* cell coordinate, blinking via `$4bb41` bit 0) plus HUD glyphs.
+  `assets/headings.json` feeds that path only, not the terrain men.
+- **Ripped the `$115e0` category dispatch** from the RAM jump tables + a
+  disassembly of each per-category prepare handler + the live men-path trace,
+  into `assets/sprites/sprite_triggers.json`:
+  - dispatch is `$1162e` (prepare) / **`$1165c`** (blit) — SPEC recorded the
+    blit table at `$1165a`, 2 bytes low;
+  - cat 0 (men) blits via **`$11f78`→`$11f82`**, *not* `$1187c` (which is a
+    melee/dying sub-case reached only from `$11c8a`'s mode branches);
+  - position is a bilinear lerp of the cell's 4 **projected** corners
+    (`$11f1a`, from `$3f364`) by the entity's sub-cell fraction
+    `(record[8]&0xff, record[10]&0xff)`, then `screenX += 0x3c`,
+    `screenY -= 8`;
+  - frame formulas for cats 0, 2, 3, 4, 5, 6, 7, 12, 14 are ripped. Men and
+    animals use a **camera-yaw-relative** facing (`(heading + [$ff9a]) >> 5`).
+- **`pm_export.py`** now rips the full **352-frame** `$33000` mini-sprite sheet
+  (was: first 64 = men only — `sheet_contact.png` now shows animals, glyphs,
+  crests) and a 48-frame sample of the separate `$37c7c` 480-byte category-2
+  (tree/obstacle) sheet (`prop_sheet_raw.bin` — row layout not decoded).
+- **Not done this pass (88th):** the exact frame *count* per category; the
+  frame formulas for cats 1, 8, 9, 10, 11, 13, 15; the cat-2 480-byte frame
+  layout; the `+0x40` "armed" trigger bit; then the actual `pm_render_ref.py`
+  entity compositing + `Sprites.fs` wiring + a byte-exact cross-check (Targets
+  3–4). No emulator or port code changed — asset/tooling/doc only.
+
 ## Verification status (86th pass)
 
 - **The q0/q1/q2 terrain renderer is byte-exact — the low `--ram` score
@@ -331,10 +366,16 @@ Task 2).
    table in `SPEC.md` §4), or (b) a `SubViewport` instead of a scaled
    `TextureRect` if the port ever needs the raster to composite with other
    Godot nodes (UI, sprites) rather than being the whole screen.
-2. Sprites: `assets/sprites/` + `assets/headings.json` + `Sprites.fs` (decode
-   stub, 81st), drawn per-cell inline in the grid walk (painter's order — do
-   not add a separate sorted pass). Frame base/count per category still needs
-   the rip (Task 2 / `SPEC.md` §9 item 3).
+2. Sprites (Task 2, **started 87th**): `assets/sprites/sprite_triggers.json`
+   has the `$115e0` category dispatch + per-category frame formulas; the full
+   `$33000` sheet is ripped. Remaining: per-category frame counts, cats
+   1/8/9/10/11/13/15, the `$37c7c` cat-2 row layout, then extend
+   `pm_render_ref.py` to composite each active entity (project its world
+   position, pick its frame, blit over the terrain layer in the far→near walk
+   order) and re-score vs `pm78_settle` (~94.4% → ~99% expected), then port
+   into `Sprites.fs` + wire the per-cell entity-bucket hook into `Fill.fs` /
+   `TerrainView.cs` with a byte-exact cross-check (81st/83rd method). Draw
+   per-cell inline in the grid walk — do not add a separate sorted pass.
 3. ~~Camera: the other 3 `pm_grid_walk_q*` handlers~~ — **done, 83rd pass**
    (`Fill.walkQ0`/`walkQ1`/`walkQ2`, dispatched by `Fill.walk`; PageUp/PageDown
    in `TerrainView.cs`). Remaining camera gap: **zoom** — 7 discrete geometry
