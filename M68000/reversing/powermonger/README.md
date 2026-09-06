@@ -614,6 +614,46 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       exception frame — own emulator pass); RIDER 3d (fault-corpus writeup);
       RIDER 3e (Diabolus / `geogeo28` / Ghidra); Task 1's territory-flip capture.
 
+29. The 93rd pass (RIDER 3b routine 2, doc + tooling only — no emulator change,
+    regression net skipped) **proves the dwell/upkeep core of the entity FSM
+    tick `$14b62` byte-exact against the real 68000.** `$14b62` has **no entry
+    contract** — it `lea`s its own base pointers (`$51b66`, `$47970`) and reads
+    everything else from fixed memory, so `callcap 14b62` runs the whole
+    iterator over all 511 records and returns cleanly (4554 steps, identical
+    trace hash + 84-byte delta on repeat). The differential test
+    (`scratchpad/pm93/fsm_ref.py` + `diff_fsm.py`) disables every record not in
+    a target mode (owner byte `:= 0`), so `callcap 14b62` exercises exactly the
+    reconstructed subset, and compares the **full changed-memory delta** over
+    the object records + `$47970` buckets + leader table.
+    - **Covered, PROVEN (675/675 tracked bytes over 22 states):** the iterator
+      prologue (active gate `5(A1)`, the anim-frame advance `14(A1)++` and its
+      `flags` bit-4 suppression, the `D6/D7` load); **mode `$12`** `$14ff8`
+      (halt/cool-down — integrate `(step_x,step_y)`, `subq.w #1,18(A1)`,
+      `> 0` → stay, `<= 0` → `mode := $10`); the epilogue `$161c4` (word clamps,
+      `$1648e` terrain veto → `mode := $0` + no write-back on water, else
+      `bclr #5,7(A1)` + relink); `$1648e` terrain sample; `$163ea` position
+      write-back + `$47970` bucket relink (unlink-at-head, link-at-new-head, the
+      `next.prev` fix-up, old-bucket clear — all exercised by the naturals);
+      **mode `$68`** `$16048` (formation follower — `$5c80`, then `clr` step +
+      heading, no write-back); **mode `$8a`** `$161b2` (garrison — `$5c80`);
+      **`$5c80`** upkeep (morale creep `45(A1) += $57fec & 1` toward the
+      `flags`-indexed survivability cap `$5ccc`; `morale < 0` → clear).
+    - **Corpus:** `pm88_f1` / `pm78_settle` / `pm74_late` / `pm73_fight` naturals
+      + poked variants driving each branch (dwell → mode flip, world-Y negative →
+      water veto, forced anim trigger ± the freeze bit, morale below/at/under
+      the cap, single-record isolation). Pre-registered falsifier (any tracked
+      byte differing in any state) / bar (100% over ≥ 20 states): **PASS**. The
+      `$5c80` wear/removal path (`$5bd2`) is asserted **OFF** — `anim_wear`
+      maxes at 44 (`< $3c`) across all four captures — and is explicitly out of
+      scope.
+    - **Deferred (recorded, not covered):** the movement modes
+      `$0e`/`$10`/`$06`/`$08`/`$48`/`$4a`, all combat (`$28`/`$2e`/`$32` →
+      `$1533c`/`$5590`), the regroup/group modes (`$1a`/`$1c`/`$56`/`$5a`/`$5c`/
+      `$60`), shepherd/porter (`$42`/`$46`/`$52`/`$54`), the dying-entity path
+      `$1623c`, and `$5bd2`. Each needs its own leaf reconstruction
+      (`$164bc` DIVU step-toward, `$14262` heading, `$12d56` rotate, the
+      `$168ee` patrol spline).
+
 ## Files
 
 | file | what |

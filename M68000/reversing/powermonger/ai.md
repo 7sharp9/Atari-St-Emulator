@@ -112,6 +112,27 @@ The loop tail:
 Active-record count in this settled first-mission view: **~50 of 511 slots**,
 of which ~26 reach a handler each tick (the rest are `byte 5 == 0`).
 
+### [Proven] — the dwell/upkeep core, vs the real 68000 (93rd pass, RIDER 3b routine 2)
+
+`$14b62` has **no entry contract**: it `lea`s its own `$51b66` / `$47970` bases
+and reads everything else from fixed memory, so `callcap 14b62` runs the whole
+iterator over all 511 records and returns cleanly (4554 steps; identical trace
+hash + 84-byte delta on repeat = deterministic). A from-disassembly integer
+reconstruction (`scratchpad/pm93/fsm_ref.py`) of the **prologue**, **modes
+`$12` / `$68` / `$8a`**, **`$5c80`**, the epilogue **`$161c4`**, **`$1648e`**
+and **`$163ea`** (+ the `$16778` unlink-at-head branch) matches the real 68000
+**byte-for-byte over the full changed-memory delta**: **675/675 tracked bytes
+across 22 differential-test states** (`diff_fsm.py` — `pm88_f1` / `pm78_settle`
+/ `pm74_late` / `pm73_fight` naturals with every non-target record disabled,
+plus poked variants forcing each branch: dwell → `mode := $10`, world-Y
+negative → the `$1648e` water veto → `mode := $0`, forced anim trigger ± the
+`flags` bit-4 freeze, morale below/at/under the survivability cap). The
+`$5c80` wear-death path (`$5bd2`) is asserted **off** — `anim_wear` maxes at 44
+(`< $3c`) in all four captures. The **movement, combat, regroup, group and
+shepherd modes**, the dying-entity path `$1623c`, and `$5bd2` remain
+**Corroborated**, not Proven — each needs its leaf routines (`$164bc` DIVU
+step-toward, `$14262`, `$12d56`, the `$168ee` spline) reconstructed.
+
 ## The object record (50 bytes, stride `$32`, array `$51b66`, slots 1..511)
 
 Fields are **overloaded by entity category** — a marching soldier and a spell
@@ -280,7 +301,7 @@ the settled first-mission view.
 | `$0c` | `$14e56` | 6 | save (D6,D7) → (36,38), load patrol path, → mode `$0e` |
 | `$0e` | `$14e70` | **445** | **patrol / march along the spline `$168ee`**: cursor `40(A1)` walks {dx,dy} word pairs; segment end (word ≥ `$7d00`) ends the path; recompute step (12,13) and heading (17) each segment, dwell 8 |
 | `$10` | `$14f08` | **180** | **advance to the target** `20/22` (or chase entity `48(A1)`, copying its live position). `$164bc` for the step; then probe up to D2 cells ahead along (12,13) with `$1648e` (`dbeq`). Path blocked → mode `$4a`. Target reached → `$15302` / `$14fdc` |
-| `$12` | `$14ff8` | **774** | **halt / cool-down**: step, dwell `18`; at 0 → mode `$10` (resume advancing) |
+| `$12` | `$14ff8` | **774** | **halt / cool-down** *(Proven, 93rd)*: step, dwell `18`; at `<= 0` → mode `$10` (resume advancing) |
 | `$48` | `$158da` | 13 | **obstacle avoidance**: `12(A1)/13(A1)` from heading via `$12d56`; probe ahead (`dbeq` on `$1648e`); if blocked, add a growing ± sweep (`40(A1)` += 4, negate) to `17(A1)` and retry — turn by ever-wider angles until a lane opens |
 | `$4a` | `$1597a` | 3 | set up mode `$48`: copy target from `28(A1)`, sweep = 8, clear low 2 bits of heading |
 
@@ -343,8 +364,8 @@ object record; `36(A3)` a running total).
 
 | mode | handler | tick | behaviour |
 |------|---------|-----:|-----------|
-| `$68` | `$16048` | **2559** | **in formation**: `jsr $5c80` (upkeep), zero velocity, next. The dominant mode — the men drawn in an army's marching column. Their position is written by the lead record, not by themselves |
-| `$8a` | `$161b2` | 99 | **garrison**: `jsr $5c80` only. A settlement's stationed troop |
+| `$68` | `$16048` | **2559** | **in formation** *(Proven, 93rd)*: `jsr $5c80` (upkeep), zero velocity + heading, next. The dominant mode — the men drawn in an army's marching column. Their position is written by the lead record, not by themselves |
+| `$8a` | `$161b2` | 99 | **garrison** *(Proven, 93rd)*: `jsr $5c80` only. A settlement's stationed troop |
 | `$8c` | `$14c48` | – | hold position: re-add the last step, re-test terrain, drop to `$10`/`$06` if pushed off |
 | `$84` | `$15f96` | 30 | dwell → mode `$86` |
 | `$86` | `$15e30` | 10 | (chain to `$88`) |

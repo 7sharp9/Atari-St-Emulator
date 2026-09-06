@@ -862,7 +862,13 @@ for the traced captures (86th: every triangle input + every scanline's DDA span
 byte-exact). **92nd (RIDER 3b): the projection §3 is now Proven vs the real 68000
 independently** — a from-disasm integer reconstruction matches `$fecc` called in
 isolation (emulator `callcap`) over 40 states / 3240 vertices, full corner-buffer
-comparison, zero fudge (see §3 "Proven vs the real 68000"). The sprite frame
+comparison, zero fudge (see §3 "Proven vs the real 68000"). **93rd (RIDER 3b
+routine 2): the dwell/upkeep core of the entity iterator `$14b62` is now Proven
+vs the real 68000** the same way — a from-disasm integer reconstruction of the
+prologue + modes `$12`/`$68`/`$8a` + `$5c80` + the `$161c4`/`$1648e`/`$163ea`
+epilogue matches `callcap 14b62`'s full changed-memory delta over 22 states
+(675/675 tracked bytes); movement/combat/regroup modes stay Corroborated. See
+`../ai.md` "the dwell/upkeep core, vs the real 68000". The sprite frame
 formulas + the `$115e0` bucket walk (§6) are
 **Corroborated** (disassembly + a live register/`$11f88` probe + the F#↔Python
 byte-exact cross-check). The "no per-frame sea fill" / "minimap baked once"
