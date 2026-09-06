@@ -146,6 +146,49 @@ shift and rotate forms pass ~100%; `.w` memory forms and the arithmetic/move
 families still carry real gaps. Drive the numbers down in future correctness
 passes.
 
+## Snapshot / preview fidelity: `detcheck`
+
+The REPL and `.snap` files are used as lab instruments for the Powermonger
+reverse-engineering work, so a restore has to be an *identity operation on every
+piece of state a later `Step()` can read* - not just RAM + CPU registers. The
+`detcheck N` REPL command asserts exactly that:
+
+```
+save S  ->  run N steps, FNV-hash the per-step (stepCount, PC, CCR, D0-7/A0-7,
+            mutation delta, ack delta, PeripheralPhase)  ->  T1
+restore S  ->  run N again  ->  T2
+assert T1 == T2   (and report the first divergent step if not)
+```
+
+`AtartSt.DeterminismCheck`. Run it with live Powermonger gameplay, an armed
+Timer B, active FDC I/O and queued IKBD input - the cases the old `MmuSnapshot`
+silently dropped before the 91st pass. Verified byte-identical: diskless idle
+(100k), the PM boot loader through FDC reads (3M), `pm78_settle` live gameplay
+(2M), `pm73_fight`, `pm74_late`, `pm67_ok_pre`, queued-IKBD.
+
+What the 91st pass fixed so this passes:
+- `MmuSnapshot` (and `SaveState`/`LoadState`, format v9) now carry the latent
+  future-determining device state that was missing: the six pending-interrupt
+  slots + `mfpVector`, `tbCounter` (Timer B's HBL prescaler), the FDC INTRQ
+  countdown (`fdcIrq`/`fdcIrqPending`), the DMA sector counter, the IKBD
+  reporting-mode latches, and the absolute-mouse / joystick registers. Pre-v9
+  `.snap` files load with documented power-on defaults - byte-identical to how
+  `RestoreRam` left those fields before (it never touched them).
+- `Preview` now restores `stepCount` too. It was the phase clock for the
+  VBL/HBL/Timer raises and scheduled IKBD injection, so `p 10000` used to shift
+  the machine's temporal phase permanently while PC and RAM looked untouched.
+- The loop detector folds `mmu.PeripheralPhase` (a fingerprint of those latent
+  counters) into its recurrence gate, so "provably stuck" is now a real proof:
+  same CPU state + unchanged mutation counter + unchanged latent device phase +
+  no interrupt acked for a frame => the next step's inputs are identical to an
+  earlier step's. Residual: an armed self-reloading event-count timer keeps
+  `PeripheralPhase` churning, which *suppresses* the check rather than firing it
+  falsely - a missed detection, never a false positive.
+
+`mutations` / `interruptAcks` are deliberately NOT restored (nothing reads their
+absolute value; the loop detector re-baselines them each epoch) - `detcheck`
+folds their per-run delta so the two replays stay comparable.
+
 ## Program analysis: `ATARI_TRACE_EVENTS` + `tools/trace_cfg.py`
 
 For reverse-engineering a program's control flow (rather than closing ROM

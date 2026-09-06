@@ -78,6 +78,11 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     //memory growth.
     let mutable loopAnchor = Unchecked.defaultof<MachineState>
     let mutable loopAnchorMutations = UInt64.MaxValue //sentinel: forces a fresh epoch on step 1
+    //Latent device phase (Timer B prescaler, FDC INTRQ countdown, pending-IRQ slots, DMA sector
+    //counter) at the moment the anchor was captured. `mutations` unchanged is not on its own proof
+    //the machine is stuck: FdcTick/HblTick advance these without bumping `mutations`. The anchor's
+    //epoch resets whenever EITHER the mutation counter OR this phase moves - see the gate below.
+    let mutable loopAnchorPhase = 0UL
     let mutable loopPower = 1
     let mutable loopLambda = 0
     //Blind spot in the pure-state proof: Step()'s own scheduled interrupts (VBL, Timer C) are an
@@ -302,6 +307,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///genuinely-progressing later step could spuriously "match" it.
     let resetLoopDetector() =
         loopAnchorMutations <- UInt64.MaxValue
+        loopAnchorPhase <- mmu.PeripheralPhase
         //Re-arm the "no interrupt taken for a full frame" gate against the *current* step count.
         //loopLastAckStep is initialised to 0; after LoadState restores a large stepCount, leaving
         //it at 0 makes `stepCount - loopLastAckStep >= instructionsPerFrame` trivially true, so the
@@ -410,16 +416,27 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         mmu.WatchStep <- stepCount
         let state = MachineState.Of cpu
         let currentMutations = mmu.Mutations
+        let currentPhase = mmu.PeripheralPhase
         if mmu.InterruptAcks <> loopLastAckCount then
             loopLastAckCount <- mmu.InterruptAcks
             loopLastAckStep <- stepCount
-        if currentMutations <> loopAnchorMutations then
+        if currentMutations <> loopAnchorMutations || currentPhase <> loopAnchorPhase then
             loopAnchor <- state
             loopAnchorMutations <- currentMutations
+            loopAnchorPhase <- currentPhase
             loopPower <- 1
             loopLambda <- 0
         elif state.SameAs loopAnchor && stepCount - loopLastAckStep >= instructionsPerFrame then
-            eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact CPU state has recurred with a provably unchanged MMU (no RAM/peripheral state has moved since the last snapshot) and no interrupt has been taken for a full frame, so execution is stuck in an infinite loop; further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC
+            //Now a genuine proof, not a heuristic: identical CPU state, `mmu.Mutations` unchanged
+            //AND `mmu.PeripheralPhase` unchanged (so no latent device counter - Timer B prescaler,
+            //FDC INTRQ countdown, DMA sector count - has moved toward an event either), and no
+            //interrupt acked for a full frame (so IPL-masked, not just "next VBL not reached yet").
+            //Step() is a pure function of (Cpu, MMU) state + stepCount's periodic raises, and the
+            //frame gate rules the last of those out - so the next step's inputs are byte-identical
+            //to an earlier step's and execution cannot progress. (Residual: an armed self-reloading
+            //event-count timer keeps PeripheralPhase churning, which suppresses this check rather
+            //than firing it falsely - a missed detection, never a false positive.)
+            eprintfn "LOOP DETECTED at PC=$%08x (not a missing instruction) - this exact CPU state has recurred with the MMU mutation counter AND all latent device phase (timers, FDC INTRQ countdown, DMA) unchanged, and no interrupt taken for a full frame, so the next step's inputs are identical to an earlier step's: execution is provably stuck. Further stepping is pointless until the MMU/peripheral behavior it depends on changes." cpu.PC
             eprintfn "%A" cpu
             failwithf "Loop detected at PC=$%08x" cpu.PC
         else
@@ -544,12 +561,21 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             reraise()
         //printfn "%A" x
 
-    ///Runs up to n further steps, then unconditionally rolls back all CPU registers and memory
-    ///to exactly what they were before the call - even if a step failed (the diagnostics are
-    ///still printed, same as a normal Step() failure, but execution isn't left stuck at the
-    ///failing instruction). Useful from the REPL to look ahead without disturbing the real run.
+    ///Runs up to n further steps, then unconditionally rolls back all CPU registers, memory AND
+    ///the emulated-time phase (`stepCount`) to exactly what they were before the call - even if a
+    ///step failed (the diagnostics are still printed, same as a normal Step() failure, but
+    ///execution isn't left stuck at the failing instruction). Useful from the REPL to look ahead
+    ///without disturbing the real run.
+    ///
+    ///91st pass: `stepCount` was previously NOT restored - every x.Step() below bumps it, and it
+    ///is the phase clock for the VBL/HBL/Timer-A/B/C raises and scheduled IKBD injection, so a
+    ///`p 10000` used to shift the machine's temporal phase permanently while PC and RAM looked
+    ///untouched. With that fixed and MmuSnapshot now carrying the latent device state (pending
+    ///IRQs, tbCounter, FDC INTRQ countdown, ...), Preview is a verified identity operation - see
+    ///`DeterminismCheck`, which asserts exactly that.
     member x.Preview(n: int) =
         let savedCpu = cpu
+        let savedStepCount = stepCount
         let savedRam = mmu.SnapshotRam()
         Diag.result "--- preview: up to %d step(s), state will be restored afterward ---" n
         (try
@@ -557,9 +583,74 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
          with e ->
             Diag.result "--- preview stopped early: %s ---" e.Message)
         cpu <- savedCpu
+        stepCount <- savedStepCount
         mmu.RestoreRam savedRam
         resetLoopDetector() //the anchor may describe a state from the just-reverted speculative branch
         Diag.result "--- preview done, state restored to PC=$%08x ---" cpu.PC
+
+    ///Substrate self-check (91st pass, the "trustworthy experimental instrument" review): proves
+    ///that a snapshot restore is an identity operation on *all* future-determining state, by
+    ///running the same N steps twice from one captured state and asserting the two step-by-step
+    ///traces are byte-identical. Trace element per step = FNV-1a fold of (stepCount, PC, CCR,
+    ///every D/A register, mmu.Mutations, mmu.InterruptAcks, mmu.PeripheralPhase). If the machine
+    ///had hidden state that a forward Step() reads but a restore misses, run 2 diverges from run 1.
+    ///Run this specifically with active FDC I/O, an armed Timer B, queued IKBD input and live
+    ///Powermonger gameplay - the cases the old MmuSnapshot silently dropped. Returns true on match.
+    member x.DeterminismCheck(n: int) : bool =
+        let savedCpu = cpu
+        let savedStepCount = stepCount
+        let saved = mmu.SnapshotRam()
+        let steps = ResizeArray<uint64 * int * uint64 * uint64>(n)
+        let runTrace () =
+            steps.Clear()
+            //`mutations` and `interruptAcks` are monotonic bookkeeping counters that Preview does
+            //NOT restore (nothing reads their absolute value - the loop detector re-baselines them
+            //on every epoch reset). Fold their DELTA over this run so the two replays are comparable.
+            let mut0 = mmu.Mutations
+            let ack0 = mmu.InterruptAcks
+            let mutable h = 1469598103934665603UL
+            let mix (v: uint64) = h <- (h ^^^ v) * 1099511628211UL
+            let mutable stopped = 0
+            (try
+                for _ in 1 .. n do
+                    x.Step()
+                    mix stepCount
+                    mix (uint64 (uint32 cpu.PC)); mix (uint64 (uint16 cpu.CCR))
+                    for r in [| cpu.D0;cpu.D1;cpu.D2;cpu.D3;cpu.D4;cpu.D5;cpu.D6;cpu.D7
+                                cpu.A0;cpu.A1;cpu.A2;cpu.A3;cpu.A4;cpu.A5;cpu.A6;cpu.A7 |] do
+                        mix (uint64 (uint32 r))
+                    mix (mmu.Mutations - mut0); mix (mmu.InterruptAcks - ack0); mix mmu.PeripheralPhase
+                    steps.Add(stepCount, cpu.PC, mmu.Mutations - mut0, mmu.PeripheralPhase)
+             with _ -> stopped <- 1)
+            h, stopped, steps.ToArray()
+        let restore () =
+            cpu <- savedCpu
+            stepCount <- savedStepCount
+            mmu.RestoreRam saved
+            resetLoopDetector()
+        let h1, s1, t1 = runTrace ()
+        restore ()
+        let h2, s2, t2 = runTrace ()
+        restore ()
+        let ok = h1 = h2 && s1 = s2
+        if ok then
+            Diag.result "--- detcheck: %d steps replayed identically (trace hash $%016x, %s) ---"
+                n h1 (if s1 = 1 then "both runs stopped early" else "ran to completion")
+        else
+            Diag.result "--- detcheck: DIVERGENCE after restore - run1 hash $%016x (stop=%d), run2 hash $%016x (stop=%d). MmuSnapshot is missing future-determining state. ---" h1 s1 h2 s2
+            let m = min t1.Length t2.Length
+            let mutable i = 0
+            while i < m && t1.[i] = t2.[i] do i <- i + 1
+            if i < m then
+                let (sc1, pc1, mu1, ph1) = t1.[i]
+                let (sc2, pc2, mu2, ph2) = t2.[i]
+                let before = if i > 0 then t1.[i-1] else (0UL, 0, 0UL, 0UL)
+                let (_, pcb, _, _) = before
+                Diag.result "--- detcheck: first divergence at replay step %d (after PC=$%06x): run1 sc=%d PC=$%06x mut=%d phase=$%016x | run2 sc=%d PC=$%06x mut=%d phase=$%016x ---"
+                    i pcb sc1 pc1 mu1 ph1 sc2 pc2 mu2 ph2
+            else
+                Diag.result "--- detcheck: traces identical for the first %d steps then one run stopped early ---" m
+        ok
 
     ///Serializes full CPU + MMU state (registers, RAM, video/YM2149/MFP register banks, Timer B
     ///scalars) to a binary file, so a later run can jump straight to this point instead of
@@ -569,7 +660,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(8uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end
+        w.Write(9uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end, v9 appends the latent future-determining device state (pending-IRQ slots, tbCounter, FDC INTRQ countdown, DMA sector count, IKBD reporting mode, absolute mouse, joystick) - see MmuSnapshot
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.SSP; cpu.PC |] do w.Write(v: int)
@@ -600,6 +691,16 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         writeArr snap.IkbdRxFifo
         w.Write(snap.PsgSelectedReg)
         w.Write(snap.PsgReadData)
+        //v9: latent future-determining device state - see MmuSnapshot's doc comment.
+        w.Write(snap.VblPending); w.Write(snap.MfpPending); w.Write(snap.MfpVector)
+        w.Write(snap.TimerCPending); w.Write(snap.TimerBPending); w.Write(snap.TimerAPending)
+        w.Write(snap.TbCounter)
+        w.Write(snap.FdcIrq); w.Write(snap.FdcIrqPending); w.Write(snap.DmaNoError)
+        w.Write(snap.DmaSectorCount); w.Write(snap.DmaScSelected)
+        w.Write(snap.IkbdMouseMode); w.Write(snap.IkbdMouseButtonAction); w.Write(snap.IkbdJoystickReports)
+        w.Write(snap.MouseAbsX); w.Write(snap.MouseAbsY); w.Write(snap.MouseAbsMaxX); w.Write(snap.MouseAbsMaxY)
+        w.Write(snap.MouseLeftDown); w.Write(snap.MouseRightDown); w.Write(snap.MousePrevReadButtons)
+        w.Write(snap.JoyState0); w.Write(snap.JoyState1)
         Diag.result "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
@@ -667,6 +768,31 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let psgSelectedReg, psgReadData =
             if version >= 8uy then r.ReadByte(), r.ReadByte()
             else 0uy, 0xFFuy
+        //v1-v8 snapshots predate the latent device-state block - default every field to its
+        //chip power-on / field-initialiser value (see MMU.fs), which is exactly what RestoreRam
+        //used to leave these at (it never touched them before v9). A pre-v9 snapshot therefore
+        //loads byte-identically to before; only newly-saved v9 snapshots gain the extra fidelity.
+        let lat =
+            if version >= 9uy then
+                {| VblPending = r.ReadBoolean(); MfpPending = r.ReadBoolean(); MfpVector = r.ReadInt32()
+                   TimerCPending = r.ReadBoolean(); TimerBPending = r.ReadBoolean(); TimerAPending = r.ReadBoolean()
+                   TbCounter = r.ReadInt32()
+                   FdcIrq = r.ReadBoolean(); FdcIrqPending = r.ReadInt32(); DmaNoError = r.ReadBoolean()
+                   DmaSectorCount = r.ReadByte(); DmaScSelected = r.ReadBoolean()
+                   IkbdMouseMode = r.ReadByte(); IkbdMouseButtonAction = r.ReadByte(); IkbdJoystickReports = r.ReadBoolean()
+                   MouseAbsX = r.ReadInt32(); MouseAbsY = r.ReadInt32(); MouseAbsMaxX = r.ReadInt32(); MouseAbsMaxY = r.ReadInt32()
+                   MouseLeftDown = r.ReadBoolean(); MouseRightDown = r.ReadBoolean(); MousePrevReadButtons = r.ReadInt32()
+                   JoyState0 = r.ReadByte(); JoyState1 = r.ReadByte() |}
+            else
+                {| VblPending = false; MfpPending = false; MfpVector = 0
+                   TimerCPending = false; TimerBPending = false; TimerAPending = false
+                   TbCounter = 0
+                   FdcIrq = false; FdcIrqPending = 0; DmaNoError = true
+                   DmaSectorCount = 0uy; DmaScSelected = false
+                   IkbdMouseMode = 0uy; IkbdMouseButtonAction = 0uy; IkbdJoystickReports = true
+                   MouseAbsX = 0; MouseAbsY = 0; MouseAbsMaxX = 320; MouseAbsMaxY = 200
+                   MouseLeftDown = false; MouseRightDown = false; MousePrevReadButtons = 0x0A
+                   JoyState0 = 0uy; JoyState1 = 0uy |}
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
               PsgSelectedReg = psgSelectedReg; PsgReadData = psgReadData
@@ -675,7 +801,19 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
               FdcSector = fdcSector; FdcData = fdcData
               DmaAddrHigh = dmaAddrHigh; DmaAddrMid = dmaAddrMid; DmaAddrLow = dmaAddrLow
               MemConfig = memConfig
-              KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo }
+              KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo
+              VblPending = lat.VblPending; MfpPending = lat.MfpPending; MfpVector = lat.MfpVector
+              TimerCPending = lat.TimerCPending; TimerBPending = lat.TimerBPending; TimerAPending = lat.TimerAPending
+              TbCounter = lat.TbCounter
+              FdcIrq = lat.FdcIrq; FdcIrqPending = lat.FdcIrqPending; DmaNoError = lat.DmaNoError
+              DmaSectorCount = lat.DmaSectorCount; DmaScSelected = lat.DmaScSelected
+              IkbdMouseMode = lat.IkbdMouseMode; IkbdMouseButtonAction = lat.IkbdMouseButtonAction
+              IkbdJoystickReports = lat.IkbdJoystickReports
+              MouseAbsX = lat.MouseAbsX; MouseAbsY = lat.MouseAbsY
+              MouseAbsMaxX = lat.MouseAbsMaxX; MouseAbsMaxY = lat.MouseAbsMaxY
+              MouseLeftDown = lat.MouseLeftDown; MouseRightDown = lat.MouseRightDown
+              MousePrevReadButtons = lat.MousePrevReadButtons
+              JoyState0 = lat.JoyState0; JoyState1 = lat.JoyState1 }
         resetLoopDetector()
         Diag.result "--- state loaded from %s: PC=$%08x ---" path cpu.PC
 
@@ -942,7 +1080,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -952,6 +1090,9 @@ module Main =
                 loop()
             | [| "peek"; n |] | [| "p"; n |] ->
                 st.Preview (int n)
+                loop()
+            | [| "detcheck"; n |] ->
+                st.DeterminismCheck (int n) |> ignore
                 loop()
             | [| "until"; addr |] | [| "u"; addr |] ->
                 st.Until (Convert.ToUInt32(addr, 16)) 200000

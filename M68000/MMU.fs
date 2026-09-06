@@ -5,6 +5,18 @@ open Bits
 ///the three byte arrays, which silently missed the MFP's register bank and Timer B's scalar state
 ///(tbcr/tbdr/tbdrReload/tbdrReadCount). A Preview that touched the MFP would permanently corrupt
 ///the real run's timer state on "rollback", contradicting Preview's own "state restored" claim.
+///
+///91st pass (the "trustworthy experimental substrate" review): the record now also carries every
+///remaining piece of *future-determining* device state that a forward Step() consumes but that was
+///not captured here - the pending-interrupt slots, `tbCounter` (Timer B's HBL-driven prescaler),
+///the FDC INTRQ countdown, the DMA sector counter, the IKBD reporting-mode latches, and the
+///absolute-mouse / joystick registers. Before this, a `Preview` (or a `detcheck` replay) that let
+///an FDC seek complete, a Timer B tick land, or the mouse move would leave those counters advanced
+///after "rollback", so the same N steps run twice from one snapshot could diverge. The rule this
+///type now upholds: `machineHash(before) = machineHash(after)` for a restore, where the hash
+///includes *all* state a later Step() can read, not merely RAM + CPU registers. Debug-only scalars
+///(watch range/pc/step) and monotonic bookkeeping counters (`mutations`, `interruptAcks`) are
+///deliberately excluded - nothing in Step()'s result depends on them.
 type MmuSnapshot =
     { Ram: byte[]; VideoDisplayRegisters: byte[]; Ym2149: byte[]; MfpRegisters: byte[]
       PsgSelectedReg: byte; PsgReadData: byte
@@ -12,7 +24,17 @@ type MmuSnapshot =
       FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte
       DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte
       MemConfig: byte
-      KbdAciaControl: byte; IkbdRxFifo: byte[] }
+      KbdAciaControl: byte; IkbdRxFifo: byte[]
+      // --- 91st pass: latent future-determining device state (see the type doc above) ---
+      VblPending: bool; MfpPending: bool; MfpVector: int
+      TimerCPending: bool; TimerBPending: bool; TimerAPending: bool
+      TbCounter: int
+      FdcIrq: bool; FdcIrqPending: int; DmaNoError: bool
+      DmaSectorCount: byte; DmaScSelected: bool
+      IkbdMouseMode: byte; IkbdMouseButtonAction: byte; IkbdJoystickReports: bool
+      MouseAbsX: int; MouseAbsY: int; MouseAbsMaxX: int; MouseAbsMaxY: int
+      MouseLeftDown: bool; MouseRightDown: bool; MousePrevReadButtons: int
+      JoyState0: byte; JoyState1: byte }
 
 ///Real 68000 hardware cannot perform a word/long-sized bus access to an odd address - it traps
 ///to the Address Error vector (vector 3) instead of completing the access. Raised by
@@ -460,9 +482,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///scanline by HblTick - the HBLANK clock source the coarse read-driven `tbdr`/`tbdrReadCount`
     ///pair (kept for the ROM's MFP-presence check) can't model. 0 = "not seeded yet"; the first
     ///HblTick after Timer B is armed loads it from `tbdrReload`, and each underflow reloads and
-    ///raises the Timer B interrupt. Deliberately NOT in MmuSnapshot: TOS never arms event-count
-    ///Timer B so it stays 0 on the diskless path (keeps that snapshot byte-identical), and a
-    ///mid-split resume losing one scanline of counter phase is immaterial.
+    ///raises the Timer B interrupt. In MmuSnapshot as of the 91st pass - it stays 0 on the diskless
+    ///path (TOS never arms event-count Timer B) so the golden regression snapshot is unchanged, but
+    ///a game that DOES arm it needs the counter phase preserved across a Preview/detcheck restore
+    ///or the same N steps replay differently.
     let mutable tbCounter = 0
 
     ///WD1772 FDC + DMA mode-select emulation. Real hardware accesses all 4 FDC registers (status-
@@ -1146,6 +1169,29 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///above. Consumed by Program.fs's loop detector.
     member x.Mutations = mutations
 
+    ///A composite fingerprint of every piece of latent device state that a forward Step() consumes
+    ///but that deliberately does NOT bump `mutations` - the Timer B HBL prescaler, the FDC INTRQ
+    ///countdown/line, the pending-interrupt slots, the DMA sector counter. The loop detector folds
+    ///this into its recurrence test: `mutations` unchanged is NOT on its own proof that the next
+    ///step's inputs are identical to an earlier step's, because `FdcTick`/`HblTick` can be walking
+    ///one of these counters toward an event that will change the CPU's future. Same CPU state +
+    ///same `mutations` + same `PeripheralPhase` + no interrupt acked for a frame => genuinely stuck.
+    ///Cheap (a few int folds); called once per step.
+    member x.PeripheralPhase : uint64 =
+        let b (v: bool) = if v then 1UL else 0UL
+        let mutable h = 1469598103934665603UL
+        let mix (v: uint64) = h <- (h ^^^ v) * 1099511628211UL
+        mix (uint64 tbCounter)
+        mix (uint64 (uint32 fdcIrqPending))
+        mix (b fdcIrq)
+        mix (uint64 dmaSectorCount)
+        mix (b dmaScSelected)
+        mix (b dmaNoError)
+        mix ((b vblPending) ||| ((b mfpPending) <<< 1) ||| ((b timerCPending) <<< 2)
+             ||| ((b timerBPending) <<< 3) ||| ((b timerAPending) <<< 4))
+        mix (uint64 (uint32 mfpVector))
+        h
+
     ///REPL `watch <hexaddr> [len]` - see `checkWatch` above. `hi` is inclusive.
     member x.SetWatch (lo: uint32) (hi: uint32) = watchRange <- Some(lo, hi)
     member x.ClearWatch() = watchRange <- None
@@ -1430,7 +1476,19 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
           FdcSector = fdcSector; FdcData = fdcData
           DmaAddrHigh = dmaAddrHighByte; DmaAddrMid = dmaAddrMidByte; DmaAddrLow = dmaAddrLowByte
           MemConfig = memConfigByte
-          KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo.ToArray() }
+          KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo.ToArray()
+          VblPending = vblPending; MfpPending = mfpPending; MfpVector = mfpVector
+          TimerCPending = timerCPending; TimerBPending = timerBPending; TimerAPending = timerAPending
+          TbCounter = tbCounter
+          FdcIrq = fdcIrq; FdcIrqPending = fdcIrqPending; DmaNoError = dmaNoError
+          DmaSectorCount = dmaSectorCount; DmaScSelected = dmaScSelected
+          IkbdMouseMode = ikbdMouseMode; IkbdMouseButtonAction = ikbdMouseButtonAction
+          IkbdJoystickReports = ikbdJoystickReports
+          MouseAbsX = mouseAbsX; MouseAbsY = mouseAbsY
+          MouseAbsMaxX = mouseAbsMaxX; MouseAbsMaxY = mouseAbsMaxY
+          MouseLeftDown = mouseLeftDown; MouseRightDown = mouseRightDown
+          MousePrevReadButtons = mousePrevReadButtons
+          JoyState0 = joyState0; JoyState1 = joyState1 }
 
     member x.RestoreRam(snapshot: MmuSnapshot) =
         Array.blit snapshot.Ram 0 ram 0 snapshot.Ram.Length
@@ -1456,6 +1514,30 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         kbdAciaControl <- snapshot.KbdAciaControl
         ikbdRxFifo.Clear()
         for b in snapshot.IkbdRxFifo do ikbdRxFifo.Enqueue b
+        vblPending <- snapshot.VblPending
+        mfpPending <- snapshot.MfpPending
+        mfpVector <- snapshot.MfpVector
+        timerCPending <- snapshot.TimerCPending
+        timerBPending <- snapshot.TimerBPending
+        timerAPending <- snapshot.TimerAPending
+        tbCounter <- snapshot.TbCounter
+        fdcIrq <- snapshot.FdcIrq
+        fdcIrqPending <- snapshot.FdcIrqPending
+        dmaNoError <- snapshot.DmaNoError
+        dmaSectorCount <- snapshot.DmaSectorCount
+        dmaScSelected <- snapshot.DmaScSelected
+        ikbdMouseMode <- snapshot.IkbdMouseMode
+        ikbdMouseButtonAction <- snapshot.IkbdMouseButtonAction
+        ikbdJoystickReports <- snapshot.IkbdJoystickReports
+        mouseAbsX <- snapshot.MouseAbsX
+        mouseAbsY <- snapshot.MouseAbsY
+        mouseAbsMaxX <- snapshot.MouseAbsMaxX
+        mouseAbsMaxY <- snapshot.MouseAbsMaxY
+        mouseLeftDown <- snapshot.MouseLeftDown
+        mouseRightDown <- snapshot.MouseRightDown
+        mousePrevReadButtons <- snapshot.MousePrevReadButtons
+        joyState0 <- snapshot.JoyState0
+        joyState1 <- snapshot.JoyState1
         //Restoring bypasses every write path above, so none of it bumped `mutations` on the way in
         //- that's correct (a rollback isn't itself a "real" forward mutation to prove anything
         //against), but it does mean the loop detector's anchor may now describe a state from the
