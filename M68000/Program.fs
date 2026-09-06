@@ -667,7 +667,13 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///mid-call runs faithfully and its writes appear in the memory delta, so keep calls short and
     ///prefer comparing memory at or above the entry SP (persistent state, not transient stack
     ///scratch below it). The 4-byte sentinel slot itself is excluded from the delta.
-    member x.CallCapture(target: uint32, maxSteps: int, outPath: string option) =
+    ///`regPresets` are (name, value) pairs applied to the synthesized entry state - "D0".."D7",
+    ///"A0".."A6", "PC". This is how a differential-test corpus varies "the relevant registers +
+    ///the table/record fields the routine reads": many PM routines take a base pointer in an
+    ///A-register on entry (e.g. $fecc wants A3 = &sine-table $13f8a), so a bare bsr from an
+    ///arbitrary captured state runs them with garbage inputs. A7 and the interrupt mask are always
+    ///overridden by the harness and cannot be preset.
+    member x.CallCapture(target: uint32, maxSteps: int, outPath: string option, regPresets: (string * uint32) list) =
         let sentinel = 0x00DEAD00u
         let savedCpu = cpu
         let savedStepCount = stepCount
@@ -679,7 +685,18 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         //scribble transient state into the memory delta. A pure compute/logic routine - which is
         //all the differential-test targets are - never reads SR, so this does not change its
         //behaviour; RestoreRam + the saved CCR put everything back afterwards regardless.
-        cpu <- { savedCpu with A7 = int retSlot; PC = int target; CCR = savedCpu.CCR ||| 0x0700s }
+        let mutable c0 = { savedCpu with A7 = int retSlot; PC = int target; CCR = savedCpu.CCR ||| 0x0700s }
+        for (nm, v) in regPresets do
+            let iv = int v
+            c0 <-
+                match nm.ToUpperInvariant() with
+                | "D0" -> { c0 with D0 = iv } | "D1" -> { c0 with D1 = iv } | "D2" -> { c0 with D2 = iv } | "D3" -> { c0 with D3 = iv }
+                | "D4" -> { c0 with D4 = iv } | "D5" -> { c0 with D5 = iv } | "D6" -> { c0 with D6 = iv } | "D7" -> { c0 with D7 = iv }
+                | "A0" -> { c0 with A0 = iv } | "A1" -> { c0 with A1 = iv } | "A2" -> { c0 with A2 = iv } | "A3" -> { c0 with A3 = iv }
+                | "A4" -> { c0 with A4 = iv } | "A5" -> { c0 with A5 = iv } | "A6" -> { c0 with A6 = iv }
+                | "PC" -> { c0 with PC = iv }
+                | other -> Diag.result "--- callcap: ignoring unknown register preset '%s' ---" other; c0
+        cpu <- c0
         let preRam = mmu.SnapshotRam()   //memory-diff baseline (already includes the sentinel push)
         let mutable h = 1469598103934665603UL
         let mix (v: uint64) = h <- (h ^^^ v) * 1099511628211UL
@@ -723,14 +740,19 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         if not regLine.IsEmpty then Diag.result "regdelta %s" (String.concat "  " regLine)
         match outPath with
         | Some path ->
-            use sw = new IO.StreamWriter(path)
-            sw.Write(sprintf "{\"target\":\"%06x\",\"outcome\":\"%s\",\"hash\":\"%016x\",\"steps\":%d,\"entrySP\":%d,\"exitSP\":%d," target outcome h steps sp0 spN)
-            sw.Write(sprintf "\"reg0\":[%s]," (regs0 |> Array.map (fun v -> string (uint32 v)) |> String.concat ","))
-            sw.Write(sprintf "\"regN\":[%s]," (regsN |> Array.map (fun v -> string (uint32 v)) |> String.concat ","))
-            sw.Write("\"mem\":[")
-            sw.Write(muts |> Seq.map (fun (ad,x0,x1) -> sprintf "[%d,%d,%d]" ad x0 x1) |> String.concat ",")
-            sw.Write("]}")
-            Diag.result "--- callcap: delta written to %s ---" path
+            //A bad output path must not kill the REPL session - the call itself already ran and
+            //restored, so just report the write failure and carry on.
+            try
+                use sw = new IO.StreamWriter(path)
+                sw.Write(sprintf "{\"target\":\"%06x\",\"outcome\":\"%s\",\"hash\":\"%016x\",\"steps\":%d,\"entrySP\":%d,\"exitSP\":%d," target outcome h steps sp0 spN)
+                sw.Write(sprintf "\"presets\":{%s}," (regPresets |> List.map (fun (n,v) -> sprintf "\"%s\":%d" (n.ToUpperInvariant()) v) |> String.concat ","))
+                sw.Write(sprintf "\"reg0\":[%s]," (regs0 |> Array.map (fun v -> string (uint32 v)) |> String.concat ","))
+                sw.Write(sprintf "\"regN\":[%s]," (regsN |> Array.map (fun v -> string (uint32 v)) |> String.concat ","))
+                sw.Write("\"mem\":[")
+                sw.Write(muts |> Seq.map (fun (ad,x0,x1) -> sprintf "[%d,%d,%d]" ad x0 x1) |> String.concat ",")
+                sw.Write("]}")
+                Diag.result "--- callcap: delta written to %s ---" path
+            with e -> Diag.result "--- callcap: could not write %s: %s ---" path e.Message
         | None ->
             for (ad, x0, x1) in Seq.truncate 4096 muts do
                 Diag.result "mem $%06x $%02x->$%02x" ad x0 x1
@@ -1179,13 +1201,25 @@ module Main =
                 st.DeterminismCheck (int n) |> ignore
                 loop()
             | [| "callcap"; addr |] ->
-                st.CallCapture(Convert.ToUInt32(addr, 16), 2000000, None)
+                st.CallCapture(Convert.ToUInt32(addr, 16), 2000000, None, [])
                 loop()
-            | [| "callcap"; addr; maxSteps |] ->
-                st.CallCapture(Convert.ToUInt32(addr, 16), int maxSteps, None)
-                loop()
-            | [| "callcap"; addr; maxSteps; outPath |] ->
-                st.CallCapture(Convert.ToUInt32(addr, 16), int maxSteps, Some outPath)
+            | _ when parts.Length >= 3 && parts.[0] = "callcap" ->
+                //callcap <addr> <maxSteps> [out|-] [Rn=hexval ...]
+                let addr = Convert.ToUInt32(parts.[1], 16)
+                let maxSteps = int parts.[2]
+                let rest = parts.[3..] |> Array.toList
+                let outPath, presetToks =
+                    match rest with
+                    | [] -> None, []
+                    | first :: tl when not (first.Contains "=") ->
+                        ((if first = "-" then None else Some first), tl)
+                    | toks -> None, toks
+                let presets =
+                    presetToks |> List.choose (fun t ->
+                        match t.Split('=') with
+                        | [| n; v |] -> Some (n, Convert.ToUInt32(v, 16))
+                        | _ -> Diag.result "--- callcap: bad preset '%s' (want Rn=hexval) ---" t; None)
+                st.CallCapture(addr, maxSteps, outPath, presets)
                 loop()
             | [| "until"; addr |] | [| "u"; addr |] ->
                 st.Until (Convert.ToUInt32(addr, 16)) 200000
