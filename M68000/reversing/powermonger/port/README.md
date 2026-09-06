@@ -28,6 +28,27 @@ prints the block-mean dE and the per-index distribution vs the reference.
 
 ## Verification status (85th pass)
 
+- **Continued further: live-traced the q0/q1 dither-formula lead, found a
+  real bug, but it's not the answer.** `[$ffa2]` (used by `$e3e6`'s A5 setup)
+  has been assumed `== 2*[$ff9e]` since the 78th pass; live-checked across
+  all 4 captures, that only holds for `pm78_settle`/`pm83_q2c` —
+  `pm83_q0c`/`q1c` have `[$ffa2] = 2*[$ff9e] + 128` (frame-stable, checked
+  across 20 consecutive `$ef62` calls). Single-stepped a real q1 triangle's
+  full A5 sequence and matched it exactly once the correction was applied
+  **inside** the mod-128 wrap (a first attempt outside the wrap was silently
+  wrong for about half the rows — caught by checking the raw hex, not by the
+  final score). But even with hardware-exact A5 and dither-table bytes
+  (both verified against live memory), that traced triangle still scored
+  0/327 against the reference — its colour is a totally different terrain
+  family (grass vs rock), not a phase-shifted grass, so this specific
+  mismatch is an occlusion/wrong-cell bug, not dither. Applying the
+  correction frame-wide made q0/q1's aggregate score WORSE (46.6%→40.4%,
+  44.6%→40.3%) — reverted the application (kept the `phase_bias` parameter
+  at default 0 for future use) rather than ship a net-negative change. Full
+  detail in SPEC.md §9 item 1. **q0/q1/q2's giant-blob mismatch is still
+  unexplained** — the next lead is occlusion/cell-identity, not the dither
+  formula.
+
 - **Continued (same pass): the `0x1c` coast-slope residual theory is wrong,
   corrected.** Instrumented `walk_q3` with proper painter's-order occlusion
   tracking (cross-checked against the official pixel count). Every tall

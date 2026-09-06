@@ -165,7 +165,7 @@ def project(tables, terr, cam_x, cam_y, half, tick=0, sx_sign=1, sy_sign=1,
 # ~13px cells and under-corrected the tall coast slopes -- hence the residual.
 
 
-def dither_index(dith, colour_byte, y, x):
+def dither_index(dith, colour_byte, y, x, phase_bias=0):
     """The 4bpp pattern fill, from the aligned disasm + live trace of the span
     walker ($e3e6 setup, $e420..$e5a6 walker).
 
@@ -181,9 +181,23 @@ def dither_index(dith, colour_byte, y, x):
     long0 @ A5   -> plane0 = hi16, plane1 = lo16
     long1 @ A5+4 -> plane2 = hi16, plane3 = lo16
     index = p0 | p1<<1 | p2<<2 | p3<<3 ,  bit = 15 - (screenX & 15)
+
+    `phase_bias` (85th pass): the formula above assumes [$ffa2] == 2*[$ff9e]
+    exactly, true for the captures it was derived against but NOT a fixed
+    relationship -- see load_ram's phase_bias comment. The bias must be added
+    INSIDE the mod (`((8*y + phase_bias) & 0x7F)`), not after it -- a first
+    attempt added it after the mask and matched only ~half of a live 22-row
+    A5 sequence (whichever rows didn't need the extra wrap), silently
+    producing WORSE scores frame-wide despite "looking right" on the first
+    few rows checked. With the bias inside the mask: single-stepped from
+    $e420 on pm83_q1c, this formula matches the real A5 register exactly,
+    22/22 rows. Default 0 preserves old behaviour for callers without a live
+    RAM capture (the --assets path, synthetic cross-checks).
     """
     colour_byte = max(0, colour_byte)
-    a5 = colour_byte * 128 + ((8 * y) & 0x7F)
+    a5 = colour_byte * 128 + (((8 * y) + phase_bias) & 0x7F)
+    if a5 < 0:
+        a5 = 0
     if a5 + 8 > len(dith):
         a5 = (len(dith) - 8) & ~1
     l0 = struct.unpack_from(">I", dith, a5)[0]
@@ -350,11 +364,23 @@ def load_ram(ram_path: Path):
         flg=lambda x, y: plane(TER + 8257, x, y),
         ctl=lambda x, y: plane(CTL, x, y),
     )
-    # dither pattern table. $e3e6 reads [$ffa2] (= $5c000 = 2 * [$ff9e]) and does
-    # (2*base + colourByte*256 + rowbits) >> 1, which lands in the [$ff9e] = $2e000
-    # data at colourByte*128 + (topY&15)*8 -- so this $2e000 dump is the right
-    # bytes. ($5c000 itself is a different, small-int table -- NOT the patterns.)
+    # dither pattern table. $e3e6 reads [$ffa2] and does
+    # ([$ffa2] + colourByte*256 + rowbits) >> 1, which lands in the [$ff9e] = $2e000
+    # data at colourByte*128 + (topY&15)*8 IF [$ffa2] == 2*[$ff9e] exactly -- true
+    # in pm78_settle/pm74_late/pm70_iso (all natural/settled captures, 78th-80th
+    # passes derived and verified the mod-128 formula against these) but NOT a
+    # fixed relationship: pm83_q0c/q1c (85th pass, captured via synthetic
+    # rotation pulses) have [$ffa2] = 2*[$ff9e] + 128, a per-frame runtime value
+    # our formula was silently assuming constant. Read it directly and correct:
+    # phase_bias = ([$ffa2]>>1) - [$ff9e], added into every dither_index lookup
+    # (0 for the captures the formula was originally derived against, confirmed
+    # live via a real single-stepped A5 sequence on pm83_q1c -- every observed
+    # A5 was off from the uncorrected formula by exactly +64 = 128>>1, matching
+    # this bias exactly, 22/22 rows). Does NOT explain pm83_q2c's poor score
+    # (its own [$ffa2] happens to be back to exactly 2*[$ff9e]) -- that capture's
+    # residual has a different, still-open cause.
     dith = b[u32(0xFF9E):u32(0xFF9E) + 0x4000]    # $2e000, 16 KB
+    phase_bias = (u32(0xFFA2) >> 1) - u32(0xFF9E)
     tick = u32(0x4BB3E) & 3
     yaw = u16(0xFF9A)
     # reference: the COMPLETE compose buffer -- the one $e3e2 (the runtime-patched
@@ -366,7 +392,7 @@ def load_ram(ram_path: Path):
     ref = decode_screen_indices(b, ref_base)
     return dict(corners=corners, planes=planes, dith=dith, tick=tick,
                cam=(cam_x, cam_y), half=half, yaw=yaw, ref=ref, ram=b,
-               x_inset=x_inset)
+               x_inset=x_inset, phase_bias=phase_bias)
 
 
 def decode_screen_indices(ram: bytes, base: int):
@@ -418,7 +444,7 @@ def _fixed_slope(dx, dy):
     return -val if dx < 0 else val
 
 
-def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick, x_inset=0):
+def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick, x_inset=0, phase_bias=0):
     """port of pm_tri_raster ($ef62) -> the $e420 DDA span walker.
 
     $ef62 ($efbe..$f1de): cyclic-rotate Y sort, then build a span record and
@@ -474,7 +500,7 @@ def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick, x_inset=0):
         _dda_walk(idxbuf, cov, dith, colour, y0, h,
                   xl, _fixed_slope(x2 - xl, h), None, 0,
                   xr, _fixed_slope(x2 - xr, h), None, 0,
-                  x_inset=x_inset)
+                  x_inset=x_inset, phase_bias=phase_bias)
         return
 
     # ---- general: apex v0, other two = v1 (cyclic 2nd), v2 (cyclic 3rd) ----
@@ -514,11 +540,11 @@ def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick, x_inset=0):
     xRs, sR, swR, sR2 = edge(right)
     _dda_walk(idxbuf, cov, dith, colour, y0, total_rows,
               xLs, sL, swL, sL2, xRs, sR, swR, sR2,
-              x_inset=x_inset)
+              x_inset=x_inset, phase_bias=phase_bias)
 
 
 def _dda_walk(idxbuf, cov, dith, colour, top_y, total_rows,
-              xL, sL, switchL, sL2, xR, sR, switchR, sR2, x_inset=0):
+              xL, sL, switchL, sL2, xR, sR, switchR, sR2, x_inset=0, phase_bias=0):
     """port of $e420. Two 16.16 X accumulators stepped one slope per scanline;
     the switching edge reloads its slope at row `switch`.  Row 0 (top_y) uses
     the initial X with no step ($e41a `bra $e456`).  Per scanline fill the
@@ -554,7 +580,7 @@ def _dda_walk(idxbuf, cov, dith, colour, top_y, total_rows,
         xe = min(W - 1, win_hi, ixR)                # clamp to the iso window edge
         base = y * W
         for x in range(xs, xe + 1):
-            idxbuf[base + x] = dither_index(dith, colour, y, x)
+            idxbuf[base + x] = dither_index(dith, colour, y, x, phase_bias=phase_bias)
             cov[base + x] = 1
 
 

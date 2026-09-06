@@ -780,6 +780,36 @@ Palette: one 16-colour shifter palette for the whole iso view
    84th's green-vs-black anomaly (same "port lighter than ref" direction,
    same camera-anchor region falls inside q2's giant blob) but that
    connection is inferred, not traced — don't state it as confirmed.
+   **85th did that trace — found a real bug in the formula's assumption, but
+   it's NOT the dominant cause of q0/q1's giant-blob mismatch.** `[$ffa2]`
+   (used by `$e3e6`'s A5 setup) has been assumed exactly `2*[$ff9e]` since
+   the 78th pass; live-checked, that's only true for `pm78_settle`/`pm83_q2c`
+   — `pm83_q0c`/`q1c` have `[$ffa2] = 2*[$ff9e] + 128` (confirmed frame-
+   stable across 20 consecutive live `$ef62` calls, not a volatile/shared-
+   with-sound-mixer artifact). Single-stepped a real q1 triangle's full
+   22-row A5 sequence from `$e420` and matched it exactly (22/22) once the
+   correction (`((8*y + phase_bias) & 0x7F)`, phase_bias = `([$ffa2]>>1) -
+   [$ff9e]`) was applied **inside** the mod-128 wrap — a first attempt that
+   added it after the mask matched only the rows that didn't need an extra
+   wrap and was silently wrong for the rest. **But even with a
+   hardware-exact A5 and hardware-exact dither-table bytes** (both directly
+   verified against live memory, not inferred), the traced triangle (cell
+   (43,54), q1) still scored 0/327 exact-match against the reference frame —
+   its computed index (mostly 12, grass) vs the reference's actual shown
+   index (mostly 0-2, dark/rock) are just different terrain families, not a
+   phase-shifted grass. That specific mismatch is NOT a dither bug at all —
+   most likely this cell isn't even the thing visible at those screen pixels
+   in the real game (an occlusion or wrong-cell/wrong-diagonal bug elsewhere
+   in the walk). Applying the corrected `phase_bias` frame-wide made q0/q1's
+   aggregate exact-index score WORSE (46.6%→40.4%, 44.6%→40.3%), meaning more
+   triangles were hurt than helped — some other triangles' errors were
+   apparently cancelling against the old wrong assumption by coincidence.
+   **Reverted the correction's application** (the `phase_bias` parameter
+   still exists on `dither_index`/`_dda_walk`/`ef62_raster`, default 0, for
+   future use) rather than ship a net-negative scoring change; scores are
+   back to pre-85th-continuation values. The real cause of q0/q1's blob is
+   still open — next candidate is the occlusion/cell-identity bug the traced
+   triangle points at, not the dither formula.
    **84th: an unexplained green-vs-black mismatch**, found but not resolved —
    on `pm83_q2c.ram`, screen rows y≥155 near the iso window's right edge
    render solid green in the port where the reference shows near-black, for
