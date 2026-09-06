@@ -8,9 +8,36 @@ game image (base `$1050`); disassembled from the snapshot RAM
 traced resume (`ATARI_TRACE_EVENTS`), `trace_cfg.py --blocks`, plus `watch` on
 individual object-record fields to catch the writing PC.
 
+## Evidence taxonomy (91st pass)
+
+Claims in this file (and `strategy.md` / `economy.md` / `graphics.md` /
+`port/SPEC.md`) carry one of four confidence levels. The load-bearing ones are
+tagged inline as **[Proven]** / **[Corroborated]** / **[Observed]** /
+**[Hypothesis]**; untagged prose is Corroborated-or-better.
+
+- **Proven** — exhaustive binary/dataflow reasoning, or differential equivalence
+  against the real 68000 over many states (the `detcheck`/Musashi standard).
+  Very little here is Proven yet; the renderer's `$ef62`/`$e420` path is the
+  closest (86th: 128/128 triangle inputs + every scanline's DDA span + dither
+  phase byte-exact vs a live single-step).
+- **Corroborated** — an independent static read (disassembly of the handler)
+  **and** a dynamic check (a `watch` on the written field catching the PC, or a
+  register probe at the handler, or a frame diff) agree. Most of the FSM,
+  the record layout, the order pipeline, and the sprite frame formulas.
+- **Observed** — true in the missions / traces actually run (mission 1
+  "Between Pages 1-5", the `pm67`–`pm90` snapshots), not shown to hold in
+  general. **Every strong negative below is at most Observed** unless it also
+  carries a static-exhaustiveness argument: "no per-unit-type AI", "no research
+  timer", "no passive town growth", "enemy AI dormant in mission 1", "invention
+  = weapon grade, never advanced" were each checked by tracing a specific
+  scenario for a bounded step budget, not by proving the absence of a code path.
+- **Hypothesis** — a plausible reading from disassembly alone, not yet traced.
+
 ## What the loop actually is
 
-PowerMonger has **no per-unit-type AI**. It runs one **per-entity behaviour
+PowerMonger has **no per-unit-type AI** *(Observed — mission-1 traces; the
+dispatch through `$14bb4` is by mode opcode, not unit type, across every record
+seen, but a type-keyed branch elsewhere has not been exhaustively ruled out)*. It runs one **per-entity behaviour
 state machine**. Every man, boat, animal, projectile, spell effect and
 "pending order" in the world is a 50-byte **object record** in the array at
 `$51b66`. Each record carries a one-byte **mode opcode** at offset 31. Once per

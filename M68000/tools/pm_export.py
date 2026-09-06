@@ -940,6 +940,62 @@ def export_entities(ram: Ram, out: Path, man: list):
         if any(r):
             effects.append({"slot": s, "raw": r.hex()})
 
+    # -- render_entities: the $47970 per-cell bucket walk -------------------
+    # A faithful replay of what $115e0 (pm_draw_cell_entities) sees, so the
+    # port's Sprites.drawEntities can be fed a real record stream (Task 4/2).
+    # This MIRRORS tools/pm_render_ref.py load_ram exactly (same camera window,
+    # same SIGNED $51b66-relative offset, same fx4/fy4 address-jitter, same
+    # field set) -- the two are cross-checked byte-exact on synthetic data
+    # (scratchpad/pm90_xcheck.*), so the parse has to agree here too.
+    BUCK, OBJ_BASE = 0x47970, 0x51B66
+    cam_x = ram.u16(0x4BB3A) - ram.u16(0x57FFC)
+    cam_y = ram.u16(0x4BB3C) - ram.u16(0x57FFC)
+    render_objs = []
+    seen = set()
+    for wcy in range(cam_y - 1, cam_y + 10):
+        for wcx in range(cam_x - 1, cam_x + 10):
+            if not (0 <= wcx < 64 and 0 <= wcy < 128):
+                continue
+            d4 = ram.u16(BUCK + (wcy * 64 + wcx) * 2)
+            depth = 0
+            while d4 and depth < 96:
+                off = d4 - 0x10000 if d4 >= 0x8000 else d4
+                o = OBJ_BASE + off
+                if not (0x40000 <= o < 0x60000) or (o, wcx, wcy) in seen:
+                    break
+                seen.add((o, wcx, wcy))
+                depth += 1
+                rec = ram.blk(o, 50)
+                a2 = 0x47970 + (wcy * 64 + wcx) * 2
+                a0 = 0x3F364 + (wcy - cam_y) * 64 + (wcx - cam_x) * 4
+                s = (a2 + o) & 0xFFFF
+                render_objs.append({
+                    "addr": o, "wcx": wcx, "wcy": wcy,
+                    "b6": rec[6], "b5": rec[5], "b7": rec[7], "b14": rec[14],
+                    "b17": rec[17], "b31": rec[31],
+                    "fx": rec[9], "fy": rec[11],
+                    "fx4": (s << 3) & 0xFF, "fy4": (s + (a0 & 0xFFFF)) & 0xFF,
+                    "group": (rec[42] << 8) | rec[43],
+                })
+                d4 = ram.u16(o)
+    tsel = ram.u16(0x57FD0)
+    entity_ctx = {
+        "cam_x": cam_x, "cam_y": cam_y,
+        "yaw": ram.u16(0xFF9A),
+        "anim": ram.u8(0x4BB41) & 1,
+        "sel_group": ram.u16(0x57FFE),
+        "tile_off": ram.u16(0x11746 + tsel) if tsel in (0, 2, 4, 6) else 0,
+        "rot_phase": ram.u8(0x57FED),
+        "render_source": "pm88_f1.ram (frame-start anchor; the rest of assets/ is pm74_late)",
+        "half": ram.u16(0xFDEC),
+        "sheet33": "sprites/sheet_raw.bin",       # $33000, 55 B/frame
+        "sheet_prop": "sprites/prop_sheet_raw.bin",  # $37c7c, 480 B/frame
+        "note": ("feed render_entities[] as PmLogic.Sprites.EntityRec and call "
+                 "Sprites.drawEntities(buf, ctx, corners, cam_x, cam_y, recs). "
+                 "byte6 drawn: 0 (men) 4 (building/tree) 8 (animal) 14 (banner) "
+                 "6/24 (marker). See SPEC.md section 6."),
+    }
+
     e = {
         "note": ("one frame of live entity state from the settled iso view. "
                  "world coords pack as {x: low byte, y: high byte}; the renderer "
@@ -952,14 +1008,20 @@ def export_entities(ram: Ram, out: Path, man: list):
         "leaders": leaders,
         "herd": herd,
         "effects": effects,
+        "entity_ctx": entity_ctx,
+        "render_entities": render_objs,
     }
     (out / "entities.json").write_text(json.dumps(e, indent=1))
     man.append({
         "file": "entities.json",
         "provenance": ("$51b66 object records (50 B, slots 1..511), $4f916 "
-                       "settlements, $4e514 leaders, $4d252 herd, $4be00 effects."),
+                       "settlements, $4e514 leaders, $4d252 herd, $4be00 effects; "
+                       "render_entities[] = the $47970 per-cell bucket walk "
+                       "($115e0's view, SIGNED $51b66 offset), entity_ctx = the "
+                       "per-frame Sprites.drawEntities constants."),
         "format": "decoded key fields + raw hex per record",
         "active_objects": len(objs),
+        "render_entities": len(render_objs),
     })
 
 

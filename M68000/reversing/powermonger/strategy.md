@@ -244,10 +244,13 @@ Order writes go through `$67ee` → `$6822`: `$67ee` re-packs the found leader's
 cell `4(A3)` into `{x:6, y:7}`, `$6822` stores `{type, param}` into
 `$58016[cmd]` bytes 1/2 and stamps `4(A1)` / the `$58042` cross-index.
 
-**This layer has no economy, build or recruit reasoning.** The autonomous
-decision is: *"march the army at the nearest enemy leader, if I have more than
-~4–22 men and the target is inside a range budget that scales with my army
-size."* Reinforcement is handled at the entity level (mode `$1a`, `ai.md`);
+**This layer has no economy, build or recruit reasoning** *(Observed — the
+`$6522`/`$6564` handler was fully disassembled and traced in mission 1; no
+economy/build branch was seen, but `$6564` is one of several `$6522` sub-cases
+and the campaign hook `$67d0` was never live. Evidence taxonomy: `ai.md`.)*. The
+autonomous decision is: *"march the army at the nearest enemy leader, if I have
+more than ~4–22 men and the target is inside a range budget that scales with my
+army size."* Reinforcement is handled at the entity level (mode `$1a`, `ai.md`);
 build/invention orders, if the AI issues them at all, come through the `$67d0`
 campaign hook, not from `$6564`.
 

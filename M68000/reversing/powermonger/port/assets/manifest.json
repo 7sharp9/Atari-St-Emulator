@@ -107,9 +107,10 @@
   },
   {
    "file": "entities.json",
-   "provenance": "$51b66 object records (50 B, slots 1..511), $4f916 settlements, $4e514 leaders, $4d252 herd, $4be00 effects.",
+   "provenance": "$51b66 object records (50 B, slots 1..511), $4f916 settlements, $4e514 leaders, $4d252 herd, $4be00 effects; render_entities[] = the $47970 per-cell bucket walk ($115e0's view, SIGNED $51b66 offset), entity_ctx = the per-frame Sprites.drawEntities constants.",
    "format": "decoded key fields + raw hex per record",
-   "active_objects": 47
+   "active_objects": 47,
+   "render_entities": 53
   },
   {
    "file": "reference/isoframe.png",

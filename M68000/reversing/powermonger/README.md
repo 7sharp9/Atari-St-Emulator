@@ -548,6 +548,38 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     open:** the minimap's per-event ownership/dots overlay; per-category frame
     counts; the goods table. Detail in `port/SPEC.md` §6 / §9 item 6.
 
+27. The 91st pass (continuation of the substrate-hardening commit `a91b311`)
+    **wires the per-cell entity pass into a live Godot frame with a real record
+    stream (Task 2), and refutes most of the minimap "per-event overlay"
+    premise (Task 1)** (tooling + asset + doc + `Sprites.fs`/`TerrainView.cs`/
+    `pm_export.py`; no emulator or port-runtime *behaviour* change → regression
+    net skipped, selftest 807124/0/8 unchanged since the 67th). Baseline:
+    `detcheck 500000` on `pm78_settle` clean (trace hash `$0a144adee7e92d99`).
+    - **Task 2:** `pm_export.py` `export_entities` now also emits
+      `entities.json → render_entities[]` (the `$47970` bucket walk, byte-exact
+      vs `pm_render_ref.load_ram`) + `entity_ctx`. `Sprites.drawEntitiesArr`
+      (array wrapper) is called from `TerrainView.cs` after `Fill.walk`, gated on
+      the mission-1 start pose. F# output on the real 53-record stream +
+      `$3f364` corners = **byte-identical to `pm_render_ref.draw_entities`,
+      2881/2881 covered px** (`byte6 ∈ {0,4,6,8,14,24}`). Real Godot screenshot
+      `port/assets/reference/godot_screenshot_entities_91st.png` — ~25 trees +
+      the 26-record banner ring + the man on the hill.
+    - **Task 1:** static-diffed the minimap sub-rect vs the `$78000` master
+      across `pm78_settle`/`pm73_fight`/`pm74_late`/`pm89_pan_e` + a one-frame
+      `watch` of `pm88_f1`. The master's minimap region + the `$3f86c` control
+      plane are **byte-identical across all four** (no ownership change present
+      → an ownership tint is unconfirmed); **the game draws no camera-viewport
+      rectangle** (`TerrainView.cs`'s is a port addition); the only real
+      per-frame delta is the `$11f82` selected-unit marker (`watch` PC ≈
+      `$12002`) + a static top-left chrome mark, with faint idx-5 pixels at a
+      lord's cell only during an event at that cell. Detail in `port/SPEC.md`
+      §9 item 6.
+    - **Methodology rider (3a):** an **evidence taxonomy**
+      (Proven/Corroborated/Observed/Hypothesis) header added to `ai.md` and
+      `port/SPEC.md` §9, with the load-bearing strong negatives in
+      `ai.md`/`economy.md`/`strategy.md` re-tagged as **Observed** (bounded
+      mission-1 traces, not exhaustive proofs).
+
 ## Files
 
 | file | what |

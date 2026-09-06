@@ -365,3 +365,10 @@ module Sprites =
                     let c11 = corner (row + 1) (col + 1)
                     for r in l do blitEntity buf ctx c00 c10 c01 c11 r
                 | _ -> ()
+
+    /// C#-friendly wrapper: same as `drawEntities` but takes an array (the
+    /// Godot port builds a `Sprites.EntityRec[]` from entities.json's
+    /// `render_entities` block — see game/TerrainView.cs).
+    let drawEntitiesArr (buf: Fill.Buffer) (ctx: EntityCtx) (corners: Projection.Corner[,])
+                        (camX: int) (camY: int) (recs: EntityRec[]) =
+        drawEntities buf ctx corners camX camY (List.ofArray recs)

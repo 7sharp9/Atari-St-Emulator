@@ -26,6 +26,45 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (91st pass) — Task 2: the entity pass is live in Godot with a real record stream
+
+`tools/pm_export.py` `export_entities` now also emits, into `assets/entities.json`:
+
+- `render_entities[]` — one frame's `$47970` per-cell bucket walk (the SIGNED
+  `$51b66` offset, the `fx4/fy4` address-jitter, the `byte6`/`b5`/`b7`/`b14`/
+  `b17`/`b31`/`group`/world-cell fields). **Byte-identical to
+  `tools/pm_render_ref.py` `load_ram`'s** entity block (checked directly).
+- `entity_ctx` — the per-frame `Sprites.drawEntities` constants (yaw / anim /
+  sel_group / tile_off / rot_phase / sheet paths), baked for the mission-1 start
+  pose (cam 36,47, yaw `$f0`).
+
+`Sprites.drawEntitiesArr` (a C#-friendly array wrapper on `drawEntities`) is
+called from `TerrainView.cs` right after `Fill.walk`, into the same
+`Fill.Buffer`, gated on the live camera matching that pose. Feeding it the real
+53-record stream + the `$3f364` corners from `pm88_f1.ram` produces a
+covered-pixel set **byte-identical to `pm_render_ref.draw_entities`** —
+2881/2881 px, all ported `byte6` in {0,4,6,8,14,24}
+(`scratchpad/pm91_ent_fs.fsx` / `pm91_ent_py.py`). Real Godot `--write-movie`
+screenshot: `assets/reference/godot_screenshot_entities_91st.png` (run
+`res://scenes/Main.tscn`, not bare `--path .`) — ~25 trees + the 26-record
+banner ring + the man on the hill, over the projected terrain + minimap.
+
+`pm_render_ref.py`'s `COMPOSITE_CATS` stays `{14}` (its exact-index score is
+against `pm78_settle`/`pm88_f1`, whose two compose buffers disagree on the
+entity layer — 89th); the from-scratch Godot port has no reference-buffer
+problem, so it draws all ported categories.
+
+**Task 1 (minimap per-event overlay) — premise mostly refuted.** See
+`SPEC.md` §9 item 6: the `$78000` master's minimap region + the `$3f86c`
+control plane are byte-identical across `pm78_settle`/`pm73_fight`/`pm74_late`/
+`pm89_pan_e`; the game draws no camera-viewport rectangle; the only real
+per-frame delta is the `$11f82` selected-unit marker + static chrome. An
+ownership *tint* is unconfirmed (no ownership-change capture exists).
+
+No emulator or port-runtime *behaviour* change → regression net skipped;
+selftest 807124/0/8 unchanged since the 67th. Baseline `detcheck 500000` on
+`pm78_settle` clean.
+
 ## Verification status (90th pass) — Task 3 (HUD minimap) + Task 4 (the entity pass, ported + cross-checked)
 
 Tooling + asset + doc + `Terrain.fs` / `Sprites.fs` / `pm_render_ref.py` /

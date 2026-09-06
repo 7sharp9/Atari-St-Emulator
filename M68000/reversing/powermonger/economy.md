@@ -8,6 +8,15 @@ absolute addresses, base `$1050`), block traces, and field `watch`es driven from
 `scratchpad/pm71_run1.snap` / `pm74_late.snap` ("Between Pages 1-5", the
 procedurally-generated tutorial mission).
 
+**Evidence level (91st).** See `ai.md` "Evidence taxonomy". The **negatives in
+this file are Observed, not Proven**: "no growth term", "no research counter",
+"strict conservation of soldiers", "invention never advances" were each checked
+by tracing mission 1 for a bounded step budget (≤400M) with field `watch`es on
+the relevant counters and finding zero unexplained increments — not by proving
+no such code path exists. The army-supply *mechanism* (`$61f8`/`$638c`) is
+Corroborated (static + a forced-delivery trace); its dormancy in mission 1 is
+Observed.
+
 **75th-pass summary.** All five pass-2 questions closed. The livestock payoff is
 `+1` to one of `pm_leader.goods[0..7]` (§2a) — eight per-lord counters, one for
 each of Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon, shown in the lord panel,

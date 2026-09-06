@@ -40,6 +40,17 @@ public partial class TerrainView : Node2D
     private byte[] _dither = System.Array.Empty<byte>();
     private Color[] _palette = new Color[16];
 
+    // Per-cell entity pass (SPEC.md section 6 / Task 2). entities.json's
+    // render_entities[] is one frame's $47970 bucket walk, baked for the
+    // mission-1 start pose (cam 36,47 yaw 15) by tools/pm_export.py — byte-exact
+    // against tools/pm_render_ref.py load_ram. Only drawn when the live camera
+    // matches that pose (the records carry that pose's sub-cell fractions).
+    private Sprites.EntityRec[] _entRecs = System.Array.Empty<Sprites.EntityRec>();
+    private byte[] _sheet33 = System.Array.Empty<byte>();
+    private byte[] _sheetProp = System.Array.Empty<byte>();
+    private int _entCamX, _entCamY, _entYaw, _entTileOff, _entRotPhase, _entSelGroup;
+    private bool _entAnim;
+
     private TextureRect _rect = null!; // set in _Ready
     private Label _label = null!;      // set in _Ready
     private int _camX, _camY, _yawSteps;
@@ -64,6 +75,7 @@ public partial class TerrainView : Node2D
         _map = Terrain.parse(terrainRaw);
         _dither = FileAccess.GetFileAsBytes($"{AssetsDir}/dither.bin");
         LoadPalette($"{AssetsDir}/palette.json");
+        LoadEntities($"{AssetsDir}/entities.json");
 
         _camX = Mathf.Clamp(CamCellX, MinCamX, MaxCamX);
         _camY = Mathf.Clamp(CamCellY, MinCamY, MaxCamY);
@@ -99,6 +111,36 @@ public partial class TerrainView : Node2D
         RenderFrame();
     }
 
+    private void LoadEntities(string path)
+    {
+        var json = FileAccess.GetFileAsString(path);
+        if (string.IsNullOrEmpty(json)) return;
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("render_entities", out var recs)) return;
+        var ctx = root.GetProperty("entity_ctx");
+        _entCamX = ctx.GetProperty("cam_x").GetInt32();
+        _entCamY = ctx.GetProperty("cam_y").GetInt32();
+        _entYaw = ctx.GetProperty("yaw").GetInt32();
+        _entAnim = ctx.GetProperty("anim").GetInt32() != 0;
+        _entSelGroup = ctx.GetProperty("sel_group").GetInt32();
+        _entTileOff = ctx.GetProperty("tile_off").GetInt32();
+        _entRotPhase = ctx.GetProperty("rot_phase").GetInt32();
+        _sheet33 = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet33").GetString()}");
+        _sheetProp = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet_prop").GetString()}");
+
+        var list = new System.Collections.Generic.List<Sprites.EntityRec>();
+        foreach (var o in recs.EnumerateArray())
+        {
+            int G(string k) => o.GetProperty(k).GetInt32();
+            list.Add(new Sprites.EntityRec(
+                G("b6"), G("b5"), G("b7"), G("b14"), G("b17"), G("b31"),
+                G("fx"), G("fy"), G("fx4"), G("fy4"), G("group"), G("wcx"), G("wcy")));
+        }
+        _entRecs = list.ToArray();
+        GD.Print($"loaded {_entRecs.Length} render entities (pose cam {_entCamX},{_entCamY} yaw {_entYaw})");
+    }
+
     private void LoadPalette(string path)
     {
         using var doc = JsonDocument.Parse(FileAccess.GetFileAsString(path));
@@ -117,6 +159,22 @@ public partial class TerrainView : Node2D
         var corners = PmProjection.projectGrid(proj, _map, _camX, _camY);
         var buf = Fill.Buffer.Create();
         Fill.walk(buf, _dither, corners, _map, _camX, _camY, 0, _yawSteps);
+
+        // Per-cell entity pass (SPEC.md section 6 / Task 2): Sprites.drawEntities
+        // replays $115e0 as a post-terrain far->near pass, byte-exact against
+        // tools/pm_render_ref.py draw_entities. The records in entities.json are
+        // baked for the mission-1 start pose, so only draw them when the live
+        // camera is at that pose. drawEntities writes into `buf` in the same
+        // RAW $3f364 coordinate space Fill.walk uses, so the XInset shift below
+        // then places terrain and sprites together.
+        bool entPose = _camX == _entCamX && _camY == _entCamY && _yawSteps * 16 == _entYaw;
+        if (entPose && _entRecs.Length > 0)
+        {
+            var ectx = new Sprites.EntityCtx(
+                _entYaw, _entAnim, _entSelGroup, _entTileOff, _entRotPhase,
+                _sheet33, _sheetProp, System.Array.Empty<byte>());
+            Sprites.drawEntitiesArr(buf, ectx, corners, _camX, _camY, _entRecs);
+        }
 
         // Fill.Buffer is in RAW $3f364 coordinates (0..255, same space $ef62's
         // own clip checks) -- Projection.fs does NOT add the +64px HUD-strip
@@ -165,23 +223,14 @@ public partial class TerrainView : Node2D
             }
         }
 
-        // Per-cell entity pass (SPEC.md section 6 / Task 4): Sprites.drawEntities
-        // replays $115e0 as a post-terrain far->near pass, and is byte-exact
-        // against tools/pm_render_ref.py draw_entities (scratchpad/pm90_xcheck.*,
-        // 13/13 synthetic cases for byte6 0/4/8/14/24). It draws into a
-        // Fill.Buffer, so the call site is right after Fill.walk and before the
-        // img blit above; a from-scratch port has no live object-record source
-        // yet, so it is not called here. To enable: build a
-        // List<Sprites.EntityRec> from a record stream (byte6 + the sub-cell
-        // fraction + the frame fields per SPEC.md 6) and call
-        //   Sprites.drawEntities(buf, ctx, corners, _camX, _camY, recs);
-        // before the "for (int y...)" loop, where ctx carries the sprite sheets
-        // + yaw + anim + selGroup + tileOff.
+        // (The per-cell entity pass ran above, right after Fill.walk, so its
+        // sprites are already in `buf` and go through the same XInset blit.)
 
         _rect.Texture = ImageTexture.CreateFromImage(img);
         int yaw = _yawSteps * 16;
         int quadrant = (((yaw + 8) >> 5) & 6) >> 1;
         _label.Text = $"camCell ({_camX},{_camY}) yaw {_yawSteps}/16 (${yaw:x2}, {QuadrantNames[quadrant]}) — "
+                      + $"{(entPose ? _entRecs.Length + " entities" : "entities: pan to start pose")} — "
                       + "arrows pan, PgUp/PgDn rotate";
     }
 }

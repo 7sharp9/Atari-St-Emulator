@@ -675,13 +675,33 @@ melee→nothing case, the prop `r7 ∈ {0x0d, 0x0e}` special-cases, animal/banne
 facing, and the centroid markers (`scratchpad/pm90_xcheck.fsx` / `.py`).
 `drawEntities` replays `$115e0` as a post-terrain far→near pass in `walkQ3` cell
 order (same approximation `pm_render_ref` uses); `byte6 6/24` use the `$1182a`
-centroid, everything else the `$11f1a` sub-cell lerp. Not wired into a live
-Godot frame — the from-scratch port has no object-record source yet; the call
-site + the record-field contract are documented in `TerrainView.cs`.
+centroid, everything else the `$11f1a` sub-cell lerp.
+
+**91st (Task 2): wired into a live Godot frame with a real record stream.**
+`tools/pm_export.py`'s `export_entities` now also emits `entities.json ->
+render_entities[]` (the `$47970` per-cell bucket walk — the SIGNED `$51b66`
+offset, the `fx4/fy4` address-jitter, the `byte6`/`b5`/`b7`/`b14`/`b17`/`b31`/
+`group`/world-cell fields) + `entity_ctx` (yaw / anim / sel_group / tile_off /
+rot_phase / sheet paths). This parse is **byte-identical to
+`pm_render_ref.load_ram`'s** entity block (verified, `scratchpad/pm91_ent_*.` ).
+`Sprites.drawEntitiesArr` (an array wrapper on `drawEntities`) is called from
+`TerrainView.cs` right after `Fill.walk`, into the same `Fill.Buffer`, gated on
+the camera matching the baked pose (mission-1 start). Feeding it the real
+53-record stream + `$3f364` corners produces a covered-pixel set **byte-identical
+to `pm_render_ref.draw_entities`** (2881/2881 px, all ported `byte6` in
+{0,4,6,8,14,24}). Real Godot `--write-movie` screenshot:
+`assets/reference/godot_screenshot_entities_91st.png` — ~25 trees + the 26-record
+banner ring + the man on the hill.
+
+`pm_render_ref.py`'s `COMPOSITE_CATS` stays `{14}` (its score is against
+`pm78_settle`/`pm88_f1`, whose two compose buffers disagree on the entity layer —
+89th); the Godot port has no such reference-buffer problem so it draws all of
+{0,4,6,8,14,24}.
 
 Still open: per-category frame *counts*; the `$11886` goods table (byte6 16 =
 `$1192e`, loops `[$4e514 + record[14]]` goods[0..7]); byte6 1/15 (`$312a0`)
-detail.
+detail; promoting byte6 4/8 into `COMPOSITE_CATS` (needs a clean single-buffer
+populated capture — §9 item 4).
 
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
@@ -811,6 +831,16 @@ Palette: one 16-colour shifter palette for the whole iso view
 ---
 
 ## 9. Open questions
+
+**Evidence levels (91st).** See `../ai.md` "Evidence taxonomy". In this file:
+the projection maths (§3) and the `$ef62`/`$e420` rasteriser (§4) are **Proven**
+for the traced captures (86th: every triangle input + every scanline's DDA span
++ dither phase byte-exact vs a live single-step; 77th: all 81 projected vertices
+byte-exact). The sprite frame formulas + the `$115e0` bucket walk (§6) are
+**Corroborated** (disassembly + a live register/`$11f88` probe + the F#↔Python
+byte-exact cross-check). The "no per-frame sea fill" / "minimap baked once"
+claims are **Observed** (true for `pm78_settle`/`pm88_f1`/`pm73_fight`/
+`pm74_late`/`pm89_pan_e`; no ownership-change capture exists — item 6).
 
 1. **All 4 quadrant walks + the rasteriser — CLOSED (78th q3 walk, 80th
    rasteriser, 83rd q0/q1/q2 walks).** `pm_render_ref.py --ram` auto-selects
@@ -1116,10 +1146,37 @@ Palette: one 16-colour shifter palette for the whole iso view
      from the `$418ae` buffer, 94.5 % from the type plane) and `TerrainView.cs`
      draws it into the top-left with a live camera-window box
      (`assets/reference/godot_screenshot_minimap_90th.png`).
-   - **Still open**: the per-event overlay (territory-ownership tint + lord
-     dots + a fuller viewport rect). Not seen in a still-settled trace, so it is
-     drawn on game events (lord moves cell / territory captured / camera moves)
-     — a separate pass to trace.
+   - **91st (Task 1) — the "per-event overlay" premise is mostly wrong.**
+     Static-diffed the front buffer's minimap sub-rect vs the `$78000` master
+     across `pm78_settle` / `pm73_fight` (active mission-1 fight) / `pm74_late` /
+     `pm89_pan_e` (camera panned), plus a one-frame `watch` trace of `pm88_f1`'s
+     compose buffer. Findings, all live-derived:
+     - The `$78000` master's minimap region is **byte-identical across all four
+       captures**, and so is the `$3f86c` control plane — none of these captures
+       contains a territory-ownership change, so an ownership *tint* cannot be
+       observed and its existence is **unconfirmed**. The 90th's "baked once by
+       `$13b9a`" holds for everything traced.
+     - There is **no camera-viewport rectangle** drawn by the game at all
+       (`TerrainView.cs` draws one as a *port addition*).
+     - The per-frame minimap delta from the master is: **(a)** the global
+       **software cursor / selected-unit marker** — `pm_draw_cursor_marker`
+       (`$138c`, `powermonger.sym`), a save-under sprite (`$13ae` restore loop /
+       `$147c..$1492` save+blit, saved-addr `$1c49a`, pos `$2df92`/`$2df94`),
+       ~8×11, idx 8 (orange). It is drawn over the iso view *and* the minimap
+       wherever the cursor sits — the 90th's "~11×14 `$11f82` sprite near screen
+       (37..47, 46..60)" is this. **(b)** a static ~6px diagonal chrome mark at
+       the minimap's top-left corner (screen (5..10, 6..10)), identical in every
+       capture. **(c)** in `pm73_fight` only, ~5 px of idx 5 (cream) at an enemy
+       lord's own cell (29,62) during the fight there — a candidate
+       lord-position dot, **not confirmed as systematic**.
+     - `pm_draw_cursor_marker`'s restore/blit loop (`$13ae`/`$147e`) is the only
+       thing writing the minimap's left columns per frame in the trace, and it
+       is a ≤16-row save-under rectangle at the cursor, not a minimap raster;
+       over mission 1's all-sea NW corner it is invisible.
+       `scratchpad/pm91_mini*.py` + `pm91_w.err` are the probes.
+   - **Still open**: capture an actual territory flip (drive a full battle to a
+     settlement capture) and re-diff — the only way to settle whether ownership
+     is a master re-bake or a per-frame tint. Own pass.
 7. **Border / stone-table master, compass panel.** Not started — `$e0d4`
    master + the left-strip compositor. Deferred.
 
