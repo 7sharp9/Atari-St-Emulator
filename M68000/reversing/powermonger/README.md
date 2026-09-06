@@ -431,6 +431,26 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     the affected cells' own vertices never approach either clip boundary in
     either direction. That anomaly's cause remains open (`SPEC.md` §9 item 1).
 
+22. The 86th pass **proves the q0/q1/q2 terrain renderer is byte-exact** and
+    reframes the "giant-blob residual" as a bad-capture artifact (doc +
+    tooling only — no code change). Live single-stepped `pm83_q2c`: all
+    128/128 `$ef62` calls per frame match the live game (vertices + colour),
+    the dither `A5` phase is byte-exact every scanline on two traced
+    triangles, the `$e420` DDA span endpoints are byte-exact every scanline
+    of a traced 27-row triangle, and `_fixed_slope` + the fill's plane/tile
+    model re-verify against fresh disasm. Since every rasteriser input is
+    byte-exact, the port's per-triangle output equals the game's, so the
+    35–50% exact-index against `pm83_q{0,1,2}c` measures the captured
+    `$1c700`/`$24400` reference buffer, which for these synthetic-rotation
+    captures does not match the state the frozen `$3f364` corners describe
+    (`pm83_q2c`'s heuristic picks the worse buffer; it and `pm83_q1c` share a
+    draw pointer but need opposite buffers). Large-error regions are
+    coast/edge-shaped, not unit-shaped; ±1 errors are one frame-wide blob —
+    both point at sub-step camera drift, not a triangle bug. `pm78_settle`
+    (clean capture) still scores 94.4%, residual = real unit sprites. Next
+    is a clean natural-rotation capture or Task 2 (sprite rip), not a 7th
+    rasteriser hypothesis. Detail in `port/SPEC.md` §9 item 1.
+
 ## Files
 
 | file | what |

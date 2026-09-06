@@ -26,6 +26,32 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (86th pass)
+
+- **The q0/q1/q2 terrain renderer is byte-exact — the low `--ram` score
+  against `pm83_q{0,1,2}c` is a bad-capture artifact, not a renderer bug.**
+  Live single-stepped `pm83_q2c` (`walk_q2`, yaw `$90`): all **128/128**
+  `$ef62` calls in a frame match the live game (vertices + colour, zero
+  diff); the dither `A5` phase is byte-exact every scanline on two traced
+  triangles; the `$e420` DDA span endpoints (`ixL`/`ixR`) are byte-exact
+  every scanline of a traced 27-row triangle; `_fixed_slope` and the fill's
+  plane/tile model re-verified against fresh `$f000`/`$e3e6`/`$e420` disasm.
+  With geometry + colour + phase + spans + dither bytes all byte-exact, the
+  port's per-triangle output is byte-identical to the game's, so the 35–50%
+  exact-index measures the **captured reference buffer**, not the renderer.
+  The `pm83_q2c` `load_ram` heuristic picks `$24400` (35.4%) but `$1c700`
+  scores **52.7%** and matches the `$78000` master's HUD strip far better
+  (25 vs 153 px); `pm83_q1c` and `pm83_q2c` share a draw pointer yet need
+  opposite buffers — `pm83_q2c` was frozen mid-swap. The large-error regions
+  are coast/diamond-edge-shaped (65×49, 89×24 at the window edges), not 8×11
+  unit clusters; the ±1 errors are one frame-wide blob — both consistent
+  with sub-step camera drift between the displayed framebuffer and the
+  frozen `$3f364` corners. `pm78_settle` (clean natural-settle capture)
+  still scores 94.4%, residual = genuine unit sprites. **Next: a clean
+  q0/q1 capture via natural in-game rotation, or Task 2 (sprite rip). No 7th
+  rasteriser hypothesis against `pm83_*c`.** Full detail in SPEC.md §9
+  item 1. No code changed this pass (doc + scratchpad tooling only).
+
 ## Verification status (85th pass)
 
 - **Continued further: live-traced the q0/q1 dither-formula lead, found a

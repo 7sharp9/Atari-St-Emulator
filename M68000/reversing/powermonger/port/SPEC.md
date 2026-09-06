@@ -839,6 +839,41 @@ Palette: one 16-colour shifter palette for the whole iso view
    green-vs-black mismatch noted below (checked and ruled out: those cells'
    own vertices never approach either the old or the corrected clip
    boundary).
+   **86th: the terrain renderer is byte-exact for q0/q1/q2 — the low
+   `--ram` score against `pm83_q{0,1,2}c` is a bad-capture artifact, not a
+   renderer bug.** Live single-stepped `pm83_q2c` (`walk_q2`, yaw `$90`) to a
+   standard no prior pass reached: (1) all **128/128** `$ef62` calls in one
+   frame match the live game exactly — same 3 vertices, same colour byte,
+   zero diff; (2) the dither `A5` phase sequence is byte-exact every scanline
+   on two traced triangles (`colour*128 + ((8*y) & 0x7f)` reproduces the real
+   `$e456` register, phase_bias correctly 0); (3) the `$e420` DDA span
+   endpoints (`ixL`/`ixR`) are byte-exact every scanline of a traced 27-row
+   triangle (call 102, col `0x2b`) vs the real `$e462` register lookups; (4)
+   `_fixed_slope` re-verified against fresh `$f000` disasm; (5) the fill's
+   plane layout (planes 0,1 ← `dith[A5]`, planes 2,3 ← `dith[A5+4]`, one 16px
+   pattern tiled screen-X-aligned, `A5 += 8`/scanline in *all* span paths)
+   re-derived from fresh `$e3e6`/`$e420`–`$e5a6` disasm and matches the port.
+   Given geometry + colour + phase + spans + dither table all byte-exact, the
+   port's per-pixel output for any triangle is byte-identical to the game's,
+   so the 35–50% exact-index against `pm83_q{0,1,2}c` measures the **captured
+   `$1c700`/`$24400` reference buffer**, which for these synthetic-rotation
+   captures does not correspond to the state the frozen `$3f364` corner
+   buffer describes. Evidence it's the capture: `pm83_q2c`'s `load_ram`
+   buffer heuristic picks `$24400` (35.4%) but `$1c700` scores **52.7%** and
+   is far closer to the `$78000` master in the HUD strip (25 vs 153 px diff);
+   `pm83_q1c` and `pm83_q2c` have the *same* `$e3e2` draw pointer
+   (`0x1c720`) yet opposite correct buffers, i.e. `pm83_q2c` was frozen at a
+   different point in the frame/swap cycle. The mismatch's two buckets —
+   large errors form **coast/diamond-edge-shaped blobs** (65×49, 89×24 at the
+   bottom-right and left edges), not 8×11 unit clusters; ±1 errors form one
+   frame-wide blob (q0: 3035 px, 150×89) — are both consistent with a
+   sub-step camera drift between the displayed framebuffer and the captured
+   corners, not with a per-triangle rasteriser error. `pm78_settle` (natural
+   settle, clean capture) scores 94.4% with the residual being genuine unit
+   sprites (85th's connected-component proof). **Next: a clean q0/q1 capture
+   via natural in-game camera rotation — settle many frames, verify the
+   display buffer is stable across two consecutive dumps — or Task 2 (sprite
+   rip). Do NOT generate a 7th rasteriser hypothesis against `pm83_*c`.**
 2. **Dither phase — CLOSED (80th).** Full span walker disassembled
    (`$e3e6`→`$e5a6`) and live single-stepped. `A5` wraps **modulo 128** inside
    the colour's slot (`$e44a`'s `addq.b #8` on `2*A5` byte-overflows at
