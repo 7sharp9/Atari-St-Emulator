@@ -67,10 +67,16 @@
    "format": "sheet_raw.bin = 352 x 55 raw bytes. Each frame is 8 x 11 FOUR-bitplane (16-colour), 5 bytes/row = [AND-mask, plane0..3]; opaque where mask bit == 0. sheet_contact.png = 16-wide, 6x, real palette / magenta = clear. Frames 0-63 = men (4 faction blocks of 16); 0x117 = animals; 0x100/0x10f/0x13e/0x14e/0x150 = other categories -- see sprite_triggers.json for each category's base."
   },
   {
-   "file": "sprites/prop_sheet_raw.bin",
-   "frames": 48,
-   "provenance": "category-2 (tree/obstacle) sheet at $37c7c, 0x1e0 (480) B/frame. Blitted inline by $1168c via $1227c/$124a8. 87th: stride confirmed by live trace ($012288: mulu.w #$1e0,D2).",
-   "format": "raw bytes only -- row layout of the 480-byte frame not yet decoded (deferred to the 88th)."
+   "file": "sprites/prop_sheet_raw.bin + sprites/prop_sheet_contact.png",
+   "frames": 28,
+   "provenance": "category-2 (tree/obstacle) sheet at $37c7c, 0x1e0 (480) B/frame. Blitted inline by $1168c via $1227c/$124a8. 87th: 32w x 24h, 20 B/row = 2 groups of [mask,p0..p3] words (from the $124a8 disasm + a live trace).",
+   "format": "48-frame sample. decode_wordsprite(frame, 32, 24)."
+  },
+  {
+   "file": "sprites/struct_sheet_raw.bin + sprites/struct_sheet_contact.png",
+   "frames": 47,
+   "provenance": "structure sheet at $312a0 (cats 1, 9, 15), 0xa0 (160) B/frame. Blitted centred via $1225c / $119d4. 87th: 16w x 16h, 10 B/row [mask,p0..p3] words.",
+   "format": "decode_wordsprite(frame, 16, 16)."
   },
   {
    "file": "sprites/sprite_triggers.json",

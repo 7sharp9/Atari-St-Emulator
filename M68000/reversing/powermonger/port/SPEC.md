@@ -608,19 +608,42 @@ screenY = pos.y - 8
 `assets/sprites/sprite_triggers.json` carries the full ripped dispatch + every
 per-category frame formula. The important ones:
 
+There are **four sprite sheets** (all 4-bitplane + AND-mask, MSB-first, opaque
+where the mask bit is 0):
+
+| sheet | frame | geom | blitter | positioning | categories |
+|-------|-------|------|---------|-------------|------------|
+| `$33000` | 55 B | 8 × 11, byte planes | `$11f82` | sub-cell lerp | 0, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14 |
+| `$312a0` | 160 B | 16 × 16, word planes (10 B/row) | `$1225c` / `$119d4` | cell-centred | 1, 9, 15 |
+| `$37c7c` | 480 B | 32 × 24, word planes (2 groups/row) | `$1227c` / `$124a8` | cell-centred | 2 |
+| `$e6ee`+desc | — | 32 B glyph row | `$e6ee` | raw cell coord + fixed X | the `$165b2` marker / HUD only |
+
+`$37c7c` decodes cleanly as **buildings + trees**; `$312a0` as small
+structures / siege engines (catapult, cannon) / explosions.
+
 | cat | name | sheet | frame (D2) |
 |-----|------|-------|------------|
-| 0 | man / troop | `$33000` /55 | `(faction−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. faction = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative.** |
-| 2 | tree / obstacle | `$37c7c` /480 | from record[7] + a `[$57fd0]`-indexed offset; blit inline via `$1227c`/`$124a8`. Row layout of the 480-byte frame not decoded yet. |
-| 3, 12 | (settlement marker?) | `$33000` /55 | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Frames 0x100+ are the number/flag glyphs. |
-| 4 | animal | `$33000` /55 | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. |
-| 5 | — | `$33000` /55 | `((record[33]−8) >> 1) + 0x10f`, then `(record[44] >> 1) + 0x142` (two blits) |
-| 6 | — | `$33000` /55 | underlay `0x103 − record[5]`, main `record[32] + 0x100` |
-| 7 | — | `$33000` /55 | `record[5] + 0x13e` (faction-indexed) |
-| 14 | — | `$33000` /55 | `0x150`, or `(0x57fec & 1) + 0x14e` if `record[5] > 0` |
+| 0 | man / troop | `$33000` | `(faction−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. faction = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative** (8 steps). Melee (record[31] ∈ {0x32,0x34}): base **0x80**, `weapon*8 + (faction−1)*4 + facing2*2 + anim` `[+0x40]`, `facing2 = ((heading + YAW + 0x40) & 0xff) >> 7`. Overlays: record[33]==8 && record[7]==1 → small extra ($11f82, table $11e40); record[44]≥0xe → weapon overlay ($12258). |
+| 1 | structure | `$312a0` | record[7]==0x0a → directional pick from record[16]/7 & record[12]/10; else `$1181c` (open). Centred. |
+| 2 | building / tree | `$37c7c` | `record[7]` + a `[$57fd0]`-relative offset; special-cases record[7] ∈ {0x0d,0x0e}. Centred. |
+| 3, 12 | settlement marker | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). 0x100+ = number/flag glyphs. |
+| 4 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. |
+| 5 | effect | `$33000` | `((record[33]−8) >> 1) + 0x10f`, then `(record[44] >> 1) + 0x142` (two blits) |
+| 6 | boat? | `$33000` | underlay `0x103 − record[5]`, main `record[32] + 0x100`; `screenY −= (0xa0 − record[18])` |
+| 7 | flag / banner | `$33000` | `record[5] + 0x13e` (faction-indexed) |
+| 8 | leader goods icons | `$33000` | loop slot 0..7 over `[$4e514 + record[14]]` goods[8]; per non-zero slot, jump table `$11886` → ~`0x116`+ |
+| 9 | siege engine / effect | `$312a0` | `record[14]` signed; if < 0, `record[14] + 0x2f`. Centred. |
+| 10, 11 | structure w/ flag | `$33000` | `$11f82` D2=`0x148`; conditional `$e6ee` D2=5 and `$11f82` D2=`0x151`; returns `([$57fec] & 7) + 0x127` |
+| 13 | faction marker | `$33000` | `(record[5] & 0xff) + 0x149` `[+1 anim]` |
+| 14 | marker / icon | `$33000` | `0x150`, or `([$57fec] & 1) + 0x14e` if `record[5] > 0` |
+| 15 | large structure | `$312a0` | `0x0c` default, then a `record[8]`-indexed pick. Centred. |
 
-Cats 1, 8, 9, 10, 11, 13, 15 have a prepare handler but their frame formula is
-not yet ripped (88th).
+**The `+0x40` "armed" variant (cat 0):** `D2 += 0x40` iff `record[7] bit 4` set
+**and** (`record[7] bit 7` clear **or** the unit's group == `[$57ffe]` the
+selected group). (87th: the live man had `record[7] = 0x10` → frame 64.)
+
+Frame *counts* per category, the cat-2 `[$57fd0]` offset table, the `$11886`
+goods table, and the cat 1/15 detail are still open (88th).
 
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
@@ -645,13 +668,13 @@ The 4 planes are the 4 interleaved screen words of one 16-px group → a real
 16-colour sprite, not a silhouette. Anchor: the entity's projected
 `(screenX, screenY)` from §3, drawn up-left of the anchor (foot at the cell).
 
-`assets/sprites/sheet_contact.png` now shows the **full populated sheet** (352
-frames, 16 wide; 87th — was the first 64 only). Frames 0–127 = the four
-faction man blocks (khaki / blue / orange / yellow), stand/walk + armed
-variants; 128–287 = the melee/action man poses; `0x117`+ = animals (sheep);
-`0x100`+ = number / flag glyphs; `0x13e`/`0x14e`/`0x150` = crest / icon frames.
-`assets/sprites/prop_sheet_raw.bin` is a 48-frame sample of the separate
-`$37c7c` 480-byte category-2 (tree/obstacle) sheet — row layout not decoded.
+`assets/sprites/sheet_contact.png` shows the **full 352-frame `$33000` sheet**
+(87th — was the first 64 only): 0–127 = the four faction man blocks, stand/walk
++ armed variants; 128–287 = the melee/action poses; `0x117`+ = animals;
+`0x100`+ = number / flag glyphs; `0x14e`/`0x150` = icons. `prop_sheet_contact
+.png` (`$37c7c`, `decode_wordsprite(f,32,24)`) and `struct_sheet_contact.png`
+(`$312a0`, 16 × 16) decode cleanly as buildings/trees and small
+structures/siege-engines respectively.
 
 ### HUD / selected-unit marker (`$e6ee`)
 
@@ -935,19 +958,19 @@ Palette: one 16-colour shifter palette for the whole iso view
    `$16738`→`$e6ee`, which is the `$165b2` selected-group marker + HUD). The
    dispatch (`$1162e` prepare / **`$1165c`** blit — the old `$1165a` was 2
    bytes low), the `$11f1a` bilinear-over-projected-corners positioning, and
-   the frame-index formulas for cats 0, 2, 3, 4, 5, 6, 7, 12, 14 are ripped
-   into `assets/sprites/sprite_triggers.json` (§6). Cat 0 (men) blits via
-   `$11f78`→`$11f82`, **not `$1187c`** (which is a melee/dying sub-case only).
-   `$11f82` decode is closed (8 × 11, four bitplanes, 5 bytes/row
-   `[mask, p0..p3]`, opaque where mask bit 0, `rol.w (8 − (screenX & 15))`,
-   dest row stride `0x98`). `assets/sprites/sheet_raw.bin` is now the full
-   352-frame sheet; `prop_sheet_raw.bin` is a 48-frame sample of the `$37c7c`
-   480-byte cat-2 sheet. **Still open (88th):** the exact frame *count* per
-   category; the frame formulas for cats 1, 8, 9, 10, 11, 13, 15; the cat-2
-   480-byte frame row layout; the `+0x40` "armed" trigger bit; the packed
-   corner word order (X hi vs lo) — resolve on wiring; and then the actual
-   `pm_render_ref.py` entity compositing + `Sprites.fs` wiring + a byte-exact
-   cross-check (Targets 3–4, not started).
+   the frame-index formulas for **all of cats 0-15** are ripped into
+   `assets/sprites/sprite_triggers.json` (§6); positioning is `$11f1a`'s
+   sub-cell lerp for the mobile categories, a 4-corner centroid for the
+   structures. Cat 0 (men) blits via `$11f78`->`$11f82`, **not `$1187c`** (a
+   melee/dying sub-case). The `+0x40` "armed" variant = `record[7]` bit 4
+   (with a selected-group gate). **Four sheets, all decoded**: `$33000` 8x11
+   byte-planes (352 frames), `$312a0` 16x16 and `$37c7c` 32x24 word-planes --
+   the last two decode cleanly as small structures/siege-engines and
+   buildings/trees. **Still open (88th):** exact frame *counts* per category;
+   the cat-2 `[$57fd0]` offset table; the `$11886` goods table; cat 1/15
+   detail; the packed-corner word order (X hi vs lo -- resolve on wiring);
+   then `pm_render_ref.py` entity compositing + `Sprites.fs` wiring + a
+   byte-exact cross-check (Targets 3-4, not started).
 4. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
    needs resolving from a live snapshot. Deferred.
 5. **Border / stone-table master, world-map minimap + compass panel.** Not

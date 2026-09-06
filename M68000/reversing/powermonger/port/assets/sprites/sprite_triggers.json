@@ -7,12 +7,38 @@
   "prepare_target": "$1162e + word[$1162e + category]",
   "blit_target": "$1165c + word[$1165c + category]  (word 0 => handler blits inline or draws nothing)"
  },
- "position_lerp": {
-  "routine": "$11f1a",
-  "corners": "a0 = &$3f364[cellRow*64 + cellCol*4]; C00=(a0) C10=4(a0) C01=64(a0) C11=68(a0); each packed (screenX<<16)|screenY",
-  "frac": "(fx, fy) = (record[8] & 0xff, record[10] & 0xff)",
-  "formula": "pos = lerp(lerp(C00,C10,fx/256), lerp(C01,C11,fx/256), fy/256); screenX = pos.x + 0x3c; screenY = pos.y - 8"
+ "position": {
+  "sub_cell": {
+   "routine": "$11f1a",
+   "used_by_categories": [
+    0,
+    3,
+    4,
+    5,
+    6,
+    7,
+    10,
+    11,
+    13,
+    14
+   ],
+   "corners": "a0 = &$3f364[cellRow*64 + cellCol*4]; C00=(a0) C10=4(a0) C01=64(a0) C11=68(a0); each packed (screenX<<16)|screenY",
+   "frac": "(fx, fy) = (record[8] & 0xff, record[10] & 0xff)",
+   "formula": "pos = lerp(lerp(C00,C10,fx/256), lerp(C01,C11,fx/256), fy/256); screenX = pos.x + 0x3c; screenY = pos.y - 8"
+  },
+  "centred": {
+   "routine": "$1182a / $1198a head",
+   "used_by_categories": [
+    1,
+    2,
+    8,
+    9,
+    15
+   ],
+   "formula": "pos = (C00 + C10 + C01 + C11) >> 2  (packed, so both halves); screenX = pos.x + 0x38; screenY = pos.y - 8"
+  }
  },
+ "armed_variant": "cat 0 (and the melee branch): D2 += 0x40 iff record[7] bit 4 is set AND (record[7] bit 7 is clear OR the unit's group [$51538 + record[42], word -48] == [$57ffe] the selected group). Frames 0x40..0x7f are that variant of frames 0x00..0x3f. (87th: live man had record[7]=0x10 => frame 64.)",
  "categories": {
   "0": {
    "name": "man / troop",
@@ -20,44 +46,52 @@
    "blit": "$11f78 -> $11f82",
    "sheet": "$33000",
    "frame_bytes": 55,
-   "frame": "(record[5]-1)*16 + (((record[17] + [$ff9a] + 0x10) & 0xff) >> 5)*2   [+0x40 armed/variant, +1 if [$4bb41]&1 walk-anim]. record[5]=faction (blocks of 16), record[17]=heading, [$ff9a]=camera yaw => facing is YAW-RELATIVE. modes 0x32/0x34/0x06/0x46 (byte 31) take melee/dying branches -- not yet ripped. Live: frame 64 for a faction-1 man facing 0, armed.",
-   "verified": "live trace + disasm"
+   "frame": "(record[5]-1)*16 + (((record[17] + [$ff9a] + 0x10) & 0xff) >> 5)*2   [+armed_variant, +1 if [$4bb41]&1 anim]. record[5]=faction (blocks of 16), record[17]=heading, [$ff9a]=camera yaw => facing is YAW-RELATIVE (8 steps). record[33]==8 && record[7]==1 also blits a small overlay ($11f82, table $11e40); record[44]>=0xe blits a weapon overlay ($11ebc -> $12258, (record[44]-0xe)*4 + 0x1b + (masked>>1)). MELEE (record[31] in {0x32,0x34}): base 0x80, D2 = weapon*8 + (faction-1)*4 + facing2*2 + anim [+armed], facing2 = ((heading + [$ff9a] + 0x40)&0xff)>>7. record[31]==0x46 = dying (counter side effect only).",
+   "verified": "live trace + full disasm"
   },
   "1": {
-   "name": "?",
+   "name": "structure? (shares cat 15 path)",
    "prepare": "$117d8",
-   "blit": "none",
-   "frame": "not ripped"
+   "blit": "$119d4 (centred, via $119b2)",
+   "sheet": "$312a0",
+   "frame_bytes": 160,
+   "frame": "if record[7]==0x0a: frame from record[16]/7 and record[12]/10 (a directional pick, $117f8..$11818); else $1181c branch (not ripped). D2 = D4.",
+   "verified": "partial disasm"
   },
   "2": {
-   "name": "tree / obstacle",
+   "name": "building / tree",
    "prepare": "$1168c",
-   "blit": "inline via $1227c/$124a8",
+   "blit": "inline via $1227c/$124a8 (centred)",
    "sheet": "$37c7c",
    "frame_bytes": 480,
-   "frame": "from record[7], + a [$57fd0]-indexed offset ($116c6..$116d0); special-cases record[7] == 0x0d, 0x0e. Row layout of the 480-byte frame not yet decoded.",
-   "verified": "live trace (stride) + partial disasm"
+   "sprite_wh": [
+    32,
+    24
+   ],
+   "frame_count": 28,
+   "frame": "record[7] + word[$57fd0-relative] offset ($116c6..$116d0); special-cases record[7] in {0x0d,0x0e}. Full offset table not ripped. Sheet = 28 clean frames (8 house types, tower, well, ruins, bell, 9 tree types, duck); frame 28+ is a different geometry/sheet.",
+   "verified": "live trace (stride+wh) + partial disasm + visual"
   },
   "3": {
-   "name": "? (== cat 12)",
+   "name": "settlement marker (== cat 12)",
    "prepare": "$117b0",
    "blit": "$11f78",
    "sheet": "$33000",
    "frame_bytes": 55,
-   "frame": "record[7] + 0x100; if == 0x112 then + ([$57fec] & 3) (4-frame animation)",
+   "frame": "record[7] + 0x100; if == 0x112 then + ([$57fec] & 3) (4-frame animation). Frames 0x100+ = number / flag glyphs.",
    "verified": "disasm"
   },
   "4": {
-   "name": "animal",
+   "name": "animal (sheep)",
    "prepare": "$11a86",
    "blit": "$11f78",
    "sheet": "$33000",
    "frame_bytes": 55,
-   "frame": "(((record[14] + [$ff9a]) & 0xff) >> 5)*2 + 0x117   [+1 if [$4bb41]&1]. record[14]=heading, yaw-relative. => 16 frames at base 0x117 (8 facings x {a,b}).",
+   "frame": "(((record[14] + [$ff9a]) & 0xff) >> 5)*2 + 0x117   [+1 if [$4bb41]&1]. record[14]=heading, yaw-relative => 16 frames at base 0x117 (8 facings x {a,b}).",
    "verified": "disasm"
   },
   "5": {
-   "name": "?",
+   "name": "effect / decoration",
    "prepare": "$11772",
    "blit": "$11f78 (x2)",
    "sheet": "$33000",
@@ -66,7 +100,7 @@
    "verified": "disasm"
   },
   "6": {
-   "name": "?",
+   "name": "boat / floating?",
    "prepare": "$11bbc",
    "blit": "$11f78 (x2)",
    "sheet": "$33000",
@@ -75,7 +109,7 @@
    "verified": "disasm"
   },
   "7": {
-   "name": "?",
+   "name": "flag / banner?",
    "prepare": "$11bf4",
    "blit": "$11f78",
    "sheet": "$33000",
@@ -84,32 +118,40 @@
    "verified": "disasm"
   },
   "8": {
-   "name": "?",
+   "name": "leader goods icons",
    "prepare": "$1192e",
    "blit": "none",
-   "frame": "not ripped"
+   "sheet": "$33000",
+   "frame_bytes": 55,
+   "frame": "loop slot 0..7 over [$4e514 + record[14]] byte 24+slot (goods[8] = Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon counts); for each non-zero, jump table $11886 -> a per-slot handler, base ~0x116 via $11f78. Table not fully ripped.",
+   "verified": "disasm (structure)"
   },
   "9": {
-   "name": "?",
+   "name": "structure (16x16)",
    "prepare": "$11c36",
-   "blit": "none",
-   "frame": "not ripped"
+   "blit": "$1225c (centred)",
+   "sheet": "$312a0",
+   "frame_bytes": 160,
+   "frame": "record[14]; if negative, D2 = record[14] + 0x2f, blit via $1225c. (record[14] is a signed word here.)",
+   "verified": "disasm"
   },
   "10": {
-   "name": "?",
+   "name": "structure w/ flag",
    "prepare": "$11b3c",
-   "blit": "$11f78",
+   "blit": "$11f82 + $e6ee",
    "sheet": "$33000",
    "frame_bytes": 55,
-   "frame": "not ripped"
+   "frame": "main $11f82 D2=0x148; if record[14]!=0 also $e6ee D2=5 at y-=record[14]; if A3==$4c112 also $11f82 D2=0x151 at y-=record[15]; returns D2 = ([$57fec] & 7) + 0x127.",
+   "verified": "disasm"
   },
   "11": {
-   "name": "?",
+   "name": "structure w/ flag (== cat 10)",
    "prepare": "$11b2a",
-   "blit": "$11f78",
+   "blit": "$11f82 + $e6ee",
    "sheet": "$33000",
    "frame_bytes": 55,
-   "frame": "not ripped"
+   "frame": "if record[15] < 0: counter side effect; else falls into cat 10's body ($11b44).",
+   "verified": "disasm"
   },
   "12": {
    "name": "== cat 3",
@@ -120,15 +162,16 @@
    "frame": "see cat 3"
   },
   "13": {
-   "name": "?",
+   "name": "faction marker",
    "prepare": "$1174e",
    "blit": "$11f78",
    "sheet": "$33000",
    "frame_bytes": 55,
-   "frame": "not ripped"
+   "frame": "(record[5] & 0xff) + 0x149   [+1 if [$4bb41]&1]. faction-indexed, animated.",
+   "verified": "disasm"
   },
   "14": {
-   "name": "?",
+   "name": "marker / icon",
    "prepare": "$11b0c",
    "blit": "$11f78",
    "sheet": "$33000",
@@ -137,10 +180,13 @@
    "verified": "disasm"
   },
   "15": {
-   "name": "?",
+   "name": "large structure",
    "prepare": "$1198a",
-   "blit": "none",
-   "frame": "not ripped"
+   "blit": "$119d4 (centred)",
+   "sheet": "$312a0",
+   "frame_bytes": 160,
+   "frame": "D2 = 0x0c default; then record[8]-indexed ($119ae..; mulu #$a on record[8] within the $312a0 frame). Not fully ripped.",
+   "verified": "disasm (structure)"
   },
   "16": {
    "name": "?",

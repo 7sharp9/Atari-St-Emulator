@@ -49,17 +49,20 @@ prints the block-mean dE and the per-index distribution vs the reference.
     (`$11f1a`, from `$3f364`) by the entity's sub-cell fraction
     `(record[8]&0xff, record[10]&0xff)`, then `screenX += 0x3c`,
     `screenY -= 8`;
-  - frame formulas for cats 0, 2, 3, 4, 5, 6, 7, 12, 14 are ripped. Men and
-    animals use a **camera-yaw-relative** facing (`(heading + [$ff9a]) >> 5`).
-- **`pm_export.py`** now rips the full **352-frame** `$33000` mini-sprite sheet
-  (was: first 64 = men only — `sheet_contact.png` now shows animals, glyphs,
-  crests) and a 48-frame sample of the separate `$37c7c` 480-byte category-2
-  (tree/obstacle) sheet (`prop_sheet_raw.bin` — row layout not decoded).
-- **Not done this pass (88th):** the exact frame *count* per category; the
-  frame formulas for cats 1, 8, 9, 10, 11, 13, 15; the cat-2 480-byte frame
-  layout; the `+0x40` "armed" trigger bit; then the actual `pm_render_ref.py`
-  entity compositing + `Sprites.fs` wiring + a byte-exact cross-check (Targets
-  3–4). No emulator or port code changed — asset/tooling/doc only.
+  - frame formulas for **all of cats 0–15** are ripped. Men and animals use a
+    **camera-yaw-relative** facing (`(heading + [$ff9a]) >> 5`); the `+0x40`
+    "armed" man variant = `record[7]` bit 4.
+- **Four sprite sheets, all decoded** and ripped by `pm_export.py`: `$33000`
+  8×11 byte-planes (full **352 frames** — was first 64 = men only;
+  `sheet_contact.png` now shows animals / glyphs / icons), `$312a0` 16×16
+  word-planes (small structures / siege engines / effects), `$37c7c` 32×24
+  word-planes (buildings + trees), plus the `$e6ee` glyph path. Contact PNGs
+  for all three (`*_sheet_contact.png`).
+- **Not done this pass (88th):** exact frame *counts* per category; the cat-2
+  `[$57fd0]` offset table; the `$11886` goods table; cat 1/15 detail; then
+  `pm_render_ref.py` entity compositing + `Sprites.fs` wiring + a byte-exact
+  cross-check (Targets 3–4). No emulator or port-runtime code changed —
+  asset/tooling/doc only.
 
 ## Verification status (86th pass)
 

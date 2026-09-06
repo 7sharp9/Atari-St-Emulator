@@ -53,8 +53,17 @@
 00011f1a	pm_entity_cell_lerp     # 87th: bilinear lerp of the 4 projected cell corners (a0=&$3f364[cellRow*64+cellCol*4]; C00/C10/C01/C11) by (record[8]&0xff, record[10]&0xff); then screenX+=$3c, screenY-=8
 00011f82	pm_blit_minisprite      # 77th: 8x11 4-bitplane sprite from $33000 ($37 B/frame = 11 rows x [mask,p0,p1,p2,p3]); opaque where mask bit 0; rol.w (8-(x&15)); dest row stride $98. frames 0-127 men (4 faction blocks), 0x117 animals, 0x100+ glyphs
 0001187c	pm_blit_man_sprite     # men melee/dying sub-case blitter, from $11c8a's mode branches (byte31 in {$32,$34,$06,$46}) -- NOT the normal men path ($1165c cat0 = $11f78)
-00033000	g_minisprite_sheet      # mini-sprite sheet, $37 (55) bytes per frame (11 rows x 5 bytes); ~352 populated frames
-00037c7c	g_prop_sheet            # 87th: category-2 (tree/obstacle) sheet, $1e0 (480) bytes per frame; blitted inline by $1168c via $1227c/$124a8; row layout not decoded
+00011f78	pm_blit_minisprite_clip # $12138 window-cull then $11f82; the $1165c blit-table target for the $33000-sheet categories
+00011f12	pm_entity_prep         # common prepare head: sub-cell lerp ($11f1a) into D0/D1, returns for the frame-formula tail
+0001182a	pm_entity_prep_centred # centred position: (C00+C10+C01+C11)>>2, +$38 X / -8 Y, D2=D4 (used by cats 1/8/9); $1198a has its own copy
+00012138	pm_sprite_window_cull  # cull a sprite vs the iso window ($2df8e/$90 origin, $2df92/$94 extent, D3=size); early-rts if outside
+0001225c	pm_blit_struct_16      # $312a0 sheet, mulu #$a0,D2, 16 rows via $122b6 -> 16x16 centred sprite (cat 9)
+0001227c	pm_blit_prop_32        # $37c7c sheet, mulu #$1e0,D2, 24 rows via $12326 -> 32x24 centred sprite (cat 2)
+000124a8	pm_blit_prop_row       # $37c7c row inner loop: 2x [mask,p0..p3] word groups, ror.l D0 rotate, and/or into screen
+000119d4	pm_blit_struct_16b     # $312a0 blit from $1198a/$117d8 (cats 15/1), +record[8]-indexed sub-offset (mulu #$a)
+000312a0	g_struct_sheet         # 87th: cats 1/9/15 sheet, $a0 (160) B/frame = 16x16 4-plane+mask (10 B/row, words); blitted CENTRED via $1225c / $119d4. small structures / siege engines / effects
+00033000	g_minisprite_sheet      # mini-sprite sheet, $37 (55) B/frame = 8x11 4-plane+mask (byte planes); ~352 populated frames; blitted sub-cell via $11f82
+00037c7c	g_prop_sheet            # 87th: cat-2 sheet, $1e0 (480) B/frame = 32x24 4-plane+mask (20 B/row = 2 groups of [mask,p0..p3] words); blitted CENTRED via $1227c / $124a8. buildings + trees
 00016738	pm_pick_sprite_frame    # 87th: the $165b2 selected-group-marker / HUD path (NOT the iso entities). frame = t_heading_frame[heading + flipHalf(0|15)] ($1675a, $ff = skip); blits via $e6ee at raw cell coord (record[8], record[10]+6)
 0001675a	t_heading_frame        # 16 bytes: [ff,05,0f,08,0a,05,10,ff, ff,08,0a,0f,0c,05,10,ff]; index = heading + flipHalf
 0000e6ee	pm_blit_hud_sprite      # wider multi-plane blitter, 32-byte glyph row stride, 4-long descriptor table at $e6ee+110; HUD glyphs + the $165b2 selected-group marker (via $16738). NOT the iso-terrain entities (that is $115e0 -> $11f82)

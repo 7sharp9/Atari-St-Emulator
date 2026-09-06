@@ -465,14 +465,15 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     (men) blits via `$11f78`→`$11f82`, **not `$1187c`** (a melee/dying
     sub-case); position is a bilinear lerp of the 4 projected cell corners
     (`$11f1a`) by the entity's sub-cell fraction; and the frame-index formulas
-    for cats 0, 2, 3, 4, 5, 6, 7, 12, 14 (men use a **camera-yaw-relative**
-    facing: `(faction−1)*16 + (((heading + [$ff9a] + 0x10) & 0xff) >> 5)*2`).
-    All in `port/assets/sprites/sprite_triggers.json`. `pm_export.py` now rips
-    the full 352-frame `$33000` sheet (was 64) + a 48-frame sample of the
-    `$37c7c` 480-byte cat-2 sheet. Still open (88th): per-category frame
-    counts, cats 1/8/9/10/11/13/15, the cat-2 row layout, and the actual
-    `pm_render_ref.py` + `Sprites.fs` compositing (Targets 3–4). Detail in
-    `port/SPEC.md` §6 / §9 item 3.
+    for **all of cats 0-15** (men use a **camera-yaw-relative**
+    facing: `(faction−1)*16 + (((heading + [$ff9a] + 0x10) & 0xff) >> 5)*2`;
+    the `+0x40` armed variant = `record[7]` bit 4). All in
+    `port/assets/sprites/sprite_triggers.json`. **Four sprite sheets, all
+    decoded**: `$33000` 8×11 (full 352-frame rip, was 64), `$312a0` 16×16
+    (structures / siege engines), `$37c7c` 32×24 (buildings + trees). Still
+    open (88th): per-category frame counts, the cat-2 offset table, the goods
+    table, then the `pm_render_ref.py` + `Sprites.fs` compositing (Targets
+    3–4). Detail in `port/SPEC.md` §6 / §9 item 3.
 
 ## Files
 
