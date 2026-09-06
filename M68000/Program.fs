@@ -652,6 +652,90 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 Diag.result "--- detcheck: traces identical for the first %d steps then one run stopped early ---" m
         ok
 
+    ///RIDER 3b substrate (92nd pass): call a subroutine in isolation from the *current* machine
+    ///state and capture its full effect - the D0-7/A0-7 delta, every byte of memory it changed,
+    ///and a per-step trace hash - then snapshot-restore so the REPL session is unperturbed. Uses
+    ///the same save/restore path Preview and DeterminismCheck use, which the 91st pass proved is a
+    ///verified identity operation. Built to differential-test the PowerMonger routine
+    ///reconstructions against the real 68000: real $XXXXX(capturedState) vs reconstructed
+    ///step(capturedState) over a corpus of states, full changed-memory comparison.
+    ///
+    ///Mechanics: push a sentinel return address ($00DEAD00 - even, never a real code target) onto
+    ///the live stack, set PC = target, single-step until PC == sentinel (the routine's matching
+    ///RTS pops it), or `maxSteps` elapse, or a step throws. The sentinel is never fetched - the
+    ///loop exits the instant PC reaches it. Interrupts are NOT masked: a Timer/VBL ISR that fires
+    ///mid-call runs faithfully and its writes appear in the memory delta, so keep calls short and
+    ///prefer comparing memory at or above the entry SP (persistent state, not transient stack
+    ///scratch below it). The 4-byte sentinel slot itself is excluded from the delta.
+    member x.CallCapture(target: uint32, maxSteps: int, outPath: string option) =
+        let sentinel = 0x00DEAD00u
+        let savedCpu = cpu
+        let savedStepCount = stepCount
+        let saved = mmu.SnapshotRam()
+        let sp0 = uint32 savedCpu.A7
+        let retSlot = sp0 - 4u
+        mmu.WriteLong retSlot (int sentinel)
+        //Mask interrupts (IPL 7) for the duration so a VBL/Timer ISR firing mid-call cannot
+        //scribble transient state into the memory delta. A pure compute/logic routine - which is
+        //all the differential-test targets are - never reads SR, so this does not change its
+        //behaviour; RestoreRam + the saved CCR put everything back afterwards regardless.
+        cpu <- { savedCpu with A7 = int retSlot; PC = int target; CCR = savedCpu.CCR ||| 0x0700s }
+        let preRam = mmu.SnapshotRam()   //memory-diff baseline (already includes the sentinel push)
+        let mutable h = 1469598103934665603UL
+        let mix (v: uint64) = h <- (h ^^^ v) * 1099511628211UL
+        let mutable steps = 0
+        let mutable outcome = "returned"
+        (try
+            while steps < maxSteps && uint32 cpu.PC <> sentinel do
+                x.Step()
+                steps <- steps + 1
+                mix (uint64 (uint32 cpu.PC)); mix (uint64 (uint16 cpu.CCR))
+                for r in [| cpu.D0;cpu.D1;cpu.D2;cpu.D3;cpu.D4;cpu.D5;cpu.D6;cpu.D7
+                            cpu.A0;cpu.A1;cpu.A2;cpu.A3;cpu.A4;cpu.A5;cpu.A6;cpu.A7 |] do
+                    mix (uint64 (uint32 r))
+            if uint32 cpu.PC <> sentinel then outcome <- sprintf "STEP CAP hit at %d steps (PC=$%06x)" steps (uint32 cpu.PC)
+         with e -> outcome <- sprintf "THREW after %d steps: %s" steps e.Message)
+        let afterCpu = cpu
+        let spN = uint32 afterCpu.A7
+        let afterRam = mmu.SnapshotRam()
+        let a = preRam.Ram
+        let b = afterRam.Ram
+        let n = min a.Length b.Length
+        let muts = ResizeArray<uint32 * byte * byte>()
+        for i in 0 .. n - 1 do
+            if a.[i] <> b.[i] then
+                let ad = uint32 i
+                if not (ad >= retSlot && ad < sp0) then muts.Add(ad, a.[i], b.[i])
+        let names = [| "D0";"D1";"D2";"D3";"D4";"D5";"D6";"D7";"A0";"A1";"A2";"A3";"A4";"A5";"A6";"A7" |]
+        let regs0 = [| savedCpu.D0;savedCpu.D1;savedCpu.D2;savedCpu.D3;savedCpu.D4;savedCpu.D5;savedCpu.D6;savedCpu.D7
+                       savedCpu.A0;savedCpu.A1;savedCpu.A2;savedCpu.A3;savedCpu.A4;savedCpu.A5;savedCpu.A6;savedCpu.A7 |]
+        let regsN = [| afterCpu.D0;afterCpu.D1;afterCpu.D2;afterCpu.D3;afterCpu.D4;afterCpu.D5;afterCpu.D6;afterCpu.D7
+                       afterCpu.A0;afterCpu.A1;afterCpu.A2;afterCpu.A3;afterCpu.A4;afterCpu.A5;afterCpu.A6;afterCpu.A7 |]
+        cpu <- savedCpu
+        stepCount <- savedStepCount
+        mmu.RestoreRam saved
+        resetLoopDetector()
+        Diag.result "--- callcap $%06x: %s, trace hash $%016x, %d byte(s) changed, entrySP=$%06x exitSP=$%06x ---"
+            target outcome h muts.Count sp0 spN
+        let regLine =
+            [ for i in 0 .. 15 do
+                if regs0.[i] <> regsN.[i] then yield sprintf "%s $%08x->$%08x" names.[i] (uint32 regs0.[i]) (uint32 regsN.[i]) ]
+        if not regLine.IsEmpty then Diag.result "regdelta %s" (String.concat "  " regLine)
+        match outPath with
+        | Some path ->
+            use sw = new IO.StreamWriter(path)
+            sw.Write(sprintf "{\"target\":\"%06x\",\"outcome\":\"%s\",\"hash\":\"%016x\",\"steps\":%d,\"entrySP\":%d,\"exitSP\":%d," target outcome h steps sp0 spN)
+            sw.Write(sprintf "\"reg0\":[%s]," (regs0 |> Array.map (fun v -> string (uint32 v)) |> String.concat ","))
+            sw.Write(sprintf "\"regN\":[%s]," (regsN |> Array.map (fun v -> string (uint32 v)) |> String.concat ","))
+            sw.Write("\"mem\":[")
+            sw.Write(muts |> Seq.map (fun (ad,x0,x1) -> sprintf "[%d,%d,%d]" ad x0 x1) |> String.concat ",")
+            sw.Write("]}")
+            Diag.result "--- callcap: delta written to %s ---" path
+        | None ->
+            for (ad, x0, x1) in Seq.truncate 4096 muts do
+                Diag.result "mem $%06x $%02x->$%02x" ad x0 x1
+            if muts.Count > 4096 then Diag.result "... (%d more changed bytes not shown)" (muts.Count - 4096)
+
     ///Serializes full CPU + MMU state (registers, RAM, video/YM2149/MFP register banks, Timer B
     ///scalars) to a binary file, so a later run can jump straight to this point instead of
     ///replaying every step from address 0 - see LoadState. Self-describing (array lengths are
@@ -1080,7 +1164,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -1093,6 +1177,15 @@ module Main =
                 loop()
             | [| "detcheck"; n |] ->
                 st.DeterminismCheck (int n) |> ignore
+                loop()
+            | [| "callcap"; addr |] ->
+                st.CallCapture(Convert.ToUInt32(addr, 16), 2000000, None)
+                loop()
+            | [| "callcap"; addr; maxSteps |] ->
+                st.CallCapture(Convert.ToUInt32(addr, 16), int maxSteps, None)
+                loop()
+            | [| "callcap"; addr; maxSteps; outPath |] ->
+                st.CallCapture(Convert.ToUInt32(addr, 16), int maxSteps, Some outPath)
                 loop()
             | [| "until"; addr |] | [| "u"; addr |] ->
                 st.Until (Convert.ToUInt32(addr, 16)) 200000
