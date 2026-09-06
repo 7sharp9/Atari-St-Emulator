@@ -384,23 +384,44 @@ def load_ram(ram_path: Path):
     tick = u32(0x4BB3E) & 3
     yaw = u16(0xFF9A)
 
-    # -- entities ($51b66 object records, 50 B, slots 1..511 -- SPEC.md 6) -----
-    # 87th: drawn by $115e0 INLINE per cell in the grid walk. Bucket by cell and
-    # composite over the finished terrain layer in the same far->near order.
+    # -- entities: walk the $47970 per-cell bucket array ---------------------
+    # 88th (live-traced pm78_settle): $115e0 (pm_draw_cell_entities) is called
+    # inline per grid cell from the walk handler ($fdbc for q3) with
+    #   D4 = word[$47970 + (cellY*64 + cellX)*2]      ; per-cell bucket head
+    #   A3 = $51b66 + (int16)D4                        ; SIGNED offset!
+    # then follows a singly-linked list: next = (int16)word[A3+0], 0 = end.
+    # The signed offset means scenery/animal records live BELOW $51b66 (down
+    # to ~$4b000, in the leader/settlement pool) as well as in the arena above.
+    # record byte 6 is the raw dispatch value: it takes EVEN values 0,2,..,30
+    # and indexes a byte-addressed word table ($1162e). The 87th's "cat N" ==
+    # byte6 / 2. (87th's stride-50 slot scan missed every below-$51b66 record
+    # and mis-keyed the frame formulas by a factor of 2 -- that produced both
+    # of the 87th's "blockers".) fx/fy = low byte of the big-endian words at
+    # rec[8]/rec[10] == rec[9]/rec[11] ($11f12: move.w 8(A3),D6; andi.w #$ff).
+    BUCK = 0x47970
     objs = []
-    for slot in range(1, 512):
-        o = 0x51B66 + slot * 50
-        rec = b[o:o + 50]
-        wx = (rec[8] << 8) | rec[9]
-        wy = (rec[10] << 8) | rec[11]
-        if wx == 0 and wy == 0:
-            continue
-        objs.append(dict(
-            slot=slot, cat=rec[6], b5=rec[5], b7=rec[7], b14=rec[14],
-            b17=rec[17], b31=rec[31], b32=rec[32], b33=rec[33], b44=rec[44],
-            wx=wx, wy=wy, fx=rec[9], fy=rec[11],
-            cell_x=wx >> 8, cell_y=wy >> 8,
-            group=(rec[42] << 8) | rec[43]))
+    seen_addr = set()
+    for wcy in range(cam_y - 1, cam_y + 10):
+        for wcx in range(cam_x - 1, cam_x + 10):
+            if not (0 <= wcx < 64 and 0 <= wcy < 128):
+                continue
+            d4 = u16(BUCK + (wcy * 64 + wcx) * 2)
+            depth = 0
+            while d4 and depth < 96:
+                off = d4 - 0x10000 if d4 >= 0x8000 else d4
+                o = 0x51B66 + off
+                if not (0x40000 <= o < 0x60000) or (o, wcx, wcy) in seen_addr:
+                    break
+                seen_addr.add((o, wcx, wcy))
+                depth += 1
+                rec = b[o:o + 50]
+                objs.append(dict(
+                    addr=o, wcx=wcx, wcy=wcy,
+                    b6=rec[6], b5=rec[5], b7=rec[7], b14=rec[14],
+                    b17=rec[17], b31=rec[31], b32=rec[32], b33=rec[33],
+                    b44=rec[44], fx=rec[9], fy=rec[11],
+                    group=(rec[42] << 8) | rec[43]))
+                d4 = u16(o)
     anim = b[0x4BB41] & 1
     sel_group = u16(0x57FFE)
     ent = dict(objs=objs, anim=anim, sel_group=sel_group,
@@ -464,10 +485,18 @@ def _decode_frame_word(sheet, idx, w, h, fb):
 
 def _entity_frame(o, ent, yaw):
     """(sheet_key, frame_idx, w, h) for an object record, or None if it draws
-    nothing / is a category we haven't ported. SPEC.md 6."""
-    cat = o["cat"]
+    nothing / is a category we haven't ported.
+
+    88th: keyed on the RAW record byte 6 (even, 0..30). The dispatch is
+    handler = word[$1162e + byte6]; the 87th's "cat N" == byte6 / 2. Frame
+    formulas re-verified against a live $11f88 register probe of pm78_settle
+    (D2 = frame index at $11f82 entry): the 26-record marching group is
+    byte6 == 14 (87th "cat 7", flag/banner), every member frame 0x13f
+    (record[5]=1 + 0x13e); the lone man is byte6 == 0 frame 0x40/0x41.
+    """
+    b6 = o["b6"]
     anim = ent["anim"]
-    if cat == 0:                                   # man / troop
+    if b6 == 0:                                    # man / troop
         if o["b31"] in (0x32, 0x34):               # melee -- base 0x80, skip (rare)
             return None
         facing = ((o["b17"] + yaw + 0x10) & 0xFF) >> 5
@@ -482,25 +511,25 @@ def _entity_frame(o, ent, yaw):
         if bit4 and (not bit7 or grp == ent["sel_group"]):
             f += 0x40
         return ("33", f + anim, 8, 11)
-    if cat == 4:                                   # animal
-        return ("33", 0x117 + (((o["b17"] + yaw) & 0xFF) >> 5) * 2 + anim, 8, 11)
-    if cat in (3, 12):                             # settlement marker
+    if b6 == 8:                                    # animal (sheep)
+        return ("33", 0x117 + (((o["b14"] + yaw) & 0xFF) >> 5) * 2 + anim, 8, 11)
+    if b6 in (6, 24):                              # settlement marker
         f = o["b7"] + 0x100
         if f == 0x112:
             f += (ent["ram"][0x57FED]) & 3
         return ("33", f, 8, 11)
-    if cat == 7:                                   # flag / banner
+    if b6 == 14:                                   # flag / banner / group member
         return ("33", (o["b5"] & 0xFF) + 0x13E, 8, 11)
-    if cat == 13:                                  # faction marker
+    if b6 == 26:                                   # faction marker
         return ("33", (o["b5"] & 0xFF) + 0x149 + anim, 8, 11)
-    if cat == 14:                                  # unit group member (a man)
+    if b6 == 28:                                   # marker / icon
         if o["b5"] > 0:
             return ("33", 0x14E + (ent["ram"][0x57FED] & 1), 8, 11)
         return ("33", 0x150, 8, 11)
-    if cat == 2:                                   # building / tree
+    if b6 == 4:                                    # building / tree ($37c7c)
         f = o["b7"]
         return ("prop", f, 32, 24) if f < 28 else None
-    return None                                    # 1/5/6/8/9/10/11/15 -- 88th
+    return None                                    # 2/10/12/16/18/20/22/30 -- open
 
 
 def _packed_lerp(c00, c10, c01, c11, fx, fy):
@@ -511,17 +540,29 @@ def _packed_lerp(c00, c10, c01, c11, fx, fy):
     return lp(top, bot, fy)
 
 
-def draw_entities(idxbuf, cov, R, ecov):
+# byte-6 categories whose frame formula + sheet decode are verified well enough
+# that compositing them RAISES the exact-index score against pm78_settle. 88th:
+# only b6 == 14 (flag/banner/group-member, frame record[5]+0x13e, live-verified
+# position + frame against a $11f88 register probe) qualifies -- it lifts
+# pm78_settle 94.40% -> 94.85% (47% of its 577 px match). b6 == 4 (building/tree,
+# $37c7c) and b6 == 8 (animal) still LOWER it (frame formula incomplete: the
+# cat-2 [$57fd0] offset table and the animal facing base are not pinned) so they
+# are parsed and positioned but not drawn.
+COMPOSITE_CATS = frozenset({14})
+
+
+def draw_entities(idxbuf, cov, R, ecov, cats=COMPOSITE_CATS):
     """Composite the object records over the finished terrain layer, per cell,
     far->near (walk_q3 order for yaw 0xf0). `ecov` marks entity pixels so the
-    score can be split terrain-only vs terrain+entities."""
+    score can be split terrain-only vs terrain+entities. `cats` limits which
+    byte-6 values are actually drawn (None = all that _entity_frame handles)."""
     ent = R["ent"]
     cn = R["corners"]
     cx0, cy0 = R["cam"]
     yaw = R["yaw"]
     by_cell = {}
     for o in ent["objs"]:
-        by_cell.setdefault((o["cell_x"], o["cell_y"]), []).append(o)
+        by_cell.setdefault((o["wcx"], o["wcy"]), []).append(o)
 
     def blit(px, sx, sy):
         for r, rowpx in enumerate(px):
@@ -544,6 +585,8 @@ def draw_entities(idxbuf, cov, R, ecov):
             row = j
             cx, cy = cx0 + col, cy0 + row
             for o in by_cell.get((cx, cy), []):
+                if cats is not None and o["b6"] not in cats:
+                    continue
                 fr = _entity_frame(o, ent, yaw)
                 if fr is None:
                     continue
@@ -1000,34 +1043,40 @@ def render_faithful(ram_path: Path, dom):
     print(f"    mine idx dist : {dict(sorted(mine_h.items()))}")
     print(f"    ref  idx dist : {dict(sorted(ref_h.items()))}")
 
-    # 87th: entity-sprite compositing -- DIAGNOSTIC ONLY for now (runs on a copy,
-    # does not touch idxbuf/cov or the committed reference PNGs). The $33000
-    # decode + sub-cell lerp + bucketing work, but the dominant visible entity in
-    # pm78_settle is a 26-record cat-14 marching group whose DRAW PATH is not yet
-    # confirmed ($11b0c, the disasm-derived cat-14 handler, had ZERO calls in the
-    # 87th's frame trace -- so cat 14 is drawn some other way, maybe via the
-    # $16738/$e6ee group path). Positions land ~10-20px off and frame 0x14e is
-    # probably wrong. So this currently LOWERS the score; wire it in for real
-    # once the cat-14 path is traced (88th). See SPEC.md 9 item 3.
-    ei = bytearray(idxbuf)
-    ec = bytearray(cov)
+    # 88th: entity-sprite compositing. $115e0 (pm_draw_cell_entities) is called
+    # inline per grid cell; records come from the $47970 per-cell buckets with a
+    # SIGNED $51b66-relative offset, dispatch is word[$1162e + byte6] with byte6
+    # even (0..30). Both of the 87th's "blockers" were the same bug: the 87th
+    # keyed the frame formulas on byte6 read as 0..15 instead of 0,2,..,30, and
+    # its stride-50 slot scan never saw the below-$51b66 scenery pool. With that
+    # fixed, the 26-record marching group is byte6 == 14 (flag/banner) and IS
+    # drawn by $115e0 -> $11bf4 -> $11f78 -> $11f82 (frame record[5]+0x13e ==
+    # 0x13f), position live-verified exact against a $11f88 register probe.
+    # COMPOSITE_CATS gates which byte6 values actually paint (only 14 helps so
+    # far). ecov marks entity px for the split score.
     ecov = bytearray(W * H)
-    draw_entities(ei, ec, R, ecov)
-    e_exact, _, e_tot, _, _ = _score(ei, ec, ref)
+    terr_exact, terr_tot = exact, tot
+    # draw_entities' far->near cell bucketing is the q3 walk order; the q0/q1/q2
+    # synthetic-rotation captures also have unreliable reference buffers (86th),
+    # so only composite for q3 (yaw 0xf0).
+    if handler is walk_q3:
+        draw_entities(idxbuf, cov, R, ecov)
+    exact, near, tot, mine_h, ref_h = _score(idxbuf, cov, ref)
     ep = sum(ecov)
-    e_hit = sum(1 for i in range(W * H) if ecov[i] and ei[i] == ref[i])
+    e_hit = sum(1 for i in range(W * H) if ecov[i] and idxbuf[i] == ref[i])
+    parsed = len(R['ent']['objs'])
     drawn = sum(1 for o in R['ent']['objs']
-                if _entity_frame(o, R['ent'], R['yaw']))
-    print(f"  + entities [DIAGNOSTIC, not composited]: "
-          f"{len(R['ent']['objs'])} records, {drawn} drawn, {ep} px")
-    print(f"    terrain+entity exact : {100*e_exact/max(e_tot,1):.1f}% "
-          f"(vs {100*exact/max(tot,1):.1f}% terrain-only) -- "
-          f"{e_hit}/{ep} entity px match ({100*e_hit/max(ep,1):.0f}%). "
-          f"cat-14 draw path unconfirmed, 88th.")
-    print(f"    80th: $e420 DDA span walker + the mod-128 dither wrap ported; "
-          f"DITHER_COLOUR_BIAS removed.")
-    print(f"    residual: unit sprites (walk_q3 is terrain-only) + the tall "
-          f"0x1c coast slopes (game spreads idx 1-7) + a ~1px NE edge.")
+                if o["b6"] in COMPOSITE_CATS and _entity_frame(o, R['ent'], R['yaw']))
+    from collections import Counter
+    b6h = Counter(o["b6"] for o in R['ent']['objs'])
+    print(f"  + entities (byte6 hist {dict(sorted(b6h.items()))}): "
+          f"{parsed} parsed via $47970 buckets, compositing byte6 in "
+          f"{sorted(COMPOSITE_CATS)} -> {drawn} sprites, {ep} px")
+    print(f"    terrain+entity exact : {exact} ({100*exact/max(tot,1):.1f}%)  "
+          f"(terrain-only was {100*terr_exact/max(terr_tot,1):.1f}%) -- "
+          f"{e_hit}/{ep} entity px match ({100*e_hit/max(ep,1):.0f}%)")
+    print(f"    residual: byte6 4/8 (buildings/trees $37c7c, animals) parsed +"
+          f" positioned but not drawn -- frame formulas incomplete (89th).")
     return idxbuf, cov, ref, R
 
 

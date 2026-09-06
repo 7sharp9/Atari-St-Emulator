@@ -567,22 +567,28 @@ the long-standing "which path draws the terrain men" question. The answer:
 
 ### Category dispatch (`$115e0` → `$1162e` / `$1165c`)
 
-Per bucket entity, `$115e0` reads object-record **byte 6 = category**, then:
+`$115e0` gets its per-cell head from the **`$47970` bucket array** (one word per
+cell, index `(cellY*64 + cellX)*2`, set up at `$f938`); then
+`A3 = $51b66 + (int16)head` — **a SIGNED offset**, so records live below
+`$51b66` (the `~$4b000..$51b66` leader/settlement/scenery pool) as well as in
+the arena above. Per cell it follows a singly-linked list: `next =
+(int16)word[A3 + 0]`, `0` ends it.
+
+Per record, `$115e0` reads **byte 6 = category**, which takes **EVEN values
+0..30**, and dispatches:
 
 | table | addr | target | role |
 |-------|------|--------|------|
-| prepare | `$1162e` | `$1162e + word[$1162e + cat]` | interpolate screen position, pick a frame index (into D2), sometimes blit inline |
-| blit | `$1165c` | `$1165c + word[$1165c + cat]`; **word 0 ⇒ no separate blit** | hand D2 to a blitter |
+| prepare | `$1162e` | `$1162e + word[$1162e + byte6]` | interpolate screen position, pick a frame index (into D2), sometimes blit inline |
+| blit | `$1165c` | `$1165c + word[$1165c + byte6]`; **word 0 ⇒ no separate blit** | hand D2 to a blitter |
 
-**Corrections to earlier passes (verified from the RAM tables + a disasm of each
-handler, 87th):** the blit table is at **`$1165c`**, not `$1165a`. Category 0
-(men) blits via **`$11f78` → `$11f82`** (the 55-byte mini-sprite path), *not*
-`$1187c` — `$1187c` (`pm_blit_man_sprite`) is not referenced by the blit table
-at all and is reached only from `$11c8a`'s melee/dying mode branches (record
-byte 31 ∈ {`$32`,`$34`,`$06`,`$46`}). `$115e0`'s dispatch is `$1162e`'s 16
-prepare handlers exactly as the previous table listed (re-read from RAM, all
-confirmed), plus `cat 16`→`$1168a`, `cat 17`→`$11f78`, `cat 18/19`→`$12258` in
-the blit table.
+**88th correction:** `byte6` indexes the table *directly* (it is already even).
+The 87th read it as `0..15` and multiplied by 2, so every frame formula below
+except the men's was keyed on the wrong record byte — call the 87th's "cat N"
+`byte6 == 2N`. `word[$1162e + 2N]` is the 87th's cat-N prepare handler for every
+N 0..15 (verified from the live RAM table). The blit table is at **`$1165c`**
+(not `$1165a`); `byte6 == 0` (men) blits via **`$11f78` → `$11f82`**, *not*
+`$1187c` (a melee/dying sub-case, record byte 31 ∈ {`$32`,`$34`,`$06`,`$46`}).
 
 ### Position — bilinear over the projected cell corners (`$11f1a`)
 
@@ -593,15 +599,21 @@ cell's four **projected** corners (from `$3f364`, packed `(screenX<<16)|screenY`
 ```
 a0 = &$3f364[cellRow*64 + cellCol*4]          // the cell's TL corner
 C00 = (a0)   C10 = 4(a0)   C01 = 64(a0)   C11 = 68(a0)
-fx  = record[8]  & 0xff                        // low byte of the world_x word
-fy  = record[10] & 0xff
+fx  = record[9]                                // = low byte of the BE word at record+8
+fy  = record[11]                               //   ($11f12: move.w 8(A3),D6; andi.w #$ff)
 pos = lerp( lerp(C00, C10, fx/256), lerp(C01, C11, fx/256), fy/256 )   // parallel 16-bit halves
 screenX = pos.x + 0x3c                         // sprite anchor (cf terrain +64; −4 = ½ frame)
 screenY = pos.y - 8
 ```
 
-(Verified: `a0` at `$11c8a` entry = `$3f474` for a cell at camera-offset
-`(+4,+4)` = `$3f364 + 4*64 + 4*4`.)
+The corners here are the **raw** `$3f364` values (window-relative, no +64 HUD
+inset — that inset is applied only via the terrain draw pointer `$e3e2`). So a
+sprite sits at `raw + 0x3c` while its terrain cell sits at `raw + 64`, i.e. the
+`0x3c` is "+64 inset − 4 for the half-frame". `pm_render_ref.py`'s `px − 4` over
++64-inset corners is the identical anchor. **88th: live-verified** — the 26
+`byte6 == 14` sprites' computed positions match the `$11f82` D0/D1 registers to
+≤ 1 px. (`a0` at `$11c8a` entry = `$3f474` for a cell at camera-offset `(+4,+4)`
+= `$3f364 + 4*64 + 4*4`.)
 
 ### Frame index per category
 
@@ -967,27 +979,55 @@ Palette: one 16-colour shifter palette for the whole iso view
    byte-planes (352 frames), `$312a0` 16x16 and `$37c7c` 32x24 word-planes --
    the last two decode cleanly as small structures/siege-engines and
    buildings/trees.
-   **87th (cont.): `pm_render_ref.py` grew an entity compositor** --
-   `_decode_frame_byte`/`_decode_frame_word` (all 3 sheets), object-record
-   parse from `$51b66`, per-cell bucketing, the `$11f1a` sub-cell lerp + a
-   4-corner centroid, and `_entity_frame` (cats 0/2/3/4/7/13/14). It runs as a
-   **diagnostic only** (on a copy -- it currently *lowers* the score, 94.4% ->
-   92.3%, so it is not composited into the output). **Two blockers found:**
-   (a) `pm78_settle`'s dominant visible entity is a **26-record cat-14
-   marching group** (`b31 = 0x68`, chained across cells 39-41 / 50-52) whose
-   **draw path is not confirmed** -- `$11b0c` (the disasm-derived cat-14
-   handler) had **zero calls** in the 87th's frame trace, so cat 14 is drawn
-   some other way (the `$16738`/`$e6ee` group path is the prime suspect --
-   `$16738` positions by `record[8]` as a *descriptor-table index*, not a
-   pixel); (b) the cat-2 buildings + cat-7 markers seen in the trace (~20 +
-   ~35 per frame) are **not in `$51b66`** -- they come from a separate scenery
-   / settlement array (`$4f916`?) that also feeds the `$47970` buckets.
-   **88th:** live-trace what actually draws the cat-14 group and the scenery,
-   fix `_entity_frame` + the anchor, get the re-score to climb, then
-   `Sprites.fs` wiring + a byte-exact cross-check.
-   **Also still open:** exact frame *counts* per category; the cat-2 `[$57fd0]`
-   offset table; the `$11886` goods table; cat 1/15 detail; the packed-corner
-   word order (X hi vs lo).
+   **88th: both of the 87th's "blockers" were the same bug — a
+   category-indexing error — and the compositor now composites (q3 only).**
+   Live single-stepped `$115e0` from `pm78_settle` (`u f898`, then register
+   probes at `$fdb2` / `$115f4` / `$115f8` / `$11f88`):
+   - `$115e0` walks the **`$47970` per-cell bucket array** (base `$47970`,
+     word per cell, `(cellY*64 + cellX)*2`, row stride 128 B). Each cell's
+     head word D4 goes into `adda.w D4,A3` with `A3 = $51b66` — **D4 is a
+     SIGNED 16-bit offset**, so scenery/animal records live in the pool
+     *below* `$51b66` (`~$4b000..$51b66`) as well as in the arena above.
+     Records are singly-linked per cell via `(int16)word[record+0]`.
+   - The dispatch is `handler = word[$1162e + byte6]` where **`byte6` (the
+     record's category) takes EVEN values 0..30**. The 87th read `byte6` as
+     `0..15` and built a `2×cat` table, so **every frame formula except the
+     men's was keyed on the wrong record byte** — that is why the compositor
+     lowered the score, and why the 87th could not find its "cat 2 / cat 7"
+     records at stride-50 slots. `word[$1162e + 2N]` == the 87th's "cat N"
+     handler for every N 0..15 (verified against the RAM table).
+   - So the **26-record marching group is `byte6 == 14`** (the 87th's "cat 7",
+     flag/banner) and **IS drawn by `$115e0` → `$11bf4` → `$11f78` →
+     `$11f82`**, frame `record[5] + 0x13e == 0x13f` for every member.
+     `$11b0c` never fired because `byte6 == 28`, not 14, points there.
+   - **Position is byte-exact against the probe**: `$11f12` reads
+     `fx = record[9]`, `fy = record[11]` (low byte of the BE word at +8/+10),
+     bilinear-lerps the cell's 4 projected `$3f364` corners (raw, no +64
+     inset), then `+0x3c` X / `−8` Y. `pm_render_ref.py`'s `px−4, py−8` over
+     +64-inset corners is the same anchor; all 26 computed positions match
+     the live `$11f82` D0/D1 to ≤1 px.
+   - `$16738` → `$e6ee` (the `$165b2` path): indexes `$1675a` by
+     `record[5] + D4` (D4 ∈ {0, 15}, the `$4bb41` bit-0 blink), and `record[8]`
+     indexes a **descriptor table at `$e762`** (a column→byte-offset table),
+     not a pixel. In `pm78_settle` it is the selected-group roster
+     (`[$57ffe] == 1`, matching the group's `record[5] == 1`) and the blink
+     phase is "off" (`[$4bb41] & 1 == 1` → `$1675a[16] == 0xff` → draw
+     nothing), which is why only 9 of 27 `$16738` calls reach `$e6ee`.
+   - **Result**: `pm_render_ref.py`'s entity parse is rewritten as the
+     `$47970` bucket walk (signed links, the below-`$51b66` pool);
+     `_entity_frame` is re-keyed on `byte6`; `COMPOSITE_CATS = {14}` is
+     composited for real into the q3 output. `pm78_settle` **94.4% → 94.9%**
+     exact-index (pm74_late 94.3→94.7, pm70_iso 93.8→94.3); 47 % of the flag
+     sprites' 577 px match (the rest is the sprite's own transparency over
+     terrain + sheet-decode detail). `byte6 ∈ {4, 8}` (buildings/trees on
+     `$37c7c`, animals) are parsed and positioned but **not drawn** — their
+     frame formulas still *lower* the score (`byte6 == 4` wants the
+     `[$57fd0]` offset table; `byte6 == 8` the animal facing base).
+   **89th:** pin the `byte6 == 4` (`$37c7c`) building/tree frame formula, then
+   wire the per-cell hook into `Fill.fs` / `TerrainView.cs` with the
+   byte-exact F#-vs-Python cross-check. **Also still open:** per-category
+   frame *counts*; the `$11886` goods table; `byte6` 2/30 (`$312a0`) detail;
+   the packed-corner word order (X hi vs lo).
 4. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
    needs resolving from a live snapshot. Deferred.
 5. **Border / stone-table master, world-map minimap + compass panel.** Not

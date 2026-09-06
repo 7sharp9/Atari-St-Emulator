@@ -9,10 +9,25 @@ namespace PmLogic
 /// off here per cell. ($16738->$e6ee is a different path: the $165b2
 /// selected-group marker + HUD glyphs, NOT the terrain men.)
 ///
-/// Ported here: the frame decode ($11f82), the men frame formula ($11c8a), and
-/// the sub-cell position lerp ($11f1a). Still open (88th): per-category frame
-/// counts, cats 1/8/9/10/11/13/15, the $37c7c cat-2 sheet, the compositing +
-/// byte-exact cross-check against pm_render_ref.py.
+/// 88th (live-traced pm78_settle, $115e0 / $11f88 register probes): records are
+/// walked from the $47970 per-cell bucket array with a SIGNED $51b66-relative
+/// offset (`adda.w D4,A3`), so scenery/animal records live BELOW $51b66 too;
+/// dispatch is `word[$1162e + byte6]` with **byte6 even, 0..30** (the 87th's
+/// "cat N" == byte6 / 2 — keying frame formulas on byte6 read as 0..15 was the
+/// cause of both of the 87th's "blockers"). The 26-record marching group is
+/// byte6 == 14 (flag/banner), every member frame 0x13f, and it IS drawn by
+/// $115e0 -> $11bf4 -> $11f78 -> $11f82. Position (sub-cell lerp + $3c/-8) is
+/// byte-exact against the probe.
+///
+/// Ported here: the frame decode ($11f82), the men frame formula ($11c8a), the
+/// banner/group-member formula ($11bf4), the animal formula ($11a86), and the
+/// sub-cell position lerp ($11f1a). Still open (89th): the $37c7c building/tree
+/// sheet (byte6 == 4) frame formula (needs the [$57fd0] offset table), the
+/// per-category frame counts, and wiring the per-cell hook into Fill.fs /
+/// TerrainView.cs with the byte-exact F#-vs-Python cross-check. In
+/// pm_render_ref.py only byte6 == 14 currently composites (it lifts the q3
+/// exact-index 94.4% -> 94.9%; 47% of its px match — the rest is the sprite's
+/// own transparency over terrain and sheet-decode detail).
 module Sprites =
 
     [<Literal>]
@@ -55,16 +70,25 @@ module Sprites =
         + (if armed then 0x40 else 0)
         + (if anim then 1 else 0)
 
-    /// Animals (category 4) — $11a86. heading = record[14], yaw-relative,
-    /// 16 frames at base 0x117.
+    /// Animals / sheep (byte6 == 8, 87th "cat 4") — $11a86. heading = record[14],
+    /// yaw-relative, 16 frames at base 0x117. Base $33000. NOT composited yet.
     let frameForAnimal (heading: int) (yaw: int) (anim: bool) : int =
         0x117 + (((heading + yaw) &&& 0xff) >>> 5) * 2 + (if anim then 1 else 0)
+
+    /// Banner / flag / marching-group member (byte6 == 14, 87th "cat 7") —
+    /// $11bf4: frame = record[5] + 0x13e (faction-indexed). Base $33000.
+    /// 88th: every member of pm78_settle's 26-record group has record[5] == 1
+    /// => frame 0x13f, live-verified at $11f82 entry. This is the one entity
+    /// category pm_render_ref.py composites today.
+    let frameForBanner (faction: int) : int =
+        (faction &&& 0xff) + 0x13e
 
     /// Sub-cell screen position ($11f1a): bilinear lerp of the cell's four
     /// projected corners by the entity's sub-cell fraction, then the sprite
     /// anchor offset. `corner` = (screenX, screenY) for C00/C10/C01/C11 (the
     /// 2x2 corner block, from Projection's grid — same layout Fill.fs uses).
-    /// fx = record[8] &&& 0xff, fy = record[10] &&& 0xff.
+    /// $11f12 does `move.w 8(A3),D6; andi.w #$ff,D6`, i.e. fx is the LOW byte
+    /// of the big-endian word at record+8 == record[9], and fy == record[11].
     ///
     /// NOT byte-exact-verified yet (88th): the 68k does `muls.w` + `asr.w #8`
     /// on 16-bit halves, so large corner deltas can word-overflow and the

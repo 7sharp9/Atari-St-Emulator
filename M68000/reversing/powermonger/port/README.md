@@ -26,6 +26,51 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (88th pass) — Task 2: both "blockers" were one indexing bug; the flag category composites
+
+- **Live single-stepped `$115e0` from `pm78_settle`** (`u f898`, register probes
+  at `$fdb2` / `$115f4` / `$115f8` / `$11f88`). The two 87th "blockers" were the
+  same mistake:
+  - `$115e0` walks the **`$47970` per-cell bucket array** (word per cell, index
+    `(cellY*64 + cellX)*2`); the head word goes into `adda.w D4,A3` with
+    `A3 = $51b66` and **D4 is SIGNED**, so scenery/animal records live in the
+    pool *below* `$51b66` too — the 87th's stride-50 slot scan of `$51b66` never
+    saw them. Records are per-cell singly-linked via `(int16)word[record+0]`.
+  - The dispatch is `word[$1162e + byte6]` with **`byte6` even, 0..30**. The
+    87th read `byte6` as `0..15` and built a `2×cat` table, so every frame
+    formula except the men's was keyed on the wrong record byte (that is why
+    the compositor lowered the score). `word[$1162e + 2N]` == the 87th's cat-N
+    handler for every N.
+  - So the **26-record marching group is `byte6 == 14`** (87th "cat 7",
+    flag/banner) and **IS drawn by `$115e0` → `$11bf4` → `$11f78` → `$11f82`**,
+    frame `record[5] + 0x13e == 0x13f`. `$11b0c` never fired because it is
+    `byte6 == 28`.
+  - Position: `$11f12` reads `fx = record[9]`, `fy = record[11]` (low byte of
+    the BE word at +8/+10), lerps the cell's 4 **raw** `$3f364` corners, then
+    `+0x3c` X / `−8` Y. All 26 computed positions match the live `$11f82`
+    D0/D1 to ≤ 1 px.
+  - `$16738`→`$e6ee` indexes `$1675a` by `record[5] + D4` (D4 ∈ {0,15}, the
+    `$4bb41` blink) and `record[8]` into a **descriptor table at `$e762`**, not
+    a pixel. In `pm78_settle` it is the selected-group roster and the blink is
+    "off", so most of its 27 `$16738` calls draw nothing.
+- **`pm_render_ref.py`**: entity parse rewritten as the `$47970` bucket walk
+  (signed links, below-`$51b66` pool); `_entity_frame` re-keyed on `byte6`;
+  `COMPOSITE_CATS = {14}` composited **for real** into the q3 output (the q3
+  synthetic captures aside — q0/q1/q2 skip it, their reference buffers are
+  unreliable per the 86th). `pm78_settle` **94.4% → 94.9%** exact-index
+  (pm74_late 94.3→94.7, pm70_iso 93.8→94.3); 47 % of the flag sprites' 577 px
+  match. `byte6 ∈ {4,8}` (buildings/trees on `$37c7c`, animals) are parsed +
+  positioned but **not drawn** — their frame formulas still lower the score.
+- **`Sprites.fs`**: added `frameForBanner` (`byte6 == 14`), corrected the
+  `entityScreenPos` / animal doc, documented the `byte6`-even dispatch + the
+  `$47970` signed-offset bucket walk. F# lib builds clean; not yet wired into
+  `Fill.fs` / `TerrainView.cs`.
+- **Not done (89th):** the `byte6 == 4` (`$37c7c`) building/tree frame formula
+  (needs the `[$57fd0]` offset table), per-category frame *counts*, then the
+  per-cell hook into `Fill.fs` / `TerrainView.cs` + the byte-exact F#-vs-Python
+  cross-check. No emulator or port-runtime code changed — tooling/asset/doc +
+  `Sprites.fs`; the terrain-only 94.4% is untouched.
+
 ## Verification status (87th pass) — Task 2 started: the sprite rip
 
 - **Settled which blit path draws the iso-terrain entities** with a live trace

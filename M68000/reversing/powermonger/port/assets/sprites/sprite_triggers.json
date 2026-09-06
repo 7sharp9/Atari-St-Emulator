@@ -1,11 +1,16 @@
 {
- "note": "PowerMonger per-cell entity (sprite) dispatch. $115e0 (pm_draw_cell_entities) is called INLINE per cell from the terrain grid-walk handler (q3: $fdbc), right after that cell's two triangles, in far->near painter's order -- so no sprite floats over a hill it is behind. This is the path that draws the little men / animals / trees / buildings ON the iso terrain. $16738->$e6ee is a SEPARATE pass ($165b2, selected-group marker + HUD glyphs), positioned by raw cell coordinate + a fixed per-frame descriptor X -- NOT the iso entities. (87th live trace, scratchpad/pm78_settle.snap.)",
+ "note": "PowerMonger per-cell entity (sprite) dispatch. $115e0 (pm_draw_cell_entities) is called INLINE per cell from the terrain grid-walk handler (q3: $fdbc), right after that cell's two triangles, in far->near painter's order -- so no sprite floats over a hill it is behind. This is the path that draws the little men / animals / trees / buildings ON the iso terrain. $16738->$e6ee is a SEPARATE pass ($165b2, selected-group roster/HUD glyphs): indexes $1675a by record[5]+D4 (D4 in {0,15}, the $4bb41 bit-0 blink) and record[8] into a DESCRIPTOR table at $e762 -- not a pixel. 88th (live trace pm78_settle): $115e0 walks the $47970 bucket array (word per cell, (cellY*64+cellX)*2); head goes into adda.w D4,A3 with A3=$51b66 as a SIGNED offset, so records also live BELOW $51b66 (~$4b000..$51b66). Per cell a singly-linked list via (int16)word[record+0]. record byte 6 = category takes EVEN values 0..30; the 87th's 'cat N' == byte6/2 (the 87th keyed the frame formulas below on byte6 read as 0..15 -- that was the cause of both 87th 'blockers'). The 26-record marching group is byte6==14 and IS drawn here (via $11bf4, frame record[5]+0x13e).",
  "dispatch": {
   "record_category_field": 6,
+  "record_category_values": "even, 0..30  (87th 'cat N' == byte6 / 2)",
+  "bucket_array_addr": "$47970",
+  "bucket_index": "(cellY*64 + cellX) * 2   (word per cell, row stride 128 B)",
+  "record_base": "$51b66 + (int16)head   (SIGNED -- records below $51b66 too)",
+  "record_link_field": "(int16)word[record + 0]   (per-cell singly-linked list, 0 = end)",
   "prepare_table_addr": "$1162e",
   "blit_table_addr": "$1165c",
-  "prepare_target": "$1162e + word[$1162e + category]",
-  "blit_target": "$1165c + word[$1165c + category]  (word 0 => handler blits inline or draws nothing)"
+  "prepare_target": "$1162e + word[$1162e + byte6]",
+  "blit_target": "$1165c + word[$1165c + byte6]  (word 0 => handler blits inline or draws nothing)"
  },
  "position": {
   "sub_cell": {
@@ -23,7 +28,7 @@
     14
    ],
    "corners": "a0 = &$3f364[cellRow*64 + cellCol*4]; C00=(a0) C10=4(a0) C01=64(a0) C11=68(a0); each packed (screenX<<16)|screenY",
-   "frac": "(fx, fy) = (record[8] & 0xff, record[10] & 0xff)",
+   "frac": "(fx, fy) = (record[9], record[11])   ; $11f12: move.w 8(A3),D6; andi.w #$ff,D6 => low byte of the BE word",
    "formula": "pos = lerp(lerp(C00,C10,fx/256), lerp(C01,C11,fx/256), fy/256); screenX = pos.x + 0x3c; screenY = pos.y - 8"
   },
   "centred": {

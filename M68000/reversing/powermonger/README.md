@@ -475,6 +475,30 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     table, then the `pm_render_ref.py` + `Sprites.fs` compositing (Targets
     3–4). Detail in `port/SPEC.md` §6 / §9 item 3.
 
+24. The 88th pass **finds that both of the 87th's "blockers" were one bug and
+    composites the flag/marching-group sprites** (tooling + asset + doc +
+    `Sprites.fs`; no emulator or port-runtime change). Live single-stepped
+    `$115e0` from `scratchpad/pm78_settle.snap` (register probes at `$fdb2` /
+    `$115f4` / `$11f88`): (a) `$115e0` walks the **`$47970` per-cell bucket
+    array**, head into `adda.w D4,A3` with `A3 = $51b66` and **D4 SIGNED**, so
+    scenery/animal records also live *below* `$51b66` (the 87th's stride-50
+    `$51b66` scan missed them); (b) the dispatch is `word[$1162e + byte6]` with
+    **`byte6` even, 0..30** — the 87th read it as `0..15` and keyed every frame
+    formula (except the men's) on the wrong record byte. So the **26-record
+    marching group is `byte6 == 14`** (87th "cat 7", flag/banner) and **is**
+    drawn by `$115e0` → `$11bf4` → `$11f78` → `$11f82`, frame
+    `record[5] + 0x13e == 0x13f`; `$11b0c` is `byte6 == 28`, never fired.
+    Position (`fx = record[9]`, `fy = record[11]`, lerp of the 4 raw `$3f364`
+    corners, `+0x3c`/`−8`) matches the live `$11f82` D0/D1 to ≤ 1 px.
+    `pm_render_ref.py`'s entity parse is now the bucket walk; `_entity_frame`
+    is re-keyed on `byte6`; `COMPOSITE_CATS = {14}` composites for real:
+    `pm78_settle` **94.4 % → 94.9 %** exact-index (pm74_late 94.3→94.7,
+    pm70_iso 93.8→94.3). `byte6 ∈ {4,8}` (buildings/trees, animals) parsed +
+    positioned, not drawn (frame formulas incomplete). `$16738`→`$e6ee` uses
+    `record[5] + blink` into `$1675a` and `record[8]` into a descriptor table
+    at `$e762` — a roster/HUD path, not the terrain men. Detail in
+    `port/SPEC.md` §6 / §9 item 3.
+
 ## Files
 
 | file | what |
