@@ -26,6 +26,80 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (89th pass) — Task 2: the `byte6 == 4` building/tree frame formula is pinned + live-verified
+
+Tooling + asset + doc + `Sprites.fs`; no emulator or port-runtime change. The
+terrain-only 94.4% and the `COMPOSITE_CATS = {14}` 94.9% are both untouched.
+
+- **`byte6 == 4` (buildings/trees, `$37c7c` 32 × 24) frame formula — pinned,
+  live-verified.** Handler `$1168c` (`$1162e[4]`; `$1165c[4] == 0`, so it blits
+  inline via `$12244` → `$12326`/`$124a8`). Disassembled `$1168c`/`$12244`, then
+  live-traced D2 at `$12288` (the `mulu #$1e0` frame-index multiply) for the 25
+  building records in `pm88_f1`:
+  ```
+  r7 = record[7]
+  r7 == 0x0d            -> frame 0x0d          ($116a8 special-case)
+  (r7 & 0x7f) == 0x0e   -> frame 0x0e          ($116c0 special-case, no offset)
+  else                 -> frame (r7 & 0x7f) + word[$11746 + word[$57fd0]]
+  ```
+  `word[$57fd0] = ($58146 & 3) * 2` is a per-mission tile-set selector (even,
+  0..6); the table at `$11746` is `{0:0, 2:3, 4:6, 6:9}` (index 8+ is code).
+  Mission 1: `word[$57fd0] == 4` → `+6`, so `r7` 0x11/0x10/0x0f → frame
+  0x17/0x16/0x15 — matched the live D2 exactly (0x17, 0x16, 0x0e observed).
+- **The 32 × 24 word-plane decode is byte-exact.** Aligned the decoded frame 23
+  against `pm78_settle`'s `$24400` live tree pixels character-for-character over
+  the whole opaque canopy — an exact match. Format confirmed from `$124a8`:
+  rows of `[mask, p0, p1, p2, p3]` big-endian words, 2 groups of 16 px per row
+  (20 B/row), opaque where mask bit 0.
+- **Position is a sub-cell lerp with an address-jitter, byte-exact vs the live
+  D0/D1.** `$1168c` does `bsr $11f1a` (NOT the centroid path) with a `fx/fy`
+  derived from the *pointer* values:
+  ```
+  A2 = &$47970[cellY*64 + cellX]     ; bucket-array slot address
+  A3 = record address ; A0 = &$3f364[row*64 + col*4]   ; cell TL corner addr
+  fx = (((A2 + A3) & 0xffff) << 3) & 0xff              ; $11692 lsl.w #3
+  fy = (((A2 + A3) & 0xffff) + (A0 & 0xffff)) & 0xff   ; $11698 add.w A0
+  ```
+  then `$12272` applies `−4/−8` → raw anchor `(lerpX + 0x38, lerpY − 16)`.
+  Computed `(215, 67)` for record `$4d4c2` matched the live D0/D1 at `$12288`
+  exactly. (Faithful only for a port that replays the game's own record-pool
+  layout; a from-scratch port substitutes any deterministic scatter.)
+- **`byte6 == 8` (animal) also live-verified** — D2 = 0x123/0x124 at `$11ab6`,
+  matching `0x117 + (((record[14] + [$ff9a]) & 0xff) >> 5)*2 [+anim]`.
+  **`byte6 == 24`** (settlement/territory marker) disasm-derived from `$117b0`:
+  `record[7] + 0x100`, CENTROID position (`$1182a`), `$33000` sheet; mission 1
+  has 12 boundary markers (`r7` == 0x10 → frame 0x110).
+- **`pm_render_ref.py`**: `_entity_frame` `byte6 == 4` branch now uses the real
+  formula; `load_ram` computes `tile_off` + the per-record `fx4/fy4` jitter;
+  `draw_entities`' "prop" path is a sub-cell lerp + `(px − 8, py − 16)` (the
+  +64-inset-space equivalent of the raw anchor above). **`COMPOSITE_CATS`
+  stays `{14}`** — adding `byte6 == 4` still *lowers* the score, but not from a
+  formula error: `pm78_settle`'s two compose buffers disagree on the entity
+  layer by ~14.6 k px (`$115e0` redraws a *subset* of entities per frame,
+  double-buffered), so neither reference buffer holds all 25 trees. Even scored
+  against `$24400` (the buffer *with* the trees) it is only 20% — because most
+  of the 25 aren't in either buffer of this mid-flip capture. Needs a clean
+  single-buffer populated capture (see Task 1 below).
+- **`Sprites.fs`**: added `frameForProp` / `propTileOffset` / `frameForSettlementMarker`
+  / `propJitter` / `propScreenPos` / `decodeFrameWord` (the 32 × 24 / 16 × 16
+  word-plane decoder). F# lib builds clean; still not wired into `Fill.fs` /
+  `TerrainView.cs` (89th did not reach Task 4).
+- **Task 1 (a populated second reference) — findings, not a capture.** The
+  mission map is a pure function of the world RNG seed `$12c9a` (→ `$58146`) +
+  `$5809c` (map-size override), consumed by `$13b9a`/`$10d1e` on the briefing-OK
+  click. "Between Pages 1-5" is mission 1 and always rolls the procedural
+  generator; `$58148 < $2000` ("small preset") already gives ≈10-13 lords.
+  Mission 1's own map has `byte6 ∈ {0,2,4,8,14,16,24}` map-wide, but only
+  `{0,2,4,14}` land in the default camera window — the `byte6` 16/24 markers
+  sit NW of the player start. A camera poke (`$4bb3a`/`$4bb3c`) brings them into
+  view but re-triggers per-frame terrain redraw → the 86th's giant-blob capture
+  artifact (`scratchpad/pm89_pan_*.snap`, ~2.3 k px/frame instability on a
+  panned camera), so it is not a pixel-scoring reference. A genuinely different,
+  town-dense map needs the full campaign (missions gate on completion) or a real
+  mission-file. `pm88_f1`/`pm78_settle` stays the anchor.
+- **89th did NOT reach:** Task 3 (minimap) and Task 4 (wire `Fill.fs` /
+  `TerrainView.cs` + the F#-vs-Python cross-check). Deferred to the 90th.
+
 ## Verification status (88th pass) — Task 2: both "blockers" were one indexing bug; the flag category composites
 
 - **Live single-stepped `$115e0` from `pm78_settle`** (`u f898`, register probes

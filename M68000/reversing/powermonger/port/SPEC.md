@@ -627,19 +627,20 @@ where the mask bit is 0):
 |-------|-------|------|---------|-------------|------------|
 | `$33000` | 55 B | 8 × 11, byte planes | `$11f82` | sub-cell lerp | 0, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14 |
 | `$312a0` | 160 B | 16 × 16, word planes (10 B/row) | `$1225c` / `$119d4` | cell-centred | 1, 9, 15 |
-| `$37c7c` | 480 B | 32 × 24, word planes (2 groups/row) | `$1227c` / `$124a8` | cell-centred | 2 |
+| `$37c7c` | 480 B | 32 × 24, word planes (2 groups/row) | `$12244`→`$12326`/`$124a8` | **sub-cell lerp** (89th, not centred) | 2 |
 | `$e6ee`+desc | — | 32 B glyph row | `$e6ee` | raw cell coord + fixed X | the `$165b2` marker / HUD only |
 
-`$37c7c` decodes cleanly as **buildings + trees**; `$312a0` as small
+`$37c7c` decodes cleanly as **buildings + trees** (89th: verified byte-exact
+against `pm78_settle`'s `$24400` live tree pixels); `$312a0` as small
 structures / siege engines (catapult, cannon) / explosions.
 
 | cat | name | sheet | frame (D2) |
 |-----|------|-------|------------|
 | 0 | man / troop | `$33000` | `(faction−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. faction = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative** (8 steps). Melee (record[31] ∈ {0x32,0x34}): base **0x80**, `weapon*8 + (faction−1)*4 + facing2*2 + anim` `[+0x40]`, `facing2 = ((heading + YAW + 0x40) & 0xff) >> 7`. Overlays: record[33]==8 && record[7]==1 → small extra ($11f82, table $11e40); record[44]≥0xe → weapon overlay ($12258). |
 | 1 | structure | `$312a0` | record[7]==0x0a → directional pick from record[16]/7 & record[12]/10; else `$1181c` (open). Centred. |
-| 2 | building / tree | `$37c7c` | `record[7]` + a `[$57fd0]`-relative offset; special-cases record[7] ∈ {0x0d,0x0e}. Centred. |
-| 3, 12 | settlement marker | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). 0x100+ = number/flag glyphs. |
-| 4 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. |
+| 2 | building / tree | `$37c7c` | **(89th, live-verified — D2 at `$12288`)** `r7 = record[7]`: `r7 == 0x0d` → `0x0d`; `(r7 & 0x7f) == 0x0e` → `0x0e`; else `(r7 & 0x7f) + word[$11746 + word[$57fd0]]`. `word[$57fd0] = ($58146 & 3)*2` (per-mission tile-set selector); table `$11746 = {0:0, 2:3, 4:6, 6:9}`. Mission 1 (`$57fd0`==4) → `+6`, so `r7` 0x11/0x10/0x0f → frame 0x17/0x16/0x15. **Position: `$11f1a` sub-cell lerp** (like the men) with an *address-jitter* `fx/fy` = `fx = (((A2+A3)&0xffff)<<3)&0xff`, `fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff` where `A2 = &$47970[cellY*64+cellX]`, `A3 = record`, `A0 = &$3f364[row*64+col*4]`; then `$12272` `−4/−8` → raw anchor `(lerpX+0x38, lerpY−16)`. |
+| 3, 12 | settlement / territory marker | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). 0x100+ = number/flag glyphs. **(89th, `$117b0` — byte6 6/24 — from disasm: CENTROID position (`$1182a`), not sub-cell. Mission 1 has 12 boundary markers `r7`==0x10 → frame 0x110.)** |
+| 4 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. **(89th: live-verified — D2 = 0x123/0x124 at `$11ab6`.)** Sub-cell lerp. |
 | 5 | effect | `$33000` | `((record[33]−8) >> 1) + 0x10f`, then `(record[44] >> 1) + 0x142` (two blits) |
 | 6 | boat? | `$33000` | underlay `0x103 − record[5]`, main `record[32] + 0x100`; `screenY −= (0xa0 − record[18])` |
 | 7 | flag / banner | `$33000` | `record[5] + 0x13e` (faction-indexed) |
@@ -654,8 +655,21 @@ structures / siege engines (catapult, cannon) / explosions.
 **and** (`record[7] bit 7` clear **or** the unit's group == `[$57ffe]` the
 selected group). (87th: the live man had `record[7] = 0x10` → frame 64.)
 
-Frame *counts* per category, the cat-2 `[$57fd0]` offset table, the `$11886`
-goods table, and the cat 1/15 detail are still open (88th).
+**89th:** the cat-2 (byte6 4) building/tree frame formula + the `$11746`/`$57fd0`
+offset table + the address-jitter position are all **pinned and live-verified**
+(D2 at `$12288`); the 32 × 24 word-plane decode is byte-exact against `$24400`'s
+live tree pixels. `pm_render_ref.py`'s `_entity_frame` + `load_ram` + the
+`draw_entities` "prop" path are updated, and `Sprites.fs` has `frameForProp` /
+`propTileOffset` / `propJitter` / `propScreenPos` / `decodeFrameWord`. It is
+**not in `COMPOSITE_CATS`** — compositing it lowers the score, but not from a
+formula error: `pm78_settle`'s two compose buffers disagree on the entity layer
+by ~14.6 k px (`$115e0` redraws a *subset* of entities per frame, double
+buffered), so neither reference buffer holds all 25 trees. Scoring it needs a
+clean single-buffer populated capture (§9 item 4 / Task 1).
+
+Still open: per-category frame *counts*; the `$11886` goods table (byte6 16 =
+`$1192e`, loops `[$4e514 + record[14]]` goods[0..7]); byte6 1/15 (`$312a0`)
+detail.
 
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
@@ -1023,14 +1037,45 @@ Palette: one 16-colour shifter palette for the whole iso view
      `$37c7c`, animals) are parsed and positioned but **not drawn** — their
      frame formulas still *lower* the score (`byte6 == 4` wants the
      `[$57fd0]` offset table; `byte6 == 8` the animal facing base).
-   **89th:** pin the `byte6 == 4` (`$37c7c`) building/tree frame formula, then
-   wire the per-cell hook into `Fill.fs` / `TerrainView.cs` with the
-   byte-exact F#-vs-Python cross-check. **Also still open:** per-category
-   frame *counts*; the `$11886` goods table; `byte6` 2/30 (`$312a0`) detail;
-   the packed-corner word order (X hi vs lo).
-4. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
+   **89th: `byte6 == 4` (building/tree) is fully pinned + live-verified.**
+   Handler `$1168c` (`$1162e[4]`, blit table `$1165c[4] == 0` → blits inline
+   via `$12244`). Frame `= r7 == 0x0d ? 0x0d : (r7 & 0x7f) == 0x0e ? 0x0e :
+   (r7 & 0x7f) + word[$11746 + word[$57fd0]]`, table `$11746 = {0,3,6,9}`,
+   `word[$57fd0] = ($58146 & 3)*2` (mission 1 → 4 → `+6`). D2 live-verified at
+   `$12288`; the 32 × 24 word-plane decode is byte-exact vs `$24400`'s live
+   trees; position is the `$11f1a` sub-cell lerp with an **address-jitter**
+   `fx/fy` (`(((A2+A3)&0xffff)<<3)&0xff` / `+(A0&0xffff)`) then `$12272`
+   `−4/−8`, byte-exact vs the live D0/D1. `_entity_frame`/`load_ram`/
+   `draw_entities` updated; `Sprites.fs` gets `frameForProp`/`propTileOffset`/
+   `propJitter`/`propScreenPos`/`decodeFrameWord`. **Not composited**: like the
+   88th's `byte6 == 4` note, it lowers the score — but the frame/decode/
+   position are all verified; the block is that `pm78_settle`'s two compose
+   buffers disagree on the entity layer (`$115e0` redraws a *subset* per frame)
+   so no reference buffer holds all 25 trees. `byte6 == 8` (animal, `0x117 +
+   facing*2`) also live-verified (D2 0x123/0x124 at `$11ab6`); `byte6 == 24`
+   (settlement/territory marker, `r7 + 0x100`, CENTROID via `$1182a`)
+   disasm-derived. **Still open:** per-category frame *counts*; the `$11886`
+   goods table (`byte6 == 16`); `byte6` 1/15 (`$312a0`) detail; wiring the
+   per-cell hook into `Fill.fs`/`TerrainView.cs` (89th did not reach it).
+4. **A clean populated second reference — needs the campaign (89th, Task 1).**
+   The mission map is a pure function of the world RNG seed `$12c9a` (→
+   `$58146`) + the size override `$5809c`, consumed by `$13b9a`/`$10d1e` on the
+   briefing-OK click; `$58148 < $2000` ("small preset") already gives ≈10-13
+   lords. "Between Pages 1-5" is mission 1 and always rolls the procedural
+   generator. Mission 1's own map has `byte6 ∈ {0,2,4,8,14,16,24}` map-wide
+   (only `{0,2,4,14}` in the default camera window; the `byte6` 16/24 markers
+   are NW of the start). A **camera poke** (`$4bb3a`/`$4bb3c`) brings them into
+   view but re-triggers per-frame terrain redraw → the 86th's giant-blob
+   capture artifact, so it is not a pixel-scoring reference. A genuinely
+   different, town-dense map needs either the full campaign playthrough
+   (missions gate on completion) or a real mission-file (`$580a0` → byte
+   script), both out of scope for a single pass. `pm88_f1`/`pm78_settle`
+   remains the regression anchor; a dedicated pass could snapshot a
+   `$13b9a`-rebuilt small-preset map from `scratchpad/pm67_ok_pre.snap` and
+   settle it long enough for the entity layer to stabilise.
+5. **HUD art.** `$e6ee` descriptor table dumped raw; glyph sheet address still
    needs resolving from a live snapshot. Deferred.
-5. **Border / stone-table master, world-map minimap + compass panel.** Not
-   started — `$e0d4` master + the left-strip compositor. Deferred.
+6. **Border / stone-table master, world-map minimap + compass panel.** Not
+   started — `$e0d4` master + the left-strip compositor. Deferred (89th Task 3).
 
-None of items 3-5 block the Godot port (terrain + camera are the port's spine).
+None of items 3-6 block the Godot port (terrain + camera are the port's spine).

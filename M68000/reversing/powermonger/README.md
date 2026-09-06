@@ -499,6 +499,33 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     at `$e762` — a roster/HUD path, not the terrain men. Detail in
     `port/SPEC.md` §6 / §9 item 3.
 
+25. The 89th pass **pins the `byte6 == 4` building/tree frame formula and
+    verifies the `$37c7c` sprite decode + position, all live** (tooling +
+    asset + doc + `Sprites.fs`; no emulator or port-runtime change). Handler
+    `$1168c` blits inline via `$12244`; frame `= (record[7] & 0x7f) + word[
+    $11746 + word[$57fd0]]` (special-cases `record[7] ∈ {0x0d, 0x0e}`), table
+    `$11746 = {0,3,6,9}`, `word[$57fd0] = ($58146 & 3)*2` = a per-mission
+    tile-set selector (mission 1 → 4 → `+6`). Live-verified D2 at `$12288`;
+    the 32 × 24 word-plane decode aligns byte-exact against `pm78_settle`'s
+    `$24400` live tree pixels; the position is the `$11f1a` sub-cell lerp with
+    an **address-jitter** `fx/fy` (from the record / bucket-slot / corner
+    pointer values) then `$12272` `−4/−8`, byte-exact vs the live D0/D1.
+    `byte6 == 8` (animal) also live-verified (D2 0x123/0x124 at `$11ab6`);
+    `byte6 == 24` (territory marker, `record[7] + 0x100`, centroid) from
+    disasm. `pm_render_ref.py` (`_entity_frame`/`load_ram`/`draw_entities`) and
+    `Sprites.fs` (`frameForProp`/`propTileOffset`/`propJitter`/`propScreenPos`/
+    `decodeFrameWord`) updated; `COMPOSITE_CATS` stays `{14}` — compositing
+    `byte6 == 4` still lowers the score because `pm78_settle`'s two compose
+    buffers disagree on the entity layer (`$115e0` redraws a *subset* per
+    frame), not from a formula error. **Task 1 (a populated second
+    reference):** established that the mission map is a pure function of the
+    world RNG seed `$12c9a` + `$5809c`; mission 1's map has `byte6 ∈
+    {0,2,4,8,14,16,24}` map-wide (only `{0,2,4,14}` in the default window); a
+    camera poke exposes the rest but produces the 86th's giant-blob capture
+    artifact. A town-dense map needs the full campaign — out of scope.
+    **89th did not reach** Task 3 (minimap) or Task 4 (`Fill.fs`/
+    `TerrainView.cs` wiring). Detail in `port/SPEC.md` §6 / §9 items 3-4.
+
 ## Files
 
 | file | what |

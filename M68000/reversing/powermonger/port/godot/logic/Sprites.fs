@@ -19,15 +19,30 @@ namespace PmLogic
 /// $115e0 -> $11bf4 -> $11f78 -> $11f82. Position (sub-cell lerp + $3c/-8) is
 /// byte-exact against the probe.
 ///
-/// Ported here: the frame decode ($11f82), the men frame formula ($11c8a), the
-/// banner/group-member formula ($11bf4), the animal formula ($11a86), and the
-/// sub-cell position lerp ($11f1a). Still open (89th): the $37c7c building/tree
-/// sheet (byte6 == 4) frame formula (needs the [$57fd0] offset table), the
-/// per-category frame counts, and wiring the per-cell hook into Fill.fs /
-/// TerrainView.cs with the byte-exact F#-vs-Python cross-check. In
-/// pm_render_ref.py only byte6 == 14 currently composites (it lifts the q3
-/// exact-index 94.4% -> 94.9%; 47% of its px match — the rest is the sprite's
-/// own transparency over terrain and sheet-decode detail).
+/// Ported here: the frame decode ($11f82 8x11 + $12326/$124a8 32x24), the men
+/// frame formula ($11c8a), the banner/group-member formula ($11bf4), the animal
+/// formula ($11a86), the $37c7c building/tree formula ($1168c), the settlement
+/// marker ($117b0), the sub-cell position lerp ($11f1a), and the prop
+/// address-jitter.
+///
+/// 89th (live-traced pm88_f1, D2 at $12288 / $11ab6): byte6 == 4 (buildings /
+/// trees, $37c7c 32x24 word-plane sheet) frame =
+///   r7 == 0x0d            -> 0x0d                        ($116a8 special-case)
+///   (r7 & 0x7f) == 0x0e   -> 0x0e                        ($116c0 special-case)
+///   else                 -> (r7 & 0x7f) + word[$11746 + word[$57fd0]]
+/// where word[$57fd0] is a per-mission tile-set selector (($58146 & 3) * 2,
+/// even 0..6) and the table at $11746 is {0:0, 2:3, 4:6, 6:9}. Mission 1:
+/// word[$57fd0] == 4 -> +6, so r7 0x11 -> frame 0x17, 0x10 -> 0x16, 0x0f ->
+/// 0x15. The 32x24 decode is visually byte-exact vs $24400's live tree pixels.
+/// byte6 == 8 (animal) frame = 0x117 + (((r14 + yaw) & 0xff) >> 5) * 2 [+anim]
+/// (D2 0x123/0x124 observed). byte6 == 24 (settlement marker, $33000 8x11,
+/// CENTROID-positioned via $1182a) frame = r7 + 0x100.
+///
+/// Still open: the per-category frame counts, the byte6 == 16 goods-icon loop
+/// ($1192e -> $11886 table over $4e514 goods[]), and a CLEAN populated capture
+/// to score byte6 == 4/8/24 compositing against (pm78_settle's two compose
+/// buffers disagree on the entity layer -- $115e0 redraws a subset per frame).
+/// In pm_render_ref.py only byte6 == 14 composites (94.4% -> 94.9%).
 module Sprites =
 
     [<Literal>]
@@ -75,6 +90,44 @@ module Sprites =
     let frameForAnimal (heading: int) (yaw: int) (anim: bool) : int =
         0x117 + (((heading + yaw) &&& 0xff) >>> 5) * 2 + (if anim then 1 else 0)
 
+    /// Building / tree (byte6 == 4) — $1168c. `r7` = record[7]; `tileOff` =
+    /// word[$11746 + word[$57fd0]] (mission 1 = 6). Sheet $37c7c, 32x24
+    /// word-plane frames, 480 bytes/frame; CENTRE-anchored via the sub-cell
+    /// lerp (see `propScreenPos`). Returns -1 for "frame >= 28 / out of sheet".
+    /// 89th: live-verified (D2 at $12288).
+    let frameForProp (r7: int) (tileOff: int) : int =
+        let f =
+            if r7 = 0x0D then 0x0D
+            elif (r7 &&& 0x7F) = 0x0E then 0x0E
+            else (r7 &&& 0x7F) + tileOff
+        if f < 28 then f else -1
+
+    /// word[$11746 + word[$57fd0]] — the byte6 == 4 tile-set frame offset.
+    /// `tileSel` = word[$57fd0] = ($58146 & 3) * 2. Table {0:0, 2:3, 4:6, 6:9}.
+    let propTileOffset (tileSel: int) : int =
+        [| 0; 3; 6; 9 |].[(tileSel >>> 1) &&& 3]
+
+    /// Settlement / territory marker (byte6 == 24, and byte6 == 6) — $117b0.
+    /// frame = record[7] + 0x100 (+ [$57fec]&3 if the result is 0x112, a
+    /// 4-frame anim). Sheet $33000 8x11, CENTROID-positioned ($1182a). 89th.
+    let frameForSettlementMarker (r7: int) (rotPhase: int) : int =
+        let f = r7 + 0x100
+        if f = 0x112 then f + (rotPhase &&& 3) else f
+
+    /// byte6 == 4 sub-cell fraction: NOT a record field. $1168c derives it from
+    /// the record/bucket/corner POINTER values (a deterministic per-record
+    /// jitter so trees don't sit dead-centre):
+    ///   a2 = $47970 + (cellY*64 + cellX)*2        ; bucket-array slot address
+    ///   a3 = record address
+    ///   a0 = $3f364 + row*64 + col*4              ; the cell's TL corner addr
+    ///   fx = (((a2 + a3) &&& 0xffff) <<< 3) &&& 0xff       ; $11692 lsl.w #3
+    ///   fy = (((a2 + a3) &&& 0xffff) + (a0 &&& 0xffff)) &&& 0xff ; $11698
+    /// This is exact only for a port that replays the game's own record pool
+    /// layout; a from-scratch port substitutes any deterministic scatter.
+    let propJitter (bucketSlotAddr: int) (recordAddr: int) (cornerAddr: int) : int * int =
+        let s = (bucketSlotAddr + recordAddr) &&& 0xFFFF
+        (s <<< 3) &&& 0xFF, (s + (cornerAddr &&& 0xFFFF)) &&& 0xFF
+
     /// Banner / flag / marching-group member (byte6 == 14, 87th "cat 7") —
     /// $11bf4: frame = record[5] + 0x13e (faction-indexed). Base $33000.
     /// 88th: every member of pm78_settle's 26-record group has record[5] == 1
@@ -104,6 +157,17 @@ module Sprites =
         let x, y = lerp (fst top) (fst bot) fy, lerp (snd top) (snd bot) fy
         x + 0x3c, y - 8
 
+    /// byte6 == 4 (building/tree) screen anchor. Same $11f1a sub-cell lerp as
+    /// the men, but $12272 then applies a further (-4, -8): net raw anchor is
+    /// (lerpX + 0x38, lerpY - 16). `fx`/`fy` come from `propJitter`, NOT record
+    /// fields. Corners are the RAW $3f364 values (no +64 HUD inset). 89th:
+    /// byte-exact vs the live D0/D1 at $12288.
+    let propScreenPos
+            (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int)
+            (fx: int) (fy: int) : int * int =
+        let x, y = entityScreenPos c00 c10 c01 c11 fx fy
+        x - 4, y - 8
+
     /// Decode frame `index` from the raw sheet (assets/sprites/sheet_raw.bin).
     /// Ports $11f82's row layout: [AND-mask, plane0, plane1, plane2, plane3],
     /// mask/plane bytes are read as the high byte of a byte-wide row (8px);
@@ -130,3 +194,28 @@ module Sprites =
                         ||| (((int p3 >>> bit) &&& 1) <<< 3)
                     pixels.[row * FrameWidth + x] <- idx
         { Pixels = pixels }
+
+    /// Decode a word-plane frame ($37c7c 32x24 / $312a0 16x16). Rows of
+    /// `w / 16` groups of five big-endian words [mask, p0, p1, p2, p3]; opaque
+    /// where the mask bit is 0 (matches $12326/$124a8's `and.w mask` +
+    /// `or.w plane`). `frameStride` = 480 for $37c7c, 160 for $312a0. 89th:
+    /// verified byte-exact against $24400's live byte6 == 4 tree pixels.
+    let decodeFrameWord (sheet: byte[]) (index: int) (w: int) (h: int) (frameStride: int) : int[] * int * int =
+        let groups = w / 16
+        let baseOff = index * frameStride
+        let pixels = Array.create (w * h) -1
+        if baseOff + frameStride <= sheet.Length then
+            for row in 0 .. h - 1 do
+                for g in 0 .. groups - 1 do
+                    let o = baseOff + row * groups * 10 + g * 10
+                    let rd i = (int sheet.[o + i * 2] <<< 8) ||| int sheet.[o + i * 2 + 1]
+                    let mask, p0, p1, p2, p3 = rd 0, rd 1, rd 2, rd 3, rd 4
+                    for b in 0 .. 15 do
+                        let bit = 15 - b
+                        if (mask >>> bit) &&& 1 = 0 then
+                            pixels.[row * w + g * 16 + b] <-
+                                ((p0 >>> bit) &&& 1)
+                                ||| (((p1 >>> bit) &&& 1) <<< 1)
+                                ||| (((p2 >>> bit) &&& 1) <<< 2)
+                                ||| (((p3 >>> bit) &&& 1) <<< 3)
+        pixels, w, h

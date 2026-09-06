@@ -64,9 +64,9 @@
    "verified": "partial disasm"
   },
   "2": {
-   "name": "building / tree",
+   "name": "building / tree  (byte6 == 4)",
    "prepare": "$1168c",
-   "blit": "inline via $1227c/$124a8 (centred)",
+   "blit": "inline via $12244 -> $12326 / $124a8 ($1165c[4] == 0). SUB-CELL LERP position (89th, not centred): $11f1a with an address-jitter fx/fy = fx=(((A2+A3)&0xffff)<<3)&0xff, fy=(((A2+A3)&0xffff)+(A0&0xffff))&0xff (A2=&$47970[cell], A3=record, A0=&$3f364[row*64+col*4]); then $12272 -4/-8 -> raw anchor (lerpX+0x38, lerpY-16).",
    "sheet": "$37c7c",
    "frame_bytes": 480,
    "sprite_wh": [
@@ -74,17 +74,17 @@
     24
    ],
    "frame_count": 28,
-   "frame": "record[7] + word[$57fd0-relative] offset ($116c6..$116d0); special-cases record[7] in {0x0d,0x0e}. Full offset table not ripped. Sheet = 28 clean frames (8 house types, tower, well, ruins, bell, 9 tree types, duck); frame 28+ is a different geometry/sheet.",
-   "verified": "live trace (stride+wh) + partial disasm + visual"
+   "frame": "r7 = record[7]: r7 == 0x0d -> 0x0d; (r7 & 0x7f) == 0x0e -> 0x0e; else (r7 & 0x7f) + word[$11746 + word[$57fd0]].  word[$57fd0] = ($58146 & 3) * 2 (per-mission tile-set selector, even 0..6); table $11746 = {0:0, 2:3, 4:6, 6:9} (index 8+ is code). Mission 1: word[$57fd0] == 4 -> +6, so r7 0x11/0x10/0x0f -> frame 0x17/0x16/0x15. Sheet = 28 clean frames (8 house types, tower, well, ruins, bell, 9 tree types, duck); frame 28+ is a different geometry/sheet.",
+   "verified": "89th: live trace (D2 at $12288) + 32x24 word-plane decode byte-exact vs $24400 live tree pixels + position byte-exact vs live D0/D1"
   },
   "3": {
-   "name": "settlement marker (== cat 12)",
+   "name": "settlement / territory marker (== cat 12; byte6 == 6 and byte6 == 24 -> $117b0)",
    "prepare": "$117b0",
    "blit": "$11f78",
    "sheet": "$33000",
    "frame_bytes": 55,
-   "frame": "record[7] + 0x100; if == 0x112 then + ([$57fec] & 3) (4-frame animation). Frames 0x100+ = number / flag glyphs.",
-   "verified": "disasm"
+   "frame": "record[7] + 0x100; if == 0x112 then + ([$57fec] & 3) (4-frame animation). CENTROID position ($1182a). Mission 1: 12 boundary markers, record[7]==0x10 -> frame 0x110.",
+   "verified": "89th: disasm ($117b0 -> $1182a)"
   },
   "4": {
    "name": "animal (sheep)",
@@ -93,7 +93,7 @@
    "sheet": "$33000",
    "frame_bytes": 55,
    "frame": "(((record[14] + [$ff9a]) & 0xff) >> 5)*2 + 0x117   [+1 if [$4bb41]&1]. record[14]=heading, yaw-relative => 16 frames at base 0x117 (8 facings x {a,b}).",
-   "verified": "disasm"
+   "verified": "89th: live trace (D2 = 0x123/0x124 at $11ab6)"
   },
   "5": {
    "name": "effect / decoration",

@@ -415,16 +415,35 @@ def load_ram(ram_path: Path):
                 seen_addr.add((o, wcx, wcy))
                 depth += 1
                 rec = b[o:o + 50]
+                # byte6 == 4 (buildings/trees, $1168c): fx/fy are NOT record
+                # fields -- they are an address-derived sub-cell jitter (89th,
+                # live-traced at $1169e). $1168c:
+                #   A2 = &$47970[cellY*64 + cellX]      ; bucket-array slot addr
+                #   A3 = record addr ; A0 = &$3f364[row*64 + col*4] ; row/col
+                #        are the cell relative to the camera-anchor corner
+                #   fx = (((A2 + A3) & 0xffff) << 3) & 0xff        ; $11692 lsl.w
+                #   fy = (((A2 + A3) & 0xffff) + (A0 & 0xffff)) & 0xff ; $11698
+                a2 = 0x47970 + (wcy * 64 + wcx) * 2
+                a0 = 0x3F364 + (wcy - cam_y) * 64 + (wcx - cam_x) * 4
+                s = (a2 + o) & 0xFFFF
                 objs.append(dict(
                     addr=o, wcx=wcx, wcy=wcy,
                     b6=rec[6], b5=rec[5], b7=rec[7], b14=rec[14],
                     b17=rec[17], b31=rec[31], b32=rec[32], b33=rec[33],
                     b44=rec[44], fx=rec[9], fy=rec[11],
+                    fx4=(s << 3) & 0xFF, fy4=(s + (a0 & 0xFFFF)) & 0xFF,
                     group=(rec[42] << 8) | rec[43]))
                 d4 = u16(o)
     anim = b[0x4BB41] & 1
     sel_group = u16(0x57FFE)
-    ent = dict(objs=objs, anim=anim, sel_group=sel_group,
+    # byte6 == 4 frame offset ($1168c $116c6): D2 += word[$11746 + word[$57fd0]].
+    # $57fd0 is a per-mission tile-set selector (even, 0..6); the table at
+    # $11746 is {0:0, 2:3, 4:6, 6:9}. Mission 1: word[$57fd0] == 4 -> +6.
+    # Live-verified at $12288 (D2 = frame idx): r7 0x11 -> 0x17, 0x10 -> 0x16,
+    # 0x0e -> 0x0e (special-cased, no offset), 0x0d -> 0x0d.
+    tsel = u16(0x57FD0)
+    tile_off = u16(0x11746 + tsel) if tsel in (0, 2, 4, 6) else 0
+    ent = dict(objs=objs, anim=anim, sel_group=sel_group, tile_off=tile_off,
                sheet33=b[0x33000:0x33000 + 0x160 * 55],
                sheet_prop=b[0x37C7C:0x37C7C + 28 * 480],
                sheet_struct=b[0x312A0:0x312A0 + 47 * 160],
@@ -527,7 +546,13 @@ def _entity_frame(o, ent, yaw):
             return ("33", 0x14E + (ent["ram"][0x57FED] & 1), 8, 11)
         return ("33", 0x150, 8, 11)
     if b6 == 4:                                    # building / tree ($37c7c)
-        f = o["b7"]
+        r7 = o["b7"]
+        if r7 == 0x0D:                             # $116a8 special-case
+            f = 0x0D
+        elif (r7 & 0x7F) == 0x0E:                  # $116c0 special-case (no off)
+            f = 0x0E
+        else:                                      # $116c6: (r7 & 0x7f) + tile_off
+            f = (r7 & 0x7F) + ent["tile_off"]
         return ("prop", f, 32, 24) if f < 28 else None
     return None                                    # 2/10/12/16/18/20/22/30 -- open
 
@@ -544,10 +569,22 @@ def _packed_lerp(c00, c10, c01, c11, fx, fy):
 # that compositing them RAISES the exact-index score against pm78_settle. 88th:
 # only b6 == 14 (flag/banner/group-member, frame record[5]+0x13e, live-verified
 # position + frame against a $11f88 register probe) qualifies -- it lifts
-# pm78_settle 94.40% -> 94.85% (47% of its 577 px match). b6 == 4 (building/tree,
-# $37c7c) and b6 == 8 (animal) still LOWER it (frame formula incomplete: the
-# cat-2 [$57fd0] offset table and the animal facing base are not pinned) so they
-# are parsed and positioned but not drawn.
+# pm78_settle 94.40% -> 94.85% (47% of its 577 px match).
+#
+# 89th: b6 == 4 (building/tree, $37c7c) is now FULLY pinned -- the frame formula
+# is live-verified (D2 at $12288: r7 0x11 -> 0x17, 0x10 -> 0x16, 0x0e -> 0x0e,
+# 0x0d -> 0x0d; = (r7 & 0x7f) + word[$11746 + word[$57fd0]], mission 1 +6), the
+# 32x24 word-plane decode is visually byte-exact against $24400's tree pixels,
+# and the position (sub-cell lerp with an address-jitter fx/fy, then -8/-16) is
+# byte-exact against the live D0/D1. Compositing it STILL lowers the score,
+# but NOT because of a formula error: pm78_settle's two compose buffers disagree
+# on the entity layer by ~14.6k px ($115e0 redraws a subset of entities per
+# frame, double-buffered) so neither reference buffer holds all 25 trees --
+# scoring b6 == 4 against a mid-flip capture penalises correct sprites landing
+# where that buffer shows stale terrain. Needs a clean single-buffer populated
+# capture (Task 1) to composite for real. b6 == 8 (animal, 0x117 + facing*2) is
+# also verified (D2 0x123/0x124 at $11ab6) but small; b6 == 24 (settlement
+# marker, r7 + 0x100, centroid-positioned) is disasm-derived, not composited.
 COMPOSITE_CATS = frozenset({14})
 
 
@@ -600,11 +637,14 @@ def draw_entities(idxbuf, cov, R, ecov, cats=COMPOSITE_CATS):
                     px, py = _packed_lerp(c00, c10, c01, c11, o["fx"], o["fy"])
                     frame = _decode_frame_byte(ent["sheet33"], fi)
                     blit(frame, px - 4, py - 8)
-                else:                              # centred prop
-                    px = (c00[0] + c10[0] + c01[0] + c11[0]) >> 2
-                    py = (c00[1] + c10[1] + c01[1] + c11[1]) >> 2
+                else:                              # prop ($37c7c, byte6 == 4)
+                    # $1168c positions by the SAME sub-cell lerp ($11f1a) as the
+                    # men, with an address-jitter fx/fy (fx4/fy4). $11f1a adds
+                    # (+0x3c, -8); $12272 then adds (-4, -8). Net anchor in the
+                    # +64-inset corner space: (lerpX - 8, lerpY - 16). 89th.
+                    px, py = _packed_lerp(c00, c10, c01, c11, o["fx4"], o["fy4"])
                     frame = _decode_frame_word(ent["sheet_prop"], fi, w, h, 480)
-                    blit(frame, px - w // 2, py - h)
+                    blit(frame, px - 8, py - 16)
 
 
 def decode_screen_indices(ram: bytes, base: int):
@@ -1075,8 +1115,9 @@ def render_faithful(ram_path: Path, dom):
     print(f"    terrain+entity exact : {exact} ({100*exact/max(tot,1):.1f}%)  "
           f"(terrain-only was {100*terr_exact/max(terr_tot,1):.1f}%) -- "
           f"{e_hit}/{ep} entity px match ({100*e_hit/max(ep,1):.0f}%)")
-    print(f"    residual: byte6 4/8 (buildings/trees $37c7c, animals) parsed +"
-          f" positioned but not drawn -- frame formulas incomplete (89th).")
+    print(f"    residual: byte6 4 (buildings/trees $37c7c) frame formula +"
+          f" decode + position all verified (89th); not composited -- pm78_settle's"
+          f" two buffers disagree on the entity layer, needs a clean capture.")
     return idxbuf, cov, ref, R
 
 

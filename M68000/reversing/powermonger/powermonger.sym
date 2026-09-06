@@ -55,6 +55,11 @@
 0001187c	pm_blit_man_sprite     # men melee/dying sub-case blitter, from $11c8a's mode branches (byte31 in {$32,$34,$06,$46}) -- NOT the normal men path ($1165c cat0 = $11f78)
 00011f78	pm_blit_minisprite_clip # $12138 window-cull then $11f82; the $1165c blit-table target for the $33000-sheet categories
 00011f12	pm_entity_prep         # common prepare head: sub-cell lerp ($11f1a) into D0/D1, returns for the frame-formula tail
+0001168c	h_prep_bldg_tree       # 89th: byte6 == 4 prepare ($1162e[4]). pos = $11f1a sub-cell lerp with an ADDRESS-jitter fx/fy (fx = (((A2+A3)&0xffff)<<3)&0xff, fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff; A2 = &$47970[cell], A3 = record, A0 = &$3f364[row*64+col*4]), then $12272 -4/-8. frame: r7==0x0d -> 0x0d; (r7&0x7f)==0x0e -> 0x0e; else (r7&0x7f) + word[$11746 + word[$57fd0]]. blits inline via $12244 ($1165c[4] == 0). live-verified D2 at $12288
+00011746	t_prop_tile_offset     # byte6 == 4 frame-offset table, word[$11746 + word[$57fd0]] = {0:0, 2:3, 4:6, 6:9}; index 8+ is code ($1174e). word[$57fd0] = ($58146 & 3) * 2 (per-mission tile-set selector); mission 1 = 4 -> +6
+00011a86	h_prep_animal          # 89th: byte6 == 8 prepare ($1162e[8]). frame = 0x117 + (((record[14] + [$ff9a]) & 0xff) >> 5) * 2, +1 if [$4bb41]&1. $33000 sheet, sub-cell lerp. live-verified D2 0x123/0x124 at $11ab6
+000117b0	h_prep_settle_marker   # 89th: byte6 == 6 and byte6 == 24 prepare ($1162e[6]/[24]). frame = record[7] + 0x100 (+ [$57fec]&3 if == 0x112). CENTROID position ($1182a). $33000 sheet, blit $11f78. mission 1: r7=0x10 -> frame 0x110 (12 territory-boundary markers)
+00012244	pm_blit_prop_dispatch  # 89th: multi-sheet dispatch by [$57ffc] (mission 1 == 4): <=3 -> $3af1c 64px (-8/-16 pos), <=5 -> $37c7c 32x24 ($12272, -4/-8 pos), else -> $312a0 16x16 (no pos adj). mulu the frame stride, bra the blit loop. entry from $1168c (byte6 4) / $117d8 (2) / $1192e (16)
 0001182a	pm_entity_prep_centred # centred position: (C00+C10+C01+C11)>>2, +$38 X / -8 Y, D2=D4 (used by cats 1/8/9); $1198a has its own copy
 00012138	pm_sprite_window_cull  # cull a sprite vs the iso window ($2df8e/$90 origin, $2df92/$94 extent, D3=size); early-rts if outside
 0001225c	pm_blit_struct_16      # $312a0 sheet, mulu #$a0,D2, 16 rows via $122b6 -> 16x16 centred sprite (cat 9)
@@ -180,6 +185,8 @@
 00010d1e	pm_mission_params      # fill $58146.. parameter block (procedural: seed/size/lord count/placement stream)
 00002266	pm_place_nations       # consume the $58152 placement stream; arm enemy command slots (slot_state:=4)
 00058146	g_world_params         # $58146 seed, $58148 size, $5814a lords, $5814c/e coords, $58150 settlements
+000057fd0	g_tileset_sel          # word, = ($58146 & 3) * 2 (set at $13b9a). per-mission tile-set selector; indexes t_prop_tile_offset ($11746) for the byte6 == 4 building/tree frame base. mission 1 = 4
+0000580a0	g_mission_descriptor   # $584c4 -> here on briefing OK; if != 0, $13b9a takes the defined path ($10d1e parses it); "Between Pages 1-5" -> small procedural descriptor. $5809c overrides $58148 (map size; < $2000 -> "small" preset = ~10-13 lords + more settlements)
 00058152	g_placement_stream     # 4-byte {x,y,id,kind} records; kind $10 = lord, <$10 = player start, 0 = end
 0001ba3e	pm_sound_mix           # sample-table mix into the audio buffers
 0001a856	pm_sound_cue           # ambient sound cue (bleat / call)
