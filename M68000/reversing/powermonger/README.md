@@ -869,6 +869,40 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       the disassembly shows the second is right (`group.state := 7`, not 3), so
       the first is removed.
 
+36. The 99th pass (doc + tooling only — no emulator change, regression net
+    skipped) **proves `$3c08`'s flag-bit-4 group-teardown subtree vs the real
+    68000 — RIDER 3b routine 6.** The last asserted-off arm of `$3c08` is gone.
+    - `$37c2` — tear a group's lead entity out of its group. `iff lead.flags`
+      bit 7 **set**: re-parent owner/settlement, flip flag bits 7→0 / 4→1, then
+      on bit 6: **clear** → `owner_leader.troops_field −= 1` (economy.md's
+      `$382a` row — **now Proven, not just Corroborated**); **set** → `jsr $1b8c`.
+      bit 7 **clear** (the natural case): `jsr $1d70`.
+    - `$1d70` — a **route-string expander**, *not* the ownership writer
+      (ownership is the besiege caller's job — `$25d6`/`$2644`). It picks a
+      terrain route string from the `'C'`(`$43`)-delimited table at `$1e9e`
+      (indexed by the top set bit of `word[grouprec−24]`), and for every roster
+      member (chain via `word[+26]`) scans it for the nearest cell of that
+      member's preferred terrain (`word[$1e8c + 44(member)]`), marks it taken so
+      the next member spreads out, and writes the member a step vector
+      (`20/22 := (dx,dy) << 6`), `mode := $08`, `dwell := 0`, `category := 0`.
+    - `$1b8c` — roster unlink from the `word[+26]` chain + `bclr #6`, then (if
+      alive) a recursive `$3c08` and `owner_leader.troops_field += 1`.
+    - `$17a46` — a HUD-minimap redraw into `*($e0d4)`; a **tracked-region no-op**
+      (`callcap` touches 0 bytes in any tracked region).
+    - `tools/pm_fsm_ref.py` gains `call_37c2` / `call_1d70` / `call_1b8c` /
+      `call_17a46`; the `raise` in `call_3c08`'s bit-4 arm is replaced by the
+      real teardown. `scratchpad/pm99/diff_pm99.py`: **1847/1847 tracked bytes
+      identical over 13 states, 10 branch families** — `callcap` on `$37c2`
+      (entry contract: `D2` = group offset), `$1d70` (`A3` = group record),
+      `$1b8c`, `$3c08` (the whole arm), and `$14b62` end-to-end. Anchor
+      `scratchpad/pm97/pm97_map1`, its one natural grouped record (slot 21,
+      group 392, 26 roster members). Pre-registered falsifier / bar (100% over
+      ≥ 12 states, ≥ 7 families): PASS. `hostile.py`'s 5 negative controls all
+      bite; two `callcap 37c2` byte-identical; `detcheck 1M` clean.
+    - **Still deferred:** `$4bc8` / `$2776` / the `$5590`-tail `$1b8c` (a
+      different call site), `$4342` herd servicer, `$5cde`, `$1623c`
+      dying-entity, mode `$28`/`$2e`.
+
 ## Files
 
 | file | what |

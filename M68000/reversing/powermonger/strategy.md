@@ -552,13 +552,22 @@ mechanic and fired **zero** times in the 73rd-pass 276-tick fight.
 leader's troop count `8($4e514 + 14($4f916 + 34(A1)))`. Then `$5c10` turns the
 record into a 160-tick corpse (`byte5` negated, category `$c`).
 
-### 5. Settlement capture — `$1d70`
+### 5. Settlement capture / regroup — `$1d70`
 
 The besiege modes (`$28`/`$2a`, `ai.md`) grind a settlement's garrison count
-down while the group stays in state 3; at 0 they call **`$1d70`**, which
-transfers ownership *and* procedurally renames the territory (it walks a
-`'C'`-delimited name-fragment table at `$1e9e`, indexed by the capturing
-group's `44(lead)` field and the target's own name bytes).
+down while the group stays in state 3; at 0 they call **`$1d70`** (ownership
+itself is transferred by the besiege caller — `$25d6`/`$2644`, `economy.md`).
+
+**`$1d70` proven (99th, via `$3c08`'s bit-4 teardown — `ai.md`):** it is a
+**route-string expander**, not the ownership writer. It picks a terrain route
+string from the `'C'`(`$43`)-delimited table at `$1e9e` (indexed by the highest
+set bit of `word[grouprec−24]`), then for every roster member (chain via
+`word[+26]`) does a two-way scan of that string — a 1-D slice of terrain codes,
+`'P'`/`'S'`/`'B'` passable, `$ba` blocked — for the nearest cell matching the
+member's preferred terrain (`word[$1e8c + 44(member)]`), marks it taken so the
+next member picks a different one, and writes the member a step vector
+(`20/22 := (dx,dy) << 6`), mode `$08`, `dwell 0`, `category 0`. Net effect: the
+group is dispersed / sent home along a terrain-following path.
 
 ### Measured — the re-armed mission-1 fight (73rd pass)
 
@@ -580,7 +589,7 @@ with a single poke; the counts that overlap match.)
 | — ROUT (`$560a`) | **10** | `$30fe` → `2` every time (`group.field_60 == 4`) |
 | `$5bd2` wear removal | **0** | `anim_wear` never crossed `$3c` in 276 ticks |
 | `$57f0` spawn projectile | 3 | |
-| `$1d70` capture settlement | **15** | the decisive mechanic |
+| `$1d70` group route-expand | **15** | fires on capture *and* regroup; the route/disperse step, not the ownership write (99th) |
 | `$4bc8` contact reconcile | 1 | one nation-pair peace break |
 | `$5c80` upkeep | 2136 | ~8 entities/tick |
 

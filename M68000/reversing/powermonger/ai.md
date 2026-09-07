@@ -291,13 +291,64 @@ negative controls (prev-mode table entry, `w22` low byte, the byte-6 guard, the
   `20 := cell & $3f`, `21 := $80`, `22 := ((cell & $1fc0) << 2) | $80`),
   `mode(31) := $10`, and `iff owner > 0` clear category byte `6 := 0`. The units
   then walk home under the already-Proven mode-`$10` handler.
-- **Asserted off** (`raise` guards it; no corpus state reaches it): the flag-bit-4
-  **group-teardown** sub-path — `$3c46`: `42(A1) != 0` → `jsr $37c2`
-  (disassembled: reassigns the group lead's owner/settlement, `leader.troops_field
-  −= 1`, then `jsr $1d70` or `jsr $1b8c`) ; `group.state := 7` ; `jsr $17a46`
-  (a minimap redraw into the `$e0d4` buffer). `$37c2` / `$1d70` / `$1b8c` /
-  `$17a46` are deferred to their own pass. `$4bc8` / `$2776` / `$1b8c` (the
-  `$5778` and `$5590`-tail group cleanup) also remain **Corroborated**.
+- **The flag-bit-4 group-teardown sub-path — now Proven too (99th, RIDER 3b
+  routine 6).** `$3c46`: `D2 := 42(A1)` (group offset); `!= 0` → `jsr $37c2` ;
+  `group.state($51538+D2) := 7` ; `jsr $17a46` ; `prev_mode(30) := $4c` ; fall
+  into the `$3ca2` tail. See the sub-section below.
+- **Still Corroborated:** `$4bc8` / `$2776` / `$1b8c`-via-`$5778` (the `$5778`
+  and `$5590`-tail group cleanup) — a *different* `$1b8c` call site from the one
+  proven here.
+
+### [Proven] — the flag-bit-4 group teardown behind `$3c08` (`$37c2` / `$1d70` / `$1b8c` / `$17a46`), vs the real 68000 (99th pass, RIDER 3b routine 6)
+
+`tools/pm_fsm_ref.py` `call_37c2` / `call_1d70` / `call_1b8c` / `call_17a46`;
+the `raise` in `call_3c08`'s bit-4 arm is gone. Differential test
+`scratchpad/pm99/diff_pm99.py`: **1847/1847 tracked bytes identical over 13
+states, 10 branch families** — `callcap 37c2` (entry contract: `D2` = group
+offset), `callcap 1d70` (`A3` = group record), `callcap 1b8c` (`A0`/`A1`/`D1`),
+`callcap 3c08` (the whole arm), and `callcap 14b62` end-to-end. Anchor
+`scratchpad/pm97/pm97_map1` — its one natural grouped record, slot 21 (flags
+`$10`, group 392, `group.state 6`), drives `$3c08` bit-4 → `$37c2` (bit-7 clear)
+→ `$1d70` over all 26 roster members (slots 22..47). Pre-registered falsifier /
+bar (100% over ≥ 12 states, ≥ 7 families): PASS. `scratchpad/pm99/hostile.py` —
+5 negative controls (`$382a` `troops_field −= 1`, `$1d70` member mode, `$1d70`
+`asl.w #6` target, `$37c2` owner re-parent, `$1b8c` `troops_field += 1`) all
+bite; per-family delta address classes are exactly the disasm's fields; two
+`callcap 37c2` byte-identical (`$05ad26002a549747`); `detcheck 1000000` clean.
+
+- **`$37c2` — tear the group lead out of its group.** `D2` = group offset; `A1'
+  := $51538 + D2` (group record), lead entity `A0' := $51b66 + word[grouprec−12]`.
+  `iff lead.owner > 0` clear `lead.category(6) := 0`. Then branch on
+  `lead.flags` bit 7:
+  - **bit 7 set** (re-parent / hand-off): `lead.owner(5) := byte[grouprec−47]`;
+    `lead.settlement.word10 := lead.word24`; `lead.word34 := grouprec.word24`;
+    clear flag bit 7, set flag bit 4. Then on `lead.flags` bit 6: **clear** →
+    `owner_leader.troops_field(8) −= 1` (the `$382a` economy row — **now Proven**);
+    **set** → `jsr $1b8c` (`A0 := $51b66 + lead.word28`, `D1 := 0`).
+  - **bit 7 clear** (the natural slot-21 case): if `grouprec.state == 6` and
+    `lead.word46` resolves into `[$4cff8, $4d250)` → that record's `flags(7) :=
+    $11`; then `jsr $1d70` (`A3 := grouprec`).
+- **`$1d70` — the route-string expander / "send everyone home".** Selects a
+  terrain route string from a table at `$1e9e`, indexed by the highest set bit of
+  `word[grouprec−24]` (`D1 := 2·(15 − highbit)`); the string is a 1-D slice of
+  terrain codes (`'P'/'S'/'B'` passable, `$ba` blocked, `'C'`=`$43` the origin
+  marker, `$00` boundaries). For each roster member (chain via `word[+26]` from
+  `word[grouprec−36]`): read its preferred terrain char `word[$1e8c +
+  byte44]`; do a two-way scan outward from the `$43` marker for the nearest cell
+  of that char (falling back to the first *passable* cell via the `D3` latch);
+  `bset #7` that cell so the next member picks a different one (this is what
+  spreads the group out along the route); convert the found offset to a step
+  `(dx,dy)` via `divu(dist, len)` + a lookup into the route data, then write
+  `20/22 := (dx,dy) << 6` (world units), `mode/prev(30,31) := $08`, `dwell(18)
+  := 0`, `category(6) := 0`. A cleanup pass clears the `bset` marks afterward.
+- **`$1b8c` — roster unlink.** `A3 := $51538 + word[A0+42]`; `iff group.word[−24]
+  != 0`: decrement it; unlink `A1` from the `word[+26]` roster chain (head or
+  mid); `bclr #6` `A1.flags`; `A1.word28 := 0`; `iff A1.owner > 0` → `jsr $3c08`
+  recursively on `A1` then `owner_leader.troops_field += 1` (inverse of `$382a`);
+  `iff D1 != 0` → `jsr $1d70`.
+- **`$17a46` — minimap redraw.** Copies group-state glyphs into `*($e0d4)` (the
+  HUD minimap buffer). **A tracked-region no-op** — `callcap` touches 0 bytes in
+  any tracked region.
 
 ## The object record (50 bytes, stride `$32`, array `$51b66`, slots 1..511)
 
@@ -548,7 +599,7 @@ object record; `36(A3)` a running total).
 | `$86` | `$15e30` | 10 | (chain to `$88`) |
 | `$14` | `$1501a` | – | **board / transfer**: copy `5(A3)` (strength) from the `$4f916+34` record into `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
 | `$16` | `$15042` | 6 | **disband**: `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker). **Else** (`$57fd0 != 0`): `owner_leader.troops_reserve += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). `$57fd0` rotates {0,2,4,6} (§3a), so mission 1 takes both branches over time. economy.md §1's pseudocode had this branch inverted |
-| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $16892` (goods-driven regroup) then `jsr $3c08` (flag-driven regroup) — ***Proven, 98th*** (71/71 over 22 states; the flag-bit-4 group-teardown sub-path deferred) |
+| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $16892` (goods-driven regroup) then `jsr $3c08` (flag-driven regroup) — ***Proven, 98th*** (71/71 over 22 states); its **flag-bit-4 group-teardown** sub-path (`$37c2` → `$1d70`/`$1b8c`, `$17a46`) — ***Proven, 99th*** (1847/1847 over 13 states) |
 | `$8a8a` write | `$16176` | – | **removal**: adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches), free the group slot (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
 | — | `$16848` | – | *(Proven, 96th)* **side ↔ owner reconcile**: `A3 = $4f916 + 34(A1)`; `settlement.owner == marker.side` → skip; else `btst #7` clear + `btst #4` clear → `5(A1) := owner` (adopt), `btst #4` set → `jsr $5c2c`. Then `24(A1) != 0 && == 0(A1)` → `$57ff4 := 24(A1)`. Tail `jsr $5c80`. Also called from the mode-`$16` prologue |
 | — | `$5c80` | 2600+ | **per-entity upkeep**: flags-indexed table + byte14 age + byte45 morale; `byte45 += ($57fec & 1)` (a food/desertion drain with a 1-bit random term); `jsr $5bd2` past a threshold |

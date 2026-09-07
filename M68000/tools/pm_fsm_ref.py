@@ -871,6 +871,188 @@ def call_16892(m, A1):
 _FLAGBIT_MODE30 = [(7, 0x7e), (0, 0x16), (1, 0x4e), (2, 0x5e), (3, 0x80)]
 
 
+# ================================================================ 99th pass:
+# the flag-bit-4 GROUP-TEARDOWN subtree behind $3c08's $3c46 arm:
+#   $37c2  group-lead re-parent / disband
+#   $1d70  route-string expander: walk the group roster, send each member
+#          home along a terrain-following path (writes target 20/22, mode
+#          30/31 := $08, dwell 18 := 0, category 6 := 0 per member)
+#   $1b8c  roster unlink (+ a recursive $3c08 on the unlinked lead)
+#   $17a46 minimap redraw - writes only the $e0d4 screen buffer, a
+#          tracked-region NO-OP (verified: callcap touches 0 tracked bytes)
+# Transcribed line-for-line + raw-byte-verified from scratchpad/pm99/disasm/.
+# $51538 = the group-record array (NOT a tracked region - group.state writes
+# etc. are invisible to the diff; modelled anyway so m.r stays faithful).
+#
+# ASSERTED OFF (raise-guarded): nothing - the 99th corpus reaches every arm
+# ($1d70 both distance-sign branches + the D3 "first passable" fallback + the
+# multi-member bit-7 accumulation + the string cleanup; $37c2 bit7-clear/set
+# and both bit-6 sub-arms; $1b8c head/mid unlink + the recursive $3c08).
+# ================================================================
+
+
+def _prog_b(m, a):
+    return m.bu(a & 0xfffff)
+
+
+def call_17a46(m, D2):
+    """$17a46: minimap sprite-copy into *($e0d4).  Writes only outside every
+    tracked region - a documented no-op for the differential test."""
+    return
+
+
+def call_1d70(m, A3):
+    """$1d70: expand the group's return-home route.  A3 = the group record
+    ($51538 + group_off).  Rewrites every roster member (chain via word[+26]
+    from word[A3-36]) to walk a terrain-following path back."""
+    D0 = m.wu(A3 - 24)                          # move.w -24(A3),D0
+    if D0 == 0:                                 # beq $1e86
+        return
+    D1 = (-2) & 0xffff                          # moveq #-2,D1
+    while True:                                 # $1d7e
+        D1 = (D1 + 2) & 0xffff                  # addi.w #$2,D1
+        carry = (D0 & 0x8000) != 0              # add.w D0,D0 ; bcc $1d7e
+        D0 = (D0 << 1) & 0xffff
+        if carry:
+            break
+    A0 = (0x1e9e + m.wu(0x1e9e + s16(D1))) & 0xfffff   # lea $1e9e,A0 ; adda.w 0(A0,D1.w),A0
+    D2 = _prog_b(m, A0); A0 = (A0 + 1) & 0xfffff       # move.b (A0)+,D2  (route-string length)
+    A6 = A0                                     # movea.l A0,A6  (route data base)
+    A0 = (A0 + 1 + D2) & 0xfffff                # lea 1(A0,D2.w),A0
+    while _prog_b(m, A0) != 0x43:               # move.b #$43,D0 ; cmp.b (A0)+,D0 ; bne $1d9e
+        A0 = (A0 + 1) & 0xfffff
+    # cmp.b (A0)+ leaves A0 one past the match, then suba.w #1,A0 -> A0 AT the $43
+    ent = m.wu(A3 - 36)                         # move.w -36(A3),D0  (roster head)
+    while True:                                 # $1daa
+        A1 = OBJ + ent
+        D0b = m.bu(A1 + 44)                     # moveq #0,D0 ; move.b 44(A1),D0
+        D1 = m.wu(0x1e8c + D0b) & 0xff          # lea $1e8c,A2 ; move.w 0(A2,D0.w),D1  (target char)
+        D3 = 0                                  # moveq #0,D3
+        A2 = (A0 - 1) & 0xfffff                 # lea -1(A0),A2
+        A4 = (A0 + 1) & 0xfffff                 # lea 1(A0),A4
+        A5 = None
+        while True:                             # $1dcc
+            if _prog_b(m, A2) == D1:            # cmp.b (A2),D1 ; beq $1e06
+                A5 = A2; break
+            if _prog_b(m, A4) == D1:            # cmp.b (A4),D1 ; beq $1e0a
+                A5 = A4; break
+            if D3 == 0:                         # tst.w D3 ; bne $1dea
+                if s8(_prog_b(m, A2)) > 0:      # tst.b (A2) ; ble $1de2
+                    A5 = A2; D3 = 1
+                elif s8(_prog_b(m, A4)) > 0:    # tst.b (A4) ; ble $1dea
+                    A5 = A4; D3 = 1
+            if _prog_b(m, A2) != 0:             # $1dea tst.b (A2) ; beq $1df2
+                A2 = (A2 - 1) & 0xfffff
+            if _prog_b(m, A4) != 0:             # $1df2 tst.b (A4) ; beq $1dfc
+                A4 = (A4 + 1) & 0xfffff
+                continue                        # bra $1dcc
+            if _prog_b(m, A2) != 0:             # $1dfc tst.b (A2) ; bne $1dcc
+                continue
+            if D3 != 0:                         # $1e00 tst.b D3 ; bne $1e0c
+                break
+            A5 = A2; break                      # $1e04 nop ; $1e06 movea.l A2,A5
+        m.wb(A5, m.bu(A5) | 0x80)               # $1e0c bset #7,(A5)
+        dist = (A5 - A0)                        # move.l A5,D0 ; sub.l A0,D0
+        neg = dist < 0
+        d0l = -dist if neg else dist            # $1e16 neg.l D0  (in the -ve arm)
+        q = (d0l // D2) & 0xffff                # divu D2,D0
+        r = (d0l % D2) & 0xffff
+        D1s = s8(m.bu((A6 + r) & 0xfffff))      # move.b 0(A6,D1.w),D1 ; ext.w D1   (D1 <- swap = rem)
+        if D1s < 0:                             # bge $1e2c/$1e46 ; else addi.w #$1,D0
+            q = (q + 1) & 0xffff
+        if neg:
+            D1s = -D1s                          # neg.w D1
+            q = (-q) & 0xffff                   # neg.w D0
+        m.ww(A1 + 20, (D1s << 6) & 0xffff)      # $1e46 asl.w #6,D1 ; move.w D1,20(A1)
+        m.ww(A1 + 22, (q << 6) & 0xffff)        # asl.w #6,D0 ; move.w D0,22(A1)
+        m.ww(A1 + 18, 0)                        # clr.w 18(A1)
+        m.wb(A1 + 30, 0x08)                     # move.b #$8,30(A1)
+        m.wb(A1 + 31, 0x08)                     # move.b #$8,31(A1)
+        m.wb(A1 + 6, 0x00)                      # move.b #$0,6(A1)
+        ent = m.wu(A1 + 26)                     # move.w 26(A1),D0 ; bne $1daa
+        if ent == 0:
+            break
+    # $1e70 : restore the route string (clear the bit-7 marks we set)
+    A6 = (A6 + 1 + D2) & 0xfffff                # lea 1(A6,D2.w),A6
+    while True:                                 # $1e78
+        d0 = m.bu(A6)
+        if d0 != 0xba:                          # cmp.b #$ba,D0 ; beq $1e82
+            d0 &= 0x7f                          # and.b D1,D0  (D1 == $7f)
+        m.wb(A6, d0); A6 = (A6 + 1) & 0xfffff   # move.b D0,(A6)+
+        if d0 == 0:                             # bne $1e78
+            break
+
+
+def call_1b8c(m, A0, A1, D1):
+    """$1b8c: unlink obj `A1` from its group roster (chain word[+26] off
+    group.word[-36]); clear its group link; if it is still alive, re-dispatch
+    it through $3c08; if D1 != 0, also run $1d70 on the group.
+    Entry: A0 = an obj record whose word[+42] names the group ; A1 = the obj
+    to unlink ; D1 = flag."""
+    A3 = GROUP + s16(m.wu(A0 + 42))             # lea $51538 ; adda.w 42(A0),A3
+    if m.wu(A3 - 24) == 0:                      # tst.w -24(A3) ; beq $1c12
+        return
+    D2 = (A1 - OBJ) & 0xffff                    # move.l A1,D2 ; subi.l #$51b66,D2
+    m.ww(A3 - 24, (m.wu(A3 - 24) - 1) & 0xffff)  # subi.w #$1,-24(A3)
+    D0 = m.wu(A3 - 36)                          # move.w -36(A3),D0
+    if D0 == D2:                                # cmp.w D0,D2 ; bne $1bbe
+        m.ww(A3 - 36, m.wu(A1 + 26))            # move.w 26(A1),-36(A3)  (unlink at head)
+    else:
+        while True:                            # $1bbe
+            A2 = OBJ + s16(D0)
+            D0 = m.wu(A2 + 26)                  # move.w 26(A2),D0
+            if D0 == 0:                         # beq $1bd8 (nop)
+                break
+            if D0 == D2:                        # cmp.w D0,D2 ; bne $1bbe
+                m.ww(A2 + 26, m.wu(A1 + 26))    # move.w 26(A1),26(A2)
+                break
+    m.wb(A1 + 7, m.bu(A1 + 7) & ~0x40)          # bclr #6,7(A1)
+    m.ww(A1 + 28, 0)                            # clr.w 28(A1)
+    if m.bs(A1 + 5) > 0:                        # tst.b 5(A1) ; ble $1c0a
+        call_3c08(m, A1)                        # jsr $3c08
+        A2s = (SETTL + s16(m.wu(A1 + 34))) & 0xfffff
+        d0 = m.wu(A2s + 14)                     # move.w 14(A2),D0
+        A2l = 0x4e514
+        m.ww(A2l + s16(d0) + 8,
+             (m.wu(A2l + s16(d0) + 8) + 1) & 0xffff)   # addi.w #$1,8(A2,D0.w)
+    if s16(D1) != 0:                            # tst.w D1 ; beq $1c12
+        call_1d70(m, A3)                        # bsr $1d70
+
+
+def call_37c2(m, D2):
+    """$37c2: tear a group's lead entity out of its group.  D2 = group_off
+    (the caller's word[rec+42]).  A1 := $51538 + D2 internally; the lead
+    entity is obj[word[grouprec-12]]."""
+    A1 = GROUP + s16(D2)                        # lea $51538,A1 ; adda.w D2,A1
+    A0 = OBJ + s16(m.wu(A1 - 12))               # lea $51b66,A0 ; adda.w -12(A1),A0
+    if m.bs(A0 + 5) > 0:                        # tst.b 5(A0) ; ble $37e4
+        m.wb(A0 + 6, 0)                         # move.b #$0,6(A0)
+    if m.bu(A0 + 7) & 0x80:                     # btst #7,7(A0) ; beq $384e
+        m.wb(A0 + 5, m.bu(A1 - 47))             # move.b -47(A1),5(A0)
+        A2 = (SETTL + s16(m.wu(A0 + 34))) & 0xfffff   # lea $4f916 ; adda.w 34(A0),A2
+        m.ww(A2 + 10, m.wu(A0 + 24))            # move.w 24(A0),10(A2)
+        m.ww(A0 + 34, m.wu(A1 + 24))            # move.w 24(A1),34(A0)
+        m.wb(A0 + 7, m.bu(A0 + 7) & ~0x80)      # bclr #7,7(A0)
+        m.wb(A0 + 7, m.bu(A0 + 7) | 0x10)       # bset #4,7(A0)
+        if not (m.bu(A0 + 7) & 0x40):           # btst #6,7(A0) ; bne $3832
+            D0 = m.wu(A2 + 14)                  # move.w 14(A2),D0
+            A2l = 0x4e514                       # lea $4e514,A2
+            m.ww(A2l + s16(D0) + 8,
+                 (m.wu(A2l + s16(D0) + 8) - 1) & 0xffff)   # subi.w #$1,8(A2,D0.w)
+        else:                                  # $3832 exg A1,A0
+            A0b = OBJ + s16(m.wu(A0 + 28))      # lea $51b66,A0 ; adda.w 28(A1_new==A0),A0
+            call_1b8c(m, A0b, A0, 0)            # move.w #$0,D1 ; jsr $1b8c
+        return                                  # movem ; bra $3882 ; rts
+    # $384e : bit 7 clear
+    if m.wu(A1 + 0) == 6:                       # cmpi.w #$6,0(A1) ; bne $387a
+        D0 = m.wu(A0 + 46)                      # move.w 46(A0),D0 ; beq $387a
+        if D0 != 0:
+            A3 = (OBJ + s16(D0)) & 0xfffff
+            if 0x4cff8 <= A3 < 0x4d250:         # cmpa.l #$4cff8 / #$4d250
+                m.wb(A3 + 7, 0x11)              # move.b #$11,7(A3)
+    call_1d70(m, A1)                            # movea.l A1,A3 ; jsr $1d70
+
+
 def call_3c08(m, A1):
     """$3c08: flag-driven regroup / return-home dispatcher.  Entry: A1 = record."""
     # movem.l save D0/D2/A0/A3 ; tst.b 5(A1) ; bgt/nop -> both reach $3c14 (no-op)
@@ -881,10 +1063,11 @@ def call_3c08(m, A1):
             break
     else:
         if f & 0x10:                                # btst #4 ; bne $3c46
-            if m.wu(A1 + 42) != 0:                   # move.w 42(A1),D2 ; beq $3c6a
-                raise AssertionError(
-                    "$3c08 flag-bit-4 group teardown ($37c2 -> $1d70/$1b8c ; "
-                    "$17a46) - OUT OF SCOPE (98th) (rec %d)" % ((A1 - OBJ) // REC))
+            D2 = m.wu(A1 + 42)                       # move.w 42(A1),D2 ; beq $3c6a
+            if D2 != 0:
+                call_37c2(m, D2)                     # jsr $37c2  (99th)
+                m.ww(GROUP + s16(D2), 0x0007)        # move.w #$7,0(A3)  (group.state, untracked)
+                call_17a46(m, D2)                    # jsr $17a46  (tracked no-op)
             m.wb(A1 + 30, 0x4c)                     # $3c6a move.b #$4c,30(A1)
         else:
             m.wb(A1 + 30, 0x7e)                     # $3c3c move.b #$7e,30(A1)

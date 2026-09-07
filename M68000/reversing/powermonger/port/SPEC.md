@@ -901,9 +901,15 @@ return-home dispatcher, reached from 17 sites) — is Proven vs the real 68000**
 71/71 tracked bytes over 22 states (`scratchpad/pm98/diff_pm98.py`). `$3c08`
 picks a `prev_mode` from the record's flag bits, retargets `20`/`22` from the
 settlement's cell, sets `mode := $10`; the units then walk home under the Proven
-mode-`$10` handler. `$3c08`'s flag-bit-4 group-teardown sub-path (`$37c2` →
-`$1d70`/`$1b8c`, `$17a46` minimap redraw) is asserted off and deferred.
-Remaining regroup modes stay Corroborated. See
+mode-`$10` handler. **RIDER 3b routine 6 (99th): `$3c08`'s flag-bit-4
+group-teardown sub-path is now Proven too** — `$37c2` (tear the lead out of its
+group: owner/settlement re-parent, `owner_leader.troops_field −= 1` = the
+`$382a` economy row), `$1d70` (a route-string expander that sends each roster
+member home along a terrain-following path — *not* the ownership writer),
+`$1b8c` (roster unlink + a recursive `$3c08`), `$17a46` (a minimap redraw, a
+tracked-region no-op) — 1847/1847 tracked bytes over 13 states
+(`scratchpad/pm99/diff_pm99.py`). Remaining regroup routines
+(`$4bc8`/`$2776`/the `$5590`-tail `$1b8c`) stay Corroborated. See
 `../ai.md` "the settlement heartbeat" and `../economy.md` §3a. The
 sprite frame
 formulas + the `$115e0` bucket walk (§6) are
