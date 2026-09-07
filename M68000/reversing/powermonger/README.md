@@ -654,6 +654,44 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       (`$164bc` DIVU step-toward, `$14262` heading, `$12d56` rotate, the
       `$168ee` patrol spline).
 
+30. The 94th pass (RIDER 3b routine 2 cont., doc + tooling only — no emulator
+    change, regression net skipped) **proves the four movement modes of the
+    entity FSM tick `$14b62` byte-exact against the real 68000.** Same
+    isolate-by-disabling differential test as the 93rd
+    (`scratchpad/pm94/fsm_ref.py` + `diff_fsm.py`), extended with the movement
+    handlers and their leaves, all transcribed line-for-line from raw-byte-
+    verified disassembly + the lookup tables (`tbl_heading_14360.bin` 2048 B,
+    `tbl_trig_13f8a.bin`, `tbl_spline_168ee.bin`).
+    - **Covered, PROVEN (1335/1335 tracked bytes over 32 states):**
+      **mode `$06`** `$14d32` (walk until blocked — step, terrain, `dwell--` →
+      `mode $08`, water → `mode $0` no write-back); **mode `$08`** `$14d7c`
+      (escort/orbit — `$12d56`-rotate the orbit offset by the lead's heading,
+      `$164bc`, arrival snap, then fall into the `$14d32` / `$14cfa` body);
+      **mode `$0e`** `$14e70` (patrol — integrate, at dwell 0 advance the
+      `$168ee` spline: recompute step `(nextpt−seg)>>3` + heading; the `$7d01`
+      loop / `$7d02+n` jump-to-mode / `$7d00` end terminators); **mode `$10`**
+      `$14f08` (advance / chase — `$164bc` step, `prev_mode $2e` chase tracking
+      a live entity's position, dead-target → `$2c`, `dbeq` probe ahead →
+      `$4a`, reached → snap onto target, else `mode := $12` + run the `$14ff8`
+      body); the leaves **`$164bc`** (4-quadrant `divu`-steer + swap-dance;
+      `dwell := count>>1`; `beq` = reached; `divu #0` → vector-5 trap → PM's
+      handler resumes op-unchanged → a valid "reached"), **`$14262`**
+      (shift-table octant fold → `dir_tbl`), **`$12d56`** (Q15 sin/cos rotate,
+      same trig table as `$fecc`); the epilogue **`$16202`** (`$161c4`'s clamp
+      minus the terrain veto).
+    - **Corpus:** `pm73_fight`'s 26 `$06` + 5 `$08` + 4 `$0e` records, the `$10`
+      records of all four captures (reached / not-reached / probe / the
+      `divu #0` edge `pm74_late` slot 7), plus poked variants: `$0e` spline
+      advance + all three terminators, `$10` chase + `$2c` conversion, `$06`
+      dwell → `mode $08`. Pre-registered falsifier / bar (100 % over ≥ 20
+      states): **PASS**. Negative controls (perturb heading / rotate / the
+      swap-dance) all flip the result. **Asserted OFF:** the chase-reached
+      `$15302` (→ `$56a6` engage) and the group-state-8 hand-off `$1518a`
+      (→ `$4bc8`) — no corpus state reaches either.
+    - **Still deferred:** combat (`$32` → `$1533c`/`$5590`), the economy
+      servicer (`$4342`/`$163b8`), the regroup/group/shepherd modes, `$1623c`,
+      `$5bd2`; RIDER 3c/3d/3e; Task 1's territory-flip capture.
+
 ## Files
 
 | file | what |

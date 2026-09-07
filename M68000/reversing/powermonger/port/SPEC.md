@@ -867,8 +867,15 @@ routine 2): the dwell/upkeep core of the entity iterator `$14b62` is now Proven
 vs the real 68000** the same way — a from-disasm integer reconstruction of the
 prologue + modes `$12`/`$68`/`$8a` + `$5c80` + the `$161c4`/`$1648e`/`$163ea`
 epilogue matches `callcap 14b62`'s full changed-memory delta over 22 states
-(675/675 tracked bytes); movement/combat/regroup modes stay Corroborated. See
-`../ai.md` "the dwell/upkeep core, vs the real 68000". The sprite frame
+(675/675 tracked bytes). **94th (RIDER 3b routine 2 cont.): the four movement
+modes `$06`/`$08`/`$0e`/`$10` + the leaves `$164bc` (DIVU step-toward),
+`$14262` (heading), `$12d56` (rotate) + the `$16202` epilogue are now Proven vs
+the real 68000** — 1335/1335 tracked bytes over 32 differential-test states
+(`scratchpad/pm94/fsm_ref.py` + `diff_fsm.py`; `$164bc` `divu #0` edge and all
+three `$0e` spline terminators exercised; the chase-reached `$15302` and
+group-state-8 `$1518a` hand-offs asserted off). Combat / economy / regroup
+modes stay Corroborated. See `../ai.md` "the movement modes, vs the real
+68000". The sprite frame
 formulas + the `$115e0` bucket walk (§6) are
 **Corroborated** (disassembly + a live register/`$11f88` probe + the F#↔Python
 byte-exact cross-check). The "no per-frame sea fill" / "minimap baked once"

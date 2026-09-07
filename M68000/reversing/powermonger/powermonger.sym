@@ -80,7 +80,7 @@
 0001c49a	g_cursor_saveunder_ptr # 91st: screen address pm_draw_cursor_marker will restore next frame (0 = nothing saved); the saved background pixels sit at $1c49e
 0000187a	pm_present             # swap $2df7c<->$2df78, write (front>>8) to $FFFF8200 (double-buffer flip)
 0000e0d4	g_terrain_master       # composed full-terrain buffer; $12ce0'd into the back buffer each present
-00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md). 93rd RIDER 3b: NO entry contract (lea's its own $51b66/$47970 bases); callcap 14b62 runs the whole iterator, returns clean (4554 steps), deterministic. dwell/upkeep core (prologue + modes $12/$68/$8a + $5c80 + $161c4/$1648e/$163ea) PROVEN vs real 68k = 675/675 tracked bytes over 22 states (scratchpad/pm93/fsm_ref.py + diff_fsm.py). movement/combat/regroup modes deferred
+00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md). 93rd RIDER 3b: NO entry contract (lea's its own $51b66/$47970 bases); callcap 14b62 runs the whole iterator, returns clean (4554 steps), deterministic. dwell/upkeep core (prologue + modes $12/$68/$8a + $5c80 + $161c4/$1648e/$163ea) PROVEN vs real 68k = 675/675 over 22 states (93rd, scratchpad/pm93/). 94th: the MOVEMENT modes $06/$08/$0e/$10 + leaves $164bc/$14262/$12d56 + epilogue $16202 PROVEN = 1335/1335 tracked bytes over 32 states (scratchpad/pm94/fsm_ref.py + diff_fsm.py). combat ($32/$5590), economy ($4342/$163b8), regroup modes still deferred
 00006a3a	pm_order_exec           # order executor: consume $58016, drive group state + lead mode
 00007a56	pm_render_sprites_hud   # sprite / HUD compositor into offscreen+32000
 0000d23a	pm_force_ratio          # $57fba -> $57fce UI mood ratio (min(4,(2*mine+enemy/4)/enemy))
@@ -157,8 +157,11 @@
 000168ee	g_patrol_paths         # {dx,dy} word lists, terminated by a word >= $7d00
 00014bb4	t_mode_handlers        # data: mode $00..$94 -> handler word-offset table (handler = $14bb4 + s16 word[$14bb4+mode])
 00014c92	h_mode00_idle          # face + fidget -> mode $0a, or mode $8c if order_class $a
-00014e70	h_mode0e_patrol        # march the $168ee spline; seg word >=$7d00 = terminator (loop/jump-mode/end)
-00014f08	h_mode10_advance       # advance to target_x/y (or chase link_target); probe ahead -> $4a; reached -> $15302
+00014cfa	h_mode02_step          # step (12,13); terrain; land -> bclr#5 + mode $06 + dwell dance; water -> dwell dance. 94th RIDER 3b: PROVEN vs real 68k (reached from mode $08 fall-through)
+00014d32	h_mode06_walk          # step (12,13); $1648e; land -> subq.w #1,18(A1) (==0 -> mode $08) -> epilogue $16202; water -> (order_class $a: bset#5 mode $2) else mode $0 + bra $1622c (NO write-back). 94th RIDER 3b: PROVEN vs real 68k (1335/1335 tracked bytes over 32 states; scratchpad/pm94/fsm_ref.py h_mode06)
+00014d7c	h_mode08_escort        # orbit the lead 28(A1): $12d56 rotate orbit-offset (20,22) by lead heading, + lead pos 8/10, speed := lead.speed+4, $164bc; reached -> copy lead step 12, dwell $a; then $1648e -> land: mode $6 + fall into $14d32 body / water: mode $2 + $14cfa or mode $0. 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states incl. all 5 pm73_fight $08 records)
+00014e70	h_mode0e_patrol        # march the $168ee spline; integrate step + subq.w #1,18(A1) (!=0 -> epilogue $16202); at 0 -> snap to origin+seg, next point, recompute step (nextpt-seg)>>3 + heading, dwell 8; seg word >=$7d00 = terminator ($7d01 loop: D2-=D1; $7d02+n: mode := n; $7d00: mode := $92). 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states incl. all three terminators)
+00014f08	h_mode10_advance       # advance to target_x/y (prev_mode $2e: chase link_target 48(A1), copy its live pos 8/10; target gone -> mode/prev := $2c); $164bc step; reached -> $15302 (chase) / $14fdc (fixed, snap on target); else probe up to dwell cells ahead along (12,13) via $1648e dbeq -> blocked: mode $4a; else mode := $12 + run $14ff8 body. 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states; $15302 + $1518a group-state-8 hand-off asserted OFF)
 00014ff8	h_mode12_halt          # cool-down dwell: D6+=step_x D7+=step_y; subq.w #1,18(A1); >0 -> epilogue $161c4 (stay $12); <=0 -> mode := $10 -> $161c4. 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test) incl. the $161c4 water-veto (mode := $0, no write-back) and the $163ea relink
 000150c0	h_mode1a_absorb        # group absorbs reinforcements: slice reserve_6 -> march_14 by ($30fe) shift
 00015122	h_mode1c_detach        # size a raiding party (troops_8 >> $30fe) -> mode $28 besiege
@@ -172,9 +175,11 @@
 00016048	h_mode68_formation     # follower: $5c80 upkeep, then clr.w 12(A1) (step_x/y) + clr.b 17(A1) (heading), bra $1622c (NO position write-back, NO relink). 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test)
 000161b2	h_mode8a_garrison      # $5c80 upkeep only, bra $1622c. 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test)
 0001648e	pm_terrain_sample      # terrain sample at (D6,D7): cell = ((D7&$ff00)>>2) + ((D6>>6)&$ff) >>2; A4 = $438ee+cell; sign of byte[A4+8257] + (D6&$ff vs D7&$ff / carry) picks byte[A4] (type plane) vs byte[A4-8257]; Z <=> == 0 (water/impassable). 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test)
-000164bc	pm_step_toward         # one step toward (D0,D1) via divu 16(A1); Z <=> reached
-00014262	pm_heading             # (dx,dy) -> 16-dir heading
-00012d56	pm_rotate_vec          # rotate (D0,D1) by heading D2 (sin/cos $1400a)
+000164bc	pm_step_toward         # one step toward target (D0,D1) from (D6,D7): dx/dy, 4-quadrant fold, divu 16(A1) (speed) on the major axis + divu quotient on the minor, swap-dance -> step_x/step_y (12,13), heading (17), dwell (18) := count>>1. Z (reached) <=> count>>1 == 0. divu #0 (target==current or speed 0) traps vector 5, PM's handler resumes op-unchanged -> a valid "reached". 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states incl. the divu-#0 edge pm74_late slot 7); scratchpad/pm94/fsm_ref.py step_toward
+00014262	pm_heading             # (dx,dy) -> 0..255 heading. octant fold on sign(dx)/sign(dy); shift = shift_tbl[$14360 + (max(|dx|,|dy|)>>5)]; normalise both >>shift; dir_tbl[$14760 + ((dx<<5)+dy)]; per-quadrant fixup (0x80-d / -d / d+0x80). 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states; via $164bc tail + $14e70)
+00012d56	pm_rotate_vec          # rotate (x,y) by heading: cos = s16 word[$1400a + 2h], sin = s16 word[$13f8a + 2h] (same trig table as $fecc's A3); x' = ((x*cos - y*sin)<<1)>>16, y' = ((x*sin + y*cos)<<1)>>16 (Q15). 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states; via mode $08, all 5 pm73_fight records)
+00016202	pm_epilogue_relink     # clamp D6 [0,$3fff] / D7 (neg: >$1f40 -> $7fff else 0; >=0: no upper clamp), then $163ea write-back + relink. = $161c4 minus the $1648e terrain veto and the bclr #5. 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states)
+0001622c	pm_iter_next           # lea 50(A1),A1 ; loop to $14b72 until $57f66. The "no write-back" epilogue.
 000163ea	pm_relink_bucket       # write.w D6/D7 -> 8(A1)/10(A1); OLD cell from pre-write pos, NEW from D6/D7 (cell = ((y&$ff00)>>2) + x_hibyte); if changed: unlink (via bucket_prev, or head + next.prev:=0) then link at head of $47970[NEW]. 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test)
 00016260	pm_notify_neighbours   # walk cell bucket, bump leader message counters ("under attack")
 00016808	pm_target_cell_resolve # resolve a target cell -> entity, used by the projectile spawn

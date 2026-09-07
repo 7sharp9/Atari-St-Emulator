@@ -128,10 +128,43 @@ plus poked variants forcing each branch: dwell → `mode := $10`, world-Y
 negative → the `$1648e` water veto → `mode := $0`, forced anim trigger ± the
 `flags` bit-4 freeze, morale below/at/under the survivability cap). The
 `$5c80` wear-death path (`$5bd2`) is asserted **off** — `anim_wear` maxes at 44
-(`< $3c`) in all four captures. The **movement, combat, regroup, group and
-shepherd modes**, the dying-entity path `$1623c`, and `$5bd2` remain
-**Corroborated**, not Proven — each needs its leaf routines (`$164bc` DIVU
-step-toward, `$14262`, `$12d56`, the `$168ee` spline) reconstructed.
+(`< $3c`) in all four captures.
+
+### [Proven] — the movement modes, vs the real 68000 (94th pass, RIDER 3b routine 2 cont.)
+
+`scratchpad/pm94/fsm_ref.py` extends the reconstruction with the four movement
+modes **`$06`** (`$14d32` walk-until-blocked), **`$08`** (`$14d7c` escort/orbit),
+**`$0e`** (`$14e70` patrol spline) and **`$10`** (`$14f08` advance/chase), plus
+their leaves **`$164bc`** (step-toward — the DIVU steerer), **`$14262`**
+(heading), **`$12d56`** (rotate) and the epilogue **`$16202`**. All transcribed
+line-for-line from raw-byte-verified disassembly + the lookup tables
+(`tbl_heading_14360.bin` 2048 B, `tbl_trig_13f8a.bin`, `tbl_spline_168ee.bin`).
+Same isolate-by-disabling differential test (`diff_fsm.py`): **1335/1335 tracked
+bytes identical over 32 states** — `pm73_fight`'s 26 `$06` + 5 `$08` + 4 `$0e`
+records, the `$10` records of all four captures (reached / not-reached / probe),
+plus poked variants: `$0e` spline advance and all three terminators (`$7d01`
+loop, `$7d02+n` jump-to-mode, `$7d00` end→`$92`), `$10` chase (`prev_mode := $2e`
+tracking a live entity), the `$2c` dead-target conversion, `$06` dwell→`mode $08`.
+
+- **`$164bc`**: `sub.w` dx/dy → 4-quadrant fold → `divu speed` on the major axis,
+  `divu` the quotient on the minor, then a swap-dance that leaves `D0.w`=step_x,
+  `D1.w`=step_y, `D2.w`=count; `dwell := count>>1`; **`beq` on return = reached
+  = `count>>1 == 0`** (confirmed byte-exact via `pm78_settle` slot 5, which snaps
+  onto the target). `divu #0` (target == current, or a speed-0 entity) traps
+  vector 5; PM's handler resumes with the operand unchanged, so `$164bc` still
+  returns a well-formed "reached" (confirmed: `pm74_late` slot 7).
+- **`$14262`**: octant fold, `shift = shift_tbl[max(|dx|,|dy|) >> 5]`, normalise
+  both `>> shift`, `dir_tbl[(dx<<5)+dy]`, per-quadrant fixup (`0x80-d` / `-d` /
+  `d+0x80`).
+- **`$12d56`**: `cos = word[$1400a + 2h]`, `sin = word[$13f8a + 2h]` (the *same*
+  trig table as `$fecc`'s `A3`, 92nd); `x' = ((x·cos − y·sin)<<1)>>16` (Q15).
+- Asserted **off** (out of scope, same discipline as `$5bd2`): the chase-reached
+  edge `$15302` (→ `$56a6` engage) and the group-state-8 hand-off `$1518a`
+  (→ `$4bc8`) — no natural or poked state in the corpus reaches either.
+
+The **combat** (`$28`/`$2e`/`$32` → `$1533c`/`$5590`), **economy servicer**
+(`$4342`/`$163b8`), **regroup/group/shepherd** modes, and the dying-entity path
+`$1623c` remain **Corroborated**, not Proven.
 
 ## The object record (50 bytes, stride `$32`, array `$51b66`, slots 1..511)
 
@@ -245,25 +278,35 @@ Callers `beq` on **type 0** = water / off-map / impassable. Used both as a
 "can I stand here" test after a move and, probed in a `dbeq` loop, as a
 short-range "is the path ahead clear" test.
 
-### `$164bc` — one step toward (D0, D1)
+### `$164bc` — one step toward (D0, D1)   *[Proven, 94th — see the movement-modes block above]*
 
-`dx = D0-D6`, `dy = D1-D7`; if either goes negative the target plane is already
-crossed on that axis. Otherwise `ext.l` both, `divu 16(A1)` (the entity's speed)
-to get a normalised per-tick increment, `divu` again for the minor axis, and
-return the step. **`beq` on return = target reached** (the dominant axis
-underflowed). This is the routine the 67th-pass DIVU overflow / divide-by-zero
-fix unblocked; `16(A1)` can be 0 for a stationary entity.
+`dx = D0-D6`, `dy = D1-D7`, `sub.w`; the sign of each picks one of four
+quadrants (each folds to magnitudes with `neg.w`). Within a quadrant,
+`cmp.w D0,D1 ; bgt` picks the **major** axis (`|dy| > |dx|` → Y). `divu speed`
+(`16(A1)`) on the major axis gives `count`; `divu count` on the minor gives its
+per-tick increment; a swap-dance rebuilds `D0.w = step_x`, `D1.w = step_y`,
+`D2.w = count`. The shared tail (`$16596`) writes `step_x/step_y` (12,13),
+`heading` (17, via `$14262`), and **`dwell` (18) := `count >> 1`**;
+**`beq` on return ⇔ `count>>1 == 0` ⇔ reached**. `divu #0` (target == current,
+or `speed == 0`) traps vector 5 — PM's handler resumes with the operand
+unchanged, so the routine still returns a well-formed "reached" rather than
+crashing. This is the routine the 67th-pass DIVU fix unblocked.
 
-### `$14262` — (dx, dy) → 16-direction heading
+### `$14262` — (dx, dy) → heading 0..255   *[Proven, 94th]*
 
-Octant fold + a shift table at `$14360`; returns 0..15 in D0. Written to
-`17(A1)`; the sprite blit and `$12d56` read it.
+Octant fold on `sign(dx)/sign(dy)`; `shift = shift_tbl[$14360 + (max(|dx|,|dy|)
+>> 5)]` (a `bit_length`-style ramp); `dx >>= shift`, `dy >>= shift` (both now
+< 32); `dir_tbl[$14760 + ((dx << 5) + dy)]`; per-quadrant fixup
+(`0x80 - d` / `-d` / `d + 0x80`). Returns 0..255 in D0. Written to `17(A1)`; the
+sprite blit and `$12d56` read it.
 
-### `$12d56` — rotate (D0, D1) by heading D2
+### `$12d56` — rotate (D0, D1) by heading D2   *[Proven, 94th]*
 
-Sin/cos tables at `$1400a` / `$1400a-128`, `muls`, fixed-point (`add.l / swap`).
-Turns a heading index back into a unit velocity vector — used by the
-obstacle-avoidance mode to swing the probe direction.
+`cos = word[$1400a + 2·h]`, `sin = word[$13f8a + 2·h]` — the **same trig table**
+as `$fecc`'s `A3` contract (92nd). `x' = ((x·cos − y·sin) << 1) >> 16`,
+`y' = ((x·sin + y·cos) << 1) >> 16` (`muls`, 32-bit, `add.l` for the `<<1`,
+`swap` for the `>>16` — a Q15 rotate). Turns a heading back into a unit velocity
+vector — used by mode `$08` (escort) and the obstacle-avoidance mode `$48`.
 
 ### `$163ea` — maintain the per-cell entity buckets
 
@@ -294,13 +337,13 @@ the settled first-mission view.
 | mode | handler | tick | behaviour |
 |------|---------|-----:|-----------|
 | `$00` | `$14c92` | – | **idle**. If `33(A1)==$a` → become `$8c` (hold position). Else `$14caa`: set dwell 20, face a direction from `17(A1)` + flags, small fidget |
-| `$02` | `$14cfa` | – | step by (12,13); sample terrain; on hitting an obstacle clear bit5 and drop to mode `$06` |
-| `$04`/`$06` | `$14d32` | – | step + terrain test; if clear and `33!=$a` → mode `$00`; if blocked → `$14d6a` (repath) |
-| `$08` | `$14d7c` | – | **walk toward the linked entity `28(A1)`**: read its heading `17`, `$12d56` to a vector, add its position offset `8/10`, `$164bc` line test, copy step from `12(A4)`, set dwell `$a`. On arrival → mode `$06` |
+| `$02` | `$14cfa` | – | step by (12,13); sample terrain; on hitting an obstacle clear bit5 and drop to mode `$06` *(Proven, 94th — reached from mode `$08`)* |
+| `$04`/`$06` | `$14d32` | – | *(Proven, 94th)* step by (12,13); `$1648e`; **land** → `subq.w #1,18(A1)` (`==0` → mode `$08`) → epilogue `$16202`; **water** → `order_class $a`: `bset #5` + mode `$02`, else mode `$00` + `bra $1622c` (no write-back) |
+| `$08` | `$14d7c` | – | *(Proven, 94th)* **orbit the lead `28(A1)`**: `$12d56`-rotate the orbit offset `(20,22)` by the lead's heading, `+` lead position `8/10`, `speed := lead.speed + 4`, `$164bc`; on arrival copy the lead's step `12` + dwell `$a`; then `$1648e` at the new spot → land: mode `$06` + fall into the `$14d32` body / water: mode `$02` (`$14cfa`) or `$00` |
 | `$0a` | `$14e1e` | – | dwell `18`; at 0 → mode `$08`, or mode `$10` if no linked entity |
 | `$0c` | `$14e56` | 6 | save (D6,D7) → (36,38), load patrol path, → mode `$0e` |
-| `$0e` | `$14e70` | **445** | **patrol / march along the spline `$168ee`**: cursor `40(A1)` walks {dx,dy} word pairs; segment end (word ≥ `$7d00`) ends the path; recompute step (12,13) and heading (17) each segment, dwell 8 |
-| `$10` | `$14f08` | **180** | **advance to the target** `20/22` (or chase entity `48(A1)`, copying its live position). `$164bc` for the step; then probe up to D2 cells ahead along (12,13) with `$1648e` (`dbeq`). Path blocked → mode `$4a`. Target reached → `$15302` / `$14fdc` |
+| `$0e` | `$14e70` | **445** | *(Proven, 94th)* **patrol / march along the spline `$168ee`**: integrate step + `subq.w #1,18(A1)` (`!=0` → epilogue `$16202`); at 0 snap to origin+segment, read the next point, recompute step `(nextpt−seg)>>3` + heading, dwell 8; segment word ≥ `$7d00` = terminator (`$7d01` loop: `D2 -= D1`; `$7d02+n`: `mode := n`; `$7d00`: `mode := $92`) |
+| `$10` | `$14f08` | **180** | *(Proven, 94th)* **advance to the target** `20/22` (or, `prev_mode == $2e`, chase entity `48(A1)` copying its live position; target gone → mode/prev `:= $2c`). `$164bc` for the step; **reached** → `$15302` (chase) / `$14fdc` (fixed — snap onto target); else probe up to `dwell` cells ahead along (12,13) with `$1648e` (`dbeq`) — blocked → mode `$4a`; else mode `:= $12` + run the `$14ff8` body. `$15302` + the group-state-8 hand-off `$1518a` asserted off |
 | `$12` | `$14ff8` | **774** | **halt / cool-down** *(Proven, 93rd)*: step, dwell `18`; at `<= 0` → mode `$10` (resume advancing) |
 | `$48` | `$158da` | 13 | **obstacle avoidance**: `12(A1)/13(A1)` from heading via `$12d56`; probe ahead (`dbeq` on `$1648e`); if blocked, add a growing ± sweep (`40(A1)` += 4, negate) to `17(A1)` and retry — turn by ever-wider angles until a lane opens |
 | `$4a` | `$1597a` | 3 | set up mode `$48`: copy target from `28(A1)`, sweep = 8, clear low 2 bits of heading |
@@ -581,6 +624,46 @@ void h_halt(pm_object *A1) {
     if (--A1->dwell > 0) goto epilogue_161c4;
     A1->mode = 0x10;                                // resume advancing
     goto epilogue_161c4;
+}
+
+// ---- $14d32  mode $06 : walk until blocked ------------------------------
+void h_walk(pm_object *A1) {                        // Proven, 94th
+    D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
+    if (terrain_ok($1648e, D6, D7)) {               // land
+        if (--A1->dwell == 0) A1->mode = 0x08;      // ($14d6a / $14d20)
+        goto epilogue_16202;
+    }
+    if (A1->order_class == 0x0a) {                  // water, "hold" order
+        A1->flags |= BIT5;  A1->mode = 0x02;
+        if (--A1->dwell == 0) A1->mode = 0x08;
+        goto epilogue_16202;
+    }
+    A1->mode = 0x00;  goto next_record;             // water -> idle, no write-back
+}
+
+// ---- $14d7c  mode $08 : escort / orbit the lead ------------------------
+void h_escort(pm_object *A1) {                      // Proven, 94th
+    pm_object *L = &obj[A1->link_related];          // 28(A1)
+    s16 x = A1->target_x, y = A1->target_y;         // orbit offset (20,22)
+    jsr_12d56(&x, &y, L->heading);                  // rotate by the lead's heading
+    x += L->world_x;  y += L->world_y;              // desired point
+    A1->speed = L->speed + 4;
+    if (jsr_164bc(A1, x, y) == REACHED) {           // recompute + snap on arrival
+        s16 ox = A1->target_x, oy = A1->target_y;
+        A1->heading = L->heading;
+        jsr_12d56(&ox, &oy, L->heading);
+        D6 = ox + L->world_x;  D7 = oy + L->world_y;
+        A1->step_x = L->step_x;  A1->step_y = L->step_y;   // move.w 12(A4),12(A1)
+        A1->dwell = 0x0a;
+    }
+    if (terrain_ok($1648e, D6, D7)) {               // land
+        A1->mode = 0x06;  A1->flags &= ~BIT5;
+        h_walk(A1);  return;                        // bra $14d32 : run the $06 body
+    }
+    if (A1->order_class == 0x0a) {                  // water
+        A1->mode = 0x02;  A1->flags |= BIT5;  h_step_02(A1);  return;  // bra $14cfa
+    }
+    A1->mode = 0x00;  goto next_record;
 }
 
 // ---- $150c0  mode $1A : group absorbs reinforcements ---------------------
