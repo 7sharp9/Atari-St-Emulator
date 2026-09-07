@@ -80,7 +80,7 @@
 0001c49a	g_cursor_saveunder_ptr # 91st: screen address pm_draw_cursor_marker will restore next frame (0 = nothing saved); the saved background pixels sit at $1c49e
 0000187a	pm_present             # swap $2df7c<->$2df78, write (front>>8) to $FFFF8200 (double-buffer flip)
 0000e0d4	g_terrain_master       # composed full-terrain buffer; $12ce0'd into the back buffer each present
-00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md). 93rd RIDER 3b: NO entry contract (lea's its own $51b66/$47970 bases); callcap 14b62 runs the whole iterator, returns clean (4554 steps), deterministic. dwell/upkeep core (prologue + modes $12/$68/$8a + $5c80 + $161c4/$1648e/$163ea) PROVEN vs real 68k = 675/675 over 22 states (93rd, scratchpad/pm93/). 94th: the MOVEMENT modes $06/$08/$0e/$10 + leaves $164bc/$14262/$12d56 + epilogue $16202 PROVEN = 1335/1335 tracked bytes over 32 states (scratchpad/pm94/fsm_ref.py + diff_fsm.py). combat ($32/$5590), economy ($4342/$163b8), regroup modes still deferred
+00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md). 93rd RIDER 3b: NO entry contract (lea's its own $51b66/$47970 bases); callcap 14b62 runs the whole iterator, returns clean (4554 steps), deterministic. dwell/upkeep core (prologue + modes $12/$68/$8a + $5c80 + $161c4/$1648e/$163ea) PROVEN vs real 68k = 675/675 over 22 states (93rd, scratchpad/pm93/). 94th: the MOVEMENT modes $06/$08/$0e/$10 + leaves $164bc/$14262/$12d56 + epilogue $16202 PROVEN = 1335/1335 tracked bytes over 32 states (scratchpad/pm94/fsm_ref.py + diff_fsm.py). 95th: mode $32 melee ($1533c) + $56a6 ($574a leaf) + $5590 KILL branches + $30fe PROVEN = 413/413 tracked bytes over 48 states (scratchpad/pm95/). economy ($4342/$163b8), regroup/group modes ($3c08/$4bc8/$2776/$1b8c), dying-entity $1623c still deferred
 00006a3a	pm_order_exec           # order executor: consume $58016, drive group state + lead mode
 00007a56	pm_render_sprites_hud   # sprite / HUD compositor into offscreen+32000
 0000d23a	pm_force_ratio          # $57fba -> $57fce UI mood ratio (min(4,(2*mine+enemy/4)/enemy))
@@ -111,7 +111,7 @@
 00003154	pm_order_to_cell       # packed cell -> $47970 bucket -> entity; friend/foe by sign(cmdid); -> $4b80
 00004b80	pm_commit_group_target # group exec sub-record state=8; lead man -> mode $10 toward cell centre
 000037c2	pm_group_path_setup    # validate / path setup for the group lead
-000030fe	pm_regroup_split       # order $10: 60(group) fraction
+000030fe	pm_regroup_split       # D0 = word[$51538 + 42(A1) + 60] - 2. Used as a shift amount ($150c0/$15122) and as the $5590 kill/rout selector. 95th: transcribed + raw-verified; == 2 for the pm73_fight attack group
 000039d4	pm_regroup_march       # order $10: lead man toward muster
 00003c08	pm_besiege_setup       # order $08: group state 3
 
@@ -126,15 +126,15 @@
 0000c5ee	pm_notify_player       # "war has been declared" style player message
 
 # ---- combat (strategy.md "Combat", ai.md "Combat") ----
-0001533c	pm_melee               # mode $32 handler: drain target morale (byte45) 1..4/tick; <=0 -> $5590
-00005590	pm_kill_or_rout        # morale depleted: roll $30fe (group.field60-2) -> KILL($55f2, corpse) or ROUT($560a, $3c08 scatter)
-000056a6	pm_engage              # engagement: dist<$fff + can-fight -> $5778, set mode $32, link attacker
-00005778	pm_engage_bookkeep     # contact/ownership bookkeeping (state 6 mark, state $d record, else $4bc8)
+0001533c	pm_melee               # mode $32 handler. 95th RIDER 3b: PROVEN vs real 68k (413/413 tracked bytes over 48 states, scratchpad/pm95/). 5(A3)<=0 or 30(A3)==$3c (dead/corpse) -> mode/prev:=$2c + $161c4; 17(A3):=17(A1)+$80; 31(A3)!=$32 -> jsr $56a6; drain 45(A3) by (s8(44(A1))<6 ? 44(A1) : 0)>>1 +1 via sub.b, ble -> jsr $5590 + mode/prev:=$2c; else mutual (48(A3):=self, 31(A3):=$32, bra $1622c no epilogue)
+00005590	pm_kill_or_rout        # from $1533c when morale<=0. 95th: KILL branches PROVEN vs real 68k. 45(A3):=0; sel=(attacker grouped w/ live lead ? $30fe : 0); sel==0 KILL, sel==2 -> $560a, else ($57fec+24(A1))&2 parity. KILL($55f2): neg.b 5(A3), 32:=0, 6:=$c corpse, 18:=$a0; tail $5628 -> $567e -> leader.population-=1. $560a: bit5(A3) forces KILL else jsr $3c08 ROUT (asserted OFF); $2776/$1b8c tail branches asserted OFF
+000056a6	pm_engage              # engagement bookkeeping (from $1533c + $15302). 95th: the $574a path PROVEN vs real 68k. btst #6/#4,7(A3) gate $5778 (skipped when target flags clear); 31/30(A3):=$32; 48(A3):=attacker; $5730 (attacker grouped) 46(A3):=A1 group/self, 38(A3):=4  /  $574a 46(A3):=(attacker leader entry)-$51b66, 38(A3):=2
+00005778	pm_engage_bookkeep     # deep contact/ownership bookkeeping (group state 6 -> obj[46(A3)].flags:=$11; state $d -> record; else jsr $4bc8). 95th: asserted OFF (no corpus reaches it)
 000057f0	pm_spawn_projectile    # spawn into $4be00 effect array; vel toward target /$78, life $14, type=D1
 0000596a	pm_effect_update       # per-tick projectile loop over $4be00..$4c110; life--; type $12 -> area hit on impact
 00016778	pm_bucket_unlink       # remove one object from its $47970 cell chain. 93rd RIDER 3b: PROVEN vs real 68k (via the $163ea unlink-at-head branch, part of the 675/675 $14b62 differential test)
 0004be00	g_effect_slots         # 48 slots x $10 bytes: projectiles / effects (slot 0 of $4bdf0 = template w/ reload byte)
-00015302	pm_reached_enemy       # mode $2e: snap to target, mode $32, maybe $56a6
+00015302	pm_reached_enemy       # mode $2e: A3=obj[48(A1)]; snap (D6,D7) onto it; mode/prev:=$32; engageable (31(A3)>$2c && 30(A3)>=$3c) -> jsr $56a6; $161c4. Disassembled, not yet differentially tested
 00003c08	pm_group_restructure   # scatter/rebuild a group after a rout or a lost besiege
 00005c80	pm_upkeep              # per-entity upkeep: D0 = sbyte[$5ccc + (flags&$1f)] (survivability cap); if anim_wear(14) >= $3c and cap - 4*(wear-$3c) < 0 -> $5bd2 removal; then if morale(45) < 0 -> clr, elif cap > morale -> morale += ($57fec & 1). 93rd RIDER 3b: morale-creep + clr paths PROVEN vs real 68k (675/675 $14b62 test); wear/$5bd2 path asserted OFF (max wear 44 < $3c across pm88_f1/pm78_settle/pm73_fight/pm74_late)
 00005ccc	t_survivability        # data: 17 sparse bytes, flags&$1f in {0,1,2,4,8,$10}->{90,82,69,79,72,95}, else 0; $11->0

@@ -873,9 +873,17 @@ modes `$06`/`$08`/`$0e`/`$10` + the leaves `$164bc` (DIVU step-toward),
 the real 68000** — 1335/1335 tracked bytes over 32 differential-test states
 (`scratchpad/pm94/fsm_ref.py` + `diff_fsm.py`; `$164bc` `divu #0` edge and all
 three `$0e` spline terminators exercised; the chase-reached `$15302` and
-group-state-8 `$1518a` hand-offs asserted off). Combat / economy / regroup
-modes stay Corroborated. See `../ai.md` "the movement modes, vs the real
-68000". The sprite frame
+group-state-8 `$1518a` hand-offs asserted off). **95th (RIDER 3b routine 3): the
+combat path — mode `$32` melee `$1533c` + its leaves `$56a6` (engage, `$574a`
+path), `$5590` (kill/rout roll, KILL branches) and `$30fe` — is now Proven vs
+the real 68000** — 413/413 tracked bytes over 48 differential-test states, on a
+*natural* mode-`$32` corpus (`pm73_fight` driven 10.6 M steps into melee, six
+frame captures, `scratchpad/pm95/`). The morale drain is
+`(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1` (a hard `moveq #0` on the `>= 6` arm,
+not `min`). The `$5778 → $4bc8` group hand-off, the true ROUT `$3c08`, and the
+`$5590` tail calls `$2776`/`$1b8c` are asserted off (deferred group modes).
+Economy / regroup modes stay Corroborated. See `../ai.md` "the combat path". The
+sprite frame
 formulas + the `$115e0` bucket walk (§6) are
 **Corroborated** (disassembly + a live register/`$11f88` probe + the F#↔Python
 byte-exact cross-check). The "no per-frame sea fill" / "minimap baked once"

@@ -162,9 +162,48 @@ tracking a live entity), the `$2c` dead-target conversion, `$06` dwell→`mode $
   edge `$15302` (→ `$56a6` engage) and the group-state-8 hand-off `$1518a`
   (→ `$4bc8`) — no natural or poked state in the corpus reaches either.
 
-The **combat** (`$28`/`$2e`/`$32` → `$1533c`/`$5590`), **economy servicer**
-(`$4342`/`$163b8`), **regroup/group/shepherd** modes, and the dying-entity path
-`$1623c` remain **Corroborated**, not Proven.
+### [Proven] — the combat path (mode `$32` melee), vs the real 68000 (95th pass, RIDER 3b routine 3)
+
+`scratchpad/pm95/fsm_ref.py` extends the reconstruction with **mode `$32`**
+(`$1533c` melee) and its leaves **`$56a6`** (engage bookkeeping), **`$5590`**
+(kill/rout roll) and **`$30fe`** (`word[group + 60] − 2`). Transcribed
+line-for-line from raw-byte-verified disassembly. Same isolate-by-disabling
+differential test (`diff_fsm.py`): **413/413 tracked bytes identical over 48
+states, 6 branch families.**
+
+Corpus is a **natural** capture: `pm73_fight` driven forward 10.6 M steps until
+`$1533c` first fires, snapshotted at the next frame start (`pm73_melee.snap`),
+then five more frames (`mel_g1..g5.snap`) as the battle escalates to 33 live
+mode-`$32` records — both armies in melee. Poked variants drive each branch.
+
+- **`$1533c`** — every branch: target-loss (`5(A3) <= 0` or `30(A3) == $3c`) →
+  `$153a2` (self mode/prev `:= $2c`, epilogue `$161c4`); face-away
+  (`17(A3) := 17(A1) + $80`); `31(A3) != $32` → `jsr $56a6`; **morale drain =
+  `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** applied `sub.b D0,45(A3)`
+  (the `>= 6` arm is a **hard `moveq #0`**, not `min(44,6)` — the old ai.md text
+  was wrong); `> 0` → mutual retaliation (`48(A3) := self`, `31(A3) := $32`,
+  `bra $1622c`, no epilogue); `<= 0` → `jsr $5590` then fall into `$153a2`.
+- **`$56a6`** — the `btst #6/#4,7(A3)` gates that skip `$5778` when the target's
+  flags are clear; `31/30(A3) := $32`; `48(A3) := attacker`; the `$5730` vs
+  `$574a` selector on the *attacker's* flags; the `$574a` leaf
+  (`46(A3) := (roster→leader entry) − $51b66`, `38(A3) := 2`).
+- **`$5590`** — `45(A3) := 0`; the no-group-lead path (`D0 = 0` → KILL); the
+  group-lead walk (`A4 = obj[28(A1)]`, `tst.b 5(A4)`), `jsr $30fe`, `D0 == 2`
+  → `$560a`; the RNG-parity selector `($57fec + 24(A1)) & 2` when
+  `$30fe ∉ {0,2}` (deterministic — the master tick is fixed across a `callcap`);
+  `btst #5,7(A3)` forces KILL over ROUT; the KILL body (`neg.b 5(A3)`,
+  `32(A3) := 0`, `6(A3) := $c`, `18(A3) := $a0`); the `$5628` tail →
+  `$567e` → leader-population decrement `word[leader + 8] -= 1`.
+
+Asserted **off** (no corpus/poked state reaches; `raise` guards it — these are
+the deferred *regroup/group modes*): `$5778 → $4bc8` (group hand-off, group
+state `!= $d`); `$5590 → $560a → $3c08` (the true ROUT, unit survives); the
+`$5590` tail calls `$2776` / `$1b8c`.
+
+The **economy servicer** (`$4342`/`$163b8`), **regroup/group/shepherd** modes
+(`$3c08` / `$4bc8` / `$2776` / `$1b8c`), and the dying-entity path `$1623c`
+remain **Corroborated**, not Proven. Mode `$28` / `$2e` (`$15302`) handlers are
+disassembled but not yet differentially tested (`$2e` calls the same `$56a6`).
 
 ## The object record (50 bytes, stride `$32`, array `$51b66`, slots 1..511)
 
@@ -354,12 +393,13 @@ the settled first-mission view.
 |------|---------|-----:|-----------|
 | `$28`/`$2a` | `$15282` | – | **besiege** the target record `46(A1)`: while its group state (`$51538`) is 3, decrement its garrison `46(A0)` each tick; at 0, decrement the settlement's troop count in `$4e514` and `jsr $1d70` (capture) |
 | `$2c` | – (`$153b2`→) | – | fighting hold; mode `$36` counts down back to `$2c` |
-| `$2e` | `$15302` | – | **reached the target** `48(A1)`: snap `(D6,D7)` onto it, set both mode bytes `$32`; if engageable (`mode(target) > $2c`, `prev_mode(target) >= $3c`) `jsr $56a6` |
-| `$32` | `$1533c` | – | **melee**: face the target (`heading + $80`); if it isn't already in `$32`, `jsr $56a6`. Then **drain the target's `morale` (byte 45)** by `(min(msg_code,6) >> 1) + 1` per tick (1..4). At `morale <= 0` → `jsr $5590` (kill-or-rout). Target dead first → mode `$2c` for both |
+| `$2e` | `$15302` | – | **reached the target** `48(A1)`: snap `(D6,D7)` onto it, set both mode bytes `$32`; if engageable (`mode(target) > $2c`, `prev_mode(target) >= $3c`) `jsr $56a6` *(disassembled, not yet differentially tested)* |
+| `$32` | `$1533c` | – | *(Proven, 95th — see the [Proven] combat block above)* **melee**: `tst.b 5(A3) <= 0` or `30(A3) == $3c` (target dead/corpse) → mode/prev `:= $2c`, epilogue `$161c4`. Else face away (`17(A3) := 17(A1) + $80`); if target `31 != $32` → `jsr $56a6`. **Drain `45(A3)` by `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** via `sub.b` (the `>= 6` arm is a hard `moveq #0`, *not* `min`). `> 0` → mutual retaliation (`48(A3) := self`, `31(A3) := $32`, `bra $1622c` — no epilogue). `<= 0` → `jsr $5590`, then mode/prev `:= $2c` + `$161c4` |
 | `$34`/`$36` | `$153b2`/`$153cc` | – | fight recoil / hold; `$36` counts `dwell` back down to `$2c` |
-| — | `$56a6` | – | **engage**: if `flags.bit6` and the linked enemy `28(A3)` is within `$fff` (Manhattan-max) → `jsr $5778`; then set both mode bytes `$32`, link attacker into `48(A3)`, and pick the attacker's `garrison_or_leader` (`46`) either from `28(A1)` or the target's leader record |
-| — | `$5778` | – | **contact bookkeeping, not a resolver** — see `strategy.md` "Combat". Marks an engaged garrison `flags = $11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify) |
-| — | `$5590` | – | **kill-or-rout roll** (from mode `$32` when `morale <= 0`): `morale := 0`; `D0 := $30fe(group) = group.field60 - 2` (or `$57fec`-parity if the attacker isn't in a group). `D0==0` → **KILL** (`owner` negated, `category := $c` corpse, `dwell := $a0` 160-tick decay); `D0==2` or the parity fails → **ROUT** (`$3c08` restructures the unit's group, `prev_mode := $3c`, `category := 0`, unit survives scattered). `flags.bit5` set forces KILL |
+| — | `$56a6` | – | *(Proven on the `$574a` path, 95th)* **engage**: if `flags.bit6(target)` and the linked enemy `28(A3)` is within `$fff` (Manhattan-max) → `jsr $5778`; then set both mode bytes `$32`, link attacker into `48(A3)`, and pick `46(A3)` — from `28(A1)` / self (`$5730`, if the attacker has a group) or the attacker's leader-table entry (`$574a`, `38(A3) := 2`) |
+| — | `$5778` | – | **contact bookkeeping, not a resolver** — see `strategy.md` "Combat". Marks an engaged garrison `flags = $11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify). *Asserted off in the 95th proof — group state `!= $d`* |
+| — | `$5590` | – | *(Proven on the KILL branches, 95th)* **kill-or-rout roll** (from mode `$32` when `morale <= 0`): `45(A3) := 0`; `D0 := $30fe = group.field60 − 2` (attacker in a group with a live lead), else `D0 := 0`. `D0 == 0` → **KILL**; `D0 == 2` → `$560a`; else `($57fec + 24(A1)) & 2` parity → KILL / `$560a`. **KILL**: `neg.b 5(A3)`, `32(A3) := 0`, `category $6 := $c` corpse, `dwell := $a0` (160-tick decay), then the `$5628` tail (`$567e` → `leader.population -= 1`). **`$560a`**: `flags.bit5(target)` set → KILL anyway; else `jsr $3c08` (**ROUT** — restructure the group, `prev_mode := $3c`, unit survives; *asserted off in the 95th proof*) |
+| — | `$30fe` | – | *(Proven, 95th)* `word[$51538 + 42(A1) + 60] − 2` — the `$5590` roll selector; `2` for the pm73_fight attack group |
 | — | `$57f0` | – | **spawn a projectile** into the `$4bdf0` effect array (slot 0 is a header; 48 slots × 16 B from `$4be00`): copy position, `life := $14` (20 ticks), `type := D1` (weapon / invention tier), `shooter := A1-$51b66`, velocity toward the resolved target cell via `divu #$78`. Shooter's `dwell` set from the slot's reload byte |
 | — | `$596a` | – | **projectile update loop** (every tick): `life--`; at 0, if `type == $12` the projectile does an **area hit** on whatever entity stands in its cell (stamp `category := $2`, `flags := $a`, `speed := 0` — i.e. disable/rout it) then lingers 4 more ticks; other types just unlink (`$16778`) and free the slot |
 
@@ -499,9 +539,10 @@ stateDiagram-v2
     S48 --> S4A : sweep exhausted one way
     S48 --> S12 : gave up (D2 < 0)
     S2E --> S32 : snap to target; engageable -> $56a6
-    S32 --> S32 : target still alive, morale > 0 (drain it)
-    S32 --> S2C : target dead / not engageable
-    S32 --> S5590 : target morale <= 0 (kill-or-rout roll)
+    S32 --> S32 : target alive & not corpse; drain 45(A3); morale > 0 -> target retaliates (mutual $32)
+    S32 --> S2C : target dead (5(A3)<=0) or corpse (30(A3)==$3c)
+    S32 --> S5590 : drained target morale <= 0 (kill-or-rout roll)
+    S5590 --> S2C : after the roll, self -> mode $2c
     S2C --> S36 : (via $153b2)
     S36 --> S2C : recoil dwell 0
     S28 --> S1D70 : garrison count hits 0 -> capture
@@ -711,6 +752,69 @@ void h_besiege(pm_object *A1) {                      // handler = $15282 for $2a
     goto epilogue_161c4;
 }
 
+// ---- $1533c  mode $32 : melee ----------------------------------------- Proven, 95th
+void h_melee(pm_object *A1) {
+    pm_object *T = &obj_at_off(A1->link_target);         // A3 = $51b66 + 48(A1)
+    if (T->owner <= 0 || T->order_class == 0x3c) {       // dead / corpse
+        A1->mode = A1->order_class = 0x2c;
+        goto epilogue_161c4;                             // $153a2
+    }
+    T->heading = A1->heading + 0x80;                     // face the target away
+    if (T->mode != 0x32) jsr_56a6(A1, T);               // enrol it into melee
+
+    u8 d = (s8)A1->field44 < 6 ? A1->field44 : 0;        // NB: hard 0, not min(,6)
+    d = (u8)(d >> 1) + 1;                                // 1..64
+    if ((s8)(T->morale -= d) <= 0) {                     // sub.b ; ble
+        jsr_5590(A1, T);                                 // kill / rout roll
+        A1->mode = A1->order_class = 0x2c;
+        goto epilogue_161c4;                             // falls into $153a2
+    }
+    T->link_target = off(A1);  T->mode = 0x32;           // mutual: target retaliates
+    goto next_record;                                    // $1622c -- no epilogue
+}
+
+// ---- $56a6  engage bookkeeping --------------------------------------- Proven ($574a), 95th
+void jsr_56a6(pm_object *A1 /*attacker*/, pm_object *T /*target*/) {
+    if ((T->flags & BIT6) && T->group_lead_off) {
+        pm_object *L = &obj_at_off(T->group_lead_off);
+        if (manhattan_max(L, T) < 0xfff) jsr_5778(A1, L);
+    }
+    if (T->flags & BIT4) jsr_5778(A1, T);
+    T->mode = T->order_class = 0x32;
+    T->link_target = off(A1);
+    if ((A1->flags & BIT6) || ((A1->flags & BIT4) && A1->group_off)) {   // $5730
+        T->field46 = A1->group_lead_off ? A1->group_lead_off : off(A1);
+        T->field38 = 4;
+    } else {                                                             // $574a
+        leader *L = &leader[roster[A1->roster_off].leader_byte_off];
+        T->field46 = (u16)((u8*)L - (u8*)obj);   T->field38 = 2;
+    }
+}
+
+// ---- $5590  kill / rout roll --------------------------------- Proven (KILL paths), 95th
+void jsr_5590(pm_object *A1 /*attacker*/, pm_object *T /*loser*/) {
+    T->morale = 0;
+    int sel = 0;
+    pm_object *A4 = A1->group_off ? &obj_at_off(A1->group_lead_off) : A1;
+    if (((A1->flags & BIT4) && A1->group_off) || ((A1->flags & BIT6) && !(A1->flags & BIT4)))
+        if (A4->owner > 0) sel = call_30fe(A4);          // group[42].field60 - 2
+    bool kill;
+    if      (sel == 0) kill = true;                      // -> $55f2
+    else if (sel == 2) kill = false;                     // -> $560a
+    else               kill = (($57fec + A1->anim_phase) & 2) != 0;  // parity
+    if (!kill) {                                         // $560a
+        if (T->flags & BIT5) kill = true;               // forced KILL
+        else { jsr_3c08(T); /* ROUT: unit survives, group restructured */
+               T->order_class = 0x3c; T->cat6 = 0; goto tail; }
+    }
+    T->owner = -T->owner;  T->field32 = 0;               // KILL
+    T->cat6  = 0x0c;       T->dwell   = 0xa0;            // corpse, 160-tick decay
+tail:                                                    // $5628 -- flag-routed cleanup
+    // BIT7|BIT4 set && group -> $2776 ; BIT6 && group_lead -> $1b8c ;
+    // else (the common case) -> $567e :
+    leader[roster[T->roster_off].leader_byte_off].population -= 1;
+}
+
 // ---- $16048  mode $68 : formation follower -----------------------------
 void h_formation(pm_object *A1) {
     jsr_5c80(A1);                                    // upkeep only
@@ -889,11 +993,17 @@ every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`, `trace_cfg.py --blocks`)
 | `$5c80` upkeep | 2136 | ~8 entities/tick |
 
 **Finding.** PowerMonger's battlefield death is a **morale-grind**, not an odds
-roll: mode `$32` (`$1533c`) subtracts 1–4 from the enemy's `morale` byte every
-tick a unit stays in contact; at `morale <= 0` `$5590` rolls **kill vs rout**
-off `group.field60` (a per-group discipline/cohesion value) and the tick-counter
-parity. In mission 1 every routed unit *survived* (`field60 == 4` → the roll is
-pinned to "rout"), scattered by `$3c08`. The `$5c80`/`$5bd2` **wear** path
+roll: mode `$32` (`$1533c`) subtracts `(field44 >> 1) + 1` (`field44 >= 6` → just
+`1`) from the enemy's `morale` byte every tick a unit stays in contact; at
+`morale <= 0` `$5590` rolls **kill vs rout** off `$30fe = group.field60 − 2` (a
+per-group discipline/cohesion value) and, when that is neither 0 nor 2, the
+`($57fec + anim_phase)` parity. In mission 1 the attack group's `field60 == 4`
+→ `$30fe == 2` → the roll is pinned to `$560a`; a unit there dies only if
+`flags.bit5` is set (encircled), otherwise it *routs* — survives, scattered by
+`$3c08`. *(95th: `$1533c` + the `$5590` KILL branches + `$30fe` + `$56a6`'s
+`$574a` leaf are now Proven vs the real 68000 — 413/413 tracked bytes over 48
+differential states; the ROUT `$3c08` and the `$5778`/`$2776`/`$1b8c` group
+plumbing stay asserted-off.)* The `$5c80`/`$5bd2` **wear** path
 (`anim_wear - $3c`, survivability table `$5ccc`) is a slow second channel that a
 short fight never reaches — `anim_wear` is only bumped by the iterator's
 animation-advance (`$14b9a`, ~once per animation cycle) and is not reset by any
@@ -909,8 +1019,9 @@ disciplined attacker group (`field60 != 4`) or `flags.bit5` (encircled).
   format, and the `$580a6` per-side assessment / diplomacy subsystem
   (`$2200`–`$3500`).
 - **`$5778` / combat — mechanism now closed** (73rd pass, above + `strategy.md`
-  "Combat"). Remaining static-only: the `msg_code`→damage mapping range (why
-  `min(.,6)`), the `group.field60` discipline value's own source, and the
+  "Combat"). Remaining static-only: what writes `field44` (the melee-damage
+  input — `>= 6` collapses the drain to `1`/tick), the `group.field60` discipline
+  value's own source, and the
   invention level → projectile `type` byte (only `type $12` was seen; it is the
   one type that does an area hit on expiry).
 - `$51538` group-order record: `strategy.md` has the stride (`$13c`), the header

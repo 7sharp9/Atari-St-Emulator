@@ -692,6 +692,44 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       servicer (`$4342`/`$163b8`), the regroup/group/shepherd modes, `$1623c`,
       `$5bd2`; RIDER 3c/3d/3e; Task 1's territory-flip capture.
 
+31. The 95th pass (RIDER 3b routine 3, doc + tooling only — no emulator change,
+    regression net skipped) **proves the combat path (mode `$32` melee) of the
+    entity FSM tick `$14b62` against the real 68000.** Same isolate-by-disabling
+    differential test (`scratchpad/pm95/fsm_ref.py` + `diff_fsm.py`), extended
+    with `$1533c` (melee) and its leaves `$56a6` (engage), `$5590` (kill/rout
+    roll) and `$30fe` — all transcribed line-for-line from raw-byte-verified
+    disassembly.
+    - **Corpus is a natural capture:** `pm73_fight` driven forward 10.6 M steps
+      until `$1533c` first fires, snapshotted at the next frame start
+      (`pm73_melee.snap`), then five more frames (`mel_g1..g5.snap`) as the
+      battle escalates to 33 live mode-`$32` records — both armies in melee.
+    - **Covered, PROVEN (413/413 tracked bytes over 48 states, 6 branch
+      families):** `$1533c` every branch — target-loss (`5(A3) <= 0` /
+      `30(A3) == $3c`) → `_melee_lost` (mode/prev `:= $2c`, epilogue `$161c4`);
+      face-away `17(A3) := 17(A1) + $80`; `31(A3) != $32` → `$56a6`; the
+      **morale drain `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** (`>= 6` is a
+      hard `moveq #0`, *not* `min(44,6)` as the old docs said); mutual
+      retaliation (`48(A3) := self`, `31(A3) := $32`, no epilogue);
+      `morale <= 0` → `$5590` → `_melee_lost`. `$56a6`'s `$574a` leaf (skip
+      `$5778`, set both mode bytes, `46(A3) := leader-entry offset`,
+      `38(A3) := 2`). `$5590`'s no-lead KILL, the group-lead walk +
+      `$30fe` + the `D0 == 2 → $560a` selector, the RNG-parity branch
+      `($57fec + 24(A1)) & 2`, the `btst #5` KILL-force, the KILL body
+      (`neg.b 5(A3)`, corpse `$c`, `dwell $a0`), and the tail
+      `leader.population -= 1`.
+    - Pre-registered falsifier / bar (100 % over ≥ 15 states, ≥ 1 per
+      sub-branch): **PASS.** Negative control (drain `+1 → +2`) flips 66
+      tracked bytes. Determinism re-checked (`detcheck 500000` clean; two
+      consecutive `callcap` give byte-identical deltas).
+    - **Asserted OFF** (no corpus/poked state reaches; `raise` guards it —
+      these are the deferred regroup/group modes): `$5778 → $4bc8` (group
+      hand-off), `$5590 → $560a → $3c08` (the true ROUT), the `$5590` tail
+      calls `$2776` / `$1b8c`.
+    - **Still deferred:** the economy servicer (`$4342`/`$163b8`), the
+      regroup/group/shepherd modes (`$3c08`/`$4bc8`/`$2776`/`$1b8c`), `$1623c`,
+      `$5bd2`, mode `$28`/`$2e` differential tests; RIDER 3c/3d/3e; Task 1's
+      territory-flip capture.
+
 ## Files
 
 | file | what |
