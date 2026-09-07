@@ -197,8 +197,10 @@ mode-`$32` records — both armies in melee. Poked variants drive each branch.
 
 Asserted **off** (no corpus/poked state reaches; `raise` guards it — these are
 the deferred *regroup/group modes*): `$5778 → $4bc8` (group hand-off, group
-state `!= $d`); `$5590 → $560a → $3c08` (the true ROUT, unit survives); the
-`$5590` tail calls `$2776` / `$1b8c`.
+state `!= $d`); `$5590 → $560a → $3c08` (the true ROUT, unit survives — the
+`$3c08` dispatcher itself is now Proven, 98th, but the ROUT wrapper that
+overrides `prev_mode := $3c` and the `$5628` group cleanup around it is not);
+the `$5590` tail calls `$2776` / `$1b8c`.
 
 ### [Proven] — the settlement heartbeat (mode `$7c`), vs the real 68000 (96th synthesised / 97th natural corpus, RIDER 3b routine 4)
 
@@ -253,11 +255,49 @@ it is **not differentially tested**: it is a no-op in every capture including th
 97th's `pm97_map0` (all `breed`-bit-7 animals have `shepherd_obj == 0`; all
 `$4c5f4` markers have `progress == 0` — the claim head that would set progress
 needs a bit-7 animal *with* a shepherd, which nothing natural reaches), so it
-needs its own synthesised-corpus pass (`pm97_map0` is the anchor). **Regroup/group**
-modes (`$3c08` / `$4bc8` / `$2776` / `$1b8c`), `$5cde`, and the dying-entity path
-`$1623c` remain **Corroborated**, not Proven. Mode `$28` / `$2e` (`$15302`)
-handlers are disassembled but not yet differentially tested (`$2e` calls the
-same `$56a6`).
+needs its own synthesised-corpus pass (`pm97_map0` is the anchor). `$5cde` and
+the dying-entity path `$1623c` remain **Corroborated**, not Proven. Mode `$28` /
+`$2e` (`$15302`) handlers are disassembled but not yet differentially tested
+(`$2e` calls the same `$56a6`).
+
+### [Proven] — the regroup / return-home dispatcher `$3c08`, vs the real 68000 (98th pass, RIDER 3b routine 5)
+
+`$3c08` is the `word[$57fd0] != 0` branch of the mode-`$7c` dispatch `$157ba`,
+and a leaf `jsr`'d from 17 sites across the entity FSM and the group-order
+system (the mode-`$16`/`$4e`/`$5e` handlers, the `$5590` ROUT path `$560a`, …).
+Entry contract: **just `A1`** (the object record) — it `lea`s its own
+`$51538`/`$4f916`/`$4e514` bases, like every other `$14b62` handler.
+
+`tools/pm_fsm_ref.py` `call_3c08` + `call_16892` + `h_mode7c_regroup`.
+Differential test `scratchpad/pm98/diff_pm98.py`: **71/71 tracked bytes identical
+over 22 states, 11 branch families** (`callcap 3c08` direct with `A1` preset for
+16, `callcap 14b62` end-to-end through the `$157ba` dispatch for 5). Pre-registered
+falsifier / bar (100% over ≥ 15 states, ≥ 8 families): PASS. `hostile.py`'s 5
+negative controls (prev-mode table entry, `w22` low byte, the byte-6 guard, the
+`$4c` bit-4 prev-mode, the `$16892` gate) all bite; two `callcap 3c08` byte-identical.
+
+- **`$157ba` dispatch:** `word[$57fd0] == 0` → `$157e6` (the heartbeat, above);
+  else `jsr $12c9a` (RNG — reseeds `$580a0`, outside every tracked region),
+  `jsr $16892`, `bne $1622c` (skip), else `jsr $3c08`; `bra $1622c` (no epilogue).
+- **`$16892` — goods-driven regroup (tried first):** if any of
+  `owner_leader.goods[3..0]` (`$4e514 + 24 + i`) is non-zero → retarget the
+  record to the leader's cell (`4($4e514+idx)`: `20 := cell & $3f`, `21 := $80`,
+  `22 := ((cell & $1fc0) << 2) + $80`), `prev_mode(30) := $90`, `mode(31) := $10`,
+  return 1 (caller skips `$3c08`). All goods zero → return 0.
+- **`$3c08` — flag-driven regroup:** pick `prev_mode` (byte 30) from the record's
+  flag bits, in order: bit 7 → `$7e`, bit 0 → `$16`, bit 1 → `$4e`, bit 2 → `$5e`,
+  bit 3 → `$80`, bit 4 → (group teardown, then `$4c`), none set → `$7e`. Then the
+  shared tail `$3ca2`: retarget to the **settlement's** cell (`12($4f916+34)`:
+  `20 := cell & $3f`, `21 := $80`, `22 := ((cell & $1fc0) << 2) | $80`),
+  `mode(31) := $10`, and `iff owner > 0` clear category byte `6 := 0`. The units
+  then walk home under the already-Proven mode-`$10` handler.
+- **Asserted off** (`raise` guards it; no corpus state reaches it): the flag-bit-4
+  **group-teardown** sub-path — `$3c46`: `42(A1) != 0` → `jsr $37c2`
+  (disassembled: reassigns the group lead's owner/settlement, `leader.troops_field
+  −= 1`, then `jsr $1d70` or `jsr $1b8c`) ; `group.state := 7` ; `jsr $17a46`
+  (a minimap redraw into the `$e0d4` buffer). `$37c2` / `$1d70` / `$1b8c` /
+  `$17a46` are deferred to their own pass. `$4bc8` / `$2776` / `$1b8c` (the
+  `$5778` and `$5590`-tail group cleanup) also remain **Corroborated**.
 
 ## The object record (50 bytes, stride `$32`, array `$51b66`, slots 1..511)
 
@@ -508,7 +548,7 @@ object record; `36(A3)` a running total).
 | `$86` | `$15e30` | 10 | (chain to `$88`) |
 | `$14` | `$1501a` | – | **board / transfer**: copy `5(A3)` (strength) from the `$4f916+34` record into `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
 | `$16` | `$15042` | 6 | **disband**: `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker). **Else** (`$57fd0 != 0`): `owner_leader.troops_reserve += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). `$57fd0` rotates {0,2,4,6} (§3a), so mission 1 takes both branches over time. economy.md §1's pseudocode had this branch inverted |
-| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $3c08` instead (deferred) |
+| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $16892` (goods-driven regroup) then `jsr $3c08` (flag-driven regroup) — ***Proven, 98th*** (71/71 over 22 states; the flag-bit-4 group-teardown sub-path deferred) |
 | `$8a8a` write | `$16176` | – | **removal**: adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches), free the group slot (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
 | — | `$16848` | – | *(Proven, 96th)* **side ↔ owner reconcile**: `A3 = $4f916 + 34(A1)`; `settlement.owner == marker.side` → skip; else `btst #7` clear + `btst #4` clear → `5(A1) := owner` (adopt), `btst #4` set → `jsr $5c2c`. Then `24(A1) != 0 && == 0(A1)` → `$57ff4 := 24(A1)`. Tail `jsr $5c80`. Also called from the mode-`$16` prologue |
 | — | `$5c80` | 2600+ | **per-entity upkeep**: flags-indexed table + byte14 age + byte45 morale; `byte45 += ($57fec & 1)` (a food/desertion drain with a 1-bit random term); `jsr $5bd2` past a threshold |
@@ -1058,8 +1098,9 @@ per-group discipline/cohesion value) and, when that is neither 0 nor 2, the
 `flags.bit5` is set (encircled), otherwise it *routs* — survives, scattered by
 `$3c08`. *(95th: `$1533c` + the `$5590` KILL branches + `$30fe` + `$56a6`'s
 `$574a` leaf are now Proven vs the real 68000 — 413/413 tracked bytes over 48
-differential states; the ROUT `$3c08` and the `$5778`/`$2776`/`$1b8c` group
-plumbing stay asserted-off.)* The `$5c80`/`$5bd2` **wear** path
+differential states; 98th: the `$3c08` regroup dispatcher that scatters the
+routed unit is now Proven too — 71/71 over 22 states; the `$5778`/`$2776`/`$1b8c`
+group plumbing and `$3c08`'s own bit-4 group-teardown stay asserted-off.)* The `$5c80`/`$5bd2` **wear** path
 (`anim_wear - $3c`, survivability table `$5ccc`) is a slow second channel that a
 short fight never reaches — `anim_wear` is only bumped by the iterator's
 animation-advance (`$14b9a`, ~once per animation cycle) and is not reset by any

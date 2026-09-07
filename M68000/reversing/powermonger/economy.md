@@ -86,10 +86,10 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | `$1507c` | `$15042`, entity **mode `$16`** ("disband — go home") | `troops_reserve += 2` (`+= 2` again if `order_class == 8`) |
 | `$15e18` | `$15ddc`, entity **mode `$60`** ("register with settlement") | `troops_reserve += 4` |
 | `$150f2` | `$150c0`, entity **mode `$1a`** ("group absorbs reinforcements") | `slice = troops_reserve >> (group.discipline-2)`; `troops_reserve -= slice`; the slice goes to the group lead's marching pool (`14(lead)`) and the group total (`36(group)`) |
-| `$3bc0` | `$3c08`/`$35f4` group teardown | `troops_reserve += group.force >> discipline` — a disbanding army returns a slice of its men (75th) |
+| `$3bc0` | `$35f4` group teardown | `troops_reserve += group.force >> discipline` — a disbanding army returns a slice of its men (75th). *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven 98th** — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
 | `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.troops_reserve -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (97th).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
 | `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.troops_reserve -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
-| `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group |
+| `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-6-clear arm). *(98th: `$37c2` disassembled — reached only via `$3c08`'s flag-bit-4 teardown sub-path; asserted off in the `$3c08` proof, its `$1d70`/`$1b8c` leaves deferred, so still Corroborated.)* |
 | `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
 | `$2644` | `$25d6` (capture consequence) | old owner's `troops_field -= 1` (the fallen garrison) |
 | `$42be` | `$3e06` tail, courier/arrow array | a `$51b66` object died and credited a leader: `troops_field += 1` |
@@ -396,8 +396,8 @@ mode `$7c`** (`t_mode_handlers[$7c]` → `$157ba`, body `$157e6`) pulses once ev
 logic below.
 
 **Mode `$7c` requires `word[$57fd0] == 0`.** `$157ba` branches on it (`== 0` →
-`$157e6`, else `jsr $3c08` regroup), and so does every instruction that *enters*
-mode `$7c` — `$1505e` (mode `$16` disband), `$15a46` and `$15b7a` (porter /
+`$157e6`, else `jsr $16892` then `jsr $3c08` regroup — **Proven, 98th**), and so
+does every instruction that *enters* mode `$7c` — `$1505e` (mode `$16` disband), `$15a46` and `$15b7a` (porter /
 regroup). `$57fd0` is set at world-build to `g_tileset_sel = (byte[$58146] & 3)
 * 2` (= 4 for mission 1's seed) — **but it is not static**: the sound/ambient
 routine `$1abaa` (`$130b0` in the sim tick) **rotates it**, `$1ac5e..$1ac6a` =

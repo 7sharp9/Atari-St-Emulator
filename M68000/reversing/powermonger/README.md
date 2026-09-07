@@ -834,6 +834,41 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       byte-identical trace hash + mem delta to the 97th's cached run. `dotnet
       build` clean; selftest unchanged (no compiled code touched).
 
+35. The 98th pass, commit 2 (doc + tooling only — no emulator change,
+    regression net skipped) **proves the regroup / return-home dispatcher
+    `$3c08` vs the real 68000 — RIDER 3b routine 5.**
+    - `$3c08` is the `word[$57fd0] != 0` branch of the mode-`$7c` dispatch
+      `$157ba`, and a leaf `jsr`'d from 17 sites across the entity FSM and the
+      group-order system (mode `$16`/`$4e`/`$5e`, the `$5590` ROUT path, …).
+      Entry contract: **just `A1`**, like every other `$14b62` handler.
+    - `$157ba` tries `$16892` first — a **goods-driven regroup**: if any of
+      `owner_leader.goods[0..3]` is non-zero it retargets the unit to the
+      leader's cell and returns (skipping `$3c08`). All goods zero → `$3c08`.
+    - `$3c08` — **flag-driven regroup**: pick `prev_mode` (byte 30) from the
+      record's flag bits (bit 7 → `$7e`, 0 → `$16`, 1 → `$4e`, 2 → `$5e`,
+      3 → `$80`, 4 → group-teardown then `$4c`, none → `$7e`), retarget bytes
+      20/22 from the **settlement's** cell (`12($4f916+34)`), set `mode := $10`,
+      and clear category byte 6 (iff `owner > 0`). The units then walk home
+      under the already-Proven mode-`$10` handler.
+    - `tools/pm_fsm_ref.py` gains `call_3c08` / `call_16892` / `h_mode7c_regroup`
+      and the mode-`$7c` dispatch now checks `$57fd0`. `scratchpad/pm98/diff_pm98.py`
+      (importing the graduated modules): **71/71 tracked bytes identical over 22
+      states, 11 branch families** — 16 direct `callcap 3c08` (with `A1` preset)
+      + 5 end-to-end `callcap 14b62` through the `$157ba` dispatch. Pre-registered
+      falsifier / bar (100% over ≥ 15 states, ≥ 8 families): PASS. `hostile.py`'s
+      5 negative controls all bite; two `callcap 3c08` byte-identical;
+      `pm97_map1` `detcheck 1M` clean.
+    - **Asserted off / deferred:** `$3c08`'s flag-bit-4 **group-teardown**
+      sub-path (`$3c46`: `42(A1) != 0` → `jsr $37c2` [→ `$1d70` / `$1b8c`] ;
+      `group.state := 7` ; `jsr $17a46` [minimap redraw]). `$37c2` is
+      disassembled (it reassigns the group lead's owner/settlement and does
+      `leader.troops_field -= 1` — the `$382a` economy row); `$1d70` / `$1b8c` /
+      `$17a46` are their own later pass.
+    - Also corrected a stale `powermonger.sym` collision: two entries claimed
+      `$3c08` ("`pm_besiege_setup` / group state 3" and "`pm_group_restructure`");
+      the disassembly shows the second is right (`group.state := 7`, not 3), so
+      the first is removed.
+
 ## Files
 
 | file | what |

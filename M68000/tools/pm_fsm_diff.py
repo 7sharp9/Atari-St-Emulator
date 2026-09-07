@@ -55,14 +55,22 @@ DEFAULT_DISK = "scratchpad/pm69.st"
 
 
 class State:
-    __slots__ = ("name", "pokes", "tag", "snap", "ram")
+    __slots__ = ("name", "pokes", "tag", "snap", "ram", "target", "presets", "recon")
 
-    def __init__(self, name, pokes, tag="", snap=None, ram=None):
+    def __init__(self, name, pokes, tag="", snap=None, ram=None,
+                 target="14b62", presets=None, recon=None):
         self.name = name
         self.pokes = list(pokes)
         self.tag = tag or name
         self.snap = snap
         self.ram = ram
+        self.target = target               # callcap target routine (hex, no $)
+        self.presets = presets or {}       # {"A1": addr, ...} register presets
+        # recon(Mem) -> None : the reconstruction to compare against.  Defaults
+        # to pm_fsm_ref.reconstruct (the full $14b62 iterator).  A state that
+        # callcaps a single leaf routine directly passes a lambda that calls
+        # just that leaf, e.g. recon=lambda m: pm_fsm_ref.call_3c08(m, ADDR).
+        self.recon = recon
 
 
 class Harness:
@@ -181,7 +189,9 @@ class Harness:
 
             if not (reuse_json and outp.exists()):
                 cmds = [f"w {a:x} {w:08x}" for a, w in st.pokes]
-                cmds.append(f"callcap 14b62 {steps} {self.out_dir}/o_{st.name}.json")
+                pre = "".join(f" {k}={v:x}" for k, v in st.presets.items())
+                cmds.append(f"callcap {st.target} {steps} "
+                            f"{self.out_dir}/o_{st.name}.json{pre}")
                 log = self.run_repl(cmds, st.snap)
                 if not outp.exists():
                     print(f"{st.name:24} NO OUTPUT")
@@ -202,7 +212,7 @@ class Harness:
 
             m = pm_fsm_ref.Mem(pk)
             try:
-                pm_fsm_ref.reconstruct(m)
+                (st.recon or pm_fsm_ref.reconstruct)(m)
             except AssertionError as e:
                 print(f"{st.name:24} RECON ASSERT: {e}")
                 fails.append((st.name, "assert", str(e), None))

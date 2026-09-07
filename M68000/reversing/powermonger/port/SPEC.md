@@ -895,7 +895,15 @@ so mission 1 runs the heartbeat in brief intermittent bursts — not never. The
 markers on 10 real settlements. `$5cde`/`$550e`/`$5c2c` asserted off. The
 loyalty accumulator moves only on the first pulse after a `#$ff9d`-dwell park,
 not every pulse. `$4342` (herd servicer) disassembled but deferred — no-op even
-with mode `$7c` live. Remaining regroup modes stay Corroborated. See
+with mode `$7c` live. **RIDER 3b routine 5 (98th): the `$157ba` `word[$57fd0] != 0`
+branch — `$16892` (goods-driven regroup) + `$3c08` (the flag-driven regroup /
+return-home dispatcher, reached from 17 sites) — is Proven vs the real 68000**,
+71/71 tracked bytes over 22 states (`scratchpad/pm98/diff_pm98.py`). `$3c08`
+picks a `prev_mode` from the record's flag bits, retargets `20`/`22` from the
+settlement's cell, sets `mode := $10`; the units then walk home under the Proven
+mode-`$10` handler. `$3c08`'s flag-bit-4 group-teardown sub-path (`$37c2` →
+`$1d70`/`$1b8c`, `$17a46` minimap redraw) is asserted off and deferred.
+Remaining regroup modes stay Corroborated. See
 `../ai.md` "the settlement heartbeat" and `../economy.md` §3a. The
 sprite frame
 formulas + the `$115e0` bucket walk (§6) are

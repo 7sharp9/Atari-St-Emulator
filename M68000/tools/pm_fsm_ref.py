@@ -819,6 +819,96 @@ def h_mode7c(m, A1, D6, D7):
     epilogue_161c4(m, A1, D6, D7)                # $158d6 bra $161c4
 
 
+# ================================================================ 98th pass:
+# the REGROUP / RETURN-HOME dispatcher $3c08 (the $157ba `$57fd0 != 0` branch
+# of the mode-$7c dispatch, and a leaf called from 17 sites across the entity
+# FSM and the group-order system).  Entry: A1 = the object record.
+#
+#   $16892  goods-driven regroup (tried first from $157ba): if any of
+#           owner_leader.goods[0..3] is non-zero, retarget to the leader's cell
+#           (leader+4), mode := $10, prev_mode := $90, and RETURN True (the
+#           caller then skips $3c08).
+#   $3c08   flag-driven regroup: pick prev_mode (byte 30) from the record's
+#           flag bits (7 -> $7e, 0 -> $16, 1 -> $4e, 2 -> $5e, 3 -> $80,
+#           4 -> group teardown then $4c, none -> $7e), retarget to the
+#           settlement's cell (settlement+12), mode := $10, clear category
+#           byte 6 (iff owner > 0).
+#
+# The flag-bit-4 GROUP-TEARDOWN sub-path ($3c46: 42(A1) != 0 -> jsr $37c2 ;
+# group.state := 7 ; jsr $17a46) is ASSERTED OFF - $37c2 pulls in $1d70 / $1b8c
+# and $17a46 is a minimap redraw, all deferred to their own pass.  reconstruct()
+# raises if a state reaches it.
+#
+# Transcribed line-for-line + raw-byte-verified from scratchpad/pm98/disasm/.
+# ================================================================
+
+
+def call_16892(m, A1):
+    """$16892: goods-driven regroup.  Returns True (and has written the record)
+    if owner_leader.goods[3..0] has a non-zero entry, else False (record
+    untouched)."""
+    A0s = (SETTL + s16(m.wu(A1 + 34))) & 0xfffff     # lea $4f916 ; adda.w 34(A1),A0
+    D0 = m.wu(A0s + 14)                              # move.w 14(A0),D0
+    A0 = (LEADER + s16(D0)) & 0xfffff                # lea $4e514 ; adda.w D0,A0
+    hit = False
+    for D1 in (3, 2, 1, 0):                          # move.w #$3,D1 ; dbf loop
+        if m.bu(A0 + 24 + D1) != 0:                  # tst.b 24(A0,D1.w) ; bne $168b8
+            hit = True
+            break
+    if not hit:
+        return False                                # $168ea moveq #0,D0 ; rts
+    m.wb(A1 + 30, 0x90)                             # move.b D2,30(A1)   (D2 = $90 from $157ce)
+    m.wb(A1 + 31, 0x10)                             # move.b #$10,31(A1)
+    cell = m.wu(A0 + 4)                             # move.w 4(A0),D0
+    m.wb(A1 + 20, cell & 0x3f)                      # andi.w #$3f,D0 ; move.b D0,20(A1)
+    m.wb(A1 + 21, 0x80)                             # move.b #$80,21(A1)
+    d0 = ((cell & 0x1fc0) << 2) & 0xffff            # andi.w #$1fc0,D0 ; lsl.w #2,D0
+    d0 = (d0 + 0x80) & 0xffff                       # addi.w #$80,D0
+    m.ww(A1 + 22, d0)                               # move.w D0,22(A1)
+    return True                                     # $168e8 moveq #1,D0 ; rts
+
+
+_FLAGBIT_MODE30 = [(7, 0x7e), (0, 0x16), (1, 0x4e), (2, 0x5e), (3, 0x80)]
+
+
+def call_3c08(m, A1):
+    """$3c08: flag-driven regroup / return-home dispatcher.  Entry: A1 = record."""
+    # movem.l save D0/D2/A0/A3 ; tst.b 5(A1) ; bgt/nop -> both reach $3c14 (no-op)
+    f = m.bu(A1 + 7)                                 # move.b 7(A1),D0
+    for bit, m30 in _FLAGBIT_MODE30:                 # btst #7/#0/#1/#2/#3 ; bne
+        if f & (1 << bit):
+            m.wb(A1 + 30, m30)
+            break
+    else:
+        if f & 0x10:                                # btst #4 ; bne $3c46
+            if m.wu(A1 + 42) != 0:                   # move.w 42(A1),D2 ; beq $3c6a
+                raise AssertionError(
+                    "$3c08 flag-bit-4 group teardown ($37c2 -> $1d70/$1b8c ; "
+                    "$17a46) - OUT OF SCOPE (98th) (rec %d)" % ((A1 - OBJ) // REC))
+            m.wb(A1 + 30, 0x4c)                     # $3c6a move.b #$4c,30(A1)
+        else:
+            m.wb(A1 + 30, 0x7e)                     # $3c3c move.b #$7e,30(A1)
+    # $3ca2 : shared tail
+    A0 = (SETTL + s16(m.wu(A1 + 34))) & 0xfffff      # lea $4f916 ; adda.w 34(A1),A0
+    cell = m.wu(A0 + 12)                             # move.w 12(A0),D0
+    m.wb(A1 + 20, cell & 0x3f)                       # andi.w #$3f,D0 ; move.b D0,20(A1)
+    m.wb(A1 + 21, 0x80)                              # move.b #$80,21(A1)
+    d0 = ((cell & 0x1fc0) << 2) & 0xffff             # andi.w #$1fc0,D0 ; lsl.w #2,D0
+    d0 = (d0 & 0xff00) | 0x80                        # move.b #$80,D0  (low byte := $80)
+    m.ww(A1 + 22, d0)                                # move.w D0,22(A1)
+    m.wb(A1 + 31, 0x10)                              # move.b #$10,31(A1)
+    if m.bs(A1 + 5) > 0:                             # tst.b 5(A1) ; ble $3ce2
+        m.wb(A1 + 6, 0)                              # move.b #$0,6(A1)
+
+
+def h_mode7c_regroup(m, A1):
+    """$157ba, the `word[$57fd0] != 0` branch: jsr $12c9a (RNG - reseeds
+    $580a0, outside every tracked region, so not modelled) ; jsr $16892 ;
+    bne $1622c (skip) ; else jsr $3c08.  No epilogue (bra $1622c)."""
+    if not call_16892(m, A1):                        # jsr $16892 ; bne $1622c
+        call_3c08(m, A1)                             # jsr $3c08
+
+
 # ---------------------------------------------------------------- prologue + dispatch
 def reconstruct(m):
     if _TRIG is None:
@@ -876,8 +966,11 @@ def reconstruct(m):
         elif mode == 0x32:                 # ---- $1533c melee ----
             h_mode32(m, A1, D6, D7)
 
-        elif mode == 0x7c:                 # ---- $157e6 settlement heartbeat ----
-            h_mode7c(m, A1, D6, D7)
+        elif mode == 0x7c:                 # ---- $157ba dispatch ----
+            if m.wu(0x57fd0) == 0:         # cmpi.w #$0,$57fd0 ; beq $157e6
+                h_mode7c(m, A1, D6, D7)    # settlement heartbeat (96th/97th)
+            else:
+                h_mode7c_regroup(m, A1)    # $3c08 regroup branch (98th)
 
         else:
             raise AssertionError("rec %d live in unsupported mode $%02x"
