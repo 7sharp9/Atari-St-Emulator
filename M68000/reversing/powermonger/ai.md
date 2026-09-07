@@ -200,24 +200,31 @@ the deferred *regroup/group modes*): `$5778 → $4bc8` (group hand-off, group
 state `!= $d`); `$5590 → $560a → $3c08` (the true ROUT, unit survives); the
 `$5590` tail calls `$2776` / `$1b8c`.
 
-### [Proven] — the settlement heartbeat (mode `$7c`), vs the real 68000 (96th pass, RIDER 3b routine 4)
+### [Proven] — the settlement heartbeat (mode `$7c`), vs the real 68000 (96th synthesised / 97th natural corpus, RIDER 3b routine 4)
 
 `scratchpad/pm96/fsm_ref.py` extends the reconstruction with **mode `$7c`**
 (`$157e6`, the per-settlement heartbeat) and its leaves **`$16848`** (side ↔
 settlement-owner reconcile) and **`$163b8`** (the manpower drain — economy.md
-§3a). Same isolate-by-disabling differential test (`diff_pm96.py`): **85/85
-tracked bytes identical over 25 states, 12 branch families** (obj / `$4e514`
-leader / `$4f916` settlement / `$47970` bucket regions all compared).
+§3a). Isolate-by-disabling differential test:
+- **97th, natural corpus (`scratchpad/pm97/diff_pm97.py`): 99/99 tracked bytes
+  identical over 27 states, all 12 branch families.**
+- 96th, synthesised corpus (`diff_pm96.py`): 85/85 over 25 states.
+(obj / `$4e514` leader / `$4f916` settlement / `$47970` bucket regions compared.)
 
-Mode `$7c` **cannot occur in mission 1**: `$157ba` routes to `$157e6` only when
-`word[$57fd0] == 0`, and `$57fd0` is `g_tileset_sel = (seed & 3) * 2 = 4` there
-(the same gate guards every instruction that writes mode `$7c` — `$1505e` in
-mode `$16`, `$15a46` / `$15b7a` in the porter handlers). None of the four
-captures holds a single `$7c` record, pm74_late at 400M steps included. So the
-corpus is **synthesised**: on `pm78_settle` poke `word[$57fd0] := 0` and
-repurpose inert `$68` records into settlement markers pointed at the mission's
-real `$4f916` / `$4e514` data (incl. the two `nation_kind == $a`
-under-construction settlements), then isolate by disabling every other record.
+Mode `$7c` requires `word[$57fd0] == 0`. `$57fd0` starts at
+`g_tileset_sel = (byte[$58146] & 3) * 2` (= 4 for mission 1) — but it is **not
+static**: `$1abaa` (`$130b0` in the tick) rotates it `($57fd0 + 2) & 6`, cycling
+{0,2,4,6}, once per sound-LCG wrap (~1/110M steps observed). So mode `$7c` — and
+the same-gated `$1505e` (mode `$16`), `$15a46` / `$15b7a` (porter/regroup) — run
+in mission 1 during the brief `$57fd0 == 0` phases, **transiently, not never**.
+No prior capture froze a `$7c` record because the windows are short.
+The 97th's **`pm97_map0`** is a real mission-1 world with `$57fd0` pinned to 0 at
+world-build (the value the game visits anyway — just pinned so the phase
+persists): 80M steps later, 19 natural `$7c` markers on 10 real `$4f916`
+settlements (2 under construction), entered by the game's own `$1505e` / `$15a46`
+/ `$15b7a`, leaders at `loyalty_pressure` 316 / 318. The 96th (synthesised) poked
+`$57fd0 := 0` on pm78_settle and repurposed inert `$68` records into fake `$7c`
+markers.
 
 - **`$157e6`** — `dwell` decrement (`> 0` → next record, no epilogue);
   `jsr $16848` + `jsr $5c80` (twice); `D5 := post-decrement dwell`; reload
@@ -232,19 +239,21 @@ under-construction settlements), then isolate by disabling every other record.
   On an ordinary steady-state pulse `D5 == 0` and neither `±` branch runs. The
   75th pass's "one step per settlement pulse" was wrong.
 - **`$163b8`** — `settlement.leader.troops_reserve −= 1`, floored at 0. This is
-  the entire per-settlement upkeep drain, and it is dead in mission 1.
+  the entire per-settlement upkeep drain; in mission 1 it fires only during the
+  intermittent `$57fd0 == 0` phases (above).
 
 Asserted **off** (`raise` guards it): **`$5cde`** (the settlement herd-op
 assessment — a whole routine; every `field·4 < reserve` state is arranged with
 `(14(A1) & 3) == 3` so it is skipped), **`$550e`** (militarism revolt, loyalty
 kept `< 600`), **`$5c2c`** (owner reconcile inside `$16848`).
 
-The **herd servicer `$4342`** is now disassembled (`scratchpad/pm96/disasm/`),
-its leaves `$164bc`/`$163ea`/`$16778` already Proven and `$16808` (a `$47970`
-bucket link-at-head, the inverse of `$16778`) transcribed — but it is **not
-differentially tested**: like mode `$7c` it is a no-op in every natural capture
-(all `breed`-bit-7 animals have `shepherd_obj == 0`; all `$4c5f4` markers have
-`progress == 0`), so it needs its own synthesised-corpus pass. **Regroup/group**
+The **herd servicer `$4342`** is disassembled (`scratchpad/pm96/disasm/`), its
+leaves `$164bc`/`$163ea`/`$16778` already Proven and `$16808` transcribed — but
+it is **not differentially tested**: it is a no-op in every capture including the
+97th's `pm97_map0` (all `breed`-bit-7 animals have `shepherd_obj == 0`; all
+`$4c5f4` markers have `progress == 0` — the claim head that would set progress
+needs a bit-7 animal *with* a shepherd, which nothing natural reaches), so it
+needs its own synthesised-corpus pass (`pm97_map0` is the anchor). **Regroup/group**
 modes (`$3c08` / `$4bc8` / `$2776` / `$1b8c`), `$5cde`, and the dying-entity path
 `$1623c` remain **Corroborated**, not Proven. Mode `$28` / `$2e` (`$15302`)
 handlers are disassembled but not yet differentially tested (`$2e` calls the
@@ -498,8 +507,8 @@ object record; `36(A3)` a running total).
 | `$84` | `$15f96` | 30 | dwell → mode `$86` |
 | `$86` | `$15e30` | 10 | (chain to `$88`) |
 | `$14` | `$1501a` | – | **board / transfer**: copy `5(A3)` (strength) from the `$4f916+34` record into `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
-| `$16` | `$15042` | 6 | **disband**: `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker). **Else** (`$57fd0 != 0`, mission 1): `owner_leader.troops_reserve += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). economy.md §1's pseudocode has this branch inverted |
-| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven, 96th)* — **only when `$57fd0 == 0`, so never in mission 1**. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $3c08` instead (deferred) |
+| `$16` | `$15042` | 6 | **disband**: `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker). **Else** (`$57fd0 != 0`): `owner_leader.troops_reserve += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). `$57fd0` rotates {0,2,4,6} (§3a), so mission 1 takes both branches over time. economy.md §1's pseudocode had this branch inverted |
+| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $3c08` instead (deferred) |
 | `$8a8a` write | `$16176` | – | **removal**: adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches), free the group slot (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
 | — | `$16848` | – | *(Proven, 96th)* **side ↔ owner reconcile**: `A3 = $4f916 + 34(A1)`; `settlement.owner == marker.side` → skip; else `btst #7` clear + `btst #4` clear → `5(A1) := owner` (adopt), `btst #4` set → `jsr $5c2c`. Then `24(A1) != 0 && == 0(A1)` → `$57ff4 := 24(A1)`. Tail `jsr $5c80`. Also called from the mode-`$16` prologue |
 | — | `$5c80` | 2600+ | **per-entity upkeep**: flags-indexed table + byte14 age + byte45 morale; `byte45 += ($57fec & 1)` (a food/desertion drain with a 1-bit random term); `jsr $5bd2` past a threshold |

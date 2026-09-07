@@ -87,7 +87,7 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | `$15e18` | `$15ddc`, entity **mode `$60`** ("register with settlement") | `troops_reserve += 4` |
 | `$150f2` | `$150c0`, entity **mode `$1a`** ("group absorbs reinforcements") | `slice = troops_reserve >> (group.discipline-2)`; `troops_reserve -= slice`; the slice goes to the group lead's marching pool (`14(lead)`) and the group total (`36(group)`) |
 | `$3bc0` | `$3c08`/`$35f4` group teardown | `troops_reserve += group.force >> discipline` — a disbanding army returns a slice of its men (75th) |
-| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.troops_reserve -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **96th (Proven): mode `$7c` needs `$57fd0 == 0`, so this drain is DEAD in mission 1** ($57fd0 = 4). It is not part of the mission-1 ledger at all |
+| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.troops_reserve -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (97th).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
 | `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.troops_reserve -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
 | `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group |
 | `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
@@ -97,8 +97,8 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 
 So a PM "population" is a bucket that fills when soldiers walk home
 (`$16`/`$60`) or an army disbands (`$3bc0`), and empties through recruiting
-(`$1a`), besieging (`$603e`), and a slow constant per-settlement drain
-(`$163b8` — **mission 1: dead**, see §3a). It is **strict conservation of
+(`$1a`), besieging (`$603e`), and a slow per-settlement drain
+(`$163b8` — intermittent in mission 1, see §3a). It is **strict conservation of
 soldiers** — nothing manufactures a man from nothing (§6). In the tutorial the
 enemy's two sub-leaders
 (`$4e514[0]`, `[1]`, both side 2) sat with `troops_reserve` between 0 and `$a6`,
@@ -123,12 +123,13 @@ void h_disband(pm_object *A1) {                 // entity mode $16
 }
 ```
 
-`$57fd0` (`g_tileset_sel`, `= (seed & 3) * 2`, static per mission — graphics.md
-89th) is not a "world still animating" flag. In mission 1 it is `4`, so a
-disbanding unit takes the **`troops_reserve += 2`** path and mode `$7c` — with
-it the `$163b8` drain and the whole loyalty/revolt system — **never runs**.
-Mode `$7c` is a per-seed alternative that only exists in missions where
-`(seed & 3) == 0`.
+`$57fd0` (`g_tileset_sel`, initialised to `(byte[$58146] & 3) * 2` at
+world-build) is not a "world still animating" flag. It starts at `4` in mission
+1, so a disbanding unit *usually* takes the **`troops_reserve += 2`** path — but
+`$57fd0` rotates {0,2,4,6} via `$1abaa` (~1 rotation per ~110M steps, §3a), and
+whenever it is `0` the disbanding unit parks as a mode-`$7c` heartbeat marker
+instead. Mode `$7c` and the whole loyalty/revolt system therefore run in mission
+1 in brief intermittent bursts, not never.
 
 ## 2. The livestock / food-gathering system
 
@@ -230,9 +231,15 @@ marker-CLAIM head (`$437e`..`$4422`, gated on `animal.shepherd_obj != 0` +
 (`$164bc` / `$163ea` / `$16778`) are already Proven (93rd/94th) and `$16808` is
 transcribed. But `$4342` is a **no-op in every natural capture** — every
 `breed`-bit-7 animal has `shepherd_obj == 0` (claim path skipped) and every
-`$4c5f4` marker has `progress (byte15) == 0` (animate loop skipped) — so, like
-mode `$7c`, a real differential test needs a synthesised corpus. Deferred to its
-own pass; the reconstruction skeleton is in `scratchpad/pm96/`.
+`$4c5f4` marker has `progress (byte15) == 0` (animate loop skipped). The 97th's
+`pm97_map0` (mode `$7c` live, 8 herd ops, 68 markers, ~40 shepherded animals)
+did **not** unblock it — markers still seed `byte15 := 0` and only `$4342`'s own
+claim head writes `byte15 := $d0`, and that head needs a bit-7 animal *with* a
+shepherd, which no natural state reaches. So, like mode `$7c` before the 97th, a
+real differential test needs a synthesised corpus (poke a marker's `byte15` +
+an animal's `shepherd_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains). Deferred
+to its own pass; the skeleton is in `scratchpad/pm96/`, the anchor is
+`scratchpad/pm97/pm97_map0`.
 
 ### 2a. The shepherd FSM and the real delivery payoff (75th pass)
 
@@ -381,29 +388,47 @@ does **not** transfer a stored population or goods — the settlement's future
 production follows the ownership byte, and the goods sit on the *lord* record
 (`$4e514`), not the settlement.
 
-### 3a. The per-settlement heartbeat — entity mode `$7c` (75th; **Proven 96th**)
+### 3a. The per-settlement heartbeat — entity mode `$7c` (75th; **Proven — natural corpus, 97th**)
 
 There is no global "settlement update" routine. A settlement marker in **entity
 mode `$7c`** (`t_mode_handlers[$7c]` → `$157ba`, body `$157e6`) pulses once every
 `$580a6[side·$20].word0` ticks and runs the drain + construction + loyalty
 logic below.
 
-**But mode `$7c` requires `word[$57fd0] == 0`, and mission 1 has `$57fd0 = 4`.**
-`$157ba` branches on it (`== 0` → `$157e6`, else `jsr $3c08`), and so does every
-instruction that *enters* mode `$7c` — `$1505e` (mode `$16` disband), `$15a46`
-and `$15b7a` (porter / regroup). `$57fd0` is `g_tileset_sel = (seed & 3) * 2`,
-fixed at world-build. So **the whole per-settlement heartbeat — the `$163b8`
-manpower drain, the construction timer, and the loyalty/revolt accumulator — is
-inactive in mission 1**, and in any mission where `(seed & 3) != 0`. None of
-pm78_settle / pm88_f1 / pm73_fight / pm74_late (400M steps) holds one `$7c`
-record. The 75th pass's "each settlement's marker sits in mode `$7c`" was
-static + a `$163b8` `watch` that actually caught a same-address routine in TOS.
+**Mode `$7c` requires `word[$57fd0] == 0`.** `$157ba` branches on it (`== 0` →
+`$157e6`, else `jsr $3c08` regroup), and so does every instruction that *enters*
+mode `$7c` — `$1505e` (mode `$16` disband), `$15a46` and `$15b7a` (porter /
+regroup). `$57fd0` is set at world-build to `g_tileset_sel = (byte[$58146] & 3)
+* 2` (= 4 for mission 1's seed) — **but it is not static**: the sound/ambient
+routine `$1abaa` (`$130b0` in the sim tick) **rotates it**, `$1ac5e..$1ac6a` =
+`$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}, once per 13-bit sound-LCG
+(`$57ff6`) wrap. Observed rate: ~1 rotation per ~110M steps (2 writes over a
+220M-step mission-1 drive; 0 over 40M of pm78_settle). So the per-settlement
+heartbeat — the `$163b8` manpower drain, the construction timer, the
+loyalty/revolt accumulator — **is transiently reachable in mission 1**, during
+the brief `$57fd0 == 0` phases of that rotation, not permanently dead. It is
+*dormant*, not absent: none of pm78_settle / pm88_f1 / pm73_fight / pm74_late
+(400M steps) happened to freeze a `$7c` record because those windows are short
+and rare, and when `$57fd0` rotates off 0 any live `$7c` markers convert to mode
+`$56`/`$3c08` and `troops_reserve` refills through the mission-1 `$1507c` path.
+(This also refines the 89th's "`$57fd0` static per mission" for the `byte6 == 4`
+building/tree tile-set — it shifts once per rotation too.) The 75th pass's "each
+settlement's marker sits in mode `$7c`" was static + a `$163b8` `watch` that
+actually caught a same-address routine in TOS.
 
-**Proven (96th).** Reconstructed from the disassembly and differential-tested
-against the real 68000 via `callcap 14b62` on a *synthesised* corpus (poke
-`$57fd0 := 0`, repurpose inert records into `$7c` markers on the real `$4f916` /
-`$4e514` data): **85/85 tracked bytes over 25 states, 12 branch families**
-(`scratchpad/pm96/`).
+**Proven — natural corpus (97th).** `pm97_map0` (`scratchpad/pm97/`) is a real
+mission-1 world with `word[$57fd0]` forced to 0 at world-build (the single
+intervention — it only *pins* the value the game visits transiently) and driven
+80M steps: disbanding / regrouping / porter units then park as `$7c` heartbeat
+markers through the game's own `$1505e` / `$15a46` / `$15b7a`, giving **19
+natural mode-`$7c` records** on 10 real `$4f916` settlements (2 under
+construction), leaders at `loyalty_pressure` 316 / 318. The 96th's
+reconstruction (unchanged) differential-tested against the real 68000 via
+`callcap 14b62` on this corpus: **99/99 tracked bytes over 27 states, all 12
+branch families** — construction exercised naturally, `hostile.py` 5 negative
+controls all bite. (The 96th first proved it on a *synthesised* corpus — poke
+`$57fd0 := 0` on pm78_settle, repurpose inert records into fake `$7c` markers —
+85/85 over 25 states; `scratchpad/pm96/`.)
 
 ```c
 void h_mode7c_settlement(pm_object *M) {           // $157e6
@@ -552,21 +577,23 @@ nation's total manpower can only be redistributed among its lords and slowly ble
 by garrison upkeep; it grows only by winning battles (men who would have died
 walk home instead) and shrinks by losing them.
 
-**96th refinement.** In mission 1 the drain side of that ledger is even
-thinner than the flow table suggests: `$163b8` (the settlement pulse) is
-**never called** — mode `$7c` is `$57fd0`-gated and `$57fd0 = 4` in mission 1
-(§3a). So the only sinks that actually fire in the tutorial are `$150f2`
-(recruit), `$603e` (besiege) and the capture pair. `$1507c` (mode `$16`) is the
-`+2` path there, not a route into `$7c`. The conservation observation stands;
-the "slow constant per-settlement drain" is a feature of `(seed & 3) == 0`
-missions only.
+**96th/97th refinement.** In mission 1 the drain side of that ledger is
+thinner than the flow table suggests: `$163b8` (the settlement pulse) fires only
+**intermittently** — mode `$7c` is `$57fd0`-gated, and `$57fd0` rotates {0,2,4,6}
+via `$1abaa` (~1 rotation per ~110M steps, §3a), so the drain runs in brief
+bursts during the `$57fd0 == 0` phases and is off the rest of the time. The
+steady sinks in the tutorial are `$150f2` (recruit), `$603e` (besiege) and the
+capture pair. The conservation observation stands.
 
 The one thing that *looks* like a growth counter — `pm_leader.loyalty_pressure`
-(`+14`) — is the opposite. It ramps `+2` whenever `troops_field*4 >= troops_reserve`
-(the lord's standing army has outgrown its manpower base) and `-1` otherwise,
-one step per settlement pulse (`$15886` / `$158a8`, both traced). At **≥ 600** the
-settlement pulse calls `$550e` — **this branch is static-only, never reached in
-any trace** (see the caveat below the code):
+(`+14`) — is the opposite. It moves `+2` when `troops_field*4 >= troops_reserve`
+(the lord's standing army has outgrown its manpower base) and `-1` otherwise —
+but only on the *first* settlement pulse after a marker is parked
+(`D5 == $ff9c`, the `#$ff9d` dwell decrementing to `-100`); on ordinary
+steady-state pulses `D5 == 0` and neither arm runs (96th correction, §3a).
+At `loyalty_pressure` **≥ 600** the pulse calls `$550e` — still **not observed
+firing** (asserted off in the mode-`$7c` proof, loyalty kept < 600), but no
+longer out of reach: see the caveat below the code:
 
 ```c
 void revolt(pm_leader *L, pm_object *marker) {     // $550e
@@ -583,12 +610,16 @@ Read statically, this is a **rebellion-from-militarism** mechanic: over-militari
 a territory (big army, empty coffers, sustained) and the lord and all his
 settlements switch allegiance. Caveat: `$550e` writes `leader.side` and every
 `settlement.owner` in the chain to `(marker.field8 % 4) + 1` and resets
-`loyalty_pressure` to 300 — but in the tutorial `loyalty_pressure` only
-oscillated 296–306 and **no side byte was written once** across ~1B traced
-instructions, so the `≥ 600` path and the exact `new_side` formula are inferred
-from the disassembly, not observed. It fits PowerMonger's theme (the manual's
-"the people will turn against a cruel ruler") and is the natural pressure-release
-for a system with no growth term, but a live campaign trace would confirm it.
+`loyalty_pressure` to 300 — the `≥ 600` path and the exact `new_side` formula
+are inferred from the disassembly, not observed firing. In the plain tutorial
+`loyalty_pressure` only oscillated 296–306 (the settlement pulse is
+intermittent). But in `pm97_map0` — a mission-1 world with `$57fd0` pinned to 0
+so the heartbeat runs continuously (§3a, 97th) — both AI lords' `loyalty_pressure`
+climbed to 316 / 318 within 80M steps and was still rising (`troops_field·4` = 40
+vs `troops_reserve` = 0, so the `+2` arm every pulse), which puts the `≥ 600`
+revolt within reach of a long game whenever the `$1abaa` rotation favours `$7c`.
+It fits PowerMonger's theme (the manual's "the people will turn against a cruel
+ruler").
 
 ## Complete picture
 

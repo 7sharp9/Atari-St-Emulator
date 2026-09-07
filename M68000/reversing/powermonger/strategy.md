@@ -601,7 +601,7 @@ histogram `$68fe`/`$68ee` across many decisions.
 
 ## RNG and determinism (72nd pass)
 
-There are **two** "random" sources and neither is a seeded PRNG in the AI path:
+There are **three** "random" sources; none is a seeded PRNG in the *AI* path:
 
 - **`$57fec`** — a free-running 16-bit counter, `addi.w #$1,$57fec` in `$1abc0`
   (reached from `$1abaa`, once per tick, gated by a phase accumulator so it
@@ -612,8 +612,14 @@ There are **two** "random" sources and neither is a seeded PRNG in the AI path:
   no seeding, no entropy, and a save/restore at the same tick replays
   identically.
 - **`$57ff6`** — a genuine 13-bit LCG, `x = (x * $24a1 + $24df) & $1fff`,
-  stepped 16× per housekeeping pass in `$1abc0`. It feeds only the **sound**
-  driver (`$ff9e`-relative table lookups), never the AI or combat.
+  stepped 16× per housekeeping pass in `$1abc0`. It feeds the **sound** driver
+  (`$ff9e`-relative table lookups); its **wrap** to 0 also drives the `$57fd0`
+  rotation + the `$4d252` wildlife poke (see "What `$1abaa` actually is"). Never
+  the AI or combat directly.
+- **`$12c9a` / `$2df84`** — a 32-bit LCG (`state = state * $bb40e62d + …`,
+  default seed `$bc614e`), used **only at world-build** (`$10d1e` reseeds
+  `$2df84` from `$580a0`, then draws map size / lord count / placement). Makes
+  the generated map a pure deterministic function of `$580a0` (97th).
 
 A modern reimplementation that wants PM's feel can keep the tick-counter trick
 for the coarse AI jitter and add a real PRNG only where it wants
@@ -651,26 +657,31 @@ The briefing OK click (`$b814`, README) copies a mission descriptor
 ```
 $13b9a  ff9c := $15 ; jsr $fe04 (zoom index 4)      ; render geometry
         $51536 := $12                               ; group-order table live count
-        $57fd0 := ($58146 & 3) * 2                  ; a rotating sub-phase seed
-        if ($580a0 != 0)  jsr $10d1e                 ; <- DEFINED mission -> parse it
-        else              jsr $df52 / $10a46 / $10410 ; <- procedural fallback
+        $57fd0 := (byte[$58146] & 3) * 2            ; tile-set / mode-$7c gate ($1abaa rotates it later)
+        if ($580a0 != 0)  jsr $10d1e                 ; BP1-5: $580a0 = $45e -> here
+        else              jsr $df52 / $10a46 / $10410 ; ($580a0 == 0 fallback)
         jsr $2266 / $ac20 / $1073c / $10058 / $4672  ; nation + placement + terrain init
         jsr $2984 / $238c / $2906                    ; objective-slot + assessment seeding
         ...
         $57fee := 1 ; $57ff0 := 1 ; ff9a := $fff0    ; speed = normal, camera reset
+        rts   ($13ce6)
 ```
 
-**"Between Pages 1-5" takes the procedural path** — `$580a0` is a small
-descriptor, and `$10d1e` fills a parameter block from the RNG, not from a byte
-script:
+`$580a0` is non-zero for "Between Pages 1-5" (`= $45e`), so `$13b9a` calls
+`$10d1e` — which is **not** a byte-script parser for this thin descriptor: it
+**reseeds the RNG from `$580a0`** (`$10d22: move.l $580a0,$2df84`) and fills the
+parameter block from `$12c9a` draws. `$12c9a` is a **32-bit LCG**
+(`state = state * $bb40e62d + …`, seed `$bc614e` when zero), so the whole map is
+a **deterministic function of `$580a0`** — the briefing preview (`$b394 → $10d1e`)
+and the real build roll the identical map.
 
-| addr | filled with | meaning |
+| addr | filled with (`$10d1e`, 97th disasm) | meaning |
 |------|-------------|---------|
-| `$58146` | `$12c9a` | world RNG seed |
-| `$58148` | `$5809c` override, else `rand & $7fff + $1500` | map size / richness; `< $2000` ⇒ "small" preset |
-| `$5814a` | `(rand & 7) + (small ? $a : 2)` | lord count (≈10–12 small, 2–9 large) |
-| `$5814c` / `$5814e` | `rand & $3f` / `rand & $7f` | seed cell coords |
-| `$58150` | `(rand&3) + 2 + (small ? $a : 2)` | settlement count knob |
+| `$58146` | 1st `$12c9a` draw | world RNG seed; `byte[$58146] & 3` picks the initial `$57fd0` |
+| `$58148` | `$5809c` override (else `(2nd draw & $7fff) + $1500`) | map size; `< $2000` ⇒ "small" preset (`D1 := $a`, `D2 := 3`); `$b85a` clears `$5809c` right before the OK-path `$13b9a`, so the real build uses the RNG value. Mission 1 lands "large" (`$5814a` = 8 lords, `$58150` knob = 4) |
+| `$5814a` | `(draw & 7) + (small ? $a : 2)` | lord count |
+| `$5814c` / `$5814e` | `draw & $3f` / `draw & $7f` | seed cell coords |
+| `$58150` | `(draw & 3) + 2 + (small ? $a : 2)` | settlement count knob |
 | `$58152…` | a stream of 4-byte `{x, y, id, kind}` placement records built by `$111e2` + a loop | the "unit list" |
 
 `$2266` then consumes the `$58152` stream: a record with `kind == $10` is a
@@ -683,26 +694,32 @@ player start position; `kind == 0` ends the stream. `$2266` then appends
 procedurally-placed settlements (`kind $10`, random cells `rand%$30+8`,
 `rand%$70+8`).
 
-A **defined campaign mission** would ship `$580a0` non-zero pointing at a real
-byte script, `$10d1e` would parse that instead of rolling dice, and the
-objective-setup calls (`$2984`/`$238c`/`$2906`) would seed `obj_camp_id` and the
-global `$67d0` from it. That path is **not exercised by this entry point**, so
-`$67d0` stays zero and the campaign hook stays inert — consistent with the 72nd
-pass. Reversing the real mission-file grammar needs a mission that uses it (a
-later "Between Pages" or the Conquest campaign proper), not mission 1.
+`$580a0` non-zero for BP1-5 does **not** mean a byte-script mission — `$10d1e`
+still rolls the RNG (97th; it only uses `$580a0` as the LCG seed). A real
+byte-script campaign mission would additionally have the objective-setup calls
+(`$2984`/`$238c`/`$2906`) seed `obj_camp_id` and the global `$67d0`; here `$67d0`
+stays zero and the campaign hook stays inert — consistent with the 72nd pass.
+Reversing the real mission-file grammar needs a mission that uses it (a later
+"Between Pages" or the Conquest campaign proper), not mission 1.
 
 ## What `$1abaa` actually is — sound + ambient, not economy (73rd pass)
 
 `$1abaa` (`$130b0` in the tick) was a candidate for the economy/growth engine.
 It is not. It is a phase-gated block that: steps the 13-bit sound LCG `$57ff6`
 16× and mixes `$ff9e`-relative sample tables into the audio buffers
-(`$1ba3e`/`$1a856` are sound); and, once per LCG wrap, pokes **one** random
-record in the `$4d252` array (stride 12, count `$4e512 / $c`) — if its `byte7 ==
-$d` it becomes `$e + (byte10 & 3)`. `$4d252` is the **wildlife / ambient** array
-(sheep, etc.); the poke is a cosmetic behaviour nudge, and the rest of the block
-is a "sheep bleats / bird calls" ambient trigger. `$57fec` (the tick-count
-"RNG") and the animation phase `$4bb42`/`$4bb44` are also serviced here. No
-population, food or invention maths anywhere in it.
+(`$1ba3e`/`$1a856` are sound); and, **once per LCG wrap** (`$1ac3c`, when
+`$57ff6 & $1fff` reaches 0):
+- pokes **one** random `$4d252` record — if its `byte7 == $d` it becomes
+  `$e + (byte10 & 3)` (wildlife / ambient nudge);
+- **rotates `$57fd0`** — `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}
+  (`$1ac5e..$1ac6a`, raw-verified 97th). `$57fd0` is `g_tileset_sel` *and* the
+  mode-`$7c` settlement-heartbeat gate (economy.md §3a), so this rotation is
+  what makes the heartbeat + loyalty/revolt system **transiently active in
+  mission 1** despite its seed giving `$57fd0 = 4` at world-build. Observed
+  rate: ~1 rotation per ~110M steps;
+- clears `$57fec` / `$57ff6` and services the animation phase `$4bb42`/`$4bb44`.
+
+No population, food or invention maths anywhere in it.
 
 ## The AI as modern pseudocode (73rd pass)
 

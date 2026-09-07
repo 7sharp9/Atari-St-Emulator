@@ -736,14 +736,14 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     + `diff_pm96.py` extend the reconstruction with `$157e6` (the heartbeat body)
     and its leaves `$16848` (side ↔ settlement-owner reconcile) and `$163b8`
     (the `troops_reserve -= 1` manpower drain — economy.md §3a).
-    - **Mode `$7c` cannot occur in mission 1.** `$157ba` routes to `$157e6` only
-      when `word[$57fd0] == 0`; `$57fd0` is `g_tileset_sel = (seed & 3) * 2 = 4`
-      there, and the same gate guards every instruction that writes mode `$7c`.
-      No capture (pm74_late at 400M steps included) holds a `$7c` record. So
-      **the whole per-settlement upkeep drain + loyalty/revolt system is dead in
-      the tutorial**, and the corpus is *synthesised* (poke `$57fd0 := 0`,
+    - **Mode `$7c` is `$57fd0`-gated** (`$157ba` → `$157e6` only when
+      `word[$57fd0] == 0`; the same gate guards every instruction that writes
+      mode `$7c`). No capture held a `$7c` record, so the 96th read it as "dead
+      in mission 1" and the corpus is *synthesised* (poke `$57fd0 := 0`,
       repurpose inert records into `$7c` markers on the real `$4f916` / `$4e514`
-      data, isolate by disabling every other record).
+      data, isolate by disabling every other record). **Item 33 (97th)
+      corrects this: `$57fd0` rotates {0,2,4,6}, so mode `$7c` does run in
+      mission 1, in brief bursts.**
     - **Covered, PROVEN (85/85 tracked bytes over 25 states, 12 branch
       families;** obj / `$4e514` / `$4f916` / `$47970` regions all compared): the
       `dwell` early-out, `$16848` (incl. the adopt-owner path), the `$580a6`
@@ -769,6 +769,40 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     - **Still deferred:** `$4342`, `$5cde`, the regroup/group modes
       (`$3c08`/`$4bc8`/`$2776`/`$1b8c`), `$1623c`, `$5bd2`, mode `$28`/`$2e`
       tests; RIDER 3c/3d/3e; Task 1's territory-flip capture.
+
+33. The 97th pass (RIDER 3b routine 4 cont., doc + tooling only — no emulator
+    change, regression net skipped) **re-proves the settlement heartbeat (mode
+    `$7c`) on a NATURAL corpus and corrects "dead in mission 1".**
+    - **`$57fd0` is not static.** It is initialised at world-build
+      (`$13be8`: `(byte[$58146] & 3) * 2` = 4 for mission 1) but the
+      sound/ambient routine `$1abaa` (`$130b0` in the tick) **rotates it**
+      `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}, once per 13-bit sound-LCG
+      wrap — raw-verified, and **observed 2 times over a 220M-step mission-1
+      drive**. So mode `$7c` (and the `$163b8` drain + construction timer +
+      loyalty/revolt accumulator) **runs in mission 1 in brief intermittent
+      bursts** during the `$57fd0 == 0` phases, not never. No prior long capture
+      froze a `$7c` record because the windows are short and rare. This also
+      refines the 89th's "`$57fd0` static per mission" for the building/tree
+      tile-set.
+    - **`scratchpad/pm97/pm97_map0`** — a real mission-1 world with
+      `word[$57fd0]` pinned to 0 at world-build (from `pm67_ok_pre` through the
+      OK poke, `$13b9a` to its `rts`, `w 57fd0 00000188`, then 80M steps). The
+      poke only *pins* the value the game visits transiently. Result: **19
+      natural mode-`$7c` markers** on 10 real `$4f916` settlements (2 under
+      construction), entered by the game's own `$1505e` / `$15a46` / `$15b7a`;
+      both AI lords' `loyalty_pressure` climbed 300 → 316 / 318 in 80M steps.
+      Deterministic: `detcheck 2M` clean, two drives byte-identical.
+    - **Re-proved on this natural corpus (`diff_pm97.py`, the 96th's
+      reconstruction unchanged): 99/99 tracked bytes over 27 states, all 12
+      branch families.** Construction exercised naturally. `hostile.py`'s 5
+      negative controls all bite. Upgrades economy.md §3a / ai.md / SPEC / sym
+      from "Proven (synthesised)" to "Proven (natural corpus)".
+    - **`$4342` still not testable naturally** — even in `pm97_map0` every
+      `$4c5f4` marker has `byte15 == 0` and every bit-7 animal has
+      `shepherd_obj == 0`, so the claim head (which would set `byte15`) never
+      runs. Needs its own synthesised-corpus pass; `pm97_map0` is the anchor.
+    - **Still deferred:** `$4342`, `$5cde`, the regroup/group modes, `$1623c`,
+      RIDER 3c/3d/3e, Task 1's territory-flip capture.
 
 ## Files
 

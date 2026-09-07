@@ -681,7 +681,9 @@ selected group). (87th: the live man had `record[7] = 0x10` → frame 64.)
 **89th:** the cat-2 (byte6 4) building/tree frame formula + the `$11746`/`$57fd0`
 offset table + the address-jitter position are all **pinned and live-verified**
 (D2 at `$12288`); the 32 × 24 word-plane decode is byte-exact against `$24400`'s
-live tree pixels. `pm_render_ref.py`'s `_entity_frame` + `load_ram` + the
+live tree pixels. (97th: `word[$57fd0]` is not strictly static — `$1abaa` rotates
+it {0,2,4,6} every ~110M steps — so a faithful port reads the live value each
+frame rather than baking `+6`.) `pm_render_ref.py`'s `_entity_frame` + `load_ram` + the
 `draw_entities` "prop" path are updated, and `Sprites.fs` has `frameForProp` /
 `propTileOffset` / `propJitter` / `propScreenPos` / `decodeFrameWord`. It is
 **not in `COMPOSITE_CATS`** — compositing it lowers the score, but not from a
@@ -882,14 +884,18 @@ frame captures, `scratchpad/pm95/`). The morale drain is
 `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1` (a hard `moveq #0` on the `>= 6` arm,
 not `min`). The `$5778 → $4bc8` group hand-off, the true ROUT `$3c08`, and the
 `$5590` tail calls `$2776`/`$1b8c` are asserted off (deferred group modes).
-**96th (RIDER 3b routine 4): the settlement heartbeat — entity mode `$7c`
-`$157e6` + `$16848` + `$163b8` (the `troops_reserve -= 1` drain) — is now Proven
-vs the real 68000** — 85/85 tracked bytes over 25 states, 12 branch families
-(`scratchpad/pm96/`). Mode `$7c` is `$57fd0`-gated (`= (seed & 3) * 2`), so it
-**never runs in mission 1** and the corpus is synthesised; `$5cde`/`$550e`/
-`$5c2c` asserted off. The loyalty accumulator moves only on the first pulse
-after a `#$ff9d`-dwell park, not every pulse. `$4342` (herd servicer)
-disassembled but deferred. Remaining regroup modes stay Corroborated. See
+**RIDER 3b routine 4: the settlement heartbeat — entity mode `$7c` `$157e6` +
+`$16848` + `$163b8` (the `troops_reserve -= 1` drain) — is Proven vs the real
+68000** — 96th synthesised corpus 85/85 over 25 states, **97th natural corpus
+99/99 over 27 states**, 12 branch families (`scratchpad/pm96/`, `scratchpad/pm97/`).
+Mode `$7c` needs `word[$57fd0] == 0`; `$57fd0` starts at `(byte[$58146] & 3) * 2`
+(= 4 for mission 1) but **rotates {0,2,4,6} via `$1abaa`** (~1/110M steps, 97th),
+so mission 1 runs the heartbeat in brief intermittent bursts — not never. The
+97th anchor `pm97_map0` pins `$57fd0 := 0` at world-build → 19 natural `$7c`
+markers on 10 real settlements. `$5cde`/`$550e`/`$5c2c` asserted off. The
+loyalty accumulator moves only on the first pulse after a `#$ff9d`-dwell park,
+not every pulse. `$4342` (herd servicer) disassembled but deferred — no-op even
+with mode `$7c` live. Remaining regroup modes stay Corroborated. See
 `../ai.md` "the settlement heartbeat" and `../economy.md` §3a. The
 sprite frame
 formulas + the `$115e0` bucket walk (§6) are
