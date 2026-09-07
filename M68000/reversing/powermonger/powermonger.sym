@@ -80,7 +80,7 @@
 0001c49a	g_cursor_saveunder_ptr # 91st: screen address pm_draw_cursor_marker will restore next frame (0 = nothing saved); the saved background pixels sit at $1c49e
 0000187a	pm_present             # swap $2df7c<->$2df78, write (front>>8) to $FFFF8200 (double-buffer flip)
 0000e0d4	g_terrain_master       # composed full-terrain buffer; $12ce0'd into the back buffer each present
-00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md). 93rd RIDER 3b: NO entry contract (lea's its own $51b66/$47970 bases); callcap 14b62 runs the whole iterator, returns clean (4554 steps), deterministic. dwell/upkeep core (prologue + modes $12/$68/$8a + $5c80 + $161c4/$1648e/$163ea) PROVEN vs real 68k = 675/675 over 22 states (93rd, scratchpad/pm93/). 94th: the MOVEMENT modes $06/$08/$0e/$10 + leaves $164bc/$14262/$12d56 + epilogue $16202 PROVEN = 1335/1335 tracked bytes over 32 states (scratchpad/pm94/fsm_ref.py + diff_fsm.py). 95th: mode $32 melee ($1533c) + $56a6 ($574a leaf) + $5590 KILL branches + $30fe PROVEN = 413/413 tracked bytes over 48 states (scratchpad/pm95/). economy ($4342/$163b8), regroup/group modes ($3c08/$4bc8/$2776/$1b8c), dying-entity $1623c still deferred
+00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md). 93rd RIDER 3b: NO entry contract (lea's its own $51b66/$47970 bases); callcap 14b62 runs the whole iterator, returns clean (4554 steps), deterministic. dwell/upkeep core (prologue + modes $12/$68/$8a + $5c80 + $161c4/$1648e/$163ea) PROVEN vs real 68k = 675/675 over 22 states (93rd, scratchpad/pm93/). 94th: the MOVEMENT modes $06/$08/$0e/$10 + leaves $164bc/$14262/$12d56 + epilogue $16202 PROVEN = 1335/1335 tracked bytes over 32 states (scratchpad/pm94/fsm_ref.py + diff_fsm.py). 95th: mode $32 melee ($1533c) + $56a6 ($574a leaf) + $5590 KILL branches + $30fe PROVEN = 413/413 tracked bytes over 48 states (scratchpad/pm95/). 96th: mode $7c settlement heartbeat ($157e6) + $16848 + $163b8 PROVEN = 85/85 tracked bytes over 25 states, 12 families (scratchpad/pm96/; corpus synthesised -- mode $7c is $57fd0-gated, inactive in mission 1). $4342 herd servicer disassembled + deferred; regroup/group modes ($3c08/$4bc8/$2776/$1b8c), $5cde, dying-entity $1623c still deferred
 00006a3a	pm_order_exec           # order executor: consume $58016, drive group state + lead mode
 00007a56	pm_render_sprites_hud   # sprite / HUD compositor into offscreen+32000
 0000d23a	pm_force_ratio          # $57fba -> $57fce UI mood ratio (min(4,(2*mine+enemy/4)/enemy))
@@ -118,7 +118,7 @@
 # ---- force accounting / diplomacy ----
 00057fba	g_side_force           # 5 x 4 bytes per-side force totals (rebuilt each tick)
 00057fce	g_force_ratio          # UI mood ratio 0..4 (UI only; $6522 never reads it)
-000580a6	g_side_assessment      # 5 x $20-byte per-side assessment/relationship blocks
+000580a6	g_side_assessment      # 5 x $20-byte per-side assessment/relationship blocks. word0 = the mode-$7c settlement-heartbeat pulse period (dwell reload; pm78_settle: side1 $20, side2 $0f, else $0a); word8 = the $60dc herd-throttle base
 00004bc8	pm_contact_reconcile   # troop-count + relationship reconcile on contact (NOT casualties)
 00004c2a	pm_diplo_break         # clear relationship bits in $580a6, notify player ($c5ee), $311a
 00004de2	pm_leader_nation       # read a leader's nation byte, D7=2 if it is a leader record
@@ -182,7 +182,8 @@
 0001622c	pm_iter_next           # lea 50(A1),A1 ; loop to $14b72 until $57f66. The "no write-back" epilogue.
 000163ea	pm_relink_bucket       # write.w D6/D7 -> 8(A1)/10(A1); OLD cell from pre-write pos, NEW from D6/D7 (cell = ((y&$ff00)>>2) + x_hibyte); if changed: unlink (via bucket_prev, or head + next.prev:=0) then link at head of $47970[NEW]. 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test)
 00016260	pm_notify_neighbours   # walk cell bucket, bump leader message counters ("under attack")
-00016808	pm_target_cell_resolve # resolve a target cell -> entity, used by the projectile spawn
+00016808	pm_bucket_link         # 96th: $47970 cell-bucket link-at-head (rec_off @ 30(A7), packed cell @ 28(A7)); clr.l 0(rec), rec.next := old head, old_head.prev := rec, head := rec. Exact inverse of $16778. (The old "resolve a target cell -> entity / projectile spawn" note predates the disasm and is wrong.) Transcribed in scratchpad/pm96/disasm/leaf_16808.txt; used by $4342 (deferred) + $5cde
+000157ba	h_mode7c_dispatch      # mode $7c table entry: word[$57fd0] == 0 -> $157e6 (the heartbeat); else jsr $3c08 regroup (DEFERRED). $57fd0 = g_tileset_sel = (seed&3)*2, so mode $7c is INACTIVE in any mission with (seed&3) != 0 -- incl. mission 1 ($57fd0 = 4; 0 mode-$7c records in pm78_settle/pm88_f1/pm73_fight/pm74_late incl. 400M steps)
 
 # ---- input / camera (graphics.md) ----
 000018be	pm_ikbd_isr            # PM's own IKBD ISR (vector $46)
@@ -195,7 +196,7 @@
 00010d1e	pm_mission_params      # fill $58146.. parameter block (procedural: seed/size/lord count/placement stream)
 00002266	pm_place_nations       # consume the $58152 placement stream; arm enemy command slots (slot_state:=4)
 00058146	g_world_params         # $58146 seed, $58148 size, $5814a lords, $5814c/e coords, $58150 settlements
-000057fd0	g_tileset_sel          # word, = ($58146 & 3) * 2 (set at $13b9a). per-mission tile-set selector; indexes t_prop_tile_offset ($11746) for the byte6 == 4 building/tree frame base. mission 1 = 4
+000057fd0	g_tileset_sel          # word, = ($58146 & 3) * 2 (set once at $13b9a, static per mission). per-mission tile-set selector; indexes t_prop_tile_offset ($11746) for the byte6 == 4 building/tree frame base. mission 1 = 4. 96th: ALSO the mode-$7c gate -- $157ba/$15042/$15a30/$15b6c all route the settlement-heartbeat path only when this == 0, so the $163b8 manpower drain + loyalty/revolt system is dead in any mission with (seed&3) != 0
 0000580a0	g_mission_descriptor   # $584c4 -> here on briefing OK; if != 0, $13b9a takes the defined path ($10d1e parses it); "Between Pages 1-5" -> small procedural descriptor. $5809c overrides $58148 (map size; < $2000 -> "small" preset = ~10-13 lords + more settlements)
 00058152	g_placement_stream     # 4-byte {x,y,id,kind} records; kind $10 = lord, <$10 = player start, 0 = end
 0001ba3e	pm_sound_mix           # sample-table mix into the audio buffers
@@ -209,7 +210,7 @@
 0004e512	g_herd_count           # live byte-length of g_herd_array (init $c, += $c per animal)
 00057f68	g_herd_ops             # herding operations, stride 8, <=10 (ends at $57fb8). +0 target cell, +4 -> g_herd_array, +6 -> g_herd_markers
 0004c5f4	g_herd_markers         # moving on-screen herd-drive markers, stride 22, <=80 (ends at $4ccd4). +15 signed progress, +20 chain link. COSMETIC ONLY
-00004342	pm_herd_service        # per-tick (from $3e06): animate herd markers toward towns; at arrival ($44c6) just sets breed bit7 + unlinks the marker sprite. NO economic effect
+00004342	pm_herd_service        # per-tick (from $3e06): animate herd markers toward towns; at arrival ($44c6) just sets breed bit7 + unlinks the marker sprite. NO economic effect. 96th: disassembled (scratchpad/pm96/disasm/herd_4342.txt), leaves $164bc/$163ea/$16778 proven + $16808 transcribed; NOT differentially tested -- no-op in every natural capture (all bit7 animals have shepherd_obj==0 -> claim path dead; all markers have byte15==0 -> animate path dead), needs a synthesised corpus like mode $7c -> own pass
 00004672	pm_world_features_seed # world-build: scatter 10 clusters of animals + herd markers over buildable cells
 00004788	pm_seed_animal         # place one g_herd_array entry on a buildable land cell; link it into a g_herd_ops entry
 00005ec6	pm_shepherd_assign     # bind a unit to an animal, set leader.gather_kind from $3f86c control byte + animal flags, -> shepherd FSM mode $3e
@@ -222,7 +223,7 @@
 000159a4	pm_porter_dropoff      # read carried code off byte 33/44; dst_leader.goods[(code>>1)-1] += 1 (cap $ff); clear the byte
 00015a60	h_mode50_deposit       # porter FSM: arrive at leader, $159a4, -> mode $52
 00015ad2	h_mode54_pickup        # porter FSM: walk to a nation leader, $159de, -> mode $50
-00015a0e	h_mode4e_deposit       # porter FSM: $159a4 into the settlement's owner leader -> mode $54 (or $7c while world building)
+00015a0e	h_mode4e_deposit       # porter FSM: $159a4 into the settlement's owner leader -> mode $54 (or, iff word[$57fd0]==0, dwell:=#$ff9d + mode $7c -- same $57fd0 gate as mode $16 $15042 and $15b7a)
 000061f8	pm_army_supply         # mode $6e (from $15740): spend leader.goods[i] >> discipline into group supply_acc, -> $6352/$638c, then $35f4
 00006352	pm_supply_push         # add to group-order supply_acc[i] (word[84 + i*12]); overflow -> $638c
 0000638c	pm_equip_unit          # if unit tier slot ($21 items>6 / $2c items<=6) < delivered item -> upgrade; recycle displaced item. THIS IS "INVENTION"
@@ -230,9 +231,11 @@
 000033b0	pm_prosperity_trigger  # mode $76: weighted this-tick delivery total + assessment byte - 2 >= 0 -> attack order $2a / $34a8 declare war. economy->strategy coupling
 00003498	t_supply_weights       # data: 8 words, per-resource weight for the $33b0 prosperity sum
 0000a242	t_item_names           # data: string table, entries 1..8 = Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon
-000157e6	h_mode7c_settlement    # per-settlement heartbeat (mode $7c body): every $580a6[side].word0 ticks -> $163b8, build progress, loyalty accumulator
-000163b8	pm_settlement_upkeep   # owner_leader.troops_reserve -= 1 (floored) -- per-settlement manpower drain / desertion
-0000550e	pm_revolt              # loyalty_pressure >= 600: lord + all its settlements defect to side (marker.field8 % 4)+1; reset loyalty to 300
+000157e6	h_mode7c_settlement    # per-settlement heartbeat body. 96th RIDER 3b: PROVEN vs real 68k (85/85 tracked bytes over 25 states, 12 branch families; scratchpad/pm96/). subi.w #$1,18(A1) bgt -> next (no epilogue); jsr $16848 + jsr $5c80 (x2); D5 := post-dec dwell; 18(A1) := $580a6[side*$20].word0 reload; jsr $163b8; btst#4 7(A1) -> epilogue; 7(settl)==$a -> 16(settl)++ (>=$78: nation_kind := dest_cell%10, ==7 -> kind:=$10, 16:=0); troops_field*4: ==0 -> epilogue / >=reserve -> (D5==$ff9c: loyalty+=2) / <reserve -> (D5==$ff9c: loyalty-=1) then (14(A1)&3)!=3 -> $5cde; loyalty>=$258 -> $550e; epilogue $161c4. $5cde/$550e/$5c2c ASSERTED OFF. Loyalty only moves when D5==$ff9c (first pulse after a #$ff9d-dwell park), NOT every pulse
+00016848	pm_side_reconcile      # 96th: settlement.owner (5(A3), A3=$4f916+34(A1)) vs marker.side (5(A1)): equal -> skip; else btst#7 clear + btst#4 clear -> 5(A1):=owner (adopt); btst#4 set -> jsr $5c2c. Then if 24(A1)!=0 && 24(A1)==0(A1): $57ff4 := 24(A1). Tail jsr $5c80. Also the mode-$16 ($15042) prologue call. PROVEN in the 96th mode-$7c test ($5c2c arm asserted off)
+000163b8	pm_settlement_upkeep   # 96th RIDER 3b: PROVEN vs real 68k (part of the 85/85 mode-$7c test). settlement.leader.troops_reserve -= 1, floored at 0 (settlement = $4f916+34(A1), leader = $4e514 + word[settl+14]). movem saves/restores A0 only. Per-settlement manpower drain / desertion -- but only fires via mode $7c, i.e. NOT in missions with (seed&3)!=0 (mission 1 included)
+0000550e	pm_revolt              # loyalty_pressure >= 600: lord + all its settlements defect to side (marker.field8 % 4)+1; reset loyalty to $12c (300). ASSERTED OFF in the 96th mode-$7c proof (loyalty kept < 600); reached only from mode $7c, inactive in mission 1
+00005cde	pm_settlement_herdop   # settlement herd-op assessment (from mode $7c, field*4<reserve && (anim&3)!=3): walks the nation's settlement chain for the capital, scans $57f68 herd ops + the $3f86c control byte, may allocate a $4f916 record ($51536 += $12) + $16808. Large; ASSERTED OFF in the 96th mode-$7c proof, on the deferred list with $4342
 00003bc0	pm_group_return_men    # group teardown: leader.troops_reserve += group.force >> discipline
 000034f2	pm_rally_garrisons     # order every garrison in a nation's settlement chain to march to a cell (mode $10, prev $14)
 00002984	pm_spawn_garrisons     # world-build: allocate a $51b66 marker per settlement (guard $57f66<$5460), owner_leader.troops_field += 1, seed morale

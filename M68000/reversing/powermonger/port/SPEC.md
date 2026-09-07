@@ -882,7 +882,15 @@ frame captures, `scratchpad/pm95/`). The morale drain is
 `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1` (a hard `moveq #0` on the `>= 6` arm,
 not `min`). The `$5778 → $4bc8` group hand-off, the true ROUT `$3c08`, and the
 `$5590` tail calls `$2776`/`$1b8c` are asserted off (deferred group modes).
-Economy / regroup modes stay Corroborated. See `../ai.md` "the combat path". The
+**96th (RIDER 3b routine 4): the settlement heartbeat — entity mode `$7c`
+`$157e6` + `$16848` + `$163b8` (the `troops_reserve -= 1` drain) — is now Proven
+vs the real 68000** — 85/85 tracked bytes over 25 states, 12 branch families
+(`scratchpad/pm96/`). Mode `$7c` is `$57fd0`-gated (`= (seed & 3) * 2`), so it
+**never runs in mission 1** and the corpus is synthesised; `$5cde`/`$550e`/
+`$5c2c` asserted off. The loyalty accumulator moves only on the first pulse
+after a `#$ff9d`-dwell park, not every pulse. `$4342` (herd servicer)
+disassembled but deferred. Remaining regroup modes stay Corroborated. See
+`../ai.md` "the settlement heartbeat" and `../economy.md` §3a. The
 sprite frame
 formulas + the `$115e0` bucket walk (§6) are
 **Corroborated** (disassembly + a live register/`$11f88` probe + the F#↔Python

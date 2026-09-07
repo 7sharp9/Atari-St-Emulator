@@ -200,10 +200,55 @@ the deferred *regroup/group modes*): `$5778 → $4bc8` (group hand-off, group
 state `!= $d`); `$5590 → $560a → $3c08` (the true ROUT, unit survives); the
 `$5590` tail calls `$2776` / `$1b8c`.
 
-The **economy servicer** (`$4342`/`$163b8`), **regroup/group/shepherd** modes
-(`$3c08` / `$4bc8` / `$2776` / `$1b8c`), and the dying-entity path `$1623c`
-remain **Corroborated**, not Proven. Mode `$28` / `$2e` (`$15302`) handlers are
-disassembled but not yet differentially tested (`$2e` calls the same `$56a6`).
+### [Proven] — the settlement heartbeat (mode `$7c`), vs the real 68000 (96th pass, RIDER 3b routine 4)
+
+`scratchpad/pm96/fsm_ref.py` extends the reconstruction with **mode `$7c`**
+(`$157e6`, the per-settlement heartbeat) and its leaves **`$16848`** (side ↔
+settlement-owner reconcile) and **`$163b8`** (the manpower drain — economy.md
+§3a). Same isolate-by-disabling differential test (`diff_pm96.py`): **85/85
+tracked bytes identical over 25 states, 12 branch families** (obj / `$4e514`
+leader / `$4f916` settlement / `$47970` bucket regions all compared).
+
+Mode `$7c` **cannot occur in mission 1**: `$157ba` routes to `$157e6` only when
+`word[$57fd0] == 0`, and `$57fd0` is `g_tileset_sel = (seed & 3) * 2 = 4` there
+(the same gate guards every instruction that writes mode `$7c` — `$1505e` in
+mode `$16`, `$15a46` / `$15b7a` in the porter handlers). None of the four
+captures holds a single `$7c` record, pm74_late at 400M steps included. So the
+corpus is **synthesised**: on `pm78_settle` poke `word[$57fd0] := 0` and
+repurpose inert `$68` records into settlement markers pointed at the mission's
+real `$4f916` / `$4e514` data (incl. the two `nation_kind == $a`
+under-construction settlements), then isolate by disabling every other record.
+
+- **`$157e6`** — `dwell` decrement (`> 0` → next record, no epilogue);
+  `jsr $16848` + `jsr $5c80` (twice); `D5 := post-decrement dwell`; reload
+  `18(A1) := $580a6[side·$20].word0`; `jsr $163b8`; `btst #4,7(A1)` →
+  straight to the epilogue; construction (`7(settl) == $a` → `16(settl)++`, at
+  `>= $78` → `nation_kind := dest_cell % 10` via `divu #$a`/`swap`, `== 7` →
+  `kind := $10`, `16 := 0`); `troops_field·4` vs `troops_reserve`
+  (`== 0` → skip; `>= reserve` and `D5 == $ff9c` → `loyalty += 2`;
+  `< reserve` and `D5 == $ff9c` → `loyalty −= 1`); epilogue `$161c4`.
+- **The loyalty accumulator only moves when `D5 == $ff9c`** — i.e. on the first
+  `$7c` tick after the marker is parked with dwell `#$ff9d` (`−99` → `−100`).
+  On an ordinary steady-state pulse `D5 == 0` and neither `±` branch runs. The
+  75th pass's "one step per settlement pulse" was wrong.
+- **`$163b8`** — `settlement.leader.troops_reserve −= 1`, floored at 0. This is
+  the entire per-settlement upkeep drain, and it is dead in mission 1.
+
+Asserted **off** (`raise` guards it): **`$5cde`** (the settlement herd-op
+assessment — a whole routine; every `field·4 < reserve` state is arranged with
+`(14(A1) & 3) == 3` so it is skipped), **`$550e`** (militarism revolt, loyalty
+kept `< 600`), **`$5c2c`** (owner reconcile inside `$16848`).
+
+The **herd servicer `$4342`** is now disassembled (`scratchpad/pm96/disasm/`),
+its leaves `$164bc`/`$163ea`/`$16778` already Proven and `$16808` (a `$47970`
+bucket link-at-head, the inverse of `$16778`) transcribed — but it is **not
+differentially tested**: like mode `$7c` it is a no-op in every natural capture
+(all `breed`-bit-7 animals have `shepherd_obj == 0`; all `$4c5f4` markers have
+`progress == 0`), so it needs its own synthesised-corpus pass. **Regroup/group**
+modes (`$3c08` / `$4bc8` / `$2776` / `$1b8c`), `$5cde`, and the dying-entity path
+`$1623c` remain **Corroborated**, not Proven. Mode `$28` / `$2e` (`$15302`)
+handlers are disassembled but not yet differentially tested (`$2e` calls the
+same `$56a6`).
 
 ## The object record (50 bytes, stride `$32`, array `$51b66`, slots 1..511)
 
@@ -453,8 +498,10 @@ object record; `36(A3)` a running total).
 | `$84` | `$15f96` | 30 | dwell → mode `$86` |
 | `$86` | `$15e30` | 10 | (chain to `$88`) |
 | `$14` | `$1501a` | – | **board / transfer**: copy `5(A3)` (strength) from the `$4f916+34` record into `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
-| `$16` | `$15042` | 6 | `jsr $16848`; if `$57fd0 == 0` save mode → 30, mode `$7c`, dwell `-99` |
+| `$16` | `$15042` | 6 | **disband**: `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker). **Else** (`$57fd0 != 0`, mission 1): `owner_leader.troops_reserve += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). economy.md §1's pseudocode has this branch inverted |
+| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven, 96th)* — **only when `$57fd0 == 0`, so never in mission 1**. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $3c08` instead (deferred) |
 | `$8a8a` write | `$16176` | – | **removal**: adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches), free the group slot (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
+| — | `$16848` | – | *(Proven, 96th)* **side ↔ owner reconcile**: `A3 = $4f916 + 34(A1)`; `settlement.owner == marker.side` → skip; else `btst #7` clear + `btst #4` clear → `5(A1) := owner` (adopt), `btst #4` set → `jsr $5c2c`. Then `24(A1) != 0 && == 0(A1)` → `$57ff4 := 24(A1)`. Tail `jsr $5c80`. Also called from the mode-`$16` prologue |
 | — | `$5c80` | 2600+ | **per-entity upkeep**: flags-indexed table + byte14 age + byte45 morale; `byte45 += ($57fec & 1)` (a food/desertion drain with a 1-bit random term); `jsr $5bd2` past a threshold |
 
 Modes not listed (`$1f`…`$92` sparse entries, indices > `$94` alias into

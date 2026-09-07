@@ -730,6 +730,46 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       `$5bd2`, mode `$28`/`$2e` differential tests; RIDER 3c/3d/3e; Task 1's
       territory-flip capture.
 
+32. The 96th pass (RIDER 3b routine 4, doc + tooling only — no emulator change,
+    regression net skipped) **proves the settlement heartbeat (entity mode
+    `$7c`) of the sim tick against the real 68000.** `scratchpad/pm96/fsm_ref.py`
+    + `diff_pm96.py` extend the reconstruction with `$157e6` (the heartbeat body)
+    and its leaves `$16848` (side ↔ settlement-owner reconcile) and `$163b8`
+    (the `troops_reserve -= 1` manpower drain — economy.md §3a).
+    - **Mode `$7c` cannot occur in mission 1.** `$157ba` routes to `$157e6` only
+      when `word[$57fd0] == 0`; `$57fd0` is `g_tileset_sel = (seed & 3) * 2 = 4`
+      there, and the same gate guards every instruction that writes mode `$7c`.
+      No capture (pm74_late at 400M steps included) holds a `$7c` record. So
+      **the whole per-settlement upkeep drain + loyalty/revolt system is dead in
+      the tutorial**, and the corpus is *synthesised* (poke `$57fd0 := 0`,
+      repurpose inert records into `$7c` markers on the real `$4f916` / `$4e514`
+      data, isolate by disabling every other record).
+    - **Covered, PROVEN (85/85 tracked bytes over 25 states, 12 branch
+      families;** obj / `$4e514` / `$4f916` / `$47970` regions all compared): the
+      `dwell` early-out, `$16848` (incl. the adopt-owner path), the `$580a6`
+      pulse-period reload, `$163b8` (incl. the floor at 0), the construction
+      timer (`nation_kind $a` → `16(settl)++`, at `$78` → `dest_cell % 10`,
+      `== 7` → capital), and the loyalty accumulator — which **only moves on the
+      first pulse after a `#$ff9d`-dwell park (`D5 == $ff9c`)**, not every pulse
+      as the 75th pass said.
+    - Pre-registered falsifier / bar (100 % over ≥ 15 states, ≥ 8 branches):
+      **PASS.** Four negative controls (`$163b8` drain, `±` loyalty, dwell
+      reload word) all bite. Determinism re-checked (`detcheck` clean on a poked
+      state; two consecutive `callcap` byte-identical).
+    - **Asserted OFF** (`raise` guards it): `$5cde` (settlement herd-op
+      assessment), `$550e` (militarism revolt), `$5c2c` (owner reconcile).
+    - **`$4342`** (the herd-drive servicer) is now disassembled and its
+      reconstruction skeleton drafted, but **not differentially tested** — it is
+      a no-op in every natural capture (all `breed`-bit-7 animals have
+      `shepherd_obj == 0`; all `$4c5f4` markers have `progress == 0`) and needs
+      its own synthesised-corpus pass.
+    - **Corrections:** economy.md §1's `h_disband` pseudocode had the `$57fd0`
+      test inverted (mission 1 *does* take the `troops_reserve += 2` path);
+      §3a's loyalty accumulator was over-stated. Both fixed.
+    - **Still deferred:** `$4342`, `$5cde`, the regroup/group modes
+      (`$3c08`/`$4bc8`/`$2776`/`$1b8c`), `$1623c`, `$5bd2`, mode `$28`/`$2e`
+      tests; RIDER 3c/3d/3e; Task 1's territory-flip capture.
+
 ## Files
 
 | file | what |

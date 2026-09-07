@@ -87,7 +87,7 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | `$15e18` | `$15ddc`, entity **mode `$60`** ("register with settlement") | `troops_reserve += 4` |
 | `$150f2` | `$150c0`, entity **mode `$1a`** ("group absorbs reinforcements") | `slice = troops_reserve >> (group.discipline-2)`; `troops_reserve -= slice`; the slice goes to the group lead's marching pool (`14(lead)`) and the group total (`36(group)`) |
 | `$3bc0` | `$3c08`/`$35f4` group teardown | `troops_reserve += group.force >> discipline` — a disbanding army returns a slice of its men (75th) |
-| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.troops_reserve -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks (75th) |
+| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.troops_reserve -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **96th (Proven): mode `$7c` needs `$57fd0 == 0`, so this drain is DEAD in mission 1** ($57fd0 = 4). It is not part of the mission-1 ledger at all |
 | `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.troops_reserve -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
 | `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group |
 | `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
@@ -98,8 +98,9 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 So a PM "population" is a bucket that fills when soldiers walk home
 (`$16`/`$60`) or an army disbands (`$3bc0`), and empties through recruiting
 (`$1a`), besieging (`$603e`), and a slow constant per-settlement drain
-(`$163b8`). It is **strict conservation of soldiers** — nothing manufactures a
-man from nothing (§6). In the tutorial the enemy's two sub-leaders
+(`$163b8` — **mission 1: dead**, see §3a). It is **strict conservation of
+soldiers** — nothing manufactures a man from nothing (§6). In the tutorial the
+enemy's two sub-leaders
 (`$4e514[0]`, `[1]`, both side 2) sat with `troops_reserve` between 0 and `$a6`,
 each unit return nudging it up and each settlement pulse nudging it down; the
 player's manpower is held the same way in the player's own leader record.
@@ -107,18 +108,27 @@ player's manpower is held the same way in the player's own leader record.
 **Mode `$16` disband** (`$15042`, the "go home" path):
 
 ```c
+// $15042 -- CORRECTED 96th: the $57fd0 test was written backwards below, and the
+// "veteran" test is on byte 33, not order_class (byte 1).
 void h_disband(pm_object *A1) {                 // entity mode $16
-    jsr_16848(A1);                              // detach from group bookkeeping
-    if (g_world_phase /*$57fd0*/ != 0) {        // world still animating in
+    jsr_16848(A1);                              // side<->owner reconcile + $5c80
+    if (g_tileset_sel /*$57fd0*/ == 0) {        // <- == 0, NOT != 0
         A1->dwell = -99; A1->prev_mode = A1->mode; A1->mode = 0x7c; return;
-    }
-    leader *L = &leader_of(A1->nation_off);     // $4f916[nation_off].nation_off -> $4e514
-    L->troops_reserve += 2;
-    if (A1->order_class == 8) L->troops_reserve += 2;   // "veteran" bonus?
-    A1->target = unpack_cell(A1->group_off_lobyte);     // head to the packed muster cell
-    A1->prev_mode = 0x18;  A1->mode = 0x10;             // walk there, then vanish
+    }                                          // (park as a $157e6 heartbeat marker)
+    leader *L = &leader_of(A1->nation_off);
+    L->troops_reserve += 2;                     // the mission-1 path: DOES credit +2
+    if (A1->byte33 == 8) L->troops_reserve += 2;
+    A1->target = unpack_cell(A1->group_off_lobyte);
+    A1->prev_mode = 0x18;  A1->mode = 0x10;             // walk to the muster cell
 }
 ```
+
+`$57fd0` (`g_tileset_sel`, `= (seed & 3) * 2`, static per mission — graphics.md
+89th) is not a "world still animating" flag. In mission 1 it is `4`, so a
+disbanding unit takes the **`troops_reserve += 2`** path and mode `$7c` — with
+it the `$163b8` drain and the whole loyalty/revolt system — **never runs**.
+Mode `$7c` is a per-seed alternative that only exists in missions where
+`(seed & 3) == 0`.
 
 ## 2. The livestock / food-gathering system
 
@@ -212,6 +222,17 @@ counter, any population maths. `$4342` is **only the animation** — it walks th
 returns 0) it does exactly two things — `bset #7, breed_state` of the animal and
 `jsr $16778` to unlink the marker's screen object. The economic credit is
 elsewhere, in the shepherd unit's own FSM (§2a).
+
+**96th.** Fully disassembled (`scratchpad/pm96/disasm/herd_4342.txt`): the
+marker-CLAIM head (`$437e`..`$4422`, gated on `animal.shepherd_obj != 0` +
+`$16808` bucket link-at-head) and the animate loop (`$4436`.., `$164bc` step +
+`$163ea` relink, or `$16778` unlink at arrival). All three non-trivial leaves
+(`$164bc` / `$163ea` / `$16778`) are already Proven (93rd/94th) and `$16808` is
+transcribed. But `$4342` is a **no-op in every natural capture** — every
+`breed`-bit-7 animal has `shepherd_obj == 0` (claim path skipped) and every
+`$4c5f4` marker has `progress (byte15) == 0` (animate loop skipped) — so, like
+mode `$7c`, a real differential test needs a synthesised corpus. Deferred to its
+own pass; the reconstruction skeleton is in `scratchpad/pm96/`.
 
 ### 2a. The shepherd FSM and the real delivery payoff (75th pass)
 
@@ -360,41 +381,74 @@ does **not** transfer a stored population or goods — the settlement's future
 production follows the ownership byte, and the goods sit on the *lord* record
 (`$4e514`), not the settlement.
 
-### 3a. The per-settlement heartbeat — entity mode `$7c` (75th pass, task 4)
+### 3a. The per-settlement heartbeat — entity mode `$7c` (75th; **Proven 96th**)
 
-There is no global "settlement update" routine. Each settlement's map marker
-(`$51b66` object, spawned by `$2984`) sits in **entity mode `$7c`**
-(`t_mode_handlers[$7c]` → `$157ba`, body at `$157e6`) and pulses once every
-`$580a6[side].word0` ticks (the same interval `strategy.md` calls the
-objective-budget decay period). One pulse:
+There is no global "settlement update" routine. A settlement marker in **entity
+mode `$7c`** (`t_mode_handlers[$7c]` → `$157ba`, body `$157e6`) pulses once every
+`$580a6[side·$20].word0` ticks and runs the drain + construction + loyalty
+logic below.
+
+**But mode `$7c` requires `word[$57fd0] == 0`, and mission 1 has `$57fd0 = 4`.**
+`$157ba` branches on it (`== 0` → `$157e6`, else `jsr $3c08`), and so does every
+instruction that *enters* mode `$7c` — `$1505e` (mode `$16` disband), `$15a46`
+and `$15b7a` (porter / regroup). `$57fd0` is `g_tileset_sel = (seed & 3) * 2`,
+fixed at world-build. So **the whole per-settlement heartbeat — the `$163b8`
+manpower drain, the construction timer, and the loyalty/revolt accumulator — is
+inactive in mission 1**, and in any mission where `(seed & 3) != 0`. None of
+pm78_settle / pm88_f1 / pm73_fight / pm74_late (400M steps) holds one `$7c`
+record. The 75th pass's "each settlement's marker sits in mode `$7c`" was
+static + a `$163b8` `watch` that actually caught a same-address routine in TOS.
+
+**Proven (96th).** Reconstructed from the disassembly and differential-tested
+against the real 68000 via `callcap 14b62` on a *synthesised* corpus (poke
+`$57fd0 := 0`, repurpose inert records into `$7c` markers on the real `$4f916` /
+`$4e514` data): **85/85 tracked bytes over 25 states, 12 branch families**
+(`scratchpad/pm96/`).
 
 ```c
 void h_mode7c_settlement(pm_object *M) {           // $157e6
-    if (--M->dwell > 0) return;
-    jsr_16848(M);  jsr_5c80(M);                    // group detach + upkeep (morale creep)
-    M->dwell = side_assess(M->side)->word0;
-    pm_leader *L = &leader_of(M->settlement);      // $163b8:
-    if (L->troops_reserve) L->troops_reserve--;    //   << the constant manpower drain
-    pm_settlement *S = &settlements[M->settlement];
+    int D5 = --M->dwell;                           // subi.w #1 ; bgt -> next (no epilogue)
+    if (D5 > 0) return;
+    reconcile_16848(M);  upkeep_5c80(M);           // $16848 (which also calls $5c80) + $5c80
+    M->dwell = side_assess(M->side)->word0;        // reload
+    pm_settlement *S = &settlement_at(M->off34);   // $4f916 + 34(M)
+    settlement_upkeep_163b8(S);                    // $163b8: S->leader->troops_reserve -= 1, floored
+    if (M->flags & 0x10) goto epilogue;            // btst #4
     if (S->nation_kind == 0x0a) {                  // "under construction"
-        if (++S->build_progress /*+16*/ >= 0x78) { // 120 pulses to finish
-            S->nation_kind = S->dest_cell % 10;    // pseudo-random final kind from map position
-            if (S->nation_kind == 7) S->kind = 0x10;   // 1-in-10 becomes a capital
+        if (++S->build_progress /*+16*/ >= 0x78) {
+            S->nation_kind = S->dest_cell % 10;    // divu #$a ; swap  (remainder)
+            if (S->nation_kind == 7) S->kind = 0x10;
             S->build_progress = 0;
         }
-        return;
     }
-    // loyalty / recruitment-pressure accumulator (see §6)
-    if (L->troops_field * 4 >= L->troops_reserve) L->loyalty_pressure += 2;
-    else                                          L->loyalty_pressure -= 1;
-    if (L->loyalty_pressure >= 600) revolt(L, M);  // $550e
+    pm_leader *L = S->leader;                      // $4e514 + word[S+14]
+    int f4 = L->troops_field * 4;
+    if (f4 != 0) {
+        if (f4 >= L->troops_reserve) {
+            if (D5 == (short)0xff9c) L->loyalty_pressure += 2;   // <<< only on the
+        } else {                                                //     first post-park
+            if (D5 == (short)0xff9c) L->loyalty_pressure -= 1;   //     tick (dwell was
+            if ((M->anim /*+14*/ & 3) != 3) settlement_herdop_5cde(L);  // -99 -> -100)
+        }
+        if (L->loyalty_pressure >= 0x258) revolt_550e(L, M);     // >= 600
+    }
+epilogue:
+    epilogue_161c4(M);
 }
 ```
 
-So the "periodic settlement update" the 74th pass hunted for is this: **it is
-per-settlement, entity-driven, and it does three things — bleed one man from the
-lord's reserve, advance construction, and accumulate loyalty pressure.** It
-never adds manpower and never touches `goods[]`.
+**Corrections to the 75th-pass reading.** (1) The loyalty accumulator moves
+**only when `D5 == $ff9c`** — the pulse immediately after the marker was parked
+with dwell `#$ff9d` (`-99`), which decrements to `-100` on that first tick. On
+every ordinary steady-state pulse `D5 == 0` and neither `±` branch runs (the
+`-1` branch's `$5cde` call still does, gated on `(anim & 3) != 3`). (2) The
+`$163b8` drain and construction run *before* the `btst #4` / `field·4 == 0`
+early-outs. (3) `$16848` itself ends in a `jsr $5c80`, so upkeep runs twice per
+pulse.
+
+Asserted **off** in the proof (`raise` guards each): `$5cde` (settlement
+herd-op assessment — a whole routine), `$550e` (revolt — economy.md §6: never
+observed), `$5c2c` (owner reconcile in `$16848`).
 
 ### 3b. The `$163ea` aliasing — characterised, benign (75th pass, task 5)
 
@@ -497,6 +551,15 @@ capture). There is **no accumulator, no per-tick `+n`, no birth rate**. A
 nation's total manpower can only be redistributed among its lords and slowly bled
 by garrison upkeep; it grows only by winning battles (men who would have died
 walk home instead) and shrinks by losing them.
+
+**96th refinement.** In mission 1 the drain side of that ledger is even
+thinner than the flow table suggests: `$163b8` (the settlement pulse) is
+**never called** — mode `$7c` is `$57fd0`-gated and `$57fd0 = 4` in mission 1
+(§3a). So the only sinks that actually fire in the tutorial are `$150f2`
+(recruit), `$603e` (besiege) and the capture pair. `$1507c` (mode `$16`) is the
+`+2` path there, not a route into `$7c`. The conservation observation stands;
+the "slow constant per-settlement drain" is a feature of `(seed & 3) == 0`
+missions only.
 
 The one thing that *looks* like a growth counter — `pm_leader.loyalty_pressure`
 (`+14`) — is the opposite. It ramps `+2` whenever `troops_field*4 >= troops_reserve`
