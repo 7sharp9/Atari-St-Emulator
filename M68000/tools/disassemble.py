@@ -13,8 +13,13 @@ Usage:
                                                   # ignoring branches (for tracing a fixed byte range,
                                                   # e.g. the low-memory ROM mirror/reset trampoline)
     python disassemble.py --rom path\to\rom.img fc159e   # override the ROM path
+    python disassemble.py --snap scratchpad/pm97/pm97_map0.snap --linear 3c08 60
+                                                        # extract RAM from a snapshot and
+                                                        # disassemble a loaded program at base 0
+                                                        # (overrides --rom / --base)
     python disassemble.py --callers fca612               # find real callers of an address (JSR/JMP
-                                                           # abs.long only - see the mode's own gap note)
+                                                           # abs.long only; ALWAYS scans the TOS ROM,
+                                                           # even with --snap/--rom - see the gap note)
 
 Known gaps (extend as needed, following the same "verify against Instructions.fs first" discipline):
 TAS's ea-operand form, line-A/line-F opcodes, ABCD/SBCD/NBCD, CHK, TRAPV, RESET's operands (none),
@@ -22,6 +27,7 @@ and any instruction family the real emulator hasn't hit yet either.
 """
 import sys
 import os
+import struct
 
 DEFAULT_ROM_PATH = os.path.join(os.path.dirname(__file__), "..", "TOS100UK.IMG")
 ROM_BASE = 0xfc0000
@@ -30,6 +36,17 @@ ROM_BASE = 0xfc0000
 def load_rom(path):
     with open(path, 'rb') as f:
         return f.read()
+
+
+def ram_from_snap(path):
+    """A68S snapshot -> the full 0..0x100000 RAM image.  Layout: skip
+    5 + 19*4 + 2 bytes, read a little-endian u32 length, then that many bytes.
+    (Same extractor as tools/pm_export.py's ram_from_snap.)"""
+    with open(path, 'rb') as f:
+        s = f.read()
+    off = 5 + 19 * 4 + 2
+    ln = struct.unpack_from("<I", s, off)[0]
+    return s[off + 4:off + 4 + ln]
 
 
 def sext16(v):
@@ -429,7 +446,20 @@ def main():
         rom_base = int(args[i + 1], 16)
         args = args[:i] + args[i + 2:]
 
-    rom = load_rom(rom_path)
+    snap_path = None
+    if '--snap' in args:
+        i = args.index('--snap')
+        snap_path = args[i + 1]
+        args = args[:i] + args[i + 2:]
+
+    if snap_path:
+        # a loaded program image: RAM extracted from the snapshot, disassembled
+        # at absolute address 0 (overrides --rom / --base).  Replaces the 6-line
+        # hand-rolled .ram extractor every reversing pass used to write.
+        rom = ram_from_snap(snap_path)
+        rom_base = 0
+    else:
+        rom = load_rom(rom_path)
     dis = Disassembler(rom, rom_base=rom_base)
 
     if args and args[0] == '--callers':

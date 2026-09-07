@@ -804,6 +804,36 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     - **Still deferred:** `$4342`, `$5cde`, the regroup/group modes, `$1623c`,
       RIDER 3c/3d/3e, Task 1's territory-flip capture.
 
+34. The 98th pass, commit 1 (tooling only — no emulator/port-runtime change,
+    regression net skipped) **graduates the RIDER 3b differential-test substrate
+    from a scratchpad copy-forward to committed tooling.**
+    - `scratchpad/pm97/fsm_ref.py` (the $14b62 reconstruction, copied
+      pm93 → 94 → 95 → 96 → 97 five times) → **`tools/pm_fsm_ref.py`**, verbatim,
+      with one change: the three constant lookup tables (`$13f8a` trig, `$14360`
+      heading, `$168ee` spline) are now sliced from a RAM image by
+      `init_tables(ram)` instead of loaded from uncommitted `.bin` files
+      (verified byte-identical across pm78_settle / pm73_fight / pm88_f1 /
+      pm97_map0).
+    - The per-pass harness boilerplate (`run_repl` / `disable_others` /
+      `bytepokes` / `poked_ram` / `tracked_delta` / the callcap-per-state loop +
+      N/N report + pre-registered-bar check) → **`tools/pm_fsm_diff.py`**
+      (`Harness` class + `State` + `run_corpus`). A future pass imports both and
+      writes only `build_corpus()`.
+    - `tools/disassemble.py` gains **`--snap <path>`** (extract the RAM image
+      from a snapshot, disassemble at base 0) — replaces the 6-line `.ram`
+      extractor every pass hand-wrote.
+    - The subprocess REPL calls now use `pwsh -NoProfile`, dropping the three
+      lines of PSReadLine "predictive suggestion" stderr spam every pass greps
+      out. `run.ps1` itself is unchanged (the live SDL `window` path is
+      untouched).
+    - **Acceptance:** `scratchpad/pm98/repro9{3,4,5,6,7}.py` port each prior
+      `build_corpus()` to the graduated modules and re-compare against that
+      pass's own cached callcap deltas — **675/675, 1335/1335, 413/413, 85/85,
+      99/99, every byte reproduced** (2607 tracked bytes over 154 states). One
+      full live re-run through the new `pwsh -NoProfile` path gave a
+      byte-identical trace hash + mem delta to the 97th's cached run. `dotnet
+      build` clean; selftest unchanged (no compiled code touched).
+
 ## Files
 
 | file | what |
