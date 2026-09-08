@@ -882,11 +882,27 @@ type Cpu =
             // to (Ax). A7 steps by 2 even for a byte op. Ay and Ax can alias (both decrement it).
             let stepFor r = match size with 0b10uy -> 4 | 0b01uy -> 2 | _ -> (if r = 7uy then 2 else 1)
             let read a = match size with 0b10uy -> x.MMU.ReadLong a | 0b01uy -> x.MMU.ReadWord a &&& 0xffff | _ -> int (x.MMU.ReadByte a)
-            let yAddr = x.AddressRegister ry - stepFor ry
+            // ExtendedArith has its own predecrement path (not ResolveEa), so the group-0
+            // address-error fixups aren't set for us - do it here. Verified against ~7,000
+            // SingleStepTests -(Ay),-(Ax) address-error frames: the register whose read faults
+            // always lands at (original - 2), whatever the operand size, and that same value is
+            // the stacked fault address; a register whose read already completed lands at the
+            // full (original - size). A byte op's predecrement reads are always aligned and
+            // never fault (same as BcdOp). Ay and Ax may alias - both decrement the one register
+            // and the source read is what faults, so a single (ry, orig - 2) fixup covers it.
+            let origAy = x.AddressRegister ry
+            let yAddr = origAy - stepFor ry
             let afterY = x.WithAddressRegister ry yAddr
+            if size <> 0b00uy && yAddr &&& 1 <> 0 then
+                x.MMU.FaultRegFixup <- [(int ry, origAy - 2)]
+                raise (AddressError (uint32 (origAy - 2), false))
             let source = read (uint32 yAddr) &&& m
-            let xAddr = afterY.AddressRegister rx - stepFor rx
+            let baseAx = afterY.AddressRegister rx
+            let xAddr = baseAx - stepFor rx
             let afterX = afterY.WithAddressRegister rx xAddr
+            if size <> 0b00uy && xAddr &&& 1 <> 0 then
+                x.MMU.FaultRegFixup <- [(int ry, yAddr); (int rx, baseAx - 2)]
+                raise (AddressError (uint32 (baseAx - 2), false))
             let dest = read (uint32 xAddr) &&& m
             let result, ccr = ExtendedArith.step isAdd m sb x.CCR x.X dest source
             match size with
@@ -977,13 +993,13 @@ type Cpu =
               let a = x.AddressRegister r
               let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
               // A fault mid-access still commits the postincrement (see MMU.FaultRegFixup).
-              x.MMU.FaultRegFixup <- Some (int r, a + step)
+              x.MMU.FaultRegFixup <- [(int r, a + step)]
               EaMem (uint32 a), 0, sprintf "(a%u)+" r, (fun (c: Cpu) -> c.WithAddressRegister r (a + step))
           | 0b100uy, r ->
               let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
               let a = x.AddressRegister r - step
               // A fault mid-access still commits the predecrement (see MMU.FaultRegFixup).
-              x.MMU.FaultRegFixup <- Some (int r, a)
+              x.MMU.FaultRegFixup <- [(int r, a)]
               EaMem (uint32 a), 0, sprintf "-(a%u)" r, (fun (c: Cpu) -> c.WithAddressRegister r a)
           | 0b101uy, r ->
               let d = int (int16 (readW extAddr))
@@ -1285,7 +1301,7 @@ type Cpu =
             //fault handler below can stack a PC that points into the faulting instruction and
             //commit any -(An)/(An)+ side effect the faulting access had already applied.
             x.MMU.FaultPcAdvance <- 0
-            x.MMU.FaultRegFixup <- None
+            x.MMU.FaultRegFixup <- []
             let instruction = x.MMU.ReadWord (uint32 x.PC)
             match x.TryFastForwardTbdrPoll(instruction) with
             | Some fastForwarded -> fastForwarded
@@ -1343,9 +1359,8 @@ type Cpu =
             let opcode = try int (x.MMU.ReadWord (uint32 x.PC)) with _ -> 0
             let stackedPC = x.PC + x.MMU.FaultPcAdvance
             let faulted =
-                match x.MMU.FaultRegFixup with
-                | Some (r, v) -> x.WithAddressRegister (byte r) v
-                | None -> x
+                (x, x.MMU.FaultRegFixup)
+                ||> List.fold (fun (c: Cpu) (r, v) -> c.WithAddressRegister (byte r) v)
             let newCpu = faulted.EnterGroup0Vector 3 faultAddress isWrite opcode stackedPC
             printfn "address error: misaligned %s at $%08x -> vector 3 ($%08x)"
                     (if isWrite then "write" else "read") faultAddress newCpu.PC
@@ -1360,9 +1375,8 @@ type Cpu =
             let opcode = try int (x.MMU.ReadWord (uint32 x.PC)) with _ -> 0
             let stackedPC = x.PC + x.MMU.FaultPcAdvance
             let faulted =
-                match x.MMU.FaultRegFixup with
-                | Some (r, v) -> x.WithAddressRegister (byte r) v
-                | None -> x
+                (x, x.MMU.FaultRegFixup)
+                ||> List.fold (fun (c: Cpu) (r, v) -> c.WithAddressRegister (byte r) v)
             let newCpu = faulted.EnterGroup0Vector 2 faultAddress isWrite opcode stackedPC
             printfn "bus error: unmapped %s at $%08x -> vector 2 ($%08x)"
                     (if isWrite then "write" else "read") faultAddress newCpu.PC

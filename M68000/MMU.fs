@@ -1184,11 +1184,13 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
 
     ///When a bus/address error is raised part-way through a `-(An)` / `(An)+` operand access,
     ///the real 68000 has already updated An (the addressing hardware adjusts it before the
-    ///transfer) and that update stands. `Cpu.ResolveEa` records `Some (registerNumber, newValue)`
+    ///transfer) and that update stands. `Cpu.ResolveEa` records `[(registerNumber, newValue)]`
     ///for those two modes so the fault handler can commit it onto the frame-pushed Cpu; every
-    ///other addressing mode (and every non-faulting instruction) leaves it `None`. Reset per
-    ///instruction in `Cpu.Step`, like `FaultPcAdvance`, and not part of the snapshot.
-    member val FaultRegFixup : (int * int) option = None with get, set
+    ///other addressing mode (and every non-faulting instruction) leaves it `[]`. A list, not a
+    ///single pair, because `ExtendedArith`'s `-(Ay),-(Ax)` predecrement form touches TWO address
+    ///registers and a fault on the second read must still commit the first read's decrement.
+    ///Reset per instruction in `Cpu.Step`, like `FaultPcAdvance`, and not part of the snapshot.
+    member val FaultRegFixup : (int * int) list = [] with get, set
 
     ///A composite fingerprint of every piece of latent device state that a forward Step() consumes
     ///but that deliberately does NOT bump `mutations` - the Timer B HBL prescaler, the FDC INTRQ
