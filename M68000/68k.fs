@@ -805,6 +805,49 @@ type Cpu =
         let newPC = x.MMU.ReadLong (uint32 (vectorNumber * 4))
         {switched with A7 = frameBase; PC = newPC}
 
+    ///Real 68000 group-0 fault on an *instruction prefetch* to an odd address - the odd-target
+    ///case of every control transfer (JMP / JSR / BSR / Bcc / DBcc taken / RTS / RTE / RTR). The
+    ///68000 validates the branch target as it prefetches the first word there; an odd target
+    ///faults vector 3 *inside* the branching instruction, AFTER that instruction's own stack
+    ///activity (BSR's return-address push, RTS/RTE/RTR's pop) has already happened - so this
+    ///builds the 14-byte frame ON `result`, the Cpu the branch was about to become. `result`
+    ///must therefore already carry those side effects (and for RTE/RTR, the popped SR/CCR).
+    ///JSR is the one exception: the 68000 prefetches the target BEFORE pushing the return
+    ///address, so on an odd target the push never happens - the JSR call site passes a `result`
+    ///with A7 unmoved and nothing written.
+    ///Frame differs from EnterGroup0Vector's data-access frame in exactly two bits, verified by
+    ///reading the SingleStepTests JMP/JSR/BSR/Bcc/DBcc/RTS/RTE/RTR vectors directly: fc's low
+    ///bits are 2 (instruction fetch) not 1 (data), and the not-instruction bit (8) is set. The
+    ///stacked fault address is the odd target itself (un-masked, full 32 bits); the stacked PC
+    ///is target - 4; the stacked SR and the mode word's S/fc bits come from `result` - so an RTE
+    ///that dropped to user mode before the fault stacks the popped user SR and a user-mode fc,
+    ///again matching the vectors. WithSR re-enters supervisor (a no-op when already there, an
+    ///A7<-SSP swap for the RTE-to-user case) so the frame lands on the supervisor stack.
+    member x.FetchTargetOrFault (result: Cpu) (opcode: int) : Cpu =
+        if result.PC &&& 1 = 0 then result
+        else
+            let op = opcode &&& 0xFFFF
+            let sv = result.S
+            let fc = (if sv then 4 else 0) ||| 2
+            let mode =
+                (if sv then 4 else 0) ||| fc
+                ||| 16 ||| 8
+                ||| (op &&& ~~~31)
+            //Exception entry forces supervisor and clears the trace bit (T1, bit 15) in the live
+            //SR - the stacked frame SR at +8 still carries the pre-exception value. Only RTE can
+            //surface this here (it pops an SR that may have T set); the SingleStepTests RTE
+            //frame vectors show the post-fault SR with T cleared.
+            let switched = result.WithSR ((result.CCR ||| 0x2000s) &&& ~~~0x8000s)
+            let frameBase = switched.A7 - 14
+            x.MMU.WriteWord (uint32 frameBase)         (int16 mode)
+            x.MMU.WriteLong (uint32 (frameBase + 2))   result.PC
+            x.MMU.WriteWord (uint32 (frameBase + 6))   (int16 op)
+            x.MMU.WriteWord (uint32 (frameBase + 8))   result.CCR
+            x.MMU.WriteLong (uint32 (frameBase + 10))  (result.PC - 4)
+            let newPC = x.MMU.ReadLong (uint32 (3 * 4))
+            printfn "address error: prefetch of odd branch target $%08x -> vector 3 ($%08x)" result.PC newPC
+            {switched with A7 = frameBase; PC = newPC}
+
     member x.AddressRegister (register: byte) =
         match register with
         | 0uy -> x.A0 | 1uy -> x.A1 | 2uy -> x.A2 | 3uy -> x.A3
@@ -1853,7 +1896,7 @@ type Cpu =
             let returnAddr = x.MMU.ReadLong(uint32 x.A7)
             let newCpu = {x with PC = returnAddr; A7 = x.A7 + 4}
             printfn "rts"
-            newCpu
+            x.FetchTargetOrFault newCpu instruction
 
         | RTE ->
             //Inverse of TRAP's push order: SR at [A7], PC(long) at [A7+2], SP += 6. RTE only ever
@@ -1868,7 +1911,7 @@ type Cpu =
             let poppedCpu = {x with A7 = x.A7 + 6}
             let newCpu = {poppedCpu.WithSR sr with PC = pc}
             printfn "rte"
-            newCpu
+            x.FetchTargetOrFault newCpu instruction
 
         | RTR ->
             //Pop the condition codes (low byte of a word; only bits 0-4 are implemented, the rest
@@ -1878,7 +1921,7 @@ type Cpu =
             let pc = x.MMU.ReadLong(uint32 (x.A7+2))
             let newCcr = (x.CCR &&& ~~~0x1fs) ||| poppedCcr
             printfn "rtr"
-            {x with A7 = x.A7 + 6; PC = pc; CCR = newCcr}
+            x.FetchTargetOrFault {x with A7 = x.A7 + 6; PC = pc; CCR = newCcr} instruction
 
         | TRAPV ->
             //Trap to vector 7 when V is set, otherwise fall through. The stacked return PC is the
@@ -1941,11 +1984,16 @@ type Cpu =
             let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
             match loc with
             | EaMem target ->
-                let returnAddr = x.PC + 2 + extBytes
-                let newSP = x.A7 - 4
-                x.MMU.WriteLong (uint32 newSP) returnAddr
                 printfn "jsr %s == $%x" desc target
-                {x with PC = int target; A7 = newSP}
+                if int target &&& 1 <> 0 then
+                    //The 68000 prefetches the target before pushing the return address, so an
+                    //odd target faults with the push never having happened (A7 unmoved).
+                    x.FetchTargetOrFault {x with PC = int target} instruction
+                else
+                    let returnAddr = x.PC + 2 + extBytes
+                    let newSP = x.A7 - 4
+                    x.MMU.WriteLong (uint32 newSP) returnAddr
+                    {x with PC = int target; A7 = newSP}
             | _ -> failwithf "JSR not implemented for eamode %u reg %u" eamode eareg
 
         | JMP(eamode, eareg) ->
@@ -1953,7 +2001,7 @@ type Cpu =
             match loc with
             | EaMem jump ->
                 printfn "jmp %s == $%x" desc jump
-                {x with PC = int jump}
+                x.FetchTargetOrFault {x with PC = int jump} instruction
             | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg
         | _ when instruction &&& 0xFFFF = 0x4E72 ->
             //STOP #imm: load the immediate word into SR, then halt until an interrupt of level
@@ -1999,7 +2047,10 @@ type Cpu =
                 let newPC = if branch then x.PC + 2 + int displacement else x.PC + 4
                 let newCpu = {x.WithDataRegister register newValue with PC = newPC}
                 printfn "db%s D%u,$%x" (conditionName cond) register newPC
-                newCpu
+                //On the taken (condition-false, count-not-expired) path the decrement stands even
+                //when the target is odd - the SingleStepTests DBcc frame vectors show Dn's low
+                //word already decremented. So fault on `newCpu`, not a pre-decrement copy.
+                x.FetchTargetOrFault newCpu instruction
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
@@ -2018,14 +2069,16 @@ type Cpu =
                     x.MMU.WriteLong (uint32 newSP) returnAddr
                     let newPC = (x.PC+2) + int wordDisp
                     printfn "bsr.w $%x" newPC
-                    {x with PC = newPC; A7 = newSP}
+                    //Unlike JSR, the 68000 pushes the return address THEN prefetches, so an odd
+                    //target faults with the push already committed (frame delta 18, not 14).
+                    x.FetchTargetOrFault {x with PC = newPC; A7 = newSP} instruction
                 | 0xFFuy -> failwith "Not yet supprted" //32-bit displacement (68020+)
                 | byteDisp ->
                     let returnAddr = x.PC + 2
                     x.MMU.WriteLong (uint32 newSP) returnAddr
                     let newPC = (x.PC+2) + int (sbyte byteDisp)
                     printfn "bsr.s $%x" newPC
-                    {x with PC = newPC; A7 = newSP}
+                    x.FetchTargetOrFault {x with PC = newPC; A7 = newSP} instruction
             | _ ->
                 let takeBranch = x.EvaluateCondition cond
                 match disp with
@@ -2033,12 +2086,12 @@ type Cpu =
                     let wordDisp = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
                     let newPC = if takeBranch then (x.PC+2) + int wordDisp else x.PC + 4
                     printfn "b%s.w $%x (%b)" (conditionName cond) newPC takeBranch
-                    {x with PC = newPC}
+                    x.FetchTargetOrFault {x with PC = newPC} instruction
                 | 0xFFuy -> failwith "Not yet supprted" //32-bit displacement (68020+)
                 | byteDisp ->
                     let newPC = if takeBranch then (x.PC+2) + int (sbyte byteDisp) else x.PC + 2
                     printfn "b%s.s $%x (%b)" (conditionName cond) newPC takeBranch
-                    {x with PC = newPC}
+                    x.FetchTargetOrFault {x with PC = newPC} instruction
         
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
