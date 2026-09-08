@@ -43,7 +43,7 @@ type MmuSnapshot =
 ///the previous behavior of silently performing the misaligned access and continuing with
 ///corrupted state - see [[atari-st-emulator-next-instructions]]'s nineteenth pass, found via a
 ///differential comparison against a real 68000 core (dmcoles/estyjs).
-exception AddressError of address: uint32
+exception AddressError of address: uint32 * isWrite: bool
 
 ///Real 68000 hardware bus-errors (vector 2) on any access to an address no device claims -
 ///DTACK never asserts, so the bus controller aborts the cycle rather than letting it complete.
@@ -53,7 +53,7 @@ exception AddressError of address: uint32
 ///out-of-range-RAM-aliasing work) - see [[atari-st-emulator-next-instructions]]'s twentieth pass,
 ///found by tracing a garbage `rte` target ($56780000, well outside ROM/RAM/cart/peripheral space)
 ///straight into an opcode-decode failure instead of a hardware fault.
-exception BusError of address: uint32
+exception BusError of address: uint32 * isWrite: bool
 
 /// `flatTestBus` (default false) turns the MMU into a plain big-endian 24-bit RAM (sparse -
 /// unwritten addresses read 0) with no I/O regions, no ROM, no address aliasing and no bus errors
@@ -867,11 +867,14 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 match translateRamAddress address with
                 | Some idx -> ram.[int idx]
                 | None -> 0uy //open bus, no device backs this address
-            else raise (BusError address)
+            else raise (BusError (address, false))
 
     member x.ReadWord (address: uint32) =
+        //Oddness check (and the stacked fault address) uses the un-masked EA: the 68000
+        //group-0 frame records the full computed address, not the 24-bit bus-truncated one,
+        //and the SingleStepTests are generated that way.
+        if address % 2u <> 0u then raise (AddressError (address, false))
         let address = address &&& maxMemory
-        if address % 2u <> 0u then raise (AddressError address)
         if flatBus then (int (flatGet address) <<< 8) ||| int (flatGet ((address + 1u) &&& maxMemory)) else
         match address with
         | a when a < 7u ->
@@ -926,11 +929,12 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             if aliasIntoRam a then
                 let byteAt addr = match translateRamAddress addr with Some idx -> ram.[int idx] | None -> 0uy
                 ((int (byteAt a)) <<< 8) ||| (int (byteAt (a+1u)))
-            else raise (BusError a)
+            else raise (BusError (a, false))
 
     member x.WriteWord (addr: uint32) (input: int16) =
+        //Un-masked EA for the odd check and the group-0 fault address - see ReadWord.
+        if addr % 2u <> 0u then raise (AddressError (addr, true))
         let address = addr &&& maxMemory //clip to the 24-bit address bus
-        if address % 2u <> 0u then raise (AddressError address)
         checkWatch address "WriteWord" (uint32 (uint16 input))
         if flatBus then
             flatMem.[address] <- byte (int input >>> 8)
@@ -977,7 +981,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 let storeAt addr v = match translateRamAddress addr with Some idx -> store ram (int idx) v | None -> ()
                 storeAt address (byte (input >>> 8))
                 storeAt (address+1u) (byte (input &&& 0xffs))
-            else raise (BusError address)
+            else raise (BusError (address, true))
 
     member x.WriteByte (addr: uint32) (input: byte) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
@@ -1159,7 +1163,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 match translateRamAddress address with
                 | Some idx -> store ram (int idx) input
                 | None -> () //open bus, no device backs this address
-            else raise (BusError address)
+            else raise (BusError (address, true))
 
     member x.WriteLong (addr: uint32) (input: int) =
         x.WriteWord addr (int16 (input >>> 16))
@@ -1168,6 +1172,23 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///How many emulator-visible state changes have happened so far - see the field's own comment
     ///above. Consumed by Program.fs's loop detector.
     member x.Mutations = mutations
+
+    ///Bytes past the faulting instruction's own start that the decoder had already consumed
+    ///(the opcode word plus every extension word resolved so far) at the moment a bus/address
+    ///error was raised. `Cpu.Step` resets this to 0 at the top of each instruction and
+    ///`Cpu.ResolveEa` sets it as it forms each effective address; the group-0 exception frame
+    ///stacks (instruction PC + this) as its PC word - the 68000 stacks a PC pointing into the
+    ///instruction, not at the next one. Purely diagnostic: nothing reads it unless a fault is
+    ///caught in the same Step, so it is not part of the snapshot (like `Cpu.Stopped`).
+    member val FaultPcAdvance = 0 with get, set
+
+    ///When a bus/address error is raised part-way through a `-(An)` / `(An)+` operand access,
+    ///the real 68000 has already updated An (the addressing hardware adjusts it before the
+    ///transfer) and that update stands. `Cpu.ResolveEa` records `Some (registerNumber, newValue)`
+    ///for those two modes so the fault handler can commit it onto the frame-pushed Cpu; every
+    ///other addressing mode (and every non-faulting instruction) leaves it `None`. Reset per
+    ///instruction in `Cpu.Step`, like `FaultPcAdvance`, and not part of the snapshot.
+    member val FaultRegFixup : (int * int) option = None with get, set
 
     ///A composite fingerprint of every piece of latent device state that a forward Step() consumes
     ///but that deliberately does NOT bump `mutations` - the Timer B HBL prescaler, the FDC INTRQ
@@ -1545,8 +1566,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         //calling this, for exactly that reason.
 
     member x.ReadLong (address: uint32) =
+        //Un-masked EA for the odd check and the group-0 fault address - see ReadWord.
+        if address % 2u <> 0u then raise (AddressError (address, false))
         let address = address &&& maxMemory //clip to the 24-bit address bus, matching Read/WriteByte/Word
-        if address % 2u <> 0u then raise (AddressError address)
         if flatBus then
             (int (flatGet address) <<< 24) ||| (int (flatGet ((address + 1u) &&& maxMemory)) <<< 16)
             ||| (int (flatGet ((address + 2u) &&& maxMemory)) <<< 8) ||| int (flatGet ((address + 3u) &&& maxMemory))
@@ -1597,4 +1619,4 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 (int (byteAt (address+1u)) <<< 16) |||
                 (int (byteAt (address+2u)) <<<  8) |||
                 (int (byteAt (address+3u)))
-            else raise (BusError address)
+            else raise (BusError (address, false))

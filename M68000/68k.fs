@@ -770,6 +770,41 @@ type Cpu =
         let newPC = x.MMU.ReadLong (uint32 (vectorNumber * 4))
         {switched with A7 = srPushAddr; PC = newPC}
 
+    ///Real 68000 group-0 exception entry - bus error (vector 2) and address error (vector 3).
+    ///These push a 14-byte frame, not EnterVector's 6-byte one: the extra words carry the fault
+    ///diagnostics the handler (and the SingleStepTests' WinUAE-core oracle) expect. Layout and
+    ///the SSW/mode word's bit assignments are transcribed from
+    ///`hatari/src/cpu/newcpu_common.c` `Exception_build_68000_address_error_stack_frame` and
+    ///`newcpu.c` `Exception_normal`'s `nr == 2 || nr == 3` arm
+    ///(`mode = (sv?4:0) | last_fc | (write?0:16) | (notinstruction?8:0) | (opcode & ~31)`):
+    ///  A7 -= 14
+    ///  [A7+0].w  = mode / SSW
+    ///  [A7+2].l  = faulting access address
+    ///  [A7+6].w  = opcode being executed (instruction register)
+    ///  [A7+8].w  = pre-exception SR
+    ///  [A7+10].l = PC pointing into the faulting instruction (its start + `stackedAdvance`)
+    ///then PC := the vector's handler address. `isWrite` clears the R/W bit (bit 4 = set on a
+    ///READ). This emulator only ever raises a *data*-access fault - it never faults an
+    ///instruction prefetch (a JMP/RTS to an odd address just sets PC; the odd fetch would fault
+    ///on the *next* Step, and the SingleStepTests never seed an odd initial PC) - so fc's
+    ///instruction-fetch bit and the not-instruction bit are always 0 here.
+    member x.EnterGroup0Vector (vectorNumber: int) (faultAddress: uint32) (isWrite: bool) (opcode: int) (stackedPC: int) : Cpu =
+        let sv = x.S
+        let fc = (if sv then 4 else 0) ||| 1
+        let mode =
+            (if sv then 4 else 0) ||| fc
+            ||| (if isWrite then 0 else 16)
+            ||| (opcode &&& ~~~31)
+        let switched = x.WithSR (x.CCR ||| 0x2000s)
+        let frameBase = switched.A7 - 14
+        x.MMU.WriteWord (uint32 frameBase)         (int16 mode)
+        x.MMU.WriteLong (uint32 (frameBase + 2))   (int faultAddress)
+        x.MMU.WriteWord (uint32 (frameBase + 6))   (int16 opcode)
+        x.MMU.WriteWord (uint32 (frameBase + 8))   x.CCR
+        x.MMU.WriteLong (uint32 (frameBase + 10))  stackedPC
+        let newPC = x.MMU.ReadLong (uint32 (vectorNumber * 4))
+        {switched with A7 = frameBase; PC = newPC}
+
     member x.AddressRegister (register: byte) =
         match register with
         | 0uy -> x.A0 | 1uy -> x.A1 | 2uy -> x.A2 | 3uy -> x.A3
@@ -890,43 +925,56 @@ type Cpu =
     member x.ResolveEa (size: OperandSize) (mode: byte) (reg: byte) (extAddr: int) : EaResolved * int * string * (Cpu -> Cpu) =
         let readW a = x.MMU.ReadWord (uint32 a)
         let readL a = x.MMU.ReadLong (uint32 a)
-        match mode, reg with
-        | 0b000uy, r -> EaDn r, 0, sprintf "D%u" r, id
-        | 0b001uy, r -> EaAn r, 0, sprintf "A%u" r, id
-        | 0b010uy, r -> EaMem (uint32 (x.AddressRegister r)), 0, sprintf "(a%u)" r, id
-        | 0b011uy, r ->
-            let a = x.AddressRegister r
-            let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
-            EaMem (uint32 a), 0, sprintf "(a%u)+" r, (fun (c: Cpu) -> c.WithAddressRegister r (a + step))
-        | 0b100uy, r ->
-            let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
-            let a = x.AddressRegister r - step
-            EaMem (uint32 a), 0, sprintf "-(a%u)" r, (fun (c: Cpu) -> c.WithAddressRegister r a)
-        | 0b101uy, r ->
-            let d = int (int16 (readW extAddr))
-            EaMem (uint32 (x.AddressRegister r + d)), 2, sprintf "%i(a%u)" d r, id
-        | 0b110uy, r ->
-            let ext = x.DecodeBriefExtension (readW extAddr)
-            EaMem (uint32 (x.AddressRegister r + ext.Offset)), 2, x.DescribeIndexed r ext, id
-        | 0b111uy, 0b000uy ->
-            let a = int (int16 (readW extAddr))
-            EaMem (uint32 a), 2, sprintf "$%x.w" a, id
-        | 0b111uy, 0b001uy ->
-            let a = readL extAddr
-            EaMem (uint32 a), 4, sprintf "$%x.l" a, id
-        | 0b111uy, 0b010uy ->
-            let d = int (int16 (readW extAddr))
-            EaMem (uint32 (extAddr + d)), 2, sprintf "%i(pc)" d, id
-        | 0b111uy, 0b011uy ->
-            let ext = x.DecodeBriefExtension (readW extAddr)
-            EaMem (uint32 (extAddr + ext.Offset)), 2,
-                (sprintf "%i(pc,%s%u.%s)" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w")), id
-        | 0b111uy, 0b100uy ->
-            match size with
-            | OperandSize.Byte -> EaImm (readW extAddr &&& 0xff), 2, sprintf "#$%x" (readW extAddr &&& 0xff), id
-            | OperandSize.Word -> EaImm (readW extAddr &&& 0xffff), 2, sprintf "#$%x" (readW extAddr &&& 0xffff), id
-            | _ -> EaImm (readL extAddr), 4, sprintf "#$%x" (readL extAddr), id
-        | _ -> failwithf "ResolveEa: unimplemented addressing mode %d reg %d" mode reg
+        let resolved =
+          match mode, reg with
+          | 0b000uy, r -> EaDn r, 0, sprintf "D%u" r, id
+          | 0b001uy, r -> EaAn r, 0, sprintf "A%u" r, id
+          | 0b010uy, r -> EaMem (uint32 (x.AddressRegister r)), 0, sprintf "(a%u)" r, id
+          | 0b011uy, r ->
+              let a = x.AddressRegister r
+              let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
+              // A fault mid-access still commits the postincrement (see MMU.FaultRegFixup).
+              x.MMU.FaultRegFixup <- Some (int r, a + step)
+              EaMem (uint32 a), 0, sprintf "(a%u)+" r, (fun (c: Cpu) -> c.WithAddressRegister r (a + step))
+          | 0b100uy, r ->
+              let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
+              let a = x.AddressRegister r - step
+              // A fault mid-access still commits the predecrement (see MMU.FaultRegFixup).
+              x.MMU.FaultRegFixup <- Some (int r, a)
+              EaMem (uint32 a), 0, sprintf "-(a%u)" r, (fun (c: Cpu) -> c.WithAddressRegister r a)
+          | 0b101uy, r ->
+              let d = int (int16 (readW extAddr))
+              EaMem (uint32 (x.AddressRegister r + d)), 2, sprintf "%i(a%u)" d r, id
+          | 0b110uy, r ->
+              let ext = x.DecodeBriefExtension (readW extAddr)
+              EaMem (uint32 (x.AddressRegister r + ext.Offset)), 2, x.DescribeIndexed r ext, id
+          | 0b111uy, 0b000uy ->
+              let a = int (int16 (readW extAddr))
+              EaMem (uint32 a), 2, sprintf "$%x.w" a, id
+          | 0b111uy, 0b001uy ->
+              let a = readL extAddr
+              EaMem (uint32 a), 4, sprintf "$%x.l" a, id
+          | 0b111uy, 0b010uy ->
+              let d = int (int16 (readW extAddr))
+              EaMem (uint32 (extAddr + d)), 2, sprintf "%i(pc)" d, id
+          | 0b111uy, 0b011uy ->
+              let ext = x.DecodeBriefExtension (readW extAddr)
+              EaMem (uint32 (extAddr + ext.Offset)), 2,
+                  (sprintf "%i(pc,%s%u.%s)" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w")), id
+          | 0b111uy, 0b100uy ->
+              match size with
+              | OperandSize.Byte -> EaImm (readW extAddr &&& 0xff), 2, sprintf "#$%x" (readW extAddr &&& 0xff), id
+              | OperandSize.Word -> EaImm (readW extAddr &&& 0xffff), 2, sprintf "#$%x" (readW extAddr &&& 0xffff), id
+              | _ -> EaImm (readL extAddr), 4, sprintf "#$%x" (readL extAddr), id
+          | _ -> failwithf "ResolveEa: unimplemented addressing mode %d reg %d" mode reg
+        // How far into this instruction the decoder has now read - for the 68000 group-0
+        // exception frame's stacked PC if the operand access that follows faults. `extAddr` is
+        // the address of this EA's first extension word, so `extAddr - (PC + 2)` is whatever was
+        // consumed ahead of it (an immediate source, a MOVEM register mask, or a MOVE source
+        // EA), and `extBytes` is this EA's own extension words. Reset per instruction in Step().
+        let (_, extBytes, _, _) = resolved
+        x.MMU.FaultPcAdvance <- (extAddr - (x.PC + 2)) + extBytes
+        resolved
 
     ///Read a resolved operand, returning the value zero-extended to `size`
     ///(byte -> 0..255, word -> 0..65535, long -> full 32 bits).
@@ -1190,6 +1238,11 @@ type Cpu =
             (if x.Stopped then { x with Stopped = false } else x).EnterInterrupt pendingLevel vector
         else
         try
+            //Fresh per instruction - ResolveEa fills these in as it forms each EA so the group-0
+            //fault handler below can stack a PC that points into the faulting instruction and
+            //commit any -(An)/(An)+ side effect the faulting access had already applied.
+            x.MMU.FaultPcAdvance <- 0
+            x.MMU.FaultRegFixup <- None
             let instruction = x.MMU.ReadWord (uint32 x.PC)
             match x.TryFastForwardTbdrPoll(instruction) with
             | Some fastForwarded -> fastForwarded
@@ -1232,47 +1285,44 @@ type Cpu =
                      newCpu
             | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
         with
-        | AddressError faultAddress ->
+        | AddressError (faultAddress, isWrite) ->
             //Real 68000 hardware traps to the Address Error vector (vector 3, at address $C)
-            //instead of performing a word/long access to an odd address. Mirrors TRAP's
-            //simplified 6-byte exception frame (this emulator doesn't model the larger real
-            //Address Error frame's extra fault-address/access-type diagnostic words, same
-            //simplification TRAP already makes) and pushes the faulting instruction's own PC
-            //(not PC+2 - there's no well-defined "next instruction" for an access that never
-            //completed). Found via a differential comparison against a real 68000 core
-            //(dmcoles/estyjs) - see [[atari-st-emulator-next-instructions]]'s nineteenth pass:
-            //without this, a misaligned access was silently performed instead of trapping,
-            //diverging from what real hardware (and TOS's own error handler) would do.
-            //Entering supervisor mode (see TRAP below for why this swap matters) - if already
-            //supervisor (nested fault), the supervisor stack just keeps being used as-is.
-            let vectorAddr = 3u * 4u
-            let switched = x.WithSR (x.CCR ||| 0x2000s)
-            let pcPushAddr = switched.A7 - 4
-            x.MMU.WriteLong (uint32 pcPushAddr) x.PC
-            let srPushAddr = pcPushAddr - 2
-            x.MMU.WriteWord (uint32 srPushAddr) x.CCR
-            let newPC = x.MMU.ReadLong vectorAddr
-            let newCpu = {switched with A7 = srPushAddr; PC = newPC}
-            printfn "address error: misaligned access at $%08x -> vector 3 ($%08x)" faultAddress newPC
+            //instead of performing a word/long access to an odd address. Found via a
+            //differential comparison against a real 68000 core (dmcoles/estyjs) - see
+            //[[atari-st-emulator-next-instructions]]'s nineteenth pass: without this, a
+            //misaligned access was silently performed instead of trapping. This is a group-0
+            //exception - EnterGroup0Vector builds the real 14-byte frame (100th pass; earlier
+            //passes stacked EnterVector's simplified 6-byte one, which diverged from the
+            //SingleStepTests on ssp + every stacked word). `opcode` re-reads the faulting
+            //instruction's own first word (guarded: if that fetch itself faulted we are here
+            //because of it, so fall back to 0); `FaultPcAdvance` is how far ResolveEa had
+            //walked into the instruction when the operand access threw.
+            let opcode = try int (x.MMU.ReadWord (uint32 x.PC)) with _ -> 0
+            let stackedPC = x.PC + x.MMU.FaultPcAdvance
+            let faulted =
+                match x.MMU.FaultRegFixup with
+                | Some (r, v) -> x.WithAddressRegister (byte r) v
+                | None -> x
+            let newCpu = faulted.EnterGroup0Vector 3 faultAddress isWrite opcode stackedPC
+            printfn "address error: misaligned %s at $%08x -> vector 3 ($%08x)"
+                    (if isWrite then "write" else "read") faultAddress newCpu.PC
             newCpu
-        | BusError faultAddress ->
+        | BusError (faultAddress, isWrite) ->
             //Real 68000 hardware traps to the Bus Error vector (vector 2, at address $8) when an
-            //access hits an address no device claims (DTACK never asserted) - mirrors AddressError's
-            //simplified 6-byte frame just above, for the same reason (this emulator doesn't model
-            //the larger real Bus Error frame's extra fault-address/access-type diagnostic words).
-            //See [[atari-st-emulator-next-instructions]]'s twentieth pass: previously an unmapped
-            //access silently read 0 / dropped the write instead of trapping, letting execution wander
-            //into whatever garbage that produced (e.g. an `rte` to a genuinely unmapped address) as
-            //if it were valid code, instead of giving TOS's own bus-error handler a chance to run.
-            let vectorAddr = 2u * 4u
-            let switched = x.WithSR (x.CCR ||| 0x2000s)
-            let pcPushAddr = switched.A7 - 4
-            x.MMU.WriteLong (uint32 pcPushAddr) x.PC
-            let srPushAddr = pcPushAddr - 2
-            x.MMU.WriteWord (uint32 srPushAddr) x.CCR
-            let newPC = x.MMU.ReadLong vectorAddr
-            let newCpu = {switched with A7 = srPushAddr; PC = newPC}
-            printfn "bus error: unmapped access at $%08x -> vector 2 ($%08x)" faultAddress newPC
+            //access hits an address no device claims (DTACK never asserted). See
+            //[[atari-st-emulator-next-instructions]]'s twentieth pass: previously an unmapped
+            //access silently read 0 / dropped the write instead of trapping. Same real 14-byte
+            //group-0 frame as the address error above (EnterGroup0Vector). A diskless TOS boot
+            //never takes a bus error, so this path stays cold in the 30M-snapshot regression.
+            let opcode = try int (x.MMU.ReadWord (uint32 x.PC)) with _ -> 0
+            let stackedPC = x.PC + x.MMU.FaultPcAdvance
+            let faulted =
+                match x.MMU.FaultRegFixup with
+                | Some (r, v) -> x.WithAddressRegister (byte r) v
+                | None -> x
+            let newCpu = faulted.EnterGroup0Vector 2 faultAddress isWrite opcode stackedPC
+            printfn "bus error: unmapped %s at $%08x -> vector 2 ($%08x)"
+                    (if isWrite then "write" else "read") faultAddress newCpu.PC
             newCpu
 
     member x.DecodeBucket0 (instruction: int) : Cpu =
