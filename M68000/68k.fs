@@ -1302,6 +1302,7 @@ type Cpu =
             //commit any -(An)/(An)+ side effect the faulting access had already applied.
             x.MMU.FaultPcAdvance <- 0
             x.MMU.FaultRegFixup <- []
+            x.MMU.FaultCcr <- None
             let instruction = x.MMU.ReadWord (uint32 x.PC)
             match x.TryFastForwardTbdrPoll(instruction) with
             | Some fastForwarded -> fastForwarded
@@ -1361,6 +1362,8 @@ type Cpu =
             let faulted =
                 (x, x.MMU.FaultRegFixup)
                 ||> List.fold (fun (c: Cpu) (r, v) -> c.WithAddressRegister (byte r) v)
+            //MOVE's CCR update (see MMU.FaultCcr) survives a faulting destination write.
+            let faulted = match x.MMU.FaultCcr with Some c -> { faulted with CCR = c } | None -> faulted
             let newCpu = faulted.EnterGroup0Vector 3 faultAddress isWrite opcode stackedPC
             printfn "address error: misaligned %s at $%08x -> vector 3 ($%08x)"
                     (if isWrite then "write" else "read") faultAddress newCpu.PC
@@ -1377,6 +1380,8 @@ type Cpu =
             let faulted =
                 (x, x.MMU.FaultRegFixup)
                 ||> List.fold (fun (c: Cpu) (r, v) -> c.WithAddressRegister (byte r) v)
+            //MOVE's CCR update (see MMU.FaultCcr) survives a faulting destination write.
+            let faulted = match x.MMU.FaultCcr with Some c -> { faulted with CCR = c } | None -> faulted
             let newCpu = faulted.EnterGroup0Vector 2 faultAddress isWrite opcode stackedPC
             printfn "bus error: unmapped %s at $%08x -> vector 2 ($%08x)"
                     (if isWrite then "write" else "read") faultAddress newCpu.PC
@@ -1531,6 +1536,29 @@ type Cpu =
             let x = srcUpdate x
             let dstLoc, dstExt, dstDesc, dstUpdate = x.ResolveEa size dMode dReg (x.PC + 2 + srcExt)
             let newPC = x.PC + 2 + srcExt + dstExt
+            //Three destination-addressing-mode quirks in the group-0 frame a faulting MOVE write
+            //stacks, all verified against real dump_vector.py MOVE.w/.l --frame samples (104th
+            //pass) rather than reconstructed from memory:
+            (match dMode, dReg, srcLoc with
+             //abs.l dest + a source that performs a real bus read: the source cycle delays the
+             //prefetch queue by one word, so at fault time only the FIRST of the abs.l dest's two
+             //extension words has been "credited" - the stacked PC is srcExt+2, one word short of
+             //ResolveEa's naive srcExt+dstExt. A register/immediate source has no bus cycle, so
+             //ResolveEa's own srcExt+dstExt is already correct there.
+             | 0b111uy, 0b001uy, EaMem _ -> x.MMU.FaultPcAdvance <- srcExt + 2
+             //-(An) dest: an extra dummy prefetch cycle for the predecrement adds one more word to
+             //the stacked PC than ResolveEa's naive srcExt+dstExt, for EVERY source class and BOTH
+             //sizes (not just when the source performs a bus read, unlike the abs.l case above).
+             | 0b100uy, _, _ -> x.MMU.FaultPcAdvance <- x.MMU.FaultPcAdvance + 2
+             | _ -> ())
+            //(An)+ dest: unlike -(An) (which the real 68000 always commits, even mid-fault - see
+            //ResolveEa's comment on MMU.FaultRegFixup) the postincrement of a destination (An)+ is
+            //sequenced AFTER the write completes, so a faulting write leaves An un-incremented.
+            //ResolveEa's Aipi arm primed FaultRegFixup optimistically (correct for every OTHER use
+            //of that addressing mode - a source read, or a read-before-write like CLR/NOT/TAS -
+            //where the register update happens before/alongside the access and so does survive a
+            //fault); undo it here, specific to MOVE's destination position.
+            if dMode = 0b011uy then x.MMU.FaultRegFixup <- []
 
             match dstLoc with
             | EaAn r ->
@@ -1543,6 +1571,9 @@ type Cpu =
                     | OperandSize.Byte -> CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR (byte rawSource)
                     | OperandSize.Word -> CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 rawSource)
                     | _ -> CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR rawSource
+                //MOVE's CCR is set from the source value before the destination write is
+                //attempted, so it sticks even when that write faults - see MMU.FaultCcr.
+                x.MMU.FaultCcr <- Some ccr
                 let written = x.WriteEa size dstLoc rawSource (dstUpdate x)
                 printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
                 { written with PC = newPC; CCR = ccr }

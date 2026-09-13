@@ -1192,6 +1192,16 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Reset per instruction in `Cpu.Step`, like `FaultPcAdvance`, and not part of the snapshot.
     member val FaultRegFixup : (int * int) list = [] with get, set
 
+    ///MOVE sets the CCR from its source value before attempting the destination write, so the
+    ///flag update sticks even when that write faults (real 68000 behaviour - see gencpu.c's
+    ///`i_MOVE`, `cpu_level < 2` branch: "if data prefetches needed for destination EA, CCR is
+    ///set before fetch completes"). `DecodeBucketMove` records the computed CCR here right before
+    ///the potentially-faulting `WriteEa`; the group-0 handler applies it to the frame-pushed Cpu
+    ///if set. `None` on every non-MOVE instruction and on a MOVE whose write did not fault (the
+    ///happy path already carries the CCR in its own return record). Reset per instruction in
+    ///`Cpu.Step`, like `FaultPcAdvance`/`FaultRegFixup`, and not part of the snapshot.
+    member val FaultCcr : int16 option = None with get, set
+
     ///A composite fingerprint of every piece of latent device state that a forward Step() consumes
     ///but that deliberately does NOT bump `mutations` - the Timer B HBL prescaler, the FDC INTRQ
     ///countdown/line, the pending-interrupt slots, the DMA sector counter. The loop detector folds
