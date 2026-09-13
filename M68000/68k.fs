@@ -1634,13 +1634,24 @@ type Cpu =
                 printfn "move sr,D%u" eareg
                 newCpu
             | 0b100uy -> //-(An)
+                //68000 (cpu_level 0, gencpu.c i_MVSR2): the address register predecrements as
+                //part of EA resolution (committed even on a fault), then a dummy read of the
+                //destination happens and is discarded, then the real write. On an odd EA the
+                //dummy read is what faults, so the group-0 frame's R/W bit reads READ, not WRITE.
                 let newAddr = x.AddressRegister eareg - 2
+                x.MMU.FaultRegFixup <- [(int eareg, newAddr)]
+                x.MMU.ReadWord (uint32 newAddr) |> ignore
                 x.MMU.WriteWord (uint32 newAddr) x.CCR
                 let newCpu = {x.WithAddressRegister eareg newAddr with PC = x.PC+2}
                 printfn "move sr,-(a%u)" eareg
                 newCpu
             | 0b111uy when eareg = 0b001uy -> //(xxx).L
+                //Same dummy-read-first shape as -(An) above. The abs.l extension word is already
+                //consumed by the time the dummy read can fault, so the stacked PC lands 4 bytes
+                //further into the instruction (FaultPcAdvance).
                 let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                x.MMU.FaultPcAdvance <- 4
+                x.MMU.ReadWord addr |> ignore
                 x.MMU.WriteWord addr x.CCR
                 let newCpu = {x with PC = x.PC+6}
                 printfn "move sr,$%x.l" addr
@@ -1751,10 +1762,13 @@ type Cpu =
 
         | CLR(size, eamode, eareg) ->
             //CLR: writes 0 to the destination, sets Z, clears N/V/C, leaves X. Migrated to the
-            //shared EA decoder. (The real 68000 also performs a dummy read first; we don't model
-            //that read - it is only observable as an odd-address fault, which the write raises too.)
+            //shared EA decoder. The real 68000 (cpu_level 0, gencpu.c i_CLR) does a dummy READ of
+            //the destination before the write; on an odd EA that read is what faults, so the
+            //group-0 frame's R/W bit must read READ, not WRITE. The read's result is discarded -
+            //CLR always stores 0 regardless of what was there.
             let sz = match size with 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long | _ -> failwithf "clr: bad size %x" size
             let loc, extBytes, desc, regUpdate = x.ResolveEa sz eamode eareg (x.PC + 2)
+            let _ = x.ReadEa sz loc
             let ccr =
                 match sz with
                 | OperandSize.Byte -> CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR 0uy
