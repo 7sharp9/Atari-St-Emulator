@@ -41,5 +41,5 @@ $0001818a	SpriteObjectArrayPtr_A5Plus56
 $000185d2	SpriteObjectArrayCount_A5Plus1152
 $0000d792	SpriteList_BuildAndDispatch
 $0000d856	SpriteList_ClipAndCompositeOne
-$0000bf72	SpritePlot_ShiftedMaskBlit_00bf72
-$00029800	SpriteObjectSheet_Base
+$0000bf72	UnknownShiftedMaskBlit_00bf72_NotSpriteArrayDraw
+$00029800	PlayerFrameSheet_Base_32x42Frames

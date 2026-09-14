@@ -52,38 +52,68 @@ the *source* pointer for this blit**, i.e. exactly the "current sprite bitmap" t
 chasing, and it is **not** confined to the `$2ca84`-`$2ca94` neighbourhood — it's fed from a wider
 packed region starting well before `CompositeBackBuffer`.
 
-Rendering that wider region (`decode_span.py --grid`, 32×32 px cells, st-interleaved 4bpp, live
-palette `$5a9c`) as a scan from `$026800` forward shows a clean transition: streaky
-noise/pixel-junk through `$029800`, then **35 consecutive cells of coherent, distinct pixel art**
-(varied objects — a repeated red-roofed motif, cream/tan highlights, green) from `$029800` up to
-exactly `$02de08` — the start of `CompositeBackBuffer` itself. Past that point the same grid
-render degrades back into horizontal-streak noise, matching `CompositeBackBuffer` holding live,
-constantly-rewritten frame state rather than static source art. Both boundaries line up with
-already-known addresses (`CompositeBackBuffer` at the end; the 6th pass's own `$2ca84`/`$2ca94`
-frame pointers fall *inside* the range, at byte offsets 25×512+132 and 25×512+148 — **not**
-tile-index-aligned to the 32×32 grid used to render it).
+Rendering that wider region at a diagnostic 32×32 px grid (st-interleaved 4bpp, live palette
+`$5a9c`) as a scan from `$026800` forward showed a clean transition: streaky noise/pixel-junk
+through `$029800`, then coherent, distinct pixel art from `$029800` up to exactly `$02de08` — the
+start of `CompositeBackBuffer` itself, with the 6th pass's own `$2ca84`/`$2ca94` frame pointers
+landing inside the range. That established the *region*, but the 32×32 grid itself was wrong — see
+below for the corrected per-frame size (32×42, not 32×32), found by reading the actual struct
+fields the game uses rather than guessing a stride.
 
-That non-alignment is the tell: **the 32×32 grid was a diagnostic rendering choice, not the real
-packing.** The true format is almost certainly variable-size entries prefixed by the 3-word header
-`$00bf72` reads (`D0`/`D1`/`D2` — likely dimensions/x-shift/palette or frame-select fields, not
-individually decoded this pass), packed back-to-back with no fixed stride. The 32×32 grid happened
-to produce recognisable, non-garbled art because most entries are close enough to that size to
-render legibly, not because 512 bytes is the real per-entry size.
+### Width and height are struct fields, not guesses — corrected after initial review
+
+The first cut of this pass rendered every sprite as a 32×32 (or, for the props, an eyeballed
+32×N-rows-until-it-looks-garbled) diagnostic square, and flagged the format as still open. On review
+that output was visibly wrong — most cells repeated the same red-roofed silhouette regardless of
+tile size, the telltale sign of decoding at the wrong stride, and the two individual prop crops had
+a second, unrelated shape bleeding in at the bottom. Two things fixed it, both read directly out of
+the emulator rather than guessed:
+
+1. **Width.** In the `$00bf72` blitter's own caller (`$00bef0`-`$00bf6e`, disassembled this pass),
+   a per-call setup block reads a byte from a type-selected sub-table and computes
+   `((byte>>1)&~7)+8`, storing the result at global `1246(A5)` — read live off `gameplay_empire.snap`
+   (`A5=$18152`) as **`16`**. 16 bytes/row in st-interleaved 4bpp is **32 px** — matches the width
+   this pass had already been guessing, now grounded rather than assumed.
+2. **Height, and the real per-object source.** `SpriteList_ClipAndCompositeOne` (`$00d856`, already
+   named) — not `$00bf72` — turns out to be what actually draws every entry in the sprite-object
+   array, player included, via `jsr $14d64` (`SpriteCompositeInner_AndOrMaskLoop`, already named) or
+   one of two clipped-composite paths (`$7dd6`/`$7be6`). It reads **`move.b 50(A3),D6` /
+   `move.b 51(A3),D7`** directly from each object's own struct — struct offset **`+50` = width in
+   16-px groups, `+51` = height in rows** — no per-call global, no guessing. Read from the already-
+   captured 22-entry array dump (`$038338`, stride `$46`): slot 0 (player) is `2, 42` (32×42 px);
+   slot 1 is `2, 28` (32×28); slot 16 is `2, 23` (32×23); the full range across all 22 slots is
+   16-64 px wide (`W`∈{1,2,4}) and 5-42 rows tall — real per-object dimensions, not a fixed grid.
+   `$00bf72`'s own role is still open (see below) but it is **not** the path that draws these
+   objects onto the visible screen.
+
+Re-rendering at these exact, struct-confirmed sizes fixed both symptoms: `slot1_prop.png`
+(`$056fc2`, 32×28) and `slot16_prop.png` (`$05fbaa`, 32×23) now end cleanly in black with no second
+shape bleeding in, and the player's own frames (`$2ca84`/`$2ca94`, 32×42 —
+`player_frame_idle.png`/`player_frame_alt.png`) render as an unambiguous armoured-knight character
+sprite, matching what a player character in this game should look like. The recurring "red roof"
+motif in `spritesheet_29800.png` (now regenerated at the correct 32×42 stride) turned out not to be
+a decode artifact either — every frame shares the same isometric diamond-top silhouette at a
+consistent position, which is exactly what you'd expect from sprites drawn inside a common
+isometric bounding cell, not a bug.
 
 ### What's confirmed vs. open
 
-- **Confirmed**: `$029800`-`$02de08` (17,928 bytes) is real packed source art, not code or scratch
-  state — bounded on both sides by independently-known addresses, decodes cleanly under the game's
-  own live palette, and directly precedes `CompositeBackBuffer`. The player's known animation-frame
-  pointers (6th pass) land inside it.
-- **Confirmed**: it is read by a sub-pixel masked blitter (`$00bf72`) that is a *second*, more
-  general compositor than the already-named `SpriteCompositeInner_AndOrMaskLoop` (`$14f24`) —
-  worth a `.sym` entry (`SpritePlot_ShiftedMaskBlit_00bf72`) and cross-checking whether it's what
-  actually draws the sprite-object array entries, or a separate prop/room-furniture layer.
-- **Open**: the exact per-entry header format (width/height/shift/count — which word is which).
-  `dump_vector.py`/`callcap`-style differential testing against `$00bf72` (snapshot before/after,
-  vary `D0`-`D2` register presets per the REPL's `callcap Rn=` convention) is the concrete way in,
-  not more static disassembly.
+- **Confirmed**: `$029800`-`$02de08` (17,928 bytes, ~27 frames at 672 B/frame) is the player's own
+  packed multi-frame sprite sheet — bounded on both sides by independently-known addresses, and
+  every frame decodes as a recognisable, complete character pose at 32×42 px under the struct-
+  confirmed dimensions and the game's own live palette.
+- **Confirmed**: per-object width/height for every entry in the sprite-object array (`$038338`,
+  struct offsets `+50`/`+51`) are stored directly in the struct, read once per object by
+  `SpriteList_ClipAndCompositeOne` (`$00d856`) ahead of the actual composite call — no external
+  dimension table, no per-call global.
+- **Open**: `$00bf72`'s actual role. It's a real, distinct sub-pixel shift-blitter (disassembled in
+  full this pass) reading from a type-selected table via a 3-word header, and its own per-call
+  globals (`1246(A5)`/`1248(A5)`) happened to match the player's own `+50`/`+51` values at the
+  snapshot instant this pass read them — but since `$00d856`→`$14d64` is what actually draws the
+  sprite-object array, `$00bf72` is something else (a UI/inventory icon blitter is the leading
+  guess, unconfirmed). `callcap`-based differential testing against it (vary `D0`-`D2` register
+  presets, diff the write footprint) is the concrete way to settle what it actually draws, not more
+  static disassembly.
 - **Open, corrected framing**: this is almost certainly a **sprite/prop/object catalog**, not a
   floor/wall *tile* sheet. `gameplay.png`'s cave walls read as one irregular, hand-painted texture
   (no visible repeating tile seams), which argues against a room being tile-assembled at runtime at
@@ -108,13 +138,14 @@ the span-3 candidate (`$051000`-`$06b000`) from the §2 span table that a whole-
 render had already written off as a dead end (correctly — it just wasn't the right way to read it;
 these are individually-pointed small sprites, not one big bitmap the width of the span).
 
-Rendering directly at the real per-slot pointers (32px wide, live palette `$5a9c`) instead of
-guessing a width for the whole span shows small, clean, recognisable objects:
+Rendering directly at the real per-slot pointers, at each slot's own struct-confirmed `+50`/`+51`
+dimensions (see §2 above — not a guessed width), live palette `$5a9c`, gives small, clean,
+recognisable objects with no bleed from neighbouring data:
 
-- Slot 1 (`$056fc2`, state `5`) — a grey/green torch bracket with a gold flame tip
+- Slot 1 (`$056fc2`, state `5`, 32×28 px) — a grey/green torch bracket with a gold flame tip
   (`slot1_prop.png`).
-- Slot 16 (`$05fbaa`, state `4`, the one outlier among the 21 non-player slots) — a more elaborate
-  grey/gold vessel shape over a woven basket base (`slot16_prop.png`).
+- Slot 16 (`$05fbaa`, state `4`, 32×23 px) — a bowl/lamp vessel shape with a warm glow
+  (`slot16_prop.png`).
 
 All 22 entries were dumped (state byte `+42`): slot 0 (player) is `0`, slot 16 is `4`, the other 20
 are `5`. Both rendered examples read as static room decoration (torch, container), not creatures —
@@ -129,6 +160,8 @@ candidate for "something other than a static prop."
 | `graphics.md` | this file |
 | `ram_contact.png` | whole-RAM contact sheet (`gfxview.py --contact`), regenerated this pass |
 | `gfxview.html` | interactive per-region viewer (`gfxview.py --html`), regenerated this pass |
-| `spritesheet_29800.png` | the `$029800`-`$02de08` region, rendered as a 7×5 grid of 32×32 4bpp cells (diagnostic framing, not the true per-entry stride — see above), live palette `$5a9c` |
-| `slot1_prop.png` | slot 1's sprite (`$056fc2`, a torch), rendered directly at its `+52` pointer |
-| `slot16_prop.png` | slot 16's sprite (`$05fbaa`, a vessel/basket shape), rendered the same way |
+| `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
+| `player_frame_idle.png` | the player's idle frame (`$2ca84`, 32×42) — an armoured-knight character sprite |
+| `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) |
+| `slot1_prop.png` | slot 1's sprite (`$056fc2`, 32×28, a torch), rendered at its struct-confirmed size |
+| `slot16_prop.png` | slot 16's sprite (`$05fbaa`, 32×23, a vessel/lamp shape), rendered the same way |

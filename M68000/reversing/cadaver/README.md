@@ -122,8 +122,9 @@ turned out not to need it.
 | `graphics.md` | 7th-pass graphics writeup: live screen format + the packed sprite/object sheet found at `$029800`-`$02de08` |
 | `ram_contact.png` | whole-RAM contact sheet (`gfxview.py --contact`), regenerated 7th pass |
 | `gfxview.html` | interactive per-region viewer (`gfxview.py --html`), regenerated 7th pass |
-| `spritesheet_29800.png` | the packed sprite/object sheet, rendered as a diagnostic 32×32-cell grid (see `graphics.md`) |
-| `slot1_prop.png` / `slot16_prop.png` | two static-prop sprites decoded directly from the array's per-slot pointers (see `graphics.md` §3) |
+| `spritesheet_29800.png` | the player's packed frame sheet, rendered as a struct-confirmed 32×42-cell grid (see `graphics.md`) |
+| `player_frame_idle.png` / `player_frame_alt.png` | the player's own two known animation frames, individually rendered at their confirmed 32×42 size — an armoured-knight character sprite |
+| `slot1_prop.png` / `slot16_prop.png` | two static-prop sprites decoded at their struct-confirmed sizes (32×28, 32×23) from the array's per-slot pointers (see `graphics.md` §3) |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -317,6 +318,24 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   raw disk sectors directly). Whether "room layout" is a tile-index grid or just a pointer to one
   pre-rendered per-room background bitmap is still open — see Next steps.
 
+- **7th pass, cont. — the 32×32 grid render was wrong; width/height are struct fields, confirmed and
+  fixed.** Flagged on review (the exported PNGs repeated the same silhouette in nearly every cell,
+  and the two prop crops had a second unrelated shape bleeding in below the real object — both
+  classic symptoms of decoding at the wrong stride). Root cause found and fixed rather than
+  re-guessed: `$00bf72`'s own caller (`$00bef0`-`$00bf6e`, disassembled this pass) computes a
+  per-call row-bytes constant at global `1246(A5)`, read live off the snapshot as `16` (= 32 px) —
+  but the routine that actually **draws** every sprite-object-array entry (player included) is
+  `SpriteList_ClipAndCompositeOne` (`$00d856`, via `jsr $14d64`), which reads **struct offset `+50`
+  (width in 16-px groups) and `+51` (height in rows) directly per-object** — no guessing needed, it
+  was sitting in the already-captured 22-entry array dump the whole time. Player (slot 0): 32×42.
+  Slot 1: 32×28. Slot 16: 32×23. Re-rendering at these exact sizes fixed both symptoms cleanly:
+  `player_frame_idle.png`/`player_frame_alt.png` (`$2ca84`/`$2ca94`, 32×42) now render as an
+  unambiguous armoured-knight character sprite, and `slot1_prop.png`/`slot16_prop.png` end cleanly
+  in black with no bleed. `spritesheet_29800.png` regenerated at the correct 32×42 stride — the
+  recurring "roof" motif across frames turned out to be real (a shared isometric bounding-cell
+  silhouette every frame sits in), not a decode artifact. `$00bf72`'s actual purpose is now open
+  again — it isn't what draws the sprite array after all (see `graphics.md` §2).
+
 - **6th pass — found the "current animation frame" pointer the 5th pass was chasing.** Top-down
   from the compositor, not another RAM diff, as the 5th pass's next-step said. Disassembling
   `ScreenFlip_AndCompositeSprites` (`$14d64`) and `SpriteCompositeInner_AndOrMaskLoop` (`$14f24`)
@@ -404,11 +423,11 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
 
 ## Next steps
 
-1. Decode the `$00bf72` per-entry header (`D0`/`D1`/`D2` read at `$00bf86`-`$00bf8a`) via `callcap`
-   differential testing (snapshot at `gameplay_empire.snap`, vary register presets, diff the
-   resulting write pattern) rather than more static disassembly — this pins down the sprite sheet's
-   real stride/dimension format, superseding the diagnostic 32×32 grid `spritesheet_29800.png` used
-   to find and bound the region.
+1. ~~Decode the sprite sheet's per-entry width/height~~ — **done, 7th pass**: they're struct fields
+   (`+50`/`+51` on the sprite-object array, `$038338`), not a header inside `$00bf72`'s data. What's
+   still open is `$00bf72` itself — it isn't the routine that draws the sprite-object array
+   (`$00d856`→`$14d64` is), so what it *does* draw is unknown. `callcap` differential testing against
+   it (vary `D0`-`D2` register presets, diff the write footprint) is the concrete way to find out.
 2. Settle "tile-indexed room vs. one pre-rendered background per room": trace FDC/XBIOS `Rwabs`
    sector-read destinations during an actual room *load* (needs a fresh boot driven far enough to
    witness the load — the current `gameplay_empire.snap` is already past it and GEMDOS tracing
