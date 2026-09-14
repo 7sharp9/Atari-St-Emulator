@@ -123,6 +123,7 @@ turned out not to need it.
 | `ram_contact.png` | whole-RAM contact sheet (`gfxview.py --contact`), regenerated 7th pass |
 | `gfxview.html` | interactive per-region viewer (`gfxview.py --html`), regenerated 7th pass |
 | `spritesheet_29800.png` | the packed sprite/object sheet, rendered as a diagnostic 32×32-cell grid (see `graphics.md`) |
+| `slot1_prop.png` / `slot16_prop.png` | two static-prop sprites decoded directly from the array's per-slot pointers (see `graphics.md` §3) |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -358,6 +359,40 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   not every 10k steps) around the `$00` plateau to see if `+52` visits more than one alternate
   value.
 
+- **7th pass, cont. — the `$00` plateau has exactly one alternate frame, confirmed at 2,000-step
+  granularity, closing the 6th pass's open question.** Re-ran the same `kbd 50`/`kbd d0` gesture,
+  dumping slot 0's `+20`/`+52` every 2,000 steps (not 10,000) from step 210,000 through 300,000.
+  Result is completely clean, no intermediate values ever seen: `+52` is `$2ca84` through step
+  218,000, `$00` the phase byte from 220,000, `$2ca94` from **244,000** through **266,000** (a solid
+  22,000-step hold, not a narrow blip), then back to `$2ca84` from 268,000, with `+20` itself only
+  ever observed as `$02` or `$00` at this sampling rate. So the "5-6 frame" visual impression from
+  the 4th pass is **not** additional bitmap frames — it's the `+20`/`+23` phase counter driving a
+  continuous bob/position offset over this same 2-bitmap swap, exactly the alternative the 6th pass
+  flagged as unconfirmed. Settles next-step item 2 from the 6th pass; no further bisection needed
+  here.
+
+- **7th pass, cont. — checked whether non-player slots use the same `+52`/`+20` mechanism: yes, and
+  it revealed what the other 21 array entries actually are.** Dumped the full 22×70-byte sprite
+  object array (`m 38338 1540` off the live snapshot; array base `$038338`, read from the `(A5)+56`
+  pointer field, count `22` from `(A5)+1152` — both match the 6th pass). All 22 entries use the
+  identical struct shape. State byte (`+42`): slot 0 (player) is `0`; slots 1-15 and 17-21 are `5`;
+  slot 16 alone is `4`. Their `+52` bitmap pointers are **not** in the `$029800`-`$02de08` sheet
+  found above — they cluster at `$056fc2`-`$06975f`, inside the span-3 candidate (`$051000`-
+  `$06b000`) that the whole-span 320px-wide render had already written off as a dead end. Rendering
+  directly at the actual per-slot pointers (not at the span's start address) instead of guessing a
+  screen-width bitmap shows why that dismissal was wrong: `decode_span.py` at slot 1's pointer
+  (`$056fc2`, 32px wide) renders a small, clean, recognisable object — a grey/green torch bracket
+  with a gold flame tip — in the first ~30 rows before the data runs out into the next entry. Slot
+  16's pointer (`$05fbaa`) renders a different, more elaborate grey/gold vessel-like shape over a
+  woven basket base. Both match static room-decoration silhouettes plausible for `gameplay.png`'s
+  furniture (torches, containers), not creatures. **So the 21 `state=5` entries read as static room
+  props sharing the player's animation-slot struct, not monsters** — item 3 below (checking a
+  monster slot) doesn't yet have a confirmed monster to check; state `4` (slot 16, the one outlier)
+  is the best current candidate for "something other than a static prop" but wasn't chased further.
+  This means there's a **second packed sprite region** (`$056fc2`-`~$06975f`, inside the wider
+  `$051000`-`$06b000` span) alongside the player-only one at `$029800`-`$02de08` — `graphics.md`
+  updated with both.
+
 ## Next steps
 
 1. Decode the `$00bf72` per-entry header (`D0`/`D1`/`D2` read at `$00bf86`-`$00bf8a`) via `callcap`
@@ -369,13 +404,14 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    sector-read destinations during an actual room *load* (needs a fresh boot driven far enough to
    witness the load — the current `gameplay_empire.snap` is already past it and GEMDOS tracing
    showed no `Fread` calls, confirming raw sector I/O, not TOS file I/O).
-3. Check whether a monster/creature slot's descriptor (state byte `+42 = 5`, e.g. slot 1) uses the
-   same `+52` pointer-swap + `+20`/`+23` phase-counter mechanism as the player's slot 0 — if so, this
-   is the general animation-state pattern for every entity in the array, not player-specific.
-4. Bisect every VBL (not every 10k steps) across the `+20 = $00` plateau (~steps 220,000-260,000) to
-   see whether `+52` actually visits more than the one alternate value (`$2ca94`) found in the 6th
-   pass — would settle whether the 4th pass's "5-6 frame" visual impression is real multi-frame
-   animation or a 2-frame swap plus a continuous bob derived from the same counter.
+3. ~~Check whether a non-player slot uses the same `+52`/`+20` mechanism~~ — **done, 7th pass**: yes,
+   but all 21 non-player slots read as static room props (torches/containers), not monsters (state
+   `4` on slot 16 alone is the one outlier worth a second look). No monster/creature has actually
+   been found in this room yet — that's the open item, not the mechanism check.
+4. ~~Denser per-VBL bisection of the `+20 = $00` plateau~~ — **done, 7th pass**, at 2,000-step
+   granularity: exactly one alternate frame (`$2ca94`), no third value at any sampled point. The
+   4th pass's "5-6 frame" look is the phase counter's continuous bob on top of this one 2-frame
+   swap, not additional bitmaps.
 5. Try Right (`$c6`) the same way — dump the acting slot's descriptor across the gesture and confirm
    the same struct-offset story — and try clicking with the cursor positioned directly over the
    character or adjacent floor tiles (cursor positioning is confirmed working via render+diff) to see

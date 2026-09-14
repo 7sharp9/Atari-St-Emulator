@@ -98,6 +98,30 @@ render legibly, not because 512 bytes is the real per-entry size.
   around it (blocked on the still-open "how does the player actually move between
   rooms/tiles" question — see README Next steps).
 
+## 3. A second packed sprite region — `$056fc2`–`~$06975f` (static room props)
+
+Found checking whether the 21 non-player entries in the sprite object array (`$038338`, 70 bytes/
+entry, base from `(A5)+56`, count from `(A5)+1152`) use the same `+52`/`+20` animation mechanism as
+the player's slot 0 (6th pass). They do — identical struct shape — but their `+52` bitmap pointers
+are **not** inside the `$029800`-`$02de08` sheet above; they cluster at `$056fc2`-`~$06975f`, inside
+the span-3 candidate (`$051000`-`$06b000`) from the §2 span table that a whole-span 320px-wide
+render had already written off as a dead end (correctly — it just wasn't the right way to read it;
+these are individually-pointed small sprites, not one big bitmap the width of the span).
+
+Rendering directly at the real per-slot pointers (32px wide, live palette `$5a9c`) instead of
+guessing a width for the whole span shows small, clean, recognisable objects:
+
+- Slot 1 (`$056fc2`, state `5`) — a grey/green torch bracket with a gold flame tip
+  (`slot1_prop.png`).
+- Slot 16 (`$05fbaa`, state `4`, the one outlier among the 21 non-player slots) — a more elaborate
+  grey/gold vessel shape over a woven basket base (`slot16_prop.png`).
+
+All 22 entries were dumped (state byte `+42`): slot 0 (player) is `0`, slot 16 is `4`, the other 20
+are `5`. Both rendered examples read as static room decoration (torch, container), not creatures —
+so **"monster slot" in the 6th pass's next-steps framing doesn't have a confirmed target yet**; no
+entity in this array currently looks like a creature. State `4` (slot 16) is the best remaining
+candidate for "something other than a static prop."
+
 ## Files
 
 | File | What |
@@ -106,3 +130,5 @@ render legibly, not because 512 bytes is the real per-entry size.
 | `ram_contact.png` | whole-RAM contact sheet (`gfxview.py --contact`), regenerated this pass |
 | `gfxview.html` | interactive per-region viewer (`gfxview.py --html`), regenerated this pass |
 | `spritesheet_29800.png` | the `$029800`-`$02de08` region, rendered as a 7×5 grid of 32×32 4bpp cells (diagnostic framing, not the true per-entry stride — see above), live palette `$5a9c` |
+| `slot1_prop.png` | slot 1's sprite (`$056fc2`, a torch), rendered directly at its `+52` pointer |
+| `slot16_prop.png` | slot 16's sprite (`$05fbaa`, a vessel/basket shape), rendered the same way |
