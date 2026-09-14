@@ -192,6 +192,26 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   (screen-space room/tile mapping still unknown), need to be held rather than a tap, or the
   confirmed key-table entries (Up/Down/Right) may genuinely be a UI/menu layer rather than
   movement, as suspected in the 2nd pass.
+- **3rd pass, cont. — the Down key does something real, not yet understood.** `kbd 50`+`kbd d0`
+  (Down make+break) alone, run forward 3M steps and rendered: **the player-character sprite
+  disappears from its starting position entirely** (pixel-diff confirmed — byte-identical rock
+  texture fills where it stood, and the diff bbox against the base frame contains no new
+  character-shaped blob anywhere else on screen, so it isn't simply repositioned in view).
+  Sending Up (`kbd 48`+`kbd c8`) afterward and running another 3M steps does **not** bring it back
+  (identical resulting frame) — either Up isn't the semantic opposite of Down, the walk/whatever-
+  it-is needs more than 3M steps to complete or reverse, or it's a one-way state (an item-use /
+  death / room-exit animation) rather than ordinary movement. `ActiveEntitySlotBitmask` (`$162cc`)
+  bit 0 sets after Down and **stays set** through the subsequent Up (doesn't self-clear the way
+  the `callcap $15bf4` single-shot experiment's cleared-scratch-then-idle pattern suggested it
+  should once a script finishes) — but the slot-0 control block itself (`$162d0`+) stays entirely
+  zero this time, unlike the earlier isolated `callcap` test, so the real in-game call path is
+  doing something other than what was assumed from that one experiment. The main entity table
+  (`$16380`, 0x800 bytes scanned) shows only **1 byte** different between base and post-Down — the
+  character is almost certainly not tracked as a normal entity in that table at all (or its
+  relevant field lies outside the 0x800-byte window scanned). Not chased further this pass —
+  next step 1 below is the concrete way to pin it down (bisect on step count to find the exact
+  VBL where the sprite stops compositing, then trace what runs in that window specifically, rather
+  than wading through the routine per-VBL screen-copy noise that dominates any broad `watch` here).
 - **Graphics format: not actually an open question.** The live screen (`ScreenBufferA` at
   `$19100`) is plain standard-ST `st-interleaved` 320×200×4bpp — no unusual tile/sprite packing —
   using the palette table at `$5a9c` (16 big-endian `$0RGB` words, the same one `$015302` copies to
@@ -205,14 +225,18 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
 
 ## Next steps
 
-1. Work out the actual click-to-walk protocol. Try `callcap $15bf4` with the *other* confirmed
-   action ids (Down `$65`, Right `$c6`) and check whether the resulting `EntityScriptDispatch` walk
-   (run the main loop forward afterward, e.g. `u <addr-just-past-MainLoop-call>` or a plain `s`
-   burst) visibly moves anything — this tells us whether those key-table entries are movement or
-   menu-navigation without needing to solve mouse coordinates first. In parallel, try clicking with
-   the cursor positioned directly over the character sprite or over adjacent floor tiles (now that
-   rendering + pixel-diffing is confirmed working, position the cursor by watching where it lands
-   in a rendered frame, then iterate) rather than an arbitrary point.
+1. Pin down what the Down key actually did (see above — the character vanished and 3M steps of Up
+   didn't bring it back). Bisect on step count from the known-good `kbd 50`/`kbd d0` sequence
+   (e.g. render+diff at 200k/500k/1M/1.5M/2M/3M steps) to find the specific VBL window where the
+   sprite stops compositing, then trace *just that window* (`ATARI_TRACE_EVENTS` scoped tight, or
+   a full `-Trace` dump — cheap once the window is a few thousand steps instead of 3M) to see which
+   routine actually removes it — a real walk-off-screen, a death/room-exit, or something else.
+   `EntityScriptDispatch`/`$15c70` and the control-slot area (`$162cc`+) are candidates but the 3rd
+   pass found the main entity table (`$16380`) and the slot-0 control block essentially untouched
+   by the real in-game Down-key path, unlike the isolated `callcap $15bf4` experiment — so the real
+   path may go through a different mechanism than that one test assumed. Once understood, try
+   Right (`$c6`) the same way, and try clicking with the cursor positioned directly over the
+   character or adjacent floor tiles (cursor positioning is now confirmed working via render+diff).
 2. Once movement or a room transition can be triggered on demand, `watch` (with a **decimal**
    length!) on `ScreenBufferA`/`B` and A/B-diff against an idle control the way this pass did, to
    find the actual room-tile draw routine — far more reliable than guessing.
