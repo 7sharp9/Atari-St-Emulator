@@ -393,6 +393,15 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   `$051000`-`$06b000` span) alongside the player-only one at `$029800`-`$02de08` — `graphics.md`
   updated with both.
 
+- **7th pass, cont. — Right (`kbd 4d`/`kbd cd`), tried with the exact same make/break discipline
+  that worked for Down, activates nothing.** `ActiveEntitySlotBitmask` (`$162cc`) sampled at steps
+  20,000/40,000/100,000/200,000/400,000 after the gesture stays `$00` throughout — no action slot
+  ever goes active, unlike Down's immediate, clean activation. Inconclusive rather than negative:
+  either Right genuinely needs a different trigger (held rather than tapped, a different scancode
+  than the `$4d`/`$4c` pair the table dump found, or gated behind some precondition Down isn't), or
+  it really is a menu/UI-layer binding as the 2nd pass originally suspected. Not chased further this
+  pass — see next-step 5.
+
 ## Next steps
 
 1. Decode the `$00bf72` per-entry header (`D0`/`D1`/`D2` read at `$00bf86`-`$00bf8a`) via `callcap`
@@ -412,11 +421,13 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    granularity: exactly one alternate frame (`$2ca94`), no third value at any sampled point. The
    4th pass's "5-6 frame" look is the phase counter's continuous bob on top of this one 2-frame
    swap, not additional bitmaps.
-5. Try Right (`$c6`) the same way — dump the acting slot's descriptor across the gesture and confirm
-   the same struct-offset story — and try clicking with the cursor positioned directly over the
-   character or adjacent floor tiles (cursor positioning is confirmed working via render+diff) to see
-   if *that* is what actually moves the character between rooms/tiles — arrow keys may turn out to be
-   a menu/UI layer, not movement, as the 2nd pass suspected.
+5. ~~Try Right the same way~~ — **tried, 7th pass, inconclusive**: a tap (matching Down's exact
+   discipline) activates no action slot at all. Worth retrying as a *held* key (longer gap between
+   `kbd 4d` and `kbd cd`, or no break at all for an extended run) before concluding it's UI-only.
+   Still fully open: try clicking with the cursor positioned directly over the character or adjacent
+   floor tiles (cursor positioning is confirmed working via render+diff) to see if *that* is what
+   actually moves the character between rooms/tiles — arrow keys may turn out to be a menu/UI layer,
+   not movement, as the 2nd pass suspected and the Right-key result above doesn't rule out.
 6. Once movement or a room transition can be triggered on demand, `watch` (with a **decimal**
    length!) on `ScreenBufferA`/`B` and A/B-diff against an idle control the way earlier passes did, to
    find the actual room-tile draw routine — far more reliable than guessing.
