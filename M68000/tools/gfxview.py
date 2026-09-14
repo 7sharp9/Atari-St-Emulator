@@ -25,6 +25,14 @@ Two outputs:
 Detected 16-word `$0RGB` palettes and non-trivial data spans are printed to stderr
 and baked into the HTML as jump targets / palette choices.
 
+For a `.snap` input, the HTML viewer opens **already showing the actual on-screen frame**:
+base/width/height/bpp and the live hardware palette are read straight from the snapshot's
+VideoDisplayRegisters bank ($FF8200-$FF8260 - shifter video-base + resolution + the 16
+palette registers), the same ground truth Program.fs's own frame recorder uses. This works
+for any game, including ones that bypass XBIOS Setscreen/Setpalette and poke the shifter
+directly (most demos, and this repo's own reversing subjects) - no address/palette guessing
+needed to see what's actually on screen before looking for anything else in RAM.
+
 Layouts the viewer understands:
 
   * st-interleaved  - standard ST screen memory: bpp bitplanes interleaved in
@@ -65,6 +73,35 @@ def load_ram(path, raw=False, base=0):
     if len(ram) != ram_len:
         sys.exit(f"{path}: truncated RAM block ({len(ram)} of {ram_len} bytes)")
     return ram, 0
+
+
+def load_video_regs(path):
+    """(base, rez, w, h, bpp, palette_words) read from a .snap's VideoDisplayRegisters bank
+    ($FF8200-$FF8260) - the exact same live hardware state Program.fs's own headless frame
+    recorder reads (`ATARI_FRAME_DIR`, see its comment), not TOS's `_v_bas_ad` shadow copy at
+    $44E. Game-agnostic and authoritative even when a program bypasses XBIOS Setscreen entirely
+    and pokes the shifter registers directly (common - e.g. Cadaver, most demos): $FF8201/8203
+    are the shifter's own video-base high/mid bytes (low byte is STE-only, forced 0 on STF),
+    $FF8260 bit0-1 is the resolution, $FF8240-825E are the live 16-colour palette actually being
+    scanned out right now. None if `path` isn't a snapshot (e.g. --raw)."""
+    data = open(path, "rb").read()
+    if data[:4] != b"A68S":
+        return None
+    ver = data[4]
+    reg_count = 19 if ver >= 5 else 18
+    off = 5 + reg_count * 4 + 2
+    ram_len = struct.unpack_from("<i", data, off)[0]
+    off += 4 + ram_len
+    vid_len = struct.unpack_from("<i", data, off)[0]
+    off += 4
+    vid = data[off:off + vid_len]
+    if len(vid) <= 0x60:
+        return None
+    base = (vid[1] << 16) | (vid[3] << 8)
+    rez = vid[0x60] & 3
+    w, h, bpp = {0: (320, 200, 4), 1: (640, 200, 2), 2: (640, 400, 1)}[rez]
+    pal_words = [int.from_bytes(vid[0x40 + k * 2: 0x40 + k * 2 + 2], "big") for k in range(16)]
+    return {"base": base, "rez": rez, "w": w, "h": h, "bpp": bpp, "palette_words": pal_words}
 
 
 def snapshot_regs(path):
@@ -248,11 +285,14 @@ HTML = r"""<!doctype html><html><head><meta charset=utf-8>
 </style></head><body>
 <div id=side>
 <h3>layout</h3>
+<div id=livebanner style="display:none;margin-bottom:8px;padding:5px 6px;background:#1c3a2c;border:1px solid #2a5c3f;border-radius:3px;font-size:11px;color:#8f8">
+ &#9654; showing the <b>live screen</b> right now (shifter $ff8201/8203 + $ff8260, rez <span id=liverez></span>) &mdash;
+ this is what's actually on screen this frame, auto-detected, not a guess.</div>
 <label>base address (hex)</label><input id=base value="__BASE__">
-<div class=row><div><label>width px</label><input id=w value="320"></div>
-<div><label>rows</label><input id=h value="200"></div></div>
+<div class=row><div><label>width px</label><input id=w value="__W__"></div>
+<div><label>rows</label><input id=h value="__H__"></div></div>
 <div class=row><div><label>bpp</label><select id=bpp>
- <option>1</option><option>2</option><option selected>4</option><option>8</option></select></div>
+ <option __BPP1__>1</option><option __BPP2__>2</option><option __BPP4__>4</option><option __BPP8__>8</option></select></div>
 <div><label>zoom</label><select id=zoom>
  <option>1</option><option selected>2</option><option>3</option><option>4</option><option>6</option><option>8</option></select></div></div>
 <label>plane layout</label><select id=mode>
@@ -284,6 +324,7 @@ HTML = r"""<!doctype html><html><head><meta charset=utf-8>
 const RAM = Uint8Array.from(atob("__DATA__"), c=>c.charCodeAt(0));
 const PALS = __PALS__;
 const JUMPS = __JUMPS__;
+const LIVE = __LIVE__;   // {base,rez,w,h,bpp} of the actual on-screen frame, or null (--raw input)
 const $ = id => document.getElementById(id);
 const hx = v => "$"+(v>>>0).toString(16);
 
@@ -293,14 +334,26 @@ function buildPalUI(){
   let sel=$('pal'); sel.innerHTML="";
   [["greyscale",null]].concat(PALS.map((p,i)=>[`${p.type} @ ${hx(p.addr)}${p.note?" "+p.note:""}`,i]))
     .forEach(([t,v])=>{ let o=document.createElement('option'); o.text=t; o.value=v===null?"g":v; sel.add(o); });
+  // PALS[0] is the LIVE hardware palette (inserted by build_html) whenever LIVE is set - that's
+  // almost always what you want on first open, so prefer it over the "greyscale" fallback.
+  if(LIVE) sel.value="0";
   sel.onchange=draw;
+}
+function updateLiveBanner(){
+  let b=$('livebanner');
+  if(!LIVE){ b.style.display="none"; return; }
+  let base=parseInt($('base').value,16)||0;
+  let match = base===LIVE.base && ($('w').value|0)===LIVE.w && ($('h').value|0)===LIVE.h
+              && ($('bpp').value|0)===LIVE.bpp && $('mode').value==="st";
+  b.style.display = match ? "block" : "none";
 }
 function curPal(bpp){
   let v=$('pal').value, n=1<<bpp;
   let cols = v==="g" ? greyPal(n) : PALS[+v].colors;
   let sw=$('swatches'); sw.innerHTML="";
-  cols.slice(0,n).forEach(c=>{ let s=document.createElement('span'); s.className="sw";
-    s.style.background=`rgb(${c[0]},${c[1]},${c[2]})`; sw.appendChild(s); });
+  cols.slice(0,n).forEach((c,i)=>{ let s=document.createElement('span'); s.className="sw";
+    s.style.background=`rgb(${c[0]},${c[1]},${c[2]})`;
+    s.title=`index ${i}  rgb(${c[0]},${c[1]},${c[2]})`; sw.appendChild(s); });
   return cols;
 }
 function buildJumps(){
@@ -343,6 +396,7 @@ function pixel(base,x,y,bpp,mode,W,ps,rs){
   return idx;
 }
 
+let lastCols=null;   // the palette draw() last used - reused by report() for pixel-value RGB
 function draw(){
   let base=parseInt($('base').value,16)||0;
   let W=$('w').value|0, H=$('h').value|0, bpp=$('bpp').value|0;
@@ -350,7 +404,7 @@ function draw(){
   let ps=parseInt($('ps').value,16)||0, rs=parseInt($('rs').value,16)||0;
   if(mode==="chunky") bpp=8;
   if(mode==="tiles") bpp=4;
-  let cols=curPal(bpp);
+  let cols=curPal(bpp); lastCols=cols;
   let cv=$('c'); cv.width=W; cv.height=H; cv.style.width=(W*z)+"px"; cv.style.height=(H*z)+"px";
   let ctx=cv.getContext('2d'), im=ctx.createImageData(W,H), d=im.data;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -363,6 +417,7 @@ function draw(){
                  mode==="st"?(rs||(W/16|0)*2*bpp):(rs||(W/8|0));
   $('status').textContent =
     `base ${hx(base)}  ${W}x${H}x${bpp}  ${mode}\nrow stride ${hx(rowBytes)}  frame ${hx(rowBytes*H)}  end ${hx(base+rowBytes*H)}`;
+  updateLiveBanner();
 }
 
 $('preset').onchange=e=>{
@@ -395,47 +450,76 @@ function report(ev){
   let rb=parseInt($('rs').value,16)|| (mode==="chunky"?W: mode==="tiles"?(W/8|0)*32: mode==="st"?(W/16|0)*2*bpp:(W/8|0));
   let ps=parseInt($('ps').value,16)||0;
   let i=pixel(base,x,y,bpp,mode,W,ps,parseInt($('rs').value,16)||0);
-  $('status').textContent=`x=${x} y=${y}  index=${i}\nrow byte ${hx(base+y*rb)}  (base ${hx(base)} + ${hx(y*rb)})`;
+  let c=lastCols&&lastCols[i]; let rgb=c?`  rgb(${c[0]},${c[1]},${c[2]})`:"";
+  $('status').textContent=`x=${x} y=${y}  index=${i}${rgb}\nrow byte ${hx(base+y*rb)}  (base ${hx(base)} + ${hx(y*rb)})`;
 }
 cv.addEventListener('mousedown',e=>{drag=true;report(e);});
 cv.addEventListener('mousemove',e=>{if(drag)report(e);});
 document.addEventListener('mouseup',()=>drag=false);
 
+const REZ_NAME = {0:"low 320×200×16c", 1:"med 640×200×4c", 2:"high 640×400 mono"};
+if(LIVE) $('liverez').textContent = REZ_NAME[LIVE.rez] || LIVE.rez;
 buildPalUI(); buildJumps(); draw();
 </script></body></html>
 """
 
 
-def build_html(ram, base, out, src, palettes, spans, sidecar):
+def build_html(ram, base, out, src, palettes, spans, sidecar, live=None):
     b64 = base64.b64encode(ram).decode()
     pals = [{"addr": p["addr"], "type": p["type"], "colors": p["colors"],
              "note": p.get("note", "")} for p in palettes]
+    pal_offset = 0
+    if live is not None:
+        # PALS[0]: the actual hardware palette this frame ($ff8240-825e), decoded straight from
+        # the snapshot's VideoDisplayRegisters bank - authoritative, not a heuristic RAM guess.
+        pals.insert(0, {"addr": 0xFFFF8240, "type": "LIVE", "note": "(hardware palette, now)",
+                        "colors": [ste_colour(w) for w in live["palette_words"]]})
+        pal_offset = 1
 
     jumps = []
-    # screen buffers Super Sprint flips between + the usual TOS default
-    for name, addr in (("screen $f8000", 0xF8000), ("screen $21100", 0x21100),
-                       ("screen $78000", 0x78000)):
-        jumps.append({"label": f"{name} (320x200x4)", "addr": addr,
-                      "w": 320, "h": 200, "bpp": 4, "mode": "st",
-                      "pal": 0 if pals else None})
+    if live is not None:
+        # The actual on-screen frame, read from the shifter's own base/rez registers - correct
+        # for ANY game, including ones that bypass XBIOS Setscreen and poke hardware directly
+        # (see load_video_regs). This is the #1 thing to look at first, so it's the first jump.
+        rez_name = {0: "low 320x200x16c", 1: "med 640x200x4c", 2: "high 640x400 mono"}[live["rez"]]
+        jumps.append({"label": f"▶ live screen @ {live['base']:#x} ({rez_name})",
+                      "addr": live["base"], "w": live["w"], "h": live["h"], "bpp": live["bpp"],
+                      "mode": "st", "pal": 0})
     for i, p in enumerate(palettes):
         jumps.append({"label": f"palette {p['type']} @ {p['addr']:#x}", "addr": p["addr"],
-                      "w": 16, "h": 16, "bpp": 4, "mode": "chunky"})
+                      "w": 16, "h": 16, "bpp": 4, "mode": "chunky", "pal": i + pal_offset})
     for s in spans:
         jumps.append({"label": f"data span {s[0]:#x}-{s[1]:#x} (ent {s[2]:.1f})",
                       "addr": s[0], "w": 320, "h": 200, "bpp": 4, "mode": "st"})
     for label, addr in sidecar.get("pointers", []):
         jumps.append({"label": f"{label} {addr:#x}", "addr": addr})
 
+    if live is not None:
+        view_base, view_w, view_h, view_bpp = live["base"], live["w"], live["h"], live["bpp"]
+    elif base:
+        view_base, view_w, view_h, view_bpp = base, 320, 200, 4
+    elif spans:
+        view_base, view_w, view_h, view_bpp = spans[0][0], 320, 200, 4
+    else:
+        view_base, view_w, view_h, view_bpp = 0, 320, 200, 4
+
     html = (HTML
             .replace("__DATA__", b64)
             .replace("__PALS__", json.dumps(pals))
             .replace("__JUMPS__", json.dumps(jumps))
+            .replace("__LIVE__", json.dumps(live))
             .replace("__SRC__", src)
-            .replace("__BASE__", format(base if base else (spans[0][0] if spans else 0), "x")))
+            .replace("__BASE__", format(view_base, "x"))
+            .replace("__W__", str(view_w))
+            .replace("__H__", str(view_h))
+            .replace("__BPP1__", "selected" if view_bpp == 1 else "")
+            .replace("__BPP2__", "selected" if view_bpp == 2 else "")
+            .replace("__BPP4__", "selected" if view_bpp == 4 else "")
+            .replace("__BPP8__", "selected" if view_bpp == 8 else ""))
     open(out, "w", encoding="utf-8").write(html)
+    live_note = f", live screen @ {live['base']:#x}" if live is not None else ""
     print(f"wrote {out} ({len(html)//1024} KB, {len(palettes)} palettes, "
-          f"{len(spans)} spans)", file=sys.stderr)
+          f"{len(spans)} spans{live_note})", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +571,11 @@ def main():
 
     sidecar = load_sidecar(args.sidecar or (args.input + ".gfx"))
 
+    live = None if args.raw else load_video_regs(args.input)
+    if live is not None:
+        print(f"  live screen: base {live['base']:#010x}  rez {live['rez']}"
+              f"  ({live['w']}x{live['h']}x{live['bpp']})", file=sys.stderr)
+
     palettes, spans = [], []
     if not args.no_detect:
         palettes = detect_palettes(ram, base, allow_ste=args.ste)
@@ -521,7 +610,7 @@ def main():
         contact_sheet(ram, base, args.contact, args.contact_mode, args.contact_width)
     if args.html:
         src = args.input.replace("\\", "/").rsplit("/", 1)[-1]
-        build_html(ram, base, args.html, src, palettes, spans, sidecar)
+        build_html(ram, base, args.html, src, palettes, spans, sidecar, live)
     if not args.contact and not args.html:
         print("nothing to do: pass --html and/or --contact", file=sys.stderr)
 
