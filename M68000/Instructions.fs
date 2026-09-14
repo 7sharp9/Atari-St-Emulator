@@ -158,6 +158,24 @@ module Instructions =
             Some(vector)
         else None
 
+    /// 0100 1010 1111 1100 ($4AFC) : ILLEGAL - the one opcode in the "TAS-shaped" 0100 1010 11
+    /// mmm rrr slot (mmm=111 rrr=100, i.e. the immediate-addressing-mode encoding TAS itself
+    /// can't use) that real 68000 hardware defines to always trap to vector 4, rather than
+    /// decoding as an EA-mode-less TAS. See TAS's own comment for the exclusion on that side.
+    ///
+    /// Also covers $4E7A/$4E7B (MOVEC Rc,Rn / MOVEC Rn,Rc): a real 68010+-only instruction that
+    /// does not exist on the plain 68000 this project targets (the Atari ST's actual CPU) - real
+    /// 68000 silicon has no special case for it and traps it through the same generic
+    /// undefined-opcode path as any other unassigned line-0100 encoding, i.e. vector 4. Seen in
+    /// the wild as a CPU-detection probe (`reversing/cadaver`'s Rob Northen loader): call it, and
+    /// a genuine 68000 lands in the illegal-instruction handler while a 68010+ wouldn't. Narrow
+    /// and explicit rather than a catch-all for every undecoded opcode, matching TAS's own
+    /// exclusion - most of "unimplemented" opcode space is real, valid 68000 instructions this
+    /// project hasn't implemented yet and must keep failing loudly (selftest's `unimpl` count),
+    /// not silently start illegal-trapping.
+    let (|Illegal|_|) data =
+        if data = 0x4AFC || data = 0x4E7A || data = 0x4E7B then Some() else None
+
     /// 0100 1110 0110 d rrr : MOVE An,USP (d=0) / MOVE USP,An (d=1)
     let (|MoveUsp|_|) data =
         if data &&& 0b1111111111110000 = 0b0100111001100000 then

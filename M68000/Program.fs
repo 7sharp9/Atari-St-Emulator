@@ -766,7 +766,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(9uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end, v9 appends the latent future-determining device state (pending-IRQ slots, tbCounter, FDC INTRQ countdown, DMA sector count, IKBD reporting mode, absolute mouse, joystick) - see MmuSnapshot
+        w.Write(11uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end, v9 appends the latent future-determining device state (pending-IRQ slots, tbCounter, FDC INTRQ countdown, DMA sector count, IKBD reporting mode, absolute mouse, joystick) - see MmuSnapshot, v10 adds the Timer A live-decrement state (Tacr/Tadr/TadrReload/TadrReadCount) after TbdrReadCount, v11 adds Timer C+D live-decrement state (Tcdr/TcdrReload/TcdrReadCount/Tddr/TddrReload/TddrReadCount) after that
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.SSP; cpu.PC |] do w.Write(v: int)
@@ -783,6 +783,18 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         w.Write(snap.Tbdr)
         w.Write(snap.TbdrReload)
         w.Write(snap.TbdrReadCount)
+        //v10: Timer A live-decrement state (mirrors Timer B above) - see MmuSnapshot.
+        w.Write(snap.Tacr)
+        w.Write(snap.Tadr)
+        w.Write(snap.TadrReload)
+        w.Write(snap.TadrReadCount)
+        //v11: Timer C+D live-decrement state (mirrors Timer A/B above) - see MmuSnapshot.
+        w.Write(snap.Tcdr)
+        w.Write(snap.TcdrReload)
+        w.Write(snap.TcdrReadCount)
+        w.Write(snap.Tddr)
+        w.Write(snap.TddrReload)
+        w.Write(snap.TddrReadCount)
         w.Write(snap.FdcSelectedReg)
         w.Write(snap.FdcStatus)
         w.Write(snap.FdcTrack)
@@ -842,6 +854,18 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let tbdr = r.ReadByte()
         let tbdrReload = r.ReadByte()
         let tbdrReadCount = r.ReadUInt32()
+        //v1-v9 snapshots predate Timer A's live-decrement state - default to "stopped, holding
+        //whatever byte was last there", matching the chip's own power-on reset (and what those
+        //snapshots were actually captured with, since Timer A was plain storage before this).
+        let tacr, tadr, tadrReload, tadrReadCount =
+            if version >= 10uy then r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadUInt32()
+            else 0uy, 0uy, 0uy, 0u
+        //v1-v10 snapshots predate Timer C/D's live-decrement state - same default reasoning as
+        //Timer A above (Timer C/D's shared control register, read via mfpArr, is unaffected).
+        let tcdr, tcdrReload, tcdrReadCount, tddr, tddrReload, tddrReadCount =
+            if version >= 11uy then
+                r.ReadByte(), r.ReadByte(), r.ReadUInt32(), r.ReadByte(), r.ReadByte(), r.ReadUInt32()
+            else 0uy, 0uy, 0u, 0uy, 0uy, 0u
         //v1 snapshots (format version 1) predate FDC emulation - default to "idle, no command
         //issued yet", matching the always-0 status those snapshots were actually captured with.
         let fdcSelectedReg, fdcStatus, fdcTrack, fdcSector, fdcData =
@@ -903,6 +927,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
               PsgSelectedReg = psgSelectedReg; PsgReadData = psgReadData
               Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
+              Tacr = tacr; Tadr = tadr; TadrReload = tadrReload; TadrReadCount = tadrReadCount
+              Tcdr = tcdr; TcdrReload = tcdrReload; TcdrReadCount = tcdrReadCount
+              Tddr = tddr; TddrReload = tddrReload; TddrReadCount = tddrReadCount
               FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
               FdcSector = fdcSector; FdcData = fdcData
               DmaAddrHigh = dmaAddrHigh; DmaAddrMid = dmaAddrMid; DmaAddrLow = dmaAddrLow
@@ -1186,7 +1213,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -1242,6 +1269,12 @@ module Main =
             | [| "snap"; path |] ->
                 st.SaveState path
                 Diag.result "Snapshot written to %s at PC=$%08x" path st.Cpu.PC
+                loop()
+            | [| "disk"; path |] ->
+                //Hot-swap drive A's mounted image - models a real physical floppy swap (e.g. a
+                //loader mid-load asking for "disk 2") without needing a fresh cold boot.
+                st.Cpu.MMU.LoadDiskA (Some (IO.File.ReadAllBytes path))
+                Diag.result "Disk A swapped to %s" path
                 loop()
             | [| "watch"; addr |] ->
                 let a = Convert.ToUInt32(addr, 16)

@@ -21,6 +21,9 @@ type MmuSnapshot =
     { Ram: byte[]; VideoDisplayRegisters: byte[]; Ym2149: byte[]; MfpRegisters: byte[]
       PsgSelectedReg: byte; PsgReadData: byte
       Tbcr: byte; Tbdr: byte; TbdrReload: byte; TbdrReadCount: uint32
+      Tacr: byte; Tadr: byte; TadrReload: byte; TadrReadCount: uint32
+      Tcdr: byte; TcdrReload: byte; TcdrReadCount: uint32
+      Tddr: byte; TddrReload: byte; TddrReadCount: uint32
       FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte
       DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte
       MemConfig: byte
@@ -145,6 +148,11 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mfpEnd = 0xFFFA2Fu //last of the MC68901's byte-wide registers (base+$00 to base+$2F)
     let mfpTbcr = 0xFFFA1Bu //Timer B control register
     let mfpTbdr = 0xFFFA21u //Timer B data register
+    let mfpTacr = 0xFFFA19u //Timer A control register
+    let mfpTadr = 0xFFFA1Fu //Timer A data register
+    let mfpTcdcr = 0xFFFA1Du //Timer C+D shared control register: bits 4-6 = C's mode, bits 0-2 = D's
+    let mfpTcdr = 0xFFFA23u //Timer C data register
+    let mfpTddr = 0xFFFA25u //Timer D data register
     let aciaStart = 0xFFFC00u
     let aciaEnd = 0xFFFC07u //keyboard ACIA (FC00 ctrl/status, FC02 data) + MIDI ACIA (FC04 ctrl/status, FC06 data)
 
@@ -452,24 +460,28 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 if traceIkbd then ikbdLog (sprintf "cmd %s" (msg |> Array.map (sprintf "%02x") |> String.concat " "))
                 ikbdDispatch msg
 
-    ///Minimal MFP Timer B stub: real hardware decrements TBDR on each external clock event
+    ///Minimal MFP Timer A/B stub: real hardware decrements T{A,B}DR on each external clock event
     ///(HBLANK in event-count mode, much slower than CPU instruction execution) and reloads it from
-    ///the last-armed value on underflow. We have no real clock source, so instead decrement TBDR
-    ///once every `tbdrDecrementPeriod` CPU reads of it while armed (tbcr <> 0uy), rather than on
-    ///every read - this reproduces both properties ROM code depends on: a poll spinning on TBDR
+    ///the last-armed value on underflow. We have no real clock source, so instead decrement T{A,B}DR
+    ///once every `tbdrDecrementPeriod` CPU reads of it while armed (t{a,b}cr <> 0uy), rather than on
+    ///every read - this reproduces both properties code depends on: a poll spinning on T{A,B}DR
     ///eventually observes it count down to any given terminal value, AND two back-to-back reads a
     ///few instructions apart (a "has it changed" debounce idiom the boot ROM also uses) normally
     ///see the same value, matching real hardware where a tick is rare relative to instruction
     ///execution. The period is an arbitrary tuning constant, not a real HBLANK-accurate rate (this
     ///emulator has no cycle counting to derive one from) - picked only to comfortably exceed the
-    ///longest known back-to-back read run in the boot ROM's debounce loop (~617 reads). Every
-    ///other MFP register (GPIP, AER, DDR, interrupt enable/pending/in-service/mask, vector
-    ///register, Timer A/C/D control and data, USART control/status/data, etc.) is backed by plain
-    ///read/write storage instead - accurate for what the CPU sees on a bare register access (their
-    ///special behavior - interrupts actually firing, the USART actually shifting bits, timers
-    ///actually counting - is not modeled, but nothing in the boot ROM so far depends on that, only
-    ///on writes to these registers being readable back). Confirmed necessary, not speculative: the
-    ///ROM write/read-verifies several MFP registers in a loop (TADR/TBDR/TCDR/TDDR among them) as
+    ///longest known back-to-back read run in the boot ROM's debounce loop (~617 reads). Timer A got
+    ///this same treatment (previously plain storage, "nothing depends on real counting") once a real
+    ///game did: Cadaver's Rob Northen protection stub (`reversing/cadaver`) busy-polls TADR directly
+    ///(`cmp.b (A2),D3 / bne` on $fffffa1f) as a hardware-timing anti-debug check with no interrupt
+    ///involved at all - a frozen TADR is provably-stuck to this emulator's loop detector. Every other
+    ///MFP register (GPIP, AER, DDR, interrupt enable/pending/in-service/mask, vector register, Timer
+    ///C/D control and data, USART control/status/data, etc.) is still backed by plain read/write
+    ///storage - accurate for what the CPU sees on a bare register access (their special behavior -
+    ///interrupts actually firing, the USART actually shifting bits, timers actually counting - is
+    ///not modeled, but nothing so far depends on that, only on writes to these registers being
+    ///readable back). Confirmed necessary, not speculative: the ROM write/read-verifies several MFP
+    ///registers in a loop (TADR/TBDR/TCDR/TDDR among them) as
     ///part of its own hardware-presence check, and got stuck forever on any of them that still
     ///silently dropped writes.
     let tbdrDecrementPeriod = 700u
@@ -478,6 +490,21 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable tbdr = 0uy
     let mutable tbdrReload = 0uy
     let mutable tbdrReadCount = 0u
+    //Timer A: same read-driven decrement idiom as Timer B (see the doc comment above), same
+    //arbitrary period - nothing has needed Timer A to tick at a different rate than Timer B yet.
+    let mutable tacr = 0uy
+    let mutable tadr = 0uy
+    let mutable tadrReload = 0uy
+    let mutable tadrReadCount = 0u
+    //Timer C and D: same idiom again. Both share one control register (mfpTcdcr) instead of
+    //owning one each, so "armed" is a bitfield test against that register's live value (mfpRegisters
+    //backs it, like every other plain MFP register) rather than a dedicated tcr/tdcr mutable.
+    let mutable tcdr = 0uy
+    let mutable tcdrReload = 0uy
+    let mutable tcdrReadCount = 0u
+    let mutable tddr = 0uy
+    let mutable tddrReload = 0uy
+    let mutable tddrReadCount = 0u
     ///Live down-counter for MFP Timer B in EVENT-COUNT mode ($08), advanced one tick per emulated
     ///scanline by HblTick - the HBLANK clock source the coarse read-driven `tbdr`/`tbdrReadCount`
     ///pair (kept for the ROM's MFP-presence check) can't model. 0 = "not seeded yet"; the first
@@ -799,9 +826,42 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 tbdrReadCount <- tbdrReadCount + 1u
                 if tbdrReadCount >= tbdrDecrementPeriod then
                     tbdrReadCount <- 0u
-                    tbdr <- (if tbdr = 0uy then tbdrReload else tbdr - 1uy)
+                    //Real MC68901: "a value of 00 in the data register is interpreted as a full
+                    //count of 256" - so a reload of 0 must still produce a visible 255 on the next
+                    //tick, not stick at 0 forever. tbdr/tadr are bytes, so 0uy-1uy already wraps to
+                    //255uy for the plain countdown case; only the "just reloaded" case needs the
+                    //explicit 0->255 substitution (a bare `tbdrReload` would reload literal 0).
+                    tbdr <- (if tbdr = 0uy then (if tbdrReload = 0uy then 255uy else tbdrReload) else tbdr - 1uy)
             v
         | a when a = mfpTbcr -> tbcr
+        | a when a = mfpTadr ->
+            let v = tadr
+            if tacr <> 0uy then
+                mutations <- mutations + 1UL
+                tadrReadCount <- tadrReadCount + 1u
+                if tadrReadCount >= tbdrDecrementPeriod then
+                    tadrReadCount <- 0u
+                    tadr <- (if tadr = 0uy then (if tadrReload = 0uy then 255uy else tadrReload) else tadr - 1uy)
+            v
+        | a when a = mfpTacr -> tacr
+        | a when a = mfpTcdr ->
+            let v = tcdr
+            if mfpRegisters.[int (mfpTcdcr - mpf68901)] &&& 0x70uy <> 0uy then
+                mutations <- mutations + 1UL
+                tcdrReadCount <- tcdrReadCount + 1u
+                if tcdrReadCount >= tbdrDecrementPeriod then
+                    tcdrReadCount <- 0u
+                    tcdr <- (if tcdr = 0uy then (if tcdrReload = 0uy then 255uy else tcdrReload) else tcdr - 1uy)
+            v
+        | a when a = mfpTddr ->
+            let v = tddr
+            if mfpRegisters.[int (mfpTcdcr - mpf68901)] &&& 0x07uy <> 0uy then
+                mutations <- mutations + 1UL
+                tddrReadCount <- tddrReadCount + 1u
+                if tddrReadCount >= tbdrDecrementPeriod then
+                    tddrReadCount <- 0u
+                    tddr <- (if tddr = 0uy then (if tddrReload = 0uy then 255uy else tddrReload) else tddr - 1uy)
+            v
         | a when a = 0xFFFA01u ->
             //MFP GPIP - eight read-only hardware input lines, not a writable register. Two bits
             //matter to boot and are synthesised here rather than read from stored zeros:
@@ -1014,6 +1074,38 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             tbcr <- input
             tbdrReadCount <- 0u
             tbCounter <- 0 //arming/re-arming Timer B restarts the HBL event count
+        | a when a = mfpTadr ->
+            if tadr <> input || tadrReload <> input || tadrReadCount <> 0u then
+                mutations <- mutations + 1UL
+            tadr <- input
+            tadrReload <- input
+            tadrReadCount <- 0u
+        | a when a = mfpTacr ->
+            if tacr <> input || tadrReadCount <> 0u then
+                mutations <- mutations + 1UL
+            tacr <- input
+            tadrReadCount <- 0u
+        | a when a = mfpTcdr ->
+            if tcdr <> input || tcdrReload <> input || tcdrReadCount <> 0u then
+                mutations <- mutations + 1UL
+            tcdr <- input
+            tcdrReload <- input
+            tcdrReadCount <- 0u
+        | a when a = mfpTddr ->
+            if tddr <> input || tddrReload <> input || tddrReadCount <> 0u then
+                mutations <- mutations + 1UL
+            tddr <- input
+            tddrReload <- input
+            tddrReadCount <- 0u
+        | a when a = mfpTcdcr ->
+            //Shared control register for both Timer C and D - a write re-arms/re-phases whichever
+            //of the two it touches, so (unlike TACR/TBCR, which each own a single timer) both read
+            //counts get reset regardless of which nibble changed; `store` already covers the
+            //mutation bump for the byte itself, same as every other plain MFP register.
+            if tcdrReadCount <> 0u || tddrReadCount <> 0u then mutations <- mutations + 1UL
+            store mfpRegisters (int (address - mpf68901)) input
+            tcdrReadCount <- 0u
+            tddrReadCount <- 0u
         | Mfp -> store mfpRegisters (int (address - mpf68901)) input
         | a when a = fdcModeSelect ->
             let selected = (input >>> 1) &&& 0x3uy
@@ -1505,6 +1597,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
           PsgSelectedReg = psgSelectedReg; PsgReadData = psgReadData
           MfpRegisters = Array.copy mfpRegisters
           Tbcr = tbcr; Tbdr = tbdr; TbdrReload = tbdrReload; TbdrReadCount = tbdrReadCount
+          Tacr = tacr; Tadr = tadr; TadrReload = tadrReload; TadrReadCount = tadrReadCount
+          Tcdr = tcdr; TcdrReload = tcdrReload; TcdrReadCount = tcdrReadCount
+          Tddr = tddr; TddrReload = tddrReload; TddrReadCount = tddrReadCount
           FdcSelectedReg = fdcSelectedReg; FdcStatus = fdcStatus; FdcTrack = fdcTrack
           FdcSector = fdcSector; FdcData = fdcData
           DmaAddrHigh = dmaAddrHighByte; DmaAddrMid = dmaAddrMidByte; DmaAddrLow = dmaAddrLowByte
@@ -1535,6 +1630,16 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         tbdr <- snapshot.Tbdr
         tbdrReload <- snapshot.TbdrReload
         tbdrReadCount <- snapshot.TbdrReadCount
+        tacr <- snapshot.Tacr
+        tadr <- snapshot.Tadr
+        tadrReload <- snapshot.TadrReload
+        tadrReadCount <- snapshot.TadrReadCount
+        tcdr <- snapshot.Tcdr
+        tcdrReload <- snapshot.TcdrReload
+        tcdrReadCount <- snapshot.TcdrReadCount
+        tddr <- snapshot.Tddr
+        tddrReload <- snapshot.TddrReload
+        tddrReadCount <- snapshot.TddrReadCount
         fdcSelectedReg <- snapshot.FdcSelectedReg
         fdcStatus <- snapshot.FdcStatus
         fdcTrack <- snapshot.FdcTrack

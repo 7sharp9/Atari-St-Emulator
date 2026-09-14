@@ -1992,6 +1992,16 @@ type Cpu =
                 printfn "trapv (not taken)"
                 {x with PC = x.PC+2}
 
+        | Illegal ->
+            //Trap to vector 4. Unlike TRAP/TRAPV (which complete before trapping, so push the
+            //*next* instruction's address), ILLEGAL never executes - real hardware's op_illg
+            //calls Exception(4) without ever advancing the PC past it (Hatari newcpu.c), so the
+            //stacked return address is the ILLEGAL opcode's own address, matching RTE resuming
+            //back at the same instruction (of no use here since nothing rewrites it first, but
+            //correct is correct).
+            printfn "illegal"
+            x.EnterVector 4 x.PC
+
         | TRAP(vector) ->
             //Pushes return PC then SR (SR ends up on top, matching RTE's SR@SP/PC@SP+2 layout),
             //enters supervisor mode, and jumps to the vector table entry at (32+n)*4 - see
