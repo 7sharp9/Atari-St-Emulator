@@ -167,28 +167,56 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   reportedly mouse/icon driven for movement (per the "inventory UI" already seen) rather than
   cursor-key walking; the arrow-key entries found may be a UI/menu-navigation layer instead of
   player movement.
-- **What didn't pan out this pass**: driving `mouse move`/`down`/`up` and cursor-key `kbd` bytes at
-  the gameplay snapshot (several combinations, up to ~1.4M steps each) produced IKBD-ISR activity
-  and `MainLoop` iterations but never a write into any of the three screen-buffer candidates above —
-  no visible room redraw was captured, and no creature ever appeared. Likely cause: Cadaver's mouse
-  cursor needs to be positioned over a specific walkable tile/icon (screen-coordinate-dependent,
-  not just "click somewhere"), which wasn't reverse-engineered this pass.
+- **What didn't pan out in the 2nd pass, corrected in the 3rd**: the 2nd pass concluded mouse/kbd
+  input produced no visible effect. That conclusion was an artefact of two mistakes, both now
+  fixed: (a) the REPL's `watch <addr> <len>` takes `<len>` in **decimal**, not hex — passing a hex
+  length (e.g. `e63` for a 0xe63-byte span) either throws or silently watches the wrong range, so
+  the earlier "0 watch hits" results were watching garbage; (b) the three screen-buffer addresses
+  guessed from one static pointer read are not stable — `ScreenBufferA`/`B` swap roles across
+  frames, so a `watch` fixed at one of them before driving input can legitimately miss everything.
+  The fix that worked: snapshot before/after a matched-length **idle control run** and an
+  **input-driven run** from the same base state, diff both against the base, and keep only the
+  bytes that changed in the input run but *not* the idle one (idle-only changes turned out to be
+  real — ambient torch/water animation flips ~1800 bytes over 1.5M steps regardless of input; see
+  `verify-visual-claims-with-frame-diffs` in project memory). That isolated a real, reproducible,
+  input-only signature: a repeating ~160-byte-stride (one scanline) run of ~15-23 changed bytes,
+  17 rows tall — the mouse cursor sprite. **Rendering the live screen directly and diffing the
+  actual images confirms it pixel-for-pixel**: `mouse move 40 20` moves a visible ~29×24px cursor
+  icon to exactly the predicted screen position; the player-character sprite's own pixels are
+  **byte-identical** before/after (confirmed over a 45×50px crop around it) despite the same run
+  also sending `mouse down/up` (a click) and all four cursor keys. So input reaches the game and
+  visibly acts (the cursor moves, and the earlier `callcap $15bf4 D0=$6e D1=0` experiment cleanly
+  set `ActiveEntitySlotBitmask` bit 0 and wrote a script pointer into the slot-0 control block at
+  `$162d0` — the same region the real-input A/B diff also flagged) — but **nothing this pass made
+  the character walk or spawned a creature**. The click may need to land on a specific room tile
+  (screen-space room/tile mapping still unknown), need to be held rather than a tap, or the
+  confirmed key-table entries (Up/Down/Right) may genuinely be a UI/menu layer rather than
+  movement, as suspected in the 2nd pass.
+- **Graphics format: not actually an open question.** The live screen (`ScreenBufferA` at
+  `$19100`) is plain standard-ST `st-interleaved` 320×200×4bpp — no unusual tile/sprite packing —
+  using the palette table at `$5a9c` (16 big-endian `$0RGB` words, the same one `$015302` copies to
+  `$ffff8240` at boot). Rendering it directly (`tools/gfxview.py` "st-interleaved" layout, or the
+  a-priori-simplest guess) reproduces the `gameplay.png` milestone screenshot exactly. The earlier
+  "decode the isometric tile/sprite format" framing assumed room art must be built from a packed
+  tile sheet found somewhere in RAM (the `ram_contact.png` data spans); that search never found a
+  match because there was no need to look past the screen buffer itself for what's already on
+  screen. A *packed* per-tile sheet (for other rooms not yet visited) may still exist in one of the
+  7 candidate spans, but isn't needed to view the current room.
 
 ## Next steps
 
-1. Work out the actual mouse-driven walk/interact protocol (screen coordinate → room-tile mapping)
-   well enough to move the character and trigger a real room redraw — needed before anything past
-   this point. Start from `EntityScript_StartAction_SlotD1_ActionD0` (`$15bf4`) and try driving it
-   directly via `callcap` with plausible `D0`/`D1` values instead of guessing mouse coordinates.
-2. Decode the isometric tile/sprite graphics format. `ram_contact.png` and the 7 data spans /
-   10 STF palettes gfxview detected (see `gfxview.html`, regenerate via
-   `python tools/gfxview.py gameplay_empire.snap --html gfxview.html`) are still just candidates —
-   neither `tiles 8x8x4` nor raw `st-interleaved` at the tried bases/widths produced a recognisable
-   image. Once a room redraw can be triggered on demand (step 1), `watch` on
-   `CompositeBackBuffer`/whichever buffer is live at the time will find the actual tile-blit
-   routine directly from real writes, the same way `ScreenFlip_ScanlineCopy` was found this pass —
-   far more reliable than guessing layout/base from static data.
-3. Once a creature is on screen (needs step 1 first), snapshot at that point and differential-test
+1. Work out the actual click-to-walk protocol. Try `callcap $15bf4` with the *other* confirmed
+   action ids (Down `$65`, Right `$c6`) and check whether the resulting `EntityScriptDispatch` walk
+   (run the main loop forward afterward, e.g. `u <addr-just-past-MainLoop-call>` or a plain `s`
+   burst) visibly moves anything — this tells us whether those key-table entries are movement or
+   menu-navigation without needing to solve mouse coordinates first. In parallel, try clicking with
+   the cursor positioned directly over the character sprite or over adjacent floor tiles (now that
+   rendering + pixel-diffing is confirmed working, position the cursor by watching where it lands
+   in a rendered frame, then iterate) rather than an arbitrary point.
+2. Once movement or a room transition can be triggered on demand, `watch` (with a **decimal**
+   length!) on `ScreenBufferA`/`B` and A/B-diff against an idle control the way this pass did, to
+   find the actual room-tile draw routine — far more reliable than guessing.
+3. Once a creature is on screen, snapshot at that point and differential-test
    `EntityScriptDispatch`/its opcode handlers with `callcap`, following the PowerMonger FSM
    methodology (`tools/pm_fsm_diff.py`'s `Harness`/`State`/`run_corpus`, game-agnostic; write a
    Cadaver-specific reconstruction module).

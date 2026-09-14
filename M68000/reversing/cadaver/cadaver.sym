@@ -27,6 +27,7 @@ $000163aa	ActionScriptPointerTable
 $00016380	EntityTable_Base
 $000162cc	ActiveEntitySlotBitmask
 $0001616c	KeyDispatchTable_5BytesPerEntry_TypeScancodesActionId
+$00005a9c	LivePaletteTable_16Words_0RGB_CopiedToFFFF8240
 $00019100	ScreenBufferA_LiveOrBack_320x200x4bpp
 $00020f00	ScreenBufferB_LiveOrBack_320x200x4bpp
 $0002de08	CompositeBackBuffer_320x200x4bpp
