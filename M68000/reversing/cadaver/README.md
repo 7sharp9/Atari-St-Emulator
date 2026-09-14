@@ -119,6 +119,10 @@ turned out not to need it.
 | `gameplay.png` | Empire release, in actual gameplay (Day 1, Cavern room) |
 | `gameplay_empire.snap` | live snapshot at the gameplay screenshot above (untracked — regenerate via the resume command above, or re-drive a fresh boot) |
 | `cadaver.sym` | `addr<TAB>name` sidecar for the routines/tables identified so far (main loop, entity script interpreter, input dispatch, screen buffers) |
+| `graphics.md` | 7th-pass graphics writeup: live screen format + the packed sprite/object sheet found at `$029800`-`$02de08` |
+| `ram_contact.png` | whole-RAM contact sheet (`gfxview.py --contact`), regenerated 7th pass |
+| `gfxview.html` | interactive per-region viewer (`gfxview.py --html`), regenerated 7th pass |
+| `spritesheet_29800.png` | the packed sprite/object sheet, rendered as a diagnostic 32×32-cell grid (see `graphics.md`) |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -212,35 +216,181 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   next step 1 below is the concrete way to pin it down (bisect on step count to find the exact
   VBL where the sprite stops compositing, then trace what runs in that window specifically, rather
   than wading through the routine per-VBL screen-copy noise that dominates any broad `watch` here).
-- **Graphics format: not actually an open question.** The live screen (`ScreenBufferA` at
-  `$19100`) is plain standard-ST `st-interleaved` 320×200×4bpp — no unusual tile/sprite packing —
-  using the palette table at `$5a9c` (16 big-endian `$0RGB` words, the same one `$015302` copies to
+- **4th pass — the "vanishing sprite" doesn't reproduce; it's a short interact/dig gesture, not a
+  disappearance.** The 3rd pass's single 3M-step sample was misleading. Bisecting the same `kbd 50`
+  (Down make) / `kbd d0` (Down break) sequence at 25k/50k/75k/100k/150k/200k/300k/400k/500k/1M/1.5M/
+  2M/3M steps and rendering+diffing each checkpoint against the base frame (script:
+  `scratchpad/cadaver_bisect.py` this session, not yet copied into `tools/` — reads a `.snap`'s live
+  shifter video-base + palette directly, same ground truth `gfxview.py` uses, so it isn't fooled by
+  the `ScreenBufferA`/`B` role-swap that caused earlier false negatives) shows: the character plays
+  a ~5-6-frame animation peaking around 200k-300k steps — crouch, then an arm/implement raised
+  overhead (screenshot-confirmed, not inferred) — then relaxes back down, and by **2,000,000 steps
+  the frame is byte-identical to the pre-keypress base** (0 px diff, full 320×200 screen). Sending Up
+  afterward in the 3rd pass therefore "did nothing" simply because there was nothing left to undo -
+  the character was never gone; the 3rd pass's one coarse 3M sample apparently caught a genuinely
+  bad frame (most likely a mid-flip buffer read, the same class of bug the 2nd pass's screen-buffer
+  guess had already been burned by once). Given the isometric-dig framing of the rest of the game,
+  this animation reads most plausibly as a "dig/interact with the tile below" or "duck" gesture
+  rather than movement - consistent with no net screen-position change and the near-total lack of
+  change to the main entity table already noted in the 3rd pass.
+- **5th pass — the bitmask "open thread" above was a misreading; the real mechanism is a 3-way
+  round-robin action-script allocator, and it self-clears fast.** Watching just `$162cc`-`$162cf`
+  (4 bytes — cheap, unlike a broad screen-buffer watch) across the same `kbd 50`/`kbd d0` sequence
+  gives the ground truth: `$162cc` (`ActiveEntitySlotBitmask`) is a single **byte**, bits 0-2 = slots
+  0/1/2 "primary" active, bits 4-6 = the same slots' "secondary" flag (set when the action's second
+  table entry has a specific tag byte `$82`) - there is no 4-byte-wide bitmask; the earlier "bit 16"
+  reading came from treating an unrelated neighbour byte as part of the same word. `$162cd` is
+  **not** a stuck completion flag - it's a persistent round-robin index (`IkbdKeyDispatch_ScanTable1616c`
+  at `$015924`-`$015964`, reused by the key-release path at `$015986`-`$0159e8`): each new keyboard
+  action increments it mod 3 and picks that slot if free, else tries the other two. Each slot's real
+  control-block address comes from a small **PC-relative** pointer table at `$15c64` (3 entries only,
+  confirming exactly 3 concurrent action slots exist): slot 0 → `$162d0` (what the isolated
+  `callcap $15bf4 D1=0` test in the 3rd pass wrote to - explaining why it stayed zero for the real
+  Down-key path), slot 1 → `$16306`, slot 2 → `$1633c`. The real Down-key press was dispatched onto
+  **slot 1** (`$16306`), not slot 0. `EntityScript_StartAction_SlotD1_ActionD0` (`$15bf4`)
+  unconditionally writes `ActionScriptPointerTable[actionId]` into the slot's control block (offsets
+  0/4) and only conditionally re-*sets* the active bit (skipped if the pointer is null); a **second**
+  call ~82,000 steps later (well before the animation even peaks around 200k-300k) writes a **null**
+  pointer, clearing both the control block and the bit - i.e. the bookkeeping fully idles out on its
+  own, fast. Confirmed by direct memory dump: `$16306` is completely zero at every checkpoint from
+  50k through 500k, and the visual animation still has hundreds of screen pixels changing well after
+  that. **So whatever drives the multi-hundred-thousand-step visible animation is not this slot-
+  allocator system at all** - the player's animated pose must be tracked somewhere else entirely,
+  consistent with the 3rd pass's finding that `EntityTable_Base` (`$16380`) is barely touched either.
+- **5th pass, cont. — two concrete candidate regions for what actually drives it.** A/B RAM diff
+  (`base` vs. a matched-length **idle** control run vs. the **Down**-key run, both 300k steps, video
+  memory excluded) isolated 542 input-only changed bytes in 39 runs. Two stand out: **`$0180b6`-
+  `$018ae9`** (small, scattered single/double-byte deltas, close to the global screen-buffer-pointer
+  struct at `A5=$18152` - a plausible home for a per-character animation-frame-index or timer field)
+  and **`$02ca83`-`$02cd63`** (~740 bytes, dense/structured change, sitting near
+  `CompositeBackBuffer` at `$2de08` - a plausible unpacked sprite/work-buffer region for whichever
+  frame is currently being composited). A third cluster, **`$03672b`-`$038378`** (regular ~48-byte-
+  stride 2-byte deltas), is more likely a secondary lighting/shadow recompute triggered by the
+  animation than the animation state itself.
+- **5th pass, cont. — both candidates traced and downgraded; the real animation-state address is
+  still unknown.** `watch 180b6 2612` across the full `kbd 50`/`kbd d0` sequence shows this region is
+  the `TimerQueueService`/sound-command area already named in the 2nd pass (writers at `$0158e0`-
+  `$015c92`, matching `2534(A5)`/`304(A5)` from that pass's notes) - it's rewritten constantly every
+  VBL regardless of input, and the handful of bytes that come out different at 300k almost certainly
+  reflect a sound effect the Down action queued (e.g. a grunt/thud), not the visible pose. `watch
+  2ca83 738` shows a tight cluster of routines at `$00bf72`-`$00c242` (unnamed) running roughly once
+  per VBL: `$00bf72` clears the ~369-word buffer, `$00c1a0`-`$00c242` then fill it - a per-frame
+  recompute, not a static sprite-frame table, and also running whether or not Down was pressed. Both
+  regions differ between the idle and Down runs only as a **downstream side effect** of the Down
+  action (sound queued / whatever this buffer recomputes being sensitive to the character's current
+  pose as an input), not because either address *is* the animation state. **Next step, more targeted
+  than another RAM diff**: watch or trace what source address `ScreenFlip_AndCompositeSprites`
+  (`$14d64`) / `SpriteCompositeInner_AndOrMaskLoop` (`$14f24`) reads the player sprite bitmap from on
+  a gesture-frame vs. an idle-frame composite - that pointer (wherever it's stored) is the actual
+  "current animation frame" state, and tracing it top-down from the known compositor is more direct
+  than guessing from an undifferentiated RAM diff.
+- **Graphics format — live screen only, not the source data.** The live screen (`ScreenBufferA` at
+  `$19100`) is plain standard-ST `st-interleaved` 320×200×4bpp — no unusual packing — using the
+  palette table at `$5a9c` (16 big-endian `$0RGB` words, the same one `$015302` copies to
   `$ffff8240` at boot). Rendering it directly (`tools/gfxview.py` "st-interleaved" layout, or the
-  a-priori-simplest guess) reproduces the `gameplay.png` milestone screenshot exactly. The earlier
-  "decode the isometric tile/sprite format" framing assumed room art must be built from a packed
-  tile sheet found somewhere in RAM (the `ram_contact.png` data spans); that search never found a
-  match because there was no need to look past the screen buffer itself for what's already on
-  screen. A *packed* per-tile sheet (for other rooms not yet visited) may still exist in one of the
-  7 candidate spans, but isn't needed to view the current room.
+  a-priori-simplest guess) reproduces the `gameplay.png` milestone screenshot exactly. This is the
+  *composited output*, not the room's source data — the 7th pass (below) found and decoded the
+  actual packed sprite/object sheet that gets composited into it.
+
+- **7th pass — found and decoded the packed sprite/object sheet: `$029800`-`$02de08`.**
+  Full derivation in `graphics.md` (new this pass). Summary: the 6th pass's own "7 candidate data
+  spans" from `gfxview.py --contact`/`--html` were regenerated and logged as real addresses for the
+  first time (previously eyeballed once and dropped); the most plausible-looking one by proximity
+  to two adjacent room-sized palette tables (`$04d21c`-`$06b000`) turned out to be a dead end (no
+  tile structure at any width). The actual sheet was found the way the 6th pass's own method says
+  to — top-down from the compositor, not another RAM diff: disassembling the "per-frame recompute"
+  routine the 5th pass had flagged and downgraded (`$00bf72`-`$00c242`) shows it's a **second,
+  more general sub-pixel (arbitrary-shift) masked blitter**, distinct from
+  `SpriteCompositeInner_AndOrMaskLoop` (`$14f24`), reading its source bitmap from a wide packed
+  region via a 3-word per-entry header. Rendering that region (32×32-cell grid, live palette) shows
+  17,928 bytes of coherent, distinct art bounded cleanly by `CompositeBackBuffer` (`$2de08`) on one
+  side and noise on the other; the 6th pass's own `$2ca84`/`$2ca94` player-frame pointers land
+  inside it, at byte offsets that are **not** aligned to the 32×32 grid — the real per-entry format
+  is a variable-size, header-prefixed pack, not a uniform tile grid (the grid was a diagnostic
+  rendering choice, not the true stride). Exported as `spritesheet_29800.png`. This also produced a
+  corrected read on what kind of asset this is: it looks like a **sprite/prop/object catalog**, not
+  a floor/wall tile sheet — `gameplay.png`'s cave walls are one irregular hand-painted texture with
+  no visible tile seams, and a cold-boot `ATARI_TRACE_GEMDOS=1` run showed only 2 GEMDOS calls
+  total before stalling at the restore-game prompt, meaning room/level data isn't loaded via TOS
+  `Fread` at all (consistent with the Medway Boys section's existing finding that this game reads
+  raw disk sectors directly). Whether "room layout" is a tile-index grid or just a pointer to one
+  pre-rendered per-room background bitmap is still open — see Next steps.
+
+- **6th pass — found the "current animation frame" pointer the 5th pass was chasing.** Top-down
+  from the compositor, not another RAM diff, as the 5th pass's next-step said. Disassembling
+  `ScreenFlip_AndCompositeSprites` (`$14d64`) and `SpriteCompositeInner_AndOrMaskLoop` (`$14f24`)
+  directly shows the masked-composite inner loop reads its source bitmap from **`A0`**
+  (`move.l (A0)+,D2` / `move.l (A0)+,D3`, twice per 16-byte group, `subq.b #1,(A6)` / `bne` driving
+  the row count) and writes through `A1` (the screen destination). Tracing callers up the chain
+  (`$00d792` `SpriteList_BuildAndDispatch` → `$00d856` `SpriteList_ClipAndCompositeOne`, both now in
+  `cadaver.sym`) to the single-sprite (no-overlap) path shows the exact setup before
+  `jsr $14d64.l` at `$00d8e8`: `A0` is loaded from **offset `+52`** of a per-sprite descriptor
+  struct (`A3`), and `A3` comes from a fixed-stride (`$46` = 70 bytes) array of these structs whose
+  base pointer lives at **`(A5)+56`** (`$1818a`, new `SpriteObjectArrayPtr_A5Plus56` in
+  `cadaver.sym`) with a count word at **`(A5)+1152`** (`$185d2`,
+  `SpriteObjectArrayCount_A5Plus1152` — 22 entries live in `gameplay_empire.snap`). The player
+  character is always **slot 0** of that array (only slot whose state byte at struct-offset `+42`
+  is `0`; every monster/prop slot seen so far is `5`), so its descriptor sits at a fixed offset from
+  the array base (`+52` within slot 0 = struct-relative bitmap pointer, `+20`/`+23` = a shared
+  animation-phase counter/derived screen-row-bob byte — `+23 = +20 + ~0x2b`, i.e. the same counter
+  drives both, see below).
+- **6th pass, cont. — confirmed live, with an exact step window.** Snapshotting
+  `gameplay_empire.snap`, sending `kbd 50`/`kbd d0` (Down make/break), then dumping slot 0's 70-byte
+  descriptor (`m <arrayBase> 70`, decimal-step checkpoints) across the whole gesture: the `+20`
+  phase byte counts down smoothly from its idle value `$22` to `$00` by ~step 220,000, holds at
+  `$00` through ~step 240,000-260,000, then counts back up to `$22` (idle) by ~step 400,000-450,000
+  — matching the 4th pass's render-confirmed "crouch, arm/implement raised, relax" timeline almost
+  exactly. The struct-`+52` bitmap pointer itself is `$0002ca84` (the same region the 5th pass had
+  found and provisionally downgraded to "a per-frame recompute buffer, not a static sprite-frame
+  table" — it's actually *both*: a live-recomputed buffer that also happens to be exactly where the
+  frame pointer points) for the entire gesture **except** a narrow window bisected to **steps
+  ~250,000-260,000** (10,000-step checkpoints; `$00` immediately before and after), where it flips
+  to `$0002ca94` — exactly `+$10` (16 bytes, one composite-loop row-group) — before reverting. That
+  16-byte-offset alternate frame, active only at the phase counter's trough, is the "arm/implement
+  raised overhead" pose frame from the 4th pass's screenshot. This closes the "next steps 1" item
+  below: the real "current animation frame" state is struct-offset `+52` of the player's
+  slot-0 descriptor (a pointer into the `$2ca84`-based per-frame buffer), gated by the phase counter
+  at `+20`.
+- **What this doesn't yet explain**: only one alternate frame (`+$10`) was seen in this bisection —
+  the visually smoother 5-6-frame appearance from the 4th pass may be the `+20`/`+23` counter
+  driving a continuous vertical draw offset (the "bob") layered on top of a coarser 2-frame bitmap
+  swap, rather than 5-6 distinct bitmaps; not confirmed, would need denser bisection (every VBL,
+  not every 10k steps) around the `$00` plateau to see if `+52` visits more than one alternate
+  value.
 
 ## Next steps
 
-1. Pin down what the Down key actually did (see above — the character vanished and 3M steps of Up
-   didn't bring it back). Bisect on step count from the known-good `kbd 50`/`kbd d0` sequence
-   (e.g. render+diff at 200k/500k/1M/1.5M/2M/3M steps) to find the specific VBL window where the
-   sprite stops compositing, then trace *just that window* (`ATARI_TRACE_EVENTS` scoped tight, or
-   a full `-Trace` dump — cheap once the window is a few thousand steps instead of 3M) to see which
-   routine actually removes it — a real walk-off-screen, a death/room-exit, or something else.
-   `EntityScriptDispatch`/`$15c70` and the control-slot area (`$162cc`+) are candidates but the 3rd
-   pass found the main entity table (`$16380`) and the slot-0 control block essentially untouched
-   by the real in-game Down-key path, unlike the isolated `callcap $15bf4` experiment — so the real
-   path may go through a different mechanism than that one test assumed. Once understood, try
-   Right (`$c6`) the same way, and try clicking with the cursor positioned directly over the
-   character or adjacent floor tiles (cursor positioning is now confirmed working via render+diff).
-2. Once movement or a room transition can be triggered on demand, `watch` (with a **decimal**
-   length!) on `ScreenBufferA`/`B` and A/B-diff against an idle control the way this pass did, to
+1. Decode the `$00bf72` per-entry header (`D0`/`D1`/`D2` read at `$00bf86`-`$00bf8a`) via `callcap`
+   differential testing (snapshot at `gameplay_empire.snap`, vary register presets, diff the
+   resulting write pattern) rather than more static disassembly — this pins down the sprite sheet's
+   real stride/dimension format, superseding the diagnostic 32×32 grid `spritesheet_29800.png` used
+   to find and bound the region.
+2. Settle "tile-indexed room vs. one pre-rendered background per room": trace FDC/XBIOS `Rwabs`
+   sector-read destinations during an actual room *load* (needs a fresh boot driven far enough to
+   witness the load — the current `gameplay_empire.snap` is already past it and GEMDOS tracing
+   showed no `Fread` calls, confirming raw sector I/O, not TOS file I/O).
+3. Check whether a monster/creature slot's descriptor (state byte `+42 = 5`, e.g. slot 1) uses the
+   same `+52` pointer-swap + `+20`/`+23` phase-counter mechanism as the player's slot 0 — if so, this
+   is the general animation-state pattern for every entity in the array, not player-specific.
+4. Bisect every VBL (not every 10k steps) across the `+20 = $00` plateau (~steps 220,000-260,000) to
+   see whether `+52` actually visits more than the one alternate value (`$2ca94`) found in the 6th
+   pass — would settle whether the 4th pass's "5-6 frame" visual impression is real multi-frame
+   animation or a 2-frame swap plus a continuous bob derived from the same counter.
+5. Try Right (`$c6`) the same way — dump the acting slot's descriptor across the gesture and confirm
+   the same struct-offset story — and try clicking with the cursor positioned directly over the
+   character or adjacent floor tiles (cursor positioning is confirmed working via render+diff) to see
+   if *that* is what actually moves the character between rooms/tiles — arrow keys may turn out to be
+   a menu/UI layer, not movement, as the 2nd pass suspected.
+6. Once movement or a room transition can be triggered on demand, `watch` (with a **decimal**
+   length!) on `ScreenBufferA`/`B` and A/B-diff against an idle control the way earlier passes did, to
    find the actual room-tile draw routine — far more reliable than guessing.
-3. Once a creature is on screen, snapshot at that point and differential-test
+7. Once a creature is on screen, snapshot at that point and differential-test
    `EntityScriptDispatch`/its opcode handlers with `callcap`, following the PowerMonger FSM
    methodology (`tools/pm_fsm_diff.py`'s `Harness`/`State`/`run_corpus`, game-agnostic; write a
    Cadaver-specific reconstruction module).
+8. `decode_span.py`/`decode_grid.py` (this session's scratchpad, not the repo) render an arbitrary
+   RAM span as st-interleaved 4bpp with a chosen palette, single strip or tiled grid — reusable for
+   the header-decode work in item 1 above. `scratchpad/cadaver_bisect.py` (an earlier session's
+   scratchpad, also gone) is a separate step-bisection+render+diff helper (reads a `.snap`'s live
+   shifter video-base/palette, immune to the `ScreenBufferA`/`B` swap trap). Neither promoted to
+   `tools/` yet — worth doing once a third use case shows up.
