@@ -435,6 +435,95 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   it really is a menu/UI-layer binding as the 2nd pass originally suspected. Not chased further this
   pass — see next-step 5.
 
+- **8th pass — the player animation sheet's "672 B/frame, ~27 frames" stride is not real; corrected
+  to unknown/open.** Added `sprite_array_export.py --sequence BASE STRIDE COUNT W H` (uniform-stride
+  batch export, distinct from the existing struct-driven `--base`/array mode) and ran it over
+  `$029800`-`$02de08` at the graphics.md-stated 672-byte stride. Caught on review, not asserted: the
+  one already-confirmed-good frame pointer, `$2ca84` (the idle pose, struct-verified via slot 0's
+  live `+52` field), sits at byte offset 12932 from `$029800` — **not** a multiple of 672 (remainder
+  164). A uniform stride from that base cannot be the real per-frame layout; the visually-plausible
+  contact sheet the naive export produced is coincidence, not ground truth, past frame 0. This
+  downgrades the README's own prior "confirmed ... ~27 frames at 672 B/frame" line (graphics.md §2)
+  to unverified — real per-frame boundaries are still unknown and need either a header/pointer table
+  (not yet found) or more live gesture-bisection data (blocked on finding more triggerable actions,
+  i.e. this pass's real focus, below). The export tool itself is fine and reusable; its output for
+  this specific region isn't — not committed, kept in scratchpad only.
+- **8th pass, cont. — the game's custom IKBD ISR does not parse standard mouse-motion packets;
+  confirmed by disassembly and by a live `watch`, not assumed.** Full disassembly of `IkbdIsr`
+  (`$1535a`-`$1539c`): it reads one byte at a time from the ACIA data register (`$fc02.w`) into a
+  1-byte cell at `A5_isr` (a *different* base than the main-loop's `A5=$18152` — the ISR does
+  `movea.l $5abc.l,A5; adda.w #$9e2,A5`, landing at `$018b34`, confirmed live). Two header bytes,
+  `$ff`/`$fe`, are recognised as "the next byte is an extended 2-byte report" and get written to
+  `A5_isr + sign_extend(header)` (i.e. `$018b33`/`$018b32` — a fixed joystick-0/-1 state byte each,
+  not a sparse table, since `$fe`/`$ff` sign-extend to `-2`/`-1`). **Any other byte with the top bit
+  set (`>=$80`), arriving when the ISR is idle, gets written to the current-key cell (`$018b34`) and
+  then immediately cleared** (`move.b D0,(A5) / bpl skip-clear / clr.b (A5)` — `bpl` isn't taken for
+  a negative/high-bit byte, so the clear executes). A standard 3-byte relative-mouse packet
+  (`$F8`-`$FB`-headed) is exactly this case: the header byte is written-then-cleared, and the
+  following `dx`/`dy` payload bytes (top bit clear, ordinary small integers) fall through to the
+  **normal single-scancode path** and get treated as if they were real keyboard scancodes. Verified
+  live with `watch 18b30 8` across a `mouse move 20 20`: the trace shows exactly `$f8` written then
+  cleared, then `$14` (=20 decimal, the dx/dy byte) written and **held** — i.e. a `mouse move 20 20`
+  literally forges a fake keypress of scancode `$14` (which happens to itself be one of the
+  `KeyDispatchTable` entries — see below). This is a real mechanism finding, not merely "mouse
+  doesn't work": relative-mouse packets don't get silently ignored, they get *misinterpreted as
+  spurious key data*, which is worse for testing (a `mouse move` in an earlier pass could have been
+  quietly forging an unrelated keypress rather than doing nothing).
+- **8th pass, cont. — despite the mechanism above, `mouse move` produces zero net, lasting effect in
+  practice; ruled out empirically as well as mechanically.** Idle-vs-mouse-move A/B render diffs at
+  matched step counts (3,000 and 30,000 steps) show **0 changed pixels** on both screen buffers, and
+  `ActiveEntitySlotBitmask` (`$162cc`-`$162cf`) stays `$00 00 00 00` through a `mouse move 20 20` +
+  23,000-step window. The forged-scancode byte is present only for a handful of steps before an
+  already-queued, unrelated stray `$00` byte in the ACIA FIFO (present before the mouse packet was
+  even sent — a pre-existing harness/boot artifact, not caused by the mouse command) drains behind
+  it in the same interrupt burst and clears it again — a narrow, unreliable race, not a usable
+  signal either way. **Directly contradicts the 3rd pass's claim** ("`mouse move 40 20` moves a
+  visible ~29×24px cursor icon to exactly the predicted screen position") — that claim was not
+  re-verified this pass and does not reproduce; treat it as retracted pending re-derivation (see
+  `verify-visual-claims-with-frame-diffs` in project memory — this is exactly that failure mode).
+- **8th pass, cont. — mouse clicks currently send *zero bytes* at all, a separate, harder gap.**
+  `mouse down l` / `mouse up l` only synthesize a keycode-style byte (`$74`/`$75`) when the IKBD is
+  in "buttons report as keys" mode (`MouseButtonsReportAsKeys`, gated on `ikbdMouseButtonAction`
+  bit 2, set only by a `$07` IKBD command the *game* would have to send). Checked live: this mode is
+  `false` in `gameplay_empire.snap`'s state, and the REPL confirms it (`mouse down left
+  (buttons-as-keys=false)`), so a `mouse down`/`up` pair enqueues nothing — no bytes, no interrupt,
+  no memory change at all. Whether the game ever sends that `$07` command (at some other point in
+  its lifecycle) is unknown — needs an `ATARI_TRACE_IKBD` cold-boot trace (see next steps).
+- **8th pass, cont. — joystick `$FE` (port 0) direction packets: byte-write mechanism verified, but
+  zero downstream effect.** Sent `kbd fe 08` (header `$FE` + direction byte, bit3="right" in
+  standard IKBD joystick encoding) and confirmed via direct memory dump that it lands exactly where
+  the ISR disassembly predicts, `$018b32 = 08`, and **persists unmodified** through 25,500 steps (no
+  auto-clear the way scancodes get cleared on a break code — there was no break code sent). Held the
+  same "right" state for 400,000+ steps (`ActiveEntitySlotBitmask` sampled at each step multiple):
+  stays `$00 00 00 00` throughout, and a full-screen A/B render diff against a matched-length idle
+  control is 0 pixels. Inconclusive on encoding (wrong bit convention, wrong port, or the game simply
+  never polls this cell in this room/state) rather than a clean negative, but the byte-delivery
+  mechanism itself is now confirmed working, which narrows any future retry to "try different bit
+  patterns/the other port" rather than re-deriving the address.
+- **8th pass, cont. — Right, *held* (not tapped), settles the 7th pass's open question: still
+  nothing.** `kbd 4d` (make only, no break) held for 400,000+ steps, `ActiveEntitySlotBitmask`
+  sampled throughout: `$00 00 00 00` at every checkpoint, identical to the 7th pass's tap result.
+  Rules out "needs to be held" as the explanation — Right (or at least the `$4c`/`$4d` scancode
+  pair) does not drive any action-slot activity under either discipline.
+- **8th pass, cont. — re-dumped and correctly parsed the full `KeyDispatchTable`; corrects the base
+  address by one byte and settles "is this a movement table?" as no.** The raw dump at `$1616c`
+  parses cleanly as 61 fixed 5-byte entries (`[type][sc1][sc2][sc3][actionId]`, type=1/2/3 selects
+  how many scancode slots are populated) starting at `$1616d`, **one byte past** the address
+  `cadaver.sym`/earlier passes recorded (`$1616c` itself, value `$01`, is unaccounted for — likely a
+  count/flag byte, not part of the first entry; the old base produced entries with implausible
+  `type` bytes like `55`/`127`/`198` and is simply mis-aligned). At the corrected alignment every
+  entry is a well-formed `[1-3][real scancode(s)][action id]`. The scancode set spans nearly the
+  entire keyboard — Esc, digit row, most letters, all ten function keys, space, shift (`$2a`),
+  alt (`$38`), the three confirmed arrow keys, and more — which reads as a general UI/menu hotkey
+  dispatcher (save/load, pause, inventory shortcuts, etc.), not a movement-specific table, backing up
+  the standing suspicion from the 2nd/7th passes. **`$4b` (Left) still has no entry anywhere in the
+  61**, confirmed at the corrected alignment. One concrete new data point: the Down-key entry
+  (`sc=[$50,$51]`) and a separate three-way entry (`sc=[$0c,$0d,$1c]` — minus/equals/**Return**)
+  share the **same action id, `$65`** — independent evidence that the Down gesture (already known,
+  4th-7th passes, to be a crouch/dig/interact animation with no net position change) is a generic
+  "confirm/interact with the current square," triggerable by either Down or Return, not a directional
+  move.
+
 ## Next steps
 
 1. ~~Decode the sprite sheet's per-entry width/height~~ — **done, 7th pass**: they're struct fields
@@ -454,13 +543,24 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    granularity: exactly one alternate frame (`$2ca94`), no third value at any sampled point. The
    4th pass's "5-6 frame" look is the phase counter's continuous bob on top of this one 2-frame
    swap, not additional bitmaps.
-5. ~~Try Right the same way~~ — **tried, 7th pass, inconclusive**: a tap (matching Down's exact
-   discipline) activates no action slot at all. Worth retrying as a *held* key (longer gap between
-   `kbd 4d` and `kbd cd`, or no break at all for an extended run) before concluding it's UI-only.
-   Still fully open: try clicking with the cursor positioned directly over the character or adjacent
-   floor tiles (cursor positioning is confirmed working via render+diff) to see if *that* is what
-   actually moves the character between rooms/tiles — arrow keys may turn out to be a menu/UI layer,
-   not movement, as the 2nd pass suspected and the Right-key result above doesn't rule out.
+5. ~~Try Right the same way~~ / ~~try mouse/joystick~~ — **all tried, 8th pass, all negative**: Right
+   held, standard mouse motion+click packets, and `$FE` joystick-0 packets each verified to reach
+   the ISR correctly (byte-level, live) but produce zero lasting effect (0px screen diff, 0 action-
+   slot bitmask activity) — see the 8th-pass entries above for the full mechanism-level detail on
+   each. **Concrete next move, highest-leverage and untried**: `callcap $15bf4 <maxSteps> - D1=0
+   D0=<actionId>` sweeps `EntityScript_StartAction_SlotD1_ActionD0` directly with slot 0 (player)
+   and an arbitrary action id, bypassing the key-dispatch/input layer entirely — cheap (callcap
+   snapshot-restores after each call) and turns "guess the right input" into "scan action ids
+   0x00-0xff, diff slot 0's descriptor/position fields before vs. after each, keep the ones that
+   change something a key-bound id doesn't already explain." The ~40 action ids already seen bound
+   to keys in the corrected `KeyDispatchTable` dump (8th pass) are the ones to exclude from "still
+   interesting" — they're already known UI/menu functions.
+   Second, cheaper thing worth doing first: `ATARI_TRACE_IKBD=1` (if the emulator supports it; check
+   `Program.fs`/`MMU.fs` for the exact env var name) across a **fresh scripted cold boot** (through
+   the restore-game ESC prompt) to see whether the game ever issues the `$07`
+   set-buttons-as-keys or `$08`/`$0a` mouse-mode IKBD commands at all — if it never does, mouse
+   input is conclusively not part of this game's design and can stop being a candidate entirely,
+   redirecting all future movement-search effort to keyboard/joystick/callcap only.
 6. Once movement or a room transition can be triggered on demand, `watch` (with a **decimal**
    length!) on `ScreenBufferA`/`B` and A/B-diff against an idle control the way earlier passes did, to
    find the actual room-tile draw routine — far more reliable than guessing.
@@ -474,3 +574,9 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    scratchpad, also gone) is a separate step-bisection+render+diff helper (reads a `.snap`'s live
    shifter video-base/palette, immune to the `ScreenBufferA`/`B` swap trap). Neither promoted to
    `tools/` yet — worth doing once a third use case shows up.
+9. Player descriptor struct (slot 0, `$038338`, 70 bytes) dumped in full this pass (8th) but not yet
+   interpreted beyond the already-known offsets (`+20`/`+23` phase, `+42` state, `+50`/`+51`/`+52`
+   dims/pointer). The remaining ~50 bytes (notably a plausible world-position pair around `+8`/`+16`-
+   `+19`, not screen pixels — no value in 0-320/0-199 range stood out except one coincidental byte)
+   are unmapped; worth a targeted diff (idle vs. a real movement, once one is found) rather than
+   guessing field semantics from one static dump.

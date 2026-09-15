@@ -92,6 +92,11 @@ def main():
                      help="decode one region: hex addr, width px, height rows")
     ap.add_argument("--out", help="output PNG path for --region")
 
+    ap.add_argument("--sequence", nargs=5, metavar=("BASE", "STRIDE", "COUNT", "W", "H"),
+                     help="decode COUNT uniform-size frames at BASE+i*STRIDE (hex BASE/STRIDE, "
+                          "decimal COUNT/W/H) - for a fixed-stride animation sheet, not a "
+                          "struct-driven array")
+
     ap.add_argument("--base", help="hex array base address (literal)")
     ap.add_argument("--array-ptr-field", help="hex address of a 4-byte pointer to the array base "
                      "(read fresh instead of trusting a hardcoded --base)")
@@ -118,6 +123,25 @@ def main():
         out = args.out or f"sprite_{addr:x}_{w}x{h}.png"
         img.save(out)
         print(f"wrote {out} ({w}x{h} at {addr:#x}, scale {args.scale})")
+        return
+
+    if args.sequence:
+        base = int(args.sequence[0], 16)
+        stride = int(args.sequence[1], 16)
+        count, w, h = int(args.sequence[2]), int(args.sequence[3]), int(args.sequence[4])
+        out_dir = Path(args.out_dir or "sprite_sequence_out")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        imgs = []
+        for i in range(count):
+            addr = base + i * stride
+            img = decode_st_interleaved(ram, addr, w, h, 4, palette)
+            img.resize((img.width * args.scale, img.height * args.scale)).save(
+                out_dir / f"frame{i:02d}_{addr:x}.png")
+            imgs.append(img)
+            print(f"frame {i:2d} addr={addr:#x} -> frame{i:02d}_{addr:x}.png")
+        sheet = contact_sheet(imgs, args.cols, 2)
+        sheet.save(out_dir / "contact_sheet.png")
+        print(f"wrote {out_dir/'contact_sheet.png'} ({sheet.size[0]}x{sheet.size[1]})")
         return
 
     if args.base is None and args.array_ptr_field is None:

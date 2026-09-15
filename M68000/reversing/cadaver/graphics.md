@@ -98,10 +98,17 @@ isometric bounding cell, not a bug.
 
 ### What's confirmed vs. open
 
-- **Confirmed**: `$029800`-`$02de08` (17,928 bytes, ~27 frames at 672 B/frame) is the player's own
-  packed multi-frame sprite sheet — bounded on both sides by independently-known addresses, and
-  every frame decodes as a recognisable, complete character pose at 32×42 px under the struct-
-  confirmed dimensions and the game's own live palette.
+- **Confirmed**: `$029800`-`$02de08` (17,928 bytes) is the player's own packed multi-frame sprite
+  sheet — bounded on both sides by independently-known addresses, and the two frames actually
+  identified inside it (`$2ca84`/`$2ca94`) decode as recognisable, complete character poses at
+  32×42 px under the struct-confirmed dimensions and the game's own live palette.
+- **Corrected, 8th pass**: the "~27 frames at 672 B/frame" figure above (17928/672 ≈ 27) was only
+  ever a size-based estimate, not a verified per-frame stride. It's wrong: the one confirmed-good
+  frame pointer, `$2ca84`, sits at byte offset 12932 from the region base — not a multiple of 672
+  (remainder 164) — so frames are not packed back-to-back at a uniform stride starting at
+  `$029800`. Real per-frame boundaries/count are still unknown; see the README's 8th-pass entry and
+  next-steps for the corrected plan (live gesture-bisection or a real header/pointer table, not
+  stride arithmetic).
 - **Confirmed**: per-object width/height for every entry in the sprite-object array (`$038338`,
   struct offsets `+50`/`+51`) are stored directly in the struct, read once per object by
   `SpriteList_ClipAndCompositeOne` (`$00d856`) ahead of the actual composite call — no external
