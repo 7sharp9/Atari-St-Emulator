@@ -132,6 +132,8 @@ turned out not to need it.
 | `movement_walk_to_barrel_boundary.png` | 11th pass: held Left to its boundary (the barrel, top-left) |
 | `movement_walk_to_boat_boundary.png` | 11th pass: held Down to its boundary (water's edge by the boat prop) — a BOAT item enters inventory here |
 | `movement_at_boat_boundary.snap` | 11th pass: live snapshot at the boat-boundary screenshot above — a ready resume point for the "how do you use the boat" open question |
+| `room2_tunnel_entry.png` | 12th pass: the first frame of the second room, "TUNNEL", reached via the CAVERN door |
+| `room2_tunnel_entry.snap` | 12th pass: live snapshot at the screenshot above — resume point for exploring past the first room |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -711,6 +713,27 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   pickup) are not simply "walk to the edge of this screen," matching the 7th pass's finding that
   this is one hand-painted background, not a tile grid with obvious door tiles.
 
+- **12th pass — REAL ROOM TRANSITION reached: CAVERN → TUNNEL.** User-supplied ground truth ("the
+  black door shaped area to the right of the first room leads to the next room") pointed at the
+  black notch in the upper-right rock wall the 11th pass's single-direction holds never reached —
+  a single held direction (including the Up+Right and Down+Right diagonals) always stopped against
+  a rock/chest obstacle short of it, because the movement mechanism found in the 11th pass
+  (`$006e50`) walks a straight line into whatever's in front of it and stops, it doesn't route
+  around corners. Reaching the door needed a short, human-style zigzag from
+  `gameplay_empire.snap`: **Right 1.2M steps → Up 0.5M steps → Right 1.2M steps → Up 1.2M steps**
+  (`kbd ff 08` / `kbd ff 00` / `kbd ff 01` between each leg, matching the make/break discipline
+  documented above). The screen changes completely on entry — a vertical rock shaft, a
+  ladder/tool prop leaning on the wall, a green pool at the bottom — and the status-bar room-name
+  field (already known from the "CAVERN" label) now reads **"TUNNEL"**, i.e. this is a real,
+  distinct second room, not a scripted animation. `room2_tunnel_entry.png` /
+  `room2_tunnel_entry.snap` (untracked, like `gameplay_empire.snap` — a resume point for continuing
+  from inside the tunnel). Checked the sprite-object array here the same way the 7th pass did in
+  CAVERN: base pointer `(A5)+56` is still `$038338` (the struct memory is reused per room, not a
+  fresh allocation) but count `(A5)+1152` is now **2**, not 22 — slot 0 is the player as always,
+  slot 1 is a single ordinary static prop (`state=5`, `16×24`, bitmap pointer `$059956` — almost
+  certainly the ladder/tool visible in the screenshot). **No monster in this room either** — the
+  creature-search item from the 10th/11th passes is still open, now one room further in.
+
 ## Next steps
 
 1. ~~Decode the sprite sheet's per-entry width/height~~ — **done, 7th pass**: they're struct fields
@@ -748,19 +771,22 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    for the full chain and what's still unconfirmed within it (the `2243(A5)`→`2273(A5)`
    direction-code translation, what `$008870` actually tests, whether D0/D1 here *are* the
    player's world position or just this loop's locals).
-7. Movement now works and was driven to each direction's boundary (11th pass) — no transition or
-   creature found on this room's single screen yet. Still worth trying: diagonals (`kbd ff 05/06/
-   09/0a` — up+left/down+left/up+right/down+right — untried so far, all four pure directions were
-   tested singly); whatever verb (if any) "boards" the boat now that a BOAT item is in inventory,
-   since Down's own crouch/interact gesture at the water's edge did nothing
-   (`movement_at_boat_boundary.snap` is a ready resume point for this); and whether the picked-up
-   SILVER COIN/BOAT items need to be used via a specific icon click (mouse) rather than a keyboard
-   action — the inventory bar grew a new "?"/arrow icon after the boat pickup, not yet investigated.
-   Once a creature is on screen (or a second room is reached), snapshot there and differential-test
-   `EntityScriptDispatch`/its opcode handlers with `callcap`, following the PowerMonger FSM
-   methodology (`tools/pm_fsm_diff.py`'s `Harness`/`State`/`run_corpus`, game-agnostic; write a
-   Cadaver-specific reconstruction module). Action 101's script (pointer `$16f07`) remains a usable
-   second seed regardless, for the interact/UI side of the interpreter.
+7. ~~Walk to a room edge and find a real transition~~ — **done, 12th pass: CAVERN → TUNNEL**, via
+   the Right→Up→Right→Up zigzag documented above (user-supplied hint on where the door was; the
+   movement mechanism doesn't route around corners on its own, so a single held direction/diagonal
+   was never going to find it). **Still open**: no monster in either room checked so far (CAVERN's
+   22-entry array, 7th pass; TUNNEL's 2-entry array, 12th pass) — keep exploring from
+   `room2_tunnel_entry.snap` (untried: whatever direction leads further into/out of the tunnel) for
+   a room that actually has one. Also still open from the 11th pass: whatever verb (if any) "boards"
+   the boat now that a BOAT item is in CAVERN's inventory, since Down's own crouch/interact gesture
+   at the water's edge did nothing (`movement_at_boat_boundary.snap` is a ready resume point); and
+   whether picked-up items (SILVER COIN/BOAT/PARCHMENT) need a mouse-driven icon click rather than a
+   keyboard action — the inventory bar grows new icons as items are picked up, not yet investigated.
+   Once a creature is on screen, snapshot there and differential-test `EntityScriptDispatch`/its
+   opcode handlers with `callcap`, following the PowerMonger FSM methodology
+   (`tools/pm_fsm_diff.py`'s `Harness`/`State`/`run_corpus`, game-agnostic; write a Cadaver-specific
+   reconstruction module). Action 101's script (pointer `$16f07`) remains a usable second seed
+   regardless, for the interact/UI side of the interpreter.
 8. `tools/snap_render.py` (**promoted to the repo, 11th pass** — was scratchpad-only twice in a row,
    10th and 11th pass, before this) renders a `.snap`'s live screen straight to PNG via
    `gfxview.load_video_regs`, immune to the `ScreenBufferA`/`B` swap trap. `decode_span.py`/
