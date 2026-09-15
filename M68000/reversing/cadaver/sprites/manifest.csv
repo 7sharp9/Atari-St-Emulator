@@ -1,0 +1,23 @@
+slot,entry_addr,state,width_px,height_rows,bitmap_ptr,file,visual
+0,0x38338,0,32,42,0x2ca84,slot00_2ca84_32x42.png,player character (armoured knight) - idle frame
+1,0x3837e,5,32,28,0x56fc2,slot01_56fc2_32x28.png,torch bracket with flame
+2,0x383c4,5,32,28,0x56fc2,slot02_56fc2_32x28.png,torch bracket with flame (same bitmap as slot 1)
+3,0x3840a,5,32,30,0x58a3e,slot03_58a3e_32x30.png,barrel
+4,0x38450,5,32,11,0x591fa,slot04_591fa_32x11.png,axe / pick tool
+5,0x38496,5,32,16,0x61cf8,slot05_61cf8_32x16.png,red flower
+6,0x384dc,5,16,12,0x61e1c,slot06_61e1c_16x12.png,small wooden stool/stand
+7,0x38522,5,16,12,0x61ea0,slot07_61ea0_16x12.png,small wooden stool/stand (variant)
+8,0x38568,5,16,9,0x62524,slot08_62524_16x9.png,small red item on a stem (mushroom/pendant, unclear)
+9,0x385ae,5,16,9,0x62524,slot09_62524_16x9.png,same bitmap as slot 8
+10,0x385f4,5,16,9,0x62590,slot10_62590_16x9.png,same shape as slot 8/9, different bitmap
+11,0x3863a,5,16,5,0x5b590,slot11_5b590_16x5.png,tiny pale item (pebble/bone fragment, unclear)
+12,0x38680,5,32,16,0x62400,slot12_62400_32x16.png,red flower (larger than slot 5)
+13,0x386c6,5,16,8,0x59b42,slot13_59b42_16x8.png,small teal/blue gem
+14,0x3870c,5,32,11,0x60126,slot14_60126_32x11.png,bone
+15,0x38752,5,32,9,0x601fa,slot15_601fa_32x9.png,bone (variant)
+16,0x38798,4,32,23,0x5fbaa,slot16_5fbaa_32x23.png,goblet/cup with contents - the one state=4 outlier
+17,0x387de,5,64,33,0x575ce,slot17_575ce_64x33.png,rowing boat (matches gameplay.png)
+18,0x38824,5,32,13,0x697f8,slot18_697f8_32x13.png,woven mat/rug
+19,0x3886a,5,32,11,0x5b85c,slot19_5b85c_32x11.png,woven mat/rug (variant)
+20,0x388b0,5,32,9,0x5b4dc,slot20_5b4dc_32x9.png,chest (matches gameplay.png)
+21,0x388f6,5,32,10,0x5a654,slot21_5a654_32x10.png,woven mat/rug (variant)

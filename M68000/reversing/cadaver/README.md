@@ -123,8 +123,8 @@ turned out not to need it.
 | `ram_contact.png` | whole-RAM contact sheet (`gfxview.py --contact`), regenerated 7th pass |
 | `gfxview.html` | interactive per-region viewer (`gfxview.py --html`), regenerated 7th pass |
 | `spritesheet_29800.png` | the player's packed frame sheet, rendered as a struct-confirmed 32×42-cell grid (see `graphics.md`) |
-| `player_frame_idle.png` / `player_frame_alt.png` | the player's own two known animation frames, individually rendered at their confirmed 32×42 size — an armoured-knight character sprite |
-| `slot1_prop.png` / `slot16_prop.png` | two static-prop sprites decoded at their struct-confirmed sizes (32×28, 32×23) from the array's per-slot pointers (see `graphics.md` §3) |
+| `player_frame_alt.png` | the player's alternate/gesture animation frame (`$2ca94`) |
+| `sprites/` | the full 22-entry sprite-object-array catalog (player + every prop in the room), one PNG per slot + contact sheet + manifest — see `graphics.md` §3 |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -329,12 +329,26 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   (width in 16-px groups) and `+51` (height in rows) directly per-object** — no guessing needed, it
   was sitting in the already-captured 22-entry array dump the whole time. Player (slot 0): 32×42.
   Slot 1: 32×28. Slot 16: 32×23. Re-rendering at these exact sizes fixed both symptoms cleanly:
-  `player_frame_idle.png`/`player_frame_alt.png` (`$2ca84`/`$2ca94`, 32×42) now render as an
-  unambiguous armoured-knight character sprite, and `slot1_prop.png`/`slot16_prop.png` end cleanly
-  in black with no bleed. `spritesheet_29800.png` regenerated at the correct 32×42 stride — the
-  recurring "roof" motif across frames turned out to be real (a shared isometric bounding-cell
-  silhouette every frame sits in), not a decode artifact. `$00bf72`'s actual purpose is now open
-  again — it isn't what draws the sprite array after all (see `graphics.md` §2).
+  the player's frames (`$2ca84`/`$2ca94`, 32×42, `player_frame_alt.png`) now render as an
+  unambiguous armoured-knight character sprite, and individual prop renders end cleanly in black
+  with no bleed. `spritesheet_29800.png` regenerated at the correct 32×42 stride — the recurring
+  "roof" motif across frames turned out to be real (a shared isometric bounding-cell silhouette
+  every frame sits in), not a decode artifact. `$00bf72`'s actual purpose is now open again — it
+  isn't what draws the sprite array after all (see `graphics.md` §2).
+
+- **7th pass, cont. — extracted the full 22-entry sprite-object-array catalog.** Since width/height
+  turned out to be plain struct fields, extracting every entry (not just the two spot-checked
+  above) became mechanical — written up as a reusable tool rather than repeated one-off renders:
+  `tools/sprite_array_export.py` (new, game-agnostic — batch-exports any struct-driven
+  sprite/object array given its base, stride, count, and width/height/pointer field offsets).
+  Run against `gameplay_empire.snap`, all 22 entries decode cleanly with no bleed and most are
+  immediately identifiable against `gameplay.png`'s room dressing: the player, two torches, a
+  barrel, an axe, two flowers, two stools, a goblet (the one `state=4` outlier), a **boat** (64×33,
+  the only entry wider than 32px), a **chest**, and several woven mats — the boat and chest both
+  visibly match `gameplay.png`. Output committed under `reversing/cadaver/sprites/` (one PNG per
+  slot, `contact_sheet.png`, `manifest.csv`). Confirms the "no monster in this array" finding above
+  more thoroughly — all 20 non-goblet prop slots read as ordinary static dressing. Full writeup in
+  `graphics.md` §3.
 
 - **6th pass — found the "current animation frame" pointer the 5th pass was chasing.** Top-down
   from the compositor, not another RAM diff, as the 5th pass's next-step said. Disassembling

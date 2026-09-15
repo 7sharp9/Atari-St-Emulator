@@ -86,11 +86,11 @@ the emulator rather than guessed:
    `$00bf72`'s own role is still open (see below) but it is **not** the path that draws these
    objects onto the visible screen.
 
-Re-rendering at these exact, struct-confirmed sizes fixed both symptoms: `slot1_prop.png`
-(`$056fc2`, 32×28) and `slot16_prop.png` (`$05fbaa`, 32×23) now end cleanly in black with no second
-shape bleeding in, and the player's own frames (`$2ca84`/`$2ca94`, 32×42 —
-`player_frame_idle.png`/`player_frame_alt.png`) render as an unambiguous armoured-knight character
-sprite, matching what a player character in this game should look like. The recurring "red roof"
+Re-rendering at these exact, struct-confirmed sizes fixed both symptoms cleanly — see §3 below for
+the full 22-entry catalog this led to. The player's own frames (`$2ca84`/`$2ca94`, 32×42) render as
+an unambiguous armoured-knight character sprite, matching what a player character in this game
+should look like (`player_frame_alt.png`, and slot 0 of the §3 catalog for the idle frame). The
+recurring "red roof"
 motif in `spritesheet_29800.png` (now regenerated at the correct 32×42 stride) turned out not to be
 a decode artifact either — every frame shares the same isometric diamond-top silhouette at a
 consistent position, which is exactly what you'd expect from sprites drawn inside a common
@@ -128,30 +128,44 @@ isometric bounding cell, not a bug.
   around it (blocked on the still-open "how does the player actually move between
   rooms/tiles" question — see README Next steps).
 
-## 3. A second packed sprite region — `$056fc2`–`~$06975f` (static room props)
+## 3. The full sprite-object-array catalog — all 22 entries, `tools/sprite_array_export.py`
 
-Found checking whether the 21 non-player entries in the sprite object array (`$038338`, 70 bytes/
-entry, base from `(A5)+56`, count from `(A5)+1152`) use the same `+52`/`+20` animation mechanism as
-the player's slot 0 (6th pass). They do — identical struct shape — but their `+52` bitmap pointers
-are **not** inside the `$029800`-`$02de08` sheet above; they cluster at `$056fc2`-`~$06975f`, inside
-the span-3 candidate (`$051000`-`$06b000`) from the §2 span table that a whole-span 320px-wide
-render had already written off as a dead end (correctly — it just wasn't the right way to read it;
-these are individually-pointed small sprites, not one big bitmap the width of the span).
+The 21 non-player entries' `+52` bitmap pointers are **not** inside the `$029800`-`$02de08` player
+sheet above; they cluster at `$056fc2`-`~$06975f`, inside the span-3 candidate (`$051000`-`$06b000`)
+from the §2 span table that a whole-span 320px-wide render had already written off as a dead end
+(correctly — it just wasn't the right way to read it; these are individually-pointed small sprites,
+not one big bitmap the width of the span).
 
-Rendering directly at the real per-slot pointers, at each slot's own struct-confirmed `+50`/`+51`
-dimensions (see §2 above — not a guessed width), live palette `$5a9c`, gives small, clean,
-recognisable objects with no bleed from neighbouring data:
+Once §2 established that width/height are ordinary struct fields (`+50`/`+51`, not something to
+guess), extracting the whole array became mechanical rather than one-off — written up as a reusable
+tool, `tools/sprite_array_export.py`, rather than repeating the same manual per-slot render:
 
-- Slot 1 (`$056fc2`, state `5`, 32×28 px) — a grey/green torch bracket with a gold flame tip
-  (`slot1_prop.png`).
-- Slot 16 (`$05fbaa`, state `4`, 32×23 px) — a bowl/lamp vessel shape with a warm glow
-  (`slot16_prop.png`).
+```
+python tools/sprite_array_export.py reversing/cadaver/gameplay_empire.snap \
+    --array-ptr-field 0x1818a --stride 0x46 --count 22 \
+    --w-off 50 --h-off 51 --ptr-off 52 --state-off 42 --w-unit 16 \
+    --palette 0x5a9c --out-dir reversing/cadaver/sprites
+```
 
-All 22 entries were dumped (state byte `+42`): slot 0 (player) is `0`, slot 16 is `4`, the other 20
-are `5`. Both rendered examples read as static room decoration (torch, container), not creatures —
-so **"monster slot" in the 6th pass's next-steps framing doesn't have a confirmed target yet**; no
-entity in this array currently looks like a creature. State `4` (slot 16) is the best remaining
-candidate for "something other than a static prop."
+(`--array-ptr-field` reads the array's own base from `(A5)+56` fresh out of the snapshot rather than
+trusting a hardcoded address — the array is heap-allocated, its base can differ across boots.) Output
+is one PNG per slot, a `contact_sheet.png`, and a `manifest.csv` (slot, struct address, state byte,
+width, height, bitmap pointer, filename) — all committed under `reversing/cadaver/sprites/`.
+
+All 22 entries decode cleanly with no bleed, and most are immediately identifiable against
+`gameplay.png`'s room dressing: player (armoured knight, slot 0), two torches (slots 1-2, sharing one
+bitmap), a barrel (3), an axe/pick (4), two red flowers (5, 12), two small stools (6-7), three small
+red stemmed items (8-10, two sharing a bitmap), a pale fragment (11), a small teal gem (13), two
+bones (14-15), a goblet (16), a **rowing boat** (17, 64×33 — the only entry wider than 32px, matches
+`gameplay.png`), and three woven mats/rugs (18-19, 21) plus a **chest** (20) — both also visible in
+`gameplay.png`. Full descriptions in `sprites/manifest.csv`.
+
+State byte (`+42`): slot 0 (player) is `0`, slot 16 (the goblet) is `4`, all other 20 are `5`. Every
+state-`5`/`4` entry reads as static room dressing, not a creature — so **"monster slot" in the 6th
+pass's next-steps framing doesn't have a confirmed target**; nothing in this room's array is a
+creature. The goblet's `state=4` outlier remains unexplained (a different animation/interaction
+state than the other props, or unrelated to visuals at all) — worth a `watch` on `+42` if a monster
+room is ever reached, to see what state value a real creature actually carries.
 
 ## Files
 
@@ -161,7 +175,6 @@ candidate for "something other than a static prop."
 | `ram_contact.png` | whole-RAM contact sheet (`gfxview.py --contact`), regenerated this pass |
 | `gfxview.html` | interactive per-region viewer (`gfxview.py --html`), regenerated this pass |
 | `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
-| `player_frame_idle.png` | the player's idle frame (`$2ca84`, 32×42) — an armoured-knight character sprite |
-| `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) |
-| `slot1_prop.png` | slot 1's sprite (`$056fc2`, 32×28, a torch), rendered at its struct-confirmed size |
-| `slot16_prop.png` | slot 16's sprite (`$05fbaa`, 32×23, a vessel/lamp shape), rendered the same way |
+| `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) — not captured by the array export below, since only the *current* frame pointer is live in any one snapshot |
+| `sprites/` | the full 22-entry sprite-object-array catalog (§3) — one PNG per slot, `contact_sheet.png`, `manifest.csv` |
+| `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` — struct-driven sprite/object array batch export |
