@@ -134,6 +134,8 @@ turned out not to need it.
 | `movement_at_boat_boundary.snap` | 11th pass: live snapshot at the boat-boundary screenshot above — a ready resume point for the "how do you use the boat" open question |
 | `room2_tunnel_entry.png` | 12th pass: the first frame of the second room, "TUNNEL", reached via the CAVERN door |
 | `room2_tunnel_entry.snap` | 12th pass: live snapshot at the screenshot above — resume point for exploring past the first room |
+| `room2_lever_boundary.png` | 13th pass: player flush against the TUNNEL lever, status bar reads "LEVER", icon panel shows its bracket/key icon pair |
+| `room2_lever_boundary.snap` | 13th pass: live snapshot at the screenshot above — resume point for trying new inputs against the lever (all tried this pass were inert; see the 13th-pass entries) |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -734,6 +736,60 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   certainly the ladder/tool visible in the screenshot). **No monster in this room either** — the
   creature-search item from the 10th/11th passes is still open, now one room further in.
 
+- **13th pass — found the TUNNEL lever's proximity hotspot and its per-object UI, but no tested
+  input opens the door behind it.** User-supplied ground truth ("there's a lever on the left that
+  opens a door in front of it, leading to a third room") pointed at a riveted wall panel with a
+  round dial/valve-wheel, mounted on the right-hand wall of the shaft from the player's entry
+  angle. Holding Left (`kbd ff 04`) ~1.2M steps from `room2_tunnel_entry.snap` walks the player
+  flush against it: the status-bar name field, blank in the plain "TUNNEL" idle state, now reads
+  **"LEVER"**, and the icon panel gains two object-specific icons (a bracket/hook icon + a key
+  icon) — `room2_lever_boundary.png`/`.snap`. This is the same UI class as CAVERN's boat
+  (`?` + hand-arrow icons when named "BOAT", 11th pass) — **per-object display icons, not a verb
+  selector** — confirmed by cross-referencing the two screenshots side by side (different icon
+  pairs per object). The sprite-object array is unchanged at **count 2** (`$185d2`, player + the
+  12th pass's ladder/tool prop) — **the lever has no discrete `EntityScriptDispatch`-tracked
+  entity**; it's background art with a proximity name-hotspot, not a game-object.
+- **13th pass, cont. — every input mechanism tried at the boundary is inert; the door never opens
+  and the object-array count never changes.** Tested from `room2_lever_boundary.snap` (re-render +
+  pixel-diff confirms no persistent change after each):
+  1. The known keyboard interact gesture (`kbd 50`/`kbd d0`, Down arrow, action 101, characterized
+     4th-9th passes) — same generic no-op as at CAVERN's boat (11th pass).
+  2. **Joystick-1 fire alone** (`kbd ff 80`, bit `$80` per Hatari's `ATARIJOY_BITMASK_FIRE`,
+     `hatari/src/includes/joy.h`) — genuinely untested by any prior pass (8th-9th only tried
+     movement bits and the wrong port; the keyboard sweep never touched the joystick byte at all).
+     A tap flashes an orange highlight border onto the bracket-icon slot for a few frames, then it
+     clears on its own — reproduced identically with a 20,000,000-step hold (`scratch_fire_5m`/
+     `10m`/`20m`, not committed), so it's edge-triggered/one-shot, not something a longer hold
+     advances further.
+  3. Fire combined with Left in one joystick packet (`kbd ff 84`) — same highlight-flash, no
+     different outcome.
+  4. **Space bar** (`kbd 39`/`kbd b9`) — tested because Wikipedia's Cadaver page (unverified for
+     this specific ST release, not the game's own source) describes Space as opening a "rucksack"
+     inventory screen. No visible effect at any wait length up to 10,000,000 steps post-break. Then
+     checked directly: freshly dumped the full 61-entry `KeyDispatchTable` (`$1616d`, corrected
+     base per the 8th pass) and parsed all 5-byte entries — the 12 real + 6 alias action ids match
+     the 9th pass's list exactly, and **no entry anywhere contains scancode `$39`**. Space is not
+     wired into this pipeline on this release at all; the negative result is real, not a timing
+     miss.
+  5. Held Left for 1.5M more steps from the boundary — zero pixel diff (`ImageChops.difference`
+     bbox `None`) — confirms the player is genuinely flush-blocked against the panel, not stopped
+     short by an unrelated rock the way single-direction holds stopped short of CAVERN's door.
+  6. Up and Down nudges (500K steps) from the boundary both walk the player **off** the "LEVER"
+     zone entirely (name field goes blank, icon panel reverts to empty) rather than closer to
+     anything — the hotspot is narrow and only reachable via the Left approach used here.
+- **13th pass, cont. — fire does have a real, traced effect, just not on the door.** `watch 38338
+  46` (the player's 70-byte descriptor, `$038338`) across one fire tap shows genuine writes at
+  offsets `+$0e`/`+$10`/`+$12`/`+$14`/`+$15`/`+$16`/`+$17` from code at `$00afb2`→`$00db4a`→
+  `$00db54`→`$00db58`→`$00db5e`→`$00db68` — new addresses, not yet named or disassembled — on top
+  of the already-known idle-loop writes to `+$16`/`+$2d` from `$00f72a`/`$00f740`/`$00fd1c`/
+  `$007472`. This is a genuine action/animation-state update (matches the visible icon-highlight
+  flash) but it never touches the sprite-object count or produces any pixel change in the room's
+  door area. **Net: the lever is real (named, has its own icon pair) but nothing tried this pass
+  opens the door behind it.** Its trigger logic isn't in the `EntityScriptDispatch` or
+  `KeyDispatchTable` systems already mapped, so it's bespoke room-specific code — `$00afb2`/
+  `$00db4a` (this pass's new fire-driven lead) is the concrete place to start disassembling next,
+  rather than trying more input combinations blind.
+
 ## Next steps
 
 1. ~~Decode the sprite sheet's per-entry width/height~~ — **done, 7th pass**: they're struct fields
@@ -799,3 +855,11 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    are unmapped; worth a targeted diff against the 11th pass's `sub.w D6,D0`/`sub.w D7,D1` values
    (single-step through `$006e50`'s loop with `callcap` or dense bisection) rather than guessing
    field semantics from one static dump.
+10. Open the TUNNEL lever (13th pass): found its proximity hotspot (`room2_lever_boundary.snap`,
+    named "LEVER", own icon pair) but **no tested input opens the door** — keyboard interact,
+    joystick fire (tap/hold/combined with a direction), and Space (confirmed unbound in the
+    61-entry `KeyDispatchTable`) are all inert. Fire does drive real player-descriptor writes
+    through new, unnamed code at `$00afb2`→`$00db4a`→`$00db54`→`$00db58`→`$00db5e`→`$00db68` — the
+    concrete next lead is disassembling that chain (it's a genuine action/animation-state update,
+    just not a door one) rather than trying more `kbd`/`mouse` combinations. Once open, the third
+    room is the next differential-testing target if it finally has a real creature (see item 7).
