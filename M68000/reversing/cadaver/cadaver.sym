@@ -43,3 +43,8 @@ $0000d792	SpriteList_BuildAndDispatch
 $0000d856	SpriteList_ClipAndCompositeOne
 $0000bf72	UnknownShiftedMaskBlit_00bf72_NotSpriteArrayDraw
 $00029800	PlayerFrameSheet_Base_32x42Frames
+$00006ac0	Joystick1_LatchRawByteToField2243
+$00006e50	MovementPathFollow_Field2243Bit7Gate
+$00008870	MovementStep_ObstacleCheck
+$0000737a	DirectionVectorTable_Lookup_ByField2273
+$00005bea	DirectionVectorTable_16Entries_DxDyPairs

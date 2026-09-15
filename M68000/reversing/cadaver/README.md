@@ -125,6 +125,13 @@ turned out not to need it.
 | `spritesheet_29800.png` | the player's packed frame sheet, rendered as a struct-confirmed 32×42-cell grid (see `graphics.md`) |
 | `player_frame_alt.png` | the player's alternate/gesture animation frame (`$2ca94`) |
 | `sprites/` | the full 22-entry sprite-object-array catalog (player + every prop in the room), one PNG per slot + contact sheet + manifest — see `graphics.md` §3 |
+| `movement_before.png` | 10th pass: base gameplay frame before any joystick-1 input |
+| `movement_after_right.png` | 10th pass: same state after holding joystick-1 `right` — player visibly walked and picked up items, proving real movement |
+| `movement_walk_to_chest_boundary.png` | 11th pass: held Right to its boundary (chest/mat area) |
+| `movement_walk_to_upperwall_boundary.png` | 11th pass: held Up to its boundary (blocked almost immediately by a wall) |
+| `movement_walk_to_barrel_boundary.png` | 11th pass: held Left to its boundary (the barrel, top-left) |
+| `movement_walk_to_boat_boundary.png` | 11th pass: held Down to its boundary (water's edge by the boat prop) — a BOAT item enters inventory here |
+| `movement_at_boat_boundary.snap` | 11th pass: live snapshot at the boat-boundary screenshot above — a ready resume point for the "how do you use the boat" open question |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -524,6 +531,186 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   "confirm/interact with the current square," triggerable by either Down or Return, not a directional
   move.
 
+- **9th pass — decoded `ActionScriptPointerTable` ($163aa) directly, which redirected the whole
+  approach: the planned callcap sweep is uninformative, but exhaustively testing every real
+  keyboard action confirms nothing in this room moves the player.** Dumped 1024 bytes (256 4-byte
+  entries) from `$163aa` (`m 163aa 1024`) and parsed it as the pointer table `$15bf4` indexes with
+  `D0*4`: only **entries 0-116 are distinct** (monotonically increasing pointers `$16864`-`$16fe4`,
+  one exception at id 27→28 which goes slightly backward, not investigated further); **every entry
+  117-255 aliases to the same terminal pointer, `$16fe4`** — a shared "no real script" placeholder,
+  not 256 independent actions as the 8th-pass next-steps assumed. Entry 0 alone is a true null
+  (`$00000000`), which `$15bf4`'s own `beq` skips setting the active bit for. This mechanically
+  **confirms** (not just empirically re-confirms) the 7th/8th-pass finding that Right's bound action
+  (`$c6` = 198 decimal) is a no-op: 198 ≥ 117, so it aliases straight to the shared placeholder —
+  there was never a real script to run.
+- **9th pass, cont. — ran the priority-1 callcap sweep exactly as scoped (`callcap 15bf4 <n> - D1=0
+  D0=<id>` for all 256 ids) and it is a methodological dead end, not a source of new movement
+  candidates.** Every non-null id (1-254; 255 untested, off-by-one in the sweep script, inconsequential
+  given the finding below) produces the **identical ~20-byte footprint** — `$15bf4` only *installs*
+  the pointer into a control-slot struct (`(A4)`/`4(A4)`, clears 46 scratch bytes at `+8`); the
+  bytecode interpreter that actually *executes* the installed script runs elsewhere (driven by
+  `MainLoop`/`EntityScriptDispatch` over real, unmasked VBLs) and never runs inside a `callcap` call,
+  since `callcap` masks IPL 7 for the call's whole duration by design (see its own doc comment in
+  `Program.fs`) and returns the instant `$15bf4`'s `rts` fires. A pure install-then-restore call
+  cannot show a script's effect, no matter which id is passed — confirmed by the sweep's own data
+  (byte count uniform at 20 regardless of id, `D0` end value scaling cleanly as `id*4`, `A4` landing
+  on the same control-slot address every time).
+- **9th pass, cont. — replicating `$15bf4`'s writes by hand (bypassing `callcap` entirely) also
+  produces zero effect, even for Down's own known-good id and pointer; validated against a control.**
+  Hand-wrote the exact same install `$15bf4` does — `w`-ing the table pointer into a control-slot's
+  offset `0`/`4`, clearing offset `8`-`53` (46 bytes), setting the slot's `ActiveEntitySlotBitmask`
+  bit — for **both** slot 0 (`$162d0`) and slot 1 (`$16306`, the slot the 5th pass found the real
+  Down keypress actually lands on), using Down's own action id (101, pointer `$16f07`), then ran
+  400,000-1,000,000 real (unmasked) steps. **Zero byte change** in the player's sprite descriptor
+  (`$038338`) either way — extends, rather than contradicts, the 5th pass's own conclusion
+  ("whatever drives the visible animation is not this slot-allocator system at all"): the real IKBD
+  key-dispatch path (`IkbdKeyDispatch_ScanTable1616c`/`GuardedCall_15bf4_Single`) does something
+  beyond calling `$15bf4` that a hand-replicated memory write doesn't reproduce, and that something
+  is what actually matters. **Verified this isn't a harness bug**: the identical script structure
+  (settle → dump → `kbd 50`/`kbd d0` → dump → dump) reproduces Down's known effect exactly (phase
+  byte and the `+52` `$2ca84`→`$2ca94` frame-pointer swap both visible) when driven through the real
+  `kbd` REPL path instead of hand-written memory pokes — see `control_down.txt` in this pass's
+  scratchpad (not committed). So the install-by-hand shortcut is out; only the real input pipeline
+  reproduces real effects, for reasons not fully traced (not chased further this pass — see Next
+  steps).
+- **9th pass, cont. — exhaustively drove every remaining real, keyboard-reachable action id through
+  the genuine input pipeline; all of them are inert.** Cross-referencing the corrected 61-entry
+  `KeyDispatchTable` dump (8th pass) against the newly-decoded `ActionScriptPointerTable` gives
+  exactly **12 distinct non-null real action ids** reachable from any key on the whole keyboard:
+  `{10, 30, 50, 55, 64, 70, 79, 90, 100, 101, 110, 120}` — everything else bound to a key (`127,
+  129, 158, 159, 188, 198`) aliases into the shared no-op placeholder established above. `101`
+  (Down/Return) and `110` (Up) were already characterized (crouch/interact gesture; no independent
+  effect respectively). Drove the other **10**, each via its own real scancode make+break through
+  `kbd` (1,000,000 real steps per id, 500,000-step idle settle beforehand to clear any residual
+  animation from the previous id in the same session — no snapshot-reload command exists in this
+  REPL, see `Program.fs`'s command list): `55`←Esc(`$01`), `90`←'2'(`$03`), `64`←'4'(`$05`),
+  `50`←Ctrl(`$1d`), `100`←'A'(`$1e`), `10`←'6'(`$07`), `79`←Keypad-`(`(`$65`), `120`←Alt(`$38`),
+  `70`←F5(`$3f`), `30`←Keypad-Enter(`$6e`). **Every one of the 10 produces zero byte change** in the
+  player's 70-byte sprite descriptor and zero `ActiveEntitySlotBitmask` activity across the full
+  window. This is a clean, harness-validated negative (same script shape reproduces Down's real
+  effect in the same session, see above) — not an inconclusive one. **Every keyboard action this
+  game's own dispatch table can reach has now been tested; only `101` touches the player sprite at
+  all.** Combined with the already-ruled-out mouse (8th pass) and joystick-`$FE` (8th pass) paths,
+  no input mechanism tested across this whole spike moves the player or changes rooms from this
+  snapshot. Scripts/data used this pass (parsing/generation only, not committed):
+  `gen_action_sweep.py`, `gen_key_sweep.py`, `parse_table.py`, `parse_keytable.py` in this session's
+  scratchpad.
+
+- **10th pass — SOLVED: movement is real joystick port 1 (`$FF` header), not port 0 and not the
+  keyboard at all. The 8th pass tested the wrong port.** User-supplied ground truth (playing the
+  real disk in Hatari, reaching a different room) prompted re-checking the joystick encoding
+  against Hatari's own source (`hatari/src/ikbd.c`/`joy.h`) rather than continuing to search the
+  keyboard/callcap space the 9th pass had just exhausted. Two things fell out of that: (1) the
+  direction-bit encoding used in the 8th pass (`ATARIJOY_BITMASK_UP/DOWN/LEFT/RIGHT` = `0x01/0x02/
+  0x04/0x08`) was already correct; (2) the **port** was wrong — on real ST hardware, joystick port 0
+  (IKBD header `$FE`) is electrically shared with the mouse, so any game wanting a dedicated
+  joystick reads **port 1** (`$FF`) instead, which the 8th pass never tried. Sending `kbd ff 08`
+  (port 1, right) from `gameplay_empire.snap` and stepping forward produces immediate, large,
+  non-reverting changes across most of the player's 70-byte descriptor — unlike every keyboard
+  action tested in the 8th/9th passes, which either did nothing or fully self-reverted. **Confirmed
+  visually, not just from byte deltas** (per the `verify-visual-claims-with-frame-diffs` discipline):
+  rendered checkpoint snapshots at 0/500k/1M/2M steps plus a release checkpoint using a new
+  `snap_render.py` helper (this session's scratchpad — reads the live shifter video-base/palette
+  straight from a `.snap`'s `VideoDisplayRegisters` bank via `tools/gfxview.py`'s own
+  `load_ram`/`load_video_regs`, so it's immune to the `ScreenBufferA`/`B` role-swap trap that burned
+  earlier passes). The player visibly walks from its start position to the chest/mat area on the
+  right, **picks up a coin and other items along the way** (inventory boxes fill in, "SILVER COIN"
+  appears in the status line), and the walk completes by ~500,000 steps then holds position exactly
+  once the direction byte is released (`kbd ff 00`) — a real, controllable, continuous walk, not a
+  one-shot animation. All **four directions tested and confirmed** (`kbd ff 01/02/04/08` = up/down/
+  left/right), each producing a distinct, visually-clean displacement in a different isometric
+  screen direction (Down even picks up a "BOAT" item near the boat prop). Screenshots committed:
+  `movement_before.png` (base) / `movement_after_right.png` (after a sustained right-hold — visibly
+  moved, inventory populated). This also **retroactively explains** two standing open questions:
+  the 8th pass's "Right held produces zero effect" was correctly measuring port 0 (genuinely inert,
+  since Right's keyboard-bound action id is the aliased no-op established in the 9th pass) and is
+  not contradicted by this; and the "no `$4b` Left entry anywhere in `KeyDispatchTable`" mystery
+  (2nd-8th passes) is now explained rather than just unresolved — **movement was never meant to be
+  reachable through that table at all**, it's a completely separate, always-on joystick-port-1 poll,
+  wholly outside the `$15bf4`/`ActionScriptPointerTable`/`KeyDispatchTable` system this whole spike
+  had been investigating for movement. That system is real and does something (Down's crouch/
+  interact gesture proves it), it's just not how the player walks.
+- **10th pass, cont. — what's still open, plus one lead checked and ruled out.** The routine that
+  *reads* `$018b33` (joystick-1 state, `A5_isr - 1`, confirmed live in the 8th pass's ISR
+  disassembly) every frame and turns it into a position delta hasn't been located yet — `watch` only
+  reports writes, not reads, so it can't find a reader directly. **Ruled out**: an
+  `ATARI_TRACE_EVENTS` diff between a matched-length idle run and a joystick-right-held run (both
+  600,000 steps from `gameplay_empire.snap`) showed `$15bf4`/`$15c70` (`EntityScript_
+  StartAction_SlotD1_ActionD0`/`EntityScriptDispatch`) and their neighbourhood (`$1535a`-`$15ff6`)
+  newly exercised during the held-right run — looked promising, but a direct check (dump
+  `$162cc`/`$162d0`/`$16306`/`$1633c`, all three known control-slots, 20,000 steps into the same
+  `kbd ff 08` hold) found **no pointer installed anywhere** — all three stayed zero. So the extra
+  coverage in that address range during movement is most likely incidental (ambient entity
+  processing shifted by the walk's different per-frame timing, or the composite/clipping path doing
+  more work because the moving sprite overlaps more of the screen — `SpriteList_
+  ClipAndCompositeOne`'s clipped-path block hit 1320 times vs. idle's 1100), **not** evidence that
+  movement goes through the known 3-slot action system. Don't re-chase that lead without new
+  information. The real reader is still unlocated — next pass should disassemble `MainLoop`
+  (`$014496`)'s per-frame fan-out directly for a `-1(A5)`-relative or `$018b33`-literal memory access
+  (the ISR computes `A5_isr` as `$5abc.l + $9e2` at runtime, so a reader doing the same computation
+  won't show up as a literal `$018b33` operand in disassembly — match the *pattern*, not the
+  constant). Also still open: whether the player's world-position lives in this room's `$038338`
+  descriptor at all (candidate fields `+8`/`+16-19` flagged 8th pass, never confirmed) or is tracked
+  in some other global — the raw before/after descriptor dumps from the 9th pass's key-sweep script
+  output (scratchpad, not committed) are a starting point for that mapping, not yet done.
+
+- **11th pass — found the real per-frame joystick-1 reader and the movement-application routine,
+  closing the 10th pass's open item 1.** Not at the literal `$018b33` operand (the ISR computes
+  that address at runtime from `$5abc.l + $9e2`, so no static disassembly shows it as a literal),
+  and not by re-chasing the `$15bf4`/`ActiveEntitySlotBitmask` lead the 10th pass had already ruled
+  out. Instead: an idle-vs-joystick-held `ATARI_TRACE_EVENTS` diff (300k steps each, both from
+  `gameplay_empire.snap`, this pass's own regenerated event logs — the committed `cadaver_events.bin`/
+  `blocks.txt`/`cg.dot` are stale 2nd-pass artefacts, left alone) restricted to `--range 6000 40000`
+  surfaced a large cluster of blocks executed only in the joystick run, at addresses below the
+  `$9000` floor every previous pass's static disassembly happened to start from. A full linear
+  disassembly of that floor (`$6000`-`$9000`) found the actual mechanism directly:
+  **`$006ac0` (`Joystick1_LatchRawByteToField2243`)**: `move.b 2529(A5),2243(A5)` — once per VBL,
+  inside the *real* main per-frame fan-out block (`$006a26`-`$006b60`, which calls
+  `TimerQueueService`/`SpriteList_BuildAndDispatch`/the screen-composite chain — the README's
+  existing "`MainLoop` fans out to..." description was written from `$014496`, which is a
+  *sub-helper* this block calls into for the screen-flip, not the true per-VBL top level; not
+  corrected further this pass, just noted so a future pass doesn't re-derive `$006a26` from
+  scratch). Gated on bit 0 of `2477(A5)` (an "input frozen" flag) and additionally masked
+  (`andi #$83`, dropping the left/right bits) when bit 2 of `2499(A5)` (a shift/modifier flag) is
+  set — a directional-lock behaviour, not chased further. **`$006e50`
+  (`MovementPathFollow_Field2243Bit7Gate`)**: gates entry on bit 7 of the *latched* byte at
+  `2243(A5)` (not the raw joystick cell), then repeatedly calls **`$008870`
+  (`MovementStep_ObstacleCheck`)** and applies the actual per-step displacement,
+  `sub.w D6,D0` / `sub.w D7,D1` at `$006efe`/`$006f00` — a real position update, looping via
+  `bra $6e78` until the obstacle check or a distance threshold ends it. D6/D7 (the per-step
+  velocity) come from **`$00737a`/`$005bea`** (`DirectionVectorTable_Lookup_ByField2273` /
+  `DirectionVectorTable_16Entries_DxDyPairs`): a 16-entry `(dx,dy)` table indexed by
+  `2273(A5) & $f` (a direction-code field, presumably 0-7 used twice for a sign variant), negated
+  when `2340(A5)` is set. All five addresses added to `cadaver.sym`. **Not chased further**: what
+  sets `2273(A5)` from `2243(A5)`'s bit pattern (the direction-code translation step itself),
+  what `$008870`'s obstacle check actually tests, and the still-open "where does the player's
+  world position live" question from the 9th pass (D0/D1 here are *candidates*, not yet confirmed
+  against a known field on the slot-0 descriptor).
+- **11th pass, cont. — drove the confirmed joystick controls to each direction's boundary; no room
+  transition or creature found on this room's single screen, but one new interaction surfaced.**
+  New tool this pass, promoted straight to `tools/snap_render.py` (this is the second session to
+  independently need "render a `.snap`'s live screen via `gfxview.load_video_regs`, immune to the
+  `ScreenBufferA`/`B` swap" — the 10th pass's own version stayed in scratchpad and is gone; this
+  one is committed so a third pass doesn't reinvent it again). Held each of the four directions
+  for 3.5-5M steps from `gameplay_empire.snap`: **Right** walks to the chest/mat area and stops
+  (blocked by room furniture) — `movement_walk_to_chest_boundary.png`. **Up** is blocked almost
+  immediately by a rock wall directly above the start position — `movement_walk_to_upperwall_boundary.png`
+  (small, real displacement — a distinct animation-frame pose, not a bug; the wall is just close
+  from this exact starting tile). **Left** walks to the barrel at the top-left of the room and
+  stops — `movement_walk_to_barrel_boundary.png`. **Down** walks to the water's edge next to the
+  boat prop, stops, and **picks up a "BOAT" inventory item** (a small collectible, not the visible
+  boat prop, which stays rendered in the water) — `movement_walk_to_boat_boundary.png`,
+  `movement_at_boat_boundary.snap`. Sending the known interact gesture (`kbd 50`/`kbd d0`, the
+  crouch/interact action characterized in the 4th-9th passes) while standing at the water's edge
+  plays the same generic animation and does nothing room-specific — not a "board the boat" verb,
+  at least not through that input. **This maps the joystick's four screen directions to isometric
+  diagonals** (Right≈NE toward the chest, Down≈SW toward the boat, Left≈NW toward the barrel,
+  matching the 10th pass's "Down picks up a BOAT item" note), consistent with a typical isometric
+  control scheme. No monster and no transition anywhere reachable by a single held direction from
+  the start tile — the room's exits (if any, beyond the water crossing hinted at by the BOAT
+  pickup) are not simply "walk to the edge of this screen," matching the 7th pass's finding that
+  this is one hand-painted background, not a tile grid with obvious door tiles.
+
 ## Next steps
 
 1. ~~Decode the sprite sheet's per-entry width/height~~ — **done, 7th pass**: they're struct fields
@@ -543,40 +730,46 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    granularity: exactly one alternate frame (`$2ca94`), no third value at any sampled point. The
    4th pass's "5-6 frame" look is the phase counter's continuous bob on top of this one 2-frame
    swap, not additional bitmaps.
-5. ~~Try Right the same way~~ / ~~try mouse/joystick~~ — **all tried, 8th pass, all negative**: Right
-   held, standard mouse motion+click packets, and `$FE` joystick-0 packets each verified to reach
-   the ISR correctly (byte-level, live) but produce zero lasting effect (0px screen diff, 0 action-
-   slot bitmask activity) — see the 8th-pass entries above for the full mechanism-level detail on
-   each. **Concrete next move, highest-leverage and untried**: `callcap $15bf4 <maxSteps> - D1=0
-   D0=<actionId>` sweeps `EntityScript_StartAction_SlotD1_ActionD0` directly with slot 0 (player)
-   and an arbitrary action id, bypassing the key-dispatch/input layer entirely — cheap (callcap
-   snapshot-restores after each call) and turns "guess the right input" into "scan action ids
-   0x00-0xff, diff slot 0's descriptor/position fields before vs. after each, keep the ones that
-   change something a key-bound id doesn't already explain." The ~40 action ids already seen bound
-   to keys in the corrected `KeyDispatchTable` dump (8th pass) are the ones to exclude from "still
-   interesting" — they're already known UI/menu functions.
-   Second, cheaper thing worth doing first: `ATARI_TRACE_IKBD=1` (if the emulator supports it; check
-   `Program.fs`/`MMU.fs` for the exact env var name) across a **fresh scripted cold boot** (through
-   the restore-game ESC prompt) to see whether the game ever issues the `$07`
-   set-buttons-as-keys or `$08`/`$0a` mouse-mode IKBD commands at all — if it never does, mouse
-   input is conclusively not part of this game's design and can stop being a candidate entirely,
-   redirecting all future movement-search effort to keyboard/joystick/callcap only.
-6. Once movement or a room transition can be triggered on demand, `watch` (with a **decimal**
-   length!) on `ScreenBufferA`/`B` and A/B-diff against an idle control the way earlier passes did, to
-   find the actual room-tile draw routine — far more reliable than guessing.
-7. Once a creature is on screen, snapshot at that point and differential-test
+5. ~~Try Right the same way~~ / ~~try mouse/joystick~~ / ~~callcap-sweep `$15bf4` for the real
+   movement trigger~~ — **SOLVED, 10th pass: real joystick port 1 (`kbd ff 01/02/04/08` =
+   up/down/left/right), not the keyboard/callcap system this whole item was chasing.** The 8th pass
+   tested joystick port **0** (`$FE`), which is electrically shared with the mouse on real ST
+   hardware — port **1** (`$FF`) is the dedicated joystick port and was never tried. All four
+   directions confirmed both by descriptor-byte deltas and by rendered before/after screenshots
+   (`movement_before.png`/`movement_after_right.png`) — the player visibly walks and picks up items
+   along the way. The keyboard/`ActionScriptPointerTable`/`callcap` investigation (9th pass) was not
+   wasted — it correctly proved that system handles UI/interact actions only (Down's crouch gesture),
+   not movement; the two are unrelated mechanisms. See the 10th-pass README entries for full detail
+   and the still-open "where's the per-frame joystick-poll routine" question.
+6. ~~Locate the per-frame routine that reads `$018b33` and turns it into a position delta~~ —
+   **done, 11th pass**: `$006ac0` latches it into `2243(A5)` every VBL, `$006e50` gates the actual
+   `sub.w`-based position update on that latch's bit 7, `$008870` does a per-step obstacle check,
+   and `$00737a`/`$005bea` supply the per-direction `(dx,dy)` vector. See the 11th-pass README entry
+   for the full chain and what's still unconfirmed within it (the `2243(A5)`→`2273(A5)`
+   direction-code translation, what `$008870` actually tests, whether D0/D1 here *are* the
+   player's world position or just this loop's locals).
+7. Movement now works and was driven to each direction's boundary (11th pass) — no transition or
+   creature found on this room's single screen yet. Still worth trying: diagonals (`kbd ff 05/06/
+   09/0a` — up+left/down+left/up+right/down+right — untried so far, all four pure directions were
+   tested singly); whatever verb (if any) "boards" the boat now that a BOAT item is in inventory,
+   since Down's own crouch/interact gesture at the water's edge did nothing
+   (`movement_at_boat_boundary.snap` is a ready resume point for this); and whether the picked-up
+   SILVER COIN/BOAT items need to be used via a specific icon click (mouse) rather than a keyboard
+   action — the inventory bar grew a new "?"/arrow icon after the boat pickup, not yet investigated.
+   Once a creature is on screen (or a second room is reached), snapshot there and differential-test
    `EntityScriptDispatch`/its opcode handlers with `callcap`, following the PowerMonger FSM
    methodology (`tools/pm_fsm_diff.py`'s `Harness`/`State`/`run_corpus`, game-agnostic; write a
-   Cadaver-specific reconstruction module).
-8. `decode_span.py`/`decode_grid.py` (this session's scratchpad, not the repo) render an arbitrary
-   RAM span as st-interleaved 4bpp with a chosen palette, single strip or tiled grid — reusable for
-   the header-decode work in item 1 above. `scratchpad/cadaver_bisect.py` (an earlier session's
-   scratchpad, also gone) is a separate step-bisection+render+diff helper (reads a `.snap`'s live
-   shifter video-base/palette, immune to the `ScreenBufferA`/`B` swap trap). Neither promoted to
-   `tools/` yet — worth doing once a third use case shows up.
+   Cadaver-specific reconstruction module). Action 101's script (pointer `$16f07`) remains a usable
+   second seed regardless, for the interact/UI side of the interpreter.
+8. `tools/snap_render.py` (**promoted to the repo, 11th pass** — was scratchpad-only twice in a row,
+   10th and 11th pass, before this) renders a `.snap`'s live screen straight to PNG via
+   `gfxview.load_video_regs`, immune to the `ScreenBufferA`/`B` swap trap. `decode_span.py`/
+   `decode_grid.py` (still scratchpad-only, render an arbitrary RAM span at a chosen palette/stride)
+   remain candidates for a future promotion if a third pass needs them.
 9. Player descriptor struct (slot 0, `$038338`, 70 bytes) dumped in full this pass (8th) but not yet
    interpreted beyond the already-known offsets (`+20`/`+23` phase, `+42` state, `+50`/`+51`/`+52`
    dims/pointer). The remaining ~50 bytes (notably a plausible world-position pair around `+8`/`+16`-
    `+19`, not screen pixels — no value in 0-320/0-199 range stood out except one coincidental byte)
-   are unmapped; worth a targeted diff (idle vs. a real movement, once one is found) rather than
-   guessing field semantics from one static dump.
+   are unmapped; worth a targeted diff against the 11th pass's `sub.w D6,D0`/`sub.w D7,D1` values
+   (single-step through `$006e50`'s loop with `callcap` or dense bisection) rather than guessing
+   field semantics from one static dump.
