@@ -896,8 +896,166 @@ once clearly past the chest in x, or decode the room's own quadrant-cutout colli
 `(A5)+140` selector, still unlocated) to compute a real clear path instead of trial-and-error
 stepping.
 
+## 18. The ring-304 queue's consumer, found (20th pass) — opcode `$8` is a name-banner display
+    trigger, not a room loader; the "room loading" thread README §9/§10c/mechanics §14/§17 kept
+    circling is now closed with a concrete negative
+
+Following the standing open item from §10c/§14/§17 ("what consumes opcode `$8`, and does `$defa`'s
+push lead to real disk I/O"). Found via `tools/find_field_writers.py` on `304(A5)`/`1154(A5)`
+against `cavern_east_door_matched.snap` (116 and 93 hits respectively — almost all of them are
+*producer*-side push sequences, the same `addq.w #1,1154(A5)` / `cmpi.w #$c8,1154(A5)` shape
+`TimerQueueService` and half a dozen other subsystems already share), then picking out the one
+genuinely different shape in the list: a lone `subq.w #1,1154(A5)` at `$00fe74` — a decrement,
+not an increment, i.e. the one and only *consumer*.
+
+### 18a. `$00fdbc` (`Ring304QueueConsumer_DispatchByOpcodeByte`) is the real drain loop
+
+Full linear disassembly, `$00fdbc`-`$00fe82`: pops a 3-word entry (opcode word, payload longword,
+a third word stored to `1156(A5)`), with an optional 4th longword read if the opcode's bit 15 is
+set (a variable-length entry, not documented before this pass). `cmpi.b #$8,D6 / beq $ffa4` is a
+**dedicated jump for opcode `$8` alone** — every other opcode (the `$9`/`$30`/`$3c`/`$400e`/`$4014`
+family already characterized in §4a/§10c/§14 as sound/event cues) falls through into a shared,
+generic "call an entity's linked action-script" path (`$fe0c`-`$fe70`, a `jsr`-through-table
+dispatcher keyed on a per-entity byte at struct offset `+11`/`+31`). Opcode `$8` bypassing that
+generic path entirely, straight to its own handler, is what singles it out as the one opcode worth
+tracing — exactly the queue-consumer README §9/§14/§17 had never actually found.
+
+### 18b. `$00ffa4` (`Opcode8Handler_ResolveNameIndex_DrawBanner`) and its full call tree, all static,
+    zero trap/FDC instructions anywhere
+
+```
+$00ffa4: jsr $11338      ; DoubleBufferPtr_SelectInactive_A5Plus0_156 (see 18c)
+$00ffaa: moveq #10,D7
+$00ffac: bsr  $a836      ; NameBanner_DecodeStringAndUpdateSlotCache_ByD0Index, payload in D0
+$00ffb0: jsr  $11338     ; same buffer-select call again, bracketing the work
+$00ffb6: bra  $fe74      ; back into the queue-drain loop's decrement-and-continue step
+```
+
+`$00a836` (`move.l A0,D0` first — the payload from the queue entry becomes the string/name index):
+1. `bsr $fd2c` → `$fd4e` → `$fda2`: decodes a **6-bit-packed character stream** (tables at
+   `168(A5)`/`172(A5)`, indexed by `D0`) through a 256-byte character map at `$5ac0`
+   (`PackedNameString_CharacterMapTable`, new this pass), writing plain ASCII bytes into a small
+   buffer at `3234(A5)` until the table returns its `$ff` terminator sentinel. This is a **generic
+   string decoder**, unrelated to the already-known `$00df46`-`$00df9c` 8.3-filename builder
+   README §10c flagged and never connected to anything — a second, independent decode path.
+2. `$a846` onward walks a **4-slot LRU cache at the fixed address `$6000`** (10 bytes/slot,
+   `$c8`-style capped iteration, `moveq #3,D6`), checking whether `D0`'s index is already cached;
+   on a hit it just updates `2132(A5)` (a "currently-displayed name index" global) and returns; on a
+   miss it evicts the least-recently-used slot (a byte counter at `2106(A5)` tracks LRU distance)
+   and writes a fresh slot header (`$4b` marker word + several other `211x(A5)`/`2108(A5)` globals).
+3. Either way it calls `bsr $e030` (`StatusBannerText_WordWrapLayout_CallsBcd0`), which **word-wraps
+   the decoded string** (`bsr $116dc` for per-character pixel width, matching the games' own font
+   metrics call used elsewhere) against a target width/position (`1256(A5)`/`1258(A5)`, itself
+   derived from `2108(A5)`/`2110(A5)`/`2112(A5)` — the cache-slot header's own on-screen position
+   fields) and calls `bsr $bcd0` (`MessageBoxBorder_Draw...`) per wrapped line.
+4. `$00bcd0` draws a **bordered box from a fixed graphic template at `$5c00`** (`lea $5c00.l,A1`,
+   `bsr $bd6e`/`bd92`/`bd98` — corner/edge/fill blit helpers) with the wrapped text inset inside it.
+
+**No `trap`, no `$ffff86xx` FDC register access, no `Rwabs`-style call anywhere in this whole tree**
+(`$ffa4`→`$a836`→`$fd2c`/`$fd4e`/`$fda2`→`$e030`→`$bcd0`/`$bd6e`/`$bd92`/`$bd98` — verified by
+grepping every instruction disassembled across the whole call graph). This directly answers the
+question this thread has been chasing since §9: **opcode `$8` is a message-box/name-banner display
+trigger, not a room loader, and `$defa` never gets anywhere near real disk I/O.**
+
+### 18c. `2142(A5)` is a shared "which name to show" register, written by dozens of unrelated call
+    sites across the whole game — confirming this is a generic display mechanism, not a room-load
+    flag with one special value
+
+`find_field_writers.py` on `2142(A5)` (the same field README §9 read as "sets 2142(A5)=2" for the
+room-transition case) finds it written with a couple of dozen *different* literal values across the
+image — `$2` (the CAVERN/TUNNEL-door call site, `$007310`), `$3`, `$e`, `$f`, `$1b`, `$1c`, `$1e`,
+`$23`, `$25`, `$28`, `$29`, `$2b`, `$2c`, `$31`, `$32`, `$35`, from over a dozen unrelated routines
+scattered from `$009016` to `$04cd00` — not one flag with one "go" value, but the generic
+**message-index register** the whole game's UI writes before triggering a name-banner display.
+`$00df08` (inside `$defa` itself) reads it right back out, confirming `$defa`'s payload really is
+just "whatever index was last written here," matching the decode-by-index pipeline in §18b exactly.
+
+### 18d. Live check on `cavern_east_door_matched.snap`: no pending queue entry at all — this specific
+    door never reaches `$defa` in the first place, correcting an assumption carried since §13
+
+Resumed the snapshot (`ATARI_NOTRACE=1`, A5 confirmed live at `$18152`) and read
+`RoomLoadQueuedFlag_A5Plus2142` (`$189b0`), the queue count (`1154(A5)` = `$18596`, **`0`** both
+immediately and after 3,000 further steps), and `PendingRoomTargetWord`/`DoorFacingOrBlockedFlag`
+(unchanged at `$003b`/`$01`, matching §13's own values). **The queue is empty** — there is no opcode
+`$8` entry sitting here waiting to drain, contradicting the framing this pass inherited ("right
+after a portal match fired but before the queue got drained"). This is consistent with, and now
+directly confirms, §13's own finding that this specific door (CAVERN's east wall) resolves through
+the **"already resident" branch**, which never calls `$defa` at all — so this snapshot was never
+going to show opcode `$8` firing regardless of the consumer question. The consumer/handler trace in
+§18a-§18b stands on its own (pure static disassembly, no live dependency), but the live check here
+is a real, useful correction to the resume point's own documented framing, not a confirmation of it.
+
+### 18e. Where this leaves the room-loading question
+
+Every one of README §9/§10c's speculative branches through `$007104`'s room-transition executor has
+now been chased to a concrete end: the "already resident" branch (every crossing seen live so far)
+just updates state and loops; the one branch that calls `$defa` pushes a **display** request, not a
+load request. **No code path found anywhere in this whole spike ever performs raw sector/FDC-level
+disk I/O for a room** — the "self-contained one-disk crack, no swap needed" framing (README's
+Milestones section) plus the 104KB/9-palette resident-asset finding (§13) both point the same way:
+whatever room 3 needs is either already sitting in RAM from the one-disk boot load (matching the
+"CAVERN/TUNNEL linked directly at boot, hardcoded" reading from §14) or requires a mechanism this
+spike's whole-image static sweeps still haven't found. This retires the queue-consumer thread
+entirely — it is not the lever's missing link, and it is not a currently-live room loader either.
+
+## 19. The axe/pickaxe, reached and picked up live (20th pass, cont.) — closes §16's standing open
+    item with a real, screenshot-confirmed pickup, and opens a new, concrete lever lead
+
+Per the pass's own fallback plan (triggered by §18's queue-consumer thread dead-ending): replicated
+the shape of the 17th pass's successful chest-clearing route from `gameplay_empire.snap`, this time
+turning toward the axe's own y-band instead of continuing to the east door, using exact live bbox
+reads at every leg rather than replaying blind step counts.
+
+### 19a. The route, exact bboxes at each leg (player slot 0, `$038338`, bytes 0-3 = `[x_lead,y_lead,
+    x_trail,y_trail]`)
+
+1. **Right** (`kbd ff 08`) from the start (`[25,23,19,17]`) to the chest boundary: stalls at
+   `[52,23,46,17]` after ~1.2M steps — matches the 11th pass's own chest-boundary finding exactly.
+   Checkpointed as `axe_touch.snap`'s ancestor (not committed — see Files).
+2. **Up** (`kbd ff 01`) from there: stalls quickly at `[52,12,46,6]`, blocked by `slot16`'s own bbox
+   (`[55,7,49,4]`, the state-`4` outlier object) — not the open lane hoped for by continuing further
+   up, but `y=12` is already inside the 17th pass's own confirmed `y≈12-18` clear band.
+3. **Right** again from `y=12`: runs cleanly to `[79,12,73,6]` (chest/`slot19`/`slot20` no longer in
+   the way at this height) — the same lane the 17th pass rode to the east door, confirmed
+   reproducible from a different launch point.
+4. **Down** (`kbd ff 02`) from an intermediate checkpoint at `[76,12,70,6]`: descends cleanly to
+   `[77,24,71,18]` and stalls — this **overlaps the axe's own bbox** (`[73,23,66,19]` in the
+   pristine snapshot: x-overlap `71-73`, y-overlap `19-23`, a real AABB hit per §4's own test shape).
+
+### 19b. Live-confirmed, not just bbox math: the status bar reads "PICKAXE", and it's a real pickup,
+    not just a name-hotspot touch
+
+`tools/snap_render.py` on the resulting snapshot (`axe_touch.snap`, committed as `axe_touch.png`)
+shows the status bar reading **"PICKAXE" / "CAVERN"** — the same proximity name-hotspot mechanism
+already characterized for "LEVER" (§7) and "BOAT" (11th pass README entry). More than a hotspot,
+though: `SpriteObjectArrayCount_A5Plus1152` (`$185d2`) reads **`23`**, up from the pristine
+snapshot's `22`, with the new slot 22 entry holding a **`$ffffffff` sentinel bbox** — off the walkable
+map, the same signature the 11th pass's "BOAT" pickup produced (README: "picks up a 'BOAT' item...
+inventory boxes fill in"). A direct pixel crop-and-diff of the inventory icon panel against a fresh
+render of the pristine `gameplay_empire.snap` (not the old milestone screenshot, to rule out a
+palette/pipeline difference) confirms it visually: the panel gains **two** filled icon boxes where
+the pristine start has none — a pickaxe-handle icon (this pickup) and a separate "?" icon (almost
+certainly the "SILVER COIN" picked up incidentally during the initial Right-to-chest-boundary leg,
+per the 10th pass's own note that walking right "picks up a coin and other items along the way").
+This closes mechanics §16's open item outright: **the axe/pick has now been picked up, live, in this
+exact one-disk Empire playthrough.**
+
+### 19c. The concrete new lead this opens: retest the lever with the pickaxe held
+
+§14's own priority-2 next step ("check whether the axe/pick has actually been picked up... and if
+not, get it and retry the full action sweep at the lever with it 'held'") is no longer blocked —
+the precondition it was waiting on is now satisfied in a live, resumable snapshot (`axe_touch.snap`).
+**Not attempted this pass** (out of scope for this pass's own plan, and a real trip from the axe's
+position back through CAVERN's door into TUNNEL to the lever, replicating the 12th/13th passes'
+routes from a different launch point, is a non-trivial navigation task in its own right): the
+concrete next step for a future pass is to make that trip from `axe_touch.snap` and rerun the lever's
+interact/fire/direction sweep (13th/14th passes) now that the pickaxe is actually held, which is the
+one input-precondition combination this whole spike has never yet tested.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `axe_touch.snap` | 20th pass: live snapshot with the pickaxe just picked up (status bar "PICKAXE", inventory count 22→23) — resume point for §19c's next step (travel to TUNNEL's lever and retest with it held); untracked like the other `.snap` resume points |
+| `axe_touch.png` | 20th pass: screenshot at the snapshot above, status bar reading "PICKAXE" / "CAVERN" |
