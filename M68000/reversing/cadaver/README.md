@@ -136,11 +136,13 @@ turned out not to need it.
 | `room2_tunnel_entry.snap` | 12th pass: live snapshot at the screenshot above — resume point for exploring past the first room |
 | `room2_lever_boundary.png` | 13th pass: player flush against the TUNNEL lever, status bar reads "LEVER", icon panel shows its bracket/key icon pair |
 | `room2_lever_boundary.snap` | 13th pass: live snapshot at the screenshot above — resume point for trying new inputs against the lever (all tried this pass were inert; see the 13th-pass entries) |
-| `mechanics.md` | 14th pass: the collision/obstacle-check algorithm (`$008870`) and the TUNNEL lever's proximity-hotspot mechanism; 15th pass (§10): TUNNEL's live portal table fully decoded, settling "does the lever's door have an entry" as no; 17th pass (§13): CAVERN's own portal table decoded, a second real door found + live-triggered, closing the creature hunt as a fully-enumerated dead end; 18th pass (§15): found the type-8 room-registration table's only writer — the save-game restore deserializer (`$00c9ee`), gated behind a boot-menu branch this spike has never taken; 19th pass (§17): found the SAVE-serializer's real trigger — it's not a player hotkey, it fires automatically once at the very start of every boot on an always-empty type-8 table, retiring the planned save→restore live test; axe/pick navigation attempted, not reached; 20th pass (§18): found and fully disassembled the ring-304 queue's consumer — opcode `$8` is a name-banner/message-box display trigger, not a room loader, closing the "does `$defa` do real disk I/O" question as no; (§19) the axe/pickaxe reached and picked up live, closing the 16th pass's open item and opening a new "retest the lever with it held" lead |
+| `mechanics.md` | 14th pass: the collision/obstacle-check algorithm (`$008870`) and the TUNNEL lever's proximity-hotspot mechanism; 15th pass (§10): TUNNEL's live portal table fully decoded, settling "does the lever's door have an entry" as no; 17th pass (§13): CAVERN's own portal table decoded, a second real door found + live-triggered, closing the creature hunt as a fully-enumerated dead end; 18th pass (§15): found the type-8 room-registration table's only writer — the save-game restore deserializer (`$00c9ee`), gated behind a boot-menu branch this spike has never taken; 19th pass (§17): found the SAVE-serializer's real trigger — it's not a player hotkey, it fires automatically once at the very start of every boot on an always-empty type-8 table, retiring the planned save→restore live test; axe/pick navigation attempted, not reached; 20th pass (§18): found and fully disassembled the ring-304 queue's consumer — opcode `$8` is a name-banner/message-box display trigger, not a room loader, closing the "does `$defa` do real disk I/O" question as no; (§19) the axe/pickaxe reached and picked up live, closing the 16th pass's open item and opening a new "retest the lever with it held" lead; 21st pass (§20): the pickaxe-precondition reading retracted per user ground truth, replaced with a settled directional sweep — the player is hard-blocked with zero clearance toward the object and the "LEVER" hotspot itself is gone by 3 units in either free direction, closing the finer-position-sweep lead as a real negative, not an untested one |
 | `cavern_east_door_matched.snap` | 17th pass: live snapshot at CAVERN's newly-found east door, at the "already resident" branch's post-resolution state (20th pass, §18d: live-checked and corrected — the ring-304 queue here is empty, this door never reaches `$defa` at all, contra this entry's original framing) — resume point for pushing further on `$de5e`/`$e854`/`$11256` without re-deriving the route |
 | `ai.md` | 14th pass: the entity/action-script bytecode interpreter (`$15c70`), its 17-opcode instruction set, and the 3-slot structure it drives |
 | `axe_touch.snap` | 20th pass: live snapshot with the pickaxe just picked up (status bar "PICKAXE", inventory count 22→23) — resume point for retesting TUNNEL's lever with it held, untracked like the other `.snap` resume points |
 | `axe_touch.png` | 20th pass: screenshot at the snapshot above, status bar reading "PICKAXE" / "CAVERN" |
+| `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar "TUNNEL" only, no "LEVER"; the resume point behind `mechanics.md` §20c/§20d, untracked like the other `.snap` resume points |
+| `lever_hotspot_gone_3units_down.png` | 21st pass: screenshot at the snapshot above, proving the "LEVER" name-hotspot is gone 3 units below the baseline tile |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -976,7 +978,17 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    save→reboot→restore live test as uninformative (the buffer it would produce is always empty by
    construction). Item (2), the axe/pick check, was attempted the 19th pass but not completed —
    navigation to the prop stalled against what reads as real room geometry, not a mechanism finding;
-   see `mechanics.md` §17d for the concrete resume options. Once room 3 (or any room with a creature) is located/
+   see `mechanics.md` §17d for the concrete resume options. **Update, 21st pass**: item (3), the finer
+   position sweep, is now also closed (`mechanics.md` §20) — retracting the pickaxe-precondition
+   reading per direct user ground truth ("the lever needs no item, just the action") reopened item (3)
+   as the live next step, but a careful, settled (not short-nudge — see §20a's own methodology note)
+   directional sweep from `room2_lever_boundary.snap` found the player **hard-blocked with zero
+   clearance** on the two sides facing the interactive object (Up, Left — 300,000+ held steps, no bbox
+   change) and the "LEVER" name-hotspot itself **gone by 3 settled units** in either direction that
+   *is* free (Down, Right — screenshot-confirmed via `tools/snap_render.py`). There is no second
+   reachable tile both inside the hotspot and different from the one the 13th pass already tested;
+   interact retried at every position reached along the way, watching TUNNEL's live portal table
+   directly rather than guessing from a screenshot, produced zero effect every time. Once room 3 (or any room with a creature) is located/
    reached, snapshot there and differential-test `EntityScriptDispatch`/its
    opcode handlers with `callcap`, following the PowerMonger FSM methodology (`tools/pm_fsm_diff.py`'s
    `Harness`/`State`/`run_corpus`, game-agnostic; write a Cadaver-specific reconstruction module).

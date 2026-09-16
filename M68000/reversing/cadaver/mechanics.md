@@ -1063,10 +1063,108 @@ each candidate tile, watching TUNNEL's live portal table (`$037e48`, count at `(
 the room-name banner (§18) for any change — the door-opening signal doesn't have to be guessed at,
 it's a portal-table entry appearing where §10b found none.
 
+## 20. The finer-position-sweep lead, closed (21st pass) — the LEVER hotspot is essentially one
+    tile, the player is hard-blocked with zero clearance on the two sides that face the object, and
+    interact is inert everywhere reachable inside the zone
+
+Following §19c's own next step and direct user redirection (ground truth: the lever needs no item,
+only "the action" — retracting the pickaxe-precondition reading). Drove `room2_lever_boundary.snap`
+live via the REPL (`kbd ff 01/02/04/08` directional packets, `kbd 50`/`kbd d0` for the interact
+action, `m 38338 4` for the player's own bbox, `m 37e48 140`/`m 185dc 2` for TUNNEL's live portal
+table and its count) rather than more disassembly.
+
+### 20a. A real methodology trap, worth recording for any future pass: "hundreds to low thousands of
+    steps" undershoots this game's movement latency, and a released direction keeps drifting for a
+    while afterward
+
+The very first attempts (300, then up to ~300,000 steps split across several `s` calls with reads in
+between) showed **zero** bbox change in any direction — looking exactly like "blocked everywhere,"
+which would have wrongly closed the sweep before it started. The actual cause: this game's walk
+appears to be a **bounded, self-terminating multi-substep move triggered once per joystick packet**
+(matching mechanics.md §1's "checked once per simulated sub-step," now seen from the outside) rather
+than a continuous velocity while held. A single `kbd ff 02` (down) packet, given enough steps to run
+to completion (empirically **~60,000–100,000 steps**, after which `PC` returns to the same idle
+main-loop address, `$00006b76`, seen at rest before the packet too), reliably produces a clean,
+reproducible **3-unit** move and then stops on its own — confirmed by re-running the identical
+command sequence from the identical snapshot twice and getting the identical resulting `PC`
+(`$00015190`) and bbox both times. Shorter budgets (hundreds to tens of thousands of steps) catch
+the move mid-flight or before it starts, and — the trap — if a *different* command sequence happens
+to spend more wall-clock-irrelevant-but-step-relevant time in between (e.g. an interact attempt's own
+settle wait), the same nominally-inert nudge can appear to have silently continued for another unit
+during that unrelated wait. Every reading below uses the settled, self-terminating-move methodology
+(one packet, ≥60,000 steps, then read), not the original short-nudge one.
+
+### 20b. Directional results at the baseline tile: hard-blocked toward the object, wide open away
+    from it
+
+From `room2_lever_boundary.snap`'s own bbox (`[x 8-14, y 6-12]`, matching mechanics.md §14 exactly):
+
+- **Up** (`kbd ff 01`) and **Left** (`kbd ff 04`): **zero bbox change over 300,000+ held steps**,
+  each tested independently. This is a real, hard block with no measurable clearance at all — not a
+  slow-pace artefact (300,000 steps is 3-5x what a full 3-unit Down/Right move needs). Left heading
+  toward smaller x matches §14's own "holding Left for 100k more steps produces zero position
+  change" finding, now reproduced with a much larger budget and confirmed for Up too.
+- **Down** (`kbd ff 02`) and **Right** (`kbd ff 08`): both move cleanly, ~3 units per settled packet
+  (`[8-14,6-12]` → `[8-14,9-15]` for Down; → `[11-17,6-12]` for Right), reproducibly.
+
+Net picture: the player's baseline position is wedged into a corner with **zero give** on the two
+sides nearest the interactive object (the object sits at `[5-7,12-15]`, diagonally below-left, per
+§14), while the two sides facing away from it are wide open. A follow-up check — move Down first to
+enter the object's own y-band (`y 9-15`), then try Left from there, hoping the wall that blocks Left
+at `y 6-12` doesn't extend into `y 9-15` — also hard-blocked immediately (`x` stayed at trailing edge
+`8` the whole time, one unit short of the object's own leading edge `7`, matching §14's "off by
+exactly 1 unit in x" finding exactly). **Genuine AABB overlap with the object is not reachable from
+this approach direction by any combination of cardinal moves tried this pass** — §14's suspicion
+confirmed, not just repeated.
+
+### 20c. The "LEVER" name-hotspot itself is gone by 3 units in either free direction — screenshot-
+    confirmed, not inferred
+
+Rendered (`tools/snap_render.py`) three settled positions: the baseline tile (status bar: **"LEVER" /
+"TUNNEL"**, confirming this really is the 13th pass's own hotspot tile), a clean 3-unit-down move
+(status bar: **"TUNNEL" only** — no "LEVER", icon panel's special box empty — `lever_hotspot_gone_
+3units_down.png`), and a clean 3-unit-right move (same: "TUNNEL" only, hotspot gone). Combined with
+§20b's finding that the only two directions with any room to move (Down, Right) both drop the hotspot
+well before any new tile could plausibly offer a different interact outcome, and that the two
+directions actually pointing at the object (Up, Left) are hard-blocked at zero clearance: **there is
+no reachable second tile, in any direction this pass could drive to, that is both inside the "LEVER"
+hotspot and different from the position the 13th pass already tested.** The hotspot is, for every
+practical purpose reachable by ordinary movement from this approach, the single tile already tried.
+
+### 20d. Interact retested at baseline and at every reachable position along the way, portal table
+    watched directly each time — zero effect, every time
+
+`kbd 50`/`kbd d0` (action 101, this spike's only confirmed interact verb) retried at the baseline
+tile and at several points along the Down/Right drift (a mix of clean and momentum-tailing
+positions, spanning baseline out to 3 settled units in each free direction), each followed by a
+direct dump of TUNNEL's live portal table (`$037e48`, 140 bytes, §10b) and its live count
+(`(A5)+1162` = `$000185dc` here, confirmed via `A5=$18152` matching every other snapshot in this
+spike) rather than a screenshot guess. **Byte-for-byte identical before and after, every single
+time** — no new entry, no count change, matching §10c/§11/§14's own exhaustive descriptor-level
+checks and extending them to cover this pass's newly-reached positions too.
+
+### 20e. Conclusion: the position-sweep hypothesis is closed, not just untested
+
+§14's own priority-3 next step ("re-examine whether the known position is the narrowest trigger
+tile") is now answered directly: it effectively *is* the only trigger tile reachable this way — the
+hotspot has no meaningful footprint beyond it in any direction ordinary movement can explore from
+this approach, and the object behind it is walled off with zero clearance on both sides that matter.
+Between this and mechanics.md §§10-18's own closed leads (portal table, resource table, fire chain,
+icon panel, mouse-buttons-as-keys, ring-304 queue consumer), **every input class and every reachable
+position this spike has been able to generate has now been tried against the lever's door with no
+effect.** This leaves the user's own framing from this pass's own briefing as the honest state of
+play: either a genuinely different, not-yet-characterized verb exists (a second action-id family
+this spike's 9th-pass sweep didn't cover, or an approach from a completely different direction this
+one-disk-image playthrough's known room layout doesn't offer a path to), or the mechanism lives
+somewhere this spike's whole-image static sweeps (§15c/§17a's own techniques) haven't pointed a
+caller-graph search at yet. Not chased further this pass, per its own scope.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar reads "TUNNEL" only (no "LEVER"), the resume point behind §20c/§20d's clean readings; untracked like the other `.snap` resume points |
+| `lever_hotspot_gone_3units_down.png` | 21st pass: screenshot at the snapshot above, proving the "LEVER" name-hotspot is gone 3 units below the baseline tile |
 | `axe_touch.snap` | 20th pass: live snapshot with the pickaxe just picked up (status bar "PICKAXE", inventory count 22→23) — resume point for §19c's next step (travel to TUNNEL's lever and retest with it held); untracked like the other `.snap` resume points |
 | `axe_touch.png` | 20th pass: screenshot at the snapshot above, status bar reading "PICKAXE" / "CAVERN" |
