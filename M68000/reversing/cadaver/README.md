@@ -136,6 +136,9 @@ turned out not to need it.
 | `room2_tunnel_entry.snap` | 12th pass: live snapshot at the screenshot above — resume point for exploring past the first room |
 | `room2_lever_boundary.png` | 13th pass: player flush against the TUNNEL lever, status bar reads "LEVER", icon panel shows its bracket/key icon pair |
 | `room2_lever_boundary.snap` | 13th pass: live snapshot at the screenshot above — resume point for trying new inputs against the lever (all tried this pass were inert; see the 13th-pass entries) |
+| `mechanics.md` | 14th pass: the collision/obstacle-check algorithm (`$008870`) and the TUNNEL lever's proximity-hotspot mechanism; 15th pass (§10): TUNNEL's live portal table fully decoded, settling "does the lever's door have an entry" as no; 17th pass (§13): CAVERN's own portal table decoded, a second real door found + live-triggered, closing the creature hunt as a fully-enumerated dead end; 18th pass (§15): found the type-8 room-registration table's only writer — the save-game restore deserializer (`$00c9ee`), gated behind a boot-menu branch this spike has never taken; 19th pass (§17): found the SAVE-serializer's real trigger — it's not a player hotkey, it fires automatically once at the very start of every boot on an always-empty type-8 table, retiring the planned save→restore live test; axe/pick navigation attempted, not reached |
+| `cavern_east_door_matched.snap` | 17th pass: live snapshot at CAVERN's newly-found east door, right after the portal match fires but before the "already resident" branch returns to the main loop — resume point for pushing further on `$de5e`/`$e854`/`$11256` without re-deriving the route |
+| `ai.md` | 14th pass: the entity/action-script bytecode interpreter (`$15c70`), its 17-opcode instruction set, and the 3-slot structure it drives |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -790,6 +793,113 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   `$00db4a` (this pass's new fire-driven lead) is the concrete place to start disassembling next,
   rather than trying more input combinations blind.
 
+- **14th pass — systems survey: collision, graphics compositing, and the entity-script bytecode
+  interpreter, all reversed statically (no new input-guessing).** Scope change from the 13th pass:
+  the lever's door is a genuine dead end for now (see its own next-step item below), so this pass
+  covered three algorithms that don't need it or a live creature. Full detail in `mechanics.md`
+  (new), `graphics.md` (extended), and `ai.md` (new) respectively; summary:
+  1. **Collision (`$008870`, `mechanics.md`)**: not a pixel probe and not a static per-room mask —
+     a live bounding-box test against the sprite-object array plus a second, separate "portal" table
+     (same 70-byte stride, different base), refined by an optional per-room quadrant-cutout selector
+     (`(A5)+140`) that approximates an irregular room shape from a handful of rectangles, and a
+     direction-dependent diagonal-corner allowance at doorways. A dedup'd "touch" event cache
+     (`$00e614`) queues a one-shot opcode into the same VBL-serviced command ring
+     `TimerQueueService` drains, plausibly how pickups trigger.
+  2. **Graphics compositing (`graphics.md` §4)**: the full back-buffer→screen pipeline is a
+     `trap #4`-yielded, fully-unrolled block copy (`$0144b8`) spread across VBLs to avoid tearing;
+     sprite compositing (`$14d64` family, `$14f24`) and the previously-unknown `$00bf72` blitter
+     turn out to be **the same underlying sub-pixel AND/OR shift-mask primitive**, `$00bf72` settled
+     as a multi-item window/panel compositor (into scratch RAM, not the live screen) rather than a
+     room-tile painter. Also re-checked, per a direct user challenge to the 7th pass's "one
+     hand-painted background" claim, for real tile periodicity in the rendered room: none found
+     (two independent checks, aligned-grid and arbitrary-offset) — narrows rather than reverses the
+     earlier finding (nothing tile-*blits* the visible room at runtime; whether the source art was
+     tile-*authored* and baked to one bitmap per room is still the README's own next-step #2).
+  3. **AI/entity logic (`$15c70`, `ai.md`)**: fully decoded as a 17-opcode (`$80`-`$90`) bytecode
+     interpreter with literal bytes (`<$80`) as frame/pose values. **It is the same interpreter
+     already driving the player's own 3-slot keyboard-action system** (5th-9th passes) — not a
+     separate, still-dormant monster-AI VM — so this closes the interpreter side of the "reverse the
+     AI once a creature exists" next-step in advance; only the data (a creature's own script
+     content) would remain to reverse later. Also found, as a side effect of tracing the dispatcher's
+     epilogue: it flushes 11 PSG sound-chip registers once per dispatch pass, not
+     `TimerQueueService`'s command queue as previously assumed for sound.
+  4. **Bounded look at the lever's fire chain** (`mechanics.md` §8, timeboxed as scoped): traced
+     `$00afb2`'s per-object rescan loop and `$00db4a`'s field-packaging into a `state==5`-gated queue
+     push, consistent with a generic "select the nearest interactable prop" pipeline (matches the
+     highlight-flash seen at other props too, not lever-specific) — not chased to `$b1a2`/`$ddb6`,
+     still doesn't explain the door.
+  5. **Bonus, found via embedded debug strings rather than more disassembly** (`mechanics.md` §9): a
+     developer error-string table sits right after the AI opcode `$89` table (`$1729d`+`$2a`
+     onward) — `"DOOR ERROR"`, `"BOTH ROOMS BLOCKED"`, and a dozen other engine diagnostics. A raw
+     scan for code referencing those two strings' addresses landed directly on the **real
+     room-transition executor** (`$007104`-`$007364`), previously untouched: it resolves a portal's
+     target room id, gates entry through two undisassembled checks (`$de5e` = "DOOR ERROR" on
+     failure, `$e84a` = "BOTH ROOMS BLOCKED" on failure), and either treats the target room as
+     already resident or calls an undisassembled `$defa` to load it. This reframes the lever
+     question from "what input opens it" to "does its portal-table entry exist and pass these two
+     gates" — three concrete disassembly-only next steps in `mechanics.md` §9, no more input
+     guessing needed.
+
+- **15th pass — settled: TUNNEL's portal table has no entry for the lever's door at all; the "no
+  input opens it" finding is now explained, not just re-confirmed.** Ran the 14th pass's own
+  three-step plan (`mechanics.md` §10, new): dumped TUNNEL's portal table directly from
+  `room2_lever_boundary.snap` (2 live entries, both non-degenerate — `$8ac8`'s bbox bytes turned out
+  to be a direction-dependent threshold test, not min/max containment, correcting §5's
+  oversimplified analogy to §4), then dereferenced both entries' door descriptors to read the actual
+  target-room-id word `$007104` branches on. **Both are the two special-cased "not a real room"
+  values, `$0000` and `$ffff`** — meaning neither of TUNNEL's live portals ever reaches
+  `$de5e`/`$e84a`/`$defa` in the general case at all. Traced both special-case paths to their end:
+  the `$ffff` entry is a self-contained sound/event-cue queue-push with no door semantics
+  whatsoever; the `$0000` entry *does* run the full `$de5e`→`$e854`/`$e84a`→`$defa` chain, and its
+  geometry (sitting at the room's `RoomMaxY` edge) matches the already-proven CAVERN exit, not
+  anything new. `$defa` itself also turned out not to be the sector-level loader — it's one more
+  ring-304 queue push (opcode `$8`), deferring the real load to an as-yet-unlocated opcode-`$8`
+  consumer. **Conclusion, with disassembly behind it rather than exhausted input-guessing**: no
+  portal-table entry for the lever's door exists yet in this game state — not a disk/data-residency
+  gap, but game state that some other mechanism (most plausibly the still-undisassembled
+  `$00b1a2`/`$00ddb6` fire-chain tail from §8) must write before `$008870` can ever route there.
+  Driving `$007104` directly via `callcap` (the 14th pass's fallback suggestion) would not help,
+  since the blocker is upstream of the executor, in the portal table itself. Full derivation and all
+  raw addresses/bytes in `mechanics.md` §10.
+- **15th pass, cont. — the fire chain's last two unknowns disassembled, and the whole pipeline ruled
+  out both statically and live: fire cannot open this door under any tested input.** `$00b1a2` (§8's
+  remaining unknown) is a generic even-alignment assert on an animation-frame pointer (prints
+  `"ANI PIC HAS GONE ODD"` on failure); `$00ddb6` is a generic spatial-overlap/selection-list builder
+  for whatever candidates `$00db8a` feeds it — neither writes anywhere near the portal table, a door
+  descriptor, or any room-transition global. Confirmed live too: `watch`ed the portal table's pointer
+  (`(A5)+88`), count (`(A5)+1162`), and full 140-byte body across fire-tap/release, the known
+  interact gesture, and fire+Left combined from `room2_lever_boundary.snap` — zero hits, byte-
+  identical before/after. **New lead, not chased**: the lever's icon panel shows a bracket/hook icon
+  *and a key icon* (13th pass) — read at the time as generic per-object UI, but in hindsight a
+  plausible hint this needs an inventory item clicked onto the object (a mouse-icon-click action),
+  a whole input class this spike has never properly exercised (the 8th pass found mouse-motion
+  packets get misinterpreted as spurious keystrokes, and no pass has tried clicking a specific
+  inventory/UI icon slot). Full writeup `mechanics.md` §11.
+- **16th pass — both of the 15th pass's remaining leads closed; the lever's door is now this
+  one-disk spike's confirmed boundary.** Two disassembly/trace-only checks, no new input-guessing:
+  1. **The icon panel is not UI-driven at all.** `$00bef0`/`$00bf72` has exactly two callers in the
+     whole loaded image (found by brute-force-scanning the snapshot's RAM for BSR displacements,
+     since `--callers` only scans the TOS ROM — a standing tool gap). Both are internal per-object
+     loops, not input handlers: `$00af6a` (inside the fire-rescan loop from §8) passes `D0` = the
+     byte at `(A5)+2455`, and `$00cea8` (an unrelated construction loop) hardcodes `D0=0`. Tracing
+     `(A5)+2455`'s one and only writer (`$0007590`) leads to a small byte-stream interpreter fed by
+     `$007480`'s move/turn-state dispatcher — **`(A5)+2455` is the player's own current
+     movement-animation frame byte**, not an icon-selection index. There is no keyboard
+     cycle-icon-then-confirm mechanism anywhere in this call graph; the bracket/key icon pair is
+     drawn automatically, without any user selection to trace.
+  2. **Mouse buttons-as-keys is conclusively, not just currently, off.** `mouse down l` against
+     `room2_lever_boundary.snap` still reports `buttons-as-keys=false` (matching the 8th pass at
+     `gameplay_empire.snap`), and a fresh cold-boot `ATARI_TRACE_IKBD=1` run (15,000,000 steps,
+     boot → gameplay) logs exactly three IKBD commands total — `$80 $01` reset, `$12` mouse
+     disabled, `$1A` joystick auto-report disabled — **`$07` (the buttons-as-keys command) is never
+     sent**. The game turns the mouse off at boot and never turns buttons-as-keys on anywhere in the
+     traced boot path or the live session that reached the lever.
+  Both of the 15th pass's own leads are now dead ends, disassembly- and trace-grounded rather than
+  input-guessed. Combined with §§7-11 (no portal entry, fire chain proven inert, keyboard/joystick/
+  interact exhausted), **every currently-identifiable input path to the lever's door is closed** —
+  this spike is switching scope to next-steps item 7 (find a creature/monster in either room) rather
+  than continuing to chase the door. Full writeup `mechanics.md` §12.
+
 ## Next steps
 
 1. ~~Decode the sprite sheet's per-entry width/height~~ — **done, 7th pass**: they're struct fields
@@ -827,22 +937,49 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    for the full chain and what's still unconfirmed within it (the `2243(A5)`→`2273(A5)`
    direction-code translation, what `$008870` actually tests, whether D0/D1 here *are* the
    player's world position or just this loop's locals).
-7. ~~Walk to a room edge and find a real transition~~ — **done, 12th pass: CAVERN → TUNNEL**, via
-   the Right→Up→Right→Up zigzag documented above (user-supplied hint on where the door was; the
-   movement mechanism doesn't route around corners on its own, so a single held direction/diagonal
-   was never going to find it). **Still open**: no monster in either room checked so far (CAVERN's
-   22-entry array, 7th pass; TUNNEL's 2-entry array, 12th pass) — keep exploring from
-   `room2_tunnel_entry.snap` (untried: whatever direction leads further into/out of the tunnel) for
-   a room that actually has one. Also still open from the 11th pass: whatever verb (if any) "boards"
-   the boat now that a BOAT item is in CAVERN's inventory, since Down's own crouch/interact gesture
-   at the water's edge did nothing (`movement_at_boat_boundary.snap` is a ready resume point); and
-   whether picked-up items (SILVER COIN/BOAT/PARCHMENT) need a mouse-driven icon click rather than a
-   keyboard action — the inventory bar grows new icons as items are picked up, not yet investigated.
-   Once a creature is on screen, snapshot there and differential-test `EntityScriptDispatch`/its
-   opcode handlers with `callcap`, following the PowerMonger FSM methodology
-   (`tools/pm_fsm_diff.py`'s `Harness`/`State`/`run_corpus`, game-agnostic; write a Cadaver-specific
-   reconstruction module). Action 101's script (pointer `$16f07`) remains a usable second seed
-   regardless, for the interact/UI side of the interpreter.
+7. ~~Walk to a room edge and find a real transition~~ — **done, 12th pass: CAVERN → TUNNEL**; a
+   second, self-looping CAVERN door found the 17th pass (`mechanics.md` §13). **Find a creature in
+   either room — STILL OPEN, and confirmed to exist just past TUNNEL's lever.** The 17th pass briefly
+   claimed this was a closed, no-creature search after enumerating both rooms' *current* portal
+   tables; that was wrong and got retracted the same pass. Ground truth (the game's own published
+   walkthrough, and the user's own prior playthrough of this exact one-disk file): pulling TUNNEL's
+   lever opens a door to a room 3 with a "spiky floater" enemy, and later rooms have maggots and
+   worse. **What's actually confirmed exhausted**: a bare keypress at the lever writing directly to
+   TUNNEL's portal table — the 9th/13th passes' keyboard-action sweep plus a 17th-pass sweep of every
+   remaining real action id and every direction/fire combo, done specifically at the lever's position,
+   produced zero portal-table change every time. **What's not yet tried**: whatever the lever's real
+   trigger condition actually is (not necessarily a `KeyDispatchTable`-bound action at all), and —
+   more promising — finding room 3's data directly rather than triggering it via play. A 17th-pass
+   `gfxview.py --contact` scan of `room2_lever_boundary.snap` found **9 distinct palette tables** (this
+   spike had only accounted for 2) and confirmed a **104KB span (`$51000`-`$6b000`)** only ever sampled
+   at 2-3 pointers so far (torch/goblet/boat) — real evidence more rooms' assets are already resident
+   in this one-disk image, matching its own "self-contained, no swap needed" milestone note (top of
+   this file). That resource table was found and fully traced (`mechanics.md` §14): **all 64 slots
+   are still empty** — `callcap`-verified, three different target ids all miss — so CAVERN/TUNNEL were
+   linked directly at boot, not through this generic system, and nothing has registered a new room
+   into it yet. A from-scratch, descriptor-level re-sweep of every keyboard/joystick/fire input at the
+   lever (not just the live portal table, the actual door descriptor bytes) also came up empty, as did
+   a full disassembly of `TimerQueueService` (a sound-queue producer, not the interaction-script
+   consumer the 14th pass had guessed). **Concrete next steps, in order**: (1) find what *writes* into
+   the empty resource table (untried — the same static-scan technique that found every other writer
+   this pass would work here too); (2) check whether the lever needs an inventory precondition (the
+   walkthrough lists collecting a pick before it, though not explicitly *for* the lever — verify
+   whether CAVERN's axe/pick prop has ever actually been picked up in any snapshot); (3) try a finer
+   position sweep right at the lever, since only the one position reached by the 13th pass's original
+   held-Left approach has ever been tested. **Update, 18th/19th pass**: item (1)'s writer was found —
+   `$00c9ee`, the save-game *restore* deserializer, gated behind a boot-menu branch this spike has
+   never taken (`mechanics.md` §15) — and the 19th pass traced the *serialize* side's own trigger all
+   the way up: it's not a player action at all, it fires automatically once at the very start of every
+   boot on an always-empty table (`mechanics.md` §17), which retires the previously-planned
+   save→reboot→restore live test as uninformative (the buffer it would produce is always empty by
+   construction). Item (2), the axe/pick check, was attempted the 19th pass but not completed —
+   navigation to the prop stalled against what reads as real room geometry, not a mechanism finding;
+   see `mechanics.md` §17d for the concrete resume options. Once room 3 (or any room with a creature) is located/
+   reached, snapshot there and differential-test `EntityScriptDispatch`/its
+   opcode handlers with `callcap`, following the PowerMonger FSM methodology (`tools/pm_fsm_diff.py`'s
+   `Harness`/`State`/`run_corpus`, game-agnostic; write a Cadaver-specific reconstruction module).
+   Action 101's script (pointer `$16f07`) remains a usable second seed regardless, for the interact/UI
+   side of the interpreter.
 8. `tools/snap_render.py` (**promoted to the repo, 11th pass** — was scratchpad-only twice in a row,
    10th and 11th pass, before this) renders a `.snap`'s live screen straight to PNG via
    `gfxview.load_video_regs`, immune to the `ScreenBufferA`/`B` swap trap. `decode_span.py`/
@@ -855,11 +992,92 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    are unmapped; worth a targeted diff against the 11th pass's `sub.w D6,D0`/`sub.w D7,D1` values
    (single-step through `$006e50`'s loop with `callcap` or dense bisection) rather than guessing
    field semantics from one static dump.
-10. Open the TUNNEL lever (13th pass): found its proximity hotspot (`room2_lever_boundary.snap`,
-    named "LEVER", own icon pair) but **no tested input opens the door** — keyboard interact,
-    joystick fire (tap/hold/combined with a direction), and Space (confirmed unbound in the
-    61-entry `KeyDispatchTable`) are all inert. Fire does drive real player-descriptor writes
-    through new, unnamed code at `$00afb2`→`$00db4a`→`$00db54`→`$00db58`→`$00db5e`→`$00db68` — the
-    concrete next lead is disassembling that chain (it's a genuine action/animation-state update,
-    just not a door one) rather than trying more `kbd`/`mouse` combinations. Once open, the third
-    room is the next differential-testing target if it finally has a real creature (see item 7).
+10. ~~Open the TUNNEL lever~~ — **CLOSED, dead end (13th-16th passes), boundary of this spike.** Found
+    its proximity hotspot (13th, `room2_lever_boundary.snap`, named "LEVER", own icon pair); no tested
+    input opens the door (13th); explained by the 15th pass (`mechanics.md` §10-11): TUNNEL's live
+    portal table has exactly 2 entries and neither is the lever's door (one is the already-working
+    CAVERN exit, the other a sound/event cue with no room-transition semantics), and the entire
+    fire-driven pipeline (`$00afb2`→...→`$00b1a2`/`$00ddb6`) never writes to it under any tested
+    input. The 15th pass's one remaining lead — the icon panel's bracket/key icon pair hinting at a
+    mouse-driven inventory-item click — is now also closed by the **16th pass** (`mechanics.md` §12):
+    the icon-panel draw (`$00bef0`/`$00bf72`) takes its icon argument from the player's own
+    movement-animation-frame byte, not any UI-selection state, so there is no icon-cycling input to
+    find; and a cold-boot `ATARI_TRACE_IKBD` trace plus a live check at `room2_lever_boundary.snap`
+    both confirm the game never sends the IKBD `$07` command that would make mouse clicks report at
+    all. Keyboard interact, joystick movement, fire, Space, and now mouse clicks are all exhausted.
+    **This is the spike's confirmed boundary for the lever's door** — no further input-guessing
+    planned; see item 7 for the active next step.
+- **17th pass — found and live-triggered a genuinely new CAVERN door, wrongly concluded from it that
+  the game's connectivity was fully closed, then retracted that same pass on direct outside evidence.**
+  Dumped **CAVERN's own portal table for the first time** (`mechanics.md` §13): 2 entries, entry 0 the
+  known shared CAVERN↔TUNNEL door descriptor, **entry 1 a new descriptor (`$6d532`) with a real,
+  positive target room id (`$49`=73)** — the first non-special-case target seen anywhere in this
+  spike. Mapped all 22 CAVERN prop bboxes to find a walkable lane around the chest that blocked the
+  11th pass's Right-hold, and live-triggered the match (`PendingRoomTargetWord_A5Plus1184` flipped
+  from its idle `$ffff` to the entry's own `$3b`) — but the transition stalls at the "already
+  resident" branch (`RoomLoadQueuedFlag_A5Plus2142` never sets to `2`), unchanged across 36.5M total
+  steps of real per-VBL gameplay (confirmed the CPU wasn't hung — the VBL handler and its `$568e`
+  tick counter keep cycling normally throughout; a `cmp.l $568e.l,D0`/`beq` spin at `$011360` that
+  looked alarming turned out to be an ordinary once-per-frame "wait for vsync" primitive, not a stuck
+  disk read). **From this, the pass wrongly concluded the whole game was just these two rooms with no
+  creature anywhere** — the user, who has actually played this exact one-disk file, immediately
+  corrected this: TUNNEL's lever really does open a door to a room 3 with a "spiky floater" enemy
+  (confirmed against the game's own published walkthrough), and later rooms have maggots and worse.
+  The error was scope, not the CAVERN-door finding itself: "both portal tables are fully enumerated"
+  only covers what those two tables reference *right now*, not whatever the lever changes, and not
+  whatever's sitting in RAM unreferenced by either. A follow-up `gfxview.py --contact` scan (prompted
+  by a direct question about whether other rooms' tile/sprite data is even resident) found **9
+  distinct palette tables** (up from the 2 this spike had accounted for) and confirmed a **104KB span
+  (`$51000`-`$6b000`)** this spike had only ever sampled 2-3 pointers out of — real evidence more
+  rooms' assets are already loaded in this one-disk image, matching its own "self-contained, no swap
+  needed" milestone note. A systematic sweep of all 12 real keyboard action ids plus every
+  direction/fire combo, done *at the lever specifically*, still produced zero portal-table change —
+  so the lever's mechanism, whatever it is, isn't a bare keypress written straight to TUNNEL's portal
+  table the way this pass was checking for. **Concrete next step, corrected**: find the master
+  room/resource table that `$011256` (`RoomIdLookup_ByD2_LinearScan`) and its `$c628`/`$c52c` helpers
+  walk — it resolved CAVERN's own east-door target id `$49` to something (not a lookup failure),
+  meaning that id names a real entry in whatever table `$c628` scans. Locating that table directly
+  would enumerate every room's descriptor without more input-guessing. Full writeup (including the
+  retraction) in `mechanics.md` §13. `cavern_east_door_matched.snap` remains a valid resume point.
+  **Same-pass follow-up (`mechanics.md` §14)**: found and fully traced the resource table — 64 slots
+  reserved for rooms, **every single one still empty**, confirmed via `callcap`-testing `$011256`
+  with three different target ids (all miss). Decoded the room-record format from CAVERN/TUNNEL's two
+  known-good records (7-slot door-id list + floor-clamp bytes, matching live globals exactly) and
+  directly refuted the standing "lever rewrites the descriptor in place" hypothesis (checked the real
+  descriptor bytes, not just the live table, across all 18 previously-tried inputs — zero change).
+  Also found the player sits almost exactly adjacent to TUNNEL's one non-player sprite (off by 1 unit)
+  and is physically blocked from a true collision-overlap with it, and disassembled `TimerQueueService`
+  fully — it's a sound-queue producer, not a script-trigger consumer, retracting the 14th pass's own
+  "opcode `$9` triggers scripts" speculation. **The lever's real trigger is still unsolved** after this
+  much more thorough sweep; the next concrete lead is finding what writes into the empty resource
+  table (untried), not more input-guessing (now genuinely exhausted at both the live-table and
+  descriptor level).
+- **18th pass — found the type-8 index table's only writer in the whole loaded image: the
+  save-game restore deserializer, gated behind a boot-menu branch never taken this spike.** Per the
+  17th pass's own priority-1 next step, static-only (`mechanics.md` §15). A literal-address sweep
+  for `$4c536`-`$4c636` (the same technique that found `$568e`/`88(A5)`) came back with zero hits —
+  a real negative: unlike those targets, the table is only ever reached through a pointer loaded
+  from the resource-table row, never as a literal operand, so that technique structurally cannot
+  find this writer. Switched to a whole-image BSR/JSR caller sweep instead (new
+  `scratchpad/cadaver18/find_callers_ram.py`), fully disassembling all three consumer primitives
+  (`$c52c` row-resolve, `$c628`/`$c660` forward/backward populated-slot scan) and the table
+  allocator/clearer (`$c696`/`$c6d0`) plus all 14 of their real call sites in the whole image —
+  every one is read-only (enumerate/ID-match/iterate), none write a new entry. Separately found
+  `$00b1e0`, a level-asset bulk loader that reloads resource types 2-7 from an in-memory stream on
+  every load — **type 8 (rooms) is structurally excluded from it**, and `$00b1e0` itself has zero
+  callers anywhere in the loaded image (dead code this playthrough). The actual writer:
+  **`$00c9ee`**, a save-buffer deserializer, called with `D0=8` (`$00b962`) from the boot-time
+  restore-game menu handler, gated on a `"CAD "` magic-header match at `$00b8fc`/`$00b906` — the
+  exact mirror of a `$00c9c2`-based in-game SAVE routine that writes the same header. **This is the
+  only place in the whole image that ever writes a real entry into the type-8 table** — and this
+  entire spike's boot path has always taken "ESC: start fresh" (never "place a disk"/restore), so
+  it has never run. Caveat stated plainly rather than overclaimed: this explains *why* the table has
+  always been observed empty, but a restore-deserializer can't be the mechanism that populates a
+  room's entry for the *first* time within one playthrough — either the table is orthogonal to the
+  lever entirely (the real per-room-discovery path, if any, still hides in `$defa`'s undecoded
+  body), or type 8 only ever gets populated via an actual save/restore round-trip. Concrete
+  untried next step: trigger a real in-game SAVE, reboot, choose restore instead of ESC, and check
+  live whether type 8 picks up a non-zero slot — settles which of the two readings is right.
+  Secondary check (`mechanics.md` §16): CAVERN's axe/pick prop (sprite-array slot 4) is still an
+  untouched static prop (state `5`) in every existing CAVERN snapshot — never picked up this whole
+  spike, still untried live.
