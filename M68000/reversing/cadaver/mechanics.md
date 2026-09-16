@@ -1040,17 +1040,28 @@ per the 10th pass's own note that walking right "picks up a coin and other items
 This closes mechanics §16's open item outright: **the axe/pick has now been picked up, live, in this
 exact one-disk Empire playthrough.**
 
-### 19c. The concrete new lead this opens: retest the lever with the pickaxe held
+### 19c. The pickaxe-precondition lead, retracted (user ground truth, same pass) — the lever needs
+    no item, only "the action"
 
-§14's own priority-2 next step ("check whether the axe/pick has actually been picked up... and if
-not, get it and retry the full action sweep at the lever with it 'held'") is no longer blocked —
-the precondition it was waiting on is now satisfied in a live, resumable snapshot (`axe_touch.snap`).
-**Not attempted this pass** (out of scope for this pass's own plan, and a real trip from the axe's
-position back through CAVERN's door into TUNNEL to the lever, replicating the 12th/13th passes'
-routes from a different launch point, is a non-trivial navigation task in its own right): the
-concrete next step for a future pass is to make that trip from `axe_touch.snap` and rerun the lever's
-interact/fire/direction sweep (13th/14th passes) now that the pickaxe is actually held, which is the
-one input-precondition combination this whole spike has never yet tested.
+§14's own priority-2 next step read the walkthrough's room-1 item list (coin/diary/pick collected
+before the lever) as a possible inventory precondition, and §19b's pickup was aimed at unblocking a
+"retest with it held" plan on that basis. **User-supplied ground truth, from direct knowledge of
+this exact game, retracts that reading**: the lever can be operated with just the interact action,
+no item needed. This means the 13th pass's own "no tested input opens the door" finding (every
+keyboard/joystick/fire input tried inert, `room2_lever_boundary.snap`) has the wrong explanation —
+not a missing item, and (per §14/§18) not a portal-table/resource-table gate either. The most
+likely remaining explanation, not yet tested: **imprecise positioning** — every prior attempt used
+the one position reached via the 13th pass's original held-Left approach, and §14's own priority-3
+next step ("re-examine whether that position is even the narrowest trigger tile... a finer
+sub-approach-direction sweep hasn't been tried") was never chased. `axe_touch.snap` (pickaxe held)
+is no longer a needed precondition for the next attempt, though it doesn't hurt to use it as the
+travel starting point since the pickaxe is already there. **Concrete next step**: a finer position
+sweep right at TUNNEL's lever hotspot (small nudges in every direction from the known
+`room2_lever_boundary.snap` position, re-triggering the "LEVER" name-hotspot after each nudge to
+confirm still-in-zone) with the basic interact action (`kbd 50`/`kbd d0`, action 101) retried at
+each candidate tile, watching TUNNEL's live portal table (`$037e48`, count at `(A5)+1162`, §10b) and
+the room-name banner (§18) for any change — the door-opening signal doesn't have to be guessed at,
+it's a portal-table entry appearing where §10b found none.
 
 ## Files
 
