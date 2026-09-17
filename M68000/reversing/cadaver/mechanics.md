@@ -1859,6 +1859,96 @@ back to the section it was originally derived in.
   exact same address the live object array's own `+10` field points to (§23d), whose `+15` byte is
   the classification flag from 27b.
 
+## 28. The flag-poll hypothesis tested live and closed; both fallback leads from §25c also closed —
+    reframes the whole LOCK(144) thread as the wrong mechanism, not an unreached one (28th pass)
+
+Tests §25c/§26's own two remaining fallbacks, per the resume point's own priority order, plus a
+direct live test of a gap those passes themselves identified: every prior test of the LOCK
+mechanism used `callcap`, which **reverts memory after reporting its diff** — nothing in this whole
+spike had ever left the `+15` flag set and kept driving the game to see if anything reacts to it.
+
+### 28a. Priority 1 — held the flag set for real, live, and nothing reacted (closes the "something
+    polls it" hypothesis)
+
+From `room2_lever_boundary.snap`, poked `$06fa1d` (object 144's own `+15` byte) from `$01` to `$05`
+with a real `w`-write, not `callcap` — `w 6fa1c 22051285` (a longword-aligned write at `$06fa1c`,
+preserving the three neighbouring bytes `$22`/`$12`/`$85` and changing only the target byte, since
+`$06fa1d` is odd and the REPL's `w` command writes a longword via `MMU.WriteWord`, which raises an
+address error on an odd address — `MMU.fs:996` — so a direct `w 6fa1d ...` is not possible). Ran
+5,000,000 steps forward from there with no other input (the player was already positioned at the
+lever boundary from the snapshot itself). Re-checked all three markers the resume point named,
+before and after:
+
+- **Object 144's own flag**: still `$05` after 5M steps (`22 05 12 85` at `$06fa1c`) — the poke
+  held, not reverted by anything.
+- **`RoomLoadQueuedFlag_A5Plus2142`** (`$189b0`): unchanged (`00 00 00 32` both times); also live
+  `watch`ed for the whole run — zero writes landed there at all.
+- **`DoorFacingOrBlockedFlag_A5Plus2271`** (`$18a31`): unchanged (`$01`, same byte, both times).
+- **TUNNEL's live portal table** (`$037e48`, both 70-byte entries, 140 bytes total): byte-for-byte
+  identical before and after.
+
+**Completely inert.** This isn't a new finding in isolation — it's consistent with, and closes the
+gap in, §21c's already-established static finding that genuine AABB overlap with this object is
+unreachable by ordinary movement (§20b: hard-blocked, zero clearance, on both sides facing it), so
+the classification/touch code that would ever read this flag never executes for this object at all.
+What this pass adds is the missing live half: holding the flag set for real, for millions of steps,
+also rules out any mechanism *outside* that collision path polling it in the background. Between
+the two, "does anything react to this specific flag, ever, under any condition this spike can drive
+to" is now a closed negative, not an inferred one.
+
+### 28b. Priority 2a/2b — both already closed by the 18th pass; re-run confirms it, finds nothing new
+
+`find_field_writers.py room2_lever_boundary.snap "2142(A5)"` (28 hits, all instructions in the
+whole loaded image referencing that field) filtered to the literal value `2` specifically finds
+exactly one site: `$007310: move.w #$2,2142(A5)`. This is not a new discovery — §18c already named
+this exact address as "the CAVERN/TUNNEL-door call site" while establishing that `2142(A5)` is a
+shared "which name to show" message-index register written by over a dozen unrelated routines with
+a couple of dozen different literal values, not a single-purpose room-load flag. Re-running the
+filtered search this pass confirms there is exactly one literal-`2` writer in the whole image, and
+it's the one already accounted for — no new lead. §18b/§18e's own finding (`$defa` is a
+name-banner/message-box display trigger, never gets near disk I/O, and no code path anywhere in
+this whole spike performs raw sector/FDC-level disk I/O for a room) stands, re-confirmed rather than
+re-derived.
+
+### 28c. Priority 2c — disassembled the "already resident" branch in full for the first time; it's
+    the game's own main loop, not a room-transition routine, and hides no copy/decompress step
+
+Every prior pass characterized `$69da` ("the already resident branch... just updates state and
+returns to the main loop") from register/flag behavior around a portal match, never from reading it
+directly. Disassembled it this pass (`disassemble.py --snap room2_lever_boundary.snap --linear
+69da 90`): it opens with `jsr $11898` (a VBL-wait/frame-sync call) followed by a long run of
+per-frame housekeeping — clearing/incrementing dozens of `(A5)+N` byte fields (animation counters,
+debounce timers, `2202(A5)`, `2480(A5)`, `2519(A5)`, etc.) and `jsr`ing out to half a dozen other
+small routines (`$e1fa`, `$af10`, `$dde8`, `$d78a`, `$14a90`, `$ebaa`). **`$69da` is the game's own
+main-loop re-entry point, not a room-transition-specific routine** — confirmed directly, not
+inferred: `room2_lever_boundary.snap`'s own resume PC (`$6b76`) sits inside this exact instruction
+range. There is no decompression or table-copy step hiding in "already resident" handling — it
+falls straight through to ordinary per-frame housekeeping, exactly as §13 originally read it from
+register behavior, now confirmed from the actual instructions. This specific hypothesis (a
+decompress/unpack step disguised as generic state update) is closed as a negative; the broader
+question — where room 3's own init/unpack code would actually live, if not here — is still open.
+
+### 28d. The reframe: LOCK(144) is very likely the wrong mechanism entirely, not a real-but-unreached
+    one — and that changes what the next pass should try
+
+§13's own retraction (17th pass) already carries user-supplied external ground truth: pulling
+TUNNEL's lever really does open a door to room 3 in the real game, on this exact one-disk Empire
+file. Fourteen passes (14th-27th) exhaustively searched for what calls LOCK on object 144 and found
+nothing; this pass held the flag set live for 5M steps and found nothing reacts to it either. Taken
+together with §21c's double negative (the object was never classified interactive to begin with,
+*and* genuine touch is unreachable by ordinary movement), the weight of evidence now points past
+"the caller isn't resident" (§25c/§26's reading) toward a stronger conclusion: **LOCK(144)/the
+`+15` bit-2 flag is probably not the door's real trigger mechanism at all** — a wrong hypothesis
+this spike has been chasing since the 23rd pass's own opcode-ID match made it look like the obvious
+candidate, not a dormant-but-real one. The concrete puzzle this leaves for whoever picks the spike
+up next: the real game's lever-pull genuinely works, but every tested approach to the object's own
+bbox is hard-blocked before reaching genuine overlap (§20b) — either the collision/interaction model
+this spike has mapped (§4/§27b, AABB-overlap-gated) isn't actually what governs a "pull" verb at
+all, or the reachable position tested (Left, walked flush from `room2_tunnel_entry.snap`) isn't the
+real trigger tile, or there's a still-uncharacterized input verb distinct from the generic interact
+gesture already exhausted (§13, §20d). Not chased further this pass — flagged here as the priority
+reframe for the 29th pass, ahead of any further LOCK-specific work.
+
 ## Files
 
 | File | What |
