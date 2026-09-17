@@ -1949,6 +1949,124 @@ real trigger tile, or there's a still-uncharacterized input verb distinct from t
 gesture already exhausted (§13, §20d). Not chased further this pass — flagged here as the priority
 reframe for the 29th pass, ahead of any further LOCK-specific work.
 
+## 29. Priority 1 re-examined live from a genuinely different approach route — still a real wall, not
+    a Left-only artefact; priorities 2/3 closed too (29th pass)
+
+Per `next_session.md`'s own priority order, following the 28th pass's reframe (§28d): stop chasing
+LOCK(144)'s caller and instead re-examine whether "hard-blocked, zero clearance" (§20b) is a real
+wall or an artefact of the one approach route (walking Left from `room2_tunnel_entry.snap`) this
+spike has always used.
+
+### 29a. Priority 1 — a genuinely new route (Down×3 then Left×3 from the room entry, not from the
+    boundary tile) reaches a different boundary tile on the object's *south* side; still exactly
+    1 unit short, still a hard wall, still inert to interact
+
+From `room2_tunnel_entry.snap`'s own start position (`x14-20,y6-12` — confirmed live, six units
+right of `room2_lever_boundary.snap`'s `x8-14,y6-12`, i.e. exactly the 13th pass's own Left-walk
+distance), drove **Down first** (three settled `kbd ff 02` packets, ≥90,000 steps each, §20a's own
+methodology) before ever pressing Left, reaching `y17-23` — well past the object's own `y12-15`
+band, the opposite side from every prior approach. Then **Left** from there: two settled packets
+move cleanly (`x20→x13→x7`), a third produces **zero movement** at `x6-12,y17-23` — a new hard
+block, one unit right of the object's own `x_min=5`, not the same tile any prior pass has stood on.
+**Up** from this new tile moves one unit (`y17-23→y16-22`) then also hard-blocks (zero movement on
+a second Up packet) — the player is now wedged at `x6-12,y16-22`, one unit *below* the object's own
+`y_max=15`, with its `x_min=6` already inside the object's own `x5-7` span. This is the mirror
+image of §20b's finding (there: y-adjacent/touching, x off by 1; here: x-overlapping, y off by 1) —
+**the same "exactly one unit of clearance, never true overlap" behaviour reproduces from a route
+that never uses the original Left-approach corridor at all**, closing the "is the wall an artefact
+of one route" question as no, confirmed from a second, independent direction.
+
+Interact (`kbd 50`/`kbd d0`) retried from this new south tile, watching the lever's own `+15` byte
+(`$06fa1d`) and TUNNEL's live portal table/count directly: **byte-for-byte identical before and
+after** — inert here too, matching every prior tile tested. Snapshot committed:
+`room2_lever_south_boundary.snap`.
+
+### 29b. Priority 1, cont. — true diagonal packets (not sequential axis moves) tested at both
+    corners; both fully blocked, no diagonal-squeeze past the 1-unit gap
+
+Tried a genuine simultaneous diagonal joystick packet (both direction bits in one `kbd` byte, not
+two sequential single-axis moves) at both boundary tiles, since a corner gap that blocks each axis
+individually sometimes still admits a diagonal move in engines that only collision-test one axis at
+a time:
+
+- From the new south tile (`x6-12,y16-22`), toward the object (up-left, `kbd ff 05`): **zero
+  movement**, twice.
+- From the original NE tile (`room2_lever_boundary.snap`, `x8-14,y6-12`), toward the object
+  (down-left, `kbd ff 06`): **zero movement**, twice.
+
+No diagonal squeeze either way. Combined with §29a, three independent approach vectors (NE
+straight-line, S straight-line, and true diagonals from both corners) all produce the identical
+"one unit short, hard wall" result. **Priority 1's own question is answered: this is a real
+collision wall around the object, not a single-route artefact** — the object's own live bbox
+(`x5-7,y12-15`) is genuinely unreachable by ordinary movement from any direction or combination
+this spike can generate, not just the one the 13th pass happened to use first.
+
+### 29c. Priority 2 — not live-tested; §17c already answers it analytically, and re-running it would
+    cost ~60M+ steps to reconfirm a already-derived certainty, not test a new hypothesis
+
+`next_session.md` asked for the save→reboot→restore test as untried; re-checking the 19th pass's
+own findings first (§17/§17c) shows it was already retired, for a stronger reason than "not yet
+tried": `$00b6e0` (SAVE-serialize)'s **only** caller in the whole loaded image is a boot-menu
+dispatch block with **zero external callers of its own** (§17a — confirmed by `find_ram_callers.py`
+on both `$b6e0` and its own caller `$b5a8`) — there is no player-reachable hotkey that invokes it at
+all, only an automatic run once at the very start of every boot, before any room has ever loaded,
+always against an empty type-8 table (§17b, confirmed live in three existing snapshots). Choosing
+"restore" instead of "ESC" at the boot menu would deserialize whatever a `"CAD "`-headed save buffer
+holds — but the only code that ever *writes* that buffer runs before type 8 has anything in it, so
+the buffer's own type-8 payload is empty by construction regardless of which menu branch runs after
+it. Re-running this live would only reconfirm §17c's own conclusion at the cost of a fresh cold
+boot (§17c's own data point: a `u b6e0 60000000` run-to-address from cold boot didn't even leave TOS
+ROM in 60,000,000 steps) — not worth spending this pass's step budget on a result already derived
+from two independent whole-image caller sweeps. **Genuinely still open, not closed by this
+reasoning**: whether the in-memory `"CAD "` buffer ever reaches a real disk sector at all (§17c's
+own flagged loose end) — but even a real on-disk save from an *earlier* session would need that
+earlier session to have registered a room into type 8 while playing, which nothing in the currently
+understood code does either. Not chased further this pass.
+
+### 29d. Priority 3 — the 6 alias action ids, each driven through the real IKBD pipeline for the
+    first time (not the hand-write shortcut); completely inert, closing this as a live negative
+
+The 9th pass's own callcap/hand-write sweep (README "9th pass, cont.") proved that installing an
+action id's script pointer by hand is **not** equivalent to a real keypress for at least one
+known-good case (Down/101) — the real IKBD dispatch path does something beyond the `$15bf4` install
+that a memory write doesn't reproduce. That gap meant the 6 *alias* ids (`127/129/158/159/188/198`,
+`ai.md`-adjacent `KeyDispatchTable` values `$7f/$81/$9e/$9f/$bc/$c6`) had only ever been
+"tested" by table-structure inspection (all pointing at the same `$16fe4` no-op script) or by the
+hand-write method the 9th pass itself flagged as unreliable — never by a real bound key through the
+real pipeline, and never at the lever specifically. Re-dumped the live 61-entry `KeyDispatchTable`
+(`m 1616d 305`) from `room2_lever_boundary.snap` to find one real scancode per alias id (`$15`→127,
+`$3a`→129, `$23`→158, `$42`→159, `$3c`→188, `$24`→198 — matches the 9th/12th-pass id lists exactly,
+confirming the table is unchanged), then drove each through `kbd <make>`/`kbd <break>` (500k-step
+settle before, 1M-step hold after, mirroring the 9th pass's own per-id discipline) from the lever
+boundary tile, checking the player's own bbox, the lever's `+15` byte, and TUNNEL's portal table
+after each. **All 6 are completely inert** — zero bbox change, zero flag change, zero portal-table
+change, every time. Combined with the already-exhausted 12 real ids (9th pass) and the basic
+interact/fire/space sweep (13th pass), **every action id this game's dispatch table can produce, for
+every scancode that reaches one, has now been driven through the real input pipeline at the lever
+specifically, with no effect** — this thread is now exhausted, not just structurally implied.
+
+**Not attempted this pass**: priority 3's other half (retest with the pickaxe held at the lever
+boundary) — the navigation cost from `axe_touch.snap` (CAVERN) through to TUNNEL's lever is
+unexplored and the 21st pass already carries direct user ground truth that the lever needs no item,
+only the interact action, making a null result the likely outcome. Flagged for whoever picks this
+up next rather than spent on this pass's own budget.
+
+### 29e. Where this leaves the spike
+
+Every concrete lead `next_session.md` listed for this pass is now closed: priority 1 (route
+artefact) — no, confirmed from three independent vectors; priority 2 (save/restore) — already
+analytically closed by the 19th pass, re-confirmed rather than re-run; priority 3 (alias ids) —
+closed live. The one item genuinely left untried is the pickaxe-at-the-lever retest (§29d), already
+flagged as low-value by the spike's own user-supplied ground truth. With the LOCK(144)-caller
+thread also closed (§28) and every input class/position/action-id combination this spike can
+generate now exhausted against the lever specifically, **the honest state of play is that this
+spike's whole toolset (REPL-driven movement, the full interact/fire/keyboard action space, and
+every reachable tile including corners and diagonals) has been exhausted against this specific
+puzzle** — any further progress most likely needs either the still-undecoded `$defa`/room-3-load
+path (§28c's own open half), or accepting that this door's real trigger lives in code this
+playthrough's RAM image has never loaded at all (consistent with §27d's finding that room 3's own
+init/script data, unlike CAVERN/TUNNEL's, has never been shown resident).
+
 ## Files
 
 | File | What |
@@ -1957,4 +2075,5 @@ reframe for the 29th pass, ahead of any further LOCK-specific work.
 | `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar reads "TUNNEL" only (no "LEVER"), the resume point behind §20c/§20d's clean readings; untracked like the other `.snap` resume points |
 | `lever_hotspot_gone_3units_down.png` | 21st pass: screenshot at the snapshot above, proving the "LEVER" name-hotspot is gone 3 units below the baseline tile |
 | `axe_touch.snap` | 20th pass: live snapshot with the pickaxe just picked up (status bar "PICKAXE", inventory count 22→23) — resume point for §19c's next step (travel to TUNNEL's lever and retest with it held); untracked like the other `.snap` resume points |
+| `room2_lever_south_boundary.snap` | 29th pass: live snapshot at the new south-approach hard-block tile (`x6-12,y16-22`, §29a) — reached via Down×3 then Left×3 from `room2_tunnel_entry.snap`, a genuinely different route from the original Left-only approach; untracked like the other `.snap` resume points |
 | `axe_touch.png` | 20th pass: screenshot at the snapshot above, status bar reading "PICKAXE" / "CAVERN" |
