@@ -649,6 +649,33 @@ module Bcd =
         if carry then ccr <- ccr ||| 0x1s ||| 0x10s          //C and X
         result, ccr
 
+    ///NBCD (negate packed-BCD byte: dest = 0 - src - X, decimal), transcribed line-for-line from
+    ///`gencpu.c` `case i_NBCD:` (`cpu_level` 0) - deliberately NOT `step false` with a zero dest,
+    ///since NBCD's carry test (`(newv & 0x1F0) > 0x90`) is a differently-shaped formula from
+    ///SBCD's (`((dst&0xFF)-(src&0xFF)-bcd-x) & 0x300 > 0xFF`) - see
+    ///[[bcd-and-undefined-flags-transcribe-dont-recall]]. `newv_lo`/`newv_hi`/`newv` are C
+    ///`uae_u16` (unsigned 16-bit) locals in the original - masked to `&&& 0xFFFF` at every
+    ///assignment to reproduce their wraparound; `tmp_newv` is a plain (unmasked) `int` sum of two
+    ///such values. Returns (result byte, new CCR).
+    let negate (curCCR: int16) (xFlag: bool) (source: int) : int * int16 =
+        let x1 = if xFlag then 1 else 0
+        let s = source &&& 0xff
+        let newvLo0 = (0 - (s &&& 0xF) - x1) &&& 0xFFFF
+        let newvHi0 = (0 - (s &&& 0xF0)) &&& 0xFFFF
+        let tmpNewv = newvHi0 + newvLo0
+        let newvLo1 = if newvLo0 > 9 then (newvLo0 - 6) &&& 0xFFFF else newvLo0
+        let newv1 = (newvHi0 + newvLo1) &&& 0xFFFF
+        let cflg = (newv1 &&& 0x1F0) > 0x90
+        let newv2 = if cflg then (newv1 - 0x60) &&& 0xFFFF else newv1
+        let result = newv2 &&& 0xFF
+        let vFlag = (tmpNewv &&& 0x80) <> 0 && (newv2 &&& 0x80) = 0
+        let mutable ccr = curCCR &&& ~~~0x8s &&& ~~~0x2s &&& ~~~0x1s &&& ~~~0x10s
+        if newv2 &&& 0x80 <> 0 then ccr <- ccr ||| 0x8s      //N
+        if result <> 0 then ccr <- ccr &&& ~~~0x4s           //Z  (accumulative)
+        if vFlag then ccr <- ccr ||| 0x2s                    //V
+        if cflg then ccr <- ccr ||| 0x1s ||| 0x10s           //C and X
+        result, ccr
+
 //type AddressRegister =
     //| A0 of int
     //| A1 of int
@@ -1802,6 +1829,19 @@ type Cpu =
             printfn "clr.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
             newCpu
 
+        | NBCD(eamode, eareg) ->
+            //NBCD <ea>: negate the destination byte as packed BCD (dest = 0 - dest - X, decimal).
+            //Byte-only RMW, migrated straight onto the shared EA decoder like CLR/NOT/TAS - no
+            //explicit illegal-EA guard needed, same as those three (WriteEa's generic EaImm/EaAn
+            //arms already fail an An-direct/#imm/PC-relative destination with their own message).
+            let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Byte eamode eareg (x.PC + 2)
+            let source = x.ReadEa OperandSize.Byte loc
+            let result, ccr = Bcd.negate x.CCR x.X source
+            let written = x.WriteEa OperandSize.Byte loc result (regUpdate x)
+            let newCpu = { written with PC = x.PC + 2 + extBytes; CCR = ccr }
+            printfn "nbcd %s" desc
+            newCpu
+
         | TAS(eamode, eareg) ->
             //TAS: byte-only atomic test-and-set. Read the operand byte, set N/Z from it (V/C
             //cleared, X untouched - same as TST), then write it back with bit 7 forced to 1.
@@ -2351,17 +2391,45 @@ type Cpu =
                             (x.WithAddressRegister eareg (srcAddr+sStep)).WithAddressRegister register (destAddr+dStep)
                         printfn "cmpm.b (a%u)+,(a%u)+" eareg register
                         {newCpu with PC = x.PC+2; CCR = ccr}
-                    | 0b101uy -> //CMPM.W (An)+,(An)+ - both sides always postincrement by 2
+                    | 0b101uy -> //CMPM.W (An)+,(An)+ - both sides always postincrement by 2. Word
+                        //reads can hit an odd address (address error); prime MMU.FaultRegFixup
+                        //before each read the same way CMPM.L does below - see that case's comment.
                         let srcAddr = x.AddressRegister eareg
+                        x.MMU.FaultRegFixup <- [(int eareg, srcAddr + 2)]
                         let source = int16 (x.MMU.ReadWord(uint32 srcAddr))
                         let destAddr = if eareg = register then srcAddr + 2 else x.AddressRegister register
+                        x.MMU.FaultRegFixup <-
+                            if eareg = register then [(int register, destAddr + 2)]
+                            else [(int eareg, srcAddr + 2); (int register, destAddr + 2)]
                         let dest = int16 (x.MMU.ReadWord(uint32 destAddr))
                         let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest source
                         let newCpu =
                             (x.WithAddressRegister eareg (srcAddr+2)).WithAddressRegister register (destAddr+2)
                         printfn "cmpm.w (a%u)+,(a%u)+" eareg register
                         {newCpu with PC = x.PC+2; CCR = ccr}
-                    | _ -> failwithf "cmpm.l not implemented"
+                    | 0b110uy -> //CMPM.L (An)+,(An)+ - both sides always postincrement by 4, same as
+                        //CMPM.W's uniform step (unlike CMPM.B, where only the byte size gives A7 the
+                        //special 2-byte step to keep the stack word-aligned - long is already aligned).
+                        //Long reads can hit an odd address (address error) - real hardware's (An)+
+                        //EA computation commits the postincrement regardless of whether the read that
+                        //follows faults (the same Aipi convention ResolveEa's shared path already
+                        //uses everywhere else), so prime MMU.FaultRegFixup before each read; the
+                        //second priming merges in the first read's already-completed update, same
+                        //shape as the 107th pass's mem->mem MOVE fixup merge.
+                        let srcAddr = x.AddressRegister eareg
+                        x.MMU.FaultRegFixup <- [(int eareg, srcAddr + 4)]
+                        let source = x.MMU.ReadLong(uint32 srcAddr)
+                        let destAddr = if eareg = register then srcAddr + 4 else x.AddressRegister register
+                        x.MMU.FaultRegFixup <-
+                            if eareg = register then [(int register, destAddr + 4)]
+                            else [(int eareg, srcAddr + 4); (int register, destAddr + 4)]
+                        let dest = x.MMU.ReadLong(uint32 destAddr)
+                        let ccr = CCR.Subtract_IgnoringX x.CCR dest source
+                        let newCpu =
+                            (x.WithAddressRegister eareg (srcAddr+4)).WithAddressRegister register (destAddr+4)
+                        printfn "cmpm.l (a%u)+,(a%u)+" eareg register
+                        {newCpu with PC = x.PC+2; CCR = ccr}
+                    | _ -> failwithf "cmpm: opmode %x not a valid CMPM size" opmode
                 | _ ->
                     x.RegEaOp "eor" opmode register eamode eareg true
                         (fun sz dest source -> let r = dest ^^^ source in r, x.LogicalCcr sz r)

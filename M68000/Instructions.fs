@@ -674,6 +674,14 @@ module Instructions =
             else None
         else None
 
+    /// 0100 1000 00 mmm rrr : NBCD <ea> - negate packed-BCD byte (dest = 0 - dest - X, decimal).
+    let (|NBCD|_|) data =
+        if data &&& 0b1111111111000000 = 0b0100100000000000 then
+            let eamode = byte (data >>> 3) &&& 0b111uy
+            let eareg = byte data &&& 0b111uy
+            Some(eamode, eareg)
+        else None
+
     /// 0100 1000 1s 000 rrr : EXT (s: 0=EXT.W byte->word, 1=EXT.L word->long, sign-extend Dn in place)
     let (|EXT|_|) data =
         if data &&& 0b1111111110111000 = 0b0100100010000000 then
