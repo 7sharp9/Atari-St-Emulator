@@ -1533,8 +1533,17 @@ type Cpu =
 
             let srcLoc, srcExt, srcDesc, srcUpdate = x.ResolveEa size sMode sReg (x.PC + 2)
             let rawSource = x.ReadEa size srcLoc
+            //Captured before the destination's ResolveEa call below, which unconditionally
+            //overwrites MMU.FaultRegFixup for an Api/Aipi destination - the source's own commit
+            //(its read already completed, so its register update is real on actual hardware
+            //regardless of what later happens to the destination) must be merged back in, not
+            //discarded (107th pass - "mem->mem double-register-update-lost-on-fault", 104th's
+            //characterisation).
+            let srcFaultFixup = x.MMU.FaultRegFixup
             let x = srcUpdate x
+            x.MMU.FaultRegFixup <- []
             let dstLoc, dstExt, dstDesc, dstUpdate = x.ResolveEa size dMode dReg (x.PC + 2 + srcExt)
+            let dstOwnFaultFixup = x.MMU.FaultRegFixup
             let newPC = x.PC + 2 + srcExt + dstExt
             //Three destination-addressing-mode quirks in the group-0 frame a faulting MOVE write
             //stacks, all verified against real dump_vector.py MOVE.w/.l --frame samples (104th
@@ -1558,13 +1567,41 @@ type Cpu =
             //of that addressing mode - a source read, or a read-before-write like CLR/NOT/TAS -
             //where the register update happens before/alongside the access and so does survive a
             //fault); undo it here, specific to MOVE's destination position.
-            if dMode = 0b011uy then x.MMU.FaultRegFixup <- []
+            let dstFaultFixup = if dMode = 0b011uy then [] else dstOwnFaultFixup
+            //Merge the destination's own contribution back with the source's: a register the
+            //destination didn't touch keeps whatever the source committed (the fix above); the
+            //same register on both sides (an aliased mem->mem MOVE) lets the destination's entry
+            //win, matching real hardware's last-write-stands ordering.
+            let mergeFixup (dstFix: (int * int) list) =
+                let dstRegs = dstFix |> List.map fst |> Set.ofList
+                (srcFaultFixup |> List.filter (fun (r, _) -> not (dstRegs.Contains r))) @ dstFix
+            x.MMU.FaultRegFixup <- mergeFixup dstFaultFixup
 
             match dstLoc with
             | EaAn r ->
                 let value = match size with OperandSize.Word -> int (int16 rawSource) | _ -> rawSource
                 printfn "movea.%s %s,A%u" sizeChar srcDesc r
                 { x.WithAddressRegister r value with PC = newPC }
+            | EaMem a when size = OperandSize.Long && dMode = 0b100uy ->
+                //Real 68000 hardware decrements a LONG -(An) destination in TWO word-sized bus
+                //cycles: the low word writes first at An-2 (`a+2` - ResolveEa already committed
+                //the FULL predecrement, `a` = An-4), then An is considered decremented again and
+                //the high word writes at An-4 (`a`). A fault on that FIRST write leaves An at
+                //An-2, not the fully-decremented An-4 our ResolveEa/FaultRegFixup convention
+                //assumes for every other predecrement - verified against dump_vector.py MOVE.l
+                //--frame samples (104th pass's characterisation, landed 107th). CLR/NOT/TAS's own
+                //-(An) faults never exposed this (0 residual, 103rd pass) because a -(An) LONG
+                //READ commits the full -4 in one bus cycle on real hardware; only a WRITE splits
+                //it into two.
+                let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR rawSource
+                x.MMU.FaultCcr <- Some ccr
+                let x = dstUpdate x
+                x.MMU.FaultRegFixup <- mergeFixup [(int dReg, int a + 2)]
+                x.MMU.WriteWord (a + 2u) (int16 rawSource)
+                x.MMU.FaultRegFixup <- mergeFixup dstFaultFixup
+                x.MMU.WriteWord a (int16 (rawSource >>> 16))
+                printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
+                { x with PC = newPC; CCR = ccr }
             | _ ->
                 let ccr =
                     match size with
