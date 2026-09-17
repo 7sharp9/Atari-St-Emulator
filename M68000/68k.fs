@@ -2173,7 +2173,21 @@ type Cpu =
                     //Unlike JSR, the 68000 pushes the return address THEN prefetches, so an odd
                     //target faults with the push already committed (frame delta 18, not 14).
                     x.FetchTargetOrFault {x with PC = newPC; A7 = newSP} instruction
-                | 0xFFuy -> failwith "Not yet supprted" //32-bit displacement (68020+)
+                | 0xFFuy ->
+                    //Not the 68020+ 32-bit-displacement encoding - on real cpu_level-0 hardware
+                    //this opcode variant never reads an extension word at all. BSR's condition is
+                    //always "true", so it always takes gencpu.c's i_Bcc cpu_level<2 fault path:
+                    //exception3_read_prefetch(opcode, oldpc+1), an unconditional address error at
+                    //PC+1 (deliberately odd). Verified field-for-field against real
+                    //tests/680x0/BSR.json.gz $FF vectors (case 61ff): faultAddress=ini.PC+1,
+                    //stackedPC=faultAddress-4, mode/opcode/SR all match FetchTargetOrFault's
+                    //existing bit-packing exactly - same machinery an odd *computed* target already
+                    //uses, just fed a forced-odd PC instead. ssp delta is 18 not 14 (return addr =
+                    //PC+2, pushed first) - same "push-then-fault" convention the .w/.s arms use.
+                    let returnAddr = x.PC + 2
+                    x.MMU.WriteLong (uint32 newSP) returnAddr
+                    printfn "bsr.l (unsupported disp - address error)"
+                    x.FetchTargetOrFault {x with PC = x.PC + 1; A7 = newSP} instruction
                 | byteDisp ->
                     let returnAddr = x.PC + 2
                     x.MMU.WriteLong (uint32 newSP) returnAddr
@@ -2188,7 +2202,19 @@ type Cpu =
                     let newPC = if takeBranch then (x.PC+2) + int wordDisp else x.PC + 4
                     printfn "b%s.w $%x (%b)" (conditionName cond) newPC takeBranch
                     x.FetchTargetOrFault {x with PC = newPC} instruction
-                | 0xFFuy -> failwith "Not yet supprted" //32-bit displacement (68020+)
+                | 0xFFuy ->
+                    //Not the 68020+ 32-bit-displacement encoding - see the BSR 0xFFuy arm above for
+                    //the full derivation (same gencpu.c cpu_level<2 path, same vector verification
+                    //shape, this instruction's own case 67ff/62ff/68ff). Not-taken: falls straight
+                    //through as a plain 2-byte skip, no extension word read, no fault - verified
+                    //fin.pc=ini.pc+2/fin.ssp unchanged on real vectors. Taken: same forced-odd-PC
+                    //FetchTargetOrFault reuse as BSR, no return-address push (Bcc isn't a call).
+                    if takeBranch then
+                        printfn "b%s.l (unsupported disp - address error)" (conditionName cond)
+                        x.FetchTargetOrFault {x with PC = x.PC + 1} instruction
+                    else
+                        printfn "b%s.l $%x (false, not taken)" (conditionName cond) (x.PC + 2)
+                        {x with PC = x.PC + 2}
                 | byteDisp ->
                     let newPC = if takeBranch then (x.PC+2) + int (sbyte byteDisp) else x.PC + 2
                     printfn "b%s.s $%x (%b)" (conditionName cond) newPC takeBranch
