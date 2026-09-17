@@ -1623,57 +1623,19 @@ type Cpu =
             //Unprivileged, unlike Move2SR - only the low byte (condition codes) is replaced,
             //S/T/interrupt-mask (the CCR's upper byte) are left untouched, and no WithSR/A7
             //swap applies since this can never change the S bit.
-            match mode with
-            | 0b000uy -> //Dn
-                let source = int16 (x.DataRegister register)
-                //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
-                //(they read back as 0), same masking bug as commit a4f473e for the -to-CCR immediates.
-                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0x1fs)
-                printfn "move D%u,ccr" register
-                {x with PC = x.PC+2; CCR = newCcr}
-            | 0b111uy when register = 0b100uy -> //#imm
-                let source = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
-                //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
-                //(they read back as 0), same masking bug as commit a4f473e for the -to-CCR immediates.
-                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0x1fs)
-                printfn "move #$%x,ccr" source
-                {x with PC = x.PC+4; CCR = newCcr}
-            | _ ->
-                //Memory source: MOVE <ea>,CCR reads a word, only the low byte reaches the CCR.
-                //The addressing-mode side effect (Api/Aipi register update, or how many extension
-                //bytes have already been consumed) commits even when this read itself faults -
-                //same FaultRegFixup/FaultPcAdvance convention as ResolveEa/MoveFromSR (see MMU.fs);
-                //Move2CCR/Move2SR are hand-rolled ladders, not on that shared path, so set them here.
-                let addr, pcAdv, regFix =
-                    match mode with
-                    | 0b010uy -> uint32 (x.AddressRegister register), 2, id                                  //(An)
-                    | 0b011uy ->
-                        let newValue = x.AddressRegister register + 2
-                        x.MMU.FaultRegFixup <- [(int register, newValue)]
-                        uint32 (x.AddressRegister register), 2, (fun (c: Cpu) -> c.WithAddressRegister register newValue) //(An)+
-                    | 0b100uy ->
-                        let newValue = x.AddressRegister register - 2
-                        x.MMU.FaultRegFixup <- [(int register, newValue)]
-                        uint32 newValue, 2, (fun (c: Cpu) -> c.WithAddressRegister register newValue) //-(An)
-                    | 0b101uy ->
-                        let addr = uint32 (x.AddressRegister register + int (int16 (x.MMU.ReadWord(uint32 (x.PC+2)))))
-                        x.MMU.FaultPcAdvance <- 2
-                        addr, 4, id //(d16,An)
-                    | 0b111uy when register = 0b000uy ->
-                        let addr = uint32 (int (int16 (x.MMU.ReadWord(uint32 (x.PC+2)))))
-                        x.MMU.FaultPcAdvance <- 2
-                        addr, 4, id  //(xxx).W
-                    | 0b111uy when register = 0b001uy ->
-                        let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                        x.MMU.FaultPcAdvance <- 4
-                        addr, 6, id               //(xxx).L
-                    | _ -> failwithf "move2ccr not implemented for mode %x" mode
-                let source = int16 (x.MMU.ReadWord addr)
-                //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
-                //(they read back as 0), same masking bug as commit a4f473e for the -to-CCR immediates.
-                let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0x1fs)
-                printfn "move <ea mode %x reg %u>,ccr" mode register
-                { regFix x with PC = x.PC + pcAdv; CCR = newCcr }
+            //An-direct is not a legal MOVE source EA (same restriction CHK enforces on its <ea>).
+            if mode = 0b001uy then failwithf "move ccr: An source is illegal (register %x)" register
+            //Bound fetch through the shared EA decoder (Dn/#imm/every memory mode, including
+            //(d8,An,Xn) and both PC-relative forms, none of which the old hand-rolled ladder had) -
+            //ResolveEa already carries the Api/Aipi register-update-commits-on-fault and
+            //FaultPcAdvance conventions this instruction needs.
+            let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word mode register (x.PC + 2)
+            let source = int16 (x.ReadEa OperandSize.Word loc)
+            //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
+            //(they read back as 0), same masking bug as commit a4f473e for the -to-CCR immediates.
+            let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0x1fs)
+            printfn "move %s,ccr" desc
+            { regUpdate x with PC = x.PC + 2 + extBytes; CCR = newCcr }
 
         | Move2SR(mode, register) ->
             //Hack, not sure about this
@@ -1684,73 +1646,40 @@ type Cpu =
             //Only SR bits T(15), S(13), I2-I0(10-8) and CCR(4-0) are implemented on the 68000;
             //bits 14,12,11,7,6,5 read back as 0, so mask every written value to 0xA71F - same
             //unused-bit-leak bug as commit a4f473e (ORI/ANDI/EORI to SR).
-            if mode = 0x7 && register = 0b100 then
-                //load data
-                let register = int16 (x.MMU.ReadWord (uint32 (x.PC+2)) &&& 0xA71F)
-                printfn "move #%0x, sr" register
-                {x.WithSR register with PC = x.PC + 4}
-            elif mode = 0x0 then //Dn
-                let reg = byte register
-                let newCcr = int16 (x.DataRegister reg &&& 0xA71F)
-                printfn "move D%u,sr" reg
-                {x.WithSR newCcr with PC = x.PC + 2}
-            elif mode = 0x3 then //(An)+
-                let reg = byte register
-                let addr = x.AddressRegister reg
-                //The postincrement commits even if this read faults - see MMU.FaultRegFixup
-                //(Move2SR is a hand-rolled ladder, not on the shared ResolveEa path).
-                x.MMU.FaultRegFixup <- [(int reg, addr + 2)]
-                let newCcr = int16 (x.MMU.ReadWord(uint32 addr) &&& 0xA71F)
-                //Post-increment BEFORE the privilege switch: for MOVE (A7)+,SR the bump must land
-                //on the stack we actually popped from (the pre-switch A7), leaving the other
-                //stack pointer untouched. WithSR then swaps A7/USP/SSP from that bumped state.
-                let bumped = x.WithAddressRegister reg (addr + 2)
-                let newCpu = {bumped.WithSR newCcr with PC = x.PC + 2}
-                printfn "move (a%u)+,sr" reg
-                newCpu
-            elif mode = 0x7 && register = 0b001 then //(xxx).L
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                //The abs.l extension word is already consumed by the time this read can fault,
-                //so the stacked PC lands 4 bytes further into the instruction (FaultPcAdvance) -
-                //same shape as MoveFromSR's (xxx).L arm.
-                x.MMU.FaultPcAdvance <- 4
-                let newCcr = int16 (x.MMU.ReadWord addr &&& 0xA71F)
-                printfn "move $%x.l,sr" addr
-                {x.WithSR newCcr with PC = x.PC + 6}
-            else
-                failwithf "mode %A, register %A not implemented for move2sr" mode register
+            let mode = byte mode
+            let register = byte register
+            //An-direct is not a legal MOVE source EA (same restriction CHK enforces on its <ea>).
+            if mode = 0b001uy then failwithf "move sr: An source is illegal (register %x)" register
+            let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word mode register (x.PC + 2)
+            let newCcr = int16 (x.ReadEa OperandSize.Word loc &&& 0xA71F)
+            //The EA's register side effect (Api/Aipi predecrement/postincrement, e.g. MOVE
+            //(A7)+,SR) must commit BEFORE the privilege switch, so the bump lands on the stack we
+            //actually popped from (the pre-switch A7), leaving the other stack pointer untouched.
+            //WithSR then swaps A7/USP/SSP from that already-updated state.
+            let updated = regUpdate x
+            printfn "move %s,sr" desc
+            { updated.WithSR newCcr with PC = x.PC + 2 + extBytes }
         | MoveFromSR(eamode, eareg) ->
+            //Destination-only: real hardware doesn't encode An-direct, #imm, or either
+            //PC-relative form here (MOVE SR,<ea> is a write, not a MOVE-source), so ResolveEa is
+            //never called with those mode/reg pairs - guard them the same way CHK/LEA guard their
+            //own illegal EAs, rather than letting WriteEa's generic EaImm failwith stand in.
             match eamode with
-            | 0b000uy -> //Dn
-                let currentValue = x.DataRegister eareg
-                let newValue = (currentValue &&& ~~~0xffff) ||| (int x.CCR &&& 0xffff)
-                let newCpu = {x.WithDataRegister eareg newValue with PC = x.PC+2}
-                printfn "move sr,D%u" eareg
+            | 0b001uy -> failwithf "move sr: An destination is illegal (eareg %x)" eareg
+            | 0b111uy when eareg = 0b010uy || eareg = 0b011uy || eareg = 0b100uy ->
+                failwithf "move sr: illegal destination mode %x reg %x" eamode eareg
+            | _ ->
+                let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
+                //68000 (cpu_level 0, gencpu.c i_MVSR2): for a memory destination, a dummy read of
+                //the destination happens and is discarded before the real write (Dn has no such
+                //bus cycle, but a register read here is side-effect-free). On an odd EA the dummy
+                //read is what faults, so the group-0 frame's R/W bit reads READ, not WRITE - the
+                //same reason CLR reads-before-writing (103rd pass).
+                x.ReadEa OperandSize.Word loc |> ignore
+                let written = x.WriteEa OperandSize.Word loc (int x.CCR) x
+                let newCpu = { regUpdate written with PC = x.PC + 2 + extBytes }
+                printfn "move sr,%s" desc
                 newCpu
-            | 0b100uy -> //-(An)
-                //68000 (cpu_level 0, gencpu.c i_MVSR2): the address register predecrements as
-                //part of EA resolution (committed even on a fault), then a dummy read of the
-                //destination happens and is discarded, then the real write. On an odd EA the
-                //dummy read is what faults, so the group-0 frame's R/W bit reads READ, not WRITE.
-                let newAddr = x.AddressRegister eareg - 2
-                x.MMU.FaultRegFixup <- [(int eareg, newAddr)]
-                x.MMU.ReadWord (uint32 newAddr) |> ignore
-                x.MMU.WriteWord (uint32 newAddr) x.CCR
-                let newCpu = {x.WithAddressRegister eareg newAddr with PC = x.PC+2}
-                printfn "move sr,-(a%u)" eareg
-                newCpu
-            | 0b111uy when eareg = 0b001uy -> //(xxx).L
-                //Same dummy-read-first shape as -(An) above. The abs.l extension word is already
-                //consumed by the time the dummy read can fault, so the stacked PC lands 4 bytes
-                //further into the instruction (FaultPcAdvance).
-                let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
-                x.MMU.FaultPcAdvance <- 4
-                x.MMU.ReadWord addr |> ignore
-                x.MMU.WriteWord addr x.CCR
-                let newCpu = {x with PC = x.PC+6}
-                printfn "move sr,$%x.l" addr
-                newCpu
-            | _ -> failwithf "move sr not implemented for eamode %x" eamode
 
         | Reset ->
             if x.S then printfn "reset"
