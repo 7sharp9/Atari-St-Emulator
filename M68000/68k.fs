@@ -1603,14 +1603,33 @@ type Cpu =
                 {x with PC = x.PC+4; CCR = newCcr}
             | _ ->
                 //Memory source: MOVE <ea>,CCR reads a word, only the low byte reaches the CCR.
+                //The addressing-mode side effect (Api/Aipi register update, or how many extension
+                //bytes have already been consumed) commits even when this read itself faults -
+                //same FaultRegFixup/FaultPcAdvance convention as ResolveEa/MoveFromSR (see MMU.fs);
+                //Move2CCR/Move2SR are hand-rolled ladders, not on that shared path, so set them here.
                 let addr, pcAdv, regFix =
                     match mode with
                     | 0b010uy -> uint32 (x.AddressRegister register), 2, id                                  //(An)
-                    | 0b011uy -> uint32 (x.AddressRegister register), 2, (fun (c: Cpu) -> c.WithAddressRegister register (x.AddressRegister register + 2)) //(An)+
-                    | 0b100uy -> uint32 (x.AddressRegister register - 2), 2, (fun (c: Cpu) -> c.WithAddressRegister register (x.AddressRegister register - 2)) //-(An)
-                    | 0b101uy -> uint32 (x.AddressRegister register + int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))), 4, id //(d16,An)
-                    | 0b111uy when register = 0b000uy -> uint32 (int (int16 (x.MMU.ReadWord(uint32 (x.PC+2))))), 4, id  //(xxx).W
-                    | 0b111uy when register = 0b001uy -> uint32 (x.MMU.ReadLong(uint32 (x.PC+2))), 6, id               //(xxx).L
+                    | 0b011uy ->
+                        let newValue = x.AddressRegister register + 2
+                        x.MMU.FaultRegFixup <- [(int register, newValue)]
+                        uint32 (x.AddressRegister register), 2, (fun (c: Cpu) -> c.WithAddressRegister register newValue) //(An)+
+                    | 0b100uy ->
+                        let newValue = x.AddressRegister register - 2
+                        x.MMU.FaultRegFixup <- [(int register, newValue)]
+                        uint32 newValue, 2, (fun (c: Cpu) -> c.WithAddressRegister register newValue) //-(An)
+                    | 0b101uy ->
+                        let addr = uint32 (x.AddressRegister register + int (int16 (x.MMU.ReadWord(uint32 (x.PC+2)))))
+                        x.MMU.FaultPcAdvance <- 2
+                        addr, 4, id //(d16,An)
+                    | 0b111uy when register = 0b000uy ->
+                        let addr = uint32 (int (int16 (x.MMU.ReadWord(uint32 (x.PC+2)))))
+                        x.MMU.FaultPcAdvance <- 2
+                        addr, 4, id  //(xxx).W
+                    | 0b111uy when register = 0b001uy ->
+                        let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                        x.MMU.FaultPcAdvance <- 4
+                        addr, 6, id               //(xxx).L
                     | _ -> failwithf "move2ccr not implemented for mode %x" mode
                 let source = int16 (x.MMU.ReadWord addr)
                 //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
@@ -1641,6 +1660,9 @@ type Cpu =
             elif mode = 0x3 then //(An)+
                 let reg = byte register
                 let addr = x.AddressRegister reg
+                //The postincrement commits even if this read faults - see MMU.FaultRegFixup
+                //(Move2SR is a hand-rolled ladder, not on the shared ResolveEa path).
+                x.MMU.FaultRegFixup <- [(int reg, addr + 2)]
                 let newCcr = int16 (x.MMU.ReadWord(uint32 addr) &&& 0xA71F)
                 //Post-increment BEFORE the privilege switch: for MOVE (A7)+,SR the bump must land
                 //on the stack we actually popped from (the pre-switch A7), leaving the other
@@ -1651,6 +1673,10 @@ type Cpu =
                 newCpu
             elif mode = 0x7 && register = 0b001 then //(xxx).L
                 let addr = uint32 (x.MMU.ReadLong(uint32 (x.PC+2)))
+                //The abs.l extension word is already consumed by the time this read can fault,
+                //so the stacked PC lands 4 bytes further into the instruction (FaultPcAdvance) -
+                //same shape as MoveFromSR's (xxx).L arm.
+                x.MMU.FaultPcAdvance <- 4
                 let newCcr = int16 (x.MMU.ReadWord addr &&& 0xA71F)
                 printfn "move $%x.l,sr" addr
                 {x.WithSR newCcr with PC = x.PC + 6}
