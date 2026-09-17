@@ -1159,6 +1159,706 @@ one-disk-image playthrough's known room layout doesn't offer a path to), or the 
 somewhere this spike's whole-image static sweeps (§15c/§17a's own techniques) haven't pointed a
 caller-graph search at yet. Not chased further this pass, per its own scope.
 
+## 21. The lever's own object-array entry, read in full and run through §4's own interactive-
+    classification test (22nd pass) — it fails: the object is PLAIN SCENERY, not interactive/pickup
+
+Following §20's own handoff (whether the lever's object is even flagged "interactive" by §4's
+classification, before spending more time on §18a's never-traced generic action-script dispatcher).
+A handful of targeted `m` reads against `room2_lever_boundary.snap` (A5=`$18152` confirmed live, as
+in every snapshot this spike has produced), no live stepping.
+
+### 21a. TUNNEL's sprite-object array base is `$038338`, same address CAVERN's happens to use — now
+    confirmed live for TUNNEL specifically, not carried over by assumption
+
+`SpriteObjectArrayPtr_A5Plus56` (`$1818a`) reads `00 03 83 38` = `$038338`; the count at
+`SpriteObjectArrayCount_A5Plus1152` (`$185d2`) reads `2`, matching §4/§10b's stride-`$46`, 2-entry
+picture for TUNNEL exactly. The one non-player entry (slot 1, base + `$46` = `$03837e`) dumped in
+full, all 70 bytes:
+
+```
+07 0f 05 0c 21 10 00 05 99 10 00 06 fa 0e 00 00 22 08 00 9a 36 0a 00 4e ff 01 00 10 00 00 00 00
+00 00 00 00 00 00 00 05 99 52 05 00 ff 00 00 aa 00 04 01 18 00 05 99 56 00 90 80 00 e0 00 a0 00
+60 00 03 81 0f ff
+```
+
+`bbox` (bytes 0-3) = `[7,15,5,12]` — an exact match for §14/§20's own "the object sits at
+`[5-7,12-15]`, diagonally below-left" description, confirming this live entry really is the same
+lever/tool-prop object the whole spike has been circling, not a different slot.
+
+### 21b. Both halves of §4's interactive/pickup test, checked directly against real bytes for the
+    first time this spike
+
+Per §4's own pseudocode: `byte24 < 0` (top bit set) **and** a flag on the entry's own `+10`-linked
+struct (`+15` bit 2) set → `$FD`/"interactive, pickup" outcome; otherwise plain scenery.
+
+- **`byte24`** = `0xff` — top bit set, first condition **true**.
+- **`+10` pointer** (bytes 10-13: `00 06 fa 0e`) = `$0006fa0e`. Dereferenced (32 bytes dumped,
+  `m 6fa0e 32`): `07 0f 10 00 00 90 00 23 00 46 01 01 22 22 22 01 12 85 1e 0e 07 1b 33 ff ff 1f 16
+  0f 05 0a 33 20`. Byte at offset `+15` (0-indexed into this dump) = `0x01`; `0x01 & 0x04 = 0` —
+  **bit 2 is clear**, second condition **false**.
+
+The `AND` of the two conditions is **false**. Per §4's own branch, this object is classified plain
+scenery, not "touched an interactive/pickup object" — `shared_result.byte[1]` never gets set to `$FD`
+for it, and the `cmpi.b #$fd,1(A4)` item-pickup branch (§5) would never fire on this object no matter
+how it's touched.
+
+### 21c. Why this closes the touch/opcode-`$9` thread for the lever specifically, on top of (not
+    instead of) §20's own position finding
+
+§4a's dedup-cache/opcode-`$9` push is worded as unconditional on the AABB overlap itself (it records
+the touch, then separately branches on the `$FD` classification) — so in principle a plain-scenery
+object could still be touched and still queue opcode `$9` into the ring-304 queue, reaching §18a's
+generic per-entity action-script dispatch (`$fe0c`-`$fe70`) independently of the `$FD`/pickup outcome.
+But §4's own routine *is* the object-array collision/obstacle check (§4's own header), and §20b
+already established, live, that genuine AABB overlap with this exact object is **not reachable by any
+combination of cardinal moves** from the approach this spike has driven — the player is hard-blocked
+with zero clearance on the two sides that face it. A block-before-overlap collision test never
+actually produces the intersection §4's `if` guards, meaning the touch/dedup/opcode-`$9` push never
+executes for this object via ordinary movement in the first place, regardless of classification.
+
+Put together: (1) the object was never classified "interactive" to begin with, so even a genuine
+touch would not have set the pickup flag §5's downstream check reads, and (2) §20 already showed the
+touch that would trigger *any* of §4a's machinery (interactive or not) is itself unreachable by
+ordinary movement. This is a double, not a single, negative — closes the touch/opcode-`$9` pathway
+for the lever specifically without needing to trace §18a's dispatcher against this entity at all
+(there is nothing here for it to ever be handed).
+
+### 21d. Recommendation for the next pass: the whole-image caller-graph scan, not a new input verb
+
+Of the two leads §20/the memory resume point left open — a genuinely different, uncharacterized verb
+outside the 9th pass's action-id sweep, or a whole-image caller-graph scan for whatever actually gates
+the door — the caller-graph scan is the cheaper and more likely to pay off. Every productive finding
+in this spike from §9 onward (the debug-string scan, §10's static portal-table disassembly, §18's
+`find_field_writers.py`-driven queue-consumer discovery) came from static/whole-image techniques, not
+live input-guessing; every live input-guessing round (§8, §13, the original interact sweep, §20 itself)
+came back inert. With the portal table (§10, no entry) and the touch/interactive pathway (this
+section) both now closed as real negatives, whatever opens this specific door is neither of the two
+mechanisms this spike already knows how to search for — the honest next move is `find_ram_callers.py`/
+`find_field_writers.py` against a candidate the game itself would need regardless of mechanism (a
+per-door "open/locked" state byte, or whatever code path the debug string `"DOOR ERROR"`'s *sibling*
+success case writes to, since §9/§10c only followed the failure prints) rather than guessing at a
+third input verb with no evidence one exists.
+
+## 22. Action 101's own script decoded byte-by-byte (23rd pass) — confirms it, does nothing
+    door-related, and a bigger find from finishing the debug-string scan: a whole
+    previously-undocumented "object verb" bytecode interpreter (LOCK/UNLOCK/MOVE/creature
+    kill-wake-sleep/rucksack/chest ops), whose LOCK/UNLOCK opcodes write the *exact* bit §21b
+    found clear on the lever's own linked struct
+
+Per the standing README next-step (§21d's caller-graph recommendation, plus a cheap side-check on
+action 101's own script). Two independent threads this pass, both static/data-scan only — no new
+`kbd`/`mouse` input.
+
+### 22a. Action 101's script (`$16f07`), decoded against `ai.md`'s 17-opcode table — animation-only,
+    confirmed rather than assumed
+
+Raw bytes (`m 16f07 64` off `room2_lever_boundary.snap`):
+
+```
+85 bc 81 09 80 06 83 01 87 34 8a 02 3b 8b 85 bc 81 09 80 05 83 0a 87 35 8a 02 88 9c 0e 8b 81 09
+80 05 83 03 87 35 8a 02 88 9c 2d 8b 83 06 81 09 80 07 ...
+```
+
+Walking it opcode-by-opcode against `ai.md`'s table: `$85 bc` (set tick-scale from operand `$bc`),
+`$81 09` (set slot flag-lane bit), `$80 06` (frame-group byte), `$83 01` (duration), `$87 34`
+(load preset `$34` from the shared table), `$8a 02` (set flag bits), then a **literal frame byte**
+(`$3b`, `<$80` — ends the tick per `ai.md` §3's own yield rule), then `$8b` (force-idle — re-installs
+the null action, per `ai.md`'s own reading, once the countdown from `$83`'s duration expires). The
+stream repeats this same shape twice more (`$85 bc … $87 35 … $88 9c` — `$88`'s peeked byte `$9c` has
+its top bit set, so per `ai.md`'s own reading it "ends the entity's turn" without also taking the
+literal-frame path — then a literal frame byte on the *next* tick, then `$8b` force-idle again).
+**Every opcode present is one of the 8 confirmed animation/timing/flag opcodes (`$80/$81/$83/$85/
+$87/$88/$8a/$8b`) plus literal frame bytes — no `$8c`/`$8d` (the only chain-to-another-script pair)
+appears anywhere in the 64 bytes dumped.** This closes the side-check exactly as expected going in:
+action 101's own script is a short, self-terminating "set a preset, show a pose, hold it, go idle"
+sequence — three back-to-back instances of that shape, matching the 4th pass's "crouch, arm/implement
+raised, relax" visual read — with nothing that touches collision, the portal table, or any
+door/room-state field. (The `$8b` force-idle recurring mid-dump, before the full 64 bytes are
+consumed, is a hint that bytes past the first `$8b` belong to a *different* action id's script packed
+contiguously in the same region, not more of action 101's own stream — consistent with `ai.md`'s own
+note that scripts are just byte offsets into one shared pool, not separately allocated. Not chased
+further; irrelevant to the door question either way.)
+
+### 22b. The embedded debug-string table, finished (picking up where §9 stopped at `$172c7`) — it
+    runs to `$17951` and names a whole engine-level "object verb" vocabulary, not just room-transition
+    errors
+
+Full dump, `$172c7`-`$17951` (2200 bytes covers it with room to spare — the table is followed by
+null padding). §9 had only reached as far as `"DEL_OBJ_IN_ROOM ... REDUCE ENTRY SIZE ERR"`; the rest
+of the table, previously unread:
+
+```
+OBJECT NOT IN RUCKSACK, CANT ADD TO HEAP, EXCEEDED MAXIMUM HEAP SIZE, DELETE ERROR,
+CANT FIND A SPACE CSORT, CANT ADD SAME UOBJ TO SLIST, NO ROOM IN SORT LIST,
+TOO MANY CREATURES IN ROOM, NOT FOUND CREATURE TO DELETE, EXCEEDED ADD LIST SPACE,
+NO CREATE SPACE IN ROOM, EXCEEDED SPACE FOR MULTIDEL, NO SPACE IN RUCK,
+EXCEEDED COLLISION CHECK LIST, CANT BE NEG OBJ PUSHED, CANT BE ZERO OBJ PUSHED,
+SHOWING AN NON-EXISTANT OBJECT, CANT FIND A SPACE, GOANI A NONANI OBJECT,
+GOANI A NON-EXISTANT OBJECT, STOPANI A NON-EXISTANT OBJECT, STOPANI A NONANI OBJECT,
+KILLING A NON-EXISTANT CRE, UNINV A NON-EXISTANT CRE, WAKING A NON-EXISTANT CRE,
+SLEEPING A NON-EXISTANT CRE, SET ACTION NOT WRITTEN, REVEAL NAME OF NON-X OBJECT,
+LOCKING NON-EXISTANT OBJECT, UNLOCKING NON-EXISTANT OBJECT, MOVEING A NON-X OBJECT,
+GOMOVE A NONMOVE OBJECT, STOP MOVE A NON-X OBJECT, STOPMOVE A NONMOVE OBJECT,
+FLAG OP ON NON-X OBJECT, ELSE SHOULDNT BE CALLED,
+PUT IN RUCK AN OBJECT THAT DOSNT EXIST, PUT IN RUCK RTN. RUCK FULL,
+EXCEEDED ADD LIST SPACE, CREATE SIZE ZERO, NO SPACE IN THIS ROOM, INIT ROOM ERROR,
+CANT PUT CREATURE IN ROOM, CANT FIND A SPACE PUT IN ROOM, GOACTI NON-X OBJECT,
+STOP ACTI NON-X OBJECT, MOVE A NON-X OBJECT, UNLOCK CHEST NON-X OBJECT,
+UNTRAP CHEST NON-X OBJECT, CLEAR CHEST NON-X OBJECT, DIRTY POTION NON-X OBJECT
+```
+
+This reads unmistakably as the error-message set of a **generic room/level "object verb" scripting
+language** — LOCK/UNLOCK, MOVE/GOMOVE/STOPMOVE, GOANI/STOPANI, creature KILL/WAKE/SLEEP/UNINVENT,
+rucksack (inventory) add, FLAG ops, chest-specific UNLOCK/UNTRAP/CLEAR, and a potion op — not more
+room-transition diagnostics like `"DOOR ERROR"`. This is a different, previously-undocumented
+system from both `mechanics.md`'s collision/portal machinery and `ai.md`'s animation-only 17-opcode
+interpreter, and it's exactly the kind of thing that could plausibly implement "pulling a lever
+unlocks a door."
+
+### 22c. Found the LOCK/UNLOCK object opcode handlers directly, via the same address-reference
+    technique that cracked `"DOOR ERROR"` in §9 — and one of them writes the exact bit §21b found
+    clear on the lever's own linked struct
+
+Scanned the whole snapshot for the absolute addresses of `"LOCKING NON-EXISTANT OBJECT"` (`$17710`)
+and `"UNLOCKING NON-EXISTANT OBJECT"` (`$1772c`) as 4-byte operands — **exactly one code reference
+each**, `$0104bc`/`$0104d2`, both `lea $xxxxx.l,A0` immediately before `jsr $11788.l` (the same
+debug-string printer `"DOOR ERROR"` uses). Disassembling the surrounding block (`$010460`-`$0104e0`):
+
+```
+$01049a: bsr  $10738        ; resolve an object by 16-bit id (operand read from the script stream)
+$01049e: beq  $104b6        ; not found -> print "LOCKING NON-EXISTANT OBJECT", $0104ba
+$0104a0: bset #2,15(A0)     ; found -> LOCK: set bit 2 of the resolved object's own +15 byte
+$0104a6: rts
+
+$0104a8: bsr  $10738        ; same resolve
+$0104ac: beq  $104cc        ; not found -> print "UNLOCKING NON-EXISTANT OBJECT", $0104d0
+$0104ae: bclr #2,15(A0)     ; found -> UNLOCK: clear bit 2 of the same +15 byte
+$0104b4: rts
+```
+
+**`+15` bit 2 is the exact flag `mechanics.md` §21b read on the lever object's `+10`-linked struct**
+(`$0006fa0e`, byte at dump-offset `+15` = `$01`, `$01 & $04 = 0` — bit 2 clear) — the second,
+currently-false half of §4's own interactive/pickup `AND` test (`byte24<0` **and** `+10→+15 bit 2`).
+This is a real, dedicated engine mechanism for that exact bit, not an incidental flag: a LOCK opcode
+sets it, an UNLOCK opcode clears it, on an object resolved by numeric id, matching the struct shape
+(a small object-attribute record, not the sprite-object-array entry itself) §21b already dumped 32
+bytes of. A neighbouring block at `$010478` (`move.w #$28,2142(A5); bsr $defa`) — reached when a bit-1
+test at `$010462`/`$010468` on a *different* struct byte (`+3`, not `+15`) is set — pushes the same
+`(A5)+2142`/`$defa` name-banner display §18b already decoded, i.e. a third, related op that shows a
+message (plausibly "it's locked") instead of toggling a flag.
+
+### 22d. The id-resolver (`$010738`→`$00c542`/`$00c56e`) uses the *same* `(A5)+96`
+    resource-type-descriptor system as the always-empty rooms table (§14/§15) — but against
+    **types 6 and 9**, which are live, not the empty type-8 rooms table
+
+`$010738` reads a big-endian 16-bit id from the script stream (`(A1)+` twice), then `bsr $c542`:
+`tst.w D1; bpl $c56c` (positive id -> type **6**, `moveq #6,D0`) / `cmpi.w #$ffff,D1` (`$ffff` ->
+`A0 = 348(A5)` directly, a "self/current actor" sentinel, also used directly by several sibling
+opcodes at `$010756`-`$010790`) / else (a different negative sentinel) -> type **9**, id replaced by
+global `2120(A5)`. Both real-type paths fall into `$00c56e`→`$00c576`'s shared body: `mulu #$12,D0`
+(18-byte row stride, `A0 = (A5)+96 → row[type]`, matching `$00c52c`'s own layout from §15b exactly),
+`A1 = row+0` (index table), `A2 = row+4` (data-base), `A1 += id*4` (the same 4-byte sparse-slot
+index format as the rooms table), `D0 = *A1 & $1ffff` (offset), `A0 = row+4-base + D0` — i.e. **this
+is a second caller of the exact same generic id→record resolver the whole `(A5)+96` resource system
+uses**, just for types 6/9 (object/creature records) rather than type 8 (rooms). Types 6/9 were never
+checked live in §14/§15 (only type 8 was dumped and found empty) — since the LOCK/UNLOCK opcodes
+clearly operate on real objects during ordinary play (chests, the rucksack, creatures per §22b's
+string list), types 6/9's index tables are very likely populated, unlike type 8's. Not dumped this
+pass (no live snapshot access needed for the disassembly-only finding above); a concrete, cheap next
+check if this thread is picked up again.
+
+### 22e. Traced this interpreter's other entry point — the ring-304 queue's own "generic opcode"
+    path (`mechanics.md` §18a's `$fe0c`-`$fe70`, previously flagged but not disassembled) — confirmed
+    as a per-entity tagged-record dispatcher, a genuinely new mechanism, not yet tied back to the lever
+
+`$00fdbc`'s drain loop (§18a) branches to its own opcode-`$8` handler (`$ffa4`, the name-banner) but
+falls through to `$00fe0c` for every *other* opcode. Disassembled in full this pass:
+`A4 = the touched/queued entity's own struct + $10 or +$20` (chosen by struct byte `+11`/`+31`,
+whichever is nonzero), then `$00fe14`-`$00fe6e` walks a small table of **tagged records** at `A4`
+(`[tag_byte][length_byte][payload...]`, bounded by a count at `1168(A5)`), comparing each record's
+tag (`D3`, top bit stripped) against the queue's own opcode byte (`D6`) — on a match, `bsr $11728`
+with `A2 = $00fe84` (`add.w D0,D0; adda.w 0(A2,D0.w),A2; jmp (A2)`, a second-level, word-relative
+jump table, contents not decoded this pass); on a miss, skip forward by the record's own length byte
+and try the next one. **Reading**: an entity can carry its own small table of "if you receive queue
+opcode X, run handler Y" bindings — this is plausibly how a scripted room event (not necessarily tied
+to player touch/collision at all) gets attached to a specific object. **Not yet connected to the
+LOCK/UNLOCK opcodes from §22c** — `$011728`'s own jump table (`$00fe84`) wasn't decoded, so whether
+matching a tagged record can lead into the `$010000`-region object-verb interpreter, or is a wholly
+separate (e.g. sound-cue) mechanism, is still open. Concrete next step if this is picked back up.
+
+### 22f. Ruled out, not reopened: the fire chain still doesn't reach any of this
+
+Per §21d's own caller-graph recommendation, checked whether `$00db4a`-`$00dc9a` (the fire-driven
+"select nearest interactable" pipeline, `mechanics.md` §8/§11) reaches `$010738` or anything in the
+`$010000`-`$011256` verb-interpreter range. It doesn't — `$00db8a` onward (disassembled further this
+pass than §11 went) is a self-contained highlight/selection-box renderer (reads struct fields
+`+18/+20/+23/+46/+50/+51`, calls `$8668`, not disassembled but consistent with the visible
+orange-highlight flash from §13) with no `bsr`/`jsr` anywhere near `$010738` or the verb block. §11's
+"cosmetic only" conclusion for the fire chain stands — this pass extends rather than contradicts it.
+
+### 22g. Where this leaves the lever
+
+Two real, disassembly-grounded new facts: (1) the exact flag bit §21b found clear on the lever's own
+linked struct has a dedicated, discoverable LOCK/UNLOCK mechanism elsewhere in the image, operating on
+objects by numeric id against a resource-type table (6/9) that (unlike rooms' type 8) is plausibly
+populated; (2) the ring-304 queue's generic dispatch path is a real, previously-undecoded per-entity
+event-binding mechanism, distinct from both the collision system and the animation interpreter. Neither
+is yet connected to TUNNEL's lever specifically — no code path found this pass writes to the lever's
+own `$6fa0e` struct, and the LOCK/UNLOCK handlers themselves have zero direct `bsr`/`jsr` callers
+(found only by unique debug-string cross-reference), meaning whatever calls them does so through a
+computed jump table this pass didn't locate. **Concrete next steps, in priority order**: (1) locate
+the object-verb interpreter's own top-level dispatch table (the word-relative-offset table indexing
+into `$010460`/`$0104a8`/etc., analogous to `ai.md`'s `$15cae` or this pass's own `$00fe84`) — finding
+it would give the LOCK/UNLOCK opcodes' real numeric ids, and from there a caller-graph or literal-id
+scan could find what invokes LOCK specifically; (2) dump types 6/9 of the `(A5)+96` resource table
+live (§22d) to see whether they're populated, and if so what object ids exist and what their `+15`
+bytes currently read; (3) decode `$00fe84`'s jump table (§22e) to see whether any tagged-record match
+leads into the verb interpreter, which would tie the ring-304 queue (already known to carry an
+opcode-`$9` "touch" event, §4a) to LOCK/UNLOCK after all — through some *other* entity than the
+lever's own inert scenery object.
+
+## 23. LOCK's own opcode id found (18, exact address match); UNLOCK's isn't in the same table — but
+    the headline result is bigger: **the lever is object id 144**, and that's now triple-confirmed
+    live, closing most of what §22g left open (24th pass)
+
+Per §22g's own priority order: static/data work only, no `kbd`/`mouse` input, all against
+`gameplay_empire.snap` (global) and `room2_lever_boundary.snap` (TUNNEL-local, used only to cross-check).
+
+### 23a. The interpreter's top-level dispatch table, found by raw byte-scan at `$010000`-`$010075`
+    (59 entries) — LOCK is entry 18, an exact, non-coincidental address match
+
+Per §22g item 1's own reasoning (LOCK/UNLOCK have zero `bsr`/`jsr` callers anywhere in the image —
+reconfirmed this pass with `find_ram_callers.py` against `$0104a0`/`$01049a`/`$0104a8` and every
+neighbouring handler address named in §22c: still 0 hits each, only the block's own internal `bne`
+survives), they must be reached through a computed jump table. Rather than guess a location,
+dumped the raw bytes at the block's own stated start (`$010000`, "roughly $010000ish" per §22c) and
+found a clean run of 59 plausible word-relative offsets (`$0810 $0914 $09ba $0c28 ... $101a`)
+immediately followed, at exactly `$010076`, by real code (`moveq #0,D3; move.b (A1)+,D3; ...` — a
+recognisable operand-read prologue) — i.e. the table is bounded cleanly on both ends, not an
+eyeballed guess. Resolving each entry as `$010000 + entry` (the exact idiom `$00fe84`/`$011728`
+already established elsewhere in this image, see §22e — `add.w D0,D0; adda.w 0(A2,D0.w),A2; jmp
+(A2)`, table base in A2, entries are offsets added to that same base) and disassembling the target:
+
+**entry 18 (`$010024` = `$049a`) resolves to exactly `$01049a`** — the first instruction of LOCK's
+own handler (`bsr $10738`, §22c's own disassembly, byte-for-byte). This isn't a loose "lands
+somewhere in the block" hit, it's an exact match on the address of a specific two-word instruction,
+among ~3,400 possible byte values the entry could have held — not a coincidence. **LOCK's real
+numeric opcode id is 18.** A handful of other entries corroborate the table is genuine and not a
+lucky single hit: id 1 (`$010914`), id 12 (`$010d5c`), id 25 (`$010e38`), id 34 (`$010ee2`), and id
+50 (`$010306`) all resolve to the same "read a big-endian word operand from `(A1)+`" or "`bsr
+$10738`" prologue shape real opcode handlers use elsewhere in this block (§22c/d). Script:
+`scratchpad/cadaver24/dump_table.py` (this session, not committed — reused for §23c below).
+
+### 23b. UNLOCK's own address is not one of the 59 entries — genuinely open, not just unfound
+
+Checked directly: none of the 59 resolved targets equals `$0104a8` (UNLOCK's own first instruction).
+The nearest neighbours are entry 17 (`$010490`, the tail of an unrelated error-print stub) and entry
+19 (`$0104e0`, which is *also* not UNLOCK's entry — it's the bare `rts` at the very end of UNLOCK's
+own error-print path, landed on because `$4e75` is common everywhere in code, not because it's a
+deliberate target; unlike entry 18's hit, this one is exactly the low-specificity kind of match that
+could be coincidence). So the simple "LOCK=18, UNLOCK=19" adjacency guess (motivated by the two
+verbs sitting next to each other both in code and in §22b's debug-string table) is directly refuted
+by this data, not just unconfirmed. UNLOCK is reached some other way — a second table, a shared
+opcode with an operand-driven branch (ruled out already, §22c's disassembly of `$0104a8` is
+unconditional), or it's simply unreachable in this build. Not chased further this pass; a genuine
+open item, not a dropped one.
+
+**Aside, not chased further:** the same `add.w D0,D0; adda.w 0(An,D0.w),An; jmp (An)` idiom exists
+as a small family of *generic, reusable* dispatch stubs at `$011700`-`$01172e` (six variants,
+differing only in which address register carries the table base — `$011728` is the exact one §22e
+already named), confirmed via `find_ram_callers.py` to have real callers: `$00fe30`/`$00fe5a`
+(§22e's ring-304 tagged-record dispatcher, as expected) and, new this pass, `$010646`/`$010686`
+*inside* the verb-interpreter block itself, both `lea $ffba.l,A2` before the `bsr` — a **third,
+much smaller table** (base `$0000ffba`, low memory) driving what reads as a nested IF/comparison-
+operator bytecode (`$010632`-`$010690`, gated on a scratch byte at `2270(A5)`) embedded inside the
+same verb-script stream. Unrelated to LOCK/UNLOCK specifically; noted for whoever next reads this
+region, not decoded further.
+
+### 23c. Priority-2 done live, ahead of its own scoping — types 6/8/9 of the `(A5)+96` resource
+    table dumped directly from `gameplay_empire.snap` (no `kbd`/`mouse`, no REPL — the snapshot's
+    RAM alone is enough once `A5=$18152` is known, confirmed live in every snapshot this spike has
+    produced)
+
+`(A5)+96` (`$181b2`) reads `$0004a466`. Row `= ptr + type*18` per §15b's own layout, reconfirmed
+exactly against type 8's already-known values (`idx_ptr=$4c536`, `count=64` — matches §15/§17
+verbatim, a clean cross-check that this pass's read technique is correct):
+
+| type | idx_ptr | data_base | count | populated |
+|---|---|---|---|---|
+| 6 (objects) | `$0004b596` | `$0006eb92` | 1000 | **1000 / 1000** |
+| 8 (rooms) | `$0004c536` | `$0007550a` | 64 | 0 (matches §15/§17) |
+| 9 (creatures) | `$0004c636` | `$0007560a` | 10 | 0 (no live creature exists in this snapshot) |
+
+Type 6 is **fully populated** — every one of the 1000 possible object ids resolves to a real record,
+confirming §22d's prediction outright (types 6/9 live, unlike rooms' always-empty type 8). Scanning
+all 1000 records' own `+15` byte, **16 currently have bit 2 set** (`$0c/$44/$04/$24` etc. — genuinely
+locked objects right now, in ordinary mid-game state), which is itself worth noting: it means LOCK
+*does* fire somewhere during normal play on other objects, this mechanism isn't dormant everywhere,
+just for the lever. Type 9 being fully empty is consistent with every prior pass's "no live creature
+found anywhere" conclusion (7th/9th passes) — creatures are a real, provisioned resource type, just
+never instantiated in any state this spike has reached.
+
+### 23d. The headline result: **the lever is object id 144** — cross-confirmed on two independent
+    live snapshots, closing the "is the lever even resolvable by this system" question outright
+
+Object id 144's type-6 record: `index_table[144] = $002c0e7c`, masked offset `$0e7c`, `data_base
+($06eb92) + $0e7c` resolves to **`$0006fa0e`** — **exactly** §21b's own "lever's linked struct" address,
+the one LOCK/UNLOCK's `bset #2,15(A0)` / `bclr #2,15(A0)` operate on. Confirmed three independent
+ways, not assumed from the address match alone:
+
+1. **The id resolves to the right address.** `type-6 index_table[144]` in `gameplay_empire.snap`
+   → record `$06fa0e`.
+2. **The lever's own sprite-array entry links there directly.** Re-derived from
+   `room2_lever_boundary.snap` (TUNNEL, where the lever's slot-1 sprite entry actually lives, per
+   §21c's own array-walk): `SpriteObjectArrayPtr_A5Plus56` (`$1818a`) → base `$038338`; slot 1
+   (`base+$46`) = `$03837e`; that entry's own `+10` field reads **`$0006fa0e`**, byte-for-byte the
+   same address — the "`+10`-linked struct" language every earlier section (§4, §21b, §22c) has
+   been using turns out to be literally this type-6 record, not a separately-discovered structure.
+3. **The classification bytes read exactly as §21b originally found.** In `room2_lever_boundary.snap`,
+   record `$06fa0e`'s own `+15` = `$01` (bit 2 clear — §21b's exact original reading, byte-for-byte)
+   and `+24` = `$ff` (top bit set — §21's own classification-test reading). (In `gameplay_empire.snap`,
+   a different room/session, the same record currently reads `+15=$00` — still bit-2-clear, no
+   contradiction, just a different point in that save's history; not chased further.)
+
+This is the strongest single fact this spike has produced connecting the LOCK/UNLOCK mechanism to
+the lever specifically: **object id 144 is not a hypothetical or a nearby-address coincidence, it is
+mechanically the lever**, reachable by the exact id-resolve path (`$010738`→type-6 row→index-table
+entry 144) that LOCK (opcode 18) and UNLOCK both use. A byte-scan of the loaded image for a literal
+`[opcode][$00 $90]` (144 big-endian) operand pattern was tried as a cheap next check (`grep`-style
+scan for raw bytes `$00 $90` preceded by a plausible opcode byte, `scratchpad/cadaver24/find_id144.py`)
+but is inconclusive: the handful of hits with opcode-18 (`$12`) as the preceding byte all sit inside
+one dense, evenly-strided region (`$0376ac`-`$037cfc`, stride ~176-192 bytes, incrementing leading
+bytes) that reads far more like a coordinate/portal data table than object-verb script bytecode —
+not pursued further, a real script invocation (if one exists in this build at all) needs the
+interpreter's actual top-level "read opcode byte from the room script, dispatch" entry point, which
+this pass didn't locate (it lives outside the `$010000`-`$011256` block itself, most likely back
+through `EntityScriptDispatch`/`$15c70` or a sibling "run this entity's init script" caller — not
+one of the reusable stubs at `$011700`-`$01172e`: `find_ram_callers.py` against all three `bsr`-able
+entry points there, `$011718`/`$011720`/`$011728`, finds only 6 callers total — `$00a09e`, `$00affc`,
+the two ring-304 sites already known from §22e, and the two `$ffba`-table sites from §23b — none in
+or near `$15c70`, so whatever calls into the verb interpreter's own `$010000` table does it through
+neither this family of generic stubs nor a direct `bsr`, meaning it's a fourth, still-unlocated
+dispatch site).
+
+### 23e. Where this leaves the lever now
+
+The dormant-flag mechanism from §22c is no longer just "a real mechanism that writes the right bit
+somewhere" — it operates on the lever's own object by a confirmed, specific numeric id (144), through
+a confirmed, specific opcode (LOCK = 18). What's still missing is purely "who calls it": no script
+byte sequence invoking opcode 18 with operand 144 has been found yet, and the top-level entry point
+that would read such a sequence from a room's init script wasn't located this pass. **Concrete next
+steps, in priority order**: (1) find `EntityScriptDispatch`'s (`$15c70`) or a sibling routine's own
+call into this verb interpreter — grep `cadaver.sym`-adjacent code for whatever sets up `A1` (the
+script-stream cursor every handler in this block reads via `(A1)+`) before landing in the
+`$010000`-table's target range, since that caller is necessarily the thing that owns "which room's
+init script" and would settle whether TUNNEL's own room-load ever queues opcode 18/id 144 at all;
+(2) if found, `callcap` that opcode-18/id-144 path directly (`callcap <entry> D0=... A1=<script ptr>`
+or equivalent) and diff the lever's own `+15` byte before/after — the fastest possible confirmation,
+cheaper than any further static search; (3) decode `$00fe84`'s jump table (§22e, still not done) as
+the fallback path if (1)/(2) don't pan out, since the ring-304 queue's generic dispatch remains the
+other still-open mechanism from §22g.
+
+## 24. The dispatch caller is not findable by any static technique tried (25th pass) — so the
+    lever's LOCK path was confirmed causally instead, by calling it directly
+
+Per §23e's own priority order: item (1), find whatever sets up the byte-opcode dispatch into the
+`$010000` table, then item (2), `callcap` the opcode-18/id-144 path and diff the lever's `+15` byte.
+Four independent static techniques were tried for (1), all against `gameplay_empire.snap`; all came
+back empty or irrelevant. (2) was then done anyway, directly on LOCK's own address rather than
+through the (still unfound) dispatcher — which turns out to still answer the question that mattered.
+
+### 24a. Four static searches for "what loads the table's `$010000` base", all negative
+
+1. **Absolute literal scan.** Every occurrence of the 32-bit value `$00010000` anywhere in RAM
+   (564 raw hits — almost all noise inside sprite/bitmap mask data, the same false-positive shape
+   flagged since §15a), filtered down to only those immediately preceded by a real
+   "load this absolute address into an address register" opcode (`lea`/`pea` abs.l, `movea.l #imm`,
+   `move.l #imm,Dn` — all eight register-encoded opcode words each): **zero matches.** The table
+   base is never materialised via an absolute-long literal anywhere in this image.
+2. **PC-relative `lea` scan.** A full whole-RAM instruction decode (same technique as
+   `find_ram_callers.py`) for any `lea disp(PC),An` whose resolved target (disassemble.py's ea_str
+   already prints the resolved absolute address for this mode) equals `$010000`: **zero matches.**
+3. **Opcode-byte-read-and-double pattern scan.** The classic "read one script byte, double it,
+   index a word table" prologue (`moveq #0,Dn` / `move.b (A1)+,Dn` / `add.w Dn,Dn`, any single
+   register) scanned for as a 3-instruction shape across the whole image: **zero matches.** (Several
+   *handlers reached by* the table do read further operand bytes this way — e.g. ids 1/46 — but
+   nothing reads the *dispatch* opcode byte this way before indexing `$010000`.)
+4. **`(A5)+N` pre-stored base check.** Scanned every `(A5)+N` field (N = 0..4000) for the literal
+   longword `$00010000`, on the chance the base lives as data rather than an immediate — 5
+   candidates (offsets 1144/1228/2118/2303/2499). `find_field_writers.py` against each shows they're
+   all small byte/word counters or 3-bit flag fields (`2499(A5)` in particular is bit-tested/toggled
+   with `btst`/`bchg #0/#1/#2` at 32 different sites) — the `$00010000` reading was a coincidental
+   4-byte window spanning unrelated neighbouring fields, the same false-positive class as (1)'s
+   bitmap-data hits. None of these is a real 32-bit pointer field.
+
+**Aside — `$010076` (the code immediately after the table, previously read in §23a as merely
+"confirms the table's own bounds") is a real, distinct routine, but not the dispatcher and not
+reachable at all.** Full disassembly shows it reads a 16-bit id via `(A1)+` into `D3`, then
+`bsr $10740` — an **internal alternate entry point** into the shared id-resolver at `$010738`
+(LOCK's own callee), landed on 8 bytes past the resolver's normal start, i.e. `$010076` supplies its
+own already-read id in `D3`/`D1` and skips the resolver's own byte-read prologue. `find_ram_callers.py`
+against `$10076` (bsr/jsr/bra/Bcc, whole image): **zero real callers**, and it isn't one of the
+59 table targets either (checked against the full id→address list). Whatever calls this exists
+outside every static-branch mechanism this tool can see, or it's dead code — not chased further.
+
+### 24b. Whole-block external-caller sweep: the block has 18 real external entry points, none of
+    them the opcode dispatcher
+
+Rather than keep guessing how the table's base gets loaded, swept for every real `bsr`/`jsr`/branch
+in the whole image whose target lands anywhere in `$010000`-`$011256` (the full verb-interpreter
+span §22c/§23a/§14 have mapped), split by whether the *caller* is itself inside or outside that
+span. 291 internal calls (handlers calling the shared id-resolver, id-resolve helpers calling each
+other, etc. — all already-known shapes, no surprises). **18 external calls**, from `$009b7e`,
+`$00a060/66/42e/466/4b4/4ea/508/54e/572/654/6c8/7e8`, `$00f17a/26a/298/ac4`, and one apparent
+write-site, `$03c31e: bset D7,$10006.l` (a bit-set landing inside the table's own storage) —
+**checked and ruled out**: disassembling the surrounding bytes (`$03c300`-`$03c344`) shows pure
+garbage (`ori?`, unresolved line-F opcodes, back-to-back nonsense), the same misaligned-data
+false-positive class flagged since §15a/id-26's table entry — `$03c31e` is inside a data region
+being decoded as if it were code, not a real instruction, and not a lead.
+
+Disassembled all nine distinct external targets (`$1007e`, `$101d8`, `$10c8c`, `$10aaa`, `$11066`,
+`$111e2`, `$1120e`, `$11250`, `$1083e`): every one is a **named, single-purpose utility** already
+partly known from earlier passes or newly identified here — `$1007e` (the id-resolver's own
+alt-entry, see 24a), `$11250`/`$011256` (the already-documented `RoomIdLookup_ByD2_LinearScan`,
+which turns out to itself have a second alt-entry at `$011250` that presets `D3=2` before falling
+into the shared body), and several others reading as sound-cue/state-flag helpers. **None of the 18
+external callers targets the opcode-byte dispatcher, and none targets any of the 59 known table
+entries.** Combined with 24a's four negative searches, this is now a broad, multi-angle negative,
+not a narrow miss: whatever normally invokes LOCK/UNLOCK by script opcode has no findable static
+call site anywhere in this exact loaded image.
+
+### 24c. Priority-2 done anyway, directly on LOCK's own address — causal proof, independent of the
+    unfound dispatcher
+
+Since LOCK's own entry address (`$01049a`) and calling convention (`A1` → 2-byte big-endian id
+operand, consumed via `(A1)+` inside the shared resolver at `$010738`) are already fully known from
+disassembly (§22c/§23a), the dispatcher didn't need to be found to run this test — only to *invoke
+LOCK*, not to prove what invokes it during ordinary play. From `room2_lever_boundary.snap`, live via
+the REPL:
+
+```
+m 6fa0e 20                        ; before: +15 byte (offset 15) = $01, bit 2 clear
+w 18140 00900000                  ; scratch-poke $00 $90 (= 144, big-endian) at $18140,
+                                   ;   8 bytes below the live SP ($18152) - safe, unused stack space
+callcap 1049a 5000 - A1=18140     ; call LOCK directly with A1 -> the scratch id buffer
+```
+
+Result: `--- callcap $01049a: returned ... 14 byte(s) changed ... mem $06fa1d $01->$05 ---` — the
+lever's own `+15` byte flips from `$01` to `$05`, i.e. **exactly bit 2 sets**, matching LOCK's own
+`bset #2,15(A0)` byte-for-byte (`callcap` restores all memory after reporting the diff, so the live
+REPL session itself is untouched by this test — the "before"/"after" `m` dumps read identically
+around it by design, the diff line is the actual result). This is the first genuinely **causal**
+(not structural/address-match) proof in this whole spike that the LOCK verb, given operand 144,
+does flip the exact flag §4/§21b/§22c/§23d have been tracking since the object-classification test
+was first written. It proves the mechanism works exactly as read from static disassembly; it does
+**not** prove anything in the live game currently calls it that way — §24a/§24b's negative results
+stand as a separate, real finding: this path has no static caller in the loaded image.
+
+### 24d. Where this leaves the lever
+
+The two questions from §23e are now: (a) does the LOCK/UNLOCK-on-id-144 mechanism work — **yes,
+causally confirmed**; (b) does anything in this game state actually invoke it — **still unknown**,
+but now backed by a much broader negative (four independent static techniques plus an 18-site
+external-caller sweep, not just "no direct bsr found" as in §22g). This raises, rather than closes,
+the possibility that the mechanism is genuinely dormant in this build — vestigial code from an
+earlier design (the same class of finding as UNLOCK's own unreachable table slot, §23b) — though
+that's not proven either — a data-driven or self-modifying reach hasn't been ruled out, but the one
+concrete candidate for that this pass found (`$03c31e`'s apparent table write) turned out to be
+misaligned-data noise, not real code (§24b). **Concrete next step**: decode `$00fe84`'s jump table
+(§22e, still not done) — the original §22g/§23e fallback, and the one still-open mechanism this pass
+didn't need to touch since the direct-`callcap` route answered the causal-proof question on its own.
+
+## 25. `$00fe84` fully decoded (26th pass) — it does NOT connect the ring-304 queue to LOCK/UNLOCK;
+    a clean negative, settling the §22e/§22g/§24d fallback
+
+Per §24d's own next step. Static disassembly only, against `gameplay_empire.snap`.
+
+### 25a. Table bounds: 29 entries, same "table then code, boundary = smallest offset" shape as `$010000`
+
+Dumped raw words from `$00fe84` outward, resolving each as `$00fe84 + entry` (the same idiom
+`$011728` itself implements — confirmed already in §22e). The first 29 entries (ids 0-28) all
+resolve to small, sane, tightly-clustered targets in `$00febe`-`$00ffa2`, every one decoding as
+real, coherent code; from id 29 onward the "entries" blow up into wild, implausible offsets
+(`$122d`, `$b200`, `$6700`, ...) landing on garbage (`ori?`, unresolved line-F opcodes) — the same
+signature as reading past a table's real end into code bytes, not data. The smallest offset among
+the 29 real entries is exactly `$003a` (58 decimal = 29 × 2 bytes) → `$00febe`, which is where real
+handler code demonstrably resumes (confirmed by disassembling straight through from there with no
+decode errors) — an exact structural match for how the `$010000` table's own boundary was confirmed
+in §23a. **The table is `$00fe84`-`$00febd`, 29 word-relative entries, ids 0-28.**
+
+### 25b. All 29 handlers are precondition gates (return `D0=0` pass / `D0=-1` fail) against a handful
+    of small state fields — not verb-interpreter dispatch targets
+
+Full linear disassembly of `$00febe`-`$00ffa2` (the complete handler-code region all 29 entries land
+in). None of it is a jump/call into anything resembling the `$010000`-`$011256` object-verb block;
+every handler either returns a constant or compares an operand against one of three small global
+fields — `1156(A5)` (word), `1157(A5)` (byte), `1167(A5)` (byte) — or against a byte field pulled
+out of a record resolved via the shared id-resolver (`$00c542`, the same routine LOCK/§22d's id
+lookup family uses, confirming it's a genuinely shared primitive, not verb-specific):
+
+- ids `0,3,5,6,7,11,14,21,22,25,27,28` (12 of 29) → `$00ff4a`, an unconditional **pass** (`D0=0`).
+- id `2` → `$00fee6`, an unconditional **fail** (`D0=-1`); id `8`'s own entry (`$00ffa0`) is the same
+  constant-fail code reached as a fallthrough tail from ids 12/13/19/20's own comparison failure, not
+  a distinct handler.
+- ids `4,26` / `18` / `9` → compare a 16-bit operand against `1156(A5)`, pass on equality (id 9's
+  own version additionally passes on the `$ffff` sentinel, `bmi`, before the equality check).
+- ids `12,13,19,20` → compare a byte operand directly against `1157(A5)`, pass on equality.
+- ids `15,17` → same byte-vs-`1157(A5)` compare, but on a **pass** also does a real mutation:
+  `move.l 384(A5),348(A5)` — copies a saved pointer into `348(A5)`, the "self/current actor" slot
+  already named in §22d. This is the one handler in the set that changes state rather than just
+  gating, but the state it changes is "which entity subsequent opcodes act as," not anything on the
+  lever.
+- id `10` → a compound two-field gate: operand byte 1 vs `1167(A5)`, operand byte 2 vs `1157(A5)`,
+  both must match to pass.
+- id `1` → resolves `1156(A5)` via `$c542`, then compares an operand byte against a field of the
+  *resolved record itself* (offset computed from the record's own byte `+12`) — the most
+  "id-aware" gate in the set, but still a comparison, not a call.
+- id `16` → `btst #7,D4; bne skip; bclr #5,3(A0)` — clears bit 5 of whatever object `A0` currently is
+  (caller-supplied, not resolved here) unless a flag bit is set; always returns pass. A real
+  mutation, but on a bit unrelated to the lever's own `+15` field.
+- id `23` → the one handler that does substantive work: resolves an entity via `A0` (already set by
+  the caller), reads a per-entity value, conditionally doubles it, accumulates it into a running
+  total at `1192(A5)` (a plausible score/inventory-count field), and conditionally queues a sound
+  effect (`D0=$21` via `jsr $158f8`, the same sound-cue call site pattern as every other queued sound
+  in this image) — reads as a generic "count this and play a chime" event, not object-specific.
+
+**No handler among the 29 references `$06fa0e` (the lever's own record), object id 144, or any
+address inside `$010000`-`$011256` anywhere.** This closes the standing §22e/§22g/§24d question
+outright: **the ring-304 tagged-record dispatcher (`$fe0c`-`$fe70`) cannot reach LOCK/UNLOCK through
+`$00fe84`, under any tag value 0-28** — it's a self-contained precondition/scoring sub-system, not a
+bridge into the object-verb interpreter. Opcode/tag `9` (the already-known "touch" event id from
+§4a) does have a real handler here (id 9, above) for the first time this spike has traced it past
+"gets pushed onto a queue" — but it terminates in a plain pass/fail comparison, not a call anywhere,
+so it doesn't reopen §14's already-retracted "opcode 9 triggers pickup scripts" hypothesis, just adds
+one concrete data point to it.
+
+### 25c. Where this leaves the lever, with both §24d fallback items now exhausted
+
+Both concrete next steps standing after §24 are now closed: the dispatch-table caller search (§24a/
+§24b) and the `$00fe84` decode (§25b above) are both clean negatives, not unfound leads. Combined
+with §24c's causal proof that the mechanism itself works correctly when invoked directly, the most
+coherent reading left is: **the code that calls LOCK with id 144 is not currently loaded into RAM at
+all**, rather than being loaded-but-unreachable. This fits every fact gathered across the whole
+spike, not just this pass's own: the type-8 room-registration table has been confirmed empty in
+every snapshot since §14/§15/§23c (room 3 was never registered); the 17th pass's
+`gfxview.py --contact` scan found 9 palette tables and a 104KB span of resident *graphics* data this
+spike has barely sampled, consistent with room *assets* being preloaded from the one-disk image while
+room 3's *script/init code* — the thing that would contain a `LOCK 144`-equivalent bytecode sequence
+— has not been. If true, no further static search of the currently-loaded image can find this
+caller, because it doesn't exist yet; it would only appear once room 3's own data (not just its
+graphics) loads, which every portal/transition trace this spike has done (§9/§10/§13) shows has never
+actually happened in any snapshot taken so far. **Concrete next step, if this spike is picked up
+again**: rather than more caller-graph or literal-scan work in the current snapshot, look for *how*
+room 3's own script/code would get loaded at all — i.e. resume the still-open thread from §14's
+priority-1 ("what writes into the empty type-8 index table" was answered, §15, as "the save-restore
+deserializer, never taken this playthrough") from the opposite direction: what *would* register a
+freshly-loaded room during ordinary play (not restore), and why has it never fired even at CAVERN's
+own newly-found second door (§13)? That's a broader question than the lever specifically, but it's
+the one structural gap left that every dead end in §9-§25 keeps pointing back to.
+
+## 26. Closing the lever-caller thread — a documented negative, not reopened (27th pass)
+
+Thirteen passes (14th-26th) chased "what calls LOCK with object id 144" through four independent
+static techniques — absolute-literal scan, PC-relative `lea` scan, opcode-read-pattern scan, and an
+18-site whole-block external-caller sweep (§24a/§24b) — plus a full decode of the one remaining
+candidate dispatch table, `$00fe84` (§25), all coming back negative, and one causal proof that the
+mechanism itself works when called directly (`callcap $01049a`, §24c). The lever's own object (id
+144, §23d) is real, its LOCK/UNLOCK flag (`+15` bit 2) is real, and LOCK's opcode id (18) is real —
+nothing in the currently-loaded image calls it. The most coherent reading, given every fact gathered
+across this whole thread (the type-8 room-registration table is confirmed empty in every snapshot,
+§14/§15/§23c; the 17th pass's palette-table find shows room *assets* preloading from the one-disk
+image while room 3's own *script/init code* has never been shown to load, §13/§25c), is that **the
+calling code is simply not resident in RAM in any snapshot this spike has taken** — not a decode
+failure, a missed dispatch site, or a dormant/vestigial mechanism. Closed here as a documented
+negative, not reopened by this pass's consolidation work. The one remaining structural question —
+what would register a freshly-loaded room during ordinary play, and why it never fires even at
+CAVERN's own second door (§13) — stays queued as the README's own next concrete step, not chased in
+this doc-only pass.
+
+## 27. Consolidated room/level-encoding reference (27th pass)
+
+Pulls together the room/object/portal/resource-table facts already found and cited across §3, §4,
+§10b/§10c, §13, §15b, and §23c/§23d into one schema-style reference, instead of leaving them spread
+across separate changelog entries. This is consolidation, not new reversing — every fact below cites
+back to the section it was originally derived in.
+
+### 27a. Room extent (collision boundary)
+
+- Outer bounding rectangle: `RoomMaxX`/`RoomMaxY`/`FloorClampX`/`FloorClampY` (globals `2238`/`2239`/
+  `2204`/`2203`) and `RoomMinX`/`RoomMinY` (`2217`/`2218`) — §3.
+- Optional per-room refinement: `(A5)+140`, if non-null, points at 4 quadrant-cutout rectangles
+  (globals `2222`-`2237`, 4 fields each) selected via `jmp (A0)` — an outer box with up to 4 corner
+  cutouts, for irregular hand-painted rooms with no tile grid (§3, `graphics.md` §2). Null pointer =
+  plain rectangle. Which quadrant maps to which physical corner, and what selects the pointer per
+  room, is still open (§6).
+- A footprint failing the extent test falls through to the edge/portal check (27c).
+
+### 27b. Live object array (in-room collision + interactive classification)
+
+- `SpriteObjectArrayPtr_A5Plus56` / `SpriteObjectArrayCount_A5Plus1152`, stride `$46` (70 bytes) —
+  §4, `graphics.md` §3.
+- Per-entry fields relevant here: bytes 0-3 = bbox (x_min,y_min,x_max,y_max), bytes 4-5 = z_min/z_max
+  (doubles as an id/kind pair), byte 24's top bit = classification candidate, `+10` = pointer to the
+  object's own type-6 resource record (27d), whose `+15` bit 2 is the LOCK/UNLOCK state.
+- Classification rule (§4): AABB+Z overlap **and** `byte24<0` **and** the linked record's `+15` bit 2
+  set → `$FD` ("touched an interactive/pickup object"); otherwise a plain scenery block. (TUNNEL's
+  lever fails this today only on the `+15` half, per §21/§22c — see §26.)
+- Touch dedup: a 64-entry ring cache at `(A5)+512`/count `(A5)+2146` (§4a), keyed on a packed id-pair;
+  a genuinely new touch queues opcode `$9` onto the shared `(A5)+304` sound/event ring (the same ring
+  the object-verb interpreter's own event pushes use, `ai.md` §6).
+
+### 27c. Portal/edge table (room transitions)
+
+- A second, separate object table: `(A5)+88` (`PortalTablePtr_A5Plus88`) / `(A5)+1162`
+  (`PortalTableCount`), same 70-byte stride as 27b, but a threshold/edge test rather than AABB
+  containment (§10a) — `byte0`/`byte2` and `byte1`/`byte3` are independent threshold lines the
+  mover's footprint must straddle in the movement direction, with a diagonal-corner allowance
+  swapping which pair is checked (`btst #0/#1,2243(A5)`).
+- Match: `D0=-2`, `entry.+10` = door-descriptor pointer, `entry.+26` word → `(A5)+1184` ("pending room
+  target"). No match: `D0=$FF` (hard wall, no exit).
+- Door descriptor (`entry.+10`'s target, 20 bytes — §10c/§14): `+2` word = target room id, with two
+  special sentinels — `$0000` = "current room" (self-loop path, skips the real room-resolve chain)
+  and `$ffff` = "no room, sound/event cue only" (pushes a ring-304 opcode, no geometry/room-load call
+  at all). A real positive id runs the full chain: `$de5e` (nearest-free-entry-tile search) →
+  `$e854`/`$e84a` (ring-304 push + `2271(A5)` block-flag, both the same routine — `$e84a` just
+  presets the flag to `$ff` first) → conditionally `$defa` (a ring-304 opcode-`$8` push, itself *not*
+  the loader — the real disk-read consumer for that opcode is still unlocated).
+- Per-room source data: the current room's own record (pointed to by `(A5)+164`) holds 7 door-link
+  slots at `+6..+19` (2 bytes each, `$ffff`=unused) drawn from a **global, sequential door-id
+  namespace** shared across every room — this seeds the live portal table's `+26` words at room-load
+  (§14).
+- Two confirmed live examples: TUNNEL's 2-entry table (§10b — one real CAVERN-linked door, one
+  sound-cue-only entry with target `$ffff`); CAVERN's 2-entry table (§13 — the same shared
+  CAVERN↔TUNNEL descriptor as entry 0, plus a second, previously-undiscovered east-wall door to
+  target room id `$49` whose live transition resolves to the "already resident" branch, not a new
+  load).
+
+### 27d. Master resource-table system (types 6/8/9 — objects/rooms/creatures)
+
+- `(A5)+96` → a 10-row array (one row per resource type 0-9), 18 bytes/row: `{+0: index-table ptr,
+  +4: data-base ptr, +8..+15: unknown, +16: count}` (§14/§15b). Rows are initialized once at boot by
+  `$00c696` from a fixed 10-entry table at `$57c8`.
+- Index table: sparse, 4-byte slots, a `$0000` leading word = empty. `$00c628`/`$00c660` scan
+  forward/backward for the next populated slot from a given index — a "find next," not a keyed
+  lookup; id-keyed callers (e.g. `$011256`) wrap this in their own compare-and-reloop. A populated
+  slot's own `+2` word, added to the row's data-base, gives the record address.
+- Confirmed live population, `gameplay_empire.snap` (§23c):
+
+  | type | role | index ptr | data base | count | populated |
+  |---|---|---|---|---|---|
+  | 6 | objects | `$0004b596` | `$0006eb92` | 1000 | 1000/1000 |
+  | 8 | rooms | `$0004c536` | `$0007550a` | 64 | 0 (never registered in any snapshot) |
+  | 9 | creatures | `$0004c636` | `$0007560a` | 10 | 0 (no live creature found yet) |
+
+- Type 8's index table has no known writer anywhere in the currently-loaded image other than the
+  save-restore deserializer (`$00c9ee`, gated behind a boot-menu branch this spike has never taken,
+  §15) — this is the mechanical reason every room transition in this spike resolves to a hardcoded or
+  already-linked room rather than a freshly-registered one.
+- Type 6 records are what the object-verb interpreter (`ai.md` §6) resolves LOCK/UNLOCK/etc. operands
+  against, by 16-bit id — confirmed live for the lever specifically: id 144 → record `$0006fa0e`, the
+  exact same address the live object array's own `+10` field points to (§23d), whose `+15` byte is
+  the classification flag from 27b.
+
 ## Files
 
 | File | What |

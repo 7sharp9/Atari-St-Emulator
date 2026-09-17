@@ -136,9 +136,9 @@ turned out not to need it.
 | `room2_tunnel_entry.snap` | 12th pass: live snapshot at the screenshot above — resume point for exploring past the first room |
 | `room2_lever_boundary.png` | 13th pass: player flush against the TUNNEL lever, status bar reads "LEVER", icon panel shows its bracket/key icon pair |
 | `room2_lever_boundary.snap` | 13th pass: live snapshot at the screenshot above — resume point for trying new inputs against the lever (all tried this pass were inert; see the 13th-pass entries) |
-| `mechanics.md` | 14th pass: the collision/obstacle-check algorithm (`$008870`) and the TUNNEL lever's proximity-hotspot mechanism; 15th pass (§10): TUNNEL's live portal table fully decoded, settling "does the lever's door have an entry" as no; 17th pass (§13): CAVERN's own portal table decoded, a second real door found + live-triggered, closing the creature hunt as a fully-enumerated dead end; 18th pass (§15): found the type-8 room-registration table's only writer — the save-game restore deserializer (`$00c9ee`), gated behind a boot-menu branch this spike has never taken; 19th pass (§17): found the SAVE-serializer's real trigger — it's not a player hotkey, it fires automatically once at the very start of every boot on an always-empty type-8 table, retiring the planned save→restore live test; axe/pick navigation attempted, not reached; 20th pass (§18): found and fully disassembled the ring-304 queue's consumer — opcode `$8` is a name-banner/message-box display trigger, not a room loader, closing the "does `$defa` do real disk I/O" question as no; (§19) the axe/pickaxe reached and picked up live, closing the 16th pass's open item and opening a new "retest the lever with it held" lead; 21st pass (§20): the pickaxe-precondition reading retracted per user ground truth, replaced with a settled directional sweep — the player is hard-blocked with zero clearance toward the object and the "LEVER" hotspot itself is gone by 3 units in either free direction, closing the finer-position-sweep lead as a real negative, not an untested one |
+| `mechanics.md` | 14th pass: the collision/obstacle-check algorithm (`$008870`) and the TUNNEL lever's proximity-hotspot mechanism; 15th pass (§10): TUNNEL's live portal table fully decoded, settling "does the lever's door have an entry" as no; 17th pass (§13): CAVERN's own portal table decoded, a second real door found + live-triggered, closing the creature hunt as a fully-enumerated dead end; 18th pass (§15): found the type-8 room-registration table's only writer — the save-game restore deserializer (`$00c9ee`), gated behind a boot-menu branch this spike has never taken; 19th pass (§17): found the SAVE-serializer's real trigger — it's not a player hotkey, it fires automatically once at the very start of every boot on an always-empty type-8 table, retiring the planned save→restore live test; axe/pick navigation attempted, not reached; 20th pass (§18): found and fully disassembled the ring-304 queue's consumer — opcode `$8` is a name-banner/message-box display trigger, not a room loader, closing the "does `$defa` do real disk I/O" question as no; (§19) the axe/pickaxe reached and picked up live, closing the 16th pass's open item and opening a new "retest the lever with it held" lead; 21st pass (§20): the pickaxe-precondition reading retracted per user ground truth, replaced with a settled directional sweep — the player is hard-blocked with zero clearance toward the object and the "LEVER" hotspot itself is gone by 3 units in either free direction, closing the finer-position-sweep lead as a real negative, not an untested one; 22nd pass (§21): read the lever's own object-array entry in full and ran it through §4's own interactive/pickup classification test for the first time — it fails (byte24's top bit is set, but the linked `+10`→`+15` bit-2 flag isn't), so the object is plain scenery, not interactive; combined with §20's own "AABB overlap unreachable" finding, this is a double negative that closes the touch/opcode-`$9` pathway for the lever without needing to trace §18a's dispatcher against it; 23rd pass (§22): decoded action 101's own script (animation-only, confirmed) and finished the embedded debug-string scan past where §9 stopped — found a whole previously-undocumented "object verb" bytecode interpreter (LOCK/UNLOCK/MOVE/creature kill-wake-sleep/rucksack/chest ops, `$010000`-ish–`$011256`ish) whose LOCK/UNLOCK opcodes (`$0104a0`/`$0104ae`) write the *exact* `+15` bit-2 flag §21b found clear on the lever's linked struct, via an id-resolver using resource types 6/9 (unlike rooms' always-empty type 8); also disassembled the ring-304 queue's generic (non-`$8`) opcode path (`$00fe0c`-`$00fe70`) as a per-entity tagged-record dispatcher, and ruled the fire chain back out as still cosmetic-only — neither new mechanism is yet tied to the lever specifically, see `mechanics.md` §22g for the priority-ordered next steps; 24th pass (§23): found the verb interpreter's own top-level dispatch table (`$010000`-`$010075`, 59 word-relative entries) by raw byte-scan and confirmed LOCK's real numeric opcode id is 18 (exact address match, not a guess) — UNLOCK's own address isn't one of the 59 entries, still open; dumped resource types 6/8/9 live (no `kbd`/`mouse` needed, RAM-only against the already-known `A5=$18152`) and found type 6 (objects) fully populated (1000/1000) — then the headline result: **the lever is object id 144** in that exact table, triple-confirmed (id-resolve → `$06fa0e`, the lever's own sprite-array `+10` field → the same address, and `+15`/`+24` reading exactly as §21b originally found), settling that the LOCK/UNLOCK mechanism operates on the lever specifically, by a confirmed id and opcode — only "what script/event actually invokes opcode 18 with operand 144" is still open, see `mechanics.md` §23e; 25th pass (§24): four independent static searches for the dispatch table's caller (absolute-literal, PC-relative-`lea`, opcode-read-pattern, and an 18-site whole-block external-caller sweep) all came back negative — no static call site anywhere in the loaded image reaches the byte-opcode dispatcher — so ran the causal test directly on LOCK's own address instead of through it: `callcap $01049a A1=<scratch id-144 buffer>` from `room2_lever_boundary.snap` flips the lever's `+15` byte from `$01` to `$05` (bit 2 set), the first genuinely causal (not just structural) proof that LOCK-on-144 does what every prior pass inferred; whether anything in this game state actually calls it that way remains open, now backed by a much broader negative, see `mechanics.md` §24d; 26th pass (§25): decoded `$00fe84`'s jump table in full (29 entries, `$00fe84`-`$00febd`, same "table then code" shape as `$010000`) — every handler is a precondition gate (pass/fail against small state fields `1156`/`1157`/`1167(A5)`) or a minor unrelated mutation (actor-pointer swap, a bit-clear, a score+sound accumulator), and **none references the lever's record, object id 144, or anything in `$010000`-`$011256`** — a clean negative closing the standing "does the ring-304 queue reach LOCK/UNLOCK" question from §22e/§22g/§24d outright, see `mechanics.md` §25c for the resulting reframe (the caller may not be loaded into RAM at all, since room 3's own script/init data — as opposed to its graphics — has never been shown to load in any snapshot this spike has taken); 27th pass (§26): closed the whole lever-caller thread as a documented negative in one paragraph, not reopened by further searching, and (§27) added a consolidated schema-style room/level-encoding reference — room-extent test (§3), live object-array collision/classification (§4), portal-table format and both rooms' live examples (§10b/§10c/§13), and the type-6/8/9 master resource-table system (§15b/§23c/§23d) — pulling facts already found across those sections into one place rather than re-deriving anything |
 | `cavern_east_door_matched.snap` | 17th pass: live snapshot at CAVERN's newly-found east door, at the "already resident" branch's post-resolution state (20th pass, §18d: live-checked and corrected — the ring-304 queue here is empty, this door never reaches `$defa` at all, contra this entry's original framing) — resume point for pushing further on `$de5e`/`$e854`/`$11256` without re-deriving the route |
-| `ai.md` | 14th pass: the entity/action-script bytecode interpreter (`$15c70`), its 17-opcode instruction set, and the 3-slot structure it drives |
+| `ai.md` | 14th pass: the entity/action-script bytecode interpreter (`$15c70`), its 17-opcode instruction set, and the 3-slot structure it drives; 27th pass (§6): promoted the separate "object verb" bytecode interpreter (`$010000`-`$011256`, LOCK/UNLOCK/MOVE/creature/rucksack/chest ops, found 23rd-26th passes) out of `mechanics.md`'s narrative into its own proper writeup — dispatch table, opcode vocabulary, LOCK's confirmed id (18) and the lever's confirmed object id (144), with the caller search cross-referenced as a closed negative (`mechanics.md` §26) rather than re-argued here |
 | `axe_touch.snap` | 20th pass: live snapshot with the pickaxe just picked up (status bar "PICKAXE", inventory count 22→23) — resume point for retesting TUNNEL's lever with it held, untracked like the other `.snap` resume points |
 | `axe_touch.png` | 20th pass: screenshot at the snapshot above, status bar reading "PICKAXE" / "CAVERN" |
 | `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar "TUNNEL" only, no "LEVER"; the resume point behind `mechanics.md` §20c/§20d, untracked like the other `.snap` resume points |
@@ -988,7 +988,72 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    *is* free (Down, Right — screenshot-confirmed via `tools/snap_render.py`). There is no second
    reachable tile both inside the hotspot and different from the one the 13th pass already tested;
    interact retried at every position reached along the way, watching TUNNEL's live portal table
-   directly rather than guessing from a screenshot, produced zero effect every time. Once room 3 (or any room with a creature) is located/
+   directly rather than guessing from a screenshot, produced zero effect every time. **Update, 22nd
+   pass**: the standing "is the lever object even flagged interactive" question (never actually
+   checked despite `mechanics.md` §4 documenting the classification mechanism since the 4th pass) is
+   now answered — it isn't (`mechanics.md` §21). The object's own `byte24` top bit is set, but the
+   linked `+10`→`+15` bit-2 flag §4 requires alongside it is clear, so the AND fails and the object is
+   plain scenery, not "interactive/pickup." Combined with §20's own "AABB overlap unreachable"
+   finding, the touch/opcode-`$9`/ring-304-queue pathway (§4a/§18a) is now a double negative for this
+   object, closed without needing to trace §18a's generic per-entity dispatcher against it at all. The
+   two leads left standing are a genuinely different, uncharacterized input verb (outside the 9th
+   pass's action-id sweep), or a whole-image caller-graph scan (`find_ram_callers.py`/
+   `find_field_writers.py`) for whatever actually gates this door, since neither the portal table
+   (§10) nor the touch/interactive pathway (§21) turned out to be it — §21d recommends the
+   caller-graph scan as the next concrete step, matching this spike's own pattern of static techniques
+   outperforming live input-guessing from §9 onward. **Update, 23rd pass**: following §21d's own
+   recommendation, finished the embedded debug-string scan (`mechanics.md` §9) past where it had
+   stopped, and found something bigger than expected — a whole previously-undocumented "object verb"
+   bytecode interpreter (LOCK/UNLOCK, MOVE/GOMOVE/STOPMOVE, GOANI/STOPANI, creature KILL/WAKE/SLEEP,
+   rucksack add, chest UNLOCK/UNTRAP/CLEAR, a potion op), found via the same unique-debug-string
+   address-reference technique that cracked `"DOOR ERROR"` in §9. Its LOCK (`$0104a0`) and UNLOCK
+   (`$0104ae`) opcodes `bset`/`bclr` bit 2 of struct offset `+15` on an object resolved by numeric id —
+   the exact bit the 22nd pass's own §21b found clear on the lever's `+10`-linked struct, via a
+   resource-table lookup (types 6/9, not rooms' always-empty type 8) that's plausibly populated where
+   type 8 wasn't. Also disassembled the ring-304 queue's generic (non-`$8`) opcode path as a genuinely
+   new per-entity tagged-record event dispatcher (`mechanics.md` §22e), and confirmed the fire chain
+   still doesn't reach any of this (§22f — §11's "cosmetic only" finding stands). Neither new
+   mechanism is yet tied to the lever specifically — the LOCK/UNLOCK opcodes have zero direct
+   `bsr`/`jsr` callers (reached only through an unlocated computed-jump dispatch table), so the
+   concrete next steps (`mechanics.md` §22g) are finding that dispatch table (to get LOCK/UNLOCK's
+   real opcode numbers), dumping resource types 6/9 live to check whether they're populated, and
+   decoding the ring-304 tagged-record jump table (`$00fe84`) to see whether it can reach the verb
+   interpreter from some entity other than the lever's own inert scenery object. **Update, 24th
+   pass**: found the dispatch table (`mechanics.md` §23a, `$010000`-`$010075`, 59 word-relative
+   entries) and confirmed LOCK's real opcode id is 18 by an exact address match, not a guess —
+   UNLOCK's own address isn't one of the 59 entries, still open (§23b). Dumped resource types 6/8/9
+   live (§23c): type 6 (objects) is fully populated, 1000/1000. Then the actual headline result:
+   **the lever is object id 144** in that exact table (§23d), triple-confirmed — the id-resolve path
+   lands on `$06fa0e`, the lever's own sprite-array `+10` field points to that same address, and its
+   `+15`/`+24` bytes read exactly as the 22nd pass's §21b originally found. This is the first time
+   this spike has tied the LOCK/UNLOCK mechanism to the lever by a confirmed numeric id and opcode,
+   not just "a mechanism that writes the right bit somewhere." What's still missing is purely "who
+   calls it" — no script byte sequence invoking opcode 18 with operand 144 has been found, and the
+   interpreter's own top-level "read a script opcode byte, dispatch" entry point wasn't located this
+   pass either (§23e has the concrete next steps: find that caller, then `callcap` the opcode-18/
+   id-144 path directly and diff the lever's `+15` byte — cheaper than any further static search).
+   **Update, 25th pass**: item (1), finding the caller, is now a broad negative rather than an
+   unfound one — four independent static techniques (absolute-literal scan, PC-relative-`lea` scan,
+   opcode-read-pattern scan, and an 18-site whole-verb-block external-caller sweep) all found no
+   static call site anywhere in the loaded image that reaches the byte-opcode dispatcher
+   (`mechanics.md` §24a/§24b). Item (2) was done anyway, directly on LOCK's own already-known address
+   rather than waiting on (1): `callcap $01049a` with `A1` pointing at a scratch buffer holding id
+   144, from `room2_lever_boundary.snap`, flips the lever's `+15` byte from `$01` to `$05` (bit 2
+   set) exactly as LOCK's own `bset` instruction would (`mechanics.md` §24c) — the first causal, not
+   merely structural, confirmation in this whole spike that the mechanism works. Whether anything in
+   this game state actually invokes it that way is still open, and now a stronger negative than
+   before — see `mechanics.md` §24d for the one remaining lead (`$00fe84`'s still-undecoded jump
+   table).
+   **Update, 26th pass**: that lead is now closed too - `$00fe84`'s 29 handlers (`mechanics.md` §25)
+   are all precondition gates or minor unrelated mutations, none reaching LOCK/UNLOCK or referencing
+   the lever's own record or id 144 anywhere. Both concrete next steps standing after the 25th pass
+   are now clean negatives, not unfound leads. The most coherent reading left (§25c): the code that
+   calls LOCK with id 144 for real may not be loaded into RAM at all in any snapshot this spike has
+   produced, since room 3's own script/init data (as opposed to its graphics, confirmed resident by
+   the 17th pass's palette-table find) has never been shown to load. The concrete next step, if this
+   spike is picked up again, is broader than the lever itself: what would register a freshly-loaded
+   room during ordinary play, and why has it never fired even at CAVERN's own second door (§13)?
+   Once room 3 (or any room with a creature) is located/
    reached, snapshot there and differential-test `EntityScriptDispatch`/its
    opcode handlers with `callcap`, following the PowerMonger FSM methodology (`tools/pm_fsm_diff.py`'s
    `Harness`/`State`/`run_corpus`, game-agnostic; write a Cadaver-specific reconstruction module).
