@@ -1890,21 +1890,53 @@ type Cpu =
                 if bit < 8 then x.DataRegister (byte bit) else x.AddressRegister (byte (bit - 8))
             let ascWriteReg (c: Cpu) bit v =
                 if bit < 8 then c.WithDataRegister (byte bit) v else c.WithAddressRegister (byte (bit - 8)) v
+            //Both auto-update modes below prime MMU.FaultPcAdvance (and, for the read direction,
+            //FaultRegFixup) once before the loop, not per-iteration: every subsequent address in
+            //the list is base +/- a multiple of `step`, so parity - and hence odd-address
+            //fault-or-not - never changes across the list, meaning only the FIRST register/word
+            //processed can ever fault. The mask word is the only thing consumed before the base
+            //address (extBytes=0 for these two modes), so a fault always stacks PC+2 - confirmed
+            //against real MOVEM.w/.l vectors, both directions, both sizes.
+            //
+            //The two directions are NOT symmetric on real hardware (verified against MOVEM.w/.l
+            //vectors, not assumed): reglist->-(An) (a WRITE) commits NO decrement at all when the
+            //first access faults - An stays at its pre-instruction value, confirmed via several
+            //`#,-(An)` fault vectors whose `changed` set never lists the address register at all.
+            //(An)+->reglist (a READ) DOES commit on a first-word fault, but always by exactly one
+            //word (2), never by `step` even at .l size - a long register load is two word-sized
+            //bus cycles (matches genmovemel_ce's srcw(srca)/srcw(srca+2) shape and the 104th
+            //pass's MOVE.l -(An) write-split finding), and since a fault can only ever land on the
+            //very first of those two words, the address register never advances past +2.
             match direction, eamode with
             | 0uy, 0b100uy -> //reglist,-(An) : predecrement, mask order reversed (bit0 = A7 .. bit15 = D0)
                 let mutable addr = x.AddressRegister eareg
+                x.MMU.FaultPcAdvance <- 2
                 for bit in 0 .. 15 do
                     if (mask >>> bit) &&& 1us = 1us then
                         addr <- addr - step
                         let value =
                             if bit < 8 then x.AddressRegister (byte (7 - bit))
                             else x.DataRegister (byte (15 - bit))
-                        storeValue (uint32 addr) value
+                        if size = 1uy then
+                            //A LONG -(An) write splits into two word-sized bus cycles on real
+                            //hardware: the low word writes FIRST at addr+2 (a 2-byte decrement),
+                            //the high word SECOND at addr (the full 4-byte decrement) - same
+                            //split MOVE.l -(An) needed (107th pass). A fault on the first (low)
+                            //word therefore stacks addr+2 as the fault address, not addr -
+                            //confirmed against real MOVEM.l `#,-(An)` vectors (the stacked fault
+                            //address's low byte was 2 off before this fix). No FaultRegFixup
+                            //either way: this direction never commits on a fault (see above).
+                            x.MMU.WriteWord (uint32 (addr + 2)) (int16 value)
+                            x.MMU.WriteWord (uint32 addr) (int16 (value >>> 16))
+                        else
+                            storeValue (uint32 addr) value
                 printfn "movem.%s #$%04x,-(a%u)" szChar mask eareg
                 {x.WithAddressRegister eareg addr with PC = x.PC+4}
             | 1uy, 0b011uy -> //(An)+,reglist : postincrement, ascending mask order
                 let mutable addr = x.AddressRegister eareg
                 let mutable cpu = x
+                x.MMU.FaultPcAdvance <- 2
+                x.MMU.FaultRegFixup <- [(int eareg, addr + 2)]
                 for bit in 0 .. 15 do
                     if (mask >>> bit) &&& 1us = 1us then
                         cpu <- ascWriteReg cpu bit (loadValue (uint32 addr))
