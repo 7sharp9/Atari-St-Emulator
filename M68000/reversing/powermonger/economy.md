@@ -237,9 +237,23 @@ did **not** unblock it — markers still seed `byte15 := 0` and only `$4342`'s o
 claim head writes `byte15 := $d0`, and that head needs a bit-7 animal *with* a
 shepherd, which no natural state reaches. So, like mode `$7c` before the 97th, a
 real differential test needs a synthesised corpus (poke a marker's `byte15` +
-an animal's `shepherd_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains). Deferred
-to its own pass; the skeleton is in `scratchpad/pm96/`, the anchor is
-`scratchpad/pm97/pm97_map0`.
+an animal's `shepherd_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains).
+
+**113th, Proven for 8/9 branches** (`tools/pm_fsm_ref.py` `call_4342`,
+`scratchpad/pm113/diff_4342.py`): the CLAIM mechanism is genuinely more
+involved than the pseudocode above lets on — it does NOT reuse the triggering
+op's *own* marker chain. It clears the op's own `marker_off`, scans the whole
+`$57f68` array from the start for the first OTHER op whose `marker_off` is
+still 0, and transplants the triggering op's chain into that op instead (a
+fallback keeps the triggering op's original chain if no empty slot exists
+anywhere). Every `byte5 > 0` marker in the transplanted chain then gets
+(re)initialised via `$16808`. 110/110 tracked bytes identical over 9 states
+(claim + guard-fail + no-empty-op fallback, both ramp-in cases, the dwell-skip,
+a real step, and the owner-sync write) — see `ai.md`'s own entry for full
+detail, including the two real bugs the pass caught in the bucket-link
+machinery and the one branch (arrival/unlink) still only Corroborated because
+it reproducibly hangs the real emulator under every synthesised poke tried so
+far.
 
 ### 2a. The shepherd FSM and the real delivery payoff (75th pass)
 

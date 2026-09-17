@@ -94,35 +94,44 @@ def terrain_sample(m, D6, D7):
 
 
 # ---------------------------------------------------------------- $16778
+def _objaddr(rec_off):
+    """OBJ + rec_off, the way every real `adda.w D0,An` does it: rec_off is a
+    16-bit WORD that gets sign-extended before the add, so a record living
+    BELOW OBJ (e.g. a $4c5f4 herd marker, encoded the same "offset from
+    $51b66" way as every other small object) resolves to its real address,
+    not OBJ plus a huge positive word."""
+    return (OBJ + s16(rec_off)) & 0xffffffff
+
+
 def bucket_unlink(m, cell, rec_off):
     """$16778: remove object at byte-offset rec_off from cell chain `cell`
     (word index into $47970)."""
     A0 = BUCKETS + cell * 2
     head = m.wu(A0)
     if head == 0:
-        m.wl(OBJ + rec_off, 0)
+        m.wl(_objaddr(rec_off), 0)
         return
     if head == rec_off:                     # unlink at head
-        nxt = m.wu(OBJ + head + 0)
+        nxt = m.wu(_objaddr(head) + 0)
         m.ww(A0, nxt)
         if nxt != 0:
-            m.ww(OBJ + nxt + 2, 0)
-        m.wl(OBJ + rec_off, 0)
+            m.ww(_objaddr(nxt) + 2, 0)
+        m.wl(_objaddr(rec_off), 0)
         return
     # walk
     prev = head
     while True:
-        nxt = m.wu(OBJ + prev + 0)
+        nxt = m.wu(_objaddr(prev) + 0)
         if nxt == 0:
             break
         if nxt == rec_off:
-            follow = m.wu(OBJ + nxt + 0)
-            m.ww(OBJ + prev + 0, follow)
+            follow = m.wu(_objaddr(nxt) + 0)
+            m.ww(_objaddr(prev) + 0, follow)
             if follow != 0:
-                m.ww(OBJ + follow + 2, prev)
+                m.ww(_objaddr(follow) + 2, prev)
             break
         prev = nxt
-    m.wl(OBJ + rec_off, 0)
+    m.wl(_objaddr(rec_off), 0)
 
 
 # ---------------------------------------------------------------- $163ea
@@ -1092,6 +1101,181 @@ def h_mode7c_regroup(m, A1):
         call_3c08(m, A1)                             # jsr $3c08
 
 
+# ---------------------------------------------------------------- $016808
+def call_16808(m, cell, rec_off):
+    """$016808: insert (or move) the object at OBJ+rec_off to the head of the
+    $47970 bucket chain for `cell`.  `rec_off` may be negative (any record
+    encoded as an offset from OBJ=$51b66, even one that physically lives
+    below it, e.g. a $4c5f4 herd marker - the bucket-slot arithmetic below is
+    address-based, so a negative offset just resolves to the lower address it
+    always meant).  28(A7)=cell, 30(A7)=rec_off in the real calling
+    convention (both pushed by the caller, popped after return)."""
+    A0 = _objaddr(rec_off)
+    m.wl(A0 + 0, 0)                          # clr.l 0(A0)
+    A1 = BUCKETS + cell * 2
+    D2 = m.wu(A1)                            # old head
+    if D2 != 0:
+        m.ww(A0 + 0, D2)                     # new rec's fwd link = old head
+        A2 = _objaddr(D2)
+        m.ww(A2 + 2, rec_off & 0xffff)       # old head's back link = new rec_off
+    m.ww(A1, rec_off & 0xffff)               # bucket head := new rec_off (always)
+
+
+# ---------------------------------------------------------------- $004342
+HERD_OPS = 0x57f68       # stride 8, terminated by target_cell==0, byte-length in $57fb8, <=10 ops
+HERD_ANIMALS = 0x4d252   # stride 12
+HERD_MARKERS = 0x4c5f4   # stride 22
+
+
+def call_4342(m):
+    """$004342: the per-tick herding servicer (from $3e06/pm_flag_health).
+    Transcribed instruction-for-instruction from scratchpad/pm96/disasm/
+    herd_4342.txt (fully re-disassembled to $4534 - the pm96 file itself cut
+    off mid-routine).  For each live $57f68 op:
+
+    CLAIM (only when the op's animal has breed_state bit7 set, its
+    category:breed_state word is nonzero, and it has a shepherd_obj): walk
+    the shepherd's own small-object chain (word2 links) until an entry with
+    byte6==0 is found - a pure precondition guard, its landing address is
+    never used - and only then proceed.  Clear the animal's bit7.  Then scan
+    the WHOLE op array from the start for the first op whose OWN marker_off
+    is still 0 (an "empty" op); transplant the ORIGINAL op's marker_off into
+    that empty op and clear the original op's own slot (markers effectively
+    get reassigned across ops, not reused in place - transcribed as found,
+    not smoothed over).  (Re-)initialise every marker reachable via that
+    slot's own word20 forward-link chain whose byte5 is positive: byte15 :=
+    -48 (ramp-in start), dwell(word18) := 0, byte8/9/word10 := the animal's
+    packed cell (a DIFFERENT packing of the same word10 field than the
+    step-target formula below - not unified, both transcribed as coded), and
+    $16808-insert it at the head of the animal's $47970 bucket.  If the scan
+    never finds an empty op, the original op keeps its own marker_off
+    unchanged (safe fallback, matches the real bounds check falling through).
+
+    ANIMATE (always, for every marker already chained to this op via
+    word20): while byte15 < 0, ramp in (+= 1 + a per-op counter that
+    increments per marker processed this op, clamped to $30) and skip the
+    rest of this marker's tick.  Otherwise, decrement dwell(word18); only
+    once it expires does $164bc (step_toward) run, using D6/D7 freshly
+    loaded from the marker's own word8/word10 as (cx,cy) and the ANIMAL's
+    packed cell (word10, this routine's OWN wide packing, not the marker's
+    byte8/9 one) as (tx,ty).  The returned dwell doubled and clamped to $30
+    becomes the new byte15; if that lands on exactly 0 (arrived), bset the
+    ANIMAL's bit7 back on and $16778-unlink the marker from its bucket,
+    skipping the rest of this marker's tick.  Otherwise (still moving, or
+    dwell hadn't expired this tick), decay byte14 by 4 (floored at 0),
+    integrate the marker's world position by (byte12,byte13) into D6/D7, and
+    $163ea-relink it into its new bucket.
+
+    D5 is a per-op ramp-speed counter (0 at the top of each op's animate
+    loop, +1 per marker that actually ramps this tick) and D6/D7 accumulate
+    the *last* animated marker's new absolute position (register-only
+    caller-visible output, not memory - outside every tracked region, so not
+    modelled or asserted on here)."""
+    A0 = HERD_OPS
+    while m.wu(A0 + 0) != 0:                         # tst.w 0(A0) ; beq $4534
+        A1 = HERD_ANIMALS + m.wu(A0 + 4)             # the animal ("h")
+        if m.bu(A1 + 7) & 0x80:                      # btst #7,7(A1)
+            claimed = False
+            if m.wu(A1 + 6) != 0:                    # category:breed_state word
+                shep = m.wu(A1 + 2)                  # shepherd_obj
+                if shep != 0:
+                    d0 = shep
+                    while True:
+                        if m.bu(OBJ + d0 + 6) == 0:
+                            claimed = True
+                            break
+                        d0 = m.wu(OBJ + d0 + 2)
+                        if d0 == 0:
+                            break
+            if claimed:
+                m.wb(A1 + 7, m.bu(A1 + 7) & ~0x80)   # bclr #7,7(A1)
+                a2 = HERD_OPS
+                d0 = 0
+                op_len = m.wu(0x57fb8)
+                while m.wu(a2 + 6) != 0:              # scan for an op with an empty marker slot
+                    d0 += 8
+                    a2 += 8
+                    if d0 >= op_len:
+                        a2 = None
+                        break
+                if a2 is not None:
+                    marker_off = m.wu(A0 + 6)
+                    m.ww(a2 + 6, marker_off)          # transplant this op's marker chain
+                    m.ww(A0 + 6, 0)                   # ... away from the original op
+                    d0 = marker_off
+                    while True:
+                        a3 = HERD_MARKERS + d0
+                        if m.bs(a3 + 5) > 0:
+                            m.wb(a3 + 15, 0xd0)                       # byte15 := -48
+                            m.ww(a3 + 18, 0)                          # dwell := 0
+                            cell = m.wu(A1 + 10)                      # animal.cell
+                            m.wb(a3 + 8, cell & 0x3f)
+                            m.wb(a3 + 9, 0x80)
+                            m.ww(a3 + 10, (((cell & 0x1fc0) << 2) + 0x80) & 0xffff)
+                            call_16808(m, cell, (HERD_MARKERS - OBJ + d0) & 0xffff)
+                        nxt = m.wu(a3 + 20)
+                        if nxt == 0:
+                            break
+                        d0 = nxt
+        d0 = m.wu(A0 + 6)                            # this op's (possibly just-reassigned) marker chain
+        if d0 != 0:
+            a1 = HERD_MARKERS + d0
+            d5 = 0
+            while True:
+                if m.bs(a1 + 5) > 0:
+                    prog = m.bs(a1 + 15)
+                    if prog == 0:
+                        pass                                           # beq $452a: nothing this tick
+                    elif prog < 0:                                     # ramp-in
+                        prog = s8((prog + 1 + d5) & 0xff)   # addi.b #1,D0 ; add.b D5,D0 (byte-wrapped)
+                        if prog < 0:                                   # blt -> still negative, unclamped
+                            m.wb(a1 + 15, prog & 0xff)
+                        else:                                          # else clamp to +48
+                            m.wb(a1 + 15, 0x30)
+                        d5 += 1
+                    else:                                              # prog > 0: moving
+                        D6 = s16(m.wu(a1 + 8))
+                        D7 = s16(m.wu(a1 + 10))
+                        dwell = (m.wu(a1 + 18) - 1) & 0xffff
+                        m.ww(a1 + 18, dwell)
+                        run_tail = False
+                        if s16(dwell) > 0:
+                            run_tail = True                            # bgt $4502 - straight to the tail
+                        else:
+                            a3 = HERD_ANIMALS + m.wu(A0 + 4)
+                            cell = m.wu(a3 + 10)
+                            tx = (((cell & 0x3f) << 8) + 0x80) & 0xffff
+                            ty = (((cell & 0x1fc0) << 2) + 0x80) & 0xffff
+                            _, sdwell, _ = step_toward(m, tx, ty, D6, D7, a1)
+                            D2 = (sdwell * 2) & 0xffff
+                            if s16(D2) > 0x30:
+                                D2 = 0x30
+                            m.wb(a1 + 15, D2 & 0xff)
+                            if D2 == 0:                                # arrived - no tail
+                                m.wb(a3 + 7, m.bu(a3 + 7) | 0x80)       # bset animal.bit7
+                                bucket_unlink(m, cell, (HERD_MARKERS - OBJ + d0) & 0xffff)  # $16778
+                            else:
+                                w0 = m.wu(a1 + 0)
+                                if w0 != 0:
+                                    owner = OBJ + w0
+                                    if m.bu(owner + 6) == 0:
+                                        m.wb(a1 + 14, m.bu(a1 + 15))
+                                run_tail = True
+                        if run_tail:                                   # $4502: shared decay/integrate/relink
+                            b14 = m.bu(a1 + 14)
+                            b14 = max(0, b14 - 4)
+                            m.wb(a1 + 14, b14)
+                            D6new = (D6 + s8(m.bu(a1 + 12))) & 0xffff
+                            D7new = (D7 + s8(m.bu(a1 + 13))) & 0xffff
+                            relink(m, a1, D6new, D7new)
+                nxt = m.wu(a1 + 20)
+                if nxt == 0:
+                    break
+                a1 = HERD_MARKERS + nxt
+                d0 = nxt
+        A0 += 8
+
+
 # ---------------------------------------------------------------- prologue + dispatch
 def reconstruct(m):
     if _TRIG is None:
@@ -1167,6 +1351,21 @@ REGIONS = [
     (BUCKETS, BUCKETS + 0x4000, "bucket"),
     (0x4e514, 0x4e514 + 32 * 40, "leader"),
     (0x4f916, 0x4f916 + 0x100, "settlement"),   # 96th: mode $7c construction path
+]
+
+# 113th pass: extra regions for $4342 (herd servicer) differential tests only -
+# NOT folded into REGIONS, since widening it here also widens every $14b62
+# ($14b62/reconstruct()) test's tracked window and surfaces a pre-existing,
+# separately-owned gap in THAT reconstruction (a real-hardware write into the
+# herd/animal table's unknown "_w4" field, $4d819, that reconstruct() has
+# never modelled - found by exactly this widening, but out of scope for this
+# pass; repro93/94 must stay green).  A $4342 differential-test script sets
+# `pm_fsm_ref.REGIONS = pm_fsm_ref.REGIONS + pm_fsm_ref.HERD_REGIONS` itself
+# (process-local, never mutates this module for anyone else).
+HERD_REGIONS = [
+    (HERD_MARKERS, HERD_MARKERS + 22 * 80, "herd_marker"),
+    (HERD_ANIMALS, HERD_ANIMALS + 12 * 400, "herd_animal"),
+    (HERD_OPS, HERD_OPS + 8 * 10, "herd_op"),
 ]
 
 def in_tracked_region(a):

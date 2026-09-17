@@ -249,16 +249,74 @@ assessment — a whole routine; every `field·4 < reserve` state is arranged wit
 `(14(A1) & 3) == 3` so it is skipped), **`$550e`** (militarism revolt, loyalty
 kept `< 600`), **`$5c2c`** (owner reconcile inside `$16848`).
 
-The **herd servicer `$4342`** is disassembled (`scratchpad/pm96/disasm/`), its
-leaves `$164bc`/`$163ea`/`$16778` already Proven and `$16808` transcribed — but
-it is **not differentially tested**: it is a no-op in every capture including the
-97th's `pm97_map0` (all `breed`-bit-7 animals have `shepherd_obj == 0`; all
-`$4c5f4` markers have `progress == 0` — the claim head that would set progress
-needs a bit-7 animal *with* a shepherd, which nothing natural reaches), so it
-needs its own synthesised-corpus pass (`pm97_map0` is the anchor). `$5cde` and
-the dying-entity path `$1623c` remain **Corroborated**, not Proven. Mode `$28` /
-`$2e` (`$15302`) handlers are disassembled but not yet differentially tested
-(`$2e` calls the same `$56a6`).
+`$5cde` and the dying-entity path `$1623c` remain **Corroborated**, not Proven.
+Mode `$28` / `$2e` (`$15302`) handlers are disassembled but not yet
+differentially tested (`$2e` calls the same `$56a6`).
+
+### [Proven, 8/9 branches] — the herd servicer `$4342`, vs the real 68000 (113th pass)
+
+`$4342` (from `$3e06`/`pm_flag_health`, once per sim tick) is a no-op in every
+*natural* capture including the 97th's `pm97_map0` (every `breed`-bit-7 animal
+has `shepherd_obj == 0`; every `$4c5f4` marker has `progress == 0`), so — per
+the 96th/97th's own flagged next step — this pass built a synthesised corpus
+directly on `pm97_map0` (8 live herd ops, 68 markers). No entry contract (it
+`lea`s all three of its own tables: `$57f68` herd ops, `$4d252` animals,
+`$4c5f4` markers).
+
+`tools/pm_fsm_ref.py` `call_4342` + a new leaf `call_16808` (bucket-chain
+insert, the CLAIM path's screen-record spawn — `bucket_unlink`/`$16778` was
+already Proven from the entity FSM). Differential test
+`scratchpad/pm113/diff_4342.py`: **110/110 tracked bytes identical over 9
+states, 8 branch families** (natural idle; the CLAIM mechanism itself, its
+precondition-guard failure, and its "no empty op slot" fallback; both
+ramp-in sub-cases — unclamped and clamping to `+$30`; the dwell-not-yet-
+expired skip; a real `$164bc` step that doesn't arrive; and the owner-sync
+byte14 write). Pre-registered bar (100% over ≥ 9 states, ≥ 7 families): PASS.
+
+Two real bugs caught and fixed mid-pass, both in the *new* leaf machinery
+(`bucket_unlink`/`call_16808`), not in `$4342` itself — worth recording since
+they're a general 68k-semantics trap, not PowerMonger-specific:
+1. **Missing full-skip guard.** The first draft routed `byte15 == 0` into the
+   "moving" branch instead of skipping the marker entirely (`beq $452a` in the
+   real asm) — caught immediately by the **natural** ("nat", zero pokes) state
+   showing 235 spurious recon-only changes against a real hardware delta of
+   zero, i.e. the *simplest possible* state caught it before any synthesised
+   one was even needed.
+2. **Unsigned vs. sign-extended address arithmetic.** `bucket_unlink`/
+   `call_16808` computed `OBJ + rec_off` as a plain unsigned add. Every prior
+   caller only ever passed a *positive* rec_off (a normal `$51b66`-table
+   entity, which always lives above `OBJ`), so this was never wrong before.
+   `$4342`'s markers live at `$4c5f4`, *below* `OBJ` — a real `adda.w
+   D0,An` sign-extends the 16-bit word first, so their rec_off is genuinely
+   negative. Fixed with a shared `_objaddr(rec_off) = OBJ + s16(rec_off)`
+   helper in both functions (backward-compatible for every existing positive
+   caller, since sign-extension of a small positive word is a no-op).
+
+**Not yet closed — the "arrived" branch (bset the animal's bit7 back on +
+`$16778`-unlink the marker).** It reuses the now-twice-proven
+`bucket_unlink`/`_objaddr` machinery (in the remove direction; the claim path
+above proves the insert direction extensively), so it's Corroborated, not
+untested guesswork — but every synthesised poke that reaches it (an exact-
+target degenerate `$164bc` divide-by-zero, and a 1-unit-off normal division)
+reproducibly hangs the real emulator within ~3000 steps, parked in a timer-
+interrupt `rte` ($14e4) per the loop detector. Not root-caused; `bucket_unlink`
+alone can't infinite-loop on these inputs (it's a bounded walk with no cycle
+risk from what was poked), so this is either a genuinely separate real-68k/
+game-state interaction the synthetic state exposes, or a still-missing
+precondition (a marker that was never actually `$16808`-inserted at that cell
+to begin with, unlike a naturally-claimed one). Left in
+`scratchpad/pm113/diff_4342.py` (excluded from the pass bar, with the repro
+inline) for whoever picks this up next.
+
+**REGIONS note:** the new herd tables ($4c5f4/$4d252/$57f68) are deliberately
+NOT folded into `pm_fsm_ref.REGIONS` — doing so widens every `$14b62`
+(`reconstruct()`) test's tracked window too, and surfaced a real, separately-
+owned gap (a live-hardware write into the herd/animal table's unknown `_w4`
+field, `$4d819`, that `reconstruct()` doesn't model) that broke `repro93`/`94`'s
+established 675/675 and 1335/1335 bars. `pm_fsm_ref.HERD_REGIONS` holds them
+instead; a `$4342` test adds `pm_fsm_ref.REGIONS = pm_fsm_ref.REGIONS +
+pm_fsm_ref.HERD_REGIONS` itself (process-local, never mutates the module for
+anyone else) — see `diff_4342.py`'s own top for the pattern.
 
 ### [Proven] — the regroup / return-home dispatcher `$3c08`, vs the real 68000 (98th pass, RIDER 3b routine 5)
 
