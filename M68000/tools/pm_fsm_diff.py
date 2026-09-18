@@ -161,6 +161,44 @@ class Harness:
                     d[a] = (before[a], after[a])
         return d
 
+    MAX_SLOT = (pm_fsm_ref.END - pm_fsm_ref.OBJ) // pm_fsm_ref.REC - 1  # last full record fits at slot 511
+
+    @staticmethod
+    def obase(slot):
+        """OBJ + slot*REC, bounds-checked against the real object table's
+        extent (OBJ..END).  A synthesized test slot past this silently
+        aliases memory outside every tracked region - both real hardware and
+        `reconstruct()` write there identically, so `tracked_delta` reports
+        0/0 "ok" while the actual writes land nowhere meaningful (bit us once,
+        116th pass: slots 520-523 were past END and produced a false pass).
+        Use this instead of hand-rolling `OBJ + slot*REC` in a corpus script."""
+        if not (0 <= slot <= Harness.MAX_SLOT):
+            raise ValueError(f"slot {slot} out of range 0..{Harness.MAX_SLOT} "
+                              f"(OBJ..END covers that many {pm_fsm_ref.REC}-byte records)")
+        return pm_fsm_ref.OBJ + slot * pm_fsm_ref.REC
+
+    @staticmethod
+    def outside_delta(raw_mem, extra_regions=()):
+        """Bytes from a raw callcap `mem` list (list of (addr,before,after))
+        that fall outside BOTH pm_fsm_ref.REGIONS and `extra_regions` (an
+        optional list of (lo,hi,name) the caller wants additionally
+        acknowledged as in-scope for THIS corpus, mirroring the HERD_REGIONS
+        pattern instead of every pass hand-rolling its own opt-in list).
+        Returns {addr: (before,after)}. This is intentionally NOT scoped to
+        any master "known game tables" list - group-state and $580a6 writes
+        are long-standing, deliberate, documented untracked regions across
+        many passes, not coverage gaps, so flagging them by default would
+        misjudge settled scope decisions rather than catch new ones. Opt in
+        per corpus via `run_corpus(..., strict_coverage=True, extra_regions=[...])`
+        when a pass wants to positively assert "nothing escaped my expected
+        regions", rather than relying on eyeballing raw vs tracked counts."""
+        regions = list(pm_fsm_ref.REGIONS) + list(extra_regions)
+        out = {}
+        for a, b0, b1 in raw_mem:
+            if not any(lo <= a < hi for lo, hi, _ in regions):
+                out[a] = (b0, b1)
+        return out
+
     # ----------------------------------------------------------- emulator
     def run_repl(self, cmds, snap=None):
         snap = snap or self.anchor_snap
@@ -174,7 +212,11 @@ class Harness:
 
     # ----------------------------------------------------------- corpus loop
     def run_corpus(self, states, min_states, min_branches=0, steps=2_000_000,
-                   reuse_json=False, only=None):
+                   reuse_json=False, only=None, strict_coverage=False, extra_regions=()):
+        """strict_coverage=True: treat any real-hardware byte change outside
+        REGIONS/extra_regions as a failure, not just a silently-ignored raw
+        diff - opt in when a corpus wants to positively assert nothing
+        escaped its expected regions (see Harness.outside_delta)."""
         if only is None and len(sys.argv) > 1:
             only = sys.argv[1]
         tot = ok = n = 0
@@ -209,6 +251,7 @@ class Harness:
             for a, b0, b1 in j["mem"]:
                 after_real[a] = b1
             real = self.tracked_delta(pk, after_real)
+            outside = self.outside_delta(j["mem"], extra_regions)
 
             m = pm_fsm_ref.Mem(pk)
             try:
@@ -226,10 +269,20 @@ class Harness:
             n += 1
             seen[st.tag] = seen.get(st.tag, 0) + 1
             status = "ok" if not bad else f"MISMATCH x{len(bad)}"
-            print(f"{st.name:24} [{st.tag:12}] steps={j['steps']:5d} "
-                  f"real={len(real):3d} recon={len(recon):3d}  {status}")
+            outside_note = f" outside={len(outside)}" if outside else ""
+            print(f"{st.name:24} [{st.tag:12}] steps={j['steps']:5d} raw={len(j['mem']):3d} "
+                  f"real={len(real):3d} recon={len(recon):3d}{outside_note}  {status}")
             for k in sorted(bad)[:20]:
                 fails.append((st.name, hex(k), real.get(k), recon.get(k)))
+            if outside:
+                if strict_coverage:
+                    fails.append((st.name, "outside-coverage", len(outside),
+                                  sorted(hex(a) for a in outside)[:10]))
+                else:
+                    print(f"{st.name:24} NOTE: {len(outside)} byte(s) changed outside "
+                          f"every tracked/acknowledged region (not gated - pass "
+                          f"strict_coverage=True to enforce): "
+                          f"{sorted(hex(a) for a in outside)[:10]}")
 
         print(f"\nTRACKED BYTES: {ok}/{tot} identical over {n} exercised states")
         print("branch coverage:", seen)
