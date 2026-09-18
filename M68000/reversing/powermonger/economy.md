@@ -430,6 +430,74 @@ building/tree tile-set — it shifts once per rotation too.) The 75th pass's "ea
 settlement's marker sits in mode `$7c`" was static + a `$163b8` `watch` that
 actually caught a same-address routine in TOS.
 
+**114th pass — rendering what the `g_tileset_sel` rotation actually draws (Dave's
+"is there scenery/weather variation" question).** No weather system exists
+anywhere in PowerMonger — no rain/fog/palette-shift code was ever found in
+113 passes, and the water "shimmer" (`graphics.md`'s `colour(h) += masterTick &
+3` for `h < 0x0c`) is a 4-phase dither cycle, cosmetic, unrelated to `$57fd0`.
+`g_tileset_sel` is the one confirmed *scenery*-driving mechanic, so this pass
+decoded and rendered its actual effect instead of reasoning about it from the
+frame formula alone.
+
+The `$37c7c` prop sheet (28 × 480 B, `32×24` word-plane, decode already pinned
+89th) was pulled from a live RAM snapshot (`scratchpad/pm114_rand2.snap` —
+world-build had run; the sheet is **not** resident before that, confirmed by
+diffing against a pre-world-build snapshot where all 480×28 bytes at `$37c7c`
+are zero) and every frame rendered against `port/assets/palette.json`
+(`pm114_prop_contact.png`, contact sheet; `pm114_tileset_families.png`, the
+four `{r7, r7+3, r7+6, r7+9}` families for `r7 = 0, 1, 2, 12` side by side).
+Findings, from the actual pixels:
+
+- **`r7 = 0` and `r7 = 1` (both cottages): the first three variants
+  (`tsel = 0, 2, 4` → offset `0, 3, 6`) are the *same building*, redrawn with
+  progressively fewer wall gaps / more intact masonry** — a damage-state
+  gradient, not a colour or architecture swap. The fourth variant
+  (`tsel = 6` → offset `9`) is a small unrelated flower/shrub sprite for both
+  families, breaking the gradient.
+- **`r7 = 12` (a tree-ish base): `offset 3/6/9` run bare-branches →
+  more-branches → full green leaf** — a believable growth/season gradient,
+  but `offset 0` (frame 12 itself) is a gallows/frame-like structure unrelated
+  to the other three.
+- **`r7 = 2` does not fit either pattern**: its four frames (checkered-roof
+  house, a narrower house, a tower ruin, a different ruin) look like four
+  distinct structures, not stages of one.
+
+**Reading — real, but not "seasons" and not fully characterised.** There is a
+genuine slow (~110M-step) visual-aging cycle on buildings and trees, sharing
+`$57fd0` with the settlement economic heartbeat gate, and it is the closest
+thing this game has to weather/season variation. But it is not a clean
+4-state palette or architecture swap: 3 of 4 sampled families show a
+plausible damage/growth gradient for 3 of their 4 slots, and one family
+doesn't fit at all. That's consistent with the sheet packing several
+unrelated decorative objects into the same stride-3 layout (so "family"
+isn't simply "every `r7`, `r7+3`, `r7+6`, `r7+9`") — this was inferred from
+static sprite data + the known frame formula, not from a live differential
+test (`callcap`) of which `r7` values a real settled world actually assigns
+to its `byte6==4` records, which is the next step if this needs to be
+pinned down further.
+
+**Aside — a possibly-new hang, not root-caused.** Getting to
+`pm114_rand2.snap` needed a click-timing fix: `mouse down`/`mouse up` alone
+enqueue no IKBD packet at all in relative-report mode (`MMU.fs`
+`EnqueueMouseButton` only emits a byte when `MouseButtonsReportAsKeys` is
+true) — the button state only reaches the game embedded in a *subsequent*
+`mouse move` packet's header, so a bare `down;up` with no flush is silently
+dropped. Fix: `down`, `mouse move 0 0` (flush), hold ~300k steps, `up`,
+`mouse move 0 0` (flush) — confirmed working for the Welcome-menu →
+world-map transition. But driving *from* the world map (both the top-left
+compass icon at `~(18,18)` — the README's documented "scroll icon" — and
+"PLAY RANDOM LAND" from the Welcome menu) lands in the identical
+`$1ae40: tst.b $2c993.l / bne $1ae40` busy-wait (an FDC/DMA
+transfer-complete poll, `$1aea0` sets the flag, presumably an IRQ handler
+installed via `$134` clears it) and **never clears it, even after +250M
+additional steps with zero PC movement** — a hard hang by this project's own
+usual bar, not "just needs patience." `pm114_rand2.snap` was taken mid-hang;
+its RAM already had a fully-populated `$37c7c` sheet (used above), so the
+hang didn't block this pass, but it blocks reaching the isometric view via
+either route tried. Not root-caused — worth a dedicated pass if the goal
+becomes "reach a live settled world again," since neither of the two
+previously-documented click targets got past it this time.
+
 **Proven — natural corpus (97th).** `pm97_map0` (`scratchpad/pm97/`) is a real
 mission-1 world with `word[$57fd0]` forced to 0 at world-build (the single
 intervention — it only *pins* the value the game visits transiently) and driven
