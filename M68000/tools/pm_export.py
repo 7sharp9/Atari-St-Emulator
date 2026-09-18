@@ -43,6 +43,8 @@ import struct
 import sys
 from pathlib import Path
 
+from pm_common import OBJ, OBJ_STRIDE, TERRAIN
+
 # ---------------------------------------------------------------------------
 # RAM accessor
 # ---------------------------------------------------------------------------
@@ -150,7 +152,6 @@ def stf_rgb(word):
 
 GRID_STRIDE = 64          # cells per row in every plane ($ffa6 seeder: D2<<6 + D1)
 GRID_ROWS = 128           # 6-bit x (0..63), 7-bit y (0..127) -> 64*128 = 8192
-TERRAIN = 0x438ee
 CTRL = 0x3f86c
 HEIGHT_OFF = -8257
 FLAG_OFF = 8257
@@ -875,10 +876,6 @@ def export_strings(ram: Ram, out: Path, man: list):
 # ---------------------------------------------------------------------------
 # entities.json -- one frame's live object / settlement / effect state
 # ---------------------------------------------------------------------------
-
-OBJ = 0x51b66
-OBJ_STRIDE = 50
-
 
 def decode_object(r: bytes):
     # field map from ai.md "As a C struct" (array $51b66, stride 50):
