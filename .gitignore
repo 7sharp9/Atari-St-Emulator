@@ -7,11 +7,16 @@
 #  - *_out/        : teartest / screendump frame dumps
 #  - scratchpad/   : per-session working files (drive scripts, PNGs, .gfx, .html dumps)
 #  - *.gfx         : gfxview sidecar, produced per run by ATARI_GFX_SIDECAR
+#  - scratchpad/ANCHORS.md is explicitly un-ignored below (dir/* + a negation,
+#    not a bare dir/ rule, since git can't re-include a file under an excluded
+#    directory) - it's an index of reusable .snap/.ram anchors, not per-session
+#    working data.
 *.snap
 M68000/tests/680x0/
 *_out/
 __pycache__/
-M68000/scratchpad/
+M68000/scratchpad/*
+!M68000/scratchpad/ANCHORS.md
 *.gfx
 
 # Copyrighted binaries - ROM images and commercial game disks/archives, copied in
