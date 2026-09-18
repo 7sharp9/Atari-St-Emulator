@@ -978,6 +978,50 @@ CPU Registers
         else
             Diag.result "--- gave up after %d step(s), PC=$%08x never reached (still at $%08x) ---" stepsRun target cpu.PC
 
+    ///Same stop condition as Until, but counts occurrences instead of stopping on the first: `bp`
+    ///is `hitCount = 1`, `bpc` lets a loop-body address be counted `hitCount` times before
+    ///stopping (e.g. "the 3rd time we re-enter the busy-wait poll" rather than the 1st). Always
+    ///steps at least once before testing PC, so re-issuing the same breakpoint from the address
+    ///it just stopped at doesn't immediately re-fire on the current instruction. Auto-prints
+    ///registers on exit either way (hit or step-cap), matching a real debugger's break/stop
+    ///dance - the motivating case (the $1ae40 FDC/DMA busy-wait hang) needs the registers even
+    ///when the cap is hit, to see what state it's stuck in.
+    member x.RunToBreakpoint (target: uint32) (hitCount: int) (maxSteps: int) =
+        let mutable stepsRun = 0
+        let mutable hits = 0
+        while stepsRun < maxSteps && hits < hitCount do
+            x.Step()
+            stepsRun <- stepsRun + 1
+            if uint32 cpu.PC = target then hits <- hits + 1
+        if hits = hitCount then
+            Diag.result "--- breakpoint $%08x hit (%d/%d) after %d step(s) ---" cpu.PC hits hitCount stepsRun
+        else
+            Diag.result "--- gave up after %d step(s), only %d/%d hit(s) of $%08x seen (still at $%08x) ---"
+                stepsRun hits hitCount target cpu.PC
+        Diag.result "%s" x.Debug
+
+    ///A bt-style caller readout at a breakpoint. Level 0 is always the plain JSR/BSR return
+    ///address sitting at (A7) - the same one-instruction-push convention CallCapture's sentinel
+    ///trick and FetchTargetOrFault's frame comments both already rely on (see 68k.fs), so this
+    ///deliberately does NOT invent a new frame format. Deeper levels walk the standard `link A6`
+    ///chain (saved-A6 at 0(A6), its caller's return address at 4(A6)) - only meaningful for
+    ///routines that actually link A6, and heuristic rather than authoritative for that reason; the
+    ///walk stops itself on a non-increasing/zero saved-A6 rather than looping on code that doesn't.
+    member x.Backtrace(depth: int) =
+        Diag.result "--- backtrace from PC=$%08x A7=$%08x A6=$%08x ---" (uint32 cpu.PC) (uint32 cpu.A7) (uint32 cpu.A6)
+        Diag.result "  [0] return address (A7) = $%08x" (uint32 (mmu.ReadLong (uint32 cpu.A7)))
+        let mutable a6 = uint32 cpu.A6
+        let mutable i = 1
+        let mutable keepGoing = true
+        while keepGoing && i < depth do
+            let savedA6 = uint32 (mmu.ReadLong a6)
+            if savedA6 = 0u || savedA6 <= a6 then
+                keepGoing <- false
+            else
+                Diag.result "  [%d] A6=$%08x return address = $%08x" i savedA6 (uint32 (mmu.ReadLong (savedA6 + 4u)))
+                a6 <- savedA6
+                i <- i + 1
+
 #if INTERACTIVE
 let st = AtartSt("TOS100UK.IMG")
 st.Reset()
@@ -1233,7 +1277,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8) - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -1273,6 +1317,24 @@ module Main =
                 loop()
             | [| "until"; addr; maxSteps |] | [| "u"; addr; maxSteps |] ->
                 st.Until (Convert.ToUInt32(addr, 16)) (int maxSteps)
+                loop()
+            | [| "bp"; addr |] ->
+                st.RunToBreakpoint (Convert.ToUInt32(addr, 16)) 1 200000
+                loop()
+            | [| "bp"; addr; maxSteps |] ->
+                st.RunToBreakpoint (Convert.ToUInt32(addr, 16)) 1 (int maxSteps)
+                loop()
+            | [| "bpc"; addr; n |] ->
+                st.RunToBreakpoint (Convert.ToUInt32(addr, 16)) (int n) 200000
+                loop()
+            | [| "bpc"; addr; n; maxSteps |] ->
+                st.RunToBreakpoint (Convert.ToUInt32(addr, 16)) (int n) (int maxSteps)
+                loop()
+            | [| "bt" |] ->
+                st.Backtrace 8
+                loop()
+            | [| "bt"; depth |] ->
+                st.Backtrace (int depth)
                 loop()
             | [| "registers" |] | [| "r" |] ->
                 Diag.result "%s" st.Debug
