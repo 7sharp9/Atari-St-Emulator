@@ -1276,6 +1276,287 @@ def call_4342(m):
         A0 += 8
 
 
+# ================================================================ 115th pass:
+# $4bc8 contact reconcile ("nation-pair peace-break + player notify") - the
+# real caller sites are $5778 (bookkeep_5778, gstate != $d), $1518a (mode $10
+# group-state-8 hand-off) and $5c2c (owner-mismatch, itself called from
+# $16176 removal and $16848's asserted-off arm).  Entry: A0, A1 = the two
+# object records in contact.
+#
+# $4de2 classifies each side into a (byte_class, kind) pair; kind in
+# {0,2,4,6,8,10,12}; kind 0 is provably unreachable from $4bc8's own guard
+# (tst.w D7/D6 ; beq -> skip the notify dispatch entirely) and is otherwise
+# unused, transcribed for completeness only.  When byte_class differs (a
+# genuine cross-side contact) $4bc8 dispatches each side through $4cb8's
+# per-kind jump table (kinds 8/10/12 are bare `rts`) to get a side-relation
+# bit index, clears that bit in the OTHER side's $580a6 flags byte (untracked
+# - not in REGIONS, so inert for this diff, transcribed for fidelity only),
+# then jsr $c5ee (player-notify, gated on the player's own side $57ffe) and
+# jsr $311a x2 (relation-event) - both verified/asserted to write only
+# outside every tracked region, same precedent as $17a46 (99th pass); NOT
+# modelled here.  When byte_class matches (no cross-side contact, or a
+# same-side group hand-off) it instead frees either side's group ($35f4) iff
+# that side is kind 4 (group-linked) AND its own group is in state 8.
+#
+# kind==2 (leader/settlement, reached only via $5c2c's leader-record A0, or
+# via $4de2's own "close to home settlement" redirect) drives $4ee8 - a
+# recursive per-side sweep that can re-enter $4bc8 itself - ASSERTED OFF,
+# its own separate item (needs $4ee8 + the $4f916 garrison-reset loop
+# characterised first; not needed by $5778's or $1518a's natural corpus,
+# both of which only ever pass plain $51b66 object records).
+#
+# Transcribed line-for-line + raw-byte-verified from a fresh disassembly at
+# $4bc8/$4de2/$4cb8/$4dae/$35f4/$3744 (scratchpad/pm115/disasm.txt).
+# ================================================================
+LEADER_LO = 0x4e514
+LEADER_HI = 0x4f914      # cmpa.l #$4f914,A0 ; bgt -> not-leader, so INCLUSIVE
+GARRISON = 0x4cff8       # stride 10, terminated by the running-count at $4d250
+GARRISON_END = 0x4d250
+
+
+def _classify(m, addr):
+    """$4de2: classify an object (or leader-record) address.  Returns
+    (byte_class, kind, addr_out) - addr_out is the address the caller/dispatch
+    should treat as "this side" from here on (bit6 redirects via the link
+    field before its group check; every other path returns `addr`
+    unchanged - including bit4, which checks its OWN 42-field directly, no
+    redirect).  Kind 6 only ever comes from the settlement-distance
+    fallback ($4e1c/$4e62), reached when neither bit4 nor bit6 applies (or
+    either one's own group_off is 0)."""
+    if LEADER_LO <= addr <= LEADER_HI:
+        return m.bu(addr + 0), 2, addr
+    cat = m.bu(addr + 6)
+    if cat not in (0x00, 0x0e):                  # $4ea8 category dispatch
+        if cat == 0x08:
+            return 0, 0x08, addr
+        if cat in (0x14, 0x16):
+            return 0, 0x0a, addr
+        if cat == 0x04:
+            return 0, 0x0c, addr
+        return 0, 0x00, addr
+    # cat == 0 (man) or cat == 0x0e both fall into the flags branch ($4e0c)
+    f = m.bu(addr + 7)
+    if f & 0x10:                                   # bit4: direct group-check on self
+        grp = m.wu(addr + 42)
+        if grp != 0:
+            gstate = m.wu(GROUP + s16(grp))
+            if gstate not in (0x08, 0x0d):
+                call_37c2(m, grp)                  # jsr $37c2  (99th pass)
+            return m.bu(addr + 5), 4, addr
+        # grp == 0 -> falls into the settlement branch below, same `addr`
+    elif f & 0x40:                                 # bit6: redirect via link(28), then group-check
+        link = m.wu(addr + 28)
+        addr2 = (OBJ + link) & 0xfffff
+        grp = m.wu(addr2 + 42)
+        if grp != 0:
+            gstate = m.wu(GROUP + s16(grp))
+            if gstate not in (0x08, 0x0d):
+                call_37c2(m, grp)
+            return m.bu(addr2 + 5), 4, addr2
+        addr = addr2                               # falls into the settlement branch, redirected
+    # ---- settlement-distance branch ($4e1c) ----
+    A2 = (SETTL + s16(m.wu(addr + 34))) & 0xfffff
+    cell = m.wu(A2 + 12)
+    cx = cell & 0x3f
+    cy = (cell >> 6) & 0xffff
+    dx = s16((cx - m.bu(addr + 8)) & 0xffff)
+    dx = -dx if dx < 0 else dx
+    dy = s16((cy - m.bu(addr + 10)) & 0xffff)
+    dy = -dy if dy < 0 else dy
+    if max(dx, dy) < 9:                            # close to home -> reclassify as its own leader
+        lead = (LEADER_LO + s16(m.wu(A2 + 14))) & 0xfffff
+        return m.bu(lead + 0), 2, lead
+    return m.bu(addr + 5), 6, addr
+
+
+def call_4dae(m, A3, other_off, other_kind):
+    """$4dae: reset a contact to fixed-cell ($2c) unless already mid-engage
+    (mode $2e/$32) or a corpse ($3c); record who triggered it."""
+    if m.bu(A3 + 30) in (0x2e, 0x32, 0x3c):
+        return
+    m.wb(A3 + 31, 0x2c)
+    m.wb(A3 + 30, 0x2c)
+    m.ww(A3 + 46, other_off & 0xffff)
+    m.wb(A3 + 38, other_kind & 0xff)
+    m.wb(A3 + 6, 0)
+
+
+def call_3744(m, cell, flags):
+    """$3744: allocate (or evict-and-reuse) a $4cff8..$4d250 stride-10 marker
+    slot for `cell`, tag it category 6 / `flags`, bucket-insert it.  Returns
+    the slot address, or None (table full, nothing evictable)."""
+    used = m.wu(GARRISON_END)
+    a5 = GARRISON
+    if used == 0x258:
+        while True:
+            if m.bu(a5 + 5) == 0:
+                break                             # already-dead slot, reuse directly
+            if m.bu(a5 + 7) == 0x11:
+                bucket_unlink(m, m.wu(a5 + 8), (a5 - OBJ) & 0xffff)   # $16778
+                break
+            a5 += 10
+            if a5 >= GARRISON_END:
+                return None
+    else:
+        m.ww(GARRISON_END, used + 10)
+        a5 = GARRISON + used
+    m.wb(a5 + 6, 0x06)
+    m.wb(a5 + 7, flags & 0xff)
+    m.ww(a5 + 8, cell & 0xffff)
+    call_16808(m, cell, (a5 - OBJ) & 0xffff)
+    return a5
+
+
+def _cell_of(x_byte, y_word):
+    """(x_byte, y_word) -> packed map cell, the lsr#2/andi#$1fc0/add.b
+    formula used throughout the $14b62 tree."""
+    return ((u16(y_word) >> 2) & 0x1fc0) + (x_byte & 0xff)
+
+
+def call_35f4(m, A3grp):
+    """$35f4: disband a group's contact - scatter its (up to 4-ring) roster
+    into fixed radial positions around the lead and demote the lead to a
+    formation-follower ($68).  A3grp = GROUP + group_off (absolute)."""
+    A1 = (OBJ + s16(m.wu(A3grp - 12))) & 0xfffff
+    cell = _cell_of(m.bu(A1 + 8), m.wu(A1 + 10))
+    m.wb(A1 + 9, 0x78)
+    m.wb(A1 + 11, 0x78)
+    m.ww(A1 + 46, 0)
+    if not (m.bu(A1 + 7) & 0x20):                 # btst #5,7(A1) ; bne -> skip marker placement
+        blocked = False
+        d0 = m.wu(BUCKETS + cell * 2)
+        while d0 != 0:
+            a0 = OBJ + d0
+            cat = m.bu(a0 + 6)
+            if cat in (0x02, 0x10) or (cat == 0x06 and m.bu(a0 + 7) == 0x12):
+                blocked = True
+                break
+            d0 = m.wu(a0 + 0)
+        if not blocked:
+            a5 = call_3744(m, cell, 0x12)
+            if a5 is not None:
+                m.ww(A1 + 46, (a5 - OBJ) & 0xffff)
+                m.ww(A1 + 18, 0)
+                m.wb(a5 + 5, m.bu(A1 + 5))
+    ring_radius = 0x100
+    ring = 0
+    while ring <= 6:
+        head = m.wu(A3grp - 36)
+        count = 0
+        d0 = head
+        while d0 != 0:
+            a0 = OBJ + d0
+            if m.bu(a0 + 44) == ring:
+                count += 1
+            d0 = m.wu(a0 + 26)
+        if count != 0:
+            step = _divu(0x10000, count) & 0xffff
+            angle = 0
+            d0 = head
+            while d0 != 0:
+                a0 = OBJ + d0
+                if m.bu(a0 + 44) == ring:
+                    angle = (angle + step) & 0xffff
+                    dx, dy = rotate(m, 0, ring_radius, (angle >> 8) & 0xff)
+                    x = (dx + m.wu(A1 + 8)) & 0xffff
+                    y = (dy + m.wu(A1 + 10)) & 0xffff
+                    m.ww(a0 + 20, x)
+                    m.ww(a0 + 22, y)
+                    m.wb(a0 + 31, 0x10)
+                    m.wb(a0 + 30, 0x20)
+                    if m.bs(a0 + 5) > 0:
+                        m.wb(a0 + 6, 0)
+                d0 = m.wu(a0 + 26)
+        ring_radius = (ring_radius - 0x20) & 0xffff
+        ring += 2
+    m.ww(A1 + 30, 0x6868)                          # mode := prevmode := $68 (formation follower)
+    m.ww(A3grp + 192, m.wu(A3grp + 0))
+    m.ww(A3grp + 0, 0x0006)
+    call_17a46(m, m.wu(A1 + 42))
+
+
+def _case_4d9a(m, addr):
+    """$4cb8 kind-6 case: reset to $2c iff owner > 0."""
+    D3 = m.bu(addr + 5)
+    if m.bs(addr + 5) > 0:
+        call_4dae(m, addr, _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND)
+    return D3
+
+
+def _case_4d40(m, addr):
+    """$4cb8 kind-4 case: disband the (possibly link-redirected) record's
+    group - reset every live roster member to $2c, force group.state := $d,
+    record who triggered it."""
+    link = m.wu(addr + 28)
+    A2 = addr if link == 0 else (OBJ + link) & 0xfffff
+    D3 = m.bu(A2 + 5)
+    if m.bs(A2 + 5) > 0:
+        call_4dae(m, A2, _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND)
+    grp = GROUP + s16(m.wu(A2 + 42))
+    m.ww(grp + 204, _NOTIFY_OTHER_KIND & 0xffff)
+    m.ww(grp + 216, _NOTIFY_OTHER_OFF & 0xffff)
+    m.ww(grp + 0, 0x000d)
+    ent = m.wu(grp - 36)
+    while ent != 0:
+        A3 = OBJ + ent
+        if m.bs(A3 + 5) > 0:
+            call_4dae(m, A3, _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND)
+        ent = m.wu(A3 + 26)
+    return D3
+
+
+_NOTIFY_OTHER_OFF = 0
+_NOTIFY_OTHER_KIND = 0
+
+
+def _notify_case(m, addr, kind, other_kind, other_off):
+    """$4cb8: the per-kind side-bit-index dispatch, entered once per side
+    from the notify path.  $4dae's cross-side bookkeeping fields (D5/D7 in
+    the real registers) are threaded through module globals rather than
+    extra params on every intermediate call, matching the real calling
+    convention (both leaves read them directly, unaware of which side is
+    "self")."""
+    global _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND
+    _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND = other_off, other_kind
+    if kind == 0x02:
+        raise AssertionError("$4bc8 kind==2 (leader/settlement via $4ee8) - OUT OF SCOPE (115th)")
+    if kind == 0x04:
+        return _case_4d40(m, addr)
+    if kind == 0x06:
+        return _case_4d9a(m, addr)
+    return 0                                       # kind 0 / 8 / 10 / 12 : bare rts, D3 stays 0
+
+
+def call_4bc8(m, A0, A1):
+    """$4bc8: contact reconcile between object records A0/A1."""
+    D4, D6, _ = _classify(m, A0)
+    D3, D7, _ = _classify(m, A1)
+    if D6 != 0 and D7 != 0 and D3 != D4:
+        offA0 = (A0 - OBJ) & 0xffff
+        offA1 = (A1 - OBJ) & 0xffff
+        BA = _notify_case(m, A0, D6, D7, offA1)
+        BB = _notify_case(m, A1, D7, D6, offA0)
+        side_a = SIDE_ASSESS + (BA & 0xff) * 0x20
+        side_b = SIDE_ASSESS + (BB & 0xff) * 0x20
+        bit_a, bit_b = BA & 7, BB & 7
+        was_set = m.bu(side_a + 6) & (1 << bit_b)
+        m.wb(side_a + 6, m.bu(side_a + 6) & ~(1 << bit_b) & 0xff)
+        if was_set:
+            m.wb(side_b + 6, m.bu(side_b + 6) & ~(1 << bit_a) & 0xff)
+        # $c5ee (player-notify, gated on BA/BB == $57ffe) + $311a x2
+        # (relation-event) - both write only outside every tracked region,
+        # same precedent as $17a46 (99th pass); not modelled.
+        return
+    if D7 == 0x04:
+        grp = GROUP + s16(m.wu(A1 + 42))
+        if m.wu(grp) == 8:
+            call_35f4(m, grp)
+    if D6 == 0x04:
+        grp = GROUP + s16(m.wu(A0 + 42))
+        if m.wu(grp) == 8:
+            call_35f4(m, grp)
+
+
 # ---------------------------------------------------------------- prologue + dispatch
 def reconstruct(m):
     if _TRIG is None:
