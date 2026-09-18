@@ -20,6 +20,15 @@ Usage:
     python disassemble.py --callers fca612               # find real callers of an address (JSR/JMP
                                                            # abs.long only; ALWAYS scans the TOS ROM,
                                                            # even with --snap/--rom - see the gap note)
+    python disassemble.py --snap scratchpad/pm97/pm97_map0.snap --jumptable 4cc2 7
+                                                        # dump a computed dispatch table: table_addr,
+                                                        # entry count, word value, and resolved target
+                                                        # (table_addr + value) per entry. --linear stops
+                                                        # automatically at a `move.w d8(PC,Dn.w),Dx` /
+                                                        # `jmp 2(PC,Dx.w)` dispatch idiom instead of
+                                                        # decoding the table's data bytes as garbage
+                                                        # instructions, and reports the table address to
+                                                        # pass here.
 
 Known gaps (extend as needed, following the same "verify against Instructions.fs first" discipline):
 TAS's ea-operand form, line-A/line-F opcodes, ABCD/SBCD/NBCD, CHK, TRAPV, RESET's operands (none),
@@ -111,7 +120,10 @@ class Disassembler:
                 idxreg, idxa, wl = (ext >> 12) & 7, (ext >> 15) & 1, (ext >> 11) & 1
                 disp8 = sext8(ext & 0xff)
                 idxname = ('A' if idxa else 'D') + str(idxreg)
-                return f"{disp8}(PC,{idxname}{'.l' if wl else '.w'})", addr + 2
+                base = addr + disp8  # PC = ext word's own address, per (d8,PC,Xn) convention -
+                                      # same base used by mode7/reg2 above; index value is runtime-only,
+                                      # so this is the table/array *base*, not the final EA.
+                return f"{disp8}(PC,{idxname}{'.l' if wl else '.w'}) == ${base:x}+{idxname}", addr + 2
             if reg == 4:
                 if size == 0:
                     return f"#${rw(addr) & 0xff:x}", addr + 2
@@ -378,26 +390,93 @@ class Disassembler:
 
         return f"???(0x{op:04x})", nxt
 
+    def jumptable_move_dest(self, addr):
+        """If the word instruction at addr is `move.w d8(PC,Dn.w),Dx` (PC-indexed source,
+        Dx-direct destination - the first half of the computed-dispatch idiom), return the
+        destination register Dx; else None."""
+        op = self.rw(addr)
+        if (op >> 12) & 0xf != 3:  # top==3 -> MOVE.w, per SIZES_MOVE
+            return None
+        destreg, destmode = (op >> 9) & 7, (op >> 6) & 7
+        srcmode, srcreg = (op >> 3) & 7, op & 7
+        if destmode != 0 or srcmode != 7 or srcreg != 3:
+            return None
+        ext = self.rw(addr + 2)
+        if (ext >> 15) & 1:  # address-register index -> not this idiom
+            return None
+        return destreg
+
+    def jumptable_jmp(self, addr):
+        """If the word instruction at addr is `jmp 2(PC,Dx.w)` (the second half of the
+        computed-dispatch idiom - PC here is the jmp's own extension word), return
+        (Dx, table_addr) where table_addr is the resolved base of the dispatch table
+        (ext_word_addr + 2); else None."""
+        op = self.rw(addr)
+        if (op & 0xffc0) != 0x4ec0:  # JMP
+            return None
+        mode, reg = (op >> 3) & 7, op & 7
+        if mode != 7 or reg != 3:
+            return None
+        ext = self.rw(addr + 2)
+        if (ext >> 15) & 1:
+            return None
+        disp8 = sext8(ext & 0xff)
+        if disp8 != 2:
+            return None
+        idxreg = (ext >> 12) & 7
+        table_addr = (addr + 2) + disp8
+        return idxreg, table_addr
+
     def disassemble(self, start, count=40, stop_at_control_flow=True):
         """Walks forward from `start`, returning [(addr, text), ...]. Stops early at the first
         rts/rte/jmp/bra/illegal/trap/unknown unless stop_at_control_flow is False (e.g. for
         tracing a fixed byte range like the low-memory ROM mirror, where you want every
-        instruction in the range regardless of what it is)."""
+        instruction in the range regardless of what it is).
+
+        Also stops (regardless of stop_at_control_flow) on recognizing a computed-dispatch
+        idiom - `move.w d8(PC,Dn.w),Dx` immediately followed by `jmp 2(PC,Dx.w)` - since walking
+        past it would otherwise decode the dispatch table's raw data words as garbage
+        instructions. Reports the resolved table address; re-run with --jumptable to dump it."""
         addr = start
         lines = []
         stops = ('rts', 'rte', 'jmp', 'bra', 'illegal', 'trap')
+        pending_move_dest = None
         for _ in range(count):
             a0 = addr
+            if pending_move_dest is not None:
+                jt = self.jumptable_jmp(a0)
+                if jt is not None and jt[0] == pending_move_dest:
+                    idxreg, table_addr = jt
+                    lines.append((a0, f"jmp 2(PC,D{idxreg}.w)  -- computed-dispatch table at "
+                                       f"${table_addr:x}, re-run with --jumptable {table_addr:x} "
+                                       f"<count> to resolve entries"))
+                    break
             try:
-                text, addr = self.decode_one(addr)
+                text, addr = self.decode_one(a0)
             except (IndexError, KeyError) as e:
                 lines.append((a0, f"<error {e}>"))
                 addr = a0 + 2
+                pending_move_dest = None
                 continue
             lines.append((a0, text))
+            pending_move_dest = self.jumptable_move_dest(a0)
             if stop_at_control_flow and (text.startswith(stops) or 'unknown' in text or '???' in text):
                 break
         return lines
+
+    def jumptable(self, table_addr, count, entry_size=2):
+        """Dumps a computed dispatch table: for each entry i, the word value at
+        table_addr + i*entry_size and the resolved target (table_addr + value) - matching the
+        `move.w d8(PC,Dn.w),Dx ; jmp 2(PC,Dx.w)` idiom, where Dx is the raw index used at the ea
+        (already scaled to a byte offset by the caller, e.g. a doubled case id).
+        Returns [(entry_addr, dn_value, word, target), ...]."""
+        rows = []
+        for i in range(count):
+            entry_addr = table_addr + i * entry_size
+            val = self.rw(entry_addr)
+            target = table_addr + val
+            rows.append((entry_addr, i * entry_size, val, target))
+        return rows
 
 
 def find_callers(rom, rom_base, target):
@@ -468,6 +547,19 @@ def main():
         found = find_callers(rom, ROM_BASE, target)
         if not found:
             print("  (none found - target may only be reached via PC-relative BSR/Bcc, not scanned)")
+        return
+
+    if args and args[0] == '--jumptable':
+        table_addr = int(args[1], 16)
+        count = int(args[2])
+        entry_size = 2
+        if '--index-shift' in args:
+            i = args.index('--index-shift')
+            entry_size = int(args[i + 1])
+            args = args[:i] + args[i + 2:]
+        print(f"=== jump table at ${table_addr:x} ({count} entries, {entry_size}-byte stride) ===")
+        for entry_addr, dn, val, target in dis.jumptable(table_addr, count, entry_size):
+            print(f"  ${entry_addr:x}: D={dn:#x} word=${val:04x} -> target ${target:x}")
         return
 
     if args and args[0] == '--linear':
