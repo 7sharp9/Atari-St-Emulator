@@ -353,13 +353,13 @@ negative controls (prev-mode table entry, `w22` low byte, the byte-6 guard, the
   routine 6).** `$3c46`: `D2 := 42(A1)` (group offset); `!= 0` → `jsr $37c2` ;
   `group.state($51538+D2) := 7` ; `jsr $17a46` ; `prev_mode(30) := $4c` ; fall
   into the `$3ca2` tail. See the sub-section below.
-- **`$4bc8` — now Proven too (115th pass) for its two object-vs-object call
-  sites (`$5778`, `$1518a`).** See the sub-section below.
+- **`$4bc8` — now fully Proven (115th + 116th passes), all three real call
+  sites** (`$5778`, `$1518a`, `$5c2c`). See the sub-section below.
 - **Still Corroborated:** `$2776` / `$1b8c`-via-`$5778` (the `$5778` and
   `$5590`-tail group cleanup) — a *different* `$1b8c` call site from the one
   proven here.
 
-### [Proven, partial] — `$4bc8` contact reconcile ("nation-pair peace-break + player notify"), vs the real 68000 (115th pass)
+### [Proven] — `$4bc8` contact reconcile ("nation-pair peace-break + player notify"), vs the real 68000 (115th + 116th passes)
 
 `tools/pm_fsm_ref.py` `call_4bc8` (+ leaves `_classify`/`$4de2`, `call_4dae`/
 `$4dae`, `call_35f4`/`$35f4`, `call_3744`/`$3744`). Entry: `A0`/`A1` = the two
@@ -385,13 +385,30 @@ flagged as a followup rather than silently assumed correct. `$c5ee`
 write only outside every tracked region (same precedent as `$17a46`, 99th
 pass) — never differential-tested directly.
 
-**Still out of scope: kind 2 (leader/settlement)**, reached only via `$5c2c`'s
-own call (`A0` = a `$4e514` leader record, always kind 2) or `$4de2`'s
-"close to home settlement" redirect. It drives `$4ee8` — a recursive per-side
-sweep over up to 6 other sides that can re-enter `$4bc8` itself. `_notify_case`
-raises `AssertionError` on it. This is the one piece standing between
-`$16176`'s removal path and a full end-to-end `$4bc8` proof; needs `$4ee8` +
-the `$4f916` garrison-reset loop characterised first, its own pass.
+**Kind 2 (leader/settlement) — closed, 116th pass.** Reached via `$5c2c`'s own
+call (`A0` = a `$4e514` leader record, always kind 2) or `$4de2`'s "close to
+home settlement" redirect; drives `$4ee8` + `_case_4cd0`. `$4ee8`: `self_side`'s
+own `$13c`-stride `$51538` record carries 6 word arrays (bases 28/76/64/40),
+one entry per *other* side — an active order (`28+i·2 != 0`) whose own group
+state isn't already `$d` (`76+i·2`) and whose military lead (`64+i·2`) sits
+within Manhattan-max 15 of the leader's home cell (`4(leader)`) recursively
+re-enters `$4bc8` against that lead (real `$4bc8`'s `movem.l #$fffe` prologue
+saves/restores nearly every register, so the recursion is transparent to the
+caller's own D5/D7 bookkeeping — `tools/pm_fsm_ref.py` mirrors this by
+save/restoring its `_NOTIFY_OTHER_*` globals around the recursive call, a real
+bug the first draft missed). `_case_4cd0`'s tail then walks every settlement
+this leader owns (`2(leader)` chain) and every garrison at each (`10(settl)`,
+then `24(garrison)` chain), `$4dae`-resetting any that isn't already
+group-linked-active (bit4 + `42 != 0`), bit6-flagged, or in a regroup mode
+(`$5c`/`$60`/`$62`). Differential test `scratchpad/pm115/diff_4bc8_kind2.py`:
+**20/20 tracked bytes identical over 2 states, 2 branch families** — one
+exercising the `$4ee8` recursion landing on a real nested mismatch/notify
+(verified the recursion's register-restore fix actually matters, not just
+theoretical), one exercising a 2-settlement chain with a 2-garrison sub-chain
+covering all three skip conditions plus the normal reset (spot-checked
+per-record: the reset and both skips landed on exactly the intended slots,
+not a "both sides happen to agree on doing nothing" false pass). `$4bc8` is
+now Proven end-to-end for all three real call sites.
 
 ### [Proven] — the flag-bit-4 group teardown behind `$3c08` (`$37c2` / `$1d70` / `$1b8c` / `$17a46`), vs the real 68000 (99th pass, RIDER 3b routine 6)
 
@@ -694,7 +711,7 @@ object record; `36(A3)` a running total).
 | `$14` | `$1501a` | – | **board / transfer**: copy `5(A3)` (strength) from the `$4f916+34` record into `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
 | `$16` | `$15042` | 6 | **disband**: `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker). **Else** (`$57fd0 != 0`): `owner_leader.troops_reserve += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). `$57fd0` rotates {0,2,4,6} (§3a), so mission 1 takes both branches over time. economy.md §1's pseudocode had this branch inverted |
 | `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $16892` (goods-driven regroup) then `jsr $3c08` (flag-driven regroup) — ***Proven, 98th*** (71/71 over 22 states); its **flag-bit-4 group-teardown** sub-path (`$37c2` → `$1d70`/`$1b8c`, `$17a46`) — ***Proven, 99th*** (1847/1847 over 13 states) |
-| `$8a8a` write | `$16176` | – | **removal**: adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches — `$5c2c`'s own call always passes a leader record, kind 2, still Corroborated: needs `$4ee8` first, see the `$4bc8` sub-section), free the group slot (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
+| `$8a8a` write | `$16176` | – | **removal**: adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches — *Proven end-to-end, 116th*, see the `$4bc8` sub-section), free the group slot (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
 | — | `$16848` | – | *(Proven, 96th)* **side ↔ owner reconcile**: `A3 = $4f916 + 34(A1)`; `settlement.owner == marker.side` → skip; else `btst #7` clear + `btst #4` clear → `5(A1) := owner` (adopt), `btst #4` set → `jsr $5c2c`. Then `24(A1) != 0 && == 0(A1)` → `$57ff4 := 24(A1)`. Tail `jsr $5c80`. Also called from the mode-`$16` prologue |
 | — | `$5c80` | 2600+ | **per-entity upkeep**: flags-indexed table + byte14 age + byte45 morale; `byte45 += ($57fec & 1)` (a food/desertion drain with a 1-bit random term); `jsr $5bd2` past a threshold |
 

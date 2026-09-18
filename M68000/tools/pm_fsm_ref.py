@@ -1300,13 +1300,17 @@ def call_4342(m):
 #
 # kind==2 (leader/settlement, reached only via $5c2c's leader-record A0, or
 # via $4de2's own "close to home settlement" redirect) drives $4ee8 - a
-# recursive per-side sweep that can re-enter $4bc8 itself - ASSERTED OFF,
-# its own separate item (needs $4ee8 + the $4f916 garrison-reset loop
-# characterised first; not needed by $5778's or $1518a's natural corpus,
-# both of which only ever pass plain $51b66 object records).
+# recursive per-side sweep, over the leader's own 6-entry per-other-side
+# table, that can re-enter $4bc8 itself for whichever other sides have an
+# active order and a military lead within Manhattan-max 15 of the leader's
+# home cell - then a walk of every settlement/garrison the leader owns,
+# $4dae-resetting any that aren't already group-linked-active/bit6-flagged/
+# in a regroup mode.  Proven, 116th pass (call_4ee8 + _case_4cd0) - not
+# needed by $5778's or $1518a's own natural corpus (both only ever pass
+# plain $51b66 object records), but IS needed for $5c2c/$16176's full path.
 #
 # Transcribed line-for-line + raw-byte-verified from a fresh disassembly at
-# $4bc8/$4de2/$4cb8/$4dae/$35f4/$3744 (scratchpad/pm115/disasm.txt).
+# $4bc8/$4de2/$4cb8/$4dae/$35f4/$3744/$4ee8 (scratchpad/pm115/disasm.txt).
 # ================================================================
 LEADER_LO = 0x4e514
 LEADER_HI = 0x4f914      # cmpa.l #$4f914,A0 ; bgt -> not-leader, so INCLUSIVE
@@ -1505,11 +1509,76 @@ def _case_4d40(m, addr):
     return D3
 
 
+def call_4ee8(m, other_addr, cell, self_side):
+    """$4ee8: `self_side`'s own $13c-stride $51538 record carries 6 word
+    arrays (bases 28/76/64/40), one entry per OTHER side.  For each side
+    with an active order (28+i*2 != 0) whose own group state isn't already
+    $d (76+i*2), if its military lead (64+i*2, an object rec_off) is within
+    Manhattan-max 15 of `cell`, recursively reconcile contact between
+    `other_addr` and that lead.  The real routine also accumulates
+    40(A3)+1 into D0 per hit, tested via a trailing `tst.w D0` whose Z flag
+    is never branched on - a dead leftover, not modelled."""
+    global _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND
+    base = (GROUP + (self_side & 0xffff) * 0x13c) & 0xffffffff
+    cx = cell & 0x3f
+    cy = (cell >> 6) & 0xffff
+    for i in range(6):
+        a3 = base + i * 2
+        if m.wu(a3 + 28) == 0:
+            continue
+        if m.wu(a3 + 76) == 0x0d:
+            continue
+        lead = (OBJ + s16(m.wu(a3 + 64))) & 0xfffff
+        dx = s16((m.bu(lead + 8) - cx) & 0xffff)
+        dx = -dx if dx < 0 else dx
+        dy = s16((m.bu(lead + 10) - cy) & 0xffff)
+        dy = -dy if dy < 0 else dy
+        if max(dx, dy) < 0x0f:
+            # real $4bc8's prologue (`movem.l #$fffe,-(A7)`) saves/restores
+            # nearly every register, so this recursive call transparently
+            # preserves the caller's own D5/D7 (our _NOTIFY_OTHER_* globals)
+            # across it - restore them explicitly, since a nested call_4bc8
+            # will have overwritten them for its own _notify_case calls.
+            saved = (_NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND)
+            call_4bc8(m, other_addr, lead)
+            _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND = saved
+
+
+def _case_4cd0(m, addr, other_addr):
+    """$4cb8 kind-2 case (leader/settlement): run the $4ee8 per-side contact
+    sweep around this leader's home cell, then walk every settlement this
+    leader owns (`2(addr)` chain) and every garrison object at each
+    (`10(settl)`, then `24(garrison)` chain), resetting to $2c any garrison
+    that isn't already group-linked-active, flagged bit6, or in a regroup
+    mode ($5c/$60/$62)."""
+    D2 = m.wu(addr + 4)
+    D3 = m.bu(addr + 0)
+    call_4ee8(m, other_addr, D2, D3)
+    d0 = m.wu(addr + 2)
+    while d0 != 0:
+        A2 = (SETTL + s16(d0)) & 0xfffff
+        garrison = m.wu(A2 + 10)
+        while garrison != 0:
+            A3 = (OBJ + s16(garrison)) & 0xfffff
+            if m.bs(A3 + 5) > 0:
+                f = m.bu(A3 + 7)
+                skip = (f & 0x10) and m.wu(A3 + 42) != 0
+                if not skip and (f & 0x40):
+                    skip = True
+                if not skip and m.bu(A3 + 31) in (0x5c, 0x60, 0x62):
+                    skip = True
+                if not skip:
+                    call_4dae(m, A3, _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND)
+            garrison = m.wu(A3 + 24)
+        d0 = m.wu(A2 + 8)
+    return D3
+
+
 _NOTIFY_OTHER_OFF = 0
 _NOTIFY_OTHER_KIND = 0
 
 
-def _notify_case(m, addr, kind, other_kind, other_off):
+def _notify_case(m, addr, kind, other_kind, other_off, other_addr):
     """$4cb8: the per-kind side-bit-index dispatch, entered once per side
     from the notify path.  $4dae's cross-side bookkeeping fields (D5/D7 in
     the real registers) are threaded through module globals rather than
@@ -1519,7 +1588,7 @@ def _notify_case(m, addr, kind, other_kind, other_off):
     global _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND
     _NOTIFY_OTHER_OFF, _NOTIFY_OTHER_KIND = other_off, other_kind
     if kind == 0x02:
-        raise AssertionError("$4bc8 kind==2 (leader/settlement via $4ee8) - OUT OF SCOPE (115th)")
+        return _case_4cd0(m, addr, other_addr)
     if kind == 0x04:
         return _case_4d40(m, addr)
     if kind == 0x06:
@@ -1534,8 +1603,8 @@ def call_4bc8(m, A0, A1):
     if D6 != 0 and D7 != 0 and D3 != D4:
         offA0 = (A0 - OBJ) & 0xffff
         offA1 = (A1 - OBJ) & 0xffff
-        BA = _notify_case(m, A0, D6, D7, offA1)
-        BB = _notify_case(m, A1, D7, D6, offA0)
+        BA = _notify_case(m, A0, D6, D7, offA1, A1)
+        BB = _notify_case(m, A1, D7, D6, offA0, A0)
         side_a = SIDE_ASSESS + (BA & 0xff) * 0x20
         side_b = SIDE_ASSESS + (BB & 0xff) * 0x20
         bit_a, bit_b = BA & 7, BB & 7
