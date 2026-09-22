@@ -660,34 +660,44 @@ Snapshots: `scratchpad/pm71_run1.snap` (settled, ~677M), `pm71_run2.snap`
 
 ## Mission / world setup (73rd pass)
 
-The briefing OK click (`$b814`, README) copies a mission descriptor
-`$584c4 → $580a0` and calls **`$13b9a`**, the world-build dispatcher:
+The briefing OK click (`$b814`, README) copies the saved game-state block
+`$584c4..` over `$580a0..$58367` (`$b860`; it includes the world parameters at
+`$58146`) and calls **`$13b9a`**, the world-build dispatcher:
 
 ```
 $13b9a  ff9c := $15 ; jsr $fe04 (zoom index 4)      ; render geometry
         $51536 := $12                               ; group-order table live count
         $57fd0 := (byte[$58146] & 3) * 2            ; tile-set / mode-$7c gate ($1abaa rotates it later)
-        if ($580a0 != 0)  jsr $10d1e                 ; BP1-5: $580a0 = $45e -> here
-        else              jsr $df52 / $10a46 / $10410 ; ($580a0 == 0 fallback)
-        jsr $2266 / $ac20 / $1073c / $10058 / $4672  ; nation + placement + terrain init
+        if ($580a0 != 0)       jsr $10d1e ; jsr $2266 / $ac20  ; re-roll the parameters from the seed
+        elif ($58148 < $100)   jsr $df52(7) / $10a46 / $10410  ; fixed map from resource 7
+        else                   jsr $ffa6 / $2266 / $ac20       ; stored parameters (mission 1)
+        jsr $1073c / $10058 / $4672                   ; terrain init + scatter
         jsr $2984 / $238c / $2906                    ; objective-slot + assessment seeding
         ...
         $57fee := 1 ; $57ff0 := 1 ; ff9a := $fff0    ; speed = normal, camera reset
         rts   ($13ce6)
 ```
 
-`$580a0` is non-zero for "Between Pages 1-5" (`= $45e`), so `$13b9a` calls
-`$10d1e` — which is **not** a byte-script parser for this thin descriptor: it
-**reseeds the RNG from `$580a0`** (`$10d22: move.l $580a0,$2df84`) and fills the
-parameter block from `$12c9a` draws. `$12c9a` is a **32-bit LCG**
-(`state = state * $bb40e62d + …`, seed `$bc614e` when zero), so the whole map is
-a **deterministic function of `$580a0`** — the briefing preview (`$b394 → $10d1e`)
-and the real build roll the identical map.
+For mission 1 the saved block holds `$580a0 = 0` and the parameters `1e19 0750
+0008 0023 0031 0004` (at `$5856a` in `pm67_ok_pre`; a write-watch on
+`$58146` sees no write during `$13b9a`), so `$10d1e` is skipped and the map is
+built from those stored parameters. `$580a0 = $45e` is the briefing *preview*:
+`$b2dc` picks a land index `k` from entropy, sets `$580a0 = k*$b + $3fb` and
+`$5809c = k*$96 + $672`, and rolls a preview through `$b394 → $10d1e`
+(`$45e` is `k = 9`). That preview is a different map from the one the OK path
+builds.
+
+`$10d1e` is **not** a byte-script parser: it **reseeds the RNG from `$580a0`**
+(`$10d22: move.l $580a0,$2df84`) and fills the parameter block from `$12c9a`
+draws. `$12c9a` is a **32-bit LCG** (`state = state * $bb40e62d + …`, seed
+`$bc614e` when zero), so a seeded map is a **deterministic function of
+`$580a0`** (and `$5809c`). Poking both at `$13b9a` builds any of the 144 lands
+for real (README "Driving a later land").
 
 | addr | filled with (`$10d1e`, 97th disasm) | meaning |
 |------|-------------|---------|
 | `$58146` | 1st `$12c9a` draw | world RNG seed; `byte[$58146] & 3` picks the initial `$57fd0` |
-| `$58148` | `$5809c` override (else `(2nd draw & $7fff) + $1500`) | map size; `< $2000` ⇒ "small" preset (`D1 := $a`, `D2 := 3`); `$b85a` clears `$5809c` right before the OK-path `$13b9a`, so the real build uses the RNG value. Mission 1 lands "large" (`$5814a` = 8 lords, `$58150` knob = 4) |
+| `$58148` | `$5809c` override (else `(2nd draw & $7fff) + $1500`) | map size; `< $2000` ⇒ "small" preset (`D1 := $a`, `D2 := 3`); `$b85a` clears `$5809c` before the OK path's block copy (which starts at `$580a0`, so it stays 0); an unseeded build uses the stored `$58148` from the copied block |
 | `$5814a` | `(draw & 7) + (small ? $a : 2)` | lord count |
 | `$5814c` / `$5814e` | `draw & $3f` / `draw & $7f` | seed cell coords |
 | `$58150` | `(draw & 3) + 2 + (small ? $a : 2)` | settlement count knob |
@@ -703,13 +713,13 @@ player start position; `kind == 0` ends the stream. `$2266` then appends
 procedurally-placed settlements (`kind $10`, random cells `rand%$30+8`,
 `rand%$70+8`).
 
-`$580a0` non-zero for BP1-5 does **not** mean a byte-script mission — `$10d1e`
-still rolls the RNG (97th; it only uses `$580a0` as the LCG seed). A real
-byte-script campaign mission would additionally have the objective-setup calls
-(`$2984`/`$238c`/`$2906`) seed `obj_camp_id` and the global `$67d0`; here `$67d0`
-stays zero and the campaign hook stays inert — consistent with the 72nd pass.
-Reversing the real mission-file grammar needs a mission that uses it (a later
-"Between Pages" or the Conquest campaign proper), not mission 1.
+Neither branch is a byte-script mission: mission 1 uses stored parameters and
+a seeded land re-rolls them. A real byte-script campaign mission would
+additionally have the objective-setup calls (`$2984`/`$238c`/`$2906`) seed
+`obj_camp_id` and the global `$67d0`; here `$67d0` stays zero and the campaign
+hook stays inert, consistent with the 72nd pass. Reversing the mission-file
+grammar needs a mission that uses it (the fixed-map `$df52(7)` branch or the
+Conquest campaign proper), not mission 1.
 
 ## What `$1abaa` actually is — sound + ambient, not economy (73rd pass)
 
@@ -902,9 +912,10 @@ are limitations rather than choices:
   the `$5c80`/`$5bd2` wear path (needs a long fight), and the projectile
   `type` → invention-level mapping (only `type $12`, the area-effect one, seen).
 - **Mission-file grammar** — the procedural generator (`$10d1e`/`$2266`) is
-  sketched (above). The real byte-script path (`$580a0 != 0` → `$10d1e` parses
-  it; objective setup `$2984`/`$238c`/`$2906` seeds `obj_camp_id` + `$67d0`) is
-  unexercised by "Between Pages 1-5" and needs a mission that uses it.
+  sketched (above). `$10d1e` only re-rolls parameters from a seed; no
+  byte-script path has been seen. The fixed-map branch (`$58148 < $100` →
+  `$df52(7)`) and the objective setup (`$2984`/`$238c`/`$2906` seeding
+  `obj_camp_id` + `$67d0`) are unexercised and need a mission that uses them.
 - `$580a6` per-side assessment block: `$311a` writes `+15`/`+16` (clamp
   `$ff9c..$64`, a signed −100..+100 relationship), `$4c2a` clears `+6` peace
   bits, `$3154` reads the sign for friend/foe. The `$2200`–`$3500` seeders and

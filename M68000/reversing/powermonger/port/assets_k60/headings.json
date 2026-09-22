@@ -1,0 +1,23 @@
+{
+ "table_addr": "$1675a",
+ "note": "heading (byte 17 of the object record, 0..15) -> frame index for pm_pick_sprite_frame ($16738), which blits via $e6ee. 0xff = draw nothing for this facing. 87th: this is the $165b2 selected-group-marker / HUD path -- NOT the iso-terrain entity path. The terrain men use cat 0's own yaw-relative formula (see sprites/sprite_triggers.json).",
+ "heading_to_frame": {
+  "0": null,
+  "1": 5,
+  "2": 15,
+  "3": 8,
+  "4": 10,
+  "5": 5,
+  "6": 16,
+  "7": null,
+  "8": null,
+  "9": 8,
+  "10": 10,
+  "11": 15,
+  "12": 12,
+  "13": 5,
+  "14": 16,
+  "15": null
+ },
+ "raw": "ff050f080a0510ffff080a0f0c0510ff"
+}

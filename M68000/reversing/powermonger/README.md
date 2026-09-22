@@ -112,6 +112,60 @@ which does projection with `DIVU` / `DIVS`. Two `failwith`s in `68k.fs`
 Selftest after: DIVU 2494→4963, DIVS ~2500→4992, **0 wrong / 0 unimpl** for both.
 30M diskless boot byte-identical.
 
+## Bug 5 — Timer A never fired; zero divide re-executed the DIVU (120th pass)
+
+Two emulator regressions stopped every world build from `pm67_ok_pre`:
+
+- **Timer A.** `$13b9a` ends in `$1ae40: tst.b $2c993 / bne $1ae40`, waiting for
+  the sample player's busy flag. The MFP Timer A handler (`$134` → `$1af32`)
+  clears it (`sf $2c993` at `$1af72`). Since the 105th pass TACR writes go to
+  `MMU.fs`'s `tacr` field, but `RaiseTimerA` still read TACR from
+  `mfpRegisters`, which stayed 0, so Timer A never raised. Fixed by reading
+  `tacr`, as `RaiseTimerB` reads `tbcr`.
+- **Zero divide.** Land 60 (below) hits `divu D0,D1` with `D0 = 0` at `$164d6`
+  within 20M steps of its build. PM's vector-5 handler (`$14e4`) is a bare
+  `rte`, so it relies on the 68000 stacking the address of the *next*
+  instruction. The 112th pass had changed DIVU/DIVS to stack the instruction's
+  own address, so the `rte` re-ran the divide forever. Restored to
+  `PC + 2 + extension bytes`, which is what Hatari's 68000 path does
+  (`gencpu.c` i_DIVU: `incpc` before `exception_cpu(5)`; `newcpu.c`
+  `Exception_normal` stacks `m68k_getpc()`; `exception_oldpc` applies only to
+  the generic 68020+ tables). The one SingleStepTests zero-divisor vector
+  (`80ef`) expects the opcode address; it was already skipped for its flags.
+
+Selftest after: 1000051 pass, 0 wrong, 9 skip. `verify 5000000` passes.
+
+## Driving a later land (120th pass)
+
+The briefing-OK path (`$b860`) copies the saved block `$584c4..` over
+`$580a0..$58367`, which includes the world parameters at `$58146`. For mission 1
+that block holds seed long `$580a0 = 0` and parameters `1e19 0750 0008 0023
+0031 0004`, so `$13b9a` skips `$10d1e` and, because `$58148 = $0750 >= $100`,
+builds procedurally (`$ffa6`/`$2266`/`$ac20`) from those stored parameters.
+
+The briefing preview routine (`$b2dc`) picks one of 144 lands from entropy
+(video counter, timers, RNG): `$580a0 = k*$b + $3fb`, `$5809c = k*$96 + $672`,
+`k = 0..$8f`. The briefing's "Between Pages" numbers come from `$5809c`
+(`$b472`), so a larger `k` gets later pages. To build land `k` for real, break at
+`$13b9a` after the OK click and poke both, so `$10d1e` re-rolls with the size
+override:
+
+```
+./run.ps1 -NoBuild rrepl scratchpad/pm67_ok_pre.snap -DiskA scratchpad/powermonger.st
+  w 2df92 001400b1 ; w 2df8e 001400b1 ; w 2df96 00010001   # briefing OK
+  u 13b9a 80000000
+  w 580a0 <k*$b+$3fb as a long> ; w 5809c <k*$96+$672>0000
+  u 13ce6 80000000 ; s 30000000 ; u f898 5000000 ; snap <out>
+```
+
+Mount the Replicants image (`scratchpad/powermonger.st`), as in the drive
+recipe. `$57fd0` (the season) is read from `$58146` *before* `$10d1e` refills
+it, so a poked land keeps the season of the stored block (4 here). The unpoked
+control reproduces mission 1's terrain byte for byte. `k` = 20/60/100/143 give
+44-69 settlement records (mission 1: 11) and non-zero `$3f86c` control values
+on 37-72 % of cells (mission 1: 10 %). `scratchpad/pm120/k60_iso.snap` is
+land 60 (`$580a0 = $68f`), settled at the frame driver.
+
 ## PM's mouse dialog state machine (67th pass RE, completed 68th)
 
 PM's own IKBD ISR is at `$18be` (vector `$46`). It parses the `$F7`

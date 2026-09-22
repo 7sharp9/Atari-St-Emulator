@@ -23,6 +23,7 @@ dotnet run -- --export <dir> [cell|strip|shape]  # one PNG per chunk boundary (3
 dotnet run -- --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]
                                              # window at a step, screenshot, exit:
                                              # yaw N, season N, zoom N, camera cell X,Y
+dotnet run -- --assets ../assets_k60 ...     # any of the above on another export
 ```
 
 Keys: Space play/pause; Right/Left one triangle or sprite; Down/Up one cell;
@@ -56,6 +57,34 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 (dither fill), `render_flat.png` (height-ramp fill), and `render_compare.png` —
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
+
+## Verification status (120th pass) — a second land
+
+`assets_k60/` is `pm_export.py` run on land 60 (`scratchpad/pm120/k60_iso.ram`,
+both `--ram` and `--entities-ram`, reference frame from a frame dump of the same
+state); `../README.md` "Driving a later land" builds it. Against mission 1's
+`assets/`: the four sprite sheets (`$33000`, `$37c7c`, `$312a0`, `$3af1c`), the
+palette, HUD tables, strings and headings are byte-identical. The backdrop
+differs in the minimap (rows 6-133) and the side-shield strip under it (rows
+134-152, x 7-63); `dither.bin` only in slots `$1d-$2e` (the capture sits at a
+different point of the season fade); `tables.json` only in
+`height_bias_fec4`. New entity categories are in `SPEC.md` §6 ("Categories
+seen on later lands"): `byte6 32` is never drawn, `byte6` 20/22 are not ported.
+
+Scores against the game's compose buffer (`pm118/dump_frame.py` +
+`order_test.fsx`), camera (45,74), yaw `$f0`, 153 steps: terrain only 91.7 %,
+sprites last 97.23 %, inline 97.46 %; where the orders differ (34 px) the game
+matches inline 30 times, sprites-last 0. That needs the drawn water tick
+(`tick - 1`, the mid-render off-by-one); with the RAM tick it scores 68.27 %,
+because half this view is water. `--assets ../assets_k60 --selfcheck` passes
+23/23. The stepper's `--shot` and the game's screen give the same colour at
+five sampled ST coordinates, portrait included.
+
+Gates, all green: stepper `--selfcheck` 23/23; `pm118/baseline.fsx` identical
+to `before.txt`; `order_test.fsx` on `pm88_f1`, `rot40/90/c0` and freshly dumped
+`pm78_settle`/`pm74_late` reproduce the `SPEC.md` table (the old
+`pm78_settle.json`/`pm74_late.json` predate the `half` field and no longer
+load); walkthrough `showboat verify` clean; logic, stepper and Godot builds.
 
 ## Verification status (119th pass) — seasons, pan and zoom
 

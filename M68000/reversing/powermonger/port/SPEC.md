@@ -720,8 +720,8 @@ cell, index `(cellY*64 + cellX)*2`, set up at `$f938`); then
 the arena above. Per cell it follows a singly-linked list: `next =
 (int16)word[A3 + 0]`, `0` ends it.
 
-Per record, `$115e0` reads **byte 6 = category**, which takes **EVEN values
-0..30**, and dispatches:
+Per record, `$115e0` reads **byte 6 = category**, an **EVEN value**; both
+tables have entries for 0..44 (0 = no handler), and dispatches:
 
 | table | addr | target | role |
 |-------|------|--------|------|
@@ -735,6 +735,20 @@ except the men's was keyed on the wrong record byte — call the 87th's "cat N"
 N 0..15 (verified from the live RAM table). The blit table is at **`$1165c`**
 (not `$1165a`); `byte6 == 0` (men) blits via **`$11f78` → `$11f82`**, *not*
 `$1187c` (a melee/dying sub-case, record byte 31 ∈ {`$32`,`$34`,`$06`,`$46`}).
+
+**Categories seen on later lands (120th, land 60, `scratchpad/pm120/k60_iso`).**
+Map-wide the bucket walk finds `byte6` {0: 135, 2: 62, 4: 120, 8: 38, 14: 31,
+16: 7, 20: 1, 22: 1, 24: 24, 32: 6} against mission 1's {0: 21, 2: 9, 4: 203,
+8: 3, 14: 26, 16: 2, 24: 12}. Three are new:
+
+| `byte6` | prepare / blit | what it does |
+|---------|----------------|--------------|
+| 32 | `$1168a` / `$1168a` | `rts` in both passes: never drawn. Six records sharing the `byte6 24` marker block (`b7 = $10`). The port draws nothing (`Sprites.entityFrame`). |
+| 20, 22 | `$11b3c`, `$11b2a` / `$11f78` | 22 first picks a counter by the sign of `record[15]` (`$12b58` if negative, else `$12a78`; 20 always `$12a78`) and adds 1; then `$11f12` position, an optional `$e6ee` shape 5 lifted by `record[14]`, `$33000` frame `$148` raised by `record[15]` (signed, `+$30` if negative), frame `$151` only for the record at `$4c112`, then the common `$11f78` blit. One record each, outside the start view; not ported. |
+
+`byte6` 16 (leader goods icons, `$11886` table) rises to 7 records; still not
+ported. The `$312a0` categories `byte6` 18 and 30 (the table's "cat" 9 and
+15) do not occur.
 
 ### Position — bilinear over the projected cell corners (`$11f1a`)
 

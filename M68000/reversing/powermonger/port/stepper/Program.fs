@@ -7,6 +7,8 @@
 ///                                       headless: one PNG per chunk boundary
 ///   dotnet run -- --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]
 ///                                       window at a step, screenshot, exit
+///   dotnet run -- --assets <dir> ...    any of the above on another export
+///                                       (default ../assets, the mission-1 start)
 module PmStepper.Program
 
 open System
@@ -475,7 +477,11 @@ let private export (a: Load.Assets) (dir: string) (chunk: Chunk) =
 
 [<EntryPoint>]
 let main argv =
-    let a = Load.load assetsDir
+    let dir, argv =
+        match List.ofArray argv with
+        | "--assets" :: d :: rest -> Path.GetFullPath d, Array.ofList rest
+        | _ -> assetsDir, argv
+    let a = Load.load dir
     let chunkNamed = function "strip" -> Some Strip | "shape" -> Some Shape | "cell" -> Some Cell | _ -> None
     match List.ofArray argv with
     | [ "--selfcheck" ] -> selfCheck a
@@ -493,5 +499,5 @@ let main argv =
                         Yaw = wrapped 'y' 16; Season = wrapped 's' 4; Zoom = clamped 'z' 1 7; Cam = cell 'c'
                         ShotFile = Some(Path.GetFullPath png) }
     | _ ->
-        eprintfn "usage: PmStepper [--selfcheck | --export <dir> [cell|strip|shape] | --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]]"
+        eprintfn "usage: PmStepper [--assets <dir>] [--selfcheck | --export <dir> [cell|strip|shape] | --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]]"
         2

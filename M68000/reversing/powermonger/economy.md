@@ -487,16 +487,15 @@ dropped. Fix: `down`, `mouse move 0 0` (flush), hold ~300k steps, `up`,
 world-map transition. But driving *from* the world map (both the top-left
 compass icon at `~(18,18)` — the README's documented "scroll icon" — and
 "PLAY RANDOM LAND" from the Welcome menu) lands in the identical
-`$1ae40: tst.b $2c993.l / bne $1ae40` busy-wait (an FDC/DMA
-transfer-complete poll, `$1aea0` sets the flag, presumably an IRQ handler
-installed via `$134` clears it) and **never clears it, even after +250M
-additional steps with zero PC movement** — a hard hang by this project's own
-usual bar, not "just needs patience." `pm114_rand2.snap` was taken mid-hang;
-its RAM already had a fully-populated `$37c7c` sheet (used above), so the
-hang didn't block this pass, but it blocks reaching the isometric view via
-either route tried. Not root-caused — worth a dedicated pass if the goal
-becomes "reach a live settled world again," since neither of the two
-previously-documented click targets got past it this time.
+`$1ae40: tst.b $2c993.l / bne $1ae40` busy-wait. `$2c993` is a busy flag
+that the MFP Timer A handler (`$134` → `$1af32`) clears (`sf $2c993` at
+`$1af72`); it is not an FDC poll. The same wait hung the briefing-OK world build until an emulator
+regression was fixed: `RaiseTimerA` read TACR from a register array that TACR
+writes no longer reached, so Timer A never fired (README "Bug 5"). The build
+now completes. The two world-map click routes wait on the same flag, so the
+same fix should clear them, but they have not been re-driven since.
+`pm114_rand2.snap` was taken mid-hang; its RAM already had a fully populated
+`$37c7c` sheet (used above).
 
 **Proven — natural corpus (97th).** `pm97_map0` (`scratchpad/pm97/`) is a real
 mission-1 world with `word[$57fd0]` forced to 0 at world-build (the single

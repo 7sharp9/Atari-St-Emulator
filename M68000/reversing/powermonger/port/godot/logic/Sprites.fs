@@ -291,6 +291,9 @@ module Sprites =
             match frameForProp r.B7 ctx.TileOff with
             | -1 -> None
             | f -> Some(true, f)
+        // both $115e0 dispatch passes send byte6 32 to $1168a, a bare rts:
+        // the game draws nothing for it (seen on later lands, not mission 1)
+        | 32 -> None
         | _ -> None
 
     /// Where one entity is drawn: its frame, the anchor point the game

@@ -1,0 +1,132 @@
+{
+ "generated_by": "tools/pm_export.py",
+ "source_ram": "scratchpad/pm120/k60_iso.ram",
+ "source_frame": "scratchpad/pm120/fr/f000107.bin",
+ "game": "PowerMonger (1990)(Bullfrog)[cr Replicants], settled iso view",
+ "grid": {
+  "stride": 64,
+  "rows": 128,
+  "water_level": 12,
+  "sea_static_bit": 128
+ },
+ "files": [
+  {
+   "file": "terrain.bin",
+   "bytes": 32768,
+   "provenance": "$438ee type plane (+0), $438ee-8257 height plane, $438ee+8257 flag plane, $3f86c control/height plane. Read by pm_render_terrain ($f898) for colour and pm_project_grid ($fec6/$fecc) for geometry (the projector reads $3f86c, entity sampling reads $438ee).",
+   "format": "64 x 128 cells, row-major, stride 64. 4 bytes/cell: [0]=type [1]=height [2]=flag [3]=control. water: height < 12 (0x0c); static-sea skip: flag & 0x80 (corner unmoved this frame).",
+   "island_bbox_xyxy": [
+    0,
+    0,
+    63,
+    127
+   ]
+  },
+  {
+   "file": "terrain_height.png",
+   "provenance": "height plane, 4x nearest, grey = raw byte",
+   "format": "256 x 512 grayscale PNG"
+  },
+  {
+   "file": "terrain_type.png",
+   "provenance": "type plane (== palette colour index for the type triangle)",
+   "format": "256 x 512 grayscale PNG"
+  },
+  {
+   "file": "terrain_control.png",
+   "provenance": "$3f86c control plane (projector height source)",
+   "format": "256 x 512 grayscale PNG"
+  },
+  {
+   "file": "palette.json",
+   "provenance": "per-scanline shifter palette captured from f000107.bin (ATARI_FRAME_DIR row-records). Written by the game to $FFFF8240.",
+   "format": "distinct_palettes + per_row[200]. Each colour is a $0RGB shifter word; rgb[] is the 3-bit-per-gun expansion (x*255/7).",
+   "distinct_palettes": 1
+  },
+  {
+   "file": "palette.png",
+   "provenance": "dominant palette, 16 indices x 16px swatches",
+   "format": "256 x 16 RGB PNG"
+  },
+  {
+   "file": "dither.bin",
+   "provenance": "4bpp pattern table at $2e000 (= long at $ff9e). Read by the span fill ($e3e6 setup, $e4de/$e4a6 inner loops -- 77th-pass aligned disasm). Per triangle: A5 = base + colourByte*128 + (topY & 15)*8 (byte address). Per 16-px screen cluster the fill reads two 32-bit big-endian longs: long0 = {plane0<<16 | plane1}, long1 at A5+4 = {plane2<<16 | plane3}; pixel index = plane0.bit | plane1.bit<<1 | plane2.bit<<2 | plane3.bit<<3 with bit = 15-(screenX & 15). A5 then advances +4 bytes/scanline (the roll) and +8 bytes/cluster.",
+   "format": "16384 bytes dumped (128 colourByte slots of 128 bytes = 16 eight-byte sub-patterns each; sub-pattern picked by (topY & 15), rolled +4 B/line). Big-endian. colourByte->index: 0x08-0x0b water (14/15), 0x18-0x1c rock (1-3/6), 0x24-0x2c grass ramp (13/12/11), 0x3e brightest (9/10/11).",
+   "table_base_addr": "$2e000",
+   "water_shimmer_add": 3
+  },
+  {
+   "file": "dither.png",
+   "provenance": "dither.bin as 4 stacked 1bpp planes",
+   "format": "16 x 8192 PNG (4 planes stacked vertically)"
+  },
+  {
+   "file": "sprites/sheet_raw.bin + sprites/sheet_contact.png",
+   "frames": 352,
+   "provenance": "g_minisprite_sheet at $33000, 0x37 bytes/frame. Blitted by $11f82, reached from $115e0's per-cell category dispatch (jump tables $1162e prepare / $1165c blit). 87th: full populated sheet (was: first 64 = men only).",
+   "format": "sheet_raw.bin = 352 x 55 raw bytes. Each frame is 8 x 11 FOUR-bitplane (16-colour), 5 bytes/row = [AND-mask, plane0..3]; opaque where mask bit == 0. sheet_contact.png = 16-wide, 6x, real palette / magenta = clear. Frames 0-63 = men (4 faction blocks of 16); 0x117 = animals; 0x100/0x10f/0x13e/0x14e/0x150 = other categories -- see sprite_triggers.json for each category's base."
+  },
+  {
+   "file": "sprites/prop_sheet_raw.bin + sprites/prop_sheet_contact.png",
+   "frames": 27,
+   "provenance": "building/tree sheet at $37c7c, 0x1e0 (480) B/frame, drawn by $12244 -> $12326 at zoom 4-5. 32w x 24h, 20 B/row = 2 groups of [mask,p0..p3] words.",
+   "format": "decode_wordsprite(frame, 32, 24)."
+  },
+  {
+   "file": "sprites/prop32_sheet_raw.bin + sprites/prop32_sheet_contact.png",
+   "frames": 27,
+   "provenance": "building/tree sheet at $3af1c, 0x280 (640) B/frame, drawn by $12244 -> $12326 at zoom 1-3. 32w x 32h.",
+   "format": "decode_wordsprite(frame, 32, 32)."
+  },
+  {
+   "file": "sprites/struct_sheet_raw.bin + sprites/struct_sheet_contact.png",
+   "frames": 47,
+   "provenance": "16x16 sheet at $312a0, 0xa0 (160) B/frame: the buildings/trees at zoom 6-7 ($12244 -> $122b6), and the byte6 1/9/15 structures ($119d4). 10 B/row [mask,p0..p3] words.",
+   "format": "decode_wordsprite(frame, 16, 16)."
+  },
+  {
+   "file": "sprites/sprite_triggers.json",
+   "provenance": "hand-maintained reference, not written by this script: the $115e0 category dispatch (jump tables $1162e / $1165c), each prepare handler's frame formula from its disassembly, and the live traces that pinned them (SPEC.md section 6).",
+   "format": "dispatch + position_lerp + per-category {prepare, blit, sheet, frame formula, verified}"
+  },
+  {
+   "file": "headings.json",
+   "provenance": "heading->frame table at $1675a, read by $16738 ($e6ee marker/HUD path, not the iso entities)",
+   "format": "heading_to_frame: {0..15: frame|null}"
+  },
+  {
+   "file": "hud/descriptor_table.bin",
+   "provenance": "$e6ee+110 descriptor table (pm_blit_hud_sprite)",
+   "format": "16 x 4-long entries, 32-byte glyph row stride",
+   "status": "raw dump; full HUD rip deferred"
+  },
+  {
+   "file": "tables.json",
+   "provenance": "$fdea..$fe02 (zoom geometry, $fe04 output), $ff96/$ff98/$ff9a/$ff9c (projection params), $fec4 (height bias), $1675a (heading->frame), $1400a (Q15 sin/cos), $13f8a (yaw table).",
+   "format": "see keys; all ints are decoded from big-endian words"
+  },
+  {
+   "file": "strings.json",
+   "provenance": "$a242 / $a15a / $a128 / $959e string tables",
+   "format": "per table: offsets[] + decoded_best_effort[] + raw pool",
+   "status": "best-effort; raw pool included"
+  },
+  {
+   "file": "entities.json",
+   "provenance": "$51b66 object records (50 B, slots 1..511), $4f916 settlements, $4e514 leaders, $4d252 herd, $4be00 effects; render_entities[] = the $47970 per-cell bucket walk over the whole map ($115e0's view, SIGNED $51b66 offset), entity_ctx = the per-frame sprite constants. Read from --entities-ram, not --ram.",
+   "format": "decoded key fields + raw hex per record",
+   "active_objects": 166,
+   "render_entities": 425
+  },
+  {
+   "file": "backdrop.bin",
+   "provenance": "the $78000 master screen (4-plane ST low-res, 160 bytes/row), decoded to palette indices. The compose buffer is copied from it before $f898 draws the island; identical across all mission-1 captures and camera rotations checked.",
+   "format": "320*200 bytes, one palette index (0..15) per screen pixel, row-major; screen space (the iso buffer's raw x + 64 = screen x)"
+  },
+  {
+   "file": "reference/isoframe.png",
+   "provenance": "live shifter output from f000107.bin. 77th: verified equal to the RAM snapshot's BACK buffer $24400 to 231/64000 px (moving sprites only) -- so it is consistent with the $3f364 corner buffer and is the right target for the pm_render_ref.py diff. The front buffer $1c700 is the previous (mid-animation) frame.",
+   "format": "320 x 200 RGB PNG; isoframe_indices.bin = 1 byte palette index/px"
+  }
+ ]
+}
