@@ -14,7 +14,7 @@ Console.Out.NewLine <- "\n"
 
 let assets = Path.Combine(__SOURCE_DIRECTORY__, "..", "assets")
 let map = Terrain.parse (File.ReadAllBytes(Path.Combine(assets, "terrain.bin")))
-let dith = File.ReadAllBytes(Path.Combine(assets, "dither.bin"))
+let dithRaw = File.ReadAllBytes(Path.Combine(assets, "dither.bin"))
 let camX, camY, yaw = 36, 47, 15                        // mission-1 start pose
 let corners = Projection.projectGrid (Projection.Params.Mission1.WithYaw yaw) map camX camY
 
@@ -23,13 +23,21 @@ let ctx, recs =
     let c = doc.RootElement.GetProperty("entity_ctx")
     let gi (e: JsonElement) (k: string) = e.GetProperty(k).GetInt32()
     let file (k: string) = File.ReadAllBytes(Path.Combine(assets, string (c.GetProperty(k).GetString())))
-    ({ Yaw = gi c "yaw"; Anim = gi c "anim" <> 0; SelGroup = gi c "sel_group"; TileOff = gi c "tile_off"
-       RotPhase = gi c "rot_phase"; Sheet33 = file "sheet33"; SheetProp = file "sheet_prop"; Ram = [||] }
+    ({ Yaw = gi c "yaw"; Anim = gi c "anim" <> 0; SelGroup = gi c "sel_group"
+       TileOff = Season.treeTileOffset (gi c "season"); RotPhase = gi c "rot_phase"; Zoom = gi c "half"
+       Sheet33 = file "sheet33"; SheetProp = file "sheet_prop"
+       SheetProp32 = file "sheet_prop32"; SheetProp16 = file "sheet_prop16"; Ram = [||] }
      : Sprites.EntityCtx),
     [| for e in doc.RootElement.GetProperty("render_entities").EnumerateArray() ->
          ({ B6 = gi e "b6"; B5 = gi e "b5"; B7 = gi e "b7"; B14 = gi e "b14"; B17 = gi e "b17"
-            B31 = gi e "b31"; Fx = gi e "fx"; Fy = gi e "fy"; Fx4 = gi e "fx4"; Fy4 = gi e "fy4"
+            B31 = gi e "b31"; Fx = gi e "fx"; Fy = gi e "fy"; Addr = gi e "addr"
             Group = gi e "group"; Wcx = gi e "wcx"; Wcy = gi e "wcy" } : Sprites.EntityRec) |]
+
+// the grass colours of the season the records were captured in (Season.fs)
+let season =
+    use doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(assets, "entities.json")))
+    doc.RootElement.GetProperty("entity_ctx").GetProperty("season").GetInt32()
+let dith = Season.table dithRaw season
 
 let hex (n: int) = sprintf "%02x" n
 let pt (c: Projection.Corner) = sprintf "(%3.0f,%3.0f)" c.X c.Y
@@ -71,6 +79,21 @@ match fsi.CommandLineArgs |> Array.skip 1 |> List.ofArray with
         printfn "colour byte $%s, x 0..31, scanlines 0..5 (palette indices, hex):" (hex colour)
         for y in 0 .. 5 do
             printfn "  y=%d  %s" y (String.Join("", [ for x in 0 .. 31 -> sprintf "%x" (Fill.ditherIndex dith colour y x) ]))
+| [ "seasons" ] ->
+    // each season's live grass slots ($1d..$2e): the palette indices they use
+    for season in 0 .. 3 do
+        let t = Season.table dithRaw season
+        let counts = Array.zeroCreate 16
+        for colour in 0x1d .. 0x2e do
+            for y in 0 .. 15 do
+                for x in 0 .. 15 do
+                    let i = int (Fill.ditherIndex t colour y x)
+                    counts.[i] <- counts.[i] + 1
+        let used =
+            counts |> Array.indexed |> Array.filter (fun (_, n) -> n > 0) |> Array.sortByDescending snd
+            |> Array.map (fun (i, n) -> sprintf "%d:%d%%" i (100 * n / (18 * 256)))
+        printfn "season %d  source $2e000+$%04x  trees +%d  palette: %s"
+            season (Season.sourceOffset season) (Season.treeTileOffset season) (String.Join(" ", used))
 | [ "steps" ] ->
     let steps = Scene.steps ctx (Fill.plan corners map camX camY yaw) recs
     let tris = steps |> Array.filter (function Scene.Triangle _ -> true | _ -> false) |> Array.length

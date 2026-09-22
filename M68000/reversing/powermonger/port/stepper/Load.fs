@@ -11,13 +11,15 @@ type Assets =
       Dither: byte[]
       Palette: (byte * byte * byte)[]      // the 16 shifter colours, RGB
       Backdrop: byte[]                     // the $78000 master, screen space; [||] if not exported
-      Entities: Sprites.EntityRec[]        // one frame's $47970 bucket walk
+      Entities: Sprites.EntityRec[]        // every record in the map's $47970 buckets, one frame
       EntityCtx: Sprites.EntityCtx
-      // the pose the entity records were captured at: they line up with the
-      // terrain at this camera cell (any yaw); the yaw is the starting view
+      // the view the entity records were captured in (the mission-1 start):
+      // the viewer opens here
       EntityCamX: int
       EntityCamY: int
-      EntityYawSteps: int }
+      EntityYawSteps: int
+      EntityZoom: int                      // [$57ffc]
+      EntitySeason: int }                  // word[$57fd0] / 2: the tree frames are this season's
 
 let load (dir: string) : Assets =
     let file name = Path.Combine(dir, name)
@@ -37,10 +39,9 @@ let load (dir: string) : Assets =
         | s -> s
     let entities =
         [| for e in root.GetProperty("render_entities").EnumerateArray() ->
-             ({ B6 = gi e "b6"; B5 = gi e "b5"; B7 = gi e "b7"; B14 = gi e "b14"
+             ({ Addr = gi e "addr"; B6 = gi e "b6"; B5 = gi e "b5"; B7 = gi e "b7"; B14 = gi e "b14"
                 B17 = gi e "b17"; B31 = gi e "b31"; Fx = gi e "fx"; Fy = gi e "fy"
-                Fx4 = gi e "fx4"; Fy4 = gi e "fy4"; Group = gi e "group"
-                Wcx = gi e "wcx"; Wcy = gi e "wcy" } : Sprites.EntityRec) |]
+                Group = gi e "group"; Wcx = gi e "wcx"; Wcy = gi e "wcy" } : Sprites.EntityRec) |]
     { Map = Terrain.parse (File.ReadAllBytes(file "terrain.bin"))
       Dither = File.ReadAllBytes(file "dither.bin")
       Palette = palette
@@ -48,10 +49,15 @@ let load (dir: string) : Assets =
       Entities = entities
       EntityCtx =
         { Yaw = gi ctx "yaw"; Anim = gi ctx "anim" <> 0; SelGroup = gi ctx "sel_group"
-          TileOff = gi ctx "tile_off"; RotPhase = gi ctx "rot_phase"
+          TileOff = Season.treeTileOffset (gi ctx "season"); RotPhase = gi ctx "rot_phase"
+          Zoom = gi ctx "half"                 // $fdec, equal to the zoom index $57ffc
           Sheet33 = File.ReadAllBytes(file (gs ctx "sheet33"))
           SheetProp = File.ReadAllBytes(file (gs ctx "sheet_prop"))
+          SheetProp32 = File.ReadAllBytes(file (gs ctx "sheet_prop32"))
+          SheetProp16 = File.ReadAllBytes(file (gs ctx "sheet_prop16"))
           Ram = [||] }
       EntityCamX = gi ctx "cam_x"
       EntityCamY = gi ctx "cam_y"
-      EntityYawSteps = gi ctx "yaw" / 16 }
+      EntityYawSteps = gi ctx "yaw" / 16
+      EntityZoom = gi ctx "half"
+      EntitySeason = gi ctx "season" }

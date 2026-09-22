@@ -68,19 +68,25 @@
   },
   {
    "file": "sprites/prop_sheet_raw.bin + sprites/prop_sheet_contact.png",
-   "frames": 28,
-   "provenance": "category-2 (tree/obstacle) sheet at $37c7c, 0x1e0 (480) B/frame. Blitted inline by $1168c via $1227c/$124a8. 87th: 32w x 24h, 20 B/row = 2 groups of [mask,p0..p3] words (from the $124a8 disasm + a live trace).",
-   "format": "48-frame sample. decode_wordsprite(frame, 32, 24)."
+   "frames": 27,
+   "provenance": "building/tree sheet at $37c7c, 0x1e0 (480) B/frame, drawn by $12244 -> $12326 at zoom 4-5. 32w x 24h, 20 B/row = 2 groups of [mask,p0..p3] words.",
+   "format": "decode_wordsprite(frame, 32, 24)."
+  },
+  {
+   "file": "sprites/prop32_sheet_raw.bin + sprites/prop32_sheet_contact.png",
+   "frames": 27,
+   "provenance": "building/tree sheet at $3af1c, 0x280 (640) B/frame, drawn by $12244 -> $12326 at zoom 1-3. 32w x 32h.",
+   "format": "decode_wordsprite(frame, 32, 32)."
   },
   {
    "file": "sprites/struct_sheet_raw.bin + sprites/struct_sheet_contact.png",
    "frames": 47,
-   "provenance": "structure sheet at $312a0 (cats 1, 9, 15), 0xa0 (160) B/frame. Blitted centred via $1225c / $119d4. 87th: 16w x 16h, 10 B/row [mask,p0..p3] words.",
+   "provenance": "16x16 sheet at $312a0, 0xa0 (160) B/frame: the buildings/trees at zoom 6-7 ($12244 -> $122b6), and the byte6 1/9/15 structures ($119d4). 10 B/row [mask,p0..p3] words.",
    "format": "decode_wordsprite(frame, 16, 16)."
   },
   {
    "file": "sprites/sprite_triggers.json",
-   "provenance": "87th: $115e0 category dispatch. Jump tables $1162e / $1165c read from RAM; per-category frame formulas from a disassembly of each prepare handler + a live men-path trace (scratchpad/pm78_settle.snap).",
+   "provenance": "hand-maintained reference, not written by this script: the $115e0 category dispatch (jump tables $1162e / $1165c), each prepare handler's frame formula from its disassembly, and the live traces that pinned them (SPEC.md section 6).",
    "format": "dispatch + position_lerp + per-category {prepare, blit, sheet, frame formula, verified}"
   },
   {
@@ -107,10 +113,10 @@
   },
   {
    "file": "entities.json",
-   "provenance": "$51b66 object records (50 B, slots 1..511), $4f916 settlements, $4e514 leaders, $4d252 herd, $4be00 effects; render_entities[] = the $47970 per-cell bucket walk ($115e0's view, SIGNED $51b66 offset), entity_ctx = the per-frame Sprites.drawEntities constants.",
+   "provenance": "$51b66 object records (50 B, slots 1..511), $4f916 settlements, $4e514 leaders, $4d252 herd, $4be00 effects; render_entities[] = the $47970 per-cell bucket walk over the whole map ($115e0's view, SIGNED $51b66 offset), entity_ctx = the per-frame sprite constants. Read from --entities-ram, not --ram.",
    "format": "decoded key fields + raw hex per record",
    "active_objects": 47,
-   "render_entities": 53
+   "render_entities": 276
   },
   {
    "file": "backdrop.bin",

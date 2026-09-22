@@ -8,8 +8,8 @@ namespace PmLogic
 /// farther terrain: the painter's algorithm, with no depth sort.
 ///
 /// Sprites.drawEntities is the other order (every sprite after all the
-/// terrain), kept because it is what tools/pm_render_ref.py does and the
-/// 90th/91st cross-checks compare against it.
+/// terrain), kept for the byte-exact cross-checks against
+/// tools/pm_render_ref.py's draw_entities.
 module Scene =
 
     /// One thing the renderer draws, in frame order. Each step carries its
@@ -48,7 +48,7 @@ module Scene =
     /// Where a sprite step lands on its cell's four projected corners.
     let placement (ctx: Sprites.EntityCtx) (c: Fill.Cell) (r: Sprites.EntityRec) =
         let c00, c10, c01, c11 = cornersOf c
-        Sprites.placeEntity ctx c00 c10 c01 c11 r
+        Sprites.placeEntity ctx c00 c10 c01 c11 c.Row c.Col r
 
     /// Draw one step into `buf`. For a triangle, returns what $ef62 did with it.
     let drawStep (buf: Fill.Buffer) (dith: byte[]) (tick: int) (ctx: Sprites.EntityCtx) (step: Step) =
@@ -56,7 +56,7 @@ module Scene =
         | Triangle(_, _, t) -> Some(Fill.drawTri buf dith tick t)
         | Sprite(c, r) ->
             let c00, c10, c01, c11 = cornersOf c
-            Sprites.blitEntity buf ctx c00 c10 c01 c11 r
+            Sprites.blitEntity buf ctx c00 c10 c01 c11 c.Row c.Col r
             None
 
     /// Draw the whole frame: terrain and sprites, in the game's order.

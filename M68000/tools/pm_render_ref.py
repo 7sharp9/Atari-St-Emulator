@@ -549,7 +549,7 @@ def _entity_frame(o, ent, yaw):
         # frame record[7] from $37c7c, no tile-set offset; r7 == 0x0a also
         # draws a $119b2 overlay (not ported)
         r7 = o["b7"]
-        return ("prop", r7, 32, 24) if r7 != 0x0A and r7 < 28 else None
+        return ("prop", r7, 32, 24) if r7 != 0x0A and r7 < 27 else None
     if b6 == 4:                                    # building / tree ($37c7c)
         r7 = o["b7"]
         if r7 == 0x0D:                             # $116a8 special-case
@@ -558,7 +558,7 @@ def _entity_frame(o, ent, yaw):
             f = 0x0E
         else:                                      # $116c6: (r7 & 0x7f) + tile_off
             f = (r7 & 0x7F) + ent["tile_off"]
-        return ("prop", f, 32, 24) if f < 28 else None
+        return ("prop", f, 32, 24) if f < 27 else None
     return None                                    # 2/10/12/16/18/20/22/30 -- open
 
 

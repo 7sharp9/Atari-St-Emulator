@@ -13,16 +13,16 @@ rm -f "$D"
 sb init "$D" "How PowerMonger draws its world" >/dev/null
 
 note <<'EOF'
-This walks through one frame of PowerMonger's isometric view (Atari ST, 1990), following the data from the heightmap in RAM to the pixels on screen. The code is the F# port in `../godot/logic/`, which reproduces the 68000 routines closely enough to match the game's own frame buffer at 94-98% of pixels, and the terrain alone at 99.7-99.96% away from sprites. Addresses like `$fccc` are routines in the original executable, so every section can be traced back to the disassembly.
+This walks through one frame of PowerMonger's isometric view (Atari ST, 1990), following the data from the heightmap in RAM to the pixels on screen. The code is the F# port in `../godot/logic/`, which reproduces the 68000 routines closely enough to match the game's own frame buffer at 94-98% of pixels, and the terrain alone at over 99% away from sprites, at all seven zoom levels. Addresses like `$fccc` are routines in the original executable, so every section can be traced back to the disassembly.
 
 The whole renderer, in the order it runs. `$f898` is the driver: once per game tick it re-projects if the camera moved, then runs the walk for the current angle.
 
 | stage | 68000 routine | F# |
 |---|---|---|
 | read the heightmap window | `$3f86c`, `$438ee` planes | `Terrain.Map` |
-| project the 9 x 9 grid of corners | `$fecc` | `Projection.projectGrid` |
+| project the grid of corners (9 x 9 at the default zoom) | `$fecc` | `Projection.projectGrid` |
 | pick the walk for this camera angle | `$f97e` | `Fill.quadrant`, `Fill.plan` |
-| visit the 64 cells, two triangles each | `$f98e` / `$fa9a` / `$fbb4` / `$fccc` | `Fill.planQ0`..`planQ3` |
+| visit the cells (64 at the default zoom), two triangles each | `$f98e` / `$fa9a` / `$fbb4` / `$fccc` | `Fill.planQ0`..`planQ3` |
 | fill each triangle with a dither pattern | `$ef62`, `$e420`, `$e3e6` | `Fill.ef62Raster`, `ddaWalk`, `ditherIndex` |
 | draw each cell's sprites straight after its triangles | `$115e0` | `Scene.steps`, `Sprites.blitEntity` |
 
@@ -38,7 +38,7 @@ The map is 64 x 128 cells. Each cell has four bytes, stored as four separate pla
 EOF
 run "sed -n '19,21p;28,36p' ../godot/logic/Terrain.fs"
 note <<'EOF'
-The camera looks at an 8 x 8 block of cells, which needs a 9 x 9 grid of corners. These are the control-plane heights under that grid at the start of mission 1, camera cell (36,47). The hill in the middle is the one you see on screen.
+At the default zoom the camera looks at an 8 x 8 block of cells, which needs a 9 x 9 grid of corners (section 2 covers the other zooms). These are the control-plane heights under that grid at the start of mission 1, camera cell (36,47). The hill in the middle is the one you see on screen.
 EOF
 run "dotnet fsi probe.fsx heights"
 
@@ -49,7 +49,7 @@ note <<'EOF'
 
 The yaw is a byte, 256 units per turn, stepped 16 at a time: 16 angles of 22.5 degrees. The start pose is yaw 15, byte `$f0`. `Zoom` (21) is the size of a cell in world units, and heights are scaled by `Zoom / 16`. `Horizon` (130) is subtracted from each lifted height before the divide and added back after, so it sets where the horizon sits on screen.
 EOF
-run "sed -n '26,61p' ../godot/logic/Projection.fs"
+run "sed -n '/theta = yaw \* 1.40625/,\$p' ../godot/logic/Projection.fs"
 note <<'EOF'
 Two details matter later. `ry`, the rotated distance along the view direction, is what the divide uses: a larger `ry` means a smaller `d`, so a nearer corner. And nothing is clipped here. All 81 corners are projected whether they are on screen or not; clipping happens one scanline at a time inside the triangle filler.
 
@@ -59,17 +59,23 @@ run "dotnet fsi probe.fsx corners"
 note <<'EOF'
 The far edge (row 0) sits higher on screen than the near edge (row 8). Between them the hill lifts rows 1 to 4 above row 0 in places, so the grid folds back on itself on screen. Those back slopes come up again in section 5.
 
+**Zoom.** The game has seven zoom levels, and the zoom index in `$57ffc` does two jobs. It is `Half`, so the window is `2 * zoom` cells square, from 2 x 2 at zoom 1 to 14 x 14 at zoom 7. And it picks `Zoom`, the cell size, from a table at `$13f82`. The zoom buttons call `$13f60`, which sets both and then `$fe04`, which works out every loop count and pointer step the walks use. `$4bb3a/$4bb3c` is the cell in the middle of the view, and the window starts `zoom` cells before it, so zooming keeps the centre where it is.
+EOF
+run "sed -n '/13f82\[zoom index\]/,/member p.WithZoom/p' ../godot/logic/Projection.fs"
+note <<'EOF'
+Nothing else in the projection changes with zoom: the eye distance, the horizon and the screen centre are constants.
+
 ## 3. The walk: far to near, one cell at a time
 
 The game never sorts anything. It visits the 64 cells in a fixed order and draws each cell completely before moving on. Anything drawn later lands on top. This is the painter's algorithm: paint the background first and let nearer things cover it. It only works if nothing is drawn before something that could be in front of it.
 
 Which order is safe depends on where the camera faces, so the game has four copies of the walk and picks one from the yaw (`$f97e`):
 EOF
-run "sed -n '406,414p' ../godot/logic/Fill.fs"
+run "sed -n '/port of \$f97e/,/handler corners map/p' ../godot/logic/Fill.fs"
 note <<'EOF'
-Each handler is two nested loops of eight. The port splits each one into its two decisions: the order the loops reach the cells, and how each cell is cut into triangles (section 4). In the excerpt, C00 is the cell's top-left corner `corners[row, col]`, C10 the next column, C01 the next row and C11 the diagonal one; `packed` is `(x << 16) | y`, the handlers' way of comparing two screen points. Here is the handler for the start pose, `$fccc`:
+Each handler is two nested loops of `2 * zoom` passes, eight at the default zoom; the loop count and every starting point come from the `$fe04` geometry, so the same handler serves all seven zooms. The port splits each one into its two decisions: the order the loops reach the cells, and how each cell is cut into triangles (section 4). In the excerpt, C00 is the cell's top-left corner `corners[row, col]`, C10 the next column, C01 the next row and C11 the diagonal one; `packed` is `(x << 16) | y`, the handlers' way of comparing two screen points. Here is the handler for the start pose, `$fccc`:
 EOF
-run "sed -n '314,334p' ../godot/logic/Fill.fs"
+run "sed -n '/pm_grid_walk_q3 (\$fccc)/,/(i, n - 1 - strip) \]/p' ../godot/logic/Fill.fs"
 note <<'EOF'
 Laid out on the grid, the order `planQ3` produces at yaw 15, then the order at yaw 7, where the camera faces the opposite way and handler q1 runs. Each number is when that cell is drawn:
 EOF
@@ -79,13 +85,13 @@ The order is not strictly far to near. At yaw 15, cell 8 (bottom right, near) is
 
 The projection says why. Depth is `ry = row * cos(yaw) + col * sin(yaw)`. For yaw 12 to 15, cos is positive and sin is negative, so a cell gets nearer as its row goes up and as its column goes down. `planQ3` runs columns from high to low and, within a column, rows from low to high, so any cell that is nearer in both directions comes later. The other three handlers do the same for their quarter turn, and `quadrant` switches at yaw 0, 4, 8 and 12, the angles where cos or sin is zero. Within a quarter turn the signs never change, so one grid order serves all four angles.
 
-Cells that are not ordered this way, like 8 and 9, sit side by side across the view. The walk relies on those not overlapping on screen; the port has not tested that beyond matching the game's frames. One pass of the outer loop, eight cells, is what the viewer calls a **strip**.
+Cells that are not ordered this way, like 8 and 9, sit side by side across the view. The walk relies on those not overlapping on screen; the port has not tested that beyond matching the game's frames. One pass of the outer loop, `2 * zoom` cells, is what the viewer calls a **strip**.
 
 ## 4. Splitting a cell into two triangles
 
 A cell's four corners are generally not in one plane, so the game draws each cell as two triangles. The plan records each one as data:
 EOF
-run "sed -n '261,293p' ../godot/logic/Fill.fs"
+run "sed -n '/One triangle as the walk hands it/,/Second: Tri }/p' ../godot/logic/Fill.fs"
 note <<'EOF'
 Three things decide the two triangles:
 
@@ -102,20 +108,20 @@ note <<'EOF'
 
 `$ef62` takes three corners and a colour byte and fills the triangle one scanline at a time. Its outline, from the port's doc comment:
 EOF
-run "sed -n '166,181p' ../godot/logic/Fill.fs"
+run "sed -n '/pm_tri_raster (\$ef62) → the \$e420/,/raw plane byte, same as/p' ../godot/logic/Fill.fs"
 note <<'EOF'
 It finds the top vertex, works out how far each edge moves in x per scanline, then hands two edges to the span walker `$e420`, which fills between them row by row. When one edge reaches the middle vertex it bends toward the bottom one.
 
 The per-scanline step is a 16.16 fixed-point slope from `$f000`. The 68000's `divu` divides 32 bits by 16 and returns a 16-bit quotient, so `(|dx| << 16) / dy` overflows as soon as `|dx| >= dy`. For those edges, flatter than 45 degrees, the routine divides in two stages and loses the low 8 bits of the fraction. (The source comment's "steep" means steep in x.)
 EOF
-run "sed -n '50,63p' ../godot/logic/Fill.fs"
+run "sed -n '/\$f000 — signed 16.16/,/if dx < 0 then -v else v/p' ../godot/logic/Fill.fs"
 run "dotnet fsi probe.fsx slope"
 note <<'EOF'
 7/3 comes out as 2.3320 instead of 2.3333, and 3/7, a steep edge, is exact. The error is about a thousandth of a pixel per row, so it only matters when a span end lands close to a pixel boundary, but then it decides which pixel is drawn. The port keeps it because matching the game pixel for pixel depends on those boundary cases.
 
 The span walker keeps a left and a right x accumulator and adds each edge's slope once per row:
 EOF
-run "sed -n '119,164p' ../godot/logic/Fill.fs"
+run "sed -n '/\$e420 — two 16.16 X accumulators/,/^        abortRow/p' ../godot/logic/Fill.fs"
 note <<'EOF'
 Three behaviours to notice:
 
@@ -136,25 +142,34 @@ The `$1c` numbers are more interesting. Two in five triangles come out with reve
 
 The ST shows 16 colours at once, so a colour byte cannot be a colour. It is an index into a 16 KB table of patterns at `$2e000`: 128 slots of 128 bytes. For a pixel at (x, y), `$e3e6` and `$e420` read the slot for the colour byte, step 8 bytes per scanline (wrapping inside the slot), and take a 16-pixel, 4-bitplane pattern from there. Every span on a scanline uses the same 16-pixel pattern, tiled from the left edge of the screen:
 EOF
-run "sed -n '65,88p' ../godot/logic/Fill.fs"
+run "sed -n '/\$e3e6 setup + the \$e420/,/byte (p0 ||| (p1/p' ../godot/logic/Fill.fs"
 note <<'EOF'
 The pattern depends only on the colour byte and the screen row, never on where the triangle is, so neighbouring triangles with the same byte join without a seam. The first cell's two bytes, as palette indices:
 EOF
 run "dotnet fsi probe.fsx dither"
 note <<'EOF'
-Both are mostly palette 12 and 13, in different proportions, with a few other indices scattered in. Each row repeats every 16 pixels and changes from row to row. Stepping the byte through the table steps through blends, which is how height becomes shading without any lighting maths.
+In this season both mix the greens 12 and 13 with the browns 6 and 7, in different proportions. Each row repeats every 16 pixels and changes from row to row. Stepping the byte through the table steps through blends, which is how height becomes shading without any lighting maths.
 
 There is one more input: a phase. The pattern pointer lives at `$ffa2`, and every time the camera moves, rotates or zooms, `$f898` flips bit 7 of its low byte (`bchg #7,$ffa5` at `$f8e4`) before re-projecting. After the pointer is halved, that moves every read 64 bytes, 8 scanlines, through the slot, and the next camera change moves it back. So the whole landscape's texture jumps half a pattern each time you turn. The port applies it as `Fill.withPhase`, which rotates each slot by the phase:
 EOF
-run "sed -n '89,100p' ../godot/logic/Fill.fs"
+run "sed -n '/The dither phase. \$e3e6 reads/,/else Array.init dith.Length/p' ../godot/logic/Fill.fs"
 note <<'EOF'
 On captures rotated inside the emulator, modelling the phase takes the port's terrain match from 43-47% to 85-94%. The stepper and the Godot view flip it on every camera change, as the game does.
+
+**Seasons.** The table is not fixed either. The grass and slope slots, colour bytes `$1d` to `$2e`, are a working copy, and the table also holds three source versions of them. `word[$57fd0]` is the season, and it picks the source. At world build `$1ab60` copies the season's source over the working slots. After that, every game tick, `$1abaa` copies 16 more pixels from the source, in an order set by a 13-bit random-number generator. When the generator has been round all 8192 values, every pixel has been copied: the season advances and the next fade begins. So the landscape changes colour gradually, a speckle at a time, over 512 ticks:
+EOF
+run "sed -n '/let fading/,/^        t\$/p' ../godot/logic/Season.fs"
+run "dotnet fsi probe.fsx seasons"
+note <<'EOF'
+Winter is khaki and grey with no green at all, spring and autumn share a green source, and summer mixes in brown and gold. The trees change too, but all at once: the tree frame adds `{0, 3, 6, 9}` by season, which picks bare, blossoming, leafy or brown trees, and it reads the season word directly. For 512 ticks after the season changes, the game shows last season's grass under this season's trees. The mission-1 captures behind this port are from exactly such a moment, one tick into summer.
+
+![The four seasons at the mission-1 start pose, in the frame stepper (Y cycles them)](../assets/reference/stepper_seasons_119th.png)
 
 ## 7. Sprites go inside the walk
 
 Trees, buildings, men, animals and banners hang off the cells. Each cell has a bucket at `$47970` holding a linked list of object records. The walk handler calls `$115e0` for a cell right after drawing that cell's two triangles, and `$115e0` draws every record in the bucket before the walk moves on. `Scene.fs` builds the frame that way, as one list of steps:
 EOF
-run "sed -n '15,42p' ../godot/logic/Scene.fs"
+run "sed -n '/One thing the renderer draws/,/| _ -> () |\]/p' ../godot/logic/Scene.fs"
 run "dotnet fsi probe.fsx steps"
 note <<'EOF'
 (`byte6` is the record's category byte; 4 is a building or tree. SPEC.md §6 lists the categories.)
@@ -163,7 +178,9 @@ The obvious simplification, drawing all the terrain first and then all the sprit
 EOF
 run "grep -A 7 '| capture | terrain only' ../SPEC.md"
 note <<'EOF'
-The inputs are `.ram` captures of the running game, which stay out of the repository, so this table is quoted from SPEC.md rather than re-run here. `pm78_settle` scores lower overall because its two compose buffers are known to disagree on the entity layer; the comparison at the differing pixels still comes out the same way. The records only depend on the camera cell, so the same sprites are drawn at every yaw; only men's and animals' facing frames follow the camera. The castle keep in the hilltop fort is its own category (`byte6` 2, `$117d8`): a building frame from the tree sheet, anchored on the cell's centre.
+The inputs are `.ram` captures of the running game, which stay out of the repository, so this table is quoted from SPEC.md rather than re-run here. `pm78_settle` scores lower overall because its two compose buffers are known to disagree on the entity layer; the comparison at the differing pixels still comes out the same way. The yaw only picks men's and animals' facing frames. The camera cell matters more for trees and buildings: their position inside the cell is not stored, but worked out from the addresses of the record, its bucket slot and its cell's corner in the corner buffer, and the corner address depends on where the cell sits in the window. The port exports the records for the whole map and recomputes that jitter for every window, so every camera cell has its sprites. The castle keep in the hilltop fort is its own category (`byte6` 2, `$117d8`): a building frame from the tree sheet, anchored on the cell's centre.
+
+Zoom changes the art as well as the positions. `$12244`, which draws buildings and trees, picks one of three copies of the same pictures by the zoom index: 32 x 32 when zoomed in (1-3), 32 x 24 at the default (4-5) and 16 x 16 zoomed out (6-7). Men, animals and banners stay 8 x 11 at every zoom.
 
 Inline drawing matters because nearer terrain has to be able to cover a sprite. A tree on the far side of a hill is drawn when its cell comes up, and then the hill's nearer cells are drawn over it. How much sprite work the start frame throws away:
 EOF
@@ -177,19 +194,21 @@ More than half the sprite pixels are painted over, and whole trees are drawn onl
 
 ## 8. Watching it happen: the frame stepper
 
-Because the frame is now a list of steps, it can be replayed. `../stepper` is a small Mibo (raylib) app that draws the frame one triangle or sprite at a time, with pause, single steps by triangle, cell or strip, rewind, and overlays for the corner grid, the walk order, and the current triangle or sprite frame. Run it with `dotnet run --project ../stepper`; B toggles the game's backdrop behind the island.
+Because the frame is now a list of steps, it can be replayed. `../stepper` is a small Mibo (raylib) app that draws the frame one triangle or sprite at a time, with pause, single steps by triangle, cell or strip, rewind, and overlays for the corner grid, the walk order, and the current triangle or sprite frame. Run it with `dotnet run --project ../stepper`. W/A/S/D move the camera a cell, Q/E rotate it, `[`/`]` zoom, Y changes the season, and B toggles the game's backdrop behind the island.
+
+![The seven zoom levels around the mission-1 start](../assets/reference/stepper_zoom_119th.png)
 
 It draws each step once into a buffer that logs its writes, so it knows exactly which pixels each step sets and in what order:
 EOF
-run "sed -n '34,54p' ../stepper/Replay.fs"
+run "sed -n '/^\/\/\/ The camera and the season/,/Writes: Write\[\]\[\] }/p' ../stepper/Replay.fs"
 note <<'EOF'
 A position in the frame is a step number plus a pixel count within that step, and any position can be rebuilt by replaying the log up to it:
 EOF
-run "awk 'NR>=58 && NR<=75; NR==76 {print \"...\"}; NR>=113 && NR<=122' ../stepper/Replay.fs"
+run "sed -n '/Step. steps are finished/,/else finish f\$/p;/^\/\/\/ Replay every write up to the cursor/,/for p in 0 .. c.Pixel - 1/p' ../stepper/Replay.fs"
 note <<'EOF'
 Playback runs finer than the ST ever drew: `$e420` writes 16-pixel words per bitplane and the sprite blitter writes whole byte rows, so pixel-by-pixel playback is a presentation choice. The order of spans, rows, triangles and sprites is the game's.
 
-The replay is checked against the renderer at every yaw: finishing the replay must give exactly the frame `Scene.render` draws, and stepping forward then back by any chunk must land where it started.
+The replay is checked against the renderer at every yaw and every zoom, across the seasons: finishing the replay must give exactly the frame `Scene.render` draws, and stepping forward then back by any chunk must land where it started.
 EOF
 run "dotnet run --project ../stepper --no-build -- --selfcheck | tr -d '\r'"
 
@@ -200,11 +219,11 @@ There are two ways to put this in Godot, and they answer different questions.
 
 **Route A: run the game's renderer and show its output.** This is what `../godot` does today. The F# above draws a 320 x 200 palette-index buffer on the CPU exactly as the game does, and a thin C# node copies it into an `ImageTexture` whenever the camera moves:
 EOF
-run "awk 'NR>=156 && NR<=181; NR==182 {print \"        ...\"}; NR==192; NR==193 {print \"        ...\"}; NR==233' ../godot/game/TerrainView.cs"
+run "sed -n '/private void RenderFrame()/,/Scene.render(buf, dither/p;/_rect.Texture = ImageTexture/p' ../godot/game/TerrainView.cs"
 note <<'EOF'
 Everything the port reproduces stays as the game draws it: the dither and its phase, the clipping, the `$1c` override, the row the span walker stops short of. The island is drawn over the game's own `$78000` master screen (HUD, lord portrait, temple backdrop, minimap), exported once as `assets/backdrop.bin`, since the game never changes it. Against the game's frames that is 94-98% of pixels, and nearly all of the rest are sprites.
 
-![The Godot view: the port's island over the game's own backdrop](../assets/reference/godot_screenshot_backdrop_118th.png) The cost is that Godot is only a window. You cannot zoom smoothly, light it, or run it above 320 x 200 without changing what it is.
+![The Godot view: the port's island over the game's own backdrop](../assets/reference/godot_screenshot_backdrop_118th.png) The Godot view pans, rotates and changes season like the stepper, and stays at the default zoom. The cost is that Godot is only a window. You cannot zoom smoothly, light it, or run it above 320 x 200 without changing what it is.
 
 **Route B: rebuild it with the engine's own tools.** Each stage maps onto something Godot already does, and several of the game's tricks become unnecessary:
 
@@ -226,7 +245,7 @@ For the look of Route A with the structure of Route B, keep the mesh and camera 
 
 - `../SPEC.md` is the full porting contract, with every constant and address.
 - `../../graphics.md` has the 68000-level detail behind each section here.
-- `dotnet run --project ../stepper` shows every step above live. Press N to number the cells in walk order, G for the corner grid, and Right to step one triangle at a time.
+- `dotnet run --project ../stepper` shows every step above live. Press N to number the cells in walk order, G for the corner grid, Right to step one triangle at a time, and W/A/S/D, `[`/`]` and Y to move, zoom and change the season.
 EOF
 
 sb verify "$D" >/dev/null && echo "verify: clean"

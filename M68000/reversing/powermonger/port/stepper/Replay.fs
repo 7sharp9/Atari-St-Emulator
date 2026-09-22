@@ -21,13 +21,18 @@ let W, H = Fill.ScreenWidth, Fill.ScreenHeight
 [<Struct>]
 type Write = { X: int; Y: int; Index: byte }
 
-type Frame =
-    { CamX: int
+/// The camera and the season: what a frame is built for, apart from the tick.
+type View =
+    { CamX: int                      // top-left cell of the drawn window
       CamY: int
-      YawSteps: int
+      YawSteps: int                  // 0..15, [$ff9a] >> 4
+      Zoom: int                      // 1..7, [$57ffc]: the window is 2 * Zoom cells square
       DitherPhase: int               // 0 or 64: flips on every camera change ($f8e4)
-      HasSprites: bool               // entity records only exist at their capture camera cell
-      Ctx: Sprites.EntityCtx         // per-frame sprite constants, yaw included
+      Season: int }                  // 0..3, word[$57fd0] / 2 (Season.fs)
+
+type Frame =
+    { View: View
+      Ctx: Sprites.EntityCtx         // per-frame sprite constants, yaw and tree set included
       Corners: Projection.Corner[,]
       Steps: Scene.Step[]
       Rasters: Fill.Raster option[]  // what $ef62 did, for triangle steps
@@ -43,18 +48,19 @@ let private record (dith: byte[]) (ctx: Sprites.EntityCtx) (tick: int) (step: Sc
              { X = i % W; Y = i / W; Index = byte (packed &&& 0xFF) } |]
     raster, writes
 
-/// Build the replay for one camera. The entity records were captured at one
-/// camera cell (their prop jitter depends on it), so sprites are included
-/// there, at any yaw: positions come from the cell's projected corners, and
-/// the yaw only picks men's and animals' facing frames. Checked against the
-/// game at yaws $40/$90/$c0 (SPEC.md §6, draw order).
-let build (a: Load.Assets) (camX: int) (camY: int) (yawSteps: int) (ditherPhase: int) (tick: int) : Frame =
-    let corners = Projection.projectGrid (Projection.Params.Mission1.WithYaw yawSteps) a.Map camX camY
-    let hasSprites = camX = a.EntityCamX && camY = a.EntityCamY
-    let ctx = { a.EntityCtx with Yaw = yawSteps * 16 }
-    let steps = Scene.steps ctx (Fill.plan corners a.Map camX camY yawSteps) (if hasSprites then a.Entities else [||])
-    let recorded = steps |> Array.map (record (Fill.withPhase a.Dither ditherPhase) ctx tick)
-    { CamX = camX; CamY = camY; YawSteps = yawSteps; DitherPhase = ditherPhase; HasSprites = hasSprites; Ctx = ctx; Corners = corners
+/// Build the replay for one view. Sprites come from the whole map's bucket
+/// walk, so any window has its own: positions come from the cell's projected
+/// corners, the tree jitter from the cell's place in the window, and the yaw
+/// only picks men's and animals' facing frames. The season picks the grass
+/// colours and the tree frames together.
+let build (a: Load.Assets) (v: View) (tick: int) : Frame =
+    let p = Projection.Params.Mission1.WithYaw(v.YawSteps).WithZoom(v.Zoom)
+    let corners = Projection.projectGrid p a.Map v.CamX v.CamY
+    let ctx = { a.EntityCtx with Yaw = v.YawSteps * 16; Zoom = v.Zoom; TileOff = Season.treeTileOffset v.Season }
+    let dith = Fill.withPhase (Season.table a.Dither v.Season) v.DitherPhase
+    let steps = Scene.steps ctx (Fill.plan corners a.Map v.CamX v.CamY v.YawSteps) a.Entities
+    let recorded = steps |> Array.map (record dith ctx tick)
+    { View = v; Ctx = ctx; Corners = corners
       Steps = steps
       Rasters = Array.map fst recorded
       Writes = Array.map snd recorded }
@@ -83,7 +89,7 @@ let advance (f: Frame) (n: int) (c: Cursor) : Cursor =
 type Chunk =
     | Shape         // one triangle or one sprite
     | Cell          // a cell: its two triangles, then its sprites
-    | Strip         // one pass of the walk's outer loop: 8 cells
+    | Strip         // one pass of the walk's outer loop: 2 * zoom cells
 
 let private chunkOf (f: Frame) (chunk: Chunk) (i: int) =
     match chunk with

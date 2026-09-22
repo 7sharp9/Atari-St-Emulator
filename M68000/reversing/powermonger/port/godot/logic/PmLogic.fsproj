@@ -17,6 +17,7 @@
     <Compile Include="Terrain.fs" />
     <Compile Include="Projection.fs" />
     <Compile Include="Fill.fs" />
+    <Compile Include="Season.fs" />
     <Compile Include="Sprites.fs" />
     <Compile Include="Scene.fs" />
   </ItemGroup>

@@ -66,16 +66,16 @@
   "2": {
    "name": "building / tree  (byte6 == 4)",
    "prepare": "$1168c",
-   "blit": "inline via $12244 -> $12326 / $124a8 ($1165c[4] == 0). SUB-CELL LERP position (89th, not centred): $11f1a with an address-jitter fx/fy = fx=(((A2+A3)&0xffff)<<3)&0xff, fy=(((A2+A3)&0xffff)+(A0&0xffff))&0xff (A2=&$47970[cell], A3=record, A0=&$3f364[row*64+col*4]); then $12272 -4/-8 -> raw anchor (lerpX+0x38, lerpY-16).",
-   "sheet": "$37c7c",
+   "blit": "inline via $12244 ($1165c[4] == 0), which picks the sheet by the zoom index [$57ffc]: <= 3 $3af1c 32x32 (anchor -8/-16, $12294), 4-5 $37c7c 32x24 (-4/-8, $12272), >= 6 $312a0 16x16 (no offset, $12258), then $12326 / $124a8 / $122b6. SUB-CELL LERP position, not centred: $11f1a with an address-jitter fx/fy = fx=(((A2+A3)&0xffff)<<3)&0xff, fy=(((A2+A3)&0xffff)+(A0&0xffff))&0xff (A2=&$47970[cell], A3=record, A0=&$3f364[row*64+col*4]); at zoom 4-5 the raw anchor is (lerpX+0x38, lerpY-16).",
+   "sheet": "$37c7c (zoom 4-5); $3af1c (zoom 1-3); $312a0 (zoom 6-7)",
    "frame_bytes": 480,
    "sprite_wh": [
     32,
     24
    ],
-   "frame_count": 28,
-   "frame": "r7 = record[7]: r7 == 0x0d -> 0x0d; (r7 & 0x7f) == 0x0e -> 0x0e; else (r7 & 0x7f) + word[$11746 + word[$57fd0]].  word[$57fd0] = ($58146 & 3) * 2 (per-mission tile-set selector, even 0..6); table $11746 = {0:0, 2:3, 4:6, 6:9} (index 8+ is code). Mission 1: word[$57fd0] == 4 -> +6, so r7 0x11/0x10/0x0f -> frame 0x17/0x16/0x15. Sheet = 28 clean frames (8 house types, tower, well, ruins, bell, 9 tree types, duck); frame 28+ is a different geometry/sheet.",
-   "verified": "89th: live trace (D2 at $12288) + 32x24 word-plane decode byte-exact vs $24400 live tree pixels + position byte-exact vs live D0/D1"
+   "frame_count": 27,
+   "frame": "r7 = record[7]: r7 == 0x0d -> 0x0d; (r7 & 0x7f) == 0x0e -> 0x0e; else (r7 & 0x7f) + word[$11746 + word[$57fd0]]. word[$57fd0] is the season (0/2/4/6, SPEC.md 4 'Seasons'); table $11746 = {0:0, 2:3, 4:6, 6:9} (index 8+ is code). Season 4: +6, so r7 0x11/0x10/0x0f -> frame 0x17/0x16/0x15. Each sheet holds the same 27 frames (8 house types, well, monument, ruins, tower, bell, stump, conifer, 4 x 3 trees: bare / blossom / leafy / autumn); $37c7c + 27 * 480 = $3af1c, where the 32x32 copy starts.",
+   "verified": "live trace (D2 at $12288) + 32x24 word-plane decode byte-exact vs $24400 live tree pixels + position byte-exact vs live D0/D1; the zoom branches against emulator captures at zoom 1-7 (SPEC.md 5)"
   },
   "3": {
    "name": "settlement / territory marker (== cat 12; byte6 == 6 and byte6 == 24 -> $117b0)",

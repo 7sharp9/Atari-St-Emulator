@@ -6,19 +6,26 @@ namespace PmLogic
 /// feed camera + heightfield to a vertex shader.
 module Projection =
 
+    /// $13f82[zoom index]: the cell size in world units for zoom 1..7
+    /// ($13f60 copies it to $ff9c). Index 0 is unused.
+    let zoomScale = [| 0; 84; 42; 28; 21; 17; 14; 12 |]
+
     /// Projection parameters, from assets/tables.json -> projection.
     type Params =
         { Eye: float          // $ff98, 320
           Horizon: float      // $ff96, 130
-          Zoom: float         // $ff9c, 21 at zoom index 4
+          Zoom: float         // $ff9c, cell size in world units: zoomScale.[Half]
           YawSteps: int       // $ff9a >> 4, 0..15
-          Half: int }         // grid half-extent, 4 at zoom index 4
+          Half: int }         // $57ffc = $fdec, the zoom index 1..7: the window is 2*Half cells square
 
         static member Mission1 =
             { Eye = 320.0; Horizon = 130.0; Zoom = 21.0; YawSteps = 15; Half = 4 }
 
         /// C#-friendly copy-with (F#'s `{ p with ... }` isn't callable from C#).
         member p.WithYaw(yawSteps: int) = { p with YawSteps = yawSteps }
+
+        /// $13f60: zoom index 1..7 sets both the half-extent and the cell size.
+        member p.WithZoom(zoom: int) = { p with Half = zoom; Zoom = float zoomScale.[zoom] }
 
     let private deg2rad d = d * System.Math.PI / 180.0
 

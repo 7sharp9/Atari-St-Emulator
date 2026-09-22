@@ -22,8 +22,8 @@ namespace PowerMongerPort;
 /// Uncovered pixels show the $78000 master (assets/backdrop.bin: HUD, stone
 /// border, the ruins backdrop, the baked minimap), as in the game; magenta
 /// only if that asset is missing.
-/// Arrow keys pan the camera cell to prove the wiring is live, not a single
-/// static blit — see README.md "Verification (82nd pass)".
+/// Arrow keys pan the camera cell, PageUp/PageDown rotate, Y cycles the
+/// season. The zoom stays at 4 here; the frame stepper (../stepper) has all seven.
 /// </summary>
 public partial class TerrainView : Node2D
 {
@@ -43,22 +43,26 @@ public partial class TerrainView : Node2D
     // every game frame starts from it. assets/backdrop.bin, screen space.
     private byte[] _backdrop = System.Array.Empty<byte>();
 
-    // Per-cell entity pass (SPEC.md section 6 / Task 2). entities.json's
-    // render_entities[] is one frame's $47970 bucket walk, baked for the
-    // mission-1 start pose (cam 36,47 yaw 15) by tools/pm_export.py — byte-exact
-    // against tools/pm_render_ref.py load_ram. Drawn whenever the live camera is
-    // at that camera cell, at any yaw: the prop jitter depends on the cell, the
-    // sub-cell position follows the rotated corners, and the yaw only picks
-    // facing frames (checked against the game at yaws $40/$90/$c0, SPEC.md 6).
+    // Per-cell entity pass (SPEC.md section 6). entities.json's
+    // render_entities[] is one frame's $47970 bucket walk over the whole map,
+    // captured at the mission-1 start (tools/pm_export.py, from pm88_f1), so
+    // every camera cell has its sprites. Positions follow the projected
+    // corners, the tree jitter follows the cell's place in the window
+    // (Sprites.recordJitter), and the yaw only picks facing frames.
     private Sprites.EntityRec[] _entRecs = System.Array.Empty<Sprites.EntityRec>();
     private byte[] _sheet33 = System.Array.Empty<byte>();
-    private byte[] _sheetProp = System.Array.Empty<byte>();
-    private int _entCamX, _entCamY, _entYaw, _entTileOff, _entRotPhase, _entSelGroup;
+    private byte[] _sheetProp = System.Array.Empty<byte>();   // 32x24, zoom 4-5
+    private byte[] _sheetProp32 = System.Array.Empty<byte>(); // 32x32, zoom 1-3
+    private byte[] _sheetProp16 = System.Array.Empty<byte>(); // 16x16, zoom 6-7
+    private int _entCamX, _entCamY, _entYaw, _entRotPhase, _entSelGroup;
+    // word[$57fd0] / 2 in the capture: the season entities.json's tree frames
+    // belong to
+    private int _entSeason;
     private bool _entAnim;
 
     private TextureRect _rect = null!; // set in _Ready
     private Label _label = null!;      // set in _Ready
-    private int _camX, _camY, _yawSteps;
+    private int _camX, _camY, _yawSteps, _season; // season 0..3 (Season.fs), Y cycles it
     // $f898 flips the dither read pointer by 64 bytes each time a camera change
     // makes it re-project ($f8e4 bchg #7,$ffa5); see Fill.withPhase.
     private int _ditherPhase;
@@ -89,6 +93,7 @@ public partial class TerrainView : Node2D
         _camX = Mathf.Clamp(CamCellX, MinCamX, MaxCamX);
         _camY = Mathf.Clamp(CamCellY, MinCamY, MaxCamY);
         _yawSteps = ((YawSteps % 16) + 16) % 16;
+        _season = _entSeason;
 
         _rect = new TextureRect
         {
@@ -106,6 +111,14 @@ public partial class TerrainView : Node2D
     public override void _UnhandledInput(InputEvent ev)
     {
         if (ev is not InputEventKey { Pressed: true, Echo: false } key) return;
+        if (key.Keycode == Key.Y)
+        {
+            // A season change is not a camera change, so $f8e4 does not
+            // flip the dither phase.
+            _season = (_season + 1) % 4;
+            RenderFrame();
+            return;
+        }
         int dx = key.Keycode switch { Key.Left => -1, Key.Right => 1, _ => 0 };
         int dy = key.Keycode switch { Key.Up => -1, Key.Down => 1, _ => 0 };
         int dyaw = key.Keycode switch { Key.Pageup => 1, Key.Pagedown => -1, _ => 0 };
@@ -134,18 +147,20 @@ public partial class TerrainView : Node2D
         _entYaw = ctx.GetProperty("yaw").GetInt32();
         _entAnim = ctx.GetProperty("anim").GetInt32() != 0;
         _entSelGroup = ctx.GetProperty("sel_group").GetInt32();
-        _entTileOff = ctx.GetProperty("tile_off").GetInt32();
         _entRotPhase = ctx.GetProperty("rot_phase").GetInt32();
         _sheet33 = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet33").GetString()}");
         _sheetProp = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet_prop").GetString()}");
+        _sheetProp32 = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet_prop32").GetString()}");
+        _sheetProp16 = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet_prop16").GetString()}");
+        _entSeason = ctx.GetProperty("season").GetInt32();
 
         var list = new System.Collections.Generic.List<Sprites.EntityRec>();
         foreach (var o in recs.EnumerateArray())
         {
             int G(string k) => o.GetProperty(k).GetInt32();
             list.Add(new Sprites.EntityRec(
-                G("b6"), G("b5"), G("b7"), G("b14"), G("b17"), G("b31"),
-                G("fx"), G("fy"), G("fx4"), G("fy4"), G("group"), G("wcx"), G("wcy")));
+                G("addr"), G("b6"), G("b5"), G("b7"), G("b14"), G("b17"), G("b31"),
+                G("fx"), G("fy"), G("group"), G("wcx"), G("wcy")));
         }
         _entRecs = list.ToArray();
         GD.Print($"loaded {_entRecs.Length} render entities (pose cam {_entCamX},{_entCamY} yaw {_entYaw})");
@@ -168,36 +183,25 @@ public partial class TerrainView : Node2D
         var proj = Proj;
         var corners = PmProjection.projectGrid(proj, _map, _camX, _camY);
         var buf = Fill.Buffer.Create();
+        var dither = Fill.withPhase(Season.table(_dither, _season), _ditherPhase);
 
         // Terrain + the per-cell entity pass (SPEC.md section 6). Scene.render
         // draws each cell's sprites straight after its two triangles, the way
-        // $f898 calls $115e0 inline (118th: scored against three captured
-        // frames, the game's screen matches this order, not sprites-last).
-        // The records in entities.json are baked for the mission-1 start camera
-        // cell, so they are drawn when the camera is on that cell. Both
-        // paths write RAW $3f364 coordinates, so the XInset shift below places
+        // $f898 calls $115e0 inline (scored against six captured frames, the
+        // game's screen matches this order, not sprites-last; SPEC.md 6).
+        // Both write RAW $3f364 coordinates, so the XInset shift below places
         // terrain and sprites together.
-        bool entPose = _camX == _entCamX && _camY == _entCamY;
-        if (entPose && _entRecs.Length > 0)
-        {
-            var ectx = new Sprites.EntityCtx(
-                _yawSteps * 16, _entAnim, _entSelGroup, _entTileOff, _entRotPhase,
-                _sheet33, _sheetProp, System.Array.Empty<byte>());
-            Scene.render(buf, Fill.withPhase(_dither, _ditherPhase), 0, ectx, corners, _map, _camX, _camY, _yawSteps, _entRecs);
-        }
-        else
-        {
-            Fill.walk(buf, Fill.withPhase(_dither, _ditherPhase), corners, _map, _camX, _camY, 0, _yawSteps);
-        }
+        var ectx = new Sprites.EntityCtx(
+            _yawSteps * 16, _entAnim, _entSelGroup, Season.treeTileOffset(_season), _entRotPhase,
+            proj.Half, _sheet33, _sheetProp, _sheetProp32, _sheetProp16, System.Array.Empty<byte>());
+        Scene.render(buf, dither, 0, ectx, corners, _map, _camX, _camY, _yawSteps, _entRecs);
 
         // Fill.Buffer is in RAW $3f364 coordinates (0..255, same space $ef62's
         // own clip checks) -- Projection.fs does NOT add the +64px HUD-strip
         // inset (SPEC.md 3 "Draw inset": screenX = $3f364.sx + 64, applied at
         // $e420's own draw pointer, not baked into the vertex/accumulator).
         // Reading buf at (x - XInset) here does the same shift the real
-        // hardware's $e3e2 pointer offset does (85th pass -- previously this
-        // read buf at (x,y) directly, rendering the terrain 64px too far left
-        // and leaving the true right ~64px of the window always blank).
+        // hardware's $e3e2 pointer offset does.
         const int XInset = 64;
         var img = Image.CreateEmpty(Fill.ScreenWidth, Fill.ScreenHeight, false, Image.Format.Rgb8);
         for (int y = 0; y < Fill.ScreenHeight; y++)
@@ -251,7 +255,7 @@ public partial class TerrainView : Node2D
         int yaw = _yawSteps * 16;
         int quadrant = (((yaw + 8) >> 5) & 6) >> 1;
         _label.Text = $"camCell ({_camX},{_camY}) yaw {_yawSteps}/16 (${yaw:x2}, {QuadrantNames[quadrant]}) — "
-                      + $"{(entPose ? _entRecs.Length + " entities" : "entities: pan to the start cell")} — "
-                      + "arrows pan, PgUp/PgDn rotate";
+                      + $"{_entRecs.Length} entities on the map — "
+                      + $"season {_season} — arrows pan, PgUp/PgDn rotate, Y season";
     }
 }

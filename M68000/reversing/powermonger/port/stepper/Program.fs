@@ -5,7 +5,7 @@
 ///   dotnet run -- --selfcheck           headless: replay == Scene.render
 ///   dotnet run -- --export <dir> [cell|strip|shape]
 ///                                       headless: one PNG per chunk boundary
-///   dotnet run -- --shot <png> <step> [g] [n] [yN]
+///   dotnet run -- --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]
 ///                                       window at a step, screenshot, exit
 module PmStepper.Program
 
@@ -55,22 +55,74 @@ type Msg =
     | Key of KeyCode
 
 type LaunchOptions =
-    { StartStep: int; Grid: bool; Order: bool; Yaw: int option; ShotFile: string option }
+    { StartStep: int; Grid: bool; Order: bool
+      Yaw: int option; Season: int option; Zoom: int option; Cam: (int * int) option
+      ShotFile: string option }
+
+    /// Open on the captured view, at the first step.
+    static member Default =
+        { StartStep = 0; Grid = false; Order = false
+          Yaw = None; Season = None; Zoom = None; Cam = None; ShotFile = None }
+
+/// Keep the window's corner grid, (2 * zoom + 1) square from the top-left
+/// cell, inside the 64 x 128 map.
+let private clampCam (zoom: int) (x: int, y: int) =
+    Math.Clamp(x, 0, Terrain.Width - 1 - 2 * zoom), Math.Clamp(y, 0, Terrain.Height - 1 - 2 * zoom)
+
+/// The view the records were captured in, with any of its parts overridden.
+/// The season defaults to the capture's: the tree frames in entities.json
+/// are that season's.
+let private startView (a: Load.Assets) (o: LaunchOptions) : Replay.View =
+    let yaw = defaultArg o.Yaw a.EntityYawSteps
+    let zoom = defaultArg o.Zoom a.EntityZoom
+    // at another zoom, the window keeps the capture's centre cell, as $13f60 does
+    let centred = a.EntityCamX + a.EntityZoom - zoom, a.EntityCamY + a.EntityZoom - zoom
+    let camX, camY = clampCam zoom (defaultArg o.Cam centred)
+    // starting anywhere else is one camera change away, so one phase flip
+    let moved = (yaw, zoom, camX, camY) <> (a.EntityYawSteps, a.EntityZoom, a.EntityCamX, a.EntityCamY)
+    { CamX = camX; CamY = camY; YawSteps = yaw; Zoom = zoom
+      DitherPhase = (if moved then 64 else 0); Season = defaultArg o.Season a.EntitySeason }
 
 let private init (a: Load.Assets) (o: LaunchOptions) (_: GameContext) =
-    // starting at another yaw is one camera change away, so one phase flip
-    let yaw = defaultArg o.Yaw a.EntityYawSteps
-    let f = Replay.build a a.EntityCamX a.EntityCamY yaw (if yaw = a.EntityYawSteps then 0 else 64) 0
+    let f = Replay.build a (startView a o) 0
     struct ({ Assets = a; Frame = f; Cursor = { Step = min o.StartStep f.Steps.Length; Pixel = 0 }
               Playing = false; Speed = 1500.0; Carry = 0.0; ShowGrid = o.Grid; ShowOrder = o.Order; ShowBackdrop = true
               Shot = o.ShotFile |> Option.map (fun file -> file, 0) },
             Cmd.none)
 
+/// Rebuild the replay for a new view and rewind to its start.
+let private withView (m: Model) (v: Replay.View) =
+    { m with Frame = Replay.build m.Assets v 0; Cursor = Replay.start; Playing = false; Carry = 0.0 }
+
 /// A camera change re-projects, and $f898 flips the dither phase when it does.
 let private rotate (m: Model) (by: int) =
-    let f = Replay.build m.Assets m.Frame.CamX m.Frame.CamY ((m.Frame.YawSteps + by + 16) % 16)
-                (m.Frame.DitherPhase ^^^ 64) 0
-    { m with Frame = f; Cursor = Replay.start; Playing = false; Carry = 0.0 }
+    let v = m.Frame.View
+    withView m { v with YawSteps = (v.YawSteps + by + 16) % 16; DitherPhase = v.DitherPhase ^^^ 64 }
+
+/// Move the camera by whole cells, keeping the corner grid on the map.
+/// A move is a camera change: re-project, flip the phase.
+let private pan (m: Model) (dx: int) (dy: int) =
+    let v = m.Frame.View
+    let x, y = clampCam v.Zoom (v.CamX + dx, v.CamY + dy)
+    if x = v.CamX && y = v.CamY then m
+    else withView m { v with CamX = x; CamY = y; DitherPhase = v.DitherPhase ^^^ 64 }
+
+/// One zoom step, as the game's own zoom buttons do ($1338e / $133a0: +-1,
+/// clamped to 1..7, then $13f60). The game keeps the centre cell
+/// ($4bb3a/$4bb3c) and draws from centre - zoom, so the top-left cell moves
+/// by the change in zoom. A zoom change re-projects: flip the phase.
+let private zoom (m: Model) (by: int) =
+    let v = m.Frame.View
+    let z = Math.Clamp(v.Zoom + by, 1, 7)
+    if z = v.Zoom then m
+    else
+        let x, y = clampCam z (v.CamX + v.Zoom - z, v.CamY + v.Zoom - z)
+        withView m { v with Zoom = z; CamX = x; CamY = y; DitherPhase = v.DitherPhase ^^^ 64 }
+
+/// The next season. Not a camera change, so the phase stays.
+let private nextSeason (m: Model) =
+    let v = m.Frame.View
+    withView m { v with Season = (v.Season + 1) % 4 }
 
 let private update (msg: Msg) (m: Model) =
     let move f = struct ({ m with Cursor = f m.Frame m.Cursor; Playing = false; Carry = 0.0 }, Cmd.none)
@@ -102,6 +154,13 @@ let private update (msg: Msg) (m: Model) =
     | Key (KeyCode.Minus | KeyCode.KpSubtract) -> set { m with Speed = max 25.0 (m.Speed / 2.0) }
     | Key KeyCode.Q -> set (rotate m -1)
     | Key KeyCode.E -> set (rotate m 1)
+    | Key KeyCode.Y -> set (nextSeason m)
+    | Key KeyCode.W -> set (pan m 0 -1)
+    | Key KeyCode.S -> set (pan m 0 1)
+    | Key KeyCode.A -> set (pan m -1 0)
+    | Key KeyCode.D -> set (pan m 1 0)
+    | Key KeyCode.LeftBracket -> set (zoom m -1)
+    | Key KeyCode.RightBracket -> set (zoom m 1)
     | Key KeyCode.G -> set { m with ShowGrid = not m.ShowGrid }
     | Key KeyCode.N -> set { m with ShowOrder = not m.ShowOrder }
     | Key KeyCode.B -> set { m with ShowBackdrop = not m.ShowBackdrop }
@@ -151,16 +210,29 @@ let private quadOutline (q: Fill.Quad) =
 
 let private hex2 (n: int) = sprintf "$%02x" n
 
+/// What each season's grass source looks like (Season.fs).
+let private seasonName (season: int) =
+    [| "khaki and rock"; "green"; "green, brown and gold"; "green" |].[season]
+
 /// The explanation panel: where the walk is and what the current step is.
 let private describe (m: Model) =
     let f, c = m.Frame, m.Cursor
+    let v = f.View
     let head =
         [ "PowerMonger frame replay"
           sprintf "camera cell (%d,%d)   yaw %d/16 (%s, handler q%d)"
-              f.CamX f.CamY f.YawSteps (hex2 (f.YawSteps * 16)) (Fill.quadrant f.YawSteps)
-          (if f.HasSprites then sprintf "sprites: %d records at this camera cell" m.Assets.Entities.Length
-           else sprintf "sprites: none here, only at camera cell (%d,%d)" m.Assets.EntityCamX m.Assets.EntityCamY)
-          sprintf "dither phase %d (flips on every camera change, $f8e4)" f.DitherPhase
+              v.CamX v.CamY v.YawSteps (hex2 (v.YawSteps * 16)) (Fill.quadrant v.YawSteps)
+          sprintf "zoom %d: %d x %d cells, cell size %d, %s trees"
+              v.Zoom (2 * v.Zoom) (2 * v.Zoom) Projection.zoomScale.[v.Zoom]
+              (let s, _ = Sprites.propSheet f.Ctx in sprintf "%dx%d" s.W s.H)
+          sprintf "sprites: %d drawn in this window, of %d records on the map"
+              (f.Steps |> Array.sumBy (function
+                  | Scene.Sprite(cell, r) when (Scene.placement f.Ctx cell r).IsSome -> 1
+                  | _ -> 0))
+              m.Assets.Entities.Length
+          sprintf "season %d (word[$57fd0] = %d): %s, trees +%d"
+              v.Season (2 * v.Season) (seasonName v.Season) (Season.treeTileOffset v.Season)
+          sprintf "dither phase %d (flips on every camera change, $f8e4)" v.DitherPhase
           sprintf "step %d / %d    pixels %d / %d" (min (c.Step + 1) f.Steps.Length) f.Steps.Length
               (Replay.written f c) (Replay.total f)
           sprintf "%s   %.0f px/s" (if m.Playing then "PLAYING" else "paused") m.Speed
@@ -173,8 +245,9 @@ let private describe (m: Model) =
             let q = cell.Quad
             let px = f.Writes.[c.Step].Length
             let where =
-                [ sprintf "cell (%d,%d): cell %d of 64 in the walk" cell.X cell.Y (cell.Order + 1)
-                  sprintf "  strip %d of 8, cell %d of 8 in the strip" (cell.Strip + 1) (cell.InStrip + 1)
+                let n = 2 * v.Zoom
+                [ sprintf "cell (%d,%d): cell %d of %d in the walk" cell.X cell.Y (cell.Order + 1) (n * n)
+                  sprintf "  strip %d of %d, cell %d of %d in the strip" (cell.Strip + 1) n (cell.InStrip + 1) n
                   sprintf "  split on %s (flag bit 7 %s)"
                       (if q.Diagonal then "C10-C01" else "C00-C11") (if q.Diagonal then "set" else "clear")
                   sprintf "  type byte %s, height byte %s" (hex2 q.TypeByte) (hex2 q.HeightByte) ]
@@ -216,10 +289,13 @@ let private describe (m: Model) =
         [ ""; "Space  play / pause"
           "Right / Left      one triangle or sprite"
           "Down / Up         one cell"
-          "PgDn / PgUp       one strip (8 cells)"
+          "PgDn / PgUp       one strip (an outer-loop pass)"
           "Home / End        start / finish"
           "+ / -             speed"
+          "W / A / S / D     move the camera a cell"
+          "[ / ]             zoom in / out"
           "Q / E             rotate the camera"
+          "Y                 next season"
           "G  corner grid    N  visit order"
           "B  backdrop on / off"
           "Esc  quit" ]
@@ -259,8 +335,8 @@ let private view (screen: Screen) (_: GameContext) (m: Model) (buffer: RenderBuf
                     .drop()
 
     if m.ShowOrder then
-        let current = if Replay.isFinished f c then 64 else (Scene.cellOf f.Steps.[c.Step]).Order
-        for cell in Fill.plan f.Corners m.Assets.Map f.CamX f.CamY f.YawSteps do
+        let current = if Replay.isFinished f c then Int32.MaxValue else (Scene.cellOf f.Steps.[c.Step]).Order
+        for cell in Fill.plan f.Corners m.Assets.Map f.View.CamX f.View.CamY f.View.YawSteps do
             let q = cell.Quad
             let mid = (corner q.C00 + corner q.C10 + corner q.C01 + corner q.C11) / 4.0f
             let col =
@@ -336,11 +412,22 @@ let private runWindow (a: Load.Assets) (o: LaunchOptions) =
 /// forward then back by any chunk must land where it started.
 let private selfCheck (a: Load.Assets) =
     let mutable failures = 0
-    for yaw in 0 .. 15 do
-        let f = Replay.build a a.EntityCamX a.EntityCamY yaw (yaw % 2 * 64) 0
+    // all 16 yaws at the capture's zoom, then every zoom around the capture's
+    // centre cell; every season, both phases and every zoom appear
+    let centreX, centreY = a.EntityCamX + a.EntityZoom, a.EntityCamY + a.EntityZoom
+    let views : Replay.View list =
+        [ for yaw in 0 .. 15 ->
+            { CamX = a.EntityCamX; CamY = a.EntityCamY; YawSteps = yaw; Zoom = a.EntityZoom
+              DitherPhase = yaw % 2 * 64; Season = (yaw >>> 1) &&& 3 }
+          for z in 1 .. 7 ->
+            let x, y = clampCam z (centreX - z, centreY - z)
+            { CamX = x; CamY = y; YawSteps = (2 * z + 1) % 16; Zoom = z; DitherPhase = z % 2 * 64; Season = z % 4 } ]
+    for v in views do
+        let yaw = v.YawSteps
+        let f = Replay.build a v 0
         let buf = Fill.Buffer.Create()
-        Scene.render buf (Fill.withPhase a.Dither f.DitherPhase) 0 f.Ctx f.Corners a.Map f.CamX f.CamY yaw
-            (if f.HasSprites then a.Entities else [||])
+        Scene.render buf (Fill.withPhase (Season.table a.Dither v.Season) v.DitherPhase) 0 f.Ctx f.Corners a.Map
+            v.CamX v.CamY yaw a.Entities
         let idx = Array.zeroCreate (W * H)
         Replay.composeInto idx f (Replay.finish f)
         let same =
@@ -355,14 +442,15 @@ let private selfCheck (a: Load.Assets) =
                     cur <- next
                 ok)
         if not (same && roundTrip) then failures <- failures + 1
-        printfn "yaw %2d  steps %3d  writes %5d  replay==render %b  forward/back round trip %b"
-            yaw f.Steps.Length (Replay.total f) same roundTrip
+        printfn "yaw %2d  zoom %d  season %d  steps %3d  writes %5d  replay==render %b  forward/back round trip %b"
+            yaw v.Zoom v.Season f.Steps.Length (Replay.total f) same roundTrip
     if failures = 0 then 0 else 1
 
 /// One PNG per chunk boundary, at the window's 3x scale, for GIFs / the post.
 let private export (a: Load.Assets) (dir: string) (chunk: Chunk) =
     Directory.CreateDirectory dir |> ignore
-    let f = Replay.build a a.EntityCamX a.EntityCamY a.EntityYawSteps 0 0
+    let f =
+        Replay.build a (startView a LaunchOptions.Default) 0
     let idx = Array.zeroCreate (W * H)
     let save (n: int) (c: Cursor) =
         Replay.composeInto idx f c
@@ -393,11 +481,17 @@ let main argv =
     | [ "--selfcheck" ] -> selfCheck a
     | [ "--export"; dir ] -> export a dir Cell
     | [ "--export"; dir; name ] when (chunkNamed name).IsSome -> export a dir (chunkNamed name).Value
-    | [] -> runWindow a { StartStep = 0; Grid = false; Order = false; Yaw = None; ShotFile = None }
+    | [] -> runWindow a LaunchOptions.Default
     | "--shot" :: png :: step :: flags ->
-        let yaw = flags |> List.tryPick (fun f -> if f.StartsWith "y" then Some(int f.[1..] % 16) else None)
-        runWindow a { StartStep = int step; Grid = List.contains "g" flags; Order = List.contains "n" flags
-                      Yaw = yaw; ShotFile = Some(Path.GetFullPath png) }
+        // a flag is a letter and a value: y3 (yaw), s1 (season), z6 (zoom), c20,37 (camera cell)
+        let valueOf (c: char) = flags |> List.tryPick (fun f -> if f.Length > 1 && f.[0] = c then Some f.[1..] else None)
+        let wrapped c n = valueOf c |> Option.map (fun v -> ((int v % n) + n) % n)
+        let clamped c lo hi = valueOf c |> Option.map (fun v -> Math.Clamp(int v, lo, hi))
+        let cell c = valueOf c |> Option.map (fun v -> let xy = v.Split ',' in int xy.[0], int xy.[1])
+        runWindow a { LaunchOptions.Default with
+                        StartStep = int step; Grid = List.contains "g" flags; Order = List.contains "n" flags
+                        Yaw = wrapped 'y' 16; Season = wrapped 's' 4; Zoom = clamped 'z' 1 7; Cam = cell 'c'
+                        ShotFile = Some(Path.GetFullPath png) }
     | _ ->
-        eprintfn "usage: PmStepper [--selfcheck | --export <dir> [cell|strip|shape] | --shot <png> <step> [g] [n] [yN]]"
+        eprintfn "usage: PmStepper [--selfcheck | --export <dir> [cell|strip|shape] | --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]]"
         2

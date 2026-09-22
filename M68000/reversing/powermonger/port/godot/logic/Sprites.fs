@@ -1,48 +1,40 @@
 namespace PmLogic
 
-/// The $11f82 mini-sprite path (assets/sprites/sheet_raw.bin). See ../../SPEC.md
-/// section 6 and assets/sprites/sprite_triggers.json.
+/// PowerMonger's iso-view sprites: what $115e0 (pm_draw_cell_entities) draws
+/// for one cell, straight after the cell's two terrain triangles. See
+/// ../../SPEC.md section 6 and assets/sprites/sprite_triggers.json.
 ///
-/// 87th: the iso-terrain entities are drawn by $115e0 (pm_draw_cell_entities),
-/// called INLINE per cell from the grid-walk handler, right after that cell's
-/// triangles, far->near — so painter's order is free and Fill.fs's walk hands
-/// off here per cell. ($16738->$e6ee is a different path: the $165b2
-/// selected-group marker + HUD glyphs, NOT the terrain men.)
+/// Records. Each cell has a word in the $47970 bucket array (index
+/// (cellY*64 + cellX)*2); a non-zero head is a SIGNED offset from $51b66, so
+/// records live below $51b66 as well as above, and word 0 of each record is
+/// the (signed) offset of the next one in the cell. Record byte 6 is the
+/// category, an even value 0..30, dispatched through the jump tables at
+/// $1162e (prepare: position and frame) and $1165c (blit).
 ///
-/// 88th (live-traced pm78_settle, $115e0 / $11f88 register probes): records are
-/// walked from the $47970 per-cell bucket array with a SIGNED $51b66-relative
-/// offset (`adda.w D4,A3`), so scenery/animal records live BELOW $51b66 too;
-/// dispatch is `word[$1162e + byte6]` with **byte6 even, 0..30** (the 87th's
-/// "cat N" == byte6 / 2 — keying frame formulas on byte6 read as 0..15 was the
-/// cause of both of the 87th's "blockers"). The 26-record marching group is
-/// byte6 == 14 (flag/banner), every member frame 0x13f, and it IS drawn by
-/// $115e0 -> $11bf4 -> $11f78 -> $11f82. Position (sub-cell lerp + $3c/-8) is
-/// byte-exact against the probe.
+/// Ported categories and their frames:
+///   0      man                 ($11c8a) facing is camera-relative, +$40 armed
+///   2      settlement building ($117d8) frame record[7]
+///   4      building / tree     ($1168c) record[7] + the season's tile offset
+///   6, 24  settlement marker   ($117b0) record[7] + $100
+///   8      animal              ($11a86) facing is camera-relative
+///   14     banner / group      ($11bf4) record[5] + $13e
+///   26     faction marker      record[5] + $149
+///   28     marker              $14e/$14f (blinking) or $150
 ///
-/// Ported here: the frame decode ($11f82 8x11 + $12326/$124a8 32x24), the men
-/// frame formula ($11c8a), the banner/group-member formula ($11bf4), the animal
-/// formula ($11a86), the $37c7c building/tree formula ($1168c), the settlement
-/// marker ($117b0), the sub-cell position lerp ($11f1a), and the prop
-/// address-jitter.
+/// Positions come from the cell's four projected corners ($3f364): a bilinear
+/// lerp at a sub-cell fraction ($11f1a) or the cell centroid ($1182a). Men,
+/// animals and banners take the fraction from record[9]/[11]; buildings and
+/// trees derive it from the record, bucket-slot and corner ADDRESSES
+/// (`propJitter`), so it depends on the cell's place in the camera window and
+/// is worked out per frame (`recordJitter`).
 ///
-/// 89th (live-traced pm88_f1, D2 at $12288 / $11ab6): byte6 == 4 (buildings /
-/// trees, $37c7c 32x24 word-plane sheet) frame =
-///   r7 == 0x0d            -> 0x0d                        ($116a8 special-case)
-///   (r7 & 0x7f) == 0x0e   -> 0x0e                        ($116c0 special-case)
-///   else                 -> (r7 & 0x7f) + word[$11746 + word[$57fd0]]
-/// where word[$57fd0] is a per-mission tile-set selector (($58146 & 3) * 2,
-/// even 0..6) and the table at $11746 is {0:0, 2:3, 4:6, 6:9}. Mission 1:
-/// word[$57fd0] == 4 -> +6, so r7 0x11 -> frame 0x17, 0x10 -> 0x16, 0x0f ->
-/// 0x15. The 32x24 decode is visually byte-exact vs $24400's live tree pixels.
-/// byte6 == 8 (animal) frame = 0x117 + (((r14 + yaw) & 0xff) >> 5) * 2 [+anim]
-/// (D2 0x123/0x124 observed). byte6 == 24 (settlement marker, $33000 8x11,
-/// CENTROID-positioned via $1182a) frame = r7 + 0x100.
+/// Sheets: men, animals, banners and markers are 8x11 frames at $33000
+/// ($11f82). Buildings and trees go through $12244, which picks one of three
+/// copies of the same art by the zoom index [$57ffc]: 32x32 at $3af1c
+/// (zoom 1-3), 32x24 at $37c7c (zoom 4-5), 16x16 at $312a0 (zoom 6-7).
 ///
-/// Still open: the per-category frame counts, the byte6 == 16 goods-icon loop
-/// ($1192e -> $11886 table over $4e514 goods[]), and a CLEAN populated capture
-/// to score byte6 == 4/8/24 compositing against (pm78_settle's two compose
-/// buffers disagree on the entity layer -- $115e0 redraws a subset per frame).
-/// In pm_render_ref.py only byte6 == 14 composites (94.4% -> 94.9%).
+/// Not ported: the byte6 == 16 goods icons ($1192e), byte6 == 2 with
+/// record[7] == $0a (its $119b2 overlay), and the per-category frame counts.
 module Sprites =
 
     [<Literal>]
@@ -60,9 +52,9 @@ module Sprites =
     type Frame = { Pixels: int[] }               // FrameWidth * FrameHeight, row-major
 
     /// t_heading_frame ($1675a) — 16 headings -> sprite frame index, 0xff =
-    /// draw nothing for this facing. 87th: this table is read by $16738, which
-    /// is the $e6ee marker/HUD path — NOT the iso terrain entities. Kept for
-    /// that path; the terrain men use `frameForMan` below.
+    /// draw nothing for this facing. Read by $16738, the $e6ee marker/HUD
+    /// path, not by the iso terrain entities; the terrain men use
+    /// `frameForMan` below.
     let headingFrame =
         [| 0xff; 5; 15; 8; 10; 5; 16; 0xff
            0xff; 8; 10; 15; 12; 5; 16; 0xff |]
@@ -75,8 +67,8 @@ module Sprites =
 
     /// Men (category 0) frame index — $11c8a, camera-yaw-relative facing.
     /// faction = record[5] (1..4, blocks of 16), heading = record[17],
-    /// yaw = [$ff9a] (0..0xf0). `armed` => the +0x40 variant (trigger bit not
-    /// yet pinned, 88th); `anim` = [$4bb41] & 1 (walk frame). Base sheet $33000,
+    /// yaw = [$ff9a] (0..0xf0). `armed` => the +0x40 variant (see `entityFrame`
+    /// for its trigger); `anim` = [$4bb41] & 1 (walk frame). Base sheet $33000,
     /// 55 bytes/frame. Excludes the melee/dying mode branches (record[31] in
     /// {0x32,0x34,0x06,0x46}).
     let frameForMan (faction: int) (heading: int) (yaw: int) (armed: bool) (anim: bool) : int =
@@ -85,31 +77,24 @@ module Sprites =
         + (if armed then 0x40 else 0)
         + (if anim then 1 else 0)
 
-    /// Animals / sheep (byte6 == 8, 87th "cat 4") — $11a86. heading = record[14],
-    /// yaw-relative, 16 frames at base 0x117. Base $33000. NOT composited yet.
+    /// Animals / sheep (byte6 == 8) — $11a86. heading = record[14],
+    /// yaw-relative, 16 frames at base 0x117. Base $33000.
     let frameForAnimal (heading: int) (yaw: int) (anim: bool) : int =
         0x117 + (((heading + yaw) &&& 0xff) >>> 5) * 2 + (if anim then 1 else 0)
 
     /// Building / tree (byte6 == 4) — $1168c. `r7` = record[7]; `tileOff` =
-    /// word[$11746 + word[$57fd0]] (mission 1 = 6). Sheet $37c7c, 32x24
-    /// word-plane frames, 480 bytes/frame; CENTRE-anchored via the sub-cell
-    /// lerp (see `propScreenPos`). Returns -1 for "frame >= 28 / out of sheet".
-    /// 89th: live-verified (D2 at $12288).
+    /// word[$11746 + word[$57fd0]] (Season.treeTileOffset). Returns -1 for
+    /// "frame >= 27", past the end of the 27-frame sheets. Live-verified (D2 at $12288).
     let frameForProp (r7: int) (tileOff: int) : int =
         let f =
             if r7 = 0x0D then 0x0D
             elif (r7 &&& 0x7F) = 0x0E then 0x0E
             else (r7 &&& 0x7F) + tileOff
-        if f < 28 then f else -1
-
-    /// word[$11746 + word[$57fd0]] — the byte6 == 4 tile-set frame offset.
-    /// `tileSel` = word[$57fd0] = ($58146 & 3) * 2. Table {0:0, 2:3, 4:6, 6:9}.
-    let propTileOffset (tileSel: int) : int =
-        [| 0; 3; 6; 9 |].[(tileSel >>> 1) &&& 3]
+        if f < 27 then f else -1
 
     /// Settlement / territory marker (byte6 == 24, and byte6 == 6) — $117b0.
     /// frame = record[7] + 0x100 (+ [$57fec]&3 if the result is 0x112, a
-    /// 4-frame anim). Sheet $33000 8x11, CENTROID-positioned ($1182a). 89th.
+    /// 4-frame anim). Sheet $33000 8x11, CENTROID-positioned ($1182a).
     let frameForSettlementMarker (r7: int) (rotPhase: int) : int =
         let f = r7 + 0x100
         if f = 0x112 then f + (rotPhase &&& 3) else f
@@ -128,11 +113,10 @@ module Sprites =
         let s = (bucketSlotAddr + recordAddr) &&& 0xFFFF
         (s <<< 3) &&& 0xFF, (s + (cornerAddr &&& 0xFFFF)) &&& 0xFF
 
-    /// Banner / flag / marching-group member (byte6 == 14, 87th "cat 7") —
-    /// $11bf4: frame = record[5] + 0x13e (faction-indexed). Base $33000.
-    /// 88th: every member of pm78_settle's 26-record group has record[5] == 1
-    /// => frame 0x13f, live-verified at $11f82 entry. This is the one entity
-    /// category pm_render_ref.py composites today.
+    /// Banner / flag / marching-group member (byte6 == 14) — $11bf4:
+    /// frame = record[5] + 0x13e (faction-indexed). Base $33000. Every member
+    /// of pm78_settle's 26-record group has record[5] == 1 => frame 0x13f,
+    /// live-verified at $11f82 entry.
     let frameForBanner (faction: int) : int =
         (faction &&& 0xff) + 0x13e
 
@@ -143,7 +127,7 @@ module Sprites =
     /// $11f12 does `move.w 8(A3),D6; andi.w #$ff,D6`, i.e. fx is the LOW byte
     /// of the big-endian word at record+8 == record[9], and fy == record[11].
     ///
-    /// NOT byte-exact-verified yet (88th): the 68k does `muls.w` + `asr.w #8`
+    /// Not byte-exact-verified: the 68k does `muls.w` + `asr.w #8`
     /// on 16-bit halves, so large corner deltas can word-overflow and the
     /// rounding is floor (toward -inf), not toward zero. `>>> 8` here matches
     /// the floor; the word-truncation case still needs the cross-check.
@@ -156,27 +140,6 @@ module Sprites =
         let bot = lx c01 c11 fx
         let x, y = lerp (fst top) (fst bot) fy, lerp (snd top) (snd bot) fy
         x + 0x3c, y - 8
-
-    /// byte6 == 4 (building/tree) screen anchor. Same $11f1a sub-cell lerp as
-    /// the men, but $12272 then applies a further (-4, -8): net raw anchor is
-    /// (lerpX + 0x38, lerpY - 16). `fx`/`fy` come from `propJitter`, NOT record
-    /// fields. Corners are the RAW $3f364 values (no +64 HUD inset). 89th:
-    /// byte-exact vs the live D0/D1 at $12288.
-    let propScreenPos
-            (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int)
-            (fx: int) (fy: int) : int * int =
-        let x, y = entityScreenPos c00 c10 c01 c11 fx fy
-        x - 4, y - 8
-
-    /// Centroid screen position ($1182a): the mean of the four projected
-    /// corners, then +0x38 X / -8 Y. Used by byte6 == 6 / 24 (settlement &
-    /// territory markers, $117b0) instead of the sub-cell lerp. `>>> 2` matches
-    /// the 68k `asr #2` (floor).
-    let centroidScreenPos
-            (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int) : int * int =
-        let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
-        let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
-        cx + 0x38, cy - 8
 
     /// Decode frame `index` from the raw sheet (assets/sprites/sheet_raw.bin).
     /// Ports $11f82's row layout: [AND-mask, plane0, plane1, plane2, plane3],
@@ -205,11 +168,11 @@ module Sprites =
                     pixels.[row * FrameWidth + x] <- idx
         { Pixels = pixels }
 
-    /// Decode a word-plane frame ($37c7c 32x24 / $312a0 16x16). Rows of
-    /// `w / 16` groups of five big-endian words [mask, p0, p1, p2, p3]; opaque
-    /// where the mask bit is 0 (matches $12326/$124a8's `and.w mask` +
-    /// `or.w plane`). `frameStride` = 480 for $37c7c, 160 for $312a0. 89th:
-    /// verified byte-exact against $24400's live byte6 == 4 tree pixels.
+    /// Decode a word-plane frame ($3af1c 32x32 / $37c7c 32x24 / $312a0 16x16).
+    /// Rows of `w / 16` groups of five big-endian words [mask, p0, p1, p2, p3];
+    /// opaque where the mask bit is 0 (matches $12326/$124a8's `and.w mask` +
+    /// `or.w plane`). `frameStride` = 640, 480 or 160. Verified byte-exact
+    /// against $24400's live byte6 == 4 tree pixels (32x24).
     let decodeFrameWord (sheet: byte[]) (index: int) (w: int) (h: int) (frameStride: int) : int[] * int * int =
         let groups = w / 16
         let baseOff = index * frameStride
@@ -242,34 +205,58 @@ module Sprites =
         let bot = lx c01 c11 fx
         lerp (fst top) (fst bot) fy, lerp (snd top) (snd bot) fy
 
-    // -- the per-cell entity pass (Task 4) ---------------------------------
-    // 87th/88th/89th: $115e0 walks the $47970 cell bucket and dispatches each
-    // record on byte6 (even, 0..30). pm_render_ref.py's draw_entities replays
-    // this as a post-terrain far->near pass (fixed q3 cell order); this mirrors
-    // that so the two can be cross-checked byte-exact. The blit anchors match
-    // pm_render_ref's `_packed_lerp` result plus:
-    //   byte6 0/8/14  (sheet $33000, 8x11)  : (px - 4,  py - 8)
-    //   byte6 6/24    (sheet $33000, 8x11)  : centroid + (0x38, -8)  ($1182a)
-    //   byte6 4       (sheet $37c7c, 32x24) : (px - 8,  py - 16), fx/fy = jitter
-    // Feed corners in the SAME coordinate convention on both sides of the
-    // cross-check (pm_render_ref uses the +64-inset $3f364 corners).
+    // -- the per-cell entity pass -----------------------------------------
+    // Blit top-left corners, from the lerp point (px, py) or the centroid
+    // (cx, cy) of the cell's corners, at zoom 4-5:
+    //   byte6 0/8/14  (8x11)  : (px - 4,  py - 8)
+    //   byte6 6/24    (8x11)  : (cx - 8,  cy - 8)
+    //   byte6 4       (32x24) : (px - 8,  py - 16), (px, py) at the address jitter
+    //   byte6 2       (32x24) : (cx - 12, cy - 16)
+    // These hold in any space where the corners and the result agree: the port
+    // uses raw $3f364 corners and a raw buffer (the +64 HUD inset is added at
+    // display), pm_render_ref.py +64-inset corners and screen pixels.
 
     /// One object record, only the fields the drawn categories read.
     type EntityRec =
-        { B6: int; B5: int; B7: int; B14: int; B17: int; B31: int
+        { Addr: int                 // record address: byte6 == 4 records derive their sub-cell jitter from it
+          B6: int; B5: int; B7: int; B14: int; B17: int; B31: int
           Fx: int; Fy: int          // record[9] / record[11]
-          Fx4: int; Fy4: int        // byte6 == 4 address-jitter (propJitter)
           Group: int
           Wcx: int; Wcy: int }      // world cell
+
+    /// The byte6 == 4 sub-cell jitter for a record drawn in the cell at
+    /// (row, col) of the camera window: $1168c's A2 is the cell's $47970
+    /// bucket slot, A3 the record, A0 the cell's corner in $3f364 (row stride
+    /// 64 bytes, 4 per corner). It depends on the camera, so it is worked out
+    /// per frame, not stored.
+    let recordJitter (row: int) (col: int) (r: EntityRec) : int * int =
+        propJitter (0x47970 + (r.Wcy * 64 + r.Wcx) * 2) r.Addr (0x3F364 + row * 64 + col * 4)
 
     /// Per-frame constants shared by every record.
     type EntityCtx =
         { Yaw: int; Anim: bool; SelGroup: int; TileOff: int; RotPhase: int
-          Sheet33: byte[]; SheetProp: byte[]
+          Zoom: int                 // [$57ffc], 1..7: picks the building/tree sheet
+          Sheet33: byte[]           // $33000, 8x11
+          SheetProp: byte[]         // $37c7c, 32x24 (zoom 4-5)
+          SheetProp32: byte[]       // $3af1c, 32x32 (zoom 1-3)
+          SheetProp16: byte[]       // $312a0, 16x16 (zoom 6-7)
           Ram: byte[] }             // for the men $51538 group-word probe; may be [||]
 
+    /// One of $12244's three building/tree sheets: frame size, bytes per
+    /// frame, and the offset it adds to the anchor before blitting.
+    type PropSheet = { W: int; H: int; Stride: int; Dx: int; Dy: int }
+
+    /// $12244: pick the building/tree sheet by the zoom index [$57ffc].
+    ///   <= 3 : $3af1c 32x32, anchor (-8, -16)   ($12294)
+    ///   4, 5 : $37c7c 32x24, anchor (-4, -8)    ($12272)
+    ///   >= 6 : $312a0 16x16, anchor unchanged   ($12258)
+    let propSheet (ctx: EntityCtx) : PropSheet * byte[] =
+        if ctx.Zoom <= 3 then { W = 32; H = 32; Stride = 640; Dx = -8; Dy = -16 }, ctx.SheetProp32
+        elif ctx.Zoom <= 5 then { W = 32; H = 24; Stride = 480; Dx = -4; Dy = -8 }, ctx.SheetProp
+        else { W = 16; H = 16; Stride = 160; Dx = 0; Dy = 0 }, ctx.SheetProp16
+
     /// (isProp, frameIndex) for a record, or None if it draws nothing / is a
-    /// category not ported. Mirrors pm_render_ref._entity_frame exactly.
+    /// category not ported. The same formulas as pm_render_ref._entity_frame.
     let entityFrame (ctx: EntityCtx) (r: EntityRec) : (bool * int) option =
         let anim = if ctx.Anim then 1 else 0
         match r.B6 with
@@ -299,52 +286,55 @@ module Sprites =
             // settlement building ($117d8): frame record[7] from the 32x24
             // $37c7c sheet, no tile-set offset. record[7] == $0a also draws an
             // overlay via $119b2 (from record[12]/[16]) -- not ported.
-            if r.B7 <> 0x0A && r.B7 < 28 then Some(true, r.B7) else None
+            if r.B7 <> 0x0A && r.B7 < 27 then Some(true, r.B7) else None
         | 4 ->
-            let r7 = r.B7
-            let f =
-                if r7 = 0x0D then 0x0D
-                elif (r7 &&& 0x7F) = 0x0E then 0x0E
-                else (r7 &&& 0x7F) + ctx.TileOff
-            if f < 28 then Some(true, f) else None
+            match frameForProp r.B7 ctx.TileOff with
+            | -1 -> None
+            | f -> Some(true, f)
         | _ -> None
 
     /// Where one entity is drawn: its frame, the anchor point the game
     /// computes from the cell's corners, the rule that picked that anchor,
     /// and the frame's top-left and size.
     type Placement =
-        { IsProp: bool          // $37c7c 32x24 word-plane sheet, else $33000 8x11
+        { IsProp: bool          // a building/tree sheet (propSheet), else $33000 8x11
           Frame: int
           AnchorX: int; AnchorY: int
           Rule: string
           X: int; Y: int        // blit top-left
           W: int; H: int }
 
-    /// Place one entity on its cell's four projected corners (same convention
-    /// as pm_render_ref: +64-inset $3f364 packed corners), or None if its
-    /// category draws nothing / is not ported.
+    /// Place one entity on its cell's four projected corners (result in the
+    /// corners' space, see above), or None if its category draws nothing or
+    /// is not ported. (row, col) is the cell's place in the camera window,
+    /// which the byte6 == 4 (building/tree) jitter depends on.
     ///   men / animals / banners : sub-cell lerp at record (fx, fy) ($11f1a), then (-4, -8)
-    ///   markers (6/24)          : cell centroid ($1182a +0x38/-8 over raw
-    ///                             corners == -8/-8 over +64 corners)
-    ///   buildings / trees (4)   : sub-cell lerp at the address jitter ($1168c), then (-8, -16)
+    ///   markers (6/24)          : cell centroid ($1182a), then (-8, -8)
+    ///   buildings / trees (4)   : sub-cell lerp at the address jitter ($1168c), then
+    ///                             (-4, -8) and propSheet's offset
+    ///   settlement building (2) : cell centroid ($117d8 -> $1182a), then (-8, -8)
+    ///                             and propSheet's offset
     let placeEntity (ctx: EntityCtx)
                     (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int)
-                    (r: EntityRec) : Placement option =
+                    (row: int) (col: int) (r: EntityRec) : Placement option =
         match entityFrame ctx r with
         | None -> None
-        | Some(true, fi) when r.B6 = 2 ->
-            // $117d8 -> $1182a centroid (+$38, -8 over raw corners), then
-            // $12244 -> $12272 (-4, -8) at mission-1 zoom ([$57ffc] = 4)
-            let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
-            let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
-            Some { IsProp = true; Frame = fi; AnchorX = cx; AnchorY = cy
-                   Rule = "cell centroid ($117d8 -> $1182a)"
-                   X = cx - 12; Y = cy - 16; W = 32; H = 24 }
         | Some(true, fi) ->
-            let px, py = packedLerp c00 c10 c01 c11 r.Fx4 r.Fy4
-            Some { IsProp = true; Frame = fi; AnchorX = px; AnchorY = py
-                   Rule = "sub-cell lerp at the address jitter ($1168c)"
-                   X = px - 8; Y = py - 16; W = 32; H = 24 }
+            let sheet, _ = propSheet ctx
+            // $1182a adds (+$38, -8) to the raw centroid and $11f1a (+$3c, -8)
+            // to the raw lerp point: (-8, -8) and (-4, -8) once the +64 HUD
+            // inset is taken off. $12244 then adds the sheet's own offset.
+            let ax, ay, bx, rule =
+                if r.B6 = 2 then
+                    let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
+                    let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
+                    cx, cy, cx - 8, "cell centroid ($117d8 -> $1182a)"
+                else
+                    let fx4, fy4 = recordJitter row col r
+                    let px, py = packedLerp c00 c10 c01 c11 fx4 fy4
+                    px, py, px - 4, "sub-cell lerp at the address jitter ($1168c)"
+            Some { IsProp = true; Frame = fi; AnchorX = ax; AnchorY = ay; Rule = rule
+                   X = bx + sheet.Dx; Y = ay - 8 + sheet.Dy; W = sheet.W; H = sheet.H }
         | Some(false, fi) when r.B6 = 6 || r.B6 = 24 ->
             let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
             let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
@@ -357,28 +347,30 @@ module Sprites =
                    Rule = "sub-cell lerp at record (fx, fy) ($11f1a)"
                    X = lx - 4; Y = ly - 8; W = FrameWidth; H = FrameHeight }
 
-    /// Blit one entity over `buf`, given its cell's four projected corners.
+    /// Blit one entity over `buf`, given its cell's four projected corners
+    /// and its (row, col) in the camera window.
     let blitEntity (buf: Fill.Buffer) (ctx: EntityCtx)
                    (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int)
-                   (r: EntityRec) =
-        match placeEntity ctx c00 c10 c01 c11 r with
+                   (row: int) (col: int) (r: EntityRec) =
+        match placeEntity ctx c00 c10 c01 c11 row col r with
         | None -> ()
         | Some p ->
             let pixels =
                 if p.IsProp then
-                    let pix, _, _ = decodeFrameWord ctx.SheetProp p.Frame p.W p.H 480
+                    let sheet, bytes = propSheet ctx
+                    let pix, _, _ = decodeFrameWord bytes p.Frame sheet.W sheet.H sheet.Stride
                     pix
                 else (decodeFrame ctx.Sheet33 p.Frame).Pixels
-            for row in 0 .. p.H - 1 do
-                let yy = p.Y + row
+            for dy in 0 .. p.H - 1 do
+                let yy = p.Y + dy
                 if yy >= 0 && yy < Fill.ScreenHeight then
-                    for cc in 0 .. p.W - 1 do
-                        let v = pixels.[row * p.W + cc]
-                        if v >= 0 then buf.Set(p.X + cc, yy, byte v)
+                    for dx in 0 .. p.W - 1 do
+                        let v = pixels.[dy * p.W + dx]
+                        if v >= 0 then buf.Set(p.X + dx, yy, byte v)
 
     /// Replay $115e0 as a post-terrain far->near pass in fixed q3 (planQ3) cell
     /// order. Kept for the pm_render_ref.py cross-check; the game draws each
-    /// cell's sprites inline, right after its triangles (Scene.render, 118th).
+    /// cell's sprites inline, right after its triangles (Scene.render).
     /// `corners` = Projection.projectGrid's [gr, gc] array (2*Half+1 square);
     /// `recs` are the records already bucketed to their world cell. Cross-check
     /// target: pm_render_ref.py draw_entities.
@@ -392,9 +384,10 @@ module Sprites =
         let corner (gr: int) (gc: int) =
             let c = corners.[gr, gc]
             int (System.Math.Round c.X), int (System.Math.Round c.Y)
-        for k in 0 .. 7 do
-            let col = 7 - k
-            for j in 0 .. 7 do
+        let n = Fill.cellsPerSide corners
+        for k in 0 .. n - 1 do
+            let col = n - 1 - k
+            for j in 0 .. n - 1 do
                 let row = j
                 match byCell.TryGetValue((camX + col, camY + row)) with
                 | true, l ->
@@ -402,7 +395,7 @@ module Sprites =
                     let c10 = corner row (col + 1)
                     let c01 = corner (row + 1) col
                     let c11 = corner (row + 1) (col + 1)
-                    for r in l do blitEntity buf ctx c00 c10 c01 c11 r
+                    for r in l do blitEntity buf ctx c00 c10 c01 c11 row col r
                 | _ -> ()
 
     /// C#-friendly wrapper: same as `drawEntities` but takes an array (the

@@ -16,6 +16,7 @@ Inputs
 ------
   --ram   scratchpad/pm74_late.ram      settled iso view, PC $124c0 (default)
   --snap  scratchpad/pm74_late.snap     alternative: extract the RAM from a .snap
+  --entities-ram scratchpad/pm88_f1.ram entities.json source (mission-1 start pose)
   --frame scratchpad/pm76_fr/f000100.bin a frame-dump record for the live palette
   --fight scratchpad/pm73_fight.ram     optional: pull combat-only sprite frames
   --out   reversing/powermonger/port/assets
@@ -361,170 +362,8 @@ SPRITE2_SHEET = 0x37c7c
 SPRITE2_FRAME_BYTES = 0x1e0
 SPRITE3_SHEET = 0x312a0
 SPRITE3_FRAME_BYTES = 0xa0
-
-# 87th pass -- the $115e0 per-cell entity dispatch, ripped from the jump tables in
-# RAM ($1162e prepare, $1165c blit -- SPEC.md said $1165a, off by 2) plus a
-# disassembly of each per-category "prepare" handler and a live trace of the men
-# path (cat 0) from scratchpad/pm78_settle.snap. Every frame-index formula below
-# is the D2 value handed to the blitter. `[$xxxx]` = a live word read; byte N =
-# object record ($51b66, stride 50) field N. See SPEC.md section 6.
-#
-# Shared by every $33000-sheet prepare handler: the entity's screen position is a
-# bilinear lerp of the cell's 4 projected corners (from the $3f364 buffer, packed
-# (screenX<<16)|screenY) by (fx,fy) = (byte8 & 0xff, byte10 & 0xff), then
-# screenX += 0x3c, screenY -= 8  ($11f1a, verified: a0 at entry points at
-# &$3f364[cellRow*64 + cellCol*4], the cell's TL corner).
-SPRITE_TRIGGERS = {
-    "note": (
-        "PowerMonger per-cell entity (sprite) dispatch. $115e0 (pm_draw_cell_"
-        "entities) is called INLINE per cell from the terrain grid-walk handler "
-        "(q3: $fdbc), right after that cell's two triangles, in far->near "
-        "painter's order -- so no sprite floats over a hill it is behind. This is "
-        "the path that draws the little men / animals / trees / buildings ON the "
-        "iso terrain. $16738->$e6ee is a SEPARATE pass ($165b2, selected-group "
-        "marker + HUD glyphs), positioned by raw cell coordinate + a fixed "
-        "per-frame descriptor X -- NOT the iso entities. (87th live trace, "
-        "scratchpad/pm78_settle.snap.)"),
-    "dispatch": {
-        "record_category_field": 6,
-        "prepare_table_addr": "$1162e",
-        "blit_table_addr": "$1165c",
-        "prepare_target": "$1162e + word[$1162e + category]",
-        "blit_target": "$1165c + word[$1165c + category]  (word 0 => handler "
-                       "blits inline or draws nothing)",
-    },
-    "position": {
-        "sub_cell": {
-            "routine": "$11f1a",
-            "used_by_categories": [0, 3, 4, 5, 6, 7, 10, 11, 13, 14],
-            "corners": "a0 = &$3f364[cellRow*64 + cellCol*4]; C00=(a0) C10=4(a0) "
-                       "C01=64(a0) C11=68(a0); each packed (screenX<<16)|screenY",
-            "frac": "(fx, fy) = (record[8] & 0xff, record[10] & 0xff)",
-            "formula": "pos = lerp(lerp(C00,C10,fx/256), lerp(C01,C11,fx/256), "
-                       "fy/256); screenX = pos.x + 0x3c; screenY = pos.y - 8",
-        },
-        "centred": {
-            "routine": "$1182a / $1198a head",
-            "used_by_categories": [1, 2, 8, 9, 15],
-            "formula": "pos = (C00 + C10 + C01 + C11) >> 2  (packed, so both "
-                       "halves); screenX = pos.x + 0x38; screenY = pos.y - 8",
-        },
-    },
-    "armed_variant": (
-        "cat 0 (and the melee branch): D2 += 0x40 iff record[7] bit 4 is set AND "
-        "(record[7] bit 7 is clear OR the unit's group [$51538 + record[42], "
-        "word -48] == [$57ffe] the selected group). Frames 0x40..0x7f are that "
-        "variant of frames 0x00..0x3f. (87th: live man had record[7]=0x10 => "
-        "frame 64.)"),
-    "categories": {
-        "0": {"name": "man / troop", "prepare": "$11c8a",
-              "blit": "$11f78 -> $11f82", "sheet": "$33000", "frame_bytes": 55,
-              "frame": "(record[5]-1)*16 + (((record[17] + [$ff9a] + 0x10) & "
-                       "0xff) >> 5)*2   [+armed_variant, +1 if [$4bb41]&1 anim]. "
-                       "record[5]=faction (blocks of 16), record[17]=heading, "
-                       "[$ff9a]=camera yaw => facing is YAW-RELATIVE (8 steps). "
-                       "record[33]==8 && record[7]==1 also blits a small overlay "
-                       "($11f82, table $11e40); record[44]>=0xe blits a weapon "
-                       "overlay ($11ebc -> $12258, (record[44]-0xe)*4 + 0x1b + "
-                       "(masked>>1)). MELEE (record[31] in {0x32,0x34}): base "
-                       "0x80, D2 = weapon*8 + (faction-1)*4 + facing2*2 + anim "
-                       "[+armed], facing2 = ((heading + [$ff9a] + 0x40)&0xff)>>7. "
-                       "record[31]==0x46 = dying (counter side effect only).",
-              "verified": "live trace + full disasm"},
-        "1": {"name": "structure? (shares cat 15 path)", "prepare": "$117d8",
-              "blit": "$119d4 (centred, via $119b2)", "sheet": "$312a0",
-              "frame_bytes": 160,
-              "frame": "if record[7]==0x0a: frame from record[16]/7 and "
-                       "record[12]/10 (a directional pick, $117f8..$11818); else "
-                       "$1181c branch (not ripped). D2 = D4.",
-              "verified": "partial disasm"},
-        "2": {"name": "building / tree", "prepare": "$1168c",
-              "blit": "inline via $1227c/$124a8 (centred)", "sheet": "$37c7c",
-              "frame_bytes": 480, "sprite_wh": [32, 24], "frame_count": 28,
-              "frame": "record[7] + word[$57fd0-relative] offset "
-                       "($116c6..$116d0); special-cases record[7] in {0x0d,0x0e}. "
-                       "Full offset table not ripped. Sheet = 28 clean frames "
-                       "(8 house types, tower, well, ruins, bell, 9 tree types, "
-                       "duck); frame 28+ is a different geometry/sheet.",
-              "verified": "live trace (stride+wh) + partial disasm + visual"},
-        "3": {"name": "settlement marker (== cat 12)", "prepare": "$117b0",
-              "blit": "$11f78", "sheet": "$33000", "frame_bytes": 55,
-              "frame": "record[7] + 0x100; if == 0x112 then + ([$57fec] & 3) "
-                       "(4-frame animation). Frames 0x100+ = number / flag "
-                       "glyphs.",
-              "verified": "disasm"},
-        "4": {"name": "animal (sheep)", "prepare": "$11a86", "blit": "$11f78",
-              "sheet": "$33000", "frame_bytes": 55,
-              "frame": "(((record[14] + [$ff9a]) & 0xff) >> 5)*2 + 0x117   "
-                       "[+1 if [$4bb41]&1]. record[14]=heading, yaw-relative "
-                       "=> 16 frames at base 0x117 (8 facings x {a,b}).",
-              "verified": "disasm"},
-        "5": {"name": "effect / decoration", "prepare": "$11772",
-              "blit": "$11f78 (x2)", "sheet": "$33000", "frame_bytes": 55,
-              "frame": "if record[33]: ((record[33]-8) >> 1) + 0x10f  (blit); "
-                       "then if record[44]: (record[44] >> 1) + 0x142  (blit)",
-              "verified": "disasm"},
-        "6": {"name": "boat / floating?", "prepare": "$11bbc",
-              "blit": "$11f78 (x2)", "sheet": "$33000", "frame_bytes": 55,
-              "frame": "underlay (0x103 - record[5]) then main (record[32] + "
-                       "0x100); screenY -= (0xa0 - record[18])",
-              "verified": "disasm"},
-        "7": {"name": "flag / banner?", "prepare": "$11bf4", "blit": "$11f78",
-              "sheet": "$33000", "frame_bytes": 55,
-              "frame": "record[5] + 0x13e   (faction-indexed). Side effect: if "
-                       "[$14d12+316] == 0x60 the handler rewrites record[6] "
-                       "(category) -- a state transition, ignore for rendering.",
-              "verified": "disasm"},
-        "8": {"name": "leader goods icons", "prepare": "$1192e", "blit": "none",
-              "sheet": "$33000", "frame_bytes": 55,
-              "frame": "loop slot 0..7 over [$4e514 + record[14]] byte 24+slot "
-                       "(goods[8] = Pike/Sword/Bow/Plough/Boat/Pot/Catapult/"
-                       "Cannon counts); for each non-zero, jump table $11886 -> "
-                       "a per-slot handler, base ~0x116 via $11f78. Table not "
-                       "fully ripped.",
-              "verified": "disasm (structure)"},
-        "9": {"name": "structure (16x16)", "prepare": "$11c36",
-              "blit": "$1225c (centred)", "sheet": "$312a0", "frame_bytes": 160,
-              "frame": "record[14]; if negative, D2 = record[14] + 0x2f, blit "
-                       "via $1225c. (record[14] is a signed word here.)",
-              "verified": "disasm"},
-        "10": {"name": "structure w/ flag", "prepare": "$11b3c",
-               "blit": "$11f82 + $e6ee", "sheet": "$33000", "frame_bytes": 55,
-               "frame": "main $11f82 D2=0x148; if record[14]!=0 also $e6ee "
-                        "D2=5 at y-=record[14]; if A3==$4c112 also $11f82 "
-                        "D2=0x151 at y-=record[15]; returns D2 = ([$57fec] & 7) "
-                        "+ 0x127.",
-               "verified": "disasm"},
-        "11": {"name": "structure w/ flag (== cat 10)", "prepare": "$11b2a",
-               "blit": "$11f82 + $e6ee", "sheet": "$33000", "frame_bytes": 55,
-               "frame": "if record[15] < 0: counter side effect; else falls "
-                        "into cat 10's body ($11b44).",
-               "verified": "disasm"},
-        "12": {"name": "== cat 3", "prepare": "$117b0", "blit": "$11f78",
-               "sheet": "$33000", "frame_bytes": 55, "frame": "see cat 3"},
-        "13": {"name": "faction marker", "prepare": "$1174e", "blit": "$11f78",
-               "sheet": "$33000", "frame_bytes": 55,
-               "frame": "(record[5] & 0xff) + 0x149   [+1 if [$4bb41]&1]. "
-                        "faction-indexed, animated.",
-               "verified": "disasm"},
-        "14": {"name": "marker / icon", "prepare": "$11b0c", "blit": "$11f78",
-               "sheet": "$33000", "frame_bytes": 55,
-               "frame": "0x150 default; if record[5] > 0 then ([$57fec] & 1) + "
-                        "0x14e",
-               "verified": "disasm"},
-        "15": {"name": "large structure", "prepare": "$1198a",
-               "blit": "$119d4 (centred)", "sheet": "$312a0", "frame_bytes": 160,
-               "frame": "D2 = 0x0c default; then record[8]-indexed ($119ae..; "
-                        "mulu #$a on record[8] within the $312a0 frame). Not "
-                        "fully ripped.",
-               "verified": "disasm (structure)"},
-        "16": {"name": "?", "blit": "$1168a", "frame": "not ripped"},
-        "17": {"name": "?", "blit": "$11f78", "sheet": "$33000",
-               "frame_bytes": 55, "frame": "not ripped"},
-        "18": {"name": "?", "blit": "$12258", "frame": "not ripped"},
-        "19": {"name": "?", "blit": "$12258", "frame": "not ripped"},
-    },
-}
+SPRITE4_SHEET = 0x3af1c         # 32x32 building/tree sheet ($12244, zoom 1-3)
+SPRITE4_FRAME_BYTES = 0x280
 
 
 def decode_minisprite(frame: bytes):
@@ -591,10 +430,10 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
     pal_rgb = [stf_rgb(w) for w in dom_pal]
 
     # -- $33000 mini-sprite sheet (men / animals / small props / effects) --------
-    # 87th: the category handlers ($11c8a men, $11a86 animals, $11b0c ... -- see
-    # SPRITE_TRIGGERS) reach frame bases up to 0x150. Rip 0x160 frames (an upper
-    # bound -- the exact count per category is still open); past ~0x150+count the
-    # address space runs into the $37c7c prop sheet. Was: first 64 (men only).
+    # The category handlers ($11c8a men, $11a86 animals, $11b0c ... -- see
+    # sprites/sprite_triggers.json) reach frame bases up to 0x150. Rip 0x160
+    # frames (an upper bound -- the exact count per category is still open);
+    # past ~0x150+count the address space runs into the $37c7c prop sheet.
     # $11f82 reads 0x37 (55) B/frame = 11 rows x [AND-mask, plane0..3].
     nframes = 0x160
     frames = [ram.blk(SPRITE_SHEET + f * SPRITE_FRAME_BYTES, SPRITE_FRAME_BYTES)
@@ -628,17 +467,24 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
                                               SPRITE3_FRAME_BYTES), 16, 16)
                     for f in range(n3)], 16, 16, pal_rgb, 12)
 
-    # -- $37c7c prop sheet (category 2: trees / obstacles) : 32x24, 480 B ------
-    # 87th: frames 0..27 decode cleanly as buildings + trees at 32x24. From
-    # frame 28 the row structure changes (top-row mask stops being 0xffff) --
-    # either a different geometry or a different sheet begins there. Rip 0..27.
-    n2 = 28
+    # -- building / tree sheets ($12244 picks one by the zoom index $57ffc) ----
+    # The same 27 pictures at three sizes. $37c7c + 27 * 480 == $3af1c, where
+    # the 32x32 copy starts, and 27 32x32 frames end before the $3f364 corner
+    # buffer, so each sheet holds 27 frames.
+    n2 = (SPRITE4_SHEET - SPRITE2_SHEET) // SPRITE2_FRAME_BYTES
     (sd / "prop_sheet_raw.bin").write_bytes(
         ram.blk(SPRITE2_SHEET, n2 * SPRITE2_FRAME_BYTES))
     _contact_sheet(sd / "prop_sheet_contact.png",
                    [decode_wordsprite(ram.blk(SPRITE2_SHEET + f * SPRITE2_FRAME_BYTES,
                                               SPRITE2_FRAME_BYTES), 32, 24)
                     for f in range(n2)], 32, 24, pal_rgb, 8)
+    n4 = n2
+    (sd / "prop32_sheet_raw.bin").write_bytes(
+        ram.blk(SPRITE4_SHEET, n4 * SPRITE4_FRAME_BYTES))
+    _contact_sheet(sd / "prop32_sheet_contact.png",
+                   [decode_wordsprite(ram.blk(SPRITE4_SHEET + f * SPRITE4_FRAME_BYTES,
+                                              SPRITE4_FRAME_BYTES), 32, 32)
+                    for f in range(n4)], 32, 32, pal_rgb, 8)
 
     # -- heading -> frame table (used only by the $e6ee marker/HUD path) --------
     ht = ram.blk(0x1675a, 16)
@@ -654,9 +500,6 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
         "heading_to_frame": headings,
         "raw": ht.hex(),
     }, indent=1))
-
-    # -- the category dispatch (the actual iso-entity draw path) ----------------
-    (sd / "sprite_triggers.json").write_text(json.dumps(SPRITE_TRIGGERS, indent=1))
 
     man.append({
         "file": "sprites/sheet_raw.bin + sprites/sheet_contact.png",
@@ -679,27 +522,34 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
         "file": "sprites/prop_sheet_raw.bin + sprites/prop_sheet_contact.png",
         "frames": n2,
         "provenance": (
-            f"category-2 (tree/obstacle) sheet at $37c7c, "
-            f"{SPRITE2_FRAME_BYTES:#x} (480) B/frame. Blitted inline by $1168c "
-            "via $1227c/$124a8. 87th: 32w x 24h, 20 B/row = 2 groups of "
-            "[mask,p0..p3] words (from the $124a8 disasm + a live trace)."),
-        "format": "48-frame sample. decode_wordsprite(frame, 32, 24).",
+            f"building/tree sheet at $37c7c, {SPRITE2_FRAME_BYTES:#x} (480) "
+            "B/frame, drawn by $12244 -> $12326 at zoom 4-5. 32w x 24h, "
+            "20 B/row = 2 groups of [mask,p0..p3] words."),
+        "format": "decode_wordsprite(frame, 32, 24).",
+    })
+    man.append({
+        "file": "sprites/prop32_sheet_raw.bin + sprites/prop32_sheet_contact.png",
+        "frames": n4,
+        "provenance": (
+            f"building/tree sheet at $3af1c, {SPRITE4_FRAME_BYTES:#x} (640) "
+            "B/frame, drawn by $12244 -> $12326 at zoom 1-3. 32w x 32h."),
+        "format": "decode_wordsprite(frame, 32, 32).",
     })
     man.append({
         "file": "sprites/struct_sheet_raw.bin + sprites/struct_sheet_contact.png",
         "frames": n3,
         "provenance": (
-            f"structure sheet at $312a0 (cats 1, 9, 15), "
-            f"{SPRITE3_FRAME_BYTES:#x} (160) B/frame. Blitted centred via "
-            "$1225c / $119d4. 87th: 16w x 16h, 10 B/row [mask,p0..p3] words."),
+            f"16x16 sheet at $312a0, {SPRITE3_FRAME_BYTES:#x} (160) B/frame: "
+            "the buildings/trees at zoom 6-7 ($12244 -> $122b6), and the "
+            "byte6 1/9/15 structures ($119d4). 10 B/row [mask,p0..p3] words."),
         "format": "decode_wordsprite(frame, 16, 16).",
     })
     man.append({
         "file": "sprites/sprite_triggers.json",
-        "provenance": ("87th: $115e0 category dispatch. Jump tables $1162e / "
-                       "$1165c read from RAM; per-category frame formulas from a "
-                       "disassembly of each prepare handler + a live men-path "
-                       "trace (scratchpad/pm78_settle.snap)."),
+        "provenance": ("hand-maintained reference, not written by this script: "
+                       "the $115e0 category dispatch (jump tables $1162e / $1165c), "
+                       "each prepare handler's frame formula from its disassembly, "
+                       "and the live traces that pinned them (SPEC.md section 6)."),
         "format": "dispatch + position_lerp + per-category {prepare, blit, "
                   "sheet, frame formula, verified}",
     })
@@ -899,7 +749,7 @@ def decode_object(r: bytes):
     }
 
 
-def export_entities(ram: Ram, out: Path, man: list):
+def export_entities(ram: Ram, out: Path, man: list, source: str):
     objs = []
     for s in range(1, 512):
         r = ram.blk(OBJ + s * OBJ_STRIDE, OBJ_STRIDE)
@@ -938,59 +788,59 @@ def export_entities(ram: Ram, out: Path, man: list):
             effects.append({"slot": s, "raw": r.hex()})
 
     # -- render_entities: the $47970 per-cell bucket walk -------------------
-    # A faithful replay of what $115e0 (pm_draw_cell_entities) sees, so the
-    # port's Sprites.drawEntities can be fed a real record stream (Task 4/2).
-    # This MIRRORS tools/pm_render_ref.py load_ram exactly (same camera window,
-    # same SIGNED $51b66-relative offset, same fx4/fy4 address-jitter, same
-    # field set) -- the two are cross-checked byte-exact on synthetic data
-    # (scratchpad/pm90_xcheck.*), so the parse has to agree here too.
+    # What $115e0 (pm_draw_cell_entities) sees for every cell of the map: the
+    # SIGNED $51b66-relative bucket chain, and per record the fields the drawn
+    # categories read plus its address. A port draws any camera window from
+    # this: the byte6 == 4 sub-cell jitter comes from the record address, the
+    # bucket slot and the cell's corner address ($1168c, Sprites.propJitter),
+    # so it is computed per camera, not stored.
     BUCK, OBJ_BASE = 0x47970, 0x51B66
-    cam_x = ram.u16(0x4BB3A) - ram.u16(0x57FFC)
-    cam_y = ram.u16(0x4BB3C) - ram.u16(0x57FFC)
     render_objs = []
     seen = set()
-    for wcy in range(cam_y - 1, cam_y + 10):
-        for wcx in range(cam_x - 1, cam_x + 10):
-            if not (0 <= wcx < 64 and 0 <= wcy < 128):
-                continue
+    for wcy in range(128):
+        for wcx in range(64):
             d4 = ram.u16(BUCK + (wcy * 64 + wcx) * 2)
-            depth = 0
-            while d4 and depth < 96:
+            while d4:
                 off = d4 - 0x10000 if d4 >= 0x8000 else d4
                 o = OBJ_BASE + off
-                if not (0x40000 <= o < 0x60000) or (o, wcx, wcy) in seen:
-                    break
-                seen.add((o, wcx, wcy))
-                depth += 1
+                # a record has one next link, so it can only be reached twice
+                # through a torn chain (a capture taken mid-relink)
+                if not (0x40000 <= o < 0x60000):
+                    sys.exit(f"entities: cell ({wcx},{wcy}) links to ${o:x}, outside the record pools")
+                if o in seen:
+                    sys.exit(f"entities: record ${o:x} reached twice (cell ({wcx},{wcy})): torn bucket chain")
+                seen.add(o)
                 rec = ram.blk(o, 50)
-                a2 = 0x47970 + (wcy * 64 + wcx) * 2
-                a0 = 0x3F364 + (wcy - cam_y) * 64 + (wcx - cam_x) * 4
-                s = (a2 + o) & 0xFFFF
                 render_objs.append({
                     "addr": o, "wcx": wcx, "wcy": wcy,
                     "b6": rec[6], "b5": rec[5], "b7": rec[7], "b14": rec[14],
                     "b17": rec[17], "b31": rec[31],
                     "fx": rec[9], "fy": rec[11],
-                    "fx4": (s << 3) & 0xFF, "fy4": (s + (a0 & 0xFFFF)) & 0xFF,
                     "group": (rec[42] << 8) | rec[43],
                 })
                 d4 = ram.u16(o)
     tsel = ram.u16(0x57FD0)
     entity_ctx = {
-        "cam_x": cam_x, "cam_y": cam_y,
+        # the view the records were captured in: window top-left cell
+        # ($4bb3a/$4bb3c minus the zoom index $57ffc) and yaw
+        "cam_x": ram.u16(0x4BB3A) - ram.u16(0x57FFC),
+        "cam_y": ram.u16(0x4BB3C) - ram.u16(0x57FFC),
         "yaw": ram.u16(0xFF9A),
         "anim": ram.u8(0x4BB41) & 1,
         "sel_group": ram.u16(0x57FFE),
-        "tile_off": ram.u16(0x11746 + tsel) if tsel in (0, 2, 4, 6) else 0,
+        # word[$57fd0] / 2: picks the tree frames (and the grass colours)
+        "season": tsel // 2,
         "rot_phase": ram.u8(0x57FED),
-        "render_source": "pm88_f1.ram (frame-start anchor; the rest of assets/ is pm74_late)",
+        "source_ram": source,
         "half": ram.u16(0xFDEC),
         "sheet33": "sprites/sheet_raw.bin",       # $33000, 55 B/frame
-        "sheet_prop": "sprites/prop_sheet_raw.bin",  # $37c7c, 480 B/frame
-        "note": ("feed render_entities[] as PmLogic.Sprites.EntityRec and call "
-                 "Sprites.drawEntities(buf, ctx, corners, cam_x, cam_y, recs). "
-                 "byte6 drawn: 0 (men) 4 (building/tree) 8 (animal) 14 (banner) "
-                 "6/24 (marker). See SPEC.md section 6."),
+        "sheet_prop": "sprites/prop_sheet_raw.bin",      # $37c7c 32x24, zoom 4-5
+        "sheet_prop32": "sprites/prop32_sheet_raw.bin",  # $3af1c 32x32, zoom 1-3
+        "sheet_prop16": "sprites/struct_sheet_raw.bin",  # $312a0 16x16, zoom 6-7
+        "note": ("feed render_entities[] as PmLogic.Sprites.EntityRec and draw "
+                 "with Scene.render. byte6 drawn: 0 (men) 2 (settlement "
+                 "building) 4 (building/tree) 8 (animal) 14 (banner) 6/24 "
+                 "(marker). See SPEC.md section 6."),
     }
 
     e = {
@@ -1013,9 +863,10 @@ def export_entities(ram: Ram, out: Path, man: list):
         "file": "entities.json",
         "provenance": ("$51b66 object records (50 B, slots 1..511), $4f916 "
                        "settlements, $4e514 leaders, $4d252 herd, $4be00 effects; "
-                       "render_entities[] = the $47970 per-cell bucket walk "
-                       "($115e0's view, SIGNED $51b66 offset), entity_ctx = the "
-                       "per-frame Sprites.drawEntities constants."),
+                       "render_entities[] = the $47970 per-cell bucket walk over "
+                       "the whole map ($115e0's view, SIGNED $51b66 offset), "
+                       "entity_ctx = the per-frame sprite constants. Read from "
+                       "--entities-ram, not --ram."),
         "format": "decoded key fields + raw hex per record",
         "active_objects": len(objs),
         "render_entities": len(render_objs),
@@ -1113,6 +964,10 @@ def main():
     here = Path(__file__).resolve().parent.parent
     ap.add_argument("--ram", default=str(here / "scratchpad/pm74_late.ram"))
     ap.add_argument("--snap", default=None)
+    # The entity records and their frame constants come from the capture the
+    # port's sprites are checked against (pm88_f1, the mission-1 start pose),
+    # not from the terrain/table source above.
+    ap.add_argument("--entities-ram", default=str(here / "scratchpad/pm88_f1.ram"))
     ap.add_argument("--frame", default=str(here / "scratchpad/pm76_fr/f000100.bin"))
     ap.add_argument("--out", default=str(here / "reversing/powermonger/port/assets"))
     args = ap.parse_args()
@@ -1134,7 +989,8 @@ def main():
     export_hud(ram, out, man)
     export_tables(ram, out, man)
     export_strings(ram, out, man)
-    export_entities(ram, out, man)
+    ent_path = Path(args.entities_ram)
+    export_entities(Ram(ent_path.read_bytes()), out, man, ent_path.name)
     export_backdrop(ram, out, man)
     export_reference(frame, out, man, dom_pal)
 

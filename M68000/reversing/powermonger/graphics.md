@@ -303,8 +303,8 @@ settled vs 30 with the rotate key held):
 3. **The settled view is not idle.** It runs `$163ea` (~14/frame), `$16738`
    (~4/frame) and `$12ce0` every ~3 frames.
 
-Zoom is a discrete 7-level select (`$13f83` table `[_,84,42,28,21,17,14,12]`,
-index → `$fe04` → the 13 constants at `$fdea`–`$fe02`). The zoomed-out slowdown
+Zoom is a discrete 7-level select (index in `$57ffc`, `$13f82` table `[_,84,42,28,21,17,14,12]`,
+index → `$fe04` → the 13 constants at `$fdea`–`$fe02`; `port/SPEC.md` §5). The zoomed-out slowdown
 players report is the `$f000` slope-divide cost (9× more edges for many small
 tiles) once the map is dense enough to outweigh the entity, sprite and fill
 saving; see "Zoom comparison".
@@ -406,7 +406,7 @@ and heading.
 | 74 / 78 | `$4a` / `$4e` | `$ff96 += / -= $a` |
 | 99 / 100 | `$63` / `$64` | `$ff98 -= / += $a` |
 | 101 / 102 | `$65` / `$66` | `$ff9c -= / += 1` |
-| 51 / 52 | `$33` / `$34` | commander select `$57ffc ∓ 1`, then `jsr $fe04` |
+| 51 / 52 | `$33` / `$34` | zoom index `$57ffc ∓ 1`, then `jsr $fe04` (leaves `$ff9c` alone) |
 
 The gate slot 54 is the right-shift slot, which `$18be` never writes, so this
 block cannot be reached from the keyboard. To drive it from the REPL, poke the
@@ -434,8 +434,8 @@ Effects:
 ## Zoom comparison
 
 **How zoom is set.** `$13f60` (from the `$13212` mouse-cursor command dispatch,
-cases `$13386` / `$1338a` / `$1338e` / `$133a0`) sets `$ff9c = $13f83[index]`
-and calls `$fe04` with `D1 = index` (1–7). `$fe04` derives the 13 render
+cases `$13386` / `$1338a` / `$1338e` / `$133a0`) stores the index in `$57ffc`,
+sets `$ff9c = $13f82[index]` and calls `$fe04` with `D1 = index` (1–7). `$fe04` derives the 13 render
 constants at `$fdea`–`$fe02` (formulas in `scratchpad/pm69_fe04_notes.txt`).
 `$13b9a`, the mission-view build run on the briefing OK click, does the same at
 `$13bbe` with a fixed `#$4`. To reach either extreme without the mouse, patch

@@ -180,7 +180,7 @@ it in a vertex/fragment shader.
 
 Per-frame, only when the camera cell, yaw or zoom changed (`pm_project_grid`
 `$fecc`). Produces one screen-space corner `(sx, sy)` per grid vertex into the
-`$3f364` corner buffer (9 x 9 vertices at zoom index 4 — see §5).
+`$3f364` corner buffer ((2·HALF+1)² vertices: 9 x 9 at the default zoom 4, see §5).
 
 ### Constants (`assets/tables.json → projection`)
 
@@ -188,7 +188,7 @@ Per-frame, only when the camera cell, yaw or zoom changed (`pm_project_grid`
 |--------|------|--------------------------|---------|
 | `EYE` | `$ff98` | 320 | eye distance for the perspective divide |
 | `HORIZON` | `$ff96` | 130 | horizon screen-Y |
-| `ZOOM` | `$ff9c` | 21 | world-unit scale (from `$13f83[zoomIndex]`) |
+| `ZOOM` | `$ff9c` | 21 | cell size in world units, `$13f82[zoom index]` (§5) |
 | `YAW` | `$ff9a` | `0xf0` | rotation, 16 steps of `0x10` (`& 0xf0`) |
 | `HBIAS` | `$fec4` | *dynamic* | **min** control-plane height over the visible window; recomputed each projection (`$fe8e`) |
 
@@ -294,9 +294,9 @@ foreshortening.
 
 ### Camera cell
 
-`$4bb3a` / `$4bb3c` hold the camera grid cell; the projector offsets by the
-command-select index `$57ffc` (normally the player, small). Effective far/anchor
-corner of the visible grid:
+`$4bb3a` / `$4bb3c` hold the cell at the centre of the view, and `$57ffc` is
+the zoom index, which is also HALF (§5). The window starts HALF cells before
+the centre:
 
 ```
 camCellX = $4bb3a - $57ffc          // mission 1: 40 - 4 = 36
@@ -304,7 +304,12 @@ camCellY = $4bb3c - $57ffc          //            51 - 4 = 47
 ```
 
 The grid then spans `camCell .. camCell + 2*HALF` in both axes (the camera cell
-is the far/top corner of the drawn diamond, not its centre).
+is the far/top corner of the drawn diamond). Changing the zoom keeps the centre
+cell, so the window grows or shrinks around it. `$12fd8` clamps the centre to
+`[$57ffc, 64 - $57ffc]` in x and `[$57ffc, 128 - $57ffc]` in y every tick; the
+port clamps the window's top-left cell to `0 .. 63 - 2*HALF` and
+`0 .. 127 - 2*HALF`, one cell tighter at the far edge, so that every corner it
+projects is inside the 64-wide plane.
 
 ---
 
@@ -399,6 +404,72 @@ pixels):
 | `0x2c` | 11, 12 | grass (light) |
 | `0x30`–`0x3c` | 7, 9, 11, 12 mixed | bright slope |
 | `0x3e` | 9, 10, 11 | brightest ridge |
+
+The grass and slope slots (`0x1d`-`0x2e`) change with the season; the rows above
+are from `pm74_late`, near the end of the fade into season 1 (green).
+
+### Seasons (`$1ab60`, `$1abaa`)
+
+The landscape has four seasons. `word[$57fd0]` holds the season as 0, 2, 4 or
+6 (the port uses that value / 2), and two things follow it: the grass colours
+and the tree frames.
+
+**Grass.** Colour slots `$1d`-`$2e` of the pattern table (18 slots x 128 bytes,
+`$2e000 + $e80`) are a working copy. The table itself also holds three source
+versions of those 18 slots, and `word[$1aba2 + word[$57fd0]]` picks one:
+
+| season | `$57fd0` | source | grass |
+|---|---|---|---|
+| 0 | 0 | `$2e000 + $2980` | khaki and grey, no green (palette 1-5): winter |
+| 1 | 2 | `$2e000 + $2080` | green (11-13): spring |
+| 2 | 4 | `$2e000 + $1780` | green mixed with brown and gold (6, 7, 9): summer |
+| 3 | 6 | `$2e000 + $2080` | green again, the same source as season 1: autumn |
+
+Everything outside the 18 live slots, the sources included, is identical in
+every capture, so `assets/dither.bin` plus a season gives the whole table.
+`$1ab60` (world build, `$13c66`) copies the season's source over the live slots
+in one go. After that, `$1abaa` (in the `$13000` tick, right after `$f898`)
+fades towards the source 16 pixels per tick:
+
+```
+[$57fec] += 1                              // ticks into the fade
+repeat 16 times:
+    x = (x * $24a1 + $24df) & $1fff        // [$57ff6], a full-period 13-bit LCG
+    if x == 0:                             // every pixel visited: the fade is over
+        $57fd0 = ($57fd0 + 2) & 6          // next season; the next fade starts
+        (x, [$57fec]) = 0
+        stop
+    row = x >> 4, bit = x & 15
+    if row < $120:                         // 288 rows of 8 bytes = the 18 slots
+        copy bit `bit` of all four plane words of row `row`
+            from the source into the live slots
+```
+
+A fade takes 8191 LCG steps, 512 ticks (about 110M emulator steps). `x = 0`
+ends the fade without copying, so pixel 0 of row 0 only changes at world build;
+it is the same in all three sources. The first fade after world build copies
+the season's source onto itself and so changes nothing.
+
+**Trees.** `$116c6` adds `word[$11746 + word[$57fd0]]` = {0, 3, 6, 9} to the
+building/tree frame (§6). Tree frames 15-17, 18-20, 21-23 and 24-26 are bare,
+blossoming, leafy green and autumn brown. The tree frames therefore change the
+moment `$57fd0` advances, while the grass takes the whole fade to catch up:
+straight after a change, the game shows the old season's grass under the new
+season's trees.
+
+At the same moment `$1abaa` also sets one random `$4d252` record whose byte 7
+is `$0d` to `$0e + (word 10 & 3)`, and `$1ad74` picks an ambient sound from
+`$1ad9c[$57fd0]`. Neither is ported.
+
+The port's `Season.fs` has `table` (`$1ab60`), `fading` (`$1abaa`) and
+`treeTileOffset`. Evidence: `Season.fading(dither.bin, season, steps)` equals
+the whole 16 KB `$2e000` table byte for byte on `pm88_f1`, `pm78_settle`,
+`pm74_late`, `pm73_fight` and the three `rot*` captures, with steps = 16 x
+`[$57fec]` in each (`scratchpad/pm119/season_check.fsx`). Two Hatari
+screenshots of mission 1 at the start pose (yaw 15, and yaw 3 phase 0) match the
+port's settled season 2 at 88.3% and 89.1% of terrain pixels, and seasons 0, 1
+and 3 at 3-35%. The viewer and `TerrainView.cs` default to the season
+`entities.json` was captured in (2), and the Y key cycles it.
 
 ### The yaw-quadrant grid walk (`$f898` → `$f97e` → 4 handlers)
 
@@ -563,29 +634,57 @@ pixel-faithful port that wants them.
 
 ## 5. Zoom — 7 discrete geometry sets
 
-Zoom is a 7-level LOD select, **not** a continuous scale and **not** an art
-switch. `pm_zoom_set` `$13f60` (from the mouse-cursor dispatch) sets
-`$ff9c = $13f83[index]` and calls `pm_zoom_geometry` `$fe04` with the grid
-half-extent, which derives 13 constants at `$fdea..$fe02`
-(`assets/tables.json → zoom_geometry`):
+The zoom index lives in `$57ffc`, 1..7. The game's zoom buttons (`$1338e` /
+`$133a0`) step it by one, clamped to 1..7, and call `pm_zoom_set` `$13f60`, which
+stores the index, sets `$ff9c = $13f82[index]` and calls `pm_zoom_geometry`
+`$fe04` with the index as HALF:
 
-| index | `$ff9c` (ZOOM) | HALF (`$fdec`) | tile px (`$fdee` derives from) |
-|-------|----------------|----------------|-------|
-| 1 | 84 | 1 | largest |
-| 2 | 42 | 2 | |
-| 3 | 28 | 3 | |
-| **4** | **21** | **4** | **default (mission start)** |
-| 5 | 17 | 5 | |
-| 6 | 14 | 6 | |
-| 7 | 12 | 7 | smallest |
+| index `$57ffc` = HALF `$fdec` | `$ff9c` (ZOOM) | window | building/tree sheet (§6) |
+|---|---|---|---|
+| 1 | 84 | 2 x 2 cells | `$3af1c` 32 x 32 |
+| 2 | 42 | 4 x 4 | `$3af1c` 32 x 32 |
+| 3 | 28 | 6 x 6 | `$3af1c` 32 x 32 |
+| **4** | **21** | **8 x 8** (mission start) | `$37c7c` 32 x 24 |
+| 5 | 17 | 10 x 10 | `$37c7c` 32 x 24 |
+| 6 | 14 | 12 x 12 | `$312a0` 16 x 16 |
+| 7 | 12 | 14 x 14 | `$312a0` 16 x 16 |
 
-The 13 constants are all grid-buffer strides / loop bounds / screen offsets for
-the specific `(HALF, tilePx)` pair — see `zoom_geometry.constant_meaning` in
-`tables.json`. Hand-poking them is unsafe (an inconsistent stride sends the span
-filler into code). A port computes its own strides from `HALF` and the tile
-size; the only value that feeds the projection maths is `ZOOM` (`$ff9c`).
+`$fe04` derives 13 words at `$fdea..$fe02` from HALF, with N = 2·HALF cells per
+side (`assets/tables.json → zoom_geometry` has the zoom-4 values):
 
-Every zoom draws the same triangle fill with more/fewer, larger/smaller cells.
+```
+$fdec = HALF           $fdf0 = N-1 (both walk loops: dbf, so N passes)
+$fdf2 = 64-N           $fdee = 63-N               plane advance per row
+$fdea = (15-N)*4       $fdf4 = $fdea + 4          corner-buffer row remainder
+$fdf6 = 64*(N-1)       $fdfe = 65*(N-1)           plane start/step for q1 / q2
+$fdf8 = 64*(N-1)       $fe02 = 4*(N-1)            corner start: q1 row N-1 / q3 col N-1
+$fe00 = 68*(N-1)       $fdfa = 64N+1   $fdfc = 64N+4   corner start q2, back-steps
+```
+
+The corner buffer's row stride is fixed at 64 bytes, 16 corners, so N + 1 <= 16;
+with N even that is N <= 14, HALF <= 7: the seven zooms. Every loop count, start offset and stride in the projector
+(`$fecc`) and the four walk handlers comes from these words, so the walks in §4
+are the same code at every zoom with 8 replaced by N: q3 visits
+`(row, col) = (i, N-1-strip)`, q1 `(N-1-i, strip)`, q2 `(N-1-strip, N-1-i)`, q0
+`(strip, i)`. Only ZOOM enters the projection maths. `$ff9c` alone (the keypad
+path at `$137da`/`$137e8`) rescales the corners without changing the grid, and
+`$57ffc` alone (`$137f6`/`$13810`) changes the grid without the scale; `$13f60`
+sets both. Hand-poking the 13 words is unsafe unless they are all consistent
+with one HALF (an inconsistent stride sends the span filler into code).
+
+A zoom change keeps the centre cell `$4bb3a/$4bb3c` (§3) and is a camera change
+for `$f898` (it compares `$fdec`), so it flips the dither phase.
+
+Port: `Projection.Params.WithZoom` (HALF and `zoomScale`), `Fill.planQ0..3` over
+N x N cells, `Sprites.propSheet` (§6). Evidence: captures of `pm88_f1.snap` at
+zooms 1, 2, 3, 5, 6 and 7 (`$57ffc`, `$ff9c` and the 13 words poked as `$13f60`
+writes them, then 2M steps; `scratchpad/pm119/zoom*.snap`,
+`zoom_check.fsx`). Terrain away from sprites matches the game's screen at
+99.2-99.7% at every zoom. Sprite pixels match at 74-84% with `$12244`'s sheet,
+and at 17-52% at zooms 1-3 and 6-7 with the 32 x 24 sheet forced. The float
+`Projection.projectGrid` agrees with the game's own corners to within one pixel
+at 78-95% of vertices (zoom 4: 73 of 81); the terrain scores use the game's
+corners.
 
 ---
 
@@ -705,11 +804,10 @@ selected group). (87th: the live man had `record[7] = 0x10` → frame 64.)
 **89th:** the cat-2 (byte6 4) building/tree frame formula + the `$11746`/`$57fd0`
 offset table + the address-jitter position are all **pinned and live-verified**
 (D2 at `$12288`); the 32 × 24 word-plane decode is byte-exact against `$24400`'s
-live tree pixels. (97th: `word[$57fd0]` is not strictly static — `$1abaa` rotates
-it {0,2,4,6} every ~110M steps — so a faithful port reads the live value each
-frame rather than baking `+6`.) `pm_render_ref.py`'s `_entity_frame` + `load_ram` + the
+live tree pixels. `word[$57fd0]` is the season, which `$1abaa` advances once per fade
+(§4 "Seasons"), so a faithful port reads it each frame rather than baking `+6`. `pm_render_ref.py`'s `_entity_frame` + `load_ram` + the
 `draw_entities` "prop" path are updated, and `Sprites.fs` has `frameForProp` /
-`propTileOffset` / `propJitter` / `propScreenPos` / `decodeFrameWord`. It is
+`Season.treeTileOffset` / `propJitter` / `propScreenPos` / `decodeFrameWord`. It is
 **not in `COMPOSITE_CATS`** — compositing it lowers the score, but not from a
 formula error: `pm78_settle`'s two compose buffers disagree on the entity layer
 by ~14.6 k px (`$115e0` redraws a *subset* of entities per frame, double
@@ -726,28 +824,30 @@ facing, and the centroid markers (`scratchpad/pm90_xcheck.fsx` / `.py`).
 order (same approximation `pm_render_ref` uses); `byte6 6/24` use the `$1182a`
 centroid, everything else the `$11f1a` sub-cell lerp.
 
-**91st (Task 2): wired into a live Godot frame with a real record stream.**
-`tools/pm_export.py`'s `export_entities` now also emits `entities.json ->
-render_entities[]` (the `$47970` per-cell bucket walk — the SIGNED `$51b66`
-offset, the `fx4/fy4` address-jitter, the `byte6`/`b5`/`b7`/`b14`/`b17`/`b31`/
-`group`/world-cell fields) + `entity_ctx` (yaw / anim / sel_group / tile_off /
-rot_phase / sheet paths). This parse is **byte-identical to
-`pm_render_ref.load_ram`'s** entity block (verified, `scratchpad/pm91_ent_*.` ).
-`Sprites.drawEntitiesArr` (an array wrapper on `drawEntities`) is called from
-`TerrainView.cs` right after `Fill.walk`, into the same `Fill.Buffer`, gated on
-the camera matching the baked pose (mission-1 start). Feeding it the real
-53-record stream + `$3f364` corners produces a covered-pixel set **byte-identical
-to `pm_render_ref.draw_entities`** (2881/2881 px, all ported `byte6` in
-{0,4,6,8,14,24}). Real Godot `--write-movie` screenshot:
-`assets/reference/godot_screenshot_entities_91st.png` — ~25 trees + the 26-record
-banner ring + the man on the hill.
+**The record stream (`entities.json`).** `tools/pm_export.py`'s `export_entities`
+walks every cell's `$47970` bucket chain over the whole map, from `pm88_f1`
+(`--entities-ram`), and writes `render_entities[]`: per record its address, its
+world cell and the fields the drawn categories read (`byte6`/`b5`/`b7`/`b14`/
+`b17`/`b31`/`fx`/`fy`/`group`), 276 records. `entity_ctx` carries the capture's
+view (`cam_x`/`cam_y`/`yaw`/`half`), `season`, the animation phases and the four
+sheet paths. A record reached twice, or a link outside the record pools, is an
+export error: it means the capture caught a bucket chain mid-relink. The
+`byte6 == 4` jitter is not stored: it depends on the cell's place in the window,
+so `Sprites.recordJitter` computes it per frame from the record address, the
+bucket slot and the corner address. At the capture camera it reproduces the 53
+jitters `load_ram` computes. With the records from the whole map, the port
+draws sprites at every camera cell. At two cells panned in the emulator from
+`pm88_f1.snap` (`w 4bb3a`, 2M steps; `scratchpad/pm119/pan_{e,w}`,
+`pan_check.fsx`), drawing the exported records gives the same frame as drawing
+each capture's own records (identical at `pan_e`; at `pan_w` one man had moved),
+and the inline order beats sprites-last there too.
 
 **Draw order: sprites are drawn inside the walk.** `$f898`'s walk calls `$115e0` for each
 cell straight after drawing that cell's two triangles, so nearer terrain covers farther
 sprites and nearer sprites cover farther terrain. In the port, `Fill.plan` returns the walk
 as data (`planQ0`..`planQ3` → a `Cell list` in draw order, each cell with its corners and its
 two `Tri`s in order), `Scene.steps` puts each cell's `$47970` bucket sprites after its
-triangles, and `Scene.render` draws the result; `TerrainView.cs` uses it whenever the camera is on the entities' capture cell (any yaw).
+triangles, and `Scene.render` draws the result, which is what `TerrainView.cs` and the viewer draw.
 `Fill.walk` draws the plan without sprites and is byte-identical to a direct walk (16 yaws ×
 5 cams × 2 ticks, `scratchpad/pm118/baseline.fsx`). Evidence for the order, drawing every
 ported category, scored against the game's own compose buffer
@@ -770,7 +870,7 @@ score, and `pm_render_ref.py` now draws the same way (a per-cell `_cell_done` ho
 every walk handler, all categories): it matches `Scene.render` pixel for pixel on
 `pm88_f1` (14683 exact). `pm78_settle`'s inline score stays below its terrain-only score,
 consistent with its two compose buffers disagreeing on the entity layer (not checked
-further). The sprite records only depend on the camera cell: at yaws `$40`/`$90`/`$c0`
+further). The yaw only picks men's and animals' facing frames: at yaws `$40`/`$90`/`$c0`
 (with `EntityCtx.Yaw` set to the camera yaw) the game shows the sprite at 77-85% of the
 port's visible sprite pixels and the bare terrain at 2-4%. Screenshots:
 `assets/reference/godot_screenshot_backdrop_118th.png` (inline, over the `$78000`
@@ -778,18 +878,29 @@ backdrop), `godot_screenshot_inline_118th.png`, and `godot_screenshot_entities_9
 (sprites last). `Sprites.drawEntities` / `pm_render_ref.draw_entities` are the sprites-last
 path, kept for the parity checks.
 
-**Settlement buildings, `byte6 == 2` (`$117d8`).** Frame `record[7]` from the 32 x 24
-`$37c7c` sheet with no tile-set offset, anchored at the cell centroid (`$1182a`: +`$38`,
--8 over raw corners), then `$12244` -> `$12272` (-4, -8) at mission-1 zoom
-(`[$57ffc]` = 4; `[$57ffc]` > 5 uses the `$312a0` 16 x 16 sheet, <= 3 the `$3af1c` 32 x 32 sheet at (-8, -16)). In the
+**Settlement buildings, `byte6 == 2` (`$117d8`).** Frame `record[7]` with no tile-set
+offset, anchored at the cell centroid (`$1182a`: +`$38`, -8 over raw corners), then
+`$12244` like the trees. At zoom 4-5 that is the 32 x 24 sheet and (-4, -8), so in
 +64-inset corner space the top-left is centroid + (-12, -16). `record[7] == $0a` also
 draws an overlay via `$119b2` from `record[12]`/`[16]` (not ported). This is the keep
 inside the hilltop fort; adding it took `pm88_f1` inline from 95.93% to 96.80%.
 
+**Zoom: `$12244` picks the building/tree art.** The same 27 pictures exist at three sizes,
+packed back to back: `$37c7c + 27 * 480 = $3af1c`, and the 27 32 x 32 frames end before
+the `$3f364` corner buffer. `$12244` picks by the zoom index `[$57ffc]`:
+
+| `[$57ffc]` | sheet | frame | offset added to the anchor |
+|---|---|---|---|
+| 1-3 | `$3af1c` (`prop32_sheet_raw.bin`) | 32 x 32, 640 B | (-8, -16), `$12294` |
+| 4-5 | `$37c7c` (`prop_sheet_raw.bin`) | 32 x 24, 480 B | (-4, -8), `$12272` |
+| 6-7 | `$312a0` (`struct_sheet_raw.bin`) | 16 x 16, 160 B | none, `$12258` |
+
+Men, animals, banners and markers use the 8 x 11 `$33000` frames at every zoom; only
+their positions scale. Port: `Sprites.propSheet`. Evidence in §5.
+
 Still open: per-category frame *counts*; the `$11886` goods table (byte6 16 =
 `$1192e`, loops `[$4e514 + record[14]]` goods[0..7]); byte6 1/15 (`$312a0`)
-detail; the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`); the zoom-dependent
-branches of `$12244`.
+detail; the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`).
 
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 

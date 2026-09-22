@@ -1,16 +1,15 @@
 namespace PmLogic
 
-/// Port of PowerMonger's terrain rasteriser: pm_grid_walk_q3 ($fccc, yaw
-/// 0xf0/quadrant 3) + pm_tri_raster ($ef62) + the $e420 16.16 DDA span walker
-/// + the $e3e6/$e420 dither fill. See ../../SPEC.md section 4.
+/// Port of PowerMonger's terrain rasteriser: the four yaw-quadrant grid walks
+/// ($f98e / $fa9a / $fbb4 / $fccc) + pm_tri_raster ($ef62) + the $e420 16.16
+/// DDA span walker + the $e3e6/$e420 dither fill. See ../../SPEC.md section 4.
 ///
-/// This is a 1:1 port of tools/pm_render_ref.py's walk_q3 / ef62_raster /
-/// _fixed_slope / _dda_walk / dither_index (80th pass closed both the DDA and
-/// the dither phase's mod-128 wrap — there is no DITHER_COLOUR_BIAS fudge or
-/// float+floor() span left to carry over; that was the stated blocker for
-/// this file in the 76th/79th passes). Scored ~94% exact / ~95% within ±1
-/// palette index against the game's own frame buffer (SPEC.md verification
-/// status). No Godot reference — see PmLogic.fsproj's rationale comment.
+/// A 1:1 port of tools/pm_render_ref.py's walk_q0..q3 / ef62_raster /
+/// _fixed_slope / _dda_walk / dither_index, with no fudge factors: the DDA and
+/// the dither phase's mod-128 wrap were both single-stepped live. Away from
+/// sprites the terrain matches the game's own frame buffer at over 99% of
+/// pixels (SPEC.md sections 4-6). No Godot reference — see PmLogic.fsproj's
+/// rationale comment.
 module Fill =
 
     [<Literal>]
@@ -62,7 +61,7 @@ module Fill =
                 ((adx <<< 16) / dy) &&& 0xFFFF
         if dx < 0 then -v else v
 
-    /// $e3e6 setup + the $e420/$e44a roll. Live single-stepped (80th pass):
+    /// $e3e6 setup + the $e420/$e44a roll. Live single-stepped:
     /// A5 wraps MODULO 128 inside the colour's 128-byte slot (the $e44a
     /// roll's `addq.b #8` on `2*A5` byte-overflows at `A5 & 0x7f == 124`), so
     /// the phase depends only on colourByte and the absolute scanline y — the
@@ -169,7 +168,7 @@ module Fill =
     ///   * per-edge 16.16 slope via fixedSlope ($f000)
     ///   * "force colourByte 0x1c" on reversed winding ($f072/$f154): general
     ///     -> mid vertex already LEFT (slope(top->bot) > slope(top->mid)); flat-
-    ///     top -> right apex X < left. Back-facing; mostly overdrawn (118th).
+    ///     top -> right apex X < left. Back-facing; mostly overdrawn.
     ///   * the mid-vertex slope switch: the edge on the mid vertex's side
     ///     reloads to slope(mid->bot) at scanline (mid.y - top.y) — run-
     ///     counter expiry ($e42a/$e43e), consuming record[20]/[22]. Both
@@ -244,19 +243,22 @@ module Fill =
                     Walked(colour2, totalRows, aborted)
                 else Skipped "both edges have the same slope"
 
-    // -- the grid walk as a draw plan (118th) -------------------------------
-    // Each quadrant handler makes two decisions: the order it visits the 8x8
+    // -- the grid walk as a draw plan -----------------------------------------
+    // Each quadrant handler makes two decisions: the order it visits the n x n
     // cells (far -> near), and how it splits each cell into two triangles.
     // planQn returns both as data, a Cell list in exact draw order, and `walk`
     // just draws it. Nothing is reordered: drawing the plan is byte-identical
-    // to the old direct walk (scratchpad/pm118/baseline.fsx, all 16 yaws x 5
-    // cams x 2 ticks). The plan exists so a viewer can replay the frame one
-    // triangle at a time, and so Scene.fs can put each cell's sprites straight
-    // after its triangles, as $f898 does.
+    // to a direct walk (scratchpad/pm118/baseline.fsx, all 16 yaws x 5 cams x
+    // 2 ticks). The plan exists so a viewer can replay the frame one triangle
+    // at a time, and so Scene.fs can put each cell's sprites straight after
+    // its triangles, as $f898 does.
     //
-    // Every handler is two nested 8-step loops. Below, `strip` is the outer
-    // loop and `i` the inner one; each handler differs only in how (strip, i)
-    // maps to the cell's (row, col) and in its split rule.
+    // Every handler is two nested n-step loops, n = 2 * Half cells (8 at the
+    // default zoom). Both loop counts are [$fdf0] + 1 and every start offset
+    // and plane stride is one of the $fe04 geometry words (the corner buffer's
+    // row stride is a fixed 64 bytes), so the same code serves all seven zooms. Below, `strip` is the outer loop and `i` the inner one;
+    // each handler differs only in how (strip, i) maps to the cell's
+    // (row, col) and in its split rule.
 
     /// One triangle as the walk hands it to $ef62: three projected corners
     /// (in the order passed, which $ef62's cyclic sort depends on) and the raw
@@ -281,16 +283,13 @@ module Fill =
     /// One cell visit, in walk order.
     type Cell =
         { X: int; Y: int         // world cell
-          Row: int; Col: int     // its top-left corner in the 9x9 projected grid
-          Order: int             // position in the walk, 0..63 = strip * 8 + i
+          Row: int; Col: int     // its top-left corner in the (n+1) x (n+1) projected grid
+          Strip: int             // outer-loop pass 0..n-1: the far -> near strip it belongs to
+          InStrip: int           // inner-loop index 0..n-1 within its strip
+          Order: int             // position in the walk, 0..n*n-1 = strip * n + i
           Quad: Quad
           First: Tri             // drawn first ...
           Second: Tri }          // ... then this one over it
-
-        /// Outer-loop pass 0..7: the far -> near strip of 8 cells it belongs to.
-        member c.Strip = c.Order / 8
-        /// Inner-loop index 0..7 within its strip.
-        member c.InStrip = c.Order % 8
 
     let private tri a b c colour = { A = a; B = b; C = c; Colour = colour }
 
@@ -298,10 +297,14 @@ module Fill =
     let private packed (c: Projection.Corner) =
         (int (System.Math.Round(c.X: float)) <<< 16) ||| (int (System.Math.Round(c.Y: float)) &&& 0xFFFF)
 
+    /// Cells per side of the window: one less than the corner grid.
+    let cellsPerSide (corners: Projection.Corner[,]) = Array2D.length1 corners - 1
+
     /// Build the Cell the loops reach at (strip, i), which sits at grid
     /// position (row, col), splitting it with `split`.
     let private visit (corners: Projection.Corner[,]) (map: Terrain.Map) (camX: int) (camY: int)
                       (split: Quad -> Tri * Tri) (strip: int, i: int) (row: int, col: int) : Cell =
+        let n = cellsPerSide corners
         let x, y = camX + col, camY + row
         let q =
             { C00 = corners.[row, col];     C10 = corners.[row, col + 1]
@@ -309,16 +312,17 @@ module Fill =
               TypeByte = map.TypeAt(x, y); HeightByte = map.HeightAt(x, y)
               Diagonal = map.DiagonalSelector(x, y) }
         let first, second = split q
-        { X = x; Y = y; Row = row; Col = col; Order = strip * 8 + i; Quad = q; First = first; Second = second }
+        { X = x; Y = y; Row = row; Col = col; Strip = strip; InStrip = i; Order = strip * n + i
+          Quad = q; First = first; Second = second }
 
     /// pm_grid_walk_q3 ($fccc), yaw 0xf0 (quadrant 3). `corners` is the
-    /// projected 9x9 grid from Projection.projectGrid — gr,gc both 0..2*Half,
+    /// projected grid from Projection.projectGrid — gr,gc both 0..2*Half,
     /// which is exactly $3f364's own (row,col) layout, so it plugs in
     /// directly (no re-indexing needed).
     ///
     ///   strip = cell column, EAST -> WEST (far -> near)
     ///   i     = cell row,    NORTH -> SOUTH (far -> near)
-    ///   (row, col) = (i, 7 - strip)
+    ///   (row, col) = (i, n-1 - strip)   ; start offset col n-1 ($fe02)
     ///   flag CLEAR: split C00-C11, unconditional:
     ///     ef62(C10,C11,C00,type) ; ef62(C01,C00,C11,height)
     ///   flag SET: split C10-C01, sub-order by packed(C01) <= packed(C10)
@@ -330,13 +334,13 @@ module Fill =
                 tri q.C00 q.C10 q.C01 q.HeightByte, tri q.C11 q.C01 q.C10 q.TypeByte
             else
                 tri q.C11 q.C01 q.C10 q.TypeByte, tri q.C00 q.C10 q.C01 q.HeightByte)
-        [ for strip in 0 .. 7 do
-            for i in 0 .. 7 -> visit (strip, i) (i, 7 - strip) ]
+        let n = cellsPerSide corners
+        [ for strip in 0 .. n - 1 do
+            for i in 0 .. n - 1 -> visit (strip, i) (i, n - 1 - strip) ]
 
-    /// pm_grid_walk_q0 ($f98e -- NOT $f98c; powermonger.sym's old address was
-    /// 2 bytes low, landing on the tail of the jump table itself, fixed 83rd
-    /// pass), yaw in {$00,$10,$20,$30}. Live-trace-verified (83rd,
-    /// scratchpad/pm83_q0c.ram, cell (36,49)): the CLEAR "else" branch's
+    /// pm_grid_walk_q0 ($f98e, from the $f986 jump table; $f98c is 2 bytes
+    /// low, inside the table), yaw in {$00,$10,$20,$30}. Live-trace-verified
+    /// (scratchpad/pm83_q0c.ram, cell (36,49)): the CLEAR "else" branch's
     /// first ef62 call landed with D0=C11 D1=C00 D2=C10 D3=$2c, matching
     /// tri(C11,C00,C10,type) exactly (packed C11 > packed C00 at that cell).
     ///
@@ -355,17 +359,18 @@ module Fill =
                     tri q.C11 q.C00 q.C10 q.TypeByte, tri q.C11 q.C01 q.C00 q.HeightByte
             else
                 tri q.C00 q.C10 q.C01 q.HeightByte, tri q.C11 q.C01 q.C10 q.TypeByte)
-        [ for strip in 0 .. 7 do
-            for i in 0 .. 7 -> visit (strip, i) (strip, i) ]
+        let n = cellsPerSide corners
+        [ for strip in 0 .. n - 1 do
+            for i in 0 .. n - 1 -> visit (strip, i) (strip, i) ]
 
     /// pm_grid_walk_q1 ($fa9a), yaw in {$40,$50,$60,$70}. Live-trace-verified
-    /// (83rd, scratchpad/pm83_q1c.ram, cell (40,50)): the CLEAR branch's
+    /// (scratchpad/pm83_q1c.ram, cell (40,50)): the CLEAR branch's
     /// first ef62 call landed with D0=C01 D1=C00 D2=C11 D3=$29, matching
     /// tri(C01,C00,C11,height) exactly (hgt(40,50) = $29).
     ///
     ///   strip = cell column, WEST  -> EAST  (far -> near)
     ///   i     = cell row,    SOUTH -> NORTH (far -> near)
-    ///   (row, col) = (7 - i, strip)   ; start offset row7,col0
+    ///   (row, col) = (n-1 - i, strip)   ; start offset row n-1, col 0 ($fdf8)
     ///   flag CLEAR: split C00-C11, unconditional
     ///   flag SET: split C10-C01, sub-order by packed(C01) < packed(C10)
     ///     (same diagonal as q3's SET branch, but a STRICT < here)
@@ -377,17 +382,18 @@ module Fill =
                 tri q.C00 q.C10 q.C01 q.HeightByte, tri q.C11 q.C01 q.C10 q.TypeByte
             else
                 tri q.C11 q.C01 q.C10 q.TypeByte, tri q.C00 q.C10 q.C01 q.HeightByte)
-        [ for strip in 0 .. 7 do
-            for i in 0 .. 7 -> visit (strip, i) (7 - i, strip) ]
+        let n = cellsPerSide corners
+        [ for strip in 0 .. n - 1 do
+            for i in 0 .. n - 1 -> visit (strip, i) (n - 1 - i, strip) ]
 
     /// pm_grid_walk_q2 ($fbb4), yaw in {$80,$90,$a0,$b0}. Live-trace-verified
-    /// (83rd, scratchpad/pm83_q2c.ram, cell (40,47)): the CLEAR "if" branch's
+    /// (scratchpad/pm83_q2c.ram, cell (40,47)): the CLEAR "if" branch's
     /// first ef62 call landed with D0=C01 D1=C00 D2=C11 D3=$2b, matching
     /// tri(C01,C00,C11,height) exactly (packed C11 <= packed C00, hgt(40,47) = $2b).
     ///
     ///   strip = cell row,    SOUTH -> NORTH (far -> near)
     ///   i     = cell column, EAST  -> WEST  (far -> near)
-    ///   (row, col) = (7 - strip, 7 - i)   ; start offset row7,col7
+    ///   (row, col) = (n-1 - strip, n-1 - i)   ; start offset row n-1, col n-1 ($fe00)
     ///   flag CLEAR: split C00-C11, sub-order by packed(C11) <= packed(C00)
     ///     (mirrors q0's CLEAR branch)
     ///   flag SET: split C10-C01, unconditional
@@ -400,14 +406,15 @@ module Fill =
                     tri q.C10 q.C11 q.C00 q.TypeByte, tri q.C01 q.C00 q.C11 q.HeightByte
             else
                 tri q.C11 q.C01 q.C10 q.TypeByte, tri q.C00 q.C10 q.C01 q.HeightByte)
-        [ for strip in 0 .. 7 do
-            for i in 0 .. 7 -> visit (strip, i) (7 - strip, 7 - i) ]
+        let n = cellsPerSide corners
+        [ for strip in 0 .. n - 1 do
+            for i in 0 .. n - 1 -> visit (strip, i) (n - 1 - strip, n - 1 - i) ]
 
     /// port of $f97e/$f982's dispatch: q = ((yaw+8)>>5)&6, handler = q>>1.
     /// yaw here is yawSteps*16 (Projection.Params.YawSteps, 0..15).
     let quadrant (yawSteps: int) = (((yawSteps * 16 + 8) >>> 5) &&& 6) >>> 1
 
-    /// The whole frame's terrain as a draw plan: the 64 cells in the order
+    /// The whole frame's terrain as a draw plan: the n x n cells in the order
     /// the quadrant handler for this yaw visits them.
     let plan (corners: Projection.Corner[,]) (map: Terrain.Map) (camX: int) (camY: int) (yawSteps: int) =
         let handler = [| planQ0; planQ1; planQ2; planQ3 |].[quadrant yawSteps]

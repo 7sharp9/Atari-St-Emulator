@@ -10,7 +10,7 @@ renderer, a porting spec, and a toolchain skeleton.
 |------|------|
 | `assets/` | everything the iso renderer reads, extracted from a live RAM image. `manifest.json` gives one line of provenance per file. |
 | `SPEC.md` | the porting contract: coordinate systems, projection with exact constants, the triangle/dither rasteriser, sprites, zoom, the frame pipeline, and what a modern port should replace. Written to be implementable without the disassembly. |
-| `godot/` | Godot 4.x (.NET) + F# skeleton, **running live**. `godot/logic/Fill.fs` ports the closed rasteriser (`ef62_raster` + the `$e420` DDA + the dither fill) and all 4 yaw-quadrant grid walks (`planQ0`-`planQ3`, dispatched by `plan`/`walk`); `godot/logic/Scene.fs` interleaves each cell's sprites after its triangles, as the game does; `godot/game/TerrainView.cs` wires it into a real scene — arrow keys pan the camera, PageUp/PageDown rotate it through all 16 yaw steps. |
+| `godot/` | Godot 4.x (.NET) + F# skeleton, **running live**. `godot/logic/Fill.fs` ports the closed rasteriser (`ef62_raster` + the `$e420` DDA + the dither fill) and all 4 yaw-quadrant grid walks (`planQ0`-`planQ3`, dispatched by `plan`/`walk`) at any zoom; `godot/logic/Season.fs` the seasons' grass colours; `godot/logic/Scene.fs` interleaves each cell's sprites after its triangles, as the game does; `godot/game/TerrainView.cs` wires it into a real scene — arrow keys pan the camera, PageUp/PageDown rotate it through all 16 yaw steps, Y cycles the season. |
 | `stepper/` | Slow-motion replay of one frame in the game's own draw order, a triangle or sprite at a time (Mibo.Raylib, F# only, same `PmLogic` code). See "Frame stepper" below. |
 
 ## Frame stepper
@@ -18,17 +18,22 @@ renderer, a porting spec, and a toolchain skeleton.
 ```
 cd stepper
 dotnet run                                   # window
-dotnet run -- --selfcheck                    # replay == Scene.render, all 16 yaws
+dotnet run -- --selfcheck                    # replay == Scene.render: 16 yaws, zooms 1-7
 dotnet run -- --export <dir> [cell|strip|shape]  # one PNG per chunk boundary (3x)
-dotnet run -- --shot <png> <step> [g] [n] [yN]  # window at a step (yaw N), screenshot, exit
+dotnet run -- --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]
+                                             # window at a step, screenshot, exit:
+                                             # yaw N, season N, zoom N, camera cell X,Y
 ```
 
 Keys: Space play/pause; Right/Left one triangle or sprite; Down/Up one cell;
-PgDn/PgUp one strip (one pass of the walk's outer loop, 8 cells); Home/End;
-`+`/`-` speed; Q/E rotate the camera; G the projected corner grid; N each
-cell's position in the walk. Sprites exist at the camera cell `entities.json`
-was captured at (mission-1 start, cell 36,47), at every yaw; the dither phase
-flips on each rotation, as `$f898` does.
+PgDn/PgUp one strip (one pass of the walk's outer loop, 2 x zoom cells);
+Home/End; `+`/`-` speed; W/A/S/D move the camera a cell; Q/E rotate it;
+`[`/`]` zoom in/out (1-7, keeping the centre cell, as `$13f60` does); Y the
+next season; G the projected corner grid; N each cell's position in the walk;
+B the `$78000` backdrop. It opens on the view `entities.json` was captured in
+(mission-1 start: cell 36,47, yaw 15, zoom 4, season 2). The records cover
+the whole map, so every camera cell has its sprites. Moving, rotating or
+zooming flips the dither phase, as `$f898` does; a season change does not.
 
 `Replay.build` draws each `Scene.Step` on its own into a `Fill.Buffer.Logged()`
 buffer, which records every pixel write in order (spans top row first, left to
@@ -52,6 +57,52 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (119th pass) — seasons, pan and zoom
+
+**Seasons** (`SPEC.md` §4 "Seasons"). `word[$57fd0]` is a season, 0/2/4/6. At
+world build `$1ab60` copies one of three source versions of the grass slots
+`$1d`-`$2e`, held inside the pattern table itself, over the live slots. Every
+tick `$1abaa` fades 16 pixels towards the season's source through a 13-bit
+LCG, and advances the season when the LCG wraps, 512 ticks later. The tree
+frames (`+{0,3,6,9}` at `$116c6`) follow `$57fd0` at once. `Season.fs` ports
+both routines. `Season.fading` reproduces the whole 16 KB table byte for byte
+on seven captures, and the Hatari screenshots match settled season 2 at
+88-89% of terrain pixels. `assets/dither.bin` needs no per-season export: the
+live slots are recomputed from the sources it already holds. The earlier
+mismatch between `dither.bin` (pm74_late) and `entities.json` (pm88_f1) came
+from the game itself: `pm88_f1` is one tick into the fade into season 2, so it
+shows season 1's grass under season 2's trees.
+
+**Pan.** `export_entities` now reads `pm88_f1` itself (`--entities-ram`) and
+walks the whole map's buckets (276 records, each with its address).
+`Sprites.recordJitter` recomputes the building/tree jitter for the camera
+window; it reproduces the 53 stored jitters at the capture camera. At two
+cells panned in the emulator, the exported records draw the same frame as the
+capture's own records. `sprites/sprite_triggers.json` is hand-maintained;
+`pm_export.py` no longer overwrites it.
+
+**Zoom** (`SPEC.md` §5). `$57ffc` is the zoom index and HALF; `$13f60` sets it
+with `$ff9c = $13f82[index]` and the `$fe04` geometry. The walks take their
+loop counts and start offsets from that geometry, so `Fill.planQ*` is the same
+code over N x N cells. `$12244` draws buildings and trees from a 32 x 32
+(zoom 1-3), 32 x 24 (4-5) or 16 x 16 (6-7) copy of the art;
+`sprites/prop32_sheet_raw.bin` is the new 32 x 32 export, and each sheet holds
+27 frames. Against emulator captures at zooms 1-7, terrain away from sprites
+matches 99.2-99.7% and sprite pixels 74-84%.
+
+Gates: `stepper --selfcheck` 23/23 (16 yaws + zooms 1-7); `scratchpad/pm118/
+baseline.fsx` identical (160 terrain hashes + entities at zoom 4);
+`order_test.fsx` unchanged (96.80 / 97.83 / 96.57 / 94.26). Scripts:
+`scratchpad/pm119/` (`season_check.fsx`, `pan_check.fsx`, `zoom_check.fsx`,
+`jitter_check.fsx`). Screenshots: `assets/reference/stepper_seasons_119th.png`,
+`stepper_zoom_119th.png`.
+
+Open: `Projection.projectGrid` is float and agrees with the game's corners to
+within a pixel at 78-95% of vertices (an exact integer reconstruction exists in
+`scratchpad/pm92/proj_ref.py`); Godot stays at zoom 4; a mid-render capture
+records the tick after the one its displayed frame used, so scorers try all
+four water ticks.
+
 ## Verification status (118th pass) — the frame as a draw plan; sprites drawn inline
 
 `Fill.plan` returns the terrain walk as data (64 `Cell`s in draw order, two
@@ -74,16 +125,17 @@ pixel for pixel on `pm88_f1`. Away from sprites the terrain matches the game at
 `tools/pm_export.py` `export_entities` now also emits, into `assets/entities.json`:
 
 - `render_entities[]` — one frame's `$47970` per-cell bucket walk (the SIGNED
-  `$51b66` offset, the `fx4/fy4` address-jitter, the `byte6`/`b5`/`b7`/`b14`/
-  `b17`/`b31`/`group`/world-cell fields). **Byte-identical to
-  `tools/pm_render_ref.py` `load_ram`'s** entity block (checked directly).
+  `$51b66` offset, the record address, the `byte6`/`b5`/`b7`/`b14`/
+  `b17`/`b31`/`group`/world-cell fields), the same chain parse as
+  `tools/pm_render_ref.py` `load_ram`'s entity block. It covers the whole map;
+  the building/tree jitter is computed per camera (`Sprites.recordJitter`).
 - `entity_ctx` — the per-frame `Sprites.drawEntities` constants (yaw / anim /
   sel_group / tile_off / rot_phase / sheet paths), baked for the mission-1 start
   pose (cam 36,47, yaw `$f0`).
 
 `Sprites.drawEntitiesArr` (a C#-friendly array wrapper on `drawEntities`) is
 called from `TerrainView.cs` right after `Fill.walk`, into the same
-`Fill.Buffer`, gated on the live camera matching that pose. Feeding it the real
+`Fill.Buffer` (now `Scene.render`, at every camera cell). Feeding it the real
 53-record stream + the `$3f364` corners from `pm88_f1.ram` produces a
 covered-pixel set **byte-identical to `pm_render_ref.draw_entities`** —
 2881/2881 px, all ported `byte6` in {0,4,6,8,14,24}
