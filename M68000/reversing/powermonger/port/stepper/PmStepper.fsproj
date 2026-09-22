@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Slow-motion replay of one PowerMonger iso frame, drawn by the same
+       PmLogic code the Godot port uses. Mibo.Raylib is the host: a pure F#
+       window with no engine editor, so the whole viewer reads as F#. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- Raylib.ImageDrawPixel / ImageResizeNN take the Image by reference
+         (&img); F# flags that as unverifiable byref use. -->
+    <NoWarn>$(NoWarn);FS0009</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Load.fs" />
+    <Compile Include="Replay.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\godot\logic\PmLogic.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Mibo.Raylib" Version="4.5.3" />
+    <!-- Mibo.Raylib 4.5.3 needs FSharp.Core >= 10.1.400; the SDK default is older. -->
+    <PackageReference Update="FSharp.Core" Version="10.1.400" />
+  </ItemGroup>
+
+</Project>

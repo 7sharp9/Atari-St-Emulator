@@ -9,7 +9,7 @@ namespace PowerMongerPort;
 /// Software-layer terrain renderer: shape (1) of SPEC.md section 8 / README
 /// "Next steps" item 1. Every frame (only redrawn when the camera cell moves)
 /// it runs the real 68000 pipeline in F# — Projection.projectGrid ($fecc) then
-/// Fill.walkQ3 ($fccc quadrant 3 -> $ef62 -> the $e420 DDA + dither fill) —
+/// Fill.walk (planQ0..planQ3, e.g. $fccc quadrant 3 -> $ef62 -> the $e420 DDA + dither fill) —
 /// into a 320x200 palette-index buffer, then blits that through the captured
 /// shifter palette into an Image/ImageTexture shown on a TextureRect. This is
 /// the closest shape to PM's own direct-to-shifter pipeline and is the only
@@ -19,9 +19,9 @@ namespace PowerMongerPort;
 /// now ported (Fill.walk dispatches on yawSteps the same way $f97e/$f982
 /// does — see SPEC.md section 4 "the yaw-quadrant grid walk"), so PageUp/
 /// PageDown rotate the camera through all 16 yaw steps live.
-/// Uncovered pixels (the $78000 master: HUD, stone border, pre-baked sea) are
-/// not exported yet (Task 2, SPEC.md section 6/9) so they are left magenta,
-/// same "uncovered" convention as assets/reference/render_faithful.png.
+/// Uncovered pixels show the $78000 master (assets/backdrop.bin: HUD, stone
+/// border, the ruins backdrop, the baked minimap), as in the game; magenta
+/// only if that asset is missing.
 /// Arrow keys pan the camera cell to prove the wiring is live, not a single
 /// static blit — see README.md "Verification (82nd pass)".
 /// </summary>
@@ -39,12 +39,17 @@ public partial class TerrainView : Node2D
     private Terrain.Map _map = null!;  // set in _Ready, before any other use
     private byte[] _dither = System.Array.Empty<byte>();
     private Color[] _palette = new Color[16];
+    // The $78000 master (HUD, border, the ruins backdrop, the baked minimap):
+    // every game frame starts from it. assets/backdrop.bin, screen space.
+    private byte[] _backdrop = System.Array.Empty<byte>();
 
     // Per-cell entity pass (SPEC.md section 6 / Task 2). entities.json's
     // render_entities[] is one frame's $47970 bucket walk, baked for the
     // mission-1 start pose (cam 36,47 yaw 15) by tools/pm_export.py — byte-exact
-    // against tools/pm_render_ref.py load_ram. Only drawn when the live camera
-    // matches that pose (the records carry that pose's sub-cell fractions).
+    // against tools/pm_render_ref.py load_ram. Drawn whenever the live camera is
+    // at that camera cell, at any yaw: the prop jitter depends on the cell, the
+    // sub-cell position follows the rotated corners, and the yaw only picks
+    // facing frames (checked against the game at yaws $40/$90/$c0, SPEC.md 6).
     private Sprites.EntityRec[] _entRecs = System.Array.Empty<Sprites.EntityRec>();
     private byte[] _sheet33 = System.Array.Empty<byte>();
     private byte[] _sheetProp = System.Array.Empty<byte>();
@@ -54,11 +59,14 @@ public partial class TerrainView : Node2D
     private TextureRect _rect = null!; // set in _Ready
     private Label _label = null!;      // set in _Ready
     private int _camX, _camY, _yawSteps;
+    // $f898 flips the dither read pointer by 64 bytes each time a camera change
+    // makes it re-project ($f8e4 bchg #7,$ffa5); see Fill.withPhase.
+    private int _ditherPhase;
 
     // Eye 320, Horizon 130, Zoom 21, Half 4 (zoom index 4) — only YawSteps varies live.
     private PmProjection.Params Proj => PmProjection.Params.Mission1.WithYaw(_yawSteps);
 
-    // grid walk reads cells [camX .. camX+7] x [camY .. camY+7] (Fill.walkQ3) and
+    // grid walk reads cells [camX .. camX+7] x [camY .. camY+7] (Fill.plan) and
     // projects corners [camX .. camX+8] x [camY .. camY+8] (Projection.projectGrid,
     // n = 2*Half+1 = 9) — clamp so both stay inside the 64x128 terrain planes.
     private const int MinCamX = 0, MaxCamX = Terrain.Width - 9;
@@ -74,6 +82,7 @@ public partial class TerrainView : Node2D
         }
         _map = Terrain.parse(terrainRaw);
         _dither = FileAccess.GetFileAsBytes($"{AssetsDir}/dither.bin");
+        _backdrop = FileAccess.GetFileAsBytes($"{AssetsDir}/backdrop.bin");
         LoadPalette($"{AssetsDir}/palette.json");
         LoadEntities($"{AssetsDir}/entities.json");
 
@@ -108,6 +117,7 @@ public partial class TerrainView : Node2D
         _camX = nx;
         _camY = ny;
         _yawSteps = nyaw;
+        _ditherPhase ^= 64;
         RenderFrame();
     }
 
@@ -158,22 +168,26 @@ public partial class TerrainView : Node2D
         var proj = Proj;
         var corners = PmProjection.projectGrid(proj, _map, _camX, _camY);
         var buf = Fill.Buffer.Create();
-        Fill.walk(buf, _dither, corners, _map, _camX, _camY, 0, _yawSteps);
 
-        // Per-cell entity pass (SPEC.md section 6 / Task 2): Sprites.drawEntities
-        // replays $115e0 as a post-terrain far->near pass, byte-exact against
-        // tools/pm_render_ref.py draw_entities. The records in entities.json are
-        // baked for the mission-1 start pose, so only draw them when the live
-        // camera is at that pose. drawEntities writes into `buf` in the same
-        // RAW $3f364 coordinate space Fill.walk uses, so the XInset shift below
-        // then places terrain and sprites together.
-        bool entPose = _camX == _entCamX && _camY == _entCamY && _yawSteps * 16 == _entYaw;
+        // Terrain + the per-cell entity pass (SPEC.md section 6). Scene.render
+        // draws each cell's sprites straight after its two triangles, the way
+        // $f898 calls $115e0 inline (118th: scored against three captured
+        // frames, the game's screen matches this order, not sprites-last).
+        // The records in entities.json are baked for the mission-1 start camera
+        // cell, so they are drawn when the camera is on that cell. Both
+        // paths write RAW $3f364 coordinates, so the XInset shift below places
+        // terrain and sprites together.
+        bool entPose = _camX == _entCamX && _camY == _entCamY;
         if (entPose && _entRecs.Length > 0)
         {
             var ectx = new Sprites.EntityCtx(
-                _entYaw, _entAnim, _entSelGroup, _entTileOff, _entRotPhase,
+                _yawSteps * 16, _entAnim, _entSelGroup, _entTileOff, _entRotPhase,
                 _sheet33, _sheetProp, System.Array.Empty<byte>());
-            Sprites.drawEntitiesArr(buf, ectx, corners, _camX, _camY, _entRecs);
+            Scene.render(buf, Fill.withPhase(_dither, _ditherPhase), 0, ectx, corners, _map, _camX, _camY, _yawSteps, _entRecs);
+        }
+        else
+        {
+            Fill.walk(buf, Fill.withPhase(_dither, _ditherPhase), corners, _map, _camX, _camY, 0, _yawSteps);
         }
 
         // Fill.Buffer is in RAW $3f364 coordinates (0..255, same space $ef62's
@@ -192,7 +206,11 @@ public partial class TerrainView : Node2D
             {
                 int bx = x - XInset;
                 bool covered = bx >= 0 && bx < Fill.ScreenWidth && buf.Covered[y * Fill.ScreenWidth + bx];
-                img.SetPixel(x, y, covered ? _palette[buf.Index[y * Fill.ScreenWidth + bx] & 0x0f] : Uncovered);
+                Color c = covered ? _palette[buf.Index[y * Fill.ScreenWidth + bx] & 0x0f]
+                        : _backdrop.Length == Fill.ScreenWidth * Fill.ScreenHeight
+                            ? _palette[_backdrop[y * Fill.ScreenWidth + x] & 0x0f]
+                            : Uncovered;
+                img.SetPixel(x, y, c);
             }
         }
         // HUD world minimap (SPEC.md section 9 item 6): the game bakes this into
@@ -201,6 +219,9 @@ public partial class TerrainView : Node2D
         // (the from-scratch stand-in for $13b9a's $418ae buffer -- ~94% of the
         // baked pixels). A real port would also overlay the camera viewport box
         // and the lord dots (an event-driven pass, not yet reversed).
+        // The backdrop already carries the exact baked minimap, so the
+        // approximation is only drawn without it.
+        if (_backdrop.Length == 0)
         for (int wy = 0; wy < Terrain.Height; wy++)
         for (int wx = 0; wx < Terrain.Width; wx++)
         {
@@ -223,14 +244,14 @@ public partial class TerrainView : Node2D
             }
         }
 
-        // (The per-cell entity pass ran above, right after Fill.walk, so its
-        // sprites are already in `buf` and go through the same XInset blit.)
+        // (The entity pass ran above, inside Scene.render, so its sprites are
+        // already in `buf` and go through the same XInset blit.)
 
         _rect.Texture = ImageTexture.CreateFromImage(img);
         int yaw = _yawSteps * 16;
         int quadrant = (((yaw + 8) >> 5) & 6) >> 1;
         _label.Text = $"camCell ({_camX},{_camY}) yaw {_yawSteps}/16 (${yaw:x2}, {QuadrantNames[quadrant]}) — "
-                      + $"{(entPose ? _entRecs.Length + " entities" : "entities: pan to start pose")} — "
+                      + $"{(entPose ? _entRecs.Length + " entities" : "entities: pan to the start cell")} — "
                       + "arrows pan, PgUp/PgDn rotate";
     }
 }

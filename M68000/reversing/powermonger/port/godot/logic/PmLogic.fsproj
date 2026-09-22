@@ -18,6 +18,7 @@
     <Compile Include="Projection.fs" />
     <Compile Include="Fill.fs" />
     <Compile Include="Sprites.fs" />
+    <Compile Include="Scene.fs" />
   </ItemGroup>
 
 </Project>

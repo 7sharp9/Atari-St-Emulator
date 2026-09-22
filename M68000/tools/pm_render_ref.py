@@ -545,6 +545,11 @@ def _entity_frame(o, ent, yaw):
         if o["b5"] > 0:
             return ("33", 0x14E + (ent["ram"][0x57FED] & 1), 8, 11)
         return ("33", 0x150, 8, 11)
+    if b6 == 2:                                    # settlement building ($117d8)
+        # frame record[7] from $37c7c, no tile-set offset; r7 == 0x0a also
+        # draws a $119b2 overlay (not ported)
+        r7 = o["b7"]
+        return ("prop", r7, 32, 24) if r7 != 0x0A and r7 < 28 else None
     if b6 == 4:                                    # building / tree ($37c7c)
         r7 = o["b7"]
         if r7 == 0x0D:                             # $116a8 special-case
@@ -585,21 +590,28 @@ def _packed_lerp(c00, c10, c01, c11, fx, fy):
 # capture (Task 1) to composite for real. b6 == 8 (animal, 0x117 + facing*2) is
 # also verified (D2 0x123/0x124 at $11ab6) but small; b6 == 24 (settlement
 # marker, r7 + 0x100, centroid-positioned) is disasm-derived, not composited.
-COMPOSITE_CATS = frozenset({14})
+# All ported categories are composited. Drawn inline (the game's order, see
+# _cell_done) they each raise the score against the game's frame; the old
+# {14}-only setting was a symptom of drawing sprites after all the terrain.
+COMPOSITE_CATS = None
 
 
-def draw_entities(idxbuf, cov, R, ecov, cats=COMPOSITE_CATS):
-    """Composite the object records over the finished terrain layer, per cell,
-    far->near (walk_q3 order for yaw 0xf0). `ecov` marks entity pixels so the
-    score can be split terrain-only vs terrain+entities. `cats` limits which
-    byte-6 values are actually drawn (None = all that _entity_frame handles)."""
+def draw_cell_entities(idxbuf, cov, R, ecov, row, col, cats=None):
+    """$115e0 for one cell: draw every record in the cell's $47970 bucket over
+    whatever is in the buffer so far. The walk handlers call this right after
+    the cell's two triangles (via _cell_done), so nearer terrain covers farther
+    sprites. `ecov` marks entity px; `cats` limits which byte6 values paint
+    (None = all that _entity_frame handles)."""
     ent = R["ent"]
     cn = R["corners"]
     cx0, cy0 = R["cam"]
     yaw = R["yaw"]
-    by_cell = {}
-    for o in ent["objs"]:
-        by_cell.setdefault((o["wcx"], o["wcy"]), []).append(o)
+    by_cell = R.get("_by_cell")
+    if by_cell is None:
+        by_cell = {}
+        for o in ent["objs"]:
+            by_cell.setdefault((o["wcx"], o["wcy"]), []).append(o)
+        R["_by_cell"] = by_cell
 
     def blit(px, sx, sy):
         for r, rowpx in enumerate(px):
@@ -616,42 +628,61 @@ def draw_entities(idxbuf, cov, R, ecov, cats=COMPOSITE_CATS):
                     cov[i] = 1
                     ecov[i] = 1
 
+    for o in by_cell.get((cx0 + col, cy0 + row), []):
+        if cats is not None and o["b6"] not in cats:
+            continue
+        fr = _entity_frame(o, ent, yaw)
+        if fr is None:
+            continue
+        kind, fi, w, h = fr
+        try:
+            c00 = cn[(row, col)]; c10 = cn[(row, col + 1)]
+            c01 = cn[(row + 1, col)]; c11 = cn[(row + 1, col + 1)]
+        except KeyError:
+            continue
+        if kind == "33":
+            if o["b6"] in (6, 24):
+                # settlement / territory marker: centroid ($1182a),
+                # +0x38/-8 over raw corners == -8/-8 over +64 corners.
+                cx = (c00[0] + c10[0] + c01[0] + c11[0]) >> 2
+                cy = (c00[1] + c10[1] + c01[1] + c11[1]) >> 2
+                px, py = cx - 8 + 4, cy - 8 + 8   # +4/+8 cancels the -4/-8 below
+            else:
+                px, py = _packed_lerp(c00, c10, c01, c11, o["fx"], o["fy"])
+            frame = _decode_frame_byte(ent["sheet33"], fi)
+            blit(frame, px - 4, py - 8)
+        elif o["b6"] == 2:                 # settlement building, $37c7c
+            # $1182a centroid (+0x38/-8 raw) then $12272 (-4, -8): in the
+            # +64-inset corner space, top-left = centroid + (-12, -16)
+            cx = (c00[0] + c10[0] + c01[0] + c11[0]) >> 2
+            cy = (c00[1] + c10[1] + c01[1] + c11[1]) >> 2
+            frame = _decode_frame_word(ent["sheet_prop"], fi, w, h, 480)
+            blit(frame, cx - 12, cy - 16)
+        else:                              # prop ($37c7c, byte6 == 4)
+            # $1168c positions by the SAME sub-cell lerp ($11f1a) as the
+            # men, with an address-jitter fx/fy (fx4/fy4). $11f1a adds
+            # (+0x3c, -8); $12272 then adds (-4, -8). Net anchor in the
+            # +64-inset corner space: (lerpX - 8, lerpY - 16).
+            px, py = _packed_lerp(c00, c10, c01, c11, o["fx4"], o["fy4"])
+            frame = _decode_frame_word(ent["sheet_prop"], fi, w, h, 480)
+            blit(frame, px - 8, py - 16)
+
+
+def _cell_done(R, row, col):
+    """Called by every walk handler after a cell's two triangles; draws that
+    cell's sprites when R["after_cell"] is set (the game's inline $115e0)."""
+    cb = R.get("after_cell")
+    if cb is not None:
+        cb(row, col)
+
+
+def draw_entities(idxbuf, cov, R, ecov, cats=COMPOSITE_CATS):
+    """Sprites-last: every cell's sprites after the whole terrain, in q3 cell
+    order. Not what the game does (it draws them inline, see _cell_done); kept
+    for the 90th/91st F# parity checks against Sprites.drawEntities."""
     for k in range(8):                             # far -> near (E->W)
-        col = 7 - k
         for j in range(8):                         # far -> near (N->S)
-            row = j
-            cx, cy = cx0 + col, cy0 + row
-            for o in by_cell.get((cx, cy), []):
-                if cats is not None and o["b6"] not in cats:
-                    continue
-                fr = _entity_frame(o, ent, yaw)
-                if fr is None:
-                    continue
-                kind, fi, w, h = fr
-                try:
-                    c00 = cn[(row, col)]; c10 = cn[(row, col + 1)]
-                    c01 = cn[(row + 1, col)]; c11 = cn[(row + 1, col + 1)]
-                except KeyError:
-                    continue
-                if kind == "33":
-                    if o["b6"] in (6, 24):
-                        # settlement / territory marker: centroid ($1182a),
-                        # +0x38/-8 over raw corners == -8/-8 over +64 corners.
-                        cx = (c00[0] + c10[0] + c01[0] + c11[0]) >> 2
-                        cy = (c00[1] + c10[1] + c01[1] + c11[1]) >> 2
-                        px, py = cx - 8 + 4, cy - 8 + 8   # +4/+8 cancels the -4/-8 below
-                    else:
-                        px, py = _packed_lerp(c00, c10, c01, c11, o["fx"], o["fy"])
-                    frame = _decode_frame_byte(ent["sheet33"], fi)
-                    blit(frame, px - 4, py - 8)
-                else:                              # prop ($37c7c, byte6 == 4)
-                    # $1168c positions by the SAME sub-cell lerp ($11f1a) as the
-                    # men, with an address-jitter fx/fy (fx4/fy4). $11f1a adds
-                    # (+0x3c, -8); $12272 then adds (-4, -8). Net anchor in the
-                    # +64-inset corner space: (lerpX - 8, lerpY - 16). 89th.
-                    px, py = _packed_lerp(c00, c10, c01, c11, o["fx4"], o["fy4"])
-                    frame = _decode_frame_word(ent["sheet_prop"], fi, w, h, 480)
-                    blit(frame, px - 8, py - 16)
+            draw_cell_entities(idxbuf, cov, R, ecov, j, 7 - k, cats)
 
 
 # ---------------------------------------------------------------------------
@@ -852,7 +883,9 @@ def ef62_raster(idxbuf, cov, dith, p0, p1, p2, colour, tick, x_inset=0, phase_bi
 def _dda_walk(idxbuf, cov, dith, colour, top_y, total_rows,
               xL, sL, switchL, sL2, xR, sR, switchR, sR2, x_inset=0, phase_bias=0):
     """port of $e420. Two 16.16 X accumulators stepped one slope per scanline;
-    the switching edge reloads its slope at row `switch`.  Row 0 (top_y) uses
+    the switching edge reloads its slope at row `switch`.  Draws rows
+    0 .. total_rows-1: a zero run count ends the walk before the row is drawn
+    ($e42a/$e43e; the run stream ends with a zero word).  Row 0 (top_y) uses
     the initial X with no step ($e41a `bra $e456`).  Per scanline fill the
     integer span [ixL, ixR]; abort the whole triangle if ixR < ixL
     ($e466 sub / $e468 bra $e41e).
@@ -865,7 +898,7 @@ def _dda_walk(idxbuf, cov, dith, colour, top_y, total_rows,
     win_lo, win_hi = x_inset, x_inset + 0xFF
     pL = xL << 16
     pR = xR << 16
-    for row in range(total_rows + 1):
+    for row in range(total_rows):
         if row:
             pL += sL
             pR += sR
@@ -911,6 +944,7 @@ def walk_q3(idxbuf, cov, R):
     P = R["planes"]
     dith, tick = R["dith"], R["tick"]
     xi = R.get("x_inset", 0)
+    pb = R.get("phase_bias", 0)          # $f8e4 camera-change dither phase
 
     def packed(q):
         return (q[0] << 16) | (q[1] & 0xFFFF)
@@ -928,15 +962,16 @@ def walk_q3(idxbuf, cov, R):
             typ = P["typ"](cx, cy)
             hgt = P["hgt"](cx, cy)
             if not (P["flg"](cx, cy) & 0x80):
-                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi)
-                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi)
+                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi, phase_bias=pb)
+                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi, phase_bias=pb)
             else:
                 if packed(C01) <= packed(C10):
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi, phase_bias=pb)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi, phase_bias=pb)
                 else:
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi, phase_bias=pb)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi, phase_bias=pb)
+            _cell_done(R, row, col)
 
 
 def walk_q0(idxbuf, cov, R):
@@ -969,6 +1004,7 @@ def walk_q0(idxbuf, cov, R):
     P = R["planes"]
     dith, tick = R["dith"], R["tick"]
     xi = R.get("x_inset", 0)
+    pb = R.get("phase_bias", 0)          # $f8e4 camera-change dither phase
 
     def packed(q):
         return (q[0] << 16) | (q[1] & 0xFFFF)
@@ -987,14 +1023,15 @@ def walk_q0(idxbuf, cov, R):
             hgt = P["hgt"](cx, cy)
             if not (P["flg"](cx, cy) & 0x80):
                 if packed(C11) <= packed(C00):
-                    ef62_raster(idxbuf, cov, dith, C00, C11, C01, hgt, tick, x_inset=xi)
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C11, typ, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C00, C11, C01, hgt, tick, x_inset=xi, phase_bias=pb)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C11, typ, tick, x_inset=xi, phase_bias=pb)
                 else:
-                    ef62_raster(idxbuf, cov, dith, C11, C00, C10, typ, tick, x_inset=xi)
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C00, hgt, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C11, C00, C10, typ, tick, x_inset=xi, phase_bias=pb)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C00, hgt, tick, x_inset=xi, phase_bias=pb)
             else:
-                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
-                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
+                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi, phase_bias=pb)
+                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi, phase_bias=pb)
+            _cell_done(R, row, col)
 
 
 def walk_q1(idxbuf, cov, R):
@@ -1018,6 +1055,7 @@ def walk_q1(idxbuf, cov, R):
     P = R["planes"]
     dith, tick = R["dith"], R["tick"]
     xi = R.get("x_inset", 0)
+    pb = R.get("phase_bias", 0)          # $f8e4 camera-change dither phase
 
     def packed(q):
         return (q[0] << 16) | (q[1] & 0xFFFF)
@@ -1035,15 +1073,16 @@ def walk_q1(idxbuf, cov, R):
             typ = P["typ"](cx, cy)
             hgt = P["hgt"](cx, cy)
             if not (P["flg"](cx, cy) & 0x80):
-                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi)
-                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi)
+                ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi, phase_bias=pb)
+                ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi, phase_bias=pb)
             else:
                 if packed(C01) < packed(C10):
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi, phase_bias=pb)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi, phase_bias=pb)
                 else:
-                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
-                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi, phase_bias=pb)
+                    ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi, phase_bias=pb)
+            _cell_done(R, row, col)
 
 
 def walk_q2(idxbuf, cov, R):
@@ -1067,6 +1106,7 @@ def walk_q2(idxbuf, cov, R):
     P = R["planes"]
     dith, tick = R["dith"], R["tick"]
     xi = R.get("x_inset", 0)
+    pb = R.get("phase_bias", 0)          # $f8e4 camera-change dither phase
 
     def packed(q):
         return (q[0] << 16) | (q[1] & 0xFFFF)
@@ -1085,14 +1125,15 @@ def walk_q2(idxbuf, cov, R):
             hgt = P["hgt"](cx, cy)
             if not (P["flg"](cx, cy) & 0x80):
                 if packed(C11) <= packed(C00):
-                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi)
-                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi, phase_bias=pb)
+                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi, phase_bias=pb)
                 else:
-                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi)
-                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi)
+                    ef62_raster(idxbuf, cov, dith, C10, C11, C00, typ, tick, x_inset=xi, phase_bias=pb)
+                    ef62_raster(idxbuf, cov, dith, C01, C00, C11, hgt, tick, x_inset=xi, phase_bias=pb)
             else:
-                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi)
-                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi)
+                ef62_raster(idxbuf, cov, dith, C11, C01, C10, typ, tick, x_inset=xi, phase_bias=pb)
+                ef62_raster(idxbuf, cov, dith, C00, C10, C01, hgt, tick, x_inset=xi, phase_bias=pb)
+            _cell_done(R, row, col)
 
 
 def walk_by_yaw(idxbuf, cov, R):
@@ -1150,28 +1191,27 @@ def render_faithful(ram_path: Path, dom):
     # far). ecov marks entity px for the split score.
     ecov = bytearray(W * H)
     terr_exact, terr_tot = exact, tot
-    # draw_entities' far->near cell bucketing is the q3 walk order; the q0/q1/q2
-    # synthetic-rotation captures also have unreliable reference buffers (86th),
-    # so only composite for q3 (yaw 0xf0).
-    if handler is walk_q3:
-        draw_entities(idxbuf, cov, R, ecov)
+    # Sprites inline, as the game draws them: walk again with the per-cell hook,
+    # so each cell's $47970 bucket is drawn right after its two triangles.
+    idxbuf = bytearray(W * H)
+    cov = bytearray(W * H)
+    R["after_cell"] = lambda row, col: draw_cell_entities(idxbuf, cov, R, ecov, row, col, COMPOSITE_CATS)
+    handler(idxbuf, cov, R)
+    del R["after_cell"]
     exact, near, tot, mine_h, ref_h = _score(idxbuf, cov, ref)
     ep = sum(ecov)
     e_hit = sum(1 for i in range(W * H) if ecov[i] and idxbuf[i] == ref[i])
     parsed = len(R['ent']['objs'])
     drawn = sum(1 for o in R['ent']['objs']
-                if o["b6"] in COMPOSITE_CATS and _entity_frame(o, R['ent'], R['yaw']))
+                if (COMPOSITE_CATS is None or o["b6"] in COMPOSITE_CATS)
+                and _entity_frame(o, R['ent'], R['yaw']))
     from collections import Counter
     b6h = Counter(o["b6"] for o in R['ent']['objs'])
-    print(f"  + entities (byte6 hist {dict(sorted(b6h.items()))}): "
-          f"{parsed} parsed via $47970 buckets, compositing byte6 in "
-          f"{sorted(COMPOSITE_CATS)} -> {drawn} sprites, {ep} px")
+    print(f"  + entities inline (byte6 hist {dict(sorted(b6h.items()))}): "
+          f"{parsed} parsed via $47970 buckets -> {drawn} drawable, {ep} px visible")
     print(f"    terrain+entity exact : {exact} ({100*exact/max(tot,1):.1f}%)  "
           f"(terrain-only was {100*terr_exact/max(terr_tot,1):.1f}%) -- "
           f"{e_hit}/{ep} entity px match ({100*e_hit/max(ep,1):.0f}%)")
-    print(f"    residual: byte6 4 (buildings/trees $37c7c) frame formula +"
-          f" decode + position all verified (89th); not composited -- pm78_settle's"
-          f" two buffers disagree on the entity layer, needs a clean capture.")
 
     # 90th diagnostic: the HUD world minimap ($78000 top-left, baked by $13b9a).
     # Compare our from-the-type-plane raster vs the master's baked one, and vs

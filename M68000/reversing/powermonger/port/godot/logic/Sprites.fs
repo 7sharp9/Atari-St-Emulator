@@ -245,7 +245,7 @@ module Sprites =
     // -- the per-cell entity pass (Task 4) ---------------------------------
     // 87th/88th/89th: $115e0 walks the $47970 cell bucket and dispatches each
     // record on byte6 (even, 0..30). pm_render_ref.py's draw_entities replays
-    // this as a post-terrain far->near pass (walkQ3 cell order); this mirrors
+    // this as a post-terrain far->near pass (fixed q3 cell order); this mirrors
     // that so the two can be cross-checked byte-exact. The blit anchors match
     // pm_render_ref's `_packed_lerp` result plus:
     //   byte6 0/8/14  (sheet $33000, 8x11)  : (px - 4,  py - 8)
@@ -295,6 +295,11 @@ module Sprites =
         | 14 -> Some(false, (r.B5 &&& 0xFF) + 0x13E)
         | 26 -> Some(false, (r.B5 &&& 0xFF) + 0x149 + anim)
         | 28 -> Some(false, (if r.B5 > 0 then 0x14E + (ctx.RotPhase &&& 1) else 0x150))
+        | 2 ->
+            // settlement building ($117d8): frame record[7] from the 32x24
+            // $37c7c sheet, no tile-set offset. record[7] == $0a also draws an
+            // overlay via $119b2 (from record[12]/[16]) -- not ported.
+            if r.B7 <> 0x0A && r.B7 < 28 then Some(true, r.B7) else None
         | 4 ->
             let r7 = r.B7
             let f =
@@ -304,42 +309,76 @@ module Sprites =
             if f < 28 then Some(true, f) else None
         | _ -> None
 
-    /// Blit one entity over `buf`, given its cell's four projected corners
-    /// (same convention as pm_render_ref: +64-inset $3f364 packed corners).
+    /// Where one entity is drawn: its frame, the anchor point the game
+    /// computes from the cell's corners, the rule that picked that anchor,
+    /// and the frame's top-left and size.
+    type Placement =
+        { IsProp: bool          // $37c7c 32x24 word-plane sheet, else $33000 8x11
+          Frame: int
+          AnchorX: int; AnchorY: int
+          Rule: string
+          X: int; Y: int        // blit top-left
+          W: int; H: int }
+
+    /// Place one entity on its cell's four projected corners (same convention
+    /// as pm_render_ref: +64-inset $3f364 packed corners), or None if its
+    /// category draws nothing / is not ported.
+    ///   men / animals / banners : sub-cell lerp at record (fx, fy) ($11f1a), then (-4, -8)
+    ///   markers (6/24)          : cell centroid ($1182a +0x38/-8 over raw
+    ///                             corners == -8/-8 over +64 corners)
+    ///   buildings / trees (4)   : sub-cell lerp at the address jitter ($1168c), then (-8, -16)
+    let placeEntity (ctx: EntityCtx)
+                    (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int)
+                    (r: EntityRec) : Placement option =
+        match entityFrame ctx r with
+        | None -> None
+        | Some(true, fi) when r.B6 = 2 ->
+            // $117d8 -> $1182a centroid (+$38, -8 over raw corners), then
+            // $12244 -> $12272 (-4, -8) at mission-1 zoom ([$57ffc] = 4)
+            let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
+            let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
+            Some { IsProp = true; Frame = fi; AnchorX = cx; AnchorY = cy
+                   Rule = "cell centroid ($117d8 -> $1182a)"
+                   X = cx - 12; Y = cy - 16; W = 32; H = 24 }
+        | Some(true, fi) ->
+            let px, py = packedLerp c00 c10 c01 c11 r.Fx4 r.Fy4
+            Some { IsProp = true; Frame = fi; AnchorX = px; AnchorY = py
+                   Rule = "sub-cell lerp at the address jitter ($1168c)"
+                   X = px - 8; Y = py - 16; W = 32; H = 24 }
+        | Some(false, fi) when r.B6 = 6 || r.B6 = 24 ->
+            let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
+            let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
+            Some { IsProp = false; Frame = fi; AnchorX = cx; AnchorY = cy
+                   Rule = "cell centroid ($1182a)"
+                   X = cx - 8; Y = cy - 8; W = FrameWidth; H = FrameHeight }
+        | Some(false, fi) ->
+            let lx, ly = packedLerp c00 c10 c01 c11 r.Fx r.Fy
+            Some { IsProp = false; Frame = fi; AnchorX = lx; AnchorY = ly
+                   Rule = "sub-cell lerp at record (fx, fy) ($11f1a)"
+                   X = lx - 4; Y = ly - 8; W = FrameWidth; H = FrameHeight }
+
+    /// Blit one entity over `buf`, given its cell's four projected corners.
     let blitEntity (buf: Fill.Buffer) (ctx: EntityCtx)
                    (c00: int * int) (c10: int * int) (c01: int * int) (c11: int * int)
                    (r: EntityRec) =
-        match entityFrame ctx r with
+        match placeEntity ctx c00 c10 c01 c11 r with
         | None -> ()
-        | Some(isProp, fi) ->
-            let blit (px: int[]) (w: int) (h: int) (ox: int) (oy: int) =
-                for row in 0 .. h - 1 do
-                    let yy = oy + row
-                    if yy >= 0 && yy < Fill.ScreenHeight then
-                        for cc in 0 .. w - 1 do
-                            let v = px.[row * w + cc]
-                            if v >= 0 then buf.Set(ox + cc, yy, byte v)
-            if isProp then
-                let px, py = packedLerp c00 c10 c01 c11 r.Fx4 r.Fy4
-                let pix, w, h = decodeFrameWord ctx.SheetProp fi 32 24 480
-                blit pix w h (px - 8) (py - 16)
-            else
-                // blit top-left, in the +64-inset corner convention:
-                //   men/animal/banner : sub-cell lerp anchor, then (-4, -8)
-                //   markers (6/24)     : centroid anchor ($1182a +0x38/-8 over
-                //                        raw corners == -8/-8 over +64 corners)
-                let px, py =
-                    if r.B6 = 6 || r.B6 = 24 then
-                        let cx = (fst c00 + fst c10 + fst c01 + fst c11) >>> 2
-                        let cy = (snd c00 + snd c10 + snd c01 + snd c11) >>> 2
-                        cx - 8, cy - 8
-                    else
-                        let lx, ly = packedLerp c00 c10 c01 c11 r.Fx r.Fy
-                        lx - 4, ly - 8
-                let f = decodeFrame ctx.Sheet33 fi
-                blit f.Pixels FrameWidth FrameHeight px py
+        | Some p ->
+            let pixels =
+                if p.IsProp then
+                    let pix, _, _ = decodeFrameWord ctx.SheetProp p.Frame p.W p.H 480
+                    pix
+                else (decodeFrame ctx.Sheet33 p.Frame).Pixels
+            for row in 0 .. p.H - 1 do
+                let yy = p.Y + row
+                if yy >= 0 && yy < Fill.ScreenHeight then
+                    for cc in 0 .. p.W - 1 do
+                        let v = pixels.[row * p.W + cc]
+                        if v >= 0 then buf.Set(p.X + cc, yy, byte v)
 
-    /// Replay $115e0 as a post-terrain far->near pass over walkQ3's cell order.
+    /// Replay $115e0 as a post-terrain far->near pass in fixed q3 (planQ3) cell
+    /// order. Kept for the pm_render_ref.py cross-check; the game draws each
+    /// cell's sprites inline, right after its triangles (Scene.render, 118th).
     /// `corners` = Projection.projectGrid's [gr, gc] array (2*Half+1 square);
     /// `recs` are the records already bucketed to their world cell. Cross-check
     /// target: pm_render_ref.py draw_entities.

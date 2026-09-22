@@ -111,7 +111,7 @@ sweep re-confirms +64 px is the unique optimum on `pm78_settle`).
 - **Dither phase — closed (80th).** Live single-step of `$e420` (cell topY 75,
   colourByte `0x26`): `A5 = 2f358 2f360 2f368 2f370 2f378 → 2f300 2f308 …` — it
   wraps back to the start of the colour's 128-byte slot, never advancing to slot
-  `cb+1`. So `A5 = $2e000 + colourByte*128 + ((8*y) mod 128)` (y = absolute
+  `cb+1`. So `A5 = $2e000 + colourByte*128 + ((8*y + phase) mod 128)`, phase 0/64 toggled per camera change (§4 "Dither phase") (y = absolute
   scanline). The 77th's `+ (topY&15)*8 + 8*(y-topY)` was right for the first
   slot but the wrap makes the `topY` term vanish under mod 128. The greens now
   match: 11/12/13 = 2212/7928/2581 px vs reference 2057/7528/2519.
@@ -349,6 +349,18 @@ is a *different* small-int table, used here only as the doubled base); the
 `add.b` puts `(topY & 15)*16` in the low byte; the `>>1` halves everything. So
 the first scanline reads `$2e000 + colourByte*128 + (topY & 15)*8`.
 
+**Dither phase.** `[$ffa2]` is not constant. `$f898` sets it to `2*[$ff9e]` on its
+first call (`$f89e..$f8ac`), then `bchg #7,$ffa5` (`$f8e4`) flips bit 7 of its low
+byte every time it re-projects because the camera cell, yaw or zoom changed. After
+the `>>1` the read point moves 64 bytes (8 scanlines) inside every 128-byte colour
+slot, and moves back on the next camera change: phase = `([$ffa2]>>1) - [$ff9e]` ∈
+{0, 64}, added inside the mod-128 wrap. The port models it as
+`Fill.withPhase dith phase` (each slot rotated by the phase); the viewer and
+`TerrainView.cs` flip it on every camera change. Evidence: `pm88_f1.snap` with
+`w ff9a 00YY0015` then 2M steps, three yaws (`scratchpad/pm118/rot{40,90,c0}`,
+`phase_test.fsx`), terrain exact-index 43.5 / 46.7 / 47.1% without the phase and
+93.8 / 84.6 / 91.1% with it (phase 0 at the unrotated `pm88_f1`: 93.9% either way).
+
 **Per scanline the roll advances `+8` but wraps modulo 128 inside the colour's
 slot** (80th, live single-step of `$e420`: `A5 = 2f358 2f360 2f368 2f370 2f378
 → 2f300 …`). The `$e44a` roll does `add.b #8` on the low byte of `2*A5`, which
@@ -415,7 +427,7 @@ quadrant-0 assignment.
 
 **All 4 handlers are ported (83rd pass)** — `pm_render_ref.py`'s `walk_q0` /
 `walk_q1` / `walk_q2` / `walk_q3`, dispatched by `walk_by_yaw`, and their F#
-twins `Fill.walkQ0`/`walkQ1`/`walkQ2`/`walkQ3` behind `Fill.walk`. Each cell's
+twins `Fill.planQ0`..`planQ3` behind `Fill.plan`/`Fill.walk`. Each cell's
 corners are named the same way as q3's (`C00`/`C10`/`C01`/`C11` = the 2×2
 corner block for that cell — see the q3 write-up below); only the loop order,
 start point, and which branch (CLEAR vs SET) carries the sub-order comparison
@@ -503,8 +515,8 @@ whenever the mid vertex is already the **left** vertex (general:
 `slope(top→bot) > slope(top→mid)`; flat-top: `sx_right < sx_left`). Trace: cell
 (37,47)'s SW triangle enters with `colourByte = 0x2b` (green) and reaches `$e3e6`
 with `0x1c`. At the mission-1 start pose (cam 36,47, yaw 15) it applies to 52
-of 128 triangles, which draw 3447 px; 10 of those px remain in the finished
-frame (13 823 terrain px), because nearer terrain overdraws the rest
+of 128 triangles, which draw 3298 px; 6 of those px remain in the finished
+frame (13 725 terrain px), because nearer terrain overdraws the rest
 (`port/walkthrough/probe.fsx rasters`). At that pose it marks mostly back-facing
 triangles, and its visible effect is a few dark pixels along the island
 silhouette. Other poses are unmeasured.
@@ -514,7 +526,14 @@ right), each `+= slope` per scanline; scanline 0 uses the start X with no step
 (`$e41a bra $e456`). Each edge decrements its run counter; whichever expires
 first consumes `record[20]/[22]` and switches slope (the shorter edge bending
 toward the far vertex). Per scanline: `ixL = D4 >> 16`, `ixR = D5 >> 16`; abort
-the triangle if `ixR < ixL` (`$e468`).
+the triangle if `ixR < ixL` (`$e468`). The walk draws rows `0 .. totalRows-1`,
+where `totalRows = max(dy1, dy2)`: a run counter reaching zero ends the walk before
+that row is drawn (`$e42a`/`$e43e`; the run stream ends on a zero word, `$f12c` /
+`$f13e` clear `record[20]`), so the bottom vertex's own scanline is never filled.
+Evidence: drawing that extra row put a one-pixel line of wrong colour on every
+triangle's bottom (21-22 px per triangle where the game shows what is behind),
+29 px per `pm88_f1` frame; with the bound `row < totalRows` all of them match
+(`scratchpad/pm118b/`, `lastrow_fix.fsx`).
 
 The span is written with two partial-word masks: `$ec62[ixL & 15]` clears the
 leftmost `ixL&15` bits of the left cluster, `$eca2[ixR & 15]` keeps the leftmost
@@ -723,15 +742,54 @@ to `pm_render_ref.draw_entities`** (2881/2881 px, all ported `byte6` in
 `assets/reference/godot_screenshot_entities_91st.png` — ~25 trees + the 26-record
 banner ring + the man on the hill.
 
-`pm_render_ref.py`'s `COMPOSITE_CATS` stays `{14}` (its score is against
-`pm78_settle`/`pm88_f1`, whose two compose buffers disagree on the entity layer —
-89th); the Godot port has no such reference-buffer problem so it draws all of
-{0,4,6,8,14,24}.
+**Draw order: sprites are drawn inside the walk.** `$f898`'s walk calls `$115e0` for each
+cell straight after drawing that cell's two triangles, so nearer terrain covers farther
+sprites and nearer sprites cover farther terrain. In the port, `Fill.plan` returns the walk
+as data (`planQ0`..`planQ3` → a `Cell list` in draw order, each cell with its corners and its
+two `Tri`s in order), `Scene.steps` puts each cell's `$47970` bucket sprites after its
+triangles, and `Scene.render` draws the result; `TerrainView.cs` uses it whenever the camera is on the entities' capture cell (any yaw).
+`Fill.walk` draws the plan without sprites and is byte-identical to a direct walk (16 yaws ×
+5 cams × 2 ticks, `scratchpad/pm118/baseline.fsx`). Evidence for the order, drawing every
+ported category, scored against the game's own compose buffer
+(`scratchpad/pm118/order_test.fsx`, inputs from `load_ram` via `dump_frame.py`):
+
+| capture | terrain only | sprites last (`drawEntities`) | inline (`Scene.render`) | px where the orders differ: game = last / inline / neither |
+|---|---|---|---|---|
+| `pm88_f1` (yaw `$f0`) | 94.1% | 89.17% | **96.80%** | 1 / 1159 / 18 of 1178 |
+| `pm78_settle` (`$f0`) | 94.6% | 86.02% | **93.66%** | 1 / 1159 / 18 of 1178 |
+| `pm74_late` (`$f0`) | 94.4% | 90.83% | **96.80%** | 3 / 897 / 14 of 914 |
+| `rot40` (`$40`) | 94.4% | 90.98% | **97.83%** | 28 / 1267 / 62 of 1357 |
+| `rot90` (`$90`) | 84.8% | 94.03% | **96.57%** | 20 / 361 / 55 of 436 |
+| `rotc0` (`$c0`) | 91.1% | 89.78% | **94.26%** | 8 / 624 / 25 of 657 |
+
+The `rot*` captures are `pm88_f1.snap` rotated in the emulator (`w ff9a 00YY0015`,
+2M steps, `scratchpad/pm118/rot*.snap`). Terrain-only scores are low where trees and
+buildings cover the most terrain (`rot90`); away from sprites the terrain matches at
+99.7-99.96% (`scratchpad/pm118b/`). Drawn inline, every ported category raises the
+score, and `pm_render_ref.py` now draws the same way (a per-cell `_cell_done` hook in
+every walk handler, all categories): it matches `Scene.render` pixel for pixel on
+`pm88_f1` (14683 exact). `pm78_settle`'s inline score stays below its terrain-only score,
+consistent with its two compose buffers disagreeing on the entity layer (not checked
+further). The sprite records only depend on the camera cell: at yaws `$40`/`$90`/`$c0`
+(with `EntityCtx.Yaw` set to the camera yaw) the game shows the sprite at 77-85% of the
+port's visible sprite pixels and the bare terrain at 2-4%. Screenshots:
+`assets/reference/godot_screenshot_backdrop_118th.png` (inline, over the `$78000`
+backdrop), `godot_screenshot_inline_118th.png`, and `godot_screenshot_entities_91st.png`
+(sprites last). `Sprites.drawEntities` / `pm_render_ref.draw_entities` are the sprites-last
+path, kept for the parity checks.
+
+**Settlement buildings, `byte6 == 2` (`$117d8`).** Frame `record[7]` from the 32 x 24
+`$37c7c` sheet with no tile-set offset, anchored at the cell centroid (`$1182a`: +`$38`,
+-8 over raw corners), then `$12244` -> `$12272` (-4, -8) at mission-1 zoom
+(`[$57ffc]` = 4; `[$57ffc]` > 5 uses the `$312a0` 16 x 16 sheet, <= 3 the `$3af1c` 32 x 32 sheet at (-8, -16)). In the
++64-inset corner space the top-left is centroid + (-12, -16). `record[7] == $0a` also
+draws an overlay via `$119b2` from `record[12]`/`[16]` (not ported). This is the keep
+inside the hilltop fort; adding it took `pm88_f1` inline from 95.93% to 96.80%.
 
 Still open: per-category frame *counts*; the `$11886` goods table (byte6 16 =
 `$1192e`, loops `[$4e514 + record[14]]` goods[0..7]); byte6 1/15 (`$312a0`)
-detail; promoting byte6 4/8 into `COMPOSITE_CATS` (needs a clean single-buffer
-populated capture — §9 item 4).
+detail; the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`); the zoom-dependent
+branches of `$12244`.
 
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
@@ -1012,36 +1070,13 @@ claims are **Observed** (true for `pm78_settle`/`pm88_f1`/`pm73_fight`/
    84th's green-vs-black anomaly (same "port lighter than ref" direction,
    same camera-anchor region falls inside q2's giant blob) but that
    connection is inferred, not traced — don't state it as confirmed.
-   **85th did that trace — found a real bug in the formula's assumption, but
-   it's NOT the dominant cause of q0/q1's giant-blob mismatch.** `[$ffa2]`
-   (used by `$e3e6`'s A5 setup) has been assumed exactly `2*[$ff9e]` since
-   the 78th pass; live-checked, that's only true for `pm78_settle`/`pm83_q2c`
-   — `pm83_q0c`/`q1c` have `[$ffa2] = 2*[$ff9e] + 128` (confirmed frame-
-   stable across 20 consecutive live `$ef62` calls, not a volatile/shared-
-   with-sound-mixer artifact). Single-stepped a real q1 triangle's full
-   22-row A5 sequence from `$e420` and matched it exactly (22/22) once the
-   correction (`((8*y + phase_bias) & 0x7F)`, phase_bias = `([$ffa2]>>1) -
-   [$ff9e]`) was applied **inside** the mod-128 wrap — a first attempt that
-   added it after the mask matched only the rows that didn't need an extra
-   wrap and was silently wrong for the rest. **But even with a
-   hardware-exact A5 and hardware-exact dither-table bytes** (both directly
-   verified against live memory, not inferred), the traced triangle (cell
-   (43,54), q1) still scored 0/327 exact-match against the reference frame —
-   its computed index (mostly 12, grass) vs the reference's actual shown
-   index (mostly 0-2, dark/rock) are just different terrain families, not a
-   phase-shifted grass. That specific mismatch is NOT a dither bug at all —
-   most likely this cell isn't even the thing visible at those screen pixels
-   in the real game (an occlusion or wrong-cell/wrong-diagonal bug elsewhere
-   in the walk). Applying the corrected `phase_bias` frame-wide made q0/q1's
-   aggregate exact-index score WORSE (46.6%→40.4%, 44.6%→40.3%), meaning more
-   triangles were hurt than helped — some other triangles' errors were
-   apparently cancelling against the old wrong assumption by coincidence.
-   **Reverted the correction's application** (the `phase_bias` parameter
-   still exists on `dither_index`/`_dda_walk`/`ef62_raster`, default 0, for
-   future use) rather than ship a net-negative scoring change; scores are
-   back to pre-85th-continuation values. The real cause of q0/q1's blob is
-   still open — next candidate is the occlusion/cell-identity bug the traced
-   triangle points at, not the dither formula.
+   The dither phase is part of the answer: `[$ffa2]` flips by 128 on every
+   re-projection (`$f8e4`, see §4 "Dither phase"), and a real q1 triangle's
+   22-row A5 sequence matches exactly (22/22) with the phase added inside the
+   mod-128 wrap. The `pm83_q0c`/`q1c`/`q2c` captures score 35-47% with or
+   without it, while clean captures at the same yaws (`scratchpad/pm118/rot*`)
+   score 85-94% with it, so the q0/q1 "giant blob" is in those captures'
+   reference buffers, which do not hold a settled frame at their yaw.
    **84th: an unexplained green-vs-black mismatch**, found but not resolved —
    on `pm83_q2c.ram`, screen rows y≥155 near the iso window's right edge
    render solid green in the port where the reference shows near-black, for
@@ -1110,7 +1145,7 @@ claims are **Observed** (true for `pm78_settle`/`pm88_f1`/`pm73_fight`/
    (`$e3e6`→`$e5a6`) and live single-stepped. `A5` wraps **modulo 128** inside
    the colour's slot (`$e44a`'s `addq.b #8` on `2*A5` byte-overflows at
    `A5 & 0x7f == 124`): `A5 = $2e000 + colourByte*128 + ((8*y) mod 128)`, y =
-   absolute scanline — the `topY` term drops out under the mod. This kills the
+   absolute scanline — the `topY` term drops out under the mod; plus the camera-change phase of §4 "Dither phase". This kills the
    79th's empirical `DITHER_COLOUR_BIAS = -1` (which only happened to be right
    for 16–32 px-tall triangles). Trace: cell topY 75, colour `0x26` → `A5` =
    `2f358 2f360 2f368 2f370 2f378 2f300 2f308 2f310 2f318` across 9 scanlines.

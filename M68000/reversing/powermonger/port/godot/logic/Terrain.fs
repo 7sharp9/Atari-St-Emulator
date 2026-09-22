@@ -23,7 +23,7 @@ module Terrain =
           // pass); the 78th pass's live trace of pm_grid_walk_q3 ($fccc)
           // corrected this — it is the per-cell DIAGONAL SELECTOR the walk
           // uses to pick which pair of corners the two triangles split on
-          // (see Fill.walkQ3 / ../../SPEC.md section 4). Both branches draw;
+          // (see Fill.planQ3 / ../../SPEC.md section 4). Both branches draw;
           // it is not a skip.
           Flag: byte[]
           Control: byte[] }   // $3f86c — the height the projector reads

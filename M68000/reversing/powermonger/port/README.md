@@ -10,7 +10,33 @@ renderer, a porting spec, and a toolchain skeleton.
 |------|------|
 | `assets/` | everything the iso renderer reads, extracted from a live RAM image. `manifest.json` gives one line of provenance per file. |
 | `SPEC.md` | the porting contract: coordinate systems, projection with exact constants, the triangle/dither rasteriser, sprites, zoom, the frame pipeline, and what a modern port should replace. Written to be implementable without the disassembly. |
-| `godot/` | Godot 4.x (.NET) + F# skeleton, **running live**. `godot/logic/Fill.fs` ports the closed rasteriser (`ef62_raster` + the `$e420` DDA + the dither fill) and all 4 yaw-quadrant grid walks (`walkQ0`-`walkQ3`, dispatched by `walk`); `godot/game/TerrainView.cs` wires it into a real scene — arrow keys pan the camera, PageUp/PageDown rotate it through all 16 yaw steps. |
+| `godot/` | Godot 4.x (.NET) + F# skeleton, **running live**. `godot/logic/Fill.fs` ports the closed rasteriser (`ef62_raster` + the `$e420` DDA + the dither fill) and all 4 yaw-quadrant grid walks (`planQ0`-`planQ3`, dispatched by `plan`/`walk`); `godot/logic/Scene.fs` interleaves each cell's sprites after its triangles, as the game does; `godot/game/TerrainView.cs` wires it into a real scene — arrow keys pan the camera, PageUp/PageDown rotate it through all 16 yaw steps. |
+| `stepper/` | Slow-motion replay of one frame in the game's own draw order, a triangle or sprite at a time (Mibo.Raylib, F# only, same `PmLogic` code). See "Frame stepper" below. |
+
+## Frame stepper
+
+```
+cd stepper
+dotnet run                                   # window
+dotnet run -- --selfcheck                    # replay == Scene.render, all 16 yaws
+dotnet run -- --export <dir> [cell|strip|shape]  # one PNG per chunk boundary (3x)
+dotnet run -- --shot <png> <step> [g] [n] [yN]  # window at a step (yaw N), screenshot, exit
+```
+
+Keys: Space play/pause; Right/Left one triangle or sprite; Down/Up one cell;
+PgDn/PgUp one strip (one pass of the walk's outer loop, 8 cells); Home/End;
+`+`/`-` speed; Q/E rotate the camera; G the projected corner grid; N each
+cell's position in the walk. Sprites exist at the camera cell `entities.json`
+was captured at (mission-1 start, cell 36,47), at every yaw; the dither phase
+flips on each rotation, as `$f898` does.
+
+`Replay.build` draws each `Scene.Step` on its own into a `Fill.Buffer.Logged()`
+buffer, which records every pixel write in order (spans top row first, left to
+right; sprite rows top first), so the frame can be rebuilt to any single pixel
+and rewound freely. The ST writes 16-pixel words, so per-pixel playback is finer
+than the hardware; the order of spans, rows and shapes is the game's.
+`--export` frames go through `ffmpeg` for GIFs, e.g.
+`ffmpeg -framerate 8 -i frame_%03d.png -vf "split[a][b];[a]palettegen=max_colors=32[p];[b][p]paletteuse=dither=none" out.gif`.
 
 Regenerate the assets:
 
@@ -25,6 +51,23 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 (dither fill), `render_flat.png` (height-ramp fill), and `render_compare.png` —
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
+
+## Verification status (118th pass) — the frame as a draw plan; sprites drawn inline
+
+`Fill.plan` returns the terrain walk as data (64 `Cell`s in draw order, two
+`Tri`s each) and `Scene.steps` interleaves each cell's sprites after its
+triangles, as `$f898` → `$115e0` does. `TerrainView.cs` draws with
+`Scene.render`, over the `$78000` master (`assets/backdrop.bin`). Against the
+game's own screen the inline order beats sprites-last on every captured frame,
+including three rotated in the emulator (`pm88_f1`: 96.80% vs 89.17% exact; the
+game agrees with inline at 1159 of the 1178 pixels where the orders differ).
+Also in this pass: the span walker draws rows `0..totalRows-1` (the port drew one
+extra row); the camera-change dither phase (`Fill.withPhase`, `$f8e4`); sprites
+at every yaw on the capture cell; the `byte6 == 2` settlement building (the fort's
+keep); `pm_render_ref.py` draws inline with the phase and matches `Scene.render`
+pixel for pixel on `pm88_f1`. Away from sprites the terrain matches the game at
+99.7-99.96% (`scratchpad/pm118b/`). Details and the six-capture table: `SPEC.md`
+§4 and §6, "Draw order". The plan is also what the slow-motion viewer replays.
 
 ## Verification status (91st pass) — Task 2: the entity pass is live in Godot with a real record stream
 

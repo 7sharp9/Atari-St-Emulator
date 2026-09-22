@@ -149,7 +149,7 @@ screen-X alignment. No texture map is read anywhere in the terrain path.
 **The `0x1c` override** (`$f072` / `$f154`): `$ef62` forces the colour byte to
 `0x1c` when the triangle's winding puts the middle vertex on the left. At the
 mission-1 start pose (cam 36,47, yaw 15) it applies to 52 of 128 triangles,
-which draw 3447 px; 10 px of those remain in the finished frame, because
+which draw 3298 px; 6 px of those remain in the finished frame, because
 nearer terrain paints over the rest (`port/walkthrough/probe.fsx rasters`). At
 that pose it therefore marks mostly back-facing triangles, and the visible
 effect is limited to a few dark pixels along the island silhouette.

@@ -1043,6 +1043,35 @@ def decode_planar(screen: bytes, pal_words):
         yield out_row
 
 
+def export_backdrop(ram: Ram, out: Path, man: list):
+    """The $78000 master: the static screen every frame starts from (HUD, stone
+    border, the ruins/pillars backdrop behind the island, minimap). $f898 only
+    re-fills the island over it. Byte-identical across pm74_late, pm78_settle,
+    pm88_f1 and camera rotations to yaw $40/$90/$c0 (118th pass), so one copy
+    serves every view."""
+    BASE, W, H = 0x78000, 320, 200
+    idx = bytearray(W * H)
+    for y in range(H):
+        for xw in range(20):
+            pl = struct.unpack_from(">4H", ram.d, BASE + y * 160 + xw * 8)
+            for bit in range(16):
+                v = 0
+                for p in range(4):
+                    if pl[p] & (1 << (15 - bit)):
+                        v |= 1 << p
+                idx[y * W + xw * 16 + bit] = v
+    (out / "backdrop.bin").write_bytes(bytes(idx))
+    man.append({
+        "file": "backdrop.bin",
+        "provenance": ("the $78000 master screen (4-plane ST low-res, 160 bytes/row), "
+                       "decoded to palette indices. The compose buffer is copied from it "
+                       "before $f898 draws the island; identical across all mission-1 "
+                       "captures and camera rotations checked."),
+        "format": "320*200 bytes, one palette index (0..15) per screen pixel, row-major; "
+                  "screen space (the iso buffer's raw x + 64 = screen x)",
+    })
+
+
 def export_reference(frame_path: Path, out: Path, man: list, dom_pal):
     b = frame_path.read_bytes()
     screen = b[1:1 + 32000]
@@ -1106,6 +1135,7 @@ def main():
     export_tables(ram, out, man)
     export_strings(ram, out, man)
     export_entities(ram, out, man)
+    export_backdrop(ram, out, man)
     export_reference(frame, out, man, dom_pal)
 
     manifest = {

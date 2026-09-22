@@ -113,6 +113,11 @@
    "render_entities": 53
   },
   {
+   "file": "backdrop.bin",
+   "provenance": "the $78000 master screen (4-plane ST low-res, 160 bytes/row), decoded to palette indices. The compose buffer is copied from it before $f898 draws the island; identical across all mission-1 captures and camera rotations checked.",
+   "format": "320*200 bytes, one palette index (0..15) per screen pixel, row-major; screen space (the iso buffer's raw x + 64 = screen x)"
+  },
+  {
    "file": "reference/isoframe.png",
    "provenance": "live shifter output from f000100.bin. 77th: verified equal to the RAM snapshot's BACK buffer $24400 to 231/64000 px (moving sprites only) -- so it is consistent with the $3f364 corner buffer and is the right target for the pm_render_ref.py diff. The front buffer $1c700 is the previous (mid-animation) frame.",
    "format": "320 x 200 RGB PNG; isoframe_indices.bin = 1 byte palette index/px"
