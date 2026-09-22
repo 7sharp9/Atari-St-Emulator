@@ -2276,22 +2276,21 @@ type Cpu =
             //writeback, `extBytes` the PC advance past the extension words.
             let doDivide (divisor: uint32) (regUpdate: Cpu -> Cpu) extBytes desc =
                 if divisor = 0u then
-                    //Divide by zero -> vector 5. UNLIKE CHK/TRAPV (which complete their own PC
-                    //advance before trapping - see CHK's comment above), DIVU/DIVS's divide check
-                    //happens before the instruction commits: gencpu.c's i_DIVU/i_DIVS both call
-                    //exception_oldpc() (capturing m68k_getpc() at that point) before genamodedual
-                    //reads either operand, and Exception_cpu_oldpc stacks that captured value
-                    //verbatim - so the pushed PC is the instruction's OWN start address, not
-                    //advanced past the opcode or any extension word. Confirmed directly against the
-                    //one zero-divisor vector the SingleStepTests DIVU corpus carries (`80ef [DIVU
-                    //(d16, A7), D0] 5745`): expected stacked PC = ini.pc exactly (extBytes=2 for
-                    //that vector's (d16,A7) source, ruling out both the CHK-style "PC+2+extBytes"
-                    //and the opcode-only "PC+2" readings). The 68000 updates the CCR *before*
-                    //stacking SR (CCR.DivByZero: C/V/Z/N cleared, then N/Z from the dividend's high
-                    //word for DIVU). The EA writeback (regUpdate) still applies first.
+                    //Divide by zero -> vector 5, group-2 frame stacking the address of the NEXT
+                    //instruction (x.PC + 2 + extBytes), same as CHK/TRAPV. Hatari's 68000 path:
+                    //gencpu.c i_DIVU does incpc(m68k_pc_offset) before exception_cpu("5"), and
+                    //newcpu.c Exception_normal stacks nextpc = m68k_getpc(); exception_oldpc only
+                    //applies to the generic 68020+ tables (need_exception_oldpc, ids 40-55).
+                    //PowerMonger depends on it: its vector-5 handler ($14e4) is a bare RTE, so
+                    //stacking the faulting PC re-executes the DIVU forever (hangs its world build
+                    //at $164d6). The one SingleStepTests zero-divisor vector (80ef) expects the
+                    //opcode address instead; it is skipped (Program.fs isUndefinedDivByZeroFlags).
+                    //The 68000 updates the CCR *before* stacking SR (CCR.DivByZero: C/V/Z/N
+                    //cleared, then N/Z from the dividend's high word for DIVU). The EA writeback
+                    //(regUpdate) still applies first.
                     let trapCcr = CCR.DivByZero x.CCR false (x.DataRegister register)
                     printfn "divu.w %s,D%u (divide by zero -> vector 5)" desc register
-                    ({ regUpdate x with CCR = trapCcr }).EnterVector 5 x.PC
+                    ({ regUpdate x with CCR = trapCcr }).EnterVector 5 (x.PC + 2 + extBytes)
                 else
                 let dividend = uint32 (x.DataRegister register)
                 let quotient = dividend / divisor
@@ -2321,14 +2320,12 @@ type Cpu =
             //the dividend's sign - so no extra sign-fixup is needed beyond what DIVU already does.
             let doDivide (divisor: int16) (regUpdate: Cpu -> Cpu) extBytes desc =
                 if divisor = 0s then
-                    //Divide by zero -> vector 5 (see the DIVU note above - same exception_oldpc
-                    //mechanism in gencpu.c's i_DIVS, so the same unadvanced-PC push applies here;
-                    //no DIVS zero-divisor vector exists in the corpus to confirm directly, but the
-                    //source mechanism is identical). DIVS's divbyzero_special just sets Z (dividend
-                    //value unused).
+                    //Divide by zero -> vector 5, stacking the next instruction's address (see the
+                    //DIVU note above; gencpu.c i_DIVS has the same incpc-then-exception order).
+                    //DIVS's divbyzero_special just sets Z (dividend value unused).
                     let trapCcr = CCR.DivByZero x.CCR true 0
                     printfn "divs.w %s,D%u (divide by zero -> vector 5)" desc register
-                    ({ regUpdate x with CCR = trapCcr }).EnterVector 5 x.PC
+                    ({ regUpdate x with CCR = trapCcr }).EnterVector 5 (x.PC + 2 + extBytes)
                 else
                 let dividend = x.DataRegister register
                 //int64 division dodges the CLR-exception F# raises for Int32.MinValue / -1, which

@@ -1435,7 +1435,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///increments. COARSE like RaiseTimerB/C: delivered on an instruction count, so the music tempo
     ///is wrong but the intro sequence advances instead of hanging. Vector $4D = VR($40) | channel 13.
     member x.RaiseTimerA() =
-        let tacr = mfpRegisters.[int (0xFFFA19u - mpf68901)]
+        //TACR lives in its own `tacr` field (writes never reach mfpRegisters), same as TBCR.
         let iera = mfpRegisters.[int (0xFFFA07u - mpf68901)]
         let imra = mfpRegisters.[int (0xFFFA13u - mpf68901)]
         if tacr &&& 0x0Fuy <> 0uy && iera &&& 0x20uy <> 0uy && imra &&& 0x20uy <> 0uy && not timerAPending then

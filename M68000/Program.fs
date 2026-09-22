@@ -1108,11 +1108,11 @@ module SelfTest =
     /// into `CCR.DivByZero` - N set when the dividend's high word is negative), which every commit
     /// that has ever touched this function explicitly labels "undefined"/"undocumented" flag
     /// behaviour - real 68000 revisions are known to disagree here, and this is the corpus's only
-    /// data point either way, so there's no way to tell which chip produced it. The other half of
-    /// this same vector (the stacked PC, which is NOT undefined - gencpu.c's exception_oldpc
-    /// mechanism pins it to the instruction's own start address, unlike CHK's post-EA PC) WAS a
-    /// real bug, confirmed directly against this vector, and is fixed (`EnterVector 5 x.PC` for
-    /// both DIVU and DIVS's divide-by-zero path) - only this flags residual is skipped. Keyed on
+    /// data point either way, so there's no way to tell which chip produced it. The vector also
+    /// expects the stacked PC to be the opcode's own address; the CPU stacks the next
+    /// instruction's address instead (Hatari's 68000 path, and PowerMonger's bare-RTE vector-5
+    /// handler at $14e4 needs it - see the DIVU comment in 68k.fs), so skipping the whole vector
+    /// covers that disagreement too. Keyed on
     /// the opcode plus the structural negative-dividend/expected-N-clear mismatch, not a magic
     /// register value - see [[atari-st-emulator-next-instructions]]'s 112th pass.
     let private isUndefinedDivByZeroFlags (ini: St) (fin: St) =
