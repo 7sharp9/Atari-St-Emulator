@@ -162,10 +162,11 @@ Two parallel data sets, both 64 x 128 cells, row-major, stride 64:
 
 Derived rules:
 
-- **water**: `height < 0x0c`. Water cells add `masterTick & 3` to their colour
-  byte before the fill (a 4-frame shoreline shimmer), and only while the camera
-  is moving (a still camera skips the fill via the flag bit).
-- **static-sea skip**: `flag & 0x80` → do not re-fill this cell.
+- **water**: `height < 0x0c`. Water cells add `[$4bb3e] & 3` to their colour
+  byte before the fill (a 4-step shimmer). `$f898` loads that term on every
+  walk (`$f95e`) and refills every cell, so the shimmer runs whenever water is
+  inside the drawn window, whether or not the camera moves (§7).
+- **diagonal selector**: `flag & 0x80` picks which diagonal splits the cell (§4).
 - mission-1 island bounding box in cells: **x 8..45, y 41..75** (rest is sea /
   off-map zero).
 
@@ -314,13 +315,12 @@ order — no depth buffer). For each cell it has 4 corners `TL, TR, BL, BR` (BR 
 next row, next col; the corner buffer row stride is 64 bytes = 16 longs, 9 used):
 
 ```
-// quad split: follow the slope. corners are packed (screenX:16, screenY:16).
-if  packed(BR) > packed(TL):
-        tri(TL, TR, BL,  colour = height_plane[cell])     // "height" triangle
-        tri(TR, BL, BR,  colour = type_plane[cell])       // "type"   triangle
-else:
-        tri(TL, TR, BR,  colour = height_plane[cell])
-        tri(TL, BL, BR,  colour = type_plane[cell])
+// quad split: flag bit 7 (+8257) picks the diagonal; both branches draw two triangles.
+if  !(flag[cell] & 0x80):  split on C00-C11          // CLEAR branch
+else:                      split on C10-C01          // SET branch
+// one triangle takes type_plane[cell], the other height_plane[cell]; which
+// branch compares packed corners to fix the pair's draw order depends on the
+// quadrant -- see the table below.
 ```
 
 `colour` is the raw terrain byte. If `byte < 0x0c` add `masterTick & 3` (water).
@@ -497,12 +497,17 @@ into `$e3e6`.
 `((|dx|<<8) // dy) << 8` (truncates *before* the `<<8`); shallow →
 `(|dx|<<16) // dy`; sign from `dx`; `divu` overflow clamps to exactly `$10000`.
 
-**The `0x1c` coast rule** (`$f072` / `$f154`): `$ef62` forces the record colour
-to `0x1c` (dark, dither slot → palette 1-7) whenever the mid vertex is already
-the **left** vertex (general: `slope(top→bot) > slope(top→mid)`; flat-top:
-`sx_right < sx_left`). This is how PM shades the coastal / front-facing slopes
-dark. Trace: cell (37,47)'s SW triangle enters with `colourByte = 0x2b` (green)
-and reaches `$e3e6` with `0x1c`.
+**The `0x1c` override** (`$f072` / `$f154`):
+`$ef62` forces the record colour to `0x1c` (dark, dither slot → palette 1-7)
+whenever the mid vertex is already the **left** vertex (general:
+`slope(top→bot) > slope(top→mid)`; flat-top: `sx_right < sx_left`). Trace: cell
+(37,47)'s SW triangle enters with `colourByte = 0x2b` (green) and reaches `$e3e6`
+with `0x1c`. At the mission-1 start pose (cam 36,47, yaw 15) it applies to 52
+of 128 triangles, which draw 3447 px; 10 of those px remain in the finished
+frame (13 823 terrain px), because nearer terrain overdraws the rest
+(`port/walkthrough/probe.fsx rasters`). At that pose it marks mostly back-facing
+triangles, and its visible effect is a few dark pixels along the island
+silhouette. Other poses are unmeasured.
 
 **`$e420` — the DDA span walker.** Two 16.16 X accumulators (`D4` left, `D5`
 right), each `+= slope` per scanline; scanline 0 uses the start X with no step
@@ -793,8 +798,9 @@ Per frame, `$f898` redraws **only the island** into that hole (verified: the
 composed `$1c700` buffer differs from the `$78000` master **only** in idx
 6/7/11/12/13 pixels — the island — plus a few unit sprites; the ~2 460 water
 pixels in the viewport are byte-identical to the master across `pm78_settle` /
-`pm74_late` / `pm70_iso`). On a still camera `$f898` skips cells whose projected
-corners did not move, so even the island mostly persists from earlier frames.
+`pm74_late` / `pm70_iso`). `$f898` refills the whole island each time it runs;
+its camera/yaw/zoom compare (`$f8b6..$f8e2`, against copies at `$f890..$f896`)
+gates only the `$fec6` re-projection, never the fill.
 
 Consequence for a port: the per-frame renderer draws the projected 8×8 terrain
 grid and nothing else. A from-scratch full frame composites that over the master
@@ -814,7 +820,7 @@ per simulation tick ($13000), present rate gated by $57ff0/$57fee (=1 normally):
     $12ce0  copy terrain master -> back buffer            ; ~1/3 frames, movem, 500 rows
     $178ae  render setup
     $fec6   re-project grid corners  IF camera/yaw/zoom changed
-    $f898   terrain: per-cell "flag & 0x80 unchanged" skip -> often near-no-op
+    $f898   terrain: refill every island cell, sprites inline
   -- every tick --
     $14b62  entity FSM      (relinks $47970 cell buckets via $163ea)
     $6a3a   order executor
@@ -824,10 +830,22 @@ per simulation tick ($13000), present rate gated by $57ff0/$57fee (=1 normally):
     $187a   swap front <-> back, write (front >> 8) to $FFFF8200
 ```
 
-A still camera skips the whole terrain fill (frame-diff confirmed: over 249
-consecutive settled frames the palette is byte-identical and only ~77 screen
-bytes change — moving sprites + the marker blink). Water only re-colours while
-the camera moves.
+On `pm71_run1.snap`, `$12ce0`, `$f898` and the swap `$187a` each run once per
+sim tick (13 hits each in ~2.78M steps; one tick ≈ 15 VBLs), so every presented
+frame holds a freshly filled island.
+
+**Water shimmer.** `$4bb3e` is a longword tick counter, written only at `$13034`
+in the `$13000` tick and incremented once per tick. Water cells (`< 0x0c`) add
+`[$4bb3e] & 3` to their colour byte; dither slots `0x00`-`0x03` and
+`0x08`-`0x0b` hold the same colours in different stipples, so water inside the
+drawn window changes pattern every tick and repeats every four ticks. The open
+sea outside the window is part of the static `$78000` master. The palette never
+changes.
+
+| capture (`pm71_run1.snap`, 249 frames, `ATARI_FRAME_DIR`) | result |
+|---|---|
+| start camera (window cells x 36-43, y 47-54, heights `0x1d`-`0x3b`, no water) | ~77 bytes change, all unit sprites and the marker blink |
+| `w 4bb3a 002c0033` (window x 40-47, over the east coast) | every tick 2147-2371 px change, ~96 % water (idx 14/15) in the walk-drawn sea strip (x 197-317, y 91-158); frame N == frame N+60 |
 
 Palette: one 16-colour shifter palette for the whole iso view
 (`assets/palette.json`, `distinct_palettes: 1`). Index semantics:
@@ -846,11 +864,11 @@ Palette: one 16-colour shifter palette for the whole iso view
 | element | faithful (emulate) | modern port |
 |---------|--------------------|-------------|
 | geometry | 9x9..15x15 projected grid, per-frame `divs` per corner | `ArrayMesh` heightfield, or sample `terrain.bin` in a vertex shader; project once, scroll by pixel delta |
-| fill | 4bpp pattern table `dither.bin`, indexed `colourByte*128 + (topY&15)*8`, rolling | height-ramp fragment shader over the 16-colour palette, optional ordered dither for the look |
+| fill | 4bpp pattern table `dither.bin`, indexed `colourByte*128 + ((8*y) mod 128)` | height-ramp fragment shader over the 16-colour palette, optional ordered dither for the look |
 | draw order | far→near grid walk, sprites inline | **keep this** — per-cell (terrain then occupants); do not add a separate sorted sprite pass |
 | zoom | 7 discrete geometry sets, `$fe04` | 7 camera distances (or continuous); same mesh |
 | rotation | 16 yaw steps, `$13f8a` sine table | continuous yaw; `sin`/`cos` |
-| water | `colourByte += [$4bb3e]&3`, fill-driven, still-camera gated | palette-index animation or a small UV scroll in the shader |
+| water | `colourByte += [$4bb3e]&3`, fill-driven, applied on every walk | palette-index animation or a small UV scroll in the shader |
 | perspective | real `x/(EYE-depth)` divide | keep for PM's look (free in a vertex shader), or go axonometric |
 
 ---

@@ -237,13 +237,13 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 11. The 73rd pass also finished the **rendering mechanism** (`graphics.md` had a
     profile, not the mechanism). PM's iso view is a **software heightmap-grid
     rasteriser**: `$fec6` rotates + perspective-projects the grid corners,
-    `$f898` walks the grid far→near drawing **two flat, 2-line-dithered
+    `$f898` walks the grid far→near drawing **two pattern-table-filled
     triangles per cell** (colour index = the terrain byte itself), and cell
-    sprites (1bpp masked, `$33000` sheet) are blitted inline in the same walk so
-    the painter's order is free — no mesh, no texture, no light model, no
-    palette cycling (frame-diff confirmed). Frame pipeline: terrain master →
-    per-present `$12ce0` copy → dirty-cell re-fill → sprite overlay → VBL buffer
-    flip. A renderer-as-pseudocode reconstruction is in `graphics.md`.
+    sprites (8×11 four-plane masked, `$33000` sheet) are blitted inline in the
+    same walk so the painter's order is free. There is no mesh, no texture, no
+    light model and no palette cycling. Frame pipeline, once per sim tick:
+    terrain master (`$78000`) → `$12ce0` copy → full island refill (`$f898`) →
+    buffer swap. A renderer-as-pseudocode reconstruction is in `graphics.md`.
 12. The 74th pass opened the **economy** (`economy.md`, pass 1 of 2). PM has no
     single "economy tick"; the subsystems are diffuse. A town's manpower is
     `pm_leader.troops_reserve` / `.troops_field` (`$4e514` +6/+8) — it fills when
