@@ -563,11 +563,27 @@ def _entity_frame(o, ent, yaw):
 
 
 def _packed_lerp(c00, c10, c01, c11, fx, fy):
-    def lp(a, b, t):
-        return (a[0] + ((b[0] - a[0]) * t >> 8), a[1] + ((b[1] - a[1]) * t >> 8))
-    top = lp(c00, c10, fx)
-    bot = lp(c01, c11, fx)
-    return lp(top, bot, fy)
+    """$11f1a word for word (= Sprites.packedLerp). The corners are packed
+    (x << 16) | y and subtracted as longs, so a borrow leaks between the
+    halves: y into x for the edge deltas, x into y for the final delta (the
+    edge points are built swapped, (y << 16) | x). Each step keeps the low
+    word of the `muls` and shifts it `asr.w #8`."""
+    def s16(v):
+        v &= 0xFFFF
+        return v - 0x10000 if v & 0x8000 else v
+    def step(d, t):
+        return s16(d * t) >> 8
+    def pack(c):
+        return ((c[0] & 0xFFFF) << 16) | (c[1] & 0xFFFF)
+    def edge(a, b, t):
+        d = (b - a) & 0xFFFFFFFF
+        y = (s16(a) + step(s16(d), t)) & 0xFFFF
+        x = (s16(a >> 16) + step(s16(d >> 16), t)) & 0xFFFF
+        return (y << 16) | x
+    top = edge(pack(c00), pack(c10), fx)
+    bot = edge(pack(c01), pack(c11), fx)
+    d = (bot - top) & 0xFFFFFFFF
+    return (s16(s16(top) + step(s16(d), fy)), s16(s16(top >> 16) + step(s16(d >> 16), fy)))
 
 
 # byte-6 categories whose frame formula + sheet decode are verified well enough

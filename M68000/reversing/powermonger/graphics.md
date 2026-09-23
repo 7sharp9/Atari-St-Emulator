@@ -226,12 +226,15 @@ on slopes. Frame selection is per category in the `$1162e` handlers; for men
 it is `(faction−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2`, so facing is
 relative to the camera. Per-category formulas are in SPEC §6.
 
-### The HUD / marker blitter — `$e6ee`
+### The pixel plotter — `$e6ee`
 
-`$16738` → `$e6ee` is a separate, wider multi-plane blitter (`add.w D0,D0 /
-add.w D0,D0 / move.l 110(PC,D0),D0` → a 4-long descriptor table; `lsl.w #5,D1`
-= 32-byte row stride). It draws the selected-group marker (`$165b2`) and the
-HUD glyphs and is not on the terrain path.
+`$e6ee` sets one pixel (x `D0`, y `D1`, colour `D2`): a per-x table at `$e762`
+gives the byte in the row and a bit-mask index, `y * 160` is added, and two
+`movep.l` instructions read and write that bit in all four planes. It does not
+clip. It draws the minimap dots, among them the blinking selected group
+(`$165b2` → `$16738`, one dot per member at its raw cell coordinate, y + 6 = the
+minimap's rows), the one-pixel arrows (byte6 40) and the byte6 20/22 dot on the
+iso view. Details: port SPEC §6 "The pixel plotter".
 
 ### Trees / buildings / mountains
 

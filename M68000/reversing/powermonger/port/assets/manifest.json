@@ -127,6 +127,11 @@
    "file": "reference/isoframe.png",
    "provenance": "live shifter output from f000100.bin. 77th: verified equal to the RAM snapshot's BACK buffer $24400 to 231/64000 px (moving sprites only) -- so it is consistent with the $3f364 corner buffer and is the right target for the pm_render_ref.py diff. The front buffer $1c700 is the previous (mid-animation) frame.",
    "format": "320 x 200 RGB PNG; isoframe_indices.bin = 1 byte palette index/px"
+  },
+  {
+   "file": "weather.bin",
+   "provenance": "$1a8a4 (rain, 256 B) then $1a9c8 (snow, 256 B), read by $1a856",
+   "format": "64 big-endian longs per table; row r of the overlay uses long (phase - 4r) & $ff"
   }
  ]
 }

@@ -33,6 +33,11 @@ let load (dir: string) : Assets =
     let root = doc.RootElement
     let ctx = root.GetProperty("entity_ctx")
     let gi (e: JsonElement) (k: string) = e.GetProperty(k).GetInt32()
+    // fields added for the later-land categories; older exports lack them
+    let gio (e: JsonElement) (k: string) =
+        match e.TryGetProperty k with
+        | true, v -> v.GetInt32()
+        | _ -> 0
     let gs (e: JsonElement) (k: string) =
         match e.GetProperty(k).GetString() with
         | null -> failwithf "entities.json: entity_ctx.%s is null" k
@@ -41,7 +46,9 @@ let load (dir: string) : Assets =
         [| for e in root.GetProperty("render_entities").EnumerateArray() ->
              ({ Addr = gi e "addr"; B6 = gi e "b6"; B5 = gi e "b5"; B7 = gi e "b7"; B14 = gi e "b14"
                 B17 = gi e "b17"; B31 = gi e "b31"; Fx = gi e "fx"; Fy = gi e "fy"
-                Group = gi e "group"; Wcx = gi e "wcx"; Wcy = gi e "wcy" } : Sprites.EntityRec) |]
+                Group = gi e "group"; Wcx = gi e "wcx"; Wcy = gi e "wcy"
+                B15 = gio e "b15"; B32 = gio e "b32"; W18 = gio e "w18"; Icons = gio e "icons"
+                B33 = gio e "b33"; B44 = gio e "b44" } : Sprites.EntityRec) |]
     { Map = Terrain.parse (File.ReadAllBytes(file "terrain.bin"))
       Dither = File.ReadAllBytes(file "dither.bin")
       Palette = palette

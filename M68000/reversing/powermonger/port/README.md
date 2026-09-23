@@ -10,7 +10,7 @@ renderer, a porting spec, and a toolchain skeleton.
 |------|------|
 | `assets/` | everything the iso renderer reads, extracted from a live RAM image. `manifest.json` gives one line of provenance per file. |
 | `SPEC.md` | the porting contract: coordinate systems, projection with exact constants, the triangle/dither rasteriser, sprites, zoom, the frame pipeline, and what a modern port should replace. Written to be implementable without the disassembly. |
-| `godot/` | Godot 4.x (.NET) + F# skeleton, **running live**. `godot/logic/Fill.fs` ports the closed rasteriser (`ef62_raster` + the `$e420` DDA + the dither fill) and all 4 yaw-quadrant grid walks (`planQ0`-`planQ3`, dispatched by `plan`/`walk`) at any zoom; `godot/logic/Season.fs` the seasons' grass colours; `godot/logic/Scene.fs` interleaves each cell's sprites after its triangles, as the game does; `godot/game/TerrainView.cs` wires it into a real scene — arrow keys pan the camera, PageUp/PageDown rotate it through all 16 yaw steps, Y cycles the season. |
+| `godot/` | Godot 4.x (.NET) + F# skeleton, **running live**. `godot/logic/Fill.fs` ports the closed rasteriser (`ef62_raster` + the `$e420` DDA + the dither fill) and all 4 yaw-quadrant grid walks (`planQ0`-`planQ3`, dispatched by `plan`/`walk`) at any zoom; `godot/logic/Season.fs` the seasons' grass colours; `godot/logic/Weather.fs` rain and snow; `godot/logic/Scene.fs` interleaves each cell's sprites after its triangles, as the game does; `godot/game/TerrainView.cs` wires it into a real scene — arrow keys pan the camera, PageUp/PageDown rotate it through all 16 yaw steps, Y cycles the season. |
 | `stepper/` | Slow-motion replay of one frame in the game's own draw order, a triangle or sprite at a time (Mibo.Raylib, F# only, same `PmLogic` code). See "Frame stepper" below. |
 
 ## Frame stepper
@@ -58,6 +58,40 @@ live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png
 reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
 prints the block-mean dE and the per-index distribution vs the reference.
 
+## Verification status (121st pass) — later-land sprites, exact positions, weather
+
+**Categories.** Everything a later land draws is ported except byte6 18 and 28,
+which no land showed (`SPEC.md` §6 "Every category"): dead men (12) and the
+equipment they leave (10), carrier pigeons (20) and bird flocks (22), a leader's
+base with its goods (16), dropped goods (44), buildings going up (30),
+projectiles (40, one pixel through the `$e6ee` plotter), boats (26, and men with
+flags bit 5), and men in melee. `Sprites.placeEntity` returns every frame a
+record draws, in order, because these categories draw two to ten. `EntityRec`
+gained `B15`, `B32`, `W18`, `Icons`, `B33`, `B44`; `pm_export.py` writes them, and
+loaders treat them as 0 in older exports.
+
+**Positions.** `Sprites.packedLerp` is now `$11f1a` word for word: the borrow
+between the packed x and y halves put about one sprite in ten a pixel off. With
+it, and with each snapshot's state scored against the screen in the *next*
+`$f898` snapshot (the screen in a snapshot is the frame drawn from the previous
+state), 27 frames from 12 views on lands 0, 5, 25 and 60 match the game pixel
+for pixel, water tick included (`scratchpad/pm121/allpairs.txt`). On the
+mission-1 captures the inline scores rise from 94.26-97.83% to 99.69-99.99%
+(`pm78_settle` 94.62%, its two buffers disagree).
+
+**Weather** (`SPEC.md` §7). Rain (spring, autumn) and snow (winter) are a
+pattern ORed over the iso window by `$1a856`; `Weather.draw` ports it from
+`assets/weather.bin`, and winter and autumn frames of land 5 match the game.
+The stepper and Godot view do not draw weather yet.
+
+Gates: logic, stepper and Godot builds; stepper `--selfcheck` 23/23 on `assets`
+and `assets_k60`; `pm118/baseline.fsx`: the 160 terrain hashes unchanged, the
+two entity lines changed by the exact lerp and re-recorded (`before_pre_lerp.txt`
+keeps the old ones); `order_test.fsx` 99.99 / 94.62 / 99.69 / 99.97 / 99.92 /
+99.81 (`SPEC.md` §6); `pm_render_ref.py` equal to `Scene.render` on all 15178
+drawn pixels of `pm88_f1` (`scratchpad/pm121/parity.py`); walkthrough `showboat
+verify` clean.
+
 ## Verification status (120th pass) — a second land
 
 `assets_k60/` is `pm_export.py` run on land 60 (`scratchpad/pm120/k60_iso.ram`,
@@ -68,15 +102,13 @@ palette, HUD tables, strings and headings are byte-identical. The backdrop
 differs in the minimap (rows 6-133) and the side-shield strip under it (rows
 134-152, x 7-63); `dither.bin` only in slots `$1d-$2e` (the capture sits at a
 different point of the season fade); `tables.json` only in
-`height_bias_fec4`. New entity categories are in `SPEC.md` §6 ("Categories
-seen on later lands"): `byte6 32` is never drawn, `byte6` 20/22 are not ported.
+`height_bias_fec4`. Its entity categories are in `SPEC.md` §6 ("Every
+category"): `byte6 32` is never drawn.
 
-Scores against the game's compose buffer (`pm118/dump_frame.py` +
-`order_test.fsx`), camera (45,74), yaw `$f0`, 153 steps: terrain only 91.7 %,
-sprites last 97.23 %, inline 97.46 %; where the orders differ (34 px) the game
-matches inline 30 times, sprites-last 0. That needs the drawn water tick
-(`tick - 1`, the mid-render off-by-one); with the RAM tick it scores 68.27 %,
-because half this view is water. `--assets ../assets_k60 --selfcheck` passes
+Scored against the screen in the next `$f898` snapshot at the RAM's water
+tick, camera (45,74), yaw `$f0`, the frame matches pixel for pixel (`SPEC.md` §6
+"Scoring a capture"); scored against the snapshot's own screen it only matches
+with the tick before, because that screen was drawn from the previous state. `--assets ../assets_k60 --selfcheck` passes
 23/23. The stepper's `--shot` and the game's screen give the same colour at
 five sampled ST coordinates, portrait included.
 

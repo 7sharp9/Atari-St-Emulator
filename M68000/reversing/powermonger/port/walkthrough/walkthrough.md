@@ -1,9 +1,9 @@
 # How PowerMonger draws its world
 
-*2026-09-22T22:39:21Z by Showboat 0.6.1*
-<!-- showboat-id: cfa48c7d-237a-4b53-b338-b5955598bb15 -->
+*2026-09-23T01:35:39Z by Showboat 0.6.1*
+<!-- showboat-id: 1a74453f-fbfb-43b8-a403-607035b6984f -->
 
-This walks through one frame of PowerMonger's isometric view (Atari ST, 1990), following the data from the heightmap in RAM to the pixels on screen. The code is the F# port in `../godot/logic/`, which reproduces the 68000 routines closely enough to match the game's own frame buffer at 94-98% of pixels, and the terrain alone at over 99% away from sprites, at all seven zoom levels. Addresses like `$fccc` are routines in the original executable, so every section can be traced back to the disassembly.
+This walks through one frame of PowerMonger's isometric view (Atari ST, 1990), following the data from the heightmap in RAM to the pixels on screen. The code is the F# port in `../godot/logic/`, which reproduces the 68000 routines closely enough to match the game's own frame buffer at 99.7-99.99% of pixels on the mission-1 captures (94.6% on one whose two frame buffers disagree), every pixel of the later-land frames checked, and the terrain alone at over 99% away from sprites at all seven zoom levels. Addresses like `$fccc` are routines in the original executable, so every section can be traced back to the disassembly.
 
 The whole renderer, in the order it runs. `$f898` is the driver: once per game tick it re-projects if the camera moved, then runs the walk for the current angle.
 
@@ -452,7 +452,7 @@ dotnet fsi probe.fsx rasters
 reversed winding ($1c forced) on 52 triangles, first at steps [1; 3; 7; 8]
 span walk aborted on 0 triangles; rows lost -> how many: []
 skipped by $ef62: 0 []; drawn but fully clipped: 0
-$1c triangles drew 3298 px; 6 px of them are visible in the finished frame (of 13725 terrain px)
+$1c triangles drew 3298 px; 6 px of them are visible in the finished frame (of 13733 terrain px)
 ```
 
 No triangle gives up in this frame. Before the row fix there were 21 aborts, every one on the extra last row, where the two edges had already crossed: the abort was the port running past the end of the triangle, not a real early exit.
@@ -602,13 +602,13 @@ sed -n '/One thing the renderer draws/,/| _ -> () |\]/p' ../godot/logic/Scene.fs
 
     /// Interleave each cell's sprites after its triangles, in the order the
     /// walk visits the cells. Records whose category has no frame to draw
-    /// (see Sprites.entityFrame) are left out; records outside the visible
+    /// (see Sprites.draws) are left out; records outside the visible
     /// 8x8 are never reached. Within a cell, records keep the order given,
     /// which is their bucket-chain order.
     let steps (ctx: Sprites.EntityCtx) (cells: Fill.Cell list) (recs: Sprites.EntityRec seq) : Step[] =
         let byCell =
             recs
-            |> Seq.filter (fun r -> (Sprites.entityFrame ctx r).IsSome)
+            |> Seq.filter (Sprites.draws ctx)
             |> Seq.groupBy (fun r -> r.Wcx, r.Wcy)
             |> dict
         [| for c in cells do
@@ -642,15 +642,15 @@ grep -A 7 '| capture | terrain only' ../SPEC.md
 ```output
 | capture | terrain only | sprites last (`drawEntities`) | inline (`Scene.render`) | px where the orders differ: game = last / inline / neither |
 |---|---|---|---|---|
-| `pm88_f1` (yaw `$f0`) | 94.1% | 89.17% | **96.80%** | 1 / 1159 / 18 of 1178 |
-| `pm78_settle` (`$f0`) | 94.6% | 86.02% | **93.66%** | 1 / 1159 / 18 of 1178 |
-| `pm74_late` (`$f0`) | 94.4% | 90.83% | **96.80%** | 3 / 897 / 14 of 914 |
-| `rot40` (`$40`) | 94.4% | 90.98% | **97.83%** | 28 / 1267 / 62 of 1357 |
-| `rot90` (`$90`) | 84.8% | 94.03% | **96.57%** | 20 / 361 / 55 of 436 |
-| `rotc0` (`$c0`) | 91.1% | 89.78% | **94.26%** | 8 / 624 / 25 of 657 |
+| `pm88_f1` (yaw `$f0`) | 94.1% | 92.28% | **99.99%** | 0 / 1171 / 1 of 1172 |
+| `pm78_settle` (`$f0`) | 94.6% | 86.90% | **94.62%** | 0 / 1171 / 1 of 1172 |
+| `pm74_late` (`$f0`) | 94.4% | 93.62% | **99.69%** | 0 / 909 / 4 of 913 |
+| `rot40` (`$40`) | 94.4% | 92.66% | **99.97%** | 0 / 1326 / 0 of 1326 |
+| `rot90` (`$90`) | 84.8% | 96.75% | **99.92%** | 0 / 425 / 1 of 426 |
+| `rotc0` (`$c0`) | 91.1% | 95.03% | **99.81%** | 0 / 658 / 0 of 658 |
 ```
 
-The inputs are `.ram` captures of the running game, which stay out of the repository, so this table is quoted from SPEC.md rather than re-run here. `pm78_settle` scores lower overall because its two compose buffers are known to disagree on the entity layer; the comparison at the differing pixels still comes out the same way. The yaw only picks men's and animals' facing frames. The camera cell matters more for trees and buildings: their position inside the cell is not stored, but worked out from the addresses of the record, its bucket slot and its cell's corner in the corner buffer, and the corner address depends on where the cell sits in the window. The port exports the records for the whole map and recomputes that jitter for every window, so every camera cell has its sprites. The castle keep in the hilltop fort is its own category (`byte6` 2, `$117d8`): a building frame from the tree sheet, anchored on the cell's centre.
+The inputs are `.ram` captures of the running game, which stay out of the repository, so this table is quoted from SPEC.md rather than re-run here. `pm78_settle` scores lower overall because its two compose buffers are known to disagree on the entity layer; the comparison at the differing pixels still comes out the same way. The few pixels the others miss are units that moved: a capture's screen was drawn from the state one tick earlier. Scored against the next tick's screen instead, frames from later lands match pixel for pixel (SPEC.md §6, "Scoring a capture"). The yaw only picks men's and animals' facing frames. The camera cell matters more for trees and buildings: their position inside the cell is not stored, but worked out from the addresses of the record, its bucket slot and its cell's corner in the corner buffer, and the corner address depends on where the cell sits in the window. The port exports the records for the whole map and recomputes that jitter for every window, so every camera cell has its sprites. The castle keep in the hilltop fort is its own category (`byte6` 2, `$117d8`): a building frame from the tree sheet, anchored on the cell's centre.
 
 Zoom changes the art as well as the positions. `$12244`, which draws buildings and trees, picks one of three copies of the same pictures by the zoom index: 32 x 32 when zoomed in (1-3), 32 x 24 at the default (4-5) and 16 x 16 zoomed out (6-7). Men, animals and banners stay 8 x 11 at every zoom.
 
@@ -805,7 +805,7 @@ sed -n '/private void RenderFrame()/,/Scene.render(buf, dither/p;/_rect.Texture 
         _rect.Texture = ImageTexture.CreateFromImage(img);
 ```
 
-Everything the port reproduces stays as the game draws it: the dither and its phase, the clipping, the `$1c` override, the row the span walker stops short of. The island is drawn over the game's own `$78000` master screen (HUD, lord portrait, temple backdrop, minimap), exported once as `assets/backdrop.bin`, since the game never changes it. Against the game's frames that is 94-98% of pixels, and nearly all of the rest are sprites.
+Everything the port reproduces stays as the game draws it: the dither and its phase, the clipping, the `$1c` override, the row the span walker stops short of. The island is drawn over the game's own `$78000` master screen (HUD, lord portrait, temple backdrop, minimap), exported once as `assets/backdrop.bin`, since the game never changes it. Against the game's frames that is 99.7-99.99% of pixels on the mission-1 captures, and the rest are units that moved between the capture and its screen.
 
 ![The Godot view: the port's island over the game's own backdrop](../assets/reference/godot_screenshot_backdrop_118th.png) The Godot view pans, rotates and changes season like the stepper, and stays at the default zoom. The cost is that Godot is only a window. You cannot zoom smoothly, light it, or run it above 320 x 200 without changing what it is.
 

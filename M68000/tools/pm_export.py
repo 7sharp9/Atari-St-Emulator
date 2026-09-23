@@ -674,6 +674,17 @@ def export_tables(ram: Ram, out: Path, man: list):
 # ---------------------------------------------------------------------------
 
 
+def export_weather(ram: Ram, out: Path, man: list):
+    # $1a856's two 256-byte pattern tables: rain at $1a8a4, snow at $1a9c8
+    # (Weather.fs). Program data, the same on every land.
+    (out / "weather.bin").write_bytes(ram.blk(0x1A8A4, 256) + ram.blk(0x1A9C8, 256))
+    man.append({
+        "file": "weather.bin",
+        "provenance": "$1a8a4 (rain, 256 B) then $1a9c8 (snow, 256 B), read by $1a856",
+        "format": "64 big-endian longs per table; row r of the overlay uses long (phase - 4r) & $ff",
+    })
+
+
 def decode_strtab(ram: Ram, addr, count):
     """PowerMonger string tables: u16 offsets from the table base into a string
     pool that follows. Strings appear to carry a 1-byte length/attr prefix. We
@@ -749,6 +760,21 @@ def decode_object(r: bytes):
     }
 
 
+def render_icons(ram: Ram, o: int) -> int:
+    """The $11886 goods-table entries a record draws, as a bit mask (bit e =
+    entry e). byte6 44 ($1184e, a dropped goods pile): entry e when
+    word[o + 10 + 2e] != 0, e = 0..8. byte6 16 ($1192e, a leader's base):
+    entry i + 1 when the leader's goods byte i is non-zero, the leader being
+    $4e514 + (signed) word[o + 14] and its goods bytes 24..31."""
+    b6 = ram.u8(o + 6)
+    if b6 == 44:
+        return sum(1 << e for e in range(9) if ram.u16(o + 10 + 2 * e))
+    if b6 == 16:
+        lead = 0x4E514 + ram.s16(o + 14)
+        return sum(1 << (i + 1) for i in range(8) if ram.u8(lead + 24 + i))
+    return 0
+
+
 def export_entities(ram: Ram, out: Path, man: list, source: str):
     objs = []
     for s in range(1, 512):
@@ -817,6 +843,8 @@ def export_entities(ram: Ram, out: Path, man: list, source: str):
                     "b17": rec[17], "b31": rec[31],
                     "fx": rec[9], "fy": rec[11],
                     "group": (rec[42] << 8) | rec[43],
+                    "b15": rec[15], "b32": rec[32], "w18": (rec[18] << 8) | rec[19],
+                    "icons": render_icons(ram, o), "b33": rec[33], "b44": rec[44],
                 })
                 d4 = ram.u16(o)
     tsel = ram.u16(0x57FD0)
@@ -839,8 +867,10 @@ def export_entities(ram: Ram, out: Path, man: list, source: str):
         "sheet_prop16": "sprites/struct_sheet_raw.bin",  # $312a0 16x16, zoom 6-7
         "note": ("feed render_entities[] as PmLogic.Sprites.EntityRec and draw "
                  "with Scene.render. byte6 drawn: 0 (men) 2 (settlement "
-                 "building) 4 (building/tree) 8 (animal) 14 (banner) 6/24 "
-                 "(marker). See SPEC.md section 6."),
+                 "building) 4 (building/tree) 8 (animal) 10 (dropped "
+                 "equipment) 12 (dead man) 14 "
+                 "(banner) 16 (leader's base) 20 (pigeon) 22 (flock bird) "
+                 "44 (goods pile) 6/24 (marker). See SPEC.md section 6."),
     }
 
     e = {
@@ -988,6 +1018,7 @@ def main():
     export_sprites(ram, out, man, dom_pal)
     export_hud(ram, out, man)
     export_tables(ram, out, man)
+    export_weather(ram, out, man)
     export_strings(ram, out, man)
     ent_path = Path(args.entities_ram)
     export_entities(Ram(ent_path.read_bytes()), out, man, ent_path.name)

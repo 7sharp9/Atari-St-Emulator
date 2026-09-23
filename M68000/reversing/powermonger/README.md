@@ -159,12 +159,23 @@ override:
 ```
 
 Mount the Replicants image (`scratchpad/powermonger.st`), as in the drive
-recipe. `$57fd0` (the season) is read from `$58146` *before* `$10d1e` refills
-it, so a poked land keeps the season of the stored block (4 here). The unpoked
+recipe. `$57fd0` (the season) is `(byte[$58146] & 3) * 2`, read at `$13bdc`
+*before* `$10d1e` refills `$58146`, so a poked land keeps the season of the
+stored block (4 here) unless you also poke that byte at `$13b9a`:
+`w 58146 1c190750` builds winter (season word 0), `1d..` spring, `1f..` autumn.
+`scratchpad/pm121/build_land.sh <k> [steps] [season]` does all of this and
+prints the land's render-record census (`census.py`). The unpoked
 control reproduces mission 1's terrain byte for byte. `k` = 20/60/100/143 give
 44-69 settlement records (mission 1: 11) and non-zero `$3f86c` control values
 on 37-72 % of cells (mission 1: 10 %). `scratchpad/pm120/k60_iso.snap` is
 land 60 (`$580a0 = $68f`), settled at the frame driver.
+
+What 37 lands draw, and what they do when left to run, is in `port/SPEC.md` §6
+("Every category") and `ai.md` ("Natural runs on later lands"). To look at a
+record in the game, poke the camera centre and let a frame render:
+`w 4bb3a <x><y>` (two words), `s 2000000`, `u f898` (`scratchpad/pm121/capture.sh`
+snapshots N frames in a row from there). The REPL's `hits <steps> <addr>...`
+counts how often each address runs over a stretch, with the first and last step.
 
 ## PM's mouse dialog state machine (67th pass RE, completed 68th)
 

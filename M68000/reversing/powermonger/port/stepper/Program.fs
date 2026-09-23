@@ -229,7 +229,7 @@ let private describe (m: Model) =
               (let s, _ = Sprites.propSheet f.Ctx in sprintf "%dx%d" s.W s.H)
           sprintf "sprites: %d drawn in this window, of %d records on the map"
               (f.Steps |> Array.sumBy (function
-                  | Scene.Sprite(cell, r) when (Scene.placement f.Ctx cell r).IsSome -> 1
+                  | Scene.Sprite(cell, r) when not (Scene.placement f.Ctx cell r).IsEmpty -> 1
                   | _ -> 0))
               m.Assets.Entities.Length
           sprintf "season %d (word[$57fd0] = %d): %s, trees +%d"
@@ -278,12 +278,17 @@ let private describe (m: Model) =
                 | Scene.Sprite(_, r), _ ->
                     [ yield sprintf "drawing sprite: %s (record byte6 %d)" (Replay.spriteKind r.B6) r.B6
                       yield "  after this cell's triangles, before the next cell"
-                      match Scene.placement f.Ctx cell r with
-                      | Some p ->
+                      let ps = Scene.placement f.Ctx cell r
+                      for p in ps do
                           yield sprintf "  frame %s of the %s sheet" (hex2 p.Frame)
-                                    (if p.IsProp then "32x24 $37c7c" else "8x11 $33000")
-                          yield sprintf "  anchor: %s" p.Rule
-                      | None -> ()
+                                    (match p.Sheet with
+                                     | Sprites.Prop -> sprintf "%dx%d building/tree" p.W p.H
+                                     | Sprites.Struct16 -> "16x16 $312a0"
+                                     | Sprites.Mini -> "8x11 $33000"
+                                     | Sprites.Dot -> "one-pixel $e6ee")
+                      match ps with
+                      | p :: _ -> yield sprintf "  anchor: %s" p.Rule
+                      | [] -> ()
                       yield sprintf "  %d px" px ]
                 | _ -> []
             where @ [ "" ] @ what
@@ -358,10 +363,9 @@ let private view (screen: Screen) (_: GameContext) (m: Model) (buffer: RenderBuf
             let a, b, cc = corner t.A, corner t.B, corner t.C
             buffer.lineStrip([| a; b; cc; a |], rgba 255 220 60 255, layer = ly 5).drop()
         | Scene.Sprite(_, r) ->
-            match Scene.placement f.Ctx cell r with
-            | Some p ->
-                // the whole frame the blitter copies (transparent pixels too),
-                // and the anchor point its position was computed from
+            // each frame the blitter copies (transparent pixels too), and
+            // the anchor point their positions were computed from
+            for p in Scene.placement f.Ctx cell r do
                 let tl = toScreen (float p.X) (float p.Y)
                 let anchor = toScreen (float p.AnchorX) (float p.AnchorY)
                 buffer
@@ -369,7 +373,6 @@ let private view (screen: Screen) (_: GameContext) (m: Model) (buffer: RenderBuf
                                  rgba 90 220 255 255, thickness = 2.0f, layer = ly 5)
                     .fillCircle(anchor, 4.0f, rgba 255 90 90 255, layer = ly 5)
                     .drop()
-            | None -> ()
 
     // progress bar under the frame, then the explanation panel
     let barY = Origin.Y + fh + 10.0f

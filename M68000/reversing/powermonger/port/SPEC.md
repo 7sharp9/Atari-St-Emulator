@@ -458,14 +458,22 @@ straight after a change, the game shows the old season's grass under the new
 season's trees.
 
 At the same moment `$1abaa` also sets one random `$4d252` record whose byte 7
-is `$0d` to `$0e + (word 10 & 3)`, and `$1ad74` picks an ambient sound from
-`$1ad9c[$57fd0]`. Neither is ported.
+is `$0d` to `$0e + (word 10 & 3)` (not ported). `$1ad74`, which reads
+`$1ad9c[$57fd0]`, starts rain or snow (§7 "Weather").
+
+The sprite sheets are the same in every season: `$37c7c`, `$3af1c`, `$312a0` and
+`$33000` are byte-identical on land 5 built in seasons 0, 2 and 3 and on mission 1
+(poke `byte[$58146]` at `$13b9a` to choose, `../README.md` "Driving a later
+land"). Only the frame offset and the grass change.
 
 The port's `Season.fs` has `table` (`$1ab60`), `fading` (`$1abaa`) and
 `treeTileOffset`. Evidence: `Season.fading(dither.bin, season, steps)` equals
 the whole 16 KB `$2e000` table byte for byte on `pm88_f1`, `pm78_settle`,
 `pm74_late`, `pm73_fight` and the three `rot*` captures, with steps = 16 x
-`[$57fec]` in each (`scratchpad/pm119/season_check.fsx`). Two Hatari
+`[$57fec]` in each (`scratchpad/pm119/season_check.fsx`). On land 5 built in
+seasons 0, 2 and 3 and on land 60, still inside the first fade, the RAM table
+equals `Season.table(dither.bin, season)` byte for byte, mission 1's `dither.bin`
+included, and the tree offset matches `$11746` (`scratchpad/pm121/season_check.fsx`). Two Hatari
 screenshots of mission 1 at the start pose (yaw 15, and yaw 3 phase 0) match the
 port's settled season 2 at 88.3% and 89.1% of terrain pixels, and seasons 0, 1
 and 3 at 3-35%. The viewer and `TerrainView.cs` default to the season
@@ -736,19 +744,61 @@ N 0..15 (verified from the live RAM table). The blit table is at **`$1165c`**
 (not `$1165a`); `byte6 == 0` (men) blits via **`$11f78` → `$11f82`**, *not*
 `$1187c` (a melee/dying sub-case, record byte 31 ∈ {`$32`,`$34`,`$06`,`$46`}).
 
-**Categories seen on later lands (120th, land 60, `scratchpad/pm120/k60_iso`).**
-Map-wide the bucket walk finds `byte6` {0: 135, 2: 62, 4: 120, 8: 38, 14: 31,
-16: 7, 20: 1, 22: 1, 24: 24, 32: 6} against mission 1's {0: 21, 2: 9, 4: 203,
-8: 3, 14: 26, 16: 2, 24: 12}. Three are new:
+**Every category (121st).** Prepare and blit targets decoded from the two
+tables with `disassemble.py --jumptable 1162e 23` / `--jumptable 1165c 23`.
+"Frames" says what the port draws; "checked" names the captures where the
+port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 
-| `byte6` | prepare / blit | what it does |
-|---------|----------------|--------------|
-| 32 | `$1168a` / `$1168a` | `rts` in both passes: never drawn. Six records sharing the `byte6 24` marker block (`b7 = $10`). The port draws nothing (`Sprites.entityFrame`). |
-| 20, 22 | `$11b3c`, `$11b2a` / `$11f78` | 22 first picks a counter by the sign of `record[15]` (`$12b58` if negative, else `$12a78`; 20 always `$12a78`) and adds 1; then `$11f12` position, an optional `$e6ee` shape 5 lifted by `record[14]`, `$33000` frame `$148` raised by `record[15]` (signed, `+$30` if negative), frame `$151` only for the record at `$4c112`, then the common `$11f78` blit. One record each, outside the start view; not ported. |
+| `byte6` | prepare / blit | what it is | frames | checked |
+|---------|----------------|------------|--------|---------|
+| 0 | `$11c8a` / `$11f78` | man | walk or melee frame; plough and siege-engine overlays; flags bit 5 → the boat of 26 | walk, melee, boat (lands 0, 5, 25, 60) |
+| 2 | `$117d8` / – | settlement building | building frame `record[7]` | all |
+| 4 | `$1168c` / – | tree, building | `record[7]` + season offset | all |
+| 6, 24 | `$117b0` / `$11f78` | settlement marker | `record[7] + $100` | all |
+| 8 | `$11a86` / `$11f78` | animal | 16 facings | all |
+| 10 | `$11772` / – | dropped equipment (a dead man's `record[33]`/`[44]` once `$1623c` finishes) | `$10f + (r33 − 8) >> 1`, `$142 + r44 >> 1` | land 5 |
+| 12 | `$11bbc` / `$11f78` | dead man (`$5590` kill: side negated, `word[18] := $a0`) | body `$103 + (−record[5] & $ff)`; figure `$100 + record[32]` lifted `$a0 − word[18]` | land 5 |
+| 14 | `$11bf4` / `$11f78` | banner / group member | `record[5] + $13e` | all |
+| 16 | `$1192e` / – | leader's base (`$4f916` record) | building frame 7, then the leader's goods icons | lands 0, 5 |
+| 18 | `$11c36` / – | projectile, `$312a0` art | `word[14] < 0`: 16 x 16 frame `word[14] + $2f` (`$1225c`); else 8 x 11 `$146` (`$11f7c`) | never seen; not ported |
+| 20 | `$11b3c` / `$11f78` | carrier pigeon (`$4c112` pool, 26 B) | shadow `$148`; bird `$127 + (tick & 7)` lifted `record[15]`; `$151` for `$4c112` only | land 5 |
+| 22 | `$11b2a` / `$11f78` | bird of a flock (`$4c5f4` pool, 22 B, `$4672` at world build) | as 20 | land 5 |
+| 26 | `$1174e` / `$11f78` | boat | `$149 + record[5]`, 1 px lower on `[$4bb41] & 1` | via byte6 0 bit 5 (land 0) |
+| 28 | `$11b0c` / `$11f78` | set at `$15462` in winter only | – | never seen; not ported |
+| 30 | `$1198a` / – | building going up (`$5e3a`) | frame `$0c`, top rows cut off while `word[8]` counts down from `$10` | land 25 |
+| 32 | `$1168a` / `$1168a` | nothing: `rts` in both passes (the end state of a dead man without goods) | – | – |
+| 34 | `$11ab8` / `$11f78` | – | – | never seen; not ported |
+| 36, 38, 42 | prepare word 0 / `$12258`, `$12258`, `$12244` | – | – | never seen |
+| 40 | `$11c64` / – | projectile (`$57f0`, weapon tier in `D1`) | one colour-0 pixel (`$e6ee`) | land 25 |
+| 44 | `$1184e` / – | dropped goods pile (`$3ac8`) | a goods icon per non-zero word at `record + 10 + 2e` | lands 5, 25 |
 
-`byte6` 16 (leader goods icons, `$11886` table) rises to 7 records; still not
-ported. The `$312a0` categories `byte6` 18 and 30 (the table's "cat" 9 and
-15) do not occur.
+Screened on 37 lands (33 built with `scratchpad/pm121/build_land.sh` and settled
+30M steps, `k` = 0-142, plus the 120th's `k` = 20, 60, 100, 143): 20, 22, 32, 40, 44 and 12 occur at settle; 10, 30
+and more 40/44 appear once armies fight (200M-step runs). No land showed 18, 28
+or 34.
+
+**Goods icons, `$11886`.** Nine entries, each a frame and an offset from the
+blit corner, laid out as a 3 x 3 block 2 px apart: `$116` (−2,−2), `$143`
+(0,−2), `$144` (2,−2), `$145` (−2,0), `$23` (0,0, 16 x 16 `$312a0`), `$109`
+(2,0), `$110` (−2,2), `$146` (0,2), `$1b` (2,2, 16 x 16 `$312a0`). Read in
+`../economy.md`'s goods order, entry 0 is food and entries 1-8 are pike, sword,
+bow, plough, boat, pot, catapult and cannon (the plough frame `$109` is also
+the carried-plough overlay, and `$1b`/`$23` are the siege-engine art). byte6 44 draws
+entry e for each non-zero word at `record + 10 + 2e`; byte6 16 draws entry
+i + 1 for each non-zero goods byte i of its leader
+(`$4e514 + word[record + 14]`, bytes 24-31). Port: `Sprites.goodsIcon`; the
+exporter computes the mask (`pm_export.render_icons`).
+
+**Men (`$11c8a`).** Flags bit 5 (in a boat) → `$1174e`. Melee modes `$32`/`$34`:
+frame `$80 + weapon * 8 + (side − 1) * 4`, weapon = `record[44]` (0 if `>= $e`),
+`+1` on tick parity `$57fec & 1` (with weapon 6, only when byte 18 is `$14`),
+`+2` when facing away (`((heading + yaw + $40) & $ff) >> 7`), `+$40` if flags
+bit 4. Otherwise `(side − 1) * 16 + facing * 2` (8 facings), `+$40` armed, `+1` on
+`[$4bb41] & 1`. A man carrying a plough (`record[33] == 8`, `record[7] == 1`)
+first draws `$109 + k` at `$11e40/$11e50[k]`, k = frame & 7; a man hauling a
+siege engine (`record[44] >= $e`) first draws the 16 x 16 `$312a0` frame
+`$1b + (record[44] − $e) * 4 + k` at the same offsets (`$11ebc`), k = facing
+(melee: `(record[44] & $f) >> 1`). Plough and siege engines were never seen.
 
 ### Position — bilinear over the projected cell corners (`$11f1a`)
 
@@ -761,10 +811,20 @@ a0 = &$3f364[cellRow*64 + cellCol*4]          // the cell's TL corner
 C00 = (a0)   C10 = 4(a0)   C01 = 64(a0)   C11 = 68(a0)
 fx  = record[9]                                // = low byte of the BE word at record+8
 fy  = record[11]                               //   ($11f12: move.w 8(A3),D6; andi.w #$ff)
-pos = lerp( lerp(C00, C10, fx/256), lerp(C01, C11, fx/256), fy/256 )   // parallel 16-bit halves
+pos = lerp( lerp(C00, C10, fx/256), lerp(C01, C11, fx/256), fy/256 )   // see below
 screenX = pos.x + 0x3c                         // sprite anchor (cf terrain +64; −4 = ½ frame)
 screenY = pos.y - 8
 ```
+
+The lerp works on the packed longs, and the port copies it word for word
+(`Sprites.packedLerp`, `pm_render_ref._packed_lerp`). Each edge delta is a
+32-bit `sub.l`, so a borrow out of the low (y) half takes 1 off the x delta.
+Each step is `muls` by the fraction with only the low word kept, then
+`asr.w #8`. The two edge points are built swapped, `(y << 16) | x`, so in the
+final `sub.l` the borrow runs from x into y. Treating the halves as two
+independent lerps puts about one sprite in ten a pixel off; the exact version
+matches the game's `D0`/`D1` at every blit checked and scores the captures
+below pixel for pixel.
 
 The corners here are the **raw** `$3f364` values (window-relative, no +64 HUD
 inset — that inset is applied only via the terrain draw pointer `$e3e2`). So a
@@ -785,31 +845,35 @@ where the mask bit is 0):
 
 | sheet | frame | geom | blitter | positioning | categories |
 |-------|-------|------|---------|-------------|------------|
-| `$33000` | 55 B | 8 × 11, byte planes | `$11f82` | sub-cell lerp | 0, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14 |
-| `$312a0` | 160 B | 16 × 16, word planes (10 B/row) | `$1225c` / `$119d4` | cell-centred | 1, 9, 15 |
-| `$37c7c` | 480 B | 32 × 24, word planes (2 groups/row) | `$12244`→`$12326`/`$124a8` | **sub-cell lerp** (89th, not centred) | 2 |
-| `$e6ee`+desc | — | 32 B glyph row | `$e6ee` | raw cell coord + fixed X | the `$165b2` marker / HUD only |
+| `$33000` | 55 B | 8 × 11, byte planes | `$11f82` | sub-cell lerp or centroid | byte6 0, 6, 8, 10, 12, 14, 20, 22, 24, 26, 28 and the goods icons |
+| `$312a0` | 160 B | 16 × 16, word planes (10 B/row) | `$1225c` | as the caller | siege engines, goods icons 7-8, byte6 18, and the building sheet at zoom 6-7 |
+| `$37c7c` / `$3af1c` | 480 / 640 B | 32 × 24 / 32 × 32, word planes | `$12244`→`$12326`/`$124a8` | sub-cell lerp (4) or centroid (2, 16, 30) | byte6 2, 4, 16, 30 |
+| `$e6ee` | — | one pixel | `$e6ee` (`movep.l`) | any | byte6 40, the byte6 20/22 dot, the minimap |
 
 `$37c7c` decodes cleanly as **buildings + trees** (89th: verified byte-exact
-against `pm78_settle`'s `$24400` live tree pixels); `$312a0` as small
-structures / siege engines (catapult, cannon) / explosions.
+against `pm78_settle`'s `$24400` live tree pixels). `$312a0` holds the same 27
+building pictures at 16 x 16 (zoom 6-7), then the catapult (`$1b`-`$22`, 8
+facings) and cannon (`$23`-`$2a`) frames the siege-engine overlay and goods icons
+use.
 
-| cat | name | sheet | frame (D2) |
-|-----|------|-------|------------|
-| 0 | man / troop | `$33000` | `(faction−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. faction = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative** (8 steps). Melee (record[31] ∈ {0x32,0x34}): base **0x80**, `weapon*8 + (faction−1)*4 + facing2*2 + anim` `[+0x40]`, `facing2 = ((heading + YAW + 0x40) & 0xff) >> 7`. Overlays: record[33]==8 && record[7]==1 → small extra ($11f82, table $11e40); record[44]≥0xe → weapon overlay ($12258). |
-| 1 | structure | `$312a0` | record[7]==0x0a → directional pick from record[16]/7 & record[12]/10; else `$1181c` (open). Centred. |
-| 2 | building / tree | `$37c7c` | **(89th, live-verified — D2 at `$12288`)** `r7 = record[7]`: `r7 == 0x0d` → `0x0d`; `(r7 & 0x7f) == 0x0e` → `0x0e`; else `(r7 & 0x7f) + word[$11746 + word[$57fd0]]`. `word[$57fd0] = ($58146 & 3)*2` (per-mission tile-set selector); table `$11746 = {0:0, 2:3, 4:6, 6:9}`. Mission 1 (`$57fd0`==4) → `+6`, so `r7` 0x11/0x10/0x0f → frame 0x17/0x16/0x15. **Position: `$11f1a` sub-cell lerp** (like the men) with an *address-jitter* `fx/fy` = `fx = (((A2+A3)&0xffff)<<3)&0xff`, `fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff` where `A2 = &$47970[cellY*64+cellX]`, `A3 = record`, `A0 = &$3f364[row*64+col*4]`; then `$12272` `−4/−8` → raw anchor `(lerpX+0x38, lerpY−16)`. |
-| 3, 12 | settlement / territory marker | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). 0x100+ = number/flag glyphs. **(89th, `$117b0` — byte6 6/24 — from disasm: CENTROID position (`$1182a`), not sub-cell. Mission 1 has 12 boundary markers `r7`==0x10 → frame 0x110.)** |
-| 4 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. **(89th: live-verified — D2 = 0x123/0x124 at `$11ab6`.)** Sub-cell lerp. |
-| 5 | effect | `$33000` | `((record[33]−8) >> 1) + 0x10f`, then `(record[44] >> 1) + 0x142` (two blits) |
-| 6 | boat? | `$33000` | underlay `0x103 − record[5]`, main `record[32] + 0x100`; `screenY −= (0xa0 − record[18])` |
-| 7 | flag / banner | `$33000` | `record[5] + 0x13e` (faction-indexed) |
-| 8 | leader goods icons | `$33000` | loop slot 0..7 over `[$4e514 + record[14]]` goods[8]; per non-zero slot, jump table `$11886` → ~`0x116`+ |
-| 9 | siege engine / effect | `$312a0` | `record[14]` signed; if < 0, `record[14] + 0x2f`. Centred. |
-| 10, 11 | structure w/ flag | `$33000` | `$11f82` D2=`0x148`; conditional `$e6ee` D2=5 and `$11f82` D2=`0x151`; returns `([$57fec] & 7) + 0x127` |
-| 13 | faction marker | `$33000` | `(record[5] & 0xff) + 0x149` `[+1 anim]` |
-| 14 | marker / icon | `$33000` | `0x150`, or `([$57fec] & 1) + 0x14e` if `record[5] > 0` |
-| 15 | large structure | `$312a0` | `0x0c` default, then a `record[8]`-indexed pick. Centred. |
+| `byte6` | name | sheet | frame (D2) |
+|---------|------|-------|------------|
+| 0 | man | `$33000` | `(side−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. side = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative** (8 steps). Melee, plough and siege-engine overlays and the boat: "Men" above. |
+| 2 | settlement building | `$37c7c` | `record[7]`, centroid (see "Settlement buildings" below) |
+| 4 | tree / building | `$37c7c` | **(89th, live-verified — D2 at `$12288`)** `r7 = record[7]`: `r7 == 0x0d` → `0x0d`; `(r7 & 0x7f) == 0x0e` → `0x0e`; else `(r7 & 0x7f) + word[$11746 + word[$57fd0]]`. `word[$57fd0] = ($58146 & 3)*2` (per-mission tile-set selector); table `$11746 = {0:0, 2:3, 4:6, 6:9}`. Mission 1 (`$57fd0`==4) → `+6`, so `r7` 0x11/0x10/0x0f → frame 0x17/0x16/0x15. **Position: `$11f1a` sub-cell lerp** (like the men) with an *address-jitter* `fx/fy` = `fx = (((A2+A3)&0xffff)<<3)&0xff`, `fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff` where `A2 = &$47970[cellY*64+cellX]`, `A3 = record`, `A0 = &$3f364[row*64+col*4]`; then `$12272` `−4/−8` → raw anchor `(lerpX+0x38, lerpY−16)`. |
+| 6, 24 | settlement marker | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Centroid (`$1182a`). Mission 1 has 12 boundary markers `r7`==0x10 → frame 0x110. |
+| 8 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. **(89th: live-verified — D2 = 0x123/0x124 at `$11ab6`.)** Sub-cell lerp. |
+| 10 | dropped equipment | `$33000` | `$10f + ((record[33] − 8) >> 1)` if `record[33] != 0`, then `$142 + (record[44] >> 1)` if `record[44] != 0`, same place |
+| 12 | dead man | `$33000` | body `$103 + (−record[5] & $ff)`; figure `$100 + record[32]` at `screenY − ($a0 − word[18])` |
+| 14 | banner / group member | `$33000` | `record[5] + 0x13e` (side-indexed) |
+| 16 | leader's base | `$37c7c` + icons | building frame 7 (`$12244`), then the goods icons |
+| 18 | projectile | `$312a0` / `$33000` | `word[14] < 0`: `word[14] + 0x2f` (16 x 16); else `$146` |
+| 20, 22 | pigeon, flock bird | `$33000` | `$148` shadow; `$127 + ([$57fec] & 7)` and (record `$4c112` only) `$151` lifted `s8(record[15])` (`+$30` if negative); a colour-5 pixel at `screenY − record[14]` if `record[14] != 0` |
+| 26 | boat | `$33000` | `(record[5] & 0xff) + 0x149`, one pixel lower when `[$4bb41] & 1` |
+| 28 | (winter only, `$15462`) | `$33000` | `0x150`, or `([$57fec] & 1) + 0x14e` if `record[5] > 0` (not ported) |
+| 30 | building going up | building sheet | frame `$0c` with the top rows cut off, see the table above |
+| 40 | projectile | `$e6ee` | one pixel, colour 0 |
+| 44 | dropped goods | icons | the goods icons |
 
 **The `+0x40` "armed" variant (cat 0):** `D2 += 0x40` iff `record[7] bit 4` set
 **and** (`record[7] bit 7` clear **or** the unit's group == `[$57ffe]` the
@@ -869,28 +933,42 @@ ported category, scored against the game's own compose buffer
 
 | capture | terrain only | sprites last (`drawEntities`) | inline (`Scene.render`) | px where the orders differ: game = last / inline / neither |
 |---|---|---|---|---|
-| `pm88_f1` (yaw `$f0`) | 94.1% | 89.17% | **96.80%** | 1 / 1159 / 18 of 1178 |
-| `pm78_settle` (`$f0`) | 94.6% | 86.02% | **93.66%** | 1 / 1159 / 18 of 1178 |
-| `pm74_late` (`$f0`) | 94.4% | 90.83% | **96.80%** | 3 / 897 / 14 of 914 |
-| `rot40` (`$40`) | 94.4% | 90.98% | **97.83%** | 28 / 1267 / 62 of 1357 |
-| `rot90` (`$90`) | 84.8% | 94.03% | **96.57%** | 20 / 361 / 55 of 436 |
-| `rotc0` (`$c0`) | 91.1% | 89.78% | **94.26%** | 8 / 624 / 25 of 657 |
+| `pm88_f1` (yaw `$f0`) | 94.1% | 92.28% | **99.99%** | 0 / 1171 / 1 of 1172 |
+| `pm78_settle` (`$f0`) | 94.6% | 86.90% | **94.62%** | 0 / 1171 / 1 of 1172 |
+| `pm74_late` (`$f0`) | 94.4% | 93.62% | **99.69%** | 0 / 909 / 4 of 913 |
+| `rot40` (`$40`) | 94.4% | 92.66% | **99.97%** | 0 / 1326 / 0 of 1326 |
+| `rot90` (`$90`) | 84.8% | 96.75% | **99.92%** | 0 / 425 / 1 of 426 |
+| `rotc0` (`$c0`) | 91.1% | 95.03% | **99.81%** | 0 / 658 / 0 of 658 |
 
 The `rot*` captures are `pm88_f1.snap` rotated in the emulator (`w ff9a 00YY0015`,
 2M steps, `scratchpad/pm118/rot*.snap`). Terrain-only scores are low where trees and
 buildings cover the most terrain (`rot90`); away from sprites the terrain matches at
 99.7-99.96% (`scratchpad/pm118b/`). Drawn inline, every ported category raises the
-score, and `pm_render_ref.py` now draws the same way (a per-cell `_cell_done` hook in
-every walk handler, all categories): it matches `Scene.render` pixel for pixel on
-`pm88_f1` (14683 exact). `pm78_settle`'s inline score stays below its terrain-only score,
-consistent with its two compose buffers disagreeing on the entity layer (not checked
-further). The yaw only picks men's and animals' facing frames: at yaws `$40`/`$90`/`$c0`
-(with `EntityCtx.Yaw` set to the camera yaw) the game shows the sprite at 77-85% of the
-port's visible sprite pixels and the bare terrain at 2-4%. Screenshots:
+score, and `pm_render_ref.py` draws the same way (a per-cell `_cell_done` hook in
+every walk handler, all categories it knows): it matches `Scene.render` on all 15178
+drawn pixels of `pm88_f1` (`scratchpad/pm121/parity.py`). It lacks the later-land
+categories. `pm78_settle` stays near its terrain-only score, consistent with its two
+compose buffers disagreeing on the entity layer (not checked further). The
+remaining pixels of the other five are units that moved between the snapshot and
+the frame on screen (next paragraph). At yaws `$40`/`$90`/`$c0` the game shows every
+visible sprite pixel the port draws. Screenshots:
 `assets/reference/godot_screenshot_backdrop_118th.png` (inline, over the `$78000`
 backdrop), `godot_screenshot_inline_118th.png`, and `godot_screenshot_entities_91st.png`
 (sprites last). `Sprites.drawEntities` / `pm_render_ref.draw_entities` are the sprites-last
 path, kept for the parity checks.
+
+**Scoring a capture (121st).** A snapshot stopped at `$f898` holds the state the
+next frame is drawn from, while its finished compose buffer holds the frame drawn
+from the previous state (one water tick, one flap, one step of every walker
+behind). So the port's frame for snapshot i is scored against the screen in
+snapshot i + 1, the next `$f898` (`scratchpad/pm121/capture.sh` takes such a
+sequence, `score.fsx a.json+b.json` pairs them). Scored that way at the RAM's own
+water tick, 27 frames from 12 views on lands 0, 5, 25 and 60 (including winter
+snow, autumn rain, a fight, a projectile and boats) match the game pixel for
+pixel, 100.00%, with every category in view at 100% of its visible pixels
+(`scratchpad/pm121/allpairs.txt`). The same
+pairing explains the old "score it with tick − 1" note on land 60: that was the
+previous frame's tick.
 
 **Settlement buildings, `byte6 == 2` (`$117d8`).** Frame `record[7]` with no tile-set
 offset, anchored at the cell centroid (`$1182a`: +`$38`, -8 over raw corners), then
@@ -912,9 +990,10 @@ the `$3f364` corner buffer. `$12244` picks by the zoom index `[$57ffc]`:
 Men, animals, banners and markers use the 8 x 11 `$33000` frames at every zoom; only
 their positions scale. Port: `Sprites.propSheet`. Evidence in §5.
 
-Still open: per-category frame *counts*; the `$11886` goods table (byte6 16 =
-`$1192e`, loops `[$4e514 + record[14]]` goods[0..7]); byte6 1/15 (`$312a0`)
-detail; the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`).
+Still open: per-category frame *counts*; byte6 18 and 28, and the plough and
+siege-engine overlays, ported from the code but never seen on screen (18 and 28
+not ported); the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`), which a
+byte6 18 hit on a settlement building sets (`$596a`).
 
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
@@ -947,13 +1026,20 @@ The 4 planes are the 4 interleaved screen words of one 16-px group → a real
 (`$312a0`, 16 × 16) decode cleanly as buildings/trees and small
 structures/siege-engines respectively.
 
-### HUD / selected-unit marker (`$e6ee`)
+### The pixel plotter (`$e6ee`)
 
-A separate wider multi-plane blitter, 32-byte glyph row stride, 4-long
-descriptor table at `$e6ee+110` (`assets/hud/descriptor_table.bin`). Used for
-the pulsing selected-group marker (`$165b2`, sprite toggled by `$4bb41` bit 0)
-and the on-screen HUD glyphs. Not on the terrain hot path; a full rip is
-deferred.
+`$e6ee` sets one pixel: `D0` = screen x, `D1` = screen y, `D2` = colour, into the
+buffer at `A0`. The long at `$e762 + 4x` holds `(x & 7) * 8` in its high word (an
+index into the bit masks at `$e722`) and `(x >> 4) * 8 + ((x >> 3) & 1)` in its low
+word (the byte in the row), for x = 0..319. It adds `y * 160`, then
+`movep.l 0(A1),D2` / `and.l mask` / `or.l colour` / `movep.l D2,0(A1)` writes the
+one bit in all four planes, the colour's plane bytes coming from `$e6ae + 4c`. It
+does not clip. (`disassemble.py` shows the two `movep.l` opcodes, `$0549`/`$05c9`,
+as `subi`.) It draws the byte6 40 projectiles, the byte6 20/22 dot, and the
+minimap dots, including the blinking selected group (`$165b2`, one dot per member
+at its raw cell coordinate). `assets/hud/descriptor_table.bin` was exported from
+`$e6ee + 110` = `$e75c`, six bytes before the table: the operand of
+`move.l 110(PC,D0.w)` at `$e6f2` is relative to `$e6f4`.
 
 ### Trees / buildings / mountains
 
@@ -1016,6 +1102,21 @@ per simulation tick ($13000), present rate gated by $57ff0/$57fee (=1 normally):
 On `pm71_run1.snap`, `$12ce0`, `$f898` and the swap `$187a` each run once per
 sim tick (13 hits each in ~2.78M steps; one tick ≈ 15 VBLs), so every presented
 frame holds a freshly filled island.
+
+**Weather (121st).** Rain and snow are drawn over the finished frame.
+`$1ad74` starts a spell when `([$4bb4a] + [$57fec]) & $a0 == $a0`:
+`[$4bb42] := word[$1ad9c + word[$57fd0]]` (winter 2 = snow, spring and autumn 1
+= rain, summer 0 = none) and `[$4bb44] := (that sum & $3f) + $20` ticks. While
+`[$4bb42] != 0`, `$1ad2a` calls `$1a856` (16 word-groups by `$c2` rows from row 6,
+x 64, i.e. the whole iso window) and counts `[$4bb44]` down; below 0 the spell
+ends. Each call adds `$40` to the byte at `$1aac8` (4 animation frames); row r
+takes the long at `table[(phase − 4r) & $ff]`, its low word on even groups and
+its high word on odd ones. Rain (`$1a8a4`) ORs the word into all four planes,
+colour 15; snow (`$1a9c8`) ORs planes 0 and 2 and clears 1 and 3, colour 5. The
+two tables are `assets/weather.bin`, the port is `Weather.fs`, and winter snow
+and autumn rain frames of land 5 match the game pixel for pixel. While a spell
+lasts, `$3fb0` takes `$10` off a group figure (and winter 8 more), so weather
+also slows something in the strategy layer (`../economy.md` §3).
 
 **Water shimmer.** `$4bb3e` is a longword tick counter, written only at `$13034`
 in the `$13000` tick and incremented once per tick. Water cells (`< 0x0c`) add
@@ -1111,13 +1212,17 @@ member home along a terrain-following path — *not* the ownership writer),
 tracked-region no-op) — 1847/1847 tracked bytes over 13 states
 (`scratchpad/pm99/diff_pm99.py`). Remaining regroup routines
 (`$4bc8`/`$2776`/the `$5590`-tail `$1b8c`) stay Corroborated. See
-`../ai.md` "the settlement heartbeat" and `../economy.md` §3a. The
-sprite frame
-formulas + the `$115e0` bucket walk (§6) are
-**Corroborated** (disassembly + a live register/`$11f88` probe + the F#↔Python
-byte-exact cross-check). The "no per-frame sea fill" / "minimap baked once"
+`../ai.md` "the settlement heartbeat" and `../economy.md` §3a. The sprite frame
+formulas + the `$115e0` bucket walk (§6) are **Corroborated** by disassembly, live
+`D0`/`D1`/`D2` probes and the F#↔Python cross-check, and every ported category in
+view matches the game's screen pixel for pixel on 27 later-land frames (§6
+"Scoring a capture"). The dying-entity path `$1623c` that feeds byte6 12/10/32 is
+**Proven** vs the real 68000 (121st, 275/275 tracked bytes over 23 states on
+natural kills, `scratchpad/pm121/diff_1623c.py`). The "no per-frame sea fill" / "minimap baked once"
 claims are **Observed** (true for `pm78_settle`/`pm88_f1`/`pm73_fight`/
-`pm74_late`/`pm89_pan_e`; no ownership-change capture exists — item 6).
+`pm74_late`/`pm89_pan_e`). An ownership change is captured on land 60
+(`scratchpad/pm121/flip/`, the `$550e` revolt, `../economy.md` §3), but its
+minimap has not been diffed yet (item 6).
 
 1. **All 4 quadrant walks + the rasteriser — CLOSED (78th q3 walk, 80th
    rasteriser, 83rd q0/q1/q2 walks).** `pm_render_ref.py --ram` auto-selects

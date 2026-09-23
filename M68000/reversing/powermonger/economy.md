@@ -39,8 +39,8 @@ the entity level by the same `$14b62` FSM that runs everything else:
 | **manpower** (a lord's available men) | `pm_leader.troops_reserve` = `$4e514`+6, `.troops_field` = +8 | soldiers walking home add 2–4; a disbanding group returns a discipline-scaled slice; recruiting subtracts one; each settlement pulse drains one (`$163b8`); a battlefield/garrison loss subtracts 1 | **traced** |
 | **goods** ("livestock", "invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed herd-drive credits `+1` to one counter (`$60dc`), heavily throttled; porter units shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
 | **livestock** (the herds that feed the goods counters) | `$4d252` herd array + `$57f68` herding ops + `$4c5f4` markers | shepherd FSM (modes `$3e`→`$44`→`$42`) drives an animal home, marks it consumed (`breed:=$d`), credits the goods counter; `$4342` only animates the on-screen marker | **traced** |
-| **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes on capture (`$1d70`/`$25d6`) | **traced** |
-| **weapon grade** ("invention") | `pm_object` byte 44 (items 1–6) / byte 33 (items 7–8) | stamped at spawn (`6` for leads, `0` for tutorial followers); **advanced by the army-supply subsystem** (`$638c`: `if slot < delivered_item: slot := delivered_item`) — no research timer | **traced (mechanism); dormant in mission 1** |
+| **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes when a lord revolts (`$550e`, §3): the lord and all his settlements change side, then `$5c2c`/`$25d6` turn his garrison men over | **traced; observed on land 60 (121st)** |
+| **weapon grade** ("invention") | `pm_object` byte 44 (items 1–6) / byte 33 (items 7–8) | stamped at spawn (`6` for leads, `0` for tutorial followers); **advanced by the army-supply subsystem** (`$638c`: `if slot < delivered_item: slot := delivered_item`) — no research timer | **traced; observed on later lands (121st): `$63e8` equipped 22 empty slots on land 25 and 14 on land 0 in 200M steps; `$63be` (replacing a lower item) never fired** |
 | **passive population growth** | — | **does not exist** — manpower is strict conservation-of-soldiers (see §6) | **traced negative** |
 
 Manpower and goods are **two separate ledgers**. Goods never become soldiers and
@@ -91,7 +91,7 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.troops_reserve -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
 | `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-7-set, bit-6-clear arm). *(**Proven, 99th** — `$37c2` + its `$1d70`/`$1b8c`/`$17a46` leaves differential-tested vs the real 68000, 1847/1847 over 13 states; reached via `$3c08`'s flag-bit-4 teardown sub-path. The inverse `+= 1` on the bit-6-set arm is `$1b8c`'s `$1c04`.)* |
 | `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
-| `$2644` | `$25d6` (capture consequence) | old owner's `troops_field -= 1` (the fallen garrison) |
+| `$2644` | `$25d6`, from `$5c2c` after a revolt | the garrison man's old leader: `troops_field -= 1` (land 60: leader 4, 18 → 17, `scratchpad/pm121/flip/`) |
 | `$42be` | `$3e06` tail, courier/arrow array | a `$51b66` object died and credited a leader: `troops_field += 1` |
 | — | `$d322` per tick | reads both, never writes; totals into `$57fba` |
 
@@ -396,11 +396,24 @@ owner/kind/cell/leader. On the terrain plane it also sets influence bits
 (`ori.b #$2,8257(A3)` + `bset #1` on three neighbours) so the settlement claims
 its cells in `$3f86c`.
 
-Capture (`$1d70` → `$25d6`, `ai.md`/`strategy.md`) flips `owner`, decrements the
-loser's `troops_field`, and spins up a garrison objective for the new owner. It
-does **not** transfer a stored population or goods — the settlement's future
-production follows the ownership byte, and the goods sit on the *lord* record
-(`$4e514`), not the settlement.
+**How a settlement changes hands: the revolt `$550e`.** In the mode `$7c`
+heartbeat, once a leader's `word[14]` (the loyalty accumulator) reaches 600
+(`$158ae`), the marker's side is set to `(x cell mod 4) + 1` for the call and
+`$550e` (its one absolute caller is `$158cc`) makes that the leader's side,
+resets `word[14]` to 300, walks the leader's settlement chain (`2(leader)`, next
+at `8(settlement)`) setting every settlement's owner byte 5, and remembers a
+garrison man (flags bit 4, mode `$8a` or `$3c`) from each settlement's unit
+chain (`10(settlement)`, next at `24(unit)`). For the last one found it calls
+`$5c2c`: a man whose settlement's leader is now on another side defects
+(`5(man) := leader side`) and `$25d6` makes him the lead of a new group in his
+new side's first free group slot, taking one off his old leader's
+`troops_field`. Observed on land 60 (`scratchpad/pm121/flip/k60_flip_pre.snap`
+/ `_post.snap`, from `run/k60_s3.snap`: `$550e` at step 4,509,545, the owner
+byte of settlement `$4fa90` written 2 → 3 at `$5538`, `$25d6` at 4,509,837); all
+four later lands ran `$550e` six times in 200M steps. Nothing moves stored
+population or goods: the settlement's future production follows the owner
+byte, and the goods sit on the lord record (`$4e514`). `$1d70` is the
+route expander that sends men home, not an ownership writer (`ai.md`).
 
 ### 3a. The per-settlement heartbeat — entity mode `$7c` (75th; **Proven — natural corpus, 97th**)
 
@@ -430,14 +443,17 @@ building/tree tile-set — it shifts once per rotation too.) The 75th pass's "ea
 settlement's marker sits in mode `$7c`" was static + a `$163b8` `watch` that
 actually caught a same-address routine in TOS.
 
-**114th pass — rendering what the `g_tileset_sel` rotation actually draws (Dave's
-"is there scenery/weather variation" question).** No weather system exists
-anywhere in PowerMonger — no rain/fog/palette-shift code was ever found in
-113 passes, and the water "shimmer" (`graphics.md`'s `colour(h) += masterTick &
-3` for `h < 0x0c`) is a 4-phase dither cycle, cosmetic, unrelated to `$57fd0`.
-`g_tileset_sel` is the one confirmed *scenery*-driving mechanic, so this pass
-decoded and rendered its actual effect instead of reasoning about it from the
-frame formula alone.
+**Weather and the season art.** PowerMonger has weather: rain in spring and
+autumn and snow in winter, started by `$1ad74` from `word[$1ad9c + word[$57fd0]]`
+and drawn over the iso window by `$1a856` (`port/SPEC.md` §7 "Weather"; the
+port's `Weather.fs` matches the game's frames). While a spell lasts, `$3fb0`,
+in the same `$3e06` speed calculation as the `$3ffc` row of §4, takes `$10` off
+the term it reads from `2(A3)`, and winter takes 8 more: bad weather and winter
+slow the move. On lands 0 and 25 `$1a856` drew weather on 131-132 frames in
+200M steps. The water shimmer (`graphics.md`'s `colour(h) += masterTick & 3` for
+`h < 0x0c`) is a separate 4-phase dither cycle. The season also picks the tree
+and building frames (`g_tileset_sel`, below); the sprite art itself is the same
+in every season.
 
 The `$37c7c` prop sheet (28 × 480 B, `32×24` word-plane, decode already pinned
 89th) was pulled from a live RAM snapshot (`scratchpad/pm114_rand2.snap` —
@@ -462,19 +478,11 @@ Findings, from the actual pixels:
   house, a narrower house, a tower ruin, a different ruin) look like four
   distinct structures, not stages of one.
 
-**Reading — real, but not "seasons" and not fully characterised.** There is a
-genuine slow (~110M-step) visual-aging cycle on buildings and trees, sharing
-`$57fd0` with the settlement economic heartbeat gate, and it is the closest
-thing this game has to weather/season variation. But it is not a clean
-4-state palette or architecture swap: 3 of 4 sampled families show a
-plausible damage/growth gradient for 3 of their 4 slots, and one family
-doesn't fit at all. That's consistent with the sheet packing several
-unrelated decorative objects into the same stride-3 layout (so "family"
-isn't simply "every `r7`, `r7+3`, `r7+6`, `r7+9`") — this was inferred from
-static sprite data + the known frame formula, not from a live differential
-test (`callcap`) of which `r7` values a real settled world actually assigns
-to its `byte6==4` records, which is the next step if this needs to be
-pinned down further.
+**Reading.** The four slots of each family are the four seasons' versions of
+one tile (`port/SPEC.md` §4 "Seasons": tree frames 15-17, 18-20, 21-23 and 24-26
+are bare, blossoming, leafy and autumn brown), and `$57fd0` steps through them
+once per season fade (~110M steps). Families whose four slots look unrelated are
+tiles the sheet packs into the same stride-3 layout, not stages of one object.
 
 **Aside — a possibly-new hang, not root-caused.** Getting to
 `pm114_rand2.snap` needed a click-timing fix: `mouse down`/`mouse up` alone
@@ -598,7 +606,7 @@ porter unit (§2b). Byte **33** is the tier for item types 7..8 (Catapult, Canno
 | site | reads byte 44 as | effect |
 |------|------------------|--------|
 | `$1533c` (melee, mode `$32`) | tier | `damage = (min(grade, 6) >> 1) + 1` per tick → 1..4 |
-| `$52fc` / `$5318` (projectile spawn) | tier | projectile **type**: default `$12`, `$28` when `byte44 == $6` |
+| `$52fc` / `$5318` (projectile spawn) | tier | projectile **type** (its byte6): default `$12`, `$28` when `byte44 == $6` (a bow: the arrows the renderer draws as one pixel) |
 | `$3ffc` (`$3e06` speed calc) | `byte44 >= $e` → `+$10` force bonus | speed term |
 | `$9846` / `$9dc6` (`$a242`) | index | the "carrying …" clause in the unit description |
 
@@ -610,8 +618,10 @@ Where it is **set**:
   its field units, `if unit.tier < delivered_item: unit.tier := delivered_item`.
   This is the whole of "invention" — there is **no research counter and no
   per-town invention percentage**. A unit improves iff a higher-tier item
-  reaches its lord's stockpile and the supply subsystem runs (dormant in mission
-  1, so pass 1's "never advances" holds *for the tutorial*).
+  reaches its lord's stockpile and the supply subsystem runs. It is dormant in
+  mission 1; on later lands `$63e8` (an empty slot takes the item) fired 22 times
+  on land 25 and 14 on land 0 in 200M steps, and `$63be` (a better item replaces
+  a worse one) never did.
 
 The recruit path (mode `$1a`, `$150c0`) does not touch byte 44 — a fresh recruit
 keeps whatever tier the group lead's supply run has given the group.

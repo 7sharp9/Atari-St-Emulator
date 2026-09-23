@@ -31,7 +31,8 @@ let ctx, recs =
     [| for e in doc.RootElement.GetProperty("render_entities").EnumerateArray() ->
          ({ B6 = gi e "b6"; B5 = gi e "b5"; B7 = gi e "b7"; B14 = gi e "b14"; B17 = gi e "b17"
             B31 = gi e "b31"; Fx = gi e "fx"; Fy = gi e "fy"; Addr = gi e "addr"
-            Group = gi e "group"; Wcx = gi e "wcx"; Wcy = gi e "wcy" } : Sprites.EntityRec) |]
+            Group = gi e "group"; Wcx = gi e "wcx"; Wcy = gi e "wcy"
+            B15 = 0; B32 = 0; W18 = 0; Icons = 0; B33 = 0; B44 = 0 } : Sprites.EntityRec) |]
 
 // the grass colours of the season the records were captured in (Season.fs)
 let season =

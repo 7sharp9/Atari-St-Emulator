@@ -107,7 +107,7 @@ The loop tail:
 | `$16228` | `bsr $163ea` (relink spatial buckets, write back position) then fall into `$1622c` |
 | `$16202` | clamp D6 to `[0,$3fff]`, D7 to `[0,$1f40]`, then `$163ea` + next |
 | `$161c4` | same clamp, then re-sample terrain (`$1648e`): if the new cell is impassable, **revert to mode `$00`** and skip the position write; else clear the "blocked" flag (bit 5 of byte 7) and relink |
-| `$1623c` | dying-entity path: count down `18(A1)`; at 0 stamp `$4bb3e` into `20(A1)` and run the neighbour-notify scan `$16260` |
+| `$1623c` | dying-entity path (owner < 0, *Proven 121st*, below): count `18(A1)` down from `$a0`, stepping the flap phase `32(A1)`; at 0 stamp `$4bb3e` into `20(A1)`, credit the dead man's goods codes to a settlement/base leader in the same cell, then `byte6 := $0a` (equipment left lying) or `$20` + unlink |
 
 Active-record count in this settled first-mission view: **~50 of 511 slots**,
 of which ~26 reach a handler each tick (the rest are `byte 5 == 0`).
@@ -249,7 +249,8 @@ assessment — a whole routine; every `field·4 < reserve` state is arranged wit
 `(14(A1) & 3) == 3` so it is skipped), **`$550e`** (militarism revolt, loyalty
 kept `< 600`), **`$5c2c`** (owner reconcile inside `$16848`).
 
-`$5cde` and the dying-entity path `$1623c` remain **Corroborated**, not Proven.
+`$5cde` remains **Corroborated**, not Proven; the dying-entity path `$1623c` is
+Proven (121st, below).
 Mode `$28` / `$2e` (`$15302`) handlers are disassembled but not yet
 differentially tested (`$2e` calls the same `$56a6`).
 
@@ -1257,7 +1258,7 @@ roll: mode `$32` (`$1533c`) subtracts `(field44 >> 1) + 1` (`field44 >= 6` → j
 per-group discipline/cohesion value) and, when that is neither 0 nor 2, the
 `($57fec + anim_phase)` parity. In mission 1 the attack group's `field60 == 4`
 → `$30fe == 2` → the roll is pinned to `$560a`; a unit there dies only if
-`flags.bit5` is set (encircled), otherwise it *routs* — survives, scattered by
+`flags.bit5` is set (afloat: bit 5 men are drawn as boats, `$1174e`), otherwise it *routs* — survives, scattered by
 `$3c08`. *(95th: `$1533c` + the `$5590` KILL branches + `$30fe` + `$56a6`'s
 `$574a` leaf are now Proven vs the real 68000 — 413/413 tracked bytes over 48
 differential states; 98th: the `$3c08` regroup dispatcher that scatters the
@@ -1269,7 +1270,78 @@ animation-advance (`$14b9a`, ~once per animation cycle) and is not reset by any
 handler, so it is a lifetime-exhaustion counter, relevant only over a long
 campaign. So the 72nd pass's "no casualties" was right about *deaths* but missed
 that **routing is the real outcome** and it fired ten times. Kills need either a
-disciplined attacker group (`field60 != 4`) or `flags.bit5` (encircled).
+disciplined attacker group (`field60 != 4`) or `flags.bit5` (a man in a boat).
+
+### Natural runs on later lands (121st pass)
+
+Four lands built through the briefing-OK poke (`README.md` "Driving a later
+land") and run 200M steps each with no pokes, in four 50M stretches, counting PC
+hits with the REPL's `hits` command (`scratchpad/pm121/runland.sh`; snapshots
+`scratchpad/pm121/run/<land>_s1..s4.snap`). Totals over the 200M steps:
+
+| routine | land 5 | land 60 | land 0 | land 25 |
+|---------|-------:|--------:|-------:|--------:|
+| `$6522` commander decide | 1153 | 1110 | 1321 | 1135 |
+| `$661a` primary-slot decide | 7 | 6 | 8 | 4 |
+| `$56a6` engage | 19 | 27 | 36 | 135 |
+| `$5590` kill-or-rout | 17 | 26 | 29 | 78 |
+| — KILL `$55f2` | 9 | 7 | 18 | 59 |
+| — ROUT `$560a` | 8 | 19 | 12 | 17 |
+| `$5bd2` wear removal | 0 | 0 | 0 | 0 |
+| `$57f0` projectile | 8 | 15 | 23 | 61 |
+| `$1623c` dying-entity ticks | 21896 | 5361 | 9756 | 40945 |
+| `$2776` / `$1b8c` | 3 / 74 | 2 / 26 | 2 / 27 | 3 / 52 |
+| `$3c08` regroup | 237 | 155 | 86 | 213 |
+| `$4bc8` contact reconcile | 9 | 16 | 10 | 92 |
+| `$5cde` settlement herd-op | 336 | 59 | 309 | 707 |
+| `$550e` revolt | 6 | 6 | 6 | 6 |
+| `$25d6` (garrison defects, via `$5c2c`) | 0 | 1 | 0 | 1 |
+| `$45f2` pigeon launched | 17 | 13 | 19 | 25 |
+
+A later land fights without being prompted: every land killed men (`$55f2`),
+the first kills seen anywhere (mission 1's forced fight: 0), and `$2776` fires
+17-37 steps after a kill (two instances checked), from the `$5628` tail when the
+dead man was in a group. The
+enemy lords' pigeons (byte6 20, owners 2 and 4 on land 5) fly to their groups
+over and over, the visible side of `$661a` issuing orders. `$5bd2` never fired.
+`$550e` (one absolute caller, `$158cc` in the `$7c` heartbeat) is how land
+changes hands: `../economy.md` §3. Re-running two lands from the same snapshot
+reproduced every count exactly. Land 5's run started at step 0 of
+`scratchpad/pm121/k5.snap`; the first kill is at step 27,732,607 of stretch 1.
+
+### [Proven] — the dying-entity path `$1623c`, vs the real 68000 (121st pass)
+
+`tools/pm_fsm_ref.py` `call_1623c` (+ `$16376` goods credit, `$16392` unlink,
+`$45ee` pigeon launch); `reconstruct()` now runs it for every record with a
+negative owner instead of asserting. Differential test
+`scratchpad/pm121/diff_1623c.py`: **275/275 tracked bytes identical over 23
+states, 9 branch families**, on dead men the game made itself on lands 0, 5, 25
+and 60 (8 natural states with every dead record live, plus pokes of one field on
+a natural record). Tracked: `REGIONS` + the player's pigeon record `$4c112`
+(26 B) + `$57ff4`. Every other byte the real routine wrote is stack (entry SP
+`$2c920`).
+
+- `word[18]` counts down from `$a0`; while it is non-zero `32(A1)` steps 0-3
+  (the rising figure's flap, SPEC §6 byte6 12).
+- At 0: `20(A1) := [$4bb3e]`; the first record in the same cell with byte6 2,
+  `$10` or `$1e` (settlement building, leader's base, building going up) gives a
+  leader, `$4e514 + word[rec + 14]`, and each goods code in `33(A1)`/`44(A1)`
+  (`code 0` = none) adds 1 to `goods[(code − 2) >> 1]` unless it is `$ff`; the
+  codes are cleared. Then flags bit 5 clear → `byte6 := $0a` (the equipment
+  stays on the ground, drawn by `$11772`) if any code is left, else (or with
+  bit 5) `byte6 := $20` (never drawn) and `$16778` unlinks it. `$16778` ends on
+  `clr.l`, so `beq $1622c` at `$162ea` skips the flap step.
+- Once `word[18]` is 0, a pending pigeon request `[$57ff4]` (an object offset)
+  is served by the first such record the iterator meets: it clears the request
+  and, if the player's pigeon (`$4c112`) is free (`byte6 == 0`), launches it
+  (`owner := 1`, `22(A0) :=` the requested object's position, `8(A0) := $01800180`,
+  `$45ee`, `20(A0) :=` this record) and unlinks the record if it is byte6 `$0a`.
+  The `cmp.l #$3e8` at `$16322` has no branch after it.
+
+Branches exercised: natural countdown (8), countdown reaching 0 with no base in
+the cell (3), with a base (4), with a base and no goods (1), flags bit 5 (2),
+goods counter already `$ff` (1), pigeon launched (2), pigeon busy (1), pigeon
+launched from byte6 `$0a` remains (1).
 
 ## Open threads
 

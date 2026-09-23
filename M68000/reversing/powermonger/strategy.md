@@ -34,7 +34,7 @@ $13096  jsr $12ce0   ; offscreen buffer -> shifter (double-buffer flush)
 $1309c  tst.w $57ff2 ; bne $130c8        ; paused -> skip the two heavy renderers
 $130a4  jsr $178ae   ; render setup A (group $4c exec sub-record)
 $130aa  jsr $f898    ; terrain raster
-$130b0  jsr $1abaa   ; housekeeping: phase accumulator; gates $57fec++ and the sound LCG
+$130b0  jsr $1abaa   ; seasons: fade the grass 16 px ($57ff6 LCG), $57fec++; weather ($1ad2a)
 $130b6  jsr $17878   ; render setup B (rotation row-table select)
 $130bc  jsr $165b2   ; water / terrain animation for the selected group
 $130c2  jsr $14b62   ; << the entity iterator (ai.md)
@@ -600,13 +600,13 @@ almost nobody dies on the field — because mission 1's group discipline
 (`field_60 == 4`) pins the `$5590` roll to "rout", and the wear channel is far
 too slow for a 276-tick fight. The 72nd pass's "no casualties" verdict was right
 about deaths and wrong about outcome: **routing is what combat does here**, and
-it fired ten times. The kill branch of `$5590` and the whole `$5bd2` wear path
-remain decoded-not-traced.
+it fired ten times.
 
-Re-arming the *primary objective slot* directly (rather than `byte4`) to force
-repeated `$661a` decisions across a moving front, or reaching mission 2+ with a
-disciplined enemy, is still what's needed to exercise the kill branch and to
-histogram `$68fe`/`$68ee` across many decisions.
+On later lands the same pipeline runs by itself (`ai.md` "Natural runs on later
+lands"): over 200M steps each, lands 5, 60, 0 and 25 made 4-8 `$661a` primary
+decisions (each scored by `$68fe`/`$68ee`), killed 7-59 men through `$55f2`, and
+the enemy lords' pigeons carried the orders. The `$5bd2` wear path still never
+fired. Histogramming `$68fe`/`$68ee` over those decisions is still to do.
 
 ## RNG and determinism (72nd pass)
 
@@ -721,22 +721,24 @@ hook stays inert, consistent with the 72nd pass. Reversing the mission-file
 grammar needs a mission that uses it (the fixed-map `$df52(7)` branch or the
 Conquest campaign proper), not mission 1.
 
-## What `$1abaa` actually is — sound + ambient, not economy (73rd pass)
+## What `$1abaa` actually is — seasons and weather, not economy
 
 `$1abaa` (`$130b0` in the tick) was a candidate for the economy/growth engine.
-It is not. It is a phase-gated block that: steps the 13-bit sound LCG `$57ff6`
-16× and mixes `$ff9e`-relative sample tables into the audio buffers
-(`$1ba3e`/`$1a856` are sound); and, **once per LCG wrap** (`$1ac3c`, when
-`$57ff6 & $1fff` reaches 0):
+It is not. Each tick it steps the 13-bit LCG `$57ff6` 16 times, copying one
+pixel of the season's grass patterns into the live dither slots per step
+(`port/SPEC.md` §4 "Seasons"), and runs the weather (`$1ad2a`: draws rain or snow
+with `$1a856` and counts the spell `$4bb42`/`$4bb44` down, or starts one via
+`$1ad74`; SPEC §7 "Weather"). **Once per LCG wrap** (`$1ac3c`, when `$57ff6`
+reaches 0):
 - pokes **one** random `$4d252` record — if its `byte7 == $d` it becomes
   `$e + (byte10 & 3)` (wildlife / ambient nudge);
 - **rotates `$57fd0`** — `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}
-  (`$1ac5e..$1ac6a`, raw-verified 97th). `$57fd0` is `g_tileset_sel` *and* the
+  (`$1ac5e..$1ac6a`, raw-verified 97th). `$57fd0` is the season *and* the
   mode-`$7c` settlement-heartbeat gate (economy.md §3a), so this rotation is
   what makes the heartbeat + loyalty/revolt system **transiently active in
   mission 1** despite its seed giving `$57fd0 = 4` at world-build. Observed
   rate: ~1 rotation per ~110M steps;
-- clears `$57fec` / `$57ff6` and services the animation phase `$4bb42`/`$4bb44`.
+- clears `$57fec` / `$57ff6` and ends any weather (`$4bb42`/`$4bb44` := 0).
 
 No population, food or invention maths anywhere in it.
 
@@ -897,20 +899,16 @@ are limitations rather than choices:
   per-tick path (`$1abaa` is sound, `$3e06` is budget-decay + morale-UI,
   `$d322` is force-totalling). Initial population/settlement counts come from
   the `$10d1e`/`$2266` procedural generator. Growth and invention are either
-  event-driven (via `$1d70` capture → `$25d6`) or live in the setup-time
+  event-driven (a revolt, `$550e`, moves a lord and his settlements; economy.md §3) or live in the setup-time
   cluster `$2984`/`$238c`/`$2906`/`$ac20` which may also run periodically —
   none of that code is mapped. This is the largest remaining subsystem.
-- **Trace the AI from a live enemy.** Still needs a later campaign mission where
-  the enemy captain's command slot reaches `byte4 == 4` on its own. The 72nd
-  pass ran the forced fight *for 166 ticks* (not a single-shot poke) — that gave
-  the engagement / projectile / capture pipeline but still no autonomous
-  `$661a` re-decision and no `$5bd2` casualty. To measure `$68fe` target
-  choice and `$68ee` budget maths across repeated decisions, either re-arm
-  `byte4` every N ticks with a watch-poke, or reach mission 2+.
-- **Combat — mechanism closed** (73rd, see "Combat" + `ai.md`). Static-only
-  remainder: the kill branch of `$5590` (needs a disciplined attacker group),
-  the `$5c80`/`$5bd2` wear path (needs a long fight), and the projectile
-  `type` → invention-level mapping (only `type $12`, the area-effect one, seen).
+- **Trace the AI from a live enemy.** A later land does it unprompted (above):
+  `scratchpad/pm121/run/*.snap` hold 4-8 autonomous `$661a` decisions per land.
+  Still to do: record each decision's `$68fe` target and `$68ee` budget.
+- **Combat — mechanism closed** (73rd, see "Combat" + `ai.md`). The `$5590` kill
+  branch runs naturally on later lands (121st). Remainder: the `$5c80`/`$5bd2`
+  wear path (never fired in 800M later-land steps). Projectile type is byte6:
+  `$28` (40, an arrow, from a bow) is common; `$12` (18) never appeared.
 - **Mission-file grammar** — the procedural generator (`$10d1e`/`$2266`) is
   sketched (above). `$10d1e` only re-rolls parameters from a seed; no
   byte-script path has been seen. The fixed-map branch (`$58148 < $100` →

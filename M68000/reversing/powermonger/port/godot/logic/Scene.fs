@@ -25,13 +25,13 @@ module Scene =
 
     /// Interleave each cell's sprites after its triangles, in the order the
     /// walk visits the cells. Records whose category has no frame to draw
-    /// (see Sprites.entityFrame) are left out; records outside the visible
+    /// (see Sprites.draws) are left out; records outside the visible
     /// 8x8 are never reached. Within a cell, records keep the order given,
     /// which is their bucket-chain order.
     let steps (ctx: Sprites.EntityCtx) (cells: Fill.Cell list) (recs: Sprites.EntityRec seq) : Step[] =
         let byCell =
             recs
-            |> Seq.filter (fun r -> (Sprites.entityFrame ctx r).IsSome)
+            |> Seq.filter (Sprites.draws ctx)
             |> Seq.groupBy (fun r -> r.Wcx, r.Wcy)
             |> dict
         [| for c in cells do
@@ -45,7 +45,8 @@ module Scene =
         let px (p: Projection.Corner) = int (System.Math.Round p.X), int (System.Math.Round p.Y)
         px c.Quad.C00, px c.Quad.C10, px c.Quad.C01, px c.Quad.C11
 
-    /// Where a sprite step lands on its cell's four projected corners.
+    /// Where a sprite step lands on its cell's four projected corners: the
+    /// frames it draws, in order.
     let placement (ctx: Sprites.EntityCtx) (c: Fill.Cell) (r: Sprites.EntityRec) =
         let c00, c10, c01, c11 = cornersOf c
         Sprites.placeEntity ctx c00 c10 c01 c11 c.Row c.Col r

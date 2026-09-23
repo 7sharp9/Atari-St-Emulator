@@ -20,6 +20,7 @@
     <Compile Include="Season.fs" />
     <Compile Include="Sprites.fs" />
     <Compile Include="Scene.fs" />
+    <Compile Include="Weather.fs" />
   </ItemGroup>
 
 </Project>

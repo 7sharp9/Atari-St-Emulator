@@ -23,6 +23,8 @@ $1648e terrain veto + on-land $163ea relink) / $16202 (clamp + relink, no veto)
 relink, and the movement leaves $164bc step-toward / $14262 heading / $12d56
 rotate.
 
+Records with a negative owner (dead men) run $1623c (121st, call_1623c).
+
 Regroup / group-teardown paths ($3c08 / $4bc8 / $2776 / $1b8c / $5cde / $550e /
 $5c2c / $15302 / $1518a) are ASSERTED OFF - reconstruct() raises AssertionError
 if a state ever reaches one, so a corpus mistake cannot pass silently.
@@ -94,6 +96,8 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 #   $4cd0    _case_4cd0             1617    116th        Proven (kind-2 case)
 #   $4cb8    _notify_case           1651    115th/116th  Proven (per-kind dispatch)
 #   $4bc8    call_4bc8              1669    115th/116th  Proven, fully, all 3 real call sites
+#   $1623c   call_1623c             1747    121st        Proven (+ $16376 / $16392 / $45ee leaves;
+#                                                         dying records, natural corpus 275/275)
 #
 # Not indexed: pure-arithmetic/plumbing helpers with no standalone 68k
 # routine identity of their own (s8/s16/u16/_swap/_movew/_divu/_trig/_sin/
@@ -103,7 +107,7 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 # routine calls them.
 #
 # Still Corroborated-not-Proven and NOT covered by this file at all:
-# $2776, $5cde, $1623c (see reversing/powermonger/ai.md and the
+# $2776, $5cde (see reversing/powermonger/ai.md and the
 # atari-st-emulator-next-instructions memory entry's RESUME block).
 # ============================================================================
 
@@ -1697,6 +1701,113 @@ def call_4bc8(m, A0, A1):
 
 
 # ---------------------------------------------------------------- prologue + dispatch
+# ---------------------------------------------------------------- $1623c
+LEADERS = 0x4e514
+PIGEON = 0x4c112          # the player's pigeon record (first of the $4c112 pool, stride 26)
+PIGEON_REQ = 0x57ff4      # word: object offset a pigeon is to be sent to; 0 = none
+MASTER_TICK = 0x4bb3e     # long
+
+
+def _cell_word(m, A):
+    """word[10] with its low byte replaced by byte 8, then
+    add.b D0,D0 twice / lsr.w #2: (y_cell << 6) | (x_cell & $3f)."""
+    d0 = (m.wu(A + 10) & 0xff00) | m.bu(A + 8)
+    d0 = (d0 & 0xff00) | ((d0 * 4) & 0xff)
+    return d0 >> 2
+
+
+def call_16376(m, lead, code):
+    """$16376: credit a carried goods code to a leader: code 0 = nothing,
+    else goods[(code - 2) >> 1] += 1 unless it is already $ff."""
+    d0 = code - 2
+    if d0 < 0:                              # subi.w #2 ; bmi
+        return
+    a = lead + 24 + (d0 >> 1)
+    if m.bu(a) == 0xff:
+        return
+    m.wb(a, m.bu(a) + 1)
+
+
+def call_16392(m, A1):
+    """$16392: take the record out of its cell's bucket chain ($16778)."""
+    bucket_unlink(m, _cell_word(m, A1), (A1 - OBJ) & 0xffff)
+
+
+def call_45ee(m, A1):
+    """$45ee: launch the pigeon record at A1 from its current position."""
+    m.ww(A1 + 18, 0)
+    m.wb(A1 + 6, 0x14)
+    m.wb(A1 + 16, 0x40)
+    rec_off = (A1 - OBJ) & 0xffff
+    d0 = (m.wu(A1 + 10) >> 2) & 0x1fc0
+    d0 = (d0 & 0xff00) | ((d0 + m.bu(A1 + 8)) & 0xff)     # add.b 8(A1),D0
+    call_16808(m, d0, s16(rec_off))
+
+
+def call_1623c(m, A1):
+    """$1623c: one tick of a dead record (owner < 0, from $14b7a).  While
+    word[18] counts down from $a0 the flap phase 32(A1) steps 0..3.  When it
+    reaches 0: stamp the master tick at 20(A1); if a byte6 2/$10/$1e record
+    shares the cell, credit the dead man's goods codes (33/44) to that
+    record's leader and clear them; then byte6 := $0a (remains, goods still
+    on it) or, with flags bit 5 or no goods left, byte6 := $20 and unlink.
+    Once at 0, a pending pigeon request [$57ff4] launches the player's
+    pigeon ($4c112) toward the requested object, from the first such record
+    the iterator meets.  Ends at $1622c (next record)."""
+    w18 = m.wu(A1 + 18)
+    if w18 != 0:
+        w18 = (w18 - 1) & 0xffff
+        m.ww(A1 + 18, w18)
+        if w18 != 0:
+            _flap_16ee(m, A1)
+            return
+        m.wl(A1 + 20, m.lu(MASTER_TICK))
+        head = m.wu(BUCKETS + 2 * _cell_word(m, A1))
+        found = None
+        while head:
+            A0 = _objaddr(s16(head))
+            if m.bu(A0 + 6) in (0x02, 0x10, 0x1e):
+                found = A0
+                break
+            head = m.wu(A0)
+        if found is not None:
+            lead = LEADERS + m.ws(found + 14)          # adda.w: sign-extended
+            call_16376(m, lead, m.bu(A1 + 33))
+            call_16376(m, lead, m.bu(A1 + 44))
+            m.wb(A1 + 33, 0)
+            m.wb(A1 + 44, 0)
+        if not (m.bu(A1 + 7) & 0x20):
+            m.wb(A1 + 6, 0x0a)
+            if (m.bu(A1 + 33) + m.bu(A1 + 44)) & 0xff:
+                _flap_16ee(m, A1)                       # bne $162ea -> Z clear -> $162ee
+                return
+        m.wb(A1 + 6, 0x20)
+        m.wb(A1 + 33, 0)
+        m.wb(A1 + 44, 0)
+        call_16392(m, A1)
+        return                                          # $16778 ends on clr.l: Z set -> beq $1622c
+    # $16308: countdown already over
+    req = m.wu(PIGEON_REQ)
+    if req == 0:
+        return
+    m.ww(PIGEON_REQ, 0)
+    if m.bu(PIGEON + 6) != 0:
+        return
+    m.wb(PIGEON + 5, 1)
+    m.wl(PIGEON + 22, m.lu(_objaddr(s16(req)) + 8))
+    m.wl(PIGEON + 8, 0x01800180)
+    call_45ee(m, PIGEON)
+    m.ww(PIGEON + 20, (A1 - OBJ) & 0xffff)
+    if m.bu(A1 + 6) == 0x0a:
+        call_16392(m, A1)
+
+
+def _flap_16ee(m, A1):
+    """$162ee: flap phase 32(A1) := (32(A1) + 1) mod 4."""
+    d0 = (m.bu(A1 + 32) + 1) & 0xff
+    m.wb(A1 + 32, 0 if d0 == 4 else d0)
+
+
 def reconstruct(m):
     if _TRIG is None:
         raise RuntimeError("pm_fsm_ref.init_tables(ram) must be called before reconstruct()")
@@ -1707,9 +1818,10 @@ def reconstruct(m):
         if owner == 0:
             A1 += REC
             continue
-        if owner < 0:
-            raise AssertionError("dying record (owner<0) at rec %d - out of scope"
-                                 % ((A1 - OBJ) // REC))
+        if owner < 0:                       # blt $1623c
+            call_1623c(m, A1)
+            A1 += REC
+            continue
         # anim-frame advance
         d0 = (tick_lo + m.wu(A1 + 24)) & 0x3ff
         if d0 == m.wu(A1 + 34):

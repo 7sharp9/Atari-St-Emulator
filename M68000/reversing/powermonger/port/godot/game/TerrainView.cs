@@ -158,9 +158,12 @@ public partial class TerrainView : Node2D
         foreach (var o in recs.EnumerateArray())
         {
             int G(string k) => o.GetProperty(k).GetInt32();
+            // fields added for the later-land categories; older exports lack them
+            int Gopt(string k) => o.TryGetProperty(k, out var v) ? v.GetInt32() : 0;
             list.Add(new Sprites.EntityRec(
                 G("addr"), G("b6"), G("b5"), G("b7"), G("b14"), G("b17"), G("b31"),
-                G("fx"), G("fy"), G("group"), G("wcx"), G("wcy")));
+                G("fx"), G("fy"), G("group"), G("wcx"), G("wcy"),
+                Gopt("b15"), Gopt("b32"), Gopt("w18"), Gopt("icons"), Gopt("b33"), Gopt("b44")));
         }
         _entRecs = list.ToArray();
         GD.Print($"loaded {_entRecs.Length} render entities (pose cam {_entCamX},{_entCamY} yaw {_entYaw})");
