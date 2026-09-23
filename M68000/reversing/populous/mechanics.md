@@ -253,8 +253,15 @@ With O = entity[t6] (opponent) and S = self, using the game RNG `$16702`
     O.str -= (m/100) * S.weapon + 10
     S.str -= (m/100) * O.weapon + 10      ; integer division truncating toward zero
 
-Both <= 0: both die. Otherwise the survivor wins via `$108b8(winner, loser)`.
-Verified 18/18 rounds exactly (str of both sides and the RNG seed), 6/6 resolutions consistent.
+Before the round it plots the attacker's minimap dot (`$166b2`, colour 8 + 7*`$3b222`); after it,
+`$101a0` animates S, then O: a fighter's frame cycles through base..base+2, base $8a when both have
+a knight pointer, $82/$86 (side 0/1 of the one that has it) when one does, else $46.
+Both <= 0: `$10068` kills O, then S. Otherwise the survivor wins via `$108b8(winner, loser)`.
+Verified live on every natural call, full memory delta over $21464..$3d560 against
+`powers_ref.combat_round` (`py/powers/live.py <snap> <frames> fight`): from `fight1.snap` (1500
+frames) rounds **59/59**, attacker lost **5/5**, attacker won **2/2**, plus 3 take-overs of a town
+(counted, not compared: `$10366`); from `M1.snap` (the Armageddon brawl to GAME LOST) rounds
+**12/12**, attacker lost **1/1**, won **1/1**. No call had both sides die.
 
 `$108b8(winner, loser)`: battles won `$3c514[winner.side]`++. Mana transfer amount e:
 - loser a walker: 100, knight 1000, the side's leader 3000 (`$3c4e8`).
@@ -371,8 +378,8 @@ of all 441 brawl frames: magnets **441/441**, the 20 settlements vacated on the 
 no settlement after any frame **441/441**, the whole terrain map and overlay after the frame equal to
 the entry state with the vacated footprints released **441/441**, side populations **421/421** (frames
 without a fight or new entity). `fightcheck.py` from `M1.snap` (frame 1067) over the same brawl: 14
-fights, rounds **12/12**, 2 resolutions (not modelled: the loser's mana went to -250, the winner's
-rose by 3000).
+fights, rounds **12/12**; its 2 resolutions (the loser's mana to -250, the winner's +3000, a leader
+killed) match the full model, section 3.5.
 
 ## 6. Population, win/lose, score
 
@@ -467,7 +474,8 @@ from game_start is the evidence used here).
 - `powers/` (data in `$POP_WORK/powers/`): `powers_ref.py` models the six powers, `$fe00`, `$feca`
   and `$108b8`; `pw_diff.py 40 2026` + `pw_diff.py 40 77` the callcap corpus (2305/2305); `cast.py`
   and `knight_scn.py` the UI casts (entry/exit snapshots compared on the full state); `live.py <snap>
-  1100 retarget merge resolve` the knight's natural calls; `ktrack.py` prints knights and targets.
+  1100 retarget merge resolve` the knight's natural calls, `live.py <snap> <frames> fight` every
+  `$1063a` call (`combat_round`); `ktrack.py` prints knights and targets.
 
 ## 10. Open questions
 - The `$ef4c` writes after the decision (settle, merge, fight start, occupancy and visit counts, the

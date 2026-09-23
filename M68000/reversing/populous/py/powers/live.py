@@ -8,6 +8,9 @@ kinds:
   merge     bp $feca .. $10066: walker_merge(i, j), full compare.
   resolve   bp $108b8 .. $10e7c: combat_resolve(w, l), full compare for the modelled paths
             (walker loser; knight winner vs settlement = raze); take-overs are counted, not compared.
+  fight     bp $1063a .. its return: combat_round(S): the round, both $101a0 animations and the
+            resolution (both die, or $108b8 for the survivor); full compare. Calls that reach an
+            unmodelled path (a settlement killed or taken over: $10366) are counted, not compared.
 Each kind is a separate pass over the same deterministic trajectory (breakpoints do not change it).
 """
 import os, sys
@@ -17,7 +20,7 @@ import powers_ref as P
 
 LO, HI = 0x21464, 0x3d560
 TMP = os.path.join(PD, 'snaps', 'tmp')
-KINDS = {'retarget': (0xf6ca, 0xf716), 'merge': (0xfeca, 0x10066), 'resolve': (0x108b8, 0x10e7c)}
+KINDS = {'retarget': (0xf6ca, 0xf716), 'merge': (0xfeca, 0x10066), 'resolve': (0x108b8, 0x10e7c), 'fight': (0x1063a, None)}
 
 
 def keep(a, a7):
@@ -26,19 +29,23 @@ def keep(a, a7):
 
 def run(start, frames, kind):
     os.makedirs(TMP, exist_ok=True)
-    fe, fx = os.path.join(TMP, kind + '_e.snap'), os.path.join(TMP, kind + '_x.snap')
+    fe, fx = (os.path.join(TMP, '%s_%d_%s.snap' % (kind, os.getpid(), s)) for s in 'ex')   # per process: runs can overlap
     ent, ex = KINDS[kind]
     r = Repl2(start)
     f0 = int.from_bytes(r.mem(P.FRAME, 2), 'big')
     stats = {}
     fails = []
     events = []
+    last_miss = None
     while True:
         out, rg = r.cmd('bp %x 2000000' % ent)
         fr = int.from_bytes(r.mem(P.FRAME, 2), 'big')
         if (fr - f0) & 0xffff >= frames:
             break
         if rg.get('PC') != ent:
+            if fr == last_miss:                     # a whole bp window without a frame: the game ended
+                print('game stopped simulating at frame %d' % fr); break
+            last_miss = fr
             continue
         a7 = rg['A7']
         if kind == 'retarget':
@@ -46,7 +53,7 @@ def run(start, frames, kind):
             if not int.from_bytes(r.mem(a5 + 14, 4), 'big'):
                 r.cmd('s 1'); continue
         r.cmd('snap ' + fe)
-        r.cmd('u %x 3000000' % ex)
+        r.cmd('u %x 3000000' % (ex or P.rl(r.mem(a7, 4), 0)))
         r.cmd('snap ' + fx)
         pre, post = ram(fe), ram(fx)
         mm = bytearray(pre)
@@ -67,6 +74,18 @@ def run(start, frames, kind):
             tag = 'merge_knight_into_town' if kn and P.rb(pre, P.ent(j)) == 1 else 'merge_knight' if kn else 'merge'
             P.walker_merge(mm, i, j)
             events.append((fr, i, j, tag))
+        elif kind == 'fight':
+            si = P.rw(pre, a7 + 8)
+            assert P.rl(pre, a7 + 4) == P.ent(si)
+            try:
+                tag = 'fight_' + P.combat_round(mm, si)
+            except AssertionError as ex_:
+                tag = 'fight_unmodelled'
+                stats.setdefault(tag, [0, 0])[1] += 1
+                events.append((fr, si, str(ex_)))
+                continue
+            if tag != 'fight_round':
+                events.append((fr, si, P.ruw(pre, P.ent(si) + 6), tag))
         else:
             w, l = P.rw(pre, a7 + 4), P.rw(pre, a7 + 6)
             W, L = P.ent(w), P.ent(l)

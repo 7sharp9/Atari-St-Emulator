@@ -143,8 +143,9 @@ edge.
   trail): edge 0, cell 4070, spawn MATCH, **237/238** frames, 29 cells marked, **20 of them made
   swamp** live; the other frame is a settlement on a marked cell (`$10366`, not modelled). The run
   ends at frame 4350 when the human side dies. `swamp208.py edges` gives the edge distribution above.
-- A natural run to 208 was not reached: ATARI VS ATARI from `ai/cg2.snap` holds 45 to 60 live
-  entities up to frame 3721 (`swamp208.py run`), because walkers merge and settle.
+- A natural run never reached 208: ATARI VS ATARI from `ai/cg2.snap` (`swamp208.py run`) held at
+  most 71 entities (high-water `$3c4e2`) until the human side died at frame 9365, because walkers
+  merge and settle.
 
 ## 2. The key checks ("checksums")
 

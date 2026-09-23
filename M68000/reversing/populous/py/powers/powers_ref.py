@@ -424,6 +424,59 @@ def entity_kill(m, e, idx):
         ww(m, QUERY, 0)
 
 
+def anim_advance(m, e):
+    """$101a0 for the paths a fight reaches: str == 0, a walker (flags 2), bit 4, bit 3 (fighting)."""
+    if rw(m, e + 4) == 0:
+        return
+    f = rb(m, e)
+    if f == 2:
+        v = rw(m, e + 12); ww(m, e + 12, v + 1)
+        if v >= 7:
+            ww(m, e + 12, 0)
+    elif f & 0x10:
+        ww(m, e + 12, rw(m, e + 12) + 1)
+        if rw(m, e + 12) > 0x60 or rw(m, e + 12) < 0x5d:
+            ww(m, e + 12, 0x5d)
+    elif f & 8:
+        o = ent(ruw(m, e + 6))
+        if rl(m, e + 14):
+            base = 0x8a if rl(m, o + 14) else 0x82 if rb(m, e + 1) == 0 else 0x86
+        elif rl(m, o + 14):
+            base = 0x82 if rb(m, o + 1) == 0 else 0x86
+        else:
+            base = 0x46
+        ww(m, e + 12, rw(m, e + 12) + 1)
+        if rw(m, e + 12) >= base + 3 or rw(m, e + 12) < base:
+            ww(m, e + 12, base)
+    else:
+        raise AssertionError('$101a0 path for flags %02x not modelled' % f)
+
+
+def combat_round(m, si):
+    """$1063a(S, si), run each frame by the attacker S (flags 8) against O = entity[S+6]. The
+    $166b2 minimap dot it plots goes to the draw screen and is not modelled. Returns what happened."""
+    S = ent(si); oi = ruw(m, S + 6); O = ent(oi)
+    x = (rand(m) % 3 + 1) * rw(m, O + 4)
+    y = (rand(m) % 3 + 1) * rw(m, S + 4)
+    mn = y if x > y else x
+    q = int(mn / 100)                                  # divs: truncates toward zero
+    ww(m, O + 4, rw(m, O + 4) - (q * rb(m, S + 3) + 10))
+    ww(m, S + 4, rw(m, S + 4) - (q * rb(m, O + 3) + 10))
+    anim_advance(m, S)
+    anim_advance(m, O)
+    if rw(m, S + 4) <= 0 and rw(m, O + 4) <= 0:
+        entity_kill(m, O, oi)
+        entity_kill(m, S, si)
+        return 'both_die'
+    if rw(m, S + 4) <= 0:
+        combat_resolve(m, oi, si)
+        return 'attacker_lost'
+    if rw(m, O + 4) <= 0:
+        combat_resolve(m, si, oi)
+        return 'attacker_won'
+    return 'round'
+
+
 def combat_resolve(m, wi, li):
     """$108b8(winner, loser) for: any winner vs a walker loser, and a KNIGHT winner (str != 0) vs a
     settlement loser (the raze). The non-knight take-over path ($10366/$18206) is not modelled."""
