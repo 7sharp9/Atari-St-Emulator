@@ -29,6 +29,10 @@ Usage:
                                                         # decoding the table's data bytes as garbage
                                                         # instructions, and reports the table address to
                                                         # pass here.
+    python disassemble.py --snap scratchpad/pm121/run/k25_s4.snap --all 400 20000 > game.asm
+                                                        # whole-image listing of [lo, hi), carrying on
+                                                        # past dispatch stops; grep it for callers
+                                                        # (`jsr $xxxx.l`, `bsr $xxxx`) and field writers
 
 Known gaps (extend as needed, following the same "verify against Instructions.fs first" discipline):
 TAS's ea-operand form, line-A/line-F opcodes, TRAPV, RESET's operands (none),
@@ -587,6 +591,27 @@ def main():
         print(f"=== jump table at ${table_addr:x} ({count} entries, {entry_size}-byte stride) ===")
         for entry_addr, dn, val, target in dis.jumptable(table_addr, count, entry_size):
             print(f"  ${entry_addr:x}: D={dn:#x} word=${val:04x} -> target ${target:x}")
+        return
+
+    if args and args[0] == '--all':
+        # whole-image listing [lo, hi): like --linear, but keeps going past a
+        # computed-dispatch stop (the table words then decode as garbage, as
+        # they would in any linear sweep).  Grep it for callers/writers.
+        addr, hi = int(args[1], 16), int(args[2], 16)
+        while addr < hi:
+            lines = dis.disassemble(addr, count=4096, stop_at_control_flow=False)
+            for pc, txt in lines:
+                if pc >= hi:
+                    return
+                print(f"  ${pc:06x}: {txt}")
+            last_pc, last_txt = lines[-1]
+            if 'computed-dispatch' in last_txt:
+                addr = last_pc + 4                    # jmp 2(PC,Dx.w) is 4 bytes
+            else:
+                try:
+                    addr = dis.decode_one(last_pc)[1]
+                except (IndexError, KeyError):
+                    addr = last_pc + 2
         return
 
     if args and args[0] == '--linear':

@@ -464,6 +464,8 @@ least once by a session that did not know it existed.
 | `tools/gfxview.py`, `tools/screendump.py` | RAM graphics explorer; raw screen-dump-to-PNG |
 | `tools/hatari_trace.py` | headless real Hatari on the same ROM (a CPU/OS-trace oracle, not a video one) |
 | `tools/pm_fsm_diff.py` | game-agnostic `callcap` differential-test harness (`Harness`/`State`/`run_corpus`); a corpus script's first argument (other than `reuse`) runs only the states whose name contains it. `callcap` runs the routine with interrupts masked, so a routine that waits on an interrupt-cleared flag never returns ("Loop detected"): for PowerMonger's sound calls (`$1ba3e` → `$1ae36`) poke the busy byte `$2c993` to 0 in the state first |
+| `tools/capture_hits.py` | corpus capture for a callcap gate: from a start snapshot, stop at chosen natural hits of a routine (`bpc`), snapshot each (+ `.ram`) and write the entry registers and return address to `<name>.json` (usage in the header) |
+| `tools/disassemble.py --snap <snap> --all <lo> <hi>` | whole-image listing that carries on past jump-table stops; grep it for callers and field writers (`,44(A[0-7])$`) before trusting any "who writes X" claim |
 | `tools/pm_export.py`, `tools/pm_render_ref.py`, `tools/pm_fsm_ref.py` | PowerMonger: asset export, the Python reference renderer, the from-disassembly entity/AI reconstruction |
 | `reversing/powermonger/py/` | PowerMonger working scripts: build any of the 144 lands, capture frame runs, score the port pixel for pixel, `hits` census runs (its README lists them) |
 

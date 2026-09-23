@@ -38,6 +38,26 @@ know they existed.
 - Docs are definitive reference text: correct stale claims in place, no pass-by-pass diary.
 - Every behavioural claim about a game needs an emulator check (callcap diff, frame capture or
   screenshot diff) with a match count, or is labelled inferred.
+- A "nothing writes X" or "only Y writes X" claim needs every writer: grep a whole-image
+  listing (`disassemble.py --snap <snap> --all <lo> <hi>`) and read each writer's full block;
+  the next instruction can overwrite the value (PowerMonger `$2452` is undone by `$245c`).
+
+## Proving routines with parallel subagents
+
+What made the PowerMonger 122nd pass's three parallel proofs work, and what went wrong:
+- One shared `BRIEF.md` in the working dir. Take its addresses, strides and struct offsets
+  from the code (`tools/pm_common.py`, `tools/pm_fsm_ref.py`, the docs' proven sections), never
+  from memory: that brief got the object table wrong, and every agent had to correct it.
+- Subagents cannot write `report.md` (the tool refuses). Ask for the report as the final
+  message and save it yourself into the agent's directory.
+- Corpus capture: `tools/capture_hits.py`. `callcap` runs with interrupts masked, so a routine
+  that plays a sound waits forever on a flag the interrupt clears (PowerMonger: poke `$2c993`
+  to 0 in the state).
+- When two agents transcribe the same callee, keep one version and run both corpora against it:
+  that cross-check is free.
+- Before merging: re-run every gate from fresh callcaps (no `reuse`), merge the transcriptions
+  into the game's reference module, move the gates to `reversing/<game>/py/` (corpora stay in
+  scratchpad, listed in `ANCHORS.md`), then run all older gates of that module again.
 
 ## Shell pitfalls on this machine
 
@@ -47,6 +67,9 @@ know they existed.
 
 - Bash heredocs and inline `python -c` mangle backslashes (Windows paths, `\AUTO\`, regexes).
   For text containing backslashes use the Edit/Write tools, not shell string surgery.
+- The Bash tool's working directory drifts between calls: `cd` to an absolute path first.
+- In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or
+  `bp` before the down, or the census misses the handler.
 - Ghidra 12.1 is at `C:/Program Files/ghidra_12.1_PUBLIC` (`support/analyzeHeadless.bat`).
   In Ghidra Java scripts write regexes as `"\\s+"`; `"\s"` is Java's single-space escape and
   silently matches no tabs.
