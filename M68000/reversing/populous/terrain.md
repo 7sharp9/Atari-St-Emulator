@@ -314,18 +314,12 @@ became rock and nine frames later a walker; the same draw on good's leader cell 
 
 - **Water**: sea is height 0 / shape 0. On a walker flagged in water (entity byte 0 & $10), fatal water
   kills it at once (`$dfcc`); harmful water takes the other path (inferred, people code).
-- **Trail effects** (`$13372` spawn, `$12f84` per-frame tick; entity slots $d1/$d2): at tick
-  `$3c4c8==$1000`, or when the population reaches 208, an entity enters from a map edge and moves every
-  8 frames by the step in `$21e7c` (12-byte records: step -64/-65/+65). It marks 3 side cells with trees
-  (type 0), swamp (type 1) or rock (type 2) and kills occupants. Type = `$37ec2&3` for the tick spawn.
-  The spawn is followed by a comparison of `$3c4b4` with `$21d58+$12312378`. On mismatch it sets player
-  flags and decrements the tick, which looks like a copy-protection penalty (inferred, not run).
+- **Trail effects** (`$13372` spawn, `$12f84` tick; slots $d1/$d2): trees, swamp or rock marked
+  along a path across the map; `systems.md` 1.
 - **Paint map**: cmds 11-13 and cmd 14 subs 11, 12 and 13. Mirror `$11270` copies the higher of
   h[i]/h[$1080-i] to both, and copies trees/buildings (`$32..$37`) point-symmetrically. Clear `$113ce`
   zeroes all maps and kills every entity.
 
 ## Open questions
-- The meaning of `$3b274`, and bits 1 and 2 of the power word.
-- LOLO1.GAM (14336 bytes) is shorter than the `$1db98` save layout (4 + 8450 + 4x4096 + ...). It may be
-  an older format.
-- The trail-effect and protection path were read from code and not run.
+- None specific to terrain. `$3b274` is pause and power-word bits 1-2 are attack towns / attack leader
+  (`systems.md` 3, 4); LOLO1.GAM is a truncated save (`systems.md` 5.2).

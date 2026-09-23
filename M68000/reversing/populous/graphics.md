@@ -409,8 +409,8 @@ Command panel (`$c65a..$d05c`, dispatch on the column at `$d00e`):
 | (8,0) | go to knight | left: the next own knight (+14 set); right: the next own settlement; query it |
 
 Icons right of the land view (`$c4a4..$c656`): (0,0) cmd 14/7 OPTIONS FOR EVIL (arg = left
-button), (0,3) the music-note icon toggles `$21ffc` (no reader besides the save/restore at
-`$1d18e`; music on/off is *inferred*), (0,4) "FX" toggles `$21920` (the VBL plays the `$36d02`
+button), (0,3) the music-note icon toggles `$21ffc`, which has no reader besides the save/restore at
+`$1d18e` (the game has no music; `systems.md` 6), (0,4) "FX" toggles `$21920` (the VBL plays the `$36d02`
 sound effect only while it is set), (1,1) cmd 14/8 GAME SETUP, (1,3) "zZ" cmd 14/6 pause
 (toggles `$3b274`), (2,2) the telephone, cmd 14/2 send message. `panel_regions.png` outlines
 every region over a game frame (numbers = order of the two lists above).

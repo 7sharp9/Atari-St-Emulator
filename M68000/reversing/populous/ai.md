@@ -129,9 +129,10 @@ player mode `god_rec[other].ctrl = 1`. ATARI VS ATARI ($1b95c): `god_rec[me].ctr
 other side in one-player). In a serial game the same flag on your own side is what the other
 machine reports as "COMPUTER ASSISTANCE" (strings $22d2a/$22d58). There is no separate
 assistance AI: the human side simply runs `$13eda`/`$13a44`/levellers with its own record.
-Anti-tamper: `$13372` (checksum $3c4b4 vs $21d58+$12312378) and `$db4c` at walker 20
-($3c4c0 vs $21d4c+$14725836, $e182) set both sides' ctrl = 1; the latter also sets `$3d524`
-(the armageddon state).
+Key checks (`systems.md` 2): `$db4c` at entity 20 (`$3c4c0` vs `$21d4c+$14725836`, `$e182`) and at
+entity 18 (the trace vector vs `2*$21d54`, `$edae`) set both sides' ctrl = 1 and `$3d524`
+(Armageddon); `$13372` (`$3c4b4` vs `$21d58+$12312378`) sets both ctrl = 1. So a failed check turns
+the game into ATARI VS ATARI. They compare against the crack loader's key $54ac0842 and pass.
 
 ## 3. Decision logic (proven, 4800/4800 callcap matches)
 

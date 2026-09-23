@@ -316,7 +316,7 @@ Every 8th frame (`$3c4c8 & 7 == 0`):
 Every 8th frame, a castle of a computer-controlled side with str > 305 whose side is **not** busy gets
 capacity 305 instead of 3050 and sets the side busy (`$e5a6..$e638`): an AI action, so the castle then
 emits a walker (verified 332/332 live, `ai.md` 3.4). If the table is full
-(208), `$13372(1)` is called once (inferred: a message). Verified: settlement str 4122/4122,
+(208), `$13372(1)` spawns a swamp trail, once per game (`$3c4c4`; `systems.md` 1.3, not run). Verified: settlement str 4122/4122,
 weapon 516/516, emitted walkers 12/12 (str, side, cell).
 
 ### 4.3 Claiming land, `$10366(e, release)`
@@ -404,12 +404,14 @@ fields over 7 real end states: win and loss by zeroing one side's strengths, a n
 2470 (71450), a surrender through GAME SETUP, and a custom-game loss (6115).
 
 ## 7. Other entity-array users
-- `$12f84`: slots $d1/$d2 move one cell every 8 frames along a direction bouncing in a range, marking
-  cells as trees/rock/swamp by type (`+20`) and killing any entity they cross (`$10068`). Inferred to be
-  power effects; the terrain/graphics areas own the detail.
+- `$12f84` / `$13372`: the two trail effects in slots $d1/$d2, spawned at frame $1000 and once when
+  the entity table is full; they walk one cell every 8 frames, mark trees, swamp or rock beside the
+  path and kill what they cross. They are not power effects. `systems.md` 1.
 - `$d482`: query panel for the selected entity.
-- Anti-tamper: at entity index $14 `$db4c` compares `$3c4c0` with `$21d4c+$14725836`, and at index $12
-  a checksum `$15fe2`; a mismatch sets `$3d524` (forced Armageddon).
+- Key checks, not checksums: at entity index $14 `$db4c` compares `$3c4c0` with `$21d4c+$14725836`,
+  at index $12 the trace vector (read by the supervisor peek `$15fe2`) with `2*$21d54`; a mismatch sets
+  `$3d524` (Armageddon) and both sides' ctrl = 1. Both constants equal the crack loader's key
+  $54ac0842, so they pass (`systems.md` 2).
 
 ## 8. Snapshot contents
 
