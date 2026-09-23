@@ -1,0 +1,21 @@
+kbd 39 b9
+u b410 10000000
+s 300000
+mouse move 125 88
+s 200000
+mouse move 125 88
+s 200000
+mouse down l
+s 200000
+mouse up l
+s 40000000
+mouse move -85 0
+s 200000
+mouse move -80 0
+s 300000
+mouse down l
+s 300000
+mouse up l
+s 30000000
+snap pop_game_start.snap
+q
