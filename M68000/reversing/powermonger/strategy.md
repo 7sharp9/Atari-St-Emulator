@@ -202,10 +202,11 @@ typedef struct pm_assess {            // index by side id: $580a6 + side*$20
 /* 0*/  u16  decay_period;            // $3e06: objective budget decays every this-many ticks
 /* 2*/  u16  march_speed;             // $3fac: the lead's base speed (30; 32 for side 0), before weather/winter/load
 /* 4*/  u8   _b4[2];
-/* 6*/  u8   relation_bits;           // $4c2a: bclr peace bit per other side; $3154 friend/foe sign source
+/* 6*/  u8   peace_bits;              // bit t = at peace / allied with side t ("Diplomacy"): $2458 sets the own bit at build, $34a8 sets, $4c2a clears
 /* 7*/  u8   _b7[8];
-/*15*/  u8   assess_in [1];           // $311a writes here: clamped 15(A5,other*$20) + delta, range $ff9c..$64
-/*16*/  u8   assess_out;              // $68fe reads (16(A4, target*$20 - 1)) >> 2 as the targeting weight
+/*15*/  s8   rel[5];                  // +15+t: attitude toward side t (campaign table layout); $311a READS here (unsigned) ...
+                                      // ... and WRITES +16+t (one byte higher, clamped -100..100): a game bug, "Diplomacy"
+                                      // $33b0 reads +16+proposer; $68fe reads byte 15 of block[me+t] instead (weight 0 or garbage)
 /*17*/  u8   _b17[3];
 /*20*/  u8   start_equip[4];          // $238c world build: 20/21 -> the side's first unit's 33/44 ($244c/$2452; $245c then forces 44 := 6), 22/23 -> the followers' ($24fa/$2500)
 /*24*/  u8   _b24[8];
@@ -286,17 +287,17 @@ offset as D2. Who posts each type is in "The player's commands" below.
 | `$18` | `$6cda` | `$30fe`, `$39d4` D7=2 | icon, immediate |
 | `$1a` | `$6d00` | `$390e(x,y)` | icon, targeted |
 | `$1c` | `$6d12` | `$3154` D3=`$f` D4=`$78` D5=0 (neutral) | icon, targeted |
-| `$1e` | `$6d32` | `$3154` D3=`$e` D4=`$76` D5=−cmd | icon, targeted |
+| `$1e` | `$6d32` | `$3154` D3=`$e` D4=`$76` D5=−cmd | icon, targeted — **offer an alliance** ("Diplomacy") |
 | `$20` | `$6d56` | `$3154` D3=`$10` D4=`$7a` D5=−cmd, then `$1d36` | icon, targeted |
 | `$22` | `$6d90` | `$3ce8(D1=cmd, D2=param)` | captain-portrait click (`$134a4`); AI |
 | `$24` | `$6dbc` | `not.w $57ff2` (pause) | PAUSE button |
-| `$26` | `$6dd0` | `$d0dc(param)` when cmd ≠ local side | — (inferred: another side's message) |
+| `$26` | `$6dd0` | `$d0dc(param)` when cmd ≠ local side: one character into the message line (panel `$16`) | linked play: the local side posts it at `$d14c` (inferred: chat) |
 | `$28` | `$6dc6` | `$13d1a` (rebuild the land) | REPLAY MAP button |
-| `$2a` | `$6dea` | `$34a8(D0=cmd, A3=$51538+param)` | alliance panel YES |
+| `$2a` | `$6dea` | `$34a8(D0=cmd, A3=$51538+param)`: accept an alliance | alliance panel YES; `$33b0` (`$3458`) for an AI lord |
 | `$2c` | `$6e04` | `$71fe := 1` | MULTI PLAY button |
 | `$2e` | `$6e10` | `$71ae`, `$d2c8` (end of land) | RETIRE button; `$d23a` on captain loss |
 | `$30` | `$6e36` | `$580a0/$580a2 := param`, `$13d1a` | RANDOM MAP button (param `$2df84`) |
-| `$32` | `$6e56` | `$cada` when cmd ≠ local side | alliance panel NO |
+| `$32` | `$6e56` | `$cada` (refusal message) when cmd ≠ local side | alliance panel NO (into the local slot, so locally a no-op; inferred: for a linked proposer) |
 
 The 121st-pass version of this table read the base as `$6b5c` and was one
 entry off (`$06` → `$6bec`, `$08` → `$6c18` are mid-instruction). Checked on
@@ -364,7 +365,7 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    | `$12` | `$c332` | modem connect | `$68` CANCEL |
    | `$14`/`$16` | `$d048` | SEND MESSAGE / `$d0dc` | none (a message line) |
    | `$18` | `$c512` | Start New Conquest with lands conquered | `$7a` YES clears `$3f2a0` (196 bytes), `$8a` NO |
-   | `$1a` | `$c820` | an alliance offer (opener: `scratchpad/pm123/diplo/`) | `$146` YES → order `$2a`, param `$5809e` (only if that group's `-48(A3) != 0`, `192(A3) == $e` and its lead is on the local side); `$162` NO → `$32` |
+   | `$1a` | `$c820` | `$c706`, from `$33b0`, when an envoy reaches a lord of the local side | `$146` YES → order `$2a`, param `$5809e` (only if that group's `-48(A3) != 0`, `192(A3) == $e` and its lead is on the local side); `$162` NO → `$32` |
 
 2. **The minimap** (x < `$40`, 6 ≤ y < `$86`; cells 1:1, `(x, y−6)`). With a
    command armed (`$57fd4 != 0`), `$13892` draws the line from the selected
@@ -408,7 +409,7 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    | `$18` | `$d6` | (173,188) | – | post `$18` now |
    | `$1a` | `$d8` | (227,174) | chain | arm `$1a` |
    | `$1c` | `$b3` | (74,175) | – | arm `$1c` (neutral target) |
-   | `$1e` | `$a3` | (73,161) | eye with arrows | arm `$1e` (enemy target) |
+   | `$1e` | `$a3` | (73,161) | eye with arrows | arm `$1e`: offer an alliance to the clicked settlement's lord |
    | `$20` | `$93` | (72,149) | eye | arm `$20` (enemy target) |
    | `$26`/`$28`/`$2a` | `$a4`/`$94`/`$84` | (97,156)/(94,145)/(92,135) | posture | `$13678`: post `$16`, param 2/3/4 |
    | `$2c` | `$c3` | (75,191) | – | `$136b2`: toggle `$57fea`, disarm `$57fd4` |
@@ -470,8 +471,8 @@ the per-objective budget `112()` and the per-side assessment weight in
 
 `$580a6` — 5 × `$20`-byte per-side assessment blocks — is written all over the
 `$2200`–`$3500` cluster and from `$139dc`/`$13a3e`/`$13b20` in the sim tick.
-That is a further subsystem (the spy-report / relationship layer); `$68fe` only
-reads one byte of it (`+16`, `>> 2`) as a targeting weight. Not decoded here.
+The relation and peace-bit fields are the diplomacy layer ("Diplomacy",
+below); `$68fe` reads one wrong byte of it as a targeting weight.
 
 ## `$127e6`
 
@@ -933,6 +934,103 @@ alone does not trigger `$550e` (inferred: it is reached from the conquest arm
 *Rule: Proven from the code. Defeat observed both ways (retire and the natural
 captain loss); victory observed naturally (mission 1, clicks only).*
 
+## Diplomacy (123rd pass)
+
+An alliance is a pair of peace bits: bit `t` of `+6` in side `s`'s `$580a6`
+block means `s` is at peace with `t`. Outside the bulk copies of the whole
+block (`$1140e` campaign pick, `$b86c`/`$716c` restore, `$10d1e` random land)
+the complete writer set is `$2458` (world build: the side's own bit), `$34a8`
+(two `bset`, alliance forged), `$4c2a` (`$4c64`/`$4c7a`, two `bclr`, alliance
+broken) and `$311a` (the relation bytes). Found by searching the image for
+every absolute longword in `$580a0..$58145` (74 sites, the same set as the
+listing); the table with each site is in `scratchpad/pm123/diplo/` (the
+subagent report, saved as `REPORT.md`).
+
+**Proposing.** Order `$1e` (icon `$1e`, then a settlement): `$3154` (D3 = `$e`,
+D4 = `$76`, D5 = −commander) takes a settlement that is not the proposer's,
+stores its lord in `24(group)`, and walks the group's lead to it (mode `$10`,
+prev-mode `$76`). On arrival mode `$76` runs `$15754` → `$33b0`:
+
+```c
+void envoy_arrives_33b0(group *g, leader *L) {
+    if (L->side == local) open_panel_1a(g);          // $c706: the player decides (YES $2a / NO $32)
+    int tribute = 0;
+    for (i = 0; i < 8; i++) { tribute += g->supply_acc[i] * W_3498[i]; g->supply_acc[i] = 0; }
+                                                     // W = {4,4,8,4,6,2,20,40}, per carried goods type
+    slot *s = &cmd_slot[L->side];
+    if (s->state == 4 || s->state == 0) {            // an AI (or unlinked) side
+        int v = (s8)assess[L->side].rel_byte[16 + g->side] + tribute - 2;
+        if (v >= 0) {                                // accept
+            if (s->state == 0) accept_alliance_34a8(L->side, g);
+            else { s->order = 0x2a; s->param = g - $51538; }   // $3458; the executor runs $34a8
+        } else if (g->side == local) refusal_message_cada(L->side);
+    }
+    free_group_35f4(g);                              // the envoy group is always disbanded
+}
+void accept_alliance_34a8(int a, group *g) {         // order $2a
+    bset(g->side, &assess[a].peace_bits);  bset(a, &assess[g->side].peace_bits);
+    if (g->side == local || a == local) message_c9f8();   // "An Alliance has been forged ..."
+}
+```
+
+Checked (`scratchpad/pm123/diplo/`, from `offer_a_end.snap`, the player's
+envoy dispatched with `w 5801c 011e2d15` toward side 3's settlement (45,21) on
+land 60, its lead's mode then set to `$76`): with no goods carried, `v = −2`,
+`$cada` and `$35f4` run once and nothing is written; with one unit of goods 0,
+`v = 2`, `$3458` posts `$2a` into side 3's slot, and the executor's `$34a8`
+writes `$5810c := $0a` and `$580cc := $0a` (sides 3 and 1 allied), then
+`$c9f8`. Re-run this session: byte-identical `t2_end.snap`. The unforced walk
+never arrived: after 180M steps the envoy touched side 3's men first, which
+breaks the approach (below).
+
+**What an alliance changes.** Only the two readers of `+6`:
+
+- `$3154`'s friendly-target test (`$3172`/`$31a6`). Order `$06` (recruit,
+  group state 2) on side 3's settlement (45,21): before the alliance
+  `$31a6` → `$31c8` → fallback `$38ce` (refused, 1/1); after it `$31a6` →
+  `$31b2` → `$31cc` (accepted, 1/1). Orders `$06` and `$10` accept an ally's
+  settlements like one's own.
+- The pointer test `$1394c`, run while a command is armed (`$57fd4` = `$06`,
+  `$10`, `$1e`): `$139da`/`$13a3c` accept a settlement whose owner's bit is set,
+  `$13b1e` (for `$1e`) one whose bit is clear. These three are the addresses the
+  122nd pass listed as "per-tick writers": they are reads.
+
+Combat does not look at `+6`. Any contact between two sides' units runs
+`$4bc8` → `$4c2a`, which clears both peace bits, calls `$c5ee` ("The alliance
+between ... is broken") when the player is one of them, and applies a −8
+relation delta both ways through `$311a`. Replaying the envoy run with the
+1 ↔ 3 bits set, the first contact did exactly that (`$4c64`, `$4c7a`, `$c5ee`
+1 hit each). An alliance with no contact persists (60M steps, bits unchanged).
+
+**Who proposes.** Order `$1e` is posted only by the UI (`$131c4`, `$1365e`);
+the AI's order writer `$6822` posts only `$02/$04/$06/$08/$0c/$22`. In 150M
+natural steps over three lands `$6d32` and `$15754` had 0 hits, and
+`$34a8`/`$33b0`/`$c706` never ran. So only the player offers alliances, and
+panel `$1a` (an envoy arriving at the player) needs a linked opponent
+(inferred; its branch is read statically only).
+
+**Relations and their bugs.** The campaign table stores side `s`'s attitude to
+side `t` at `+15+t` (3 non-zero self-entries under that layout, 77 under
+`+16+t`; 96 of 195 lands have a non-zero pair, values mostly −128, −2, +16,
++112; no land pre-sets `+6`). Three code paths disagree with it:
+
+1. `$311a` reads `+15+t` **unsigned** and writes `+16+t`: a stored negative
+   reads as ≥ 128 and clamps to +100, and for `t = 4` the write lands on `+20`,
+   the side's starting equipment (13 of 26 writes on land 60's first 50M
+   steps).
+2. `$33b0` reads `+16+proposer`, i.e. the designed attitude toward side
+   proposer + 1 (inferred intent: `+15+proposer`).
+3. `$68fe` reads byte 15 of `block[me + t]` instead of `+15+t` of `block[me]`:
+   the low byte of word `+14` (2, weight 0) or bytes past the table
+   (`$58155` = 3, `$58175` = 2, `$58195` = `$10`); 13/13 reads at `$6968` were
+   those values. The relation never reaches targeting.
+
+Also: `$c5ee` clobbers D2, so when an alliance with the player breaks, the two
+−8 deltas go to `$580bd` and `$57d97` (bp at `$311a`: D2 = `$e7`). Natural
+writes to the block in 50M-step runs from a land's start: land 60, `$4c64`
+13 and `$314a` 26; land 25, 78 and 156 (77 of the 78 contacts between sides 2
+and 3); all contact-driven.
+
 ## The campaign (122nd pass)
 
 The main menu's four buttons set `$2df6e` (`$78d2..$7908`): 2 Start New
@@ -1201,11 +1299,10 @@ are limitations rather than choices:
   fixed-map branch (`$58148 < $100` → `$df52(7)`), which no campaign entry
   uses (possibly Load Data Disk), and the per-objective `obj_camp_id` fields,
   which only the dead `$67d0` hook reads.
-- `$580a6` per-side assessment block: `$311a` writes `+15`/`+16` (clamp
-  `$ff9c..$64`, a signed −100..+100 relationship), `$4c2a` clears `+6` peace
-  bits, `$3154` reads the sign for friend/foe. The `$2200`–`$3500` seeders and
-  the per-tick incremental writers (`$139dc`/`$13a3e`/`$13b20`) are still
-  unmapped — this is the diplomacy/spy-report subsystem.
+- Diplomacy ("Diplomacy" above): an alliance offered naturally by clicks
+  (icon `$1e` on a settlement, carrying goods, envoy reaching the lord without
+  contact) is not yet observed; the panel-`$1a` branch (an envoy arriving at the
+  player) is static only.
 - `$3c08` (rout / besiege-fail group restructure; order `$0a`, the HOME icon)
   and `$39d4` (orders `$12`/`$18`, D7 = 1/2) — first-look only.
 - The player's icon orders whose handlers are not decoded (`$02` `$3888`,

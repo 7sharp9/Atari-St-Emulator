@@ -351,9 +351,10 @@ Two more modes close the loop:
   `L->goods[]` (cap `$ff`), then → mode `$92` (free the group slot).
 * **mode `$76`** (`$15754` → `$33b0`): weighted sum of *this-tick* deliveries
   (`supply_acc[i] × weight[$3498]`) `+` the assessment byte toward a target side
-  `- 2`; if `≥ 0` issue **attack order `$2a`** (or `$34a8` = declare war); if `< 0`
-  free the group. **This is the game's only economy → strategy coupling**: a lord
-  that is being kept well-supplied turns aggressive.
+  `- 2`; if `≥ 0` the target lord **accepts an alliance** (order `$2a` → `$34a8`,
+  peace bits; strategy.md "Diplomacy"), else a refusal message; the envoy group is
+  freed either way. The carried goods are the tribute: this is how the economy
+  feeds diplomacy (123rd; the 75th pass read `$2a` as an attack order).
 
 All of `$61f8` / `$638c` / modes `$76`–`$78` sit in the strategic layer that
 `strategy.md` measured as **near-dormant in "Between Pages 1-5"** (the enemy
