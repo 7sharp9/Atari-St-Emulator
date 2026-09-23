@@ -31,7 +31,7 @@ Usage:
                                                         # pass here.
 
 Known gaps (extend as needed, following the same "verify against Instructions.fs first" discipline):
-TAS's ea-operand form, line-A/line-F opcodes, ABCD/SBCD/NBCD, CHK, TRAPV, RESET's operands (none),
+TAS's ea-operand form, line-A/line-F opcodes, TRAPV, RESET's operands (none),
 and any instruction family the real emulator hasn't hit yet either.
 """
 import sys
@@ -188,8 +188,19 @@ class Disassembler:
                 szc = '.l' if size == 2 else '.w'
                 return (f"movem{szc} {ea},#${mask:04x}" if direction
                         else f"movem{szc} #${mask:04x},{ea}"), nxt2
-            if (op & 0xffc0) == 0x4840:
+            if (op & 0xfff8) == 0x4840:  # (|SWAP|_|) - eamode 000 only
                 return f"swap D{op & 7}", nxt
+            if (op & 0xffc0) == 0x4840:  # (|PEA|_|) - same top bits, eamode <> 000
+                ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, 2)
+                return f"pea {ea}", nxt
+            if (op & 0xffc0) == 0x4800:  # (|NBCD|_|)
+                ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, 0)
+                return f"nbcd {ea}", nxt
+            if (op & 0xfff0) == 0x4e60:  # (|MoveUsp|_|)
+                return (f"move USP,A{op & 7}" if op & 8 else f"move A{op & 7},USP"), nxt
+            if (op & 0xf1c0) == 0x4180:  # (|CHK|_|)
+                ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, 1)
+                return f"chk {ea},D{(op >> 9) & 7}", nxt
             if (op & 0xfff8) == 0x4e58:
                 return f"unlk A{op & 7}", nxt
             if (op & 0xfff8) == 0x4e50:
@@ -268,6 +279,8 @@ class Disassembler:
 
         if top == 8:  # OR/DIVU/DIVS - Instructions.fs (|OR|_|)/(|DIVU|_|)
             reg, opmode = (op >> 9) & 7, (op >> 6) & 7
+            if (op & 0xf1f0) == 0x8100:  # SBCD Dy,Dx / -(Ay),-(Ax)
+                return (f"sbcd -(A{op & 7}),-(A{reg})" if op & 8 else f"sbcd D{op & 7},D{reg}"), nxt
             if opmode == 3:
                 ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, 1)
                 return f"divu {ea},D{reg}", nxt
@@ -281,6 +294,10 @@ class Disassembler:
 
         if top == 9:  # SUB/SUBA - Instructions.fs (|SUB|_|)
             reg, opmode = (op >> 9) & 7, (op >> 6) & 7
+            if (op & 0xf130) == 0x9100 and ((op >> 6) & 3) != 3:  # (|SUBX|_|) - Dy,Dx or -(Ay),-(Ax)
+                size, rx, ry = (op >> 6) & 3, (op >> 9) & 7, op & 7
+                return (f"subx{SIZES[size]} -(A{ry}),-(A{rx})" if op & 8
+                        else f"subx{SIZES[size]} D{ry},D{rx}"), nxt
             if opmode in (3, 7):
                 size = 1 if opmode == 3 else 2
                 ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, size)
@@ -299,6 +316,8 @@ class Disassembler:
                 size = 1 if opmode == 3 else 2
                 ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, size)
                 return f"cmpa{SIZES.get(size, '?')} {ea},A{reg}", nxt
+            if (op & 0xf138) == 0xb108:  # CMPM (An)+,(An)+ - EOR's An-direct slot, see 68k.fs
+                return f"cmpm{SIZES[opmode & 3]} (A{op & 7})+,(A{reg})+", nxt
             size, is_eor = opmode & 3, (opmode >> 2) & 1
             ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, size)
             return (f"eor{SIZES.get(size, '?')} D{reg},{ea}" if is_eor
@@ -312,6 +331,8 @@ class Disassembler:
             if opmode == 7:
                 ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, 1)
                 return f"muls {ea},D{reg}", nxt
+            if (op & 0xf1f0) == 0xc100:  # ABCD Dy,Dx / -(Ay),-(Ax)
+                return (f"abcd -(A{op & 7}),-(A{reg})" if op & 8 else f"abcd D{op & 7},D{reg}"), nxt
             if (op & 0xf130) == 0xc100:  # EXG - opcode-space alias, see 68k-opcode-space-aliasing memory
                 exgmode, r2 = (op >> 3) & 0x1f, op & 7
                 if exgmode == 0b01000:
@@ -327,6 +348,10 @@ class Disassembler:
 
         if top == 0xd:  # ADD/ADDA - Instructions.fs (|ADD|_|)
             reg, opmode = (op >> 9) & 7, (op >> 6) & 7
+            if (op & 0xf130) == 0xd100 and ((op >> 6) & 3) != 3:  # (|ADDX|_|) - Dy,Dx or -(Ay),-(Ax)
+                size, rx, ry = (op >> 6) & 3, (op >> 9) & 7, op & 7
+                return (f"addx{SIZES[size]} -(A{ry}),-(A{rx})" if op & 8
+                        else f"addx{SIZES[size]} D{ry},D{rx}"), nxt
             if opmode in (3, 7):
                 size = 1 if opmode == 3 else 2
                 ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, size)
