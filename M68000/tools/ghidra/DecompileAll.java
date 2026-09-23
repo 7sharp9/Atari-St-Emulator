@@ -1,4 +1,19 @@
-// Headless: disassemble from entry + every LINK A6 site, create functions, decompile all to one C file.
+// Headless Ghidra decompile of a relocated ST program image (tools/prg2img.py) into one C file.
+// Seeds functions at the entry, every LINK A6 and every jsr/jmp abs.l target inside TEXT, so it
+// suits compiled C (Alcyon, Lattice, Megamax, Pure C). Hand-written asm without LINK frames gets
+// only the jsr targets; packed programs must be unpacked first (decompile a RAM dump instead).
+//
+//   "C:/Program Files/ghidra_12.1_PUBLIC/support/analyzeHeadless.bat" <projdir> <projname> \
+//     -import prog.img -overwrite -processor 68000:BE:32:default -loader BinaryLoader \
+//     -loader-baseAddr 0x<text> -scriptPath tools/ghidra -postScript DecompileAll.java \
+//     0x<textlen> out.c [names.sym] [purge.txt] [traps.txt]
+//
+// names.sym : addr<TAB>name (the reversing/<game>/<game>.sym format); functions get renamed.
+// purge.txt : "addr bytes name" - callee stack purge for runtime helpers that return through
+//             their argument slots (Alcyon lmul/ldiv), which otherwise wreck stack tracking.
+//             Every other function is set caller-clean (purge 0), the C convention on the ST.
+// traps.txt : "addr name" - GEMDOS/BIOS/XBIOS wrappers, typed long name(short fn, ...).
+// Example overrides: reversing/populous/py/ghidra/. About 20 s for a 90 KB program.
 import ghidra.app.script.GhidraScript;
 import ghidra.app.decompiler.*;
 import ghidra.program.model.address.*;
@@ -41,7 +56,7 @@ public class DecompileAll extends GhidraScript {
         // "addr purge name" lines; purge = bytes the callee pops besides the return address
         if (args.length > 3) {
             for (String line : java.nio.file.Files.readAllLines(new File(args[3]).toPath())) {
-                String[] p = line.trim().split("\s+");
+                String[] p = line.trim().split("\\s+");
                 if (p.length < 3 || p[0].startsWith("#")) continue;
                 Address a = toAddr(Long.parseLong(p[0], 16));
                 Function f = getFunctionAt(a);
@@ -54,7 +69,7 @@ public class DecompileAll extends GhidraScript {
         analyzeChanges(currentProgram);
         if (symfile != null) {
             for (String line : java.nio.file.Files.readAllLines(new File(symfile).toPath())) {
-                String[] p = line.trim().split("\s+");
+                String[] p = line.trim().split("\\s+");
                 if (p.length < 2 || p[0].startsWith("#")) continue;
                 Address a = toAddr(Long.parseLong(p[0], 16));
                 Function f = getFunctionAt(a);
@@ -67,7 +82,7 @@ public class DecompileAll extends GhidraScript {
         // varargs trap wrappers: "addr name" -> long name(short fn, ...)
         if (args.length > 4) {
             for (String line : java.nio.file.Files.readAllLines(new File(args[4]).toPath())) {
-                String[] p = line.trim().split("\s+");
+                String[] p = line.trim().split("\\s+");
                 if (p.length < 2 || p[0].startsWith("#")) continue;
                 Function f = getFunctionAt(toAddr(Long.parseLong(p[0], 16)));
                 if (f == null) continue;

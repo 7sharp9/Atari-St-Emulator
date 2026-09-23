@@ -111,13 +111,14 @@ whole EA space), which garbles every Alcyon-compiled call that passes a pointer.
 ## Drive recipe: cold boot to gameplay
 
 ```
-python reversing/populous/make_disk.py "<...>[cr Replicants].st" scratchpad/pop/pop_auto.st
+python tools/add_file_to_disk.py "<...>[cr Replicants].st" --from-disk LOADER.TOS --name LOADER.PRG \
+    --remove LOADER.TOS --remove DESKTOP.INF --auto --out scratchpad/pop/pop_auto.st
 dotnet exec bin/Debug/net8.0/M68000.dll 3000000 repl --disk-a scratchpad/pop/pop_auto.st \
     < reversing/populous/drive.txt            # writes pop_game_start.snap in the cwd
 ```
 
-`make_disk.py` frees the `LOADER.TOS` and `DESKTOP.INF` entries and re-adds the loader as
-`\AUTO\LOADER.PRG` (via `tools/add_file_to_disk.py`); nothing else changes. `drive.txt`:
+The disk is full, so the loader move first frees the `LOADER.TOS` and `DESKTOP.INF` entries,
+then re-adds the loader as `\AUTO\LOADER.PRG`; nothing else changes. `drive.txt`:
 SPACE at the banner, run to the title menu's wait loop (`u b410`), move the pointer to
 (250,176) and click CONQUEST, run 40M steps to the briefing, move 165 left and click START
 GAME, run 30M steps. Always pass `--disk-a` again on `resume` (the mount is not
@@ -128,7 +129,7 @@ snapshots.
 
 The scripts in `py/` read their inputs from `$POP_WORK`, default `M68000/scratchpad/pop/`
 (gitignored, `py/popcfg.py`): `files/` (the extracted disk files), `pop_ad58.img` (the
-program relocated to `$ad58`, `py/prg2img.py files/POPULOUS.GOD pop_ad58.img ad58`),
+program relocated to `$ad58`, `tools/prg2img.py files/POPULOUS.GOD pop_ad58.img ad58`),
 `pop_auto.st`, and the snapshots. Anchors, all from the recipe path:
 
 | snapshot | state |
@@ -142,19 +143,21 @@ program relocated to `$ad58`, `py/prg2img.py files/POPULOUS.GOD pop_ad58.img ad5
 
 ## How it was analysed
 
-**Decompile.** `py/ghidra/DecompileAll.java` runs under Ghidra 12.1 `analyzeHeadless` on the
-relocated image (raw binary, `68000:BE:32:default`, base `$ad58`), seeds functions at every
-LINK A6 and every `jsr`/`jmp abs.l` target, and writes one C file:
+**Decompile.** `tools/ghidra/DecompileAll.java` runs under Ghidra 12.1 `analyzeHeadless` on
+the relocated image (raw binary, `68000:BE:32:default`, base `$ad58`), seeds functions at
+every LINK A6 and every `jsr`/`jmp abs.l` target, and writes one C file (run from `M68000/`):
 
 ```
-analyzeHeadless <projdir> popproj -import pop_ad58.img -overwrite -processor 68000:BE:32:default \
-  -loader BinaryLoader -loader-baseAddr 0xad58 -scriptPath py/ghidra -postScript DecompileAll.java \
-  0x1670c pop_ad58.c reversing/populous/populous.sym py/ghidra/purge.txt py/ghidra/traps.txt
+analyzeHeadless <projdir> popproj -import scratchpad/pop/pop_ad58.img -overwrite \
+  -processor 68000:BE:32:default -loader BinaryLoader -loader-baseAddr 0xad58 \
+  -scriptPath tools/ghidra -postScript DecompileAll.java 0x1670c scratchpad/pop/pop_ad58.c \
+  reversing/populous/populous.sym reversing/populous/py/ghidra/purge.txt reversing/populous/py/ghidra/traps.txt
 ```
 
 Alcyon's `lmul`/`ldiv` helpers return through their stack argument slots, so the script sets
-their stack purge (`purge.txt`) and marks the GEMDOS/XBIOS trap wrappers varargs
-(`traps.txt`). 227 of 231 functions decompile cleanly; the four largest (`$b510`, `$bbd4`,
+their stack purge (`py/ghidra/purge.txt`) and marks the GEMDOS/XBIOS trap wrappers varargs
+(`py/ghidra/traps.txt`). With `populous.sym` applied, 108 functions and the named globals
+carry their names in the output. 227 of 231 functions decompile cleanly; the four largest (`$b510`, `$bbd4`,
 `$f2f4`, `$113ce`) lose stack tracking and were read from the disassembly. Trap-call
 argument lists are unreliable in the decompile, so those were read from the disassembly too.
 
@@ -186,9 +189,9 @@ the serial link.
 | `graphics.md`, `terrain.md`, `mechanics.md`, `ai.md` | the topic references |
 | `populous.sym` | `addr<TAB>name`, runtime addresses (feeds `trace_cfg.py --names` and the Ghidra script) |
 | `level_table.txt` | all 99 `LEVEL.DAT` records decoded |
-| `make_disk.py`, `drive.txt` | headless disk and cold-boot-to-gameplay REPL script |
+| `drive.txt` | cold-boot-to-gameplay REPL script |
 | `callgraph.dot` / `.svg`, `blocks.txt` | named call graph and executed-block map of 191 gameplay frames |
-| `py/` | `popcfg.py` (paths), `popdepack.py`, `prg2img.py`, `snapram.py`, `shot.py` (screenshot a snapshot), `planar.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` decompile script and overrides |
+| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java` |
 | `intro.png`, `title_menu.png`, `conquest_briefing.png`, `gameplay.png` | milestones: intro credits, the LOAD.PIC title menu, the GENESIS briefing, the first gameplay frame |
 | `real_game_start.png`, `mine_v5547.png`, `mine_v5547_diff.png` | emulator frame vs `pop_render.py` output and their (empty) diff |
 | `land0..3_blocks.png`, `sprites0.png`, `spr_320.png`, `font.png`, `icons_150e2.png` | decoded block/sprite/font/icon sheets |

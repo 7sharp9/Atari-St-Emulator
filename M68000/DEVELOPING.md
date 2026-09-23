@@ -449,9 +449,21 @@ frames are unaffected.
 
 ## Other tools
 
-See the `atari-st-emulator-efficiency-tooling` memory for the full list.
-`tools/disassemble.py`, `tools/hatari_trace.py` (headless real Hatari on the same
-ROM), `tools/screendump.py`, `tools/gfxview.py`, `tools/make_blank_disk.py`,
-`tools/add_file_to_disk.py`, `tools/make_test_prg.py`. Snapshots (`*.snap`) are
-session-local working data, keyed to a ROM + opcode-coverage point - not
-committed, retake per session.
+Check this list before writing a one-off helper; each of these has been rewritten ad hoc at
+least once by a session that did not know it existed.
+
+| tool | use |
+|---|---|
+| `tools/snap_render.py snap png` | the live screen of a snapshot as a PNG (base, rez and palette from the shifter registers, so double-buffered games come out right) |
+| `tools/disassemble.py` | 68000 disassembler; `--snap` for a loaded program, `--rom img --base <hex>` for a relocated image, `--jumptable` |
+| `tools/prg2img.py prg img <text>` | relocate a GEMDOS executable to its runtime TEXT address (TEXT+DATA+zeroed BSS), so image addresses equal trace/snapshot addresses |
+| `tools/ghidra/DecompileAll.java` | headless Ghidra decompile of a `prg2img` image to one C file, with `.sym` names applied; for compiled-C programs (usage in the file header) |
+| `tools/trace_cfg.py` | call graph / CFG / block map from an `ATARI_TRACE_EVENTS` log (above) |
+| `tools/add_file_to_disk.py` | put a file on a FAT12 image, `--auto` into `\AUTO\`; `--from-disk NAME --remove NAME...` turns a desktop-launched game into a headless-booting disk |
+| `tools/make_blank_disk.py`, `tools/make_test_prg.py` | blank images, test programs |
+| `tools/gfxview.py`, `tools/screendump.py` | RAM graphics explorer; raw screen-dump-to-PNG |
+| `tools/hatari_trace.py` | headless real Hatari on the same ROM (a CPU/OS-trace oracle, not a video one) |
+| `tools/pm_fsm_diff.py` | game-agnostic `callcap` differential-test harness (`Harness`/`State`/`run_corpus`) |
+
+Snapshots (`*.snap`) are session-local working data, keyed to a ROM + opcode-coverage
+point - not committed, retake per session.

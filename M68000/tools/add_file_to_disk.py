@@ -12,6 +12,13 @@ image make_blank_disk.py can produce. FAT12 only (every real ST floppy).
 --auto places the file in \\AUTO\\ (TOS runs \\AUTO\\*.PRG at boot with no user
 interaction - the deterministic way to get a program running headless); without
 it the file lands in the root directory.
+
+For a game launched from the GEM desktop (a .TOS/.PRG in the root, no \\AUTO\\),
+--from-disk takes the payload from a root-directory file already on the image, and
+--remove frees root entries (and their clusters) first, which a full disk needs:
+
+    python tools/add_file_to_disk.py game.st --from-disk LOADER.TOS --name LOADER.PRG \\
+        --remove LOADER.TOS --remove DESKTOP.INF --auto --out game_auto.st
 """
 import argparse
 import struct
@@ -108,6 +115,36 @@ class Fat12:
             if self.d[off] in (0x00, 0xE5):
                 yield off
 
+    def find_root(self, name83: str) -> int:
+        want = self.dirent(name83, 0, 0, 0)[:11]
+        for i in range(self.ndir):
+            off = self.dir_start * self.bps + i * 32
+            if self.d[off] == 0x00:
+                break
+            if bytes(self.d[off:off + 11]) == want:
+                return off
+        sys.exit(f"{name83} not found in the root directory")
+
+    def read_root_file(self, name83: str) -> bytes:
+        off = self.find_root(name83)
+        c = struct.unpack_from("<H", self.d, off + 26)[0]
+        size = struct.unpack_from("<I", self.d, off + 28)[0]
+        out = bytearray()
+        while 2 <= c < 0xFF0:
+            o = self.cluster_offset(c)
+            out += self.d[o:o + self.clustersz]
+            c = self.get_fat(c)
+        return bytes(out[:size])
+
+    def remove_root_file(self, name83: str):
+        off = self.find_root(name83)
+        c = struct.unpack_from("<H", self.d, off + 26)[0]
+        while 2 <= c < 0xFF0:
+            nxt = self.get_fat(c)
+            self.set_fat(c, 0)
+            c = nxt
+        self.d[off] = 0xE5
+
     def add_root_entry(self, ent: bytes):
         off = next(self.root_slots(), None)
         if off is None:
@@ -118,19 +155,29 @@ class Fat12:
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("image")
-    p.add_argument("file")
+    p.add_argument("file", nargs="?", help="host file to add (or use --from-disk)")
+    p.add_argument("--from-disk", metavar="NAME", help="take the payload from this root file on the image")
+    p.add_argument("--remove", metavar="NAME", action="append", default=[],
+                   help="free this root entry and its clusters first (repeatable)")
     p.add_argument("--name", help="8.3 name on the disk (default: derived from file)")
     p.add_argument("--auto", action="store_true", help="place in \\AUTO\\ (TOS boot-runs it)")
     p.add_argument("--out", help="output image (default: overwrite input)")
     args = p.parse_args()
 
-    payload = open(args.file, "rb").read()
     fs = Fat12(open(args.image, "rb").read())
+    if args.from_disk:
+        payload = fs.read_root_file(args.from_disk.upper())
+    elif args.file:
+        payload = open(args.file, "rb").read()
+    else:
+        p.error("give a host file or --from-disk NAME")
+    for n in args.remove:
+        fs.remove_root_file(n.upper())
 
     name = args.name
     if not name:
         import os
-        name = os.path.basename(args.file).upper()
+        name = os.path.basename(args.file or args.from_disk).upper()
 
     prg_chain = fs.alloc_chain(len(payload))
     fs.write_clusters(prg_chain, payload)
