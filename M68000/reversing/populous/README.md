@@ -23,6 +23,81 @@ reproduction diffed against the real code:
 `populous.sym` (302 names) is the shared symbol file; `level_table.txt` decodes all 99
 `LEVEL.DAT` records.
 
+## Design digest
+
+The game's rules restated for re-use in another design, without addresses. Each line names the
+section that proves it (T = `terrain.md`, M = `mechanics.md`, A = `ai.md`, S = `systems.md`);
+anything not proven there is labelled inferred. `/handoff` re-checks this list against every
+session's changes.
+
+### What carries the game
+
+- **The land is the interface.** A grid of corner heights (0..8), with every cell's tile, altitude
+  and flatness derived from its four corners. A click raises or lowers one corner, and the change
+  spreads until no two neighbouring corners differ by more than one level, so every cell is flat
+  or a one-level slope. Cost is 10 plus 4 per corner moved. (T 1, T 2)
+- **Flat land is wealth.** A settlement's size is read from how much flat land lies in its
+  17-cell footprint: 11 levels from hut to castle, a castle only when all 17 cells are flat and
+  clear. Size sets its capacity, its fighters' weapon, and the mana it earns. (M 4.1, M 4.2)
+- **One growth loop.** Settlements gain strength every 8 frames; above capacity they emit a walker
+  carrying the surplus; walkers look for flat land and found new settlements. Mana comes as a small
+  trickle plus income from larger towns, and pays for terraforming and powers. (M 4.2, M 5)
+- **Walkers use local rules, not paths.** Each looks along 8 directions a few cells out and takes
+  the nearest thing by priority: flat land to settle, a battle, an enemy, a friend; otherwise the
+  least-visited neighbouring cell, from a visit-count map, so walkers spread out and explore. (M 3.2)
+- **Control is indirect.** The player sets a side-wide mode (go to the magnet, settle, gather,
+  fight) and places the papal magnet; the first walker to reach it becomes the leader, and the
+  others follow the leader. A knight is a leader turned hunter that walks at the nearest enemy.
+  (M 3.2, A 3.1)
+- **Contact resolves everything.** Walkers meeting on a cell merge (friends) or fight (enemies):
+  each round costs both sides strength scaled by the other's strength and weapon; the winner takes
+  mana from the loser; a winning knight razes a town, any other winner takes it over. (M 3.3, M 3.5)
+- **Powers are terrain or population operations** with escalating costs that double as unlock
+  thresholds: earthquake, swamp, knight, volcano, flood, Armageddon. (M 5)
+- **The opponent plays by the player's rules.** The computer god posts the same commands through
+  the same record and pays the same costs; its behaviour is a few thresholds (settlement count
+  before attacking, leader strength, mana levels for each power) and a reaction rate of one
+  decision per N frames. (A 1, A 3, A 4)
+- **An endgame that forces a finish.** Armageddon empties every settlement and pulls both
+  populations to the map centre to fight it out. (M 5)
+- **Deterministic.** One linear-congruential random-number generator drives the simulation, so a
+  game replays exactly from its state; that is what makes the diff-tests here, and the two-machine
+  serial link, possible (the link was not run). (M 3.5)
+
+### Limits that became features
+
+- **No pathfinding, so the player terraforms.** Walkers only step toward a heading or use the ray
+  scan; a lake or cliff stops them until the land changes. The computer god's walkers post a raise
+  request when water blocks their heading, so its terraforming is partly driven by its own stuck
+  walkers. This matches Molyneux's account of the raise/lower mechanic as a workaround for
+  pathfinding he could not get working (external, not checkable in code). (M 3.2, A 3.3)
+- **One height per cell with a one-level slope limit** makes a click's effect easy to predict and
+  makes "flat" a simple exact test. (T 2, M 4.1)
+- **A fixed table of 208 people.** Merging keeps the count low: natural games held 45 to 71
+  entities up to the end (S 1.4). The full-table swamp monster is a guard that almost never fires.
+- **The opponent is rate-limited, not smart.** One action slot per reaction period, shared between
+  land edits, magnet moves and powers; levelling uses most of the slots and keeps it short of mana.
+  (A 4)
+- **Everything runs on a frame clock**: walkers step every 8 frames, towns update every 8,
+  mana ticks every other frame. (M 1, M 3.1, M 4.2, M 5)
+
+### Bugs and accidents a new design should drop
+
+- The walker's ray scan skips one neighbouring direction in 7 of 8 calls (a source bug, inferred
+  from the loop's shape; it changed 6 to 10% of live decisions). (M 3.2)
+- The heading fallback that finds no free direction reads past the end of its 8-entry table. (M 3.2)
+- The swamp monster's entry edge is stack debris left by interrupt handlers, so it depends on
+  interrupt timing, not on the game's generator: south on about 69% of frames, otherwise the slot's
+  stale cell. Two linked machines could spawn it differently (inferred). (S 1.3)
+- The edge-1 spawn computes a cell off the map (writes into the visit-count map). (S 1.3)
+- The frame-$1000 trail of type 2 (rock) enters on the south edge heading south-east, so it dies on
+  its first step without marking anything; GENESIS gets this one. (S 1.3)
+- Raise/lower checks only the base cost of 10 before charging, so mana goes negative. (T 2, A 4)
+- The AI's decisions can be overwritten in the same frame: 16 of 19 swamp casts were lost to a land
+  edit, yet still counted against its swamp cap. (A 4)
+- The AI stops considering cheaper powers while its leader is strong and it cannot afford a knight.
+  (A 3.2)
+
 ## The program
 
 **Disks and binaries are commercial and not committed.** Reproduce from the archive:

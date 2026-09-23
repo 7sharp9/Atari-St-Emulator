@@ -63,7 +63,8 @@ class Repl2:
                                   text=True, cwd=R, env=env, bufsize=1)
 
     def cmd(self, c):
-        self.p.stdin.write(c.rstrip('\n') + '\nr\n'); self.p.stdin.flush()
+        c = c.rstrip('\n')                                 # `r` itself: do not send a second one
+        self.p.stdin.write(c + '\n' + ('' if c == 'r' else 'r\n')); self.p.stdin.flush()
         need = 2 if c.split()[0] in ('bp', 'bpc') else 1
         out = []
         while need:
