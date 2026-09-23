@@ -40,7 +40,9 @@ host input back to the emulator as IKBD serial packets:
   row, Help/Undo. F12 or closing the window quits.
 - **mouse** - relative mode; motion is accumulated and flushed as `$F8`-header
   relative packets once per frame (front-loaded, to avoid catching a half-drawn
-  VDI cursor at the VBL). Button edges send immediately. If the running program
+  VDI cursor at the VBL). Button edges send immediately. When the program put the
+  IKBD in absolute mode (`$09`), no packet is sent: the motion only moves the
+  6301's cursor, which the program reads with `$0D` (`MMU.MoveMouse`). If the running program
   put the IKBD into "buttons report as keycodes" mode (command `$07` bit 2, e.g.
   Electronic Pool), a left/right button edge is *also* delivered as key
   `$74`/`$F4` / `$75`/`$F5` via `MMU.EnqueueMouseButton` - a no-op in every other
@@ -468,6 +470,8 @@ least once by a session that did not know it existed.
 | `tools/capture_hits.py` | corpus capture for a callcap gate: from a start snapshot, stop at chosen natural hits of a routine (`bpc`), snapshot each (+ `.ram`) and write the entry registers and return address to `<name>.json` (usage in the header) |
 | `tools/disassemble.py --snap <snap> --all <lo> <hi>` | whole-image listing that carries on past jump-table stops; grep it for callers and field writers (`,44(A[0-7])$`) before trusting any "who writes X" claim |
 | `tools/pm_export.py`, `tools/pm_render_ref.py`, `tools/pm_fsm_ref.py` | PowerMonger: asset export, the Python reference renderer, the from-disassembly entity/AI reconstruction |
+| `tools/merge_sym.py <game.sym> <sym.txt>... [addr=name] [--write]` | merge subagent `sym.txt` files into a game's `.sym`, reporting addresses named differently (settle each in the code; `addr=name` overrides) |
+| `reversing/populous/py/popdrive.py` | Populous: plan exact mouse clicks (icons, land corners, minimap) from a snapshot; a worked example of driving a game through its own hit-test code |
 | `reversing/powermonger/py/` | PowerMonger working scripts: build any of the 144 lands, capture frame runs, score the port pixel for pixel, `hits` census runs (its README lists them) |
 
 The REPL's `hits <steps> <addr>...` counts how often each address runs over a stretch (first and
