@@ -508,8 +508,9 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
   lead on its way back.
 - `$1c` on lord 0's town, carried goods poked to 10,6: 6 men get swords, army food 235.
 - `$20` on lord 0's town, 25M steps: men 0, the captain inside (22,45) with side byte 2. Lord 0
-  then defected to side 3 (loyalty reset to 300); the 25M control keeps him on side 2 at 608. What
-  fired `$550e` is open ("Open threads").
+  then defected to side 3 (loyalty reset to 300); the 25M control keeps him on side 2 at 608. The
+  spy idles in the town in mode `$7e`, which runs the settlement heartbeat with no `$57fd0` gate;
+  his first pulse checked lord 0's 608 and revolted him to `(x cell 22 mod 4) + 1 = 3` (economy.md §3).
 
 ## `$d322` + `$3e06` → `$57fba` → `$d23a` → `$57fce`
 
@@ -1013,9 +1014,11 @@ Control, the same settled state with no order for 50M steps: `$56a6`,
 `$1623c` and `$550e` 0 hits, both lords stay on side 2 at loyalty 608, and the
 ratio stays at 2. So the attack caused the defection (both runs are
 deterministic, one run each). Loyalty 608 is already over the 600 threshold
-at the start and no defection happens without the attack, so the threshold
-alone does not trigger `$550e` (inferred: it is reached from the conquest arm
-`$539a` of mode `$2c`, open item). Snapshots `scratchpad/pm123/win/`.
+at the start and no defection happens without the attack: in mission 1 nothing
+pulses the heartbeat for lord 0, so 608 is never checked. The defection is the
+field conquest `$539a` (124th: `$53f6` 1 hit, `$158cc` 0; lord 0's 10 men all
+dead or routed; economy.md §3 "How a settlement changes hands", gate
+`py/diff_4f68.py`). Snapshots `scratchpad/pm123/win/`.
 
 *Rule: Proven from the code. Defeat observed both ways (retire and the natural
 captain loss); victory observed naturally (mission 1, clicks only).*
@@ -1403,6 +1406,6 @@ are limitations rather than choices:
   — first-look only.
 - The player's orders ("What each order does"): each is named from 1 run. Not
   yet seen: `$04` (needs two captains), `$0e` on a real capital (a campaign land
-  whose player town is kind 7), `$10`/`$1c` on a pile. The spy run's `$550e`
-  defection of lord 0 to side 3; the army's food drain while standing (writer
-  not found).
+  whose player town is kind 7), `$10`/`$1c` on a pile. Driving a revolt
+  on purpose: take a lord's food (order `$06` on his town is refused, it is not
+  ours; a trade adds +8) and then plant a spy to pulse him.

@@ -92,7 +92,7 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 #   $3744    call_3744              1451    115th        Corroborated (call site exercised via $35f4; the
 #                                                         routine's own body is bypassed by construction in
 #                                                         every test state - flagged as a followup in ai.md)
-#   $35f4    call_35f4              1490    115th/116th  Proven
+#   $35f4    call_35f4              1490    115th/116th  Proven (+ the $3720 stamp, 124th)
 #   $4d9a    _case_4d9a             1552    115th        Proven (kind-6 case)
 #   $4d40    _case_4d40             1560    115th        Proven (kind-4 case)
 #   $4ee8    call_4ee8              1582    116th        Proven
@@ -108,6 +108,9 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 #   $187d8   call_187d8              2128   122nd        Proven via $2776 (tracked part: its $3ce8 call)
 #   $71ae    call_71ae               2139   122nd        Proven via $2776 (tracked part)
 #   $5cde    call_5cde               2210   122nd        Proven (768/768, 47 states; diff_5cde.py)
+#   $4f68    call_4f68               2719   124th        Proven (1804/1804, 192 states, 170 natural; diff_4f68.py)
+#   $539a    call_539a               2701   124th        Proven via $4f68 (conquest -> $550e)
+#   $57f0    spawn_57f0              2611   124th        Proven via $4f68 (shoot arm)
 #   $12c9a   rng_12c9a               2397   122nd        Proven via $25d6
 #   $550e    call_550e               2408   122nd        Proven (diff_revolt.py 1778/1778, 49 states)
 #   $5c2c    call_5c2c               2437   122nd        Proven (diff_revolt.py)
@@ -1561,6 +1564,7 @@ def call_35f4(m, A3grp):
         ring_radius = (ring_radius - 0x20) & 0xffff
         ring += 2
     m.ww(A1 + 30, 0x6868)                          # mode := prevmode := $68 (formation follower)
+    m.ww(A3grp + 180, m.wu(0x2df72))               # $3720: the AI's wait-until stamp (side array +256; 124th)
     m.ww(A3grp + 192, m.wu(A3grp + 0))
     m.ww(A3grp + 0, 0x0006)
     call_17a46(m, m.wu(A1 + 42))
@@ -2494,3 +2498,406 @@ def call_25d6(m, A1, D3=0):
     m.ww(A0 + 60, 3)                                # move.w #$3,60(A0)
     call_3c08(m, A1)                                # jsr $3c08
     return pre + "new"
+
+
+# ---------------------------------------------------------------- $4f68 / $539a (124th)
+# The mode-$2c target picker $4f68 (38(A1) arm table at $4fa2), its helpers
+# $548a/$5458/$510e/$5402/$52f4/$5356, the projectile spawn $57f0 and the conquest arm
+# $539a (-> $550e). Gate: reversing/powermonger/py/diff_4f68.py, 1804/1804 over 192
+# states (170 natural). NB $548a stores D0, not the distance, as the best key (a game bug).
+TICK_57FED = 0x57fed          # byte, stamped into 32(target) when picked
+STATS_12B74 = 0x12b74         # word table, stride 14, in the program image
+STATS_12B12 = 0x12b12     # word
+
+
+def _A539(base, off):
+    """lea base ; adda.w off  (off sign-extended)."""
+    return (base + s16(off)) & 0xffffffff
+
+
+class Ctx4f68:
+    """The registers $4f68's arms share: D6 best key, D7 target count, A5 best target,
+    D0 (only its low word, which leaks into D6 at $5502)."""
+    def __init__(self):
+        self.D6 = 0xfff
+        self.D7 = 0
+        self.A5 = 0
+        self.D0 = 0
+        self.path = []
+
+
+def _bl539(v, b):                       # move.b b,D0 : replace the low byte of D0.w
+    return (v & 0xff00) | (b & 0xff)
+
+
+def consider_548a(m, c, A1, A3):
+    """$548a: weigh target A3 for A1.  Returns -1 (out of range), 0, 1 (picked)."""
+    D1 = abs(s16(m.wu(A1 + 8) - m.wu(A3 + 8)))     # movem.w 8(A1) ; sub.w D3,D1 ; neg
+    D2 = abs(s16(m.wu(A1 + 10) - m.wu(A3 + 10)))
+    D1 &= 0xffff; D2 &= 0xffff
+    if not (s16(D1) > s16(D2)):                    # cmp.w D2,D1 ; bgt $54a8 ; exg
+        D1, D2 = D2, D1
+    if s16(D1) > 0xfff:                            # cmp.w #$fff,D1 ; ble $54b6
+        c.D7 -= 1                                  # subi.w #$1,D7
+        c.D0 = 0xffff                              # moveq #-1,D0
+        return -1
+    c.D0 = _bl539(c.D0, m.bu(A3 + 32))                 # move.b 32(A3),D0
+    if m.bu(A3 + 32) == m.bu(TICK_57FED):                # cmp.b $57fed,D0 ; beq $54fa
+        c.D0 = 0
+        return 0
+    w = m.bu(A1 + 44)
+    take = w in (0x0e, 0x10, 0x06)                 # ranged weapons -> $54fe
+    if not take:
+        c.D0 = _bl539(c.D0, w)                         # move.b 44(A1),D0
+        if s8(w) > s8(m.bu(A3 + 44)):              # cmp.b 44(A3),D0 ; bgt $54fe
+            take = True
+    if not take:
+        c.D0 = _bl539(c.D0, m.bu(A1 + 45))             # move.b 45(A1),D0
+        if s8(m.bu(A1 + 45)) >= s8(m.bu(A3 + 45)): # cmp.b 45(A3),D0 ; bge $54fe
+            take = True
+    if not take:
+        c.D0 = _bl539(c.D0, m.bu(A1 + 39))             # move.b 39(A1),D0
+        if m.bu(A1 + 39) == 2:                     # cmp.b #$2,D0 ; beq $54fe
+            take = True
+    if not take:
+        c.D0 = 0                                   # $54fa moveq #0,D0
+        return 0
+    if s16(c.D6) > s16(D1):                        # $54fe cmp.w D1,D6 ; ble $550a
+        c.D6 = c.D0 & 0xffff                       # move.w D0,D6  (D0, not the distance D1)
+        c.A5 = A3                                  # movea.l A3,A5
+        c.D0 = 1
+        return 1
+    c.D0 = 0
+    return 0
+
+
+def ally_5458(m, c, A1, A4):
+    """$5458: count (and maybe weigh) the target 48(A4) of ally A4."""
+    A3 = _A539(OBJ, m.wu(A4 + 48))
+    if m.bs(A3 + 5) <= 0 or m.bu(A3 + 30) == 0x3c:
+        return
+    c.D7 += 1
+    if m.bu(A4 + 30) == 0x2e:                      # cmpi.b #$2e,30(A4) ; beq $5488
+        return
+    if consider_548a(m, c, A1, A3) < 0:            # bsr $548a ; bpl $5488
+        c.D7 += 1
+
+
+
+
+def target_gone_510e(m, A1):
+    """$510e: the unit's target no longer exists."""
+    f = m.bu(A1 + 7)
+    if f & 0x10:                                   # btst #4,7(A1) ; beq $512c
+        D0 = m.wu(A1 + 42)
+        if D0 == 0:                                # beq $5134
+            call_3c08(m, A1)
+            return "gone_3c08"
+        call_35f4(m, _A539(GROUP, D0))               # jsr $35f4
+        return "gone_35f4"
+    if f & 0x40:                                   # btst #6 ; bne $513c
+        m.wb(A1 + 6, 0x0e)
+        m.wb(A1 + 31, 0x68)
+        m.wb(A1 + 30, 0x68)
+        return "gone_68"
+    call_3c08(m, A1)                             # $5134
+    return "gone_3c08"
+
+
+FX = 0x4bdf0            # projectile array: slot 0 header, 16-byte slots from $4be00
+
+
+def _ext(w):
+    return s16(w) & 0xffffffff              # ext.l
+
+
+def spawn_57f0(m, A1, D1, D2, D3):
+    """$57f0: spawn a projectile of type D1 from A1 toward (D2,D3).  Returns 1 (spawned)
+    or 0 (no free slot).  D2/D3 arrive sign-extended from movem.w 8(A5)."""
+    A0, D0 = FX, 0x30
+    while True:                                     # adda.w #$10 ; tst.w 14(A0) ; dbeq D0
+        A0 += 0x10
+        if m.wu(A0 + 14) == 0:
+            break
+        D0 -= 1
+        if D0 == -1:
+            break
+    if D0 < 0:                                      # tst.w D0 ; blt $5962
+        return 0
+    m.ww(A0 + 12, (A1 - OBJ) & 0xffff)
+    D6, D7 = m.wu(A1 + 8), m.wu(A1 + 10)            # movem.w 8(A1),D6/D7
+    m.ww(A0 + 8, D6)
+    m.ww(A0 + 10, D7)
+    m.ww(A0 + 14, 0x14)
+    m.wb(A1 + 18, m.bu(A0 + 15))
+    m.wb(A0 + 6, D1)
+    cell = (D7 >> 2) & 0x1fc0                       # move.w D7,D0 ; lsr.w #2 ; andi.w #$1fc0
+    cell = (cell & 0xff00) | ((cell + m.bu(A0 + 8)) & 0xff)   # add.b 8(A0),D0
+    call_16808(m, cell, (A0 - OBJ) & 0xffff)      # jsr $16808
+    dx = s16((D2 - D6) & 0xffff)                    # move.w D2,D0 ; sub.w D6,D0
+    dy = s16((D3 - D7) & 0xffff)                    # move.w D3,D1 ; sub.w D7,D1
+    a, b = _ext(abs(dx) & 0xffff), _ext(abs(dy) & 0xffff)
+    if s16(b) > s16(a):                             # cmp.w D0,D1 ; bgt
+        q1 = _divu(b, 0x78)                       # divu D2,D1
+        q0 = _divu(a, q1 & 0xffff)                # divu D1,D0
+        D2w, D0w, D1w = q1 & 0xffff, q0 & 0xffff, 0x78
+    else:
+        q0 = _divu(a, 0x78)                       # divu D2,D0
+        q1 = _divu(b, q0 & 0xffff)                # divu D0,D1
+        D2w, D0w, D1w = q0 & 0xffff, 0x78, q1 & 0xffff
+    if dx < 0:
+        D0w = -D0w & 0xffff                         # neg.w D0
+    if dy < 0:
+        D1w = -D1w & 0xffff                         # neg.w D1
+    m.wb(A0 + 4, D0w)
+    m.wb(A0 + 5, D1w)
+    if m.bu(A0 + 6) == 0x12:                        # cmpi.b #$12,6(A0)
+        D2w = (D2w + 1) & 0xffff
+        m.ww(A0 + 14, D2w)
+        m.wb(A1 + 18, D2w)
+    # jsr $14262 (heading of (D0,D1)) saves and restores D3, so 17(A1) gets the
+    # low byte of the target's y word, not the heading
+    m.wb(A1 + 17, D3)
+    return 1
+
+
+def pick_52f4(m, c, A1):
+    """$52f4: act on the chosen target A5 (or count retries / advance 38)."""
+    if c.A5 == 0:
+        return no_pick_5356(m, c, A1)
+    A5 = c.A5
+    w = m.bu(A1 + 44)
+    ranged = False
+    if w in (0x0e, 0x10):
+        D1, ranged = 0x12, True
+    elif w == 0x06:
+        D1, ranged = 0x28, True
+    if ranged:                                     # $531c
+        m.wb(A1 + 31, 0x34)
+        m.wb(A1 + 30, 0x34)
+        if spawn_57f0(m, A1, D1, m.wu(A5 + 8), m.wu(A5 + 10)):   # bne $5340
+            m.wb(A5 + 32, m.bu(TICK_57FED))
+            m.ww(A1 + 48, (A5 - OBJ) & 0xffff)
+            return "pick_shoot"
+    m.wb(A1 + 31, 0x10)                            # $5334
+    m.wb(A1 + 30, 0x2e)
+    m.wb(A5 + 32, m.bu(TICK_57FED))                      # $5340 move.b $57fed,32(A5)
+    m.ww(A1 + 48, (A5 - OBJ) & 0xffff)
+    return "pick_melee"
+
+
+def no_pick_5356(m, c, A1):
+    if c.D7 & 0xffff:                              # tst.w D7 ; beq $5374
+        v = (m.bu(A1 + 39) + 1) & 0xff             # addi.b #$1,39(A1)
+        m.wb(A1 + 39, v)
+        if v > 2:                                  # cmp.w #$2,D0 ; ble
+            m.wb(A1 + 39, 0)
+        return "retry"
+    f = m.bu(A1 + 7)                               # $5374
+    if (f & 0x40) or ((f & 0x10) and m.wu(A1 + 42)):
+        m.wb(A1 + 38, m.bu(A1 + 38) + 0x10)        # $538a
+        return "adv10"
+    m.wb(A1 + 38, m.bu(A1 + 38) + 0x0c)            # $5392
+    return "adv0c"
+
+
+def call_539a(m, A1):
+    """$539a: the conquest arm: the group's work is done."""
+    D0 = m.wu(A1 + 28)
+    A2 = _A539(OBJ, D0) if D0 else A1                  # lea $51b66 / movea.l A1,A2 ; adda.w D0,A2
+    A3 = _A539(GROUP, m.wu(A2 + 42))                   # lea $51538 ; adda.w 42(A2),A3
+    if (m.wu(LOCAL_SIDE) & 0xff) == m.bu(A1 + 5):  # cmp.b 5(A1),D0 ; bne $53de
+        D0 = ((m.wu(A3 + 60) - 2) & 0xffff) * 0xe  # subi.w #2 ; mulu #$e
+        a = (STATS_12B74 + s16(D0 & 0xffff)) & 0xffffffff
+        m.ww(a, m.wu(a) + 1)                       # addi.w #$1,0(A0,D0.w)
+        m.ww(STATS_12B12, 0)                         # clr.w $12b12
+    tag = "539a"
+    if m.bu(A1 + 38) == 0x12:                      # cmpi.b #$12,38(A1) ; bne $53fa
+        A0 = _A539(OBJ, m.wu(A1 + 46))                 # the lord's $4e514 record
+        tag += "_550e_" + call_550e(m, A0, A1)   # bsr $550e
+    call_35f4(m, A3)                               # jsr $35f4
+    return tag
+
+
+def call_4f68(m, A1):
+    """$4f68: mode $2c, pick a target by the kind in 38(A1)."""
+    c = Ctx4f68()
+    if not (m.bu(A1 + 7) & 0x40) and m.bu(A1 + 44) == 0:
+        if call_16892(m, A1):                    # D2 = $8e ; jsr $16892 ; bne $4f9c
+            m.wb(A1 + 30, 0x8e)                    # move.b D2,30(A1)  (call_16892 writes $90)
+            return "16892"
+    k = m.bu(A1 + 38)                              # move.b 38(A1),D0 ; table at $4fa2
+    TABLE = {0: 0x4fc2, 2: 0x4fc4, 4: 0x503c, 6: 0x50b2, 8: 0x50da, 0xa: 0x5150,
+             0xc: 0x519a, 0xe: 0x51dc, 0x10: 0x51dc, 0x12: 0x5240, 0x14: 0x5240,
+             0x16: 0x5240, 0x18: 0x4fc2, 0x1a: 0x4fc2, 0x1c: 0x4fc2, 0x1e: 0x4fc2}
+    if k not in TABLE:
+        raise AssertionError("38(A1) = $%x outside the table" % k)
+    h = TABLE[k]
+    c.D0 = m.wu(0x4fa2 + k)                        # move.w 12(PC,D0.w),D0
+    pre = "k%02x_" % k
+    if h in (0x4fc2, 0x4fc4):
+        return pre + arm_lord(m, c, A1)
+    if h == 0x503c:
+        return pre + arm_group(m, c, A1)
+    if h == 0x50b2:
+        A3 = _A539(OBJ, m.wu(A1 + 46))
+        if m.bs(A3 + 5) <= 0 or m.bu(A3 + 30) == 0x3c:
+            return pre + no_pick_5356(m, c, A1)    # ble/beq $5356 (A5 = 0)
+        c.D7 += 1
+        consider_548a(m, c, A1, A3)
+        return pre + pick_52f4(m, c, A1)
+    if h == 0x50da:
+        A3 = _A539(OBJ, m.wu(A1 + 46))
+        if m.bs(A3 + 5) <= 0:
+            return pre + target_gone_510e(m, A1)
+        # addi.w #1,D7 ; movea.l A3,A5 ; beq $510e never taken (movea sets no flags)
+        m.ww(A1 + 48, (A3 - OBJ) & 0xffff)
+        m.wb(A1 + 31, 0x36)
+        m.wb(A1 + 30, 0x66)
+        return pre + "follow"
+    if h == 0x5150:
+        A3 = _A539(OBJ, m.wu(A1 + 46))
+        if m.bs(A3 + 5) <= 0:
+            return pre + target_gone_510e(m, A1)
+        if m.bu(A1 + 44) == 6:
+            return pre + "shoot_noop"
+        m.wb(A1 + 31, 0x34)
+        m.wb(A1 + 30, 0x34)
+        spawn_57f0(m, A1, 0x28, m.wu(A3 + 8), m.wu(A3 + 10))
+        m.ww(A1 + 48, (A3 - OBJ) & 0xffff)         # move.l A5,D0 ; ... ; move.w D0,48(A1)
+        return pre + "shoot"
+    if h == 0x519a:
+        A3 = _A539(OBJ, m.wu(A1 + 46))
+        cell = m.wu(A3 + 10)
+        m.wb(A1 + 20, cell & 0x3f)
+        m.wb(A1 + 21, 0x80)
+        m.ww(A1 + 22, ((cell & 0x1fc0) << 2) + 0x80)
+        m.wb(A1 + 31, 0x10)
+        m.wb(A1 + 30, 0x3a)
+        m.ww(A1 + 48, m.wu(A1 + 46))
+        return pre + "walkto"
+    if h == 0x51dc:
+        return pre + arm_help(m, c, A1)
+    return pre + arm_group_done(m, c, A1)
+
+
+def arm_lord(m, c, A1):
+    """$4fc4: 46(A1) is a lord ($4e514 record): every live enemy man in his settlements."""
+    A0 = _A539(OBJ, m.wu(A1 + 46))
+    if m.wu(A0 + 8) != 0:                          # tst.w 8(A0) ; beq $5038
+        D0 = m.wu(A0 + 2)
+        while D0:
+            A2 = _A539(SETTL, D0)
+            D0 = m.wu(A2 + 10)
+            while D0:
+                A3 = _A539(OBJ, D0)
+                c.D0 = _bl539(D0, m.bu(A3 + 5))        # move.b 5(A3),D0
+                o = m.bs(A3 + 5)
+                if (o > 0 and m.bu(A3 + 30) != 0x3c and not (m.bu(A3 + 7) & 0x40)
+                        and m.bu(A3 + 31) not in (0x5c, 0x62, 0x60)
+                        and m.bu(A3 + 5) != m.bu(A1 + 5)):
+                    c.D7 += 1
+                    consider_548a(m, c, A1, A3)
+                D0 = m.wu(A3 + 24)
+                c.D0 = D0
+            D0 = m.wu(A2 + 8)
+            c.D0 = D0
+    return pick_52f4(m, c, A1)
+
+
+def arm_group(m, c, A1):
+    """$503c: 46(A1) is a group member: its lead and every roster man."""
+    A0 = _A539(OBJ, m.wu(A1 + 46))
+    D0 = m.wu(A0 + 28)
+    c.D0 = D0
+    if D0:
+        A0 = _A539(OBJ, D0)
+    A2 = A0
+    D0 = m.wu(A0 + 42)
+    A0 = _A539(GROUP, D0)
+    D0 = m.wu(A0 - 36)
+    c.D0 = D0
+    while D0:
+        A3 = _A539(OBJ, D0)
+        if m.bs(A3 + 5) > 0 and m.bu(A3 + 30) != 0x3c:
+            c.D7 += 1
+            consider_548a(m, c, A1, A3)
+        D0 = m.wu(A3 + 26)
+        c.D0 = D0
+    if m.bs(A2 + 5) >= 0 and m.bu(A2 + 30) != 0x3c:   # tst.b 5(A2) ; blt  (0 accepted)
+        c.D7 += 1
+        consider_548a(m, c, A1, A2)
+    return pick_52f4(m, c, A1)
+
+
+def arm_help(m, c, A1):
+    """$51dc: help an ally of my lord (a man of his settlements in $2e..$34)."""
+    A2 = _A539(SETTL, m.wu(A1 + 34))
+    D0 = m.wu(_A539(LEADERS, m.wu(A2 + 14)) + 2)          # move.w 2(A2,D0.w),D0
+    while D0:
+        A2 = _A539(SETTL, D0)
+        D0 = m.wu(A2 + 10)
+        while D0:
+            A4 = _A539(OBJ, D0)
+            c.D0 = _bl539(D0, m.bu(A4 + 5))
+            if m.bu(A4 + 5) == m.bu(A1 + 5) and 0x2e <= s8(m.bu(A4 + 30)) <= 0x34:
+                ally_5458(m, c, A1, A4)
+            D0 = m.wu(A4 + 24)
+            c.D0 = D0
+        D0 = m.wu(A2 + 8)
+        c.D0 = D0
+    if c.D7 & 0xffff:
+        return pick_52f4(m, c, A1)
+    return regroup_all_5402(m, A1)
+
+
+def regroup_all_5402(m, A1):
+    """$5402: send every live, non-bit-6 man of my lord's settlements home ($3c08)."""
+    A0 = _A539(SETTL, m.wu(A1 + 34))
+    D0 = m.wu(_A539(LEADERS, m.wu(A0 + 14)) + 2)
+    n = 0
+    while D0:
+        A0 = _A539(SETTL, D0)
+        D0 = m.wu(A0 + 10)
+        while D0:
+            A2 = _A539(OBJ, D0)
+            if m.bs(A2 + 5) > 0 and not (m.bu(A2 + 7) & 0x40):
+                call_3c08(m, A2)                 # exg A1,A2 ; jsr $3c08
+                n += 1
+            D0 = m.wu(A2 + 24)
+        D0 = m.wu(A0 + 8)
+    return "home%d" % min(n, 1)
+
+
+def arm_group_done(m, c, A1):
+    """$5240 (38 = $12/$14/$16): is anyone of my group still engaged?  If not, $539a."""
+    D0 = m.wu(A1 + 28)
+    A0 = OBJ if D0 else A1
+    f = m.bu(A1 + 7)
+    if not (f & 0x10) and not (f & 0x40):
+        call_3c08(m, A1)
+        return "grp_3c08"
+    A0 = _A539(A0, D0)
+    A2 = A4 = A0
+    c.D0 = _bl539(D0, m.bu(A4 + 5))
+    if m.bu(A4 + 5) == m.bu(A1 + 5) and m.bu(A4 + 30) == 0x32:
+        ally_5458(m, c, A1, A4)
+        if c.D7 & 0xffff:
+            return pick_52f4(m, c, A1)
+    D0 = m.wu(A0 + 42)
+    A0 = _A539(GROUP, D0)
+    D0 = m.wu(A0 - 36)
+    while D0:
+        A4 = _A539(OBJ, D0)
+        c.D0 = _bl539(D0, m.bu(A4 + 5))
+        if m.bu(A4 + 5) == m.bu(A1 + 5) and 0x2e <= s8(m.bu(A4 + 30)) <= 0x34:
+            ally_5458(m, c, A1, A4)
+        D0 = m.wu(A4 + 26)
+        c.D0 = D0
+    A4 = A2
+    c.D0 = _bl539(c.D0, m.bu(A4 + 5))
+    if m.bu(A4 + 5) == m.bu(A1 + 5) and 0x2e <= s8(m.bu(A4 + 30)) <= 0x34:
+        ally_5458(m, c, A1, A4)
+    if c.D7 & 0xffff:
+        return pick_52f4(m, c, A1)
+    return call_539a(m, A1)

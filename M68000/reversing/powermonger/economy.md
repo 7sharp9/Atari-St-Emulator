@@ -413,14 +413,36 @@ its cells in `$3f86c`.
 **How a settlement changes hands: the revolt `$550e`** (Proven, 122nd:
 `reversing/powermonger/py/diff_revolt.py`, 1778/1778 over 49 states, 27 of
 them every natural `$550e` call on the four run lands). `$550e` has two
-callers. In the mode `$7c` heartbeat, once a leader's `word[14]` (the loyalty
-accumulator) reaches 600 (`$158ae`), the caller sets the marker's side to
-`(x cell mod 4) + 1` and calls it at `$158cc` (11 natural calls, loyalty
-600-608). The other caller is `$53f6`, reached from mode `$2c` (`$152f6` →
-`$4f68` → the `38(A1)` jump table at `$4f90` → `$539a`, when `38(A1) == $12`),
-with `A0` = the leader the unit holds at `46(A1)`; it made 16 of the 27 natural
-calls, with loyalty 0 to 292, and the new side is the attacking unit's
-(reading this as a lord conquered in the field is inferred). `$550e` makes
+callers, and they are the only two ways land changes side (124th,
+`reversing/powermonger/py/diff_4f68.py`, 1804/1804 over 192 states, 170 natural):
+
+- **Revolt, the settlement heartbeat** (`$157e6`, entered from mode `$7c` while
+  `$57fd0 == 0` and from mode `$7e`, a man idling at home, with no such gate).
+  A pulse with `field·4 < food` (fed) takes 1 off `word[14]` on a man's first
+  pulse and then checks `>= 600` every pulse; a pulse with `field·4 >= food`
+  (hungry) adds 2 and checks only on the first pulse (`$158a2 bne $158d6`). At
+  600 the caller sets the pulsing man's side to `(x cell mod 4) + 1`, calls
+  `$550e` at `$158cc` and restores it (`$158d2`): the new side is effectively
+  arbitrary (11 natural calls on the run lands, loyalty 600-608). Hunger builds
+  the pressure; a pulse, hungry or not, cashes it. In mission 1 the lords start
+  at 608 and nothing pulses for them (`$57fd0` stays 4 and none of their men is in
+  `$7e`), so they never revolt on their own. The spy order (`$20`) puts our
+  captain into lord 0's town in mode `$7e`: his first pulse (field 11 × 4 = 44 <
+  food 55) sent lord 0 to side `(22 mod 4) + 1 = 3` (`scratchpad/pm124/o20`,
+  `conquest/spy`; the 25M control: `$157e6` 0 hits).
+- **Conquest in the field** (`$53f6`). Mode `$2c` (`$152f8: jsr $4f68`) picks a
+  target through the `38(A1)` table at `$4fa2` (handler = `$4fa2 + word[$4fa2 +
+  38]`, ai.md mode `$2c`). A man told to hunt a lord (`38 = 2`, `46` = the
+  lord record, set by `$4dd6`/`$576c` when contact is made) looks over every man
+  of that lord's settlements within `$fff`; when none is left that can fight
+  (dead or routed), `38` becomes `$12` (`$538a`), and on the next tick `$5240`
+  checks that nobody in his group is still engaged and runs `$539a`, which calls
+  `$550e` with the lord and makes the lord's side the attacker's `5(A1)`, then
+  scatters the group (`$35f4`). It made 16 of the 27 natural calls (loyalty 0 to
+  292), and the mission-1 win: 5 kills + 5 routs of lord 0's 10 men, then
+  `$539a` once at +26,268,828 steps after `m1_atk.snap`, lord 0 → side 1 with
+  `troops_field` still 5. The lord's field count is not the test; his
+  settlements' men are. `$550e` makes
 `5(A1)` the leader's side, resets `word[14]` to 300, and walks the leader's
 settlement chain (`2(leader)`, next at `8(settlement)`): each settlement not
 already on the new side gets owner byte 5 rewritten, and its unit chain

@@ -52,10 +52,12 @@ against every session's changes.
   routed by a roll that the attacking group's discipline can pin; a rout scatters the loser's
   group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
   A "Natural runs on later lands")
-- **Land changes hands by defection.** A lord whose town is short of food for his men, or whose
-  food the player keeps taking, builds loyalty pressure; past a threshold he and all his settlements change side and his garrison turns
-  over. In the natural victory the defection came only after the player attacked him (the trigger
-  path is inferred). (E 6, E 3, S "How a land ends")
+- **Land changes hands two ways, both proven.** *Conquest*: when every man of a lord's settlements
+  is dead or routed by an army hunting him, the lord and all his settlements join the attacker.
+  *Revolt*: a lord whose towns go hungry (at most 4 food per man in the field) or whose food the
+  player keeps taking builds loyalty pressure; at 600, the next heartbeat pulse of one of his men
+  at home sends him and his settlements to an effectively arbitrary side. The mission-1 win was a
+  conquest; a spy planted in a town supplies the pulse. (E 3, E 6, A mode `$2c`, S "How a land ends")
 - **Winning is a ratio, not annihilation.** The score is `(2·mine + enemy/4) / enemy`, clamped to
   0..4; a land is won only by retiring while it reads 4, and lost by retiring earlier or by the
   captain's group dissolving. (S "`$d322` + `$3e06` → ... `$57fce`", S "How a land ends")
