@@ -500,8 +500,13 @@ that the MFP Timer A handler (`$134` → `$1af32`) clears (`sf $2c993` at
 `$1af72`); it is not an FDC poll. The same wait hung the briefing-OK world build until an emulator
 regression was fixed: `RaiseTimerA` read TACR from a register array that TACR
 writes no longer reached, so Timer A never fired (README "Bug 5"). The build
-now completes. The two world-map click routes wait on the same flag, so the
-same fix should clear them, but they have not been re-driven since.
+now completes. PLAY RANDOM LAND, re-driven from `pm114_postclick2.snap` (cursor
+`mouse move 0 35`, then down / `move 0 0` / up / `move 0 0`), now builds a world
+(`$13b9a` 2.5M steps after the click, a winter land) and shows its iso view under
+a "Please Wait For The Protection Check" dialog, which the game loop then polls
+(`$7298` once per tick, no `$6522`) for at least 60M steps; it has no briefing
+(`scratchpad/pm121/random_land2.snap`). The world-map compass route has not been
+re-driven.
 `pm114_rand2.snap` was taken mid-hang; its RAM already had a fully populated
 `$37c7c` sheet (used above).
 
