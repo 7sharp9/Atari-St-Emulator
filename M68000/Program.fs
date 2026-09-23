@@ -1000,6 +1000,23 @@ CPU Registers
                 stepsRun hits hitCount target cpu.PC
         Diag.result "%s" x.Debug
 
+    ///A PC-hit census: runs exactly `steps` steps and counts how often PC lands on each address
+    ///in `targets`, with the step number of the first and last hit. Answers "which of these
+    ///routines ran at all in this stretch" in one pass instead of one `bp` run per address.
+    member x.Hits (steps: int) (targets: uint32[]) =
+        let counts = Collections.Generic.Dictionary<uint32, int * int * int>()
+        for t in targets do counts.[t] <- (0, -1, -1)
+        for i in 1 .. steps do
+            x.Step()
+            let pc = uint32 cpu.PC
+            match counts.TryGetValue pc with
+            | true, (n, first, _) -> counts.[pc] <- (n + 1, (if first < 0 then i else first), i)
+            | _ -> ()
+        Diag.result "--- hits over %d step(s), now PC=$%08x ---" steps cpu.PC
+        for t in targets do
+            let n, first, last = counts.[t]
+            Diag.result "  $%06x %10d  first %d  last %d" t n first last
+
     ///A bt-style caller readout at a breakpoint. Level 0 is always the plain JSR/BSR return
     ///address sitting at (A7) - the same one-instruction-push convention CallCapture's sentinel
     ///trick and FetchTargetOrFault's frame comments both already rely on (see 68k.fs), so this
@@ -1277,7 +1294,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8) - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8), hits <steps> <hexaddr>... = run steps and count PC hits (first/last step) per address - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -1329,6 +1346,9 @@ module Main =
                 loop()
             | [| "bpc"; addr; n; maxSteps |] ->
                 st.RunToBreakpoint (Convert.ToUInt32(addr, 16)) (int n) (int maxSteps)
+                loop()
+            | _ when parts.Length >= 3 && parts.[0] = "hits" ->
+                st.Hits (int parts.[1]) (parts.[2..] |> Array.map (fun a -> Convert.ToUInt32(a, 16)))
                 loop()
             | [| "bt" |] ->
                 st.Backtrace 8
