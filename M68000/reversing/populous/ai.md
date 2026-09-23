@@ -322,6 +322,12 @@ AGGRESSION and RATE at 9 (`cg1.snap`: side 1 rating 1, options `$1ff`, reaction 
 also GAME SETUP > ATARI VS ATARI (`cg2.snap`).
 - Run A, HUMAN VS ATARI with the human idle: 2663 frames, to the GAME LOST screen.
 - Run B, ATARI VS ATARI: 2997 frames, no winner.
+- Run F, the flood: `cg1.snap` with side 1's mana (`$3b242`) poked to 90000 (`s5_endpow.py`,
+  `F0.snap`). Evil's population is behind (235 vs 253), so the armageddon test fails and
+  `$13a44` casts flood at frames 316 and 317 (mana 90000, 50001, 10001), then swamps. 260 frames.
+- Run M, armageddon: run A's frame-1065 snapshot (`live/A_log/f01065.snap`, evil 1480 vs 607)
+  with the same poke (`M0.snap`). Armageddon at frame 1066, then the brawl to GAME LOST at 1506
+  (440 frames; `mechanics.md` 5).
 
 `cmdlog.py` logs both god records' command bytes at every `$1e712` entry, with a `watch` on
 `$21e0c..$21e67` naming each write's PC. `livecheck.py` stops at each AI call site with its
@@ -341,9 +347,22 @@ model-matched write of that frame. Every call matched:
 (The 25 knight re-acquire calls go through `$fe00`, modelled in `py/walker/`, not in `ai_ext.py`.)
 Commands predicted at `$1e712`: **A 1854/1854** (raise 831, lower 944, mode 52, magnet 20, volcano 3,
 knight 3, swamp 1) and **B 2766/2766** (raise 1304, lower 1257, mode 116, magnet 72, earthquake 4,
-swamp 2, volcano 5, knight 6). Not reached live: flood and armageddon (mana never reached 42000),
-the `$f6b2` swamp raise, and `$135fc`'s second call site `$e580`. No ctrl word was written in either
-run, so neither checksum protection fired.
+swamp 2, volcano 5, knight 6). Neither run reached flood or armageddon mana (42000), so runs F
+and M poke it:
+
+| run | calls checked, all matched | commands predicted at `$1e712` |
+|---|---|---|
+| F (40M steps) | `$13eda` 399, `$13a44` 399, `$135fc` 110, `$13816` 6, `$ef4c` 29 | **111/111** (flood 2, raise 96, lower 13) |
+| M (100M steps) | `$13eda` 441, `$13a44` 441, `$13816` 202, `$ef4c` 620, `$f6b2` 620 | **169/169** (armageddon 1, raise 138, lower 8, swamp 6, volcano 16) |
+
+Run F's two floods lowered the heights exactly as `terrain.md` 4 models them: 4225/4225 corners
+after each, 973 changed. Under Armageddon the computer keeps issuing raises, volcanoes and swamps,
+and the power gate refuses them all: its mana (10006 after the cast, above 13000 after a combat
+transfer at frame 1386) is never charged although 16 volcanoes were commanded. `$135fc` is not
+called at all. In run M one raise (frame 1175) was written by `$f6b2` and then again, identical,
+by `$13816`; `join.py` counts it under the leveller's call. Not reached live: the `$f6b2` swamp
+raise and `$135fc`'s second call site `$e580`. No ctrl word was written in any run, so neither
+checksum protection fired.
 
 Scripts (`py/ai/`, data in `$POP_WORK/ai/`): `s1_start.py`, `s2_custom.py`, `s3_ava.py`,
 `s4_oneplayer.py` the menu drives (`cg0`, `cg1`, `cg2`, `op1.snap`); `ai_ext.py` the `$f6b2` and

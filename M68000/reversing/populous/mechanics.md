@@ -320,9 +320,15 @@ emits a walker (verified 332/332 live, `ai.md` 3.4). If the table is full
 weapon 516/516, emitted walkers 12/12 (str, side, cell).
 
 ### 4.3 Claiming land, `$10366(e, release)`
+The footprint is the cell-offset table `$22b4e` (25 words): 0, the 8 neighbours (-64, 1, 64, -1, -63,
+65, 63, -65), the 8 cells two out (-128, 2, 128, -2, -126, 130, 126, -130), then the 8 that complete
+the 5x5 (-127, -62, 66, 129, 127, 62, -66, -129). A town uses the first 17, a castle all 25; cells
+`$18198` rejects as off the map are skipped.
 Founding marks the 17 footprint cells that are $0f as side colour ($1f/$20) and writes the sprite into
 the overlay at the centre; a castle claims all 25 cells and writes the wall sprites `$225b4`. Release
-reverses it.
+(`release` != 0): if the centre overlay is `$2a` (castle), clear the overlay on all 25 cells;
+otherwise on the first 9, then the centre; on every footprint cell a map byte equal to `$1f + side`
+reverts to `$0f` (proven live over the Armageddon vacate, section 5).
 
 ## 5. Mana
 
@@ -351,8 +357,22 @@ cost, not armageddon, not paused, the side's power bit; paint mode skips it):
 `$da52` positions the marker between the bracketing thresholds. Raise/lower can drive mana negative
 because only 10 is checked before the charge.
 
-Armageddon: every frame both magnets are forced to cell $820 (32,32), settlements empty, all walkers use
-the magnet walker, rock is passable, so the populations meet and fight.
+Armageddon (`$3d524` != 0), per frame in `$db4c`:
+- `$dec4`: both side magnets (`$3b228`, `$3b238`), `$3c4ca` and `$3d526` are set to cell $820 (32,32);
+- `$e270`: every settlement is vacated whatever its land value: flags `(f & ~1) | 2`, +12 = +10 = 0,
+  `$10366(e, 1)` releases its footprint (4.3);
+- all walkers steer with `$f6b2` (3.2; rock is passable on the direct heading), so the populations
+  meet at the centre and fight (3.5); the power gate and raise/lower refuse everything while it is
+  on (`terrain.md` 4, `ai.md` 5).
+
+Verified on an Armageddon cast by the computer (`ai.md` 5, run M: `M0.snap`, cast at frame 1066,
+GAME LOST at 1506, human 0, evil 838) with `py/endgame/brawlcheck.py` over a `capframes.py` capture
+of all 441 brawl frames: magnets **441/441**, the 20 settlements vacated on the first frame **20/20**,
+no settlement after any frame **441/441**, the whole terrain map and overlay after the frame equal to
+the entry state with the vacated footprints released **441/441**, side populations **421/421** (frames
+without a fight or new entity). `fightcheck.py` from `M1.snap` (frame 1067) over the same brawl: 14
+fights, rounds **12/12**, 2 resolutions (not modelled: the loser's mana went to -250, the winner's
+rose by 3000).
 
 ## 6. Population, win/lose, score
 
@@ -439,7 +459,9 @@ from game_start is the evidence used here).
   the UI-driven play that made `snaps/near`, `front`, `gather1`, `fight1`.
 - `endgame/` (data in `$POP_WORK/endgame/`): `score_ref.py` the `$1c858` model, `score_diff.py 100 7`
   (200/200), `real_scores.py` (56/56 over the 7 end states), `next_diff.py 60 3` (65/65), `ui_next.py`,
-  `ui_names.py` (45/45), `boot_check.py` (35/35), `placement.py` (28/28); `win1.py`, `armend.py`,
+  `ui_names.py` (45/45), `boot_check.py` (35/35), `placement.py` (28/28), `brawlcheck.py <capture>`
+  the Armageddon brawl (section 5; capture `$POP_WORK/endgame/brawl/M460.bin` from
+  `capframes.py $POP_WORK/ai/M0.snap 460`); `win1.py`, `armend.py`,
   `armwin.py`, `surrender.py`, `customlose.py` make the end states; `typename.py`, `startgame.py`,
   `next1.py`, `brief1.py`, `retry.py`, `setupseed.py`, `boot_mode.py` drive the screens.
 - `powers/` (data in `$POP_WORK/powers/`): `powers_ref.py` models the six powers, `$fe00`, `$feca`
