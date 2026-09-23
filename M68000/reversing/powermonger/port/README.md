@@ -89,7 +89,7 @@ and `assets_k60`; `pm118/baseline.fsx`: the 160 terrain hashes unchanged, the
 two entity lines changed by the exact lerp and re-recorded (`before_pre_lerp.txt`
 keeps the old ones); `order_test.fsx` 99.99 / 94.62 / 99.69 / 99.97 / 99.92 /
 99.81 (`SPEC.md` §6); `pm_render_ref.py` equal to `Scene.render` on all 15178
-drawn pixels of `pm88_f1` (`scratchpad/pm121/parity.py`); walkthrough `showboat
+drawn pixels of `pm88_f1` (`reversing/powermonger/py/parity.py`); walkthrough `showboat
 verify` clean.
 
 ## Verification status (120th pass) — a second land

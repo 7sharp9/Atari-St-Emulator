@@ -1276,7 +1276,7 @@ disciplined attacker group (`field60 != 4`) or `flags.bit5` (a man in a boat).
 
 Four lands built through the briefing-OK poke (`README.md` "Driving a later
 land") and run 200M steps each with no pokes, in four 50M stretches, counting PC
-hits with the REPL's `hits` command (`scratchpad/pm121/runland.sh`; snapshots
+hits with the REPL's `hits` command (`reversing/powermonger/py/runland.sh`; snapshots
 `scratchpad/pm121/run/<land>_s1..s4.snap`). Totals over the 200M steps:
 
 | routine | land 5 | land 60 | land 0 | land 25 |
@@ -1314,7 +1314,7 @@ reproduced every count exactly. Land 5's run started at step 0 of
 `tools/pm_fsm_ref.py` `call_1623c` (+ `$16376` goods credit, `$16392` unlink,
 `$45ee` pigeon launch); `reconstruct()` now runs it for every record with a
 negative owner instead of asserting. Differential test
-`scratchpad/pm121/diff_1623c.py`: **275/275 tracked bytes identical over 23
+`reversing/powermonger/py/diff_1623c.py`: **275/275 tracked bytes identical over 23
 states, 9 branch families**, on dead men the game made itself on lands 0, 5, 25
 and 60 (8 natural states with every dead record live, plus pokes of one field on
 a natural record). Tracked: `REGIONS` + the player's pigeon record `$4c112`

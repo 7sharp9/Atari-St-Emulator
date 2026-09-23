@@ -385,6 +385,15 @@ class Disassembler:
                 ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, 0)
                 names = {0: 'btst', 1: 'bchg', 2: 'bclr', 3: 'bset'}
                 return f"{names[btype]} D{reg},{ea}", nxt
+            # MOVEP before the immediate ops: its bits 9-11 are a data register, so $0549
+            # (movep.l 0(A1),D2) would otherwise decode as subi.
+            if (op & 0xf138) == 0x0108:  # MOVEP - Instructions.fs (|MOVEP|_|)
+                dreg, areg, opmode2 = (op >> 9) & 7, op & 7, (op >> 6) & 7
+                disp, nxt2 = sext16(rw(nxt)), nxt + 2
+                movep_forms = {4: f"movep.w {disp}(A{areg}),D{dreg}", 5: f"movep.l {disp}(A{areg}),D{dreg}",
+                               6: f"movep.w D{dreg},{disp}(A{areg})", 7: f"movep.l D{dreg},{disp}(A{areg})"}
+                if opmode2 in movep_forms:
+                    return movep_forms[opmode2], nxt2
             # Immediate-to-CCR/SR aliases (mode=111,reg=100 inside ORI/ANDI/EORI's general EA space) -
             # must be checked before the generic immediate-to-ea decode below, since they share the
             # same immop/size/mode/eareg bit positions. See 68k-opcode-space-aliasing memory.
@@ -404,13 +413,6 @@ class Disassembler:
                     imm, nxt2 = rl(nxt), nxt + 4
                 ea, nxt2 = ea_str((op >> 3) & 7, op & 7, nxt2, size)
                 return f"{names[immop]}{SIZES.get(size, '?')} #${imm:x},{ea}", nxt2
-            if (op & 0xf138) == 0x0108:  # MOVEP - Instructions.fs (|MOVEP|_|)
-                dreg, areg, opmode2 = (op >> 9) & 7, op & 7, (op >> 6) & 7
-                disp, nxt2 = sext16(rw(nxt)), nxt + 2
-                movep_forms = {4: f"movep.w {disp}(A{areg}),D{dreg}", 5: f"movep.l {disp}(A{areg}),D{dreg}",
-                               6: f"movep.w D{dreg},{disp}(A{areg})", 7: f"movep.l D{dreg},{disp}(A{areg})"}
-                if opmode2 in movep_forms:
-                    return movep_forms[opmode2], nxt2
             return f"???(0x{op:04x} top0)", nxt
 
         return f"???(0x{op:04x})", nxt

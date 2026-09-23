@@ -15,7 +15,10 @@ know they existed.
 - `M68000/reversing/<game>/`: one directory per analysed program (README + topic docs + `.sym`
   + scripts). Reverse-engineering a new game follows the `reverse-engineer-st-game` skill.
 - `M68000/scratchpad/`: gitignored working data (snapshots, extracted disk files, decompiles).
-  `scratchpad/ANCHORS.md` indexes the reusable snapshots.
+  `scratchpad/ANCHORS.md` indexes the reusable snapshots. Scripts worth re-running go in
+  `reversing/<game>/py/` with a README table (`powermonger/py/`, `populous/py/`), writing
+  their output under a scratchpad dir, not in `scratchpad/pmNNN/` where the next session
+  cannot find them.
 
 ## Rules
 
@@ -24,7 +27,9 @@ know they existed.
 - **Another Claude session is often working in this checkout.** Before `taskkill` on dotnet,
   `dotnet build`, or editing a file with uncommitted changes you did not make, check
   (`git status`, `tasklist | grep dotnet`) and ask. Subagents must be told: no build, no git,
-  no taskkill, write only under their own directory.
+  no taskkill, write only under their own directory. If the other session holds
+  `bin/Debug/net8.0/M68000.dll`, the build fails only at the copy step: confirm your change
+  compiles with `dotnet build -c Debug M68000.fsproj -o <scratch dir>` and leave its process alone.
 - Emulator changes go behind the regression net in the skill's section 6 (verify, 30M-step
   snapshot compare, build, selftest 0 wrong).
 - Git: stage named files only, never `git add -A` (ROMs, game disks and cracked archives sit
@@ -35,6 +40,10 @@ know they existed.
   screenshot diff) with a match count, or is labelled inferred.
 
 ## Shell pitfalls on this machine
+
+- Git-bash `sed -i` rewrites a CRLF file with LF endings (`Program.fs` is CRLF), turning a
+  one-line change into a whole-file diff. Edit such files with the Edit tool, or in Python
+  opened in binary, and read `git diff --stat` before staging.
 
 - Bash heredocs and inline `python -c` mangle backslashes (Windows paths, `\AUTO\`, regexes).
   For text containing backslashes use the Edit/Write tools, not shell string surgery.

@@ -473,7 +473,7 @@ the whole 16 KB `$2e000` table byte for byte on `pm88_f1`, `pm78_settle`,
 `[$57fec]` in each (`scratchpad/pm119/season_check.fsx`). On land 5 built in
 seasons 0, 2 and 3 and on land 60, still inside the first fade, the RAM table
 equals `Season.table(dither.bin, season)` byte for byte, mission 1's `dither.bin`
-included, and the tree offset matches `$11746` (`scratchpad/pm121/season_check.fsx`). Two Hatari
+included, and the tree offset matches `$11746` (`reversing/powermonger/py/season_check.fsx`). Two Hatari
 screenshots of mission 1 at the start pose (yaw 15, and yaw 3 phase 0) match the
 port's settled season 2 at 88.3% and 89.1% of terrain pixels, and seasons 0, 1
 and 3 at 3-35%. The viewer and `TerrainView.cs` default to the season
@@ -772,7 +772,7 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 | 40 | `$11c64` / – | projectile (`$57f0`, weapon tier in `D1`) | one colour-0 pixel (`$e6ee`) | land 25 |
 | 44 | `$1184e` / – | dropped goods pile (`$3ac8`) | a goods icon per non-zero word at `record + 10 + 2e` | lands 5, 25 |
 
-Screened on 37 lands (33 built with `scratchpad/pm121/build_land.sh` and settled
+Screened on 37 lands (33 built with `reversing/powermonger/py/build_land.sh` and settled
 30M steps, `k` = 0-142, plus the 120th's `k` = 20, 60, 100, 143): 20, 22, 32, 40, 44 and 12 occur at settle; 10, 30
 and more 40/44 appear once armies fight (200M-step runs). No land showed 18, 28
 or 34.
@@ -946,7 +946,7 @@ buildings cover the most terrain (`rot90`); away from sprites the terrain matche
 99.7-99.96% (`scratchpad/pm118b/`). Drawn inline, every ported category raises the
 score, and `pm_render_ref.py` draws the same way (a per-cell `_cell_done` hook in
 every walk handler, all categories it knows): it matches `Scene.render` on all 15178
-drawn pixels of `pm88_f1` (`scratchpad/pm121/parity.py`). It lacks the later-land
+drawn pixels of `pm88_f1` (`reversing/powermonger/py/parity.py`). It lacks the later-land
 categories. `pm78_settle` stays near its terrain-only score, consistent with its two
 compose buffers disagreeing on the entity layer (not checked further). The
 remaining pixels of the other five are units that moved between the snapshot and
@@ -961,7 +961,7 @@ path, kept for the parity checks.
 next frame is drawn from, while its finished compose buffer holds the frame drawn
 from the previous state (one water tick, one flap, one step of every walker
 behind). So the port's frame for snapshot i is scored against the screen in
-snapshot i + 1, the next `$f898` (`scratchpad/pm121/capture.sh` takes such a
+snapshot i + 1, the next `$f898` (`reversing/powermonger/py/capture.sh` takes such a
 sequence, `score.fsx a.json+b.json` pairs them). Scored that way at the RAM's own
 water tick, 27 frames from 12 views on lands 0, 5, 25 and 60 (including winter
 snow, autumn rain, a fight, a projectile and boats) match the game pixel for
@@ -1218,7 +1218,7 @@ formulas + the `$115e0` bucket walk (§6) are **Corroborated** by disassembly, l
 view matches the game's screen pixel for pixel on 27 later-land frames (§6
 "Scoring a capture"). The dying-entity path `$1623c` that feeds byte6 12/10/32 is
 **Proven** vs the real 68000 (121st, 275/275 tracked bytes over 23 states on
-natural kills, `scratchpad/pm121/diff_1623c.py`). The "no per-frame sea fill" / "minimap baked once"
+natural kills, `reversing/powermonger/py/diff_1623c.py`). The "no per-frame sea fill" / "minimap baked once"
 claims are **Observed** (true for `pm78_settle`/`pm88_f1`/`pm73_fight`/
 `pm74_late`/`pm89_pan_e`). An ownership change is captured on land 60
 (`scratchpad/pm121/flip/`, the `$550e` revolt, `../economy.md` §3), but its

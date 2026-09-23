@@ -33,6 +33,8 @@ State fields:
     ram   : per-state RAM path      (M68000-relative); defaults to the anchor
 
 run_corpus(states, min_states, min_branches=0, steps=2_000_000, reuse_json=False):
+    `py -3 script.py <substr>` runs only the states whose name contains <substr>;
+    a "reuse" argument is not taken as a filter.
     reuse_json=True skips the emulator whenever <out_dir>/o_<name>.json already
     exists (the callcap output is determinism-verified ground truth - see
     `detcheck` in the tooling memo), so a graduated prior pass re-proves against
@@ -217,8 +219,10 @@ class Harness:
         REGIONS/extra_regions as a failure, not just a silently-ignored raw
         diff - opt in when a corpus wants to positively assert nothing
         escaped its expected regions (see Harness.outside_delta)."""
-        if only is None and len(sys.argv) > 1:
-            only = sys.argv[1]
+        # the first command-line argument other than "reuse" (which scripts read
+        # for reuse_json themselves) runs only the states whose name contains it
+        if only is None:
+            only = next((a for a in sys.argv[1:] if a != "reuse"), None)
         tot = ok = n = 0
         seen = {}
         fails = []

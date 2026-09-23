@@ -71,16 +71,31 @@ After the per-frame routine list, the decompile and a gameplay snapshot exist, t
 
 `gfxview.py <snap> --contact ram.png` first, a whole-RAM overview to spot where decoded assets sit. Then `--html` for an interactive per-region viewer (base/width/rows/bpp/palette/zoom) to pin down the actual format (planar/chunky/tiled). `ATARI_GFX_SIDECAR=<path>` during the run records every XBIOS `Setpalette`/`Setscreen` so gfxview can auto-mark candidates. Write findings to `graphics.md`/`gfxview.md`, not just the screenshots.
 
+## 4b. Prove a renderer or port pixel for pixel
+
+What took PowerMonger's port from ~96% to 100.00% on 27 frames (`reversing/powermonger/port/SPEC.md` §6 "Scoring a capture", scripts in `reversing/powermonger/py/`):
+
+- **Pair state i with the screen of snapshot i+1.** A snapshot stopped at the frame driver holds the state the *next* frame is drawn from, while its finished buffer shows the frame drawn from the *previous* state. Scoring a snapshot against its own screen leaves everything that moves (and animated water) one tick behind, and the old workaround ("score with tick − 1") only hides it. Take `n` consecutive frames with `bpc <driver> 1` + `snap` and score a against b.
+- **Score per category, not just overall.** Render once with everything and once without category c; the pixels that differ are c's visible pixels, and the game should show the sprite there (not what is under it). That isolated every wrong formula in minutes.
+- **Transcribe position/blit arithmetic word for word.** PowerMonger's sprite lerp works on packed `(x<<16)|y` longs, so a borrow leaks between halves; the "equivalent" two-lerp version put one sprite in ten a pixel off. Probe the game's `D0`/`D1` at the blit (`bp` on the blit call) for a few records and compare before generalising.
+- **Look before naming.** One frame shows a white shape; 60 frames of `track`ed record fields show it rising 1 px a tick from a body, and the code that sets the category (search for `move.b #<n>,6(An)`) says it is the kill branch. Name a sprite from its writer, not its look.
+
+## 4c. Cover the content, then watch what runs by itself
+
+- **Screen many worlds before porting.** If the game builds levels from a seed, find where the seed is chosen (PowerMonger: the briefing preview picks one of 144 lands; poke it at the world-build entry) and build a spread of them. A per-world census of entity categories (`reversing/powermonger/py/build_land.sh` + `census.py`) showed 8 categories the first level never draws.
+- **Natural runs beat forced ones.** Run 3-4 worlds for 200M steps in stretches with the REPL `hits <steps> <addr>...` census over the routines you care about, snapshot per stretch (`runland.sh`), and re-run one to prove the counts are deterministic. PowerMonger's mission 1 never killed anyone even when forced; later lands fought, revolted and equipped units unprompted, and those snapshots became the differential-test corpus.
+- **Find a write's real author with `watch`.** Docs attributed land capture to the wrong routine; `watch <field>` over the stretch named the writing PC (`$5538`, inside the revolt) in one run.
+
 ## 5. Reverse the logic (mechanics/AI), if that's the goal
 
-For "what does routine X actually do", don't read disassembly and guess, build a differential test. `snap` at an anchor point, `detcheck` it first to confirm determinism, then `callcap <addr> [Rn=hex ...]` to run the routine in isolation and get its register delta + full memory diff + trace hash (snapshot-restored after). Write a Python reconstruction of the hypothesis and diff it against `callcap` output over a corpus of states, `tools/pm_fsm_diff.py`'s `Harness`/`State`/`run_corpus` are a game-agnostic differential-test harness; only the reconstruction module (`pm_fsm_ref.py`) is PowerMonger-specific and needs a per-game equivalent. Report a diff count (e.g. "1847/1847") before calling a hypothesis proven, every PowerMonger pass (93rd–99th) gates on this.
+For "what does routine X actually do", don't read disassembly and guess, build a differential test. `snap` at an anchor point, `detcheck` it first to confirm determinism, then `callcap <addr> [Rn=hex ...]` to run the routine in isolation and get its register delta + full memory diff + trace hash (snapshot-restored after). Write a Python reconstruction of the hypothesis and diff it against `callcap` output over a corpus of states, `tools/pm_fsm_diff.py`'s `Harness`/`State`/`run_corpus` are a game-agnostic differential-test harness; only the reconstruction module (`pm_fsm_ref.py`) is PowerMonger-specific and needs a per-game equivalent. Report a diff count (e.g. "1847/1847") before calling a hypothesis proven, every PowerMonger pass (93rd–121st) gates on this. `py -3 <corpus>.py <substr>` runs only the states whose name contains `<substr>`. Before trusting a "0/0" or "0 states" result, check the state count: a stray argument once filtered every state out.
 
 ## 6. Regression net (every commit that touches the emulator)
 
 1. `./run.ps1 -NoBuild verify 5000000`, PASS (re-run 2–3× on a byte-identical FAIL, that's a build-cache race, not a real failure).
 2. `./run.ps1 -NoBuild snap 30000000 after.snap`, `cmp` against a diskless baseline. A diff is a gate *decision*, not an auto-fail, investigate before accepting or reverting.
 3. `dotnet build -c Debug` as its own tool call, read it, `&&` never `;`.
-4. Full `./run.ps1 selftest tests/680x0`, gate is 0 wrong / 8 skip; the pass total drifts up with coverage, don't gate on it.
+4. Full `./run.ps1 selftest tests/680x0`, gate is 0 wrong / 9 skip; the pass total drifts up with coverage, don't gate on it.
 
 Pre-register the falsifier, what result would mean the change is wrong, before running any of this, not after.
 
@@ -94,7 +109,7 @@ Every prior game's README (`M68000/reversing/{a_013,supersprint,powermonger,popu
 
 ## Known tooling gaps
 
-From repeated friction across passes (not yet built, build the one a pass actually needs, not all speculatively): no call-depth/step prefix or jsr/rts target on the live `-Trace` line; no `.sym` symbolication of that live trace; no mouse "move to absolute x,y" (the game's own pointer variables have to be read and deltas computed by hand); the Pexec mode-0 basepage misreport above; no windowed/scoped trace (PC-range or call-subtree only); `trace_cfg.py` only ingests the binary event log, not the text `-Trace` dump.
+From repeated friction across passes (not yet built, build the one a pass actually needs, not all speculatively): no call-depth/step prefix or jsr/rts target on the live `-Trace` line; no `.sym` symbolication of that live trace; `disassemble.py` still has gaps in rarer families, so if a listing looks wrong (an `ori`/`subi` on an address register, a pointless immediate) check the opcode bits before believing it: `movep.l` showed as `subi` until the 121st pass and hid what `$e6ee` did; no mouse "move to absolute x,y" (the game's own pointer variables have to be read and deltas computed by hand); the Pexec mode-0 basepage misreport above; no windowed/scoped trace (PC-range or call-subtree only); `trace_cfg.py` only ingests the binary event log, not the text `-Trace` dump.
 
 ## Discipline carried over from the CPU-accuracy work
 
