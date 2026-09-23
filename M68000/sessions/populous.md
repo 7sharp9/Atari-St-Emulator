@@ -7,10 +7,7 @@ Updated 2026-09-23 by the session that ended with the handoff commit after `28bd
 - Last commits of this workstream: `1459935` (mouse UI driver), `8c274d4` (walker, powers),
   `68c60cf` (AI in play, endgame), `e3e6996` (`systems.md`), `5c32af8` (emulator: IKBD absolute
   mode, Pexec basepage), `28bdff3` (brief rules, `tools/merge_sym.py`).
-- **`bin/Debug/net8.0/M68000.dll` may be older than `5c32af8`.** A leftover dotnet process held it
-  when the session ended, so the fix was verified on a scratch build only. Before relying on mouse
-  input: `ListAgents`, then `dotnet build -c Debug M68000.fsproj` if nobody holds the DLL, then
-  `python reversing/populous/py/verify_drive.py` (17/17).
+- `bin/` was rebuilt from `5c32af8` at the end of the session; `py/verify_drive.py` gives 17/17 on it.
 - Working data: `$POP_WORK` = `M68000/scratchpad/pop/` (rebuild: `reversing/populous/README.md`,
   "Drive recipe" and "Working data"). Per-area data under `$POP_WORK/<area>/`; the agents' raw
   output from pass 2 is kept in `$POP_WORK/agents/`.
@@ -79,7 +76,6 @@ TACR/TADR), so sampled sound plays at the wrong rate (`systems.md` 6.2).
 
 ## Next session
 
-Confirm `bin/` is built from `5c32af8` or later (see Resume point) and `verify_drive.py` gives 17/17.
-Then item 1: from `ai/cg1.snap` with evil's mana poked above 81000, capture the flood and
+Item 1: from `ai/cg1.snap` with evil's mana poked above 81000, capture the flood and
 armageddon casts through `livecheck.py`, and build the Armageddon-brawl model against a frame
 capture. Prompt: `/resume populous`.
