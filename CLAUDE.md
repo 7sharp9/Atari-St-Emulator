@@ -80,6 +80,9 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
 - Bash heredocs and inline `python -c` mangle backslashes (Windows paths, `\AUTO\`, regexes).
   For text containing backslashes use the Edit/Write tools, not shell string surgery.
 - The Bash tool's working directory drifts between calls: `cd` to an absolute path first.
+- zsh (the Mac shell) does not word-split an unquoted `$VAR`: a variable holding several REPL tokens
+  arrives as one malformed line and the REPL stops there. Pass tokens separately. `echo =====` fails
+  in zsh (`=word` expands to a command path); quote it.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or
   `bp` before the down, or the census misses the handler.
 - On the Mac, scratchpad data made on Windows lives on `gpubox` (`~/Documents/GitHub/Atari-St-Emulator`). scp fails

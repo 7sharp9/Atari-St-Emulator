@@ -96,6 +96,8 @@ For "what does routine X actually do", don't read disassembly and guess, build a
 
 Build the corpus with `tools/capture_hits.py <start.snap> <addr> <n,...> <out>`: it stops at the chosen natural hits (numbers from a `hits` census line), snapshots each with its `.ram`, and writes the entry registers and return address to JSON for the `State` presets. Group the states by caller (the JSON's `ret`): that is how PowerMonger's second `$550e` caller and `$2776`'s `$25d6` caller turned up. `callcap` runs with interrupts masked, so a routine that waits on an interrupt-cleared flag (a sound driver's busy byte) never returns: poke the flag clear in the state (PowerMonger `$2c993 := 0`).
 
+Name a field from the game's own UI when one prints it: find the panel template's labels and the formatter that reads each field (PowerMonger's captain panel `$921a` labels group `+36` "Food:"). Names inferred from the AI's use of a field can be wrong for a long time: PowerMonger's lord `+6` was read as men at home and group `+112` as a patience budget for 50 passes; both are food. For a player-driven mechanic, click it through the real UI against a no-order control run over the same steps; the difference is the effect.
+
 ## 6. Regression net (every commit that touches the emulator)
 
 1. `./run.ps1 -NoBuild verify 5000000`, PASS (re-run 2–3× on a byte-identical FAIL, that's a build-cache race, not a real failure).
