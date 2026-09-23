@@ -141,8 +141,8 @@ See `sprites0.png`. Index use found in the code:
 
 Each row is `mL,p0L..p3L, mR,p0R..p3R`, with no reordering. Drawn by `$169e8` for draw-list
 entries whose entity number is >= `$d1`, at `(x-8, y-16)`. The frame is the record's word `+6`.
-Frames 0..4, 5..8 and 9..12 are three animated special objects (`spr_320.png`); which game
-object each is belongs to the people doc.
+Frames 0..4, 5..8 and 9..12 are the three trail effects (`spr_320.png`; `systems.md` 1: wizard,
+slime monster, rock monster, rendered live against the game's frame).
 
 ### FONT.DAT: 110 glyphs, 8x8, 40 bytes each
 
