@@ -2310,11 +2310,93 @@ background gets selected (it's a generic flip, any two frames would trigger the 
 whatever reads a *specific* room's *specific* art has to run before it, each transition, and hasn't
 been caught in the act yet for either the real CAVERN↔TUNNEL link or the hacked type-3 slot.
 
+## 32. Resume infrastructure rebuilt from scratch (32nd pass); `$014a90` disassembled in full for the
+    first time — confirmed to mask directly onto the live screen buffer, but the actual room-art
+    source it reads is still not pinned down live
+
+Picked up cold: every `.snap`/scratch file this workstream's handoff pointed to (`room_hack_*`,
+`tunnel_return_*`, `room2_tunnel_entry.snap`) was gone — untracked and never surviving between
+sessions, as the README always said they would be — and the Cadaver disk image itself wasn't even
+present on this checkout (it lives on `gpubox`, pulled over via the tar-over-ssh recipe in
+`CLAUDE.md`). Re-derived the whole chain from a cold boot rather than treating any of it as still
+available:
+
+- Cold boot (ESC at the restore-game prompt, any key at "place levels disk", wait out "expanding
+  data"/"loading data") reproduces `gameplay_empire.snap`'s CAVERN/DAY 1 state exactly.
+- The documented zigzag (`Right 1.2M → Up 0.5M → Right 1.2M → Up 1.2M`, joystick port 1) reaches
+  TUNNEL exactly as the 12th pass described — same screen layout, same "TUNNEL" status-bar label.
+- Arming `watch 2de08 32000` and holding Down reproduces the 31st pass's reverse TUNNEL→CAVERN
+  crossing exactly: ~64,000 watch hits, all at `pc=$014966`/`$01496e`/`$014976` (inside
+  `$0144b8` `ScreenFlip_ScanlineCopy`), settling cleanly to a CAVERN render pixel-identical in
+  character to the original `gameplay.png` milestone.
+
+New snapshots (same names as the ones this handoff had lost, so the README's own file table stays
+accurate): `room2_tunnel_entry.snap`, `tunnel_return_cross.snap`, `tunnel_return_settled.snap` (all
+untracked, `M68000/scratchpad/cadaver/`) plus committed renders
+(`room2_tunnel_entry.png`/`tunnel_return_cross.png`/`tunnel_return_settled.png`).
+
+### 32a. `$00014a90` in full — a room-record masking/prep routine that writes into the live screen
+    buffer directly, not a separate "background painter" waiting to be found
+
+Full linear disassembly from `tunnel_return_cross.snap` (`$014a90`-`$014b74`):
+
+```
+$014a90: A0 = 496(A5)              ; current room record
+$014a94: A0 += $c0                 ; room_record+$c0: a 12-word (6x2) mask table
+$014a98: A1 = (A5)                 ; *(A5) is the live screen buffer pointer (ScreenBufferA/B
+                                    ;   role-swap field, README's 2nd pass) - not a scratch copy
+$014a9a: A1 += $59e8                ; a fixed offset into that live screen buffer
+loop x6: D0 = (A0)+ ; and.w D0,(A1)+ x4 ; D0 = (A0)+ ; and.w D0,(A1)+ x4 ; A1 += $90
+$014abc: bra $014ac0
+$014ac0: A1 = 496(A5) ; A0 = A1+$60
+loop x6: move.l (A1)+,(A0)+ x4      ; copies room_record[0..$60) -> room_record[$60..$c0)
+                                    ;   in place, inside the room record itself (data prep for a
+                                    ;   later call, not a screen write)
+$014ae0: D0 = 2516(A5) ; D0 /= $16 (22, unsigned) ; D0 = $64 (100) ; D1 /= D0 (D1<<2)
+$014af2: A1 = $60fc.l + D1          ; a 4-entries-per-slot table, index from 2516(A5) via two
+                                    ;   divides - looks like a day-count/variant selector, not
+                                    ;   confirmed
+$014afa: D0,D1 = (A1)+,(A1)+        ; two mask words from the table
+loop x6: and.w D0,(A0)+ x4 ; and.w D1,(A0)+ x4   ; masks the just-copied room_record[$60..$c0)
+                                    ;   copy in place against the table's two words
+$014b1c: D6=2, D7=6, D0=$110 (272), D1=$8f (143)
+$014b28: bsr $014d7a                ; the generic sub-pixel masked blitter (README 7th pass names
+                                    ;   its sibling at $00bf72; $14d7a is the same shape - checked
+                                    ;   D6==2 branches straight to $14ee4, a full arbitrary-shift
+                                    ;   and/or/not composite loop, same silhouette as $14f4a on)
+$014b2c: rts
+```
+
+**Settled**: `$014a90` is not a still-missing routine that writes somewhere else and needs
+tracing further downstream before it touches video RAM — the very first loop already ANDs a
+room-specific mask (`room_record+$c0`) directly into the live screen buffer at a fixed offset
+(`+$59e8`) from its base. This mask-then-blit shape (mask pass, then a positioned masked-blit call
+with fixed screen coordinates `(272,143)`) is a strong match for "the actual per-room paint step"
+the 31st pass was looking for — it runs on the room-record pointer (`496(A5)`) that changes per
+room, not a fixed address.
+
+**Still open, concretely**: what `$014ee4`'s source (`A0` at the `bsr $14d7a` call) actually points
+to — the room-specific art itself, versus another fixed system asset (a HUD/inventory-panel
+redraw, say) that merely happens to run once per room-entry. A live register dump was attempted
+this pass (`bp 14a90 <n>`/`bp 14b28 <n>`) but came back inconsistent between two supposedly-
+identical replays from `room2_tunnel_entry.snap` + the same `kbd ff 02` hold — one run crossed
+cleanly in ~1.5M steps (matching the watch-based test above), the other sat at the idle main-loop
+PC for the full 2M-step budget with no movement at all. Not yet root-caused: possibly a real
+IKBD/interrupt-timing sensitivity in the `bp` polling path itself (untested against `watch`, which
+did reproduce cleanly across this pass's two separate replays), or a mundane mistake in this
+pass's own REPL script.
+**Next step for whoever picks this up**: re-run the crossing under `watch` (proven deterministic
+this pass) with a second watch region on `496(A5)` and `A0` at `$014b28` — or add a REPL command
+that dumps registers on a `watch` hit rather than relying on `bp`'s separate, apparently-flakier
+polling — then read whatever `A0` points to with `gfxview.py`/`disassemble.py --snap` to see
+whether it's genuinely per-room art or a fixed shared asset.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `room2_tunnel_entry.png`/`tunnel_return_cross.png`/`tunnel_return_settled.png` | 32nd pass: re-derived from a cold boot after every prior resume snapshot was lost between sessions (untracked, as expected) — same states the 12th/31st passes originally reached, `.snap` counterparts untracked in `M68000/scratchpad/cadaver/` |
 | `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar reads "TUNNEL" only (no "LEVER"), the resume point behind §20c/§20d's clean readings; untracked like the other `.snap` resume points |
 | `lever_hotspot_gone_3units_down.png` | 21st pass: screenshot at the snapshot above, proving the "LEVER" name-hotspot is gone 3 units below the baseline tile |
 | `axe_touch.snap` | 20th pass: live snapshot with the pickaxe just picked up (status bar "PICKAXE", inventory count 22→23) — resume point for §19c's next step (travel to TUNNEL's lever and retest with it held); untracked like the other `.snap` resume points |
