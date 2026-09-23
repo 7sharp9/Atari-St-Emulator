@@ -70,7 +70,8 @@ TACR/TADR), so sampled sound plays at the wrong rate (`systems.md` 6.2).
 - `click.snap` is the CONQUEST click (y 176 is the CONQUEST band), not CUSTOM.
 - Snapshots made before `5c32af8` came from a DLL that injected stray key presses on every
   `mouse move`; re-running their drives on the fixed DLL can differ in a few bytes (`$20021`,
-  `$37eae`). Every committed count was re-checked, but regenerate rather than diff old vs new.
+  `$37eae`). The pass-2 counts were produced on the old DLL; only `verify_drive.py` (17/17) and one
+  typed-name round trip were re-run on the fixed one. Regenerate a snapshot rather than diff old vs new.
 - A full AI live replay (`py/ai/livecheck.py` over 8 call sites) takes 1.5-2.5 hours with 9
   processes; `join.py` over the recorded logs in `$POP_WORK/ai/live/` takes minutes.
 
