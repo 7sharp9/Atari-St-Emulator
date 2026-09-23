@@ -15,11 +15,11 @@ reproduction diffed against the real code:
 | document | covers | proof |
 |---|---|---|
 | [`graphics.md`](graphics.md) | asset formats (LZ packer, blocks, sprites, font, pictures), palette, 8x8 isometric block renderer, walls, water, sprite list, minimap, panels, mouse pointer, double buffering | `py/pop_render.py` rebuilds the frame from RAM + asset files: **64000/64000 pixels on 12/12 frames**, draw list identical |
-| [`terrain.md`](terrain.md) | 65x65 corner heights and the per-cell maps, raise/lower (neighbour-difference recursion, cost 4n+10), world generator (PRNG, three random-walk hills, rock/tree scatter), world names, `LEVEL.DAT`, conquest progression, the terrain powers | `py/verify_gen.py`: heights + 3 derived maps + final seed **byte-identical for 3 worlds**; `py/verify_cmd.py`: raise at a peak **134/134 corners**; `py/powers/`: the six powers, `$fe00`/`$feca`/`$108b8` vs `callcap` **2305/2305**, 8/8 casts through the UI identical on all 37824 state bytes |
-| [`mechanics.md`](mechanics.md) | entity record, walker stepping/merging/drowning, combat, settlement land value and building size, growth and walker emission, mana, power costs, win/lose, score | `py/people_model.py` over 400 frames: settlements **4122/4122**, mana **774/774**, spawns **12/12**; combat **18/18** rounds; `py/walker/`: direction choice `$f2f4`/`$f6b2` **2400/2400** callcaps, gather and fight played through the UI with every decision (**8000/8000**) and every walker cell per frame (**51863/51863**) predicted; knight target/merge/raze **720/720** callcaps and **154/154** live calls |
-| [`ai.md`](ai.md) | the computer god: per-side god record, reaction-rate limiting, magnet/mode strategy, power casting thresholds and targeting, site levelling, how conquest levels and the custom "OPTIONS FOR EVIL" set it up; strategy notes | `py/ai_diff.py`: 4 decision routines vs `callcap`, **4800/4800** full memory deltas |
+| [`terrain.md`](terrain.md) | 65x65 corner heights and the per-cell maps, raise/lower (neighbour-difference recursion, cost 4n+10), world generator (PRNG, three random-walk hills, rock/tree scatter), world names, `LEVEL.DAT`, conquest progression, the terrain powers | `py/verify_gen.py`: heights + 3 derived maps + final seed **byte-identical for 3 worlds**; `py/verify_cmd.py`: raise at a peak **134/134 corners**; `py/powers/`: the six powers, `$fe00`/`$feca`/`$108b8` vs `callcap` **2305/2305**, 8/8 casts through the UI identical on all 37824 state bytes; `py/endgame/`: next world `$1d0e6` **65/65** and 3/3 through the UI, typed world names round-tripped through the briefing **45/45**, the three start paths **35/35**, starting walkers **28/28** |
+| [`mechanics.md`](mechanics.md) | entity record, walker stepping/merging/drowning, combat, settlement land value and building size, growth and walker emission, mana, power costs, win/lose, score | `py/people_model.py` over 400 frames: settlements **4122/4122**, mana **774/774**, spawns **12/12**; combat **18/18** rounds; `py/walker/`: direction choice `$f2f4`/`$f6b2` **2400/2400** callcaps, gather and fight played through the UI with every decision (**8000/8000**) and every walker cell per frame (**51863/51863**) predicted; knight target/merge/raze **720/720** callcaps and **154/154** live calls; `py/endgame/`: score screen `$1c858` **200/200** callcaps and **56/56** fields over 7 real end states |
+| [`ai.md`](ai.md) | the computer god: per-side god record, reaction-rate limiting, magnet/mode strategy, power casting thresholds and targeting, site levelling, how conquest levels and the custom "OPTIONS FOR EVIL" set it up; strategy notes | `py/ai_diff.py`: 4 decision routines vs `callcap`, **4800/4800** full memory deltas; `py/ai/`: a rating-1, reaction-1, all-powers opponent set up through the menus, every AI command in two natural runs predicted (**1854/1854** vs an idle human, **2766/2766** Atari vs Atari; every AI call in them matched under `callcap`), walker land edits **2400/2400** |
 
-`populous.sym` (213 names) is the shared symbol file; `level_table.txt` decodes all 99
+`populous.sym` (266 names) is the shared symbol file; `level_table.txt` decodes all 99
 `LEVEL.DAT` records.
 
 ## The program
@@ -72,7 +72,8 @@ Python port is `py/popdepack.py`.
    `move.l #<text base>,d0 / move.l d0,$24`, pointing the **trace vector** into the
    program: remnants of the original trace-mode protection. It then Pexec(4)s the program
    with `" <code>"` as the command line; `main` stores `atoi(argv[1])` in `$37ebc` (game mode:
-   1 custom, 2 conquest, 3 tutorial).
+   1 custom, 2 conquest, 3 tutorial; 1 when there is no argument, `$ae38`). What each mode
+   sets up is in `terrain.md` 3, "Start paths".
 4. POPULOUS.GOD reads track 0 sector 1 of side 1 then side 0 (Floprd, `$b2ac`: a first byte of
    `$39` from side 1 sets `$21ffe`, used by the save-game path), loads `gmusic1`, `qaz.pic`, `font.dat`,
    `sprites0.dat`, `spr_320.dat`, installs its own IKBD (MFP 6, `$1ff8a`) and serial
@@ -198,7 +199,7 @@ settlement rescans its 17-cell footprint each frame) and the terrain block blitt
 **Verification.** Every claim in the topic documents is either a Python reproduction diffed
 against the real code (callcap, frame captures, or the frame buffer; counts in the table at
 the top) or explicitly marked "inferred"/"code-read". Not exercised in the emulator:
-the trail effects and their protection check, custom and Atari-vs-Atari games,
+the trail effects and their protection check, flood and armageddon cast by the computer,
 the serial link.
 
 ## Files
@@ -211,7 +212,7 @@ the serial link.
 | `drive.txt` | cold-boot-to-gameplay REPL script |
 | `callgraph.dot` / `.svg`, `blocks.txt` | named call graph and executed-block map of 191 gameplay frames |
 | `panel_regions.png` | the `$c3e2` click regions of every command icon and the minimap, over a game frame |
-| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; driving `popdrive.py`, `panelmap.py`, `verify_drive.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java`; per-area subdirectories `walker/`, `powers/` (listed in `mechanics.md` 9), their snapshots and captures under `$POP_WORK/<area>/` |
+| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; driving `popdrive.py`, `panelmap.py`, `verify_drive.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java`; per-area subdirectories `walker/`, `powers/`, `endgame/`, `ai/` (listed in `mechanics.md` 9), their snapshots and captures under `$POP_WORK/<area>/` |
 | `intro.png`, `title_menu.png`, `conquest_briefing.png`, `gameplay.png` | milestones: intro credits, the LOAD.PIC title menu, the GENESIS briefing, the first gameplay frame |
 | `real_game_start.png`, `mine_v5547.png`, `mine_v5547_diff.png` | emulator frame vs `pop_render.py` output and their (empty) diff |
 | `land0..3_blocks.png`, `sprites0.png`, `spr_320.png`, `font.png`, `icons_150e2.png` | decoded block/sprite/font/icon sheets |

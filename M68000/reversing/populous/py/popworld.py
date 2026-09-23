@@ -32,7 +32,8 @@ def number(s):
     for n in range(0, 5001, 5):
         if rand1(n) == code: return n
     return -5
-LEVEL = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'LEVEL.DAT'), 'rb').read()
+from popcfg import WORK
+LEVEL = open(os.path.join(WORK, 'files', 'LEVEL.DAT'), 'rb').read()
 POW = ['EARTHQUAKE', 'SWAMP', 'KNIGHT', 'VOLCANO', 'FLOOD', 'ARMAGEDDON?']
 TYPES = ['GRASS PLANES', 'DESERT', 'SNOW AND ICE', 'ROCKY']
 SPEED = ['VERY SLOW', 'SLOW', 'MEDIUM', 'FAST', 'VERY FAST']

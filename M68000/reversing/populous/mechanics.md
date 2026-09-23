@@ -168,7 +168,7 @@ elif leader(side) == 0:
     goal = magnet(side)
 elif leader(side)-1 == idx: goal = magnet(side)
 else: goal = entity[leader(side)-1].cell
-h = $225c8[(sgn(gx-x)+1)*3 + sgn(gy-y)]          ; dx = dy = 0 gives N
+h = word[$225c8 + ((sgn(gx-x)+1)*3 + sgn(gy-y))*2] ; table from $225c6: 7 6 5 / 0 0 4 / 1 2 3; dx = dy = 0 gives N
 r = $18198(e.cell, dir8[h])                        ; dir8 = $225a4: N NE E SE S SW W NW
 if r == 0 and not (e.knight and shape[e.cell+dir8[h]] == $35): e+21 = dir8[h]; return dir8[h]
 if r == 2 and armageddon:                          e+21 = dir8[h]; return dir8[h]
@@ -313,7 +313,9 @@ Every 8th frame (`$3c4c8 & 7 == 0`):
         (leader and query selection follow the child if the parent held them)
     str += $24998[level]
 
-A computer-owned castle over 305 in an AI-pending state caps at 305 (`$e5d4`). If the table is full
+Every 8th frame, a castle of a computer-controlled side with str > 305 whose side is **not** busy gets
+capacity 305 instead of 3050 and sets the side busy (`$e5a6..$e638`): an AI action, so the castle then
+emits a walker (verified 332/332 live, `ai.md` 3.4). If the table is full
 (208), `$13372(1)` is called once (inferred: a message). Verified: settlement str 4122/4122,
 weapon 516/516, emitted walkers 12/12 (str, side, cell).
 
@@ -358,13 +360,48 @@ the magnet walker, rock is passable, so the populations meet and fight.
 `$1c858(1)` (lost); else if the other side's population is 0 (or it surrendered), `$1c858(0)` (won).
 Population bar `$d482`: height = pop*31/50000 + 1.
 
-`$1c858(lost)` score screen, per side (you / him):
-- BATTLES WON = `$3c514[side]`; KNIGHTS = live entities with knight != 0; TOWNS = settlements with
-  sprite != $2a; CASTLES = settlements with sprite $2a.
-- YOUR SCORE = `$36cea` (reset at `$bc56`, plus the power bonuses above) + 5000 if you won more battles;
-  for each power bit 8..$100: +1000 if you were not allowed it, +1000 if he was; with a computer opponent
-  + (10 - his +16 word)*15; on a win x10; clamped to >= 500, and a value above 555555 is replaced by
-  515090. On a win in conquest the score feeds `$1d0e6` (next-world selection).
+`$2287e` (surrendered side) is -1 after `reset_world_state` (`$bdee`) and is set to `$3affe` by GAME
+SETUP > SURRENDER THIS GAME (`$1bafe`).
+
+`$1c858(lost)` score screen: seven rows at `$225d8 + $2e*r`, "you" = entities whose side byte equals
+`$3affe`, everything else "him":
+
+| row | value (you, him) |
+|---|---|
+| GAME LOST / WON | `lost == 1` |
+| BATTLES WON | `$3c514[side]` (signed words) |
+| NUMBER OF KNIGHTS | entities 0..`$3c4e2`-1 with knight != 0 and str != 0 (any non-zero word) |
+| NUMBER OF TOWNS | flags == 1 exactly, str != 0, sprite != $2a |
+| NUMBER OF CASTLES | flags == 1 exactly, str != 0, sprite == $2a |
+| YOUR SCORE | `ltoa` of the final score (`$18306`) |
+
+```
+score = $36cea
+if battles[you] > battles[him]: score += 5000            ; signed
+for bit in 8, $10, ... $100:                             ; earthquake .. armageddon
+    if not (god[you].+14 & bit): score += 1000
+    if god[him].+14 & bit:       score += 1000
+if $219b0: score += (10 - god[him].+16) * 15             ; muls, signed
+if lost == 0: score *= 10
+if score < 500: score = 500
+if score > 555555: score = 515090
+```
+
+(The clamp keeps the `divu #10` conversion at `$18336` from overflowing: inferred reason.) It draws one
+button, TRY IT AGAIN after a lost conquest game (`$21d5e` != -1), else NEW GAME, and waits for a click
+in it. Then: `$21efa` = 1 (no reader found); after a won conquest game `$1d0e6(score)` (terrain.md 3);
+the **third protection check** at `$1d032`: if `$3c4b0` != `$21466 + $15151515`, clear `$219b0` (no
+computer opponent) and the 25 words of `$22b4e` (footprint offsets) (both sides hold `$54ac0842`, the
+loader's patch value, so the check passes on the crack); the human god record's ctrl = 0; and
+`new_world(0, -1)`.
+
+Verified: `py/endgame/score_diff.py 100 7`, **200/200** randomized `callcap` states of `$1c858` (entity
+arrays of 0..120 entities, battles, sides, both power masks, the computer's +16, `$219b0`, scores up to
+700000 or negative; compared all 7 rows, `$36cea`, the button caption, `$21d52`, `$3d528`, `$16ed4`
+and no other byte outside the screen and stack; 157 scores unclamped). `real_scores.py`: **56/56**
+fields over 7 real end states: win and loss by zeroing one side's strengths, a natural Armageddon loss
+(no other change: evil won the brawl), an Armageddon win with poked strengths (50300), a win on world
+2470 (71450), a surrender through GAME SETUP, and a custom-game loss (6115).
 
 ## 7. Other entity-array users
 - `$12f84`: slots $d1/$d2 move one cell every 8 frames along a direction bouncing in a range, marking
@@ -398,6 +435,11 @@ from game_start is the evidence used here).
   checks live decisions and per-frame walker cells; `quirk.py` counts decisions a full 8-way scan
   would change; `pause_study.py` the flag-$20 pauses; `campaign.py`, `campaign2.py`, `mkmode.py` are
   the UI-driven play that made `snaps/near`, `front`, `gather1`, `fight1`.
+- `endgame/` (data in `$POP_WORK/endgame/`): `score_ref.py` the `$1c858` model, `score_diff.py 100 7`
+  (200/200), `real_scores.py` (56/56 over the 7 end states), `next_diff.py 60 3` (65/65), `ui_next.py`,
+  `ui_names.py` (45/45), `boot_check.py` (35/35), `placement.py` (28/28); `win1.py`, `armend.py`,
+  `armwin.py`, `surrender.py`, `customlose.py` make the end states; `typename.py`, `startgame.py`,
+  `next1.py`, `brief1.py`, `retry.py`, `setupseed.py`, `boot_mode.py` drive the screens.
 - `powers/` (data in `$POP_WORK/powers/`): `powers_ref.py` models the six powers, `$fe00`, `$feca`
   and `$108b8`; `pw_diff.py 40 2026` + `pw_diff.py 40 77` the callcap corpus (2305/2305); `cast.py`
   and `knight_scn.py` the UI casts (entry/exit snapshots compared on the full state); `live.py <snap>

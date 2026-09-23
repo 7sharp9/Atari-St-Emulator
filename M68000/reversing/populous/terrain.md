@@ -121,8 +121,9 @@ is 32768.
 1. Seed. In conquest (`$21d5e` = world number, not -1): `seed = LEVEL.w8 + (world & 7)`; landscape type
    = LEVEL.b5; `$14be8(type,0)` loads LANDn (tile graphics plus a $72-byte header of tables; it holds no
    heights). b0..b4 are copied into the player records (see section 4). Otherwise (custom game) the seed
-   is the current `$3d52e`, which is the typed number (`$1a5c4`, `atoi`). In that case, if seed != 0 and
-   `rand()&1` and type == -1, the landscape type advances by 1 (mod 4). `$37ec2` keeps the seed.
+   is the current `$3d52e` (a number typed at the world dialog only survives to here from GAME SETUP >
+   CONQUEST; see "The world dialog" below). In that case, if seed != 0 and `rand()&1` and type == -1,
+   the landscape type advances by 1 (mod 4). `$37ec2` keeps the seed.
 2. `$bbd4` reset, which consumes **4 rand() calls** (2 per player).
 3. `$be84` gen_land = `walk(2,4); walk(4,2); walk(3,3)`. **walk `$bebc(rx,ry)`**: `x = rand()%64,
    y = rand()%64`. Loop `raise_point(x,y)` until it returns exactly 6. Each step does
@@ -133,8 +134,12 @@ is 32768.
    `x = rand()%9 + r1%59, y = rand()%9 + r2%59`. A try is valid when x and y are below 64, the shape is not
    0 and not `$2f`. On a valid try, clusters 0-6 set shape = `$2f + rand()%3` (rock) and clusters 7-21 set
    feature = `$32 + rand()%3` (tree).
-6. `$c27a` redraw; `$120c6` places the starting walkers (LEVEL b6/b7, no rand calls, score += 10*pop).
-   Then `seed++` (`$b506`).
+6. `$c27a` redraw; `place_start_walkers $120c6` (no rand calls): the count per side is LEVEL b6/b7
+   (`$22ade/$22adf`) in conquest and in the tutorial; otherwise 1 without a computer opponent, else
+   `1 + 2*(god[side].+12 > 4)`. Side 0 takes the first flat `$0f` cells from cell `$80` upward, side 1
+   from `$f80` downward, then any empty land; each walker has str 45; the score `$36cea` gets +10 per
+   walker of the human side only. Then `seed++` (`$b506`). Verified 28/28 (counts, cells, str, score
+   credit) on 7 built worlds (`py/endgame/placement.py`).
 
 `verify_gen.py` result: heights, `$33be4`, `$36e78` and `$3c522`, plus the final seed, are identical to
 `build_world` for three worlds:
@@ -148,7 +153,9 @@ The same generator from seed 0 (click.snap path) also matched the pre-play snaps
 **World names** (verified by callcap of `$1d5fc` and `$16702`): world n uses `seed=n; v=rand()`, and the
 name is `P1[v&31] + P2[(v>>5)&31] + P3[(v>>10)&31]`. The tables are `$21d64` (RING VERY KILL SHAD HURT
 WEAV MIN EOA ...), `$21f7c` (OUT QAZ ING OGO ... A E I O U T Y) and `$21efc` (HILL TORY HOLE PERT MAR CON
-... ER ED ME AL T). World 0 is the literal "GENESIS" (`$215e0`). `$1d714` parses a name by greedy prefix
+... ER ED ME AL T). World 0 is the literal "GENESIS" (`$215e0`) in the briefing and in `world_number`,
+but `$1d0e6` names the next world through `rand(n)` for n = 0 too, so the world offered after 2470 is
+shown as SHISODING; `world_number` maps SHISODING to 0, the GENESIS map. `$1d714` parses a name by greedy prefix
 match per table, requires full length, then returns the first n in 0,5,...,5000 with `rand(n)==code`
 (errors -1..-5). All names 5..2470 round-trip (`popworld.py`). Examples: 5 HURTOUTORD, 25 SCOQUEMET,
 1235 SADINDON, 2470 WEAVUSPERT.
@@ -169,12 +176,78 @@ match per table, requires full length, then returns the first n in 0,5,...,5000 
 In the player power word, bits 0-2 are always set: modify land, attack towns, attack leader (the "OPTIONS FOR EVIL" menu items 1-3, see `ai.md`). Bits 3..8
 gate `$12350/$12a14/$12ba0/$1263c/$11f6a/$12d26`. `level_table.txt` lists all records.
 
-**Conquest progression `$1d0e6(score)`** (from code): it is called after a win with the score `$36cea`
-(long). `world += trunc(score/5000) + 1`, then rounds up to a multiple of 5. If the result is above 2470,
-it becomes 2470; if the world was already 2470, it becomes 0 with the "WELL DONE YOU HAVE CONQUERED EVIL"
-message. The name comes from `$1d5fc`, and `$1a5c4` then loads the record. Score contributions visible
-here: +10 per starting walker, earthquake +25, swamp +50, volcano +100, knight +150, flood +250,
-armageddon +5000 (credited only to the local side `$3affe`).
+**Conquest progression `$1d0e6(score)`**, called only after a won conquest game with the score `$36cea`
+(a lost conquest game, TRY IT AGAIN, rebuilds the same world; a lost custom game builds a new one from
+the running seed; both verified). World number `$3c51a`; `$21d5e` is what the briefing returned (-1 in a
+custom game).
+
+```
+old = world
+world += score/5000 + 1                    ; ldiv, word add
+if world % 5: world += 5 - world % 5
+if world > 2470:
+    if old == 2470: world = 0; conquered = 1
+    else:           world = 2470
+seed = world; name_buf = world_name(rand())          ; $1d5fc, for world 0 too
+```
+
+The LORD screen (`$14f54`; if it fails to load, the world is restored and the name cleared, `$1d5ba`)
+shows `WELL DONE <rank> YOU CONQUERED <old name> NOW BATTLE AT <new name>`, rank =
+`settings_string_table[24 + world/250]` (MORTAL, IMMORTAL, ETERNAL, DEVA, GREATER BEING, DEITY, GREATER
+DEITY, MORTAL GOD, GREATER GOD, ETERNAL GOD), or after 2470 `WELL DONE YOU HAVE CONQUERED EVIL` / `THE
+BATTLE IS OVER BUT TRY <name>`. It waits for a click, reloads `gmusic1` and runs the world dialog.
+Verified: `next_diff.py` 65/65 cases (new world, name, conquered flag; 4 wrap to 0), and through the UI
+3/3: GENESIS won with 500 goes to 5 HURTOUTORD, won with 50300 to 15 TIMUSLUG, 2470 won with 71450 to 0
+SHISODING with the EVIL message; each following briefing showed the predicted name and loaded the
+predicted LEVEL record. Score contributions: +10 per starting walker of the human side and the power
+bonuses of section 4 (credited only to the local side `$3affe`); the end-of-game formula is in
+`mechanics.md` 6.
+
+**The world dialog `world_select_screen $1a5c4`** (rows `$2166e + $2e*i`; START GAME at x 32..144, NEW
+GAME at x 192..288, y 168..184):
+
+```
+if name_buf == "": name_buf = "GENESIS"
+first pass: validate name_buf; later passes: edit_text_field($37e86, 16 chars)   ; $188b0
+if name_buf[0] is a digit: $3d52e = $37ec2 = atoi(name_buf); name_buf = ""; return -1
+n = 0 if name_buf == "GENESIS" else world_number(name_buf)      ; < 0: NO SUCH WORLD, edit again
+read LEVEL.DAT record n/25 into $22ad8                          ; no file: INSERT THE ORIGINAL POPULOUS DISK
+NEW GAME: name_buf = "", edit;  START GAME: human side 0, computer side 1 (ctrl 0/1), $219b0 = 1,
+    paint and armageddon off, $3c51a = n; return n
+```
+
+`edit_text_field` reads `read_key $20068` (scancode `$20021` through the tables at `$2009a`/`$2011a`),
+upper-cases, accepts $20..$7a up to 15 characters, BACKSPACE/DELETE, RETURN or START GAME ends. At the
+boot briefing (`$b5c4`) and after a win (`$1d5da`) the caller just loops on -1, so a typed number is
+dropped and GENESIS comes back; only GAME SETUP > CONQUEST (`$1ba14`) keeps it (`$21d5e` = -1,
+`$3c4de` = 1, then `new_world(0,-1)` at `$1fa86` on the custom path: typed 1234 built
+`build_world(1234, 5)`, landscape 0 -> 1). Verified through the UI (NEW GAME, typing, RETURN, START
+GAME): 45/45 checks over SADINDON (1235), LOWLOPMAR (1240), WEAVUSPERT (2470), SHISODING (0) and
+GENESIS (0): world number, `$21d5e`, LEVEL record and the built world against `build_world`. The
+computer starts with 2700 mana above world 1235 (verified on 1240 and 2470) and 399 otherwise.
+
+**Start paths.** `main $ae14` sets the game mode `$37ebc` = `atoi(argv[1])`, 1 without an argument
+(`$ae38`). `game_mode_setup $1c7a6` runs before the main loop: in mode 3 (tutorial) only, it copies
+`$22af2`/`$22b20` over both god records, sets pause `$3b274` = 1, seed `$3d52e` = `$37ec2` = `$69bc` and
+the game options `$219b2` = `$22ad6` (1, water fatal); in all modes pointer 1, `$3d528` = 2 and
+`$3c4b8` = `$3c4b0`. `$b510` then builds `new_world(0, 1)` while `$21d5e` is -1 (the custom path); only
+mode 2 then runs the briefing and `new_world(0, -1)`. The mode is cleared at `$b5b0`/`$b5ea`, so its
+tests apply to the first world only (tutorial human mana 10000 at `$bd9e`; `reset_world_state`'s
+`$d1c2`/`$d0c0` panel calls run only when it is 0).
+
+| | custom (1) | conquest (2) | tutorial (3) |
+|---|---|---|---|
+| first world | seed 0, 4 pre-rolls | seed 0, replaced after START GAME | seed `$69bc`, 5 pre-rolls |
+| god records | DATA defaults: human +12 1, +14 $ffff, +16 1; computer +12 5, +14 $ffff, +16 3 | from LEVEL | computer +12 10, +14 3 (modify land, attack towns), +16 10; human +14 $3f (no volcano, flood, armageddon) |
+| walkers you / him | 1 / 3 | LEVEL b6/b7 (GENESIS 3/3) | 15 / 3 |
+| mana you / him | 399 / 399 | 399 / 399 (him 2700 above world 1235) | 10000 / 399 |
+| options `$219b2` | $10 | LEVEL b4 | 1 |
+| starts | running | after START GAME | paused |
+
+The tutorial is a preset practice world against a passive computer (VERY POOR, VERY SLOW), paused
+until the player lifts the pause; there is no other tutorial code. Verified by booting each mode from
+the DEMO.GOD title menu (`py/endgame/boot_check.py`, 35/35: mode, first world against `build_world`,
+`$21d5e`, mana, god records, options, pause, frame count after 20M more steps).
 
 ## 4. Terrain powers
 

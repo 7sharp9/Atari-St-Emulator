@@ -17,8 +17,11 @@ The computer god has no private "brain" loop. Both sides are driven through the 
    `frame % rec.reaction == 0` ($1eab6..$1eaea, `divu`), then executes `rec.cmd` for both
    sides, then `$1eef4` clears the command bytes.
 
-A decision routine writes at most one command per call and sets `busy = 1` (except the swamp
-cast, see 3.2). So the AI makes at most one decision per `reaction` frames. The routines run
+A decision routine writes at most one command per call and sets `busy = 1`, so the AI makes at most
+one decision per `reaction` frames. Four exceptions, all seen in play: the swamp cast (3.2) and the
+`$ef4c` burnt-field lower (3.3) do not set busy, so a land edit later in the same frame replaces them;
+the `$f6b2` raise ignores busy and overwrites whatever was posted; and the castle release (3.4) sets
+busy without posting a command. The routines run
 for the human side too, but the human's `busy` is never cleared (`ctrl == 0`), so they are inert
 unless that side is switched to computer control.
 
@@ -90,6 +93,12 @@ only its power set, rating and reaction come from the level. GENESIS: rating 10,
 powers 0 (computer +14 = 7), human +14 = $1ff.
 
 ### Custom game, "OPTIONS FOR EVIL" (`$1c05a`, reached via cmd 14/7 from `$1f0fa`)
+The options icon opens the menu for your own side on a left click ("OPTIONS FOR GOOD") and for the
+other side on a right click. It edits only in a custom game (`$21d5e == -1`, `$1c546`); in a conquest
+game it is display-only. GAME SETUP > CUSTOM GAME (`$1ba30`) only sets `$21d5e = -1`, so the running
+world becomes a custom game. Item hit box: `x+16 <= click_x <= x+16+w`, `y+16 <= click_y <= y+24`;
+OK (32..80, 176..192) and CANCEL (208..288, 176..192) are rectangles `$183ea` writes into `$22a9a` /
+`$22b80` when it draws the box; the menus busy-wait on the left-button latch `$3d528`.
 Menu items at $22000 + i*$2e (x.w, y.w, flags.w, text). Items 1-9 toggle bit (1<<(i-1)) of
 `rec.+14` ($1c580): MODIFY LAND=1, ATTACK TOWNS=2, ATTACK LEADER=4, EARTHQUAKES=8, SWAMP=$10,
 KNIGHT=$20, VOLCANO=$40, FLOOD=$80, ARMAGEDDON=$100. The two sliders store 0..9 from the click
@@ -97,7 +106,10 @@ x ($1c5bc, $1c630), and on entry and OK the record is converted with `v = 10 - v
 ($1c0f0, $1c13a, $1c6fc, $1c746):
 - AGGRESSION slider s (LOW=0 .. HIGH=9) -> `+12 = 10 - s` (HIGH aggression = rating 1).
 - RATE slider s (SLOW=0 .. FAST=9) -> `+16 = 10 - s` (FAST = act every frame).
-CANCEL restores the whole record from a copy ($1c6d0). Conquest "rating" and custom
+CANCEL restores the whole `$2e`-byte record from a copy ($1c6d0). The slider cell is
+(click_x - (x+40))/8 for AGGRESSION (item 11, x = 72) and (click_x - (x+48))/8 for RATE (item 13,
+x = 64), so x = 184..191 gives 9 on both. Verified through the UI: right-click, items 4..9 on,
+both sliders at 9, OK gave side 1 rating 1, options `$1ff`, reaction 1. Conquest "rating" and custom
 "aggression" are the same variable.
 
 ### Game options `$219b2` (conquest from $22adc; custom from GAME OPTIONS menu)
@@ -107,7 +119,12 @@ Strings mapped at $1aa7c-$1abba. The AI obeys 4 and 8 itself (see 3.3); $10 and 
 the AI routines.
 
 ### HUMAN VS ATARI / ATARI VS ATARI / computer assistance (`$1b046`)
-GAME SETUP items at $22286 + i*$2e. HUMAN VS ATARI ($1b8b2): `god_rec[me].ctrl = 0`, and in one
+GAME SETUP items at $22286 + i*$2e, dispatched through the word table `$21588` (offsets from
+`$1b046`): 1 ONE PLAYER `$1b3fe`, 2 TWO PLAYERS `$1b4c8` (serial handshake `$19652`), 3 PLAY GAME, 4
+PAINT MAP, 5 GOOD, 6 EVIL, 7 HUMAN VS ATARI `$1b866`, 8 ATARI VS ATARI `$1b90e`, 9 CONQUEST, 10 CUSTOM
+GAME, 11 GAME OPTIONS `$1bc0e`, 12 SAVE, 13 LOAD, 14 MOVE TO NEXT MAP, 15 RESTART THIS MAP, 16
+SURRENDER. Items 1-8 are dead outside a custom game (`$1b3de` forces the index to $13). HUMAN VS
+ATARI ($1b8b2): `god_rec[me].ctrl = 0`, and in one
 player mode `god_rec[other].ctrl = 1`. ATARI VS ATARI ($1b95c): `god_rec[me].ctrl = 1` (plus the
 other side in one-player). In a serial game the same flag on your own side is what the other
 machine reports as "COMPUTER ASSISTANCE" (strings $22d2a/$22d58). There is no separate
@@ -201,11 +218,29 @@ return 1                                   ; site flat: not revisited until the 
 requires mana >= 20, houses <= 50, opts&1, !(flags&4). With s = sum of the 4 corner heights,
 q = s/4, r = s%4 (s == 1 ignored): r == 3 -> raise the first corner equal to q; r == 1 -> lower the
 first corner above q (unless flags&8). Corners visited (x0,y0),(x0,y0+1),(x0+1,y0),(x0+1,y0+1).
-Other AI land edits (not diff-tested): `$ef4c` posts lower at a computer walker's cell standing on
-obj $42 when not busy and flags&$c == 0; `$f6b2` posts raise at a computer walker's cell when its
-step is blocked ($18198 == 3) or the next cell is obj $35 (swamp, flags&8 clear).
+Walker-triggered land edits (`mechanics.md` 3.2 has the whole routine):
+- `$f6b2`, for a computer-controlled side or any side under Armageddon, and (unless Armageddon)
+  only when "cannot build" is off: raise at the walker's **own** cell when its direct step is water;
+  raise at the **next** cell when that cell is swamp ($35) and "only build up" is off. An ordinary
+  walker steps into swamp (and dies), so only a knight, which refuses swamp, triggers the second.
+  Busy is not checked: the post overwrites any command already made this frame, and sets busy.
+- `$ef4c` (`$f01a..$f138`), after a direction other than 999: if the side is computer-controlled
+  (ctrl 1), the walker stands on a burnt field ($42), the side is not busy and `flags & $c == 0`:
+  lower at its cell. Busy is **not** set.
+Verified: `py/ai/fdiff.py 400 7`, `$f6b2` **1200/1200** (full delta + D0) and `$ef4c` **1200/1200**
+(god-record delta) under `callcap`; live, 4745 `$f6b2` and 7767 `$ef4c` calls matched (section 5).
 Raise/lower cost 10 + 4 per height point changed ($1186c/$116fa); nothing happens below 10 mana.
 Object codes: $2f rock, $35 swamp (walkers die on it, $e9b8), $42 burnt field of a destroyed house.
+
+### 3.4 Castle release (`$e5a6..$e638`)
+Every 8th frame, in the settlement update, a castle (sprite $2a) of a computer-controlled side with
+str > 305, whose side is not busy, gets capacity 305 instead of 3050 and sets the side busy. With str
+over capacity the castle then emits a walker (child str - 152, parent 152; `mechanics.md` 4.2). So an
+AI castle is emptied into walkers once it holds more than 305, one castle per decision slot. Verified:
+every busy write from `$e638` fell on a frame%8 == 0 frame with busy 0 before it, **332/332** over the
+two runs of section 5. The same block caps the capacity at 50 for side `$3c4e4 - 1`; `$3c4e4` is set by
+a `$1f0fa` case (`$1fbbe`, arg+1) and cleared every 8th frame (`$ef42`); which command posts it was not
+traced.
 
 ## 4. Strategy notes (derived from the code)
 
@@ -231,6 +266,32 @@ Object codes: $2f rock, $35 swamp (walkers die on it, $e9b8), $42 burnt field of
 - Its settlement levelling works on a 9x9 corner area and one point per action, so a sea or cliff
   inside that square burns mana (10 + 4/point) repeatedly.
 
+Observed in play (the two natural runs of section 5, rating 1, reaction 1, all options; `py/ai/`
+`strategy.py`, `magnetcheck.py`):
+- **It levels first, all the time.** 96% of its commands are raise/lower (run A: 1775 of 1854), one
+  nearly every frame from the start of play.
+- **Levelling keeps it broke.** Raise/lower checks only the base 10 before charging 10 + 4/point, so
+  mana goes negative: side 1 in A below 0 on 296 frames; in B one raise took side 0 from 556 to -218.
+  Mana accumulates only once most sites are castles (A: 1112 at frame 1566, 6178 at 1816).
+- **It stays passive until it has 17 settlements** (`2*rating + 15`): A's first mode or magnet
+  command came at frame 1097, the frame towns + castles reached 17.
+- **It burns decision slots on unaffordable magnet moves.** `$13eda` re-posts cmd 5 every frame and
+  `$111be` refuses it below 200 mana: 53 refusals over both runs, 52 for lack of mana (A frames
+  1369-1376: eight identical posts at mana 111-114, accepted at 239).
+- **Powers fire the frame mana crosses the threshold**: all 8 volcanoes one frame after mana first
+  exceeded 10500, dropping it back to ~500; knights one frame after 8000 when its leader was above
+  3000, otherwise later.
+- **Earthquakes need a quota.** Side 1's land-init quota (+26) was 0 in both runs and it never cast
+  one; B side 0 (quota 1) cast 4, each after the first following a volcano (which resets c).
+- **Most swamp decisions are lost**: 16 of 19 were overwritten by a land edit in the same frame, yet
+  the counter +18 still counts them, so B side 1 used up its swamp cap with one real swamp.
+- **Losing your leader moves your magnet** to the cell where it died: an idle human's magnet moved
+  from (32,32) to (8,11) with no command, written by `set_magnet_cell $129d6` (`$129f2`) as the leader
+  vanished (the caller is inferred to be `entity_kill $10068`, `$10156..$1017a`).
+- **An idle human loses in about 2700 frames** to this opponent on GENESIS (A: GAME LOST at frame
+  2978, evil with 31 castles and 3 knights). Two such AIs are even: B had no winner after 3000
+  frames, both at 10-15 castles and ~10000 population.
+
 ## 5. Verification
 
 `py/ai_diff.py` loads game_start.snap, g40.snap and g90.snap, and for each routine generates
@@ -252,13 +313,55 @@ at each busy clear ($1eaea) and never posts a magnet or mode command, as the mod
 settlements < 35 and mode 1, so it only acts in mode 0; power options are 0). The levellers do
 act: from game_start (frame 285) the computer's corner heights diverge by 14 corners at frame
 475, 111 at frame 1328 and 207 at frame 2161, all in its south-east start area, and its mana is
-spent down to single digits early on, then banked (7485 at frame 2161) once its sites are flat. No
-menu-driven custom or Atari-vs-Atari game was run.
+spent down to single digits early on, then banked (7485 at frame 2161) once its sites are flat.
+
+**A hard opponent in two natural runs** (`py/ai/`). The setup was made with menu clicks only, from
+the GENESIS start: GAME SETUP > CUSTOM GAME, then a right click on the options icon, items 4..9 on,
+AGGRESSION and RATE at 9 (`cg1.snap`: side 1 rating 1, options `$1ff`, reaction 1), and for run B
+also GAME SETUP > ATARI VS ATARI (`cg2.snap`).
+- Run A, HUMAN VS ATARI with the human idle: 2663 frames, to the GAME LOST screen.
+- Run B, ATARI VS ATARI: 2997 frames, no winner.
+
+`cmdlog.py` logs both god records' command bytes at every `$1e712` entry, with a `watch` on
+`$21e0c..$21e67` naming each write's PC. `livecheck.py` stops at each AI call site with its
+arguments pushed, runs `callcap` on the real routine from that exact state and compares the full
+non-stack delta with the model; `join.py` then requires every logged command to be the last
+model-matched write of that frame. Every call matched:
+
+| routine (site) | run A calls | run B calls |
+|---|---|---|
+| `$13eda` (`$db8c`) | 2664/2664 | 5994/5994 |
+| `$13a44` (`$dbbc`) | 2584/2584 | 5800/5800 |
+| `$135fc` (`$e534`) | 1641/1641 | 2510/2510 |
+| `$13816` (`$ea7a`) | 1030/1030 | 2772/2772 |
+| `$ef4c` (`$ea8a`, `$ecf6`) | 3575/3575 | 4192/4192 |
+| `$f6b2` (`$ef86`) | 1792/1792 + 13 knight re-acquires | 2928/2928 + 12 knight re-acquires |
+
+(The 25 knight re-acquire calls go through `$fe00`, modelled in `py/walker/`, not in `ai_ext.py`.)
+Commands predicted at `$1e712`: **A 1854/1854** (raise 831, lower 944, mode 52, magnet 20, volcano 3,
+knight 3, swamp 1) and **B 2766/2766** (raise 1304, lower 1257, mode 116, magnet 72, earthquake 4,
+swamp 2, volcano 5, knight 6). Not reached live: flood and armageddon (mana never reached 42000),
+the `$f6b2` swamp raise, and `$135fc`'s second call site `$e580`. No ctrl word was written in either
+run, so neither checksum protection fired.
+
+Scripts (`py/ai/`, data in `$POP_WORK/ai/`): `s1_start.py`, `s2_custom.py`, `s3_ava.py`,
+`s4_oneplayer.py` the menu drives (`cg0`, `cg1`, `cg2`, `op1.snap`); `ai_ext.py` the `$f6b2` and
+`$ef4c`-lower models; `fdiff.py 400 7` their callcap corpus; `cmdlog.py <snap> <frames> <out>`,
+`livecheck.py <site> <snap> <steps> <out.jsonl>` and `join.py A|B <snap> <steps>` the natural-run
+log, per-call diff and replay (a full rerun of one run takes 1.5-2.5 h with the 9 processes in
+parallel; `join.py` alone replays the recorded logs in `$POP_WORK/ai/live/` in minutes);
+`castlecheck.py`, `magnetcheck.py`, `strategy.py`, `livecov.py` the statistics.
 
 ## 6. Open questions and cross-references
 - Resolved by the other areas: `$33be4`, which gates `$135fc`, is the per-cell altitude (`terrain.md`
   section 1). Why the gate treats altitude 0 differently is not traced. $2f is rock and $42 a burnt field (`terrain.md`, `mechanics.md`); +34 ranks by the
   `$18206` land value, which is also the settlement capacity (`mechanics.md` 4.1). `$2287e` is the
   surrender flag (`mechanics.md` 6).
-- ONE PLAYER while in two-player mode ($1b452) writes `ctrl` of `my_side` twice (0 then 1); looks like
-  a source bug, not run.
+- **ONE PLAYER in two-player mode is a source bug** (`$1b452`). Two-player needs a serial peer, so
+  `one_player_flag $219b0` was poked to 0 with GAME SETUP open; a `watch` then showed `$1b472` write
+  `ctrl[human] = 0` and `$1b496` write the same word to 1, while `ctrl[other]` is never written. The
+  menu shows HUMAN VS ATARI but both sides are computer-controlled (side 0 posted a command at 100 of
+  the next 100 frames). The second write was surely meant for `ctrl[other]`, as HUMAN VS ATARI
+  `$1b8b2` does.
+- Not traced: which command sets `$3c4e4` (3.4). Not run: the conquest route to a rating-1 world (the
+  custom route gives the same god record).
