@@ -188,7 +188,12 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
     // reports on movement or a button edge - a 50Hz stream of F8 00 00 packets is not hardware
     // behaviour and needlessly wakes the ISR + MFP interrupt every frame).
     let sendMousePacket (force: bool) =
-        if mdx <> 0 || mdy <> 0 || force then
+        if mmu.IkbdMouseMode = 1uy then
+            // Absolute mode: no packets on real hardware; MoveMouse only moves the 6301's cursor.
+            if mdx <> 0 || mdy <> 0 then mmu.MoveMouse mdx mdy
+            mdx <- 0
+            mdy <- 0
+        elif mdx <> 0 || mdy <> 0 || force then
             let mutable rx = mdx
             let mutable ry = mdy
             // Always emit at least one packet (that is the point of `force`); then keep emitting

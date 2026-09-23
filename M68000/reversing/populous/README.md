@@ -4,8 +4,8 @@
 [cr Replicants] scene crack ("CRACKED BY DOM"). It runs from a cold boot through the
 crack's loader, the intro (`DEMO.GOD`) and its TUTORIAL / CONQUEST / CUSTOM title menu,
 the "World to conquer: GENESIS" briefing, and into the isometric game with the book
-minimap, the command panel and a computer opponent terraforming its corner. **It needed
-no emulator changes.**
+minimap, the command panel and a computer opponent terraforming its corner. **Reaching
+gameplay needed no emulator changes**; driving its mouse UI exposed one IKBD bug (below).
 
 The game program is compiled C (Alcyon / DRI), uncompressed, with LINK/UNLK frames on
 every function, so most of the analysis is a headless Ghidra decompile checked against the
@@ -98,13 +98,18 @@ OS   9385612       Fopen("land0")   OS 11308845 Fopen("level.dat")   conquest br
 OS  46757783       Fopen("land0")                        <- START GAME: world built, gameplay
 ```
 
-(The emulator's Pexec basepage hook, `ATARI_TRACE_GEMDOS`, prints the *loader's* basepage
-`$a204` for the mode-0 `demo.god` load; DEMO.GOD is really at `$ac58`, per its own startup
-Mshrink.)
-
 ## What it needed from the emulator
 
-Nothing: no instruction wall, no peripheral gap, from cold boot to gameplay.
+No instruction wall and no peripheral gap from cold boot to gameplay. Two fixes came later:
+
+| symptom | fix |
+|---|---|
+| `mouse move` in the REPL (and the live window) sent relative `$F8 dx dy` packets although the game had put the IKBD in absolute mode; Populous's handler (`$20048`) stored the dx/dy bytes as key presses, so a text field opened after a move started with a stray character and keypad-scroll codes could reach the game | `MMU.MoveMouse` / `Video.sendMousePacket`: in absolute mode only the 6301's cursor moves, as on real hardware |
+| `ATARI_TRACE_GEMDOS` reported the parent's basepage for a Pexec mode-0 child (`demo.god` showed the loader's `$a204`) | the Pexec hook waits until `act_pd` moves off the caller's basepage; `demo.god` now reports `$ac58` |
+
+Both passed the regression net (verify, 30M-step snapshot byte-identical, selftest 0 wrong), and
+PowerMonger's click-driven drives (also absolute mode) gave byte-identical snapshots before and
+after the mouse fix.
 
 One tool fix: `tools/disassemble.py` decoded PEA as SWAP (the `$4840` mask covered PEA's
 whole EA space), which garbles every Alcyon-compiled call that passes a pointer. Commit

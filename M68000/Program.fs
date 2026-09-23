@@ -172,7 +172,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     //a single pending slot would be pinned forever and block detection of every later Pexec -
     //including a mode-0 load launched by the running shell (e.g. \AUTO\*.PRG). Entries that never
     //return (mode 4/6) simply sit at the bottom; the ones we care about (load modes) are LIFO.
-    let mutable pexecStack : (int * int * string) list = []  // (returnPC, mode, filename)
+    //The caller's act_pd is kept with each entry: a load-and-run child is only live once act_pd
+    //moves off it (until then act_pd is the parent's own, valid, basepage).
+    let mutable pexecStack : (int * int * string * int) list = []  // (returnPC, mode, filename, parent act_pd)
     let mutable basepagesWritten = 0
     //Set once we've dumped the basepage for the load-and-go Pexec currently on top of the stack,
     //keyed by its return PC, so the per-step $602C sample doesn't re-dump it every instruction.
@@ -470,7 +472,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
            && (int (mmu.ReadWord (uint32 cpu.A7)) &&& 0xFFFF) = 0x004B then
             let mode = int (mmu.ReadWord (uint32 (cpu.A7 + 2)))
             let fname = readCString (mmu.ReadLong (uint32 (cpu.A7 + 4)))
-            pexecStack <- (cpu.PC + 2, mode, fname) :: pexecStack
+            pexecStack <- (cpu.PC + 2, mode, fname, mmu.ReadLong 0x602Cu) :: pexecStack
             eprintfn "GEMDOS Pexec mode=%d file=\"%s\" pc=$%08x" mode fname cpu.PC
         //Graphics sidecar (ATARI_GFX_SIDECAR): capture XBIOS Setpalette / Setscreen arguments. An
         //XBIOS call ($4E4E) passes its function number as a word at A7, arguments right after it.
@@ -515,7 +517,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             if TraceEvents.enabled then
                 TraceEvents.record stepCount preEventsPc preEventsOpcode cpu.PC (mmu.InterruptAcks <> preEventsAcks)
             match pexecStack with
-            | (retpc, mode, fname) :: rest when cpu.PC = retpc ->
+            | (retpc, mode, fname, _) :: rest when cpu.PC = retpc ->
                 pexecStack <- rest
                 eprintfn "GEMDOS Pexec mode=%d returned d0=$%08x" mode cpu.D0
                 //Mode 3 (load, don't run) returns the basepage in D0. Modes 0/1 (load and run)
@@ -523,12 +525,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 //child was live.
                 if mode = 3 || mode = 4 || mode = 6 then dumpBasepage stepCount mode fname cpu.D0 |> ignore
                 if basepageCapturedFor = retpc then basepageCapturedFor <- -1
-            | (retpc, mode, fname) :: _ when (mode = 0 || mode = 1) && basepageCapturedFor <> retpc ->
-                //Load-and-run: the child is executing now. GEMDOS keeps the running process's
-                //basepage pointer at act_pd ($602C - see [[atari-st-emulator-next-instructions]]);
-                //sample it until it resolves to a valid basepage, then stop.
+            | (retpc, mode, fname, parentPd) :: _ when (mode = 0 || mode = 1) && basepageCapturedFor <> retpc ->
+                //Load-and-run: GEMDOS keeps the running process's basepage pointer at act_pd
+                //($602C - see [[atari-st-emulator-next-instructions]]). Sample it until it moves
+                //off the caller's own basepage to a valid one (the child), then stop.
                 let actpd = mmu.ReadLong 0x602Cu
-                if dumpBasepage stepCount mode fname actpd then basepageCapturedFor <- retpc
+                if actpd <> parentPd && dumpBasepage stepCount mode fname actpd then basepageCapturedFor <- retpc
             | _ -> ()
             //Trace narrator: an OS call returned. Match the newest pending call with this return
             //PC; anything pushed *after* it that's still open never came back (Pexec "just go", a

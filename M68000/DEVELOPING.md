@@ -69,7 +69,8 @@ actually asks for. The REPL gets a `mouse` command that goes through the same
 mode-aware synthesis the live window uses:
 
 ```
-mouse move <dx> <dy>     relative motion -> $F8 dx dy packet
+mouse move <dx> <dy>     relative motion -> $F8 dx dy packet; in absolute mode ($09) only
+                         the 6301's cursor moves (the program reads it with $0D), no packet
 mouse down l|r           button press    -> $74/$75 keycode in buttons-as-keys mode, else nothing
 mouse up   l|r           button release
 ```

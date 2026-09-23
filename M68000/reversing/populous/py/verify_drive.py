@@ -4,7 +4,8 @@ From game_start.snap: a minimap click must set the predicted view; a left click 
 (11,16) must raise exactly what popgen.raise_pt predicts (134 corners); a right click must lower
 as popgen.lower_pt; the magnet icon + a land click must move the papal magnet to cell (cx-1,cy-1);
 and each icon click must change exactly the state the $c3e2 table predicts.
-Snapshots go to $POP_WORK/drive/ (drive/A.snap = view (6,12), used by other scripts)."""
+Snapshots go to $POP_WORK/drive/ or $POP_WORK/<argv[1]>/ (drive/A.snap = view (6,12), used by
+other scripts)."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.setrecursionlimit(100000)
@@ -13,7 +14,7 @@ from popmem import ram, l, sw, w
 from popcfg import WORK
 from popgen import Gen
 
-D = os.path.join(WORK, 'drive'); os.makedirs(D, exist_ok=True)
+D = os.path.join(WORK, sys.argv[1] if len(sys.argv) > 1 else 'drive'); os.makedirs(D, exist_ok=True)
 S0 = os.path.join(WORK, 'game_start.snap'); A = os.path.join(D, 'A.snap')
 ok = 0; total = 0
 

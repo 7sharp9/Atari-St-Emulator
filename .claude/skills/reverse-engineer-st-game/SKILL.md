@@ -21,7 +21,7 @@ This skill is Atari ST / 68000 specific. It leans on this repo's F# 68000 core, 
 
 ## 1. Trace the boot, find the walls
 
-`ATARI_NOTRACE=1 ATARI_TRACE_GEMDOS=1 ATARI_TRACE_OS=1 dotnet exec bin/Debug/net8.0/M68000.dll <N> --disk-a "<game>.ST"` narrates `Pexec`/`Fopen`/`Fread`/`Setscreen`, free ground truth for what the game loads and when. Paste the summary into the README. Caveat: for a Pexec **mode 0** child the "GEMDOS Pexec basepage=" line reports the *parent's* basepage; take the child's from its own startup `Mshrink(block=...)`.
+`ATARI_NOTRACE=1 ATARI_TRACE_GEMDOS=1 ATARI_TRACE_OS=1 dotnet exec bin/Debug/net8.0/M68000.dll <N> --disk-a "<game>.ST"` narrates `Pexec`/`Fopen`/`Fread`/`Setscreen`, free ground truth for what the game loads and when. Paste the summary into the README.
 
 No `\AUTO\` folder and no bootable sector means the game is launched from the GEM desktop. Make a headless copy instead of driving the desktop: `tools/add_file_to_disk.py game.st --from-disk LOADER.TOS --name LOADER.PRG --remove LOADER.TOS --remove DESKTOP.INF --auto --out game_auto.st` (`--remove` frees space on a full disk; the game never reads `DESKTOP.INF`).
 
@@ -115,7 +115,7 @@ Every prior game's README (`M68000/reversing/{a_013,supersprint,powermonger,popu
 
 ## Known tooling gaps
 
-From repeated friction across passes (not yet built, build the one a pass actually needs, not all speculatively): no call-depth/step prefix or jsr/rts target on the live `-Trace` line; no `.sym` symbolication of that live trace; `disassemble.py` still has gaps in rarer families, so if a listing looks wrong (an `ori`/`subi` on an address register, a pointless immediate) check the opcode bits before believing it: `movep.l` showed as `subi` until the 121st pass and hid what `$e6ee` did; no mouse "move to absolute x,y" (the game's own pointer variables have to be read and deltas computed by hand; `reversing/populous/py/popdrive.py` is a worked example that plans clicks from the game's hit-test code); the Pexec mode-0 basepage misreport above; no windowed/scoped trace (PC-range or call-subtree only); `trace_cfg.py` only ingests the binary event log, not the text `-Trace` dump.
+From repeated friction across passes (not yet built, build the one a pass actually needs, not all speculatively): no call-depth/step prefix or jsr/rts target on the live `-Trace` line; no `.sym` symbolication of that live trace; `disassemble.py` still has gaps in rarer families, so if a listing looks wrong (an `ori`/`subi` on an address register, a pointless immediate) check the opcode bits before believing it: `movep.l` showed as `subi` until the 121st pass and hid what `$e6ee` did; no mouse "move to absolute x,y" (the game's own pointer variables have to be read and deltas computed by hand; `reversing/populous/py/popdrive.py` is a worked example that plans clicks from the game's hit-test code); no windowed/scoped trace (PC-range or call-subtree only); `trace_cfg.py` only ingests the binary event log, not the text `-Trace` dump.
 
 ## Discipline carried over from the CPU-accuracy work
 

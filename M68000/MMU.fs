@@ -1515,24 +1515,32 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             mutations <- mutations + 1UL
             x.RaiseInterrupt 6 0x46
 
-    ///Move the 6301's internal absolute mouse cursor by (dx,dy) and stream the matching relative
-    ///packet(s) ($F8|buttons, dx, dy) so both interrogation-mode ($0D) and relative-packet-mode
-    ///programs see the motion. A delta larger than one signed byte is split across several packets
-    ///(like Video.fs sendMousePacket and Hatari IKBD_SendRelMousePacket) so the full move lands.
-    ///The REPL `mouse move` command feeds through here; the live SDL window builds its own packet
-    ///and calls EnqueueIkbd directly (whose $F8 arm does the same position tracking).
+    ///Move the 6301's internal absolute mouse cursor by (dx,dy). Outside absolute mode it also
+    ///streams the matching relative packet(s) ($F8|buttons, dx, dy); a delta larger than one signed
+    ///byte is split across several packets (like Video.fs sendMousePacket and Hatari
+    ///IKBD_SendRelMousePacket) so the full move lands. The REPL `mouse move` command feeds through
+    ///here; the live SDL window builds its own packet outside absolute mode and calls EnqueueIkbd
+    ///directly (whose $F8 arm does the same position tracking).
     member x.MoveMouse (dx: int) (dy: int) =
-        let header = 0xF8uy ||| (if mouseRightDown then 0x01uy else 0uy) ||| (if mouseLeftDown then 0x02uy else 0uy)
-        let mutable rx = dx
-        let mutable ry = dy
-        let mutable first = true
-        while first || rx <> 0 || ry <> 0 do
-            first <- false
-            let cx = max -128 (min 127 rx)
-            let cy = max -128 (min 127 ry)
-            x.EnqueueIkbd [| header; byte (sbyte cx); byte (sbyte cy) |]
-            rx <- rx - cx
-            ry <- ry - cy
+        //Absolute mode ($09): a real 6301 sends no motion packets, the program reads the position
+        //with $0D. Streaming $F8 packets here fed Populous's absolute-mode handler stray dx/dy
+        //bytes that it stores as key presses ($20048).
+        if ikbdMouseMode = 1uy then
+            mouseAbsX <- max 0 (min mouseAbsMaxX (mouseAbsX + dx))
+            mouseAbsY <- max 0 (min mouseAbsMaxY (mouseAbsY + dy))
+            mutations <- mutations + 1UL
+        else
+            let header = 0xF8uy ||| (if mouseRightDown then 0x01uy else 0uy) ||| (if mouseLeftDown then 0x02uy else 0uy)
+            let mutable rx = dx
+            let mutable ry = dy
+            let mutable first = true
+            while first || rx <> 0 || ry <> 0 do
+                first <- false
+                let cx = max -128 (min 127 rx)
+                let cy = max -128 (min 127 ry)
+                x.EnqueueIkbd [| header; byte (sbyte cx); byte (sbyte cy) |]
+                rx <- rx - cx
+                ry <- ry - cy
 
     ///The IKBD report mode the running program selected, for `ATARI_TRACE_IKBD` / callers that
     ///want to adapt what they synthesise: 0 = relative mouse (power-on default), 1 = absolute,
