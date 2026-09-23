@@ -209,8 +209,6 @@ skipped.
   zeroes all maps and kills every entity.
 
 ## Open questions
-- The mouse-to-corner mapping of a click in the diamond view (UI, `$c3e2`/`$d00e`); I verified raise and
-  lower by injecting the command record.
 - The meaning of `$3b274`, and bits 1 and 2 of the power word.
 - LOLO1.GAM (14336 bytes) is shorter than the `$1db98` save layout (4 + 8450 + 4x4096 + ...). It may be
   an older format.

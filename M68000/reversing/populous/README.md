@@ -125,6 +125,26 @@ GAME, run 30M steps. Always pass `--disk-a` again on `resume` (the mount is not
 snapshotted). The recipe is deterministic: two cold-boot runs produced byte-identical
 snapshots.
 
+## Driving play
+
+`py/popdrive.py` plays the game through its own mouse UI. It reads the pointer (`$24748`), the
+view origin and the corner heights from a snapshot and turns "raise corner (x,y)", "click icon
+NAME" or "show corner (x,y)" into exact `mouse move`/`down`/`up` REPL lines, using the hit tests
+of `$c3e2` (panel, minimap) and `$119e6` (land cursor) documented in `graphics.md`, "Mouse
+input". `run(snap_in, lines, snap_out)` feeds them to a resumed REPL.
+
+```
+python py/popdrive.py <snap> raise 11 16     # minimap click to show the corner, then the land click
+python py/popdrive.py <snap> icon mode_fight
+python py/panelmap.py <snap> panel_regions.png
+```
+
+`py/verify_drive.py` proves the model from `game_start.snap` (**17/17** checks): the minimap
+click sets the predicted view; a left click on corner (11,16) changes the same 134 corners as the
+injected command and `popgen.raise_pt`; a right click lowers as `popgen.lower_pt`; the magnet icon
+plus a land click moves the papal magnet; and 13 icon clicks change exactly the state the code
+predicts.
+
 ## Working data (`$POP_WORK`)
 
 The scripts in `py/` read their inputs from `$POP_WORK`, default `M68000/scratchpad/pop/`
@@ -191,7 +211,8 @@ the serial link.
 | `level_table.txt` | all 99 `LEVEL.DAT` records decoded |
 | `drive.txt` | cold-boot-to-gameplay REPL script |
 | `callgraph.dot` / `.svg`, `blocks.txt` | named call graph and executed-block map of 191 gameplay frames |
-| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java` |
+| `panel_regions.png` | the `$c3e2` click regions of every command icon and the minimap, over a game frame |
+| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; driving `popdrive.py`, `panelmap.py`, `verify_drive.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java` |
 | `intro.png`, `title_menu.png`, `conquest_briefing.png`, `gameplay.png` | milestones: intro credits, the LOAD.PIC title menu, the GENESIS briefing, the first gameplay frame |
 | `real_game_start.png`, `mine_v5547.png`, `mine_v5547_diff.png` | emulator frame vs `pop_render.py` output and their (empty) diff |
 | `land0..3_blocks.png`, `sprites0.png`, `spr_320.png`, `font.png`, `icons_150e2.png` | decoded block/sprite/font/icon sheets |

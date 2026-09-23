@@ -368,6 +368,73 @@ and the right word is dropped when x > 304.
 before hiding, so direct writes to the displayed screen (`$14a10`, `$16b26`, `$180b6`) are
 safe.
 
+## Mouse input: clicks, the command panel and the land cursor
+
+The IKBD runs in absolute mode. The MFP 6 handler `$1ff8a` assembles the 6-byte `$f7` report
+into `$2474c` (buttons: bit 2 left, bit 0 right) and `$24748`/`$2474a` (pointer x/y). The VBL
+latch `$16c58` turns a press into `$3d528 = 0` (left) or `$3c4d6 = 0` (right) and copies the
+pointer into `$3c518`/`$3c51c`; every hit test reads that latched copy. A latch at 1 is idle; 2
+means "consumed, wait for release" (set by the panel handler and by a right-click lower), and the
+main loop turns a consumed 0 back into 1 (`$bb8e`). So one click is one action; a held left
+button in land mode re-latches every frame and raises repeatedly.
+
+Per frame, `$b510` calls `$119e6` (land input) when `$21d50 & $e`, `$d3ee` (entity pick in query
+mode) on a press, and `$c3e2` (panel) on a press, with arg = left button. `$c3e2` and `$119e6`
+work in diamond coordinates `u = y + (x>>1) - 32`, `v = y - (x>>1) + 32` (`divs` truncates):
+
+| test | region | action |
+|---|---|---|
+| `0 <= u,v < 64` | minimap | view origin `($37e7a,$249ae)` := (u-3, v-3), clamped 0..56 |
+| `u > $112` | icons right of the land view | icon ((u-$110)/16, (v-$20)/16) |
+| `v >= $92` | command panel, lower left | icon ((u-$60)/16, (v-$90)/16) |
+| otherwise | land view | nothing in `$c3e2`; `$119e6` acts |
+
+Command panel (`$c65a..$d05c`, dispatch on the column at `$d00e`):
+
+| (col,row) | icon | effect |
+|---|---|---|
+| (0,0) | flood | cmd 14/4 |
+| (1,0) | armageddon | cmd 14/3, not in paint mode |
+| (1,1) | volcano | cmd 6 at the view origin |
+| (2,0) | earthquake | cmd 3 at the view origin |
+| (2,1) | knight | cmd 14/5 |
+| (2,2) | swamp | arms the land cursor: `$21d50 = ($21d50&3)\|8`, pointer 5; needs mana > 5000 and power bit $10, or paint mode |
+| (3..5, 0..2) | scroll arrows | view x -1/0/+1 by column, y -1/0/+1 by row; the centre (4,1) centres on the query entity |
+| (3,3) (4,3) (5,3) (4,4) | walker modes | cmd 14/1 arg 0 go to papal magnet, 1 settle, 2 gather, 3 fight |
+| (6,0) | query | `$21d50 = 1`, pointer 0 |
+| (6,1) | land | `$21d50 = 2` (left raise, right lower), pointer `3*side+1` |
+| (6,2) | papal magnet | arms the land cursor: `$21d50 = ($21d50&3)\|4`, pointer `side+2` |
+| (7,0) | go to leader | left: view on the leader and query it (`$da28`), or on the papal magnet if there is no leader; right: view on the papal magnet |
+| (7,1) | go to battle | view on the next entity of either side with flag bit 3 (fighting), and query it |
+| (8,0) | go to knight | left: the next own knight (+14 set); right: the next own settlement; query it |
+
+Icons right of the land view (`$c4a4..$c656`): (0,0) cmd 14/7 OPTIONS FOR EVIL (arg = left
+button), (0,3) the music-note icon toggles `$21ffc` (no reader besides the save/restore at
+`$1d18e`; music on/off is *inferred*), (0,4) "FX" toggles `$21920` (the VBL plays the `$36d02`
+sound effect only while it is set), (1,1) cmd 14/8 GAME SETUP, (1,3) "zZ" cmd 14/6 pause
+(toggles `$3b274`), (2,2) the telephone, cmd 14/2 send message. `panel_regions.png` outlines
+every region over a game frame (numbers = order of the two lists above).
+
+**Land cursor `$119e6`.** It acts only if armageddon is off, `$3e <= u <= $10a`,
+`-$40 <= v <= $88`, `x >= $40`, and (one of your entities is in view, `$3d54e` bit 0 from the
+sprite pass `$145d2`, or `$21d50 != 2`, or paint mode). The screen column `c = (x-$38)>>4`
+selects a diagonal of corners from the view origin: 9 for c = 8, `c+1` starting at local
+(0, 8-c) for c < 8, `17-c` starting at (c-8, 0) for c > 8, each next corner +1,+1. Corner k is
+drawn at `sy + 16k - 8*height`, with `sy = $48 + 8*|c-8|`, and the **last** corner with that y
+`<= pointer y + 4` is the one under the cursor (`$36e72/$36e76`), highlighted at y-3. On a
+press: armed swamp posts cmd 4 and armed magnet cmd 5 at cell (cx-1, cy-1), each then disarming;
+otherwise a left press posts cmd 1 (raise) at the corner. A right press posts cmd 2 (lower) when
+`$21d50 == 2` and "only build up" is off. With "cannot build" (`$219b2&4`) nothing is posted;
+with "build near towns" a corner above sea level needs an own settlement in view.
+
+Proof (`py/popdrive.py`, which implements all of this and plans clicks from a snapshot): from
+`game_start.snap` a minimap click at (58,12) set the view to (6,12) as predicted; a left click at
+(208,104) raised corner (11,16) with **134/134** corner changes equal to the injected command
+(`verify_cmd.py`) and none elsewhere; a right click there lowered it exactly as
+`popgen.lower_pt`; the magnet icon then a click on corner (12,17) moved the papal magnet to
+cell (11,16) for 200 mana; and 13 icon clicks (the four modes, query/magnet/land, three scroll
+arrows, pause, FX, music) each changed exactly the variables the table predicts, **13/13**.
+
 ## Blitter routines (every one is a CPU routine)
 
 | routine | draws |

@@ -15,8 +15,12 @@
 00c0ee	derive_cells
 00c27a	minimap_redraw_region
 00c31a	rederive_cells_noheight
+00c3e2	ui_panel_click
+00d00e	ui_panel_column_dispatch
 00d262	lower_point
+00d3ee	ui_pick_entity
 00d482	query_panel_draw
+00da28	set_query_entity
 00da52	mana_bar_draw
 00db4c	entity_update
 00ef4c	walker_step
@@ -122,6 +126,7 @@
 021614	cmd_jump_table
 021632	cmd_misc_jump_table
 02165c	pointer_index
+021920	sfx_enable
 021984	power_cost_table
 021988	cost_land_min
 02198c	cost_magnet
@@ -133,6 +138,7 @@
 0219a4	cost_armageddon
 0219b0	one_player_flag
 0219b2	game_options
+021d50	ui_mode
 021d5e	conquest_world
 021d64	name_part1_table
 021e0c	god_rec
@@ -142,6 +148,7 @@
 021ee8	direction_steps
 021efc	name_part3_table
 021f7c	name_part2_table
+021ffc	music_flag
 022000	menu_evil_options_items
 022284	other_side
 022286	menu_game_setup_items
@@ -165,6 +172,8 @@
 034be4	corner_height
 036ce8	dirty_min_x
 036cea	score
+036e72	cursor_corner_x
+036e76	cursor_corner_y
 036e78	cell_shape
 037e7a	view_origin_x
 037e7c	ptr_spr320
@@ -200,15 +209,20 @@
 03c4ca	magnet_cell_good
 03c4ce	ptr_display_screen
 03c4d2	ptr_draw_screen
+03c4d6	mouse_right_latch
 03c4e2	entity_count
 03c4e8	tbl_kill_mana
 03c4fe	tbl_town_mana
 03c514	battles_won
+03c518	click_x
 03c51a	conquest_world_number
+03c51c	click_y
 03c51e	ptr_land_blocks
 03c522	cell_feature
 03d522	dirty_min_y
 03d524	armageddon_on
 03d526	magnet_cell_evil
+03d528	mouse_left_latch
 03d52e	rand_seed
 03d534	ptr_sprites16
+03d54e	visible_entity_flags
