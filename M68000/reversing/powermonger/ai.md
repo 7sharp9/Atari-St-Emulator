@@ -249,8 +249,8 @@ assessment — a whole routine; every `field·4 < reserve` state is arranged wit
 `(14(A1) & 3) == 3` so it is skipped), **`$550e`** (militarism revolt, loyalty
 kept `< 600`), **`$5c2c`** (owner reconcile inside `$16848`).
 
-`$5cde` remains **Corroborated**, not Proven; the dying-entity path `$1623c` is
-Proven (121st, below).
+`$5cde` is Proven on its own (122nd, below); the heartbeat proof still keeps it
+off. The dying-entity path `$1623c` is Proven (121st, below).
 Mode `$28` / `$2e` (`$15302`) handlers are disassembled but not yet
 differentially tested (`$2e` calls the same `$56a6`).
 
@@ -356,9 +356,9 @@ negative controls (prev-mode table entry, `w22` low byte, the byte-6 guard, the
   into the `$3ca2` tail. See the sub-section below.
 - **`$4bc8` — now fully Proven (115th + 116th passes), all three real call
   sites** (`$5778`, `$1518a`, `$5c2c`). See the sub-section below.
-- **Still Corroborated:** `$2776` / `$1b8c`-via-`$5778` (the `$5778` and
-  `$5590`-tail group cleanup) — a *different* `$1b8c` call site from the one
-  proven here.
+- **`$2776`** (the `$5590`-tail and `$25d6` group dissolve): Proven, 122nd
+  (below). **Still Corroborated:** `$1b8c`-via-`$5778`, a *different* `$1b8c`
+  call site from the one proven here.
 
 ### [Proven] — `$4bc8` contact reconcile ("nation-pair peace-break + player notify"), vs the real 68000 (115th + 116th passes)
 
@@ -1069,7 +1069,7 @@ void jsr_5590(pm_object *A1 /*attacker*/, pm_object *T /*loser*/) {
     T->owner = -T->owner;  T->field32 = 0;               // KILL
     T->cat6  = 0x0c;       T->dwell   = 0xa0;            // corpse, 160-tick decay
 tail:                                                    // $5628 -- flag-routed cleanup
-    // BIT7|BIT4 set && group -> $2776 ; BIT6 && group_lead -> $1b8c ;
+    // owner <= 0 && BIT7|BIT4 set && group -> $2776 ; BIT6 && group_lead -> $1b8c ;
     // else (the common case) -> $567e :
     leader[roster[T->roster_off].leader_byte_off].population -= 1;
 }
@@ -1295,17 +1295,18 @@ hits with the REPL's `hits` command (`reversing/powermonger/py/runland.sh`; snap
 | `$4bc8` contact reconcile | 9 | 16 | 10 | 92 |
 | `$5cde` settlement herd-op | 336 | 59 | 309 | 707 |
 | `$550e` revolt | 6 | 6 | 6 | 6 |
-| `$25d6` (garrison defects, via `$5c2c`) | 0 | 1 | 0 | 1 |
+| `$25d6` (garrison defects, via `$5c2c`; land 25's from the `$1618a` removal path, land 60's from a revolt) | 0 | 1 | 0 | 1 |
 | `$45f2` pigeon launched | 17 | 13 | 19 | 25 |
 
 A later land fights without being prompted: every land killed men (`$55f2`),
 the first kills seen anywhere (mission 1's forced fight: 0), and `$2776` fires
 17-37 steps after a kill (two instances checked), from the `$5628` tail when the
-dead man was in a group. The
+dead man was in a group (12 of the 13 hits; the thirteenth comes from a
+garrison defection, `$25d6`). The
 enemy lords' pigeons (byte6 20, owners 2 and 4 on land 5) fly to their groups
 over and over, the visible side of `$661a` issuing orders. `$5bd2` never fired.
-`$550e` (one absolute caller, `$158cc` in the `$7c` heartbeat) is how land
-changes hands: `../economy.md` §3. Re-running two lands from the same snapshot
+`$550e` (called from the `$7c` heartbeat at `$158cc` and from mode `$2c` at
+`$53f6`) is how land changes hands: `../economy.md` §3 and the proof below. Re-running two lands from the same snapshot
 reproduced every count exactly. Land 5's run started at step 0 of
 `scratchpad/pm121/k5.snap`; the first kill is at step 27,732,607 of stretch 1.
 
@@ -1343,18 +1344,120 @@ the cell (3), with a base (4), with a base and no goods (1), flags bit 5 (2),
 goods counter already `$ff` (1), pigeon launched (2), pigeon busy (1), pigeon
 launched from byte6 `$0a` remains (1).
 
+### [Proven] — the group dissolve `$2776`, vs the real 68000 (122nd pass)
+
+`tools/pm_fsm_ref.py` `call_2776` (+ `$39d4` goods handover, `$1d36` roster
+unlink, `$3ce8` current-group select, the tracked parts of `$187d8` and
+`$71ae`). Differential test `reversing/powermonger/py/diff_2776.py`: **4119/4119
+tracked bytes identical over 28 states** (15 natural, 13 poked), 21 branch
+combinations. Callcap runs at IPL 7, so states where the sound driver's busy
+flag `$2c993` is set get `$2c993 := 0` first, or `$1ae40` never returns.
+
+Entry: `A3 = $51538 + group_off`, a group exec sub-record
+(`side*$13c + $4c + 2k`). Two callers: the `$5590` kill tail at `$564e`
+(`A3 = $51538 + 42(victim)`), which runs only when the victim's owner byte is
+`<= 0` (`$563e: tst.b 5(A3); bgt $56a0`, so a routed survivor skips it), and
+the garrison defection `$25d6` at `$262a` (1 of the 13 natural census hits,
+land 25; the other 12 come from kills).
+
+- **Captain group** (sub-record 0 of its side, `(A3-$51584) mod $13c == 0`):
+  every record of the 26-byte effect table `$4c12c..$4c5f2` owned by that side
+  is unlinked (`$16778`) and cleared. **Other groups**: the effect records whose
+  `20(rec)` is the group's lead are cleared (and the local side's `$57fd8`
+  entry for that sub-record).
+- Then: `36(A3) &= $3ff`; `$39d4` hands the group's goods to whatever lies on
+  the lead's cell (an existing goods pile `$2c`, a settlement or building,
+  crediting its leader's goods and `troops_reserve`, or a new `$4bb4e` pile);
+  `$1d36` unlinks every member through `$1b8c`; a live lead loses its group
+  offset; **`-48(A3)`, the sub-record's owner side, is cleared**; `$3ce8` makes
+  sub-record 0 the side's current group; `$187d8` redraws the local side's
+  panel.
+- For a captain group whose side's command-slot state is 8 or 6, `$71ae`
+  re-arms every command slot. The state is read at `$58016 + 3*side + 4`
+  (`$28e4: mulu #$3`), not `6*side`, so side 2 reads side 1's slot and side 1
+  reads its own order byte (confirmed on the real CPU by `k5_s1_1_cmd8`). That
+  this is a bug is inferred.
+
+Clearing `-48` of the local side's sub-record 0 is how the player loses a land
+(`strategy.md` "How a land ends"); one natural corpus state is exactly that
+(`k60_x1`, land 60, step 94,725,510 after `run/k60_s4.snap`).
+
+### [Proven] — the lord's work order `$5cde`, vs the real 68000 (122nd pass)
+
+`tools/pm_fsm_ref.py` `call_5cde`. Differential test
+`reversing/powermonger/py/diff_5cde.py`: **768/768 tracked bytes identical over
+47 states** (32 natural, 15 poked or with a register preset), 15 branch tags,
+and the returned `D2`/`D3`/`D4` low words 85/85. The earlier name "settlement
+herd-op assessment" undersold it: `$5cde` chooses the lord's whole work order.
+Callers: the settlement heartbeat (`$1589a`, `D1 = 14(marker) & 3`) and the
+group-order handler (`$5fc0`, `D1` = the `$30fe` result). `A0` = the leader.
+
+1. Walk the lord's settlement chain (`2(L)`, next `+8`) for a capital
+   (`+7 == 7`). No settlements or no capital: return 0 (27 of 32 natural hits).
+2. Find the nearest live herd op in `$57f68..$57fb8` by `max(|dx|,|dy|)` from
+   the lord's cell `4(L)`, and read the cell's control byte `$3f86c[4(L)]`.
+3. **Build** (`D2 = $40`) when a site is already under way (`18(L) != 0`), or
+   the control byte is `>= $10` and either no herd op is within 20 cells or
+   `$57fed` bit 0 is set. A new site allocates a `$4f916` record
+   (`$51536 += 18`, capped at `$1c20`) on the cell of the first unit with flags
+   bit 0, owner = the lord's side, byte6 `$1e`, and links it into the `$47970`
+   bucket through `$16808` with a negative offset from `$51b66`; `18(L)` keeps
+   it. **Herd** (`D2 = $3e`) when a herd op is within 20 cells: `12(L)` from
+   `D1` and the OR of the units' flags (`$e`/6, `$a`/8, 2) and `20(L) :=` that
+   herd op. **Fallback** (`D2 = $6a`, `12(L) := $c`) otherwise, including a
+   wanted build with no flagged unit or a full table.
+4. Every non-zero path reloads `16(L) := $580a6[side].word8 + 4` (`+$2000` if
+   `12(L) >= $e` and the reload is not below the old value) and stamps
+   `31 := D2`, `46 := capital`, `36 := D4` (and `39 := 4` when `D4 == 0`) on
+   every eligible unit of every settlement in the chain (owner `> 0`, flags
+   bits 6 and 4 clear, mode not `$5c`/`$60`/`$62`). The unit loop has no
+   empty-chain test, so a settlement with no units stamps object slot 0.
+
+Natural states: 27 no-capital exits, 4 herd, 1 fallback. No natural state took
+the build side (the control byte was 1..6 and `18(L)` 0 in all of them), so the
+build arms are proven on poked states only and how often lords build in play
+is not measured. Not reached: the `31 == $62` filter, and the `12 := 6` /
+`12 := 8` arms.
+
+### [Proven] — the revolt chain `$550e` → `$5c2c` → `$25d6`, vs the real 68000 (122nd pass)
+
+`tools/pm_fsm_ref.py` `call_550e`, `call_5c2c`, `call_25d6` (+ `rng_12c9a`,
+and the `$2776` family above). Differential test
+`reversing/powermonger/py/diff_revolt.py`: **1778/1778 tracked bytes identical
+over 49 states, 24 branch families**: all 27 natural `$550e` calls on lands 0,
+5 (two runs), 25 and 60, the 4 natural `$5c2c`/`$25d6` calls, and 18 pokes.
+The corpus runs `$25d6` into `$2776`, so it also checks the `$2776` family
+against a second, independent corpus.
+
+- `$550e` (A0 = leader, A1 = the object whose side byte is the new side): the
+  mechanics are in `economy.md` §3. Of the 27 natural calls, 11 come from the
+  heartbeat (loyalty 600-608) and 16 from mode `$2c` (`$53f6`, loyalty 0-292).
+- `$5c2c` (A1 = the man): nothing if his settlement's leader is on his side;
+  `$4bc8` if he leads a group that still has members or the leader has no
+  `troops_field`; otherwise he defects and `$25d6` runs.
+- `$25d6` (A1 = the man, D3 = mode): dissolves his old group (`$2776`) or takes
+  one off his old leader's `troops_field`; takes his new side's first free
+  sub-record (none: returns 0); makes him its lead (`42(man)`, flags bit 4,
+  `-12(sub)`), `0(sub) := 6`, `36(sub) := $5fff` if the side's command slot is
+  in state 4 (else 0), `-48(sub) :=` the side, `72(sub) := rng & $580a6[side].w12`,
+  `60(sub) := 3`, then `$3c08`. D3 = 2 would bump `$12abe`/`$12acc`, but
+  `$5c2c` sets D2, not D3.
+
+Not reached: `$187d8` from `$25d6` on the player's side with D3 ≠ 0 (asserted
+off in the transcription), and the RNG's zero-seed reload.
+
 ## Open threads
 
-- **The strategic layer** — decoded in `strategy.md`. Still open there: tracing
-  the AI from a *live* enemy captain, the `$67d0` campaign hook mission-file
-  format, and the `$580a6` per-side assessment / diplomacy subsystem
-  (`$2200`–`$3500`).
+- **The strategic layer** — decoded in `strategy.md`, including the natural
+  `$661a` decisions and how a land ends. Still open there: the `$580a6`
+  per-side assessment / diplomacy subsystem (`$2200`–`$3500`).
 - **`$5778` / combat — mechanism now closed** (73rd pass, above + `strategy.md`
-  "Combat"). Remaining static-only: what writes `field44` (the melee-damage
-  input — `>= 6` collapses the drain to `1`/tick), the `group.field60` discipline
-  value's own source, and the
-  invention level → projectile `type` byte (only `type $12` was seen; it is the
-  one type that does an area hit on expiry).
+  "Combat"). `field44` is written only by the world build (`$2452`/`$2500`,
+  from the side block) and the equip paths `$16124`/`$159de` (codes 2/4/6);
+  the projectile type is `$28` for a bow (6) and `$12` for `$e`/`$10`, a value
+  no writer produces, so `$12` is unreachable (`port/SPEC.md` "Why 18 and 28
+  are missing"). Still open: the `group.field60` discipline value's own
+  source.
 - `$51538` group-order record: `strategy.md` has the stride (`$13c`), the header
   (pending long / type / param), the six interleaved objective slots and the
   `base+$4c` / `base+$64` execution sub-records. Still open: the full field set.

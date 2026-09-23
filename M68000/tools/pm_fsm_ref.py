@@ -26,8 +26,11 @@ rotate.
 Records with a negative owner (dead men) run $1623c (121st, call_1623c).
 
 Regroup / group-teardown paths ($3c08 / $4bc8 / $2776 / $1b8c / $5cde / $550e /
-$5c2c / $15302 / $1518a) are ASSERTED OFF - reconstruct() raises AssertionError
-if a state ever reaches one, so a corpus mistake cannot pass silently.
+$5c2c / $15302 / $1518a) are ASSERTED OFF inside reconstruct() - it raises
+AssertionError if a state ever reaches one, so a corpus mistake cannot pass
+silently.  $2776, $5cde and the $550e/$5c2c/$25d6 chain are proven as
+standalone routines (122nd, call_* at the end of this file, each callcapped
+directly), not yet wired into reconstruct().
 
 Transcribed line-for-line + raw-byte-verified from the disassembly in
 scratchpad/pm9{3,4,5,6}/disasm/ (base 0).  Records whose mode is not covered
@@ -98,6 +101,17 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 #   $4bc8    call_4bc8              1669    115th/116th  Proven, fully, all 3 real call sites
 #   $1623c   call_1623c             1747    121st        Proven (+ $16376 / $16392 / $45ee leaves;
 #                                                         dying records, natural corpus 275/275)
+#   $2776    call_2776               2155   122nd        Proven (4119/4119, 28 states; diff_2776.py)
+#   $39d4    call_39d4               1967   122nd        Proven via $2776 (D0 = D7 = 0 arms only)
+#   $1d36    call_1d36               2093   122nd        Proven via $2776
+#   $3ce8    call_3ce8               2115   122nd        Proven via $2776 (tracked writes only)
+#   $187d8   call_187d8              2128   122nd        Proven via $2776 (tracked part: its $3ce8 call)
+#   $71ae    call_71ae               2139   122nd        Proven via $2776 (tracked part)
+#   $5cde    call_5cde               2210   122nd        Proven (768/768, 47 states; diff_5cde.py)
+#   $12c9a   rng_12c9a               2397   122nd        Proven via $25d6
+#   $550e    call_550e               2408   122nd        Proven (diff_revolt.py 1778/1778, 49 states)
+#   $5c2c    call_5c2c               2437   122nd        Proven (diff_revolt.py)
+#   $25d6    call_25d6               2456   122nd        Proven (diff_revolt.py; player-side $187d8 arm asserted off)
 #
 # Not indexed: pure-arithmetic/plumbing helpers with no standalone 68k
 # routine identity of their own (s8/s16/u16/_swap/_movew/_divu/_trig/_sin/
@@ -106,9 +120,8 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 # apply_callcap_delta) - their correctness rides on whichever indexed
 # routine calls them.
 #
-# Still Corroborated-not-Proven and NOT covered by this file at all:
-# $2776, $5cde (see reversing/powermonger/ai.md and the
-# atari-st-emulator-next-instructions memory entry's RESUME block).
+# Still Corroborated-not-Proven: the $5778-reached $1b8c call site (see
+# reversing/powermonger/ai.md).
 # ============================================================================
 
 import struct
@@ -1909,3 +1922,575 @@ def apply_callcap_delta(base_ram, mem_list):
     for a, b0, b1 in mem_list:
         out[a] = b1
     return out
+
+
+# ============================================================================
+# 122nd pass: the group dissolve $2776 and the lord's work order $5cde.
+# Proven vs the real 68000 by callcap of each routine directly:
+#   reversing/powermonger/py/diff_2776.py  4119/4119 over 28 states
+#   reversing/powermonger/py/diff_5cde.py   768/768 over 47 states (+ D2/D3/D4 85/85)
+# Transcribed from scratchpad/pm122/game.asm by the pm122 agents `dissolve`
+# and `herdop`; reconciled and re-run from fresh callcaps before merging.
+# ============================================================================
+SIDE_REC = 0x13c                          # $51538 side-record stride
+FX_LO, FX_HI = 0x4c12c, 0x4c5f2           # 26-byte effect records, 47 slots
+DROP_LO, DROP_HI = 0x4bb4e, 0x4bdee       # 28-byte goods-drop records, 24 slots
+LOCAL_SIDE = 0x57ffe
+SEL_GROUP = 0x57fd2
+CMD = 0x58016                             # 5 command slots x 6 bytes
+SETTL_COUNT = 0x51536                     # word: byte offset of the next free $4f916 slot
+HERD_OPS_END = 0x57fb8
+CELLCTRL = 0x3f86c                        # per-cell control byte
+SIDE_TAB = SIDE_ASSESS
+FLAGS_57FED = 0x57fed
+
+# which $2776 arms ran (branch tags for diff_2776.py) and the leader record the
+# $3b32 arm credited (corpus-building aid); cleared by the caller
+DISSOLVE_TRACE = []
+DISSOLVE_INFO = {}
+
+
+def _fx_cell(m, A1):
+    """$27ac..$27b8 / $2820..$282c: D0 = word 10(A1); D0.b = byte 8(A1);
+    add.b D0,D0 x2 ; lsr.w #2,D0."""
+    d0 = (m.wu(A1 + 10) & 0xff00) | m.bu(A1 + 8)
+    lo = ((d0 & 0xff) << 2) & 0xff
+    return ((d0 & 0xff00) | lo) >> 2
+
+
+def _lsr(v, n):
+    n &= 63                                   # lsr.w Dn: count mod 64
+    return 0 if n >= 16 else (v & 0xffff) >> n
+
+
+# ---------------------------------------------------------------- $39d4
+def call_39d4(m, A3, D0, D7):
+    """$39d4: hand the group's carried goods (8 word arrays at 84(A3)+12j) and
+    36(A3) to whatever lies on the lead's cell: an existing goods-drop ($2c),
+    a settlement/building (byte6 2 or $10: its leader record), else a fresh
+    $4bb4e drop record.  D0 = shift (the fraction handed over), D7 = 1: skip
+    the goods arrays, 2: skip 36(A3).  $2776 calls it with D0 = D7 = 0."""
+    A1 = OBJ + s16(m.wu(A3 - 12))            # lea $51b66 ; adda.w -12(A3),A1
+    if m.bu(A1 + 7) & 0x20:                  # btst #5,7(A1) ; bne $3aee
+        DISSOLVE_TRACE.append("39d4_bit5")
+        if D7 != 1:                           # $3aee cmp.w #1,D7 ; beq $3b24
+            for j in range(8):                # $3afa .. cmp.w #$60,D1
+                a = A3 + 84 + 12 * j
+                v = m.wu(a)
+                m.ww(a, v - _lsr(v, D0))      # lsr.w D0,D4 ; sub.w D4,84(A3,D1)
+            if s8(m.bu(A1 + 44)) >= 0x0e:     # cmpi.b #$e,44(A1) ; blt $3b1e
+                m.wb(A1 + 44, 0)
+        if D7 != 2:                           # $3b1e cmp.w #2,D7 ; beq $3b2e
+            v = m.wu(A3 + 36)
+            m.ww(A3 + 36, v - _lsr(v, D0))    # $3b24
+        return
+    D6 = (m.wu(A1 + 10) >> 2) & 0x1fc0       # move.w 10(A1),D6 ; lsr.w #2 ; andi.w #$1fc0
+    D6 = (D6 & 0xff00) | ((D6 + m.bu(A1 + 8)) & 0xff)   # add.b 8(A1),D6
+    D1 = m.wu(BUCKETS + 2 * D6)   # move.w 0(A0,D1.w),D1
+    A0 = None
+    kind = None
+    while D1 != 0:                            # $3a0a
+        A0 = OBJ + s16(D1)
+        b6 = m.bu(A0 + 6)
+        if b6 == 0x2c:                        # cmpi.b #$2c,6(A0) ; beq $3a60
+            kind = "drop"; break
+        if b6 in (0x02, 0x10):                # beq $3b32 (x2)
+            kind = "settl"; break
+        D1 = m.wu(A0 + 0)                     # move.w 0(A0),D1 ; bne $3a0a
+    if kind == "settl":
+        DISSOLVE_TRACE.append("39d4_settl")
+        _39d4_settl(m, A3, A1, A0, D0, D7)
+        return
+    if kind is None:                          # $3a34 : find a free drop record
+        A0 = DROP_LO
+        while s8(m.bu(A0 + 6)) > 0:           # tst.b 6(A0) ; ble $3a50
+            A0 += 28
+            if A0 == DROP_HI:                 # cmpa.l #$4bdee,A0 ; bne ; bra $3ae8
+                DISSOLVE_TRACE.append("39d4_nofree")
+                return
+        for d in range(0, 0x12, 2):           # $3a50 clr.w 10(A0,D1.w), D1 = 0..$10
+            m.ww(A0 + 10 + d, 0)
+        DISSOLVE_TRACE.append("39d4_new")
+    else:
+        DISSOLVE_TRACE.append("39d4_drop")
+    # $3a60
+    D5 = 0
+    D4 = 0
+    if D7 != 1:                               # cmp.w #1,D7 ; beq $3aae
+        for j in range(8):                    # D1 = 12j, D3 = 2j
+            a = A3 + 84 + 12 * j
+            D4 = m.wu(a)
+            if D4 == 0:                       # beq $3a80
+                continue
+            D4 = _lsr(D4, D0)
+            m.ww(a, m.wu(a) - D4)             # sub.w D4,84(A3,D1.w)
+            m.ww(A0 + 12 + 2 * j, m.wu(A0 + 12 + 2 * j) + D4)   # add.w D4,12(A0,D3.w)
+            D5 = u16(D5 + m.wu(A0 + 12 + 2 * j))                # add.w 12(A0,D3.w),D5
+        b44 = s8(m.bu(A1 + 44))
+        if b44 >= 0x0e:                       # cmpi.b #$e,44(A1) ; blt $3aa8
+            DISSOLVE_TRACE.append("b44")
+            m.ww(A0 + 10 + b44, m.wu(A0 + 10 + b44) + 1)   # addi.w #1,10(A0,D3.w)
+            m.wb(A1 + 44, 0)                  # clr.b 44(A1)
+            D5 = u16(D5 + 1)
+        if D7 == 2:                           # $3aa8 cmp.w #2,D7 ; beq $3abc
+            D5 = u16(D5 + D4)
+            return _39d4_link(m, A0, D5, D6)
+    # $3aae
+    D4 = _lsr(m.wu(A3 + 36), D0)
+    m.ww(A3 + 36, m.wu(A3 + 36) - D4)        # sub.w D4,36(A3)
+    m.ww(A0 + 10, m.wu(A0 + 10) + D4)        # add.w D4,10(A0)
+    D5 = u16(D5 + D4)                         # $3abc add.w D4,D5
+    _39d4_link(m, A0, D5, D6)
+
+
+def _39d4_link(m, A0, D5, D6):
+    if D5 == 0:                               # beq $3ae8
+        return
+    if m.bu(A0 + 6) == 0x2c:                  # cmpi.b #$2c,6(A0) ; beq $3ae8
+        return
+    DISSOLVE_TRACE.append("drop_link")
+    m.wb(A0 + 6, 0x2c)                        # move.b #$2c,6(A0)
+    D1 = u16(A0 - OBJ)                        # subi.l #$51b66,D1
+    m.ww(A0 + 8, D6)                          # move.w D6,8(A0)
+    call_16808(m, D6, D1)                     # push D1, push D6 ; jsr $16808
+
+
+def _39d4_settl(m, A3, A1, A0, D0, D7):
+    """$3b32: the lead stands on a settlement (byte6 2/$10): goods go to the
+    settlement's leader record."""
+    A0 = LEADERS + s16(m.wu(A0 + 14))        # move.w 14(A0),D1 ; lea $4e514 ; adda.w D1,A0
+    DISSOLVE_INFO["leader"] = A0
+    if m.bu(A0 + 0) == m.bu(A3 - 47):         # cmp.b -47(A3),D3 ; bne $3b4e
+        DISSOLVE_TRACE.append("settl_own")
+        m.ww(A0 + 14, m.wu(A0 + 14) - 8)      # subi.w #$8,14(A0)
+    if D7 != 1:                               # $3b4e
+        for j in range(8):
+            a = A3 + 84 + 12 * j
+            D4 = m.wu(a)
+            if D4 == 0:                       # beq $3b7e
+                continue
+            D4 = _lsr(D4, D0)
+            m.ww(a, m.wu(a) - D4)
+            D2 = s16(m.bu(A0 + 24 + j) + D4)  # move.w #0,D2 ; move.b 24(A0,D3),D2 ; add.w D4,D2
+            if D2 > 0xff:                     # cmp.w #$ff,D2 ; ble $3b7a
+                DISSOLVE_TRACE.append("clamp")
+                D2 = 0xff
+            m.wb(A0 + 24 + j, D2)
+        b44 = s8(m.bu(A1 + 44))
+        if b44 >= 0x0e:                       # $3b8c
+            DISSOLVE_TRACE.append("b44")
+            D3 = (u16(b44 - 2)) >> 1          # subi.w #2,D3 ; lsr.w #1,D3
+            if m.bu(A0 + 24 + D3) != 0xff:    # cmpi.b #$ff ; beq $3bac
+                m.wb(A0 + 24 + D3, m.bu(A0 + 24 + D3) + 1)
+            m.wb(A1 + 44, 0)
+    if D7 != 2:                               # $3bb0
+        D4 = _lsr(m.wu(A3 + 36), D0)
+        m.ww(A3 + 36, m.wu(A3 + 36) - D4)
+        m.ww(A0 + 6, m.wu(A0 + 6) + D4)       # add.w D4,6(A0)  (troops_reserve)
+
+
+# ---------------------------------------------------------------- $1d36
+def call_1d36(m, A2, D2):
+    """$1d36: unlink the first D2 members of group A2's roster through $1b8c
+    (D1 = 1, so each unlink also re-routes the remaining roster via $1d70)."""
+    if u16(D2) == 0:                          # tst.w D2 ; beq $1d6a
+        return
+    A0 = OBJ + s16(m.wu(A2 - 12))            # lead
+    D0 = m.wu(A2 - 36)                        # roster head ; beq $1d6a
+    if D0 == 0:
+        return
+    while True:                               # $1d4e
+        A1 = OBJ + s16(D0)
+        DISSOLVE_TRACE.append("1d36_member")
+        call_1b8c(m, A0, A1, 1)               # move.w #1,D1 ; bsr $1b8c
+        D2 = u16(D2 - 1)
+        if D2 == 0:                           # subi.w #1,D2 ; beq $1d6a
+            return
+        D0 = m.wu(A1 + 26)                    # move.w 26(A1),D0 ; bne $1d4e
+        if D0 == 0:
+            return
+
+
+# ---------------------------------------------------------------- $3ce8
+def call_3ce8(m, D1, D2):
+    """$3ce8: make sub-record D2 of side D1 that side's current group
+    ($58042[side]); for the local side also the selected group $57fd2.  The
+    icon redraws ($189f8 into *$e0d4) and the dead code at $3d10 are not
+    tracked."""
+    D1 = u16(D1)
+    D3 = u16(D1 * SIDE_REC + 0x4c + D2)       # mulu #$13c ; addi.w #$4c ; add.w D2
+    m.ww(0x58042 + s16(u16(D1 * 2)), D3)      # move.w D3,0(A1,D4.w)
+    if D1 == m.wu(LOCAL_SIDE):                # cmp.w $57ffe,D1 ; bne $3d9e
+        m.ww(SEL_GROUP, D3)                   # move.w D3,$57fd2
+
+
+# ---------------------------------------------------------------- $187d8
+def call_187d8(m):
+    """$187d8: redraw the local side's group panel.  Tracked effect only:
+    the $3ce8 call at $1888a for the selected group $57fd2."""
+    DISSOLVE_TRACE.append("187d8")
+    D2 = m.wu(SEL_GROUP)                      # move.w $57fd2,D2
+    D1 = m.wu(GROUP + s16(D2) - 48)           # move.w -48(A0,D2.w),D1
+    D2 = (D2 % SIDE_REC) - 0x4c               # divu #$13c ; swap ; subi.w #$4c
+    call_3ce8(m, D1, u16(D2))
+
+
+# ---------------------------------------------------------------- $71ae
+def call_71ae(m):
+    """$71ae: $1c328 (clears $58368/$5836a), $c3f6 (a dialog), then every
+    command slot's state byte (+4, stride 6, 5 slots): 2/6 -> 2, other
+    non-zero -> 4."""
+    DISSOLVE_TRACE.append("71ae")
+    m.ww(0x58368, 0)                          # $1c328 clr.w 0(A0) ; clr.w 2(A0)
+    m.ww(0x5836a, 0)
+    A0 = CMD
+    for _ in range(5):                        # dbf D1 (D1 = 4)
+        v = m.bu(A0 + 4)
+        if v != 0:
+            m.wb(A0 + 4, 2 if v in (2, 6) else 4)
+        A0 += 6
+
+
+# ---------------------------------------------------------------- $2776
+def call_2776(m, A3):
+    A1 = FX_LO                                # lea $4c12c,A1
+    if ((A3 - 0x51584) % SIDE_REC) == 0:      # divu #$13c ; swap ; tst.w ; bne $27d8
+        DISSOLVE_TRACE.append("captain")
+        D2 = m.wu(A3 - 48) & 0xff             # cmp.b 5(A1),D2
+        while A1 != FX_HI:                    # $2796
+            if m.bu(A1 + 5) == D2 and m.bu(A1 + 5) != 0:
+                DISSOLVE_TRACE.append("fx_clear")
+                bucket_unlink(m, _fx_cell(m, A1), u16(A1 - OBJ))   # jsr $16778
+                m.wb(A1 + 6, 0)               # clr.b 6(A1)
+            A1 += 26
+    else:
+        DISSOLVE_TRACE.append("member")
+        D2 = m.wu(A3 - 12)                    # move.w -12(A3),D2
+        while A1 != FX_HI:                    # $27dc
+            if m.bu(A1 + 6) != 0 and m.bu(A1 + 5) != 0 and m.wu(A1 + 20) == D2:
+                DISSOLVE_TRACE.append("fx_clear")
+                if m.bu(A1 + 5) == (m.wu(LOCAL_SIDE) & 0xff):      # cmp.b 5(A1),D0
+                    DISSOLVE_TRACE.append("fx_local")
+                    D0 = ((A3 - GROUP) % SIDE_REC) - 0x4c
+                    m.ww(0x57fd8 + s16(u16(D0)), 0)                # clr.w 0(A0,D0.w)
+                bucket_unlink(m, _fx_cell(m, A1), u16(A1 - OBJ))
+                m.wb(A1 + 6, 0)
+            A1 += 26
+    # $284a : two $1ba3e sound calls (untracked)
+    m.ww(A3 + 36, m.wu(A3 + 36) & 0x3ff)      # andi.w #$3ff,36(A3)
+    call_39d4(m, A3, 0, 0)                    # D0 = D7 = 0
+    call_1d36(m, A3, m.wu(A3 - 24))           # movea.l A3,A2 ; move.w -24(A3),D2
+    A1 = OBJ + s16(m.wu(A3 - 12))
+    if s8(m.bu(A1 + 5)) > 0:                  # tst.b 5(A1) ; ble $28aa
+        DISSOLVE_TRACE.append("lead_alive")
+        m.ww(A1 + 42, 0)
+    D1 = m.wu(A3 - 48)                        # move.w -48(A3),D1
+    m.ww(A3 - 48, 0)                          # clr.w -48(A3)
+    call_3ce8(m, D1, 0)                       # move.w #0,D2 ; jsr $3ce8
+    if D1 == m.wu(LOCAL_SIDE):                # cmp.w $57ffe,D1 ; bne $28ca
+        call_187d8(m)
+    if ((A3 - GROUP) % SIDE_REC) - 0x4c == 0:  # $28ca .. bne $2900
+        A0 = CMD + s16(u16(D1 * 3))           # mulu #$3,D1 ; adda.w D1,A0  (3, not 6)
+        if m.bu(A0 + 4) in (8, 6):
+            call_71ae(m)
+
+
+# ---------------------------------------------------------------- $5cde
+# The lord's work order (build $40 / herd $3e / fallback $6a).
+# Entry: A0 = leader ($4e514 + 32k), D1.w = selector (14(marker) & 3 from the
+# $1589a heartbeat caller, never 3; the $30fe result from the $5fc0 caller).
+# Exit: D2.w = order (0 = nothing done, Z set), D3.w = capital settlement as an
+# OBJ-relative offset, D4.w = order argument; D5-D7/A0-A3 restored.
+# call_5cde returns (D2, D3, D4) so the gate can check them against callcap.
+def _adda(base, off):
+    """base + sign-extended word offset (adda.w)."""
+    return (base + s16(off)) & 0xffffffff
+
+
+def call_5cde(m, A0, D1, A5=0):
+    """Returns (D2, D3, D4) low words.  Memory effects applied to m."""
+    D1 = u16(D1)
+    # $5ce2..$5d00: find the capital (nation_kind == 7) in the leader's
+    # settlement chain (head 2(A0), next 8(settl)); none -> return 0
+    D0 = m.wu(A0 + 2)
+    if D0 == 0:                                         # $5ce8 beq $5f98
+        return (0, None, None)
+    while True:
+        if m.bu(_adda(SETTL, D0) + 7) == 7:                # $5cf2 cmpi.b #7,7(A2,D0.w)
+            break
+        D0 = m.wu(_adda(SETTL, D0) + 8)                    # $5cfa
+        if D0 == 0:                                     # $5d00 beq $5f98
+            return (0, None, None)
+    A2 = _adda(SETTL, D0)                                  # $5d04 capital settlement
+
+    # $5d06..$5d30: D5 = OR of flags byte 7 over every unit of every
+    # settlement of this leader; A5 = last unit visited
+    D5 = 0
+    D0 = m.wu(A0 + 2)
+    while True:
+        A4 = _adda(SETTL, D0)                              # $5d0c
+        D0 = m.wu(A4 + 10)
+        while D0 != 0:                                  # $5d18
+            A5 = _adda(OBJ, D0)
+            D5 |= m.bu(A5 + 7)                          # $5d22
+            D0 = m.wu(A5 + 24)
+        D0 = m.wu(A4 + 8)                               # $5d2c
+        if D0 == 0:
+            break
+
+    # $5d32..$5d7e: nearest live herd op to the leader's cell 4(A0),
+    # Chebyshev distance max(|dx|,|dy|); D2 = $7fff if none, A5 = that op
+    D6 = m.wu(A0 + 4)
+    D7 = D6 >> 6                                        # lsr.w #6,D7
+    D6 &= 0x3f
+    D2 = 0x7fff
+    for A4 in range(HERD_OPS, HERD_OPS_END, 8):
+        D4 = m.wu(A4)
+        if D4 == 0:                                     # $5d4e
+            continue
+        D0 = D4 & 0x3f
+        D4 >>= 6
+        D0 = abs(s16(D0 - D6))                          # $5d58 sub/bpl/neg
+        D4 = abs(s16(D4 - D7))
+        if not (D0 > D4):                               # $5d64 cmp.w D4,D0 ; bgt
+            D0 = D4                                     # exg
+        if D2 > D0:                                     # $5d6a cmp.w D0,D2 ; ble skip
+            D2 = D0
+            A5 = A4
+
+    D3 = m.bu(_adda(CELLCTRL, m.wu(A0 + 4)))               # $5d80 cell control byte
+
+    # $5d8e..$5dac: dispatch
+    if m.wu(A0 + 18) != 0:
+        build = True                                    # $5d92 bne $5db0
+    elif D3 < 0x10:
+        build = False                                   # $5d98 blt $5e80
+    elif D2 > 0x14:
+        build = True                                    # $5da0 bgt $5db0
+    elif m.bu(FLAGS_57FED) & 1 == 0:
+        build = False                                   # $5dac beq $5e80
+    else:
+        build = True
+
+    if build:
+        # $5db0: order word 12(A0)
+        m.ww(A0 + 12, 0x10 if (D5 & 2 and D1 == 0) else 0x04)
+        D4 = m.wu(A0 + 18)
+        if D4 != 0:                                     # $5dce: already building
+            D2, path = 0x40, "tail"
+        else:
+            # $5dd8..$5e06: first unit with flags bit 0, any settlement
+            found = None
+            D0 = m.wu(A0 + 2)
+            while found is None:
+                A4 = _adda(SETTL, D0)
+                D0 = m.wu(A4 + 10)
+                while D0 != 0:
+                    A5 = _adda(OBJ, D0)
+                    if m.bu(A5 + 7) & 1:                # $5df2 btst #0,7(A5)
+                        found = A5
+                        break
+                    D0 = m.wu(A5 + 24)
+                if found is not None:
+                    break
+                D0 = m.wu(A4 + 8)
+                if D0 == 0:
+                    break
+            if found is None:
+                return _fallback_5cde(m, A0, A2)             # $5e06 bra $5ee4
+            D0 = m.wu(SETTL_COUNT)
+            if s16(D0) >= 0x1c20:                       # $5e10 cmp.w #$1c20 ; bge
+                return _fallback_5cde(m, A0, A2)
+            # $5e18..$5e7a: allocate a new settlement record
+            m.ww(SETTL_COUNT, D0 + 0x12)
+            D4 = u16((m.bu(A5 + 43) << 6) & 0xffff)     # move.b 43 ; lsl.w #6
+            D4 = (D4 & 0xff00) | ((D4 + m.bu(A5 + 42)) & 0xff)   # add.b 42(A5),D4
+            A4 = _adda(SETTL, D0)
+            m.wb(A4 + 5, m.bu(A0 + 0))                  # owner := leader side
+            m.wb(A4 + 6, 0x1e)
+            m.ww(A4 + 12, D4)                           # cell of the flagged unit
+            m.ww(A4 + 8, 0x10)
+            m.ww(A4 + 10, 0x0a)
+            m.ww(A4 + 14, A0 - LEADERS)
+            m.ww(A0 + 18, D0)                           # leader now "building" it
+            D4 = D0
+            call_16808(m, m.wu(A4 + 12), u16(A4 - OBJ)) # into the $47970 bucket
+            D2 = 0x40
+    else:
+        # $5e80
+        if D2 > 0x14:
+            return _fallback_5cde(m, A0, A2)
+        if D1 == 0:
+            m.ww(A0 + 12, 0x0e if D5 & 2 else 0x06)     # $5e8e
+        elif D1 == 2:
+            m.ww(A0 + 12, 0x0a if D5 & 4 else 0x08)     # $5eaa
+        else:
+            m.ww(A0 + 12, 0x02)                         # $5ec0
+        m.ww(A0 + 20, u16(A5 - OBJ))                    # $5ed8
+        D4 = 0
+        D2 = 0x3e
+    return _tail_5cde(m, A0, A2, D2, D4)
+
+
+def _fallback_5cde(m, A0, A2):
+    # $5ee4
+    m.ww(A0 + 12, 0x0c)
+    return _tail_5cde(m, A0, A2, 0x6a, 0x16964 - 0x168ee)
+
+
+def _tail_5cde(m, A0, A2, D2, D4):
+    # $5efa
+    D3 = u16(A2 - OBJ)
+    side = s8(m.bu(A0 + 0)) & 0xffff                    # ext.w
+    D0 = (side * 0x20) & 0xffff                         # mulu #$20 (low word used)
+    A2s = _adda(SIDE_TAB, D0)
+    D0 = u16(m.wu(A2s + 8) + 4)
+    if s16(m.wu(A0 + 12)) >= 0x0e:                      # $5f1c blt skip
+        if not (s16(D0) < s16(m.wu(A0 + 16))):          # $5f24 cmp.w 16(A0),D0 ; blt
+            D0 = u16(D0 + 0x2000)
+    m.ww(A0 + 16, D0)
+    # $5f32..$5f96: hand the order to every unit of every settlement.  NB the
+    # unit loop has no head==0 test: an empty chain processes OBJ slot 0.
+    D0 = m.wu(A0 + 2)
+    while True:
+        A2 = _adda(SETTL, D0)
+        D0 = m.wu(A2 + 10)
+        while True:
+            A4 = _adda(OBJ, D0)                            # $5f42
+            ok = (s8(m.bu(A4 + 5)) > 0                  # $5f4a ble
+                  and not m.bu(A4 + 7) & 0x40
+                  and not m.bu(A4 + 7) & 0x10
+                  and m.bu(A4 + 31) not in (0x5c, 0x60, 0x62))
+            if ok:
+                m.wb(A4 + 31, D2)
+                m.ww(A4 + 46, D3)
+                m.ww(A4 + 36, D4)
+                if D4 == 0:                             # $5f84 bne
+                    m.wb(A4 + 39, 4)
+            D0 = m.wu(A4 + 24)
+            if D0 == 0:
+                break
+        D0 = m.wu(A2 + 8)
+        if D0 == 0:
+            break
+    return (D2, D3, D4)
+
+
+# ============================================================================
+# 122nd pass: the settlement revolt chain $550e -> $5c2c -> $25d6 (+ the game
+# LCG $12c9a).  Proven vs the real 68000 by callcap of each routine directly:
+#   reversing/powermonger/py/diff_revolt.py  1778/1778 over 49 states
+# Transcribed by the pm122 agent `revolt`; its own $2776/$39d4/$1d36/$3ce8
+# copies were dropped for the ones above (diff_2776.py), and the gate re-run
+# against them.  Two callers of $550e: $158cc (the mode-$7c heartbeat, loyalty
+# >= 600) and $53f6 (mode $2c -> $152f6 -> $4f68 -> $539a, 38(A1) == $12).
+#   $550e  in: A0 = leader, A1 = object whose 5(A1) is the new side, D3 = passed on
+#   $5c2c  in: A1 = the man, D3 = passed on
+#   $25d6  in: A1 = the man, D3 = mode (2 bumps $12abe/$12acc; $5c2c loads D2 := 2,
+#          not D3, so a defection never counts: a game bug, inferred)
+# $187d8 from $25d6 (player side, D3 != 0) is ASSERTED OFF: not reached.
+# ============================================================================
+RNG_SEED = 0x2df84                        # long
+CNT_A, CNT_B = 0x12abe, 0x12acc           # words in the program image, bumped by $25d6 (D3 == 2)
+
+
+def rng_12c9a(m):
+    """$12c9a: seed = long[$2df84] (0 -> $bc614e) * $bb40e62d mod 2^32 ($12d36
+    is a 32x32 low multiply); store; return (seed >> 8) & $7fff."""
+    seed = m.lu(RNG_SEED)
+    if seed == 0:                                   # bne $12caa
+        seed = 0xbc614e
+    seed = (seed * 0xbb40e62d) & 0xffffffff         # bsr $12d36
+    m.wl(RNG_SEED, seed)                            # move.l D0,$2df84
+    return (seed >> 8) & 0x7fff                     # lsr.l #8 ; andi.l #$7fff
+
+
+def call_550e(m, A0, A1, D3=0):
+    """$550e: the lord at A0 defects to side 5(A1)."""
+    D2 = m.bu(A1 + 5)                               # move.b 5(A1),D2
+    m.wb(A0 + 0, D2)                                # move.b D2,0(A0)
+    m.ww(A0 + 14, 0x12c)                            # move.w #$12c,14(A0)
+    A4 = 0                                          # suba.l A4,A4
+    flips = 0
+    D0 = m.wu(A0 + 2)                               # move.w 2(A0),D0 ; beq $558a
+    if not D0:
+        return "nochain"
+    while D0:
+        A2 = _adda(SETTL, D0)                          # $552a lea $4f916 ; adda.w D0,A2
+        if m.bu(A2 + 5) != D2:                      # cmp.b 5(A2),D2 ; beq $5570
+            m.wb(A2 + 5, D2)                        # move.b D2,5(A2)
+            flips += 1
+            D0 = m.wu(A2 + 10)                      # move.w 10(A2),D0 ; beq $5570
+            while D0:
+                A3 = _adda(OBJ, D0)                    # $5542 lea $51b66 ; adda.w D0,A3
+                if (m.bs(A3 + 5) > 0                # tst.b 5(A3) ; ble $556a
+                        and m.bu(A3 + 7) & 0x10     # btst #4,7(A3) ; beq $556a
+                        and m.bu(A3 + 31) in (0x8a, 0x3c)):   # cmpi.b #$8a / #$3c,31(A3)
+                    A4 = A3                         # $5568 movea.l A3,A4
+                D0 = m.wu(A3 + 24)                  # $556a move.w 24(A3),D0 ; bne $5542
+        D0 = m.wu(A2 + 8)                           # $5570 move.w 8(A2),D0 ; bne $552a
+    if A4:                                          # cmpa.l #0,A4 ; beq $558a
+        return "garr_" + call_5c2c(m, A4, D3)       # exg A1,A4 ; jsr $5c2c ; exg A1,A4
+    return "flip_nogarr" if flips else "sameside"
+
+
+def call_5c2c(m, A1, D3=0):
+    """$5c2c: if the man's settlement's leader is on another side, either
+    hand the contact to $4bc8 or defect the man and make him a group lead."""
+    A0 = _adda(SETTL, m.wu(A1 + 34))                   # lea $4f916 ; adda.w 34(A1),A0
+    A0 = _adda(LEADERS, m.wu(A0 + 14))                 # move.w 14(A0),D0 ; lea $4e514 ; adda.w D0,A0
+    if m.bu(A0) == m.bu(A1 + 5):                    # cmp.b 5(A1),D0 ; beq $5c7e
+        return "same"
+    D0 = m.wu(A1 + 42)                              # move.w 42(A1),D0 ; beq $5c6e
+    if D0:
+        A3 = _adda(GROUP, D0)
+        if m.wu(A3 - 36) != 0 or m.wu(A0 + 8) == 0: # tst.w -36(A3) ; bne $5c66 / tst.w 8(A0) ; bne $5c6e
+            call_4bc8(m, A0, A1)                    # $5c66 jsr $4bc8
+            return "4bc8"
+    m.wb(A1 + 5, m.bu(A0))                          # $5c6e move.b 0(A0),5(A1)
+    # move.w #$2,D2 : sets D2, but $25d6 tests D3 (scratchpad/pm122/agents/revolt: a game bug, inferred)
+    r = call_25d6(m, A1, D3)
+    return "25d6_" + r
+
+
+def call_25d6(m, A1, D3=0):
+    """$25d6: make the man at A1 the lead of a new group of side 5(A1)."""
+    if (D3 & 0xffff) == 2:                          # cmp.w #$2,D3 ; bne $25f0
+        m.ww(CNT_A, m.wu(CNT_A) + 1)                # addi.w #$1,$12abe
+        m.ww(CNT_B, m.wu(CNT_B) + 1)                # addi.w #$1,$12acc
+    # $25f0..$2618: two $1ba3e sound requests (untracked)
+    D0 = m.wu(A1 + 42)                              # move.w 42(A1),D0 ; beq $2630
+    if D0:
+        call_2776(m, _adda(GROUP, D0))                 # lea $51538 ; adda.w D0,A3 ; bsr $2776 ; bra $264a
+        pre = "2776_"
+    else:
+        pre = ""
+        A2 = _adda(SETTL, m.wu(A1 + 34))               # $2630 lea $4f916 ; adda.w 34(A1),A2
+        lead = _adda(LEADERS, m.wu(A2 + 14))           # move.w 14(A2),D0 ; lea $4e514,A2
+        m.ww(lead + 8, m.wu(lead + 8) - 1)          # $2644 subi.w #$1,8(A2,D0.w)
+    side = s8(m.bu(A1 + 5)) & 0xffff                # $264a move.b 5(A1),D0 ; ext.w
+    A2 = _adda(GROUP, (side * 0x13c) & 0xffff)         # mulu #$13c ; lea $51538 ; adda.w D0,A2
+    A0 = A2 + 76                                    # lea 76(A2),A0
+    k = 0
+    while m.wu(A0 - 48) != 0:                       # $2662 tst.w -48(A0) ; beq $267c
+        A0 += 2; k += 2                             # adda.w #2 ; addi.w #2,D0
+        if k == 12:                                 # cmp.w #$c,D0 ; bne $2662
+            return pre + "full"                     # moveq #0,D3 ; bra $276e
+    m.ww(A1 + 42, A0 - GROUP)                       # $267c move.w D2,42(A1)
+    m.wb(A1 + 7, m.bu(A1 + 7) | 0x10)               # bset #4,7(A1)
+    m.ww(A0 - 12, (A1 - OBJ) & 0xffff)              # move.w D1,-12(A0)
+    m.ww(A0 + 48, m.wu(A2 + 64))                    # move.w 64(A2),48(A0)
+    m.ww(A0 + 0, 6)                                 # move.w #$6,0(A0)
+    m.ww(A0 + 36, 0)                                # move.w #$0,36(A0)
+    if m.bu(CMD + m.bu(A1 + 5) * 6 + 4) == 4:   # mulu #6 ; cmpi.b #$4,4(A5,D1.w)
+        m.ww(A0 + 36, 0x5fff)                       # move.w #$5fff,36(A0)
+    sd = s8(m.bu(A1 + 5))                           # $26ca move.b 5(A1),D1 ; ext.w
+    m.ww(A0 - 48, sd)                               # move.w D1,-48(A0)
+    if sd == s16(m.wu(LOCAL_SIDE)) and (D3 & 0xffff):  # cmp.w $57ffe,D1 ; bne $2740 ; tst.w D3
+        # $26dc: D3.b == 2 -> 4 sound requests (untracked); then jsr $187d8
+        raise AssertionError("$25d6 player-side D3 != 0 -> $187d8 UI: not modelled")
+    A3 = SIDE_ASSESS + ((sd & 0xffff) * 0x20 & 0xffff)  # $2740 mulu #$20 ; adda.w D0,A3
+    m.ww(A0 + 72, rng_12c9a(m) & m.wu(A3 + 12))     # jsr $12c9a ; and.w 12(A3),D0 ; move.w D0,72(A0)
+    m.ww(A0 + 60, 3)                                # move.w #$3,60(A0)
+    call_3c08(m, A1)                                # jsr $3c08
+    return pre + "new"

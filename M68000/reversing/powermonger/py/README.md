@@ -20,4 +20,7 @@ Run everything from `M68000/`. Shell scripts write under `$PM_WORK` (default
 | `season_check.fsx <ram>...` | `Season.table`/`fading` vs the RAM's `$2e000` table |
 | `parity.py <ram> <port.bin>` | `pm_render_ref.py` vs the F# port, pixel for pixel |
 | `diff_1623c.py` | the `$1623c` differential-test gate (275/275; corpus in `scratchpad/pm121/corpus_1623c`) |
+| `diff_2776.py` | the `$2776` group-dissolve gate (4119/4119 over 28 states; corpus in `scratchpad/pm122/agents/dissolve/`) |
+| `diff_5cde.py` | the `$5cde` work-order gate (768/768 over 47 states + returned D2/D3/D4 85/85; corpus in `scratchpad/pm122/agents/herdop/corpus`) |
+| `diff_revolt.py` | the `$550e` → `$5c2c` → `$25d6` revolt-chain gate (1778/1778 over 49 states; corpus in `scratchpad/pm122/agents/revolt/`) |
 | `snap2ram.py <snap>...` | writes `<name>.ram` beside each snapshot |

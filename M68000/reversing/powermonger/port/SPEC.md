@@ -995,6 +995,21 @@ siege-engine overlays, ported from the code but never seen on screen (18 and 28
 not ported); the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`), which a
 byte6 18 hit on a settlement building sets (`$596a`).
 
+Why 18 and 28 are missing from the runs (122nd, from the writers): `$52fc`
+fires byte6 18 when the shooter's `44(obj)` is `$e` or `$10`, and byte6 40 when
+it is 6. Nothing ever writes `$e` or `$10` there. The writers of `44` are the
+world build (`$2452` copies byte 21 of the side block `$580a6[side]` into the
+side's first unit, but `$245c` then overwrites it with 6; `$2500` gives each
+follower byte 23, which is 0, 2, 4 or 6 in all 195 campaign-table entries) and
+the equip paths `$16124` / `$159de`, which write 2, 4 or 6. So byte6 18 is
+unreachable in this build: the `$e`/`$10` arm of `$52fc` is dead, and so are
+the other `44 >= $e` tests (`$3ffc`, `$39d4`). The four run lands' men carry
+only `44 ∈ {0, 6}` (3,851 bucket-walk men over the 28 `pm121/run` snapshots).
+Byte6 28 (`$15462`) needs winter, a group of 2 or fewer and `33(obj) == 8` (a
+plough), which only `$1616c` writes, from the leader's goods slot `27(L)`; that
+slot was stocked in 1 leader-snapshot of the runs. So 28 is reachable but rare
+and not observed.
+
 ### The mini-sprite blitter (`$11f82`, `assets/sprites/sheet_raw.bin`)
 
 **77th-pass, from the aligned `$11fe4`–`$12034` loop.** Each frame is an
@@ -1037,9 +1052,9 @@ one bit in all four planes, the colour's plane bytes coming from `$e6ae + 4c`. I
 does not clip. (`disassemble.py` shows the two `movep.l` opcodes, `$0549`/`$05c9`,
 as `subi`.) It draws the byte6 40 projectiles, the byte6 20/22 dot, and the
 minimap dots, including the blinking selected group (`$165b2`, one dot per member
-at its raw cell coordinate). `assets/hud/descriptor_table.bin` was exported from
-`$e6ee + 110` = `$e75c`, six bytes before the table: the operand of
-`move.l 110(PC,D0.w)` at `$e6f2` is relative to `$e6f4`.
+at its raw cell coordinate). `assets/hud/descriptor_table.bin` is this table
+(320 longs from `$e762`; the operand of `move.l 110(PC,D0.w)` at `$e6f2` is
+relative to `$e6f4`); all 320 entries match the formula above.
 
 ### Trees / buildings / mountains
 

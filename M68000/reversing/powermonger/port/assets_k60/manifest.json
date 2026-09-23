@@ -96,9 +96,8 @@
   },
   {
    "file": "hud/descriptor_table.bin",
-   "provenance": "$e6ee+110 descriptor table (pm_blit_hud_sprite)",
-   "format": "16 x 4-long entries, 32-byte glyph row stride",
-   "status": "raw dump; full HUD rip deferred"
+   "provenance": "$e762 per-x table of the pixel plotter $e6ee",
+   "format": "320 big-endian longs: {mask index, row byte offset}"
   },
   {
    "file": "tables.json",

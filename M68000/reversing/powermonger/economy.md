@@ -39,7 +39,7 @@ the entity level by the same `$14b62` FSM that runs everything else:
 | **manpower** (a lord's available men) | `pm_leader.troops_reserve` = `$4e514`+6, `.troops_field` = +8 | soldiers walking home add 2–4; a disbanding group returns a discipline-scaled slice; recruiting subtracts one; each settlement pulse drains one (`$163b8`); a battlefield/garrison loss subtracts 1 | **traced** |
 | **goods** ("livestock", "invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed herd-drive credits `+1` to one counter (`$60dc`), heavily throttled; porter units shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
 | **livestock** (the herds that feed the goods counters) | `$4d252` herd array + `$57f68` herding ops + `$4c5f4` markers | shepherd FSM (modes `$3e`→`$44`→`$42`) drives an animal home, marks it consumed (`breed:=$d`), credits the goods counter; `$4342` only animates the on-screen marker | **traced** |
-| **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes when a lord revolts (`$550e`, §3): the lord and all his settlements change side, then `$5c2c`/`$25d6` turn his garrison men over | **traced; observed on land 60 (121st)** |
+| **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes when a lord revolts (`$550e`, §3): the lord and all his settlements change side, then `$5c2c`/`$25d6` turn his garrison men over | **Proven (122nd, `diff_revolt.py` 1778/1778 over 49 states, all 27 natural revolts)** |
 | **weapon grade** ("invention") | `pm_object` byte 44 (items 1–6) / byte 33 (items 7–8) | stamped at spawn (`6` for leads, `0` for tutorial followers); **advanced by the army-supply subsystem** (`$638c`: `if slot < delivered_item: slot := delivered_item`) — no research timer | **traced; observed on later lands (121st): `$63e8` equipped 22 empty slots on land 25 and 14 on land 0 in 200M steps; `$63be` (replacing a lower item) never fired** |
 | **passive population growth** | — | **does not exist** — manpower is strict conservation-of-soldiers (see §6) | **traced negative** |
 
@@ -67,11 +67,12 @@ strategic layer actually reads (`$d322` sums both fields per side into
 /* 4*/  u16  cell;             // packed {x:6,y:7}
 /* 6*/  u16  troops_reserve;   // <<< the lord's men-at-home pool
 /* 8*/  u16  troops_field;     // <<< men currently in an army / garrison
-/*12*/  u16  gather_kind;      // $5ec6: $2/$4/../$e -- which of goods[] this lord's herds yield now
+/*12*/  u16  gather_kind;      // $5cde: {2,4,6,8,$a,$e} herd, $c fallback, 4/$10 build -- the lord's current work order
 /*14*/  s16  loyalty_pressure; // ramps +2 (field*4 >= reserve) / -1 per settlement pulse; >=600 -> $550e defection, reset 300
-/*16*/  u16  herd_throttle;    // $60dc countdown; reload $580a6[side].word8 + 4 (+$2000 if gather_kind>=$e)
-/*20*/  u16  shepherd_obj;     // $5ec6: $51b66 offset of the unit assigned to gather
-/*22*/  u16  nearest_herd;     // $2906: byte offset into $57f68 of the closest herding op
+/*16*/  u16  herd_throttle;    // $60dc countdown; $5cde reloads $580a6[side].word8 + 4 (+$2000 if gather_kind >= $e and the reload >= the old value)
+/*18*/  u16  build_site;       // $5cde: $4f916 offset of the settlement being built (0 = none)
+/*20*/  u16  herd_op;          // $5cde: $51b66-relative offset of the nearest $57f68 herd op (written on the herd order)
+/*22*/  u16  nearest_herd;     // $2906: byte offset into $57f68 of the closest herding op ($5cde recomputes it, never reads this)
 /*24*/  u8   goods[8];         // <<< Pike,Sword,Bow,Plough,Boat,Pot,Catapult,Cannon counts (0..255)
 ```
 
@@ -91,7 +92,7 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.troops_reserve -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
 | `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-7-set, bit-6-clear arm). *(**Proven, 99th** — `$37c2` + its `$1d70`/`$1b8c`/`$17a46` leaves differential-tested vs the real 68000, 1847/1847 over 13 states; reached via `$3c08`'s flag-bit-4 teardown sub-path. The inverse `+= 1` on the bit-6-set arm is `$1b8c`'s `$1c04`.)* |
 | `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
-| `$2644` | `$25d6`, from `$5c2c` after a revolt | the garrison man's old leader: `troops_field -= 1` (land 60: leader 4, 18 → 17, `scratchpad/pm121/flip/`) |
+| `$2644` | `$25d6`, from `$5c2c` after a revolt | the garrison man's old leader: `troops_field -= 1`, only when the man led no group (land 60: leader 4, 18 → 17, `scratchpad/pm121/flip/`). *(Proven, 122nd, `diff_revolt.py`.)* |
 | `$42be` | `$3e06` tail, courier/arrow array | a `$51b66` object died and credited a leader: `troops_field += 1` |
 | — | `$d322` per tick | reads both, never writes; totals into `$57fba` |
 
@@ -396,18 +397,31 @@ owner/kind/cell/leader. On the terrain plane it also sets influence bits
 (`ori.b #$2,8257(A3)` + `bset #1` on three neighbours) so the settlement claims
 its cells in `$3f86c`.
 
-**How a settlement changes hands: the revolt `$550e`.** In the mode `$7c`
-heartbeat, once a leader's `word[14]` (the loyalty accumulator) reaches 600
-(`$158ae`), the marker's side is set to `(x cell mod 4) + 1` for the call and
-`$550e` (its one absolute caller is `$158cc`) makes that the leader's side,
-resets `word[14]` to 300, walks the leader's settlement chain (`2(leader)`, next
-at `8(settlement)`) setting every settlement's owner byte 5, and remembers a
-garrison man (flags bit 4, mode `$8a` or `$3c`) from each settlement's unit
-chain (`10(settlement)`, next at `24(unit)`). For the last one found it calls
-`$5c2c`: a man whose settlement's leader is now on another side defects
-(`5(man) := leader side`) and `$25d6` makes him the lead of a new group in his
-new side's first free group slot, taking one off his old leader's
-`troops_field`. Observed on land 60 (`scratchpad/pm121/flip/k60_flip_pre.snap`
+**How a settlement changes hands: the revolt `$550e`** (Proven, 122nd:
+`reversing/powermonger/py/diff_revolt.py`, 1778/1778 over 49 states, 27 of
+them every natural `$550e` call on the four run lands). `$550e` has two
+callers. In the mode `$7c` heartbeat, once a leader's `word[14]` (the loyalty
+accumulator) reaches 600 (`$158ae`), the caller sets the marker's side to
+`(x cell mod 4) + 1` and calls it at `$158cc` (11 natural calls, loyalty
+600-608). The other caller is `$53f6`, reached from mode `$2c` (`$152f6` →
+`$4f68` → the `38(A1)` jump table at `$4f90` → `$539a`, when `38(A1) == $12`),
+with `A0` = the leader the unit holds at `46(A1)`; it made 16 of the 27 natural
+calls, with loyalty 0 to 292, and the new side is the attacking unit's
+(reading this as a lord conquered in the field is inferred). `$550e` makes
+`5(A1)` the leader's side, resets `word[14]` to 300, and walks the leader's
+settlement chain (`2(leader)`, next at `8(settlement)`): each settlement not
+already on the new side gets owner byte 5 rewritten, and its unit chain
+(`10(settlement)`, next at `24(unit)`) is scanned for a garrison man (owner
+`> 0`, flags bit 4, mode `$8a` or `$3c`); the last one found is reconciled by
+`$5c2c`. If his settlement's leader is now on another side, `$5c2c` either
+hands the contact to `$4bc8` (he leads a group that still has members, or the
+leader has no `troops_field`) or defects him (`5(man) := leader side`) and
+`$25d6` makes him the lead of a new group in his new side's first free
+sub-record. `$25d6` takes one off his old leader's `troops_field` only when he
+had no group (`$2644`); a group lead's old group is dissolved by `$2776`
+instead. `$5c2c` loads `D2 := 2` but `$25d6` tests `D3` for its "defected"
+counters `$12abe`/`$12acc`, so those never count a defection (a game bug,
+inferred). Lords defect both to and from the player's side. Observed on land 60 (`scratchpad/pm121/flip/k60_flip_pre.snap`
 / `_post.snap`, from `run/k60_s3.snap`: `$550e` at step 4,509,545, the owner
 byte of settlement `$4fa90` written 2 → 3 at `$5538`, `$25d6` at 4,509,837); all
 four later lands ran `$550e` six times in 200M steps. Nothing moves stored
@@ -446,10 +460,28 @@ actually caught a same-address routine in TOS.
 **Weather and the season art.** PowerMonger has weather: rain in spring and
 autumn and snow in winter, started by `$1ad74` from `word[$1ad9c + word[$57fd0]]`
 and drawn over the iso window by `$1a856` (`port/SPEC.md` §7 "Weather"; the
-port's `Weather.fs` matches the game's frames). While a spell lasts, `$3fb0`,
-in the same `$3e06` speed calculation as the `$3ffc` row of §4, takes `$10` off
-the term it reads from `2(A3)`, and winter takes 8 more: bad weather and winter
-slow the move. On lands 0 and 25 `$1a856` drew weather on 131-132 frames in
+port's `Weather.fs` matches the game's frames). Weather and winter slow
+marching groups through the lead's speed byte `16(lead)`, which `$3e06` sets
+every tick for each active group exec sub-record (`$3fac..$401c`):
+
+```
+speed = $580a6[side*$20].word2          ; 30 for sides 1-4, 32 for side 0, on all four run lands
+if (word[$4bb44] > 0) speed -= 16       ; a rain/snow spell is running
+if (word[$57fd0] == 0) speed -= 8       ; winter
+load  = Σ words at 160(sub)+{0,12,24,36,48,72,84} (the last two x16; inferred: goods carried)
+        + 16 if 44(lead) >= $e
+excess = load - 52(sub)                 ; group force
+if (excess > 0) { speed -= excess; if (speed <= 0) speed = 2; }
+16(lead) := speed                       ; and 18(lead) := 0 if 31(lead) == $12
+```
+
+The FSM turns it into the per-step velocity at `$14cda` (`$12d56` rotates
+`(0, -speed)` by the heading into `12/13(lead)`, added to the position each
+movement step), in world units where a cell is 256. An unloaded group so moves
+30 units a step in fair weather, 14 in rain, 22 in a dry winter and 6 in snow:
+a spell cuts the speed by about half, snow on top of winter by four-fifths.
+*Decoded from the disassembly; the base values are read from the four run
+lands' RAM, the reductions were not measured in motion.* On lands 0 and 25 `$1a856` drew weather on 131-132 frames in
 200M steps. The water shimmer (`graphics.md`'s `colour(h) += masterTick & 3` for
 `h < 0x0c`) is a separate 4-phase dither cycle. The season also picks the tree
 and building frames (`g_tileset_sel`, below); the sprite art itself is the same
@@ -484,7 +516,7 @@ are bare, blossoming, leafy and autumn brown), and `$57fd0` steps through them
 once per season fade (~110M steps). Families whose four slots look unrelated are
 tiles the sheet packs into the same stride-3 layout, not stages of one object.
 
-**Aside — a possibly-new hang, not root-caused.** Getting to
+**Aside — driving the menus: click timing and the Timer A hang.** Getting to
 `pm114_rand2.snap` needed a click-timing fix: `mouse down`/`mouse up` alone
 enqueue no IKBD packet at all in relative-report mode (`MMU.fs`
 `EnqueueMouseButton` only emits a byte when `MouseButtonsReportAsKeys` is
@@ -502,11 +534,14 @@ regression was fixed: `RaiseTimerA` read TACR from a register array that TACR
 writes no longer reached, so Timer A never fired (README "Bug 5"). The build
 now completes. PLAY RANDOM LAND, re-driven from `pm114_postclick2.snap` (cursor
 `mouse move 0 35`, then down / `move 0 0` / up / `move 0 0`), now builds a world
-(`$13b9a` 2.5M steps after the click, a winter land) and shows its iso view under
-a "Please Wait For The Protection Check" dialog, which the game loop then polls
-(`$7298` once per tick, no `$6522`) for at least 60M steps; it has no briefing
-(`scratchpad/pm121/random_land2.snap`). The world-map compass route has not been
-re-driven.
+(`$13b9a` 2.5M steps after the click, a winter land;
+`scratchpad/pm121/random_land2.snap`), shows "Please Wait For The Protection
+Check" while the build finishes, then asks the manual-lookup question. The AI
+block does not run on that land because the uncracked answer check leaves the
+flag `$14e4e` at 0 (strategy.md "The campaign", protection check). The
+top-left "scroll icon" at `~(18,18)` of the world map is land 0's cell on the
+13 × 15 conquest map (`$1120e`), and land 0 is mission 1 (inferred from the
+cell geometry; the pick itself is traced for land 1 in strategy.md).
 `pm114_rand2.snap` was taken mid-hang; its RAM already had a fully populated
 `$37c7c` sheet (used above).
 
@@ -590,28 +625,31 @@ values written are legitimate small link offsets (multiples of 50, the object
 stride: `$32 $64 $fa $12c $190 $1f4 $258`) with occasional garbage
 (`$b184`, `$af48`).
 
-Conclusion: **`$163ea` is not at fault** — it only propagates links. The fault
-is *upstream*: one or more object slots hold a corrupt bit-15 forward link, and
-because the emulator zero-inits RAM that link was *written* by some instruction
-(a bad `$2e1e` allocation index, or a stale link on a freed slot re-walked).
-The damage is confined to `pm_settlement._w2`, which **nothing reads** (the chain
-link is `+8`, cell is `+12`, owner `+5`). A real-Hatari cross-check is blocked by
-the same limitation as all PM analysis — PM cannot be driven to the iso view
-headlessly in Hatari — so this is downgraded from "needs verification" to
-**characterised, benign, low priority**. It does confirm the 73rd pass's
-`pm_nation.chain_next @ +2` was wrong (real link `+8`; `+2` is scratch).
+Conclusion: **these are real bucket links, not corruption.** `$5cde` builds a
+new settlement by allocating a `$4f916` record and inserting it into the
+`$47970` cell bucket with `$16808`, passing its offset from `$51b66`, which is
+negative (`$5e62..$5e70`; Proven, 122nd, `scratchpad/pm122/agents/herdop/`,
+state `p_newsettl`: the new record's `+0` becomes the old bucket head). So a
+settlement record is also a bucket node: `+0` is its forward link and `+2` its
+back link, and an object whose forward link is negative points at such a
+record (byte6 `$1e`, the building going up). The occasional values `$b184` /
+`$af48` were not investigated. The chain link of the lord's settlements is `+8`,
+as the 73rd pass's `pm_nation.chain_next @ +2` had wrong.
 
 ## 4. Weapon grade — "invention" as the game surfaces it
 
 **`pm_object` byte 44 is triple-purpose** (70th "msg_code", 74th "weapon tier",
 and now a third role): a transient notify code in `$16260`; the equipment tier
 for item types 1..6 on a combat unit; and a transient *carried-item* tag on a
-porter unit (§2b). Byte **33** is the tier for item types 7..8 (Catapult, Cannon).
+porter unit (§2b). Bytes 44 and 33 both hold an item code `2 * (goods slot + 1)`: 44 a
+weapon (2 pike, 4 sword, 6 bow; `$e` catapult and `$10` cannon are never
+written), byte **33** a tool (8 plough, `$a` boat, `$c` pot: `$159de` for goods
+slots 3-5, `$1616c` for the plough).
 
 | site | reads byte 44 as | effect |
 |------|------------------|--------|
 | `$1533c` (melee, mode `$32`) | tier | `damage = (min(grade, 6) >> 1) + 1` per tick → 1..4 |
-| `$52fc` / `$5318` (projectile spawn) | tier | projectile **type** (its byte6): default `$12`, `$28` when `byte44 == $6` (a bow: the arrows the renderer draws as one pixel) |
+| `$52fc` / `$5318` (projectile spawn) | tier | projectile **type** (its byte6): `$12` when `byte44` is `$e` or `$10`, `$28` when it is `$6` (a bow: the arrows the renderer draws as one pixel); any other value takes the melee branch `$5334` and fires nothing. No writer ever stores `$e`/`$10` in byte 44 (the build forces a lead's to 6, followers get 0/2/4/6, the equip paths 2/4/6), so type `$12` is unreachable (`port/SPEC.md` "Why 18 and 28 are missing") |
 | `$3ffc` (`$3e06` speed calc) | `byte44 >= $e` → `+$10` force bonus | speed term |
 | `$9846` / `$9dc6` (`$a242`) | index | the "carrying …" clause in the unit description |
 
@@ -687,35 +725,18 @@ The one thing that *looks* like a growth counter — `pm_leader.loyalty_pressure
 but only on the *first* settlement pulse after a marker is parked
 (`D5 == $ff9c`, the `#$ff9d` dwell decrementing to `-100`); on ordinary
 steady-state pulses `D5 == 0` and neither arm runs (96th correction, §3a).
-At `loyalty_pressure` **≥ 600** the pulse calls `$550e` — still **not observed
-firing** (asserted off in the mode-`$7c` proof, loyalty kept < 600), but no
-longer out of reach: see the caveat below the code:
-
-```c
-void revolt(pm_leader *L, pm_object *marker) {     // $550e
-    u8 new_side = (marker->field8 % 4) + 1;        // pseudo-random 1..4
-    L->side = new_side;                            // the lord defects
-    L->loyalty_pressure = 300;                     // reset, half-way
-    for (pm_settlement *s = chain(L); s; s = next(s))
-        s->owner = new_side;                       // and every settlement with him
-    reconcile_owner(...);                          // $5c2c
-}
-```
-
-Read statically, this is a **rebellion-from-militarism** mechanic: over-militarise
-a territory (big army, empty coffers, sustained) and the lord and all his
-settlements switch allegiance. Caveat: `$550e` writes `leader.side` and every
-`settlement.owner` in the chain to `(marker.field8 % 4) + 1` and resets
-`loyalty_pressure` to 300 — the `≥ 600` path and the exact `new_side` formula
-are inferred from the disassembly, not observed firing. In the plain tutorial
-`loyalty_pressure` only oscillated 296–306 (the settlement pulse is
-intermittent). But in `pm97_map0` — a mission-1 world with `$57fd0` pinned to 0
-so the heartbeat runs continuously (§3a, 97th) — both AI lords' `loyalty_pressure`
-climbed to 316 / 318 within 80M steps and was still rising (`troops_field·4` = 40
-vs `troops_reserve` = 0, so the `+2` arm every pulse), which puts the `≥ 600`
-revolt within reach of a long game whenever the `$1abaa` rotation favours `$7c`.
-It fits PowerMonger's theme (the manual's "the people will turn against a cruel
-ruler").
+At `loyalty_pressure` **≥ 600** the pulse sets the marker's side to
+`(marker.field8 % 4) + 1` (`$158b6`) and calls `$550e`: the lord and every one
+of his settlements not already on that side defect, `loyalty_pressure` resets
+to 300, and one garrison man is reconciled (§3 "How a settlement changes
+hands", Proven 122nd). On the four later lands this fired naturally 11 times
+in 800M steps, at loyalty 600-608. In the plain tutorial `loyalty_pressure` only
+oscillated 296–306 (the settlement pulse is intermittent); in `pm97_map0` (a
+mission-1 world with `$57fd0` pinned to 0) both AI lords climbed to 316 / 318
+within 80M steps with `troops_field·4 = 40 > troops_reserve = 0`. Read as a
+mechanic it is a **rebellion from militarism**: a lord whose army outweighs his
+reserve for long enough changes side, which fits the manual's "the people will
+turn against a cruel ruler".
 
 ## Complete picture
 

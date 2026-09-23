@@ -177,6 +177,24 @@ record in the game, poke the camera centre and let a frame render:
 snapshots N frames in a row from there). The REPL's `hits <steps> <addr>...`
 counts how often each address runs over a stretch, with the first and last step.
 
+## Ending a land and driving the campaign (122nd pass)
+
+How a land is won or lost (`$d2c8`, command `$2e`), the 195-land conquest map
+(`$3f2a0`, picker `$1120e`), the per-land parameter table (`$3f428`, mission 1
+= entry 0) and the manual-lookup protection check are in `strategy.md`
+("How a land ends", "The campaign"). The drives, from
+`scratchpad/pm121/run/k25_s4.snap` (all in `scratchpad/pm122/end/`):
+
+```
+w 5801c 012e0000        # the retire button's write: command $2e in the player's slot
+bp d2c8 2000000         # verdict; poke w 57fcc 03b70004 here (ratio 4) for the win branch
+s 50000000              # defeat/victory screen, then the main menu ($13de8)
+# Continue Conquest: pointer (0,0) -> mouse move 100 100 ; mouse move 60 3 ; click
+# land 1 on the map:    mouse move -120 -83 ; click   (click = down / move 0 0 / s 300000 / up / move 0 0)
+```
+
+The pointer's live position is `word[$1c492]` / `word[$1c494]`.
+
 ## PM's mouse dialog state machine (67th pass RE, completed 68th)
 
 PM's own IKBD ISR is at `$18be` (vector `$46`). It parses the `$F7`

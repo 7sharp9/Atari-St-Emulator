@@ -572,25 +572,23 @@ def dom_pal_rgb(dom_pal, idx):
 def export_hud(ram: Ram, out: Path, man: list):
     hd = out / "hud"
     hd.mkdir(exist_ok=True)
-    # $e6ee reads a 4-long-per-entry descriptor table at $e6ee+110 (PC-relative)
-    # then blits with a 32-byte row stride (lsl.w #5,D1). The source sheet address
-    # is one of those descriptor longs. Dump the descriptor table raw for the port
-    # to resolve; a full HUD rip is out of scope for the terrain-renderer proof.
-    desc = ram.blk(0xe6ee + 110, 4 * 16)
+    # The pixel plotter $e6ee reads `move.l 110(PC,D0.w)` at $e6f2; the PC base
+    # is the extension word at $e6f4, so the per-x table is at $e762 (not
+    # $e6ee+110). One long per screen x = 0..319: high word (x & 7) * 8 indexes
+    # the bit-mask pairs at $e722, low word is the byte in the 160-byte row.
+    desc = ram.blk(0xe762, 4 * 320)
     (hd / "descriptor_table.bin").write_bytes(desc)
-    longs = struct.unpack(">16I", desc)
+    longs = struct.unpack(">320I", desc)
     (hd / "descriptor_table.json").write_text(json.dumps({
-        "table_addr": "$e6ee+110 (PC-relative, read by pm_blit_hud_sprite)",
-        "row_stride": 32,
+        "table_addr": "$e762 (read by the pixel plotter $e6ee via 110(PC,D0.w) at $e6f2)",
         "entries": [f"${v:x}" for v in longs],
-        "note": ("each entry is a 4-long descriptor; one long is the source glyph "
-                 "sheet address. Resolve against a live snapshot before ripping "
-                 "the HUD -- not needed for the terrain-layer proof."),
+        "note": ("entry x: high word = (x & 7) * 8, an index into the mask pairs "
+                 "at $e722; low word = (x >> 4) * 8 + ((x >> 3) & 1), the byte "
+                 "offset in the row (port SPEC 'The pixel plotter')."),
     }, indent=1))
     man.append({"file": "hud/descriptor_table.bin",
-                "provenance": "$e6ee+110 descriptor table (pm_blit_hud_sprite)",
-                "format": "16 x 4-long entries, 32-byte glyph row stride",
-                "status": "raw dump; full HUD rip deferred"})
+                "provenance": "$e762 per-x table of the pixel plotter $e6ee",
+                "format": "320 big-endian longs: {mask index, row byte offset}"})
 
 
 # ---------------------------------------------------------------------------

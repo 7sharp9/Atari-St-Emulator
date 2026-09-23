@@ -169,45 +169,50 @@ typedef struct pm_group {             // base = $51538 + group_id
 //   field_60 == 4 (mission 1) -> always "2" -> rout, never kill.
 
 // ---- leader / lord record : $4e514, 32 x 32 bytes -------------------
+// Full field list: economy.md §1 (pm_leader). The fields this file uses:
 typedef struct pm_leader {
-/* 0*/  u8   nation;                  // side id 1..5; 0 = empty slot (loop terminator, array ends $4f914)
-/* 1*/  u8   _b1;                     // ?? (== 3 for both mission-1 sub-leaders)
-/* 2*/  u16  _w2;                     // ??
+/* 0*/  u8   nation;                  // side id 1..5; 0 = empty slot (loop terminator, array ends $4f914); $550e rewrites it
+/* 2*/  u16  chain_head;              // -> $4f916 first settlement of the lord (walk via +8)
 /* 4*/  u16  cell;                    // packed {x: bits 0-5, y: bits 6-12} of the lord's position
 /* 6*/  u16  troops_reserve;          // $d322: += into $57fba[side].word2 ; $15e18/$15760: += 4 on arrival
 /* 8*/  u16  troops_field;            // $d322: += into $57fba[side].word0 ; sieges/$5bd2 decrement it; $68fe scores vs it
-/*10*/  u8   _b10[4];                 // ??
-/*14*/  u16  nation_off;              // back-link: byte offset into $4f916 for this lord's home settlement
-/*16*/  u8   _b16[7];                 // ??
-/*23*/  u8   msg_count [1];           // $16376/$159a4: "under attack" / order message counters (indexed run)
-/*24*/  u8   speech_ctr[8];           // $159de: divu #6 index -> speech-line countdown table
+/*12*/  u16  gather_kind;             // $5cde: the lord's current work order
+/*14*/  s16  loyalty_pressure;        // >= 600 -> $550e revolt, reset to 300
+/*16*/  u16  herd_throttle;           // $5cde / $60dc
+/*18*/  u16  build_site;              // $5cde: $4f916 offset of the settlement under construction
+/*20*/  u16  herd_op;                 // $5cde: the nearest $57f68 herd op
+/*24*/  u8   goods[8];                // pike, sword, bow, plough, boat, pot, catapult, cannon ($159a4/$16376 index 23 + code/2)
 } pm_leader;                          // sizeof 32
 
-// ---- nation / settlement record : $4f916, 18 bytes ------------------
-typedef struct pm_nation {            // object.nation_off and leader.nation_off index this
-/* 0*/  u16  _w0;                     // ??
-/* 2*/  u16  chain_next;              // $5cde: settlement chain (walk while byte7 != 7)
-/* 4*/  u8   _b4;
-/* 5*/  u8   owner;                   // commander colour holding the settlement; copied into object.owner ($1501a,$5c2c)
-/* 6*/  u8   _b6;
-/* 7*/  u8   kind;                    // $5cde: == 7 terminates the settlement walk (capital?)
-/* 8*/  u16  linked_obj;              // object-record offset of the settlement's own marker
-/*10*/  u8   _b10[2];
-/*12*/  u16  dest_cell;               // mode $52: the nation's ordered destination (packed cell)
+// ---- settlement record : $4f916, 18 bytes (economy.md §3) ----------
+typedef struct pm_settlement {        // object.34 and leader.chain_head index this
+/* 0*/  u16  bucket_next;             // a settlement is also a $47970 bucket node ($5cde links new sites with $16808)
+/* 2*/  u16  bucket_prev;
+/* 5*/  u8   owner;                   // commander colour holding the settlement; $550e rewrites it
+/* 6*/  u8   category;                // render byte6 ($1e = a site being built)
+/* 7*/  u8   kind;                    // 7 = capital ($5cde looks for it)
+/* 8*/  u16  chain_next;              // the lord's next settlement
+/*10*/  u16  unit_head;               // first unit of the settlement (next at 24(unit))
+/*12*/  u16  cell;                    // packed cell (mode $52 destination)
 /*14*/  u16  leader_off;              // byte offset into $4e514 for this settlement's lord
-/*16*/  u16  _w16;
-} pm_nation;                          // sizeof 18
+} pm_settlement;                      // sizeof 18
 
 // ---- per-side assessment block : $580a6, 5 x $20 bytes -------------
 typedef struct pm_assess {            // index by side id: $580a6 + side*$20
 /* 0*/  u16  decay_period;            // $3e06: objective budget decays every this-many ticks
-/* 2*/  u8   _b2[4];
+/* 2*/  u16  march_speed;             // $3fac: the lead's base speed (30; 32 for side 0), before weather/winter/load
+/* 4*/  u8   _b4[2];
 /* 6*/  u8   relation_bits;           // $4c2a: bclr peace bit per other side; $3154 friend/foe sign source
 /* 7*/  u8   _b7[8];
 /*15*/  u8   assess_in [1];           // $311a writes here: clamped 15(A5,other*$20) + delta, range $ff9c..$64
 /*16*/  u8   assess_out;              // $68fe reads (16(A4, target*$20 - 1)) >> 2 as the targeting weight
-/*17*/  u8   _b17[15];
+/*17*/  u8   _b17[3];
+/*20*/  u8   start_equip[4];          // $238c world build: 20/21 -> the side's first unit's 33/44 ($244c/$2452; $245c then forces 44 := 6), 22/23 -> the followers' ($24fa/$2500)
+/*24*/  u8   _b24[8];
 } pm_assess;                          // sizeof $20; $2200-$3500 cluster owns the rest
+// Also read: word 8 (+4 = the herd-throttle reload, $5cde), word 12 (the RNG
+// mask for a new group's 72(sub), $25d6). The whole block is part of the
+// campaign table entry each land loads ("The campaign").
 
 ## `$6522` — the commander AI
 
@@ -325,10 +330,15 @@ ratio = min(4, (2*myForce + enemy/4) / enemy)      ; clamp 0..4
 $57fce = ratio ; jsr $16bb8                         ; captain's mood / fist indicator
 ```
 
-`$57fce` is **UI only** everywhere it was traced (`$16bb8`, `$188dc`, and
-`$d2c8`'s `jsr $1a5b2` when ratio ≠ 4). `$6522` never reads it. The knob the
-autonomous AI actually turns is the per-objective budget `112()` and the
-per-side assessment weight in `$580a6`, not this global ratio.
+`$6522` never reads `$57fce`; besides the fist indicator (`$16bb8`, `$188dc`)
+its one consumer is the end-of-land verdict `$d2c8`: **ratio 4 at the moment
+the land ends is a win, anything less a defeat** ("How a land ends", below).
+Before the ratio, `$d23a` checks the local side's captain group: if
+`word[$51538 + side*$13c + 28]` (the owner-side word of that side's exec
+sub-record 0) is `<= 0`, it posts command `$2e` itself and clears `$57fce`,
+which ends the land as a defeat. The knob the autonomous AI actually turns is
+the per-objective budget `112()` and the per-side assessment weight in
+`$580a6`, not this global ratio.
 
 `$580a6` — 5 × `$20`-byte per-side assessment blocks — is written all over the
 `$2200`–`$3500` cluster and from `$139dc`/`$13a3e`/`$13b20` in the sim tick.
@@ -365,19 +375,15 @@ int pm_campaign_hook(obj *A1) {
 ```
 
 `$67d0` has **no writer anywhere in the loaded game image** (verified: the only
-reference to the address `$67d0` is the `lea $67d0,A4` inside `$6762` itself).
-It is the slot the **mission-file loader** (`$13b9a` / `$10d1e`, run on the
-briefing OK click) writes when a mission script wants to force a specific
-lord's move at a specific phase — a besiege (`orderType` even, → `$6b5c`
-dispatch) with an optional deterministic sub-mode. In "Between Pages 1-5" it
-stays zero, so the tutorial's enemy never receives a scripted order and the
-hook is inert. The per-objective `camp_id_268` field that it matches against is
-also seeded by the same loader from the mission file's objective list.
+reference to the address `$67d0` is the `lea $67d0,A4` inside `$6762` itself),
+and it lies in the code segment, outside the `$580a6..$581f1` block the
+campaign loads per land ("The campaign", below). No path that loads a land
+writes it, so the hook is inert in every land, campaign or random: `$6762`
+always returns 0. It is dead code in this build (its original writer, if there
+was one, is gone).
 
-This is the only path by which the AI can issue anything other than "march at
-the nearest enemy leader" — there is still **no build / recruit / invention
-reasoning** in the strategic layer; those orders, if a campaign uses them, come
-through `$67d0`.
+The AI therefore has no path other than "march at the nearest enemy leader":
+there is **no build / recruit / invention reasoning** in the strategic layer.
 
 ## Combat (73rd pass — mechanism closed, rout is the real outcome)
 
@@ -713,13 +719,139 @@ player start position; `kind == 0` ends the stream. `$2266` then appends
 procedurally-placed settlements (`kind $10`, random cells `rand%$30+8`,
 `rand%$70+8`).
 
-Neither branch is a byte-script mission: mission 1 uses stored parameters and
-a seeded land re-rolls them. A real byte-script campaign mission would
-additionally have the objective-setup calls (`$2984`/`$238c`/`$2906`) seed
-`obj_camp_id` and the global `$67d0`; here `$67d0` stays zero and the campaign
-hook stays inert, consistent with the 72nd pass. Reversing the mission-file
-grammar needs a mission that uses it (the fixed-map `$df52(7)` branch or the
-Conquest campaign proper), not mission 1.
+Neither branch is a byte-script mission, and there is no mission-file grammar:
+a campaign land is a stored parameter block from a fixed 195-entry table
+(mission 1 is entry 0), and a random land re-rolls the parameters from a seed.
+None of the 195 table entries has `$58148 < $100` (their range is
+`$400..$7f20`; 67 are below `$2000`, the "small" preset), so the campaign never
+takes the fixed-map `$df52(7)` branch; that branch is unreached by every route
+found (campaign, random land, briefing preview).
+
+## How a land ends (122nd pass)
+
+A land ends only through command **`$2e`** in the local side's command slot
+(`[$58034]`, the `$58016` slot of side `$57ffe`). The order executor
+`$6a3a` → `$6b38` dispatches `$2e` to `$6e10`: if the slot's state byte
+`4(slot)` is 2 it calls `$d2c8` at once; otherwise it calls `$71ae` (re-arms
+every command slot: state 2 or 6 → 2, any other non-zero → 4) and then `$d2c8`
+when the slot belongs to the local side. Two writers post `$2e`:
+
+- **Retire**: the in-game options button that the panel handler `$7202`
+  decodes as `D3 == $11` (`$77c2`: `move.b #$2e,1(slot)`).
+- **The captain's group dissolves**: `$2776`, run on the side's exec
+  sub-record 0 (the captain's group), clears its owner-side word
+  `-48(sub)` = `word[$51538 + side*$13c + 28]`; the next tick `$d23a` sees it
+  `<= 0`, clears `$57fce` and posts `$2e`.
+
+`$d2c8` is the verdict:
+
+```c
+void end_of_land_d2c8(void) {
+    if (ratio_57fce == 4) {                         // (2*mine + enemy/4)/enemy clamped 0..4
+        victory_screen_1a4da();                     // resource $f; the last land ($580a4 == $c2, mode 4) -> $1a486
+        conquered_3f2a0[land_580a4] = 1;            // guarded by tst.w $1120e, which reads the code word $48e7: always taken
+    } else {
+        defeat_screen_1a5b2();                      // resource $e
+    }
+    main_menu_13de8();                              // Start New Conquest / Continue Conquest / Play Random Land / Load Data Disk
+    menu_dispatch_13e8e();                          // on $2df6e
+    rebuild_world_13d1a();                          // -> $13b9a
+}
+```
+
+With `enemy = Σ other sides' $57fba.word0 + 1` and `mine` the local side's
+`word0`, ratio 4 needs `2*mine + enemy/4 >= 4*enemy`, i.e. about
+`mine >= 15/8 * enemy`. Nothing ends a land on a winning ratio by itself: the
+player must retire while the scale is full. A land is lost either by retiring
+early or by losing the captain.
+
+Evidence (`scratchpad/pm122/end/`, from `pm121/run/k25_s4.snap`, ratio 0):
+posting `$2e` (the retire button's own write) reaches `$d2c8` in 136,275 steps
+and `$1a5b2` 790 steps later: "You have been defeated" (`lose_screen.png`),
+then the main menu at 28.4M steps (`lose_after.png`). The same state with
+`$57fce` poked to 4 at `$d2c8` takes `$1a4da`: "After a glorious victory you
+must go on to conquer the whole world" (`win_screen.png`), and
+`$3f2a0[0]` goes 0 → 1.
+
+**A natural defeat.** Land 60 run on from `pm121/run/k60_s4.snap` (where the
+player's force total is already 0) dissolves the player's captain group
+through `$2776` at step 94,725,510 (`A3 = $516c0`, side 1's sub-record 0, no
+members left; `scratchpad/pm122/agents/dissolve/nat2/k60_x1.snap`). With no
+input from there, `$d23a` posts `$2e` (+605,283 steps), `$6e10` +780,340,
+`$d2c8` +780,343 with `word[$51690] = 0` and `$57fce = 0`, and the defeat
+screen `$1a5b2` +781,229 (`scratchpad/pm122/end/k60_natloss.png`). The other
+three run lands did not end in 300M steps.
+*Rule: Proven from the code. Defeat observed both ways (retire and the natural
+captain loss); victory reached only by poking the ratio, not by a natural
+winning position.*
+
+## The campaign (122nd pass)
+
+The main menu's four buttons set `$2df6e` (`$78d2..$7908`): 2 Start New
+Conquest, 4 Continue Conquest, 6 Play Random Land, 8 Load Data Disk. `$13e8e`
+dispatches it:
+
+- **2 / 4 → the conquest map `$1120e`**. Start New Conquest first asks for
+  confirmation (`$c48e`) when any land is already conquered. Continue Conquest
+  first calls `$aeac` (inferred: the load-campaign dialog) when the protection
+  flag `$14e4e` is not `$2c`, and goes straight to the map when it is.
+- **6 → a random land** (`$13ece`): `$580a0 := video counter + mouse + RNG`,
+  OR `$71010101`, so `$13b9a` re-rolls it through `$10d1e`.
+
+**The conquest map** is a 13 × 15 grid of 195 lands; `byte[$3f2a0 + land]` is
+the campaign state (0 = free, > 0 = conquered, < 0 = not selectable). A cell
+is 24 × 40 px (`$11252`: `col = (x-8)/24`, `row = (y+scroll-8)/40`,
+`land = row*13 + col`, with the pointer in the cell's left 16 / top 32 px).
+The pointer may pick a free land when it is land 0 or when one of its four
+neighbours (N/S/W/E) is conquered (`$112ba..$112ec`). The pick (`$113a8`) sets
+`$580a4 := land`, loads resource `$b` over `$3f364..` (it reuses the map
+bitmap's buffer), and copies **`$14c` bytes from `$3f428 + land*$14c` over
+`$580a6..$581f1`**: the per-side assessment blocks and the world parameters
+at `$58146`. `$13ec6` clears `$580a0`, so `$13b9a` takes the stored-parameter
+branch (`$ffa6`/`$2266`/`$ac20`) and builds that land exactly.
+
+Evidence (`scratchpad/pm122/end/`): after the forced win, Continue Conquest
+reaches `$1120e` in 271,702 steps (`map_cont.png`). Clicking land 1 runs
+`$113a8`, `$10768`, `$13ec6`, `$13d1a`, `$13b9a`, `$ffa6`, `$2266`, `$ac20`,
+`$1073c`, `$2984`, `$238c`, `$2906`, `$13ce6` once each, not `$10d1e`, and the
+iso view starts at `$f898` (`land1_built.png`). At `$11414` the live
+`$580a6..$581f1` equals table entry 1 byte for byte, and the built land's
+`$58146` params are entry 1's `2310 0400 0007 0010 0060 0003`. **Table
+entry 0 is mission 1's `1e19 0750 0008 0023 0031 0004`**: mission 1 is
+campaign land 0. Clicking land 5 (not adjacent to a conquered land) with land 0
+conquered sets `$1141a = 5` but never reaches `$113a8`.
+
+**What the campaign keeps between lands**: only the conquest map
+`$3f2a0..$3f362`. The land parameters are reloaded from the table on every
+pick, and the stored block `$584c4..` is identical before the win and after
+land 1 is built. The options panel's save/load buttons move the same 195 bytes:
+`D3 == $47` copies `$3f2a0` → `$3f768` and calls `$e288` (→ `$1bdfe`);
+`D3 == $17` ORs `$3f768` into `$3f2a0` after `$e29c` (→ `$1bd70`). That these
+are the disk save and load is inferred from the call shape, not traced.
+`$b2dc`'s entropy pick of one of 144 lands (`k*$b + $3fb`) belongs to the
+briefing preview and Play Random Land; it has no part in the campaign.
+
+**The protection check.** The briefing dialog asks a manual-lookup question
+("Between Pages 17-22 / How many People in this land?"). Its OK handler `$b814`
+parses the answer (`$b940`), then in the original code
+`$b842: sub.w 0(A0,D1.w),D0` subtracts the stored answer `$5878e[$57ff8]`
+(`$57ff8` a random 0/1, set at `$b430`). A difference of 0 stores
+`$14e4e := $2c` and copies `$584c4..` over `$580a0..` (`$b860`); anything else
+shows "Your answer is wrong. You have been deemed unworthy to rule this fair
+land. Demo mode now activated." (`$b9ac`). `$14e4e` is a long in the code
+segment, cleared by the land build `$b436`, and it gates the whole AI block of
+the tick (`$1303a`: `tst.l 46($14e20)`, which skips `$127e6`/`$6522`/`$d322`/`$3e06`)
+as well as Save (`$7774`) and Continue Conquest (`$13ea6`). The Replicants
+crack replaces the subtraction with `moveq #0,D0 / nop`, but the patch is
+present only in the campaign route's image (`pm67_ok_pre.snap`). After Play
+Random Land (`pm121/random_land2.snap`) `$b842` still holds the original
+`sub.w`, so the "Please Wait For The Protection Check" dialog (`$bee0`, from
+the start-up path `$12fd2`) is followed by the real question, and the land runs
+with no AI (`$6522` 0 hits in 50M steps; `scratchpad/pm122/prot/`).
+Answering OK without setting the digit wheels breaks at `$b846` with
+`D0 = $feee` (0 − 274) and gives the demo-mode message. Poking `$14e4e := $2c`
+restores the AI block (`$6522` and `$d322` 164 hits in 30M). Where the crack
+applies its patch was not traced.
 
 ## What `$1abaa` actually is — seasons and weather, not economy
 
@@ -902,18 +1034,25 @@ are limitations rather than choices:
   event-driven (a revolt, `$550e`, moves a lord and his settlements; economy.md §3) or live in the setup-time
   cluster `$2984`/`$238c`/`$2906`/`$ac20` which may also run periodically —
   none of that code is mapped. This is the largest remaining subsystem.
-- **Trace the AI from a live enemy.** A later land does it unprompted (above):
-  `scratchpad/pm121/run/*.snap` hold 4-8 autonomous `$661a` decisions per land.
-  Still to do: record each decision's `$68fe` target and `$68ee` budget.
+- **The AI on a live enemy (122nd).** All 25 natural `$661a` primary
+  decisions in the four 200M-step runs (lands 0/5/25/60: 8/7/4/6) were
+  captured at `$662a`/`$6632` (`scratchpad/pm122/dec/`, `parse.py`). `$68fe`
+  found a target every time, and `$68ee`'s cost (4-66) was always far inside
+  the objective budget `112(A1)` (24,218-24,671, i.e. the `$5fff` seed of
+  `$26c4` barely decayed), so every decision issued the attack order
+  (`136(A1) := 4`, `$67ee(12)`); the over-budget fallback `$69b4(6)` and the
+  no-target path `$69b4(8)` never ran. Targets were leaders of every other
+  side, the player's (side 1) in 6 of 25, usually with a small `troops_field`
+  (0-18). The budget test does not bind at these values.
 - **Combat — mechanism closed** (73rd, see "Combat" + `ai.md`). The `$5590` kill
   branch runs naturally on later lands (121st). Remainder: the `$5c80`/`$5bd2`
   wear path (never fired in 800M later-land steps). Projectile type is byte6:
   `$28` (40, an arrow, from a bow) is common; `$12` (18) never appeared.
-- **Mission-file grammar** — the procedural generator (`$10d1e`/`$2266`) is
-  sketched (above). `$10d1e` only re-rolls parameters from a seed; no
-  byte-script path has been seen. The fixed-map branch (`$58148 < $100` →
-  `$df52(7)`) and the objective setup (`$2984`/`$238c`/`$2906` seeding
-  `obj_camp_id` + `$67d0`) are unexercised and need a mission that uses them.
+- **Land setup**: there is no mission-file grammar (campaign lands are the
+  195-entry `$3f428` table, "The campaign" above). Still unreached: the
+  fixed-map branch (`$58148 < $100` → `$df52(7)`), which no campaign entry
+  uses (possibly Load Data Disk), and the per-objective `obj_camp_id` fields,
+  which only the dead `$67d0` hook reads.
 - `$580a6` per-side assessment block: `$311a` writes `+15`/`+16` (clamp
   `$ff9c..$64`, a signed −100..+100 relationship), `$4c2a` clears `+6` peace
   bits, `$3154` reads the sign for friend/foe. The `$2200`–`$3500` seeders and
