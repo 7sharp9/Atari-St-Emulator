@@ -50,8 +50,10 @@ if bits==0: feature = 0                      (sea wipes trees and buildings)
 visit = 0
 ```
 Shape codes: `0` sea; `1..$0e` slope (corner mask) above sea; `$0f` flat land; `$11..$1e` shore slope;
-`$1f,$20` the built-up flat around a house (written by `$10366` as `$1f + owner`); `$2f..$31` rock;
-`$35` swamp; `$42` burnt field of a destroyed house (`$108b8`, inferred). `$21ea0` (16 bytes, from the
+`$1f,$20` the built-up flat around a house (written by `$10366` as `$1f + owner`); `$2f..$31` rock
+(only `$2f` survives a re-derive: the scatter's `$30/$31` become ordinary slopes when their cell is
+re-derived, `$c194..$c232`); `$35` swamp; `$42` burnt field of a razed settlement (`$108b8`, verified
+in play, mechanics.md 3.5). `$21ea0` (16 bytes, from the
 LANDn header) maps shape to a colour index (inferred, used by `$12f84`).
 
 PNGs (`py/maps_png.py` regenerates the full set): `h_game_start.png` (heights), `alt_*`, `shape_*` (blue sea, green land, sand shore, grey rock,
@@ -176,26 +178,67 @@ armageddon +5000 (credited only to the local side `$3affe`).
 
 ## 4. Terrain powers
 
-Each power checks mana against its cost (`$21990..$219a4`), refuses while armageddon or `$3b274` is set,
-checks the power bit, and subtracts the cost. In paint-map mode (`$3b276`) all of these checks are
-skipped.
+All six powers share one gate (`$11f6e`, `$12354`, `$12640`, `$12a18`, `$12bbc`, `$12d2a`):
 
-- **Earthquake `$12350`** (2500): shakes the screen for 20 frames. Then 2 passes over the corners
-  (x..x+8, y..y+8) from the view origin. For each corner with h != 0, `r = rand()%5`: r=1 raises, r=2..4
-  lower, r=0 leaves it alone (`$124b8..$1250e`). The redraw covers the dirty box.
-- **Volcano `$1263c`** (10000): nested squares for a = 0..4 over corners (x+i, y+j), i,j in a..8-a. For
-  each, `r=rand()%5`, and it raises when r is 1, 2 or 4, which builds a cone of up to 5 extra levels
-  centred in the view. Then, for cells x..x+7, y..y+7 inside the map: if `rand()%5==0`, the shape becomes
-  `$2f` (rock) and the feature is cleared. The papal-magnet cells `$3b228/$3b238` are excluded, and so is
-  the cell of player 0's leader. Both locals read `$3b226`, so player 1's leader is not protected (code
-  quirk, `$127a2..$12804`).
-- **Swamp `$12a14`** (5000): 30 tries at cell (x+rand()%7-3, y+rand()%7-3). A try converts the cell to
-  shape `$35` when the shape is `$0f/$1f/$20/$42` (flat) and the cell has no occupant. A walker on `$35`
-  dies (`$e9a4`). If swamps are shallow (b4&2 == 0) the cell reverts to `$0f` after one victim.
-- **Flood `$11f6a`** (40000): every corner with h>0 drops by 1, which raises the sea by one level, then
-  `$c0ee`/`$c27a` run over the whole map.
-- **Armageddon `$12d26`** (80000) and **knight `$12ba0`** (7500) do not modify terrain. Armageddon sets
-  `$3d524`, which makes raise free and blocks the other powers.
+```
+if paint map ($3b276): skip all of this (no cost, no checks)
+refuse if mana[side] < cost               (signed long $3b232 + 16*side; costs $21990..$219a4)
+refuse if armageddon ($3d524)             (armageddon itself does not test it)
+refuse if paused ($3b274)
+refuse if !(god_rec[side].+14 & bit)
+mana[side] -= cost
+if side == human ($3affe): score $36cea += bonus   (also in paint mode, except armageddon)
+```
+
+The knight first requires a leader, before the gate and also in paint mode. Sound requests go to
+`$36d02` (the VBL plays `code - $42` while sound effects `$21920` are on).
+
+| power | routine | cost | bit | score | sound | RNG draws |
+|---|---|---|---|---|---|---|
+| earthquake | `$12350(side,x,y)` | 2500 | $08 | 25 | $4c | one per corner that is non-zero when visited, 2 passes of 81 |
+| swamp | `$12a14(side,x,y)` | 5000 | $10 | 50 | none | exactly 60 |
+| knight | `$12ba0(side)` | 7500 | $20 | 150 | $45 | none |
+| volcano | `$1263c(side,x,y)` | 10000 | $40 | 100 | $4b | 165, then one per in-map cell of the 8x8 square |
+| flood | `$11f6a(side)` | 40000 | $80 | 250 | $4a | none |
+| armageddon | `$12d26(side)` | 80000 | $100 | 5000 | $49 | none |
+
+Earthquake and volcano seed the dirty box `$36ce8/$3b006/$3d522/$37eb8` with (x,x,y,y), grow it with
+every height change, clamp it to 1..63 and then run `$c0ee(minx-1, miny-1, maxx, maxy)` and the
+minimap redraw `$c27a`. `$37f8a` is not reset by either power. Earthquake and volcano act at the
+view origin `$37e7a,$249ae` (the UI posts it; graphics.md, "Mouse input").
+
+- **Earthquake `$12350`**: `$2287a -= $a0`, 20 frames of screen shake (`$2287a` alternately
+  -$1e0/+$1e0, `$14364` draw, `$16ed8` flip and VBL wait), `$2287a += $a0`. Then 2 passes over
+  cx = x..x+8 (outer), cy = y..y+8 (inner): skip the corner if its height is 0 **at that moment**
+  (raw read, no bounds check); otherwise `r = rand()%5`, r=1 raises, r=2..4 lower, r=0 nothing. The
+  number of draws therefore depends on the terrain and on the first pass. It ends with `$b15a`,
+  which waits for the sound player to go idle.
+- **Volcano `$1263c`**: `for a in 0..4: for i in a..8-a: for j in a..8-a: if rand()%5 in (1,2,4):
+  raise_point(x+i, y+j)` (165 draws, a cone of up to 5 levels). Then for cells x..x+7, y..y+7 inside
+  the map: `if rand()%5 != 0: continue`; skip the cell if it is one of the protected cells; else
+  shape = `$2f` (rock) and feature = 0. The protected cells are both papal magnets `$3b228/$3b238`
+  and "the leader cell", read twice from `$3b226`, so **side 0's leader is protected and side 1's is
+  not**; with no side-0 leader the protected cell is (0,0). The test comes after the draw, so it never
+  changes the RNG sequence. `$c0ee` keeps the `$2f` unless the cell became full sea.
+- **Swamp `$12a14`**: 30 tries: `cx = x + rand()%7 - 3; cy = y + rand()%7 - 3` (both draws always
+  taken); inside the map, if the shape is `$0f/$1f/$20/$42` and the cell has no occupant, shape =
+  `$35`. No dirty box, no re-derive, no minimap redraw. A walker on `$35` dies (`$e9a4`); with
+  shallow swamps (option bit 2 clear) the cell reverts to `$0f` after one victim.
+- **Flood `$11f6a`**: every corner with h > 0 drops by 1 (the sea rises one level), then
+  `$c0ee(0,0,63,63)` and `$c27a(0,0,63,63)`. Settlements on cells that become sea turn into flags $12
+  and, with "water is fatal", die: on GENESIS a flood from `drive/A.snap` drowned 4 of the 8
+  settlements (two per side) within 12 frames.
+- **Knight `$12ba0`** and **armageddon `$12d26`** do not touch terrain (mechanics.md 3.5 and 5).
+
+Proof (`py/powers/`, section "Scripts"): the Python models in `powers_ref.py`, run in place on a full
+RAM image, match the real routines under `callcap` on **2305/2305** randomized states (full DATA+BSS
+delta and RNG seed; earthquake's shake frames need the VBL, which callcap masks, so its RNG and
+re-derive half is tested by a callcap started at `$12470`, 145/145), and **8/8** casts made through
+the game's UI with popdrive (flood, earthquake, two volcanoes, swamp, armageddon, two knights) match
+on all 37824 state bytes between the routine's entry and exit. The volcano's leader asymmetry was
+cast both ways: with the seed set at entry so a rock falls on (56,55), evil's leader's settlement
+became rock and nine frames later a walker; the same draw on good's leader cell (9,13) was skipped.
+
 - **Water**: sea is height 0 / shape 0. On a walker flagged in water (entity byte 0 & $10), fatal water
   kills it at once (`$dfcc`); harmful water takes the other path (inferred, people code).
 - **Trail effects** (`$13372` spawn, `$12f84` per-frame tick; entity slots $d1/$d2): at tick

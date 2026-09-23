@@ -35,8 +35,8 @@ A free slot is any with str <= 0.
 | +12 | w | anim | walker: step phase 0..7; settlement: sprite = $20+level, $2a castle; other states own sprite ranges ($55 celebrate, $5d drown, $65 paused, $82/$86/$8a/$46 fight) |
 | +14 | l | knight | non-zero = knight; value = pointer to the enemy entity it hunts |
 | +18 | w | last | previous cell, cleared when it no longer equals cell-off |
-| +20 | b | aiflag | written by the computer-player routines (`$135fc`); set to 1 on a knight; consumed in `$108b8` |
-| +21 | b | lastdir | last (or opposite) direction offset used by the magnet walker `$f6b2` to avoid reversing |
+| +20 | b | aiflag | three unrelated uses: in a settlement the cached result of `ai_flatten_site $135fc` (0 not flat, 1 flat, 4 cannot build; written `$e540`, read `$e4fc`, cleared in an emitted walker `$e802`); in a walker 1 on a new knight (`$12c86`), "report my next win to the AI" (`$108b8`, section 3.5, any winner with +20 set, knight or not); in the hazard slots $d1/$d2 the effect type (`$13372`) |
+| +21 | b | lastdir | `$f6b2`'s memory: a direct step stores the direction taken, a fallback step the opposite of the direction taken; the fallback skips the direction equal to +21 |
 
 Flags (`$db4c` dispatch at `$df76..$edac`; animation by `$101a0`):
 
@@ -47,7 +47,7 @@ Flags (`$db4c` dispatch at `$df76..$edac`; animation by `$101a0`):
 | bit 3 (8) | fighting; exactly 8 = the attacker, which runs `$1063a` each frame. A settlement under attack is 9 and is frozen |
 | bit 2 (4) | celebrating after a win, anim $55..$57, then cleared |
 | bit 4 ($10) | in water (set as $12: any entity whose cell becomes water, `$e136`) |
-| bits 5/6 ($20/$40) | paused. $40 = no legal move (`$ef4c`, t6=7); $20 = another walker stepped onto its cell while it was starting a step (`$eb8c`, t6=0). Cleared when t6 passes 14 |
+| bits 5/6 ($20/$40) | paused (anim $65), losing `$37eb0` str per frame; cleared when t6 passes 14, or by a merge into it. $40 = no legal move (`$ef4c` 999, t6 = 7: 8 frames). $20 = wait for a follower (`$eb8c`, t6 = 0): see 3.3 |
 | bit 7 ($80) | ruin / corpse, str 1, t6 counts down from 40 then str 0 |
 
 Occupancy: `$37fd4` byte per cell = entity index+1 (0 empty). `$38fd8` word per cell = walker visit
@@ -106,36 +106,133 @@ A walker therefore loses 1 strength per cell walked. Verified: 137/138 steps (th
 that absorbed a merge in the same step).
 
 ### 3.2 Choosing a direction
-`$ef4c` calls `$f6b2` when mode == 0, the walker is a knight, or Armageddon (`$3d524`) is on; otherwise
-`$f2f4`.
+`$ef4c(e, idx)` calls `$f6b2` when the side's mode is 0, the walker is a knight (+14 != 0) or
+Armageddon (`$3d524`) is on; otherwise `$f2f4`. Both return a cell **offset** (0 = stay/settle, 999 =
+no move).
 
-`$f2f4` (settle/gather/fight modes) scans the own cell then the 8 neighbours (`$22b4e`, start rotated by
-`rand&7`), walking up to `range` cells along each ray until blocked, and records the nearest hit in five
-categories: (0) flat unclaimed land ($0f) with no building within 2 cells, or its own cell if
-`$18206` gives it a non-zero value; (1) a fight in progress; (2) an enemy; (3) a friendly walker;
-(4) the least-visited cell (`$38fd8`), not the direction just taken. Mode 3 returns (2) if found, mode 2
-returns (3) if found; otherwise the first found in order 0,1,2,3,4; none gives 999.
+**`$f2f4`** (settle / gather / fight). Locals `best[5]` = 5 (distances), `res[5]` (offsets), `minv` = 9999:
 
-`$f6b2` (magnet): with no leader, the walker heads for the magnet cell and becomes the leader if it is
-standing on it; the leader heads for the magnet; everyone else heads for the leader's cell. A knight
-heads for its target, re-acquired by `$fe00` (nearest live enemy by |dx|+|dy|) whenever the target died,
-changed side, became a ruin, or was reached. The heading is sign(dx),sign(dy) mapped through `$225c8` to a
-direction in `$225a4` (N NE E SE S SW W NW). If that cell is land (`$18198`==0, and a knight does not
-walk into swamp) it is taken. Rock ($2f) is passable only in Armageddon. Otherwise the computer side
-posts an AI "raise land here" request, and the walker tries the other 7 directions starting one
-anticlockwise, skipping the reverse of its last move; if none works it returns 999.
+```
+d = -1
+for k in 0..8:                                  ; 9 rays
+    if d == 0 and k == 1: d = (rand() & 7) + 1  ; exactly one $16702 call per $f2f4
+    else: d += 1
+    if d == 9: d = 0
+    off = $22b4e[d]                             ; 0, N, E, S, W, NE, SE, SW, NW
+    cell = e.cell
+    for dist in 0 .. e.range-1:                 ; e+2
+        if $18198(cell, off) != 0: break        ; water, rock $2f, off map: the ray ends
+        cell += off
+        if shape[cell] == $0f and dist < best[0]:            ; (0) land to settle
+            if d == 0:
+                if $18206(side, cell) != 0: best[0]=dist; res[0]=0; continue
+            elif no overlay[cell+$22b4e[j]] in $21..$2c for j = 9..16 (on-map cells):
+                best[0]=dist; res[0]=off; continue
+        if d == 0: continue
+        o = occupant[cell]
+        if o and o-1 != idx:
+            t = entity[o-1]
+            if t.flags & 8 and dist < best[1]: best[1]=dist; res[1]=off; continue    ; (1) a battle
+            if t.side != side and dist < best[2]: best[2]=dist; res[2]=off; continue  ; (2) enemy walker or town
+            if t.flags & 2 and dist < best[3]: best[3]=dist; res[3]=off; continue     ; (3) friendly walker
+        if off != e.off:                                      ; (4) least visited, not straight on
+            v = visits[cell]                                  ; unsigned
+            if v < minv or (v == minv and dist < best[4]): minv=v; best[4]=dist; res[4]=off
+if mode == 3 and best[2] != 5: return res[2]    ; fight: nearest enemy
+if mode == 2 and best[3] != 5: return res[3]    ; gather: nearest friendly walker
+for i in 0..4: if best[i] != 5: return res[i]
+return 999
+```
+
+Consequences:
+- **The rotation skips a neighbour.** The rays are own cell, r..8, own cell again, 1..r-2 with
+  r = (rand&7)+1: direction r-1 is never scanned in 7 of 8 calls. It changed 41/684, 71/867 and 85/874
+  live decisions against a full 8-way scan (a source bug is *inferred* from the loop's shape).
+- A ray continues past a hit (only a blocked step ends it); each category keeps its nearest hit, ties
+  to the ray scanned first. The own-cell ray records only category 0.
+- Category 0 on a neighbour ray checks only the 8 distance-2 cells round the candidate for buildings,
+  not ring 1. On the own-cell ray it asks `$18206`, and only when the own cell is unclaimed `$0f`: a
+  walker on claimed land never settles through category 0.
+- The occupant map marks the cell a walker is *leaving* (set at `$f2d2` as it steps, cleared at
+  `$f018` on its next step) and also holds settlements, so "enemy" includes enemy towns.
+
+**`$f6b2`** (magnet / leader / knight):
+
+```
+if e.knight:
+    t = e.knight
+    if e.cell == t.cell or t.str <= 0 or t.side == side or t.flags & $80: $fe00(e)   ; $f6ca..$f714
+    goal = e.knight.cell
+elif leader(side) == 0:
+    if magnet(side) == e.cell: leader(side) = idx+1; if $3c4c6 == 0: $3c4c6 = idx+1
+    goal = magnet(side)
+elif leader(side)-1 == idx: goal = magnet(side)
+else: goal = entity[leader(side)-1].cell
+h = $225c8[(sgn(gx-x)+1)*3 + sgn(gy-y)]          ; dx = dy = 0 gives N
+r = $18198(e.cell, dir8[h])                        ; dir8 = $225a4: N NE E SE S SW W NW
+if r == 0 and not (e.knight and shape[e.cell+dir8[h]] == $35): e+21 = dir8[h]; return dir8[h]
+if r == 2 and armageddon:                          e+21 = dir8[h]; return dir8[h]
+if (god[side].ctrl == 1 or armageddon) and (!(opts & 4) or armageddon):   ; busy is not checked
+    if r == 3: god[side].cmd = 1 (raise) at e.cell, busy = 1
+    elif shape[e.cell+dir8[h]] == $35 and !(opts & 8) and !armageddon: god[side].cmd = 1 at that cell, busy = 1
+j = h-1
+repeat 8:                                          ; tries h-1, h, h+1 .. h+6
+    wrap j to 0..7; o = dir8[j]
+    if $18198(e.cell, o) == 0 and o != sext(e+21) and not (e.knight and shape[e.cell+o] == $35):
+        e+21 = dir8[$22ae2[j]]; return o           ; stores the OPPOSITE of the step taken
+    j += 1
+e+21 = dir8[$22ae2[j]]                             ; j = h+7 unwrapped: reads past the 8-entry table
+return 999
+```
+
+So a leader standing on the magnet steps off it to the north and back; rock is passable under
+Armageddon only on the direct heading; only shape `$2f` blocks (`$30/$31` are walkable); a knight
+never steps into swamp, and its raise-at-swamp request is the only way past one; the raise request
+overwrites any pending command.
+
+`$fe00(e)` (knight target): e+14 = e itself; then over entities 0..`$3c4e2`-1 of the other side with
+str > 0 and not a ruin ($80), so fighting, drowning and paused enemies and towns all count, it takes
+the smallest |dx|+|dy| of the cell coordinates (`$207b2` abs); only a strictly smaller distance
+replaces, so ties go to the lowest index. With no enemy the knight targets itself, heads north and
+re-acquires on every step. Distance is the only criterion, so a knight never gives up on a target
+across the sea.
 
 `$18198(cell,off)` returns 0 land, 1 off-map/wraps, 2 rock $2f, 3 water.
 
+Proof (`py/walker/`): `walker_ref.py` against `callcap` over randomized neighbourhoods, modes,
+leaders, magnets, knights, Armageddon and seeds on 3 snapshots: `$f2f4` **1200/1200** and `$f6b2`
+**1200/1200** (full memory delta and D0; every category, both mode overrides, 999, rock under
+Armageddon, 55 water and 12 swamp raise posts). In play, through popdrive clicks only (a magnet walk
+and five one-corner raises bridging the human's island to the south-west evil towns, then the gather
+or fight icon), every live `$ef4c` decision was predicted, **8000/8000** over four runs, and every
+walker's cell at every frame, gather **19451/19451** (935 frames), fight **19480/19480** (903
+frames), island runs **12932/12932** (703 frames).
+
 ### 3.3 After the decision (`$ef4c`)
-- 999: flags |= $40, pause 8 frames.
+- 999: flags |= $40, t6 = 7: an 8-frame pause (code-read; no live decision returned 999).
+- The follower pause, flag $20 (`$eb8c`, in the per-frame walker code after the step): for walker B,
+  if `A = occupant[B.cell]-1` is another entity with A < $d0, A.anim == 0 and A not in water, then
+  A.flags |= $20, A.anim = $65, A.t6 = 0. Since the occupant mark is the cell a walker is leaving and
+  anim 0 is the frame of a step, this reads: **B is heading into the cell A has just stepped out of,
+  so A waits for B.** B's next step finds A on its cell and merges into it or, if enemies, attacks it;
+  `$feca` clears the pause. It is side-blind. Live (three runs): the trigger rule held for 69/69,
+  74/75 and 94/95 pauses (the two misses are end-of-frame capture artefacts: the candidate B merged,
+  re-stepped or was paused itself in the same frame); 203 of 239 ended in a merge, mostly after 7-8
+  frames (the follower's step interval), otherwise after the full 15; a paused walker lost 1 str per
+  frame in 1424/1435 paused frames (the rest were merge frames).
 - The entity already registered at the walker's current cell (`$37fd4`) decides an interaction:
   enemy not fighting -> `$10e7e` start a fight (both get bit 3, t6 = each other, and they share one
   cell); same side -> `$feca` merge; entity already fighting -> `$11006` joins the fight by merging into
   whichever of the two combatants is on its side.
-- Merge (`$feca`/`$11006`): target str += walker str (cap 32000), knight pointer and leadership move to
-  the target, weapon = max, walker str = 0. A knight never merges into a settlement. A walker that walks
-  into its own town therefore adds its strength to the town population.
+- Merge `$feca(i, j)` (walker i into entity j; `$11006` joins a fight through it):
+  ```
+  if i.knight: if j.flags == 1: return      (a knight meeting its own settlement: nothing happens at all)
+               j.knight = i.knight          (the pointer moves: j becomes the knight)
+  j.str = min(i.str + j.str, 32000); leader and query selection move from i to j
+  if j > i: population[i.side] -= i.str     (j was already counted this frame)
+  j.weapon = max; i.str = 0; j.flags &= $9f (unpause); j.anim = 0
+  ```
+  A walker that walks into its own town therefore adds its strength to the town population.
 - Direction 0 (settle here) and not a knight: flags = 1, t6 = frame, footprint claimed by `$10366`.
 - Otherwise: visit count++ and occupancy set on the cell being left, cell += dir, off = dir.
 
@@ -161,14 +258,30 @@ Verified 18/18 rounds exactly (str of both sides and the RNG seed), 6/6 resoluti
 
 `$108b8(winner, loser)`: battles won `$3c514[winner.side]`++. Mana transfer amount e:
 - loser a walker: 100, knight 1000, the side's leader 3000 (`$3c4e8`).
-- loser a settlement: `$3c4fe[level]` (100 if sprite out of range). If the winner is not a knight the
-  town is taken over: the old footprint is released, and if `$18206` gives the winner's cell a value
-  it becomes a settlement of the winner's side (the old record is discarded); else it stays a walker.
-  A knight instead razes it: record becomes a ruin ($80, str 1, 40 frames), claimed cells become $42,
-  building overlay +$15 (burnt).
+- loser a settlement: `$3c4fe[level]` (100 if sprite out of range). **Raze** when the winner has a
+  knight pointer and non-zero str; otherwise the town is taken over: the old footprint is released,
+  and if `$18206` gives the winner's cell a value it becomes a settlement of the winner's side (the
+  old record is discarded); else it stays a walker. The raze: the loser becomes a ruin ($80, str 1,
+  t6 40) and the winner flags 2. Of a town's 17 footprint cells, those passing `$18198` with the
+  loser's colour ($1f + loser side) become $42; a castle (centre feature $2a) uses all 25 cells
+  without the step check, and its ring-1 wall features $29..$2c get +$15. The centre feature
+  ($20..$2a) gets +$15 (burnt) and the loser's occupant mark is cleared.
+- then, for both kinds: the winner's cell occupant becomes the winner if it was empty or the loser;
+  if the winner's aiflag (+20) is set, god_rec[winner.side] +30 = winner cell, +28 = 2 and aiflag -= 1
+  (a new knight has 1, so its first win sets the AI's magnet target once); if the loser's aiflag is
+  set, god_rec[loser.side] +28 = 0.
 
 Then winner flags |= 4 (celebrate), mana[winner] += e, mana[loser] -= e floored at -250 (`$21984`).
 Observed: leader killed -> +3000 / -3000 clipped to -250.
+
+Proof of the knight rules (`py/powers/`): under `callcap`, `$fe00` 240/240 (84 ties, 62 with no
+enemy), `$feca` 240/240 (121 knight-pointer moves, 33 refused merges into a settlement) and `$108b8`
+240/240 (73 town razes, 68 castle razes, 99 walker losers). In play, a knight cast through the UI
+(with a land corridor built so it can reach the enemy, `knight_scn.py`) was followed for 1100 frames:
+every direction/re-target call **133/133** (127 kept the target, 6 re-acquired), every merge **18/18**
+and every raze **3/3** (towns e6, e4 and e12, re-targeting e6 -> e4 -> e12 -> e3) matched the model on
+the full state. Without the corridor that knight walks its heading into the shore of its own island
+and starves by frame ~720. The non-knight take-over path was not exercised.
 
 ## 4. Settlements
 
@@ -179,7 +292,9 @@ Over the 17 cells centre + ring 1 + four ring-2 axis/diagonal cells (`$22b4e[0..
 - centre not flat: return 0;
 - any other building overlay ($21..$2c) in the 16 surrounding cells: return 0 (a castle's own wall
   pieces are allowed and counted in `$3b002`).
-Values below 35 become 0; exactly 305 (all 17 flat) becomes 3050 = castle.
+Values below 35 become 0; exactly 305 (all 17 flat) becomes 3050 = castle. Side effects: `$3b002` is
+cleared and counts the castle wall pieces seen, and `$37eb6` is set when a footprint cell is unclaimed
+`$0f` (both reproduced by the power models under `callcap`; `people_model.py` does not track them).
 
 Sprite/level: value < 3050 -> $20 + value*10/305 (levels 0..9), else $2a castle (level 10).
 Capacity = value (castle 3050). Value 0 makes the settlement leave as a walker next frame.
@@ -216,8 +331,8 @@ Per side (`$db4c`):
 Verified: side mana 774/774 frame transitions, population 774/774, town counts 800/800 (26 frames
 excluded because a merge/fight changed totals mid-loop).
 
-Power costs = unlock thresholds `$21984[]`, all conditional on mana >= cost, no paint mode, not
-Armageddon, and the side's permitted-power bit:
+Power costs = unlock thresholds `$21984[]`, each behind the gate in terrain.md section 4 (mana >=
+cost, not armageddon, not paused, the side's power bit; paint mode skips it):
 
 | routine | power | cost | score bonus (`$36cea`, human only) |
 |---|---|---|---|
@@ -225,7 +340,7 @@ Armageddon, and the side's permitted-power bit:
 | `$111be` | papal magnet (needs a leader) | 200 | - |
 | `$12350` | earthquake | 2500 | 25 |
 | `$12a14` | swamp (30 tries in 7x7) | 5000 | 50 |
-| `$12ba0` | knight (leader becomes knight, magnet moves to it, side loses leader) | 7500 | 150 |
+| `$12ba0` | knight (needs a leader; it gets +20 = 1 and a `$fe00` target, the magnet moves to it unless paused, the side loses its leader; a settlement holding it becomes a walker with its whole population next frame) | 7500 | 150 |
 | `$1263c` | volcano | 10000 | 100 |
 | `$11f6a` | flood (all heights -1) | 40000 | 250 |
 | `$12d26` | armageddon (clears knights, `$3d524`=1) | 80000 | 5000 |
@@ -277,9 +392,22 @@ from game_start is the evidence used here).
   (a 21 MB capture; the one used here is kept at `$POP_WORK/agents/people/fr/run400.bin`).
 - `fightcheck.py <snap> <n>`: forces Armageddon and checks `$1063a` rounds against the model.
 - `repl.py`: interactive REPL driver.
+- `walker/` (data in `$POP_WORK/walker/`): `walker_ref.py` models `$18198`, `$18206`, `$f2f4`, `$fe00`,
+  `$f6b2` and the `$ef4c` dispatch; `walker_diff.py 400 7` the callcap corpus (2400/2400);
+  `capcalls.py <snap> <n> <out>` records every live `$ef4c` call; `livecheck.py <calls> [<frames>]`
+  checks live decisions and per-frame walker cells; `quirk.py` counts decisions a full 8-way scan
+  would change; `pause_study.py` the flag-$20 pauses; `campaign.py`, `campaign2.py`, `mkmode.py` are
+  the UI-driven play that made `snaps/near`, `front`, `gather1`, `fight1`.
+- `powers/` (data in `$POP_WORK/powers/`): `powers_ref.py` models the six powers, `$fe00`, `$feca`
+  and `$108b8`; `pw_diff.py 40 2026` + `pw_diff.py 40 77` the callcap corpus (2305/2305); `cast.py`
+  and `knight_scn.py` the UI casts (entry/exit snapshots compared on the full state); `live.py <snap>
+  1100 retarget merge resolve` the knight's natural calls; `ktrack.py` prints knights and targets.
 
 ## 10. Open questions
-- Entity +20 is the `$135fc` site-flat result cache (`ai.md` 3.3); its other writers are not traced.
-- Flag $20 pause trigger semantics beyond the code condition.
-- `$f2f4` wander categories were read from code, not exercised in isolation; mode 2/3 not run.
-- Knight creation, flood, volcano, earthquake not exercised in the emulator.
+- The `$ef4c` writes after the decision (settle, merge, fight start, occupancy and visit counts, the
+  lower request on a `$42` cell) are checked only through the frame-by-frame walker cells, not
+  diff-tested on their own.
+- A knight merging into a friendly walker never happened in play (proven by `callcap` only), and the
+  non-knight take-over of a town in `$108b8` (`$10366` release/claim) is not modelled.
+- Fight mode drew only 5 human "attack enemy" decisions in the live run (the bridge brought walkers
+  mostly into contact with their own side).

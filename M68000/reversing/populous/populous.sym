@@ -3,6 +3,7 @@
 00ae14	main
 00aec4	alloc_gfx_buffer
 00af12	set_game_palette
+00b15a	wait_sound_idle
 00b2ac	floprd_disk_check
 00b316	new_world
 00b510	main_loop
@@ -45,6 +46,7 @@
 011f6a	power_flood
 0120c6	place_start_walkers
 012350	power_earthquake
+012470	earthquake_after_shake
 0124f6	earthquake_cell_switch
 01263c	power_volcano
 0129d6	set_magnet_cell
@@ -97,6 +99,7 @@
 016de2	pointer_save_and_draw
 016ed8	flip_screens
 016f0a	wait_vbl_flag
+016f24	sound_idle_test
 0180b6	draw_text
 018198	cell_step_check
 018206	land_value
@@ -110,6 +113,7 @@
 01d714	world_number
 01db1e	blit_mouth_frame
 01db98	save_game
+01e146	load_game
 01e712	exec_player_commands
 01eef4	god_commands_clear
 01f0fa	cmd_misc
@@ -122,6 +126,7 @@
 020698	gemdos
 0206e6	ldiv_stk
 020758	lmul_stk
+0207b2	abs_w
 0213bc	ulmul_stk
 021614	cmd_jump_table
 021632	cmd_misc_jump_table
@@ -153,6 +158,7 @@
 022284	other_side
 022286	menu_game_setup_items
 0225a4	tbl_dir8
+0225b4	tbl_castle_wall_sprites
 0225c8	tbl_sign_to_dir
 02273c	settings_string_table
 0227d8	flatten_offsets
@@ -161,17 +167,21 @@
 022880	game_palette
 022ac8	pointer_sprite_table
 022ad8	level_record
+022ae2	tbl_dir8_opposite
 022b4e	footprint_offsets
 02360c	font_glyphs
 024748	mouse_x
 02474a	mouse_y
 02474e	pointer_save_buffer
+024953	sound_priority
+024954	sound_effect_number
 024998	tbl_growth
 0249ae	view_origin_y
 033be4	cell_alt
 034be4	corner_height
 036ce8	dirty_min_x
 036cea	score
+036d02	sound_request
 036e72	cursor_corner_x
 036e76	cursor_corner_y
 036e78	cell_shape
@@ -180,13 +190,16 @@
 037e86	world_name_buf
 037eb0	walker_step_cost
 037eb2	drawlist_count
+037eb6	land_value_saw_unclaimed
 037eb8	dirty_max_y
 037ec2	world_seed
+037f5a	trap_save_stack
 037f8a	land_points_changed
 037fd4	cell_occupant
 038fd8	cell_visits
 03afd8	ptr_backdrop
 03affe	human_side
+03b002	castle_wall_count
 03b006	dirty_max_x
 03b00c	drawlist
 03b20c	tbl_mana
@@ -207,6 +220,7 @@
 03c4c6	query_entity
 03c4c8	frame_counter
 03c4ca	magnet_cell_good
+03c4cc	trap_save_depth
 03c4ce	ptr_display_screen
 03c4d2	ptr_draw_screen
 03c4d6	mouse_right_latch

@@ -15,8 +15,8 @@ reproduction diffed against the real code:
 | document | covers | proof |
 |---|---|---|
 | [`graphics.md`](graphics.md) | asset formats (LZ packer, blocks, sprites, font, pictures), palette, 8x8 isometric block renderer, walls, water, sprite list, minimap, panels, mouse pointer, double buffering | `py/pop_render.py` rebuilds the frame from RAM + asset files: **64000/64000 pixels on 12/12 frames**, draw list identical |
-| [`terrain.md`](terrain.md) | 65x65 corner heights and the per-cell maps, raise/lower (neighbour-difference recursion, cost 4n+10), world generator (PRNG, three random-walk hills, rock/tree scatter), world names, `LEVEL.DAT`, conquest progression, the terrain powers | `py/verify_gen.py`: heights + 3 derived maps + final seed **byte-identical for 3 worlds**; `py/verify_cmd.py`: raise at a peak **134/134 corners** |
-| [`mechanics.md`](mechanics.md) | entity record, walker stepping/merging/drowning, combat, settlement land value and building size, growth and walker emission, mana, power costs, win/lose, score | `py/people_model.py` over 400 frames: settlements **4122/4122**, mana **774/774**, spawns **12/12**; combat **18/18** rounds |
+| [`terrain.md`](terrain.md) | 65x65 corner heights and the per-cell maps, raise/lower (neighbour-difference recursion, cost 4n+10), world generator (PRNG, three random-walk hills, rock/tree scatter), world names, `LEVEL.DAT`, conquest progression, the terrain powers | `py/verify_gen.py`: heights + 3 derived maps + final seed **byte-identical for 3 worlds**; `py/verify_cmd.py`: raise at a peak **134/134 corners**; `py/powers/`: the six powers, `$fe00`/`$feca`/`$108b8` vs `callcap` **2305/2305**, 8/8 casts through the UI identical on all 37824 state bytes |
+| [`mechanics.md`](mechanics.md) | entity record, walker stepping/merging/drowning, combat, settlement land value and building size, growth and walker emission, mana, power costs, win/lose, score | `py/people_model.py` over 400 frames: settlements **4122/4122**, mana **774/774**, spawns **12/12**; combat **18/18** rounds; `py/walker/`: direction choice `$f2f4`/`$f6b2` **2400/2400** callcaps, gather and fight played through the UI with every decision (**8000/8000**) and every walker cell per frame (**51863/51863**) predicted; knight target/merge/raze **720/720** callcaps and **154/154** live calls |
 | [`ai.md`](ai.md) | the computer god: per-side god record, reaction-rate limiting, magnet/mode strategy, power casting thresholds and targeting, site levelling, how conquest levels and the custom "OPTIONS FOR EVIL" set it up; strategy notes | `py/ai_diff.py`: 4 decision routines vs `callcap`, **4800/4800** full memory deltas |
 
 `populous.sym` (213 names) is the shared symbol file; `level_table.txt` decodes all 99
@@ -198,8 +198,7 @@ settlement rescans its 17-cell footprint each frame) and the terrain block blitt
 **Verification.** Every claim in the topic documents is either a Python reproduction diffed
 against the real code (callcap, frame captures, or the frame buffer; counts in the table at
 the top) or explicitly marked "inferred"/"code-read". Not exercised in the emulator:
-walker modes 2/3 (gather, fight) in play, knight creation, flood/volcano/earthquake as cast
-by the game, the trail effects and their protection check, custom and Atari-vs-Atari games,
+the trail effects and their protection check, custom and Atari-vs-Atari games,
 the serial link.
 
 ## Files
@@ -212,7 +211,7 @@ the serial link.
 | `drive.txt` | cold-boot-to-gameplay REPL script |
 | `callgraph.dot` / `.svg`, `blocks.txt` | named call graph and executed-block map of 191 gameplay frames |
 | `panel_regions.png` | the `$c3e2` click regions of every command icon and the minimap, over a game frame |
-| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; driving `popdrive.py`, `panelmap.py`, `verify_drive.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java` |
+| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; driving `popdrive.py`, `panelmap.py`, `verify_drive.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java`; per-area subdirectories `walker/`, `powers/` (listed in `mechanics.md` 9), their snapshots and captures under `$POP_WORK/<area>/` |
 | `intro.png`, `title_menu.png`, `conquest_briefing.png`, `gameplay.png` | milestones: intro credits, the LOAD.PIC title menu, the GENESIS briefing, the first gameplay frame |
 | `real_game_start.png`, `mine_v5547.png`, `mine_v5547_diff.png` | emulator frame vs `pop_render.py` output and their (empty) diff |
 | `land0..3_blocks.png`, `sprites0.png`, `spr_320.png`, `font.png`, `icons_150e2.png` | decoded block/sprite/font/icon sheets |
