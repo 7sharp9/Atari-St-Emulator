@@ -20,13 +20,23 @@ know they existed.
   their output under a scratchpad dir, not in `scratchpad/pmNNN/` where the next session
   cannot find them.
 
+## Sessions and handoff
+
+- Start a session with `/resume <workstream>` and end it with `/handoff <workstream>` (skills in
+  `.claude/skills/`). `M68000/sessions/<workstream>.md` is the only continuation record: not
+  scratchpad notes, not a root `next_session.md`, not a memory RESUME block. A session writes only
+  its own workstream's handoff.
+- Shared resources (the `bin/` DLL, `*.fs`, `CLAUDE.md`, skills, `tools/`) and how to coordinate on
+  them: `M68000/sessions/README.md`.
+
 ## Rules
 
 - Run through `M68000/run.ps1` or `dotnet exec M68000/bin/Debug/net8.0/M68000.dll` from
   `M68000/`. Addresses in docs are runtime absolute addresses.
 - **Another Claude session is often working in this checkout.** Before `taskkill` on dotnet,
   `dotnet build`, or editing a file with uncommitted changes you did not make, check
-  (`git status`, `tasklist | grep dotnet`) and ask. Subagents must be told: no build, no git,
+  (`git status`, `tasklist | grep dotnet`, `ListAgents`) and ask: message a live session with
+  `SendMessage`, otherwise ask Dave. Subagents must be told: no build, no git,
   no taskkill, write only under their own directory. If the other session holds
   `bin/Debug/net8.0/M68000.dll`, the build fails only at the copy step: confirm your change
   compiles with `dotnet build -c Debug M68000.fsproj -o <scratch dir>` and leave its process alone.
