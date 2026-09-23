@@ -17,6 +17,93 @@ unzip "Powermonger (1990)(Bullfrog)[cr Empire].zip"
 #   829440 bytes  (810 KB, AUTO\WARI.PRG, "SK Micro Intro 6.0 (C) 1990 YODA" cracktro)
 ```
 
+## Design digest
+
+The game's rules restated for re-use in another design, without addresses. Each line names the
+section that proves it (S = `strategy.md`, A = `ai.md`, E = `economy.md`, G = `graphics.md`,
+P = `port/SPEC.md`); anything not proven there is labelled inferred. `/handoff` re-checks this list
+against every session's changes.
+
+### What carries the game
+
+- **You give orders, not controls.** The player picks an order icon (attack, recruit, invent,
+  offer an alliance, go home, a posture level ...) and clicks a target on the map; the order goes
+  to the captain's group, whose lead walks there with the men following in formation. The
+  opponent lords issue orders through the same command slots and the same executor. (S "The
+  player's commands", S "The order executor", A "What each entity decides per tick")
+- **Every man is an individual in one table.** Each runs a small per-tick state machine: step
+  toward the lead's target, check the ground, turn around an obstacle, fight a neighbouring enemy,
+  pay upkeep. Followers do nothing but upkeep; their position is stamped from the lead. (A "What
+  each entity decides per tick", A "The entity FSM")
+- **Men are conserved.** A lord's manpower is a reserve at home and a field force; soldiers move
+  between them (walking home, disbanding, recruiting, garrison upkeep, capture) and are never born.
+  A side grows only by taking men from another. (E 1, E 6)
+- **Goods are a separate ledger.** Herding animals home credits one of eight item counters (pike,
+  sword, bow, plough, boat, pot, catapult, cannon); porters move goods between a nation's lords;
+  "invention" is supply: a unit's weapon improves only when a better item reaches its lord and
+  is handed out. There is no research timer. (E 2a, E 2b, E 2c, E 4)
+- **Combat is a morale grind.** Units in contact lock into melee; each tick the attacker takes 1..4
+  (by weapon) off the target's morale, which is its hit points. At zero the loser is killed or
+  routed by a roll that the attacking group's discipline can pin; a rout scatters the loser's
+  group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
+  A "Natural runs on later lands")
+- **Land changes hands by defection.** A lord whose standing army outweighs his reserve builds
+  loyalty pressure; past a threshold he and all his settlements change side and his garrison turns
+  over. In the natural victory the defection came only after the player attacked him (the trigger
+  path is inferred). (E 6, E 3, S "How a land ends")
+- **Winning is a ratio, not annihilation.** The score is `(2·mine + enemy/4) / enemy`, clamped to
+  0..4; a land is won only by retiring while it reads 4, and lost by retiring earlier or by the
+  captain's group dissolving. (S "`$d322` + `$3e06` → ... `$57fce`", S "How a land ends")
+- **A campaign of 195 lands on a 13 × 15 map.** A land can be picked only next to a conquered one;
+  each land's parameters come from a fixed table, and only the conquest map carries over. (S "The
+  campaign")
+- **Diplomacy is an envoy with tribute.** An alliance is offered by sending a group, carrying
+  goods, to another lord; he accepts if his attitude plus the tribute clears a bar. It only makes
+  the ally's settlements valid for friendly orders, and any contact between the two sides breaks
+  it. Only the player ever offers. (S "Diplomacy")
+- **The opponent is simple.** Each commander marches at the nearest enemy lord when its army fits
+  a patience budget that big armies spend fast; it has no economy, build or recruit reasoning.
+  (S "`$6522` — the commander AI", S "The AI as modern pseudocode")
+- **Deterministic.** The AI's "random" numbers are low bits of the tick counter, and a land's map
+  is a pure function of its seed, so a run replays exactly from a snapshot. (S "RNG and determinism")
+- **The world is drawn as a heightmap.** A software rasteriser projects the grid with perspective,
+  fills two triangles per cell far to near, and draws each cell's sprites straight after it, so
+  walk order is depth order. Seasons change the grass patterns; rain and snow are drawn on top.
+  (G "Summary", P 4 "Seasons", S "What `$1abaa` actually is")
+
+### Limits that became features
+
+- **A slow, coarse tick.** The whole simulation and both renderers run in one loop that takes
+  about 19 frames (2.6 Hz measured in the emulator); orders land seconds apart, which gives the
+  game its deliberate pace. (S "Measured cadence")
+- **No pathfinding.** A lead steps straight at its target and probes a few cells ahead, turning
+  around what blocks it. (A "What each entity decides per tick")
+- **Fixed tables:** 511 objects, five sides (side 0 neutral), 240 settlements, one order record
+  per side with six objective slots. (A "The object record", E 3, S "`$51538` — group-order table")
+- **The season clock is also a gate.** The season rotation switches the per-settlement heartbeat on
+  and off, so upkeep and defections run in bursts. (S "What `$1abaa` actually is", E 6)
+
+### Bugs and accidents a new design should drop
+
+- The relation bytes are misaddressed three ways: the update reads one byte and writes the next,
+  reading negatives as large positives; the envoy check reads the attitude toward the wrong side;
+  and the targeting weight reads outside the relation table, so relations never affect who the AI
+  attacks. (S "Diplomacy")
+- Breaking an alliance with the player loses the two −8 relation changes: a message call clobbers
+  a register, so they are written outside the table. (S "Diplomacy")
+- Mission 1's groups all carry discipline 4, which pins every morale defeat to a rout: the first
+  land never kills a man. Tuning or a generator bug; later lands kill. (S "Combat" 0,
+  A "Natural runs on later lands")
+- Catapult and cannon are goods that never become weapons: no code stores their tier on a unit, so
+  their projectile type is unreachable. (E 4)
+- The group dissolve reads the command slot at `3 × side` instead of `6 × side`, and the revolt
+  chain passes the side in the wrong register; both are transcribed as the code does them. (A
+  "The group dissolve", A "The revolt chain")
+- The campaign-order hook that could script the AI's economy is dead code. (S "The campaign-order
+  hook")
+- The wear-removal path never fired in 800M steps on four lands (inferred: unreachable in
+  practice). (S "Open threads")
+
 ## Drive recipe: cold boot to the isometric view ([cr Replicants])
 
 ```

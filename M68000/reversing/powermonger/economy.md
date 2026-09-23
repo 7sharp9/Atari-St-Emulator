@@ -753,7 +753,7 @@ turn against a cruel ruler".
       │                                          (pm_object byte 44 / byte 33)
       │  displayed:  $9bae  "n Swords" in the lord panel
       ▼
-   $33b0 (mode $76): weighted delivery total + hostility  ─►  attack order $2a / declare war
+   $33b0 (mode $76): envoy's goods as tribute + attitude  ─►  alliance accepted ($2a → $34a8) or refused
 
 
    pm_leader.troops_reserve / .troops_field  ($4e514 +6/+8)   ── SEPARATE LEDGER ──
