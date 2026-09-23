@@ -1,13 +1,13 @@
 # PowerMonger: handoff
 
-Updated 2026-09-23 by the session that ended at commit `6b02d71` (the 123rd PowerMonger pass, the
+Updated 2026-09-23 by the session that ended at commit `30dc4f6` (the 123rd PowerMonger pass, the
 first on the Mac).
 
 ## Resume point
 
 - Last commits of this workstream: `2b41237` (the player's commands, the executor table corrected,
   mission 1 won by clicks), `eb3332c` (diplomacy), `0b69940` (`tools/pm_fsm_diff.py` runs without
-  pwsh), `6b02d71` (CLAUDE.md / DEVELOPING macOS lines).
+  pwsh), `6b02d71` (CLAUDE.md / DEVELOPING macOS lines), `30dc4f6` (the design digest in `reversing/powermonger/README.md`, which `/handoff` re-checks).
 - Working data: `M68000/scratchpad/` (gitignored). On the Mac it was copied from gpubox (CLAUDE.md,
   "Shell pitfalls"); present: `powermonger.st` (Replicants, sha256 `2099be89…`), `pm67_ok_pre`,
   `pm69.st`, `pm73`/`pm74`/`pm78`/`pm88` anchors, `pm92..pm99`, `pm113`, `pm115`, `pm120..pm123`.
