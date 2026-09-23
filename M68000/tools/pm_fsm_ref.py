@@ -819,7 +819,7 @@ def h_mode32(m, A1, D6, D7):
 # ================================================================ 96th pass:
 # the SETTLEMENT HEARTBEAT  mode $7c  $157e6  (dispatch entry $157ba)
 #   $16848  side<->owner reconcile + $57ff4 note + tail $5c80
-#   $163b8  settlement.leader.troops_reserve -= 1, floored at 0
+#   $163b8  settlement.leader.food -= 1, floored at 0
 #   $5cde   settlement herd-op assessment  -- ASSERTED OFF (large routine; every
 #           test state is arranged so field*4 >= reserve, or (14(A1)&3)==3, so it
 #           is not reached; reconstruct() raises if one ever would)
@@ -853,7 +853,7 @@ def call_16848(m, A1):
 
 
 def call_163b8(m, A1):
-    """$163b8: settlement.leader.troops_reserve -= 1, floored at 0."""
+    """$163b8: settlement.leader.food -= 1, floored at 0."""
     A0 = (SETTL + s16(m.wu(A1 + 34))) & 0xfffff  # lea $4f916 ; adda.w 34(A1),A0
     D0 = m.wu(A0 + 14)                           # move.w 14(A0),D0   settlement.leader_off
     A0 = (LEADER + s16(D0)) & 0xfffff            # lea $4e514 ; adda.w D0,A0
@@ -2086,7 +2086,7 @@ def _39d4_settl(m, A3, A1, A0, D0, D7):
     if D7 != 2:                               # $3bb0
         D4 = _lsr(m.wu(A3 + 36), D0)
         m.ww(A3 + 36, m.wu(A3 + 36) - D4)
-        m.ww(A0 + 6, m.wu(A0 + 6) + D4)       # add.w D4,6(A0)  (troops_reserve)
+        m.ww(A0 + 6, m.wu(A0 + 6) + D4)       # add.w D4,6(A0)  (food)
 
 
 # ---------------------------------------------------------------- $1d36

@@ -1,4 +1,4 @@
-# PowerMonger ST — the economy: manpower, livestock, settlements, invention
+# PowerMonger ST — the economy: food, manpower, livestock, settlements, invention
 
 Reverse-engineered 74th–75th pass, continuing `ai.md` / `strategy.md`. Those two
 files cover the autonomous military layer and confirm it has **no** economic
@@ -22,8 +22,9 @@ Observed.
 each of Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon, shown in the lord panel,
 shuffled between lords by porter units (§2b), and spent to equip and upgrade
 field units (§2c). "Invention" is that upgrade step (`$638c`), not a research
-timer. Manpower is a **separate** ledger with **no growth term** (§6) — it is
-conservation of soldiers minus a per-settlement upkeep drain (`$163b8`). The
+timer. Men are a **separate** ledger with **no growth term** (§6): conservation
+of soldiers. A lord's `+6` is his food store (124th), drained by a
+per-settlement upkeep (`$163b8`) and filled by herds and returning men. The
 "periodic settlement update" is entity mode `$7c` (§3a). The `$163ea` write
 aliasing is characterised and benign (§3b).
 
@@ -36,28 +37,36 @@ the entity level by the same `$14b62` FSM that runs everything else:
 
 | subsystem | where the number lives | how it moves | status |
 |-----------|------------------------|--------------|--------|
-| **manpower** (a lord's available men) | `pm_leader.troops_reserve` = `$4e514`+6, `.troops_field` = +8 | soldiers walking home add 2–4; a disbanding group returns a discipline-scaled slice; recruiting subtracts one; each settlement pulse drains one (`$163b8`); a battlefield/garrison loss subtracts 1 | **traced** |
+| **food** (a lord's store) and **manpower** (his men in the field) | `pm_leader.food` = `$4e514`+6; `.troops_field` = +8 | food: a herd or a man arriving home adds 4 / 2; an army takes a posture-scaled slice (order `$06`) or drops one (`$12`, teardown); each settlement pulse eats one (`$163b8`). Men: `troops_field` moves by ±1 as men join, leave or change hands | **Proven (124th: orders `$06`/`$12` move exactly `food >> shift` between `+6` and the army's food `36(group)`, which the captain panel labels "Food")** |
 | **goods** ("livestock", "invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed herd-drive credits `+1` to one counter (`$60dc`), heavily throttled; porter units shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
 | **livestock** (the herds that feed the goods counters) | `$4d252` herd array + `$57f68` herding ops + `$4c5f4` markers | shepherd FSM (modes `$3e`→`$44`→`$42`) drives an animal home, marks it consumed (`breed:=$d`), credits the goods counter; `$4342` only animates the on-screen marker | **traced** |
 | **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes when a lord revolts (`$550e`, §3): the lord and all his settlements change side, then `$5c2c`/`$25d6` turn his garrison men over | **Proven (122nd, `diff_revolt.py` 1778/1778 over 49 states, all 27 natural revolts)** |
 | **weapon grade** ("invention") | `pm_object` byte 44 (items 1–6) / byte 33 (items 7–8) | stamped at spawn (`6` for leads, `0` for tutorial followers); **advanced by the army-supply subsystem** (`$638c`: `if slot < delivered_item: slot := delivered_item`) — no research timer | **traced; observed on later lands (121st): `$63e8` equipped 22 empty slots on land 25 and 14 on land 0 in 200M steps; `$63be` (replacing a lower item) never fired** |
-| **passive population growth** | — | **does not exist** — manpower is strict conservation-of-soldiers (see §6) | **traced negative** |
+| **passive population growth** | — | **does not exist** — men are strict conservation-of-soldiers (see §6) | **traced negative** |
 
-Manpower and goods are **two separate ledgers**. Goods never become soldiers and
-soldiers never become goods. Over a ~1-billion-instruction watched resume from
+Men and goods are **two separate ledgers**. Goods never become soldiers and
+soldiers never become goods. Food and goods meet only in a trade (order `$1c`,
+`$63f4`: the army's food is part of its buying credit, strategy.md "The player's
+commands"). Over a ~1-billion-instruction watched resume from
 `pm74_late.snap` (`pm75_big.err`) plus a 135M cross-check (`pm75_w1.err`), every
-`troops_reserve` / `troops_field` write came from the fixed set in §6; no counter
+`food` / `troops_field` write came from the fixed set in §6; no counter
 grew a lord's manpower on its own, and **no lord's side byte was written once**.
 The 74th pass's "delivery payoff not observed" is resolved:
 the payoff is a `+1` to a goods counter, and in the tutorial the food-tier herd
 throttle (`$580a6[side].word8 + $2000` ≈ 8200 ticks, ~1 game-hour) is why the
 400M window saw none complete.
 
-## 1. The manpower ledger — `pm_leader.troops_reserve` / `.troops_field`
+## 1. The food and manpower ledger — `pm_leader.food` / `.troops_field`
 
-This is the closest thing PM has to a population number, and it is the one the
-strategic layer actually reads (`$d322` sums both fields per side into
-`$57fba`; `$68fe`/`$69b4` score enemy leaders on `troops_field`).
+`+6` is the lord's **food store** and `+8` his men in the field. Passes before the
+124th read `+6` as `troops_reserve` (men at home). It is food: order `$06` at the
+player's own town moves `food >> shift` (22 → 11) into the army's `36(group)`
+(247 → 258 against a no-order control's 247, `scratchpad/pm124/o06`, `ctl`), order
+`$12` moves `36(group) >> shift` back (town 22 → 147), and the captain panel
+(`$921a`, formatter `$917c`) prints `36(group)` on its "Food:" line
+(strategy.md "The player's commands"). The strategic layer reads both fields
+(`$d322` sums them per side into `$57fba`, the ratio uses only `troops_field`;
+`$68fe`/`$69b4` score enemy leaders on `troops_field`).
 
 ```c
 // $4e514, 32-byte records (ai.md / strategy.md: pm_leader). Economy fields (75th):
@@ -65,10 +74,10 @@ strategic layer actually reads (`$d322` sums both fields per side into
 /* 1*/  u8   order_class;
 /* 2*/  u16  chain_head;       // -> $4f916 first settlement of this lord's nation (walk via +8)
 /* 4*/  u16  cell;             // packed {x:6,y:7}
-/* 6*/  u16  troops_reserve;   // <<< the lord's men-at-home pool
+/* 6*/  u16  food;             // <<< the lord's food store (124th; was read as troops_reserve)
 /* 8*/  u16  troops_field;     // <<< men currently in an army / garrison
 /*12*/  u16  gather_kind;      // $5cde: {2,4,6,8,$a,$e} herd, $c fallback, 4/$10 build -- the lord's current work order
-/*14*/  s16  loyalty_pressure; // ramps +2 (field*4 >= reserve) / -1 per settlement pulse; >=600 -> $550e defection, reset 300
+/*14*/  s16  loyalty_pressure; // ramps +2 (field*4 >= food: hunger) / -1 per settlement pulse; +16>>shift when an army takes food, -8 when one drops food or goods; >=600 -> $550e defection, reset 300
 /*16*/  u16  herd_throttle;    // $60dc countdown; $5cde reloads $580a6[side].word8 + 4 (+$2000 if gather_kind >= $e and the reload >= the old value)
 /*18*/  u16  build_site;       // $5cde: $4f916 offset of the settlement being built (0 = none)
 /*20*/  u16  herd_op;          // $5cde: $51b66-relative offset of the nearest $57f68 herd op (written on the herd order)
@@ -84,27 +93,30 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 
 | PC | handler / mode | effect on the pool |
 |----|----------------|--------------------|
-| `$1507c` | `$15042`, entity **mode `$16`** ("disband — go home") | `troops_reserve += 2` (`+= 2` again if `order_class == 8`) |
-| `$15e18` | `$15ddc`, entity **mode `$60`** ("register with settlement") | `troops_reserve += 4` |
-| `$150f2` | `$150c0`, entity **mode `$1a`** ("group absorbs reinforcements") | `slice = troops_reserve >> (group.discipline-2)`; `troops_reserve -= slice`; the slice goes to the group lead's marching pool (`14(lead)`) and the group total (`36(group)`) |
-| `$3bc0` | `$35f4` group teardown | `troops_reserve += group.force >> discipline` — a disbanding army returns a slice of its men (75th). *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven 98th** — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
-| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.troops_reserve -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (97th).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
-| `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.troops_reserve -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
+| `$1507c` | `$15042`, entity **mode `$16`** ("disband — go home") | `food += 2` (`+= 2` again if `order_class == 8`) |
+| `$15e18` | `$15ddc`, entity **mode `$60`** ("register with settlement") | `food += 4` |
+| `$150f2` | `$150c0`, entity **mode `$1a`** (an army takes food from a town: order `$06`) | `slice = food >> (posture-2)`; `food -= slice`; `36(group) += slice` (the army's food); `loyalty_pressure += 16 >> (posture-2)` (the `14(A5)` write, A5 = the lord). 124th, 1 run: 22 → 11, loyalty 0 → 8 |
+| `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` teardown family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. 124th, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven 98th** — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
+| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.food -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (97th).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
+| `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.food -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
 | `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-7-set, bit-6-clear arm). *(**Proven, 99th** — `$37c2` + its `$1d70`/`$1b8c`/`$17a46` leaves differential-tested vs the real 68000, 1847/1847 over 13 states; reached via `$3c08`'s flag-bit-4 teardown sub-path. The inverse `+= 1` on the bit-6-set arm is `$1b8c`'s `$1c04`.)* |
 | `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
 | `$2644` | `$25d6`, from `$5c2c` after a revolt | the garrison man's old leader: `troops_field -= 1`, only when the man led no group (land 60: leader 4, 18 → 17, `scratchpad/pm121/flip/`). *(Proven, 122nd, `diff_revolt.py`.)* |
 | `$42be` | `$3e06` tail, courier/arrow array | a `$51b66` object died and credited a leader: `troops_field += 1` |
 | — | `$d322` per tick | reads both, never writes; totals into `$57fba` |
 
-So a PM "population" is a bucket that fills when soldiers walk home
-(`$16`/`$60`) or an army disbands (`$3bc0`), and empties through recruiting
-(`$1a`), besieging (`$603e`), and a slow per-settlement drain
-(`$163b8` — intermittent in mission 1, see §3a). It is **strict conservation of
-soldiers** — nothing manufactures a man from nothing (§6). In the tutorial the
-enemy's two sub-leaders
-(`$4e514[0]`, `[1]`, both side 2) sat with `troops_reserve` between 0 and `$a6`,
-each unit return nudging it up and each settlement pulse nudging it down; the
-player's manpower is held the same way in the player's own leader record.
+So a lord's food store fills when men and herds arrive home (`$16`/`$60`) or an
+army drops food (`$3bc0`), and empties when an army takes food (`$1a`), through
+detached shepherds (`$603e`), and through a slow per-settlement drain
+(`$163b8`, intermittent in mission 1, see §3a). Men are a separate count
+(`troops_field`), which is **strict conservation of soldiers**: nothing
+manufactures a man from nothing (§6). In the tutorial the enemy's two sub-leaders
+(`$4e514[0]`, `[1]`, both side 2) sat with `food` between 0 and `$a6`. In
+mission 1 the enemy's store rises by 4 per herd delivery (28 → 40 in 3M steps,
+56 in 25M, `scratchpad/pm124/ctl25`); an army eats its own food `36(group)` in `$3e06`
+(`$3f6a`: `-= men/8 + 1` every `$580a6[side].word0` ticks, doubled while idle;
+at zero each man deserts with chance 1/8; strategy.md "`$d322` + `$3e06`").
+Mission 1, 26 men: 251 → 247 → 243 in 25M steps, both writes at `$3f6a`.
 
 **Mode `$16` disband** (`$15042`, the "go home" path):
 
@@ -117,8 +129,8 @@ void h_disband(pm_object *A1) {                 // entity mode $16
         A1->dwell = -99; A1->prev_mode = A1->mode; A1->mode = 0x7c; return;
     }                                          // (park as a $157e6 heartbeat marker)
     leader *L = &leader_of(A1->nation_off);
-    L->troops_reserve += 2;                     // the mission-1 path: DOES credit +2
-    if (A1->byte33 == 8) L->troops_reserve += 2;
+    L->food += 2;                     // the mission-1 path: DOES credit +2
+    if (A1->byte33 == 8) L->food += 2;
     A1->target = unpack_cell(A1->group_off_lobyte);
     A1->prev_mode = 0x18;  A1->mode = 0x10;             // walk to the muster cell
 }
@@ -126,7 +138,7 @@ void h_disband(pm_object *A1) {                 // entity mode $16
 
 `$57fd0` (`g_tileset_sel`, initialised to `(byte[$58146] & 3) * 2` at
 world-build) is not a "world still animating" flag. It starts at `4` in mission
-1, so a disbanding unit *usually* takes the **`troops_reserve += 2`** path — but
+1, so a disbanding unit *usually* takes the **`food += 2`** path — but
 `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1 rotation per ~110M steps, §3a), and
 whenever it is `0` the disbanding unit parks as a mode-`$7c` heartbeat marker
 instead. Mode `$7c` and the whole loyalty/revolt system therefore run in mission
@@ -217,7 +229,7 @@ void pm_herd_service(void) {                    // $4342
 }
 ```
 
-What `$4342` does **not** contain: any add to `troops_reserve`, any goods
+What `$4342` does **not** contain: any add to `food`, any goods
 counter, any population maths. `$4342` is **only the animation** — it walks the
 `$4c5f4` marker sprite from the animal's cell toward the destination town
 (`$164bc` one step per `18(marker)` dwell), and at arrival (`$44c6`: `$164bc`
@@ -446,13 +458,13 @@ routine `$1abaa` (`$130b0` in the sim tick) **rotates it**, `$1ac5e..$1ac6a` =
 `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}, once per 13-bit sound-LCG
 (`$57ff6`) wrap. Observed rate: ~1 rotation per ~110M steps (2 writes over a
 220M-step mission-1 drive; 0 over 40M of pm78_settle). So the per-settlement
-heartbeat — the `$163b8` manpower drain, the construction timer, the
+heartbeat — the `$163b8` food drain, the construction timer, the
 loyalty/revolt accumulator — **is transiently reachable in mission 1**, during
 the brief `$57fd0 == 0` phases of that rotation, not permanently dead. It is
 *dormant*, not absent: none of pm78_settle / pm88_f1 / pm73_fight / pm74_late
 (400M steps) happened to freeze a `$7c` record because those windows are short
 and rare, and when `$57fd0` rotates off 0 any live `$7c` markers convert to mode
-`$56`/`$3c08` and `troops_reserve` refills through the mission-1 `$1507c` path.
+`$56`/`$3c08` and `food` refills through the mission-1 `$1507c` path.
 (This also refines the 89th's "`$57fd0` static per mission" for the `byte6 == 4`
 building/tree tile-set — it shifts once per rotation too.) The 75th pass's "each
 settlement's marker sits in mode `$7c`" was static + a `$163b8` `watch` that
@@ -567,7 +579,7 @@ void h_mode7c_settlement(pm_object *M) {           // $157e6
     reconcile_16848(M);  upkeep_5c80(M);           // $16848 (which also calls $5c80) + $5c80
     M->dwell = side_assess(M->side)->word0;        // reload
     pm_settlement *S = &settlement_at(M->off34);   // $4f916 + 34(M)
-    settlement_upkeep_163b8(S);                    // $163b8: S->leader->troops_reserve -= 1, floored
+    settlement_upkeep_163b8(S);                    // $163b8: S->leader->food -= 1, floored
     if (M->flags & 0x10) goto epilogue;            // btst #4
     if (S->nation_kind == 0x0a) {                  // "under construction"
         if (++S->build_progress /*+16*/ >= 0x78) {
@@ -579,7 +591,7 @@ void h_mode7c_settlement(pm_object *M) {           // $157e6
     pm_leader *L = S->leader;                      // $4e514 + word[S+14]
     int f4 = L->troops_field * 4;
     if (f4 != 0) {
-        if (f4 >= L->troops_reserve) {
+        if (f4 >= L->food) {
             if (D5 == (short)0xff9c) L->loyalty_pressure += 2;   // <<< only on the
         } else {                                                //     first post-park
             if (D5 == (short)0xff9c) L->loyalty_pressure -= 1;   //     tick (dwell was
@@ -697,20 +709,23 @@ marker per settlement (guarded by the object high-water `$57f66 < $5460`),
 `owner_leader.troops_field += 1`, and seeds the marker's morale byte 45. It runs
 once, alongside `$238c`.
 
-## 6. Manpower is conservation-of-soldiers — there is no growth (75th, task 2)
+## 6. Men are conserved, food is not grown by any counter (75th, task 2; 124th: `+6` is food)
 
 Combining §1's flow table with the `pm75_big.err` (~1B steps) / `pm75_w1.err`
 (135M steps) watches from `pm74_late.snap` (`watch $4e514 160` / `128`):
 
-**Every** write to any lord's `troops_reserve` / `troops_field` came from this
-closed set — `$1507c` (`+2`, mode `$16`), `$15e18` (`+4`, mode `$60`), `$3bc0`
-(`+= force>>disc`, group teardown), `$1c04` (`+1`, capture — new owner), `$42be`
-(`+1`, kill credit); `$150f2` (`-=`, recruit), `$603e` (`-2`, besiege), `$163b8`
-(`-1`, settlement pulse), `$382a` / `$2644` (`-1`, re-parent / old owner on
-capture). There is **no accumulator, no per-tick `+n`, no birth rate**. A
-nation's total manpower can only be redistributed among its lords and slowly bled
-by garrison upkeep; it grows only by winning battles (men who would have died
-walk home instead) and shrinks by losing them.
+**Every** write to any lord's `food` / `troops_field` came from this
+closed set. Food: `$1507c` (`+2`, mode `$16`), `$15e18` (`+4`, mode `$60`), `$3bc0`
+(`+= 36(group)>>shift`, an army drops food), `$150f2` (`-=`, an army takes food),
+`$603e` (`-2`, mode `$42`), `$163b8` (`-1`, settlement pulse). Men
+(`troops_field`): `$1c04` (`+1`, capture, new owner), `$42be` (`+1`, kill
+credit), `$382a` / `$2644` (`-1`, re-parent / old owner on capture). The 124th
+pass adds the player's order paths, which the AI-only watches could not see:
+order `$14` (`$1cc4` → `$1b8c`) returns dismissed men to `troops_field`, and
+order `$20` (`$3da4`) adds the spy to the target lord's `troops_field`.
+There is **no accumulator, no per-tick `+n`, no birth rate**. A nation's men can
+only be redistributed among its lords; they grow only by winning battles (men
+who would have died walk home instead) and shrink by losing them.
 
 **96th/97th refinement.** In mission 1 the drain side of that ledger is
 thinner than the flow table suggests: `$163b8` (the settlement pulse) fires only
@@ -721,8 +736,8 @@ steady sinks in the tutorial are `$150f2` (recruit), `$603e` (besiege) and the
 capture pair. The conservation observation stands.
 
 The one thing that *looks* like a growth counter — `pm_leader.loyalty_pressure`
-(`+14`) — is the opposite. It moves `+2` when `troops_field*4 >= troops_reserve`
-(the lord's standing army has outgrown its manpower base) and `-1` otherwise —
+(`+14`) — is the opposite. It moves `+2` when `troops_field*4 >= food`
+(the town holds at most 4 food per man in the field: hunger) and `-1` otherwise —
 but only on the *first* settlement pulse after a marker is parked
 (`D5 == $ff9c`, the `#$ff9d` dwell decrementing to `-100`); on ordinary
 steady-state pulses `D5 == 0` and neither arm runs (96th correction, §3a).
@@ -734,10 +749,13 @@ hands", Proven 122nd). On the four later lands this fired naturally 11 times
 in 800M steps, at loyalty 600-608. In the plain tutorial `loyalty_pressure` only
 oscillated 296–306 (the settlement pulse is intermittent); in `pm97_map0` (a
 mission-1 world with `$57fd0` pinned to 0) both AI lords climbed to 316 / 318
-within 80M steps with `troops_field·4 = 40 > troops_reserve = 0`. Read as a
-mechanic it is a **rebellion from militarism**: a lord whose army outweighs his
-reserve for long enough changes side, which fits the manual's "the people will
-turn against a cruel ruler".
+within 80M steps with `troops_field·4 = 40 > food = 0`. Read as a
+mechanic it is a **hunger revolt**: a lord whose store stays below 4 food per
+man for long enough changes side. The player's orders push the same counter:
+taking food adds `16 >> (posture-2)` (`$150e8`), dropping food or goods at an
+own town takes 8 off (`$3b48`), and a trade (`$63f4`) takes 8 off at an own town
+and adds 8 at a foreign one. That fits the manual's "the people will turn
+against a cruel ruler".
 
 ## Complete picture
 
@@ -756,11 +774,13 @@ turn against a cruel ruler".
    $33b0 (mode $76): envoy's goods as tribute + attitude  ─►  alliance accepted ($2a → $34a8) or refused
 
 
-   pm_leader.troops_reserve / .troops_field  ($4e514 +6/+8)   ── SEPARATE LEDGER ──
+   pm_leader.food  ($4e514 +6)                       ── SEPARATE LEDGER ──
       +2  mode $16 disband-home ($1507c)          -1  settlement pulse upkeep ($163b8, mode $7c)
-      +4  mode $60 register     ($15e18)          -2  mode $42 besiege        ($603e)
-      +f  group teardown        ($3bc0)           -n  mode $1a recruit        ($150f2)
+      +4  mode $60 register     ($15e18)          -2  mode $42 shepherds      ($603e)
+      +f  army drops food       ($3bc0, order $12) -n army takes food        ($150f2, order $06)
+   pm_leader.troops_field  ($4e514 +8)
       +1  kill credit           ($42be)           -1  capture / re-parent     ($2644/$382a)
+      +n  dismissed men / spy   ($1b8c, $3da4)
                                 (no birth term — §6)
 ```
 
@@ -769,7 +789,7 @@ turn against a cruel ruler".
 75th pass:
 - `scratchpad/pm75_big.err` — `watch $4e514 160`, ~1B steps from `pm74_late.snap`
   (the §6 conservation evidence; `$6120` goods credit fires ~3×/40M).
-- `scratchpad/pm75_w1.err` — `watch $4e514 128`, 135M steps (`$163b8` reserve
+- `scratchpad/pm75_w1.err` — `watch $4e514 128`, 135M steps (`$163b8` food
   drain 273×, `$60dc` throttle, mode `$16`/`$60` returns).
 - `scratchpad/pm75_w2.err` — `watch $4f916 240` (the §3b `$163ea`→`_w2` writes,
   refined to `+2` only + the multiples-of-50 link values). NOTE: the double-`watch`

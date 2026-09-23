@@ -1202,7 +1202,7 @@ frame captures, `scratchpad/pm95/`). The morale drain is
 not `min`). The `$5778 → $4bc8` group hand-off, the true ROUT `$3c08`, and the
 `$5590` tail calls `$2776`/`$1b8c` are asserted off (deferred group modes).
 **RIDER 3b routine 4: the settlement heartbeat — entity mode `$7c` `$157e6` +
-`$16848` + `$163b8` (the `troops_reserve -= 1` drain) — is Proven vs the real
+`$16848` + `$163b8` (the `food -= 1` drain) — is Proven vs the real
 68000** — 96th synthesised corpus 85/85 over 25 states, **97th natural corpus
 99/99 over 27 states**, 12 branch families (`scratchpad/pm96/`, `scratchpad/pm97/`).
 Mode `$7c` needs `word[$57fd0] == 0`; `$57fd0` starts at `(byte[$58146] & 3) * 2`

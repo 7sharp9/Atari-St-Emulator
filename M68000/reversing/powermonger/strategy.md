@@ -23,7 +23,7 @@ $1303a  tst.l 46($14e20) ; beq $13058    ; no running game -> skip
 $13040  jsr $127e6   ; event-marker / "Lord X under attack" ticker feed
 $13046  jsr $6522    ; << the commander AI (order pipeline)
 $1304c  jsr $d322    ; per-side troop totals -> $57fba
-$13052  jsr $3e06    ; flag-health UI + per-objective budget decay + $57fba objective term
+$13052  jsr $3e06    ; flag-health UI + the armies eat (food decay) + $57fba group term
 $13058  clr.w $12f58
  ...set up $e3e2 / $e0d4 pointers...
 $13074  subi.w #$1,$57ff0 ; bne $130b0   ; tick-subdivision gate (see below)
@@ -100,27 +100,34 @@ which is the unit the game logic actually counts in.**
 
 ### `$51538` — group-order table
 
-5 records of `$13c` (316) bytes. Header: long +0 = pending-order flag
-(player/script channel), byte +1 = queued type, word +2 = queued param. The
-rest is ~15 parallel **6-word arrays** — six "objective slots" per group. The
-`$6564` loop walks slot `i = 0..5` with `A1 = base + 10 - 2i`, so field
-`n(A1)` for slot `i` lives at `base + (n) - 2i`:
+5 records of `$13c` (316) bytes, **one per side**. Header: long +0 =
+pending-order flag (player/script channel), byte +1 = queued type, word +2 =
+queued param. The rest is ~15 parallel **6-word arrays**, one word per
+**group** (captain) of the side: group `k` (0..5) is the word at `base + n + 2k`,
+and the group offset `D2` that the executor, the entity modes (`42(obj)`) and
+`$57fd2` use is `side*$13c + $4c + 2k`, so a field at `x(A3)` of a group is the
+array at `base + $4c + x`. The captain panel (`$9090`: `A3 - $51538` divided by
+`$13c` gives side and `2k`) prints four of these arrays as Food, Troops and
+aggression. Passes before the 124th called the six entries "objective slots";
+they are the side's six captains' groups ("What each order does"). The
+`$6564` AI loop sets `A1 = base + D7` with `D7 = 10, 8, ..., 0`, so `n(A1)` is
+group `k = D7/2`'s word, walked from group 5 down to group 0 (the captain's):
 
 | `n(A1)` | array span | meaning |
 |---------|-----------|---------|
 | `4(A1)`   | +4..+14   | slot-index / link, written back by `$6822` |
-| `28(A1)`  | +28..+38  | objective **active** gate (`ble` → skip the slot) |
-| `52(A1)`  | +52..+62  | objective **force** — troops committed to it |
-| `76(A1)`  | +76..+86  | objective **state** (`$6` idle/patrol, `$9`, `$d` support) |
-| `112(A1)` | +112..+122| objective **range / patience budget** (drained by `$3e06`) |
+| `28(A1)`  | +28..+38  | the group's **owner side** (group `-48`; `<= 0`: no group, skip) |
+| `52(A1)`  | +52..+62  | the group's **men** (group `-24`, captain panel "Troops") |
+| `76(A1)`  | +76..+86  | the group **state** (group `0`: `$6` idle/patrol, `$9`, `$d` support, ...) |
+| `112(A1)` | +112..+122| the group's **food** (group `36`, captain panel "Food"; eaten by `$3e06`, AI groups seeded `$5fff`) |
 | `136(A1)` | +136..+146| AI sub-state scratch |
 | `256(A1)` | +256..+266| wait-until timestamp, compared to `$2df72` |
 | `268(A1)` | +268..+278| campaign-order id, matched against `$67d0[0]` |
 | `280(A1)` | +280..+290| campaign phase / sub-order |
 | `292(A1)` | +292..+302| escort-target object offset |
 
-Plus the group's **execution sub-records**: state word at `base+$4c`, target
-cell word at `base+$64` — written by `$4b80` (below).
+The "execution sub-record" older passes described at `base+$4c` / `base+$64`
+is group 0's state word and its `24` target link (`$4b80`, below).
 
 ## Data structures (C)
 
@@ -139,33 +146,33 @@ typedef struct pm_cmd_slot {          // one per side; $6a3a walks slots 1..4
 } pm_cmd_slot;
 
 // ---- group-order record : $51538, 5 x $13c bytes ----------------------
-// The AI ($6564) walks it as SIX interleaved objective slots: for slot i (0..5)
-// the field logically at n(A1) lives at  base + n - 2*i  (A1 = base + 10 - 2i).
-// So each "field" below is really a 6-entry s16 array packed backwards from a
-// base offset. Header + execution sub-records are plain (not interleaved).
-typedef struct pm_group {             // base = $51538 + group_id
+// One record per SIDE. Each field below is a 6-entry s16 array, one word per
+// group (captain) k of the side, at base + off + 2k. A group's offset D2 is
+// side*$13c + $4c + 2k, so group field x = array at $4c + x (x = -48 .. +$84).
+// The AI ($6564) walks the same arrays with A1 = base + D7, D7 = 10..0 (group k = D7/2).
+typedef struct pm_side_groups {       // base = $51538 + side*$13c
 /* +0*/   u32  queued_flag;           // player / script order channel: nonzero -> a queued order in +1/+2
 /* +1*/   u8   queued_type;
 /* +2*/   u16  queued_param;
-          // --- exec sub-record (written by $4b80 / $6a3a) ---
-/* +$4c*/ u16  exec_state;            // 2/3/8/9/$a/$c ... the live group state; entity modes key off this
-/* +$64*/ u16  exec_target_cell;
-          // --- the six interleaved objective-slot arrays (index [i], i=0..5) ---
-/* +4 */  s16  obj_link   [6];        // slot-index / link, written back by $6822
-/* +28*/  s16  obj_active  [6];       // <= 0 -> skip this objective
-/* +52*/  s16  obj_force   [6];       // troops committed to the objective
-/* +76*/  s16  obj_state   [6];       // $6 idle/patrol, $9, $d support
-/* +100*/ s16  obj_unit    [6];       // $68fe/$6762: the object-record offset assigned to the objective
-/* +112*/ s16  obj_budget  [6];       // range / patience; drained by $3e06; underflow -> objective expires
-/* +136*/ s16  obj_substate[6];       // AI scratch (campaign sub-mode lands here)
+          // --- six-word arrays, [k] = group k (group field in brackets) ---
+/* +4 */  s16  link       [6];        // slot-index / link, written back by $6822
+/* +28*/  s16  owner_side [6];        // [-48] <= 0 -> no group
+/* +40*/  s16  first_man  [6];        // [-36] roster head (next via 26(man))
+/* +52*/  s16  men        [6];        // [-24] captain panel "Troops"
+/* +64*/  s16  lead       [6];        // [-12] lead object offset
+/* +76*/  s16  state      [6];        // [0]   $6 idle/patrol, 2/3/5/8/9/$a/$c/$e/$f/$10 per order, $d support
+/* +88*/  s16  eat_timer  [6];        // [12]  $3e06: counts to $580a6[side].word0 (doubled in state 6)
+/* +100*/ s16  target     [6];        // [24]  target link: a lord, settlement or object ($3154, $68fe/$6762)
+/* +112*/ s16  food       [6];        // [36]  captain panel "Food"; -= men/8+1 per eat tick; AI groups seeded $5fff
+/* +136*/ s16  posture    [6];        // [60]  2/3/4 aggressive/neutral/passive; also AI sub-state scratch (campaign sub-mode lands here)
+/* +160*/ s16  carrying   [6][8];     // [84+12i] goods carried, i = pike..cannon (interleaved: stride 12 per item)
 /* +256*/ s16  obj_wait_at [6];       // timestamp vs $2df72
 /* +268*/ s16  obj_camp_id [6];       // matched against $67d0.campaignId
 /* +280*/ s16  obj_camp_ph [6];       // campaign phase / sub-order
 /* +292*/ s16  obj_escort  [6];       // escort-target object offset
-          // ... $13c total; other parallel arrays (waypoint cursor $40-equiv, field60
-          //     discipline used by $30fe, running-total +36-equiv) not fully mapped
-} pm_group;
-// $30fe returns  group.field_60 - 2  as the kill/rout + reinforcement-slice shift.
+          // ... $13c total
+} pm_side_groups;
+// $30fe returns  group.field_60 - 2  (posture - 2) as the kill/rout shift and the slice shift of every player order.
 //   field_60 == 4 (mission 1) -> always "2" -> rout, never kill.
 
 // ---- leader / lord record : $4e514, 32 x 32 bytes -------------------
@@ -174,7 +181,7 @@ typedef struct pm_leader {
 /* 0*/  u8   nation;                  // side id 1..5; 0 = empty slot (loop terminator, array ends $4f914); $550e rewrites it
 /* 2*/  u16  chain_head;              // -> $4f916 first settlement of the lord (walk via +8)
 /* 4*/  u16  cell;                    // packed {x: bits 0-5, y: bits 6-12} of the lord's position
-/* 6*/  u16  troops_reserve;          // $d322: += into $57fba[side].word2 ; $15e18/$15760: += 4 on arrival
+/* 6*/  u16  food;                    // the lord's food store (124th; was troops_reserve). $d322: += into $57fba[side].word2 ; $15e18/$15760: += 4 on arrival
 /* 8*/  u16  troops_field;            // $d322: += into $57fba[side].word0 ; sieges/$5bd2 decrement it; $68fe scores vs it
 /*12*/  u16  gather_kind;             // $5cde: the lord's current work order
 /*14*/  s16  loyalty_pressure;        // >= 600 -> $550e revolt, reset to 300
@@ -199,7 +206,7 @@ typedef struct pm_settlement {        // object.34 and leader.chain_head index t
 
 // ---- per-side assessment block : $580a6, 5 x $20 bytes -------------
 typedef struct pm_assess {            // index by side id: $580a6 + side*$20
-/* 0*/  u16  decay_period;            // $3e06: objective budget decays every this-many ticks
+/* 0*/  u16  eat_period;              // $3e06: each army eats (food -= men/8+1) every this-many ticks, doubled while idle
 /* 2*/  u16  march_speed;             // $3fac: the lead's base speed (30; 32 for side 0), before weather/winter/load
 /* 4*/  u8   _b4[2];
 /* 6*/  u8   peace_bits;              // bit t = at peace / allied with side t ("Diplomacy"): $2458 sets the own bit at build, $34a8 sets, $4c2a clears
@@ -225,25 +232,31 @@ the next"):
   mission script): copy type→`1(A0)`, param→`2(A0)`, clear the flag, next slot.
   This is the player's order channel.
 
-- **else `$6564`** — **synthesise** an order. Walk the 6 objective slots; for an
-  active one (`28() > 0`, `4() == 0`):
+- **else `$6564`** — **synthesise** an order. Walk the side's 6 groups; for a
+  live one (`28() > 0`, `4() == 0`):
 
   1. state `$6` and past its wait timer (`256() + $14 <= $2df72`) → **`$6762`**:
      if the global campaign slot `$67d0` holds an order whose id matches this
-     objective's `268()`, obey it (order `$06`, or a random sub-mode `2..5`
-     seeded from `$57fec`). `$67d0` = `{campaignId, orderType, subMode}`, static
+     group's `268()`, obey it: order type = the entry's word 2, and the group's
+     posture `136()` := the entry's word 4, or `($57fec & 3) + 2` when that is 0. `$67d0` = `{campaignId, orderType, subMode}`, static
      in the binary in mission 1 — **no writer found**; it is the campaign-script
      hook.
-  2. `52() >= $16` (≥ 22 troops) → **`$69b4`** scans `$4e514` for the nearest
+  Steps 2-4 run only for a group in state `$9`, or in state `$6` once `$6762`
+  declines (`$6584`/`$658e`; any other state → next group).
+  2. `52() < $16` (**fewer** than 22 men: `cmpi.w #$16,52(A1); bge $65dc` skips
+     it at 22 or more; passes before the 124th had this inverted) → **`$69b4`** scans `$4e514` for the nearest
      enemy leader (skip own/empty sides; cost = `max(|dx|,|dy|)` weighted by the
      leader's troop count; already-adjacent leaders excluded) → issue order
      **`$08`** (→ group state 3 = besiege) toward it.
-  3. objective slot `i > 0` whose predecessor is state `$d` / `280() == 4` →
-     issue order **`$0c`** to **escort** `292()`'s object.
-  4. primary slot (`i == 0`), `52() - 4 > 0` → **`$68fe`** scans `$4e514` for
-     the nearest enemy leader (cost weighted by the per-side assessment byte
-     `16($580a6 + side*$20)`); **`$68ee`** scores it `≈ (d/2)·(force/8 + 1)`;
-     if `score <= 112()` (within budget) → set group state 4 and issue order
+  3. groups 1..5 (`D7 != 0`), when group 0 (`A3 = A1 − D7`) is in state `$d`
+     with `280(A3) == 4` → issue order **`$0c`** to **escort** group 0's
+     `292(A3)` object.
+  4. group 0 (`D7 == 0`, the captain's), `52() - 4 > 0` → **`$68fe`** scans
+     `$4e514` for the nearest enemy leader (cost weighted by the per-side
+     assessment byte `16($580a6 + side*$20)`); **`$68ee`** scores it
+     `(d/2)·((men−4)/8 + 1) + d/2` (D1 = own men − 4 survives `$68fe`); if
+     `score <= 112()` (the trip's food at the eating rate `men/8 + 1`, against the
+     group's food) → set group state 4 and issue order
      **`$0c`** (→ group state 8 = march & engage) toward that leader's cell.
 
 Order writes go through `$67ee` → `$6822`: `$67ee` re-packs the found leader's
@@ -255,8 +268,8 @@ cell `4(A3)` into `{x:6, y:7}`, `$6822` stores `{type, param}` into
 economy/build branch was seen, but `$6564` is one of several `$6522` sub-cases
 and the campaign hook `$67d0` was never live. Evidence taxonomy: `ai.md`.)*. The
 autonomous decision is: *"march the army at the nearest enemy leader, if I have
-more than ~4–22 men and the target is inside a range budget that scales with my
-army size."* Reinforcement is handled at the entity level (mode `$1a`, `ai.md`);
+more than ~4–22 men and my army has the food to get there."* AI groups start
+with `$5fff` food (`$26c4`), so the test never binds in practice ("Open threads"). Food is taken from towns at the entity level (mode `$1a`, `ai.md`);
 build/invention orders, if the AI issues them at all, come through the `$67d0`
 campaign hook, not from `$6564`.
 
@@ -310,7 +323,7 @@ the rest 0. `$6822` (the AI's order write) compares the entry with the
 objective's state `76(A1)` and does not re-issue an order whose state the
 objective is already in (except `$0c` with D7 = 0). The states line up with the
 group-state → entity-mode table in `ai.md` (state 3 ⇔ besiege modes
-`$28`/`$2a`; state `$c` ⇔ mode `$1a` absorb-reinforcements).
+`$28`/`$2a`; state `$c` ⇔ the `$1a` food supply line).
 
 `$3154` is the common order dispatcher: it turns the packed target cell into a
 word offset `(cellY*64 + cellX)*2`, looks up the `$47970` bucket for that cell
@@ -396,38 +409,107 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
 
    | slot D1 | id | screen (320 × 200) | glyph | handler → effect |
    |---------|----|--------------------|-------|------------------|
-   | `$02` | `$ea` | (299,182) | figure | `$135fe`: arm `$57fd4 := $02` |
-   | `$04` | `$c4` | (103,186) | two men | `$13620`: toggle captain-select `$57fd6` |
-   | `$06` | `$d7` | (201,181) | sphere | arm `$06` |
+   | `$02` | `$ea` | (299,182) | figure | `$135fe`: arm `$57fd4 := $02`: **go to** |
+   | `$04` | `$c4` | (103,186) | two men | `$13620`: toggle captain-select `$57fd6`: **transfer men** to another captain |
+   | `$06` | `$d7` | (201,181) | sphere | arm `$06`: **take food** |
    | `$08` | `$da` | (275,162) | arrow into men | arm `$08` (besiege) |
    | `$0a` | `$b4` | (100,170) | HOME | `$13652`: post `$0a` now |
    | `$0c` | `$e8` | (243,190) | sword | arm `$0c` (march & engage) |
-   | `$0e` | `$e9` | (274,187) | light bulb | arm `$0e` |
-   | `$10` | `$db` | (297,156) | – | arm `$10` |
-   | `$12` | `$d5` | (142,193) | – | post `$12` now |
-   | `$14` | `$d9` | (252,168) | four arrows | post `$14` now |
-   | `$18` | `$d6` | (173,188) | – | post `$18` now |
-   | `$1a` | `$d8` | (227,174) | chain | arm `$1a` |
-   | `$1c` | `$b3` | (74,175) | – | arm `$1c` (neutral target) |
+   | `$0e` | `$e9` | (274,187) | light bulb | arm `$0e`: **set the men to work** (invent) |
+   | `$10` | `$db` | (297,156) | – | arm `$10`: **take equipment** |
+   | `$12` | `$d5` | (142,193) | – | post `$12` now: **drop food** |
+   | `$14` | `$d9` | (252,168) | four arrows | post `$14` now: **dismiss men** |
+   | `$18` | `$d6` | (173,188) | – | post `$18` now: **drop equipment** |
+   | `$1a` | `$d8` | (227,174) | chain | arm `$1a`: **food supply line** |
+   | `$1c` | `$b3` | (74,175) | – | arm `$1c`: **trade** (any settlement) |
    | `$1e` | `$a3` | (73,161) | eye with arrows | arm `$1e`: offer an alliance to the clicked settlement's lord |
-   | `$20` | `$93` | (72,149) | eye | arm `$20` (enemy target) |
-   | `$26`/`$28`/`$2a` | `$a4`/`$94`/`$84` | (97,156)/(94,145)/(92,135) | posture | `$13678`: post `$16`, param 2/3/4 |
+   | `$20` | `$93` | (72,149) | eye | arm `$20`: **spy** (a settlement not ours) |
+   | `$26`/`$28`/`$2a` | `$a4`/`$94`/`$84` | (97,156)/(94,145)/(92,135) | posture | `$13678`: post `$16`, param 2/3/4: **aggressive / neutral / passive** |
    | `$2c` | `$c3` | (75,191) | – | `$136b2`: toggle `$57fea`, disarm `$57fd4` |
    | `$2e` | `$83` | (71,138) | – | `$13716`: options panel 4 (`$af6c`) |
 
    Arming the icon that is already armed disarms it (`$1898e`). Screen
    positions are centroids from the game's own hit-test
    (`reversing/powermonger/py/iconmap.py`); the sword `$0c` and the options
-   `$2e` were clicked and behaved as listed. The other glyph names are read off
-   a rainy frame and the effects of `$3888`, `$1c18`, `$38ce`, `$6128`,
-   `$1cc4`, `$35a0`, `$390e`, `$1d36` are not decoded: the manual's names
-   (food, supplies, invent, spy, ...) are **inferred** until each is followed.
+   `$2e` were clicked and behaved as listed, and every other order was clicked
+   in the 124th pass ("What each order does", below). The glyph names are read
+   off a rainy frame; the order names are the effects, with the manual's words
+   where they fit.
 
 **Driving it headless** (`reversing/powermonger/py/clicks.py`): the pointer
 moves 1:1 with `mouse move` and clamps at 0, so home it with a large negative
 move and click at absolute (x, y). `reversing/powermonger/py/drive_win.sh`
 plays mission 1 to a natural victory this way (next section, "How a land
 ends").
+
+### What each order does (124th pass)
+
+A targeted order marches the group's lead to the target with `31 := $10`
+(advance) and `30 :=` an **arrival mode**; the order's meaning is that mode.
+`$3154` (orders `$06`/`$08`/`$0e`/`$10`/`$1c`/`$1e`/`$20`) only accepts a cell
+holding a settlement (object byte6 `$2` or `$10`) whose owner passes a filter
+set by D5: own side (D5 > 0; for D3 = 2 or `$a` also a side whose peace bit is
+set, "Diplomacy"), any side (D5 = 0), not the local side (D5 < 0). It then
+targets the settlement's lord's cell (`4(lord)`; order `$20` the settlement's
+own cell `12(settl)`) and stores the lord as the group's target link `24(group)`.
+Every amount an order moves is `x >> (posture − 2)` (`$30fe`): aggressive
+(posture 2) moves all, neutral (3) half, passive (4) a quarter.
+
+The group record fields the orders use (offsets from the group exec record
+`$51538 + D2`; the captain panel `$921a` prints four of them):
+
+| field | meaning | captain panel |
+|-------|---------|---------------|
+| `-12` | lead object offset | |
+| `-24` | men in the group | "Troops:" (`$9192`) |
+| `-36` | first man (roster via `26(man)`) | |
+| `-48` | owner side (0 = the group is dissolved) | |
+| `0` | group state (= D3 of the order) | |
+| `24` | target link (a lord, a settlement or an object, `$51b66`-relative) | |
+| `36` | **the army's food** | "Food:" (`$917c`) |
+| `60` | posture 2/3/4 | |
+| `84 + 12i`, i = 0..7 | goods carried (pike, sword, bow, plough, boat, pot, catapult, cannon) | "Carrying:" (`$91a8`) |
+
+A lord's `+6` (`$4e514`) is his town's **food store** (economy.md §1).
+
+| order | handler | target | arrival mode | effect |
+|-------|---------|--------|--------------|--------|
+| `$02` go to | `$3888` | any cell | `$1e` (`$1515c` → `$35f4`) | state 5, march there, go idle |
+| `$04` transfer men | `$1c18` (D0 side, D1 from, D2 to group) | a captain box, with captain-select on | – | `men >> shift` move from one captain's group to the other (`$1b8c` out, `$1b2a` in); static only (mission 1 has one captain) |
+| `$06` take food | `$3154` D3=2 D4=`$1a`; else `$38ce` | own or allied town; else a cell | `$1a` (`$150c0`); `$72` (`$1605a`) | from a town: `food >> shift` into `36(group)`, `loyalty_pressure += 16 >> shift`; on a cell: pick up a food pile (`$2c`) there |
+| `$08` besiege | `$3154` D3=3 D4=`$1c`, else `$3248` | town | `$1c` | ai.md |
+| `$0c` march & engage | `$4a7a` | any cell | – | "How a land ends" |
+| `$0e` set men to work | `$3154` D3=9 D4=`$22` | own town | `$22` (`$151a8` → `$5fa0`) | the town lord's work order `$5cde` goes to every man; `$5cde` refuses a lord without a capital (kind 7) |
+| `$10` take equipment | `$3154` D3=`$a` D4=`$6e`; else `$6128` | own or allied town; else a pile / object byte6 `$0a`, `$18`+`$10` | `$6e` (`$15740` → `$61f8`) | `goods >> shift` from the lord, handed to the men (`$6352`/`$638c`) |
+| `$12` drop food | `$39d4` D7=1 | the lead's cell, now | – | `36(group) >> shift` to the town's food (`loyalty_pressure −= 8` if own town) or to a new or existing pile (byte6 `$2c`, `$4bb4e`) |
+| `$14` dismiss men | `$1cc4` | now | – | `men >> shift` leave, least equipped first (lowest `44 + 33`), back to the lord's `troops_field` |
+| `$16` posture | `$35a0` | now | – | `60(group) := param` and the icon highlight |
+| `$18` drop equipment | `$39d4` D7=2 | the lead's cell, now | – | carried goods `>> shift` (and a lead's byte44 ≥ `$e`) to the town lord's goods, or to a pile |
+| `$1a` food supply line | `$390e` | any cell | `$74` (`$160d6` → `$3956`) | state `$c`: at the cell drop food (`$39d4` D7=1), go to the own lord with the most food (`$3bc8`), take food (`$1a`), return (`$26`), repeat |
+| `$1c` trade | `$3154` D3=`$f` D4=`$78`, D5=0 | any town | `$78` (`$15772` → `$63f4`) | sell the carried goods to the lord; credit = army food + Σ sold × 2 × price (`$6502`: 5,10,20,4,6,2,100,200); buy in the posture's order (`$650a`: aggressive cannon, catapult, bow, sword, pike, boat; passive plough, boat, pot, ...); the credit left is the army's food, the food spent goes to the town; `loyalty_pressure` −8 own town / +8 foreign; `$311a` relation +2 |
+| `$1e` offer alliance | `$3154` D3=`$e` D4=`$76` | a town not ours | `$76` | "Diplomacy" |
+| `$20` spy | `$3154` D3=`$10` D4=`$7a`, then `$1d36` | a town not ours | `$7a` (`$1578c` → `$3da4`) | every man is dismissed; the captain walks alone into the town and joins its unit chain with its owner's side (`5(lead)`), `bset #7`, mode `$7e`; the lord's `troops_field += 1` |
+
+Evidence: each order clicked from `scratchpad/pm123/win/m1_s0.snap` (mission 1,
+posture 3) and compared with a no-order run over the same steps
+(`scratchpad/pm124/<order>/`; reproduce with `reversing/powermonger/py/order_run.sh`,
+for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each:
+
+- `$06` on the own town (3M steps): town food 22 → 11, `loyalty_pressure` 0 → 8, army food 258 vs 247.
+- `$02` to (35,51): state 5, lead heading for the cell, arrival `$1e`.
+- `$0e`: refused (`$5cde` 1 hit, 0 return, the `$5ffe` exit); with the town poked to kind 7, all 26 men
+  switch to mode `$46` and the lord gains 2 pots within 2M steps.
+- `$10` with the lord's goods poked to 10,10,10: goods 5,5,5; 5 men get bows, 5 swords.
+- `$12`: army food 247 → 122, town food 22 → 147, `loyalty_pressure` −8.
+- `$14`: men 26 → 13, the lord's `troops_field` 0 → 13.
+- `$16` param 2: posture 3 → 2.
+- `$18` with carried goods poked to 10,6: carried 5,3, the lord's goods 5,3, `loyalty_pressure` −8.
+- `$1a` to (35,51), 25M steps: a food pile of 123 at (35,51), town food 22 → 11, state `$c`, the
+  lead on its way back.
+- `$1c` on lord 0's town, carried goods poked to 10,6: 6 men get swords, army food 235.
+- `$20` on lord 0's town, 25M steps: men 0, the captain inside (22,45) with side byte 2. Lord 0
+  then defected to side 3 (loyalty reset to 300); the 25M control keeps him on side 2 at 608. What
+  fired `$550e` is open ("Open threads").
 
 ## `$d322` + `$3e06` → `$57fba` → `$d23a` → `$57fce`
 
@@ -442,13 +524,17 @@ ends").
   **not an order.**
 - **`$3e06`** — larger than the 69th-pass "morale→UI" reading. Its head is the
   flag-health indicator (morale byte 45 of the selected group's lead,
-  `divu #$14`, → `$58056`). Then it walks **every** group's 6 objective slots:
-  adds `52(objective)` into `$57fba[side].word0`, and runs the **per-objective
-  budget decay** — every `$580a6[side].word0` ticks (doubled while the objective
-  is in state 6), `112(objective) -= 52()/8 + 1`. When `112()` underflows the
-  objective expires and the group re-picks a patrol waypoint (`$12c9a` / field
-  `40()`). A big army spends its patience budget fast (commits), a small one
-  slowly.
+  `divu #$14`, → `$58056`). Then it walks **every** side's 6 groups (A2 =
+  side base + 2k): adds the group's men `52(A2)` into `$57fba[side].word0`, and
+  **the army eats** (`$3f44..$3faa`): `88(A2)` counts ticks to
+  `$580a6[side].word0` (twice that while the group is idle, state 6); then
+  `food 112(A2) -= men/8 + 1` (`$3f6a`). At below zero the food is cleared and
+  every man of the roster (`40(A2)`, next `26(man)`) leaves with chance 1/8
+  (`$12c9a` LCG `& 7 == 0` → `$1b8c`, D1 = 0 in state `$d`, else 1): **a
+  starving army deserts**. Observed (124th): our 26-man group on mission 1,
+  `watch $516e4` over 25M steps, 2 writes, both at `$3f6a`, 251 → 247 → 243
+  (`26/8 + 1 = 4`). The desertion branch is static only. A big army eats fast;
+  the AI's march test `$68ee` charges the same rate per cell of distance.
 
 `$d23a` (at `$130f6`) is the **only consumer** of `$57fba`. For the local side
 `$57ffe`:
@@ -463,10 +549,10 @@ $57fce = ratio ; jsr $16bb8                         ; captain's mood / fist indi
 its one consumer is the end-of-land verdict `$d2c8`: **ratio 4 at the moment
 the land ends is a win, anything less a defeat** ("How a land ends", below).
 Before the ratio, `$d23a` checks the local side's captain group: if
-`word[$51538 + side*$13c + 28]` (the owner-side word of that side's exec
-sub-record 0) is `<= 0`, it posts command `$2e` itself and clears `$57fce`,
+`word[$51538 + side*$13c + 28]` (the owner-side word of that side's group 0,
+the captain's) is `<= 0`, it posts command `$2e` itself and clears `$57fce`,
 which ends the land as a defeat. The knob the autonomous AI actually turns is
-the per-objective budget `112()` and the per-side assessment weight in
+the groups' food `112()` (through `$68ee`) and the per-side assessment weight in
 `$580a6`, not this global ratio.
 
 `$580a6` — 5 × `$20`-byte per-side assessment blocks — is written all over the
@@ -483,12 +569,12 @@ routine — listed only because it shares the `$13040` call site.
 
 ## The campaign-order hook — `$6762` / `$67d0` (72nd pass, static)
 
-`$6762` is the first thing `$6564` tries for an objective in state `$6` past its
+`$6762` is the first thing `$6564` tries for a group in state `$6` past its
 wait timer. `$67d0` is a 6-byte global: `{word0 campaignId, word2 orderType,
 word4 subMode}`. The routine, decoded:
 
 ```c
-// A1 = objective slot base ($51538 record + 10 - 2*i)
+// A1 = side base + 2k (group k)
 int pm_campaign_hook(obj *A1) {
     if (g_campaign_order.campaignId == 0)          return 0;   // no scripted order
     if (g_campaign_order.campaignId != A1->camp_id_268) return 0; // not for this objective
@@ -715,7 +801,7 @@ with a single poke; the counts that overlap match.)
 |---------|-----:|---------|
 | `$6522` decide | 276 | once/tick |
 | `$661a` primary-slot decide | **2** | re-arming `byte4` mostly does *not* re-trip `$661a` — the objective slot's `obj_active`/`obj_force` stop qualifying after the first order issues. Only 2 autonomous primary decisions in 276 ticks |
-| `$68fe` / `$68ee` | 2 / 2 | both decisions scored inside budget |
+| `$68fe` / `$68ee` | 2 / 2 | both decisions: food enough for the trip |
 | `$15302` reached-enemy | 41 | men closing on enemy positions |
 | `$56a6` engage | 9 | contacts made |
 | `$5778` bookkeep | 2 | gated hard on `flags.bit6` + `d < $fff` |
@@ -780,7 +866,7 @@ time. Mission 1 is a tutorial and its enemy AI is near-dormant.
 
 The `$6564` path above was read statically and then **confirmed by force**:
 poking `$58020` (slot 1 `byte4`) = 4, `$6522` took `$6564` → primary-slot
-`$661a` → `$68fe` (picked the nearer enemy leader) → `$68ee` (in budget) →
+`$661a` → `$68fe` (picked the nearer enemy leader) → `$68ee` (food enough) →
 `$67ee`/`$6822`, which wrote `{type $0c, cell $1d3e}` into the command buffer.
 The next tick `$6a3a` → `$6ac6` → `$6b38` → `$6c4a` → `$3154` → `$4b80` set the
 group's execution sub-record to state 8 and stamped the group lead into mode
@@ -1137,28 +1223,32 @@ def sim_tick(world):
             slot.emit(group.queued_order); group.queued_order = None
             continue
         # --- synthesise one order ($6564) ---
-        for i, obj in enumerate(group.objectives): # exactly 6 slots
-            if not obj.active or obj.link != 0:
+        for k in (5, 4, 3, 2, 1, 0):               # the side's 6 groups, captain's last
+            obj = group.groups[k]
+            if obj.owner_side <= 0 or obj.link != 0:
                 continue
             # 1. scripted campaign order, if this mission has one ($6762)
             if obj.state == PATROL and world.clock >= obj.wait_at + 20:
                 if world.campaign_order.id == obj.camp_id:
-                    obj.substate = world.campaign_order.sub or (world.tick & 3) + 2
-                    slot.emit(BESIEGE, obj.leader_cell); break
-            # 2. strong enough to storm a keep ($69b4)
-            if obj.force >= 22:
+                    obj.posture = world.campaign_order.sub or (world.tick & 3) + 2
+                    slot.emit(world.campaign_order.type, obj.target.cell); break
+            if obj.state not in (PATROL, 9): continue
+            # 2. a small group besieges the nearest enemy lord ($69b4)
+            if obj.men < 22:
                 tgt = nearest_enemy_leader(obj, weight=lambda L: L.troops)
                 if tgt: slot.emit(BESIEGE, tgt.cell); break     # -> group state 3
-            # 3. escort the objective ahead of me, if it's a support slot
-            if i > 0 and group.objectives[i-1].state in (SUPPORT, CAMP4):
-                slot.emit(MARCH, obj.escort_target.cell); break
-            # 4. primary slot: march at the nearest enemy leader ($661a/$68fe/$68ee)
-            if i == 0 and obj.force - 4 > 0:
+            # 3. escort the captain's group when it is in support state $d
+            g0 = group.groups[0]
+            if k > 0 and g0.state == SUPPORT and g0.camp_phase == 4:
+                slot.emit(MARCH, g0.escort_target.cell); break
+            # 4. the captain's group: march at the nearest enemy leader ($661a/$68fe/$68ee)
+            if k == 0 and obj.men - 4 > 0:
                 tgt = nearest_enemy_leader(obj,
                         weight=lambda L: assessment[side][L.side].out >> 2)
                 if tgt:
-                    score = (dist(obj, tgt) // 2) * (tgt.troops // 8 + 1)   # $68ee
-                    if score <= obj.budget:                                  # patience
+                    d = dist(obj, tgt)                                       # $68ee: D1 = own men - 4 (kept through $68fe)
+                    score = (d // 2) * ((obj.men - 4) // 8 + 1) + d // 2      # the trip's food at the eating rate
+                    if score <= obj.food:                                    # enough food to get there
                         group.state = 4
                         slot.emit(MARCH, tgt.cell); break        # -> group state 8
 
@@ -1168,17 +1258,20 @@ def sim_tick(world):
         handler(world.groups[slot.commander], slot.param)   # e.g. commit_group_target
         slot.order_type = NONE; slot.param = 0     # consumed
 
-    # $d322 + $3e06: rebuild per-side force totals, decay objective budgets
+    # $d322 + $3e06: rebuild per-side force totals, the armies eat
     force = [0]*5
     for L in world.leaders:
-        force[L.side] += L.troops_field + L.troops_reserve
-    for group in world.groups:
-        for obj in group.objectives:
-            if not obj.active: continue
-            force[group.side] += obj.force
-            if world.tick % assessment[group.side].decay_period == 0:
-                obj.budget -= obj.force // 8 + 1               # big army -> impatient
-                if obj.budget < 0: obj.expire()                # re-pick a patrol waypoint
+        force[L.side] += L.troops_field            # L.food goes to a second word ($57fba+2) the ratio never reads
+    for side_groups in world.groups:
+        for obj in side_groups.groups:
+            if obj.owner_side <= 0: continue
+            force[side_groups.side] += obj.men
+            if eat_timer_elapsed(obj, assessment[group.side].eat_period):   # doubled while idle
+                obj.food -= obj.men // 8 + 1                   # big army eats fast
+                if obj.food < 0:
+                    obj.food = 0
+                    for man in obj.roster:                     # a starving army deserts
+                        if rng() & 7 == 0: man.leave_group()
 
     # $d23a: UI-only mood ratio (the AI never reads it back)
     enemy = sum(force[s] for s in other_sides) + 1
@@ -1245,10 +1338,13 @@ are limitations rather than choices:
    version needs a real economic planner: grow settlements, tech up, *then*
    attack, with the military goal chosen to serve the economic one.
 
-3. **The "patience budget" is the only pacing knob.** `obj.budget` drained by
-   `force/8 + 1` per decay period is a neat trick — big armies commit fast,
-   small ones dither — but it's a scalar with no situational input. Replace with
-   a proper utility model: commit when `P(win) * value > opportunity_cost`.
+3. **Food is the only pacing knob, and the AI does not manage it.** An army
+   eats `men/8 + 1` per period and the AI marches only if the trip's food fits,
+   but AI groups are seeded with `$5fff` food and never take more, so the test
+   does not bind. The player's armies start with a few hundred and must take
+   food from towns ("What each order does"). A modern version would give the AI
+   the same food economy and a utility model: commit when
+   `P(win) * value > food and opportunity cost`.
 
 4. **2.6 Hz, and compute-bound.** The whole sim — every entity, both renderers —
    runs in one thread at whatever rate a frame builds. Decisions land ~2.5 s
@@ -1273,8 +1369,8 @@ are limitations rather than choices:
 
 ## Open threads
 
-- **Economy / population / invention — not started.** Confirmed *not* in the
-  per-tick path (`$1abaa` is sound, `$3e06` is budget-decay + morale-UI,
+- **Economy / population / invention — see economy.md** (this entry predates it). Confirmed *not* in the
+  per-tick path (`$1abaa` is sound, `$3e06` is the armies eating + morale-UI,
   `$d322` is force-totalling). Initial population/settlement counts come from
   the `$10d1e`/`$2266` procedural generator. Growth and invention are either
   event-driven (a revolt, `$550e`, moves a lord and his settlements; economy.md §3) or live in the setup-time
@@ -1284,12 +1380,12 @@ are limitations rather than choices:
   decisions in the four 200M-step runs (lands 0/5/25/60: 8/7/4/6) were
   captured at `$662a`/`$6632` (`scratchpad/pm122/dec/`, `parse.py`). `$68fe`
   found a target every time, and `$68ee`'s cost (4-66) was always far inside
-  the objective budget `112(A1)` (24,218-24,671, i.e. the `$5fff` seed of
-  `$26c4` barely decayed), so every decision issued the attack order
-  (`136(A1) := 4`, `$67ee(12)`); the over-budget fallback `$69b4(6)` and the
+  the group's food `112(A1)` (24,218-24,671, i.e. the `$5fff` seed of
+  `$26c4` barely eaten), so every decision issued the attack order
+  (posture `136(A1) := 4`, `$67ee(12)`); the not-enough-food fallback `$69b4(6)` and the
   no-target path `$69b4(8)` never ran. Targets were leaders of every other
   side, the player's (side 1) in 6 of 25, usually with a small `troops_field`
-  (0-18). The budget test does not bind at these values.
+  (0-18). The food test does not bind at these values: AI armies never go hungry.
 - **Combat — mechanism closed** (73rd, see "Combat" + `ai.md`). The `$5590` kill
   branch runs naturally on later lands (121st). Remainder: the `$5c80`/`$5bd2`
   wear path (never fired in 800M later-land steps). Projectile type is byte6:
@@ -1304,8 +1400,9 @@ are limitations rather than choices:
   contact) is not yet observed; the panel-`$1a` branch (an envoy arriving at the
   player) is static only.
 - `$3c08` (rout / besiege-fail group restructure; order `$0a`, the HOME icon)
-  and `$39d4` (orders `$12`/`$18`, D7 = 1/2) — first-look only.
-- The player's icon orders whose handlers are not decoded (`$02` `$3888`,
-  `$04` `$1c18`, `$06` `$38ce`, `$10` `$6128`, `$14` `$1cc4`, `$16` `$35a0`,
-  `$1a` `$390e`, `$20` `$1d36`): click each on `pm123/win/m1_s0.snap` with
-  `py/clicks.py`, follow the group with `watch`/`hits`, and name them.
+  — first-look only.
+- The player's orders ("What each order does"): each is named from 1 run. Not
+  yet seen: `$04` (needs two captains), `$0e` on a real capital (a campaign land
+  whose player town is kind 7), `$10`/`$1c` on a pile. The spy run's `$550e`
+  defection of lord 0 to side 3; the army's food drain while standing (writer
+  not found).

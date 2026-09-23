@@ -51,7 +51,7 @@ The "commander AI" (whether the Red/Green/Blue lords attack, recruit, or build)
 is a thin layer on top: it is expressed as **group-order records** in the table
 at `$51538`, one per army, holding a state enum and a link to the group's lead
 object record. The group-order state drives which mode the lead man is put into
-(`$10` march-to-cell, `$28` besiege, `$1a` absorb reinforcements); the
+(`$10` march-to-cell, `$28` besiege, `$1a` take food from a town); the
 individual men then follow their own state machines toward the goal.
 
 ### The simulation tick
@@ -233,20 +233,20 @@ markers.
   `18(A1) := $580a6[side·$20].word0`; `jsr $163b8`; `btst #4,7(A1)` →
   straight to the epilogue; construction (`7(settl) == $a` → `16(settl)++`, at
   `>= $78` → `nation_kind := dest_cell % 10` via `divu #$a`/`swap`, `== 7` →
-  `kind := $10`, `16 := 0`); `troops_field·4` vs `troops_reserve`
-  (`== 0` → skip; `>= reserve` and `D5 == $ff9c` → `loyalty += 2`;
-  `< reserve` and `D5 == $ff9c` → `loyalty −= 1`); epilogue `$161c4`.
+  `kind := $10`, `16 := 0`); `troops_field·4` vs `food`
+  (`== 0` → skip; `>= food` and `D5 == $ff9c` → `loyalty += 2`;
+  `< food` and `D5 == $ff9c` → `loyalty −= 1`); epilogue `$161c4`.
 - **The loyalty accumulator only moves when `D5 == $ff9c`** — i.e. on the first
   `$7c` tick after the marker is parked with dwell `#$ff9d` (`−99` → `−100`).
   On an ordinary steady-state pulse `D5 == 0` and neither `±` branch runs. The
   75th pass's "one step per settlement pulse" was wrong.
-- **`$163b8`** — `settlement.leader.troops_reserve −= 1`, floored at 0. This is
+- **`$163b8`** — `settlement.leader.food −= 1`, floored at 0. This is
   the entire per-settlement upkeep drain; in mission 1 it fires only during the
   intermittent `$57fd0 == 0` phases (above).
 
 Asserted **off** (`raise` guards it): **`$5cde`** (the settlement herd-op
-assessment — a whole routine; every `field·4 < reserve` state is arranged with
-`(14(A1) & 3) == 3` so it is skipped), **`$550e`** (militarism revolt, loyalty
+assessment — a whole routine; every `field·4 < food` state is arranged with
+`(14(A1) & 3) == 3` so it is skipped), **`$550e`** (hunger revolt, loyalty
 kept `< 600`), **`$5c2c`** (owner reconcile inside `$16848`).
 
 `$5cde` is Proven on its own (122nd, below); the heartbeat proof still keeps it
@@ -688,9 +688,16 @@ object record; `36(A3)` a running total).
 | mode | handler | tick | behaviour |
 |------|---------|-----:|-----------|
 | `$18` | `$150b0` | 6 | → mode `$0c` (begin the patrol route). This is the state the neutral-village garrisons sit in (`prevmode $18` on every mode-`$0e` record) |
-| `$1a` | `$150c0` | – | **absorb reinforcements**: move a fraction (`16 >> $30fe`) of the reserve pool `6(A5)` into the marching pool `14(A5)`, add to the group total `36(A3)`; if group state `!= $c` recompute (`$35f4`) |
+| `$1a` | `$150c0` | – | **take food from a town** (arrival mode of order `$06`, and of the `$1a` supply line): A5 = the target lord (`$51b66 + 24(A3)`, set by `$3154`); `loyalty_pressure 14(A5) += 16 >> $30fe`; `slice = food 6(A5) >> $30fe` moves into the army's food `36(A3)`; group state `$c` → mode `$26` (back to the supply-line cell), else `$35f4`. 124th: 22 → 11, army +11 vs control, `scratchpad/pm124/o06` |
 | `$1c` | `$15122` | – | **detach a raiding party**: `46(A1) = 8(A5) >> shift`; → mode `$28` (siege), dwell `$32` |
-| `$1e`/`$26` | `$15200` | – | if group state == `$c`, unpack `36(A1)` as a target cell → mode `$10` (march there), prevmode `$74` |
+| `$1e` | `$1515c` | – | arrival mode of order `$02` (go to): `$35f4`, the group goes idle |
+| `$26` | `$15200` | – | if group state == `$c`, unpack `36(A1)` as a target cell → mode `$10` (march there), prevmode `$74` (the `$1a` supply line's return leg) |
+| `$22` | `$151a8` | – | arrival of order `$0e`: `$5fa0` hands the lord's work order (`$5cde`) to every man of the group, then mode `$92`. `$5cde` refuses a lord without a capital (kind 7), so the player's single mission-1 town (kind 11) refuses it |
+| `$6e` | `$15740` | – | arrival of order `$10`: `$61f8`, take `goods >> $30fe` from the town lord and equip the men (economy.md §2c) |
+| `$72` | `$1605a` | – | arrival of order `$06` on a cell with no friendly town: pick up the food of a `$2c` pile there into `36(A3)`, free the pile when empty |
+| `$74` | `$160d6` | – | the `$1a` supply line (`$3956`): drop food at the cell (`$39d4` D7=1), find the own lord with the most food (`$3bc8`, field `+6`), march there with arrival `$1a` |
+| `$78` | `$15772` | – | arrival of order `$1c`: `$63f4` trade (strategy.md "The player's commands"), then mode `$92` |
+| `$7a` | `$1578c` | – | arrival of order `$20` (spy): `$3da4` links the lone captain into the target settlement's unit chain, takes its owner's side, `bset #7`, mode `$7e`; the lord's `troops_field += 1` |
 | `$52` | `$15a80` | 51 | read the nation's destination cell `12($4f916+34)` → target, mode `$10`; issue an order message via `$4e514+46` (`$159de`) |
 | `$54` | `$15ad2` | 29 | walk the `$4e514` leader records selecting the text for a status message (speech generation, not movement) |
 | `$56` | `$15b94` | **168** | **regroup at the muster cell**: unpack `42(A1)` → target (20/21/22), consult the per-cell control byte `$3f86c[42]` to choose sprite `$70`/`$90`, prevmode `$58`, mode → `$10` |
@@ -710,8 +717,8 @@ object record; `36(A3)` a running total).
 | `$84` | `$15f96` | 30 | dwell → mode `$86` |
 | `$86` | `$15e30` | 10 | (chain to `$88`) |
 | `$14` | `$1501a` | – | **board / transfer**: copy `5(A3)` (strength) from the `$4f916+34` record into `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
-| `$16` | `$15042` | 6 | **disband**: `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker). **Else** (`$57fd0 != 0`): `owner_leader.troops_reserve += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). `$57fd0` rotates {0,2,4,6} (§3a), so mission 1 takes both branches over time. economy.md §1's pseudocode had this branch inverted |
-| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.troops_reserve -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `reserve`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $16892` (goods-driven regroup) then `jsr $3c08` (flag-driven regroup) — ***Proven, 98th*** (71/71 over 22 states); its **flag-bit-4 group-teardown** sub-path (`$37c2` → `$1d70`/`$1b8c`, `$17a46`) — ***Proven, 99th*** (1847/1847 over 13 states) |
+| `$16` | `$15042` | 6 | **disband**: `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker). **Else** (`$57fd0 != 0`): `owner_leader.food += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). `$57fd0` rotates {0,2,4,6} (§3a), so mission 1 takes both branches over time. economy.md §1's pseudocode had this branch inverted |
+| `$7c` | `$157ba`→`$157e6` | – | **settlement heartbeat** *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.food -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `food`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $16892` (goods-driven regroup) then `jsr $3c08` (flag-driven regroup) — ***Proven, 98th*** (71/71 over 22 states); its **flag-bit-4 group-teardown** sub-path (`$37c2` → `$1d70`/`$1b8c`, `$17a46`) — ***Proven, 99th*** (1847/1847 over 13 states) |
 | `$8a8a` write | `$16176` | – | **removal**: adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches — *Proven end-to-end, 116th*, see the `$4bc8` sub-section), free the group slot (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
 | — | `$16848` | – | *(Proven, 96th)* **side ↔ owner reconcile**: `A3 = $4f916 + 34(A1)`; `settlement.owner == marker.side` → skip; else `btst #7` clear + `btst #4` clear → `5(A1) := owner` (adopt), `btst #4` set → `jsr $5c2c`. Then `24(A1) != 0 && == 0(A1)` → `$57ff4 := 24(A1)`. Tail `jsr $5c80`. Also called from the mode-`$16` prologue |
 | — | `$5c80` | 2600+ | **per-entity upkeep**: flags-indexed table + byte14 age + byte45 morale; `byte45 += ($57fec & 1)` (a food/desertion drain with a 1-bit random term); `jsr $5bd2` past a threshold |
@@ -756,7 +763,7 @@ stateDiagram-v2
     state "68 in-formation (follower)" as S68
     state "8A garrison" as S8A
     state "18 group: begin route" as S18
-    state "1A group: absorb reinforcements" as S1A
+    state "1A group: take food from a town" as S1A
     state "1C group: detach raiding party" as S1C
     state "26 group: unpack dest -> march" as S26
     state "56 regroup: unpack muster cell" as S56
@@ -966,16 +973,16 @@ void h_escort(pm_object *A1) {                      // Proven, 94th
     A1->mode = 0x00;  goto next_record;
 }
 
-// ---- $150c0  mode $1A : group absorbs reinforcements ---------------------
-void h_absorb(pm_object *A1) {
+// ---- $150c0  mode $1A : the army takes food from a town (124th) -----------
+void h_take_food(pm_object *A1) {
     (*(u16*)0x12a24)++;                             // a UI/stat counter
     group *g   = &group[A1->group_off];
-    pm_object *lead = &obj[g->lead_off];
-    int roll = jsr_30fe(A1);                        // = group.field60 - 2  (a shift amount)
-    lead->reinf_march_14 += (0x10 >> roll);         // move a slice of the reserve...
-    u16 slice = lead->reinf_reserve_6 >> roll;
-    lead->reinf_reserve_6 -= slice;
-    g->running_total_36  += slice;
+    pm_leader *L = (pm_leader *)&obj[g->target_24]; // $3154 stored the target LORD as a $51b66-relative offset
+    int roll = jsr_30fe(A1);                        // = posture - 2  (a shift amount)
+    L->loyalty_pressure += (0x10 >> roll);          // taking food angers the town
+    u16 slice = L->food >> roll;
+    L->food  -= slice;
+    g->food_36 += slice;                            // the captain panel's "Food:" line
     jsr_34f2();                                     // recompute derived group totals
     if (g->exec_state == 0x0c) { A1->mode = 0x26; A1->dwell = 0x23; }
     else jsr_35f4();                                // group order done -> free the slot
@@ -1195,16 +1202,15 @@ group order pulls it out.
 
 For a **group lead** carrying a live order (`$51538` state `$c`): unpack the
 destination cell and enter mode `$10`; on arrival register with the settlement
-(`$60`) or begin a siege (`$1c` → `$28`); absorb reinforcements each tick
-(`$1a`).
+(`$60`) or begin a siege (`$1c` → `$28`); take food from a town (`$1a`).
 
 The lords' strategic choices — *declare* an attack, *pick* which village,
 *decide* to recruit or build — live one level up, in `$6522` / `$d322` /
 `$3e06` (called from `$13040` every tick, operating on `$51538` and `$4f916`).
 **That layer is decoded in `strategy.md` (71st pass):** `$6522`'s `$6564`
 branch is the commander AI — it picks the nearest enemy leader (`$68fe`),
-scores it against a force-scaled patience budget (`$68ee` vs objective field
-`112()`), and issues order `$0c` → group state 8 → the group lead enters mode
+scores the trip's food against the group's food (`$68ee` vs `112()`, the
+group's `36`; strategy.md, 124th), and issues order `$0c` → group state 8 → the group lead enters mode
 `$10` toward that cell (via `$6a3a` → `$4b80`). No economy or build reasoning
 at that layer. `$d322` + `$3e06` only build the per-side force totals `$57fba`,
 which feed a UI mood indicator (`$57fce`), not the AI.
@@ -1367,7 +1373,7 @@ land 25; the other 12 come from kills).
   entry for that sub-record).
 - Then: `36(A3) &= $3ff`; `$39d4` hands the group's goods to whatever lies on
   the lead's cell (an existing goods pile `$2c`, a settlement or building,
-  crediting its leader's goods and `troops_reserve`, or a new `$4bb4e` pile);
+  crediting its leader's goods and `food`, or a new `$4bb4e` pile);
   `$1d36` unlinks every member through `$1b8c`; a live lead loses its group
   offset; **`-48(A3)`, the sub-record's owner side, is cleared**; `$3ce8` makes
   sub-record 0 the side's current group; `$187d8` redraws the local side's
@@ -1459,8 +1465,9 @@ off in the transcription), and the RNG's zero-seed reload.
   are missing"). Still open: the `group.field60` discipline value's own
   source.
 - `$51538` group-order record: `strategy.md` has the stride (`$13c`), the header
-  (pending long / type / param), the six interleaved objective slots and the
-  `base+$4c` / `base+$64` execution sub-records. Still open: the full field set.
+  (pending long / type / param) and the six groups' parallel arrays (124th:
+  the old "objective slots" and "execution sub-records" are the side's groups;
+  field table in strategy.md "`$51538`"). Still open: `+4`, `+256..+292`.
 - `$3f86c` per-cell control byte: how influence spreads and what `bit0` / `65`
   mean to the regroup modes.
 - Whether byte 33 `== $a` ("hold") is the player's "defend" order or an AI

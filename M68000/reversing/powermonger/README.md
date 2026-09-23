@@ -26,8 +26,9 @@ against every session's changes.
 
 ### What carries the game
 
-- **You give orders, not controls.** The player picks an order icon (attack, recruit, invent,
-  offer an alliance, go home, a posture level ...) and clicks a target on the map; the order goes
+- **You give orders, not controls.** The player picks an order icon (go, attack, besiege, take
+  or drop food, take or drop equipment, trade, set men to work, spy, a food supply line, offer an
+  alliance, dismiss men, go home, a posture level ...) and clicks a target on the map; the order goes
   to the captain's group, whose lead walks there with the men following in formation. The
   opponent lords issue orders through the same command slots and the same executor. (S "The
   player's commands", S "The order executor", A "What each entity decides per tick")
@@ -35,9 +36,13 @@ against every session's changes.
   toward the lead's target, check the ground, turn around an obstacle, fight a neighbouring enemy,
   pay upkeep. Followers do nothing but upkeep; their position is stamped from the lead. (A "What
   each entity decides per tick", A "The entity FSM")
-- **Men are conserved.** A lord's manpower is a reserve at home and a field force; soldiers move
-  between them (walking home, disbanding, recruiting, garrison upkeep, capture) and are never born.
-  A side grows only by taking men from another. (E 1, E 6)
+- **Men are conserved.** A lord's men in the field move between lords and armies (joining,
+  dismissal, capture) and are never born. A side grows only by taking men from another. (E 1, E 6)
+- **Food is the pressure.** Each lord has a food store that herds and returning men fill and his
+  settlements eat; each army carries its own food. Armies take food from towns and drop it back;
+  taking food angers a town, giving food or goods calms it. A town with at most 4 food per man in
+  the field grows unrest. The posture sets how much an order moves: aggressive all, neutral half,
+  passive a quarter. (E 1, E 6, S "The player's commands")
 - **Goods are a separate ledger.** Herding animals home credits one of eight item counters (pike,
   sword, bow, plough, boat, pot, catapult, cannon); porters move goods between a nation's lords;
   "invention" is supply: a unit's weapon improves only when a better item reaches its lord and
@@ -47,8 +52,8 @@ against every session's changes.
   routed by a roll that the attacking group's discipline can pin; a rout scatters the loser's
   group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
   A "Natural runs on later lands")
-- **Land changes hands by defection.** A lord whose standing army outweighs his reserve builds
-  loyalty pressure; past a threshold he and all his settlements change side and his garrison turns
+- **Land changes hands by defection.** A lord whose town is short of food for his men, or whose
+  food the player keeps taking, builds loyalty pressure; past a threshold he and all his settlements change side and his garrison turns
   over. In the natural victory the defection came only after the player attacked him (the trigger
   path is inferred). (E 6, E 3, S "How a land ends")
 - **Winning is a ratio, not annihilation.** The score is `(2·mine + enemy/4) / enemy`, clamped to
@@ -61,8 +66,10 @@ against every session's changes.
   goods, to another lord; he accepts if his attitude plus the tribute clears a bar. It only makes
   the ally's settlements valid for friendly orders, and any contact between the two sides breaks
   it. Only the player ever offers. (S "Diplomacy")
-- **The opponent is simple.** Each commander marches at the nearest enemy lord when its army fits
-  a patience budget that big armies spend fast; it has no economy, build or recruit reasoning.
+- **The opponent is simple.** Each commander marches at the nearest enemy lord when its army has
+  the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast); AI
+  armies start with so much food that the test never binds. It has no economy, build or recruit
+  reasoning.
   (S "`$6522` — the commander AI", S "The AI as modern pseudocode")
 - **Deterministic.** The AI's "random" numbers are low bits of the tick counter, and a land's map
   is a pure function of its seed, so a run replays exactly from a snapshot. (S "RNG and determinism")
@@ -79,7 +86,7 @@ against every session's changes.
 - **No pathfinding.** A lead steps straight at its target and probes a few cells ahead, turning
   around what blocks it. (A "What each entity decides per tick")
 - **Fixed tables:** 511 objects, five sides (side 0 neutral), 240 settlements, one order record
-  per side with six objective slots. (A "The object record", E 3, S "`$51538` — group-order table")
+  per side holding its six captains' groups as parallel arrays. (A "The object record", E 3, S "`$51538` — group-order table")
 - **The season clock is also a gate.** The season rotation switches the per-settlement heartbeat on
   and off, so upkeep and defections run in bursts. (S "What `$1abaa` actually is", E 6)
 
@@ -374,7 +381,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    per-commander order pipeline `$6522` (decide) → `$58016` command buffer →
    `$6a3a` (execute) → `$4b80` (stamp the group lead into mode `$10`). The
    autonomous decision (`$6522`'s `$6564` branch) is "march at the nearest enemy
-   leader if strong enough and it's within a force-scaled budget" — no economy
+   leader if its army has the food for the trip" (124th: the old "force-scaled budget" is the group's food) — no economy
    or build reasoning. `$d322` + `$3e06` build the per-side force totals
    `$57fba`, reduced by `$d23a` to a UI-only strength ratio `$57fce`. Mission
    1's enemy captain never issues an autonomous order in ~1000 traced ticks; the
@@ -415,10 +422,11 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     terrain master (`$78000`) → `$12ce0` copy → full island refill (`$f898`) →
     buffer swap. A renderer-as-pseudocode reconstruction is in `graphics.md`.
 12. The 74th pass opened the **economy** (`economy.md`, pass 1 of 2). PM has no
-    single "economy tick"; the subsystems are diffuse. A town's manpower is
-    `pm_leader.troops_reserve` / `.troops_field` (`$4e514` +6/+8) — it fills when
-    soldiers walk home (entity modes `$16`/`$60`, +2/+4) and empties when a
-    captain recruits (mode `$1a`); nothing grew it passively in 400M traced
+    single "economy tick"; the subsystems are diffuse. A lord's food store and
+    men are `pm_leader.food` / `.troops_field` (`$4e514` +6/+8; `+6` was read as
+    men at home until the 124th pass) — food fills when men and herds come home
+    (entity modes `$16`/`$60`, +2/+4) and empties when an army takes food
+    (mode `$1a`); nothing grew it passively in 400M traced
     steps. Food is **sheep herded to towns**: the `$4d252` herd array, the
     `$57f68` herding-operation array, the `$4c5f4` moving markers, and the
     per-tick servicer `$4342` (a child of `$3e06`) that animates the delivery —
@@ -905,7 +913,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     `$7c`) of the sim tick against the real 68000.** `scratchpad/pm96/fsm_ref.py`
     + `diff_pm96.py` extend the reconstruction with `$157e6` (the heartbeat body)
     and its leaves `$16848` (side ↔ settlement-owner reconcile) and `$163b8`
-    (the `troops_reserve -= 1` manpower drain — economy.md §3a).
+    (the `food -= 1` manpower drain — economy.md §3a).
     - **Mode `$7c` is `$57fd0`-gated** (`$157ba` → `$157e6` only when
       `word[$57fd0] == 0`; the same gate guards every instruction that writes
       mode `$7c`). No capture held a `$7c` record, so the 96th read it as "dead
@@ -927,14 +935,14 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       reload word) all bite. Determinism re-checked (`detcheck` clean on a poked
       state; two consecutive `callcap` byte-identical).
     - **Asserted OFF** (`raise` guards it): `$5cde` (settlement herd-op
-      assessment), `$550e` (militarism revolt), `$5c2c` (owner reconcile).
+      assessment), `$550e` (hunger revolt), `$5c2c` (owner reconcile).
     - **`$4342`** (the herd-drive servicer) is now disassembled and its
       reconstruction skeleton drafted, but **not differentially tested** — it is
       a no-op in every natural capture (all `breed`-bit-7 animals have
       `shepherd_obj == 0`; all `$4c5f4` markers have `progress == 0`) and needs
       its own synthesised-corpus pass.
     - **Corrections:** economy.md §1's `h_disband` pseudocode had the `$57fd0`
-      test inverted (mission 1 *does* take the `troops_reserve += 2` path);
+      test inverted (mission 1 *does* take the `food += 2` path);
       §3a's loyalty accumulator was over-stated. Both fixed.
     - **Still deferred:** `$4342`, `$5cde`, the regroup/group modes
       (`$3c08`/`$4bc8`/`$2776`/`$1b8c`), `$1623c`, `$5bd2`, mode `$28`/`$2e`

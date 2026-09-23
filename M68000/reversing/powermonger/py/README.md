@@ -29,4 +29,6 @@ Run everything from `M68000/`. Shell scripts write under `$PM_WORK` (default
 | `iconmap.py <ram>` | the icon floor's hit-test (`$13506`, edges `$12e6a`/`$12ee4`) run over the screen: each `$19bde` icon's slot, id and centre (strategy.md "The player's commands") |
 | `panels.py <ram>` | every `$7202` text panel expanded as `$a91a` does, with each button's code D3 |
 | `sides.py <ram>` | local side, ratio `$57fce`, `$57fba` totals, the `$4e514` lords, the command slots |
+| `order_run.sh <name> <steps> <clicks...>` | one player order from mission 1 settled (`pm123/win/m1_s0.snap`, or `SNAP=`): clicks, runs, snapshots, prints the lords and the selected group; `strategy.md` "What each order does" |
+| `group.py <ram> [settl]` | the selected group's fields (state, men, food, posture, carried goods), its lead and roster, food piles; `settl` adds every settlement |
 | `shot.sh <snap> <png>` | screenshot from the shifter base (`$ffff8201/03`), macOS-safe form of the old `scratchpad/pmshot.sh` |
