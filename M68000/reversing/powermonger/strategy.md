@@ -42,7 +42,7 @@ $130c8  jsr $6a3a    ; << order executor: consume $58016, drive group state + le
 $130ce  jsr $7a56    ; sprite / HUD compositor
 $130d4  $ff9a += $12f56 ; ...andi #$3f... clr $12f56 when it wraps  ; AUTO-ROTATE hook
 $130f6  jsr $d23a    ; $57fba -> $57fce UI mood ratio
-$130fc  jsr $7202 / mouse-command dispatch ($13212 world, $13892 hit-test, ...)
+$130fc  jsr $7202 ; text panels, then the minimap / compass / captain boxes / icon floor ("The player's commands")
 ```
 
 **Correction to the 70th/71st passes.** `$6522`, `$d322`, `$3e06` and the
@@ -264,18 +264,51 @@ campaign hook, not from `$6564`.
 Per tick, `$6a3a` dispatches command slots 1..4 on `byte4` through the table at
 `$6a80` (states 2/4/6/8 → `$6ac6`; 6 and 8 additionally poke a UI effect via
 `$1c390` / `$1c340`), **then clears `byte1`/`word2`**. `$6ac6` → `$6b38` reads
-`byte1` (order type), clears it, and `jmp`s a 26-entry table at `$6b5c`:
+`byte1` (order type), clears it, and dispatches types below `$34` through the
+table at `$6b5a` (`move.w 6(PC,D0.w)` at `$6b52`, `jmp 2(PC,D0.w)` at `$6b56`:
+handler = `$6b5a + word[$6b5a + type]`). Handlers read the slot as A0
+(`0(A0)` commander, `2(A0)`/`3(A0)` target cell x/y) and the commander's group
+offset as D2. Who posts each type is in "The player's commands" below.
 
-| type | handler | reaches | effect |
-|------|---------|---------|--------|
-| `$06` | `$6bec` | `$3154` (D3=3), then `$3248` | scripted move |
-| `$08` | `$6c18` | `$3c08` | besiege — group state 3 |
-| `$0c` | `$6c4a` | `$3154` (D3=9) | **march & engage** |
-| `$10` | `$6c98` | `$30fe` + `$39d4` | regroup / muster |
+| type | handler | calls | posted by |
+|------|---------|-------|-----------|
+| `$02` | `$6b8e` | `$3888(x,y)`, D6 = `$ea` | icon, targeted |
+| `$04` | `$6ba8` | `$1c18(cmd,x,y)` | captain-select mode (icon `$04`, then a captain click) |
+| `$06` | `$6bbe` | `$3154` D3=2 D4=`$1a`, then `$38ce` | icon, targeted; AI (`$6762`) |
+| `$08` | `$6bea` | `$3154` D3=3 D4=`$1c`, then `$3248` | icon, targeted; AI (`$69b4`, besiege) |
+| `$0a` | `$6c16` | `$3c08` (regroup, the lead `-12(A3)`) | HOME icon |
+| `$0c` | `$6c32` | `$4a7a(x,y)` → `$4b80` (group state 8) | sword icon, targeted; AI (`$68fe`) — **march & engage** |
+| `$0e` | `$6c48` | `$3154` D3=9 D4=`$22` | bulb icon, targeted |
+| `$10` | `$6c6a` | `$3154` D3=`$a` D4=`$6e`, then `$6128` | icon, targeted |
+| `$12` | `$6c96` | `$30fe`, `$39d4` D7=1 | icon, immediate |
+| `$14` | `$6cbc` | `$1cc4` | icon, immediate |
+| `$16` | `$6cc6` | `$35a0(cmd, param)` | the three posture icons, param 2/3/4 |
+| `$18` | `$6cda` | `$30fe`, `$39d4` D7=2 | icon, immediate |
+| `$1a` | `$6d00` | `$390e(x,y)` | icon, targeted |
+| `$1c` | `$6d12` | `$3154` D3=`$f` D4=`$78` D5=0 (neutral) | icon, targeted |
+| `$1e` | `$6d32` | `$3154` D3=`$e` D4=`$76` D5=−cmd | icon, targeted |
+| `$20` | `$6d56` | `$3154` D3=`$10` D4=`$7a` D5=−cmd, then `$1d36` | icon, targeted |
+| `$22` | `$6d90` | `$3ce8(D1=cmd, D2=param)` | captain-portrait click (`$134a4`); AI |
+| `$24` | `$6dbc` | `not.w $57ff2` (pause) | PAUSE button |
+| `$26` | `$6dd0` | `$d0dc(param)` when cmd ≠ local side | — (inferred: another side's message) |
+| `$28` | `$6dc6` | `$13d1a` (rebuild the land) | REPLAY MAP button |
+| `$2a` | `$6dea` | `$34a8(D0=cmd, A3=$51538+param)` | alliance panel YES |
+| `$2c` | `$6e04` | `$71fe := 1` | MULTI PLAY button |
+| `$2e` | `$6e10` | `$71ae`, `$d2c8` (end of land) | RETIRE button; `$d23a` on captain loss |
+| `$30` | `$6e36` | `$580a0/$580a2 := param`, `$13d1a` | RANDOM MAP button (param `$2df84`) |
+| `$32` | `$6e56` | `$cada` when cmd ≠ local side | alliance panel NO |
 
-`$6888` maps order type → the group state it produces: `$06`→2, `$08`→3,
-`$0c`→8, `$0e`→9, `$10`→10, `$1a`→`$c`, `$1c`→`$f`, `$1e`→`$10`. These line up
-with the group-state → entity-mode table in `ai.md` (state 3 ⇔ besiege modes
+The 121st-pass version of this table read the base as `$6b5c` and was one
+entry off (`$06` → `$6bec`, `$08` → `$6c18` are mid-instruction). Checked on
+the real CPU: 12 dispatches at `$6b56` over 6 handlers on `pm121/run/k60_s2`
+all landed at `$6b5a + word` (`scratchpad/pm123/disp.txt`).
+
+`$6888` is a word table indexed by order type: `$02`→5, `$06`→2, `$08`→3,
+`$0a`→7, `$0c`→8, `$0e`→9, `$10`→`$a`, `$1a`→`$c`, `$1c`→`$f`, `$1e`→`$10`,
+the rest 0. `$6822` (the AI's order write) compares the entry with the
+objective's state `76(A1)` and does not re-issue an order whose state the
+objective is already in (except `$0c` with D7 = 0). The states line up with the
+group-state → entity-mode table in `ai.md` (state 3 ⇔ besiege modes
 `$28`/`$2a`; state `$c` ⇔ mode `$1a` absorb-reinforcements).
 
 `$3154` is the common order dispatcher: it turns the packed target cell into a
@@ -299,6 +332,101 @@ From here `ai.md` takes over: `$14b62` walks the lead man in mode `$10` every
 tick (velocity integration toward `20/22`, terrain probe, obstacle divert to
 mode `$48`); the formation followers (mode `$68`) are stamped from the lead;
 bucket proximity flips men to combat (`$32` → `$56a6` → `$5778`).
+
+## The player's commands (123rd pass)
+
+The player's orders do not go through the `$51538` queue: every UI path writes
+the local side's command slot directly (`movea.l $58034,A0` then
+`1(A0)` = type, `2(A0)`/`3(A0)` = target cell), and the executor consumes it on
+the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
+`$2df92`, the click position `$2df8e` and the click flags `$2df96`/`$2df98`:
+
+1. **`$7202`, the text panels.** Up to four draggable panels, 8-byte entries
+   at `$7a36` (word: template offset from `$7a36`; bytes: x/16, y); `$7a3c` is
+   the id of the open panel. A panel is a character grid built from a template
+   by `$a91a` (bytes with bit 7 set remapped through the list at `$a99c`, `@`
+   runs filled by the panel's formatter table in A6). Cells are 4 × 6 px; a
+   click on the row under a button's top edge (`$81`) walks left to the `$80`
+   corner, whose grid offset is the button code D3, and `$76f6` dispatches on
+   `$7a3c` (table base `$76fe`, id 4 = entry 0). Every panel, decoded by
+   `reversing/powermonger/py/panels.py`:
+
+   | id | template | opened by | buttons (D3) → effect |
+   |----|----------|-----------|------------------------|
+   | 2 | `$921a` | `$9036` (captain info) | none: name, job, aggression, loyalty, strength, speed, food, troops, carrying |
+   | 4 | `$b03a` | options icon `$2e` (`$af6c`) | game speed slider; `$31` "@@@@" (`$aeac`, only when the local slot state is 2); `$39` GAME → panel 8 (`$af52`) |
+   | 6 | `$b0ad` | `$aeac` | FILE: `$17` LOAD (`$3f768` → `$3f2a0` OR-merge, `$e29c`); `$47` save (`$3f2a0` → `$3f768`, `$e288`, only when `$14e4e == $2c`); `$77` (`$1ba72`) |
+   | 8 | `$b160` | GAME | `$11` RETIRE → order `$2e`; `$41` REPLAY MAP → `$28`; `$71` SELECT MAP (`$abcc`, `$13ce8`); `$a1` MULTI PLAY → `$2c`; `$d1` RANDOM MAP → `$30`, param `$2df84`; `$101` PAUSE → `$24`; `$131` SEND MESSAGE → panel `$14` (`$d194`) |
+   | `$a` | `$b510` | briefing | "Between Pages": `$2a3`/`$2b1` OK → `$b814` |
+   | `$c` | `$bb66` | multiplayer | `$1ba` CONNECT (`$2df6c := 1`), `$1d6` CANCEL |
+   | `$e` | `$bfda` | main menu `$13de8` | `$92`/`$da`/`$122`/`$16a` → `$2df6e := 2/4/6/8` (Start New / Continue Conquest / Play Random Land / Load Data Disk) |
+   | `$10` | `$cd82` | disk requester | `$e2` OK, `$f6` CANCEL |
+   | `$12` | `$c332` | modem connect | `$68` CANCEL |
+   | `$14`/`$16` | `$d048` | SEND MESSAGE / `$d0dc` | none (a message line) |
+   | `$18` | `$c512` | Start New Conquest with lands conquered | `$7a` YES clears `$3f2a0` (196 bytes), `$8a` NO |
+   | `$1a` | `$c820` | an alliance offer (opener: `scratchpad/pm123/diplo/`) | `$146` YES → order `$2a`, param `$5809e` (only if that group's `-48(A3) != 0`, `192(A3) == $e` and its lead is on the local side); `$162` NO → `$32` |
+
+2. **The minimap** (x < `$40`, 6 ≤ y < `$86`; cells 1:1, `(x, y−6)`). With a
+   command armed (`$57fd4 != 0`), `$13892` draws the line from the selected
+   captain's lead to the pointer, and a click posts `type = $57fd4`, target
+   `(x, y−6)` (`$131be..$131cc`). Without one, a click recentres the view
+   (`$4bb3a`/`$4bb3c`). Clicks in the strip above the map (y < 6) set
+   `$58098 := x/16` and redraw the minimap (`$107d6`; inferred: the minimap
+   overlay selector).
+3. **`$13212`**: four rectangles by the compass (`$13250`). The first two turn
+   the view by ∓4 (`$ff9a`); one entry path (`$13270`, taken when `$2df96` is
+   set) also sets the auto-rotate `$12f56` to ∓4, the other (`$13278`) clears
+   it. The other two zoom through `$13f60`: `$57ffc` ∓1 clamped 1..7, or
+   straight to 2 / 7 on the second path.
+4. **The compass rose** (x < `$20`, y > `$a7`): an 8-way camera pan
+   (`$1420c` angle minus the yaw `$ff9a`, table `$132ca`).
+5. **The captain boxes** (twelve rectangles at `$138ec`, each live only while
+   the local side's `$51538` record has a non-zero word for it): the first six
+   open the captain panel 2 (`$9036`, A3 = that captain's group). On the second
+   six, the other button (`$2df98`) recentres the view on that group's lead;
+   with the captain-select mode on (`$57fd6`, icon `$04`) a click posts order
+   `$04` with the selected group (`$57fd2`) and the box index; otherwise it
+   posts `$22`, param = box index.
+6. **The icon floor** (`$13506`): the icon grid is the perspective floor under
+   the view. Column edges `$12e6a` and row edges `$12ee4` are lines
+   `(x0,y0,x1,y1)`; the icon id is `columns crossed + 16 × rows crossed`, each
+   loop counting the edge it stops at. The id is looked up in `$19bde` (24
+   words, `-1` terminated); the slot index D1 dispatches through `$135cc`:
+
+   | slot D1 | id | screen (320 × 200) | glyph | handler → effect |
+   |---------|----|--------------------|-------|------------------|
+   | `$02` | `$ea` | (299,182) | figure | `$135fe`: arm `$57fd4 := $02` |
+   | `$04` | `$c4` | (103,186) | two men | `$13620`: toggle captain-select `$57fd6` |
+   | `$06` | `$d7` | (201,181) | sphere | arm `$06` |
+   | `$08` | `$da` | (275,162) | arrow into men | arm `$08` (besiege) |
+   | `$0a` | `$b4` | (100,170) | HOME | `$13652`: post `$0a` now |
+   | `$0c` | `$e8` | (243,190) | sword | arm `$0c` (march & engage) |
+   | `$0e` | `$e9` | (274,187) | light bulb | arm `$0e` |
+   | `$10` | `$db` | (297,156) | – | arm `$10` |
+   | `$12` | `$d5` | (142,193) | – | post `$12` now |
+   | `$14` | `$d9` | (252,168) | four arrows | post `$14` now |
+   | `$18` | `$d6` | (173,188) | – | post `$18` now |
+   | `$1a` | `$d8` | (227,174) | chain | arm `$1a` |
+   | `$1c` | `$b3` | (74,175) | – | arm `$1c` (neutral target) |
+   | `$1e` | `$a3` | (73,161) | eye with arrows | arm `$1e` (enemy target) |
+   | `$20` | `$93` | (72,149) | eye | arm `$20` (enemy target) |
+   | `$26`/`$28`/`$2a` | `$a4`/`$94`/`$84` | (97,156)/(94,145)/(92,135) | posture | `$13678`: post `$16`, param 2/3/4 |
+   | `$2c` | `$c3` | (75,191) | – | `$136b2`: toggle `$57fea`, disarm `$57fd4` |
+   | `$2e` | `$83` | (71,138) | – | `$13716`: options panel 4 (`$af6c`) |
+
+   Arming the icon that is already armed disarms it (`$1898e`). Screen
+   positions are centroids from the game's own hit-test
+   (`reversing/powermonger/py/iconmap.py`); the sword `$0c` and the options
+   `$2e` were clicked and behaved as listed. The other glyph names are read off
+   a rainy frame and the effects of `$3888`, `$1c18`, `$38ce`, `$6128`,
+   `$1cc4`, `$35a0`, `$390e`, `$1d36` are not decoded: the manual's names
+   (food, supplies, invent, spy, ...) are **inferred** until each is followed.
+
+**Driving it headless** (`reversing/powermonger/py/clicks.py`): the pointer
+moves 1:1 with `mouse move` and clamps at 0, so home it with a large negative
+move and click at absolute (x, y). `reversing/powermonger/py/drive_win.sh`
+plays mission 1 to a natural victory this way (next section, "How a land
+ends").
 
 ## `$d322` + `$3e06` → `$57fba` → `$d23a` → `$57fce`
 
@@ -781,9 +909,29 @@ input from there, `$d23a` posts `$2e` (+605,283 steps), `$6e10` +780,340,
 `$d2c8` +780,343 with `word[$51690] = 0` and `$57fce = 0`, and the defeat
 screen `$1a5b2` +781,229 (`scratchpad/pm122/end/k60_natloss.png`). The other
 three run lands did not end in 300M steps.
+**A natural victory (123rd).** Mission 1 (campaign land 0; player side 1
+with 26 men in the field, side 2 with two lords of 10 garrison men each, ratio
+2), played with clicks only (`reversing/powermonger/py/drive_win.sh`, from
+`scratchpad/pm67_ok_pre.snap` through the briefing OK and 30M steps of
+settling). Sword icon, then the minimap at enemy lord 0's cell (22,45): `$131c4`
+writes `$0c` / (22,45) into the local slot `$5801c`, and the executor clears
+it at `$6b46` on the next tick. Over the next 25M steps `$56a6` (engage) fires
+8 times and lord 0's `troops_field` falls 10 → 7. In the next 25M, one
+`$550e` defection moves lord 0 to side 1 (loyalty 608 → 300), and the totals
+become 31 : 10, ratio 4. Options icon → GAME → RETIRE: `$d2c8` takes the
+victory branch, `$d304` writes `$3f2a0[0] := 1`, and the main menu follows.
+Continue Conquest (`$1120e` in 216,752 steps), then land 1 on the map:
+`$11414` with `$580a4 = 1`, and land 1 builds and runs at `$f898`.
+Control, the same settled state with no order for 50M steps: `$56a6`,
+`$1623c` and `$550e` 0 hits, both lords stay on side 2 at loyalty 608, and the
+ratio stays at 2. So the attack caused the defection (both runs are
+deterministic, one run each). Loyalty 608 is already over the 600 threshold
+at the start and no defection happens without the attack, so the threshold
+alone does not trigger `$550e` (inferred: it is reached from the conquest arm
+`$539a` of mode `$2c`, open item). Snapshots `scratchpad/pm123/win/`.
+
 *Rule: Proven from the code. Defeat observed both ways (retire and the natural
-captain loss); victory reached only by poking the ratio, not by a natural
-winning position.*
+captain loss); victory observed naturally (mission 1, clicks only).*
 
 ## The campaign (122nd pass)
 
@@ -1058,5 +1206,9 @@ are limitations rather than choices:
   bits, `$3154` reads the sign for friend/foe. The `$2200`–`$3500` seeders and
   the per-tick incremental writers (`$139dc`/`$13a3e`/`$13b20`) are still
   unmapped — this is the diplomacy/spy-report subsystem.
-- `$3c08` (rout / besiege-fail group restructure) and `$39d4` (order `$10`
-  regroup march) — first-look only.
+- `$3c08` (rout / besiege-fail group restructure; order `$0a`, the HOME icon)
+  and `$39d4` (orders `$12`/`$18`, D7 = 1/2) — first-look only.
+- The player's icon orders whose handlers are not decoded (`$02` `$3888`,
+  `$04` `$1c18`, `$06` `$38ce`, `$10` `$6128`, `$14` `$1cc4`, `$16` `$35a0`,
+  `$1a` `$390e`, `$20` `$1d36`): click each on `pm123/win/m1_s0.snap` with
+  `py/clicks.py`, follow the group with `watch`/`hits`, and name them.

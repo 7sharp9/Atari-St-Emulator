@@ -24,3 +24,9 @@ Run everything from `M68000/`. Shell scripts write under `$PM_WORK` (default
 | `diff_5cde.py` | the `$5cde` work-order gate (768/768 over 47 states + returned D2/D3/D4 85/85; corpus in `scratchpad/pm122/agents/herdop/corpus`) |
 | `diff_revolt.py` | the `$550e` → `$5c2c` → `$25d6` revolt-chain gate (1778/1778 over 49 states; corpus in `scratchpad/pm122/agents/revolt/`) |
 | `snap2ram.py <snap>...` | writes `<name>.ram` beside each snapshot |
+| `drive_win.sh` | mission 1 (campaign land 0) won with real clicks from `pm67_ok_pre.snap`: sword icon + minimap attack, 50M steps, options → GAME → RETIRE (victory, `$3f2a0[0] := 1`), Continue Conquest, land 1 built; snapshots in `$PM_WORK/win` (strategy.md "How a land ends") |
+| `clicks.py <x,y\|home\|cmd>...` | REPL commands for absolute clicks at 320 × 200 (pointer homed with a large negative move, 1:1 after); other tokens pass through with `:` for spaces |
+| `iconmap.py <ram>` | the icon floor's hit-test (`$13506`, edges `$12e6a`/`$12ee4`) run over the screen: each `$19bde` icon's slot, id and centre (strategy.md "The player's commands") |
+| `panels.py <ram>` | every `$7202` text panel expanded as `$a91a` does, with each button's code D3 |
+| `sides.py <ram>` | local side, ratio `$57fce`, `$57fba` totals, the `$4e514` lords, the command slots |
+| `shot.sh <snap> <png>` | screenshot from the shifter base (`$ffff8201/03`), macOS-safe form of the old `scratchpad/pmshot.sh` |
