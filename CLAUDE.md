@@ -82,6 +82,8 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
 - The Bash tool's working directory drifts between calls: `cd` to an absolute path first.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or
   `bp` before the down, or the census misses the handler.
+- On the Mac, scratchpad data made on Windows lives on `gpubox` (`~/Documents/GitHub/Atari-St-Emulator`). scp fails
+  there (its PowerShell profile errors); stream it: `ssh gpubox 'tar -cf - -C C:/Users/Dave/Documents/GitHub/Atari-St-Emulator/M68000/scratchpad <names>' | tar -xf -`.
 - Ghidra 12.1 is at `C:/Program Files/ghidra_12.1_PUBLIC` (`support/analyzeHeadless.bat`); on the Mac at
   `~/Downloads/ghidra_12.1.4_PUBLIC` (natives built with `buildNatives`; 12.0 there lacks 17 functions).
   In Ghidra Java scripts write regexes as `"\\s+"`; `"\s"` is Java's single-space escape and

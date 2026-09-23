@@ -37,7 +37,8 @@ There is no PowerShell, so use the raw form (`dotnet build -c Debug M68000.fspro
 `ATARI_NOTRACE=1 dotnet exec ...`), `ps aux | grep M68000.dll` for `tasklist` and `pkill -f` for
 `taskkill`. The .NET 8 SDK builds it unchanged, and a drive recipe gives the same snapshots as on
 Windows (Populous `repro` and `late1..4`: same frames and state). `TOS100UK.IMG` is Hatari's
-`tos100uk.img` copied into `M68000/`. Ghidra 12.1 ships no macOS decompiler binary: build it once
+`tos100uk.img` copied into `M68000/`. `screendump.py` needs Pillow (`python3 -m pip install pillow`); there is
+no `timeout` command, so bound runs with step counts instead. Ghidra 12.1 ships no macOS decompiler binary: build it once
 with `cd <ghidra>/support/gradle && ./gradlew buildNatives` (Xcode command-line tools, JDK 21; the
 wrapper fetches Gradle), otherwise `analyzeHeadless` imports and analyses but writes no C.
 
