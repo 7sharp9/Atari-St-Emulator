@@ -5,6 +5,8 @@
 Starts from systems/spawn.snap (natural run late4 -> frame $1000, stopped at $13372 entry,
 called from $b8f4 with type = $37ec2&3 = 2 and edge = the caller's stack word = 0). With a type
 argument, the pushed type word (4(A7) at the breakpoint) is poked first (labelled POKED).
+TRAIL_SNAP / TRAIL_A7 / TRAIL_RET / TRAIL_AFTER check another spawn instead (swamp208.py poke
+prints them for the pop-208 spawn from $e8a0).
 
 1. spawn: RAM at $13372 entry -> spawn_13372 model -> compared with RAM at its return ($b8fa)
    over the effect records, occupancy map, seed, frame counter and both god_rec ctrl words.
@@ -60,10 +62,17 @@ def diff(m1, m2):
 def main():
     nfr = int(sys.argv[1]) if len(sys.argv) > 1 else 20
     ptype = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    # another spawn: TRAIL_SNAP (stopped at $13372 entry), its entry A7 and return address, and
+    # TRAIL_AFTER, a file of REPL lines run after the spawn (swamp208.py poke writes all four)
+    snap = os.environ.get('TRAIL_SNAP', os.path.join(OUT, 'spawn.snap'))
+    a7 = int(os.environ.get('TRAIL_A7', '3f4ac'), 16)
+    ret = int(os.environ.get('TRAIL_RET', 'b8fa'), 16)
+    after = open(os.environ['TRAIL_AFTER']).read().splitlines() if os.environ.get('TRAIL_AFTER') else []
+    sb = a7 - 0x1c                                    # stack bytes dumped: sb .. sb+40
     L = ['r']
     if ptype is not None:
-        L += ['w 3f4b0 %08x' % (ptype << 16)]   # type word at 4(A7), edge word 0 kept
-    L += dump() + ['m 3f490 40', 'r', 'u b8fa 200000'] + dump()
+        L += ['w %x %08x' % (a7 + 4, ptype << 16)]   # type word at 4(A7), edge word kept
+    L += dump() + ['m %x 40' % sb, 'r', 'u %x 200000' % ret] + dump() + after
     skip = int(os.environ.get('TRAIL_SKIP', '0'))   # jump over this many $12f84 calls first
     for f in range(nfr):
         if f == 0 and skip:
@@ -72,16 +81,15 @@ def main():
             L += ['u 12f84 3000000'] + dump() + ['u b7c8 3000000'] + dump()
     L += ['q']
     env = dict(os.environ, ATARI_NOTRACE='1')
-    p = subprocess.run(['dotnet', 'exec', DLL, 'resume', os.path.join(OUT, 'spawn.snap'), 'repl', '--disk-a', DISK],
+    p = subprocess.run(['dotnet', 'exec', DLL, 'resume', snap, 'repl', '--disk-a', DISK],
                        input='\n'.join(L) + '\n', capture_output=True, text=True, cwd=R, env=env)
     blobs = parse(p.stdout)
     k = len(REG)
     pre = to_mem(blobs[0:k]); stk = blobs[k]; post = to_mem(blobs[k + 1:2 * k + 1])
-    a7 = 0x3f4ac
-    typ = int.from_bytes(stk[a7 + 4 - 0x3f490:a7 + 6 - 0x3f490], 'big')
-    edge = int.from_bytes(stk[a7 + 6 - 0x3f490:a7 + 8 - 0x3f490], 'big')
+    typ = int.from_bytes(stk[a7 + 4 - sb:a7 + 6 - sb], 'big')
+    edge = int.from_bytes(stk[a7 + 6 - sb:a7 + 8 - sb], 'big')
     mm = bytearray(pre)
-    mm[0x3f490:0x3f490 + 40] = stk
+    mm[sb:sb + 40] = stk
     slot = T.spawn_13372(mm, typ, edge, a7 - 4)
     bad = diff(mm, post)
     e = T.ENT + slot * T.ESZ
@@ -90,7 +98,7 @@ def main():
              T.rsw(post, e + 8) & 63, T.rsw(post, e + 8) >> 6,
              'MATCH' if not bad else 'MISMATCH at ' + ' '.join('%x' % a for a in bad[:10]),
              sum(n for _, n in REG)))
-    good = alive = steps = kills = marks = 0
+    good = alive = steps = kills = marks = swamps = 0
     fails = []
     i = 2 * k + 1
     prev = None; ran = 0
@@ -116,6 +124,7 @@ def main():
             if T.rw(a, T.ENT + s * T.ESZ + 12) >= 7: steps += 1
         kills += sum(1 for j in range(0xd1) if T.rw(a, T.ENT + j * T.ESZ + 4) and not T.rw(b, T.ENT + j * T.ESZ + 4))
         marks += sum(1 for c in range(4096) if a[0x36e78 + c] != b[0x36e78 + c] or a[0x3c522 + c] != b[0x3c522 + c])
+        swamps += sum(1 for c in range(4096) if a[0x36e78 + c] != 0x35 and b[0x36e78 + c] == 0x35)
         if os.environ.get('TRAIL_VERBOSE'):
             e = T.ENT + 0xd1 * T.ESZ
             print(f, 'frame', T.rw(a, T.FRAME), T.rw(b, T.FRAME), 'pop', T.rl(a, 0x3b22e), T.rl(a, 0x3b23e), 'pre', a[e:e + 22].hex(), 'post', b[e:e + 22].hex(), 'model', mm[e:e + 22].hex())
@@ -124,7 +133,8 @@ def main():
         else:
             fails.append((f, [('%x' % x) if isinstance(x, int) else x for x in bad[:8]]))
     print('ticks: %d/%d frames match (every byte of %d); frames with a live trail %d, steps %d, '
-          'cells re-marked %d, entities killed %d' % (good, ran, sum(n for _, n in REG), alive, steps, marks, kills))
+          'cells re-marked %d (swamp made %d), entities killed %d'
+          % (good, ran, sum(n for _, n in REG), alive, steps, marks, swamps, kills))
     for f in fails[:10]:
         print('FAIL frame', f)
     if ptype is None or '--keep' in sys.argv:

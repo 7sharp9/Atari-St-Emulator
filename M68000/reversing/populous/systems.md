@@ -95,8 +95,18 @@ Both callers push only the type word, so `edge` is whatever the caller has in th
   map on its first move and dies after 8 frames without marking anything**, and type 3 spawns
   nothing. GENESIS has `$37ec2` = $6302, type 2.
 - `$e89c` (in `$db4c`, the walker-emission scan): when the scan finds no free slot below $d0 and
-  `$3c4c4` is 0, `$13372(1)` once and `$3c4c4` = 1 (reset only at a new game, `$bc50`). The edge is the
-  uninitialised local -146(A6) of `$db4c` (*inferred*: not run; needs 208 live entities).
+  `$3c4c4` is 0, `$13372(1)` once and `$3c4c4` = 1 (reset only at a new game, `$bc50`). The edge is
+  the word at -146(A6) of `$db4c` (`$3f418`, A6 = `$3f4aa` on every frame measured). `$db4c`'s locals
+  end at -46 and its callees write only below A7 = A6-146, so nothing in the call writes that word:
+  it holds whatever the interrupt handlers left there between frames. The game runs in supervisor
+  mode on one stack, and the VBL handler `$16d32` (its `movem.l` register save) and the TOS
+  handlers at `$fc0644`, `$fc2f2c`, `$fc4c7a` all write `$3f418`. Measured at `$db4c` entry and at its
+  `unlk` (`$ef48`) over 1000 frames each from `ai/cg2.snap` and `ai/cg1.snap`: unchanged within the
+  call 2000/2000; the value is 0 on 1373 frames, 1 on one, and on the other 626 something else
+  (`$fd50`, `$fc`, -1, 4, `$302`, ...). So the swamp monster enters on the south edge about two times
+  in three and heads north-west; otherwise it starts on the slot's stale cell: 0 in a game where no
+  trail has run yet (the first step leaves the map, so it dies after 8 frames without marking),
+  else the cell where that slot's last trail stopped.
 
 The edge-1 south branch computes `(20+r)*64 + $fc0` where `(20+r) + $fc0` was evidently meant; the
 cell is 5312..7999, so `occ[cell]` writes into the walker visit-count map `$38fd8`, and the first
@@ -118,9 +128,19 @@ edge.
 - `py/systems/trailrun.py 220 0` / `200 1` (POKED: the pushed type word set to 0 / 1 at the same breakpoint,
   edge still 0): spawn MATCH, then **195/195** frames for type 0 (24 steps north, 48 cells given
   trees, 1 entity killed) and **169/169** for type 1 (14 steps north-west, dies at the west edge; its
-  path held no flat cells, so no swamp was made: the swamp marking is proven by the corpus only).
+  path held no flat cells, so no swamp was made; the pop-208 run below makes swamp live).
   Both runs end when the computer wipes out the idle human side (population 0 at frame 4291 / 4264,
   score screen), which `trailrun.py` detects and stops at.
+- `py/systems/swamp208.py poke` then `trailrun.py` (POKED: at the emission scan `$e6c6` every free
+  slot below $d0 gets str 1, put back as soon as the spawn returns; the edge is the natural stack
+  word): the pop-208 spawn from `$e8a0` with type 1. From `ai/cg2.snap` (frame 464, both trail slots
+  unused): edge 0, cell 4074, spawn MATCH, **400/400** frames (43 steps north-west, dies at the west
+  edge; its path crossed no flat cell). From `systems/spawn.snap` (frame 4112, after the frame-$1000
+  trail): edge 0, cell 4070, spawn MATCH, **237/238** frames, 29 cells marked, **20 of them made
+  swamp** live; the other frame is a settlement on a marked cell (`$10366`, not modelled). The run
+  ends at frame 4350 when the human side dies. `swamp208.py edges` gives the edge distribution above.
+- A natural run to 208 was not reached: ATARI VS ATARI from `ai/cg2.snap` holds 45 to 60 live
+  entities up to frame 3721 (`swamp208.py run`), because walkers merge and settle.
 
 ## 2. The key checks ("checksums")
 
@@ -286,8 +306,8 @@ frame (`Program.fs` `timerAPeriod`, a documented stub), so every sound plays at 
 
 ## 7. Open
 
-- The pop-208 spawn `$e89c` was not run (needs 208 live entities); its edge is `$db4c`'s
-  uninitialised local -146(A6).
+- The pop-208 spawn `$e89c` was run only with poked slots (1.4); no natural game reached 208, and
+  no live spawn took edge 1 or a stale cell.
 - Why TOS 1.00 GEMDOS leaves clusters 391/392 unused.
 - `$36d02` requests $47/$48 (sounds 5, 6) and the `$37e78` bits behind sounds 1, 2, 4.
 - `$3d52c` in the two-player setup record `$1a1b8`: the serial handshake was not run.
