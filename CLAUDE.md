@@ -33,6 +33,8 @@ know they existed.
 
 - Run through `M68000/run.ps1` or `dotnet exec M68000/bin/Debug/net8.0/M68000.dll` from
   `M68000/`. Addresses in docs are runtime absolute addresses.
+  The raw `dotnet exec` form traces every instruction unless `ATARI_NOTRACE=1` is set. On the Mac
+  (no PowerShell) use it with `ps`/`pkill` for `tasklist`/`taskkill`: `M68000/DEVELOPING.md`, "macOS".
 - **Another Claude session is often working in this checkout.** Before `taskkill` on dotnet,
   `dotnet build`, or editing a file with uncommitted changes you did not make, check
   (`git status`, `tasklist | grep dotnet`, `ListAgents`) and ask: message a live session with
@@ -80,6 +82,7 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
 - The Bash tool's working directory drifts between calls: `cd` to an absolute path first.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or
   `bp` before the down, or the census misses the handler.
-- Ghidra 12.1 is at `C:/Program Files/ghidra_12.1_PUBLIC` (`support/analyzeHeadless.bat`).
+- Ghidra 12.1 is at `C:/Program Files/ghidra_12.1_PUBLIC` (`support/analyzeHeadless.bat`); on the Mac at
+  `~/Downloads/ghidra_12.1.4_PUBLIC` (natives built with `buildNatives`; 12.0 there lacks 17 functions).
   In Ghidra Java scripts write regexes as `"\\s+"`; `"\s"` is Java's single-space escape and
   silently matches no tabs.
