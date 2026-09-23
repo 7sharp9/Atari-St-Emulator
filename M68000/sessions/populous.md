@@ -1,88 +1,79 @@
 # Populous: handoff
 
-Updated 2026-09-23 by the session that ended with the handoff commit after `ec5b49b`.
+Updated 2026-09-23 by the session that ended with the handoff commit after `951b15a`.
 
 ## Resume point
 
-- Last commits of this workstream: `ec5b49b` (flood and armageddon cast by the computer live, the
-  Armageddon brawl model), then the handoff commit (this file, `py/capframes.py` path fix).
-- `bin/` is the `5c32af8` build (IKBD fix); every count from this session ran on it.
+- Last commits of this workstream: `f425c8b` (pop-208 swamp monster), `c023cea` (trail sprites
+  rendered), `e9abb10` (`$1063a` combat end to end), `951b15a` (design digest, `Repl2` fix), then the
+  handoff commit. `8e3a350` changed the `/handoff` skill (design-digest check).
+- `bin/` is the `5c32af8` build (IKBD fix); every count from the last two sessions ran on it.
 - Working data: `$POP_WORK` = `M68000/scratchpad/pop/` (rebuild: `reversing/populous/README.md`,
-  "Drive recipe" and "Working data"). Per-area data under `$POP_WORK/<area>/`; pass-2 agents' raw
-  output in `$POP_WORK/agents/`.
-- Start from: `drive/A.snap` (GENESIS, view on your town) for UI work; `ai/cg1.snap` (hard opponent)
-  and `ai/cg2.snap` (ATARI VS ATARI); `ai/F0.snap`, `M0.snap`, `M1.snap` for the endgame powers;
-  `systems/spawn.snap` for the trail monsters. All listed in `scratchpad/ANCHORS.md`.
+  "Drive recipe" and "Working data"). This session's data: `$POP_WORK/swamp208/` (poked pop-208
+  snapshots `p_cg2`, `p_spawn` + `.after`), `$POP_WORK/systems/view/` (trail renders),
+  `$POP_WORK/powers/fight/` (the `$1063a` live logs).
+- Start from: `walker/snaps/fight1.snap` for combat and take-overs; `ai/M1.snap` for the Armageddon
+  brawl; `ai/cg1.snap` / `cg2.snap` for computer play; `drive/A.snap` for UI work. All in
+  `scratchpad/ANCHORS.md`.
 - Uncommitted work left behind: none.
 
 ## Proven so far
 
-Five topic docs (`reversing/populous/README.md` has the table with every count):
+Five topic docs, each count in the table at the top of `reversing/populous/README.md`. The README's
+**Design digest** restates the rules for re-use and cites the section proving each line; `/handoff`
+re-checks it.
 
-- Graphics: the frame rebuilt from RAM, 64000/64000 pixels on 12 frames; the mouse UI driven,
-  `py/verify_drive.py` 17/17.
-- Terrain: world generator byte-identical for 3 worlds; raise/lower; all six powers 2305/2305 under
-  `callcap` and 8/8 casts through the UI; next world, names, start paths, starting walkers.
-- Mechanics: settlements, mana, spawns, combat; walker direction 2400/2400 and 8000/8000 live;
-  knight 154/154 live; score screen 200/200 and 56/56. The Armageddon brawl after a computer cast
-  (`mechanics.md` 5, `py/endgame/brawlcheck.py`): magnets and footprint release 441/441 frames,
-  vacates 20/20, populations 421/421; `fightcheck.py` rounds 12/12 in it. Footprint table `$22b4e`
-  and the `$10366` release are in `mechanics.md` 4.3.
-- AI: 4800/4800 decision routines; two natural runs 1854/1854 and 2766/2766; flood and armageddon
-  cast by the computer with poked mana (`ai.md` 5, `py/ai/s5_endpow.py`, runs F and M): every AI
-  call matched, commands 111/111 and 169/169, flood heights 4225/4225.
-- Systems: trail monsters 400/400 + 400/400 and 394/394 live; key checks; pause; LOLO1.GAM; sounds.
+- Graphics: frame rebuilt from RAM 64000/64000 on 12 frames; trail sprites rendered live 32/32
+  (`py/systems/trailview.py`); mouse UI `py/verify_drive.py` 17/17.
+- Terrain: generator byte-identical for 3 worlds; raise/lower; six powers 2305/2305 and 8/8 casts.
+- Mechanics: settlements, mana, spawns; walker direction 2400/2400 + 8000/8000 live; knight
+  154/154 live; combat `$1063a` on every live call, rounds 71/71 and resolutions 9/9
+  (`py/powers/live.py <snap> <frames> fight`, `mechanics.md` 3.5); Armageddon brawl 441/441; score.
+- AI: 4800/4800 decision routines; natural runs 1854/1854, 2766/2766; flood/armageddon casts.
+- Systems: trails 400/400 + 400/400 callcaps, 394/394 live; the pop-208 swamp spawn (poked slots,
+  natural edge) 400/400 and 237/238 frames with 20 swamp cells made (`py/systems/swamp208.py poke`
+  + `trailrun.py` with `TRAIL_*`); its edge is interrupt stack debris at `$3f418` (2000/2000 frames
+  measured, `swamp208.py edges`, `systems.md` 1.3).
 
 ## Open, in priority order
 
-1. **The population-208 swamp monster** (`$e89c`, `systems.md` 1.3): reach 208 live entities (a long
-   ATARI VS ATARI run from `ai/cg2.snap`, or pokes) and diff the spawn; its edge comes from `$db4c`'s
-   uninitialised local -146(A6), so record which edge it really takes.
-2. **What the player sees of the trail monsters.** Confirm the SPR_320 frames Dave identified by eye
-   with a rendered frame of the forced type-0 run (`py/systems/trailrun.py 220 0`) through
-   `pop_render.py`, and finish the SPR_320 frame identities.
-3. The combat resolution (`$1063a` when a side dies: loser's mana to -250, winner +3000 seen twice in
-   run M; `$108b8` bookkeeping): model it and check it on fightcheck's RESOLVE lines from
-   `M1.snap` and `fight1`.
-4. `$ef4c`'s post-decision writes (settle, merge, fight start, occupancy and visit counts) diff-tested
-   on their own; a knight merging into a friendly walker live; the non-knight town take-over in
-   `$108b8` (`$10366` claim).
-5. Smaller loose ends: sounds 5/6 and the `$37e78` bits (`systems.md` 6); the command that sets
-   `$3c4e4`; `$135fc`'s second call site `$e580` live; the `$f6b2` swamp raise live; a full-size SAVE
-   then LOAD round trip on a disk with space; PAINT MAP, RESTART/NEXT MAP items (code-read only).
-6. Lowest: the serial two-player link (`$19652`, MFP 10/12, `$1d03e`, `$3d52c`) needs a second
-   emulated machine; the LORD/MOUTHS speech needs side 1 of the original double-sided disk.
+1. **Town take-over and settlement death, `$10366` claim.** The only resolution path not modelled
+   (3 take-overs in `fight1`, counted not compared), and `entity_kill` of a settlement. Model
+   `$10366(e, 0)` claiming and the non-knight branch of `$108b8`, then re-run
+   `live.py fight1.snap 1500 fight resolve` until the take-overs compare.
+2. `$ef4c`'s post-decision writes (settle, merge, fight start `$10e7e`, occupancy and visit counts)
+   diff-tested on their own; a knight merging into a friendly walker live.
+3. Smaller loose ends: sounds 5/6 and the `$37e78` bits (`systems.md` 6); the command that sets
+   `$3c4e4`; `$135fc`'s second call site `$e580` live; the `$f6b2` swamp raise live; a full SAVE/LOAD
+   round trip on a disk with space; PAINT MAP, RESTART/NEXT MAP; SPR_320 frames 9 and 11 live (sample
+   the type-2 trail on the other parity); a pop-208 spawn on edge 1 or a stale cell (poke `$3f418`).
+4. Lowest: the serial link (`$19652`, needs a second emulated machine; also whether the `$3f418`
+   debris desyncs it); the LORD/MOUTHS speech (side 1 of the original disk).
 
-For the emulator workstream, not Populous: Timer A is a stub (64 interrupts per frame, ignores
-TACR/TADR), so sampled sound plays at the wrong rate (`systems.md` 6.2).
+For the emulator workstream, not Populous: Timer A is a stub (64 interrupts per frame), so sampled
+sound plays at the wrong rate (`systems.md` 6.2).
 
 ## Known traps
 
-- `py/repl.py`'s `Repl` loses sync after a `bp` (the breakpoint prints registers twice); use
-  `py/powers/pwlib.Repl2`.
-- In callcap memory compares, exclude `$37f5a..$37f89`: the trap wrappers' register save stack
-  changes on every OS call.
-- `callcap` masks interrupts: a routine that waits for the VBL (the earthquake's shake) must be
-  tested in two halves (callcap from after the wait, `$12470`).
-- A land click acts only when one of your entities is in view (`$3d54e`); a magnet click does not.
-  The GENESIS human is on an island: contact with the enemy needs the bridging raises of
-  `py/walker/campaign2.py`.
-- `click.snap` is the CONQUEST click (y 176 is the CONQUEST band), not CUSTOM.
-- Snapshots made before `5c32af8` came from a DLL that injected stray key presses on every
-  `mouse move`; re-running their drives on the fixed DLL can differ in a few bytes (`$20021`,
-  `$37eae`). Pass-2 counts were produced on the old DLL; regenerate a snapshot rather than diff old
-  vs new. (`M0.snap` is poked from run A's old-DLL `f01065.snap`; everything after the poke ran on
-  the fixed DLL.)
-- The scripts that spawn the emulator run it with cwd `M68000/`: pass absolute snapshot paths
-  (`capframes.py` now absolutises its own; others may not).
-- `capframes.py` past the game's end re-dumps the same state; dedupe by frame (`brawlcheck.py` does).
-- A full AI live replay (`py/ai/livecheck.py` over 8 call sites) takes 1.5-2.5 hours with 9
-  processes; 18 processes (two scenarios) ran fine together on this 16-core machine. `join.py` over
-  the recorded logs in `$POP_WORK/ai/live/` takes minutes.
+- `py/repl.py`'s `Repl` loses sync after a `bp`; use `py/powers/pwlib.Repl2` (its `cmd('r')` is fixed
+  as of `951b15a`).
+- In callcap memory compares exclude `$37f5a..$37f89` (trap wrappers' register save).
+- `callcap` masks interrupts: a routine that waits for the VBL must be tested in two halves.
+- The game runs in supervisor mode on one stack: interrupt handlers overwrite stack words below the
+  main loop between frames, so an uninitialised local can differ frame to frame (`systems.md` 1.3).
+- `$14364` takes the view origin as pushed arguments: poke cx/cy before `$b6fc` (at the previous
+  frame's `$b7c8`), as `trailview.py` does.
+- A land click acts only when one of your entities is in view (`$3d54e`); the GENESIS human is on
+  an island (bridging raises: `py/walker/campaign2.py`). `click.snap` is the CONQUEST click.
+- Snapshots made before `5c32af8` came from a DLL that injected stray key presses; regenerate
+  rather than diff old vs new.
+- Scripts spawn the emulator with cwd `M68000/`: pass absolute snapshot paths.
+- A loop over frames needs an exit for "the game stopped" (score screen): `live.py` and `trailrun.py`
+  have one; `capframes.py` past the end re-dumps the same state (dedupe by frame).
+- Full AI live replays take 1.5-2.5 h with 9 processes; `live.py fight` over 1500 frames about 45 min.
 
 ## Next session
 
-Item 1: the population-208 swamp monster. Run ATARI VS ATARI from `ai/cg2.snap` with a watch on the
-entity count `$3c4e2` (or poke the table close to full), stop at `$e89c`, and diff the spawn against
-`py/systems/trail_ref.py`; record the edge taken from the uninitialised -146(A6).
+Item 1: model the town take-over (`$10366` claim, `$108b8`'s non-knight branch) and settlement
+death, then run `py/powers/live.py fight1.snap 1500 fight resolve` until the take-overs compare.
 Prompt: `/resume populous`.
