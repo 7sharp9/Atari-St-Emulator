@@ -7,6 +7,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 |---|---|
 | `cadaver.md` | Cadaver spike (`reversing/cadaver/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
+| `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |
 
 Add a row when a workstream gets its first handoff (for example `powermonger.md`,
 `emulator.md` for CPU/peripheral work that is not driven by one game).
