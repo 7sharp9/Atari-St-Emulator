@@ -7,7 +7,11 @@ snapshots in `$POP_WORK/systems/`); each result names the script that reproduces
 
 Two special entities, slots $d1 and $d2 (`$3c46e`, `$3c484`), cross the map one cell every 8 frames
 and mark the cells beside their path. They are drawn as 32x32 sprites (graphics.md: entity >= $d1,
-frame = +6).
+frame = +6). The SPR_320 frames of the three types show a wizard trailing bubbles (type 0, trees,
+frames 0-4), a slime monster (type 1, swamp, 5-8) and a grey rock monster (type 2, rock, 9-12)
+(identified by eye from the sprite sheet, not from a rendered game frame). Their triggers make
+them a sudden-death device: one spawns at frame $1000 of every game, and a swamp monster once when
+the entity table is full (208), killing everything on the cells it marks.
 
 ### 1.1 Records
 
