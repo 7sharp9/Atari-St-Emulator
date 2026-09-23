@@ -44,7 +44,9 @@ GOTCHA: the REPL `w` command writes a BIG-ENDIAN longword.  Poke a word at an
 even offset as (v>>8)&0xff / v&0xff across the two bytes, or use lw_word().
 """
 import json
+import os
 import struct
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -205,11 +207,15 @@ class Harness:
     def run_repl(self, cmds, snap=None):
         snap = snap or self.anchor_snap
         script = "".join(c + "\n" for c in cmds) + "q\n"
+        if shutil.which("pwsh"):
+            argv = ["pwsh", "-NoProfile", "-c",
+                    f"./run.ps1 -NoBuild rrepl {snap} -DiskA {self.disk}"]
+        else:  # macOS: run.ps1's rrepl form spelled out (DEVELOPING.md "macOS")
+            argv = ["dotnet", "exec", "bin/Debug/net8.0/M68000.dll", "resume", snap,
+                    "repl", "--disk-a", self.disk]
         p = subprocess.run(
-            ["pwsh", "-NoProfile", "-c",
-             f"./run.ps1 -NoBuild rrepl {snap} -DiskA {self.disk}"],
-            input=script, capture_output=True, text=True,
-            cwd=self.m68, timeout=400)
+            argv, input=script, capture_output=True, text=True,
+            cwd=self.m68, timeout=400, env=dict(os.environ, ATARI_NOTRACE="1"))
         return p.stdout + p.stderr
 
     # ----------------------------------------------------------- corpus loop
