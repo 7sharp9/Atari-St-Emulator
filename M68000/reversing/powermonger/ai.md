@@ -1261,9 +1261,9 @@ every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`, `trace_cfg.py --blocks`)
 **Finding.** PowerMonger's battlefield death is a **morale-grind**, not an odds
 roll: mode `$32` (`$1533c`) subtracts `(field44 >> 1) + 1` (`field44 >= 6` → just
 `1`) from the enemy's `morale` byte every tick a unit stays in contact; at
-`morale <= 0` `$5590` rolls **kill vs rout** off `$30fe = group.field60 − 2` (a
-per-group discipline/cohesion value) and, when that is neither 0 nor 2, the
-`($57fec + anim_phase)` parity. In mission 1 the attack group's `field60 == 4`
+`morale <= 0` `$5590` rolls **kill vs rout** off `$30fe = group.field60 − 2` (the
+group's posture 2/3/4, strategy.md "What each order does") and, when that is neither 0 nor 2, the
+`($57fec + anim_phase)` parity. In the 73rd-pass fight the attack group's `field60 == 4` (the AI's attack stamp, `$6638`)
 → `$30fe == 2` → the roll is pinned to `$560a`; a unit there dies only if
 `flags.bit5` is set (afloat: bit 5 men are drawn as boats, `$1174e`), otherwise it *routs* — survives, scattered by
 `$3c08`. *(95th: `$1533c` + the `$5590` KILL branches + `$30fe` + `$56a6`'s
@@ -1463,8 +1463,8 @@ off in the transcription), and the RNG's zero-seed reload.
   from the side block) and the equip paths `$16124`/`$159de` (codes 2/4/6);
   the projectile type is `$28` for a bow (6) and `$12` for `$e`/`$10`, a value
   no writer produces, so `$12` is unreachable (`port/SPEC.md` "Why 18 and 28
-  are missing"). Still open: the `group.field60` discipline value's own
-  source.
+  are missing"). `group.field60` is the posture (124th): the player's
+  posture icons (order `$16`) and the AI's `$6638`/`$6762` set it.
 - `$51538` group-order record: `strategy.md` has the stride (`$13c`), the header
   (pending long / type / param) and the six groups' parallel arrays (124th:
   the old "objective slots" and "execution sub-records" are the side's groups;

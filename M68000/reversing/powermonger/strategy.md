@@ -173,7 +173,7 @@ typedef struct pm_side_groups {       // base = $51538 + side*$13c
           // ... $13c total
 } pm_side_groups;
 // $30fe returns  group.field_60 - 2  (posture - 2) as the kill/rout shift and the slice shift of every player order.
-//   field_60 == 4 (mission 1) -> always "2" -> rout, never kill.
+//   posture 4 (the AI stamps it on every attack group, $6638) -> always "2" -> rout, never kill.
 
 // ---- leader / lord record : $4e514, 32 x 32 bytes -------------------
 // Full field list: economy.md §1 (pm_leader). The fields this file uses:
@@ -660,11 +660,14 @@ void pm_kill_or_rout(obj *A1 /*attacker*/, obj *A3 /*loser*/) {
 }
 ```
 
-The `group.field_60` term is a per-group **discipline / cohesion** value.
-Mission 1's groups all carry `field_60 == 4`, so `pm_30fe` returns `2` and the
-roll is pinned to **rout** — ten routs, zero kills in the 73rd-pass fight.
-A disciplined attacking group (`field_60 != 4`) or an encircled loser
-(`flags.bit5`) gets kills.
+The `group.field_60` term is the group's **posture** (2 aggressive, 3 neutral,
+4 passive; the player's three posture icons, "What each order does"; passes
+before the 124th called it discipline). The AI stamps posture 4 on every group
+it sends to attack (`$6638`), so `pm_30fe` returns `2` and the roll is pinned to
+**rout**: ten routs, zero kills in the 73rd-pass fight. Posture 2 always kills;
+posture 3 rolls (the player's mission-1 army: 5 kills, 5 routs in the win run,
+`scratchpad/pm124/conquest/REPORT.md`); an encircled loser (`flags.bit5`) is
+killed whatever the posture.
 
 ### 1. Contact → engage (`$56a6`, from mode `$32`)
 
@@ -818,8 +821,8 @@ with a single poke; the counts that overlap match.)
 **Reading.** A forced attack in mission 1 produces engagement, a handful of
 projectiles, ten **routs** (units scattered by `$3c08`, none killed), and
 fifteen **captures**. So territory changes hands and armies get broken up, but
-almost nobody dies on the field — because mission 1's group discipline
-(`field_60 == 4`) pins the `$5590` roll to "rout", and the wear channel is far
+almost nobody dies on the field — because the attack group's posture
+(`field_60 == 4`, the AI's attack stamp) pins the `$5590` roll to "rout", and the wear channel is far
 too slow for a 276-tick fight. The 72nd pass's "no casualties" verdict was right
 about deaths and wrong about outcome: **routing is what combat does here**, and
 it fired ten times.
@@ -1362,13 +1365,11 @@ are limitations rather than choices:
    — a human learns the exact outcome of a given engagement. Keep the trick for
    cosmetic jitter; use a real seeded PRNG for anything the player can exploit.
 
-6. **Rout, not attrition, decides fights — and rout is pinned.** `group.field_60
-   == 4` in mission 1 forces every morale-kill into a rout. Whether that's
-   tuning or a bug in the procedural generator, the effect is that field combat
-   almost never kills; territory changes hands by **capture** (`$1d70`) while
-   armies just get scattered and re-form. A modern version would make the
-   discipline value depend on training / leadership / recent losses so that
-   fights have consequences.
+6. **Rout, not attrition, decides the AI's fights — and rout is pinned.** The AI
+   attacks at posture 4, which forces every morale-kill into a rout, so its
+   field combat almost never kills (the player chooses: aggressive kills); territory changes hands by **capture** (`$1d70`) while
+   armies just get scattered and re-form. A modern version would let the AI
+   choose its posture from the situation so that its fights have consequences.
 
 ## Open threads
 

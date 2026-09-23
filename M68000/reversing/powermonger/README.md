@@ -49,7 +49,7 @@ against every session's changes.
   is handed out. There is no research timer. (E 2a, E 2b, E 2c, E 4)
 - **Combat is a morale grind.** Units in contact lock into melee; each tick the attacker takes 1..4
   (by weapon) off the target's morale, which is its hit points. At zero the loser is killed or
-  routed by a roll that the attacking group's discipline can pin; a rout scatters the loser's
+  routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
   group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
   A "Natural runs on later lands")
 - **Land changes hands two ways, both proven.** *Conquest*: when every man of a lord's settlements
@@ -100,9 +100,12 @@ against every session's changes.
   attacks. (S "Diplomacy")
 - Breaking an alliance with the player loses the two −8 relation changes: a message call clobbers
   a register, so they are written outside the table. (S "Diplomacy")
-- Mission 1's groups all carry discipline 4, which pins every morale defeat to a rout: the first
-  land never kills a man. Tuning or a generator bug; later lands kill. (S "Combat" 0,
-  A "Natural runs on later lands")
+- The AI sets posture 4 (passive) on every group it sends to attack, and posture 4 pins every
+  morale defeat that group inflicts to a rout (unless the victim's flag bit 5 is set): AI attackers
+  rout men rather than kill them. The player's army at posture 3 rolls: 5 kills and 5 routs in the
+  mission-1 win. Earlier passes read posture as "discipline" and said mission 1 never kills.
+  (S "`$6522` — the commander AI" step 4, S "Combat" 0, A "Natural runs on later lands";
+  strategy.md "What each order does")
 - Catapult and cannon are goods that never become weapons: no code stores their tier on a unit, so
   their projectile type is unreachable. (E 4)
 - The group dissolve reads the command slot at `3 × side` instead of `6 × side`, and the revolt
