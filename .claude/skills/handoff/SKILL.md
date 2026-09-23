@@ -37,7 +37,22 @@ Only verified lessons. Edits to `CLAUDE.md` or a skill: check `ListAgents`, tell
 what you are changing, and commit those files in their own small commit. If nothing is worth
 changing, say so; do not invent improvements.
 
-## 3. Rewrite the handoff
+## 3. Re-check the design digest
+
+If the game's `reversing/<game>/README.md` has a "Design digest" section (the game's rules
+restated for re-use: what carries the game, what limits became features, what are bugs), check it
+against this session's work before the handoff:
+
+- List the session's changes to the topic docs and reference models (`git diff <start>..HEAD --stat`
+  over `reversing/<game>/`, where `<start>` is the handoff's last commit when the session began).
+- For each change, find every digest line that relies on the changed section, and each digest line
+  that names a routine, rule or count this session touched. Correct it in place, or add the rule
+  if the session proved a new core mechanic or bug.
+- Every digest line cites the topic-doc section that proves it; a line whose section no longer
+  says so is wrong until fixed. Anything not proven stays labelled inferred.
+- Commit the digest with the session's work, and say in the report whether it changed.
+
+## 4. Rewrite the handoff
 
 Rewrite `M68000/sessions/<workstream>.md` from `M68000/sessions/_template.md` (create it, and add its
 row to `sessions/README.md`, if this is the first handoff). It replaces the old content entirely:
@@ -52,9 +67,10 @@ Fold in and delete any older continuation note this workstream used (a scratchpa
 a root `next_session.md`, a memory RESUME block); leave a memory entry that only points at the
 handoff file. Commit the handoff.
 
-## 4. Report
+## 5. Report
 
-Tell Dave: what was committed, what is left uncommitted and why, the lessons applied and where, and
+Tell Dave: what was committed, what is left uncommitted and why, the lessons applied and where,
+whether the design digest changed, and
 the next-session prompt, which is always exactly:
 
 ```
