@@ -28,7 +28,18 @@ Trace is ON for `boot`/`trace` (you run those to read it) and OFF elsewhere.
 for the full subcommand list.
 
 The raw form still works: `dotnet exec bin/Debug/net8.0/M68000.dll <argv>` where
-`<argv>` is any of the modes in `Program.fs`'s `main`.
+`<argv>` is any of the modes in `Program.fs`'s `main`. It traces every instruction to stdout
+(tens of MB a minute) unless `ATARI_NOTRACE=1` is set; the Python drivers set it.
+
+### macOS
+
+There is no PowerShell, so use the raw form (`dotnet build -c Debug M68000.fsproj`, then
+`ATARI_NOTRACE=1 dotnet exec ...`), `ps aux | grep M68000.dll` for `tasklist` and `pkill -f` for
+`taskkill`. The .NET 8 SDK builds it unchanged, and a drive recipe gives the same snapshots as on
+Windows (Populous `repro` and `late1..4`: same frames and state). `TOS100UK.IMG` is Hatari's
+`tos100uk.img` copied into `M68000/`. Ghidra 12.1 ships no macOS decompiler binary: build it once
+with `cd <ghidra>/support/gradle && ./gradlew buildNatives` (Xcode command-line tools, JDK 21; the
+wrapper fetches Gradle), otherwise `analyzeHeadless` imports and analyses but writes no C.
 
 ## Live window input (`Video.fs`)
 
