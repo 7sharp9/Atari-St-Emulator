@@ -258,17 +258,23 @@ Before the round it plots the attacker's minimap dot (`$166b2`, colour 8 + 7*`$3
 a knight pointer, $82/$86 (side 0/1 of the one that has it) when one does, else $46.
 Both <= 0: `$10068` kills O, then S. Otherwise the survivor wins via `$108b8(winner, loser)`.
 Verified live on every natural call, full memory delta over $21464..$3d560 against
-`powers_ref.combat_round` (`py/powers/live.py <snap> <frames> fight`): from `fight1.snap` (1500
-frames) rounds **59/59**, attacker lost **5/5**, attacker won **2/2**, plus 3 take-overs of a town
-(counted, not compared: `$10366`); from `M1.snap` (the Armageddon brawl to GAME LOST) rounds
-**12/12**, attacker lost **1/1**, won **1/1**. No call had both sides die.
+`powers_ref.combat_round` (`py/powers/live.py <snap> <frames> fight`): from `fight1.snap` (frame
+2665, 1500 frames) rounds **85/85**, attacker lost **5/5**, attacker won **5/5**, attacker won and
+took a town over **7/7**; from `M1.snap` (the Armageddon brawl to GAME LOST) rounds **12/12**,
+attacker lost **1/1**, won **1/1**. No call had both sides die. The compare leaves out the sample
+player's state `$24952..$24963`, which the Timer A handler `$17140` advances while a sampled sound
+plays across the call (it is the only byte that differed before the exclusion).
 
 `$108b8(winner, loser)`: battles won `$3c514[winner.side]`++. Mana transfer amount e:
 - loser a walker: 100, knight 1000, the side's leader 3000 (`$3c4e8`).
 - loser a settlement: `$3c4fe[level]` (100 if sprite out of range). **Raze** when the winner has a
-  knight pointer and non-zero str; otherwise the town is taken over: the old footprint is released,
-  and if `$18206` gives the winner's cell a value it becomes a settlement of the winner's side (the
-  old record is discarded); else it stays a walker. The raze: the loser becomes a ruin ($80, str 1,
+  knight pointer and non-zero str; otherwise the town is **taken over**: `$10366(loser, 1)` releases
+  the old footprint, then if `$18206(winner.side, winner.cell)` > 0 the winner settles where it stands
+  (flags 1, t6 = frame, sprite from `$101a0`, footprint claimed by `$10366(winner, 0)`) and the loser
+  gets flags 8; else the winner stays a walker (flags 1 or 2 as for a walker loser). The loser, str
+  <= 0 after the round, is killed at the end by `$10068`; with flags 8 that clears bit 3 of
+  entity[loser+6], which for a town under attack (flags 9) is the attacker, i.e. the winner, whose
+  flags are 5 by then: a no-op (3/3 take-overs read live). The raze: the loser becomes a ruin ($80, str 1,
   t6 40) and the winner flags 2. Of a town's 17 footprint cells, those passing `$18198` with the
   loser's colour ($1f + loser side) become $42; a castle (centre feature $2a) uses all 25 cells
   without the step check, and its ring-1 wall features $29..$2c get +$15. The centre feature
@@ -281,14 +287,17 @@ frames) rounds **59/59**, attacker lost **5/5**, attacker won **2/2**, plus 3 ta
 Then winner flags |= 4 (celebrate), mana[winner] += e, mana[loser] -= e floored at -250 (`$21984`).
 Observed: leader killed -> +3000 / -3000 clipped to -250.
 
-Proof of the knight rules (`py/powers/`): under `callcap`, `$fe00` 240/240 (84 ties, 62 with no
-enemy), `$feca` 240/240 (121 knight-pointer moves, 33 refused merges into a settlement) and `$108b8`
-240/240 (73 town razes, 68 castle razes, 99 walker losers). In play, a knight cast through the UI
+Proof of the knight rules (`py/powers/`, `pw_diff.py 40 2026` + `40 77`): under `callcap`, `$fe00`
+240/240 (74 ties, 61 with no enemy), `$feca` 240/240 (116 knight-pointer moves, 26 refused merges into
+a settlement) and `$108b8` 480/480: 68 town razes, 76 castle razes, 96 walker losers, and 240 take-overs
+(196 winners settling, 57 of them as a castle; 44 staying walkers; 44 losers killed as settlements). In play, a knight cast through the UI
 (with a land corridor built so it can reach the enemy, `knight_scn.py`) was followed for 1100 frames:
 every direction/re-target call **133/133** (127 kept the target, 6 re-acquired), every merge **18/18**
 and every raze **3/3** (towns e6, e4 and e12, re-targeting e6 -> e4 -> e12 -> e3) matched the model on
 the full state. Without the corridor that knight walks its heading into the shore of its own island
-and starves by frame ~720. The non-knight take-over path was not exercised.
+and starves by frame ~720. Take-overs by an ordinary walker (`live.py fight1.snap 1500 resolve`):
+**7/7** on the full state, each one a winner settling on its cell (the "stays a walker" branch did
+not occur), with walker losers **10/10** in the same run.
 
 ## 4. Settlements
 
@@ -331,11 +340,19 @@ The footprint is the cell-offset table `$22b4e` (25 words): 0, the 8 neighbours 
 65, 63, -65), the 8 cells two out (-128, 2, 128, -2, -126, 130, 126, -130), then the 8 that complete
 the 5x5 (-127, -62, 66, 129, 127, 62, -66, -129). A town uses the first 17, a castle all 25; cells
 `$18198` rejects as off the map are skipped.
-Founding marks the 17 footprint cells that are $0f as side colour ($1f/$20) and writes the sprite into
-the overlay at the centre; a castle claims all 25 cells and writes the wall sprites `$225b4`. Release
-(`release` != 0): if the centre overlay is `$2a` (castle), clear the overlay on all 25 cells;
-otherwise on the first 9, then the centre; on every footprint cell a map byte equal to `$1f + side`
-reverts to `$0f` (proven live over the Armageddon vacate, section 5).
+Claim (`release` == 0), chosen by the entity's sprite (+12):
+- castle (`$2a`): on all 25 cells, ring 0..1 (the first 9) get the wall sprites `$225b4[k]` in the
+  overlay and every `$0f` map byte becomes the side colour ($1f + side).
+- town: if the centre overlay is still `$2a` (a castle that shrank), first release as a castle (below);
+  then on the 17 cells clear the overlay of the first 9 and colour every `$0f` byte; finally, if the
+  centre's map byte is the side colour, the sprite goes into the centre overlay.
+Release (`release` != 0): if the centre overlay is `$2a`, clear the overlay on all 25 cells; otherwise
+on the first 9, then the centre; on every footprint cell a map byte equal to `$1f + side` reverts to
+`$0f`. Only an off-map cell (`$18198` = 1) is skipped, never rock or water. A castle's release clears
+ring 2 as well and no claim writes it back, so trees on that ring are lost (on `late4`, releasing and
+re-claiming each of the 39 settlements restores the maps for 38; the castle loses one tree).
+Proven live: the Armageddon vacate (section 5, releases) and the 7 take-overs of section 3.5 (7 releases
+and 7 town claims on the full state, `powers_ref.claim_land`).
 
 ## 5. Mana
 
@@ -472,7 +489,7 @@ from game_start is the evidence used here).
   `armwin.py`, `surrender.py`, `customlose.py` make the end states; `typename.py`, `startgame.py`,
   `next1.py`, `brief1.py`, `retry.py`, `setupseed.py`, `boot_mode.py` drive the screens.
 - `powers/` (data in `$POP_WORK/powers/`): `powers_ref.py` models the six powers, `$fe00`, `$feca`
-  and `$108b8`; `pw_diff.py 40 2026` + `pw_diff.py 40 77` the callcap corpus (2305/2305); `cast.py`
+  and `$108b8`; `pw_diff.py 40 2026` + `pw_diff.py 40 77` the callcap corpus (2670/2670); `cast.py`
   and `knight_scn.py` the UI casts (entry/exit snapshots compared on the full state); `live.py <snap>
   1100 retarget merge resolve` the knight's natural calls, `live.py <snap> <frames> fight` every
   `$1063a` call (`combat_round`); `ktrack.py` prints knights and targets.
@@ -481,7 +498,9 @@ from game_start is the evidence used here).
 - The `$ef4c` writes after the decision (settle, merge, fight start, occupancy and visit counts, the
   lower request on a `$42` cell) are checked only through the frame-by-frame walker cells, not
   diff-tested on their own.
-- A knight merging into a friendly walker never happened in play (proven by `callcap` only), and the
-  non-knight take-over of a town in `$108b8` (`$10366` release/claim) is not modelled.
+- A knight merging into a friendly walker never happened in play (proven by `callcap` only). Of the
+  take-over, only the "winner settles" branch ran live; "winner stays a walker" (`$18206` = 0 on its
+  cell), a castle claimed by `$10366`, and `$10068` killing a settlement outside a fight are modelled
+  (`powers_ref.claim_land`, `entity_kill`) but not yet compared.
 - Fight mode drew only 5 human "attack enemy" decisions in the live run (the bridge brought walkers
   mostly into contact with their own side).

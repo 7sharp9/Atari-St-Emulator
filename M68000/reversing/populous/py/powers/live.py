@@ -6,11 +6,12 @@ kinds:
             predicts whether $fe00 is called (target cell reached / str <= 0 / same side / ruin) and
             its result; compared with the whole DATA/BSS region at $f716.
   merge     bp $feca .. $10066: walker_merge(i, j), full compare.
-  resolve   bp $108b8 .. $10e7c: combat_resolve(w, l), full compare for the modelled paths
-            (walker loser; knight winner vs settlement = raze); take-overs are counted, not compared.
+  resolve   bp $108b8 .. $10e7c: combat_resolve(w, l), full compare: walker loser, knight winner
+            vs settlement (raze), any other winner vs settlement (take-over, $10366 release/claim).
   fight     bp $1063a .. its return: combat_round(S): the round, both $101a0 animations and the
-            resolution (both die, or $108b8 for the survivor); full compare. Calls that reach an
-            unmodelled path (a settlement killed or taken over: $10366) are counted, not compared.
+            resolution (both die, or $108b8 for the survivor); full compare. A resolution that took a
+            town over is tagged _takeover. Any address the model wrote through a stale entity index
+            (powers_ref.STRAY) is compared too, wherever it is.
 Each kind is a separate pass over the same deterministic trajectory (breakpoints do not change it).
 """
 import os, sys
@@ -24,7 +25,10 @@ KINDS = {'retarget': (0xf6ca, 0xf716), 'merge': (0xfeca, 0x10066), 'resolve': (0
 
 
 def keep(a, a7):
-    return not (a7 - 0x1000 <= a < a7 + 0x100) and not (0x37f5a <= a < 0x37f8a)
+    """Not compared: the stack, the trap wrappers' register save, and the sample player's state
+    ($24952..$24963: repeat count, busy flags, play position), which the Timer A handler $17140 /
+    sfx_stop $170dc advances whenever a sampled sound plays across the call."""
+    return not (a7 - 0x1000 <= a < a7 + 0x100) and not (0x37f5a <= a < 0x37f8a) and not (0x24952 <= a < 0x24964)
 
 
 def run(start, frames, kind):
@@ -57,6 +61,7 @@ def run(start, frames, kind):
         r.cmd('snap ' + fx)
         pre, post = ram(fe), ram(fx)
         mm = bytearray(pre)
+        ntake = P.COV.get('takeover_settle', 0) + P.COV.get('takeover_walker', 0)
         sys.setrecursionlimit(100000)
         tag = kind
         if kind == 'retarget':
@@ -92,12 +97,17 @@ def run(start, frames, kind):
             town = P.rb(pre, L) & 1
             kn = P.rl(pre, W + 14) != 0
             events.append((fr, w, l, 'town' if town else 'walker', 'knight' if kn else ''))
-            if town and not kn:
-                stats.setdefault('resolve_takeover_unmodelled', [0, 0])[1] += 1
-                continue
-            tag = 'raze' if town else 'resolve_walker' + ('_knightwin' if kn else '')
+            raze = town and kn and P.rw(pre, W + 4) != 0
+            tag = 'raze' if raze else 'takeover' if town else 'resolve_walker' + ('_knightwin' if kn else '')
             P.combat_resolve(mm, w, l)
+        if kind == 'fight' and P.COV.get('takeover_settle', 0) + P.COV.get('takeover_walker', 0) > ntake:
+            tag += '_takeover'
         bad = [a for a in range(LO, HI) if keep(a, a7) and post[a] != mm[a]]
+        bad += [a for a in P.STRAY if not LO <= a < HI and a < len(post) and post[a] != mm[a]]
+        out_of_window = [hex(a) for a in P.STRAY if not LO <= a < HI]
+        if out_of_window:
+            events.append((fr, 'stray write', out_of_window))
+        del P.STRAY[:]
         s = stats.setdefault(tag, [0, 0]); s[1] += 1
         if not bad:
             s[0] += 1
@@ -116,3 +126,4 @@ if __name__ == '__main__':
             print('  ', e)
         for f in fails:
             print('  FAIL', f)
+        print('  model paths', P.COV)

@@ -2,12 +2,15 @@
 game's own UI (popdrive clicks only), so that gather/fight decisions happen next to enemies.
 
 From late4.snap (frame 2161, side 0 has no leader, magnet (8,20)):
-  1. click mode_magnet (go to papal magnet): the first walker on the magnet becomes the leader;
-  2. repeatedly: scroll (minimap click) to a view holding the leader and the next hop, click
+  1. click mode_magnet (go to papal magnet): the first walker on the magnet becomes the leader
+     (leader 12 at (8,20), frame 2212); save snaps/near.snap. This is the start of campaign2.py,
+     which does the march; without --hops the script stops here.
+  2. --hops (not used for the anchors: it walks the leader to (13,25) by frame 4367, from where
+     campaign2.py's first magnet move fails): repeatedly scroll (minimap click) to a view holding the leader and the next hop, click
      ui_magnet, click the land corner (hop.x+1, hop.y+1) -> cmd 5 at hop; run until the leader is
      within 1 cell of the magnet;
-  3. near the target, save snaps/near.snap, then click mode_gather / mode_fight into
-     snaps/gather1.snap / snaps/fight1.snap.
+  3. near the target, save snaps/near.snap.
+Then campaign2.py -> snaps/front.snap, and mkmode.py front.snap mode_gather|mode_fight -> gather1/fight1.
 Writes a log of every step to stdout.
 """
 import os, sys
@@ -83,7 +86,7 @@ def main():
         if L.side()['leader']: break
         L.frames(20)
     print('leader', L.side(), 'cell', L.leader_cell(), 'frame', L.w(0x3c4c8))
-    for hop in range(12):
+    for hop in range(12 if '--hops' in sys.argv else 0):
         lc = L.leader_cell()
         if lc is None:
             print('no leader'); L.frames(40); continue

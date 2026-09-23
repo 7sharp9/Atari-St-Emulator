@@ -5,10 +5,10 @@ disassembly (scratchpad/pop/pop_ad58.asm), operating in place on a full RAM imag
   volcano      $1263c(side, x, y)      swamp        $12a14(side, x, y)
   knight       $12ba0(side)            armageddon   $12d26(side)
   knight_find_target $fe00(e)          walker_merge $feca(i, j)
-  combat_resolve $108b8(w, l)          (knight-winner raze path + walker-loser path)
+  combat_resolve $108b8(w, l)          (walker loser, knight raze, town take-over)
 
 Helpers transcribed as well: rand $16702, raise_point $bf60, lower_point $d262,
-derive_cells $c0ee, set_magnet_cell $129d6, entity_kill $10068, entity_anim_advance $101a0
+derive_cells $c0ee, set_magnet_cell $129d6, entity_kill $10068, claim_land $10366, entity_anim_advance $101a0
 (settlement case only), cell_step_check $18198, land_value $18206.
 Screen-side calls ($c27a minimap redraw, $2065a Setscreen, $14364/$16ed8 shake frames,
 $16cf0/$16d20 pointer hide/show in TEXT, $b15a sound wait) write nothing in DATA/BSS and are
@@ -403,13 +403,73 @@ def anim_settlement(m, e):
     ww(m, e + 12, 0x2a if v >= 0xbea else s16(v * 10) // 0x131 + 0x20)
 
 
+def claim_land(m, e, release):
+    """$10366(e, release): claim (release == 0) or release the footprint of settlement e (section 4.3).
+    The castle branches use all 25 `$22b4e` offsets, a town the first 17; `$18198` == 1 (off the map)
+    skips a cell, any other result does not."""
+    cell = rw(m, e + 8)
+    col = (0x1f + rb(m, e + 1)) & 0xff
+    offs = [rw(m, FOOT + 2 * k) for k in range(25)]
+
+    def cells(n):
+        for k in range(n):
+            if cell_step_check(m, cell, offs[k]) != 1:
+                yield k, s16(cell + offs[k])
+
+    if release:
+        cov('land_release')
+        if rb(m, FEAT + cell) == 0x2a:
+            for k, c in cells(25):
+                wb(m, FEAT + c, 0)
+                if rb(m, SHAPE + c) == col:
+                    wb(m, SHAPE + c, 0x0f)
+        else:
+            for k, c in cells(17):
+                if k < 9:
+                    wb(m, FEAT + c, 0)
+                if rb(m, SHAPE + c) == col:
+                    wb(m, SHAPE + c, 0x0f)
+            wb(m, FEAT + cell, 0)
+        return
+    if rw(m, e + 12) == 0x2a:                        # a castle: wall sprites $225b4 on ring 0..1
+        cov('land_claim_castle')
+        for k, c in cells(25):
+            if k < 9:
+                wb(m, FEAT + c, rw(m, 0x225b4 + 2 * k))
+            if rb(m, SHAPE + c) == 0x0f:
+                wb(m, SHAPE + c, col)
+        return
+    cov('land_claim_town')
+    if rb(m, FEAT + cell) == 0x2a:                   # it was a castle: clear the old 25-cell claim first
+        for k, c in cells(25):
+            wb(m, FEAT + c, 0)
+            if rb(m, SHAPE + c) == col:
+                wb(m, SHAPE + c, 0x0f)
+    for k, c in cells(17):
+        if k < 9:
+            wb(m, FEAT + c, 0)
+        if rb(m, SHAPE + c) == 0x0f:
+            wb(m, SHAPE + c, col)
+    if rb(m, SHAPE + cell) == col:
+        wb(m, FEAT + cell, rw(m, e + 12))
+
+
+STRAY = []                                           # addresses entity_kill wrote through +6 (live.py compares them)
+
+
 def entity_kill(m, e, idx):
-    """$10068, for a non-fighting, non-settlement entity (the only case the raze test reaches)."""
+    """$10068. A dying entity with flags 8 clears bit 3 of entity[e+6] (its opponent; every address so
+    written is recorded in STRAY). A town under attack has flags 9 and +6 = the attacker, so the loser
+    town that $108b8's take-over sets to flags 8 clears the winner's bit 3 here (3/3 live take-overs)."""
     ww(m, e + 4, 0)
     if rb(m, e) == 8:                                # the attacker dies: its opponent stops fighting
-        o = ent(ruw(m, e + 6))
-        wb(m, o, rb(m, o) & 0xf7)
-    assert not (rb(m, e) & 1), 'settlement kill ($10366 release) not modelled'
+        o = ent(ruw(m, e + 6)) & 0xffffff
+        STRAY.append(o)
+        if o < len(m):
+            wb(m, o, rb(m, o) & 0xf7)
+    if rb(m, e) & 1:
+        cov('kill_settlement')
+        claim_land(m, e, 1)
     cell = rw(m, e + 8)
     if idx == rb(m, OCC + cell) - 1:
         wb(m, OCC + cell, 0)
@@ -478,8 +538,8 @@ def combat_round(m, si):
 
 
 def combat_resolve(m, wi, li):
-    """$108b8(winner, loser) for: any winner vs a walker loser, and a KNIGHT winner (str != 0) vs a
-    settlement loser (the raze). The non-knight take-over path ($10366/$18206) is not modelled."""
+    """$108b8(winner, loser): a walker loser; a settlement loser razed by a KNIGHT winner (str != 0);
+    otherwise a settlement taken over (its claim released, the winner settles if $18206 allows)."""
     W, L = ent(wi), ent(li)
     ww(m, 0x3c514 + 2 * rb(m, W + 1), rw(m, 0x3c514 + 2 * rb(m, W + 1)) + 1)
     if not (rb(m, L) & 1):
@@ -496,7 +556,20 @@ def combat_resolve(m, wi, li):
         anim_settlement(m, L)
         lv = s16(rw(m, L + 12) - 0x20)
         e = 100 if lv < 0 or lv > 10 else rw(m, 0x3c4fe + 2 * lv)
-        assert rl(m, W + 14) != 0 and rw(m, W + 4) != 0, 'take-over path not modelled'
+    if rb(m, L) & 1 and not (rl(m, W + 14) != 0 and rw(m, W + 4) != 0):
+        # take-over: the loser town's claim goes; the winner settles on its own cell if the land allows
+        claim_land(m, L, 1)
+        if land_value(m, rb(m, W + 1), rw(m, W + 8)) > 0:
+            cov('takeover_settle')
+            wb(m, L, 8)                              # the old record: flags 8, killed below (entity_kill)
+            wb(m, W, 1)
+            ww(m, W + 6, rw(m, FRAME))
+            anim_settlement(m, W)
+            claim_land(m, W, 0)
+        else:
+            cov('takeover_walker')
+            wb(m, W, 1 if rb(m, W) & 1 else 2)
+    elif rb(m, L) & 1:
         wb(m, L, 0x80); ww(m, L + 4, 1); ww(m, L + 6, 40)
         wb(m, W, 2)
         lc = rw(m, L + 8)

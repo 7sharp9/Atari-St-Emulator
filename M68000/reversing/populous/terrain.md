@@ -304,9 +304,10 @@ view origin `$37e7a,$249ae` (the UI posts it; graphics.md, "Mouse input").
 - **Knight `$12ba0`** and **armageddon `$12d26`** do not touch terrain (mechanics.md 3.5 and 5).
 
 Proof (`py/powers/`, section "Scripts"): the Python models in `powers_ref.py`, run in place on a full
-RAM image, match the real routines under `callcap` on **2305/2305** randomized states (full DATA+BSS
-delta and RNG seed; earthquake's shake frames need the VBL, which callcap masks, so its RNG and
-re-derive half is tested by a callcap started at `$12470`, 145/145), and **8/8** casts made through
+RAM image, match the real routines under `callcap` on **2670/2670** randomized states (`pw_diff.py 40 2026` and
+`40 77` over `game_start`/`g90`/`late4`; full DATA+BSS delta and RNG seed; earthquake's shake frames
+need the VBL, which callcap masks, so its RNG and re-derive half is tested by a callcap started at
+`$12470`, 150/150; 240 of the states are town take-overs, mechanics.md 3.5), and **8/8** casts made through
 the game's UI with popdrive (flood, earthquake, two volcanoes, swamp, armageddon, two knights) match
 on all 37824 state bytes between the routine's entry and exit. The volcano's leader asymmetry was
 cast both ways: with the seed set at entry so a rock falls on (56,55), evil's leader's settlement

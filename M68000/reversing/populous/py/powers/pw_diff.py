@@ -11,7 +11,7 @@ tested in two parts: (a) callcap $12350 until the loop detector stops it in the 
 (b) callcap from $12470 (PC/A6 presets, frame built above the entry SP, sentinel return slot) on
 the model's pre-state, full compare.
 
-usage: python pw_diff.py [N] [seed] [routine-filter]
+usage: python pw_diff.py [N] [seed] [routine-filter]   (callcap JSONs are per process: seeds can run in parallel)
 """
 import os, random, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -182,15 +182,20 @@ def make_case(K, rnd, m, routine, a7):
         K.l(P.SIDE + 16 * sd + 8, rnd.randint(0, 50000))
         K.l(a7, (i << 16) | j)
         return ['callcap feca 3000000 %s'], (lambda mm: P.walker_merge(mm, i, j)), dict(i=i, j=j)
-    if routine == 'raze':
+    if routine in ('raze', 'takeover'):
+        # takeover: a town loser and a winner that is not a razing knight (no pointer, or str 0)
+        take = routine == 'takeover'
         n = rnd_entities(K, rnd, m, 2, 40)
         wi, li = rnd.sample(range(n), 2)
         W, L = P.ent(wi), P.ent(li)
         ws = rnd.randint(0, 1)
         K.b(W + 1, ws); K.b(L + 1, 1 - ws)
         K.b(W, rnd.choice([8, 0x0a])); K.w(W + 4, rnd.randint(1, 3000)); K.w(W + 6, li)
-        town = rnd.random() < 0.6
-        K.l(W + 14, P.ent(li) if (town or rnd.random() < 0.5) else 0)
+        town = take or rnd.random() < 0.6
+        K.l(W + 14, rnd.choice([0, 0, P.ent(li)]) if take else P.ent(li) if (town or rnd.random() < 0.5) else 0)
+        if take and P.rl(K.m, W + 14):
+            K.w(W + 4, 0)
+        flat = take and rnd.random() < 0.4               # a clean footprint: the winner can settle, maybe a castle
         K.b(W + 20, rnd.choice([0, 1, 2])); K.b(L + 20, rnd.choice([0, 0, 1]))
         K.w(W + 10, rnd.choice([0, 1, -64 & 0xffff]))
         lc = rnd.randint(130, 0xfff - 130)
@@ -204,6 +209,10 @@ def make_case(K, rnd, m, routine, a7):
             col = (1 - ws) + 0x1f
             for k in range(25):
                 c = lc + P.rw(m, P.FOOT + 2 * k)
+                if flat:
+                    K.b(P.SHAPE + c, rnd.choice([col, 0x0f]))
+                    K.b(P.FEAT + c, (rnd.choice([0x29, 0x2a, 0x2b, 0x2c]) if 0 < k < 9 else 0) if castle else rnd.choice([0, 0x32]) if k >= 9 else 0)
+                    continue
                 K.b(P.SHAPE + c, rnd.choice([col, col, col, 0x0f, 0x2f, 0, ws + 0x1f]) if (k < 17 or castle) else rnd.choice([col, 0x0f]))
                 K.b(P.FEAT + c, (rnd.choice([0x29, 0x2a, 0x2b, 0x2c, 0]) if 0 < k < 9 else 0) if castle else rnd.choice([0, 0, 0, 0x32]))
             K.b(P.FEAT + lc, 0x2a if castle else rnd.choice([0x20, 0x23, 0x29, 0x2a, 0]))
@@ -239,7 +248,7 @@ def run_snap(snap, routines, N, rnd, tot, fails, cov):
                 # (a) the pre-part, stopped by the loop detector in the first shake frame
                 lines += K.flush()
                 pre = bytes(m)
-                ja = os.path.join(CCD, '%s_%d_a.json' % (snap[:-5], len(cases)))
+                ja = os.path.join(CCD, '%s_%d_%d_a.json' % (snap[:-5], os.getpid(), len(cases)))
                 lines.append('callcap 12350 3000000 %s' % ja)
                 cases.append(('eq_pre', pre, ja, (lambda mm, s=side, x=x, y=y: P.earthquake_pre(mm, s, x, y)), info))
                 # (b) the post-part from the model's pre-state
@@ -253,13 +262,13 @@ def run_snap(snap, routines, N, rnd, tot, fails, cov):
                 K.l(A6 + 4, SENT); K.w(A6 + 8, side); K.w(A6 + 10, x); K.w(A6 + 12, y)
                 lines += K.flush()
                 pre = bytes(m)
-                jb = os.path.join(CCD, '%s_%d_b.json' % (snap[:-5], len(cases)))
+                jb = os.path.join(CCD, '%s_%d_%d_b.json' % (snap[:-5], os.getpid(), len(cases)))
                 lines.append('callcap 12470 3000000 %s A6=%x PC=12470' % (jb, A6))
                 cases.append(('eq_post', pre, jb, (lambda mm, s=side, x=x, y=y: P.earthquake_post(mm, s, x, y)), info))
                 continue
             lines += K.flush()
             pre = bytes(m)
-            j = os.path.join(CCD, '%s_%d.json' % (snap[:-5], len(cases)))
+            j = os.path.join(CCD, '%s_%d_%d.json' % (snap[:-5], os.getpid(), len(cases)))
             lines.append(cl[0] % j)
             cases.append((routine, pre, j, fn, info))
     out = repl_batch(os.path.join(WORK, snap), lines)
@@ -296,7 +305,7 @@ def run_snap(snap, routines, N, rnd, tot, fails, cov):
 def main():
     N = int(sys.argv[1]) if len(sys.argv) > 1 else 20
     rnd = random.Random(int(sys.argv[2]) if len(sys.argv) > 2 else 1)
-    filt = sys.argv[3].split(',') if len(sys.argv) > 3 else ['flood', 'eq', 'volcano', 'swamp', 'knight', 'arma', 'fe00', 'feca', 'raze']
+    filt = sys.argv[3].split(',') if len(sys.argv) > 3 else ['flood', 'eq', 'volcano', 'swamp', 'knight', 'arma', 'fe00', 'feca', 'raze', 'takeover']
     os.makedirs(CCD, exist_ok=True)
     sys.setrecursionlimit(100000)
     tot, fails, cov = {}, [], {}
