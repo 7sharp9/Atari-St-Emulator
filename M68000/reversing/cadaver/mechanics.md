@@ -2067,6 +2067,249 @@ path (§28c's own open half), or accepting that this door's real trigger lives i
 playthrough's RAM image has never loaded at all (consistent with §27d's finding that room 3's own
 init/script data, unlike CAVERN/TUNNEL's, has never been shown resident).
 
+## 30. `$defa`/room-3-load path closed for good — this loaded image contains no disk-I/O-capable code
+    at all, by any mechanism; and the working tree turns out to hold the two-disk original alongside
+    the one-disk crack this whole spike has used (30th pass)
+
+Per `next_session.md`'s own recommendation, following §28d/§29e: rather than another live-driving
+pass, statically settle §28c's own open half — where would room 3's init/unpack code actually live,
+if anywhere, in this loaded image.
+
+### 30a. Whole-image sweep for raw FDC/DMA hardware I/O — zero hits, closing the question completely
+
+§18 (20th pass) already fully disassembled opcode `$8`'s consumer chain and found "zero trap/FDC
+instructions anywhere in the whole call tree" — but that was scoped to one call chain (the ring-304
+opcode-`$8` consumer reached from `$defa`), not the whole loaded program. This pass extended the
+same question to every instruction in the whole image: a real 68000 loader that bypasses TOS (as
+the README's own GEMDOS trace already showed this game does — 2 GEMDOS calls total pre-restore-
+prompt, no `Fread`) has no way to read a disk sector except by directly poking the ST's FDC/DMA
+hardware registers. Addresses transcribed from `hatari/src/fdc.c` (not recalled): `$ff8604` (FDC
+data/status, shared with DMA sector count), `$ff8606` (DMA mode control/status), `$ff8609`/
+`$ff860b`/`$ff860d` (DMA base-address high/mid/low bytes, `FDC_WriteDMAAddress`), `$ff860a`/
+`$ff860e` (density/side select region). `find_field_writers.py gameplay_empire.snap` against each
+of the 7 addresses, scanning every decoded instruction in the whole live RAM image: **zero hits,
+for every one of the 7**.
+
+Combined with the already-established facts — no GEMDOS `Fread` (README §"raw disk sectors"
+finding), and `$defa`/opcode-`$8`'s own consumer chain confirmed to be a name-banner display with no
+trap/FDC instructions anywhere in it (§18b/§18e) — this closes the question at the whole-image
+level, not just one call chain's: **no code anywhere in this loaded one-disk executable can perform
+disk I/O by any mechanism** — not TOS file I/O, not XBIOS `Floprd`/`Flopwr`, not a raw FDC/DMA
+register poke. `$defa` cannot ever load room 3's data, structurally, not because the right trigger
+hasn't been found yet.
+
+This finally answers §28c's own open question ("where would room 3's own init/unpack code actually
+live, if not [in `$69da`'s main-loop housekeeping]") — **nowhere, in this specific loaded image**:
+it contains no disk-I/O-capable code path at all, so room 3's script/init data cannot become
+resident during ordinary play regardless of how exhaustively the caller-search or the live
+input/route/action-id space (§20-§29) gets searched. The structural gap §27d/§28c/§28d kept pointing
+at is now a proven property of this image, not an unlucky playthrough.
+
+### 30b. New discovery, orthogonal to the disassembly sweep — the two-disk Image Works original sits
+    in the working tree, untracked, alongside the one-disk Empire crack this whole spike has used
+
+While locating the disk image for the sweep above, the working tree's `Cadaver/` directory (untracked
+per `git status`) turned out to already hold both releases, not just the one-disk crack this spike
+has used since the 13th pass:
+
+- `Cadaver (1990)(Image Works)[cr Empire][one disk].st` — this spike's own image, 819,200 bytes.
+- `Cadaver (1990)(Image Works)(M3)(Disk 1 of 2)[cr Empire][t].st` (inside its `.zip`) — 819,200 bytes.
+- `Cadaver (1990)(Image Works)(M3)(Disk 2 of 2)(Level)[cr Empire][t].st` (inside its `.zip`) — 819,200
+  bytes, explicitly labelled **"(Level)"**.
+
+The one-disk release is exactly the same size as *each* disk of the two-disk set — it is not simply
+"disk 1 with room 3's data stripped out," it's a distinct, independently-sized single-disk image.
+Disk 2's own "(Level)" label strongly suggests the two-disk original keeps at least some room/level
+data off the boot disk entirely, loaded via a real mid-game disk swap — exactly the kind of resident
+data this pass's §30a sweep shows the one-disk crack's own code can never reach, because it has no
+disk-I/O path at all. This may mean the one-disk crack is missing room 3 (and whatever else lived on
+disk 2) entirely, rather than gating it behind an unfound trigger.
+
+The emulator already has hot-swap support for exactly this (`disk <path>` REPL command →
+`MMU.LoadDiskA`, "models a real physical floppy swap ... without needing a fresh cold boot" —
+`Program.fs`), so booting the two-disk original and following it to wherever it prompts for disk 2
+is mechanically possible with existing tooling. But it is a materially different undertaking from
+this pass's static chase, not a continuation of it: a fresh boot-to-gameplay drive on a different
+image, needing its own wall-fixing/boot-trace pass (reversing skill §1-2) before any of this spike's
+TUNNEL-lever-specific snapshots, collision findings, or resource-table addresses can be assumed to
+carry over — save states and live struct layouts are not guaranteed binary-identical between the two
+releases. **Not attempted this pass** — flagged as a new scope decision for whoever picks this up
+next, not decided here.
+
+### 30c. Where this leaves the spike
+
+With §30a's whole-image sweep closing the `$defa`/room-3-load question completely, **every concrete
+lead this spike has ever queued for the one-disk Empire crack is now exhausted**: the input/route/
+action-id space (§20-§29), the LOCK(144)-caller search (§14-§28), and now the disk-I/O question
+(§30a) are all closed negatives. The only way forward on this puzzle specifically is the two-disk
+pivot (§30b) — a new investigation, not another pass over the same image.
+
+## 31. Correction, same session — type 8 was the wrong resource type all along; type 3 is the real,
+    populated room table (72/100 slots), vindicating the user's own ground truth that this one-disk
+    image has many visitable rooms; a live room-switch hack gets object/sprite state working but not
+    yet the on-screen background (31st pass)
+
+The user, on reading §30's "room 3 can never become resident" conclusion, gave direct ground truth
+that contradicts its premise: **the one-disk version has many rooms, and they have personally
+visited them** — no disk swap involved. That sent this pass back to find what §14-§30 got wrong,
+rather than treating §30a's disk-I/O finding as the last word.
+
+### 31a. Type 3, not type 8, is the real room table — dumped live, 72/100 slots populated
+
+`(A5)+96` row 3 (`idx_ptr=$4ac36`, `data_base=$6bf0a`, `count=100`) — its `data_base` is **exactly**
+CAVERN's own known room-record address (§14). Dumping the sparse index table directly: **72 of 100
+slots are populated**, not 0. Slot 0 resolves to `$6bf0a` (CAVERN) and slot 1 to `$6bf84` (TUNNEL) —
+both already-known addresses, confirmed exactly. A companion byte-level scan of the low-entropy
+`$6b800`-`$6cc00` span for the room-record signature (7 door-link words, `FloorClampX/Y` bytes in
+range) independently finds ~54 more real, distinct, resident room records in the same span, entirely
+consistent with type 3's own count. **Type 8 (rooms, per §14/§15/§23c/§27d) was simply the wrong
+resource type** — everything this spike built on "type 8 = rooms, always empty, therefore room 3
+can never load" (§15, §17-§19, §23c, §25c, §26, §27d, §28d, §30a) used the wrong table. What type 8
+actually is remains unknown and is no longer assumed to be rooms; it is not touched by anything in
+this section.
+
+This fully vindicates the user: the one-disk image genuinely has dozens of rooms, all already
+resident (consistent with, not contradicting, §30a's "no disk I/O anywhere" finding — nothing needs
+to be loaded because everything is already there from the initial `Pexec`).
+
+### 31b. Re-reading `$007104` fresh confirms it still isn't how ordinary rooms connect — both its
+    branches converge on the same `$69da` re-entry regardless of outcome
+
+Disassembling `$007104` fresh past where §9/§10c's own summaries stopped (`$7104`-`$7360`, this pass,
+not trusting the prior paraphrase): confirms `jsr $11256.l` really is the call at `$718e` (type 8,
+not type 3 — §30a's own disassembly of `$011256` itself, hardcoding `moveq #8,D0`, stands). But
+tracing to the end of the routine: **the "already resident" (`D3==0`) branch and the "real target
+id, `$011256` succeeds" branch both end in `bra $69da`** (`$730c`/`$731a`) — the only difference
+between them is whether `bsr $defa` (the name-banner push, §18) fires first. There is no branch
+anywhere in `$007104` that does anything visually different for a "genuinely new room" versus
+"already resident" beyond a banner message. This independently reinforces §28d/§30a's own
+conclusion from a different angle: whatever mechanism actually switches the ~72 real rooms into and
+out of view during ordinary play, it is not `$007104`/`$011256`/type 8 at all — that whole chain is
+real code, but not the one connecting this game's real room graph.
+
+### 31c. The real room-activation routine, found and partially exercised live — object/sprite state
+    switches cleanly to a foreign room, but the on-screen background does not (yet)
+
+`find_field_writers.py` against `164(A5)` (the current-room pointer) surfaces exactly two writers:
+`$00e818` (inside `$00e80c`, hardcoded `D1=0` — the boot-time "activate type-3 slot 0" call) and
+`$00e95c` (inside a shared tail reached from the same body, `$00e958`-`$00e9xx`). `$00e854` (already
+named in §10c/§27c as "`QueueEntityIntoRing304_AndSetField2271_Direct`", based on an incomplete read)
+turns out to be the entry into this same activation body used by `$007104`'s own `jsr $e854` — but
+is its own subroutine with its own `rts`, not simply falling through into the `$e958`+ tail.
+
+Live-tested via `callcap e854 A0=<foreign room record>` (the 72-room scan's slot 5, `$6c052`, chosen
+arbitrarily as "a real room that isn't CAVERN/TUNNEL"): **493 bytes changed, no crash** — a real
+rebuild of the sprite/object-array region (`$038338`+, hundreds of bytes cleared/reset) plus a large
+scratch region at negative `A5` offsets (`$0180aa`-`$0189xx`, not previously documented — outside
+every known-positive-offset global this spike has mapped). Replaying that exact diff onto a real
+(non-reverted) copy of `gameplay_empire.snap`, forcing `164(A5)` to `$6c052` directly (the one field
+`$e854` itself doesn't touch), and stepping the result forward 2,000,000 real steps: **stable, no
+crash, `164(A5)` holds** — but `snap_render.py` on the result is **byte-identical to the unmodified
+CAVERN reference**, and the status bar still reads "CAVERN". Object/sprite bookkeeping now points at
+a different room; the screen does not.
+
+Chasing the missing piece: `$00e7b0` (called from the same body, right after `$e95c`'s `164(A5)`
+write, via `bsr $e7b0`/`bsr $ccd4`) reads the *current* room record's bytes `+4`/`+5`, indexes a table
+at `$5a10.l` (`(byte4-3)*2 + (byte5-3)*16`), and writes the result into `(A5)+148` plus a longer
+associated table at `$018b9c`+ — this looks like the real "select this room's background/quadrant
+graphics" step §27a flagged as "not located" (`(A5)+140`'s own selector). `callcap e7b0` from the
+already-164(A5)-hacked state: 62 bytes changed, register `A0` ends at `$019100` — the exact screen
+base address `snap_render.py` reports for the ordinary CAVERN render. Replaying this diff too, on top
+of the first hack, stepping forward again: **still no visible change** — the background bitmap and
+room-name text are still CAVERN's. `$e7b0` writes graphics *offset/scaling metadata*, not the
+background bitmap source itself; whatever actually triggers a redraw of the background bitmap from
+a room's own asset data hasn't been found yet.
+
+**Not chased further this pass** — the concrete next step for whoever picks this up: find what
+writes the physical screen buffer's background layer (`graphics.md`'s own compositing pipeline, not
+yet cross-referenced against this pass's findings) and what triggers it for a room switch — most
+likely gated on `2271(A5)` (already known to distinguish "already resident" from "genuinely new" in
+`$e854`'s own body, per the `tst.b 2271(A5)` branches at `$e8bc`/`$e970`/`$e990` this pass's read
+passed through without fully tracing every arm) or reached only via `$e80c`'s own boot-time call
+shape rather than a bare `$e854` call. Room-record bytes `+0..+3` (still "unknown per-room fields"
+per §14) are a good next place to look — `+4`/`+5` are now known (quadrant/graphics-table index);
+`+0..+3` may hold the actual background-asset id or pointer.
+
+Scratch snapshots from this pass (`room_hack_test.snap`, `room_hack_test2.snap`, `*_stepped.snap`)
+and renders (`room_hack_test.png`, `room_hack_stepped.png`, `room_hack_test2.png`,
+`gameplay_empire_reference.png`) are untracked, kept for the next pass to resume from rather than
+committed.
+
+### 31d. `$00ccd4` found and exercised too — real per-room object repopulation (types 5/6), still not
+    the background; and a structural reframe of what CAVERN→TUNNEL actually is
+
+Continuing the same body: `$e968`'s third call, `bsr $ccd4`, disassembled and callcapped from the
+already-hacked state. It re-clears the same sprite/object-array region `$e854` touches (`$00ccfe`:
+zero a `68(A5)`-based buffer, then re-initialize `56(A5)`'s 70-byte-stride array with default/
+sentinel fields — 95 entries), then (`$00cd50`) reads **the current room record's own bytes 4 and 29**
+(byte 4 is the same field `$e7b0`'s quadrant-table lookup uses) and fetches a **type-5** resource
+(`bsr $c5a8`, `D0=5` — a resource type never referenced anywhere else in this spike) keyed by
+`1166(A5)`, then a second, **type-6** (objects) fetch, populating the live object array from both.
+This is real, working, room-specific object repopulation — but `callcap ccd4` from the hacked state
+still shows **zero writes inside the back-buffer address range** (`(A5)+120` = `$02de08`, confirmed
+identical in both a fresh CAVERN snapshot and the real, live `room2_tunnel_entry.snap` — one shared
+scratch buffer, not per-room). The background draw is in none of `$e854`, `$e7b0`, or `$ccd4`.
+
+**A more useful finding came from re-examining what `$71ca` (the `D3==0` "current room" branch,
+§9/§10c) actually does, now that its full body has been read fresh this session (§31b)**: it never
+touches `164(A5)`, the back buffer, or the portal table — it only recomputes the player's *position*
+from the door descriptor's own entry-offset bytes, using whatever `164(A5)` **already** points to.
+Yet CAVERN→TUNNEL is a confirmed, real, visually-different transition (`room2_tunnel_entry.snap`,
+12th pass) that goes through exactly this branch on **both rooms' own copies of the same shared door
+descriptor** (§10b/§13: CAVERN's own portal entry for this door also resolves to `$6d4ea`, `+2`
+word `$0000`). Since the "current room" sentinel demonstrably does not mean "stay in this room" (it
+demonstrably doesn't, empirically) and does not fetch a new room record either, the more consistent
+reading is that **CAVERN and TUNNEL are not two separate "rooms" being switched between at all** —
+`$71ca` reads as a plain **screen-edge scroll/reposition within one continuous, larger playfield**
+that happens to be hand-painted to look like two distinct scenes, not a room-load boundary. This
+would mean type 3's 72 entries are not "the 72 walkable rooms this spike has been assuming" but a
+coarser unit (levels/chapters, or something else) — and it would mean this pass's whole room-hack
+methodology (forcing `164(A5)` to a different type-3 slot and replaying `$e854`/`$e7b0`/`$ccd4`'s
+own effects) was testing the wrong kind of transition for "walking to a new screen," which might
+explain why none of the three routines touch the background even though all three genuinely run.
+**Not confirmed** — this is a structural reframe from re-reading known-good disassembly plus one
+consistent absence-of-evidence (no back-buffer write in three separate real routines), not a new
+positive test. The concrete way to settle it: `watch` the back-buffer range (`$02de08`, `$7d00`
+bytes) live across an *actual* CAVERN→TUNNEL crossing (walk backward from `room2_tunnel_entry.snap`
+toward the shared door) — if nothing writes it during a transition already known to change what's on
+screen, background changes happen by some other confirmed-real means (e.g. per-scanline scroll of a
+single wide bitmap) and this whole "load a background per room" framing needs revisiting; if
+something *does* write it, that call site is the real redraw trigger `$e854`/`$e7b0`/`$ccd4` are
+missing. Not run this pass — the natural next step, cheaper than more blind subroutine tracing.
+
+### 31e. That watch, run for real: the reverse TUNNEL→CAVERN crossing genuinely redraws the screen —
+    but it's `$0144b8` itself doing it, and it only fires on a real transition, not on movement alone
+
+Ran the exact test §31d proposed, same session. From `room2_tunnel_entry.snap`, `watch 2de08 32000`
+armed, then tried each direction: **Right** (blocked at a wall a few units out, zero watch hits, four
+figure step budgets), **Up** (blocked immediately, zero hits), **Down** — a real, clean crossing:
+player bbox jumps from `[20,12,14,6]` to `[76,13,70,7]` (a different part of the shared coordinate
+space entirely) and the watch fires **~130 back-to-back `WriteWord`s**, all at `pc=$014966`/
+`$01496e`/`$014976` — inside `$0144b8` itself (`ScreenFlip_ScanlineCopy`, graphics.md §4a), not a
+new, undiscovered routine. Snapshotting mid-flight and rendering catches a genuinely different,
+transitional frame (black borders, a half-composited third scene, "TUNNEL" label not yet updated —
+`tunnel_return_cross.png`); stepping 500,000 more steps and re-rendering settles cleanly to CAVERN's
+own known background and "CAVERN" label (`tunnel_return_settled.png`), matching the 12th pass's
+original CAVERN→TUNNEL screenshot in reverse. **This is the pre-existing, already-known CAVERN↔TUNNEL
+link, traversed backward for the first time this spike has driven it** — not a newly-unlocked room —
+but it settles two things cleanly: (1) `$0144b8`'s screen-flip only fires on a genuine portal
+crossing, not on ordinary blocked movement (Right/Up produced real player-adjacent activity but zero
+watch hits) — a useful, previously-undocumented behavioral fact about when the "chunked, tear-free"
+flip actually runs; (2) `$0144b8` is a **destination**-side consumer here, not the source — it flips
+an **already-fully-composited** frame onto the visible screen, so the real "paint CAVERN's pixels"
+step happened earlier in the same transition, before this flip, and is still unlocated. `$014a90`
+(one of §28c's own six `$69da`-callees, never individually traced) sits immediately after this flip
+routine in memory and reads a room-specific field at `(A5)+496` into a masked composite — a
+plausible next lead, not yet followed.
+
+**Net effect on the room-hack goal**: still open. The `164(A5)`-to-type-3-slot-5 hack (§31c/§31d)
+remains unconfirmed either way — this pass's live test exercised the *known* CAVERN↔TUNNEL link, not
+the hacked link, so it neither confirms nor refutes §31d's "CAVERN/TUNNEL might be one continuous
+playfield, not two rooms" reframe. What it does rule out: `$0144b8` itself is not where a per-room
+background gets selected (it's a generic flip, any two frames would trigger the same code path) —
+whatever reads a *specific* room's *specific* art has to run before it, each transition, and hasn't
+been caught in the act yet for either the real CAVERN↔TUNNEL link or the hacked type-3 slot.
+
 ## Files
 
 | File | What |
