@@ -1,52 +1,38 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at commit `be5cbb5` (53rd pass, §53). Tried the `[!]`
-verified-dump pair per the prior handoff's plan — it's `.stx` (Pasti), unbootable by this
-emulator — then extracted and drove the untried Replicants/ST Amigos crack pair instead. Reached
-the "place levels disk" prompt live for the first time (Open item 1, carried over three handoffs),
-swapped in Disk 2, and got a real in-game disk error followed by a CPU runaway on retry.
+Updated 2026-09-24 by the session that ended at commit `ce15fe7` (54th pass, §54). Triaged the
+53rd pass's Disk 2 CPU runaway (Open item 1): replayed a single keypress from
+`replicants_disk2_retry_30M.snap` four different ways (space, Return, Escape, zero-delay space).
+All four are deterministic across repeated invocations and land in sane state — the game re-reads
+Disk 2 and cycles back to the same "ERROR ON THIS DISK" prompt, no crash. The runaway does not
+reproduce from typical input; it looks like a one-off from the 53rd pass's own (uncaptured) REPL
+sequence rather than a reliable protection mechanism or emulator gap.
 
 ## Resume point
 
-- Last commit of this workstream: `be5cbb5` "cadaver: Replicants/ST Amigos crack reaches 'place
-  levels disk' live; Disk 2 swap errors then a CPU runaway (53rd pass, §53)". Two unrelated
-  repo-wide doc fixes from this same session are in their own commit, `f35aafd` (`DEVELOPING.md`,
-  `.claude/skills/reverse-engineer-st-game/SKILL.md`).
-- Disk images: unchanged one-disk and Empire two-disk images from the prior handoff, still
-  untracked under `Cadaver/`. New this session, extracted from Dropbox, untracked, do not `git add`:
-  - `Cadaver/disk1_replicants/Cadaver (1990)(Image Works)(M3)(Disk 1 of 2)[cr Replicants - ST
-    Amigos].st` (819,200B) — plus a copy at `disk1_replicants/disk1.st` (**the REPL's `disk`/other
-    commands split on raw whitespace with no quoting; a path with spaces never matches, use the
-    unspaced copy**).
-  - `Cadaver/disk2_replicants/Cadaver (1990)(Image Works)(M3)(Disk 2 of 2)(Level)[cr Replicants -
-    ST Amigos].st` (819,200B) — copy at `disk2_replicants/disk2.st`.
-  - `Cadaver/disk1_verified`/`disk2_verified` were tried and deleted this session — the `[!]` pair
-    is `.stx` (Pasti flux-dump, 1,848,748B/1,850,494B, not a multiple of 512), which this
-    emulator's raw-sector loader cannot read (silently misreads it as garbage, per the new
-    `DEVELOPING.md` note) — don't re-extract these without a `.stx`→`.st` converter, which doesn't
-    exist in `tools/` yet.
-  - Replicants/ST Amigos crack-group Dropbox filenames and the untried `[a]`/`[a2]`/`[b]` disk-1/2
-    variants: see [[mac-st-sources]] and `reversing/cadaver/README.md`'s "Disk images".
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This session's key snapshots,
-  in the order they were produced (all from the Replicants/ST Amigos Disk 1 cold boot):
-  - `replicants_boot_20M.snap` → trainer "presents" screen (static, confirmed parked).
-  - `replicants_ctrl_space.snap` → game's own title screen (parchment+candles), reached by sending
-    `kbd 39` then `kbd b9` **as two separate REPL calls** with real step counts between them (see
-    Known traps).
-  - `replicants_space2_20M.snap` → language-select screen.
-  - `replicants_english_v2.snap` → "restore game / press 0-9, or ESC to start fresh" prompt.
-  - `replicants_esc_30M.snap` → **"PLACE LEVELS DISK IN DRIVE ONE AND PRESS A KEY"** — the target
-    prompt Open item 1 has wanted since the Empire `[t]` crack's cracktro stalled it three handoffs
-    ago. Resume from here to continue the Disk 2 investigation without re-driving the whole boot.
-  - `replicants_disk2_swap_30M.snap` → after `disk disk2.st` + keypress: **"THERE SEEMS TO BE AN
-    ERROR ON THIS DISK. PRESS ANY KEY TO RETRY"** — a real in-game message, not a hang.
-  - `replicants_disk2_retry_30M.snap` → after retrying (re-swap + keypress): back at the "place
-    levels disk" prompt, not a repeat of the same error text.
-  - The very next keypress from `replicants_disk2_retry_30M.snap` (no new snapshot — it crashed
-    the REPL process) sent `PC` to `$230f8020` (impossible on a 24-bit-bus 68000) and hit the
-    CPU decoder's deliberate "MOVE.B with An operand is illegal" guard (`68k.fs:1562`), an
-    unhandled exception, not a breakpoint stop. **Not yet triaged** — see Open item 1.
-  - PNG renders for every snapshot above are alongside them (`snap_render.py`).
+- Last commit of this workstream: `ce15fe7` "cadaver: 53rd pass runaway does not reproduce from a
+  clean keypress replay (54th pass)".
+- Disk images: unchanged from the prior handoff, still untracked under `Cadaver/`:
+  - `Cadaver/disk1_replicants/disk1.st`, `Cadaver/disk2_replicants/disk2.st` (819,200B raw `.st`
+    each; the spaced original filenames are also present but unusable — the REPL's `disk`/other
+    commands split on raw whitespace with no quoting).
+  - The `[!]` verified-dump pair is `.stx` (Pasti flux-dump, not raw sectors) and was deleted last
+    session — this emulator's loader can't read it; don't re-extract without a `.stx`→`.st`
+    converter (doesn't exist in `tools/`).
+  - Untried Replicants/ST Amigos `[a]`/`[a2]`/`[b]` disk-1/2 variants: see [[mac-st-sources]] and
+    `reversing/cadaver/README.md`'s "Disk images".
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). Resume point for the "place
+  levels disk" sequence, in order (all from the Replicants/ST Amigos Disk 1 cold boot, carried over
+  from the 53rd pass):
+  - `replicants_esc_30M.snap` → "PLACE LEVELS DISK IN DRIVE ONE AND PRESS A KEY", Disk 1 still
+    mounted.
+  - `replicants_disk2_swap_30M.snap` → after swapping to Disk 2 and a keypress: "THERE SEEMS TO BE
+    AN ERROR ON THIS DISK. PRESS ANY KEY TO RETRY".
+  - `replicants_disk2_retry_30M.snap` → after retrying: back at "PLACE LEVELS DISK...", Disk 2
+    still mounted. **This session's replay point** — any single keypress from here deterministically
+    re-triggers the same disk error (`replicants_retry_replay_space.snap`/`.png`, this session), not
+    a crash.
+  - PNG renders for every snapshot are alongside them (`snap_render.py`).
 - Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` and
   `M68000/sessions/powermonger.md` still show modified in `git status` — the concurrent "Training
   efficiency (2)" session's work (confirmed live via `ListAgents`), left alone per the
@@ -60,44 +46,39 @@ the icon-panel write chain, the full 72-room world-map/adjacency graph, the door
 LOCK/UNLOCK structurally disjoint from door-transition, the five doors' id words causally inert,
 the one-disk crack's disk contents ruled out for a second level, the two-disk original's Disk 2
 independently confirmed as a real, distinct levels disk by Dave's ground truth + static byte
-analysis — all fully closed). **New this session, `mechanics.md` §53**:
+analysis, and §53 — the Replicants/ST Amigos crack reaches the live "place levels disk" prompt and
+a Disk 2 swap gets a real in-game disk-error response — all fully closed). **New this session,
+`mechanics.md` §54**:
 
-- **§53.** The `[!]` verified-dump pair is `.stx` (Pasti), unbootable here — ruled out, not
-  attempted live. The untried Replicants/ST Amigos crack pair, driven with correct make/break
-  keyboard discipline, reaches the game's own title/language/restore-game/place-levels-disk
-  sequence live in well under 100M total steps (vs. Empire `[t]`'s 1.6-billion-step cracktro
-  stall) — Open item 1 from the last three handoffs, reached for the first time. Swapping in Disk 2
-  gets a real in-game "error on this disk" message (not a hang, not silent garbage), and retrying
-  causes a CPU runaway into the 68000 decoder's illegal-instruction guard. Two explanations remain
-  open and untriaged: a genuine sector/track-layout mismatch between this crack's Disk 2 image and
-  what its Disk 1 loader expects (plausible copy-protection on the level disk specifically), or a
-  gap in this session's own REPL sequence or the emulator's FDC error-handling path. Repo-wide
-  side-findings from this pass, not cadaver-specific: `.stx` unsupported (`DEVELOPING.md`), and the
-  kbd make/break discipline note promoted from this game's README into the shared
-  `reverse-engineer-st-game` skill (commit `f35aafd`).
+- **§54.** The 53rd pass's Disk 2 CPU runaway does not reproduce. Four keypress variants replayed
+  from `replicants_disk2_retry_30M.snap` (space, Return, Escape, zero-delay space), each run 30M
+  steps and each deterministic across repeated invocations of the identical command sequence, all
+  land in sane state: the game re-reads Disk 2 and cycles back to the same disk-error prompt. A
+  no-key control run confirms the wait loop is genuinely idle (`PC` parked) until a key arrives.
+  The exact key/timing the 53rd pass used was never captured to a file (its REPL script lived only
+  in that session's log), so this isn't a byte-for-byte replay of that pass, but four plausible
+  choices all converging on the same safe outcome makes a reliable, reproducible crash unlikely.
 
 ## Open, in priority order
 
-1. **Triage the Disk 2 disk-error + runaway.** Three candidate explanations, cheapest first:
-   (a) re-run the exact same REPL sequence from `replicants_disk2_retry_30M.snap` a second time —
-   if the runaway reproduces byte-for-byte, it's deterministic and worth a `watch`/`bpc` trace of
-   the FDC read that precedes it, not a fluke; (b) try the Disk-1/Disk-2 `[a]`/`[a2]`/`[b]` variant
-   files in the same Replicants/ST Amigos Dropbox folder — if a different variant swap reads
-   cleanly, it's this specific pairing's protection, not a general emulator gap; (c) if a `.stx`
-   converter ever gets written, boot the `[!]` pair the same way as a ground-truth "does an
-   unprotected original's Disk 2 read cleanly" check. If all three point to a real protection
-   scheme on Disk 2 rather than an emulator bug, §53's static-evidence conclusion (Disk 2 is a
-   real, distinct levels disk) stands as-is and this item downgrades to "known unplayable without
-   a working `.stx` path" rather than something to keep chasing.
-2. **Low priority, unchanged**: which of the 13 (of 14) `$ff8201`-touching call sites other than
-   the room-crossing path actually fires. Not needed to close anything above.
-3. **Low priority, unchanged**: `disk_layout.py`'s blank/data classifier only catches single-byte
-   fills; extend it to detect short-period repeats (§52's 3-byte cycle) so its headline percentage
-   doesn't need a manual correction next time.
-4. **New, low priority, not blocking anything**: no `.stx`→`.st` converter exists in `tools/`. Only
-   worth writing if a future session specifically wants to boot a `.stx`-only release (the `[!]`
-   pair here, or another game's protected original) — Pasti's format is flux-level and non-trivial,
-   not a quick script.
+1. **Low priority, downgraded this session**: the 53rd pass's Disk 2 runaway is not reproducible
+   with typical single-keypress input (§54) — not worth further live-boot chasing without a
+   specific new lead (e.g. a captured drive.txt from a session that hits it again). If it recurs,
+   save the exact REPL sequence to a file immediately (`reversing/cadaver/drive.txt` convention,
+   `reverse-engineer-st-game` skill) so it can be replayed byte-for-byte, which this session could
+   not do.
+2. Which of the 13 (of 14) `$ff8201`-touching call sites other than the room-crossing path actually
+   fires. Not needed to close anything above.
+3. `disk_layout.py`'s blank/data classifier only catches single-byte fills; extend it to detect
+   short-period repeats (§52's 3-byte cycle) so its headline percentage doesn't need a manual
+   correction next time.
+4. No `.stx`→`.st` converter exists in `tools/`. Only worth writing if a future session
+   specifically wants to boot a `.stx`-only release (the deleted `[!]` pair, or another game's
+   protected original) — Pasti's format is flux-level and non-trivial, not a quick script.
+5. **Unchanged, lower priority than the above**: try the Disk-1/Disk-2 `[a]`/`[a2]`/`[b]` variant
+   files in the same Replicants/ST Amigos Dropbox folder, if a future session wants to keep
+   pursuing live Disk 2 gameplay for its own sake — not blocking anything, since §54 downgraded the
+   runaway that motivated this.
 
 ## Known traps
 
@@ -110,15 +91,22 @@ masked blits (not this game's 32px-wide family), movement is joystick port 1, pl
 use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`find_jump_table_hit.py`
 — all indexed in `DEVELOPING.md` and the `reverse-engineer-st-game` skill, §5.)
 
+- **A significant one-off REPL result (a crash, a rare event) that isn't captured to a `drive.txt`
+  or script file can't be replayed byte-for-byte by a later session**, even when the game state
+  that led to it is deterministic — only the *sequence of REPL commands* was lost, not the engine's
+  determinism. This session tried four plausible replays of the 53rd pass's runaway and all came up
+  safe; that's evidence the runaway is unlikely to be a reliable mechanism, but it's not a
+  disproof, because the actual sequence used was never saved (54th pass).
 - **The REPL's line parser splits on raw whitespace with no quoting** (`Program.fs`'s `runRepl`,
   `input.Split(' ')`) — `disk "path with spaces.st"` never matches the `disk <path>` pattern and
   silently falls through with no error. Copy the image to an unspaced filename first.
 - **Send a key's make and break codes in two separate `kbd` calls, with a real `s <n>` step count
-  between them, not one `kbd <make> <break>` call** — now promoted to the shared
-  `reverse-engineer-st-game` skill (§2) since it applies to any game with an interrupt-driven IKBD
-  ISR, not just this one. Sending both in one call lets the ISR drain them before the main loop's
-  poll ever sees the key-down state, so the input is silently dropped and a wait screen looks
-  input-inert when it isn't.
+  between them, not one `kbd <make> <break>` call** — now in the shared `reverse-engineer-st-game`
+  skill (§2) since it applies to any game with an interrupt-driven IKBD ISR, not just this one.
+  Sending both in one call lets the ISR drain them before the main loop's poll ever sees the
+  key-down state, so the input is silently dropped and a wait screen looks input-inert when it
+  isn't. This session found the "PLACE LEVELS DISK..." wait loop does **not** care which key is
+  sent (space/Return/Escape all produce identical results) — it's a generic "any key" poll.
 - **`run.ps1`'s subcommand names are aliases, not raw argv — the raw binary only understands
   `resume <snap> repl [--disk-a <path>]` (two tokens), not `rrepl <snap>`.** Also applies to
   `snapshot`: it's positional (`<N> snapshot <path>`), there is no `--snapshot` flag. Calling the
@@ -170,11 +158,10 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
 
 ## Next session
 
-Item 1 (triage the Disk 2 disk-error + runaway) is the only open thread worth chasing. Start from
-`M68000/scratchpad/cadaver/replicants_disk2_retry_30M.snap` and re-run the same key-press sequence
-once to check determinism before trying the `[a]`/`[a2]`/`[b]` disk variants. If the runaway turns
-out to be this specific crack's own copy protection on Disk 2 rather than an emulator gap, close
-this item and treat §53's static-evidence conclusion (Disk 2 is a real, distinct levels disk) as
-the spike's final word on the "second level" question — there's no cheap path to actual live
-gameplay on it without either a clean crack or a `.stx` converter for the verified-dump pair.
-Prompt: `/resume cadaver`.
+No urgent open thread: item 1 (the Disk 2 runaway) is downgraded and not worth chasing without a
+new lead, and items 2-5 are all low priority and non-blocking. If Dave wants to keep pursuing live
+Disk 2 gameplay, item 5 (the `[a]`/`[a2]`/`[b]` disk variants) is the next thing to try, starting
+from `M68000/scratchpad/cadaver/replicants_esc_30M.snap` (Disk 1 still mounted, at the swap prompt)
+so a variant Disk 2 can be tried without re-driving the whole boot. Otherwise this spike has no
+open thread that clearly justifies more time — worth checking with Dave on priority before the next
+session picks it back up. Prompt: `/resume cadaver`.
