@@ -166,6 +166,17 @@ From repeated friction across passes (not yet built, build the one a pass actual
 
 One `watch` region per REPL session, a second concurrent region silently drops events. Transcribe hardware/OS semantics from source (Hatari's `src/*.c`, `M68000PRM.pdf`) rather than recalling them. Stage named files only, never `git add -A`, disk images and cracked archives are copyrighted and must stay untracked.
 
+A `jsr`/`jmp` target whose static disassembly looks like noise (garbage opcodes, an address that
+falls inside what should be data like screen memory) is not evidence the target really is stale
+data misread as code - copy-protection code deliberately looks like garbage under a blind
+byte-for-byte scan (self-installing exception-vector handlers, deliberately-executed
+reserved/unimplemented opcodes as CPU-detection probes, trace-mode single-step decrypt loops).
+Step the live CPU through it before concluding it's misread data rather than a genuine emulator
+gap or an intentional probe (Cadaver 55th pass called a Rob Northen protection chain "stale
+framebuffer pixel data decoded as code" from a static read alone; the 57th pass single-stepped it
+and found two real emulator gaps - a reserved opcode and the trace exception - that were the
+actual wall, `mechanics.md` §57).
+
 When a prior pass's doc quotes disassembly with `...` eliding part of a routine, re-disassemble it
 in full (`disassemble.py --linear <addr> <n>`) before reasoning about its exact structure — the
 elided part is often exactly the loop-count/register-mask detail that determines the answer
