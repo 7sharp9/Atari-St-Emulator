@@ -3667,27 +3667,16 @@ fires and derails execution, so this is not yet proof the *entire* disk reads cl
 only that the sides fix is correct and side-1 reads that used to fail now succeed.
 
 Past the successful load, the 53rd/54th passes' framing of "the disk 2 swap is unresolved" no
-longer applies, but a new, separate wall appears: `jsr (A2)` at `$00011602` (called from
+longer applies, but a new, separate wall appeared: `jsr (A2)` at `$00011602` (called from
 `$00b7f0`/`$00b420`'s embedded-resource-stream dispatcher, generic mechanism at `$011598` reading
 `{base,length,pos}` triples from a descriptor table at `(A5)+2538`, `A1=0` meaning "execute this
-chunk in place rather than copy it") jumps to `$00021da0`, inside the *other, currently-inactive*
-half of the double-buffered screen (`$20f00`-`$28cff`, §33b/§37a) — i.e. into stale framebuffer
-pixel data decoded as code, hence the `illegal`/`(line-A)`/`???mode7reg5` noise, not a genuine new
-CPU instruction to add. Stream 0's backing blob at `$21004` is confirmed byte-identical between
-the pre-swap snapshot and the post-crash one, so it is resident data loaded once at original
-Disk-1 boot, not anything Disk 2's own sectors populate (those land at `$05e000`, confirmed by the
-FDC trace above) — this dispatch is not "Disk 2 payload misread as code." At `$00b418`, a
-version-style check (`cmp.w $41c.l,D0`; `D0=$14`, `$41c.l` reads `$6`, so the compare fails) is
-followed by a bare `nop` where a real branch would be expected, so both outcomes fall through to
-the same "execute the embedded chunk" path regardless of the check's result — a strong signature
-of a crack-patched-out protection/version gate, not an emulator gap: the FDC/DMA side of the load
-is now provably correct, and nothing here points at a missing OS trap or timing behaviour. Not yet
-confirmed which original check this replaces or fixed; would need the equivalent code in the
-one-disk (Empire) release for comparison. Not blocking further Disk 2 work: since the sector
-payload itself is now confirmed loading correctly and independently of this dispatch bug, the next
-useful step is examining the loaded buffer's content directly (§51/§52's static-analysis method,
-now against live RAM instead of the raw file) rather than chasing this crack's own dispatch bug
-further.
+chunk in place rather than copy it") jumps to `$00021da0`. The `illegal`/`(line-A)`/`???mode7reg5`
+noise this pass read there and attributed to stale framebuffer pixel data decoded as code
+(`$20f00`-`$28cff`, §33b/§37a) was wrong on both counts, corrected by §57: it is real, intentional
+Rob Northen protection code (a CPU-detection/self-decrypt chain), and it needed two genuine
+emulator fixes, not a crack-patched-out check to trace further. The `$00b418` version-style check
+(`cmp.w $41c.l,D0` falling through a neutered `nop` either way) is still a real, separately-true
+observation about this crack's own patched-out gate; it just isn't what was stopping progress here.
 
 ## 56. Static graphics/level mining on `disk2_replicants.st`'s raw bytes: negative result across
     every width/layout tried, and two structural findings that narrow the next step (56th pass)
@@ -3756,11 +3745,59 @@ has now been run exhaustively against Disk 2's own bytes without result. The two
 would move this forward — the real record/pixel format grounded in the code that actually
 interprets this data (the way `+50`/`+51` grounded the sprite sheet, graphics.md §2), or a live
 view of what the game itself does with these bytes once loaded — both require the game to actually
-read and process this data, which is exactly what item 1 (the crack's dispatch bug) is still
-blocking past track 7. This pass's negative result narrows, rather than closes, the open-item
-choice: item 2's static half is now exhausted short of guessing further widths blind, and item 1
-is the more promising path to *any* further progress on Disk 2's content until either a live read
-or a code-grounded struct definition becomes available.
+read and process this data, which at the time of this pass was still blocked past track 7 (§57
+gets past that wall, onto a new one). This pass's negative result narrows, rather than closes, the
+open-item choice: item 2's static half is now exhausted short of guessing further widths blind, and
+a live read is the more promising path to *any* further progress on Disk 2's content until a
+code-grounded struct definition becomes available.
+
+## 57. The "crack dispatch bug" was two real emulator gaps, not a data or dispatch problem;
+    fixing both gets past `$00b418` onto a new, separate FDC wall (57th pass)
+
+§55's `jsr (A2)` -> `$00021da0` wall was misdiagnosed as stale framebuffer data misread as code
+(corrected above). Stepping past it (`ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll
+resume scratchpad/cadaver/agent_disk2_wall/before_jsr.snap repl`, then `s <n>`/`r` from the REPL)
+shows `$00021da0` is real Rob Northen protection code: it installs its own illegal-instruction
+handler (vector 4, at `$10`) pointing into itself, then deliberately executes a reserved opcode to
+trigger that trap — a CPU-detection probe (a genuine 68000 traps an unassigned opcode to vector 4;
+a 68010+ emulator that mis-implements the probed opcode as valid would not). Two such probes back
+to back, both landing on a genuine gap in this emulator rather than the crack:
+
+- **`$4E7A`/`$4E7B` (MOVEC)**: already covered by the `Illegal` pattern (`Instructions.fs`'s own
+  comment already names this exact crack as the reason it was added).
+- **`$712c`, a bit-8-set MOVEQ encoding** (line-0111 has no other valid 68000 instruction; bit 8
+  must be 0 for MOVEQ, so this is equally reserved and equally traps to vector 4 on real hardware):
+  not covered — `DecodeBucket7`'s wildcard threw an unhandled .NET exception instead, crashing the
+  whole process. This *was* "the crack dispatch bug": the emulator crashing here, not a
+  neutered version check or a data-driven dispatch problem. Fixed by adding a `ReservedMoveq`
+  pattern (`Instructions.fs`) and wiring it into `DecodeBucket7` to enter vector 4 like `Illegal`
+  does (`68k.fs`, commit `1cb269b`).
+
+Past both probes, the crack arms a third stage: it sets CCR's T1 (trace) bit and lets execution
+free-run, using the trace exception (vector 9) as a single-step decrypt loop (trap after every
+instruction, decrypt the next one, resume) — the same technique as the two probes, one level up.
+This emulator's `Step()` computed a `TraceMode` property from CCR but never consumed it anywhere;
+trace-mode single-stepping was entirely unimplemented, so the crack's loop just span forever
+(confirmed via `watch 24 4` and two `r` dumps 2M steps apart showing byte-identical state — a real
+infinite loop, not slow progress) instead of ever trapping. Fixed by sampling `TraceMode` before
+each instruction and entering vector 9 afterward when the instruction completed via the plain
+decode path (`68k.fs`, commit `1f41114`) — `EnterVector`/`EnterGroup0Vector` now also clear T1 on
+entry like `EnterInterrupt`/`FetchTargetOrFault` already did, so a traced exception handler doesn't
+immediately re-trace itself. Both fixes carry their own regression-net proof in their commit
+messages (`verify` PASS, 30M-step diskless boot snapshot byte-identical before/after, full 680x0
+selftest 1,000,051 pass / 0 fail / 9 skip unchanged — no SingleStepTests vector seeds T1, so the
+trace fix is unexercised by that corpus but doesn't regress it).
+
+With both fixes in, `before_jsr.snap` run forward (30M steps) reaches genuinely new code —
+`A4=$ffff8604` (the FDC/DMA register), confirmed via `ATARI_TRACE_FDC=1` to be issuing real
+`READ-SECTOR drive=0 track=0 side=0 sector=8` commands — but stalls at a new wall: the read
+repeatedly comes back "no data", the crack retries with a `type I $03` (Restore-to-track-0) between
+attempts, and PC only crawls from `$11b00` to `$11b0e` across those 30M steps (`scratchpad/cadaver/
+disk2_past_dispatch_30M.snap`). Not yet diagnosed: whether track 0/sector 8 is genuinely absent
+from whichever disk is mounted in drive A at this point in the sequence (a disk-swap step missed
+somewhere upstream), an FDC modeling gap for whatever exact command sequence this is, or something
+else — this is real, further progress, not the same wall in a new shape, and is next session's
+starting point.
 
 ## Files
 
