@@ -3406,11 +3406,54 @@ but every technique this spike has for finding a caller statically has now been 
 empty. If a second level exists at all for this build, it most likely requires the two-disk
 original's physical disk-swap path (§30b) — a fresh investigation, not a continuation of this one.
 
+## 49. Open item 2 (cadaver.md, the five doors' positive id words): they're real, populated type-6
+    object ids, but structurally disjoint from LOCK/UNLOCK's own record type — rules out the
+    "LOCK/UNLOCK flips a door's own flag" reading, doesn't yet explain what the id word is for
+    (49th pass)
+
+**49a. LOCK/UNLOCK's target and the door-transition executor's own flag test are two different
+resource types, at two different record offsets, in two different tables — they cannot be the same
+mechanism.** §38c's `$007280: btst #0,4(A0)` tests bit 0 of byte **+4** of a door descriptor — an
+8-byte **type-4** record (§47a: index `$4adc6`, data `$6d35a`). §22c's LOCK/UNLOCK instead operate
+on bit 2 of byte **+15** of an object record resolved through `$010738`→`$00c542`/`$00c56e` against
+**types 6/9** (§22d: type 6 index `$4b596`, data `$6eb92`) — a structurally unrelated table, at a
+different base address, with a different record layout and a different flag bit entirely. Item 2's
+open question ("does LOCK/UNLOCK simply flip a door's own open/closed flag on an already-resident
+door") is answered **no**, at least for the LOCK/UNLOCK mechanism as currently found: it has no
+access to a type-4 door record at all, only type-6/9 object records.
+
+**49b. The five positive id words are real, populated type-6 object ids, not garbage or dead data**
+(`py/door_id_words.py`, this pass, reused `py/door_walk.py`'s own descriptor resolver). Read as a
+type-6 id (§38a/§23c's `TYPE6_INDEX=$4b596`/`TYPE6_DATA=$6eb92`), all five (`53`, `73`, `155`,
+`167`, `244`) resolve to a real, nonzero-size record (16 or 22 bytes, matching the sizes §23c's own
+1000/1000-populated sweep would produce) — not one falls outside the table or hits an empty slot.
+Each record's own bytes `+4..+5` echo the same id back (e.g. id `155`'s record reads
+`...009b...` at that offset, `$009b`=155) — a self-id field the generic type-6 layout carries on
+every record, not something door-specific. All five currently read `+15` bit 2 **clear**
+(unlocked) in `room2_tunnel_entry.snap`.
+
+**49c. Reading, and what's still open.** The id word is a valid handle into the same object-id
+space LOCK/UNLOCK operate on (types 6/9), so "the door is gated by some object's lock state" is not
+ruled out the way "LOCK/UNLOCK writes the door's own flag directly" now is — but nothing found this
+pass shows *anything* reads the id word as a type-6/9 id: `$de5e` (§38d, the resolver actually
+driving room transitions) only reads the descriptor's coordinate bytes, never touches `+2..+3`, and
+no caller of `$010738`'s id-resolve path was found reaching from a door descriptor's own address
+(only from the verb-interpreter's script stream, §22d). The bit-2-clear state on all five is
+consistent with either "these are real lock objects, just not currently locked in this save state"
+or "the id word means something else entirely and the type-6 resolution is coincidental" — five
+valid ids out of a fully-populated 1000-slot table isn't strong evidence either way on its own.
+**Concrete next step if picked up again**: `callcap` LOCK (opcode 18, §23a) against one of these
+five ids (e.g. `155`) from a snapshot near that door, then re-run the door-transition trace (§38c)
+across it and check whether `$007280`'s own `btst #0,4(A0)` result, or anything else in the
+executor's flow, changes — the first causal (not just structural) test of whether the id word does
+anything at all.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `py/door_id_words.py` | 49th pass: for the 5 doors with a genuine positive id word, dumps the descriptor's own `+4..+7` bytes and resolves the id word as a type-6 object id, checking its `+15` lock flag — proof for §49 |
 | `py/snapinfo.py` | 46th pass: one-line-per-snapshot room/display-buffer-parity/shifter-base report, reusing `tools/gfxview.py`'s header parsing — proof for §46 |
 | `boat_hotspot.png` | 45th pass: live snapshot rendered at CAVERN's BOAT proximity hotspot, status bar/icon panel reading "BOAT"/"CAVERN" — proof for §45 that the §43 mechanism resolves a second object correctly, not just TUNNEL's LEVER |
 | `py/world_map.py` | 44th pass: walks the type-3 resource-manager table and decodes every populated room's world-grid rectangle (§38a/§38d), reports the adjacency graph, renders `world_map.png` |
