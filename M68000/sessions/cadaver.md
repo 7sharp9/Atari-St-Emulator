@@ -1,68 +1,69 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at this commit (40th pass). **Fully closed the `+4`/`+5`
-width/height thread** (§38d vs §32a/§31c vs §31d's three separate "is this a conflict" questions):
-every live read of room-record byte `+4` across the whole traced call graph (`$de5e`, `$e7b0`,
-`$00cfc4`'s two sites) agrees it's the room's width, and the one read that looked like a fourth
-meaning (`$cd62`) turns out to be dead code.
+Updated 2026-09-24 by the session that ended at this commit (41st pass). Closed the standing open
+item on whether `$014a90`/`$014b28` (the room-crossing icon/status-panel redraw, §32b/§33) is also
+what paints the LEVER-specific icon pair on a same-room proximity change — it is not: zero hits
+across a full proximity approach that visibly changed the icon panel and status text.
 
 ## Resume point
 
-- Last commit of this workstream: `6d3c6b3` "cadaver: close the \$cd62 open item - dead read, two
-  more live +4 sites confirm width (40th pass cont.)".
+- Last commit of this workstream: `85cf7f9` "cadaver: close open item 1 - $014a90/$014b28 never fire
+  for a same-room LEVER-proximity icon change (41st pass)".
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
-  `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout, no
-  rebuild needed.
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored) — unchanged this pass, all
-  prior-handoff snapshots still present. No new snapshots this pass; both §39 and §40 only needed
-  static reads off already-present snapshots (`room2_tunnel_entry.snap`, `burst_end.snap`) plus
-  disassembly (`disassemble.py --linear`), no live emulator run.
-- Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry), same `kbd ff 02` crossing recipe.
+  `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout.
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). New this pass:
+  `room2_lever_boundary_new.snap`, rebuilt from `room2_tunnel_entry.snap` because the original
+  `room2_lever_boundary.snap` was missing on this Mac checkout (per-machine scratchpad split, not
+  yet indexed in `scratchpad/ANCHORS.md` for cadaver at all — worth adding if this recurs).
+  Rebuild recipe: hold Left (`kbd ff 04`) ~1.2-1.5M steps from `room2_tunnel_entry.snap` (13th
+  pass's recipe, `mechanics.md` §41/README 13th-pass entry).
+- Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry, same as before) or the new
+  `room2_lever_boundary_new.snap` for lever-proximity work directly.
   **Do not use `$5a99` to detect "crossing done"** — use `(A5)+1166` (§38b) instead.
-- Uncommitted work left behind: none (this handoff and `mechanics.md` §39/§40 are all committed).
+- Uncommitted work left behind: none (docs and this handoff are all committed).
 
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
-`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36, 37, 38. **New this session, `mechanics.md`
-§39-40**:
+`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36, 37, 38, 39, 40 (the `+4`/`+5` width/height
+thread, fully closed). **New this session, `mechanics.md` §41**:
 
-- **§39.** `$0000e7b0` disassembled in full: computes `index = (width-3)*2 + (height-3)*16` from
-  room-record bytes `+4`/`+5` (§38d's proven bounding-box width/height), indexes a lookup table at
-  `$5a10.l`, and writes the result to `(A5)+148` — the field §31c saw written and inferred was an
-  independent "quadrant/graphics-table index." Verified against both `room2_tunnel_entry.snap`
-  (TUNNEL) and `burst_end.snap` (CAVERN): each snapshot's actual `(A5)+148` matches the computed
-  lookup from its own `+4`/`+5` bytes exactly. Not a conflict — reused field, not a second one.
-  `$e7b0`'s trailing loop (trip counts `width-1`/`height-1`) builds a per-tile screen-offset table
-  at `2634(A5)+`.
-- **§40.** Chased §31d's `$cd62` (inside `$00ccfe`, not a separate routine — a fallthrough label)
-  read of the same byte `+4`: it's **dead code**, never consumed before the routine's `rts`
-  (confirmed by full linear disassembly + grep over the whole `$ccfe`-`$cf80` span). The adjacent
-  `$00cfc4` routine reads `+4` twice more, both live and both consistent with "width": `$d09a` uses
-  `width+1` as a row-stride multiplier into a table at `84(A5)`; `$d06a` feeds an address
-  computation that reads back **§39's own `2634(A5)+` table** — the consumer side of `$e7b0`'s
-  screen-offset table, found by chasing this thread. No remaining candidate anywhere in the traced
-  call graph for a conflicting reading of `+4`.
+- **§41.** Rebuilt the missing `room2_lever_boundary.snap` and re-ran the LEVER-proximity approach
+  with `bpc 014a90 20 1500000` armed for the *whole* Left-hold approach (not just the settled
+  boundary, which is all §32b/§33 ever tested). Zero hits over the full 1.5M-step budget, despite
+  the icon panel and status-bar text visibly changing (confirmed by `snap_render.py` + a pixel diff
+  of the bottom UI strip against the idle `room2_tunnel_entry.snap` render). Settles that
+  `$014a90`/`$014b28` is a room-crossing-only redraw, never invoked by a same-room proximity change
+  — closes the original open item cleanly (as "no", not "untested"). The real proximity-icon writer
+  is a new, narrower, still-open question (see below).
 
 ## Open, in priority order
 
-1. What `$55b6` contains for a *different* transition (e.g. an actual LEVER-proximity icon-panel
-   change, §7) — still zero-checked, only the plain crossing has been tried.
-2. Reconcile the shifter-base-flip conflict: 4 independent checks (39th pass) never saw the base
+1. **What actually paints the LEVER-specific icon pair on proximity** (new, from §41's negative).
+   §41's pixel diff shows the change lands in the bottom-left icon-box region, distinct from
+   `$014a90`'s own confirmed target (272,143) on the right/status side — so this is very likely a
+   *different* fixed-position blit, keyed off whatever proximity-detection field the game already
+   uses to set the "LEVER" name-hotspot (see `mechanics.md` §7/§14's collision/obstacle-check
+   algorithm, `$008870`, for where that detection already lives). Proof recipe: `watch` the
+   bottom-left icon-box screen memory region (need its exact screen offset first — diff the two
+   renders' raw pixel rows, not just the PNG bbox) across a fresh Left-hold approach from
+   `room2_tunnel_entry.snap`, and read off the writer PC(s).
+2. What `$55b6` contains for a *different* object's proximity transition (e.g. CAVERN's BOAT,
+   11th pass) — untested; would show whether the (now-ruled-out) `$014a90` mechanism's fixed source
+   is reused identically for every object or varies, though given item 1's finding this is lower
+   priority than finding the real icon writer.
+3. Reconcile the shifter-base-flip conflict: 4 independent checks (39th pass) never saw the base
    flip in one `kbd ff 02` crossing (`watch ffff8200 8` logged zero writes), but two older scratch
    snapshots (`watch_crossing_end.snap`, `mid_bank_copy.snap`) read shifter base `$19100` via the
    same `gfxview.py` helper. Not reconciled: either those came from a longer/different recipe, or a
    different crossing entirely.
-3. The two-disk original (§30b): lower priority, would be a fresh subject.
-4. Walk the full type-3 room table (72 populated slots) and decode every room's bounding-box
+4. The two-disk original (§30b): lower priority, would be a fresh subject.
+5. Walk the full type-3 room table (72 populated slots) and decode every room's bounding-box
    rectangle (§38d) to build the complete world map / room-adjacency graph implied by the now-proven
-   spatial resolver — would settle "how do all ~72 rooms connect" beyond the one TUNNEL/CAVERN pair
-   checked so far. `$e7b0`'s own `$5a10` table (§39) could be walked the same way to check every
-   populated room's `(width,height)` pair maps to a sane, in-range table entry — a cheap sanity
-   check on §39's reconciliation before trusting it for rooms other than TUNNEL/CAVERN. This is now
-   the natural next big-ticket item: the width/height field, its `$5a10`-derived screen layout, and
-   the spatial door resolver are all proven mechanisms — decoding the other 70 rooms' rectangles
-   would turn "TUNNEL/CAVERN connect" into "here is the whole map."
+   spatial resolver (§39) — would settle "how do all ~72 rooms connect" beyond the one TUNNEL/CAVERN
+   pair checked so far. This remains the highest-value big-ticket item once items 1-2 (both
+   proximity-icon-panel questions) are settled: the width/height field, its `$5a10`-derived screen
+   layout, and the spatial door resolver are all proven mechanisms.
 
 ## Known traps
 
@@ -78,30 +79,31 @@ movement is joystick port 1, player = sprite slot 0, use `tools/find_ram_callers
 - **`$5a99` is not a room-transition signal.** Use `(A5)+1166` (§38b) instead.
 - **Struct field offsets get reused for different meanings at different call sites — but check
   whether an apparent second meaning is actually dead code before concluding it's a real conflict.**
-  Room-record byte `+4` looked, across three separate passes, like it might have up to four
-  different meanings (§38d's bounding box, §31c's "graphics index", §31d's "type-5 resource key",
-  and a candidate fourth site at `$cd62`). All four collapsed into one: it's the width, read at
-  several call sites, one of which (`$cd62`) loads it into a register and never uses the value.
-  Before chasing "what's this field's other meaning," grep the full disassembly of the routine
-  between the read and its next `rts`/overwrite for any use of the destination register — a read
-  with no following use isn't a second meaning at all.
+  See §40's `$cd62` case for the worked example.
 - **A live snapshot's static memory alone can settle a "what does routine X compute" question**,
-  without running the emulator forward — reading a room record's raw bytes, hand-computing a
-  disassembled routine's arithmetic, and reading the routine's own output field back off the same
-  snapshot is enough when the routine's inputs are just RAM values already sitting in the snapshot
-  (no register-only intermediate state needed). Cheaper than `callcap`/`bpc` when it applies.
+  without running the emulator forward, when the routine's inputs are just RAM values already
+  sitting in the snapshot. Cheaper than `callcap`/`bpc` when it applies.
+- **A `bpc` armed only at the settled boundary can miss a mechanism that fires during the approach,
+  not at the final position** — §41's key methodological fix over §32b/§33 was arming the
+  breakpoint *before* injecting the movement input that drives the whole approach, not just at the
+  end state. When re-testing "does routine X fire for event Y", cover the whole transition window,
+  not just the post-transition snapshot.
 - `gfxview.load_ram(path)` returns `(ram_bytes, base)` — **that order**, not `(base, ram)`.
 - `dotnet exec ... resume <snap> repl`'s printed `help` text does not list `kbd`/`mouse`/`disk`
   even though they exist and work (`Program.fs` line ~1396) — check the `parts.[0] = "<cmd>"`
   match arms, not `help`'s one-line summary, before concluding a command is missing.
 - The REPL's `watch <addr> <len>` parses `<len>` as plain **decimal**, not hex (`watch 20e00 7d00`
   throws; use `watch 20e00 32000`). Only `<addr>` is hex.
+- `kbd`/other REPL input commands only *enqueue* IKBD bytes for delivery during subsequent `s`/`bp`/
+  `bpc` steps — issue them **before** the step/breakpoint command that should consume them, not
+  after; queuing input after a `bpc` call wastes that call's whole step budget on the pre-input
+  state (hit this pass rebuilding `room2_lever_boundary_new.snap`).
 
 ## Next session
 
-Start with Open item 1: check `$55b6`/the icon-panel path for a LEVER-proximity transition (still
-untested — everything proven so far is the plain TUNNEL↔CAVERN crossing). Item 4 (decode all 72
-rooms' rectangles into a world map, using §38d/§39's now-fully-reconciled width/height field) is the
-higher-value target if the priority order changes — it turns three passes of "is this field
-consistent" into a complete room-adjacency graph almost for free, since the spatial resolver and the
-lookup tables are both proven mechanisms now. Prompt: `/resume cadaver`.
+Start with Open item 1: find the LEVER icon-panel's real writer PC via a targeted `watch` on the
+bottom-left icon-box screen region (get its exact offset from a raw pixel-row diff first, not just
+the PNG bbox) across a fresh Left-hold approach from `room2_tunnel_entry.snap`. Item 5 (decode all
+72 rooms' rectangles into a world map) remains the higher-value target once the proximity-icon
+questions (items 1-2) are closed, since the spatial resolver and lookup tables are both proven
+mechanisms now. Prompt: `/resume cadaver`.
