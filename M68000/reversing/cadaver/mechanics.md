@@ -2436,6 +2436,79 @@ say, a palette or mask table reused for another purpose) — read it with `gfxvi
 known screen palette and compare its rendered shape to a real "LEVER" vs default icon-panel
 screenshot pair.
 
+## 33. `$55b6`'s actual bytes decoded; a full-screen-buffer watch during a live crossing rules out the
+    entity/sprite-draw path as the missing room-background painter (34th pass)
+
+### 33a. `$55b6` is 96 bytes of solid zero, then a short repeating word pattern — confirms it is not
+    room art, refines but does not overturn §32b
+
+Reading the snapshot's own RAM directly (the `A68S` header format `gfxview.py` already parses:
+magic, version byte, 19 little-endian int32 registers, int16 CCR, then a length-prefixed RAM block)
+at `$55b6` in `hit_014b28.snap`: bytes `$55b6`-`$5615` (96 bytes = exactly the 4-longwords/row × 6-row
+extent `$014b28`'s `D6=2,D7=6` call consumes, per §32b/§32a's loop trace) are **solid zero**. The
+sparse `f8 00 00 3f` / `f8 01 86 3f` pattern §32b's `m 55b6 128` output noticed starts at `$5616`,
+*outside* the consumed range — it's unrelated neighbouring data, not part of this blit's source.
+
+So the actual source content for this specific live call is a blank/all-zero mask-source, not a
+glyph. This still fits §32b's icon-panel conclusion (a masked blit that ANDs a room-mask onto the
+screen then ORs in a fixed, room-independent source at `$55b6` reads as "clear this panel region to a
+known state on room entry", which can legitimately be all-zero for the *default* panel state — the
+"LEVER"-vs-default icon difference §7 documents would then come from a different, not-yet-traced
+write, not from this call's source varying). Rendering the 96-byte blob confirms this visually
+(`gfxview.py` with `base=55b6 width=32 rows=6 bpp=4 st-interleaved` shows a solid black/background
+rectangle, zoom 8, no visible glyph) — not informative as an image, but the negative result is real,
+not a rendering-layout mistake (raw hex was read directly, independent of `gfxview.py`'s decode).
+
+**Still open**: this closes "is `$55b6` a glyph" (no) but does not identify what, if anything,
+distinguishes a "LEVER" icon-panel redraw from a default one — that would need catching a
+`$014b28`/`$014a90` call during an actual LEVER-proximity transition, not the plain room-crossing this
+pass and §32b both used.
+
+### 33b. Full-screen-buffer `watch` across a live TUNNEL→CAVERN crossing: every writer PC identified;
+    none of them is a new candidate for "the room-art painter" — the entity/sprite-draw system is
+    ruled out, not confirmed
+
+Item 1's open question ("what paints a room's own background, since `$014a90`/`$0144b8` are both
+closed leads") needed a census of every routine that writes the live screen buffer during a real
+crossing, not just the two previously-known ones. Ran `watch <screen_buffer_base> 32000` (the full
+320×200×4bpp buffer, base read live from `4(A5)`... no — `(A5)` itself, confirmed `$19100` this pass,
+matching `gfxview.py`'s independently-detected live screen base) across the same `room2_tunnel_entry.snap`
++ `kbd ff 02` (Down) TUNNEL→CAVERN crossing §31e/§32 both used, then bucketed all ~668k `WATCH` lines
+by PC (`grep -o 'pc=\$[0-9a-f]*' | sort | uniq -c`). Every hit PC falls into one of three known
+buckets, no unexplained fourth:
+
+1. `$0144ee`-`$014956` (~140 distinct PCs × 4480 hits each) plus `$014966`/`$01496e`/`$014976`
+   (1120 each) plus a handful more up to `$0150d8` (166-488 each) — all inside or immediately after
+   `$0144b8` `ScreenFlip_ScanlineCopy` (§31e), an unrolled scanline-copy body larger than the three
+   individual PCs §31e originally named. Confirms §31e's "destination-side-only flip" finding, gives
+   it a fuller PC range, nothing new.
+2. `$0080cc`/`$0080d2` (6936 hits each) plus `$00807a`-`$008090`/`$008274`-`$008298` (22-488 each) —
+   traced back live via `bpc 007f60 1 <maxSteps>` + `bt`: entry `$007f60` is another instance of the
+   same masked sub-pixel blit shape as `$014d7a`/`$14ee4`/`$14f4a` (reads `(A5)` for the screen base,
+   same `$90`-row-stride convention), called from `$00d93c`'s `bsr $7dd6` inside a loop at `$00d946`
+   (`move.l (A2)+,D1 ; bmi $d9ce` — a null-terminated pointer-list walk) reading entity-record fields
+   at offsets 14/20/21/50/51/52 off `A3`. `A6=$00038338` at the call — §21a's already-documented
+   sprite-object array base (same one the player occupies at slot 0). **This is the entity/sprite
+   list renderer** (mechanics.md §1-6's object-verb/composite system), not a new routine — it draws
+   whatever entities (player, creatures, items) are visible during the crossing, at their normal
+   screen positions. A real finding, but not the missing lead: it's the already-known sprite system,
+   caught live for the first time, not an unidentified background painter.
+3. Nothing else. No PC outside these two buckets touched the screen buffer during this crossing.
+
+**Net effect on item 1**: the entity/sprite-draw system is now positively ruled out as the room-art
+source (it draws sprites at their own positions, not a room-sized background), narrowing but not
+closing the question. Since nothing else wrote the buffer during this capture window, the real
+possibilities left are: (a) the background is drawn into the buffer well before this transition
+window (e.g. when the room is first loaded/decoded into memory, not at the crossing moment) and this
+window only ever needed to *flip* an already-painted back buffer — which would mean §31e's premise
+("something paints room art each crossing") is itself wrong and needs re-examining; or (b) the
+capture window (kbd-press to ~2.2M steps) didn't fully bracket the true paint moment. **Next step**:
+before another live `watch` attempt, test (a) first — it's cheaper and, if true, closes the item as a
+reframe rather than a new hunt: watch the *other* (non-visible) screen buffer role (`4(A5)`'s
+counterpart per README's "ScreenBufferA/B role-swap field", §32a) starting from well before any
+movement, across an idle period with no crossing at all, and see whether it already holds the
+about-to-be-shown room's art before the flip ever runs.
+
 ## Files
 
 | File | What |
