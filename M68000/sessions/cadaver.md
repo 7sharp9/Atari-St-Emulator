@@ -1,35 +1,43 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at commit `6419188` (51st pass, §51's disk-layout
-inspection; later same-day commits on this file only fix a self-introduced Dropbox-vs-gpubox typo). Ran the data-only
-disk-layout check §50's own Open item 1 called for: the one-disk Empire crack's raw `.st` image has
-no FAT12 file table and only 45.6% real data, concentrated in one ~270KB block plus crack-signature
-fragments — no second level's data sits anywhere on this physical disk, closing item 1 for that
-image alongside §48c/§48d/§49/§50's structural and causal negatives. Same day, Dave corrected an
-earlier mid-session note: the two-disk original and every other crack group are now in Dropbox
-(not gpubox-only as this handoff briefly said) — see Resume point and the new Open item 1 below.
+Updated 2026-09-24 by the session that ended at commit `ddf6344` (52nd pass, §52). Extracted the
+two-disk Image Works Empire `[t]` (trained crack) release from Dropbox and tried to live-boot Disk 1
+to the "place levels disk" prompt for a real Disk 2 swap test (Open item 1 from the prior handoff).
+The live boot stalled — abandoned after ~1.6 billion emulated steps stuck in a looping cracktro, not
+gated by any short keypress (confirmed by a controlled A/B/C/D test). Fell back to a static
+byte-level comparison of the two disk images instead, and got independent confirmation from Dave: a
+real commercial expansion for Cadaver shipped as a straight replacement for Disk 2. Both signals
+agree Disk 2 is a real, distinct levels disk — reframing, not contradicting, §51's one-disk-specific
+negative.
 
 ## Resume point
 
-- Last commit of this workstream: `6419188` "cadaver: raw disk-layout inspection finds no
-  second-level data on the one-disk Empire crack (51st pass, §51)".
-- Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
-  `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout. The
-  two-disk original and the other crack groups (Replicants/ST Amigos, the `[!]` verified dump)
-  mentioned in `reversing/cadaver/README.md`'s "Disk images" are **not** currently present in the
-  working tree's `Cadaver/` directory, but as of 2026-09-24 **are now in Dropbox**
-  (`~/Library/CloudStorage/Dropbox/Daves/ST games/Cadaver/`, confirmed by Dave — corrects this
-  handoff's own earlier same-day note that they were gpubox-only) — still zipped, not extracted.
-  Disk 2 of each crack group is labelled "(Level)": that's the concrete resource for live-testing
-  the two-disk swap directly, if a future pass wants to check §51's physical-inspection negative
-  (one-disk crack only) against the real two-disk original instead. See [[mac-st-sources]].
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new snapshots this pass —
-  §51's disk-layout check reads the `.st` file directly (`py/disk_layout.py`), no emulator run
-  needed.
+- Last commit of this workstream: `ddf6344` "cadaver: two-disk Empire release's Disk 2 confirmed a
+  real, distinct levels disk (52nd pass, §52)". A related repo-wide methodology fix from this same
+  session is in a separate commit, `3df3999` (`.claude/skills/reverse-engineer-st-game/SKILL.md`).
+- Disk images: the one-disk image is unchanged (`Cadaver/Cadaver (1990)(Image Works)[cr Empire][one
+  disk].st`, sha256 in `reversing/cadaver/README.md`). New this session, extracted from Dropbox
+  (`~/Library/CloudStorage/Dropbox/Daves/ST games/Cadaver/`) into the working tree — untracked, do
+  not `git add`:
+  - `Cadaver/disk1_empire/Cadaver (1990)(Image Works)(M3)(Disk 1 of 2)[cr Empire][t].st` (819,200B,
+    sha256 `5dd6a36f...e510c2a`)
+  - `Cadaver/disk2_empire/Cadaver (1990)(Image Works)(M3)(Disk 2 of 2)(Level)[cr Empire][t].st`
+    (819,200B, sha256 `9909ae87...29a26279`)
+  Other crack groups (Replicants/ST Amigos) and the `[!]` verified-dump pair are still in Dropbox
+  only, not extracted. See [[mac-st-sources]].
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This session's boot-attempt
+  snapshots (`disk2test_boot*.snap`, `ctrl_*.snap`) are throwaway — don't resume from them, they're
+  all still sitting inside the trained crack's looping intro, nowhere near gameplay. The static
+  analysis this session's findings rest on needs no snapshot: `reversing/cadaver/py/analyze_disk2.py`
+  reads the `.st` files directly (paths hardcoded to this Mac checkout).
 - Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry) or `gameplay_empire.snap` (CAVERN start
-  tile) depending on which room's mechanism you're testing next. **Do not use `$5a99` to detect
-  "crossing done"** — use `(A5)+1166` (§38b) instead. **Always pass `--disk-a "Cadaver...st"` and use
-  `resume <snap> repl`, never the bare alias `rrepl`** — see "Known traps" below.
+  tile) for any further one-disk-image work, unchanged from prior handoffs. **Do not use `$5a99` to
+  detect "crossing done"** — use `(A5)+1166` (§38b) instead. **Always pass `--disk-a "Cadaver...st"`
+  and use `resume <snap> repl`, never the bare alias `rrepl`** — see "Known traps" below. **Positional
+  argv, not a `--snapshot` flag**: the raw binary's snapshot subcommand is `<N> snapshot <path>
+  --disk-a <path>`, not `<N> --snapshot <path> ...` — the latter silently falls through to no-op
+  argv matching with zero output (cost a wasted run this session; see Program.fs's `match argv with`
+  block for the actual patterns before assuming a flag exists).
 - Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` and
   `M68000/sessions/powermonger.md` still show modified in `git status` — the concurrent "Training
   efficiency (2)" session's work (confirmed live via `ListAgents` again this pass), left alone per
@@ -38,46 +46,53 @@ earlier mid-session note: the two-disk original and every other crack group are 
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
-`mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-50 (movement collision/proximity mechanism, the
+`mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-51 (movement collision/proximity mechanism, the
 icon-panel write chain, the full 72-room world-map/adjacency graph, the door-connectivity walk with
 zero teleport doors, the LOCK/UNLOCK mechanism structurally disjoint from the door-transition flag,
-the five doors' positive id words causally inert on the transition path, all fully closed). **New
-this session, `mechanics.md` §51**:
+the five doors' positive id words causally inert on the transition path, the one-disk crack's
+physical disk contents ruled out as holding a second level, all fully closed). **New this session,
+`mechanics.md` §52**:
 
-- **§51.** Raw disk-layout inspection of the one-disk Empire `.st` image (`py/disk_layout.py`): the
-  root directory is 224 bytes of `0xE5` with no live FAT12 entries — a non-filesystem, self-booting
-  disk like the Medway Boys compilation's Disk B, not one where a second level could sit as a
-  separately-named file. Sector-by-sector classification finds only 45.6% of the 800KB image is real
-  (non-uniform) data: one dominant ~270KB contiguous block (sectors 400-936, almost certainly the
-  already-decoded 72-room map/graphics/resource tables) plus a few small early chunks and six tiny
-  fragments near the disk's end that decode to crack-group signature text ("THE MARVELLOUS...",
-  "THE FALLEN ANGELS", "NOKTURNAL", "PRESENT:"), not game data. With no depacker found anywhere in
-  this spike's disassembly, there is no live content-expansion mechanism that could be hiding a
-  second level in a smaller packed blob. Combined with §48c/§48d's static loaded-image caller-search
-  negative (no code path reaches the level-reload routine `$00b1e0`) and §49/§50's structural and
-  causal proof that the door descriptors' id words don't gate a level swap, **Open item 1 is now
-  closed on every axis this spike can test**: static (loaded code), causal (id-word behaviour), and
-  physical (disk contents). It remains not airtight — the erase-pattern classification wasn't
-  byte-verified against a known ST format-fill value, and a byte-identical "blank" sector that still
-  decodes to something is unlikely but unchecked — but there is no further concrete, data-only next
-  step left to try against this specific question.
+- **§52.** Reframes §51 (which only spoke to the one-disk crack) for the two-disk original: Dave
+  confirmed a real commercial expansion shipped as a straight replacement for Disk 2, matching its
+  own filename label "(Level)". Independently, a static comparison of the two-disk Empire `[t]`
+  crack's images (`py/analyze_disk2.py`) found Disk 2 is ~91.9% real (non-blank) data — corrected
+  from `disk_layout.py`'s coarse 98.4% after finding a 3-byte repeating filler pattern its classifier
+  missed — against Disk 1's 46.4%; confirmed not a duplicate of either Disk 1 or the one-disk image
+  (0.1-0.3% byte-identical at matching offsets, vs. ~41% for same-crack-group images); and its two
+  large data blocks (334KB/404KB) are markedly flatter/less-repetitive in byte distribution than Disk
+  1's own already-proven 272KB resource-table block (0.8-1.4% duplicate sectors vs. 27.4%; 7-9% max
+  byte frequency vs. 22.7%) — denser than the disk's own confirmed-real content, not less. Two open
+  tensions: no depacker exists anywhere in this spike's disassembly, so if that density means Disk 2
+  is compressed, nothing known could unpack it (a decompressor would have to live in Disk 2's own
+  unanalysed boot/loader sectors 0-7); and no readable strings or fixed-record stride were found in
+  Disk 2's blocks, so nothing *internal* to this analysis positively identifies the content as levels
+  specifically — that rests on Dave's external ground truth, not on the byte analysis alone. A live
+  boot-and-swap attempt (Disk 1 to the "place levels disk" prompt, then `disk`-swap in Disk 2) was
+  tried and abandoned — see Open item 1.
 
 ## Open, in priority order
 
-1. **New as of this update, not yet attempted**: the two-disk original is now available in Dropbox
-   (`~/Library/CloudStorage/Dropbox/Daves/ST games/Cadaver/`, see Resume point above) — Disk 2 of
-   each crack group is labelled "(Level)", strongly suggesting real additional level data exists on
-   it (unlike §51's negative for the one-disk crack, which only speaks to that specific image). This
-   makes §48d/§50/§51's whole "is there a hidden second level" thread testable directly rather than
-   inferentially: extract a Disk 1 + Disk 2 pair (zips need unzipping; likely already raw `.ST`, no
-   MSA conversion per the one-disk release's own precedent), boot Disk 1, and try the "place levels
-   disk"/swap prompt for real with the matching Disk 2 mounted via the REPL's `disk <path>` command
-   (`reversing/cadaver/README.md` "Disk swap"). If it boots into a genuinely different level, that
-   settles the whole question outright; if it errors or loops back to the same 72-room map, that's a
-   second independent negative alongside §51's.
-2. **Low priority**: which of the 13 (of 14) `$ff8201`-touching call sites other than the
-   room-crossing path actually fires (title/intro screen, a different room-pair's crossing, a
-   resolution/mode change). Not needed to close anything above.
+1. **Live gameplay confirmation, not yet reached.** The two-disk Empire `[t]` (trained) crack's own
+   intro is a scrolling multi-crew greet-list followed by a loading-bar screen that **loops**
+   (confirmed: a 600M-step snapshot and a 1600M-step snapshot from the same run show the same screen,
+   diffing only in the loading-bar pixels) — roughly 100x the ~15M steps the one-disk release needs
+   to reach gameplay, and not converging within a ~1.6 billion step budget. A controlled A/B/C/D test
+   (same snapshot, same 5M-step budget, no key / space / return / '1') produced pixel-identical
+   screens in all four cases, ruling out a short keypress as what's gating this specific window — the
+   loop's real trigger (a timed protection check? genuine slow disk depacking? something else) is
+   unidentified. **Next thing to try**: the `[!]` (verified-dump, likely uncracked original) two-disk
+   pair in the same Dropbox folder — an uncracked original should have no cracktro to grind through
+   at all, unlike every crack-group image tried so far. If that also fails to reach the prompt
+   quickly, this item should probably be downgraded: §52's static + external-ground-truth evidence is
+   already fairly strong without it.
+2. **Low priority, unchanged from the prior handoff**: which of the 13 (of 14) `$ff8201`-touching
+   call sites other than the room-crossing path actually fires (title/intro screen, a different
+   room-pair's crossing, a resolution/mode change). Not needed to close anything above.
+3. **New, low priority, not blocking anything**: `disk_layout.py`'s blank/data classifier only
+   catches single-byte-repeat fills; extend it to detect short-period repeating patterns (the 3-byte
+   `6D B6 DB` cycle §52 found on Disk 2's tail) so its headline percentage doesn't need a manual
+   correction next time it's used.
 
 ## Known traps
 
@@ -91,13 +106,12 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
 — all indexed in `DEVELOPING.md` and the `reverse-engineer-st-game` skill, §5.)
 
 - **`run.ps1`'s subcommand names are aliases, not raw argv — the raw binary only understands
-  `resume <snap> repl [--disk-a <path>]` (two tokens), not `rrepl <snap>`.** Calling the raw
-  `dotnet exec` binary with an alias name silently matches no argv pattern and falls through to a
-  disk-less cold boot, which then sits forever in an early ROM wait loop (`$00fc01a0`-`$00fc01d4`,
-  identical PC across repeated `s` calls regardless of which snapshot was named). This looks exactly
-  like a stuck or corrupted snapshot — blank `snap_render.py` output, `bpc` never hitting even after
-  millions of steps — until you reproduce a *known-good* prior result (e.g. §43's documented step
-  count) with the correct argv and it works. Also in `CLAUDE.md`'s Rules section.
+  `resume <snap> repl [--disk-a <path>]` (two tokens), not `rrepl <snap>`.** Also applies to
+  `snapshot`: it's positional (`<N> snapshot <path>`), there is no `--snapshot` flag — see Resume
+  point above. Calling the raw `dotnet exec` binary with an unmatched argv pattern silently falls
+  through to a disk-less cold boot (or, for the snapshot case, prints nothing and exits 0 having done
+  nothing), which looks exactly like a stuck/corrupted snapshot until you reproduce a *known-good*
+  prior result with the correct argv. Also in `CLAUDE.md`'s Rules section.
 - **`$5a99` is not a room-transition signal.** Use `(A5)+1166` (§38b) instead.
 - **Struct field offsets get reused for different meanings at different call sites — but check
   whether an apparent second meaning is actually dead code before concluding it's a real conflict.**
@@ -105,8 +119,14 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
 - **A live snapshot's static memory alone can settle a "what does routine X compute" question**,
   without running the emulator forward, when the routine's inputs are just RAM values already
   sitting in the snapshot. This extends to the disk image itself: a "does the disk hold more content"
-  question can be settled by parsing the raw `.st` file's own bytes (BPB, directory, sector
-  entropy/uniformity) with no emulator run at all (§51).
+  question can be mostly settled by parsing the raw `.st` file's own bytes (BPB, directory, sector
+  entropy/uniformity/byte-distribution) with no emulator run at all (§51/§52) — though it can't
+  positively identify *what kind* of content it is the way a live boot or a readable string can.
+- **When a screen isn't advancing the way you expect (a cracktro, a loading screen), don't infer
+  "does this keypress matter" from trials that also vary the step count** — run a same-snapshot,
+  same-step-budget A/B instead. §52's initial "keypress causes a rewind" read was wrong, from an
+  uncontrolled comparison; the real cause was the intro looping on its own. Now also in the
+  `reverse-engineer-st-game` skill, section 2.
 - **When checking adjacency between inclusive-coordinate rectangles read from game data, a real
   shared boundary is a gap of exactly 1, not an overlap** (§44's classification rule).
 - **A `bpc` armed only at the settled boundary can miss a mechanism that fires during the approach**
@@ -143,9 +163,9 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
 
 ## Next session
 
-The one-disk crack's level-count question is closed (§51) on every axis practical against that
-specific image, but the two-disk original just became available in Dropbox (Resume point above) and
-was never itself tested — that's now the highest-value next step (Open item 1): a real boot of
-Disk 1 + the matching "(Level)" Disk 2 settles the question directly instead of inferentially. The
-low-priority `$ff8201` sweep (item 2) is the fallback if that doesn't pan out. Prompt:
-`/resume cadaver`.
+Open item 1 (live gameplay confirmation of the Disk 2 swap) is the only thing still worth chasing on
+this thread, and only if the `[!]` verified-dump pair turns out to boot cleanly without a long
+cracktro — try that first before sinking more step-budget into any crack-group image. If it also
+stalls, §52's static + Dave's external confirmation is strong enough evidence to just call the
+"is Disk 2 a real levels disk" question settled and move on to the low-priority items (2, 3) or a
+new thread. Prompt: `/resume cadaver`.
