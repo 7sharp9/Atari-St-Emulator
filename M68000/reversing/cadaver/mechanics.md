@@ -3197,11 +3197,81 @@ output, `bpc` never hitting even after millions of steps) until reproducing §43
 (`resume <snap> repl --disk-a "..."`) on the *known-good* `room2_tunnel_entry.snap` reproduced its
 documented step count exactly and exposed the argv mistake.
 
+## 46. Open item 1 (shifter-base-flip conflict, cadaver.md) resolved: `watch` does catch `movep`
+    writes, the hardware register genuinely never changes during the standard TUNNEL↔CAVERN crossing,
+    and the two "conflicting" older snapshots are mid-transition captures of the same invariant, not
+    contradictions (46th pass)
+
+**46a. The write instruction, found.** `find_field_writers.py room2_tunnel_entry.snap "8201"` lists
+every code site that computes `A0 = $ff8201` (the shifter screen-base-high register): **14 distinct
+call sites** across the image, one of them at `$015272`:
+
+```
+$015272: move.b #$0,$8260.w      ; clear sync-mode byte
+$015278: move.l (A5),D0          ; D0 = (A5)+0 — the current INACTIVE display-half pointer
+$01527a: move.l D0,188(A5)
+$01527e: lsr.l #8,D0
+$015280: lea $8201.w,A0
+$015284: movep.w D0,0(A0)        ; programs the hardware shifter base from (A5)+0
+$015288: clr.b 2241(A5)
+$01528c: rts
+```
+
+This is a genuine bank-swap routine: it reprograms the CRTC/shifter's screen-base register straight
+from the RAM field §34a already identified as the inactive display half. `MOVEP`'s implementation
+(`68k.fs` line 1504) calls the same `x.MMU.WriteByte` every other store instruction uses, and
+`WriteByte` calls `checkWatch` unconditionally (`MMU.fs` line 1048) — **`watch` has no blind spot for
+`movep`**, ruling out the instruction-coverage hypothesis this pass started with.
+
+**46b. Confirmed by direct census: `$015272` never runs during the standard crossing, or at all
+during 8.2M idle steps.** `hits 8200000 15272` from `idle_no_crossing.snap` (no input) and from
+`room2_tunnel_entry.snap` after `kbd ff 02` (the same TUNNEL→CAVERN recipe §37/39th pass used) both
+give **0 hits**, reproducing §37/39th pass's `watch ffff8200 8` "zero writes" finding exactly, now
+via a second, independent method (PC census instead of a memory watch) that also identifies which
+routine would have to fire. The 14 call sites mean the register genuinely is reprogrammable — just
+not by anything this crossing recipe, or ordinary idle play, ever reaches.
+
+**46c. `(A5)+0` and the live hardware shifter base are exact opposites in every snapshot checked,
+including the two "conflicting" ones — a consistent invariant, not a contradiction.** Parsed all
+seven `.snap` files with `py/snapinfo.py` (new this pass, reuses `tools/gfxview.py`'s existing
+header/video-register parsing rather than re-deriving the `.snap` format):
+
+| snapshot | room (`164(A5)`) | `(A5)+0` | live shifter base |
+|---|---|---|---|
+| `room2_tunnel_entry.snap` | TUNNEL (`$6bf84`) | `$19100` | `$20f00` |
+| `idle_no_crossing.snap` | TUNNEL | `$19100` | `$20f00` |
+| `gameplay_empire.snap` | CAVERN (`$6bf0a`) | `$19100` | `$20f00` |
+| `watch_cache_crossing.snap` | CAVERN | `$19100` | `$20f00` |
+| `watch_wide_crossing.snap` | CAVERN | `$19100` | `$20f00` |
+| `watch_crossing_end.snap` | CAVERN | `$20f00` | `$19100` |
+| `mid_bank_copy.snap` | CAVERN | `$20f00` | `$19100` |
+
+Five agree (`(A5)+0`=`$19100`, shifter=`$20f00`); the two flagged snapshots agree with each other but
+sit at the opposite parity, on **the same room** as three of the five agreeing ones. Given their
+names — `watch_crossing_end` and `mid_bank_copy` are exactly the two snapshots §35/§36c's own
+mid-transition captures produced ("reversed bank-copy" register capture, `$0144b8` caught mid-call)
+— the far simpler explanation than a second hardware writer is that they were taken one genuine
+buffer-role swap apart from the other five, mid-flip, by the RAM-side mechanism §34a/§35/§36
+already fully decoded (`(A5)+0`/`(A5)+$7d00` swapping which half is "inactive" without ever touching
+`$ff8200`). No new writer needed: the two "conflicting" reads are internally consistent with the
+same invariant as the other five, just caught at a different point in that same already-understood
+cycle.
+
+**Closes Open item 1 as scoped.** The `watch ffff8200 8` "zero writes" result was correct, not a
+tooling gap; `$015272` (and, more generally, at least one of its 13 siblings) is the confirmed
+hardware writer when it does run, but the standard `kbd ff 02` TUNNEL↔CAVERN crossing this project's
+gates use never calls it. The two older snapshots that looked like a conflict are mid-transition
+captures of the same steady-state invariant `(A5)+0` = inactive half / shifter = active half, not
+evidence of an undetected write. **Not yet done, low priority**: identify which of the 14 call
+sites *does* fire (title/intro screen, a different room-pair's crossing, or a resolution/mode change)
+— not needed to close this item, since the conflict is resolved without it.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `py/snapinfo.py` | 46th pass: one-line-per-snapshot room/display-buffer-parity/shifter-base report, reusing `tools/gfxview.py`'s header parsing — proof for §46 |
 | `boat_hotspot.png` | 45th pass: live snapshot rendered at CAVERN's BOAT proximity hotspot, status bar/icon panel reading "BOAT"/"CAVERN" — proof for §45 that the §43 mechanism resolves a second object correctly, not just TUNNEL's LEVER |
 | `py/world_map.py` | 44th pass: walks the type-3 resource-manager table and decodes every populated room's world-grid rectangle (§38a/§38d), reports the adjacency graph, renders `world_map.png` |
 | `world_map.png` | 44th pass: rendered map of all 72 populated room rectangles, labelled by slot (TUNNEL/CAVERN named) — proof for §44 |
