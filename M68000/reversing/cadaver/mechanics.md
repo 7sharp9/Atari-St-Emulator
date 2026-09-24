@@ -2948,6 +2948,41 @@ right (it does select room-shape-dependent screen layout) but wrong to treat it 
 field: there is no second `+4`/`+5`-like pair elsewhere in the record, just this one reused as both
 a bounding box and a table index derived from the box's own dimensions. Open item 1: **closed**.
 
+## 40. Follow-up: `$cd62`'s own `+4` read is dead code, and two more live reads of the same byte
+    confirm it's the width field, not a fourth meaning
+
+**40th pass, continued.** §31d flagged `$00cd50`'s (inside `$00ccfe`'s body — not a separate
+subroutine, a fallthrough label) `move.b 4(A0),D6` at `$00cd62` as a third context reading
+room-record byte `+4`, alongside a `bsr $c5a8` call with `D0=5` (type-5 resource fetch) right after
+it, raising the question of whether that fetch is keyed by byte `+4` too. Traced in full
+(`disassemble.py --linear 0xccfe 700`, `room2_tunnel_entry.snap`): the type-5 fetch's key is
+`D1=1166(A5)` (the current-room slot, §38b), **not** `D6`/byte `+4` — and `D6` itself is never read
+again anywhere between `$cd62` and the routine's `rts` at `$cf80` (confirmed by grep over the full
+linear disassembly of `$ccfe`-`$cf80`: no `D6` reference in that whole span until it's
+unconditionally overwritten for an unrelated local at `$cf1c`, after the only `rts` that could
+return it). **This particular read is dead**: a value computed and discarded, not a third meaning
+for the byte.
+
+The same function's *next* label (`$cfc4`, a second, separate `164(A5)`-rooted routine reached via
+its own `rts` boundary at `$cfc2`) reads room-record byte `+4` **twice more**, and both reads are
+live:
+
+- `$00d09a: move.b 4(A1),D2` → `addq.w #1,D2` (width+1) → `mulu D2,D1` — byte `+4` used as a
+  per-row stride multiplier indexing a table at `84(A5)`, exactly the "width" reading §38d/§39
+  already established (a stride of `width+1` rows is the natural shape for a rectangular grid one
+  wider than its interior).
+- `$00d06a: move.b 4(A1),D6` feeds (`$d236`-`$d252`) into an address computation that does
+  `suba.w D6,A2` against `A2 = 2634(A5) + word[2634(A5) + D1*2]` — **`A2` is seeded from the exact
+  `2634(A5)+` table `$e7b0`'s trailing loop builds from the `$5a10` lookup (§39)**. This is that
+  table's consumer: per-object screen-position placement during room population reads back the
+  per-tile screen-offset `$e7b0` computed at room-entry time, then adjusts it using byte `+4` again
+  directly (not just indirectly through the table).
+
+**Open item 1 (`M68000/sessions/cadaver.md`), the version raised after §39, is closed too**: there
+is no fourth/conflicting meaning for `+4` — every live read across `$e7b0`, `$00cfc4`'s two sites,
+and `$de5e` (§38d) is consistent with "the room's width in tile units," and the one read that looked
+like a candidate for something else (`$cd62`) turns out to compute nothing anyone uses.
+
 ## Files
 
 | File | What |
