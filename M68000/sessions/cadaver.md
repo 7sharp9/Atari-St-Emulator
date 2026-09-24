@@ -1,10 +1,12 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at commit `6419188` (51st pass). Ran the data-only
+Updated 2026-09-24 by the session that ended at commit `24ee5f4` (51st pass). Ran the data-only
 disk-layout check §50's own Open item 1 called for: the one-disk Empire crack's raw `.st` image has
 no FAT12 file table and only 45.6% real data, concentrated in one ~270KB block plus crack-signature
-fragments — no second level's data sits anywhere on this physical disk, closing item 1 alongside
-§48c/§48d/§49/§50's structural and causal negatives.
+fragments — no second level's data sits anywhere on this physical disk, closing item 1 for that
+image alongside §48c/§48d/§49/§50's structural and causal negatives. Same day, Dave corrected an
+earlier mid-session note: the two-disk original and every other crack group are now in Dropbox
+(not gpubox-only as this handoff briefly said) — see Resume point and the new Open item 1 below.
 
 ## Resume point
 
@@ -14,11 +16,12 @@ fragments — no second level's data sits anywhere on this physical disk, closin
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout. The
   two-disk original and the other crack groups (Replicants/ST Amigos, the `[!]` verified dump)
   mentioned in `reversing/cadaver/README.md`'s "Disk images" are **not** currently present in the
-  working tree's `Cadaver/` directory, and **not in Dropbox either** (confirmed by Dave
-  2026-09-24) — the only copy is on `gpubox` at
-  `C:/Users/Dave/Documents/GitHub/Atari-St-Emulator/Cadaver/`, pull with the tar-over-ssh recipe
-  in `CLAUDE.md` if a future pass wants to test the two-disk original directly rather than relying
-  on §51's physical-inspection negative for the one-disk crack.
+  working tree's `Cadaver/` directory, but as of 2026-09-24 **are now in Dropbox**
+  (`~/Library/CloudStorage/Dropbox/Daves/ST games/Cadaver/`, confirmed by Dave — corrects this
+  handoff's own earlier same-day note that they were gpubox-only) — still zipped, not extracted.
+  Disk 2 of each crack group is labelled "(Level)": that's the concrete resource for live-testing
+  the two-disk swap directly, if a future pass wants to check §51's physical-inspection negative
+  (one-disk crack only) against the real two-disk original instead. See [[mac-st-sources]].
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new snapshots this pass —
   §51's disk-layout check reads the `.st` file directly (`py/disk_layout.py`), no emulator run
   needed.
@@ -60,11 +63,20 @@ this session, `mechanics.md` §51**:
 
 ## Open, in priority order
 
-1. **Low priority, the only item left in this spike**: which of the 13 (of 14) `$ff8201`-touching
-   call sites other than the room-crossing path actually fires (title/intro screen, a
-   different room-pair's crossing, a resolution/mode change). Not needed to close anything above;
-   pick up only if there's appetite to keep extending this spike past the "is there a hidden second
-   level" question, which is now closed as far as static/causal/physical checks can take it.
+1. **New as of this update, not yet attempted**: the two-disk original is now available in Dropbox
+   (`~/Library/CloudStorage/Dropbox/Daves/ST games/Cadaver/`, see Resume point above) — Disk 2 of
+   each crack group is labelled "(Level)", strongly suggesting real additional level data exists on
+   it (unlike §51's negative for the one-disk crack, which only speaks to that specific image). This
+   makes §48d/§50/§51's whole "is there a hidden second level" thread testable directly rather than
+   inferentially: extract a Disk 1 + Disk 2 pair (zips need unzipping; likely already raw `.ST`, no
+   MSA conversion per the one-disk release's own precedent), boot Disk 1, and try the "place levels
+   disk"/swap prompt for real with the matching Disk 2 mounted via the REPL's `disk <path>` command
+   (`reversing/cadaver/README.md` "Disk swap"). If it boots into a genuinely different level, that
+   settles the whole question outright; if it errors or loops back to the same 72-room map, that's a
+   second independent negative alongside §51's.
+2. **Low priority**: which of the 13 (of 14) `$ff8201`-touching call sites other than the
+   room-crossing path actually fires (title/intro screen, a different room-pair's crossing, a
+   resolution/mode change). Not needed to close anything above.
 
 ## Known traps
 
@@ -130,7 +142,9 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
 
 ## Next session
 
-Open item 1 (the level-count question) is now closed on every axis this spike found practical to
-test. The only remaining open item (the low-priority `$ff8201` call-site sweep) is not worth picking
-up unless there's appetite to keep extending this spike further — otherwise this workstream is at a
-natural stopping point. Prompt: `/resume cadaver`.
+The one-disk crack's level-count question is closed (§51) on every axis practical against that
+specific image, but the two-disk original just became available in Dropbox (Resume point above) and
+was never itself tested — that's now the highest-value next step (Open item 1): a real boot of
+Disk 1 + the matching "(Level)" Disk 2 settles the question directly instead of inferentially. The
+low-priority `$ff8201` sweep (item 2) is the fallback if that doesn't pan out. Prompt:
+`/resume cadaver`.
