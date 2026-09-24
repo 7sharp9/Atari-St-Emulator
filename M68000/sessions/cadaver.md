@@ -1,24 +1,22 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at commit `c64a463` (50th pass). Ran the causal test
-§49c itself proposed and closed Open item 2 (the five doors' positive id words): `callcap` LOCK
-against a real door id (155) flips the resolved object's own lock flag but leaves the door
-descriptor's own executor-tested flag byte untouched — doubly negative with §49c's static caller
-search. Dave pushed back on §48c/§48d's "single reachable level" reading (below); that pivot is now
-reframed as an open item instead of a settled negative.
+Updated 2026-09-24 by the session that ended at commit `6419188` (51st pass). Ran the data-only
+disk-layout check §50's own Open item 1 called for: the one-disk Empire crack's raw `.st` image has
+no FAT12 file table and only 45.6% real data, concentrated in one ~270KB block plus crack-signature
+fragments — no second level's data sits anywhere on this physical disk, closing item 1 alongside
+§48c/§48d/§49/§50's structural and causal negatives.
 
 ## Resume point
 
-- Last commit of this workstream: `c64a463` "cadaver: causal callcap test confirms door id word 155
-  does not touch the door-transition executor's flag byte (50th pass, §50)".
+- Last commit of this workstream: `6419188` "cadaver: raw disk-layout inspection finds no
+  second-level data on the one-disk Empire crack (51st pass, §51)".
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout. The
   two-disk original mentioned in earlier handoffs is **not** currently present in the working tree's
-  `Cadaver/` directory (checked this pass, only the one-disk image is there) — do not assume it is
-  available without checking again.
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new anchor snapshots this
-  pass — the causal test ran live against `room2_tunnel_entry.snap` (§50), `callcap` restores memory
-  after reporting its diff so the snapshot itself is untouched.
+  `Cadaver/` directory — check again before assuming it is available.
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new snapshots this pass —
+  §51's disk-layout check reads the `.st` file directly (`py/disk_layout.py`), no emulator run
+  needed.
 - Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry) or `gameplay_empire.snap` (CAVERN start
   tile) depending on which room's mechanism you're testing next. **Do not use `$5a99` to detect
   "crossing done"** — use `(A5)+1166` (§38b) instead. **Always pass `--disk-a "Cadaver...st"` and use
@@ -31,38 +29,37 @@ reframed as an open item instead of a settled negative.
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
-`mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-49 (movement collision/proximity mechanism, the
+`mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-50 (movement collision/proximity mechanism, the
 icon-panel write chain, the full 72-room world-map/adjacency graph, the door-connectivity walk with
-zero teleport doors, the world-map-scope question as settled as static analysis gets, the LOCK/UNLOCK
-mechanism structurally disjoint from the door-transition flag, all fully closed). **New this session,
-`mechanics.md` §50**:
+zero teleport doors, the LOCK/UNLOCK mechanism structurally disjoint from the door-transition flag,
+the five doors' positive id words causally inert on the transition path, all fully closed). **New
+this session, `mechanics.md` §51**:
 
-- **§50.** Causal (not just structural) proof that the five doors' positive id words do nothing on
-  the door-transition path: `callcap` LOCK directly against id `155` (a real id a door descriptor
-  genuinely points to, resolved by `door_id_words.py`, §49b) sets bit 2 of that object's own `+15`
-  byte — matching §24c's id-144 precedent exactly — but door `0x20`'s own descriptor bytes at `$6d45a`
-  (owner room 19), including the `+4` byte `$007280`'s `btst #0,4(A0)` tests, read identically before
-  and after. Combined with §49c's exhaustive static caller search, Open item 1 (now closed) has no
-  surviving mechanism, structural or causal, connecting the id word to anything.
+- **§51.** Raw disk-layout inspection of the one-disk Empire `.st` image (`py/disk_layout.py`): the
+  root directory is 224 bytes of `0xE5` with no live FAT12 entries — a non-filesystem, self-booting
+  disk like the Medway Boys compilation's Disk B, not one where a second level could sit as a
+  separately-named file. Sector-by-sector classification finds only 45.6% of the 800KB image is real
+  (non-uniform) data: one dominant ~270KB contiguous block (sectors 400-936, almost certainly the
+  already-decoded 72-room map/graphics/resource tables) plus a few small early chunks and six tiny
+  fragments near the disk's end that decode to crack-group signature text ("THE MARVELLOUS...",
+  "THE FALLEN ANGELS", "NOKTURNAL", "PRESENT:"), not game data. With no depacker found anywhere in
+  this spike's disassembly, there is no live content-expansion mechanism that could be hiding a
+  second level in a smaller packed blob. Combined with §48c/§48d's static loaded-image caller-search
+  negative (no code path reaches the level-reload routine `$00b1e0`) and §49/§50's structural and
+  causal proof that the door descriptors' id words don't gate a level swap, **Open item 1 is now
+  closed on every axis this spike can test**: static (loaded code), causal (id-word behaviour), and
+  physical (disk contents). It remains not airtight — the erase-pattern classification wasn't
+  byte-verified against a known ST format-fill value, and a byte-identical "blank" sector that still
+  decodes to something is unlikely but unchecked — but there is no further concrete, data-only next
+  step left to try against this specific question.
 
 ## Open, in priority order
 
-1. **Does the one-disk crack pack more than the 72-room map already found (a second level), reached
-   some way §48c/§48d's static search didn't find?** §48c/§48d's own reading (three independent
-   static techniques find zero callers of the level-reload code at `$00b1e0`) concluded the one-disk
-   build most likely has only the 72-room map reachable, with a second level needing the two-disk
-   original's disk-swap path. **Dave disagrees**: his expectation is that the one-disk crack has been
-   repacked to fit all 5 levels on one disk, not trimmed to one. This is now a genuine open
-   disagreement, not a settled negative — the static search proved "no *currently loaded* code calls
-   `$00b1e0`", which doesn't rule out a level-select mechanism that swaps in code/data at runtime
-   (self-modifying, or loaded from elsewhere on the disk) that this spike hasn't looked for.
-   **Concrete next step**: inspect the one-disk `.st` image directly (sector/file listing, e.g. via
-   `tools/`'s disk-image tools per `DEVELOPING.md`) for level-tagged assets or a second set of
-   room/object data beyond what the 72-room world-map (§38a/§44) already accounts for, rather than
-   relying only on a loaded-image caller search — a data-only check, no live stepping needed first.
-2. **Low priority, not needed to close anything above**: which of the other 13 `$ff8201`-touching
-   call sites actually fires (title/intro screen, a different room-pair's crossing, a resolution/mode
-   change).
+1. **Low priority, the only item left in this spike**: which of the 13 (of 14) `$ff8201`-touching
+   call sites other than the room-crossing path actually fires (title/intro screen, a
+   different room-pair's crossing, a resolution/mode change). Not needed to close anything above;
+   pick up only if there's appetite to keep extending this spike past the "is there a hidden second
+   level" question, which is now closed as far as static/causal/physical checks can take it.
 
 ## Known traps
 
@@ -89,7 +86,9 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
   See §40's `$cd62` case for the worked example.
 - **A live snapshot's static memory alone can settle a "what does routine X compute" question**,
   without running the emulator forward, when the routine's inputs are just RAM values already
-  sitting in the snapshot.
+  sitting in the snapshot. This extends to the disk image itself: a "does the disk hold more content"
+  question can be settled by parsing the raw `.st` file's own bytes (BPB, directory, sector
+  entropy/uniformity) with no emulator run at all (§51).
 - **When checking adjacency between inclusive-coordinate rectangles read from game data, a real
   shared boundary is a gap of exactly 1, not an overlap** (§44's classification rule).
 - **A `bpc` armed only at the settled boundary can miss a mechanism that fires during the approach**
@@ -120,12 +119,13 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
   resuming one (48th pass's §47c mistake, caught only on a later re-read; now in `CLAUDE.md`).
 - **A "no caller found in the loaded image" static negative is not the same as "the mechanism is
   unreachable"** — it only rules out a plain `bsr`/`jsr`/literal-address/displacement-table caller
-  already resident; a runtime-loaded or self-modifying path stays untested (50th pass, item 1 above,
-  raised by Dave against §48c/§48d's stronger "single reachable level" phrasing).
+  already resident; a runtime-loaded or self-modifying path stays untested until checked some other
+  way (50th pass; §51 supplied that other way for the specific "second level" question by checking
+  the disk's own physical contents directly).
 
 ## Next session
 
-Item 1 (whether the one-disk crack contains more than one level's worth of data) has a concrete,
-data-only next step: inspect the disk image's own sectors/files for a second level's assets rather
-than relying on the loaded-code caller search alone. If that turns up nothing, item 2 (the low-value
-`$ff8201` call-site sweep) is the only remaining open item in this spike. Prompt: `/resume cadaver`.
+Open item 1 (the level-count question) is now closed on every axis this spike found practical to
+test. The only remaining open item (the low-priority `$ff8201` call-site sweep) is not worth picking
+up unless there's appetite to keep extending this spike further — otherwise this workstream is at a
+natural stopping point. Prompt: `/resume cadaver`.
