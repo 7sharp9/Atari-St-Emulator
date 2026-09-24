@@ -1,14 +1,17 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at this commit (41st pass). Closed the standing open
-item on whether `$014a90`/`$014b28` (the room-crossing icon/status-panel redraw, §32b/§33) is also
-what paints the LEVER-specific icon pair on a same-room proximity change — it is not: zero hits
-across a full proximity approach that visibly changed the icon panel and status text.
+Updated 2026-09-24 by the session that ended at this commit (42nd pass). Traced the LEVER-proximity
+icon-panel write end to end: a generic nearby-object hint scan (`$009440`/`$00946a`) builds the icon
+list (`2303(A5)`/`$5ff6`), the same field driving the "LEVER" status-bar name; an input-driven
+diff-redraw (`$00958e`→`$00bbd4`/`$00bca0`) then paints only the changed slots through the same
+shared masked-blit primitive `$014a90` also uses for its own, unrelated room-crossing repaint.
+Closes the open item the 41st pass left standing.
 
 ## Resume point
 
 - Last commit of this workstream: `85cf7f9` "cadaver: close open item 1 - $014a90/$014b28 never fire
-  for a same-room LEVER-proximity icon change (41st pass)".
+  for a same-room LEVER-proximity icon change (41st pass)". This pass's own findings (`mechanics.md`
+  §42) are not yet committed — see "Uncommitted work left behind".
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). New this pass:
@@ -25,33 +28,36 @@ across a full proximity approach that visibly changed the icon panel and status 
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
-`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36, 37, 38, 39, 40 (the `+4`/`+5` width/height
-thread, fully closed). **New this session, `mechanics.md` §41**:
+`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36, 37, 38, 39, 40, 41 (the `+4`/`+5`
+width/height thread, and `$014a90`'s room-crossing-only scope, both fully closed). **New this
+session, `mechanics.md` §42**:
 
-- **§41.** Rebuilt the missing `room2_lever_boundary.snap` and re-ran the LEVER-proximity approach
-  with `bpc 014a90 20 1500000` armed for the *whole* Left-hold approach (not just the settled
-  boundary, which is all §32b/§33 ever tested). Zero hits over the full 1.5M-step budget, despite
-  the icon panel and status-bar text visibly changing (confirmed by `snap_render.py` + a pixel diff
-  of the bottom UI strip against the idle `room2_tunnel_entry.snap` render). Settles that
-  `$014a90`/`$014b28` is a room-crossing-only redraw, never invoked by a same-room proximity change
-  — closes the original open item cleanly (as "no", not "untested"). The real proximity-icon writer
-  is a new, narrower, still-open question (see below).
+- **§42.** Traced the LEVER-proximity icon-panel write end to end via `watch` (restricted to the
+  icon-box pixel bbox found by a raw-pixel diff of the idle vs. proximity renders) plus `bpc`/`bt`
+  and a `hits` census of candidate call sites. The actual chain: a generic nearby-object hint scan
+  (`$009440`, walks a caller-supplied object-index list, skips objects with bit 6 of `12(A4)` set)
+  feeds `$00946a`, which sets the icon-panel table pointer, updates the status-bar name-id
+  (`10(A4)` vs `1222(A5)` — **the same field driving "LEVER"/"TUNNEL" text**, confirming §7's paired
+  behaviour is one write path) and builds the icon-index list (`2303(A5)`/`$5ff6`) from the object's
+  type bits plus a verb→icon lookup table at `$5c1c`. An input-event dispatcher (`$00958e`, gated on
+  `2499(A5)` bit 1) then calls a diff-based redraw (`$00bbd4`/`$00bca0`) that repaints only the
+  changed panel slots through the *same* shared masked-blit primitive (`$014d7a`→`$0150e2`) that
+  `$014a90` also uses for its own, unrelated room-crossing repaint. Confirmed the actual RAM content
+  change directly: `2303(A5)` goes `1`→`3` and `$5ff6[0..2]` goes `ff ff ff`→`07 0b 06` between
+  `room2_tunnel_entry.snap` and `room2_lever_boundary_new.snap`. Closes the open item cleanly.
 
 ## Open, in priority order
 
-1. **What actually paints the LEVER-specific icon pair on proximity** (new, from §41's negative).
-   §41's pixel diff shows the change lands in the bottom-left icon-box region, distinct from
-   `$014a90`'s own confirmed target (272,143) on the right/status side — so this is very likely a
-   *different* fixed-position blit, keyed off whatever proximity-detection field the game already
-   uses to set the "LEVER" name-hotspot (see `mechanics.md` §7/§14's collision/obstacle-check
-   algorithm, `$008870`, for where that detection already lives). Proof recipe: `watch` the
-   bottom-left icon-box screen memory region (need its exact screen offset first — diff the two
-   renders' raw pixel rows, not just the PNG bbox) across a fresh Left-hold approach from
-   `room2_tunnel_entry.snap`, and read off the writer PC(s).
+1. **What builds the object-index list fed to `$009440`'s `(A0)`** (new, narrower than §42's
+   question — the actual room-proximity/distance test that decides an object like LEVER is "nearby"
+   in the first place, as opposed to what happens once it's been decided). Likely near the
+   collision/obstacle-check code at `$008870` (§7/§14) — not traced this pass. Proof recipe: `hits`
+   or `bpc` on `$009440` itself across the same Left-hold approach to catch its caller and read off
+   what populates `(A0)`'s object list.
 2. What `$55b6` contains for a *different* object's proximity transition (e.g. CAVERN's BOAT,
    11th pass) — untested; would show whether the (now-ruled-out) `$014a90` mechanism's fixed source
-   is reused identically for every object or varies, though given item 1's finding this is lower
-   priority than finding the real icon writer.
+   is reused identically for every object or varies. Lower priority than item 1 now that the real
+   icon-panel writer (§42) is proven.
 3. Reconcile the shifter-base-flip conflict: 4 independent checks (39th pass) never saw the base
    flip in one `kbd ff 02` crossing (`watch ffff8200 8` logged zero writes), but two older scratch
    snapshots (`watch_crossing_end.snap`, `mid_bank_copy.snap`) read shifter base `$19100` via the
@@ -61,9 +67,9 @@ thread, fully closed). **New this session, `mechanics.md` §41**:
 5. Walk the full type-3 room table (72 populated slots) and decode every room's bounding-box
    rectangle (§38d) to build the complete world map / room-adjacency graph implied by the now-proven
    spatial resolver (§39) — would settle "how do all ~72 rooms connect" beyond the one TUNNEL/CAVERN
-   pair checked so far. This remains the highest-value big-ticket item once items 1-2 (both
-   proximity-icon-panel questions) are settled: the width/height field, its `$5a10`-derived screen
-   layout, and the spatial door resolver are all proven mechanisms.
+   pair checked so far. Remains the highest-value big-ticket item once the proximity-icon-panel
+   thread (items 1-2) is settled: the width/height field, its `$5a10`-derived screen layout, and the
+   spatial door resolver are all proven mechanisms.
 
 ## Known traps
 
@@ -98,12 +104,27 @@ movement is joystick port 1, player = sprite slot 0, use `tools/find_ram_callers
   `bpc` steps — issue them **before** the step/breakpoint command that should consume them, not
   after; queuing input after a `bpc` call wastes that call's whole step budget on the pre-input
   state (hit this pass rebuilding `room2_lever_boundary_new.snap`).
+- **`watch`'s log reports the exact address each write landed at, so a "coarse" watch range
+  (covering both live screen-buffer candidates, or a whole UI strip wider than the true target) is
+  fine to arm** — filter the resulting hit log by exact address/PC afterward rather than trying to
+  pre-compute a minimal contiguous byte range. A tight rectangular pixel bbox is *not* contiguous in
+  planar screen memory once it spans more than one row (each row is a fixed 160-byte stride with
+  unrelated columns in between), so don't try to watch "just the bbox" as one range spanning
+  multiple rows — watch the enclosing full-row range (or the whole screen) and filter by
+  `(addr - base) % row_bytes` afterward instead (§42).
+- **A continuously-firing PC group in a `watch` log (thousands of hits) is very likely the known
+  full-buffer copy/flip routine, not new content** — group hits by PC first and prioritise the rare
+  groups (tens of hits, not thousands) as the actual event-driven writer (§42 found the real icon
+  writer this way, buried under the `$014696`-family buffer copy's much higher hit count).
+- `bt` with no depth argument defaults to depth 8 and reliably crashes the REPL process on this
+  game (confirmed again this pass) — always pass `bt 1` (or just read the return address off the
+  `bpc` hit's own register dump / stack) when only the immediate caller is needed.
 
 ## Next session
 
-Start with Open item 1: find the LEVER icon-panel's real writer PC via a targeted `watch` on the
-bottom-left icon-box screen region (get its exact offset from a raw pixel-row diff first, not just
-the PNG bbox) across a fresh Left-hold approach from `room2_tunnel_entry.snap`. Item 5 (decode all
-72 rooms' rectangles into a world map) remains the higher-value target once the proximity-icon
-questions (items 1-2) are closed, since the spatial resolver and lookup tables are both proven
-mechanisms now. Prompt: `/resume cadaver`.
+Start with the new Open item 1: find what builds the object-index list `$009440` scans (the real
+room-proximity/distance test), likely near `$008870`'s collision/obstacle-check code (§7/§14) — a
+`bpc`/`hits` on `$009440` itself during the same Left-hold approach from `room2_tunnel_entry.snap`
+should catch its caller. Item 5 (decode all 72 rooms' rectangles into a world map) remains the
+higher-value target once the proximity-icon-panel thread (items 1-2) is closed, since the spatial
+resolver and lookup tables are both proven mechanisms now. Prompt: `/resume cadaver`.

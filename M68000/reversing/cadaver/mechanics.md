@@ -3011,6 +3011,89 @@ is a still-unidentified, separate write path — a new, narrower open item than 
 asked only whether `$014a90` was involved; it settles that as no, cleanly, rather than leaving it
 untested).
 
+## 42. The real LEVER-proximity icon-panel writer traced end to end: a generic nearby-object hint
+    scan feeds a diff-based icon-panel redraw, sharing its trigger with the status-bar name field
+    (42nd pass)
+
+Picked up §41's open item directly. A raw pixel diff of `room2_tunnel_entry.snap` (idle) against
+`room2_lever_boundary_new.snap` (`tools/snap_render.py`'s own base/rez/palette decode, done by hand
+rather than via the PNGs) narrows the change to `x[10,49] y[155,181]` — the icon-box row, not the
+whole screen (a first pass at this diff over the *whole* frame returned a 280x125 bbox, because the
+player sprite itself also moved between the two states; restricting to the bottom-left UI region
+before diffing was necessary).
+
+**Finding the writer.** Armed `watch` over both possible screen-buffer bases (`$019100`/`$020f00` —
+this game flips which is live, §10) restricted to that pixel bbox's byte range, then replayed the
+13th pass's Left-hold approach fresh from `room2_tunnel_entry.snap`. After excluding the
+already-known, continuously-running full-buffer copy family (`$014696`-`$0148ee`, the same
+chunk-reversing block-copy documented in §33b/§35-36 and already ruled out as a content-authoring
+site), one PC group stood out by being rare instead of continuous: `$015176`/`$01517e`/`$01518c`/
+`$015192`, 56 hits each over the whole approach, writing exactly at row 155 col 0 and row 155-158
+col 16 — i.e. a 32px-wide, ~14-row glyph blit landing precisely inside the diff bbox.
+
+Disassembly around `$0150e2`-`$015198` is the **same shared masked/rotated-blit primitive already
+documented at `$014ee4`** (rotate-by-`D1`, AND/OR/NOT composite, `$5870.l`-indexed shift-mask
+table) — not a new blit routine, just a different call site reached via the dispatcher at
+`$014d64`/`$014d7a` (`cmpi.b #$1,D6` / `beq $150e2` or `$15124`, the same `D6`-selected-variant
+pattern as `$014a90`'s own `D6==2` path). `bpc 150e2 1 1600000` (first hit only) landed at step
+192,518 with `D6=1 D7=$e(14) A0=$00000a7e` and a return address of `$0000bcca`, i.e. called from
+inside `$00bca0`.
+
+**`$00bca0` is a generic "draw icon glyph in panel slot" routine**: `A0 = 332(A5) + iconIndex*112`
+(a 112-byte = 32×14px glyph per icon, `D0` selects which), `A1 = $5fbe + slot*8` (a fixed
+screen-position table indexed by panel-slot number, `D1`), then falls into the shared blit
+(`jsr $14d7a` with `D6=1,D7=14`). Its two static callers, `$00bc3e` and `$00bc72`, live inside a
+larger function at `$00bbcc`/`$00bbd4` that is a **diff-based icon-panel redraw**: it walks
+`2303(A5)` (an icon count, 0-6/7 per the `SEVEN OR OVER ICONS` cap, §7) over a table pointed to by
+`456(A5)` (statically always `$5ff6`, `$00946a`), comparing each byte against a cached copy at a
+second fixed table (`$6000`) and calling `$00bca0` only for the slots whose value actually changed
+— exactly the shape that would make `$014a90`'s always-redraw-on-crossing behaviour a poor model
+for this: this path only touches the screen when the *content* changes, matching §41's negative on
+`bpc 014a90`.
+
+**Who calls the redraw, and when.** A `hits` census of the redraw's few call sites during the same
+approach (`$00bbcc`, `$00bbd4`, and every `bsr $bbd4`/`bsr $bbcc` site found by grepping the
+whole-image listing) showed only `$00958e` firing, 3 times, first at step 192,475 — 43 steps before
+the glyph blit, i.e. this is the caller. `$00958e` sits inside an input/event dispatcher block
+(`$009542`-`$0095ea`) gated on `btst #1,2499(A5)`: whenever that bit is clear, the dispatcher
+refreshes the icon panel. This runs off input-processing, not off a room-transition hook, which is
+why `$014a90` (a room-crossing-only repaint) never fires for it.
+
+**What actually changes.** Reading `2303(A5)` and the table at `$5ff6` directly out of both `.snap`
+files (no emulator run needed — a live snapshot's static memory answers this, per the discipline
+note below) settles the content question outright:
+
+| Field | `room2_tunnel_entry.snap` (idle) | `room2_lever_boundary_new.snap` (LEVER proximity) |
+|---|---|---|
+| `2303(A5)` (icon count) | `1` | `3` |
+| `$5ff6[0..2]` (icon indices) | `ff ff ff` (empty/sentinel) | `07 0b 06` |
+
+Two new icon glyphs (indices `$07` and `$0b`) appear, plus the always-present trailing `$06` — a
+real, in-RAM content change, not just a coincidental redraw of unchanged data.
+
+**Tracing to the actual proximity check.** `2303(A5)`/`$5ff6` are built by a function at `$009440`:
+it walks a caller-supplied list of nearby-object indices at `(A0)`, resolves each to an object
+record `A4` (via `56(A5)` → `+8(A6)` → `+6(A4)`, the same object-table indirection used elsewhere in
+this game, §7/§14), and skips any object whose record has bit 6 of byte `12(A4)` set. For the first
+eligible object it falls into `$00946a`: sets `456(A5) := $5ff6`, compares the object's name-id
+`10(A4)` against the currently-displayed name `1222(A5)` (**this is the same field that drives the
+"LEVER"/"TUNNEL" status-bar text**, confirming §7's paired behaviour — name text and icon panel —
+really is one write path, not two independent ones), then (`$0094be`-`$00953e`) appends a sequence
+of fixed icon-index bytes into the table, each conditioned on a different bit/field of the object
+record (`12`, `15`/`22`/`23`/`29(A4)`, one indirected through a verb→icon lookup table at `$5c1c`
+keyed by `23(A4)`), always finishing with icon `$06`, and stores the resulting count into
+`2303(A5)`.
+
+**This closes the open item as originally scoped** (what paints the LEVER-specific icon pair) with
+a full call chain, not just a negative: `$009440`'s nearby-object scan → `$00946a`'s icon-set
+builder (`2303(A5)`/`$5ff6`) → the input-driven diff redraw (`$00958e` → `$00bbd4`/`$00bca0`) → the
+shared masked-blit primitive (`$014d7a` → `$0150e2`, the same primitive `$014a90` also uses for its
+own, unrelated room-crossing repaint).
+
+**Narrower item still open**: what builds the object-index list fed to `$009440`'s `(A0)` — the
+actual room-proximity/distance test that decides LEVER is "nearby" in the first place. Likely near
+the collision/obstacle-check code at `$008870` (§7/§14), not traced this pass.
+
 ## Files
 
 | File | What |
