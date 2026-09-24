@@ -1,6 +1,7 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at commit `93d667e` (51st pass). Ran the data-only
+Updated 2026-09-24 by the session that ended at commit `6419188` (51st pass, §51's disk-layout
+inspection; later same-day commits on this file only fix a self-introduced Dropbox-vs-gpubox typo). Ran the data-only
 disk-layout check §50's own Open item 1 called for: the one-disk Empire crack's raw `.st` image has
 no FAT12 file table and only 45.6% real data, concentrated in one ~270KB block plus crack-signature
 fragments — no second level's data sits anywhere on this physical disk, closing item 1 for that
@@ -10,9 +11,8 @@ earlier mid-session note: the two-disk original and every other crack group are 
 
 ## Resume point
 
-- Last commit of this workstream: `93d667e` "sessions: cadaver handoff — fix stale commit hash
-  references" (51st pass; the disk-layout inspection itself is `6419188`, §51; the Dropbox
-  correction is `b073f0e`).
+- Last commit of this workstream: `6419188` "cadaver: raw disk-layout inspection finds no
+  second-level data on the one-disk Empire crack (51st pass, §51)".
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout. The
   two-disk original and the other crack groups (Replicants/ST Amigos, the `[!]` verified dump)
