@@ -2983,11 +2983,40 @@ is no fourth/conflicting meaning for `+4` — every live read across `$e7b0`, `$
 and `$de5e` (§38d) is consistent with "the room's width in tile units," and the one read that looked
 like a candidate for something else (`$cd62`) turns out to compute nothing anyone uses.
 
+## 41. Open item 1 (cadaver.md): `$014a90`/`$014b28` do not fire for the LEVER-proximity icon-panel
+    change — it's a genuinely separate mechanism from the room-crossing redraw (41st pass)
+
+`room2_lever_boundary.snap` was missing from this Mac checkout's scratchpad (only present on the
+machine that made it — the known gpubox/per-machine scratchpad split), so rebuilt it fresh from
+`room2_tunnel_entry.snap` using the 13th pass's own recipe: hold Left (`kbd ff 04`) from the tunnel
+entry. Before injecting the hold, set `bpc 014a90 20 1500000` (stop after up to 20 hits or 1.5M
+steps, whichever first) so the breakpoint's step budget covers the whole approach, not just the
+final settled position — §32b/§33 had only ever caught this address during an actual *room*
+transition, never during a pure proximity change within one room.
+
+**Result: zero hits.** `bpc` gave up after the full 1,500,000-step budget having seen 0/20 hits of
+`$00014a90`, i.e. that address is never reached at all while walking from the room-entry position
+into the LEVER hotspot. `snap_render.py` on the resulting snapshot (`room2_lever_boundary_new.snap`)
+confirms the approach genuinely reached the boundary — status bar reads "LEVER"/"TUNNEL" (matching
+`room2_lever_boundary.png`'s known appearance) and the icon panel's left-hand box row shows the
+same two lit icons the 13th pass documented, both absent from the idle `room2_tunnel_entry.snap`
+render. A pixel diff of the bottom UI strip between the two renders confirms real, visible change in
+both the icon-box region and the status-text region.
+
+**This settles the open question `$014a90`'s own §33b left standing**: whatever paints the
+LEVER-specific icon pair when the player enters proximity, it is not `$014a90`/`$014b28` — that
+address is confirmed (now by a second, independent live test) to be a room-crossing-only redraw,
+never invoked by a same-room proximity change. The icon-panel content update for object proximity
+is a still-unidentified, separate write path — a new, narrower open item than the original (which
+asked only whether `$014a90` was involved; it settles that as no, cleanly, rather than leaving it
+untested).
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `room2_lever_boundary_new.snap` | 41st pass: live snapshot rebuilt from `room2_tunnel_entry.snap` (13th pass's Left-hold recipe) after `room2_lever_boundary.snap` was found missing from this Mac's scratchpad — status bar "LEVER"/"TUNNEL", icon panel showing the lever's icon pair, matching the original 13th-pass screenshot; resume point for further proximity-icon-panel work; untracked like the other `.snap` resume points |
 | `burst_end.snap` | 39th pass: live snapshot at the end of `$0150b4`'s room-paint burst (step ≈1,058,885 of the `kbd ff 02` crossing from `room2_tunnel_entry.snap`) — both display halves already ≈98% match the CAVERN reference here (§37c); untracked like the other `.snap` resume points |
 | `watch_wide_crossing.snap` | 39th pass: end state after the same crossing run to completion (8.2M steps), taken alongside a `watch 19100 64256` log spanning both display halves at once (§37a); untracked |
 | `py/decode_backbuffer.py` | 36th pass: decodes `120(A5)`'s buffer into a normal raster by reversing `$0144b8`'s chunk order; verified byte-exact (0/32000 diff) against `room2_tunnel_entry.snap`. Same algorithm applies to the reversed bank-copy direction found in §36 (source/dest swapped) |
