@@ -3094,6 +3094,52 @@ own, unrelated room-crossing repaint).
 actual room-proximity/distance test that decides LEVER is "nearby" in the first place. Likely near
 the collision/obstacle-check code at `$008870` (§7/§14), not traced this pass.
 
+## 43. Open item 1 (§42) closed: `$008870` is both the movement collision test and the builder of
+    `$009440`'s nearby-object list, via a per-room bounding-box overlap scan (43rd pass)
+
+A `bpc 009440 1 250000` armed fresh from `room2_tunnel_entry.snap` (after the same `kbd ff 04`
+Left-hold input) hit at step 189,923 with `A0=$00038036`; its one-deep backtrace (return address
+`$00007376`) lands inside the per-frame input/movement handler at `$007368`-`$0073da`. Reading that
+block in full: `bsr $77fe` computes a facing-based (dx,dy) into D0/D1 (via the direction table at
+`$5bea`, indexed by the facing byte `2273(A5)`, negated when `2340(A5)` is set), then
+`jsr $008870.l` is called with D0,D1 = the *candidate* new position and D2 carried from the
+direction-table's second byte (an elevation/layer value). Its return status branches three ways:
+`bmi` (blocked) and `beq` (a second, narrower case) both skip past the icon-panel path entirely;
+only the fallthrough (candidate move accepted) does `movea.l 92(A5),A0 ; jsr $009440.l` — confirming
+`92(A5)` is the fixed global holding the object-index-list pointer that both routines share, exactly
+the pointer read at the live `bpc` hit.
+
+**`$008870` builds that list itself, in the same call.** Full disassembly (`$008870`-`$008ac0`)
+shows: `A4 := 92(A5)` (the list header), an initial `move.w D6,(A3)+` with `D6=0` zeroing the
+header, then a series of room-boundary bounds checks against the candidate position (D0,D1) and a
+per-quadrant obstruction-rectangle table (fields `2222`-`2237(A5)`, the same 4-corner-box fields
+documented at line 1790) via a `jmp (A0)` computed jump keyed off a per-room table at `140(A5)`. If
+any of these reject the candidate, the routine takes the "blocked" exit (`$88d8`/`$8ac2`) and
+overwrites the list header with a status/blocker encoding instead of a count — this path is exactly
+what the caller's `bmi`/`beq` branches catch, so it never reaches `$009440`.
+
+Once the candidate position clears the boundary and obstruction checks, the routine falls into a
+loop (`$89b2`-`$8ab6`, `dbf D7` over `D7 = 1152(A5)` — the room's live object count) over the room's
+own object-placement table at `A6 = 56(A5)` (stride `$46` = 70 bytes, the same table/stride used
+elsewhere for object iteration, §7/§14). For each entry it tests the candidate position's margin box
+(`D3,D4,D5`, built from D0-D2 against the *room record*'s own offset fields `16/18/20(A0)`) against
+that object's bounding rectangle (`0-3(A6)`) and a layer/elevation field (`4(A6)` vs D2); a match
+appends the object-placement pointer `10(A6)` into the list (`move.l A2,(A3)+` with `A2 := 10(A6)`)
+and increments the header's count byte (`addq.b #1,(A4)`), also flagging the nearest match (`bset
+#7,-4(A3)` when the running distance byte `D5` beats the previous entries' spacing). This is the
+"caller-supplied list" `$009440` walks: `move.b (A0),D7` reads that same header count, then
+`movea.l (A0)+,A6` reads each `10(A6)`-sourced placement pointer in turn and resolves it to the
+final object record via `56(A5) → +8(A6) → +6`, matching §42's description exactly.
+
+**This closes the item as scoped.** The "room-proximity/distance test" is a bounding-box overlap
+test between the player's candidate movement position (with a small margin) and each room object's
+own rectangle, run once per frame as a side effect of the ordinary movement-collision check at
+`$008870` — there is no separate distance/proximity routine to find; proximity here *is* the same
+rectangle test the game already uses to decide whether a step is blocked. Proof: live `bpc`/`bt`
+capture confirming the call site and the `92(A5)` pointer identity (above), plus full disassembly of
+both routines showing the header/count/pointer layout agree byte-for-byte across the write side
+(`$008870`) and the read side (`$009440`).
+
 ## Files
 
 | File | What |
