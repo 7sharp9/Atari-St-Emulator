@@ -160,13 +160,20 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   200 (`$c8`) that looks like the sound/music driver's command buffer), `EntityScriptDispatch`
   (`$15c70`, see below), and the screen-flip chain (`$d792`→`$d856`→`ScreenFlip_AndCompositeSprites`
   `$14d64`).
-- **Screen buffers**: the running game keeps a small struct at global `A5=$18152` whose field 0 and
-  field +120 are two 320×200×4bpp (32000-byte) buffer pointers that swap roles across frames —
-  observed as `$19100`/`$20f00`/`$2de08` in different snapshots (`ScreenBufferA/B`,
-  `CompositeBackBuffer`). `ScreenFlip_ScanlineCopy` (`$144b8`) is a fully-unrolled `movem.l`
-  copy loop with a `trap #4`-based mid-loop yield (`$90.w` vector) — splits the ~32KB copy across
-  several VBLs so it never tears. `ScreenFlip_AndCompositeSprites` (`$14d64`) does the same kind of
-  copy but with an `and.l (a1),Dn / or.l Dn,Dn / move.l Dn,(a1)+` masked-composite inner loop
+- **Screen buffers**: the running game keeps a small struct at global `A5=$18152`. `(A5)+0` and
+  `(A5)+$7d00` (32000) are the two halves of *one* 64000-byte double-buffer feeding the shifter
+  directly (observed as `$19100`/`$20f00` in one snapshot) — **not** a two-way role-swap with
+  `120(A5)` as previously written here (corrected 35th/36th pass, `mechanics.md` §34a-35;
+  `CompositeBackBuffer` below is the old, wrong name for what `120(A5)` actually is). `120(A5)`
+  (observed as `$2de08`) is a **separate, third resident buffer** — the actual pre-flip room frame.
+  `ScreenFlip_ScanlineCopy` (`$144b8`) is a fully-unrolled `movem.l` copy loop (571×56-byte chunks
+  plus one 24-byte remainder chunk, `$5a99`-gated) with a `trap #4`-based mid-loop yield (`$90.w`
+  vector) that splits the ~32KB copy across several VBLs so it never tears — but the copy is not a
+  straight memcpy: forward-read/backward-write `movem` reverses **chunk order** end-to-end, so
+  `120(A5)` stores the frame byte-chunk-reversed relative to normal raster order (fully decoded,
+  byte-exact, `mechanics.md` §35; `reversing/cadaver/py/decode_backbuffer.py`).
+  `ScreenFlip_AndCompositeSprites` (`$14d64`) does the same kind of copy but with an
+  `and.l (a1),Dn / or.l Dn,Dn / move.l Dn,(a1)+` masked-composite inner loop
   (`SpriteCompositeInner_AndOrMaskLoop` at `$14f24`, 4361 word-writes across 141 calls) — sprites
   (cursor, held object, and presumably creatures once one exists) are masked onto the frame as part
   of the flip, not baked into the room background buffer.

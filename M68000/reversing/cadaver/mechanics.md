@@ -2583,11 +2583,68 @@ frame(s) before this snapshot's idle point to see whether `120(A5)`'s content ch
 even without a room crossing (would mean it's actively maintained by something not yet triggered by
 this particular replay).
 
+## 35. `120(A5)`'s buffer fully decoded — it holds the pre-flip room frame, byte-order-reversed at
+    56-byte `movem` granularity (36th pass)
+
+**Proven, byte-exact.** §34a's own disassembly excerpt of `$0144b8` was too compressed to derive the
+real byte layout from; pulling the *full* linear disassembly (`disassemble.py --linear 0144b8 700`)
+instead of trusting the elided `...` gave the exact instruction count needed to reconstruct it:
+
+- `move.b #$4,$5a98.w` primes an outer-loop counter to 4; the body from `$144ea` to `$014956`
+  contains exactly **142** `movem.l (A0)+,#$fcff` / `movem.l #$ff3f,-(A1)` pairs (56 bytes each,
+  14 registers: `D0-D7,A2-A7` — confirmed by decoding both masks: `#$fcff` in postincrement-mode
+  register-bit order and `#$ff3f` in the *reversed* predecrement-mode bit order name the same 14
+  registers). `subq.b #1,$5a98.w` / `bne $144ea` repeats that 142-pair body 4 times (568 pairs,
+  reading straight through — `A0` keeps advancing across outer-loop iterations, so this is a
+  code-size unroll trick, not four re-reads of the same data), followed by 3 more pairs outside the
+  loop: **571 chunks of 56 bytes total** (31976 bytes).
+- One extra **24-byte** chunk (`movem.l (A0)+,#$003f` / `movem.l #$fc00,-(A1)`, 6 registers
+  `D0-D5`) makes up the remaining 24 bytes (571×56 + 24 = 32000, exactly one frame). It runs
+  **either before all 571 56-byte chunks** (if `$5a99` is nonzero at entry — `tst.b $5a99.l / beq
+  $144ea` skips it when zero) **or after all of them** (if `$5a99` is zero — a second `tst.b
+  $5a99.l / bne $1498a` after the last pair skips it when nonzero): exactly one of the two runs,
+  gated by the same flag byte read twice.
+- **Byte order**: predecrement `movem` transfers registers in the fixed order A7→A0,D7→D0; this
+  register set only has `D0-D7,A2-A7`, so transfer order is `A7,A6,A5,A4,A3,A2,D7,D6,...,D0`. That
+  is the exact *reverse* of the postincrement read order (`D0,D1,...,D7,A2,...,A7`) for the same
+  register set, and since predecrement also fills memory high-to-low, the two reversals cancel:
+  **each chunk's own 56 (or 24) bytes land in the destination in the same relative order they were
+  read** — only the order of chunks *across* the whole transfer is reversed (the first chunk read
+  ends up at the highest destination address, the last chunk read at the lowest).
+
+Reconstructing this exactly — chunks read in program order from `120(A5)`, written in reverse chunk
+order (the odd 24-byte chunk placed at whichever end its flag value picks) — and decoding the result
+as plain `320×200×4bpp st-interleaved` reproduces `(A5)+0`'s live bytes **exactly, 0/32000 diffs**,
+in `room2_tunnel_entry.snap` (`$5a99=0` there, so the 24-byte chunk is trailing). Rendered, it's the
+same TUNNEL room as `room2_tunnel_entry.png`, pixel for pixel. **This settles item 1 entirely**:
+`120(A5)` is not compressed, not a different resolution, and not a different bit-plane packing — it
+is the *exact same raster*, stored solely with this chunk-reversal so the flip's forward-read/
+backward-write `movem` pattern (presumably chosen for code density or a specific 68000 timing
+reason, not a data-format reason) produces the correct forward-order frame in the visible buffer.
+
+Script: `reversing/cadaver/py/decode_backbuffer.py <snap> [--out out.png]` (reads `120(A5)` and
+`$5a99` live, reproduces the algorithm above, verified against `room2_tunnel_entry.snap`). Sanity
+check against `gameplay_empire.snap`/`hit_014b28.snap`/`tunnel_return_*.snap` shows large diffs
+(16-28k/32000) as *expected*, not a refutation — those are settled gameplay states where sprites,
+the player, and UI panels have already been composited onto `(A5)+0` by later draw passes (§33b) on
+top of the raw room flip; only a snapshot taken immediately after a flip and before those later
+passes run (like `room2_tunnel_entry.snap`) matches `120(A5)` byte-for-byte.
+
+**Reframes item 1(b)** ("find the writer"): since `120(A5)` holds a complete, already-composited
+320×200 room raster rather than a smaller tile/sprite source, it is very unlikely to be built by a
+runtime compositor at all (consistent with two full passes, §33b/§34b, catching no live writer
+during a crossing) — the far more likely source is the room-load disk read itself, storing each
+room's pre-rendered background pixel-for-pixel in this reversed layout on disk. Next step: trace the
+disk-sector read(s) that happen during a room crossing (the game reads raw sectors directly, not via
+GEMDOS `Fread` per the 7th pass's finding) and check whether the bytes landing in `120(A5)` match
+sectors read verbatim, rather than watching for a runtime writer that may not exist.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `py/decode_backbuffer.py` | 36th pass: decodes `120(A5)`'s buffer into a normal raster by reversing `$0144b8`'s chunk order; verified byte-exact (0/32000 diff) against `room2_tunnel_entry.snap` |
 | `room2_tunnel_entry.png`/`tunnel_return_cross.png`/`tunnel_return_settled.png` | 32nd pass: re-derived from a cold boot after every prior resume snapshot was lost between sessions (untracked, as expected) — same states the 12th/31st passes originally reached, `.snap` counterparts untracked in `M68000/scratchpad/cadaver/` |
 | `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar reads "TUNNEL" only (no "LEVER"), the resume point behind §20c/§20d's clean readings; untracked like the other `.snap` resume points |
 | `lever_hotspot_gone_3units_down.png` | 21st pass: screenshot at the snapshot above, proving the "LEVER" name-hotspot is gone 3 units below the baseline tile |
