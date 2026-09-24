@@ -122,3 +122,14 @@ From repeated friction across passes (not yet built, build the one a pass actual
 ## Discipline carried over from the CPU-accuracy work
 
 One `watch` region per REPL session, a second concurrent region silently drops events. Transcribe hardware/OS semantics from source (Hatari's `src/*.c`, `M68000PRM.pdf`) rather than recalling them. Stage named files only, never `git add -A`, disk images and cracked archives are copyrighted and must stay untracked.
+
+When a prior pass's doc quotes disassembly with `...` eliding part of a routine, re-disassemble it
+in full (`disassemble.py --linear <addr> <n>`) before reasoning about its exact structure — the
+elided part is often exactly the loop-count/register-mask detail that determines the answer
+(Cadaver 36th pass: the excerpt looked like a single unrolled copy; the full dump showed a
+`subq.b`/`bne` outer loop that fixed the total chunk count). A `movem.l (A0)+,list` /
+`movem.l list,-(A1)` block-copy idiom reverses the order of whole transfer *chunks* across the copy
+(predecrement mode processes the same register list in fixed reverse order, which cancels with the
+address decrementing, so within a chunk relative byte order is unchanged) — recognise this pattern
+before assuming a copy is a plain memcpy; it explains buffers that "look like noise" at the obvious
+raster width but are actually the right data in chunk-reversed order (Cadaver `mechanics.md` §35).
