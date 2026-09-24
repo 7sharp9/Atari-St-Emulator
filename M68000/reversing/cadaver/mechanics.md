@@ -3140,11 +3140,36 @@ capture confirming the call site and the `92(A5)` pointer identity (above), plus
 both routines showing the header/count/pointer layout agree byte-for-byte across the write side
 (`$008870`) and the read side (`$009440`).
 
+## 44. Open item 4 closed: all 72 populated rooms decoded into a full world map, confirming §38d's
+    spatial resolver is generic, not a two-room coincidence
+
+**44th pass.** §38a's type-3 index table (100 slots, base `$4ac36`, `[+0 size][+2 offset]` per
+entry) and §38d's per-room rectangle fields (`x0=+1, y0=+3, w=+4, h=+5` off the record at
+`$6bf0a + offset`) are both static game data, so every populated slot's rectangle can be read
+directly from one snapshot with no emulator run. `py/world_map.py` walks all 100 slots, skips the
+28 zero-size ones, and decodes the rest: **72/100 populated**, matching §38a's count exactly.
+
+Checking every pair of the 72 rectangles for overlap found **zero** — confirming §38d's "rooms are
+laid out as non-overlapping rectangles on one shared world grid" generically, not just for the one
+TUNNEL/CAVERN pair originally checked. 99 pairs share a boundary edge (candidate doors/crossings)
+and 18 touch only at a single corner; TUNNEL (slot 1) and CAVERN (slot 0) are among the edge pairs,
+reproducing §38d's original by-hand result (`[19,12]-[22,17]` / `[12,18]-[22,28]`, touching at
+`y=17/18`) as one case of the general script. Rendered map: `world_map.png` (rectangles labelled by
+slot number, `TUNNEL`/`CAVERN` named).
+
+This settles Open item 4 as originally scoped (decode every room's rectangle from the resource
+manager) without needing to walk the door-descriptor bytes read at `$007250` (§38c) — the
+rectangle adjacency graph is the room-connectivity map; a door descriptor's `(D0,D1)` bytes select
+*where* on the shared grid the transition lands, but which rooms can neighbour each other is fully
+determined by the rectangles alone, proven here for all 72 slots rather than inferred from two.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `py/world_map.py` | 44th pass: walks the type-3 resource-manager table and decodes every populated room's world-grid rectangle (§38a/§38d), reports the adjacency graph, renders `world_map.png` |
+| `world_map.png` | 44th pass: rendered map of all 72 populated room rectangles, labelled by slot (TUNNEL/CAVERN named) — proof for §44 |
 | `room2_lever_boundary_new.snap` | 41st pass: live snapshot rebuilt from `room2_tunnel_entry.snap` (13th pass's Left-hold recipe) after `room2_lever_boundary.snap` was found missing from this Mac's scratchpad — status bar "LEVER"/"TUNNEL", icon panel showing the lever's icon pair, matching the original 13th-pass screenshot; resume point for further proximity-icon-panel work; untracked like the other `.snap` resume points |
 | `burst_end.snap` | 39th pass: live snapshot at the end of `$0150b4`'s room-paint burst (step ≈1,058,885 of the `kbd ff 02` crossing from `room2_tunnel_entry.snap`) — both display halves already ≈98% match the CAVERN reference here (§37c); untracked like the other `.snap` resume points |
 | `watch_wide_crossing.snap` | 39th pass: end state after the same crossing run to completion (8.2M steps), taken alongside a `watch 19100 64256` log spanning both display halves at once (§37a); untracked |
