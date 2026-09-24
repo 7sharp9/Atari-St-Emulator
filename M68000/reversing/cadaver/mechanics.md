@@ -3484,11 +3484,67 @@ target and the door executor still interact some other way we haven't poked" gap
 are now shown disjoint both on paper and in a live call, matching exactly the kind of proof §24c
 already set the precedent for.
 
+## 51. Raw disk-layout inspection of the one-disk Empire crack: no second level's worth of data
+    anywhere on the physical disk, independent of §48c/§48d's loaded-image caller search (51st pass)
+
+Dave's pushback on §48c/§48d (cadaver.md handoff, Open item 1) was that "no caller of `$00b1e0`
+found in the loaded image" only rules out a *currently loaded* level-reload path, not a
+runtime-loaded or self-modifying one reading a second level straight off disk. That's a real gap in
+a caller search alone, so this pass inspected the `.st` image itself (`py/disk_layout.py`), a
+data-only check with no emulator stepping, to see whether the disk even has a second level's data to
+find.
+
+**51a. Not a FAT12 volume with listable files.** The boot sector's BPB fields parse as a plausible
+Atari-ST FAT12 superblock (512 bytes/sector, 2 sectors/cluster, 2 FATs, 5 sectors/FAT, 10
+sectors/track, 2 sides, 1600 total sectors = 819200 bytes, matching the file size exactly). But the
+root directory (`@ 0x1600`, 7 entries × 32 bytes per the BPB's own `root_entries` field) is 224 bytes
+of `0xE5` ("deleted entry") with no live entries at all — there is no file table to hold a
+separately-named level pack. This is the same shape as the Medway Boys compilation's Disk B
+(README "Disk images"): a non-filesystem, self-booting disk whose own loader code reads fixed
+absolute sectors, not files by name. Whatever content exists on this disk has to be found by where
+it physically sits, not by directory listing.
+
+**51b. Sector-by-sector data/blank scan.** Classifying each of the 1600 512-byte sectors as "blank"
+(all bytes identical — the disk's erase/format filler) or "data" gives one dominant contiguous real
+block plus a handful of small ones, not content spread densely across the disk:
+
+- sector 0 (boot sector, 512B)
+- sectors 20-28 (9 sectors, 4.6KB)
+- sectors 30-171 (142 sectors, 71KB)
+- sectors 190-216 (27 sectors, 13.5KB)
+- **sectors 400-936 (537 sectors, 268.5KB) — the one large block, almost certainly the bulk of the
+  game's graphics/room/object data already decoded (world map, sprites, resource tables §15b/§23c)**
+- six scattered single/few-sector fragments between sectors 1395 and 1586 (512B-3.5KB each, total
+  ~9KB) — too small individually to be a second level's assets; more likely loader/signature
+  remnants from the crack itself (title-screen text, a cracktro/menu fragment, or the load-table
+  the boot code reads to know where the big block starts)
+
+Total real data: 373248 of 819200 bytes (45.6%). The remaining 54.4% (871 whole sectors) is uniform
+filler, and — critically — it isn't scattered in with the real data as slack between two payloads;
+it's one contiguous ~230KB gap (sectors 937-1394) right after the one big data block, then more
+gaps around the small tail fragments. That's the shape of "one level's data, followed by unused
+disk", not "two levels' data, one of them still unaccounted for".
+
+**51c. Reading.** No depacker/decompressor has been found anywhere in this spike's disassembly
+(§28c ruled it out of the room-3 "already resident" path specifically; no other pass has found one
+either), so there's no live LZ-style mechanism that could be inflating a small on-disk blob into
+several levels' worth of RAM content — what's on disk is what the game has to work with, roughly at
+its own size. A single ~270KB contiguous block of real data, with the rest of an 800KB disk sitting
+at the format's erase pattern, is consistent with this one-disk crack holding exactly the 72-room
+map already fully decoded (§44) and nothing further, not a second level trimmed for space or
+packed in elsewhere. This is not as strong as a positive proof — it doesn't rule out, for instance,
+non-uniform "blank-looking" filler that happens to still decode to something (unlikely for a genuine
+format-erase pattern, but not checked byte-for-byte against a known ST format-fill value), and it
+doesn't identify what the six small tail fragments are. But combined with §48c/§48d's static
+caller-search negative, this closes the physical half of Dave's own concrete next step: there is no
+second level's worth of data sitting on this disk for any loader, however invoked, to find.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `py/disk_layout.py` | 51st pass: parses the one-disk Empire `.st` image's boot-sector BPB, checks the root directory for real FAT12 entries, and classifies every 512-byte sector as data vs. blank/erase filler — proof for §51 |
 | `py/door_id_words.py` | 49th pass: for the 5 doors with a genuine positive id word, dumps the descriptor's own `+4..+7` bytes and resolves the id word as a type-6 object id, checking its `+15` lock flag — proof for §49 |
 | `py/snapinfo.py` | 46th pass: one-line-per-snapshot room/display-buffer-parity/shifter-base report, reusing `tools/gfxview.py`'s header parsing — proof for §46 |
 | `boat_hotspot.png` | 45th pass: live snapshot rendered at CAVERN's BOAT proximity hotspot, status bar/icon panel reading "BOAT"/"CAVERN" — proof for §45 that the §43 mechanism resolves a second object correctly, not just TUNNEL's LEVER |
