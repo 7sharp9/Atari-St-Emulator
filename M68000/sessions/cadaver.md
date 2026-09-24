@@ -1,65 +1,68 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at this commit (49th pass). Checked LOCK/UNLOCK's own
-target against the door-transition executor's flag test and found them structurally disjoint (two
-different resource types, two different record offsets) — this rules out one reading of Open item 2
-("LOCK/UNLOCK flips a door's own open/closed flag") and gives it a concrete next causal test instead.
+Updated 2026-09-24 by the session that ended at commit `c64a463` (50th pass). Ran the causal test
+§49c itself proposed and closed Open item 2 (the five doors' positive id words): `callcap` LOCK
+against a real door id (155) flips the resolved object's own lock flag but leaves the door
+descriptor's own executor-tested flag byte untouched — doubly negative with §49c's static caller
+search. Dave pushed back on §48c/§48d's "single reachable level" reading (below); that pivot is now
+reframed as an open item instead of a settled negative.
 
 ## Resume point
 
-- Last commit of this workstream: `7a91477` "cadaver: LOCK/UNLOCK is structurally disjoint from the
-  door-transition flag; the 5 door id words are real type-6 object ids (49th pass, §49)".
+- Last commit of this workstream: `c64a463` "cadaver: causal callcap test confirms door id word 155
+  does not touch the door-transition executor's flag byte (50th pass, §50)".
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout. The
-  working tree also holds the two-disk original (§30b) in the same `Cadaver/` directory, untracked —
-  a fresh subject, not yet booted.
+  two-disk original mentioned in earlier handoffs is **not** currently present in the working tree's
+  `Cadaver/` directory (checked this pass, only the one-disk image is there) — do not assume it is
+  available without checking again.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new anchor snapshots this
-  pass — every check was a static read of `room2_tunnel_entry.snap`'s RAM image via
-  `py/door_id_words.py`, no live stepping.
+  pass — the causal test ran live against `room2_tunnel_entry.snap` (§50), `callcap` restores memory
+  after reporting its diff so the snapshot itself is untouched.
 - Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry) or `gameplay_empire.snap` (CAVERN start
   tile) depending on which room's mechanism you're testing next. **Do not use `$5a99` to detect
   "crossing done"** — use `(A5)+1166` (§38b) instead. **Always pass `--disk-a "Cadaver...st"` and use
   `resume <snap> repl`, never the bare alias `rrepl`** — see "Known traps" below.
-- Uncommitted work left behind: `M68000/sessions/README.md` and `M68000/sessions/powermonger.md`
-  still show as modified in `git status` — a concurrent session's workstream ("Training efficiency
-  (2)", confirmed live via `ListAgents`), left alone per the shared-resources rule.
+- Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` and
+  `M68000/sessions/powermonger.md` still show modified in `git status` — the concurrent "Training
+  efficiency (2)" session's work (confirmed live via `ListAgents` again this pass), left alone per
+  the shared-resources rule.
 
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
-`mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-48 (movement collision/proximity mechanism, the
+`mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-49 (movement collision/proximity mechanism, the
 icon-panel write chain, the full 72-room world-map/adjacency graph, the door-connectivity walk with
-zero teleport doors, the world-map-scope question as settled as static analysis gets, all fully
-closed). **New this session, `mechanics.md` §49**:
+zero teleport doors, the world-map-scope question as settled as static analysis gets, the LOCK/UNLOCK
+mechanism structurally disjoint from the door-transition flag, all fully closed). **New this session,
+`mechanics.md` §50**:
 
-- **§49a.** LOCK/UNLOCK (§22c: `bset/bclr #2,15(A0)`) operates on a type-6/9 object record; the
-  door-transition executor's own flag test (§38c: `btst #0,4(A0)`) operates on a type-4 door-
-  descriptor record — different resource type, different table, different base address, different
-  offset. **They cannot be the same mechanism.** Answers half of Open item 2 as scoped in the 48th
-  pass's handoff: LOCK/UNLOCK does not flip a door's own open/closed flag, structurally.
-- **§49b.** The five doors' genuine positive id words (`53`, `73`, `155`, `167`, `244`, §47b/§47c)
-  all resolve to real, populated type-6 object records (`py/door_id_words.py`, new this pass) — not
-  garbage, not out-of-range. All five currently read lock-flag (`+15` bit 2) **clear** in
-  `room2_tunnel_entry.snap`.
+- **§50.** Causal (not just structural) proof that the five doors' positive id words do nothing on
+  the door-transition path: `callcap` LOCK directly against id `155` (a real id a door descriptor
+  genuinely points to, resolved by `door_id_words.py`, §49b) sets bit 2 of that object's own `+15`
+  byte — matching §24c's id-144 precedent exactly — but door `0x20`'s own descriptor bytes at `$6d45a`
+  (owner room 19), including the `+4` byte `$007280`'s `btst #0,4(A0)` tests, read identically before
+  and after. Combined with §49c's exhaustive static caller search, Open item 1 (now closed) has no
+  surviving mechanism, structural or causal, connecting the id word to anything.
 
 ## Open, in priority order
 
-1. **What the five doors' positive id words actually encode** (was Open item 2; item 1, world-map
-   scope, is closed as settled per §48 and dropped from this list). They're valid type-6 object ids
-   (§49b), the same id space LOCK/UNLOCK (opcode 18, §23a) operates on, but nothing found so far
-   shows anything actually *reads* the id word that way — `$de5e` (§38d, the routine that actually
-   resolves room transitions) never touches it, only the descriptor's coordinate bytes. **Concrete
-   next step**: `callcap` LOCK against one of the five ids (e.g. `155`) from a snapshot near that
-   door, then re-run the door-transition trace (§38c) across it and check whether `$007280`'s
-   `btst #0,4(A0)` result, or anything else in the executor's flow, changes — the first causal test
-   of whether the id word does anything at all, not just a structural read.
+1. **Does the one-disk crack pack more than the 72-room map already found (a second level), reached
+   some way §48c/§48d's static search didn't find?** §48c/§48d's own reading (three independent
+   static techniques find zero callers of the level-reload code at `$00b1e0`) concluded the one-disk
+   build most likely has only the 72-room map reachable, with a second level needing the two-disk
+   original's disk-swap path. **Dave disagrees**: his expectation is that the one-disk crack has been
+   repacked to fit all 5 levels on one disk, not trimmed to one. This is now a genuine open
+   disagreement, not a settled negative — the static search proved "no *currently loaded* code calls
+   `$00b1e0`", which doesn't rule out a level-select mechanism that swaps in code/data at runtime
+   (self-modifying, or loaded from elsewhere on the disk) that this spike hasn't looked for.
+   **Concrete next step**: inspect the one-disk `.st` image directly (sector/file listing, e.g. via
+   `tools/`'s disk-image tools per `DEVELOPING.md`) for level-tagged assets or a second set of
+   room/object data beyond what the 72-room world-map (§38a/§44) already accounts for, rather than
+   relying only on a loaded-image caller search — a data-only check, no live stepping needed first.
 2. **Low priority, not needed to close anything above**: which of the other 13 `$ff8201`-touching
    call sites actually fires (title/intro screen, a different room-pair's crossing, a resolution/mode
    change).
-3. **The two-disk original** (§30b, present in the working tree at `Cadaver/`) — a fresh subject: its
-   own boot trace/wall-fixing pass (reversing skill §1-2) would be needed before any of this spike's
-   snapshots, addresses or struct layouts can be assumed to carry over. Still the natural pivot if
-   item 1 above is treated as a dead end rather than chased with the `callcap` test.
 
 ## Known traps
 
@@ -115,11 +118,14 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
   sections already retired** — not just a stale carried-over handoff item (that's the `/resume`
   skill's job to catch). Grep the doc for later sections before writing a new reading, not just when
   resuming one (48th pass's §47c mistake, caught only on a later re-read; now in `CLAUDE.md`).
+- **A "no caller found in the loaded image" static negative is not the same as "the mechanism is
+  unreachable"** — it only rules out a plain `bsr`/`jsr`/literal-address/displacement-table caller
+  already resident; a runtime-loaded or self-modifying path stays untested (50th pass, item 1 above,
+  raised by Dave against §48c/§48d's stronger "single reachable level" phrasing).
 
 ## Next session
 
-Item 1 (the door id words) has a scoped, cheap causal test ready to run: `callcap` LOCK against id
-`155` (or any of the other four) from a snapshot near that door, then re-check the door-transition
-trace. If that comes back negative too, the id word likely means something this spike hasn't
-guessed yet, and the two-disk pivot (item 3) becomes the better use of a session. Prompt:
-`/resume cadaver`.
+Item 1 (whether the one-disk crack contains more than one level's worth of data) has a concrete,
+data-only next step: inspect the disk image's own sectors/files for a second level's assets rather
+than relying on the loaded-code caller search alone. If that turns up nothing, item 2 (the low-value
+`$ff8201` call-site sweep) is the only remaining open item in this spike. Prompt: `/resume cadaver`.
