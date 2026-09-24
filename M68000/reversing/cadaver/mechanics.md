@@ -3376,21 +3376,35 @@ Validated against `$b5a8` first (3 hits, at `$0068fa`/`$00691a`/`$006924` — th
 
 **Result for `$00b1e0`: zero hits, 4-byte and 2-byte, at every alignment, in `room2_tunnel_entry.snap`'s
 full ~1MB RAM image.** This is a stronger negative than §15c's — it rules out not just a direct
-`bsr`/`jsr $b1e0` but also a plain absolute-address jump-table entry pointing at it. It does **not**
-rule out a PC/table-relative-displacement jump table (the same shape as this game's own 59-entry verb
-dispatch table, §24) — that would encode a *displacement*, not the address `$b1e0` itself, and needs
-a different search (compute the displacement from a candidate table base) if this thread is picked
-up again.
+`bsr`/`jsr $b1e0` but also a plain absolute-address jump-table entry pointing at it. It does not, on
+its own, rule out a PC/table-relative-displacement jump table (the same shape as this game's own
+59-entry verb dispatch table, §23a) — that would encode a *displacement*, not the address `$b1e0`
+itself.
 
-**Reading, tentative, not fully closing Open item 1**: combined with §30a (this loaded image has no
-disk-I/O-capable code at all) and §30b (the working tree's two-disk original has its disk 2 explicitly
-labelled "(Level)"), the growing weight of evidence is that the one-disk crack's 72-room map probably
-*is* the whole reachable game for this specific build — `$00b1e0`'s level-asset-reload logic reads as
-code shared with a multi-level original but genuinely unreachable here, not a live in-game mechanism
-gated behind an unfound trigger. This narrows, but doesn't settle, Dave's original 45th-pass question:
-if a second level exists at all for this build, it most likely requires the two-disk original's
-physical disk-swap path (§30b), not a live level-complete event inside the one-disk crack. Not chased
-further this pass — the two-disk pivot itself is out of scope for a quick static check.
+**48c. Closing that remaining gap: `tools/find_jump_table_hit.py`, also promoted this pass — zero
+hits against every displacement-style table this image can construct, up to 300 entries deep.**
+Rather than guess candidate table bases by hand, this collects every literal absolute address any
+instruction in the whole image names (`lea`, `jsr`, `move #imm`, ...) — since §23a's own dispatch
+idiom always sets up a table base by loading a plain immediate address into a register, this covers
+every table the currently-loaded code can actually construct — then checks each one's first 300
+word- and long-sized entries for a value equal to `target - base`. Validated first against the
+already-known `$010000` table (correctly re-finds entry 18 → `$01049a`, LOCK, exactly matching §23a)
+before trusting it on `$00b1e0`: **303 candidate table bases found in the whole image, zero of them
+have any entry, of either size, resolving to `$00b1e0`.**
+
+**Reading, now as settled as a static check can make it**: three independent techniques —
+`find_ram_callers.py` (§15c, direct call text), `find_literal_ptr.py` (§48b, raw address literal),
+`find_jump_table_hit.py` (§48c, displacement-table entry) — all return zero references to `$00b1e0`
+anywhere in this loaded image. Combined with §30a (no disk-I/O-capable code anywhere in the image)
+and §30b (the working tree's two-disk original has its disk 2 explicitly labelled "(Level)"), the
+weight of evidence is that the one-disk crack's 72-room map *is* the whole reachable game for this
+specific build — `$00b1e0`'s level-asset-reload logic reads as code shared with a multi-level
+original but structurally unreachable here, not a live in-game mechanism gated behind an unfound
+trigger. This still doesn't *prove* a negative (a table entry beyond 300 slots, or a table base
+computed at runtime rather than a plain immediate literal, would both be invisible to this method),
+but every technique this spike has for finding a caller statically has now been tried and come back
+empty. If a second level exists at all for this build, it most likely requires the two-disk
+original's physical disk-swap path (§30b) — a fresh investigation, not a continuation of this one.
 
 ## Files
 
