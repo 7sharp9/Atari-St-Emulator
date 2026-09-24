@@ -18,6 +18,11 @@ description: Start-of-session procedure for this repo. Reads M68000/sessions/<wo
    - `tasklist | grep -i dotnet`: emulator processes that are running (possibly another session's).
    - The working data and snapshot named in "Resume point" exist; if not, rebuild them with the
      recipe the handoff points to.
+   - Before scoping a live test for a carried-over "Open" item, grep the topic doc for whether a
+     later numbered section already answers it — a handoff's Open item can go stale when a later
+     pass's own section settles it without any handoff being updated to say so (cadaver 47th pass:
+     item 3, "does a scripting/bytecode layer exist," had already been fully proven in §22-26 two
+     passes earlier; the handoff kept restating it as an unscoped fresh question).
 4. Report in a few lines: resume point, anything that disagrees with the handoff, live sessions and
    what they hold, and the first step you will take. Then do it: the handoff's "Next session" is the
    plan, and "Open, in priority order" is the backlog.
