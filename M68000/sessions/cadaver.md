@@ -1,167 +1,164 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at commit `ce15fe7` (54th pass, §54). Triaged the
-53rd pass's Disk 2 CPU runaway (Open item 1): replayed a single keypress from
-`replicants_disk2_retry_30M.snap` four different ways (space, Return, Escape, zero-delay space).
-All four are deterministic across repeated invocations and land in sane state — the game re-reads
-Disk 2 and cycles back to the same "ERROR ON THIS DISK" prompt, no crash. The runaway does not
-reproduce from typical input; it looks like a one-off from the 53rd pass's own (uncaptured) REPL
-sequence rather than a reliable protection mechanism or emulator gap.
+Updated 2026-09-24 by the session that ended at commit `5f339a7` (55th pass, §55). Found and fixed
+a real emulator bug that was misread by the 53rd/54th passes as a crack/protection failure: Disk
+2's own boot-sector BPB lies about its side count (it's never booted, so nothing ever validated
+it), and the emulator trusted it, so every side-1 sector read silently failed. Fixed, verified live
+via FDC trace, and documented. Past the fix, hit a second, unrelated wall inside the crack's own
+protection-dispatch code — diagnosed, not yet fixed, not an emulator gap.
 
 ## Resume point
 
-- Last commit of this workstream: `ce15fe7` "cadaver: 53rd pass runaway does not reproduce from a
-  clean keypress replay (54th pass)".
-- Disk images: unchanged from the prior handoff, still untracked under `Cadaver/`:
-  - `Cadaver/disk1_replicants/disk1.st`, `Cadaver/disk2_replicants/disk2.st` (819,200B raw `.st`
-    each; the spaced original filenames are also present but unusable — the REPL's `disk`/other
-    commands split on raw whitespace with no quoting).
-  - The `[!]` verified-dump pair is `.stx` (Pasti flux-dump, not raw sectors) and was deleted last
-    session — this emulator's loader can't read it; don't re-extract without a `.stx`→`.st`
-    converter (doesn't exist in `tools/`).
-  - Untried Replicants/ST Amigos `[a]`/`[a2]`/`[b]` disk-1/2 variants: see [[mac-st-sources]] and
-    `reversing/cadaver/README.md`'s "Disk images".
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). Resume point for the "place
-  levels disk" sequence, in order (all from the Replicants/ST Amigos Disk 1 cold boot, carried over
-  from the 53rd pass):
-  - `replicants_esc_30M.snap` → "PLACE LEVELS DISK IN DRIVE ONE AND PRESS A KEY", Disk 1 still
-    mounted.
-  - `replicants_disk2_swap_30M.snap` → after swapping to Disk 2 and a keypress: "THERE SEEMS TO BE
-    AN ERROR ON THIS DISK. PRESS ANY KEY TO RETRY".
-  - `replicants_disk2_retry_30M.snap` → after retrying: back at "PLACE LEVELS DISK...", Disk 2
-    still mounted. **This session's replay point** — any single keypress from here deterministically
-    re-triggers the same disk error (`replicants_retry_replay_space.snap`/`.png`, this session), not
-    a crash.
-  - PNG renders for every snapshot are alongside them (`snap_render.py`).
+- Last commit of this workstream: `5f339a7` "docs: ATARI_NOTRACE=1 applies to resume+repl runs
+  too, not just cold boot" (preceded by `183f366` docs and `5547ae9` the actual emulator fix).
+- Disk images: unchanged from the prior handoff, still untracked under `Cadaver/`. This pass also
+  extracted five more crack-group variants into `M68000/scratchpad/cadaver/variants/` (untracked,
+  gitignored) while chasing Open item 5 from the last handoff — `Cadaver (1990)(Image
+  Works)(M3)(Disk 1 of 2)[cr Empire][t][a/b].st`, `[cr Replicants - ST Amigos][a/a2].st` — all four
+  just needed the same keypress-past-cracktro handling as the base pairs and were not pushed
+  further once the real bug (below) was found; a fifth, single-sided `disk2_replicants[b].st`
+  (409,600B) and Empire `[t][a]`'s disk 2 (829,440B, non-standard size) are also there, untried.
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored).
+  - `replicants_esc_30M.snap` (carried over): "PLACE LEVELS DISK IN DRIVE ONE AND PRESS A KEY",
+    Disk 1 (`disk1_replicants`) still mounted — the resume point for any further Disk 2 work.
+  - `agent_disk2_wall/before_jsr.snap`: PC=`$00011602`, one instruction before the `jsr (A2)` that
+    derails into the protection-dispatch bug (see Proven §55 below) — best starting point to
+    continue tracing the header-parse sequence at `$00b39c`/`$00b420`.
+  - `agent_disk2_wall/wall_712c.snap` / `wall_712c_v2.snap`: post-derail, PC=`$00021e1a`, inside
+    the inactive framebuffer half — not useful for further static work, kept for reference.
+  - `agent_disk2_wall/events.bin` (~117MB): full flow-event trace proving the derailment's call
+    chain; fine to delete once no longer needed.
+  - `agent_disk2_wall/fdc_trace.log`: confirms Disk 2's real FDC reads land around `$05e000`, not
+    near the resident blob at `$21004` that gets (wrongly) executed.
 - Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` and
   `M68000/sessions/powermonger.md` still show modified in `git status` — the concurrent "Training
-  efficiency (2)" session's work (confirmed live via `ListAgents`), left alone per the
-  shared-resources rule.
+  efficiency (2)" session's work (confirmed live via `ListAgents`, idle throughout this pass), left
+  alone per the shared-resources rule. `.obsidian/` and `Cadaver/` are untracked and not this
+  session's to manage.
 
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
-`mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-52 (movement collision/proximity mechanism,
+`mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-54 (movement collision/proximity mechanism,
 the icon-panel write chain, the full 72-room world-map/adjacency graph, the door-connectivity walk,
 LOCK/UNLOCK structurally disjoint from door-transition, the five doors' id words causally inert,
 the one-disk crack's disk contents ruled out for a second level, the two-disk original's Disk 2
-independently confirmed as a real, distinct levels disk by Dave's ground truth + static byte
-analysis, and §53 — the Replicants/ST Amigos crack reaches the live "place levels disk" prompt and
-a Disk 2 swap gets a real in-game disk-error response — all fully closed). **New this session,
-`mechanics.md` §54**:
+independently confirmed as a real, distinct levels disk, the Replicants/ST Amigos crack reaching
+the live "place levels disk" prompt and Disk 2 swap, and the 53rd pass's CPU runaway shown not to
+reproduce — all fully closed). **New this session, `mechanics.md` §55**:
 
-- **§54.** The 53rd pass's Disk 2 CPU runaway does not reproduce. Four keypress variants replayed
-  from `replicants_disk2_retry_30M.snap` (space, Return, Escape, zero-delay space), each run 30M
-  steps and each deterministic across repeated invocations of the identical command sequence, all
-  land in sane state: the game re-reads Disk 2 and cycles back to the same disk-error prompt. A
-  no-key control run confirms the wait loop is genuinely idle (`PC` parked) until a key arrives.
-  The exact key/timing the 53rd pass used was never captured to a file (its REPL script lived only
-  in that session's log), so this isn't a byte-for-byte replay of that pass, but four plausible
-  choices all converging on the same safe outcome makes a reliable, reproducible crash unlikely.
+- **§55.** The "ERROR ON THIS DISK" message §53/§54 treated as an open protection/emulator question
+  was this emulator's own bug: `MMU.LoadDiskA` derived a swapped-in disk's side count purely from
+  its own boot-sector BPB, but a disk that's swapped in mid-game and never booted (Cadaver's Disk
+  2) has no reason for its BPB to be honest — the Replicants/ST Amigos crack's `disk2.st` declares
+  1 side despite being a real double-sided 819,200-byte dump. Every side-1 FDC read failed with "no
+  data", and the game correctly (from its own view) reported a disk error. Fixed in `MMU.fs`
+  (`5547ae9`): prefer 2 sides when the file is big enough for a standard double-sided disk at the
+  declared sectors-per-track but the header claims only 1. **Proof**: `ATARI_TRACE_FDC=1` over the
+  same swap-and-retry sequence that used to fail now shows clean side-0 and side-1 reads (track 0
+  through track 7 confirmed this pass, ~149 reads, zero "no data" results) — not yet proven for the
+  whole 80-track disk, since a second, separate bug (below) derails execution before the read gets
+  that far.
+  - **The second bug, past the fix, is the crack's own, not ours.** A generic embedded-resource-
+    stream dispatcher (`$011598`, reads `{base,length,pos}` triples from a table at `(A5)+2538`)
+    gets called with its "execute this chunk in place" sentinel and `jsr (A2)`s into `$21da0` —
+    which is inside the *inactive* half of the double-buffered screen (`$20f00`-`$28cff`,
+    §33b/§37a), not real code, hence the `illegal`/`(line-A)` decode noise. That target's backing
+    blob at `$21004` is confirmed byte-identical before and after the Disk 2 swap, so it's resident
+    data from original Disk-1 boot, not anything Disk 2's own sectors populate (those land at
+    `$05e000`, per the FDC trace) — this is not "Disk 2 payload misread as code." Immediately
+    before the dispatch, at `$00b418`, a version-style check (`cmp.w $41c.l,D0`) is followed by a
+    bare `nop` where a real conditional branch belongs, so both outcomes of the check fall through
+    to the same "execute the chunk" path — a strong signature of a crack-patched-out protection
+    gate, not a missing OS trap or FDC timing gap (the FDC/DMA side is now proven correct). Not yet
+    confirmed which original check this replaces; would need the equivalent address range in the
+    Empire one-disk release for comparison.
 
 ## Open, in priority order
 
-1. **Low priority, downgraded this session**: the 53rd pass's Disk 2 runaway is not reproducible
-   with typical single-keypress input (§54) — not worth further live-boot chasing without a
-   specific new lead (e.g. a captured drive.txt from a session that hits it again). If it recurs,
-   save the exact REPL sequence to a file immediately (`reversing/cadaver/drive.txt` convention,
-   `reverse-engineer-st-game` skill) so it can be replayed byte-for-byte, which this session could
-   not do.
-2. Which of the 13 (of 14) `$ff8201`-touching call sites other than the room-crossing path actually
+1. **The crack's dispatch bug** (§55, second half): trace `$00b39c`/`$00b420`'s header-parse
+   sequence from `agent_disk2_wall/before_jsr.snap` (PC=`$00011602`, one instruction before the
+   fatal `jsr`) and compare against the equivalent code in the Empire one-disk release to determine
+   whether the neutralized `$00b418` check is patchable back to something that skips the bad chunk
+   instead of crashing, and what should have populated stream 0's `$21004` blob with genuinely
+   Disk-2-aware content before this dispatch runs. This is what's currently blocking the live boot
+   from reading past ~track 7 of Disk 2.
+2. **Static graphics/level mining on the raw Disk 2 file, independent of item 1.** Since Disk 2's
+   own sector payload is now proven to load correctly (side-1 included) and §52 already showed
+   ~91.9% of the file is real, non-blank data in two large blocks, the same method `graphics.md`
+   used to find the one-disk crack's packed sprite sheet (entropy/candidate-span scan via
+   `gfxview.py`, then render at diagnostic widths/bpp to look for tile structure) could be tried
+   directly against `disk2_replicants.st`'s own bytes, without needing item 1 solved first. Not
+   started this session — a genuine fork in direction from item 1, worth deciding priority on
+   rather than assuming.
+3. Which of the 13 (of 14) `$ff8201`-touching call sites other than the room-crossing path actually
    fires. Not needed to close anything above.
-3. `disk_layout.py`'s blank/data classifier only catches single-byte fills; extend it to detect
-   short-period repeats (§52's 3-byte cycle) so its headline percentage doesn't need a manual
-   correction next time.
-4. No `.stx`→`.st` converter exists in `tools/`. Only worth writing if a future session
-   specifically wants to boot a `.stx`-only release (the deleted `[!]` pair, or another game's
-   protected original) — Pasti's format is flux-level and non-trivial, not a quick script.
-5. **Unchanged, lower priority than the above**: try the Disk-1/Disk-2 `[a]`/`[a2]`/`[b]` variant
-   files in the same Replicants/ST Amigos Dropbox folder, if a future session wants to keep
-   pursuing live Disk 2 gameplay for its own sake — not blocking anything, since §54 downgraded the
-   runaway that motivated this.
+4. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period
+   repeats (§52's 3-byte cycle) — not yet extended.
+5. No `.stx`→`.st` converter exists in `tools/`. Only worth writing for a `.stx`-only release.
+6. The five newly-extracted crack variants (Resume point above) and the untried single-sided
+   `disk2_replicants[b].st` — low priority, superseded by item 1/2 as the more direct path to more
+   Disk 2 content; only worth trying if items 1/2 stall.
 
 ## Known traps
 
-(Unchanged carried-over list — see git history for the full set: `ScreenBufferA/B` role-swap framing
-is wrong, `movem` block-copy chunk reversal, `watch`'s step= counter is a lifetime counter not local,
-one-shot breakpoint chase non-reproducibility across separate invocations, re-disassemble elided
-`...` excerpts in full, `bpc` over `bp` for one-shot dumps, `bt depth>1` can crash the REPL, a `watch`
-range can bracket multiple regions in one call, `gfxview.py`'s `st-interleaved` assumes 16px-wide
-masked blits (not this game's 32px-wide family), movement is joystick port 1, player = sprite slot 0,
-use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`find_jump_table_hit.py`
-— all indexed in `DEVELOPING.md` and the `reverse-engineer-st-game` skill, §5.)
+(Unchanged carried-over list — see git history for the full set: `ScreenBufferA/B` role-swap
+framing is wrong, `movem` block-copy chunk reversal, `watch`'s step= counter is a lifetime counter
+not local, one-shot breakpoint chase non-reproducibility, re-disassemble elided `...` excerpts in
+full, `bpc` over `bp` for one-shot dumps, `bt depth>1` can crash the REPL, a `watch` range can
+bracket multiple regions in one call, `gfxview.py`'s `st-interleaved` assumes 16px-wide masked
+blits, movement is joystick port 1, player = sprite slot 0, use
+`tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`find_jump_table_hit.py`.)
 
-- **A significant one-off REPL result (a crash, a rare event) that isn't captured to a `drive.txt`
-  or script file can't be replayed byte-for-byte by a later session**, even when the game state
-  that led to it is deterministic — only the *sequence of REPL commands* was lost, not the engine's
-  determinism. This session tried four plausible replays of the 53rd pass's runaway and all came up
-  safe; that's evidence the runaway is unlikely to be a reliable mechanism, but it's not a
-  disproof, because the actual sequence used was never saved (54th pass).
-- **The REPL's line parser splits on raw whitespace with no quoting** (`Program.fs`'s `runRepl`,
-  `input.Split(' ')`) — `disk "path with spaces.st"` never matches the `disk <path>` pattern and
-  silently falls through with no error. Copy the image to an unspaced filename first.
-- **Send a key's make and break codes in two separate `kbd` calls, with a real `s <n>` step count
-  between them, not one `kbd <make> <break>` call** — now in the shared `reverse-engineer-st-game`
-  skill (§2) since it applies to any game with an interrupt-driven IKBD ISR, not just this one.
-  Sending both in one call lets the ISR drain them before the main loop's poll ever sees the
-  key-down state, so the input is silently dropped and a wait screen looks input-inert when it
-  isn't. This session found the "PLACE LEVELS DISK..." wait loop does **not** care which key is
-  sent (space/Return/Escape all produce identical results) — it's a generic "any key" poll.
-- **`run.ps1`'s subcommand names are aliases, not raw argv — the raw binary only understands
-  `resume <snap> repl [--disk-a <path>]` (two tokens), not `rrepl <snap>`.** Also applies to
-  `snapshot`: it's positional (`<N> snapshot <path>`), there is no `--snapshot` flag. Calling the
-  raw `dotnet exec` binary with an unmatched argv pattern silently falls through to a disk-less
-  cold boot (or, for the snapshot case, prints nothing and exits 0 having done nothing), which
-  looks exactly like a stuck/corrupted snapshot until you reproduce a *known-good* prior result
-  with the correct argv. Also in `CLAUDE.md`'s Rules section.
-- **`$5a99` is not a room-transition signal.** Use `(A5)+1166` (§38b) instead.
-- **A live snapshot's static memory alone can settle a "what does routine X compute" question**,
-  without running the emulator forward, when the routine's inputs are just RAM values already
-  sitting in the snapshot. This extends to the disk image itself: a "does the disk hold more
-  content" question can be mostly settled by parsing the raw `.st` file's own bytes with no
-  emulator run at all (§51/§52) — though it can't positively identify *what kind* of content it is
-  the way a live boot or a readable string can, and it can't say anything at all about a `.stx`
-  image without first converting it.
-- **When a screen isn't advancing the way you expect (a cracktro, a loading screen), don't infer
-  "does this keypress matter" from trials that also vary the step count** — run a same-snapshot,
-  same-step-budget A/B instead. §52's initial "keypress causes a rewind" read was wrong, from an
-  uncontrolled comparison. Now also in the `reverse-engineer-st-game` skill, §2.
-- **When checking adjacency between inclusive-coordinate rectangles read from game data, a real
-  shared boundary is a gap of exactly 1, not an overlap** (§44's classification rule).
-- **A `bpc` armed only at the settled boundary can miss a mechanism that fires during the approach**
-  — arm it before injecting the movement input, not just at the end state (§41).
-- **A one-deep `bt 1` from a `bpc` hit is enough to find a routine's caller and the gating condition
-  around the call site** — read the caller's own disassembly rather than chasing a deeper backtrace.
-- `gfxview.load_ram(path)` returns `(ram_bytes, base)` — **that order**, not `(base, ram)`.
-- `dotnet exec ... resume <snap> repl`'s printed `help` text does not list `kbd`/`mouse`/`disk`
-  even though they exist and work (`Program.fs` line ~1396).
-- The REPL's `watch <addr> <len>` parses `<len>` as plain **decimal**, not hex.
-- `kbd`/other REPL input commands only *enqueue* IKBD bytes for delivery during subsequent `s`/`bp`/
-  `bpc` steps — issue them **before** the step/breakpoint command that should consume them.
-- **`watch`'s log reports the exact address each write landed at** — filter a coarse watch range by
-  exact address/PC afterward rather than trying to watch a tight, possibly non-contiguous, region.
-- **A continuously-firing PC group in a `watch` log is very likely the known full-buffer copy/flip
-  routine, not new content** — group hits by PC first and prioritise the rare groups.
-- `bt` with no depth argument defaults to depth 8 and reliably crashes the REPL process — always
-  pass `bt 1`.
-- **If you ever need to hand-parse a `.snap`'s header instead of using `tools/gfxview.py`'s
-  `load_ram`/`load_video_regs`/`snapshot_regs`: `cpu.CCR` is written as an int16, not a byte**
-  (`Program.fs` `SaveState`'s `w.Write(cpu.CCR)`), so the RAM-length field that follows sits 1 byte
-  later than a naive "19 regs + 1-byte CCR" read expects.
-- **A static-analysis session's own new interpretive claim can revive a framing the doc's own later
-  sections already retired** — grep the doc for later sections before writing a new reading (48th
-  pass's §47c mistake; now in `CLAUDE.md`).
-- **A "no caller found in the loaded image" static negative is not the same as "the mechanism is
-  unreachable"** — it only rules out a plain `bsr`/`jsr`/literal-address/displacement-table caller
-  already resident; a runtime-loaded or self-modifying path stays untested until checked some other
-  way (50th pass; §51 supplied that other way by checking the disk's own physical contents).
+- **`ATARI_NOTRACE=1` applies to every `dotnet exec` invocation, including `resume <snap> repl`
+  piped a script, not just a cold boot** — now in `CLAUDE.md` (this pass lost real time to four
+  parallel `resume ... repl` pushes that forgot it and each wrote a multi-GB trace log before being
+  killed and rerun correctly).
+- **A disk image swapped in mid-game and never booted through TOS can have a self-inconsistent
+  boot-sector BPB** — nothing ever validates it, so a crack group's boilerplate header (side count,
+  in this case) can simply be wrong. If a post-swap "disk error" message appears, check the image's
+  real file size against its own BPB-implied size before assuming it's a genuine crack/protection
+  failure (§55). `MMU.fs`'s `LoadDiskA` now cross-checks this for side count specifically; the same
+  class of bug could in principle affect sectors-per-track too, though no case of that has been
+  seen.
+- **`bp <hexaddr> [maxSteps]` takes at most 2 arguments** — `bp <addr> <n> <maxSteps>` (3 args)
+  matches no pattern and silently does nothing; use `bpc <addr> <n> [maxSteps]` if an Nth-hit count
+  is needed.
+- The REPL's `disk <path>` command mounts a *relative* path from the process's own working
+  directory (typically `M68000/`), not relative to wherever the snapshot or driving script lives —
+  `../Cadaver/...` from `M68000/`, not `Cadaver/...`.
+- `run.ps1`'s subcommand names are aliases, not raw argv (`CLAUDE.md`'s Rules section has the full
+  mapping) — `<N> snapshot <path>`, `<N> resume <path>`, `resume <path> repl`, `<N> verify`,
+  `<N> checkpoint` are the real forms; passing an alias straight to the raw binary silently falls
+  through to a disk-less cold boot or a no-op.
+- `$5a99` is not a room-transition signal; use `(A5)+1166` (§38b) instead.
+- A live snapshot's static memory alone can settle a "what does routine X compute" question without
+  running the emulator forward, and extends to a disk image's own raw bytes for "does the disk hold
+  more content" (§51/§52) — though it can't identify *what kind* of content without a live boot or
+  readable strings.
+- When a screen isn't advancing the way expected, don't infer "does this keypress matter" from
+  trials that also vary the step count — run a same-snapshot, same-step-budget A/B instead (§52).
+- `gfxview.load_ram(path)` returns `(ram_bytes, base)`, that order.
+- The REPL's `watch <addr> <len>` parses `<len>` as decimal, not hex.
+- `kbd`/other REPL input commands only enqueue IKBD bytes for delivery during a subsequent `s`/`bp`/
+  `bpc` — issue them before the step/breakpoint that should consume them, and split make/break
+  codes into two separate `kbd` calls with a real `s <n>` between them (the shared
+  `reverse-engineer-st-game` skill, §2).
+- `bt` with no depth argument defaults to depth 8 and reliably crashes the REPL — always pass `bt 1`.
+- If hand-parsing a `.snap`'s header instead of using `gfxview.py`'s loaders: `cpu.CCR` is written
+  as an int16, not a byte, so the RAM-length field sits 1 byte later than expected.
+- A static-analysis session's own new interpretive claim can revive a framing a doc's later
+  sections already retired — grep the doc for later sections before writing a new reading.
+- A "no caller found in the loaded image" static negative only rules out a plain resident caller
+  already loaded; a runtime-loaded or self-modifying path stays untested until checked another way.
 
 ## Next session
 
-No urgent open thread: item 1 (the Disk 2 runaway) is downgraded and not worth chasing without a
-new lead, and items 2-5 are all low priority and non-blocking. If Dave wants to keep pursuing live
-Disk 2 gameplay, item 5 (the `[a]`/`[a2]`/`[b]` disk variants) is the next thing to try, starting
-from `M68000/scratchpad/cadaver/replicants_esc_30M.snap` (Disk 1 still mounted, at the swap prompt)
-so a variant Disk 2 can be tried without re-driving the whole boot. Otherwise this spike has no
-open thread that clearly justifies more time — worth checking with Dave on priority before the next
-session picks it back up. Prompt: `/resume cadaver`.
+Item 1 (fix or bypass the crack's own protection-dispatch bug, to read further into Disk 2 live)
+and item 2 (mine `disk2_replicants.st`'s raw bytes for graphics/level structure directly, no live
+boot needed) are both live and independent — worth checking with Dave on which to prioritize rather
+than assuming. Item 2 is likely the faster path to concrete graphics/sprite/level content specific
+to what Dave asked this session to keep pushing toward; item 1 is the more classic reversing thread
+(a crack-group bug, not this project's) and has no guaranteed payoff even if solved, since it only
+unblocks *more* live reading, not necessarily new understanding on its own. Prompt: `/resume
+cadaver`.
