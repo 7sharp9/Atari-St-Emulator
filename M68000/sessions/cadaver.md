@@ -12,8 +12,13 @@ fragments — no second level's data sits anywhere on this physical disk, closin
   second-level data on the one-disk Empire crack (51st pass, §51)".
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout. The
-  two-disk original mentioned in earlier handoffs is **not** currently present in the working tree's
-  `Cadaver/` directory — check again before assuming it is available.
+  two-disk original and the other crack groups (Replicants/ST Amigos, the `[!]` verified dump)
+  mentioned in `reversing/cadaver/README.md`'s "Disk images" are **not** currently present in the
+  working tree's `Cadaver/` directory, and **not in Dropbox either** (confirmed by Dave
+  2026-09-24) — the only copy is on `gpubox` at
+  `C:/Users/Dave/Documents/GitHub/Atari-St-Emulator/Cadaver/`, pull with the tar-over-ssh recipe
+  in `CLAUDE.md` if a future pass wants to test the two-disk original directly rather than relying
+  on §51's physical-inspection negative for the one-disk crack.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new snapshots this pass —
   §51's disk-layout check reads the `.st` file directly (`py/disk_layout.py`), no emulator run
   needed.
