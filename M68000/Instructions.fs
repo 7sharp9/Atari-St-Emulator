@@ -591,6 +591,16 @@ module Instructions =
             let data8 = sbyte (data &&& 0xff)
             Some(register, data8)
         else None
+
+    /// 0111 rrr1 dddddddd: the bit-8-set half of MOVEQ's own opcode space (line 0111 has no other
+    /// valid 68000 instruction), which real 68000 hardware traps to vector 4 like any other
+    /// unassigned encoding - same category as $4AFC/$4E7A/$4E7B (see ILLEGAL's own comment). Seen
+    /// live as a second Rob Northen CPU-detection probe in `reversing/cadaver`'s crack, right after
+    /// the $4E7A one: it installs its own vector-4 handler then executes this to trigger it. Kept
+    /// as its own pattern rather than folded into the cross-bucket Illegal pattern above because
+    /// DecodeBucket7 (unlike DecodeBucket4) has no other Illegal-trapping case to attach it to.
+    let (|ReservedMoveq|_|) data =
+        if data &&& 0b1111000100000000 = 0b0111000100000000 then Some() else None
     
     
     /// 0100 0000 ss mmm rrr : NEGX (negate with extend: dest = 0 - dest - X).

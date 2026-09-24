@@ -2266,6 +2266,12 @@ type Cpu =
             printfn "moveq #$%x,D%u" value register
             newCpu
 
+        | ReservedMoveq ->
+            //See ReservedMoveq's own comment: bit 8 set is unassigned in MOVEQ's line, and real
+            //68000 hardware traps it to vector 4 exactly like ILLEGAL/$4E7A/$4E7B.
+            printfn "reserved (bit8) - illegal"
+            x.EnterVector 4 x.PC
+
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
     member x.DecodeBucket8 (instruction: int) : Cpu =
