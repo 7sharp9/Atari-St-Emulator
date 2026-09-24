@@ -3619,16 +3619,29 @@ again from there caused the emulated CPU to run away — `PC` reached `$230f8020
 seen this pass) and the process hit the decoder's deliberate "MOVE.B with An operand is illegal"
 guard (`68k.fs:1562`) and crashed with an unhandled exception, not a normal breakpoint stop.
 
-**Open, not yet resolved**: whether the disk error and the runaway are a genuine format mismatch
-between this crack group's Disk 2 image and what its own Disk 1 loader expects (a different
-sector/track layout used as this crack's copy protection — the `[!]` pair, if converted from
-`.stx`, would settle whether an unprotected original reads Disk 2 cleanly), a bug in this session's
-REPL sequence (a key injected mid-DMA-transfer, or the disk hot-swap happening at a point the
-loader's own state machine doesn't expect), or a genuine emulator gap in FDC error handling that a
-real ST would instead surface as a controlled disk-error retry loop forever rather than an
-address-space runaway. Not triaged further this pass — reproduction commands are in
-`M68000/scratchpad/cadaver/` (untracked; the exact REPL script is in this pass's session log, not
-yet promoted to a `drive.txt`), snapshots named `replicants_*`.
+Left open at the end of this pass whether the runaway was a genuine Disk-2 protection mechanism or
+an artifact of this pass's own REPL sequence — §54 (next pass) found it does not reproduce.
+
+**54. The 53rd pass's CPU runaway does not reproduce from a clean replay — four independent
+keypress variants from `replicants_disk2_retry_30M.snap` all land in sane state (54th pass).**
+Starting fresh from the "PLACE LEVELS DISK..." prompt snapshot (Disk 2 already mounted) and
+sending a single keypress with no other REPL activity: space (`kbd 39`/`kbd b9`, 100000 steps
+between make and break), Return (`kbd 1c`/`kbd 9c`, same spacing), Escape (`kbd 01`/`kbd 81`, same
+spacing), and space again with zero steps between make and break — all four, run over 30M steps
+each, land at a sane PC (`$00011b04`, `$00011b0e` for the zero-delay case) with no exception, and
+all four reproduce **the same deterministic result across repeated invocations of the identical
+command sequence**: the game re-reads Disk 2 and puts up "THERE SEEMS TO BE AN ERROR ON THIS DISK.
+PRESS ANY KEY TO RETRY" again (`replicants_retry_replay_space.png`), i.e. it cycles the same disk
+error rather than crashing — and a control run with no key input at all leaves `PC` parked at
+`$00011ac6`, confirming the wait loop is genuinely idle until a key arrives, not itself racing
+toward the runaway. Which specific key/timing the 53rd pass used was never captured (its REPL
+script lived only in that session's log, not saved to a file), so this isn't a byte-for-byte replay
+of that pass — but four different plausible choices all converging on the same safe, deterministic
+disk-error cycle makes a real, reliably-triggerable copy-protection crash unlikely; the 53rd pass's
+runaway looks like a one-off artifact of that session's exact (uncaptured) sequence rather than a
+reproducible mechanism, emulator-general or protection-specific. Downgrades Open item 1 from "found
+a game/emulator interaction to triage" to "seen once, not reproducible with typical input, not
+worth further live-boot investigation without a specific new lead."
 
 ## Files
 
