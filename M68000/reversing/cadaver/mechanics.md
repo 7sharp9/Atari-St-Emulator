@@ -3539,12 +3539,60 @@ doesn't identify what the six small tail fragments are. But combined with §48c/
 caller-search negative, this closes the physical half of Dave's own concrete next step: there is no
 second level's worth of data sitting on this disk for any loader, however invoked, to find.
 
+**52. §51's negative was specific to the one-disk crack; the two-disk original's own Disk 2 is a
+real, distinct "levels" disk — reframes rather than contradicts §51.** §51 closed the question only
+for the specific one-disk Empire image analysed there. The two-disk Image Works original (both crack
+groups and a `[!]` verified dump) became available this pass (Dropbox, see the README's "Disk
+images"), and two independent signals now point the same way for it:
+
+- **Ground truth from Dave**: a commercial expansion for Cadaver existed that shipped as a straight
+  replacement for Disk 2 — i.e. Disk 2 really is "the levels disk" as its own filename label
+  ("(Level)") already implied, not inferred from this spike's own analysis.
+- **Static disk-layout comparison** (two-disk Empire `[t]` trained crack, `py/disk_layout.py` plus an
+  ad hoc follow-up script, `scratchpad/cadaver/agent_disk2_analysis/`, not yet promoted into
+  `reversing/cadaver/py/`): Disk 2 is ~91.9% real (non-blank) data after correcting
+  `disk_layout.py`'s classifier for a 3-byte repeating filler pattern it missed in the tail
+  (`disk_layout.py` itself still reports the uncorrected 98.4% until it's extended to detect
+  short-period fills, not just single-byte fills) — against Disk 1's 46.4% (§51b) and the one-disk
+  image's 45.6% (§51). Disk 2 is confirmed not a duplicate of either (0.1-0.3% byte-identical at
+  matching offsets, vs. Disk 1/one-disk's expected ~41% from sharing the same crack group's
+  boot/intro code). Its real data sits in two large contiguous blocks (334KB/404KB, entropy
+  7.6-7.97 b/B) that are markedly *flatter* in byte distribution than Disk 1's own already-proven
+  272KB resource-table block (fewer duplicate 512B sectors: 0.8-1.4% vs. 27.4%; lower max
+  single-byte frequency: 7-9% vs. 22.7%) — denser/more uniform than the disk's own confirmed-real
+  content, the opposite of what "mostly padding" would look like.
+
+**Open tension, not yet resolved**: no depacker exists anywhere in this spike's disassembly
+(§28c/§51c), so if Disk 2's flatter distribution means it's genuinely compressed, nothing currently
+known in the loaded image could unpack it — a decompressor would have to live in Disk 2's own
+boot/loader sectors (0-7, before its payload starts at sector 7), never analysed because this spike
+has never booted from Disk 2. Also unresolved: no readable strings and no fixed-record stride were
+found in either of Disk 2's blocks (unlike Disk 1's plaintext story text at `0x4a1a`), so nothing
+here positively identifies the content as *levels* specifically rather than some other bulk data —
+that identification rests on Dave's external ground truth about the expansion pack, not on anything
+internal to this pass's analysis.
+
+**Live confirmation attempted, not reached**: tried booting the two-disk Empire `[t]` (trained)
+release's Disk 1 to reach the "place levels disk" prompt and swap in Disk 2 live via the REPL's
+`disk` command, matching §48d/§50/§51's own suggested next step. Abandoned after ~1.6 billion
+emulated steps: this release's crack intro is a long scrolling multi-crew greet-list followed by an
+"ok let us schlupz now..." loading-bar screen that **loops** (a 600M-step snapshot and a
+1600M-step snapshot from the same run show the same screen, only the loading-bar pixels differ) —
+roughly 100x the ~15M steps the plain one-disk release needs to reach gameplay. A controlled A/B/C/D
+test (same snapshot, same 5M-step budget, with no key / space / return / '1' injected) produced
+pixel-identical screens in all four cases, ruling out "needs a keypress to skip" as the explanation for
+this specific 5M-step window — whatever gates the loop, it isn't a short keypress landing anywhere
+in that window. Not pursued further this pass; the `[!]` (verified-dump, likely uncracked) two-disk
+pair in the same Dropbox folder is the next thing to try if a live swap is still wanted, since an
+uncracked original should have no cracktro at all.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
-| `py/disk_layout.py` | 51st pass: parses the one-disk Empire `.st` image's boot-sector BPB, checks the root directory for real FAT12 entries, and classifies every 512-byte sector as data vs. blank/erase filler — proof for §51 |
+| `py/disk_layout.py` | 51st pass: parses the one-disk Empire `.st` image's boot-sector BPB, checks the root directory for real FAT12 entries, and classifies every 512-byte sector as data vs. blank/erase filler — proof for §51. Its blank/data classifier only catches single-byte-repeat fills, not short-period repeating patterns (52nd pass found a 3-byte cycle on Disk 2's tail it missed) — not yet extended to handle that |
+| `py/analyze_disk2.py` | 52nd pass: per-run entropy, byte-distribution (stddev/mean, max frequency, duplicate-sector rate), fixed-stride periodicity scan and ASCII-string scan over `disk_layout.py`'s data runs, plus cross-image byte-identity sampling — proof for §52's Disk-1-vs-Disk-2-vs-one-disk comparison (paths hardcoded to this Mac checkout, not parameterised) |
 | `py/door_id_words.py` | 49th pass: for the 5 doors with a genuine positive id word, dumps the descriptor's own `+4..+7` bytes and resolves the id word as a type-6 object id, checking its `+15` lock flag — proof for §49 |
 | `py/snapinfo.py` | 46th pass: one-line-per-snapshot room/display-buffer-parity/shifter-base report, reusing `tools/gfxview.py`'s header parsing — proof for §46 |
 | `boat_hotspot.png` | 45th pass: live snapshot rendered at CAVERN's BOAT proximity hotspot, status bar/icon panel reading "BOAT"/"CAVERN" — proof for §45 that the §43 mechanism resolves a second object correctly, not just TUNNEL's LEVER |
