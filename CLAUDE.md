@@ -35,7 +35,12 @@ know they existed.
 
 - Run through `M68000/run.ps1` or `dotnet exec M68000/bin/Debug/net8.0/M68000.dll` from
   `M68000/`. Addresses in docs are runtime absolute addresses.
-  The raw `dotnet exec` form traces every instruction unless `ATARI_NOTRACE=1` is set. On the Mac
+  The raw `dotnet exec` form traces every instruction unless `ATARI_NOTRACE=1` is set — **this
+  applies to every invocation, including `resume <snap> repl` piped a REPL script on stdin, not
+  just a cold `boot`/`<N>`**: a multi-hundred-million-step `resume ... repl` run without it writes
+  a multi-GB per-instruction log and takes vastly longer than the same run traced off (cadaver 55th
+  pass: an hour lost to four parallel `resume ... repl` pushes that forgot it, each writing
+  >1GB before being killed and rerun correctly). On the Mac
   (no PowerShell) use it with `ps`/`pkill` for `tasklist`/`taskkill`: `M68000/DEVELOPING.md`, "macOS".
   **`run.ps1`'s subcommands are aliases, not real argv** (`run.ps1`'s own `switch` block is the
   source of truth): `rrepl <snap>` is raw argv `resume <snap> repl`, `snap <N> <path>` is
