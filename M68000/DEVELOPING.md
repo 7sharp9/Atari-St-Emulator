@@ -301,6 +301,15 @@ deterministic and committed disk artefacts stay byte-stable. `ATARI_TRACE_FDC=1`
 logs every FDC register/command write and every sector read/write to stderr
 (compare against `tools/hatari_trace.py --trace fdc`).
 
+**Raw `.ST` sector dumps only - `.stx` (Pasti) is not supported.** `MMU.LoadDiskA` reads the file
+straight into a flat byte array and parses a standard FAT BPB at bytes 24-28 for geometry; every
+sector read/write is `logicalSector * 512` into that array. There is no image-format signature
+check anywhere in the tree, so handing it a `.stx` container (flux-level, used for copy-protected
+originals, `RSY\0`-prefixed and not a multiple of 512 bytes) is not rejected - it is silently
+misread as a raw sector image, the bogus BPB falls back to a 9-sectors/1-side default, and every
+"sector" comes back as garbage from wherever that offset lands in the Pasti container. Convert to
+`.st` first (no converter exists in `tools/` yet) or use a `.st`-format release of the same disk.
+
 **Bootable disks work too, unchanged.** The real TOS ROM loads sector 0, verifies
 the `$1234` word-sum and jumps to the boot code itself - the emulator only serves
 the sectors. `A_013.ST` (a bootable "Automation"-style menu disk with LSD-packed
