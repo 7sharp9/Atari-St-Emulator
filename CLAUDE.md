@@ -62,6 +62,11 @@ know they existed.
   table cell; if a section has become an unreadable pass-by-pass run-on, rewrite it into a normal
   narrative of current understanding as part of the same edit. Keep the "what changed this pass"
   framing only in `git log`/`M68000/sessions/<workstream>.md`, not in the topic doc's prose.
+- Before writing a new interpretive claim into a topic doc, grep it for whether a later section
+  already retired the framing you're about to reuse — a session's own new section can revive a
+  retired reading without meaning to, not just a stale carried-over handoff item (cadaver
+  `mechanics.md` §47c revived a "type-8 room-registration" reading §31/§38 had retired sixteen-plus
+  passes earlier, caught and fixed only on a later re-read, 48th pass).
 - When a session decodes a graphics asset for the first time (spritesheet, tileset, icon/panel
   art, palette) well enough to render it, commit the rendered image (PNG) alongside the doc that
   proves the format, not just a prose description or an untracked scratchpad file — future

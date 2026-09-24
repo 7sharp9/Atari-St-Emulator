@@ -102,6 +102,18 @@ Build the corpus with `tools/capture_hits.py <start.snap> <addr> <n,...> <out>`:
 
 Name a field from the game's own UI when one prints it: find the panel template's labels and the formatter that reads each field (PowerMonger's captain panel `$921a` labels group `+36` "Food:"). Names inferred from the AI's use of a field can be wrong for a long time: PowerMonger's lord `+6` was read as men at home and group `+112` as a patience budget for 50 passes; both are food. For a player-driven mechanic, click it through the real UI against a no-order control run over the same steps; the difference is the effect.
 
+**Three escalating static scans answer "does anything reference X at all" before any live test.**
+`tools/find_ram_callers.py <snap> <addr>...` finds direct `bsr`/`jsr`/`jmp`/`bcc` instructions whose
+own decoded text names the target. If that comes back empty, it doesn't mean nothing references the
+address — it's blind to a target reached only through an indirect jump: `tools/find_literal_ptr.py
+<snap> <addr>` finds the target sitting as a raw data pointer (an abs-long `jsr`/table entry whose
+own instruction bytes literally encode the address, which a text-based scan can still miss on a
+`.l`/`.w` suffix quirk); `tools/find_jump_table_hit.py <snap> <addr>` finds it as a displacement-table
+entry (`target - table_base`, this game's own `add.w D0,D0; adda.w 0(An,D0.w),An; jmp (An)` dispatch
+idiom, §3's control-flow table shape) added to a table base collected from every literal address any
+instruction in the image names. Validate a new scan against an address you already know has a real
+caller before trusting a "zero hits" result on one you don't (cadaver mechanics.md §48b/§48c).
+
 **"Who calls X, and under what gate" is cheaper than a full differential test.** The `callcap`
 corpus machinery above is for proving what a routine *computes*; for "which caller reaches X, and
 what condition selects it" a single `bpc <addr> 1 <maxSteps>` (its hit banner already prints
