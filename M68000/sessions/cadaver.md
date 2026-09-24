@@ -61,11 +61,12 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
    itself and the flip; or trace backward from `$69da` (the "already resident, re-enter main loop"
    branch, §28c) for whatever runs once per transition before the flip.
 2. What `$55b6` actually contains — likely the fixed icon-panel glyph/sprite (§32b's working
-   hypothesis, not yet confirmed). `gfxview.py` needs `numpy` on this Mac checkout
-   (`ModuleNotFoundError` this session, not yet installed — `python3 -m pip install numpy`) to
-   render it against the known palette; `hit_014b28.snap` above is the ready-made input. Compare
-   the rendered shape against a real "default icon panel" vs "LEVER icon panel" screenshot pair to
-   confirm the status/icon-panel hypothesis rather than leaving it inferred.
+   hypothesis, not yet confirmed). `M68000/pyproject.toml` + `uv sync` now provisions `gfxview.py`'s
+   `numpy`/`pillow` deps (`uv run python tools/gfxview.py scratchpad/cadaver/hit_014b28.snap --html
+   out.html`, already run once this session and confirmed working — see "Python tooling" in
+   DEVELOPING.md); the actual read-and-interpret-the-render step wasn't done. Compare the rendered
+   shape against a real "default icon panel" vs "LEVER icon panel" screenshot pair to confirm the
+   status/icon-panel hypothesis rather than leaving it inferred.
 3. Room-record bytes `+0..+3` (still unknown; `+4`/`+5` are the graphics-table index, `+$c0` is the
    mask table per §32a).
 4. How the ~72 real rooms connect in ordinary play (`$007104` is not it: both branches `bra $69da`,
@@ -85,8 +86,6 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
   processes. Not root-caused (still open whether it's a real `bp`-path issue or was a script
   mistake last pass), but `bpc 1` is now the better default for "stop on first hit, print
   registers" until/unless it also flakes.
-- `numpy` is not installed in this Mac checkout's `python3`; `gfxview.py` needs it for palette
-  detection (`--contact`/`--html`) and fails with a bare `ModuleNotFoundError` otherwise.
 - Movement is joystick port 1 (`kbd ff 01/02/04/08` = up/down/left/right). One packet is a
   self-terminating multi-substep move needing 60k-100k steps.
 - Player = sprite-array slot 0 (`$038338`, +42 = 0); `A5 = $18152`.
@@ -94,8 +93,8 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
 
 ## Next session
 
-Install `numpy` (`python3 -m pip install numpy`) and run `gfxview.py` against
-`scratchpad/cadaver/hit_014b28.snap` to read what `$55b6` actually is, confirming or refuting the
-icon-panel hypothesis from §32b. Then move to the reframed open item 1: find the real room-art
+Run `uv run python tools/gfxview.py scratchpad/cadaver/hit_014b28.snap --html out.html` (deps now
+provisioned via `uv sync`, see DEVELOPING.md "Python tooling") and read what `$55b6` actually is,
+confirming or refuting the icon-panel hypothesis from §32b. Then move to the reframed open item 1: find the real room-art
 paint step by watching the live screen buffer across a full crossing for writers other than
 `$014a90` and the `$0144b8` flip. Prompt: `/resume cadaver`.
