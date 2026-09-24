@@ -2904,6 +2904,50 @@ found, at absolute step 58,093,915) shows `D6=0` — CAVERN's slot — right bef
 spatial point-in-rectangle scan over every type-3 room genuinely resolves the crossing point to
 CAVERN and the resolved slot is what gets written into the live current-room field.
 
+## 39. Open item 1 closed: `+4`/`+5` are exactly one field, read two ways — §32a/§31c's "quadrant/
+graphics-table index" is computed *from* §38d's width/height, not a conflicting reading of a
+different field
+
+**40th pass.** `$0000e7b0` (already named in §31c as the routine that writes `(A5)+148`, but not
+disassembled there) is the reconciliation: full linear read (`disassemble.py --linear 0xe7b0 60`
+off `room2_tunnel_entry.snap`):
+
+```
+$00e7b0: movea.l 164(A5),A6      ; current room record (§31a/§38a's type-3 record)
+$00e7b8: move.b 4(A6),D0         ; byte +4 - §38d's rectangle "width"
+$00e7bc: move.b 5(A6),D1         ; byte +5 - §38d's rectangle "height"
+$00e7c0: move.l D0,D2 ; move.l D1,D3   ; keep originals (D2/D3) for the loop below
+$00e7c4: subq.w #3,D0 ; subq.w #3,D1   ; (width-3), (height-3)
+$00e7c8: lsl.w #4,D1              ; (height-3)*16
+$00e7ca: add.w D0,D0              ; (width-3)*2
+$00e7cc: add.l D1,D0              ; index = (width-3)*2 + (height-3)*16
+$00e7ce: lea $5a10.l,A4 ; adda.l D0,A4
+$00e7d6: movea.w (A4),A6          ; table[index], sign-extended
+$00e7d8: move.l A6,148(A5)        ; COMMIT: (A5)+148 := table[index]
+$00e7dc: adda.l (A5),A6           ; A6 += screen-buffer base
+$00e7de: subq.b #1,D2 ; subq.b #1,D3   ; (width-1), (height-1): loop trip counts
+  ; nested dbf loop, (height-1)x(width-1) iterations, writes (A1-A0) screen-buffer offsets
+  ; into a table at 2634(A5)+, stepping A1 by $508/$4f8 per column/row
+$00e80a: rts
+```
+
+Live cross-check (direct memory read off both room-record instances, no emulator run needed —
+these are static per-snapshot reads): `room2_tunnel_entry.snap` (TUNNEL, record `$6bf84`) has
+`+4=3, +5=5` → `index=$20` → `word[$5a30]=$2d50`; `burst_end.snap` (CAVERN, record `$6bf0a`) has
+`+4=10, +5=10` → `index=$7e` → `word[$5a8e]=$1268`. Both snapshots' own `(A5)+148` (`$181e6`, since
+`A5=$18152`) read **exactly** `$2d50` (TUNNEL) and `$1268` (CAVERN) — matching the computed table
+lookups byte-for-byte in both rooms.
+
+**Reconciled, not a conflict**: `+4`/`+5` are a single width/height pair (§38d, used directly as
+the spatial-rectangle bounds `$de5e` tests). `$e7b0` reuses those same two bytes as a 2-D index
+`(width-3, height-3)` into a `$5a10` lookup table that returns a screen-space row-stride/offset
+value, which both seeds `(A5)+148` and drives a nested loop (trip counts `width-1`/`height-1`) that
+builds a per-tile screen-buffer-offset table at `2634(A5)+` — the per-room "quadrant/graphics"
+layout §31c inferred from the write to `(A5)+148` alone. §31c's characterization was directionally
+right (it does select room-shape-dependent screen layout) but wrong to treat it as an independent
+field: there is no second `+4`/`+5`-like pair elsewhere in the record, just this one reused as both
+a bounding box and a table index derived from the box's own dimensions. Open item 1: **closed**.
+
 ## Files
 
 | File | What |
