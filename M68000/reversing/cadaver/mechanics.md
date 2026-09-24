@@ -2391,6 +2391,51 @@ that dumps registers on a `watch` hit rather than relying on `bp`'s separate, ap
 polling — then read whatever `A0` points to with `gfxview.py`/`disassemble.py --snap` to see
 whether it's genuinely per-room art or a fixed shared asset.
 
+### 32b. `$014b28`'s blit source is a fixed address, not per-room art — `$014a90` paints a status/icon
+    panel, not the room background (33rd pass)
+
+Root-caused the prior pass's `bp` flakiness first: it wasn't `bp` itself — `bpc 014b28 1 <maxSteps>`
+(stop on the *first* hit rather than relying on `bp`'s own polling) reproduced cleanly, back to back,
+every time this pass tried it, both from a single-session replay and from two independent fresh
+`resume ... repl` processes. Whatever made the previous pass's two `bp` replays diverge (one crossed,
+one sat idle for the full 2M-step budget) did not recur; most likely a REPL-session/script mistake in
+that pass rather than a real emulator nondeterminism (`watch` was already known-clean, see §32a's own
+note).
+
+Live register dump at `$014b28`, both directions of the CAVERN↔TUNNEL link:
+
+- **TUNNEL→CAVERN** (from `room2_tunnel_entry.snap`, `kbd ff 02` hold, hit after 868,379 steps):
+  `A0=$000055b6 A1=$00006100 D0=$110(272) D1=$8f(143) D6=2 D7=6`.
+- **CAVERN→TUNNEL** (from `gameplay_empire.snap`, the §-recipe zigzag, hit ~99,021 steps into the
+  final `kbd ff 01` leg, roughly 2.999M total steps): **identical** `A0=$000055b6 A1=$00006100
+  D0=$110(272) D1=$8f(143) D6=2 D7=6` — same source address, same screen position, same shape, in
+  the opposite room-transition direction.
+
+**This settles the open question**: the blit source at `$014b28` (`$14ee4`, the arbitrary-shift
+and/or/not composite loop reached via `$14d7a`'s `D6==2` branch) is a **fixed, room-independent
+address** (`$55b6`), not the current room's own art selected via `496(A5)` — if it were per-room art,
+CAVERN and TUNNEL would read different source addresses, and they read the same one. `$014a90` is
+therefore not "the room background painter"; it repaints a fixed on-screen element at a fixed screen
+position `(272,143)` (right-hand portion of the 320x200 screen, a plausible status/icon-panel
+location) every time a room transition completes, matching §7's independently-documented behaviour
+("standing at the lever sets the status-bar name field to 'LEVER' and switches the icon panel to a
+lever-specific icon pair") — a fixed icon/status panel that gets redrawn on room entry is exactly the
+kind of asset this shape (fixed coords, fixed source, `room_record+$c0` used only as a *mask*, not a
+source pointer) would produce. `m 55b6 128` shows mostly zero bytes with a sparse `f8 00 00 3f`/`f8
+01 86 3f` pattern starting around offset 108 — not dense enough to be a full-screen or full-room
+bitmap, consistent with a small icon/glyph asset rather than room art.
+
+**Reframe for the still-open room-background question** (§31e/§32a's original goal): `$014a90` is
+now a closed lead, not an open one. Whatever actually selects and blits a *room's own* background
+art still hasn't been caught in the act; the search should look elsewhere in the transition path
+(before `$0144b8`'s flip, which is confirmed destination-side-only per §31e) rather than continuing
+to chase `$014a90`/`$014b28`.
+
+**Not yet done**: confirming `$55b6`'s contents are the actual icon-panel glyph/sprite data (versus,
+say, a palette or mask table reused for another purpose) — read it with `gfxview.py` against the
+known screen palette and compare its rendered shape to a real "LEVER" vs default icon-panel
+screenshot pair.
+
 ## Files
 
 | File | What |
