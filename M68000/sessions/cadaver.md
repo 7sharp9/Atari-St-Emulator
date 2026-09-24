@@ -81,11 +81,17 @@ physical disk contents ruled out as holding a second level, all fully closed). *
    (same snapshot, same 5M-step budget, no key / space / return / '1') produced pixel-identical
    screens in all four cases, ruling out a short keypress as what's gating this specific window — the
    loop's real trigger (a timed protection check? genuine slow disk depacking? something else) is
-   unidentified. **Next thing to try**: the `[!]` (verified-dump, likely uncracked original) two-disk
-   pair in the same Dropbox folder — an uncracked original should have no cracktro to grind through
-   at all, unlike every crack-group image tried so far. If that also fails to reach the prompt
-   quickly, this item should probably be downgraded: §52's static + external-ground-truth evidence is
-   already fairly strong without it.
+   unidentified. Only the Empire `[t]` crack group's two-disk pair has been tried — the Dropbox
+   folder also has a **Replicants/ST Amigos** crack-group pair (`(Disk 1 of 2)[cr Replicants - ST
+   Amigos]`, with `[a]`/`[a2]` disk-1 variants and a `[b]` disk-2 variant) and the **`[!]`
+   verified-dump pair** (likely an uncracked original), neither tried this pass — a different crack
+   group's own intro (Dave suggested this, 2026-09-24) is worth a shot before or alongside the `[!]`
+   pair, since a differently-cracked release isn't guaranteed to share the Empire `[t]` release's
+   specific loop, and an uncracked original may have its own real protection-check cost instead of a
+   cracktro. Try the `[!]` pair first (should have no cracktro at all, cheapest if it works), then
+   Replicants/ST Amigos if it doesn't. If neither reaches the prompt in a reasonable step budget
+   (say, low hundreds of millions), downgrade this item: §52's static + external-ground-truth
+   evidence is already fairly strong without a live confirmation.
 2. **Low priority, unchanged from the prior handoff**: which of the 13 (of 14) `$ff8201`-touching
    call sites other than the room-crossing path actually fires (title/intro screen, a different
    room-pair's crossing, a resolution/mode change). Not needed to close anything above.
@@ -164,8 +170,9 @@ use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`f
 ## Next session
 
 Open item 1 (live gameplay confirmation of the Disk 2 swap) is the only thing still worth chasing on
-this thread, and only if the `[!]` verified-dump pair turns out to boot cleanly without a long
-cracktro — try that first before sinking more step-budget into any crack-group image. If it also
-stalls, §52's static + Dave's external confirmation is strong enough evidence to just call the
-"is Disk 2 a real levels disk" question settled and move on to the low-priority items (2, 3) or a
-new thread. Prompt: `/resume cadaver`.
+this thread. Try the `[!]` verified-dump pair first (cheapest if it boots cleanly without a long
+cracktro), then the untried Replicants/ST Amigos crack-group pair if it doesn't — a different crack
+group's intro isn't guaranteed to share the Empire `[t]` release's specific loop. If neither reaches
+the prompt in a reasonable step budget, §52's static + Dave's external confirmation is strong enough
+evidence to just call the "is Disk 2 a real levels disk" question settled and move on to the
+low-priority items (2, 3) or a new thread. Prompt: `/resume cadaver`.
