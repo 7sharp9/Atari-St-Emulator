@@ -37,6 +37,13 @@ know they existed.
   `M68000/`. Addresses in docs are runtime absolute addresses.
   The raw `dotnet exec` form traces every instruction unless `ATARI_NOTRACE=1` is set. On the Mac
   (no PowerShell) use it with `ps`/`pkill` for `tasklist`/`taskkill`: `M68000/DEVELOPING.md`, "macOS".
+  **`run.ps1`'s subcommands are aliases, not real argv** (`run.ps1`'s own `switch` block is the
+  source of truth): `rrepl <snap>` is raw argv `resume <snap> repl`, `snap <N> <path>` is
+  `<N> snapshot <path>`, `resume <snap> [N]` is `<N> resume <snap>`. Passing an alias name like
+  `rrepl` straight to the raw binary matches no argv pattern and silently falls through to a
+  disk-less cold boot, which then sits forever in an early ROM wait loop — this looks exactly like
+  a stuck or corrupt snapshot (blank `snap_render.py` output, a `bpc` that never hits) until you
+  check the argv against `run.ps1`'s switch block (cadaver `mechanics.md` §45).
 - **Another Claude session is often working in this checkout.** Before `taskkill` on dotnet,
   `dotnet build`, or editing a file with uncommitted changes you did not make, check
   (`git status`, `tasklist | grep dotnet`, `ListAgents`) and ask: message a live session with
