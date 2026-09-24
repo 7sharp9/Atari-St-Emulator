@@ -3689,6 +3689,79 @@ useful step is examining the loaded buffer's content directly (§51/§52's stati
 now against live RAM instead of the raw file) rather than chasing this crack's own dispatch bug
 further.
 
+## 56. Static graphics/level mining on `disk2_replicants.st`'s raw bytes: negative result across
+    every width/layout tried, and two structural findings that narrow the next step (56th pass)
+
+Following on from §52/§55's static disk-layout work (which used the two-disk Empire `[t]` crack's
+Disk 2), this pass ran the same entropy/candidate-span method directly against the file now proven
+to load correctly live, `disk2_replicants.st` — independent of item 1 (the crack dispatch bug),
+per the README's own "not started this session, worth deciding priority on" framing.
+
+**56a. `disk2_replicants.st` and Empire `[t]`'s Disk 2 are the same underlying payload.** A 4-byte-
+aligned identical-byte sample across the full 819,200-byte images gives 98.3% identical (vs. 0.1-
+0.3% for any of the already-established "genuinely different disk" pairs in §52) — confirming the
+two crack groups' Disk 2s differ only in their own boot/loader sectors, not in the game content
+itself, so §52's entropy/block findings (block A `$e00`-`$52800`, 334KB, entropy 7.72; block B
+`$58c00`-`$bb600`, 404KB, entropy 7.62) apply unchanged to the file this spike can now actually
+load.
+
+**56b. `gfxview.py`'s automatic palette/span scan on the raw file finds 5 mid-entropy candidate
+spans, each with 1-4 STF palettes embedded *inside* it rather than immediately before it** — a
+different structural pattern from every previously-decoded asset in this game (the one-disk
+crack's player sprite sheet and Disk 1's room-art candidates both had their palette pair sitting
+just *before* the data, per graphics.md §2). The five spans (`tools/gfxview.py --raw
+disk2_replicants.st`, offsets confirmed against `disk2.html`'s own auto-detected data-span list):
+
+| span | size | entropy | palette(s) inside |
+|---|---|---|---|
+| `$13000`-`$19800` | 26 KB | 4.75 | none found inside; nearest is `$39430` (outside) |
+| `$36800`-`$40000` | 38 KB | 5.02 | `$39430`, `$39470` (9 colours each) |
+| `$5d000`-`$67000` | 40 KB | 4.99 | `$5fc02` (9), `$611b0` (6) |
+| `$82000`-`$8a800` | 34 KB | 5.00 | `$84a68`,`$84afc`,`$84b3c`,`$84b78` (9-10), `$88034`,`$8806a`,`$880a0` (9) |
+| `$a8000`-`$ae800` | 26 KB | 4.69 | `$adb28` (7) |
+
+These five spans are markedly lower-entropy (4.69-5.02) than blocks A/B (7.6-7.7), i.e. they read
+as the better a-priori graphics candidates by the same entropy heuristic that found the one-disk
+crack's real sprite sheet (which topped out at 5.25, graphics.md §2's original 7-span scan).
+
+**56c. Negative result: none of the 5 candidate spans, nor blocks A/B, decode to any coherent
+tile/sprite/room structure.** Rendered every one of the 5 spans at 7 widths each (16/32/48/64/
+96/160/320 px, st-interleaved 4bpp, each span's own nearest/embedded palette) plus 2 widths each
+as raw chunky8 (1 byte/pixel, palette-independent) — 49 renders total
+(`scratchpad/cadaver/disk2_gfx/try_widths.py`, ad hoc, not promoted to `tools/`) — every single one
+is visually indistinguishable from noise at any width tried; no repeating tile-column structure,
+no silhouette, nothing resembling the one-disk sprite sheet's immediate "streaky noise, then
+coherent art" transition (graphics.md §2). Also rendered blocks A/B the same way (chunky8, 160/320
+px): same result, uniform noise throughout. This is a genuine negative, not an absence of trying —
+unlike the confirmed player sprite sheet, which only needed the *right* width/height (struct
+fields `+50`/`+51`, graphics.md §2) to snap into a recognisable image at the *first* width tried
+once those fields were read; nothing here snapped into anything recognisable across the full grid
+searched.
+
+**56d. Disk 2's own boot sector carries no real code, closing off `disk2_findings.md`'s proposed
+next step.** That file (52nd pass, not yet promoted into this doc) recommended checking sectors
+0-7 for loader code the one-disk release's boot path doesn't have, in case a depacker for blocks
+A/B lives there. A linear disassembly of sector 0 (`disassemble.py --rom disk2_replicants.st
+--base 0 --linear 0 512`) shows only the boot-sector signature bytes and BPB fields, then 470+
+bytes of `ori.b #$0,D0` (all-zero) with no branch, jump or subroutine anywhere in the sector — i.e.
+there is no boot-code payload here to disassemble, consistent with §55's own finding that this
+disk is *never booted* (it's swapped in mid-game, so TOS never executes its boot sector at all).
+Any depacker for blocks A/B, if one exists, is not hiding in Disk 2's own unexecuted boot sector;
+it would have to be part of the resident Disk-1-loaded code already fully disassembled and
+confirmed to contain no such routine (§28c/§51c).
+
+**Net effect on the open-item split.** Static guessing (candidate-span entropy scan → try every
+plausible pixel width/layout) is the method that worked for the one-disk crack's real graphics and
+has now been run exhaustively against Disk 2's own bytes without result. The two things that
+would move this forward — the real record/pixel format grounded in the code that actually
+interprets this data (the way `+50`/`+51` grounded the sprite sheet, graphics.md §2), or a live
+view of what the game itself does with these bytes once loaded — both require the game to actually
+read and process this data, which is exactly what item 1 (the crack's dispatch bug) is still
+blocking past track 7. This pass's negative result narrows, rather than closes, the open-item
+choice: item 2's static half is now exhausted short of guessing further widths blind, and item 1
+is the more promising path to *any* further progress on Disk 2's content until either a live read
+or a code-grounded struct definition becomes available.
+
 ## Files
 
 | File | What |
@@ -3696,6 +3769,7 @@ further.
 | `mechanics.md` | this file |
 | `py/disk_layout.py` | 51st pass: parses the one-disk Empire `.st` image's boot-sector BPB, checks the root directory for real FAT12 entries, and classifies every 512-byte sector as data vs. blank/erase filler — proof for §51. Its blank/data classifier only catches single-byte-repeat fills, not short-period repeating patterns (52nd pass found a 3-byte cycle on Disk 2's tail it missed) — not yet extended to handle that |
 | `py/analyze_disk2.py` | 52nd pass: per-run entropy, byte-distribution (stddev/mean, max frequency, duplicate-sector rate), fixed-stride periodicity scan and ASCII-string scan over `disk_layout.py`'s data runs, plus cross-image byte-identity sampling — proof for §52's Disk-1-vs-Disk-2-vs-one-disk comparison (paths hardcoded to this Mac checkout, not parameterised) |
+| `scratchpad/cadaver/disk2_gfx/try_widths.py` | 56th pass: renders `disk2_replicants.st`'s 5 candidate spans (and blocks A/B) as st-interleaved 4bpp at 7 widths and raw chunky8 at 2 widths using `gfxview.py`'s own palette/span detection — proof for §56c's negative result (ad hoc, scratchpad only, ~50 renders in `scratchpad/cadaver/disk2_gfx/renders/`, untracked) |
 | `py/door_id_words.py` | 49th pass: for the 5 doors with a genuine positive id word, dumps the descriptor's own `+4..+7` bytes and resolves the id word as a type-6 object id, checking its `+15` lock flag — proof for §49 |
 | `py/snapinfo.py` | 46th pass: one-line-per-snapshot room/display-buffer-parity/shifter-base report, reusing `tools/gfxview.py`'s header parsing — proof for §46 |
 | `boat_hotspot.png` | 45th pass: live snapshot rendered at CAVERN's BOAT proximity hotspot, status bar/icon panel reading "BOAT"/"CAVERN" — proof for §45 that the §43 mechanism resolves a second object correctly, not just TUNNEL's LEVER |
