@@ -74,6 +74,8 @@ After the per-frame routine list, the decompile and a gameplay snapshot exist, t
 
 `gfxview.py <snap> --contact ram.png` first, a whole-RAM overview to spot where decoded assets sit. Then `--html` for an interactive per-region viewer (base/width/rows/bpp/palette/zoom) to pin down the actual format (planar/chunky/tiled). `ATARI_GFX_SIDECAR=<path>` during the run records every XBIOS `Setpalette`/`Setscreen` so gfxview can auto-mark candidates. Write findings to `graphics.md`/`gfxview.md`, not just the screenshots.
 
+**Once a format is confirmed (not just suspected), render and commit the asset**, not only a prose description of its address/dimensions: a decoded spritesheet, tileset, icon set or palette swatch goes in `reversing/<game>/` (or a `graphics/` subdir once there are several) as a real PNG, table-indexed in `graphics.md`/the README's files table next to the gameplay screenshots. A later pass or Dave should be able to look at the sprite without re-running the decode; a coordinate and a bpp value in prose is not the deliverable, the picture is.
+
 ## 4b. Prove a renderer or port pixel for pixel
 
 What took PowerMonger's port from ~96% to 100.00% on 27 frames (`reversing/powermonger/port/SPEC.md` §6 "Scoring a capture", scripts in `reversing/powermonger/py/`):
@@ -110,6 +112,8 @@ Pre-register the falsifier, what result would mean the change is wrong, before r
 ## 7. Write the README
 
 Every prior game's README (`M68000/reversing/{a_013,supersprint,powermonger,populous}/README.md`) covers, in this order: what the game is + provenance (publisher/year/cracker, sha256, disk-image file layout); milestones reached and how; "what it needed from the emulator" as a commit table (wall → fix); "how it was run" (exact commands); "how the CFG was built"; "what the artefacts show"; a files table. Match that shape so a later pass, or someone else, can reproduce the run without re-deriving it. When there are topic docs, open with a table of document / what it covers / its proof and match count (`populous/README.md`), and end with an explicit list of what was *not* exercised in the emulator.
+
+**Keeping the topic docs current is not optional, and it is not the same as appending.** A finding that changes, narrows, closes or reframes an earlier claim gets folded into that claim's own prose in the same edit that adds the finding — correct the sentence, don't leave the old one standing next to a new dated one that contradicts it. The per-file table row in a README (`| file | what |`) is the one place a running "Nth pass: ..." clause list is acceptable, because it's already structured as a changelog; a numbered section in `mechanics.md`/`graphics.md`/`ai.md` is not a changelog and should read as a normal explanation of how the mechanism works now, with the proof (match count, script) attached, not as a transcript of how understanding evolved across passes. If re-reading a section cold would confuse a newcomer about what's actually true today, that section needs a rewrite pass before or alongside the next finding that touches it, not a further append.
 
 ## REPL commands that exist (check `help` before assuming a gap)
 

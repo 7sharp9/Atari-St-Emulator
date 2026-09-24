@@ -49,7 +49,17 @@ know they existed.
 - Git: stage named files only, never `git add -A` (ROMs, game disks and cracked archives sit
   untracked in the tree); check `git diff --cached --stat` before committing. No
   `Co-Authored-By` trailers: history was scrubbed of them.
-- Docs are definitive reference text: correct stale claims in place, no pass-by-pass diary.
+- Docs are definitive reference text: correct stale claims in place, no pass-by-pass diary. A new
+  finding is integrated into the surrounding prose — supersede, reconcile or fold in what it
+  changes — not just tacked on as one more dated clause appended to an already-long paragraph or
+  table cell; if a section has become an unreadable pass-by-pass run-on, rewrite it into a normal
+  narrative of current understanding as part of the same edit. Keep the "what changed this pass"
+  framing only in `git log`/`M68000/sessions/<workstream>.md`, not in the topic doc's prose.
+- When a session decodes a graphics asset for the first time (spritesheet, tileset, icon/panel
+  art, palette) well enough to render it, commit the rendered image (PNG) alongside the doc that
+  proves the format, not just a prose description or an untracked scratchpad file — future
+  sessions and Dave need to see the asset without re-running the decode. Table-index it in
+  `graphics.md`/the README's files table the way screenshots already are.
 - Every behavioural claim about a game needs an emulator check (callcap diff, frame capture or
   screenshot diff) with a match count, or is labelled inferred.
 - A "nothing writes X" or "only Y writes X" claim needs every writer: grep a whole-image
