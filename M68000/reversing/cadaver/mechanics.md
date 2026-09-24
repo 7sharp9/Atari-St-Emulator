@@ -2701,11 +2701,216 @@ continuous run, but a fresh short script re-targeting the same point did not rel
 chaining `s 1`/`u 144c8 30000`/`r` for the needed ~30 iterations within one *unbroken* run, as this
 pass did, is the reliable form — don't split it across separate invocations).
 
+## 37. The room background painter found: `$00cd50`-`$00cee0` populates the object array from the
+current room record on room entry, and the already-documented masked-blit renderer draws it once
+
+**39th pass.** §36's "not yet done, cheap next step" is done, and goes further: not only is the
+inactive display half's writer identified, its *cause* — the current room's own object list — is
+too, closing this workstream's longest-open question.
+
+**37a. `watch 19100 64256` (spanning *both* display halves in one call, so the "which half is
+inactive right now" ambiguity that stalled the 38th pass can't cause a miss) over a full 8.2M-step
+`kbd ff 02` crossing logs every write into the pair — 5,635,133 events, only 237 distinct PCs, every
+one already known (the `$0144b8` flip body, the panel writers, an ambient periodic layer). A
+`watch 2de08 32000` on `120(A5)` over the same crossing shows it written by nothing but that same
+`$0144b8` family. A full 1MB RAM diff between the pre- and post-crossing snapshots confirms no other
+region of the image changes by more than ~7KB — the room's content really does live only in these
+two already-charted buffers, closing off the "we're watching the wrong address" failure mode.
+
+**37b. Computing, per byte, the *first* write (from the watch log) that moves it away from its
+`room2_tunnel_entry.snap` value — not the *last* writer, which is dominated by routine re-copying —
+finds a single family responsible for far more of the real change than anything else: `$0150b4`/
+`$0150ba`/`$0150d2`/`$0150d8`, 11,585 of the 37,800 differing bytes across both halves (≈31%, more
+than 3× the next-largest family). This is the masked-blit primitive already named in §33b/34b as
+"the entity/sprite-list renderer... confirmed not the room-art source" — that conclusion holds for
+its *steady-gameplay* calls (real entities, drawn at their own positions), but during a crossing the
+same entry point behaves completely differently: `hits` census gives **0** calls over 8.2M steps of
+ordinary `gameplay_empire.snap` play, vs **4,066** calls during one crossing, all in a tight
+front-loaded burst (first hit step 49,322, **last hit step 1,058,685** — entirely within the first
+13% of the crossing, then silent for the remaining ~7.1M steps).
+
+**37c. Snapshotting right as that burst ends (`bpc 150b4 4066 2000000` from `room2_tunnel_entry.snap`
+after `kbd ff 02`, `s 200`, `snap` → `burst_end.snap`) and diffing both display halves against the
+pre-crossing start and against the established `gameplay_empire.snap` CAVERN reference:**
+
+| | vs TUNNEL start | vs CAVERN reference |
+|---|---|---|
+| `$19100` half | 18,289/32,000 different | **656/32,000 different (≈98% match)** |
+| `$20f00` half | 18,287/32,000 different | **636/32,000 different (≈98% match)** |
+
+Under 13% of the way through the crossing, the room is already fully painted — the small remaining
+diff is almost certainly the player sprite's own position/animation, not room content. **`$0150b4`'s
+burst is confirmed as the room-tile painter.** (A control run of 8.2M idle steps with *no* input at
+all leaves both halves within 0-368/32,000 bytes of their start — the ~18,300-byte change is real
+crossing content, not ordinary per-frame animation churn.)
+
+**37d. Walking `$0150b4`'s call chain up (its caller at the crossing-time hit: `$0000d8ee`, inside
+the already-documented `$00d800`-`$00da06` visible-object walker of §33b/34b) leads to the actual
+room loader: `$00cd50`-`$00cee0`.** This routine runs once per room entry and:
+
+- reads `movea.l 164(A5),A0` — **`(A5)+164` is the current room record pointer.** Confirmed by
+  direct read: `$0006bf84` in `room2_tunnel_entry.snap` (TUNNEL) vs `$0006bf0a` in `gameplay_empire`/
+  `burst_end`/`watch_wide_crossing` (CAVERN) — a different, room-specific address, read fresh at
+  room-load time rather than a fixed pointer.
+- zeroes three counters at `1148(A5)`/`1150(A5)`/`1152(A5)` (object sub-totals and grand total —
+  `1152(A5)` is the one that grows from 2 (TUNNEL) to 22 (CAVERN) over the crossing, confirmed live
+  via `watch 185d2 2`: `$0000ce2e` increments it by exactly 1 per object, ~114-116 steps apart, 22
+  times in a row, no other writer touches it),
+- reads `move.b 29(A0),D7` from the room record — **this is the room's object count**, and it is
+  byte-exact against the two rooms sampled: TUNNEL record byte `+29` = `$02` (2), CAVERN record byte
+  `+29` = `$16` (22) — matching the independently-watched `1152(A5)` growth exactly, 2/2. (Room-record
+  bytes `+0..+3`/`+4`/`+5`/`+$c0` from §32a remain as documented; `+29` is a new field this pass
+  adds — offset `+4`, also read here as a byte into D6 before the object loop, is not yet identified,
+  it feeds a separate `bsr $c5a8` lookup with a different selector and needs its own check.)
+- for each of the `D7+1` object-list entries (walked via `A4`, seeded from a per-room list next to
+  the record), looks up the object's shared template via `bsr $c5a8` (a `(type, index)` resource
+  lookup — called here with a `#6` selector) and instantiates a new 70-byte slot in the
+  already-documented `56(A5)` object array (`SpriteObjectArrayPtr_A5Plus56`, §21a) by copying
+  position/bounding-box/type fields from the template (`6(A1):=A0` keeps a back-pointer to the room
+  record itself; `10(A1):=A6` keeps one to the template).
+
+**Put together**: a room crossing does not "paint a background bitmap" as a single operation at all
+— it **re-populates the shared object array from the new room's own object list** (this routine),
+and the *already-documented* per-frame visible-object walker (§33b/34b's `$00d800`) then draws every
+newly-active object once via the ordinary masked-blit path (§37b/c's `$0150b4` burst), the same way
+it draws real moving entities every frame — a room's "background" is just its full set of static
+objects (walls, furniture, terrain pieces), rendered through the identical entity-rendering pipeline,
+not a separate system. This also explains why every previous pass's search for a "background writer"
+kept finding only entity/sprite-blit PCs and concluding they must be unrelated: they *are* the room
+painter, just called ~4,066 times instead of the handful used for genuine on-screen entities.
+
+**Not yet done**: read `bsr $c5a8`'s body (the `(type, index)` template lookup — used both for room
+records at `164(A5)` and for entries in this loop) to find the actual room/object resource table and
+confirm how many rooms/objects it covers; that table, once found, would settle Open item 4 (room
+connectivity) alongside this section's room-record field. Also unreconciled: this session's shifter
+video-base register never changed across four independent snapshots and a direct `watch ffff8200 8`
+(zero writes) for this exact crossing recipe, while two older scratch snapshots
+(`watch_crossing_end.snap`, `mid_bank_copy.snap`) read shifter base `$19100` via the same
+`gfxview.py` helper — check before trusting "the shifter always flips on a crossing" as general.
+
+**Also corrected this pass**: `$5a99` is not a "room reached" flag (as several prior handoffs
+assumed when using "`$5a99`: 0→1" to detect crossing completion) — it is local scratch state for
+`$0000bba8`, a small wrapper that runs `$0144b8` with `(A5)+0`/`120(A5)`'s roles temporarily swapped
+so the same routine can bank a display half into `120(A5)` instead of refreshing a half from it (the
+"reversed" call §36c found, now understood as this wrapper's designed behaviour, not an ad hoc
+swap). `$0000bba8` is itself confirmed crossing-specific (0 hits/8.2M steady-state steps vs exactly
+4 during one crossing, `A1` always `$0002de08` and `A0` alternating the two display halves at every
+hit), but `$5a99` toggles 1→0 within ~1,200 steps on *every* call, not just the last — using it as a
+sticky "crossing done" signal is unreliable; use the room record pointer at `(A5)+164` (§37d) or the
+CAVERN-content match fraction (§37c's table) instead.
+
+## 38. The resource-manager format decoded; `(A5)+1166` is the real, clean "current room" field;
+the door/portal resolver found
+
+**39th pass, continued.** §37d's `bsr $c5a8` (the `(type, index)` lookup used both for the current
+room record and for object templates) is now fully read, and it explains everything by itself —
+this section supersedes §31a's guess of "Type 3... the real, populated room table" with the actual
+mechanism, and gives Open item 4 (room connectivity) its concrete next target.
+
+**38a. The resource manager**: `(A5)+96` points to an array of 18-byte type records (indexed by
+`D0`, the "type" argument every `bsr $c5a8`/`$c52c`-family call takes): `[+0 index-table ptr]`
+`[+4 data-area ptr]` `... [+16 entry count, word]`. `$c5a8` computes, for `(type=D0, index=D1)`:
+`entry = index_table[D1]` (4 bytes: `[+0 size]` `[+2 offset]`), returns `data_area + entry.offset`
+in `A0` and `entry.size` in `D0`. Read directly off `room2_tunnel_entry.snap`, the first 12 types:
+
+| type | index-table | data area | count |
+|---|---|---|---|
+| 0 | `$4a51a` | `$4d65e` | 100 |
+| 1 | `$4a6aa` | `$4ea4a` | 100 |
+| 2 | `$4a83a` | `$5115a` | 255 |
+| **3** | `$4ac36` | **`$6bf0a`** | **100** |
+| 4 | `$4adc6` | `$6d35a` | 400 |
+| 5 | `$4b406` | `$6dfda` | 100 |
+| **6** | `$4b596` | `$6eb92` | **1000** |
+| 7 | `$4c536` | `$7550a` | 0 |
+| 8 | `$4c536` | `$7550a` | 64 |
+| 9 | `$4c636` | `$7560a` | 10 |
+| 10 | `640000` (nonsense — likely past a real bound) | `f0064` | 25 |
+| 11 | `be001e`/`d7001e` (nonsense) | | 375 |
+
+Type 3's data area, `$6bf0a`, is **exactly** §37d's `(A5)+164` room-record pointer for CAVERN — the
+whole room-record system §32a and §37d described is just this resource manager's type 3 (§31a's
+"Type 3 (not type 8) is the real, populated room table, 72/100 slots" is the same table seen from a
+different angle — the 72 populated count is confirmed again here by walking the index table: 72 of
+100 entries have nonzero `size`). Type 6 (1000 entries, used by §37d's per-object template lookup)
+is the object-template pool. Decoding the type-3 index table and matching offsets against known
+addresses identifies room **slots**, byte-exact: **CAVERN is slot 0** (`offset=0`→`$6bf0a`, record
+size 122) and **TUNNEL is slot 1** (`offset=$7a`→`$6bf84`, record size 32) — record size scales with
+the room's object count (§37d: CAVERN has 22 objects, TUNNEL 2), consistent with a header plus a
+per-object index-word tail.
+
+**38b. `(A5)+1166` is the current room's slot index — a clean, single-write field, unlike `$5a99`.**
+Confirmed by direct read: `1` in `room2_tunnel_entry.snap` (TUNNEL, slot 1), `0` in
+`gameplay_empire.snap`/`burst_end.snap` (CAVERN, slot 0) — matching 38a's slot numbers exactly. A
+`watch 185e0 2` (`(A5)+1166`'s absolute address) over the same 8.2M-step crossing logs **exactly
+one write**, at absolute step 58,093,915, PC `$0000727c`, `1166(A5) := 0` — no toggling, and it
+lands inside §37b/c's `$0150b4` burst window (burst runs ~57,449,323-58,458,686), about 58% of the
+way through it. **Use this field, not `$5a99`, to detect "which room is the game in right now" or
+"has this crossing committed yet".**
+
+**38c. The writer, `$0000727c`, sits inside what is very likely the actual door/portal resolver —
+Open item 4's target.** Immediate context (`disassemble.py --linear 0x7250 60`):
+```
+$007250: move.b (A0),D0        ; a door/portal descriptor's two bytes
+$007252: move.b 1(A0),D1
+$007256: jsr $de5e.l            ; resolve (D0,D1) -> target room slot, result in D7 (or D7<0: none)
+$00725e: bmi $7262              ; D7<0: no door here (falls into a "name unset" lookup, $7262-7270)
+$007272: cmp.w 1166(A5),D7      ; already in that room?
+$007276: beq $727a              ; yes: skip
+$007278: exg D6,D7               ; no: D6 becomes the target room index
+$00727a: move.l D7,D4
+$00727c: move.w D6,1166(A5)     ; COMMIT: current room := target room
+$007280: btst #0,4(A0)          ; door-descriptor flag -> picks between two $158f8 calls (sound?)
+                                  ; ...
+$0072ac: jsr $e854.l             ; likely triggers the object-repopulation (§37d's $00cd50) indirectly
+$0072bc: bset #3,7(A0)
+$0072c2: bra $69da               ; shared post-transition continuation (already known, §31b)
+```
+This is the first routine found that both (a) reads a door/portal descriptor and (b) writes the
+clean current-room field — a strong candidate for "the" room-transition trigger `mechanics.md`
+has been looking for since §9/§31b (`$007104`/`bra $69da`). **38d. `$0000de5e` is not a portal/exit-graph lookup at all — it's a spatial point-in-rectangle
+scan over every type-3 room record.** Full disassembly: takes a world coordinate `(D0,D1)` (aliased
+`D6,D2`), then repeatedly calls the bounds-checked resource lookup `$c628` with `type=3`, index
+starting at 0 and incrementing (`addq.w #1,D1; bra $de74`) until either a match or the type's own
+`16(A0)`-bound (100, §38a) is hit. For each candidate room record `A0`, it tests the point against
+a rectangle built from four record fields: `x0=1(A0)`, `y0=3(A0)`, `width=4(A0)`, `height=5(A0)`
+(constructing `[x0,y0]`-`[x0+width,y0+height]` and checking `x0 <= D6 <= x0+width` /
+`y0 <= D2 <= y0+height`), and returns the first matching room's slot index. **This means Cadaver's
+"rooms" are laid out as non-overlapping rectangles on one shared coarse world-coordinate grid, and
+a door/crossing target is found by testing where the crossing point lands, not by following an
+explicit per-room exit table.** Reading the two known rooms' rectangles this way:
+
+| room | `x0` (`+1`) | `y0` (`+3`) | `w` (`+4`) | `h` (`+5`) | rect |
+|---|---|---|---|---|---|
+| TUNNEL (slot 1) | 19 | 12 | 3 | 5 | `[19,12]`-`[22,17]` |
+| CAVERN (slot 0) | 12 | 18 | 10 | 10 | `[12,18]`-`[22,28]` |
+
+The two rectangles are adjacent and touch right at `(22,17)`-`(22,18)` — exactly where a direct
+TUNNEL→CAVERN crossing would need them to, a good sanity check for two rooms already known to
+connect. **This conflicts with §32a's existing claim that room-record "`+4`/`+5` are the
+graphics-table index"** — not yet reconciled (§32a may describe a different record variant, or one
+of the two readings is wrong; needs a check against a room whose graphics-table index is
+independently known before trusting either). **Confirmed live, end to end.** `bpc de5e 1` during the same `kbd ff 02` crossing catches its first
+call with `D0=$14` (20), `D1=$11` (17) — a world coordinate on the shared edge between the two
+rectangles above (`x=20` inside both rects' x-range; `y=17` is TUNNEL's exact upper bound, one below
+CAVERN's lower bound). A tighter follow-up, `bpc de5e 1` then `bpc dee8 1` (the `move.l D1,D6`
+result-commit instruction inside the same loop), shows this *particular* call resolves to `D6=1`
+(TUNNEL — `A0`/`A3` read `$0006bf84` at that point, TUNNEL's own record address) with the loop
+having tested index 0 (CAVERN) and failed, index 1 (TUNNEL) and matched — i.e. this early call is
+still validating "haven't left TUNNEL yet", consistent with `(20,17)` sitting on TUNNEL's inclusive
+edge. **The decisive check**: `bpc 727c 1` (the actual `(A5)+1166`-commit instruction §38b's watch
+found, at absolute step 58,093,915) shows `D6=0` — CAVERN's slot — right before it commits, with
+`D0=$14`/`D1=$11` still the same `(20,17)` world coordinate. This closes the loop completely: the
+spatial point-in-rectangle scan over every type-3 room genuinely resolves the crossing point to
+CAVERN and the resolved slot is what gets written into the live current-room field.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `burst_end.snap` | 39th pass: live snapshot at the end of `$0150b4`'s room-paint burst (step ≈1,058,885 of the `kbd ff 02` crossing from `room2_tunnel_entry.snap`) — both display halves already ≈98% match the CAVERN reference here (§37c); untracked like the other `.snap` resume points |
+| `watch_wide_crossing.snap` | 39th pass: end state after the same crossing run to completion (8.2M steps), taken alongside a `watch 19100 64256` log spanning both display halves at once (§37a); untracked |
 | `py/decode_backbuffer.py` | 36th pass: decodes `120(A5)`'s buffer into a normal raster by reversing `$0144b8`'s chunk order; verified byte-exact (0/32000 diff) against `room2_tunnel_entry.snap`. Same algorithm applies to the reversed bank-copy direction found in §36 (source/dest swapped) |
 | `fresh_cavern_cross.snap` | 37th pass: live snapshot right after a real TUNNEL→CAVERN crossing from `room2_tunnel_entry.snap` (`kbd ff 02`, 2.5M steps) — `120(A5)` decodes to CAVERN art here, proving the buffer's content genuinely changed with zero disk/FDC activity (§36a/36b); untracked like the other `.snap` resume points |
 | `room2_tunnel_entry.png`/`tunnel_return_cross.png`/`tunnel_return_settled.png` | 32nd pass: re-derived from a cold boot after every prior resume snapshot was lost between sessions (untracked, as expected) — same states the 12th/31st passes originally reached, `.snap` counterparts untracked in `M68000/scratchpad/cadaver/` |

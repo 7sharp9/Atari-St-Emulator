@@ -1,7 +1,10 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at this commit (39th pass). Landed a real lead on
-Open item 1 (the room-paint writer) and two corrections to prior "proven" claims — see below.
+Updated 2026-09-24 by the session that ended at this commit (39th pass). **Closed Open item 1**
+(what writes new room art during a crossing) and **Open item 4** (room connectivity — it's a
+spatial point-in-rectangle scan over the room table, not a graph, proven live end-to-end), all
+written up in `mechanics.md` §37/§38 and folded into the README's "Next steps". Also corrected two
+prior-pass claims about `$5a99` and the shifter base.
 
 ## Resume point
 
@@ -11,186 +14,84 @@ Open item 1 (the room-paint writer) and two corrections to prior "proven" claims
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout,
   no rebuild needed.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). All snapshots from prior
-  handoffs still present. New this session (all reproducible from `room2_tunnel_entry.snap` with
-  the recipes below, kept for convenience):
+  handoffs still present. New this session (all reproducible from `room2_tunnel_entry.snap`,
+  kept for convenience):
   - `watch_wide_crossing.snap` / `watch_wide.log`: full 8.2M-step `kbd ff 02` crossing with
-    `watch 19100 64256` (covers **both** display halves in one call, so the "inactive half flips"
-    problem the 38th pass hit can't cause a miss). 5,635,133 write events, 237 distinct writer PCs.
-  - `watch_cache.log`: same crossing, `watch 2de08 32000` (the `120(A5)` cache buffer instead).
-  - `watch_28c00.log`: same crossing, `watch 28c00 6869` (a third region the full-RAM diff below
-    turned up).
-  - `watch_5a99.log`: same crossing, `watch 5a99 1` — the exact steps `$5a99` toggles.
-  - `watch_shifter.log`: same crossing, `watch ffff8200 8` (the shifter's own video-base
-    register) — **zero** writes logged.
-  - `idle_no_crossing.snap`: `room2_tunnel_entry.snap` + 8.2M steps with **no** input (control for
-    "is the content diff just animation noise").
-  - `bba8_regs.log`: registers at each of the 4 `$0000bba8` hits during the crossing.
+    `watch 19100 64256` (covers both display halves in one call). 5,635,133 write events,
+    237 distinct writer PCs.
+  - `burst_end.snap`: snapshot right as `$0150b4`'s room-paint burst ends (`mechanics.md` §37c) —
+    both display halves already ≈98% match the CAVERN reference here.
+  - `watch_cache.log`, `watch_28c00.log`, `watch_5a99.log`, `watch_shifter.log` (zero writes),
+    `idle_no_crossing.snap` (no-input control), `bba8_regs.log`, `watch_objcount` samples (watches
+    `(A5)+1152`, the object-array population counter — confirmed grown one-at-a-time by
+    `$0000ce2e`).
   - `full_10000_40000.asm`, `full_8000_10000.asm`, `full_40000_90000.asm`: whole-range linear
     disassembly dumps used to find `$144b8`'s only two callers; regenerable, not load-bearing.
-  - Drive scripts for all of the above: `drive_wide_watch.txt`, `drive_watch_cache.txt`,
-    `drive_watch_28c00.txt`, `drive_watch_5a99.txt`, `drive_watch_shifter.txt`,
-    `drive_idle_control.txt`, `drive_bba8_regs.txt`, `drive_hits_bba8.txt`,
-    `drive_hits_014f7a.txt`, `drive_hits_0150b4.txt`, `drive_hits_crossing_0150b4.txt`,
-    `drive_0150b4_first_regs.txt`.
+  - Drive scripts for all of the above, plus the `$0150b4`/`$0000bba8`/`$0000de5e` register-capture
+    and `hits`-census scripts used throughout — all named `drive_*.txt`, self-documenting.
 - Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry), same `kbd ff 02` crossing recipe.
-  **Do not use `$5a99` to detect "crossing done" — see the correction below, it means something
-  different and is misleading for that purpose.**
-- Uncommitted work left behind: none (only this handoff is under version control).
+  **Do not use `$5a99` to detect "crossing done"** — use `(A5)+1166` (§38b, a clean single-write
+  current-room-slot index: `1`=TUNNEL, `0`=CAVERN) instead.
+- Uncommitted work left behind: none (this handoff, `reversing/cadaver/mechanics.md`, and
+  `reversing/cadaver/README.md` are all committed with this session's work).
 
 ## Proven so far
 
-Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Unchanged this
-session's additions are new leads, not yet folded into `mechanics.md` — see "Corrections" and
-"New lead" below before trusting anything that contradicts them. Carried over: `mechanics.md`
-1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36.
+Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
+`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36. **New this session, `mechanics.md`
+§37-38** (landed and written up, not leads):
 
-## Corrections from this session (supersede parts of the 36th-38th pass writeup; not yet folded into mechanics.md)
-
-1. **`$5a99` is not a "room reached" flag — it's `$0000bba8`'s own local scratch/re-entrancy flag,
-   unrelated to which room is displayed.** Fully disassembled `$0000bba8`:
-   ```
-   $bba8: move.b #$1,$5a99.l      ; set flag
-   $bbb0: move.l (A5),-(A7)       ; save real (A5)+0
-   $bbb2: move.l A1,(A5)          ; (A5)+0 := A1  (temporary)
-   $bbb4: move.l A0,120(A5)       ; 120(A5)  := A0  (temporary)
-   $bbb8: jsr $144b8.l            ; run the normal flip/copy body with swapped roles
-   $bbbe: move.l A1,120(A5)       ; 120(A5)  := A1  (restore-ish, see below)
-   $bbc2: move.l (A7)+,(A5)       ; restore real (A5)+0
-   $bbc4: clr.b $5a99.l           ; clear flag
-   $bbca: rts
-   ```
-   `watch 5a99 1` over the full 8.2M-step crossing shows it flip 1→0 **four separate times**, each
-   pair only ~1174 steps apart (`$00bba8` sets it, `$00bbc4` clears it moments later) — at absolute
-   steps 58272716/58273890, 58313692/58314866, 58479334/58480508, 58701957/58703131. It is not
-   sticky. A prior pass's "confirmed by `$5a99`: 0→1" as a crossing-complete detector was reading
-   this scratch flag mid-flip by coincidence, not a room-identity signal. **Don't use `$5a99` to
-   decide whether a crossing has completed; use the room-index/mode field method in Open item 1
-   below instead (not yet identified either — see there).**
-2. **`$0000bba8` is a generic "run `$0144b8` with its two buffer roles swapped" wrapper, confirmed
-   crossing-specific, not a per-frame routine.** `hits` census: **0** hits over 4M/8.2M steps of
-   ordinary `gameplay_empire.snap` play, vs **exactly 4** hits during one `kbd ff 02` crossing.
-   Register capture at all 4 hits: `A1` is `$0002de08` (`120(A5)`'s fixed cache address) every
-   time; `A0` alternates `$00020f00`, `$00020f00`, `$00020f00`, `$00019100` — i.e. it always banks
-   *display half → cache*, matching the 37th pass's "backwards" finding, just via a clean, named,
-   generic entry point instead of an ad hoc register-swap read at one call site. This **replaces**
-   the 37th pass's framing (it wasn't an odd one-off swap, it's this wrapper's designed behaviour)
-   but does not change the conclusion: this routine still only *banks already-correct pixels into
-   the cache*, it does not originate new content.
-3. **The shifter's live video-base register never changed during this session's crossing** —
-   `watch ffff8200 8` (spanning the base hi/mid/lo bytes) logged **zero** writes over the full
-   8.2M-step run, and `gfxview.py`'s `live screen: base` read `$00020f00` in all four fresh
-   snapshots taken this session (`room2_tunnel_entry`, `watch_wide_crossing`, `idle_no_crossing`,
-   and the pre-existing `gameplay_empire`). **This conflicts with the 38th pass's claim** that
-   `watch_crossing_end.snap` showed shifter base `$19100` — that file (still on disk) does read
-   `$19100` via the same `load_video_regs` helper, as does `mid_bank_copy.snap`, so the flip is
-   real *in some runs*, just not in this specific `kbd ff 02`-only recipe. **Not reconciled**:
-   either those two older snapshots came from a longer/different sequence that does eventually
-   flip, or from a different crossing than the one this session drove. Check before trusting "the
-   shifter base flips every crossing" as general — it did not flip in 4 independent runs this
-   session (main crossing + idle control, both checked twice: once via a direct write-watch, once
-   via before/after snapshot reads).
-
-## New lead on Open item 1 (find the room-paint writer) — not yet proven byte-exact, needs one more pass
-
-**Exhaustively ruled out**: a `watch` spanning *both* display halves at once (`watch 19100 64256`,
-so the "which half is inactive" ambiguity from the 38th pass can't cause a miss) over the full
-8.2M-step crossing logged every write into that whole span — 5.6M events, only 237 distinct PCs,
-all attributable to the known `$0144b8` flip body (`$0144ee`-`$014a60`), the known panel/icon
-writers (`$00be46`-`$00be9e`, `$00d0aa`-`$00d350`), and a periodic small-copy layer
-(`$014f7a`-`$014fe0`, `$0150d2`/`$0150d8`). A second `watch 2de08 32000` over the cache found it
-written **only** by the same `$0144xx`-`$0149xx` family (146 distinct PCs, all within that one
-routine) — nothing else touches the cache at all. A full 1MB RAM diff between the pre- and
-post-crossing snapshots confirms these really are the only two regions that changed by more than
-~7KB, so the "we might be watching the wrong address" failure mode from the 38th pass is closed.
-
-**Control confirms the diff is real, not animation churn**: stepping 8.2M steps from
-`room2_tunnel_entry.snap` with *no* input at all (`idle_no_crossing.snap`) leaves both display
-halves within 0-368/32000 bytes of their start value, while still ~18300/32000 bytes different
-from `gameplay_empire.snap`'s steady CAVERN content — so the real crossing genuinely repaints
-~57% of each 32000-byte half; it isn't just per-frame animation noise from taking two arbitrary
-snapshots 166 frames apart.
-
-**The `$014f7a`-family periodic layer is *not* crossing-specific** — `hits` census shows it firing
-23,103 times over 8.2M steps of ordinary idle `gameplay_empire.snap` play (*more* than the 8,473
-times it fired during the crossing itself). It's an ambient effect (water? a shared animated
-layer?) unrelated to room transitions; ruled out as the room-paint source.
-
-**The actual lead — "last writer per differing byte" and "first writer that changes a byte away
-from its start value", computed directly from `watch_wide.log` against a raw before/after byte
-diff of both halves (37,800 differing bytes total):**
-- The *last* writer touching each of the 18,859 differing bytes in the always-shown `$20f00` half
-  is overwhelmingly the ordinary `$0144xx`-`$0149xx` flip-copy body (dozens of PCs, ~140-150 bytes
-  apiece) plus the known `$0080cc`/`$0080d2` blit (513+450 bytes, the single biggest single-PC
-  share) — no unidentified PC appears. This says the *final* value largely arrives via routine
-  copying, as expected.
-- The *first* writer to move each of the 37,800 differing bytes away from its `room2_tunnel_entry`
-  value is dominated by **`$0150b4`/`$0150ba`/`$0150d2`/`$0150d8`** — 3,167 + 2,869 + 2,810 + 2,739
-  = **11,585 of 37,800 bytes (≈31%)**, more than 3× any other single family (the next-largest,
-  `$014474`-family, accounts for ~1,762). This is the disassembled masked-blit primitive
-  (`and.l (A1),D5` / `or.l D3,D5` / `move.l D5,(A1)+`, standard AND-mask/OR-data sprite blit,
-  4 words per call = one masked 32×N blit) already named in `mechanics.md` §33b/34b as "the
-  entity/sprite-list renderer... confirmed not the room-art source — it draws sprites at their own
-  screen positions, not a room-sized background". **That conclusion was drawn from watching it
-  during steady gameplay, where it does behave like ordinary entity rendering. This session found
-  it behaves completely differently during a crossing:**
-  - `hits` census: **0** calls over 8.2M steps of steady `gameplay_empire.snap` play (same as
-    `$0080cc`, also 0 there) — so like `$0080cc`/`$bba8`, it's crossing-specific.
-  - During the crossing it's called **4,066 times**, but only in a tight front-loaded burst: first
-    hit at step 49,322, **last hit at step 1,058,685** — i.e. it runs entirely within the first
-    ~13% of the 8.2M-step crossing, then goes completely silent for the remaining ~7.1M steps.
-    4,066 calls in ~1M steps, each blitting a small masked tile via the same primitive used for
-    entities, is far more consistent with **tile-by-tile background painting** than with drawing
-    the handful of on-screen entities.
-  - `$0080cc` (the other known "panel" blit) is also 0/8.2M steady-state but runs almost the whole
-    crossing (39,412 calls, step 890,273 to 8,193,144) — starting right as `$0150b4`'s burst tails
-    off. Candidate: the visible wipe/dissolve transition effect, running *after* the new room's
-    tiles are already painted into the (still hidden) target buffer.
-  - Register capture at `$0150b4`'s very first hit (step 49,322): `A0=$0002ca8c` (matches the
-    already-documented "sprite-bitmap-cache region `$2ca84`-`$2cd42`" from §33b/34b — i.e. reading
-    from the same small resident tile/sprite cache used for ordinary entities) and
-    `A1=$0001b8b8` (inside the `$19100` display half) — caller return address `$0000d8ee`.
-    **`bt 4` crashed the REPL here** (known trap, `depth>1`), so the deeper call chain above
-    `$0000d8ee` wasn't captured; use `disassemble.py --linear 0xd8c0 80` from `room2_tunnel_entry`
-    or a fresh `bt 1` per stop instead of a multi-frame backtrace next time.
-
-**Confirmed this session** (closes the "not yet proven" gap above): `bpc 150b4 4066 2000000` from
-`room2_tunnel_entry.snap` after `kbd ff 02` stops right as the burst ends; `s 200; snap` there
-(`burst_end.snap`) and a raw byte diff against both `room2_tunnel_entry.snap` (TUNNEL) and
-`gameplay_empire.snap` (steady CAVERN reference) gives, for **both** display halves:
-- vs TUNNEL start: ~18,287-18,289/32,000 bytes different (the room really has been repainted);
-- vs the CAVERN reference: only **636-656/32,000 bytes different (≈98% match)**.
-
-That's at step ≈1,058,885 of the 8,200,000-step crossing — **under 13% of the way through** — so
-the room is essentially fully painted (the tiny remaining diff is almost certainly player-sprite
-position/animation state, not room content) long before `$0080cc`'s 39,412-call activity even
-gets going. **`$0150b4` is confirmed as the room-tile painter; `$0080cc`'s subsequent activity is
-some other, separate crossing-specific effect (visible wipe/reveal transition or similar), not
-part of painting the room.** This is a real proof (match-count based, reproducible from
-`room2_tunnel_entry.snap` with the recipe above) and should be written up in `mechanics.md` next
-session, superseding §33b/34b's "confirmed not the room-art source" for this specific
-crossing-time call path (that finding still stands for `$0150b4`'s *steady-gameplay* entity-blit
-calls — the same routine, different calling context).
-
-**Next session should:**
-1. Read `$0000d8ee` (the caller of the whole `$0150b4` burst) in full — it's very likely the
-   "decode this room's tile table and blit every tile" loop the earlier passes were looking for;
-   its source table would also answer Open item 3 (room-record bytes `+0..+3`) and possibly
-   Open item 4 (room connectivity) if it walks a room-to-room graph to know what to paint.
-2. Fold this session's `$0150b4`/`$5a99`/`$bba8` findings into `mechanics.md` as a new numbered
-   section (37th pass's §36 is the last one landed; this would be the next).
-3. Reconcile the shifter-base-flip conflict (correction 3 above) before relying on either claim.
+- **§37 — the room painter.** A crossing re-populates the shared entity/object array (`56(A5)`,
+  §21a) from the new room's own object list via a newly-found routine `$00cd50`-`$00cee0`, and the
+  already-documented per-frame visible-object walker (§33b/34b's `$00d800`) then draws every
+  newly-active object once through the ordinary masked-blit entity renderer (`$0150b4`-family) —
+  the same pipeline used for real moving entities every frame, just invoked ~4,066 times in one
+  burst. Proven: a snapshot at the burst's end (under 13% into the crossing) already matches the
+  CAVERN reference to ≈98% in both display halves, vs ~18,300/32,000 bytes different at the start;
+  a no-input idle control changes nothing over the same step count.
+- **§38a — the resource manager decoded.** `(A5)+96` points to 18-byte type records
+  (`[+0 index-table][+4 data-area][+16 count]`); `bsr $c5a8`/`$c52c`-family routines look up
+  `(type, index)` pairs through it. Type 3 (100 slots, 72 populated) *is* the room table §31a
+  already found from a different angle — its data area is exactly `(A5)+164`'s CAVERN address.
+  Type 6 (1000 slots) is the object-template pool §37 uses. Byte-exact: **CAVERN is room slot 0**,
+  **TUNNEL is room slot 1** (decoded from the type-3 index table's offsets).
+- **§38b — `(A5)+1166` is the real "current room" field.** `1` in TUNNEL, `0` in CAVERN, matching
+  the slot numbers exactly. A `watch` over the full crossing shows **exactly one write** (not
+  toggling like `$5a99`), at `$0000727c`.
+- **§38c/d — the door/portal resolver found and proven live, with an unexpected structure.**
+  `$0000727c` sits inside `$007250`-`$0072c2`, which reads a door descriptor, calls `$0000de5e` to
+  resolve it to a target room slot, and commits `(A5)+1166` if different — this is the
+  room-transition trigger `mechanics.md` has been looking for since §9/§31b. **`$de5e` itself is
+  not a graph/exit-table lookup — it's a spatial point-in-rectangle scan over every type-3 room
+  record**, testing a world coordinate against each room's bounding box (fields `+1`/`+3` = x0/y0,
+  `+4`/`+5` = width/height) until one contains the point. TUNNEL's rect `[19,12]`-`[22,17]` and
+  CAVERN's rect `[12,18]`-`[22,28]` are adjacent and touch exactly where the two rooms connect.
+  **Proven live, end to end**: `bpc 727c 1` (the exact commit instruction) during the crossing
+  shows `D6=0` (CAVERN's slot) with `D0=$14,D1=$11` (world coordinate `20,17`, on the shared
+  boundary edge) right before it writes `(A5)+1166`. **Conflicts with §32a's existing claim that
+  record `+4`/`+5` are "the graphics-table index"** — not reconciled, see Open item 2.
 
 ## Open, in priority order
 
-1. Read `$0000d8ee` (caller of the confirmed `$0150b4` room-paint burst) and fold this session's
-   findings into `mechanics.md` — see "New lead" above.
-2. What `$55b6` contains for a *different* transition (e.g. an actual LEVER-proximity icon-panel
+1. **Reconcile §38d's room-record `+4`/`+5` = width/height against §32a's claim that they're "the
+   graphics-table index".** One of the two is wrong, or they describe different record variants.
+   Check against a room whose graphics-table index is independently known.
+2. Identify room-record byte `+4` read into D6 *before* the object-population loop at `$cd62` (a
+   separate `bsr $c5a8` call with `D0=5`, different from the `+4`/`+5` bounding-box fields §38d
+   found — the field number is reused for two different purposes at two different call sites in
+   the routine; check carefully which `+4` read is which before conflating them).
+3. What `$55b6` contains for a *different* transition (e.g. an actual LEVER-proximity icon-panel
    change, §7) — still zero-checked, only the plain crossing has been tried.
-3. Room-record bytes `+0..+3` (still unknown; `+4`/`+5` are the graphics-table index, `+$c0` is the
-   mask table per §32a) — may fall out of item 1's `$0000d8ee` read.
-4. How the ~72 real rooms connect in ordinary play (`$007104` is not it: both branches `bra $69da`,
-   §31b) — may also fall out of item 1's `$0000d8ee` read.
+4. Reconcile the shifter-base-flip conflict: this session's 4 independent checks never saw the
+   base flip in one `kbd ff 02` crossing (`watch ffff8200 8` logged zero writes), but two older
+   scratch snapshots (`watch_crossing_end.snap`, `mid_bank_copy.snap`) read shifter base `$19100`
+   via the same `gfxview.py` helper. Not reconciled: either those came from a longer/different
+   recipe, or a different crossing entirely.
 5. The two-disk original (§30b): lower priority, would be a fresh subject.
+6. Walk the full type-3 room table (72 populated slots) and decode every room's bounding-box
+   rectangle (§38d's fields) to build the complete world map / room-adjacency graph implied by the
+   now-proven spatial resolver — would settle "how do all ~72 rooms connect" beyond the one
+   TUNNEL/CAVERN pair checked this session.
 
 ## Known traps
 
@@ -203,35 +104,35 @@ multiple regions in one call, `gfxview.py`'s `st-interleaved` assumes 16px-wide 
 this game's 32px-wide family), movement is joystick port 1, player = sprite slot 0, use
 `tools/find_ram_callers.py`/`find_field_writers.py`.)
 
-- **`$5a99` is not a room-transition signal — see correction 1 above.** It's a local scratch flag
-  for one specific wrapper routine (`$0000bba8`) and toggles on and off within ~1200 steps every
-  time that wrapper runs; treating it as sticky ("0→1 means the new room is up") is wrong.
+- **`$5a99` is not a room-transition signal.** It's local scratch state for `$0000bba8` and
+  toggles on and off within ~1,200 steps every time that one wrapper runs (4 times per crossing,
+  not sticky). Use `(A5)+1166` (§38b, a clean single-write current-room-slot index) instead.
+- **Struct field offsets get reused for different meanings at different call sites in the same
+  routine** — `$00cd50`'s own object-population loop reads a byte at record `+4` for one purpose
+  (feeds a `D0=5` resource lookup, Open item 3), while `$0000de5e`'s bounding-box test reads `+4`
+  for a completely different one (rectangle width). Don't assume a field offset found in one
+  routine's context carries over to another without checking both reads independently.
 - **`hits <n> <addr>...` is the fast way to check "is this routine crossing-specific or ambient"**
   before spending a `watch` run on it — run once from a steady-gameplay snapshot with no input and
-  once across a crossing; 0-vs-nonzero is immediate and cheap (this session used it on `$bba8`,
-  `$014f7a`, `$0150b4` and `$0080cc` in seconds each, vs the multi-minute `watch` runs).
-- **A `gfxview.py load_video_regs`/"last differing byte's writer" analysis directly against a
-  `watch` log's text is more decisive than reasoning about destination-address ranges alone** —
-  computing, in Python, the *first* write (per byte) that moves a value away from its baseline
-  snapshot cut straight through 237 candidate PCs to the one family responsible for ~31% of the
-  real content change, where eyeballing PC/address clusters had stalled for two prior passes. See
-  the inline script pattern in this session (load both snapshots with `gfxview.load_ram`, diff
-  byte-for-byte, then regex-parse `watch_wide.log`'s `WATCH: step=... pc=$... Write... $addr <-
-  $val` lines and track running per-byte state to find the first change per address).
-- `gfxview.load_ram(path)` returns `(ram_bytes, base)` — **that order**, not `(base, ram)`; passing
-  it around the other way silently means "base is bytes", raising a `TypeError` on the first
-  arithmetic use, not a value bug.
+  once across a crossing; 0-vs-nonzero is immediate and cheap.
+- **A "first writer per differing byte" analysis beats reasoning about destination-address ranges
+  or "last writer" alone.** Computing, in Python, the *first* write (per byte, from a `watch` log)
+  that moves a value away from its baseline-snapshot value cut straight through 237 candidate PCs
+  to the one family responsible for ~31% of the real content change. Pattern: load both snapshots
+  with `gfxview.load_ram`, diff byte-for-byte, regex-parse the `watch` log's `WATCH: step=...
+  pc=$... Write... $addr <- $val` lines, and track running per-byte state to find the first change
+  per address.
+- `gfxview.load_ram(path)` returns `(ram_bytes, base)` — **that order**, not `(base, ram)`.
 - `dotnet exec ... resume <snap> repl`'s printed `help` text does not list `kbd`/`mouse`/`disk`
-  even though they exist and work (confirmed working, `Program.fs` line ~1396) — don't conclude a
-  REPL command is missing just because `help`'s one-line summary omits it; check `Program.fs` for
-  the `parts.[0] = "<cmd>"` match arms.
-- The REPL's `watch <addr> <len>` parses `<len>` as a plain **decimal** integer, not hex (`watch
-  20e00 7d00` throws a `FormatException` on `7d00`; use `watch 20e00 32000`). Only `<addr>` is hex.
+  even though they exist and work (`Program.fs` line ~1396) — check the `parts.[0] = "<cmd>"`
+  match arms, not `help`'s one-line summary, before concluding a command is missing.
+- The REPL's `watch <addr> <len>` parses `<len>` as plain **decimal**, not hex (`watch 20e00 7d00`
+  throws; use `watch 20e00 32000`). Only `<addr>` is hex.
 
 ## Next session
 
-Start by reading `$0000d8ee` (`disassemble.py --linear 0xd8c0 80` or similar from
-`room2_tunnel_entry.snap`) — the caller driving the confirmed `$0150b4` room-paint burst — to find
-the room-tile source table, which likely also answers Open items 3 (room-record bytes) and 4
-(room connectivity). Then fold this session's `$0150b4`/`$bba8`/`$5a99` findings into
-`mechanics.md` as a new numbered section. Prompt: `/resume cadaver`.
+Start with Open item 1: reconcile §38d's room-record `+4`/`+5` (proven this session as x/y
+width/height for the spatial room-boundary test) against §32a's older claim that the same offsets
+are a graphics-table index — check both against a room whose graphics-table index is independently
+known. Item 6 (decode the full 72-room table into a world map) is the natural follow-up once that's
+settled. Prompt: `/resume cadaver`.

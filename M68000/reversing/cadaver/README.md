@@ -860,6 +860,18 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
      gates" — three concrete disassembly-only next steps in `mechanics.md` §9, no more input
      guessing needed.
 
+  **Update, 39th pass**: `$de5e` (left undisassembled here since the 14th pass) is now fully
+  decoded, `mechanics.md` §38d — it's not a portal-table lookup at all, it's a **spatial
+  point-in-rectangle scan over every room record** (type 3, §38a), testing a world coordinate
+  against each room's bounding box (record fields `+1`/`+3`/`+4`/`+5` = x0/y0/width/height) until
+  one contains the point; `D7<0` (the "DOOR ERROR" case this section already named) means no room's
+  rectangle contains it. Proven live end to end for the TUNNEL→CAVERN crossing: the resolver's
+  input coordinate `(20,17)` sits exactly on the shared edge between TUNNEL's rect
+  `[19,12]`-`[22,17]` and CAVERN's rect `[12,18]`-`[22,28]`, and the actual current-room commit
+  (`$0000727c`) writes slot 0 (CAVERN). This also answers item 2 of "Next steps" below and the
+  room-connectivity half of item 7 — rooms connect by geometric adjacency on a shared coordinate
+  grid, not an explicit exit graph; see `mechanics.md` §38 for the full writeup.
+
 - **15th pass — settled: TUNNEL's portal table has no entry for the lever's door at all; the "no
   input opens it" finding is now explained, not just re-confirmed.** Ran the 14th pass's own
   three-step plan (`mechanics.md` §10, new): dumped TUNNEL's portal table directly from
@@ -927,10 +939,15 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    still open is `$00bf72` itself — it isn't the routine that draws the sprite-object array
    (`$00d856`→`$14d64` is), so what it *does* draw is unknown. `callcap` differential testing against
    it (vary `D0`-`D2` register presets, diff the write footprint) is the concrete way to find out.
-2. Settle "tile-indexed room vs. one pre-rendered background per room": trace FDC/XBIOS `Rwabs`
-   sector-read destinations during an actual room *load* (needs a fresh boot driven far enough to
-   witness the load — the current `gameplay_empire.snap` is already past it and GEMDOS tracing
-   showed no `Fread` calls, confirming raw sector I/O, not TOS file I/O).
+2. ~~Settle "tile-indexed room vs. one pre-rendered background per room"~~ — **done, 39th pass,
+   `mechanics.md` §37: neither.** A room's "background" is its full set of static objects (walls,
+   props, terrain pieces), instantiated from the current room record (`(A5)+164`, a new field this
+   pass identifies) into the same shared object array real entities live in (`56(A5)`), then drawn
+   once via the ordinary entity masked-blit renderer (§33b/34b) — not a tile grid, not a pre-rendered
+   bitmap, and no disk/FDC read is needed at crossing time because every room's objects are already
+   resident (matching the "self-contained, no swap needed" milestone and the 12th pass's own
+   no-`Fread`/no-FDC finding). Room record byte `+29` = object count, byte-exact confirmed against
+   both TUNNEL (2) and CAVERN (22).
 3. ~~Check whether a non-player slot uses the same `+52`/`+20` mechanism~~ — **done, 7th pass**: yes,
    but all 21 non-player slots read as static room props (torches/containers), not monsters (state
    `4` on slot 16 alone is the one outlier worth a second look). No monster/creature has actually
