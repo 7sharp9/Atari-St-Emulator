@@ -11,10 +11,10 @@ bytecode interpreter, closing "does one exist" as yes; what's actually open is n
 
 ## Resume point
 
-- Last commit of this workstream: this handoff's own commit, on top of `81ccf4b` "docs: point the
-  tools table at gfxview.py's .snap header parsers (cadaver 46th pass)". This pass's own work
-  (mechanics.md §47, `py/door_walk.py`) is not yet committed as of this write — see the next
-  session or the commit this handoff ships with.
+- Last commit of this workstream: `a312452` "cadaver: close door-connectivity Open item 1, no
+  teleport doors exist (47th pass)". A related shared-resource commit, `de384c2` (resume skill:
+  re-check a carried-over Open item against later doc sections), landed this same session but is
+  not workstream-specific.
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new anchor snapshots this
