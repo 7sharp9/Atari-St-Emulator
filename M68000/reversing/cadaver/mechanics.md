@@ -3163,11 +3163,46 @@ rectangle adjacency graph is the room-connectivity map; a door descriptor's `(D0
 *where* on the shared grid the transition lands, but which rooms can neighbour each other is fully
 determined by the rectangles alone, proven here for all 72 slots rather than inferred from two.
 
+## 45. Open item 1 closed: §43's proximity mechanism confirmed generic against a second object
+    (CAVERN's BOAT, 45th pass)
+
+§43 proved the `$008870`/`$009440` proximity mechanism was code-path-generic (a per-room
+bounding-box scan, not a per-object special case) by reading the routine, but had only ever been
+triggered live by one object, TUNNEL's LEVER. Reproducing the same test against CAVERN's BOAT
+name-hotspot (11th pass) closes that gap: from `gameplay_empire.snap`, holding Down
+(`kbd ff 02`) and arming `bpc 9440 1 1000000` hits at step 306,325 with **the same call site**
+(`bt 1` return address `$00007376`, identical to §43's TUNNEL hit) and **the same fixed list
+pointer** (`92(A5)` resolves to `$00038036` in both rooms — a global, not per-room, address).
+`m 38036 32` at the hit shows the header count byte `01` (one match) followed by one entry
+`$0007061e`, matching the live `A6` register exactly. Stepping 30,000 further and rendering the
+resulting snapshot (`boat_hotspot.snap` → `boat_hotspot.png`) shows the icon panel and status bar
+reading **"BOAT" / "CAVERN"**, confirming the resolved object is genuinely the BOAT hotspot, not a
+coincidental neighbour in the room's object-placement table.
+
+**Closes Open item 1 as scoped.** The mechanism found in §43 is confirmed generic across rooms and
+objects from a second live trigger, not just from reading the code once: same caller, same list
+global, same header/entry layout, a different room and a different resolved object record
+(`$0007061e` here vs TUNNEL's LEVER-adjacent record in §43), both correctly reflected in the UI.
+Proof: `bt 1`/`r` register capture at the hit (call site and list-pointer identity), `m 38036 32`
+(header+entry layout), `boat_hotspot.png` (UI confirmation) — committed alongside this doc.
+
+**Trap found reproducing this**: the raw `dotnet exec bin/Debug/net8.0/M68000.dll rrepl <snap>`
+form used in earlier scratchpad drive scripts is not a real subcommand — `rrepl`/`snap`/`resume`
+are `run.ps1` aliases, and the raw binary only recognises `resume <snap> repl [--disk-a <path>]`
+(two tokens, not one). Passing `rrepl <snap>` verbatim to the raw binary matches no argv pattern
+and silently falls through to a disk-less cold boot, which then sits forever in an early ROM loop
+(`$00fc01a0`-`$00fc01d4`, stable across repeated `s` calls) waiting on hardware state a diskless
+boot never reaches — this looked exactly like a stuck/crashed snapshot (blank `snap_render.py`
+output, `bpc` never hitting even after millions of steps) until reproducing §43's exact recipe
+(`resume <snap> repl --disk-a "..."`) on the *known-good* `room2_tunnel_entry.snap` reproduced its
+documented step count exactly and exposed the argv mistake.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `boat_hotspot.png` | 45th pass: live snapshot rendered at CAVERN's BOAT proximity hotspot, status bar/icon panel reading "BOAT"/"CAVERN" — proof for §45 that the §43 mechanism resolves a second object correctly, not just TUNNEL's LEVER |
 | `py/world_map.py` | 44th pass: walks the type-3 resource-manager table and decodes every populated room's world-grid rectangle (§38a/§38d), reports the adjacency graph, renders `world_map.png` |
 | `world_map.png` | 44th pass: rendered map of all 72 populated room rectangles, labelled by slot (TUNNEL/CAVERN named) — proof for §44 |
 | `room2_lever_boundary_new.snap` | 41st pass: live snapshot rebuilt from `room2_tunnel_entry.snap` (13th pass's Left-hold recipe) after `room2_lever_boundary.snap` was found missing from this Mac's scratchpad — status bar "LEVER"/"TUNNEL", icon panel showing the lever's icon pair, matching the original 13th-pass screenshot; resume point for further proximity-icon-panel work; untracked like the other `.snap` resume points |
