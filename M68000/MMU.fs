@@ -611,11 +611,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Real disk image mounted in drive A, if any - see LoadDiskA (set from Program.fs's
     ///ATARI_DISK_A env var, mirroring ATARI_ROM_PATH). `None` (the default) preserves every
     ///existing "no disk" behavior documented on fdcCommandStatus/tryReadSector below - this is
-    ///purely additive. Real hardware selects side 0/1 via a PSG port A bit (Hatari's
-    ///FDC_SetDriveSide, src/fdc.c) that this emulator's YM2149 handling doesn't model with real
-    ///register-select semantics yet, so only single-sided images are supported for now (confirmed
-    ///a valid single-sided image is sufficient to exercise real GEMDOS boot-time sector reads via
-    ///a live Hatari trace - see [[atari-st-emulator-next-instructions]]).
+    ///purely additive. Double-sided images are supported (`diskASides`, from the image's own BPB
+    ///or file size - see LoadDiskA); the FDC head side comes from PSG port A bit 0 (`fdcSide`
+    ///below), matching real hardware's side-select line.
     let mutable diskA : byte[] option = None
     let mutable diskASectorsPerTrack = 9
     let mutable diskASides = 1
@@ -1326,13 +1324,13 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     member x.WatchStep with get () = watchStep and set v = watchStep <- v
 
     ///Mounts (or unmounts, on `None`) a real disk image in drive A - see `diskA`'s own comment
-    ///above for the single-sided-only caveat. Reads the image's own boot-sector BPB for its real
-    ///sectors-per-track (offset 24-25, little-endian - Hatari's src/floppy.c
-    ///Floppy_FindDiskDetails and src/createBlankImage.c both use this exact offset), falling back
-    ///to the standard 9 if the image is too short or the field looks invalid, rather than trusting
-    ///arbitrary image content. Deliberately NOT part of MmuSnapshot/SaveState - like `rom` itself,
-    ///which disk is in a drive is external, physical-world state, not something a state save
-    ///should capture or a state load should disturb.
+    ///above. Reads the image's own boot-sector BPB for its real sectors-per-track (offset 24-25,
+    ///little-endian - Hatari's src/floppy.c Floppy_FindDiskDetails and src/createBlankImage.c
+    ///both use this exact offset), falling back to the standard 9 if the image is too short or
+    ///the field looks invalid, rather than trusting arbitrary image content. Deliberately NOT
+    ///part of MmuSnapshot/SaveState - like `rom` itself, which disk is in a drive is external,
+    ///physical-world state, not something a state save should capture or a state load should
+    ///disturb.
     member x.LoadDiskA (data: byte[] option) =
         diskA <- data
         diskASectorsPerTrack <-
@@ -1345,7 +1343,21 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             match data with
             | Some bytes when bytes.Length >= 28 ->
                 let heads = int bytes.[26] ||| (int bytes.[27] <<< 8)   //BPB "number of heads", offset 26
-                if heads = 1 || heads = 2 then heads else 1
+                let headerSides = if heads = 1 || heads = 2 then heads else 1
+                //The BPB is only ever validated by something that boots the image and reads a
+                //filesystem off it. A disk swapped in later purely so the *already-running* game
+                //can read its own raw sectors (Cadaver's "levels" disk, never Pexec'd or GEMDOS
+                //Fread from) is never booted, so nothing requires its BPB to be honest - a crack
+                //group's boilerplate header can simply be wrong. Confirmed live: Replicants/ST
+                //Amigos' disk2.st declares 1 side (409,600 bytes' worth) while the file itself is
+                //a full 819,200-byte double-sided dump, and trusting the header made every side-1
+                //read fail with "no data", which the game correctly reported as a disk error -
+                //not a real protection/crack failure (reversing/cadaver/mechanics.md). Prefer 2
+                //sides whenever the file is big enough for a standard 80-track double-sided disk
+                //at this sectors/track count but the header claims only 1 - a genuinely
+                //single-sided image never has that many extra bytes to begin with.
+                if headerSides = 1 && bytes.Length >= 80 * 2 * diskASectorsPerTrack * 512 then 2
+                else headerSides
             | _ -> 1
 
     ///Selects the monitor type reported through MFP GPIP bit 7 - see `colourMonitor`. `true` =
