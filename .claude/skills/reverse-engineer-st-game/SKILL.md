@@ -39,6 +39,16 @@ Mouse-driven menus: the game keeps its own pointer, and `mouse move dx dy` sends
 
 Before a long `u <addr>` / `bp` run, read the loop around the target to confirm it runs when you think it does: a Populous `u` into the intro's title-menu routine burned 300M steps because the routine only runs once per intro cycle, right after `load.pic` loads. Once the drive works, write it as a REPL script (`reversing/<game>/drive.txt`, fed on stdin) and prove it deterministic by running it twice from cold boot and `cmp`-ing the snapshots.
 
+**Don't infer "does this keypress matter" from trials that also vary the step count.** If a
+cracktro/intro screen isn't advancing the way you expect, resist the urge to just try a keypress and
+eyeball the next screenshot — a screen that looks different only tells you *something* changed, not
+that the key caused it, if the two trials also ran different step counts. Run a real A/B from the
+*same* snapshot with the *same* step budget, once with the key and once without; only trust a
+difference (or lack of one) between those. A Cadaver pass wrongly concluded a keypress was rewinding
+a crack intro's greet-scroll from one uncontrolled comparison, when the real cause (confirmed by a
+proper same-snapshot/same-budget A/B) was that the intro's greet+loading-bar sequence loops on its
+own over hundreds of millions of steps regardless of input (`reversing/cadaver/mechanics.md` §52).
+
 ## 3. Map control flow
 
 Once a step range covers the behaviour of interest:
