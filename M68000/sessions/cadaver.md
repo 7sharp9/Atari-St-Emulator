@@ -1,15 +1,18 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at this commit (45th pass). Closed Open item 1: live
-retested the §43 proximity mechanism ($008870/$009440) against a second object, CAVERN's BOAT, not
-just TUNNEL's LEVER, confirming it is generic from a second live trigger, not just from reading the
-code once.
+Updated 2026-09-24 by the session that ended at this commit (46th pass). Closed the carried-over
+shifter-base-flip Open item 1: found the actual hardware writer ($015272, `movep.w` from `(A5)+0`),
+confirmed `watch` has no blind spot for `movep`, and showed the two "conflicting" older snapshots
+are mid-transition captures of the same `(A5)+0`/shifter-base invariant the doc already understood,
+not evidence of an undetected write.
 
 ## Resume point
 
-- Last commit of this workstream: `ed4d807` "cadaver: close open item 1 - confirm §43's proximity
-  mechanism against BOAT (45th pass)". A related shared-resource commit, `14515d7` (`CLAUDE.md`
-  note on `run.ps1` alias argv), landed the same session but is not workstream-specific.
+- Last commit of this workstream: `2f1df82` "cadaver: close shifter-base-flip conflict, Open item 1
+  (46th pass)". Prior commit: `ed4d807` "cadaver: close open item 1 - confirm §43's
+  proximity mechanism against BOAT (45th pass)". A related shared-resource commit, `14515d7`
+  (`CLAUDE.md` note on `run.ps1` alias argv), landed the 45th-pass session but is not
+  workstream-specific.
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new anchor snapshots this
@@ -18,7 +21,7 @@ code once.
   start tile) depending on which room's mechanism you're testing next. **Do not use `$5a99` to
   detect "crossing done"** — use `(A5)+1166` (§38b) instead. **Always pass
   `--disk-a "Cadaver...st"` and use `resume <snap> repl`, never the bare alias `rrepl`** — see
-  "Known traps" below, this cost most of this session.
+  "Known traps" below.
 - Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` and
   `M68000/sessions/powermonger.md` still show as modified in `git status` — a concurrent session's
   workstream, left alone per the shared-resources rule (carried over unchanged from prior handoffs).
@@ -26,41 +29,43 @@ code once.
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
-`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44 (movement
-collision/proximity mechanism, the icon-panel write chain, the full 72-room world-map/adjacency
-graph, all fully closed). **New this session, `mechanics.md` §45**:
+`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45
+(movement collision/proximity mechanism, the icon-panel write chain, the full 72-room
+world-map/adjacency graph, the §43 proximity mechanism confirmed generic against a second object,
+all fully closed). **New this session, `mechanics.md` §46**:
 
-- **§45.** Closed Open item 1: reproduced §43's `bpc 9440`/`bt 1` test against CAVERN's BOAT
-  hotspot from `gameplay_empire.snap` (`kbd ff 02` Down-hold). Hit at step 306,325, same call site
-  (`$00007376`) and same fixed list-pointer global (`92(A5)` → `$00038036`) as §43's TUNNEL/LEVER
-  hit, resolving to a different object record (`$0007061e`) that the UI confirms is BOAT (status
-  bar/icon panel reading "BOAT"/"CAVERN", `boat_hotspot.png`, committed). Proof: `bt 1`/`r`
-  register capture, `m 38036 32` header/entry dump, the rendered screenshot.
+- **§46.** Closed the carried-over shifter-base-flip Open item 1: `find_field_writers.py` located
+  the hardware writer (`$015272`, `movep.w D0,0(A0)` with `A0=$ff8201`, `D0` from `(A5)+0`) among
+  14 code sites that touch that register; confirmed `MOVEP` goes through the same `WriteByte`/
+  `checkWatch` path as any other store (`68k.fs`/`MMU.fs`), so `watch` has no blind spot for it;
+  `hits 8200000 15272` gives 0 both idle and across the standard `kbd ff 02` TUNNEL↔CAVERN crossing,
+  reproducing §37/39th pass's "zero writes" by an independent method. The two "conflicting" older
+  snapshots turn out to sit at the *opposite*, but still internally consistent, parity of the same
+  `(A5)+0`-is-inactive-half / shifter-is-active-half invariant §34a already established (proof
+  table: `py/snapinfo.py`, new this pass) — mid-transition captures, not an undetected write.
 
 ## Open, in priority order
 
-1. **Reconcile the shifter-base-flip conflict** (carried from prior handoffs): 4 independent checks
-   (39th pass) never saw the base flip in one `kbd ff 02` crossing (`watch ffff8200 8` logged zero
-   writes), but two older scratch snapshots (`watch_crossing_end.snap`, `mid_bank_copy.snap`) read
-   shifter base `$19100` via the same `gfxview.py` helper. Not reconciled: either those came from a
-   longer/different recipe, or a different crossing entirely.
-2. **Whether every door connects only edge-adjacent rooms, or some "teleport" across the world
+1. **Whether every door connects only edge-adjacent rooms, or some "teleport" across the world
    grid** (scoped when §44 closed item 4): would need a walk of every room's door-descriptor list
    (only TUNNEL's two entries are known, §15th pass, format at `$007250`/§38c) cross-referenced
    against `world_map.png`'s adjacency graph.
-3. **Whether `world_map.png`'s 72-room graph is one level of several, not the whole game** — Dave's
-   observation this session: the game likely has more than one level, and completing one probably
+2. **Whether `world_map.png`'s 72-room graph is one level of several, not the whole game** — Dave's
+   observation, 45th pass: the game likely has more than one level, and completing one probably
    reveals another. Not yet checked: whether the type-3 resource-manager table at `$4ac36` (§38a,
    what `world_map.py` walks) is per-level and gets rebuilt/switched on a level-complete event, or
    is a single fixed table for the whole game. Would need finding the level-complete/level-advance
    trigger (search for a win-condition check or a routine that rewrites `$4ac36`'s slots) and
    diffing the table before/after it fires.
-4. **Whether the game has a scripting/bytecode layer driving room or object behaviour** — Dave's
-   second observation: worth checking for a dispatch-by-opcode pattern (a table of small routines
-   indexed by a byte read from room/object data) rather than assuming every interaction is hand-
-   written 68000. Not yet scoped as a concrete test: start from a room's object-placement table
+3. **Whether the game has a scripting/bytecode layer driving room or object behaviour** — Dave's
+   second observation, 45th pass: worth checking for a dispatch-by-opcode pattern (a table of small
+   routines indexed by a byte read from room/object data) rather than assuming every interaction is
+   hand-written 68000. Not yet scoped as a concrete test: start from a room's object-placement table
    entries (`56(A5)` stride 70, §43) and check whether any field looks like an opcode/operand
    stream read by a small interpreter loop, rather than only static bounding-box/bitmap data.
+4. **Low priority, not needed to close §46**: which of the other 13 `$ff8201`-touching call sites
+   actually fires (title/intro screen, a different room-pair's crossing, a resolution/mode change) —
+   §46 closed the conflict without needing this.
 5. The two-disk original (§30b): lower priority, would be a fresh subject.
 
 ## Known traps
@@ -107,10 +112,17 @@ sprite slot 0, use `tools/find_ram_callers.py`/`find_field_writers.py`.)
   routine, not new content** — group hits by PC first and prioritise the rare groups.
 - `bt` with no depth argument defaults to depth 8 and reliably crashes the REPL process — always
   pass `bt 1`.
+- **If you ever need to hand-parse a `.snap`'s header instead of using `tools/gfxview.py`'s
+  `load_ram`/`load_video_regs`/`snapshot_regs`: `cpu.CCR` is written as an int16, not a byte**
+  (`Program.fs` `SaveState`'s `w.Write(cpu.CCR)` — `CCR` is F# `int16`), so the RAM-length field
+  that follows sits 1 byte later than a naive "19 regs + 1-byte CCR" read expects; getting this
+  wrong desyncs every field after it (46th pass, cost real time before `gfxview.py`'s own helpers
+  were found and reused instead of re-deriving the format).
 
 ## Next session
 
-Item 1 (shifter-base-flip reconciliation) is the cheapest concrete open item. Items 3 and 4 are new
-this session (Dave's observations about multiple levels and a possible scripting layer) and are not
-yet scoped down to a first concrete probe — worth 15-20 minutes of code/data reading before committing
-to a live-test plan for either. Prompt: `/resume cadaver`.
+Items 2 and 3 (carried from the 45th pass as Dave's observations: whether the world map is only one
+level of several, and whether a scripting/bytecode layer drives room/object behaviour) are not yet
+scoped down to a first concrete probe — worth 15-20 minutes of code/data reading before committing
+to a live-test plan for either. Item 1 (door-connectivity walk) is the cheaper, already-scoped
+alternative if that reading doesn't land quickly. Prompt: `/resume cadaver`.
