@@ -767,11 +767,15 @@ type Cpu =
     ///Shared "plain 6-byte-frame" software-trap machinery: enters supervisor mode via WithSR
     ///(pushing onto the correct, just-switched-to stack - see WithSR's comment for why that
     ///order matters), pushes the caller-supplied return PC and the pre-trap CCR, then jumps to
-    ///the vector table entry at vectorNumber*4. Used by TRAP #n and the Line-A/Line-F emulator
-    ///traps (vectors 10/11) - all three are real 68000 vectors sharing this exact frame shape.
+    ///the vector table entry at vectorNumber*4. Used by TRAP #n, the Line-A/Line-F emulator traps
+    ///(vectors 10/11), illegal-instruction entry (vector 4) and the trace exception (vector 9) -
+    ///all real 68000 vectors sharing this exact frame shape. Clears T1 in the live SR (the
+    ///stacked SR at +2 still carries the pre-exception value) like every other exception entry -
+    ///see FetchTargetOrFault's comment for why (a traced TRAP/illegal/trace-exception-handler
+    ///instruction must not immediately re-trace itself).
     member x.EnterVector (vectorNumber: int) (returnPC: int) : Cpu =
         let vectorAddr = uint32 (vectorNumber * 4)
-        let switched = x.WithSR (x.CCR ||| 0x2000s)
+        let switched = x.WithSR ((x.CCR ||| 0x2000s) &&& ~~~0x8000s)
         let pcPushAddr = switched.A7 - 4
         x.MMU.WriteLong (uint32 pcPushAddr) returnPC
         let srPushAddr = pcPushAddr - 2
@@ -825,7 +829,11 @@ type Cpu =
             (if sv then 4 else 0) ||| fc
             ||| (if isWrite then 0 else 16)
             ||| (opcode &&& ~~~31)
-        let switched = x.WithSR (x.CCR ||| 0x2000s)
+        //Clears T1 like every other exception entry (EnterVector/EnterInterrupt/
+        //FetchTargetOrFault) - untested by the SingleStepTests corpus (no vector seeds T1) but
+        //needed for consistency now that Step() checks T1 to decide whether to raise the trace
+        //exception after an instruction.
+        let switched = x.WithSR ((x.CCR ||| 0x2000s) &&& ~~~0x8000s)
         let frameBase = switched.A7 - 14
         x.MMU.WriteWord (uint32 frameBase)         (int16 mode)
         x.MMU.WriteLong (uint32 (frameBase + 2))   (int faultAddress)
@@ -1334,46 +1342,64 @@ type Cpu =
             x.MMU.FaultRegFixup <- []
             x.MMU.FaultCcr <- None
             let instruction = x.MMU.ReadWord (uint32 x.PC)
-            match x.TryFastForwardTbdrPoll(instruction) with
-            | Some fastForwarded -> fastForwarded
-            | None ->
-            //printfn "instruction: %x" instruction
-            match (instruction >>> 12) &&& 0xF with
-            | 0x0 -> x.DecodeBucket0 instruction
-            | 0x1 | 0x2 | 0x3 -> x.DecodeBucketMove instruction
-            | 0x4 -> x.DecodeBucket4 instruction
-            | 0x5 -> x.DecodeBucket5 instruction
-            | 0x6 -> x.DecodeBucket6 instruction
-            | 0x7 -> x.DecodeBucket7 instruction
-            | 0x8 -> x.DecodeBucket8 instruction
-            | 0x9 -> x.DecodeBucket9 instruction
-            | 0xA -> //Line-A emulator trap (vector 10, $028) - real 68000 hardware traps
-                     //unconditionally on any top-nibble-0xA opcode; the ST uses this for VDI
-                     //linkage. Confirmed against Atari's own "Atari ST Internals" exception
-                     //vector table and cross-checked against Hatari's newcpu.c cycle table.
-                     //Pushes x.PC (the trapped opcode's OWN address), not x.PC+2: real hardware's
-                     //exception frame for this trap points AT the offending opcode so the installed
-                     //handler can re-fetch and decode it (TOS's own $a30e dispatcher does exactly
-                     //that via `move.w (a0)+,d1`, using the opcode's own low 12 bits as a function
-                     //number) - confirmed via a direct Hatari cpu_disasm trace of $a30e live, see
-                     //[[atari-st-emulator-next-instructions]]'s twenty-ninth pass.
-                     let newCpu = x.EnterVector 10 x.PC
-                     printfn "line-a $%04x" instruction
-                     newCpu
-            | 0xB -> x.DecodeBucketB instruction
-            | 0xC -> x.DecodeBucketC instruction
-            | 0xD -> x.DecodeBucketD instruction
-            | 0xE -> x.DecodeBucketE instruction
-            | 0xF -> //Line-F emulator trap (vector 11, $02C) - same unconditional-trap hardware
-                     //behavior as Line-A above; the ST uses this for AES linkage, with the low
-                     //12 bits of the opcode ITSELF carrying the dispatch function number, which
-                     //the installed handler recovers by re-reading the trapped opcode from the
-                     //pushed PC (see the Line-A case above for the full explanation - same fix,
-                     //same reason).
-                     let newCpu = x.EnterVector 11 x.PC
-                     printfn "line-f $%04x" instruction
-                     newCpu
-            | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+            //Trace mode is sampled on `x` (the state BEFORE this instruction runs) - real hardware
+            //latches T1 at the start of an instruction, so an instruction that itself just turned
+            //tracing on (e.g. `ori #imm,SR`) does not trace itself, only the next one.
+            let tracing = x.TraceMode = Trace_On_Any_Instruction
+            let result =
+                match x.TryFastForwardTbdrPoll(instruction) with
+                | Some fastForwarded -> fastForwarded
+                | None ->
+                //printfn "instruction: %x" instruction
+                match (instruction >>> 12) &&& 0xF with
+                | 0x0 -> x.DecodeBucket0 instruction
+                | 0x1 | 0x2 | 0x3 -> x.DecodeBucketMove instruction
+                | 0x4 -> x.DecodeBucket4 instruction
+                | 0x5 -> x.DecodeBucket5 instruction
+                | 0x6 -> x.DecodeBucket6 instruction
+                | 0x7 -> x.DecodeBucket7 instruction
+                | 0x8 -> x.DecodeBucket8 instruction
+                | 0x9 -> x.DecodeBucket9 instruction
+                | 0xA -> //Line-A emulator trap (vector 10, $028) - real 68000 hardware traps
+                         //unconditionally on any top-nibble-0xA opcode; the ST uses this for VDI
+                         //linkage. Confirmed against Atari's own "Atari ST Internals" exception
+                         //vector table and cross-checked against Hatari's newcpu.c cycle table.
+                         //Pushes x.PC (the trapped opcode's OWN address), not x.PC+2: real hardware's
+                         //exception frame for this trap points AT the offending opcode so the installed
+                         //handler can re-fetch and decode it (TOS's own $a30e dispatcher does exactly
+                         //that via `move.w (a0)+,d1`, using the opcode's own low 12 bits as a function
+                         //number) - confirmed via a direct Hatari cpu_disasm trace of $a30e live, see
+                         //[[atari-st-emulator-next-instructions]]'s twenty-ninth pass.
+                         let newCpu = x.EnterVector 10 x.PC
+                         printfn "line-a $%04x" instruction
+                         newCpu
+                | 0xB -> x.DecodeBucketB instruction
+                | 0xC -> x.DecodeBucketC instruction
+                | 0xD -> x.DecodeBucketD instruction
+                | 0xE -> x.DecodeBucketE instruction
+                | 0xF -> //Line-F emulator trap (vector 11, $02C) - same unconditional-trap hardware
+                         //behavior as Line-A above; the ST uses this for AES linkage, with the low
+                         //12 bits of the opcode ITSELF carrying the dispatch function number, which
+                         //the installed handler recovers by re-reading the trapped opcode from the
+                         //pushed PC (see the Line-A case above for the full explanation - same fix,
+                         //same reason).
+                         let newCpu = x.EnterVector 11 x.PC
+                         printfn "line-f $%04x" instruction
+                         newCpu
+                | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+            //Real 68000 trace exception (vector 9, $024): fires after an instruction completes
+            //normally while T1 was set throughout it. `result.T1` (rather than unconditionally
+            //firing whenever `tracing` is true) is the guard against double-tracing an instruction
+            //that already took its OWN exception this Step (TRAP/illegal/Line-A/Line-F/reserved
+            //MOVEQ all route through EnterVector, which now clears T1 on entry - see EnterVector's
+            //own comment) - only an instruction that completed via the plain decode path still has
+            //T1 set afterward. Address/bus errors bypass this entirely (they unwind via the
+            //`AddressError`/`BusError` exceptions below, never reaching this line). Known gap: an
+            //instruction that clears T1 itself as part of its own semantics (`andi to SR`, `move to
+            //SR`, RTE popping a T1=0 SR) will also skip this, though real hardware still traces
+            //that one instruction (T1 is sampled at instruction start) - not exercised by anything
+            //this project has needed to run yet.
+            if tracing && result.T1 then result.EnterVector 9 result.PC else result
         with
         | AddressError (faultAddress, isWrite) ->
             //Real 68000 hardware traps to the Address Error vector (vector 3, at address $C)
