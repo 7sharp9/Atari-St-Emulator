@@ -1,31 +1,23 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at commit `4cb9dd7`.
+Updated 2026-09-24 by the session that ended at commit `1c6d166`.
 
 ## Resume point
 
-- Last commit of this workstream: `4cb9dd7` "cadaver: $014b28 blit source is fixed, not per-room
-  art — closes the $014a90 lead".
+- Last commit of this workstream: `1c6d166` "cadaver: $55b6 decoded (blank mask), full-buffer watch
+  rules out sprite draws as the room painter".
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
-  `reversing/cadaver/README.md`) — untracked, do not `git add`. Pulled from `gpubox` last session;
-  still present on this Mac checkout this session (the rebuild recipe below still works if it isn't).
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). **Unlike the prior two
-  sessions' experience, every `.snap` from the last session was still present this session** —
-  `room2_tunnel_entry.snap`, `gameplay_empire.snap`, `tunnel_return_cross.snap`,
-  `tunnel_return_settled.snap` all resumed cleanly with no rebuild. Don't assume they're gone;
-  check before replaying the cold-boot recipe. If they are gone, the recipe (cold boot → CAVERN,
-  zigzag to TUNNEL, cross back) is in the previous handoff's git history (`git show 6b07c6b:...`)
-  or `reversing/cadaver/mechanics.md` §32.
-  - New this session: `hit_014b28.snap`, a live snapshot with `PC=$014b28` (right before the
-    `bsr $014d7a` masked-blit call), `A5=$18152`, saved mid-reverse-crossing from
-    `room2_tunnel_entry.snap`. Untracked, useful starting point for reading `$55b6`'s contents
-    without re-driving the crossing.
-- Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry) or `gameplay_empire.snap` (CAVERN, day
-  1) — both proven this session to still resume and both used to reproduce the crossing in either
-  direction. `hit_014b28.snap` for the specific PC above.
-- Uncommitted work left behind: none. `Cadaver/` (disk image) and `M68000/scratchpad/cadaver/*`
-  (working data, including the new `hit_014b28.snap`) are untracked as designed, not left behind by
-  mistake.
+  `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout this
+  session with no rebuild needed. If it's gone, pull it from `gpubox` (tar-over-ssh recipe,
+  `CLAUDE.md`).
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). All snapshots from the prior
+  handoff were still present this session (`room2_tunnel_entry.snap`, `gameplay_empire.snap`,
+  `tunnel_return_cross.snap`, `tunnel_return_settled.snap`, `hit_014b28.snap`) — no rebuild needed.
+  Nothing new was saved this session (only reads: raw hex, `watch`, `bpc`/`bt` register dumps).
+- Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry, `kbd ff 02` reproduces the
+  TUNNEL→CAVERN crossing) or `gameplay_empire.snap` (CAVERN, day 1, the zigzag recipe for the
+  reverse direction). `hit_014b28.snap` for the specific PC `$014b28`.
+- Uncommitted work left behind: none.
 
 ## Proven so far
 
@@ -36,37 +28,43 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
 - Type 3 (not type 8) is the real, populated room table, 72/100 slots (`mechanics.md` §31a).
 - The reverse TUNNEL→CAVERN crossing is real and reproducible: `$0144b8` `ScreenFlip_ScanlineCopy`
   fires ~64,000 word-writes on a genuine portal crossing, zero on blocked movement (§31e).
-- `$00014a90` fully disassembled (§32a): a room-record masking/prep routine, ANDs
-  `room_record+$c0` into the live screen buffer, then calls the generic masked blitter at
-  `$014b28`→`$14d7a`→`$14ee4` with fixed screen coords `(272,143)`.
-- **New this session (§32b): `$014b28`'s blit source is a fixed address, not per-room art —
-  settled, not just suspected.** Live register dump via `bpc 014b28 1 <maxSteps>` (reliable, unlike
-  the prior pass's `bp`) at the exact moment of the call, both directions:
-  - TUNNEL→CAVERN (`room2_tunnel_entry.snap`, `kbd ff 02`): `A0=$55b6 D0=$110(272) D1=$8f(143)
-    D6=2 D7=6`, hit after 868,379 steps.
-  - CAVERN→TUNNEL (`gameplay_empire.snap`, the zigzag recipe): **identical** `A0=$55b6`
-    (`D0/D1/D6/D7` also identical), hit ~2.999M total steps in.
-  - Same source address in both rooms closes `$014a90`/`$014b28` as "the room background painter"
-    — it's a fixed status/icon-panel redraw on room entry (matches §7's independently-known "icon
-    panel switches on proximity" behaviour), not room-specific art. The real room-background
-    painter is still unfound; look elsewhere in the transition path (before `$0144b8`'s
-    destination-side-only flip, §31e), not around `$014a90` again.
+- `$00014a90` fully disassembled (§32a) and its blit source pinned down live (§32b): the source at
+  `$014b28` is a **fixed, room-independent address** (`$55b6`), same in both CAVERN and TUNNEL —
+  `$014a90` repaints a fixed status/icon-panel element at screen `(272,143)`, not room art.
+- **New this session (§33a): `$55b6`'s actual bytes read directly from the snapshot's RAM (not
+  through `gfxview.py`'s decoder) are 96 bytes of solid zero** — the blit source for this call is
+  blank, consistent with "clear this panel to a default state," not a glyph. Rendered, it's a plain
+  black rectangle: not informative as an image, but a real, independently-verified negative result.
+- **New this session (§33b): a full-screen-buffer `watch` across a live TUNNEL→CAVERN crossing
+  (`watch 19100 32000` + `kbd ff 02`, ~668k hits) was bucketed by PC. Every hit falls into either
+  `$0144b8`'s flip (a larger PC range than previously named, `$0144ee`-`$0150d8`) or a second,
+  newly-traced masked-blit call (`$007f60`, live-traced via `bpc`+`bt` to `$00d93c`'s `bsr $7dd6`,
+  called from the sprite-object-array walk at `A6=$00038338`, §21a's already-known base) — the
+  entity/sprite-list renderer, not a new routine.** No third, unidentified writer touched the buffer
+  during this crossing.
 
 ## Open, in priority order
 
-1. **Where the room's own background art actually gets selected and blitted** — `$014a90` is now a
-   closed, negative lead (§32b above), so the search moves to whatever runs before `$0144b8`'s
-   flip in the same transition. Approach: `watch` the live screen buffer (`(A5)+$59e8` region, the
-   same one `$014a90` ANDs into) across a full crossing and find every writer besides `$014a90`
-   itself and the flip; or trace backward from `$69da` (the "already resident, re-enter main loop"
-   branch, §28c) for whatever runs once per transition before the flip.
-2. What `$55b6` actually contains — likely the fixed icon-panel glyph/sprite (§32b's working
-   hypothesis, not yet confirmed). `M68000/pyproject.toml` + `uv sync` now provisions `gfxview.py`'s
-   `numpy`/`pillow` deps (`uv run python tools/gfxview.py scratchpad/cadaver/hit_014b28.snap --html
-   out.html`, already run once this session and confirmed working — see "Python tooling" in
-   DEVELOPING.md); the actual read-and-interpret-the-render step wasn't done. Compare the rendered
-   shape against a real "default icon panel" vs "LEVER icon panel" screenshot pair to confirm the
-   status/icon-panel hypothesis rather than leaving it inferred.
+1. **Where the room's own background art actually gets painted** — now reframed twice over.
+   `$014a90` is closed (§32b); the entity/sprite-draw system is now also ruled out (§33b, this
+   session) since it draws sprites at their own positions, not a room-sized background, and no
+   other PC wrote the buffer during the captured crossing window. Two live possibilities left,
+   **try (a) first, it's cheaper and may close the item as a reframe rather than a new hunt**:
+   - (a) The background is painted into the *other* (non-visible) screen-buffer role well before
+     the crossing — e.g. when the room is first loaded/decoded into memory — and the crossing only
+     ever flips an already-painted back buffer. Test: `watch` the non-visible buffer (the
+     `ScreenBufferA/B` role-swap field's other half, `4(A5)`'s counterpart per §32a) from well
+     before any movement, across an idle period with *no* crossing, and see whether it already
+     holds the about-to-be-shown room's art before `$0144b8` ever runs. If confirmed, §31e's
+     original premise ("something paints room art each crossing") needs correcting, not the search
+     continued.
+   - (b) The 34th pass's capture window (`kbd`-press to ~2.2M steps) didn't fully bracket the true
+     paint moment — re-run with a wider or earlier-starting watch window if (a) comes back negative.
+2. What `$55b6` contains for a *different* transition (§33a only checked the plain crossing this
+   and the prior pass both used) — specifically, catch a `$014a90`/`$014b28` call during an actual
+   LEVER-proximity transition (§7's "icon panel switches to a lever-specific icon pair") and see
+   whether `A0` or the source bytes differ from this session's all-zero default-state read. Lower
+   priority than item 1: this is about confirming a side-hypothesis, not the room-art blocker.
 3. Room-record bytes `+0..+3` (still unknown; `+4`/`+5` are the graphics-table index, `+$c0` is the
    mask table per §32a).
 4. How the ~72 real rooms connect in ordinary play (`$007104` is not it: both branches `bra $69da`,
@@ -77,15 +75,23 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
 
 - **The Cadaver disk image is not in the usual Dropbox ST-games folder** — it's only on `gpubox`.
   Pull it with the tar-over-ssh recipe (CLAUDE.md) before assuming the workstream is blocked.
-- The prior handoff's claim that "every `.snap` resume point is gone between sessions, every time"
-  did **not** hold this session — treat it as "check first, don't assume," not a hard rule.
 - **Prefer `bpc <addr> 1 <maxSteps>` over `bp <addr> <maxSteps>` for a one-shot reliable register
-  dump.** The previous pass's `bp` runs at this same address gave inconsistent results across two
-  supposedly-identical replays (one crossed cleanly, one sat idle for the full budget); this
-  session's `bpc` calls reproduced cleanly every time, from three separate fresh `resume ... repl`
-  processes. Not root-caused (still open whether it's a real `bp`-path issue or was a script
-  mistake last pass), but `bpc 1` is now the better default for "stop on first hit, print
-  registers" until/unless it also flakes.
+  dump.** Root-caused this session's predecessor pass: not a real `bp` flakiness, `bpc` reproduces
+  cleanly every time.
+- **`bt <depth>` with `depth` > 1 can throw an unhandled `Atari.AddressError` and kill the REPL
+  process** if the return-address chain doesn't follow the A6 link-frame convention past the first
+  frame (seen this session reading the entity/sprite-draw call's backtrace — its second "frame" was
+  actually entity-record data, not a real link). Use `bt 1` first and only widen the depth once
+  you've confirmed the caller actually uses linked A6 frames; don't assume a deeper `bt` is safe to
+  request blind.
+- `gfxview.py`'s `st-interleaved` layout renders standard 16-pixel word-interleaved planes
+  correctly, but this game's masked-blit routines (`$014ee4`/`$007f60`/`$14f4a` family) read source
+  data as **4 consecutive longwords per row** (one plane per 32-bit longword, 32 pixels wide, no
+  inter-plane stride) — a different in-memory order than word-interleaved for any width other than
+  exactly 16px. Rendering one of these blit sources through the HTML viewer's normal controls
+  produces noise; read the raw bytes directly from the snapshot instead (see §33a's approach: parse
+  the `A68S` header per `gfxview.py`'s own `load_ram()`, then slice `ram[addr:addr+width*rows]`) to
+  verify a fixed-address blit source like this workstream keeps finding.
 - Movement is joystick port 1 (`kbd ff 01/02/04/08` = up/down/left/right). One packet is a
   self-terminating multi-substep move needing 60k-100k steps.
 - Player = sprite-array slot 0 (`$038338`, +42 = 0); `A5 = $18152`.
@@ -93,8 +99,8 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
 
 ## Next session
 
-Run `uv run python tools/gfxview.py scratchpad/cadaver/hit_014b28.snap --html out.html` (deps now
-provisioned via `uv sync`, see DEVELOPING.md "Python tooling") and read what `$55b6` actually is,
-confirming or refuting the icon-panel hypothesis from §32b. Then move to the reframed open item 1: find the real room-art
-paint step by watching the live screen buffer across a full crossing for writers other than
-`$014a90` and the `$0144b8` flip. Prompt: `/resume cadaver`.
+Test possibility (a) from open item 1 first: `watch` the non-visible screen-buffer role from an
+idle, pre-crossing state (no `kbd` input at all) and check whether it already holds the next room's
+art before any transition starts — if so, reframe the item around *when* that buffer gets painted
+(most likely at room-load time, not crossing time) rather than continuing to hunt for a painter that
+runs during the crossing itself. Prompt: `/resume cadaver`.
