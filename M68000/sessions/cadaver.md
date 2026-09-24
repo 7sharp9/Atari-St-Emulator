@@ -1,72 +1,80 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at this commit (46th pass). Closed the carried-over
-shifter-base-flip Open item 1: found the actual hardware writer ($015272, `movep.w` from `(A5)+0`),
-confirmed `watch` has no blind spot for `movep`, and showed the two "conflicting" older snapshots
-are mid-transition captures of the same `(A5)+0`/shifter-base invariant the doc already understood,
-not evidence of an undetected write.
+Updated 2026-09-24 by the session that ended at this commit (47th pass). Closed the door-connectivity
+Open item 1: walked all 71 door ids referenced across every one of the 72 populated rooms and
+resolved each spatially exactly as `$de5e` does — every door lands on its own room or an
+edge-adjacent neighbour, zero teleports. Also found and corrected a stale doc claim (door
+descriptors are 8 bytes, not 20) and reframed the standing Open item 3 (scripting/bytecode layer):
+it isn't a fresh question, `mechanics.md` §22-26 already found and fully proved a real object-verb
+bytecode interpreter, closing "does one exist" as yes; what's actually open is narrower (why room
+3's own init/registration script never loads).
 
 ## Resume point
 
-- Last commit of this workstream: `2f1df82` "cadaver: close shifter-base-flip conflict, Open item 1
-  (46th pass)". Prior commit: `ed4d807` "cadaver: close open item 1 - confirm §43's
-  proximity mechanism against BOAT (45th pass)". A related shared-resource commit, `14515d7`
-  (`CLAUDE.md` note on `run.ps1` alias argv), landed the 45th-pass session but is not
-  workstream-specific.
+- Last commit of this workstream: this handoff's own commit, on top of `81ccf4b` "docs: point the
+  tools table at gfxview.py's .snap header parsers (cadaver 46th pass)". This pass's own work
+  (mechanics.md §47, `py/door_walk.py`) is not yet committed as of this write — see the next
+  session or the commit this handoff ships with.
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). No new anchor snapshots this
-  pass — `gameplay_empire.snap` (already present) was the resume point used.
+  pass — `room2_tunnel_entry.snap` (already present) was the only snapshot needed, since §47's walk
+  is a static read of game data, not a live test.
 - Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry) or `gameplay_empire.snap` (CAVERN
   start tile) depending on which room's mechanism you're testing next. **Do not use `$5a99` to
   detect "crossing done"** — use `(A5)+1166` (§38b) instead. **Always pass
   `--disk-a "Cadaver...st"` and use `resume <snap> repl`, never the bare alias `rrepl`** — see
   "Known traps" below.
-- Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` and
-  `M68000/sessions/powermonger.md` still show as modified in `git status` — a concurrent session's
-  workstream, left alone per the shared-resources rule (carried over unchanged from prior handoffs).
+- Uncommitted work left behind: `M68000/sessions/README.md` and `M68000/sessions/powermonger.md`
+  still show as modified in `git status` — a concurrent session's workstream, left alone per the
+  shared-resources rule (carried over unchanged from prior handoffs).
 
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
-`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45
+`mechanics.md` 1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46
 (movement collision/proximity mechanism, the icon-panel write chain, the full 72-room
 world-map/adjacency graph, the §43 proximity mechanism confirmed generic against a second object,
-all fully closed). **New this session, `mechanics.md` §46**:
+the shifter-base-flip hardware writer, all fully closed). **New this session, `mechanics.md` §47**:
 
-- **§46.** Closed the carried-over shifter-base-flip Open item 1: `find_field_writers.py` located
-  the hardware writer (`$015272`, `movep.w D0,0(A0)` with `A0=$ff8201`, `D0` from `(A5)+0`) among
-  14 code sites that touch that register; confirmed `MOVEP` goes through the same `WriteByte`/
-  `checkWatch` path as any other store (`68k.fs`/`MMU.fs`), so `watch` has no blind spot for it;
-  `hits 8200000 15272` gives 0 both idle and across the standard `kbd ff 02` TUNNEL↔CAVERN crossing,
-  reproducing §37/39th pass's "zero writes" by an independent method. The two "conflicting" older
-  snapshots turn out to sit at the *opposite*, but still internally consistent, parity of the same
-  `(A5)+0`-is-inactive-half / shifter-is-active-half invariant §34a already established (proof
-  table: `py/snapinfo.py`, new this pass) — mid-transition captures, not an undetected write.
+- **§47.** Closed the door-connectivity Open item 1: `door_walk.py` (promoted from scratchpad to
+  `reversing/cadaver/py/` this pass) reads every one of the 72 populated rooms' door-link slots,
+  resolves each of the 71 distinct door ids through the type-4 resource table (confirming the
+  descriptor is an 8-byte record, correcting §14/§10c's earlier "20 bytes" guess) to a candidate
+  world coordinate, then re-implements `$de5e`'s own point-in-rectangle scan (§38d) to find the
+  resolved destination room. Result: every door resolves to its own owning room or a
+  `world_map.py`-classified `edge`-adjacent neighbour — zero non-adjacent ("teleport") doors, zero
+  unresolved ids. The descriptor's secondary id word (positive on 5 of the 71 doors) plays no role
+  in the destination — reframed as more likely a "target room resident/registered" gate, consistent
+  with §14's already-empty type-8 table and §13's CAVERN-east-door ("already resident") finding.
 
 ## Open, in priority order
 
-1. **Whether every door connects only edge-adjacent rooms, or some "teleport" across the world
-   grid** (scoped when §44 closed item 4): would need a walk of every room's door-descriptor list
-   (only TUNNEL's two entries are known, §15th pass, format at `$007250`/§38c) cross-referenced
-   against `world_map.png`'s adjacency graph.
-2. **Whether `world_map.png`'s 72-room graph is one level of several, not the whole game** — Dave's
+1. **Whether `world_map.png`'s 72-room graph is one level of several, not the whole game** — Dave's
    observation, 45th pass: the game likely has more than one level, and completing one probably
    reveals another. Not yet checked: whether the type-3 resource-manager table at `$4ac36` (§38a,
    what `world_map.py` walks) is per-level and gets rebuilt/switched on a level-complete event, or
    is a single fixed table for the whole game. Would need finding the level-complete/level-advance
    trigger (search for a win-condition check or a routine that rewrites `$4ac36`'s slots) and
-   diffing the table before/after it fires.
-3. **Whether the game has a scripting/bytecode layer driving room or object behaviour** — Dave's
-   second observation, 45th pass: worth checking for a dispatch-by-opcode pattern (a table of small
-   routines indexed by a byte read from room/object data) rather than assuming every interaction is
-   hand-written 68000. Not yet scoped as a concrete test: start from a room's object-placement table
-   entries (`56(A5)` stride 70, §43) and check whether any field looks like an opcode/operand
-   stream read by a small interpreter loop, rather than only static bounding-box/bitmap data.
-4. **Low priority, not needed to close §46**: which of the other 13 `$ff8201`-touching call sites
+   diffing the table before/after it fires. A quick static check this pass found only reads of the
+   table's own base pointer `(A5)+96` across the disassembled program text (one lone `bchg` bit-flip,
+   no full pointer rewrite) — suggestive the table is fixed for the whole game, but not conclusive,
+   since it only covers the ranges already disassembled (`scratchpad/cadaver/full_*.asm`), not the
+   whole image.
+2. **Why room 3's own init/registration script never loads, and what actually populates the type-8
+   room-registration table** — reframed from "does a scripting/bytecode layer exist" (that's already
+   proven yes, `mechanics.md` §22-26: a real object-verb bytecode interpreter with a 59-entry opcode
+   dispatch table, LOCK/UNLOCK confirmed causally on the lever's own object id). What's still open is
+   narrower: §26 closed "what calls it" as a documented negative (the calling code isn't resident in
+   any snapshot this spike has taken), and §47 (this pass) found the door descriptors' positive id
+   words (e.g. CAVERN's east door, id `73`) look like a "target room registered/resident" gate that's
+   never satisfied, tying §26's negative and §14's empty type-8 table into one open mechanism. Next
+   concrete step: find whatever would write into the type-8 index table (`$4c536` onward) — §14's own
+   still-open next step, not yet chased.
+3. **Low priority, not needed to close §46**: which of the other 13 `$ff8201`-touching call sites
    actually fires (title/intro screen, a different room-pair's crossing, a resolution/mode change) —
    §46 closed the conflict without needing this.
-5. The two-disk original (§30b): lower priority, would be a fresh subject.
+4. The two-disk original (§30b): lower priority, would be a fresh subject.
 
 ## Known traps
 
@@ -121,8 +129,8 @@ sprite slot 0, use `tools/find_ram_callers.py`/`find_field_writers.py`.)
 
 ## Next session
 
-Items 2 and 3 (carried from the 45th pass as Dave's observations: whether the world map is only one
-level of several, and whether a scripting/bytecode layer drives room/object behaviour) are not yet
-scoped down to a first concrete probe — worth 15-20 minutes of code/data reading before committing
-to a live-test plan for either. Item 1 (door-connectivity walk) is the cheaper, already-scoped
-alternative if that reading doesn't land quickly. Prompt: `/resume cadaver`.
+Item 1 (whether the world map is one level of several) is the standing open question from Dave's own
+45th-pass observation, still not scoped to a concrete live test — start there with the same
+read-before-testing approach this pass used (find the level-complete/win-condition trigger statically
+before running anything). Item 2 (type-8 registration) is the cheaper, already-scoped alternative:
+find what writes `$4c536` onward. Prompt: `/resume cadaver`.

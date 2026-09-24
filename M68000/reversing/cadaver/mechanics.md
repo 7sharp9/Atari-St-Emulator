@@ -585,7 +585,7 @@ directly tested and refuted.** Dumped TUNNEL's own two door descriptors (`$6d4ea
 `$6d4f2`'s target word is still `$ffff`, the "sound cue" sentinel) before and after: the known interact
 gesture (Down/Return), joystick fire alone, and — this pass, going further than any before — **the
 full 12-action-id + all-direction + fire-combo sweep already run against the live table, rerun instead
-checking the descriptors' own 20-byte content directly.** Zero bytes differ, in any of the 18+
+checking the descriptors' own 8-byte content directly.** Zero bytes differ, in any of the 18+
 conditions tested. This closes the specific "lever pulls rewrite $6d4f2's target word" idea cleanly —
 not just "the live table copy doesn't reflect it" (which was the actual gap in the 17th pass's
 original sweep — the live table only holds a *pointer* to the descriptor, so a rewrite-in-place would
@@ -1816,13 +1816,23 @@ back to the section it was originally derived in.
   swapping which pair is checked (`btst #0/#1,2243(A5)`).
 - Match: `D0=-2`, `entry.+10` = door-descriptor pointer, `entry.+26` word → `(A5)+1184` ("pending room
   target"). No match: `D0=$FF` (hard wall, no exit).
-- Door descriptor (`entry.+10`'s target, 20 bytes — §10c/§14): `+2` word = target room id, with two
-  special sentinels — `$0000` = "current room" (self-loop path, skips the real room-resolve chain)
-  and `$ffff` = "no room, sound/event cue only" (pushes a ring-304 opcode, no geometry/room-load call
-  at all). A real positive id runs the full chain: `$de5e` (nearest-free-entry-tile search) →
-  `$e854`/`$e84a` (ring-304 push + `2271(A5)` block-flag, both the same routine — `$e84a` just
-  presets the flag to `$ff` first) → conditionally `$defa` (a ring-304 opcode-`$8` push, itself *not*
-  the loader — the real disk-read consumer for that opcode is still unlocated).
+- Door descriptor (`entry.+10`'s target, an 8-byte type-4 resource record — §10c/§14/§47, corrected
+  from an earlier "20 bytes" guess): `+0`/`+1` = a candidate world-space entry coordinate `(x,y)`;
+  `+2` word = a secondary id, with two sentinels seen on TUNNEL/CAVERN's own two known doors —
+  `$0000` ("hardcoded" — this is the initial CAVERN↔TUNNEL link, wired at boot outside the generic
+  resource system per §14, not a same-room self-loop) and `$ffff` ("no room, sound/event cue only",
+  pushes a ring-304 opcode, no geometry/room-load call at all). A positive id runs the generic
+  `jsr $11256` room-id lookup (currently an always-miss, §14, since the type-8 registration table
+  is never populated in any snapshot this spike has taken). **The actual destination room is not
+  read off this id word at all** — every case, positive id included, falls through to `$de5e`
+  (§38d/§47: a linear point-in-rectangle scan of every type-3 room against the descriptor's own
+  `+0`/`+1` candidate coordinate) → `$e854`/`$e84a` (ring-304 push + `2271(A5)` block-flag, both the
+  same routine — `$e84a` just presets the flag to `$ff` first) → conditionally `$defa` (a ring-304
+  opcode-`$8` push, itself *not* the loader — the real disk-read consumer for that opcode is still
+  unlocated). §47's full walk of all 71 door ids in this build shows every one's candidate coordinate
+  resolves spatially to the door's own owning room or its immediate rectangle neighbour — the id
+  word's positive values (e.g. CAVERN's east door, `73`) look like a separate "is the target room's
+  data resident/registered yet" gate, not a room selector.
 - Per-room source data: the current room's own record (pointed to by `(A5)+164`) holds 7 door-link
   slots at `+6..+19` (2 bytes each, `$ffff`=unused) drawn from a **global, sequential door-id
   namespace** shared across every room — this seeds the live portal table's `+26` words at room-load
@@ -3265,6 +3275,71 @@ captures of the same steady-state invariant `(A5)+0` = inactive half / shifter =
 evidence of an undetected write. **Not yet done, low priority**: identify which of the 14 call
 sites *does* fire (title/intro screen, a different room-pair's crossing, or a resolution/mode change)
 — not needed to close this item, since the conflict is resolved without it.
+
+## 47. Open item 1 (cadaver.md, door connectivity) closed: every door in the loaded image resolves
+    spatially to its owning room or an edge-adjacent neighbour, no teleport doors exist in this build
+    (47th pass)
+
+**Reused, didn't re-derive**: §38a's type-3/type-4 resource-table format, §38d's `$de5e`
+point-in-rectangle scan, and `world_map.py`'s own room-rectangle reader and `adjacency()`
+classifier.
+
+### 47a. Door descriptors are 8-byte type-4 records, not 20 bytes — corrected static-read error
+
+§14/§10c's "20 bytes" characterization of the door-descriptor struct was never derived from the
+resource-manager format, just guessed from the struct's rough shape. Resolving the three previously
+known descriptor addresses through the type-4 resource row (index-table `$4adc6`, data-area
+`$6d35a`, per §38a) instead of assuming a fixed stride: door id `$32` → index-table entry `size=8,
+offset=$190` → `$6d35a+$190=$6d4ea`; id `$33` → `offset=$198` → `$6d4f2`; id `$3b` →
+`offset=$1d8` → `$6d532` — all three exact matches against the already-known live addresses, and all
+three (like every other resolved id below) read `size=8`. **Door descriptors are ordinary 8-byte
+type-4 resource records**, laid out `[+0 cx][+1 cy][+2..+3 id word][+4..+7 unread, not needed to
+close this item]`.
+
+### 47b. The full walk: every room's door-link slots, resolved through type-4, then through `$de5e`'s
+    own algorithm
+
+Script: `reversing/cadaver/py/door_walk.py` (promoted from scratchpad this pass), run against
+`room2_tunnel_entry.snap` (a static read — the resource tables are game data, not per-frame state,
+so any snapshot with them initialised works, per `world_map.py`'s own doc comment). For each of the
+72 populated type-3 rooms, reads its own 7 door-link slots (record `+6..+19`, §14, `$ffff`=unused),
+resolves each referenced id to its type-4 descriptor (§47a), reads the descriptor's candidate
+coordinate, and re-implements `$de5e`'s own resolution exactly as §38d fully disassembled it: a
+linear scan over all type-3 rooms in slot order, first rectangle containing the candidate `(x,y)`
+wins.
+
+**Result: 71 distinct door ids referenced across all 72 rooms. Every single one resolves to either
+the door's own owning room (the "self" side of a shared edge) or a room `world_map.py`'s
+`adjacency()` classifies as `edge`-adjacent to it — zero non-adjacent ("teleport") resolutions, zero
+unresolved ids.** This holds regardless of the descriptor's own id word (§47c) — the five ids with a
+genuine positive value (`53`, `73`, `155`, `167`, `244`) resolve exactly the same spatial way as the
+ordinary `$0`/`$ffff`-sentinel doors, landing on an adjacent room just like every other door. Full
+per-door table in the script's own output (door id, candidate coordinate, id-word tag, resolved
+owner/destination pair and adjacency class); not reproduced here in full since it is exactly what
+the script prints and would need to be re-run to trust anyway, not transcribed by hand.
+
+**Closes Open item 1 as scoped**: there is no "teleport" door anywhere in this loaded image's door
+data — the spatial-resolution mechanism (§38d) structurally can only ever land a crossing in whatever
+room's rectangle physically contains the stored candidate coordinate, and every stored candidate in
+this build sits on or adjacent to the door's own room boundary, consistent with a hand-authored map
+where doors are placed at room edges. Two honest caveats: this is a static read of the *currently
+loaded* door data, not a live re-test of every individual crossing (only the CAVERN↔TUNNEL pair has
+been driven live end to end, §38c); and it says nothing about whether a later game event (the lever,
+§26) could ever rewrite a candidate coordinate to something non-adjacent — no such write has been
+found anywhere in this image (§14's own descriptor-content sweep found zero writes across an 18+
+condition test).
+
+### 47c. Reframing the id word: not a room selector, more likely a "target room registered/resident"
+    gate
+
+§14 already showed the type-8 "room registration" table is always empty and `$011256`'s id-based
+lookup always misses; §47b now shows the id word plays no role in *where* a door leads (that's
+`$de5e`'s job, purely spatial). The five positive-id doors found this pass (`53`, `73`, `155`, `167`,
+`244` — none of them valid type-3 slot numbers, since only slots 0-71 exist) are consistent with the
+id being a lookup key into whatever system would populate type-8 once a room's assets actually load
+(§13's own CAVERN-east-door finding — id `73`, resolves to the "already resident" branch rather than
+a fresh load — fits this reading exactly). Not chased further this pass; flagged for whoever next
+works on why room 3's own init script/registration never runs (§26's still-open structural question).
 
 ## Files
 
