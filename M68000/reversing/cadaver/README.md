@@ -165,13 +165,21 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   directly (observed as `$19100`/`$20f00` in one snapshot) — **not** a two-way role-swap with
   `120(A5)` as previously written here (corrected 35th/36th pass, `mechanics.md` §34a-35;
   `CompositeBackBuffer` below is the old, wrong name for what `120(A5)` actually is). `120(A5)`
-  (observed as `$2de08`) is a **separate, third resident buffer** — the actual pre-flip room frame.
+  (observed as `$2de08`) is a **separate, third resident buffer** — not the room's source art, but
+  a *cache* of it (corrected again, 37th pass, `mechanics.md` §36: see below).
   `ScreenFlip_ScanlineCopy` (`$144b8`) is a fully-unrolled `movem.l` copy loop (571×56-byte chunks
   plus one 24-byte remainder chunk, `$5a99`-gated) with a `trap #4`-based mid-loop yield (`$90.w`
   vector) that splits the ~32KB copy across several VBLs so it never tears — but the copy is not a
   straight memcpy: forward-read/backward-write `movem` reverses **chunk order** end-to-end, so
-  `120(A5)` stores the frame byte-chunk-reversed relative to normal raster order (fully decoded,
-  byte-exact, `mechanics.md` §35; `reversing/cadaver/py/decode_backbuffer.py`).
+  `120(A5)` stores its content byte-chunk-reversed relative to normal raster order (fully decoded,
+  byte-exact, `mechanics.md` §35; `reversing/cadaver/py/decode_backbuffer.py`). **This same routine
+  runs in *either* direction** (`mechanics.md` §36): normally `120(A5)` → the display buffer's
+  inactive half, refreshing it each frame; on a room crossing, traced live with zero disk/FDC
+  activity either way, it runs *backwards* — the display buffer's inactive half (freshly painted by
+  some other, still-unidentified RAM-to-RAM writer) → `120(A5)`, banking the new room's art into the
+  cache. `120(A5)` is therefore downstream of the real room-background painter, not the painter's
+  target; every `watch` armed on `120(A5)` to find that painter (§33b/§34b and this session's first
+  attempt) was watching one hop too late.
   `ScreenFlip_AndCompositeSprites` (`$14d64`) does the same kind of copy but with an
   `and.l (a1),Dn / or.l Dn,Dn / move.l Dn,(a1)+` masked-composite inner loop
   (`SpriteCompositeInner_AndOrMaskLoop` at `$14f24`, 4361 word-writes across 141 calls) — sprites

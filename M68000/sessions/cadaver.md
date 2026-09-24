@@ -1,11 +1,11 @@
 # Cadaver: handoff
 
-Updated 2026-09-24 by the session that ended at commit `1a6c586`.
+Updated 2026-09-24 by the session that ended at commit `f831474`.
 
 ## Resume point
 
-- Last commit of this workstream: `1a6c586` "skills: reverse-engineer-st-game - note the movem
-  forward-read/backward-write chunk-reversal idiom" (cadaver work itself at `05fb60d`).
+- Last commit of this workstream: `f831474` "cadaver: 120(A5) is a cache, not the source - $0144b8
+  runs backwards to refresh it on crossings".
 - Disk image: `Cadaver/Cadaver (1990)(Image Works)[cr Empire][one disk].st` (sha256 in
   `reversing/cadaver/README.md`) — untracked, do not `git add`. Present on this Mac checkout this
   session with no rebuild needed. If it's gone, pull it from `gpubox` (tar-over-ssh recipe,
@@ -13,14 +13,16 @@ Updated 2026-09-24 by the session that ended at commit `1a6c586`.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). All snapshots from the prior
   handoff were still present this session (`room2_tunnel_entry.snap`, `gameplay_empire.snap`,
   `tunnel_return_cross.snap`, `tunnel_return_settled.snap`, `hit_014b28.snap`) — no rebuild needed.
-  Nothing new saved to scratchpad this session (only reads via a one-off Python script under
-  `scratchpad/cadaver/decode_2de08/`, not committed — the promoted, reusable version is
-  `reversing/cadaver/py/decode_backbuffer.py`).
+  New this session: `fresh_cavern_cross.snap` (live snapshot right after a real TUNNEL→CAVERN
+  crossing, `mechanics.md` §36b). One-off Python scripts under `scratchpad/cadaver/decode_2de08/`
+  and ad-hoc REPL scripts under `/tmp` (not scratchpad, not committed) — the reusable decode tool is
+  promoted at `reversing/cadaver/py/decode_backbuffer.py`.
 - Start from: `room2_tunnel_entry.snap` (fresh TUNNEL entry, `(A5)=$18152`, `120(A5)=$2de08`,
   `$5a99=0` in this snapshot — re-read all three live, they are not guaranteed stable across
   snapshots per README's own note). `kbd ff 02` reproduces the TUNNEL→CAVERN crossing.
   `gameplay_empire.snap` (CAVERN, day 1) for the reverse direction via the zigzag recipe.
-  `hit_014b28.snap` for the specific PC `$014b28`.
+  `hit_014b28.snap` for the specific PC `$014b28`. `fresh_cavern_cross.snap` for the post-crossing
+  state used in §36's register capture.
 - Uncommitted work left behind: none.
 
 ## Proven so far
@@ -40,32 +42,52 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
 - `$0144b8` (`ScreenFlip_ScanlineCopy`) fully disassembled (§34a): `(A5)+0` and `(A5)+$7d00` are
   the two halves of *one* 64000-byte double-buffer feeding the shifter; `120(A5)` is a **separate,
   third resident buffer** that the flip reads from.
-- **New this session (§35, 36th pass): `120(A5)`'s buffer fully decoded, byte-exact.** Pulling the
-  *full* linear disassembly of `$0144b8` (not the prior pass's elided excerpt) gave the real
-  structure: 571 chunks of 56 bytes (`movem.l (A0)+,#$fcff` / `movem.l #$ff3f,-(A1)`, 14 registers
-  `D0-D7,A2-A7`) plus one `$5a99`-gated 24-byte remainder chunk (leading if `$5a99≠0`, trailing if
-  `$5a99=0`), forward-read from `120(A5)`, written backward into the destination. Predecrement
-  `movem`'s fixed reverse transfer order cancels the read-order reversal *within* each chunk, so
-  only **chunk order** is reversed end-to-end across the whole 32000-byte transfer. Reconstructing
-  that exactly and decoding as plain `320×200×4bpp st-interleaved` reproduces `(A5)+0`'s live bytes
-  with **0/32000 diffs** against `room2_tunnel_entry.snap`. `120(A5)` is not compressed, not a
-  different resolution/bpp — it's the *same raster*, stored solely with this chunk-reversal.
-  Script: `reversing/cadaver/py/decode_backbuffer.py <snap> [--out out.png]`. This settles the old
-  "room background painter" question at the buffer level and reframes it: see Open item 1 below.
+- **§35, 36th pass: `120(A5)`'s buffer fully decoded, byte-exact.** Pulling the *full* linear
+  disassembly of `$0144b8` (not the prior pass's elided excerpt) gave the real structure: 571
+  chunks of 56 bytes (`movem.l (A0)+,#$fcff` / `movem.l #$ff3f,-(A1)`, 14 registers `D0-D7,A2-A7`)
+  plus one `$5a99`-gated 24-byte remainder chunk (leading if `$5a99≠0`, trailing if `$5a99=0`),
+  forward-read from `120(A5)`, written backward into the destination. Predecrement `movem`'s fixed
+  reverse transfer order cancels the read-order reversal *within* each chunk, so only **chunk
+  order** is reversed end-to-end across the whole 32000-byte transfer. Reconstructing that exactly
+  and decoding as plain `320×200×4bpp st-interleaved` reproduces `(A5)+0`'s live bytes with
+  **0/32000 diffs** against `room2_tunnel_entry.snap`. Script:
+  `reversing/cadaver/py/decode_backbuffer.py <snap> [--out out.png]`.
+- **New this session (§36, 37th pass): the disk-load hypothesis from §35 is wrong — `120(A5)` is a
+  downstream *cache*, not the room's source, and every prior "find the writer" search was watching
+  the wrong buffer.** Traced a real TUNNEL→CAVERN crossing (`kbd ff 02` from `room2_tunnel_entry.snap`)
+  under both `ATARI_TRACE_OS=1` and `ATARI_TRACE_FDC=1` — **zero** trap/FDC activity either way, yet
+  `120(A5)`'s content genuinely changes to CAVERN art (`decode_backbuffer.py`, confirmed visually).
+  Chasing the crossing's actual `$0144b8` call by register content (its printed `watch` step numbers
+  are the CPU's persistent lifetime counter baked into the snapshot, not any command's own local
+  step budget — cost real time to work out) caught it running with **source and dest swapped**:
+  `A0=$20f00` (`(A5)+0+$7d00`, the display double-buffer's *inactive* half) → `A1=$35b08`
+  (`120(A5)+$7d00`, `120(A5)`'s own buffer). Same copy mechanism as the ordinary per-frame flip, run
+  backwards: it **banks the freshly-drawn inactive display-buffer half into `120(A5)`** as a cache
+  for future per-frame refreshes, not the other way round. Reproduced 3× within one continuous
+  trace. The real room-background painter writes the display buffer's inactive half directly
+  (RAM-to-RAM, matching the no-disk-I/O finding) — not `120(A5)`, which is why §33b/§34b's watches
+  on `120(A5)` correctly found nothing. See Open item 1 below for the narrowed next step.
 
 ## Open, in priority order
 
-1. **Find what loads `120(A5)`'s content on a room crossing.** §35 proved `120(A5)` holds a
-   complete, already-composited 320×200 room raster (chunk-reversed), not a smaller tile/sprite
-   source — that makes a *runtime compositor* unlikely (consistent with two full passes, §33b/§34b,
-   catching no live writer during a crossing). The far more likely source is the room-load disk
-   read itself, storing each room's pre-rendered background pixel-for-pixel in this reversed layout
-   on disk. Next step: trace the disk-sector read(s) during a room crossing (the game reads raw
-   sectors directly, not via GEMDOS `Fread`, per the 7th pass) and check whether the bytes landing
-   in `120(A5)` match sectors read verbatim — a `watch 2de08 32000` across a *disk-read* window
-   (not just a CPU-side compositor window) is the targeted version of the old item 1(b). If a disk
-   read is confirmed, decoding `decode_backbuffer.py`'s output for other rooms (once their sector
-   ranges are known) would let every room's background be extracted without booting to it.
+1. **Find what writes the display double-buffer's inactive half (`$20f00` in this snapshot,
+   `(A5)+0+$7d00` generally) with the new room's raw art.** §36 traced the actual mechanism one
+   level further back than any prior pass: `120(A5)` only ever *receives* a copy of that buffer half
+   (via `$0144b8` run backwards) — the real painter writes the half directly, with no disk/FDC
+   activity (confirmed under both `ATARI_TRACE_OS=1` and `ATARI_TRACE_FDC=1` across a full crossing),
+   so it's a RAM-to-RAM writer somewhere else in the loaded image, not a room-load disk read (that
+   hypothesis, from the prior handoff, is now closed as wrong — see §36a). Two concrete next steps,
+   in order:
+   - (a) `watch $20f00 32000` (re-read the live address fresh each snapshot — it's `(A5)+0+$7d00`,
+     not a fixed constant) across the same `kbd ff 02` crossing from `room2_tunnel_entry.snap`. This
+     is the first watch ever armed on the *right* buffer for this question — every prior pass
+     (§33b/§34b, and this session's own first attempt) watched `120(A5)` instead, which §36 now
+     explains is a dead end for finding the painter (real writes happen one hop upstream).
+   - (b) If that watch is quiet too, decode `$20f00` itself (plain `320×200×4bpp st-interleaved`, no
+     chunk-reversal — it's the display buffer, not `120(A5)`) at a snapshot taken *mid-crossing*,
+     before the reversed `$0144b8` bank-copy runs, to directly confirm it already holds finished
+     CAVERN art at that point (inferred from the end-state this session, not yet captured
+     mid-transition — see Known traps for the exact chase recipe and its reproducibility gotcha).
 2. What `$55b6` contains for a *different* transition (e.g. an actual LEVER-proximity icon-panel
    change, §7) — §33a only checked the plain crossing this and the prior pass both used, and found
    zero. Lower priority than item 1.
@@ -92,6 +114,26 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
   the "obvious" width needs a different bpp/stride; it may just need chunk-reversal. Full method and
   proof: `mechanics.md` §35, tool: `reversing/cadaver/py/decode_backbuffer.py`. General lesson
   logged in the `reverse-engineer-st-game` skill.
+- **The same copy routine can run with source and dest swapped** — don't assume a routine's
+  "normal" direction (learned from its most common call site) is its only one. `$0144b8` almost
+  always flips `120(A5)` → the display buffer; on a crossing it runs the other way, banking the
+  display buffer back into `120(A5)`. A `watch` on the routine's usual *source* address won't catch
+  this; watch the actual call's registers (§36c) or the specific address you care about.
+- **`watch`'s printed `step=` numbers are the CPU's persistent lifetime counter, restored from the
+  snapshot on resume — not a fresh per-command counter.** `hits`/`u`/`bpc`/`bp` all count locally
+  from 0 for their own call instead. The two are offset by a large, snapshot-specific constant (tens
+  of millions for a snapshot with this much accumulated history); don't try to convert one to the
+  other by arithmetic — find the event by register/memory content, not by matching step numbers
+  across different commands.
+- **To land a breakpoint on a *specific* dynamic occurrence of a PC that's hit many times** (e.g. a
+  per-frame routine, only one call of which matters), chain `s 1` / `u <addr> <cap>` / `r` in a
+  single unbroken REPL run and read off which iteration has the register values you want, then
+  reuse that same script prefix unmodified. Splitting the chase across separate invocations (even
+  with an apparently-identical script) was **not reliably reproducible** this session — two
+  supposedly-identical short reruns of the same prefix both failed to reach the same PC within the
+  same step budget that the original, longer, unbroken run reached repeatedly. Root cause not found;
+  budget more steps than the observed minimum if re-deriving this, and prefer one long run that logs
+  everything over several short targeted ones.
 - **When a prior pass's doc excerpts disassembly with `...`, re-disassemble in full before trusting
   the excerpt's implied structure** — `disassemble.py --linear <addr> <n>` with a generous `<n>`.
   The elided part hid the exact loop count (`subq.b`/`bne`, 4×142+3 = 571 chunks) that made §35
@@ -120,11 +162,9 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
 
 ## Next session
 
-Start with Open item 1: trace the disk-sector read(s) that happen during a room crossing (the game
-reads raw sectors directly, not via GEMDOS `Fread`) and check whether the bytes landing in `120(A5)`
-match sectors read verbatim — `decode_backbuffer.py` gives a byte-exact way to recognise when a
-buffer holds a correctly-reconstructed room frame, so any candidate write/read window can be checked
-by decoding and comparing rather than eyeballing. If disk-read tracing stalls, fall back to a wider
-`watch 2de08 32000` window starting from a cold boot (before the first room ever loads) rather than
-mid-game, since every capture so far has started from an already-populated buffer. Prompt: `/resume
-cadaver`.
+Start with Open item 1(a): `watch $20f00 32000` (read `(A5)+0+$7d00` fresh from whatever snapshot
+you resume from — don't hardcode the address) across the `kbd ff 02` TUNNEL→CAVERN crossing from
+`room2_tunnel_entry.snap`. This is the first watch aimed at the actual painter rather than
+`120(A5)`'s downstream cache (§36's reframe). `decode_backbuffer.py`'s plain-raster decode (no
+chunk-reversal needed for this buffer, it's the display buffer) gives a fast way to check any
+candidate mid-crossing snapshot for finished CAVERN art. Prompt: `/resume cadaver`.
