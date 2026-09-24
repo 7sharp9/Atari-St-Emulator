@@ -3448,6 +3448,42 @@ across it and check whether `$007280`'s own `btst #0,4(A0)` result, or anything 
 executor's flow, changes — the first causal (not just structural) test of whether the id word does
 anything at all.
 
+## 50. The causal test from §49c's own plan: `callcap` LOCK against door id `155` does not touch the
+    door-transition executor's own flag byte — the id word is causally inert on this path (50th pass)
+
+**50a.** From `room2_tunnel_entry.snap`, live via the REPL, following §24c's own recipe (`A1` → a
+scratch big-endian id operand, `callcap` LOCK's entry address directly):
+
+```
+m 6d45a 8                         ; before: door 0x20's descriptor, bytes 44 23 00 9b 01 00 00 02
+m 6faf5 1                         ; before: object id 155's own +15 byte = $00 (bit2 clear)
+w 18140 009b0000                  ; scratch-poke $00 $9b (=155, big-endian) at $18140
+callcap 1049a 5000 - A1=18140     ; call LOCK directly with A1 -> the scratch id buffer
+m 6d45a 8                         ; after
+m 6faf5 1                         ; after
+```
+
+Result: `regdelta ... A0 $00052e0c->$0006fae6 D1 $00000003->$0000009b`, confirming the call resolved
+id 155 to exactly the record address `door_id_words.py` computed (§49b); `mem $06faf5 $00->$04` —
+LOCK causally set bit 2, matching §24c's own result on id 144 byte-for-byte. **The door descriptor's
+own 8 bytes at `$6d45a` (owner room 19's door 0x20) read identically before and after**: `44 23 00
+9b 01 00 00 02`, so byte `+4` (the exact byte §38c's executor tests: `$007280: btst #0,4(A0)`) stays
+`$01` throughout. The only other memory `callcap` reports touched is the call's own temporary stack
+frame (`$0180e9`-`$0180f9`, below the live `A7`) — internal to the call, not persistent game state.
+
+**50b. Reading.** This is the causal counterpart to §49a's structural argument, run against the
+concrete next step §49c itself proposed: LOCK on a real, populated id that a door descriptor genuinely
+points to (155, not an arbitrary test id like §24c's 144) provably flips that object's own lock flag
+and provably leaves the door descriptor's executor-tested byte untouched. Combined with §49c's static
+result (no caller anywhere in the image resolves a door descriptor's id word through the type-6/9
+id-resolve path), Open item 1 is now doubly negative — structural and causal — on every mechanism
+this spike has found: **nothing currently known reads or acts on the five doors' positive id words.**
+This doesn't prove the id word is meaningless (an unfound reader is still possible, same caveat as
+every other "no caller found" result in this doc), but it removes the last untested "maybe LOCK's
+target and the door executor still interact some other way we haven't poked" gap — the two mechanisms
+are now shown disjoint both on paper and in a live call, matching exactly the kind of proof §24c
+already set the precedent for.
+
 ## Files
 
 | File | What |
