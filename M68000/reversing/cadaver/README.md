@@ -38,8 +38,15 @@ Two separate releases were tried, both under `Atari-St-Emulator/Cadaver/` and
   see `DEVELOPING.md`'s disk-image note) and cannot be booted by this emulator without a converter
   that does not exist yet in `tools/`. Tried the Replicants/ST Amigos pair instead
   (`disk1_replicants`/`disk2_replicants`): its Disk 1 reaches the "place levels disk" prompt live in
-  under 100M steps (mechanics.md §53), and swapping in Disk 2 gets a real in-game "error on this
-  disk" message followed by a CPU runaway on retry — see §53, not yet resolved.
+  under 100M steps (mechanics.md §53). The Disk 2 swap's "error on this disk" message (§53) turned
+  out to be this emulator's own bug, not a crack/protection failure: `disk2_replicants.st`'s
+  boot-sector BPB wrongly declares 1 side despite being a real double-sided 819,200-byte dump, and
+  `MMU.LoadDiskA` trusted it verbatim, so every side-1 sector read failed. Fixed (§55, commit
+  `5547ae9`) — side-1 reads now succeed cleanly (confirmed through track 7 of 80 before the
+  dispatch bug below fires; not yet proven for the whole disk). A separate, unrelated wall follows
+  soon after the swap: a crack-patched-out version check lets a stale resident code blob get
+  executed instead of being skipped (§55's dispatch-bug detail), not yet resolved and not an
+  emulator gap.
 
 ## Milestones reached
 

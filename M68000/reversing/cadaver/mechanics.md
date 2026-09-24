@@ -3643,6 +3643,52 @@ reproducible mechanism, emulator-general or protection-specific. Downgrades Open
 a game/emulator interaction to triage" to "seen once, not reproducible with typical input, not
 worth further live-boot investigation without a specific new lead."
 
+**55. §53's "ERROR ON THIS DISK" was this emulator's own bug, not a real crack/protection
+failure — `MMU.LoadDiskA` trusted the swapped-in disk's boot-sector BPB for side count, and Disk
+2's own BPB lies (55th pass).** Disk 2 is never booted through TOS — it's swapped in after the
+game is already running and read only via its own raw FDC sector commands — so nothing ever
+validates its BPB the way a real boot would. The Replicants/ST Amigos crack's `disk2.st` BPB
+declares `heads=1` (a 409,600-byte single-sided disk) while the file itself is a real
+819,200-byte double-sided dump (80 tracks × 2 sides × 10 sectors × 512 bytes, confirmed by direct
+byte inspection of offsets 11-27). `MMU.fs`'s old `diskASides` derivation took that header at face
+value, so every side-1 FDC read returned "no data" (`MMU.fs`'s `fdcSide >= diskASides` guard), and
+the game's own protection code correctly — from its own point of view — reported that as a disk
+read error and looped back to the retry prompt, exactly the behaviour §53/§54 characterised as
+"a real, game-authored disk-format complaint." It wasn't wrong that the complaint was
+game-authored; it was wrong about *why* the game was seeing bad data. Fixed in `MMU.fs`'s
+`LoadDiskA`: prefer 2 sides when the file is big enough for a standard double-sided disk at the
+declared sectors-per-track but the header claims only 1 (commit `5547ae9`). Proof:
+`ATARI_TRACE_FDC=1` over the same swap-and-retry sequence that used to fail now shows a clean
+sequential read of both sides of every track it reaches (track 0 side 0 through track 7 side 1
+confirmed by this pass, ~149 reads, no "no data" results) into a buffer starting around `$05e000`
+— genuinely new data successfully loaded from Disk 2 for the first time this workstream, side-1
+included. The read is only ~10% into the disk (track 7 of 80) when the separate dispatch bug below
+fires and derails execution, so this is not yet proof the *entire* disk reads clean end to end,
+only that the sides fix is correct and side-1 reads that used to fail now succeed.
+
+Past the successful load, the 53rd/54th passes' framing of "the disk 2 swap is unresolved" no
+longer applies, but a new, separate wall appears: `jsr (A2)` at `$00011602` (called from
+`$00b7f0`/`$00b420`'s embedded-resource-stream dispatcher, generic mechanism at `$011598` reading
+`{base,length,pos}` triples from a descriptor table at `(A5)+2538`, `A1=0` meaning "execute this
+chunk in place rather than copy it") jumps to `$00021da0`, inside the *other, currently-inactive*
+half of the double-buffered screen (`$20f00`-`$28cff`, §33b/§37a) — i.e. into stale framebuffer
+pixel data decoded as code, hence the `illegal`/`(line-A)`/`???mode7reg5` noise, not a genuine new
+CPU instruction to add. Stream 0's backing blob at `$21004` is confirmed byte-identical between
+the pre-swap snapshot and the post-crash one, so it is resident data loaded once at original
+Disk-1 boot, not anything Disk 2's own sectors populate (those land at `$05e000`, confirmed by the
+FDC trace above) — this dispatch is not "Disk 2 payload misread as code." At `$00b418`, a
+version-style check (`cmp.w $41c.l,D0`; `D0=$14`, `$41c.l` reads `$6`, so the compare fails) is
+followed by a bare `nop` where a real branch would be expected, so both outcomes fall through to
+the same "execute the embedded chunk" path regardless of the check's result — a strong signature
+of a crack-patched-out protection/version gate, not an emulator gap: the FDC/DMA side of the load
+is now provably correct, and nothing here points at a missing OS trap or timing behaviour. Not yet
+confirmed which original check this replaces or fixed; would need the equivalent code in the
+one-disk (Empire) release for comparison. Not blocking further Disk 2 work: since the sector
+payload itself is now confirmed loading correctly and independently of this dispatch bug, the next
+useful step is examining the loaded buffer's content directly (§51/§52's static-analysis method,
+now against live RAM instead of the raw file) rather than chasing this crack's own dispatch bug
+further.
+
 ## Files
 
 | File | What |
