@@ -1,0 +1,12 @@
+[project]
+name = "atari-st-emulator-tools"
+version = "0.1.0"
+description = "Python tooling for reverse-engineering games against the F# 68000 emulator (tools/, reversing/<game>/py/)"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pillow",
+]
+
+[tool.uv]
+package = false

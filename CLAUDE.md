@@ -11,7 +11,9 @@ know they existed.
 - `M68000/*.fs`: emulator. `Program.fs` holds the CLI and the stdin-driven REPL (`help` lists
   the commands: breakpoints, `callcap`, `hits`, `watch`, `kbd`/`mouse`, ...).
 - `M68000/tools/`: disassembler, trace/CFG, graphics, disk-image, PRG-relocation and Ghidra
-  decompile tools.
+  decompile tools. Python deps (`numpy`, `pillow`) are managed with `uv`, not bare `pip`:
+  `cd M68000 && uv sync` once per checkout, then `uv run python tools/foo.py ...` or activate
+  `M68000/.venv` (`DEVELOPING.md` "Python tooling").
 - `M68000/reversing/<game>/`: one directory per analysed program (README + topic docs + `.sym`
   + scripts). Reverse-engineering a new game follows the `reverse-engineer-st-game` skill.
 - `M68000/scratchpad/`: gitignored working data (snapshots, extracted disk files, decompiles).

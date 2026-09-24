@@ -15,6 +15,7 @@
 M68000/tests/680x0/
 *_out/
 __pycache__/
+M68000/.venv/
 M68000/scratchpad/*
 !M68000/scratchpad/ANCHORS.md
 *.gfx

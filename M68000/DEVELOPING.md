@@ -37,10 +37,27 @@ There is no PowerShell, so use the raw form (`dotnet build -c Debug M68000.fspro
 `ATARI_NOTRACE=1 dotnet exec ...`), `ps aux | grep M68000.dll` for `tasklist` and `pkill -f` for
 `taskkill`. The .NET 8 SDK builds it unchanged, and a drive recipe gives the same snapshots as on
 Windows (Populous `repro` and `late1..4`: same frames and state). `TOS100UK.IMG` is Hatari's
-`tos100uk.img` copied into `M68000/`. `screendump.py` needs Pillow (`python3 -m pip install pillow`); there is
+`tos100uk.img` copied into `M68000/`. There is
 no `timeout` command, so bound runs with step counts instead. Ghidra 12.1 ships no macOS decompiler binary: build it once
 with `cd <ghidra>/support/gradle && ./gradlew buildNatives` (Xcode command-line tools, JDK 21; the
 wrapper fetches Gradle), otherwise `analyzeHeadless` imports and analyses but writes no C.
+
+## Python tooling (`tools/`, `reversing/<game>/py/`)
+
+`M68000/pyproject.toml` lists the two third-party deps the scripts use (`numpy`, `pillow`,
+e.g. for `gfxview.py`/`screendump.py`). Default to [`uv`](https://docs.astral.sh/uv/) over bare
+`pip`/`python3 -m pip install`:
+
+```
+cd M68000
+uv sync                        # once per checkout - creates M68000/.venv, installs numpy+pillow
+uv run python tools/gfxview.py game.snap --html game.html
+```
+
+or activate the venv once per shell (`source M68000/.venv/bin/activate`) and the many `python
+tools/foo.py ...` examples throughout this doc and `reversing/<game>/` work as written. `.venv/` is
+git-ignored; `uv.lock` is committed. A new dependency: `uv add <package>` (updates `pyproject.toml`
++ `uv.lock`), not a bare `pip install`.
 
 ## Live window input (`Video.fs`)
 
