@@ -2639,12 +2639,75 @@ disk-sector read(s) that happen during a room crossing (the game reads raw secto
 GEMDOS `Fread` per the 7th pass's finding) and check whether the bytes landing in `120(A5)` match
 sectors read verbatim, rather than watching for a runtime writer that may not exist.
 
+## 36. The disk-read hypothesis is wrong: no trap/FDC activity during a real crossing, and
+    `$0144b8` itself runs *backwards* to refresh `120(A5)` — the real writer is upstream of it
+    (37th pass)
+
+**36a. No GEMDOS/BIOS/XBIOS trap and no FDC register activity during a real crossing.** Ran the
+reverse TUNNEL→CAVERN crossing (`kbd ff 02` from `room2_tunnel_entry.snap`, the same recipe §31e
+proved redraws the screen) twice, once under `ATARI_TRACE_OS=1` and once under `ATARI_TRACE_FDC=1`
+(2.5M steps each, covering the whole crossing). **Zero trace lines from either** — not one `Rwabs`,
+`Floprd`, or raw FDC command/sector-read log entry. §35's own reframe (room art is loaded, not
+composited) is itself now wrong in its specific mechanism: nothing hits the disk during this
+crossing at all, confirmed both ways, not just absence of GEMDOS calls (the pre-existing, weaker
+evidence).
+
+**36b. Yet `120(A5)`'s content genuinely changes.** Decoded `120(A5)` before (`room2_tunnel_entry.snap`)
+and after (`fresh_cavern_cross.snap`, this pass, same crossing) with `decode_backbuffer.py`: TUNNEL
+art before, unambiguous CAVERN art after (boat/barrel/chest props, status bar "CAVERN") — real
+content change, zero disk I/O, `120(A5)`'s own pointer value unchanged (`$2de08` both times).
+
+**36c. `watch`ing `120(A5)`'s own address range during the crossing shows `$0144b8` (the flip
+routine, same PCs as §35) writing *into* it — with its **source and dest roles reversed** from
+normal.** A full register capture at the crossing's actual `$0144b8` call (`u 144c8`/`r` chained
+across the call site, landing on the correct invocation by matching register content rather than
+step count — `watch`'s printed step numbers are the CPU's persistent lifetime counter carried in
+the snapshot, tens of millions higher than any single command's own local step budget, which cost
+real time to realise) gives, reproduced 3× within one continuous trace (the trap #4 mid-copy yield
+re-enters the same call across several VBLs, per §34a):
+
+```
+A0=$00020f00  A1=$00035b08
+```
+
+`A1=$35b08` is exactly `120(A5)+$7d00` (`$2de08+$7d00`) — the *dest* is `120(A5)`'s own buffer, and
+`A0=$20f00` is exactly `(A5)+0 ($19100) + $7d00` — the **other, currently-inactive half of the
+ordinary display double-buffer** (§34a's `(A5)+0`/`(A5)+$7d00` pair). This is the *exact same copy
+mechanism* as the ordinary per-frame flip (§35), run with source and dest swapped: instead of
+refreshing a display-buffer half from `120(A5)` (the normal direction), this call **banks the
+inactive display-buffer half's current content back into `120(A5)`**, chunk-reversing it in the
+process (same algorithm, `decode_backbuffer.py` applies unchanged, just swap which side is "source").
+
+**Reframe, again, sharper this time**: `120(A5)` is not the room's original source data at all — it
+is a **cached/reversed copy of whatever was most recently composited into the display double-buffer's
+inactive half**, kept around so the *ordinary* per-frame flip can cheaply refresh a buffer half
+without re-drawing it from scratch every frame. On a room crossing, something else must first draw
+the *new* room's raw art into that inactive half (`$20f00` in this snapshot) — RAM-to-RAM, matching
+36a's no-disk-I/O finding — and *then* this reversed `$0144b8` call archives it into `120(A5)` as the
+new per-frame-refresh master copy. **The real "room background painter" is whatever writes the
+inactive display-buffer half before this reversed bank-copy runs — not a writer of `120(A5)` at
+all**, which is why §33b/§34b's own `watch 2de08 32000` runs, and every runtime-compositor search to
+date, correctly found nothing: they were watching a downstream cache, not the source.
+
+**Not yet done, cheap next step**: `watch $20f00 32000` (or wherever `(A5)+0+$7d00` points in the
+snapshot you resume from) across the same crossing to catch *that* buffer's writer directly, now
+that the right address is known. Decoding `$20f00`'s content at the exact moment just before this
+reversed bank-copy runs (plain `320×200×4bpp st-interleaved`, no chunk-reversal — it's the *display*
+buffer, per §34a) would also directly confirm it already holds finished CAVERN art at that point,
+which this pass inferred from 36b's end-state but did not capture mid-transition (repeated attempts
+to land a clean snapshot at that exact instant hit REPL step-count nondeterminism between separate
+invocations of the same nominal script — successfully captured the registers three times within one
+continuous run, but a fresh short script re-targeting the same point did not reliably reproduce it;
+chaining `s 1`/`u 144c8 30000`/`r` for the needed ~30 iterations within one *unbroken* run, as this
+pass did, is the reliable form — don't split it across separate invocations).
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
-| `py/decode_backbuffer.py` | 36th pass: decodes `120(A5)`'s buffer into a normal raster by reversing `$0144b8`'s chunk order; verified byte-exact (0/32000 diff) against `room2_tunnel_entry.snap` |
+| `py/decode_backbuffer.py` | 36th pass: decodes `120(A5)`'s buffer into a normal raster by reversing `$0144b8`'s chunk order; verified byte-exact (0/32000 diff) against `room2_tunnel_entry.snap`. Same algorithm applies to the reversed bank-copy direction found in §36 (source/dest swapped) |
+| `fresh_cavern_cross.snap` | 37th pass: live snapshot right after a real TUNNEL→CAVERN crossing from `room2_tunnel_entry.snap` (`kbd ff 02`, 2.5M steps) — `120(A5)` decodes to CAVERN art here, proving the buffer's content genuinely changed with zero disk/FDC activity (§36a/36b); untracked like the other `.snap` resume points |
 | `room2_tunnel_entry.png`/`tunnel_return_cross.png`/`tunnel_return_settled.png` | 32nd pass: re-derived from a cold boot after every prior resume snapshot was lost between sessions (untracked, as expected) — same states the 12th/31st passes originally reached, `.snap` counterparts untracked in `M68000/scratchpad/cadaver/` |
 | `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar reads "TUNNEL" only (no "LEVER"), the resume point behind §20c/§20d's clean readings; untracked like the other `.snap` resume points |
 | `lever_hotspot_gone_3units_down.png` | 21st pass: screenshot at the snapshot above, proving the "LEVER" name-hotspot is gone 3 units below the baseline tile |
