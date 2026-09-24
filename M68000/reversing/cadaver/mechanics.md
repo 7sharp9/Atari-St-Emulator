@@ -2509,6 +2509,80 @@ counterpart per README's "ScreenBufferA/B role-swap field", §32a) starting from
 movement, across an idle period with no crossing at all, and see whether it already holds the
 about-to-be-shown room's art before the flip ever runs.
 
+## 34. `$0144b8` disassembled at last — its own source register reveals a *third* resident buffer at
+    `120(A5)`, not a two-way role-swap between `(A5)` and a second pointer field (35th pass); that
+    buffer inspected live but not yet decoded
+
+### 34a. The "two role-swapping buffers" model was wrong: `(A5)`/`(A5)+120` are not two peers of the
+    same kind
+
+Tested §33b's item-1(a) reframe directly: read `(A5)` and `120(A5)` live from `room2_tunnel_entry.snap`
+(idle, before any input) — `$19100` and `$2de08` respectively — then rendered *both* through
+`gfxview.py` at `320×200×4bpp st-interleaved`. Both `$19100` and the live hardware-scanned screen
+(`$20f00`, confirmed via `load_video_regs`'s shifter-register read, ground truth for "what's on screen
+right now") show byte-identical TUNNEL art. That is exactly steady-state double buffering: nothing
+here is holding pre-painted future-room content, and `$19100` is *not* a second peer buffer to `120(A5)`
+the way §32a's comment ("ScreenBufferA/B role-swap field") assumed.
+
+Disassembling `$0144b8` itself for the first time (never done in full across 31 prior passes, despite
+being referenced constantly since §28c) settles the actual shape:
+
+```
+$0144b8: movem.l #$fffe,-(A7)
+$0144bc: movea.l 120(A5),A0        ; SOURCE = a third, separate buffer field, not (A5) itself
+$0144c0: movea.l (A5),A1
+$0144c2: adda.l #$7d00,A1          ; DEST = (A5)+$7d00 (32000) - the *other half* of a 64000-byte
+                                    ;   region based at (A5), not a different pointer field at all
+$0144c8: move.l #$1498c,$90.w      ; installs a mid-copy yield vector (trap #4, §31e's "splits the
+                                    ;   copy across several VBLs so it never tears")
+...
+$0144e2 on: movem.l (A0)+,#$003f / movem.l #$fc00,-(A1)   ; then a long chain of
+            movem.l (A0)+,#$fcff / movem.l #$ff3f,-(A1)  ; forward-reading, backward-writing
+                                                           ; 56-byte movem transfers
+```
+
+`A1` starts at `(A5)+$7d00` and every `-(A1)` write pre-decrements *before* addressing, so the writes
+actually land counting **down** from `(A5)+$7d00` to `(A5)+0` — i.e. into the `[$19100,$20eff]` half,
+confirmed exactly by this pass's `watch`: bucketing a dual-range watch (`watch 19100 117504`, spanning
+both `$19100` and `$2de08`'s 32000-byte extents in one call) by destination address, the `$0144ee`-family
+PCs land 100% inside `[$19100,$20eff]` (§33b's "bucket A"), never inside `[$20f00,$28cff]`. **The real
+structure**: `(A5)+0` and `(A5)+$7d00` are the two halves of *one* 64000-byte double-buffer feeding the
+shifter (confirmed: `$20f00` is exactly `$19100+$7d00`, and is what the live hardware scan showed);
+`120(A5)` is a wholly separate, third resident buffer that the flip *reads from* — this is the actual
+candidate for "where room art lives before the flip", not a peer of `(A5)` in a two-way swap.
+
+### 34b. `120(A5)`'s buffer (`$2de08` this session) inspected live: not blank, not a clean decoded
+    frame either — structured but currently undecoded
+
+Rendered `$2de08` at the same `320×200×4bpp st-interleaved` settings that correctly show `$19100`/
+`$20f00`'s real TUNNEL frame: the result is *not* random noise (it has consistent per-row banding, not
+uniform static) and *not* a recognisable room image either — inconclusive with the straight screen
+layout. Two live-traced writers into ranges near this buffer during the same crossing turned out to be
+already-known systems, not a new painter:
+
+- `$0080cc`/`$0080d2` and `$0150b4` family (§33b's "bucket B", `A3=$00038338` at the call in both
+  cases — the entity/sprite-object array base, §21a) are the entity-list renderer (§33b), confirmed
+  again this pass with a second live capture (`bpc 0150b4`, caller `$0000d8ee`, a few bytes into the
+  same `$00d900` sprite-walk loop as §33b's `$0000d940` capture) — not new.
+- `$00bf72` (README's own long-known "sibling" of the masked blitter, 28384 hits this pass) writes a
+  small, separate ~700-byte region (`$2ca84`-`$2cd42`) *adjacent to but distinct from* `120(A5)`'s
+  32000-byte buffer — its source register at a live capture (`bpc 0150b4`) pointed into this same small
+  region (`A0=$0002ca8c`), meaning this ~700-byte area is a **sprite bitmap cache/staging buffer** the
+  entity renderer reads from, not room art either (too small for a 320×200 background by two orders of
+  magnitude).
+
+**Net**: after two full passes of live captures, nothing caught in the act writes `120(A5)`'s buffer
+with new content during a crossing — either the write happens outside every window captured so far
+(neither the ~2.2M-step crossing window nor the pre-crossing idle instant), or `120(A5)`'s buffer isn't
+a plain 320×200×4bpp raster at all and needs a different decode (packed/compressed source format,
+different width, or a stale/uninitialized region this early in the game that only gets used starting
+from a later room count). **Concretely still open**: decode `$2de08`'s actual layout — try alternate
+widths/strides in `gfxview.py` against this exact snapshot (the buffer is real and non-empty, so some
+combination should resolve the banding into a recognisable image), and/or capture the *previous*
+frame(s) before this snapshot's idle point to see whether `120(A5)`'s content changes across frames
+even without a room crossing (would mean it's actively maintained by something not yet triggered by
+this particular replay).
+
 ## Files
 
 | File | What |
