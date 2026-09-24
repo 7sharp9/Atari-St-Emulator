@@ -3586,6 +3586,50 @@ in that window. Not pursued further this pass; the `[!]` (verified-dump, likely 
 pair in the same Dropbox folder is the next thing to try if a live swap is still wanted, since an
 uncracked original should have no cracktro at all.
 
+**53. Live Disk 2 swap reached the "place levels disk" prompt for the first time, via the
+Replicants/ST Amigos crack rather than Empire `[t]`; the game read Disk 2 and reported a disk
+error, then a retry keypress produced a CPU runaway (53rd pass).** §52's next-step list named the
+`[!]` verified-dump pair as cheapest to try first; that pair turned out to be `.stx` (Pasti
+flux-dump format, 1.85MB, not a multiple of 512 bytes) rather than a raw `.st` sector image — this
+emulator's loader has no format check and would silently misread it as garbage sectors rather than
+erroring (`DEVELOPING.md`'s new disk-image note), so it was not booted. Extracted the untried
+Replicants/ST Amigos crack-group pair instead (`Cadaver/disk1_replicants/`,
+`Cadaver/disk2_replicants/`, both 819,200B raw `.st`, sha256 in the README).
+
+Cold-booting Disk 1 (20M steps) lands in a *static* trainer "presents" screen ("HIT MADLY ON * KEY
+FOR UNLIMITED LIVES") — confirmed genuinely parked (PC moved 10 bytes over a further 5M-step
+no-input control) rather than looping like Empire `[t]`'s cracktro. Driving it with correctly
+separated make/break `kbd` calls (see the `reverse-engineer-st-game` skill's new note — the first
+attempt sent make+break in one call and was silently dropped, exactly the failure mode that note
+now documents) reached, in order: the game's own title screen (parchment + candles, distinct from
+the trainer screen, `replicants_ctrl_space.png`), a language-select screen ("1 ENGLISH / 2 FRANCAIS
+/ 3 DEUTSCH", `replicants_space2_20M.png`), a "restore game, place a disk and press 0-9, or ESC to
+start fresh" prompt (`replicants_english_v2.png`), and finally **"PLACE LEVELS DISK IN DRIVE ONE
+AND PRESS A KEY"** (`replicants_esc_30M.png`) — the exact prompt §51/§52 wanted a live test against,
+reached in under 100M total emulated steps versus Empire `[t]`'s 1.6-billion-step stall.
+
+Swapping to `disk2_replicants` via the REPL's `disk` command (paths with spaces don't parse — the
+REPL splits on raw whitespace with no quoting, copy to an unspaced filename first) and pressing a
+key: the game read Disk 2 and put up **"THERE SEEMS TO BE AN ERROR ON THIS DISK. PRESS ANY KEY TO
+RETRY"** (`replicants_disk2_swap_30M.png`) — a real, game-authored disk-format complaint, not a
+hang or a silent stall. Retrying (re-swap + keypress) returned to the "place levels disk" prompt
+rather than repeating the same error text (`replicants_disk2_retry_30M.png`), and pressing a key
+again from there caused the emulated CPU to run away — `PC` reached `$230f8020` (impossible on a
+24-bit-bus 68000; nowhere close to `disk2_replicants`'s $019200-based screen RAM or any code region
+seen this pass) and the process hit the decoder's deliberate "MOVE.B with An operand is illegal"
+guard (`68k.fs:1562`) and crashed with an unhandled exception, not a normal breakpoint stop.
+
+**Open, not yet resolved**: whether the disk error and the runaway are a genuine format mismatch
+between this crack group's Disk 2 image and what its own Disk 1 loader expects (a different
+sector/track layout used as this crack's copy protection — the `[!]` pair, if converted from
+`.stx`, would settle whether an unprotected original reads Disk 2 cleanly), a bug in this session's
+REPL sequence (a key injected mid-DMA-transfer, or the disk hot-swap happening at a point the
+loader's own state machine doesn't expect), or a genuine emulator gap in FDC error handling that a
+real ST would instead surface as a controlled disk-error retry loop forever rather than an
+address-space runaway. Not triaged further this pass — reproduction commands are in
+`M68000/scratchpad/cadaver/` (untracked; the exact REPL script is in this pass's session log, not
+yet promoted to a `drive.txt`), snapshots named `replicants_*`.
+
 ## Files
 
 | File | What |

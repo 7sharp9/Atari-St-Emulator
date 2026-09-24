@@ -33,9 +33,13 @@ Two separate releases were tried, both under `Atari-St-Emulator/Cadaver/` and
   levels disk (a commercial expansion shipped as a straight Disk-2 replacement) — see
   `mechanics.md` §52 for the static byte-level evidence. Booting this pair's Disk 1 to reach the
   "place levels disk" prompt for a *live* swap was tried and abandoned (§52: the `[t]` trained
-  crack's intro loops for well over a billion emulated steps without reaching it) — the `[!]`
-  verified-dump pair is the next thing to try for that, since an uncracked original should have no
-  cracktro to grind through.
+  crack's intro loops for well over a billion emulated steps without reaching it).
+- The `[!]` verified-dump pair is **`.stx`** (Pasti flux-dump format, not a raw `.st` sector image —
+  see `DEVELOPING.md`'s disk-image note) and cannot be booted by this emulator without a converter
+  that does not exist yet in `tools/`. Tried the Replicants/ST Amigos pair instead
+  (`disk1_replicants`/`disk2_replicants`): its Disk 1 reaches the "place levels disk" prompt live in
+  under 100M steps (mechanics.md §53), and swapping in Disk 2 gets a real in-game "error on this
+  disk" message followed by a CPU runaway on retry — see §53, not yet resolved.
 
 ## Milestones reached
 
