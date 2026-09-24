@@ -100,6 +100,17 @@ Build the corpus with `tools/capture_hits.py <start.snap> <addr> <n,...> <out>`:
 
 Name a field from the game's own UI when one prints it: find the panel template's labels and the formatter that reads each field (PowerMonger's captain panel `$921a` labels group `+36` "Food:"). Names inferred from the AI's use of a field can be wrong for a long time: PowerMonger's lord `+6` was read as men at home and group `+112` as a patience budget for 50 passes; both are food. For a player-driven mechanic, click it through the real UI against a no-order control run over the same steps; the difference is the effect.
 
+**"Who calls X, and under what gate" is cheaper than a full differential test.** The `callcap`
+corpus machinery above is for proving what a routine *computes*; for "which caller reaches X, and
+what condition selects it" a single `bpc <addr> 1 <maxSteps>` (its hit banner already prints
+registers) plus one `bt 1` is enough — don't also run a separate `hits` census first (the `bpc` hit
+itself proves it fires and the step it fires at) and don't re-run `r` after the hit, it just
+reprints the same register block the banner already showed. Read the caller's own disassembly
+around the return address for the gating condition rather than a deeper `bt`. When sizing a
+`disassemble.py --linear <addr> <n>` dump, guess low (60-100 instructions covers most routines on
+this game) and re-run wider only if the dump plainly runs off the end mid-routine; a dump 2-3x
+longer than the routine wastes as much output as it shows.
+
 ## 6. Regression net (every commit that touches the emulator)
 
 1. `./run.ps1 -NoBuild verify 5000000`, PASS (re-run 2–3× on a byte-identical FAIL, that's a build-cache race, not a real failure).
