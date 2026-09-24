@@ -52,25 +52,36 @@ the shifter-base-flip hardware writer, all fully closed). **New this session, `m
 
 1. **Whether `world_map.png`'s 72-room graph is one level of several, not the whole game** — Dave's
    observation, 45th pass: the game likely has more than one level, and completing one probably
-   reveals another. Not yet checked: whether the type-3 resource-manager table at `$4ac36` (§38a,
-   what `world_map.py` walks) is per-level and gets rebuilt/switched on a level-complete event, or
-   is a single fixed table for the whole game. Would need finding the level-complete/level-advance
-   trigger (search for a win-condition check or a routine that rewrites `$4ac36`'s slots) and
-   diffing the table before/after it fires. A quick static check this pass found only reads of the
-   table's own base pointer `(A5)+96` across the disassembled program text (one lone `bchg` bit-flip,
-   no full pointer rewrite) — suggestive the table is fixed for the whole game, but not conclusive,
-   since it only covers the ranges already disassembled (`scratchpad/cadaver/full_*.asm`), not the
-   whole image.
-2. **Why room 3's own init/registration script never loads, and what actually populates the type-8
-   room-registration table** — reframed from "does a scripting/bytecode layer exist" (that's already
-   proven yes, `mechanics.md` §22-26: a real object-verb bytecode interpreter with a 59-entry opcode
-   dispatch table, LOCK/UNLOCK confirmed causally on the lever's own object id). What's still open is
-   narrower: §26 closed "what calls it" as a documented negative (the calling code isn't resident in
-   any snapshot this spike has taken), and §47 (this pass) found the door descriptors' positive id
-   words (e.g. CAVERN's east door, id `73`) look like a "target room registered/resident" gate that's
-   never satisfied, tying §26's negative and §14's empty type-8 table into one open mechanism. Next
-   concrete step: find whatever would write into the type-8 index table (`$4c536` onward) — §14's own
-   still-open next step, not yet chased.
+   reveals another. Narrowed this session (`mechanics.md` §48): `$00b1e0`, the one routine in this
+   image that bulk-reloads type 3 (rooms, per §31) from a stream — a plausible "load the next level"
+   candidate, §15c — has zero references anywhere in the loaded image by either a direct-call scan
+   (`find_ram_callers.py`, §15c) or a new raw-data-pointer scan (`tools/find_literal_ptr.py`, §48b,
+   promoted this pass and validated against a known-good target first). Combined with §30a (no
+   disk-I/O-capable code anywhere in this image) and §30b (the working tree's two-disk original has
+   its disk 2 explicitly labelled "(Level)"), the growing reading is that this one-disk build's
+   72-room map probably *is* the whole reachable game — a second level, if it exists for this build
+   at all, most likely needs the two-disk original's physical disk-swap path (§30b), not a live
+   in-game trigger. **Not settled**: `find_literal_ptr.py` can't see a PC/table-relative-displacement
+   jump table (same shape as the verb dispatch table, §24) pointing at `$00b1e0` — that would need a
+   different search (compute the displacement from a candidate table base) before this closes for
+   good.
+2. **Retracted, not just re-scoped: this item was restating a framing (`mechanics.md` §14's empty
+   "type-8 room-registration table") that `mechanics.md` §31/§38 had already retired sixteen-plus
+   passes before this handoff was written, and §47c (this pass, now corrected in place) briefly
+   revived it by mistake before catching and fixing the error against the doc's own later sections.**
+   Type 8 was never the room table (§31: type 3 is, 72/100 slots populated); all 72 rooms are already
+   resident with no disk I/O anywhere in the image (§30a); and the real door/room-transition mechanism
+   (`$de5e`'s spatial point-in-rectangle resolver, the clean current-room field `(A5)+1166`) is fully
+   proven end to end (§38, reused directly by this pass's own §47 door walk). Under that model there is
+   no unloaded "room 3" left to register, so "why does it never load" isn't a live question. The
+   object-verb bytecode interpreter itself is still real and proven (`mechanics.md` §22-26: LOCK/UNLOCK
+   confirmed causally on the lever's object id 144), and §26's negative ("nothing in the loaded image
+   calls LOCK with id 144") still stands as a fact — but the *reason* attached to it (tied to type-8)
+   is invalid. What's still genuinely open, not yet re-examined under the corrected model: whether
+   LOCK/UNLOCK simply flips a door descriptor's own open/closed flag (§38c's `btst #0,4(A0)`) on an
+   already-resident door rather than "registering" anything, and what the five doors' positive id
+   words (`53`,`73`,`155`,`167`,`244` — §47b/§47c) actually encode, since it isn't a room selector and
+   isn't a registration gate. No concrete next step scoped yet; lower priority than item 1.
 3. **Low priority, not needed to close §46**: which of the other 13 `$ff8201`-touching call sites
    actually fires (title/intro screen, a different room-pair's crossing, a resolution/mode change) —
    §46 closed the conflict without needing this.
@@ -84,7 +95,7 @@ not local, one-shot breakpoint chase non-reproducibility across separate invocat
 elided `...` excerpts in full, `bpc` over `bp` for one-shot dumps, `bt depth>1` can crash the REPL,
 a `watch` range can bracket multiple regions in one call, `gfxview.py`'s `st-interleaved` assumes
 16px-wide masked blits (not this game's 32px-wide family), movement is joystick port 1, player =
-sprite slot 0, use `tools/find_ram_callers.py`/`find_field_writers.py`.)
+sprite slot 0, use `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`.)
 
 - **`run.ps1`'s subcommand names are aliases, not raw argv — the raw binary only understands
   `resume <snap> repl [--disk-a <path>]` (two tokens), not `rrepl <snap>`.** Calling the raw
@@ -129,8 +140,10 @@ sprite slot 0, use `tools/find_ram_callers.py`/`find_field_writers.py`.)
 
 ## Next session
 
-Item 1 (whether the world map is one level of several) is the standing open question from Dave's own
-45th-pass observation, still not scoped to a concrete live test — start there with the same
-read-before-testing approach this pass used (find the level-complete/win-condition trigger statically
-before running anything). Item 2 (type-8 registration) is the cheaper, already-scoped alternative:
-find what writes `$4c536` onward. Prompt: `/resume cadaver`.
+Item 1 (whether the world map is one level of several) is still the standing priority, now narrowed
+by this session's `$00b1e0`/`find_literal_ptr.py` finding rather than closed — the open half is
+whether a PC/table-relative jump table (not a plain literal) reaches `$00b1e0`, or whether to treat
+the one-disk build as settled to its 72 rooms and pivot to the two-disk original (§30b) as a fresh
+investigation. Item 2 no longer has a scoped next step (see its entry above — the "type-8
+registration" framing it used to point at is retracted); if it's picked up again, start from
+re-scoping it under the type-3/§38 model, not from `$4c536`. Prompt: `/resume cadaver`.

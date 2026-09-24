@@ -3329,17 +3329,68 @@ been driven live end to end, §38c); and it says nothing about whether a later g
 found anywhere in this image (§14's own descriptor-content sweep found zero writes across an 18+
 condition test).
 
-### 47c. Reframing the id word: not a room selector, more likely a "target room registered/resident"
-    gate
+### 47c. The id word's meaning is still open — the first-draft "type-8 registration gate" reading
+    doesn't survive checking against §31/§38's own, already-corrected model, and is retracted here
 
-§14 already showed the type-8 "room registration" table is always empty and `$011256`'s id-based
-lookup always misses; §47b now shows the id word plays no role in *where* a door leads (that's
-`$de5e`'s job, purely spatial). The five positive-id doors found this pass (`53`, `73`, `155`, `167`,
-`244` — none of them valid type-3 slot numbers, since only slots 0-71 exist) are consistent with the
-id being a lookup key into whatever system would populate type-8 once a room's assets actually load
-(§13's own CAVERN-east-door finding — id `73`, resolves to the "already resident" branch rather than
-a fresh load — fits this reading exactly). Not chased further this pass; flagged for whoever next
-works on why room 3's own init script/registration never runs (§26's still-open structural question).
+First-draft reading, written before double-checking and retracted in this same edit: `$de5e`'s
+spatial-only algorithm (§38d) was paired with §14's type-8 framing to guess the positive id word
+gates on "target room registered." That doesn't hold up. §31 (31st pass, sixteen passes before this
+one) already established type 8 was never the room table — type 3 is, all 72 rooms are already
+resident, and this image contains no disk-I/O-capable code at all (§30a/§31a) — and §38d's own
+disassembly of `$de5e`, reused directly for this pass's `door_walk.py`, shows the resolver never
+reads the id word at all, only the descriptor's coordinate. There is no live "unregistered room"
+state left for the id word to gate: CAVERN's east door resolving to the "already resident" branch
+(§13, id `73`) is fully explained by ordinary spatial adjacency under the corrected model, not by a
+registration check that (per §31) was never real in the first place.
+
+What the five positive id words (`53`, `73`, `155`, `167`, `244` — none a valid type-3 slot number,
+§47b) actually encode is genuinely unknown, not a lead pointing at "why room 3's own init script
+never runs" — that question (§26) is itself moot under the corrected model: with all 72 rooms already
+resident and no disk I/O anywhere in the image (§30a), there is no unloaded room left to register.
+If picked up again, treat the id word as an unexplained field on an otherwise fully spatially-resolved
+struct, not evidence for a registration mechanism.
+
+## 48. Doc correction, then Open item 1 (world-map scope) revisited: `$00b1e0` (the level-asset
+    reloader that touches type 3, the real room table) has no reference anywhere in the loaded
+    image, by any static technique tried so far — direct call or raw data pointer (48th pass)
+
+**48a. Correction to §47c, made in place rather than left standing.** On rereading this session's
+own §47c against the doc's earlier sections, its "positive door id word = type-8 room-registration
+gate" reading turned out to revive a framing §31/§38 had already retired sixteen-plus passes
+earlier — retracted and corrected directly in §47c (see that section; not re-narrated here).
+`cadaver.md`'s Open item 2 restated the same stale framing and is corrected there too.
+
+**48b. `find_literal_ptr.py`, promoted to `tools/` (game-agnostic, alongside `find_ram_callers.py`/
+`find_field_writers.py` — also newly added to `DEVELOPING.md`'s tools table, since none of the
+three were listed there despite being real, reusable tools this spike already leaned on).** §15c's
+"`$00b1e0` has zero real callers anywhere in the loaded image" used only `find_ram_callers.py` — a
+scan for instructions whose *own decoded text* names the target literally, which by construction
+can never see an indirect call reached through a jump table (target address sitting as plain data,
+loaded into a register, then `jsr (An)`). §17a already knew a gap existed in the adjacent case
+(`find_ram_callers.py`'s original regex missed abs-long `jsr $xxxx.l` text, worked around with an
+ad hoc "literal-pointer scan" for `$b5a8`/`$67ea`, never promoted to a real tool) — `find_literal_ptr.py`
+generalizes that fix: scan the whole RAM image's raw bytes for the target address as a plain 4-byte
+(or 2-byte) value, independent of whether `decode_one` recognizes an instruction there at all.
+Validated against `$b5a8` first (3 hits, at `$0068fa`/`$00691a`/`$006924` — the exact three
+`jsr $b5a8.l` sites §17a already found by hand) before trusting it on a new target.
+
+**Result for `$00b1e0`: zero hits, 4-byte and 2-byte, at every alignment, in `room2_tunnel_entry.snap`'s
+full ~1MB RAM image.** This is a stronger negative than §15c's — it rules out not just a direct
+`bsr`/`jsr $b1e0` but also a plain absolute-address jump-table entry pointing at it. It does **not**
+rule out a PC/table-relative-displacement jump table (the same shape as this game's own 59-entry verb
+dispatch table, §24) — that would encode a *displacement*, not the address `$b1e0` itself, and needs
+a different search (compute the displacement from a candidate table base) if this thread is picked
+up again.
+
+**Reading, tentative, not fully closing Open item 1**: combined with §30a (this loaded image has no
+disk-I/O-capable code at all) and §30b (the working tree's two-disk original has its disk 2 explicitly
+labelled "(Level)"), the growing weight of evidence is that the one-disk crack's 72-room map probably
+*is* the whole reachable game for this specific build — `$00b1e0`'s level-asset-reload logic reads as
+code shared with a multi-level original but genuinely unreachable here, not a live in-game mechanism
+gated behind an unfound trigger. This narrows, but doesn't settle, Dave's original 45th-pass question:
+if a second level exists at all for this build, it most likely requires the two-disk original's
+physical disk-swap path (§30b), not a live level-complete event inside the one-disk crack. Not chased
+further this pass — the two-disk pivot itself is out of scope for a quick static check.
 
 ## Files
 
