@@ -452,6 +452,18 @@ fields over 7 real end states: win and loss by zeroing one side's strengths, a n
   the entity table is full; they walk one cell every 8 frames, mark trees, swamp or rock beside the
   path and kill what they cross. They are not power effects. `systems.md` 1.
 - `$d482`: query panel for the selected entity.
+- `$3c4e4`, a debug AI-force hook inside `$db4c` (`$e63e/$e64e`, `$ef1c..ef42`): mid-scan, if
+  `$3c4e4 != 0` and it equals the current entity's side+1, the planner's command choice for that
+  entity's pending request is forced to `$32` instead of whatever it computed. Every 8th frame
+  (`$3c4c8 & 7 == 0`) at the function's tail, if `$3c4e4` is still non-zero it prints `$2147e`
+  "CHEAT" at (0,0) and clears it (a one-shot confirmation flash), immediately before falling into
+  the walker step-decision routine (section 3.2, `$ef4c`). `$3c4e4` has no writer anywhere in
+  `pop_ad58.asm` (only the `clr.w` at `$ef42`), so like the mouse/keypad "CHEAT" in
+  `graphics.md`'s Scrolling section it can never fire in the shipped GOD image — dead debug
+  scaffolding for forcing and confirming a specific AI command on demand, not a live cheat.
+  *Inferred from static analysis; not live-verified* (populous.md open item 3, "the command that
+  sets `$3c4e4`": nothing sets it, so the question was unanswerable as posed — the interesting
+  fact is that it is a forced-command selector, not what sets it).
 - Key checks, not checksums: at entity index $14 `$db4c` compares `$3c4c0` with `$21d4c+$14725836`,
   at index $12 the trace vector (read by the supervisor peek `$15fe2`) with `2*$21d54`; a mismatch sets
   `$3d524` (Armageddon) and both sides' ctrl = 1. Both constants equal the crack loader's key

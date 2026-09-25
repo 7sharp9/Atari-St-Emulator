@@ -299,7 +299,19 @@ is always fully on the 64x64 map. Keypad scan codes in `$37eae` step it by one c
 | `$6e` | cx+1, cy+1 |
 | `$6f` | cx+1 |
 
-`$66` goes to `$b9fa`, which tests the mouse near (311+,10..20) and prints `$21478` "CHEAT". There is no sub-cell scrolling.
+There is no sub-cell scrolling. `$66` (unused by any physical keypad direction in the table above) goes
+to `$b9fa` instead of a scroll: if the mouse is at x>310, 10<=y<=20 *and* the cursor tool is query mode
+(`$21d50` bit 0, `graphics.md` "Command panel" below), it prints `$21478` "CHEAT" at (0,10) and clears
+the acting side's god\_rec AI-request fields (`mechanics.md` 2.3 +0/+1/+2), then sets +1/+2 to
+(side, 15). *This can never fire in the shipped GOD image*: `$37eae` (the byte this switch reads,
+`$b90e`/`$b918`) has no writer anywhere in `pop_ad58.asm` — only a `clr.b` at `$be0c` (new-game reset) —
+so `$b90e`'s `beq $bb3e` bails out every frame before the switch runs. A second, independent "CHEAT"
+instance sits inside the AI planner `$db4c` (`mechanics.md` 7): dead in the same way, and paired there
+with a hidden `qaz.pic` picture-load string. Both read as leftover QA/debug scaffolding from a build
+where an external input path (a joystick combo, a debug keyboard driver) fed `$37eae`/`$3c4e4`, not
+reachable from retail keyboard or mouse input. *Inferred from a full-image grep, not yet live-triggered*
+(the callcap harness can enqueue raw scancode `$66`, but nothing in the shipped image ever consumes it
+into `$37eae`, so a live REPL press doesn't reach the branch either).
 
 ## Minimap (the book, top-left)
 
