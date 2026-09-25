@@ -2944,11 +2944,32 @@ $00e7ce: lea $5a10.l,A4 ; adda.l D0,A4
 $00e7d6: movea.w (A4),A6          ; table[index], sign-extended
 $00e7d8: move.l A6,148(A5)        ; COMMIT: (A5)+148 := table[index]
 $00e7dc: adda.l (A5),A6           ; A6 += screen-buffer base
-$00e7de: subq.b #1,D2 ; subq.b #1,D3   ; (width-1), (height-1): loop trip counts
-  ; nested dbf loop, (height-1)x(width-1) iterations, writes (A1-A0) screen-buffer offsets
-  ; into a table at 2634(A5)+, stepping A1 by $508/$4f8 per column/row
+$00e7de: subq.b #1,D2 ; subq.b #1,D3   ; (width-1), (height-1): outer/inner dbf trip counts
+$00e7e2: move.l #$508,D5          ; column step, bytes
+$00e7e8: move.l #$4f8,D6          ; row step, bytes
+$00e7ee: lea 2634(A5),A4          ; table cursor
+$00e7f2: movea.l (A5),A0          ; A0 = screen-buffer base
+$00e7f4: movea.l A6,A1            ; A1 = this row's start (A6, updated each outer pass)
+$00e7f6: move.w D2,D1             ; D1 = inner (column) dbf counter, reloaded every row
+$00e7f8: move.l A1,D0 ; sub.l A0,D0   ; D0 = A1 - screen-buffer base
+$00e7fc: move.w D0,(A4)+          ; table[row*width+col] := D0
+$00e7fe: adda.l D5,A1             ; A1 += $508 (next column)
+$00e800: dbf D1,#-10 == $e7f8     ; repeat "width" times
+$00e804: adda.l D6,A6             ; A6 += $4f8 (next row's start)
+$00e806: dbf D3,#-20 == $e7f4     ; repeat "height" times
 $00e80a: rts
 ```
+
+Full transcription (41st pass, replacing the 40th pass's elided summary above) resolves the loop's own
+iso-projection arithmetic byte-exact, live-cross-checked against both room-record instances:
+`screen_offset(row, col) = base_offset + row*$4f8 + col*$508`, `row` in `[0,height)`, `col` in
+`[0,width)`, stored row-major (stride = width) at `(A5)+2634`, where `base_offset` is exactly the
+`$5a10`-table value this section already committed to `(A5)+148`. Verified against every cell of both
+rooms' live tables (TUNNEL 15/15, CAVERN 100/100 — `graphics.md` §5h has the full check and the
+render-pipeline consumer this table feeds). `$508`=1288 bytes decomposes as 8 scanlines (screen
+stride 160 bytes/line) + 8 bytes (16px) right; `$4f8`=1272 as 8 scanlines − 8 bytes (16px) left — a
+diagonal isometric column/row step, not an axis-aligned grid step, consistent with the "carved,
+overlapping cave-wall" look the tile catalog (§5d) renders.
 
 Live cross-check (direct memory read off both room-record instances, no emulator run needed —
 these are static per-snapshot reads): `room2_tunnel_entry.snap` (TUNNEL, record `$6bf84`) has

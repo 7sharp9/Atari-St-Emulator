@@ -1,35 +1,33 @@
 # Cadaver: handoff
 
-Updated 2026-09-25 by the session that ended at commit `3448983` (this pass, following the 64th's
-`37ff4b8`), which found and extracted the room terrain tile system: `graphics.md` §37's own "a
-room's background is just its object array" was wrong — the walls/floor are a separate, shared,
-boot-loaded 80-tile catalog, indexed per room by a small compressed tile-ID stream. Full writeup:
-`reversing/cadaver/graphics.md` §5 (5a-5g). Prompted directly by putting the already-proven 22-entry
-sprite/object catalog's own contact sheet next to a gameplay screenshot and noticing nothing in it
-was wall-scale — a five-second visual check four earlier passes' worth of code tracing had skipped
-(now a checklist item in the `reverse-engineer-st-game` skill).
+Updated 2026-09-25 by the session that ended at this commit (65th pass, following the 64th's
+`3448983`), which closed Dave's explicit ask from the last handoff — the per-room terrain *pixel*
+mosaic — from "not attempted" to "mechanism fully traced and live-confirmed, one real room rendered
+and visually matched against `gameplay.png`." Full writeup: `reversing/cadaver/graphics.md` §5h/§5i
+(the new plain-English "How a room's walls and floor actually get to the screen" section sits right
+after §5i for a non-code-level summary).
 
 ## Resume point
 
-- Last commit of this workstream: `3448983` "cadaver: shared 80-tile room-terrain catalog found and
-  extracted". (`1127533` and `68119b5` are shared-resource commits from the same session —
-  `DEVELOPING.md`'s tools index and the `reverse-engineer-st-game` skill — not workstream-specific,
-  left out of the working-data path below.) No emulator source changed this pass, so no rebuild or
+- Last commit of this workstream: this one, "cadaver: full room-terrain draw pipeline traced and
+  live-confirmed, CAVERN mosaic rendered (65th pass)". No emulator source changed this pass (all
+  static disassembly + REPL `kbd`/`bpc`/`snap`/`callcap` + Python reads), so no rebuild or
   regression-net run is needed before building on it.
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This pass's additions:
-  `cavern_grid.json`/`tunnel_grid.json` (the decoded per-room tile-id column-stacks, reproducible
-  any time with `reversing/cadaver/py/room_tile_grid.py --room-slot 0|1`). Everything else carried
-  over unchanged from the 64th pass (see prior git history for the full list) — none of it was
-  touched this pass.
-- Start from: same two snapshots as before, both still valid — `scratchpad/cadaver/
-  past_wall_mounted_90M.snap` (fresh CAVERN start, disk 2 not yet mounted) or `scratchpad/cadaver/
-  gameplay_empire.snap` (CAVERN, already resident, one-disk Empire build — this is the snapshot this
-  pass's tile-catalog work used) / `scratchpad/cadaver/room2_tunnel_entry.snap` (TUNNEL). This pass
-  did no live stepping at all — everything was static reads off these two existing snapshots plus
-  one whole-image `disassemble.py --all 0x0 0x20000` dump (not saved; cheap to reproduce).
-- Uncommitted work left behind: none of this session's own. `sessions/README.md` is still modified
-  (a concurrent session's whitespace-wrap edit, not this one's — left alone per the "one writer per
-  file" rule) and `.obsidian/`/`Cadaver/` are untracked and not this session's to manage.
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This pass's one durable
+  addition worth keeping: `mid_cab6_cavern.snap` — a snapshot taken mid-room-entry (PC inside
+  `$00d1f8`, right after the real `$00cab6` grid-walk that builds CAVERN's live draw-descriptor
+  list), the only kind of snapshot this list can be read from (it's scratch data, rebuilt each room
+  entry, unreadable from an ordinary steady-state snapshot — see graphics.md §5i). Recipe to
+  reproduce it (also in `reversing/cadaver/py/room_mosaic.py`'s header): from
+  `scratchpad/cadaver/room2_tunnel_entry.snap`, REPL `kbd ff 02` / `bpc cab6 1 3000000` (hits at step
+  703,353) / `s 5000` / `snap scratchpad/cadaver/mid_cab6_cavern.snap`. Everything else in
+  `scratchpad/cadaver/` carries over unchanged from the 64th pass.
+- Start from: the same two snapshots as before for ordinary static/gameplay work —
+  `gameplay_empire.snap` (CAVERN) / `room2_tunnel_entry.snap` (TUNNEL) — plus the new
+  `mid_cab6_cavern.snap` specifically for re-reading or re-rendering the live tile-placement list.
+- Uncommitted work left behind: none of this session's own. `sessions/README.md` may still carry a
+  concurrent session's edit (not this one's — left alone per the "one writer per file" rule); check
+  `git status` fresh rather than trusting this line, since that's someone else's in-flight work.
 
 ## Proven so far
 
@@ -38,65 +36,75 @@ Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`.
 world-map/adjacency graph, the door-connectivity walk, the swapped-disk side-count bug, the
 Replicants/ST Amigos crack's Disk 2 swap, the two genuine emulator gaps behind the "crack dispatch
 bug", the FDC "no data" workflow fix, the two-disk build's `$100`-shift bugs, a real CAVERN→TUNNEL
-crossing driven live, Disk 2's one-time boot-time load with zero further FDC activity, and the
-64th pass's finding that CAVERN/TUNNEL have no live-reachable third room).
+crossing driven live, Disk 2's one-time boot-time load with zero further FDC activity, CAVERN/TUNNEL
+having no live-reachable third room) and `graphics.md` §5a-5g (the shared 80-tile terrain catalog,
+its per-room RLE-compressed per-column tile-stack encoding, the `$cbd4` top-bit marker channel, no
+runtime tile-adjacency rules).
 
-**This pass (`graphics.md` §5)**: the room terrain/tile system, found and proven by direct render:
+**This pass (`mechanics.md` §39 continuation, `graphics.md` §5h/§5i)**:
 
-- **§5a**: type 2 (255-entry resource-manager capacity) has no live caller anywhere in the loaded
-  program — a whole-image caller census of `$00c5a8`, not a spot check. Dead end, ruled out cleanly.
-- **§5b/5c/5d**: a room's wall/floor layout is a tiny compressed byte stream (resource type 1, 42
-  bytes for TUNNEL, 122 for CAVERN), RLE-decoded (`$00add0`-`$00ae62`) into a live table at
-  `(A5)+2914`, consumed (`$00cab6`-`$00cb28`) as a flat lookup into a **shared, boot-time-loaded,
-  80-tile, 32×32, 4bpp catalog** at `$03e77e` (stride `$200`, size confirmed live via `(A5)+24 =
-  40960 = 80×512`, not approximated). Rendered all 80 — clean, unambiguous cave-wall/floor art,
-  zero-fill past index 79 confirming the boundary exactly. `reversing/cadaver/tiles/` (80 PNGs,
-  `contact_sheet.png`, `manifest.csv`).
-- **§5e**: the decoded table is two ragged per-column tile stacks (a wall height-field), not a
-  rectangular grid — proven by rendering both rooms' real stacks against the real catalog
-  (`reversing/cadaver/tiles/cavern_grid.png`/`tunnel_grid.png`, `reversing/cadaver/py/
-  room_tile_grid.py`). CAVERN's width-pass reads as a visually coherent wall elevation matching
-  `gameplay.png`'s uneven skyline.
-- **§5f**: `$cbd4` (the top-bit-set grid-byte handler) traced in full — mostly an inert no-op
-  (`0x82`/`0x86`/`0xc6` in the two grids sampled all fail its own bit6/bit2 gate), with one live
-  sub-case (`0xc2`-shaped bytes) that writes sprite/object-array-shaped struct fields, not tile
-  pixels — reframed as a probable object-anchor channel, not proven past the struct-field writes.
-- **§5g**: no tile-adjacency/compatibility ruleset exists in the decoder or the consumer — wall/floor
-  composition is level data (a fixed per-room byte stream), not an engine-enforced rule, the same
-  way `mechanics.md` §37d's object placement is a fixed list.
+- **§5h (mechanics.md §39, full transcription)**: `$00e7b0`'s nested placement-table loop, which the
+  64th pass's own §39 had only summarized ("writes screen-buffer offsets... stepping A1 by
+  $508/$4f8"), fully disassembled and closed into an exact formula: `screen_offset(row, col) =
+  base_offset + row*$4f8 + col*$508`, row-major into `(A5)+2634`, `base_offset` = the same
+  `$5a10`-lookup value already known to seed `(A5)+148`. **Checked against every cell, not
+  sampled**: 15/15 TUNNEL cells, 100/100 CAVERN cells, both live off `(A5)+2634`, both match the
+  Python-computed formula exactly. The two step constants decompose against the screen's 160-byte
+  scanline stride as an 8-scanline-down, 16px-left-or-right diagonal step — a real isometric
+  placement geometry, not a coincidence of the numbers.
+- **§5i**: traced the draw pipeline past where §5c stopped (`A4 := tile_catalog + tile_id*$200`) —
+  `$00cab6` writes that pointer into a draw-descriptor slot and calls `$00d1f8` (previously
+  untraced), which looks up §5h's table, applies a sub-pixel shift (a second shift-mask table at
+  `$5692`, same shape as the already-proven `$5870`), and appends a 16-byte descriptor to a list
+  pointed to (not stored at) `(A5)+72`. `$00ddb6`/`$00dd1c` (both previously untraced) cull that list
+  together with the persistent object array (`(A5)+76`, `mechanics.md` §37d) into one combined
+  per-frame visible list, then hand every survivor to `$00014d64`'s already-proven
+  masked-shift blitter (`graphics.md` §4b). This closes §4d's old inference ("tiles use the same
+  blitter as sprites") into a fully-traced mechanism. **Confirmed live**, not just read statically:
+  drove the proven TUNNEL→CAVERN crossing (`kbd ff 02` hold from `room2_tunnel_entry.snap`), caught
+  `$00cab6` firing for real (step 703,353, `A6` = CAVERN's own room record), captured
+  `mid_cab6_cavern.snap` mid-walk, and read 76 real tile-catalog pointers out of the dereferenced
+  list — entries 0-2 are tile ids `55,56,57`, an independent match against `graphics.md` §5e's
+  already-documented "CAVERN's width-pass column 0 is `[0x37,0x38,0x39]`". Rendered all 76 at their
+  decoded screen positions: `reversing/cadaver/tiles/cavern_mosaic.png` — two isometric cave walls
+  meeting at a corner, matching `gameplay.png`'s CAVERN room's shape and texture placement. **The
+  session's one real debugging trap, worth remembering**: `(A5)+72` is a *pointer* to the list, not
+  the list's own address — `movea.l 72(A5),A3` dereferences it, and reading raw bytes starting at
+  `(A5)+72` itself (this pass's first several attempts, and every steady-state-snapshot check before
+  the live capture) finds a real but unrelated 134-entry structure that happens to live there and
+  never holds a tile pointer. Cost most of this pass's time; flagged in `graphics.md` §5i and
+  `reversing/cadaver/py/room_mosaic.py`'s header so it isn't rediscovered.
+- Added a plain-English "How a room's walls and floor actually get to the screen" section to
+  `graphics.md` (right after §5i) — Dave's own ask mid-pass: a non-code-level narrative of the same
+  mechanism (recipe → shared tile catalog → one-time placement arithmetic → per-room instruction
+  list → shared blitter), for a reader who wants the mental model without the addresses.
 
 ## Open, in priority order
 
-Dave's explicit ask for the next session: **room layout/floor/mosaic understanding** — reconstruct
-how the tile catalog actually composes into each room's visible screen image, not just prove the
-catalog and the per-column sequence (both done this pass).
-
-1. **Full per-room pixel mosaic**: place §5e's per-column tile stacks at their real screen
-   coordinates and pixel-diff the result against `gameplay.png`/`room2_tunnel_entry.png`. Needs the
-   `2634(A5)+` per-cell screen-offset table's own placement math — `$00e7b0`'s nested `dbf` loop
-   (`graphics.md`/`mechanics.md` §39) was read for its width/height indexing but its actual
-   iso-projection arithmetic (the `$508`/`$4f8` per-column/row strides mentioned there) was never
-   fully transcribed. This is the concrete way to turn the already-proven "the walls are these
-   tiles, in this sequence" into "and here is exactly where each one lands," and to settle item 2.
-2. **Stack direction**: does column-stack index 0 (§5e) sit at the floor or the ceiling of that
-   column's wall face? Assumed consistent from a visual read this pass, not proven. Falls out of
-   item 1 for free once the screen-offset math is in hand — a wrongly-oriented stack would show up
-   immediately as an upside-down wall in the mosaic.
-3. **`$cbd4`'s live `0xc2` sub-case** (§5f): does it really anchor a sprite/object-array entry to a
-   grid position, or something else? `$92e8` and `$cc2e`'s `bsr $d1f8` are unread past the struct
-   offsets they write. A `callcap`/`watch` on a room whose grid actually reaches this sub-case (not
-   yet identified — check other rooms' type-1 streams for a `& $44 == $40` byte, or just census the
-   ones this session already has) would settle it, and matters for item 1 too: if this channel
-   places props, then a mosaic built from §5e's tile stacks alone will be missing them.
-4. **Does Disk 2 add reachable content beyond CAVERN/TUNNEL?** (64th pass, `mechanics.md` §63):
-   four independent subsystems agree it doesn't from these two rooms; recommended closed for
-   practical purposes unless Dave wants the open-ended push into a new starting state or the
-   type-8 registration trigger. Superseded in priority by the room-mosaic work above, not by new
-   evidence.
-5. No calibration between `world_map.py`'s coarse world-grid room rectangles and the player bbox's
-   own coordinate scale — likely subsumed by item 1's screen-offset math once that's derived.
-6. `2516(A5)`'s role still unconfirmed (reads `100` in the known snapshots, not a small day-count
-   index). Only worth resolving if item 1 or item 4 needs a real day/progress counter.
+1. **Exact pixel-diff match count against `gameplay.png`**: the current mosaic decodes each
+   descriptor's screen offset as `row = offset÷160, pixel_x = (offset mod 160)×2` and ignores
+   `$00d1f8`'s own sub-pixel shift-table (`$5692`) adjustment — visually and structurally proven, not
+   byte-exact. Incorporating that shift (the same `ror.l`/mask-table technique §4b already
+   transcribes for `$5870`) into `room_mosaic.py`'s placement, then a real per-pixel diff against
+   `gameplay.png`, is the concrete way to turn this pass's "clearly the same room" into a match
+   count. Should be a short follow-up, not a new investigation — the hard part (finding and proving
+   the pipeline) is done.
+2. **The same live capture for TUNNEL.** This pass only got CAVERN (the TUNNEL→CAVERN crossing was
+   already a proven recipe from `mechanics.md` §38; the reverse direction wasn't tried beyond one
+   failed guess, `kbd ff 01` from `gameplay_empire.snap`, 0 hits of `$00cab6` in 3M steps). Finding
+   the real CAVERN→TUNNEL key/route (check `mechanics.md`'s existing crossing notes for the door's
+   world-coordinate side, or just try the other three directions with the same `bpc cab6 1 3000000`
+   recipe) and rendering `tunnel_mosaic.png` would make this a 2/2 proof instead of 1/2.
+3. **`$92e8`/`$cc2e`'s `bsr $d1f8`** (`graphics.md` §5f's `0xc2` sub-case) — note this is a
+   *different* call site into `$d1f8` than the one §5i traces (the plain-tile placement case); still
+   open whether it anchors an object to a grid position. `$92e8` itself has never been disassembled.
+4. **Stack direction** (does per-column tile-stack index 0, §5e, sit at the floor or the ceiling) —
+   the live mosaic didn't settle this either; would fall out of item 1's exact placement once the
+   sub-pixel shift is in and each stack's actual on-screen vertical order can be read off directly.
+5. **Does Disk 2 add reachable content beyond CAVERN/TUNNEL?** (64th pass, `mechanics.md` §63):
+   still recommended closed for practical purposes; unaffected by this pass.
+6. `2516(A5)`'s role still unconfirmed. Only worth resolving if another item needs a real
+   day/progress counter.
 7. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period
    repeats. No `.stx`→`.st` converter exists in `tools/`.
 
@@ -108,33 +116,40 @@ not local, one-shot breakpoint chase non-reproducibility, re-disassemble elided 
 full, `bpc` over `bp` for one-shot dumps, `bt depth>1` can crash the REPL, a `watch` range can
 bracket multiple regions in one call, `gfxview.py`'s `st-interleaved` assumes 16px-wide masked
 blits, movement is joystick port 1, player = sprite slot 0, use
-`tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`find_jump_table_hit.py`.)
+`tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`find_jump_table_hit.py`,
+the `moveq #0,Dn`-then-`move.b` zero-extend/condition-code trap, a byte's top bits gating a whole
+different code path, a whole-image `disassemble.py --all` dump + call-site census to rule out a
+dead type/case.)
 
-- **A `moveq #0,Dn` immediately before `move.b (Ax)+,Dn` zero-extends Dn, but the condition codes
-  after the `move.b` reflect only the byte** — `bmi`/`beq` right after test bit 7/zero-ness of that
-  one byte, not of the zero-extended longword. Cadaver's terrain-grid consumer (`$00cb12`-`$00cb1c`)
-  uses exactly this idiom to route top-bit-set grid bytes to a different handler; reading the
-  registers as "D7 is a small non-negative int, so `bmi` can never fire" would be wrong.
-- **A byte value's top two bits can gate a whole different code path** (`graphics.md` §5f: `btst
-  #6,D7`/`btst #2,D7`) even when every example you happen to have looks like a simple "flag on an
-  ordinary id" — check what the code actually branches on before assuming a masked-off low nibble is
-  the real payload; two of Cadaver's four sampled bit7-set values turned out to be pure no-ops, not
-  variants of anything.
-- A whole-image `disassemble.py --all <lo> <hi>` dump plus a grep for a dispatch/resource function's
-  call sites (and the selector set immediately before each) is a fast, complete way to rule out a
-  type/case as dead — cheaper than reasoning from the data's own shape, and it's what caught type 2
-  being unreferenced anywhere (`graphics.md` §5a). Now also in the `reverse-engineer-st-game` skill.
+- **A struct field documented as "an array at `(A5)+N`" may actually be a pointer *to* that array,
+  not the array's own address** — check whether the code that reads it uses `movea.l N(A5),Ax`
+  (dereference) or `lea N(A5),Ax`/direct-offset addressing (literal) before reading raw memory at
+  `(A5)+N` yourself. This pass spent most of its live-verification time reading real-but-irrelevant
+  bytes starting at `(A5)+72` itself, across eight different snapshots, before checking which
+  addressing mode `$00cae4`'s `movea.l 72(A5),A3` actually uses. Cheap to check up front: grep the
+  routine's own disassembly for whether the field is loaded with `movea`/`move.l ...,Ax` (pointer) or
+  used directly as a base displacement (`N(A5)` in an addressing mode, not loaded into a register
+  first) before trusting either reading.
+- **A scratch/display-list-style buffer (rebuilt each use, `-1`/sentinel-terminated, referenced only
+  by a pointer field) generally can't be read "for free" from a steady-state snapshot** — by the time
+  ordinary gameplay has settled, it may hold the last unrelated thing that reused the same memory,
+  not stale copies of its own intended content. If a whole-image `disassemble.py --all` + call-site
+  census shows a routine has exactly one live caller (`graphics.md` §5i: `$00cab6`'s only caller is
+  `$00ccd4`, called only from `$00e968`), and a `callcap`/steady-state `bpc` census on it comes back
+  empty, the routine likely only fires at a specific state transition (here: room entry) — find that
+  transition's own real trigger (a `kbd` hold reproducing a proven crossing, `mechanics.md` §38) and
+  catch it live with `bpc <addr> 1 <budget>` plus a few thousand more steps and a `snap`, rather than
+  concluding from static reads alone that the routine's target buffer is unreachable or misidentified.
 
 ## Next session
 
-Start from `gameplay_empire.snap` (CAVERN) and `room2_tunnel_entry.snap` (TUNNEL) — same two
-snapshots this pass used, no rebuild needed. First step: disassemble `$00e7b0`'s nested `dbf` loop
-in full (the part `mechanics.md` §39 read for width/height indexing but not for its own placement
-arithmetic) to get the real per-column/per-row iso-projection math, then extend
-`reversing/cadaver/py/room_tile_grid.py` to place each column-stack tile at its real screen offset
-and composite it (through the same masked shift-blitter every other draw in this engine uses,
-`graphics.md` §4b) against `gameplay.png`/`room2_tunnel_entry.png` for a real pixel match count —
-that's Open item 1, and it resolves item 2 (stack direction) as a side effect. Item 3 (`$cbd4`'s
-object-anchor sub-case) is the next thing worth a `callcap`/`watch` pass if item 1 turns up rooms
-where tiles are visibly missing where a prop should be.
+Item 1 (exact pixel-diff match count) is the natural next step and should be quick: extend
+`reversing/cadaver/py/room_mosaic.py` to apply `$00d1f8`'s `$5692` sub-pixel shift table (transcribed
+in `graphics.md` §5i, same technique as the already-proven `$5870` table in §4b) before pasting each
+tile, then diff the result against `gameplay.png` for a real match count. `mid_cab6_cavern.snap` is
+already captured and ready to use — no new live driving needed for this step. Item 2 (TUNNEL's own
+mosaic) needs one new live capture: try the other three `kbd ff 01/04/08` directions from
+`gameplay_empire.snap` with the same `bpc cab6 1 3000000` recipe used for CAVERN, or check
+`mechanics.md`'s door-connectivity notes for TUNNEL's actual world-coordinate approach direction
+first rather than guessing all four.
 Prompt: `/resume cadaver`.

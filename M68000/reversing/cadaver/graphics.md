@@ -395,18 +395,131 @@ fixed list rather than a rule-generated one.** The one caveat is §5f's still-un
 sub-case — if it turns out to anchor objects by grid position, that is still level *data* naming a
 specific cell, not a compatibility rule between tiles.
 
+**5h. The per-cell screen-placement formula, byte-exact and live-verified in both rooms — `$00e7b0`'s
+own nested loop (`mechanics.md` §39, full transcription there), not a separate mechanism.** Full
+disassembly of the loop `mechanics.md` §39 had only summarized (`$00e7de`-`$00e80a`) gives:
+`screen_offset(row, col) = base_offset + row*$4f8 + col*$508` (bytes, relative to the screen-buffer
+base at `(A5)+0`), for `row` in `[0,height)`, `col` in `[0,width)`, stored row-major (stride =
+width) into the table at `(A5)+2634`; `base_offset` is the same `$5a10`-lookup value this routine
+also commits to `(A5)+148` (`mechanics.md` §39). **Checked against every cell of both live room
+instances, not sampled**: `room2_tunnel_entry.snap` (TUNNEL, `w=3,h=5`, `base_offset=$2d50`) — all
+15 cells match the formula exactly; `gameplay_empire.snap` (CAVERN, `w=10,h=10`,
+`base_offset=$1268`) — all 100 cells match exactly (both read live off `(A5)+2634`, computed
+independently in Python, compared byte-for-byte: 115/115). `$508`=1288 bytes and `$4f8`=1272 bytes
+each decompose against the 160-byte/scanline screen stride as **8 scanlines down, plus 16px
+left/right** (`$508`: +16px right; `$4f8`: −16px left) — a genuine diagonal isometric step, not an
+axis-aligned grid step, matching the overlapping "carved stone" look of the rendered tile catalog
+(§5d) and explaining why §4d's exact-block-repetition scan couldn't find the tiles (§4d already
+notes the shift-blitter's arbitrary sub-pixel placement as the reason; this is the concrete geometry
+behind that).
+
+**5i. The full draw pipeline, traced statically from the tile-grid consumer through to the proven
+`$14d64` blitter (§4b), then confirmed live by rendering a real room from it.** Continuing past
+where §5c stopped (`$00cab6`-`$00cb28`'s tile-catalog lookup, `A4 := (A5)+16 + D7*$200`), the same
+routine's body (through `$00cc44`) writes that pointer into field `+10` of a draw-descriptor slot and
+calls `$00d1f8`. `$00d1f8` (previously untraced) reads `(A5)+2634`'s table — §5h's exact table,
+indexed `(row*byte(A5+2244) + col)*2`, `byte(A5+2244)` confirmed live to equal the room's own width
+in both rooms — applies a sub-pixel shift via a second table at `$5692` (same `ror`/shift-mask shape
+as the proven `$5870` table, §4b), and writes a 16-byte draw-descriptor (fields: `y0,y1` clip
+bounds, `w,h`, `x0,x1` clip bounds, screen byte-offset, source pointer, shift param) into a scratch
+array, `-1`-terminated on field `+10`. **The one bug that blocked live confirmation for most of this
+pass: `(A5)+72` is a POINTER to that array's base, not the array's own address** — `movea.l
+72(A5),A3` dereferences it; reading raw bytes starting at address `(A5)+72` itself (this pass's first
+several attempts) finds an unrelated 134-entry structure that happens to sit there and never holds a
+tile-catalog pointer. Once corrected, `$00dbc0`/`$00dbc8` (inside a per-frame routine) pass both
+`(A5)+76` (the already-documented persistent object array, `mechanics.md` §37d, 70-byte stride) and
+the dereferenced `(A5)+72` list through a shared clip-cull helper (`$00ddb6`, previously untraced:
+walks a `-1`(field`+10`)-terminated list, keeps entries whose bounds overlap the caller's clip rect)
+into one combined visible-entry list at `(A5)+344`. `$00dd1c` (previously untraced) then walks *that*
+list, reads each entry's fields (`+2,+3,+8,+10,+14`), and calls `jsr $14d64` — §4b's already-proven
+masked-shift blitter dispatcher. **This closes §4d's inference** ("every tile is composited through
+the same sub-pixel masked shift-blitter as the sprite/object array") **into a fully-traced
+mechanism**: tiles and sprites are unified into one per-frame draw list before the shared blitter
+runs — the `(A5)+72` list is that list's *tile* half, freshly rebuilt from the grid once per room
+entry (not per frame), `(A5)+76` its *object* half, rebuilt every frame.
+
+**Live confirmation**: `$00cab6` only fires at the moment of a genuine room entry (confirmed absent
+otherwise — 0 hits over 5M steps of ordinary play and 0 hits over 30M steps spanning a room crossing,
+both from resumed mid-game snapshots; a `callcap` into `$00cab6` or its caller `$00ccd4` from a
+resting snapshot also does not reach it, since the real call needs state only the actual crossing
+sets up). Caught it for real with the REPL, driving the proven TUNNEL→CAVERN crossing
+(`mechanics.md` §38) from `room2_tunnel_entry.snap`: `kbd ff 02` (hold down), `bpc cab6 1 3000000`
+(hits at step 703,353, `A6=$6bf0a` — CAVERN's own room record), `s 5000` (let `$00d1f8` finish the
+walk), `snap ...mid_cab6_cavern.snap`. Reading the dereferenced list from that snapshot
+(`reversing/cadaver/py/room_mosaic.py`) gives **76 entries, all 76 real tile-catalog pointers** (tile
+ids spanning most of the 80-entry catalog) — and entries 0-2 are tile ids `55,56,57`
+(`0x37,0x38,0x39`), exactly `graphics.md` §5e's already-documented "CAVERN's width-pass column 0 is
+`[0x37,0x38,0x39]`" in the same order, an independent cross-check that the live list really is the
+per-column stacks from §5e. Rendering all 76 at their decoded screen offsets (row = offset÷160,
+pixel_x = (offset mod 160)×2 — an approximation that ignores `$00d1f8`'s own sub-pixel shift, see
+below) produces `reversing/cadaver/tiles/cavern_mosaic.png`: two isometric cave walls meeting at a
+corner, carved-stone texture with gold-flecked and green-dither accents in the same relative
+positions as `gameplay.png`'s CAVERN — **a clear, unambiguous structural and visual match**, proving
+the mechanism end to end for the first time (grid → placement table → draw descriptor → rendered
+wall), not just each stage in isolation.
+
+**Not yet done**: (1) an exact pixel-diff match count against `gameplay.png` — the mosaic above uses
+row/pixel_x rounding, not `$00d1f8`'s real sub-pixel shift-table adjustment (`$5692`), so it's
+visually and structurally proven but not yet byte-exact; (2) the same live capture for TUNNEL (this
+pass only tried one direction, `kbd ff 01` from `gameplay_empire.snap`, and got 0 hits in 3M steps —
+the real CAVERN→TUNNEL crossing key/route wasn't identified this pass, unlike the already-proven
+TUNNEL→CAVERN one used above); (3) `$92e8`/`$d1f8`'s `0xc2` object-anchor sub-case (§5f) is still
+unrelated and untraced — note `$d1f8` the plain-tile placement routine (above) and the `0xc2`
+sub-case's `bsr $d1f8` (§5f, from `$cc2e`) are two different call sites into the same routine name,
+don't conflate them; (4) stack direction (does column index 0 sit at the floor or the ceiling) — the
+live capture didn't settle this either, though the visual match's overall coherence is suggestive.
+
+**5j. In plain terms: how a room's walls and floor actually get to the screen** (§5's full mechanism,
+without the addresses — the proof and every instruction-level detail is §5a-5i above).
+
+A room's terrain is never stored as a picture. Two things make it appear on screen:
+
+1. **A tiny recipe, not a room-sized map.** Each room's own wall/floor layout is a compressed byte
+   stream well under 128 bytes — nowhere near enough to be pixel data. Unpacked with a simple
+   run-length decoder, it becomes two short lists of tile-catalog numbers: one list per visible wall
+   face of the room's isometric corner view, each list being that wall's stack of tiles from one
+   side to the other. A "9" in the list doesn't mean anything about pixels — it just means "put
+   catalog tile #9 here."
+2. **A shared, boot-loaded box of Lego bricks.** Every room draws from the exact same 80-tile,
+   32×32-pixel picture catalog, loaded once at boot. Rooms differ only in *which* tiles they list and
+   in what order — the art itself is never authored per room.
+3. **A one-time "where does each brick go" calculation, done once when the room is entered.** Using
+   nothing but the room's width and height, the game looks up a starting screen position and then
+   walks a simple diagonal step (a fixed number of pixels right-and-down for one wall, left-and-down
+   for the other) to fill in a small table of screen positions, one per possible (row, column) slot a
+   wall tile could occupy. This is pure arithmetic from two numbers (width, height) — no per-tile
+   work yet.
+4. **Turning "which tile" + "which slot" into "draw this picture here."** The game then walks the
+   room's own tile-number list from step 1 one entry at a time. For each entry it looks up that
+   slot's screen position (step 3's table) and that tile's picture (step 2's catalog), and writes
+   both down together as a tiny "draw this 32×32 picture at this screen position" instruction. This
+   whole list of instructions is built once, right when the room is entered — not redrawn every
+   frame, since the walls don't move.
+5. **One shared paintbrush for everything.** Those wall instructions are placed alongside a second,
+   separate list of instructions for the room's movable things (the player, torches, the boat,
+   chests — rebuilt fresh every frame, since those *can* move). Once a frame, both lists are filtered
+   down to whichever instructions are actually on screen right now, and every survivor — wall tile or
+   sprite, no distinction at this point — is handed to the exact same low-level "copy this picture to
+   this screen address" routine, which can shift a picture by a fraction of a pixel so nothing has to
+   land on a fixed grid. That's why the finished screen never shows a visible tile seam: the same
+   blur-free but position-flexible paintbrush draws the walls and the props side by side.
+
+The result: a room that looks hand-painted is really "a short recipe of catalog numbers, a cheap
+one-time arithmetic placement table, and a shared blitter" — no per-room art, no runtime tiling
+rules, and (per §5g) no adjacency logic deciding which tile goes where. A level designer chose the
+recipe by hand; the engine just plays it back.
+
 **Net**: `mechanics.md` §37's "a room's background is just its object array" is wrong and is
 corrected there — the walls and floor are a genuinely separate, shared, tile-indexed system, decoded
-per room from a tiny compressed stream (well under 128 bytes per room) into a per-column tile stack
-(§5e) that a flat-indexed 80-tile catalog is drawn through, with no runtime adjacency rules (§5g).
-**Open**: (a) `$92e8`/`$d1f8` (§5f's `0xc2` sub-case) — is it really an object anchor, not traced
-past the struct-field writes; (b) stack direction (does column index 0 sit at the floor or the
-ceiling) is not proven, only assumed consistent from the visual read in §5e; (c) a full per-room
-*pixel* mosaic (grid → exact screen position, via the `2634(A5)+` per-cell screen-offset table
-§39/§40 already built, composited through the masked shift-blitter like every other draw in this
-engine) has not been assembled and pixel-diffed against `gameplay.png`/`room2_tunnel_entry.png` —
-§5e's infographic proves the *catalog and the per-column sequence*, not yet "this exact grid, placed
-this way, reproduces this exact room's exact pixels."
+per room from a tiny compressed stream into a per-column tile stack (§5e) that a flat-indexed 80-tile
+catalog is drawn through, with no runtime adjacency rules (§5g), placed on screen by a byte-exact
+formula (§5h) and a now-fully-traced-and-live-confirmed draw pipeline (§5i) ending in the same shared
+blitter as every sprite (§4b). **Open**: (a) `$92e8`/`$cc2e`'s `bsr $d1f8` (§5f's `0xc2` sub-case) —
+is it really an object anchor, not traced past the struct-field writes; (b) stack direction (does
+column index 0 sit at the floor or the ceiling) — still not proven; (c) an exact pixel-diff match
+count against `gameplay.png` (needs §5i's sub-pixel shift table, not yet incorporated) and the same
+live capture for TUNNEL — §5i's mosaic proves the mechanism visually and structurally, not yet to a
+byte-exact score.
 
 ## Files
 
@@ -418,6 +531,7 @@ this way, reproduces this exact room's exact pixels."
 | `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
 | `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) — not captured by the array export below, since only the *current* frame pointer is live in any one snapshot |
 | `sprites/` | the full 22-entry sprite-object-array catalog (§3) — one PNG per slot, `contact_sheet.png`, `manifest.csv` |
-| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; plus `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog |
+| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, the first full grid-to-pixels proof |
 | `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` (struct-driven array mode, `--base`/`--array-ptr-field`) and the raw `tiles/` catalog (fixed-stride mode, `--sequence BASE STRIDE COUNT W H`) |
 | `py/room_tile_grid.py` | decodes a room's `(A5)+2914` tile-id grid (§5b/5e) and renders it against the shared catalog; usage in its own header |
+| `py/room_mosaic.py` | renders `cavern_mosaic.png` from a live mid-room-entry snapshot's real draw-descriptor list (§5i); the snapshot-capture recipe (REPL commands) is in its own header |
