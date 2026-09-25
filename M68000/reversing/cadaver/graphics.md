@@ -499,15 +499,39 @@ not a wrong tile or wrong base position) — confirmed not a paint-order bug (th
 order beats every row-sorted alternative, and reverse order scores far worse, 39%) — a finer
 overlap/z-order detail this pass didn't chase further, not a placement-formula error.
 
-**Not yet done**: (1) the same live capture for TUNNEL (this pass only tried one direction, `kbd ff
-01` from `gameplay_empire.snap`, and got 0 hits in 3M steps — the real CAVERN→TUNNEL crossing
-key/route wasn't identified this pass, unlike the already-proven TUNNEL→CAVERN one used above); (2)
-`$92e8`/`$d1f8`'s `0xc2` object-anchor sub-case (§5f) is still unrelated and untraced — note `$d1f8`
-the plain-tile placement routine (above) and the `0xc2` sub-case's `bsr $d1f8` (§5f, from `$cc2e`)
-are two different call sites into the same routine name, don't conflate them; (3) stack direction
-(does column index 0 sit at the floor or the ceiling) — the live capture didn't settle this either,
-though the visual match's overall coherence is suggestive; (4) the ~3.4% overlap-edge residual above
-is unexplained, though small and visually negligible.
+**5i-3. TUNNEL captured live too (2/2 rooms), the placement mechanism is confirmed generic and
+correct, but the tile-only render scores low (~21%) against `room2_tunnel_entry.png` for a reason
+that's now understood, not a placement bug.** The real CAVERN→TUNNEL crossing route is the
+"documented zigzag" already named in `mechanics.md` §32/§60c (`kbd ff 08` (Right) 1.2M steps → `kbd
+ff 01` (Up) 0.5M steps → `kbd ff 08` 1.2M steps → `kbd ff 01` 1.2M steps, from `gameplay_empire.snap`)
+— arming `bpc cab6 1 <budget>` per leg catches it at the very start of the final Up leg (step 52,887),
+giving `mid_cab6_tunnel.snap`. **Cross-checked two independent ways**: (a) its `(A5)+2634` placement
+table is byte-for-byte identical to `room2_tunnel_entry.snap`'s own (15/15 words), confirming the
+formula/table isn't route- or entry-point-dependent; (b) stepping this exact snapshot forward
+1,000,000 steps to let the crossing settle and screen-flip, then `snap_render.py`-rendering it,
+reproduces `room2_tunnel_entry.png` **pixel-for-pixel, 0/64000 diff** — proof the emulator's own real
+render of this route lands on the *same* reference frame the 12th pass's milestone used, ruling out a
+different-viewport/different-entry explanation for any mismatch in the hand-rolled mosaic. Yet
+`room_mosaic.py`'s tile-only render of `mid_cab6_tunnel.snap` scores only 1961/9932 (19.7%, 1937/9092
+excluding the one live object/sprite descriptor's own clip rect) against that same reference — much
+worse than CAVERN's 96.6%. Inspecting the mismatch spatially (`tiles/tunnel_mosaic.png` vs the
+reference) shows it isn't uniform: the right-hand wall section (tile ids 2,3,16,18,19,48, the low end
+of the catalog) matches cleanly, while the left-hand wall (tile ids 31-78, the high end) renders as
+generic "cube" catalog art where the reference shows distinct pipe/machinery detail entirely absent
+from the base tile catalog. Since the underlying placement table and formula are independently proven
+correct (above), the most likely explanation is that TUNNEL's left wall carries extra decorative
+content drawn through a separate mechanism this doc hasn't traced yet — a natural candidate is §5f's
+still-untraced `0xc2` object-anchor sub-case of `$d1f8` (item 2 below), which could be overlaying
+detail sprites onto specific grid cells on top of the base tile catalog. Not yet confirmed either way.
+
+**Not yet done**: (1) `$92e8`/`$d1f8`'s `0xc2` object-anchor sub-case (§5f) is still unrelated and
+untraced — note `$d1f8` the plain-tile placement routine (above) and the `0xc2` sub-case's `bsr
+$d1f8` (§5f, from `$cc2e`) are two different call sites into the same routine name, don't conflate
+them; tracing it is now also the leading hypothesis for §5i-3's TUNNEL mismatch, not just an isolated
+open question; (2) stack direction (does column index 0 sit at the floor or the ceiling) — the live
+capture didn't settle this either, though the visual match's overall coherence is suggestive; (3) the
+CAVERN mosaic's own ~3.4% overlap-edge residual (§5i-2) is unexplained, though small and visually
+negligible.
 
 **5j. In plain terms: how a room's walls and floor actually get to the screen** (§5's full mechanism,
 without the addresses — the proof and every instruction-level detail is §5a-5i above).
@@ -554,12 +578,15 @@ corrected there — the walls and floor are a genuinely separate, shared, tile-i
 per room from a tiny compressed stream into a per-column tile stack (§5e) that a flat-indexed 80-tile
 catalog is drawn through, with no runtime adjacency rules (§5g), placed on screen by a byte-exact
 formula (§5h) and a now-fully-traced-and-live-confirmed draw pipeline (§5i) ending in the same shared
-blitter as every sprite (§4b), scored at 96.6% exact against `gameplay.png` (§5i-2). **Open**: (a)
+blitter as every sprite (§4b), scored at 96.6% exact against `gameplay.png` for CAVERN (§5i-2) and
+cross-checked (placement table + a pixel-identical live re-render) but only 19.7% exact for TUNNEL
+(§5i-3) — the placement mechanism itself is proven generic and correct for both rooms, but TUNNEL's
+left wall carries extra art the base 80-tile catalog draw list doesn't account for. **Open**: (a)
 `$92e8`/`$cc2e`'s `bsr $d1f8` (§5f's `0xc2` sub-case) — is it really an object anchor, not traced past
-the struct-field writes; (b) stack direction (does column index 0 sit at the floor or the ceiling) —
-still not proven; (c) the same live capture and mosaic for TUNNEL (CAVERN only so far); (d) the
-remaining 3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2) — small and visually
-negligible, cause not identified.
+the struct-field writes, and now the leading suspect for §5i-3's TUNNEL gap; (b) stack direction (does
+column index 0 sit at the floor or the ceiling) — still not proven; (c) the remaining 3.4%
+overlap-edge pixel mismatch in the CAVERN score (§5i-2) — small and visually negligible, cause not
+identified.
 
 ## Files
 
@@ -571,7 +598,7 @@ negligible, cause not identified.
 | `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
 | `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) — not captured by the array export below, since only the *current* frame pointer is live in any one snapshot |
 | `sprites/` | the full 22-entry sprite-object-array catalog (§3) — one PNG per slot, `contact_sheet.png`, `manifest.csv` |
-| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i/§5i-2) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, scored 96.6% pixel-exact against `gameplay.png` |
+| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i/§5i-2) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, scored 96.6% pixel-exact against `gameplay.png`; `tunnel_mosaic.png` (§5i-3) — same mechanism applied to TUNNEL, table- and re-render-confirmed correct but only 19.7% pixel-exact against `room2_tunnel_entry.png` (left wall carries un-accounted-for decorative art, see §5i-3) |
 | `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` (struct-driven array mode, `--base`/`--array-ptr-field`) and the raw `tiles/` catalog (fixed-stride mode, `--sequence BASE STRIDE COUNT W H`) |
 | `py/room_tile_grid.py` | decodes a room's `(A5)+2914` tile-id grid (§5b/5e) and renders it against the shared catalog; usage in its own header |
 | `py/room_mosaic.py` | renders `cavern_mosaic.png` from a live mid-room-entry snapshot's real draw-descriptor list (§5i); the snapshot-capture recipe (REPL commands) is in its own header |

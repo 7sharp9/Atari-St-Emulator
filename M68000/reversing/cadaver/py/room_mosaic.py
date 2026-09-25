@@ -57,6 +57,18 @@ paint-order alternative scored worse, confirming list order is correct). The res
 at the overlap edges between adjacent tiles in a stack (same-value palette pixels shuffled by ~1px,
 not a wrong tile or wrong position) - plausibly a finer overlap/z-order detail this pass didn't chase
 further, not a placement-formula error; not yet fully explained.
+
+**TUNNEL (captured the same way, via the CAVERN->TUNNEL "documented zigzag" - `mechanics.md`
+`kbd ff 08`/1.2M, `kbd ff 01`/0.5M, `kbd ff 08`/1.2M, `kbd ff 01`/1.2M from `gameplay_empire.snap`,
+`bpc cab6 1 <budget>` armed per leg - hits 52887 steps into the final leg): only 1961/9932 = 19.7%
+exact against `room2_tunnel_entry.png`, despite the placement mechanism itself being cross-checked
+twice as correct - its `(A5)+2634` table is byte-identical to `room2_tunnel_entry.snap`'s own, and
+stepping the captured snapshot forward 1M steps and `snap_render.py`-rendering it reproduces
+`room2_tunnel_entry.png` pixel-for-pixel (0/64000 diff). The gap is spatial, not uniform: the
+right-hand wall (low tile ids) matches, the left-hand wall (tile ids 31-78) renders as generic
+catalog "cube" art where the reference shows pipe/machinery detail the 80-tile catalog doesn't have -
+graphics.md 5i-3's leading suspect is the still-untraced `0xc2` object-anchor sub-case of `$d1f8`
+(5f) overlaying extra decoration per-cell on top of the base tile. Not resolved this pass.
 """
 import argparse
 import sys
