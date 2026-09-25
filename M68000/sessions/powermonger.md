@@ -1,14 +1,17 @@
 # PowerMonger: handoff
 
-Updated 2026-09-25 by the session that ended at commit `53c5408` (the 127th PowerMonger pass, on the
-Mac).
+Updated 2026-09-25 by the session that ended at commit `37212b7` (a Mac-side pass on the port's
+frame stepper and the blog draft, not the game-mechanics thread below -- see "Proven so far").
 
 ## Resume point
 
-- Last commits of this workstream: `53c5408` (ANCHORS: index the 127th's organic take-equipment
-  state), `79e1c3f` (strategy.md: natural alliance test, take-equipment confirmed, envoy dies to
-  contact twice), `816c786` (README: correct stale revolt bullet, add topic-doc index table),
-  `b31c50f` (economy.md: revolt reachability was already proven, "still open" was stale).
+- Last commits of this workstream: `37212b7` (port README: index `--playtest`), `338fae8` (stepper:
+  wire in `Weather.fs`, fix continuous play, add `--playtest`) -- this pass, tooling only. Last
+  commits touching the **game-mechanics thread** (unchanged this pass, still current): `53c5408`
+  (ANCHORS: index the 127th's organic take-equipment state), `79e1c3f` (strategy.md: natural
+  alliance test, take-equipment confirmed, envoy dies to contact twice), `816c786` (README: correct
+  stale revolt bullet, add topic-doc index table), `b31c50f` (economy.md: revolt reachability was
+  already proven, "still open" was stale).
 - Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell
   pitfalls"). New this pass: `scratchpad/pm127/diplo3/` (`equip_probe.snap`/`.ram` — land 25's
   side-1 group after a real, unpoked take-equipment click; `alliance1.snap` — the same group after
@@ -19,11 +22,17 @@ Mac).
   (40,51), food 251, posture 3; lords 0/1 on side 2), unchanged this pass. For anything touching the
   live goods economy, mission 1 itself has **no goods anywhere** (every lord's `goods[]` is zero) —
   use a natural land corpus instead (`scratchpad/pm121/run/`, `ANCHORS.md`).
-- Uncommitted work left behind: none of this session's. Pre-existing, not this session's and not
-  touched: `M68000/sessions/README.md` still carries an uncommitted pure line-rewrap (no content
-  change) from Obsidian editing the repo (`.obsidian/` is untracked in the tree). Also untracked:
-  `Cadaver/` (another workstream's game files). Not mine to resolve — flag to Dave or the cadaver
-  session.
+- Uncommitted work left behind: none in this repo. Outside this repo: the blog draft
+  `~/GitHub/7sharp9.github.io/content/Programming/2026-09-22-paint-it-black.md` (+4 images in
+  `static/images/posts/powermonger/`) had its factual claims (match percentages, the six-capture
+  table) brought current against `port/SPEC.md`; the personal TODOs (motivation, the extra-row
+  bug's cost, the Godot-route verdict) are still Dave's to fill in. Committed in that repo
+  (`4701fbc`) but not pushed as of this pass — that repo's `git status`/`git log
+  origin/master..HEAD` will show if it still needs a push.
+- Pre-existing, not this session's and not touched: `M68000/sessions/README.md` still carries an
+  uncommitted pure line-rewrap (no content change) from Obsidian editing the repo (`.obsidian/` is
+  untracked in the tree). Also untracked: `Cadaver/` (another workstream's game files). Not mine to
+  resolve — flag to Dave or the cadaver session.
 
 ## Proven so far
 
@@ -34,6 +43,16 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 `py/diff_2776.py` 4119/4119; `py/diff_5cde.py` 768/768 + 85/85; `py/diff_revolt.py` 1778/1778;
 `py/diff_4f68.py` 1804/1804.
 
+- **This pass's own work is the port's frame stepper, not the game-mechanics thread**: `Weather.fs`
+  (rain/snow, `$1a856`) is now wired into `port/stepper` for the first time anywhere (it existed but
+  nothing rendered it, not the stepper, not Godot's `TerrainView.cs`) -- `C` toggles it, kind picked
+  by season. Continuous play (`P`) now actually loops instead of stopping dead at the end of the
+  frame, and survives a pan/rotate/zoom/season change instead of silently re-pausing (`withView` no
+  longer forces `Playing = false`); `Space` single-steps instead of duplicating `P`. Both bugs were
+  only caught by Dave running the interactive window and reporting the console trace / what he saw
+  -- `--shot`/`--selfcheck` alone didn't catch either. New `--playtest` (`port/stepper/Program.fs`)
+  drives Mibo's real `HeadlessRunner`/`ElmishLoop` through two loops, a camera/season change
+  mid-loop, and a manual step, and is now the regression check for this. Commits `338fae8`/`37212b7`.
 - **Every player order, food, group-record fields, conquest, the heartbeat revolt mechanism,
   starvation desertion, what sets `dwell := $ff9d`, mode `$16` as a garrison/neutral marker**: see
   the 125th/126th's summaries in git history — unchanged this pass.
@@ -74,9 +93,10 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 4. `$1b8c` via `$5778` (a gate over natural `$5778` states); `$4342`'s arrival/unlink branch
    (`scratchpad/pm113/diff_4342.py`, natural states from `capture_hits.py`); `$4f68` arms not covered
    (`$51dc` finding an ally's target, `$548a`'s `39 == 2`).
-5. Smaller: weather in the stepper/Godot view; where the crack writes its `$b842` patch; the
-   fixed-map `$df52(7)` branch; `$2df98` is "the other button" (inferred right); the port and stepper
-   still use the old names (`troops_reserve`, budget, discipline) if they model them.
+5. Smaller: weather is now in the stepper (`C` key, this pass) but still not in the Godot view
+   (`godot/game/TerrainView.cs` has no `Weather` reference); where the crack writes its `$b842`
+   patch; the fixed-map `$df52(7)` branch; `$2df98` is "the other button" (inferred right); the port
+   and stepper still use the old names (`troops_reserve`, budget, discipline) if they model them.
 6. **A deeper game summary/mechanics writeup**, if Dave wants to keep extending it toward
    populous's depth: the README now opens with a doc-index table (added 127th) and the Design
    digest is current; a further step would be an explicit "architecture" thread (per-tick dispatch,
@@ -86,6 +106,21 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Known traps
 
+- **A `--shot`/screenshot-style headless check on `port/stepper` proves rendering at one instant,
+  not a game-loop behavior over time or input.** Two real continuous-play bugs this pass (P not
+  sustaining, camera changes re-pausing it) both passed `--shot`/`--selfcheck` and were only caught
+  because Dave ran the interactive window himself. `--playtest` now exists for this; extend it
+  rather than reaching for another screenshot when the next interactive bug shows up.
+- **Mibo's `GameTime` (`port/stepper`, Mibo.Raylib 4.5.3) has no constructor callable from F#
+  outside the Mibo assembly**, even though reflection shows a public one (an F# record's IL
+  constructor is public but the compiler still refuses it: `FS1133 No constructors are available`).
+  Don't hand-roll a tick loop by constructing `GameTime` and calling `update` directly -- use
+  `Mibo.Elmish.HeadlessProgram.mkHeadless`/`withTick` plus `new HeadlessRunner<_,_>(program)` (omit
+  the optional `width`/`height` args positionally rather than passing `None` -- F# optional
+  constructor params want the raw value or to be omitted, not wrapped). This drives the real
+  `ElmishLoop`/subscription machinery, not an approximation, and is what caught the second bug
+  (`--shot` and a first hand-rolled test both missed it) once the test dispatched an actual
+  camera-change key mid-loop.
 - **Grep the topic docs for a routine's address before disassembling it.** This pass spent a full
   read of `$157e6`'s body only to reproduce, line for line, the pseudocode economy.md §3a and
   ai.md already had from the 96th/97th pass (now in `CLAUDE.md`'s Rules).
@@ -137,6 +172,9 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
   SingleStepTests track or `$4342`'s 8 proven branches.
 
 ## Next session
+
+This pass's own work (stepper weather, continuous-play fixes, the blog draft) is committed/wrapped
+and does not block the game-mechanics thread below.
 
 Open item 1: a natural alliance completing end to end. Start from
 `scratchpad/pm127/diplo3/equip_probe.snap` (land 25, our 8-man group already carrying 3 pots, no
