@@ -1,75 +1,75 @@
 # Cadaver: handoff
 
-Updated 2026-09-25 by the session that ended at commit `cc2c5a6` (57th pass). Resumed from the
-56th-pass handoff's item 1 (the crack's "dispatch bug"), traced it live instead of statically, and
-found the 55th pass had misdiagnosed it: it wasn't a crack-patched-out version check or stale
-framebuffer data misread as code, it was two real emulator gaps. Fixed both, each behind its own
-full regression-net pass (`verify` PASS, 30M-step diskless boot snapshot byte-identical, full
-680x0 selftest 1,000,051 pass / 0 fail / 9 skip unchanged). Past both fixes, execution reaches
-genuinely new, FDC-driven code and hits a further, still-open wall - real progress, not the same
-wall in a new shape.
+Updated 2026-09-25 by the session that ended at commit `35bd269` (58th pass). Resumed from the
+57th-pass handoff's item 1 (the "no data" FDC wall past the crack dispatch fix) and found it was
+this workstream's own REPL-driving gap, not a game or emulator bug: `resume`ing a `.snap` never
+remounts drive A's disk, and the 57th pass stepped forward without doing so. Remounting Disk 2 and
+re-running the identical step count gets cleanly past the old wall into real gameplay.
 
 ## Resume point
 
-- Last commit of this workstream: `cc2c5a6` "cadaver: correct the 55th-pass dispatch-bug
-  misdiagnosis, document the fix (57th pass)". Emulator fixes are `1cb269b` (reserved-MOVEQ ->
-  vector 4) and `1f41114` (trace exception / vector 9), both on `master`, both already covered by
-  their own regression-net run - no rebuild or reverification needed before building on them.
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored), unchanged from the 55th/56th
-  pass's entries except for this pass's additions below.
-  - **Start from**: `scratchpad/cadaver/disk2_past_dispatch_30M.snap` - `before_jsr.snap`
-    (55th-pass snapshot, PC=$00011602, one instruction before the `jsr (A2)` that used to crash)
-    run forward 30M further steps with this session's two fixes in place. Lands at PC=$00011b0e,
-    mid-loop in the new wall described below.
-  - `scratchpad/cadaver/agent_disk2_wall/before_jsr.snap`: the original 55th-pass snapshot, still
-    the right starting point if a shorter/different step budget than 30M is wanted.
-  - `scratchpad/cadaver/regress_before.snap` / `regress_after.snap` / `regress_after2.snap`: this
-    pass's own before/after diskless-boot regression snapshots (30M steps from cold boot, no disk)
-    used to prove both fixes have zero effect outside the reserved encoding / trace bit. No longer
-    needed - safe to delete.
-- Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` and
-  `M68000/sessions/powermonger.md` still show modified in `git status` - the concurrent "Training
-  efficiency (2)" session's work (confirmed live via `ListAgents` at the top of this pass), left
-  alone per the shared-resources rule. `.obsidian/` and `Cadaver/` are untracked and not this
-  session's to manage.
+- Last commit of this workstream: `35bd269` "cadaver: the 57th-pass FDC wall was a REPL workflow
+  gap, not a game/emulator bug (58th pass)". No emulator source changed this pass, so no rebuild or
+  regression-net run is needed before building on it.
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This pass's additions:
+  - `full_trace_fdc.log` / `full_trace_mounted_fdc.log`: same `s 30000000` from `agent_disk2_wall/
+    before_jsr.snap`, first with no disk mounted (reproduces the 57th pass's "no data" wall
+    verbatim) then with `disk ../Cadaver/disk2_replicants/disk2.st` issued first (121 reads, all
+    `-> OK`). The A/B pair that proves the diagnosis.
+  - `past_wall_mounted_30M.snap` / `_60M.snap` / `_90M.snap`: `before_jsr.snap` with Disk 2 mounted,
+    run forward 30M/60M/90M steps. `_90M` lands at PC=`$00015254`, rendered in
+    `past_wall_mounted_90M.png` - the already-known "DAY 1 / BOAT / CAVERN" room (matches
+    `reversing/cadaver/boat_hotspot.png` pixel-for-pixel), i.e. real gameplay past the old wall, not
+    yet proof of anything Disk-2-exclusive.
+  - `wall_widen.repl` / `wall_widen.log` (+ `wall_widen_fdc.log`, empty), `wall_retry_kbd.repl` /
+    `.log` (+ `_fdc.log`, empty): this pass's own dead ends, stepping forward from the *already
+    landed* `disk2_past_dispatch_30M.snap` (post-wall) with no disk mounted and/or a scripted
+    keypress - all register dumps bit-identical except PC/CCR, confirming a real idle loop at
+    `$11ac6` (matches §54's already-documented "no input" idle PC) rather than new information. Kept
+    for reference but superseded by the `before_jsr.snap`-based A/B above; safe to delete.
+  - `push_past_wall.repl` / `.log`: the driving script and register-dump log for the three
+    `past_wall_mounted_*.snap` saves above.
+- **Start from**: `scratchpad/cadaver/past_wall_mounted_90M.snap` (PC=`$00015254`, Disk 2 mounted,
+  past the old wall, sitting in the Day 1/Boat/Cavern room) - or re-derive further from
+  `agent_disk2_wall/before_jsr.snap` with `disk ../Cadaver/disk2_replicants/disk2.st` issued first.
+- Uncommitted work left behind: none of this session's own. `CLAUDE.md` shows modified in `git
+  status` - a line-unwrapping/reflow edit (content unchanged) from the concurrent "Training
+  efficiency (2)" session (confirmed live via `ListAgents`, messaged about it), left alone per the
+  shared-resources rule. `sessions/README.md`/`sessions/powermonger.md` likewise belong to that
+  session. `.obsidian/` and `Cadaver/` are untracked and not this session's to manage.
 
 ## Proven so far
 
-Detail in `reversing/cadaver/README.md`, `mechanics.md` (§57 is this pass), `graphics.md`, `ai.md`.
-Carried over: `mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-56 (movement collision/proximity
+Detail in `reversing/cadaver/README.md`, `mechanics.md` (§58 is this pass), `graphics.md`, `ai.md`.
+Carried over: `mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-57 (movement collision/proximity
 mechanism, the icon-panel write chain, the full 72-room world-map/adjacency graph, the
-door-connectivity walk, LOCK/UNLOCK structurally disjoint from door-transition, the five doors' id
-words causally inert, the one-disk crack's disk contents ruled out for a second level, the two-disk
-original's Disk 2 independently confirmed as a real, distinct levels disk, the Replicants/ST Amigos
-crack reaching the live "place levels disk" prompt and Disk 2 swap, the swapped-disk side-count bug
-found and fixed, and the 56th pass's exhaustive negative static graphics scan of Disk 2's raw
-bytes). **New this session, `mechanics.md` §57**:
+door-connectivity walk, the swapped-disk side-count bug, the Replicants/ST Amigos crack's Disk 2
+swap, the two genuine emulator gaps behind the "crack dispatch bug" - reserved-MOVEQ trapping to
+vector 4, trace-mode single-step to vector 9 - both fixed and regression-proven). **New this
+session, `mechanics.md` §58**:
 
-- The 55th pass's `jsr (A2)` -> `$00021da0` wall is real Rob Northen protection code, not stale
-  framebuffer data: a two-stage CPU-detection probe (MOVEC, already handled; a reserved bit-8
-  MOVEQ encoding, not handled - the actual crash) followed by a trace-mode (vector 9)
-  single-step decrypt loop.
-- Fixed both emulator gaps: `ReservedMoveq` traps `$712x`-shaped reserved opcodes to vector 4
-  (`Instructions.fs`/`68k.fs`, commit `1cb269b`); `Step()` now implements the trace exception
-  itself, which was computed (`TraceMode`) but never consumed anywhere (`68k.fs`, commit
-  `1f41114`) - `EnterVector`/`EnterGroup0Vector` also now clear T1 on entry, matching
-  `EnterInterrupt`/`FetchTargetOrFault`'s existing behaviour.
-- Past both fixes, `before_jsr.snap` run 30M steps reaches genuinely new code: `A4=$ffff8604`
-  (the FDC/DMA register), confirmed via `ATARI_TRACE_FDC=1` issuing real `READ-SECTOR drive=0
-  track=0 side=0 sector=8` commands that repeatedly come back "no data", with a `type I $03`
-  (Restore) retry between attempts - PC only crawls from `$11b00` to `$11b0e` across those 30M
-  steps. This is the new wall (item 1 below).
+- §57's "new FDC wall" (`READ-SECTOR track=0 side=0 sector=8 -> no data` on repeat) was this
+  workstream's own REPL-driving gap: `resume`ing a `.snap` starts with no disk mounted in drive A
+  (deliberately excluded from `MmuSnapshot` - `MMU.LoadDiskA`'s own doc comment), and the 57th pass
+  stepped forward without re-issuing `disk <path>` first.
+- Reproduced the exact failing sequence byte-for-byte with the disk unmounted
+  (`full_trace_fdc.log`), then reproduced the identical command sequence reading clean with Disk 2
+  mounted first (`full_trace_mounted_fdc.log`, 121/121 reads OK) - a controlled A/B, not a guess.
+- Past the fix, execution runs well beyond the old wall: track 13 side 1 by 30M steps, PC=`$15254`
+  by 90M steps, rendering to the already-known Day 1/Boat/Cavern room. Real further progress, but
+  not yet evidence Disk 2 supplies anything the one-disk crack didn't already have resident - that's
+  the new, narrower open question (item 1 below).
 
 ## Open, in priority order
 
-1. **The new `READ-SECTOR track=0 side=0 sector=8` -> "no data" wall** at `$11b00`-`$11b0e`, from
-   `scratchpad/cadaver/disk2_past_dispatch_30M.snap`. Not yet diagnosed: whether track 0/sector 8
-   is genuinely absent from whichever disk is mounted in drive A at this point (a disk-swap step
-   missed somewhere upstream of this snapshot), an FDC-modelling gap for this exact command
-   sequence, or something else. Start with `ATARI_TRACE_FDC=1` over a wider window to see the
-   full retry pattern, then check what disk is actually mounted at this point in the drive/`disk`
-   REPL-command history vs. what the crack expects (compare against the equivalent point in a
-   disk image known to boot clean, if one exists).
+1. **Does Disk 2 supply any content beyond what's already known from the one-disk crack?** Past the
+   old wall, 90M steps of forward-running with no player input lands back in the already-documented
+   Day 1/Boat/Cavern room (`past_wall_mounted_90M.png` vs `boat_hotspot.png`, pixel-identical
+   framing) - real gameplay, not proof of new content. Next step: drive it with actual player input
+   (movement/interaction, per the `reverse-engineer-st-game` skill and this workstream's existing
+   `kbd`/joystick notes) from `past_wall_mounted_90M.snap` far enough to reach a room or day beyond
+   what `mechanics.md`'s existing 72-room world-map graph covers, or to exhaust the disk's own
+   descriptor table at `(A5)+2538` (§55) and confirm it holds no further entries.
 2. Which of the 13 (of 14) `$ff8201`-touching call sites other than the room-crossing path
    actually fires. Not needed to close anything above.
 3. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period
@@ -89,29 +89,34 @@ bracket multiple regions in one call, `gfxview.py`'s `st-interleaved` assumes 16
 blits, movement is joystick port 1, player = sprite slot 0, use
 `tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`find_jump_table_hit.py`.)
 
+- **A `.snap` does not remember which disk is mounted in drive A** (`MMU.LoadDiskA`'s own doc
+  comment: deliberately excluded, "external, physical-world state"). `resume`ing any snapshot
+  starts with `diskA = None` until the REPL's own `disk <path>` re-mounts one (or `--disk-a`/
+  `ATARI_DISK_A` was passed at process start) - stepping forward without it makes every FDC sector
+  read fail "no data", indistinguishable from a genuinely absent sector or a real FDC gap unless you
+  think to check (58th pass: this is exactly what made §57's "new FDC wall" look unresolved for a
+  whole pass). Always issue `disk <path>` right after `resume`ing a snapshot that was taken with a
+  real disk swapped in, before stepping forward. Flagged to the concurrent "Training efficiency (2)"
+  session as worth folding into `CLAUDE.md`'s Rules section too, since it applies to any workstream
+  that swaps disks, not just this one - not yet done because `CLAUDE.md` had that session's own
+  uncommitted edit in the working tree this pass.
 - **A blind linear/static disassembly at a `jsr` target that lands in what looks like a data
-  region (e.g. framebuffer/screen memory) is not reliable evidence that the target really is
-  stale data misread as code.** Rob Northen (and similar) protection code deliberately looks like
-  garbage under a byte-for-byte scan - self-installing exception-vector handlers, deliberately
-  executed reserved/unimplemented opcodes as CPU-detection probes, trace-mode single-step decrypt
-  loops. The 55th pass called this "stale framebuffer pixel data decoded as code" from a static
-  read alone; actually single-stepping the live CPU past it (57th pass) showed it was real,
-  intentional protection code the whole time, and the "crash" was two genuine emulator gaps. When
-  a `jsr`/`jmp` target's static disassembly looks like noise, step through it live before
-  concluding it's misread data rather than an emulator gap or a genuine probe.
+  region is not reliable evidence that the target really is stale data misread as code** - Rob
+  Northen (and similar) protection code deliberately looks like garbage under a byte-for-byte scan.
+  When a `jsr`/`jmp` target's static disassembly looks like noise, step through it live before
+  concluding it's misread data rather than an emulator gap or a genuine probe (57th pass).
 - **`run.ps1`'s subcommand names are aliases, not raw argv** (`CLAUDE.md`'s Rules section has the
-  mapping) - `snap <N> <path>` is NOT valid raw argv; the raw form is `<N> snapshot <path>`
-  (`resume <N> <path>` is likewise `<N> resume <path>`). Passing the alias name directly to
-  `dotnet exec` silently falls through to a disk-less cold boot and, worse, a `snapshot`/`snap`
-  confusion can silently save nothing at all rather than erroring - always `cmp`/`ls` a snapshot
-  file after writing it if the exact argv hasn't been double-checked against `run.ps1`'s own
-  `switch` block.
+  mapping) - `snap <N> <path>` is NOT valid raw argv; the raw form is `<N> snapshot <path>`.
+  Passing the alias name directly to `dotnet exec` silently falls through to a disk-less cold boot -
+  always `cmp`/`ls` a snapshot file after writing it if the exact argv hasn't been double-checked.
 - Stepping past a reserved/undefined-opcode CPU-detection probe or a trace-mode decrypt loop can
-  legitimately take tens of millions of steps before the interesting part (the actual disk read)
-  starts - don't assume a large step count with little PC movement means a hang; check `r` twice
-  a few hundred thousand steps apart first (identical registers = real loop; still identical after
-  a fix = still a real gap; PC or registers differing but slowly = genuine multi-instruction work,
-  keep stepping).
+  legitimately take tens of millions of steps before the interesting part starts - don't assume a
+  large step count with little PC movement means a hang; check `r` twice a few hundred thousand
+  steps apart first (identical registers = real loop; PC/registers differing but slowly = genuine
+  multi-instruction work, keep stepping). But when *every* data/address register, not just PC, is
+  bit-identical across samples tens of millions of steps apart, that's a real idle/busy-wait loop,
+  not slow progress - check what condition it's blocked on (58th pass: `$11ac6` is exactly §54's
+  documented "no keyboard input" idle address, reused generically, not a fresh wall).
 - `bp <hexaddr> [maxSteps]` takes at most 2 arguments - `bpc <addr> <n> [maxSteps]` if an Nth-hit
   count is needed.
 - The REPL's `disk <path>` command mounts a *relative* path from the process's own working
@@ -120,10 +125,9 @@ blits, movement is joystick port 1, player = sprite slot 0, use
 - A live snapshot's static memory alone can settle a "what does routine X compute" question without
   running the emulator forward, and extends to a disk image's own raw bytes for "does the disk hold
   more content" - though it can't identify *what kind* of content without a live boot or readable
-  strings, and exhaustive width-guessed rendering can rule out "it's a plain raster at any obvious
-  stride" too, once tried thoroughly enough to trust the negative (§56). It canNOT, per this
-  session's own finding, settle "is this address really data, or an emulator gap disguised as
-  data" - that needs a live step.
+  strings. It canNOT settle "is this address really data, or an emulator gap disguised as data", or
+  "is this FDC failure real, or is the disk just not mounted" - both need a live step, and the
+  latter needs an A/B with the disk mounted vs not (58th pass).
 - `gfxview.load_ram(path)` returns `(ram_bytes, base)`, that order. `gfxview.detect_palettes(ram,
   base)` returns a list of dicts (`addr`/`type`/`words`/`colors`/`distinct`), not tuples.
 - The REPL's `watch <addr> <len>` parses `<len>` as decimal, not hex.
@@ -140,9 +144,8 @@ blits, movement is joystick port 1, player = sprite slot 0, use
 
 ## Next session
 
-Item 1 is the clear priority: from `scratchpad/cadaver/disk2_past_dispatch_30M.snap` (PC=$11b0e),
-widen the `ATARI_TRACE_FDC=1` window to see the full retry pattern around the `READ-SECTOR
-track=0 side=0 sector=8` -> "no data" failures, and determine whether this is a missing disk-swap
-step, a genuinely absent sector on the mounted image, or an FDC-modelling gap. Both of this
-session's emulator fixes are committed and pass the full regression net already, so no
-reverification is needed before building on them. Prompt: `/resume cadaver`.
+Item 1 is the priority: from `scratchpad/cadaver/past_wall_mounted_90M.snap` (Disk 2 mounted, past
+the old wall, sitting in the Day 1/Boat/Cavern room), drive real player input forward far enough to
+either reach content beyond `mechanics.md`'s existing 72-room world-map graph, or exhaust Disk 2's
+own descriptor table at `(A5)+2538` and confirm it holds nothing further. No emulator rebuild or
+reverification is needed first - nothing in `*.fs` changed this pass. Prompt: `/resume cadaver`.
