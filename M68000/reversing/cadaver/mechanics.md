@@ -3826,6 +3826,74 @@ didn't already have resident. Downgrades item 1 from "an unresolved wall, cause 
 REPL workflow's own gap, now fixed by remounting the disk after every snapshot load" — no emulator
 change needed, and the new open question is a different, narrower one (below).
 
+## 59. Open item 1 (does Disk 2 add content beyond the known 72-room map): the room table itself is
+    unchanged, and past the wall the game is not in normal interactive gameplay at all — the
+    sprite/entity array is empty and joystick input has zero effect (59th pass)
+
+**59a. `world_map.py`'s hardcoded resource-manager addresses were stale for the two-disk build,
+producing a false "100/100 populated, massive overlap" reading.** The type-3 index-table/data-area
+addresses (§38a) are not fixed constants — they're read out of `(A5)+96`'s resource manager at
+runtime, and the two-disk Replicants build's whole resource manager sits **exactly `$100` bytes**
+past the one-disk build's (`room2_tunnel_entry.snap`: A5=`$18152`, resmgr=`$4a466`, type-3
+idx=`$4ac36`/data=`$6bf0a`; `past_wall_mounted_90M.snap`: A5=`$182b4`, resmgr=`$4a566`, type-3
+idx=`$4ad36`/data=`$6c00a` — every one of the first 9 resource types shifted by the same `$100`,
+confirmed table by table). `world_map.py` hardcoded the old build's addresses, so running it
+against a Disk 2 snapshot walked 100 garbage "slots" all pointing at the same stray `$75894`
+record and reported nonsensical universal overlap. Fixed: `world_map.py` now resolves type 3's
+index-table/data-area pointers fresh from each snapshot's own `(A5)+96` (`resource_type()`, a
+small reusable helper), matching the manual resource-manager decode above exactly. Re-run against
+the Disk 2 snapshot: **72/100 populated, 117 adjacent pairs (99 edge, 18 corner, 0 overlap)** —
+byte-identical rectangles, slot for slot, to the one-disk build's own map. `door_walk.py` has the
+same staleness bug (`TYPE4_INDEX`/`TYPE4_DATA` hardcoded, plus a now-broken import of the constants
+`world_map.py` no longer exports) and needs the same fix; not done this pass, flagged as a
+background task instead of taking time from the live question below.
+
+**59b. The type-3 room table itself supplies nothing new**: same 72 rooms, same rectangles, same
+adjacency graph as the one-disk crack already fully mapped (§44). Whatever Disk 2 contributes, it
+is not additional entries in this table, at least not by the time execution reaches
+`past_wall_mounted_90M.snap`.
+
+**59c. Driving real joystick input from `past_wall_mounted_90M.snap` produced no visible effect at
+all — the player sprite never moved, the room never changed, and the rendered frame was pixel-
+identical before and after.** Five separate `kbd ff 08` (joystick-1 right, make) / `s 3000000` /
+`kbd ff 00` (release) / `s 500000` cycles (15M steps total), and a variant trying a space keypress
+first in case a "you found the Silver Coin" pickup notice was blocking movement input, both left
+`164(A5)`'s current-room field at `$6c00a` (CAVERN/slot 0, unchanged) and the rendered screen
+pixel-identical to the starting frame (`scratchpad/cadaver/drive_right{1..5}.png`,
+`drive_dismiss{1,2}.png` — one small diff region turned out to be the double-buffer flip's own
+harmless redraw, not player movement). The main loop is genuinely alive and running frames (the
+shifter base keeps alternating `$19200`/`$21000` each cycle, and `bpc 80cc` — the sprite/HUD blit
+routine — hits within 562k steps of a fresh joystick press), so this isn't a hung emulator; the
+input is simply not producing gameplay effects.
+
+**59d. The likely cause: the player/entity sprite array is empty.** §19a/§32c's own already-
+documented sprite-object array base, `$038338` (player at slot 0), reads all-zero — every snapshot
+from `past_wall_mounted_90M.snap` through all seven driven snapshots above — where a normal
+gameplay snapshot (`room2_tunnel_entry.snap` and every other one-disk-build snapshot this workstream
+has taken) has real, non-zero player/entity data there. Two readings are consistent with this and
+not yet distinguished: (a) `$038338` is itself stale for this build the same way §59a's resource-
+manager addresses were (a heap-allocated buffer, not resource-manager-relative, so the same `$100`
+offset doesn't necessarily apply — not yet checked against a live capture of the sprite-blit
+routine's own `A6` in this build, which the one `bpc 80cc` sample this pass took returned `A6=$88`,
+implausibly low for a heap array base, but that sample's call site wasn't confirmed to be the
+§32c-documented outer sprite-list walker rather than one of the blit's other callers); or (b) the
+address is still correct and this build's boot-time "activate type-3 slot 0" entity-spawn call
+(§31's `$00e80c`) genuinely never ran on the path that reached `past_wall_mounted_90M.snap` —
+plausible given that snapshot's whole lineage is a step-forward-with-no-input replay starting deep
+inside the Rob Northen protection chain (`before_jsr.snap`), not a normal cold boot, so a one-time
+init routine gated on an earlier boot phase could easily have been skipped.
+
+**Net effect on item 1**: reframed rather than closed. The static room-table question (does Disk 2
+add rooms) is now answered — no, not in this table, not by this point in execution. The dynamic
+question (does Disk 2 add reachable content) is still open, but the concrete next blocker is
+narrower and more tractable than "walk around and see": find out why `$038338` is empty and get
+the player entity genuinely live, either by (a) re-deriving the sprite array's current address the
+same way §59a fixed the room table (breakpoint the sprite-list walker at `$00d93c`'s `bsr $7dd6`
+call site per §32c, read its own `A6` directly, not the deeper generic blit at `$0080cc`), or (b) if
+the address is confirmed still correct, tracing why `$00e80c`'s activation call doesn't fire on this
+snapshot's lineage and whether re-running from a genuine cold boot with Disk 2 pre-mounted (rather
+than a mid-flight disk swap replayed from `before_jsr.snap`) reaches a state where it does.
+
 ## Files
 
 | File | What |
@@ -3837,7 +3905,7 @@ change needed, and the new open question is a different, narrower one (below).
 | `py/door_id_words.py` | 49th pass: for the 5 doors with a genuine positive id word, dumps the descriptor's own `+4..+7` bytes and resolves the id word as a type-6 object id, checking its `+15` lock flag — proof for §49 |
 | `py/snapinfo.py` | 46th pass: one-line-per-snapshot room/display-buffer-parity/shifter-base report, reusing `tools/gfxview.py`'s header parsing — proof for §46 |
 | `boat_hotspot.png` | 45th pass: live snapshot rendered at CAVERN's BOAT proximity hotspot, status bar/icon panel reading "BOAT"/"CAVERN" — proof for §45 that the §43 mechanism resolves a second object correctly, not just TUNNEL's LEVER |
-| `py/world_map.py` | 44th pass: walks the type-3 resource-manager table and decodes every populated room's world-grid rectangle (§38a/§38d), reports the adjacency graph, renders `world_map.png` |
+| `py/world_map.py` | 44th pass: walks the type-3 resource-manager table and decodes every populated room's world-grid rectangle (§38a/§38d), reports the adjacency graph, renders `world_map.png`; 59th pass: resolves the type-3 index-table/data-area pointers fresh from each snapshot's own `(A5)+96` instead of hardcoding them, after the hardcoded addresses were found stale against the two-disk build (§59a) |
 | `world_map.png` | 44th pass: rendered map of all 72 populated room rectangles, labelled by slot (TUNNEL/CAVERN named) — proof for §44 |
 | `room2_lever_boundary_new.snap` | 41st pass: live snapshot rebuilt from `room2_tunnel_entry.snap` (13th pass's Left-hold recipe) after `room2_lever_boundary.snap` was found missing from this Mac's scratchpad — status bar "LEVER"/"TUNNEL", icon panel showing the lever's icon pair, matching the original 13th-pass screenshot; resume point for further proximity-icon-panel work; untracked like the other `.snap` resume points |
 | `burst_end.snap` | 39th pass: live snapshot at the end of `$0150b4`'s room-paint burst (step ≈1,058,885 of the `kbd ff 02` crossing from `room2_tunnel_entry.snap`) — both display halves already ≈98% match the CAVERN reference here (§37c); untracked like the other `.snap` resume points |

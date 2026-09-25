@@ -2,11 +2,20 @@
 every populated room's world-space bounding-box rectangle, to build the full room-adjacency graph.
 
 Resource manager (sec38a): 18-byte type record at (A5)+96, indexed by type. Type 3 is the room
-table: index-table base $4ac36, data-area base $6bf0a, 100 slots. Each index-table entry is 4
-bytes: [+0 size(word)][+2 offset(word)]; a zero size means the slot is unpopulated. A populated
-slot's room record lives at data_area + offset, and (sec38d) bytes [+1 x0][+3 y0][+4 width]
-[+5 height] (all unsigned bytes) are its world-grid rectangle [x0,y0]-[x0+width,y0+height]
-(inclusive both ends, confirmed by the TUNNEL/CAVERN pair touching exactly at their shared edge).
+table: `[+0 index-table ptr][+4 data-area ptr]...[+16 entry count, word]`, 100 slots. Each
+index-table entry is 4 bytes: [+0 size(word)][+2 offset(word)]; a zero size means the slot is
+unpopulated. A populated slot's room record lives at data_area + offset, and (sec38d) bytes
+[+1 x0][+3 y0][+4 width][+5 height] (all unsigned bytes) are its world-grid rectangle
+[x0,y0]-[x0+width,y0+height] (inclusive both ends, confirmed by the TUNNEL/CAVERN pair touching
+exactly at their shared edge).
+
+The index-table/data-area addresses are **not** fixed constants across builds - they are read out
+of the resource manager (A5+96) at runtime, so a different crack/relocation shifts them (the
+two-disk Disk 2 build's whole resource manager sits +0x100 past the one-disk build's, confirmed by
+comparing `room2_tunnel_entry.snap`'s A5=$18152 against a post-58th-pass Disk 2 snapshot's
+A5=$182b4 - hardcoding the old build's $4ac36/$6bf0a against the new build silently walks garbage
+and reports 100/100 "populated" slots with massive bogus overlap, cadaver mechanics.md sec59).
+Always resolve type 3's pointers fresh from each snapshot's own resource manager.
 
 These fields are static per snapshot (game data, not per-frame state), so any snapshot with the
 resource manager initialised works; room2_tunnel_entry.snap is used by convention.
@@ -17,14 +26,16 @@ Prints every populated slot's rectangle and every pair of rectangles that touch 
 (the adjacency graph), and optionally renders the rectangles into a PNG map.
 """
 import argparse
+import struct
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
-from gfxview import load_ram  # noqa: E402
+from gfxview import load_ram, snapshot_regs  # noqa: E402
 
-INDEX_TABLE = 0x4ac36
-DATA_AREA = 0x6bf0a
+RESOURCE_MANAGER_OFFSET = 96  # (A5)+96
+TYPE_RECORD_SIZE = 18
+ROOM_TYPE = 3
 SLOT_COUNT = 100
 
 KNOWN_NAMES = {0: "CAVERN", 1: "TUNNEL"}
@@ -35,13 +46,30 @@ def read_u16(ram, addr, base):
     return int.from_bytes(ram[o:o + 2], "big")
 
 
-def read_room(ram, base, slot):
-    entry_addr = INDEX_TABLE + slot * 4
+def read_u32(ram, addr, base):
+    o = addr - base
+    return struct.unpack(">I", ram[o:o + 4])[0]
+
+
+def resource_type(ram, base, a5, type_id):
+    """Resolve one resource-manager type record (sec38a) to (index_table_ptr, data_area_ptr,
+    count), read fresh from this snapshot's own (A5)+96 - never hardcode these addresses, they
+    move with the build (see module docstring)."""
+    resmgr = read_u32(ram, a5 + RESOURCE_MANAGER_OFFSET, base)
+    rec = resmgr + type_id * TYPE_RECORD_SIZE
+    index_table = read_u32(ram, rec, base)
+    data_area = read_u32(ram, rec + 4, base)
+    count = read_u16(ram, rec + 16, base)
+    return index_table, data_area, count
+
+
+def read_room(ram, base, index_table, data_area, slot):
+    entry_addr = index_table + slot * 4
     size = read_u16(ram, entry_addr, base)
     offset = read_u16(ram, entry_addr + 2, base)
     if size == 0:
         return None
-    rec = DATA_AREA + offset
+    rec = data_area + offset
     o = rec - base
     x0, y0, w, h = ram[o + 1], ram[o + 3], ram[o + 4], ram[o + 5]
     return {"slot": slot, "size": size, "offset": offset, "rec": rec,
@@ -72,8 +100,16 @@ def main():
     args = ap.parse_args()
 
     ram, base = load_ram(args.snap)
+    regs, ok = snapshot_regs(args.snap)
+    if not ok:
+        raise SystemExit(f"{args.snap}: not a snapshot")
+    a5 = regs["a5"] & 0xFFFFFF
+    index_table, data_area, count = resource_type(ram, base, a5, ROOM_TYPE)
+    print(f"type {ROOM_TYPE} resource manager: index_table={index_table:#x} "
+          f"data_area={data_area:#x} count={count}")
 
-    rooms = [r for s in range(SLOT_COUNT) if (r := read_room(ram, base, s)) is not None]
+    rooms = [r for s in range(SLOT_COUNT)
+             if (r := read_room(ram, base, index_table, data_area, s)) is not None]
     print(f"{len(rooms)}/{SLOT_COUNT} populated slots")
     for r in rooms:
         name = KNOWN_NAMES.get(r["slot"], "")
