@@ -1,7 +1,7 @@
 # How PowerMonger draws its world
 
-*2026-09-23T01:35:39Z by Showboat 0.6.1*
-<!-- showboat-id: 1a74453f-fbfb-43b8-a403-607035b6984f -->
+*2026-09-25T13:32:25Z by Showboat 0.6.1*
+<!-- showboat-id: 713782f4-6b4e-48e0-b994-1269d3f0614c -->
 
 This walks through one frame of PowerMonger's isometric view (Atari ST, 1990), following the data from the heightmap in RAM to the pixels on screen. The code is the F# port in `../godot/logic/`, which reproduces the 68000 routines closely enough to match the game's own frame buffer at 99.7-99.99% of pixels on the mission-1 captures (94.6% on one whose two frame buffers disagree), every pixel of the later-land frames checked, and the terrain alone at over 99% away from sprites at all seven zoom levels. Addresses like `$fccc` are routines in the original executable, so every section can be traced back to the disassembly.
 
@@ -676,7 +676,7 @@ More than half the sprite pixels are painted over, and whole trees are drawn onl
 
 ## 8. Watching it happen: the frame stepper
 
-Because the frame is now a list of steps, it can be replayed. `../stepper` is a small Mibo (raylib) app that draws the frame one triangle or sprite at a time, with pause, single steps by triangle, cell or strip, rewind, and overlays for the corner grid, the walk order, and the current triangle or sprite frame. Run it with `dotnet run --project ../stepper`. W/A/S/D move the camera a cell, Q/E rotate it, `[`/`]` zoom, Y changes the season, and B toggles the game's backdrop behind the island.
+Because the frame is now a list of steps, it can be replayed. `../stepper` is a small Mibo (raylib) app that draws the frame one triangle or sprite at a time, with pause, single steps by triangle, cell or strip, rewind, and overlays for the corner grid, the walk order, and the current triangle or sprite frame. Run it with `dotnet run --project ../stepper`. P plays or pauses continuous playback, which loops back to the start at the end of the frame rather than stopping; Space steps forward one triangle or sprite, same as Right, and (like the other step keys) pauses continuous play, since scrubbing to a step should. W/A/S/D move the camera a cell, Q/E rotate it, `[`/`]` zoom, and Y changes the season -- none of those pause continuous play, they just rebuild the view under it and keep looping. B toggles the game's backdrop behind the island, and C toggles a rain/snow overlay (`Weather.fs`), the kind picked by the current season.
 
 ![The seven zoom levels around the mission-1 start](../assets/reference/stepper_zoom_119th.png)
 

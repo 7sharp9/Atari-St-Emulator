@@ -5,7 +5,7 @@
 ///   dotnet run -- --selfcheck           headless: replay == Scene.render
 ///   dotnet run -- --export <dir> [cell|strip|shape]
 ///                                       headless: one PNG per chunk boundary
-///   dotnet run -- --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]
+///   dotnet run -- --shot <png> <step> [g] [n] [w] [yN] [sN] [zN] [cX,Y]
 ///                                       window at a step, screenshot, exit
 ///   dotnet run -- --assets <dir> ...    any of the above on another export
 ///                                       (default ../assets, the mission-1 start)
@@ -24,6 +24,7 @@ open PmStepper.Replay
 
 let private W, H = Replay.W, Replay.H
 let private Scale = 3.0f
+let private WeatherPhaseRate = 4.0    // phase steps ($40 each) per second; matches "4 frames of animation"
 let private Origin = Vector2(16.0f, 16.0f)
 let private PanelX = Origin.X + float32 W * Scale + 24.0f
 let private Background = Color(byte 24, byte 26, byte 32, byte 255)
@@ -50,6 +51,9 @@ type Model =
       ShowGrid: bool                   // the projected 9x9 corner grid
       ShowOrder: bool                  // each cell's position in the walk
       ShowBackdrop: bool               // the $78000 master behind the island
+      ShowWeather: bool                // rain/snow overlay, kind picked by the frame's season
+      WeatherPhase: int                // $1aac8: 0..255, steps of $40 (4 frames of animation)
+      WeatherCarry: float              // fractional phase steps owed from the last tick
       Shot: (string * int) option }    // --shot: file, frames rendered so far
 
 type Msg =
@@ -57,13 +61,13 @@ type Msg =
     | Key of KeyCode
 
 type LaunchOptions =
-    { StartStep: int; Grid: bool; Order: bool
+    { StartStep: int; Grid: bool; Order: bool; Weather: bool
       Yaw: int option; Season: int option; Zoom: int option; Cam: (int * int) option
       ShotFile: string option }
 
     /// Open on the captured view, at the first step.
     static member Default =
-        { StartStep = 0; Grid = false; Order = false
+        { StartStep = 0; Grid = false; Order = false; Weather = false
           Yaw = None; Season = None; Zoom = None; Cam = None; ShotFile = None }
 
 /// Keep the window's corner grid, (2 * zoom + 1) square from the top-left
@@ -89,12 +93,15 @@ let private init (a: Load.Assets) (o: LaunchOptions) (_: GameContext) =
     let f = Replay.build a (startView a o) 0
     struct ({ Assets = a; Frame = f; Cursor = { Step = min o.StartStep f.Steps.Length; Pixel = 0 }
               Playing = false; Speed = 1500.0; Carry = 0.0; ShowGrid = o.Grid; ShowOrder = o.Order; ShowBackdrop = true
+              ShowWeather = o.Weather; WeatherPhase = 0; WeatherCarry = 0.0
               Shot = o.ShotFile |> Option.map (fun file -> file, 0) },
             Cmd.none)
 
-/// Rebuild the replay for a new view and rewind to its start.
+/// Rebuilds the frame for a new view (pan/rotate/zoom/season), keeping
+/// continuous play running if it already was: only a manual step key or P
+/// itself should leave continuous mode, not a camera change mid-loop.
 let private withView (m: Model) (v: Replay.View) =
-    { m with Frame = Replay.build m.Assets v 0; Cursor = Replay.start; Playing = false; Carry = 0.0 }
+    { m with Frame = Replay.build m.Assets v 0; Cursor = Replay.start; Carry = 0.0 }
 
 /// A camera change re-projects, and $f898 flips the dither phase when it does.
 let private rotate (m: Model) (by: int) =
@@ -126,9 +133,22 @@ let private nextSeason (m: Model) =
     let v = m.Frame.View
     withView m { v with Season = (v.Season + 1) % 4 }
 
+/// Rain/snow animates independently of frame playback (it is a separate
+/// heartbeat in the game, not part of the cell walk), so it advances on
+/// every tick regardless of Playing.
+let private advanceWeather (gt: GameTime) (m: Model) =
+    if not m.ShowWeather then m
+    else
+        let owed = m.WeatherCarry + WeatherPhaseRate * gt.ElapsedGameTime.TotalSeconds
+        let n = int owed
+        { m with WeatherPhase = (m.WeatherPhase + n * 0x40) &&& 0xFF; WeatherCarry = owed - float n }
+
 let private update (msg: Msg) (m: Model) =
     let move f = struct ({ m with Cursor = f m.Frame m.Cursor; Playing = false; Carry = 0.0 }, Cmd.none)
     let set m' = struct (m', Cmd.none)
+    let togglePlay m =
+        let c = if Replay.isFinished m.Frame m.Cursor then Replay.start else m.Cursor
+        { m with Cursor = c; Playing = not m.Playing; Carry = 0.0 }
     match msg with
     | Tick _ when m.Shot.IsSome ->
         // a few frames in, so the window has presented the view at least once
@@ -136,15 +156,17 @@ let private update (msg: Msg) (m: Model) =
         if frames = 5 then Raylib.TakeScreenshot(shotName file)
         struct ({ m with Shot = Some(file, frames + 1) }, if frames >= 6 then Cmd.signalExit else Cmd.none)
     | Tick gt when m.Playing ->
+        let m = advanceWeather gt m
         let owed = m.Carry + m.Speed * gt.ElapsedGameTime.TotalSeconds
         let n = int owed
         let c = Replay.advance m.Frame n m.Cursor
-        set { m with Cursor = c; Carry = owed - float n; Playing = not (Replay.isFinished m.Frame c) }
-    | Tick _ -> set m
-    | Key KeyCode.Space ->
-        let c = if Replay.isFinished m.Frame m.Cursor then Replay.start else m.Cursor
-        set { m with Cursor = c; Playing = not m.Playing; Carry = 0.0 }
-    | Key KeyCode.Right -> move (fun f c -> Replay.forward f Shape c)
+        // continuous play loops the frame rather than stopping at its end;
+        // P (or any manual-step key) is what leaves continuous mode
+        let c = if Replay.isFinished m.Frame c then Replay.start else c
+        set { m with Cursor = c; Carry = owed - float n }
+    | Tick gt -> set (advanceWeather gt m)
+    | Key KeyCode.P -> set (togglePlay m)
+    | Key (KeyCode.Space | KeyCode.Right) -> move (fun f c -> Replay.forward f Shape c)
     | Key KeyCode.Left -> move (fun f c -> Replay.back f Shape c)
     | Key KeyCode.Down -> move (fun f c -> Replay.forward f Cell c)
     | Key KeyCode.Up -> move (fun f c -> Replay.back f Cell c)
@@ -152,7 +174,7 @@ let private update (msg: Msg) (m: Model) =
     | Key KeyCode.PageUp -> move (fun f c -> Replay.back f Strip c)
     | Key KeyCode.Home -> move (fun _ _ -> Replay.start)
     | Key KeyCode.End -> move (fun f _ -> Replay.finish f)
-    | Key (KeyCode.Equal | KeyCode.KpAdd) -> set { m with Speed = min 64000.0 (m.Speed * 2.0) }
+    | Key (KeyCode.Equal | KeyCode.KpAdd) -> set { m with Speed = min 128000.0 (m.Speed * 2.0) }
     | Key (KeyCode.Minus | KeyCode.KpSubtract) -> set { m with Speed = max 25.0 (m.Speed / 2.0) }
     | Key KeyCode.Q -> set (rotate m -1)
     | Key KeyCode.E -> set (rotate m 1)
@@ -166,6 +188,7 @@ let private update (msg: Msg) (m: Model) =
     | Key KeyCode.G -> set { m with ShowGrid = not m.ShowGrid }
     | Key KeyCode.N -> set { m with ShowOrder = not m.ShowOrder }
     | Key KeyCode.B -> set { m with ShowBackdrop = not m.ShowBackdrop }
+    | Key KeyCode.C -> set { m with ShowWeather = not m.ShowWeather; WeatherCarry = 0.0 }
     | Key KeyCode.Escape -> struct (m, Cmd.signalExit)
     | Key _ -> set m
 
@@ -238,6 +261,10 @@ let private describe (m: Model) =
           sprintf "step %d / %d    pixels %d / %d" (min (c.Step + 1) f.Steps.Length) f.Steps.Length
               (Replay.written f c) (Replay.total f)
           sprintf "%s   %.0f px/s" (if m.Playing then "PLAYING" else "paused") m.Speed
+          sprintf "weather %s (%s this season, phase %d)"
+              (if m.ShowWeather then "ON" else "off")
+              (match Weather.kindForSeason v.Season with 0 -> "none" | 1 -> "rain" | _ -> "snow")
+              m.WeatherPhase
           "" ]
     let now =
         if Replay.isFinished f c then [ "frame complete" ]
@@ -293,7 +320,8 @@ let private describe (m: Model) =
                 | _ -> []
             where @ [ "" ] @ what
     let keys =
-        [ ""; "Space  play / pause"
+        [ ""; "P                 play / pause (loops at the end)"
+          "Space             step forward (same as Right)"
           "Right / Left      one triangle or sprite"
           "Down / Up         one cell"
           "PgDn / PgUp       one strip (an outer-loop pass)"
@@ -305,6 +333,7 @@ let private describe (m: Model) =
           "Y                 next season"
           "G  corner grid    N  visit order"
           "B  backdrop on / off"
+          "C  weather on / off (rain/snow, by season)"
           "Esc  quit" ]
     String.Join("\n", head @ now @ keys)
 
@@ -315,6 +344,15 @@ let private view (screen: Screen) (_: GameContext) (m: Model) (buffer: RenderBuf
 
     // the frame so far, as a texture
     Replay.composeInto screen.Idx f c
+    // weather is a separate pass over the finished screen ($1ad2a), not part
+    // of the cell walk, so it overlays whatever the walk has drawn so far.
+    if m.ShowWeather && m.Assets.Weather.Length > 0 then
+        let kind = Weather.kindForSeason f.View.Season
+        if kind > 0 then
+            let buf = Fill.Buffer.Create()
+            Weather.draw buf m.Assets.Weather kind m.WeatherPhase
+            for i in 0 .. screen.Idx.Length - 1 do
+                if buf.Covered.[i] then screen.Idx.[i] <- int buf.Index.[i]
     for i in 0 .. screen.Idx.Length - 1 do
         let r, g, b =
             match screenIndex m.Assets screen.Idx m.ShowBackdrop (i % W) (i / W) with
@@ -478,6 +516,73 @@ let private export (a: Load.Assets) (dir: string) (chunk: Chunk) =
     printfn "%d frames -> %s" (n + 1) dir
     0
 
+/// Headless check that continuous play (P) sustains, loops, survives a
+/// camera change mid-loop, and still pauses on a manual step key. Runs the
+/// real Mibo HeadlessRunner against the same `init`/`update`/Tick wiring the
+/// window uses (GameTime can't be constructed directly outside Mibo, so this
+/// drives the actual ElmishLoop rather than hand-rolling one), dispatching
+/// Key messages the same way a keypress would, with no raylib window or real
+/// keyboard involved.
+let private playTest (a: Load.Assets) =
+    let program : HeadlessProgram<Model, Msg> =
+        HeadlessProgram.mkHeadless (init a LaunchOptions.Default) update
+        |> HeadlessProgram.withTick Tick
+    use runner = new HeadlessRunner<Model, Msg>(program)
+    let dt = TimeSpan.FromSeconds(1.0 / 60.0)
+    let mutable failed = false
+    let fail msg = eprintfn "FAIL: %s" msg; failed <- true
+
+    runner.Dispatch(Key KeyCode.P)
+    runner.Step(TimeSpan.Zero)     // flush the dispatched P before ticking
+    if not runner.Model.Playing then fail "Key P did not set Playing = true"
+
+    // phase 1: run past two laps, looping back to the start each time,
+    // never stopping on its own
+    let mutable frames = 0
+    let mutable lastStep = runner.Model.Cursor.Step
+    let mutable stalled = 0
+    let mutable loops = 0
+    let budget = 2500      // ~900 ticks/lap at the default speed/pixel count
+    while frames < budget && not failed do
+        runner.Step(dt)
+        frames <- frames + 1
+        if not runner.Model.Playing then
+            fail (sprintf "Playing dropped to false on its own at tick %d (step was %d/%d) -- continuous mode should loop, not stop"
+                    frames lastStep runner.Model.Frame.Steps.Length)
+        else
+            let step = runner.Model.Cursor.Step
+            if step < lastStep then loops <- loops + 1
+            stalled <- if step = lastStep then stalled + 1 else 0
+            lastStep <- step
+            if frames % 300 = 0 then
+                printfn "frame %4d (%5.2fs)  step %3d/%3d  loops %d  playing %b"
+                    frames (float frames / 60.0) step runner.Model.Frame.Steps.Length loops runner.Model.Playing
+            if stalled > 120 then
+                fail (sprintf "cursor stalled at step %d for 120 consecutive ticks (Playing=%b)" step runner.Model.Playing)
+    if not failed && loops < 2 then
+        fail (sprintf "only looped %d time(s) in %d ticks (%.2fs); expected at least 2" loops frames (float frames / 60.0))
+    elif not failed then
+        printfn "OK: looped %d times in %d ticks (%.2fs), Playing stayed true throughout" loops frames (float frames / 60.0)
+
+    // phase 2: panning, rotating and zooming mid-loop must not pause it
+    // (this is what W/A/S/D/Q/E/[/]/Y do via `withView`)
+    if not failed then
+        for key in [ KeyCode.W; KeyCode.A; KeyCode.Q; KeyCode.E; KeyCode.LeftBracket; KeyCode.RightBracket; KeyCode.Y ] do
+            runner.Dispatch(Key key)
+            runner.Step(dt)
+            if not runner.Model.Playing then
+                fail (sprintf "Key %A paused continuous play (it should rebuild the view and keep playing)" key)
+        if not failed then printfn "OK: camera/season changes mid-loop left Playing = true"
+
+    // phase 3: a manual step key must still pause it
+    if not failed then
+        runner.Dispatch(Key KeyCode.Space)
+        runner.Step(dt)
+        if runner.Model.Playing then fail "Key Space did not pause continuous play"
+        else printfn "OK: Space paused continuous play, as a manual step should"
+
+    if failed then 1 else 0
+
 [<EntryPoint>]
 let main argv =
     let dir, argv =
@@ -488,6 +593,7 @@ let main argv =
     let chunkNamed = function "strip" -> Some Strip | "shape" -> Some Shape | "cell" -> Some Cell | _ -> None
     match List.ofArray argv with
     | [ "--selfcheck" ] -> selfCheck a
+    | [ "--playtest" ] -> playTest a
     | [ "--export"; dir ] -> export a dir Cell
     | [ "--export"; dir; name ] when (chunkNamed name).IsSome -> export a dir (chunkNamed name).Value
     | [] -> runWindow a LaunchOptions.Default
@@ -499,8 +605,9 @@ let main argv =
         let cell c = valueOf c |> Option.map (fun v -> let xy = v.Split ',' in int xy.[0], int xy.[1])
         runWindow a { LaunchOptions.Default with
                         StartStep = int step; Grid = List.contains "g" flags; Order = List.contains "n" flags
+                        Weather = List.contains "w" flags
                         Yaw = wrapped 'y' 16; Season = wrapped 's' 4; Zoom = clamped 'z' 1 7; Cam = cell 'c'
                         ShotFile = Some(Path.GetFullPath png) }
     | _ ->
-        eprintfn "usage: PmStepper [--assets <dir>] [--selfcheck | --export <dir> [cell|strip|shape] | --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]]"
+        eprintfn "usage: PmStepper [--assets <dir>] [--selfcheck | --export <dir> [cell|strip|shape] | --shot <png> <step> [g] [n] [w] [yN] [sN] [zN] [cX,Y]]"
         2

@@ -194,7 +194,7 @@ More than half the sprite pixels are painted over, and whole trees are drawn onl
 
 ## 8. Watching it happen: the frame stepper
 
-Because the frame is now a list of steps, it can be replayed. `../stepper` is a small Mibo (raylib) app that draws the frame one triangle or sprite at a time, with pause, single steps by triangle, cell or strip, rewind, and overlays for the corner grid, the walk order, and the current triangle or sprite frame. Run it with `dotnet run --project ../stepper`. W/A/S/D move the camera a cell, Q/E rotate it, `[`/`]` zoom, Y changes the season, and B toggles the game's backdrop behind the island.
+Because the frame is now a list of steps, it can be replayed. `../stepper` is a small Mibo (raylib) app that draws the frame one triangle or sprite at a time, with pause, single steps by triangle, cell or strip, rewind, and overlays for the corner grid, the walk order, and the current triangle or sprite frame. Run it with `dotnet run --project ../stepper`. P plays or pauses continuous playback, which loops back to the start at the end of the frame rather than stopping; Space steps forward one triangle or sprite, same as Right, and (like the other step keys) pauses continuous play, since scrubbing to a step should. W/A/S/D move the camera a cell, Q/E rotate it, `[`/`]` zoom, and Y changes the season -- none of those pause continuous play, they just rebuild the view under it and keep looping. B toggles the game's backdrop behind the island, and C toggles a rain/snow overlay (`Weather.fs`), the kind picked by the current season.
 
 ![The seven zoom levels around the mission-1 start](../assets/reference/stepper_zoom_119th.png)
 

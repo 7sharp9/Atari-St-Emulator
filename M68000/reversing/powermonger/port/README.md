@@ -20,21 +20,30 @@ cd stepper
 dotnet run                                   # window
 dotnet run -- --selfcheck                    # replay == Scene.render: 16 yaws, zooms 1-7
 dotnet run -- --export <dir> [cell|strip|shape]  # one PNG per chunk boundary (3x)
-dotnet run -- --shot <png> <step> [g] [n] [yN] [sN] [zN] [cX,Y]
+dotnet run -- --shot <png> <step> [g] [n] [w] [yN] [sN] [zN] [cX,Y]
                                              # window at a step, screenshot, exit:
                                              # yaw N, season N, zoom N, camera cell X,Y
 dotnet run -- --assets ../assets_k60 ...     # any of the above on another export
 ```
 
-Keys: Space play/pause; Right/Left one triangle or sprite; Down/Up one cell;
-PgDn/PgUp one strip (one pass of the walk's outer loop, 2 x zoom cells);
-Home/End; `+`/`-` speed; W/A/S/D move the camera a cell; Q/E rotate it;
-`[`/`]` zoom in/out (1-7, keeping the centre cell, as `$13f60` does); Y the
-next season; G the projected corner grid; N each cell's position in the walk;
-B the `$78000` backdrop. It opens on the view `entities.json` was captured in
-(mission-1 start: cell 36,47, yaw 15, zoom 4, season 2). The records cover
-the whole map, so every camera cell has its sprites. Moving, rotating or
-zooming flips the dither phase, as `$f898` does; a season change does not.
+Keys: P play/pause (continuous -- loops back to the start at the end of the
+frame rather than stopping); Right/Left/Space one triangle or sprite (Space
+steps forward, same as Right -- no need to press it while playing, since
+playback already advances on its own); Down/Up one cell; PgDn/PgUp one strip
+(one pass of the walk's outer loop, 2 x zoom cells); Home/End; `+`/`-` speed.
+Any of Right/Left/Down/Up/PgDn/PgUp/Home/End/Space pauses continuous play, the
+way scrubbing to a specific step should. W/A/S/D move the camera a cell; Q/E
+rotate it; `[`/`]` zoom in/out (1-7, keeping the centre cell, as `$13f60`
+does); Y the next season -- none of these pause continuous play, they just
+rebuild the view under it and keep looping. G the projected corner grid; N
+each cell's position in the walk;
+B the `$78000` backdrop; C the rain/snow overlay (`Weather.fs`, `$1a856`),
+kind picked by the current season (`Weather.kindForSeason`) and animated
+through its 4-frame phase while on. It opens on the view `entities.json` was
+captured in (mission-1 start: cell 36,47, yaw 15, zoom 4, season 2). The
+records cover the whole map, so every camera cell has its sprites. Moving,
+rotating or zooming flips the dither phase, as `$f898` does; a season change
+does not.
 
 `Replay.build` draws each `Scene.Step` on its own into a `Fill.Buffer.Logged()`
 buffer, which records every pixel write in order (spans top row first, left to

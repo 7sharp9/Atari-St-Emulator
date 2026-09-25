@@ -11,6 +11,7 @@ type Assets =
       Dither: byte[]
       Palette: (byte * byte * byte)[]      // the 16 shifter colours, RGB
       Backdrop: byte[]                     // the $78000 master, screen space; [||] if not exported
+      Weather: byte[]                      // rain table (256 B) then snow table (256 B); [||] if not exported
       Entities: Sprites.EntityRec[]        // every record in the map's $47970 buckets, one frame
       EntityCtx: Sprites.EntityCtx
       // the view the entity records were captured in (the mission-1 start):
@@ -53,6 +54,7 @@ let load (dir: string) : Assets =
       Dither = File.ReadAllBytes(file "dither.bin")
       Palette = palette
       Backdrop = (let p = file "backdrop.bin" in if File.Exists p then File.ReadAllBytes p else [||])
+      Weather = (let p = file "weather.bin" in if File.Exists p then File.ReadAllBytes p else [||])
       Entities = entities
       EntityCtx =
         { Yaw = gi ctx "yaw"; Anim = gi ctx "anim" <> 0; SelGroup = gi ctx "sel_group"
