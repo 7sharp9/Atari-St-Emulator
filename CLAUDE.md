@@ -72,6 +72,11 @@ know they existed.
   retired reading without meaning to, not just a stale carried-over handoff item (cadaver
   `mechanics.md` §47c revived a "type-8 room-registration" reading §31/§38 had retired sixteen-plus
   passes earlier, caught and fixed only on a later re-read, 48th pass).
+- Before disassembling a routine to decode it, grep the topic docs (including the other games'
+  `ai.md`/`economy.md`/`strategy.md` if the routine might be shared engine code) for its hex
+  address — it may already be pseudocode'd from an earlier pass. PowerMonger 125th spent a full
+  read-and-decode pass on `$157e6`'s settlement-pulse/loyalty logic only to reproduce, line for
+  line, the C-style pseudocode already proven in `economy.md` §3a (96th/97th) and `ai.md`.
 - When a session decodes a graphics asset for the first time (spritesheet, tileset, icon/panel
   art, palette) well enough to render it, commit the rendered image (PNG) alongside the doc that
   proves the format, not just a prose description or an untracked scratchpad file — future
