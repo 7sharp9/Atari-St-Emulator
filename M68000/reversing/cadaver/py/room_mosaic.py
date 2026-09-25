@@ -60,15 +60,18 @@ further, not a placement-formula error; not yet fully explained.
 
 **TUNNEL (captured the same way, via the CAVERN->TUNNEL "documented zigzag" - `mechanics.md`
 `kbd ff 08`/1.2M, `kbd ff 01`/0.5M, `kbd ff 08`/1.2M, `kbd ff 01`/1.2M from `gameplay_empire.snap`,
-`bpc cab6 1 <budget>` armed per leg - hits 52887 steps into the final leg): only 1961/9932 = 19.7%
-exact against `room2_tunnel_entry.png`, despite the placement mechanism itself being cross-checked
-twice as correct - its `(A5)+2634` table is byte-identical to `room2_tunnel_entry.snap`'s own, and
-stepping the captured snapshot forward 1M steps and `snap_render.py`-rendering it reproduces
-`room2_tunnel_entry.png` pixel-for-pixel (0/64000 diff). The gap is spatial, not uniform: the
-right-hand wall (low tile ids) matches, the left-hand wall (tile ids 31-78) renders as generic
-catalog "cube" art where the reference shows pipe/machinery detail the 80-tile catalog doesn't have -
-graphics.md 5i-3's leading suspect is the still-untraced `0xc2` object-anchor sub-case of `$d1f8`
-(5f) overlaying extra decoration per-cell on top of the base tile. Not resolved this pass.
+`bpc cab6 1 <budget>` armed per leg - hits 52887 steps into the final leg): **9534/9932 = 96.0% exact
+against `room2_tunnel_entry.png`** - in line with CAVERN, once scored with that screenshot's own
+palette formula. A first pass at this score (1961/9932 = 19.7%) looked like a real content gap (right
+wall matching, left wall rendering as "generic" art) and sent a later pass chasing graphics.md 5f's
+`0xc2` marker byte as the explanation; that marker is real (5f resolves it fully) but turned out not
+to be the cause here - the actual explanation (graphics.md 5i-3) was that this file's own palette
+conversion (`sprite_array_export.decode_st_interleaved`, `gun*255//7`) disagrees with
+`tools/snap_render.py`'s `st_colour` (`gun*36`), the tool that produced `room2_tunnel_entry.png`;
+`gameplay.png` (CAVERN's reference) happens to use this file's own formula, which is why only TUNNEL
+looked broken. The two formulas should eventually be unified (graphics.md 5i-3's Open list); until
+then, a low `--diff` score against an older reference screenshot is worth checking against the
+*other* formula before trusting it as a content bug.
 """
 import argparse
 import sys
@@ -114,10 +117,24 @@ def main():
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("snap", help="a mid-draw snapshot, see the recipe in this file's docstring")
     ap.add_argument("--palette", default="0x5a9c")
+    ap.add_argument("--palette-formula", choices=["ste", "st"], default="ste",
+                     help="gun-to-RGB conversion: 'ste' is gfxview.ste_colour's gun*255//7 "
+                          "(matches gameplay.png, CAVERN's reference); 'st' is snap_render.py's "
+                          "st_colour, gun*36 (matches room2_tunnel_entry.png, TUNNEL's reference - "
+                          "an older asset made with that tool). See this file's docstring, graphics.md "
+                          "5i-3: the two tools disagree and haven't been unified yet, so a --diff "
+                          "score against an older reference is only meaningful with the matching "
+                          "formula.")
     ap.add_argument("--out", required=True)
     ap.add_argument("--diff", help="gameplay screenshot to score the render against (pixel-exact "
                                     "match count over the tile-covered area)")
     args = ap.parse_args()
+
+    if args.palette_formula == "st":
+        def _st_colour(word):
+            r, g, b = (word >> 8) & 7, (word >> 4) & 7, word & 7
+            return (r * 36, g * 36, b * 36)
+        sae.ste_colour = _st_colour
 
     ram, base = load_ram(args.snap)
     regs, ok = snapshot_regs(args.snap)
@@ -132,7 +149,8 @@ def main():
     entries = read_descriptor_list(ram, base, a5)
     tiles = [e for e in entries if tile_base <= e["ptr"] < tile_base + tile_size]
     print(f"A5={a5:#x}  list entries={len(entries)}  tile entries={len(tiles)} "
-          f"(non-tile entries are this room's object/sprite descriptors, not rendered here)")
+          f"(non-tile entries are graphics.md 5f's 0xc2-sourced item-catalog overlays, "
+          f"not rendered here yet)")
     if not tiles:
         raise SystemExit("no tile-catalog entries found - is this really a mid-cab6 snapshot? "
                           "(see the capture recipe in this file's docstring)")

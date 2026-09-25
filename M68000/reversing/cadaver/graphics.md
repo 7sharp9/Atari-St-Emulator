@@ -296,12 +296,27 @@ cheap next step" (find what draws the room into the display buffer *before* `120
 was never actually completed; §37 pivoted to the object-array explanation instead. Resuming that
 thread found the real mechanism:
 
-**5a. A whole-image caller census of `$00c5a8` (the `(type, index)` resource fetch, §38a) shows
-every live caller uses `D0` (type) `∈ {0,1,3,4,5,6}` — type 2 (255-entry capacity) is never
-referenced anywhere in the loaded program**, despite its per-room data looking superficially
-promising (`disassemble.py --snap <snap> --all 0x0 0x20000`, greped for every `bsr $c5a8`/`jsr
-$c5a8` site and the `D0` value set immediately before each — 33 call sites, none with `D0=2`). Dead
-end, ruled out cleanly rather than left as a guess.
+**5a. Corrected, 67th pass: type 2 is not dead — it's the single most-referenced resource type in
+the program, reached through a *second*, dedicated fetch primitive the original census didn't
+grep for.** The original claim here (no live caller of `$00c5a8` ever sets `D0=2`, 33 call sites
+checked) is still literally true, but the interpretation built on it was wrong: `$00c5a8` isn't the
+*only* way to reach the resource manager. `$00c576` — a short, separate routine immediately
+preceding `$00c5a8` in the image, easy to mistake for the same routine on a quick read — hardcodes
+`moveq #2,D0` as its first instruction and falls into the identical `(A5)+96 → row[2]` addressing
+`$00c5a8` uses, but decodes its index-table slot differently (one big-endian long: low 17 bits are
+the byte offset into the data area, the high word right-shifted 1 is the entry's byte size, vs
+`$00c5a8`'s plain two-field `{size,offset}` word pair — a second, incompatible slot encoding for
+this one type). A whole-image census of `bsr $c576`/`jsr $c576` (the same `--all 0x0 0x20000` +
+grep technique) finds **28 call sites**, far more than any other single resource type's own direct
+callers — type 2 was never unused, it just has its own bespoke entry point. Its 255-slot table is
+genuinely populated (live-read off `(A5)+96`+`2*18`: 255/255 slots non-zero, though roughly 150 of
+them alias one shared zero-size placeholder record, `$1998a` this session — 102 distinct real
+entries). Rendered and confirmed real art, not noise: `reversing/cadaver/items/contact_sheet.png` /
+`manifest.csv` (`reversing/cadaver/py/resource2_export.py`) — a general-purpose small-object/icon
+catalog (boat, barrels, chests, keys, gems, bones, a dragon, and the two wall-panel entries §5f's
+`0xc2` sub-case uses), the same conceptual role as §3's 22-entry object array but the shared,
+boot-loaded *template* catalog those per-room instances are presumably drawn from (not yet cross-
+checked against §3's array field-for-field, see Open below).
 
 **5b. Types 0 and 1, keyed by the current room slot (`(A5)+1166`), are fetched together by one small
 routine pair (`$00ada4`/`$00adba`, both leaf routines: `bsr $c5a8` with `D1=1166(A5)`, `D0=1` then
@@ -361,25 +376,46 @@ skyline far better than a flat repeating grid would. **Proven, not inferred**:
 `reversing/cadaver/tiles/cavern_grid.png` / `tunnel_grid.png` (both passes per room, every real
 cell labelled with its tile id, every special/bit7 cell marked distinctly per §5f).
 
-**5f. `$cbd4` traced in full: it is not an orientation/variant flag on an ordinary tile — it's a
-second, mostly-inert marker byte, with one live sub-case that writes into the sprite/object-array
-struct, not the tile catalog.** Full disassembly (`$00cbd4`-`$00cc44`): `btst #6,D7; beq $cc44`
-(skip this cell if bit 6 is clear) then `btst #2,D7; bne $cc44` (skip if bit 2 is set) — so only
-`D7 & $44 == $40` does anything at all. Checked against every top-bit-set value actually seen in
-CAVERN/TUNNEL's grids: `0x82`(`1000 0010`) and `0x86`(`1000 0110`) both have bit 6 clear → **pure
-no-op, empty cell**; `0xc6`(`1100 0110`) has bit 2 set → **also a no-op**; only `0xc2`(`1100 0010`)
-passes both gates. Its live path (`$cbe0`-`$cc42`) does not touch the tile catalog or `(A5)+16` at
-all — it reads a *different* global (`1138(A5)`), calls `$92e8` (not traced further this pass), and
-then writes into struct fields at offsets `2,3,10,14` off a pointer taken from `52(A5)` — the same
-low-offset shape (`§37d`'s room-load routine writes similar fields at `2(A1)`/`3(A1)`/`10(A1)`)
-as **instantiating a sprite/object-array entry**, not drawing a tile. **Reframed, not fully
-proven**: the terrain stream's top-bit bytes look like a second, sparser channel for anchoring
-*objects* to specific grid cells (candidate: this may be how the boat/chest/barrel of §3's catalog
-actually get their room positions, rather than the separate free-floating list `mechanics.md` §37d
-already documented) — most such bytes (`bit6` clear, or `bit6` set with `bit2` set) are simply inert
-padding in the two rooms sampled here. Confirming the object-anchor reading needs a `callcap`/`watch`
-on `$cc2e`'s `bsr $d1f8` against a room whose grid actually reaches that live sub-case in the two
-rooms checked here — not done this pass.
+**5f. `$cbd4` traced in full, and its one live sub-case (`0xc2`) fully closed out, 67th pass:
+it's not an object anchor, it's a second terrain-drawing channel — a decorative item/icon from
+§5a's type-2 catalog, painted into a grid cell through the *same* `$d1f8` placement pipeline as an
+ordinary tile, not the sprite/object-array system at all.** Full disassembly (`$00cbd4`-`$00cc44`):
+`btst #6,D7; beq $cc44` (skip this cell if bit 6 is clear) then `btst #2,D7; bne $cc44` (skip if
+bit 2 is set) — so only `D7 & $44 == $40` does anything at all. Checked against every top-bit-set
+value actually seen in CAVERN/TUNNEL's grids: `0x82`(`1000 0010`) and `0x86`(`1000 0110`) both have
+bit 6 clear → **pure no-op, empty cell**; `0xc6`(`1100 0110`) has bit 2 set → **also a no-op**; only
+`0xc2`(`1100 0010`) passes both gates.
+
+Its live path (`$cbe0`-`$cc42`), read in full this pass together with `$00cbf0`/`$00cc3c`'s callee
+`$92e8` and `$92e8`'s own callee `$00c576` (§5a): `D7`'s low nibble minus 1 (`(D7 & $f) - 1` — for
+`0xc2`, nibble 2, index 1) is passed as the catalog index to `$92e8`, which is not part of the
+sprite/object-array machinery at all — it calls `$00c576` (§5a's dedicated type-2 fetch), stores the
+returned entry pointer at `52(A5)` and a header byte at `2209(A5)`, both scratch cells `$cbe0`-`$cc42`
+then reads straight back out: it skips the entry's `0x20`-byte header, reads `w,h` header words, and
+writes a **16-byte draw descriptor** — fields `+2,+3` (width/height bytes), `+10` (source pointer,
+past the header), `+14` (byte size, `w*h*2`) — into the *same* scratch draw-list slot §5i's plain-
+tile path fills, then calls `bsr $d1f8` (the identical placement/clip routine §5i already proved:
+looks up the cell's screen position, applies the descriptor, appends to the `(A5)+72` list). A
+second `$92e8` call afterward (`exg D2,D6` around it) restores `1138(A5)`/`52(A5)`/`2209(A5)` to
+whatever they held before this cell (saved in `D6` at entry) — a save/restore of a "current item"
+context around the nested placement, not a second draw. `btst #0,D7` on the *pass* counter (the
+outer loop's `D2`, temporarily swapped into `D7` around the two `$92e8` calls) nudges the slot's
+`D0`/`D1` row/col index by one before the lookup — the decoration sits one grid slot further along
+its wall than the marker byte's own cell, not on top of it.
+
+**Net**: the terrain-grid's `0xc2` marker is a real, generic, fully-proven mechanism — "paint this
+grid cell as one of §5a's 255-entry item catalog instead of a plain tile," reusing the exact same
+placement/clip/blit pipeline (§5h/§5i/§4b) rather than a separate object-instantiation path. It is
+**not** related to the free-floating persistent object array (`mechanics.md` §37d) or the earlier
+guess that it "writes into struct fields at offsets 2,3,10,14 off a pointer taken from 52(A5)" —
+that guess (from reading only the first half of `$cbe0`-`$cc42` in isolation) conflated `$92e8`'s own
+internal bookkeeping fields (`52(A5)`/`2209(A5)`, unrelated to the draw descriptor) with the *actual*
+draw-descriptor fields `+2/+3/+10/+14` the caller writes afterward, which really are the same offsets
+§5i's plain-tile path uses — same struct, same meaning, not a coincidence once traced in full.
+TUNNEL's one live `0xc2` cell (width-pass column 1, row 0 — §5i-3) resolves to catalog index 1, a
+48×57px wall-panel/emblem graphic (`reversing/cadaver/items/decor001_516d6_48x57.png`), confirmed by
+direct render to actually look like a carved wall ornament, not a prop. **This closed out §5i-3's
+"leading suspect" for TUNNEL's low match score — see below, it turned out not to be the cause.**
 
 **5g. No tile-adjacency/compatibility ruleset exists anywhere in the traced decode or draw path —
 placement is level-data, not engine-enforced.** Both the decoder (§5b, `$00add0`-`$00ae62`) and the
@@ -391,9 +427,9 @@ or hand/tool placement" question directly: there is no in-game autotiling system
 room's wall/floor layout is a fixed sequence of tile ids baked into that room's small (42-122 byte)
 resource-type-1 entry, chosen by whoever authored the level data (by eye, or by an offline level
 tool this codebase has no visibility into), the same way the room's *object* placements (§37d) are a
-fixed list rather than a rule-generated one.** The one caveat is §5f's still-unresolved `0xc2`
-sub-case — if it turns out to anchor objects by grid position, that is still level *data* naming a
-specific cell, not a compatibility rule between tiles.
+fixed list rather than a rule-generated one.** §5f's `0xc2` marker byte (now fully traced) doesn't
+change this: it names a specific catalog item for a specific cell, still level *data*, not a
+compatibility rule between tiles.
 
 **5h. The per-cell screen-placement formula, byte-exact and live-verified in both rooms — `$00e7b0`'s
 own nested loop (`mechanics.md` §39, full transcription there), not a separate mechanism.** Full
@@ -500,37 +536,54 @@ order beats every row-sorted alternative, and reverse order scores far worse, 39
 overlap/z-order detail this pass didn't chase further, not a placement-formula error.
 
 **5i-3. TUNNEL captured live too (2/2 rooms), the placement mechanism is confirmed generic and
-correct, but the tile-only render scores low (~21%) against `room2_tunnel_entry.png` for a reason
-that's now understood, not a placement bug.** The real CAVERN→TUNNEL crossing route is the
-"documented zigzag" already named in `mechanics.md` §32/§60c (`kbd ff 08` (Right) 1.2M steps → `kbd
-ff 01` (Up) 0.5M steps → `kbd ff 08` 1.2M steps → `kbd ff 01` 1.2M steps, from `gameplay_empire.snap`)
-— arming `bpc cab6 1 <budget>` per leg catches it at the very start of the final Up leg (step 52,887),
-giving `mid_cab6_tunnel.snap`. **Cross-checked two independent ways**: (a) its `(A5)+2634` placement
-table is byte-for-byte identical to `room2_tunnel_entry.snap`'s own (15/15 words), confirming the
-formula/table isn't route- or entry-point-dependent; (b) stepping this exact snapshot forward
-1,000,000 steps to let the crossing settle and screen-flip, then `snap_render.py`-rendering it,
-reproduces `room2_tunnel_entry.png` **pixel-for-pixel, 0/64000 diff** — proof the emulator's own real
-render of this route lands on the *same* reference frame the 12th pass's milestone used, ruling out a
-different-viewport/different-entry explanation for any mismatch in the hand-rolled mosaic. Yet
-`room_mosaic.py`'s tile-only render of `mid_cab6_tunnel.snap` scores only 1961/9932 (19.7%, 1937/9092
-excluding the one live object/sprite descriptor's own clip rect) against that same reference — much
-worse than CAVERN's 96.6%. Inspecting the mismatch spatially (`tiles/tunnel_mosaic.png` vs the
-reference) shows it isn't uniform: the right-hand wall section (tile ids 2,3,16,18,19,48, the low end
-of the catalog) matches cleanly, while the left-hand wall (tile ids 31-78, the high end) renders as
-generic "cube" catalog art where the reference shows distinct pipe/machinery detail entirely absent
-from the base tile catalog. Since the underlying placement table and formula are independently proven
-correct (above), the most likely explanation is that TUNNEL's left wall carries extra decorative
-content drawn through a separate mechanism this doc hasn't traced yet — a natural candidate is §5f's
-still-untraced `0xc2` object-anchor sub-case of `$d1f8` (item 2 below), which could be overlaying
-detail sprites onto specific grid cells on top of the base tile catalog. Not yet confirmed either way.
+correct — 96.0% pixel-exact once scored against the reference with the right palette formula, in
+line with CAVERN's 96.6%. The earlier "only 19.7%, left wall shows detail the catalog doesn't have"
+reading (below, kept for the record) was a tooling artifact, not a content or mechanism gap.** The
+real CAVERN→TUNNEL crossing route is the "documented zigzag" already named in `mechanics.md`
+§32/§60c (`kbd ff 08` (Right) 1.2M steps → `kbd ff 01` (Up) 0.5M steps → `kbd ff 08` 1.2M steps →
+`kbd ff 01` 1.2M steps, from `gameplay_empire.snap`) — arming `bpc cab6 1 <budget>` per leg catches
+it at the very start of the final Up leg (step 52,887), giving `mid_cab6_tunnel.snap`.
+**Cross-checked two independent ways**: (a) its `(A5)+2634` placement table is byte-for-byte
+identical to `room2_tunnel_entry.snap`'s own (15/15 words), confirming the formula/table isn't
+route- or entry-point-dependent; (b) stepping this exact snapshot forward 1,000,000 steps to let the
+crossing settle and screen-flip, then `snap_render.py`-rendering it, reproduces
+`room2_tunnel_entry.png` **pixel-for-pixel, 0/64000 diff** — proof the emulator's own real render of
+this route lands on the *same* reference frame the 12th pass's milestone used, ruling out a
+different-viewport/different-entry explanation for any mismatch in the hand-rolled mosaic.
 
-**Not yet done**: (1) `$92e8`/`$d1f8`'s `0xc2` object-anchor sub-case (§5f) is still unrelated and
-untraced — note `$d1f8` the plain-tile placement routine (above) and the `0xc2` sub-case's `bsr
-$d1f8` (§5f, from `$cc2e`) are two different call sites into the same routine name, don't conflate
-them; tracing it is now also the leading hypothesis for §5i-3's TUNNEL mismatch, not just an isolated
-open question; (2) stack direction (does column index 0 sit at the floor or the ceiling) — the live
-capture didn't settle this either, though the visual match's overall coherence is suggestive; (3) the
-CAVERN mosaic's own ~3.4% overlap-edge residual (§5i-2) is unexplained, though small and visually
+**What actually explained the low score (67th pass): `room_mosaic.py` and `snap_render.py` convert
+the same 3-bit-per-gun `$0RGB` palette word to 8-bit RGB two different, mutually inconsistent ways**
+— `tools/gfxview.py`'s `ste_colour` (`sprite_array_export.py`'s decode path, which `room_mosaic.py`
+uses) computes `gun * 255 // 7` (full 0-255 range), while `tools/snap_render.py`'s own `st_colour`
+(the tool that produced both milestone reference screenshots) computes `gun * 36` (max 252) — a
+cosmetic rounding difference (e.g. gun=5 → 182 vs 180) invisible to the eye but fatal to an exact-
+match diff. `gameplay.png` (CAVERN's reference) happens to have been generated with the same
+`gun*255//7` formula `room_mosaic.py` uses, so CAVERN's 96.6% (§5i-2) was never affected. TUNNEL's
+`room2_tunnel_entry.png`, an older asset from the 12th pass's milestone, was generated with the
+`gun*36` formula instead — a pure tooling mismatch, confirmed by re-scoring: substituting `st_colour`
+for `ste_colour` in the exact same render (no other change) takes TUNNEL from **1961/9932 (19.7%) to
+9534/9932 (96.0%)**, while the same substitution *drops* CAVERN's score to 2876/19749 (14.6%) —
+each reference screenshot only matches its own generating tool's formula, and TUNNEL's placement was
+correct all along. **This retracts §5f's `0xc2` sub-case as the explanation for TUNNEL's score**:
+that mechanism is real (§5f resolves it fully) and genuinely still missing from `room_mosaic.py`'s
+render (it filters the descriptor list to `tile_base <= ptr < tile_base+tile_size`, which drops the
+one `0xc2` entry since its source pointer lives in the type-2 data area, not the tile catalog) — but
+its cell sits on TUNNEL's width-pass wall, which was already among the *matching* pixels, not the
+"generic cube" wall the earlier framing blamed; adding it would only close a small fraction of the
+remaining 4%, not the ~80% this pass mistakenly attributed to it. The two tools' palette formulas
+should eventually be unified (Open, below) so future `--diff` scores aren't formula-dependent by
+accident.
+
+**Not yet done**: (1) unify `gfxview.ste_colour`'s `gun*255//7` and `snap_render.py`'s `st_colour`'s
+`gun*36` palette-to-RGB formulas (§5i-3) — which one is Hatari-accurate wasn't checked this pass (no
+local Hatari source checkout found on this machine), so pick a side by checking `video.c`/`screen.c`'s
+real STF DAC conversion before changing either tool's default, not by preferring whichever a given
+screenshot happens to match; (2) render `room_mosaic.py`'s one dropped `0xc2`-sourced entry (§5f) for
+completeness — small (48×57px), low priority now that it's not blocking the match score; (3) stack
+direction (does column index 0 sit at the floor or the ceiling) — the live capture didn't settle this
+either, though the visual match's overall coherence is suggestive; (4) CAVERN's own ~3.4%
+overlap-edge residual (§5i-2, genuinely unaffected by the palette-formula bug above, since its
+reference already matches `room_mosaic.py`'s formula) is still unexplained, though small and visually
 negligible.
 
 **5j. In plain terms: how a room's walls and floor actually get to the screen** (§5's full mechanism,
@@ -579,14 +632,18 @@ per room from a tiny compressed stream into a per-column tile stack (§5e) that 
 catalog is drawn through, with no runtime adjacency rules (§5g), placed on screen by a byte-exact
 formula (§5h) and a now-fully-traced-and-live-confirmed draw pipeline (§5i) ending in the same shared
 blitter as every sprite (§4b), scored at 96.6% exact against `gameplay.png` for CAVERN (§5i-2) and
-cross-checked (placement table + a pixel-identical live re-render) but only 19.7% exact for TUNNEL
-(§5i-3) — the placement mechanism itself is proven generic and correct for both rooms, but TUNNEL's
-left wall carries extra art the base 80-tile catalog draw list doesn't account for. **Open**: (a)
-`$92e8`/`$cc2e`'s `bsr $d1f8` (§5f's `0xc2` sub-case) — is it really an object anchor, not traced past
-the struct-field writes, and now the leading suspect for §5i-3's TUNNEL gap; (b) stack direction (does
-column index 0 sit at the floor or the ceiling) — still not proven; (c) the remaining 3.4%
-overlap-edge pixel mismatch in the CAVERN score (§5i-2) — small and visually negligible, cause not
-identified.
+96.0% for TUNNEL (§5i-3, once scored with the matching palette formula — the placement mechanism is
+proven generic and correct for both rooms, full stop). The grid's one non-tile marker byte, `0xc2`,
+is a second, fully-traced drawing channel through the same pipeline: it paints a small item/icon from
+a second, 255-entry shared catalog (type 2, §5a) into a grid cell instead of a terrain tile (§5f) —
+real and generic, but a minor contributor, not the explanation for either room's residual mismatch.
+**Open**: (a) unify `gfxview.py`/`snap_render.py`'s two disagreeing palette-to-RGB formulas (§5i-3);
+(b) render `room_mosaic.py`'s one still-dropped `0xc2` entry for completeness (§5f/§5i-3); (c) stack
+direction (does column index 0 sit at the floor or the ceiling) — still not proven; (d) the remaining
+3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2), genuinely unrelated to the palette bug —
+small and visually negligible, cause not identified; (e) cross-check type 2's catalog (§5a) against
+§3's 22-entry object array field-for-field — same conceptual role (small-object art), relationship
+between the two not yet confirmed.
 
 ## Files
 
@@ -598,7 +655,8 @@ identified.
 | `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
 | `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) — not captured by the array export below, since only the *current* frame pointer is live in any one snapshot |
 | `sprites/` | the full 22-entry sprite-object-array catalog (§3) — one PNG per slot, `contact_sheet.png`, `manifest.csv` |
-| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i/§5i-2) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, scored 96.6% pixel-exact against `gameplay.png`; `tunnel_mosaic.png` (§5i-3) — same mechanism applied to TUNNEL, table- and re-render-confirmed correct but only 19.7% pixel-exact against `room2_tunnel_entry.png` (left wall carries un-accounted-for decorative art, see §5i-3) |
+| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i/§5i-2) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, scored 96.6% pixel-exact against `gameplay.png`; `tunnel_mosaic.png` (§5i-3) — same mechanism applied to TUNNEL, table- and re-render-confirmed correct, 96.0% pixel-exact against `room2_tunnel_entry.png` once scored with that screenshot's own palette formula (§5i-3) |
+| `items/` | resource type 2's 255-slot (102 distinct) small-object/icon catalog (§5a/§5f) — `decor000_...png`-`decor254_...png`, `contact_sheet.png`, `manifest.csv` (`reversing/cadaver/py/resource2_export.py`); includes the two wall-panel entries (`decor000`/`decor001`) the terrain grid's `0xc2` marker byte draws (§5f) |
 | `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` (struct-driven array mode, `--base`/`--array-ptr-field`) and the raw `tiles/` catalog (fixed-stride mode, `--sequence BASE STRIDE COUNT W H`) |
 | `py/room_tile_grid.py` | decodes a room's `(A5)+2914` tile-id grid (§5b/5e) and renders it against the shared catalog; usage in its own header |
 | `py/room_mosaic.py` | renders `cavern_mosaic.png` from a live mid-room-entry snapshot's real draw-descriptor list (§5i); the snapshot-capture recipe (REPL commands) is in its own header |
