@@ -1,6 +1,6 @@
 # Cadaver: handoff
 
-Updated 2026-09-25 by the session that ended at this commit (65th pass, following the 64th's
+Updated 2026-09-25 by the session that ended at commit `05dffa8` (65th pass, following the 64th's
 `3448983`), which closed Dave's explicit ask from the last handoff — the per-room terrain *pixel*
 mosaic — from "not attempted" to "mechanism fully traced and live-confirmed, one real room rendered
 and visually matched against `gameplay.png`." The first render had a real bug (opaque paste instead
@@ -8,14 +8,20 @@ of masked, §5i) that produced a comb of gaps — Dave caught it looked wrong on
 the overall two-wall silhouette was already correct; fixed same pass, see §5i for the two checks
 that rule out a placement/direction bug specifically. Full writeup: `reversing/cadaver/graphics.md`
 §5h/§5i (the new plain-English "How a room's walls and floor actually get to the screen" section
-sits right after §5i for a non-code-level summary).
+sits right after §5i for a non-code-level summary). Two lessons from the compositing bug and an
+earlier pointer-vs-array trap were also folded into `.claude/skills/reverse-engineer-st-game/
+SKILL.md` (commit `fd31b44`) since both are general enough to bite the next game, not just Cadaver.
 
 ## Resume point
 
-- Last commit of this workstream: this one, "cadaver: full room-terrain draw pipeline traced and
-  live-confirmed, CAVERN mosaic rendered (65th pass)". No emulator source changed this pass (all
-  static disassembly + REPL `kbd`/`bpc`/`snap`/`callcap` + Python reads), so no rebuild or
-  regression-net run is needed before building on it.
+- Last commit of this workstream: `05dffa8` "cadaver: fix mosaic compositing bug — mask the paste,
+  don't paste opaque (65th pass cont.)" (`edb0b34` is the same pass's first mosaic commit, superseded
+  in place by `05dffa8`'s fix, not left as a separate historical artifact — the committed
+  `cavern_mosaic.png`/`room_mosaic.py` are already the fixed version). `fd31b44` "reverse-engineer-
+  st-game skill: two lessons from cadaver's mosaic pass" is a shared-resource commit from the same
+  session, not workstream-specific, left out of the working-data path below. No emulator source
+  changed this pass (all static disassembly + REPL `kbd`/`bpc`/`snap`/`callcap` + Python reads), so
+  no rebuild or regression-net run is needed before building on it.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This pass's one durable
   addition worth keeping: `mid_cab6_cavern.snap` — a snapshot taken mid-room-entry (PC inside
   `$00d1f8`, right after the real `$00cab6` grid-walk that builds CAVERN's live draw-descriptor
@@ -23,8 +29,17 @@ sits right after §5i for a non-code-level summary).
   entry, unreadable from an ordinary steady-state snapshot — see graphics.md §5i). Recipe to
   reproduce it (also in `reversing/cadaver/py/room_mosaic.py`'s header): from
   `scratchpad/cadaver/room2_tunnel_entry.snap`, REPL `kbd ff 02` / `bpc cab6 1 3000000` (hits at step
-  703,353) / `s 5000` / `snap scratchpad/cadaver/mid_cab6_cavern.snap`. Everything else in
-  `scratchpad/cadaver/` carries over unchanged from the 64th pass.
+  703,353) / `s 5000` / `snap scratchpad/cadaver/mid_cab6_cavern.snap`. Also left in scratchpad from
+  an end-of-session exploratory detour (Dave asking "which tiles can sit next to each other" out of
+  curiosity, not a work item): `tile_vjoin_top3.json` (an 80-tile vertical-join similarity ranking,
+  normalized cross-correlation over the real overlap region) and `tile_families_ordered.png`/
+  `cavern_mosaic_labeled.png` (a whole-catalog contact sheet reordered by visual similarity, and the
+  CAVERN mosaic with every tile id labelled). **Not validated as a real prediction** — checked against
+  the 56 real consecutive tile pairs from `mid_cab6_cavern.snap`'s own live list and only weakly beat
+  chance (median rank ~32-36 of ~76, top-10 hit rate ~24% vs ~13% chance) — useful for browsing the
+  catalog's visual families, not for reconstructing real placement choices; not reproduced by a
+  script (was inline analysis), regenerate from this handoff's git history if wanted. Everything else
+  in `scratchpad/cadaver/` carries over unchanged from the 64th pass.
 - Start from: the same two snapshots as before for ordinary static/gameplay work —
   `gameplay_empire.snap` (CAVERN) / `room2_tunnel_entry.snap` (TUNNEL) — plus the new
   `mid_cab6_cavern.snap` specifically for re-reading or re-rendering the live tile-placement list.
