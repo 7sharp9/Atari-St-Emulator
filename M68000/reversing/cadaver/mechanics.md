@@ -3915,6 +3915,36 @@ question this reopens is the one §59b/§59 originally set out to answer: does D
 content beyond the 72-room map, now that the player can actually be driven through it. Not yet
 explored this pass — see Open item 1 below.
 
+## 61. A real room crossing (CAVERN→TUNNEL) driven live in the two-disk build from the corrected
+    `56(A5)`/`164(A5)` addresses — the drive technique generalizes, but this crossing itself is
+    known content, not new (62nd pass)
+
+**Current-room field re-derived the same way as the player-slot fix.** `164(A5)` (`$18358` in
+`past_wall_mounted_90M.snap`) reads `00 06 c0 0a` = `$6c00a`, exactly `world_map.py`'s own
+`data_area` base for this snapshot's type-3 resource manager — i.e. slot 0 (CAVERN)'s own record
+address, offset 0 into the data area. Confirms the field the 61st pass's handoff pointed to without
+yet reading it live.
+
+**`door_walk.py`'s door `0x32`** (candidate `(20,17)`, `0→1 (edge)`) is CAVERN's real door into
+TUNNEL, consistent with every prior pass's CAVERN↔TUNNEL work on the one-disk build. A straight
+`kbd ff 02` (Down) hold from `past_wall_mounted_90M.snap` moved the bbox 11 units
+(`[25,23,19,17]`→`[25,34,19,28]`) then stalled on a second hold (room pointer unchanged at
+`$6c00a`) — an in-room obstacle, not the crossing. The documented **Right→Up** zigzag (§32, one-disk
+build) reproduces on this two-disk snapshot instead: `kbd ff 08` (Right, 1.2M steps) moved the bbox
+to `[69,23,63,17]` (same stall point §60c already found), then `kbd ff 01` (Up, 500k steps) crossed
+outright — `164(A5)` flipped from `$6c00a` to `$6c072`, exactly `world_map.py`'s slot 1 (TUNNEL) rec
+address (`data_area + 104`, CAVERN's own `size`). `snap_render.py` on the post-crossing snapshot
+(`scratchpad/cadaver/disk2_zigzag_probe1.snap`) shows the status bar reading `TUNNEL`/`DAY 1`, the
+same room the one-disk crack's own milestones already document — not committed as a new asset,
+since it isn't one.
+
+**Net effect on item 1**: the drive mechanism (corrected `56(A5)` for the player, `164(A5)` for the
+current room, `door_walk.py`'s graph for where each door leads) is now proven live end to end in the
+two-disk build, not just in principle. This first crossing lands on already-known content (TUNNEL),
+so it does not yet answer whether Disk 2 adds anything beyond the 72-room map — the next crossing to
+try is one whose destination isn't already in the one-disk crack's own documented room list, per the
+open item below.
+
 ## Files
 
 | File | What |
