@@ -3961,6 +3961,39 @@ from here at all*, versus being gated behind a mechanism not yet exercised (a da
 or a mid-game "insert levels disk" prompt distinct from the one-time boot-time swap already used to
 build this snapshot). See the open items below for the next concrete tests.
 
+## 62. Disk 2's whole contribution is a one-time boot-time load, already complete by step 30M — zero
+    further FDC activity through step 90M or across a real room crossing (63rd pass)
+
+Open item 1's second concrete test from the 62nd pass's handoff: does the boot-time Disk1→Disk2 swap
+that built `past_wall_mounted_90M.snap` read Disk 2 only once at boot, or is more of it gated behind
+further game progress? §58 already traced the first 30M steps (`before_jsr.snap`, since lost between
+sessions) and found 121 sector reads, all `-> OK`, ending at track 13 side 1 — but that trace never
+covered the remaining 60M steps to `past_wall_mounted_90M.snap`, so whether reads continue past 30M
+was unknown.
+
+**62a. Resuming `past_wall_mounted_30M.snap`, remounting Disk 2, and stepping the remaining 60M steps
+under `ATARI_TRACE_FDC=1` produces an empty FDC trace — zero register writes, zero commands, zero
+reads.** `dotnet exec` raw argv `resume scratchpad/cadaver/past_wall_mounted_30M.snap repl` with
+`disk ../Cadaver/disk2_replicants/disk2.st` / `s 60000000` on stdin
+(`scratchpad/cadaver/probe_fdc_30to90M.repl`) lands at `PC=$00015254`, exactly the address the 58th
+pass's from-scratch 90M-step run reached — reproducible, so the empty trace isn't a broken harness,
+it's a genuine negative. Combined with §58's own 30M-step trace, the full boot-to-`past_wall_mounted_
+90M.snap` picture is now: 121 reads in the first 30M steps, then nothing for the next 60M.
+
+**62b. Re-running §61's own CAVERN→TUNNEL zigzag crossing under the same `ATARI_TRACE_FDC=1`
+confirms the crossing itself touches the FDC zero times too.** Same recipe as `probe_zigzag_disk2.
+repl`, same result (`164(A5)` `$6c00a`→`$6c072`, final `PC=$00006cb2` matching `disk2_zigzag_
+probe1.snap` exactly) — the FDC trace file is empty end to end.
+
+**Net effect on item 1**: the one-time-load hypothesis is now the better-supported reading, not just
+the "plausible given a levels-disk framing" guess the 62nd pass's handoff left it as. Whatever Disk 2
+contributes was fully read into RAM in the first 30M boot steps and never touched again — not on a
+60M-step idle run, and not across a real room crossing that's the closest thing this spike has driven
+to "game progress" from this snapshot. This doesn't rule out a trigger deeper in the game than
+anything reached so far (a day-progression event, an explicit "insert levels disk" prompt distinct
+from this one-time boot swap), but it does rule out the crossing/idle-time mechanisms as sources of
+further disk activity, narrowing what "further game progress" could even mean here.
+
 ## Files
 
 | File | What |
