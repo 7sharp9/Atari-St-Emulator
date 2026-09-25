@@ -3994,6 +3994,57 @@ anything reached so far (a day-progression event, an explicit "insert levels dis
 from this one-time boot swap), but it does rule out the crossing/idle-time mechanisms as sources of
 further disk activity, narrowing what "further game progress" could even mean here.
 
+## 63. TUNNEL has no untested door left to try — its only two doors besides the CAVERN link are
+    structurally incapable of loading a third room, not just unexplored (64th pass)
+
+The 62nd pass's handoff proposed driving from `disk2_zigzag_probe1.snap` (standing in TUNNEL) to a
+room not already documented, with `ATARI_TRACE_FDC=1` armed, as the one remaining live test for item
+1. Running `py/door_walk.py` fresh against that exact two-disk-build snapshot first, to pick a real
+target, shows there isn't one:
+
+```
+door 0x32 candidate=(20,17) [id=0 hardcoded-link]                          0->1 (edge), 1->self
+door 0x33 candidate=(20,11) [id=-1 sound-cue-only, no room commit]         1->2 (edge), 2->self
+door 0x3b candidate=(22,20) [id=73 generic-lookup, always-miss per §27c]   0->self, 8->0 (edge)
+```
+
+These are the only three door ids referencing CAVERN (slot 0) or TUNNEL (slot 1) anywhere in the
+71-door table. `0x32` is the CAVERN↔TUNNEL link already driven live in §61. The other two are not
+untested leads, they're already-closed by mechanism (§27c) or by an earlier live test:
+
+- **`0x3b` is CAVERN's own east door from §13 (17th pass)** — id 73 decimal is exactly `$49`, the
+  target id §13 already named, live-triggered, and found resolving to "already resident" (no new
+  room). `door_walk.py`'s geometric read confirms *why*, independent of any id lookup or game-state
+  gate: candidate `(22,20)` sits inside CAVERN's own rectangle (`[12,18]-[22,28]`), so `$de5e`'s
+  point-in-rect scan can only ever return CAVERN itself. Per §27c, the id word never selects the
+  destination at all (even a populated type-8 table wouldn't change this), so this is a permanent
+  self-loop, not a state-dependent one.
+- **`0x33` is TUNNEL's own second entry from §10b** — sentinel target `$ffff` (id -1). §27c's read of
+  the portal-match code says this sentinel takes a distinct branch that pushes a ring-304 sound/event
+  opcode and **never reaches `$de5e` or any room-load call at all** — structurally inert, not merely
+  unresolved. A live check confirms the point is moot anyway: holding Up from `disk2_zigzag_probe1.
+  snap` for 3M then 6M further steps (`probe_room2_up.repl`/`probe_room2_up2.repl`) produced zero
+  movement in the player's own bbox (`$038438`, unchanged `[23,12,17,6]`) and zero FDC activity;
+  sliding left first (`probe_room2_leftup.repl`, bbox `[23,12,17,6]`→`[14,12,8,6]` under a real
+  9-unit Left move, confirming input still works) then holding Up again was also fully blocked at
+  the same y, and again zero FDC activity. TUNNEL's north wall is solid at every x tried; §10b/§10c
+  already showed this table has no live-triggerable third entry in the one-disk build, and this pass
+  confirms the two-disk build's own portal table matches that shape.
+
+**Net effect on item 1**: this closes off the 62nd pass's proposed next test as inapplicable, not
+just unproductive — CAVERN and TUNNEL, the only two rooms this spike has ever driven the player
+through, have no door capable of committing a third room, by the game's own proven door-descriptor
+mechanism (§27c), independent of Disk 2 or any other game state. Combined with §47's whole-map static
+result (all 71 doors resolve to their owner or an immediate rectangle neighbour, zero teleports —
+proven against the one-disk build, but the type-3 room table and now this door table both read
+byte-identical from the live two-disk snapshot) and §62's full-trace FDC negative, three independent
+subsystems (room table, door/portal mechanism, FDC) now agree from three different angles that
+nothing reachable from this snapshot ever surfaces a fourth room. The remaining gap named in the
+62nd/63rd pass handoffs — a deeper in-game trigger (day-progression, an explicit disk-swap prompt)
+this spike has never reached — is unchanged by this pass; it just confirms that reaching it, if it
+exists, needs progress this spike doesn't yet know how to make, not a different door out of CAVERN or
+TUNNEL.
+
 ## Files
 
 | File | What |

@@ -1,50 +1,62 @@
 # Cadaver: handoff
 
-Updated 2026-09-25 by the session that ended at this commit (63rd pass), which ran the 62nd pass's
-own second next-step: traced the FDC across the full remainder of the boot-to-`past_wall_mounted_
-90M.snap` window and across a real room crossing, and found zero further disk activity in either.
-§58 had already shown 121 sector reads in the first 30M boot steps; this pass resumed
-`past_wall_mounted_30M.snap`, remounted Disk 2, and stepped the remaining 60M under
-`ATARI_TRACE_FDC=1` — an empty trace, landing at the same `PC=$00015254` the from-scratch 90M-step
-run reaches (reproducible, so the empty trace is a genuine negative, not a broken harness). Re-running
-§61's own CAVERN→TUNNEL crossing under the same trace flag confirms the crossing itself touches the
-FDC zero times too. Net: Disk 2's whole contribution is a one-time load, complete by step 30M of
-boot, never touched again by idle time or by the one player-driven action tested — the one-time-load
-reading for item 1 is now evidence-backed, not just plausible. See Open item 1.
+Updated 2026-09-25 by the session that ended at this commit (64th pass), which ran the 63rd pass's
+own proposed next step — drive to an undocumented room from `disk2_zigzag_probe1.snap` with
+`ATARI_TRACE_FDC=1` armed — and found there is no undocumented room reachable to drive to. Running
+`py/door_walk.py` fresh against that exact two-disk snapshot shows the only three door ids touching
+CAVERN or TUNNEL are: `0x32` (the CAVERN↔TUNNEL link already driven live in §61), `0x3b` (CAVERN's
+own east door, already live-tested in §13/17th-pass and shown to resolve to "already resident" — this
+pass's fresh geometric read confirms why: candidate `(22,20)` sits inside CAVERN's own rectangle, so
+it is a permanent self-loop by construction, not a state-dependent miss), and `0x33` (TUNNEL's second
+entry, sentinel target `$ffff` — per §27c this branch never reaches the room-load path at all,
+structurally inert). A live check on `0x33` anyway (hold Up 3M then 6M more steps from
+`disk2_zigzag_probe1.snap`, then Left 1.5M to rule out a stuck-input false negative, then Up again)
+found the player's own bbox (`$038438`) never moved past `[23,12,17,6]`→`[14,12,8,6]`(Left only) and
+FDC activity stayed at zero throughout. Net: TUNNEL's north wall has no live-triggerable exit at any
+x tried, matching §10b/§10c's own one-disk-build finding that this table has no third live entry —
+this pass confirms the two-disk build's portal table matches that shape. See `mechanics.md` §63 and
+Open item 1.
 
-Prior pass's summary (62nd, `a700060`): proved the 61st pass's corrected addresses drive a real room
-crossing in the two-disk build — CAVERN→TUNNEL via the documented Right→Up zigzag, `164(A5)`
-flipping from `$6c00a` to `$6c072` (`world_map.py`'s own TUNNEL slot address). A pixel diff of the
-arrival frame against the one-disk build's own `room2_tunnel_entry.png` milestone showed the same
-room, same art (the 1,552/64,000-pixel difference explained by player position, not content) — a
-second independent confirmation, alongside §59b's already-identical room table, that Disk 2
-contributes nothing new to the two rooms reachable from this snapshot.
+Prior pass's summary (63rd, `37ff4b8`): traced the FDC across the 62nd pass's own remaining open
+window — resumed `past_wall_mounted_30M.snap`, remounted Disk 2, stepped the remaining 60M steps
+under `ATARI_TRACE_FDC=1` (empty trace, `PC=$00015254` matching the from-scratch 90M-step run), then
+re-ran §61's own CAVERN→TUNNEL zigzag under the same flag (also empty). Net: Disk 2's whole
+contribution is a one-time load, complete by step 30M of boot, never touched again by idle time or by
+a real room crossing.
 
 ## Resume point
 
-- Last commit of this workstream: this session's own handoff commit, on top of `a700060` "cadaver:
-  item 1 narrowed — TUNNEL room art confirmed unchanged from one-disk build (62nd pass, cont.)". No
+- Last commit of this workstream: this session's own handoff commit, on top of `37ff4b8` "cadaver:
+  item 1 further narrowed — Disk 2's whole contribution is a one-time boot load (63rd pass)". No
   emulator source changed this pass either, so no rebuild or regression-net run is needed before
   building on it.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This pass's additions:
-  - `probe_fdc_30to90M.repl`/`probe_fdc_30to90M.log`/`probe_fdc_30to90M_fdc.log`: resumes
-    `past_wall_mounted_30M.snap`, remounts Disk 2, steps 60M more under `ATARI_TRACE_FDC=1` — the
-    FDC log is empty (0 lines), final `PC=$00015254` matches the from-scratch 90M-step run exactly.
-  - `probe_zigzag_fdc_check.log`/`probe_zigzag_fdc_check_fdc.log`: re-runs §61's own zigzag crossing
-    recipe under the same trace flag — also an empty FDC log, final `PC=$00006cb2` matches
-    `disk2_zigzag_probe1.snap` exactly.
-  - Carried over unchanged from the 62nd pass and earlier: `probe_regs_disk2.*`,
-    `probe_cavern_tunnel_disk2.*`/`disk2_cavern_tunnel_probe1.snap`, `probe_zigzag_disk2.repl`/
-    `disk2_zigzag_probe1.snap`/`disk2_tunnel_probe1.png`, `probe_sprite_d93c.*`,
-    `probe_arrayptr_field.*`, `probe_realarray_038438.*`, `retest_movement_038438.*`,
-    `realbase_038438_after_right.snap`, `probe_sprite_realbase.*`, `retest_movement_bpc.*`,
-    `retest_movement_realbase.*`, `realbase_after_right.snap`, `probe_sprite.*`, the `drive_*`/
-    `full_trace_fdc*`/`full_trace_mounted*` files, `past_wall_mounted_{30,60,90}M.snap`.
+  - `probe_check_addrs.repl`: no-step read of `182ec`/`18358` off `disk2_zigzag_probe1.snap`'s
+    `A5=$182b4`, confirming the player-array pointer (`$038438`) and current-room field (`$6c072`,
+    TUNNEL) are unchanged from the 62nd/63rd pass's own derivation for this snapshot.
+  - `probe_room2_up.repl`/`.log`/`_fdc.log`/`.snap`: 3M steps holding Up from `disk2_zigzag_probe1.
+    snap` — room field unchanged (`$6c072`), FDC log empty (0 lines).
+  - `probe_room2_up2.repl`/`.log`/`_fdc.log`/`.snap`: same, 6M steps, with a bbox read (`$038438`)
+    before/after — `[23,12,17,6]` unchanged both times, FDC log empty.
+  - `probe_room2_leftup.repl`/`.log`/`_fdc.log`/`.snap`: 1.5M Left then 3M Up — Left moves the bbox
+    9 units (`[23,12,17,6]`→`[14,12,8,6]`, confirming input still works), but Up from the new x is
+    still fully blocked (bbox unchanged) and FDC stays silent.
+  - Carried over unchanged from the 63rd pass and earlier: `probe_fdc_30to90M.*`,
+    `probe_zigzag_fdc_check.*`, `probe_regs_disk2.*`, `probe_cavern_tunnel_disk2.*`/
+    `disk2_cavern_tunnel_probe1.snap`, `probe_zigzag_disk2.repl`/`disk2_zigzag_probe1.snap`/
+    `disk2_tunnel_probe1.png`, `probe_sprite_d93c.*`, `probe_arrayptr_field.*`,
+    `probe_realarray_038438.*`, `retest_movement_038438.*`, `realbase_038438_after_right.snap`,
+    `probe_sprite_realbase.*`, `retest_movement_bpc.*`, `retest_movement_realbase.*`,
+    `realbase_after_right.snap`, `probe_sprite.*`, the `drive_*`/`full_trace_fdc*`/
+    `full_trace_mounted*` files, `past_wall_mounted_{30,60,90}M.snap`.
 - **Start from**: `scratchpad/cadaver/past_wall_mounted_90M.snap` (PC=`$00015254`, Disk 2 not yet
   mounted — `disk ../Cadaver/disk2_replicants/disk2.st` first) for a fresh CAVERN start, or
   `scratchpad/cadaver/disk2_zigzag_probe1.snap` (PC=`$00006cb2`) to resume already standing in
   TUNNEL. Re-derive `56(A5)` (player) and `164(A5)` (current room) fresh from whichever snapshot is
   used — both are `$182ec`/`$18358` off `A5=$182b4` for these two specific snapshots, not constants.
+  Neither snapshot has a further real door to drive through — see Open item 1 — so the next session's
+  first move should be deciding whether to keep pushing item 1 (needs a new live state beyond these
+  two rooms, not another crossing from them) or moving to a different open item.
 - Uncommitted work left behind: none of this session's own. `CLAUDE.md`, `sessions/README.md`,
   `sessions/powermonger.md` still show modified in `git status` — still the concurrent "Training
   efficiency (2)" session's, left alone. `.obsidian/` and `Cadaver/` are untracked and not this
@@ -52,44 +64,46 @@ contributes nothing new to the two rooms reachable from this snapshot.
 
 ## Proven so far
 
-Detail in `reversing/cadaver/README.md`, `mechanics.md` (§62 covers this pass), `graphics.md`,
-`ai.md`. Carried over: `mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-61 (movement
+Detail in `reversing/cadaver/README.md`, `mechanics.md` (§63 covers this pass), `graphics.md`,
+`ai.md`. Carried over: `mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-62 (movement
 collision/proximity mechanism, the icon-panel write chain, the full 72-room world-map/adjacency
 graph, the door-connectivity walk, the swapped-disk side-count bug, the Replicants/ST Amigos crack's
 Disk 2 swap, the two genuine emulator gaps behind the "crack dispatch bug", the FDC "no data"
 workflow fix, the two-disk build's `$100`-shift bugs in both the resource manager and the sprite-
-array pointer field, a real CAVERN→TUNNEL crossing driven live with the corrected addresses).
+array pointer field, a real CAVERN→TUNNEL crossing driven live with the corrected addresses, Disk 2's
+one-time boot-time load with zero further FDC activity through a real crossing).
 
-**This pass (63rd, `mechanics.md` §62)**: traced the FDC across the 62nd pass's own remaining open
-window. §58 (58th pass) had shown 121 sector reads in the first 30M boot steps building toward
-`past_wall_mounted_90M.snap`, but never traced the remaining 60M steps. Resuming
-`past_wall_mounted_30M.snap`, remounting Disk 2, and stepping 60M more under `ATARI_TRACE_FDC=1`
-produced an empty trace — zero further FDC activity — landing at the same `PC=$00015254` the
-from-scratch 90M-step run reaches (reproducible, so not a broken harness). Re-running §61's own
-CAVERN→TUNNEL zigzag under the same trace flag found the crossing itself touches the FDC zero times
-too. Net: Disk 2's whole contribution is a one-time load, complete by step 30M of boot, untouched by
-idle time or by the one player-driven action tested.
+**This pass (64th, `mechanics.md` §63)**: ran the 63rd pass's own proposed test — drive to an
+undocumented room with `ATARI_TRACE_FDC=1` armed — and found it inapplicable: `door_walk.py` run
+fresh against `disk2_zigzag_probe1.snap` shows CAVERN and TUNNEL's only three door ids are the
+already-used CAVERN↔TUNNEL link, CAVERN's own east door (already live-tested in §13, and now shown by
+the game's own door-descriptor mechanism, §27c, to be a permanent geometric self-loop, not a
+state-dependent miss), and TUNNEL's second entry (a `$ffff` sentinel that §27c's code read shows
+never reaches a room-load call at all). A live check on the last one anyway — Up 3M then 6M more
+steps, then Left 1.5M to rule out a stuck-input false negative, then Up again — found TUNNEL's north
+wall solid at every x tried and FDC silent throughout. Three independent subsystems (room table §59b,
+door/portal mechanism §27c/this pass, FDC §62/§63) now agree nothing reachable from either driveable
+room ever surfaces a fourth.
 
 ## Open, in priority order
 
-1. **Does Disk 2 add reachable content beyond the known 72-room map?** Narrowed further this pass:
-   three independent checks (the room table itself, §59b; the rendered-art pixel diff, §61; this
-   pass's full FDC trace, §62) now agree Disk 2 adds nothing reachable from `past_wall_mounted_90M.
-   snap`, and §62 additionally shows *why* — the whole Disk 2 payload loads once in the first 30M
-   boot steps and is never read again, not on idle time and not across a real room crossing. The
-   remaining gap is narrow: is there a trigger deeper in the game (a day-progression event, an
-   explicit in-game "insert levels disk" prompt distinct from this one-time boot swap) that would
-   cause a *second* FDC read episode, never yet exercised from this snapshot? One concrete next
-   test:
-   - Drive to a room from `door_walk.py`'s graph that is *not* already screenshotted/documented in
-     the one-disk crack's own milestones (check `reversing/cadaver/README.md`'s files table and
-     `graphics.md`), with `ATARI_TRACE_FDC=1` armed throughout, and check both the room's rendered
-     content (pixel-diff/status-bar text, as §61 did for TUNNEL) and whether any FDC activity fires
-     during the crossing. No bbox-to-world-grid calibration exists (Open item 2), so treat each
-     crossing as directional trial-and-error (Right/Up/Down/Left holds, checking `164(A5)` after
-     each) rather than a computed path. If several more crossings all stay FDC-silent and land on
-     already-known content, that's grounds to close item 1 as "no additional reachable content" —
-     the one-time-load reading — rather than keep treating it as open.
+1. **Does Disk 2 add reachable content beyond the known 72-room map?** As close to closed as this
+   spike can get without a new starting state: four independent checks (room table, §59b; rendered
+   art, §61; full FDC trace, §62/63rd pass; the door/portal mechanism itself, §63/this pass) all agree
+   nothing reachable from `past_wall_mounted_90M.snap` or `disk2_zigzag_probe1.snap` ever surfaces a
+   fourth room, and between them they explain *why* from three unrelated angles (nothing left to
+   load, nothing left to read, no door left to walk through) rather than just reporting a string of
+   negatives. What's left is a **structural gap, not a testing gap**: CAVERN and TUNNEL are the only
+   two rooms this spike has ever put a live player in, and both are provably dead-ended by the door
+   mechanism itself (§27c) — no amount of further directional trial-and-error from either one can
+   reach a third room. Making further progress on this item needs either (a) a live snapshot standing
+   in some *other* room (there is no known route to one from here — TUNNEL's lever puzzle was already
+   exhaustively dead-ended in the one-disk build across the 12th-41st passes), or (b) reversing
+   whatever deeper in-game trigger (day-progression, an explicit disk-swap prompt) might populate the
+   type-8 registration table this spike has only ever seen empty (§27d) — neither is a quick follow-up
+   test, both are open-ended reversing work. Recommend treating this as closed for practical purposes
+   (Disk 2 contributes a one-time boot-time asset load and nothing else, as far as this spike can
+   drive) unless Dave wants the open-ended push into (a) or (b).
 2. No calibration exists between `world_map.py`'s world-grid room rectangles (coarse, e.g. CAVERN
    `[12,18]-[22,28]`) and the player bbox's own coordinate scale (e.g. `[25,23,19,17]`, up to
    `[69,23,63,17]` after one full rightward leg) — door candidate coordinates from `door_walk.py`
@@ -179,14 +193,15 @@ blits, movement is joystick port 1, player = sprite slot 0, use
 
 ## Next session
 
-Item 1 is still the priority and has narrowed further: three independent checks now (room table
-geometry, TUNNEL's rendered art, this pass's full FDC trace) agree Disk 2 contributes nothing
-reachable from `past_wall_mounted_90M.snap`, and the FDC trace explains why — the whole Disk 2 load
-is a one-time boot-time event, complete by step 30M, never touched again by idle time or by a real
-room crossing. The one productive remaining direction: drive to a room not already documented by the
-one-disk crack's own milestones, with `ATARI_TRACE_FDC=1` armed throughout, and check both its
-content (trial-and-error directional holds, no bbox/world-grid calibration exists — see Open item 2)
-and whether the crossing itself fires any FDC activity. If several such crossings all stay
-FDC-silent and land on already-known content, that's enough to close item 1 outright as "no
-additional reachable content", not just narrow it further. No emulator rebuild or reverification
-needed first - nothing in `*.fs` changed this pass or last two. Prompt: `/resume cadaver`.
+Item 1 has run out of cheap next tests: this pass found that CAVERN and TUNNEL — the only two rooms
+this spike has ever put a live player in — have no door capable of reaching a third room at all, by
+the game's own proven door-descriptor mechanism (§27c), not just none tried yet. Combined with the
+room-table match (§59b), the rendered-art match (§61) and the full FDC silence (§62/§63rd pass), four
+independent subsystems now agree nothing reachable from here ever surfaces a fourth room. Recommend
+raising this with Dave as effectively closed (Disk 2 = one-time boot-time asset load, nothing more, as
+far as this spike can drive) unless he wants to fund the open-ended work of either reaching a new room
+via TUNNEL's already-exhaustively-dead-ended lever puzzle, or reversing the still-unpopulated type-8
+registration table's real trigger — neither is a quick follow-up. If he'd rather keep pushing, start
+by re-reading Open item 1's own "what's left" paragraph, which names both directions. No emulator
+rebuild or reverification needed first - nothing in `*.fs` changed this pass or the last three.
+Prompt: `/resume cadaver`.
