@@ -481,17 +481,33 @@ the height-pass's columns land at `px` 128→32, strictly decreasing — the two
 non-overlapping screen ranges meeting exactly at the room's own centre (px≈128-144), which is what
 two walls meeting at a corner should look like, not what a mixed-up or duplicated pass would produce.
 
-**Not yet done**: (1) an exact pixel-diff match count against `gameplay.png` — the mosaic above uses
-row/pixel_x rounding, not `$00d1f8`'s real sub-pixel shift-table adjustment (`$5692`), so it's
-visually and structurally proven but not yet byte-exact (some individual tile edges likely sit 1-15px
-off from their true position); (2) the same live capture for TUNNEL (this pass only tried one
-direction, `kbd ff 01` from `gameplay_empire.snap`, and got 0 hits in 3M steps — the real
-CAVERN→TUNNEL crossing key/route wasn't identified this pass, unlike the already-proven
-TUNNEL→CAVERN one used above); (3) `$92e8`/`$d1f8`'s `0xc2` object-anchor sub-case (§5f) is still
-unrelated and untraced — note `$d1f8` the plain-tile placement routine (above) and the `0xc2`
-sub-case's `bsr $d1f8` (§5f, from `$cc2e`) are two different call sites into the same routine name,
-don't conflate them; (4) stack direction (does column index 0 sit at the floor or the ceiling) — the
-live capture didn't settle this either, though the visual match's overall coherence is suggestive.
+**5i-2. Exact pixel-diff match count against `gameplay.png`: 19079/19749 = 96.6% of covered pixels,
+byte-exact — the descriptor's own `x0,y0` fields are already the final placement, no shift-table
+math needed beyond what the game itself already baked in.** The earlier assumption above (5i, "an
+approximation that ignores `$00d1f8`'s own sub-pixel shift") turned out to be wrong about where the
+imprecision was: the draw descriptor already stores the exact absolute screen pixel position in
+`x0`/`y0` (bytes 4-6/0), not just the coarse byte-offset field row/pixel_x was derived from — checked
+against all 76 real entries, `x0 == (offset % 160) * 2` and `y0 == offset // 160` exactly, so the two
+are mathematically identical and there is no separate correction to apply. A global `(dx,dy)` grid
+search of the whole rendered mosaic against `gameplay.png` confirms `(0,0)` is already optimal — no
+residual uniform sub-pixel offset exists. `y0,y1` (bytes 0-1) are the tile's absolute-screen clip
+window, not just metadata: when a tile runs off the top of the drawable area (`y1-y0 < 32`), the
+visible slice is the *bottom* `y1-y0` rows of the 32px source tile, which `room_mosaic.py` (updated
+this pass) now crops and pastes accordingly, scored with its own `--diff` option. The residual 3.4%
+clusters at overlap edges between adjacent tiles in a stack (same palette values shuffled by ~1px,
+not a wrong tile or wrong base position) — confirmed not a paint-order bug (the list's own natural
+order beats every row-sorted alternative, and reverse order scores far worse, 39%) — a finer
+overlap/z-order detail this pass didn't chase further, not a placement-formula error.
+
+**Not yet done**: (1) the same live capture for TUNNEL (this pass only tried one direction, `kbd ff
+01` from `gameplay_empire.snap`, and got 0 hits in 3M steps — the real CAVERN→TUNNEL crossing
+key/route wasn't identified this pass, unlike the already-proven TUNNEL→CAVERN one used above); (2)
+`$92e8`/`$d1f8`'s `0xc2` object-anchor sub-case (§5f) is still unrelated and untraced — note `$d1f8`
+the plain-tile placement routine (above) and the `0xc2` sub-case's `bsr $d1f8` (§5f, from `$cc2e`)
+are two different call sites into the same routine name, don't conflate them; (3) stack direction
+(does column index 0 sit at the floor or the ceiling) — the live capture didn't settle this either,
+though the visual match's overall coherence is suggestive; (4) the ~3.4% overlap-edge residual above
+is unexplained, though small and visually negligible.
 
 **5j. In plain terms: how a room's walls and floor actually get to the screen** (§5's full mechanism,
 without the addresses — the proof and every instruction-level detail is §5a-5i above).
@@ -538,12 +554,12 @@ corrected there — the walls and floor are a genuinely separate, shared, tile-i
 per room from a tiny compressed stream into a per-column tile stack (§5e) that a flat-indexed 80-tile
 catalog is drawn through, with no runtime adjacency rules (§5g), placed on screen by a byte-exact
 formula (§5h) and a now-fully-traced-and-live-confirmed draw pipeline (§5i) ending in the same shared
-blitter as every sprite (§4b). **Open**: (a) `$92e8`/`$cc2e`'s `bsr $d1f8` (§5f's `0xc2` sub-case) —
-is it really an object anchor, not traced past the struct-field writes; (b) stack direction (does
-column index 0 sit at the floor or the ceiling) — still not proven; (c) an exact pixel-diff match
-count against `gameplay.png` (needs §5i's sub-pixel shift table, not yet incorporated) and the same
-live capture for TUNNEL — §5i's mosaic proves the mechanism visually and structurally, not yet to a
-byte-exact score.
+blitter as every sprite (§4b), scored at 96.6% exact against `gameplay.png` (§5i-2). **Open**: (a)
+`$92e8`/`$cc2e`'s `bsr $d1f8` (§5f's `0xc2` sub-case) — is it really an object anchor, not traced past
+the struct-field writes; (b) stack direction (does column index 0 sit at the floor or the ceiling) —
+still not proven; (c) the same live capture and mosaic for TUNNEL (CAVERN only so far); (d) the
+remaining 3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2) — small and visually
+negligible, cause not identified.
 
 ## Files
 
@@ -555,7 +571,7 @@ byte-exact score.
 | `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
 | `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) — not captured by the array export below, since only the *current* frame pointer is live in any one snapshot |
 | `sprites/` | the full 22-entry sprite-object-array catalog (§3) — one PNG per slot, `contact_sheet.png`, `manifest.csv` |
-| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, the first full grid-to-pixels proof |
+| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i/§5i-2) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, scored 96.6% pixel-exact against `gameplay.png` |
 | `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` (struct-driven array mode, `--base`/`--array-ptr-field`) and the raw `tiles/` catalog (fixed-stride mode, `--sequence BASE STRIDE COUNT W H`) |
 | `py/room_tile_grid.py` | decodes a room's `(A5)+2914` tile-id grid (§5b/5e) and renders it against the shared catalog; usage in its own header |
 | `py/room_mosaic.py` | renders `cavern_mosaic.png` from a live mid-room-entry snapshot's real draw-descriptor list (§5i); the snapshot-capture recipe (REPL commands) is in its own header |
