@@ -679,14 +679,20 @@ food on that settlement. What order `$06` moves (`loyalty_pressure` 0 → 16,
 corroborated 125th) is that order's own `+16 >> (posture−2)` formula, a
 completely separate write path from the parked-marker pulse.
 
-**Still open:** whether a settlement's `$7c` marker itself is the bit-0-flagged
-record feeding the observed mode-`$16` traffic (rather than some other
-garrison entity) is inferred, not traced end to end — the `$51bfc` record
-above was caught already inside `$16`, not followed backward to its own prior
-`$3c08` call. If confirmed, the practical read for "does a settlement ever
-revolt on its own" is: watch `loyalty_pressure` across a marker's own
-`$7c`/`$16` cycle over a longer natural run (several `$57fd0` rotations,
-400M+ steps) and see whether it crosses 600 there, independent of any click.
+**"Does a settlement ever revolt on its own?" is already answered, and yes**
+(127th: this framing had gone stale — §6/`ai.md`'s `$550e` proof already
+settled it four passes before the 125th/126th re-opened it as a fresh
+question). The 122nd pass's `diff_revolt.py` (1778/1778 tracked bytes over 49
+states, `ai.md` "The revolt chain") ran on the four `pm121/run/<land>_s1..s4`
+corpora — 200M steps per land, **no player input at all**. Of the 27 natural
+`$550e` calls it captured, **11 fired from the settlement heartbeat at loyalty
+600-608** (the other 16 from mode `$2c`'s conquest arm, loyalty 0-292; §6).
+That is exactly the `$7c`/`$16` self-cycle described above crossing 600
+unassisted, differential-tested against the real 68000 rather than merely
+observed. What is still genuinely open is narrower: whether the settlement's
+own `$7c` marker is itself the bit-0-flagged record feeding the mode-`$16`
+traffic, or some other garrison entity — the `$51bfc` record above was caught
+already inside `$16`, not followed backward to its own prior `$3c08` call.
 `scratchpad/pm125b/` (gitignored; `ANCHORS.md`).
 
 ### 3b. The `$163ea` aliasing — characterised, benign (75th pass, task 5)
