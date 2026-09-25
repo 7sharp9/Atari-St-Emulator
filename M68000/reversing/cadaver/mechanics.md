@@ -3938,12 +3938,28 @@ address (`data_area + 104`, CAVERN's own `size`). `snap_render.py` on the post-c
 same room the one-disk crack's own milestones already document — not committed as a new asset,
 since it isn't one.
 
+**A pixel diff against the one-disk build's own `room2_tunnel_entry.png` milestone confirms TUNNEL's
+room art itself is unchanged.** `disk2_tunnel_probe1.png` vs `room2_tunnel_entry.png`: 1,552 of
+64,000 pixels differ (bbox `(96,61)-(312,191)`, the room-graphic/icon-panel area), but a visual
+compare shows the same isometric TUNNEL scene, same inventory panel population — the difference is
+consistent with the player sprite standing at a slightly different position/facing after two
+different approach routes, not a content change. Confirms §59b's room-table finding (byte-identical
+72-room map) extends to at least this one room's rendered art, not just its geometry.
+
+**The `2516(A5)` "day-count/variant selector" candidate §32a flagged but never confirmed reads
+`100` in `past_wall_mounted_90M.snap`**, not a small day index — inconsistent with it being a
+literal "Day 1" counter (the status bar's "DAY 1" text is evidently a separate field). Not pursued
+further this pass; still unconfirmed either way, see Open item 3 below.
+
 **Net effect on item 1**: the drive mechanism (corrected `56(A5)` for the player, `164(A5)` for the
 current room, `door_walk.py`'s graph for where each door leads) is now proven live end to end in the
-two-disk build, not just in principle. This first crossing lands on already-known content (TUNNEL),
-so it does not yet answer whether Disk 2 adds anything beyond the 72-room map — the next crossing to
-try is one whose destination isn't already in the one-disk crack's own documented room list, per the
-open item below.
+two-disk build, not just in principle, and this first crossing plus its pixel-level check both land
+on already-known, unchanged content (TUNNEL). Two independent checks now agree Disk 2 does not add
+anything to the spatial room table or its rendered geometry, at least for the two rooms reachable
+from this snapshot — the open question is narrowing toward *whether Disk 2's content is reachable
+from here at all*, versus being gated behind a mechanism not yet exercised (a day-progression event,
+or a mid-game "insert levels disk" prompt distinct from the one-time boot-time swap already used to
+build this snapshot). See the open items below for the next concrete tests.
 
 ## Files
 
