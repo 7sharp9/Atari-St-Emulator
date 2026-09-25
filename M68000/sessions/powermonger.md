@@ -1,18 +1,24 @@
 # PowerMonger: handoff
 
-Updated 2026-09-25 by the session that ended at commit `3a05c78` (the 126th PowerMonger pass, on the
+Updated 2026-09-25 by the session that ended at commit `53c5408` (the 127th PowerMonger pass, on the
 Mac).
 
 ## Resume point
 
-- Last commits of this workstream: `3a05c78` (design digest: revolt's park pulse is a garrison
-  marker's own cycle, not player-reachable), `7bca7eb` (economy.md §3a / ai.md: `dwell := $ff9d`
-  proven live, mode `$16` traced to a world-build garrison flag, not player dismiss).
+- Last commits of this workstream: `53c5408` (ANCHORS: index the 127th's organic take-equipment
+  state), `79e1c3f` (strategy.md: natural alliance test, take-equipment confirmed, envoy dies to
+  contact twice), `816c786` (README: correct stale revolt bullet, add topic-doc index table),
+  `b31c50f` (economy.md: revolt reachability was already proven, "still open" was stale).
 - Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell
-  pitfalls"). New this pass: `scratchpad/pm125b/` (the forced-`$57fd0`=0 isolation, the one-deserter
-  end-to-end trace, and a natural no-click mode-`$16` capture), indexed in `scratchpad/ANCHORS.md`.
+  pitfalls"). New this pass: `scratchpad/pm127/diplo3/` (`equip_probe.snap`/`.ram` — land 25's
+  side-1 group after a real, unpoked take-equipment click; `alliance1.snap` — the same group after
+  dying to hostile contact en route to a foreign lord), indexed in `scratchpad/ANCHORS.md`.
+  `pm127/diplo/` and `pm127/diplo2/` are dead ends (mission 1 has zero goods anywhere; a 450M-step
+  march on land 0 starved a group to death) — not reusable, left as-is.
 - Start from: `scratchpad/pm123/win/m1_s0.snap` (mission 1 settled: our 26-man group `$188` at
-  (40,51), food 251, posture 3; lords 0/1 on side 2). Rebuild with `reversing/powermonger/py/drive_win.sh` (7 min) if missing.
+  (40,51), food 251, posture 3; lords 0/1 on side 2), unchanged this pass. For anything touching the
+  live goods economy, mission 1 itself has **no goods anywhere** (every lord's `goods[]` is zero) —
+  use a natural land corpus instead (`scratchpad/pm121/run/`, `ANCHORS.md`).
 - Uncommitted work left behind: none of this session's. Pre-existing, not this session's and not
   touched: `M68000/sessions/README.md` still carries an uncommitted pure line-rewrap (no content
   change) from Obsidian editing the repo (`.obsidian/` is untracked in the tree). Also untracked:
@@ -29,57 +35,78 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 `py/diff_4f68.py` 1804/1804.
 
 - **Every player order, food, group-record fields, conquest, the heartbeat revolt mechanism,
-  starvation desertion**: see the 125th's summary in git history (`9964df2`'s parent) — unchanged
-  this pass.
-- **What sets `dwell := $ff9d`, live-confirmed (126th).** The write is `$015052`, inside entity
-  mode `$16`'s handler (`$015042`), gated on `word[$57fd0] == 0`. Isolated with a forced-poke test:
-  0/28 natural mode-`$16` entries parked while `$57fd0` stayed nonzero over 100M steps; forcing
-  `word[$57fd0] := 0` (`w 57fd0 00000188`) on the same state made the very next entry park — 1/3
-  over a further 150M steps, at the one step `$57fd0` read 0. economy.md §3a, `scratchpad/pm125b/`.
-- **Mode `$16` is a garrison/neutral-village mechanism, not a player one (126th, live-traced).**
-  `$3c08` only picks `prev_mode := $16` for a record whose flags byte has bit 0 set; the sole site
-  that sets that bit anywhere in the image is `$002cd0`, a world-build site-scan for neutral
-  villages/garrisons. Traced one starvation deserter (entity `$52462`) end to end from `$1b8c`
-  through `$3c08`'s **"no flags set" default** (`prev_mode := $7e`) to arrival — it never touches
-  `$16`. Mode `$7e` runs the same heartbeat body ungated but with no fresh dwell reset, so the
-  `D5 == $ff9c` loyalty edge cannot fire for a unit that arrives this way — this is *why* the
-  125th's dismiss/starve test saw zero loyalty adjustments over 104 pulses. The design digest's
-  "revolt" bullet and ai.md's `$16`/`$7e` rows now reflect this. economy.md §3a, README.md "Design
-  digest", `scratchpad/pm125b/`.
+  starvation desertion, what sets `dwell := $ff9d`, mode `$16` as a garrison/neutral marker**: see
+  the 125th/126th's summaries in git history — unchanged this pass.
+- **Revolt reachability was already proven, and the "still open" framing in economy.md/README was
+  stale (127th).** The 122nd pass's `diff_revolt.py` (1778/1778 over 49 states) already showed the
+  settlement heartbeat's `$7c`/`$16` self-cycle crossing loyalty 600 unassisted: 11 of 27 natural
+  `$550e` defections on four 200M-step no-input land runs came from the heartbeat at loyalty
+  600-608 (`ai.md` "The revolt chain"). The 125th/126th passes re-opened this as a fresh question
+  without checking the existing proof; caught per CLAUDE.md's rule to grep for a retired framing
+  before reusing it, no new emulator run needed. Fixed in `economy.md` §3a and the README design
+  digest. The narrower question — is the settlement's own `$7c` marker literally the same object
+  that feeds the mode-`$16` traffic — stays open (unchanged from before).
+- **Take-equipment genuinely fills a group's `carrying[]`/`supply_acc[]` from a real stockpile, no
+  pokes (127th, live).** Land 25's side-1 group (8 men) sent to its own lord 7's town with order
+  `$10` came back carrying 3 pots pulled from lord 7's actual `goods[]` — confirms economy.md §2c's
+  `$61f8`/`$6352` claim under fully organic conditions. `scratchpad/pm127/diplo3/equip_probe.snap`.
+- **An unescorted natural-goods envoy dies to contact before offering an alliance — confirmed twice
+  independently (123rd forced-goods, 127th fully organic).** Same group, still carrying its 3 pots,
+  sent toward the nearest foreign lord (7 cells) with order `$1e`: hostile contact at 13M steps
+  (`$4c2a` fired, not `$33b0`/`$34a8`) wiped it out, goods dropped as a ground pile. strategy.md
+  "Diplomacy".
 
 ## Open, in priority order
 
-1. **Does a settlement's own `$7c` marker ever cross loyalty 600 unassisted?** Now that the park
-   write is pinned to mode `$16`'s `$57fd0`-gated branch and shown to be a garrison-marker cycle
-   independent of player action, the open question is whether *revolt itself* is ever reachable at
-   all, or only ever an inert cycle. Concretely: run 400M+ steps (several `$57fd0` rotations,
-   ~110M steps each) from a snapshot with active garrison markers, watching `loyalty_pressure` on
-   each lord across their marker's own `$7c` ⇄ `$16` transitions, and check whether it can reach
-   600 without any player order ever touching that lord's town. A negative result over several
-   rotations would mean "Revolt" needs re-labelling as effectively dead code in mission 1 rather
-   than an inferred-reachable mechanic.
-2. **A natural alliance by clicks** (strategy.md "Diplomacy"): carried goods are the tribute, and
-   they now have a path: take equipment (`$10`) from an own town with goods, or trade (`$1c`).
-   Mission 1's lord has no goods and no capital; try `l1_built.snap` (census the lords with
-   `py/sides.py`). Proof: `$34a8` writes without pokes.
-3. **The orders not yet seen naturally**: `$04` transfer (needs two captains, a later land), `$0e`
+1. **A natural alliance completing end to end** (strategy.md "Diplomacy"): the tribute side is now
+   proven organic (take-equipment genuinely loads `carrying[]`); what's missing is the envoy
+   surviving the walk. Two natural corpora both had it killed by unrelated hostile contact first.
+   Next attempt needs either an **escort** (a second, stronger group clearing/holding the corridor
+   ahead of the envoy) or a **much earlier snapshot** (before a land's territory has had 100M+ steps
+   to become contested) — proximity to a goods-bearing lord alone isn't enough. `$34a8` firing
+   without any poke is the proof bar.
+2. **The orders not yet seen naturally**: `$04` transfer (needs two captains, a later land), `$0e`
    on a real capital (does the work order produce pots naturally?), `$10`/`$06` on a food pile, the
    `$1a` supply line over several loops (food delivered per loop).
-4. **What refills strength** (lead/man byte 45, the captain panel's "Strength:", drained by `$5c80`);
+3. **What refills strength** (lead/man byte 45, the captain panel's "Strength:", drained by `$5c80`);
    the old "food" item 4 reads byte 45 wrongly. Watch byte 45 of a man over a march with and without
    food.
-5. `$1b8c` via `$5778` (a gate over natural `$5778` states); `$4342`'s arrival/unlink branch
+4. `$1b8c` via `$5778` (a gate over natural `$5778` states); `$4342`'s arrival/unlink branch
    (`scratchpad/pm113/diff_4342.py`, natural states from `capture_hits.py`); `$4f68` arms not covered
    (`$51dc` finding an ally's target, `$548a`'s `39 == 2`).
-6. Smaller: weather in the stepper/Godot view; where the crack writes its `$b842` patch; the
+5. Smaller: weather in the stepper/Godot view; where the crack writes its `$b842` patch; the
    fixed-map `$df52(7)` branch; `$2df98` is "the other button" (inferred right); the port and stepper
    still use the old names (`troops_reserve`, budget, discipline) if they model them.
+6. **A deeper game summary/mechanics writeup**, if Dave wants to keep extending it toward
+   populous's depth: the README now opens with a doc-index table (added 127th) and the Design
+   digest is current; a further step would be an explicit "architecture" thread (per-tick dispatch,
+   core data structures, which mechanics are instances of a shared idiom) the way
+   `reverse-engineer-st-game`'s §7 describes, if the topic docs don't already read that way on a
+   fresh pass.
 
 ## Known traps
 
 - **Grep the topic docs for a routine's address before disassembling it.** This pass spent a full
   read of `$157e6`'s body only to reproduce, line for line, the pseudocode economy.md §3a and
   ai.md already had from the 96th/97th pass (now in `CLAUDE.md`'s Rules).
+- **Grep for a retired "still open" framing before re-scoping a live test for it — the same rule
+  bites at the doc level, not just within one doc.** The 127th nearly re-ran the 126th's planned
+  400M-step revolt-reachability census, which would have been pure waste: `ai.md`'s "revolt chain"
+  section (122nd pass) already answered it. Read the *other* topic docs' proofs, not just the one
+  the open item lives in, before planning a new test.
+- **Before committing a long march to a step budget, check the group's food-to-men ratio can
+  survive the distance, or probe with a short step count first.** A natural corpus's own marching
+  pace (~13-14M steps/cell, from a group under contested/wandering conditions) is much slower than
+  a short mission-1 test's (~5M steps/cell), and a starving group deserts and can fully disband
+  before arriving. This pass burned a 450M-step run on land 0 (13 men, food 46) to watch it starve
+  33 of 69 cells short and never arrive; the very next attempt (land 25, 8 men, food 97, 17 cells,
+  probed with 80M steps first) succeeded cleanly. Cheap insurance: run a modest step count, check
+  `group.py`'s position/food/men, then extend only if it's still alive and progressing.
+- **A side's own captain groups wander far from home under autonomous AI orders in an unplayed
+  natural corpus** — even side 1 (the player's side) gets `$6522`/`$6564`-issued orders when nobody
+  is clicking, so "our" group in a `pm121/run/<land>_s4` snapshot is often nowhere near our own
+  settlements. Census every side-1 group (`0x51538 + 0x13c + 0x4c + 2k`, k=0..5) before planning a
+  march, not just the currently-selected one (`$57fd2`).
 - Group offsets: `D2` / `42(obj)` / `$57fd2` = `side*$13c + $4c + 2k`; a group field `x` is the
   side array at `$4c + x`. The local group on `m1_s0` is `$188`, so its food is `$516e4`.
 - `scratchpad/pm98/repro93..97.py` hardcode `reuse_json=True`: they re-run only the reference side.
@@ -89,17 +116,18 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
   intact. `bpc <addr> <n>` counts hits **from the current position**, not cumulatively from cold boot —
   chaining `bpc addr 1`, `bpc addr 2`, `bpc addr 3` to get the 1st/2nd/3rd occurrence over a whole run
   is wrong; each call needs `n=1`.
-- **A bounded-window negative result over a `$57fd0`-gated routine proves nothing on its own.**
-  `$57fd0` cycles `{0,2,4,6}` roughly once per 110M steps, so a window has to be sized (or `$57fd0`
-  forced) relative to that period before "0 hits in N steps" can be read as "this path is dead" —
-  this pass's first mode-`$16` breakpoint run (150M steps, 0 hits) was actually just a window that
-  never crossed `$57fd0 == 0`, not a real negative result; the forced-poke re-run caught it.
+- **`sides.py`/`group.py`/`snap2ram.py` need a flat `.ram` image, not a `.snap`** (the `.snap`
+  format has a ~340-byte header the scripts' hardcoded absolute addresses don't account for, and
+  reading it directly throws a `struct.error` well into the output, not a clean early failure).
+  `reversing/powermonger/py/snap2ram.py <snap>...` converts.
 - Mission 1's player town is kind 11, not a capital, so `$5cde` refuses order `$0e` there.
 - `py/clicks.py`: the pointer moves 1:1 and clamps at 0; `home` re-homes it. An order posted by a
   click runs during the click's own settle steps, so start `hits`/`watch`/`bp` before the click. For a
   census of the arrival, arm the icon, then `mouse down`, `hits ...`, `mouse up` (see the `o0e` run in
   strategy.md "What each order does"). A raw REPL token can be passed through with `:` for spaces
-  (e.g. `"hits:30000000:158cc:163b8"`); only one `watch` range is live at a time.
+  (e.g. `"hits:30000000:158cc:163b8"`); only one `watch` range is live at a time. The order-icon
+  screen coordinates and the minimap's direct cell-click mapping (`(x, y-6)` for `x<64, 6<=y<134`)
+  are in strategy.md "The player's commands".
 - `py/iconmap.py`'s edge loops count the edge they stop at; without that every icon is one tile off.
 - The listing mis-disassembles data as code around `$6b5a`, `$14bb4`, `$4fa2`: resolve jump tables
   from a RAM image (`table + word[table + index]`).
@@ -110,12 +138,11 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Next session
 
-Open item 1: settle whether revolt is ever reachable at all. From a snapshot with several live
-garrison/neutral markers (not `m1_s0` alone — census `$002cd0`'s targets first, or use a later,
-busier land), run 400M+ steps with a `hits`/`watch` census on `$015042`/`$015052`/`$158a8`/`$015886`
-(the mode-`$16` entry, the park write, and the loyalty `+2`/`-1` sites) spanning several `$57fd0`
-rotations, and see whether any lord's `loyalty_pressure` crosses 600 unassisted. A clean negative
-over multiple rotations is as valuable a result as a positive — it means "Revolt" belongs in the
-design digest as an inferred-dead mechanic in mission 1, not an open trigger. Then item 2
-(diplomacy) on `l1_built.snap`. Re-run every gate before committing anything that touches a
-reference transcription.
+Open item 1: a natural alliance completing end to end. Start from
+`scratchpad/pm127/diplo3/equip_probe.snap` (land 25, our 8-man group already carrying 3 pots, no
+pokes) — either build a second, stronger group and send it ahead as an escort to clear the corridor
+toward the nearest foreign lord before sending the envoy, or find/build an earlier land snapshot
+(before ~100M steps of natural drift) where the same lord pairing hasn't gone hostile yet. Watch
+`33b0`/`34a8`/`c706`/`4c2a` with `hits` to see which one fires. A clean "the escort worked, `$34a8`
+fired with real, unpoked tribute" is the target; a second contact-death is still useful negative
+data for strategy.md. If that stalls, item 2 (the orders not yet seen naturally) is next.
