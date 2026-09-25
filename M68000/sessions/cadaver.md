@@ -1,19 +1,25 @@
 # Cadaver: handoff
 
-Updated 2026-09-25 by the session that ended at commit `e82924e` (59th pass). Resumed from the
-58th-pass handoff's item 1 ("does Disk 2 supply content beyond the one-disk crack's 72-room map")
-and drove real player input for the first time from `past_wall_mounted_90M.snap`. Found the room
-table is unchanged (same 72 rooms as the one-disk build) and, separately, that the game is not in
-normal interactive gameplay at that snapshot at all - the player/entity sprite array is empty and
-joystick input has no effect. Also fixed a real bug in `world_map.py`, caught along the way: its
-hardcoded resource-manager addresses were stale for the two-disk build and silently produced a
-false "100/100 populated, massive overlap" reading before the fix.
+Updated 2026-09-25 by the session that ended at commit `bd6bb93` (60th pass), a narrow follow-up
+to the 59th pass's queued item 2: `door_walk.py` had the same stale-resource-address bug the 59th
+pass fixed in `world_map.py` (a broken import of now-removed `INDEX_TABLE`/`DATA_AREA` constants,
+plus its own hardcoded one-disk-build `TYPE4_INDEX`/`TYPE4_DATA` for type-4 door descriptors). Both
+now resolve dynamically via `world_map.resource_type()`, matching mechanics.md §59a's fix shape.
+No new investigation this pass - item 1 (player entity not live) is untouched and still the
+priority.
+
+Prior pass's summary (59th, `e82924e`): resumed from the 58th-pass handoff's item 1 ("does Disk 2
+supply content beyond the one-disk crack's 72-room map") and drove real player input for the first
+time from `past_wall_mounted_90M.snap`. Found the room table is unchanged (same 72 rooms as the
+one-disk build) and, separately, that the game is not in normal interactive gameplay at that
+snapshot at all - the player/entity sprite array is empty and joystick input has no effect. Also
+fixed the `world_map.py` stale-address bug described above.
 
 ## Resume point
 
-- Last commit of this workstream: `e82924e` "cadaver: fix world_map.py's stale resource-manager
-  addresses, reframe the Disk 2 content question (59th pass)". No emulator source changed this
-  pass, so no rebuild or regression-net run is needed before building on it.
+- Last commit of this workstream: `bd6bb93` "cadaver: fix door_walk.py's stale hardcoded type-3/4
+  resource addresses (60th pass)". No emulator source changed this pass either, so no rebuild or
+  regression-net run is needed before building on it.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This pass's additions:
   - `drive_explore.repl` / `.log`, `drive_right{1..5}.snap` / `.png`: five `kbd ff 08` (joystick-1
     right, make) / `s 3000000` / `kbd ff 00` (release) / `s 500000` cycles from
@@ -34,23 +40,27 @@ false "100/100 populated, massive overlap" reading before the fix.
   `agent_disk2_wall/before_jsr.snap` with `disk ../Cadaver/disk2_replicants/disk2.st` issued first,
   per the 58th pass's recipe.
 - Uncommitted work left behind: none of this session's own. `CLAUDE.md`, `sessions/README.md`,
-  `sessions/powermonger.md` show modified in `git status` - belong to the concurrent "Training
-  efficiency (2)" session (confirmed live via `ListAgents`), left alone per the shared-resources
-  rule. `.obsidian/` and `Cadaver/` are untracked and not this session's to manage.
-- A spawned background task ("Fix door_walk.py's stale hardcoded resource addresses") is queued
-  for the user to start separately - `door_walk.py` has the same stale-address bug `world_map.py`
-  had, plus a now-broken import (`world_map.INDEX_TABLE`/`DATA_AREA` no longer exist post-fix). Not
-  done in this session; if it's still unstarted next session, either start it or fold the fix in
-  directly (see mechanics.md §59a for the exact shape of the fix).
+  `sessions/powermonger.md` still show modified in `git status` - belong to the concurrent
+  "Training efficiency (2)" session, left alone per the shared-resources rule. `.obsidian/` and
+  `Cadaver/` are untracked and not this session's to manage.
 
 ## Proven so far
 
-Detail in `reversing/cadaver/README.md`, `mechanics.md` (§59 is this pass), `graphics.md`, `ai.md`.
-Carried over: `mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a, 35-58 (movement collision/proximity
-mechanism, the icon-panel write chain, the full 72-room world-map/adjacency graph, the
-door-connectivity walk, the swapped-disk side-count bug, the Replicants/ST Amigos crack's Disk 2
-swap, the two genuine emulator gaps behind the "crack dispatch bug", and the 58th pass's own
-REPL-workflow fix for the FDC "no data" wall). **New this session, `mechanics.md` §59**:
+Detail in `reversing/cadaver/README.md`, `mechanics.md` (§59 covers both the 59th and this 60th
+pass), `graphics.md`, `ai.md`. Carried over: `mechanics.md` §1-6, 27, 31a, 32a/b, 33b/34b, 34a,
+35-58 (movement collision/proximity mechanism, the icon-panel write chain, the full 72-room
+world-map/adjacency graph, the door-connectivity walk, the swapped-disk side-count bug, the
+Replicants/ST Amigos crack's Disk 2 swap, the two genuine emulator gaps behind the "crack dispatch
+bug", and the 58th pass's own REPL-workflow fix for the FDC "no data" wall).
+
+**This pass (60th)**: `door_walk.py` now resolves both type 3 (rooms) and type 4 (door
+descriptors) via `world_map.resource_type()` instead of importing removed module constants /
+hardcoding one-disk-build addresses. Re-run against `past_wall_mounted_90M.snap` (Disk 2 build):
+71 distinct doors across 72 rooms, every resolved destination is `self` or edge-adjacent to its
+owning room - no `NON-ADJACENT (teleport)` anomalies, consistent with a correctly-resolved static
+door table.
+
+**59th pass, `mechanics.md` §59**:
 
 - `world_map.py`'s hardcoded type-3 index-table/data-area addresses (`$4ac36`/`$6bf0a`) were the
   one-disk build's; the two-disk Replicants build's whole resource manager sits `+$100` past them
@@ -82,14 +92,12 @@ REPL-workflow fix for the FDC "no data" wall). **New this session, `mechanics.md
    (rather than a mid-flight disk swap replayed forward from `before_jsr.snap`) reaches a state
    where it does. This subsumes the old "drive input to explore beyond the 72-room map" framing -
    there's no point walking anywhere until the player entity exists.
-2. `door_walk.py` needs the same dynamic-resolution fix as `world_map.py` (§59a) - currently
-   broken (stale import) against the Disk 2 build. A background task is already queued for this.
-3. Which of the 13 (of 14) `$ff8201`-touching call sites other than the room-crossing path
+2. Which of the 13 (of 14) `$ff8201`-touching call sites other than the room-crossing path
    actually fires. Not needed to close anything above.
-4. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period
+3. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period
    repeats (§52's 3-byte cycle) - not yet extended.
-5. No `.stx`->`.st` converter exists in `tools/`. Only worth writing for a `.stx`-only release.
-6. The five crack variants extracted in the 55th pass and the untried single-sided
+4. No `.stx`->`.st` converter exists in `tools/`. Only worth writing for a `.stx`-only release.
+5. The five crack variants extracted in the 55th pass and the untried single-sided
    `disk2_replicants[b].st` (55th-pass handoff) - low priority, superseded by item 1 as the more
    direct path to more Disk 2 content.
 
