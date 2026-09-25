@@ -454,15 +454,39 @@ per-column stacks from §5e. Rendering all 76 at their decoded screen offsets (r
 pixel_x = (offset mod 160)×2 — an approximation that ignores `$00d1f8`'s own sub-pixel shift, see
 below) produces `reversing/cadaver/tiles/cavern_mosaic.png`: two isometric cave walls meeting at a
 corner, carved-stone texture with gold-flecked and green-dither accents in the same relative
-positions as `gameplay.png`'s CAVERN — **a clear, unambiguous structural and visual match**, proving
-the mechanism end to end for the first time (grid → placement table → draw descriptor → rendered
-wall), not just each stage in isolation.
+positions as `gameplay.png`'s CAVERN.
+
+**First render had a real compositing bug, not a placement bug — worth recording since it looked
+exactly like a wrong-mechanism symptom.** The first version of `cavern_mosaic.png` pasted each
+32×32 tile as an opaque square. Every tile is a cube-shaped sprite on a black (palette index 0)
+background, not full-square art, and this placement relies on ~50% overlap between neighbouring
+columns/rows (§5h's `$508`/`$4f8` step is half a tile width/height) — so each later opaque paste
+stomped its own black corners over the previous tile's visible edge, leaving a comb of black gaps
+between every column. It still showed the right two-wall corner *silhouette*, which read as
+plausible at a glance, but Dave caught that it looked wrong on a closer look. The real bug had
+nothing to do with which wall was which or which direction the stacks ran (both checked and correct,
+see below) — `sae.decode_st_interleaved(..., palette=None)` gives the same tile in raw-index ("L")
+mode, and masking the paste on `index != 0` (background is transparent, not part of the art) closed
+every gap and produced a genuinely continuous wall, now `reversing/cadaver/tiles/cavern_mosaic.png`
+(fixed in `reversing/cadaver/py/room_mosaic.py`). **Now a clear, unambiguous structural and visual
+match** against `gameplay.png`'s CAVERN, proving the mechanism end to end for the first time (grid →
+placement table → draw descriptor → rendered wall), not just each stage in isolation. Two checks
+specifically address "is a wall on the wrong side": (a) entries 0-2's tile ids (`55,56,57`) match
+§5e's *already-published, independently-decoded* "CAVERN's width-pass column 0" in the same order —
+that data was decoded through a completely different code path (the RLE grid at `(A5)+2914`, not
+the live draw-descriptor list), so a left/right or pass mixup in the *live* list would have shown up
+as a mismatch against that pre-existing reference, and it didn't; (b) the width-pass's 10 columns
+(block-grouped by `$00d1f8`'s field `+4`) land at screen `px` 144→288, strictly increasing, while
+the height-pass's columns land at `px` 128→32, strictly decreasing — the two passes occupy disjoint,
+non-overlapping screen ranges meeting exactly at the room's own centre (px≈128-144), which is what
+two walls meeting at a corner should look like, not what a mixed-up or duplicated pass would produce.
 
 **Not yet done**: (1) an exact pixel-diff match count against `gameplay.png` — the mosaic above uses
 row/pixel_x rounding, not `$00d1f8`'s real sub-pixel shift-table adjustment (`$5692`), so it's
-visually and structurally proven but not yet byte-exact; (2) the same live capture for TUNNEL (this
-pass only tried one direction, `kbd ff 01` from `gameplay_empire.snap`, and got 0 hits in 3M steps —
-the real CAVERN→TUNNEL crossing key/route wasn't identified this pass, unlike the already-proven
+visually and structurally proven but not yet byte-exact (some individual tile edges likely sit 1-15px
+off from their true position); (2) the same live capture for TUNNEL (this pass only tried one
+direction, `kbd ff 01` from `gameplay_empire.snap`, and got 0 hits in 3M steps — the real
+CAVERN→TUNNEL crossing key/route wasn't identified this pass, unlike the already-proven
 TUNNEL→CAVERN one used above); (3) `$92e8`/`$d1f8`'s `0xc2` object-anchor sub-case (§5f) is still
 unrelated and untraced — note `$d1f8` the plain-tile placement routine (above) and the `0xc2`
 sub-case's `bsr $d1f8` (§5f, from `$cc2e`) are two different call sites into the same routine name,

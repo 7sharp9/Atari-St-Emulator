@@ -3,9 +3,12 @@
 Updated 2026-09-25 by the session that ended at this commit (65th pass, following the 64th's
 `3448983`), which closed Dave's explicit ask from the last handoff — the per-room terrain *pixel*
 mosaic — from "not attempted" to "mechanism fully traced and live-confirmed, one real room rendered
-and visually matched against `gameplay.png`." Full writeup: `reversing/cadaver/graphics.md` §5h/§5i
-(the new plain-English "How a room's walls and floor actually get to the screen" section sits right
-after §5i for a non-code-level summary).
+and visually matched against `gameplay.png`." The first render had a real bug (opaque paste instead
+of masked, §5i) that produced a comb of gaps — Dave caught it looked wrong on inspection even though
+the overall two-wall silhouette was already correct; fixed same pass, see §5i for the two checks
+that rule out a placement/direction bug specifically. Full writeup: `reversing/cadaver/graphics.md`
+§5h/§5i (the new plain-English "How a room's walls and floor actually get to the screen" section
+sits right after §5i for a non-code-level summary).
 
 ## Resume point
 
@@ -67,13 +70,21 @@ runtime tile-adjacency rules).
   list — entries 0-2 are tile ids `55,56,57`, an independent match against `graphics.md` §5e's
   already-documented "CAVERN's width-pass column 0 is `[0x37,0x38,0x39]`". Rendered all 76 at their
   decoded screen positions: `reversing/cadaver/tiles/cavern_mosaic.png` — two isometric cave walls
-  meeting at a corner, matching `gameplay.png`'s CAVERN room's shape and texture placement. **The
-  session's one real debugging trap, worth remembering**: `(A5)+72` is a *pointer* to the list, not
-  the list's own address — `movea.l 72(A5),A3` dereferences it, and reading raw bytes starting at
-  `(A5)+72` itself (this pass's first several attempts, and every steady-state-snapshot check before
-  the live capture) finds a real but unrelated 134-entry structure that happens to live there and
-  never holds a tile pointer. Cost most of this pass's time; flagged in `graphics.md` §5i and
-  `reversing/cadaver/py/room_mosaic.py`'s header so it isn't rediscovered.
+  meeting at a corner, matching `gameplay.png`'s CAVERN room's shape and texture placement. **Two
+  real debugging traps this pass, both worth remembering**: (1) `(A5)+72` is a *pointer* to the
+  list, not the list's own address — `movea.l 72(A5),A3` dereferences it, and reading raw bytes
+  starting at `(A5)+72` itself (this pass's first several attempts, and every steady-state-snapshot
+  check before the live capture) finds a real but unrelated 134-entry structure that happens to live
+  there and never holds a tile pointer; (2) the *first* rendered mosaic pasted each 32×32 tile
+  opaquely, which — since this placement relies on ~50% column/row overlap (§5h) — let every tile's
+  black background corners stomp over the previous tile's visible edge, leaving a comb of black gaps.
+  It still had the right two-wall silhouette (right shape, wrong texture continuity), which is
+  exactly why Dave caught it on a close look ("looks like the wrong side was drawn") when a coarser
+  glance hadn't; masking the paste on palette index 0 (`sae.decode_st_interleaved(..., palette=None)`
+  gives the raw index image for the mask) fixed it. Neither trap was a placement/direction bug — the
+  column↔pass↔screen-side mapping was checked and is correct (`graphics.md` §5i has the two specific
+  checks). Both traps cost real time; flagged in `graphics.md` §5i and
+  `reversing/cadaver/py/room_mosaic.py`'s header so they aren't rediscovered.
 - Added a plain-English "How a room's walls and floor actually get to the screen" section to
   `graphics.md` (right after §5i) — Dave's own ask mid-pass: a non-code-level narrative of the same
   mechanism (recipe → shared tile catalog → one-time placement arithmetic → per-room instruction
@@ -130,6 +141,16 @@ dead type/case.)
   routine's own disassembly for whether the field is loaded with `movea`/`move.l ...,Ax` (pointer) or
   used directly as a base displacement (`N(A5)` in an addressing mode, not loaded into a register
   first) before trusting either reading.
+- **Compositing overlapping sprite/tile art needs a transparency mask, not an opaque paste, whenever
+  the placement relies on tiles overlapping** (isometric "brick" stacking, §5h/§5i: neighbouring
+  cells here overlap by half a tile both horizontally and vertically by design). Each 32×32 tile
+  is a cube shape on a black (palette index 0) background, not full-square art; pasting it as an
+  opaque square lets every later tile's black corners erase part of the previous tile in the overlap
+  region, producing a comb of gaps that still roughly outlines the right shape — plausible enough at
+  a glance to pass a quick look, wrong enough to fail a close one. Get a mask from
+  `sae.decode_st_interleaved(ram, addr, w, h, bpp, palette=None)` (the "L"/raw-index mode, index 0
+  everywhere the art is background) and paste with it (`Image.paste(img, pos, mask)`), don't paste
+  the RGB conversion directly.
 - **A scratch/display-list-style buffer (rebuilt each use, `-1`/sentinel-terminated, referenced only
   by a pointer field) generally can't be read "for free" from a steady-state snapshot** — by the time
   ordinary gameplay has settled, it may hold the last unrelated thing that reused the same memory,

@@ -108,9 +108,16 @@ def main():
         row = off // SCREEN_ROW_BYTES + row_shift
         col_byte = off % SCREEN_ROW_BYTES
         px = col_byte * 2
-        img = sae.decode_st_interleaved(ram, tile_base + tid * TILE_STRIDE, 32, 32, 4,
-                                         palette).convert("RGB")
-        canvas.paste(img, (px, row))
+        addr = tile_base + tid * TILE_STRIDE
+        img = sae.decode_st_interleaved(ram, addr, 32, 32, 4, palette).convert("RGB")
+        # Each 32x32 tile is a cube shape on a black (palette index 0) background, not a
+        # full square of art - pasting opaquely lets every tile's black corners stomp over
+        # the previous tile in the ~50% column/row overlap this placement relies on,
+        # producing a comb of gaps instead of a continuous wall. Palette index 0 is the
+        # real transparent background here (graphics.md 5i); mask it out.
+        idx_img = sae.decode_st_interleaved(ram, addr, 32, 32, 4, None)  # "L" mode, idx*17
+        mask = idx_img.point(lambda v: 255 if v != 0 else 0)
+        canvas.paste(img, (px, row), mask)
     canvas.save(args.out)
     print("wrote", args.out, canvas.size)
 
