@@ -534,8 +534,24 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
   (`$12c9a` LCG `& 7 == 0` → `$1b8c`, D1 = 0 in state `$d`, else 1): **a
   starving army deserts**. Observed (124th): our 26-man group on mission 1,
   `watch $516e4` over 25M steps, 2 writes, both at `$3f6a`, 251 → 247 → 243
-  (`26/8 + 1 = 4`). The desertion branch is static only. A big army eats fast;
-  the AI's march test `$68ee` charges the same rate per cell of distance.
+  (`26/8 + 1 = 4`). A big army eats fast; the AI's march test `$68ee` charges
+  the same rate per cell of distance.
+
+  **Driven live and proven (125th).** From `m1_s0` (26 men, food 251), posture
+  set to 2 (`$26`, so the next order moves the full amount), then `$12` drop
+  food (empties `36(group)` to the town) and `$02` go-to (35,51) so the group
+  keeps marching. Food hit 0 and stayed clamped there for the rest of the run:
+  four `$3f6a`/`$3f72` eat-and-clear ticks over 50M steps (`scratchpad/pm125/starve/`,
+  `watch $516e4`, `hits ... 3f6a 1b8c 12c9a`). `$1b8c` fired 13 times and the
+  roster (`group.py`) dropped from 26 to exactly 13 — an exact match, confirming
+  `$1b8c` is the desertion action, not just a candidate. Bracketing each tick
+  with `bpc 3f72 1` and dumping `516a8` (`scratchpad/pm125/starve2/`) gives the
+  per-tick roll: 3/26, 5/23, 4/18, 1/14 — 13/81 total (16.0%) against the 1/8
+  (12.5%) rule, inside one standard deviation (σ ≈ 3.0 on an expectation of
+  10.1) for four trials this small. The deserters are not lost: our lord's
+  `troops_field` (`sides.py` "field") went 0 → 13, the same destination as an
+  order-`$14` dismiss (`$1cc4` → `$1b8c`) — starvation desertion is mechanically
+  a forced dismiss, just triggered by the LCG roll instead of the player.
 
 `$d23a` (at `$130f6`) is the **only consumer** of `$57fba`. For the local side
 `$57ffe`:

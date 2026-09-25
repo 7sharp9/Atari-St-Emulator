@@ -639,6 +639,26 @@ Asserted **off** in the proof (`raise` guards each): `$5cde` (settlement
 herd-op assessment — a whole routine), `$550e` (revolt — economy.md §6: never
 observed), `$5c2c` (owner reconcile in `$16848`).
 
+**What sets `dwell := $ff9d` (the "marker parked" flag) is still open.** 125th
+pass, live: from `m1_s0`, posture 2, `$06` took all of our own town's food
+(22 → 0) and `$14` dismissed all 26 men (`troops_field` 0 → 26) — a starved
+town with a nonzero `field·4` gate, watched for 30M steps (`scratchpad/pm125/revolt/`).
+`$163b8` (the settlement pulse) fired **104 times** in that window (other
+lords' markers as well as ours; not isolated) and **none** of them hit
+`loyalty += 2` / `-= 1` (`$158a8`/`$015886`, 0 hits each) — dismissing men does
+not itself park a fresh `$7c`/`$7e` marker, at least not observably in 104
+pulses. (`loyalty_pressure` did move, 0 → 16, but that is fully explained by
+`$06`'s own `+16 >> (posture−2)` formula at posture 2's shift-0 case, not by any
+pulse.) The likely site is entity-mode entry itself: `$3c08` (the `$57fd0`-off
+regroup dispatcher, §3a above) retargets an existing marker to walk to its
+settlement and switches it into arrival mode `$7e` (`btst #4,7(settl)`) or
+`$16`/`$4e`/`$5e`/`$80` depending on the settlement's owner-category bits —
+one of those mode handlers, on the marker's arrival, is the plausible place
+`18(A1)` gets set to `$ff9d`, not the dismiss order itself. Tracing that
+handler (or watching `18(A1)` directly across a longer natural run to catch it
+happening) is the next concrete step, not a spy on our own town — order `$20`
+only targets a town we don't own.
+
 ### 3b. The `$163ea` aliasing — characterised, benign (75th pass, task 5)
 
 `watch $4f916 240` (`pm75_w2.err`) confirms the writes land on
@@ -744,7 +764,12 @@ closed set. Food: `$1507c` (`+2`, mode `$16`), `$15e18` (`+4`, mode `$60`), `$3b
 credit), `$382a` / `$2644` (`-1`, re-parent / old owner on capture). The 124th
 pass adds the player's order paths, which the AI-only watches could not see:
 order `$14` (`$1cc4` → `$1b8c`) returns dismissed men to `troops_field`, and
-order `$20` (`$3da4`) adds the spy to the target lord's `troops_field`.
+order `$20` (`$3da4`) adds the spy to the target lord's `troops_field`. `$1b8c`
+is also the starvation-desertion sink (strategy.md "`$d322` + `$3e06`"): driven
+live (125th) by dropping an army's food at posture 2 and marching it to 0, the
+roster fell 26 → 13 over 50M steps and the local lord's `troops_field` rose
+0 → 13 by the same amount — a starving man leaves by the identical `$1b8c` path
+as a dismissed one, just LCG-triggered instead of player-triggered.
 There is **no accumulator, no per-tick `+n`, no birth rate**. A nation's men can
 only be redistributed among its lords; they grow only by winning battles (men
 who would have died walk home instead) and shrink by losing them.
