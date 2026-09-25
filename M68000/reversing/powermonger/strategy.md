@@ -1091,6 +1091,26 @@ writes `$5810c := $0a` and `$580cc := $0a` (sides 3 and 1 allied), then
 never arrived: after 180M steps the envoy touched side 3's men first, which
 breaks the approach (below).
 
+**A fully organic attempt corroborates this (127th pass, no pokes anywhere in
+the chain).** Land 25's side-1 captain group (8 men, `scratchpad/pm121/run/k25_s4.snap`)
+was sent with order `$10` to its own lord 7's town (24,21) — a real `take
+equipment` click, no register pokes — and came back carrying 3 pots pulled
+from lord 7's actual stockpile (confirms economy.md §2c: `$61f8`/`$6352` really
+does fill a group's `carrying[]`/`supply_acc[]`, not just equip individual
+men). Still carrying those 3 pots, the same group was then sent with order
+`$1e` toward the nearest foreign lord (side 3's lord 4, capital at (28,14),
+7 cells away) to offer an alliance. It never arrived: within 13M steps it hit
+a hostile unit at (26,17), `$4c2a` fired (contact reconciliation, not
+diplomacy), and the whole group was wiped out in the melee — its 3 pots
+dropped as a ground pile where it died (`scratchpad/pm127/diplo3/`). Between
+this and the 123rd's forced-goods run on land 60, two independent natural
+corpora now show the same failure mode: by the time a settled world has
+accumulated enough goods economy for a natural tribute, its territory is also
+contested enough that an unescorted envoy rarely completes the walk. Proving
+`$34a8` under fully natural conditions (goods *and* arrival both unforced)
+likely needs an escort holding the corridor, or a snapshot early enough that
+territory hasn't solidified yet — not just proximity to a goods-bearing lord.
+
 **What an alliance changes.** Only the two readers of `+6`:
 
 - `$3154`'s friendly-target test (`$3172`/`$31a6`). Order `$06` (recruit,
@@ -1415,10 +1435,15 @@ are limitations rather than choices:
   fixed-map branch (`$58148 < $100` → `$df52(7)`), which no campaign entry
   uses (possibly Load Data Disk), and the per-objective `obj_camp_id` fields,
   which only the dead `$67d0` hook reads.
-- Diplomacy ("Diplomacy" above): an alliance offered naturally by clicks
-  (icon `$1e` on a settlement, carrying goods, envoy reaching the lord without
-  contact) is not yet observed; the panel-`$1a` branch (an envoy arriving at the
-  player) is static only.
+- Diplomacy ("Diplomacy" above): an alliance offered naturally by clicks with
+  organically-earned goods (no register pokes at all) is proven up through the
+  tribute forming — order `$10` genuinely fills a group's `carrying[]` from a
+  real stockpile (127th) — but the envoy reaching its target without
+  interception is not yet observed: two independent natural corpora (123rd
+  forced-goods, 127th fully organic) both had it die in unrelated combat
+  first. Try an escorted envoy (a second group clearing the corridor first) or
+  a land snapshot early enough that territory hasn't solidified. The panel-`$1a`
+  branch (an envoy arriving at the player) is static only.
 - `$3c08` (rout / besiege-fail group restructure; order `$0a`, the HOME icon)
   — first-look only.
 - The player's orders ("What each order does"): each is named from 1 run. Not
