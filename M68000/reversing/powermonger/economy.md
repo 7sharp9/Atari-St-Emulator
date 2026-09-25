@@ -639,25 +639,55 @@ Asserted **off** in the proof (`raise` guards each): `$5cde` (settlement
 herd-op assessment — a whole routine), `$550e` (revolt — economy.md §6: never
 observed), `$5c2c` (owner reconcile in `$16848`).
 
-**What sets `dwell := $ff9d` (the "marker parked" flag) is still open.** 125th
-pass, live: from `m1_s0`, posture 2, `$06` took all of our own town's food
-(22 → 0) and `$14` dismissed all 26 men (`troops_field` 0 → 26) — a starved
-town with a nonzero `field·4` gate, watched for 30M steps (`scratchpad/pm125/revolt/`).
-`$163b8` (the settlement pulse) fired **104 times** in that window (other
-lords' markers as well as ours; not isolated) and **none** of them hit
-`loyalty += 2` / `-= 1` (`$158a8`/`$015886`, 0 hits each) — dismissing men does
-not itself park a fresh `$7c`/`$7e` marker, at least not observably in 104
-pulses. (`loyalty_pressure` did move, 0 → 16, but that is fully explained by
-`$06`'s own `+16 >> (posture−2)` formula at posture 2's shift-0 case, not by any
-pulse.) The likely site is entity-mode entry itself: `$3c08` (the `$57fd0`-off
-regroup dispatcher, §3a above) retargets an existing marker to walk to its
-settlement and switches it into arrival mode `$7e` (`btst #4,7(settl)`) or
-`$16`/`$4e`/`$5e`/`$80` depending on the settlement's owner-category bits —
-one of those mode handlers, on the marker's arrival, is the plausible place
-`18(A1)` gets set to `$ff9d`, not the dismiss order itself. Tracing that
-handler (or watching `18(A1)` directly across a longer natural run to catch it
-happening) is the next concrete step, not a spy on our own town — order `$20`
-only targets a town we don't own.
+**What sets `dwell := $ff9d` (Proven, 126th pass, live).** The write is
+`$015052`, inside mode `$16`'s handler (`$015042`, ai.md's "disband" row),
+gated on `word[$57fd0] == 0`: `jsr $16848`; if `$57fd0 == 0`, `18(A1) := $ff9d`
+(dwell), `30(A1) := 31(A1)` (save the entering mode as `prev_mode`),
+`31(A1) := $7c` (park as the settlement heartbeat marker); else the record
+instead credits the owner leader's food and re-musters (`mode := $10`,
+`prevmode := $18`). Isolated live from `scratchpad/pm125b/`: `$015042` fired
+naturally 28 times over 100M steps with `$57fd0` nonzero throughout (0/28 hit
+`$015052`); forcing `word[$57fd0] := 0` (`w 57fd0 00000188`, the neighbouring
+field untouched) on the same state made the very next mode-`$16` entry take
+the park branch — 1/3 over a further 150M steps, at the one step `$57fd0` read
+0. 1/1 dwell-writes land exactly where the disassembly predicts, 0 elsewhere.
+
+**Mode `$16` belongs to garrison/neutral markers, not to player-dismissed
+troops (126th, live-traced).** `$3c08`'s flag-bit dispatch only picks
+`prev_mode := $16` for a record whose flags byte `7(A1)` has **bit 0 set**;
+the sole site in the whole image that sets that bit is `$002cd0`, inside a
+grid site-scan that also stamps mode `$18`/`$0c` (the neutral-village-garrison
+patrol setup, ai.md's `$18` row) — a world-build-time placement, not anything
+a player action reaches. Captured live: the mode-`$16` entity at a natural
+`$015042` hit (`A1 = $51bfc`, 15.3M steps into `m1_s0` with no input at all)
+carries flags byte `$01`. By contrast, tracing one *player* desertion end to
+end (starvation via `$3f6a` → `$1b8c` → its own recursive `$1bea: jsr $3c08`
+call, entity `$52462`) hit `$3c08`'s **"no flag bits set" default** at `$3c3c`
+(`prev_mode := $7e`), walked home under mode `$10` (five probe/blocked
+`$10`↔`$12` cycles), and arrived in mode `$7e` (`$014fdc: mode := prev_mode`)
+— never touching `$16`. Mode `$7e` runs the same heartbeat body (`$157e6`) as
+`$7c` but **ungated and without ever having its own dwell reset to `$ff9d`**,
+so the `D5 == $ff9c` "just parked" edge structurally cannot fire for a unit
+that arrives this way. This is why the 125th's dismiss/starve test saw zero
+loyalty pulses over 104 settlement beats: player-triggered troop movement
+never reaches the one instruction that arms the loyalty edge. **The
+"hunger revolt by clicks" framing is very likely wrong as stated** — the
+loyalty park-tick looks like a periodic self-cycle of the settlement's own
+garrison marker (`$7c` ⇄ `$16`, gated purely by the global `$57fd0` season LCG,
+~1 rotation/110M steps), independent of what the player does with troops or
+food on that settlement. What order `$06` moves (`loyalty_pressure` 0 → 16,
+corroborated 125th) is that order's own `+16 >> (posture−2)` formula, a
+completely separate write path from the parked-marker pulse.
+
+**Still open:** whether a settlement's `$7c` marker itself is the bit-0-flagged
+record feeding the observed mode-`$16` traffic (rather than some other
+garrison entity) is inferred, not traced end to end — the `$51bfc` record
+above was caught already inside `$16`, not followed backward to its own prior
+`$3c08` call. If confirmed, the practical read for "does a settlement ever
+revolt on its own" is: watch `loyalty_pressure` across a marker's own
+`$7c`/`$16` cycle over a longer natural run (several `$57fd0` rotations,
+400M+ steps) and see whether it crosses 600 there, independent of any click.
+`scratchpad/pm125b/` (gitignored; `ANCHORS.md`).
 
 ### 3b. The `$163ea` aliasing — characterised, benign (75th pass, task 5)
 
