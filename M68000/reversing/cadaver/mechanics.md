@@ -3799,6 +3799,33 @@ somewhere upstream), an FDC modeling gap for whatever exact command sequence thi
 else — this is real, further progress, not the same wall in a new shape, and is next session's
 starting point.
 
+## 58. §57's "no data" FDC wall was neither a missing sector nor an FDC gap — the driving REPL
+    session simply never remounted Disk 2 after loading the bare `.snap` (58th pass)
+
+`MMU.LoadDiskA`'s own doc comment already says disk-A's mounted image is deliberately excluded
+from `MmuSnapshot` ("which disk is in a drive is external, physical-world state, not something a
+state save should capture or a state load should disturb") — `resume`ing any `.snap` therefore
+starts with no disk in drive A (`diskA = None`) until the REPL's `disk <path>` command (or
+`--disk-a`/`ATARI_DISK_A`) re-mounts one. §57's own driving session stepped straight from
+`before_jsr.snap` with no `disk` command first, so `tryReadSector`'s `None -> false` case fired for
+every single FDC request — a track/sector-independent "no data" that looks identical, byte for
+byte, to a genuinely absent sector. Reproduced exactly: re-running the identical `s 30000000` from
+`before_jsr.snap` with no disk mounted reproduces §57's whole observed sequence line for line (the
+`$e0`/`$d0` probe pair three times, `type I $03` restore to track 0, then `READ-SECTOR track=0
+side=0 sector=8 -> no data` on repeat, `scratchpad/cadaver/full_trace_fdc.log`). Re-running the same
+`before_jsr.snap` and the same step count with `disk ../Cadaver/disk2_replicants/disk2.st` issued
+first instead: the exact same command sequence now reads `-> OK` (`scratchpad/cadaver/
+full_trace_mounted_fdc.log`), and execution sails on past the old wall — 121 reads, 0 "no data",
+reaching track 13 side 1 by 30M steps (PC=`$0000da54`) and PC=`$00015254` by 90M steps
+(`scratchpad/cadaver/past_wall_mounted_{30,60,90}M.snap`). At 90M steps the screen renders as the
+already-known "DAY 1 / BOAT / CAVERN" room (`scratchpad/cadaver/past_wall_mounted_90M.png`, pixel-
+identical framing to the existing `boat_hotspot.png`) — real gameplay, not a crash or a stall, but
+not yet proof of Disk-2-exclusive content either: reaching the same Day-1 room this pass's dispatcher
+was already known to render doesn't by itself show Disk 2 supplies anything the one-disk crack
+didn't already have resident. Downgrades item 1 from "an unresolved wall, cause unknown" to "the
+REPL workflow's own gap, now fixed by remounting the disk after every snapshot load" — no emulator
+change needed, and the new open question is a different, narrower one (below).
+
 ## Files
 
 | File | What |
