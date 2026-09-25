@@ -1,67 +1,63 @@
 # PowerMonger: handoff
 
-Updated 2026-09-25 by the session that ended at commit `bd63bc2` (the 125th PowerMonger pass, on the
+Updated 2026-09-25 by the session that ended at commit `3a05c78` (the 126th PowerMonger pass, on the
 Mac).
 
 ## Resume point
 
-- Last commits of this workstream: `bd63bc2` (revolt digest line corrected), `0632e0a` (CLAUDE.md:
-  grep topic docs before decoding a routine), `5ea6e25` (starvation desertion driven live; hunger-
-  revolt parking narrowed).
+- Last commits of this workstream: `3a05c78` (design digest: revolt's park pulse is a garrison
+  marker's own cycle, not player-reachable), `7bca7eb` (economy.md §3a / ai.md: `dwell := $ff9d`
+  proven live, mode `$16` traced to a world-build garrison flag, not player dismiss).
 - Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell
-  pitfalls"). New this pass: `scratchpad/pm125/starve/`, `pm125/starve2/` (the starvation run and
-  its per-tick breakdown), `pm125/revolt/` (the dismiss-at-home negative result), indexed in
-  `scratchpad/ANCHORS.md`.
+  pitfalls"). New this pass: `scratchpad/pm125b/` (the forced-`$57fd0`=0 isolation, the one-deserter
+  end-to-end trace, and a natural no-click mode-`$16` capture), indexed in `scratchpad/ANCHORS.md`.
 - Start from: `scratchpad/pm123/win/m1_s0.snap` (mission 1 settled: our 26-man group `$188` at
   (40,51), food 251, posture 3; lords 0/1 on side 2). Rebuild with `reversing/powermonger/py/drive_win.sh` (7 min) if missing.
 - Uncommitted work left behind: none of this session's. Pre-existing, not this session's and not
-  touched: `CLAUDE.md` and `M68000/sessions/README.md` both had an uncommitted pure line-rewrap
-  (no content change) at session start from Obsidian editing the repo (`.obsidian/` is untracked in
-  the tree). `CLAUDE.md`'s copy is stashed (`git stash list`, "obsidian reflow of CLAUDE.md") so this
-  session's own CLAUDE.md edit could land cleanly; `sessions/README.md`'s is still sitting
-  uncommitted in the working tree, untouched. Also untracked: `Cadaver/` (another workstream's game
-  files). Not mine to resolve — flag to Dave or the cadaver session.
+  touched: `M68000/sessions/README.md` still carries an uncommitted pure line-rewrap (no content
+  change) from Obsidian editing the repo (`.obsidian/` is untracked in the tree). Also untracked:
+  `Cadaver/` (another workstream's game files). Not mine to resolve — flag to Dave or the cadaver
+  session.
 
 ## Proven so far
 
 Gates (differential tests vs the real 68000 through `callcap`), unchanged this pass, not re-run
-(no reference transcription or gate script touched — see "Known traps"): entity FSM
+(no reference transcription or gate script touched): entity FSM
 `scratchpad/pm98/repro93..97.py` 675/1335/413/85/99; `pm98/diff_pm98.py` 71/71; `pm99/diff_pm99.py`
 1847/1847; `pm115/diff_4bc8.py` 51/51 + `diff_4bc8_kind2.py` 20/20; `py/diff_1623c.py` 275/275;
 `py/diff_2776.py` 4119/4119; `py/diff_5cde.py` 768/768 + 85/85; `py/diff_revolt.py` 1778/1778;
 `py/diff_4f68.py` 1804/1804.
 
-- **Every player order, food, group-record fields, conquest, the heartbeat revolt mechanism**: see
-  the 124th's summary in git history (`5ea6e25`'s parent) — unchanged this pass.
-- **Starvation desertion, driven live (125th).** `m1_s0`, posture 2, `$12` drop food (empties the
-  army to 0), `$02` march — 4 `$3f6a`/`$3f72` eat-and-clear ticks over 50M steps, `$1b8c` fires
-  exactly once per desertion: roster 26 → 13 (per-tick 3/26, 5/23, 4/18, 1/14 — 13/81 total, 16.0%
-  against the 1/8 rule, inside 1σ for four trials this small). Deserters are not lost: the local
-  lord's `troops_field` rose 0 → 13, the same destination as an order-`$14` dismiss — starvation
-  desertion is mechanically a forced dismiss, LCG-triggered. strategy.md "`$d322` + `$3e06`",
-  economy.md §6. `scratchpad/pm125/starve/`, `pm125/starve2/`.
-- **The `dwell := $ff9d` / `$ff9c` marker-parking gate, re-derived from disassembly and confirmed to
-  match the existing 96th/97th pseudocode exactly** (economy.md §3a, ai.md) — no doc change needed
-  there, but see "Known traps" for the time this cost.
-- **Negative result: dismissal does not park a fresh marker (125th).** `m1_s0`, posture 2, `$06`
-  took our own town's food to 0, `$14` dismissed all 26 men home (`troops_field` 0 → 26); 30M steps,
-  104 `$163b8` settlement pulses, **zero** hunger/plenty loyalty adjustments. `loyalty_pressure`'s
-  observed 0 → 16 is fully explained by `$06`'s own `+16 >> (posture-2)` order effect, not any
-  pulse. Narrows the open "revolt by clicks" question: the parking trigger is not the dismiss order.
-  economy.md §3a, `scratchpad/pm125/revolt/`.
+- **Every player order, food, group-record fields, conquest, the heartbeat revolt mechanism,
+  starvation desertion**: see the 125th's summary in git history (`9964df2`'s parent) — unchanged
+  this pass.
+- **What sets `dwell := $ff9d`, live-confirmed (126th).** The write is `$015052`, inside entity
+  mode `$16`'s handler (`$015042`), gated on `word[$57fd0] == 0`. Isolated with a forced-poke test:
+  0/28 natural mode-`$16` entries parked while `$57fd0` stayed nonzero over 100M steps; forcing
+  `word[$57fd0] := 0` (`w 57fd0 00000188`) on the same state made the very next entry park — 1/3
+  over a further 150M steps, at the one step `$57fd0` read 0. economy.md §3a, `scratchpad/pm125b/`.
+- **Mode `$16` is a garrison/neutral-village mechanism, not a player one (126th, live-traced).**
+  `$3c08` only picks `prev_mode := $16` for a record whose flags byte has bit 0 set; the sole site
+  that sets that bit anywhere in the image is `$002cd0`, a world-build site-scan for neutral
+  villages/garrisons. Traced one starvation deserter (entity `$52462`) end to end from `$1b8c`
+  through `$3c08`'s **"no flags set" default** (`prev_mode := $7e`) to arrival — it never touches
+  `$16`. Mode `$7e` runs the same heartbeat body ungated but with no fresh dwell reset, so the
+  `D5 == $ff9c` loyalty edge cannot fire for a unit that arrives this way — this is *why* the
+  125th's dismiss/starve test saw zero loyalty adjustments over 104 pulses. The design digest's
+  "revolt" bullet and ai.md's `$16`/`$7e` rows now reflect this. economy.md §3a, README.md "Design
+  digest", `scratchpad/pm125b/`.
 
 ## Open, in priority order
 
-1. **What sets `dwell := $ff9d`** (economy.md §3a "still open"). Ruled out: the dismiss order.
-   Likely site: `$3c08`'s arrival-mode dispatch (the `$57fd0`-off regroup path that switches an
-   existing marker into mode `$7e`/`$16`/`$4e`/`$5e`/`$80` depending on the settlement's owner-
-   category bits, `btst #4,7(settl)` etc. — not traced this pass) — or the mode-`$7e` handler's own
-   entry code (spy arrival is `$3da4`, proven 124th to reach a gate-free pulse, but not proven to
-   itself set `$ff9d` vs. just landing in a steady `D5==0` cycle). Concretely: watch `18(A1)` for a
-   marker across a longer natural run to catch `$ff9d` appearing, or trace `$3c08`'s three call
-   sites and the mode-`$7e`/`$16`/`$4e`/`$5e`/`$80` handlers each targets. Once found: reproduce the
-   "hunger revolt by clicks" scenario (our own town, `troops_field·4 >= food`, force a park) end to
-   end and watch `$158cc` fire.
+1. **Does a settlement's own `$7c` marker ever cross loyalty 600 unassisted?** Now that the park
+   write is pinned to mode `$16`'s `$57fd0`-gated branch and shown to be a garrison-marker cycle
+   independent of player action, the open question is whether *revolt itself* is ever reachable at
+   all, or only ever an inert cycle. Concretely: run 400M+ steps (several `$57fd0` rotations,
+   ~110M steps each) from a snapshot with active garrison markers, watching `loyalty_pressure` on
+   each lord across their marker's own `$7c` ⇄ `$16` transitions, and check whether it can reach
+   600 without any player order ever touching that lord's town. A negative result over several
+   rotations would mean "Revolt" needs re-labelling as effectively dead code in mission 1 rather
+   than an inferred-reachable mechanic.
 2. **A natural alliance by clicks** (strategy.md "Diplomacy"): carried goods are the tribute, and
    they now have a path: take equipment (`$10`) from an own town with goods, or trade (`$1c`).
    Mission 1's lord has no goods and no capital; try `l1_built.snap` (census the lords with
@@ -89,10 +85,15 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 - `scratchpad/pm98/repro93..97.py` hardcode `reuse_json=True`: they re-run only the reference side.
   The `py/` gates and pm98/pm99/pm115 `diff_*` re-run callcaps unless given `reuse`.
 - REPL `m addr len` only dumps; `w addr long` writes a big-endian longword (read the neighbouring word
-  first). `drive_win.sh`'s `m:` tokens are dumps. `bpc <addr> <n>` counts hits **from the current
-  position**, not cumulatively from cold boot — chaining `bpc addr 1`, `bpc addr 2`, `bpc addr 3` to
-  get the 1st/2nd/3rd occurrence over a whole run is wrong; each call needs `n=1` (this pass caught
-  it before running the (wrong) 30M-step version).
+  first) — this pass used it to poke `word[$57fd0]` alone: `w 57fd0 00000188` keeps `$57fd2`'s `$0188`
+  intact. `bpc <addr> <n>` counts hits **from the current position**, not cumulatively from cold boot —
+  chaining `bpc addr 1`, `bpc addr 2`, `bpc addr 3` to get the 1st/2nd/3rd occurrence over a whole run
+  is wrong; each call needs `n=1`.
+- **A bounded-window negative result over a `$57fd0`-gated routine proves nothing on its own.**
+  `$57fd0` cycles `{0,2,4,6}` roughly once per 110M steps, so a window has to be sized (or `$57fd0`
+  forced) relative to that period before "0 hits in N steps" can be read as "this path is dead" —
+  this pass's first mode-`$16` breakpoint run (150M steps, 0 hits) was actually just a window that
+  never crossed `$57fd0 == 0`, not a real negative result; the forced-poke re-run caught it.
 - Mission 1's player town is kind 11, not a capital, so `$5cde` refuses order `$0e` there.
 - `py/clicks.py`: the pointer moves 1:1 and clamps at 0; `home` re-homes it. An order posted by a
   click runs during the click's own settle steps, so start `hits`/`watch`/`bp` before the click. For a
@@ -109,11 +110,12 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Next session
 
-Open item 1: find what sets `dwell := $ff9d`. Start by tracing `$3c08`'s three call sites (grep
-`bsr $3c08` / `jsr $3c08.l` in `scratchpad/pm122/game_all.asm`) and the mode handlers it hands off
-to (`$7e`, `$16`, `$4e`, `$5e`, `$80` — their own entry code, not `$157e6` which only *consumes*
-`18(A1)`), or watch `18(A1)` for several markers across a `pm97_map0`-style long natural run to
-catch the moment it becomes `$ff9d`. Once found, reproduce a player-triggered hunger revolt on our
-own mission-1 town end to end (`troops_field·4 >= food`, force the park, catch `$158cc`) and write
-it into economy.md §3a / README.md's revolt digest line. Then item 2 (diplomacy) on `l1_built.snap`.
-Re-run every gate before committing anything that touches a reference transcription.
+Open item 1: settle whether revolt is ever reachable at all. From a snapshot with several live
+garrison/neutral markers (not `m1_s0` alone — census `$002cd0`'s targets first, or use a later,
+busier land), run 400M+ steps with a `hits`/`watch` census on `$015042`/`$015052`/`$158a8`/`$015886`
+(the mode-`$16` entry, the park write, and the loyalty `+2`/`-1` sites) spanning several `$57fd0`
+rotations, and see whether any lord's `loyalty_pressure` crosses 600 unassisted. A clean negative
+over multiple rotations is as valuable a result as a positive — it means "Revolt" belongs in the
+design digest as an inferred-dead mechanic in mission 1, not an open trigger. Then item 2
+(diplomacy) on `l1_built.snap`. Re-run every gate before committing anything that touches a
+reference transcription.
