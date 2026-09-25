@@ -52,16 +52,26 @@ against every session's changes.
   routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
   group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
   A "Natural runs on later lands")
-- **Land changes hands two ways, one fully proven, one still short a trigger.** *Conquest*: when
-  every man of a lord's settlements is dead or routed by an army hunting him, the lord and all his
-  settlements join the attacker — proven. *Revolt*: a lord whose towns go hungry (`troops_field·4 >=
-  food`) or stay well-fed nudges loyalty pressure `+2`/`-1`, but **only on a marker's first pulse
-  after it parks** (`dwell $ff9d → $ff9c`) — ordinary steady pulses do nothing. At 600 the pulse
-  sends him and his settlements to an effectively arbitrary side. The mission-1 win was a conquest;
-  a spy planted in an enemy town reaches the pulse by entering mode `$7e`, which skips mission 1's
-  near-permanent `$57fd0` gate on mode `$7c` (proven, 124th). What actually sets `dwell := $ff9d` —
-  and so whether/how the player can force a *fresh* park on their **own** town — is still open:
-  dismissing men there did not (125th, 104 sampled pulses, 0 loyalty adjustments). (E 3, E 3a, E 6,
+- **Land changes hands two ways: conquest is player-reachable, revolt is not (yet) shown to be.**
+  *Conquest*: when every man of a lord's settlements is dead or routed by an army hunting him, the
+  lord and all his settlements join the attacker — proven. *Revolt*: a lord whose towns go hungry
+  (`troops_field·4 >= food`) or stay well-fed nudges loyalty pressure `+2`/`-1`, but **only on a
+  marker's first pulse after it parks** (`dwell $ff9d → $ff9c`) — ordinary steady pulses do
+  nothing, and at 600 the pulse sends him and his settlements to an effectively arbitrary side. The
+  park write is now pinned (`$015052`, inside entity mode `$16`, gated on the global `$57fd0`
+  season LCG) and **it is not something the player triggers**: `$3c08` only sends a record into
+  mode `$16` when its flags byte has bit 0 set, and the one place in the game that sets that bit is
+  a garrison/neutral-village world-build placement, not any order. A player's own dismissed or
+  deserting men default to mode `$7e` instead (the "no flags set" case), which runs the same
+  heartbeat body but never gets its own dwell reset — traced end to end for one starvation
+  deserter, 0/0. A spy (order `$20`) also lands directly in mode `$7e` and — like any `$7e`
+  record — never has `$3da4` reset its dwell either, so whether a given spy's object slot ever
+  sees the `$ff9d → $ff9c` edge depends on whatever stale dwell that pooled slot inherited, not on
+  the spy action itself; an earlier pass's "the spy run revolted lord 0" is therefore read as
+  incidental slot reuse, not a designed trigger. So revolt looks like a **periodic self-cycle of a
+  settlement's own garrison marker** (`$7c` ⇄ `$16` on `$57fd0`'s ~110M-step rotation), and the
+  mission-1 win was a conquest. Whether that self-cycle can be observed crossing 600 unassisted is
+  still open — it needs a run long enough to span several `$57fd0` rotations. (E 3, E 3a, E 6,
   A mode `$2c`, S "How a land ends", S "`$d322` + `$3e06`")
 - **Winning is a ratio, not annihilation.** The score is `(2·mine + enemy/4) / enemy`, clamped to
   0..4; a land is won only by retiring while it reads 4, and lost by retiring earlier or by the
