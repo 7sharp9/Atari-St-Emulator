@@ -496,6 +496,7 @@ least once by a session that did not know it existed.
 | tool | use |
 |---|---|
 | `tools/snap_render.py snap png` | the live screen of a snapshot as a PNG (base, rez and palette from the shifter registers, so double-buffered games come out right) |
+| `tools/sprite_array_export.py` | game-agnostic struct-driven sprite/object-array batch export (`--base`/`--array-ptr-field` + `--stride --count --w-off --h-off --ptr-off`) or fixed-stride sheet export (`--sequence BASE STRIDE COUNT W H`) or a one-off region (`--region ADDR W H`); st-interleaved 4bpp decode, `--palette` for a live 16-word `$0RGB` table (cadaver `graphics.md` §3/§5) |
 | `tools/disassemble.py` | 68000 disassembler; `--snap` for a loaded program, `--rom img --base <hex>` for a relocated image, `--jumptable` |
 | `tools/prg2img.py prg img <text>` | relocate a GEMDOS executable to its runtime TEXT address (TEXT+DATA+zeroed BSS), so image addresses equal trace/snapshot addresses |
 | `tools/ghidra/DecompileAll.java` | headless Ghidra decompile of a `prg2img` image to one C file, with `.sym` names applied; for compiled-C programs (usage in the file header) |
