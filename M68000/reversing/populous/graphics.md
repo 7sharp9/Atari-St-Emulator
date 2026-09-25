@@ -306,12 +306,19 @@ the acting side's god\_rec AI-request fields (`mechanics.md` 2.3 +0/+1/+2), then
 (side, 15). *This can never fire in the shipped GOD image*: `$37eae` (the byte this switch reads,
 `$b90e`/`$b918`) has no writer anywhere in `pop_ad58.asm` — only a `clr.b` at `$be0c` (new-game reset) —
 so `$b90e`'s `beq $bb3e` bails out every frame before the switch runs. A second, independent "CHEAT"
-instance sits inside the AI planner `$db4c` (`mechanics.md` 7): dead in the same way, and paired there
-with a hidden `qaz.pic` picture-load string. Both read as leftover QA/debug scaffolding from a build
-where an external input path (a joystick combo, a debug keyboard driver) fed `$37eae`/`$3c4e4`, not
-reachable from retail keyboard or mouse input. *Inferred from a full-image grep, not yet live-triggered*
-(the callcap harness can enqueue raw scancode `$66`, but nothing in the shipped image ever consumes it
-into `$37eae`, so a live REPL press doesn't reach the branch either).
+instance sits inside the AI planner `$db4c` (`mechanics.md` 7): dead in the same way. Both read as
+leftover QA/debug scaffolding from a build where an external input path (a joystick combo, a debug
+keyboard driver) fed `$37eae`/`$3c4e4`, not reachable from retail keyboard or mouse input. *Inferred
+from a full-image grep, not yet live-triggered* (the callcap harness can enqueue raw scancode `$66`,
+but nothing in the shipped image ever consumes it into `$37eae`, so a live REPL press doesn't reach
+the branch either).
+
+The `qaz.pic` string that sits right after the two "CHEAT" strings in the data segment (`$21484`,
+immediately below `$21478`/`$2147e`) is unrelated: it's just string-table proximity. `$014b50`
+(`Fopen("qaz.pic", ...)`, GEMDOS call `$3d` via the trap wrapper `$20698`) is the ordinary,
+already-documented load of `QAZ.PIC` — the 320x200 panel/border backdrop, rendered at `qaz.png` and
+modelled by `py/pop_render.py` ($3afd8, composited with the minimap at `$c27a`). No connection to
+either dead CHEAT hook.
 
 ## Minimap (the book, top-left)
 
