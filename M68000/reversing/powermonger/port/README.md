@@ -19,6 +19,8 @@ renderer, a porting spec, and a toolchain skeleton.
 cd stepper
 dotnet run                                   # window
 dotnet run -- --selfcheck                    # replay == Scene.render: 16 yaws, zooms 1-7
+dotnet run -- --playtest                     # continuous play sustains, loops, survives a
+                                             # camera/season change, still pauses on a step key
 dotnet run -- --export <dir> [cell|strip|shape]  # one PNG per chunk boundary (3x)
 dotnet run -- --shot <png> <step> [g] [n] [w] [yN] [sN] [zN] [cX,Y]
                                              # window at a step, screenshot, exit:
