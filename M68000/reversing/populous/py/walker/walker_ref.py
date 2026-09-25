@@ -13,7 +13,14 @@ and returns its D0.w.
 """
 import os, sys
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')))
-from ai_ref import rb, sb, rw, sw, rl, wb, ww, s16, rng, rec, sidest
+sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'powers')))
+from ai_ref import rb, sb, rw, sw, rl, wb, ww, s16, rng, rec, sidest, FRAME
+import powers_ref as P
+
+
+class NotModelled(Exception):
+    pass
+
 
 ENT, ESZ = 0x3b278, 0x16
 TERR = 0x36e78          # terrain class per cell
@@ -245,3 +252,122 @@ def uses_f6b2(m, e):
 
 def choose(m, e, idx):
     return magnet_f6b2(m, e, idx) if uses_f6b2(m, e) else scan_f2f4(m, e, idx)
+
+
+def fight_start(m, s, j):
+    """$10e7e(s, j): the walker s (index) starts a fight with entity j (index), the occupant
+    already recorded on s's own cell. Both entities get flags bit 3 set (j keeps its low 3 bits);
+    t6 becomes each other's index. If j was a settlement (its old flags bit 0 set) s's own cell
+    is marked occupied by s; otherwise j snaps onto s's cell (mechanics.md 3.3's "they share one
+    cell") and that cell is marked occupied by s. Also releases any stale `j`-occupancy marks on
+    j's own previous cell and j's own current cell (j is the one transitioning out of plain
+    walking, so it's j's leftover claims being cleaned up here, not s's -- confirmed against
+    postdecide_diff.py: an earlier draft compared against s's index and under-cleared).
+
+    Not modelled: the real routine's two `$101a0(entity)` calls right after the flag writes --
+    the fighter-animation branch of $101a0 (entity+12) has no Python model anywhere in this repo
+    (only powers_ref.anim_settlement, for flags==1); a real code re-store of $3c4c6 to its own
+    value (only fires when it's already equal, so it never changes memory) is omitted too."""
+    se, je = ENT + s * ESZ, ENT + j * ESZ
+    was_settlement = rb(m, je) & 1
+    wb(m, se, 8)
+    wb(m, je, 8 | (rb(m, je) & 7))
+    ww(m, se + 6, j)
+    ww(m, je + 6, s)
+    jpc = (sw(m, je + 8) - sw(m, je + 10)) & 0xffff
+    o = rb(m, OCC + jpc)
+    if o and o - 1 == j:
+        wb(m, OCC + jpc, 0)
+    jcell = rw(m, je + 8)
+    o = rb(m, OCC + jcell)
+    if o and o - 1 == j:
+        wb(m, OCC + jcell, 0)
+    if was_settlement:
+        wb(m, OCC + jcell, (s + 1) & 0xff)
+    else:
+        scell = rw(m, se + 8)
+        ww(m, je + 8, scell)
+        wb(m, OCC + scell, (s + 1) & 0xff)
+
+
+def join_fight(m, s, j):
+    """$11006(s, j): walker s (index) joins the fight entity j (index) is already in, merging
+    into j if they're on the same side, otherwise into j's opponent (`entity[j].t6`, read before
+    any write). The merge arithmetic matches powers_ref.walker_merge/$feca (str cap at 32000,
+    leader/query-panel handoff, population debit when the target's index is higher, knight
+    pointer, max weapon, s.str = 0) but is its own transcription, NOT a call to walker_merge:
+    $11006 ends right after clearing s's str ($0111b2..rts) and, unlike $feca, never clears the
+    target's pause bits or resets its anim (+12) -- verified by reading $011006..$0111bc in full,
+    which has no equivalent of $feca's trailing `flags &= $9f` / `anim = 0`."""
+    je = ENT + j * ESZ
+    t = j if rb(m, ENT + s * ESZ + 1) == rb(m, je + 1) else rw(m, je + 6)
+    se, te = ENT + s * ESZ, ENT + t * ESZ
+    side = rb(m, se + 1)
+    st = sidest(side)
+    ld = rw(m, st) - 1
+    total = rw(m, se + 4) + rw(m, te + 4)
+    ww(m, te + 4, 32000 if total > 32000 else total)
+    if s == ld:
+        ww(m, st, t + 1)
+    if s == rw(m, QSEL) - 1:
+        ww(m, QSEL, t + 1)
+    if t > s:
+        pa = st + 8
+        P.wl(m, pa, P.rl(m, pa) - rw(m, se + 4))
+    if rl(m, se + 14):
+        P.wl(m, te + 14, rl(m, se + 14))
+    if rb(m, se + 3) > rb(m, te + 3):
+        wb(m, te + 3, rb(m, se + 3))
+    ww(m, se + 4, 0)
+
+
+def apply_decision(m, e, idx, off):
+    """The $ef4c writes after choose() returns `off` (mechanics.md 3.3, starting at $f13c --
+    the AI auto-lower-at-a-ruin god-record write at $f01a..$f138 is modelled separately by
+    ai/ai_ext.py's ef4c_lower, already proven 1200/1200 by ai/fdiff.py, and is NOT applied here):
+    999 -> an 8-frame pause; otherwise release the occupancy mark on the cell just left, then
+    dispatch on whoever is already recorded as occupying the walker's *own* (pre-move) cell --
+    join_fight / walker_merge / fight_start, or nothing for an inert ($80) occupant. A fight-start
+    returns immediately (mechanics.md 3.3); a join or merge falls through to the settle-or-step
+    tail below (in practice a no-op there, since both zero the walker's own str). The tail: a
+    dead entity (str <= 0) does nothing further; direction 0 and not a knight settles (claims the
+    cell if unclaimed, flags=1, frame-stamps t6, then claim_land via powers_ref); otherwise it
+    steps (visit count + 1, claims the cell if unclaimed, cell += off, off stored for next time)."""
+    if off == NONE:
+        wb(m, e, rb(m, e) | 0x40)
+        ww(m, e + 6, 7)
+        return 'pause'
+    wb(m, e, rb(m, e) & 0xbf)
+    pc = (sw(m, e + 8) - sw(m, e + 10)) & 0xffff
+    o = rb(m, OCC + pc)
+    if o and o - 1 == idx:
+        wb(m, OCC + pc, 0)
+    cell = rw(m, e + 8)
+    occ2 = rb(m, OCC + cell)
+    if occ2 and (occ2 - 1) != idx and occ2 - 1 < 0xd0:
+        j = occ2 - 1
+        je = ENT + j * ESZ
+        if not (rb(m, je) & 0x80):
+            if rb(m, je) & 8:
+                join_fight(m, idx, j)
+            elif rb(m, je + 1) == rb(m, e + 1):
+                P.walker_merge(m, idx, j)
+            else:
+                fight_start(m, idx, j)
+                return 'fight'
+    if sw(m, e + 4) <= 0:
+        return 'dead'
+    if off == 0 and rl(m, e + 14) == 0:
+        if rb(m, OCC + cell) == 0:
+            wb(m, OCC + cell, (idx + 1) & 0xff)
+        wb(m, e, 1)
+        ww(m, e + 6, rw(m, FRAME))
+        P.anim_settlement(m, e)
+        P.claim_land(m, e, 0)
+        return 'settle'
+    ww(m, VIS + 2 * cell, (rw(m, VIS + 2 * cell) + 1) & 0xffff)
+    if rb(m, OCC + cell) == 0:
+        wb(m, OCC + cell, (idx + 1) & 0xff)
+    ww(m, e + 8, (cell + off) & 0xffff)
+    ww(m, e + 10, off & 0xffff)
+    return 'step'

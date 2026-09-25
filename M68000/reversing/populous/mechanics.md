@@ -209,7 +209,15 @@ walker's cell at every frame, gather **19451/19451** (935 frames), fight **19480
 frames), island runs **12932/12932** (703 frames).
 
 ### 3.3 After the decision (`$ef4c`)
-- 999: flags |= $40, t6 = 7: an 8-frame pause (code-read; no live decision returned 999).
+- 999: flags |= $40, t6 = 7: an 8-frame pause (code-read; no live decision returned 999). Nothing
+  further runs this call (the AI-lower check below and the occupant dispatch are both skipped).
+- Otherwise: flags &= ~$40, then (before the AI-lower check) release the walker's own stale
+  occupancy mark on the cell it's leaving: if `occupant[cell - off] - 1 == this walker`, clear it.
+  `cell - off` is cell +18 "last" re-derived rather than read.
+- AI auto-lower: computer-controlled side, standing on a burnt field ($42), not busy -> lower
+  request, already proven separately (`ai.md` 3.3: `ai/fdiff.py`'s `$ef4c` case, **1200/1200** +
+  live 7767/7767) and not modelled by `apply_decision()` below, which starts after it (section 10's
+  "the lower request on a $42 cell... not diff-tested" was stale on this point).
 - The follower pause, flag $20 (`$eb8c`, in the per-frame walker code after the step): for walker B,
   if `A = occupant[B.cell]-1` is another entity with A < $d0, A.anim == 0 and A not in water, then
   A.flags |= $20, A.anim = $65, A.t6 = 0. Since the occupant mark is the cell a walker is leaving and
@@ -220,11 +228,18 @@ frames), island runs **12932/12932** (703 frames).
   re-stepped or was paused itself in the same frame); 203 of 239 ended in a merge, mostly after 7-8
   frames (the follower's step interval), otherwise after the full 15; a paused walker lost 1 str per
   frame in 1424/1435 paused frames (the rest were merge frames).
-- The entity already registered at the walker's current cell (`$37fd4`) decides an interaction:
-  enemy not fighting -> `$10e7e` start a fight (both get bit 3, t6 = each other, and they share one
-  cell); same side -> `$feca` merge; entity already fighting -> `$11006` joins the fight by merging into
-  whichever of the two combatants is on its side.
-- Merge `$feca(i, j)` (walker i into entity j; `$11006` joins a fight through it):
+- The entity already registered at the walker's current cell (`$37fd4`), if any, not itself, index
+  < $d0 and not inert (flags & $80), decides an interaction: already fighting (flags & 8) ->
+  `$11006` joins; same side -> `$feca` merge (falls through to the settle/step tail below); enemy,
+  not fighting -> `$10e7e` starts a fight and **returns immediately**, skipping the tail entirely.
+- Fight start `$10e7e(s, j)`: s (the walker) gets flags = 8 exactly; j keeps
+  its low 3 bits and gains bit 3; t6 becomes each other's index; both get `$101a0` (not modelled
+  anywhere in this repo -- no fighter-case model exists, only `powers_ref.anim_settlement` for
+  flags==1). j releases its *own* stale occupancy marks (on its previous cell and its current
+  cell -- not s's, a first draft got this backwards and postdecide_diff.py caught it). If j was a
+  settlement (its old flags bit 0), s's own cell is marked occupied by s; otherwise j snaps onto
+  s's cell ("they share one cell") and that cell is marked occupied by s.
+- Merge `$feca(i, j)` (walker i into entity j):
   ```
   if i.knight: if j.flags == 1: return      (a knight meeting its own settlement: nothing happens at all)
                j.knight = i.knight          (the pointer moves: j becomes the knight)
@@ -233,8 +248,24 @@ frames), island runs **12932/12932** (703 frames).
   j.weapon = max; i.str = 0; j.flags &= $9f (unpause); j.anim = 0
   ```
   A walker that walks into its own town therefore adds its strength to the town population.
-- Direction 0 (settle here) and not a knight: flags = 1, t6 = frame, footprint claimed by `$10366`.
-- Otherwise: visit count++ and occupancy set on the cell being left, cell += dir, off = dir.
+  `$11006` (join an ongoing fight) picks a target -- j itself if s and j share a side, else j's
+  opponent `entity[j].t6` (read before any write) -- then runs the *same* str-cap/leader/query/
+  population/knight/weapon math, but is its own transcription, not a call through `$feca`: it
+  ends right after `s.str = 0` and, unlike `$feca`, never touches the target's pause bits or anim.
+- Direction 0 (settle here) and not a knight: if the cell is unclaimed, occupancy is claimed for
+  self; flags = 1, t6 = frame, `$101a0` (settlement case, `powers_ref.anim_settlement`), footprint
+  claimed by `$10366`.
+- Otherwise (a join or merge falls through here too, in practice a no-op: both zero the walker's
+  own str, so it hits the dead-entity check below and does nothing further): a dead entity (str <=
+  0) does nothing further; visit count++, occupancy claimed on the cell being left if unclaimed,
+  cell += dir, off = dir.
+
+Verified: `py/walker/postdecide_diff.py` -- the real `$ef4c` via `callcap` against `choose()` (already
+proven above) feeding `apply_decision()`, full memory delta compared except the god-record window
+(covered by `ai/fdiff.py` above) and, for a fight-start case only, the two un-modelled `$101a0`
+fighter-anim bytes: **1600/1600** over two seeds, covering none/self/inert/join/merge/fight-start
+occupant cases and pause/dead/settle/step outcomes (settle only 7/1600 -- rare by construction, not
+independently stress-tested here beyond that).
 
 ### 3.4 Water and swamp
 - On a step, standing on swamp ($35) kills the walker (`$10068`); the swamp cell reverts to $0f unless
@@ -488,11 +519,13 @@ from game_start is the evidence used here).
 - `fightcheck.py <snap> <n>`: forces Armageddon and checks `$1063a` rounds against the model.
 - `repl.py`: interactive REPL driver.
 - `walker/` (data in `$POP_WORK/walker/`): `walker_ref.py` models `$18198`, `$18206`, `$f2f4`, `$fe00`,
-  `$f6b2` and the `$ef4c` dispatch; `walker_diff.py 400 7` the callcap corpus (2400/2400);
-  `capcalls.py <snap> <n> <out>` records every live `$ef4c` call; `livecheck.py <calls> [<frames>]`
-  checks live decisions and per-frame walker cells; `quirk.py` counts decisions a full 8-way scan
-  would change; `pause_study.py` the flag-$20 pauses; `campaign.py`, `campaign2.py`, `mkmode.py` are
-  the UI-driven play that made `snaps/near`, `front`, `gather1`, `fight1`.
+  `$f6b2`, the `$ef4c` dispatch and (section 3.3) its post-decision writes -- `fight_start` $10e7e,
+  `join_fight` $11006, `apply_decision` $f13c onward; `walker_diff.py 400 7` the decision callcap
+  corpus (2400/2400), `postdecide_diff.py 500 <seed>` the post-decision one (1600/1600 over two
+  seeds); `capcalls.py <snap> <n> <out>` records every live `$ef4c` call; `livecheck.py <calls>
+  [<frames>]` checks live decisions and per-frame walker cells; `quirk.py` counts decisions a full
+  8-way scan would change; `pause_study.py` the flag-$20 pauses; `campaign.py`, `campaign2.py`,
+  `mkmode.py` are the UI-driven play that made `snaps/near`, `front`, `gather1`, `fight1`.
 - `endgame/` (data in `$POP_WORK/endgame/`): `score_ref.py` the `$1c858` model, `score_diff.py 100 7`
   (200/200), `real_scores.py` (56/56 over the 7 end states), `next_diff.py 60 3` (65/65), `ui_next.py`,
   `ui_names.py` (45/45), `boot_check.py` (35/35), `placement.py` (28/28), `brawlcheck.py <capture>`
@@ -507,9 +540,17 @@ from game_start is the evidence used here).
   `$1063a` call (`combat_round`); `ktrack.py` prints knights and targets.
 
 ## 10. Open questions
-- The `$ef4c` writes after the decision (settle, merge, fight start, occupancy and visit counts, the
-  lower request on a `$42` cell) are checked only through the frame-by-frame walker cells, not
-  diff-tested on their own.
+- The `$ef4c` writes after the decision (settle, merge, fight start, occupancy and visit counts) are
+  now diff-tested on their own (section 3.3, `postdecide_diff.py`, 1600/1600), still only through
+  callcap; the fight-start/join-fight/merge branches haven't been checked against live play (the
+  live counts in the decision-scan proof above only confirm `choose()`'s *return value*, not what
+  the post-decision code then did with it). The lower request on a `$42` cell was already proven
+  separately (`ai.md` 3.3, `ai/fdiff.py`, 1200/1200 + live 7767/7767) before this pass; a session
+  re-reading `$ef4c` from scratch nearly redid that part before checking `ai.md` first.
+- $10e7e's and $11006's two `$101a0` fighter-animation calls (entity+12, the anim byte low-order:
+  base $46/$82/$86/$8a per whether either combatant has a knight pointer, mechanics.md 3.5) have no
+  Python model anywhere in this repo; `postdecide_diff.py` excludes those two bytes from its
+  fight-start comparison rather than predict them.
 - A knight merging into a friendly walker never happened in play (proven by `callcap` only). Of the
   take-over, only the "winner settles" branch ran live; "winner stays a walker" (`$18206` = 0 on its
   cell), a castle claimed by `$10366`, and `$10068` killing a settlement outside a fight are modelled
