@@ -104,6 +104,20 @@ What took PowerMonger's port from ~96% to 100.00% on 27 frames (`reversing/power
 - **Score per category, not just overall.** Render once with everything and once without category c; the pixels that differ are c's visible pixels, and the game should show the sprite there (not what is under it). That isolated every wrong formula in minutes.
 - **Transcribe position/blit arithmetic word for word.** PowerMonger's sprite lerp works on packed `(x<<16)|y` longs, so a borrow leaks between halves; the "equivalent" two-lerp version put one sprite in ten a pixel off. Probe the game's `D0`/`D1` at the blit (`bp` on the blit call) for a few records and compare before generalising.
 - **Look before naming.** One frame shows a white shape; 60 frames of `track`ed record fields show it rising 1 px a tick from a body, and the code that sets the category (search for `move.b #<n>,6(An)`) says it is the kill branch. Name a sprite from its writer, not its look.
+- **A global `(dx,dy)` grid-search of the whole render against the ground-truth screenshot cheaply
+  falsifies or confirms a hypothesized sub-pixel correction before you spend time implementing it.**
+  Cadaver's 66th pass assumed a draw descriptor's screen-offset field needed a shift-table adjustment
+  applied before use (rows/columns only at ~2px granularity); reading the descriptor's own separate
+  `x0`/`y0` fields directly instead, then grid-searching `(dx,dy)` over ±3px, found `(0,0)` already
+  optimal — proof the two were already mathematically identical and there was nothing left to correct
+  (`reversing/cadaver/graphics.md` §5i-2). The same technique the other way: if a placement formula
+  is independently proven correct (its own lookup table byte-identical across two captures, and a
+  full live re-render of the captured state reproducing the reference screenshot pixel-for-pixel) but
+  a hand-rolled render of it still scores low and unevenly across the image, don't re-derive the
+  placement formula — the gap is more likely content the render doesn't draw at all (an occluding
+  sprite/object layer, or an untraced sub-case), and the grid-search or a per-region mismatch map
+  (`reversing/cadaver/graphics.md` §5i-3, TUNNEL: 96.6% CAVERN vs 19.7% TUNNEL, isolated to one wall)
+  shows whether the error is uniform (a formula bug) or spatially clustered (missing content).
 
 ## 4c. Cover the content, then watch what runs by itself
 
