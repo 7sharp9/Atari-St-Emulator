@@ -52,12 +52,17 @@ against every session's changes.
   routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
   group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
   A "Natural runs on later lands")
-- **Land changes hands two ways, both proven.** *Conquest*: when every man of a lord's settlements
-  is dead or routed by an army hunting him, the lord and all his settlements join the attacker.
-  *Revolt*: a lord whose towns go hungry (at most 4 food per man in the field) or whose food the
-  player keeps taking builds loyalty pressure; at 600, the next heartbeat pulse of one of his men
-  at home sends him and his settlements to an effectively arbitrary side. The mission-1 win was a
-  conquest; a spy planted in a town supplies the pulse. (E 3, E 6, A mode `$2c`, S "How a land ends")
+- **Land changes hands two ways, one fully proven, one still short a trigger.** *Conquest*: when
+  every man of a lord's settlements is dead or routed by an army hunting him, the lord and all his
+  settlements join the attacker — proven. *Revolt*: a lord whose towns go hungry (`troops_field·4 >=
+  food`) or stay well-fed nudges loyalty pressure `+2`/`-1`, but **only on a marker's first pulse
+  after it parks** (`dwell $ff9d → $ff9c`) — ordinary steady pulses do nothing. At 600 the pulse
+  sends him and his settlements to an effectively arbitrary side. The mission-1 win was a conquest;
+  a spy planted in an enemy town reaches the pulse by entering mode `$7e`, which skips mission 1's
+  near-permanent `$57fd0` gate on mode `$7c` (proven, 124th). What actually sets `dwell := $ff9d` —
+  and so whether/how the player can force a *fresh* park on their **own** town — is still open:
+  dismissing men there did not (125th, 104 sampled pulses, 0 loyalty adjustments). (E 3, E 3a, E 6,
+  A mode `$2c`, S "How a land ends", S "`$d322` + `$3e06`")
 - **Winning is a ratio, not annihilation.** The score is `(2·mine + enemy/4) / enemy`, clamped to
   0..4; a land is won only by retiring while it reads 4, and lost by retiring earlier or by the
   captain's group dissolving. (S "`$d322` + `$3e06` → ... `$57fce`", S "How a land ends")
