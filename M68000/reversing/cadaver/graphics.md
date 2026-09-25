@@ -121,19 +121,17 @@ isometric bounding cell, not a bug.
   guess, unconfirmed). `callcap`-based differential testing against it (vary `D0`-`D2` register
   presets, diff the write footprint) is the concrete way to settle what it actually draws, not more
   static disassembly.
-- **Open, corrected framing**: this is almost certainly a **sprite/prop/object catalog**, not a
-  floor/wall *tile* sheet. `gameplay.png`'s cave walls read as one irregular, hand-painted texture
-  (no visible repeating tile seams), which argues against a room being tile-assembled at runtime at
-  all. A live re-run with `ATARI_TRACE_GEMDOS=1` from cold boot (20M steps, stalled before
-  gameplay — the restore-game prompt needs a scripted ESC keypress this pass didn't send) showed
-  only 2 GEMDOS calls total, meaning **room/level data is not loaded via TOS `Fread`** — consistent
-  with the Medway-Boys section's existing finding that this game's loader reads by raw sector
-  number, bypassing GEMDOS entirely. Confirming "one pre-rendered background bitmap per room" vs.
-  "some other room-layout structure" needs either (a) tracing the FDC/XBIOS `Rwabs` sector-read
-  destinations during an actual room load (not yet captured — the gameplay snapshot is already
-  past that point), or (b) triggering a room transition in-game and diffing `ScreenBufferA`/`B`
-  around it (blocked on the still-open "how does the player actually move between
-  rooms/tiles" question — see README Next steps).
+- **Closed**: this region (`$029800`-`$02de08`) is a **sprite/prop/object catalog**, not a
+  floor/wall tile sheet — correct as far as it went, but the room's wall/floor art was never a
+  candidate for "hand-painted, not tile-assembled" either. §5 below found the real terrain tile
+  sheet: a separate, shared, boot-time-loaded 80-tile catalog (`$03e77e`+, stride `$200`), indexed
+  per room by a small compressed tile-ID grid decoded at room load. `gameplay.png`'s walls *are*
+  tile-composed; the earlier "one irregular, hand-painted texture, no visible repeating tile seams"
+  reading (7th pass, rechecked in §4d) was a real negative result against the wrong test (exact
+  byte-block repetition on the final composited screen) — see §4d's own correction and §5's proof.
+  "room/level data is not loaded via TOS `Fread`" still stands (confirmed independently by §5: the
+  tile catalog and the FDC/XBIOS `Rwabs` question were never actually the same thing — the catalog
+  loads once at boot via the ordinary resource-manager asset load, not a per-room disk read).
 
 ## 3. The full sprite-object-array catalog — all 22 entries, `tools/sprite_array_export.py`
 
@@ -270,15 +268,145 @@ Result: **no meaningful repeated texture** — the aligned-grid test's "matches"
 single-colour patches (excluded from test (b)), and test (b) found only 1877 distinct patches out of
 1906 non-uniform samples, with the few genuine repeats (max 6 occurrences) falling along a consistent
 diagonal stride (`Δx=-8,Δy=+4`, a 2:1 slope) that reads as a shared dither pattern along one wall's
-diagonal edge, not a pasted texture tile. **This doesn't reverse the 7th pass's finding, it narrows
-it**: at runtime, nothing tile-blits the visible room — `$0144b8` copies one complete, already-final
-320×200 raster every frame, and neither compositor traced this pass (`$14d64` family or `$00bf72`)
-touches room-sized destinations, only sprite-object-array entries and a small window buffer
-respectively. Whether the *source art* was originally laid out on an isometric tile grid during
-authoring and then hand-blended/exported as one flat per-room bitmap (very plausible production
-workflow, and not contradicted by anything here) is a different, still-open question — it's the
-README's own Next-step #2 (trace the FDC/XBIOS sector-read destinations during an actual room
-*load*), not something a live-screen pixel scan can settle either way.
+diagonal edge, not a pasted texture tile. This holds as a negative result against the test it
+actually ran (exact byte-block repetition on the final *composited* screen), but **the conclusion
+drawn from it — "nothing tile-blits the visible room" — was wrong, corrected by §5**: the room's
+walls and floor genuinely are placed from a shared 80-entry, 32×32 tile catalog (`$03e77e`+, proven
+by direct render, §5), not authored as one flat per-room bitmap. The exact-match scan missed it for
+two compounding reasons, both mechanical rather than a flaw in the method: every tile is composited
+through the same sub-pixel masked shift-blitter as the sprite/object array (arbitrary x-offset per
+isometric placement, not aligned to any fixed screen raster the scan could grid against), and at
+least some tile-ID bytes in the per-room grid carry orientation/variant flag bits (high 2 bits of
+the byte) that select a blit variant of the same underlying 32×32 source — so even two cells drawn
+from the identical catalog tile don't necessarily leave identical final pixels. Isometric tile
+authoring was the right instinct; it just isn't visible from the finished frame.
+
+## 5. The room terrain tile catalog found — a shared, boot-loaded, 80-tile 32×32 sheet, indexed
+   per room by a small compressed tile-ID grid
+
+Prompted by a direct look at `sprites/contact_sheet.png` (§3) next to `gameplay.png`: the 22-entry
+sprite/object catalog accounts for every small prop (player, torches, barrel, boat, chest, ...) but
+nothing wall- or floor-sized, even though the walls are visually the dominant content of every
+room screenshot. §37/§37d's claim in `mechanics.md` ("a room's background is just its full set of
+static objects — walls, furniture, terrain pieces — rendered through the identical entity-rendering
+pipeline") doesn't hold up against that: none of CAVERN's 22 objects are wall-scale, and the object
+count (22) is far too small to cover a 10×10-tile room's walls and floor one object at a time. That
+sent this pass back through §33-40's own trail rather than starting over — §36's "not yet done,
+cheap next step" (find what draws the room into the display buffer *before* `120(A5)` archives it)
+was never actually completed; §37 pivoted to the object-array explanation instead. Resuming that
+thread found the real mechanism:
+
+**5a. A whole-image caller census of `$00c5a8` (the `(type, index)` resource fetch, §38a) shows
+every live caller uses `D0` (type) `∈ {0,1,3,4,5,6}` — type 2 (255-entry capacity) is never
+referenced anywhere in the loaded program**, despite its per-room data looking superficially
+promising (`disassemble.py --snap <snap> --all 0x0 0x20000`, greped for every `bsr $c5a8`/`jsr
+$c5a8` site and the `D0` value set immediately before each — 33 call sites, none with `D0=2`). Dead
+end, ruled out cleanly rather than left as a guess.
+
+**5b. Types 0 and 1, keyed by the current room slot (`(A5)+1166`), are fetched together by one small
+routine pair (`$00ada4`/`$00adba`, both leaf routines: `bsr $c5a8` with `D1=1166(A5)`, `D0=1` then
+`D0=0`) — and a third routine, `$00add0`-`$00ae62`, is the actual per-room terrain loader.** Gated
+by room-record byte `+23` bit 5 (`btst #5,23(A0)`; set for both CAVERN and TUNNEL, confirmed by
+direct read — `$6c` and `$7e` respectively), it fetches the room's **type-3 record** (self) and
+**type-1 data** (a small per-room byte stream: CAVERN 122 bytes at `$4eb8a`, TUNNEL 42 bytes at
+`$4ec04`), zero-fills an 80-longword (320-byte) table at `(A5)+2914`, then walks the type-1 stream
+through a **nibble/byte run-length decoder** (`$00ae64`/`$00ae8c`: read a value byte, read a repeat
+count byte, write the value that many times at a 2-byte stride) into that table, using the room
+record's own width (byte `+4`) and height (byte `+5`, §38d/§40) as the two pass sizes. **Decoded
+output matches a real tile-index grid, not noise**: reading `(A5)+2914` live off both room snapshots
+shows CAVERN's width-pass populated with exactly 10 non-zero rows (matching `width=10`) and TUNNEL's
+with exactly 3 (matching `width=3`), each cell holding a small byte value (`0x02`-`0xc6` range) —
+and CAVERN and TUNNEL's decoded grids share several identical trailing values (`0x37,0x38,0x39,
+0x3a,0x3b`) at the same relative position, the first concrete sign of content shared *across* rooms
+rather than authored per room.
+
+**5c. The consumer, `$00cab6`-`$00cb28`, is a flat tile-catalog lookup, not another resource-manager
+fetch.** For each byte `D7` read from the decoded `(A5)+2914` grid: if `D7` is zero, the row is
+done; if `D7`'s top bit is set, execution branches to `$cbd4` (§5f — not an orientation flag, the
+next pass's guess here was wrong, see below); otherwise: `A4 := (A5)+16; A4 += D7 * $200` — **a flat
+array indexed by the raw tile ID, stride `$200` (512) bytes, no bounds check needed because the
+grid's own bytes are already in range.**
+
+**5d. `(A5)+16` is a shared, boot-time-loaded catalog, not a per-room pointer — rendered and proven
+by direct decode.** Traced its writer (`$00b412`-`$00b41a`, inside a long boot-time asset-load
+sequence at `$00b2ce`+ that also loads type 0/1/3/4/5/6's index tables via the same `jsr $112fc`
+loader primitive — this is ordinary resource loading, not a per-room disk read): `16(A5) := 8(A5) +
+20(A5)`, where `8(A5)` is a large allocated buffer base and `20(A5)` is itself loaded from the
+resource file as a 4-byte value (`$4380` this session). A sibling field, `24(A5)`, is loaded the
+same way and reads **exactly `$a000` = 40960 = 80 × 512** — the catalog's byte size, decoding evenly
+into 80 tiles at the stride §5c's lookup already established. Rendering all 80 (`sprite_array_export
+.py --sequence 3e77e 200 80 32 32 --palette 0x5a9c`, live palette `$5a9c`, same tool and decode path
+as §3's proven prop catalog) gives 80 clean, unambiguous isometric cave-wall/floor blocks — carved
+grey stone, green dither, gold-flecked rock, corner and floor variants — immediately recognisable
+against every room screenshot in this doc, followed by solid-black (genuinely zero, not noise)
+frames from index 80 onward, confirming the `80 × 512` boundary exactly rather than by
+approximation. **Proven, not inferred**: `reversing/cadaver/tiles/contact_sheet.png` /
+`manifest.csv` / `tile00_3e77e_32x32.png`-`tile79_...png`.
+
+**5e. The grid is two ragged column-stacks (a wall height-field), not a rectangular W×H array —
+decoded and rendered against the real catalog.** Re-reading `(A5)+2914` programmatically (both
+passes are 10 reserved rows of 8 words each, `$00e7b0`/§39's width/height reused as the *populated*
+row count, not the array's allocated size) shows each row/column holds a **variable-length run**,
+not a fixed-width record: CAVERN's width-pass column 0 is `[0x37,0x38,0x39]` (3 tiles), column 8 is
+`[0xc6,0x86,0x86,0x3c,0x15,0x14]` (6), column 9 is `[0x86,0x86,0x86]` (3) — i.e. **one column per
+width (or height) unit, each listing the stack of tiles for that column's own visible wall slice,
+bottom-to-top or top-to-bottom (direction not yet proven), silhouette-varying exactly the way an
+irregular isometric wall elevation should.** This is what the type-1 RLE stream is actually
+compressing: not a dense grid, but a per-column run-length list (§5b's "count, then repeat" decoder
+is a per-column tile-stack unpacker). Rendered against the real 80-tile catalog
+(`reversing/cadaver/py/room_tile_grid.py`, usage in its own header), CAVERN's
+width-pass reads as a genuine, coherent wall elevation — neighbouring columns' top/bottom tiles
+visually continue each other's carved-stone pattern — matching `gameplay.png`'s uneven cave-wall
+skyline far better than a flat repeating grid would. **Proven, not inferred**:
+`reversing/cadaver/tiles/cavern_grid.png` / `tunnel_grid.png` (both passes per room, every real
+cell labelled with its tile id, every special/bit7 cell marked distinctly per §5f).
+
+**5f. `$cbd4` traced in full: it is not an orientation/variant flag on an ordinary tile — it's a
+second, mostly-inert marker byte, with one live sub-case that writes into the sprite/object-array
+struct, not the tile catalog.** Full disassembly (`$00cbd4`-`$00cc44`): `btst #6,D7; beq $cc44`
+(skip this cell if bit 6 is clear) then `btst #2,D7; bne $cc44` (skip if bit 2 is set) — so only
+`D7 & $44 == $40` does anything at all. Checked against every top-bit-set value actually seen in
+CAVERN/TUNNEL's grids: `0x82`(`1000 0010`) and `0x86`(`1000 0110`) both have bit 6 clear → **pure
+no-op, empty cell**; `0xc6`(`1100 0110`) has bit 2 set → **also a no-op**; only `0xc2`(`1100 0010`)
+passes both gates. Its live path (`$cbe0`-`$cc42`) does not touch the tile catalog or `(A5)+16` at
+all — it reads a *different* global (`1138(A5)`), calls `$92e8` (not traced further this pass), and
+then writes into struct fields at offsets `2,3,10,14` off a pointer taken from `52(A5)` — the same
+low-offset shape (`§37d`'s room-load routine writes similar fields at `2(A1)`/`3(A1)`/`10(A1)`)
+as **instantiating a sprite/object-array entry**, not drawing a tile. **Reframed, not fully
+proven**: the terrain stream's top-bit bytes look like a second, sparser channel for anchoring
+*objects* to specific grid cells (candidate: this may be how the boat/chest/barrel of §3's catalog
+actually get their room positions, rather than the separate free-floating list `mechanics.md` §37d
+already documented) — most such bytes (`bit6` clear, or `bit6` set with `bit2` set) are simply inert
+padding in the two rooms sampled here. Confirming the object-anchor reading needs a `callcap`/`watch`
+on `$cc2e`'s `bsr $d1f8` against a room whose grid actually reaches that live sub-case in the two
+rooms checked here — not done this pass.
+
+**5g. No tile-adjacency/compatibility ruleset exists anywhere in the traced decode or draw path —
+placement is level-data, not engine-enforced.** Both the decoder (§5b, `$00add0`-`$00ae62`) and the
+plain-tile consumer (§5c, `$00cab6`-`$00cb28`) were read in full this pass: neither contains a
+neighbour lookup, an edge/bitmask compatibility table, or any computation that inspects an
+already-placed neighbouring cell before choosing a tile. A grid cell's tile id comes directly from
+the room's own compressed stream, unconditionally. **This answers the "is it Wang-tile-style rules,
+or hand/tool placement" question directly: there is no in-game autotiling system to find — every
+room's wall/floor layout is a fixed sequence of tile ids baked into that room's small (42-122 byte)
+resource-type-1 entry, chosen by whoever authored the level data (by eye, or by an offline level
+tool this codebase has no visibility into), the same way the room's *object* placements (§37d) are a
+fixed list rather than a rule-generated one.** The one caveat is §5f's still-unresolved `0xc2`
+sub-case — if it turns out to anchor objects by grid position, that is still level *data* naming a
+specific cell, not a compatibility rule between tiles.
+
+**Net**: `mechanics.md` §37's "a room's background is just its object array" is wrong and is
+corrected there — the walls and floor are a genuinely separate, shared, tile-indexed system, decoded
+per room from a tiny compressed stream (well under 128 bytes per room) into a per-column tile stack
+(§5e) that a flat-indexed 80-tile catalog is drawn through, with no runtime adjacency rules (§5g).
+**Open**: (a) `$92e8`/`$d1f8` (§5f's `0xc2` sub-case) — is it really an object anchor, not traced
+past the struct-field writes; (b) stack direction (does column index 0 sit at the floor or the
+ceiling) is not proven, only assumed consistent from the visual read in §5e; (c) a full per-room
+*pixel* mosaic (grid → exact screen position, via the `2634(A5)+` per-cell screen-offset table
+§39/§40 already built, composited through the masked shift-blitter like every other draw in this
+engine) has not been assembled and pixel-diffed against `gameplay.png`/`room2_tunnel_entry.png` —
+§5e's infographic proves the *catalog and the per-column sequence*, not yet "this exact grid, placed
+this way, reproduces this exact room's exact pixels."
 
 ## Files
 
@@ -290,4 +418,6 @@ README's own Next-step #2 (trace the FDC/XBIOS sector-read destinations during a
 | `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
 | `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) — not captured by the array export below, since only the *current* frame pointer is live in any one snapshot |
 | `sprites/` | the full 22-entry sprite-object-array catalog (§3) — one PNG per slot, `contact_sheet.png`, `manifest.csv` |
-| `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` — struct-driven sprite/object array batch export |
+| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; plus `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog |
+| `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` (struct-driven array mode, `--base`/`--array-ptr-field`) and the raw `tiles/` catalog (fixed-stride mode, `--sequence BASE STRIDE COUNT W H`) |
+| `py/room_tile_grid.py` | decodes a room's `(A5)+2914` tile-id grid (§5b/5e) and renders it against the shared catalog; usage in its own header |

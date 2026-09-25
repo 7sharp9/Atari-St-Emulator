@@ -2783,11 +2783,20 @@ room loader: `$00cd50`-`$00cee0`.** This routine runs once per room entry and:
 — it **re-populates the shared object array from the new room's own object list** (this routine),
 and the *already-documented* per-frame visible-object walker (§33b/34b's `$00d800`) then draws every
 newly-active object once via the ordinary masked-blit path (§37b/c's `$0150b4` burst), the same way
-it draws real moving entities every frame — a room's "background" is just its full set of static
-objects (walls, furniture, terrain pieces), rendered through the identical entity-rendering pipeline,
-not a separate system. This also explains why every previous pass's search for a "background writer"
-kept finding only entity/sprite-blit PCs and concluding they must be unrelated: they *are* the room
-painter, just called ~4,066 times instead of the handful used for genuine on-screen entities.
+it draws real moving entities every frame. **Correction (`graphics.md` §5): this object-array
+repopulation is only the *prop* layer, not "the room's background."** The claim that walls/furniture/
+terrain are all just entries in this same 70-byte object array doesn't survive contact with the
+actual object catalog (`graphics.md` §3): none of CAVERN's 22 exported objects are wall-scale, and
+22 objects can't cover a 10×10-tile room's walls and floor one at a time. The real terrain source is
+a separate, shared, boot-time-loaded 80-tile catalog indexed per room by its own small compressed
+tile-ID grid (`graphics.md` §5) — a genuinely different system from this section's object array,
+not an instance of it. Why §33b/34b's exhaustive screen-buffer `watch` never caught a tile-catalog
+writer is now clear too: it wasn't missing, it was out of scope — every capture window in §33-37
+started from an already-resident room and watched a *crossing*, but `graphics.md` §5d's tile catalog
+loads once at boot, and §5b's per-room tile-ID grid decode is gated on room-record data already
+resident in the type-1/type-3 tables by the time any of those snapshots exist. The `$0150b4`
+burst (~4,066 calls) is real and is the prop layer's own paint burst (§37b/c stand as proof of
+that, just not of "the room's background").
 
 **Not yet done**: read `bsr $c5a8`'s body (the `(type, index)` template lookup — used both for room
 records at `164(A5)` and for entries in this loop) to find the actual room/object resource table and
