@@ -1,12 +1,16 @@
 """door_walk.py - static door-connectivity walk (cadaver.md Open item 1).
 
 For every populated type-3 room's 7 door-link slots (record +6..+19, mechanics.md sec14), resolve
-the door id through the type-4 resource table (sec38a: index $4adc6, data $6d35a, confirmed 8-byte
-records against the 3 known descriptors $6d4ea/$6d4f2/$6d532) to get each descriptor's candidate
+the door id through the type-4 resource table (sec38a, 8-byte records, confirmed against the 3
+known descriptors $6d4ea/$6d4f2/$6d532 in the one-disk build) to get each descriptor's candidate
 entry coordinate (bytes +0/+1) and stated target-id word (+2). Then run the exact algorithm $de5e
 uses (sec38d): linear scan over all type-3 rooms in slot order, first rectangle containing the
 candidate (x,y) wins - and compare the resolved destination room against the door's owning room via
 world_map.py's own adjacency() classifier.
+
+Like world_map.py (sec59), type 3's and type 4's index-table/data-area pointers are **not** fixed
+constants across builds - both are resolved fresh from each snapshot's own resource manager via
+world_map.resource_type(), never hardcoded.
 
     python reversing/cadaver/py/door_walk.py <snap>
 """
@@ -15,12 +19,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gfxview import load_ram  # noqa: E402
-from world_map import INDEX_TABLE as TYPE3_INDEX, DATA_AREA as TYPE3_DATA, SLOT_COUNT, \
-    read_room, adjacency, KNOWN_NAMES  # noqa: E402
+from gfxview import load_ram, snapshot_regs  # noqa: E402
+from world_map import SLOT_COUNT, ROOM_TYPE, resource_type, read_room, adjacency, \
+    KNOWN_NAMES  # noqa: E402
 
-TYPE4_INDEX = 0x4adc6
-TYPE4_DATA = 0x6d35a
+DOOR_TYPE = 4
 TYPE4_COUNT = 400
 
 
@@ -44,13 +47,13 @@ def read_door_slots(ram, base, rec):
     return slots
 
 
-def resolve_descriptor(ram, base, door_id):
-    entry = TYPE4_INDEX + door_id * 4
+def resolve_descriptor(ram, base, index_table, data_area, door_id):
+    entry = index_table + door_id * 4
     size = u16(ram, base, entry)
     if size == 0 or door_id >= TYPE4_COUNT:
         return None
     offset = u16(ram, base, entry + 2)
-    addr = TYPE4_DATA + offset
+    addr = data_area + offset
     cx = ram[addr - base]
     cy = ram[addr - base + 1]
     target_word = s16(ram, base, addr + 2)
@@ -68,15 +71,22 @@ def resolve_room_for_point(rooms, cx, cy):
 def main():
     snap = sys.argv[1]
     ram, base = load_ram(snap)
+    regs, ok = snapshot_regs(snap)
+    if not ok:
+        raise SystemExit(f"{snap}: not a snapshot")
+    a5 = regs["a5"] & 0xFFFFFF
 
-    rooms = [r for s in range(SLOT_COUNT) if (r := read_room(ram, base, s)) is not None]
+    room_index, room_data, _ = resource_type(ram, base, a5, ROOM_TYPE)
+    door_index, door_data, _ = resource_type(ram, base, a5, DOOR_TYPE)
+
+    rooms = [r for s in range(SLOT_COUNT)
+             if (r := read_room(ram, base, room_index, room_data, s)) is not None]
     by_slot = {r["slot"]: r for r in rooms}
 
     seen_doors = {}
-    results = []
     for r in rooms:
         for door_id in read_door_slots(ram, base, r["rec"]):
-            desc = resolve_descriptor(ram, base, door_id)
+            desc = resolve_descriptor(ram, base, door_index, door_data, door_id)
             key = door_id
             if key in seen_doors:
                 seen_doors[key]["rooms"].append(r["slot"])
