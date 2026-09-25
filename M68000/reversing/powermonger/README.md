@@ -5,8 +5,21 @@ As of the 68th pass, [cr Replicants] runs cold-boot all the way into the
 **isometric battle view**: cracktro, ICE depack, title + credits, name entry,
 option menu, campaign world map, "Between Pages 1-5" mission briefing, and past
 the briefing's OK button into the height-mapped terrain view (`iso_view.png`).
-The four emulator bugs the cracks exposed on the way are documented below; the
-graphics pipeline is analysed in `graphics.md`.
+The four emulator bugs the cracks exposed on the way are documented below. Past
+gameplay, mechanics and AI are analysed in four topic documents, each backed by
+a Python reconstruction diffed against the real 68000 via `callcap`, or (where
+noted) driven live through the game's own UI:
+
+| document | covers | proof |
+|---|---|---|
+| [`ai.md`](ai.md) | the entity/commander decision loop: the `$14b62` per-tick iterator, the 75-entry mode table, the 50-byte object record, spatial buckets, target selection (`$4f68`), the regroup/dissolve/herd-servicer dispatch, and the revolt chain `$550e`→`$5c2c`→`$25d6` | differential tests vs the real 68000: entity FSM core **675/1335/413/85/99** tracked bytes over 154 states; regroup `$3c08` **71/71** (22 states) + its group-teardown subtree **1847/1847** (13 states); contact reconcile `$4bc8` **51/51** + **20/20**; dying-entity `$1623c` **275/275** (23 states); group dissolve `$2776` **4119/4119** (28 states); lord's work order `$5cde` **768/768** + **85/85** returns (47 states); the revolt chain **1778/1778** over 49 states — all 27 natural `$550e` calls on 4 lands; conquest target pick `$4f68` **1804/1804** (192 states, 170 natural) |
+| [`economy.md`](economy.md) | the goods ledger (herding → invention → army-supply upgrades), the separate food/manpower ledger and every writer of it, the settlement record + world-build, the settlement heartbeat and the loyalty/revolt accumulator, weapon-grade "invention" | shares `ai.md`'s FSM and revolt-chain proofs; settlement heartbeat `$157e6` **99/99** natural (27 states, 12 branch families) + **85/85** synthesised; every `food`/`troops_field` writer enumerated from a ~1B-step watch and cross-checked against the player's own order paths |
+| [`strategy.md`](strategy.md) | the sim tick + measured cadence, the order executor pipeline (`$6522` decide → `$58016` command buffer → `$6a3a` execute → `$4b80` stamp), force accounting, the 195-land campaign, diplomacy, combat, RNG/determinism, how a land ends | driven live through the real UI and the emulator's REPL: mission 1 won and lost both ways (retire + natural defeat), every player order but `$04` and a real `$0e` exercised at least once, diplomacy's envoy/tribute/break traced end to end, and 4 lands' natural `$6522`/`$661a` decisions captured over 200M steps each and matched against the disassembly |
+| [`graphics.md`](graphics.md) | asset formats, the software heightmap rasteriser (projection, DDA span walker, dither), all 4 yaw quadrants, the 4 sprite sheets (men, structures, buildings/trees), camera control, zoom, seasons | frame-pixel scoring against the real emulator's own composited buffer: **100.00%** match on 27 captures across every drawn category; the projection reproduces the game's own corner buffer byte-exact (81/81 vertices); the rasteriser maths (`$ef62`/`$e420`) Proven vs the real 68000 at the instruction level |
+
+`powermonger.sym` (261 names) is the shared symbol file, feeding `trace_cfg.py --names` and the
+disassembler. `port/` is a from-scratch Godot 4.x + F# port built on `graphics.md`'s proofs
+(`port/SPEC.md`), cross-checked byte-exact against a Python reference renderer.
 
 **Disks are not committed** (commercial). Reproduce:
 
@@ -52,27 +65,29 @@ against every session's changes.
   routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
   group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
   A "Natural runs on later lands")
-- **Land changes hands two ways: conquest is player-reachable, revolt is not (yet) shown to be.**
+- **Land changes hands two ways: conquest by the player, revolt by the game's own clock.**
   *Conquest*: when every man of a lord's settlements is dead or routed by an army hunting him, the
-  lord and all his settlements join the attacker — proven. *Revolt*: a lord whose towns go hungry
-  (`troops_field·4 >= food`) or stay well-fed nudges loyalty pressure `+2`/`-1`, but **only on a
-  marker's first pulse after it parks** (`dwell $ff9d → $ff9c`) — ordinary steady pulses do
-  nothing, and at 600 the pulse sends him and his settlements to an effectively arbitrary side. The
-  park write is now pinned (`$015052`, inside entity mode `$16`, gated on the global `$57fd0`
-  season LCG) and **it is not something the player triggers**: `$3c08` only sends a record into
-  mode `$16` when its flags byte has bit 0 set, and the one place in the game that sets that bit is
-  a garrison/neutral-village world-build placement, not any order. A player's own dismissed or
-  deserting men default to mode `$7e` instead (the "no flags set" case), which runs the same
-  heartbeat body but never gets its own dwell reset — traced end to end for one starvation
+  lord and all his settlements join the attacker — proven, and how mission 1 is won. *Revolt*: a
+  lord whose towns go hungry (`troops_field·4 >= food`) or stay well-fed nudges loyalty pressure
+  `+2`/`-1`, but **only on a marker's first pulse after it parks** (`dwell $ff9d → $ff9c`) —
+  ordinary steady pulses do nothing, and at 600 the pulse sends him and his settlements to an
+  effectively arbitrary side. The park write is pinned (`$015052`, inside entity mode `$16`, gated
+  on the global `$57fd0` season LCG) and **it is not something the player triggers**: `$3c08` only
+  sends a record into mode `$16` when its flags byte has bit 0 set, and the one place in the game
+  that sets that bit is a garrison/neutral-village world-build placement, not any order. A player's
+  own dismissed or deserting men default to mode `$7e` instead (the "no flags set" case), which runs
+  the same heartbeat body but never gets its own dwell reset — traced end to end for one starvation
   deserter, 0/0. A spy (order `$20`) also lands directly in mode `$7e` and — like any `$7e`
   record — never has `$3da4` reset its dwell either, so whether a given spy's object slot ever
   sees the `$ff9d → $ff9c` edge depends on whatever stale dwell that pooled slot inherited, not on
   the spy action itself; an earlier pass's "the spy run revolted lord 0" is therefore read as
-  incidental slot reuse, not a designed trigger. So revolt looks like a **periodic self-cycle of a
-  settlement's own garrison marker** (`$7c` ⇄ `$16` on `$57fd0`'s ~110M-step rotation), and the
-  mission-1 win was a conquest. Whether that self-cycle can be observed crossing 600 unassisted is
-  still open — it needs a run long enough to span several `$57fd0` rotations. (E 3, E 3a, E 6,
-  A mode `$2c`, S "How a land ends", S "`$d322` + `$3e06`")
+  incidental slot reuse, not a designed trigger. So revolt is a **periodic self-cycle of a
+  settlement's own garrison marker** (`$7c` ⇄ `$16` on `$57fd0`'s ~110M-step rotation), running
+  independently of the player — and it does cross 600 unassisted: differential-tested against the
+  real 68000 (`diff_revolt.py`, 1778/1778) on four 200M-step no-input land runs, 11 of 27 natural
+  `$550e` defections fired from this heartbeat cycle at loyalty 600-608 (the other 16 from a
+  separate, lower-loyalty conquest-mode path). (E 3, E 3a, E 6, A mode `$2c`, A "The revolt chain",
+  S "How a land ends", S "`$d322` + `$3e06`")
 - **Winning is a ratio, not annihilation.** The score is `(2·mine + enemy/4) / enemy`, clamped to
   0..4; a land is won only by retiring while it reads 4, and lost by retiring earlier or by the
   captain's group dissolving. (S "`$d322` + `$3e06` → ... `$57fce`", S "How a land ends")
