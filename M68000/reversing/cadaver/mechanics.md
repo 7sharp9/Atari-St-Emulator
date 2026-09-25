@@ -3853,46 +3853,67 @@ adjacency graph as the one-disk crack already fully mapped (§44). Whatever Disk
 is not additional entries in this table, at least not by the time execution reaches
 `past_wall_mounted_90M.snap`.
 
-**59c. Driving real joystick input from `past_wall_mounted_90M.snap` produced no visible effect at
-all — the player sprite never moved, the room never changed, and the rendered frame was pixel-
-identical before and after.** Five separate `kbd ff 08` (joystick-1 right, make) / `s 3000000` /
-`kbd ff 00` (release) / `s 500000` cycles (15M steps total), and a variant trying a space keypress
-first in case a "you found the Silver Coin" pickup notice was blocking movement input, both left
-`164(A5)`'s current-room field at `$6c00a` (CAVERN/slot 0, unchanged) and the rendered screen
-pixel-identical to the starting frame (`scratchpad/cadaver/drive_right{1..5}.png`,
-`drive_dismiss{1,2}.png` — one small diff region turned out to be the double-buffer flip's own
-harmless redraw, not player movement). The main loop is genuinely alive and running frames (the
-shifter base keeps alternating `$19200`/`$21000` each cycle, and `bpc 80cc` — the sprite/HUD blit
-routine — hits within 562k steps of a fresh joystick press), so this isn't a hung emulator; the
-input is simply not producing gameplay effects.
+**59c. Driving real joystick input from `past_wall_mounted_90M.snap` appeared to produce no visible
+effect** — the player sprite never seemed to move, the room never changed, and the rendered frame
+was pixel-identical before and after. Five separate `kbd ff 08` (joystick-1 right, make) /
+`s 3000000` / `kbd ff 00` (release) / `s 500000` cycles (15M steps total), and a variant trying a
+space keypress first in case a "you found the Silver Coin" pickup notice was blocking movement
+input, both left `164(A5)`'s current-room field at `$6c00a` (CAVERN/slot 0, unchanged) and the
+rendered screen pixel-identical to the starting frame. The main loop was genuinely alive and running
+frames (the shifter base keeps alternating `$19200`/`$21000` each cycle, and `bpc 80cc` — the
+sprite/HUD blit routine — hits within 562k steps of a fresh joystick press), so this wasn't a hung
+emulator. **§60 shows the reading was wrong: input was reaching a genuinely-live player entity the
+whole time, at an address one `(A5)+56` re-derivation away from the one this pass happened to check
+— see §60 for the corrected picture.**
 
-**59d. The likely cause: the player/entity sprite array is empty.** §19a/§32c's own already-
-documented sprite-object array base, `$038338` (player at slot 0), reads all-zero — every snapshot
-from `past_wall_mounted_90M.snap` through all seven driven snapshots above — where a normal
-gameplay snapshot (`room2_tunnel_entry.snap` and every other one-disk-build snapshot this workstream
-has taken) has real, non-zero player/entity data there. Two readings are consistent with this and
-not yet distinguished: (a) `$038338` is itself stale for this build the same way §59a's resource-
-manager addresses were (a heap-allocated buffer, not resource-manager-relative, so the same `$100`
-offset doesn't necessarily apply — not yet checked against a live capture of the sprite-blit
-routine's own `A6` in this build, which the one `bpc 80cc` sample this pass took returned `A6=$88`,
-implausibly low for a heap array base, but that sample's call site wasn't confirmed to be the
-§32c-documented outer sprite-list walker rather than one of the blit's other callers); or (b) the
-address is still correct and this build's boot-time "activate type-3 slot 0" entity-spawn call
-(§31's `$00e80c`) genuinely never ran on the path that reached `past_wall_mounted_90M.snap` —
-plausible given that snapshot's whole lineage is a step-forward-with-no-input replay starting deep
-inside the Rob Northen protection chain (`before_jsr.snap`), not a normal cold boot, so a one-time
-init routine gated on an earlier boot phase could easily have been skipped.
+**59d. The suspected cause, at the time: the player/entity sprite array reads empty.** §19a/§32c's
+own already-documented sprite-object array base, `$038338` (player at slot 0), read all-zero in
+every snapshot checked this pass. **Superseded by §60**: `$038338` is stale for this build, exactly
+like §59a's resource-manager addresses — the real array sits `$100` bytes higher, and the entity
+there is not empty at all.
 
-**Net effect on item 1**: reframed rather than closed. The static room-table question (does Disk 2
-add rooms) is now answered — no, not in this table, not by this point in execution. The dynamic
-question (does Disk 2 add reachable content) is still open, but the concrete next blocker is
-narrower and more tractable than "walk around and see": find out why `$038338` is empty and get
-the player entity genuinely live, either by (a) re-deriving the sprite array's current address the
-same way §59a fixed the room table (breakpoint the sprite-list walker at `$00d93c`'s `bsr $7dd6`
-call site per §32c, read its own `A6` directly, not the deeper generic blit at `$0080cc`), or (b) if
-the address is confirmed still correct, tracing why `$00e80c`'s activation call doesn't fire on this
-snapshot's lineage and whether re-running from a genuine cold boot with Disk 2 pre-mounted (rather
-than a mid-flight disk swap replayed from `before_jsr.snap`) reaches a state where it does.
+## 60. Item 1 closed: the player entity is genuinely live — `$038338` was simply stale for the
+    two-disk build, the same `$100`-shift bug §59a already found in the resource manager (61st pass)
+
+**60a. `A6` at the real call site (`$00d93c`'s `bsr $7dd6`, per §32c/§33b) reads `$0003896a` in this
+build, not `$038338`.** Two `bpc d93c 1` samples 8.7M steps apart (one before any input, one after a
+full `kbd ff 08`/`kbd ff 00` right-hold cycle) both gave identical `A6=$0003896a`, `A3=$0003896a` —
+stable, not a per-iteration transient. That address holds real, structured, non-zero bytes (`44 42
+3d 3b ...`), unlike `$038338`, which is a plausible-looking bbox (`[68,66,61,59]`) per §19a's
+documented `[x_lead,y_lead,x_trail,y_trail]` layout but did **not** move under a follow-up right-hold
+test read back from that same fixed address without re-synchronizing on the breakpoint — a red flag
+that `$0003896a` is a live *loop-iteration* pointer (this build processes multiple entries per frame
+a few dozen steps apart, confirmed by three further `bpc d93c` hits landing after only 19–27 steps
+each), not the array's own stable base, so a raw un-synchronized re-read of it after millions of
+steps is reading whatever entry happens to occupy that address by then, not necessarily the same
+one. Useful as a first proof-of-life signal, but not the address to build on.
+
+**60b. The reliable derivation matches §59a's fix shape exactly: resolve `56(A5)` fresh from the live
+snapshot, don't hardcode `$038338`.** `SpriteObjectArrayPtr_A5Plus56` (§21a) is, like the type-3
+resource-manager pointer, a per-build runtime value read out of a fixed `A5`-relative field, not a
+link-time constant. In `past_wall_mounted_90M.snap` (`A5=$182b4`), `56(A5)` = `$182ec` reads `00 03
+84 38` = **`$038438`** — exactly `$038338 + $100`, the identical shift §59a found in the resource
+manager, now confirmed in a second, unrelated `A5`-relative field. `$038438`'s first 4 bytes read
+`19 17 13 11` = `[25,23,19,17]` — **byte-for-byte the exact canonical starting bbox** §19a documents
+for a fresh route from this same starting position. Not a coincidence: this is genuinely the live
+player slot.
+
+**60c. Movement is real once read from the corrected address.** From `past_wall_mounted_90M.snap`,
+`kbd ff 08` (right, make) / `s 3000000` / `kbd ff 00` (release) / `s 500000`, then `m 38438 4`:
+`[25,23,19,17]` → `[69,23,63,17]` — x moved 44 units right, y unchanged, exactly the shape of a real
+rightward walk leg. A second identical hold cycle produced no further movement (`[69,23,63,17]`
+unchanged) — consistent with hitting a boundary, not a dead entity. Reproduced in
+`scratchpad/cadaver/retest_movement_038438.log`.
+
+**Net effect on item 1**: closed as a reframe, not a real gameplay dead-end. The 59th pass's
+"genuinely unresponsive to input" finding (§59c) and its two open hypotheses (§59d) are both
+superseded — hypothesis (a) was right, but the specific evidence for it (the `bpc 80cc` sample's
+`A6=$88`) was a red herring; the actual fix is the same `+$100` resource-manager-style shift already
+proven in §59a, applied to `56(A5)` instead of `(A5)+96`. `$00e80c`'s boot-time activation call needs
+no further investigation — the entity it spawns is present and correctly positioned. The dynamic
+question this reopens is the one §59b/§59 originally set out to answer: does Disk 2 add reachable
+content beyond the 72-room map, now that the player can actually be driven through it. Not yet
+explored this pass — see Open item 1 below.
 
 ## Files
 
