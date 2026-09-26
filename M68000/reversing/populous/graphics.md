@@ -301,24 +301,47 @@ is always fully on the 64x64 map. Keypad scan codes in `$37eae` step it by one c
 
 There is no sub-cell scrolling. `$66` (unused by any physical keypad direction in the table above) goes
 to `$b9fa` instead of a scroll: if the mouse is at x>310, 10<=y<=20 *and* the cursor tool is query mode
-(`$21d50` bit 0, `graphics.md` "Command panel" below), it prints `$21478` "CHEAT" at (0,10) and clears
-the acting side's god\_rec AI-request fields (`mechanics.md` 2.3 +0/+1/+2), then sets +1/+2 to
-(side, 15). *This can never fire in the shipped GOD image*: `$37eae` (the byte this switch reads,
-`$b90e`/`$b918`) has no writer anywhere in `pop_ad58.asm` — only a `clr.b` at `$be0c` (new-game reset) —
-so `$b90e`'s `beq $bb3e` bails out every frame before the switch runs. A second, independent "CHEAT"
-instance sits inside the AI planner `$db4c` (`mechanics.md` 7): dead in the same way. Both read as
-leftover QA/debug scaffolding from a build where an external input path (a joystick combo, a debug
-keyboard driver) fed `$37eae`/`$3c4e4`, not reachable from retail keyboard or mouse input. *Inferred
-from a full-image grep, not yet live-triggered* (the callcap harness can enqueue raw scancode `$66`,
-but nothing in the shipped image ever consumes it into `$37eae`, so a live REPL press doesn't reach
-the branch either).
+(`$21d50` bit 0, "Command panel" below), it prints `$21478` "CHEAT" at (0,10) and clears the acting
+side's god\_rec AI-request fields (`mechanics.md` 2.3 +0/+1/+2), then sets +1/+2 to (side, 15).
+
+**Not dead — an earlier pass here called this unreachable and was wrong.** It grepped
+`pop_ad58.asm` for a writer to `$37eae` (the byte `$b90e`/`$b918` read), found only a `clr.b` at
+`$be0c`, and concluded the image had none. `pop_ad58.asm` isn't actually a whole-image listing
+despite the name: it stops at $1d462, under 40% of the real image ($ad58..$3d550, from
+`pop_ad58.img`'s size). Re-checked with the tool `CLAUDE.md` actually specifies for this
+("A 'nothing writes X' claim needs every writer") -- `tools/find_field_writers.py <snap> 37eae`,
+a whole-RAM instruction scan -- turns up a real writer at `$02004e`, inside `ikbd_read_byte`
+($01ffb4, named in `populous.sym`): the central IKBD-byte dispatcher every keyboard/mouse byte
+passes through. For any byte that isn't a mouse-motion-packet byte, a shift make/break ($2a/$36
+press, $aa/$b6 release), or an IKBD status header (>$f5), it stores the byte into both
+`key_scancode` and `$37eae` if it's a make code (top bit clear), or 0 if it's a break code (top
+bit set, zeroed before the store). So `$37eae` tracks "the last non-shift key event, 0 once
+released" -- an ordinary, central piece of input handling, not a stub some debug build fed. The
+`$66` branch is reachable by holding down whatever ST scancode `$66` is while the mouse sits in
+that screen corner with query mode selected; a control test with a known scroll code failed the
+same way for an unrelated reason (see below), so this hasn't been triggered live yet, but "no
+writer" no longer holds as the reason to expect it can't be.
+
+A second, independent "CHEAT" sits inside the AI planner `$db4c` (`mechanics.md` 3.3/7), gated on
+`$3c4e4`. Same correction: `find_field_writers.py <snap> 3c4e4` finds a real writer at `$01fbc4`,
+inside a "misc" sub-command dispatcher (`FUN_0001daf6`, reached as command 14's sub-command
+handler per `terrain.md` section 2's cmd table) whose `case 0xf` sets `$3c4e4` (`emit_cap50_side`
+in `populous.sym`) to `sub_arg + 1`. That same dispatcher's `case 10` doubles the local player's
+mana (capped at 100000) when its sub-arg is 0 -- a second, more striking cheat effect living in
+the same handler. terrain.md's existing sub-command table (3 armageddon, 4 flood, 5 knight, 11
+mirror land, 12 clear land, 13 landscape type) is missing both of these. How command 14 with these
+particular sub-values gets issued isn't traced yet; one candidate is a text-entry flow at
+`FUN_0001a01e`, guarded by `DAT_0003c4e0`, that reads keystrokes through `ikbd_read_byte` a
+character at a time and then calls this same dispatcher -- unconfirmed, a real cheat-code-entry
+screen would explain both hooks at once, but needs its own pass to trace `DAT_0003c4e0` and
+what the typed text is compared against before claiming that.
 
 The `qaz.pic` string that sits right after the two "CHEAT" strings in the data segment (`$21484`,
 immediately below `$21478`/`$2147e`) is unrelated: it's just string-table proximity. `$014b50`
 (`Fopen("qaz.pic", ...)`, GEMDOS call `$3d` via the trap wrapper `$20698`) is the ordinary,
 already-documented load of `QAZ.PIC` — the 320x200 panel/border backdrop, rendered at `qaz.png` and
 modelled by `py/pop_render.py` ($3afd8, composited with the minimap at `$c27a`). No connection to
-either dead CHEAT hook.
+either CHEAT hook.
 
 ## Minimap (the book, top-left)
 
