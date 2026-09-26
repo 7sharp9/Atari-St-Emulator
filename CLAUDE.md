@@ -87,6 +87,14 @@ know they existed.
 - A "nothing writes X" or "only Y writes X" claim needs every writer: grep a whole-image
   listing (`disassemble.py --snap <snap> --all <lo> <hi>`) and read each writer's full block;
   the next instruction can overwrite the value (PowerMonger `$2452` is undone by `$245c`).
+  A game's static `<name>_ad58.asm`/`.c` export sitting in scratchpad is not automatically that
+  whole-image listing: it can be truncated (Populous's `pop_ad58.asm` stops at $1d462, well short
+  of the image's real end at $3d550 -- under 40% of the program) with no warning in the file
+  itself. Grepping it found no writer for two addresses and called them dead code; both had a
+  writer in the missing ~60%, found only by rerunning `find_field_writers.py`/`disassemble.py
+  --all` fresh (populous mechanics.md/graphics.md's `$37eae`/`$3c4e4` correction). Before trusting
+  a "no writer" result from any pre-existing `.asm`/`.c` file, confirm its address range actually
+  covers the image end, or just re-run the tool.
 
 ## Proving routines with parallel subagents
 
