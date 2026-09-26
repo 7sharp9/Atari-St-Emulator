@@ -137,6 +137,14 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   in zsh (`=word` expands to a command path); quote it.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or
   `bp` before the down, or the census misses the handler.
+- A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event: it holds whatever
+  the last packet wrote until the next one changes it. A press-then-release pulse timed only by the
+  `s <n>` gap between one packet's two bytes can land entirely between two of the game's per-frame
+  polls and never register as "pressed" on the frame that actually checks it. Hold the pressed state
+  for at least one full VBL frame (check `instructionsPerFrame`, ~12000-15000 steps typical) before
+  sending the release packet when testing whether an input is read at all — a same-packet-timing
+  pulse read as "this input does nothing" cost impossamole's world-select confirm a false negative
+  for a full handoff (`reversing/impossamole/README.md`'s "Confirming a world" section).
 - On the Mac, scratchpad data made on Windows lives on `gpubox` (`~/Documents/GitHub/Atari-St-Emulator`). scp fails
   there (its PowerShell profile errors); stream it: `ssh gpubox 'tar -cf - -C C:/Users/Dave/Documents/GitHub/Atari-St-Emulator/M68000/scratchpad <names>' | tar -xf -`.
 - Ghidra 12.1 is at `C:/Program Files/ghidra_12.1_PUBLIC` (`support/analyzeHeadless.bat`); on the Mac at
