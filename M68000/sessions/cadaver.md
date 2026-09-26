@@ -1,83 +1,89 @@
 # Cadaver: handoff
 
-Updated 2026-09-26 by the session that ended at commit `e6e9ad3` (69th pass, following the 68th's
-`854cd34`), which closed both of the previous handoff's open items: rendering `room_mosaic.py`'s
-one dropped `0xc2` item-catalog overlay, and cross-checking type 2's catalog against §3's 22-entry
-object array field-for-field. Full writeup: `reversing/cadaver/graphics.md` §5f/§5a-2.
+Updated 2026-09-26 by the session that ended at commit `262e17e` (70th pass, following the 69th's
+`e6e9ad3`/`dbf5838`), which generalized the object-verb interpreter's one-off LOCK opcode-id match
+(mechanics.md §23a) into a repeatable scan across all 59 dispatch-table entries and the full
+debug-string vocabulary. Full writeup: `reversing/cadaver/mechanics.md` §64, `ai.md` §6c-2/§6e.
 
 ## Resume point
 
-- Last commit of this workstream: `e6e9ad3` "cadaver: cross-check type-2's catalog against section 3's
-  object array field-for-field (69th pass)". `1e7745e` "cadaver: render room_mosaic.py's dropped 0xc2
-  item-catalog overlay (69th pass)" is this same session's other commit. No emulator source changed
-  this pass (Python tooling + doc edits only, reusing existing snapshots), so no rebuild or
-  regression-net run is needed before building on it.
+- Last commit of this workstream: `80aa679` "cadaver: generalize LOCK's opcode-id match across the
+  whole 59-entry verb dispatch table -- 3 more ids confirmed, UNLOCK CHEST proven causally live (70th
+  pass)". `262e17e` "reverse-engineer-st-game skill: bound jump-table/dispatch verb-attribution walks"
+  is this same session's skill-lesson commit (own small commit per the shared-resource rule). No
+  emulator source changed this pass (Python tooling + doc edits only, reusing existing snapshots), so
+  no rebuild or regression-net run is needed before building on it.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored) — unchanged this pass, nothing
-  newly captured; `gameplay_empire.snap`, `mid_cab6_cavern.snap`, `mid_cab6_tunnel.snap`,
-  `room2_tunnel_entry.snap` (all pre-existing) were re-read, not re-captured.
+  newly captured; `gameplay_empire.snap` and `room2_tunnel_entry.snap` (both pre-existing) were
+  re-read, not re-captured.
 - Start from: `gameplay_empire.snap` (CAVERN) / `room2_tunnel_entry.snap` (TUNNEL) for ordinary
-  static/gameplay work; `mid_cab6_cavern.snap` / `mid_cab6_tunnel.snap` specifically for re-reading
-  either room's live tile-placement/draw-descriptor list (a scratch buffer, unreadable from a
-  steady-state snapshot).
+  static/gameplay work, same as every recent pass.
 - Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` still carries
-  the pre-existing line-wrap-only edit noted in the last several handoffs (not this session's, left
-  alone per "one writer per file" — check `git status` fresh rather than trusting this line if it's
-  been a while). `Cadaver/` (game disk images) and `.obsidian/` (an Obsidian vault config) are
-  untracked, predate this session, and aren't part of any workstream — left alone.
+  the pre-existing line-wrap-only edit noted in several prior handoffs (not this session's, left alone
+  per "one writer per file"). `Cadaver/` (game disk images) and `.obsidian/` (an Obsidian vault
+  config) are untracked, predate this session, and aren't part of any workstream — left alone.
 
 ## Proven so far
 
 Detail in `reversing/cadaver/README.md`, `mechanics.md`, `graphics.md`, `ai.md`. Carried over:
 `mechanics.md` §1-63 (movement collision/proximity, the icon-panel write chain, the full 72-room
-world-map/adjacency graph, the door-connectivity walk, the swapped-disk side-count bug, the
-Replicants/ST Amigos crack's Disk 2 swap, two genuine emulator gaps behind the "crack dispatch bug",
-the FDC "no data" workflow fix, the two-disk build's `$100`-shift bugs, a real CAVERN→TUNNEL crossing
-driven live, Disk 2's one-time boot-time load with zero further FDC activity, CAVERN/TUNNEL having no
-live-reachable third room), `graphics.md` §5a-5j (the shared 80-tile terrain catalog, its per-room
-RLE-compressed per-column tile-stack encoding, the `$cbd4` top-bit marker channel fully resolved
-including its `0xc2` sub-case, no runtime tile-adjacency rules, the per-cell screen-placement formula,
-the full draw pipeline, both known rooms scored ~96% pixel-exact against their reference screenshots)
-and the 68th pass's closed palette-formula item (neither reference screenshot is an authentic Hatari
-render, so `--palette-formula {ste,st}` per-reference selection is the permanent answer).
+world-map/adjacency graph, the door-connectivity walk, the swapped-disk side-count bug, two genuine
+emulator gaps behind the "crack dispatch bug", a real CAVERN→TUNNEL crossing driven live, Disk 2's
+one-time boot-time load with zero further FDC activity, CAVERN/TUNNEL having no live-reachable third
+room), `graphics.md` §5a-5j (the shared 80-tile terrain catalog and its full draw pipeline, both known
+rooms scored ~96% pixel-exact against their reference screenshots, the palette-formula question
+closed as not-achievable/not-needed), and the object-verb bytecode interpreter's foundational finds
+(§22-26, §49-50: the 59-entry dispatch table's shape, the shared type-6/9 id-resolver, LOCK=opcode 18
+tied to the lever object (id 144) and causally proven live via `callcap`, an exhaustive multi-technique
+negative on any *external* caller reaching the interpreter at all, and the same negative extended to a
+second real id (door 155)).
 
-**This pass (`graphics.md` §5f/§5a-2)**:
-- `room_mosaic.py` now renders the terrain grid's one non-tile (`0xc2`-sourced) descriptor entry
-  instead of silently dropping it: its `ptr` field is already the item's own address past its
-  0x24-byte header, and its `w_field`/`h_field` give the real size directly, so it composites
-  through the exact same clip/mask/paste pipeline as a tile. TUNNEL's mosaic score is now
-  **10604/11069 (95.8%)** against `room2_tunnel_entry.png` (up from 9534/9932 tile-only; the
-  percentage dip is newly-covered area occluded by the player sprite in the reference frame, not a
-  regression). CAVERN's capture has zero non-tile entries, so its score (19079/19749, 96.6%) is
-  unchanged. Script: `reversing/cadaver/py/room_mosaic.py`.
-- Cross-checked type 2's 255-slot catalog against §3's 22-entry per-room object array, field for
-  field: all 20 state-5 (static room-dressing) slots' `+52` bitmap pointers land at the exact byte
-  address of a type-2 catalog payload, matching width/height too; three spot-checks (torch, boat,
-  chest) decode pixel-identical on both sides, **0 different pixels each**. Type 2 is confirmed the
-  literal shared template catalog for per-room static dressing, not just a conceptually similar
-  pool. The one exception, slot 16 (the goblet, the array's own previously-flagged `+42` state-4
-  outlier), decodes to real art via its own struct fields but its address falls inside type 2's
-  data span without landing on any of the 255 enumerated entries — genuine art from elsewhere,
-  giving the state-4 anomaly a concrete structural correlate for the first time. Script:
-  `reversing/cadaver/py/cross_check_type2_objects.py`.
+**This pass (`mechanics.md` §64, `ai.md` §6c-2/§6e)**: generalized the single LOCK address-match into
+a reusable scan (`py/verb_opcode_map.py`) across the whole 59-entry table and the full ~40-string
+debug vocabulary. Three more opcode ids confirmed by exact address match: **id 1 = CREATE**
+(`$010914`, first confirmed case of one verb handler calling another directly rather than only
+through the byte-dispatch table), **id 31 = STOPACTI** (`$010e7e`, pairs with GOACTI, both operate on
+bit 6 of the same `+15` byte LOCK/UNLOCK use for bit 2), **id 34 = UNLOCK CHEST** (`$010ee2`) — and
+UNLOCK CHEST is now the second opcode in the whole spike proven causally, not just structurally:
+`callcap`'d directly against the lever object (144), it clears a real 16-bit field in the object's own
+record. The rest of the verb vocabulary (MOVEING, GOANI, GOMOVE, STOPMOVE, FLAG OP, GOACTI, UNTRAP/
+CLEAR CHEST, DIRTY POTION, creature KILL/UNINV/WAKE/SLEEP) now has real, disassembled handler
+addresses (§64b's table) even where the exact numeric id isn't pinned. Two new architectural facts:
+MOVEING/GOANI resolve through resource type 4 (`$00c5a8`) rather than the type-6/9 resolver every
+other verb uses, and FLAG OP is confirmed as the condition-setter for the small nested-IF bytecode
+table at `$0000ffba` that §23b's "aside" had flagged but never traced. External reachability of the
+whole interpreter is unchanged from §24/§26's negative — every new caller found this pass is internal
+to the interpreter's own `$010000`-`$011256` span.
 
 ## Open, in priority order
 
-1. **The goblet's (§3 slot 16, state 4) actual art source** — narrowed this pass (§5a-2 ruled out
-   type 2's 255-slot table specifically) but not identified; low priority, a one-off curiosity. If
-   pursued: check the other resource-manager types (0,1,3-7) the same way `cross_check_type2_objects
-   .py` checks type 2, or `watch (A5)+52` on that slot across a state transition if one is ever
-   observed.
-2. **Stack direction** (does per-column tile-stack index 0 sit at the floor or the ceiling, §5e) —
-   still not proven either way; the room-terrain rendering work being fully proven now (both rooms
-   ~96%, including the item overlay) hasn't settled this.
-3. **The CAVERN mosaic's own ~3.4% overlap-edge residual** (§5i-2, confirmed unrelated to the
-   palette-formula question, since its reference already matches `room_mosaic.py`'s default
-   formula) — small, visually negligible, cause not identified.
-4. **Does Disk 2 add reachable content beyond CAVERN/TUNNEL?** (64th pass, `mechanics.md` §63): still
-   recommended closed for practical purposes; unaffected by this pass.
-5. `2516(A5)`'s role still unconfirmed. Only worth resolving if another item needs a real day/progress
+1. **Pin the rest of the 59 dispatch ids to their verbs.** §64b's table gives real addresses for
+   ~11 more verbs but not their numeric opcode ids; a further per-entry manual pass (disassemble each
+   remaining target, check it against §64b's known addresses) could close more of this, but risks the
+   same false-attribution failure mode the bounded walk was built to avoid — verify by hand, don't
+   trust an automated match alone (see the skill's new note on this). id 12/25 are already known
+   structurally real (§23a) but reach no debug string within reach of this pass's search depth.
+2. **The KILL/UNINV/WAKE/SLEEP cluster's "always errors, no resolve" shape** (§64c) — read as likely
+   explained by the creature resource table (type 9) being empty in every snapshot this spike has ever
+   captured, but not proven live. If picked up: single-step one of these four handlers from a
+   `callcap` call and confirm there really is no earlier resolve step being skipped, rather than
+   inferring it from the type-9-empty pattern alone.
+3. **STOPACTI's raw target word (`$f8ba`, an F-line opcode) decoding as garbage while the code two
+   bytes later is clean** (§64a) — not explained. Worth a `bp`/single-step check to see whether this
+   address is ever really executed as-is (an emulator gap or intentional probe, per the skill's own
+   "deliberately looks like garbage" trap) versus the table's own arithmetic being subtly off for this
+   one entry despite matching cleanly everywhere else tested.
+4. **The goblet's (graphics.md §3 slot 16, state 4) actual art source** — still not identified; low
+   priority, a one-off curiosity.
+5. **Stack direction** (does per-column tile-stack index 0 sit at the floor or the ceiling, graphics.md
+   §5e) — still not proven either way.
+6. **The CAVERN mosaic's own ~3.4% overlap-edge residual** (graphics.md §5i-2) — small, visually
+   negligible, cause not identified.
+7. **Does Disk 2 add reachable content beyond CAVERN/TUNNEL?** (mechanics.md §63): still recommended
+   closed for practical purposes.
+8. `2516(A5)`'s role still unconfirmed. Only worth resolving if another item needs a real day/progress
    counter.
-6. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period repeats.
+9. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period repeats.
    No `.stx`→`.st` converter exists in `tools/`.
 
 ## Known traps
@@ -95,40 +101,30 @@ type/case, a struct field documented as "an array at `(A5)+N`" may actually be a
 overlapping tile/sprite art rather than pasting it opaquely, a scratch/display-list buffer generally
 can't be read from a steady-state snapshot, a `bpc <addr> 1 <budget>` armed per zigzag leg catches a
 one-shot room-entry routine without knowing in advance which leg crosses the door, a clustered (not
-uniform) pixel-diff mismatch points at missing content over a placement bug.)
+uniform) pixel-diff mismatch points at missing content over a placement bug, two lookalike routines
+sitting next to each other can be genuinely different primitives not the same routine reached two
+ways, a low spatially-uneven pixel-diff score against an independent reference can be a cross-tool
+palette-rounding mismatch not missing content, tracing only "the first half" of a routine that both
+reads and writes through a shared pointer can misattribute a callee's own scratch fields to the
+caller's real output struct, confirm your own reference assets actually came from an "authoritative"
+source before chasing it to unify an internal formula mismatch.)
 
-- **Two lookalike routines sitting next to each other in the image can be genuinely different
-  primitives, not the same routine reached two ways** — `$00c576` and `$00c5a8` (§5a) are adjacent,
-  share the same outer `(A5)+96 → row[type]` addressing shape, and differ only in their first
-  instruction (`moveq #2,D0` vs none) and their slot-decode tail; a caller census that only grepped
-  for one of them (the 24th pass's `$c5a8` census) silently missed the other's 28 call sites and
-  wrongly concluded a whole resource type was dead. When a `(type,index)`-style fetch has one known
-  entry point, check the disassembly immediately around it for a second one before trusting a "no
-  caller sets D0=N" census as exhaustive.
-- **A low, spatially-uneven pixel-diff score against an independently-generated reference screenshot
-  can be a cross-tool palette-rounding mismatch, not missing render content** — now in
-  `.claude/skills/reverse-engineer-st-game/SKILL.md` §4b in detail (the diagnostic: sample a few RGB
-  pixels at the same coordinate in both images; a consistent small integer offset, e.g. 182 vs 180,
-  is a formula bug, not a wrong tile). Cost the 66th pass a wrong conclusion and the 67th pass a
-  detour through a real-but-irrelevant mechanism (`0xc2`) before finding the actual cause.
-- **Tracing only "the first half" of a routine that both reads and writes through a shared pointer
-  can misattribute a callee's own internal bookkeeping fields to the caller's real output struct** —
-  the earlier `0xc2` reading (`52(A5)`/`2209(A5)` "look like" object-array fields) came from not
-  following the call into `$92e8`/`$c576` far enough to see they're scratch cells the *caller* reads
-  back out afterward, not the actual draw-descriptor write. Trace a callee fully before trusting a
-  struct-shape resemblance.
-- **Before spending a pass chasing an external "authoritative" formula to resolve an internal tooling
-  mismatch, confirm your own reference assets actually came from that authority** — now in
-  `.claude/skills/reverse-engineer-st-game/SKILL.md` §4b (the diagnostic: re-score a known reference
-  against the real formula; a clean 0/N exact match rules it out as the source instantly, no
-  rounding-level ambiguity). Cost nothing this pass only because it was checked before touching
-  either tool's default — the previous handoff had explicitly flagged the risk of picking a side
-  without checking.
+- **When resolving what a jump-table/dispatch entry does by matching it to an error string, bound the
+  forward walk** — an unbounded transitive branch-follow wanders into unrelated shared code and
+  mis-attributes a handler to the wrong string. Now in `.claude/skills/reverse-engineer-st-game/
+  SKILL.md` §3 (70th pass, `mechanics.md` §64). The reliable shape: the entry's own straight-line body
+  (following an unconditional `bra`/`jmp` as a same-routine continuation) plus exactly one level of
+  conditional-branch following, no more.
+- A dispatch-table target whose raw word arithmetic is provably correct can still decode as a garbage/
+  unimplemented instruction while clean, coherent code resumes a couple of bytes later (70th pass,
+  STOPACTI's `$f8ba`) — don't discard a target as misaligned without checking what comes right after
+  it first.
 
 ## Next session
 
-Both of the previous handoff's open items are closed, and both known-good mosaics now render every
-descriptor-list entry (tiles and item overlays alike). The remaining open items are all small and
-independent (goblet's art source, stack direction, CAVERN's residual 3.4%) — pick whichever interests
-Dave, or step back to a broader thread (item 4's Disk 2 question, or a fresh subsystem) if he'd rather
-redirect. Prompt: `/resume cadaver`.
+Item 1 (pinning the rest of the 59 dispatch ids) is the natural continuation of this pass's own
+method and the highest-leverage next step for the interpreter thread — `py/verb_opcode_map.py` is
+already the right starting tool, it just needs a slower, per-entry manual pass rather than another
+automated sweep. Items 2/3 are smaller, standalone loose ends from this pass. Otherwise the older
+open items (4-9) are all independent and small; pick whichever interests Dave. Prompt:
+`/resume cadaver`.
