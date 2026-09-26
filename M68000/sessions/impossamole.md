@@ -1,60 +1,68 @@
 # Impossamole: handoff
 
-Updated 2026-09-26 by the session that ended at commit `681d8bb`.
+Updated 2026-09-26 by the session that ended at commit `faa63fa`.
 
 ## Resume point
 
-- Last commit of this workstream: `681d8bb` (debunks the VBL-stuck theory, reaches world-select).
+- Last commit of this workstream: `faa63fa` (identifies the world-select confirm input: hold fire,
+  not a pulse).
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image, an
-  `extracted/` directory (root-dir files pulled via a one-off FAT12 reader), and the snapshot chain
-  `after_f1.snap` → `after_space.snap` → `after_retry{1,2,3,4}.snap` (title screen) →
-  `after_fire1.snap`/`after_fire2.snap` (world-select screen reached) → `after_select{1,2,3}.snap`
-  (Klondike Mine icon highlighted) → `after_load1.snap` (5M idle steps past `after_select3`, still on
-  the select screen — confirms the highlight is not itself "enter the level").
-- Start from: `scratchpad/impossamole/after_select3.snap` (world-select screen, Klondike Mine
-  highlighted, PC in the shared object-update loop at `$1ac3e`/idles back into the VBL-wait at
-  `$1ab8a`). **Must be resumed with `--disk-a "impossamole cr replicants - emotion cr replicants.st"`
-  or every floppy read silently fails** (see README's "Known traps").
-- Uncommitted work left behind: none beyond the scratchpad snapshots (gitignored, reproducible from
-  the README's exact command sequence, repeated below).
+  `extracted/` directory, and the snapshot chain through `after_select3.snap` (world-select screen,
+  Klondike Mine highlighted) → `after_confirm_fire.snap` (mid-transition, PC inside TOS ROM at
+  `$00fc1bea` right after a held fire on Klondike Mine) → `after_confirm_screen.snap` (settled on a
+  new, not-yet-identified plain "IMPOSSAMOLE" logo screen — screenshot committed as
+  `reversing/impossamole/after_confirm_screen.png`). A handful of `test_*.snap`/`.png` files from
+  this session's input experiments (return/space/joystick-0/direction/double-tap probes, all
+  negative results) are also left in the directory; only the `after_*` ones matter going forward.
+- Start from: `scratchpad/impossamole/after_confirm_screen.snap` to pick up the open item below.
+  **Must be resumed with `--disk-a "impossamole cr replicants - emotion cr replicants.st"`** (see
+  README's "Known traps") — the path is relative to `M68000/`, i.e.
+  `scratchpad/impossamole/impossamole cr replicants - emotion cr replicants.st`.
+- Uncommitted work left behind: `M68000/sessions/README.md` has a pre-existing uncommitted
+  whitespace-only edit (two paragraphs unwrapped to single lines) that predates this session and
+  isn't claimed by any live session (`ListAgents` showed none on this repo) — left alone per "one
+  writer per file"; flag it to Dave if it's still sitting there. Also two untracked, unrelated paths
+  at the repo root (`.obsidian/`, `Cadaver/`) — not touched, not this workstream's.
 
 ## Proven so far
 
-See `reversing/impossamole/README.md` for the full writeup and screenshots
-(`trainer_menu.png`, `title_logo.png`, `world_select.png`).
+See `reversing/impossamole/README.md` for the full writeup and screenshots.
 
-- Disk boot → crack menu (F1) → trainer skip (any key) → real title screen: unchanged from the
-  previous handoff, still holds.
-- **The title screen's "stuck at `$1a2e9`" theory from the prior handoff was wrong, and is now
-  corrected in the README with live proof**: `$1a2e9` is a genuine per-frame VBL counter (sole
-  writer `$1a2c0` inside the installed VBL handler, `find_field_writers.py`: 31 hits), firing
-  correctly (`hits 500000 1a2c0 1f950`: 42 hits ≈ 500000/12000, once a frame) and immediately
-  consumed/cleared by its own caller's wait-for-next-vbl utility (`watch 1a2e9`: set to 1 at step
-  59808001, cleared at step 59808234, 233 steps later). Two static snapshots agreeing on `= 0` is the
-  expected signature of an idle busy-poll, not a hang — see the new CLAUDE.md rule this cost.
-- **The real gate is a joystick-1 fire packet.** The attract loop's `btst #7,$1c4c1.l` (5 identical
-  copies) waits on `$1c4c1`, written only by the game's own raw-IKBD ACIA-receive handler (`$1c51a`,
-  vector `$118`) on header `$FF` (joystick 1). Proven live: `kbd ff` / `s 30` / `kbd 80` sets
-  `$1c4c1 = $80` and moves PC out of the attract loop within one frame.
-- **World-select screen reached and screenshotted** (`world_select.png`): IMPOSSAMOLE logo, 5 world
-  icons (Klondike Mine / The Orient / The Amazon / Ice Land / Bermuda Triangle), walking hero cursor.
-  A second fire (press+release, `kbd ff`/`kbd 80` then `kbd ff`/`kbd 00`) drew a gold highlight
-  border around the Klondike Mine icon the cursor stood on — the same joystick-1 packet drives the
-  select screen's own input too.
+- Disk boot → crack menu → trainer skip → title screen → joystick-1 fire → world-select screen:
+  unchanged from the previous handoff, still holds.
+- **The world-select confirm input is a held joystick-1 fire, not a pulse.** The select screen runs
+  through one of 5 copies of a shared per-frame template (`find_ram_callers.py <snap> 1ab8a 1abb2
+  1ac34`; `hits <n> <5 JSR sites>` identifies which copy is live — `$17dd0` for this screen). Its
+  cursor object (`$1a2ea`) exposes the highlighted icon index (byte 78), a "settled" flag (`$227f3`),
+  and a locked-icon bitmask (`$bb79`, live value `$10` = only Bermuda Triangle locked); only on a
+  frame where settled and unlocked does `$017e9e` test `btst #7,$1c4c1.l`. `$1c4c1` is a raw level,
+  not edge-latched: a press/release pulse timed by the gap *inside* one IKBD packet (`kbd ff`/`s
+  30`/`kbd 80`) is far shorter than one VBL frame and can miss the one frame that polls it — this is
+  exactly why the prior handoff's fire attempts looked like "nothing happens". Holding fire for
+  60000+ steps before releasing reliably drives PC into TOS ROM (`$00fc1bea`, a GEMDOS call) — proven
+  live, reproducible from `after_select3.snap`. Now also a general CLAUDE.md rule (kbd/mouse status
+  bytes need a full-frame hold to test reliably).
+- **Past the confirm, PC lands on a new, unidentified logo screen** (`after_confirm_screen.png`):
+  plain "IMPOSSAMOLE" text on a blue field, visually distinct from the earlier `title_logo.png`.
+  Running through the *other* template copy (`$17ac0`, confirmed via backtrace). `ATARI_TRACE_FDC=1`
+  over 500k steps here shows zero disk reads, so it is not a background load-progress wait; it is an
+  idle loop with its own `$22806` frame counter. A fire here routes through `$17ac0`'s local fire
+  handler (`jsr $bb7e`), which turned out to be an unrelated hidden password/cheat-word listener
+  (`$1837e`'s table decodes as ASCII words including `COMMANDO`, `JUGGLERS`) keyed off `$bb7d`
+  (stays 0 on this screen, so nothing fires) — not the mechanism that will advance this screen.
 
 ## Open, in priority order
 
-1. **Find the "confirm and load a world" input.** From `after_select3.snap` (Klondike Mine already
-   highlighted), repeating the same fire packet did not visibly proceed within another 5M idle steps
-   (`after_load1.snap`, still on the select screen). Try: a direction packet before/after fire (the
-   cursor sprite visibly walked between `after_fire2`/`after_select1`, so movement packets are being
-   read — `find_field_writers.py` on `$1c4c0`, joystick-0's slot, may be the one actually driving
-   movement, with `$1c4c1`/joystick-1 only for fire); a keyboard key (GEMDOS-style, like the
-   trainer-menu skip) in case selection needs Return/Space once a world is highlighted; or find the
-   select-screen's own input-check code directly (`bt` from a snapshot sitting in its main loop, or
-   `find_ram_callers.py` on `$1ab8a`/`$1abb2`'s other 4-5 caller sites, one of which is this screen's
-   loop body, not just the 5 attract-mode copies already identified in the README).
-2. Once a world loads: reach actual isometric gameplay for one of the 5 worlds.
+1. **Identify what the post-confirm logo screen (`after_confirm_screen.snap`) is, and what advances
+   past it.** Candidates: a per-world loading/briefing page waiting on a different input; a
+   fallback because Klondike Mine's own assets are incomplete/missing in this crack (worth trying a
+   *different* world, e.g. The Orient, to see if it reaches the same screen or genuinely loads); or a
+   screen that auto-advances once something else (not disk I/O) completes. Read the `$17ac0` template
+   copy's own body in full (only its up/down-toggle and fire-cheat-dispatch parts have been read so
+   far) for a state variable this screen itself sets/reads that differs from the plain attract loop,
+   and check its callers the same way `$17dd0` was pinned down (`hits` against `$17ac0`'s own JSR
+   sites while sitting on this screen, to rule out it just being a literal return to attract mode).
+2. Once a world genuinely loads: reach actual isometric gameplay for one of the 5 worlds.
 3. Classify the main game binary once reached via GEMDOS `Pexec` (watch for the trace line) — likely
    hand-written 68000 asm given the crack/trainer wrapper, but confirm via the LINK-frame-count
    heuristic (§0 of the reversing skill) rather than assuming.
@@ -62,16 +70,20 @@ See `reversing/impossamole/README.md` for the full writeup and screenshots
 ## Known traps
 
 - `resume <snap> repl` does not reattach a disk image — `--disk-a` must be passed again on every
-  resume for a disk-booted game, or floppy reads silently return "no data" (looks exactly like a
-  real protection/geometry failure). Now in `reversing/impossamole/README.md`'s "Known traps".
+  resume for a disk-booted game, or floppy reads silently fail (see README's "Known traps").
 - A busy-poll "wait for next interrupt and consume it" utility reads as stuck if you only sample the
-  field it polls at rest — see "Proven so far" above and the new CLAUDE.md rule. Also now in the
-  README.
+  field it polls at rest. Also in the README.
+- A `kbd`/`mouse` status byte is a raw level, not edge-latched — a same-packet-timing press/release
+  pulse can miss every per-frame poll. Now in CLAUDE.md and the README's "Known traps" (general rule)
+  and "Confirming a world" section (this workstream's concrete instance).
 
 ## Next session
 
-Start at `scratchpad/impossamole/after_select3.snap` (`--disk-a` attached). Do not burn raw step
-budget guessing — first identify the select screen's own input-check code (`bt`/`find_ram_callers.py`
-per Open item 1) so the "confirm world" gesture is found by reading, not by trying random packets for
-millions of steps. Once a world loads, take a screenshot before going further so the milestone ladder
-(title → select → world load → gameplay) has proof at each rung.
+Start at `scratchpad/impossamole/after_confirm_screen.snap` (`--disk-a` attached). Read the `$17ac0`
+template copy's full body first (it's only partially read) to find what's actually gating this
+screen, rather than guessing inputs — the same reading-before-guessing approach that found the
+confirm mechanism this session, after several rounds of guessing packets got nowhere. If reading
+doesn't turn up an obvious gate, try firing with a full-frame hold (per the new CLAUDE.md rule) before
+concluding the screen needs something else; also worth trying a different world (not Klondike Mine)
+from `after_select3.snap` in case this is Klondike-specific breakage in the crack. Screenshot before
+going further once anything changes.
