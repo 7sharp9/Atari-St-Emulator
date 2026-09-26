@@ -1,6 +1,10 @@
-# impossamole — booted through a Replicants crack menu to the world-select screen
+# impossamole — booted through a Replicants crack menu into real Amazon-world gameplay
 
-First pass. *Impossamole* — Gremlin Graphics / Core Design, 1990, an isometric platformer.
+First pass. *Impossamole* — Gremlin Graphics / Core Design, 1990. The opening-description
+"isometric platformer" was an unverified guess; the first gameplay screen actually reached
+(`amazon_gameplay.png`, below) is a plain side-view platform scene (terraced hillside, a ruined
+pillar, a walking hero sprite) with no isometric projection visible. Leave the genre unlabelled
+until a room with an actual diamond/2.5D grid turns up, rather than repeating the guess.
 The copy in hand is a cracked scene release: a "Replicants"-badged boot menu leading into an
 "E-Motion"/"R.AL" trained-and-packed version. No `\AUTO\` folder; the disk boots directly
 (executable boot sector, checksum `$1234`) into the crack's own menu code, not straight into the
@@ -183,12 +187,39 @@ through the *other* template copy, `$17ac0` (backtrace return address `$17b30` c
 a plain "IMPOSSAMOLE" logo on a blue field (`after_confirm_screen.png`) — visually distinct from
 `title_logo.png` (which also has the hero sprite and publisher logos). `ATARI_TRACE_FDC=1` over
 500k steps here shows **no disk activity**, so this isn't a background load-progress wait; it's an
-idle animation (a counter at `$22806` counting `0..$fa` then toggling `$22805`) that this session did
-not find a further input for — a repeated fire here just runs `$17ac0`'s own fire path, `jsr $bb7e`,
-which turned out to be an unrelated 8-character password/cheat-word lookup against `$1a07a`/`$1a07e`
-(the table at `$1837e` decodes as ASCII words including `COMMANDO` and `JUGGLERS` — a hidden trainer
-cheat-code listener, not menu logic) keyed off `$bb7d`, which stays 0 throughout this screen so
-nothing fires.
+idle animation (a counter at `$22806` counting `0..$fa` then toggling `$22805`).
+
+**This screen is Klondike Mine's data failing to load, not an unidentified transition.** Reading
+`$17ac0`'s fire path (`$017b4c`-`$017b58`) in full — the prior pass stopped at `jsr $bb7e` (the
+password/cheat-word lookup, keyed off `$bb7d` which stays 0 here so nothing fires) and inferred
+"nothing happens" from that call's own irrelevance, but missed the instruction right after it:
+`$017b58: jmp $17c9c`, **unconditional**, taken regardless of what `$bb7e` did. `$17c9c` is the
+world-select screen's own re-entry setup — it copies image data `$25000`→`$53000`, repoints the
+live screen buffer (`$1a2e4`) at `$53000`, and reinitializes the cursor object at `$1a2ea` from the
+per-icon table at `$17fa2` exactly the way `$17dd0`'s selection loop expects — and falls straight
+into that loop's own body. **Proven live**: from `after_confirm_screen.snap`, holding fire a full
+VBL frame (`kbd ff`/`s 30`/`kbd 80`/`s 60000`/`kbd ff`/`kbd 00`) drives PC to `$1c3d8` — inside the
+same title→select transition routine used the first time (`$1c3d0`, see above) — and `hits 400000
+b1bc 17ad4 17df4 1813c 1847e` afterwards lands all 4 hits on `$17df4`, i.e. back on the world-select
+copy. The rendered frame is pixel-identical to `world_select.png` (cursor sprite absent only because
+the snapshot lands mid-settle). **So firing on this screen returns you to world-select — Klondike
+Mine's confirm doesn't advance into a level, it bounces.**
+
+**A different world loads for real.** Moving the world-select cursor to The Orient/Amazon/Ice
+Land/Bermuda Triangle (joystick-1 bit 3 = increment `78(A0)`, bit 2 = decrement, wrapping checked
+against the `$bb79` locked mask) and confirming The Amazon (icon index 2) with the same held-fire
+technique lands PC at `$3b4` — a byte-copy depacker loop (`move.b -(A2),-(A1); dbf D1,#-4`) executing
+out of the low, otherwise-unused vector-table RAM — and `ATARI_TRACE_FDC=1` over the same window
+shows real raw-sector activity: 30+ `FDC read` lines across tracks 0/7/8, both sides, unlike
+Klondike Mine's zero disk reads. A few million steps later PC settles at `$1ab96` (the shared
+VBL-wait idle body) but now driven by a **fourth, previously uncharacterized template copy**,
+`$b1b6` (`hits 300000 b1bc 17ad4 17df4 1813c 1847e`: 12 hits, all on `$b1bc`), and the live screen
+(`amazon_gameplay.png`) is a real level frame: hero sprite standing on a terraced, vegetation-
+covered hillside next to a ruined stone pillar under a cloudy sky — not the select/logo screen
+template's blue field. This confirms the earlier handoff's hypothesis: **Klondike Mine's own data
+is broken/missing in this crack; the engine's confirm→load path itself works, proven by a different
+world.** A single joystick-1 "right" packet sent on this settled frame produced no visible change
+(same render before/after) — gameplay input mapping is not yet found (see "Not yet exercised").
 
 ## Known traps
 
@@ -220,13 +251,15 @@ nothing fires.
 | `trainer_menu.png` | crack trainer-menu screen, reached via F1 from the boot menu |
 | `title_logo.png` | the real game's title screen, reached by skipping the trainer |
 | `world_select.png` | the world-select screen, reached by sending a joystick-1 fire packet at the title screen (see above) |
-| `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen reached after confirming Klondike Mine on the world-select screen (see "Confirming a world" above) — not yet identified |
+| `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen reached after confirming Klondike Mine — this crack's Klondike data fails to load; firing here loops back to `world_select.png` (see "Confirming a world" above) |
+| `amazon_gameplay.png` | first real gameplay frame, reached by confirming The Amazon instead of Klondike Mine — hero sprite, terraced hillside, ruined pillar (see "Confirming a world" above) |
 
 ## Not yet exercised
 
-Past the confirm-a-world screen (`after_confirm_screen.png`, reached via `$b0ee`'s ROM/GEMDOS call
-after firing on a settled, unlocked icon — see "Confirming a world needs a held fire" above): what
-that screen is (a per-world loading/briefing page, or a fallback because Klondike Mine's own assets
-are incomplete in this crack) and what input, if any, advances past it into actual isometric
-gameplay; sprite/tile formats; level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and control flow / CFG
-extraction.
+Past reaching The Amazon's first gameplay frame (`amazon_gameplay.png`, template copy `$b1b6`):
+what input actually drives the hero (a joystick-1 "right" packet held a full frame produced no
+visible change — direction bits may map differently in gameplay than on the select screen, or
+another button/input is expected first); why Klondike Mine's own data specifically fails to load
+(worth diffing its `.DAT` pair against a working world's, or checking for a disk-read error the
+engine silently swallows) and whether Orient/Ice Land/Bermuda Triangle load correctly too; sprite/
+tile formats; level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and control flow / CFG extraction.
