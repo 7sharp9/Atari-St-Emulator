@@ -103,6 +103,18 @@ confirmed initial write there (a room-record pointer, not the value actually fou
    the room record pointer as real input — or actually visiting the remaining rooms. Once censused,
    grep every room's objects' name indices against 224-233 (or whatever monster indices a wider
    `name_strings.py --hi` sweep turns up) — this names the creature's room directly.
+   **New lead (Dave, 72nd pass, from an external fan walkthrough at oldgames.sk — unverified against
+   the emulator, treat as a hint not a fact):** the walkthrough names a **"SPINE CREATURE"** — fed to
+   a prisoner in its own gaol-area rooms 19-23, one message reads (paraphrased, not quoted verbatim
+   per this doc's own copyright discipline) that skulls are the weapon against it. That description
+   lines up with §65b's own decoded `THE CREATURE IS SLEEPING`/`...AWAKES AND IS VERY VERY ANGRY`
+   strings and the KILL/UNINV/WAKE/SLEEP cluster far better than a generic rat/spider/worm/beetle/
+   jumper does. The walkthrough's own room numbering is a fan/player scheme, not confirmed to equal
+   our type-3 slot indices, but its room 1 ("old mine workings": coin/diary/pick) and room 2 (pull a
+   lever, opens its door "2/3") plainly match CAVERN (slot 0) and TUNNEL/LEVER (slot 1) — so slot
+   0↔room 1, slot 1↔room 2 is a reasonable starting anchor, not proven further out. Worth prioritizing
+   the census (or a live walk) toward the walkthrough's own gaol/prison stretch (its rooms ~13-38,
+   reached via its door 8/12 from room 1) over a blind 72-room sweep.
 2. **The KILL/UNINV/WAKE/SLEEP cluster's "always errors, no resolve" shape** (§64c) — read as likely
    explained by the creature resource table (type 9) being empty in every snapshot this spike has ever
    captured, but not proven live. Once item 1 names a real creature room, `callcap` one of these four
@@ -189,7 +201,11 @@ Item 1 (extend the name-index census to all 72 rooms, then name the creature's r
 continuation of this pass's own new lead — `py/room_object_names.py` is already the right tool,
 proven 3/3 against known ground truth, and only reaching rooms other than CAVERN/TUNNEL is missing.
 The one-snapshot shortcut is already ruled out (72nd pass): go straight to a `callcap`-driven
-`$00cd50` invocation per room, or an actual visit. Item 2 (the KILL/UNINV/WAKE/SLEEP
-cluster) follows directly once item 1 gives it a live target. Items 3/4 are the standing interpreter
-loose ends from the 70th pass. Otherwise the older open items (5-10) are all independent and small;
-pick whichever interests Dave. Prompt: `/resume cadaver`.
+`$00cd50` invocation per room, or an actual visit. Item 1's own new sub-lead (the external
+"SPINE CREATURE" walkthrough hint, unverified) points at the gaol/prison stretch beyond CAVERN/
+TUNNEL as the priority target over a blind sweep — worth trying to establish a walkthrough-room ↔
+type-3-slot mapping first (starting from the slot-0/room-1, slot-1/room-2 anchor) so the census can
+jump straight there. Item 2 (the KILL/UNINV/WAKE/SLEEP cluster) follows directly once item 1 gives
+it a live target. Items 3/4 are the standing interpreter loose ends from the 70th pass. Otherwise
+the older open items (5-10) are all independent and small; pick whichever interests Dave. Prompt:
+`/resume cadaver`.
