@@ -1,10 +1,11 @@
 # Impossamole: handoff
 
-Updated 2026-09-26 by the session that ended at commit `f80b730`.
+Updated 2026-09-26 by the session that ended at commit `d622aa1`.
 
 ## Resume point
 
-- Last commit of this workstream: `f80b730` (gameplay movement mapping found and proven live).
+- Last commit of this workstream: `d622aa1` (movement mapping proven; a first, unverified visual
+  claim about the hero sprite was retracted after Dave questioned it — see "Proven so far").
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image plus the
   full snapshot chain. New this session: `test_dirbit3_A.snap`/`test_dirbit3_B.snap` (bit 3/right
   held 200k then 2M steps from `after_amazon_load2.snap`), `test_dirbit2_left.snap` (bit 2/left,
