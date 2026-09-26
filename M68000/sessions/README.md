@@ -6,6 +6,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | file | workstream |
 |---|---|
 | `cadaver.md` | Cadaver spike (`reversing/cadaver/`) |
+| `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
 | `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |
 
