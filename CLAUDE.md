@@ -153,6 +153,15 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   sending the release packet when testing whether an input is read at all — a same-packet-timing
   pulse read as "this input does nothing" cost impossamole's world-select confirm a false negative
   for a full handoff (`reversing/impossamole/README.md`'s "Confirming a world" section).
+- Before concluding a joystick/keyboard bit is not read in gameplay from a single-packet,
+  single-frame test, check for a per-object "busy" flag that some games use to skip the whole
+  per-frame input read on frames where the controlled object is mid-animation (impossamole's hero
+  object, base+101), and hold/run for several frames past the packet, not just one, since the
+  observable effect (a walk cycle, a state-machine transition) can take multiple frames to become
+  visible even when the input was read correctly on the first one. A one-packet, one-frame test read
+  impossamole's gameplay movement as unmapped for a full handoff before a busy-flag check and a
+  longer run proved bits 0-3 use the exact same up/down/left/right layout as world-select
+  (`reversing/impossamole/README.md`'s "Gameplay input" section).
 - On the Mac, scratchpad data made on Windows lives on `gpubox` (`~/Documents/GitHub/Atari-St-Emulator`). scp fails
   there (its PowerShell profile errors); stream it: `ssh gpubox 'tar -cf - -C C:/Users/Dave/Documents/GitHub/Atari-St-Emulator/M68000/scratchpad <names>' | tar -xf -`.
 - Ghidra 12.1 is at `C:/Program Files/ghidra_12.1_PUBLIC` (`support/analyzeHeadless.bat`); on the Mac at
