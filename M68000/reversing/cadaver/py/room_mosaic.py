@@ -60,18 +60,23 @@ further, not a placement-formula error; not yet fully explained.
 
 **TUNNEL (captured the same way, via the CAVERN->TUNNEL "documented zigzag" - `mechanics.md`
 `kbd ff 08`/1.2M, `kbd ff 01`/0.5M, `kbd ff 08`/1.2M, `kbd ff 01`/1.2M from `gameplay_empire.snap`,
-`bpc cab6 1 <budget>` armed per leg - hits 52887 steps into the final leg): **9534/9932 = 96.0% exact
-against `room2_tunnel_entry.png`** - in line with CAVERN, once scored with that screenshot's own
-palette formula. A first pass at this score (1961/9932 = 19.7%) looked like a real content gap (right
-wall matching, left wall rendering as "generic" art) and sent a later pass chasing graphics.md 5f's
-`0xc2` marker byte as the explanation; that marker is real (5f resolves it fully) but turned out not
-to be the cause here - the actual explanation (graphics.md 5i-3) was that this file's own palette
-conversion (`sprite_array_export.decode_st_interleaved`, `gun*255//7`) disagrees with
-`tools/snap_render.py`'s `st_colour` (`gun*36`), the tool that produced `room2_tunnel_entry.png`;
-`gameplay.png` (CAVERN's reference) happens to use this file's own formula, which is why only TUNNEL
-looked broken. The two formulas should eventually be unified (graphics.md 5i-3's Open list); until
-then, a low `--diff` score against an older reference screenshot is worth checking against the
-*other* formula before trusting it as a content bug.
+`bpc cab6 1 <budget>` armed per leg - hits 52887 steps into the final leg): **10604/11069 = 95.8%
+exact against `room2_tunnel_entry.png`** (`--palette-formula st`, matching that screenshot's own
+generating tool) - in line with CAVERN. A first pass at this score (1961/9932 = 19.7%, tile-only)
+looked like a real content gap (right wall matching, left wall rendering as "generic" art) and sent a
+later pass chasing graphics.md 5f's `0xc2` marker byte as the explanation; that marker is real (5f
+resolves it fully) but turned out not to be the cause of *that* gap - the actual explanation
+(graphics.md 5i-3) was that this file's own palette conversion
+(`sprite_array_export.decode_st_interleaved`, `gun*255//7`) disagrees with `tools/snap_render.py`'s
+`st_colour` (`gun*36`), the tool that produced `room2_tunnel_entry.png`; `gameplay.png` (CAVERN's
+reference) happens to use this file's own formula, which is why only TUNNEL looked broken. The two
+formulas were later confirmed unfixable-and-unnecessary to unify (graphics.md 5i-3 addendum: neither
+reference is an authentic Hatari render, so there's no ground truth to converge on) - a low `--diff`
+score against an older reference screenshot is worth checking against the *other* `--palette-formula`
+before trusting it as a content bug. The `0xc2` marker's own item-catalog overlay (graphics.md 5f) -
+TUNNEL's one non-tile descriptor entry, previously dropped by the tile-range filter below - is now
+rendered too (source pointer and size come straight off the descriptor, no separate catalog lookup
+needed), which is what moved TUNNEL's score from 9534/9932 (tile-only) to the total above.
 """
 import argparse
 import sys
@@ -108,7 +113,8 @@ def read_descriptor_list(ram, base, a5):
         raw = ram[addr - base:addr - base + LIST_ENTRY_STRIDE]
         y0, y1 = raw[0], raw[1]
         x0 = int.from_bytes(raw[4:6], "big")
-        entries.append({"y0": y0, "y1": y1, "x0": x0, "ptr": f10 & 0xffffffff})
+        entries.append({"y0": y0, "y1": y1, "x0": x0, "w_field": raw[2], "h_field": raw[3],
+                         "ptr": f10 & 0xffffffff})
     return entries
 
 
@@ -155,9 +161,13 @@ def main():
 
     entries = read_descriptor_list(ram, base, a5)
     tiles = [e for e in entries if tile_base <= e["ptr"] < tile_base + tile_size]
-    print(f"A5={a5:#x}  list entries={len(entries)}  tile entries={len(tiles)} "
-          f"(non-tile entries are graphics.md 5f's 0xc2-sourced item-catalog overlays, "
-          f"not rendered here yet)")
+    # A non-tile entry's ptr sits in the type-2 item catalog's data area instead (graphics.md
+    # 5f's 0xc2 marker): its source pointer is already past that entry's 0x20+4-byte header, and
+    # its own full size is the descriptor's w_field*16 x h_field (unlike a tile, where w_field is
+    # always 2/32px and h_field can disagree with the real clip height y1-y0).
+    items = [e for e in entries if not (tile_base <= e["ptr"] < tile_base + tile_size)]
+    print(f"A5={a5:#x}  list entries={len(entries)}  tile entries={len(tiles)}  "
+          f"item-catalog entries={len(items)} (graphics.md 5f's 0xc2-sourced overlays)")
     if not tiles:
         raise SystemExit("no tile-catalog entries found - is this really a mid-cab6 snapshot? "
                           "(see the capture recipe in this file's docstring)")
@@ -165,22 +175,28 @@ def main():
     from PIL import Image
     canvas = Image.new("RGB", (SCREEN_W, SCREEN_H), (0, 0, 0))
     coverage = Image.new("L", (SCREEN_W, SCREEN_H), 0)
-    for e in tiles:
+
+    def paste(addr, src_w, src_h, e):
         h = e["y1"] - e["y0"]
-        addr = tile_base + (e["ptr"] - tile_base) // TILE_STRIDE * TILE_STRIDE
-        img = sae.decode_st_interleaved(ram, addr, 32, 32, 4, palette).convert("RGB")
-        # Each 32x32 tile is a cube shape on a black (palette index 0) background, not a
-        # full square of art - pasting opaquely lets every tile's black corners stomp over
-        # the previous tile in the ~50% column/row overlap this placement relies on,
-        # producing a comb of gaps instead of a continuous wall. Palette index 0 is the
-        # real transparent background here (graphics.md 5i); mask it out.
-        idx_img = sae.decode_st_interleaved(ram, addr, 32, 32, 4, None)  # "L" mode, idx*17
-        # A clipped tile (h < 32) shows its BOTTOM h rows - the top (32-h) ran off-screen.
-        top_crop = 32 - h
-        crop_img = img.crop((0, top_crop, 32, 32))
-        mask = idx_img.crop((0, top_crop, 32, 32)).point(lambda v: 255 if v != 0 else 0)
+        img = sae.decode_st_interleaved(ram, addr, src_w, src_h, 4, palette).convert("RGB")
+        # Each source image is a shape on a black (palette index 0) background, not a full
+        # rectangle of art - pasting opaquely lets its black corners stomp over the previous
+        # entry in the ~50% column/row overlap this placement relies on, producing a comb of
+        # gaps instead of a continuous wall. Palette index 0 is the real transparent background
+        # here (graphics.md 5i); mask it out.
+        idx_img = sae.decode_st_interleaved(ram, addr, src_w, src_h, 4, None)  # "L" mode, idx*17
+        # A clipped entry (h < src_h) shows its BOTTOM h rows - the top (src_h-h) ran off-screen.
+        top_crop = src_h - h
+        crop_img = img.crop((0, top_crop, src_w, src_h))
+        mask = idx_img.crop((0, top_crop, src_w, src_h)).point(lambda v: 255 if v != 0 else 0)
         canvas.paste(crop_img, (e["x0"], e["y0"]), mask)
         coverage.paste(mask, (e["x0"], e["y0"]), mask)
+
+    for e in tiles:
+        addr = tile_base + (e["ptr"] - tile_base) // TILE_STRIDE * TILE_STRIDE
+        paste(addr, 32, 32, e)
+    for e in items:
+        paste(e["ptr"], e["w_field"] * 16, e["h_field"], e)
     canvas.save(args.out)
     print("wrote", args.out, canvas.size)
 

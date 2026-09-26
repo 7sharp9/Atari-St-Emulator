@@ -417,6 +417,20 @@ TUNNEL's one live `0xc2` cell (width-pass column 1, row 0 — §5i-3) resolves t
 direct render to actually look like a carved wall ornament, not a prop. **This closed out §5i-3's
 "leading suspect" for TUNNEL's low match score — see below, it turned out not to be the cause.**
 
+**69th pass**: `room_mosaic.py` now renders this entry too, not just `resource2_export.py`'s
+standalone catalog dump. Its mid-draw descriptor sits in the same 400-entry list as the tile
+entries, just with `ptr` outside the tile catalog's range; that `ptr` (`$516fa`) is already
+`decor001`'s own address (`$516d6`) plus the `0x24`-byte header §5a decodes past, and the
+descriptor's `w_field`/`h_field` (bytes 2/3, previously read only for tiles, where they're a fixed
+2/32px and an unreliable secondary height) give the item's real 48×57 size directly — no per-item
+lookup needed beyond what the descriptor list already carries. Compositing it through the same
+clip/mask/paste pipeline as a tile takes TUNNEL's mosaic from 9534/9932 (96.0%, tile-only) to
+**10604/11069 (95.8%) pixel-exact against `room2_tunnel_entry.png`**; the small drop in percentage
+(not a regression) is the newly-covered area including the player sprite standing in front of the
+panel in the reference frame, which this tool still doesn't draw (sprites are §5j point 5's separate
+per-frame list). CAVERN's mid-draw capture has zero non-tile entries, so its score is unaffected
+(19079/19749, 96.6%, unchanged).
+
 **5g. No tile-adjacency/compatibility ruleset exists anywhere in the traced decode or draw path —
 placement is level-data, not engine-enforced.** Both the decoder (§5b, `$00add0`-`$00ae62`) and the
 plain-tile consumer (§5c, `$00cab6`-`$00cb28`) were read in full this pass: neither contains a
@@ -594,10 +608,9 @@ already the correct permanent answer: match each screenshot to whichever formula
 closes the item; a `hatari` option is kept in `room_mosaic.py` for if a genuinely Hatari-sourced
 reference screenshot is ever captured later.
 
-**Not yet done**: (1) render `room_mosaic.py`'s one dropped `0xc2`-sourced entry (§5f) for
-completeness — small (48×57px), low priority now that it's not blocking the match score; (2) stack
-direction (does column index 0 sit at the floor or the ceiling) — the live capture didn't settle this
-either, though the visual match's overall coherence is suggestive; (3) CAVERN's own ~3.4%
+**Not yet done**: (1) stack direction (does column index 0 sit at the floor or the ceiling) — the
+live capture didn't settle this either, though the visual match's overall coherence is suggestive;
+(2) CAVERN's own ~3.4%
 overlap-edge residual (§5i-2, unaffected by the palette-formula question above, since its
 reference already matches `room_mosaic.py`'s default formula) is still unexplained, though small and
 visually negligible.
@@ -648,17 +661,17 @@ per room from a tiny compressed stream into a per-column tile stack (§5e) that 
 catalog is drawn through, with no runtime adjacency rules (§5g), placed on screen by a byte-exact
 formula (§5h) and a now-fully-traced-and-live-confirmed draw pipeline (§5i) ending in the same shared
 blitter as every sprite (§4b), scored at 96.6% exact against `gameplay.png` for CAVERN (§5i-2) and
-96.0% for TUNNEL (§5i-3, once scored with the matching palette formula — the placement mechanism is
-proven generic and correct for both rooms, full stop). The grid's one non-tile marker byte, `0xc2`,
+95.8% for TUNNEL (§5i-3, 10604/11069, including the one `0xc2` item overlay — the placement mechanism
+is proven generic and correct for both rooms, full stop). The grid's one non-tile marker byte, `0xc2`,
 is a second, fully-traced drawing channel through the same pipeline: it paints a small item/icon from
-a second, 255-entry shared catalog (type 2, §5a) into a grid cell instead of a terrain tile (§5f) —
+a second, 255-entry shared catalog (type 2, §5a) into a grid cell instead of a terrain tile (§5f), and
+(69th pass) `room_mosaic.py` now renders it through that same pipeline rather than dropping it —
 real and generic, but a minor contributor, not the explanation for either room's residual mismatch.
-**Open**: (a) render `room_mosaic.py`'s one still-dropped `0xc2` entry for completeness (§5f/§5i-3);
-(b) stack direction (does column index 0 sit at the floor or the ceiling) — still not proven; (c) the
-remaining 3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2), unrelated to the two tools'
-differing palette formulas (§5i-3 addendum: closed — neither reference is an authentic Hatari render,
-so there is nothing to unify, and each tool already matches its own reference) — small and visually
-negligible, cause not identified; (d) cross-check type 2's catalog (§5a) against
+**Open**: (a) stack direction (does column index 0 sit at the floor or the ceiling) — still not
+proven; (b) the remaining 3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2), unrelated to
+the two tools' differing palette formulas (§5i-3 addendum: closed — neither reference is an authentic
+Hatari render, so there is nothing to unify, and each tool already matches its own reference) — small
+and visually negligible, cause not identified; (c) cross-check type 2's catalog (§5a) against
 §3's 22-entry object array field-for-field — same conceptual role (small-object art), relationship
 between the two not yet confirmed.
 
@@ -672,7 +685,7 @@ between the two not yet confirmed.
 | `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
 | `player_frame_alt.png` | the player's alternate/gesture frame (`$2ca94`, 32×42) — not captured by the array export below, since only the *current* frame pointer is live in any one snapshot |
 | `sprites/` | the full 22-entry sprite-object-array catalog (§3) — one PNG per slot, `contact_sheet.png`, `manifest.csv` |
-| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i/§5i-2) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, scored 96.6% pixel-exact against `gameplay.png`; `tunnel_mosaic.png` (§5i-3) — same mechanism applied to TUNNEL, table- and re-render-confirmed correct, 96.0% pixel-exact against `room2_tunnel_entry.png` once scored with that screenshot's own palette formula (§5i-3) |
+| `tiles/` | the shared 80-tile room-terrain catalog (§5d) — `tile00_3e77e_32x32.png`-`tile79_...png`, `contact_sheet.png`, `manifest.csv`; `cavern_grid.png`/`tunnel_grid.png` (§5e) — each room's decoded per-column tile-stack rendered against the catalog; `cavern_mosaic.png` (§5i/§5i-2) — CAVERN's real terrain rendered at its live, engine-computed screen positions from a mid-room-entry snapshot, scored 96.6% pixel-exact against `gameplay.png`; `tunnel_mosaic.png` (§5i-3) — same mechanism applied to TUNNEL, table- and re-render-confirmed correct, including its one `0xc2` item-catalog overlay (§5f), 95.8% pixel-exact against `room2_tunnel_entry.png` once scored with that screenshot's own palette formula (§5i-3) |
 | `items/` | resource type 2's 255-slot (102 distinct) small-object/icon catalog (§5a/§5f) — `decor000_...png`-`decor254_...png`, `contact_sheet.png`, `manifest.csv` (`reversing/cadaver/py/resource2_export.py`); includes the two wall-panel entries (`decor000`/`decor001`) the terrain grid's `0xc2` marker byte draws (§5f) |
 | `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` (struct-driven array mode, `--base`/`--array-ptr-field`) and the raw `tiles/` catalog (fixed-stride mode, `--sequence BASE STRIDE COUNT W H`) |
 | `py/room_tile_grid.py` | decodes a room's `(A5)+2914` tile-id grid (§5b/5e) and renders it against the shared catalog; usage in its own header |
