@@ -1,4 +1,4 @@
-# impossamole — booted to its title screen through a Replicants crack menu
+# impossamole — booted through a Replicants crack menu to the world-select screen
 
 First pass. *Impossamole* — Gremlin Graphics / Core Design, 1990, an isometric platformer.
 The copy in hand is a cracked scene release: a "Replicants"-badged boot menu leading into an
@@ -82,42 +82,80 @@ the game's own GEMDOS-driven loading path work end to end.
 two separate `kbd` REPL calls (make, then break) with a real `s <n>` step count between them, not
 one `kbd <make> <break>` call — see CLAUDE.md.
 
-## Open item: title screen sits in what looks like a VBL-gated wait
+## Past the title screen: the attract loop waits on joystick-1 fire, not on VBL
 
-Past the title screen the PC settles into a tight loop at `$1ab90`:
+The title screen's PC spends nearly all its time in a tight busy-poll at `$1ab8a`:
 
 ```
-$01ab90: move.b $1a2e9.l,D1      ; wait until frame-counter byte >= $39 (57)
+$01ab8a: move.b $1a2e9.l,D0      ; D0 = counter value at entry
+$01ab90: move.b $1a2e9.l,D1      ; poll current counter
 $01ab96: cmp.b  $1ab88.l,D1
 $01ab9c: blt    $1ab90
-$01aba0: cmp.b  $1a2e9.l,D0
-$01aba6: beq    $1ab90
-$01abaa: clr.b  $1a2e9.l
+$01aba0: cmp.b  $1a2e9.l,D0      ; has it changed since entry?
+$01aba6: beq    $1ab90           ; no -> keep polling
+$01abaa: clr.b  $1a2e9.l         ; yes -> consume the tick, return
 $01abb0: rts
 ```
 
-Two snapshots 30M steps apart (`$1ab90` then `$1aba0`, both inside this loop) both read `$1a2e9 =
-$00` — the counter this loop is waiting on is not advancing at all across 30M steps (~3.75M real
-CPU-seconds' worth at this project's ~8MHz model, far more than the ~57 VBL ticks the loop needs if
-VBLs were reaching it). Two explanations to check next session, in order:
+An earlier pass read two snapshots 30M steps apart, both caught with PC inside this loop and
+`$1a2e9 = $00`, and concluded the counter was stuck (never VBL-driven, or the VBL handler never
+invoked). **Both wrong — proven live:**
 
-1. `$1a2e9` isn't actually VBL-driven — find its real writer (the `$1abdc`/`$1abc2` routines nearby
-   also touch it and `$1a2e8`, and look like a semaphore/handshake, not a raw interrupt counter;
-   `find_ram_callers.py`/a `watch $1a2e9` over a fresh run from `after_retry3.snap` settles this).
-2. The game's own VBL handler is installed but genuinely not being invoked yet at this point (e.g.
-   gated behind something else this loop's sibling branch checks — `$1abdc` polls `$1c4bf` for
-   value `$1d` twice, which smells like a handshake with an interrupt-driven producer).
+- `$1a2e9`'s only writer is the installed VBL handler itself (`find_field_writers.py <snap> 1a2e9`:
+  31 hits, exactly one `addi.b #$1,$1a2e9.l` at `$1a2c0`, everywhere else is a `clr.b`/`cmpi.b`
+  reader/consumer). The handler is genuinely installed (`$70.l = $1a2c0` in both snapshots) and
+  genuinely firing: `hits 500000 1a2c0 1f950` from `after_retry3.snap` landed 42 hits on the VBL
+  entry — 500000/12000 (`instructionsPerFrame`) ≈ 42, i.e. once a frame, exactly as expected.
+- `watch 1a2e9` over the same run shows why it still reads `$00` almost always: `WriteByte
+  $1a2e9 <- $1` at step 59808001 (the VBL tick), then `WriteByte $1a2e9 <- $0` only 233 steps later
+  at `$1abaa` — this **same** wait-for-next-vbl routine consuming its own tick and clearing the
+  counter, by design (`$1ab88`'s threshold byte happens to be `$00`, so the first `blt` never loops;
+  the routine's real wait is the second check, spinning until the VBL handler's `addi.b` changes the
+  byte at all). Between ticks the routine is doing nothing but re-reading a `$00` byte for ~12000
+  steps out of every ~12233-step call — so a snapshot taken at a random moment during an idle
+  attract screen lands inside this narrow spin >97% of the time. Two snapshots agreeing on that is
+  the expected outcome of an idle loop, not proof of a hang.
+- The actual gate on progress is in the attract loop's caller (`$017ac0` onward, one of 5 near-
+  identical copies at `$b1b6`/`$17ac0`/`$17dd0`/`$18110`/`$18450`, one per attract-mode animation
+  page): after each `$1ab8a` VBL wait it checks `btst #7,$1c4c1.l; bne <exit>`. `$1c4c1` is written
+  from exactly one place, `$1c5ac`, inside the game's own ACIA-receive interrupt handler
+  (`$1c51a`, installed at vector `$118` — this game reads raw IKBD bytes itself rather than going
+  through TOS's keyboard/IKBD driver): a `$FF` header selects "joystick 1", and the next byte is
+  stored verbatim as its status (bit 7 = fire, matching the standard ST joystick-report format).
+- **Proven live**: from `after_retry3.snap`, `kbd ff` / `s 30` / `kbd 80` (fire down) sets
+  `$1c4c1 = $80` (`watch 1c4c1` confirms the write at `$1c5ac`); stepping one more frame (~15000
+  steps) moves PC out of the attract loop's `$1ab8a` spin into new code (`$1c3d0`) and, a few
+  hundred thousand steps later, renders the world-select screen (`world_select.png`): IMPOSSAMOLE
+  logo over five level icons — Klondike Mine, The Orient, The Amazon, Ice Land, Bermuda Triangle
+  (`SELECT44.DAT` plus the `BRMUDA/ICELND/JUNGLE/MINES/ORIENT` `.DAT` pairs) — with a walking hero
+  cursor sprite. A second `kbd ff`/`kbd 80` fire (after a `kbd ff`/`kbd 00` release) drew a gold
+  highlight border around the Klondike Mine icon the cursor was standing on, so the same joystick-1
+  packet also drives the select-screen's own input, but repeating it did not visibly proceed further
+  within another 5M steps — the actual "confirm and load a world" input is not yet identified (see
+  "Not yet exercised", below).
 
-**Trap that cost time reaching this point, not yet worth a CLAUDE.md-wide entry but worth flagging
-for future games:** `resume <snap> repl` does **not** reattach a disk image mounted with
-`--disk-a` on an earlier cold-boot run — `diskA` lives outside `MmuSnapshot` (see `MMU.fs`
-`tryReadSector`'s doc comment on `dmaSectorCount`, the same "not in MmuSnapshot" note applies to the
-disk mount itself). Forgetting `--disk-a` on a `resume ... repl` silently drops every floppy read
-from that point on (`ATARI_TRACE_FDC=1` shows `-> no data` for every request, indistinguishable at
-a glance from a real protection/geometry failure) — cost a live pass on this workstream a wrong
-"the emulator can't read sector 11" diagnosis before the missing flag was spotted. **Always pass
-`--disk-a` on every `resume ... repl` invocation for a disk-booted game, not just the first cold
-boot.**
+**Technique for future games:** to exercise raw-IKBD (non-GEMDOS) joystick input, use the same `kbd`
+REPL command as keyboard scancodes, with the same "two separate calls with a real step gap"
+discipline: `kbd <header>` (`$FE`=joystick 0, `$FF`=joystick 1) then, after a few steps, `kbd
+<status>` (bit 7 = fire; bits 0-3 = direction, `find_field_writers.py` on the status address tells
+you which). Confirm the target address and header byte first (`find_ram_callers.py`/
+`find_field_writers.py` on the game's own ACIA-receive handler, installed at MFP vector `$118`),
+rather than guessing the packet format.
+
+## Known traps
+
+- `resume <snap> repl` does **not** reattach a disk image mounted with `--disk-a` on an earlier
+  cold-boot run — `diskA` lives outside `MmuSnapshot` (see `MMU.fs` `tryReadSector`'s doc comment on
+  `dmaSectorCount`, the same "not in MmuSnapshot" note applies to the disk mount itself). Forgetting
+  `--disk-a` on a `resume ... repl` silently drops every floppy read from that point on
+  (`ATARI_TRACE_FDC=1` shows `-> no data` for every request, indistinguishable at a glance from a
+  real protection/geometry failure) — cost a live pass on this workstream a wrong "the emulator
+  can't read sector 11" diagnosis before the missing flag was spotted. **Always pass `--disk-a` on
+  every `resume ... repl` invocation for a disk-booted game, not just the first cold boot.**
+- A game-specific busy-poll "wait for next VBL and consume it" utility (see above) will read as
+  "stuck" if you only sample the field it polls at rest (it's `$00` >97% of the time by
+  construction) — confirm with `hits`/`watch` against the actual VBL vector target before concluding
+  a counter is dead, not just a raw byte read from one or two snapshots.
 
 ## Files
 
@@ -126,9 +164,10 @@ boot.**
 | `README.md` | this file |
 | `trainer_menu.png` | crack trainer-menu screen, reached via F1 from the boot menu |
 | `title_logo.png` | the real game's title screen, reached by skipping the trainer |
+| `world_select.png` | the world-select screen, reached by sending a joystick-1 fire packet at the title screen (see above) |
 
 ## Not yet exercised
 
-Everything past the title screen: world-select menu, actual isometric gameplay, sprite/tile
-formats, level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.), and control flow / CFG extraction — blocked
-on the open item above.
+Past the world-select screen: the input that confirms a choice and loads a world (see "the attract
+loop waits on joystick-1 fire" above), actual isometric gameplay, sprite/tile formats, level data
+(`MDATA*.DCH`, `BRMUDA*.DAT` etc.), and control flow / CFG extraction.
