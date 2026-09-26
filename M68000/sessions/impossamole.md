@@ -1,11 +1,11 @@
 # Impossamole: handoff
 
-Updated 2026-09-26 by the session that ended at commit (this session's doc/screenshot commit).
+Updated 2026-09-26 by the session that ended at commit `7656d39`.
 
 ## Resume point
 
-- Last commit of this workstream: this session's commit (Klondike Mine's confirm proven to loop
-  back to world-select; The Amazon proven to load for real and reach a first gameplay frame).
+- Last commit of this workstream: `7656d39` (Klondike Mine's confirm proven to loop back to
+  world-select; The Amazon proven to load for real and reach a first gameplay frame).
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image plus the
   full snapshot chain. New this session: `after_refire.snap`/`after_refire2.snap` (Klondike Mine's
   confirm screen after a held fire, settled back on world-select), `after_move_orient.snap`/
