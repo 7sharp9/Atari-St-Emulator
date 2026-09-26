@@ -4196,11 +4196,104 @@ data side.
   (also dumps the debug-string table's real addresses, reusable independent of the table-mapping
   question).
 
+## 65. Two new resource mechanisms found while looking for a creature room: the game's own
+    compressed dialogue/monster-name string table, and every room's static object-id list — real
+    monster names confirmed resident, but not yet tied to a specific room (71st pass)
+
+Dave's own steer this pass was to aim toward finding a room with a creature to map more of the
+KILL/UNINV/WAKE/SLEEP cluster (§64c). Re-reading §13/§28d/§63 first: reaching room 3 by driving the
+player through CAVERN/TUNNEL is closed three independent ways already (the room table's own door
+slots, the door/portal resolver's disassembly, and the FDC trace), and the lever's LOCK(144)
+mechanism itself was already retracted as probably the wrong trigger (§28d). Rather than re-run
+either closed thread, this pass looked for a purely static way to identify a creature-bearing room
+directly from data already resident in RAM (per §13's own "9 palettes/104KB already loaded"
+finding) — and found two previously-unused mechanisms doing that.
+
+### 65a. The room loader's own object list is resource type 5, indexed by room slot — not type 6,
+    and not per-room memory, a genuinely new resource type this spike had never resolved
+
+Disassembling `$00cd50` in full (§37d had already named this as "the room loader" but not read past
+its type-6 instantiation loop): before that loop starts, `move.w 1166(A5),D1; moveq #5,D0; bsr
+$c5a8` resolves **type 5**, indexed by `(A5)+1166` — confirmed live to equal the room's own
+world-grid slot number, byte for byte matching `world_map.py`'s own numbering (`1166(A5)` reads `0`
+in `gameplay_empire.snap`/CAVERN and `1` in `room2_tunnel_entry.snap`/TUNNEL). The resolved type-5
+record is a flat stream of `(room_record+29)+1` big-endian 16-bit words — each one a **type 6**
+object id, read in the loop the rest of §37d already documented. This is the room's own static
+object-population list, sitting in RAM for all 72 populated rooms simultaneously (the type-3 table
+was already known to be fully resident; this is the first time its sibling per-room content list
+was resolved too). Script `py/room_object_census.py` walks all 72 slots and prints each one's id
+list; cross-checked against the two rooms already fully proven — slot 0 decodes to exactly
+CAVERN's already-exported 22-object catalog (`graphics.md` §3), slot 1 decodes to `[0, 144]`, and
+144 is the triple-confirmed lever id (§23d) — 2/2 real, not a guess.
+
+### 65b. A previously-undocumented, much larger packed dialogue/item/spell/monster-name string
+    table, decoded and enumerated for the first time — real creature names confirmed resident
+
+§18b already read `$00fd2c`/`$00fd4e`/`$00fda2` (the packed-string decoder feeding the name-banner)
+but only as much of the call tree as explained the *mechanism*; nobody had enumerated the table
+itself. `find_ram_callers.py` against `$00fd2c` (23 hits, several inside the verb-interpreter block
+itself, `$011004`/`$011156`/`$0111fe`/etc.) confirmed it's a general-purpose string fetch used
+throughout the game, not one dedicated to error messages. The format, read straight off the three
+routines: `(A5)+168` is a word-indexed offset table, `(A5)+172` a base the offset is added to
+(giving the start of a packed byte stream), and the stream itself is a standard 6-bit/4-chars-per-
+3-bytes packing (`b0>>2`, `(b0&3)<<4|b1>>4`, `(b1&0xf)<<2|b2>>6`, `b2&0x3f`) through a 256-byte
+character map at the fixed address `$5ac0`, terminated by a map entry of `$ff`. Script
+`py/name_strings.py` implements this and decodes indices 0-599 cleanly (real, readable text
+throughout, not garbage past some cutoff). Validated three ways: index 200 decodes to `LEVER`
+(object 144's own known live status-bar name), 188 to `BOAT`, 197 to `PICKAXE...` — all three
+already-proven live names, decoded correctly with zero live/`kbd` input needed. Past the UI
+vocabulary, the table holds the game's spell list, item flavour text, NPC lore (`WRATH HELLAND ...
+DWARF LORD, ARCHITECT OF THE CAVES`, `GORBAG ... TAMER OF CREATURES`), the in-game diary text
+Dave's own walkthrough reference matches (`DAY TWO, DESTROYED THE WORM...DAY THREE...CANNOT PASS
+THE JUMPING CREATURES`) — and real monster names: index 224/225 `DEAD RAT`/`SCONCE`, 226 `GIANT
+RAT`, 233 `SKELETON`, plus the live WAKE/SLEEP verb's own message pair at 159/160 (`THE CREATURE IS
+SLEEPING`/`THE CREATURE AWAKES AND IS VERY VERY ANGRY`) — direct confirmation those two opcodes
+(§64b) really are creature-facing verbs with real, written UI text waiting for a live creature to
+attach to, not dead code.
+
+### 65c. Not yet closed: an object's own display-name index is a separate numbering space from its
+    type-6 id, so §65a's per-room id lists don't yet identify which room has the rat
+
+The lever is the one object with both numbers already proven: id **144**, name-string index **200**
+— different numbers, so there is no known arithmetic relationship (offset, shared table, etc.)
+between the two spaces yet. This means a room's object-id list containing the same *number* as one
+of §65b's monster-name indices (e.g. slot 27's list includes `226`, the same number as `GIANT RAT`)
+is very likely coincidence given how dense both id ranges are (~700 object-slot references across
+71 rooms against ~600 decodable string indices), not a real cross-reference — asserting it as one
+without further proof would repeat exactly the kind of address-numerology mistake this doc has
+retracted before (§13/§28d). Traced one candidate source of the real link this pass
+(`$010ffa`-`$011064`, an EXAMINE/READ-style verb that composes descriptive text from the *current
+actor* global `348(A5)` via a secondary `bsr $c576` sub-lookup) but it reads as **template-driven
+composite text** (a base string plus conditionally-appended fragments, matching the "spell has ___
+charges" style strings in §65b's own output), not a simple "object id → name index" field — the
+real field, if a single one exists, is still unfound. This is the same open item mechanics.md has
+already flagged once (the proximity-icon-panel writer, "still a distinct, unidentified open item"),
+now with a second, independent way to attack it: find what supplies `D0` at one of $65b's other
+9-odd internal `$fd2c` call sites reached from *outside* the EXAMINE verb (a proximity/touch path
+rather than a script-read path) and read what field of the touched object it comes from.
+
+### 65d. What this leaves open
+
+- **The concrete next step for "find a room with a creature"**: locate the type-6 record field
+  that supplies an object's own name-string index (§65c), most promisingly by reading one of
+  `$00fd2c`'s other callers reached from the collision/touch path (§4/§27b) rather than a script
+  opcode, the same way §18b traced `$defa`'s. Once found, decode it for every object id in every
+  room from §65a's census and grep for a match against §65b's monster-name indices (224/225/226/
+  233, and any others in the fuller 600-entry table not yet grepped for) — this would name the
+  creature's room directly, with proof, no live movement puzzle needed.
+- §65b's table almost certainly extends past index 599 (the last index this pass tried); a wider
+  sweep (`py/name_strings.py --hi 1000` or higher) is cheap and untried.
+- Neither `py/room_object_census.py` nor `py/name_strings.py` needed any `kbd`/`mouse` input or new
+  snapshot — both ran against the already-committed `room2_tunnel_entry.snap`, reusable by any
+  future pass without re-driving anything live.
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `py/name_strings.py` | 71st pass: decodes the packed dialogue/item/spell/monster-name string table at `(A5)+168`/`172` through the `$5ac0` character map — proof for §65b (real monster names DEAD RAT/GIANT RAT/SKELETON, validated against LEVER/BOAT/PICKAXE's already-known live names) |
+| `py/room_object_census.py` | 71st pass: walks all 72 populated rooms' own static object-id lists via the newly-found type-5 resource (indexed by room slot) — proof for §65a (2/2 cross-check against CAVERN's 22-object catalog and TUNNEL's known `[0,144]`) |
 | `py/verb_opcode_map.py` | 70th pass: reads the embedded debug-string table's real addresses out of RAM, decodes the 59-entry verb-interpreter dispatch table, and for each entry does a bounded walk (straight-line body + one level of conditional-branch following) looking for a matching error string — proof for §64 |
 | `py/disk_layout.py` | 51st pass: parses the one-disk Empire `.st` image's boot-sector BPB, checks the root directory for real FAT12 entries, and classifies every 512-byte sector as data vs. blank/erase filler — proof for §51. Its blank/data classifier only catches single-byte-repeat fills, not short-period repeating patterns (52nd pass found a 3-byte cycle on Disk 2's tail it missed) — not yet extended to handle that |
 | `py/analyze_disk2.py` | 52nd pass: per-run entropy, byte-distribution (stddev/mean, max frequency, duplicate-sector rate), fixed-stride periodicity scan and ASCII-string scan over `disk_layout.py`'s data runs, plus cross-image byte-identity sampling — proof for §52's Disk-1-vs-Disk-2-vs-one-disk comparison (paths hardcoded to this Mac checkout, not parameterised) |
