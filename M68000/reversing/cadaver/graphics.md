@@ -168,8 +168,10 @@ bones (14-15), a goblet (16), a **rowing boat** (17, 64×33 — the only entry w
 State byte (`+42`): slot 0 (player) is `0`, slot 16 (the goblet) is `4`, all other 20 are `5`. Every
 state-`5`/`4` entry reads as static room dressing, not a creature — so **"monster slot" in the 6th
 pass's next-steps framing doesn't have a confirmed target**; nothing in this room's array is a
-creature. The goblet's `state=4` outlier remains unexplained (a different animation/interaction
-state than the other props, or unrelated to visuals at all) — worth a `watch` on `+42` if a monster
+creature. The goblet's `state=4` outlier's art source is confirmed different from the other 20 (§5a-2: it's
+the one entry that doesn't resolve into type 2's 255-slot template catalog); what a differing state
+value means behaviourally is still unexplained (a different animation/interaction state than the
+other props, or unrelated to visuals at all) — worth a `watch` on `+42` if a monster
 room is ever reached, to see what state value a real creature actually carries.
 
 ## 4. The compositing pipeline — full path from back buffer to screen (14th pass)
@@ -314,9 +316,33 @@ them alias one shared zero-size placeholder record, `$1998a` this session — 10
 entries). Rendered and confirmed real art, not noise: `reversing/cadaver/items/contact_sheet.png` /
 `manifest.csv` (`reversing/cadaver/py/resource2_export.py`) — a general-purpose small-object/icon
 catalog (boat, barrels, chests, keys, gems, bones, a dragon, and the two wall-panel entries §5f's
-`0xc2` sub-case uses), the same conceptual role as §3's 22-entry object array but the shared,
-boot-loaded *template* catalog those per-room instances are presumably drawn from (not yet cross-
-checked against §3's array field-for-field, see Open below).
+`0xc2` sub-case uses), the same conceptual role as §3's 22-entry object array and — confirmed by
+direct field-for-field cross-check, §5a-2 below — literally the shared, boot-loaded *template*
+catalog CAVERN's 21 non-player instances are drawn from, not just a conceptually similar pool.
+
+**5a-2. Cross-checked field-for-field against §3's 22-entry object array, 69th pass: type 2 IS the
+template catalog for every state-5 (static room-dressing) instance, pixel-identical, not just
+same-address — the one state-4 outlier (the goblet) is genuine art from somewhere else.** For each
+of §3's 22 slots (`sprite_base = (A5)+56`, stride `0x46`, `+52` bitmap pointer), resolved every
+type-2 slot's payload address the same way `resource2_export.py` does (`data_area + (index_table
+slot & 0x1ffff) + 0x24`) and compared: slot 0 (player) is outside type 2's data area entirely, as
+expected (it has its own dedicated `$029800`-`$02de08` sheet, §2/§3). **All 20 other state-5 slots'
+`+52` pointers land at the exact byte address of a type-2 payload start**, and their own `+50/+51`
+width/height fields match that type-2 entry's own header `w,h` exactly (e.g. slot 1, a torch:
+`32×28@$56fc2` on both sides). Spot-checked three (torch/slot 1↔idx 14, boat/slot 17↔idx 19,
+chest/slot 20↔idx 53) by decoding both independently and diffing every pixel: **identical, 0
+different pixels each** — not an address coincidence, the same bitmap. The one exception, **slot 16
+(the goblet, `+42` state `4` — §3's flagged "state=4 outlier")**, decodes to a real, recognisable
+goblet via its own struct fields (`32×23@$5fbaa`) but that address falls inside type 2's overall
+data span (`$5115a`-`$6b92d`) without landing on any of the 255 index-table-listed entries' own
+offset+size boundary — genuine art, sourced from somewhere `resource2_export.py`'s enumeration
+doesn't currently reach, not from the same 255-slot table the 20 static entries use. **Net: type 2
+is the confirmed, proven template catalog for per-room static dressing (not merely "same conceptual
+role"), and the goblet's `state=4` now has a concrete, structural correlate — the one entry that
+isn't sourced from type 2 is also the one entry whose state byte differs from every other prop's
+`5`** — worth a `watch` on `+42`/`+52` together if a second state-4 (or any non-0/non-5) instance is
+ever found, to see whether state-4 entries share a *different* common resource type rather than each
+being a one-off.
 
 **5b. Types 0 and 1, keyed by the current room slot (`(A5)+1166`), are fetched together by one small
 routine pair (`$00ada4`/`$00adba`, both leaf routines: `bsr $c5a8` with `D1=1166(A5)`, `D0=1` then
@@ -671,9 +697,9 @@ real and generic, but a minor contributor, not the explanation for either room's
 proven; (b) the remaining 3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2), unrelated to
 the two tools' differing palette formulas (§5i-3 addendum: closed — neither reference is an authentic
 Hatari render, so there is nothing to unify, and each tool already matches its own reference) — small
-and visually negligible, cause not identified; (c) cross-check type 2's catalog (§5a) against
-§3's 22-entry object array field-for-field — same conceptual role (small-object art), relationship
-between the two not yet confirmed.
+and visually negligible, cause not identified; (c) the goblet's (§3 slot 16, state 4) actual art
+source, now that §5a-2 has ruled out type 2's 255-slot table for it specifically — a one-off,
+low-priority curiosity, not blocking anything.
 
 ## Files
 
@@ -690,3 +716,4 @@ between the two not yet confirmed.
 | `../../tools/sprite_array_export.py` | the (game-agnostic) tool that produced `sprites/` (struct-driven array mode, `--base`/`--array-ptr-field`) and the raw `tiles/` catalog (fixed-stride mode, `--sequence BASE STRIDE COUNT W H`) |
 | `py/room_tile_grid.py` | decodes a room's `(A5)+2914` tile-id grid (§5b/5e) and renders it against the shared catalog; usage in its own header |
 | `py/room_mosaic.py` | renders `cavern_mosaic.png` from a live mid-room-entry snapshot's real draw-descriptor list (§5i); the snapshot-capture recipe (REPL commands) is in its own header |
+| `py/cross_check_type2_objects.py` | proves §5a-2's field-for-field cross-check of type 2's catalog against §3's 22-entry object array; usage in its own header |
