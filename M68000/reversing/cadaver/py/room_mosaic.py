@@ -117,14 +117,16 @@ def main():
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("snap", help="a mid-draw snapshot, see the recipe in this file's docstring")
     ap.add_argument("--palette", default="0x5a9c")
-    ap.add_argument("--palette-formula", choices=["ste", "st"], default="ste",
+    ap.add_argument("--palette-formula", choices=["ste", "st", "hatari"], default="ste",
                      help="gun-to-RGB conversion: 'ste' is gfxview.ste_colour's gun*255//7 "
                           "(matches gameplay.png, CAVERN's reference); 'st' is snap_render.py's "
-                          "st_colour, gun*36 (matches room2_tunnel_entry.png, TUNNEL's reference - "
-                          "an older asset made with that tool). See this file's docstring, graphics.md "
-                          "5i-3: the two tools disagree and haven't been unified yet, so a --diff "
-                          "score against an older reference is only meaningful with the matching "
-                          "formula.")
+                          "st_colour, gun*36 (matches room2_tunnel_entry.png, TUNNEL's reference); "
+                          "'hatari' is Hatari's own ConvST_SetupRGBTable (conv_st.c), gun*34 - the "
+                          "real emulator conversion, confirmed against Hatari source, but it scores "
+                          "0/N exact against BOTH known references (graphics.md 5i-3): neither "
+                          "gameplay.png nor room2_tunnel_entry.png is an authentic Hatari-palette "
+                          "render, so there is no single formula to unify on - match each reference "
+                          "with the formula that was actually used to make it.")
     ap.add_argument("--out", required=True)
     ap.add_argument("--diff", help="gameplay screenshot to score the render against (pixel-exact "
                                     "match count over the tile-covered area)")
@@ -135,6 +137,11 @@ def main():
             r, g, b = (word >> 8) & 7, (word >> 4) & 7, word & 7
             return (r * 36, g * 36, b * 36)
         sae.ste_colour = _st_colour
+    elif args.palette_formula == "hatari":
+        def _hatari_colour(word):
+            r, g, b = (word >> 8) & 7, (word >> 4) & 7, word & 7
+            return (r * 34, g * 34, b * 34)
+        sae.ste_colour = _hatari_colour
 
     ram, base = load_ram(args.snap)
     regs, ok = snapshot_regs(args.snap)

@@ -574,17 +574,33 @@ remaining 4%, not the ~80% this pass mistakenly attributed to it. The two tools'
 should eventually be unified (Open, below) so future `--diff` scores aren't formula-dependent by
 accident.
 
-**Not yet done**: (1) unify `gfxview.ste_colour`'s `gun*255//7` and `snap_render.py`'s `st_colour`'s
-`gun*36` palette-to-RGB formulas (§5i-3) — which one is Hatari-accurate wasn't checked this pass (no
-local Hatari source checkout found on this machine), so pick a side by checking `video.c`/`screen.c`'s
-real STF DAC conversion before changing either tool's default, not by preferring whichever a given
-screenshot happens to match; (2) render `room_mosaic.py`'s one dropped `0xc2`-sourced entry (§5f) for
-completeness — small (48×57px), low priority now that it's not blocking the match score; (3) stack
+**§5i-3 addendum (68th pass): the two palette formulas cannot be unified, and shouldn't be — neither
+reference screenshot is an authentic Hatari render.** Cloned Hatari source (`hatari/hatari` on
+GitHub) and read `conv_st.c`'s `ConvST_SetupRGBTable`, the actual STF/STE `$0RGB` → 32-bit RGB
+conversion Hatari uses (`Screen_MapRGB` on the `rr`/`gg`/`bb` it computes packs 8-bit channels
+directly, confirmed in `src/sdl/screen.c`, so no further rescaling applies). For a plain ST 3-bit
+gun value `r` (top bit always 0, since the ST palette register only has 3 bits/gun), the formula
+reduces to `rr = 34 * r` (0,34,68,102,136,170,204,238 for gun 0-7) — neither `gun*255//7`
+(0,36,72,109,145,182,218,255) nor `gun*36` (0,36,72,108,144,180,216,252). Adding `--palette-formula
+hatari` to `room_mosaic.py` and re-scoring both known-good captures against this real formula gives
+**0/19749 exact for CAVERN (`gameplay.png`) and 0/9932 exact for TUNNEL (`room2_tunnel_entry.png`)**
+— not close, not a rounding-level miss, completely non-matching. Both reference screenshots were
+therefore rendered by this repo's own historical tooling (whatever produced them at the time,
+evidently `gun*255//7`-equivalent for `gameplay.png` and `gun*36`-equivalent for
+`room2_tunnel_entry.png`), not by Hatari's real DAC conversion — so there is no ground truth for the
+two formulas to converge on, and "unify" was the wrong frame from the start. The existing
+`--palette-formula {ste,st}` per-reference selection (default `ste`, matching `gameplay.png`) is
+already the correct permanent answer: match each screenshot to whichever formula generated it. This
+closes the item; a `hatari` option is kept in `room_mosaic.py` for if a genuinely Hatari-sourced
+reference screenshot is ever captured later.
+
+**Not yet done**: (1) render `room_mosaic.py`'s one dropped `0xc2`-sourced entry (§5f) for
+completeness — small (48×57px), low priority now that it's not blocking the match score; (2) stack
 direction (does column index 0 sit at the floor or the ceiling) — the live capture didn't settle this
-either, though the visual match's overall coherence is suggestive; (4) CAVERN's own ~3.4%
-overlap-edge residual (§5i-2, genuinely unaffected by the palette-formula bug above, since its
-reference already matches `room_mosaic.py`'s formula) is still unexplained, though small and visually
-negligible.
+either, though the visual match's overall coherence is suggestive; (3) CAVERN's own ~3.4%
+overlap-edge residual (§5i-2, unaffected by the palette-formula question above, since its
+reference already matches `room_mosaic.py`'s default formula) is still unexplained, though small and
+visually negligible.
 
 **5j. In plain terms: how a room's walls and floor actually get to the screen** (§5's full mechanism,
 without the addresses — the proof and every instruction-level detail is §5a-5i above).
@@ -637,11 +653,12 @@ proven generic and correct for both rooms, full stop). The grid's one non-tile m
 is a second, fully-traced drawing channel through the same pipeline: it paints a small item/icon from
 a second, 255-entry shared catalog (type 2, §5a) into a grid cell instead of a terrain tile (§5f) —
 real and generic, but a minor contributor, not the explanation for either room's residual mismatch.
-**Open**: (a) unify `gfxview.py`/`snap_render.py`'s two disagreeing palette-to-RGB formulas (§5i-3);
-(b) render `room_mosaic.py`'s one still-dropped `0xc2` entry for completeness (§5f/§5i-3); (c) stack
-direction (does column index 0 sit at the floor or the ceiling) — still not proven; (d) the remaining
-3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2), genuinely unrelated to the palette bug —
-small and visually negligible, cause not identified; (e) cross-check type 2's catalog (§5a) against
+**Open**: (a) render `room_mosaic.py`'s one still-dropped `0xc2` entry for completeness (§5f/§5i-3);
+(b) stack direction (does column index 0 sit at the floor or the ceiling) — still not proven; (c) the
+remaining 3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2), unrelated to the two tools'
+differing palette formulas (§5i-3 addendum: closed — neither reference is an authentic Hatari render,
+so there is nothing to unify, and each tool already matches its own reference) — small and visually
+negligible, cause not identified; (d) cross-check type 2's catalog (§5a) against
 §3's 22-entry object array field-for-field — same conceptual role (small-object art), relationship
 between the two not yet confirmed.
 
