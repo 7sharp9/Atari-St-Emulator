@@ -95,6 +95,16 @@ know they existed.
   --all` fresh (populous mechanics.md/graphics.md's `$37eae`/`$3c4e4` correction). Before trusting
   a "no writer" result from any pre-existing `.asm`/`.c` file, confirm its address range actually
   covers the image end, or just re-run the tool.
+- A field that reads the same static value across two far-apart snapshots is not proof it is
+  "stuck" or ungated: it can be a value a busy-poll utility sets and clears within a couple hundred
+  steps of each interrupt tick, in which case any snapshot taken during that poll's otherwise-idle
+  majority (the loop's actual wait is ~98% empty re-reads) will show the same value, agreeing
+  snapshots included. Prove it live before writing "isn't gated by the interrupt" or "handler never
+  invoked": `hits <n> <handler-addr>` against the real vector target shows whether it's firing at
+  all, and `watch <addr>` shows the value actually changing and who clears it back down
+  (impossamole `reversing/impossamole/README.md`'s VBL-wait correction: two 30M-apart snapshots of
+  `$1a2e9 = 0` were wrongly read as "never advances" when `hits`/`watch` proved the VBL handler
+  fires every frame and the same wait routine consumes its own tick within ~233 steps).
 
 ## Proving routines with parallel subagents
 
