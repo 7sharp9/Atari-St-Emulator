@@ -84,6 +84,14 @@ know they existed.
   `graphics.md`/the README's files table the way screenshots already are.
 - Every behavioural claim about a game needs an emulator check (callcap diff, frame capture or
   screenshot diff) with a match count, or is labelled inferred.
+- When reading a routine to explain why an input "does nothing," read to its next control-flow
+  instruction (branch/jump/rts), not just to the first `jsr` whose target looks self-contained and
+  irrelevant — an unconditional `jmp`/`bra` right after that call can be the actual mechanism, and
+  stopping one instruction early reads as proof the input is a dead end. Impossamole: a fire-handler
+  read stopped at `jsr $bb7e` (a red-herring cheat-word lookup keyed off a byte that stays 0) and
+  concluded fire did nothing on the post-world-confirm logo screen; the very next instruction,
+  `jmp $17c9c` (unconditional), was the world-select screen's own re-entry setup, missed for a full
+  handoff (`reversing/impossamole/README.md`'s "Confirming a world" correction).
 - A "nothing writes X" or "only Y writes X" claim needs every writer: grep a whole-image
   listing (`disassemble.py --snap <snap> --all <lo> <hi>`) and read each writer's full block;
   the next instruction can overwrite the value (PowerMonger `$2452` is undone by `$245c`).
