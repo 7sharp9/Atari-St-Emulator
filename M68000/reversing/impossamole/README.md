@@ -218,8 +218,52 @@ VBL-wait idle body) but now driven by a **fourth, previously uncharacterized tem
 covered hillside next to a ruined stone pillar under a cloudy sky — not the select/logo screen
 template's blue field. This confirms the earlier handoff's hypothesis: **Klondike Mine's own data
 is broken/missing in this crack; the engine's confirm→load path itself works, proven by a different
-world.** A single joystick-1 "right" packet sent on this settled frame produced no visible change
-(same render before/after) — gameplay input mapping is not yet found (see "Not yet exercised").
+world.**
+
+## Gameplay input: same joystick-1 bit layout as world-select, gated by a per-frame busy flag
+
+The `$b1b6` template's per-frame body calls `$c2fa` once every frame; that routine is the hero's
+input/movement dispatcher, and it uses the *same* `$1c4c1` raw joystick-1 byte and bit layout the
+title/select screens use (bit 7 = fire, bits 0-3 = direction) — not a different mapping as the prior
+handoff guessed:
+
+- `$00c2fa: lea $1a572.l,A0` / `tst.b 101(A0); bne $c486` — the hero's 108-byte object (base
+  `$1a572`, one slot of the same shared object array `$17dd0` uses for the cursor at `$1a2ea`) has a
+  busy flag at offset 101 (`$1a5d7`); **while it's set, this routine skips reading `$1c4c1` for the
+  entire frame** and falls straight to the tail (render/physics only, no input). A single-frame test
+  that happens to land on a busy frame reads as "input does nothing" even though the mapping is
+  correct — the prior handoff's one-packet test didn't check this flag before concluding the
+  direction bits didn't work.
+- When not busy: `move.b $1c4c1.l,$227f5.l` caches the byte, then, indexed by the hero's state
+  byte `$227f3` (0 = idle, 1 = walking, 2/4 = other in-progress moves), a jump table at `$c488`
+  dispatches to a per-state handler that tests `$227f5`'s bits directly:
+  - **bit 0** (`$00c49c`): up — checks a ladder-above sensor byte (`$227ea`, classified through
+    `$be96`) and climbs (`$227f3 := 4`) if it reads as ladder, otherwise falls into a jump/attack
+    state (`$c742`).
+  - **bit 1** (`$00c4d0`): down — same shape against a ladder-below sensor (`$227eb`).
+  - **bit 2** (`$00c4ee`/`$c65e`): left — sets `$227f3 := 1` (walking), and (once settled) the
+    idle/walk collision routine at `$c3a6` decrements the hero's screen-position word `2(A0)`
+    (`$1a574`) by 1 px/frame while three forward-sensor bytes (`$227e0`/`$227e1`/`$227e2`, via
+    `$be96`) all read as walkable.
+  - **bit 3** (`$00c4fa`/`$c6d0`): right — the mirror image, incrementing `2(A0)` while
+    `$227e4`/`$227e5`/`$227e6` are walkable.
+  - If no direction bit is set and the hero isn't airborne, ground sensors `$227e8`/`$227e9` decide
+    between staying idle (`$227f3 := 0`, `$caba`) and falling (`$227f3 := 3`, `$cb2e`).
+
+  **Proven live** from `after_amazon_load2.snap` (busy flag `$1a5d7 = $00`, state `$227f3 = $00`,
+  position `2(A0) = $0080`): `kbd ff` / `kbd 08` (bit 3, right) then 2,000,000 steps moved
+  `$227f3` to `$01` then back to `$00` (a completed walk cycle) and `2(A0)` from `$0080` to `$00c0`
+  (+64, i.e. 4 discrete 16px steps); `kbd ff` / `kbd 04` (bit 2, left) over the same window moved
+  `2(A0)` from `$0080` to `$0076` (-10). `snap_render.py` on the bit-3 run shows the pillar and
+  terrain shifted left in frame and the hero sprite in a different pose relative to
+  `amazon_gameplay.png` — real camera-relative movement, not a static frame. The earlier "a single
+  right packet produced no visible change" reading in the prior handoff was a false negative from
+  not holding the packet long enough past a possibly-busy frame and not running far enough afterward
+  to see the (multi-frame) walk cycle complete, not evidence the mapping differs from world-select's.
+
+Not yet live-tested: the up/down ladder-climb branches (`$c812`/`$227f3 := 4`), the jump/attack state
+(`$c742`/`$227f3 := 2`), and what the three-sensor "walkable" classification (`$be96`) actually
+reads (tile type table, most likely) — all read statically only, from `$c488`'s handlers above.
 
 ## Known traps
 
@@ -253,13 +297,13 @@ world.** A single joystick-1 "right" packet sent on this settled frame produced 
 | `world_select.png` | the world-select screen, reached by sending a joystick-1 fire packet at the title screen (see above) |
 | `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen reached after confirming Klondike Mine — this crack's Klondike data fails to load; firing here loops back to `world_select.png` (see "Confirming a world" above) |
 | `amazon_gameplay.png` | first real gameplay frame, reached by confirming The Amazon instead of Klondike Mine — hero sprite, terraced hillside, ruined pillar (see "Confirming a world" above) |
+| `amazon_walk_right.png` | `amazon_gameplay.png` after holding joystick-1 bit 3 (right) for 2M steps — pillar/terrain shifted and hero in a different pose, proving the movement mapping (see "Gameplay input" above) |
 
 ## Not yet exercised
 
-Past reaching The Amazon's first gameplay frame (`amazon_gameplay.png`, template copy `$b1b6`):
-what input actually drives the hero (a joystick-1 "right" packet held a full frame produced no
-visible change — direction bits may map differently in gameplay than on the select screen, or
-another button/input is expected first); why Klondike Mine's own data specifically fails to load
-(worth diffing its `.DAT` pair against a working world's, or checking for a disk-read error the
-engine silently swallows) and whether Orient/Ice Land/Bermuda Triangle load correctly too; sprite/
-tile formats; level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and control flow / CFG extraction.
+Past finding the gameplay movement mapping (see above): the ladder-climb and jump/attack states
+(`$227f3 := 4`/`2`) are read statically only, not yet driven live; why Klondike Mine's own data
+specifically fails to load (worth diffing its `.DAT` pair against a working world's, or checking for
+a disk-read error the engine silently swallows) and whether Orient/Ice Land/Bermuda Triangle load
+correctly too; sprite/tile formats; level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and control flow /
+CFG extraction.
