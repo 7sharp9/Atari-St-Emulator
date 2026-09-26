@@ -142,6 +142,18 @@ What took PowerMonger's port from ~96% to 100.00% on 27 frames (`reversing/power
   Cheap check before trusting a "missing content" read: sample a few individual RGB pixel values from
   each image at the same coordinate — a consistent small integer offset (e.g. 182 vs 180, 145 vs 144)
   across many samples is a formula/rounding bug, not a wrong tile.
+- **"Unify two disagreeing internal formulas against the real emulator's source" can be the wrong
+  fix — check whether your own reference assets were ever produced by that source before chasing it.**
+  Cadaver's 68th pass followed up on the 67th's open item (which of the two palette formulas above is
+  Hatari-accurate) by cloning Hatari and reading `conv_st.c`'s real STF conversion (`gun*34` for a
+  3-bit register, matching neither in-repo formula). Re-scoring both milestone screenshots against it
+  gave **0/N exact for both** — not a rounding-level miss, complete non-matches — proving neither
+  `gameplay.png` nor `room2_tunnel_entry.png` was ever rendered by Hatari at all; they're artifacts of
+  this repo's own historical tooling, so there was no ground truth for the two formulas to converge
+  on and the "unify" framing itself was wrong (`reversing/cadaver/graphics.md` §5i-3 addendum). Before
+  spending a pass chasing an authoritative external formula to resolve an internal tooling mismatch,
+  first confirm the assets in question actually came from that authority — a quick 0%-vs-close-match
+  test against one known reference settles it before you touch anything else.
 
 ## 4c. Cover the content, then watch what runs by itself
 
