@@ -1,31 +1,29 @@
 # Cadaver: handoff
 
-Updated 2026-09-26 by the session that ended at commit `854cd34` (68th pass, following the 67th's
-`76a4abf`), which closed the previous handoff's top open item — unify the two disagreeing
-palette-to-RGB formulas — by finding that item couldn't be done as framed. Full writeup:
-`reversing/cadaver/graphics.md` §5i-3 addendum.
+Updated 2026-09-26 by the session that ended at commit `e6e9ad3` (69th pass, following the 68th's
+`854cd34`), which closed both of the previous handoff's open items: rendering `room_mosaic.py`'s
+one dropped `0xc2` item-catalog overlay, and cross-checking type 2's catalog against §3's 22-entry
+object array field-for-field. Full writeup: `reversing/cadaver/graphics.md` §5f/§5a-2.
 
 ## Resume point
 
-- Last commit of this workstream: `854cd34` "cadaver: retire the palette-formula 'unify' open item
-  -- neither reference screenshot is an authentic Hatari render (68th pass)". `9230514`
-  "reverse-engineer-st-game skill: a lesson from cadaver's 68th pass..." is a shared-resource
-  commit from the same session, its own small commit per the sessions/README.md rule. No emulator
-  source changed this pass (Python tooling + doc edits only, reusing existing snapshots), so no
-  rebuild or regression-net run is needed before building on it.
+- Last commit of this workstream: `e6e9ad3` "cadaver: cross-check type-2's catalog against section 3's
+  object array field-for-field (69th pass)". `1e7745e` "cadaver: render room_mosaic.py's dropped 0xc2
+  item-catalog overlay (69th pass)" is this same session's other commit. No emulator source changed
+  this pass (Python tooling + doc edits only, reusing existing snapshots), so no rebuild or
+  regression-net run is needed before building on it.
 - Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored) — unchanged this pass, nothing
-  new captured; `mid_cab6_cavern.snap`/`mid_cab6_tunnel.snap` (66th pass) were re-read, not
-  re-captured, to re-score `room_mosaic.py` against the new `hatari` palette-formula option.
+  newly captured; `gameplay_empire.snap`, `mid_cab6_cavern.snap`, `mid_cab6_tunnel.snap`,
+  `room2_tunnel_entry.snap` (all pre-existing) were re-read, not re-captured.
 - Start from: `gameplay_empire.snap` (CAVERN) / `room2_tunnel_entry.snap` (TUNNEL) for ordinary
   static/gameplay work; `mid_cab6_cavern.snap` / `mid_cab6_tunnel.snap` specifically for re-reading
-  either room's live tile-placement list (the list is a scratch buffer, unreadable from a
+  either room's live tile-placement/draw-descriptor list (a scratch buffer, unreadable from a
   steady-state snapshot).
-- Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` still
-  carries the pre-existing line-wrap-only edit noted in the last several handoffs (not this
-  session's, left alone per "one writer per file" — check `git status` fresh rather than trusting
-  this line if it's been a while). `Cadaver/` (game disk images) and `.obsidian/` (an Obsidian
-  vault config) are untracked, predate this session, and aren't part of any workstream — left
-  alone.
+- Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` still carries
+  the pre-existing line-wrap-only edit noted in the last several handoffs (not this session's, left
+  alone per "one writer per file" — check `git status` fresh rather than trusting this line if it's
+  been a while). `Cadaver/` (game disk images) and `.obsidian/` (an Obsidian vault config) are
+  untracked, predate this session, and aren't part of any workstream — left alone.
 
 ## Proven so far
 
@@ -35,44 +33,51 @@ world-map/adjacency graph, the door-connectivity walk, the swapped-disk side-cou
 Replicants/ST Amigos crack's Disk 2 swap, two genuine emulator gaps behind the "crack dispatch bug",
 the FDC "no data" workflow fix, the two-disk build's `$100`-shift bugs, a real CAVERN→TUNNEL crossing
 driven live, Disk 2's one-time boot-time load with zero further FDC activity, CAVERN/TUNNEL having no
-live-reachable third room) and `graphics.md` §5a-5j (the shared 80-tile terrain catalog, its per-room
+live-reachable third room), `graphics.md` §5a-5j (the shared 80-tile terrain catalog, its per-room
 RLE-compressed per-column tile-stack encoding, the `$cbd4` top-bit marker channel fully resolved
 including its `0xc2` sub-case, no runtime tile-adjacency rules, the per-cell screen-placement formula,
-the full draw pipeline, both known rooms scored ~96% pixel-exact against their reference screenshots).
+the full draw pipeline, both known rooms scored ~96% pixel-exact against their reference screenshots)
+and the 68th pass's closed palette-formula item (neither reference screenshot is an authentic Hatari
+render, so `--palette-formula {ste,st}` per-reference selection is the permanent answer).
 
-**This pass (`graphics.md` §5i-3 addendum)**: cloned Hatari source (`hatari/hatari`) and read
-`conv_st.c`'s `ConvST_SetupRGBTable`, the real STF `$0RGB`→RGB conversion (`gun*34` for a plain
-3-bit register — confirmed `Screen_MapRGB` packs 8-bit channels directly, no further rescaling).
-Added it to `room_mosaic.py` as `--palette-formula hatari` and re-scored both known-good mosaic
-captures against it: **0/19749 exact for CAVERN (`gameplay.png`), 0/9932 exact for TUNNEL
-(`room2_tunnel_entry.png`)** — not a rounding-level miss, a complete non-match against both. This
-proves neither reference screenshot was ever rendered by Hatari's real conversion; both are
-artifacts of this repo's own historical tooling (one `gun*255//7`-equivalent, one
-`gun*36`-equivalent). There is no ground truth for the two in-repo formulas to converge on, so
-"unify" was the wrong frame for the previous handoff's top item — the existing
-`--palette-formula {ste,st}` per-reference selection (default `ste`) is already the correct
-permanent answer. Generalized as a new bullet in `.claude/skills/reverse-engineer-st-game/SKILL.md`
-§4b (commit `9230514`).
+**This pass (`graphics.md` §5f/§5a-2)**:
+- `room_mosaic.py` now renders the terrain grid's one non-tile (`0xc2`-sourced) descriptor entry
+  instead of silently dropping it: its `ptr` field is already the item's own address past its
+  0x24-byte header, and its `w_field`/`h_field` give the real size directly, so it composites
+  through the exact same clip/mask/paste pipeline as a tile. TUNNEL's mosaic score is now
+  **10604/11069 (95.8%)** against `room2_tunnel_entry.png` (up from 9534/9932 tile-only; the
+  percentage dip is newly-covered area occluded by the player sprite in the reference frame, not a
+  regression). CAVERN's capture has zero non-tile entries, so its score (19079/19749, 96.6%) is
+  unchanged. Script: `reversing/cadaver/py/room_mosaic.py`.
+- Cross-checked type 2's 255-slot catalog against §3's 22-entry per-room object array, field for
+  field: all 20 state-5 (static room-dressing) slots' `+52` bitmap pointers land at the exact byte
+  address of a type-2 catalog payload, matching width/height too; three spot-checks (torch, boat,
+  chest) decode pixel-identical on both sides, **0 different pixels each**. Type 2 is confirmed the
+  literal shared template catalog for per-room static dressing, not just a conceptually similar
+  pool. The one exception, slot 16 (the goblet, the array's own previously-flagged `+42` state-4
+  outlier), decodes to real art via its own struct fields but its address falls inside type 2's
+  data span without landing on any of the 255 enumerated entries — genuine art from elsewhere,
+  giving the state-4 anomaly a concrete structural correlate for the first time. Script:
+  `reversing/cadaver/py/cross_check_type2_objects.py`.
 
 ## Open, in priority order
 
-1. **Render `room_mosaic.py`'s one still-dropped `0xc2`-sourced entry** for TUNNEL (small, 48×57px,
-   `graphics.md` §5f/§5i-3) — cosmetic completeness now that it's not blocking the match score.
-2. **Cross-check type-2's catalog (`items/`, §5a) against §3's 22-entry sprite/object array
-   field-for-field** — same conceptual role (small-object art); is type 2 literally the template
-   catalog §3's per-room instances draw their art from, or a separate, overlapping pool? Not
-   confirmed either way.
-3. **Stack direction** (does per-column tile-stack index 0 sit at the floor or the ceiling, §5e) —
+1. **The goblet's (§3 slot 16, state 4) actual art source** — narrowed this pass (§5a-2 ruled out
+   type 2's 255-slot table specifically) but not identified; low priority, a one-off curiosity. If
+   pursued: check the other resource-manager types (0,1,3-7) the same way `cross_check_type2_objects
+   .py` checks type 2, or `watch (A5)+52` on that slot across a state transition if one is ever
+   observed.
+2. **Stack direction** (does per-column tile-stack index 0 sit at the floor or the ceiling, §5e) —
    still not proven either way; the room-terrain rendering work being fully proven now (both rooms
-   ~96%) hasn't settled this.
-4. **The CAVERN mosaic's own ~3.4% overlap-edge residual** (§5i-2, confirmed unrelated to the
+   ~96%, including the item overlay) hasn't settled this.
+3. **The CAVERN mosaic's own ~3.4% overlap-edge residual** (§5i-2, confirmed unrelated to the
    palette-formula question, since its reference already matches `room_mosaic.py`'s default
    formula) — small, visually negligible, cause not identified.
-5. **Does Disk 2 add reachable content beyond CAVERN/TUNNEL?** (64th pass, `mechanics.md` §63): still
+4. **Does Disk 2 add reachable content beyond CAVERN/TUNNEL?** (64th pass, `mechanics.md` §63): still
    recommended closed for practical purposes; unaffected by this pass.
-6. `2516(A5)`'s role still unconfirmed. Only worth resolving if another item needs a real day/progress
+5. `2516(A5)`'s role still unconfirmed. Only worth resolving if another item needs a real day/progress
    counter.
-7. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period repeats.
+6. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period repeats.
    No `.stx`→`.st` converter exists in `tools/`.
 
 ## Known traps
@@ -122,8 +127,8 @@ uniform) pixel-diff mismatch points at missing content over a placement bug.)
 
 ## Next session
 
-With graphics/rendering work now solidly proven for both known rooms (~96% each) and the palette
-question fully closed, items 1 and 2 are the natural next self-contained steps (render the dropped
-`0xc2` entry, then cross-check the type-2 catalog against §3's object array). This is also a
-reasonable point to step back from graphics micro-proof and revisit a broader open thread (item 5's
-Disk 2 question, or a fresh subsystem) if Dave would rather redirect. Prompt: `/resume cadaver`.
+Both of the previous handoff's open items are closed, and both known-good mosaics now render every
+descriptor-list entry (tiles and item overlays alike). The remaining open items are all small and
+independent (goblet's art source, stack direction, CAVERN's residual 3.4%) — pick whichever interests
+Dave, or step back to a broader thread (item 4's Disk 2 question, or a fresh subsystem) if he'd rather
+redirect. Prompt: `/resume cadaver`.
