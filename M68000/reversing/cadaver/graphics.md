@@ -161,14 +161,17 @@ All 22 entries decode cleanly with no bleed, and most are immediately identifiab
 `gameplay.png`'s room dressing: player (armoured knight, slot 0), two torches (slots 1-2, sharing one
 bitmap), a barrel (3), an axe/pick (4), two red flowers (5, 12), two small stools (6-7), three small
 red stemmed items (8-10, two sharing a bitmap), a pale fragment (11), a small teal gem (13), two
-bones (14-15), a goblet (16), a **rowing boat** (17, 64×33 — the only entry wider than 32px, matches
+bones (14-15), a sconce (16, visually goblet/chalice-shaped — its live display name is actually
+"SCONCE", not a goblet: mechanics.md §66), a **rowing boat** (17, 64×33 — the only entry wider than 32px, matches
 `gameplay.png`), and three woven mats/rugs (18-19, 21) plus a **chest** (20) — both also visible in
 `gameplay.png`. Full descriptions in `sprites/manifest.csv`.
 
-State byte (`+42`): slot 0 (player) is `0`, slot 16 (the goblet) is `4`, all other 20 are `5`. Every
-state-`5`/`4` entry reads as static room dressing, not a creature — so **"monster slot" in the 6th
-pass's next-steps framing doesn't have a confirmed target**; nothing in this room's array is a
-creature. The goblet's `state=4` outlier's art source is confirmed different from the other 20 (§5a-2: it's
+State byte (`+42`): slot 0 (player) is `0`, slot 16 (the sconce, visually goblet-shaped) is `4`, all
+other 20 are `5`. Every state-`5`/`4` entry reads as static room dressing, not a creature — so
+**"monster slot" in the 6th pass's next-steps framing doesn't have a confirmed target**; nothing in
+this room's array is a creature (mechanics.md §66 confirms this directly too: neither this object's
+own live name index nor any other of CAVERN's 22 or TUNNEL's 2 objects' resolves to a monster name).
+The sconce's `state=4` outlier's art source is confirmed different from the other 20 (§5a-2: it's
 the one entry that doesn't resolve into type 2's 255-slot template catalog); what a differing state
 value means behaviourally is still unexplained (a different animation/interaction state than the
 other props, or unrelated to visuals at all) — worth a `watch` on `+42` if a monster
@@ -322,7 +325,7 @@ catalog CAVERN's 21 non-player instances are drawn from, not just a conceptually
 
 **5a-2. Cross-checked field-for-field against §3's 22-entry object array, 69th pass: type 2 IS the
 template catalog for every state-5 (static room-dressing) instance, pixel-identical, not just
-same-address — the one state-4 outlier (the goblet) is genuine art from somewhere else.** For each
+same-address — the one state-4 outlier (the sconce, visually goblet-shaped) is genuine art from somewhere else.** For each
 of §3's 22 slots (`sprite_base = (A5)+56`, stride `0x46`, `+52` bitmap pointer), resolved every
 type-2 slot's payload address the same way `resource2_export.py` does (`data_area + (index_table
 slot & 0x1ffff) + 0x24`) and compared: slot 0 (player) is outside type 2's data area entirely, as
@@ -332,13 +335,14 @@ width/height fields match that type-2 entry's own header `w,h` exactly (e.g. slo
 `32×28@$56fc2` on both sides). Spot-checked three (torch/slot 1↔idx 14, boat/slot 17↔idx 19,
 chest/slot 20↔idx 53) by decoding both independently and diffing every pixel: **identical, 0
 different pixels each** — not an address coincidence, the same bitmap. The one exception, **slot 16
-(the goblet, `+42` state `4` — §3's flagged "state=4 outlier")**, decodes to a real, recognisable
-goblet via its own struct fields (`32×23@$5fbaa`) but that address falls inside type 2's overall
+(the sconce, visually goblet-shaped, `+42` state `4` — §3's flagged "state=4 outlier", live display
+name index 224 = "SCONCE" per mechanics.md §66)**, decodes to a real, recognisable goblet/chalice
+shape via its own struct fields (`32×23@$5fbaa`) but that address falls inside type 2's overall
 data span (`$5115a`-`$6b92d`) without landing on any of the 255 index-table-listed entries' own
 offset+size boundary — genuine art, sourced from somewhere `resource2_export.py`'s enumeration
 doesn't currently reach, not from the same 255-slot table the 20 static entries use. **Net: type 2
 is the confirmed, proven template catalog for per-room static dressing (not merely "same conceptual
-role"), and the goblet's `state=4` now has a concrete, structural correlate — the one entry that
+role"), and the sconce's `state=4` now has a concrete, structural correlate — the one entry that
 isn't sourced from type 2 is also the one entry whose state byte differs from every other prop's
 `5`** — worth a `watch` on `+42`/`+52` together if a second state-4 (or any non-0/non-5) instance is
 ever found, to see whether state-4 entries share a *different* common resource type rather than each
@@ -697,9 +701,10 @@ real and generic, but a minor contributor, not the explanation for either room's
 proven; (b) the remaining 3.4% overlap-edge pixel mismatch in the CAVERN score (§5i-2), unrelated to
 the two tools' differing palette formulas (§5i-3 addendum: closed — neither reference is an authentic
 Hatari render, so there is nothing to unify, and each tool already matches its own reference) — small
-and visually negligible, cause not identified; (c) the goblet's (§3 slot 16, state 4) actual art
-source, now that §5a-2 has ruled out type 2's 255-slot table for it specifically — a one-off,
-low-priority curiosity, not blocking anything.
+and visually negligible, cause not identified; (c) the sconce's (visually goblet-shaped, §3 slot 16,
+state 4, object id 413, live name index 224 — mechanics.md §66) actual art source, now that §5a-2 has
+ruled out type 2's 255-slot table for it specifically — a one-off, low-priority curiosity, not
+blocking anything.
 
 ## Files
 

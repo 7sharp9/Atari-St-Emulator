@@ -4287,6 +4287,93 @@ rather than a script-read path) and read what field of the touched object it com
   snapshot — both ran against the already-committed `room2_tunnel_entry.snap`, reusable by any
   future pass without re-driving anything live.
 
+## 66. §65's missing link found: an object's live display-name index sits in a per-room "live
+    instance" record, not the type-6 template — proven 3/3, and it corrects graphics.md's "goblet"
+    (72nd pass)
+
+Dave's own steer continuing from the 71st pass: find the field. Live `bpc 946a 1 250000` (armed
+after `kbd ff 04` from `room2_tunnel_entry.snap`, the same Left-hold approach as §41-43) catches
+the exact comparison §42 described in full: `$009478: move.w 10(A4),D0` / `$00947c: cmp.w
+1222(A5),D0` — register capture at the hit gives `A4=$00059910`, and `1222(A5)` reads `200` live,
+matching the lever's already-proven name index exactly.
+
+**The field is not in the type-6 template** (§65c already searched the lever's 44-byte record
+byte-for-byte for `200` and found nothing — confirmed again here) **because `A4` isn't the
+template.** Reading `A4`'s own resolution chain (`$00944e`-`$009456`) and reproducing it as a pure
+static formula, verified byte-exact against memory (no emulator step needed once the chain is
+known):
+
+```
+template   = resolve(type=6, id)              # §65a/door_id_words.py's read_type6
+slot_off   = u16(template + 8)                # this object's own currently-assigned room-array
+                                               # slot byte offset — written by the room loader
+                                               # ($00cd50, §37d) at `$00ce5c`-`$00ce60`, only valid
+                                               # while the object is instantiated in the CURRENTLY
+                                               # LOADED room
+slot_addr  = u32((A5)+56) + slot_off          # SpriteObjectArrayPtr_A5Plus56 (§21a/43) + slot_off
+live_rec   = u32(slot_addr + 6)               # NOT the room-record back-pointer §37d's prose
+                                               # describes `$00ce78`'s `move.l A0,6(A1)` as writing —
+                                               # that write is real (confirmed again this pass,
+                                               # disassembling `$00cd50`-`$00cee0` in full: TUNNEL's
+                                               # room record byte `+22` is `2`, which the branch at
+                                               # `$00cdc2`/`$00cde6`/`$00cdf0` sends down the normal,
+                                               # not the `$c30e`/`$c7e8` special-case, path, so
+                                               # `move.l A0,6(A1)` does execute) but by the time ANY
+                                               # steady-state snapshot exists — including a freshly
+                                               # loaded, never-stepped `room2_tunnel_entry.snap`,
+                                               # no live driving needed — this field already reads a
+                                               # different pointer. Who overwrites it, and when, is
+                                               # still open (below)
+name_index = u16(live_rec + 10)               # matches name_strings.py's table exactly
+```
+
+`py/room_object_names.py` implements this and walks the current snapshot's own room-object census
+(reusing `room_object_census.py`'s resolvers). **Validated 3/3 against every name already proven
+live**: TUNNEL's LEVER (id 144) → index 200 ("LEVER"), and — new this pass, from CAVERN's own
+22-object catalog, no live driving needed since `gameplay_empire.snap` already has that room
+loaded — id 257 → index 188 ("BOAT") and id 168 → index 197 ("PICKAXE"), both exact matches to
+§65b's already-proven indices. Not a coincidence: three different objects, three different
+templates, three different live records, all landing on the correct pre-known string.
+
+**This also corrects graphics.md §3/§5a-2's "goblet" (sprite-array slot 16, state-4 outlier,
+object id 413, `slot_off=$0460` = `16 * $46`).** Its live name index is **224**, whose primary
+decoded string is **`SCONCE`** (not `DEAD RAT` — index 224's raw decode runs on into index 225's
+own text with no length field, `SCONCE\0\0DEAD RAT\0A`; `py/name_strings.py --lo 224 --hi 225`
+alone confirms 224 = `SCONCE` cleanly). The pixel art is still genuinely goblet/chalice-shaped
+(graphics.md §5a-2's `32×23@$5fbaa` decode stands, unchanged) and its art-source question (not
+sourced from type 2's 255-slot catalog like the other 20 static props) is still open — but the
+game's own name for this prop is a wall sconce, not a goblet, plausibly the same object rendered at
+low resolution (a cup-shaped candle-holder reads as a chalice at 32×23px). graphics.md's three
+"goblet" mentions (§3, §5a-2, and the Open items list) should read "sconce (visually goblet-shaped,
+name-index 224, mechanics.md §66)" going forward.
+
+**Negative result for cadaver.md's open item 1 (name the creature's room): neither CAVERN's 22 nor
+TUNNEL's 2 known objects carry a monster name index.** `py/name_strings.py --lo 224 --hi 234`
+confirms the full monster/skeleton cluster's indices (224 SCONCE, 225 DEAD RAT, 226 GIANT RAT, 227
+LID, 228 CHAIN, 229 FLAME, 230 PLANK, 231 CONOPTIC URN, 232 SKULL, 233 SKELETON) — running
+`room_object_names.py` against both `gameplay_empire.snap` and `room2_tunnel_entry.snap` finds only
+224 (SCONCE, the corrected goblet) among either room's objects; 225/226/233 (DEAD RAT/GIANT
+RAT/SKELETON) appear in none of CAVERN's 22 or TUNNEL's 2 live records. The creature is not hiding
+among either already-explored room's own dressing under this field.
+
+**What this leaves open**:
+- **Who writes `slot_addr+6` after the room loader's own (confirmed, but evidently superseded)
+  write of the room-record pointer there, and when** — not traced this pass; the value is already
+  the "final" one in a freshly-loaded, never-stepped snapshot, so it happens very early, likely as
+  part of the same load sequence rather than a later runtime event. A `watch` on a slot's own `+6`
+  field armed from cold boot through one room's first load (rather than from an already-loaded
+  snapshot) would catch the real writer.
+- **`template+8` is *not* resident/valid for objects outside the currently-loaded room — checked
+  directly, and it fails silently rather than obviously.** Reading LEVER's (id 144, a TUNNEL-only
+  object) own `template+8` from `gameplay_empire.snap` (CAVERN loaded, TUNNEL not) gives `$0000`,
+  not an out-of-range or sentinel value — it silently **aliases onto object id 0's own real slot**
+  (CAVERN's slot 0 is a genuine, valid entry), rather than failing in any detectable way. This rules
+  out a naive one-snapshot 72-room census outright: a query for an object belonging to any
+  not-currently-loaded room would silently return some *other*, wrong object's live record instead
+  of erroring. Closing item 1 for real needs either a `callcap`-driven, no-real-movement invocation
+  of the room loader (`$00cd50`) per room — feasible since §37d's routine takes the room record
+  pointer as its only real input — or actually visiting the remaining rooms.
+
 ## Files
 
 | File | What |
@@ -4294,6 +4381,7 @@ rather than a script-read path) and read what field of the touched object it com
 | `mechanics.md` | this file |
 | `py/name_strings.py` | 71st pass: decodes the packed dialogue/item/spell/monster-name string table at `(A5)+168`/`172` through the `$5ac0` character map — proof for §65b (real monster names DEAD RAT/GIANT RAT/SKELETON, validated against LEVER/BOAT/PICKAXE's already-known live names) |
 | `py/room_object_census.py` | 71st pass: walks all 72 populated rooms' own static object-id lists via the newly-found type-5 resource (indexed by room slot) — proof for §65a (2/2 cross-check against CAVERN's 22-object catalog and TUNNEL's known `[0,144]`) |
+| `py/room_object_names.py` | 72nd pass: for the currently-loaded room, resolves every object's own live display-name index (template → room-array slot → live instance record → `+10`) and decodes it via `name_strings.py` — proof for §66 (3/3: LEVER/BOAT/PICKAXE, plus the goblet→SCONCE correction and the CAVERN/TUNNEL creature-name negative). Only resolves objects belonging to the room the given snapshot has loaded, not all 72 at once (§66's own open item) |
 | `py/verb_opcode_map.py` | 70th pass: reads the embedded debug-string table's real addresses out of RAM, decodes the 59-entry verb-interpreter dispatch table, and for each entry does a bounded walk (straight-line body + one level of conditional-branch following) looking for a matching error string — proof for §64 |
 | `py/disk_layout.py` | 51st pass: parses the one-disk Empire `.st` image's boot-sector BPB, checks the root directory for real FAT12 entries, and classifies every 512-byte sector as data vs. blank/erase filler — proof for §51. Its blank/data classifier only catches single-byte-repeat fills, not short-period repeating patterns (52nd pass found a 3-byte cycle on Disk 2's tail it missed) — not yet extended to handle that |
 | `py/analyze_disk2.py` | 52nd pass: per-run entropy, byte-distribution (stddev/mean, max frequency, duplicate-sector rate), fixed-stride periodicity scan and ASCII-string scan over `disk_layout.py`'s data runs, plus cross-image byte-identity sampling — proof for §52's Disk-1-vs-Disk-2-vs-one-disk comparison (paths hardcoded to this Mac checkout, not parameterised) |
