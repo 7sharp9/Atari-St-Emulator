@@ -1,10 +1,10 @@
 # Impossamole: handoff
 
-Updated 2026-09-26 by the session that ended at commit `<pending>`.
+Updated 2026-09-26 by the session that ended at commit `cad3d3d`.
 
 ## Resume point
 
-- Last commit of this workstream: `<pending>` (this session's own first commit).
+- Last commit of this workstream: `cad3d3d` (this session's own first commit).
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image, a
   `extracted/` directory with every root-dir file pulled via a one-off FAT12 reader (not committed
   as a script; trivial to redo, see README's BPB table), and snapshots `after_f1.snap` (crack boot
