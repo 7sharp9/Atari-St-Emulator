@@ -4075,11 +4075,133 @@ this spike has never reached — is unchanged by this pass; it just confirms tha
 exists, needs progress this spike doesn't yet know how to make, not a different door out of CAVERN or
 TUNNEL.
 
+## 64. The object-verb interpreter's 59-entry dispatch table mapped against the full debug-string
+    vocabulary, not just LOCK — three more opcode ids confirmed, one causally proven live, and the
+    rest of the verb vocabulary's handlers located even where the exact id isn't pinned (70th pass)
+
+§23a validated the dispatch table's shape by resolving 6 of its 59 entries to plausible handler
+prologues, but only ever matched a debug string to one of them (LOCK = id 18). This pass generalizes
+that one-off address match into a repeatable scan (`py/verb_opcode_map.py`): read the debug-string
+table's own addresses directly out of RAM instead of quoting them from §22b's prose, decode all 59
+dispatch entries, and for each one follow its straight-line code (treating an unconditional
+`bra`/`jmp` as a same-routine continuation, one level of conditional-branch following beyond that)
+looking for a `lea <string>.l,A0` matching one of the real string addresses. This is deliberately
+shallow — an earlier, unbounded version of the walk wandered into unrelated neighbouring routines and
+reported strings that belong to a different handler entirely (caught by hand before trusting it, not
+by an automated check) — so a "no verb found" result below means "not found by this bounded walk", not
+"proven absent".
+
+### 64a. Three more opcode ids confirmed by exact address match, one now causally proven live
+
+- **id 1 (`$010914`) is a CREATE-style allocator.** Clean prologue (`moveq #0,D1; move.b (A1)+,D1;
+  lsl.w #8,D1; move.b (A1)+,D1` — a 16-bit operand read, then a sign check against `348(A5)`, the
+  same "current actor" global §49/§50 already named), reaching `"CREATE SIZE ZERO"` when a
+  size-or-count check via `bsr $c5d2` comes back non-positive. **Has real internal callers** — unlike
+  every other opcode found so far, `find_ram_callers.py` shows `bsr $10914` from `$010844`, inside a
+  *different* handler (the one whose own error path prints `"EXCEEDED ADD LIST SPACE"`, `$01083e`,
+  which itself starts with the shared `bsr $10738` object-id resolve) — i.e. **one verb handler calls
+  another directly as a subroutine**, not only through the byte-dispatch table. The caller is still
+  inside the interpreter's own `$010000`-`$011256` span, so this doesn't change §24b's external-
+  reachability negative, but it's the first confirmed case of handler-to-handler composition in this
+  system.
+- **id 31 (`$010e7e`) is STOPACTI**, with a caveat: the raw word at the table target is `$f8ba`, an
+  F-line opcode this disassembler doesn't decode (and which would fault on real 68000 hardware if
+  actually executed) — not one of the "rare instruction family" gaps this repo's disassembler is
+  already known to have (movep etc.), and not explained this pass. Two bytes later (`$010e80`) the
+  code is clean and unambiguous: `beq $10e84 / bra $10e94`, the `beq` target prints `"STOP ACTI
+  NON-X OBJECT"` and the fallthrough does `bset #6,15(A0)` — bit 6 of the same `+15` byte LOCK/UNLOCK
+  use for bit 2 (§22c), confirming `+15` is a general per-object flag byte, not lock-specific. Its
+  paired opcode, GOACTI, sits immediately before it at `$010e5c` (same shape, `bclr #6,15(A0)` on
+  success) but isn't one of the 59 resolved table targets — the same "verb has no table slot" gap
+  §23b already found for UNLOCK.
+- **id 34 (`$010ee2`) is UNLOCK CHEST, now proven causally, not just structurally.** Static: `bsr
+  $10738` (resolve) → on success, `moveq #0,D0; move.b 12(A0),D0; clr.w 2(A0,D0.w)` — clears a 16-bit
+  field at `object+2` indexed by the object's own `+12` byte, i.e. a per-object array of chest-slot
+  words starting at `+2`, a different field and a different addressing shape from LOCK/UNLOCK's fixed
+  `+15` bit. Live, from `room2_tunnel_entry.snap`, reusing §24c/§50a's own `callcap`-on-the-handler-
+  directly recipe against the already-known lever object (144, `$06fa0e`, `+12` byte reads `$22`):
+  ```
+  m 6fa32 2                          ; before: object+2+0x22 word = 00 01
+  w 18140 00900000                   ; scratch-poke id 144 (big-endian) at $18140
+  callcap 10ee2 5000 - A1=18140      ; call UNLOCK CHEST directly
+  m 6fa32 2                          ; after
+  ```
+  Result: `regdelta ... A0 ...->$0006fa0e D1 ...->$00000090`, `mem $06fa33 $01->$00` — the low byte of
+  the indexed word flips exactly as `clr.w` predicts (the high byte was already `$00`, so `callcap`'s
+  diff shows only the one changed byte). This is the second genuinely causal proof of the whole verb
+  interpreter (after LOCK, §24c), on a structurally different opcode with a different addressing
+  shape — real evidence the mechanism generalizes across the vocabulary, not just LOCK/UNLOCK's one
+  bit.
+
+### 64b. The rest of the verb vocabulary, located and disassembled — real addresses, not yet each
+    pinned to a specific numeric id
+
+Everything below was found the same way (the debug-string scan, then reading the code around each
+`lea <string>.l,A0`), but landed on a dispatch-table entry that this pass's bounded walk couldn't
+cleanly attribute (either the table target itself decodes as an out-of-place instruction, the same
+class of risk as §64a's STOPACTI anomaly, or the routine is reached only via an internal `bsr`/`bra`
+rather than sitting exactly at one of the 59 targets). Real code, real addresses, genuinely new
+(`ai.md` §6e previously listed the whole vocabulary as "none individually mapped"); just not each one
+proven-by-exact-table-slot the way §64a's four are.
+
+| Verb | Handler entry | Resolver used | What it does on success |
+|---|---|---|---|
+| MOVEING (position set) | `$010520` | `bsr $c5a8` (type **4**, not the usual `$010738`) | writes a new 16-bit coordinate into `object+2` if it differs from the current value |
+| GOANI | `$0104e2` | `bsr $c5a8` (type 4) | same shape as MOVEING, `clr.w 2(A0)` |
+| GOMOVE | `$010554` | `bsr $10738` (type 6/9) | tests bit 0 of `+12`; errors `"GOMOVE A NONMOVE OBJECT"` if clear |
+| STOPMOVE / STOP MOVE | `$0105b4` | `bsr $10738` | same bit-0-of-`+12` gate, then `move.b #1,0(A0,D0.w)` (an indexed array, same shape as UNLOCK CHEST's) |
+| FLAG OP | `$0106bc` | `bsr $10738` | toggles bit 0 of `+3` and mirrors the result into `2270(A5)` — **this is the writer §23b's "aside" flagged but didn't chase**: the small nested-IF/comparison-operator bytecode table at `$0000ffba` gates on exactly this same `2270(A5)` byte, so FLAG OP is confirmed as that sub-interpreter's own condition-setting opcode, not an unrelated mechanism |
+| GOACTI | `$010e5c` | `bsr $10738` | `bclr #6,15(A0)` (paired with STOPACTI/id 31's `bset`, §64a) |
+| UNTRAP CHEST | `$010f06` | `bsr $10738` | `clr.b 5(A0,D0.w)`, `D0` from `+12` — same indexed-array shape again |
+| CLEAR CHEST | `$010f9e` | none — reads `348(A5)` (current actor) directly, compares its `+6` word against an inline operand byte | `clr.w 0(A0,D0.w)` on match; **this one never calls the generic id-resolver at all**, it operates on whichever object is already "current", not an arbitrary id from the script stream |
+| DIRTY POTION | `$010fd4` | `bsr $10738` | `bset #2,3(A0,D0.w)` |
+| KILL / UNINV / WAKE / SLEEP | `$010374`/`$01039a`/`$0103b4`/`$0103ca` | **none found** | each is a 4-8 byte stub that unconditionally prints its own "non-existant creature" string with no resolve-and-branch gate at all — see §64c |
+
+### 64c. The KILL/UNINV/WAKE/SLEEP cluster always errors, and why that's not necessarily a bug in this
+    build
+
+Every other verb handler in this table follows the same shape: resolve, branch on failure, do the
+real work on success. The four creature-lifecycle stubs don't — each one's code is just
+"print the not-found string, `rts`", with no `bsr $10738` or equivalent anywhere in it. Read on its
+own this would look like a decode error (landing inside someone else's error path rather than a real
+entry, the same risk flagged for STOPACTI above), but there's a simpler, consistent explanation
+already sitting in this doc: **type 9 (creatures) has been fully empty in every snapshot this whole
+spike has ever captured** (§23c: "Type 9 being fully empty is consistent with every prior pass's...
+no live creature found anywhere"). If these four opcodes' real gate is upstream of where this pass
+looked (the caller supplying an already-resolved creature pointer rather than a raw id, so the
+"resolve" step these stubs are missing happens somewhere else entirely), an always-empty creature
+table would make every live call through them fail exactly like this, deterministically, with no
+decode error involved. Not chased further; flagged as the more likely reading than "these four
+targets are simply misaligned," precisely because it's the same story §23c already told from the
+data side.
+
+### 64d. What this leaves open
+
+- Only 4 of the 59 dispatch entries (1, 18, 25's neighbours aside, 31, 34) are pinned to a specific
+  verb by address; the other ~15 verbs in §22b/§6b's vocabulary now have real handler addresses
+  (§64b's table) but not a proven numeric opcode id — the same bounded-walk technique could be
+  pushed further per-entry with more manual disassembly than this pass spent, but risks exactly the
+  false-attribution failure mode the bounded walk was built to avoid.
+- id 12 (`$010d5c`) and id 25 (`$010e38`) are structurally real (§23a's own validated list) but
+  reach no debug string within this pass's search depth: id 12 resolves an object then runs a
+  three-field bounds/coordinate comparison (`blt`/`bgt` against `+0`/`+1`/`+2`) with no error path
+  found — plausibly a MOVE-family precondition; id 25 resolves an object then appends a 6-byte record
+  into a queue at `308(A5)`, incrementing a counter at `1264(A5)` — structurally a "queue this
+  action" verb, not yet tied to any named string.
+- **External reachability is unchanged**: every new caller found this pass (`$010844`→`$010914`,
+  the internal `beq`/`bra` webs within each handler) is internal to the `$010000`-`$011256` block,
+  the same category §24b's 18-site external sweep already covers. This pass doesn't reopen or narrow
+  the still-open "does anything outside this block ever invoke it" question from §24d/§26 — it only
+  maps far more of the block's own internals than existed before. Script: `py/verb_opcode_map.py`
+  (also dumps the debug-string table's real addresses, reusable independent of the table-mapping
+  question).
+
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `py/verb_opcode_map.py` | 70th pass: reads the embedded debug-string table's real addresses out of RAM, decodes the 59-entry verb-interpreter dispatch table, and for each entry does a bounded walk (straight-line body + one level of conditional-branch following) looking for a matching error string — proof for §64 |
 | `py/disk_layout.py` | 51st pass: parses the one-disk Empire `.st` image's boot-sector BPB, checks the root directory for real FAT12 entries, and classifies every 512-byte sector as data vs. blank/erase filler — proof for §51. Its blank/data classifier only catches single-byte-repeat fills, not short-period repeating patterns (52nd pass found a 3-byte cycle on Disk 2's tail it missed) — not yet extended to handle that |
 | `py/analyze_disk2.py` | 52nd pass: per-run entropy, byte-distribution (stddev/mean, max frequency, duplicate-sector rate), fixed-stride periodicity scan and ASCII-string scan over `disk_layout.py`'s data runs, plus cross-image byte-identity sampling — proof for §52's Disk-1-vs-Disk-2-vs-one-disk comparison (paths hardcoded to this Mac checkout, not parameterised) |
 | `scratchpad/cadaver/disk2_gfx/try_widths.py` | 56th pass: renders `disk2_replicants.st`'s 5 candidate spans (and blocks A/B) as st-interleaved 4bpp at 7 widths and raw chunky8 at 2 widths using `gfxview.py`'s own palette/span detection — proof for §56c's negative result (ad hoc, scratchpad only, ~50 renders in `scratchpad/cadaver/disk2_gfx/renders/`, untracked) |

@@ -180,6 +180,21 @@ specific two-word instruction among ~3,400 possible values, not a coincidence (`
 guess is directly refuted (entry 19 lands on an unrelated `rts`); UNLOCK is reached some other way,
 genuinely unresolved (`mechanics.md` §23b).
 
+### 6c-2. Three more opcodes numerically pinned, one causally proven live (70th pass)
+
+Generalizing §23a's one-off LOCK match across all 59 entries (`mechanics.md` §64,
+`py/verb_opcode_map.py`): **id 1 = a CREATE-style allocator** (`$010914`, errors `"CREATE SIZE
+ZERO"`; the first confirmed case of one verb handler calling another directly, `$010844`'s handler
+reaches it via `bsr`, not through the byte-dispatch table); **id 31 = STOPACTI** (`$010e7e`, pairs
+with GOACTI at `$010e5c` — `bset`/`bclr #6,15(A0)`, the same `+15` byte LOCK/UNLOCK use for bit 2,
+confirming it's a general per-object flag byte, not lock-specific); **id 34 = UNLOCK CHEST**
+(`$010ee2`), and this one is now causally proven the same way §24c proved LOCK: `callcap $010ee2`
+against the lever object (144) with a scratch id operand clears a real 16-bit field in the object's
+own record (`object+2`, indexed by the object's own `+12` byte — a per-object chest-slot array, a
+different shape from LOCK/UNLOCK's fixed bit), confirmed live (`mechanics.md` §64a). Second causal
+proof in the whole spike, on a structurally different opcode — real evidence the mechanism
+generalizes past LOCK/UNLOCK specifically.
+
 ### 6d. Tied to a real object: the lever is id 144
 
 Object id 144 resolves (type-6 index table → `$0006fa0e`) to the exact same address the live sprite-
@@ -193,13 +208,25 @@ file's job is the mechanism, not the caller search, and that thread is not reope
 
 ### 6e. Not chased
 
-- Every opcode besides LOCK/UNLOCK (§6b's vocabulary) — none individually mapped to a table id.
+- Beyond LOCK (18)/UNLOCK CHEST (34)/STOPACTI (31)/CREATE (1, §6c-2), the rest of §6b's vocabulary
+  now has real, disassembled handler addresses (`mechanics.md` §64b: MOVEING, GOANI, GOMOVE,
+  STOPMOVE, FLAG OP, GOACTI, UNTRAP CHEST, CLEAR CHEST, DIRTY POTION, KILL/UNINV/WAKE/SLEEP) but not
+  each one's exact numeric opcode id — a further per-entry manual pass could push this, at the risk
+  of the same false-attribution failure mode `py/verb_opcode_map.py`'s bounded walk was built to
+  avoid (`mechanics.md` §64d).
+- Two new architectural facts from that same pass, also not chased further: MOVEING/GOANI resolve
+  their target through a *different* resource type (4, via `$00c5a8`) than every other verb here
+  (6/9, via `$010738`) — worth remembering given type 4 is also the door-descriptor table's own type
+  (`mechanics.md` §47a); and FLAG OP (`$0106bc`) is confirmed as the condition-setting opcode for
+  the small nested-IF bytecode table at `$0000ffba` that §23b's "aside" noted but didn't identify a
+  writer for (both toggle/read `2270(A5)`).
 - `$010076`'s own alternate entry point into the id-resolver (`mechanics.md` §24a) — a real routine,
   zero found callers.
 - The verb interpreter's own top-level "read a room's init script, dispatch opcode bytes" entry
   point — not the reusable generic-jump-table stubs at `$011700`-`$01172e` (confirmed via
   `find_ram_callers.py`, `mechanics.md` §23d/§24b), and not a bridge through `$00fe84`
-  (`mechanics.md` §25, a clean negative) — still unlocated.
+  (`mechanics.md` §25, a clean negative) — still unlocated. Every new caller found in the 70th pass
+  is internal to the `$010000`-`$011256` block itself; external reachability is unchanged.
 
 ## Files
 
