@@ -1,11 +1,12 @@
 # Impossamole: handoff
 
-Updated 2026-09-26 by the session that ended at commit `d622aa1`.
+Updated 2026-09-26 by the session that ended at commit `dac1c49`.
 
 ## Resume point
 
-- Last commit of this workstream: `d622aa1` (movement mapping proven; a first, unverified visual
-  claim about the hero sprite was retracted after Dave questioned it — see "Proven so far").
+- Last commit of this workstream: `dac1c49` (movement mapping proven; a first, unverified visual
+  claim about the hero sprite was retracted after Dave questioned it — see "Proven so far"; the
+  underlying lesson generalized into the reverse-engineer-st-game skill).
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image plus the
   full snapshot chain. New this session: `test_dirbit3_A.snap`/`test_dirbit3_B.snap` (bit 3/right
   held 200k then 2M steps from `after_amazon_load2.snap`), `test_dirbit2_left.snap` (bit 2/left,
@@ -99,6 +100,10 @@ See `reversing/impossamole/README.md` for the full writeup and screenshots.
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event, and a per-object busy
   flag can suppress a whole frame's input read on top of that — both now in CLAUDE.md and the
   README's "Known traps"/"Gameplay input" sections; no longer workstream-only.
+- Diffing a held-input frame against the *pre-input* frame (rather than a same-length *no-input
+  control*) reads ordinary per-frame animation as input-driven movement and doesn't identify which
+  sprite actually moved — generalized into the reverse-engineer-st-game skill's cracktro A/B lesson;
+  no longer workstream-only.
 
 ## Next session
 
