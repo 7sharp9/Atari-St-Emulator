@@ -50,6 +50,14 @@ difference (or lack of one) between those. A Cadaver pass wrongly concluded a ke
 a crack intro's greet-scroll from one uncontrolled comparison, when the real cause (confirmed by a
 proper same-snapshot/same-budget A/B) was that the intro's greet+loading-bar sequence loops on its
 own over hundreds of millions of steps regardless of input (`reversing/cadaver/mechanics.md` §52).
+This isn't only a cracktro-intro pitfall: the same uncontrolled comparison (diffing a held-input
+frame against the pre-input frame, rather than against a same-length no-input control) reads
+ordinary per-frame animation as proof of input-driven movement in gameplay too, and doesn't tell you
+*which* on-screen sprite actually moved — don't name a sprite "the hero" from that diff alone without
+checking it moves independently of the background/other sprites in the no-input control (impossamole
+`reversing/impossamole/README.md`'s "Gameplay input" section: a first pass claimed "the hero sprite
+in a different pose" from exactly this uncontrolled comparison and had to retract it after the actual
+control showed the pointed-at sprite moving *with* the background, not independently of it).
 
 ## 3. Map control flow
 
