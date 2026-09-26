@@ -115,9 +115,11 @@ invoked). **Both wrong — proven live:**
   steps out of every ~12233-step call — so a snapshot taken at a random moment during an idle
   attract screen lands inside this narrow spin >97% of the time. Two snapshots agreeing on that is
   the expected outcome of an idle loop, not proof of a hang.
-- The actual gate on progress is in the attract loop's caller (`$017ac0` onward, one of 5 near-
-  identical copies at `$b1b6`/`$17ac0`/`$17dd0`/`$18110`/`$18450`, one per attract-mode animation
-  page): after each `$1ab8a` VBL wait it checks `btst #7,$1c4c1.l; bne <exit>`. `$1c4c1` is written
+- The actual gate on progress is in the attract loop's caller (`$017ac0` onward, one of 5 copies of a
+  shared per-frame template at `$b1b6`/`$17ac0`/`$17dd0`/`$18110`/`$18450` — **not all 5 are attract-
+  mode animation pages**: they share the VBL-wait/render calls, but `$17dd0` turns out to be the
+  world-select screen's own selection logic, not a demo page; see "Confirming a world" below): after
+  each `$1ab8a` VBL wait it checks `btst #7,$1c4c1.l; bne <exit>`. `$1c4c1` is written
   from exactly one place, `$1c5ac`, inside the game's own ACIA-receive interrupt handler
   (`$1c51a`, installed at vector `$118` — this game reads raw IKBD bytes itself rather than going
   through TOS's keyboard/IKBD driver): a `$FF` header selects "joystick 1", and the next byte is
@@ -142,6 +144,52 @@ you which). Confirm the target address and header byte first (`find_ram_callers.
 `find_field_writers.py` on the game's own ACIA-receive handler, installed at MFP vector `$118`),
 rather than guessing the packet format.
 
+## Confirming a world needs a held fire, not a pulse
+
+The engine's per-frame body (VBL-wait, then render, then input) is a small template duplicated as 5
+near-identical copies in RAM (`find_ram_callers.py <snap> 1ab8a 1abb2 1ac34` each return exactly 5
+JSR sites, clustered at `$b1b6`/`$17ac0`/`$17dd0`/`$18110`/`$18450`); `hits <n> <addr>...` against
+those 5 JSR sites is how to tell which copy is actually driving the current screen (`hits 200000
+b1bc 17ad4 17df4 1813c 1847e` from `after_select3.snap`: all hits land on `$17df4` — the copy at
+`$17dd0` runs the world-select screen).
+
+That copy's body, read at `$17dd0`-`$17f96`, is the actual selection state machine:
+
+- **Object 0** (the 108-byte struct at `$1a2ea`, `find_ram_callers.py`'s "shared object-update loop"
+  table) is the cursor/selection object: byte `78(A0)` is the highlighted icon index (0=Klondike
+  Mine … 4=Bermuda Triangle), byte `$227f3` is a "settled" flag set once the cursor's live screen
+  position (`2(A0)`) matches the expected slot position looked up from a table at `$17fb6`, and
+  `$bb79` is a bitmask of locked icons (live value `$10` = bit 4 set = only Bermuda Triangle locked
+  in this session).
+- Only on a frame where the cursor is settled *and* the highlighted icon isn't locked does the loop
+  test `btst #7,$1c4c1.l` (joystick-1 fire) at `$017e9e`. On fire it sets `$bb76` to
+  `index+1` and falls into `$017f96` → `jsr $1c3c8` (sound) → `jmp $b0ee`, which uses `$bb76-1` to
+  index a jump table at `$2166e` and hand off to the selected world's loader — proven live, this
+  chain lands PC inside TOS ROM (`$00fc1bea`, a GEMDOS call) within a few hundred thousand steps.
+- **The catch**: `$1c4c1` is a raw level, not an edge-latched event — it holds whatever byte the last
+  `kbd` packet wrote until the next one changes it. A press-then-release pulse shorter than one VBL
+  frame (~12000-15000 steps) can land entirely between two polls of this loop and never be seen as
+  "pressed" on the one frame that actually runs the `$017e9e` check. The prior handoff's press/release
+  attempts used a real gap only *inside* each two-byte IKBD packet (`kbd ff` / `s 30` / `kbd 80`) with
+  essentially no hold before the very next packet released it — plausible enough to draw the
+  highlight (a side effect of merely being settled, independent of fire) but not to win the race
+  against `$017e9e`'s poll. Holding fire down for several frames before releasing
+  (`kbd ff`/`s 30`/`kbd 80`/`s 60000`/`kbd ff`/`kbd 00`) is what actually reaches the ROM call;
+  a same-packet-timing pulse (`s 30` between down and up) does not, confirmed by repeating both on
+  `after_select3.snap`.
+
+Past that ROM call, PC returns to low memory and settles into another idle wait loop — but running
+through the *other* template copy, `$17ac0` (backtrace return address `$17b30` confirms it), showing
+a plain "IMPOSSAMOLE" logo on a blue field (`after_confirm_screen.png`) — visually distinct from
+`title_logo.png` (which also has the hero sprite and publisher logos). `ATARI_TRACE_FDC=1` over
+500k steps here shows **no disk activity**, so this isn't a background load-progress wait; it's an
+idle animation (a counter at `$22806` counting `0..$fa` then toggling `$22805`) that this session did
+not find a further input for — a repeated fire here just runs `$17ac0`'s own fire path, `jsr $bb7e`,
+which turned out to be an unrelated 8-character password/cheat-word lookup against `$1a07a`/`$1a07e`
+(the table at `$1837e` decodes as ASCII words including `COMMANDO` and `JUGGLERS` — a hidden trainer
+cheat-code listener, not menu logic) keyed off `$bb7d`, which stays 0 throughout this screen so
+nothing fires.
+
 ## Known traps
 
 - `resume <snap> repl` does **not** reattach a disk image mounted with `--disk-a` on an earlier
@@ -156,6 +204,13 @@ rather than guessing the packet format.
   "stuck" if you only sample the field it polls at rest (it's `$00` >97% of the time by
   construction) — confirm with `hits`/`watch` against the actual VBL vector target before concluding
   a counter is dead, not just a raw byte read from one or two snapshots.
+- `kbd`-injected IKBD status bytes (joystick/mouse) are a raw level in RAM, not an edge-latched
+  event — a press-then-release pulse timed only by the couple of `s <n>` steps between the two bytes
+  of one packet can land entirely between two of the game's per-frame polls and never register as
+  "pressed" on the one frame that actually checks it (see "Confirming a world needs a held fire"
+  above: this cost the prior handoff a "fire doesn't confirm" false negative). Hold the pressed state
+  for at least one full VBL frame (~12000-15000 steps for this game — check `instructionsPerFrame`)
+  before sending the release packet, when testing whether *any* input is being read at all.
 
 ## Files
 
@@ -165,9 +220,13 @@ rather than guessing the packet format.
 | `trainer_menu.png` | crack trainer-menu screen, reached via F1 from the boot menu |
 | `title_logo.png` | the real game's title screen, reached by skipping the trainer |
 | `world_select.png` | the world-select screen, reached by sending a joystick-1 fire packet at the title screen (see above) |
+| `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen reached after confirming Klondike Mine on the world-select screen (see "Confirming a world" above) — not yet identified |
 
 ## Not yet exercised
 
-Past the world-select screen: the input that confirms a choice and loads a world (see "the attract
-loop waits on joystick-1 fire" above), actual isometric gameplay, sprite/tile formats, level data
-(`MDATA*.DCH`, `BRMUDA*.DAT` etc.), and control flow / CFG extraction.
+Past the confirm-a-world screen (`after_confirm_screen.png`, reached via `$b0ee`'s ROM/GEMDOS call
+after firing on a settled, unlocked icon — see "Confirming a world needs a held fire" above): what
+that screen is (a per-world loading/briefing page, or a fallback because Klondike Mine's own assets
+are incomplete in this crack) and what input, if any, advances past it into actual isometric
+gameplay; sprite/tile formats; level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and control flow / CFG
+extraction.
