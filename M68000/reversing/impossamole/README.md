@@ -242,9 +242,10 @@ handoff guessed:
     state (`$c742`).
   - **bit 1** (`$00c4d0`): down — same shape against a ladder-below sensor (`$227eb`).
   - **bit 2** (`$00c4ee`/`$c65e`): left — sets `$227f3 := 1` (walking), and (once settled) the
-    idle/walk collision routine at `$c3a6` decrements the hero's screen-position word `2(A0)`
+    idle/walk collision routine at `$c3a6` decrements the object's position word `2(A0)`
     (`$1a574`) by 1 px/frame while three forward-sensor bytes (`$227e0`/`$227e1`/`$227e2`, via
-    `$be96`) all read as walkable.
+    `$be96`) all read as walkable. Whether `2(A0)` is the hero sprite's own screen X or a
+    world/camera-scroll value applied to the whole frame is not yet settled — see below.
   - **bit 3** (`$00c4fa`/`$c6d0`): right — the mirror image, incrementing `2(A0)` while
     `$227e4`/`$227e5`/`$227e6` are walkable.
   - If no direction bit is set and the hero isn't airborne, ground sensors `$227e8`/`$227e9` decide
@@ -254,12 +255,31 @@ handoff guessed:
   position `2(A0) = $0080`): `kbd ff` / `kbd 08` (bit 3, right) then 2,000,000 steps moved
   `$227f3` to `$01` then back to `$00` (a completed walk cycle) and `2(A0)` from `$0080` to `$00c0`
   (+64, i.e. 4 discrete 16px steps); `kbd ff` / `kbd 04` (bit 2, left) over the same window moved
-  `2(A0)` from `$0080` to `$0076` (-10). `snap_render.py` on the bit-3 run shows the pillar and
-  terrain shifted left in frame and the hero sprite in a different pose relative to
-  `amazon_gameplay.png` — real camera-relative movement, not a static frame. The earlier "a single
-  right packet produced no visible change" reading in the prior handoff was a false negative from
-  not holding the packet long enough past a possibly-busy frame and not running far enough afterward
-  to see the (multi-frame) walk cycle complete, not evidence the mapping differs from world-select's.
+  `2(A0)` from `$0080` to `$0076` (-10). A same-length **no-input control** run from the same
+  snapshot (2,000,000 steps, no `kbd` at all) leaves both fields unchanged (`$227f3` stays `$00`,
+  `2(A0)` stays `$0080`) — the state-machine proof above isolates the input as the cause, not just
+  elapsed steps. `snap_render.py` on the bit-3 run against that same-length no-input control (not
+  against the original 0-step frame, which would conflate input effects with ordinary per-frame
+  animation) shows most of the visible terrain redrawn, and a stone pillar that was off-screen right
+  in the no-input frame is now well inside the visible area on the left — a real, isolated scroll of
+  the scene under held input, not background animation (the no-input control's own diff against the
+  0-step frame is a single small idle-animation blob, confirming the terrain doesn't otherwise move
+  on its own).
+
+  **Not proven**: which on-screen sprite is the hero. A small humanoid figure standing in the grass
+  is visible in both the no-input and bit-3-held frames, but it shifts screen position by roughly the
+  same amount and direction as the pillar between the two — consistent with it being scrolling
+  background/statue art rather than a camera-locked player sprite, which would be expected to stay
+  near a fixed screen position while the world scrolled around it. So `2(A0)` is more likely a
+  world/camera-scroll value than the hero sprite's own screen X; the actual hero sprite (if drawn
+  separately, camera-relative) hasn't been located. Next session should look for a second position
+  field that stays roughly constant across this same before/after pair while everything else moves,
+  or trace which sprite-draw call actually reads `2(A0)`/`6(A0)` from this object.
+
+  The earlier "a single right packet produced no visible change" reading in the prior handoff was a
+  false negative from not holding the packet long enough past a possibly-busy frame and not running
+  far enough afterward to see the (multi-frame) walk cycle complete, not evidence the mapping differs
+  from world-select's.
 
 Not yet live-tested: the up/down ladder-climb branches (`$c812`/`$227f3 := 4`), the jump/attack state
 (`$c742`/`$227f3 := 2`), and what the three-sensor "walkable" classification (`$be96`) actually
@@ -297,7 +317,8 @@ reads (tile type table, most likely) — all read statically only, from `$c488`'
 | `world_select.png` | the world-select screen, reached by sending a joystick-1 fire packet at the title screen (see above) |
 | `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen reached after confirming Klondike Mine — this crack's Klondike data fails to load; firing here loops back to `world_select.png` (see "Confirming a world" above) |
 | `amazon_gameplay.png` | first real gameplay frame, reached by confirming The Amazon instead of Klondike Mine — hero sprite, terraced hillside, ruined pillar (see "Confirming a world" above) |
-| `amazon_walk_right.png` | `amazon_gameplay.png` after holding joystick-1 bit 3 (right) for 2M steps — pillar/terrain shifted and hero in a different pose, proving the movement mapping (see "Gameplay input" above) |
+| `amazon_noinput_2M.png` | control frame: `after_amazon_load2.snap` run 2M steps with no input at all — terrain unchanged from `amazon_gameplay.png` except one small idle-animation blob (see "Gameplay input" above) |
+| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll (which on-screen sprite is the hero itself is still open, see "Gameplay input" above) |
 
 ## Not yet exercised
 
