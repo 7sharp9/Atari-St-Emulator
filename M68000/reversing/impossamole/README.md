@@ -607,11 +607,29 @@ screen every prior pass stopped at:
     the same *outcome* as Klondike's unattended death (documented above as reaching `$1c3d8`), but
     reached through a different code path (`$b058`/`$b2d8`/`$17fe8`) — the two deaths were never
     proven to funnel through the identical `$1c3d8` address, only to the same category of screen.
-  - **Not yet done**: mapping the rest of the `$25000` classification table to find every other tile
-    ID that also reads as category `$9` (only the two raw IDs seen underfoot here, `$25`/`$26`, were
-    checked and turned out to be category `$4`, i.e. *not* hazardous — confirming the plain-right
-    death this pass came from the green object's contact via `$e80e`, not a ground-hazard tile); and
-    identifying the HUD/status-bar routine the hit-reaction's screen-buffer writes point at.
+  - **The `$25000` classification table is now fully mapped (83rd pass), read directly out of RAM
+    rather than probed tile-by-tile**: `$00be96` (`lea $25000,A0; andi.w #$ff,D0; move.b
+    0(A0,D0.w),D0`) confirms the table is a flat 256-byte array indexed by the raw tile ID (masked to
+    8 bits), one category byte per ID — dumping all 256 entries from `ru_step8M.snap` gives exactly
+    six distinct category values: `$0` (138 entries, the large majority — off-map/background, never
+    walked on), `$4` (79 entries, walkable, matching the two IDs already confirmed underfoot), `$9`
+    (6 entries: IDs `$4f`-`$52` and `$f6`-`$f7` — every ground-hazard ID, not just the two seen live),
+    and three still-uncharacterized categories `$1`/`$2`/`$3` (10/10/13 entries respectively) that
+    `$be96`'s callers never compare against — only `$4` (walkable/climbable-adjacent) and `$9`
+    (hazard) gate any code path found so far, so `$1`/`$2`/`$3` may be inert or feed a not-yet-found
+    caller. This resolves the "map the rest of the table" open item outright; what remains open is
+    only the semantic identity of `$1`/`$2`/`$3` (e.g. ladder vs. water vs. decoration), not the
+    table's contents.
+  - **The HUD/status-bar routine is identified: `$00fdc4`, a health-pip bar renderer**, called from
+    every hit/death/respawn branch in `$eafa`/`$ec50` right after `$bb74` changes. It builds a
+    17-character tile string in a scratch buffer at `$fe74` (initialised to blank tile `$20`,
+    terminated `$ff`): `$bb74/2` "full pip" tiles (byte pulled from a 2-entry template at `$fe86`,
+    plus one more if `$bb74` is odd — the half-pip case) followed by `($bb75-$bb74)/2` "empty pip"
+    tiles (`$07`), where `$bb75` is the max-health constant. It then blits that string via the shared
+    tile-string drawer `$1c0aa` (font base `$24000`, column `$13`, row `$0`) to *both* screen buffers
+    (`$70000` and `$78000`) in turn — exactly the double write the `callcap eafa` memory delta showed.
+    So the on-screen indicator the hit-reaction updates is the health bar itself, not a separate
+    lives counter (`M68000/reversing/impossamole/coldboot_amazon_gameplay.png`'s top-left pip row).
 - **Holding right *and* up together (`kbd 09`, bits 3+0) instead of right alone avoids the reload
   entirely** — proven live: the hero's Y oscillates (a jump arc, `$0090`→`$0080`→`$0074`) while X
   holds near `$00c0`-`$00c2`, and PC never leaves normal gameplay code through the same step counts
@@ -621,15 +639,82 @@ screen every prior pass stopped at:
   totem-pole decorations, a water pool, and more spikes, with the hero (struct still `type=2`, alive)
   standing on a ledge at the far side (`coldboot_amazon_jump_totems.png`). This is the first time any
   pass has driven this game past its single starting screen.
+- **Continuing the same held right+up another 8,000,000 steps (83rd pass) reaches a second, distinct
+  screen and a second death** (`gameplay_explore/ru_continue.txt`, `ru_step12M.snap`). At 4,000,000
+  steps further (12,000,000 total from `at_gameplay_final.snap`) the scene has scrolled into a
+  twin-tree/hanging-vine area with a totem-and-ladder structure on the right, and a **new hazard
+  object has appeared: a second `type=2` slot** (object-array index 8, base `$1a64a`, `x=$24`,
+  `y=$90`) — proof that `type=2` denotes a shared rendering/behaviour class (hero *and* enemy
+  animated characters use the same draw body `$1b3ec`, not "the hero" specifically; this generalises
+  the observation the README already made about `type=1` background props). Its own `+104` damage
+  field reads `1`, the same one-point damage as the `type=1` hazard props already proven — the
+  generic `$b71a`/`$e80e`/`$eafa` mechanism needs no new code to explain what happens next. Holding
+  right+up straight through it (no dodge) reproduces the same death→reload cycle documented above:
+  health `$bb74` drops `3→3→3→2→0` over the following ~2,500,000 steps while the hero's Y climbs from
+  `$28` to `$70` (falling into or through the new creature), then PC lands back inside the shared
+  `$1c6de` depacker (confirmed at `$0001882e`, mid-unpack-loop `move.b D3,(A1)+`/`subq.l
+  #1,D0`/`bne`), the same signature as the first death. **A same-position retry with the fire button
+  held throughout (`kbd 89`, bits 0+3+7) does not avoid this death** (`ru12_fire_probe.txt`) — see
+  below for why: a *held* fire byte only fires once (rising-edge detected), so this was never a
+  sustained-fire test, and no attempt has yet been made to time repeated discrete shots against this
+  creature. Whether it's avoidable by timing, a different sensor-appropriate dodge, or actual weapon
+  fire remains open; `ru_step12M.snap` is the resume point for the next attempt.
 
-Items 1, 1b and 3 are now all resolved: the hazard/collision mechanism is proven end to end (`$b71a`
-proximity test → `$e80e` damage-field copy → `$eafa` health decrement, pinned live with a `callcap`
-showing the `$bb74`/`$1a5d8`/`$227f6` delta directly → `$ec50` death handling → `$b058`/`$b2d8`/
-`$17fe8` reload into a real Game Over screen, confirmed by render). Remaining open follow-up: map the
-rest of the `$25000` tile-classification table (only categories `$4`/`$9` are characterized so far);
-identify the HUD/status-bar routine the hit-reaction's screen-buffer writes point at; and continue
-driving with held right+up further into the newly-revealed terrain to map what's beyond the totems and
-water.
+**The fire button is a real weapon system, not decorative — proven from disassembly (83rd pass),
+resolving the "type=3, never observed live" open item.** `$00c308`/`$00c31e` cache the raw joystick
+byte into `$227f5` each frame and edge-detect fire specifically: `$227ef` holds the *previous*
+frame's raw byte, and bit 7 of `$227f5` is cleared (`bclr #7,$227f5`) whenever `$227ef`'s own bit 7
+was already set — so `$227f5`'s fire bit is true for exactly one frame per press, not for the whole
+hold (this is why the held-fire death-avoidance attempt above only ever fired once). Two real
+consumers of that bit exist in the gameplay code (`$00d37c`, `$00ea2c`) plus one seen but not yet
+read (`$012cd8`):
+- **`$00d37c`** is the primary weapon-fire handler, called from the movement-state code with
+  `A0=$1a572` (hero). It fires only while grounded/walking (`$227f3 < 3`, i.e. not mid-jump/knockback)
+  and only once every 6 frames (`$227fd`, set to `6` on a successful shot and presumably ticked down
+  elsewhere, the same shape as the hero's own hit-cooldown `102(A0)`). On a real edge it plays a sound
+  (`jsr $1c840` D0=`3`) and dispatches through a 4-entry jump table at `$d3bc` indexed by `$227fa`
+  (an as-yet-unidentified "current fire mode" selector) to `$d3cc`.
+- **`$00d3cc` spawns the actual projectile(s)**: a 64-byte-per-entry descriptor table at `$d4be`,
+  indexed by the equipped-weapon byte `$bb72` (`(weapon-1)*64`), is copied into **four consecutive
+  object-array slots starting at `$1a9aa`** — `($1a9aa-$1a2ea)/108 = 16`, i.e. **slots 16-19 of the
+  same 20-slot, 108-byte-stride array** (`$1a2ea`+N·108) documented above as the hero/enemy/prop
+  array, not a separate table. Each slot gets `type := 3` (the literal `moveq #3,D0` proves the
+  "type=3" ID the README's item 7 named but never traced to a writer), position = hero's own
+  `2(A0)`/`4(A0)` plus a per-slot `(dx,dy)` offset from the descriptor, radius bytes `12(A1)`/`13(A1)`
+  and anim-descriptor pointer `$21822` from the same descriptor, and **damage field `104(A1) :=
+  $bb72`** — a fired projectile's own damage equals the equipped-weapon index, the same struct field
+  `$e80e` already reads generically for enemy-contact damage, so a projectile hitting *anything* that
+  runs the same generic contact check would use the identical mechanism, just in the other direction.
+  A second, mirrored 2-byte-per-entry offset table at `$d57e` is substituted when the hero is
+  left-facing (`$227f4 != 0`), giving the projectile spawn the correct muzzle offset for either
+  direction.
+- **`$00bafc` is a small, separate type-3 draw-dispatch scan**: it walks only 5 array slots starting
+  at `$1a5de` (indices 7-11, *not* the projectile slots 16-19) and calls the generic draw stub
+  `$1b3f8` for any of them that reads `type==3` at the time — i.e. some of the ordinary prop/enemy
+  slots can themselves *become* type 3 (most likely on death/destruction, turning into rubble/debris
+  rendered through the same stub), a distinct mechanism from weapon projectiles despite sharing the
+  same type ID. Not yet proven which prop/enemy this applies to or what triggers the transition.
+- **Not yet found**: the routine (if any) that checks a projectile slot for contact against an enemy
+  and applies damage the other way — `$0147ec`/`$014d5c`, the two `$b71a` call sites found in the
+  `$13fe8`-`$17922` per-type-handler range this pass, are both enemy-vs-**hero** checks (`A1 :=
+  $1a572` hardcoded, immediately followed by `bsr $e80e`), the same mechanism already proven, not a
+  projectile-vs-enemy path. A per-type dispatch entry for `type==3` itself (parallel to how enemy
+  types run their own hero-contact handler) is the most likely place to find one; not yet located.
+  `$014d3a`'s `cmpa.l #$1a9aa,A1` loop bound (found while reading `$014d56`'s handler) is independent
+  confirmation that `$1a9aa` — slot 16 — is a real, code-recognised boundary between the general
+  object slots and the dedicated projectile block, not just an address this pass computed by
+  arithmetic.
+
+Items 1, 1b, 2 and 3 are now all resolved: the hazard/collision mechanism is proven end to end
+(`$b71a` proximity test → `$e80e` damage-field copy → `$eafa` health decrement, pinned live with a
+`callcap` showing the `$bb74`/`$1a5d8`/`$227f6` delta directly → `$ec50` death handling →
+`$b058`/`$b2d8`/`$17fe8` reload into a real Game Over screen, confirmed by render), the full
+`$25000` tile table is read out (six categories, three still semantically unidentified), and the
+HUD write is `$00fdc4`'s health-pip bar. The 83rd pass's own new finding — the weapon/projectile
+system (`$00d37c`/`$00d3cc`/`$d4be`, type-3 slots 16-19) — is proven from disassembly (table
+contents, slot writes, damage-field assignment) but not yet cross-checked live with a `callcap` or a
+confirmed on-screen hit; that, "does a fired shot damage an enemy", and continuing past the new
+twin-tree/totem screen's hazard creature are the open items for the next pass.
 
 ## Known traps
 
@@ -699,6 +784,7 @@ water.
 | `coldboot_amazon_jump_ladder.png` | **82nd pass continued, item 6**: holding right+up instead of right alone, 4,000,000 steps in — genuinely new terrain (a ladder/tree structure, ground spikes) never seen by this workstream before, the reload from the plain-right run avoided |
 | `coldboot_amazon_jump_totems.png` | **82nd pass continued, item 6**: the same right+up run, 8,000,000 steps in — tribal totem-pole decorations, a water pool and more spikes, hero (`type=2`, alive) standing on a ledge |
 | `coldboot_amazon_game_over.png` | **82nd pass continued, items 1/1b/3**: rendered 10,000,000 steps past the plain-right death's reload snapshot — a tombstone and `GAME OVER` / `YOUR SCORE 000000` / `FINAL SCENE THE AMAZON`, proving the reload is a genuine death transition (`$b058`/`$b2d8`/`$17fe8`), not a per-level retry |
+| `coldboot_amazon_twintree_ladder.png` | **83rd pass**: the same held right+up run continued another 4,000,000 steps (12,000,000 total) — a genuinely new screen, twin trees with hanging vine curtains and a totem/ladder structure, with a second `type=2` hazard object (object-array slot 8, base `$1a64a`) visible bottom-centre; holding straight through it reproduces the death→reload cycle by ~14,500,000-15,000,000 steps |
 | `hatari_crosscheck/hatari_title.png`, `hatari_klondike_gameover.png`, `hatari_amazon_gameplay.png`, `hatari_amazon_hero_zoom.png` | real Hatari v2.6.1, same disk image, driven live 2026-09-27 — title screen, Klondike Mine played to a genuine Game Over, Amazon gameplay with the hero sprite clearly visible, and a zoomed crop of it. Originally run to check this emulator for bugs; the 82nd pass found the divergence was in one stale snapshot lineage, not this emulator generally — see "Real-hardware cross-check" above |
 
 ## Not yet exercised
@@ -711,13 +797,17 @@ today's cold-boot path entirely (its script no longer exists to check) rather th
 re-triggerable timing race — not worth further bisection time unless a *new* instance of the same
 symptom turns up on a fresh cold boot.
 
-**Item 6 (drive Amazon gameplay past this one screen) is started, not finished** — see "Past the
-first screen" above: held right alone walks into what looks like a hazard and triggers a full
-resource reload, but held right+up (jumping) gets past it into new, previously-unseen terrain (a
-ladder, spikes, totems, water) at least 8,000,000 steps deep. **Top priority now**: `callcap`-prove
-the actual hazard/collision check rather than relying on the visual/timing correlation found this
-pass, and keep driving the jump-avoiding input further to map what's past the totems/water — this is
-the first real look at Amazon level content this workstream has had.
+**Item 6 (drive Amazon gameplay past this one screen) is well underway but still open** — see "Past
+the first screen" above: the hazard/collision mechanism itself is now `callcap`-proven end to end
+(not just visually correlated), the full tile-classification table is read out, the HUD routine is
+named, and a real weapon/projectile system is proven from disassembly. Held right+up (jumping) gets
+past the first screen's ground hazard into new terrain (ladder, spikes, totems, water), and
+12,000,000 steps in reaches a second new screen (twin trees, vine curtains, a totem/ladder structure)
+with a second hazard creature that the same held input has not yet been driven past alive. **Open
+now**: get past that second-screen creature (a different dodge timing, or actually landing a weapon
+shot on it); confirm live whether a fired projectile damages an enemy at all (the write side —
+`$00d3cc` spawning a `type=3` slot — is proven, the read/damage side is not); and continue mapping
+Amazon's content beyond that point.
 
 Also open: the Klondike cold-boot run past ~9M steps with no player input goes black and PC moves to
 the shared title/select transition routine (`$1c3d8`) — consistent with an unattended death, but not
