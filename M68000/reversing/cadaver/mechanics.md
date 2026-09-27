@@ -4104,6 +4104,16 @@ by an automated check) — so a "no verb found" result below means "not found by
   inside the interpreter's own `$010000`-`$011256` span, so this doesn't change §24b's external-
   reachability negative, but it's the first confirmed case of handler-to-handler composition in this
   system.
+- **id 15 (`$01039a`) is UNINV, found the 73rd pass** and, like STOPACTI below, lands mid-instruction:
+  `$01039a` sits 4 bytes into the preceding `bclr #0,6(A0,D0.w)` (UNINV's own success-path instruction,
+  reached normally from its real resolver at `$01038a`), on the instruction's own EA-extension word.
+  Executed as an opcode in its own right, those 2 bytes decode as a harmless `ori.b #$75,D6` — `D6` is
+  never read again before the next real branch, so the effect is provably side-effect-free — landing
+  cleanly on the real `rts` at `$01039c`, then `bra $103a2` into the "UNINV A NON-EXISTANT CRE" print
+  block. Same shape as STOPACTI's own anomaly below, one instruction-family over. §64b's table below
+  already had this address as UNINV's "handler entry" (found independently by the 70th pass's
+  debug-string scan); this pass ties it to the numeric table slot and confirms *why* the address looked
+  slightly unusual — it isn't a clean entry point, it's a deliberately-reused tail landing.
 - **id 31 (`$010e7e`) is STOPACTI**, with a caveat: the raw word at the table target is `$f8ba`, an
   F-line opcode this disassembler doesn't decode (and which would fault on real 68000 hardware if
   actually executed) — not one of the "rare instruction family" gaps this repo's disassembler is
@@ -4114,6 +4124,13 @@ by an automated check) — so a "no verb found" result below means "not found by
   paired opcode, GOACTI, sits immediately before it at `$010e5c` (same shape, `bclr #6,15(A0)` on
   success) but isn't one of the 59 resolved table targets — the same "verb has no table slot" gap
   §23b already found for UNLOCK.
+- **id 32 (`$010ea2`) is MOVE, an action-only bypass of the normal resolve gate, found the 73rd pass.**
+  `$010ea2` is a fully-aligned, clean instruction: `bra $10eb4`, sitting immediately after MOVE's real
+  resolve-gated entry (`$010e9c: bsr $10738; beq $10ea4` fail → `"MOVE A NON-X OBJECT"`, `$0178d6`;
+  `bra $10eb4` success). `$10eb4` is MOVE's write action: `move.b 13(A0),D0; adda.w D0,A0; move.b
+  (A1)+,3/4/5(A0); rts` — writes 3 script-stream bytes into the object's own position fields (`+3/+4/
+  +5`). Unlike every other pinned id, this table slot skips the resolve/existence check entirely and
+  always performs the write using whatever `A0` already holds when reached this way.
 - **id 34 (`$010ee2`) is UNLOCK CHEST, now proven causally, not just structurally.** Static: `bsr
   $10738` (resolve) → on success, `moveq #0,D0; move.b 12(A0),D0; clr.w 2(A0,D0.w)` — clears a 16-bit
   field at `object+2` indexed by the object's own `+12` byte, i.e. a per-object array of chest-slot
@@ -4132,9 +4149,17 @@ by an automated check) — so a "no verb found" result below means "not found by
   interpreter (after LOCK, §24c), on a structurally different opcode with a different addressing
   shape — real evidence the mechanism generalizes across the vocabulary, not just LOCK/UNLOCK's one
   bit.
+- **id 35 (`$010f0e`) is UNTRAP CHEST's always-erroring variant, found the 73rd pass.** `$010f0e` is a
+  clean instruction boundary — the print-only tail of UNTRAP CHEST's real handler (`$010f06: bsr
+  $10738; beq $10f0e; bra $10f1e`) — but it **falls through unconditionally into the success action**
+  after printing: `move.l A0,-(A7); lea $17904.l,A0 ("UNTRAP CHEST NON-X OBJECT"); jsr $11788;
+  movea.l (A7)+,A0`, then straight into `$010f1e`'s `clr.b 5(A0,D0.w)` with no intervening `rts` or
+  branch. A genuinely new behavioural fact, not just a pin: reaching id 35 always prints the error
+  *and* still performs the untrap write afterward.
 
 ### 64b. The rest of the verb vocabulary, located and disassembled — real addresses, not yet each
-    pinned to a specific numeric id
+    pinned to a specific numeric id (three more pinned in §64a above as of the 73rd pass; this
+    table's KILL/UNINV/WAKE/SLEEP row is corrected below, §64c)
 
 Everything below was found the same way (the debug-string scan, then reading the code around each
 `lea <string>.l,A0`), but landed on a dispatch-table entry that this pass's bounded walk couldn't
@@ -4155,39 +4180,63 @@ proven-by-exact-table-slot the way §64a's four are.
 | UNTRAP CHEST | `$010f06` | `bsr $10738` | `clr.b 5(A0,D0.w)`, `D0` from `+12` — same indexed-array shape again |
 | CLEAR CHEST | `$010f9e` | none — reads `348(A5)` (current actor) directly, compares its `+6` word against an inline operand byte | `clr.w 0(A0,D0.w)` on match; **this one never calls the generic id-resolver at all**, it operates on whichever object is already "current", not an arbitrary id from the script stream |
 | DIRTY POTION | `$010fd4` | `bsr $10738` | `bset #2,3(A0,D0.w)` |
-| KILL / UNINV / WAKE / SLEEP | `$010374`/`$01039a`/`$0103b4`/`$0103ca` | **none found** | each is a 4-8 byte stub that unconditionally prints its own "non-existant creature" string with no resolve-and-branch gate at all — see §64c |
+| KILL / UNINV / WAKE / SLEEP | `$010374`/`$01039a`/`$0103b4`/`$0103ca` | see §64c: each print-only stub *does* have a real resolver, one call-frame away | each is a 4-8 byte stub that unconditionally prints its own "non-existant creature" string — see §64c |
 
 ### 64c. The KILL/UNINV/WAKE/SLEEP cluster always errors, and why that's not necessarily a bug in this
     build
 
 Every other verb handler in this table follows the same shape: resolve, branch on failure, do the
-real work on success. The four creature-lifecycle stubs don't — each one's code is just
-"print the not-found string, `rts`", with no `bsr $10738` or equivalent anywhere in it. Read on its
-own this would look like a decode error (landing inside someone else's error path rather than a real
-entry, the same risk flagged for STOPACTI above), but there's a simpler, consistent explanation
-already sitting in this doc: **type 9 (creatures) has been fully empty in every snapshot this whole
-spike has ever captured** (§23c: "Type 9 being fully empty is consistent with every prior pass's...
-no live creature found anywhere"). If these four opcodes' real gate is upstream of where this pass
-looked (the caller supplying an already-resolved creature pointer rather than a raw id, so the
-"resolve" step these stubs are missing happens somewhere else entirely), an always-empty creature
-table would make every live call through them fail exactly like this, deterministically, with no
-decode error involved. Not chased further; flagged as the more likely reading than "these four
-targets are simply misaligned," precisely because it's the same story §23c already told from the
-data side.
+real work on success. The four table targets themselves don't — each is just "print the not-found
+string, `rts`" (or, for UNINV, a mid-instruction landing ahead of that print, §64a's id 15) — but
+**the resolve step isn't missing, it's one call-frame away, found by the 73rd pass**
+(`find_ram_callers.py` against each print stub): a real resolver sits immediately before each stub in
+memory and branches to it only on failure — `$010354` (KILL, `beq $10374`; success pushes a 6-byte
+record into a queue at `304(A5)`, increments `1154(A5)`), `$01038a` (UNINV, `beq $1039e`; success
+`bclr #0,6(A0,D0.w)`), `$0103e0` (WAKE, `beq $103b4`; success `bclr #7,5(A0,D0.w); bsr $e13e`), `$0103f8`
+(SLEEP, `beq $103ca`; success `bset #7,5(A0,D0.w); bsr $e172`). None of these four resolver entries are
+themselves among the 59 table targets — like GOACTI/UNLOCK, they're reached only by internal call, not
+a table slot — so the earlier "no resolve-and-branch gate at all" framing was true of the print stub in
+isolation but wrong about the verb as a whole. The underlying conclusion stands and is now better
+grounded: **type 9 (creatures) has been fully empty in every snapshot this whole spike has ever
+captured** (§23c), so every one of these four real, resolve-gated verbs fails deterministically
+whenever it's actually invoked, with no decode error or missing gate involved.
 
 ### 64d. What this leaves open
 
-- Only 4 of the 59 dispatch entries (1, 18, 25's neighbours aside, 31, 34) are pinned to a specific
-  verb by address; the other ~15 verbs in §22b/§6b's vocabulary now have real handler addresses
-  (§64b's table) but not a proven numeric opcode id — the same bounded-walk technique could be
-  pushed further per-entry with more manual disassembly than this pass spent, but risks exactly the
-  false-attribution failure mode the bounded walk was built to avoid.
-- id 12 (`$010d5c`) and id 25 (`$010e38`) are structurally real (§23a's own validated list) but
-  reach no debug string within this pass's search depth: id 12 resolves an object then runs a
-  three-field bounds/coordinate comparison (`blt`/`bgt` against `+0`/`+1`/`+2`) with no error path
-  found — plausibly a MOVE-family precondition; id 25 resolves an object then appends a 6-byte record
-  into a queue at `308(A5)`, incrementing a counter at `1264(A5)` — structurally a "queue this
-  action" verb, not yet tied to any named string.
+- **7 of the 59 dispatch entries are now pinned to a specific verb by address** (1, 15, 18, 31, 32, 34,
+  35 — §64a; ids 15/32/35 added the 73rd pass). The other ~13 verbs in §22b/§6b's vocabulary have real
+  handler addresses (§64b's table) but not a proven numeric opcode id — the same bounded-walk technique
+  could be pushed further per-entry with more manual disassembly, but risks exactly the
+  false-attribution failure mode the bounded walk was built to avoid (see the next bullet for a
+  concrete case of that risk caught and rejected).
+- **73rd pass, investigated and explicitly rejected as false attributions** (do not reuse without
+  redoing the check): the bounded walk's raw output matched ids 2, 6, 9, 38, 53 and 54 to debug
+  strings, but hand-verification found each one lands mid-instruction inside a *neighbouring* routine
+  with a skipped push or pop, not a real entry — id 54 (claimed SLEEP, `$0103d0`) skips SLEEP's own
+  `move.l A0,-(A7)` and would pop a value nothing pushed; id 6 (`$010af0`, `movem.l (A7)+,...`) pops
+  registers nothing on this path pushed; id 38 (`$010ac2`) lands inside the *matching* push's own
+  register-mask extension word (id 6/38 are two ends of one real, corrupted call, not two verbs); id 53
+  (`$0107d6`) lands 2 bytes into an unrelated `lea`, leaving `A0` unset, then wanders ~30 instructions
+  before coincidentally reaching a real string; ids 2 and 9 both start with an invalid decode (`ori.b`
+  targeting an address register; `bchg` with an implausible bit number) resolving to real code only
+  well past a single bounded hop. **General test going forward**: a table target whose first
+  instruction looks implausible (`ori.b` to an address register, a `movem.l (A7)+` with nothing
+  pushed on this path) is only a real entry if that instruction is provably side-effect-free (a
+  register never read again before the next branch, as with id 15's `ori.b #$75,D6`) and no push/pop
+  is skipped — ids 15/31/32/35 pass both tests, ids 2/6/9/38/53/54 fail one or both.
+- **id 12 (`$010d5c`), refined but still not tied to a verb string.** Full disassembly through
+  `$010dce`: resolves an object, checks its type byte, runs the already-documented three-field
+  bounds/coordinate comparison, then a tile-offset collision check — every failure path converges on
+  `$010dc8: addq.w #6,A1; clr.b 2270(A5); rts`, with no `lea`/string anywhere in the block. `2270(A5)`
+  is the exact byte FLAG OP's own success path mirrors (§64b) — id 12 is now more likely a **boolean
+  condition-test opcode feeding the same mini-IF interpreter at `$0000ffba`** that FLAG OP feeds, not a
+  MOVE-family precondition with its own error message as previously guessed (inferred, not proven
+  live).
+- **id 25 (`$010e38`) unchanged** (resolve + 6-byte queue append at `308(A5)`, counter `1264(A5)`), but
+  **id 30's target (`$010e52`) is a newly-found tail-alias landing inside id 25's own block**, on
+  `move.l A2,308(A5); addq.w #1,1264(A5); rts` — id 30 is not GOACTI despite sitting near it, and isn't
+  a new verb; it's a second, degenerate entry point into id 25's queue-append tail using whatever's in
+  `A2` at call time.
 - **External reachability is unchanged**: every new caller found this pass (`$010844`→`$010914`,
   the internal `beq`/`bra` webs within each handler) is internal to the `$010000`-`$011256` block,
   the same category §24b's 18-site external sweep already covers. This pass doesn't reopen or narrow
@@ -4311,19 +4360,12 @@ slot_off   = u16(template + 8)                # this object's own currently-assi
                                                # while the object is instantiated in the CURRENTLY
                                                # LOADED room
 slot_addr  = u32((A5)+56) + slot_off          # SpriteObjectArrayPtr_A5Plus56 (§21a/43) + slot_off
-live_rec   = u32(slot_addr + 6)               # NOT the room-record back-pointer §37d's prose
-                                               # describes `$00ce78`'s `move.l A0,6(A1)` as writing —
-                                               # that write is real (confirmed again this pass,
-                                               # disassembling `$00cd50`-`$00cee0` in full: TUNNEL's
-                                               # room record byte `+22` is `2`, which the branch at
-                                               # `$00cdc2`/`$00cde6`/`$00cdf0` sends down the normal,
-                                               # not the `$c30e`/`$c7e8` special-case, path, so
-                                               # `move.l A0,6(A1)` does execute) but by the time ANY
-                                               # steady-state snapshot exists — including a freshly
-                                               # loaded, never-stepped `room2_tunnel_entry.snap`,
-                                               # no live driving needed — this field already reads a
-                                               # different pointer. Who overwrites it, and when, is
-                                               # still open (below)
+live_rec   = u32(slot_addr + 6)               # $00ce78's `move.l A0,6(A1)` (§37d) — corrected §67:
+                                               # this IS the final writer when the room is reached
+                                               # through its real trigger ($00e854); it only looked
+                                               # "transient/superseded" in this section's own
+                                               # already-loaded snapshots because those snapshots
+                                               # were never observed at the moment of that write
 name_index = u16(live_rec + 10)               # matches name_strings.py's table exactly
 ```
 
@@ -4356,32 +4398,121 @@ LID, 228 CHAIN, 229 FLAME, 230 PLANK, 231 CONOPTIC URN, 232 SKULL, 233 SKELETON)
 RAT/SKELETON) appear in none of CAVERN's 22 or TUNNEL's 2 live records. The creature is not hiding
 among either already-explored room's own dressing under this field.
 
+**What this leaves open**: **`template+8` is *not* resident/valid for objects outside the
+currently-loaded room — checked directly, and it fails silently rather than obviously.** Reading
+LEVER's (id 144, a TUNNEL-only object) own `template+8` from `gameplay_empire.snap` (CAVERN loaded,
+TUNNEL not) gives `$0000`, not an out-of-range or sentinel value — it silently **aliases onto object
+id 0's own real slot** (CAVERN's slot 0 is a genuine, valid entry), rather than failing in any
+detectable way. This rules out a naive one-snapshot 72-room census outright: a query for an object
+belonging to any not-currently-loaded room would silently return some *other*, wrong object's live
+record instead of erroring. §67 closes item 1 for real via a `callcap`-driven invocation of the
+*real* room-transition trigger (not `$00cd50` in isolation — that alone touches none of the array,
+see §67) per room, and also identifies who writes `slot_addr+6` and when (this section's own open
+question above).
+
+## 67. Item 1 closed: slot 27 holds a unique GIANT RAT object, tied directly to the game's own
+    "SPINE CREATURE" hint text — the real room-transition trigger found, and §66's "unidentified
+    writer" retracted (73rd pass)
+
+**Validation first**: reproduced all 22 of CAVERN's real objects plus TUNNEL's LEVER — 23/23 exact
+match on id, `live_rec` and `name_idx` — against §66's own single-room formula, with TUNNEL driven
+*from CAVERN's loaded state* (the actual cross-room case item 1 needed). Independently re-verified by
+this session directly against the live REPL, not just taken on the reporting agent's word: a fresh
+`w 185e0 1b2888; watch 385b4 4; callcap e854 2000000 -` run reproduces the exact byte-for-byte
+`live_rec=$0005d62a` write at `pc=$00ce78` for slot 27/id 194 below, and `u16($5d62a+10)` read
+straight from the static, unmodified `gameplay_empire.snap` gives `226` — the chain holds with no
+live driving needed for that second half, exactly as claimed.
+
+**§66's own "unidentified writer" framing was wrong, and the real entry point is `$00e854`, not
+`$00cd50` alone.** A raw `callcap cd50` against an already-loaded room touches *zero* bytes of the
+sprite-object array — `$00cd50` depends on setup its real caller does first, so calling it in
+isolation was never going to reproduce steady-state behaviour. The actual room-transition trigger is
+`$00e854` (mechanics.md §38c's own already-disassembled routine, called from `$0072ac` right after the
+door resolver commits `(A5)+1166`). Calling `$00e854` with only `(A5)+1166` written to the target
+room's slot number is sufficient — it resolves `(A5)+164` (the room-record pointer) itself internally
+(confirmed: a `callcap` diff shows `(A5)+164` flip from CAVERN's `$6bf0a` to TUNNEL's `$6bf84` with no
+explicit write). Watching `slot_addr+6` across this call shows **`$00ce78`'s `move.l A0,6(A1)`
+(§37d/§66) writes the correct, final `live_rec` in one shot** — no second write, no supersession —
+for both an already-visited room and a never-before-loaded one (slot 2, this pass). §66's "transient,
+later superseded by an unidentified writer" conclusion was an artifact of reading `$00cd50` out of its
+real calling context, not a real second writer; retracted. (One residual gap: a genuine cold-boot,
+first-ever room load was not reached live this pass — input injection into the boot menu didn't
+respond to `kbd` scancodes for reasons not chased down — so this is proven for the `$00e854` re-entry
+path specifically, not for the very first load of the game's life. No evidence points at a difference,
+but it's untested.)
+
+**The per-room recipe, validated and cheap** (`reversing/cadaver/py/full_room_name_census.py`,
+consuming the transcript `parse_rooms.py` produces from a plain REPL driver script — see
+`scratchpad/ANCHORS.md`'s `cadaver/agents/room_census` entry for the corpus): from one base snapshot
+(`gameplay_empire.snap`), for each room slot 0-71, `w 185e0 <(slot<<16)|0x2888>` (preserving
+`(A5)+1166`'s own low word — `w` only writes a longword and this is a 2-byte field), `watch 38338
+2200`, `callcap e854 2000000 -`, `unwatch`. Each `callcap` snapshot-restores, so all 72 rooms run from
+the same base with no cross-room contamination, in one REPL session (~6s wall clock total). `slot_off`
+is simply `70 * (object's rank in its room's own type-5 id list)` — a shared, per-room-reused scratch
+slot, not a persistent or growing one. `live_rec` addresses themselves are persistent, pre-existing
+data (not freshly allocated per visit): rooms share decoration records exactly the way CAVERN's own
+id409/id410 already shared one (§65a) — e.g. SCONCE's record at `$5f864` is reused by 10 different
+rooms' objects.
+
+**Coverage**: 56 of 72 rooms fully verified (instantiated-object count matches the static type-5
+census 1:1, in order). 14 rooms (35 objects total) hit fewer `$00ce78` writes than their census
+count — every one of those objects still has a valid type-6 template, so this is a real second code
+path through the room loader not yet chased down (§37d already named candidate special-case branches
+at `$00cdc2`/`$00cde6`/`$00cdf0`), not missing data. Slot 69 produced 102 `$00ce78` hits against only
+28 census ids (moot for the search: every one of its objects reads `name_idx=$ffff`, none). Slot 71's
+own static census list doesn't end in the usual 0 terminator — malformed, not chased down. All three
+are open items below, not blockers for the finding.
+
+**The finding**: every monster-cluster index (224 SCONCE, 225 DEAD RAT, 227 LID, 228 CHAIN, 229 FLAME,
+230 PLANK, 231 CONOPTIC URN, 232 SKULL, 233 SKELETON) that shows up across the 56 clean rooms is a
+shared decorative record reused 2-11 times each (SCONCE alone: 10 rooms) — ordinary dressing, not a
+creature. **226 GIANT RAT is the one exception: it appears exactly once, in slot 27, object id 194,
+`live_rec=$0005d62a`.** Full address trail, independently re-verified: `resolve(type=6, 194) →
+template`, `template+8 → slot_off` (rank 9 of slot 27's 21-object roster), `array_base($38338) +
+slot_off + 6 → $00ce78` writes `live_rec=$0005d62a` live, `u16($5d62a+10)=226`, `name_strings.py`
+decodes `226 = "GIANT RAT"`. Slot 27 (`world_map.py`: 10×10 rectangle, same footprint as CAVERN, a
+166-byte room record — CAVERN's own is 122 bytes, so slot 27 is if anything the larger of the two)
+reads like a monster's den on its full roster: 6× STONE, 5× BONE, a SKULL (id 215, the shared
+`$5f23c` record), the unique GIANT RAT, plus PARCHMENT/KEY/CHEST/3× FUNGHI.
+
+**Direct textual confirmation of Dave's external walkthrough hint, verbatim, in the game's own
+data**: `name_strings.py`'s widened sweep (see below) turned up index 272 —
+`"MOST SKULLS WILL HELP YOU COMBAT THE SPINE CREATURE\0THE ESCAPE NUMBER STARTS WITH 1\0I HEAR A KEY
+IS HIDDEN ON A BODY"` — three back-to-back hint strings, none carried by any placed object
+(hint/narrative text, not an object name), directly naming the "SPINE CREATURE" and tying SKULLs to
+fighting it. SKULL-bearing rooms across the clean 56: **26 (×2), 27, 29, 49, 50, 55, 58, 68** — slot
+27 already stands out for GIANT RAT too.
+
+**§65d's "the string table almost certainly extends past index 599" is now closed, negative**:
+swept 0-999, everything from ~599 on decodes to a repeating `DOOR` garbage pattern then zero
+padding — no further monster names or hints exist past what §65b/this section already found.
+
+**Reading**: GIANT RAT being a *placed, named object* (not the empty type-9 creature table itself
+being populated) means this doesn't, by itself, prove the KILL/WAKE/SLEEP cluster (§64c) resolves
+successfully in slot 27 — that's still worth a live check (visit slot 27, `hits`/`watch` on the
+WAKE/SLEEP handlers, `$0103e0`/`$0103f8`, §64c/§67 above). But as a static finding it's the strongest
+lead this whole spike has produced for cadaver.md's open item 1: one unique monster-named object, in
+a monster's-den-shaped room, directly corroborated by the game's own "SPINE CREATURE" hint text.
+
 **What this leaves open**:
-- **Who writes `slot_addr+6` after the room loader's own (confirmed, but evidently superseded)
-  write of the room-record pointer there, and when** — not traced this pass; the value is already
-  the "final" one in a freshly-loaded, never-stepped snapshot, so it happens very early, likely as
-  part of the same load sequence rather than a later runtime event. A `watch` on a slot's own `+6`
-  field armed from cold boot through one room's first load (rather than from an already-loaded
-  snapshot) would catch the real writer.
-- **`template+8` is *not* resident/valid for objects outside the currently-loaded room — checked
-  directly, and it fails silently rather than obviously.** Reading LEVER's (id 144, a TUNNEL-only
-  object) own `template+8` from `gameplay_empire.snap` (CAVERN loaded, TUNNEL not) gives `$0000`,
-  not an out-of-range or sentinel value — it silently **aliases onto object id 0's own real slot**
-  (CAVERN's slot 0 is a genuine, valid entry), rather than failing in any detectable way. This rules
-  out a naive one-snapshot 72-room census outright: a query for an object belonging to any
-  not-currently-loaded room would silently return some *other*, wrong object's live record instead
-  of erroring. Closing item 1 for real needs either a `callcap`-driven, no-real-movement invocation
-  of the room loader (`$00cd50`) per room — feasible since §37d's routine takes the room record
-  pointer as its only real input — or actually visiting the remaining rooms.
+- Live-drive to slot 27 and check whether KILL/WAKE/SLEEP (§64c) actually resolve there — the
+  concrete next step to go from "strongest lead" to "proven."
+- The 14-room/35-object minority branch that skips `$00ce78`, slot 69's 3.6× overcount, and slot 71's
+  malformed census list — none chased down, all in `scratchpad/cadaver/agents/room_census/`'s logs.
+- A genuine cold-boot first room load, to confirm `$00ce78` is the writer there too, not just via
+  `$00e854` re-entry — blocked this pass by the boot menu not responding to injected `kbd` scancodes
+  at the point tried; not chased further since it wasn't needed for item 1 itself.
 
 ## Files
 
 | File | What |
 |---|---|
 | `mechanics.md` | this file |
+| `py/full_room_name_census.py` | 73rd pass: combines the static per-room type-5 census with the live `$00ce78` back-pointer writes captured by driving `$00e854` (the real room-transition trigger) for all 72 room slots from one base snapshot, resolving every placed object's name index game-wide — proof for §67 (23/23 cross-room validation; the slot-27/GIANT RAT finding) |
+| `py/parse_rooms.py` | 73rd pass: parses the 72-room `$00e854` REPL transcript (`scratchpad/ANCHORS.md`'s `cadaver/agents/room_census` corpus) into per-room `(rank, live_rec)` lists for `full_room_name_census.py` |
 | `py/name_strings.py` | 71st pass: decodes the packed dialogue/item/spell/monster-name string table at `(A5)+168`/`172` through the `$5ac0` character map — proof for §65b (real monster names DEAD RAT/GIANT RAT/SKELETON, validated against LEVER/BOAT/PICKAXE's already-known live names) |
 | `py/room_object_census.py` | 71st pass: walks all 72 populated rooms' own static object-id lists via the newly-found type-5 resource (indexed by room slot) — proof for §65a (2/2 cross-check against CAVERN's 22-object catalog and TUNNEL's known `[0,144]`) |
-| `py/room_object_names.py` | 72nd pass: for the currently-loaded room, resolves every object's own live display-name index (template → room-array slot → live instance record → `+10`) and decodes it via `name_strings.py` — proof for §66 (3/3: LEVER/BOAT/PICKAXE, plus the goblet→SCONCE correction and the CAVERN/TUNNEL creature-name negative). Only resolves objects belonging to the room the given snapshot has loaded, not all 72 at once (§66's own open item) |
+| `py/room_object_names.py` | 72nd pass: for the currently-loaded room, resolves every object's own live display-name index (template → room-array slot → live instance record → `+10`) and decodes it via `name_strings.py` — proof for §66 (3/3: LEVER/BOAT/PICKAXE, plus the goblet→SCONCE correction and the CAVERN/TUNNEL creature-name negative). Only resolves objects belonging to the room the given snapshot has loaded, not all 72 at once — superseded for the all-72-rooms case by `py/full_room_name_census.py` (§67) |
 | `py/verb_opcode_map.py` | 70th pass: reads the embedded debug-string table's real addresses out of RAM, decodes the 59-entry verb-interpreter dispatch table, and for each entry does a bounded walk (straight-line body + one level of conditional-branch following) looking for a matching error string — proof for §64 |
 | `py/disk_layout.py` | 51st pass: parses the one-disk Empire `.st` image's boot-sector BPB, checks the root directory for real FAT12 entries, and classifies every 512-byte sector as data vs. blank/erase filler — proof for §51. Its blank/data classifier only catches single-byte-repeat fills, not short-period repeating patterns (52nd pass found a 3-byte cycle on Disk 2's tail it missed) — not yet extended to handle that |
 | `py/analyze_disk2.py` | 52nd pass: per-run entropy, byte-distribution (stddev/mean, max frequency, duplicate-sector rate), fixed-stride periodicity scan and ASCII-string scan over `disk_layout.py`'s data runs, plus cross-image byte-identity sampling — proof for §52's Disk-1-vs-Disk-2-vs-one-disk comparison (paths hardcoded to this Mac checkout, not parameterised) |
