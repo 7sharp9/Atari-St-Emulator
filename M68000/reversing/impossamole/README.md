@@ -88,6 +88,37 @@ screen (`title_logo.png`): the IMPOSSAMOLE logo, Gremlin Graphics' hero characte
 Design" / "Gremlin" publisher logos. No instruction wall, no crash, both crack-menu keypresses and
 the game's own GEMDOS-driven loading path work end to end.
 
+**Why `$b288` sometimes never runs (82nd-pass open item — largely resolved, one part still open)**:
+it is not gated by keypress *timing* in the sense the 81st pass suspected (an FDC/DMA-level race). A
+cold-boot bisection (varying every `kbd`/`s` gap independently, then a `hits` census on `b288` and
+the surrounding block) found instead that it is gated by whether **both** crack-menu keys were sent
+at all, and in the right order: F1 alone (tested holding it 0-500,000 steps, then waiting a full
+35,000,000 steps with no second key) never reaches `b288` — PC parks permanently at `$00fc0732`,
+TOS's own `Crawcin`/`Bconin` wait loop, exactly where "waiting on the trainer menu" should sit; a
+second key alone (no F1) or no key at all behave the same. Sending the second key before F1 also
+never fires it (F1 is what leaves the boot-menu screen at all, so anything sent first has nothing to
+act on). Once F1 *and* a second key are both sent, in order, `$b288` fires reliably regardless of how
+long either key is held or how long the gap between them is (tested F1 holds 0-500,000 steps,
+F1-to-second-key gaps 100-500,000 steps, second-key holds 100-500,000 steps, all pairwise) — and
+regardless of *which* second key: Space (`$39`), Return (`$1C`), and T (`$14`, "PRESS 'T' FOR
+TRAINER" — the cheat-enable path, not just the plain skip) all fire it at the same step, so this
+isn't a "which path through the crack" distinction either. The only timing effect found at all is
+minor and cosmetic: a second-key hold under one VBL frame (~100 steps) fires `$b288` about 11,988
+steps *earlier* than a many-frame hold (500,000 steps) — some poll-window artifact of press+break
+landing in the same IKBD cycle or not — but it never prevents the fire either way.
+
+**What this does not yet explain**: the old `after_select3.snap` lineage reached world-select,
+confirm and gameplay just fine — it did not hang the way an incomplete keypress does above — so
+whatever its lost original boot script did was not simply "F1 with no second key" or any other gap
+this bisection covers; every combination that gets *past* the boot/trainer menus at all, in this
+emulator, also runs `$b288`. The most likely remaining explanation is that lineage's root snapshot
+was never produced by this same live-keyboard cold-boot path in the first place (a hand-edited
+state, a different/older build, or a since-changed tool) rather than a reachable-but-untested keypress
+timing on today's path — but that is inferred from absence, not shown directly, since the script that
+made it no longer exists to compare against. Treat any future finding of "this emulator skips a
+resource load" as suspect until reproduced from today's known-good cold-boot script, per "Known
+traps" below, rather than re-opening this specific timing search.
+
 **Keyboard discipline** followed the pattern from prior games (Super Sprint, Cadaver): each key is
 two separate `kbd` REPL calls (make, then break) with a real `s <n>` step count between them, not
 one `kbd <make> <break>` call — see CLAUDE.md.
@@ -520,19 +551,18 @@ and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still r
 
 ## Not yet exercised
 
-**Top priority (revised, 82nd pass): characterize why `$b288`'s execution is sensitive to early-boot
-keypress timing.** The 79th-81st passes' "hero sprite bank never populates" / "Klondike bounces"
-findings are resolved (see "Real-hardware cross-check" and "Why no hero sprite is visible" above): a
-fresh cold boot with one specific, reproducible F1/skip-trainer timing runs `$b288` correctly and
-reaches full parity with real Hatari for both worlds. What's not yet understood is *why* — whether the
-long-lived `after_select3.snap` lineage's original (lost) boot timing genuinely took a different code
-path in the crack's own loader (a real timing race this emulator's FDC/DMA model may resolve
-differently from real hardware at some specific keypress-adjacent step count), or whether it was
-something more mundane (a different trainer-skip key, a shorter/longer gap that mattered for an
-unrelated reason). A bisection would settle it: starting from this pass's known-good script (`kbd
-3b`/`s 100000`/`kbd bb`/`s 500000`/`kbd 39`/`s 500000`/`kbd b9`), vary each gap independently (one
-variable at a time) and re-run the cold-boot `hits` census on `b288` to find the boundary where it
-stops firing — that boundary is the actual mechanism, not just "different timing happened to matter".
+**`$b288` keypress-timing bisection is done (82nd pass, continued)** — see "Why `$b288` sometimes
+never runs" above: it needs F1 then any second recognized key, in order, and is insensitive to hold
+duration and gap length once both are present; no combination was found that reaches gameplay while
+skipping it. The old lineage's exact failure mode is not reproduced and is now suspected to predate
+today's cold-boot path entirely (its script no longer exists to check) rather than being a live,
+re-triggerable timing race — not worth further bisection time unless a *new* instance of the same
+symptom turns up on a fresh cold boot.
+
+**Top priority now: drive Amazon gameplay past this one screen** (item 6), now that the hero sprite
+renders correctly from a fresh cold boot — explore the level with real movement input rather than a
+single static frame, which is the actual reverse-engineering goal this workstream has been blocked on
+by the emulator-boot question above.
 
 Also open: the Klondike cold-boot run past ~9M steps with no player input goes black and PC moves to
 the shared title/select transition routine (`$1c3d8`) — consistent with an unattended death, but not
