@@ -478,7 +478,7 @@ A lord's `+6` (`$4e514`) is his town's **food store** (economy.md §1).
 | `$04` transfer men | `$1c18` (D0 side, D1 from, D2 to group) | a captain box, with captain-select on | – | `men >> shift` move from one captain's group to the other (`$1b8c` out, `$1b2a` in); static only (mission 1 has one captain) |
 | `$06` take food | `$3154` D3=2 D4=`$1a`; else `$38ce` | own or allied town; else a cell | `$1a` (`$150c0`); `$72` (`$1605a`) | from a town: `food >> shift` into `36(group)`, `loyalty_pressure += 16 >> shift`; on a cell: pick up a food pile (`$2c`) there |
 | `$08` besiege | `$3154` D3=3 D4=`$1c`, else `$3248` | town | `$1c` | ai.md |
-| `$0c` march & engage | `$4a7a` | any cell | – | "How a land ends" |
+| `$0c` march & engage | `$4a7a` | any cell holding a tracked entity (a settlement, tested; not empty ground, which never commits — "Diplomacy") | – | "How a land ends" |
 | `$0e` set men to work | `$3154` D3=9 D4=`$22` | own town | `$22` (`$151a8` → `$5fa0`) | the town lord's work order `$5cde` goes to every man; `$5cde` refuses a lord without a capital (kind 7) |
 | `$10` take equipment | `$3154` D3=`$a` D4=`$6e`; else `$6128` | own or allied town; else a pile / object byte6 `$0a`, `$18`+`$10` | `$6e` (`$15740` → `$61f8`) | `goods >> shift` from the lord, handed to the men (`$6352`/`$638c`) |
 | `$12` drop food | `$39d4` D7=1 | the lead's cell, now | – | `36(group) >> shift` to the town's food (`loyalty_pressure −= 8` if own town) or to a new or existing pile (byte6 `$2c`, `$4bb4e`) |
@@ -1104,12 +1104,47 @@ a hostile unit at (26,17), `$4c2a` fired (contact reconciliation, not
 diplomacy), and the whole group was wiped out in the melee — its 3 pots
 dropped as a ground pile where it died (`scratchpad/pm127/diplo3/`). Between
 this and the 123rd's forced-goods run on land 60, two independent natural
-corpora now show the same failure mode: by the time a settled world has
+corpora showed the same failure mode: by the time a settled world has
 accumulated enough goods economy for a natural tribute, its territory is also
-contested enough that an unescorted envoy rarely completes the walk. Proving
-`$34a8` under fully natural conditions (goods *and* arrival both unforced)
-likely needs an escort holding the corridor, or a snapshot early enough that
-territory hasn't solidified yet — not just proximity to a goods-bearing lord.
+contested enough that an unescorted envoy rarely completes the walk.
+
+**Neither of the two obvious fixes works on land 25 (128th pass, two parallel
+agents).** An earlier snapshot does not help: the same envoy, zero goods, sent
+on the identical route to side 3's lord 4 (28,14) from `pm121/k25.snap` (0
+ticks) and `pm121/run/k25_s1.snap` (50M ticks) died at the *same* cell (31,13)
+in both runs — the death is a structural feature of the corridor (a garrison
+cluster of 18+ side-3 entities sits right around the capital, confirmed by a
+spatial object-table scan), not something that accumulates over the land's
+runtime. An escort cannot be built either: land 25's side 1 has exactly one
+captain slot, always (censused across the whole `k25`/`k25b` corpus) — there
+is no second group to send ahead, and no player order grows a group or spawns
+a new captain (order `$04` transfer needs two captains that don't exist here
+either). A hypothetical escort couldn't pre-position on open ground ahead of
+the envoy regardless: order `$0c` (march & engage) aimed at an empty cell
+never commits at all (`$57fd4` stays armed, the group never leaves home,
+tested at the 127th's own death cell); it only commits against a cell holding
+something the game already tracks, such as a settlement (confirmed: the same
+click against lord 4's town at (28,14) committed within 5M steps). This
+corrects "any cell" in the `$0c` row of the order table below — read it as
+"no friend/foe filter", not "arbitrary ground". Details, commands and
+snapshots: `scratchpad/pm128a/REPORT.md`, `scratchpad/pm128b/REPORT.md`
+(indexed in `ANCHORS.md`).
+
+That is now four independent natural/near-natural attempts (123rd, 127th, and
+the 128th's two land-25 probes), all ending in `$4c2a` before `$33b0` ever
+runs. **Land 5's apparent second/third captain slots are not usable either,
+checked at the land's start (`pm121/k5.snap`) and 50M/100M ticks in
+(`pm121/run/k5_s1.snap`/`k5_s2.snap`) with `scratchpad/pm128a/census_groups.py`:
+groups 1 and 2 are `owner 1` but `men 0` from the very first snapshot and stay
+at 0 across both stretches checked — dead captain records, not a growable
+escort, so "pick a land with more captains" does not have a working example
+in the current corpus.** The next attempt should not repeat any of the three
+things now ruled out on land 25 (earlier snapshot, a second captain, an `$0c`
+pre-positioned force). What is still untried: a different *target* on land
+25 itself — only the nearest foreign lord (side 3's lord 4) has been proven
+garrisoned; census the approach corridor of a farther lord for standing
+hostile entities (`scan_objects.py`) before marching an envoy there, since the
+15+-cell lords were never checked.
 
 **What an alliance changes.** Only the two readers of `+6`:
 
