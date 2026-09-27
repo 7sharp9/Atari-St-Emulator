@@ -514,15 +514,104 @@ screen every prior pass stopped at:
   hero-driven scroll. During the held-right run its position swings much further (`$00ce` to `$0042`
   and back, `1a5de` dump) as the hero approaches, consistent with (not yet proven as) a proximity- or
   contact-reactive object rather than pure ambient animation.
-- **Inferred, not yet callcap-proven**: a screenshot at the step-4,000,000 mark
-  (`coldboot_amazon_hazard_contact.png`) shows a white circular sprite directly at the point the green
-  object has drifted to, overlapping the hero — visually consistent with a hit/death effect, and
-  temporally consistent with the `+6` field turning nonzero at the same checkpoint and the reload
-  starting one checkpoint later. This is a plausible causal story from position/PC telemetry and one
-  screenshot, not a proven mechanism: the actual collision-check routine (almost certainly reached
-  from `$c2fa`'s per-frame dispatch, alongside the sensor reads at `$be96`) has not been identified,
-  disassembled or `callcap`-tested, so "contact with this object kills the hero" is a working
-  hypothesis, not yet an emulator-checked fact.
+- **The hazard/collision mechanism, resolved (proven from disassembly, cross-checked live) — item 1**:
+  the earlier "inferred from timing+visual correlation only" framing is retracted. The mechanism is a
+  generic, reusable hero-contact check, not something specific to the green object:
+  - **`$00b71a` is the generic proximity/"bounding-box" test**, called `A0`=some other object,
+    `A1`=hero (or any two objects — dozens of per-type handlers between `$013fe8` and `$017922`
+    call it the same way). It is **not** a standard AABB-overlap test (sum of both radii); it's an
+    *asymmetric single-radius* test per axis:
+    ```
+    if 36(A0) != 0: rts (fail)              ; A0 already locked onto a partner this frame, skip
+    if 0(A1) == 0: fail                     ; A1 (hero) must be an active object
+    dx = (2(A0)+8(A0)) - (2(A1)+8(A1))      ; signed gap between each object's (pos + offset-8 field)
+    threshold = dx>=0 ? 12(A1) : 12(A0)     ; radius byte taken from whichever side dx points at
+    if |dx| >= threshold: fail
+    dy = (4(A0)+10(A0)) - (4(A1)+10(A1))    ; same shape on Y, offsets 10/13 instead of 8/12
+    threshold = dy>=0 ? 13(A1) : 13(A0)
+    if |dy| >= threshold: fail
+    on success: 36(A0):=A1, 36(A1):=A0 (mutual lock), and each object's own 16/18/20/21 word/word/
+    byte/byte fields (velocity/facing) are copied into its own 40/42/44/45 (a cached pre-contact
+    velocity snapshot, zeroed instead if that object's own byte 100 is set) — success is signalled
+    to the caller via CCR (`move #$4,CCR`, i.e. Z set); the fail path's `rts` leaves Z clear, so
+    every caller reads the test with a plain `bne <fail-label>` immediately after the `jsr`.
+    ```
+  - **`$00e80e` is the hero-damage application, called after `$b71a` succeeds**: `A0` = the other
+    (hazard/enemy) object, `A1` implicitly `$1a572` (hero, hardcoded via `lea $1a572,A1`). It
+    immediately clears both `36(A0)`/`36(A1)` locks `$b71a` just set (this caller is one-shot, not
+    frame-persistent), skips if the hero's own hit-cooldown byte `102(A1)` (`$1a5d8`) is still
+    counting down, then does the actual damage transfer: `move.b 104(A0),$227f6.l` — **copies the
+    *contacting object's own* per-type damage value (its struct offset `+104`) into the global
+    pending-damage cell `$227f6`**. Live-checked: the green `type=1` object at `$1a5de` has
+    `104(A0) = $1a5de+104 = $1a646 = 1` (one contact = 1 damage point).
+  - **`$00eafa` (called once per frame from the `$b1b6` gameplay template, right after `$c0d4`'s
+    sensor sample) applies the pending damage to the hero's health, `$bb74`**: gated the same way as
+    `$c2fa`'s input read (skips entirely while the hero's busy flag `101(A0)` is set), it also has its
+    *own* ground-hazard path independent of `$e80e`/object contact — reading the same forward-ground
+    sensor bytes `$227e8`/`$227e9` through `$be96`'s tile-classifier and treating tile category `$9`
+    as a second hazard source (`cmp.b #$9,D0; beq $eba2`). Either source (a category-9 tile, or a
+    nonzero `$227f6` from an object contact) leads to the same hit-reaction: play a sound effect
+    (`jsr $1c840` with D0=`$9`/`$a`/`$21`), arm the hit-cooldown (`102(A0):=3` or `7`), subtract the
+    damage from `$bb74`, and if `$bb74` drops to ≤0, jump to the death handler `$ec50`; otherwise set
+    `$227f3:=2` (the same "jump/hit-reaction" state `$c488`'s dispatcher uses for airborne moves) and
+    a knockback-direction byte (`$227f4`) away from whichever way the hero was facing.
+  - **`$00ec50` is the death/respawn handler**: if a "continue" flag `$bb78` is set, it clears the
+    flag, flashes the screen (`bsr $fd8e`), and **respawns in place with half health** (`$bb74 :=
+    $bb75 >> 1`, `$bb75` being a fixed max-health constant, `$18` = 18 in this run) — no reload. If
+    `$bb78` is clear (the case exercised by this run), it zeroes `$bb74`, sets the hero's busy flag
+    `101(A0):=1` (disabling `$c2fa`'s input read, matching the observed freeze) and installs a
+    death-animation descriptor pointer at `22(A0)` (`$21892`, or `$218a0` if the hero was left-facing).
+    **Not yet identified**: the routine that, once that death animation finishes, actually triggers
+    the full resource reload through `$1c6de` observed at PC `$0000039a`→`$0001c68e` — `$ec50` itself
+    only starts the animation, it doesn't reload anything directly. This remains open (see item 3
+    below).
+  - **Live cross-check, from the `right_hold_fine.txt` checkpoints** (`gameplay_explore/step2M.snap`
+    .. `step5M.snap`): `$bb74` reads `$09` at step 2,000,000, `$05` at step 3,000,000, `$00` at step
+    4,000,000 (the same checkpoint the `+6` field `$1a578` turns nonzero — part of the death-anim
+    descriptor `$ec50` installs, not itself a distinct mechanism), and the whole object array is
+    zeroed with PC inside the unpacker by step 5,000,000 — health hitting zero and the reload
+    coincide exactly as the mechanism above predicts. The hero's own hit-cooldown byte `$1a5d8`
+    (`102(A0)`) is never idle for long across these checkpoints (`$05`/`$07`/`$01`/`$02`), i.e. it is
+    being continually re-armed — proof the hero is taking repeated hits during the "freeze", not
+    stuck for an unrelated reason. A direct `callcap eafa` at a `102(A0)==0` moment (`step3M.snap` +
+    20,000 steps) returned a clean 0-byte no-op with `regdelta A0` only, matching the busy-flag gate
+    (`101(A0)` was set at that instant) rather than the damage-application branch — a negative result
+    consistent with, not contradicting, the mechanism (busy-gated frames are common; catching the
+    exact damage-application step needs finer-grained stepping than attempted this pass, see item 1b
+    below).
+  - **Item 1b resolved: `callcap eafa` pinned directly on the damage-application branch.** Scanning
+    20 consecutive per-frame arrivals at `$eafa` (`bpc eafa 1` repeated, dumping `102(A0)`/`$227f6`/
+    `$bb74` at each) from `step3M.snap` shows the exact frame-by-frame shape: a contact sets
+    `$227f6=1` while `102(A0)=0` (hit 2 of the scan); the *next* `eafa` call (hit 3) is where health
+    actually drops (`$bb74` `$05`→`$04`) and the cooldown arms to `7`; cooldown then ticks down one
+    per frame for 7 frames (`6,5,4,3,2,1,0`) before the next contact (hit 13) repeats the cycle. Firing
+    `callcap eafa` from the primed state at hit 13 (`102(A0)=0`, `$227f6=1`, `$bb74=4`) gives the
+    direct memory delta: `mem $00bb74 $04->$03`, `mem $01a5d8 $00->$07` (cooldown armed), `mem
+    $0227f6 $01->$00` (pending damage consumed), plus a HUD/status-bar redraw on both screen buffers
+    (`$070xxx`/`$078xxx`) — the hit-reaction visibly updates an on-screen indicator, not identified
+    further. This is the direct, non-inferred proof of the damage-application branch the mechanism
+    above predicted from static disassembly alone.
+  - **Item 3 resolved: the reload is a genuine death → Game Over transition, not a per-level retry.**
+    `$eafa`'s call site in the `$b1b6` per-frame template is `jsr $eafa` / `bcs $b058` — `$ec50`
+    (entered from `eafa` when `$bb74` hits zero) returns with the carry flag set, so the *very next*
+    instruction in the frame template branches straight to `$00b058`, the same target `$df4a`'s
+    parallel `bcs` reaches. `$b058` tears down the gameplay template (`$1c3c8`, `$22784`, `$1ab5a`/
+    `$1ab6e`, `$1f972`), calls `$b2d8` (which re-unpacks `$53000`/`$fa00` and `$4c400`/`$5000` via the
+    shared `$1c6de` depacker — the same "resource reload" symptom seen as the object array zeroing
+    and PC transiting `$1c6de`), then `jmp $17fe8`. `$17fe8` prints text and builds a 3-entry object
+    array (the same generic object-init shape `$17dd0`/world-select's cursor setup uses) — **live
+    render, not just code-shape inference, confirms this is the actual Game Over screen**: resuming
+    the reload 10,000,000 steps past `step5M.snap` and rendering shows a tombstone graphic and the
+    text `GAME OVER` / `YOUR SCORE 000000` / `FINAL SCENE THE AMAZON`
+    (`coldboot_amazon_game_over.png`). So: ground-truth confirmed as death → Game Over, structurally
+    the same *outcome* as Klondike's unattended death (documented above as reaching `$1c3d8`), but
+    reached through a different code path (`$b058`/`$b2d8`/`$17fe8`) — the two deaths were never
+    proven to funnel through the identical `$1c3d8` address, only to the same category of screen.
+  - **Not yet done**: mapping the rest of the `$25000` classification table to find every other tile
+    ID that also reads as category `$9` (only the two raw IDs seen underfoot here, `$25`/`$26`, were
+    checked and turned out to be category `$4`, i.e. *not* hazardous — confirming the plain-right
+    death this pass came from the green object's contact via `$e80e`, not a ground-hazard tile); and
+    identifying the HUD/status-bar routine the hit-reaction's screen-buffer writes point at.
 - **Holding right *and* up together (`kbd 09`, bits 3+0) instead of right alone avoids the reload
   entirely** — proven live: the hero's Y oscillates (a jump arc, `$0090`→`$0080`→`$0074`) while X
   holds near `$00c0`-`$00c2`, and PC never leaves normal gameplay code through the same step counts
@@ -533,12 +622,14 @@ screen every prior pass stopped at:
   standing on a ledge at the far side (`coldboot_amazon_jump_totems.png`). This is the first time any
   pass has driven this game past its single starting screen.
 
-Open follow-up: `callcap`-prove the actual hazard/collision check (find its caller from `$c2fa`'s
-dispatch or the sensor read at `$be96`/`$c0d4`) rather than relying on the visual/timing correlation
-above; confirm whether the reload is a genuine "game over, return to world-select" (check whether it
-eventually reaches `$1c3d8`, the same transition routine Klondike's unattended death used) or a
-per-level retry; and continue driving with held right+up further into the newly-revealed terrain to
-map what's beyond the totems and water.
+Items 1, 1b and 3 are now all resolved: the hazard/collision mechanism is proven end to end (`$b71a`
+proximity test → `$e80e` damage-field copy → `$eafa` health decrement, pinned live with a `callcap`
+showing the `$bb74`/`$1a5d8`/`$227f6` delta directly → `$ec50` death handling → `$b058`/`$b2d8`/
+`$17fe8` reload into a real Game Over screen, confirmed by render). Remaining open follow-up: map the
+rest of the `$25000` tile-classification table (only categories `$4`/`$9` are characterized so far);
+identify the HUD/status-bar routine the hit-reaction's screen-buffer writes point at; and continue
+driving with held right+up further into the newly-revealed terrain to map what's beyond the totems and
+water.
 
 ## Known traps
 
@@ -600,6 +691,7 @@ map what's beyond the totems and water.
 | `coldboot_amazon_hazard_contact.png` | **82nd pass continued, item 6**: 4,000,000 steps into a held-right run from `at_gameplay_final.snap` — a white contact/hit-effect sprite appears where the green `type=1` object has drifted next to the hero, one checkpoint before the run resets through the resource loader. Visual support for, not proof of, "this object is a hazard" — see "Past the first screen" above |
 | `coldboot_amazon_jump_ladder.png` | **82nd pass continued, item 6**: holding right+up instead of right alone, 4,000,000 steps in — genuinely new terrain (a ladder/tree structure, ground spikes) never seen by this workstream before, the reload from the plain-right run avoided |
 | `coldboot_amazon_jump_totems.png` | **82nd pass continued, item 6**: the same right+up run, 8,000,000 steps in — tribal totem-pole decorations, a water pool and more spikes, hero (`type=2`, alive) standing on a ledge |
+| `coldboot_amazon_game_over.png` | **82nd pass continued, items 1/1b/3**: rendered 10,000,000 steps past the plain-right death's reload snapshot — a tombstone and `GAME OVER` / `YOUR SCORE 000000` / `FINAL SCENE THE AMAZON`, proving the reload is a genuine death transition (`$b058`/`$b2d8`/`$17fe8`), not a per-level retry |
 | `hatari_crosscheck/hatari_title.png`, `hatari_klondike_gameover.png`, `hatari_amazon_gameplay.png`, `hatari_amazon_hero_zoom.png` | real Hatari v2.6.1, same disk image, driven live 2026-09-27 — title screen, Klondike Mine played to a genuine Game Over, Amazon gameplay with the hero sprite clearly visible, and a zoomed crop of it. Originally run to check this emulator for bugs; the 82nd pass found the divergence was in one stale snapshot lineage, not this emulator generally — see "Real-hardware cross-check" above |
 
 ## Not yet exercised
