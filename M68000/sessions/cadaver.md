@@ -1,28 +1,28 @@
 # Cadaver: handoff
 
-Updated 2026-09-26 by the session that ends at this commit (72nd pass, following the 71st's
-`989ec3e`), which closed §65's own missing link — the field that turns an object's type-6 id into
-its live display-name index — proved it 3/3 against every name already known live, and used it to
-correct a graphics.md misidentification (the "goblet" is actually named "SCONCE"). Full writeup:
-`reversing/cadaver/mechanics.md` §66.
+Updated 2026-09-27 by the session that ended at commit `70a40c9` (73rd pass — two parallel subagents,
+their headline claims spot-verified by hand against the live REPL/disassembly before being folded
+into `mechanics.md`). Skill-file lessons from this pass are in the separate, shared-resource commit
+`ce91113` (`.claude/skills/reverse-engineer-st-game/SKILL.md`).
 
 ## Resume point
 
-- Last commit of this workstream: this session's own commit, "cadaver: found the object-id ->
-  live-name-index link, corrected graphics.md's goblet to SCONCE, ruled out CAVERN/TUNNEL as the
-  creature room via this field (72nd pass)". Previous: `989ec3e` (71st pass). No emulator source
-  changed this pass either (one new `py/` script + doc edits), so no rebuild or regression-net run
-  is needed before building on it.
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored) — unchanged this pass, nothing
-  newly captured; `room2_tunnel_entry.snap` and `gameplay_empire.snap` (both pre-existing) were
-  re-read (one fresh live `bpc 946a`/register-capture run against `room2_tunnel_entry.snap`, no new
-  snapshot saved), not re-captured.
-- Start from: `gameplay_empire.snap` (CAVERN) / `room2_tunnel_entry.snap` (TUNNEL) for ordinary
-  static/gameplay work, same as every recent pass. `py/room_object_names.py` (this pass's own
-  script) ran against both with no new snapshot needed.
+- Last commit of this workstream: `70a40c9`, "cadaver: 73rd pass -- two parallel subagents close item
+  1 (slot 27's unique GIANT RAT, tied to the game's own SPINE CREATURE hint text) and pin 3 more
+  dispatch ids (7/59)". No emulator source changed this pass (docs + two new `py/` scripts), so no
+  rebuild or regression-net run is needed before building on it.
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). New this pass:
+  `agents/room_census/` (the 72-room `$00e854` census corpus — `all_rooms_e854.repl`/
+  `all_rooms_combined.log`, indexed in `scratchpad/ANCHORS.md`'s `cadaver/agents/room_census` row;
+  regenerate by re-running the REPL driver from `gameplay_empire.snap` if missing) and
+  `agents/dispatch_ids/` (one-off verification dumps/scripts, not indexed — superseded by
+  `mechanics.md` §64's own text).
+- Start from: `gameplay_empire.snap` (CAVERN) / `room2_tunnel_entry.snap` (TUNNEL), same as every
+  recent pass — both still the base for everything in `mechanics.md` §67. No live driving to slot 27
+  has happened yet; that's the next session's own first step (see below).
 - Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` still carries
-  the pre-existing line-wrap-only edit noted in several prior handoffs (not this session's, left alone
-  per "one writer per file"). `Cadaver/` (game disk images) and `.obsidian/` (an Obsidian vault
+  the pre-existing line-wrap-only edit noted in several prior handoffs (not this session's, left
+  alone per "one writer per file"). `Cadaver/` (game disk images) and `.obsidian/` (an Obsidian vault
   config) are untracked, predate this session, and aren't part of any workstream — left alone.
 
 ## Proven so far
@@ -33,179 +33,106 @@ world-map/adjacency graph, the door-connectivity walk, the swapped-disk side-cou
 emulator gaps behind the "crack dispatch bug", a real CAVERN→TUNNEL crossing driven live, Disk 2's
 one-time boot-time load with zero further FDC activity, CAVERN/TUNNEL having no live-reachable third
 room), `graphics.md` §5a-5j (the shared 80-tile terrain catalog and its full draw pipeline, both known
-rooms scored ~96% pixel-exact against their reference screenshots, the palette-formula question
-closed as not-achievable/not-needed), and the object-verb bytecode interpreter's foundational finds
-(§22-26, §49-50: the 59-entry dispatch table's shape, the shared type-6/9 id-resolver, LOCK=opcode 18
-tied to the lever object (id 144) and causally proven live via `callcap`, an exhaustive multi-technique
-negative on any *external* caller reaching the interpreter at all, and the same negative extended to a
-second real id (door 155)), and §64's full 59-entry opcode-id scan (CREATE/STOPACTI/UNLOCK CHEST
-pinned, the rest of the verb vocabulary's handler addresses located).
+rooms scored ~96% pixel-exact against their reference screenshots), and the object-verb bytecode
+interpreter's core mechanism (§22-26, §49-50, §64: the 59-entry dispatch table's shape, the shared
+type-6/9 id-resolver, an exhaustive multi-technique negative on any *external* caller ever reaching
+the interpreter, the full opcode-id scan locating every verb's real handler address).
 
-**70th pass (`mechanics.md` §64, `ai.md` §6c-2/§6e)**: generalized the single LOCK address-match into
-a reusable scan (`py/verb_opcode_map.py`) across the whole 59-entry table and the full ~40-string
-debug vocabulary. Three more opcode ids confirmed by exact address match: **id 1 = CREATE**
-(`$010914`, first confirmed case of one verb handler calling another directly rather than only
-through the byte-dispatch table), **id 31 = STOPACTI** (`$010e7e`, pairs with GOACTI, both operate on
-bit 6 of the same `+15` byte LOCK/UNLOCK use for bit 2), **id 34 = UNLOCK CHEST** (`$010ee2`) — and
-UNLOCK CHEST is now the second opcode in the whole spike proven causally, not just structurally:
-`callcap`'d directly against the lever object (144), it clears a real 16-bit field in the object's own
-record. The rest of the verb vocabulary (MOVEING, GOANI, GOMOVE, STOPMOVE, FLAG OP, GOACTI, UNTRAP/
-CLEAR CHEST, DIRTY POTION, creature KILL/UNINV/WAKE/SLEEP) now has real, disassembled handler
-addresses (§64b's table) even where the exact numeric id isn't pinned. Two new architectural facts:
-MOVEING/GOANI resolve through resource type 4 (`$00c5a8`) rather than the type-6/9 resolver every
-other verb uses, and FLAG OP is confirmed as the condition-setter for the small nested-IF bytecode
-table at `$0000ffba` that §23b's "aside" had flagged but never traced. External reachability of the
-whole interpreter is unchanged from §24/§26's negative — every new caller found this pass is internal
-to the interpreter's own `$010000`-`$011256` span.
+**65th-66th pass**: found the game's own compressed dialogue/item/spell/monster-name string table
+(`name_strings.py`) and every room's static object-id list (type 5, `room_object_census.py`), then the
+missing link between an object's numeric id and its live display-name index (`room_object_names.py`,
+proven 3/3) — but only for the *currently loaded* room, and with a wrong theory of who writes the
+field it depends on.
 
-**71st pass (`mechanics.md` §65)**: Dave's own steer — aim toward finding a room with a creature, to
-give item 2 below a live target. Re-confirmed the direct-movement route is genuinely closed (§13/
-§28d/§63's three independent negatives), so looked for a static route instead and found two new
-resource mechanisms: **type 5 is every room's own static object-id list**, indexed by room slot
-(`py/room_object_census.py`, 2/2 cross-checked against CAVERN's known 22-object catalog and TUNNEL's
-known `[0,144]`), and a large, previously-undecoded **packed dialogue/item/spell/monster-name string
-table** at `(A5)+168`/`172` through the `$5ac0` character map (`py/name_strings.py`, validated 3/3
-against LEVER/BOAT/PICKAXE's already-known live names). The string table holds real monster names —
-`DEAD RAT`/`GIANT RAT`/`SKELETON` — and the live WAKE/SLEEP verb's own message pair (`THE CREATURE IS
-SLEEPING`/`...AWAKES AND IS VERY VERY ANGRY`), direct confirmation those opcodes are creature-facing,
-not dead code. **Not yet closed as of the 71st pass**: an object's own display-name index is a
-different numbering space from its type-6 id (proven by the lever: id 144, name index 200), so
-§65a's per-room id lists couldn't yet be grepped against §65b's monster-name indices.
+**73rd pass, item 1 closed** (`mechanics.md` §67): the real room-transition trigger is `$00e854`
+(not `$00cd50` called in isolation, which touches none of the sprite-object array — it depends on
+setup only `$00e854` does first). Calling `$00e854` with just the target room's slot number written
+extends the name-index census to all 72 rooms from one base snapshot (validated 23/23 against every
+already-proven name), and retracts §66's "unidentified second writer" theory: `$00ce78` writes the
+correct, final value in one shot when reached through the real trigger. **226 GIANT RAT is the only
+monster-cluster name index that isn't a shared decorative record — it appears exactly once, in slot
+27, object id 194, `live_rec=$0005d62a`** (full address trail re-verified independently against the
+live REPL this session, not just taken on report). Slot 27 is a 10×10 monster's-den-shaped room (6×
+STONE, 5× BONE, a SKULL, the unique GIANT RAT, PARCHMENT/KEY/CHEST/3× FUNGHI). The game's own string
+table (widened sweep, 0-999, closing §65d's "extends past 599" as negative) holds the "SPINE CREATURE"
+hint text verbatim at index 272, tying SKULLs to fighting it — direct corroboration of Dave's external
+walkthrough lead. 56/72 rooms fully verified; 14 rooms/35 objects hit a second, uninvestigated code
+path through the room loader; slot 69 and slot 71 have unexplained anomalies (see Open item 2 below).
 
-**72nd pass (`mechanics.md` §66)**: found the missing link directly — live `bpc 946a`/register
-capture against `room2_tunnel_entry.snap` (Left-hold approach, same as §41-43) caught §42's own
-`move.w 10(A4),D0`/`cmp.w 1222(A5),D0` comparison live, giving `A4=$59910` where `1222(A5)=200`
-(the lever's own name index). Reproducing `A4`'s resolution chain as a pure static formula —
-`template=resolve(type=6,id)` → `slot_off=u16(template+8)` (the room loader's own per-load slot-
-offset cache, §37d) → `slot_addr=u32((A5)+56)+slot_off` → `live_rec=u32(slot_addr+6)` →
-`name_index=u16(live_rec+10)` — and implementing it in `py/room_object_names.py` gives **3/3**
-against every name already proven live: LEVER (id 144→200), and, new this pass with zero live
-driving needed (both rooms' snapshots already had their objects resident), CAVERN's BOAT (id
-257→188) and PICKAXE (id 168→197). Bonus finding: CAVERN's slot-16 "goblet" (object id 413,
-graphics.md §3/§5a-2's `state=4` outlier) resolves to name index 224 = **"SCONCE"**, not a goblet —
-graphics.md corrected. Checked every one of CAVERN's 22 and TUNNEL's 2 objects against the full
-224-233 monster-name-index cluster: **no match** — neither already-explored room's own dressing is
-hiding the creature under this field. Checked whether the formula generalizes to a one-snapshot,
-all-72-room census: **it doesn't, and fails silently.** Reading LEVER's (TUNNEL-only) own
-`template+8` from `gameplay_empire.snap` (CAVERN loaded, TUNNEL not) gives `$0000`, not an
-out-of-range/sentinel value — it silently aliases onto CAVERN's own real slot 0 object instead of
-erroring. Still open: who overwrites the room-array slot's own `+6` field after the room loader's
-confirmed initial write there (a room-record pointer, not the value actually found).
+**73rd pass, dispatch-id pinning** (`mechanics.md` §64a/§64d): **7 of 59 dispatch ids now pinned**
+by exact address match (1, 15, 18, 31, 32, 34, 35 — three new this pass: 15 UNINV, 32 MOVE's
+resolve-bypassing action-only entry, 35 UNTRAP CHEST's always-erroring-but-still-writes variant).
+Corrected §64c: the KILL/UNINV/WAKE/SLEEP cluster's print stubs aren't gate-less — each has a real
+resolver one call-frame before it (`$010354`/`$01038a`/`$0103e0`/`$0103f8`), so the "creature table is
+always empty" conclusion is now better-grounded, not weaker. id 12 re-read in full and is now more
+likely a boolean condition-test for the `$0000ffba` mini-IF interpreter than a MOVE precondition
+(inferred). id 30 found to be a degenerate second entry into id 25's own queue-append tail, not a new
+verb. Six bounded-walk candidates (ids 2/6/9/38/53/54) investigated and explicitly rejected as false
+attributions — a concrete instance of the standing caution, now with a checkable side-effect-free/
+no-skipped-push-or-pop test (folded into `.claude/skills/reverse-engineer-st-game/SKILL.md`).
 
 ## Open, in priority order
 
-1. **Extend the name-index census (mechanics.md §66) to all 72 rooms to name the creature's room.**
-   The field and the 3/3-proven formula (`py/room_object_names.py`) are done, but a one-snapshot
-   census across all 72 rooms is confirmed unsafe (72nd pass): `template+8` silently aliases onto
-   another real object's slot for anything outside the currently-loaded room rather than erroring,
-   so don't re-check that path again. A `callcap`-driven, no-real-movement invocation of the room
-   loader (`$00cd50`) per room is the likely next tool — feasible since §37d's routine takes only
-   the room record pointer as real input — or actually visiting the remaining rooms. Once censused,
-   grep every room's objects' name indices against 224-233 (or whatever monster indices a wider
-   `name_strings.py --hi` sweep turns up) — this names the creature's room directly.
-   **New lead (Dave, 72nd pass, from an external fan walkthrough at oldgames.sk — unverified against
-   the emulator, treat as a hint not a fact):** the walkthrough names a **"SPINE CREATURE"** — fed to
-   a prisoner in its own gaol-area rooms 19-23, one message reads (paraphrased, not quoted verbatim
-   per this doc's own copyright discipline) that skulls are the weapon against it. That description
-   lines up with §65b's own decoded `THE CREATURE IS SLEEPING`/`...AWAKES AND IS VERY VERY ANGRY`
-   strings and the KILL/UNINV/WAKE/SLEEP cluster far better than a generic rat/spider/worm/beetle/
-   jumper does. The walkthrough's own room numbering is a fan/player scheme, not confirmed to equal
-   our type-3 slot indices, but its room 1 ("old mine workings": coin/diary/pick) and room 2 (pull a
-   lever, opens its door "2/3") plainly match CAVERN (slot 0) and TUNNEL/LEVER (slot 1) — so slot
-   0↔room 1, slot 1↔room 2 is a reasonable starting anchor, not proven further out. Worth prioritizing
-   the census (or a live walk) toward the walkthrough's own gaol/prison stretch (its rooms ~13-38,
-   reached via its door 8/12 from room 1) over a blind 72-room sweep.
-2. **The KILL/UNINV/WAKE/SLEEP cluster's "always errors, no resolve" shape** (§64c) — read as likely
-   explained by the creature resource table (type 9) being empty in every snapshot this spike has ever
-   captured, but not proven live. Once item 1 names a real creature room, `callcap` one of these four
-   handlers from a snapshot actually standing in it rather than inferring from the type-9-empty
-   pattern alone.
-3. **Pin the rest of the 59 dispatch ids to their verbs.** §64b's table gives real addresses for
-   ~11 more verbs but not their numeric opcode ids; a further per-entry manual pass (disassemble each
-   remaining target, check it against §64b's known addresses) could close more of this, but risks the
-   same false-attribution failure mode the bounded walk was built to avoid — verify by hand, don't
-   trust an automated match alone (see the skill's new note on this). id 12/25 are already known
-   structurally real (§23a) but reach no debug string within reach of this pass's search depth.
-4. **STOPACTI's raw target word (`$f8ba`, an F-line opcode) decoding as garbage while the code two
-   bytes later is clean** (§64a) — not explained. Worth a `bp`/single-step check to see whether this
-   address is ever really executed as-is (an emulator gap or intentional probe, per the skill's own
-   "deliberately looks like garbage" trap) versus the table's own arithmetic being subtly off for this
-   one entry despite matching cleanly everywhere else tested.
-5. **The sconce's (visually goblet-shaped, graphics.md §3 slot 16, state 4, live name index 224,
-   mechanics.md §66) actual art source** — still not identified; low priority, a one-off curiosity.
-6. **Stack direction** (does per-column tile-stack index 0 sit at the floor or the ceiling, graphics.md
-   §5e) — still not proven either way.
-7. **The CAVERN mosaic's own ~3.4% overlap-edge residual** (graphics.md §5i-2) — small, visually
-   negligible, cause not identified.
-8. **Does Disk 2 add reachable content beyond CAVERN/TUNNEL?** (mechanics.md §63): still recommended
+1. **Confirm slot 27 is the creature's room live, not just the strongest static lead.** Drive to slot
+   27 for real (or `callcap`/`hits`/`watch` its state without moving the player, the way `$00e854` was
+   driven this pass) and check whether KILL/WAKE/SLEEP (`mechanics.md` §64c, real resolvers at
+   `$010354`/`$01038a`/`$0103e0`/`$0103f8`) actually succeed there instead of hitting the always-empty
+   type-9 creature table. This is the concrete next step to go from "strongest lead" to "proven" —
+   everything needed (the room, the resolver addresses, the census tool) already exists.
+2. **Chase the three room-census loose ends from §67**, all in
+   `scratchpad/cadaver/agents/room_census/`'s logs, none blocking item 1's own finding: (a) the
+   14-room/35-object minority that hits fewer `$00ce78` writes than its static census count — a real
+   second branch through the room loader, candidates already named in §37d (`$00cdc2`/`$00cde6`/
+   `$00cdf0`); (b) slot 69's 102 `$00ce78` hits against only 28 census ids (moot for the creature
+   search — none of its objects carry a monster name — but structurally unexplained); (c) slot 71's
+   static object-id list not ending in the usual 0 terminator.
+3. **A genuine cold-boot first room load**, to confirm `$00ce78` is the writer there too, not just via
+   `$00e854` re-entry (§67 only proved the re-entry path). Blocked this pass: the boot menu didn't
+   respond to injected `kbd` scancodes at the point tried, for reasons not chased down — solving that
+   input-injection blocker is a prerequisite for this item, not the item itself.
+4. **Pin more of the 59 dispatch ids** (7/59 now). §64d catalogs what's left: the bounded-walk
+   technique could be pushed further per-entry, but risks the same false-attribution failure mode
+   just caught and rejected for 6 candidates — verify by hand, don't trust an automated match alone.
+5. STOPACTI's raw target word (`$f8ba`, an F-line opcode) decoding as garbage while the code two bytes
+   later is clean (§64a) — not explained; a `bp`/single-step check would settle whether it's ever
+   really executed as-is.
+6. The sconce's (visually goblet-shaped, live name index 224, `mechanics.md` §66) actual art source —
+   still not identified; low priority.
+7. Stack direction (does per-column tile-stack index 0 sit at floor or ceiling, `graphics.md` §5e) —
+   still not proven either way.
+8. Does Disk 2 add reachable content beyond CAVERN/TUNNEL? (`mechanics.md` §63) — still recommended
    closed for practical purposes.
-9. `2516(A5)`'s role still unconfirmed. Only worth resolving if another item needs a real day/progress
-   counter.
-10. `disk_layout.py`'s blank/data classifier only catches single-byte fills, not short-period repeats.
-    No `.stx`→`.st` converter exists in `tools/`.
+9. `2516(A5)`'s role still unconfirmed. Only worth resolving if another item needs a real
+   day/progress counter.
 
 ## Known traps
 
-(Carried over from earlier passes — see git history for the full set: `ScreenBufferA/B` role-swap
-framing is wrong, `movem` block-copy chunk reversal, `watch`'s step= counter is a lifetime counter not
-local, one-shot breakpoint chase non-reproducibility, re-disassemble elided `...` excerpts in full,
-`bpc` over `bp` for one-shot dumps, `bt depth>1` can crash the REPL, a `watch` range can bracket
-multiple regions in one call, `gfxview.py`'s `st-interleaved` assumes 16px-wide masked blits, movement
-is joystick port 1, player = sprite slot 0, use
-`tools/find_ram_callers.py`/`find_field_writers.py`/`find_literal_ptr.py`/`find_jump_table_hit.py`,
-the `moveq #0,Dn`-then-`move.b` zero-extend/condition-code trap, a byte's top bits gating a whole
-different code path, a whole-image `disassemble.py --all` dump + call-site census to rule out a dead
-type/case, a struct field documented as "an array at `(A5)+N`" may actually be a pointer to it, mask
-overlapping tile/sprite art rather than pasting it opaquely, a scratch/display-list buffer generally
-can't be read from a steady-state snapshot, a `bpc <addr> 1 <budget>` armed per zigzag leg catches a
-one-shot room-entry routine without knowing in advance which leg crosses the door, a clustered (not
-uniform) pixel-diff mismatch points at missing content over a placement bug, two lookalike routines
-sitting next to each other can be genuinely different primitives not the same routine reached two
-ways, a low spatially-uneven pixel-diff score against an independent reference can be a cross-tool
-palette-rounding mismatch not missing content, tracing only "the first half" of a routine that both
-reads and writes through a shared pointer can misattribute a callee's own scratch fields to the
-caller's real output struct, confirm your own reference assets actually came from an "authoritative"
-source before chasing it to unify an internal formula mismatch.)
+(Carried over — see git history for the full set: `ScreenBufferA/B` role-swap framing is wrong,
+`movem` block-copy chunk reversal, `watch`'s step= counter is a lifetime counter not local, one-shot
+breakpoint chase non-reproducibility, re-disassemble elided `...` excerpts in full, `bpc` over `bp`
+for one-shot dumps, `bt depth>1` can crash the REPL, a `watch` range can bracket multiple regions in
+one call, movement is joystick port 1, player = sprite slot 0, the `moveq #0,Dn`-then-`move.b`
+zero-extend trap, a byte's top bits gating a whole different code path, an object's own numeric id and
+its display-name index are different numbering spaces (a shared number is coincidence until a real
+field ties them together), a struct field documented as "an array at `(A5)+N`" may actually be a
+pointer to it, a documented loader write can be true and still not the field a later steady-state
+snapshot finds there — the two new traps this pass added are now in
+`.claude/skills/reverse-engineer-st-game/SKILL.md` §3/§5, not repeated here:)
 
-- **When resolving what a jump-table/dispatch entry does by matching it to an error string, bound the
-  forward walk** — an unbounded transitive branch-follow wanders into unrelated shared code and
-  mis-attributes a handler to the wrong string. Now in `.claude/skills/reverse-engineer-st-game/
-  SKILL.md` §3 (70th pass, `mechanics.md` §64). The reliable shape: the entry's own straight-line body
-  (following an unconditional `bra`/`jmp` as a same-routine continuation) plus exactly one level of
-  conditional-branch following, no more.
-- A dispatch-table target whose raw word arithmetic is provably correct can still decode as a garbage/
-  unimplemented instruction while clean, coherent code resumes a couple of bytes later (70th pass,
-  STOPACTI's `$f8ba`) — don't discard a target as misaligned without checking what comes right after
-  it first.
-- **An object's own numeric id and its display-name string index are different numbering spaces —
-  a shared number between them is very likely coincidence, not a real cross-reference, until a real
-  field ties them together.** Proven by the lever: id 144, name index 200 (71st pass, §65c). Don't
-  grep a room's object-id list against the name-string table's own indices and report a match as
-  "found it" without first finding the actual field that supplies an object's name index — a mistake
-  this pass caught before writing it up, in the same family as the address-numerology retractions
-  already in this doc (§13/§28d).
-- **A documented "N(A1) := room-record/template back-pointer" write from disassembling a loader
-  routine can be true and still not be the field a later live read finds there.** §37d's own
-  disassembly of `$00cd50`'s room-loader loop shows `$00ce78`'s `move.l A0,6(A1)` really does write
-  the room-record pointer into the new object slot's `+6` field — re-confirmed this pass by checking
-  the branch condition (`22(A0)`, the room record's own byte) actually takes the normal path, not the
-  `$c30e`/`$c7e8` special case. But by the time ANY steady-state snapshot exists — including a
-  freshly loaded, never-stepped one, no live driving needed to see it — that same field already holds
-  a completely different pointer (mechanics.md §66's `live_rec`). The loader's own write is real but
-  transient/superseded very early, before anything downstream ever reads it; don't assume a loader's
-  documented initial write is a structure's final, steady-state value without checking a snapshot.
+- A `callcap` that touches none of the memory you expected can mean the routine depends on setup only
+  its real caller does first (§67's `$00cd50`-vs-`$00e854`), not that the routine does nothing —
+  check one level up the call chain before trusting a zero-effect result as a negative.
+- A dispatch-table target landing mid-instruction is only a real entry if its consumed bytes are
+  provably side-effect-free and no push/pop is skipped — a checkable test now in the skill, used this
+  pass to accept 3 new pins and reject 6 false-attribution candidates.
 
 ## Next session
 
-Item 1 (extend the name-index census to all 72 rooms, then name the creature's room) is the direct
-continuation of this pass's own new lead — `py/room_object_names.py` is already the right tool,
-proven 3/3 against known ground truth, and only reaching rooms other than CAVERN/TUNNEL is missing.
-The one-snapshot shortcut is already ruled out (72nd pass): go straight to a `callcap`-driven
-`$00cd50` invocation per room, or an actual visit. Item 1's own new sub-lead (the external
-"SPINE CREATURE" walkthrough hint, unverified) points at the gaol/prison stretch beyond CAVERN/
-TUNNEL as the priority target over a blind sweep — worth trying to establish a walkthrough-room ↔
-type-3-slot mapping first (starting from the slot-0/room-1, slot-1/room-2 anchor) so the census can
-jump straight there. Item 2 (the KILL/UNINV/WAKE/SLEEP cluster) follows directly once item 1 gives
-it a live target. Items 3/4 are the standing interpreter loose ends from the 70th pass. Otherwise
-the older open items (5-10) are all independent and small; pick whichever interests Dave. Prompt:
+Item 1 is the direct continuation of this pass's own finding: drive to slot 27 (or otherwise get its
+state live without moving the player) and check whether KILL/WAKE/SLEEP actually resolve against a
+real creature there, using the already-proven resolver addresses. If that closes clean, cadaver.md's
+long-standing "find a room with a creature" thread is fully proven, not just strongly inferred, and
+the AI/mechanics work on the creature itself (KILL/WAKE/SLEEP's actual effects) becomes the new
+frontier. Items 2/3 are loose ends from the same census, independent of item 1's own answer. Item 4
+(dispatch ids) is independent and can run in parallel with item 1 the same way this pass did. Prompt:
 `/resume cadaver`.
