@@ -4666,6 +4666,30 @@ this loaded image, just still not shown reachable from here.
   hit (§69b) is undecoded and unrelated to this thread — noted for whoever next has reason to read
   that area, not chased further this pass.
 
+## 70. Item 1's live half done: a real, driven CAVERN pickup walk plus an actual CAVERN→TUNNEL room
+    transition never once reach the shared object-verb resolver (76th pass)
+
+§64d/§24b's static "no external caller" result already covered every `bsr`/`jsr`/branch in the whole
+loaded image; the one half of item 1 still untested was whether *ordinary play* — not a synthetic
+`callcap` — ever reaches the shared id-resolver (`$010738`, the single choke point every one of the
+59 verbs funnels through, §64c/§68) live. Ran the 11th/12th passes' own documented, reproducible
+drive from `gameplay_empire.snap` — `kbd ff 08` (Right) held 1.2M steps (the segment the 10th/11th
+passes already showed picks up a SILVER COIN along the way), then the 12th pass's own zigzag
+(`Up 0.5M → Right 1.2M → Up 1.2M`, `kbd ff 01`/`kbd ff 08` between legs) that crosses the real
+CAVERN→TUNNEL room transition — with `bpc 10738 10 <legsteps>` armed for each leg instead of a plain
+`s`.
+
+**Result: 0/10 hits on every one of the four legs** (item pickup included, and the room transition
+itself, which is known to call `$00e854` and, per §69a, at least one other routine). Re-ran the
+identical command sequence without the breakpoint and rendered the final snapshot: status bar reads
+**"TUNNEL"**, matching the already-committed `room2_tunnel_entry.png` (12th pass) exactly, confirming
+this run really did complete the transition rather than stalling before it. This is a genuine dynamic
+negative, not a repeat of the static one — it extends
+§24b's whole-image sweep (which only proves no *static* caller exists) to actual gameplay input,
+covering the two ordinary-play actions available from this snapshot (movement/pickup, room
+transition). It does not close item 1: creature encounters, inventory-menu actions, and any
+mechanism reachable only from rooms/state this one snapshot doesn't cover are still untested live.
+
 ## Files
 
 | File | What |
