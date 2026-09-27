@@ -490,6 +490,56 @@ walkable/ladder/etc category the sensor byte actually stores. Not yet live-teste
 classify as which category (the table's actual contents), and the ladder-climb (`$c812`/`$227f3:=4`)
 and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still read statically only.
 
+## Past the first screen: a hazard/death-reload cycle, and jumping over it (82nd pass, item 6)
+
+Driving from the fresh cold-boot `at_gameplay_final.snap` (the lineage above, hero sprite bank
+populated) with plain held-right (`kbd ff`/`kbd 08`, no release) for the first time past the single
+screen every prior pass stopped at:
+
+- **Proven live, reproduced byte-for-byte on a second independent re-run of the identical script**
+  (identical PC at all 8 one-million-step checkpoints both times): the hero walks from `2(A0)=$0080`
+  to `$00c0` over the first ~2,000,000 steps, then **freezes there** — position unchanged from step
+  2,000,000 through step 4,000,000 despite the input staying held throughout. At step 4,000,000 the
+  hero's own struct gains a nonzero value (`$5f`) at offset `+6` (`$1a578`, a field not otherwise
+  described above) that reads `$00` at every earlier checkpoint. Sometime in the following ~1,000,000
+  steps the *entire* object-array region containing the hero zeroes out and PC lands at `$0000039a`,
+  then `$0001c68e` — inside the same early common-resource unpacker region the initial boot-time load
+  uses (see "Why `$b288` sometimes never runs" above) — i.e. the game performs a full resource reload,
+  the same shape as a level-restart/retry sequence, not an ordinary screen transition.
+- **The green `type=1` object at `$1a5de`, previously characterized as a fixed-rate parallax
+  background prop from a single before/after diff, has genuine autonomous motion independent of the
+  hero**: a same-length **16,000,000-step no-input control** (no `kbd` at all, hero stays parked at
+  `$0080`) shows this object's own position still drifting (`+8,+16`) over that window even though
+  nothing forced a parallax shift — proof it moves on its own timer, not only in lockstep with
+  hero-driven scroll. During the held-right run its position swings much further (`$00ce` to `$0042`
+  and back, `1a5de` dump) as the hero approaches, consistent with (not yet proven as) a proximity- or
+  contact-reactive object rather than pure ambient animation.
+- **Inferred, not yet callcap-proven**: a screenshot at the step-4,000,000 mark
+  (`coldboot_amazon_hazard_contact.png`) shows a white circular sprite directly at the point the green
+  object has drifted to, overlapping the hero — visually consistent with a hit/death effect, and
+  temporally consistent with the `+6` field turning nonzero at the same checkpoint and the reload
+  starting one checkpoint later. This is a plausible causal story from position/PC telemetry and one
+  screenshot, not a proven mechanism: the actual collision-check routine (almost certainly reached
+  from `$c2fa`'s per-frame dispatch, alongside the sensor reads at `$be96`) has not been identified,
+  disassembled or `callcap`-tested, so "contact with this object kills the hero" is a working
+  hypothesis, not yet an emulator-checked fact.
+- **Holding right *and* up together (`kbd 09`, bits 3+0) instead of right alone avoids the reload
+  entirely** — proven live: the hero's Y oscillates (a jump arc, `$0090`→`$0080`→`$0074`) while X
+  holds near `$00c0`-`$00c2`, and PC never leaves normal gameplay code through the same step counts
+  that reset the plain-right run. The screen genuinely scrolls into terrain never seen in this
+  workstream before: at 4,000,000 steps a ladder/tree structure and a row of ground spikes appear on
+  the right (`coldboot_amazon_jump_ladder.png`); continuing to 8,000,000 steps reveals tribal
+  totem-pole decorations, a water pool, and more spikes, with the hero (struct still `type=2`, alive)
+  standing on a ledge at the far side (`coldboot_amazon_jump_totems.png`). This is the first time any
+  pass has driven this game past its single starting screen.
+
+Open follow-up: `callcap`-prove the actual hazard/collision check (find its caller from `$c2fa`'s
+dispatch or the sensor read at `$be96`/`$c0d4`) rather than relying on the visual/timing correlation
+above; confirm whether the reload is a genuine "game over, return to world-select" (check whether it
+eventually reaches `$1c3d8`, the same transition routine Klondike's unattended death used) or a
+per-level retry; and continue driving with held right+up further into the newly-revealed terrain to
+map what's beyond the totems and water.
+
 ## Known traps
 
 - `resume <snap> repl` does **not** reattach a disk image mounted with `--disk-a` on an earlier
@@ -543,10 +593,13 @@ and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still r
 | `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen the `after_select3.snap` lineage reaches after confirming Klondike Mine, bouncing back to `world_select.png` — **retracted as a general confirm→load bug (82nd pass)**: specific to that stale snapshot lineage's own early boot, which skipped the `$b288` common-resource load; a fresh cold boot reaches genuine gameplay instead (`coldboot_klondike_gameplay.png`) — see "Confirming a world" above |
 | `amazon_gameplay.png` | first real gameplay frame from the `after_select3.snap` lineage, reached by confirming The Amazon instead of Klondike Mine — terraced hillside, ruined pillar; no hero sprite visible in this render. **Retracted as a rendering/confirm-path bug (82nd pass)** — same stale-lineage cause as `after_confirm_screen.png` above; kept for reference as "what the old lineage looked like", superseded by `coldboot_amazon_gameplay.png` |
 | `amazon_noinput_2M.png` | control frame: `after_amazon_load2.snap` (same stale lineage) run 2M steps with no input at all — terrain unchanged from `amazon_gameplay.png` except one small idle-animation blob (see "Gameplay input" above) |
-| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll. The visible green creature in both frames is a `type=1` background prop (it shifts with the scroll), not the hero |
+| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll. The visible green creature in both frames is a `type=1` object (it shifts with the scroll), not the hero — **note (82nd pass continued): it also has its own autonomous motion independent of the hero/scroll, see "Past the first screen" below, so "background prop" was only ever proven for this one short window, not in general** |
 | `coldboot_amazon_gameplay.png` | **82nd pass, fresh cold boot** (not the stale lineage above) — the identical Amazon scene as `amazon_gameplay.png`, but with the mole hero clearly visible standing at the pillar's base, matching Hatari's `hatari_amazon_gameplay.png` — see "Why no hero sprite is visible" above |
 | `coldboot_amazon_hero_zoom.png` | zoomed crop of the hero from `coldboot_amazon_gameplay.png` — grey head, red scarf, blue suit, pixel-for-pixel the same mascot as Hatari's `hatari_amazon_hero_zoom.png` |
 | `coldboot_klondike_gameplay.png` | **82nd pass, fresh cold boot**, confirming Klondike Mine instead of Amazon — a genuine mine-cavern level (rock texture, gallows-post, hanging lantern), same layout as Hatari's `hatari_klondike_gameover.png`, not the blank-logo bounce `after_confirm_screen.png` shows |
+| `coldboot_amazon_hazard_contact.png` | **82nd pass continued, item 6**: 4,000,000 steps into a held-right run from `at_gameplay_final.snap` — a white contact/hit-effect sprite appears where the green `type=1` object has drifted next to the hero, one checkpoint before the run resets through the resource loader. Visual support for, not proof of, "this object is a hazard" — see "Past the first screen" above |
+| `coldboot_amazon_jump_ladder.png` | **82nd pass continued, item 6**: holding right+up instead of right alone, 4,000,000 steps in — genuinely new terrain (a ladder/tree structure, ground spikes) never seen by this workstream before, the reload from the plain-right run avoided |
+| `coldboot_amazon_jump_totems.png` | **82nd pass continued, item 6**: the same right+up run, 8,000,000 steps in — tribal totem-pole decorations, a water pool and more spikes, hero (`type=2`, alive) standing on a ledge |
 | `hatari_crosscheck/hatari_title.png`, `hatari_klondike_gameover.png`, `hatari_amazon_gameplay.png`, `hatari_amazon_hero_zoom.png` | real Hatari v2.6.1, same disk image, driven live 2026-09-27 — title screen, Klondike Mine played to a genuine Game Over, Amazon gameplay with the hero sprite clearly visible, and a zoomed crop of it. Originally run to check this emulator for bugs; the 82nd pass found the divergence was in one stale snapshot lineage, not this emulator generally — see "Real-hardware cross-check" above |
 
 ## Not yet exercised
@@ -559,10 +612,13 @@ today's cold-boot path entirely (its script no longer exists to check) rather th
 re-triggerable timing race — not worth further bisection time unless a *new* instance of the same
 symptom turns up on a fresh cold boot.
 
-**Top priority now: drive Amazon gameplay past this one screen** (item 6), now that the hero sprite
-renders correctly from a fresh cold boot — explore the level with real movement input rather than a
-single static frame, which is the actual reverse-engineering goal this workstream has been blocked on
-by the emulator-boot question above.
+**Item 6 (drive Amazon gameplay past this one screen) is started, not finished** — see "Past the
+first screen" above: held right alone walks into what looks like a hazard and triggers a full
+resource reload, but held right+up (jumping) gets past it into new, previously-unseen terrain (a
+ladder, spikes, totems, water) at least 8,000,000 steps deep. **Top priority now**: `callcap`-prove
+the actual hazard/collision check rather than relying on the visual/timing correlation found this
+pass, and keep driving the jump-avoiding input further to map what's past the totems/water — this is
+the first real look at Amazon level content this workstream has had.
 
 Also open: the Klondike cold-boot run past ~9M steps with no player input goes black and PC moves to
 the shared title/select transition routine (`$1c3d8`) — consistent with an unattended death, but not
