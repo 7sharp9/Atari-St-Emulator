@@ -642,23 +642,52 @@ screen every prior pass stopped at:
 - **Continuing the same held right+up another 8,000,000 steps (83rd pass) reaches a second, distinct
   screen and a second death** (`gameplay_explore/ru_continue.txt`, `ru_step12M.snap`). At 4,000,000
   steps further (12,000,000 total from `at_gameplay_final.snap`) the scene has scrolled into a
-  twin-tree/hanging-vine area with a totem-and-ladder structure on the right, and a **new hazard
-  object has appeared: a second `type=2` slot** (object-array index 8, base `$1a64a`, `x=$24`,
-  `y=$90`) — proof that `type=2` denotes a shared rendering/behaviour class (hero *and* enemy
-  animated characters use the same draw body `$1b3ec`, not "the hero" specifically; this generalises
-  the observation the README already made about `type=1` background props). Its own `+104` damage
-  field reads `1`, the same one-point damage as the `type=1` hazard props already proven — the
-  generic `$b71a`/`$e80e`/`$eafa` mechanism needs no new code to explain what happens next. Holding
-  right+up straight through it (no dodge) reproduces the same death→reload cycle documented above:
-  health `$bb74` drops `3→3→3→2→0` over the following ~2,500,000 steps while the hero's Y climbs from
-  `$28` to `$70` (falling into or through the new creature), then PC lands back inside the shared
-  `$1c6de` depacker (confirmed at `$0001882e`, mid-unpack-loop `move.b D3,(A1)+`/`subq.l
-  #1,D0`/`bne`), the same signature as the first death. **A same-position retry with the fire button
-  held throughout (`kbd 89`, bits 0+3+7) does not avoid this death** (`ru12_fire_probe.txt`) — see
-  below for why: a *held* fire byte only fires once (rising-edge detected), so this was never a
-  sustained-fire test, and no attempt has yet been made to time repeated discrete shots against this
-  creature. Whether it's avoidable by timing, a different sensor-appropriate dodge, or actual weapon
-  fire remains open; `ru_step12M.snap` is the resume point for the next attempt.
+  twin-tree/hanging-vine area with a totem-and-ladder structure on the right, and a second `type=2`
+  slot has appeared (object-array index 8, base `$1a64a`, `x=$24`, `y=$90`) — proof that `type=2`
+  denotes a shared rendering/behaviour class (hero *and* enemy animated characters use the same draw
+  body `$1b3ec`, not "the hero" specifically; this generalises the observation the README already made
+  about `type=1` background props). Holding right+up straight through the screen (no dodge) reproduces
+  the same death→reload cycle documented above: health `$bb74` drops `3→2→1→0` over the following
+  ~2,900,000 steps (three separate hits, not one continuous drop — re-measured precisely this pass by
+  checkpointing every 200,000-500,000 steps, correcting the original "~2,500,000/one drop" estimate)
+  while the hero's Y climbs from `$28` to `$70`+ (falling into or through terrain near the new object),
+  then PC lands back inside the shared `$1c6de` depacker (confirmed at `$0001882e`, mid-unpack-loop
+  `move.b D3,(A1)+`/`subq.l #1,D0`/`bne`), the same signature as the first death. **A same-position
+  retry with the fire button held throughout (`kbd 89`, bits 0+3+7) does not avoid this death**
+  (`ru12_fire_probe.txt`) — a *held* fire byte only fires once (rising-edge detected), so this was
+  never a sustained-fire test.
+  - **Correction (84th pass): the `$1a64a` type=2 slot was never actually the thing dealing the
+    damage above — a live breakpoint on the exact `$e80e` write site pins the real culprit as a
+    different, static `type=1` prop.** The original write above inferred the new type=2 object was
+    the hazard from screen-area proximity alone (the same "sprite in roughly the right area" trap
+    CLAUDE.md already warns about from the 81st pass). Re-running the straight-through drive with
+    `bpc e82e 1` (the `move.b 104(A0),$227f6.l` instruction inside `$e80e`) catches the actual first
+    hit at step 1,596,247 past `ru_step12M.snap` with `A0=$0001a722` — object-array slot 10, `type=1`,
+    static (`+8`/`+10` offsets both `0`, matching the existing `type=1` background-prop convention,
+    not the moving `type=2` characters), at `x=190,y=151` with radius bytes `12(A0)=13(A0)=14(A0)=
+    $10`, damage field `104(A0)=1`. At that instant the hero (`x=196,y=128`, `+8=8`) gives
+    `dx=(190+0)-(196+8)=-14` (within hero's own `12(A1)=$10=16` threshold) and
+    `dy=(151+0)-(128+0)=23` (within hero's `13(A1)=$18=24` threshold) — both axes inside range,
+    exactly reproducing the `$b71a` proximity test the mechanism above already proves, just with a
+    different, previously-unexamined slot as `A0`. The `$1a64a` type=2 object may still be a hazard in
+    its own right (its `+104` damage field does read `1`), but nothing in this pass's data shows it
+    ever being the one in contact — it should be treated as unconfirmed, not as the screen's hazard,
+    until its own slot is caught the same way.
+  - **Dropping "right" and holding up-only delays the hits but does not avoid them, and the hero never
+    reaches the ladder-climb state either way (84th pass, bears on item 6).** From `ru_step12M.snap`,
+    `kbd ff`/`kbd 01` (bit 0, up only, no right) takes two hits (health `3→2→1`) over 4,800,000 steps —
+    slower than the right+up run's three hits to death by ~2,900,000, but not a fix. In both runs
+    `$227f3` (the hero's movement state) stays at `2` (jump/attack) throughout every checkpoint taken;
+    it never reaches `4`, the ladder-climb state `$00c49c`'s up-handler sets when its ladder-above
+    sensor (`$227ea`) classifies the tile above as climbable. So neither input combination ever gets
+    read as "there is a ladder here" at any point tested — the on-screen "totem-and-ladder structure"
+    is not proven climbable from this resume point/approach; item 6 needs a different horizontal
+    position (aligned to the ladder's own tile column) before `$227ea` will plausibly classify as
+    ladder, not just an up-heavy hold from here.
+  - Whether the screen is passable at all — by timing a dodge around the real `$1a722`-slot hazard's
+    position, finding and lining up with an actual climbable column, or landing a discrete shot on it —
+    remains open; `ru_step12M.snap` is still the resume point, and the culprit's exact contact geometry
+    above is now the concrete target for the next dodge attempt.
 
 **The fire button is a real weapon system, not decorative — proven from disassembly (83rd pass),
 resolving the "type=3, never observed live" open item.** `$00c308`/`$00c31e` cache the raw joystick
@@ -713,8 +742,12 @@ Items 1, 1b, 2 and 3 are now all resolved: the hazard/collision mechanism is pro
 HUD write is `$00fdc4`'s health-pip bar. The 83rd pass's own new finding — the weapon/projectile
 system (`$00d37c`/`$00d3cc`/`$d4be`, type-3 slots 16-19) — is proven from disassembly (table
 contents, slot writes, damage-field assignment) but not yet cross-checked live with a `callcap` or a
-confirmed on-screen hit; that, "does a fired shot damage an enemy", and continuing past the new
-twin-tree/totem screen's hazard creature are the open items for the next pass.
+confirmed on-screen hit. The 84th pass corrected the twin-tree screen's hazard attribution (the real
+contact is a static `type=1` prop at slot 10, `$1a722`, not the `type=2` slot 8 object at `$1a64a`)
+and ruled out plain up-holding as a ladder-climb (state never leaves `2`/jump). "Does a fired shot
+damage an enemy", finding an input that actually clears the `$1a722` hazard's contact zone or a
+genuinely climbable ladder column, and continuing past the twin-tree screen are the open items for
+the next pass.
 
 ## Known traps
 
