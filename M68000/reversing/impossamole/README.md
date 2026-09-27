@@ -672,6 +672,13 @@ water.
   byte alone; a loaded file's first 64 bytes were a legitimate zero-padded header, not proof the
   whole `$6c00`-byte buffer was blank). Dump the field's actual declared width, and the buffer's full
   extent, before concluding "populated" or "empty" from a byte count.
+- **`bt` (backtrace) can crash the whole REPL session with an unhandled `AddressError`** if the
+  A6 link-chain it walks reaches an address that isn't a valid link frame — hit when backtracing
+  from a snapshot frozen mid-unpacker-loop (the depacker temporarily runs at a low, non-`LINK`-framed
+  address and repurposes registers freely). `bt`'s *first* frame (return address straight off `A7`)
+  is reliable even then; when the chain past it looks suspect, fall back to a raw `m <A7> <len>`
+  stack dump, or set a breakpoint at the routine's real entry point (where a caller's `jsr`/`bsr` just
+  pushed a clean return address) rather than backtracing from an arbitrary mid-execution snapshot.
 
 ## Files
 
