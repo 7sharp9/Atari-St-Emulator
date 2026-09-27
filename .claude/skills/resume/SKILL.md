@@ -12,7 +12,13 @@ description: Start-of-session procedure for this repo. Reads M68000/sessions/<wo
 3. Check the ground truth against the handoff:
    - `git log --oneline -5` and `git status --short`: is the handoff's last commit in the history,
      and is there uncommitted work? Uncommitted files you did not make belong to another session:
-     leave them alone.
+     leave them alone — *unless* `ListAgents` shows no live session on this workstream, in which case
+     it's a dropped pass (a prior session ended without committing or writing its own handoff), not
+     someone else's in-progress work. Read the diff: if it's coherent, finished-looking prose (not a
+     half-written fragment) and any tool/script it names actually exists in `tools/`/`py/`, verify and
+     commit it as its own pass commit before continuing, rather than leaving it stranded (cadaver:
+     a 75th-pass section sat uncommitted with no handoff update; the 76th-pass session confirmed no
+     live session held it and committed it before starting its own work).
    - `ListAgents`: which other sessions are live, and on what. Before touching a shared resource
      (sessions/README.md, "Shared resources"), message them.
    - `tasklist | grep -i dotnet`: emulator processes that are running (possibly another session's).
