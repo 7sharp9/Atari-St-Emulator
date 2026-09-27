@@ -121,6 +121,16 @@ know they existed.
   wrongly-reported "this world's hero renders" finding (a different, unidentified sprite ~20-30px
   away from the hero's own position) and a wrongly-reported "empty buffer" (a legitimately
   zero-padded header read as proof the whole buffer was blank).
+- The same "roughly the right area" trap applies to attributing *which object* satisfies a shared
+  per-frame mechanism (a proximity/damage/contact check that runs generically over the whole object
+  array), not just which object rendered a sprite: an object that merely looks like the right hazard
+  from its static position is not proof it is the `A0` a live contact actually fires with. Pin the
+  real object with a breakpoint on the mechanism's own write site (e.g. `bpc <addr> 1` on the exact
+  instruction that writes the shared effect) and read `A0` there, rather than inferring it from
+  nearby coordinates — impossamole's 83rd pass attributed a screen's hazard damage to a `type=2`
+  object it had visually associated with the area; the 84th pass's `bpc` on `$e80e`'s damage-write
+  instruction caught the real culprit as a different, static `type=1` object ten slots away in the
+  array, with its own dx/dy only just inside the proximity test's threshold.
 - A long-lived, repeatedly-resumed snapshot is not ground truth just because dozens of passes have
   built on it: if its own original cold boot silently took a wrong path (skipped a load, missed a
   timing-sensitive event), every snapshot descended from it inherits the same incomplete RAM state,
