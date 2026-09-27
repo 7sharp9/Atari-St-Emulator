@@ -1,23 +1,24 @@
 # Impossamole: handoff
 
-Updated 2026-09-27 by the session that ended at commit (this handoff's own commit, 82nd pass).
+Updated 2026-09-27 by the session that ended at commit `38985e4` (82nd pass, continued).
 
 ## Resume point
 
-- Last commit of this workstream before this pass: `83b2e7a` (81st pass: reframed the hero-sprite
-  bug as world-general, not Amazon-specific — since retracted, see below).
-- Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image, the old
-  `after_select3.snap`/`at_icon2_settled.snap` lineage, and new this pass:
-  `coldboot_census/script.txt` (Amazon) and `coldboot_census/klondike_script.txt` (Klondike), the
-  from-cold-boot REPL scripts that reliably run the `$b288` common-resource loader — see
-  `scratchpad/ANCHORS.md` for the full snapshot list. Real Hatari v2.6.1 still at
-  `~/Downloads/hatari-snapshot/Hatari.app`, source at `~/GitHub/hatari/`. TOS ROM at
+- Last commit of this workstream: `38985e4` "Amazon gameplay past the first screen (item 6,
+  started)". Before it in the same pass: `c61ac29` ($b288 keypress-timing bisection).
+- Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image,
+  `coldboot_census/` (the known-good from-cold-boot scripts and `at_gameplay_final.snap`/
+  `klondike_plus_30M.snap`), and new this pass `gameplay_explore/` (movement-input trials from
+  `at_gameplay_final.snap`). See `scratchpad/ANCHORS.md` for the full indexed list. Real Hatari
+  v2.6.1 at `~/Downloads/hatari-snapshot/Hatari.app`, source at `~/GitHub/hatari/`. TOS ROM at
   `M68000/TOS100UK.IMG`.
-- Start from: `scratchpad/impossamole/coldboot_census/script.txt` or `klondike_script.txt`, run as a
-  **fresh cold boot** (`dotnet exec ... 724388 repl --disk-a ... < script.txt`), not by resuming
-  `after_select3.snap`/`at_icon2_settled.snap` — that lineage's own original boot skipped the
-  `$b288` load (see "Proven so far"). **Must be run with `--disk-a "scratchpad/impossamole/
-  impossamole cr replicants - emotion cr replicants.st"`** (path relative to `M68000/`).
+- Start from: `scratchpad/impossamole/gameplay_explore/ru_step8M.snap` — the furthest live Amazon
+  state this workstream has: hero alive (`type=2` at `$1a572`), standing on a ledge past a water
+  pool and totem-pole decorations, reached by resuming `at_gameplay_final.snap` and holding
+  right+up (`kbd ff`/`kbd 09`) for 8,000,000 steps. **Must be run with `--disk-a "scratchpad/
+  impossamole/impossamole cr replicants - emotion cr replicants.st"`** (path relative to `M68000/`)
+  even though this stretch does no further disk I/O — the known trap below still applies to any
+  `resume ... repl`.
 - Uncommitted work left behind: none from this pass. The pre-existing `M68000/sessions/README.md`
   whitespace-rewrap diff (predates this workstream, flagged unowned by several prior handoffs) is
   still there and still not this workstream's to fix. `.obsidian/` and `Cadaver/` at the repo root
@@ -25,107 +26,91 @@ Updated 2026-09-27 by the session that ended at commit (this handoff's own commi
 
 ## Proven so far
 
-See `reversing/impossamole/README.md`'s "Real-hardware cross-check", "Why no hero sprite is
-visible", "Confirming a world" and "Gameplay input" sections for full detail. This pass's changes to
-the prior understanding are large — it retracts the central finding of the 80th and 81st passes:
+See `reversing/impossamole/README.md`'s "Why `$b288` sometimes never runs" and "Past the first
+screen" sections for full detail and match counts:
 
-- **The "this emulator has a confirm→load bug" framing (80th/81st passes) is retracted. It was never
-  a bug in this repo's F# core — it was one specific, long-lived, reused snapshot lineage
-  (`after_select3.snap` and everything descended from it, which is most of this workstream's
-  snapshots since very early on) whose own original cold boot happened to skip a one-time resource
-  load.** A fresh cold boot this pass (own REPL script, not a reused snapshot) through the identical
-  crack-menu → title-fire → world-select → confirm sequence reaches **full parity with real Hatari
-  for both worlds**: Klondike Mine loads into a genuine mine-cavern level instead of bouncing to a
-  blank logo screen, and Amazon's hero sprite renders correctly (grey head, red scarf, blue suit,
-  pixel-for-pixel matching Hatari's own screenshot) instead of never appearing. Reproduced
-  byte-for-byte across two independent cold boots (identical `hits` census output).
-- **Root-caused to `$b288`, the common `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT` loader**: it runs
-  exactly once, very early — step 1,057,153, roughly 330k steps after the trainer-skip keypress and
-  tens of millions of steps before the title screen — as part of the crack's own loading sequence,
-  not as part of the confirm→load path at all. This is why the 79th-81st passes' static whole-RAM
-  scan of post-confirm snapshots never found a caller: by confirm time the caller code is long since
-  overwritten by later loads. Directly checked against the old lineage to localize the divergence:
-  resuming `after_select3.snap` itself (already at world-select, before any world is chosen) and
-  dumping `$42e00` shows it is **already** all-zero there — so whatever skipped `$b288` happened
-  during that lineage's own original boot, before world-select was ever reached, not afterward.
-- **The old lineage's exact original boot-menu keypress timing is lost** — no `.repl` script was ever
-  saved from whichever early pass first produced `after_select3.snap`, so it can't be directly
-  diffed against this pass's known-good timing. What's proven is that one specific, reproducible
-  timing (`kbd 3b`/`s 100000`/`kbd bb`/`s 500000`/`kbd 39`/`s 500000`/`kbd b9` from the boot-menu
-  wait point) reliably works; whether `$b288`'s execution is genuinely timing-sensitive (a race this
-  emulator's FDC/DMA model resolves differently at different step counts) or the old lineage did
-  something else entirely (different trainer-skip key, etc.) is the new top open item.
-- Two new committed screenshots prove the parity claim: `coldboot_amazon_gameplay.png` /
-  `coldboot_amazon_hero_zoom.png` (hero visible, matching `hatari_amazon_hero_zoom.png`) and
-  `coldboot_klondike_gameplay.png` (genuine mine-cavern level, matching
-  `hatari_klondike_gameover.png`'s layout). The old lineage's screenshots (`amazon_gameplay.png`,
-  `after_confirm_screen.png`) are kept for reference with corrected captions, not deleted.
-- Everything the 79th-81st passes proved about movement mapping, the object-render dispatch, the
-  hero's screen-space draw formula, and `$be96`'s tile classification is unchanged and still stands —
-  none of that was ever wrong, it just ran on top of an incompletely-loaded RAM image.
+- **`$b288` keypress-timing bisection is resolved, not a race.** It needs F1 then any second
+  recognized key (Space, Return, and T — the "enter trainer" path — all verified interchangeable),
+  in that order; firing is insensitive to hold duration (0-500,000 steps) and gap length
+  (100-500,000 steps) once both keys are present, and never fires without both (tested to 35M
+  steps of F1-only with zero hits). The old `after_select3.snap` lineage's exact failure is not
+  reproduced by any combination tried and is now suspected to predate today's cold-boot path
+  entirely — not worth further bisection time absent a new instance of the symptom.
+- **Amazon gameplay driven past the single starting screen for the first time this workstream.**
+  Held-right-only reproducibly (byte-identical PC across two independent re-runs, 8 checkpoints)
+  walks the hero to `2(A0)=$00c0`, freezes there, gains a nonzero `+6` struct field, then the whole
+  object array zeroes and the game performs a full resource reload through the same unpacker
+  region the initial boot load uses. Held right+up (jump) instead avoids the reload and reaches
+  genuinely new terrain — a ladder/tree structure, ground spikes, tribal totem-poles, and a water
+  pool — with the hero still alive 8,000,000 steps in. The green `type=1` object previously called
+  a fixed-rate parallax prop is shown to have its own autonomous motion (a 16M-step no-input
+  control still drifts it `+8,+16`), narrowing that earlier characterization. The hazard/collision
+  mechanism itself is **inferred from timing+visual correlation only, not yet `callcap`-proven** —
+  see Open item 1.
+- Everything the earlier part of the 82nd pass proved (hero sprite renders, Klondike loads a real
+  mine-cavern level, both from a fresh cold boot) is unchanged and still stands.
 
 ## Open, in priority order
 
-1. **Characterize why `$b288`'s execution is sensitive to early-boot keypress timing.** Bisect the
-   known-good script's gaps (`s 100000`/`s 500000`/`s 500000` around the F1 and trainer-skip keys),
-   one variable at a time, re-running the cold-boot `hits` census on `b288` after each change, to find
-   the boundary where it stops firing. That boundary is the actual mechanism. This replaces the old
-   Open item 1 ("does `$b288` ever run") — it does; now the question is what gates it.
-2. Confirm what screen the Klondike cold-boot run reaches after ~9-12M steps of no player input (goes
-   black, PC moves to the shared `$1c3d8` transition routine — likely an unattended death, not yet
-   rendered/confirmed; the screen may be on the buffer `snap_render.py` isn't currently displaying,
-   see README "Known traps"). Better: drive Klondike with real movement input from the fresh-cold-boot
-   lineage instead of leaving it running untouched, and examine mine-cavern gameplay mechanics, which
-   haven't been looked at at all yet (only Amazon's have).
-3. Map the `$25000` tile-classification table's 256 entries (raw tile ID → walkable/ladder/hazard).
-4. Live-test ladder climbing and the jump/attack state (`$c812`/`$227f3:=4`, `$c742`/`$227f3:=2`) —
-   both still read statically only.
-5. The `type=3` special case at `$bafc` (slot `$1a5de` drawing through the hero's own body when its
-   type reads 3) — still never observed live.
-6. Explore the Amazon level with movement working, past this one screen — from the fresh-cold-boot
-   lineage now that the hero sprite renders, this is finally worth doing.
-7. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, from a fresh cold boot.
-8. Classify the main game binary via the LINK-frame-count heuristic (§0 of the reversing skill) — not
-   yet done.
+1. **`callcap`-prove the hazard/collision mechanism** found this pass. Find the actual
+   collision-check routine (likely reached from `$c2fa`'s per-frame dispatch, alongside the sensor
+   reads at `$be96`/`$c0d4`), disassemble it, and `callcap` it against known hero/creature-proximity
+   states rather than relying on the timing/screenshot correlation this pass used. This replaces
+   guessing "what killed the hero" with a proven mechanism.
+2. **Keep driving past the totems/water** from `ru_step8M.snap` (held right+up, or whatever the
+   terrain now demands) — this is the first real look at Amazon level content beyond the starting
+   screen, and mapping it is the actual reverse-engineering goal.
+3. Confirm whether the plain-right hazard reload is a genuine "death → return to world-select"
+   (check whether it eventually reaches `$1c3d8`, the same transition routine Klondike's unattended
+   death used) or a per-level retry that stays in-world.
+4. The Klondike cold-boot run past ~9M steps with no input goes black and PC moves to `$1c3d8` —
+   still not confirmed or rendered (may be the wrong screen buffer, see "Known traps" in the
+   README). Driving Klondike with real movement input (the same technique this pass used for
+   Amazon) instead of leaving it idle is probably the fastest way to resolve this too, and opens up
+   actual Klondike mechanics, which have not been examined at all yet.
+5. Map the `$25000` tile-classification table's 256 entries (raw tile ID → walkable/ladder/hazard).
+6. Live-test the ladder-climb (`$c812`/`$227f3:=4`) and jump/attack (`$c742`/`$227f3:=2`) state
+   transitions at the code level — this pass's jump input exercises the jump/attack path in
+   practice but hasn't been read or proven at the disassembly level.
+7. The `type=3` special case at `$bafc` — still never observed live.
+8. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, from a fresh cold boot.
+9. Classify the main game binary via the LINK-frame-count heuristic (§0 of the reversing skill) —
+   not yet done.
 
 ## Known traps
 
-- **The single biggest trap this workstream has been carrying since very early on: `after_select3.snap`
-  and its whole descendant lineage (`at_icon2_settled.snap`, `after_confirm_amazon.snap`,
-  `after_amazon_load*.snap`, etc.) never executed the crack's one-time common-resource loader
-  (`$b288`), for reasons still not understood (see Open item 1).** Any future finding that looks like
-  "this emulator can't do X" should be re-checked from a fresh cold boot (`coldboot_census/script.txt`
-  or `klondike_script.txt`) before being written up as a bug — this pass found the entire
-  "confirm→load path is buggy" conclusion from the 80th/81st passes was an artifact of reusing this
-  one stale lineage across dozens of passes, not a real divergence from hardware.
+- **The single biggest trap this workstream carried for a long time: `after_select3.snap` and its
+  whole descendant lineage never executed the crack's one-time common-resource loader (`$b288`)**
+  — resolved this pass (see "Proven so far" above), but any future finding that looks like "this
+  emulator can't do X" should still be re-checked from a fresh cold boot before being written up as
+  a bug, on general principle.
 - `resume <snap> repl` needs `--disk-a` re-passed every time (path relative to `M68000/`); the disk
   image itself lives in `scratchpad/impossamole/`, not the repo root.
-- A `kbd`/`mouse` status byte is a raw level, not an edge-latched event, and a per-object busy flag
-  can suppress a frame's input read on top of that (now in CLAUDE.md/README, no longer workstream-only).
-- A busy-poll "wait for next interrupt" utility reads as stuck if you only sample at rest; prove with
-  `hits`/`watch` (now in CLAUDE.md, no longer workstream-only).
-- The screen base (`$1a2e4`) alternates `$70000`/`$78000` — check which one a write/render landed in;
-  a black `snap_render.py` output can mean "wrong buffer", not "blank screen" (this pass hit this with
-  the Klondike post-gameplay snapshots and left it as Open item 2 rather than resolving it, given time).
-- **A sprite spotted "in roughly the right screen area" is not proof it belongs to the object you
-  think drew it — check its exact declared coordinates or breakpoint its own draw call** (now in
+- **A REPL `snap <path>` command writes relative to the directory the `dotnet exec` process was
+  launched from (`M68000/`), not relative to the snapshot being resumed or any other script
+  context.** A bare filename like `snap step1M.snap` inside a script fed to a run launched from
+  `M68000/` lands at `M68000/step1M.snap`, not under `scratchpad/...` — cost this pass a `mv` cleanup
+  step after forgetting to write the full `scratchpad/impossamole/...` path in a `snap` command.
+  Always write the full path from `M68000/` in every `snap` line of a REPL script.
+- A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event; a per-object busy
+  flag can suppress a frame's input read on top of that (in CLAUDE.md/README, no longer
+  workstream-only).
+- The screen base (`$1a2e4`) alternates `$70000`/`$78000` — check which one a write/render landed
+  in; a black `snap_render.py` output can mean "wrong buffer", not "blank screen".
+- A sprite spotted "in roughly the right screen area" is not proof it belongs to the object you
+  think drew it — check its exact declared coordinates or breakpoint its own draw call (in
   CLAUDE.md).
-- **Checking only a small prefix of a memory region, or only the first byte of a multi-byte field,
-  is not the same as checking the whole thing** (now in CLAUDE.md).
-- **A trace/watch window that starts at a downstream snapshot (already past the event you're
-  checking for) will read as "never happens"** even when it did happen, just earlier — this is
-  exactly what made `$b288` look uncalled for three passes running (79th-81st all checked from
-  post-confirm or post-select snapshots). Always trace from the actual triggering input (ideally a
-  cold boot) before concluding something never fires.
-- The Blitter register range (`$FF8A00`-`$FF8A3F`) is genuinely unmapped in this emulator's MMU — this
-  matches real STF hardware with no blitter fitted, not a bug.
+- Checking only a small prefix of a memory region, or only the first byte of a multi-byte field, is
+  not the same as checking the whole thing (in CLAUDE.md).
+- The Blitter register range (`$FF8A00`-`$FF8A3F`) is genuinely unmapped in this emulator's MMU —
+  this matches real STF hardware with no blitter fitted, not a bug.
 
 ## Next session
 
-Start with Open item 1: bisect the F1/trainer-skip keypress timing to find what actually gates
-`$b288`'s execution. Vary one gap at a time from the known-good script
-(`scratchpad/impossamole/coldboot_census/script.txt`) and re-run the cold-boot `hits` census after
-each change — the step count where it stops firing is the mechanism. Item 2 (confirm the Klondike
-death/end screen) is a quick, independent side quest if item 1 stalls. Once item 1 is understood (or
-set aside), item 6 (driving Amazon past this one screen, now that the hero renders) is the highest-value
-next step for actually reverse-engineering the game rather than the emulator's own boot quirks.
+Start with Open item 1: find and `callcap`-prove the hazard/collision routine that killed the hero
+on plain held-right this pass, using `ru_step8M.snap` (survived, alive) and a fresh `at_gameplay_final.snap`
+resume with plain held-right (reproduces the death deterministically, see `gameplay_explore/
+right_hold_fine.txt`) as the two states to diff. Once that mechanism is proven rather than inferred,
+item 2 (driving further into the newly-revealed terrain past the totems/water from `ru_step8M.snap`)
+is the highest-value next step for actually mapping Amazon's level content, which this workstream has
+never seen before this pass.
