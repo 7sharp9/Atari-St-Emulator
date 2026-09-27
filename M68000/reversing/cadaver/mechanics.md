@@ -4196,10 +4196,15 @@ record into a queue at `304(A5)`, increments `1154(A5)`), `$01038a` (UNINV, `beq
 (SLEEP, `beq $103ca`; success `bset #7,5(A0,D0.w); bsr $e172`). None of these four resolver entries are
 themselves among the 59 table targets — like GOACTI/UNLOCK, they're reached only by internal call, not
 a table slot — so the earlier "no resolve-and-branch gate at all" framing was true of the print stub in
-isolation but wrong about the verb as a whole. The underlying conclusion stands and is now better
-grounded: **type 9 (creatures) has been fully empty in every snapshot this whole spike has ever
-captured** (§23c), so every one of these four real, resolve-gated verbs fails deterministically
-whenever it's actually invoked, with no decode error or missing gate involved.
+isolation but wrong about the verb as a whole. **Type 9 (creatures) has been fully empty in every
+snapshot this whole spike has ever captured** (§23c), so every one of these four real, resolve-gated
+verbs fails deterministically whenever the shared resolver (§22d/`$c542`) takes its *negative-sentinel*
+branch into type 9. **This is narrower than it first looks, and is corrected by §68: the same resolver
+takes a *positive-id* branch into type 6 (fully populated, §23c) instead, and all four verbs succeed
+live when called with a positive type-6 id — including GIANT RAT's own id 194.** "These verbs always
+fail whenever invoked" was an overgeneralization from the type-9 case alone; the accurate statement is
+"these verbs fail via the type-9 path (still true, still empty even in GIANT RAT's own room, §68) but
+succeed via the type-6 path against any resolvable object, GIANT RAT included."
 
 ### 64d. What this leaves open
 
@@ -4488,20 +4493,75 @@ swept 0-999, everything from ~599 on decodes to a repeating `DOOR` garbage patte
 padding — no further monster names or hints exist past what §65b/this section already found.
 
 **Reading**: GIANT RAT being a *placed, named object* (not the empty type-9 creature table itself
-being populated) means this doesn't, by itself, prove the KILL/WAKE/SLEEP cluster (§64c) resolves
-successfully in slot 27 — that's still worth a live check (visit slot 27, `hits`/`watch` on the
-WAKE/SLEEP handlers, `$0103e0`/`$0103f8`, §64c/§67 above). But as a static finding it's the strongest
-lead this whole spike has produced for cadaver.md's open item 1: one unique monster-named object, in
-a monster's-den-shaped room, directly corroborated by the game's own "SPINE CREATURE" hint text.
+being populated) was, at the time this section was written, not yet proof that the KILL/WAKE/SLEEP
+cluster (§64c) resolves successfully against it. **§68 closes this live**: KILL/WAKE/SLEEP/UNINV all
+succeed against GIANT RAT's own id (194) directly, via type 6, not type 9 — type 9 itself stays empty
+even in slot 27 (also proven live, §68). Item 1 is fully proven, not just the strongest lead.
 
 **What this leaves open**:
-- Live-drive to slot 27 and check whether KILL/WAKE/SLEEP (§64c) actually resolve there — the
-  concrete next step to go from "strongest lead" to "proven."
 - The 14-room/35-object minority branch that skips `$00ce78`, slot 69's 3.6× overcount, and slot 71's
   malformed census list — none chased down, all in `scratchpad/cadaver/agents/room_census/`'s logs.
 - A genuine cold-boot first room load, to confirm `$00ce78` is the writer there too, not just via
   `$00e854` re-entry — blocked this pass by the boot menu not responding to injected `kbd` scancodes
   at the point tried; not chased further since it wasn't needed for item 1 itself.
+
+## 68. Item 1 fully closed: KILL/WAKE/SLEEP/UNINV all succeed live against GIANT RAT's own id — via
+    type 6, not type 9, which stays empty even in slot 27 (74th pass)
+
+§67's own "what this leaves open" named the concrete next step: drive to slot 27 and check whether
+KILL/WAKE/SLEEP (§64c's four resolve-gated verbs) actually succeed there. Two independent live checks,
+both from `gameplay_empire.snap`, no player movement needed (same style as §67's own `callcap`-driven
+checks):
+
+**Check 1 (negative): entering GIANT RAT's own room does not populate type 9.** `w 185e0 1b2888`
+(load slot 27 the same way §67 validated), `watch 4c636 40` (type 9's own 10-slot index table, §23c's
+`idx_ptr=$4c636`) and `watch 1899a 2` (`2120(A5)`, the global creature-id §22d's resolver reads for the
+type-9 path) each armed across their own `callcap e854 2000000 -`: **zero `WATCH:` hits in either
+range**, and the full ~1500-byte `callcap` memory delta (independently grepped, not just the watch)
+contains no write anywhere in type 9's index table, its data base (`$7560a`), or the global creature-id
+slot either. Slot 27 — the one room in the whole 72-room map with a uniquely-named monster object —
+populates type 6 exactly like every other room (§67) and touches type 9 not at all. §64c's "type 9 has
+been fully empty in every snapshot this spike has captured" now holds for GIANT RAT's own den
+specifically, not just for CAVERN/TUNNEL — room-load is conclusively not how a creature would ever get
+registered into type 9.
+
+**Check 2 (positive, the actual headline result): the resolver's *other* branch succeeds against
+GIANT RAT directly.** §22d's shared resolver (`$c542`) doesn't only serve type 9 — a **positive**
+16-bit id read from the verb's own script-stream cursor (`A1`) takes it into type 6 instead (already
+known 1000/1000 populated, §23c). GIANT RAT's id, 194, is positive. Calling each of the four resolvers
+directly (no room load needed — type 6 is a global resource, not per-room) with `A1` pointed at a
+2-byte scratch buffer holding `$00c2` (194 big-endian) — `w f0000 00c20000` then
+`callcap 10354 20000 - A1=f0000` (KILL), `callcap 1038a 20000 - A1=f0000` (UNINV), `callcap 103e0 20000
+- A1=f0000` (WAKE), `callcap 103f8 20000 - A1=f0000` (SLEEP) — **all four take their success path, not
+the "non-existant creature" print stub**:
+
+- KILL (`$010354`) and UNINV (`$01038a`) and WAKE (`$0103e0`) all `returned` cleanly, each with
+  `A0=$00070034` in the register delta — independently cross-checked static: `resolve(type=6, 194)` via
+  `py/room_object_census.py`'s own `resolve()` against `gameplay_empire.snap` gives the identical
+  `$70034`, byte-for-byte. KILL's delta shows the documented 6-byte queue push into `304(A5)` and the
+  `1154(A5)` counter incrementing 0→1, exactly its success-path disassembly (§64b); WAKE's delta is
+  consistent with its own `bclr #7,5(A0,D0.w)` before `bsr $e13e`.
+- SLEEP (`$0103f8`) takes the identical resolve branch — confirmed directly: an 8-step-capped `callcap`
+  stops at `PC=$00c56c` (`moveq #6,D0`), the exact type-6-positive-branch instruction, with `D1=$c2`
+  already loaded — but its own success action (`bsr $e172`) runs long and hits a 20000-step cap without
+  returning (`exitSP` far below entry, many registers disturbed). This is very likely the same
+  interrupts-masked-under-`callcap` hazard CLAUDE.md's cadaver rules already document for sound-effect
+  code (`capture_hits.py`'s PowerMonger note): `$e172` (paired with the already-known "THE CREATURE IS
+  SLEEPING" message, §64a) plausibly plays a cue and then busy-waits on a flag only a real interrupt
+  clears. The resolve itself is proven; SLEEP's own downstream action past that point is inferred, not
+  traced further this pass.
+
+**This corrects §64c's framing, not just extends it**: "type 9 is always empty, so KILL/WAKE/SLEEP/
+UNINV always fail whenever invoked" was true only of the type-9 (negative-sentinel) branch. The exact
+same resolver's type-6 (positive-id) branch is fully live for these four verbs, and GIANT RAT — the one
+object this whole spike has spent 70+ passes looking for — is concretely, provenly KILL-able,
+WAKE-able, SLEEP-able and UNINV-able by its own numeric id, mechanically, right now. **What remains
+open, not conflated with this result**: no caller anywhere in the game's own code has yet been found
+that actually invokes these four ops with any operand during ordinary play (§23d/§24's "fourth,
+still-unlocated dispatch site" stands unchanged) — this section proves the mechanism succeeds against
+GIANT RAT when driven directly, not that the shipped game ever exercises it that way. Cadaver.md's
+long-standing "find a room with a creature" thread is now closed on both halves: the room (slot 27,
+§67) and the mechanism resolving against it (this section) are both live-proven, not inferred.
 
 ## Files
 
