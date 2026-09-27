@@ -121,6 +121,20 @@ know they existed.
   wrongly-reported "this world's hero renders" finding (a different, unidentified sprite ~20-30px
   away from the hero's own position) and a wrongly-reported "empty buffer" (a legitimately
   zero-padded header read as proof the whole buffer was blank).
+- A long-lived, repeatedly-resumed snapshot is not ground truth just because dozens of passes have
+  built on it: if its own original cold boot silently took a wrong path (skipped a load, missed a
+  timing-sensitive event), every snapshot descended from it inherits the same incomplete RAM state,
+  and every pass that resumes it re-derives the same wrong conclusion, reading as independent
+  confirmation when it's actually one mistake copied forward. A finding that looks like "this
+  emulator can't do X" — especially one that contradicts a real-hardware cross-check — should be
+  re-checked from a **fresh cold boot**, not just re-run against the existing lineage, before being
+  written up as a bug: impossamole's 79th-81st passes spent three passes and a full real-Hatari
+  cross-check concluding this emulator could never populate a game's hero-sprite bank or load one of
+  its levels, all measured against one `after_select3.snap` lineage reused since very early in the
+  workstream; the 82nd pass found a fresh cold boot with different (but reproducible) keypress timing
+  reaches full parity with real hardware on both counts, and the old lineage's own boot — not this
+  repo's F# core — was the actual divergence (`reversing/impossamole/README.md`'s "Real-hardware
+  cross-check" retraction).
 
 ## Proving routines with parallel subagents
 
