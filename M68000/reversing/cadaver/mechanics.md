@@ -4563,6 +4563,109 @@ GIANT RAT when driven directly, not that the shipped game ever exercises it that
 long-standing "find a room with a creature" thread is now closed on both halves: the room (slot 27,
 §67) and the mechanism resolving against it (this section) are both live-proven, not inferred.
 
+## 69. A genuine "teleport to room X at (x,y), both read from script data" verb found inside the
+    object-verb block, at `$010974`-`$010a7a` — but four independent techniques, including a live
+    60M-step idle run, agree nothing calls it in this playthrough's loaded state (75th pass)
+
+Dave's own steer this pass was external ground truth again: the published walkthrough (pasted in
+full this session) confirms room-to-room progression in this exact game is driven by levers scattered
+throughout all 69 walkthrough rooms ("pull the lever to teleport to room 44", "...to Level 2", etc.),
+not just TUNNEL's one lever. That reframed the standing question from "why won't LOCK(144) fire"
+(closed negative since §28d) to "does the object-verb interpreter (§64) contain a teleport-style verb
+at all, and if so, does anything reach it."
+
+**Walkthrough room numbering is now pinned, cheaply, with no live driving**: walkthrough room *N* =
+internal slot *N*-1. Four independent matches against the existing static census
+(`scratchpad/cadaver/agents/room_census/full_census_names.txt`, §67's own corpus): room 1/slot 0
+(CAVERN, already known), room 2/slot 1 (TUNNEL, the lever, already known), room 3/slot 2 (a `STONE
+BAG` object, id 23 — the walkthrough's "collect the bag of stones"), room 4/slot 3 (`FULL BARREL`×3
+plus a `SCONCE` — the walkthrough's barrel-to-wall-lantern trick), room 19/slot 18 (a `KEYHOLE`
+object — the walkthrough's lock-and-key room). This also explains, rather than contradicts, §67's own
+census: every creature the walkthrough names ("a maggot will appear [when the gem is collected]",
+"entering and returning to room 19 causes a spiky floater to appear") is explicitly event-triggered,
+not room-load placed, and slots 3/18/38 (the walkthrough's own "spiky floater"/"sleeping jumper"
+rooms) all come back clean of any creature object in the static census, the same shape as every other
+room — consistent with `ai.md`'s entity/action-script system doing the spawning, not the type-5/6
+array §67/§68 already proved for GIANT RAT.
+
+### 69a. `find_ram_callers.py` against `$00e854` itself — never run before — finds a second real call
+    site and a genuine, previously unmapped verb
+
+Mechanics.md had only ever named one caller of the room-transition trigger (`$0072ac`, the CAVERN/
+TUNNEL door resolver, §67). A fresh scan finds **6** raw hits, two of them real `jsr $e854.l`
+instructions the doc never covered: `$0069ba` and `$0072ac` (the known one). `$0069ba` sits in a
+routine that reads `2516(A5)` (cadaver.md's still-open item 10, "a real day/progress counter"),
+reduces it mod 3 (`divu #3`) into `1174(A5)`, then calls `$00e854` — a plausible day-cycle room-state
+refresh, not chased further this pass; flagged as a fresh lead for item 10, not closed.
+
+The other two hits, `bsr $e854` at `$0109ca` and `$010a58`, sit inside one routine, `$010974`-
+`$010a7a`, fully disassembled this pass:
+
+```
+$010974: movea.l 160(A5),A0 ; clr 3 bytes of a struct
+$010984: move.b (A1)+,D1    ; read one byte from a script/data stream (A1)
+$010988: move.w D1,1166(A5) ; write it as the target-room field (§67's own "current room" field)
+$010990: moveq #3,D0 ; bsr $c5a8   ; resolve it via type 3 (the room table)
+$01099c-$0109b8: three more script bytes -> 2134/2136/2138(A5)   ; target x/y/facing, inferred
+$0109ca: bsr $e854          ; the room load itself
+$0109ce: beq $10a70          ; branches on success
+```
+
+This is a real, working "load room *N* at (x,y), both read from the calling script" verb — exactly
+the shape the walkthrough's game-wide lever/teleport pattern needs — sitting inside the already-known
+`$010000`-`$011256` object-verb block, but matching none of the 59 dispatch-table targets or ~20
+named verbs §64 already mapped. Genuinely new territory in that block.
+
+### 69b. Four independent techniques agree: nothing reaches it in this playthrough's loaded state
+
+- **`find_ram_callers.py 10974`**: 0 hits — no `bsr`/`jsr`/`bcc` anywhere in the whole image targets
+  the routine's real entry point.
+- **The one table slot that lands nearby, id 2 (`$0109ba`) of the 59-entry dispatch table, was
+  already investigated and explicitly rejected** by the 73rd pass (§64d): its first instruction
+  decodes as `bchg` with an implausible bit number (a corrupting effect, not side-effect-free) and the
+  bounded walk that matched it to `"NO SPACE IN THIS ROOM"` wandered well past one hop — it fails both
+  of §64d's own acceptance tests, and this pass's own re-check agrees: entering at `$0109ba` skips
+  `$010974`-`$0109b8`'s own room-id/coordinate setup entirely, which no legitimate call would do.
+- **Two `find_jump_table_hit.py` "hits" (`$00fe84` entry 196, `$00ffba` entry 37) are false
+  positives, not new leads**: `$00fe84` is already proven a 29-entry table, ids 0-28 only (§25a), and
+  entry 196 is far past that bound; `$00ffba` is already documented as a small nested-IF
+  sub-interpreter feeding `2270(A5)` (§23b), not a 37-plus-entry call table. Neither candidate
+  survives a check against the table's own already-published bound — the same false-attribution
+  pattern §64d already warns about, just from a different tool.
+- **A `find_literal_ptr.py` hit at `$0060a2` looked promising at first** (the raw bytes `$00010974`
+  do appear there) **but is a byte-alignment coincidence, not real table data**: the surrounding
+  region is a 4-byte-aligned array of `(value:word, flag:word)` pairs starting at `$006080`
+  (`$0974`/`$0001` is one such pair, holding a plain 16-bit value, not part of a 32-bit pointer); the
+  literal scan's 1-byte-alignment match at `$0060a2` just splices the flag word of one pair (`$0001`)
+  to the value word of the next (`$0974`). Confirmed by dumping the region 4-byte-aligned from its
+  real start and finding no 32-bit value in it equal to `$00010974` at all.
+- **Live check: armed `bpc 10974 1 60000000` from `gameplay_empire.snap` (CAVERN, no input) — 0/1
+  hits across 60,000,000 steps.** Rules out a periodic/background (e.g. day-cycle) trigger, not just
+  a missing static caller.
+
+**This doesn't contradict §64d's already-established "no external caller reaches the object-verb
+block" finding — it extends the same result to one more specific, newly-identified verb inside that
+block**, with one additional independent technique (the live idle-run breakpoint) added to the
+methodology. Combined with §21c/§20b's already-proven "the lever's own AABB overlap is unreachable by
+ordinary movement in this snapshot," the honest state of play is unchanged from §25c/§30's own
+standing hypothesis: the code and script data that would drive room-to-room progression may simply
+not be resident/reachable in this exact playthrough state, not that the mechanism doesn't exist —
+`$010974` is now concrete proof the mechanism (a script-driven room teleport) really does exist in
+this loaded image, just still not shown reachable from here.
+
+### 69c. What this leaves open
+
+- **Item 10 (`2516(A5)`'s role) now has a concrete lead** (§69a's `$0069ba` routine) instead of being
+  purely speculative — not yet live-tested.
+- **`$010974`'s own script-data format** (the bytes `(A1)` reads: room id, then apparently x/y/facing)
+  is inferred from the write targets, not proven against a real script blob — no such blob has been
+  located yet. Finding one (a per-object or per-room "script pointer" field feeding `A1` here) would
+  both prove the format and, if any object anywhere in the 72-room world references it, hand item 1
+  its still-missing caller.
+- **The `$006080`-region `(value, flag)` table** encountered chasing the false-positive literal-ptr
+  hit (§69b) is undecoded and unrelated to this thread — noted for whoever next has reason to read
+  that area, not chased further this pass.
+
 ## Files
 
 | File | What |
