@@ -1,25 +1,30 @@
 # Cadaver: handoff
 
-Updated 2026-09-27 by the session that ended at commit `c0aa482` (74th pass — item 1 fully closed
-live: KILL/WAKE/SLEEP/UNINV all succeed against GIANT RAT's own id 194 via type 6, not type 9). The
-skill-file lesson from this pass is in the separate, shared-resource commit `7beeb7e`
-(`.claude/skills/reverse-engineer-st-game/SKILL.md`).
+Updated 2026-09-27 by the session that ended at commit `6a823ee` (76th pass — item 1's live half:
+a real driven CAVERN item-pickup walk plus an actual CAVERN→TUNNEL room transition never once reach
+the shared object-verb resolver, 0/10 hits across all four legs). A skill-lesson commit, `f208db4`
+(`.claude/skills/resume/SKILL.md`), sits on top and is not part of this workstream.
 
 ## Resume point
 
-- Last commit of this workstream: `c0aa482`, "cadaver: 74th pass -- item 1 fully closed live:
-  KILL/WAKE/SLEEP/UNINV all succeed against GIANT RAT's own id 194 via type 6, not type 9 (which
-  stays empty even in slot 27)". No emulator source changed this pass (docs only), so no rebuild or
-  regression-net run is needed before building on it.
-- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored), unchanged this pass — no new
-  files added. `gameplay_empire.snap` is the only snapshot this pass touched, and only via `callcap`
-  (which snapshot-restores after every call), so it is byte-identical to before.
-- Start from: `gameplay_empire.snap` (CAVERN), same as recent passes. All of this pass's checks ran
-  as `callcap`/`watch` recipes from that one base snapshot — no live driving, no player movement.
-- Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` still carries
-  the pre-existing line-wrap-only edit noted in several prior handoffs (not this session's, left
-  alone per "one writer per file"). `Cadaver/` (game disk images) and `.obsidian/` (an Obsidian vault
-  config) are untracked, predate this session, and aren't part of any workstream — left alone.
+- Last commit of this workstream: `6a823ee`, "cadaver: 76th pass -- item 1's live half: a real
+  driven CAVERN item-pickup walk and an actual CAVERN->TUNNEL room transition never once reach the
+  shared object-verb resolver". This session also found and committed a previously-dropped 75th
+  pass (`9118604`) that a prior session had written into `mechanics.md` but never committed or
+  handed off — see the resume skill's new note on telling a dropped pass from another session's
+  live WIP. No emulator source changed either pass (docs only), so no rebuild or regression-net run
+  is needed before building on this.
+- Working data: `M68000/scratchpad/cadaver/` (untracked, gitignored). This pass added no new
+  persistent files — the two verification snapshots/renders it made to confirm the live test
+  (`resolver_zigzag_check.snap/.png`, a re-render of the already-known lever-boundary snapshot) were
+  deleted again once cross-checked against the already-committed `room2_tunnel_entry.png`.
+- Start from: `gameplay_empire.snap` (CAVERN), same as recent passes. This pass's own live test used
+  the 11th/12th passes' own documented drive (`kbd ff 08` held, then the `Up/Right/Up` zigzag,
+  README "12th pass") from that same base snapshot.
+- Uncommitted work left behind: none of this session's own. `M68000/sessions/README.md` still
+  carries the pre-existing line-wrap-only edit noted in several prior handoffs (not this session's,
+  left alone per "one writer per file"). `Cadaver/` (game disk images) and `.obsidian/` (an Obsidian
+  vault config) are untracked, predate this session, and aren't part of any workstream — left alone.
 
 ## Proven so far
 
@@ -32,53 +37,50 @@ room), `graphics.md` §5a-5j (the shared 80-tile terrain catalog and its full dr
 rooms scored ~96% pixel-exact against their reference screenshots), the object-verb bytecode
 interpreter's core mechanism (§22-26, §49-50, §64: the 59-entry dispatch table's shape, the shared
 type-6/9 id-resolver, an exhaustive multi-technique negative on any *external* caller ever reaching
-the interpreter, the full opcode-id scan locating every verb's real handler address), and §65-67 (the
+the interpreter, the full opcode-id scan locating every verb's real handler address), §65-67 (the
 compressed dialogue/monster-name string table, every room's static object-id list, the live
 display-name-index formula, and slot 27's unique GIANT RAT object tied to the game's own "SPINE
-CREATURE" hint text — 7/59 dispatch ids pinned by exact address match).
+CREATURE" hint text — 7/59 dispatch ids pinned by exact address match), and §68 (KILL/WAKE/SLEEP/
+UNINV all succeed live against GIANT RAT's own id 194 via the resolver's type-6 branch; type 9 stays
+provably empty even in slot 27).
 
-**74th pass, item 1 closed for real** (`mechanics.md` §68): two independent live checks, both from
-`gameplay_empire.snap`, no player movement needed.
+**75th pass** (`mechanics.md` §69): a real, previously-unmapped script-driven "teleport to room N at
+(x,y)" verb found at `$010974`-`$010a7a` inside the object-verb block, matching none of the 59 known
+dispatch targets. Four independent techniques (a fresh `find_ram_callers.py` sweep, re-checking the
+one nearby dispatch-table slot already rejected in §64d, two `find_jump_table_hit.py`/
+`find_literal_ptr.py` false positives ruled out, and a live 60,000,000-step idle `bpc`) agree nothing
+reaches it in this playthrough's loaded state. Side finding: `$0069ba` is a second real caller of the
+room-load routine `$00e854` (the CAVERN/TUNNEL door resolver, §67, was the only one previously known),
+tied to `2516(A5)` — a plausible day-cycle room-state refresh, not yet live-tested (see item 10).
 
-- **Negative**: loading GIANT RAT's own room (slot 27, via the same `$00e854` room-transition
-  trigger §67 validated) writes nothing into type 9's 10-slot creature index table (`$4c636`) or the
-  global creature-id slot (`2120(A5)`) — confirmed both by an armed `watch` producing zero hits across
-  the full 2,000,000-step call and by grepping the call's own complete ~1500-byte memory delta for
-  either address range. Type 9 stays provably empty even in the one room built around a named
-  monster; room-load is conclusively not how a creature would ever reach it.
-- **Positive, the headline result**: the shared id-resolver (`$c542`, §22d) has two branches, not
-  one — a positive 16-bit id goes to type 6 (already known 1000/1000 populated, §23c), only a
-  negative sentinel goes to type 9. GIANT RAT's id, 194, is positive. Calling each of KILL (`$010354`),
-  UNINV (`$01038a`), WAKE (`$0103e0`) and SLEEP (`$0103f8`) directly via `callcap` with `A1` pointed at
-  a 2-byte scratch buffer holding `$00c2` (194 big-endian) makes all four take their real success
-  path, not the "non-existant creature" print stub: KILL/UNINV/WAKE all `returned` cleanly with
-  `A0=$00070034` in the register delta, byte-for-byte the same address `resolve(type=6, 194)` gives
-  statically (`py/room_object_census.py`'s own `resolve()`); KILL's delta shows its documented 6-byte
-  queue push and `1154(A5)` counter increment exactly; SLEEP's resolve is independently confirmed via
-  an 8-step-capped call landing exactly on the type-6-positive branch instruction, though its own
-  success action (`bsr $e172`) runs into what looks like a sound/interrupt-dependent wait under
-  `callcap`'s masked-interrupt regime (same category as the already-documented PowerMonger hazard) and
-  wasn't traced further. §64c's "type 9 is always empty so these verbs always fail whenever invoked"
-  is corrected, not just extended: true for the type-9 branch, false for the type-6 branch, and GIANT
-  RAT is concretely KILL/WAKE/SLEEP/UNINV-able by its own id right now.
+**76th pass** (`mechanics.md` §70): drove a real gameplay sequence — `kbd ff 08` held 1.2M steps
+(picks up a SILVER COIN along the way, per the 10th/11th passes) then the 12th pass's own zigzag
+crossing the actual CAVERN→TUNNEL room transition — with `bpc 10738 10 <legsteps>` armed on the
+shared id-resolver instead of a plain `s`. **0/10 hits on every one of the four legs.** Re-ran the
+identical sequence without the breakpoint and confirmed via render that the transition genuinely
+completed (status bar reads "TUNNEL", matching the committed `room2_tunnel_entry.png`). This extends
+§24b's static whole-image "no external caller" sweep to real dynamic play, covering the two ordinary
+actions available from this snapshot (movement/pickup, room transition) — it does not close item 1.
 
 ## Open, in priority order
 
-1. **Find who actually invokes the object-verb interpreter during ordinary play, with what operand.**
-   §68 proves the *mechanism* succeeds against GIANT RAT when driven directly; nothing yet shows the
-   shipped game ever calls KILL/WAKE/SLEEP/UNINV (or any of the 59 verbs) with any specific id during
-   real gameplay — the "fourth, still-unlocated dispatch site" from §23d/§24/§64d stands unchanged.
-   This is now the direct continuation of this pass's own finding: the room (slot 27) and the
-   mechanism (§68) are both proven, only "who calls it and when" is missing. Concrete next step:
-   find `EntityScriptDispatch`'s (`$15c70`) or a sibling routine's own call into `$010000`-`$011256`,
-   or `bp`/`hits` against `$010738` (the shared resolver every verb goes through) during a long
-   ordinary-play run to see if it ever fires at all outside a synthetic `callcap`.
+1. **Find who actually invokes the object-verb interpreter during ordinary play, with what
+   operand.** Narrower than before this pass: movement, item pickup, and the CAVERN→TUNNEL room
+   transition are now dynamically ruled out (§70), on top of the existing static 18-site whole-image
+   sweep (§24b/§64d) and the direct proof the mechanism itself works when called (§68). Still
+   untested live: creature encounters, inventory-menu actions, and any state only reachable from
+   rooms/content this one snapshot doesn't cover. Two concrete next steps: (a) chase §69c's own open
+   question — find a real per-object/per-room "script pointer" field feeding `$010974`'s `A1`
+   operand (the newly-found teleport verb); if any object anywhere in the 72-room world references
+   such a script, it hands this item its missing caller directly; (b) probe TUNNEL's other content
+   (not the lever — its own AABB overlap is already proven unreachable, §20-21 — but anything else in
+   that room) with the resolver armed the same way §70 did.
 2. **Check whether GIANT RAT is also driven through `ai.md`'s separate `EntityScriptDispatch`/3-slot
-   action-script system** — a different interpreter from the one §68 tested (mechanics.md §63 already
-   distinguishes them explicitly). `ai.md`'s own "no live creature has been found" framing dates from
-   its 14th pass, before GIANT RAT's discovery (mechanics.md §67/§68); it needs its own live check
-   (does GIANT RAT's slot ever appear in `ActiveEntitySlotBitmask`?) before that text is corrected —
-   not assumed from §68's unrelated result.
+   action-script system** — a different interpreter from the one §68/§70 tested (mechanics.md §63
+   already distinguishes them explicitly). `ai.md`'s own "no live creature has been found" framing
+   dates from its 14th pass, before GIANT RAT's discovery (mechanics.md §67/§68); it needs its own
+   live check (does GIANT RAT's slot ever appear in `ActiveEntitySlotBitmask`?) before that text is
+   corrected — not assumed from §68's unrelated result. Cheap, independent of item 1.
 3. **Chase the three room-census loose ends from §67**, all in
    `scratchpad/cadaver/agents/room_census/`'s logs, independent of items 1/2: (a) the 14-room/35-object
    minority that hits fewer `$00ce78` writes than its static census count (§37d already named candidate
@@ -99,8 +101,10 @@ CREATURE" hint text — 7/59 dispatch ids pinned by exact address match).
    still not proven either way.
 9. Does Disk 2 add reachable content beyond CAVERN/TUNNEL? (`mechanics.md` §63) — still recommended
    closed for practical purposes.
-10. `2516(A5)`'s role still unconfirmed. Only worth resolving if another item needs a real
-    day/progress counter.
+10. **`2516(A5)`'s role now has a concrete lead**, not just an open question: §69a's `$0069ba`
+    routine reads it, reduces it mod 3 (`divu #3`) into `1174(A5)`, then calls `$00e854` — a
+    plausible day-cycle room-state refresh. Not yet live-tested (does `2516(A5)` actually change over
+    a long idle run, and does `$0069ba` actually fire when it does).
 
 ## Known traps
 
@@ -114,26 +118,17 @@ its display-name index are different numbering spaces, a struct field documented
 `(A5)+N`" may actually be a pointer to it, a documented loader write can be true and still not the
 field a later steady-state snapshot finds there, a `callcap` that touches nothing can mean the routine
 depends on setup only its real caller does first, a dispatch-table target landing mid-instruction is
-only a real entry if provably side-effect-free with no skipped push/pop — all now in
+only a real entry if provably side-effect-free with no skipped push/pop, `callcap`'s own memory-delta
+printout vs. an active `watch`'s output are not the same thing — all now in
 `.claude/skills/reverse-engineer-st-game/SKILL.md` §3/§5, not repeated here.)
-
-- **`callcap`'s own unconditional memory-delta printout (`mem $addr $old->$new`) is not the same
-  output as an active `watch`'s lines (`WATCH: step=...`).** `callcap` always prints the whole call's
-  changed-memory footprint regardless of any `watch`; a narrow `grep`/`tail` on the combined output can
-  make it look like the watch fired when it didn't, or vice versa. Grep for `WATCH:` and `callcap \$`
-  by name, and confirm a targeted-range negative both ways (this pass's own §68 type-9 check).
-- **The shared type-6/9 id-resolver's branch is chosen by the sign of the id itself, not by which verb
-  calls it.** KILL/WAKE/SLEEP/UNINV don't inherently target type 9 — a script encoding them with a
-  positive id resolves via type 6 exactly like every other verb (§68). "This verb cluster only ever
-  reaches the empty type-9 table" was an assumption from having only ever seen the print-stub failure
-  case, not a property of the verbs themselves.
 
 ## Next session
 
-Item 1 is the direct continuation of this pass: with both the room (slot 27) and the resolve mechanism
-(§68) now proven, the only missing piece for "does this game ever actually run a KILL/WAKE/SLEEP on
-GIANT RAT" is finding the real top-level caller of the object-verb interpreter — a question that's
-been open since §23d/§24 and is now the clear next frontier. Item 2 is a cheap, independent sanity
-check on `ai.md`'s older, now out-of-date-looking "no live creature" framing — worth doing before
-touching that file's text. Items 3-10 are unrelated loose ends, any of which can run in parallel.
+Item 1 is the natural continuation: the movement/pickup/room-transition branch of ordinary play is
+now closed as a live negative (§70), narrowing the search to creature encounters, inventory-menu
+actions, and §69c's own script-data-format question (which could hand this item its answer directly
+if a real script blob feeding `$010974` turns up). Item 2 is a cheap, independent sanity check on
+`ai.md`'s older "no live creature" framing, worth doing before touching that file's text. Item 10 now
+has a concrete lead (`$0069ba`) worth a quick live test alongside either. Items 3-9 are unrelated
+loose ends, any of which can run in parallel.
 Prompt: `/resume cadaver`.
