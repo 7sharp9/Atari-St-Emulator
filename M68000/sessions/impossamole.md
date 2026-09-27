@@ -1,158 +1,118 @@
 # Impossamole: handoff
 
-Updated 2026-09-27 by the session that ended at commit `ea5cf48`.
+Updated 2026-09-27 by the session that ended at commit (this handoff's own commit, 81st pass).
 
 ## Resume point
 
-- Last commit of this workstream: `ea5cf48` (a live real-Hatari cross-check retracted two "broken
-  crack" readings from the last several passes as bugs in this repo's own F# emulator instead).
+- Last commit of this workstream before this pass: `d47e62d` (80th pass: real-Hatari cross-check
+  found this emulator's confirm→load path buggy for Amazon).
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image plus the
-  full snapshot chain, unchanged this session. `after_confirm_amazon.snap` (PC=`$3b4`, right where
-  the Amazon confirm's depacker loop starts) is a good starting point for load-path tracing. Real
-  Hatari v2.6.1 is now available for cross-checks: `~/Downloads/hatari-snapshot/Hatari.app` (prebuilt)
-  and full source cloned at `~/GitHub/hatari/` (needed to read `src/control.c`/`src/joy.c` for the
-  remote-control protocol — see "Known traps"). The TOS ROM this repo uses is already at
-  `M68000/TOS100UK.IMG`.
-- Start from: `scratchpad/impossamole/after_amazon_load2.snap` to continue exploring the Amazon
-  level, or `test_dirbit3_B.snap` (hero mid-walk-cycle, position `$1a574 = $00c0`) to continue from
-  after a confirmed move. **Must be resumed with `--disk-a "impossamole cr replicants - emotion cr
-  replicants.st"`** for any run that needs floppy reads (a bare memory/register check does not) —
-  path relative to `M68000/`.
-- Uncommitted work left behind: `M68000/sessions/README.md` still has the pre-existing whitespace-
-  only rewrap edit noted by the last several handoffs (predates this workstream, no live session
-  claims it). Also `.obsidian/` and `Cadaver/`, untracked at the repo root, not this workstream's.
-  A real Hatari process may still be running in the background from this session's live cross-check
-  (PID was in `/tmp/hatari.pid`, log in `/tmp/hatari_log.txt`, cmd fifo `/tmp/hatari_cmd.fifo`,
-  screenshots in `/tmp/hatari_shots/`) — Dave was actively playing it at handoff time; check before
-  killing it.
+  full snapshot chain. New this pass: `at_icon2_settled.snap` (Amazon/icon-2 highlighted and settled
+  at world-select — see `ANCHORS.md`). Real Hatari v2.6.1 still at `~/Downloads/hatari-snapshot/
+  Hatari.app`, source at `~/GitHub/hatari/`. TOS ROM at `M68000/TOS100UK.IMG`.
+- Start from: `scratchpad/impossamole/after_select3.snap` (Klondike Mine highlighted+settled at
+  world-select) or the new `at_icon2_settled.snap` (Amazon highlighted+settled) to redrive either
+  world's confirm sequence. **Must be resumed with `--disk-a "scratchpad/impossamole/impossamole cr
+  replicants - emotion cr replicants.st"`** (path relative to `M68000/` — the disk image lives in
+  `scratchpad/impossamole/`, not the repo root; a session this pass briefly pointed `--disk-a` at a
+  nonexistent repo-root path before finding it there).
+- Uncommitted work left behind: none from this pass. The pre-existing `M68000/sessions/README.md`
+  whitespace-rewrap diff (predates this workstream, flagged unowned by several prior handoffs) is
+  still there and still not this workstream's to fix. `.obsidian/` and `Cadaver/` at the repo root are
+  also not this workstream's.
 
 ## Proven so far
 
-See `reversing/impossamole/README.md`'s "Confirming a world" and "Gameplay input" sections for full
-detail and addresses. Structural/mechanism findings from the prior pass all still stand:
+See `reversing/impossamole/README.md`'s "Confirming a world", "Gameplay input" and "Known traps"
+sections for full detail. This pass's changes to the prior understanding:
 
-- Movement mapping, busy-flag gating, and the object-render dispatch (`$00bada` running both
-  `$1b25a`/`type==1` and `$1b3ec`/`type==2` per slot per frame through a shared masked-blit body,
-  drawing directly at each object's own `(2(A0),4(A0))` screen coordinate) are unchanged.
-- `$be96`'s tile classification is fully proven: a scroll-adjusted lookup (`$be2c`) into a raw
-  1680x24 tile map at `$31800`, categorized through a 256-entry table at `$25000`.
-
-**New and load-bearing: a live cross-check against real Hatari (v2.6.1, run 2026-09-27) proved two
-of the last several passes' conclusions wrong.** Driven by hand through the same crack-menu →
-title-fire → world-select → confirm sequence this workstream already uses (F1/Space via Hatari's
-`--cmd-fifo` remote command channel for the keyboard-only crack menu, real OS-level keystrokes into
-Hatari's actual window for the joystick-only title-fire/world-select-confirm steps, screenshots via
-`hatari-shortcut screenshot`):
-
-- **Confirming Klondike Mine reaches genuine gameplay on real hardware** — a real mine-cavern level,
-  HUD (score/lives/ammo), a clearly visible hero sprite, ending in an actual "GAME OVER" death screen
-  (`reversing/impossamole/hatari_crosscheck/hatari_klondike_gameover.png`). This emulator's own
-  behavior (bounces to a blank "IMPOSSAMOLE" logo screen, zero disk reads) is real and reproducible,
-  but the conclusion drawn from it three passes ago — "Klondike Mine's data is broken in this crack"
-  — was wrong. It's this emulator's confirm→load path that fails, not the crack's data.
-- **The Amazon gameplay screen shows a clearly visible hero sprite on real hardware** — a small
-  mole-themed character (grey head, red scarf, blue suit, matching the title screen's mascot),
-  standing in the exact scene this emulator has only ever rendered without one
-  (`hatari_crosscheck/hatari_amazon_gameplay.png`, zoomed in `hatari_amazon_hero_zoom.png`). The
-  hero's object struct in real Hatari (`$1a572`) matches this workstream's reverse-engineered layout
-  exactly (`type=2`, `2(A0)`/`4(A0)` position, `6(A0)` frame index) — so the addressing/struct work
-  from the last two passes stands. What's wrong is specifically that this emulator's confirm→load
-  path never executes whatever real hardware executes to populate the hero's sprite bank (`$42e00`
-  in this emulator, proven via `watch`/`hits` to be genuinely unreached — see the README) — not that
-  the crack never loads it.
-
-Conclusion: **this repo's F# core has a real confirm→load-path bug** (most likely FDC/disk-read
-timing, or a subtly mishandled instruction somewhere between the confirm keypress and gameplay),
-affecting at least Klondike Mine's level data and Amazon's hero sprite graphics. This is now the top
-open item — see below.
+- **The "Amazon-specific confirm→load bug" framing from the 80th pass is too narrow.** The identical
+  empty-`$42e00` hero-sprite-bank condition reproduces in Klondike Mine too: the same live breakpoint
+  the 80th pass used (`bpc 1b4f8`) resolves to the exact same `A2=$00042e00`, and a full 384-byte dump
+  (not a leading sample) is 0/384 nonzero in *both* worlds. This is not a per-world bug; it's either a
+  general regression (no world's hero sprite draws in this emulator) or the two worlds were never
+  expected to source hero graphics the same way (unverified against real hardware for Klondike).
+- **Ruled out via a full hardware-register comparison: not a stubbed/unimplemented peripheral.**
+  Watched the entire `$FF8000`-`$FFFC10` I/O space across the whole confirm-to-gameplay run for both
+  worlds — identical touched-register sets (video/palette, FDC, DMA, YM2149, MFP). Neither world
+  touches the Blitter range (`$FF8A00`+, confirmed genuinely unmapped here — real `BusError`, matching
+  real STF-without-blitter hardware, not a silent stub — but moot since it's unused either way).
+- **Item 5 from the 80th pass ("$b328's missing first call") is resolved: it was a trace-window
+  artifact, not a bug.** A full FDC/GEMDOS trace from the actual confirm keypress (not from a
+  downstream snapshot already past the depacker) shows all three of `$b328`'s calls firing, in order,
+  for both worlds: `$53000`/`$c800`, `$40600`/`$2800`, `$4c400`/`$6c00` — each a real Fopen/Fread/Fclose
+  triple with genuine FDC activity and real (non-garbage) resulting data. `$b328` itself (the per-world
+  loader, keyed by `$bb76`) is fully read and understood this pass: table at `$b3ea`, 12-byte stride,
+  3 pointers per world; its single caller (`$b0ee`, reached unconditionally from the world-select fire
+  handler) fires for every world confirm, not just some.
+- **A grey humanoid figure this pass initially reported as "Klondike's hero rendering" is retracted.**
+  It does not sit at the hero object's own declared coordinates (a precise crop at `$40`,`$90` doesn't
+  contain it — it's ~20-30px further right). Unidentified; likely background/tile art. General lesson
+  now in `CLAUDE.md`: don't attribute a visible sprite to an object by screen-region proximity, check
+  its exact declared position or breakpoint its own draw call.
+- The `$b288`-`$b326` block (loads `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT` to
+  `$24000`/`$3b600`/`$42e00`) has no caller found by a static whole-RAM scan (`find_ram_callers.py`)
+  in either world's post-confirm snapshot — consistent with either "never called at all" or "called
+  once, earlier than either snapshot, from code since overwritten" (crack menu / title sequence).
+  Not yet distinguished — see Open item 1.
+- Everything the 79th/80th passes proved about movement mapping, the object-render dispatch, and
+  `$be96`'s tile classification is unchanged and still stands.
 
 ## Open, in priority order
 
-1. **Find where this emulator's confirm→load path diverges from real hardware.** Compare this
-   emulator's trace (`ATARI_TRACE_FDC=1 ATARI_TRACE_GEMDOS=1` from `after_confirm_amazon.snap` or an
-   equivalent Klondike-confirm snapshot) against real Hatari's own trace of the identical sequence
-   (`tools/hatari_trace.py`, or repeat this session's live cross-check technique with Hatari's
-   `hatari-debug` breakpoints) instruction by instruction from the confirm keypress onward, looking
-   for the first point they disagree — a missed/failed sector read, a different branch taken, or an
-   instruction this emulator handles differently. This blocks trusting *any* future "world X's data
-   is broken/missing" claim in this game, and may also explain the still-unexplained missing first
-   call of the `$b328` block (item 5 below) and generalizes to other games' reversing work if it's a
-   shared FDC/timing bug rather than something impossamole-specific.
-2. **Map the `$25000` tile-classification table's 256 entries** (which raw tile IDs from `$31800`
-   read as walkable/ladder/hazard/etc) — a static dump plus cross-checking a few entries against
-   `$31800`'s actual content near a known-walkable vs known-blocked spot would do it; this unlocks
-   reading level layout directly instead of inferring it from sensor behaviour.
-3. **Live-test ladder climbing and the jump/attack state** (`$c812`/`$227f3:=4`, `$c742`/`$227f3:=2`)
-   — both still read statically only. Needs a snapshot near an actual ladder tile (findable now via
-   item 2's table) or a forced sensor byte.
-4. **Investigate the `type=3` special case at `$bafc`**: a routine fixed to slot `$1a5de` (a
-   background-prop slot) checks `cmpi.w #$3,0(A0)` and, if true, calls `$1b3f8` — the *hero's own*
-   draw body — on that slot. Slot `$1a5de` read `type=1` in every snapshot examined so far, so this
-   branch has never been seen to fire; worth checking what would set that slot's type to 3 (an item
-   pickup, a switch, or — possibly — this game's closest thing to an enemy/AI-driven object).
-5. **Find the missing first call of the `$b328` per-world decompression block** (target `$53000`/
-   `$c800` — its two siblings, targeting `$40600` and `$4c400`, fired during the Amazon load, but this
-   one didn't show up in the same `hits`/`bt` census). May turn out to be the same root cause as
-   item 1 rather than a separate bug.
-6. **Explore the Amazon level with movement working, past this one screen** — in this emulator, once
-   item 1 is resolved (or independently, to see how far this emulator's other mechanics hold up).
-   Also worth checking on real Hatari for a genuine enemy/AI sighting, since this game clearly has
-   real hazards (Klondike Mine killed Dave's played character on real hardware).
-7. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, once item 1's fix (or
-   diagnosis) is in hand — testing them before that is likely to just reproduce the same bug.
-8. Classify the main game binary via the LINK-frame-count heuristic (§0 of the reversing skill) —
-   not yet done; would confirm hand-written-asm vs compiled-C and whether the decompile route (§3b)
-   is worth taking for the remaining engine code.
+1. **Find whether `$b288` (the common `CHARS11`/`SPRTS22`/`SPRTS33` loader) ever runs in this
+   emulator, in any world.** Two ways to settle it: (a) `hits`/`watch` on `$b288`/`$24000` from a
+   **cold boot** (not a downstream world-select snapshot) to see if it fires even once during the
+   crack-menu/title sequence; (b) extend the real-Hatari cross-check to Klondike Mine specifically —
+   check the hero object's actual sprite-table address on real hardware to learn whether Klondike's
+   hero is *also* sourced from `$42e00`/`$3b600` (shared) or something per-world. This replaces the
+   80th pass's "diff confirm→load traces instruction-by-instruction" plan — the per-world loader
+   (`$b328`) is now proven identical in shape between worlds, so that diff would find nothing; the gap
+   is specifically the never-found-caller common-resource block.
+2. Map the `$25000` tile-classification table's 256 entries (raw tile ID → walkable/ladder/hazard).
+3. Live-test ladder climbing and the jump/attack state (`$c812`/`$227f3:=4`, `$c742`/`$227f3:=2`) —
+   both still read statically only.
+4. The `type=3` special case at `$bafc` (slot `$1a5de` drawing through the hero's own body when its
+   type reads 3) — still never observed live.
+5. Explore the Amazon level with movement working, past this one screen, once item 1 is resolved (or
+   independently) — and check real Hatari for a genuine enemy/AI sighting.
+6. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, once item 1 is in hand.
+7. Classify the main game binary via the LINK-frame-count heuristic (§0 of the reversing skill) — not
+   yet done.
 
 ## Known traps
 
-- `resume <snap> repl` does not reattach a disk image — `--disk-a` must be passed again on every
-  resume for a disk-booted game, or floppy reads silently fail (see README's "Known traps").
-- A busy-poll "wait for next interrupt and consume it" utility reads as stuck if you only sample the
-  field it polls at rest. Also in the README.
-- A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event, and a per-object busy
-  flag can suppress a whole frame's input read on top of that — both now in CLAUDE.md and the
-  README's "Known traps"/"Gameplay input" sections; no longer workstream-only.
-- Diffing a held-input frame against the *pre-input* frame (rather than a same-length *no-input
-  control*) reads ordinary per-frame animation as input-driven movement and doesn't identify which
-  sprite actually moved — generalized into the reverse-engineer-st-game skill's cracktro A/B lesson;
-  no longer workstream-only.
-- The draw loop's screen base (`$1a2e4`) alternates between `$70000`/`$78000` (a real double buffer)
-  — check which one a write landed in before trusting a render of "the currently displayed" buffer.
-- **A "broken/missing data" conclusion drawn only from this emulator's own behavior is not safe
-  without a real-hardware cross-check.** Two such conclusions in this workstream's own history
-  (Klondike Mine's data, the hero's sprite bank) turned out to be this emulator's bugs, not crack
-  defects — proven wrong only by actually running the same disk in real Hatari. Any future "world/
-  resource X doesn't load in this crack" claim should get the same cross-check before being written
-  up as settled, not just a static/zero-disk-reads argument from this emulator alone.
-- **Hatari's remote-control channel (`--control-socket`/`--cmd-fifo`) cannot inject joystick input**,
-  only real ST-keyboard scancodes (`hatari-event keydown/keyup <ST scancode>`, straight into
-  `IKBD_PressSTKey` — confirmed by reading `src/control.c`, not guessed). Hatari's keyboard-as-
-  joystick emulation (`Joy_KeyDown`/`Joy_KeyUp` in `src/joy.c`, cursor keys + Right Ctrl when a port
-  is set to `--joystick 1`/`--joy1 keys`) is driven from genuine SDL key events reaching Hatari's own
-  window and is not reachable through the remote command channel at all. So: crack-menu keyboard
-  input (F1, Space, etc.) can be scripted headlessly via the fifo; anything the game reads as raw
-  joystick-1 (`$1c4c1` in this game, per the README) needs a real window and real keystrokes.
-  `osascript`/System Events synthetic keystrokes are also gated by macOS Accessibility permission
-  (denied by default) — this session worked around it by asking Dave to press the actual keys
-  himself while watching the real window, which also doubled as a legitimate live playthrough.
-- Hatari's `hatari-debug` commands need a `$` prefix for hex addresses (`m $42e00 24`, not
-  `m 42e00 24`  — the bare form is parsed as decimal and errors). A plain PC address breakpoint
-  (`hatari-debug a $addr`) does not actually pause emulation when hit through the remote command
-  channel (no interactive terminal attached) — it only logs a running hit count and lets emulation
-  continue, and re-issuing the same command adds a *second* independent breakpoint rather than
-  replacing or removing the first. Getting a genuine paused-and-query breakpoint this way would need
-  a real interactive debugger session (a pty), not the fifo/socket alone — not attempted this session
-  to avoid disrupting Dave's live, actively-played game.
+- `resume <snap> repl` needs `--disk-a` re-passed every time (path relative to `M68000/`); the disk
+  image itself lives in `scratchpad/impossamole/`, not the repo root.
+- A `kbd`/`mouse` status byte is a raw level, not an edge-latched event, and a per-object busy flag
+  can suppress a frame's input read on top of that (now in CLAUDE.md/README, no longer workstream-only).
+- A busy-poll "wait for next interrupt" utility reads as stuck if you only sample at rest; prove with
+  `hits`/`watch` (now in CLAUDE.md, no longer workstream-only).
+- The screen base (`$1a2e4`) alternates `$70000`/`$78000` — check which one a write landed in.
+- **A sprite spotted "in roughly the right screen area" is not proof it belongs to the object you
+  think drew it — check its exact declared coordinates or breakpoint its own draw call** (now in
+  CLAUDE.md).
+- **Checking only a small prefix of a memory region, or only the first byte of a multi-byte field,
+  is not the same as checking the whole thing** — an object's type field is a 16-bit word (not the
+  first byte alone), and a loaded file's first 64 bytes can be a legitimate zero-padded header while
+  the rest of the buffer is real data (now in CLAUDE.md).
+- **A trace/watch window that starts at a downstream snapshot (already past the event you're
+  checking for) will read as "never happens"** even when it did happen, just earlier. This cost both
+  the 80th pass (the "$b328 missing call" false alarm) and this pass (an initial "Amazon never loads
+  its second file" false alarm, corrected once a full trace from the actual confirm keypress was run).
+  Always trace from the actual triggering input, not from a snapshot already past it, before
+  concluding something never fires.
+- The Blitter register range (`$FF8A00`-`$FF8A3F`) is genuinely unmapped in this emulator's MMU
+  (`WriteByte`/`ReadByte`'s catch-all falls through to a real `BusError`) — this matches real STF
+  hardware with no blitter fitted, not a bug, but worth knowing if a future game's routine does use it.
 
 ## Next session
 
-Start with open item 1: find where this emulator's confirm→load path diverges from real hardware.
-This is the highest-value item in the whole backlog right now — it's directly responsible for at
-least two wrong conclusions already written up and retracted, may explain the still-open `$b328`
-missing-call question (item 5) for free, and could be silently affecting other games' reversing work
-in this repo if it's a shared FDC/disk-timing bug rather than something specific to this game. Items
-2-4 are independent and can be picked up in the meantime if item 1 needs a break. Item 6 (deeper
-Amazon exploration, and checking real Hatari for a genuine enemy sighting) is worth doing once item 1
-is either fixed or well enough understood that further exploration in this emulator won't be wasted
-effort.
+Start with Open item 1: find whether `$b288` (common sprite/font loader) ever runs in this emulator.
+Cold-boot a `hits`/`watch` census on it first (cheapest test); if it never fires from cold boot either,
+this is a general regression affecting every world, not an Amazon-specific one, and the next question
+becomes why `$b288` itself is never called (find its own caller, likely in the crack-menu/title code
+that runs before any world-select snapshot). If it does fire from cold boot, the bug is downstream of
+that (a decompression or copy step that clears/never-writes `$42e00`) — re-run the same live-breakpoint
+technique (`bpc 1b4f8`) from cold boot instead of from a snapshot to see fresh, not-yet-overwritten
+state. Item 2-4 are independent and can be picked up in the meantime.

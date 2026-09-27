@@ -6,8 +6,10 @@ First pass. *Impossamole* — Gremlin Graphics / Core Design, 1990. The opening-
 pillar) with no isometric projection visible. Leave the genre unlabelled until a room with an actual
 diamond/2.5D grid turns up, rather than repeating the guess. (No hero sprite is actually visible in
 this emulator's own render of that scene — a real-Hatari cross-check later in this doc proves the
-mole-hero sprite renders fine on real hardware in the same spot; this emulator has a confirm→load bug
-that leaves its own sprite bank unpopulated, see "Gameplay input" below.)
+mole-hero sprite renders fine on real hardware in the same spot; this emulator leaves the hero's
+sprite bank (`$42e00`) unpopulated in *every* world tried so far, not just Amazon, and a full
+hardware-register comparison rules out a stubbed peripheral as the cause — see "Gameplay input" and
+"Not yet exercised" below.)
 The copy in hand is a cracked scene release: a "Replicants"-badged boot menu leading into an
 "E-Motion"/"R.AL" trained-and-packed version. No `\AUTO\` folder; the disk boots directly
 (executable boot sector, checksum `$1234`) into the crack's own menu code, not straight into the
@@ -356,6 +358,51 @@ handoff guessed:
   real, findable divergence from what real hardware executes; finding it is the handoff's top open
   item.
 
+  **Extended and corrected (81st pass): the empty-bank condition is not Amazon-specific — Klondike
+  Mine hits the identical state.** The same live breakpoint above (`bpc 1b4f8`, right before the final
+  `adda.l D4,A2`) hit with the exact same operands when confirming Klondike Mine instead: `A0=$1a572`
+  (the hero object), `A2` resolved to `$00042e00` identically, and a full 384-byte dump of that entry
+  (not just a leading sample — see "Known traps") is 0/384 nonzero bytes in *both* worlds. So whatever
+  this emulator fails to do to populate `$42e00` is not specific to Amazon's own confirm path; it
+  reproduces identically for Klondike. This reopens the "Amazon-specific bug" framing: either no
+  world's hero sprite ever draws in this emulator (a general regression, not a per-world one), or real
+  Hatari's own cross-check needs extending to Klondike specifically to check whether its hero sprite is
+  *also* sourced from `$42e00` on real hardware (nobody has checked that yet — the existing cross-check
+  only confirmed Amazon).
+
+  A grey humanoid figure this pass initially found and reported as "Klondike's hero rendering" in this
+  emulator does **not** survive a precise position check and should be treated as retracted: a crop
+  taken exactly at the hero object's own declared coordinates (`$40`,`$90`) does not contain it — the
+  figure sits roughly 20-30px further right, cut off at the edge of that crop. It's some other,
+  unidentified graphical element (most likely background/tile art), not proof the hero object itself is
+  drawing anything. See "Known traps" below for the general lesson.
+
+  **Item 5 (the `$b328` block's "missing first call") is resolved, not a bug — it was a trace-window
+  artifact.** A full `ATARI_TRACE_FDC=1`/`ATARI_TRACE_GEMDOS=1` trace from the *actual confirm
+  keypress* (not from a downstream snapshot already past the depacker, which is what the original
+  census used) shows all three of `$b328`'s straight-line calls firing, in order, for *both* Klondike
+  and Amazon: target `$53000`/`$c800` (the one previously reported missing), then `$40600`/`$2800`,
+  then `$4c400`/`$6c00` — each a real Fopen/Fread/Fclose triple with genuine FDC sector activity. The
+  earlier census's window started at `after_confirm_amazon.snap` (PC=`$3b4`, already inside the
+  depacker loop), which is *after* the first call already completed — the same class of mistake as the
+  "zero disk reads" reading of Klondike above, not a second real bug. `$4c400`'s content is real,
+  comparable non-garbage data in both worlds (verified across the full `$6c00`-byte extent, not a
+  leading sample) — this per-world loader block is not where the actual hero-invisibility bug lives.
+
+  **Ruled out via a full hardware-register comparison: not a stubbed/unimplemented peripheral.**
+  Watching the *entire* `$FF8000`-`$FFFC10` I/O space across the whole confirm-to-gameplay run for both
+  worlds shows an identical set of touched registers (video/palette, FDC, DMA address, YM2149, MFP) —
+  no divergence at the hardware level at all. Neither world ever touches the Blitter register range
+  (`$FF8A00`+, confirmed genuinely unmapped in this emulator: falls through to a real 68000 `BusError`,
+  matching real STF hardware with no blitter fitted rather than being a silent stub — but moot here
+  since the game never accesses it either way). So the bug is not a missing peripheral; it's
+  CPU-visible code or data, most likely in whatever should call the block at `$b288`-`$b326` (loads the
+  common `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT` resources to `$24000`/`$3b600`/`$42e00`) — a static
+  whole-RAM scan (`find_ram_callers.py`) finds no caller for that block's entry in *either* world's
+  post-confirm snapshot, meaning if it's called at all it happens once, earlier than either snapshot,
+  from code since overwritten — or it never runs in this emulator at all. Not yet distinguished; see
+  "Not yet exercised".
+
   A live double-buffer alternation caught mid-investigation, now folded into "Known traps" below:
   `$1a2e4` (the screen base the draw loop targets) is not a fixed address — it reads `$70000` in both
   `test_noinput_2M.snap`/`test_dirbit3_B.snap` but `$78000` a few thousand steps into a *fresh* resume
@@ -411,6 +458,20 @@ and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still r
   steps earlier in the same snapshot's history; confirm which buffer a specific write landed in
   (read `$1a2e4` live, or force-render both addresses) before concluding a computed draw target
   produced no visible pixels (see "Gameplay input" above).
+- **A visual match "in roughly the right screen area" is not proof of an object's identity.** The
+  81st pass spotted a grey humanoid figure in this emulator's Klondike Mine render near where the
+  hero object's coordinates would place it, and reported it as "the hero rendering" without checking
+  the object's own declared position precisely — a tight crop at the object's *exact* `(X,Y)` later
+  showed the figure sits 20-30px away, outside that crop entirely. Before attributing a visible sprite
+  to a specific object, crop tightly at that object's own coordinates (or better, breakpoint the draw
+  call itself and read the address it resolves, the way the `$42e00` hero-bank proof above does) —
+  don't eyeball proximity on a full-screen thumbnail.
+- **Checking only a small prefix of a memory region is not the same as checking the region.** The same
+  pass twice drew a wrong "empty"/"non-empty" conclusion from the first 64 bytes of a buffer whose
+  real content only differs later (an object struct's type field is a 16-bit word, not the first
+  byte alone; a loaded file's first 64 bytes were a legitimate zero-padded header, not proof the
+  whole `$6c00`-byte buffer was blank). Dump the field's actual declared width, and the buffer's full
+  extent, before concluding "populated" or "empty" from a byte count.
 
 ## Files
 
@@ -428,17 +489,25 @@ and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still r
 
 ## Not yet exercised
 
-**Top priority (new): find where this emulator's confirm→load path diverges from real hardware.**
-A live cross-check against real Hatari v2.6.1 (`hatari_crosscheck/`, 2026-09-27) proved this
-emulator's two "broken" readings above are its own bugs, not crack/content defects: real Hatari plays
-Klondike Mine through to genuine gameplay and a real Game Over (this emulator bounces to a blank
-logo, zero disk reads), and shows a clearly visible hero sprite in Amazon gameplay (this emulator's
-`$42e00` hero-sprite bank is proven never written at all here). Likely candidates: FDC/disk-read
-timing, a subtly mishandled instruction somewhere in the confirm→load path, or a missing/incorrect
-disk-image interpretation this emulator's simpler FDC model doesn't replicate. Finding it needs
-comparing this emulator's confirm→load trace (`ATARI_TRACE_FDC=1`, `ATARI_TRACE_GEMDOS=1`) against
-Hatari's own (`tools/hatari_trace.py`, or the same live cross-check technique used here) instruction
-by instruction from the confirm keypress onward, watching for the first point they disagree.
+**Top priority (revised, 81st pass): find whether/how `$24000`/`$3b600`/`$42e00` ever get populated in
+this emulator, in any world.** The 80th pass's framing ("Amazon's confirm→load path is buggy") is too
+narrow: this pass proved the identical empty-`$42e00` condition in Klondike Mine too (same live
+breakpoint, same resolved address, same all-zero 384-byte entry), and ruled out a stubbed/unimplemented
+hardware peripheral as the cause (a full `$FF8000`-`$FFFC10` register-access comparison between the two
+worlds' confirm-to-gameplay runs found zero divergence — see "Gameplay input" above). The block that
+should populate them (`$b288`-`$b326`, loading `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT`) has no caller
+findable by a static whole-RAM scan (`find_ram_callers.py`) in either world's post-confirm snapshot.
+Two live tests would settle it: (1) `watch $24000 0x1c600`-style coverage (or a `hits` census on
+`$b288`) from a **cold boot**, not from a downstream world-select snapshot, to see whether that block
+ever runs even once, anywhere in this crack's normal boot sequence; (2) extend the real-Hatari
+cross-check to Klondike Mine specifically — check the hero object's own sprite-table address on real
+hardware, to learn whether Klondike's hero is *also* sourced from `$42e00`/`$3b600` (shared/common) or
+from something per-world (which would mean Amazon and Klondike were never expected to behave alike in
+the first place). Whichever it is, this no longer needs an instruction-by-instruction Hatari trace diff
+of the confirm→load path itself — that path is now well-proven identical in shape between worlds (file
+loads, FDC activity, GEMDOS calls all match); the actual gap is specifically the never-called
+common-resource block, not the per-world loader (`$b328`, confirmed firing correctly for all three of
+its calls in both worlds — see "Gameplay input" above).
 
 Past the gameplay movement mapping and the object-render/tile-classification mechanisms (see above):
 the ladder-climb and jump/attack states (`$227f3 := 4`/`2`) are read statically only, not yet driven
@@ -446,8 +515,6 @@ live; what the `$25000` tile-classification table's 256 entries actually map to;
 enemy/AI-controlled object exists at all — every object seen in this single screen of the Amazon
 level so far (in this emulator) is either the hero, a static background prop, or a dormant (`type=0`)
 slot, no hostile behaviour has been observed because gameplay hasn't been driven past this one screen
-in this emulator; the missing first of the `$b328` block's three decompression calls (target
-`$53000`/`$c800`, never hit despite its two siblings firing — reached some other way not yet found,
-possibly the same divergence as the top item); whether Orient/Ice Land/Bermuda Triangle load
+in this emulator; whether Orient/Ice Land/Bermuda Triangle load
 correctly in this emulator too; sprite/tile formats beyond the collision map now proven; level data
 (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and control flow / CFG extraction.
