@@ -113,6 +113,14 @@ know they existed.
   (impossamole `reversing/impossamole/README.md`'s VBL-wait correction: two 30M-apart snapshots of
   `$1a2e9 = 0` were wrongly read as "never advances" when `hits`/`watch` proved the VBL handler
   fires every frame and the same wait routine consumes its own tick within ~233 steps).
+- A sprite spotted "in roughly the right screen area" of a render is not proof it belongs to the
+  object you think drew it, and a memory region's first N bytes are not proof of its whole content.
+  Check an object's exact declared coordinates (a tight crop, or a live breakpoint on its own draw
+  call) before attributing a visible sprite to it, and read a struct field at its real declared width
+  and a buffer across its full extent, not a leading sample — both cost impossamole's 81st pass a
+  wrongly-reported "this world's hero renders" finding (a different, unidentified sprite ~20-30px
+  away from the hero's own position) and a wrongly-reported "empty buffer" (a legitimately
+  zero-padded header read as proof the whole buffer was blank).
 
 ## Proving routines with parallel subagents
 
