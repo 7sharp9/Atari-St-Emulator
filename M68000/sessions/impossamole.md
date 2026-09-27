@@ -1,17 +1,18 @@
 # Impossamole: handoff
 
-Updated 2026-09-27 by the session that ended at commit `9e5b241`.
+Updated 2026-09-27 by the session that ended at commit `3c524b8`.
 
 ## Resume point
 
-- Last commit of this workstream: `9e5b241` (object-render dispatch and tile-collision system
-  proven; the prior handoff's "world-scroll vs screen position" question resolved).
+- Last commit of this workstream: `3c524b8` (object-render dispatch and tile-collision system
+  proven; the prior handoff's "world-scroll vs screen position" question resolved; the hero's blank-
+  sprite explanation corrected from "idle selects a blank frame" to "the sprite bank is unloaded").
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image plus the
-  full snapshot chain, unchanged this session. `test_noinput_2M.snap`/`test_dirbit3_B.snap` (from the
-  prior session) were the pair diffed this session; `/tmp/mid_draw.snap` (a scratch snapshot taken
-  mid-blit to confirm the hero's draw address live) was **not** saved into scratchpad — recreate it
-  with the recipe in "Proven so far" below if needed again, it's cheap (a few thousand steps from
-  `after_amazon_load2.snap`).
+  full snapshot chain, unchanged this session. `test_noinput_2M.snap`/`test_dirbit3_B.snap` were the
+  pair diffed this session; several scratch snapshots taken mid-blit/mid-walk to confirm the hero's
+  draw address and sprite-table entry live (`/tmp/mid_draw.snap`, `/tmp/livewalk.snap`,
+  `/tmp/livewalk2.snap`) were **not** saved into scratchpad — recreate with the recipe in "Proven so
+  far" below if needed again, all cheap (well under 100,000 steps from `after_amazon_load2.snap`).
 - Start from: `scratchpad/impossamole/after_amazon_load2.snap` to continue exploring the Amazon
   level, or `test_dirbit3_B.snap` (hero mid-walk-cycle, position `$1a574 = $00c0`) to continue from
   after a confirmed move. **Must be resumed with `--disk-a "impossamole cr replicants - emotion cr
@@ -41,10 +42,16 @@ See `reversing/impossamole/README.md`'s "Gameplay input" section for full detail
   (`+64,+8`); every other active slot moves the opposite way (`-44,0`) — background/parallax, not the
   hero. The green creature visible in both comparison screenshots (`amazon_noinput_2M.png`/
   `amazon_walk_right.png`) is one of these `type=1` props, not the hero.
-- **The hero currently paints nothing because its selected sprite frame is blank**: `6(A0)=0` in
-  every snapshot taken so far (hero idle, `$227f3=0`), and the 128-byte entry at `$3b600` (index 0
-  of the sprite-graphics table the blitter reads via `6(A0)`) is confirmed all-zero (`m 3b600 128`).
-  No snapshot yet has caught the hero with a non-zero frame index.
+- **The hero's entire sprite bank is unpopulated throughout this playthrough — not a per-frame
+  "idle selects a blank pose" as first guessed.** The type-2 body reads its own table, separate from
+  type-1's `$3b600`: `A2 = $3b600+$7800+6(A0)*384` (`$42e00`, 384 bytes/entry). Live-drove the hero
+  into an actual walk (`kbd ff`/`kbd 08` + ~70,000 steps, short of a full ~200,000-step cycle) and
+  caught `$227f3=1` with real non-zero frame indices (`7`, `9` across two drives) — then checked the
+  *exact* live `A2` the code was about to read (`bpc 1b4f8`) against that address: every entry
+  checked (`0`, `7`, `9`) is all-zero, and a 4000-byte scan from `$42e00` found no non-zero byte at
+  all. The `$b1b6` template's own setup code has an unpacker call (`$b2b8`-`$b326`, `$1c6de`) that
+  targets exactly `$42e00`/`$9600` bytes — matches closely enough to be the same resource — but
+  whether it actually runs on the path into Amazon gameplay in this crack is not yet checked live.
 - **`$be96`'s tile classification, fully proven**: `$c0d4` samples up to 11 points around the hero's
   position through `$be2c`, which converts `((2(A0)-$20)+$227b6)>>3` / `clamp((4(A0)-8)>>3,0,23)`
   into a lookup into a raw byte tile-map at `$31800` (1680 cols x 24 rows, row stride `$690`);
@@ -60,13 +67,14 @@ See `reversing/impossamole/README.md`'s "Gameplay input" section for full detail
 
 ## Open, in priority order
 
-1. **Capture the hero mid-walk-cycle and check its real sprite.** `test_dirbit3_A.snap`/`B.snap`
-   bracket a *completed* walk cycle (back at `$227f3=0`, blank frame); a snapshot taken partway
-   through (e.g. `kbd ff`/`kbd 08` then ~50,000-100,000 steps, well short of the ~200,000+ a full
-   cycle needs) should catch `$227f3=1` and a non-zero `6(A0)`. Render the resulting `$3b600` entry
-   and the screen at the hero's own `(2(A0),4(A0))` (accounting for whichever of `$70000`/`$78000` the
-   draw actually targeted) to see the walking hero for the first time. Cheap, and closes out the last
-   open piece of the render-mechanism question.
+1. **Check live whether the `$b2b8`-`$b326` unpacker (targets `$42e00`/`$9600`, the hero's confirmed-
+   empty sprite bank) ever runs on the path into Amazon gameplay.** A `bpc`/`hits` on that block
+   across a full cold-boot-to-`after_amazon_load2` drive would settle it: if it never fires, the hero
+   graphic is missing because this crack's Amazon-load path skips whatever normally calls it (worth
+   then finding that caller and what gates it); if it does fire, something is un-loading or failing to
+   fill `$42e00` afterward and the unpacker call itself (`$1c6de`) needs reading. Either way this
+   directly explains why the hero has been invisible in every screenshot taken so far, and blocks any
+   future visual claim about "what the hero looks like."
 2. **Map the `$25000` tile-classification table's 256 entries** (which raw tile IDs from `$31800`
    read as walkable/ladder/hazard/etc) — a static dump plus cross-checking a few entries against
    `$31800`'s actual content near a known-walkable vs known-blocked spot would do it; this unlocks
@@ -112,9 +120,11 @@ See `reversing/impossamole/README.md`'s "Gameplay input" section for full detail
 
 ## Next session
 
-Start at `scratchpad/impossamole/after_amazon_load2.snap` (`--disk-a` attached). Pick open item 1
-first (catch the hero mid-walk-cycle and render its real sprite) — it's cheap and closes the render-
-mechanism investigation entirely. Item 2 (tile-classification table contents) is independent and
-unlocks item 3 (ladder/jump-attack live tests) and reading level layout directly. Item 4 (`type=3` at
-`$1a5de`) is a small, concrete lead toward whatever this game's closest thing to an enemy/AI-driven
-object is — worth a quick look before committing to item 5's larger push further into the level.
+Start at `scratchpad/impossamole/after_amazon_load2.snap` (`--disk-a` attached), or a fresh cold boot
+if item 1 needs the full path traced from the title screen. Pick open item 1 first (check whether the
+hero's sprite-bank unpacker ever runs) — it's the direct cause of every "hero invisible" observation
+so far and blocks any visual claim about the hero. Item 2 (tile-classification table contents) is
+independent and unlocks item 3 (ladder/jump-attack live tests) and reading level layout directly.
+Item 4 (`type=3` at `$1a5de`) is a small, concrete lead toward whatever this game's closest thing to
+an enemy/AI-driven object is — worth a quick look before committing to item 5's larger push further
+into the level.
