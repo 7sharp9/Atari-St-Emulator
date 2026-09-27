@@ -303,13 +303,27 @@ handoff guessed:
   background pixels untouched — matches every rendered comparison exactly, no distinct sprite ever
   appears no matter the frame index). **This isn't a per-frame "idle selects a blank pose" behaviour
   as first guessed — the entire hero sprite bank at `$42e00` is unpopulated throughout this whole
-  play session**, idle or walking alike. The `$b1b6` per-frame template's own setup code has a block
-  (`$b2b8`-`$b326`) that unpacks exactly `$9600` bytes into `$42e00` via a custom unpacker (`$1c6de`)
-  — matching the table's address and size closely enough to be the same resource — but whether that
-  block actually runs anywhere on the path this crack takes into Amazon gameplay hasn't been checked
-  live yet. Until it's confirmed to run (or found not to), the honest reading is: the hero is
-  invisible throughout everything driven so far because its graphic bank was never loaded, not
-  because of anything state-dependent.
+  play session**, idle or walking alike.
+
+  **Proven live that the bank is never written at all, not just never read from correctly**: a
+  `watch 42e00 9600` held across the *entire* confirm→load→gameplay transition (`after_confirm_amazon
+  .snap`, PC=`$3b4`, through 5,000,000 steps — well past `hits`-confirmed entry into real gameplay)
+  recorded **zero** writes anywhere in the hero's sprite-bank range; the same watch mechanism over the
+  same run caught 100/100 expected writes to `$53000` in a sanity check, so this is a real negative,
+  not a tooling gap. The `$b1b6` template's own setup code has a block (`$b288`-`$b326`) whose first
+  call unpacks into `$42e00`/`$9600` via the shared unpacker `$1c6de` — closely matching this table's
+  address and size — but a `hits` census on that exact block (`b288`, its call site `b2ca`, and `b328`
+  and `b1bc`) across the same 5,000,000-step window landed **zero** hits on all four; `$1c6de` itself
+  did hit twice, but both returns (`bt 1`) trace to the *other* per-world decompression block at
+  `$b328`-`$b3a8` (keyed by `$bb76`, the selected-world index) — and even there, only 2 of that
+  block's 3 straight-line calls fired (targets `$40600`/`$2800` and `$4c400`/`$6c00`; the first,
+  `$53000`/`$c800`, must be reached some other way not yet found), and none of the three targets
+  `$42e00` at all. **So the `$42e00` hero-sprite unpacker call genuinely does not run anywhere on this
+  crack's path into Amazon gameplay** — the hero is invisible throughout everything driven so far
+  because nothing ever populates its graphic bank, not because of any per-frame state. Whether that's
+  this specific crack being broken (plausible: it already has one dead world, Klondike Mine) or the
+  real game only loads hero graphics somewhere not yet reached (a different trigger, a later screen
+  transition, or progressively as the level scrolls) is still open — see "Open" in the handoff.
 
   A live double-buffer alternation caught mid-investigation, now folded into "Known traps" below:
   `$1a2e4` (the screen base the draw loop targets) is not a fixed address — it reads `$70000` in both
@@ -384,15 +398,17 @@ and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still r
 
 Past the gameplay movement mapping and the object-render/tile-classification mechanisms (see above):
 the ladder-climb and jump/attack states (`$227f3 := 4`/`2`) are read statically only, not yet driven
-live; what the `$25000` tile-classification table's 256 entries actually map to; whether the `$b2b8`-
-`$b326` unpacker block that targets `$42e00` (the hero's sprite bank, confirmed empty every time
-checked) ever actually runs on the path into Amazon gameplay — live-checking this (a `bpc`/`hits` on
-that block during a fresh boot-to-gameplay drive) would settle whether the hero graphic is simply not
-loaded yet at this point, or never loads in this crack at all; whether any enemy/AI-controlled object
-exists at all — every object seen in this single screen of the Amazon level so far is either the
-hero, a static background prop, or a dormant (`type=0`) slot, no hostile behaviour has been observed
-because gameplay hasn't been driven past this one screen; why Klondike Mine's own data specifically
-fails to load (worth diffing its `.DAT` pair against a working world's, or checking for a disk-read
-error the engine silently swallows) and whether Orient/Ice Land/Bermuda Triangle load correctly too;
+live; what the `$25000` tile-classification table's 256 entries actually map to; where the hero's
+sprite graphic actually comes from, if anywhere — proven live that nothing writes `$42e00` at all
+across confirm→load→5M steps of gameplay (see "Gameplay input" above), so either this crack never
+loads it (plausible, it already has one dead world) or the real trigger is somewhere further into the
+game than explored so far; whether any enemy/AI-controlled object exists at all — every object seen
+in this single screen of the Amazon level so far is either the hero, a static background prop, or a
+dormant (`type=0`) slot, no hostile behaviour has been observed because gameplay hasn't been driven
+past this one screen; the missing first of the `$b328` block's three decompression calls (target
+`$53000`/`$c800`, never hit despite its two siblings firing — reached some other way not yet found);
+why Klondike Mine's own data specifically fails to load (worth diffing its `.DAT` pair against a
+working world's, or checking for a disk-read error the engine silently swallows) and whether Orient/
+Ice Land/Bermuda Triangle load correctly too;
 sprite/tile formats beyond the collision map now proven; level data (`MDATA*.DCH`, `BRMUDA*.DAT`
 etc.); and control flow / CFG extraction.
