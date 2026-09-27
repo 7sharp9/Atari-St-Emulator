@@ -266,24 +266,65 @@ handoff guessed:
   0-step frame is a single small idle-animation blob, confirming the terrain doesn't otherwise move
   on its own).
 
-  **Not proven**: which on-screen sprite is the hero. A small humanoid figure standing in the grass
-  is visible in both the no-input and bit-3-held frames, but it shifts screen position by roughly the
-  same amount and direction as the pillar between the two — consistent with it being scrolling
-  background/statue art rather than a camera-locked player sprite, which would be expected to stay
-  near a fixed screen position while the world scrolled around it. So `2(A0)` is more likely a
-  world/camera-scroll value than the hero sprite's own screen X; the actual hero sprite (if drawn
-  separately, camera-relative) hasn't been located. Next session should look for a second position
-  field that stays roughly constant across this same before/after pair while everything else moves,
-  or trace which sprite-draw call actually reads `2(A0)`/`6(A0)` from this object.
+  **`2(A0)`/`4(A0)` is genuinely the hero's own on-screen pixel coordinate, not a world/camera-scroll
+  value — proven live, resolving the prior handoff's open question.** Diffing the full 20-slot,
+  108-byte object array (`$1a2ea`) between `test_noinput_2M.snap` and `test_dirbit3_B.snap` shows the
+  hero's slot (index 6, base `$1a572`, `type=2` at offset 0) is the *only* slot whose position moves
+  with the held input (`+64,+8`); every other active slot (`type=1`, e.g. the green creature prop at
+  base `$1a5de`) moves the opposite way (`-44,0`) — a background/parallax shift, not the hero. The
+  render dispatcher that walks this array once a frame (`$00bada`, called from the `$b1b6` gameplay
+  template) runs *two* type-gated draw stubs per slot every iteration — `$1b25a` (`type==1`) and
+  `$1b3ec` (`type==2`) — each falling through to its own copy of the same generic masked blitter body
+  (`$1ac34`'s type-1 body has a third, older copy of this same stub cluster, used by the non-gameplay
+  per-frame templates at `$17dd0` etc. for the cursor). **Proven live** (`bpc 1b47a`, the point right
+  before the final `adda.w D0,A1` address install): for the hero (`A0=$1a572`), the body computes
+  `D0 = 4(A0)*160 + (2(A0)&$fff0)/2` and adds it to `A1` (the screen base from `$1a2e4`) — from
+  `after_amazon_load2.snap`'s `X=$80`/`Y=$90`, that's exactly `$5a40`, matching `Y*160+X/2` by hand.
+  This is the *same* formula the type-1 body uses (`$1acb6`-`$1acd0`), just with different left/right
+  edge-clip thresholds (type-1 clips near byte-offset 0/`$90`/`$98`; type-2 clips near 0/`$8`/`$10` on
+  the left and `$78`/`$80`/`$88` on the right — a narrower on-screen window, not yet explained).
+  So the hero draws through the *same* screen-space mechanism as background props; the retracted
+  "hero sprite" guess from two handoffs ago was still wrong (that visible humanoid was background
+  art, most likely the green creature prop, which does track the parallax shift), but not because
+  the hero's own field is camera-relative — it draws at a literal screen X/Y like everything else.
+
+  **Why no hero sprite is visible in any screenshot taken so far**: the sprite-graphic index this
+  object selects (`6(A0)`, `asl.l #7` into a 128-byte-per-entry table at `$3b600`) reads `0` in both
+  `test_noinput_2M.snap` and `test_dirbit3_B.snap`, and entry 0 of that table is **128 bytes of
+  zero** (`m 3b600 128`, confirmed) — a blank/placeholder frame. The hero is idle (`$227f3=0`) in
+  every snapshot taken of this workstream so far, and idle apparently selects this blank entry, so
+  the draw call fires and computes a correct address but paints nothing. To actually see the hero
+  rendered, capture a snapshot **while the walk cycle is mid-stride** (`$227f3=1`, between the two
+  `test_dirbit3_A`/`B` snapshots which bracket a *completed* cycle back at state 0) and check `6(A0)`
+  for a non-zero frame index there.
+
+  A live double-buffer alternation caught mid-investigation, now folded into "Known traps" below:
+  `$1a2e4` (the screen base the draw loop targets) is not a fixed address — it reads `$70000` in both
+  `test_noinput_2M.snap`/`test_dirbit3_B.snap` but `$78000` a few thousand steps into a *fresh* resume
+  of `after_amazon_load2.snap`, and the shifter's own displayed base (what `snap_render.py` picks)
+  flips between the two on its own cadence. A screenshot taken from the "currently displayed" buffer
+  does not necessarily show what a draw call *just* computed into the other one; `snap_render.py`'s
+  own header comment already warns about exactly this (see Cadaver's `ScreenBufferA/B` precedent) —
+  this cost real time here re-deriving it before finding the note already applied elsewhere.
 
   The earlier "a single right packet produced no visible change" reading in the prior handoff was a
   false negative from not holding the packet long enough past a possibly-busy frame and not running
   far enough afterward to see the (multi-frame) walk cycle complete, not evidence the mapping differs
   from world-select's.
 
-Not yet live-tested: the up/down ladder-climb branches (`$c812`/`$227f3 := 4`), the jump/attack state
-(`$c742`/`$227f3 := 2`), and what the three-sensor "walkable" classification (`$be96`) actually
-reads (tile type table, most likely) — all read statically only, from `$c488`'s handlers above.
+**`$be96`'s tile classification, proven**: `$c0d4` (called every frame right before `$c2fa`'s input
+dispatch) samples up to 11 probe points around the hero's own `(2(A0),4(A0))` — offsets `+8/+8`,
+`+8,+16`, `+20/+8`, `+20,+16`, `+10,+24`/`+16,+16` and `+16,+16`/`+16,+24` pairs, matching the
+`$227e0`-`$227eb` sensor bytes `$c488`'s handlers already read — through `$be2c`, which converts a
+world position to a raw tile-map lookup: `tile_x = ((2(A0)-$20) + $227b6) >> 3` (8px tiles, `$227b6`
+the level's own horizontal scroll counter — a *different* variable from the hero's own position, and
+the actual camera-scroll value the type-1 background objects' apparent `-44` shift comes from),
+`tile_y = clamp((4(A0)-8)>>3, 0, 23)`, indexing a raw byte map at `$31800` (1680 columns x 24 rows,
+row stride `$690` — ends around `$3b540`, just before the `$3b600` sprite-graphics table). `$be96`
+then maps that raw tile-map byte through a 256-byte classification table at `$25000` to the
+walkable/ladder/etc category the sensor byte actually stores. Not yet live-tested: which raw tile IDs
+classify as which category (the table's actual contents), and the ladder-climb (`$c812`/`$227f3:=4`)
+and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still read statically only.
 
 ## Known traps
 
@@ -306,6 +347,12 @@ reads (tile type table, most likely) — all read statically only, from `$c488`'
   above: this cost the prior handoff a "fire doesn't confirm" false negative). Hold the pressed state
   for at least one full VBL frame (~12000-15000 steps for this game — check `instructionsPerFrame`)
   before sending the release packet, when testing whether *any* input is being read at all.
+- The object-render loop's screen base (`$1a2e4`) alternates between `$70000` and `$78000` — a real
+  double buffer, not a fixed address. `snap_render.py` always renders whichever one the shifter
+  currently displays, which is not necessarily the one a draw call *just* wrote into a few thousand
+  steps earlier in the same snapshot's history; confirm which buffer a specific write landed in
+  (read `$1a2e4` live, or force-render both addresses) before concluding a computed draw target
+  produced no visible pixels (see "Gameplay input" above).
 
 ## Files
 
@@ -318,13 +365,19 @@ reads (tile type table, most likely) — all read statically only, from `$c488`'
 | `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen reached after confirming Klondike Mine — this crack's Klondike data fails to load; firing here loops back to `world_select.png` (see "Confirming a world" above) |
 | `amazon_gameplay.png` | first real gameplay frame, reached by confirming The Amazon instead of Klondike Mine — hero sprite, terraced hillside, ruined pillar (see "Confirming a world" above) |
 | `amazon_noinput_2M.png` | control frame: `after_amazon_load2.snap` run 2M steps with no input at all — terrain unchanged from `amazon_gameplay.png` except one small idle-animation blob (see "Gameplay input" above) |
-| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll (which on-screen sprite is the hero itself is still open, see "Gameplay input" above) |
+| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll. The visible green creature in both frames is a `type=1` background prop (it shifts with the scroll), not the hero — the hero itself is proven to draw at its own screen X/Y through the same mechanism but is holding a blank sprite frame while idle, so it paints nothing visible (see "Gameplay input" above) |
 
 ## Not yet exercised
 
-Past finding the gameplay movement mapping (see above): the ladder-climb and jump/attack states
-(`$227f3 := 4`/`2`) are read statically only, not yet driven live; why Klondike Mine's own data
-specifically fails to load (worth diffing its `.DAT` pair against a working world's, or checking for
-a disk-read error the engine silently swallows) and whether Orient/Ice Land/Bermuda Triangle load
-correctly too; sprite/tile formats; level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and control flow /
-CFG extraction.
+Past the gameplay movement mapping and the object-render/tile-classification mechanisms (see above):
+the ladder-climb and jump/attack states (`$227f3 := 4`/`2`) are read statically only, not yet driven
+live; what the `$25000` tile-classification table's 256 entries actually map to; what the hero's
+non-idle sprite frames at `$3b600` (index != 0) actually look like — no snapshot captured so far has
+caught the hero mid-walk-cycle with a non-zero `6(A0)`; whether any enemy/AI-controlled object exists
+at all — every object seen in this single screen of the Amazon level so far is either the hero, a
+static background prop, or a dormant (`type=0`) slot, no hostile behaviour has been observed because
+gameplay hasn't been driven past this one screen; why Klondike Mine's own data specifically fails to
+load (worth diffing its `.DAT` pair against a working world's, or checking for a disk-read error the
+engine silently swallows) and whether Orient/Ice Land/Bermuda Triangle load correctly too; sprite/
+tile formats beyond the collision map now proven; level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and
+control flow / CFG extraction.
