@@ -2,14 +2,15 @@
 
 First pass. *Impossamole* — Gremlin Graphics / Core Design, 1990. The opening-description
 "isometric platformer" was an unverified guess; the first gameplay screen actually reached
-(`amazon_gameplay.png`, below) is a plain side-view platform scene (terraced hillside, a ruined
-pillar) with no isometric projection visible. Leave the genre unlabelled until a room with an actual
-diamond/2.5D grid turns up, rather than repeating the guess. (No hero sprite is actually visible in
-this emulator's own render of that scene — a real-Hatari cross-check later in this doc proves the
-mole-hero sprite renders fine on real hardware in the same spot; this emulator leaves the hero's
-sprite bank (`$42e00`) unpopulated in *every* world tried so far, not just Amazon, and a full
-hardware-register comparison rules out a stubbed peripheral as the cause — see "Gameplay input" and
-"Not yet exercised" below.)
+(`coldboot_amazon_gameplay.png`, below) is a plain side-view platform scene (terraced hillside, a
+ruined pillar) with no isometric projection visible. Leave the genre unlabelled until a room with an
+actual diamond/2.5D grid turns up, rather than repeating the guess. (Passes 79-81 reported no hero
+sprite visible in this emulator's own render of that scene, and framed it as a confirm→load bug in
+this repo's F# core; the 82nd pass retracted that — the hero renders fine here too, matching real
+Hatari exactly, from a fresh cold boot. The negative result was specific to one long-lived, reused
+snapshot lineage whose own original boot (undocumented, now lost) evidently skipped a one-time
+resource load early in the crack's own loading sequence — see "Real-hardware cross-check" and "Why no
+hero sprite is visible" below.)
 The copy in hand is a cracked scene release: a "Replicants"-badged boot menu leading into an
 "E-Motion"/"R.AL" trained-and-packed version. No `\AUTO\` folder; the disk boots directly
 (executable boot sector, checksum `$1234`) into the crack's own menu code, not straight into the
@@ -231,25 +232,45 @@ the engine's confirm→load path works fine, proven by Amazon loading. **A real-
 to blank logo, zero disk reads) is real and reproducible, but it does not mean Klondike Mine's data
 is actually broken in the crack — it's this emulator that fails to load it. The "Amazon loads fully
 in this emulator" half still stands on its own, though real Hatari's Amazon run additionally shows a
-visible hero sprite this emulator has never rendered (see below).
+visible hero sprite this pass's snapshot lineage never rendered (see below) — **both retracted by the
+82nd pass, see immediately below.**
 
 **Real-hardware cross-check (Hatari v2.6.1, run 2026-09-27): both "broken" readings above were
-wrong.** Driven live in the actual Hatari emulator (not this repo's F# core) from the same disk
-image, with the same crack-menu → title-fire → world-select → confirm sequence: confirming **Klondike
-Mine reaches genuine gameplay** — a real mine-cavern level, HUD (score/lives/ammo), a clearly visible
-hero sprite, ending in an actual "GAME OVER" death screen (`scratchpad/impossamole/hatari_crosscheck/
-hatari_klondike_gameover.png`) — not the blank-logo bounce this emulator produces. Confirming **The
-Amazon** also shows a clearly visible hero sprite (`hatari_crosscheck/hatari_amazon_gameplay.png`,
-zoomed in `hatari_amazon_hero_zoom.png`): a small mole-themed character (grey head, red scarf, blue
-suit, matching the title screen's mascot) standing in the grass — this emulator has never rendered
-any hero pixel in this same scene (see "Gameplay input" below). The hero's object struct in real
-Hatari (`$1a572`) matches this workstream's reverse-engineered layout exactly (`type=2`, `2(A0)`/
-`4(A0)` position, `6(A0)` frame index) — the addressing and struct work stands — so the divergence is
-specifically that **this emulator's confirm→load path fails to execute whatever real hardware executes
-to (a) let Klondike Mine's level data load at all, and (b) populate the hero's sprite graphics for at
-least Klondike Mine and Amazon.** That points at a genuine bug in this repo's F# core (most likely
-FDC/disk-read timing or a subtly mishandled instruction along the confirm→load path), not at content
-that's missing or broken in the crack itself. See the handoff's top open item.
+wrong — and the 82nd pass has since found the readings were not even divergent from real hardware,
+just from a fresh cold boot.** Driven live in the actual Hatari emulator (not this repo's F# core)
+from the same disk image, with the same crack-menu → title-fire → world-select → confirm sequence:
+confirming **Klondike Mine reaches genuine gameplay** — a real mine-cavern level, HUD
+(score/lives/ammo), a clearly visible hero sprite, ending in an actual "GAME OVER" death screen
+(`scratchpad/impossamole/hatari_crosscheck/hatari_klondike_gameover.png`) — not the blank-logo bounce
+the *stale snapshot lineage described below* had shown. Confirming **The Amazon** also shows a
+clearly visible hero sprite (`hatari_crosscheck/hatari_amazon_gameplay.png`, zoomed in
+`hatari_amazon_hero_zoom.png`): a small mole-themed character (grey head, red scarf, blue suit,
+matching the title screen's mascot) standing in the grass. The hero's object struct in real Hatari
+(`$1a572`) matches this workstream's reverse-engineered layout exactly (`type=2`, `2(A0)`/`4(A0)`
+position, `6(A0)` frame index) — the addressing and struct work stands.
+
+**Retracted (82nd pass): this was never a genuine bug in this repo's F# core.** Every claim below
+about Klondike bouncing to a blank logo and about the hero's sprite bank (`$42e00`) never being
+populated was measured against `after_select3.snap` and its long chain of descendants — the same
+snapshot lineage nearly every pass of this workstream has reused since very early on. A fresh cold
+boot run this pass (own script, not a reused snapshot) through the identical crack-menu →
+title-fire → world-select → confirm sequence reaches full parity with real Hatari for *both* worlds:
+Klondike Mine loads into a genuine mine-cavern level (`coldboot_klondike_gameplay.png` — same rock
+texture, gallows-post and hanging lantern as `hatari_klondike_gameover.png`) and Amazon's hero sprite
+renders correctly (`coldboot_amazon_gameplay.png`, zoomed in `coldboot_amazon_hero_zoom.png` — grey
+head, red scarf, blue suit, pixel-for-pixel the same mascot as Hatari's). Reproduced twice,
+byte-for-byte identical, from an independent cold boot each time. Directly checked against the old
+lineage: resuming the long-lived `after_select3.snap` itself (upstream of any confirm/gameplay code)
+and dumping `$42e00` shows it is *already* all-zero there — so the divergence from real hardware was
+introduced during that lineage's own original cold boot, not by anything the confirm→load path does.
+That original boot's exact keypress timing was never recorded (no `.repl` script was saved from
+whichever early pass first produced it) and cannot be reconstructed; what's proven is that at least
+one specific, reproducible F1/skip-trainer timing (`kbd 3b`/`s 100000`/`kbd bb`/`s 500000`/`kbd
+39`/`s 500000`/`kbd b9`, from the boot-menu wait point) executes the common-resource loader
+correctly, and it is likely the old lineage's boot used different-enough timing to miss it — a real
+timing-sensitivity in the crack's own loading code (or in how this emulator models FDC/DMA timing)
+that is now the interesting open question, not a rendering or confirm→load bug. See "Why no hero
+sprite is visible" below for the mechanism, and the handoff for the new top open item.
 
 ## Gameplay input: same joystick-1 bit layout as world-select, gated by a per-frame busy flag
 
@@ -319,59 +340,63 @@ handoff guessed:
   art, most likely the green creature prop, which does track the parallax shift), but not because
   the hero's own field is camera-relative — it draws at a literal screen X/Y like everything else.
 
-  **Why no hero sprite is visible in any screenshot taken so far, corrected**: the type-2 body reads
-  its own, separate sprite table from the type-1 body's `$3b600` (128 bytes/entry) — `$1b4de`-`$1b4f8`
-  computes `A2 = $3b600 + $7800 + 6(A0)*384` (384 bytes/entry: 24 rows x 16 bytes, matching the
-  object's own 24px height at 2 words/32px wide), i.e. a dedicated hero-sprite bank at `$42e00`.
-  **Live-driven the hero into an actual walk** (`kbd ff`/`kbd 08` then ~70,000 steps — well short of a
-  full ~200,000-step cycle — catches `$227f3=1`, mid-stride, with `6(A0)` reading a real non-zero
-  frame index, `7` and `9` seen across two separate drives) and checked the *exact* table entry the
-  live code was about to read (`bpc 1b4f8`, right before the final `adda.l D4,A2`; `A2` matched the
-  hand-computed address exactly both times): **every entry checked so far — index 0, 7 and 9 — is
-  128 or 384 bytes of zero**, and a raw 4000-byte scan from `$42e00` found no non-zero byte at all.
-  The hero's draw call is real (confirmed live: it computes the correct screen address and, per the
-  no-op-blit hypothesis, an OR-mask write of an all-zero source leaves the destination's pre-existing
-  background pixels untouched — matches every rendered comparison exactly, no distinct sprite ever
-  appears no matter the frame index). **This isn't a per-frame "idle selects a blank pose" behaviour
-  as first guessed — the entire hero sprite bank at `$42e00` is unpopulated throughout this whole
-  play session**, idle or walking alike.
+  **Why no hero sprite was visible in the old snapshot-lineage screenshots, and why it renders fine
+  from a fresh cold boot (corrected, 82nd pass)**: the type-2 body reads its own, separate sprite
+  table from the type-1 body's `$3b600` (128 bytes/entry) — `$1b4de`-`$1b4f8` computes `A2 = $3b600 +
+  $7800 + 6(A0)*384` (384 bytes/entry: 24 rows x 16 bytes, matching the object's own 24px height at 2
+  words/32px wide), i.e. a dedicated hero-sprite bank at `$42e00`. Passes 79-81 checked this table
+  live (`bpc 1b4f8`, right before the final `adda.l D4,A2`) from the `after_select3.snap`/
+  `after_confirm_amazon.snap` lineage and consistently found it zero — 0/384 bytes at every entry
+  checked, in both Klondike and Amazon, and a `watch 42e00 9600` held across that lineage's entire
+  confirm→load→gameplay transition recorded zero writes there. That negative was real *for that
+  lineage*: a `hits` census on the block that should populate it (`b288`-`b326`, unpacking
+  `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT` to `$24000`/`$3b600`/`$42e00` via the shared unpacker
+  `$1c6de`) landed zero hits on `b288`/`b2ca`/`b328` across that whole run, and a static whole-RAM
+  scan (`find_ram_callers.py`) found no caller for it either — consistent with the block never running
+  at all *in that lineage*, not with a read/render bug.
 
-  **Proven live that the bank is never written at all, not just never read from correctly**: a
-  `watch 42e00 9600` held across the *entire* confirm→load→gameplay transition (`after_confirm_amazon
-  .snap`, PC=`$3b4`, through 5,000,000 steps — well past `hits`-confirmed entry into real gameplay)
-  recorded **zero** writes anywhere in the hero's sprite-bank range; the same watch mechanism over the
-  same run caught 100/100 expected writes to `$53000` in a sanity check, so this is a real negative,
-  not a tooling gap. The `$b1b6` template's own setup code has a block (`$b288`-`$b326`) whose first
-  call unpacks into `$42e00`/`$9600` via the shared unpacker `$1c6de` — closely matching this table's
-  address and size — but a `hits` census on that exact block (`b288`, its call site `b2ca`, and `b328`
-  and `b1bc`) across the same 5,000,000-step window landed **zero** hits on all four; `$1c6de` itself
-  did hit twice, but both returns (`bt 1`) trace to the *other* per-world decompression block at
-  `$b328`-`$b3a8` (keyed by `$bb76`, the selected-world index) — and even there, only 2 of that
-  block's 3 straight-line calls fired (targets `$40600`/`$2800` and `$4c400`/`$6c00`; the first,
-  `$53000`/`$c800`, must be reached some other way not yet found), and none of the three targets
-  `$42e00` at all. **So the `$42e00` hero-sprite unpacker call genuinely does not run anywhere this
-  emulator's confirm→load path into Amazon gameplay reaches** — the hero is invisible throughout
-  everything driven so far in this emulator because nothing ever populates its graphic bank here, not
-  because of any per-frame state. **Resolved by the real-Hatari cross-check above: this is not the
-  crack being broken and not a hero-graphics trigger the real game reaches later** — real Hatari shows
-  the hero rendered in this exact scene. The `$42e00`/`$1c6de` call this emulator never reaches is a
-  real, findable divergence from what real hardware executes; finding it is the handoff's top open
-  item.
+  **What actually happened: `$b288` runs once, very early, before any of that lineage's snapshots
+  were ever taken — but it didn't run during whichever original boot produced `after_select3.snap`.**
+  A fresh cold boot this pass (`kbd 3b`/`s 100000`/`kbd bb`/`s 500000`/`kbd 39`/`s 500000`/`kbd b9`
+  from the boot-menu wait point, then a `hits` census run straight through to world-select) lands a
+  single hit on `b288` at step 1,057,153 — inside the crack's own loading sequence, tens of millions of
+  steps before the title screen even renders — with `$1c6de` firing 6 times in the following ~4M
+  steps (unpacking all three common resources). Reproduced byte-for-byte across two independent cold
+  boots. The live-breakpoint check (`bpc 1b4f8`) against this run's own confirm→gameplay state
+  resolves the identical `A2=$00042e00` as every prior pass, but the full 384-byte dump is now real
+  sprite-mask data throughout, not zero, and the on-screen result is the mole hero, clearly visible,
+  rendering exactly where the object's coordinates place it (`coldboot_amazon_gameplay.png`, zoomed
+  `coldboot_amazon_hero_zoom.png` — grey head, red scarf, blue suit, matching Hatari's
+  `hatari_amazon_hero_zoom.png` pixel-for-pixel). Directly checked against the old lineage to confirm
+  the divergence is upstream of confirm, not downstream: resuming `after_select3.snap` itself (already
+  sitting at world-select, before any world is even chosen) and dumping `$42e00` shows it is *already*
+  all-zero — so whatever caused `$b288` to be skipped happened during that lineage's own original cold
+  boot, before world-select was ever reached. That original boot's exact keypress timing is lost (no
+  `.repl` script survives from whichever early pass first produced it); the working hypothesis is that
+  `$b288`'s execution is timing-sensitive to the F1/skip-trainer keypress gaps in a way not yet
+  characterized — a real question worth answering on its own, but not a rendering or confirm→load bug.
+  The hero's draw call itself was never broken: it always computed the right screen address and read
+  the right table entry, exactly as passes 79-81 proved: the only thing missing was the data at that
+  address, and that turned out to be a fact about which cold boot produced the RAM state under test, not
+  about this emulator's confirm→load path.
 
-  **Extended and corrected (81st pass): the empty-bank condition is not Amazon-specific — Klondike
-  Mine hits the identical state.** The same live breakpoint above (`bpc 1b4f8`, right before the final
-  `adda.l D4,A2`) hit with the exact same operands when confirming Klondike Mine instead: `A0=$1a572`
-  (the hero object), `A2` resolved to `$00042e00` identically, and a full 384-byte dump of that entry
-  (not just a leading sample — see "Known traps") is 0/384 nonzero bytes in *both* worlds. So whatever
-  this emulator fails to do to populate `$42e00` is not specific to Amazon's own confirm path; it
-  reproduces identically for Klondike. This reopens the "Amazon-specific bug" framing: either no
-  world's hero sprite ever draws in this emulator (a general regression, not a per-world one), or real
-  Hatari's own cross-check needs extending to Klondike specifically to check whether its hero sprite is
-  *also* sourced from `$42e00` on real hardware (nobody has checked that yet — the existing cross-check
-  only confirmed Amazon).
+  **The same fix applies to Klondike Mine — it was never a confirm→load bounce, either.** Passes 80-81
+  found Klondike's confirm bounces straight to a blank "IMPOSSAMOLE" logo screen with zero disk reads,
+  from the same `after_select3.snap` lineage. A fresh cold boot confirming Klondike Mine instead of
+  Amazon (identical F1/skip-trainer prefix, so `$b288` fires at the same step) runs the per-world
+  loader (`$b328`, real FDC activity), drives the `$b1b6` gameplay template (`hits` census: `b1bc`
+  hits starting ~6.4M steps after confirm), and around 9M steps in renders a genuine mine-cavern level
+  (`coldboot_klondike_gameplay.png`) — same rock texture, gallows-post and hanging lantern as Hatari's
+  own `hatari_klondike_gameover.png`, with both the hero and what looks like a second (enemy or NPC)
+  sprite on screen. Left running with no player input at all, the level ends within another few
+  million steps (screen goes black, then PC moves to the shared title/select transition routine
+  `$1c3d8`) — consistent with an unattended hero dying quickly to a hazard, though the exact death/
+  Game-Over screen hasn't been rendered yet (see "Not yet exercised"). The old "Klondike bounces,
+  zero disk reads" description was accurate for the snapshot lineage it was measured against, but that
+  lineage's own early boot is now the known-bad reference, not this emulator's confirm→load path.
 
-  A grey humanoid figure this pass initially found and reported as "Klondike's hero rendering" in this
-  emulator does **not** survive a precise position check and should be treated as retracted: a crop
+  A grey humanoid figure an earlier pass found and reported as "Klondike's hero rendering" in the old
+  lineage does **not** survive a precise position check and should be treated as retracted: a crop
   taken exactly at the hero object's own declared coordinates (`$40`,`$90`) does not contain it — the
   figure sits roughly 20-30px further right, cut off at the edge of that crop. It's some other,
   unidentified graphical element (most likely background/tile art), not proof the hero object itself is
@@ -389,19 +414,22 @@ handoff guessed:
   comparable non-garbage data in both worlds (verified across the full `$6c00`-byte extent, not a
   leading sample) — this per-world loader block is not where the actual hero-invisibility bug lives.
 
-  **Ruled out via a full hardware-register comparison: not a stubbed/unimplemented peripheral.**
-  Watching the *entire* `$FF8000`-`$FFFC10` I/O space across the whole confirm-to-gameplay run for both
-  worlds shows an identical set of touched registers (video/palette, FDC, DMA address, YM2149, MFP) —
-  no divergence at the hardware level at all. Neither world ever touches the Blitter register range
-  (`$FF8A00`+, confirmed genuinely unmapped in this emulator: falls through to a real 68000 `BusError`,
-  matching real STF hardware with no blitter fitted rather than being a silent stub — but moot here
-  since the game never accesses it either way). So the bug is not a missing peripheral; it's
-  CPU-visible code or data, most likely in whatever should call the block at `$b288`-`$b326` (loads the
-  common `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT` resources to `$24000`/`$3b600`/`$42e00`) — a static
-  whole-RAM scan (`find_ram_callers.py`) finds no caller for that block's entry in *either* world's
-  post-confirm snapshot, meaning if it's called at all it happens once, earlier than either snapshot,
-  from code since overwritten — or it never runs in this emulator at all. Not yet distinguished; see
-  "Not yet exercised".
+  **Ruled out via a full hardware-register comparison: not a stubbed/unimplemented peripheral** — this
+  finding stands even after the correction above, just repointed: it confirms the *emulated hardware*
+  was never the problem. Watching the *entire* `$FF8000`-`$FFFC10` I/O space across the whole
+  confirm-to-gameplay run for both worlds shows an identical set of touched registers (video/palette,
+  FDC, DMA address, YM2149, MFP) — no divergence at the hardware level at all. Neither world ever
+  touches the Blitter register range (`$FF8A00`+, confirmed genuinely unmapped in this emulator: falls
+  through to a real 68000 `BusError`, matching real STF hardware with no blitter fitted rather than
+  being a silent stub — but moot here since the game never accesses it either way).
+
+  **The static whole-RAM scan's "no caller found" result is now explained, not a mystery**: `$b288`-
+  `$b326` (loads the common `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT` resources to
+  `$24000`/`$3b600`/`$42e00`) is called exactly once, from the crack's own early loading code, ~330k
+  steps after the trainer-skip keypress and tens of millions of steps before the title screen —
+  nowhere near either world's post-confirm snapshot, and that caller is almost certainly overwritten by
+  later loads long before confirm. A whole-RAM scan of a post-confirm snapshot was always going to miss
+  it; see "Why no hero sprite is visible" above for the live-traced proof it does run, from a cold boot.
 
   A live double-buffer alternation caught mid-investigation, now folded into "Known traps" below:
   `$1a2e4` (the screen base the draw loop targets) is not a fixed address — it reads `$70000` in both
@@ -481,33 +509,40 @@ and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still r
 | `trainer_menu.png` | crack trainer-menu screen, reached via F1 from the boot menu |
 | `title_logo.png` | the real game's title screen, reached by skipping the trainer |
 | `world_select.png` | the world-select screen, reached by sending a joystick-1 fire packet at the title screen (see above) |
-| `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen *this emulator* reaches after confirming Klondike Mine, bouncing back to `world_select.png` — proven to be this emulator's own confirm→load bug, not broken crack data (real Hatari plays Klondike Mine through to genuine gameplay; see "Confirming a world" above and `hatari_crosscheck/`) |
-| `amazon_gameplay.png` | first real gameplay frame, reached by confirming The Amazon instead of Klondike Mine — terraced hillside, ruined pillar; no hero sprite visible in this emulator's render (see "Confirming a world" above) |
-| `amazon_noinput_2M.png` | control frame: `after_amazon_load2.snap` run 2M steps with no input at all — terrain unchanged from `amazon_gameplay.png` except one small idle-animation blob (see "Gameplay input" above) |
-| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll. The visible green creature in both frames is a `type=1` background prop (it shifts with the scroll), not the hero — the hero itself is proven to draw at its own screen X/Y through the same mechanism, but this emulator never populates its sprite bank (`$42e00`), so it paints nothing visible here (see "Gameplay input" above) |
-| `hatari_crosscheck/hatari_title.png`, `hatari_klondike_gameover.png`, `hatari_amazon_gameplay.png`, `hatari_amazon_hero_zoom.png` | real Hatari v2.6.1, same disk image, driven live 2026-09-27 — title screen, Klondike Mine played to a genuine Game Over, Amazon gameplay with the hero sprite clearly visible, and a zoomed crop of it. Ground truth that this emulator's Klondike-bounce and invisible-hero are its own bugs, not crack/content defects (see "Confirming a world" and "Gameplay input" above) |
+| `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen the `after_select3.snap` lineage reaches after confirming Klondike Mine, bouncing back to `world_select.png` — **retracted as a general confirm→load bug (82nd pass)**: specific to that stale snapshot lineage's own early boot, which skipped the `$b288` common-resource load; a fresh cold boot reaches genuine gameplay instead (`coldboot_klondike_gameplay.png`) — see "Confirming a world" above |
+| `amazon_gameplay.png` | first real gameplay frame from the `after_select3.snap` lineage, reached by confirming The Amazon instead of Klondike Mine — terraced hillside, ruined pillar; no hero sprite visible in this render. **Retracted as a rendering/confirm-path bug (82nd pass)** — same stale-lineage cause as `after_confirm_screen.png` above; kept for reference as "what the old lineage looked like", superseded by `coldboot_amazon_gameplay.png` |
+| `amazon_noinput_2M.png` | control frame: `after_amazon_load2.snap` (same stale lineage) run 2M steps with no input at all — terrain unchanged from `amazon_gameplay.png` except one small idle-animation blob (see "Gameplay input" above) |
+| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll. The visible green creature in both frames is a `type=1` background prop (it shifts with the scroll), not the hero |
+| `coldboot_amazon_gameplay.png` | **82nd pass, fresh cold boot** (not the stale lineage above) — the identical Amazon scene as `amazon_gameplay.png`, but with the mole hero clearly visible standing at the pillar's base, matching Hatari's `hatari_amazon_gameplay.png` — see "Why no hero sprite is visible" above |
+| `coldboot_amazon_hero_zoom.png` | zoomed crop of the hero from `coldboot_amazon_gameplay.png` — grey head, red scarf, blue suit, pixel-for-pixel the same mascot as Hatari's `hatari_amazon_hero_zoom.png` |
+| `coldboot_klondike_gameplay.png` | **82nd pass, fresh cold boot**, confirming Klondike Mine instead of Amazon — a genuine mine-cavern level (rock texture, gallows-post, hanging lantern), same layout as Hatari's `hatari_klondike_gameover.png`, not the blank-logo bounce `after_confirm_screen.png` shows |
+| `hatari_crosscheck/hatari_title.png`, `hatari_klondike_gameover.png`, `hatari_amazon_gameplay.png`, `hatari_amazon_hero_zoom.png` | real Hatari v2.6.1, same disk image, driven live 2026-09-27 — title screen, Klondike Mine played to a genuine Game Over, Amazon gameplay with the hero sprite clearly visible, and a zoomed crop of it. Originally run to check this emulator for bugs; the 82nd pass found the divergence was in one stale snapshot lineage, not this emulator generally — see "Real-hardware cross-check" above |
 
 ## Not yet exercised
 
-**Top priority (revised, 81st pass): find whether/how `$24000`/`$3b600`/`$42e00` ever get populated in
-this emulator, in any world.** The 80th pass's framing ("Amazon's confirm→load path is buggy") is too
-narrow: this pass proved the identical empty-`$42e00` condition in Klondike Mine too (same live
-breakpoint, same resolved address, same all-zero 384-byte entry), and ruled out a stubbed/unimplemented
-hardware peripheral as the cause (a full `$FF8000`-`$FFFC10` register-access comparison between the two
-worlds' confirm-to-gameplay runs found zero divergence — see "Gameplay input" above). The block that
-should populate them (`$b288`-`$b326`, loading `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT`) has no caller
-findable by a static whole-RAM scan (`find_ram_callers.py`) in either world's post-confirm snapshot.
-Two live tests would settle it: (1) `watch $24000 0x1c600`-style coverage (or a `hits` census on
-`$b288`) from a **cold boot**, not from a downstream world-select snapshot, to see whether that block
-ever runs even once, anywhere in this crack's normal boot sequence; (2) extend the real-Hatari
-cross-check to Klondike Mine specifically — check the hero object's own sprite-table address on real
-hardware, to learn whether Klondike's hero is *also* sourced from `$42e00`/`$3b600` (shared/common) or
-from something per-world (which would mean Amazon and Klondike were never expected to behave alike in
-the first place). Whichever it is, this no longer needs an instruction-by-instruction Hatari trace diff
-of the confirm→load path itself — that path is now well-proven identical in shape between worlds (file
-loads, FDC activity, GEMDOS calls all match); the actual gap is specifically the never-called
-common-resource block, not the per-world loader (`$b328`, confirmed firing correctly for all three of
-its calls in both worlds — see "Gameplay input" above).
+**Top priority (revised, 82nd pass): characterize why `$b288`'s execution is sensitive to early-boot
+keypress timing.** The 79th-81st passes' "hero sprite bank never populates" / "Klondike bounces"
+findings are resolved (see "Real-hardware cross-check" and "Why no hero sprite is visible" above): a
+fresh cold boot with one specific, reproducible F1/skip-trainer timing runs `$b288` correctly and
+reaches full parity with real Hatari for both worlds. What's not yet understood is *why* — whether the
+long-lived `after_select3.snap` lineage's original (lost) boot timing genuinely took a different code
+path in the crack's own loader (a real timing race this emulator's FDC/DMA model may resolve
+differently from real hardware at some specific keypress-adjacent step count), or whether it was
+something more mundane (a different trainer-skip key, a shorter/longer gap that mattered for an
+unrelated reason). A bisection would settle it: starting from this pass's known-good script (`kbd
+3b`/`s 100000`/`kbd bb`/`s 500000`/`kbd 39`/`s 500000`/`kbd b9`), vary each gap independently (one
+variable at a time) and re-run the cold-boot `hits` census on `b288` to find the boundary where it
+stops firing — that boundary is the actual mechanism, not just "different timing happened to matter".
+
+Also open: the Klondike cold-boot run past ~9M steps with no player input goes black and PC moves to
+the shared title/select transition routine (`$1c3d8`) — consistent with an unattended death, but not
+yet confirmed or rendered (the screen may be on the buffer `snap_render.py` isn't currently displaying;
+see "Known traps"). Driving Klondike with real movement input from the fresh-cold-boot lineage (instead
+of leaving it running untouched) would both dodge this and give a proper look at mine-cavern gameplay
+mechanics, which have not been examined at all yet (only Amazon's `$c2fa`/`$be96`/`$c0d4` mechanics
+have been proven live, all from the old lineage — worth spot-checking they still hold from a fresh
+Amazon cold boot too, though there's no reason to expect the RAM contents relevant to those mechanics
+differ between the two lineages downstream of world-select).
 
 Past the gameplay movement mapping and the object-render/tile-classification mechanisms (see above):
 the ladder-climb and jump/attack states (`$227f3 := 4`/`2`) are read statically only, not yet driven
@@ -515,6 +550,7 @@ live; what the `$25000` tile-classification table's 256 entries actually map to;
 enemy/AI-controlled object exists at all — every object seen in this single screen of the Amazon
 level so far (in this emulator) is either the hero, a static background prop, or a dormant (`type=0`)
 slot, no hostile behaviour has been observed because gameplay hasn't been driven past this one screen
-in this emulator; whether Orient/Ice Land/Bermuda Triangle load
-correctly in this emulator too; sprite/tile formats beyond the collision map now proven; level data
-(`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and control flow / CFG extraction.
+in this emulator (Klondike Mine's cavern screen has an unidentified second figure worth checking, see
+`coldboot_klondike_gameplay.png`); whether Orient/Ice Land/Bermuda Triangle load correctly in this
+emulator too; sprite/tile formats beyond the collision map now proven; level data (`MDATA*.DCH`,
+`BRMUDA*.DAT` etc.); and control flow / CFG extraction.
