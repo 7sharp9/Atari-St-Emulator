@@ -288,15 +288,28 @@ handoff guessed:
   art, most likely the green creature prop, which does track the parallax shift), but not because
   the hero's own field is camera-relative — it draws at a literal screen X/Y like everything else.
 
-  **Why no hero sprite is visible in any screenshot taken so far**: the sprite-graphic index this
-  object selects (`6(A0)`, `asl.l #7` into a 128-byte-per-entry table at `$3b600`) reads `0` in both
-  `test_noinput_2M.snap` and `test_dirbit3_B.snap`, and entry 0 of that table is **128 bytes of
-  zero** (`m 3b600 128`, confirmed) — a blank/placeholder frame. The hero is idle (`$227f3=0`) in
-  every snapshot taken of this workstream so far, and idle apparently selects this blank entry, so
-  the draw call fires and computes a correct address but paints nothing. To actually see the hero
-  rendered, capture a snapshot **while the walk cycle is mid-stride** (`$227f3=1`, between the two
-  `test_dirbit3_A`/`B` snapshots which bracket a *completed* cycle back at state 0) and check `6(A0)`
-  for a non-zero frame index there.
+  **Why no hero sprite is visible in any screenshot taken so far, corrected**: the type-2 body reads
+  its own, separate sprite table from the type-1 body's `$3b600` (128 bytes/entry) — `$1b4de`-`$1b4f8`
+  computes `A2 = $3b600 + $7800 + 6(A0)*384` (384 bytes/entry: 24 rows x 16 bytes, matching the
+  object's own 24px height at 2 words/32px wide), i.e. a dedicated hero-sprite bank at `$42e00`.
+  **Live-driven the hero into an actual walk** (`kbd ff`/`kbd 08` then ~70,000 steps — well short of a
+  full ~200,000-step cycle — catches `$227f3=1`, mid-stride, with `6(A0)` reading a real non-zero
+  frame index, `7` and `9` seen across two separate drives) and checked the *exact* table entry the
+  live code was about to read (`bpc 1b4f8`, right before the final `adda.l D4,A2`; `A2` matched the
+  hand-computed address exactly both times): **every entry checked so far — index 0, 7 and 9 — is
+  128 or 384 bytes of zero**, and a raw 4000-byte scan from `$42e00` found no non-zero byte at all.
+  The hero's draw call is real (confirmed live: it computes the correct screen address and, per the
+  no-op-blit hypothesis, an OR-mask write of an all-zero source leaves the destination's pre-existing
+  background pixels untouched — matches every rendered comparison exactly, no distinct sprite ever
+  appears no matter the frame index). **This isn't a per-frame "idle selects a blank pose" behaviour
+  as first guessed — the entire hero sprite bank at `$42e00` is unpopulated throughout this whole
+  play session**, idle or walking alike. The `$b1b6` per-frame template's own setup code has a block
+  (`$b2b8`-`$b326`) that unpacks exactly `$9600` bytes into `$42e00` via a custom unpacker (`$1c6de`)
+  — matching the table's address and size closely enough to be the same resource — but whether that
+  block actually runs anywhere on the path this crack takes into Amazon gameplay hasn't been checked
+  live yet. Until it's confirmed to run (or found not to), the honest reading is: the hero is
+  invisible throughout everything driven so far because its graphic bank was never loaded, not
+  because of anything state-dependent.
 
   A live double-buffer alternation caught mid-investigation, now folded into "Known traps" below:
   `$1a2e4` (the screen base the draw loop targets) is not a fixed address — it reads `$70000` in both
@@ -365,19 +378,21 @@ and jump/attack (`$c742`/`$227f3:=2`) states these sensors gate — both still r
 | `after_confirm_screen.png` | the plain "IMPOSSAMOLE" logo screen reached after confirming Klondike Mine — this crack's Klondike data fails to load; firing here loops back to `world_select.png` (see "Confirming a world" above) |
 | `amazon_gameplay.png` | first real gameplay frame, reached by confirming The Amazon instead of Klondike Mine — hero sprite, terraced hillside, ruined pillar (see "Confirming a world" above) |
 | `amazon_noinput_2M.png` | control frame: `after_amazon_load2.snap` run 2M steps with no input at all — terrain unchanged from `amazon_gameplay.png` except one small idle-animation blob (see "Gameplay input" above) |
-| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll. The visible green creature in both frames is a `type=1` background prop (it shifts with the scroll), not the hero — the hero itself is proven to draw at its own screen X/Y through the same mechanism but is holding a blank sprite frame while idle, so it paints nothing visible (see "Gameplay input" above) |
+| `amazon_walk_right.png` | the same 2M-step window as `amazon_noinput_2M.png` but with joystick-1 bit 3 (right) held throughout — pillar and terrain visibly scrolled against the control frame, proving the movement mapping drives a real scene scroll. The visible green creature in both frames is a `type=1` background prop (it shifts with the scroll), not the hero — the hero itself is proven to draw at its own screen X/Y through the same mechanism, but its entire sprite bank (`$42e00`) is unpopulated throughout this playthrough, so it paints nothing visible (see "Gameplay input" above) |
 
 ## Not yet exercised
 
 Past the gameplay movement mapping and the object-render/tile-classification mechanisms (see above):
 the ladder-climb and jump/attack states (`$227f3 := 4`/`2`) are read statically only, not yet driven
-live; what the `$25000` tile-classification table's 256 entries actually map to; what the hero's
-non-idle sprite frames at `$3b600` (index != 0) actually look like — no snapshot captured so far has
-caught the hero mid-walk-cycle with a non-zero `6(A0)`; whether any enemy/AI-controlled object exists
-at all — every object seen in this single screen of the Amazon level so far is either the hero, a
-static background prop, or a dormant (`type=0`) slot, no hostile behaviour has been observed because
-gameplay hasn't been driven past this one screen; why Klondike Mine's own data specifically fails to
-load (worth diffing its `.DAT` pair against a working world's, or checking for a disk-read error the
-engine silently swallows) and whether Orient/Ice Land/Bermuda Triangle load correctly too; sprite/
-tile formats beyond the collision map now proven; level data (`MDATA*.DCH`, `BRMUDA*.DAT` etc.); and
-control flow / CFG extraction.
+live; what the `$25000` tile-classification table's 256 entries actually map to; whether the `$b2b8`-
+`$b326` unpacker block that targets `$42e00` (the hero's sprite bank, confirmed empty every time
+checked) ever actually runs on the path into Amazon gameplay — live-checking this (a `bpc`/`hits` on
+that block during a fresh boot-to-gameplay drive) would settle whether the hero graphic is simply not
+loaded yet at this point, or never loads in this crack at all; whether any enemy/AI-controlled object
+exists at all — every object seen in this single screen of the Amazon level so far is either the
+hero, a static background prop, or a dormant (`type=0`) slot, no hostile behaviour has been observed
+because gameplay hasn't been driven past this one screen; why Klondike Mine's own data specifically
+fails to load (worth diffing its `.DAT` pair against a working world's, or checking for a disk-read
+error the engine silently swallows) and whether Orient/Ice Land/Bermuda Triangle load correctly too;
+sprite/tile formats beyond the collision map now proven; level data (`MDATA*.DCH`, `BRMUDA*.DAT`
+etc.); and control flow / CFG extraction.
