@@ -1,18 +1,19 @@
 # Impossamole: handoff
 
-Updated 2026-09-27 by the session that ended at commit `3c524b8`.
+Updated 2026-09-27 by the session that ended at commit `8f47549`.
 
 ## Resume point
 
-- Last commit of this workstream: `3c524b8` (object-render dispatch and tile-collision system
-  proven; the prior handoff's "world-scroll vs screen position" question resolved; the hero's blank-
-  sprite explanation corrected from "idle selects a blank frame" to "the sprite bank is unloaded").
+- Last commit of this workstream: `8f47549` (object-render dispatch and tile-collision system
+  proven; the prior handoff's "world-scroll vs screen position" question resolved; proven live that
+  the hero's sprite-bank unpacker never runs anywhere on this crack's path into Amazon gameplay).
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image plus the
-  full snapshot chain, unchanged this session. `test_noinput_2M.snap`/`test_dirbit3_B.snap` were the
-  pair diffed this session; several scratch snapshots taken mid-blit/mid-walk to confirm the hero's
-  draw address and sprite-table entry live (`/tmp/mid_draw.snap`, `/tmp/livewalk.snap`,
-  `/tmp/livewalk2.snap`) were **not** saved into scratchpad — recreate with the recipe in "Proven so
-  far" below if needed again, all cheap (well under 100,000 steps from `after_amazon_load2.snap`).
+  full snapshot chain, unchanged this session. `after_confirm_amazon.snap` (existing, PC=`$3b4`, right
+  where the Amazon confirm's depacker loop starts) was this session's main starting point. Several
+  scratch snapshots taken mid-blit/mid-walk to confirm the hero's draw address and sprite-table entry
+  live (`/tmp/mid_draw.snap`, `/tmp/livewalk.snap`, `/tmp/livewalk2.snap`) were **not** saved into
+  scratchpad — recreate with the recipes in "Proven so far" below if needed again, all cheap (well
+  under 100,000 steps from `after_amazon_load2.snap` or `after_confirm_amazon.snap`).
 - Start from: `scratchpad/impossamole/after_amazon_load2.snap` to continue exploring the Amazon
   level, or `test_dirbit3_B.snap` (hero mid-walk-cycle, position `$1a574 = $00c0`) to continue from
   after a confirmed move. **Must be resumed with `--disk-a "impossamole cr replicants - emotion cr
@@ -49,9 +50,19 @@ See `reversing/impossamole/README.md`'s "Gameplay input" section for full detail
   caught `$227f3=1` with real non-zero frame indices (`7`, `9` across two drives) — then checked the
   *exact* live `A2` the code was about to read (`bpc 1b4f8`) against that address: every entry
   checked (`0`, `7`, `9`) is all-zero, and a 4000-byte scan from `$42e00` found no non-zero byte at
-  all. The `$b1b6` template's own setup code has an unpacker call (`$b2b8`-`$b326`, `$1c6de`) that
-  targets exactly `$42e00`/`$9600` bytes — matches closely enough to be the same resource — but
-  whether it actually runs on the path into Amazon gameplay in this crack is not yet checked live.
+  all.
+- **Proven live that the unpacker call for `$42e00` never runs at all, anywhere on the path into
+  Amazon gameplay.** `watch 42e00 9600` held from `after_confirm_amazon.snap` (PC=`$3b4`) across
+  5,000,000 steps (past confirmed entry into real gameplay) caught zero writes; the same watch over
+  the same run caught 100/100 sanity-check writes to `$53000`, ruling out a tooling gap. A `hits`
+  census on the block believed to call the `$42e00` unpacker (`$b288`, its call site `$b2ca`, plus
+  `$b328` and the gameplay loop entry `$b1bc` as sanity checks) landed **zero** hits on all four
+  across the same window. The unpacker routine (`$1c6de`) did fire twice, but both returns (`bt 1`)
+  trace to the *other* per-world decompression block at `$b328`-`$b3a8` (keyed by `$bb76`, the
+  selected-world index), targeting `$40600`/`$4c400` — not `$42e00` — and even there only 2 of that
+  block's 3 straight-line calls fired (the first, targeting `$53000`, must be reached some other way,
+  now its own small open item). Conclusion: this crack's boot-to-gameplay path never populates the
+  hero's graphic bank at all — not a per-frame gating question, a load-path one.
 - **`$be96`'s tile classification, fully proven**: `$c0d4` samples up to 11 points around the hero's
   position through `$be2c`, which converts `((2(A0)-$20)+$227b6)>>3` / `clamp((4(A0)-8)>>3,0,23)`
   into a lookup into a raw byte tile-map at `$31800` (1680 cols x 24 rows, row stride `$690`);
@@ -67,36 +78,38 @@ See `reversing/impossamole/README.md`'s "Gameplay input" section for full detail
 
 ## Open, in priority order
 
-1. **Check live whether the `$b2b8`-`$b326` unpacker (targets `$42e00`/`$9600`, the hero's confirmed-
-   empty sprite bank) ever runs on the path into Amazon gameplay.** A `bpc`/`hits` on that block
-   across a full cold-boot-to-`after_amazon_load2` drive would settle it: if it never fires, the hero
-   graphic is missing because this crack's Amazon-load path skips whatever normally calls it (worth
-   then finding that caller and what gates it); if it does fire, something is un-loading or failing to
-   fill `$42e00` afterward and the unpacker call itself (`$1c6de`) needs reading. Either way this
-   directly explains why the hero has been invisible in every screenshot taken so far, and blocks any
-   future visual claim about "what the hero looks like."
-2. **Map the `$25000` tile-classification table's 256 entries** (which raw tile IDs from `$31800`
+1. **Map the `$25000` tile-classification table's 256 entries** (which raw tile IDs from `$31800`
    read as walkable/ladder/hazard/etc) — a static dump plus cross-checking a few entries against
    `$31800`'s actual content near a known-walkable vs known-blocked spot would do it; this unlocks
    reading level layout directly instead of inferring it from sensor behaviour.
-3. **Live-test ladder climbing and the jump/attack state** (`$c812`/`$227f3:=4`, `$c742`/`$227f3:=2`)
+2. **Live-test ladder climbing and the jump/attack state** (`$c812`/`$227f3:=4`, `$c742`/`$227f3:=2`)
    — both still read statically only. Needs a snapshot near an actual ladder tile (findable now via
-   item 2's table) or a forced sensor byte.
-4. **Investigate the `type=3` special case at `$bafc`**: a routine fixed to slot `$1a5de` (the
-   background-prop slot that scrolled `-44` this session) checks `cmpi.w #$3,0(A0)` and, if true,
+   item 1's table) or a forced sensor byte.
+3. **Investigate the `type=3` special case at `$bafc`**: a routine fixed to slot `$1a5de` (the
+   background-prop slot that scrolled `-44` two sessions ago) checks `cmpi.w #$3,0(A0)` and, if true,
    calls `$1b3f8` — the *hero's own* draw body — on that slot. Slot `$1a5de` read `type=1` in both
    snapshots examined so far, so this branch has never been seen to fire; worth checking what would
    set that slot's type to 3 (an item pickup, a switch, or the game's only other moving object found
    so far — possibly the first lead toward something enemy/AI-like, since nothing hostile has been
    found yet at all on this one screen).
-5. **Explore the Amazon level with movement working, past this one screen.** No enemy or AI-driven
+4. **Explore the Amazon level with movement working, past this one screen.** No enemy or AI-driven
    object has been encountered anywhere yet; every object seen is the hero, a static prop, or a
    dormant (`type=0`) slot. Walking further is the only way to find out whether this game has visible
-   enemies at all in this level, and if so how they're driven.
+   enemies at all, and separately, whether the hero's sprite bank (`$42e00`, confirmed never written
+   from confirm through 5M steps of this one screen) ever gets populated further into the level — if
+   it doesn't even there, that points at this crack being broken for the hero graphic entirely rather
+   than a trigger further away.
+5. **Find the missing first call of the `$b328` per-world decompression block** (target `$53000`/
+   `$c800` — its two siblings, targeting `$40600` and `$4c400`, fired during the Amazon load, but this
+   one didn't show up in the same `hits`/`bt` census). Small, likely a quick static read of what
+   reaches `$b354` a different way, but worth closing since it's the same block the hero-sprite
+   investigation just characterized.
 6. Why Klondike Mine specifically fails (zero disk reads where Amazon has 30+): check whether its
    `.DAT` pair (`MINES22.DAT`/`MINES33.DAT`) is truncated/corrupt in this crack, or whether the
    engine silently swallows a disk-read error for it; also worth confirming Orient/Ice Land/Bermuda
-   Triangle load correctly (Amazon alone doesn't prove all four).
+   Triangle load correctly (Amazon alone doesn't prove all four) — and, given this pass found the hero
+   sprite bank never loads either, whether Klondike Mine's brokenness and this are related symptoms of
+   the same underlying crack defect.
 7. Classify the main game binary via the LINK-frame-count heuristic (§0 of the reversing skill) —
    not yet done; would confirm hand-written-asm vs compiled-C and whether the decompile route (§3b)
    is worth taking for the remaining engine code.
@@ -120,11 +133,10 @@ See `reversing/impossamole/README.md`'s "Gameplay input" section for full detail
 
 ## Next session
 
-Start at `scratchpad/impossamole/after_amazon_load2.snap` (`--disk-a` attached), or a fresh cold boot
-if item 1 needs the full path traced from the title screen. Pick open item 1 first (check whether the
-hero's sprite-bank unpacker ever runs) — it's the direct cause of every "hero invisible" observation
-so far and blocks any visual claim about the hero. Item 2 (tile-classification table contents) is
-independent and unlocks item 3 (ladder/jump-attack live tests) and reading level layout directly.
-Item 4 (`type=3` at `$1a5de`) is a small, concrete lead toward whatever this game's closest thing to
-an enemy/AI-driven object is — worth a quick look before committing to item 5's larger push further
-into the level.
+Start at `scratchpad/impossamole/after_amazon_load2.snap` (`--disk-a` attached). Pick open item 1
+first (map the `$25000` tile-classification table) — it's independent and unlocks item 2 (ladder/
+jump-attack live tests) and reading level layout directly. Item 3 (`type=3` at `$1a5de`) is a small,
+concrete lead toward whatever this game's closest thing to an enemy/AI-driven object is — worth a
+quick look before committing to item 4's larger push further into the level, which now also carries
+the hero-sprite-bank question (does it ever populate further into the level, or is this crack simply
+missing the hero graphic outright).
