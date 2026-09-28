@@ -93,6 +93,22 @@ checking it moves independently of the background/other sprites in the no-input 
 in a different pose" from exactly this uncontrolled comparison and had to retract it after the actual
 control showed the pointed-at sprite moving *with* the background, not independently of it).
 
+**Proving a movement input reaches a target position is not proof the maneuver was safe — check
+health and other hidden per-object status (busy/cooldown flags) across the whole run, not just the
+end position.** A jump/dash/dodge can clip a hazard mid-arc that a position-only check never
+surfaces, especially when the game gates a visible state change (a death animation, a lockout) on a
+later condition (landing, a cooldown expiring) rather than on the hit itself — the damage and the
+visible symptom can be tens or hundreds of thousands of steps apart, making the eventual symptom look
+like an unrelated bug at the position it appears, not a delayed consequence of the maneuver. When
+proving an input reaches a place, watch/snapshot health and any other per-object status field across
+the whole maneuver, not only at the destination. Impossamole's 87th pass proved a jump cleared an
+obstacle from position alone; the 88th pass spent a full pass treating the landing spot's resulting
+"stuck" hero as a mystery soft-lock (a never-clearing busy flag, an unexplained forced reload) before
+the 89th pass found the jump itself had taken two hits from an uncatalogued hazard mid-arc, killing
+the hero before it landed — the flag was simply the death-animation lock, gated to wait for the hero
+to be grounded, and the "soft-lock" was the ordinary hazard-death cycle the whole time
+(`reversing/impossamole/README.md`'s "Past the first screen" 89th-pass correction paragraph).
+
 ## 3. Map control flow
 
 Once a step range covers the behaviour of interest:
