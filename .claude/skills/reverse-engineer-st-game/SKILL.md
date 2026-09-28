@@ -253,6 +253,22 @@ around the return address for the gating condition rather than a deeper `bt`. Wh
 this game) and re-run wider only if the dump plainly runs off the end mid-routine; a dump 2-3x
 longer than the routine wastes as much output as it shows.
 
+**When a hazard/damage mechanism is a detect-then-apply pair (contact recorded into a shared cell one
+frame, consumed and applied to the victim later), pinning "who dealt this hit" means breaking at the
+*detect* site, not the *apply* site — the two have different `A0`.** A per-object proximity-scan loop
+(`A0` = the object currently under test, `A1`/fixed = the victim) that stores a hit into a shared
+field is a different instruction from the later code that reads that shared field and subtracts it
+from the victim's own health — by then the routine has usually already re-pointed `A0` at the victim
+itself (to update its own busy/cooldown fields), so a breakpoint on the health-decrement instruction
+reads back the victim's own base address, not the attacker's. Break on the line that *copies the
+damage value out of the attacker* instead. This also means a "the culprit isn't found, the pin got
+zero hits" result can be a timing-window problem, not a wrong-instruction problem: re-derive the
+exact step from a `watch` on the health field first (which fires reliably, since it's on the known
+apply site), then aim the attacker-side `bpc` at a window that actually covers that step, rather than
+guessing a cap (impossamole `reversing/impossamole/README.md`'s "item is still guarded" 91st-pass
+paragraph: `bpc eb8c` found the *hero's own* base address; the 89th pass's `bpc e82e 1 400000`
+correctly targeted the detect site but had capped short of the real hit at step ~490,000).
+
 ## 6. Regression net (every commit that touches the emulator)
 
 1. `./run.ps1 -NoBuild verify 5000000`, PASS (re-run 2–3× on a byte-identical FAIL, that's a build-cache race, not a real failure).
