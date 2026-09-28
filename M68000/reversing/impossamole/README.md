@@ -898,9 +898,37 @@ jump's own arc clips on the way up. `$1a5d7` is simply the death-animation lock 
 state only starts after landing, though the fatal hit lands mid-air) and it does clear again, at
 `$01ab66`, inside the same `$b058`/`$1c3d8` reload chain the 82nd pass already proved for ordinary
 hazard deaths. No new mechanism, no unresolved reload trigger: this is that same cycle, reached via a
-hazard this jump was never checked against. Getting past the trunk needs a jump that clears `(66,98)`'s
-16px radius, or enough health margin to survive two more hits than `pass86_left_settled.snap`'s `2/18`
-allows. "Does a fired shot damage an enemy" is still open too, unchanged from the 83rd pass.
+hazard this jump was never checked against. "Does a fired shot damage an enemy" is still open too,
+unchanged from the 83rd pass.
+
+**A jump that clears slot 9's hazard entirely is proven (90th pass), closing item 1: walk right to
+`x=96` first, then jump.** From `pass86_left_settled.snap` (`x=74,y=152`, trunk-blocked, `2/18`
+health), plain held-right (`kbd ff`/`kbd 08`, no up) advances the hero to `x=96,y=152` and stops there
+on its own (a second, closer forward-sensor block, distinct from the trunk tile that stops further
+*left* movement) — this stretch was never walked in any prior pass, which always jumped straight from
+`x=74`. Triggering the up+right jump from `x=96` instead of `x=74` (`kbd ff`/`kbd 09`) reproduces the
+same `$c742`/`$cbbc` mechanism but 22px closer to the far side, so the same table-driven arc clears
+`(x=66,y=98)`'s 16px radius by a comfortable margin — `watch bb74` across the whole maneuver shows
+**zero** writes, confirmed twice (an exploratory run to `x=192` and a second, checkpointed-every-frame
+run used to find the exact landing step). The jump's own velocity table returns the hero to a brief
+idle frame (`$227f3=0`, one VBL frame wide) at `x=130,y=144` around relative step 430,000 into the
+jump before `$c742` would otherwise retrigger a second jump (up is still held); releasing up right at
+that idle frame (a fresh `kbd ff`/`kbd 08` packet, right-only) stops the retrigger and settles the
+hero there for good — `pass90_x96jump_land_130.snap`, health still `2/18`, zero damage across the full
+900,000+430,000+1,000,000-step maneuver. `snap_render.py` on that snapshot
+(`pass90_x96jump_land_130.png`) shows the hero standing well past the trunk, at the base of the first
+of *two* fence-post/crossbar structures, with a green pot-shaped item sitting on the crossbar between
+them and a second, purple creature near the base of the second post. From there, plain held-right at
+ground level (no jump) is safe all the way to `x=192` — the same wall previous passes found from the
+dodge-landing route, now reached hazard-free (`watch bb74` clean the whole way, `pass90_wall_192.snap`,
+`pass90_wall_192.png` — the hero stands directly under the crossbar and item, with the purple creature
+just ahead). **The item is still guarded**: a `kbd ff`/`kbd 09` jump straight up from `x=192` takes a
+hit (`$bb74` `2`→`1`) around 150,000-200,000 steps in, `y` climbing through `$68`-`$6c` (104-108) —
+the same height band as the crossbar — but a `bpc e82e 1 400000` aimed at pinning the contact's `A0`
+the way the 89th pass pinned slot 9 got zero hits in that window, so the guarding object's exact slot
+is not yet proven, only that something in that height band above `x=192`-`196` deals damage; the
+purple creature visible there is the likely candidate but is not confirmed. `pass90_wall_192.snap`
+(`2/18` health, safe, right at the wall) is the best resume point for chasing the item (open item 2).
 
 ## Known traps
 
@@ -984,7 +1012,9 @@ allows. "Does a fired shot damage an enemy" is still open too, unchanged from th
 | `coldboot_amazon_twintree_dodge_landed.png` | **85th pass**: the hero alive at `x=192,y=144`, `2/18` health, right after surviving the twin-tree hazard crossing (one hit instead of three) by dropping "up" as the fall state begins — a real ladder is visible on the left tree trunk, not yet reached from this landing spot |
 | `coldboot_amazon_twintree_dodge_left.png` | **85th pass**: the same run continued with left held from the landing spot — hero walks to `x=142` with health unchanged, the first safe horizontal move off the hazard's danger corridor found so far, closer to the visible ladder |
 | `coldboot_amazon_twintree_jump_midair.png` | **87th pass**: `kbd ff`/`kbd 09` (up+right) from the trunk-blocked `x=74,y=152` spot, 600,000 steps in — the hero mid-jump (`$227f3=2`), now at `x=124,y=108`, visibly past the tree trunk and level with the fence-post/ladder structure and green item |
-| `coldboot_amazon_twintree_jump_landed.png` | **87th pass**: the same run continued a further 400,000 steps with no input — the hero lands idle at `x=152,y=144`, standing at the base of the fence-post structure past the trunk, proving the real jump mechanism (`$c742`/`$cbbc`) clears the obstacle the 86th pass's ground-level approach couldn't |
+| `coldboot_amazon_twintree_jump_landed.png` | **87th pass**: the same run continued a further 400,000 steps with no input — the hero lands idle at `x=152,y=144`, standing at the base of the fence-post structure past the trunk, proving the real jump mechanism (`$c742`/`$cbbc`) clears the obstacle the 86th pass's ground-level approach couldn't. **Superseded as a "safe" reference by `coldboot_amazon_twintree_jump_landed_safe.png` below — this exact jump was later proven to take two fatal hits from slot 9 mid-arc (89th pass)** |
+| `coldboot_amazon_twintree_jump_landed_safe.png` | **90th pass**: the hero idle at `x=130,y=144`, `2/18` health unchanged, after a jump triggered from `x=96` instead of `x=74` — clears slot 9's hazard with zero damage (`watch bb74`: no writes), proving item 1. Two fence-post/crossbar structures are visible, a green item on the first crossbar, a purple creature near the second post's base |
+| `coldboot_amazon_twintree_item_crossbar.png` | **90th pass**: the hero at `x=192,y=144`, `2/18` health, reached by plain ground-level right-walking from the safe landing above — the same wall previous passes found from the dodge-landing route, now reached hazard-free. Hero stands directly under the item's crossbar; a `kbd ff`/`kbd 09` jump straight up from here takes a hit, the guarding object not yet pinned to a slot (open item 2) |
 
 ## Not yet exercised
 
