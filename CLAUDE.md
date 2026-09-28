@@ -153,6 +153,14 @@ know they existed.
   as the hero's stopped position; the 86th pass found the hero actually kept walking to a real,
   confirmed-static stop 68px further at `x=74`, against a wall the `x=142` reading never reached
   (`reversing/impossamole/README.md`'s 86th-pass correction paragraph).
+- A `bp`/`bpc`/`watch` check that finds nothing within its own step budget is not proof a maneuver is
+  safe past that budget — the event you're checking for can land later than whatever window you
+  happened to run. Re-run with a budget well past the maneuver's own known duration, not just past
+  the point where it looks settled, before writing up "no hit"/"clean" as a final answer. Impossamole's
+  94th pass found two candidate dodge timings where `bp e82e` gave up clean inside 700,000 steps and
+  the hero looked settled (idle, resting mid-air) — a further 400,000-step check caught a delayed hit
+  at both, health reaching zero; the timings that stayed clean out to 1,615,000 steps were the real
+  ones (`reversing/impossamole/README.md`'s "Known traps" section).
 
 ## Proving routines with parallel subagents
 
