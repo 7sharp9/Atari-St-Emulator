@@ -755,9 +755,42 @@ screen every prior pass stopped at:
     `pass85_dodge1_1_5M_more.snap` (`x=192,y=144`) over 1,000,000 steps confirms the horizontal
     component really is direction-gated, not automatic: `x` never moves (stays `$00c0`) while `y`
     cycles `144→105→...` through three up-only bounces in place. This is the controlled jump the 86th
-    pass found no evidence for; the next lead is the fence-post/ladder structure and green item now
-    reachable past the trunk, not the branch visible in the old zoom screenshot (which the new
-    landing spot has already bypassed).
+    pass found no evidence for. **This landing spot itself turned out to be a soft-lock, not a lead
+    — see the 88th pass below.**
+  - **The `pass87_jump_right_1M_settled.snap` landing spot (`x=152,y=144`, at the base of the
+    fence-post structure) is a soft-lock: the hero's own busy flag never clears there, and after a
+    fixed delay the game force-reloads regardless of input or health (88th pass).** Static reading of
+    `$00c49c` (the up-handler: not-ladder unconditionally falls into `$c742`/jump) predicts a jump
+    should fire immediately from this spot; it does not, live, for either `kbd ff`/`kbd 09` (up+right)
+    or `kbd ff`/`kbd 01` (up alone) — the hero stays visibly and byte-for-byte static (position,
+    `$227f3` state, every sensor byte) for the whole window tested. A `hits` census pinned the cause:
+    `$00c2fa` (the per-frame hero dispatcher, `lea $1a572,A0` then `tst.b 101(A0); bne $c486`) runs
+    once per main-loop iteration (4 hits/100,000 steps) and *every single time* takes the busy branch
+    to `$00c486`, which is a bare `rts` — the entire input chain downstream of it (`$00c308`/`$00c31e`
+    joystick-byte caching, `$00c488`'s dispatch table, `$00c49c`/`$00c4ee`/`$00c4fa` movement,
+    `$00c742`/`$00cbbc` jump) shows **zero** hits over the same window, proving none of it ever runs
+    while this flag is set. `$1a5d7` (`= $1a572+101`, the busy flag `$00c2fa` tests) reads `$01` at
+    load and stays `$01` throughout — confirmed not a transient "mid-animation" lock, since the
+    landing routine `$00caba` (the clean-landing state-0 transition `$cb2e`'s fall-state exit and the
+    jump's own successful-landing exit both reach) never writes offset `101(A0)` at all, so nothing in
+    the normal jump/landing state machine is responsible for setting or clearing it here. After roughly
+    500,000-600,000 steps stuck this way, the game force-reloads through the same generic fade/reload
+    chain the hazard-death path uses (`$00b058`, return address `$0000b05e`, the fade-wait spin loop at
+    `$0001c3d8` inside `cmpi.b #$2,$1a2e9.l`/`bne $1c3d0`) — reproduced identically twice, once holding
+    `kbd 09` throughout and once with **no input at all**, both landing on the exact same PC, with
+    health (`$bb74`) unchanged at `18/18` the whole time (ruling out the ordinary hazard/health death
+    path as the trigger; `$1a572`'s own `type` field, offset `0`, flips from `$0002` to `$0000` in the
+    same 100,000-step window the reload PC is reached, i.e. the object is deactivated as part of
+    whatever forces the reload). The main loop itself (`$00b1bc`...`$00b27e`, disassembled this pass)
+    has at least two other `bcs $b058` exits (after `$00df4a` and after `$00eafa`) that were not firing
+    during the stuck window (neither showed a hit before the eventual reload), so the exact instruction
+    that forces the reload here is still open — **not yet found**: grep the loop's remaining calls
+    (`$00b4de`/`$00d140`/`$00c0d4`/`$0018f7e`/`$00198ea`/`$00bb22`/`$00b5f8`/`$00bafc`/`$00bada`) for a
+    third `bcs $b058`/`beq $b058`-style exit, and separately grep the whole image for every writer of
+    `101(A0)` to find what sets `$1a5d7` and whether anything is ever meant to clear it. Until the busy
+    flag's writer is found, exploring past the trunk needs a jump that does **not** land exactly on
+    this spot (a shorter hop, or releasing "right" mid-air to land short/long of the fence-post base)
+    rather than reusing `pass87_jump_right_1M_settled.snap` as a resume point.
 
 **The fire button is a real weapon system, not decorative — proven from disassembly (83rd pass),
 resolving the "type=3, never observed live" open item.** `$00c308`/`$00c31e` cache the raw joystick
@@ -823,9 +856,13 @@ one column short of the ladder) and identified a branch/platform visible above t
 lead. The 87th pass found and proved the real jump mechanism (`$c742` one-shot entry → `$cbbc`
 per-frame table-driven vertical displacement plus a facing-locked horizontal push) and used it
 (up+right from the trunk-blocked spot) to clear the trunk entirely, landing past it near a
-fence-post/ladder structure with a visible item. "Does a fired shot damage an enemy" and exploring
-past the trunk from the new landing spot (`pass87_jump_right_1M_settled.snap`, `x=152,y=144`) are the
-open items for the next pass.
+fence-post/ladder structure with a visible item. The 88th pass found that exact landing spot is
+itself a soft-lock, not a lead: the hero's busy flag (`$1a5d7`) is stuck set there, which silently
+suppresses all input processing (proven with a `hits` census — the whole movement-dispatch chain
+never executes), and after ~500,000-600,000 steps the game force-reloads through the hazard-death
+screen's own fade/reload chain regardless of input or health. Finding what sets/clears `$1a5d7`, and
+finding a jump that lands somewhere other than exactly `x=152,y=144`, are the open items for the next
+pass. "Does a fired shot damage an enemy" is still open too, unchanged from the 83rd pass.
 
 ## Known traps
 
