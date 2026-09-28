@@ -145,6 +145,14 @@ know they existed.
   reaches full parity with real hardware on both counts, and the old lineage's own boot — not this
   repo's F# core — was the actual divergence (`reversing/impossamole/README.md`'s "Real-hardware
   cross-check" retraction).
+- A snapshot taken after holding a direction for a fixed step count is not proof of where movement
+  stops — it can be a mid-motion frame, not a rest position. Check the mover's own state byte reads
+  idle/settled (or re-run further steps and confirm the position stops changing) before writing that
+  position up as where an input "walks to" or "settles at". Impossamole's 85th pass took `x=142` from
+  a fixed-600000-step snapshot while the state byte still read "walking" (`$227f3=1`) and wrote it up
+  as the hero's stopped position; the 86th pass found the hero actually kept walking to a real,
+  confirmed-static stop 68px further at `x=74`, against a wall the `x=142` reading never reached
+  (`reversing/impossamole/README.md`'s 86th-pass correction paragraph).
 
 ## Proving routines with parallel subagents
 
