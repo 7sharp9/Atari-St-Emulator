@@ -1,22 +1,23 @@
 # Impossamole: handoff
 
-Updated 2026-09-28 by the session that ended at commit `c3db349` (93rd pass).
+Updated 2026-09-28 by the session that ended at commit `6833e8c` (94th pass).
 
 ## Resume point
 
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image,
   `coldboot_census/` (from-cold-boot scripts and snapshots), `gameplay_explore/` (movement/hazard
-  trials, now including the 93rd pass's `pass93_*` scripts/snapshots). See `scratchpad/ANCHORS.md`
+  trials, now including the 94th pass's `pass94_*` scripts/snapshots). See `scratchpad/ANCHORS.md`
   for the full indexed list. Real Hatari v2.6.1 at `~/Downloads/hatari-snapshot/Hatari.app`, source
   at `~/GitHub/hatari/`. TOS ROM at `M68000/TOS100UK.IMG`.
-- Start from: `scratchpad/impossamole/gameplay_explore/pass90_wall_192.snap` (`x=192,y=144`, idle,
-  `2/18` health) — still the best resume point: the furthest-right safe ground position past the
-  trunk, standing directly under the item's crossbar, reached by a route that takes zero damage.
-  `pass90_x96jump_land_130.snap` (`x=130,y=144`, `2/18`, also safe) is the earlier waypoint on the
-  same route. `pass91_from130_end.snap`, `pass92_arc600k.snap`, `pass92_earlyrelease.snap` and the
-  93rd pass's `pass93_e82e_pin.snap` are all **confirmed dead ends or reference-only pins**, not
-  resume points: continuing the item-guard hit's arc with "up" held, or releasing "up" right at the
-  arc's own peak, both still take the hit and then die to a second hit shortly after.
+- Start from: `scratchpad/impossamole/gameplay_explore/pass94_dodge_item_landed.snap` (`x=192,y=144`,
+  idle, `2/18` health) — the timing-dodge landing spot: same position as `pass90_wall_192.snap`
+  (still the pre-dodge waypoint below it), reached by idling 300,000 steps then triggering the
+  item-guard's jump with zero contact. `pass94_confirm.txt` in the same directory is the exact
+  REPL script that reproduces it from `pass90_wall_192.snap`. `pass90_wall_192.snap` itself
+  (`x=192,y=144`, idle, `2/18`, standing at the wall right under the crossbar) is still valid as the
+  pre-dodge reference point. `pass91_from130_end.snap`, `pass92_arc600k.snap`,
+  `pass92_earlyrelease.snap`, `pass93_e82e_pin.snap` are all **confirmed dead ends or reference-only
+  pins**, not resume points — see the 92nd/93rd pass rows in `scratchpad/ANCHORS.md`.
   **Must be run with `--disk-a "scratchpad/impossamole/impossamole cr replicants - emotion cr
   replicants.st"`** (path relative to `M68000/`) on every `resume ... repl`. The REPL's `snap
   <path>` command writes relative to the `dotnet` process's own working directory (`M68000/` if
@@ -67,22 +68,29 @@ first screen" sections for full detail, match counts and exact addresses:
   at this rate, two pins close together in elapsed steps land only a few pixels apart. **Open
   sub-question**: idle struct reads show `type=0` where the live contact pin reads `type=1` —
   possibly an activation/danger-range flag, not confirmed.
+- **Item 3 (dodge the guard's hazard): closed (94th pass).** The guard's jump arc is fixed in
+  absolute time from trigger while the guard itself keeps drifting, so an idle wait before the
+  trigger is the only lever needed — no new arc shape. Idling 250,000-450,000 steps (five values,
+  50,000 apart) before `kbd ff`/`kbd 09`, held 15,000 steps then released to `kbd ff`/`kbd 08`, is a
+  fully clean, zero-damage dodge (zero `$e82e` hits, zero `$bb74` writes, re-checked to 1,615,000
+  post-trigger steps) — see the README's 94th-pass paragraph for the full data and the two nearby
+  delays that looked clean short-term but were not. `pass94_dodge_item_landed.snap` is the resume
+  point. **Not yet confirmed: whether this dodge actually collects the item** — no address for the
+  item's own pickup/inventory state is known.
 - The `$25000` tile-classification table, the HUD routine (`$00fdc4`), and the weapon/projectile
   system (`$00d37c`/`$00d3cc`, slots 16-19) are all unchanged from prior passes — see the README.
 
 ## Open, in priority order
 
-1. **Find a route or timing past slot 12's hazard, now that its motion is characterized.** It's a
-   flying creature drifting at a known, roughly constant rate (`~-0.126px/step` x, `~+0.079px/step`
-   y while unobstructed), not a static prop — the untried idea is to search for a takeoff `x`/delay
-   whose jump-arc crossing of the hazard's `y`-band (`y≈104-119`, from the 92nd pass) lands outside
-   its combined hitbox with the hero (`dx` within hero's own `12(A1)=16`, `dy` within `13(A1)=24`)
-   given where the drift has carried it to at that elapsed step count. Concretely: from
-   `pass90_wall_192.snap`, `watch 1a7fc 4` through several different takeoff delays (a few seconds
-   of idle wait before triggering the jump) and check whether the creature's position at the
-   predicted arc-crossing step ever clears the hero's hitbox. Taking the one hit and continuing is
-   confirmed fatal (92nd pass: holding through retriggers a second, deadly jump) — a dodge, not a
-   tank-the-hit plan, is the target.
+1. **Confirm whether the timing dodge actually collects the crossbar item.** `pass94_dodge_item_landed.snap`
+   lands the hero back on the ground (`x=192,y=144`) with zero damage, but no address or mechanism
+   for the item's own pickup/inventory state is known yet, so it's unconfirmed whether the item was
+   ever collected. Two of the delayed-hit trials (`200,000` and `500,000-550,000`, both eventually
+   fatal) briefly rested idle on the crossbar itself at `y=112` before the delayed hit landed — worth
+   checking whether stopping there (rather than continuing through to the ground) is what the pickup
+   actually needs. Look for a HUD/inventory byte that changes (compare a render or a targeted `watch`
+   across the crossbar-proximity window), or grep the topic docs' HUD routine (`$00fdc4`) section for
+   anything already proven about item state before assuming none exists.
 2. **Find the projectile-vs-enemy damage path**, or confirm there isn't one in this build —
    unchanged from the 83rd pass. A `callcap` on `$00d3cc` from a primed state, then a live `watch`
    on the projectile slot while stepping past a nearby enemy, would settle it either way.
@@ -97,16 +105,13 @@ first screen" sections for full detail, match counts and exact addresses:
 ## Known traps
 
 All workstream-specific traps are in `reversing/impossamole/README.md`'s own "Known traps" section
-— read it there. Nothing new to fold in this pass that isn't already covered by the existing
-"prove a static-looking value live before trusting it" and "detect-site vs apply-site" traps: this
-pass's slot-12 finding is exactly an instance of the first one (a struct read that looked
-*approximately* static across widely-spaced pins turned out to be continuously moving), not a new
-failure mode.
+— read it there, including the new one this pass added (a `bp`/`watch` check that finds nothing
+inside its own step budget is not proof a maneuver is safe past that budget — folded into
+`CLAUDE.md` too, since it's a general methodological trap, not specific to this game).
 
 ## Next session
 
-Start with Open item 1: use the known drift rate to search for a takeoff timing (idle delay before
-the jump trigger) that puts slot 12 outside the hero's hitbox at the moment the arc crosses its
-`y`-band. `watch 1a7fc 4` from `pass90_wall_192.snap` through a few different idle delays before
-`kbd ff`/`kbd 09` will show where the creature actually is at each trial's arc-crossing step;
-compare against the hero's own `12(A1)`/`13(A1)` thresholds (`16`/`24`) rather than guessing visually.
+Start with Open item 1: find whether `pass94_dodge_item_landed.snap`'s dodge actually collects the
+crossbar item — no address for the item's pickup/inventory state is known yet, so this needs a fresh
+signal (a HUD byte, a render diff, or a `watch` across the crossbar-proximity window), not just
+"survived the guard" read as "got the item".
