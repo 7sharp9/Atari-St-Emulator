@@ -922,13 +922,29 @@ them and a second, purple creature near the base of the second post. From there,
 ground level (no jump) is safe all the way to `x=192` — the same wall previous passes found from the
 dodge-landing route, now reached hazard-free (`watch bb74` clean the whole way, `pass90_wall_192.snap`,
 `pass90_wall_192.png` — the hero stands directly under the crossbar and item, with the purple creature
-just ahead). **The item is still guarded**: a `kbd ff`/`kbd 09` jump straight up from `x=192` takes a
-hit (`$bb74` `2`→`1`) around 150,000-200,000 steps in, `y` climbing through `$68`-`$6c` (104-108) —
-the same height band as the crossbar — but a `bpc e82e 1 400000` aimed at pinning the contact's `A0`
-the way the 89th pass pinned slot 9 got zero hits in that window, so the guarding object's exact slot
-is not yet proven, only that something in that height band above `x=192`-`196` deals damage; the
-purple creature visible there is the likely candidate but is not confirmed. `pass90_wall_192.snap`
-(`2/18` health, safe, right at the wall) is the best resume point for chasing the item (open item 2).
+just ahead). **The item is still guarded, and the guarding object is now identified (91st pass).** A
+`kbd ff`/`kbd 09` jump straight up+right from `x=192` takes a hit (`$bb74` `2`→`1`) at step 490,926
+relative to the jump, at `$00eb8c` (`sub.b D0,$bb74.l`) — but that site's own `A0` is the *hero*
+(`lea $1a572,A0` a few instructions earlier), not the attacker: the contact was already recorded into
+`$227f6` upstream, at `$00e82e` (`move.b 104(A0),$227f6.l`, inside the `$e80e` proximity-scan block),
+where `A0` is the object under test that frame. Breaking on `$e82e` (not `$eb8c`) pins the real
+contact at step 490,587: object-array index 12 (base `$1a7fa` — the proven 108-byte stride off array
+base `$1a2ea` places it exactly six slots past the hero's own index 6, the same formula that locates
+slots 7/8/9/10 at `$1a5de`/`$1a64a`/`$1a6b6`/`$1a722`), `type=1`, hit radius `4/4/4(A0)` (far tighter
+than slot 9's 16px), damage `104(A0)=1`. The 89th pass's `bpc e82e 1 400000` found nothing only
+because the real hit lands well past that pass's 400,000-step cap, not because this hazard's contact
+routes through a different instruction than slot 9's. Unlike the other `type=1` props, this one's
+position isn't fixed: pinning the same jump from two different takeoff points read `x/y=(217,115)`
+(from `x=192`) and `(211,119)` (from `x=130`) — a few pixels of drift despite zero velocity fields
+(`8`-`11(A0)` all zero), consistent with (not yet proven as) a script-driven sway rather than a
+static prop. **The slot-9 playbook — take off further back so the arc clears the hazard — does not
+generalize here**: jumping from `x=130` instead of `x=192` still takes the hit (same `A0=$1a7fa` via
+the same `e82e` pin), so this hazard's tight, near-the-item radius can't simply be out-run the way
+slot 9's wider, off-path one was; clearing it will need a different arc shape or timing, or the route
+may just cost the one hit. `pass90_wall_192.snap` (`2/18` health, safe, right at the wall) is still
+the best resume point for chasing the item (open item 2); `pass91_from130_end.snap` (`1/18`, mid-air
+at `(192,112)` 900,000 steps into the `x=130` jump, not yet confirmed landed/idle) shows the arc
+continuing past the hazard rather than stopping there.
 
 ## Known traps
 
