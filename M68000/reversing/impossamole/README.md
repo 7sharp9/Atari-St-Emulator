@@ -697,15 +697,32 @@ screen every prior pass stopped at:
     right goes nowhere from there for 1,500,000 steps (forward ground sensors read non-walkable, a
     wall) and any further jump — held or a brief 30,000-step tap — arcs back up into a second contact
     band around `y=96-118` and is fatal at `2/18` health (`pass85_jump2_end.snap`,
-    `pass85_shorthop_end.snap`, both die). **Left, however, is open and safe**: from the landed spot,
-    holding left walks the hero from `x=192` to `x=142` with health unchanged at `2`
-    (`pass85_left_x142.snap`, `coldboot_amazon_twintree_dodge_left.png`), stopping on its own (ground
-    sensors, not damage) — this is the first horizontal move off the `166-198` danger corridor found
-    so far, and puts the hero visibly closer to the left tree's ladder rungs, a promising lead for
-    item 6 that the next pass hasn't yet followed up (does `$227ea` classify as ladder from `x=142`,
-    and does climbing from there lead somewhere new). `pass85_dodge1_1_5M_more.snap` (the safe,
-    landed, pre-retreat state) is the best resume point for trying this: it already carries the one
-    unavoidable hit, so anything past it that stays alive is real progress.
+    `pass85_shorthop_end.snap`, both die).
+  - **The left-retreat lead is a dead end: the hero cannot reach the ladder from ground level here,
+    and the earlier `x=142` reading was a mid-walk snapshot, not a stop (86th pass; settles with a
+    proven no the open question of whether `$227ea` classifies as ladder from further left).** Holding
+    left
+    from `pass85_dodge1_1_5M_more.snap` does not stop at `x=142` as the 85th pass's fixed-600000-step
+    snapshot suggested — that was still mid-walk (`$227f3=1`). Continuing the hold, the hero keeps
+    walking left through `x=160→144→128→110→94→78` and only actually settles (state `0`, idle,
+    unmoving for 2,200,000+ steps) at **`x=74,y=152`**, right against the tree trunk's own solid
+    pixels (`pass86_left_settled.snap`/`.png`). The real ladder-up check at `$00c49c` reads
+    `$227ea` (the tile directly above the hero's head) through `$be96` (`$25000`-table lookup) and
+    only climbs (`$227f3:=4`) on category `1`/`2`; at the settled `x=74` position `$227ea`'s raw id
+    (`$2b`) classifies as category `0` every time, live-confirmed by holding up for 2,700,000 steps
+    (`$227f3` goes to `2`, jump/attack, and stays there — never `4` — while `y` just bobs
+    `112↔120` in place and `x` never moves, `pass86_settled_up_end.snap`). The reason the hero can't
+    walk further left to get under the visible ladder rungs is proven, not inferred: `$00c3a6`'s
+    forward-sensor gate (`$227e0`/`$227e1`/`$227e2`, each through `$be96`, blocking on category
+    `>=4`) reads `$227e2`'s raw id `$26` as category `4` at `x=74` — the tree trunk itself is the
+    blocking tile, one column short of wherever the rungs' own column would put `$227ea` overhead.
+    So this ground-level approach cannot reach the ladder; the zoomed screenshot
+    (`pass86_left_settled_zoom.png`) shows a horizontal branch/platform jutting right from the trunk
+    above the hero's head, at roughly the trunk's mid-height, that is the next visual lead — reaching
+    it needs an actual controlled jump, not the up-key's jump/attack fallback proven stationary here,
+    and no such jump mechanism is proven yet. `pass85_dodge1_1_5M_more.snap` (the safe, landed,
+    pre-retreat state, `x=192,y=144`, `2/18` health) is still the right resume point for trying
+    anything else from this landing spot.
 
 **The fire button is a real weapon system, not decorative — proven from disassembly (83rd pass),
 resolving the "type=3, never observed live" open item.** `$00c308`/`$00c31e` cache the raw joystick
