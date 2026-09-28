@@ -718,11 +718,46 @@ screen every prior pass stopped at:
     blocking tile, one column short of wherever the rungs' own column would put `$227ea` overhead.
     So this ground-level approach cannot reach the ladder; the zoomed screenshot
     (`pass86_left_settled_zoom.png`) shows a horizontal branch/platform jutting right from the trunk
-    above the hero's head, at roughly the trunk's mid-height, that is the next visual lead — reaching
-    it needs an actual controlled jump, not the up-key's jump/attack fallback proven stationary here,
-    and no such jump mechanism is proven yet. `pass85_dodge1_1_5M_more.snap` (the safe, landed,
-    pre-retreat state, `x=192,y=144`, `2/18` health) is still the right resume point for trying
-    anything else from this landing spot.
+    above the hero's head, at roughly the trunk's mid-height, that was the next visual lead — reached
+    by a real controlled jump, proven the next pass (below). `pass85_dodge1_1_5M_more.snap` (the safe,
+    landed, pre-retreat state, `x=192,y=144`, `2/18` health) is the resume point for anything not
+    starting from the trunk-blocked spot.
+  - **A real, table-driven jump exists and clears the trunk (87th pass), resolving the "no jump
+    mechanism proven" gap the 86th pass left open.** `$00c742` — the jump/attack state entry the
+    up-handler `$00c49c` falls into whenever `$227ea` does *not* classify as ladder — is not itself
+    the per-frame jump logic; it is one-shot setup (play a sound, latch facing from `$227f5` bits
+    2/3 into `$227f4`, pick a weapon/attack animation descriptor, and — if a weapon is equipped
+    (`98(A0) != 0`) — fire once through `$bef4`) that falls straight into `$00cbbc`, which *is* the
+    real per-frame jump handler and is what a live `hits` run actually shows executing repeatedly
+    (not `$c742` itself, which only fires once per jump trigger). `$cbbc` first applies a fixed
+    facing-locked horizontal push (`98(A0)`, 1-2 px/frame, snapshotted at jump entry — it does not
+    re-read `$227f5` each frame, so the horizontal component of a jump is committed at takeoff and
+    is unaffected by releasing or changing direction mid-air), then indexes a signed-word velocity
+    table at `$cd54` with the jump's own frame counter (`82(A0)`, advanced by 1 each call) and adds
+    the value straight into `4(A0)` — genuine vertical displacement, not the stationary bob the two
+    static tests in the 86th pass read (those held up alone, from a resting spot with no horizontal
+    component, so the arc's real shape wasn't visible against the noise of `y` bobbing at the resting
+    boundary). The table's terminal sentinel (`$7fff`) forces a transition to state `3` (fall,
+    `$cb2e`) if reached before landing; landing on a walkable ground sensor (`$227e8`/`$227e9`,
+    category `>=2`) instead returns straight to idle (`$227f3 := 0`, `$caba`), skipping state 3
+    entirely — both exits proven live, not inferred.
+    **Live-confirmed from `pass86_left_settled.snap`** (`x=74,y=152`, idle, trunk-blocked): `kbd
+    ff`/`kbd 09` (up+right together, bits 0+3) drives three separate jumps over 1,000,000 steps
+    (`$c742` retriggers each time the hero returns to idle with up still held; `$cbbc` runs every
+    frame in between) — `hits` shows `$c742` at 3 hits, `$cbbc` at 42, `$caba` (a clean landing) at
+    2, `$cb2e`/`$cd84`/`$c812` all at 0. Position moves `x=74→124, y=152→108` after the first
+    600,000 steps (`pass87_jump_right_600k.snap`, `coldboot_amazon_twintree_jump_midair.png` — the
+    hero is visibly past the trunk, level with the fence-post/ladder structure and the green item
+    beside it) and settles idle at `x=152,y=144` after a further 400,000 steps with no input held
+    (`pass87_jump_right_1M_settled.snap`, `coldboot_amazon_twintree_jump_landed.png` — the hero
+    stands past the trunk, at the base of that fence-post structure). A same-shape `kbd ff`/`kbd 01`
+    (up-only, no right) test from
+    `pass85_dodge1_1_5M_more.snap` (`x=192,y=144`) over 1,000,000 steps confirms the horizontal
+    component really is direction-gated, not automatic: `x` never moves (stays `$00c0`) while `y`
+    cycles `144→105→...` through three up-only bounces in place. This is the controlled jump the 86th
+    pass found no evidence for; the next lead is the fence-post/ladder structure and green item now
+    reachable past the trunk, not the branch visible in the old zoom screenshot (which the new
+    landing spot has already bypassed).
 
 **The fire button is a real weapon system, not decorative — proven from disassembly (83rd pass),
 resolving the "type=3, never observed live" open item.** `$00c308`/`$00c31e` cache the raw joystick
@@ -783,8 +818,14 @@ and ruled out plain up-holding as a ladder-climb (state never leaves `2`/jump). 
 dodge that survives the crossing (drop "up" right as the fall state begins: one hit instead of three,
 lands alive at `2/18` health) and a safe leftward retreat from the landing spot toward the screen's
 visible ladder, but the landing spot itself is still boxed in (right blocked, any further jump fatal).
-"Does a fired shot damage an enemy", following the left-retreat lead into the ladder (item 6), and
-actually continuing past the twin-tree screen into new content are the open items for the next pass.
+The 86th pass proved the leftward retreat is a dead end (the hero settles at `x=74`, trunk-blocked,
+one column short of the ladder) and identified a branch/platform visible above that spot as the next
+lead. The 87th pass found and proved the real jump mechanism (`$c742` one-shot entry → `$cbbc`
+per-frame table-driven vertical displacement plus a facing-locked horizontal push) and used it
+(up+right from the trunk-blocked spot) to clear the trunk entirely, landing past it near a
+fence-post/ladder structure with a visible item. "Does a fired shot damage an enemy" and exploring
+past the trunk from the new landing spot (`pass87_jump_right_1M_settled.snap`, `x=152,y=144`) are the
+open items for the next pass.
 
 ## Known traps
 
@@ -858,6 +899,8 @@ actually continuing past the twin-tree screen into new content are the open item
 | `hatari_crosscheck/hatari_title.png`, `hatari_klondike_gameover.png`, `hatari_amazon_gameplay.png`, `hatari_amazon_hero_zoom.png` | real Hatari v2.6.1, same disk image, driven live 2026-09-27 — title screen, Klondike Mine played to a genuine Game Over, Amazon gameplay with the hero sprite clearly visible, and a zoomed crop of it. Originally run to check this emulator for bugs; the 82nd pass found the divergence was in one stale snapshot lineage, not this emulator generally — see "Real-hardware cross-check" above |
 | `coldboot_amazon_twintree_dodge_landed.png` | **85th pass**: the hero alive at `x=192,y=144`, `2/18` health, right after surviving the twin-tree hazard crossing (one hit instead of three) by dropping "up" as the fall state begins — a real ladder is visible on the left tree trunk, not yet reached from this landing spot |
 | `coldboot_amazon_twintree_dodge_left.png` | **85th pass**: the same run continued with left held from the landing spot — hero walks to `x=142` with health unchanged, the first safe horizontal move off the hazard's danger corridor found so far, closer to the visible ladder |
+| `coldboot_amazon_twintree_jump_midair.png` | **87th pass**: `kbd ff`/`kbd 09` (up+right) from the trunk-blocked `x=74,y=152` spot, 600,000 steps in — the hero mid-jump (`$227f3=2`), now at `x=124,y=108`, visibly past the tree trunk and level with the fence-post/ladder structure and green item |
+| `coldboot_amazon_twintree_jump_landed.png` | **87th pass**: the same run continued a further 400,000 steps with no input — the hero lands idle at `x=152,y=144`, standing at the base of the fence-post structure past the trunk, proving the real jump mechanism (`$c742`/`$cbbc`) clears the obstacle the 86th pass's ground-level approach couldn't |
 
 ## Not yet exercised
 
