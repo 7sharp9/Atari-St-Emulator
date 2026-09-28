@@ -936,8 +936,9 @@ because the real hit lands well past that pass's 400,000-step cap, not because t
 routes through a different instruction than slot 9's. Unlike the other `type=1` props, this one's
 position isn't fixed: pinning the same jump from two different takeoff points read `x/y=(217,115)`
 (from `x=192`) and `(211,119)` (from `x=130`) — a few pixels of drift despite zero velocity fields
-(`8`-`11(A0)` all zero), consistent with (not yet proven as) a script-driven sway rather than a
-static prop. **The slot-9 playbook — take off further back so the arc clears the hazard — does not
+(`8`-`11(A0)` all zero). The 93rd pass proved this is real, continuous motion, not noise or
+per-pin measurement error: see "Slot 12 is a moving flying creature" below. **The slot-9 playbook —
+take off further back so the arc clears the hazard — does not
 generalize here**: jumping from `x=130` instead of `x=192` still takes the hit (same `A0=$1a7fa` via
 the same `e82e` pin), so this hazard's tight, near-the-item radius can't simply be out-run the way
 slot 9's wider, off-path one was; clearing it will need a different arc shape or timing, or the route
@@ -962,16 +963,30 @@ whole arc, not just the horizontal component: once `$c742` triggers, input chang
 a *new* jump re-triggers at the idle-landing frame, they don't reshape or truncate the current one.
 This rules out an early-release dodge as a way to shorten exposure to slot 12's hazard band.
 
-A render taken just after the first hit (`pass92_arc600k.png`) shows a black winged creature circling
-near the top of the crossbar/item area — a plausible candidate for slot 12's identity, in place of the
-90th pass's "purple creature near the second post's base" guess (that object appears to be a separate,
-stationary ground-level prop, not near the hit's own `y` band). **Not confirmed**: a raw struct read of
-object 12 (`$1a7fa`) in a snapshot taken ~150,000 steps after the contact gave `x=$8d,y=$b7` (141,183),
-inconsistent with the live-pinned contact position (`217,115`/`211,119`) from the 91st pass — most
-likely because offsets `2`/`4` alone aren't the position the proximity test actually compares (it uses
-`2(A0)+8(A0)`/`4(A0)+10(A0)`) and/or because this read wasn't pinned at the contact instant itself.
-Settling open item 2 needs a fresh `bpc e82e 1` pin on slot 12 with a render taken at that exact step,
-not a cold struct read after the fact.
+**Slot 12 is a moving flying creature, not the "purple creature" ground prop or the mechanical
+saw-wheel structure — proven and closing item 2 (93rd pass).** A fresh `bp e82e 491000` pin from
+`pass90_wall_192.snap` reproduces the 91st pass's contact exactly (step 490,587, `A0=$1a7fa`,
+`x=217,y=115`, `type=1`, radius `4/4/4`, damage `1`), confirming the whole maneuver is deterministic.
+Rendering that exact snapshot and marking `(217,115)` lands the crosshair on the crossbar's own
+saw-wheel graphic (`pass93_e82e_pin_tight.png`) — but this is a coincidence of that one instant, not
+proof of identity: a struct read taken at two later points during total hero idle (`s 750000`/`s
+1750000` from `pass90_wall_192.snap`, no input at all) shows `(x,y)` moving from `(188,161)` to
+`(62,240)` — off the bottom of the visible screen — a continuous, near-linear drift of roughly
+`-0.126px/step` in `x` and `+0.079px/step` in `y`, confirmed by a live `watch 1a7fc 4` over the same
+window (214 writes, all from `$019aba`/`$019abe`, not the velocity-integration fields at `8`/`10(A0)`,
+which read `0` at every struct snapshot taken). This single rate also reconciles the 91st pass's
+"a few pixels of drift" between its two takeoff points: at this rate the two pins (close together in
+real elapsed steps, not in takeoff `x`) land only a few pixels apart, exactly as observed. A **same
+fixed screen region** compared between the two idle snapshots (`pass93_drift_a.png`/`pass93_drift_b.png`,
+crop `(0,80)-(320,200)`, `pass93_drift_compare_fixedcrop.png`) shows every other sprite pixel-identical
+across the full 1,000,000-step idle gap — the saw-wheel structure, the crossbar, the item, the hero,
+and the "purple creature" near the second post (a separate, genuinely static prop) — except one small,
+thin, brown/tan winged sprite that shifts from near the top of the frame to lower-left, matching the
+struct's measured drift direction and magnitude. That sprite is slot 12; the 92nd pass's "black winged
+creature" guess (`pass92_arc600k.png`) was the right identification, now proven by tracked position
+rather than a single-frame visual guess. Open sub-question, not yet resolved: both idle-drift struct
+reads show `type=0` where the live contact pin reads `type=1` — possibly an activation/danger-range
+flag rather than a fixed type tag, unconfirmed.
 
 ## Known traps
 
@@ -1058,7 +1073,8 @@ not a cold struct read after the fact.
 | `coldboot_amazon_twintree_jump_landed.png` | **87th pass**: the same run continued a further 400,000 steps with no input — the hero lands idle at `x=152,y=144`, standing at the base of the fence-post structure past the trunk, proving the real jump mechanism (`$c742`/`$cbbc`) clears the obstacle the 86th pass's ground-level approach couldn't. **Superseded as a "safe" reference by `coldboot_amazon_twintree_jump_landed_safe.png` below — this exact jump was later proven to take two fatal hits from slot 9 mid-arc (89th pass)** |
 | `coldboot_amazon_twintree_jump_landed_safe.png` | **90th pass**: the hero idle at `x=130,y=144`, `2/18` health unchanged, after a jump triggered from `x=96` instead of `x=74` — clears slot 9's hazard with zero damage (`watch bb74`: no writes), proving item 1. Two fence-post/crossbar structures are visible, a green item on the first crossbar, a purple creature near the second post's base |
 | `coldboot_amazon_twintree_item_crossbar.png` | **90th pass**: the hero at `x=192,y=144`, `2/18` health, reached by plain ground-level right-walking from the safe landing above — the same wall previous passes found from the dodge-landing route, now reached hazard-free. Hero stands directly under the item's crossbar; a `kbd ff`/`kbd 09` jump straight up from here takes a hit, the guarding object not yet pinned to a slot (open item 2) |
-| `coldboot_amazon_twintree_guard_hit.png` | **92nd pass**: rendered just after the jump from `x=192` takes its first hit — shows a black winged creature circling near the top of the crossbar/item area, a plausible but unconfirmed candidate for slot 12's identity (see "Past the first screen" above) |
+| `coldboot_amazon_twintree_guard_hit.png` | **92nd pass**: rendered just after the jump from `x=192` takes its first hit — shows a black winged creature circling near the top of the crossbar/item area; the 93rd pass confirmed this is slot 12 (see next row) |
+| `coldboot_amazon_twintree_slot12_drift.png` | **93rd pass**: the same fixed screen region (`(0,80)-(320,200)`) rendered from two idle snapshots 1,000,000 steps apart, no input held — every sprite is pixel-identical except one small winged creature, which shifts from near the top of the frame to lower-left, proving slot 12 is that creature (not the static saw-wheel structure its coordinates happened to overlap at the original contact pin, and not the separate, genuinely static "purple creature" prop near the second post) |
 
 ## Not yet exercised
 
