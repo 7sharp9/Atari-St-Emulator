@@ -98,48 +98,54 @@ first screen" sections for full detail, match counts and exact addresses:
   not: per the retraction above, no jump ran at all for this snapshot's delay, so the match is simply
   because nothing moved. Reaching the item still needs a maneuver that gets the hero onto the crossbar
   top *and* off it again before slot 8 arrives — not yet found.
+- **The "wall" at `x=192` is disassembled and confirmed to be uncrossable by any jump/walk shape at all
+  (97th pass) — not a tile-collision wall, a hardcoded per-frame position correction.** `$00c450` checks
+  every frame whether the hero's `x > 192` ($c0); if so it computes `min(x-192, 2)` as a shared delta
+  (`$1883c`) and arms a gate (`$227f1` bit 3). `$00bb3a`-`bb68` then walks all 20 object-array slots and
+  subtracts that shared delta from `2(A0)`/`48(A0)` for any slot whose `30(A0)` word reads exactly
+  `$00ff` — true for the hero and every hazard slot checked (7/8/9/10/12), so it's a uniform
+  camera-follow-style correction across every flagged object, not a per-object wall test. Live-confirmed
+  against the mechanism, not just the disassembly: a genuine jump that *passes* the jump-state's own
+  tile-forward gate (`$00cc60`, checked via `hits` — entered 15 times, its add at `$00ccc4` reached 7 of
+  those) and writes `x=194` still gets pulled straight back to `192` by `$00bb5c` a few thousand steps
+  later, every time, across four consecutive real hits. **This is the actual root cause of every failed
+  escape in the 96th pass — no timing, hold, or arc shape can ever get the hero's `x` past 192 on this
+  screen**, independent of tile collision entirely. Open question, not yet checked: `$1883c` has exactly
+  one reader (`bb5c`) and no second consumer was found that would shift a background/tile scroll offset
+  to match — if this screen is meant to scroll here, that half of the mechanism may be unimplemented in
+  this port (unconfirmed against real Hatari).
 - The `$25000` tile-classification table, the HUD routine (`$00fdc4`), and the weapon/projectile
   system (`$00d37c`/`$00d3cc`, slots 16-19) are all unchanged from prior passes — see the README.
 
 ## Open, in priority order
 
-1. **Find a real maneuver past the crossbar that doesn't rest in slot 8's patrol.** Every genuine jump
-   tried so far (properly held, confirmed via the frame-counter watch) lands at `y=112` and eventually
-   takes a hit from slot 8 there — the "wait it out" approach is proven not to work regardless of
-   takeoff timing. **Three ideas ruled out (96th pass)**: holding right through the landing doesn't
-   walk the hero any further (the same ground-level forward-sensor wall at `x≈192` also blocks at the
-   crossbar height, confirmed clean for 400,000+ steps); chaining a second `kbd ff`/`kbd 09` only
-   50,000 steps after the first landing never fires (`$227f3` still reads `2`/jump, not `0`/idle, and
-   `$00c742` requires idle to retrigger — confirmed cause, not a mystery); waiting the full 500,000
-   steps for idle *does* fire a real second jump but nets to the identical `x=192,y=112` resting spot,
-   undamaged — the arc's own horizontal push is too small and symmetric to accumulate across repeated
-   in-place hops from solid ground. **None of the three make forward progress past the wall at all**,
-   which now looks like the real blocker, not slot 8 specifically. Still untried: a jump triggered from
-   further back (a run-up) to see if horizontal carry differs from a standing jump; approaching the
-   crossbar from a completely different direction/route; or accepting slot 8 is unavoidable at rest and
-   instead finding the exact window where it, like slot 12, has its own dodgeable drift pattern (Open
-   item 3). Reproduce with a **30,000-step hold** (not 15,000 — see the retraction) and, for any
-   multi-jump idea, confirm `$227f3=0` before retriggering; use the frame-counter watch to confirm any
-   candidate is a real jump before trusting position/damage alone.
-2. **Find a maneuver that actually reaches the item**, once item 1 has a real safe landing to build
-   from. No trial so far advances the hero's `x`/`y` past its `pass90_wall_192.snap` takeoff spot at
-   all — every dodge variant tried (including the ones now known to have been no-ops) is a same-spot
-   up+right hop. No address for the item's own pickup/inventory state is known yet, so confirm any
-   success with a render/pixel diff against a frame where the item is still visible, not just "reached
-   the crossbar" read as "got the item" — and confirm the maneuver itself actually ran (frame-counter
-   watch or equivalent), not just that the hero ended up somewhere consistent with it.
-3. **Characterize slot 8's own drift/patrol rate**, the way slot 12's was pinned in the 93rd pass — the
+1. **Find the real route to the item — it is not rightward jumping/walking past `x=192` on this
+   screen, closed as impossible (97th pass).** `$00c450`/`$00bb3a`-`bb68` (disassembled and
+   live-confirmed, see "Proven so far") pull the hero's `x` back down by up to `2`/frame whenever it
+   exceeds `192`, every frame, independent of tile collision — a genuine jump that passes its own
+   tile-forward gate and briefly reaches `194` gets reverted a few thousand steps later regardless.
+   This is the root cause of all three 96th-pass escape failures and closes off any further "jump
+   timing/shape" search as a way past the crossbar. Two real leads instead: (a) approach from a
+   different direction/height entirely — the left tree's ladder was a dead end from ground level (86th
+   pass) but was never tried after climbing from a higher entry point, and a route that never needs the
+   hero's `x` to exceed 192 on *this* screen sidesteps the correction entirely; (b) check whether this
+   screen is supposed to scroll when the `$00c450` trigger fires and the corresponding background/tile
+   shift is simply missing in this port — `$1883c` (the shared correction delta) has exactly one reader
+   found so far (`$00bb5c`); if a second consumer that shifts a screen/tile scroll offset exists and
+   hasn't been found, or if real Hatari visibly scrolls this exact screen and this emulator doesn't,
+   that would be a genuine emulator bug worth its own investigation, not a level-design dead end.
+2. **Characterize slot 8's own drift/patrol rate**, the way slot 12's was pinned in the 93rd pass — the
    30,000-step-hold retest shows it reliably reaches the crossbar rest spot within roughly 360,000-
    620,000 steps of a jump landing there, but the underlying rate/cycle isn't measured. Needed to know
    whether there's a timing window at the crossbar itself, the way slot 12 had one in the air.
-4. **Find the projectile-vs-enemy damage path**, or confirm there isn't one in this build —
+3. **Find the projectile-vs-enemy damage path**, or confirm there isn't one in this build —
    unchanged from the 83rd pass. A `callcap` on `$00d3cc` from a primed state, then a live `watch`
    on the projectile slot while stepping past a nearby enemy, would settle it either way.
-5. Identify what tile categories `$1`/`$2`/`$3` mean precisely (raw ids only known to map to
+4. Identify what tile categories `$1`/`$2`/`$3` mean precisely (raw ids only known to map to
    ladder-climbable at the up-check).
-6. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, from a fresh cold
+5. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, from a fresh cold
    boot.
-7. Classify the twin-tree screen's full hazard cluster (slots 8/9/10/12 known, two of them — 8 and
+6. Classify the twin-tree screen's full hazard cluster (slots 8/9/10/12 known, two of them — 8 and
    12 — now known to move rather than sit fixed) — check for further slots nearby before assuming
    complete, and check whether slots 9/10 also move given 8 and 12 turned out to.
 
@@ -172,10 +178,17 @@ doesn't walk the hero any further (the same ground-level wall blocks at the cros
 chaining a second jump only 50,000 steps after the first never fires (confirmed cause: `$227f3` was
 still `2`/jump, not `0`/idle — `$00c742` requires idle to retrigger); and a correctly-timed second jump
 (after waiting the full ~500,000 steps for idle) does fire but nets back to the exact same resting
-spot, undamaged. **The wall at `x≈192` now looks like the real obstacle**, not just slot 8's patrol —
-no jump shape tried so far makes any horizontal progress past it. Continue on Open item 1 with that
-framing: try a run-up jump (triggered while already moving, not from a standing idle) to see if
-horizontal carry differs from these in-place hops, or a completely different approach route/direction;
-searching slot 8's own drift for a dodge window (Open item 3) only matters once something can actually
-get past the wall. Always use a 30,000-step hold, confirm `$227f3=0` before any retrigger, and use the
-frame-counter watch to confirm any candidate is a real jump before trusting its outcome.
+spot, undamaged.
+
+The 97th pass then found and disassembled *why*: `$00c450` and `$00bb3a`-`bb68` pull the hero's `x`
+back down by up to `2`/frame whenever it exceeds `192`, every frame, completely independent of tile
+collision — live-confirmed by watching `$1a574` catch a genuine, tile-check-passed jump push get
+reverted a few thousand steps later, four times in a row. **This closes off "jump timing/shape past the
+crossbar" as a line of attack entirely — no maneuver of that kind can ever work here.** Start next
+session on the two real leads this opens: (a) a route to the item that doesn't require the hero's `x`
+to exceed 192 on this screen at all (try climbing the left tree's ladder from a higher entry point,
+since the 86th pass only tried it from ground level); (b) whether this screen is *meant* to scroll when
+`$00c450` triggers and the corresponding background/tile shift is missing from this port (`$1883c` has
+only one confirmed reader, `$00bb5c`) — worth a quick real-Hatari cross-check on this exact screen
+before assuming either way. Slot 8's own drift rate (Open item 2) only matters once something can
+actually get past `x=192`.
