@@ -1,6 +1,6 @@
 # Impossamole: handoff
 
-Updated 2026-09-28 by the session that ended at commit `8b2215c` (96th pass).
+Updated 2026-09-28 by the session that ended at commit `9709962` (96th pass).
 
 ## Resume point
 
@@ -106,17 +106,21 @@ first screen" sections for full detail, match counts and exact addresses:
 1. **Find a real maneuver past the crossbar that doesn't rest in slot 8's patrol.** Every genuine jump
    tried so far (properly held, confirmed via the frame-counter watch) lands at `y=112` and eventually
    takes a hit from slot 8 there — the "wait it out" approach is proven not to work regardless of
-   takeoff timing. **Two ideas ruled out (96th pass)**: holding right through the landing doesn't walk
-   the hero any further (the same ground-level forward-sensor wall at `x≈192` also blocks at the
-   crossbar height, confirmed clean for 400,000+ steps); chaining a second `kbd ff`/`kbd 09` 50,000
-   steps after the first landing doesn't trigger a second jump at all (frame counter shows no further
-   writes — the hero's own state likely wasn't back to idle yet, not confirmed). Still untried: a jump
-   shaped to clear the crossbar height entirely rather than land on it (e.g. trigger the second jump
-   earlier, right as the first lands, or from a dead stop confirmed idle first); approaching from a
-   different takeoff x; or accepting slot 8 is unavoidable at rest and instead finding the exact window
-   where it, like slot 12, has its own dodgeable drift pattern (Open item 3). Reproduce with a
-   **30,000-step hold** (not 15,000 — see the retraction), and confirm any candidate is real via the
-   frame-counter watch before trusting position/damage alone.
+   takeoff timing. **Three ideas ruled out (96th pass)**: holding right through the landing doesn't
+   walk the hero any further (the same ground-level forward-sensor wall at `x≈192` also blocks at the
+   crossbar height, confirmed clean for 400,000+ steps); chaining a second `kbd ff`/`kbd 09` only
+   50,000 steps after the first landing never fires (`$227f3` still reads `2`/jump, not `0`/idle, and
+   `$00c742` requires idle to retrigger — confirmed cause, not a mystery); waiting the full 500,000
+   steps for idle *does* fire a real second jump but nets to the identical `x=192,y=112` resting spot,
+   undamaged — the arc's own horizontal push is too small and symmetric to accumulate across repeated
+   in-place hops from solid ground. **None of the three make forward progress past the wall at all**,
+   which now looks like the real blocker, not slot 8 specifically. Still untried: a jump triggered from
+   further back (a run-up) to see if horizontal carry differs from a standing jump; approaching the
+   crossbar from a completely different direction/route; or accepting slot 8 is unavoidable at rest and
+   instead finding the exact window where it, like slot 12, has its own dodgeable drift pattern (Open
+   item 3). Reproduce with a **30,000-step hold** (not 15,000 — see the retraction) and, for any
+   multi-jump idea, confirm `$227f3=0` before retriggering; use the frame-counter watch to confirm any
+   candidate is a real jump before trusting position/damage alone.
 2. **Find a maneuver that actually reaches the item**, once item 1 has a real safe landing to build
    from. No trial so far advances the hero's `x`/`y` past its `pass90_wall_192.snap` takeoff spot at
    all — every dodge variant tried (including the ones now known to have been no-ops) is a same-spot
@@ -163,12 +167,15 @@ a `watch` on the jump routine's frame counter (`$1a5c4`) showing zero activity f
 Fixing the hold to 30,000 steps makes the jump fire reliably, but even then slot 8 eventually catches
 every landing at the crossbar rest spot (`y=112`) — so Item 3 (dodge the guard) is open again, not
 closed, and `pass94_dodge_item_landed.snap` is not a valid resume point (it's identical to
-`pass90_wall_192.snap`). The 96th pass then ruled out the two most obvious escapes: holding right
-through the landing doesn't walk the hero any further (the same ground-level wall blocks at the
-crossbar height too), and chaining a second jump 50,000 steps after the first doesn't fire at all
-(frame counter shows nothing — likely a non-idle-state issue, not confirmed). Continue on Open item 1:
-still untried are a jump shaped to clear the crossbar height entirely, a second jump triggered earlier
-(right at the landing frame) or only after confirming the hero is back to idle first, a different
-takeoff `x`, or searching slot 8's own drift for a dodge window the way slot 12's was found (Open item
-3) rather than assuming the rest spot is unconditionally unsafe. Always use a 30,000-step hold and the
+`pass90_wall_192.snap`). The 96th pass then ruled out three escapes: holding right through the landing
+doesn't walk the hero any further (the same ground-level wall blocks at the crossbar height too);
+chaining a second jump only 50,000 steps after the first never fires (confirmed cause: `$227f3` was
+still `2`/jump, not `0`/idle — `$00c742` requires idle to retrigger); and a correctly-timed second jump
+(after waiting the full ~500,000 steps for idle) does fire but nets back to the exact same resting
+spot, undamaged. **The wall at `x≈192` now looks like the real obstacle**, not just slot 8's patrol —
+no jump shape tried so far makes any horizontal progress past it. Continue on Open item 1 with that
+framing: try a run-up jump (triggered while already moving, not from a standing idle) to see if
+horizontal carry differs from these in-place hops, or a completely different approach route/direction;
+searching slot 8's own drift for a dodge window (Open item 3) only matters once something can actually
+get past the wall. Always use a 30,000-step hold, confirm `$227f3=0` before any retrigger, and use the
 frame-counter watch to confirm any candidate is a real jump before trusting its outcome.
