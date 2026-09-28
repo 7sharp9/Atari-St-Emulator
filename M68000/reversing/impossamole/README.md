@@ -988,69 +988,75 @@ rather than a single-frame visual guess. Open sub-question, not yet resolved: bo
 reads show `type=0` where the live contact pin reads `type=1` — possibly an activation/danger-range
 flag rather than a fixed type tag, unconfirmed.
 
-**A safe, zero-damage timing dodge past slot 12 is proven (94th pass), and every contact below is
-identified by its own live `A0`, not assumed from which hazard the trial was aimed at.** The arc
-itself is fixed in absolute time from trigger (92nd pass) while slot 12 keeps drifting, so an idle
-wait before the same `kbd ff`/`kbd 09` up+right trigger shifts where the drifting hazard is relative
-to that fixed arc. From `pass90_wall_192.snap`, holding the trigger 15,000 steps (a genuine hold is
-required: a 1-step tap never reaches `$00c742` at all, the hero stays grounded) then releasing to
-`kbd ff`/`kbd 08` (right-only — prevents the idle-landing-frame retrigger the 92nd pass identified,
-though it does not reshape the current arc) was tried at nine idle delays, 50,000 steps apart.
+**Retraction (95th pass): the "safe, zero-damage timing dodge past slot 12" the 94th pass reported is
+not a dodge at all — for five of its nine trial delays, the jump never fired.** The 94th pass held the
+`kbd ff`/`kbd 09` up+right trigger for 15,000 steps before releasing to `kbd ff`/`kbd 08`, tried at
+nine idle delays 50,000 steps apart, and read "zero `$e82e` hits, hero still at the takeoff spot" as a
+clean dodge. A direct `watch` on the jump's own frame counter (`82(A0)`, `$0001a5c4` — "advanced by 1
+each call", 87th pass) shows why that reading was wrong: for delays `0`, `100,000`, `150,000`,
+`200,000`, `500,000`, `550,000` and `600,000` the counter is written 17 times (a real jump runs); for
+every one of the five delays the 94th pass called "genuinely clean" (`250,000`-`450,000`) it is written
+**zero** times — the jump never entered `$00c742` at all, and "hero still at `x=192,y=144`, health
+`2/18`" is simply the hero never having moved, not a completed round-trip arc. The cause is an
+input-timing bug in the *test*, not the game: the up+right packet is enqueued instantly (no delay
+between `kbd ff` and `kbd 09`), and the game only samples it on its own ~24,000-step joystick poll
+cycle (twice the `$c6d0`/`$caba` idle-flicker toggle period visible in a `watch 227e0 26` trace); a
+15,000-step hold is shorter than that full cycle, so whether the poll falls inside the hold window
+depends on the idle delay's phase (`delay mod 24000`). The five delays that "cleared" outright all
+land in the same `10,000`-`18,000` dead band of that cycle (`250,000 mod 24000 = 10,000`
+... `450,000 mod 24000 = 18,000`) where the poll never lands inside the 15,000-step window; every
+delay confirmed to fire (`0, 100000, 150000, 200000, 500000, 550000, 600000`) sits outside that band.
+Holding for 30,000 steps instead (more than one full poll cycle, so the packet is guaranteed to be
+seen regardless of phase) makes the jump fire reliably even at delay `300,000` — but the result is
+**not** a lasting safe landing either: the hero lands at `x=194,y=112` with zero hits in the first
+700,000 post-release steps, but a second `bp e82e 700000` window catches a hit from slot 8 (`A0=
+$1a64a`) after a further `360,435` steps, and a third window catches a second hit `251,999` steps
+after that (`pass95_realdodge_300k_30khold.snap`, paused at the second hit) — the same trap already on
+this list (a clean window is not proof past its own budget), now confirmed against a genuine jump
+rather than a mistimed one.
 
-Delays `0`-`150,000` take a hit from slot 12 itself (`A0=$1a7fa`, confirmed live at each): the exact
-`$b71a` margin closes as delay grows — at delay `0` (contact step `475,454`) `x/y=(217,115)` against
-hero `(194,112)` gives `dx=15` (threshold `16`), `dy=3` (threshold `24`); at delay `150,000` (contact
-step `361,433`) `x/y=(214,130)` against hero `(194,108)` gives `dx=12`, `dy=22` — both axes still
-inside range, but the `dy` margin has shrunk from `21` px of headroom to `2`. **Delays `250,000`-
-`450,000` (five values) clear slot 12 outright**: `bp e82e` gave up (zero hits, from any object)
-across the whole post-trigger window, re-checked out to 1,300,000-1,615,000 steps, with the hero
-settled idle, grounded, at the exact takeoff spot `x=192,y=144`, health still `2/18`.
+This also answers the "what decides landing height" question the 94th pass left open, but not the way
+it assumed: **there is no variable landing height** — when the packet registers, the arc always lands
+at the same spot, the crossbar height `y=112` (confirmed for delays `0`/`100,000`/`150,000` — cut
+short by a mid-air hit from slot 12 before landing — and `200,000`/`500,000`/`550,000`/`600,000`,
+which do land there); `y=144` only ever means the hero never left the ground because the trigger
+packet was missed. **Delays `0`-`150,000` take a hit from slot 12 itself** (`A0=$1a7fa`, confirmed
+live at each) before ever landing: the exact `$b71a` margin closes as delay grows — at delay `0`
+(contact step `475,454`) `x/y=(217,115)` against hero `(194,112)` gives `dx=15` (threshold `16`),
+`dy=3` (threshold `24`); at delay `150,000` (contact step `361,433`) `x/y=(214,130)` against hero
+`(194,108)` gives `dx=12`, `dy=22` — both axes still inside range, but the `dy` margin has shrunk
+from `21`px of headroom to `2`. **Delays `200,000`, `500,000`-`550,000` and `600,000` land clean at
+`y=112` but are then caught at rest by slot 8** (`$1a64a`), a previously-unconfirmed hazard the 83rd
+pass first spotted and the 84th pass explicitly flagged as unresolved ("the `$1a64a` type=2 object may
+still be a hazard in its own right..., but nothing in this pass's data shows it ever being the one in
+contact"). **This closes that flag**: at the delay-`200,000` contact (step `839,032`), slot 8 reads
+`x/y=(214,112)`, velocity `(+2,0)`, radius `20/24/24`, damage `1`, against the hero resting at
+`(194,112)` — `dx=(214+2)-(194+8)=14` (threshold `16`), `dy=(112)-(112)=0` (threshold `24`), the
+identical generic `$b71a` test, genuinely triggered. Unlike the 84th pass's slot-10 culprit, slot 8's
+own velocity field reads nonzero here (`+2` in `x`) — the "static" classification given to slot 8 on
+sight in the 83rd/84th passes is now confirmed wrong: it patrols the crossbar rest spot on its own
+schedule, and the 30,000-step-hold retest above shows it catches *every* landing there eventually, not
+just the four delays first flagged.
 
-**Delays `200,000`, `500,000`-`550,000` and `600,000` also clear slot 12 — the hit they take is a
-different, previously-unconfirmed hazard, slot 8 (`$1a64a`).** The first write-up of this pass read
-these as slot 12 catching up late, on the strength of the "prove a static-looking value live"
-caution (below) applied to *timing*: a short post-trigger check (`bp e82e` giving up within 700,000
-steps, hero resting idle at `y=112` — on the crossbar itself, not the ground) looked clean, and a
-longer check (400,000 more steps, or a direct hit within 655,193 steps for delay `600,000`) caught a
-hit at each. Reading `A0` at that hit (not just the hex dump at slot 12's own fixed address, which
-was silently stale for these three) shows `$0001a64a` every time — the `type=2` object the 83rd pass
-first spotted on this same twin-tree screen and the 84th pass explicitly flagged as unconfirmed:
-"the `$1a64a` type=2 object may still be a hazard in its own right..., but nothing in this pass's
-data shows it ever being the one in contact." **This closes that flag**: at the delay-`200,000`
-contact (step `839,032`), slot 8 reads `x/y=(214,112)`, velocity `(+2,0)`, radius `20/24/24`, damage
-`1`, against the hero resting at `(194,112)` — `dx=(214+2)-(194+8)=14` (threshold `16`), `dy=(112)-
-(112)=0` (threshold `24`), the identical generic `$b71a` test, genuinely triggered. Unlike the
-84th pass's slot-10 culprit, slot 8's own velocity field reads nonzero here (`+2` in `x`) — the
-"static" classification given to slot 8 on sight in the 83rd/84th passes is now itself suspect and
-unconfirmed either way, not yet re-checked live.
+**Item 3 (dodge the guard's hazard) is reopened, not closed.** No delay or hold duration tried so far
+produces a genuinely, indefinitely safe rest position at the crossbar — every real jump (mistimed
+"escapes" excepted, since those never happened) either takes a hit from slot 12 mid-air or eventually
+takes one from slot 8 at rest. `pass94_dodge_item_landed.snap` is **not** a dodge result: it is
+state-for-state the same as `pass90_wall_192.snap`, because the packet that was supposed to trigger it
+never registered. The next lever is probably to not rest at the crossbar height at all — e.g. continue
+moving past it immediately after landing rather than settling, or find an approach that never stops in
+either hazard's drift path — not a further search over takeoff timing alone.
 
-The five genuinely clean delays (`250,000`-`450,000`) share a trait the caught ones don't: the arc's
-own landing height. The hero settles at the crossbar height `y=112` for `200,000`/`500,000`-
-`550,000`/`600,000` (where slot 8's danger band sits) but continues fully through to the ground
-`y=144` for `250,000`-`450,000`, clearing slot 8's height entirely — inferred from this data as *why*
-the wider window is genuinely safe rather than merely unluckied-into, not yet mechanized: what
-decides which landing height a given delay produces (the same one-shot arc, by the 92nd pass's own
-"fixed in time from trigger" finding) is still open, see below. No route or arc-shape change was
-needed to solve the original problem, only takeoff timing within the `250,000`-`450,000` window;
-`pass94_dodge_item_landed.snap` (delay `300,000`, dead centre of that range) is the settled resume
-point.
-
-**The dodge does not collect the item (95th pass).** A whole-frame pixel diff between
-`pass90_wall_192.snap` (pre-jump, hero standing under the crossbar, item still on it) and
-`pass94_dodge_item_landed.snap` (post-dodge, hero landed back at the identical `x=192,y=144`) shows
-`63,454`/`64,000` pixels identical; every one of the `546` differing pixels falls inside a single
-`x=32`-`264`,`y=105`-`139` band that matches the drifting hazard sprites (slots 7/8/9/10), confirmed
-by cropping the item's own on-screen region (`x=180`-`220`,`y=40`-`75`) and finding it byte-identical
-between the two frames. No HUD pixel changes either (the strip is outside the diff band entirely).
-This also explains itself structurally: an object-array dump of both snapshots (20 slots, `$1a2ea`
-base, 108-byte stride) shows the hero's own struct (`type=2`, slot 6) lands at the exact same
-`x=192,y=144` it started from — the dodge's arc never advances the hero's position past its takeoff
-point at all, so it was never going to pass near the item's rendered position on top of the fence
-post, regardless of which drifting hazard it dodges. Reaching the item needs a maneuver that actually
-gets the hero up onto the crossbar top, not just a same-spot up+right hop that clears the guard and
-falls back down — worth revisiting once the landing-height question below is mechanized, since a
-delay that lands at the crossbar height (`y=112`) gets measurably higher than one that falls through
-to the ground (`y=144`), even though neither reaches the item yet.
+**The dodge does not collect the item (95th pass) — though not for the reason first given.** A
+whole-frame pixel diff between `pass90_wall_192.snap` and `pass94_dodge_item_landed.snap` shows
+`63,454`/`64,000` pixels identical, with every one of the `546` differing pixels inside the drifting
+hazard sprites' own band and the item's own on-screen region byte-identical between the two frames —
+that empirical result stands. The *explanation* first given for it (a completed round-trip jump that
+happens to land back at its takeoff spot) does not: the frame-counter check above shows no jump ran at
+all for this snapshot's delay (`300,000`, in the dead band), so the render match is simply because
+nothing moved, not because an arc returned the hero to the same place. Reaching the item still needs a
+maneuver that gets the hero up onto the crossbar top and, per the retraction above, off it again before
+slot 8 arrives — not yet found by any trial in this pass.
 
 ## Known traps
 
@@ -1078,6 +1084,19 @@ to the ground (`y=144`), even though neither reaches the item yet.
   reading it. Re-running with a materially longer budget than the maneuver's own known duration
   (here, well past where the genuinely-safe delays had settled grounded and idle) catches the delayed
   hit; reading `A0` (or the exact contact address) at that hit is what tells you which hazard it was.
+- **A fixed-length input hold shorter than the game's own poll cycle can silently never register at
+  all, and "the expected outcome happened" is not proof it did.** The 94th pass held `kbd ff`/`kbd 09`
+  for 15,000 steps before releasing, tried at nine idle delays, and read the five delays that left the
+  hero exactly where it started (`x=192,y=144`, undamaged) as a successful zero-damage dodge. The 95th
+  pass found (via a direct `watch` on the jump's own frame counter, `$1a5c4`) that the jump's entry
+  point was never reached at all for those five delays — the up+right packet is enqueued instantly
+  with no gap before it, so whether the game's own ~24,000-step joystick poll falls inside a
+  15,000-step hold depends on the idle delay's phase mod that period, and those five delays all landed
+  in the ~8,000-step dead band where it doesn't. "The hero ended up somewhere consistent with the
+  maneuver having worked" is not evidence the maneuver ran — when a test can plausibly do nothing, add
+  a direct signal that something in the mechanism actually fired (a counter, a one-shot flag, a state
+  transition), not just a position/damage check that a no-op would also pass. Holding for longer than
+  one full poll cycle (here, 30,000 steps) makes the input register regardless of phase.
 - `resume <snap> repl` does **not** reattach a disk image mounted with `--disk-a` on an earlier
   cold-boot run — `diskA` lives outside `MmuSnapshot` (see `MMU.fs` `tryReadSector`'s doc comment on
   `dmaSectorCount`, the same "not in MmuSnapshot" note applies to the disk mount itself). Forgetting
@@ -1154,7 +1173,7 @@ to the ground (`y=144`), even though neither reaches the item yet.
 | `coldboot_amazon_twintree_item_crossbar.png` | **90th pass**: the hero at `x=192,y=144`, `2/18` health, reached by plain ground-level right-walking from the safe landing above — the same wall previous passes found from the dodge-landing route, now reached hazard-free. Hero stands directly under the item's crossbar; a `kbd ff`/`kbd 09` jump straight up from here takes a hit, the guarding object not yet pinned to a slot (open item 2) |
 | `coldboot_amazon_twintree_guard_hit.png` | **92nd pass**: rendered just after the jump from `x=192` takes its first hit — shows a black winged creature circling near the top of the crossbar/item area; the 93rd pass confirmed this is slot 12 (see next row) |
 | `coldboot_amazon_twintree_slot12_drift.png` | **93rd pass**: the same fixed screen region (`(0,80)-(320,200)`) rendered from two idle snapshots 1,000,000 steps apart, no input held — every sprite is pixel-identical except one small winged creature, which shifts from near the top of the frame to lower-left, proving slot 12 is that creature (not the static saw-wheel structure its coordinates happened to overlap at the original contact pin, and not the separate, genuinely static "purple creature" prop near the second post) |
-| `coldboot_amazon_twintree_slot12dodge_landed.png` | **94th/95th pass**: `pass94_dodge_item_landed.snap` rendered — the hero back at `x=192,y=144`, `2/18` health, the timing-dodge's landing spot. Pixel-identical to `coldboot_amazon_twintree_item_crossbar.png` (the pre-jump frame) outside the drifting-hazard sprites (`63,454`/`64,000` px match): the green item is still on the crossbar, proving the dodge does not collect it (95th pass, "Item 3" paragraph) |
+| `coldboot_amazon_twintree_slot12dodge_landed.png` | **94th pass, retracted by the 95th**: `pass94_dodge_item_landed.snap` rendered — pixel-identical to `coldboot_amazon_twintree_item_crossbar.png` (the pre-jump frame) outside the drifting-hazard sprites (`63,454`/`64,000` px match). Originally captioned as a jump-dodge's landing spot; the 95th pass found the frame-counter watch shows no jump ever ran for this snapshot's trigger (a mistimed 15,000-step hold), so this is just the pre-jump frame with the independently-drifting hazards in a different position — kept as the proof image for that retraction, not for a dodge |
 
 ## Not yet exercised
 

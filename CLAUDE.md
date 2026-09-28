@@ -165,6 +165,19 @@ know they existed.
   was a second, different, previously-unconfirmed hazard the maneuver had actually already dodged.
   Both the short window and the assumed identity were wrong (`reversing/impossamole/README.md`'s
   "Known traps" section).
+- A fixed-length `kbd`/`mouse` hold shorter than the game's own poll cycle can silently never
+  register at all, and the hero ending up where the maneuver would have left it is not proof the
+  maneuver ran — a no-op can look identical to success when the test only checks position/damage.
+  Impossamole's 94th pass held an up+right packet for 15,000 steps at nine idle delays and read the
+  five delays that left the hero exactly where it started, undamaged, as a successful dodge; the 95th
+  pass found (via a `watch` on the jump routine's own frame counter) that the jump never entered its
+  entry point at all for those five — the packet was enqueued with no lead-in delay, and whether the
+  game's own poll (period longer than the 15,000-step hold) happened to land inside that window
+  depended on the idle delay's phase, which those five delays' phase excluded. When a test's "it did
+  nothing" and "it worked as intended" outcomes can look the same from position/damage alone, watch a
+  signal that only changes if the mechanism actually fired (a counter, a one-shot flag, a state
+  transition) before trusting the outcome; holding for longer than one full poll cycle removes the
+  ambiguity outright (`reversing/impossamole/README.md`'s "Known traps" section, 95th-pass entry).
 
 ## Proving routines with parallel subagents
 
