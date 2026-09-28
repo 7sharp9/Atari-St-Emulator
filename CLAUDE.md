@@ -156,11 +156,15 @@ know they existed.
 - A `bp`/`bpc`/`watch` check that finds nothing within its own step budget is not proof a maneuver is
   safe past that budget — the event you're checking for can land later than whatever window you
   happened to run. Re-run with a budget well past the maneuver's own known duration, not just past
-  the point where it looks settled, before writing up "no hit"/"clean" as a final answer. Impossamole's
-  94th pass found two candidate dodge timings where `bp e82e` gave up clean inside 700,000 steps and
-  the hero looked settled (idle, resting mid-air) — a further 400,000-step check caught a delayed hit
-  at both, health reaching zero; the timings that stayed clean out to 1,615,000 steps were the real
-  ones (`reversing/impossamole/README.md`'s "Known traps" section).
+  the point where it looks settled, before writing up "no hit"/"clean" as a final answer. And once a
+  later check does catch a hit, read what actually caused it (`A0`, the exact contact address) rather
+  than assuming it's the same hazard the trial was aimed at — it can be a different object entirely.
+  Impossamole's 94th pass found three candidate dodge timings where `bp e82e` gave up clean (or hit)
+  inside 700,000 steps and the hero looked settled — a further 400,000-step check caught a hit at all
+  three, first written up as the original hazard catching up late; reading `A0` at the stop showed it
+  was a second, different, previously-unconfirmed hazard the maneuver had actually already dodged.
+  Both the short window and the assumed identity were wrong (`reversing/impossamole/README.md`'s
+  "Known traps" section).
 
 ## Proving routines with parallel subagents
 
