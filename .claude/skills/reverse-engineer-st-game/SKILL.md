@@ -51,6 +51,24 @@ to turn a guaranteed 3-hit death into a 1-hit survival: `$227f3` flipping from `
 (fall) was the signal to drop "up" and let the hero fall straight through instead of re-jumping back
 into the hazard (`reversing/impossamole/README.md`'s "Past the first screen" 85th-pass paragraph).
 
+**The routine a state-transition branches to is often one-shot entry setup, not the per-frame body
+that runs while the state persists — the two can be different addresses, reached by different
+dispatch paths, even when the entry code falls straight through into the per-frame body in memory.**
+Reading only the entry code's linear continuation (as far as its first `rts`) can look like a
+complete, self-contained routine and still describe none of what actually runs on frame 2 onward:
+the input dispatcher that triggers the state transition is typically only reached again on a
+specific re-trigger condition (e.g. only while a particular button is still held), not every frame,
+so the entry address itself is not what a `hits`/`bpc` census over many frames will show executing
+repeatedly. Confirm which address the per-frame body actually is with a `hits <n> <candidate
+addrs>...` run spanning several VBL frames of held input, not by assuming the entry point is called
+every frame; the addresses with hit counts in the tens (not 0 or 1) across the run are the real
+per-frame handlers. Impossamole's 86th pass read only `$c742`'s header (the jump-state's one-shot
+entry: play a sound, latch facing, fire once if armed) and concluded no jump mechanism existed
+because a fixed-length static test showed no displacement; the 87th pass found `$c742` falls through
+into `$cbbc`, the actual per-frame handler a `hits` census showed running dozens of times per hold,
+which reads a per-frame velocity table and applies genuine displacement
+(`reversing/impossamole/README.md`'s "Past the first screen" 87th-pass paragraph).
+
 `python tools/snap_render.py x.snap x.png` at each milestone (title, menu, gameplay): it reads base, rez and palette from the shifter, so double-buffered games come out right. Keep every screenshot that proves a milestone; drop exploratory ones before committing.
 
 Mouse-driven menus: the game keeps its own pointer, and `mouse move dx dy` sends relative packets (keep each |d| <= 127). Before clicking, find the pointer in a screenshot and do the arithmetic in 320x200 space (screenshots are often saved at 2x; halving the wrong number cost Populous two failed clicks). Better, read the menu's hit-test code (the button x/y bands) and the game's pointer x/y variables, then move exactly. Screenshot after the move, before the click.
