@@ -684,10 +684,28 @@ screen every prior pass stopped at:
     is not proven climbable from this resume point/approach; item 6 needs a different horizontal
     position (aligned to the ladder's own tile column) before `$227ea` will plausibly classify as
     ladder, not just an up-heavy hold from here.
-  - Whether the screen is passable at all — by timing a dodge around the real `$1a722`-slot hazard's
-    position, finding and lining up with an actual climbable column, or landing a discrete shot on it —
-    remains open; `ru_step12M.snap` is still the resume point, and the culprit's exact contact geometry
-    above is now the concrete target for the next dodge attempt.
+  - **A dodge that survives the crossing is proven (85th pass), though the screen isn't cleared
+    yet.** From `ru_step12M.snap`, held right+up up to the point the hero's own state (`$227f3`)
+    transitions from `2` (jump/attack) to `3` (natural fall, first seen at `x=196,y=96`→`112` around
+    step 1,400,000-1,500,000), then **switching to right-only (dropping the up bit) right at that
+    transition** lets the hero fall straight through the hazard's contact band in one pass instead of
+    bouncing back up into it repeatedly: exactly one hit (`3→2`, at `y=128`, matching the culprit's
+    proven geometry) instead of the original run's three, and the hero lands and settles (state `0`,
+    idle) at `x=192,y=144` with `2/18` health, alive (`pass85_dodge1_end.snap`,
+    `coldboot_amazon_twintree_dodge_landed.png` — a green round object and a real ladder, visible on
+    the left tree trunk, are both on screen from here). **The landing spot is still boxed in**: held
+    right goes nowhere from there for 1,500,000 steps (forward ground sensors read non-walkable, a
+    wall) and any further jump — held or a brief 30,000-step tap — arcs back up into a second contact
+    band around `y=96-118` and is fatal at `2/18` health (`pass85_jump2_end.snap`,
+    `pass85_shorthop_end.snap`, both die). **Left, however, is open and safe**: from the landed spot,
+    holding left walks the hero from `x=192` to `x=142` with health unchanged at `2`
+    (`pass85_left_x142.snap`, `coldboot_amazon_twintree_dodge_left.png`), stopping on its own (ground
+    sensors, not damage) — this is the first horizontal move off the `166-198` danger corridor found
+    so far, and puts the hero visibly closer to the left tree's ladder rungs, a promising lead for
+    item 6 that the next pass hasn't yet followed up (does `$227ea` classify as ladder from `x=142`,
+    and does climbing from there lead somewhere new). `pass85_dodge1_1_5M_more.snap` (the safe,
+    landed, pre-retreat state) is the best resume point for trying this: it already carries the one
+    unavoidable hit, so anything past it that stays alive is real progress.
 
 **The fire button is a real weapon system, not decorative — proven from disassembly (83rd pass),
 resolving the "type=3, never observed live" open item.** `$00c308`/`$00c31e` cache the raw joystick
@@ -744,10 +762,12 @@ system (`$00d37c`/`$00d3cc`/`$d4be`, type-3 slots 16-19) — is proven from disa
 contents, slot writes, damage-field assignment) but not yet cross-checked live with a `callcap` or a
 confirmed on-screen hit. The 84th pass corrected the twin-tree screen's hazard attribution (the real
 contact is a static `type=1` prop at slot 10, `$1a722`, not the `type=2` slot 8 object at `$1a64a`)
-and ruled out plain up-holding as a ladder-climb (state never leaves `2`/jump). "Does a fired shot
-damage an enemy", finding an input that actually clears the `$1a722` hazard's contact zone or a
-genuinely climbable ladder column, and continuing past the twin-tree screen are the open items for
-the next pass.
+and ruled out plain up-holding as a ladder-climb (state never leaves `2`/jump). The 85th pass found a
+dodge that survives the crossing (drop "up" right as the fall state begins: one hit instead of three,
+lands alive at `2/18` health) and a safe leftward retreat from the landing spot toward the screen's
+visible ladder, but the landing spot itself is still boxed in (right blocked, any further jump fatal).
+"Does a fired shot damage an enemy", following the left-retreat lead into the ladder (item 6), and
+actually continuing past the twin-tree screen into new content are the open items for the next pass.
 
 ## Known traps
 
@@ -819,6 +839,8 @@ the next pass.
 | `coldboot_amazon_game_over.png` | **82nd pass continued, items 1/1b/3**: rendered 10,000,000 steps past the plain-right death's reload snapshot — a tombstone and `GAME OVER` / `YOUR SCORE 000000` / `FINAL SCENE THE AMAZON`, proving the reload is a genuine death transition (`$b058`/`$b2d8`/`$17fe8`), not a per-level retry |
 | `coldboot_amazon_twintree_ladder.png` | **83rd pass**: the same held right+up run continued another 4,000,000 steps (12,000,000 total) — a genuinely new screen, twin trees with hanging vine curtains and a totem/ladder structure, with a second `type=2` hazard object (object-array slot 8, base `$1a64a`) visible bottom-centre; holding straight through it reproduces the death→reload cycle by ~14,500,000-15,000,000 steps |
 | `hatari_crosscheck/hatari_title.png`, `hatari_klondike_gameover.png`, `hatari_amazon_gameplay.png`, `hatari_amazon_hero_zoom.png` | real Hatari v2.6.1, same disk image, driven live 2026-09-27 — title screen, Klondike Mine played to a genuine Game Over, Amazon gameplay with the hero sprite clearly visible, and a zoomed crop of it. Originally run to check this emulator for bugs; the 82nd pass found the divergence was in one stale snapshot lineage, not this emulator generally — see "Real-hardware cross-check" above |
+| `coldboot_amazon_twintree_dodge_landed.png` | **85th pass**: the hero alive at `x=192,y=144`, `2/18` health, right after surviving the twin-tree hazard crossing (one hit instead of three) by dropping "up" as the fall state begins — a real ladder is visible on the left tree trunk, not yet reached from this landing spot |
+| `coldboot_amazon_twintree_dodge_left.png` | **85th pass**: the same run continued with left held from the landing spot — hero walks to `x=142` with health unchanged, the first safe horizontal move off the hazard's danger corridor found so far, closer to the visible ladder |
 
 ## Not yet exercised
 
