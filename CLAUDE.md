@@ -171,6 +171,12 @@ know they existed.
   Impossamole spent the 90th-97th passes on an `x=192` "wall" that was `addq.w #2,$227b6` at `$018fa2`,
   and disassembled the object-shift half (`$00bb5c`) without asking what advanced its delta
   (`reversing/impossamole/README.md`, camera-follow section).
+- Before trial-driving a game to find out what is "past" a spot, dump the data structure its own
+  scroll/loader reads: a level's whole tile map, room/exit tables and spawn list are usually resident in
+  RAM from the start. Impossamole spent the 90th-98th passes hopping blind at `x=192`; the 99th read the
+  1680-column map at `$31800`, found the scroll limit `$227b8` was only the first room's edge, and decoded
+  the room-exit table (`$e0aa`) and spawn list (`$27200`) in one session
+  (`reversing/impossamole/README.md`, "The level is one tile map of connected rooms").
 - A fixed-length `kbd`/`mouse` hold shorter than the game's own poll cycle can silently never
   register at all, and the hero ending up where the maneuver would have left it is not proof the
   maneuver ran — a no-op can look identical to success when the test only checks position/damage.
