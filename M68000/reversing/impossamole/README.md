@@ -942,9 +942,36 @@ generalize here**: jumping from `x=130` instead of `x=192` still takes the hit (
 the same `e82e` pin), so this hazard's tight, near-the-item radius can't simply be out-run the way
 slot 9's wider, off-path one was; clearing it will need a different arc shape or timing, or the route
 may just cost the one hit. `pass90_wall_192.snap` (`2/18` health, safe, right at the wall) is still
-the best resume point for chasing the item (open item 2); `pass91_from130_end.snap` (`1/18`, mid-air
-at `(192,112)` 900,000 steps into the `x=130` jump, not yet confirmed landed/idle) shows the arc
-continuing past the hazard rather than stopping there.
+the best resume point for chasing the item (open item 2).
+
+**Continuing `pass91_from130_end.snap`'s arc is fatal, and the jump is fully committed once
+triggered — releasing "up" mid-arc does not abort or shorten it (92nd pass).** Two live trials, both
+confirmed dead ends: (1) continuing `pass91_from130_end.snap` (`1/18`, mid-air at `(192,112)`) another
+900,000 steps with "up" still held re-triggers `$c742` a second time (since up never released at an
+idle-landing frame) and lands a second hit — `$bb74` reaches `0` and the death-animation marker
+`$1a578` goes nonzero (`$5f`, the same value the 82nd pass's freeze investigation found), the ordinary
+hazard-death cycle, not a new mechanism. (2) A fresh jump from `pass90_wall_192.snap` (`kbd ff`/`kbd
+09`), sampled every 50,000 steps: the arc peaks (`y≈104`) around relative step 250,000-300,000, then
+descends, taking the first hit (`$bb74` `2→1`) around step 450,000 at `y≈109-112` — consistent with
+the 91st pass's `step 490,926` figure for the same maneuver. Releasing "up" right at the peak (step
+300,000, well before any idle-landing frame, ruling out the "still holding through a retrigger" cause)
+does **not** change this outcome: the hero continues through the same downward trajectory regardless,
+still takes the first hit near `y≈109`, and a second hit at `$bb74` `1→0` follows shortly after while
+still descending — proof the "horizontal push committed at takeoff" framing (87th pass) extends to the
+whole arc, not just the horizontal component: once `$c742` triggers, input changes only affect whether
+a *new* jump re-triggers at the idle-landing frame, they don't reshape or truncate the current one.
+This rules out an early-release dodge as a way to shorten exposure to slot 12's hazard band.
+
+A render taken just after the first hit (`pass92_arc600k.png`) shows a black winged creature circling
+near the top of the crossbar/item area — a plausible candidate for slot 12's identity, in place of the
+90th pass's "purple creature near the second post's base" guess (that object appears to be a separate,
+stationary ground-level prop, not near the hit's own `y` band). **Not confirmed**: a raw struct read of
+object 12 (`$1a7fa`) in a snapshot taken ~150,000 steps after the contact gave `x=$8d,y=$b7` (141,183),
+inconsistent with the live-pinned contact position (`217,115`/`211,119`) from the 91st pass — most
+likely because offsets `2`/`4` alone aren't the position the proximity test actually compares (it uses
+`2(A0)+8(A0)`/`4(A0)+10(A0)`) and/or because this read wasn't pinned at the contact instant itself.
+Settling open item 2 needs a fresh `bpc e82e 1` pin on slot 12 with a render taken at that exact step,
+not a cold struct read after the fact.
 
 ## Known traps
 
@@ -1031,6 +1058,7 @@ continuing past the hazard rather than stopping there.
 | `coldboot_amazon_twintree_jump_landed.png` | **87th pass**: the same run continued a further 400,000 steps with no input — the hero lands idle at `x=152,y=144`, standing at the base of the fence-post structure past the trunk, proving the real jump mechanism (`$c742`/`$cbbc`) clears the obstacle the 86th pass's ground-level approach couldn't. **Superseded as a "safe" reference by `coldboot_amazon_twintree_jump_landed_safe.png` below — this exact jump was later proven to take two fatal hits from slot 9 mid-arc (89th pass)** |
 | `coldboot_amazon_twintree_jump_landed_safe.png` | **90th pass**: the hero idle at `x=130,y=144`, `2/18` health unchanged, after a jump triggered from `x=96` instead of `x=74` — clears slot 9's hazard with zero damage (`watch bb74`: no writes), proving item 1. Two fence-post/crossbar structures are visible, a green item on the first crossbar, a purple creature near the second post's base |
 | `coldboot_amazon_twintree_item_crossbar.png` | **90th pass**: the hero at `x=192,y=144`, `2/18` health, reached by plain ground-level right-walking from the safe landing above — the same wall previous passes found from the dodge-landing route, now reached hazard-free. Hero stands directly under the item's crossbar; a `kbd ff`/`kbd 09` jump straight up from here takes a hit, the guarding object not yet pinned to a slot (open item 2) |
+| `coldboot_amazon_twintree_guard_hit.png` | **92nd pass**: rendered just after the jump from `x=192` takes its first hit — shows a black winged creature circling near the top of the crossbar/item area, a plausible but unconfirmed candidate for slot 12's identity (see "Past the first screen" above) |
 
 ## Not yet exercised
 
