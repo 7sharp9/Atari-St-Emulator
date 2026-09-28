@@ -988,32 +988,53 @@ rather than a single-frame visual guess. Open sub-question, not yet resolved: bo
 reads show `type=0` where the live contact pin reads `type=1` — possibly an activation/danger-range
 flag rather than a fixed type tag, unconfirmed.
 
-**A safe, zero-damage timing dodge past slot 12 is proven (94th pass): the fix is purely *when* the
-jump triggers, not a different arc.** The arc itself is fixed in absolute time from trigger (92nd
-pass) while slot 12 keeps drifting, so an idle wait before the same `kbd ff`/`kbd 09` up+right
-trigger shifts where the drifting hazard is relative to that fixed arc. From `pass90_wall_192.snap`,
-holding the trigger 15,000 steps (a genuine hold is required: a 1-step tap never reaches `$00c742`
-at all, the hero stays grounded) then releasing to `kbd ff`/`kbd 08` (right-only — prevents the
-idle-landing-frame retrigger the 92nd pass identified, though it does not reshape the current arc)
-was tried at nine idle delays, 50,000 steps apart. Delays `250,000`-`450,000` (five values) are
-genuinely clean: **zero** `$00e82e` proximity-lock hits and **zero** `$bb74` writes across the whole
-post-trigger window, re-checked out to 1,615,000 steps — well past the arc's own landing — with the
-hero settled idle, grounded, back at the exact takeoff spot `x=192,y=144`, health still `2/18`.
-Delays `0`-`150,000` still take the known hit (contact step shrinks as delay grows — `490,587` at
-delay `0` down to `361,433` at delay `150,000` — the hazard's drift is closing the gap here, not
-opening it, until the trigger point moves fully past the danger window), and `600,000` reproduces
-the same hit pattern again (contact at step `655,193`). Two delays, `200,000` and `500,000`-`550,000`,
-are a trap the "prove a static-looking value live" caution (below) also covers for timing, not just
-position: a short post-trigger check (`bp e82e` giving up within 700,000 steps, hero resting idle at
-`y=112` — on the crossbar itself, not the ground) looked clean, but a longer check (400,000 more
-steps) caught a **delayed** hit at both, `bb74` reaching `0` — a short observation window here would
-have wrongly written these two up as safe. No route or arc-shape change was needed, only takeoff
-timing within the `250,000`-`450,000` window; `pass94_dodge_item_landed.snap` (delay `300,000`, dead
-centre of the confirmed-safe range) is the settled resume point. Still open: this dodge lands the
-hero back on the ground, not confirmed to have collected the item itself — no address or mechanism
-for the item's own pickup/inventory state is known yet, so whether grabbing it needs stopping on the
-crossbar (`y=112`, reached by the two delayed-hit trials before their fatal follow-up, not by any of
-the five clean ones) rather than continuing through to the ground is still unconfirmed.
+**A safe, zero-damage timing dodge past slot 12 is proven (94th pass), and every contact below is
+identified by its own live `A0`, not assumed from which hazard the trial was aimed at.** The arc
+itself is fixed in absolute time from trigger (92nd pass) while slot 12 keeps drifting, so an idle
+wait before the same `kbd ff`/`kbd 09` up+right trigger shifts where the drifting hazard is relative
+to that fixed arc. From `pass90_wall_192.snap`, holding the trigger 15,000 steps (a genuine hold is
+required: a 1-step tap never reaches `$00c742` at all, the hero stays grounded) then releasing to
+`kbd ff`/`kbd 08` (right-only — prevents the idle-landing-frame retrigger the 92nd pass identified,
+though it does not reshape the current arc) was tried at nine idle delays, 50,000 steps apart.
+
+Delays `0`-`150,000` take a hit from slot 12 itself (`A0=$1a7fa`, confirmed live at each): the exact
+`$b71a` margin closes as delay grows — at delay `0` (contact step `475,454`) `x/y=(217,115)` against
+hero `(194,112)` gives `dx=15` (threshold `16`), `dy=3` (threshold `24`); at delay `150,000` (contact
+step `361,433`) `x/y=(214,130)` against hero `(194,108)` gives `dx=12`, `dy=22` — both axes still
+inside range, but the `dy` margin has shrunk from `21` px of headroom to `2`. **Delays `250,000`-
+`450,000` (five values) clear slot 12 outright**: `bp e82e` gave up (zero hits, from any object)
+across the whole post-trigger window, re-checked out to 1,300,000-1,615,000 steps, with the hero
+settled idle, grounded, at the exact takeoff spot `x=192,y=144`, health still `2/18`.
+
+**Delays `200,000`, `500,000`-`550,000` and `600,000` also clear slot 12 — the hit they take is a
+different, previously-unconfirmed hazard, slot 8 (`$1a64a`).** The first write-up of this pass read
+these as slot 12 catching up late, on the strength of the "prove a static-looking value live"
+caution (below) applied to *timing*: a short post-trigger check (`bp e82e` giving up within 700,000
+steps, hero resting idle at `y=112` — on the crossbar itself, not the ground) looked clean, and a
+longer check (400,000 more steps, or a direct hit within 655,193 steps for delay `600,000`) caught a
+hit at each. Reading `A0` at that hit (not just the hex dump at slot 12's own fixed address, which
+was silently stale for these three) shows `$0001a64a` every time — the `type=2` object the 83rd pass
+first spotted on this same twin-tree screen and the 84th pass explicitly flagged as unconfirmed:
+"the `$1a64a` type=2 object may still be a hazard in its own right..., but nothing in this pass's
+data shows it ever being the one in contact." **This closes that flag**: at the delay-`200,000`
+contact (step `839,032`), slot 8 reads `x/y=(214,112)`, velocity `(+2,0)`, radius `20/24/24`, damage
+`1`, against the hero resting at `(194,112)` — `dx=(214+2)-(194+8)=14` (threshold `16`), `dy=(112)-
+(112)=0` (threshold `24`), the identical generic `$b71a` test, genuinely triggered. Unlike the
+84th pass's slot-10 culprit, slot 8's own velocity field reads nonzero here (`+2` in `x`) — the
+"static" classification given to slot 8 on sight in the 83rd/84th passes is now itself suspect and
+unconfirmed either way, not yet re-checked live.
+
+The five genuinely clean delays (`250,000`-`450,000`) share a trait the caught ones don't: the arc's
+own landing height. The hero settles at the crossbar height `y=112` for `200,000`/`500,000`-
+`550,000`/`600,000` (where slot 8's danger band sits) but continues fully through to the ground
+`y=144` for `250,000`-`450,000`, clearing slot 8's height entirely — inferred from this data as *why*
+the wider window is genuinely safe rather than merely unluckied-into, not yet mechanized: what
+decides which landing height a given delay produces (the same one-shot arc, by the 92nd pass's own
+"fixed in time from trigger" finding) is still open, see below. No route or arc-shape change was
+needed to solve the original problem, only takeoff timing within the `250,000`-`450,000` window;
+`pass94_dodge_item_landed.snap` (delay `300,000`, dead centre of that range) is the settled resume
+point. Still open: this dodge lands the hero back on the ground, not confirmed to have collected the
+item itself — no address or mechanism for the item's own pickup/inventory state is known yet.
 
 ## Known traps
 
@@ -1027,14 +1048,20 @@ the five clean ones) rather than continuing through to the ground is still uncon
   a movement input reaches a place, also snapshot/watch health (`$bb74`) and any other per-object
   status field (busy/cooldown flags) across the whole maneuver, not only at the end.
 - **A `bp`/`watch` check that finds nothing within its own step budget is not proof the maneuver is
-  safe past that budget — a hit can land later than whatever window you happened to check.** The
-  94th pass's timing-dodge search found two delays (`200,000`, `500,000`-`550,000`) where a `bp e82e`
-  capped at 700,000 steps gave up clean and the hero looked settled (idle, resting on the crossbar at
-  `y=112`) — but a further 400,000-step check caught a delayed hit at both, health reaching `0`.
-  Re-running the same check with a materially longer budget than the arc/maneuver's own known
-  duration (here, out to 1,615,000 steps, well past where the genuinely-safe delays had long since
-  settled grounded and idle) is what told the two apart from the five delays that stayed clean the
-  whole way. A single "gave up, looks fine" result at one step cap is only as trustworthy as that cap.
+  safe past that budget, and a hit inside a wider budget is not proof it's the hazard you were
+  aiming at — read `A0`/the contact site, don't assume it from which trial you were running.** The
+  94th pass's timing-dodge search found three delays (`200,000`, `500,000`-`550,000`, `600,000`)
+  where a `bp e82e` capped at 700,000 steps gave up clean (or, for `600,000`, hit inside the cap) and
+  the hero looked settled (idle, resting on the crossbar at `y=112`) — a wider budget (out to
+  1,300,000+ steps) caught a hit at all three, health reaching `0`, first written up as slot 12
+  catching up late. Reading the stopped breakpoint's own `A0` register (not the hex dump at slot
+  12's fixed address, which was silently stale) showed it was a *different* object, slot 8
+  (`$1a64a`) — all three delays had already cleared slot 12 outright, same as the five genuinely
+  clean ones; slot 8 was the actual, previously-unconfirmed second hazard. Two separate mistakes
+  compound here: trusting a short check window, and trusting an assumed contact identity instead of
+  reading it. Re-running with a materially longer budget than the maneuver's own known duration
+  (here, well past where the genuinely-safe delays had settled grounded and idle) catches the delayed
+  hit; reading `A0` (or the exact contact address) at that hit is what tells you which hazard it was.
 - `resume <snap> repl` does **not** reattach a disk image mounted with `--disk-a` on an earlier
   cold-boot run — `diskA` lives outside `MmuSnapshot` (see `MMU.fs` `tryReadSector`'s doc comment on
   `dmaSectorCount`, the same "not in MmuSnapshot" note applies to the disk mount itself). Forgetting

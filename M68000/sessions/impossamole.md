@@ -72,11 +72,17 @@ first screen" sections for full detail, match counts and exact addresses:
   absolute time from trigger while the guard itself keeps drifting, so an idle wait before the
   trigger is the only lever needed — no new arc shape. Idling 250,000-450,000 steps (five values,
   50,000 apart) before `kbd ff`/`kbd 09`, held 15,000 steps then released to `kbd ff`/`kbd 08`, is a
-  fully clean, zero-damage dodge (zero `$e82e` hits, zero `$bb74` writes, re-checked to 1,615,000
-  post-trigger steps) — see the README's 94th-pass paragraph for the full data and the two nearby
-  delays that looked clean short-term but were not. `pass94_dodge_item_landed.snap` is the resume
-  point. **Not yet confirmed: whether this dodge actually collects the item** — no address for the
-  item's own pickup/inventory state is known.
+  fully clean, zero-damage dodge, formula-confirmed at the margin (e.g. delay `0`'s contact: hazard
+  `(217,115)` vs hero `(194,112)` gives `dx=15`/`dy=3` against thresholds `16`/`24`, both still
+  in range) and re-checked clean (zero `$e82e` hits from any object) to 1,300,000-1,615,000
+  post-trigger steps — see the README's 94th-pass paragraph for the full data. **Bonus finding**:
+  three other delays (`200,000`, `500,000`-`550,000`, `600,000`) also clear slot 12 but were first
+  misread as slot-12 catching up late; reading `A0` at the actual hit showed a different object,
+  slot 8 (`$1a64a`) — closing the 84th pass's long-open "may still be a hazard, unconfirmed" flag on
+  that object. `pass94_dodge_item_landed.snap` is the resume point. **Not yet confirmed: whether
+  this dodge actually collects the item** — no address for the item's own pickup/inventory state is
+  known, and *why* some delays land at the crossbar height (`y=112`, in slot 8's danger band) while
+  others fall through to the ground (`y=144`) is itself unexplained — see Open item 2.
 - The `$25000` tile-classification table, the HUD routine (`$00fdc4`), and the weapon/projectile
   system (`$00d37c`/`$00d3cc`, slots 16-19) are all unchanged from prior passes — see the README.
 
@@ -85,33 +91,46 @@ first screen" sections for full detail, match counts and exact addresses:
 1. **Confirm whether the timing dodge actually collects the crossbar item.** `pass94_dodge_item_landed.snap`
    lands the hero back on the ground (`x=192,y=144`) with zero damage, but no address or mechanism
    for the item's own pickup/inventory state is known yet, so it's unconfirmed whether the item was
-   ever collected. Two of the delayed-hit trials (`200,000` and `500,000-550,000`, both eventually
-   fatal) briefly rested idle on the crossbar itself at `y=112` before the delayed hit landed — worth
+   ever collected. The three slot-8-caught trials (`200,000`, `500,000-550,000`, `600,000`) briefly
+   rested idle on the crossbar itself at `y=112` before slot 8 eventually caught them — worth
    checking whether stopping there (rather than continuing through to the ground) is what the pickup
    actually needs. Look for a HUD/inventory byte that changes (compare a render or a targeted `watch`
    across the crossbar-proximity window), or grep the topic docs' HUD routine (`$00fdc4`) section for
    anything already proven about item state before assuming none exists.
-2. **Find the projectile-vs-enemy damage path**, or confirm there isn't one in this build —
+2. **What decides the arc's landing height (`y=112` crossbar-rest vs `y=144` full ground) for a
+   given pre-jump idle delay?** The same one-shot arc is fixed in time from trigger (92nd pass), yet
+   delay `200,000` lands at `y=112` and delay `250,000` (only 50,000 steps later) lands at `y=144` —
+   not yet mechanized, only observed as a real split in this pass's data (README 94th-pass paragraph).
+   Matters because it's what actually keeps `250,000`-`450,000` clear of slot 8, not just a longer
+   check window.
+3. **Slot 8's own velocity field reads nonzero (`+2` in `x`) at its confirmed contact** — the
+   83rd/84th passes' "static" read of it was on sight, never re-checked live the way slot 12's drift
+   was (93rd pass). Worth a `watch`/two-pin drift check the same way, now that it's confirmed to be a
+   real, live hazard rather than an unconfirmed one.
+4. **Find the projectile-vs-enemy damage path**, or confirm there isn't one in this build —
    unchanged from the 83rd pass. A `callcap` on `$00d3cc` from a primed state, then a live `watch`
    on the projectile slot while stepping past a nearby enemy, would settle it either way.
-3. Identify what tile categories `$1`/`$2`/`$3` mean precisely (raw ids only known to map to
+5. Identify what tile categories `$1`/`$2`/`$3` mean precisely (raw ids only known to map to
    ladder-climbable at the up-check).
-4. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, from a fresh cold
+6. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, from a fresh cold
    boot.
-5. Classify the twin-tree screen's full hazard cluster (slots 8/9/10/12 known, one of them —
-   slot 12 — now known to be mobile rather than fixed) — check for further slots nearby before
-   assuming complete, and check whether any of 8/9/10 also move given 12 turned out to.
+7. Classify the twin-tree screen's full hazard cluster (slots 8/9/10/12 known, two of them — 8 and
+   12 — now known to move rather than sit fixed) — check for further slots nearby before assuming
+   complete, and check whether slots 9/10 also move given 8 and 12 turned out to.
 
 ## Known traps
 
 All workstream-specific traps are in `reversing/impossamole/README.md`'s own "Known traps" section
-— read it there, including the new one this pass added (a `bp`/`watch` check that finds nothing
-inside its own step budget is not proof a maneuver is safe past that budget — folded into
-`CLAUDE.md` too, since it's a general methodological trap, not specific to this game).
+— read it there, including the new one this pass added: a `bp`/`watch` check that finds nothing
+inside its own step budget is not proof a maneuver is safe past that budget, *and* a hit inside a
+wider budget is not proof it's the hazard you were aiming at — read `A0` at the stop, don't assume
+identity from which trial you were running. Both halves folded into `CLAUDE.md` too, since they're
+general methodological traps, not specific to this game.
 
 ## Next session
 
 Start with Open item 1: find whether `pass94_dodge_item_landed.snap`'s dodge actually collects the
 crossbar item — no address for the item's pickup/inventory state is known yet, so this needs a fresh
 signal (a HUD byte, a render diff, or a `watch` across the crossbar-proximity window), not just
-"survived the guard" read as "got the item".
+"survived the guard" read as "got the item". Open item 2 (what decides the arc's landing height) is
+the natural follow-on if item 1 turns out to depend on it.
