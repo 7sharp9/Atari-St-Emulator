@@ -1207,6 +1207,14 @@ live at a time:
   `$10006` (type byte indexes the descriptor pointer table at `$10474`; the descriptor's first byte
   picks one of four slot allocators through `$10046`: `$10056` slots 0-5, `$100ec` slots 7-11). The list's
   columns run to 1664, covering every room of the map. Decoding which type is which enemy or item is open.
+- **How a level ends (static reading of the main loop, not yet triggered live).** `$00b1f6` calls `$00fb98`,
+  which watches `$22803`; when bit 7 is set it counts `$22804` up to `$7d` (125 frames), clears the hero's and
+  slots 7-11's state, runs `$f050`/`$f0ee`, and the loop's `beq $b0b2` then jumps to `$00b0b2`, the level-complete
+  path (`$b0ca`: world index 5 goes to `$183c0`, every other world back to world-select at `$17c9c`). `$22803` is set to `$ff` at exactly five
+  addresses, `$014ad6`, `$015752`, `$01602e`, `$016958`, `$0176a6` (one per world by address order, inferred:
+  each sits in a large per-enemy handler, i.e. a boss's death routine), and to `1` at `$010228` (a slot
+  allocator in the spawner, meaning not yet read). So a level ends when its boss dies, not when the hero
+  reaches a map position. Which room and spawn record holds the Amazon boss is open.
 - Object slots are live-spawned: at camera `$5ac` the array holds different objects than at `$46c`, so the
   slot numbers used for the twin-tree screen do not carry over.
 

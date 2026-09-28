@@ -1,89 +1,82 @@
 # Impossamole: handoff
 
-Updated 2026-09-28 by the session that ended at the 98th-pass commit (see `git log`).
+Updated 2026-09-28 by the session that ended at the 99th-pass commit (see `git log`).
 
 ## Resume point
 
-- Last commit of this workstream: the 98th pass, "impossamole: 98th pass -- x=192 is the camera
-  trigger, the crossbar item is collected" (`git log --oneline -3` for the hash).
+- Last commit of this workstream: the 99th pass, "impossamole: 99th pass -- the level is one tile map
+  of connected rooms ..." plus a follow-up doc commit for the level-end paragraph (`git log --oneline -4`).
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image,
-  `coldboot_census/` (from-cold-boot scripts and snapshots), `gameplay_explore/` (movement/hazard
-  trials). See `scratchpad/ANCHORS.md` for the full indexed list. Real Hatari v2.6.1 at
-  `~/Downloads/hatari-snapshot/Hatari.app`, source at `~/GitHub/hatari/`. TOS ROM at
-  `M68000/TOS100UK.IMG`.
-- Start from: `scratchpad/impossamole/gameplay_explore/pass98_item_try.snap` (item just collected,
-  score `003200`, hero `x=114,y=144` idle-ish, **`1/18` health: one more hit kills**, camera
-  `$227b6=$49e`). `pass90_wall_192.snap` (`2/18`, camera `$46c`) is the older, healthier resume
-  point if a run needs to start over; `pass96_doublejump_v2.snap` (`2/18`, camera `$49e`) is where
-  `reversing/impossamole/py/twintree_item_route.repl` starts.
-  **Every `resume ... repl` needs `--disk-a "scratchpad/impossamole/impossamole cr replicants - emotion
-  cr replicants.st"`** (path relative to `M68000/`) and `ATARI_NOTRACE=1`. The REPL stops at the first
-  unknown line, so scripts cannot contain `#` comments. `snap <path>` writes relative to the dotnet
-  process's working directory; give the full path.
-- Uncommitted work left behind: none from this session. The pre-existing `M68000/sessions/README.md`
-  whitespace-rewrap diff (predates this workstream, flagged unowned by several prior handoffs) is
-  still there and still not this workstream's to fix. `.obsidian/` and `Cadaver/` at the repo root
-  are also not this workstream's.
+  `coldboot_census/`, `gameplay_explore/` (older trials) and `pass99/` (this pass: `cyc0..7.snap`,
+  `warp_down131b.snap`, `warp_up112.snap`, scripts `cyc.repl`/`hops6.repl`). `scratchpad/ANCHORS.md`
+  indexes them. Real Hatari v2.6.1 at `~/Downloads/hatari-snapshot/Hatari.app`, source at
+  `~/GitHub/hatari/`. TOS ROM at `M68000/TOS100UK.IMG`.
+- Start from: `scratchpad/impossamole/pass99/cyc5.snap` (Amazon, camera `$57a`, hero alive on the ground,
+  health poked to full) for anything about the map, rooms or spawns (all resident in RAM, any Amazon
+  snapshot works). `pass98_item_try.snap` / `pass90_wall_192.snap` are the older natural-play anchors.
+  **Every `resume ... repl` needs `--disk-a "scratchpad/impossamole/impossamole cr replicants - emotion cr
+  replicants.st"`** (path relative to `M68000/`) and `ATARI_NOTRACE=1`. The REPL stops at the first
+  unknown line (no `#` comments); `snap <path>` writes relative to the dotnet process's directory, give
+  the full path; `watch <addr> <len>` takes a **decimal** length; `w <addr> <8 hex digits>` writes a
+  longword (`w bb74 12120300` sets health `$12` and keeps `$bb76=3`).
+- Uncommitted work left behind: none from this session. `M68000/sessions/README.md` still carries the
+  pre-existing whitespace-rewrap diff (not this workstream's), and `.obsidian/`, `Cadaver/` are untracked.
 
 ## Proven so far
 
-See `reversing/impossamole/README.md`'s "Program classification", "Gameplay input" and "Past the
-first screen" sections for full detail, match counts and exact addresses:
+See `reversing/impossamole/README.md` for detail, match counts and addresses:
 
-- **The program is hand-written 68000 assembly, not compiled C.** No decompile route — live
-  `watch`/`bpc`/`callcap` plus `disassemble.py --all` is the only path.
-- **The hazard/collision mechanism is proven end to end** (`$00b71a` proximity → `$00e80e` scan →
-  `$00e82e` damage copy → `$00eb8c` apply → `$00ec50` death → `$b058` reload), and the object
-  array's stride and base (108 bytes/entry, base `$1a2ea`, hero index 6 at `$1a572`).
-- **A real, table-driven jump mechanism exists**: `$00c742` one-shot entry falling through into
-  `$00cbbc`, the per-frame handler (a `$cd54` velocity table). Input holds must exceed the game's
-  ~24,000-step poll cycle (30,000 works).
-- **`x=192` is the camera-follow trigger, not a wall (98th pass; corrects the 90th-97th framing).**
-  `$00c450` arms `$227f1` bit 3 when the hero's `x>192`; `$018f7e` then does `addq.w #2,$227b6`
-  (the camera, the only writer) up to the level limit `$227b8=$1020`; `$00bb22`-`bb68` shifts every
-  `30(A0)=$00ff` object left by the same delta, so the hero stays pinned on screen while the world
-  moves. Ground-level walking never scrolls (`watch 227b6`, zero writes over 400,000 steps: the
-  forward tile block stops the hero first). An up+right hop from `x=192` scrolls 8px (4 writes,
-  `$46c`→`$474`). This resolves the old "is the emulator missing a scroll?" question: it isn't.
-- **The twin-tree crossbar item is collected (98th pass, reproduced identically on a second run of
-  `py/twintree_item_route.repl`)**: slot 0 (`$1a2ea`, `type=1`, `(138,88)`, radius 16/16) goes
-  `type` 1→0 and the HUD score `000000`→`003200` during an up+left hop from the ledge step, hero
-  `y<=104` at `|dx|=6`. A straight-up hop from the ground below peaks at `y=106` and misses (needs
-  `y<=104`). The route costs one hit (`2/18`→`1/18`, slot 12's drift path on the walk left).
-- Slot 12 (`$1a7fa`) is a small flying creature drifting `~-0.126px/step` x (93rd pass); slot 8
-  (`$1a64a`) patrols the crossbar rest spot and eventually hits anything resting there (95th pass).
-- The `$25000` tile-classification table, the HUD routine (`$00fdc4`), and the weapon/projectile
-  system (`$00d37c`/`$00d3cc`, slots 16-19) are unchanged from prior passes — see the README.
+- **The program is hand-written 68000 assembly.** No decompile route; live `watch`/`bpc`/`callcap` plus
+  `disassemble.py --all` is the path.
+- **Hazard/collision, jump and camera-follow mechanisms** are proven (README "Past the first screen":
+  `$00b71a`/`$00e80e`/`$00e82e`/`$00eb8c`/`$00ec50`, object array stride 108 at `$1a2ea`, jump
+  `$00c742`/`$00cbbc`, `x=192` is the camera trigger via `$00c450`/`$018f7e`).
+- **The level is one 1680x24 tile map at `$31800` holding connected rooms (99th pass).** The first-room
+  scroll limit `$1020` is the end of the 137-block start room, not of the level. Room tables (`$c028` start
+  room, `$e0aa` per-world exit lists), the transition routine `$00df4a`/`$00e02c`, and the spawn list at
+  `$27200` are decoded. Two exit records (one bottom, one top) were forced live and every predicted field
+  matched (`$227b4`, camera, limit, hero x/y). `py/level_map.py` and `py/level_rooms.py` reproduce the map
+  and graph from any snapshot; `amazon_level_map.png` is the render.
+- The crossbar item is collected by an up+left hop (98th pass; score `003200`, slot 0 type 1 to 0).
+- Continuing right from the twin trees works with real input: from `pass90_wall_192.snap`, chained
+  up+right hops (`kbd ff`/`kbd 09`, 30,000-step hold) then a 400,000-step right walk scroll the camera
+  (`$46c` to `$5ac` over ~11 cycles) past a rock step, onto wooden crossbars, a diagonal staircase and a
+  ladder. Health was the constraint: at `1/18` the flying creature killed the hero within two cycles, so
+  the exploration poked health to full each cycle (a labelled shortcut, not natural play).
+- A level ends when its boss dies (static reading only): `$22803` bit 7 is set at five addresses
+  (`$014ad6`, `$015752`, `$01602e`, `$016958`, `$0176a6`), `$00fb98` counts 125 frames, then `$00b0b2`.
 
 ## Open, in priority order
 
-1. **Continue right past the item.** Chain up+right hops (`kbd ff`/`kbd 09`, 30,000-step hold, wait
-   for `$227f3=0` idle) and `watch 227b6`: each hop scrolls ~8px, so what appears past `x`-world
-   `$49e+` is unmapped Amazon content (screenshot with `snap_render.py` at each ~50px of camera).
-   `1/18` health: run from `pass90_wall_192.snap` (`2/18`) via the route script if a death costs the
-   snapshot. Is there a level-exit or another room behind the twin trees?
-2. **Pin what the item is.** `bpc` on the write that sets slot 0's `type` to 0 (find it with
-   `watch 1a2ea 2` during the up+left hop) to name the pickup handler, and check whether score was
-   the only thing it changed (health did not). Whether `$00b71a` is the generic test or a dedicated
-   pickup handler is inferred, not proven.
-3. **Characterize slot 8's drift/patrol rate**, the way slot 12's was pinned in the 93rd pass.
-4. **Find the projectile-vs-enemy damage path**, or confirm there isn't one in this build. A `callcap`
-   on `$00d3cc` from a primed state, then a live `watch` on the projectile slot while stepping past
-   a nearby enemy, would settle it.
-5. Identify what tile categories `$1`/`$2`/`$3` mean precisely (raw ids only known to map to
-   ladder-climbable at the up-check).
-6. Whether Orient/Ice Land/Bermuda Triangle load correctly in this emulator, from a fresh cold boot.
-7. Classify the twin-tree screen's full hazard cluster (slots 8/9/10/12 known, 8 and 12 confirmed to
-   move) — check whether 9/10 also move.
+1. **Find the Amazon boss and the route to it.** Decode the spawn list (`$27200`, 4-byte records: column
+   word, row byte, type byte; type indexes the descriptor table at `$10474`, first descriptor byte picks the
+   allocator via `$10046`). Tabulate all ~256 records with their room, find which of the five `$22803`
+   writers belongs to world 3 (a `bp` on each while a boss is alive would settle it, or read which handler
+   the descriptor's `22(A0)` pointer targets), and locate that record in the room graph. Then plan a route
+   with `level_rooms.py`.
+2. **Reach a room exit with real input**, not pokes: climb through the ceiling gap at block 112 (col 448,
+   x=3584) or drop through blocks 131/135. The camera has to get to about `$e00` (from `$5ac`, roughly 3,000px
+   at 8-100px per cycle); a poked camera (`w 227b4 ...`) plus a natural jump/fall is the cheaper hybrid, but
+   say so. Confirm the state byte `$227f3` really is 2 while climbing off the top and 3 while falling.
+3. **Pin what the item is** (`bpc` on the write that sets slot 0's `type` to 0; is `$00b71a` the generic
+   test or a pickup handler).
+4. Slot 8's patrol rate; the projectile-vs-enemy damage path (`$00d3cc`); categories `1`/`2`/`3` (the render
+   suggests ladder / small ledge / one-way platform, untested); Orient/Ice Land/Bermuda from a fresh cold boot;
+   whether slots 9/10 move.
 
 ## Known traps
 
-All workstream-specific traps are in `reversing/impossamole/README.md`'s own "Known traps" section —
-read it there. The general lesson of this session (a camera-pinned hero makes on-screen position
-comparisons blind to progress; read the scroll counter) is folded into `CLAUDE.md`.
+Workstream traps live in `reversing/impossamole/README.md`'s "Known traps". New this pass:
+
+- **The map and tables are resident, so read them before playing.** The 90th-98th passes drove the hero
+  blind for nine passes; the whole level layout, exits and spawn list were sitting in RAM at `$31800`,
+  `$e0aa` and `$27200`. Dump the data structure the game's own scroll/loader reads before trial-driving.
+- **The transition takes hundreds of thousands of steps** (`$1c3c8` fade). Sampling 200,000 steps after a
+  poked trigger showed only `y=-16` and the old camera; 400,000 more steps showed the finished room.
+- **Object slots are live-spawned by camera position**, so a slot number is only meaningful on one screen.
+- Health poked per cycle removes the death risk but also the natural-play evidence; label pokes.
 
 ## Next session
 
-Start with Open item 1: chain hops right from `pass98_item_try.snap` and watch `$227b6` to see what
-the level holds past the twin trees. Then pin the item's pickup handler (item 2). Do not re-run the
-old "cross `x=192`" input-timing trials: they are moot now that the scroll mechanism is known.
+Open item 1: tabulate the spawn list per room, find the world-3 boss and its room, and write the route
+graph from the start room to it. Do not resume the hop-chain exploration; use the room table.
