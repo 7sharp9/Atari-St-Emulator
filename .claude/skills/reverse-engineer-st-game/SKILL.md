@@ -269,6 +269,20 @@ guessing a cap (impossamole `reversing/impossamole/README.md`'s "item is still g
 paragraph: `bpc eb8c` found the *hero's own* base address; the 89th pass's `bpc e82e 1 400000`
 correctly targeted the detect site but had capped short of the real hit at step ~490,000).
 
+**When several independent live trials all fail the same superficial way, suspect one shared
+mechanism and disassemble the boundary value directly, rather than trying more input variations.**
+Live testing is cheap per attempt but each failed variation only rules out that one input, not the
+underlying cause; three or more distinct trials converging on the identical outcome (same position,
+same "nothing happened") is a strong signal the game itself is doing something uniform at that
+boundary, findable in one disassembly pass. Impossamole's 96th pass tried three different input
+sequences to get a hero past a screen position (`x=192`) — holding a direction, retriggering a second
+action too soon, retriggering it correctly — and all three "failed" in the exact same way (position
+reverted to the same spot). Disassembling around the literal boundary constant found in one pass
+(`cmpi.w #$c0,...`, the 97th pass) that none of the three trials could have found by trying more
+inputs: a hardcoded per-frame correction independent of any input timing, unrelated to what all three
+trials assumed was a tile-collision wall. Recognize the pattern (uniform failure across varied
+inputs) and switch tools instead of extending the same kind of trial a fourth or fifth time.
+
 ## 6. Regression net (every commit that touches the emulator)
 
 1. `./run.ps1 -NoBuild verify 5000000`, PASS (re-run 2–3× on a byte-identical FAIL, that's a build-cache race, not a real failure).

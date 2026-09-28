@@ -1181,6 +1181,16 @@ slot 8 arrives — not yet found by any trial in this pass.
   a direct signal that something in the mechanism actually fired (a counter, a one-shot flag, a state
   transition), not just a position/damage check that a no-op would also pass. Holding for longer than
   one full poll cycle (here, 30,000 steps) makes the input register regardless of phase.
+- **A raw memory dump of a position field can catch it mid-scratch, showing a bogus probe offset
+  instead of the true value.** The environment-sensor scan (`$00c0d0`-`c204`) walks a lookahead probe
+  by repeatedly overwriting the hero's own `2(A0)`/`4(A0)` (x/y) with candidate offsets, reading a tile
+  at each, and correctly restoring the true position from cached `D0`/`D1` afterward — it always
+  round-trips correctly, so it isn't itself a bug. But an `m`/`watch` read taken at an arbitrary moment
+  while this scan is mid-flight (not synchronized to its own start/end) can report one of those
+  transient probe offsets (e.g. `204` instead of the real `194`) as if it were the current position.
+  When exact position values matter (not just "did it change eventually"), single-step past a known
+  instruction (a `bpc` on the actual write you care about) rather than trusting a bare `m` dump taken at
+  a guessed moment (97th pass, tracing the `x=192` correction).
 - `resume <snap> repl` does **not** reattach a disk image mounted with `--disk-a` on an earlier
   cold-boot run — `diskA` lives outside `MmuSnapshot` (see `MMU.fs` `tryReadSector`'s doc comment on
   `dmaSectorCount`, the same "not in MmuSnapshot" note applies to the disk mount itself). Forgetting
