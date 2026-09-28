@@ -1047,46 +1047,55 @@ never registered. The next lever is probably to not rest at the crossbar height 
 moving past it immediately after landing rather than settling, or find an approach that never stops in
 either hazard's drift path — not a further search over takeoff timing alone.
 
-**Three escape ideas ruled out (96th pass).** (1) Holding right through the landing rather than
-releasing does not walk the hero any further across the crossbar: `x` stays pinned at `192`-`194` for
-400,000+ steps after a genuine (30,000-step-hold) landing, the same forward-sensor wall found at ground
-level (90th pass) also blocks progress at the crossbar height — only `y` wobbles slightly (`112`→`105`→
-`112`), unexplained but harmless (health unaffected). (2) Chaining a second `kbd ff`/`kbd 09` (fresh
-30,000-step hold) only 50,000 steps after the first landing does not trigger a second jump at all — the
-hero's own state (`$227f3`) checked at that point still reads `2` (jump), not `0` (idle); `$00c742`
-requires idle to retrigger (established), so the packet was simply ignored, not consumed by anything
-exotic. (3) **Waiting long enough for the first jump to actually reach idle (500,000 steps) before
-sending the second trigger does fire a real second jump** (frame counter: 18 more writes, 35 total) —
-but it nets to the exact same resting spot, `x=192,y=112`, undamaged, zero hits in 700,000 checked
-steps. The one-shot arc's own horizontal push is a fixed, tiny amount per jump (87th pass) and a hop
-taken from solid ground under the hero returns to solid ground at essentially the same spot; chaining
-more identically-shaped hops from the same takeoff point won't accumulate horizontal progress. None of
-the three escapes the wall or slot 8's patrol; reaching the item likely needs a takeoff position/shape
-that isn't this same in-place hop, not more repetitions of it.
+**Escape attempts from the crossbar rest spot (96th pass) all "landed at the same place" because the
+camera moved, not the hero.** (1) Holding right through a genuine (30,000-step-hold) landing leaves
+`x` at `192`-`194` for 400,000+ steps, only `y` wobbling (`112`→`105`→`112`). (2) A second
+`kbd ff`/`kbd 09` only 50,000 steps after the first landing is ignored: `$227f3` still reads `2`
+(jump) and `$00c742` requires idle `0`. (3) Waiting 500,000 steps for idle before the second trigger
+fires a real second jump (frame counter: 18 more writes, 35 total), ending at the same on-screen
+`x=192,y=112`, undamaged. Those results were read as "the hop nets zero horizontal progress". The 98th
+pass showed that reading was wrong: every one of those hops scrolled the level (see below), so the
+same on-screen spot was a different world position each time (`$227b6`: `$46c` at
+`pass90_wall_192.snap`, `$49e` at `pass96_doublejump_v2.snap`, `$4b4` at
+`pass95_realdodge_300k_30khold.snap`).
 
-**The "wall" at `x=192` is disassembled: it is a hardcoded per-frame position correction, not a tile
-wall, and no jump/walk shape can ever cross it (97th pass).** Two routines, found by watching
-`$1a574` (hero `x`) for the exact write that reverts a genuine, tile-check-passed `+2` jump push back
-to `192`:
+**`x=192` is the camera-follow trigger, not a wall: airborne pushes past it scroll the level, and that
+is how the item is reached (97th pass disassembly, 98th pass live proof).** Three routines:
 
 ```
 $00c450: clr.b   $227f1.l          ; clear the trigger flag
 $00c456: cmpi.w  #$c0,2(A0)        ; A0 = hero: is x > 192 ($c0)?
 $00c45c: ble     $c486             ; no -> done, nothing to correct
-$00c460: bset    #3,$227f1.l       ; yes -> arm the correction gate
+$00c460: bset    #3,$227f1.l       ; yes -> arm the scroll gate
 $00c468: move.w  2(A0),D0
 $00c46c: subi.w  #$c0,D0           ; D0 = x - 192 (how far over)
-$00c470: move.b  D0,$1883c.l       ; scroll delta := that excess
+$00c470: move.b  D0,$1883c.l       ; shared shift delta := that excess
 $00c476: cmp.b   #$2,D0
 $00c47a: ble     $c486
 $00c47e: move.b  #$2,$1883c.l      ; clamped to at most 2 px/frame
 $00c486: rts
 
+$018f7e: bclr    #0,$227f2.l       ; scroll routine, called once per main-loop pass from $00b254
+$018f86: btst    #3,$227f1.l       ; gate armed by $c460?
+$018f8e: beq     $18ffc
+$018f92: move.w  $227b6.l,D0
+$018f98: cmp.w   $227b8.l,D0       ; camera vs. level scroll limit ($227b8 = $1020 here)
+$018f9e: bge     $18ffc
+$018fa2: addq.w  #2,$227b6.l       ; camera += 2 (the only increment of $227b6)
+$018fa8: bset    #0,$227f2.l       ; "scrolled this frame"
+   ...                             ; redraw the strip of new tile columns ($18ebe, $1923c, $192d2)
+$018ffc: move.b  #$2,$1883c.l      ; delta reset to 2
+$019004: rts
+
+$00bb22: btst    #3,$227f1.l       ; per-frame object shift, only if the gate is armed ...
+$00bb2a: beq     $bb6c
+$00bb2e: btst    #0,$227f2.l       ; ... and the camera actually scrolled this frame
+$00bb36: beq     $bb6c
 $00bb3a: lea     $1a2ea.l,A0       ; A0 = object array base (all 20 slots)
 $00bb40: moveq   #19,D0
 $00bb42: tst.w   0(A0)             ; skip inactive slots (type==0)
 $00bb46: beq     $bb64
-$00bb4a: cmpi.w  #$ff,30(A0)       ; only objects flagged 30(A0)=$00ff
+$00bb4a: cmpi.w  #$ff,30(A0)       ; only objects flagged 30(A0)=$00ff (hero and every hazard/item read $00ff)
 $00bb50: bne     $bb64
 $00bb54: moveq   #0,D1
 $00bb56: move.b  $1883c.l,D1       ; D1 = this frame's shared delta
@@ -1096,40 +1105,57 @@ $00bb64: lea     108(A0),A0        ; next slot
 $00bb68: dbf     D0,#-40 == $bb42
 ```
 
-`$00c450` runs every frame regardless of hero state (confirmed live during both a walk-hold and a
-jump) and is purely a threshold check on the hero's own `x`: if it's `<=192`, nothing happens; if it's
-over, the excess (capped at `2`/frame) becomes a shared delta, gated on `$227f1` bit 3. `bb22`/`bb3a`
-(reached from the same main-loop pass that calls the hazard-collision and object-update routines,
-`$00b260` per `find_ram_callers`) then walks **every** object-array slot and subtracts that shared
-delta from any slot whose own `30(A0)` word reads exactly `$00ff` — confirmed true for the hero
-(`$1a590/91 = $00ff`) and for every hazard slot checked (7, 8, 9, 10, 12 all read `$00ff` too), so this
-is a *global* correction applied uniformly to every flagged object, not a per-object wall check: slot 8
-sitting at `x=242` (already past 192) is not itself "clamped" to 192 by this code, it just loses the
-same shared `2`px whenever the hero triggers the gate — consistent with a camera-follow/scroll
-mechanism (shift everything together to keep the hero pinned at the trigger edge) rather than an
-individual collision wall.
+So when the hero's `x` exceeds `192`, the camera `$227b6` advances 2px and every flagged object,
+hero included, is shifted left by the same amount: the hero stays pinned at `192` on screen while the
+world moves under it. The level's own scroll limit is `$227b8 = $1020`, far from the current `$46c`,
+so this screen is not at a scroll stop. The 97th pass saw only the `$bb5c` half (the hero's tile-legal
+`+2` push reverted to `192`) and read it as a per-frame position correction that no input could beat;
+it never looked at `$227b6`.
 
-**Live-confirmed the mechanism, not just the disassembly**: from `pass90_wall_192.snap`, a genuine
-jump (30,000-step hold) that *passes* the jump-state's own tile-forward gate (`$00cc60`-`$00ccc4`,
-which checks `$227e4`-`$227e7` for category `<4` and does apply — `hits` shows the block entered 15
-times, the add reached 7 of those) still nets zero: `watch 1a574 2` shows the add write `194` at
-`$00ccc4`, survive the environment-scan's own scratch-and-restore of the same field (`$00c0d0`-`c204`,
-which round-trips correctly using its own cached `D0`/`D1`, confirmed not the culprit), and then get
-pulled straight back down to `192` by `$00bb5c` a few thousand steps later, every single time (checked
-across four consecutive real hits). **No amount of tile-check success matters — this correction runs
-independently of and after any tile-based movement, every frame, for as long as `x>192`.**
+Two things gate the scroll in practice:
 
-**Practical conclusion: brute-force rightward jumping or walking past `x=192` on this screen is a dead
-end, full stop — not a matter of finding the right timing, hold, or arc shape.** Every escape tried in
-the 96th pass failed for this one root cause. Reaching the item needs either a different approach
-entirely (a route that doesn't require the hero's own `x` to exceed 192 here at all — e.g. from above,
-via the left tree's ladder lead the 86th pass found a dead end at ground level but didn't try from a
-higher entry point, or via a different screen/room transition) or confirmation that this screen is
-*meant* to scroll at this trigger and the corresponding background/tile scroll simply isn't happening
-in this emulator (`$1883c` has exactly one reader, `$00bb5c` — no second consumer was found that would
-shift a background/tile scroll offset in step with the object correction, so if this game is supposed
-to scroll the terrain here too, that half of the mechanism is either not yet located or not implemented
-in this port; unconfirmed either way, not yet checked against real Hatari).
+- **Ground-level walking never scrolls.** `watch 227b6` over 400,000 steps of held right from
+  `pass90_wall_192.snap` shows zero writes: the forward-sensor tile block (90th pass, category `>=4`)
+  stops the hero at `x=192` before any push reaches `x>192`. The camera only advances when a push past
+  `192` gets through, which the jump arc's own horizontal add (`$00ccc4`, gated only on the arc's
+  tile-forward check `$00cc60`-`$00ccc4`) does.
+- **Each hop scrolls a few pixels.** From `pass90_wall_192.snap`, `kbd ff`/`kbd 09` (30,000-step hold)
+  then release: `watch 227b6` shows 4 writes (`$46e`,`$470`,`$472`,`$474`), i.e. the camera moved 8px
+  and `$227b4` (the tile column counter) stayed `$23`. The two hops behind `pass96_doublejump_v2.snap`
+  moved it 50px in total.
+
+**The item on the twin-tree crossbar is collected (98th pass; reproduced byte-for-byte on a second run
+of `py/twintree_item_route.repl`).** After the hops the world has scrolled so the crossbar's item
+(object-array slot 0, `$1a2ea`, `type=1`, `(138,88)`, radius `16/16`, flag `$00ff`) sits 50-70px to the
+left of the hero, who is standing on the raised ground step on the right. From
+`pass96_doublejump_v2.snap` (camera `$49e`, hero `x=192,y=112`, `2/18`):
+
+1. Hold left (`kbd ff`/`kbd 04`) 700,000 steps: the hero walks off the step and to the foot of the
+   ledge at `x=142,y=144`. **Health drops `2`→`1`** on the way (slot 12's drift path); the route is not
+   hazard-free.
+2. Jump straight up from `x=132`-`142`: the arc peaks at `y=106`, `18` short of the item's `y=88`. The
+   proximity test at `$00b71a` needs `|dy| < 16` (threshold `13(A0)=16`), so `y` must be `<=104` at
+   `|dx| < 16`. A straight-up hop from ground level misses the item by 2px of margin and was tried
+   first.
+3. Up+right hop (`kbd 09`, 30,000-step hold) from the ledge foot lands on the step at `x=158,y=112`,
+   idle, `1/18`.
+4. Up+left hop (`kbd 05`, 30,000-step hold) from the step: the arc runs from `x=152,y=109` through
+   `x=148,y=97` to `x=144,y=91` at 150,000 steps (`y` is `<=104`, and `|dx|=6` against the item's `x=138`), and slot 0's `type`
+   word reads `1` at 50,000 and 100,000 steps and **`0` from 150,000 on**. The HUD score reads `000000`
+   before (`pass98_onledge.snap`) and `003200` after (`pass98_item_try.snap`); health stays `1/18`
+   throughout the hop. The item sprite is gone from the render
+   (`coldboot_amazon_twintree_item_collected.png`).
+
+What that proves and what it leaves inferred: the pickup is object slot 0 deactivating on hero
+proximity with the score gaining 3,200 (one observation each, deterministic on replay). Not yet checked:
+that the deactivation is the generic `$00b71a` test rather than a dedicated pickup handler (a `bpc` on
+its write of slot 0's `type` would pin the handler), and what the item is (a `+3200` score bonus versus a
+pickup that also changes health, weapon or inventory: health did not change).
+
+**Correction to the 90th-97th pass framing.** "Jump/walk shape can never pass `x=192`" is true only of
+the hero's on-screen `x`. "Nets to the same spot" was measured on screen coordinates. Any pass that
+compares positions of a pinned camera-follow hero across trials has to read the scroll counter
+(`$227b6`) too, or compare against a scroll-independent landmark.
 
 **The dodge does not collect the item (95th pass) — though not for the reason first given.** A
 whole-frame pixel diff between `pass90_wall_192.snap` and `pass94_dodge_item_landed.snap` shows
@@ -1191,6 +1217,14 @@ slot 8 arrives — not yet found by any trial in this pass.
   When exact position values matter (not just "did it change eventually"), single-step past a known
   instruction (a `bpc` on the actual write you care about) rather than trusting a bare `m` dump taken at
   a guessed moment (97th pass, tracing the `x=192` correction).
+- **A camera-follow hero pinned at one screen `x` makes every on-screen position comparison blind to
+  progress.** The 90th-97th passes spent eight passes on "the hero cannot get past `x=192`" and "each
+  hop nets to the same resting spot", both measured in screen coordinates, while `$227b6` (the camera
+  counter) advanced 8px per hop and had never been read. The 97th pass disassembled the `$00bb5c` shift
+  and still read it as a wall correction, because it didn't ask what advanced the shared delta. Before
+  calling a screen position "stuck", read the scroll counter across the trial (`watch` it), and look for
+  its writer (`find_field_writers.py`), which here was one `addq.w #2,$227b6` at `$018fa2`
+  (98th pass).
 - `resume <snap> repl` does **not** reattach a disk image mounted with `--disk-a` on an earlier
   cold-boot run — `diskA` lives outside `MmuSnapshot` (see `MMU.fs` `tryReadSector`'s doc comment on
   `dmaSectorCount`, the same "not in MmuSnapshot" note applies to the disk mount itself). Forgetting
@@ -1268,6 +1302,8 @@ slot 8 arrives — not yet found by any trial in this pass.
 | `coldboot_amazon_twintree_guard_hit.png` | **92nd pass**: rendered just after the jump from `x=192` takes its first hit — shows a black winged creature circling near the top of the crossbar/item area; the 93rd pass confirmed this is slot 12 (see next row) |
 | `coldboot_amazon_twintree_slot12_drift.png` | **93rd pass**: the same fixed screen region (`(0,80)-(320,200)`) rendered from two idle snapshots 1,000,000 steps apart, no input held — every sprite is pixel-identical except one small winged creature, which shifts from near the top of the frame to lower-left, proving slot 12 is that creature (not the static saw-wheel structure its coordinates happened to overlap at the original contact pin, and not the separate, genuinely static "purple creature" prop near the second post) |
 | `coldboot_amazon_twintree_slot12dodge_landed.png` | **94th pass, retracted by the 95th**: `pass94_dodge_item_landed.snap` rendered — pixel-identical to `coldboot_amazon_twintree_item_crossbar.png` (the pre-jump frame) outside the drifting-hazard sprites (`63,454`/`64,000` px match). Originally captioned as a jump-dodge's landing spot; the 95th pass found the frame-counter watch shows no jump ever ran for this snapshot's trigger (a mistimed 15,000-step hold), so this is just the pre-jump frame with the independently-drifting hazards in a different position — kept as the proof image for that retraction, not for a dodge |
+| `coldboot_amazon_twintree_item_collected.png` | **98th pass**: `pass98_item_try.snap` rendered right after the up+left hop from the ledge picks up the crossbar item: score `003200`, the item gone from the crossbar, hero at `x=114,y=144` (`1/18`) |
+| `py/twintree_item_route.repl` | **98th pass**: REPL script for the whole item route from `pass96_doublejump_v2.snap` (usage and expected output in `py/README.md`) |
 
 ## Not yet exercised
 

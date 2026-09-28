@@ -1,0 +1,30 @@
+kbd ff
+kbd 04
+s 700000
+kbd ff
+kbd 00
+s 150000
+kbd ff
+kbd 09
+s 30000
+kbd ff
+kbd 00
+s 550000
+kbd ff
+kbd 05
+s 30000
+kbd ff
+kbd 00
+s 50000
+m 1a2ea 6
+m 1a572 8
+m bb74 2
+s 50000
+m 1a2ea 6
+m 1a572 8
+m bb74 2
+s 50000
+m 1a2ea 6
+m 1a572 8
+m bb74 2
+q
