@@ -123,6 +123,21 @@ traps" below, rather than re-opening this specific timing search.
 two separate `kbd` REPL calls (make, then break) with a real `s <n>` step count between them, not
 one `kbd <make> <break>` call — see CLAUDE.md.
 
+## Program classification: hand-written 68000 assembly, not compiled C (89th pass)
+
+The loaded game image (post-crack-unpack, read from any gameplay snapshot) has **zero `4e56` (LINK
+A6) words across the entire ~260KB span this workstream has explored** (`$2000`-`$42e00`, covering
+the main-loop/dispatch code at `$b000`-`$1d000` and the tables/object-array region up to the sprite
+bank), against the skill's own classification heuristic (§0): a compiled-C program from this era's
+Atari ST toolchains emits one `LINK A6,#n` per function with locals, hundreds to thousands across a
+program this size, where a hand-assembled game typically has none at all, using a handful of fixed
+global scratch variables instead of per-call stack frames — every routine read so far in this
+workstream (`$00c2fa`, `$00eafa`, `$00ec50`, the whole hero dispatch/hit/death chain) bears this out,
+addressing everything through absolute globals and `An`-based struct offsets, never a frame-relative
+local. This settles item 9 from the 88th-pass handoff: the decompile route (§3b) does not apply here,
+same as PowerMonger and Super Sprint; `disassemble.py --all` plus live `watch`/`bpc`/`callcap` proof
+(§3/§5) is the only path, which is what every pass on this workstream has already been doing.
+
 ## Past the title screen: the attract loop waits on joystick-1 fire, not on VBL
 
 The title screen's PC spends nearly all its time in a tight busy-poll at `$1ab8a`:
@@ -755,43 +770,57 @@ screen every prior pass stopped at:
     `pass85_dodge1_1_5M_more.snap` (`x=192,y=144`) over 1,000,000 steps confirms the horizontal
     component really is direction-gated, not automatic: `x` never moves (stays `$00c0`) while `y`
     cycles `144→105→...` through three up-only bounces in place. This is the controlled jump the 86th
-    pass found no evidence for. **This landing spot itself turned out to be a soft-lock, not a lead
-    — see the 88th pass below.**
-  - **The `pass87_jump_right_1M_settled.snap` landing spot (`x=152,y=144`, at the base of the
-    fence-post structure) is a soft-lock: the hero's own busy flag never clears there, and after a
-    fixed delay the game force-reloads regardless of input or health (88th pass).** Static reading of
-    `$00c49c` (the up-handler: not-ladder unconditionally falls into `$c742`/jump) predicts a jump
-    should fire immediately from this spot; it does not, live, for either `kbd ff`/`kbd 09` (up+right)
-    or `kbd ff`/`kbd 01` (up alone) — the hero stays visibly and byte-for-byte static (position,
-    `$227f3` state, every sensor byte) for the whole window tested. A `hits` census pinned the cause:
-    `$00c2fa` (the per-frame hero dispatcher, `lea $1a572,A0` then `tst.b 101(A0); bne $c486`) runs
-    once per main-loop iteration (4 hits/100,000 steps) and *every single time* takes the busy branch
-    to `$00c486`, which is a bare `rts` — the entire input chain downstream of it (`$00c308`/`$00c31e`
-    joystick-byte caching, `$00c488`'s dispatch table, `$00c49c`/`$00c4ee`/`$00c4fa` movement,
-    `$00c742`/`$00cbbc` jump) shows **zero** hits over the same window, proving none of it ever runs
-    while this flag is set. `$1a5d7` (`= $1a572+101`, the busy flag `$00c2fa` tests) reads `$01` at
-    load and stays `$01` throughout — confirmed not a transient "mid-animation" lock, since the
-    landing routine `$00caba` (the clean-landing state-0 transition `$cb2e`'s fall-state exit and the
-    jump's own successful-landing exit both reach) never writes offset `101(A0)` at all, so nothing in
-    the normal jump/landing state machine is responsible for setting or clearing it here. After roughly
-    500,000-600,000 steps stuck this way, the game force-reloads through the same generic fade/reload
-    chain the hazard-death path uses (`$00b058`, return address `$0000b05e`, the fade-wait spin loop at
-    `$0001c3d8` inside `cmpi.b #$2,$1a2e9.l`/`bne $1c3d0`) — reproduced identically twice, once holding
-    `kbd 09` throughout and once with **no input at all**, both landing on the exact same PC, with
-    health (`$bb74`) unchanged at `18/18` the whole time (ruling out the ordinary hazard/health death
-    path as the trigger; `$1a572`'s own `type` field, offset `0`, flips from `$0002` to `$0000` in the
-    same 100,000-step window the reload PC is reached, i.e. the object is deactivated as part of
-    whatever forces the reload). The main loop itself (`$00b1bc`...`$00b27e`, disassembled this pass)
-    has at least two other `bcs $b058` exits (after `$00df4a` and after `$00eafa`) that were not firing
-    during the stuck window (neither showed a hit before the eventual reload), so the exact instruction
-    that forces the reload here is still open — **not yet found**: grep the loop's remaining calls
-    (`$00b4de`/`$00d140`/`$00c0d4`/`$0018f7e`/`$00198ea`/`$00bb22`/`$00b5f8`/`$00bafc`/`$00bada`) for a
-    third `bcs $b058`/`beq $b058`-style exit, and separately grep the whole image for every writer of
-    `101(A0)` to find what sets `$1a5d7` and whether anything is ever meant to clear it. Until the busy
-    flag's writer is found, exploring past the trunk needs a jump that does **not** land exactly on
-    this spot (a shorter hop, or releasing "right" mid-air to land short/long of the fence-post base)
-    rather than reusing `pass87_jump_right_1M_settled.snap` as a resume point.
-
+    pass found no evidence for. **The 88th pass read this landing spot as a soft-lock; the 89th pass
+    found the real cause is a third, previously-uncatalogued hazard object the jump arc itself clips
+    twice — see below.**
+  - **The `pass87_jump_right_1M_settled.snap` landing spot is not a soft-lock: it is the ordinary
+    hazard-death sequence, reached because the jump itself takes two fatal hits from an uncatalogued
+    hazard object, and gated to only start its animation once the hero lands (89th pass, correcting
+    the 88th).** The 88th pass found `$1a5d7` (`=$1a572+101`, tested by `$00c2fa`'s `tst.b 101(A0);
+    bne $c486` busy-branch) reads `$01` at this landing spot and stays `$01` for ~500,000-600,000
+    steps while the whole movement-dispatch chain shows zero hits, then the game reloads through the
+    hazard-death fade chain (`$00b058`/`$0001c3d8`) — all still true and reproduced again this pass —
+    but its "health (`$bb74`) unchanged at 18/18 the whole time" claim is wrong: a direct read of
+    `pass87_jump_right_600k.snap` (600,000 steps into the *same* up+right jump that was written up as
+    clearing the trunk cleanly, before the 88th pass's own observation window even starts) shows
+    `$bb74 = $00` already. `$bb75` (the max-health constant) reads `$12` = 18; the 88th pass's "18/18"
+    evidently came from that field, not from live health.
+    A `watch $bb74` from `pass86_left_settled.snap` (`x=74,y=152`, `2/18` health) through the same
+    `kbd ff`/`kbd 09` jump shows exactly two writes, both at `$00eb8c` (`sub.b D0,$bb74.l`, the
+    already-proven generic contact-damage path: `$00b71a` proximity → `$00e80e` copies the contacting
+    object's own `+104` field into `$227f6` → `$00eafa`'s fall-through applies it here) — the hero
+    takes 1 damage twice during the jump's ascent, `2/18 → 1/18 → 0/18`, well before landing. A `bpc
+    e80e` breakpoint on the same run names the contact: object base `$1a6b6` — slot 9 of the
+    established 20-slot, 108-byte-stride array (`$1a2ea + N·108`; `($1a6b6-$1a2ea)/108 = 9` exactly),
+    sitting numerically between the twin-tree screen's two already-documented hazards (slot 8 `$1a64a`,
+    slot 10 `$1a722`) — a third member of the same hazard cluster, missed because prior passes never
+    checked health during this jump, only position. Its fields match the established static-hazard
+    shape: `type=1`, position `x=66,y=98`, radius bytes `12/13/14(A0) = 16/16/16`, damage `104(A0)=1`,
+    velocity `+8/+10 = 0` (stationary). The hero's own arc passes from `x=74,y=152` up through
+    `x=124,y=108` by the 600,000-step mark, close enough to `(66,98)` with a 16px radius to register
+    two separate contacts on the way.
+    With that established, `$1a5d7`'s own write is no longer a mystery: `watch 1a5d7` over the same
+    run shows one write, `$00ecce: move.b #$1,101(A0)`, inside `$00ec50` — the death-animation entry,
+    reached only when `$00eafa`'s own entry check (`tst.b $bb74; beq $ec50`) finds health already
+    zero. `$00ec50` itself gates on the hero being grounded (`cmpi.b #$1,$227f3; bgt $ecfe`, i.e. state
+    `<=1`) before it will start the animation (play a sound, pick a facing-dependent death-animation
+    script pointer into `22(A0)`, set `101(A0)`), which is exactly why the "stuck" state only becomes
+    visible after the hero lands — the fatal hit happens mid-jump (state `2`), but the game holds off
+    entering the death animation until the state machine returns to idle. `$00eafa` is called from the
+    main loop at `$00b238` (`jsr $eafa.l`), a separate call site from `$00c2fa`'s own `jsr` at
+    `$00b20e` — both are gated by the same `101(A0)` flag but branch differently when it is set:
+    `$00c2fa` just returns (`bne $c486`, bare `rts`), while `$00eafa` takes a different internal path
+    (`bne $ed04`) that still runs every frame. Continuing past `watch_1M.snap` (busy still `$01`,
+    health `$00`) another 2,000,000 steps shows `$1a5d7` clear again: `$01ab66: WriteByte $1a5d7 <-
+    $0`, inside the already-documented `$b058`/`$1c3d8` reload chain, with PC ending the run at
+    `$0001c686`, the same reload region the 88th pass's own force-reload landed in. So item 3 (find the
+    main loop's own separate reload trigger) does not need a third `bcs $b058` exit: the whole
+    sequence — mid-air hit → grounded death-animation entry → reload — is the single, already-proven
+    hazard-death cycle from "Items 1, 1b, 2 and 3" below, just triggered by this newly-found slot-9
+    hazard instead of the slot-8/10 pair. Exploring past the trunk needs either a jump that avoids
+    `(x=66,y=98)`'s 16px radius (a lower arc, or releasing "right" earlier) or enough health margin to
+    survive two more hits — `pass86_left_settled.snap`'s `2/18` was already too low for this exact jump
+    to be safe.
 **The fire button is a real weapon system, not decorative — proven from disassembly (83rd pass),
 resolving the "type=3, never observed live" open item.** `$00c308`/`$00c31e` cache the raw joystick
 byte into `$227f5` each frame and edge-detect fire specifically: `$227ef` holds the *previous*
@@ -856,16 +885,34 @@ one column short of the ladder) and identified a branch/platform visible above t
 lead. The 87th pass found and proved the real jump mechanism (`$c742` one-shot entry → `$cbbc`
 per-frame table-driven vertical displacement plus a facing-locked horizontal push) and used it
 (up+right from the trunk-blocked spot) to clear the trunk entirely, landing past it near a
-fence-post/ladder structure with a visible item. The 88th pass found that exact landing spot is
-itself a soft-lock, not a lead: the hero's busy flag (`$1a5d7`) is stuck set there, which silently
-suppresses all input processing (proven with a `hits` census — the whole movement-dispatch chain
-never executes), and after ~500,000-600,000 steps the game force-reloads through the hazard-death
-screen's own fade/reload chain regardless of input or health. Finding what sets/clears `$1a5d7`, and
-finding a jump that lands somewhere other than exactly `x=152,y=144`, are the open items for the next
-pass. "Does a fired shot damage an enemy" is still open too, unchanged from the 83rd pass.
+fence-post/ladder structure with a visible item. The 88th pass read that exact landing spot as a
+soft-lock: the hero's busy flag (`$1a5d7`) stays set there for ~500,000-600,000 steps while the whole
+movement-dispatch chain shows zero hits, then the game force-reloads through the hazard-death screen's
+own fade/reload chain — and wrote up health as unchanged at `18/18` throughout. The 89th pass found
+that last claim was wrong and, correcting it, closed out `$1a5d7`, the reload trigger, and the "why
+here" question together: `pass87_jump_right_600k.snap` already shows `$bb74=$00`, and a live `watch`
+of the same jump pins two hits at `$00eb8c` from a third, previously-uncatalogued static hazard at
+slot 9 (`$1a6b6`, `x=66,y=98`, between the twin-tree screen's known slot-8/slot-10 pair) that the
+jump's own arc clips on the way up. `$1a5d7` is simply the death-animation lock (`$00ecce`, inside
+`$00ec50`, entered once `$bb74` hits zero and the hero is grounded — which is why the visible "stuck"
+state only starts after landing, though the fatal hit lands mid-air) and it does clear again, at
+`$01ab66`, inside the same `$b058`/`$1c3d8` reload chain the 82nd pass already proved for ordinary
+hazard deaths. No new mechanism, no unresolved reload trigger: this is that same cycle, reached via a
+hazard this jump was never checked against. Getting past the trunk needs a jump that clears `(66,98)`'s
+16px radius, or enough health margin to survive two more hits than `pass86_left_settled.snap`'s `2/18`
+allows. "Does a fired shot damage an enemy" is still open too, unchanged from the 83rd pass.
 
 ## Known traps
 
+- **Proving a jump/maneuver reaches a target position is not proof it was safe — check health and
+  other hidden state too, not just position.** The 87th pass wrote up `kbd ff`/`kbd 09` from
+  `pass86_left_settled.snap` as clearing the trunk cleanly, checking only `x`/`y` and the jump state
+  machine; the 88th pass then spent a full pass on an apparent "soft-lock" at the landing spot. The
+  89th pass found the jump itself took two hits from an uncatalogued hazard mid-arc, killing the hero
+  to `0/18` before it ever landed — invisible to a position-only check, and the "soft-lock" was just
+  the ordinary death sequence waiting for the hero to be grounded before it could start. When proving
+  a movement input reaches a place, also snapshot/watch health (`$bb74`) and any other per-object
+  status field (busy/cooldown flags) across the whole maneuver, not only at the end.
 - `resume <snap> repl` does **not** reattach a disk image mounted with `--disk-a` on an earlier
   cold-boot run — `diskA` lives outside `MmuSnapshot` (see `MMU.fs` `tryReadSector`'s doc comment on
   `dmaSectorCount`, the same "not in MmuSnapshot" note applies to the disk mount itself). Forgetting
