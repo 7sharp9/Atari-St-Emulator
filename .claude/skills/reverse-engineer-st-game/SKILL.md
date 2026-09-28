@@ -37,6 +37,20 @@ Progress attract → menu → gameplay by injecting input, not by guessing: REPL
 
 **A held joystick button used for a one-shot gameplay action (fire, jump-attack) can be software-debounced by the game itself, on top of the raw IKBD level.** This is a different trap from the make/break one above: the button state read into RAM genuinely is a raw level, but a game's own per-frame code can still cache the previous frame's raw byte and clear the current frame's bit whenever the previous frame already had it set — the classic rising-edge-only pattern. A `kbd` packet held constant across many steps then reads as "pressed" for exactly one frame, not for the whole hold, and looks indistinguishable from "this input does nothing over a long hold" unless the edge-detection code is actually read. To fire repeatedly, send alternating pressed/released packets (mirroring the make/break discipline above) rather than one held level. Confirm which behavior a given button has by reading its consumer in disassembly (does it cache-and-compare a previous-frame byte?) before concluding a held-input test proves anything about repeat-rate (impossamole's `$227ef`/`$227f5` fire-bit edge detection, `reversing/impossamole/README.md`'s weapon-system section).
 
+**When a held directional input keeps re-triggering a state that revisits a hazard (repeated
+auto-jumps, a bounce-back-into-danger arc), release or change that input at the game's own state
+*transition*, not at a guessed step count.** A held "up" that repeatedly re-enters a jump/attack
+state every time the hero lands can bounce in and out of a hazard's contact zone many times over a
+long hold, taking a hit on each pass. Watch the movement-state byte itself (checkpoint it every
+~100,000-200,000 steps) to find the exact step range where it flips from "jumping" to "falling"
+(or whatever the game's own next state is), then switch input right at that boundary — dropping the
+input that was causing re-entry converts a repeated bounce-through-danger into a single clean pass.
+Guessing a fixed step count for the switch instead is fragile (the transition's timing depends on
+the exact input history) and easy to get wrong in either direction. Impossamole's 85th pass used this
+to turn a guaranteed 3-hit death into a 1-hit survival: `$227f3` flipping from `2` (jump) to `3`
+(fall) was the signal to drop "up" and let the hero fall straight through instead of re-jumping back
+into the hazard (`reversing/impossamole/README.md`'s "Past the first screen" 85th-pass paragraph).
+
 `python tools/snap_render.py x.snap x.png` at each milestone (title, menu, gameplay): it reads base, rez and palette from the shifter, so double-buffered games come out right. Keep every screenshot that proves a milestone; drop exploratory ones before committing.
 
 Mouse-driven menus: the game keeps its own pointer, and `mouse move dx dy` sends relative packets (keep each |d| <= 127). Before clicking, find the pointer in a screenshot and do the arithmetic in 320x200 space (screenshots are often saved at 2x; halving the wrong number cost Populous two failed clicks). Better, read the menu's hit-test code (the button x/y bands) and the game's pointer x/y variables, then move exactly. Screenshot after the move, before the click.
