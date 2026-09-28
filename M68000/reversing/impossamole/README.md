@@ -1033,8 +1033,24 @@ decides which landing height a given delay produces (the same one-shot arc, by t
 "fixed in time from trigger" finding) is still open, see below. No route or arc-shape change was
 needed to solve the original problem, only takeoff timing within the `250,000`-`450,000` window;
 `pass94_dodge_item_landed.snap` (delay `300,000`, dead centre of that range) is the settled resume
-point. Still open: this dodge lands the hero back on the ground, not confirmed to have collected the
-item itself — no address or mechanism for the item's own pickup/inventory state is known yet.
+point.
+
+**The dodge does not collect the item (95th pass).** A whole-frame pixel diff between
+`pass90_wall_192.snap` (pre-jump, hero standing under the crossbar, item still on it) and
+`pass94_dodge_item_landed.snap` (post-dodge, hero landed back at the identical `x=192,y=144`) shows
+`63,454`/`64,000` pixels identical; every one of the `546` differing pixels falls inside a single
+`x=32`-`264`,`y=105`-`139` band that matches the drifting hazard sprites (slots 7/8/9/10), confirmed
+by cropping the item's own on-screen region (`x=180`-`220`,`y=40`-`75`) and finding it byte-identical
+between the two frames. No HUD pixel changes either (the strip is outside the diff band entirely).
+This also explains itself structurally: an object-array dump of both snapshots (20 slots, `$1a2ea`
+base, 108-byte stride) shows the hero's own struct (`type=2`, slot 6) lands at the exact same
+`x=192,y=144` it started from — the dodge's arc never advances the hero's position past its takeoff
+point at all, so it was never going to pass near the item's rendered position on top of the fence
+post, regardless of which drifting hazard it dodges. Reaching the item needs a maneuver that actually
+gets the hero up onto the crossbar top, not just a same-spot up+right hop that clears the guard and
+falls back down — worth revisiting once the landing-height question below is mechanized, since a
+delay that lands at the crossbar height (`y=112`) gets measurably higher than one that falls through
+to the ground (`y=144`), even though neither reaches the item yet.
 
 ## Known traps
 
@@ -1138,6 +1154,7 @@ item itself — no address or mechanism for the item's own pickup/inventory stat
 | `coldboot_amazon_twintree_item_crossbar.png` | **90th pass**: the hero at `x=192,y=144`, `2/18` health, reached by plain ground-level right-walking from the safe landing above — the same wall previous passes found from the dodge-landing route, now reached hazard-free. Hero stands directly under the item's crossbar; a `kbd ff`/`kbd 09` jump straight up from here takes a hit, the guarding object not yet pinned to a slot (open item 2) |
 | `coldboot_amazon_twintree_guard_hit.png` | **92nd pass**: rendered just after the jump from `x=192` takes its first hit — shows a black winged creature circling near the top of the crossbar/item area; the 93rd pass confirmed this is slot 12 (see next row) |
 | `coldboot_amazon_twintree_slot12_drift.png` | **93rd pass**: the same fixed screen region (`(0,80)-(320,200)`) rendered from two idle snapshots 1,000,000 steps apart, no input held — every sprite is pixel-identical except one small winged creature, which shifts from near the top of the frame to lower-left, proving slot 12 is that creature (not the static saw-wheel structure its coordinates happened to overlap at the original contact pin, and not the separate, genuinely static "purple creature" prop near the second post) |
+| `coldboot_amazon_twintree_slot12dodge_landed.png` | **94th/95th pass**: `pass94_dodge_item_landed.snap` rendered — the hero back at `x=192,y=144`, `2/18` health, the timing-dodge's landing spot. Pixel-identical to `coldboot_amazon_twintree_item_crossbar.png` (the pre-jump frame) outside the drifting-hazard sprites (`63,454`/`64,000` px match): the green item is still on the crossbar, proving the dodge does not collect it (95th pass, "Item 3" paragraph) |
 
 ## Not yet exercised
 

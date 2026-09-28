@@ -13,11 +13,13 @@ Updated 2026-09-28 by the session that ended at commit `6833e8c` (94th pass).
   idle, `2/18` health) — the timing-dodge landing spot: same position as `pass90_wall_192.snap`
   (still the pre-dodge waypoint below it), reached by idling 300,000 steps then triggering the
   item-guard's jump with zero contact. `pass94_confirm.txt` in the same directory is the exact
-  REPL script that reproduces it from `pass90_wall_192.snap`. `pass90_wall_192.snap` itself
-  (`x=192,y=144`, idle, `2/18`, standing at the wall right under the crossbar) is still valid as the
-  pre-dodge reference point. `pass91_from130_end.snap`, `pass92_arc600k.snap`,
-  `pass92_earlyrelease.snap`, `pass93_e82e_pin.snap` are all **confirmed dead ends or reference-only
-  pins**, not resume points — see the 92nd/93rd pass rows in `scratchpad/ANCHORS.md`.
+  REPL script that reproduces it from `pass90_wall_192.snap`. **Confirmed (95th pass) not to have
+  collected the item** — it's still the furthest-progressed safe position, not a finish line.
+  `pass90_wall_192.snap` itself (`x=192,y=144`, idle, `2/18`, standing at the wall right under the
+  crossbar) is still valid as the pre-dodge reference point. `pass91_from130_end.snap`,
+  `pass92_arc600k.snap`, `pass92_earlyrelease.snap`, `pass93_e82e_pin.snap` are all **confirmed dead
+  ends or reference-only pins**, not resume points — see the 92nd/93rd pass rows in
+  `scratchpad/ANCHORS.md`.
   **Must be run with `--disk-a "scratchpad/impossamole/impossamole cr replicants - emotion cr
   replicants.st"`** (path relative to `M68000/`) on every `resume ... repl`. The REPL's `snap
   <path>` command writes relative to the `dotnet` process's own working directory (`M68000/` if
@@ -79,30 +81,40 @@ first screen" sections for full detail, match counts and exact addresses:
   three other delays (`200,000`, `500,000`-`550,000`, `600,000`) also clear slot 12 but were first
   misread as slot-12 catching up late; reading `A0` at the actual hit showed a different object,
   slot 8 (`$1a64a`) — closing the 84th pass's long-open "may still be a hazard, unconfirmed" flag on
-  that object. `pass94_dodge_item_landed.snap` is the resume point. **Not yet confirmed: whether
-  this dodge actually collects the item** — no address for the item's own pickup/inventory state is
-  known, and *why* some delays land at the crossbar height (`y=112`, in slot 8's danger band) while
-  others fall through to the ground (`y=144`) is itself unexplained — see Open item 2.
+  that object. `pass94_dodge_item_landed.snap` is the resume point.
+- **The dodge does not collect the item (95th pass).** A whole-frame pixel diff between
+  `pass90_wall_192.snap` (pre-jump, item still on the crossbar) and `pass94_dodge_item_landed.snap`
+  (post-dodge landing) matches on `63,454`/`64,000` pixels; every differing pixel falls inside the
+  drifting-hazard sprites' own band, and the item's own on-screen region is byte-identical between
+  the two frames — see `coldboot_amazon_twintree_slot12dodge_landed.png`. An object-array dump of
+  both snapshots (20 slots, `$1a2ea` base, 108-byte stride) explains why: the hero's own struct
+  lands at the exact same `x=192,y=144` it took off from, so the dodge's arc never advances the
+  hero's position at all, let alone up onto the crossbar where the item sits. *Why* some delays land
+  at the crossbar height (`y=112`) while others fall through to the ground (`y=144`) is still
+  unexplained (Open item 1) — reaching the item likely needs whatever maneuver gets the hero to stop
+  *at* the crossbar height instead of just passing through it, or a distinct route entirely.
 - The `$25000` tile-classification table, the HUD routine (`$00fdc4`), and the weapon/projectile
   system (`$00d37c`/`$00d3cc`, slots 16-19) are all unchanged from prior passes — see the README.
 
 ## Open, in priority order
 
-1. **Confirm whether the timing dodge actually collects the crossbar item.** `pass94_dodge_item_landed.snap`
-   lands the hero back on the ground (`x=192,y=144`) with zero damage, but no address or mechanism
-   for the item's own pickup/inventory state is known yet, so it's unconfirmed whether the item was
-   ever collected. The three slot-8-caught trials (`200,000`, `500,000-550,000`, `600,000`) briefly
-   rested idle on the crossbar itself at `y=112` before slot 8 eventually caught them — worth
-   checking whether stopping there (rather than continuing through to the ground) is what the pickup
-   actually needs. Look for a HUD/inventory byte that changes (compare a render or a targeted `watch`
-   across the crossbar-proximity window), or grep the topic docs' HUD routine (`$00fdc4`) section for
-   anything already proven about item state before assuming none exists.
-2. **What decides the arc's landing height (`y=112` crossbar-rest vs `y=144` full ground) for a
+1. **What decides the arc's landing height (`y=112` crossbar-rest vs `y=144` full ground) for a
    given pre-jump idle delay?** The same one-shot arc is fixed in time from trigger (92nd pass), yet
    delay `200,000` lands at `y=112` and delay `250,000` (only 50,000 steps later) lands at `y=144` —
    not yet mechanized, only observed as a real split in this pass's data (README 94th-pass paragraph).
-   Matters because it's what actually keeps `250,000`-`450,000` clear of slot 8, not just a longer
-   check window.
+   Raised in priority by the 95th pass's negative result: the dodge never advances the hero's
+   position at all (it lands back at its exact takeoff spot, proven by object-array dump and a
+   63,454/64,000-pixel render match against the pre-jump frame), so reaching the item likely needs a
+   maneuver that actually stops the hero at the crossbar height rather than passing through it —
+   understanding what controls landing height is the natural next lever to try, not just what keeps
+   `250,000`-`450,000` clear of slot 8.
+2. **Find a maneuver that actually reaches the item.** No trial so far advances the hero's `x`/`y`
+   past its `pass90_wall_192.snap` takeoff spot at all (95th pass) — every dodge variant tried is a
+   same-spot up+right hop. Worth trying: a run-up (held right into the jump, rather than a standing
+   jump) for horizontal reach, or approaching from a different position/route than directly under the
+   crossbar. No address for the item's own pickup/inventory state is known yet, so confirm any
+   success the same way the 95th pass ruled failure out — a render/pixel diff against a frame where
+   the item is still visible, not just "reached the crossbar" read as "got the item".
 3. **Slot 8's own velocity field reads nonzero (`+2` in `x`) at its confirmed contact** — the
    83rd/84th passes' "static" read of it was on sight, never re-checked live the way slot 12's drift
    was (93rd pass). Worth a `watch`/two-pin drift check the same way, now that it's confirmed to be a
@@ -129,8 +141,10 @@ general methodological traps, not specific to this game.
 
 ## Next session
 
-Start with Open item 1: find whether `pass94_dodge_item_landed.snap`'s dodge actually collects the
-crossbar item — no address for the item's pickup/inventory state is known yet, so this needs a fresh
-signal (a HUD byte, a render diff, or a `watch` across the crossbar-proximity window), not just
-"survived the guard" read as "got the item". Open item 2 (what decides the arc's landing height) is
-the natural follow-on if item 1 turns out to depend on it.
+The 95th pass closed the item-pickup question negatively: `pass94_dodge_item_landed.snap`'s dodge
+does not collect the crossbar item (a 63,454/64,000-pixel render match against the pre-jump frame
+shows the item's own on-screen region untouched), and an object-array dump shows why — the hero
+lands at the exact spot it took off from, never advancing toward the item at all. Start with Open
+item 1 (what decides the arc's landing height) since it's the likeliest lever for actually stopping
+the hero at the crossbar instead of passing through it; Open item 2 (try a run-up jump or a different
+approach route) is the direct follow-on once landing height is understood.
