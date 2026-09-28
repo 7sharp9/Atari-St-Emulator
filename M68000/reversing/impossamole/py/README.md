@@ -14,3 +14,8 @@ cd M68000 && ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll resume \
   --disk-a "scratchpad/impossamole/impossamole cr replicants - emotion cr replicants.st" \
   < reversing/impossamole/py/twintree_item_route.repl
 ```
+
+| script | what it does |
+|---|---|
+| `level_map.py <snap> <out.png> [--rooms] [--raw] [--x0 --x1 --scale]` | Renders the whole 1680x24 tile map (`$31800`) coloured by the `$25000` category; `--rooms` overlays room boundaries and exit triggers from `$c028`/`$e0aa`. Any snapshot in a world works: the map and tables are resident. Needs `uv run` (PIL). |
+| `level_rooms.py <snap>` | Prints the current world's room graph (start room, every top/bottom exit with destination room and hero block-x). |

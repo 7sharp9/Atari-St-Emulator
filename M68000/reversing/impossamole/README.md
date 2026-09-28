@@ -1168,6 +1168,48 @@ nothing moved, not because an arc returned the hero to the same place. Reaching 
 maneuver that gets the hero up onto the crossbar top and, per the retraction above, off it again before
 slot 8 arrives — not yet found by any trial in this pass.
 
+## The level is one tile map of connected rooms (99th pass)
+
+The scroll limit `$227b8 = $1020` is not the end of the level, it is the end of the *first room*. The
+Amazon (world index `$bb76 = 3`) is a single 1680-column x 24-row tile map at `$31800` (`amazon_level_map.png`,
+rendered by `py/level_map.py`; categories: gold walkable `4`, red hazard `9`, and `1`/`2`/`3` drawn green/blue/magenta, which
+line up with the ladders, small ledges and crossbars/diagonal stairs seen on screen, so `1` is probably ladder and
+`3` a one-way platform, inferred from the render, not tested) holding many *rooms*. A room is a block
+range `[start,end)` of that map (a block is 32px = 4 tile columns; the map has 420 blocks) and only one room is
+live at a time:
+
+- `$00c028` (8 bytes per world, indexed by `$bb76-1`) gives the start room: words 2 and 3 are the start
+  and end block (world 3: `0`, `137`). `$00018ed4` (called from `$c01a`, `$e04c`, `$e918`) installs a room:
+  `$227b4 = start`, camera `$227b6 = start*32`, limit `$227b8 = end*32 - 256` (world 3: `137*32-256 = $1020`),
+  and rebuilds the screen from the block map at `$27600` (6 bytes per block column, each byte a 2x2 tile block
+  from `$29000`).
+- `$00df4a` (per frame) fires when the hero leaves the screen through the top (`4(A0) <= $fff0`, state
+  `$227f3 = 2`, direction `D7 = 0`) or the bottom (`4(A0) >= $c8`, `$227f3 = 3`, `D7 = 1`). It searches the
+  world's list (`$e0aa` is a 5-entry pointer table; each list is 10-byte records `dir, trigger block,
+  dest start, dest end, dest hero block-x`, terminated by `$ffff`) for a record whose `dir` equals `D7` and
+  whose trigger equals the hero's block `(x - $20 + camera + 16) >> 5`. On a match it clears object slots
+  0-5 and 7-19, sets hero `y = -16` (bottom exit) or `$c8` (top exit), calls `$18ed4` with the destination,
+  and puts the hero at `x = (dest block-x << 5) + $20`.
+- `py/level_rooms.py <snap>` prints the whole graph. World 3 has 21 exits over rooms such as `0..137`
+  (start), `139..156`, `156..161`, `160..173`, `188..285`, `328..378`, `378..409`; room ranges may overlap
+  because a sub-room reuses part of a larger room's blocks. The start room has three exits: up at block
+  112 (col 448, the gap in the cave ceiling) and down at blocks 131 and 135 (cols 524, 540).
+- **Checked live, both directions (two records, forced by poking the hero, not reached by playing).** From
+  `cyc5.snap` with the hero poked to camera `$1020`, `x=80`, `y=$d4`, `$227f3 = 3`: after the transition
+  `$227b4=$9c`, camera `$1380`, limit `$1320`, hero `x=$60`, `y=-16` -- all five fields the table record
+  `(1,131,156,161,2)` predicts, and the render is a rocky cave room (`amazon_room_after_bottom_exit_131.png`).
+  With camera `$e00`, `x=40`, `y=-24`, `$227f3 = 2`: `$227b4=$8b`, camera `$1160`, limit `$1280`, hero `x=$80`,
+  matching `(0,112,139,156,3)`. Not yet done: reaching a trigger with real input (climbing through the ceiling
+  gap at block 112), and the transition's fade routine `$1c3c8` takes several hundred thousand steps before the
+  new room is live, so sample well after the trigger.
+- The object spawner reads a 4-byte-record list at `$27200` (sorted, `$7fff` sentinel at `$275fc`; record =
+  tile column word, row byte, type byte), walked by `$fe9e`/`$fed6` as the camera advances and calling
+  `$10006` (type byte indexes the descriptor pointer table at `$10474`; the descriptor's first byte
+  picks one of four slot allocators through `$10046`: `$10056` slots 0-5, `$100ec` slots 7-11). The list's
+  columns run to 1664, covering every room of the map. Decoding which type is which enemy or item is open.
+- Object slots are live-spawned: at camera `$5ac` the array holds different objects than at `$46c`, so the
+  slot numbers used for the twin-tree screen do not carry over.
+
 ## Known traps
 
 - **Proving a jump/maneuver reaches a target position is not proof it was safe — check health and
@@ -1303,6 +1345,9 @@ slot 8 arrives — not yet found by any trial in this pass.
 | `coldboot_amazon_twintree_slot12_drift.png` | **93rd pass**: the same fixed screen region (`(0,80)-(320,200)`) rendered from two idle snapshots 1,000,000 steps apart, no input held — every sprite is pixel-identical except one small winged creature, which shifts from near the top of the frame to lower-left, proving slot 12 is that creature (not the static saw-wheel structure its coordinates happened to overlap at the original contact pin, and not the separate, genuinely static "purple creature" prop near the second post) |
 | `coldboot_amazon_twintree_slot12dodge_landed.png` | **94th pass, retracted by the 95th**: `pass94_dodge_item_landed.snap` rendered — pixel-identical to `coldboot_amazon_twintree_item_crossbar.png` (the pre-jump frame) outside the drifting-hazard sprites (`63,454`/`64,000` px match). Originally captioned as a jump-dodge's landing spot; the 95th pass found the frame-counter watch shows no jump ever ran for this snapshot's trigger (a mistimed 15,000-step hold), so this is just the pre-jump frame with the independently-drifting hazards in a different position — kept as the proof image for that retraction, not for a dodge |
 | `coldboot_amazon_twintree_item_collected.png` | **98th pass**: `pass98_item_try.snap` rendered right after the up+left hop from the ledge picks up the crossbar item: score `003200`, the item gone from the crossbar, hero at `x=114,y=144` (`1/18`) |
+| `amazon_level_map.png` | **99th pass**: the whole Amazon tile map (1680 columns x 24 rows, 2px per tile) from `py/level_map.py --rooms`: category colours, blue lines = room boundaries, cyan/orange ticks = top/bottom exit triggers, white lines = camera window and first-room limit |
+| `amazon_room_after_bottom_exit_131.png` | **99th pass**: the cave room `156..161` right after the poked bottom-exit transition at block 131 (see "The level is one tile map of connected rooms") |
+| `py/level_map.py`, `py/level_rooms.py` | **99th pass**: render the tile map / print the room graph from any snapshot (usage in `py/README.md`) |
 | `py/twintree_item_route.repl` | **98th pass**: REPL script for the whole item route from `pass96_doublejump_v2.snap` (usage and expected output in `py/README.md`) |
 
 ## Not yet exercised
