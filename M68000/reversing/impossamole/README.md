@@ -1047,16 +1047,22 @@ never registered. The next lever is probably to not rest at the crossbar height 
 moving past it immediately after landing rather than settling, or find an approach that never stops in
 either hazard's drift path — not a further search over takeoff timing alone.
 
-**Two escape ideas ruled out (96th pass).** (1) Holding right through the landing rather than
+**Three escape ideas ruled out (96th pass).** (1) Holding right through the landing rather than
 releasing does not walk the hero any further across the crossbar: `x` stays pinned at `192`-`194` for
 400,000+ steps after a genuine (30,000-step-hold) landing, the same forward-sensor wall found at ground
 level (90th pass) also blocks progress at the crossbar height — only `y` wobbles slightly (`112`→`105`→
 `112`), unexplained but harmless (health unaffected). (2) Chaining a second `kbd ff`/`kbd 09` (fresh
-30,000-step hold) 50,000 steps after the first landing does not trigger a second jump — the frame
-counter (`$1a5c4`) shows no further writes past the first arc's 17, so the second packet was consumed
-by some non-idle state rather than re-entering `$00c742` (the hero's own state at that checkpoint may
-not have finished settling to idle; not yet confirmed which). Neither escapes slot 8's patrol; the item
-route past the crossbar is still open.
+30,000-step hold) only 50,000 steps after the first landing does not trigger a second jump at all — the
+hero's own state (`$227f3`) checked at that point still reads `2` (jump), not `0` (idle); `$00c742`
+requires idle to retrigger (established), so the packet was simply ignored, not consumed by anything
+exotic. (3) **Waiting long enough for the first jump to actually reach idle (500,000 steps) before
+sending the second trigger does fire a real second jump** (frame counter: 18 more writes, 35 total) —
+but it nets to the exact same resting spot, `x=192,y=112`, undamaged, zero hits in 700,000 checked
+steps. The one-shot arc's own horizontal push is a fixed, tiny amount per jump (87th pass) and a hop
+taken from solid ground under the hero returns to solid ground at essentially the same spot; chaining
+more identically-shaped hops from the same takeoff point won't accumulate horizontal progress. None of
+the three escapes the wall or slot 8's patrol; reaching the item likely needs a takeoff position/shape
+that isn't this same in-place hop, not more repetitions of it.
 
 **The dodge does not collect the item (95th pass) — though not for the reason first given.** A
 whole-frame pixel diff between `pass90_wall_192.snap` and `pass94_dodge_item_landed.snap` shows
