@@ -1,31 +1,22 @@
 # PowerMonger: handoff
 
-Updated 2026-09-27 by the 128th pass (two parallel agents, then this session, on the natural-alliance
-thread — item 1 below; no port/stepper work this pass).
+Updated 2026-09-29 by the 129th pass (a subagent ran the alliance census and the runs; the parent
+re-read its outputs and integrated them; no port/stepper work this pass).
 
 ## Resume point
 
-- Last commits of this workstream: pending this pass's commit (strategy.md's "Diplomacy" section,
-  `$0c` order-table row, `ANCHORS.md`) -- see git log for the exact hash once committed. Last
-  commits before this pass: `37212b7` (port README: index `--playtest`), `338fae8` (stepper: wire
-  in `Weather.fs`, fix continuous play, add `--playtest`), `53c5408` (ANCHORS: index the 127th's
-  organic take-equipment state), `79e1c3f` (strategy.md: natural alliance test, take-equipment
-  confirmed, envoy dies to contact twice).
+- Last commit of this workstream: the 129th pass, "powermonger: 129th pass -- natural alliance completes
+  end to end" (`git log --oneline -3`). Before it: `37212b7` (port README: index `--playtest`).
 - Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell
-  pitfalls"). New this pass, indexed in `scratchpad/ANCHORS.md`: `pm128b/` (two earlier-snapshot
-  envoy attempts on land 25, both dead at the same cell — `REPORT.md`), `pm128a/` (land-25 escort
-  feasibility census + an `$0c` empty-cell-target test — `REPORT.md`). `pm127/diplo3/` (unchanged
-  this pass) is still the organic starting point for a next diplomacy attempt.
-- Start from: `scratchpad/pm123/win/m1_s0.snap` (mission 1 settled) for anything not touching the
-  live goods economy; mission 1 itself has **no goods anywhere**. For diplomacy/escort work
-  specifically, land 25's natural corpus is now well-explored (`pm121/run/k25_*`, `pm127/diplo3/`,
-  `pm128a/`, `pm128b/`) and its nearest-lord route is a dead end (below) — the next attempt needs
-  either a different target on land 25 or a different land.
-- Uncommitted work left behind: none in this repo.
-- Pre-existing, not this session's and not touched: `M68000/sessions/README.md` still carries an
-  uncommitted pure line-rewrap (no content change) from Obsidian editing the repo (`.obsidian/` is
-  untracked in the tree). Also untracked: `Cadaver/` (another workstream's game files). Not mine to
-  resolve — flag to Dave or the cadaver session.
+  pitfalls"). New this pass, indexed in `scratchpad/ANCHORS.md`: `pm129/` (about 46 MB, `.ram` beside each
+  `.snap`): `wp5_45M.snap` is the launch point for the `$1e` offer click on land 25's lord 15, and
+  `env5_12M.snap` is the post-alliance state.
+- Start from: `scratchpad/pm129/env5_12M.snap` for anything about the alliance's effects;
+  `scratchpad/pm123/win/m1_s0.snap` (mission 1 settled) for work not touching the live goods economy
+  (mission 1 has no goods anywhere).
+- Uncommitted work left behind: none in this repo. Pre-existing and not this workstream's:
+  `M68000/sessions/README.md` carries an uncommitted line-rewrap from Obsidian (`.obsidian/` is untracked),
+  and `Cadaver/` is untracked.
 
 ## Proven so far
 
@@ -36,17 +27,15 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 `py/diff_2776.py` 4119/4119; `py/diff_5cde.py` 768/768 + 85/85; `py/diff_revolt.py` 1778/1778;
 `py/diff_4f68.py` 1804/1804.
 
-- **Neither obvious fix for the envoy-dies-to-contact problem works on land 25 (128th, two parallel
-  agents + a follow-up check).** An earlier snapshot doesn't help: the identical envoy, zero goods,
-  sent on the identical route from land 25's absolute start and from 50M ticks in died at the exact
-  same cell (31,13) both times — the death is a structural feature of the corridor (an 18+-entity
-  garrison around lord 4's capital), not something that accumulates over the land's runtime. An
-  escort can't be built either: land 25's side 1 has exactly one manned captain slot in every
-  snapshot checked, and order `$0c` (march & engage) aimed at empty ground never commits at all
-  (only at a cell holding a tracked entity — corrects the order table's "any cell" for `$0c`).
-  Land 5's apparent extra captain slots are dead records (`owner 1`, `men 0`) from the land's own
-  start, not a working example of "pick a land with more captains". strategy.md "Diplomacy";
-  `scratchpad/pm128a/REPORT.md`, `pm128b/REPORT.md`.
+- **A natural alliance completes end to end (129th, land 25, no pokes).** After a second `$10`
+  take-equipment (5 pots) and an `$02` waypoint at (40,28) round a water strip, order `$1e` on lord 15's
+  ungarrisoned lone town gives `$33b0` 1, `$34a8` 1, `$c9f8` 1 hit, `$c706`/`$cada`/`$4c2a` 0; peace bits
+  `$580cc`/`$5812c` go to `$12`/`$12` and stay there for 30M further steps. Control: 3 pots gives `$33b0`
+  1, `$cada` 1 (refusal), `$34a8` 0 (v = -8 + 6 - 2 = -4). The earlier "envoy always dies to `$4c2a`" was
+  specific to garrisoned lord 4. strategy.md "Diplomacy"; `scratchpad/pm129/run4/8/9.cmds` and `.out.txt`.
+- **A straight-line `$1e` march can stall on terrain (129th):** the lead sat in mode `$48` at a type-0
+  (water) strip at (38..39,29) for 60M steps and starved; an `$02` waypoint first fixes it
+  (`py/terrain.py`).
 - **Every player order, food, group-record fields, conquest, the heartbeat revolt mechanism,
   starvation desertion, what sets `dwell := $ff9d`, mode `$16` as a garrison/neutral marker,
   weather in the port stepper**: see the 125th/126th/port-pass summaries in git history — unchanged
@@ -69,17 +58,10 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Open, in priority order
 
-1. **A natural alliance completing end to end** (strategy.md "Diplomacy"): the tribute side is now
-   proven organic (take-equipment genuinely loads `carrying[]`); what's missing is the envoy
-   surviving the walk. Four natural/near-natural attempts have now died to unrelated hostile
-   contact, and the 128th pass ruled out both obvious fixes on land 25 (an earlier snapshot, and an
-   escort — no second captain exists there, and `$0c` can't pre-position on empty ground anyway).
-   Two directions left, neither tried yet: (a) a **different target** on land 25 itself — only the
-   nearest foreign lord (side 3's lord 4) has been proven garrisoned; census a farther lord's
-   approach corridor (`scratchpad/pm128a/scan_objects.py`) before marching an envoy there; (b) a
-   **different land** with a genuinely growable second captain (land 5's extra slots are dead
-   records, not usable — check a fresh `build_land.sh` land rather than an already-explored one).
-   `$34a8` firing without any poke is the proof bar.
+1. **The alliance's effects from the natural state.** From `pm129/env5_12M.snap`: order `$06`/`$10` on
+   lord 15's town should be accepted like an own town (`$3154`'s peace-bit filter), and a `$1e` click
+   there should no longer be accepted by the `$1394c` pointer test. Then a side-3 alliance with 3 pots
+   (formula predicts v = 4, not run) needs an escort past lord 4's 18-entity garrison; not a fix found yet.
 2. **The orders not yet seen naturally**: `$04` transfer (needs two captains, a later land), `$0e`
    on a real capital (does the work order produce pots naturally?), `$10`/`$06` on a food pile, the
    `$1a` supply line over several loops (food delivered per loop).
@@ -102,6 +84,9 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Known traps
 
+- **Census the target's own neighbourhood before choosing a route, not the nearest one by distance.** The
+  129th's `census_lords.py` found the far lone town (lord 15) clear while the near capital (lord 4) held 18
+  entities. Stalls are then terrain, not enemies: check the `$438ee` plane (`py/terrain.py`) before blaming a garrison.
 - **"Pick a different land/target" as a fallback needs checking, not assuming.** Land 5 looked like
   a ready-made escort source (three side-1 group slots vs. land 25's one) purely from a slot count;
   live census (`census_groups.py`) showed the other two are `owner 1, men 0` from the land's own
@@ -180,12 +165,6 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Next session
 
-Open item 1: a natural alliance completing end to end. Land 25's nearest-lord route and both of
-the obvious fixes (earlier snapshot, escort) are now ruled out there (this pass). Two untried
-directions: (a) from `scratchpad/pm127/diplo3/equip_probe.snap`, census a *farther* foreign lord's
-approach corridor with `scratchpad/pm128a/scan_objects.py` before marching the envoy there instead
-of the nearest one; (b) build a fresh land (`reversing/powermonger/py/build_land.sh`) and check with
-`scratchpad/pm128a/census_groups.py` whether it has a genuinely growable second captain before
-attempting an escort. Watch `33b0`/`34a8`/`c706`/`4c2a` with `hits`. A clean "`$34a8` fired with
-real, unpoked tribute" is the target; another contact-death is still useful negative data for
-strategy.md. If that stalls, item 2 (the orders not yet seen naturally) is next.
+Open item 1: from `scratchpad/pm129/env5_12M.snap`, test the alliance effects on lord 15's town (`$06`/`$10`
+accepted, `$1e` refused by the pointer test), watching `$31a6`/`$31b2`/`$31cc` and `$139da`/`$13b1e` with
+`hits`. If that confirms the documented behaviour, item 2 (the orders not yet seen naturally) is next.

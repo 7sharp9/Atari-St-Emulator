@@ -97,7 +97,9 @@ against every session's changes.
 - **Diplomacy is an envoy with tribute.** An alliance is offered by sending a group, carrying
   goods, to another lord; he accepts if his attitude plus the tribute clears a bar. It only makes
   the ally's settlements valid for friendly orders, and any contact between the two sides breaks
-  it. Only the player ever offers. (S "Diplomacy")
+  it. Only the player ever offers. Proven end to end on land 25 with no pokes (5 pots to an ungarrisoned
+  lord whose attitude is -8; 3 pots are refused); an envoy to a garrisoned lord dies to contact first.
+  (S "Diplomacy")
 - **The opponent is simple.** Each commander marches at the nearest enemy lord when its army has
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast); AI
   armies start with so much food that the test never binds. It has no economy, build or recruit

@@ -1130,21 +1130,71 @@ corrects "any cell" in the `$0c` row of the order table below — read it as
 snapshots: `scratchpad/pm128a/REPORT.md`, `scratchpad/pm128b/REPORT.md`
 (indexed in `ANCHORS.md`).
 
-That is now four independent natural/near-natural attempts (123rd, 127th, and
-the 128th's two land-25 probes), all ending in `$4c2a` before `$33b0` ever
-runs. **Land 5's apparent second/third captain slots are not usable either,
-checked at the land's start (`pm121/k5.snap`) and 50M/100M ticks in
+Those failures (123rd, 127th, and the 128th's two land-25 probes) were all
+against garrisoned lords, and all ended in `$4c2a` before `$33b0` ran. **Land
+5's apparent second/third captain slots are not usable as an escort, checked
+at the land's start (`pm121/k5.snap`) and 50M/100M ticks in
 (`pm121/run/k5_s1.snap`/`k5_s2.snap`) with `scratchpad/pm128a/census_groups.py`:
-groups 1 and 2 are `owner 1` but `men 0` from the very first snapshot and stay
-at 0 across both stretches checked — dead captain records, not a growable
-escort, so "pick a land with more captains" does not have a working example
-in the current corpus.** The next attempt should not repeat any of the three
-things now ruled out on land 25 (earlier snapshot, a second captain, an `$0c`
-pre-positioned force). What is still untried: a different *target* on land
-25 itself — only the nearest foreign lord (side 3's lord 4) has been proven
-garrisoned; census the approach corridor of a farther lord for standing
-hostile entities (`scan_objects.py`) before marching an envoy there, since the
-15+-cell lords were never checked.
+groups 1 and 2 are `owner 1` but `men 0` from the very first snapshot,
+dead captain records.** An escort is not needed if the target is not
+garrisoned, which the next paragraph shows.
+
+**A natural alliance completes end to end (129th pass, land 25, no pokes).**
+Start: `pm127/diplo3/equip_probe.snap` (the organic take-equipment state);
+the only inputs are three `clicks.py` click sequences
+(`scratchpad/pm129/`, commands `run5/6/9.cmds`, outputs beside them).
+
+1. *Target.* `census_lords.py` counts live entities by owner around each
+   foreign lord and along the corridor from the group's lead at (24,21). Lord 4
+   (side 3, the dead route): 18 side-3 entities at the lord and 18 on the
+   corridor. Lord 15 (side 4, (39,31)) is a lone kind-11 town, 0 side-4
+   entities at it and 0 non-own entities in the box x23..41, y17..35
+   (`scan_objects.py`). Lord 9 (side 3, (50,50)) has 2 entities but is 29
+   cells away, too far for the group's food.
+2. *Tribute.* Order `$10` on own lord 7's town (`clicks.py home 297,156
+   24,27`): `carrying[]` pots 3 to 5, lord 7's pots 2 to 0 at 3M steps
+   (`$61f8` 1 hit, `$6352` 8 hits; `eq_3M.snap`).
+3. *Waypoint.* Order `$1e` straight at lord 15 fails, and it is terrain, not
+   a garrison: the lead reaches (38,29), then sits in mode `$48` (obstacle
+   avoidance) at (37..38,29) for 60M steps, starves (food 0, men 8 to 3) and
+   `$33b0`/`$34a8`/`$4c2a` have 0 hits. `terrain.py` prints the `$438ee` type
+   plane (`y*64+x`, type 0 = water per ai.md `$1648e`): a type-0 strip at
+   (38..39,29) lies between the straight-line path and the town. An order
+   `$02` to (40,28) first (`clicks.py home 299,182 40,34`) gets round it:
+   after 45M steps the lead is at (40,28), state 6, 6 men, food 0, 5 pots
+   (`wp5_45M.snap`). Food is 0 from about 38M steps and one man deserts per
+   5-10M steps, so 6 of 8 arrive.
+4. *Offer.* Order `$1e` on lord 15's town from `wp5_45M.snap`
+   (`clicks.py home 73,161 39,37`, `run9.cmds`). Hits counted from the click
+   over 6M steps: `$15754` 1 (step 5,331,749), `$33b0` 1 (5,331,754), `$3458` 1
+   (5,331,847, posts `$2a`), `$34a8` 1 (5,337,916), `$c9f8` 1 (5,337,931, the
+   "alliance forged" message); `$c706`, `$cada`, `$4c2a` 0 (`$15754` and `$3458` from
+   `run7`, which `run9` reproduces step for step; `run9` itself counted
+   `$33b0/$34a8/$c9f8/$c706/$cada/$4c2a`). Peace bits: side 1
+   (`$580cc`) `$02` to `$12`, side 4 (`$5812c`) `$10` to `$12`, re-read
+   from the snapshots (`wp5_45M`, `env5_8M`, `env5_12M`, `env5_42M`). The
+   envoy group is freed with `carrying[]` zeroed; 5 men are still at (39,31).
+   30M further steps (`run8.cmds`, from `env5_12M.snap`) leave the bits at
+   `$12/$12` with `$4c2a`, `$4c64`, `$4c7a`, `$c5ee`, `$c9f8`, `$33b0`, `$34a8` at 0 hits.
+   (`$4c2a` did fire once, 2.07M steps into `run7`'s third chunk, a contact
+   elsewhere, inferred to be sides 3 against 4; it did not touch the 1/4 bits.)
+
+*The tribute bar is exact.* `$33b0`'s `v = rel[16+g->side] + Σ supply_acc·W − 2`
+with side 4's byte `$58137` = −8 (`rel.py`). Control, same route with the
+organic 3 pots (`run4.cmds`, from `wp_45M.snap`, 8 men at arrival): `$15754`
+1, `$33b0` 1 (295,648), `$cada` 1 (295,745, the refusal), `$34a8` 0:
+`v = −8 + 6 − 2 = −4`. With 5 pots the tribute is 10 and `v = 0`, accepted. Only the outcomes at 3 and 5 pots were
+observed, so "the bar for this lord is exactly 5 pots" and
+`carrying[] == supply_acc[]` at the offer are inferred from those two runs.
+Side 3's byte is 0 (`rel.py`), so 3 pots would give `v = 4` there (not run:
+lord 4's garrison still kills the envoy).
+
+Caveats: the ally is side 4, not side 3; the walk survived because lord 15
+is an ungarrisoned lone town, not because of an escort; the route needs the
+`$02` waypoint and the tribute needs the second `$10`. The earlier
+reading that an unescorted envoy inevitably dies to contact is wrong: the
+death is specific to a garrisoned target. Not yet checked from this natural state: that `$3154` accepts `$06`/`$10`
+on lord 15's town and that the `$1394c` `$1e` test no longer accepts it.
 
 **What an alliance changes.** Only the two readers of `+6`:
 
