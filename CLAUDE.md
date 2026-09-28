@@ -165,6 +165,12 @@ know they existed.
   was a second, different, previously-unconfirmed hazard the maneuver had actually already dodged.
   Both the short window and the assumed identity were wrong (`reversing/impossamole/README.md`'s
   "Known traps" section).
+- A hero pinned at one screen coordinate is usually a camera-follow trigger, not a wall, and a
+  trial that "lands at the same spot" has only shown the same *screen* spot. Before calling a position
+  stuck, `watch` the scroll counter across the trial and find its writer (`find_field_writers.py`).
+  Impossamole spent the 90th-97th passes on an `x=192` "wall" that was `addq.w #2,$227b6` at `$018fa2`,
+  and disassembled the object-shift half (`$00bb5c`) without asking what advanced its delta
+  (`reversing/impossamole/README.md`, camera-follow section).
 - A fixed-length `kbd`/`mouse` hold shorter than the game's own poll cycle can silently never
   register at all, and the hero ending up where the maneuver would have left it is not proof the
   maneuver ran — a no-op can look identical to success when the test only checks position/damage.
