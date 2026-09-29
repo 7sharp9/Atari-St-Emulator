@@ -25,6 +25,74 @@ game.
 | `worlds.md` | the five worlds: loader, per-world files and banks, categories 5-8, rooms and routes, bosses, per-world tables |
 | `py/README.md` | every script, its start snapshot and expected output |
 
+## Design digest
+
+The game's rules restated for re-use in another design, without addresses. Each line names the section that proves it (R = this README,
+G = `graphics.md`, W = `worlds.md`; "route" = R "The route to the boss room on real input", "spawn" = R "Spawn types"); anything not proven there is
+labelled inferred or read (from code, not run). `/handoff` re-checks this list against every session's changes.
+
+### What carries the game
+
+- **One long map per world, played one room at a time.** A level is a 420-block-wide tile map with a separate collision layer at 8 px, cut into
+  overlapping block ranges (rooms). Only one room is live; leaving through the top or bottom of the screen looks up the hero's block in the world's
+  exit list, clears the objects and installs the destination. Overlap lets the same blocks be a corridor in one room and a cave in another.
+  (R "The level is one tile map of connected rooms"; W "Rooms and routes")
+- **Terrain is a small vocabulary of categories, and the art does not decide it.** Air, ladder, ledge, one-way log or stair, solid, hazard, plus
+  conveyors left and right, ice slide and slow ground in the later worlds. Changing the art changes nothing about what is solid. (G "Pipeline", W
+  "Collision categories")
+- **One object record does every job.** Hero, enemy, pickup, shop keeper, weapon swipe and spawned projectile are the same 108-byte record in a
+  20-slot array, told apart by slot range and handler. Contact, shot hits, triggers and platform riding all use one box overlap test. (R "Spawn
+  types", "Common machinery")
+- **Levels populate from a list.** A column-sorted list of (column, row, type) records is walked as the camera advances; each type is a descriptor
+  (hit points, damage, speeds, art, score, handler) plus a handler routine, and the same handlers serve several worlds. Fruit comes from invisible
+  containers the level places. (R "Spawn types"; W "Other `$bb76`-indexed tables")
+- **Health is the only resource, and it is small.** 18 points, no regeneration, 1-point hits, a 7-frame invulnerability window after a touch and a knockback
+  jump. Heal pickups are rare (five records in the Amazon, each `4 + world number`) and one shop item heals the same amount. (R "Boss", "The shop")
+- **The weapon is a short-range swipe, not a projectile.** A fire press makes a static hit box in front of the hero for 5 frames with a 6-frame
+  cooldown; damage is the weapon level (1-3, raised by an upgrade pickup, reset each level); a swipe hits at most once. (R "Boss", "Natural aim")
+- **Enemies are killable or immune by their hit points.** 1-127 dies to swipes; 128-255 absorbs them, so an immune enemy has to be avoided or
+  outlasted. About a dozen reusable behaviours (ambusher on a proximity box, perched thrower, patroller that spits, chaser, wanderer, scripted
+  flier, falling trap, rideable platform, tongue) make up each world's roster. (R "Spawn types")
+- **Movement is a fixed-shape jump.** Up starts a jump with a table-driven arc of 40 px apex and a horizontal push locked at take-off; a plain
+  jump covers about 43 px. Obstacles are built in 32 px units (one hop) and 8 px lips that stall a walker. (R "Past the first screen", route)
+- **Water costs health by contact.** Standing or landing on a hazard tile takes 1 point and throws the hero into the same hit-reaction jump; the
+  four pits of the Amazon route cost an unpoked hero 8 water hits (and 2 contacts) in one pass. Crocodiles are platforms only while their jaws are shut. (R
+  "What the route costs in health", "spawn")
+- **The level's shape is a health budget.** Measured on the Amazon route from room `188..285` to the boss: 92 contact decrements and 9 water hits with a
+  refilled hero, against 18 points; an unpoked hero that only kills what it meets ahead and hops immune enemies dies in the fourth pit. The route
+  is meant to be fought, dodged and healed through together. (R "What the route costs in health", "Unpoked, the same route does not survive")
+- **A boss ends the level.** One 60-hit-point boss per world in a dead-end room; a flag, a 125-frame count, a fade and reload lead to world select
+  with the world crossed out. The Amazon boss is vulnerable only in an open-mouth phase and only to a jumping hero; other worlds add a
+  hit-ignoring flag (Klondike) or a shielded phase (Bermuda). (R "Boss", "How a level ends"; W "Bosses")
+- **Progress is one run.** Death goes Game Over, title, and all progress and score are lost; Bermuda unlocks when the other four are won; the fifth
+  world's win goes to the ending and high-score entry. (R "How a level ends")
+- **One hidden shop per level**, entered by finding the mole in a pit and pressing down on it; coins (dropped by monkeys, 25 each) buy heals (proven for the worm can),
+  weapon upgrades and special fire (read). (R "The shop")
+- **Everything is frame-counted and deterministic**, so a run replays byte for byte from a snapshot and a route can be recorded as joystick
+  packets. (route)
+
+### Limits that became features
+
+- **Hit points as a flag.** One byte does both jobs: the low range counts damage and the high range means immune, which spends no extra state on
+  "this enemy cannot be killed". (R "Spawn types")
+- **The camera pins the hero at one screen column** while the level scrolls, so the hero's own position hardly changes on a long walk; progress lives
+  in the scroll counter. (route)
+- **One-way platforms and 8 px lips** stand in for enemy blocking: the player has to hop rather than walk through the dangerous stretch. (route)
+- **A 20-slot array, cleared on every room change,** bounds memory and makes rooms cheap; objects leaving the window (x outside 0..304, y outside
+  -16..200) are freed. (R "The level is one tile map of connected rooms", "Spawn types")
+- **Bank overwrite per world.** The common sprite frames stay and each world's files replace the tail of each bank, so five art sets fit one
+  loader and one engine. (W "Sprite banks")
+
+### Bugs and accidents a new design should drop
+
+- The joystick fire bit is edge-detected once per frame, so a press shorter than a frame is lost; on the world-select screen a fire pressed while
+  the cursor is still moving is lost. (R "Confirming a world needs a held fire"; W "Ice Land and Bermuda Triangle")
+- The hero's sensor scan writes probe offsets into its own position for a few instructions each frame, so a reader that samples mid-frame sees a
+  jump (found while driving, handled in `py/route/route_driver.py` `read_stable`; inferred to be harmless to the game).
+- Water damage is tested only in hero states 0 and 1, so a hero already in a jump or fall is not hit by the tile until it lands (read, from the tile
+  test's state check; not tested). (R "What the route costs in health")
+- Klondike's boss ignores hits while a state byte is non-zero, which stretched its kill from 60 to 223 pulses (W "Bosses"; possibly intended).
+
 ## The disk image
 
 **Commercial and not committed here.** To reproduce:
@@ -1320,11 +1388,25 @@ process to the same snapshot, and the live route was run twice from scratch with
   `A0 = $1a572`; after the fade `$227b4 = $13e`, camera and limit `$27c0`, hero `x=$20`. The chained arrival matches `pass99/boss_room.snap` in the
   boss (`x=224`, `y=96`, 60 hit points, `$22803 = 1`, handler `$15e9a`) and the room fields; weapon (3, carried) and coins (25) and health differ,
   and the boss animation phase is one tick off.
-- **Hazards on `188..285`** (`py/route/hazard_census.py`: the whole route replayed with each step run as `bp e82e n`, reading `A0` at each damaging
-  contact): 99 contacts, 98 of damage 1. Bees (types 114/115, hp 1) chase from slots 7/8 and are 71 of them (about one bite per 150-200k steps,
-  the main drain); type-2 ground and water enemies 19 (anim `$22010` is type 112, `$21fee` type 111, the rest not identified); type-1 props near the
-  corridor and the temple 8; the crocodile once, damage 0. About seven further 1-hp drops at the water surface have no `$e80e` contact and are
-  attributed to the category-9 tiles by timing only. Room `299..318` drains 1 hp at a time from an unidentified source (18 to 15 over the route).
+- **What the route costs in health** (poked run; `py/route/hazard_census.py` runs each step as `bp e82e n` and reads `A0` at every damaging contact,
+  `py/route/contact_census.py <snap> <repl>...` does the same for any recorded segment and adds the handler pointer, record byte 86; both leave the run's
+  final snapshot byte-identical). There are two decrement sites of `$bb74`: `$eb8c` applies an object contact (`$e82e` writes the contact's damage byte
+  to `$227f6`, `$eb86` clears it) and `$ebca` is the category-9 tile path (`$eb42`/`$eb56` branch on `$227e8/9 == 9` with the hero in state 0 or 1, cooldown
+  `102(A0) = 3`, subtract 1, force the hit-reaction jump `$227f3 := 2`, which is the "bounce" at the water line). `hits <n> $eb8c $ebca` over the whole
+  recorded route (`route_full_real.repl`, 7397 commands, final snapshot identical): **`$eb8c` 96, `$ebca` 9**; up to the block-283 exit 92 and 9, room `299..318` 4 and 0. Contacts in `188..285` (99 at `$e82e`, 98 of damage 1): the chasing bee
+  (types 114/115, hp 1) 71, because a poked hero idles in the pits for 12M steps with a bee on it (about one bite per 150-200k steps); killable walkers
+  and hoppers (`$015934` monkey hp 8, `$015ac8` plant hp 4, `$01415e/7c` bees) and immune ones (`$015a38` tentacle hp 255, `$0142be` fliers hp 255);
+  the crocodile once, damage 0. Room `299..318`'s four decrements are all object contacts while the hero hops at the tunnel wall (wx 9900-9954):
+  three from the ping-pong fliers `$0142be` (anims `$22046`, `$22050`, hp 255) and one from `$015c7a` (hp 4, anim `$2205a`). Water costs 1 hp per
+  entry at the surface, with no object involved.
+- **Unpoked, the same route does not survive** (`py/route/natural_hop3.py`, hop 3's eleven segments on a driver that never refills health and reacts
+  to hostile objects ahead: a fire pulse at a killable one within 34-50 px, a hop over an immune one; `room188.snap` already carries weapon 3 and 25 coins).
+  Health at each segment end: 18, 15, 14, 12, 10, and the hero dies in the segment-6 pits (wx about 7750, pit 4 is cols 960-975) after eight water hits (`$ebca`)
+  and two contacts (`$eb8c`; the same census on that replay, final snapshot identical), before the heal pickup at block 244 (wx 7808). The same trajectory came out of three guard variants, so the bee is not what stops
+  it: the chaser is killed by one swipe (hp 1 goes to 254, the dying value; an early run kept pulsing at it because it read 254 as alive) and stays
+  dead, but segments 2-5 lose 8 hp to walkers and hoppers that approach diagonally from above (`$015934` hp 8 needs three swipes at one per 6 frames
+  and reaches the hero first) and segment 6 loses 10 to water. The route needs roughly twice its hp budget; an unpoked run needs a per-enemy dodge
+  policy (the behaviours are in "Spawn types") and a way across the pits that lands on the shut-jawed crocodiles instead of the water.
 - **Controls learned.** The jump starts on the game's next joystick poll, 24-30k steps after up is pressed, so the driver holds up+direction until
   the state reads jump and then the direction only (apex is always 40 px); a full jump and fall takes about 1M steps; stairs and bead platforms
   are one-way (a hop from below lands on top); holding up+right on stairs re-jumps at every landing, so use single hops; read an obstacle's height
@@ -1739,11 +1821,11 @@ Added by the 104th pass (parallel route, boss, shop, level-end and world passes)
 Current open items, in the order `sessions/impossamole.md` ranks them (everything else this README once listed here has been done):
 
 - **Natural play, unpoked.** The Amazon route from the start room to the boss room is on real input from room `118..137` on, with health
-  refilled per segment and a labelled poke into `118..137`; the boss falls to real swipes but with the weapon or health poked. An unpoked run
-  needs the two type-4 upgrades (blocks 27 and 134), a bee kill (a fire pulse when it is level with the hero) and a dodge policy for the boss's
+  refilled per segment and a labelled poke into `118..137`; the boss falls to real swipes but with the weapon or health poked. An unpoked hop 3 dies in the
+  segment-6 water pits (previous section); an unpoked run also needs the two type-4 upgrades (blocks 27 and 134) and a dodge policy for the boss's
   type 139/140 shots. The other four worlds have cold-boot, warp and boss-kill proofs only, no played route.
-- **Damage sources not pinned:** what the water tiles (category 9) cost (about seven 1-hp drops at the water surface had no object contact,
-  inferred from timing, no `bp eb8c` census), the unidentified drain in room `299..318`, and the type-2 enemies met on the route.
+- **Damage sources:** the water tiles and room `299..318`'s drain are pinned (previous section); the type-2 enemies met in segments 2-5 are identified by handler
+  but their approach paths are not modelled.
 - **Shop items:** only the worm can (code 1) was bought; codes 0, 2, 3, 4, 5 and the shop ladder are undriven.
 - **Level-end chain for Klondike and Orient** (their boss kills were done, the flag chain only for the Amazon, Ice Land and Bermuda), name
   entry to its end, and the cheat names' effects (`$bb7d`).
