@@ -19,3 +19,7 @@ cd M68000 && ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll resume \
 |---|---|
 | `level_map.py <snap> <out.png> [--rooms] [--raw] [--x0 --x1 --scale]` | Renders the whole 1680x24 tile map (`$31800`) coloured by the `$25000` category; `--rooms` overlays room boundaries and exit triggers from `$c028`/`$e0aa`. Any snapshot in a world works: the map and tables are resident. Needs `uv run` (PIL). |
 | `level_rooms.py <snap>` | Prints the current world's room graph (start room, every top/bottom exit with destination room and hero block-x). |
+| `spawn_list.py <snap>` | Decodes the 256-record spawn list at `$27200` (column, y, type, allocator kind, descriptor, containing rooms). |
+| `level_rooms.py <snap> --route S E` | Shortest exit sequence from the start room to a room containing blocks `S..E` (the boss room is `318 326`). |
+| `boss_kill.py <snap> [pulses]` | Drives the boss fight with a live REPL: health poked full, real fire pulses, shot placed on the boss only while it is in its open animation. Needs `ATARI_NOTRACE=1`-style REPL access (it sets it) and the DLL in `bin/`. From `scratchpad/impossamole/pass99/boss_dead.snap` it took the boss from 16 hit points to 0 in about 20 pulses. |
+

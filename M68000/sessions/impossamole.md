@@ -1,14 +1,15 @@
 # Impossamole: handoff
 
-Updated 2026-09-28 by the session that ended at the 99th-pass commit (see `git log`).
+Updated 2026-09-29 by the session that ended at the 100th-pass commit (see `git log`).
 
 ## Resume point
 
-- Last commit of this workstream: the 99th pass, "impossamole: 99th pass -- the level is one tile map
-  of connected rooms ..." plus a follow-up doc commit for the level-end paragraph (`git log --oneline -4`).
+- Last commit of this workstream: the 100th pass, "impossamole: 100th pass -- the Amazon boss, the enemy damage path and
+  the route to the boss room" (`git log --oneline -4`).
 - Working data: `M68000/scratchpad/impossamole/` (gitignored) — the extracted `.ST` image,
   `coldboot_census/`, `gameplay_explore/` (older trials) and `pass99/` (this pass: `cyc0..7.snap`,
-  `warp_down131b.snap`, `warp_up112.snap`, scripts `cyc.repl`/`hops6.repl`). `scratchpad/ANCHORS.md`
+  `warp_down131b.snap`, `warp_up112.snap`, `boss_room.snap`, `boss_dead.snap`, `boss_kill_end.snap`,
+  `spawns.txt`, scripts `cyc.repl`/`hops6.repl`/`boss_*.repl`). `scratchpad/ANCHORS.md`
   indexes them. Real Hatari v2.6.1 at `~/Downloads/hatari-snapshot/Hatari.app`, source at
   `~/GitHub/hatari/`. TOS ROM at `M68000/TOS100UK.IMG`.
 - Start from: `scratchpad/impossamole/pass99/cyc5.snap` (Amazon, camera `$57a`, hero alive on the ground,
@@ -37,6 +38,18 @@ See `reversing/impossamole/README.md` for detail, match counts and addresses:
   `$27200` are decoded. Two exit records (one bottom, one top) were forced live and every predicted field
   matched (`$227b4`, camera, limit, hero x/y). `py/level_map.py` and `py/level_rooms.py` reproduce the map
   and graph from any snapshot; `amazon_level_map.png` is the render.
+- **The Amazon boss and the route to it (100th pass, README "Boss").** One kind-2 spawn record (type 138,
+  column 1296) in the dead-end room `318..326`; route from the start room is four exits (bottom at block 135,
+  top at 168, top at 283, bottom at 317; `py/level_rooms.py <snap> --route 318 326`), the last one forced live.
+  Boss: slot 7, handler `$15e9a`, 60 hit points at `$1a645`, alternates a shielded and a vulnerable animation
+  (`22(A0)` `$221f6` / `$221d0`) and moves `x` by random multiples of 8 (224 to 64).
+- **The projectile-vs-enemy damage path is `$0013a9c`** (`103(A0) -= 104(A1)` at `$13b20`, projectile damage =
+  weapon index `$bb72`): live, one shot put on the boss took `$3c` to `$3a` (1 write), and `py/boss_kill.py`
+  took it to 0. Shot position was poked, so natural aim at the boss is not proven.
+- **Boss death ends the level (live chain).** HP 0 gives `$22803 := $ff` at `$1602e` (death animation
+  `$22306`, `boss_kill_end.snap`); with the flag set, `$fb98` counts `$22804` to `$7d`, `$f0ee` runs 46
+  frames and `$b0b2` is hit once. The world-5 branch and the return to world-select were not reached in the
+  window (static readings).
 - The crossbar item is collected by an up+left hop (98th pass; score `003200`, slot 0 type 1 to 0).
 - Continuing right from the twin trees works with real input: from `pass90_wall_192.snap`, chained
   up+right hops (`kbd ff`/`kbd 09`, 30,000-step hold) then a 400,000-step right walk scroll the camera
@@ -48,21 +61,23 @@ See `reversing/impossamole/README.md` for detail, match counts and addresses:
 
 ## Open, in priority order
 
-1. **Find the Amazon boss and the route to it.** Decode the spawn list (`$27200`, 4-byte records: column
-   word, row byte, type byte; type indexes the descriptor table at `$10474`, first descriptor byte picks the
-   allocator via `$10046`). Tabulate all ~256 records with their room, find which of the five `$22803`
-   writers belongs to world 3 (a `bp` on each while a boss is alive would settle it, or read which handler
-   the descriptor's `22(A0)` pointer targets), and locate that record in the room graph. Then plan a route
-   with `level_rooms.py`.
-2. **Reach a room exit with real input**, not pokes: climb through the ceiling gap at block 112 (col 448,
-   x=3584) or drop through blocks 131/135. The camera has to get to about `$e00` (from `$5ac`, roughly 3,000px
-   at 8-100px per cycle); a poked camera (`w 227b4 ...`) plus a natural jump/fall is the cheaper hybrid, but
-   say so. Confirm the state byte `$227f3` really is 2 while climbing off the top and 3 while falling.
-3. **Pin what the item is** (`bpc` on the write that sets slot 0's `type` to 0; is `$00b71a` the generic
-   test or a pickup handler).
-4. Slot 8's patrol rate; the projectile-vs-enemy damage path (`$00d3cc`); categories `1`/`2`/`3` (the render
-   suggests ladder / small ledge / one-way platform, untested); Orient/Ice Land/Bermuda from a fresh cold boot;
-   whether slots 9/10 move.
+1. **Play the route with real input.** Every hop of the four-exit route is table-derived (one bottom and one
+   top exit were forced in the 99th pass, the boss-room entry in the 100th). Hero placement and camera
+   are poked; the open work is reaching a trigger by moving: the top exit at block 112 of the start room
+   is not on the route, the bottom exit at block 135 (col 540, hero screen `x` about 80 with camera `$1020`)
+   is. Confirm `$227f3` is 3 while falling off the bottom and 2 while leaving through the top, and that the
+   hero can get to the trigger block at all (walls, hazards: map with `py/level_map.py`).
+2. **Natural aim at the boss.** The boss is at `y=96` and shots fly along the hero's `y`; find where the hero
+   has to stand (the room's ledges) and which weapon (`$bb72`, damage per shot, and the four-slot pattern in
+   `$d4be`) makes 60 hit points reachable, and that a shot really hits without the position poke.
+3. **World-select return and the world-5 branch after `$b0b2`** (the `$1c3c8` fade runs longer than the 4M
+   steps checked; `hits` on `$b0ca`/`$17c9c` with 10M steps).
+4. **Decode the spawn types** (`spawns.txt`: which of types 105-132 are which enemy, item or hazard;
+   descriptor `+12..14` radii, `+8` type word, `+28`/`+48` anim and handler pointers), and what the 63
+   type-251 markers are.
+5. Pin what the item is (`bpc` on the write that sets slot 0's `type` to 0); slot 8's patrol rate; categories
+   `1`/`2`/`3` (render suggests ladder / small ledge / platform, untested); Orient/Ice Land/Bermuda from a
+   fresh cold boot; whether slots 9/10 move.
 
 ## Known traps
 
@@ -74,9 +89,15 @@ Workstream traps live in `reversing/impossamole/README.md`'s "Known traps". New 
 - **The transition takes hundreds of thousands of steps** (`$1c3c8` fade). Sampling 200,000 steps after a
   poked trigger showed only `y=-16` and the old camera; 400,000 more steps showed the finished room.
 - **Object slots are live-spawned by camera position**, so a slot number is only meaningful on one screen.
+- **The boss has a shielded animation**: a fixed aim point stalls at whatever HP the last vulnerable window left
+  (16). Read the boss `x`,`y` and animation each pulse (`py/boss_kill.py` does).
+- **Driving the REPL from Python needs a sentinel**: `hits 0 fb98` prints a distinctive row after the previous
+  command's output; without one the reader cannot tell where a reply ends.
+- **`watch` on a counter floods stdout** (`$22804` printed 125 lines); watch a flag, or `hits`, unless the counter is the point.
 - Health poked per cycle removes the death risk but also the natural-play evidence; label pokes.
 
 ## Next session
 
-Open item 1: tabulate the spawn list per room, find the world-3 boss and its room, and write the route
-graph from the start room to it. Do not resume the hop-chain exploration; use the room table.
+Open item 1: from a snapshot in the start room, reach the bottom exit at block 135 with real movement
+(map it with `level_map.py --x0 500 --x1 560`), then follow the route. Keep the health poke labelled. Do not
+re-derive the map, room table, spawn list or boss data: they are in the README and the scripts.

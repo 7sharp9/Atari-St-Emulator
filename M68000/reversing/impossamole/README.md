@@ -855,16 +855,12 @@ read (`$012cd8`):
   slots can themselves *become* type 3 (most likely on death/destruction, turning into rubble/debris
   rendered through the same stub), a distinct mechanism from weapon projectiles despite sharing the
   same type ID. Not yet proven which prop/enemy this applies to or what triggers the transition.
-- **Not yet found**: the routine (if any) that checks a projectile slot for contact against an enemy
-  and applies damage the other way — `$0147ec`/`$014d5c`, the two `$b71a` call sites found in the
-  `$13fe8`-`$17922` per-type-handler range this pass, are both enemy-vs-**hero** checks (`A1 :=
-  $1a572` hardcoded, immediately followed by `bsr $e80e`), the same mechanism already proven, not a
-  projectile-vs-enemy path. A per-type dispatch entry for `type==3` itself (parallel to how enemy
-  types run their own hero-contact handler) is the most likely place to find one; not yet located.
-  `$014d3a`'s `cmpa.l #$1a9aa,A1` loop bound (found while reading `$014d56`'s handler) is independent
-  confirmation that `$1a9aa` — slot 16 — is a real, code-recognised boundary between the general
-  object slots and the dedicated projectile block, not just an address this pass computed by
-  arithmetic.
+- **The projectile-vs-enemy check is `$0013a9c` (found by the 99th pass, see "The level is one tile map
+  of connected rooms", "Boss").** The two `$b71a` call sites in `$0147ec`/`$014d5c` are enemy-vs-hero
+  checks, as found here; the enemy-side check is a separate routine that an enemy's own per-frame handler
+  calls, and it loops over the four projectile slots (`$1a9aa`, slots 16-19).
+  `$014d3a`'s `cmpa.l #$1a9aa,A1` loop bound is independent confirmation that slot 16 is a real,
+  code-recognised boundary between the general object slots and the dedicated projectile block.
 
 Items 1, 1b, 2 and 3 are now all resolved: the hazard/collision mechanism is proven end to end
 (`$b71a` proximity test → `$e80e` damage-field copy → `$eafa` health decrement, pinned live with a
@@ -1207,16 +1203,58 @@ live at a time:
   `$10006` (type byte indexes the descriptor pointer table at `$10474`; the descriptor's first byte
   picks one of four slot allocators through `$10046`: `$10056` slots 0-5, `$100ec` slots 7-11). The list's
   columns run to 1664, covering every room of the map. Decoding which type is which enemy or item is open.
-- **How a level ends (static reading of the main loop, not yet triggered live).** `$00b1f6` calls `$00fb98`,
+- **How a level ends (main loop; the chain from the flag is live-checked, see "Boss").** `$00b1f6` calls `$00fb98`,
   which watches `$22803`; when bit 7 is set it counts `$22804` up to `$7d` (125 frames), clears the hero's and
   slots 7-11's state, runs `$f050`/`$f0ee`, and the loop's `beq $b0b2` then jumps to `$00b0b2`, the level-complete
   path (`$b0ca`: world index 5 goes to `$183c0`, every other world back to world-select at `$17c9c`). `$22803` is set to `$ff` at exactly five
   addresses, `$014ad6`, `$015752`, `$01602e`, `$016958`, `$0176a6` (one per world by address order, inferred:
-  each sits in a large per-enemy handler, i.e. a boss's death routine), and to `1` at `$010228` (a slot
-  allocator in the spawner, meaning not yet read). So a level ends when its boss dies, not when the hero
-  reaches a map position. Which room and spawn record holds the Amazon boss is open.
+  each sits in a large per-enemy handler, i.e. a boss's death routine), and to `1` at `$010228`, the boss allocator ("boss alive"). So a level ends when its boss dies, not when the hero
+  reaches a map position (the Amazon boss: see "Boss" below).
 - Object slots are live-spawned: at camera `$5ac` the array holds different objects than at `$46c`, so the
   slot numbers used for the twin-tree screen do not carry over.
+
+### Boss (99th pass)
+
+- **The Amazon boss is the only kind-2 spawn record**: type byte `138`, column 1296 (block 324), `y=120`, in
+  the dead-end room `318..326` (8 blocks, 256px, no exit of its own). `py/spawn_list.py <snap>` prints the whole
+  list (256 records: 119 kind-0 allocations, 135 kind-1 and this one kind-2; world 3's own types are 105-132,
+  types 0-9 are small props and 63 records are type 251, all kind 0). The route from the start room is four exits, from
+  `py/level_rooms.py <snap> --route 318 326`: fall through the bottom at block 135 (`0..137` to `160..173`),
+  leave through the top at block 168 (to `188..285`), leave through the top at block 283 (to `299..318`), fall
+  through the bottom at block 317 (to `318..326`). The last hop was forced live: `$227b4=$13e`, camera `$27c0`,
+  hero `x=$20`, exactly the record `(1,317,318,326,0)`. The other three hops are table-derived only.
+- **Spawning it**: descriptor kind 2 selects allocator `$01021a`, which plays sound `$1f`, sets `$22803 := 1`
+  ("boss alive"), and builds the boss in slot 7 (`$1a5de`; type word from the per-world table at `$10370`,
+  world 3: `3`) plus up to four extra parts in the following slots. Its per-frame handler is
+  `$00015e9a` (`hits` 125 over 3M steps). Render: a giant tree face on a trunk (`amazon_boss_room.png`).
+- **Boss data (descriptor `$11aee`, bytes 5/6 to `103`/`104`)**: `103(A0)` = hit points = `$3c` (60, read
+  live at `$1a645`), `104(A0)` = contact damage 1. Its hit box is 12-14(A0) = `$20`/`$30`/`$18`.
+- **The projectile-vs-enemy damage path exists and is `$0013a9c`.** An enemy handler calls it each frame
+  (`bsr $13a9c`, boss at `$15eae`); it loops over projectile slots 16-19 (`$1a9aa`, skipping any whose
+  flag word `30(A1)` is not `$ff`), runs the `$b71a` proximity test against each, and on contact does
+  `103(A0) -= 104(A1)` at `$013b20`, where `104(A1)` is the projectile's damage, the equipped-weapon index
+  `$bb72` (README, weapon system). It then sets a short invulnerability count in `102(A0)` and, at
+  `HP <= 0`, sets `101(A0) := 1` (`$13b4c`) and returns carry. **Live**: with `$bb72 = 2`, one projectile
+  placed on the boss dropped `$1a645` from `$3c` to `$3a` (write PC `$13b20`, 1 write, watch); further hits
+  gave `$32`, `$26`, `$16`, `$10`, and `py/boss_kill.py` took it to `0`.
+  The projectile position was poked onto the boss (the boss sits at `y=96`, the shot travels along `y=148`), so the contact mechanism and damage are proven and a hit by
+  natural aim is not.
+- **The boss cycles between two animations**: `22(A0) = $221f6` (mouth closed; `$15ea2` skips the hit check
+  entirely, so it is shielded) and `$221d0` (open, vulnerable), each a script step (`94(A0)` script pointer,
+  a step every 10 frames; script byte 5 selects `$221f6`, byte `$ff` ends a script, `$15fd0` then moves the
+  boss `x` by a random multiple of 8 (observed `224` to `64`) and picks one of four scripts from `$16134`).
+  A fixed aim point therefore stalls (60 to 16 hit points, then nothing for ten million steps in the first
+  attempt); `py/boss_kill.py` reads the boss's `x`,`y` and animation each pulse and only places the shot
+  while the animation is `$221d0`.
+- **Death**: `bcs $16024` (`$15eb2`) plays sound `$1c`, sets `$22803 := $ff` at `$01602e` and starts the
+  death animation `22(A0) = $22306` (set only by `$016040`). Live: after `boss_kill.py` HP `0`, `$22803 = $ff`,
+  anim `$22306`, `$22804` counting (`boss_kill_end.snap`). The 125-frame count, `$f0ee` and the jump to `$b0b2`
+  were checked separately with the flag poked to `$ff` (`$22804` counted `1`..`$7d` at `$fbb4`, `$fbcc` wrote
+  `$fe` at step 137,916,201, `$f050` 1 hit, `$f0ee` 46 hits, `$b0b2` 1 hit at 4,081,686); the world-5 branch
+  and the return to world-select (`$17c9c`) were not reached within that window (the `$1c3c8` fade is
+  still running), so those two are static readings.
+- **The other four `$22803 = $ff` writers** (`$014ad6`, `$015752`, `$016958`, `$0176a6`) sit in the other
+  worlds' boss handlers, by address order (inferred, not tested).
 
 ## Known traps
 
@@ -1355,7 +1393,8 @@ live at a time:
 | `coldboot_amazon_twintree_item_collected.png` | **98th pass**: `pass98_item_try.snap` rendered right after the up+left hop from the ledge picks up the crossbar item: score `003200`, the item gone from the crossbar, hero at `x=114,y=144` (`1/18`) |
 | `amazon_level_map.png` | **99th pass**: the whole Amazon tile map (1680 columns x 24 rows, 2px per tile) from `py/level_map.py --rooms`: category colours, blue lines = room boundaries, cyan/orange ticks = top/bottom exit triggers, white lines = camera window and first-room limit |
 | `amazon_room_after_bottom_exit_131.png` | **99th pass**: the cave room `156..161` right after the poked bottom-exit transition at block 131 (see "The level is one tile map of connected rooms") |
-| `py/level_map.py`, `py/level_rooms.py` | **99th pass**: render the tile map / print the room graph from any snapshot (usage in `py/README.md`) |
+| `amazon_boss_room.png` | **99th pass**: the boss room `318..326` right after the transition, the boss tree face on the right trunk |
+| `py/level_map.py`, `py/level_rooms.py`, `py/spawn_list.py`, `py/boss_kill.py` | **99th pass**: render the tile map / print the room graph from any snapshot (usage in `py/README.md`) |
 | `py/twintree_item_route.repl` | **98th pass**: REPL script for the whole item route from `pass96_doublejump_v2.snap` (usage and expected output in `py/README.md`) |
 
 ## Not yet exercised
