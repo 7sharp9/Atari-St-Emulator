@@ -1,87 +1,82 @@
 # Impossamole: handoff
 
-Updated 2026-09-29 by the 103rd-pass session (route walk and spawn types); the last work commit is `0bd6ae7`, and the
-skill commit and this handoff follow it (`git log --oneline -4`).
+Updated 2026-09-29 by the 104th-pass session (seven parallel agents: route, boss, shop, spawn types, level end, four worlds); the
+work commits are listed by `git log --oneline -6`, the last being this handoff.
 
 ## Resume point
 
-- Last work commit of this workstream: `0bd6ae7` "impossamole: 103rd pass -- spawn types decoded (descriptor layouts,
-  38 types drawn), bank 2 is 172 frames not 140"; before it `3809a60` (three route exits with real input).
-- Working data: `M68000/scratchpad/impossamole/` (gitignored): `pass99/` (`cyc0..7.snap`, `boss_room.snap`, `warp_up112.snap`,
-  ...), `pass103/` (checkpoints of `py/start_room_route.repl` plus `live_*.snap`), `pass102/`. `scratchpad/ANCHORS.md` indexes
-  them. Real Hatari v2.6.1 at `~/Downloads/hatari-snapshot/Hatari.app`, source `~/GitHub/hatari/`. TOS ROM `M68000/TOS100UK.IMG`.
-- Start from: `scratchpad/impossamole/pass103/room188.snap` (room `188..285`, just entered by real input through block 168,
-  camera `$1780`, hero `x=$60`, health full). Any Amazon snapshot has the map, tables, tile bank and sprite banks resident.
-  **Every `resume ... repl` needs `--disk-a "scratchpad/impossamole/impossamole cr replicants - emotion cr replicants.st"`**
-  (path relative to `M68000/`) and `ATARI_NOTRACE=1`. The REPL stops at the first unknown line (no `#` comments); `snap <path>`
-  is relative to the dotnet process's directory; `watch <addr> <len>` takes a decimal length; `w <addr> <8 hex digits>`
-  writes a longword; there is no register-set command.
-- Uncommitted work left behind: none from this session. `M68000/sessions/README.md` carries a pre-existing whitespace-rewrap
-  diff (not this workstream's); `.obsidian/` and `Cadaver/` are untracked.
+- Working data: `M68000/scratchpad/impossamole/` (gitignored, indexed in `scratchpad/ANCHORS.md`): `pass99/`, `pass103/`, and the new
+  `agents/<area>/` directories (`hop3`, `hop4`, `boss`, `spawn`, `wsel`, `world12`, `world34`, each with a `report.md` saved from the agent's final
+  message). Real Hatari v2.6.1 at `~/Downloads/hatari-snapshot/Hatari.app`, source `~/GitHub/hatari/`. TOS ROM `M68000/TOS100UK.IMG`.
+- Start from: `agents/hop4/boss_room_real_settled.snap` (Amazon boss room reached by the whole real-input route, hero landed, weapon 3, 25 coins,
+  health 18/18), or `pass103/room188.snap` for the route. For any other world use `agents/world12/{klondike,orient}_gameplay.snap` and
+  `agents/world34/snaps/{ice,bermuda}_gameplay.snap` (fresh cold boots, tables resident). **Every `resume ... repl` needs `--disk-a
+  "scratchpad/impossamole/impossamole cr replicants - emotion cr replicants.st"`** (relative to `M68000/`) and `ATARI_NOTRACE=1`; the REPL stops
+  at the first unknown line (no `#` comments); `snap <path>` is relative to the dotnet process's directory; `watch <addr> <len>` takes a decimal
+  length and reports on stderr; `w <addr> <8 hex digits>` writes a longword.
+- Uncommitted work left behind: none from this session. `M68000/sessions/README.md` carries a pre-existing whitespace-rewrap diff (not this
+  workstream's); `.obsidian/` and `Cadaver/` are untracked.
 
 ## Proven so far
 
-See `reversing/impossamole/README.md` for detail, match counts and addresses:
+See `reversing/impossamole/README.md` (Amazon), `graphics.md` (asset formats), `worlds.md` (all five worlds); scripts in `py/` (`py/README.md`).
 
-- **The program is hand-written 68000 assembly.** Live `watch`/`bpc`/`callcap` plus `disassemble.py --all` is the path.
-- **Graphics are decoded (`graphics.md`).** Level (`$27600`) -> block definitions (`$29000`) -> tile bank (`$29800`), 98-99 % of
-  sampled pixels match the live screen (`py/tiles.py --check`). Sprite bank 1 (`$3b600`, 240 x 16x16) and **bank 2 (`$42e00`,
-  172 frames, 32x24; the earlier "140" was wrong)**, font, palettes. `graphics/sprites_bank2.png` now shows all 172.
-- **Spawn types (103rd pass, README "Spawn types", `py/spawn_types.py`, `graphics/amazon_spawn_types.png`).** Descriptor layouts
-  for kind 0 and kind 1 read off `$10056`/`$100ec`; 38 types decoded and drawn. Picture identity checked against the live
-  screen for bees (114/115), snakes (127), chameleons (128/129), rock (113), fliers (117, 125), monkey (109), plant (112):
-  best matches 80/80 to 566/566 (`py/spawn_types.py --check`). Kind 1 `hp` 254/255 presumably means unkillable (untested).
-- **Route hops with real input (103rd pass, README "Three exits fired from positions reached by real joystick input",
-  `py/start_room_route.repl`).** From `warp_up112.snap` (poked to the block-151 exit) to room `188..285`: blocks 135 and 168 (and
-  131 by an alternative fall) fired with every predicted field matching. Ladder, shaft-hop and top-out mechanics are in the
-  README. The replay is byte-identical to the interactive run (`cmp`). Health is poked at each segment start; the staging into
-  room `118..137` is a labelled poke.
-- **Hazard/collision, jump and camera-follow, the level as one 1680x24 tile map of rooms, the boss (60 hit points, handler
-  `$15e9a`, damage path `$13a9c`) and boss death ending the level** are proven (README "Past the first screen", "The level is
-  one tile map", "Boss").
+- **Hand-written 68000 assembly; graphics chain decoded** (level `$27600` -> block defs `$29000` -> tile bank `$29800`, sprite banks `$3b600`
+  and `$42e00`, font): 97.4-98.8 % pixel match on all five worlds (`py/tiles.py --check`, offset (32, 8)).
+- **The whole Amazon route to the boss room on real input** (from `pass103/room188.snap`: 11 + 5 driven segments, health poked per segment,
+  labelled): every segment and the 7397-command chain replay byte-identically, exit records for blocks 283 and 317 match all predicted fields
+  (`py/route/verify_route.py` ALL IDENTICAL; `py/shop/real_replay_check.sh` nine identical lines; README "The route to the boss room on real input").
+- **Boss killed by real input, no shot poke** (README "Natural aim"): the "shot" is a static melee swipe that only a jumping hero overlaps; weapon
+  1/2/3 kills in 60/30/20 hits (`py/boss/swipe_check.py` 108/108, `boss_fight.py`, controls 0 hits in 30 standing pulses vs 8 in 8 airborne).
+- **Level end** (README "How a level ends"): boss flag -> 125-frame count -> `$b0b2` -> fade and reload (4.26M steps) -> `$b0ca` -> `$17c9c`
+  world-select (Amazon, `py/level_end/win_amazon.repl`, all hit counts match), world 5 -> `$183c0` ending; `$bb79` is a done/unavailable mask and
+  unlocks Bermuda after four wins; death goes Game Over -> title, never straight to world-select.
+- **The shop** (README "The shop"): the mole is the shop keeper, `$e842` an entrance portal (`$bb77`), prices, bubbles and the TOO MUCH refusal
+  driven with real input (poked coins for the purchase).
+- **Spawn types** (README "Spawn types"): hit points >= 128 are immune (8 live rows, 0 subtracts), fliers 116-125 reproduced per frame (1,364/1,364),
+  the type-251 markers are invisible fruit containers, per-type behaviour tables for 109-132; three earlier readings corrected.
+- **Other worlds** (`worlds.md`): loader `$b328` and per-world files, common vs per-world sprite bank ranges, collision categories 5-8, the 53
+  exit records of Klondike and Orient (23/23, 30/30), bosses of all five worlds killed with a poked shot, Ice Land slide and conveyor tests.
 
 ## Open, in priority order
 
-1. **Finish the route on real input: hop 3 (block 283) and hop 4 (block 317).** Room `188..285` is 3104 px: a jungle half (water
-   pit at blocks 203..206, more further on) and a stone-temple half; the exit is the shaft at block 283 with a ladder and bead
-   platforms (`level_rooms.py` graph, art in `graphics/amazon_level_tiles.png` blocks 261..284). Then room `299..318` down through
-   block 317 into the boss room. The stepwise REPL drive costs about 6 tool calls per 100 px; write an event-driven driver (poll
-   hero state, act on state changes) instead of hand nudging.
-2. **Natural aim at the boss.** The boss is at `y=96` and shots fly along the hero's `y`; find where the hero must stand and which
-   weapon (`$bb72`) makes 60 hit points reachable without the position poke.
-3. **What is left of the spawn types.** Which sub-animation each handler selects (the frame lists are not delimited per object);
-   what separates types 116-125 (descriptor `+4`, `+14`, `+16`); what the 63 type-251 markers are (dormant effect: blank, smoke
-   rings, explosion); whether types 0/9 (mole climbing out of the ground, blocks 416 and 313, handler `$e842`) are the shop; what
-   `hp` 254/255 does in `$13a9c`; the kind-3 allocator (no record in this level). Prove the shop by reaching a type-9 object with
-   `bpc $e842`.
-4. **World-select return and the world-5 branch after `$b0b2`** (the `$1c3c8` fade runs longer than 4M steps; `hits` on
-   `$b0ca`/`$17c9c` with 10M steps).
-5. **Graphics gaps** (`graphics.md` "Open"): other worlds' tile banks, blocks, levels (fresh cold boot per world; `py/tiles.py` works
-   unchanged); title/world-select/logo art and disk files; animation order per action; the `$216e2` flash palette.
-6. Slot 8's patrol rate; Orient/Ice Land/Bermuda from a fresh cold boot; whether slots 9/10 move.
+1. **An unpoked natural run of the Amazon.** Everything on the route and against the boss used health pokes (per segment) and, for the boss, a
+   poked weapon in most runs. Needs: the two type-4 upgrades (spawn records at blocks 27 and 134), a dodge policy for the
+   bee (kill it with a fire pulse: hp 1, 71 of 99 route hits), and for the boss's type 139/140 shots. Proof: `route_full_real.repl` replayed with the
+   `w bb74` lines removed reaching the boss room with health > 0, then `boss_fight.py` with `--weapon` and `--poke-health` removed; watch `$bb74`.
+2. **Play a route in another world on real input** (Ice Land is 3 hops, Orient 6, Klondike 12, Bermuda 17): `py/route/route_driver.py` is generic;
+   `py/worlds/warp_room.py` stages each room; Ice Land first. Category 7 (slide) and 5/6/8 mechanics are proven on poked positions only.
+   Also kill Klondike's or Orient's boss and run the level-end chain (only the Amazon's and poked flags for Ice Land and Bermuda were run).
+3. **What water (category 9) costs.** About seven 1-hp drops at the water surface on the route have no `$e80e` contact (inferred from timing).
+   Prove with a census `bp eb8c` (the `sub.b D0,$bb74` decrement) against the `$e80e` contacts, then drop the hero into a pit on purpose.
+   Same census for the unidentified drain in room `299..318` (1 hp at a time, 18 to 15).
+4. **Shop items other than the worm can** (bomb code 2, laser gun 3, extended bar 5 at (72,56), (104,120), (160,88); shelves need the shop ladder at
+   about x=136): poke coins to 255, fire on each good, watch `$bb72`, `$227fa`, `$bb74/75`. Re-run the shop branch from `real_seg4_wall_hop.snap`.
+5. **Unproven spawn-type readings:** 118, 121, 122 (and 119/120) and 131/132 have no live object (warp to a room whose spawn columns hold them
+   and run `py/spawn/verify_fliers.py`); 128's mirrored trigger, 109's sideways push, the crocodile dropping a rider, later monkey throws; special-fire
+   shots (`$227fa` 1-3, `$013ae2`); the coconut and plant-spit line steppers.
+6. **Per-world code and data:** `$ee16` death dispatch, `$ea92` shop records, `$c028` words 0-1, `$bb7d` cheat-name effects (LUMBAJAK ... in the
+   name entry, read from code only), name entry to its end, Orient categories 5/8, Bermuda's 17-hop chain on real input, the Klondike bank-2
+   residue's source (`SELECT44.DAT`, not compared byte for byte).
+7. **Graphics gaps:** title, world-select and ending art formats (`PICTURES.DCH`, `SELECT44.DAT`), animation order per action, the `$216e2` flash palette.
+8. **Merge the two route drivers** (`py/route/route_driver.py` and `py/shop/route_driver.py` overlap) and add categories 5-8 to `tiles.py --cats` /
+   `level_map.py` (`worlds/world_pipeline.py` and `render_world.py` patch them at runtime).
 
 ## Known traps
 
-Workstream traps live in `reversing/impossamole/README.md`'s "Known traps". From this pass:
+Workstream traps live in `reversing/impossamole/README.md`'s "Known traps" (the 104th pass added the health-poke side effects, the 24,000-step
+frame, extents from LSD! headers, `spawn_list.py` on non-mid-level snapshots and world-select lock behaviour). Still open here:
 
-- **A stated bank size can be wrong.** The 102nd pass's "bank 2 = 140 frames" hid 32 frames of enemies and made the first
-  spawn-type sheet miss bees, crocodiles, chameleons and the boss face. Scan for the last non-zero frame.
-- **`$227b4` is the leftmost visible block (`camera >> 5`), not only the room start**: it equals the start block just after an install
-  and tracks the scroll afterwards. Read the camera `$227b6` when checking a room.
-- **Ladder climbs stall if the hero's `x` is misaligned**: state 4 climbs only while `$227ec`/`$227ed` are category < 4, and the
-  sensors refresh only when `y & 7 == 0`. Steer sideways on the ladder, step down once, climb again. Release up at the top or
-  the hero jumps.
-- **The hero is pinned at `x=192` while the camera scrolls**, so hero `x` alone shows no progress; sample `$227b6`.
-- **Rebuild a long driven chain from the saved segment files, not from memory** (one wrong nudge count broke the first replay).
-- **The transition takes hundreds of thousands of steps** (`$1c3c8` fade); sample well after a poked or reached trigger.
-- **Object slots are live-spawned by camera position**, so a slot number is only meaningful on one screen.
-- **Driving the REPL from Python needs a sentinel**; **`watch` on a counter floods stdout**; `timeout` does not exist on the Mac.
-- Health poked per segment removes the death risk but also the natural-play evidence; label pokes.
+- **Agent-written scripts read and write `scratchpad/impossamole/agents/<area>/`**, so a fresh checkout without that scratchpad cannot rerun the
+  `.repl` replays (they `snap` into it and several start from snapshots there). `scratchpad/ANCHORS.md` lists what is needed.
+- **Two route drivers exist** (`py/route/`, `py/shop/`); use `py/route/route_driver.py` for new work.
+- **`route_full_real.repl` takes about 4 minutes and the hazard census about 12**; run them in the background.
+- A gate run from `py/` mutates snapshots under `agents/` (`win_amazon.repl` rewrites `agents/wsel/win_amazon_worldselect.snap`); results are
+  deterministic, so a changed byte means a real regression.
 
 ## Next session
 
-Open item 1: start from `pass103/room188.snap`, write a small event-driven driver (poll `$227f3`, hero `x`/`y`, camera, health;
-act on state changes) and walk room `188..285` to the block-283 shaft, then the last hop into the boss room. If a hazard needs
-health poked, label it. Item 3's shop check (`bpc $e842` near a type-9 object) is a cheap side proof once a snapshot is near
-block 313. Do not re-derive the map, room table, spawn list, spawn-type layouts, boss data or the graphics chain: they are in the
-README, `graphics.md` and the scripts.
+Open item 1: from `pass103/room188.snap`, replay the chain without the health pokes to see where an unpoked hero dies (bees first), add a bee-kill
+step (fire pulse when level) to the driver, then attempt the boss with the weapon reached by pickup. If that is too costly for one session, take item
+2 for Ice Land (3 hops) with the same driver. Do not re-derive the map, room tables, spawn lists, spawn-type layouts, boss data, shop or level-end
+chain: they are in the README, `graphics.md`, `worlds.md` and the scripts.
