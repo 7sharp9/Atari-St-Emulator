@@ -1,0 +1,9 @@
+kbd ff
+kbd 80
+s 60000
+kbd ff
+kbd 00
+hits 1500000 182bc 19f5a 183b4 b088 17a9e 17c9c 1847e
+r
+snap scratchpad/impossamole/agents/wsel/w5_after_fire_1p5M.snap
+q

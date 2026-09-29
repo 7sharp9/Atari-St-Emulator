@@ -1,0 +1,39 @@
+kbd 3b
+s 100000
+kbd bb
+s 500000
+kbd 39
+s 500000
+kbd b9
+hits 35000000 b288 b2ca b328 1c6de 1ab8a
+r
+kbd ff
+s 30
+kbd 80
+s 60000
+kbd ff
+kbd 00
+hits 2000000 b288 b2ca b328 1c6de 17df4
+r
+snap scratchpad/impossamole/agents/world12/orient_title_to_select.snap
+kbd ff
+s 30
+kbd 08
+s 60000
+kbd ff
+kbd 00
+s 800000
+hits 500000 b288 b2ca b328 1c6de 17df4
+r
+snap scratchpad/impossamole/agents/world12/orient_icon1_settled.snap
+kbd ff
+s 30
+kbd 80
+s 60000
+kbd ff
+kbd 00
+hits 30000000 b288 b2ca b328 1c6de 3b4 1ab96 b1bc 17ac0
+r
+m bb76 1
+snap scratchpad/impossamole/agents/world12/orient_cold30M.snap
+quit

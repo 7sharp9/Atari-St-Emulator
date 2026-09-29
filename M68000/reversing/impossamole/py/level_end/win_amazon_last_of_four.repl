@@ -1,0 +1,9 @@
+w bb78 001b0000
+m bb78 4
+hits 12000000 fbcc f188 f1a0 b0ca 17c9c 17df4
+m bb79 1
+m bb76 1
+m 1a338 1
+m 227f3 2
+snap scratchpad/impossamole/agents/wsel/win_amazon_last_of_four_worldselect.snap
+q

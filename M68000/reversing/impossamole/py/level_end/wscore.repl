@@ -1,0 +1,4 @@
+watch bb6e 4
+s 4200000
+unwatch
+q

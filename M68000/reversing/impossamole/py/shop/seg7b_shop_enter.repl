@@ -1,0 +1,15 @@
+s 1
+w bb74 12120300
+kbd ff
+kbd 02
+s 30000
+s 30000
+s 30000
+s 30000
+s 30000
+s 30000
+s 30000
+kbd ff
+kbd 00
+s 600000
+snap scratchpad/impossamole/agents/hop4/seg7b_shop_enter.snap

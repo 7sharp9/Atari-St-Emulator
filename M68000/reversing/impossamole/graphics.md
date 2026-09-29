@@ -48,7 +48,9 @@ pointers at `$2166e` (`$1c352` installs it): `$216a2`, `$216c2`, `$21722` (world
 hardware palette in every Amazon snapshot), `$21682`, `$21762`. `$216e2` is a brighter set that `$151dc`/`$151ee`
 switch to and from in an enemy handler (a flash, inferred from the code, not observed); `$21682` is also what the
 text screens `$bc3a`, `$17de2`, `$1812a` install. All are STF `$0RGB` (3 bits per gun). The five tables differ only
-in a few entries (`$216a2`/`$21722` are the same 16 words), so the shared banks below are shown with the Amazon one.
+in a few entries (`$216a2`/`$21722` are the same 16 words); each equals the live hardware palette of its own world
+(`graphics/world_palettes.png`, `worlds.md`). The sprite banks below are described for the Amazon: only the low part of each
+bank is common to the five worlds (see "Per-world banks").
 
 ## Sprites
 
@@ -60,7 +62,7 @@ literal screen x/y and `14(A0)` is the row count.
 | bank | address | frame | layout | picked by |
 |---|---|---|---|---|
 | 1 | `$3b600`, 240 frames | 128 bytes, 16x16 | 8 bytes per row: planes 0..3 as words | `6(A0)` of a `type 1` object (`$1b25a`) |
-| 2 | `$42e00`, 172 frames (0-171) | 384 bytes, 32x24 | 16 bytes per row: planes 0..3 as longwords (the blitter ORs four longs for the mask, `$1b67c`) | `6(A0)` of a `type 2` object (`$1b3ec`, base `$3b600 + $7800`) |
+| 2 | `$42e00`, up to 172 frames (0-171; 160 in Klondike) | 384 bytes, 32x24 | 16 bytes per row: planes 0..3 as longwords (the blitter ORs four longs for the mask, `$1b67c`) | `6(A0)` of a `type 2` object (`$1b3ec`, base `$3b600 + $7800`) |
 
 Bank 1 holds projectile and effect art (smoke rings 1-36, bombs 37-42, laser beams 43-54, explosions 55-127), pickups
 (barrel, tin, coins, fruit, bananas: frames 129-147, 174-187) and small enemies (snakes 164-167, the brown winged
@@ -84,6 +86,16 @@ opaque pixels, slot 7 frame 128 (a plant) 297/339, slot 3 frame 140 (a pickup) 1
 over, and one slot (8, frame 121, at x=10, mostly inside the border) fails (17/339): the check is a lower bound,
 not a full render of the frame. It ran on two snapshots only.
 
+### Per-world banks
+
+Bank 1 frames 0-159 and bank 2 frames 0-99 (hero, shop, mole, explosion rings, effects, the common pickups) are byte-identical in every
+world; bank 1 frames 160-239 (`$40600`) and bank 2 frames 100-171 (`$4c400`) are overwritten from the world's `*22.DAT` and `*33.DAT`
+(`worlds.md`, "Loading"). The frame ranges written above for bank 2 (tentacles 100-104 ... boss face 160-169) and bank 1 frames 168-187
+are the Amazon's. A bank's extent comes from the LSD! header of its file: Klondike's bank 2 is 60 frames (100-159, real art to 150) and
+its frames 160-171 are noise from an earlier load of `SELECT44.DAT`, so the "172 frames" of this table is right for the Amazon, Orient and
+Bermuda only. Per-world sheets: `graphics/<world>_sprites_bank1.png`, `_sprites_bank2.png`, `_spawn_types.png`, `_tileset.png`,
+`_level_tiles.png`, `_level_map.png` (`worlds.md`, "Files").
+
 ## HUD font
 
 `$24000`, 8x8 glyphs of 32 bytes (8 rows of 4 plane bytes), glyph index = the byte in the string
@@ -101,13 +113,18 @@ bridge (one-way platforms), 9 (red) the red spike poles and the water pits. This
 99th pass had only guessed from the flat category render, as a visual correlation: which categories block
 movement and which are pass-through is still the `$be96` reading, not retested here.
 
+The other worlds add categories 5 and 6 (conveyors, one pixel per update left/right), 7 (slide, Ice Land and Bermuda) and 8 (half
+speed), and use 9 for water, sludge and the sea; the table, tile ids, code addresses and live tests are in `worlds.md`
+("Collision categories"), and `graphics/<world>_categories.png` tints all eight over the art (the stock `tiles.py --cats` knows only the
+Amazon's set).
+
 ## Open
 
-- Other worlds: the tile bank, block definitions and level are per world; only Amazon has been dumped and rendered
-  (`py/tiles.py` works on any world's snapshot, and the palette table is world-indexed).
+- Other worlds: tile banks, levels, sprite banks and spawn types are dumped and rendered for all five (`worlds.md`); still open there are
+  the animation order per action, the `$216e2` flash palette in use, and Orient's category 5/8 behaviour.
 - Animation-list boundaries: an animation pointer addresses a run of sub-animations (each ended by `$fffe` loop,
   `$fffd` hold or `$ffff` end), and where one object's states stop and the next object's list begins is not decoded;
   `py/spawn_types.py` shows the first sub-animation of each entry pointer plus the next three.
-- The title, world-select and logo art, and the disk files they come from (`CHARS11.DAT` to `$24000`,
-  `SPRTS22.DAT` to `$3b600`, `SPRTS33.DAT` to `$42e00`, from the README).
+- The title, world-select and logo art (`PICTURES.DCH`, `SELECT44.DAT`; the world-select screen and the Bermuda ending screen are
+  captured as PNGs but their picture formats are not decoded).
 - Animation sequences (frame order per action) and the `$216e2` flash palette in use.

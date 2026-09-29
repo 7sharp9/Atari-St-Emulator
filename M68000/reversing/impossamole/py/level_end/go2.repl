@@ -1,0 +1,16 @@
+hits 6000000 b2d8 17a9e 17b52 17c9c 17df4 17ad4 17fe8
+m bb6e 4
+m bb79 1
+snap scratchpad/impossamole/agents/wsel/go2_title.snap
+kbd ff
+kbd 80
+s 60000
+kbd ff
+kbd 00
+hits 6000000 17a9e 17b52 17c9c 17df4 17ad4
+m bb6e 4
+m bb79 1
+m bb74 4
+m bb76 1
+snap scratchpad/impossamole/agents/wsel/go2_worldselect.snap
+q

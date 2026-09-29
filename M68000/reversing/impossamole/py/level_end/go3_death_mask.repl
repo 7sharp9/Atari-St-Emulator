@@ -1,0 +1,20 @@
+w bb78 00140000
+m bb78 4
+kbd ff
+kbd 80
+s 60000
+kbd ff
+kbd 00
+hits 5000000 182bc 19f5a 183b4 b088 17a9e 17ad4 17b52 17c9c 17df4
+m bb79 1
+m bb6e 4
+hits 100 17ad4
+kbd ff
+kbd 80
+s 60000
+kbd ff
+kbd 00
+hits 3000000 17b52 17c9c 17df4
+m bb79 1
+m bb76 1
+q

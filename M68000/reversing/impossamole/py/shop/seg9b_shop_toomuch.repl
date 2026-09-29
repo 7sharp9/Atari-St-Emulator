@@ -1,0 +1,20 @@
+s 1
+w bb72 03191212
+kbd ff
+kbd 80
+s 45000
+kbd ff
+kbd 00
+s 20000
+s 20000
+s 20000
+s 20000
+s 20000
+s 20000
+s 20000
+s 20000
+s 20000
+s 20000
+s 20000
+s 20000
+snap scratchpad/impossamole/agents/hop4/seg9b_shop_toomuch.snap

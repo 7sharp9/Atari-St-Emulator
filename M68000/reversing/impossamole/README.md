@@ -16,6 +16,15 @@ The copy in hand is a cracked scene release: a "Replicants"-badged boot menu lea
 (executable boot sector, checksum `$1234`) into the crack's own menu code, not straight into the
 game.
 
+## Topic documents
+
+| document | what it covers |
+|---|---|
+| this README | boot and input, the Amazon level, route, boss, shop, spawn types, level end, known traps, file index |
+| `graphics.md` | the asset formats (level, tiles, sprite banks, palettes, font, collision categories) with match counts |
+| `worlds.md` | the five worlds: loader, per-world files and banks, categories 5-8, rooms and routes, bosses, per-world tables |
+| `py/README.md` | every script, its start snapshot and expected output |
+
 ## The disk image
 
 **Commercial and not committed here.** To reproduce:
@@ -1234,28 +1243,105 @@ live at a time:
   `$10006` (type byte indexes the descriptor pointer table at `$10474`; the descriptor's first byte
   picks one of four slot allocators through `$10046`: `$10056` slots 0-5, `$100ec` slots 7-11). The list's
   columns run to 1664, covering every room of the map. Decoding which type is which enemy or item is open.
-- **How a level ends (main loop; the chain from the flag is live-checked, see "Boss").** `$00b1f6` calls `$00fb98`,
-  which watches `$22803`; when bit 7 is set it counts `$22804` up to `$7d` (125 frames), clears the hero's and
-  slots 7-11's state, runs `$f050`/`$f0ee`, and the loop's `beq $b0b2` then jumps to `$00b0b2`, the level-complete
-  path (`$b0ca`: world index 5 goes to `$183c0`, every other world back to world-select at `$17c9c`). `$22803` is set to `$ff` at exactly five
-  addresses, `$014ad6`, `$015752`, `$01602e`, `$016958`, `$0176a6` (one per world by address order, inferred:
-  each sits in a large per-enemy handler, i.e. a boss's death routine), and to `1` at `$010228`, the boss allocator ("boss alive"). So a level ends when its boss dies, not when the hero
-  reaches a map position (the Amazon boss: see "Boss" below).
+- **How a level ends (104th pass; every step below is live-checked, scripts in `py/level_end/`).**
+  `$00b1f6` calls `$00fb98`, which watches `$22803`; when bit 7 is set it counts `$22804` up to `$7d` (125 frames). On the
+  next frame `$fbcc` writes `$fe`, clears the hero's `105(A0)` and slots 7-11, runs `$f050`, then `jmp $f0ee`. `$f0ee` returns
+  early each frame while the hero's `66(A0)` flag is `$c1` (set by `$b704` at `$f15e`), a wait of about 21 frames, then
+  `$22800` counts to `$19`; at `$f17e` the routine sets bit (world index - 1) of `$bb79` and returns Z=1, so the main loop's
+  `beq $b0b2` fires: 46 `$f0ee` calls and about 1.08M steps from `$fbcc` to `$f188`. `$b0b2` calls `$1c3c8` (a fade of 8 VBL
+  ticks), `$1ab5a`, `$1ab6e` and `$b2d8`, which reloads `PICTURES.DCH` (`$fa00` bytes to `$53000`) and `SELECT44.DAT` (`$5000` to
+  `$4c400`) and waits 150 ticks at `$1c680`; fade plus reload take 4.26M steps, so from `pass99/boss_kill_end.snap` `$b0ca` is
+  hit at step 8,244,047 and `$17c9c` at 8,244,050 (`$fbcc` 2,905,652, `$b0b2` 3,985,684; `agents/wsel/win_amazon.repl`).
+  `$b0ca` compares `$bb76` with 5: worlds 1-4 jump to the world-select setup `$17c9c`, world 5 goes `$b0dc -> $b0e8 -> $183c0`.
+  - **`$bb79` is a "done or unavailable" mask** (a set bit makes the icon unselectable, and the world-select screen draws a red X
+    over it): it starts at `$10` (Bermuda only, set by `$bb7e` at a new game) and the Amazon win gave `$14`. After the `bset`,
+    `$f18e` masks `$bb79` with `$f`; if all four low bits are set it does `bclr #4`, which unlocks Bermuda (`$f1a0`, live with
+    the mask poked to stand in for three earlier wins: `$bb79` became `$0f`, the cursor moved to icon 4 and fire loaded Bermuda by
+    real input). `$17c9c` sets the cursor `78(A0)` to 0 (Klondike); if that icon is locked the loop at `$17f52` steps the cursor
+    one icon per frame to the first free one, and `$bb76` is rewritten to cursor+1 every frame. Score `$bb6e` carries over; weapon
+    and health reset only when the next level installs (`$b15e` calls `$bbc8`: weapon 1, health := max).
+  - **World 5 (Bermuda)**: `$183c0` copies `$25000` to `$53000`, prints the 14-line "CONGRATULATIONS MONTY / YOU HAVE SUCCESSFULLY
+    DEFEATED THE FIVE GUARDIANS AND OBTAINED THE SCROLLS OF ETERNAL LIFE ... NOW I WONDER WHAT MY NEXT ADVENTURE WILL BE ?" text
+    from `$185e1` (`ending_screen.png`), and loops at `$1847e` until fire, then `$182bc`, the high-score entry (`$19f5a`; name entry
+    reached live at `$19dfc`), else `$183b4`, `jmp $b088` and the title (`$17a9e`). No file is opened. The world-5 run poked
+    `$bb76` to 5 and the flag, so the ending is proven, the full natural chain (kill Bermuda's boss for real) is not.
+  - **Death** is a different path: `$b058` (via `$b2d8`) goes to `$17fe8`, the Game Over screen; fire, or 250 idle frames
+    (`$22806 == $fa`), goes `$182bc`, `$19f5a`, `$183b4`, `$b088`, `$b2d8`, then the title, and fire at the title reaches `$17b52`,
+    `jsr $bb7e`, `jmp $17c9c`. `$bb7e` zeroes the score, sets max health `$12` (`$22` with cheat code `$bb7d = 1`), `$bb78 := 0`
+    and `$bb79 := $10`: all progress is lost on death, and death never returns directly to world-select.
+  - **Cheat names**: the high-score name entry compares the typed name with 8-byte names at `$1837e` (LUMBAJAK, HEINZ, COMMANDO,
+    ANNFRANK, OOCHOUCH, JUGGLERS) and stores the code 1-6 in `$bb7d`. Effects read from code only: 1 max health `$22`, 2 weapon 3 at
+    each level start, 4 sets `$bb78`, 5 tested at `$eb26` (damage path), 3 at `$d2fa`, 6 at `$12e92`.
+  - **Boss deaths**: `$22803 := $ff` is written at five sites, one per world (`$014ad6` Klondike, `$015752` Orient, `$01602e`
+    Amazon, `$016958` Ice Land, `$0176a6` Bermuda; all five bosses have 60 hit points, `worlds.md` lists the records), each in a
+    death block of the same shape (sound `$1c`, write `$22803`, clear `$22804`, `addi.l #$4e20,$bb6e` = +20,000 points, start the death
+    animation, `$fc26` HUD redraw) reached by `bsr $13a9c; bcs <block>` from the boss's own handler. All five bosses were killed
+    live (the Amazon by real swipes, "Boss" below; the other four with a poked shot position). The level-end chain after the flag was
+    run for the Amazon boss's own kill, and from a poked flag for Ice Land (back to `$17c9c`) and Bermuda (`$183c0`); for Klondike
+    and Orient only the kill was done, so that their boss deaths end the level is inferred.
 - Object slots are live-spawned: at camera `$5ac` the array holds different objects than at `$46c`, so the
   slot numbers used for the twin-tree screen do not carry over.
 
+### The route to the boss room on real input (104th pass)
+
+From `pass103/room188.snap` (room `188..285`, reached by real input) to the boss room, every input is a joystick packet; the driver reads the hero
+state each tick (`py/route/route_driver.py`: per tick about 8000 steps it reads x, y, busy flag, `$227f3`, `$227b4/6/8`, health and the
+`$227e*` sensors, sends a `kbd` packet only when the wanted bits change, and logs the state-changing commands to a replayable `.repl`).
+Health is poked full (`w bb74 12120300`, labelled in the logs) at the start of each of the 17 segments and refilled at 4 or below (three
+times in room `188..285`); nothing else is poked. Every segment replays byte-identically (`cmp`), the whole 7397-command chain replays in one
+process to the same snapshot, and the live route was run twice from scratch with identical end snapshots
+(`py/route/verify_route.py`, `py/route/route_full_real.repl`). The routes, with `wx = x - 32 + $227b6` (map px):
+
+- **Room `188..285` to the block-283 top exit (11 segments, 51.7M steps; hop 3).** Walking is about 2 px per game update (about 25k
+  steps), so 20k steps per pixel is a safe budget. (1) Start pillar and totem: a hop right from `wx` 6112 onto pillar 2 (top `y=112`), a second hop
+  from `wx` 6154 onto the solid 32 px totem on it (`y=80`), then walk off. (2) A hop right from 6400 onto the dirt plateau (cols 804-811).
+  (3) First water pit (cols 812-823, 96 px; a plain jump covers about 43 px): a hop from 6488 lands on a crocodile (spawn type 130, contact damage
+  byte 0, effectively a platform); holding right walks the hero across it and it bounces up onto the plateau. (4) Two 8 px deep, 32 px wide floor
+  notches with an 8 px lip (cols 848-851, 860-863) stall the hero for good while it is bitten: hop each from the edge (take-off at `wx` <= 6775 and
+  <= 6871), the first lands on the crossbar above. (5) Stone-pillar pair: onto pillar 1 from `wx` 7044, walk to 7120, hop the 32 px hole (cols
+  892-895, the block-223 bottom exit; falling in leaves the room) onto pillar 2. (6) Four water pits (64, 128, 32, 128 px, cols 908-975): holding
+  right is enough, crocodiles at each surface bounce the hero on. (7) Second pillar pair: hop up at 7908, hop the plank gap from 7982. (8) Temple
+  stairs: the floor at `wx` 8336-8364 ends in the block-261 bottom exit (cols 1044-1047), so two hops right from 8296 climb the one-way
+  log staircase (category 3) to `y=112` then `y=80`, onto the stone roof (cols 1048-1059), and off it to the floor at 8562. (9) Ladder (cols
+  1080-1081): stand at `wx` 8634, hold up, release at `y <= 48`; it tops out in state 0 on the `y=64` ledge (`$227eb` not read here). Walk the
+  slab top (cols 1084-1107), drop through the gap (cols 1108-1111), land at 8898. (10) From 9036 hop up+left (`kbd 05`, then `04`) onto the
+  `y=128` bead platform (cols 1124-1127), walk left to 8988 to align on the second ladder (cols 1124-1125) and climb to `y <= 48`; the camera has
+  stopped at its limit `$22a0` here so the hero's own `x` moves. (11) Along the `y=64` ledge to 9012, hop right over the 32 px gap (cols
+  1128-1131) onto the `y=64` bead, hop straight up (`kbd 01`) onto the `y=32` bead, jump straight up again: `y` runs 9, 2, -4, -10, -16, the exit fires
+  and the fade starts about 130k steps later. Record `(0,283,299,318,3)`: after the fade `$227b4 = $12b`, camera `$2560`, limit `$26c0`, hero
+  `x=$80`, `y=$90`, all four predicted fields.
+- **Room `299..318` to the block-317 bottom exit into the boss room (5 segments plus a settle, about 9.9M steps; hop 4).** Right along the low tunnel
+  (rows 128-159) to the block-304 ladder, which climbs only with hero world x 9718..9722 (at 9714 it stalls at `y=132` with `$227ec = $d7`:
+  walk right on the ground to 9720 first) to the row-64 ledge, tops out at `y=48` (release up on that tick or the next input jumps), right over the
+  block-305 wall top, down the block-306 ladder (down on the ledge starts the descent, landing `y=144`) back to the tunnel, right to the tunnel wall
+  at world x 9900, up+right onto the 32 px ledge (`y=112`) and again onto the rock top (`y=80`), right down the stair tiles onto the grass, and
+  right into the pit at block 317: the exit fires when the hero falls at world x about 10148, `(x - 32 + camera + 16) >> 5 = 317`, and the camera
+  stops at its limit `$26c0` so the hero walks freely to about x=250. `bp $18ed4` on the replay hits with `D0 = $13e`, `D7 = 1` (bottom exit) and
+  `A0 = $1a572`; after the fade `$227b4 = $13e`, camera and limit `$27c0`, hero `x=$20`. The chained arrival matches `pass99/boss_room.snap` in the
+  boss (`x=224`, `y=96`, 60 hit points, `$22803 = 1`, handler `$15e9a`) and the room fields; weapon (3, carried) and coins (25) and health differ,
+  and the boss animation phase is one tick off.
+- **Hazards on `188..285`** (`py/route/hazard_census.py`: the whole route replayed with each step run as `bp e82e n`, reading `A0` at each damaging
+  contact): 99 contacts, 98 of damage 1. Bees (types 114/115, hp 1) chase from slots 7/8 and are 71 of them (about one bite per 150-200k steps,
+  the main drain); type-2 ground and water enemies 19 (anim `$22010` is type 112, `$21fee` type 111, the rest not identified); type-1 props near the
+  corridor and the temple 8; the crocodile once, damage 0. About seven further 1-hp drops at the water surface have no `$e80e` contact and are
+  attributed to the category-9 tiles by timing only. Room `299..318` drains 1 hp at a time from an unidentified source (18 to 15 over the route).
+- **Controls learned.** The jump starts on the game's next joystick poll, 24-30k steps after up is pressed, so the driver holds up+direction until
+  the state reads jump and then the direction only (apex is always 40 px); a full jump and fall takes about 1M steps; stairs and bead platforms
+  are one-way (a hop from below lands on top); holding up+right on stairs re-jumps at every landing, so use single hops; read an obstacle's height
+  from the `$25000` map first (totems and pillars are 32 px, one hop; the temple slab leaves 8 px); `x` reads jitter by 2 px while the camera scrolls,
+  so use `wx` progress with a tolerance for stall detection.
+
 ### Boss (99th pass)
 
-- **The Amazon boss is the only kind-2 spawn record**: type byte `138`, column 1296 (block 324), `y=120`, in
+- **The Amazon boss is the only kind-2 spawn record of its level** (every world has one, `worlds.md`): type byte `138`, column 1296 (block 324), `y=120`, in
   the dead-end room `318..326` (8 blocks, 256px, no exit of its own). `py/spawn_list.py <snap>` prints the whole
   list (256 records: 119 kind-0 allocations, 135 kind-1 and this one kind-2; world 3's own types are 105-132,
   types 0-9 are small props and 63 records are type 251, all kind 0). The route from the start room is four exits, from
   `py/level_rooms.py <snap> --route 318 326`: fall through the bottom at block 135 (`0..137` to `160..173`),
   leave through the top at block 168 (to `188..285`), leave through the top at block 283 (to `299..318`), fall
   through the bottom at block 317 (to `318..326`). The last hop was forced live: `$227b4=$13e`, camera `$27c0`,
-  hero `x=$20`, exactly the record `(1,317,318,326,0)`. The first two hops (blocks 135 and 168) were then played
-  with real input from the start room's tail (see "Three exits fired..." above); the block-283 hop is table-derived
-  only.
+  hero `x=$20`, exactly the record `(1,317,318,326,0)`. The whole route was later played with real input from the
+  start room's tail (see "Three exits fired..." above and "The route to the boss room on real input" below).
 - **Spawning it**: descriptor kind 2 selects allocator `$01021a`, which plays sound `$1f`, sets `$22803 := 1`
   ("boss alive"), and builds the boss in slot 7 (`$1a5de`; type word from the per-world table at `$10370`,
   world 3: `3`) plus up to four extra parts in the following slots. Its per-frame handler is
@@ -1270,24 +1356,51 @@ live at a time:
   `HP <= 0`, sets `101(A0) := 1` (`$13b4c`) and returns carry. **Live**: with `$bb72 = 2`, one projectile
   placed on the boss dropped `$1a645` from `$3c` to `$3a` (write PC `$13b20`, 1 write, watch); further hits
   gave `$32`, `$26`, `$16`, `$10`, and `py/boss_kill.py` took it to `0`.
-  The projectile position was poked onto the boss (the boss sits at `y=96`, the shot travels along `y=148`), so the contact mechanism and damage are proven and a hit by
-  natural aim is not.
+  That first proof placed the shot on the boss by a poke; natural aim is proven separately, next bullet.
+- **Natural aim (104th pass, `py/boss/`).** There is no flying projectile: the "shot" is a static melee swipe. The fire handler
+  `$d37c` (per frame from `$d2be`) fires on the fire-bit rising edge if `$227f3 < 3` and the cooldown `$227fd` is 0; `$d3cc` copies
+  the weapon row `(weapon-1)*64` of the table at `$d4be` (weapons 1-3 only; `$d4be+192` is the mirror-x word table `$d57e`) into
+  slots 16-19. Only slot 16 is a hit box (`30(A1) = $ff`, `104(A1) = $bb72`); slots 17-19 are decoration. The swipe never moves: its
+  position is the hero's x/y plus the row offset at the moment of firing (plus the mirror word when `$227f4 != 0`), it is cleared when
+  `$227fd` (set to 6, one count per frame) reaches 0, so it lives 5.0 frames, and it hits at most once (`101(A1) := $ff`). One frame
+  is 24,000 steps in this room. Rows for slot 16 (dx, dy, w x h; mirror dx facing right): weapon 1 `-6, 8, 16x16; 28`, weapon 2
+  `-12, 4, 24x24; 32`, weapon 3 `-20, 0, 32x32; 40` (`py/boss/swipe_check.py`: 108/108 predicted positions, weapons 1-3, both facings,
+  standing and airborne). The test is `$b71a`, an AABB on `x+8(A)`, `y+10(A)` with widths `12(A)`, `13(A)`; the boss box is
+  `x=bx, y=96, w=32, h=48`, so the swipe overlaps when `shot.y + h > 96` and `shot.y < 144`: hero `y` in (72, 136) for weapon 1,
+  (68, 140) for weapon 2, (64, 144) for weapon 3. A standing hero has `y` 144 or 152 and misses (weapon 3 from the raised platform
+  by exactly one row), so **only a jumping hero hits the boss**, from the first rise step. In x the hero must be beyond 186 (weapon 1),
+  180 (2) or 172 (3) when the boss is at `bx = 224`; a walking hero stops at x=172 against an 8 px step (the platform, `y=144`, runs
+  from about x=176 to 260), so the hero hops it with up+right (`kbd 09`, ballistic, x 172 to about 206, peak about `y=112`) or stands on
+  the platform at x 176-200 and jumps straight up. At `bx = 64` a straight jump works from the left zone (hero x in (20, 76) for weapon 2).
+  Controls: grounded at x=172, straight jump at x=172 and standing on the platform gave 0 hits in 30 real pulses; a hop onto the
+  platform gave 8 hits in 8 pulses for weapons 2 and 3. **Kills with real fire input and no shot poke**: weapon 1 in 60 hits,
+  weapon 2 in 30 (37 pulses, 22 jumps, 24.4M steps), weapon 3 in 20 (`py/boss/boss_fight.py`, `watch 1a645` shows each hit as one
+  `$13b20` write); after the kill `$22803 = $fe`, `$22804 = $7d` and the level-end chain runs as above (`$b0b2` at 3,946,651). Damage per
+  hit is `$bb72`, which only takes 1-3 (`$bbc8` resets it to 1, the upgrade pickup `$12e50` adds one, capped at 3; spawn type 4, two
+  records in the Amazon at blocks 27 and 134); there is no ammo (`$bb73` is a separate item counter, `$13044` adds 25, `$fd4c`
+  subtracts 5). Weapon and health pokes were used in most runs; with health unpoked and the weapon poked to 3, 2 of 12
+  phase-varied runs killed the boss (finishing at health 1), with weapon 2 none of 6, so an unpoked natural fight is marginal.
+  The boss attacks with contact damage 1 while open (`104(A0)`; measured 18 to 17 with no shot alive) and two projectiles from its script:
+  byte 3 spawns type 139 (`$15f5a`, handler `$14790`, 12x12, damage 1, aimed at the hero's position at spawn, about (-3, +1) per
+  frame) and byte 4 type 140 (`$15f76`, handler `$16184`, 16x12, damage 7, falls about (-2, +4) per frame). An idle hero at x=32 dies
+  in about 9.2M steps. Heal pickups (type 5, heal `4 + $bb76`) sit at blocks 46, 140, 244, 302, 413 (two records).
 - **The boss cycles between two animations**: `22(A0) = $221f6` (mouth closed; `$15ea2` skips the hit check
   entirely, so it is shielded) and `$221d0` (open, vulnerable), each a script step (`94(A0)` script pointer,
   a step every 10 frames; script byte 5 selects `$221f6`, byte `$ff` ends a script, `$15fd0` then moves the
-  boss `x` by a random multiple of 8 (observed `224` to `64`) and picks one of four scripts from `$16134`).
+  boss `x` by `table[rand&1]*8` from `$16132` (bytes `00 14`: 0 or +160, minus 320 when the result is `>= $120`, so `x` is only ever
+  `224` or `64`) and picks one of four scripts from `$16134`).
   A fixed aim point therefore stalls (60 to 16 hit points, then nothing for ten million steps in the first
   attempt); `py/boss_kill.py` reads the boss's `x`,`y` and animation each pulse and only places the shot
-  while the animation is `$221d0`.
+  while the animation is `$221d0`; the real-input driver `py/boss/boss_fight.py` does the same with hero position instead of a poke.
 - **Death**: `bcs $16024` (`$15eb2`) plays sound `$1c`, sets `$22803 := $ff` at `$01602e` and starts the
   death animation `22(A0) = $22306` (set only by `$016040`). Live: after `boss_kill.py` HP `0`, `$22803 = $ff`,
   anim `$22306`, `$22804` counting (`boss_kill_end.snap`). The 125-frame count, `$f0ee` and the jump to `$b0b2`
   were checked separately with the flag poked to `$ff` (`$22804` counted `1`..`$7d` at `$fbb4`, `$fbcc` wrote
   `$fe` at step 137,916,201, `$f050` 1 hit, `$f0ee` 46 hits, `$b0b2` 1 hit at 4,081,686); the world-5 branch
-  and the return to world-select (`$17c9c`) were not reached within that window (the `$1c3c8` fade is
-  still running), so those two are static readings.
-- **The other four `$22803 = $ff` writers** (`$014ad6`, `$015752`, `$016958`, `$0176a6`) sit in the other
-  worlds' boss handlers, by address order (inferred, not tested).
+  and the return to world-select (`$17c9c`) were reached later (the fade plus reload take 4.26M steps after `$b0b2`, "How a level
+  ends" above).
+- **The other four `$22803 = $ff` writers** (`$014ad6`, `$015752`, `$016958`, `$0176a6`) sit in the other worlds' boss handlers
+  (Klondike, Orient, Ice Land, Bermuda; `worlds.md`), each killed live with a poked shot position.
 
 ### Spawn types (103rd pass)
 
@@ -1298,47 +1411,179 @@ descriptor's first byte is the allocator kind (`$10046`), and the two allocators
 
 - **kind 0** (`$10056`, object slots 0-5, object type word 1 so bank 1): `+1` height, `+2` animation tick count,
   `+3` to `79(A0)`, `+4` long = animation list. Pickups and props; no hit points.
-- **kind 1** (`$100ec`, slots 7-11): `+1`/`+2` to `12`/`13(A0)` (the hit-box radii), `+3` selects the entry pointer
-  in the table at `+24` (4 bytes each, zero-ended), `+5` tick count, `+6` hit points to `103(A0)`, `+7` contact
-  damage to `104(A0)`, `+8` word = the object's type word (1: bank 1, 16x16; 2: bank 2, 32x24), `+10`/`+12` words to
-  `8`/`10(A0)` (`+12` plus `+2` is also the row count `14(A0)`), `+14`/`+16` words to `16`/`18(A0)`, `+18` word to
-  `106(A0)`, `+20` long = per-frame handler to `86(A0)`. An animation pointer addresses a run of sub-animations, each a list
-  of frame words ended by `$fffe` (loop), `$fffd` (hold the last frame) or `$ffff` (end), so a frame list is
-  read up to its first control word; kind 2 is the boss (`$1021a`), kind 3 (`$1037a`) has no record in this level.
+- **kind 1** (`$100ec`, slots 7-11): `+1`/`+2` to `12`/`13(A0)` (the hit-box radii), `+3` to `20(A0)` (the initial horizontal direction byte,
+  which also selects the entry pointer in the table at `+24`, 4 bytes each, zero-ended: entry 0 faces left, entry 1 right), `+4` to `21(A0)` (the
+  initial vertical direction byte, 0 = up, 1 = down; not an animation pointer), `+5` tick count, `+6` hit points to `103(A0)`, `+7` contact damage to
+  `104(A0)`, `+8` word = the object's type word (1: bank 1, 16x16; 2: bank 2, 32x24), `+10`/`+12` words to `8`/`10(A0)` (the hit-box offsets; `+12`
+  plus `+2` is also the row count `14(A0)`), `+14`/`+16` words to `16`/`18(A0)` (speeds in pixels per frame, x and y), `+18` word to `106(A0)` (the score
+  awarded on a kill), `+20` long = per-frame handler to `86(A0)`, `+32` the entry pointer that some handlers read as a period (low word) or a byte-script
+  pointer. An animation pointer addresses a run of sub-animations, each a list of frame words ended by `$fffe` (loop), `$fffd` (hold the last frame),
+  `$fffc` (jump, long follows) or `$ffff` (end and free the slot), so a frame list is read up to its first control word and the lists that follow in memory
+  belong to other objects. Kind 2 is the boss (`$1021a`). **Kind 3** (`$1037a`, slots 12-15) is the allocator of objects that handlers spawn
+  (`$01366e`, type in `D3`): `+1`/`+2` radii, `+3`/`+4` to `20`/`21(A0)`, `+5` tick, `+6` contact damage, hit points `103(A0) := $ff` (immune), `+8`
+  type word, `+10`/`+12` hit-box offsets, `+14`/`+16` speeds, `+18` long = handler; the Amazon spawns types 52 (monkey drop, `$0147e6`), 135/136
+  (chameleon tongues, `$015e54`), 137 (plant spit, `$014790`) and 141 (coconut, `$016210`), and none appears in the spawn list.
 
-What each Amazon type is (`hp` and `dmg` are the descriptor bytes; `hp` 254/255 is presumably "cannot be killed",
-not tested; the picture is the decoded first frames, checked against the live screen where a live object existed):
+What each Amazon type is (`hp` and `dmg` are the descriptor bytes; the picture is the decoded first frames, checked against the live screen where a
+live object existed; `py/spawn/` proves each behaviour with a match count, listed below the table):
 
 | types (count in the level) | kind | picture | hp / dmg | handler | live check |
 |---|---|---|---|---|---|
-| 105, 106, 107, 108 (10, 10, 6, 8) | 0 | fruit: watermelon slice (175), banana (176), grapes (177), green apple (178) | none | none | slot 0 frame 175 144/144 (`pass103/live_c3.snap`) |
-| 1-8 (4, 3, 3, 2, 6, 2, 1, 1) | 0 | small items: bomb (132), two grey pipe/boot pieces (130, 131), barrel (129), tin with an S (134), pot (135-140), spinning gold coin (141-146), book (133) | none | none | frames only |
-| 251 (63) | 0 | dormant effect: blank frame, then smoke rings (1-4), then an explosion (77-90); records come in clusters at one spot | none | none | frames only |
-| 0, 9 (1, 1) | 1 | the mole climbing out of the ground (bank 2 frames 62-70), at block 416 and block 313 (the room before the boss room) | 0 / 0 | `$00e842` (tests `$bb77` and the hero proximity `$b71a`) | frames only; the shop-keeper reading rests on the shop bubbles sitting in the same bank |
-| 109 | 1 | monkey (131-136, 159) that starts as a stone-textured strip (137) | 254 / 0 | `$013cb4` | frame 137 192/192 (`live_c20`) |
-| 110 | 1 | monkey | 8 / 1 | `$015934` | frames only |
-| 111 | 1 | tentacle rising from the ground (100-104) | 255 / 1 | `$015a38` | none seen |
-| 112 | 1 | plant (115-128) | 4 / 1 | `$015ac8` | frame 121 308/339 (`pass99/cyc4`) |
-| 113 | 1 | rock that crumbles to rubble (107-114) | 255 / 2 | `$01439e` | frame 107 566/566 (`live_c1`) |
-| 114, 115 (8, 6) | 1 | bee facing left (129, 130) or right (170, 171) | 1 / 1 | `$01415e`, `$01417c` | type 114 frame 171 415/415 (`box_edge`); type 115 frame 130 491/491 (`live_c13`) |
-| 116-125 (3+6+1+1+1+5+6+5) | 1 | brown winged flier (bank 1 frames 168-173); ten descriptors that differ only in `+4`, `+14` and `+16` | 255 / 1 | `$015b3c` (116, 117), `$0142be` (118-125) | type 117 frame 169 80/80 (`pass99/cyc2`); type 125 frame 170 106/106 (`pass99/warp_up112`) |
-| 126, 127 (18, 10) | 1 | green snake (bank 1 frames 164-167) | 4 / 1 | `$015c7a`, `$015c82` | type 127 frame 166 188/188 and frame 164 173/173 (`live_e2`), frame 167 173/173 (`live_c22`); type 126 best 67/173 (`pass99/cyc6`) |
-| 128, 129 (6, 2) | 1 | chameleon (146-149, 153-156) that shoots a tongue (150-152, 157, 158) | 255 / 1 | `$015ca6` | type 128 frame 147 389/389 (`live_c22`); type 129 frame 153 389/389 (`room160`), frame 155 389/389 (`live_e2`) |
-| 130 (5) | 1 | crocodile in a water line (138-145) | 254 / 0 | `$015d26` | none seen |
-| 131, 132 (1, 2) | 1 | leaf bush (105, 106) that turns into a bee (129, 130, 170, 171) | 10 / 1 | `$015d82`, `$015d9c` | none seen |
-| 138 (1) | 2 | the boss: eyes (160-165) and mouth shapes (166-169) | 60 / 1 | animation `$221d0` | the boss room render, 99th pass |
+| 105, 106, 107, 108 (10, 10, 6, 8) | 0 | fruit: watermelon slice (175), banana (176), grapes (177), green apple (178); scores 400, 800, 1600, 3200 (`$130f2`) | none | none | slot 0 frame 175 144/144 (`pass103/live_c3.snap`) |
+| 1-8 (4, 3, 3, 2, 6, 2, 1, 1) | 0 | small items: bomb (132), two grey pipe/boot pieces (130, 131), barrel (129), tin with an S (134), pot (135-140), spinning gold coin (141-146), book (133); items 1, 3, 5, 7 are the shop's goods | none | none | frames only |
+| 251 (63) | 0 | invisible fruit container: a blank frame (list `$2270a` = `[0]` hold); a shot releases a fruit | none | `$017982` | live, see below |
+| 0, 9 (1, 1) | 1 | the mole climbing out of the ground (bank 2 frames 62-70), at block 416 and block 313 (the room before the boss room): the shop keeper and the shop's entrance, see "The shop" | 0 / 0 | `$00e842` | live (`shop_mole_in_shaft.png`, `shop_room.png`) |
+| 109 (7) | 1 | stone slab piston (frame 137, its only animation is `[137]` hold); a solid child block in slots 12-15 absorbs shots | 254 unused / 0 direct | `$013cb4` | frame 137 192/192 (`live_c20`); 130-frame cycle, crush 18 to 16 to 14 |
+| 110 (11) | 1 | monkey (131-136, 159) | 8 / 1, score 200 | `$015934` | trigger, fall and throws at frames 26, 42, 58 |
+| 111 (10) | 1 | tentacle rising from the ground (100-104) | 255 / 1 | `$015a38` | trigger 12/12 |
+| 112 (7) | 1 | walking, spitting plant (115-128) | 4 / 1, score 800 | `$015ac8` | frame 121 308/339 (`pass99/cyc4`); patrol and spit |
+| 113 (12) | 1 | falling rock trap that crumbles (107-114) | 255 / 2 | `$01439e` | frame 107 566/566 (`live_c1`); fall and crumble |
+| 114, 115 (8, 6) | 1 | bee facing left (129, 130) or right (170, 171), wanders (114) or chases (115); score 100 | 1 / 1 | `$01415e`, `$01417c` | type 114 frame 171 415/415 (`box_edge`); type 115 frame 130 491/491 (`live_c13`); 20/20 picks, 160/160 chase calls |
+| 116-125 (3+6+1+1+1+5+6+5) | 1 | brown winged flier (bank 1 frames 168-173) on a scripted or ping-pong path | 255 / 1 | `$015b3c` (116, 117), `$0142be` (118-125) | 1,364/1,364 per-frame positions of six live fliers |
+| 126, 127 (18, 10) | 1 | green snake (bank 1 frames 164-167): 126 falls off ledges (score 400), 127 patrols (score 200) | 4 / 1 | `$015c7a`, `$015c82` | type 127 frame 166 188/188 and frame 164 173/173 (`live_e2`), frame 167 173/173 (`live_c22`); type 126 best 67/173 (`pass99/cyc6`) |
+| 128, 129 (6, 2) | 1 | chameleon (146-149, 153-156) that shoots a tongue (150-152, 157, 158) | 255 / 1 | `$015ca6` | type 128 frame 147 389/389 (`live_c22`); type 129 frame 153 389/389 (`room160`), frame 155 389/389 (`live_e2`); trigger 17/17 |
+| 130 (5) | 1 | crocodile in a water line (138-145), a rideable platform | 254 / 0 | `$015d26` | hero landed on the shut back twice |
+| 131, 132 (1, 2) | 1 | leaf bush (105, 106) that walks (131) or ambushes (132); score 1600 | 10 / 1 | `$015d82`, `$015d9c` | handler swap only (no live object exists) |
+| 138 (1) | 2 | the boss: eyes (160-165) and mouth shapes (166-169) | 60 / 1 | `$015e9a` | the boss room render, 99th pass; killed by real swipes |
 
-The match figures are `--check`: the frame is blitted at the object's declared `(x, y)` and the opaque pixels
-that equal the screen are counted, best over 84 snapshots (`pass99/`, `pass103/`, and 61 further checkpoints of the
-route walk; the ones quoted are in `pass103/`, unlabelled names being `pass103/*.snap`). A lower figure on another
-snapshot is another sprite drawn over it. The `--check` also asks, for the 18 kind-1 slots of six
-snapshots, whether the live frame word lies in the frames reachable from the descriptor's pointers; 18 of 18 do,
-which confirms the descriptor-to-object link but not an animation-state decoding. Not decoded: the sub-animation each
-handler selects, the descriptor's `+12`..`+18` words and what separates types 116-125, the kind-3 allocator, and
-what a hit point of 254/255 means in `$13a9c`. A first pass at this table read bank 2 as ending at frame 139 and
-took chameleons and bees for other things (`graphics.md`).
+**Hit points 254/255 mean immune.** `$013a9c` (`A0` = the enemy) returns at once if the enemy is dead (`101`) or invulnerable (`102`); otherwise it
+tests each shot in slots 16-19 (`30(A1) = $ff`; a spent shot, `101(A1) != 0`, is skipped unless `79(A1) = 1`, the special-fire shots) with `$b71a`. On
+contact it clears both contact links, marks an ordinary shot spent (`$013b0e`), and then `tst.b 103(A0)` / `bmi $013b3e` skips everything below when bit 7 is
+set (hit points 128 to 255): the shot is absorbed and does nothing, no invulnerability count starts. Otherwise `$013b20 sub.b D1,103(A0)` (`D1 = 104(A1)`,
+the weapon index) and `ble $013b4c` on a kill. A non-lethal hit sets `102(A0) = max(3, $227fd)`; the lethal path `$013b4c` sets `101 := 1`, zeroes `16/18`, loads
+the death animation from entry 3, plays sound `$1c` (list `$2195a` or `$21b6c`) or `$013be6[world-1]`, adds `106(A0)` to the score `$bb6e` (bee +100, plant
++800) and redraws the HUD (`$fc26`). Live (`py/spawn/immune_shot.py`): 8 immune objects (types 116, 117, 125, 113, 111, 129 at hp 255, 130 at 254, and 109's child
+block) reached the hp test with 0 subtracts and the shot still consumed; controls: a bee (hp 1) dies with 1 subtract, a plant (hp 4) goes to 3. An immune
+enemy is removed only by its own script (the rock crumbles when it lands or touches the hero) or by leaving the screen window (`$012bba`: x outside 0..`$130` or
+y outside -16..`$c8` clears the slot).
+
+**Common machinery** (read off the code, most checked live). Handlers of slots 7-11 run from `$012ba8` while `101 = 0`; the generic pass `$0b4de`, once per
+frame after every handler, moves each object (x by `16(A0)` in the direction of bit 0 of `20(A0)`, 0 = left; y by `18(A0)` by bit 0 of `21(A0)`, 0 = up) and
+animates it, skipping both while `100(A0) != 0` (a freeze counter). `$e80e` is hero contact (`$227f6 := 104(A0)`; the hero loses that much at `$eb80` and is
+invulnerable for 7 frames). `$e5a0(D0,D1,D2,D3)` is the proximity trigger: the object is shifted by (D2, D3), the hero gets a virtual box (centre offset
+(-D0, -D1), half sizes `2*D0+$20` and `2*D1+$18`) and `$b71a` runs; `$b71a` passes an axis when `d = centre(A0) - centre(A1)` satisfies `0 <= d < half(A1)` or
+`-d < half(A0)` (36/36 live results for tentacle, chameleon and rock, `trigger_scan.py`). `$136a8` turns the object at a solid tile (category >= 4) at the leading
+edge, `$139ae` flips `21(A0)` at solid tiles (category >= 2) above or below, `$131c8` = `$013870` (turn at x < `$20` or > `$108`) + `$136a8` + a turn when the tile under
+the leading edge is not ground, `$013270` = `$136a8` + falling off ledges (no ground under the box centre: `21 := 1`, `18 := 2 x 16`, `16 := 0`, landing snaps y to a
+multiple of 8). One frame is about 23,400 steps here.
+
+Behaviour of each type (frames, offsets and scripts are read from the descriptor and handler; the live column of the table gives the proof):
+
+- **109, stone slab piston (`$013cb4`).** Rests 25 frames (`$013f88[world-1]`: 25 for worlds 1-4, 15 for world 5), creates a solid child block in slots 12-15
+  (hp `$ff`, absorbs shots), then moves down by 1,1,1,1,2,2,2,3,3,4.. per frame (`$013f5c`) until its y is a multiple of 8 with a solid tile below (observed y 40
+  to 64 in 11 frames), retracts along the same table (11 frames) and rests again: period 47 frames. When the thrust ends (sound `$1d`) a hero touching it takes 2
+  damage (`$227f6 := 2`, hurt animation `$218ae`); while it moves it also pushes the hero sideways (`$b804`, static reading only). Live: the cycle over 130
+  frames and the crush at two consecutive thrust ends (`slab_crush.py`, health 18 to 16 to 14).
+- **110, monkey (`$015934`).** State 0 perched (entry 0 `$21fd6`, frames `[131,132,133,132]`), waiting for the hero in the box dx (-30, 22), dy (-24, 152).
+  State 1 (frame 134, `$21fe0`) falls along the script `$15a22` until `$01359c` finds ground; state 2 (`$21fe4`, frames 135, 136) stands and throws: when `82 & 15 = 0`
+  and `$15a14[82>>4]` is 1 (82 = 16, 32, 48, 128, 176, 192 of a 224-frame cycle) it freezes 7 frames on frame 159 and spawns type 141 (coconut, `$016210`, damage 1,
+  lobs toward the hero's side at 1-2 px per frame until a wall, ground or hero hit). Death (entry 3 `$21b6c`) drops type 52 (`$0147e6`), a pickup that adds 25 to
+  `$bb73` (max 250, sound `$19`). Live: throws at 82 = 16, 32, 48, the seven-shot kill and `$bb73` 0 to `$19`; later throws are static readings.
+- **111, tentacle (`$015a38`).** One animation `$21fee` (tick 3): `[62,62,100,101,102,103,104,103,102,101,100,62..]`, frame 62 blank. At the second blank frame it
+  freezes until the hero is in the box dx (-34, 26), dy (-40, 24) (`$e5a0(8,8,0,-8)`), then rises; blank it does nothing (no shot test, no contact); up, its hit box
+  grows upward (y offset 13, 10, 6, 4, 0, half height 11, 14, 18, 20, 24 for frames 100-104), damage 1, sound `$0c` at frame 100.
+- **112, plant (`$015ac8`).** Walks at 2 px per frame with `$0131c8` (`$22010` frames 115-120 left, `$2201e` 122-127 right, tick 2); each frame with probability 1/64
+  (`rand & $3f = 0`) it stops for 30 frames on frame 121 or 128; at freeze count 15 it spawns type 137 at (x + 16 x dir + 2, y + 4), aimed at the hero's position at that
+  moment, 3 px per frame along a straight line (`$b704`), removed on arrival or at a wall (`$13a46`). Live: patrol x 112..190, a spit from (140, 116) to (201, 121).
+- **113, rock trap (`$01439e`).** Waits for the hero in the box dx (-32, 24), dy (-24, 88), shakes by 2 px (left, right, right, left, left, right, script `$143e2`), falls
+  with speeds 1,1,2,2,3,3,4,4..; `$013544` kills it at a solid tile under its bottom edge; touching an unhurt hero does damage 2 and kills it at once (`bsr $13b4c`).
+  Death `$22036` frames 108-114, sound `$2b` in world 3. Live: fall y 16 to 36 then the crumble, slot freed 14 frames later; a hero in its path 14 to 12.
+- **114, 115, bees (`$01415e`, `$01417c`).** 114 wanders: `$0138dc` mode 2 picks one of eight compass headings (`$00ba8e`) every 24, 32, 40 or 48 frames at speed 2; 115
+  chases: `$013602` -> `$b932` every fourth frame, speed 2 toward the hero on each axis where the centre distance exceeds 2. Both flip `20/21(A0)` at walls; the animation
+  entry is `20(A0)` (`$22194` frames 129/130 left, `$2219a` 170/171 right); hit box 26 x 20. Live: 20/20 picks against the table, 160/160 `$b932` calls and 40 recomputes.
+- **116-125, fliers.** All ten: hp 255, damage 1, hit box 16 x 16, score 0; animation entry `20(A0)` (`$22046` frames 168-170 left, `$22050` 171-173 right). 118-125
+  (`$0142be`: `bsr $13a9c; addq 82(A0)`; at `82 == +34` word, `82 := 0`, `eori.w #$101,20(A0)`, reload the animation; `bsr $e80e`) ping-pong along their speed vector for P
+  frames each way (the +34 word is the low half of the entry slot +32): 118 left/down (0,1) P 30 (1 record); 119, 120 no records; 121 left/up (1,0) P 30 (1); 122 left/down
+  (0,3) P 20 (1); 123 left/down (2,2) P 30 (5); 124 left/up (2,2) P 30 (6); 125 left/up (3,0) P 20 (5). 116, 117 (`$015b3c`: `bsr $13a9c; bsr $013308; bsr $e80e`) follow byte
+  scripts: entry +32 points to a speed script (indexed by `82(A0)`) and a direction script (by `84(A0)`), one entry per frame, `$fe` restarts, `$fc` replays backwards with
+  the direction bits mirrored; direction code bits 0-1 vertical (1 up, 2 down), bits 2-3 horizontal (4 left, 8 right), the speed byte applying to every axis it moves
+  (`$013508`). 116 (`$15b4e`) is a clockwise rectangle 30 x 45 px, period 90 frames (speed 3 x15, 0 x10, 3 x10, 0 x10, 3 x15 ...; down, left, up, right); 117 (`$15c0c`) goes down
+  three 30 px steps with pauses and back up, period 100. Live (`py/spawn/verify_fliers.py`, synchronised at `$b4de`, camera delta subtracted): 125 418/418, 123 92/92, 124
+  36/36, 116 418/418, 117 (slots 9 and 11) 418/418 each; 118, 121, 122 share the handler 118-125 (inferred).
+- **126, 127, snakes.** `$015c7a` (126) is `$013270`: walks at 2 px per frame, turns at walls only and drops off ledges; `$015c82` (127) is `$0131c8`: turns at walls, ledges and
+  the screen edges. Frames `$2205a` 164/165 left, `$22060` 166/167 right; death `$2195a`. 127 live (turns at 266 and at a wall at 64); 126 by a handler swap only.
+- **128, 129, chameleons (`$015ca6`).** Idle entry 0 (`$22066` for 128, `$2208c` for 129: frames 146-148 and 153-155); while `78(A0) = 0` and the hero is in front (129: dx 0..64,
+  dy -32..24; 128: dx -64..0, dy -32..24; `$e5a0(8,8,+-32,-8)`) it starts the tongue: `78 := 25` (cooldown per frame), entry 1 (`$220b2` / `$220c4`, six ticks of frame 149 / 156,
+  then `$fffc` back), and spawns type 135 (left) / 136 (right) (`$015e54`, frames 150-152 / 157, 158, 152, damage 1, hit box by frame from `$015e76`) 32 px in front. Body contact
+  also does 1 damage. Live for 129: the tongue in the first frame, cooldown 25, a second tongue after a 37-frame period; 128's rule is the mirror (inferred).
+- **130, crocodile (`$015d26`).** Walks 1 px per frame in a water line (`$013870`, `$136a8`), jaw animation entries `$220d6`/`$22132` (45 entries, tick 3). Only on frames 140/144
+  (jaws shut) does it call `$e5fe`, the moving-platform routine (a hero falling onto it with the feet 0..8 px above its top gets `$227f9 = 1`, `$227a0` = the object and is carried at
+  its speed); on other frames a riding hero is dropped (`clr.w 16(A1)`, `$cb2e`, static). Damage 0.
+- **131, 132, leaf bushes.** `$015d82` walks at 1 px per frame with `$0131c8` and pauses 48-96 frames with probability 1/64 (`$13988`); `$015d9c` is frozen until the hero is in the box
+  dx (-78, 38), dy (-24, 24) (`$e5a0($20,0,-16,0)`), then walks at 3 px per frame. Their only animation is `$2218e` (frames 105, 106); nothing turns into a bee.
+- **251, fruit containers (`$017982`, called for every slot 0-5 at `$012e0e`).** A kind-0 object with descriptor `+3 = 9` (`79(A0) = 9`), blank, list `$2270a`. Touching it does nothing (entry 9 of
+  `$012e22` is `$012e4a`, `move #1,CCR; rts`; 26 contact passes, unchanged). `bsr $013bec` is the shot test (slots 16-19, `$b71a`; carry on a hit, the shot marked spent); on a hit `clr.w
+  0(A0)` removes the marker and `bsr $01366e` (D1 = D2 = 0) spawns type `$0179d8[(world-1)*4 + (rand & 3)]` (10-13, 59-62, 105-108, 146-149, 198-201; the Amazon's four are the fruit)
+  at the marker's x, y with `78(A0) := 1`; such a fruit (`79 = 8`) hops (`$017a72`: up 8,4,4,3,3,2,2,2,1,1,1,1 then down 1,1,2,3,4) until it lands (`$0179ec`), then `78 := 0` and it is a
+  normal pickup. Records sharing a column and y are stacks (3 at col 904, y 168): an ordinary shot pops one marker (the shot is spent), the special-fire shot (`$227fa` = 1, `79(A1) = 1`,
+  `cmpi.b #1,79(A1)` in `$013bec`) pops the whole stack in one frame. Nothing creates markers at run time (no code spawns type 251; `$0179d8` does not contain it), so they are placed by the
+  level. Live: three markers, one pulse each (shot position poked), 3/3 replaced by fruit with `hits` `$01799c` x1 and `$01366e` x1 each and a control shot 0 and 0; natural shots
+  (hero position only poked): 5 pulses removed 3 markers; a stack of 3 in mode 1: one shot, 3 to 0 markers; mode 0: 3 to 2 to 1 to 0.
+
+Not proven: 118, 121, 122 (and 119, 120) have no live object, 131 and 132 none at all; 128's trigger was not fired live; 109's sideways push, the crocodile dropping a rider on open jaws and the
+monkey throws after the third are static readings; the coconut script `$0161e8` and the plant spit's stepper (`$0199d2`/`$019a50`) were characterised by observed positions; special-fire shots
+(fire modes `$227fa` 1-3 from the pickups at `$012ec8`, `$012f2c`, `$012f90`; `$013ae2`) were exercised only for the marker stack. The first spawn-type pass read bank 2 as ending at frame 139 and
+took chameleons and bees for other things (`graphics.md`), and read `spawn_types.py` frame lists ("reach") as belonging to one object although the lists are not delimited, which
+produced the monkey, leaf-bush and marker misreadings above.
+
+### The shop (104th pass)
+
+`$00e842` is one routine for two objects, and the mole is the shop keeper (`py/shop/route_driver.py --shop`, segments `seg5b`-`seg11b`, all
+replaying byte-identically; images `shop_mole_in_shaft.png`, `shop_room.png`, `shop_bubble_too_much.png`,
+`graphics/bank2_shop_frames_62_79.png`). The staging up to the block-313 ledge is the poked start of the hop-4 route, so the shop branch
+has not been re-run from the chained real-input snapshot.
+
+- **Outside (`$bb77 == 0`)**: the type 9 mole (spawn record col 1253, y 184, descriptor `$108a8`, live slot 11) sits at the bottom of a 32 px
+  pit under the stair in room `299..318` (world col 1252-1255). It stays dormant (animation 0, frame 62) until the hero is inside the box `$e5a0`
+  builds around it (about 24 px each side), then climbs out over 13 animation steps (frames 62, 63, 64, 66, 65, 66, 65, 66, 65, 67, 68, hold
+  word `$fffd`). It is reached by walking off the ground to its left and falling in (the hero lands at `y=160`). When the hero touches it
+  (`$b71a`) with the animation at `$fffd`, hero state 0 and `$227f5` bit 1 (down) set, the handler sets `$bb77 := 1`, fades (`$1c3c8`)
+  and installs a record of `$ea92` (16 bytes per world, an "enter" and a "return" record of four words: start block, end block, hero block-x,
+  block-y for `$c050`). World 3: enter `(410, 418, 5, 4)` (`$227b4 = $19a`, camera `$3340` = limit, hero `x=$c0`, `y=$90`), return
+  `(308, 318, 7, 4)` (`$227b4 = $134`, camera `$2680`, hero `x=$100`, world x 10080). The entry needs about 1M steps of holding down after the fall
+  (a control holding down from step 0 sets `$bb77` at step 1,100,000).
+- **Inside (`$bb77 == 1`)**: an 8-block shelf-and-ladder cave. The shopkeeper is slot 7 (the type 0 record at block 416, same `$e842`, frames
+  69/70), the price bubble slot 8 (`$21822`, a no-op handler `$13cb2`) and the goods slots 0-4 (spawn types 1, 3, 5, 5, 7 at blocks 411-414; kind-0
+  pickups whose item code `$79(A0)` comes from descriptor byte +3). The pickup loop `$012c8e..$012e20` walks slots 0-5 and tests contact with
+  `$b71a`. With `$bb77 == 1`: touching only shows the price (the mole frame `$46`, the bubble from table `$eae2` by item code); fire pressed with the
+  hero idle compares the price byte (table `$eaf2`) with the coins `$bb73` (`bge`): enough coins, the mole plays `$21b3c`, the bubble `$21b4c`
+  (THANK YOU, frame `$4e`), the price goes to `$22801`, the item routine runs through the jump table `$12e22` and the item is cleared; too few, the bubble
+  plays `$21b5c` (TOO MUCH, frame `$4f`) and nothing is charged. `$fd0e` counts `$22801` down by 5 per call taking 5 coins per step (255 to 180 =
+  75 for the worm can). Item codes: 0 SOUP CAN 250 (frame `$48`), 1 WORM CAN 75 (`$4b`), 2 BOMB 125 (`$49`), 3 LASER GUN 175 (`$47`), 4 BIG GUN 150
+  (`$4c`), 5 EXT'D BAR 200 (`$4a`); frame `$4d` is EXIT?. The Amazon shop stocks codes 2, 3, 1, 1, 5 only. Effects: code 1 (`$12e7e`) heals `4 + $bb76`
+  capped at `$bb75` (live 5 to 12), code 0 (`$12e50`) is the weapon upgrade (`$bb72++`, wrapping at 4 to 3), code 2 (`$12ec8`) sets `$227fa = 1`; the
+  others are unread.
+- **Leaving**: touching the mole shows EXIT? (bubble `$4d`, mole `$46`); fire (`$227f5` bit 7) plays sound `$22`, sets `$bb77 := $fe` and installs the
+  return record. When the room's animation is done `$ea66` sets `$bb77 := $ff` and clears the mole's slot, so the shop is usable once (`$bb77` is
+  cleared at `$bbe2`: once per life or level, inferred). `$d2cc` and `$12ccc` also test `$bb77`, so gameplay changes while it is 1. The other worlds
+  carry the same structure (`worlds.md`: Ice Land shop records `(411, 419, 3, 4)` / `(318, 331, 2, 4)`, Bermuda `(411, 419, 5, 4)` / `(352, 400, 4, 3)`,
+  read from the table, not entered).
+- The purchase and health effect of the worm can were driven with coins and health poked (`w bb72 03ff0512`); the too-much refusal used the natural 25
+  coins. A health poke `w bb74 12120300` zeroes `$bb77`, which turned every item into a free pickup until found.
 
 ## Known traps
+
+Added by the 104th pass (parallel route, boss, shop, level-end and world passes):
+
+- **The health poke writes more than health.** `w bb74 12120300` writes `$bb74..$bb77`: it sets `$bb76` (the world index) to 3 and zeroes `$bb77`, the
+  shop flag (inside the shop every item became a free pickup). In another world write `1212<world>00`, and in the shop `w bb72 <weapon><coins>1212`.
+  `w bb72 XX000000` zeroes `$bb73-$bb75` and so health. `$227b6` and `$227b8` are adjacent words: `w 227b6` also writes the limit, so pass the current
+  limit as the low word, and check `$227b4` after every warp.
+- **A frame is about 24,000 steps in gameplay rooms** (12-15k on idle screens): a `kbd` jump key held less than one frame is missed (1/8 at 6,000
+  steps, 4/8 at 12,000, 8/8 at 24,000 and 30,000); walk 20k steps per pixel; a jump and fall takes about 1M steps, so a landing budget under 1M ends
+  mid-air; releasing up before the game polls the pad means the jump never starts and reads as an instant landing.
+- **Floor dips, holes and shafts.** An 8 px dip with a lip stalls the hero for good and it is bitten to death; walking into a bottom-exit hole is silent
+  until `y` reaches 192, then the room is left; a camera-follow hero pulled toward x=192 adds -2 px per iteration to any drift test above x=192.
+- **Take a sprite bank's extent from the LSD! header, not from the last non-zero frame:** Klondike's bank 2 ends at frame 159 and frames 160-171 are noise.
+  Bank 1 frames 0-159 and bank 2 frames 0-99 are common to all worlds; the rest is per world (`worlds.md`).
+- **`spawn_list.py` prints garbage on a snapshot that is not mid-level** (world-select, Game Over, `klondike_plus_30M.snap`): `$27200` is not a spawn list
+  there, and a "kind-2 record" printed from it is nothing. Use a mid-level snapshot such as `klondike_p9M.snap`, or `agents/wsel/py/spawn_kind2.py`.
+- **World-select**: once the cursor has settled (`$227f3 = 1`) the lock test at `$17e2c` is skipped, so poking `$bb79` afterwards does not move it; fire pressed
+  while the cursor is still travelling (`$227f3 = 0`) is lost (Bermuda's icon needs about 4M steps).
+- **`hits` output piped through `tail` lost its first lines** and made `$b0ca` look unhit: read the whole output. `bt` at `$17c9c` raises an unhandled
+  `AddressError` and ends the REPL. `watch` reports go to stderr. `ATARI_TRACE_GEMDOS=1` logs function numbers only: take file names from A0 at `$1c6de`.
+- **A "no hit on natural aim" reading needs the geometry:** the Amazon boss's "shot" is a static swipe that only a jumping hero overlaps, so 30 standing pulses
+  hitting nothing said nothing about the mechanism until the overlap window was computed.
 
 - **Proving a jump/maneuver reaches a target position is not proof it was safe — check health and
   other hidden state too, not just position.** The 87th pass wrote up `kbd ff`/`kbd 09` from
@@ -1484,46 +1729,24 @@ took chameleons and bees for other things (`graphics.md`).
 | `py/start_room_route.repl` | **103rd pass**: real-input replay of the route's first two hops, from `pass99/warp_up112.snap` to room `188..285` (usage in `py/README.md`) |
 | `py/tiles.py`, `py/sprites.py` | **102nd pass**: render the tileset, level, category overlay, palettes, sprite banks and font from any snapshot, and `--check` them against the live screen (usage in `py/README.md`) |
 | `py/twintree_item_route.repl` | **98th pass**: REPL script for the whole item route from `pass96_doublejump_v2.snap` (usage and expected output in `py/README.md`) |
+| `worlds.md`, `graphics/<world>_*.png` (`klondike`, `orient`, `ice`, `bermuda`) | **104th pass**: the four other worlds: tile banks, whole-level renders, category overlays, level maps with rooms, sprite banks, spawn-type sheets, gameplay and boss-room screenshots (`worlds.md` "Files"); `graphics/klondike_conveyors_room93.png` |
+| `ending_screen.png`, `world_select_after_win.png`, `world_select_four_done.png` | **104th pass**: the Bermuda ending ("CONGRATULATIONS MONTY", `$183c0`), world-select after an Amazon win (red X on the Amazon, `$bb79 = $14`) and after four wins (Bermuda unlocked) |
+| `shop_mole_in_shaft.png`, `shop_room.png`, `shop_bubble_too_much.png`, `graphics/bank2_shop_frames_62_79.png` | **104th pass**: the type-9 mole in its shaft with the hero above it, the shop cave (goods, bubble, shopkeeper), the TOO MUCH bubble, and bank 2 frames 62-79 (mole and bubbles) |
+| `py/route/`, `py/shop/`, `py/boss/`, `py/level_end/`, `py/worlds/`, `py/spawn/` | **104th pass**: the event-driven route driver and replays, the shop branch, the real-input boss fight, the level-end scripts, the per-world pipeline and census scripts, the spawn-type proofs (`py/README.md`, "Subdirectories") |
 
 ## Not yet exercised
 
-**`$b288` keypress-timing bisection is done (82nd pass, continued)** — see "Why `$b288` sometimes
-never runs" above: it needs F1 then any second recognized key, in order, and is insensitive to hold
-duration and gap length once both are present; no combination was found that reaches gameplay while
-skipping it. The old lineage's exact failure mode is not reproduced and is now suspected to predate
-today's cold-boot path entirely (its script no longer exists to check) rather than being a live,
-re-triggerable timing race — not worth further bisection time unless a *new* instance of the same
-symptom turns up on a fresh cold boot.
+Current open items, in the order `sessions/impossamole.md` ranks them (everything else this README once listed here has been done):
 
-**Item 6 (drive Amazon gameplay past this one screen) is well underway but still open** — see "Past
-the first screen" above: the hazard/collision mechanism itself is now `callcap`-proven end to end
-(not just visually correlated), the full tile-classification table is read out, the HUD routine is
-named, and a real weapon/projectile system is proven from disassembly. Held right+up (jumping) gets
-past the first screen's ground hazard into new terrain (ladder, spikes, totems, water), and
-12,000,000 steps in reaches a second new screen (twin trees, vine curtains, a totem/ladder structure)
-with a second hazard creature that the same held input has not yet been driven past alive. **Open
-now**: get past that second-screen creature (a different dodge timing, or actually landing a weapon
-shot on it); confirm live whether a fired projectile damages an enemy at all (the write side —
-`$00d3cc` spawning a `type=3` slot — is proven, the read/damage side is not); and continue mapping
-Amazon's content beyond that point.
-
-Also open: the Klondike cold-boot run past ~9M steps with no player input goes black and PC moves to
-the shared title/select transition routine (`$1c3d8`) — consistent with an unattended death, but not
-yet confirmed or rendered (the screen may be on the buffer `snap_render.py` isn't currently displaying;
-see "Known traps"). Driving Klondike with real movement input from the fresh-cold-boot lineage (instead
-of leaving it running untouched) would both dodge this and give a proper look at mine-cavern gameplay
-mechanics, which have not been examined at all yet (only Amazon's `$c2fa`/`$be96`/`$c0d4` mechanics
-have been proven live, all from the old lineage — worth spot-checking they still hold from a fresh
-Amazon cold boot too, though there's no reason to expect the RAM contents relevant to those mechanics
-differ between the two lineages downstream of world-select).
-
-Past the gameplay movement mapping and the object-render/tile-classification mechanisms (see above):
-the ladder-climb and jump/attack states (`$227f3 := 4`/`2`) are read statically only, not yet driven
-live; what the `$25000` tile-classification table's 256 entries actually map to; whether any
-enemy/AI-controlled object exists at all — every object seen in this single screen of the Amazon
-level so far (in this emulator) is either the hero, a static background prop, or a dormant (`type=0`)
-slot, no hostile behaviour has been observed because gameplay hasn't been driven past this one screen
-in this emulator (Klondike Mine's cavern screen has an unidentified second figure worth checking, see
-`coldboot_klondike_gameplay.png`); whether Orient/Ice Land/Bermuda Triangle load correctly in this
-emulator too; the tile and sprite formats are decoded (`graphics.md`), level data (`MDATA*.DCH`,
-`BRMUDA*.DAT` etc.); and control flow / CFG extraction.
+- **Natural play, unpoked.** The Amazon route from the start room to the boss room is on real input from room `118..137` on, with health
+  refilled per segment and a labelled poke into `118..137`; the boss falls to real swipes but with the weapon or health poked. An unpoked run
+  needs the two type-4 upgrades (blocks 27 and 134), a bee kill (a fire pulse when it is level with the hero) and a dodge policy for the boss's
+  type 139/140 shots. The other four worlds have cold-boot, warp and boss-kill proofs only, no played route.
+- **Damage sources not pinned:** what the water tiles (category 9) cost (about seven 1-hp drops at the water surface had no object contact,
+  inferred from timing, no `bp eb8c` census), the unidentified drain in room `299..318`, and the type-2 enemies met on the route.
+- **Shop items:** only the worm can (code 1) was bought; codes 0, 2, 3, 4, 5 and the shop ladder are undriven.
+- **Level-end chain for Klondike and Orient** (their boss kills were done, the flag chain only for the Amazon, Ice Land and Bermuda), name
+  entry to its end, and the cheat names' effects (`$bb7d`).
+- **Per-world code:** `$ee16` (death dispatch), `$ea92` (shop records) and `$c028` words 0-1 are located, not decoded; Orient's category 5/8
+  behaviour, Bermuda's 17-hop chain on real input, Klondike bank-2 residue's source.
+- **Graphics:** the title, world-select and ending art formats, animation order per action, the `$216e2` flash palette.

@@ -8,8 +8,8 @@ descriptor's first byte picks the allocator (`$10046`: 0 = `$10056`, slots 0-5; 
 
   kind 0 (`$10056`): +1 height, +2 animation tick count, +3 -> 79(A0), +4 long animation list. Object type word 1,
          so the frames are bank 1 (16x16, `$3b600`).
-  kind 1 (`$100ec`): +1/+2 -> 12/13(A0) (hit-box radii), +3 animation-set index into the pointer table at +24
-         (4 bytes each, zero-ended), +4 -> 21(A0), +5 tick count, +6 hit points 103(A0), +7 contact damage 104(A0),
+  kind 1 (`$100ec`): +1/+2 -> 12/13(A0) (hit-box radii), +3 -> 20(A0) (initial horizontal direction, also the entry index into the pointer table at +24)
+         (4 bytes each, zero-ended), +4 -> 21(A0) (initial vertical direction, 0 up / 1 down), +5 tick count, +6 hit points 103(A0), +7 contact damage 104(A0),
          +8 word = object type word 0(A0) (1: bank 1 16x16, 2: bank 2 32x24), +10/+12 words -> 8/10(A0) (+12 plus
          +2 is the row count 14(A0)), +14/+16 -> 16/18(A0), +18 word -> 106(A0), +20 long -> 86(A0) (per-enemy
          handler), +24.. animation list pointers.

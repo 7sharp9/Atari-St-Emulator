@@ -1,0 +1,14 @@
+hits 200000 1813c 182bc 19f5a 183b4 b088 17a9e 17b52 17c9c 17df4
+m bb6e 4
+m bb79 1
+kbd ff
+kbd 80
+s 60000
+kbd ff
+kbd 00
+hits 3000000 1813c 182bc 19f5a 183b4 b088 17a9e 17b52 17c9c 17df4
+m bb6e 4
+m bb79 1
+r
+snap scratchpad/impossamole/agents/wsel/go1_after_fire.snap
+q

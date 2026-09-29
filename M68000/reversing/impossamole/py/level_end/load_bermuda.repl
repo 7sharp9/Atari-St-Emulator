@@ -1,0 +1,25 @@
+kbd ff
+kbd 08
+s 60000
+kbd ff
+kbd 00
+s 1500000
+kbd ff
+kbd 08
+s 60000
+kbd ff
+kbd 00
+s 1500000
+s 1000000
+m bb76 1
+m 1a338 1
+kbd ff
+kbd 80
+s 60000
+kbd ff
+kbd 00
+s 30000000
+m bb76 1
+m bb74 4
+snap scratchpad/impossamole/agents/wsel/load_bermuda_30M.snap
+q

@@ -1,0 +1,10 @@
+w bb74 12120300
+w 227b4 011522a0
+w 1a574 00d8ffe8
+w 227f0 00000002
+s 1500000
+m 227b4 8
+m 1a572 8
+m 227f3 1
+snap scratchpad/impossamole/agents/hop4/room299_poked.snap
+q

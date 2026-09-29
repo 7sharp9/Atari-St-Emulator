@@ -1,0 +1,5 @@
+bp fbcc 4000000
+watch 22800 1
+s 1300000
+unwatch
+q
