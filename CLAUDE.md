@@ -214,6 +214,8 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   one-line change into a whole-file diff. Edit such files with the Edit tool, or in Python
   opened in binary, and read `git diff --stat` before staging.
 
+- REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field clobbers the next three. Impossamole's `w bb74 12120300` (health) also set the
+  world index `$bb76` to 3 and zeroed the shop flag `$bb77`; read the neighbouring fields and write the whole longword deliberately.
 - Bash heredocs and inline `python -c` mangle backslashes (Windows paths, `\AUTO\`, regexes).
   For text containing backslashes use the Edit/Write tools, not shell string surgery.
 - The Bash tool's working directory drifts between calls: `cd` to an absolute path first.
@@ -226,7 +228,7 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   the last packet wrote until the next one changes it. A press-then-release pulse timed only by the
   `s <n>` gap between one packet's two bytes can land entirely between two of the game's per-frame
   polls and never register as "pressed" on the frame that actually checks it. Hold the pressed state
-  for at least one full VBL frame (check `instructionsPerFrame`, ~12000-15000 steps typical) before
+  for at least one full VBL frame (check `instructionsPerFrame`: ~12000-15000 steps on an idle screen, but ~24,000 in impossamole's gameplay rooms, so 30,000 is the safe hold) before
   sending the release packet when testing whether an input is read at all — a same-packet-timing
   pulse read as "this input does nothing" cost impossamole's world-select confirm a false negative
   for a full handoff (`reversing/impossamole/README.md`'s "Confirming a world" section).
