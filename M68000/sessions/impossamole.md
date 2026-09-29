@@ -1,6 +1,7 @@
 # Impossamole: handoff
 
-Updated 2026-09-29 by the session that ended at the 100th-pass commit (see `git log`).
+Updated 2026-09-29 by the 101st-pass session, which changed no code or docs (orientation and the start-room map only);
+the last work commit is still the 100th pass (see `git log`).
 
 ## Resume point
 
@@ -20,7 +21,8 @@ Updated 2026-09-29 by the session that ended at the 100th-pass commit (see `git 
   unknown line (no `#` comments); `snap <path>` writes relative to the dotnet process's directory, give
   the full path; `watch <addr> <len>` takes a **decimal** length; `w <addr> <8 hex digits>` writes a
   longword (`w bb74 12120300` sets health `$12` and keeps `$bb76=3`).
-- Uncommitted work left behind: none from this session. `M68000/sessions/README.md` still carries the
+- Uncommitted work left behind: none from this session (`scratchpad/impossamole/pass101_map.png`, a start-room
+  map crop, is gitignored scratch). `M68000/sessions/README.md` still carries the
   pre-existing whitespace-rewrap diff (not this workstream's), and `.obsidian/`, `Cadaver/` are untracked.
 
 ## Proven so far
@@ -61,23 +63,39 @@ See `reversing/impossamole/README.md` for detail, match counts and addresses:
 
 ## Open, in priority order
 
-1. **Play the route with real input.** Every hop of the four-exit route is table-derived (one bottom and one
+1. **Decode and commit the graphics (Dave's direction, 101st pass).** Nothing is decoded yet: no `graphics.md`, no
+   tileset or spritesheet PNG (the committed images are screenshots plus a collision-category map, which shows
+   categories, not art). Known addresses only, all from the README: 2x2 block definitions `$29000`, block map
+   `$27600`, tile map `$31800`, object sprite table `$3b600` (128 bytes per entry), hero bank `$42e00` (384
+   bytes per entry, 24 rows x 16 bytes, populated only on a fresh-cold-boot lineage), disk files `CHARS11.DAT`,
+   `SPRTS22.DAT`, `SPRTS33.DAT`. Prove it with: (a) tiles: find the 8x8 tile art the `$29000` blocks index (read
+   the redraw routine `$18ed4` builds the screen with, or `gfxview.py <snap> --contact`), render a tileset sheet,
+   then re-render the level map from real tiles and compare with `amazon_gameplay.png` at match count; (b)
+   sprites: read the blit routine the `$3b600`/`$42e00` tables feed, decode with the mask it uses, render a
+   contact sheet per bank and check hero/enemy/boss frames against a same-step screenshot; (c) palette per world.
+   Commit the PNGs, table-index them in a new `graphics.md`, and run the contact-sheet-vs-screenshot coverage check
+   (skill section 4) before calling a catalog complete.
+2. **Play the route with real input.** Every hop of the four-exit route is table-derived (one bottom and one
    top exit were forced in the 99th pass, the boss-room entry in the 100th). Hero placement and camera
-   are poked; the open work is reaching a trigger by moving: the top exit at block 112 of the start room
-   is not on the route, the bottom exit at block 135 (col 540, hero screen `x` about 80 with camera `$1020`)
-   is. Confirm `$227f3` is 3 while falling off the bottom and 2 while leaving through the top, and that the
-   hero can get to the trigger block at all (walls, hazards: map with `py/level_map.py`).
-2. **Natural aim at the boss.** The boss is at `y=96` and shots fly along the hero's `y`; find where the hero
+   are poked; the open work is reaching a trigger by moving. The start room's two bottom exits are the
+   blocks 131 (cols 524..527) and 135 (cols 540..543, on the route). The trigger block is
+   `(x - $20 + camera + 16) >> 5`, so with camera `$1020` block 131 needs hero `x` 80..111 and block 135 needs
+   `x` 208..239 (derived from the README formula, not yet tested live; the earlier "x about 80" was block 131's
+   value). The category dump (`level_map.py` loader, cols 500..556) shows both as open shafts from row 4 to row 23,
+   with an open passage at rows 16..19 between them and a solid block at cols 528..539, rows 8..11. Confirm `$227f3` is 3
+   while falling off the bottom and 2 while leaving through the top, and that the hero can reach the shaft at
+   all (walls, hazards).
+3. **Natural aim at the boss.** The boss is at `y=96` and shots fly along the hero's `y`; find where the hero
    has to stand (the room's ledges) and which weapon (`$bb72`, damage per shot, and the four-slot pattern in
    `$d4be`) makes 60 hit points reachable, and that a shot really hits without the position poke.
-3. **World-select return and the world-5 branch after `$b0b2`** (the `$1c3c8` fade runs longer than the 4M
+4. **World-select return and the world-5 branch after `$b0b2`** (the `$1c3c8` fade runs longer than the 4M
    steps checked; `hits` on `$b0ca`/`$17c9c` with 10M steps).
-4. **Decode the spawn types** (`spawns.txt`: which of types 105-132 are which enemy, item or hazard;
+5. **Decode the spawn types** (`spawns.txt`: which of types 105-132 are which enemy, item or hazard;
    descriptor `+12..14` radii, `+8` type word, `+28`/`+48` anim and handler pointers), and what the 63
-   type-251 markers are.
-5. Pin what the item is (`bpc` on the write that sets slot 0's `type` to 0); slot 8's patrol rate; categories
-   `1`/`2`/`3` (render suggests ladder / small ledge / platform, untested); Orient/Ice Land/Bermuda from a
-   fresh cold boot; whether slots 9/10 move.
+   type-251 markers are. Item 1's sprite banks give these types faces.
+6. Pin what the item is (`bpc` on the write that sets slot 0's `type` to 0); slot 8's patrol rate; categories
+   `1`/`2`/`3` (render suggests ladder / small ledge / platform, untested; real tiles will settle it); Orient/Ice
+   Land/Bermuda from a fresh cold boot; whether slots 9/10 move.
 
 ## Known traps
 
@@ -98,6 +116,9 @@ Workstream traps live in `reversing/impossamole/README.md`'s "Known traps". New 
 
 ## Next session
 
-Open item 1: from a snapshot in the start room, reach the bottom exit at block 135 with real movement
-(map it with `level_map.py --x0 500 --x1 560`), then follow the route. Keep the health poke labelled. Do not
-re-derive the map, room table, spawn list or boss data: they are in the README and the scripts.
+Open item 1, graphics first (Dave's call): start from `scratchpad/impossamole/pass99/cyc5.snap` (any Amazon
+snapshot has the tables resident), run `gfxview.py <snap> --contact` for a whole-RAM overview, then pin the
+tile art format via the screen-rebuild routine `$18ed4`, render the tileset and a real-tile level map, and only
+then the sprite banks. Commit PNGs plus a `graphics.md`, and index them in the README files table. The route
+walk (item 2) follows once the real-tile map makes the shafts and ledges readable. Do not re-derive the map, room
+table, spawn list or boss data: they are in the README and the scripts.
