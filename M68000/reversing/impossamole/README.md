@@ -1169,8 +1169,9 @@ slot 8 arrives — not yet found by any trial in this pass.
 The scroll limit `$227b8 = $1020` is not the end of the level, it is the end of the *first room*. The
 Amazon (world index `$bb76 = 3`) is a single 1680-column x 24-row tile map at `$31800` (`amazon_level_map.png`,
 rendered by `py/level_map.py`; categories: gold walkable `4`, red hazard `9`, and `1`/`2`/`3` drawn green/blue/magenta, which
-line up with the ladders, small ledges and crossbars/diagonal stairs seen on screen, so `1` is probably ladder and
-`3` a one-way platform, inferred from the render, not tested) holding many *rooms*. A room is a block
+line up with the ladders, small ledges and crossbars/diagonal stairs seen on screen; the real-tile overlay in
+`graphics.md` confirms `1` ladder, `2` branch-stub ledge, `3` log walkway/stair/bridge and `9` spikes and water, as a
+visual correlation) holding many *rooms*. A room is a block
 range `[start,end)` of that map (a block is 32px = 4 tile columns; the map has 420 blocks) and only one room is
 live at a time:
 
@@ -1395,6 +1396,10 @@ live at a time:
 | `amazon_room_after_bottom_exit_131.png` | **99th pass**: the cave room `156..161` right after the poked bottom-exit transition at block 131 (see "The level is one tile map of connected rooms") |
 | `amazon_boss_room.png` | **99th pass**: the boss room `318..326` right after the transition, the boss tree face on the right trunk |
 | `py/level_map.py`, `py/level_rooms.py`, `py/spawn_list.py`, `py/boss_kill.py` | **99th pass**: render the tile map / print the room graph from any snapshot (usage in `py/README.md`) |
+| `graphics.md` | **102nd pass**: the graphics pipeline (level, block map, block definitions, tile bank, scroll cache), sprite banks, palettes, font, collision categories, with match counts |
+| `graphics/amazon_tileset.png`, `graphics/amazon_level_tiles.png`, `graphics/amazon_categories_start.png` | **102nd pass**: the 256-tile Amazon bank, the whole level from real tiles (13440x192), and the first 80 blocks with the collision categories tinted over the art |
+| `graphics/sprites_bank1.png`, `graphics/sprites_bank2.png`, `graphics/hud_font.png`, `graphics/world_palettes.png` | **102nd pass**: sprite bank 1 (`$3b600`, 16x16), bank 2 (`$42e00`, 32x24, hero and shop art), the 8x8 font and the five world palettes |
+| `py/tiles.py`, `py/sprites.py` | **102nd pass**: render the tileset, level, category overlay, palettes, sprite banks and font from any snapshot, and `--check` them against the live screen (usage in `py/README.md`) |
 | `py/twintree_item_route.repl` | **98th pass**: REPL script for the whole item route from `pass96_doublejump_v2.snap` (usage and expected output in `py/README.md`) |
 
 ## Not yet exercised
@@ -1437,5 +1442,5 @@ level so far (in this emulator) is either the hero, a static background prop, or
 slot, no hostile behaviour has been observed because gameplay hasn't been driven past this one screen
 in this emulator (Klondike Mine's cavern screen has an unidentified second figure worth checking, see
 `coldboot_klondike_gameplay.png`); whether Orient/Ice Land/Bermuda Triangle load correctly in this
-emulator too; sprite/tile formats beyond the collision map now proven; level data (`MDATA*.DCH`,
+emulator too; the tile and sprite formats are decoded (`graphics.md`), level data (`MDATA*.DCH`,
 `BRMUDA*.DAT` etc.); and control flow / CFG extraction.
