@@ -56,11 +56,11 @@ labelled inferred or read (from code, not run). `/handoff` re-checks this list a
 - **Movement is a fixed-shape jump.** Up starts a jump with a table-driven arc of 40 px apex and a horizontal push locked at take-off; a plain
   jump covers about 43 px. Obstacles are built in 32 px units (one hop) and 8 px lips that stall a walker. (R "Past the first screen", route)
 - **Water costs health by contact.** Standing or landing on a hazard tile takes 1 point and throws the hero into the same hit-reaction jump; the
-  four pits of the Amazon route cost an unpoked hero 8 water hits (and 2 contacts) in one pass. Crocodiles are platforms only while their jaws are shut. (R
-  "What the route costs in health", "spawn")
+  four pits of the Amazon route cost an unpoked hero that just walks on 8 water hits, and 0 when each jump is timed to land on a crocodile with its jaws
+  shut (crocodiles are platforms only then). (R "What the route costs in health", "Unpoked, hop 3 is playable")
 - **The level's shape is a health budget.** Measured on the Amazon route from room `188..285` to the boss: 92 contact decrements and 9 water hits with a
-  refilled hero, against 18 points; an unpoked hero that only kills what it meets ahead and hops immune enemies dies in the fourth pit. The route
-  is meant to be fought, dodged and healed through together. (R "What the route costs in health", "Unpoked, the same route does not survive")
+  refilled hero, against 18 points. Walking it and swiping what is ahead dies in the fourth pit; with a guard that snipes perched monkeys, timed pit
+  crossings and a few waits, hop 3 reaches its exit with 11 of 18 points and no poke. (R "What the route costs in health", "Unpoked, hop 3 is playable")
 - **A boss ends the level.** One 60-hit-point boss per world in a dead-end room; a flag, a 125-frame count, a fade and reload lead to world select
   with the world crossed out. The Amazon boss is vulnerable only in an open-mouth phase and only to a jumping hero; other worlds add a
   hit-ignoring flag (Klondike) or a shielded phase (Bermuda). (R "Boss", "How a level ends"; W "Bosses")
@@ -1399,14 +1399,37 @@ process to the same snapshot, and the live route was run twice from scratch with
   the crocodile once, damage 0. Room `299..318`'s four decrements are all object contacts while the hero hops at the tunnel wall (wx 9900-9954):
   three from the ping-pong fliers `$0142be` (anims `$22046`, `$22050`, hp 255) and one from `$015c7a` (hp 4, anim `$2205a`). Water costs 1 hp per
   entry at the surface, with no object involved.
-- **Unpoked, the same route does not survive** (`py/route/natural_hop3.py`, hop 3's eleven segments on a driver that never refills health and reacts
-  to hostile objects ahead: a fire pulse at a killable one within 34-50 px, a hop over an immune one; `room188.snap` already carries weapon 3 and 25 coins).
-  Health at each segment end: 18, 15, 14, 12, 10, and the hero dies in the segment-6 pits (wx about 7750, pit 4 is cols 960-975) after eight water hits (`$ebca`)
-  and two contacts (`$eb8c`; the same census on that replay, final snapshot identical), before the heal pickup at block 244 (wx 7808). The same trajectory came out of three guard variants, so the bee is not what stops
-  it: the chaser is killed by one swipe (hp 1 goes to 254, the dying value; an early run kept pulsing at it because it read 254 as alive) and stays
-  dead, but segments 2-5 lose 8 hp to walkers and hoppers that approach diagonally from above (`$015934` hp 8 needs three swipes at one per 6 frames
-  and reaches the hero first) and segment 6 loses 10 to water. The route needs roughly twice its hp budget; an unpoked run needs a per-enemy dodge
-  policy (the behaviours are in "Spawn types") and a way across the pits that lands on the shut-jawed crocodiles instead of the water.
+- **Unpoked, hop 3 is playable to the block-283 exit** (`py/route/unpoked_hop3.py`; `room188.snap` already holds weapon 3, 25 coins and `$bb74` = `12120300`,
+  so the `w bb74 12120300` at the head of the recording changes no byte). A guard that only swipes killable enemies ahead and hops immune ones
+  (`natural_hop3.py`) reaches health 18, 15, 14, 12, 10 at the ends of segments 1-5 and dies in the segment-6 pits (eight water hits, two contacts): the
+  chaser bee is not the cause (one swipe kills it for good, hp 1 goes to 254, the dying value), but walkers and hoppers that approach diagonally from
+  above (`$015934` hp 8 needs three swipes at one per 6 frames and reaches the hero first) cost 8 hp in segments 2-5, and holding right through the pits
+  costs one water hit per 43 px arc. Three things fix that, and the result is one recorded input file replayed in a single process (7720 commands,
+  final snapshot identical to the live one), with health 11 at the exit:
+  - **Segments 1-5 under the `BEST` guard** (`py/route/policy.py`, 2 hp lost: 0, 0, 1, 0, 1). Bee within dx -30..50, dy -40..40 gets a fire pulse with the
+    stick turned toward it (the swipe box never reaches above head height, and the bee bites from above and behind: segment 1 goes 3 to 0). A monkey perched
+    32-56 px above head height is hit only from the air: stop, jump straight up and fire every 150k steps in flight (three swipes per jump; hp 8, 5, 2,
+    dead). A monkey higher still is lured: walk until its dx <= 26 (it triggers and drops), stand and fire up to six pulses. Ablation from the chained
+    run: without the bee rule 6 hp are lost, without the snipe 5, without lure-and-kill 3, with all three 2. Not fixed: the segment-3 crocodile drop (1 hp; the
+    jaws open about four frames after the landing and the hero falls onto the water tile; two hops via the croc do not fit the 96 px pit) and the
+    segment-5 tentacle (`$015a38`, hp 255, triggers at about 32 px, 24-frame cycle with the hit box up from frame 3 to 21; every hop distance tried
+    costs 1 or 2 hp).
+  - **The four pits at 0 hp** (`py/route/pits.py`, `auto_pits.py`). A pit's crocodile is a platform only while its jaws are shut (entries 10-13, 18-19 and 30-44
+    of the 45-entry cycle, tick 3), patrols 1 px per frame between two turn points (pit 1: wx 7261..7298 left edge, 74 frames per round trip, so the
+    jaw and patrol phases drift against each other with a 135-frame cycle) and carries the hero at its speed while shut; the hero's left edge
+    stays on the back for offsets 5 to about 22 and falls off at 23. The jump's horizontal speed is latched at take-off (`UP` alone jumps straight up, steering
+    in the air does nothing), so a crossing is: hop right from 20 px before the pit, land on the croc, walk to offset 17, stand until the croc turns
+    (or the jaws have five frames left), hop again. Pit 3 has no croc (32 px, cols 948-951; a take-off from `wx` 7550-7574 clears it, from 7576 the hero has already walked off the last stair step and takes 1 hp). The take-off
+    delay is searched by rollout: from a snapshot at the take-off spot, idle W frames (24,000 steps each), cross, and read the hp lost, for W in steps of 6
+    over one 135-frame period; the zero-loss windows are pit 1 W 48-78, pit 2 72-84, pit 4 66-84 (chosen middle 66, 78, 78), pit 3 take-offs `wx` 7562-7574 (chosen 7568). The delay
+    is a property of the arrival time (the croc's phase runs from when it spawned), so a different arrival needs a new search. The result is recorded input,
+    not a policy that reads the croc before it decides.
+  - **Segments 7-11 by search** (`segsweep.py`, `wait_opt.py`; guard `natural_hop3.py`). Enemies that spawn as the camera reaches them meet the hero with the
+    same phase whatever it did before, so a start delay changes nothing (segments 8-10: every delay loses the same); patrolling ones do change. `wait_opt.py`
+    finds the first hurt, then tries standing still for W frames at `hurt_wx - D` (D 32 or 64 px) and keeps the best total. Results: segment 7 0 hp
+    (start delay 24 frames, the only zero in the sweep), segment 8 5 hp (waits: one at wx 8526; the monkey `$015934`, leaf bush `$015d9c`, rock `$01439e` and two
+    fliers remain), segment 9 0 hp (waits at wx 8600 x18 frames and 8812 x24; the fliers `$0142be`), segment 10 0 hp (wait at wx 8996 x24; `$015b3c`), segment 11
+    0 hp. Health at the ends of segments 5-11: 16, 16, 16, 11, 11, 11, 11.
 - **Controls learned.** The jump starts on the game's next joystick poll, 24-30k steps after up is pressed, so the driver holds up+direction until
   the state reads jump and then the direction only (apex is always 40 px); a full jump and fall takes about 1M steps; stairs and bead platforms
   are one-way (a hop from below lands on top); holding up+right on stairs re-jumps at every landing, so use single hops; read an obstacle's height
@@ -1588,7 +1611,9 @@ Behaviour of each type (frames, offsets and scripts are read from the descriptor
   dy -32..24; 128: dx -64..0, dy -32..24; `$e5a0(8,8,+-32,-8)`) it starts the tongue: `78 := 25` (cooldown per frame), entry 1 (`$220b2` / `$220c4`, six ticks of frame 149 / 156,
   then `$fffc` back), and spawns type 135 (left) / 136 (right) (`$015e54`, frames 150-152 / 157, 158, 152, damage 1, hit box by frame from `$015e76`) 32 px in front. Body contact
   also does 1 damage. Live for 129: the tongue in the first frame, cooldown 25, a second tongue after a 37-frame period; 128's rule is the mirror (inferred).
-- **130, crocodile (`$015d26`).** Walks 1 px per frame in a water line (`$013870`, `$136a8`), jaw animation entries `$220d6`/`$22132` (45 entries, tick 3). Only on frames 140/144
+- **130, crocodile (`$015d26`).** Walks 1 px per frame in a water line (`$013870`, `$136a8`) between two turn points (the pit-1 croc: left edge wx 7261..7298), jaw animation entries
+  `$220d6` (left) / `$22132` (right; 45 entries, tick 3, the entry index carries across a turn); frames 140/144 (jaws shut) are entries 10-13, 18-19 and 30-44, the rest are 138/139,
+  141/142 or 143/145. Spawn records sit at cols 910, 932 and 968, one in each of pits 1, 2 and 4. Only on frames 140/144
   (jaws shut) does it call `$e5fe`, the moving-platform routine (a hero falling onto it with the feet 0..8 px above its top gets `$227f9 = 1`, `$227a0` = the object and is carried at
   its speed); on other frames a riding hero is dropped (`clr.w 16(A1)`, `$cb2e`, static). Damage 0.
 - **131, 132, leaf bushes.** `$015d82` walks at 1 px per frame with `$0131c8` and pauses 48-96 frames with probability 1/64 (`$13988`); `$015d9c` is frozen until the hero is in the box
@@ -1821,9 +1846,11 @@ Added by the 104th pass (parallel route, boss, shop, level-end and world passes)
 Current open items, in the order `sessions/impossamole.md` ranks them (everything else this README once listed here has been done):
 
 - **Natural play, unpoked.** The Amazon route from the start room to the boss room is on real input from room `118..137` on, with health
-  refilled per segment and a labelled poke into `118..137`; the boss falls to real swipes but with the weapon or health poked. An unpoked hop 3 dies in the
-  segment-6 water pits (previous section); an unpoked run also needs the two type-4 upgrades (blocks 27 and 134) and a dodge policy for the boss's
-  type 139/140 shots. The other four worlds have cold-boot, warp and boss-kill proofs only, no played route.
+  refilled per segment and a labelled poke into `118..137`; the boss falls to real swipes but with the weapon or health poked. Hop 3 (`188..285` to the
+  block-283 exit) is now played unpoked with health 11 left (previous section). Still poked: hops 1 and 2 (`118..137`, `160..173`), hop 4 (room `299..318` to the
+  boss room, which costs 4 hp of contacts at the tunnel wall and has a heal at block 302) and the boss fight; an unpoked run also needs the two type-4
+  upgrades (blocks 27 and 134) and a dodge policy for the boss's type 139/140 shots. The other four worlds have cold-boot, warp and boss-kill proofs only,
+  no played route.
 - **Damage sources:** the water tiles and room `299..318`'s drain are pinned (previous section); the type-2 enemies met in segments 2-5 are identified by handler
   but their approach paths are not modelled.
 - **Shop items:** only the worm can (code 1) was bought; codes 0, 2, 3, 4, 5 and the shop ladder are undriven.
