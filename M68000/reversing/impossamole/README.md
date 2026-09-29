@@ -1177,7 +1177,8 @@ live at a time:
 
 - `$00c028` (8 bytes per world, indexed by `$bb76-1`) gives the start room: words 2 and 3 are the start
   and end block (world 3: `0`, `137`). `$00018ed4` (called from `$c01a`, `$e04c`, `$e918`) installs a room:
-  `$227b4 = start`, camera `$227b6 = start*32`, limit `$227b8 = end*32 - 256` (world 3: `137*32-256 = $1020`),
+  `$227b4 = start` (afterwards it tracks `camera >> 5` as the room scrolls: `$81` at camera `$1020`), camera
+  `$227b6 = start*32`, limit `$227b8 = end*32 - 256` (world 3: `137*32-256 = $1020`),
   and rebuilds the screen from the block map at `$27600` (6 bytes per block column, each byte a 2x2 tile block
   from `$29000`).
 - `$00df4a` (per frame) fires when the hero leaves the screen through the top (`4(A0) <= $fff0`, state
@@ -1196,9 +1197,38 @@ live at a time:
   `$227b4=$9c`, camera `$1380`, limit `$1320`, hero `x=$60`, `y=-16` -- all five fields the table record
   `(1,131,156,161,2)` predicts, and the render is a rocky cave room (`amazon_room_after_bottom_exit_131.png`).
   With camera `$e00`, `x=40`, `y=-24`, `$227f3 = 2`: `$227b4=$8b`, camera `$1160`, limit `$1280`, hero `x=$80`,
-  matching `(0,112,139,156,3)`. Not yet done: reaching a trigger with real input (climbing through the ceiling
-  gap at block 112), and the transition's fade routine `$1c3c8` takes several hundred thousand steps before the
-  new room is live, so sample well after the trigger.
+  matching `(0,112,139,156,3)`. The transition's fade routine `$1c3c8` takes several hundred thousand steps before
+  the new room is live, so sample well after the trigger. Three exits were later reached with real input (next
+  bullet); the block-112 ceiling gap was not.
+- **Three exits fired from positions reached by real joystick input (103rd pass, `py/start_room_route.repl`).**
+  Staging is poked and labelled: `warp_up112.snap` (room `139..156`) has the hero poked onto the block-151 bottom
+  exit, which installs `118..137` (the start room's tail: camera `$ec0`, hero `x=$80`); health is poked to full
+  (`w bb74 12120300`) at each segment start because two bees and a frog chase the hero. Everything after that is
+  input only. In `118..137`: right along the upper ledge, off its end, right along the floor over a plank bridge,
+  up the ladder (world x about 4100), right along the rock top, a hop across the block-131 shaft, right along the
+  box top, then off its end into the block-135 shaft. Falling straight down the block-131 shaft instead fired
+  `(1,131,156,161,2)` with all five fields matching (hero `x=$c0` at camera `$fc2`, so `x + camera - 16 = 4210`,
+  block 131). The block-135 fall began at hero `x=$d8` and drifted to `$e0` at camera `$1020` (`x + camera - 16` =
+  4328..4336, block 135): `$227b4=$a0`, camera `$1400`, limit `$14a0`, hero `x=$60`, `y=$90` landed, exactly
+  `(1,135,160,173,2)`. In `160..173` the block-168 ladder, a hop right across the block-169 shaft onto the `y=$30`
+  ledge and a hop back left onto the block-168 ledge (`y=$10`), then a straight up jump: `y` went `$02`, `$fffc`,
+  `$fff0`, and after the fade `$227b4=$bc`, camera `$1780`, limit `$22a0`, hero `x=$60`, `(0,168,188,285,2)`. The
+  script replays the whole chain from `warp_up112.snap` and its `room160.snap`/`room188.snap` are byte-identical
+  (`cmp`) to the interactively driven runs. What the walk showed about the controls:
+  - A 32 px shaft with a 32-33 px rise is crossed by holding up+right (`kbd ff` / `kbd 09`) for 30,000-90,000
+    steps from the platform edge, then right only; 60,000 landed at the block-131 shaft, 15,000 fell in. At the
+    block-169 shaft all six tries (at the edge and one nudge before it, 30k/60k/90k) landed, and all six mirrored
+    left hops (`05` then `04`) landed on the block-168 ledge. The jump peaks 40 px above take-off, so a 33 px rise
+    has a 7 px margin.
+  - The ladder climb starts when `$227ea` classifies as category 1 (tile ids `$63`/`$64`), but state 4 moves up
+    only while `$227ec` and `$227ed` are both category < 4 (`$00cf78..$00cfa0`), and the sensors are recomputed
+    only when `y & 7 == 0` (`$00cfe0`). At the first ladder `x=$a6` stalled at `y=$84` with `$227ec` = tile `$d7`
+    (category 4, rock beside the rungs); steering right on the ladder to `x=$b0`, stepping down once so `y`
+    realigns, then up climbed to the top. At the block-168 ladder `x=$7e`, `$82` and `$86` all climbed unaided.
+  - The climb tops out into state 0 when `y` reaches a multiple of 8 with `$227eb` category >= 2 (`$00cffa`, at
+    `y=$50` here); holding up past that starts a jump, so release up at the top.
+  - Where the hero is pinned at `x=192` only the camera (`$227b6`) shows progress; a nudge of `s 25000` moves
+    about 4 px.
 - The object spawner reads a 4-byte-record list at `$27200` (sorted, `$7fff` sentinel at `$275fc`; record =
   tile column word, row byte, type byte), walked by `$fe9e`/`$fed6` as the camera advances and calling
   `$10006` (type byte indexes the descriptor pointer table at `$10474`; the descriptor's first byte
@@ -1223,7 +1253,9 @@ live at a time:
   `py/level_rooms.py <snap> --route 318 326`: fall through the bottom at block 135 (`0..137` to `160..173`),
   leave through the top at block 168 (to `188..285`), leave through the top at block 283 (to `299..318`), fall
   through the bottom at block 317 (to `318..326`). The last hop was forced live: `$227b4=$13e`, camera `$27c0`,
-  hero `x=$20`, exactly the record `(1,317,318,326,0)`. The other three hops are table-derived only.
+  hero `x=$20`, exactly the record `(1,317,318,326,0)`. The first two hops (blocks 135 and 168) were then played
+  with real input from the start room's tail (see "Three exits fired..." above); the block-283 hop is table-derived
+  only.
 - **Spawning it**: descriptor kind 2 selects allocator `$01021a`, which plays sound `$1f`, sets `$22803 := 1`
   ("boss alive"), and builds the boss in slot 7 (`$1a5de`; type word from the per-world table at `$10370`,
   world 3: `3`) plus up to four extra parts in the following slots. Its per-frame handler is

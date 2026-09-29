@@ -7,6 +7,7 @@ the first unknown line, so `.repl` files hold commands only (no `#` comments).
 | script | start snapshot | what it does |
 |---|---|---|
 | `twintree_item_route.repl` | `scratchpad/impossamole/gameplay_explore/pass96_doublejump_v2.snap` | Walks left to the ledge foot, hops up+right onto the step, hops up+left at the item, sampling slot 0 (`$1a2ea`), the hero (`$1a572`) and health (`$bb74`) every 50,000 steps. Expected output: three sample triples, hero `(152,109)`, `(148,97)`, `(144,91)`, health `01`, slot 0 `type` `1`,`1`,`0`. Reproduced identically twice (98th pass). |
+| `start_room_route.repl` | `scratchpad/impossamole/pass99/warp_up112.snap` | Plays the Amazon route's first two hops with real input: a labelled poke onto the block-151 exit into room `118..137`, then right walks, a ladder climb, a shaft hop and a fall through block 135 into `160..173`, then a second ladder, a zigzag of two shaft hops and a straight jump out through block 168 into `188..285`. Health is poked full at each segment start. Writes `scratchpad/impossamole/pass103/{room118,rock_top,box_edge,room160,room188}.snap`; expected final prints `00 bc 17 80 22 a0` then `00 60 00 90`. About 26.4M steps, `ATARI_NOTRACE=1`. Byte-identical to the interactively driven run (103rd pass). |
 
 ```
 cd M68000 && ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll resume \
