@@ -3,7 +3,7 @@
 Two banks, both 4-plane interleaved ST rows, colour index 0 transparent (the blitters `$1b5a4`/`$1ad32`
 build the mask as the OR of the four planes and `and`/`or` it onto the screen):
   bank 1  $3b600  128 bytes/frame  16 px x 16 rows  (8 bytes/row = 4 words); index = 6(A0) of a type-1 object
-  bank 2  $42e00  384 bytes/frame  32 px x 24 rows  (16 bytes/row = 4 plane longwords); index = 6(A0) of the type-2 (hero) object
+  bank 2  $42e00  384 bytes/frame  32 px x 24 rows, frames 0-171 (16 bytes/row = 4 plane longwords); index = 6(A0) of a type-2 object
 Bank 2 is populated only on a fresh-cold-boot lineage (README "Why no hero sprite was visible").
 
     uv run python reversing/impossamole/py/sprites.py <snap> --bank 1|2 <out.png> [--scale N] [--cols N]
@@ -18,7 +18,7 @@ from tiles import ram_from_snap, palette
 from PIL import Image, ImageDraw
 
 BANKS = {1: dict(base=0x3b600, stride=128, w=16, h=16, end=0x42e00),
-         2: dict(base=0x42e00, stride=384, w=32, h=24, end=0x50000)}
+         2: dict(base=0x42e00, stride=384, w=32, h=24, end=0x53000)}  # 172 frames; RAM beyond $53000 is not sprite art
 TRANSPARENT = (255, 0, 255)
 
 
@@ -95,6 +95,7 @@ def check(snap, ram):
     from gfxview import load_video_regs
     bufs = {'live': load_video_regs(str(snap))['base'], 'draw': struct.unpack_from('>I', ram, 0x1a2e4)[0]}
     scr = {k: screen_index_rows(ram, v) for k, v in bufs.items()}
+    out = []
     for s in range(OBJ_SLOTS):
         a = OBJ + s * OBJ_STRIDE
         typ, x, y, fr = struct.unpack_from('>4H', ram, a)
@@ -114,6 +115,8 @@ def check(snap, ram):
         best = max(res.items(), key=lambda kv: kv[1][0] / max(kv[1][1], 1))
         print(f'slot {s:2d} type {typ} frame {fr:3d} at ({x:3d},{y:3d}) h={h:2d}: '
               f'{best[0]} buffer {best[1][0]}/{best[1][1]} opaque pixels match')
+        out.append(dict(slot=s, type=typ, frame=fr, x=x, y=y, h=h, buf=best[0], match=best[1][0], total=best[1][1]))
+    return out
 
 
 def main():

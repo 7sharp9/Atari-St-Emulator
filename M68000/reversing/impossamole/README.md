@@ -1289,6 +1289,55 @@ live at a time:
 - **The other four `$22803 = $ff` writers** (`$014ad6`, `$015752`, `$016958`, `$0176a6`) sit in the other
   worlds' boss handlers, by address order (inferred, not tested).
 
+### Spawn types (103rd pass)
+
+`py/spawn_types.py <snap> [--sheet out.png] [--check]` decodes the descriptor of every type in the spawn list and
+draws its frames (`graphics/amazon_spawn_types.png`, one row per type). A type byte indexes `$10474`; the
+descriptor's first byte is the allocator kind (`$10046`), and the two allocators that matter read it as follows
+(read off `$10056` and `$100ec`, and matching the live objects they build):
+
+- **kind 0** (`$10056`, object slots 0-5, object type word 1 so bank 1): `+1` height, `+2` animation tick count,
+  `+3` to `79(A0)`, `+4` long = animation list. Pickups and props; no hit points.
+- **kind 1** (`$100ec`, slots 7-11): `+1`/`+2` to `12`/`13(A0)` (the hit-box radii), `+3` selects the entry pointer
+  in the table at `+24` (4 bytes each, zero-ended), `+5` tick count, `+6` hit points to `103(A0)`, `+7` contact
+  damage to `104(A0)`, `+8` word = the object's type word (1: bank 1, 16x16; 2: bank 2, 32x24), `+10`/`+12` words to
+  `8`/`10(A0)` (`+12` plus `+2` is also the row count `14(A0)`), `+14`/`+16` words to `16`/`18(A0)`, `+18` word to
+  `106(A0)`, `+20` long = per-frame handler to `86(A0)`. An animation pointer addresses a run of sub-animations, each a list
+  of frame words ended by `$fffe` (loop), `$fffd` (hold the last frame) or `$ffff` (end), so a frame list is
+  read up to its first control word; kind 2 is the boss (`$1021a`), kind 3 (`$1037a`) has no record in this level.
+
+What each Amazon type is (`hp` and `dmg` are the descriptor bytes; `hp` 254/255 is presumably "cannot be killed",
+not tested; the picture is the decoded first frames, checked against the live screen where a live object existed):
+
+| types (count in the level) | kind | picture | hp / dmg | handler | live check |
+|---|---|---|---|---|---|
+| 105, 106, 107, 108 (10, 10, 6, 8) | 0 | fruit: watermelon slice (175), banana (176), grapes (177), green apple (178) | none | none | slot 0 frame 175 144/144 (`pass103/live_c3.snap`) |
+| 1-8 (4, 3, 3, 2, 6, 2, 1, 1) | 0 | small items: bomb (132), two grey pipe/boot pieces (130, 131), barrel (129), tin with an S (134), pot (135-140), spinning gold coin (141-146), book (133) | none | none | frames only |
+| 251 (63) | 0 | dormant effect: blank frame, then smoke rings (1-4), then an explosion (77-90); records come in clusters at one spot | none | none | frames only |
+| 0, 9 (1, 1) | 1 | the mole climbing out of the ground (bank 2 frames 62-70), at block 416 and block 313 (the room before the boss room) | 0 / 0 | `$00e842` (tests `$bb77` and the hero proximity `$b71a`) | frames only; the shop-keeper reading rests on the shop bubbles sitting in the same bank |
+| 109 | 1 | monkey (131-136, 159) that starts as a stone-textured strip (137) | 254 / 0 | `$013cb4` | frame 137 192/192 (`live_c20`) |
+| 110 | 1 | monkey | 8 / 1 | `$015934` | frames only |
+| 111 | 1 | tentacle rising from the ground (100-104) | 255 / 1 | `$015a38` | none seen |
+| 112 | 1 | plant (115-128) | 4 / 1 | `$015ac8` | frame 121 308/339 (`pass99/cyc4`) |
+| 113 | 1 | rock that crumbles to rubble (107-114) | 255 / 2 | `$01439e` | frame 107 566/566 (`live_c1`) |
+| 114, 115 (8, 6) | 1 | bee facing left (129, 130) or right (170, 171) | 1 / 1 | `$01415e`, `$01417c` | type 114 frame 171 415/415 (`box_edge`); type 115 frame 130 491/491 (`live_c13`) |
+| 116-125 (3+6+1+1+1+5+6+5) | 1 | brown winged flier (bank 1 frames 168-173); ten descriptors that differ only in `+4`, `+14` and `+16` | 255 / 1 | `$015b3c` (116, 117), `$0142be` (118-125) | type 117 frame 169 80/80 (`pass99/cyc2`); type 125 frame 170 106/106 (`pass99/warp_up112`) |
+| 126, 127 (18, 10) | 1 | green snake (bank 1 frames 164-167) | 4 / 1 | `$015c7a`, `$015c82` | type 127 frame 166 188/188 and frame 164 173/173 (`live_e2`), frame 167 173/173 (`live_c22`); type 126 best 67/173 (`pass99/cyc6`) |
+| 128, 129 (6, 2) | 1 | chameleon (146-149, 153-156) that shoots a tongue (150-152, 157, 158) | 255 / 1 | `$015ca6` | type 128 frame 147 389/389 (`live_c22`); type 129 frame 153 389/389 (`room160`), frame 155 389/389 (`live_e2`) |
+| 130 (5) | 1 | crocodile in a water line (138-145) | 254 / 0 | `$015d26` | none seen |
+| 131, 132 (1, 2) | 1 | leaf bush (105, 106) that turns into a bee (129, 130, 170, 171) | 10 / 1 | `$015d82`, `$015d9c` | none seen |
+| 138 (1) | 2 | the boss: eyes (160-165) and mouth shapes (166-169) | 60 / 1 | animation `$221d0` | the boss room render, 99th pass |
+
+The match figures are `--check`: the frame is blitted at the object's declared `(x, y)` and the opaque pixels
+that equal the screen are counted, best over 84 snapshots (`pass99/`, `pass103/`, and 61 further checkpoints of the
+route walk; the ones quoted are in `pass103/`, unlabelled names being `pass103/*.snap`). A lower figure on another
+snapshot is another sprite drawn over it. The `--check` also asks, for the 18 kind-1 slots of six
+snapshots, whether the live frame word lies in the frames reachable from the descriptor's pointers; 18 of 18 do,
+which confirms the descriptor-to-object link but not an animation-state decoding. Not decoded: the sub-animation each
+handler selects, the descriptor's `+12`..`+18` words and what separates types 116-125, the kind-3 allocator, and
+what a hit point of 254/255 means in `$13a9c`. A first pass at this table read bank 2 as ending at frame 139 and
+took chameleons and bees for other things (`graphics.md`).
+
 ## Known traps
 
 - **Proving a jump/maneuver reaches a target position is not proof it was safe — check health and
@@ -1431,6 +1480,8 @@ live at a time:
 | `graphics.md` | **102nd pass**: the graphics pipeline (level, block map, block definitions, tile bank, scroll cache), sprite banks, palettes, font, collision categories, with match counts |
 | `graphics/amazon_tileset.png`, `graphics/amazon_level_tiles.png`, `graphics/amazon_categories_start.png` | **102nd pass**: the 256-tile Amazon bank, the whole level from real tiles (13440x192), and the first 80 blocks with the collision categories tinted over the art |
 | `graphics/sprites_bank1.png`, `graphics/sprites_bank2.png`, `graphics/hud_font.png`, `graphics/world_palettes.png` | **102nd pass**: sprite bank 1 (`$3b600`, 16x16), bank 2 (`$42e00`, 32x24, hero and shop art), the 8x8 font and the five world palettes |
+| `graphics/amazon_spawn_types.png`, `py/spawn_types.py` | **103rd pass**: every Amazon spawn type's descriptor decoded and its frames drawn, one row per type (README "Spawn types"); `graphics/sprites_bank2.png` was regenerated with all 172 frames |
+| `py/start_room_route.repl` | **103rd pass**: real-input replay of the route's first two hops, from `pass99/warp_up112.snap` to room `188..285` (usage in `py/README.md`) |
 | `py/tiles.py`, `py/sprites.py` | **102nd pass**: render the tileset, level, category overlay, palettes, sprite banks and font from any snapshot, and `--check` them against the live screen (usage in `py/README.md`) |
 | `py/twintree_item_route.repl` | **98th pass**: REPL script for the whole item route from `pass96_doublejump_v2.snap` (usage and expected output in `py/README.md`) |
 

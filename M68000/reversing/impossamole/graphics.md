@@ -37,7 +37,8 @@ pixels (10,560 samples each: `cyc0` 98.3, `cyc2` 98.2, `cyc5` 98.7, `cyc7` 98.3,
 | `graphics/amazon_categories_start.png` | the first 80 blocks with the collision categories tinted over the art (40 blocks per row) |
 | `graphics/world_palettes.png` | the five world palettes, one row per world, 16 swatches |
 | `graphics/sprites_bank1.png` | bank 1 (`$3b600`), frame indices labelled, colour 0 drawn magenta |
-| `graphics/sprites_bank2.png` | bank 2 (`$42e00`), same conventions |
+| `graphics/sprites_bank2.png` | bank 2 (`$42e00`), frames 0-171, same conventions |
+| `graphics/amazon_spawn_types.png` | one row per spawn type of the Amazon list: header (kind, hit points, damage, descriptor), then the frames reachable from its animation pointers |
 | `graphics/hud_font.png` | the 8x8 font (`$24000`), 4x |
 
 ## Palettes
@@ -59,16 +60,22 @@ literal screen x/y and `14(A0)` is the row count.
 | bank | address | frame | layout | picked by |
 |---|---|---|---|---|
 | 1 | `$3b600`, 240 frames | 128 bytes, 16x16 | 8 bytes per row: planes 0..3 as words | `6(A0)` of a `type 1` object (`$1b25a`) |
-| 2 | `$42e00`, 140 frames | 384 bytes, 32x24 | 16 bytes per row: planes 0..3 as longwords (the blitter ORs four longs for the mask, `$1b67c`) | `6(A0)` of a `type 2` object (`$1b3ec`, base `$3b600 + $7800`) |
+| 2 | `$42e00`, 172 frames (0-171) | 384 bytes, 32x24 | 16 bytes per row: planes 0..3 as longwords (the blitter ORs four longs for the mask, `$1b67c`) | `6(A0)` of a `type 2` object (`$1b3ec`, base `$3b600 + $7800`) |
 
 Bank 1 holds projectile and effect art (smoke rings 1-36, bombs 37-42, laser beams 43-54, explosions 55-127), pickups
-(barrel, tin, coins, fruit, bananas: frames 129-147, 174-187) and small enemies (snakes 164-167, the eel/bird 168-173,
-sparkles 179-182). Bank 2 holds the hero (frames 0-62 and 90-99: walk, jump, weapon, scarf, kneeling), the shop
-speech bubbles (71-79: "175 LASER GUN", "250 SOUP CAN", "125 BOMB", "200 EXT'D BAR", "75 WORM CAN", "150 BIG GUN",
-"EXIT?", "THANK YOU", "TOO MUCH"), boss and enemy art (plants 105-128, spiders 129-130, monkeys 131-136, tentacles
-100-104), and explosion rings 80-89. Bank 2 is populated only on a fresh-cold-boot lineage (README "Why no hero sprite
-was visible"). Some 32x24 slots hold a shorter picture: frames 60, 61 and 63 use only rows 19-23, 137 rows 0-7, 138-139 rows
-12-16, and 62 is blank; which objects use them is not traced.
+(barrel, tin, coins, fruit, bananas: frames 129-147, 174-187) and small enemies (snakes 164-167, the brown winged
+flier 168-173, sparkles 179-182). Bank 2 holds the hero (frames 0-59 and 90-99: walk, jump, weapon, scarf, kneeling),
+the mole climbing out of the ground (60-70), the shop speech bubbles (71-79: "175 LASER GUN", "250 SOUP CAN",
+"125 BOMB", "200 EXT'D BAR", "75 WORM CAN", "150 BIG GUN", "EXIT?", "THANK YOU", "TOO MUCH"), explosion rings
+(80-89), and the Amazon's enemies: tentacles 100-104, leaf bush 105-106, crumbling rock 107-114, plants 115-128,
+bees 129-130 (facing left) and 170-171 (facing right), monkeys 131-136 and 159, a stone-textured strip 137,
+crocodiles 138-145, chameleons 146-149 and 153-156 with their tongues 150-152 and 157-158, the boss's eyes 160-165
+and mouth shapes 166-169. The bank ends at frame 171 (`$53000`); frames 172 on are not art (the first 140-frame
+reading of this table stopped at `$50000` and dropped the last 32 frames, including both bee directions and the
+boss face). Bank 2 is populated only on a fresh-cold-boot lineage (README "Why no hero sprite was visible"). Some
+32x24 slots hold a shorter picture: frames 60, 61 and 63 use only rows 19-23, 137 rows 0-7, 138-139 and 142-143
+only a water line, and 62 is blank. Which enemy uses which frames is in README "Spawn types"
+(`graphics/amazon_spawn_types.png`).
 
 Proof (`py/sprites.py <snap> --check`): for each live `type 1`/`type 2` slot, the frame is decoded and compared
 pixel by pixel with the screen at its declared `(2(A0), 4(A0))`. `cyc5.snap`: hero frame 0 at (192,152) 273/319
@@ -98,8 +105,9 @@ movement and which are pass-through is still the `$be96` reading, not retested h
 
 - Other worlds: the tile bank, block definitions and level are per world; only Amazon has been dumped and rendered
   (`py/tiles.py` works on any world's snapshot, and the palette table is world-indexed).
-- Which frame is which enemy: the per-type descriptor's animation pointers (`+28`/`+48`) are not decoded, so the
-  spawn types (README open item 5) are matched to art only by frame appearance.
+- Animation-list boundaries: an animation pointer addresses a run of sub-animations (each ended by `$fffe` loop,
+  `$fffd` hold or `$ffff` end), and where one object's states stop and the next object's list begins is not decoded;
+  `py/spawn_types.py` shows the first sub-animation of each entry pointer plus the next three.
 - The title, world-select and logo art, and the disk files they come from (`CHARS11.DAT` to `$24000`,
   `SPRTS22.DAT` to `$3b600`, `SPRTS33.DAT` to `$42e00`, from the README).
 - Animation sequences (frame order per action) and the `$216e2` flash palette in use.
