@@ -226,6 +226,7 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
 - Corpus capture: `tools/capture_hits.py`. `callcap` runs with interrupts masked, so a routine
   that plays a sound waits forever on a flag the interrupt clears (PowerMonger: poke `$2c993`
   to 0 in the state).
+- Tell agents to derive the repo root from `__file__` (or `M68000_ROOT`), never a literal `/Users/...` path, and to keep their temp files in one named scratchpad dir: both Cadaver 80th-pass agents hardcoded their own scratch dir and `M68000/`, so every script needed patching before it could live in `reversing/<game>/py/`. Also tell them to append injected ring-queue entries at the write pointer `304(A5)` (advance it by 8, `1154(A5)` += 1): an entry written at `152(A5)` alone is overwritten by the game's own pushes in level 1.
 - When two agents transcribe the same callee, keep one version and run both corpora against it:
   that cross-check is free.
 - Before merging: re-run every gate from fresh callcaps (no `reuse`), merge the transcriptions
