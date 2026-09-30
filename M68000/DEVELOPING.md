@@ -363,9 +363,10 @@ driven scanline-accurately. `Program.fs` calls `mmu.HblTick()` once per
 0 on the VBL boundary for the recorder), and `HblTick` decrements a live counter
 seeded from `TBDR`, raising the Timer B interrupt on each underflow so a raster
 ISR fires at the scanline the game
-programmed rather than at an arbitrary instruction count. Super Sprint's in-race
-Timer B ISR, Super Hang-On's post-title split and Impossamole's attract all run
-`TBCR=$08` and are driven by this. The counter is not in `MmuSnapshot` (TOS
+programmed rather than at an arbitrary instruction count. Super Sprint's menu and
+results-screen Timer B ISR (not the race: that runs on the ROM VBL handler), Super
+Hang-On's post-title split and Impossamole's attract all run `TBCR=$08` and are
+driven by this. The counter is not in `MmuSnapshot` (TOS
 never arms event-count Timer B, so the diskless boot stays byte-identical; a
 mid-split resume loses at most one scanline of counter phase).
 
@@ -503,6 +504,7 @@ least once by a session that did not know it existed.
 | `tools/trace_cfg.py` | call graph / CFG / block map from an `ATARI_TRACE_EVENTS` log (above) |
 | `tools/add_file_to_disk.py` | put a file on a FAT12 image, `--auto` into `\AUTO\`; `--from-disk NAME --remove NAME...` turns a desktop-launched game into a headless-booting disk |
 | `tools/make_blank_disk.py`, `tools/make_test_prg.py` | blank images, test programs |
+| `tools/extract_disk.py image.st outdir` | dump every file of a FAT12 `.ST` image, recursing into directories (the reverse of `add_file_to_disk.py`) |
 | `tools/gfxview.py`, `tools/screendump.py` | RAM graphics explorer; raw screen-dump-to-PNG. `gfxview.py`'s `load_ram(path)` / `load_video_regs(path)` / `snapshot_regs(path)` already parse a `.snap`'s header (registers, RAM, the live shifter base/resolution/palette) — import them instead of hand-deriving the binary layout (`A68S` magic, 19 regs, then `cpu.CCR` as an **int16**, not a byte, which desyncs every field after it if assumed otherwise; cadaver mechanics.md §46) |
 | `tools/hatari_trace.py` | headless real Hatari on the same ROM (a CPU/OS-trace oracle, not a video one) |
 | `tools/pm_fsm_diff.py` | game-agnostic `callcap` differential-test harness (`Harness`/`State`/`run_corpus`); a corpus script's first argument (other than `reuse`) runs only the states whose name contains it. `callcap` runs the routine with interrupts masked, so a routine that waits on an interrupt-cleared flag never returns ("Loop detected"): for PowerMonger's sound calls (`$1ba3e` → `$1ae36`) poke the busy byte `$2c993` to 0 in the state first |
