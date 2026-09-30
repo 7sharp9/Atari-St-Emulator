@@ -209,7 +209,130 @@ event class 10 sub 0 ($4c856):   svc7 white_flash(); if 2436.bit3 { msg $31 } el
 
 **Proven live** (`lever_script_live.py`, `teleport_live.py`, `level_verb_live.py`, `consumer_live.py`): a touch injected for the lever (id 144) runs the consumer (`$00fe24` 1 hit, gate 1), dispatches four verbs, table indices 10, 14, 30, 32 = script bytes `0a 0e 1e 20` (lever record byte +3 goes 00 -> 01); object id 86 (a LEVER in slot 37, script `0a 85 46 3a 25 22 02 02 00 17`) hits `$010974` and `$00e854` and sets `(A5)+1166` to `$22`; object id 84 (LEVER, slot 60, script `33 00`) runs verb 51: `$010410`, `$00e53c`, `$006890`, `$0068ca` once each, `2524(A5) = 1`, `2518(A5) = $ff`, and after a key the level-1 load (reads 661-664 then 665/132, 797/73, 870/55, 925/12; RAM `$04c65e` then holds level 1's overlay, 2892 of 2892 bytes). Negative control: in a coin walk the consumer runs every frame (49 calls) and no queued event matches a script block. **The overlay is not the interpreter's caller** (it calls only register-argument verb-block entries: services 3, 12, 15; Disk 2 level 4 also 20-22).
 
-**Script census** (`script_census.py`): 174 of the 1000 type-6 objects carry 212 script blocks; events by count 0:39, 3:4, 4:5, 5:44, 7:12, 9:8, 11:6, 12:1, 13:1, 16:82, 18:4, 23:6. Teleport scripts: id 2 BUTTON (slot 34) to room `$25`, id 86 LEVER (slot 37) to room `$22`, id 56 STONE SHELF (slot 38) to room `$25`. **The TUNNEL lever's (id 144) script contains no teleport**, so mechanics.md's LOCK(144) stays a dead end: the walkthrough's room-to-room levers are other objects' scripts.
+**Script census** (`script_census.py`, `verb_decode.py`): level 0 (the CAVERN snapshot) has 174 of the 1000 type-6 objects with 212 script blocks, events by count 0:39, 3:4, 4:5, 5:44, 7:12, 9:8, 11:6, 12:1, 13:1, 16:82, 18:4, 23:6; level 1 (`level1_loaded.snap`, from `level2_load.py`) has 220 objects with 264 blocks, events 0:36, 4:15, 5:40, 7:3, 9:65, 11:3, 12:9, 13:14, 16:52, 18:15, 21:1, 23:10, 27:1. Teleport scripts of level 0: id 2 BUTTON (slot 34) to room `$25`, id 86 LEVER (slot 37) to room `$22`, id 56 STONE SHELF (slot 38) to room `$25`, id 129 to room `$2e`. **The TUNNEL lever's (id 144) script contains no teleport** (it toggles its own state bit and type-4 flag `$33`), so mechanics.md's LOCK(144) stays a dead end: the walkthrough's room-to-room levers are other objects' scripts. The event numbers are the ring-304 opcodes; only 5 (touched) is proven live, the others are read from what their scripts do (0 walk-over pickup, 3 and 9 hurt or contact, 16 examine, 23 killed).
+
+### The script language
+
+Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consumer stops at the first `$17` (verb 23); 11 level-0 blocks carry one more `$17` of padding inside their `len`, which is never executed. Without bit 7 the consumer overwrites the event byte with `$ff` after the first run (`$00fe3e`), so the block never matches again (130 of the 212 level-0 blocks have the keep bit); verb 29 does the same to the running block. No block uses the second set at +`$20`.
+
+**Gate bytes.** The event's precondition routine (table `$00fe84`, 29 entries, events 0-28) reads its operands from the script before the verbs run, and compares them with the word `1156(A5)` or byte `1157(A5)` of the queue entry (the id or code of what touched, hit or used the object): one byte for events 1, 12, 13, 15, 17, 19, 20, 24; two bytes for 4, 9, 10, 18, 26; none for the rest (events 2 and 8 always reject). Examples: object 113 (event 4) gates on id `$0067`; the contact scripts (event 9) gate on `00 00` or `ff ff`.
+
+**Conditions and IF.** The consumer clears the counter `2270(A5)` before each block. A condition verb (the COND rows) adds 1 to it when true and clears it when false, so a run of N conditions leaves N only if every one was true. The IF verbs test it: 14 runs its part when the counter is non-zero, 48 when it is zero, 58 n when it equals n, 59 n when it differs. Layout `[verb][n (58, 59)][len][verbs ... $16]` and optionally `[$0f][len][verbs ... $16]` for the else part; `len` counts itself, the part not taken is skipped by it, and IFs nest without limit (id 56 nests four). A `$0f` reached as a verb asserts (`ELSE SHOULDNT BE CALLED`). Object 2's four-item test is `34 10, 34 20, 34 1c, 34 1a, 58 4 [...]`.
+
+**Operands.** Object ids are big-endian words; `$ffff` (printed `actor`) stands for the running object. Verbs 62 to 64 address any byte of the `(A5)` block: the first word is the offset, bit 15 set means a one-byte value and clear a word value. Verbs 40 and 64 compare with op 0 `>`, 1 `<`, 2 `==` and anything else `!=`. The `MESSAGE` and `DESCRIBE` words index the packed text table (`text_atlas.py`); the gold and XP counters are the longwords `1188(A5)` and `1192(A5)`, health `1174(A5)` of the maximum `2516(A5)`, the script variables the bytes from `2282(A5)`, timers table 3 above.
+
+**Proof.** `verb_decode.py` parses every block of both levels with the lengths below and each one consumes exactly its `len`, ends on the terminator and agrees with every IF and ELSE length byte: 212 of 212 in level 0 and 264 of 264 in level 1 (61 of the 94 verbs occur). `verb_lengths_callcap.py` calls 92 of the 94 handlers under `callcap` on a scratch script and reads A1's advance (99 checks with the IF true and false runs and the word and byte forms of 62 to 64: 99 of 99); the other two are verb 15 (asserts by design) and verb 51 (jumps into the level loader; its one byte is tiled by the level-0 block `33 00`). `verb_effects_callcap.py` measures the effects of the gold and XP verbs (5, 6, 13, 85, 86), 38, 39, 45, 62, 63, 79 and 81 (21 checks) and the comparison ops of 40 and 64 (24 checks): 45 of 45. The names are read from the handler bodies and from the author's own assert strings (`GOANI A NONANI OBJECT`, `PUT IN RUCK RTN. RUCK FULL`, `KILLING A NON-EXISTANT CRE`, `UNTRAP CHEST NON-X OBJECT`, `DIRTY POTION NON-X OBJECT`, ...); only the effects listed above and the teleport, level-start and lever verbs proven earlier were driven, so treat the rest of the effect column as read, not run.
+
+**Two corrections.** Verbs 5 and 85 read their operand and then never add it: `$0102e0` and `$0102d4` load the sound id into D0 (`move.w #$1a,D0` or `#$24`) before `add.l D0,1192(A5)`, and the sound routine `$0158f8` returns D0 unchanged. Verb 5 therefore adds 26 XP for any operand (0, 1, 10, 200 all measured), verb 85 adds 26 for a positive word, and a negative word adds `$ffff0024`, which the game clamps to 0 (XP 100 becomes 0). The gold-pile verb is 6 (gold n, XP n/4). A single-byte "n XP" verb does not exist.
+
+**Verb table** (`$00ffba`; operand layout as read by the handler, `obj:2` an object id word, `word:2` a word, `b` a byte; the last column counts uses in the level-0 and level-1 scripts):
+
+| verb | handler | operand bytes | effect | uses (L0 / L1) |
+|---|---|---|---|---|
+| 0 | `$010076` | obj:2 | DELETE object (pending-delete list 1386(A5)) | 6 / 30 |
+| 1 | `$0100b0` | obj:2 | SHOW object: clear hidden bit, place, draw | 29 / 25 |
+| 2 | `$0101c2` | - | DELETE the current object | 55 / 63 |
+| 3 | `$0101d0` | obj:2 | GOANI: start the object animation | 0 / 33 |
+| 4 | `$01026c` | obj:2 | STOPANI | 0 / 1 |
+| 5 | `$0102cc` | b | XP += 26 (operand read and ignored) | 7 / 13 |
+| 6 | `$010304` | b | GOLD += n, XP += n/4 | 36 / 31 |
+| 7 | `$01031e` | word:2 | REGISTER creature id (list 396(A5), max 6) | 0 / 1 |
+| 8 | `$01032c` | word:2 | UNREGISTER creature id (asserts if absent) | 6 / 10 |
+| 9 | `$010c4e` | b | queue event $4013 for record 164(A5) with n | 0 / 10 |
+| 10 | `$0104e2` | b | CLEAR FLAG n (type-4 record +2), sound $2a | 9 / 11 |
+| 11 | `$010554` | obj:2 | GOMOVE | 1 / 25 |
+| 12 | `$0105b4` | obj:2 | STOPMOVE | 1 / 2 |
+| 13 | `$0105f2` | b | GOLD -= n | 0 / 0 |
+| 14 | `$010626` | len | IF (2270 != 0) | 21 / 37 |
+| 15 | `$0106a8` | - | ELSE marker (executing it asserts) | 10 / 18 |
+| 16 | `$0106bc` | obj:2 | COND obj state bit 0 set | 3 / 13 |
+| 17 | `$0106d6` | obj:2 | obj state bit 0 = 1 | 3 / 6 |
+| 18 | `$0106e2` | obj:2 | obj state bit 0 = 0 | 16 / 4 |
+| 19 | `$0106ee` | obj:2 | COND obj state bit 1 set | 0 / 3 |
+| 20 | `$010702` | obj:2 | obj state bit 1 = 1 | 0 / 3 |
+| 21 | `$01070e` | obj:2 | obj state bit 1 = 0 | 0 / 1 |
+| 22 | `$01124e` | - | END of IF/ELSE part ($16) | 33 / 67 |
+| 23 | `$01124e` | - | END of script ($17) | 212 / 264 |
+| 24 | `$01071a` | obj:2 | obj state bit 0 ^= 1 | 0 / 1 |
+| 25 | `$010728` | obj:2 | obj state bit 1 ^= 1 | 0 / 0 |
+| 26 | `$0101a8` | obj:2 | HIDE object | 3 / 6 |
+| 27 | `$010520` | b word:2 | SET FLAG n = word (type-4 record +2), sound | 1 / 0 |
+| 28 | `$011230` | word:2 | MESSAGE n (fade, text, wait) | 42 / 33 |
+| 29 | `$01074e` | - | mark this block spent (event byte = $ff) | 1 / 4 |
+| 30 | `$010756` | - | COND current obj state bit 0 set | 4 / 21 |
+| 31 | `$01076c` | - | current obj state bit 0 = 0 | 2 / 1 |
+| 32 | `$010778` | - | current obj state bit 0 = 1 | 7 / 10 |
+| 33 | `$010784` | - | current obj state bit 0 ^= 1 | 1 / 6 |
+| 34 | `$01079c` | word:2 | COND object id in the type-8 list | 9 / 3 |
+| 35 | `$0107ca` | obj:2 | PUT IN RUCK (rucksack; asserts if full) | 0 / 0 |
+| 36 | `$0108ce` | obj:2 b b b b | CREATE object o at fixed (x, y, z, facing) | 7 / 10 |
+| 37 | `$010974` | b b b b | TELEPORT room, x, y, z | 4 / 13 |
+| 38 | `$010be2` | b b | VAR n = v (bytes at 2282(A5)) | 4 / 2 |
+| 39 | `$010bf0` | b b | VAR n += v | 7 / 9 |
+| 40 | `$010c00` | b b b | COND VAR n op v (op 0 >, 1 <, 2 ==, 3+ !=) | 9 / 5 |
+| 41 | `$010aaa` | obj:2 b b b b | PLACE object in room r at (x, y, z) ($fe = this room) | 8 / 1 |
+| 42 | `$010c74` | b b | set 2462(A5) = a, 2461(A5) = b | 1 / 0 |
+| 43 | `$0107ae` | obj:2 b | COND object in room n ($fe = this room) | 0 / 0 |
+| 44 | `$01083e` | obj:2 obj:2 b b | CREATE object o2 next to o1 (offset slot, facing) | 1 / 0 |
+| 45 | `$010c84` | word:2 | HEALTH += signed word (0 or less: death) | 14 / 48 |
+| 46 | `$0100ae` | - | no-op | 0 / 0 |
+| 47 | `$010d16` | obj:2 | COND object exists | 0 / 0 |
+| 48 | `$010606` | len | IF NOT (2270 == 0) | 1 / 11 |
+| 49 | `$010d32` | b b | ARM TIMER n = v ticks | 7 / 5 |
+| 50 | `$010354` | obj:2 | KILL creature (queue event 23) | 1 / 3 |
+| 51 | `$010410` | b | START LEVEL n+1 (n <= 9) | 1 / 0 |
+| 52 | `$01044a` | word:2 | no-op (reads a word) | 0 / 0 |
+| 53 | `$010454` | obj:2 | REVEAL NAME (clear hidden-name bits) | 0 / 0 |
+| 54 | `$01049a` | obj:2 | LOCK | 0 / 2 |
+| 55 | `$0104a8` | obj:2 | UNLOCK | 1 / 4 |
+| 56 | `$010d5c` | obj:2 b b b b b b b | COND object in box (room; x0 x1 y0 y1 z0 z1) | 0 / 0 |
+| 57 | `$010dd0` | word:2 | COND selected object 1262(A5) == id | 0 / 0 |
+| 58 | `$01061a` | n len | IF (2270 == n) | 1 / 1 |
+| 59 | `$01060e` | n len | IF (2270 != n) | 0 / 0 |
+| 60 | `$010df2` | word:2 word:2 | COND $df46(a, b) | 0 / 1 |
+| 61 | `$010de0` | b | COND FLAG n set | 0 / 0 |
+| 62 | `$010b6a` | off, value (word; byte if off bit 15) | SET (A5)+off = value (word, or byte if off bit 15) | 0 / 0 |
+| 63 | `$010b90` | off, value (word; byte if off bit 15) | ADD (A5)+off += value | 0 / 0 |
+| 64 | `$010bb6` | off, value, op | COND (A5)+off op value (ops as verb 40) | 0 / 0 |
+| 65 | `$010e0c` | obj:2 b | obj field +1 += signed n (clamped 0..255) | 0 / 0 |
+| 66 | `$010e38` | obj:2 b | queue [type][sub][obj] record into 1266(A5) | 1 / 0 |
+| 67 | `$010e5c` | obj:2 | GOACTI (object state bit 6 of +15 = 0) | 0 / 1 |
+| 68 | `$010e7c` | obj:2 | STOPACTI (bit 6 = 1) | 0 / 1 |
+| 69 | `$010e9c` | obj:2 b b b | MOVE: set the +3,+4,+5 bytes of the object record | 0 / 1 |
+| 70 | `$010ec8` | b | PLAY SOUND n | 5 / 19 |
+| 71 | `$010ed4` | - | no-op | 0 / 0 |
+| 72 | `$010ffa` | word:2 | DESCRIBE: examine text n with the object details | 80 / 53 |
+| 73 | `$010a7c` | obj:2 obj:2 | MOVE object o1 to the position of o2 | 7 / 4 |
+| 74 | `$0103e0` | obj:2 | WAKE creature | 0 / 0 |
+| 75 | `$0103f8` | obj:2 | SLEEP creature | 0 / 0 |
+| 76 | `$010d26` | b | COND shield bit n of 2436(A5) | 1 / 4 |
+| 77 | `$010ee2` | obj:2 | UNLOCK CHEST | 0 / 0 |
+| 78 | `$010f06` | obj:2 | UNTRAP CHEST | 0 / 0 |
+| 79 | `$010f2a` | b b | RANDOM lo..hi -> 2520(A5) | 0 / 0 |
+| 80 | `$010f3c` | b | COND 2520(A5) == n | 0 / 0 |
+| 81 | `$010c3e` | b | 2520(A5) = VAR n | 0 / 0 |
+| 82 | `$010f4a` | b | delete type-8 list entries whose word +2 == n | 0 / 0 |
+| 83 | `$010f78` | b | no-op (reads a byte) | 0 / 0 |
+| 84 | `$0108b6` | obj:2 obj:2 b b b b | CREATE object o2 relative to o1 (dx, dy, z, facing) | 0 / 0 |
+| 85 | `$0102c0` | word:2 | word > 0: XP += 26; word < 0: XP = 0 | 0 / 2 |
+| 86 | `$0102fa` | word:2 | GOLD += word, XP += word/4 | 0 / 1 |
+| 87 | `$010ed6` | b | sound op $015ae0(n) | 0 / 6 |
+| 88 | `$010790` | b | COND n == 2489(A5) | 0 / 0 |
+| 89 | `$01038a` | obj:2 | UNINV (clear bit 0 of +6) | 0 / 0 |
+| 90 | `$010f7c` | b b b | POISON strength, duration, interval | 0 / 0 |
+| 91 | `$010f9e` | b | COND current obj word +6 == n | 0 / 0 |
+| 92 | `$010fb2` | obj:2 | CLEAR CHEST | 0 / 0 |
+| 93 | `$010fd4` | obj:2 | DIRTY POTION | 0 / 0 |
+
+**What the scripts do** (`scripts_level0.txt`, `scripts_level1.txt` in `scratchpad/cadaver/secrets_out/`, from `verb_decode.py --dump`, with the message text). Level 0, read from the decode:
+- The treasury: id 2 BUTTON (touched) tests that objects 16, 32, 28 and 26 are in the type-8 list, then plays sound `$3a`, teleports to room `$25` and places those four objects in room `$21` at (16,16,0); otherwise message 246 "ONLY THE KING MAY ENTER HIS TREASURY". Its examine text (event 16) is message 245, "THIS BUTTON ALLOWS ACCESS TO THE INNER TREASURY". Id 56 STONE SHELF runs the same four tests nested and teleports to `$25` with no message; id 16 is the WULF III breastplate (message 247). Id 486 gates on object 53 (message 379, "YOU MAY NOT PASS WITHOUT THE KINGS CROWN"; with it, flag `$29` is cleared and message 378 is shown).
+- Levers: id 86 (sound `$3a`, teleport room `$22` (2,2,0), proven live); id 84 runs `33 00`, the level-1 start (proven live); id 129 toggles its state bit, adds 1 to script variable 7 and teleports to room `$2e`, and on the other toggle shows objects 256, 27 and 161 by the counter value 0, 1, 2 and prints "THE TREASURY IS EXHAUSTED" when it is above 2.
+- Gold and XP: 36 uses of verb 6 (3 to 200 gold, XP n/4) each followed by verb 2 (delete self), ids 55, 119, 124, 131, 163, 267-270, 333, 346-349, 353-362, 412, 491 and the dragon's booty 501-508 (200, 200, then six of 50), which id 500 reveals with verb 1 and "THE DRAGON STEAMS, BUBBLES AND SMELLS, BUT AT LEAST YOU FIND HIS BOOTY". The verb 5 blocks (ids 27, 161, 256) add 26 XP.
+- Hazards (event 9, gate `00 00`): health -7 (id 237), -15 (285), -5 (443), -1 (446), -25 (451), -50 (483); the fire (485) tests shield bit 1 (`76 1`): "THE FIRE CAUSED YOU NO HARM", else -20, then kills itself. Ids 114, 115, 117 and 120 cost 2 health on event 3, and their event-11 script counts in variable 0 and shows object 116 on the fourth, then resets it.
+- Restoratives: ids 213 and 214 "THE WATER TASTES GOOD" (+2 health), id 392 "THE LIQUID SEEMS TO RESTORE YOU" (+10, then examine text tells full or empty by its state bit); ids 12, 141 and 256 arm timers 3, 2 and 5 (`49 3 28` and the like; the timers whose end clears a shield bit), ids 139 and 142 arm timers 0 and 1 (the poison pair). "THE URN SMASHES" (ids 452, 453) moves the urn to its broken twin (verb 73).
+- 80 of the 212 blocks use verb 72 (an event-16 examine text) and verb 28 (a message) occurs 42 times.
+
+Level 1 uses 13 teleports (rooms `$0c`, `$22`, `$34`, `$46`, `$52`, `$55`, `$5b`, chained by messages such as "THE SKULLS WILL ACTIVATE THE TELEPORTERS", "CHOOSE ONLY ONE TELEPORTER, AND CHOOSE WITH GREAT CARE", "THE EVIL TELEPORTER IS FRAGILE") and 48 health changes, and the verbs 3, 4, 7, 9, 19, 20, 21, 24, 54, 60, 67, 68, 69, 85, 86 and 87 occur only in level 1 (GOANI, STOPANI, REGISTER, the state-bit-1 verbs, LOCK, GOACTI, STOPACTI, MOVE, the `$df46` condition), verbs 27, 42, 44, 51 and 66 only in level 0.
 
 ## Loading, the expander and the level directory
 
@@ -290,8 +413,9 @@ The deliberate `moveq #0,D0 / divu D0,D0` crash (`$0117c6`, and one copy in each
 
 - What the class bytes of type-6 templates mean beyond 1, 2, 4, 7, 8 and bit 7 (the histogram in `item_census.py` has about 80 distinct values) and which objects carry which hint.
 - F2 and F3's exact effects in the icon-choice loop, C's effect, H's restore half, and the dying path's price prompt: read, not run.
-- The lock that takes the escape number 1044 and what the named-copy strings are for; the 94 verbs' operand lengths and names (only verbs 37, 51, 54, 55, 50, 89, 74, 75, 90 and the first 35's table indices are pinned; scripts are read by eye).
+- The lock that takes the escape number 1044 and what the named-copy strings are for.
 - The Disk 2 overlays' two extra header words and negative class-1 record, spell 28 in the Disk 2 builds, services 9, 13, 19, and the real A3/A4 at a spell cast (only `callcap` with inferred registers for the class-gated spells); the projectile-hit paths `$00fa72`/`$00fb60`; list 4's values.
 - Which sound ids fire in play: 36 of the 62 have no literal call site (data-driven: the object class table `$00620b`, the movement stream, ring handlers, verb ops).
 - Whether XP 60,000 is reachable (the rank table's overrun).
-- How the level-start verb `$010410` is dispatched (its table entries 39 and 40 land mid-instruction at `$010426` and `$01043e`) and which script calls it.
+- Verb semantics that are read, not run: DELETE (0, 2), SHOW (1), GOANI/STOPANI/GOMOVE/STOPMOVE, the CREATE and PLACE family (36, 41, 44, 73, 84), PUT IN RUCK (35, never used in the two levels' scripts), the type-4 flag verbs (10, 27, 61), and the meaning of verbs 9, 42, 60, 65, 66, 87, 88 and 91. The two levels' scripts use 61 of the 94 verbs; the Disk 2 levels' scripts are not decoded.
+- What each event opcode is when the game queues it (only 5, touched, is proven), and which event ids the type-8 list tests (34) name.

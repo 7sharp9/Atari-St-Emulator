@@ -1,4 +1,7 @@
-"""Cadaver object-verb bytecode interpreter ($010000-$011256, mechanics.md #22-26/64,
+"""SUPERSEDED (78th pass): this walks the 59-entry table at $010000, which was read from the wrong base; the real verb table has 94
+entries at $00ffba (secrets.md, "The script language"; py/secrets/overlay/verb_decode.py).  Kept for the history of §64.
+
+Cadaver object-verb bytecode interpreter ($010000-$011256, mechanics.md #22-26/64,
 ai.md #6): dumps the embedded debug-string table with real addresses, decodes the 59-entry
 opcode dispatch table at $010000, and for each entry tries to resolve which verb's
 "object doesn't exist" error string its code path reaches (LOCK's own id=18 was found by
