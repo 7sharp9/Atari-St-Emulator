@@ -23,6 +23,7 @@ game.
 | this README | boot and input, the Amazon level, route, boss, shop, spawn types, level end, known traps, file index |
 | `graphics.md` | the asset formats (level, tiles, sprite banks, palettes, font, collision categories) with match counts |
 | `worlds.md` | the five worlds: loader, per-world files and banks, categories 5-8, rooms and routes, bosses, per-world tables |
+| `secrets.md` | cheats and their effects, the Space smart bomb and other keys, the crack's trainer and protection, dead content, the LSD!/Huffman packers, the random number generator, the two sound engines |
 | `py/README.md` | every script, its start snapshot and expected output |
 
 ## Design digest
@@ -113,15 +114,16 @@ copies, i.e. trust the disk's physical layout over the BPB field when parsing it
 
 | file | what |
 |------|------|
-| `EMOTION+.PRG` | 7094 bytes, magic `$601a` — a small GEMDOS loader, part of the crack menu |
-| `MINDBOMB.PRG` | 19840 bytes, magic `$601a`, only file with `attr=$20` (archive) — the crack's own loader/menu binary |
-| `E_MOTION` | 309398 bytes, no extension, starts `$6000` (`bra.w`) not `$601a` — not GEMDOS-loadable by name; raw code/data the crack loads directly, likely the "E-Motion" demo/utility behind the boot menu's F2 option |
+| `EMOTION+.PRG` | 7094 bytes, magic `$601a`: the E-Motion crack's launcher, packed with a second packer (JEK PACKER V1.2), "PRESS 'T' FOR TRAINER / PRESS 'N' FOR NORMAL" (`secrets.md`) |
+| `MINDBOMB.PRG` | 19840 bytes, magic `$601a`, a third packer; unpacks to 63,068 bytes, the "Mind Bomb" demo screen (Chrispy Noodle music, Manikin code): a filler nothing in the game refers to (`secrets.md`) |
+| `E_MOTION` | 309398 bytes, no extension, starts `$6000` (`bra.w`): the E-Motion game itself (US Gold / Assembly Line 1990), the other half of the crack disk; not analysed |
 | `CHARS11.DAT`, `SPRTS22.DAT`, `SPRTS33.DAT` | font + two sprite banks |
 | `BRMUDA{22,33}.DAT`, `ICELND{22,33}.DAT`, `JUNGLE{22,33}.DAT`, `MINES{22,33}.DAT`, `ORIENT{22,33}.DAT` | per-level (Bermuda / Iceland / Jungle / Mines / Orient) data pairs — the game's 5 worlds |
-| `SELECT44.DAT` | world-select screen data |
-| `MDATA1.DCH`…`MDATA5.DCH`, `PICTURES.DCH` | more level/graphics data |
-| `MST.IMG` | 56457 bytes, likely a Degas-family picture (title/loading art) |
-| `E_MOTION.PC1`, `PRES_ST.PC1` | Degas PC1-compressed pictures — crack-intro art |
+| `SELECT44.DAT` | bank-2 frames 100-152 (32x24): red X, selection frame, walking cursor hero, Game Over art (`secrets.md`) |
+| `MDATA1.DCH`…`MDATA5.DCH` | per-world level block (`$25000`-`$31800`), LSD! then Huffman packed |
+| `PICTURES.DCH` | the world-select and title screens, two 32,000-byte ST low-res pictures, LSD! then Huffman packed |
+| `MST.IMG` | 56457 bytes: the game itself, a 484-byte stub ("AUTOMATION PACKER V2.2f") plus an LSD!-packed 98,148-byte image (F1 in the boot menu loads it to `$50000`) |
+| `E_MOTION.PC1`, `PRES_ST.PC1` | LSD!-packed Degas PC1 pictures: the E-Motion title and the Replicants intro |
 | `DISK.ID` | 4 bytes, `00 ff 00 ff` — a protection-check magic value the crack's loader reads back and compares (see below) |
 | `DESKTOP.INF` | GEM desktop config; defines the "REPLICANTS" menu group, no auto-run entry |
 
@@ -475,8 +477,8 @@ handoff guessed:
   checked, in both Klondike and Amazon, and a `watch 42e00 9600` held across that lineage's entire
   confirm→load→gameplay transition recorded zero writes there. That negative was real *for that
   lineage*: a `hits` census on the block that should populate it (`b288`-`b326`, unpacking
-  `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT` to `$24000`/`$3b600`/`$42e00` via the shared unpacker
-  `$1c6de`) landed zero hits on `b288`/`b2ca`/`b328` across that whole run, and a static whole-RAM
+  `CHARS11.DAT`/`SPRTS22.DAT`/`SPRTS33.DAT` to `$24000`/`$3b600`/`$42e00` via the shared file loader
+  `$1c6de`, whose `Fread` the crack's trap #1 hook depacks in place, `secrets.md`) landed zero hits on `b288`/`b2ca`/`b328` across that whole run, and a static whole-RAM
   scan (`find_ram_callers.py`) found no caller for it either — consistent with the block never running
   at all *in that lineage*, not with a read/render bug.
 
@@ -597,7 +599,7 @@ screen every prior pass stopped at:
   hero's own struct gains a nonzero value (`$5f`) at offset `+6` (`$1a578`, a field not otherwise
   described above) that reads `$00` at every earlier checkpoint. Sometime in the following ~1,000,000
   steps the *entire* object-array region containing the hero zeroes out and PC lands at `$0000039a`,
-  then `$0001c68e` — inside the same early common-resource unpacker region the initial boot-time load
+  then `$0001c68e` — inside the same early common-resource loader region (`$1c686` is the VBL wait loop, `$1c68e` its tail) the initial boot-time load
   uses (see "Why `$b288` sometimes never runs" above) — i.e. the game performs a full resource reload,
   the same shape as a level-restart/retry sequence, not an ordinary screen transition.
 - **The green `type=1` object at `$1a5de`, previously characterized as a fixed-rate parallax
@@ -663,7 +665,7 @@ screen every prior pass stopped at:
     .. `step5M.snap`): `$bb74` reads `$09` at step 2,000,000, `$05` at step 3,000,000, `$00` at step
     4,000,000 (the same checkpoint the `+6` field `$1a578` turns nonzero — part of the death-anim
     descriptor `$ec50` installs, not itself a distinct mechanism), and the whole object array is
-    zeroed with PC inside the unpacker by step 5,000,000 — health hitting zero and the reload
+    zeroed with PC inside the loader by step 5,000,000 — health hitting zero and the reload
     coincide exactly as the mechanism above predicts. The hero's own hit-cooldown byte `$1a5d8`
     (`102(A0)`) is never idle for long across these checkpoints (`$05`/`$07`/`$01`/`$02`), i.e. it is
     being continually re-armed — proof the hero is taking repeated hits during the "freeze", not
@@ -690,8 +692,8 @@ screen every prior pass stopped at:
     (entered from `eafa` when `$bb74` hits zero) returns with the carry flag set, so the *very next*
     instruction in the frame template branches straight to `$00b058`, the same target `$df4a`'s
     parallel `bcs` reaches. `$b058` tears down the gameplay template (`$1c3c8`, `$22784`, `$1ab5a`/
-    `$1ab6e`, `$1f972`), calls `$b2d8` (which re-unpacks `$53000`/`$fa00` and `$4c400`/`$5000` via the
-    shared `$1c6de` depacker — the same "resource reload" symptom seen as the object array zeroing
+    `$1ab6e`, `$1f972`), calls `$b2d8` (which reloads `$53000`/`$fa00` and `$4c400`/`$5000` via the
+    shared `$1c6de` file loader — the same "resource reload" symptom seen as the object array zeroing
     and PC transiting `$1c6de`), then `jmp $17fe8`. `$17fe8` prints text and builds a 3-entry object
     array (the same generic object-init shape `$17dd0`/world-select's cursor setup uses) — **live
     render, not just code-shape inference, confirms this is the actual Game Over screen**: resuming
@@ -745,7 +747,7 @@ screen every prior pass stopped at:
   ~2,900,000 steps (three separate hits, not one continuous drop — re-measured precisely this pass by
   checkpointing every 200,000-500,000 steps, correcting the original "~2,500,000/one drop" estimate)
   while the hero's Y climbs from `$28` to `$70`+ (falling into or through terrain near the new object),
-  then PC lands back inside the shared `$1c6de` depacker (confirmed at `$0001882e`, mid-unpack-loop
+  then PC lands back inside `$18812`, the Huffman expander that follows the `$1c6de` load (confirmed at `$0001882e`, mid-expand-loop
   `move.b D3,(A1)+`/`subq.l #1,D0`/`bne`), the same signature as the first death. **A same-position
   retry with the fire button held throughout (`kbd 89`, bits 0+3+7) does not avoid this death**
   (`ru12_fire_probe.txt`) — a *held* fire byte only fires once (rising-edge detected), so this was
@@ -1339,9 +1341,9 @@ live at a time:
     (`$22806 == $fa`), goes `$182bc`, `$19f5a`, `$183b4`, `$b088`, `$b2d8`, then the title, and fire at the title reaches `$17b52`,
     `jsr $bb7e`, `jmp $17c9c`. `$bb7e` zeroes the score, sets max health `$12` (`$22` with cheat code `$bb7d = 1`), `$bb78 := 0`
     and `$bb79 := $10`: all progress is lost on death, and death never returns directly to world-select.
-  - **Cheat names**: the high-score name entry compares the typed name with 8-byte names at `$1837e` (LUMBAJAK, HEINZ, COMMANDO,
-    ANNFRANK, OOCHOUCH, JUGGLERS) and stores the code 1-6 in `$bb7d`. Effects read from code only: 1 max health `$22`, 2 weapon 3 at
-    each level start, 4 sets `$bb78`, 5 tested at `$eb26` (damage path), 3 at `$d2fa`, 6 at `$12e92`.
+  - **Cheat names**: the high-score name entry compares the typed name with 8-byte names at `$1837e` (`LUMBAJAK`, `HEINZ...` with three full stops,
+    `COMMANDO`, `ANNFRANK`, `OOCHOUCH`, `JUGGLERS`) and stores the code 1-6 in `$bb7d`; all six work through the real joystick entry and each effect is
+    measured (`secrets.md`: extra health, weapon 3, endless special fire, an extra life, harmless water, double heals).
   - **Boss deaths**: `$22803 := $ff` is written at five sites, one per world (`$014ad6` Klondike, `$015752` Orient, `$01602e`
     Amazon, `$016958` Ice Land, `$0176a6` Bermuda; all five bosses have 60 hit points, `worlds.md` lists the records), each in a
     death block of the same shape (sound `$1c`, write `$22803`, clear `$22804`, `addi.l #$4e20,$bb6e` = +20,000 points, start the death
@@ -1819,7 +1821,7 @@ Added by the 104th pass (parallel route, boss, shop, level-end and world passes)
   extent, before concluding "populated" or "empty" from a byte count.
 - **`bt` (backtrace) can crash the whole REPL session with an unhandled `AddressError`** if the
   A6 link-chain it walks reaches an address that isn't a valid link frame — hit when backtracing
-  from a snapshot frozen mid-unpacker-loop (the depacker temporarily runs at a low, non-`LINK`-framed
+  from a snapshot frozen mid-depack loop (the crack's trap hook or `$18812` temporarily runs at a low, non-`LINK`-framed
   address and repurposes registers freely). `bt`'s *first* frame (return address straight off `A7`)
   is reliable even then; when the chain past it looks suspect, fall back to a raw `m <A7> <len>`
   stack dump, or set a breakpoint at the routine's real entry point (where a caller's `jsr`/`bsr` just
@@ -1884,8 +1886,8 @@ Current open items, in the order `sessions/impossamole.md` ranks them (everythin
 - **Damage sources:** the water tiles and room `299..318`'s drain are pinned (previous section); the type-2 enemies met in segments 2-5 are identified by handler
   but their approach paths are not modelled.
 - **Shop items:** only the worm can (code 1) was bought; codes 0, 2, 3, 4, 5 and the shop ladder are undriven.
-- **Level-end chain for Klondike and Orient** (their boss kills were done, the flag chain only for the Amazon, Ice Land and Bermuda), name
-  entry to its end, and the cheat names' effects (`$bb7d`).
+- **Level-end chain for Klondike and Orient** (their boss kills were done, the flag chain only for the Amazon, Ice Land and Bermuda). Name entry
+  and the cheat names are done (`secrets.md`).
 - **Per-world code:** `$ee16` (death dispatch), `$ea92` (shop records) and `$c028` words 0-1 are located, not decoded; Orient's category 5/8
   behaviour, Bermuda's 17-hop chain on real input, Klondike bank-2 residue's source.
 - **Graphics:** the title, world-select and ending art formats, animation order per action, the `$216e2` flash palette.
