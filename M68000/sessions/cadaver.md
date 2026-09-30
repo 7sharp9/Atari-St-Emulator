@@ -4,7 +4,7 @@ Updated 2026-09-30 by the 81st-pass session (room-record script blocks decoded; 
 
 ## Resume point
 
-- Last work commit: see `git log` for `cadaver: 81st pass` (the room-script decode is `0e6879b`; the regalia walk, its docs and this handoff are the commit(s) after it).
+- Last work commit: see `git log` for `cadaver: 81st pass` (the room-script decode is `b3ff4c6`; the regalia walk, its docs and this handoff are the commit(s) after it).
 - Read `reversing/cadaver/secrets.md` first: "Object scripts" > "How the script system fits together" (producer table, now with rows for events 6, 14, 15/17, 24, 28), "The player's action panel" (ends with "The regalia walk"), "The script language" and the new "Room scripts".
 - Scripts: `reversing/cadaver/py/secrets/overlay/` (table in `py/secrets/README.md`); new this pass `room_blocks.py`, `room_regions.py`, `room_events_live.py`, `action/regalia_walk.py`. All run from `M68000/` with `uv run` or `.venv`, against `scratchpad/cadaver/gameplay_empire.snap` (CAVERN, level 0) or `level1_loaded.snap`. Decoded room scripts: `scratchpad/cadaver/secrets_out/room_scripts_level0.txt`, `..._level1.txt` (indexed in `scratchpad/ANCHORS.md`). Walk snapshots and logs: `scratchpad/cadaver/secrets_out/action/rw/`, `rw_full.log`, `rw_finish.log`.
 - No emulator source changed: no rebuild or regression-net run needed.
