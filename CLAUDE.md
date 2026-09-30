@@ -77,6 +77,9 @@ know they existed.
   address — it may already be pseudocode'd from an earlier pass. PowerMonger 125th spent a full
   read-and-decode pass on `$157e6`'s settlement-pulse/loyalty logic only to reproduce, line for
   line, the C-style pseudocode already proven in `economy.md` §3a (96th/97th) and `ai.md`.
+- Name a routine's role from its own body, not from where it is seen running: Impossamole's `$1c6de` was called "the shared depacker" for many passes because
+  PC was seen at `$1c68e` during resource reloads (the tail of the VBL wait loop next to it); its first instructions are `Fopen` (`move.w #$3d`, `trap #1`), it is a file loader, and the depacking is a crack hook in low
+  RAM (`reversing/impossamole/secrets.md`). Read the routine to its first branch before writing its role into a doc, and grep for such a label before reusing it.
 - When a session decodes a graphics asset for the first time (spritesheet, tileset, icon/panel
   art, palette) well enough to render it, commit the rendered image (PNG) alongside the doc that
   proves the format, not just a prose description or an untracked scratchpad file — future
