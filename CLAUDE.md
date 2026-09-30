@@ -193,6 +193,20 @@ know they existed.
   signal that only changes if the mechanism actually fired (a counter, a one-shot flag, a state
   transition) before trusting the outcome; holding for longer than one full poll cycle removes the
   ambiguity outright (`reversing/impossamole/README.md`'s "Known traps" section, 95th-pass entry).
+- A `find_literal_ptr.py` hit written off as a "byte-alignment coincidence" needs the real table base
+  from the code that installs the table, not from the neighbouring bytes: read the `move.l #<base>,<field>`
+  and the routine that indexes it, and try both 2-byte alignments. Cadaver's 75th pass dismissed the raw
+  bytes `$00010974` at `$0060a2` because the region looked like 4-byte-aligned `(word, word)` pairs from
+  `$006080`; the table is the level overlay's engine export table, installed at `$00b5ec` as
+  `move.l #$6082,392(A5)` (2 mod 4), and `$0060a2` is its entry 8, the very teleport verb the section then
+  called unreachable (`reversing/cadaver/secrets.md`, `py/secrets/export_service8.py`). The hit was
+  "even" in the tool's own output, which already ruled out an odd-alignment splice.
+- "No caller anywhere" from a whole-image scan means no direct `bsr`/`jsr`/`jmp`; a block whose routines all
+  read as uncalled is usually reached through a pointer table loaded per level (an overlay with an export or
+  dispatch table). Look for the routine that does `movea.l <field>(A5),A6 / jmp (A6,Dn)` before writing "dead".
+  And a keyboard "does nothing" verdict must watch the handler's own branches and flag bytes, not one output:
+  Cadaver's 9th pass drove every `$01616c` dispatch id and watched only the player descriptor, while the
+  main loop's own handler at `$006ba2` (pause, map, save, load, F2-F4 toggles) read the same key cell unseen.
 
 ## Proving routines with parallel subagents
 
