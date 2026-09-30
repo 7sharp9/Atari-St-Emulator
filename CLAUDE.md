@@ -87,6 +87,13 @@ know they existed.
   `graphics.md`/the README's files table the way screenshots already are.
 - Every behavioural claim about a game needs an emulator check (callcap diff, frame capture or
   screenshot diff) with a match count, or is labelled inferred.
+- A verb/opcode table named from reading its handler bodies is a hypothesis: call each handler under
+  `callcap <addr> <steps> - A1=<scratch script> ...` (the `regdelta` line gives the final A1, so the operand
+  length; the `mem` lines give the effect) and tile the whole script corpus with the grammar. Cadaver's 78th
+  pass read verb 5 as "XP += n" and comparison op 2 as `!=`; both were wrong (`$0102e0` overwrites D0 with the
+  sound id before the add; op 2 is `==`), found only by the live checks (`py/secrets/overlay/verb_effects_callcap.py`).
+  A `callcap` that "does not return" is often a fatal assert on the poked state (e.g. an id missing from a
+  list), not a hang: read the handler's error block before giving up on the check.
 - When reading a routine to explain why an input "does nothing," read to its next control-flow
   instruction (branch/jump/rts), not just to the first `jsr` whose target looks self-contained and
   irrelevant — an unconditional `jmp`/`bra` right after that call can be the actual mechanism, and
