@@ -66,11 +66,18 @@ labelled inferred or read (from code, not run). `/handoff` re-checks this list a
   "Unpoked, the whole Amazon")
 - **A boss ends the level.** One 60-hit-point boss per world in a dead-end room; a flag, a 125-frame count, a fade and reload lead to world select
   with the world crossed out. The Amazon boss is vulnerable only in an open-mouth phase and only to a jumping hero; other worlds add a
-  hit-ignoring flag (Klondike) or a shielded phase (Bermuda). (R "Boss", "How a level ends"; W "Bosses")
+  hit-ignoring flag (Klondike) or a shielded phase (Bermuda). The Amazon boss answers with an aimed 1-damage shot and a 7-damage lob that flies toward the
+  hero's side, so a 16-point hero that dodges only the lob beat it in one start timing of twelve. (R "Boss", "Unpoked, the whole Amazon", "How a level ends"; W "Bosses")
 - **Progress is one run.** Death goes Game Over, title, and all progress and score are lost; Bermuda unlocks when the other four are won; the fifth
   world's win goes to the ending and high-score entry. (R "How a level ends")
 - **One hidden shop per level**, entered by finding the mole in a pit and pressing down on it; coins (dropped by monkeys, 25 each) buy heals (proven for the worm can),
   weapon upgrades and special fire (read). (R "The shop")
+- **Two extras with no on-screen hint.** Space is a once-per-level smart bomb (kills every enemy slot except hit points `$fe`, freezes the hero for its
+  animation), and six names typed into the Game Over or ending high-score entry (score of 2000 or more; `HEINZ...` needs its three full stops) switch on one run of
+  bigger health, weapon 3, endless special fire, an extra life, harmless water or double heals. Ctrl pauses, Esc quits to the title. (R "Unpoked, the whole Amazon";
+  `secrets.md` "Cheats", "Keys the game reads")
+- **Randomness is a function of time.** One 16-bit generator fed by four VBL counters that are zeroed at every title, death and level start, so the same input timing gives
+  the same enemies, drops and boss shots: a route recorded as packets replays exactly. (`secrets.md` "The random number generator")
 - **Everything is frame-counted and deterministic**, so a run replays byte for byte from a snapshot and a route can be recorded as joystick
   packets. (route)
 
@@ -88,6 +95,8 @@ labelled inferred or read (from code, not run). `/handoff` re-checks this list a
 
 ### Bugs and accidents a new design should drop
 
+- Every world's ambient sound is silent (five sound slots use an empty record) and the digitised-sample and song paths of the effect engine are unreachable: the release
+  drops what an earlier build seems to have had (`secrets.md` "Dead and unreferenced content").
 - The joystick fire bit is edge-detected once per frame, so a press shorter than a frame is lost; on the world-select screen a fire pressed while
   the cursor is still moving is lost. (R "Confirming a world needs a held fire"; W "Ice Land and Bermuda Triangle")
 - The hero's sensor scan writes probe offsets into its own position for a few instructions each frame, so a reader that samples mid-frame sees a
