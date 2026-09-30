@@ -59,7 +59,7 @@ let run (arg: string) =
     let t0 = gi "tick"
     let scores = [ for k in 0 .. 3 -> let t = (t0 - k + 4) % 4 in t, score (render t recs) ]
     let bestT, best = scores |> List.maxBy snd
-    printfn "%s  cam (%d,%d) yaw $%02x  RAM tick %d: %s  best tick %d = %.2f%%"
+    printfn "%s  cam (%d,%d) yaw $%02x  frame tick %d: %s  best tick %d = %.2f%%"
         (Path.GetFileNameWithoutExtension path) camX camY yaw t0
         (scores |> List.map (fun (t, s) -> sprintf "t%d %.2f" t s) |> String.concat " ") bestT best
     let full = render bestT recs

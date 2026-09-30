@@ -256,7 +256,7 @@ def fill_tri(idxbuf, cov, dith, a, b, c, colour_byte, flat=False):
             cov[base + x] = 1
 
 
-WATER_ADD = 2   # [$4bb3e] & 3 in the reference frame ($f95e/$f964)
+WATER_ADD = 2   # ([$4bb3e] - 1) & 3 for a captured frame ($f95e/$f964); see load_ram
 
 
 def render(terr, tables, dith, cam_x, cam_y, half, tick=WATER_ADD, flat=False,
@@ -381,7 +381,12 @@ def load_ram(ram_path: Path):
     # residual has a different, still-open cause.
     dith = b[u32(0xFF9E):u32(0xFF9E) + 0x4000]    # $2e000, 16 KB
     phase_bias = (u32(0xFFA2) >> 1) - u32(0xFF9E)
-    tick = u32(0x4BB3E) & 3
+    # The compose buffer `ref` reads is the last COMPLETED frame. A RAM image taken at the $f898
+    # frame driver already has this tick's increment of $4bb3e ($13034), so that frame was drawn with
+    # the counter minus one (130th: four consecutive coast captures match at 99.9-100 % with the
+    # offset, six water scenes 90-100 % against 40-70 % without). `ram_tick` keeps the raw counter.
+    ram_tick = u32(0x4BB3E) & 3
+    tick = (ram_tick - 1) & 3
     yaw = u16(0xFF9A)
 
     # -- entities: walk the $47970 per-cell bucket array ---------------------
@@ -455,7 +460,7 @@ def load_ram(ram_path: Path):
     b0, b1 = 0x1C700, 0x24400
     ref_base = b1 if b0 <= draw_ptr < b0 + 32000 else b0
     ref = decode_screen_indices(b, ref_base)
-    return dict(corners=corners, planes=planes, dith=dith, tick=tick,
+    return dict(corners=corners, planes=planes, dith=dith, tick=tick, ram_tick=ram_tick,
                cam=(cam_x, cam_y), half=half, yaw=yaw, ref=ref, ram=b,
                x_inset=x_inset, phase_bias=phase_bias, ent=ent)
 

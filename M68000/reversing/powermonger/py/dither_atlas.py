@@ -78,14 +78,12 @@ def block(dith, first):
     return bytes(dith[first * 128:(first + NLIVE) * 128])
 
 
-def build_scene(ram, name, title, extra_ticks=(), tick_adjust=0):
+def build_scene(ram, name, title, extra_ticks=()):
     """One settled frame -> the dict the page renders. `extra_ticks` are further RAM images of
     the same camera at the other water ticks; each must also reproduce from the table.
-    `tick_adjust`: the compose buffer that `R["ref"]` reads was finished one tick before the RAM
-    image was taken, so the frame it holds used `[$4bb3e] - 1` (-1 for captures of a water scene)."""
+    `load_ram` already gives the tick the compose buffer was drawn with, `[$4bb3e] - 1`."""
     R = r.load_ram(ram)
-    ram_tick = R["tick"]
-    R["tick"] = (R["tick"] + tick_adjust) & 3
+    ram_tick = R["ram_tick"]
     dith = R["dith"]
     planes, corners = R["planes"], R["corners"]
     cam_x, cam_y = R["cam"]
@@ -189,7 +187,6 @@ def build_scene(ram, name, title, extra_ticks=(), tick_adjust=0):
     tick_check = [dict(tick=tick, ram=ram.name, exact=exact, drawn=drawn)]
     for other in extra_ticks:
         R2 = r.load_ram(other)
-        R2["tick"] = (R2["tick"] + tick_adjust) & 3
         assert R2["cam"] == R["cam"] and R2["yaw"] == R["yaw"]
         i2 = bytearray(W * H)
         c2 = bytearray(W * H)
@@ -305,10 +302,10 @@ def main():
     cap = sc / "pm121" / "cap"
     scenes = [
         build_scene(sc / "pm78_settle.ram", "mission1", "Mission 1, inland"),
-        build_scene(sc / "pm122/agents/dissolve/nat2/k5_x1.ram", "coast", "Land 5, a coast", tick_adjust=-1),
+        build_scene(sc / "pm122/agents/dissolve/nat2/k5_x1.ram", "coast", "Land 5, a coast"),
     ]
     # four consecutive ticks of one coast camera: the water shimmer, rebuilt from the table at each
-    series = build_scene(cap / "k5_22_0.ram", "series", "tick series", tick_adjust=-1,
+    series = build_scene(cap / "k5_22_0.ram", "series", "tick series",
                          extra_ticks=[cap / f"k5_22_{n}.ram" for n in (1, 2, 3)])
     assert all(c["exact"] / c["drawn"] > 0.99 for c in series["tick_check"]), series["tick_check"]
     pal = json.loads((ROOT / "reversing/powermonger/port/assets/palette.json").read_text())["palettes"][0]["rgb"]
