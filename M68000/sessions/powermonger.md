@@ -1,16 +1,18 @@
 # PowerMonger: handoff
 
-Updated 2026-09-30 by the 130th pass (a hidden-features audit by a subagent, re-checked by the parent, and a
-terrain-dither deep dive; the 129th's alliance item 1 below is still the next game-mechanics step).
+Updated 2026-09-30 by the 130th pass (a hidden-features audit by a subagent, re-checked by the parent, a
+terrain-dither deep dive, and the `load_ram` water-tick fix). The 129th's alliance item 1 is still the next
+game-mechanics step; the unfinished half of the audit is item 2.
 
 ## Resume point
 
-- Last commit of this workstream: the 130th pass (`git log --oneline -3`); before it the 129th, "natural alliance
-  completes end to end" (`f0cb17c`).
+- Last commit of this workstream: the 130th pass's handoff commit (`git log --oneline -3`; the pass itself is
+  `11d91bb`); before it the 129th, "natural alliance completes end to end" (`f0cb17c`).
 - Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell
   pitfalls"). New this pass, indexed in `scratchpad/ANCHORS.md`: `pm129/` (about 46 MB, `.ram` beside each
   `.snap`): `wp5_45M.snap` is the launch point for the `$1e` offer click on land 25's lord 15, and
-  `env5_12M.snap` is the post-alliance state.
+  `env5_12M.snap` is the post-alliance state. `pm130/audit/` holds the audit's scripts, whole-image listing
+  and raw output; `pm130/dither/dither_data.json` the infographic's data (both in `ANCHORS.md`).
 - Start from: `scratchpad/pm129/env5_12M.snap` for anything about the alliance's effects;
   `scratchpad/pm123/win/m1_s0.snap` (mission 1 settled) for work not touching the live goods economy
   (mission 1 has no goods anywhere).
@@ -31,7 +33,9 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
   (triangle, colour byte, slot): 0 pixels differ from `pm_render_ref`, 94.6 % / 95.6 % equal the game's frame (rest
   sprites); season fade model equals `pm74_late`'s live slots byte for byte. Table layout, ramp structure, the
   forced-`0x1c`-only slot and the tick-minus-one buffer lag are in graphics.md "The pattern fill";
-  `dither_infographic.html` is the interactive version.
+  `dither_infographic.html` is the interactive version. `tools/pm_render_ref.py` `load_ram` now returns
+  `tick = (counter - 1) & 3` (`ram_tick` is the raw counter): mission-1 and `pm74_late` scores unchanged
+  (94.6 / 94.4 %), water scenes 90-100 % (`k5_x1` 95.6, `k60_iso` 91.7, `k5_22_0` 100.0, `k5_22_2` 99.9).
 - **No hidden keys or debug commands (130th audit)**, with the exceptions and the uncovered list in strategy.md
   "Hidden features audit": arrow keys scroll the camera cell ungated (graphics.md camera loop corrected), dormant
   word `$5809a` draws all sides' markers when set, startup command-line string `$123c` reaches the serial-link role
@@ -71,23 +75,38 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
    lord 15's town should be accepted like an own town (`$3154`'s peace-bit filter), and a `$1e` click
    there should no longer be accepted by the `$1394c` pointer test. Then a side-3 alliance with 3 pots
    (formula predicts v = 4, not run) needs an escort past lord 4's 18-entity garrison; not a fix found yet.
-2. **The orders not yet seen naturally**: `$04` transfer (needs two captains, a later land), `$0e`
+2. **The rest of the secrets audit** (strategy.md "Hidden features audit" lists what was and was not covered).
+   In order of likely payoff, each with how to prove it:
+   - `$5809a` (dormant "draw all sides' markers" word): find register-relative writers
+     (`find_field_writers.py`, it sits just below the `$5809c`/`$580a0` briefing variables, so check whether a
+     block copy or a save covers it); prove by setting it through that path and counting `$16738`/`$e6ee` hits.
+   - Link mode: the ESC abort (`$1c34e` receive, `$1c39e..$1c3ae` send), the chat command `$26` (`$d13e`), and the
+     startup string `$123c` reaching `$12d88` (states 6 and 8). Patch `$123c` to `S` and `M` in a snapshot and
+     watch what the side records and `$d13e` do; the parse is inferred, not traced.
+   - Unreferenced data: `DATA\SPRITE40.DAT` (on disk, not in the `$e0c4` loader table), `B_FLOOD.ECH` (`$1adaa`),
+     `DATA/MAP0000.DAT` (`$e388`, the fixed-map branch `$df52(7)`), and whether `BITMAP.DAT` loads at mission 1
+     (`$13c0e`, needs `$58148 < $100`). Prove with `hits` on the loader `$df52` and its index argument over a
+     land build.
+   - Dead-code triage: about 100 of 117 unreferenced routine starts are untriaged (`$503c`, `$15a60`, `$10458`,
+     `$90ca` regions are big). The reachability walk in `scratchpad/pm130/audit/reach_scan.py` misses dispatch
+     tables (it called the live `$b892` an orphan), so improve it with the `movea.l <field>(A5),A6 / jmp (A6,Dn)`
+     rule before trusting its list, then run the orphans under `hits` through a land build and a few minutes of play.
+   - The crack's own stage (title, cracktro, `MREP`, packed `WAR`) was not audited; one byte at `$27028` changes
+     when `$2a` (left shift) is pressed and is unexplained; `$58000` and `$4bb48` are read-only absolutes.
+3. **The orders not yet seen naturally**: `$04` transfer (needs two captains, a later land), `$0e`
    on a real capital (does the work order produce pots naturally?), `$10`/`$06` on a food pile, the
    `$1a` supply line over several loops (food delivered per loop).
-3. **What refills strength** (lead/man byte 45, the captain panel's "Strength:", drained by `$5c80`);
+4. **What refills strength** (lead/man byte 45, the captain panel's "Strength:", drained by `$5c80`);
    the old "food" item 4 reads byte 45 wrongly. Watch byte 45 of a man over a march with and without
    food.
-4. `$1b8c` via `$5778` (a gate over natural `$5778` states); `$4342`'s arrival/unlink branch
+5. `$1b8c` via `$5778` (a gate over natural `$5778` states); `$4342`'s arrival/unlink branch
    (`scratchpad/pm113/diff_4342.py`, natural states from `capture_hits.py`); `$4f68` arms not covered
    (`$51dc` finding an ally's target, `$548a`'s `39 == 2`).
-5. Smaller: `tools/pm_render_ref.py` `load_ram` reads `[$4bb3e] & 3` but the compose buffer was drawn with that minus one
-   (130th; one-line fix, shared tool, gates in `port/` use it, so not changed unasked); `$5809a` writers (run
-   `find_field_writers.py`, check the save block); link-mode key paths (ESC abort `$1c34e`); whether `BITMAP.DAT` loads.
-   Weather: weather is now in the stepper (`C` key, this pass) but still not in the Godot view
+6. Smaller: weather is now in the stepper (`C` key, this pass) but still not in the Godot view
    (`godot/game/TerrainView.cs` has no `Weather` reference); where the crack writes its `$b842`
    patch; the fixed-map `$df52(7)` branch; `$2df98` is "the other button" (inferred right); the port
    and stepper still use the old names (`troops_reserve`, budget, discipline) if they model them.
-6. **A deeper game summary/mechanics writeup**, if Dave wants to keep extending it toward
+7. **A deeper game summary/mechanics writeup**, if Dave wants to keep extending it toward
    populous's depth: the README now opens with a doc-index table (added 127th) and the Design
    digest is current; a further step would be an explicit "architecture" thread (per-tick dispatch,
    core data structures, which mechanics are instances of a shared idiom) the way
@@ -96,6 +115,15 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Known traps
 
+- **A subagent's "the docs are wrong" claim gets one live check before it goes into a doc.** The 130th audit's
+  arrow-key finding contradicted graphics.md; a 3-command REPL run (`kbd 4b`, `s 500000`, `m 4bb3a 4`: X `$28` to
+  `$26`) confirmed it before the correction was written. The same agent's reachability walker also called a live
+  routine an orphan, so its derived lists need the same treatment.
+- **A raw `dotnet exec ... resume <snap> repl` needs `--disk-a <file.st>`, not `-DiskA`** (that is `run.ps1`'s form,
+  DEVELOPING.md). With the wrong flag the REPL printed all-zero memory instead of failing, which reads like an
+  empty camera cell, not a bad argv.
+- **Compare a water frame against the game's buffer with `tick = counter - 1`** (now done in `load_ram`); raw
+  counter scores of 40-70 % on a coast are this offset, not a renderer bug.
 - **Census the target's own neighbourhood before choosing a route, not the nearest one by distance.** The
   129th's `census_lords.py` found the far lone town (lord 15) clear while the near capital (lord 4) held 18
   entities. Stalls are then terrain, not enemies: check the `$438ee` plane (`py/terrain.py`) before blaming a garrison.
@@ -179,4 +207,5 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 Open item 1: from `scratchpad/pm129/env5_12M.snap`, test the alliance effects on lord 15's town (`$06`/`$10`
 accepted, `$1e` refused by the pointer test), watching `$31a6`/`$31b2`/`$31cc` and `$139da`/`$13b1e` with
-`hits`. If that confirms the documented behaviour, item 2 (the orders not yet seen naturally) is next.
+`hits`. If that confirms the documented behaviour, take item 2 (the rest of the secrets audit), starting with the
+`$5809a` writers and the link-mode/startup-string path, then item 3 (orders not yet seen naturally).

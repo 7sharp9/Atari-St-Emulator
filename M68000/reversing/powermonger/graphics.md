@@ -182,8 +182,7 @@ The compose buffer holds the frame finished one tick earlier, so a RAM image tak
 the `$f898` frame driver shows terrain drawn with `([$4bb3e] - 1) & 3`: four consecutive
 captures of one coast view (`pm121/cap/k5_22_0..3`) match the rebuilt frame at 100.0, 100.0,
 99.9 and 99.9 % with that offset, and six water scenes score 90-100 % with it against 40-70 %
-without (`tools/pm_render_ref.py`'s `load_ram` still reads the raw counter, which is why its
-water scores were low). Dither phase on those captures is 64.
+without; `tools/pm_render_ref.py`'s `load_ram` applies the offset (`tick`; the raw counter is `ram_tick`). Dither phase on those captures is 64.
 
 The shimmer appears only where water lies inside the drawn window. The open
 sea outside the window is part of the static `$78000` master and does not

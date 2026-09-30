@@ -109,8 +109,12 @@ against every session's changes.
   is a pure function of its seed, so a run replays exactly from a snapshot. (S "RNG and determinism")
 - **The world is drawn as a heightmap.** A software rasteriser projects the grid with perspective,
   fills two triangles per cell far to near, and draws each cell's sprites straight after it, so
-  walk order is depth order. Seasons change the grass patterns; rain and snow are drawn on top.
-  (G "Summary", P 4 "Seasons", S "What `$1abaa` actually is")
+  walk order is depth order. A triangle has no colour of its own: its terrain byte (type plane for one
+  half of a cell, height plane for the other, water plus a 0-3 tick, or a fixed dark slot for
+  back-facing triangles) picks one of about 60 16 x 16 stipple tiles, the scanline and screen column
+  pick the pixel, and the byte rises with height so the tiles are dither ramps. Seasons rewrite 18 of
+  the tiles pixel by pixel; rain and snow are drawn on top.
+  (G "The pattern fill", G "Seasons", P 4 "Seasons", S "What `$1abaa` actually is")
 
 ### Limits that became features
 
