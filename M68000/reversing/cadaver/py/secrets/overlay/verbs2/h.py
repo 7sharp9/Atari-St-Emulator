@@ -140,7 +140,9 @@ def owner_block(h):
     return a + 0x10, b[0], b[1]
 
 def set_body(h, script):
-    """rewrite object 2's first block: [len][event|$80][script...][$17 pad]; len unchanged"""
+    """rewrite the owner's first block (object 2 unless `h.owner` is set): [len][event|$80][script...][$17 pad]; len unchanged.
+    Object 2 is the treasury BUTTON: a snapshot taken after `real()` keeps the scratch script, so pressing the BUTTON later runs it
+    (action/regalia_walk.py sets `h.owner = 86` for that reason)."""
     base, ln, ev = owner_block(h)
     assert ev & 0x7f == 5, (ln, ev)
     body = bytes(script) + bytes([0x17] * 64)
