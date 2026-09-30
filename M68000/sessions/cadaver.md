@@ -1,35 +1,44 @@
 # Cadaver: handoff
 
-Updated 2026-09-30 by the 77th-pass session (the secrets and algorithms survey; two subagents, algorithms and the level code overlay). Commits: see `git log` for `cadaver: 77th pass`.
+Updated 2026-09-30 by the 78th-pass session (the object-script verb decode). Commits: see `git log` for `cadaver: 78th pass`.
 
 ## Resume point
 
-- Read `reversing/cadaver/secrets.md` first: it is the new reference for keys, saving, the text table, the assert layer, the level code overlay and its export table, the object-script consumer and 94-verb table, the LZHUF expander and level directory, the sound sequencer, the day clock and the RNG. Every script is in `reversing/cadaver/py/secrets/` (table in its README); all run from `M68000/` against `scratchpad/cadaver/gameplay_empire.snap` (CAVERN). Working data: `scratchpad/cadaver/secrets_out/` (indexed in `scratchpad/ANCHORS.md`).
+- Read `reversing/cadaver/secrets.md` first, "Object scripts" and its subsection "The script language": block layout, event gates, IF/ELSE grammar, the 94-verb table with operand layouts, and what the scripts do. Scripts are in `reversing/cadaver/py/secrets/overlay/` (table in `py/secrets/README.md`); all run from `M68000/` against `scratchpad/cadaver/gameplay_empire.snap` (CAVERN, level 0) or `scratchpad/cadaver/level1_loaded.snap` (level 1 loaded). Decoded scripts of both levels: `scratchpad/cadaver/secrets_out/scripts_level0.txt`, `scripts_level1.txt` (regenerate: `verb_decode.py [snap] --dump`); indexed in `scratchpad/ANCHORS.md`.
 - No emulator source changed, so no rebuild or regression-net run is needed.
 - Uncommitted and not this workstream's: `M68000/sessions/README.md` (a pre-existing line-wrap edit), `Cadaver/` (disk images), `.obsidian/`.
 
-## Proven this pass (counts in `secrets.md`)
+## Proven so far (counts in `secrets.md`)
 
-Main-loop keys (F1 map, P pause, S/L save/load, F2-F4 toggles, Return/Space, H, C; F4 proven); the save price `max(1186(A5), (level+1)*50-45)` (4/4) and a full save/load round trip; the rank table and its overrun at XP >= 60000 (12/12); 67 assert sites; the LZHUF expander `$0118ec` (8/8 blocks bit-exact) and the level directory (two levels on the one-disk image, the second loads and renders); the three-voice sound sequencer (62/62 sounds, 38/38 scenario events); the day clock (`2166(A5)`, 90,000 VBLs per day); the RNG `$011544` (40/40); the level code overlay (timers 17/17, creature classes 10/10, events 4/4, potions 18/18, spells read from each body, MAP cast live); the export table and the teleport as service 8 (`export_service8.py`); the object-script consumer `$00fdbc` and the 94-entry verb table at `$00ffba` (lever scripts run live; verb 37 teleports; verb 51 loads level 1). Corrections written into the docs: mechanics.md §51-§56 (depacker exists, two levels), §69b, §23a/§64 (verb table base), ai.md §1-5 (it is the sound engine), item 10 (`2516(A5)` is max health).
+Earlier passes (77th): main-loop keys, gold-priced saves, rank table overrun, assert layer, level code overlay and export table, the consumer `$00fdbc` and the 94-entry verb table at `$00ffba`, the LZHUF expander and two-level directory, the sound sequencer, day clock, RNG.
+
+This pass (78th, item 1 closed):
+- The verb grammar: 212 of 212 level-0 blocks and 264 of 264 level-1 blocks decode to exactly their `len`, end on `$17`, and agree with every IF/ELSE length byte (`verb_decode.py`); event gates read 0, 1 or 2 operand bytes before the verbs (table `$00fe84`); 61 of the 94 verbs occur in the two levels.
+- Operand lengths of 92 of the 94 handlers measured under `callcap` (`verb_lengths_callcap.py`: ok 99, bad 0); the other two are verb 15 (assert by design) and 51 (level loader, tiled by a script).
+- Effects of verbs 5, 6, 13, 85, 86, 38, 39, 40, 45, 62, 63, 64, 79, 81 (`verb_effects_callcap.py`: 45 of 45). Verb 5 adds 26 XP whatever its operand; verb 85 adds 26 or zeroes XP; the gold pile is verb 6; comparison ops are 0 `>`, 1 `<`, 2 `==`, else `!=`.
+- Object 2 BUTTON's script under the real consumer: four items (16, 32, 28, 26) in the type-8 list give sound, teleport to room `$25` and four placements; fewer give message 246 (`treasury_gate_live.py`, 3 of 3 runs).
+- The catalogue of what the scripts do (treasury, levers, gold piles, hazards, restoratives, level-1 teleporters) is in `secrets.md`; the verb names come from the handler bodies and the author's assert strings.
 
 ## Open, in priority order
 
-1. **Decode the 94 verbs**: operand lengths and names (only 37, 50, 51, 54, 55, 74, 75, 89, 90 are pinned); then write a script disassembler and dump all 212 blocks of the 174 scripted objects. This is where the walkthrough's room-to-room levers live (id 2 BUTTON, 86 LEVER, 56 STONE SHELF teleport; the TUNNEL lever id 144 has no teleport). Use `script_census.py`, `verb_table94.py`.
-2. **Reach the rest of the game**: drive object 86 (room `$22`) and 2 (room `$25`) from their rooms, and the level-start verb, then walk level 1 (`level2_loaded.png`). Try creature rooms (slot 27 GIANT RAT) with the overlay's creature loop live; class behaviours are read at call level only.
-3. **The Disk 2 builds**: overlays with two extra header words, a negative class-1 record, service table `$005eee` (29 entries), spell 28 as a real damage effect; the Empire `[t]` Disk 2 levels 3 and 5 look damaged (prefer Replicants); `disk2_levels.py`, the stride-28 record of the two-disk loader is inferred.
-4. The unfinished items listed in `secrets.md` "Open": F2/F3 effects, the escape-number lock (1044), the class bytes of type-6 templates, which sound ids fire in play, `$0115a2` (a rotating checksum nobody calls), whether XP 60,000 is reachable, the first-room-load writer check from a cold boot (old item 4).
-5. Older loose ends still standing: the room-census oddities of mechanics.md §67 (14 rooms with fewer `$00ce78` writes, slot 69's 102 hits, slot 71's missing terminator; slots 69 and 71 are probably not rooms), STOPACTI's `$f8ba`, the sconce's art source, the tile-stack direction (graphics.md 5e).
+1. **Reach the rest of the game** (old item 2, now cheaper): the scripts say what each lever needs. Drive object 86 (room `$22`) and 84 (level 1) from their rooms by walking; walk level 1 with `level1_loaded.snap` and the 13 level-1 teleport scripts (`scripts_level1.txt`: rooms `$0c $22 $34 $46 $52 $55 $5b`, the skulls and teleporters messages). What the type-8 list holds in play (how the player acquires 16/32/28/26, and which verb PUTs items in it: verb 35 is unused in both levels) is the first thing to find, by playing to a pickup with `watch` on the list at `(A5)+96` type 8.
+2. **The Disk 2 builds**: decode the Disk 2 levels' scripts with `verb_decode.py` (needs a snapshot per level, made with `level2_load.py`; the 33 verbs neither level uses may occur there); overlays with two extra header words, a negative class-1 record, service table `$005eee` (29 entries), spell 28 as a real damage effect; the Empire `[t]` Disk 2 levels 3 and 5 look damaged (prefer Replicants).
+3. **Verb semantics that are read, not run** (`secrets.md` "Open"): DELETE (0, 2), SHOW (1), GOANI/STOPANI/GOMOVE/STOPMOVE, the CREATE/PLACE family (36, 41, 44, 73, 84), the type-4 flag verbs (10, 27, 61), and verbs 9, 42, 60, 65, 66, 87, 88, 91. Prove each with a `callcap` memory delta as `verb_effects_callcap.py` does, or by running the level-1 scripts that use them (3, 4, 7, 11 are level-1 heavy).
+4. What each event opcode is when the game queues it (only 5 is proven): find the queuers (`$00a474` and the writers to `152(A5)`) and inject each opcode for an object that has a block for it.
+5. The unfinished items listed in `secrets.md` "Open": F2/F3 effects, the escape-number lock (1044), the class bytes of type-6 templates, which sound ids fire in play, `$0115a2` (a rotating checksum nobody calls), whether XP 60,000 is reachable, the first-room-load writer check from a cold boot.
+6. Older loose ends: the room-census oddities of mechanics.md §67 (slots 69 and 71 are probably not rooms), STOPACTI's `$f8ba`, the sconce's art source, the tile-stack direction (graphics.md 5e).
 
-Retired: old items 1 (the interpreter's caller is `$00fdbc`), 2 (the "entity script" system is the sound engine, not a creature interpreter), 5/10 as stated (dispatch ids: the table base was wrong; `2516(A5)` is max health), 9 (Disk 2 does add content; the one-disk image itself has two levels).
+Retired: the 94 verbs' operand lengths and names (old item 1), the mid-instruction entries of the level-start verb (the table base was wrong, verb 51 is a clean entry).
 
-## Known traps (new this pass)
+## Known traps
 
-- A literal-pointer hit dismissed as alignment coincidence needs the real table base (the `move.l #$6082,392(A5)` installer); "no caller" from a direct-call scan does not cover tables loaded per level; a "key does nothing" verdict must watch the handler's branches and flags, not one output (CLAUDE.md).
-- A "no RNG" count taken from `mul`/`div` sites misses a shift-built LCG (`$011544`): search for a persistent word updated by shifts and adds, and for the routine that divides a 16-bit value into a range.
-- Both agents' first reports disagreed with each other and with the parent (overlay size, RNG, `$01616c`'s role): every cross-claim was re-checked in the code before it went into `secrets.md`.
-- `find_ram_callers.py` scans of the whole image saw 0 callers for the verb block and overlay routines because they are reached through tables: use `find_literal_ptr.py` with both 2-byte alignments and the pointer installer.
+- A callcap that "does not return" is usually a fatal assert on the poked state: verbs 8 and 75 assert unless the id is in the creature list at `396(A5)`, verb 29 needs A4 in valid RAM (it writes `1(A4)`), verb 79 with lo = hi divides by zero (`$011544`). The seeds are in `verb_lengths_callcap.py`/`verb_effects_callcap.py`.
+- `callcap`'s `regdelta` shows A1 as `$snapshot->$final`, not relative to the preset: measure `final - preset`.
+- Script operand bytes are hex in the dump but object ids print decimal (`#16`); the message text of verbs 28 and 72 is looked up through the packed table, so a stale snapshot prints `?`.
+- The type-8 list is empty at CAVERN start (64 index words at type-8 descriptor +0, 4-byte data records `[id][+2]`); the four regalia have to be poked or acquired.
+- Earlier traps still standing: a literal-pointer hit dismissed as alignment coincidence needs the real table base; a direct-call scan does not cover tables loaded per level; a "key does nothing" verdict must watch the handler's branches and flags (CLAUDE.md).
 
 ## Next session
 
-`/resume cadaver` and start with open item 1 (the verb table decode and a script disassembler), then item 2.
+`/resume cadaver` and start with open item 1: find how the type-8 list is filled in play (watch it while picking up an item), then drive lever 86 and lever 84 by walking, and run level 1's teleporter chain from `level1_loaded.snap`. Item 2 (Disk 2 script decode) is a mechanical rerun of `verb_decode.py` once a snapshot per level exists.
 Prompt: `/resume cadaver`.
