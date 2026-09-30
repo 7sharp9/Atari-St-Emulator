@@ -1,0 +1,17 @@
+kbd fe 80
+s 3000000
+kbd fe 00
+s 6000000
+snap scratchpad/supersprint/ss_select.snap
+kbd 2a
+s 3000000
+kbd aa
+s 3000000
+kbd fe 80
+s 3000000
+kbd fe 00
+s 6000000
+snap scratchpad/supersprint/ss_prep.snap
+s 20000000
+snap scratchpad/supersprint/ss_race0.snap
+q

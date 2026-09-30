@@ -7,20 +7,46 @@ intro/credits sequence and double-buffered attract loop, and — with IKBD input
 (injected 55th pass, wired to the live window's arrow keys 56th pass) — leaves
 attract, walks its track-select / "PREPARE TO RACE" menu, starts an actual Track 1
 race, and lets a window player drive the joystick car a full lap. No instruction
-wall, no crash.
+wall. One open fragility: holding almost any key on the PREPARE-TO-RACE screen, or re-driving
+Track 6 with no player joined, can end in a wild jump during race-start init (`secrets.md`; unresolved, possibly an emulator artefact).
 
-## Race mechanics + drone-car AI — see `mechanics.md`
+## Topic docs
 
-**`mechanics.md` (66th pass)** reverse-engineers the in-race model from a live
-Track-1 race: the per-frame update loop `$df18`, the per-car state struct, and
-the drone AI — a **fixed 42-waypoint racing line** (table base at `-4084(A4)`,
-count `$54` at `-4076(A4)`, 16-byte records of X / Y / speed / heading) followed
-by `$ec52` with a per-car speed cap at `-3874(A4)` that takes **zero writes
-during racing** (no speed rubber-band in this ST build). Symbols added to
-`supersprint.sym`.
+The program is compiled C (263 `LINK A6` frames), so a Ghidra decompile exists; five areas were reversed from it and
+proved against the emulator with differential tests (every count is in the doc's proof table, the scripts are under `py/`).
+
+| doc | covers | headline proof |
+|---|---|---|
+| `mechanics.md` | the car motion model, human control, the drone AI (8-byte waypoint records with a fork/gate/jump control language), speed caps and the race counter, upgrades and shop, wall/car/surface collision, laps, winner's circle, hazards | whole car model 700/700 frames, 35 fields x 4 cars; drone AI 576/576; winner's circle 46/46 |
+| `tracks.md` | the four data files, `SUPER.DAT` blocks, the tile pack (11 screens in 80 KB), per-track vectors and waypoints, the collision planes and the surface map | all 8 tracks rebuilt from the files: 62080/62080 background, 64000/64000 on each collision plane, 1000/1000 attribute map |
+| `graphics.md` | word-RLE depacker, sprite and font formats, depth layers, one race frame, interrupts (Timer B is **not** used in the race) | whole-screen blit diffs 960000/960000 and similar for 20 routines |
+| `sound.md` | the Timer D three-voice tracker, script and instrument format, effect table, RNG | PSG writes tick for tick 7200/7200 |
+| `secrets.md` | every input, the one hidden hook (F5), dead code, the `SSPRINT.HSC` format, unreferenced data | scancode scans 117 x 7 screens; reachability over 351 nodes |
+| `gfxview.md` | looking at the graphics in RAM with `tools/gfxview.py` | (tool notes) |
+
+**No cheat codes, hidden tracks or hidden modes exist** (`secrets.md`). What is unusual: walls are a vector outline flood-filled at
+race start, collision is a by-product of drawing the car, drones follow rails whose table carries its own control language, difficulty
+escalates across races (not within one), and the art is a tile-dedup codec. Also found: a removed `BOOT.DAT` protection check
+with a cracker tag, a never-played 59.5-second tune, an unshown credits text, a Track 8 data bug and a sound-driver bug.
+
+## Decompile
+
+```
+python tools/prg2img.py scratchpad/supersprint/files/AUTO/SSPRINT.PRG scratchpad/supersprint/ss.img 0xa304
+~/Downloads/ghidra_12.1.4_PUBLIC/support/analyzeHeadless scratchpad/supersprint/ghproj ssproj \
+  -import scratchpad/supersprint/ss.img -overwrite -processor 68000:BE:32:default -loader BinaryLoader \
+  -loader-baseAddr 0xa304 -scriptPath tools/ghidra -postScript DecompileAll.java 0x11ccc \
+  scratchpad/supersprint/ss.c reversing/supersprint/supersprint.sym
+python tools/disassemble.py --rom scratchpad/supersprint/ss.img --base 0xa304 --linear 0xa304 40000 > scratchpad/supersprint/ss.asm
+```
+
+288 functions decompile (about a minute). `A4`-relative globals appear as `unaff_A4 + N` and the A5 thunk calls as
+`(**(code **)(unaff_A5 + 0xNN))()`: look the offset up in `supersprint.sym`. `$11b24` is the C-data initialiser (its long run of table
+stores is the quickest way to see the table shapes) and `$13816` is `main`. The disk files are extracted with `tools/extract_disk.py`.
 
 ## The MFP Timer B raster split (built 61st pass, verified 63rd)
 
+On the **menu and results screens** (select track, options, hi-score, prepare, winner's circle; **not in the race**, `graphics.md`)
 Super Sprint installs an MFP Timer B event-count ISR (`$f9ea`, vector `$120`,
 `TBCR=$08`) that rewrites the `$ffff8240` palette from a `movem.l <16 words>`
 table. The 61st pass built the per-scanline scheduler that drives it
@@ -47,10 +73,10 @@ payoff by frame-diffing:
   the real per-instruction cycle budget the project has not built.
 - **The on-track race itself is flat.** Across 80+ consecutive captured race
   frames every scanline carries the same palette, and a `watch $ffff8240`
-  during racing catches **zero** writes — the in-race Timer B ISR is
-  counter-only. So the earlier "road/sky gradient is a flat colour" caveat was
-  right about the race, wrong about the cause: it is Super Sprint's design, not
-  a missing scheduler.
+  during racing catches **zero** writes. The reason is that the race does not
+  run the game's own VBL or Timer B handlers at all: it runs on the ROM VBL
+  handler, and `$f9ea`/`$fa36` have zero hits over 1M race steps (`graphics.md`).
+  So the flat road is Super Sprint's design, not a missing scheduler.
 
 (The 61st-pass note that the split's changed palette entries "aren't painted by
 any on-screen pixel" was an artefact of the recorder writing a frame's screen
@@ -108,7 +134,7 @@ No instruction walls. Two peripheral-behaviour gaps:
 | commit | wall | fix |
 |--------|------|-----|
 | `dab30e5` | a joystick report ($FE/$FF + state byte) only ever delivered its header byte | the keyboard ACIA re-raises its MFP channel-6 IRQ while bytes remain in the RX FIFO, so the game's own single-byte-per-interrupt IKBD handler at `$104b6` sees the whole packet (EnqueueIkbd drops a packet in at once; real bytes arrive 1.28 ms / one IRQ apart) |
-| *this commit* | on leaving attract the game installs its own VBL + **MFP Timer B** event-count handler (vector `$120`) and its engine never advanced without Timer B ticks | a **coarse** Timer B interrupt, delivered on an instruction count like the existing Timer C — enough to run the game's counter-only Timer B ISR and unblock the engine, not enough to place a mid-frame `$ffff8240` write at a specific raster line |
+| *this commit* | on leaving attract the game installs its own VBL + **MFP Timer B** event-count handler (vector `$120`) and its engine never advanced without Timer B ticks | a **coarse** Timer B interrupt, delivered on an instruction count like the existing Timer C — enough to run the game's Timer B ISR on the menu screens and unblock the engine, not enough to place a mid-frame `$ffff8240` write at a specific raster line |
 
 ## How it was run
 
@@ -209,22 +235,15 @@ LAP advancing 0→2) with no instruction wall. `race.png` is a real frame from t
 run — the red car on the top straight approaching a wrench bonus, drones spread
 around the circuit.
 
-### The "status bar glitch" — investigated 53rd pass, not an emulator bug
+### The top band is the grandstand crowd, not a glitch
 
-The 52nd pass flagged the top band (the three `BLUE/RED/YELLOW CAR` panels with
-their lap-time readouts) as "garbled multicolour pixels". It isn't a rendering
-fault: that band is the **grandstand crowd** — hundreds of 1–2px spectator sprites
-on white bench rows, drawn by the glyph/sprite blitters at `$152xx`–`$154xx`. At
-320×200 shown small it reads as speckle; zoom in and it is a coherent crowd, and it
-is drawn identically across all three panels (a decode bug would corrupt them
-unevenly — it doesn't). Every text glyph, the lap-time digits, the car icons and
-the whole playfield render correctly, and the CPU selftest wrong-answer lane is
-unchanged. Confirmed by tracing every write into `$f8000`+`$21100` rows 0–29 over
-several frames: the only writers are that crowd/glyph blitter and the per-frame
-dirty-rect restore (`movem.l` copy at `$14252` from the offscreen HUD stash at
-`$59736`) — no stray blit, no wrong screen base, no half-applied `Setpalette`.
-(The RED/centre panel showing a clean readout box + a TV-monitor icon while the
-other two sit on crowd texture is the intended attract layout, not a defect.)
+The top band above the three `BLUE/RED/YELLOW CAR` panels looks like "garbled multicolour pixels" at 320x200. It is the
+**grandstand crowd**, part of the track art: tile art from the tilemap renderer `$152d2` (colour-set tiles plus copy words,
+`tracks.md`), not sprites. The HUD text, digits and icons drawn over it use the glyph blitter `$16528`, and the per-frame
+dirty-rect restore (`$14972`, copying from the 32000-byte background stash `$59736`) repaints it. Zoomed in it is a coherent crowd,
+drawn identically across all three panels (a decode bug would corrupt them unevenly). The Track 1 background rebuilt from the
+tiles matches the live stash (`graphics.md`). The RED/centre panel showing a clean readout box and a TV-monitor icon while the
+other two sit on crowd texture is the intended attract layout.
 
 ## How the CFG was built
 
@@ -251,14 +270,12 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 
 ## What the artefacts show
 
-- **`supersprint.sym`** — only four names are defensible without a symbol table:
-  `entry` (`$a304`, `jmp $a562`), `crt0` (`$a562`: `movea.l 4(a7),a5` / basepage
-  walk / `Mshrink` / … — a textbook C runtime startup), `thunk_table`
-  (`$a30a`…`≈$a560`, a run of `jmp xxxxxx.l` trampolines the game calls indirectly
-  via `jsr d(a5)` with `a5` = basepage + `$100`), and `hot_driver` (`$1399e`), the
-  per-frame worker.
+- **`supersprint.sym`** — 65 names, each taken from the routine's own body and proved in the topic docs (the first four,
+  `entry`, `thunk_table`, `crt0` and the trace-era `hot_driver`, date from the trace pass; `hot_driver` is now `attract_wait_poll`:
+  it is the wait/poll loop between attract phases, not a per-frame worker). `$b3fc` is the crash/respawn starter (not a viewport
+  wrap) and `$eaea` the drone control (the human one is `$d4fa`).
 - **`callgraph.svg`** — the thunk table fanning out to the real routines, and
-  `hot_driver` driving the frame: it calls the `$a394 → $111fa` thunk 548× and the
+  `attract_wait_poll` (`$1399e`, labelled `hot_driver` in the graph): it calls the `$a394 → $111fa` thunk 548× and the
   `$a39a → $105a0` thunk 1500× over the traced window. `sub_fc0748` (the TOS trap
   dispatcher) and `timer_c_handler` show as the ROM/IRQ leaves.
 - **`cfg.svg` / `blocks.txt`** — 783 executed basic blocks. The `$a3xx` blocks are
@@ -270,7 +287,10 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 
 | file | what |
 |------|------|
-| `supersprint.sym` | `addr<TAB>name` sidecar (`trace_cfg.py --names`) — 4 entries |
+| `supersprint.sym` | `addr<TAB>name` sidecar (`trace_cfg.py --names`, the Ghidra script) — 65 entries |
+| `mechanics.md` `tracks.md` `graphics.md` `sound.md` `secrets.md` | the topic docs (table at the top) |
+| `py/` | reproduction scripts per area (`py/README.md`): `sscfg.py` paths, `repl.py`, `drive.repl`, `ai_econ/ physics/ tracks/ engine/ secrets/` |
+| `png/` | decoded assets and figures: `tracks/` (all 8 tracks, overlays, attribute maps), `engine/` (31 sheets + `INDEX.txt`), `physics/`, `ai_econ/`, `secrets/` |
 | `callgraph.dot` / `callgraph.svg` | call graph, whole program |
 | `cfg.dot` / `cfg.svg` | control-flow graph, `$15300`–`$16800` |
 | `blocks.txt` | executed basic-block table with hit counts (coverage map) |
@@ -281,5 +301,12 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 | `race.png` | a live Track 1 race frame — the red player car mid-lap on the top straight, driven from injected joystick-0 packets (56th pass); HUD lap panels, grandstands, drones spread round the circuit |
 | `raster_split.png` / `raster_flat.png` | the "PREPARE TO RACE" ready screen rendered with the per-scanline Timer B palette split vs one flat palette (63rd pass) — the split is what colours the three ready-cars blue / yellow / red |
 | `gfxview.md` + `gfx_*.png` | looking at the palettes and decoded bitmaps in RAM with `tools/gfxview.py` (54th pass) — the `$1d3xx` title-fade palette ramp, a whole-RAM contact sheet, the title bitmap decoded from `$f8000` |
+
+## Not exercised in the emulator
+
+The game is silent (the emulator never raises Timer D), the warm-reset hook and the real-hardware Timer B band heights were not run, the
+high-score file was never saved at the end of a real session, a human leading the pack (rubber-band test), gates closing on
+Tracks 3/5/8 and the tornado/cone placement distributions (one RNG state) were not tested live, and only Track 1's collision geometry
+was compared against live play (Tracks 2-8 are proved as renderings). `sessions/supersprint.md` has the open list.
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.

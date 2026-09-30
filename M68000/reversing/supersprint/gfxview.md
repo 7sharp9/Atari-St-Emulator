@@ -43,14 +43,12 @@ $ python tools/gfxview.py ss_34M.snap --html ss_34M.html
 
 ### Palettes - `gfx_palette_ramp.png`
 
-The 19 consecutive 16-colour palettes at `$1d3ba`..`$1d5fa` are a **fade ramp**:
-the title-screen fade-in/fade-out, precomputed and stored as a table. The image is
-the framebuffer at `$f8000` (step 34M) decoded through each one in turn - the same
-bitmap darkening to black at one end and washing to orange/white at the other. The
-game's live hardware palette at that instant is not in the RAM image (`$FFFF824x`
-is outside the 1 MB dump), so `gfx_title.png` picks `$1d4da`, a near-final frame of
-the ramp, to show the bitmap in plausible colour: the F1 car, "SUPER SPRINT" in
-perspective, "© 1986 ATARI GAMES".
+The 19 consecutive 16-colour palettes at `$1d3ba`..`$1d5fa` are **per-screen palettes**, not a fade ramp (`graphics.md`): the
+title-screen fade is a 10-step dither-mask dissolve (`$147e0/$1480a`, mask table at `-5396(A4)`), not a palette interpolation. The
+image is the framebuffer at `$f8000` (step 34M) decoded through each palette in turn, which is why the same bitmap appears in
+different colour schemes. The game's live hardware palette at that instant is not in the RAM image (`$FFFF824x` is outside the 1 MB
+dump), so `gfx_title.png` picks `$1d4da` to show the bitmap in plausible colour: the F1 car, "SUPER SPRINT" in perspective,
+"(c) 1986 ATARI GAMES".
 
 ### Bitmaps - `gfx_ram_contact.png`
 
@@ -63,13 +61,11 @@ around `$2b000`..`$34800` is packed sprite/tile data.
 there, then blitted). Load `ss_34M.html`, set base `20000`, layout
 `st-interleaved`, 320x200x4, palette `$1d4da` - the logo screen appears cleanly.
 
-The sprite/tile source data (`$2b000`+, and the `-1188(a4)` table at `$3b150`)
-does **not** decode as plain ST screen memory. Super Sprint's blitter at `$15436`
-reads it transposed - bitplanes at `src+8/+16/+24`, source advancing one byte per
-row. In the viewer that is layout `planar-linear` with `plane_stride 8`,
-`row_stride 1` (the "SS sprite tile 8x8x4" preset); structure resolves as you nudge
-the strides, but a clean full rip needs the per-object width/height from the sprite
-table, which is a separate reverse-engineering job.
+The car sprites (`$2db56`, block B3) and the tile pack (`$35b56`, block B4) do **not** decode as plain ST screen memory. Bank 3 of the
+tile pack is read by the blitter at `$15436` transposed (bitplanes at `src+8/+16/+24`, source advancing one byte per row; viewer layout
+`planar-linear`, `plane_stride 8`, `row_stride 1`); banks 0-2 are plane-reduced tiles with a 16-bit colour-set word, and the maps use
+copy words. The full formats are decoded and rendered in `graphics.md` and `tracks.md`, with the sheets in `png/engine/`; the
+`$2b000`-`$34800` texture in the contact sheet is the car sprite sheet.
 
 ## The `.gfx` sidecar producer (56th pass) - `obs_palettes.png`
 
@@ -118,7 +114,7 @@ the "tile sheet 32x32 cells" preset drives it.
 
 | file | what |
 |------|------|
-| `gfx_palette_ramp.png` | `$f8000` (step 34M) through all 19 detected `$1d3xx` fade-ramp palettes |
+| `gfx_palette_ramp.png` | `$f8000` (step 34M) through all 19 detected `$1d3xx` per-screen palettes |
 | `gfx_title.png` | `$f8000` (step 34M) via `st-interleaved` 320x200x4 + palette `$1d4da` |
 | `gfx_ram_contact.png` | whole-RAM contact sheet (grey, 512 bytes/row) |
 | `obs_palettes.png` | the three Setpalette blocks the `.gfx` sidecar producer captured on a 6M-step run, decoded |

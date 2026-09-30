@@ -1,0 +1,16 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from difflib_ss import *
+h = Harness(sscfg.SNAP_RACE)
+for _ in range(5): h.run_to(0xdf18, 1)
+poke_arr(h, P.X, [126, 123, 203, 115]); poke_arr(h, P.Y, [40, 34, 98, 116])
+poke_arr(h, P.F1, [1, 0, 0, 0xa]); poke_arr(h, P.TURN, [0, 0, 0, 32])
+h.cmd('w %x %04x%04x' % (A4 - 1776, 1, 0))
+h.cmd('w %x %04x%04x' % (A4 - 1782, 21, 127))
+ram = h.snap_ram()
+mem, d, outc = h.callcap(0xea56)
+print(outc, [(hex(a - A4 + 0x10000) if False else a - A4, o, n) for a, (o, n) in sorted(mem.items()) if abs(a - A4) < 9000][:10])
+m = P.Mem(ram.b); P.hazard_touch(m)
+print('py TURN', m.arr(P.TURN,4) if hasattr(m,'arr') else [m.a(P.TURN,c) for c in range(4)])
+print('-1776..-1778', ram.g(-1776), ram.g(-1778), ram.g(-1780), ram.g(-1782))
+h.close()

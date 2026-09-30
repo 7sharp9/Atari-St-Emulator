@@ -1,0 +1,35 @@
+Super Sprint (Atari ST) - decoded asset sheets. All made by py/render_assets.py (rerun: cd M68000 && uv run python <this dir>/py/render_assets.py).
+"proved" = the format was reproduced byte-for-byte against the game's own routine through the emulator (py/run_proofs.py); "read" = format taken from
+the blitter code and checked by eye only.  Palettes are the 16-word STF tables in the game's data (A4-relative), scaled 7 -> 255 like the emulator's recorder.
+
+file                                              source (SUPER.DAT file offset / block)   format / routine                           status
+00_splash_SUPER1DAT_pal1d590.png                  SUPER1.DAT image 1 (of 2 streams)         word RLE, $1484a, pal -5556(A4)=$1d590     proved (live screen at 4.0M/4.1M/4.17M cold-boot steps: 64000/64000 px)
+00b_ready_screen_cars_B1_RLE_pal1d470.png         B1 @3488 (9120 B)                         word RLE, $1484a, pal -5854(A4)+0          proved decoder (callcap), picture = PREPARE screen cars
+01_credits_reset_picture_B12_pal1d5f0.png         B12 @190966 (8000 B)                      word RLE, $10236 (reset vector) / $13a44   proved (32000/32000 vs live callcap)
+02_title_map08_pal1d610.png                       B4 @52566, map 8                          tile map, $152d2, pal -5428(A4)=$1d610     proved (== reversing/supersprint/title.png 64000/64000 px; callcap 32000/32000)
+03_winners_circle_map09_banded.png                B4 map 9                                  tile map, 4 Timer-B bands -5716(A4)        tiles proved; band heights = count*2 scanlines INFERRED
+04_tracks_1_to_8_maps_pal1d386.png                B4 maps 0..7                              tile maps, pal -6078(A4)=$1d386            proved (callcap 32000/32000 each)
+05_select_icons_map10.png                         B4 map 10                                 tile map (8 track thumbnails)              proved
+06_tile_bank{0,1,2,3}_*_tiles.png                 B4 tile banks (606/1158/1115/65)          1/2/3/4-plane tiles + colour-set word      proved
+07_cars_128_frames.png                            B3 @19798 (32768 B)                       12x16 masked, 16 headings x 4 cars x {human,drone}, $14a4a   proved (40 trials)
+08a_tornado3_trees4.png                           B5 +$0000 (3x128) and +$70e0 (4x128)      16x16, colour 0 transparent, $1404e/$15642 proved
+08b_car_explosion_26_frames_16x14.png             B5 +$5bc0 (26x112)                        16x14, $14b8e                              proved (live: forcing -3778(A4)[0]=1 shows it)
+08c_tree_shadow_masks.png                         B5 +$72e0 (4x32)                          1-bit shadow masks, $15642                 proved
+08d_smoke_puff_44_frames_8x8.png                  B5 +$1240 (44x32)                         8x8 plane bytes, $143ca                    proved
+08e_track_dressing_36_16x8.png                    B5 +$1bc0 (36x64)                         16x8 masked, $1416c                        proved
+08f_score_labels_oil_wrench_cone_22_16x8.png      B5 +$0cc0 (22x64)                         16x8 opaque, $14262                        proved
+08g_barriers_5_48x16.png                          B5 +$0180 (5x576)                         48x16 + layer words, $142b2                read
+08h_posts_12_16x8.png                             B5 +$1740 (12x96)                         16x8 + layer words, $1432e                 read
+08i_helicopter_small_8_32x36.png                  B5 +$24c0 (8x720)                         32x36 + keep mask, $13cbc                  proved
+08j_helicopter_large_8_64x26.png                  B5 +$3b40 (8x1040)                        64x26 + keep mask, $13d58                  read (same row format as $13cbc)
+08k_hud_gauge_6_112x6.png                         B5 +$6720 (6x336)                         HUD captions, $144ca                       proved
+08l_hud_icons_10_16x6.png                         B5 +$6f00 (10x48)                         HUD wrench-count digits, $1453a            proved
+09a_font_42_glyphs.png                            tail @198966 (336 B) = -7770(A4)          5x6 font, $16496/$16528                    proved (glyph blitter 40 draws)
+09b_bigfont_26_glyphs_ink.png                     tail @199302 (1248 B) = -7426(A4)         12x12 A-Z, (mask,ink) word pairs, $16766    read
+10a_winner_circle_pictures_B9_16_48x32.png        B9 @171086 (12300 B)                      16 x 48x32 screen-format, $1617a/$1b4e4    read (pit-mechanic animation; frame table -9040(A4) decoded)
+10b_B10_6_tiles_8x8.png                           B10 @183386 (480 B)                       8x8 (4 plane bytes + keep byte), $1b67c    read
+10c_B0_hiscore_cars_144x44_pal1d5d0.png           B0 @0 (3488 B)                            9 groups x 44 rows, $1617a/$16b98          read
+10d_B8_*.png                                      B8 @169086 (2000 B)                       winner's-circle effect sprites, $17146/$170f8/$1718c   read
+10e_B7_HUD_digit_sets_6x10.png                    B7 @165566 (3520 B)                       6 sets x 10 digits                         set 5 proved ($15e5a: screen/stash/layer 960000/960000)
+10f_steering_wheel_16_frames_64x44_B2.png         B2 @12608 (7190 B)                        5 stored + 11 derived frames, $16926/$16962  proved (15488/15488)
+Not decoded here: B6 @162566 (3000 B, per-track wall polylines + flood seeds, $14cd4 - tracks agent), B11 @183866 (7100 B, track tables), B2 header (150 B).
