@@ -13,6 +13,7 @@ Scripts (in `py/`; working snapshots and callcap JSONs in `$POP_WORK` (default `
 | `verify_gen.py` | byte compare of `build_world` against three real `$b316` runs (`cc_b316_*.json`) |
 | `verify_cmd.py` | compare raise/lower commands run in the emulator (`cmd_*.snap`) with `popgen` |
 | `maps_png.py` | renders `h_*`, `alt_*`, `shape_*`, `feat_*`, `occ_*` PNGs and `raise_11_16_delta.png` |
+| `landscape_core.js` | JS port of sections 2 to 4 (raise/lower, `$c0ee`, generator, the four terrain powers, land-cursor corner pick) for `../landscape_infographic.html`; `landscape_infographic.py --check` diffs it against `popgen.py` and `powers/powers_ref.py` (375/375) |
 | `level_table.txt` | all 99 LEVEL.DAT records decoded |
 
 ## 1. Map data

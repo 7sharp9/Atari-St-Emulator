@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Populous Draws the Land</title>
+<style>
+:root{
+  --bg:#f4f6f1; --panel:#fdfefb; --ink:#1c2019; --muted:#647061; --line:#d3dacd;
+  --accent:#2c7a3f; --accent2:#9a4a1a; --sea:#2a5d9f; --good:#2c7a3f; --warn:#a36a00; --bad:#c33;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#13170f; --panel:#1b2016; --ink:#e7ecdf; --muted:#9aa693; --line:#323a2b;
+    --accent:#7ccf8e; --accent2:#e9a36b; --sea:#6aa6e6; --good:#7ccf8e; --warn:#e2b04d; --bad:#f07070;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#13170f; --panel:#1b2016; --ink:#e7ecdf; --muted:#9aa693; --line:#323a2b;
+  --accent:#7ccf8e; --accent2:#e9a36b; --sea:#6aa6e6; --good:#7ccf8e; --warn:#e2b04d; --bad:#f07070;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);line-height:1.15;margin:0 0 .3em}
+h2{font-size:1.35rem;margin:2.4em 0 .4em;padding-top:.6em;border-top:1px solid var(--line)}
+h3{font-size:1.02rem;margin:1.4em 0 .3em}
+p{margin:.5em 0 .8em;max-width:75ch}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:color-mix(in srgb,var(--line) 55%,transparent);padding:.05em .3em;border-radius:3px}
+.lede{font-size:1.1rem;color:var(--muted);max-width:70ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto}
+.tw{overflow-x:auto}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.grow{flex:1 1 320px;min-width:0}
+canvas{image-rendering:pixelated;image-rendering:crisp-edges;display:block;max-width:100%}
+.stage{position:relative;display:block;width:100%;border:1px solid var(--line);background:#000;line-height:0}
+.stage canvas{width:100%;height:auto}
+.stage canvas.over{position:absolute;left:0;top:0;pointer-events:none}
+.bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:0 0 10px;font-size:.92rem}
+.bar label{display:flex;align-items:center;gap:6px;color:var(--muted)}
+select,input,button{font:inherit;color:var(--ink)}
+select{max-width:100%;min-width:0}
+.bar label{min-width:0;max-width:100%}
+select,button,input[type=number],input[type=text]{background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 8px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.note{color:var(--muted);font-size:.9rem}
+.steps{counter-reset:s;list-style:none;padding:0;margin:.4em 0}
+.steps li{counter-increment:s;position:relative;padding:6px 0 6px 40px;border-bottom:1px dashed var(--line)}
+.steps li::before{content:counter(s);position:absolute;left:0;top:6px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;display:grid;place-items:center;font-size:.85rem}
+.steps b{font-weight:650}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.82rem}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:.92rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);font-size:.88rem;overflow-wrap:anywhere}
+.ok{color:var(--good);font-weight:600} .bad{color:var(--bad);font-weight:600}
+.chip{display:inline-block;font:600 .75rem var(--mono);padding:1px 7px;border-radius:10px;border:1px solid var(--line);margin-left:4px;vertical-align:1px}
+.chip.a{color:var(--accent);border-color:var(--accent)} .chip.b{color:var(--accent2);border-color:var(--accent2)}
+input[type=range]{accent-color:var(--accent)}
+footer{margin-top:3em;color:var(--muted);font-size:.85rem}
+
+/* cell widget */
+.diamond{display:grid;grid-template-columns:repeat(3,auto);grid-template-rows:repeat(3,auto);gap:6px 18px;justify-content:center;align-items:center;margin:8px 0}
+.diamond .c{display:flex;flex-direction:column;align-items:center;font:.8rem var(--mono);color:var(--muted)}
+.diamond input{width:3.6em;text-align:center;font:600 1.1rem var(--mono)}
+.diamond .c.hot input{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent)}
+.calc{font:.86rem/1.7 var(--mono)}
+.calc b{color:var(--accent)}
+.bits span{display:inline-block;min-width:1.4em;text-align:center;border-radius:2px;margin-right:2px}
+.bits .on{background:var(--accent);color:#fff}
+.atlas{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
+.tile{cursor:pointer;text-align:center;font:.72rem var(--mono);color:var(--muted)}
+.tile canvas{width:100%;height:auto;aspect-ratio:4/3;border:2px solid transparent;border-radius:3px;background:repeating-conic-gradient(color-mix(in srgb,var(--line) 60%,transparent) 0 25%,transparent 0 50%) 0 0/10px 10px}
+.tile.sel canvas{border-color:var(--accent)}
+.tile.other{opacity:.7}
+.tile .n{display:block;color:var(--ink);font-weight:600}
+.group{margin:1.1em 0 .3em;font-weight:650}
+.group small{font-weight:400;color:var(--muted);margin-left:8px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font:.78rem var(--mono);margin-top:8px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{width:14px;height:14px;border:1px solid var(--line);display:inline-block}
+.toolbtns{display:flex;flex-wrap:wrap;gap:6px}
+.log{font:.84rem/1.6 var(--mono);white-space:pre-wrap;min-height:5.5em}
+pre{font:.84rem/1.5 var(--mono);background:color-mix(in srgb,var(--line) 35%,transparent);padding:10px 12px;border-radius:6px;overflow-x:auto;margin:.5em 0}
+</style>
+</head>
+<body>
+<main>
+
+<h1>How Populous draws the land, and how you change it</h1>
+<p class="lede">The landscape is one grid of small numbers. Every click that reshapes it adds or subtracts 1 from a corner of that grid and lets one rule keep the neighbours honest. The screen is then rebuilt from the grid by pasting pre-drawn 32 by 24 pixel blocks, far to near. This page runs a JavaScript port of the game's routines on the game's own block art. The port is checked against Python models of those routines, which were in turn checked against the emulator.</p>
+
+<div class="panel">
+<dl class="kv">
+<dt>the data</dt><dd>65 x 65 corner heights, 0 to 8 ($34be4); 64 x 64 cells derived from them: altitude, block, feature</dd>
+<dt>the cell rule</dt><dd>avg = (a+b+c+d) >> 2; block = mask of corners above avg; flat land drops one level; sea-level slopes add $10</dd>
+<dt>the draw</dt><dd>x = 176 + 16(col - row), y = 64 + 8(col + row) - 8 altitude; 64 blocks far to near, then earth walls</dd>
+<dt>the edit</dt><dd>raise corner: +1, then any neighbour more than 1 lower is raised too; cost 4 n + 10 mana for n corners</dd>
+<dt>checked</dt><dd id="proofline">loading</dd>
+</dl>
+</div>
+
+<div class="bar" style="margin-top:14px">
+  <label>Land <select id="selLand"><option value="0">0 grass</option><option value="1">1 desert</option><option value="2">2 snow and ice</option><option value="3">3 rock and lava</option></select></label>
+  <label><input type="checkbox" id="chkAnim" checked> animate the sea (the game swaps block 0 and $10 every frame)</label>
+</div>
+
+<!-- ============================================================ 1 -->
+<h2>1. One height per corner</h2>
+<p>The world is 64 by 64 cells, but the game stores heights on the <b>corners</b>: 65 by 65 of them. A cell has no height of its own. It looks at its four corners and works out what shape it is. The other maps are derived from the corner heights and kept in step with them by one routine, <code>$c0ee</code>.</p>
+<div class="panel">
+<table>
+<tr><th>address</th><th>size</th><th>what</th><th>who writes it</th></tr>
+<tr><td><code>$34be4</code></td><td>65 x 65 words</td><td><b>corner height</b> 0 to 8. 0 is sea level. The only source of truth for the terrain shape.</td><td>raise <code>$bf60</code>, lower <code>$d262</code>, flood, generator</td></tr>
+<tr><td><code>$33be4</code></td><td>64 x 64 bytes</td><td>cell altitude: how many 8-pixel levels the block is lifted</td><td><code>$c0ee</code></td></tr>
+<tr><td><code>$36e78</code></td><td>64 x 64 bytes</td><td>cell block: which of the 70 ground blocks to draw</td><td><code>$c0ee</code>, then rocks, swamp, buildings overwrite it</td></tr>
+<tr><td><code>$3c522</code></td><td>64 x 64 bytes</td><td>feature: a tree, settlement or ruin block drawn one level above the ground</td><td>scatter, people code; <code>$c0ee</code> clears it when the cell becomes sea</td></tr>
+</table>
+</div>
+
+<!-- ============================================================ 2 -->
+<h2>2. Four corners become one block</h2>
+<p>Set the four corners of a cell. The widget applies the rule from <code>$c0ee</code> step by step and draws the block the game would pick, from the real block sheet. On screen, x runs right and down, y runs left and down, so corner <b>a</b> is the cell's top, <b>b</b> its right, <b>c</b> its bottom and <b>d</b> its left.</p>
+<div class="row">
+  <div class="grow" style="flex:1 1 260px">
+    <div class="diamond">
+      <div></div><div class="c" id="wa"><span>a (x, y)</span><input type="number" id="ha" min="0" max="8" value="3"></div><div></div>
+      <div class="c" id="wd"><span>d (x, y+1)</span><input type="number" id="hd" min="0" max="8" value="2"></div><div></div><div class="c" id="wb"><span>b (x+1, y)</span><input type="number" id="hb" min="0" max="8" value="2"></div>
+      <div></div><div class="c" id="wc"><span>c (x+1, y+1)</span><input type="number" id="hc" min="0" max="8" value="1"></div><div></div>
+    </div>
+    <div class="toolbtns" style="justify-content:center">
+      <button data-preset="0,0,0,0">sea</button><button data-preset="2,2,2,2">flat</button>
+      <button data-preset="3,2,2,1">slope</button><button data-preset="1,1,0,0">shore</button><button data-preset="4,1,1,1">peak</button>
+    </div>
+  </div>
+  <div class="grow" style="flex:1 1 300px">
+    <div class="panel calc" id="calc"></div>
+  </div>
+  <div class="grow" style="flex:0 1 210px">
+    <canvas id="cvCell" width="32" height="24" style="width:192px;height:144px;border:1px solid var(--line);background:repeating-conic-gradient(color-mix(in srgb,var(--line) 60%,transparent) 0 25%,transparent 0 50%) 0 0/16px 16px"></canvas>
+    <div class="note" id="cellNote" style="margin-top:4px"></div>
+  </div>
+</div>
+
+<h3>The 70 blocks of this land</h3>
+<p class="note">Click a slope, shore, flat or sea block to set corners that produce it. The others are not chosen by the corner rule: buildings, rocks, trees and ruins come from the people code, the scatter and the powers.</p>
+<div id="atlas"></div>
+
+<!-- ============================================================ 3 -->
+<h2>3. Painting the 8 x 8 window</h2>
+<p>The game never draws more than an 8 by 8 window of cells. There is no projection maths beyond two lines, because the art is pre-drawn isometric: a cell at column <i>c</i>, row <i>r</i> goes at a screen position fixed by its grid position and its altitude, and nearer cells simply overwrite farther ones. Drag the slider to watch the painter's order, then scroll the window with the minimap, as the game does.</p>
+<div class="bar">
+  <label>Blocks drawn <input type="range" id="rngCells" min="0" max="64" value="64" style="width:200px"> <span class="mono" id="lblCells">64</span></label>
+  <button id="btnPlay">play</button>
+  <label>View x <input type="number" id="vx" min="0" max="56" value="6" style="width:4.2em"></label>
+  <label>y <input type="number" id="vy" min="0" max="56" value="12" style="width:4.2em"></label>
+  <label><input type="checkbox" id="chkOutline" checked> outline the last block</label>
+</div>
+<div class="row">
+  <div class="grow" style="flex:2 1 520px">
+    <div class="stage"><canvas id="cvWin" width="320" height="200"></canvas><canvas id="cvWinOver" class="over" width="320" height="200"></canvas></div>
+    <p class="note" id="winNote" style="margin-top:6px"></p>
+  </div>
+  <div class="grow" style="flex:1 1 300px">
+    <div class="panel calc" id="winCalc"></div>
+    <h3 style="margin-top:12px">Minimap (click to move the view)</h3>
+    <canvas id="cvMini" width="128" height="64" style="width:100%;border:1px solid var(--line);background:#000;cursor:crosshair"></canvas>
+    <p class="note">Cell (x, y) is plotted at pixel (64 + x - y, (x + y) >> 1), in the colour <code>$21ea0</code> gives its block. The game's own click test is <code>u = y + (x>>1) - 32</code>, <code>v = y - (x>>1) + 32</code>, view = (u - 3, v - 3). Blocks above $2e (rocks, swamp, ruins) have no entry in that table that has been traced, so they are drawn as plain land.</p>
+  </div>
+</div>
+<ol class="steps">
+  <li><b>Ground.</b> Block <code>shape</code> at lift <code>8 * altitude</code>. If the block number is 0 (sea) and the frame phase is 0, block <code>$10</code> is drawn instead, which is how the sea shimmers.</li>
+  <li><b>Feature.</b> If the cell has a feature (tree, settlement, ruin) it is drawn at lift + 8, one level above the ground block.</li>
+  <li><b>People.</b> A walker on the cell is added to a list and drawn after the whole grid, so terrain never hides a walker. This page draws none.</li>
+  <li><b>Earth walls.</b> After the grid, the two visible faces get earth skirts: sprite 77 stacked under the right edge (column 7), sprite 76 under the front edge (row 7), once per altitude level.</li>
+  <li><b>No clipping maths.</b> A block whose screen offset comes out negative is skipped whole. Everything else is a masked copy of 24 rows by two 16-pixel groups.</li>
+</ol>
+
+<!-- ============================================================ 4 -->
+<h2>4. Reshaping it</h2>
+<p>In land mode, a left click in the land view raises the corner under the pointer by one; a right click lowers it. The pointer-to-corner rule is the game's own (<code>$119e6</code>): the screen column picks a diagonal of corners, and the last corner on it whose drawn height is at or above the pointer wins. Try it on the picture below. The four powers that change the terrain share the same machinery: they call the same raise and lower routine, then re-derive the cells they touched.</p>
+<div class="bar">
+  <label>World <select id="selPreset"></select></label>
+  <button id="btnReset">reset</button><button id="btnUndo">undo</button>
+  <label><input type="checkbox" id="chkPaint" checked> paint map mode (no costs)</label>
+  <label><input type="checkbox" id="chkCorners"> show corners</label>
+  <span class="mono" id="manaLbl"></span><button id="btnMana">+10000 mana</button>
+</div>
+<div class="toolbtns" id="tools" style="margin-bottom:10px"></div>
+<div class="row">
+  <div class="grow" style="flex:2 1 520px">
+    <div class="stage" id="wbStage"><canvas id="cvWb" width="320" height="200"></canvas><canvas id="cvWbOver" class="over" width="320" height="200"></canvas></div>
+    <div class="bar" style="margin-top:8px">
+      <label>View x <input type="number" id="wx" min="0" max="56" value="6" style="width:4.2em"></label>
+      <label>y <input type="number" id="wy" min="0" max="56" value="12" style="width:4.2em"></label>
+      <button id="btnRec">replay the recorded raise at (11, 16)</button>
+    </div>
+    <div class="panel log" id="wbLog">Pick a tool and click the landscape.</div>
+    <div class="bar" style="margin-top:8px" id="rippleBar">
+      <label>Corner changes shown <input type="range" id="rngRip" min="0" max="0" value="0" style="width:220px"> <span class="mono" id="lblRip"></span></label>
+    </div>
+    <p class="note" id="rippleNote">Drag to replay the cascade in the order the game makes it. The routine is a depth-first recursion over E, SE, S, SW, W, NW, N, NE, so it runs off to the east first and doubles back. Part-way frames are never on screen in the game: the heights are not legal until the recursion ends, and a step of more than one level has no block to draw it (the dark gaps).</p>
+  </div>
+  <div class="grow" style="flex:1 1 300px">
+    <h3 style="margin-top:0">Plan view (click to move the view)</h3>
+    <canvas id="cvPlan" width="325" height="325" style="width:100%;border:1px solid var(--line);cursor:crosshair"></canvas>
+    <div class="legend" id="planLegend"></div>
+    <p class="note">Corner heights, one square each. The box is the 9 x 9 corners of the window. Pink squares are the corners changed by the last action, darker the later they changed.</p>
+  </div>
+</div>
+
+<h3>The rules, all of them</h3>
+<div class="tw"><table>
+<tr><th>action</th><th>routine</th><th>what it does to the map</th><th>cost and gate</th></tr>
+<tr><td>raise / lower</td><td><code>$bf60</code> / <code>$d262</code> via <code>$1186c</code> / <code>$116fa</code></td><td>h +1 (or -1) at the corner, then each of the 8 neighbours, in the order E SE S SW W NW N NE, that is more than 1 below (above) it gets the same treatment. So a peak cannot stand on a plain: raising it raises a slope around it. Heights stop at 0 and 8. <code>$c0ee</code> then re-derives the cells in the changed box.</td><td>4 n + 10 mana for n corners changed; needs mana 10 first, so mana can go negative</td></tr>
+<tr><td>earthquake</td><td><code>$12350</code></td><td>The 9 x 9 corners at the view origin, two passes. A corner at height 0 at that moment is skipped. Otherwise draw r = rand % 5: 1 raises, 2 to 4 lower, 0 does nothing. Each raise or lower cascades as above.</td><td>2500</td></tr>
+<tr><td>volcano</td><td><code>$1263c</code></td><td>165 draws build a cone of up to 5 levels: for a = 0..4, every (i, j) in a..8-a, raise when rand % 5 is 1, 2 or 4. Then for each of the 8 x 8 cells, if rand % 5 is 0 and the cell is not protected, it becomes a rock and loses its feature.</td><td>10000</td></tr>
+<tr><td>swamp</td><td><code>$12a14</code></td><td>30 tries at (x + rand % 7 - 3, y + rand % 7 - 3). A try that lands on flat land, a house field or a burnt field with nobody standing on it makes it swamp. Nothing is re-derived.</td><td>5000</td></tr>
+<tr><td>flood</td><td><code>$11f6a</code></td><td>Every corner above 0 drops by 1, the whole map, then everything is re-derived. Coasts retreat inland, small islands vanish.</td><td>40000</td></tr>
+</table></div>
+<p class="note">Earthquake and volcano act at the view origin (the window's top corner), because the game posts the view origin as their target. The swamp goes where the armed cursor is clicked: the cell up-left of the picked corner. This workbench has no people, so the volcano's protected cells are just cell (0, 0), the game's case when side 0 has no leader and the papal magnets are unset; nothing blocks a swamp. The game's rule that a land click only works while one of your own people is in view is not applied here. Mana does not regenerate here. The earthquake's 20 frames of screen shake are not shown.</p>
+
+<!-- ============================================================ 5 -->
+<h2>5. Where the landscape comes from</h2>
+<p>A new world is not stored. It is grown from a 15-bit seed: three random-walk hills, then rocks and trees scattered in 22 clusters. The same generator uses the same raise routine as the player, which is why generated hills have the same slope limit as anything you build. Drag the slider to watch a world being made.</p>
+<div class="bar">
+  <label>World <select id="selGen"></select></label>
+  <label>Seed <input type="text" id="gSeed" style="width:5em" value="6302"></label>
+  <label>Pre-rolls <select id="gPre"><option>4</option><option>5</option></select></label>
+  <label>Stage <input type="range" id="rngGen" min="0" max="0" value="0" style="width:260px"></label>
+  <button id="btnGenPlay">play</button>
+</div>
+<div class="row">
+  <div class="grow" style="flex:2 1 520px">
+    <div class="stage"><canvas id="cvGen" width="320" height="200"></canvas></div>
+    <div class="panel log" id="genLog" style="margin-top:8px"></div>
+  </div>
+  <div class="grow" style="flex:1 1 300px">
+    <canvas id="cvGenPlan" width="325" height="325" style="width:100%;border:1px solid var(--line)"></canvas>
+    <div class="legend"><span><i style="background:#d94a3a"></i>walk 1: x 2, y 4</span><span><i style="background:#e0a020"></i>walk 2: x 4, y 2</span><span><i style="background:#8a4ad0"></i>walk 3: x 3, y 3</span><span><i style="background:#2aa7a7"></i>scatter box</span></div>
+  </div>
+</div>
+<pre>seed = seed; rand() : seed = (seed * $24a1 + $24df) &amp; $7fff            ($16702)
+reset_world_state: 4 rand() calls (2 per player)                         ($bbd4)
+walk(rx, ry):  x = rand()%64; y = rand()%64
+               repeat: raise_point(x, y) until it returns 6
+                       x += rand()%(2rx+1) - rx;  y += rand()%(2ry+1) - ry;  clamp 0..64
+gen_land = walk(2,4); walk(4,2); walk(3,3)                               ($be84)
+derive all cells                                                         ($c0ee)
+scatter: 22 clusters; each: r1=rand(), r2=rand(); 30 tries at
+         x = rand()%9 + r1%59, y = rand()%9 + r2%59; on land, not rock:
+         clusters 0-6 set a rock ($2f + rand()%3), 7-21 set a tree ($32 + rand()%3)   ($12e06)</pre>
+
+<!-- ============================================================ 6 -->
+<h2>6. What was checked</h2>
+<p>The page's code is a JavaScript port (<code>py/landscape_core.js</code>). The port is compared, on random states, with the Python models, which were themselves compared with the emulator: generation byte-identical to three real <code>$b316</code> runs, the six powers against <code>callcap</code> on 2670 of 2670 states, the frame renderer on 12 of 12 real frames, a raise at (11, 16) on 134 of 134 corners.</p>
+<div class="panel"><table id="proofTable"><tr><th>JS routine</th><th>compared with</th><th>states</th><th>what must match</th></tr></table></div>
+<p class="note" id="proofNote"></p>
+<p>The one fact on this page that is directly from a live game: a raise at corner (11, 16) on GENESIS changed 134 corners and took mana from 542 to -4 (<code>verify_cmd.py</code>). The workbench button above replays exactly that, and gets 134 and 4 x 134 + 10 = 546.</p>
+
+<footer>
+Built by <code>py/landscape_infographic.py</code> from <code>py/landscape_infographic.tmpl.html</code> and <code>py/landscape_core.js</code>; block art from the game's LAND0 to LAND3 and SPRITES0.DAT. Sources: <code>terrain.md</code> (sections 1 to 4), <code>graphics.md</code> (terrain renderer, minimap, mouse input).
+</footer>
+</main>
+
+<script>
+const D = __DATA__;
+/*__CORE__*/
+(function () {
+'use strict';
+const $ = id => document.getElementById(id);
+const blocks = D.lands.map(l => l.blocks.map(LS.decodeImg));
+const spr = { 76: LS.decodeImg(D.spr76), 77: LS.decodeImg(D.spr77) };
+const PAL = D.pal.map(w => [((w >> 8) & 7) * 255 / 7 | 0, ((w >> 4) & 7) * 255 / 7 | 0, (w & 7) * 255 / 7 | 0]);
+const PAL32 = PAL.map(c => (255 << 24) | (c[2] << 16) | (c[1] << 8) | c[0]);
+const hex = v => '$' + v.toString(16);
+const G = { land: 0, shim: 0, anim: true };
+const redraws = [];
+
+// ---------------------------------------------------------------- drawing helpers
+function showPix(cv, pix) {
+  const c = cv.getContext('2d'), id = c.createImageData(320, 200), d = new Uint32Array(id.data.buffer);
+  for (let i = 0; i < 64000; i++) d[i] = pix[i] === 255 ? 0xff000000 : PAL32[pix[i]];
+  c.putImageData(id, 0, 0);
+}
+function iso(cv, w, cx, cy, opts) {
+  const pix = new Uint8Array(64000).fill(LS.EMPTY);
+  LS.renderTerrain(pix, w, blocks[G.land], spr, cx, cy, G.shim, opts);
+  showPix(cv, pix);
+}
+function blockCanvas(cv, n, land) {
+  const c = cv.getContext('2d'), id = c.createImageData(32, 24), d = new Uint32Array(id.data.buffer), b = blocks[land][n];
+  for (let i = 0; i < 768; i++) d[i] = b[i] < 0 ? 0 : PAL32[b[i]];
+  c.putImageData(id, 0, 0);
+}
+const clampv = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const heightRGB = h => h === 0 ? [42, 93, 159] : [[70, 140, 70], [96, 158, 70], [130, 172, 70], [170, 178, 76], [190, 160, 84], [176, 130, 90], [196, 170, 150], [240, 240, 240]][h - 1];
+
+// ---------------------------------------------------------------- land select, sea animation
+$('selLand').onchange = e => { G.land = +e.target.value; redrawAll(); };
+$('chkAnim').onchange = e => { G.anim = e.target.checked; };
+setInterval(() => { if (G.anim) { G.shim ^= 1; redrawAll(true); } }, 450);
+function redrawAll(animOnly) { for (const f of redraws) f(animOnly); }
+
+// ---------------------------------------------------------------- 2. the cell widget
+const BLOCKNAME = n => n === 0 ? 'sea, frame A' : n === 16 ? 'sea, frame B' : n >= 1 && n <= 14 ? 'slope, corner mask ' + n.toString(2).padStart(4, '0')
+  : n === 15 ? 'flat land' : n >= 17 && n <= 30 ? 'shore slope, mask ' + (n - 16).toString(2).padStart(4, '0') : n === 31 ? 'farmed land, side 0' : n === 32 ? 'farmed land, side 1'
+  : n >= 33 && n <= 44 ? 'settlement stage ' + (n - 32) : n === 45 ? 'ankh (good magnet)' : n === 46 ? 'skull (evil magnet)' : n >= 47 && n <= 49 ? 'rock'
+  : n >= 50 && n <= 52 ? 'tree' : n === 53 ? 'swamp' : n >= 54 && n <= 65 ? 'ruin or burning settlement' : n === 66 ? 'flat (burnt field)' : 'empty';
+const GROUPS = [['Sea', 0, 0], ['Slopes above sea', 1, 14], ['Flat land', 15, 15], ['Sea again', 16, 16], ['Slopes at sea level (shore)', 17, 30],
+  ['Farmed land', 31, 32], ['Settlements, hut to castle', 33, 44], ['Magnet markers', 45, 46], ['Rocks', 47, 49], ['Trees', 50, 52], ['Swamp', 53, 53], ['Ruins and burning settlements', 54, 65], ['Burnt field, spare', 66, 69]];
+const cornersFor = n => {      // corner heights that derive() turns into block n, or null
+  if (n === 0) return [0, 0, 0, 0];
+  if (n === 15) return [2, 2, 2, 2];
+  if (n >= 1 && n <= 14) return [1 + (n & 1), 1 + ((n >> 1) & 1), 1 + ((n >> 2) & 1), 1 + ((n >> 3) & 1)];
+  if (n >= 17 && n <= 30) { const m = n - 16; return [m & 1, (m >> 1) & 1, (m >> 2) & 1, (m >> 3) & 1]; }
+  return null;
+};
+const cellIn = ['ha', 'hb', 'hc', 'hd'].map($);
+function setCorners(v) { cellIn.forEach((el, i) => el.value = v[i]); drawCell(); }
+function drawCell() {
+  const h = cellIn.map(el => clampv(+el.value | 0, 0, 8));
+  const r = LS.deriveCell(h[0], h[1], h[2], h[3]);
+  const names = ['a', 'b', 'c', 'd'];
+  const bits = [1, 2, 4, 8].map((m, i) => (r.bits & m) ? 1 : 0);
+  ['wa', 'wb', 'wc', 'wd'].forEach((id, i) => $(id).classList.toggle('hot', !!bits[i]));
+  $('calc').innerHTML =
+    `sum = ${h[0]} + ${h[1]} + ${h[2]} + ${h[3]} = ${h.reduce((a, b) => a + b)}<br>` +
+    `avg = sum >> 2 = <b>${r.avg}</b><br>` +
+    `corner above avg?  ` + h.map((v, i) => `${names[i]}:${v}${v > r.avg ? '&gt;' : '&le;'}${r.avg}`).join('  ') + `<br>` +
+    `mask = <span class="bits">` + [3, 2, 1, 0].map(i => `<span class="${bits[i] ? 'on' : ''}">${names[i]}</span>`).join('') + `</span> = <b>${r.bits}</b> (binary ${r.bits.toString(2).padStart(4, '0')})<br>` +
+    `then: ${r.note}<br>` +
+    `<b>block ${r.shape} (${hex(r.shape)})</b>, altitude <b>${r.alt}</b><br>` +
+    `drawn at lift 8 x ${r.alt} = ${8 * r.alt} px`;
+  blockCanvas($('cvCell'), r.shape, G.land);
+  $('cellNote').textContent = BLOCKNAME(r.shape);
+  document.querySelectorAll('#atlas .tile').forEach(t => t.classList.toggle('sel', +t.dataset.n === r.shape));
+}
+cellIn.forEach(el => el.oninput = drawCell);
+document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => setCorners(b.dataset.preset.split(',').map(Number)));
+(function buildAtlas() {
+  const host = $('atlas');
+  for (const [name, lo, hi] of GROUPS) {
+    const g = document.createElement('div'); g.className = 'group'; g.innerHTML = name + `<small>${hi === lo ? lo : lo + ' to ' + hi}</small>`; host.appendChild(g);
+    const grid = document.createElement('div'); grid.className = 'atlas'; host.appendChild(grid);
+    for (let n = lo; n <= hi; n++) {
+      const t = document.createElement('div'); t.className = 'tile' + (cornersFor(n) ? '' : ' other'); t.dataset.n = n; t.title = BLOCKNAME(n);
+      t.innerHTML = `<canvas width="32" height="24"></canvas><span class="n">${n} ${hex(n)}</span>`;
+      t.onclick = () => { const c = cornersFor(n); if (c) setCorners(c); else { $('cellNote').textContent = BLOCKNAME(n) + ': not chosen by the corner rule'; } };
+      grid.appendChild(t);
+    }
+  }
+})();
+redraws.push(animOnly => {
+  if (animOnly) return;
+  document.querySelectorAll('#atlas .tile').forEach(t => blockCanvas(t.querySelector('canvas'), +t.dataset.n, G.land));
+  drawCell();
+});
+
+// ---------------------------------------------------------------- shared world builders
+function preset(i) { const p = D.presets[i]; return LS.genWorld(p.seed, p.pre, null); }
+
+// ---------------------------------------------------------------- minimap
+function drawMini(cv, w, ox, oy) {
+  const c = cv.getContext('2d'), id = c.createImageData(128, 64), d = new Uint32Array(id.data.buffer);
+  const mm = D.lands[G.land].mm;
+  for (let i = 0; i < d.length; i++) d[i] = 0xff000000;
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const s = w.shape[x + (y << 6)];
+    const ci = s === 0 ? mm[0] : s <= 0x1f ? mm[s & 15] : s <= 0x2e ? 2 : mm[15];
+    d[((x + y) >> 1) * 128 + 64 + x - y] = PAL32[ci];
+  }
+  c.putImageData(id, 0, 0);
+  c.strokeStyle = '#fff'; c.lineWidth = 1; c.beginPath();
+  const P = (x, y) => [64 + x - y + .5, ((x + y) >> 1) + .5];
+  [[ox, oy], [ox + 8, oy], [ox + 8, oy + 8], [ox, oy + 8]].forEach(([x, y], i) => { const p = P(x, y); i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]); });
+  c.closePath(); c.stroke();
+}
+function miniClick(ev, cv, set) {
+  const r = cv.getBoundingClientRect(), x = Math.floor((ev.clientX - r.left) * 128 / r.width), y = Math.floor((ev.clientY - r.top) * 64 / r.height);
+  const u = y + (x >> 1) - 32, v = y - (x >> 1) + 32;
+  set(clampv(u - 3, 0, 56), clampv(v - 3, 0, 56));
+}
+
+// ---------------------------------------------------------------- 3. the window
+const W3 = preset(0);
+const V3 = { x: 6, y: 12, n: 64, timer: null };
+function draw3() {
+  const trace = [];
+  iso($('cvWin'), W3, V3.x, V3.y, { cells: V3.n, trace });
+  const ov = $('cvWinOver').getContext('2d'); ov.clearRect(0, 0, 320, 200);
+  const last = trace.filter(t => t.layer === 'ground').pop();
+  if (last && $('chkOutline').checked) { ov.strokeStyle = '#ff3bd0'; ov.lineWidth = 1; ov.strokeRect(last.x + .5, last.y + .5, 31, 23); }
+  $('lblCells').textContent = V3.n;
+  if (V3.n === 0) { $('winCalc').innerHTML = 'Nothing drawn yet. The frame starts from the backdrop.'; }
+  else {
+    const n = V3.n - 1, r = n >> 3, c = n & 7, cell = (V3.y + r) * 64 + V3.x + c, alt = W3.alt[cell], sh = W3.shape[cell], ft = W3.feat[cell];
+    const shown = (sh === 0 && G.shim === 0) ? 16 : sh;
+    $('winCalc').innerHTML =
+      `block ${V3.n} of 64: column ${c}, row ${r}<br>map cell (${V3.x + c}, ${V3.y + r})<br>` +
+      `block <b>${shown}</b> (${BLOCKNAME(shown)}), altitude ${alt}<br>` +
+      `x = 176 + 16 (${c} - ${r}) = <b>${176 + 16 * (c - r)}</b><br>` +
+      `y = 64 + 8 (${c} + ${r}) - 8 x ${alt} = <b>${64 + 8 * (c + r) - 8 * alt}</b>` +
+      (ft ? `<br>feature block ${ft} (${BLOCKNAME(ft)}) at y = ${64 + 8 * (c + r) - 8 * alt - 8}` : '<br>no feature') +
+      (V3.n === 64 ? '<br>then the earth walls' : '');
+  }
+  $('winNote').textContent = V3.n < 64 ? 'Rows run far to near (top row first); the pink box is the block just drawn.' : 'All 64 blocks and both earth walls. The window is fixed at 320 x 200 pixels; scrolling just changes which 8 x 8 cells are read.';
+  drawMini($('cvMini'), W3, V3.x, V3.y);
+}
+redraws.push(draw3);
+$('rngCells').oninput = e => { V3.n = +e.target.value; draw3(); };
+$('chkOutline').onchange = draw3;
+$('vx').onchange = e => { V3.x = clampv(+e.target.value | 0, 0, 56); draw3(); };
+$('vy').onchange = e => { V3.y = clampv(+e.target.value | 0, 0, 56); draw3(); };
+$('cvMini').onclick = ev => miniClick(ev, $('cvMini'), (x, y) => { V3.x = x; V3.y = y; $('vx').value = x; $('vy').value = y; draw3(); });
+$('btnPlay').onclick = () => {
+  if (V3.timer) { clearInterval(V3.timer); V3.timer = null; $('btnPlay').textContent = 'play'; return; }
+  V3.n = 0; $('btnPlay').textContent = 'stop';
+  V3.timer = setInterval(() => { V3.n++; $('rngCells').value = V3.n; draw3(); if (V3.n >= 64) { clearInterval(V3.timer); V3.timer = null; $('btnPlay').textContent = 'play'; } }, 90);
+};
+
+// ---------------------------------------------------------------- 4. the workbench
+const WB = { w: preset(0), pi: 0, vx: 6, vy: 12, mana: 399, undo: [], tool: 'raise', hover: null, last: null, ripple: null, swampHits: [] };
+const COST = { eq: 2500, volcano: 10000, swamp: 5000, flood: 40000 };
+const TOOLS = [['raise', 'raise / lower (click; shift-click or right-click lowers)'], ['lower', 'lower'], ['eq', 'earthquake (cast)'], ['volcano', 'volcano (cast)'], ['swamp', 'swamp (click a cell)'], ['flood', 'flood (cast)']];
+TOOLS.forEach(([k, label]) => { const b = document.createElement('button'); b.textContent = label; b.dataset.tool = k; b.onclick = () => { WB.tool = k; toolUI(); if (k === 'eq' || k === 'volcano' || k === 'flood') cast(k); }; $('tools').appendChild(b); });
+function toolUI() { document.querySelectorAll('#tools button').forEach(b => b.classList.toggle('on', b.dataset.tool === WB.tool)); drawWb(); }
+D.presets.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p.name + ': ' + p.desc; $('selPreset').appendChild(o); });
+const manaTxt = () => 'mana ' + WB.mana;
+function log(s) { $('wbLog').textContent = s; }
+function cloneWorld() { return WB.w.clone(); }
+
+function setView(x, y) { WB.vx = x; WB.vy = y; $('wx').value = x; $('wy').value = y; drawWb(); }
+function overlayWb() {
+  const ov = $('cvWbOver').getContext('2d'); ov.clearRect(0, 0, 320, 200);
+  const w = WB.ripple && WB.ripple.k < WB.ripple.n ? WB.ripple.w : WB.w;
+  if ($('chkCorners').checked) {
+    for (let j = 0; j <= 8; j++) for (let i = 0; i <= 8; i++) {
+      const p = LS.cornerXY(w, WB.vx, WB.vy, WB.vx + i, WB.vy + j); if (!p) continue;
+      const h = w.h[WB.vx + i + 65 * (WB.vy + j)], c = heightRGB(h);
+      ov.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; ov.fillRect(p[0] - 1, p[1] - 1, 3, 3);
+    }
+  }
+  if (WB.ripple) {
+    const r = WB.ripple;
+    for (let k = 0; k < r.k; k++) {
+      const idx = r.log[k] >= 0 ? r.log[k] : -1 - r.log[k];
+      const p = LS.cornerXY(w, WB.vx, WB.vy, idx % 65, (idx / 65) | 0); if (!p) continue;
+      ov.fillStyle = r.log[k] >= 0 ? '#ff3bd0' : '#20e0ff'; ov.fillRect(p[0] - 2, p[1] - 2, 5, 5);
+    }
+  }
+  const t = WB.tool;
+  if (WB.hover && (t === 'raise' || t === 'lower' || t === 'swamp')) {
+    const hv = WB.hover, p = LS.cornerXY(w, WB.vx, WB.vy, hv[0], hv[1]);
+    if (p) {
+      ov.strokeStyle = '#fff'; ov.lineWidth = 1; ov.beginPath();
+      ov.moveTo(p[0], p[1] - 8 + .5); ov.lineTo(p[0] + 16, p[1] + .5); ov.lineTo(p[0], p[1] + 8 + .5); ov.lineTo(p[0] - 16, p[1] + .5); ov.closePath(); ov.stroke();
+    }
+  }
+}
+function drawWb() {
+  const w = WB.ripple && WB.ripple.k < WB.ripple.n ? WB.ripple.w : WB.w;
+  iso($('cvWb'), w, WB.vx, WB.vy, {});
+  overlayWb(); drawPlan();
+  $('manaLbl').textContent = manaTxt();
+}
+function drawPlan() {
+  const cv = $('cvPlan'), c = cv.getContext('2d'), S = 5, w = WB.ripple && WB.ripple.k < WB.ripple.n ? WB.ripple.w : WB.w;
+  const id = c.createImageData(325, 325), d = new Uint32Array(id.data.buffer);
+  for (let y = 0; y < 65; y++) for (let x = 0; x < 65; x++) {
+    const col = heightRGB(w.h[x + 65 * y]), v = (255 << 24) | (col[2] << 16) | (col[1] << 8) | col[0];
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) d[(y * S + j) * 325 + x * S + i] = v;
+  }
+  c.putImageData(id, 0, 0);
+  if (WB.ripple) {
+    const r = WB.ripple;
+    for (let k = 0; k < r.k; k++) {
+      const idx = r.log[k] >= 0 ? r.log[k] : -1 - r.log[k], f = 1 - 0.55 * (k / Math.max(1, r.n));
+      c.fillStyle = r.log[k] >= 0 ? `rgba(255,${(59 * f) | 0},${(208 * f) | 0},.9)` : `rgba(32,${(224 * f) | 0},255,.9)`;
+      c.fillRect((idx % 65) * S, ((idx / 65) | 0) * S, S, S);
+    }
+  }
+  c.fillStyle = 'rgba(122,30,140,.85)';
+  for (const cell of WB.swampHits) c.fillRect((cell & 63) * S, (cell >> 6) * S, S, S);
+  c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.strokeRect(WB.vx * S, WB.vy * S, 8 * S + S, 8 * S + S);
+  if (WB.tool === 'eq' || WB.tool === 'volcano') { c.strokeStyle = '#ff3bd0'; c.setLineDash([3, 2]); c.strokeRect(WB.vx * S + .5, WB.vy * S + .5, 8 * S + S - 1, 8 * S + S - 1); c.setLineDash([]); }
+  if (WB.tool === 'swamp' && WB.hover) { const hx = WB.hover[0] - 1, hy = WB.hover[1] - 1; c.strokeStyle = '#c050ff'; c.strokeRect((hx - 3) * S, (hy - 3) * S, 7 * S, 7 * S); }
+}
+$('planLegend').innerHTML = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(h => { const c = h === 8 ? [240, 240, 240] : heightRGB(Math.min(h, 7)); return `<span><i style="background:rgb(${c[0]},${c[1]},${c[2]})"></i>${h}</span>`; }).join('');
+redraws.push(() => drawWb());
+
+function gate(cost, what) {
+  if ($('chkPaint').checked) return true;
+  if (WB.mana < cost) { log(`${what} needs ${cost} mana, you have ${WB.mana}. Tick "paint map mode" or add mana.`); return false; }
+  WB.mana -= cost; return true;
+}
+function snapshot() { WB.undo.push({ w: cloneWorld(), mana: WB.mana }); if (WB.undo.length > 40) WB.undo.shift(); }
+function setRipple(before, log, w) {
+  WB.ripple = { w: null, before, log, n: log.length, k: log.length };
+  $('rngRip').max = log.length; $('rngRip').value = log.length; $('lblRip').textContent = `${log.length} of ${log.length}`;
+  $('rippleBar').style.display = log.length ? '' : 'none'; $('rippleNote').style.display = log.length ? '' : 'none';
+}
+function rippleWorld(r, k) {
+  const w = r.before.clone();
+  for (let i = 0; i < k; i++) { const e = r.log[i]; if (e >= 0) w.h[e]++; else w.h[-1 - e]--; }
+  LS.derive(w, 0, 0, 63, 63); return w;
+}
+$('rngRip').oninput = e => { const r = WB.ripple; if (!r) return; r.k = +e.target.value; r.w = r.k < r.n ? rippleWorld(r, r.k) : null; $('lblRip').textContent = `${r.k} of ${r.n}`; drawWb(); };
+$('rippleBar').style.display = 'none'; $('rippleNote').style.display = 'none';
+
+function landAction(kind, x, y) {          // corner (x, y), as the land cursor posts it
+  if (!$('chkPaint').checked && WB.mana < 10) { log(`${kind === 'raise' ? 'Raise' : 'Lower'} needs mana 10, you have ${WB.mana}.`); return; }
+  snapshot();
+  const before = cloneWorld(), s0 = WB.w.seed, m0 = WB.mana;
+  WB.w.log = []; WB.swampHits = [];
+  const r = kind === 'raise' ? LS.cmdRaise(WB.w, x, y) : LS.cmdLower(WB.w, x, y);
+  const lg = WB.w.log; WB.w.log = null;
+  const paint = $('chkPaint').checked;
+  if (!paint) WB.mana -= r.cost;
+  setRipple(before, lg);
+  log(`${kind === 'raise' ? 'Raise' : 'Lower'} corner (${x}, ${y}): ${r.points} corner${r.points === 1 ? '' : 's'} changed` +
+    (r.points ? `, the clicked one first, then the neighbours it forced.` : `. Nothing moved (already at ${kind === 'raise' ? 8 : 0}).`) +
+    `\ncost 4 x ${r.points} + 10 = ${r.cost}` + (paint ? ' (waived in paint map mode)' : `, mana ${m0} to ${WB.mana}`) +
+    `\nre-derived cells ${Math.max(0, WB.w.box[0] - 1)}..${WB.w.box[1]} by ${Math.max(0, WB.w.box[2] - 1)}..${WB.w.box[3]} (the dirty box, widened by one on the near side)`);
+  drawWb();
+}
+function cast(k) {
+  const x = WB.vx, y = WB.vy;
+  const nm = { eq: 'Earthquake', volcano: 'Volcano', flood: 'Flood' }[k];
+  if (!gate(COST[k], nm)) return;
+  snapshot();
+  const before = cloneWorld(), s0 = WB.w.seed, d0 = WB.w.draws, m0 = WB.mana;
+  WB.w.log = []; WB.swampHits = [];
+  if (k === 'eq') LS.earthquake(WB.w, x, y); else if (k === 'volcano') LS.volcano(WB.w, x, y); else LS.flood(WB.w);
+  const lg = WB.w.log; WB.w.log = null;
+  setRipple(before, lg);
+  const up = lg.filter(e => e >= 0).length, dn = lg.length - up;
+  log(`${nm}` + (k === 'flood' ? ': every corner above 0 dropped by 1 (no RNG).' : ` at the view origin (${x}, ${y}): ${WB.w.draws - d0} rand() draws, seed ${hex(s0)} to ${hex(WB.w.seed)}.`) +
+    (k === 'flood' ? '' : `\n${up} corners raised, ${dn} lowered (cascades included)`) +
+    (k === 'volcano' ? '\nthen each of the 64 cells in the 8 x 8 square turned to rock with probability 1 in 5 (protected: cell 0)' : '') +
+    `\ncost ${COST[k]}` + ($('chkPaint').checked ? ' (waived in paint map mode)' : `, mana ${m0} to ${WB.mana}`));
+  drawWb();
+}
+function swampAction(cx, cy) {
+  if (!gate(COST.swamp, 'Swamp')) return;
+  const x = cx - 1, y = cy - 1;
+  snapshot();
+  const s0 = WB.w.seed, d0 = WB.w.draws, m0 = WB.mana;
+  WB.ripple = null; $('rippleBar').style.display = 'none'; $('rippleNote').style.display = 'none';
+  WB.swampHits = LS.swamp(WB.w, x, y, null);
+  log(`Swamp at cell (${x}, ${y}): ${WB.w.draws - d0} rand() draws (two per try, 30 tries), seed ${hex(s0)} to ${hex(WB.w.seed)}.\n${WB.swampHits.length} tries landed on open land and made swamp (purple in the plan view); the rest hit sea, slopes, rock, the map edge or a cell that was already swamp.\ncost ${COST.swamp}` + ($('chkPaint').checked ? ' (waived in paint map mode)' : `, mana ${m0} to ${WB.mana}`) + '\nno cell was re-derived, and nothing is redrawn but the swamp blocks');
+  drawWb();
+}
+function pointerGame(ev) {
+  const cv = $('cvWb'), r = cv.getBoundingClientRect();
+  return [Math.floor((ev.clientX - r.left) * 320 / r.width), Math.floor((ev.clientY - r.top) * 200 / r.height)];
+}
+function pick(ev) { const [gx, gy] = pointerGame(ev); return LS.cornerAt(WB.ripple && WB.ripple.w && WB.ripple.k < WB.ripple.n ? WB.ripple.w : WB.w, WB.vx, WB.vy, gx, gy); }
+$('cvWb').onmousemove = ev => { const c = pick(ev); WB.hover = c ? [c[0], c[1]] : null; overlayWb(); if (WB.tool === 'swamp') drawPlan(); };
+$('cvWb').onmouseleave = () => { WB.hover = null; overlayWb(); };
+$('cvWb').oncontextmenu = ev => { ev.preventDefault(); };
+$('cvWb').onmousedown = ev => {
+  if (WB.ripple && WB.ripple.k < WB.ripple.n) { WB.ripple.k = WB.ripple.n; WB.ripple.w = null; $('rngRip').value = WB.ripple.n; $('lblRip').textContent = `${WB.ripple.n} of ${WB.ripple.n}`; }
+  const c = pick(ev); if (!c) { log('That point is outside the land view, or above every corner on its diagonal.'); return; }
+  const right = ev.button === 2 || ev.shiftKey;
+  if (WB.tool === 'raise' || WB.tool === 'lower') landAction(right || WB.tool === 'lower' ? 'lower' : 'raise', c[0], c[1]);
+  else if (WB.tool === 'swamp') swampAction(c[0], c[1]);
+  else log('That tool is cast from the buttons; it acts at the view origin. Pick raise / lower or swamp to click the land.');
+};
+$('wx').onchange = e => setView(clampv(+e.target.value | 0, 0, 56), WB.vy);
+$('wy').onchange = e => setView(WB.vx, clampv(+e.target.value | 0, 0, 56));
+$('cvPlan').onclick = ev => { const r = $('cvPlan').getBoundingClientRect(); setView(clampv(Math.floor((ev.clientX - r.left) * 65 / r.width) - 4, 0, 56), clampv(Math.floor((ev.clientY - r.top) * 65 / r.height) - 4, 0, 56)); };
+$('chkCorners').onchange = drawWb;
+$('chkPaint').onchange = drawWb;
+$('btnMana').onclick = () => { WB.mana += 10000; drawWb(); };
+$('btnUndo').onclick = () => { const u = WB.undo.pop(); if (!u) { log('Nothing to undo.'); return; } WB.w = u.w; WB.mana = u.mana; WB.ripple = null; WB.swampHits = []; $('rippleBar').style.display = 'none'; $('rippleNote').style.display = 'none'; log('Undone.'); drawWb(); };
+function resetWorld(i) { WB.pi = i; WB.w = preset(i); WB.mana = 399; WB.undo = []; WB.ripple = null; WB.swampHits = []; $('rippleBar').style.display = 'none'; $('rippleNote').style.display = 'none'; $('selPreset').value = i; G.land = D.presets[i].land; $('selLand').value = G.land; log('World ' + D.presets[i].name + ' generated: seed ' + hex(D.presets[i].seed) + ', ' + D.presets[i].pre + ' pre-rolls.'); redrawAll(); }
+$('btnReset').onclick = () => resetWorld(WB.pi);
+$('selPreset').onchange = e => resetWorld(+e.target.value);
+$('btnRec').onclick = () => {
+  resetWorld(0); $('chkPaint').checked = false; WB.mana = 542; WB.tool = 'raise'; toolUI(); setView(6, 12);
+  landAction('raise', 11, 16);
+  $('wbLog').textContent += '\n\nThe emulator recorded 134 corners changed and mana 542 to -4 for this raise (terrain.md section 2).';
+};
+toolUI();
+
+// ---------------------------------------------------------------- 5. generation replay
+const GN = { rec: null, stage: 0, view: [6, 12], timer: null };
+D.presets.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p.name; $('selGen').appendChild(o); });
+const cu = document.createElement('option'); cu.value = 'custom'; cu.textContent = 'Seed typed here'; $('selGen').appendChild(cu);
+function genBuild() {
+  const seed = parseInt($('gSeed').value, 16) & 0x7fff, pre = +$('gPre').value;
+  GN.rec = { steps: [], log: [], clusters: [] };
+  GN.final = LS.genWorld(seed, pre, GN.rec);
+  $('rngGen').max = GN.rec.steps.length + GN.rec.clusters.length;
+  GN.stage = +$('rngGen').max; $('rngGen').value = GN.stage;
+  drawGen();
+}
+function drawGen() {
+  const rec = GN.rec, ns = rec.steps.length, st = GN.stage, w = LS.replayWorld(rec, st);
+  let vx = GN.view[0], vy = GN.view[1];
+  if (st > 0 && st <= ns) { const s = rec.steps[st - 1]; vx = clampv(s.x - 4, 0, 56); vy = clampv(s.y - 4, 0, 56); GN.view = [vx, vy]; }
+  iso($('cvGen'), w, vx, vy, {});
+  const cv = $('cvGenPlan'), c = cv.getContext('2d'), S = 5, id = c.createImageData(325, 325), d = new Uint32Array(id.data.buffer);
+  for (let y = 0; y < 65; y++) for (let x = 0; x < 65; x++) {
+    const col = heightRGB(w.h[x + 65 * y]), v = (255 << 24) | (col[2] << 16) | (col[1] << 8) | col[0];
+    for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) d[(y * S + j) * 325 + x * S + i] = v;
+  }
+  c.putImageData(id, 0, 0);
+  const colr = ['#d94a3a', '#e0a020', '#8a4ad0'];
+  const upto = Math.min(st, ns);
+  for (let k = 0; k < 3; k++) {
+    c.strokeStyle = colr[k]; c.lineWidth = 1.6; c.beginPath(); let first = true;
+    for (let i = 0; i < upto; i++) { const s = rec.steps[i]; if (s.walk !== k) continue; const px = s.x * S + 2.5, py = s.y * S + 2.5; first ? (c.moveTo(px, py), first = false) : c.lineTo(px, py); }
+    c.stroke();
+  }
+  if (st > ns) { c.strokeStyle = '#2aa7a7'; c.lineWidth = 1.2; for (let k = 0; k < st - ns; k++) { const cl = rec.clusters[k]; c.strokeRect(cl.x0 * S, cl.y0 * S, 9 * S, 9 * S); } }
+  c.strokeStyle = '#fff'; c.lineWidth = 1.2; c.strokeRect(vx * S, vy * S, 9 * S, 9 * S);
+  let txt;
+  if (st === 0) txt = 'Start: every corner is 0, so the whole map is sea. The seed has been rolled ' + $('gPre').value + ' times by the world reset.';
+  else if (st <= ns) { const s = rec.steps[st - 1], names = ['walk(2, 4)', 'walk(4, 2)', 'walk(3, 3)'];
+    txt = `${names[s.walk]}, raise call ${st} of ${ns}: raise_point(${s.x}, ${s.y})\ncorners changed so far ${s.cum}` + (st < ns && rec.steps[st].walk !== s.walk ? '\nthe hill reached height 6, so this walk is finished' : '') + '\nEach call raises one corner and every neighbour it leaves more than 1 below; the walk then steps by a random amount and repeats until a corner reaches 6.'; }
+  else { const k = st - ns - 1, cl = rec.clusters[k];
+    txt = `scatter cluster ${k + 1} of 22 (${cl.rock ? 'rocks' : 'trees'}): box starts at (${cl.x0}, ${cl.y0}), 30 tries, ${cl.placed.length} placed\n` + (k === 21 ? 'The world is complete.' : 'Rocks need land that is not sea and not already rock; trees only need non-sea land.'); }
+  $('genLog').textContent = txt;
+}
+$('rngGen').oninput = e => { GN.stage = +e.target.value; drawGen(); };
+$('selGen').onchange = e => { if (e.target.value !== 'custom') { const p = D.presets[+e.target.value]; $('gSeed').value = p.seed.toString(16); $('gPre').value = p.pre; G.land = p.land; $('selLand').value = p.land; } genBuild(); redrawAll(); };
+$('gSeed').onchange = () => { $('selGen').value = 'custom'; genBuild(); };
+$('gPre').onchange = () => { $('selGen').value = 'custom'; genBuild(); };
+$('btnGenPlay').onclick = () => {
+  if (GN.timer) { clearInterval(GN.timer); GN.timer = null; $('btnGenPlay').textContent = 'play'; return; }
+  GN.stage = 0; $('rngGen').value = 0; $('btnGenPlay').textContent = 'stop';
+  const max = +$('rngGen').max, stepBy = Math.max(1, Math.round(max / 120));
+  GN.timer = setInterval(() => { GN.stage = Math.min(max, GN.stage + stepBy); $('rngGen').value = GN.stage; drawGen(); if (GN.stage >= max) { clearInterval(GN.timer); GN.timer = null; $('btnGenPlay').textContent = 'play'; } }, 60);
+};
+redraws.push(() => { if (GN.rec) drawGen(); });
+
+// ---------------------------------------------------------------- 6. proof table
+(function () {
+  const P = D.proof, rows = [
+    ['gen', 'genWorld ($b316 terrain part)', 'popgen.build_world', 'heights, altitude, block, feature and the final seed (3 named worlds and 100 random seeds)'],
+    ['replay', 'replayWorld', 'genWorld itself', 'the recorded corner changes and scatter placements rebuild the same world'],
+    ['cmd', 'cmdRaise, cmdLower ($1186c, $116fa)', 'powers_ref raise_point, lower_point, $c0ee', 'all four maps and the corner-change count, half of them aimed at peaks'],
+    ['power:eq', 'earthquake ($12350)', 'powers_ref.earthquake', 'all four maps and the seed'],
+    ['power:volcano', 'volcano ($1263c)', 'powers_ref.volcano', 'all four maps and the seed'],
+    ['power:swamp', 'swamp ($12a14)', 'powers_ref.swamp', 'all four maps and the seed'],
+    ['power:flood', 'flood ($11f6a)', 'powers_ref.flood', 'all four maps and the seed'],
+    ['render', 'renderTerrain ($14364)', 'pop_render.Frame.terrain', 'every pixel of the 320 x 200 frame: 12 generated worlds on all four lands, 4 views of the real game_start map, both sea phases'],
+    ['corner', 'cornerAt ($119e6)', 'popdrive.Game.corner_at', 'corner and highlight height at every 3rd pixel of the land view, 6 height fields and views'],
+  ];
+  let tot = 0, ok = 0, html = '';
+  for (const [k, a, b, c] of rows) { const v = P[k] || [0, 0]; tot += v[1]; ok += v[0]; html += `<tr><td>${a}</td><td><code>${b}</code></td><td class="${v[0] === v[1] ? 'ok' : 'bad'}">${v[0]}/${v[1]}</td><td>${c}</td></tr>`; }
+  $('proofTable').insertAdjacentHTML('beforeend', html);
+  $('proofline').innerHTML = `<span class="${ok === tot ? 'ok' : 'bad'}">${ok} of ${tot}</span> random cases match the reconstructed routines (<code>py/landscape_infographic.py --check</code>)`;
+  $('proofNote').textContent = 'The check is chained, not direct: this page equals the Python models here, and those equal the emulator in the counts quoted above. The random states include scribbled maps (swamp, rock and house-field cells, trees) so every branch of the powers is taken.';
+})();
+
+// ---------------------------------------------------------------- start
+resetWorld(0);
+$('gSeed').value = D.presets[0].seed.toString(16);
+genBuild();
+redrawAll();
+})();
+</script>
+</body>
+</html>
