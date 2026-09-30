@@ -404,10 +404,10 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    `$18be`, the `$2de6c` key array, the right-shift gate at `$13762`), drove the
    camera (rotation re-projects the whole terrain — `iso_rotated.png`), and
    **closed Q2**: the renderer is profiled at both zoom extremes
-   (`iso_zoom_in.png` / `iso_zoom_out.png`) in `graphics.md`. Keypad scroll and
-   keypad zoom write their variables but have no effect (scroll is cursor-driven,
-   keypad zoom never calls the `$fe04` geometry rebuild — the real zoom path is
-   `$13f60` → `$fe04`).
+   (`iso_zoom_in.png` / `iso_zoom_out.png`) in `graphics.md`. Keypad zoom writes its
+   variable but has no effect (it never calls the `$fe04` geometry rebuild; the real zoom path is
+   `$13f60` → `$fe04`). The arrow keys do scroll the camera cell, ungated, besides the cursor/edge
+   scroll (graphics.md "Per-frame camera loop").
 7. The 70th pass reversed the **entity / commander decision loop** — the
    per-entity behaviour state machine driven once per ~2.4 Hz simulation tick by
    the iterator `$14b62` and its 75-entry mode table `$14bb4` (`ai.md`). Object
@@ -1132,6 +1132,9 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `iso_zoom_in.png` / `iso_zoom_out.png` | iso view at zoom index 1 / 7 (69th, `$fe04` patched via `$13bbe`) |
 | `pm114_prop_contact.png` | all 28 `$37c7c` building/tree frames rendered against the real palette (114th) |
 | `pm114_tileset_families.png` | the four `g_tileset_sel` frame-offset variants for `r7 = 0, 1, 2, 12` side by side (114th) |
+| `dither_atlas.png` | pattern-table slots `0x00`-`0x40` decoded against the real palette (130th) |
+| `dither_triangles.png` | mission 1 terrain: as drawn, by colour byte, by source plane (130th) |
+| `dither_infographic.html` | interactive pixel probe, tile atlas, ramp anatomy, season fade; built by `py/dither_atlas.py` (130th) |
 | `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |
 | `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads; 113th pass: the herd servicer `$4342` differentially tested Proven for 8/9 branches (the arrival/unlink branch stays Corroborated — reproducibly hangs the real emulator under every synthesised poke tried, not yet root-caused) |
 | `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |

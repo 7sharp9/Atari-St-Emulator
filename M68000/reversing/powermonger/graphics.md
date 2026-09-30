@@ -138,13 +138,29 @@ keeps `A5` inside the colour's slot, which is why the phase depends only on the
 absolute scanline. The span on one scanline is a single 16-px pattern tiled in
 screen-X alignment. No texture map is read anywhere in the terrain path.
 
-| colourByte | palette indices | terrain |
-|-----------|-----------------|---------|
-| `0x00`–`0x03` | 0, 14, 15 | open sea (each slot a different stipple) |
-| `0x08`–`0x0b` | 4, 14, 15 | shallow water (each slot a different stipple) |
-| `0x18`–`0x1c` | 1–3, 6 | rock / dark earth |
-| `0x24`–`0x2c` | 11–13 | grass ramp |
-| `0x30`–`0x3e` | 7, 9–12 | bright slopes, ridge |
+The table is 128 slots of 128 bytes (`dither_atlas.png` decodes slots `0x00`-`0x40`;
+`dither_infographic.html` is the interactive version). A slot is a 16 x 16 tile of
+4-bit pixels: row `r` is the 8-byte sub-pattern, pixel column `x & 15`.
+
+| colourByte | palette indices | what it is |
+|-----------|-----------------|------------|
+| `0x00`-`0x03` | 0, 14, 15 | open sea: four stipples of the same colours (the water shimmer) |
+| `0x04`-`0x07`, `0x08`-`0x0b` | 0/14/15, 4/14/15 | water bytes 4-11: four identical tiles each, no shimmer. Not produced by any map checked (seven RAM images, five lands: every sub-12 byte in either plane is 0) |
+| `0x0c`-`0x1b` | 1, 2, 3 | rock / low ground: two 8-step ramps, 1 to 2 (`0x0c`-`0x13`) then 2 to 3 (`0x14`-`0x1b`) |
+| `0x1c` | 0, 1, 6 | only ever the `$ef62` forced colour: no terrain cell holds byte `0x1c` (the plane bytes seen skip 28) |
+| `0x1d`-`0x2e` | season dependent | the **live** copy of the current season's 18 slots (Seasons, below) |
+| `0x2f`-`0x40` | 6, 7, 9, 11, 12, 13 | high ground. Never replaced; these 18 slots are also the stored summer table (source `$2e000+$1780`), so terrain bytes above `0x2e` (seen up to `0x3f`) read the summer colours in every season |
+| `0x41`-`0x52`, `0x53`-`0x64` | spring/autumn, winter | the other two stored season tables. No terrain byte seen reaches them |
+| `0x65`-`0x7f` | mixed | not dither tiles (other data) |
+
+**Ramp structure** (`py/dither_atlas.py`, checked on `pm78_settle`): the rock ramp
+is a nested ordered dither. One fixed 16 x 16 threshold map gives each pixel a
+rank 0-8 (16, 32 x 7, 16 pixels per rank); slot `0x0c + k` switches the rank <= k
+pixels to the next colour, each slot containing the previous one, and the second
+half (2 to 3) uses the identical map. The grass ramps are not nested: five fixed
+scatters of 32, 80, 128, 192 and 224 pixels, the same five masks for each colour
+pair (13 over 1, 12 over 13, 11 over 12; identical in all three), with overlaps
+between neighbours of 0 of 32, 48 of 80, 64 of 128 and 160 of 192.
 
 **The `0x1c` override** (`$f072` / `$f154`): `$ef62` forces the colour byte to
 `0x1c` when the triangle's winding puts the middle vertex on the left. At the
@@ -161,6 +177,13 @@ longword tick counter, written only at `$13034` in the `$13000` sim tick and
 incremented once per tick. Water cells (`b < 0x0c`) add `[$4bb3e] & 3` to their
 colour byte, so each tick moves them to the next of four stipple slots and the
 pattern repeats every four ticks.
+
+The compose buffer holds the frame finished one tick earlier, so a RAM image taken at
+the `$f898` frame driver shows terrain drawn with `([$4bb3e] - 1) & 3`: four consecutive
+captures of one coast view (`pm121/cap/k5_22_0..3`) match the rebuilt frame at 100.0, 100.0,
+99.9 and 99.9 % with that offset, and six water scenes score 90-100 % with it against 40-70 %
+without (`tools/pm_render_ref.py`'s `load_ram` still reads the raw counter, which is why its
+water scores were low). Dither phase on those captures is 64.
 
 The shimmer appears only where water lies inside the drawn window. The open
 sea outside the window is part of the static `$78000` master and does not
@@ -404,7 +427,7 @@ and heading.
 
 | slot (dec) | scancode | effect |
 |-----------|----------|--------|
-| 54 | `$36` right-shift | **master gate**: `tst.b 54(A0) / beq` skips the whole block |
+| 54 | `$36` right-shift | **gate** for the rotate / horizon / eye / zoom rows below: `tst.b 54(A0) / beq` skips them (not the arrow block, next paragraph) |
 | 71 / 82 | `$47` / `$52` | rotate `$ff9a += / -= $10`, then `& $f0` |
 | 74 / 78 | `$4a` / `$4e` | `$ff96 += / -= $a` |
 | 99 / 100 | `$63` / `$64` | `$ff98 -= / += $a` |
@@ -412,7 +435,14 @@ and heading.
 | 51 / 52 | `$33` / `$34` | zoom index `$57ffc ∓ 1`, then `jsr $fe04` (leaves `$ff9c` alone) |
 
 The gate slot 54 is the right-shift slot, which `$18be` never writes, so this
-block cannot be reached from the keyboard. To drive it from the REPL, poke the
+block cannot be reached from the keyboard.
+
+**The arrow keys are a separate, ungated block** (`$13824`, slots 72/75/77/80 =
+scancodes `$48` up, `$4b` left, `$4d` right, `$50` down): each held tick moves
+the camera cell `$4bb3a`/`$4bb3c` by 1. Live from `pm78_settle.snap`, holding `$4b`
+for 500,000 steps moves X `$28` to `$26`, and the reader bodies `$13838` etc. fire
+2 times (the loop runs about every 226k steps); `$48`/`$50` likewise move Y.
+Keyboard scrolling therefore exists besides the cursor/edge scroll. To drive it from the REPL, poke the
 gate and the key together:
 
 ```
@@ -428,7 +458,7 @@ Effects:
 - **`$ff96` / `$ff98`** are HORIZON and EYE. The keypad changes them but does not
   force a `$fec6` rebuild, so the frame does not change until something else
   triggers a re-projection. Iso-view scrolling is cursor/edge driven
-  (`$13118`+). Poking the camera cell `$4bb3a`/`$4bb3c` directly (e.g.
+  (`$13118`+) and also arrow-key driven (see "Per-frame camera loop"). Poking the camera cell `$4bb3a`/`$4bb3c` directly (e.g.
   `w 4bb3a 002c0033`) does trigger a re-projection on the next `$f898`.
 - **`$ff9c` (keypad zoom) has no effect.** `$137da` / `$137e8` change `$ff9c`
   but never call `$fe04`, so the tile geometry (`$fdea`–`$fe02`) is never

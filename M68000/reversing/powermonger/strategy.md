@@ -1492,6 +1492,41 @@ are limitations rather than choices:
    armies just get scattered and re-form. A modern version would let the AI
    choose its posture from the situation so that its fights have consequences.
 
+## Hidden features audit (130th)
+
+No cheat keys, debug commands or developer hooks found in the loaded game image. Evidence:
+
+- **Keys.** The only code touching the key array `$2de6c` is the ISR writer (`$1962`), the camera loop `$13762`, the
+  serial-link loops (`$1c34e`, `$1c39e..$1c3ae`) and the clear at `$10a6` (scan of the whole image for pointers into
+  `$2de00..$2df6b`: 10 hits). There is no "any key" scan and no Ctrl/Alt/CapsLock/Help/Undo/F-key test; the only
+  modifier state is the shift flag `$2df8a`, which only selects the shifted ASCII table in the getkey routine
+  (`$19c2`, tables `$19e8`/`$1a7a`, UK layout). A live sweep of scancodes `$01..$72` (500,000-step holds in
+  `pm78_settle`, reader hits counted with `hits`, RAM diffed against F1): only the four arrow keys change state
+  (`$13824` block, each reader body 2 hits; left moved camera X 40 to 38, re-checked 130th). ESC reaches the link
+  receive loop (`$1c34e`), which calls `$71ae` (link teardown); it was not exercised in link mode. Name entry
+  (`$cf46`, only entered while `$d03e` is set) treats only CR and BS specially and compares the name against nothing.
+- **Joystick.** Polled every frame; joystick 1 lands in `$2c1b8`, which nothing reads (8 injected values per stick:
+  RAM identical to the control).
+- **Startup command line.** `$11b2` passes the string at `$123c` (one space) to `$12d88`, which tests for `S`/`M` and
+  sets side states 6 and 8 (the serial-link roles, inferred). With the static string neither fires; reachable only by
+  patching `$123c`. Not live-tested.
+- **Dormant word `$5809a`** (read at `$16640` in a loop over the entity table, written nowhere by an absolute
+  operand; 0 in both snapshots). Poking it to 1 raised that loop's `$16738` calls from 54 to 94 per 500k steps and
+  `$e6ee` marker draws from 27 to 47, and on 4 of 8 samples added 24-26 bytes of extra dots to the minimap: a
+  "draw all sides' markers" switch. Register-relative writers and whether a save game can set it are unchecked.
+- **Developer leftovers.** `d:\samples\ste.tos` (`$123e`) and `d:\samples\qaz.spl` (`$1251`), no code references; the
+  live save-disk header at `$1bb0e` (checked by `$1bd64` against `POWE`) carries the text "PLEASE STOP HACKING THIS GAME
+  OR IT MAY BE THE LAST ST PRODUCT FROM BULLFROG"; three MFP vectors (`$120`, `$138`, `$13c`) set the palette to
+  `$700`/`$770`/`$007` (stray-interrupt flashes, never fired in 2M steps); vector 5 (divide by zero) points at an
+  `rte`, so a zero divide is ignored.
+- **Disk vs loader table** (`$e0c4`): `DATA\SPRITE40.DAT` is on the disk with no name in the table; `CAP_SPR.DAT` and
+  `BITMAP.DAT` are in the table but not on the disk (static only; whether `BITMAP.DAT` is fetched at mission 1 is
+  unchecked).
+- **Not covered:** link/multiplayer mode keys; the crack's own title/intro screens and `MREP`; indirect writers of any
+  flag; about 100 of 117 unreferenced routine starts (the reachability walker is incomplete: it called `$b892`
+  unreferenced although `$b3d0` calls it, so an orphan list is not evidence of dead code). Scripts and raw output:
+  `scratchpad/pm130/audit/` (`keysweep.py`, `sweep_diff.py`, `reach_scan.py`, `rw_census.py`).
+
 ## Open threads
 
 - **Economy / population / invention — see economy.md** (this entry predates it). Confirmed *not* in the

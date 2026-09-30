@@ -25,6 +25,7 @@ Run everything from `M68000/`. Shell scripts write under `$PM_WORK` (default
 | `diff_revolt.py` | the `$550e` → `$5c2c` → `$25d6` revolt-chain gate (1778/1778 over 49 states; corpus in `scratchpad/pm122/agents/revolt/`) |
 | `diff_4f68.py` | the mode-`$2c` target picker `$4f68` + conquest arm `$539a` → `$550e` gate (1804/1804 over 192 states, 170 natural; corpus in `scratchpad/pm124/conquest/`; `nat` runs the natural states only) |
 | `snap2ram.py <snap>...` | writes `<name>.ram` beside each snapshot |
+| `dither_atlas.py [out.json]` | rebuilds the terrain frame from (triangle, colour byte, pattern slot) for mission 1 and a coast scene, asserts 0 pixels differ from `pm_render_ref`, asserts the season-fade model reproduces `pm74_late`'s live slots, writes `../dither_atlas.png`, `../dither_triangles.png` and `../dither_infographic.html` (from `dither_infographic.tmpl.html`) |
 | `drive_win.sh` | mission 1 (campaign land 0) won with real clicks from `pm67_ok_pre.snap`: sword icon + minimap attack, 50M steps, options → GAME → RETIRE (victory, `$3f2a0[0] := 1`), Continue Conquest, land 1 built; snapshots in `$PM_WORK/win` (strategy.md "How a land ends") |
 | `clicks.py <x,y\|home\|cmd>...` | REPL commands for absolute clicks at 320 × 200 (pointer homed with a large negative move, 1:1 after); other tokens pass through with `:` for spaces |
 | `iconmap.py <ram>` | the icon floor's hit-test (`$13506`, edges `$12e6a`/`$12ee4`) run over the screen: each `$19bde` icon's slot, id and centre (strategy.md "The player's commands") |

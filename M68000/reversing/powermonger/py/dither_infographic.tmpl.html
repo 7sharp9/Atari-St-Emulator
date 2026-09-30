@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PowerMonger Terrain Dither</title>
+<style>
+:root{
+  --bg:#f6f4ee; --panel:#fffdf8; --ink:#1e1d1a; --muted:#6b675d; --line:#d9d4c6;
+  --accent:#b4461e; --accent2:#1f5f8b; --good:#2f7d3a; --warn:#a36a00;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15140f; --panel:#1e1c16; --ink:#ece8dc; --muted:#a29d8e; --line:#38352b;
+    --accent:#ee8a5e; --accent2:#7cb8e6; --good:#7fcf8b; --warn:#e2b04d;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15140f; --panel:#1e1c16; --ink:#ece8dc; --muted:#a29d8e; --line:#38352b;
+  --accent:#ee8a5e; --accent2:#7cb8e6; --good:#7fcf8b; --warn:#e2b04d;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:clamp(1.7rem,4vw,2.4rem);line-height:1.15;margin:0 0 .3em}
+h2{font-size:1.35rem;margin:2.4em 0 .4em;padding-top:.6em;border-top:1px solid var(--line)}
+h3{font-size:1.02rem;margin:1.4em 0 .3em}
+p{margin:.5em 0 .8em;max-width:75ch}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:color-mix(in srgb,var(--line) 55%,transparent);padding:.05em .3em;border-radius:3px}
+.lede{font-size:1.1rem;color:var(--muted);max-width:70ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.grow{flex:1 1 320px;min-width:0}
+canvas{image-rendering:pixelated;image-rendering:crisp-edges;display:block;max-width:100%}
+.stage{position:relative;display:inline-block;max-width:100%;border:1px solid var(--line);background:#000;line-height:0}
+.stage canvas.over{position:absolute;left:0;top:0;pointer-events:none}
+.bar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin:0 0 10px;font-size:.92rem}
+.bar label{display:flex;align-items:center;gap:6px;color:var(--muted)}
+select,input[type=range],button{font:inherit;color:var(--ink)}
+select,button{background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 8px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+.note{color:var(--muted);font-size:.9rem}
+.steps{counter-reset:s;list-style:none;padding:0;margin:.4em 0}
+.steps li{counter-increment:s;position:relative;padding:6px 0 6px 40px;border-bottom:1px dashed var(--line)}
+.steps li::before{content:counter(s);position:absolute;left:0;top:6px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;display:grid;place-items:center;font-size:.85rem}
+.steps b{font-weight:650}
+.chip{display:inline-block;font:600 .75rem var(--mono);padding:1px 7px;border-radius:10px;border:1px solid var(--line);margin-left:4px;vertical-align:1px}
+.chip.t{color:var(--accent2);border-color:var(--accent2)} .chip.h{color:var(--accent);border-color:var(--accent)}
+.chip.f{color:#fff;background:#b0308a;border-color:#b0308a} .chip.w{color:#fff;background:var(--accent2);border-color:var(--accent2)}
+.atlas{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:10px}
+.tile{cursor:pointer;text-align:center;font:.72rem var(--mono);color:var(--muted)}
+.tile canvas{width:100%;height:auto;aspect-ratio:1;border:2px solid transparent;border-radius:3px}
+.tile.sel canvas{border-color:var(--accent)}
+.tile .n{display:block;color:var(--ink);font-weight:600}
+.tile .px{display:block;min-height:1.1em}
+.mix{display:flex;height:6px;margin:2px 0;border-radius:3px;overflow:hidden}
+.group{margin:1.2em 0 .2em;font-weight:650}
+.group small{font-weight:400;color:var(--muted);margin-left:8px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font:.78rem var(--mono);margin-top:8px}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{width:14px;height:14px;border:1px solid var(--line);display:inline-block}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.82rem}
+.bits{font:.8rem var(--mono);line-height:1.5}
+.bits span{display:inline-block;width:1.1em;text-align:center}
+.bits .on{background:var(--accent);color:#fff;border-radius:2px}
+.bits .hit{outline:2px solid var(--accent2);outline-offset:-1px}
+.swatch{display:inline-block;width:20px;height:20px;border:1px solid var(--line);vertical-align:-5px;margin-right:6px}
+.ok{color:var(--good);font-weight:600} .bad{color:#c33;font-weight:600}
+.fig{margin:10px 0}
+svg text{font:12px var(--mono);fill:var(--ink)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:.92rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);font-size:.88rem}
+footer{margin-top:3em;color:var(--muted);font-size:.85rem}
+</style>
+</head>
+<body>
+<main>
+
+<h1>How PowerMonger paints its terrain</h1>
+<p class="lede">The island has no texture map and no flat colours. Every triangle carries one number, and that number selects a 16 by 16 stipple tile. The screen position picks the pixel inside the tile. This page is built from the game's own RAM: the pattern table is the real one, and each picture below is rebuilt from it and checked against the game's frame buffer.</p>
+
+<div class="panel">
+<dl class="kv">
+<dt>The rule</dt><dd>pixel(x, y) = tile[colourByte][(y + phase/8) mod 16][x mod 16]</dd>
+<dt>colourByte</dt><dd>the terrain byte of the triangle (type plane or height plane), +tick if below 12, or 0x1c if forced</dd>
+<dt>table</dt><dd>16 KB at $2e000: 128 bytes per colour byte = 16 rows of 8 bytes = one 16x16 tile of 4-bit pixels</dd>
+<dt>checked</dt><dd id="proofline">loading</dd>
+</dl>
+</div>
+
+<h2>1. Follow one pixel</h2>
+<p>Click anywhere on the island. The panel on the right shows every step the game takes to colour that pixel, using the real bytes.</p>
+
+<div class="bar" id="toolbar">
+  <label>Scene <select id="selScene"></select></label>
+  <label>Layer <select id="selLayer">
+    <option value="final">Result (dithered)</option>
+    <option value="cb">Colour byte per triangle</option>
+    <option value="plane">Source plane (type / height)</option>
+    <option value="forced">Forced to 0x1c</option>
+    <option value="game">The game's own frame</option>
+    <option value="diff">Difference from the game</option>
+  </select></label>
+  <label><input type="checkbox" id="chkTri"> triangle edges</label>
+  <label>Water tick <input type="range" id="rngTick" min="0" max="3" value="0" style="width:70px"><span id="lblTick" class="mono"></span></label>
+  <label>Phase <select id="selPhase"></select></label>
+  <span class="note" id="tableState"></span>
+</div>
+
+<div class="row">
+  <div class="grow" style="flex:2 1 520px">
+    <div class="stage" id="stage"><canvas id="cvMain"></canvas><canvas id="cvOver" class="over"></canvas></div>
+    <div class="legend" id="legend"></div>
+    <p class="note" id="sceneNote"></p>
+  </div>
+  <div class="grow" style="flex:1 1 300px">
+    <div class="panel" id="lensPanel">
+      <div class="stage" id="lensStage"><canvas id="cvLens"></canvas><canvas id="cvLensOver" class="over"></canvas></div>
+      <p class="note" id="lensNote" style="margin:6px 0 0">Move over the island for a close-up. Pale lines mark the 16-pixel tile boundaries.</p>
+    </div>
+    <div class="panel" id="probe" style="margin-top:10px"><span class="note">No pixel selected.</span></div>
+  </div>
+</div>
+
+<h2>2. The steps behind the panel</h2>
+<ol class="steps">
+  <li><b>The cell.</b> The 8 by 8 window of the map is projected to screen corners. Each cell is split into two triangles. The cell's flag byte, bit 7, picks which diagonal splits it. The two triangles are drawn far to near, so nearer ones overwrite farther ones.</li>
+  <li><b>The colour byte.</b> One triangle of the cell takes the cell's <span class="chip t">type</span> byte, the other takes its <span class="chip h">height</span> byte. Inland the two differ by a few steps, which is the two-tone split you see on slopes. A byte below 12 is water and gets the water tick (0 to 3) added, which makes the sea shimmer.</li>
+  <li><b>The forced colour.</b> Before filling, the game orders the triangle's vertices by screen height. If the middle one is on the left, the triangle is wound the other way round, which in practice means it faces away from the eye. The game then ignores the terrain byte and uses <code>0x1c</code> <span class="chip f">forced</span>. <span id="forcedStat"></span></li>
+  <li><b>The slot.</b> The table starts at <code>$2e000</code>. A colour byte owns <code>128</code> bytes from there. No terrain cell ever holds byte 0x1c itself, so that slot exists only for the forced rule.</li>
+  <li><b>The row.</b> The 128 bytes are 16 rows of 8 bytes. Scanline y reads row <code>(y + phase/8) mod 16</code>. The game advances its read pointer by 8 bytes per scanline and lets the low byte wrap, which is where the mod comes from. The phase is 0 or 64 bytes; it flips every time the camera moves and the grid is re-projected.</li>
+  <li><b>The 16 pixels.</b> The 8 bytes are two longwords. The first holds bit planes 0 and 1, the second planes 2 and 3. Pixel column <code>x mod 16</code> is bit <code>15 - (x mod 16)</code> of each of the four 16-bit words, and those four bits form a palette index 0 to 15. The fill loop repeats the same 16 pixels along the whole span of the scanline.</li>
+</ol>
+
+<h2>3. Every tile the terrain can use</h2>
+<p>Click a tile to light up, in the preview, every pixel that came from it. The number under a tile is how many pixels of the selected scene it paints. The coloured bar shows the palette mix of the tile. The four sea tiles are the water shimmer: drag <em>Water tick</em> in section 1 and the sea swaps between them. The counter advances once per simulation tick, so the sea repeats every four ticks.</p>
+<div class="row">
+  <div class="grow" style="flex:1 1 440px" id="atlasHost"></div>
+  <div style="flex:0 0 auto;max-width:100%;position:sticky;top:8px;align-self:flex-start">
+    <div class="stage"><canvas id="cvAtlas"></canvas></div>
+    <p class="note" id="atlasNote" style="max-width:40ch"></p>
+  </div>
+</div>
+
+<h2>4. The tiles are dither ramps</h2>
+<p>Colour byte is also brightness. Along the terrain, byte rises with height, so the table is a set of ramps: each step swaps about an eighth of the tile's pixels from one palette colour to the next. The ramps are built in two different ways.</p>
+
+<div class="row">
+  <div class="grow panel">
+    <h3>Rock ramp, bytes 0x0c to 0x1b: one fixed threshold map</h3>
+    <p class="note">Each pixel has a rank: the first slot of the ramp at which it switches to the next colour. The same map drives both halves (colour 1 to 2, then 2 to 3), and each slot's set of switched pixels contains the previous one's.</p>
+    <div class="row" style="align-items:center">
+      <canvas id="cvRank" width="16" height="16" style="width:192px;height:192px"></canvas>
+      <div id="rankInfo" class="note mono"></div>
+    </div>
+    <div id="rockStrip" class="atlas" style="grid-template-columns:repeat(8,1fr);margin-top:10px"></div>
+  </div>
+  <div class="grow panel">
+    <h3>Grass ramp, bytes 0x1f to 0x2d: five scatters, not nested</h3>
+    <p class="note">Five fixed scatters of 32, 80, 128, 192 and 224 pixels, and they are not nested: a denser one does not contain the sparser one. The same five are reused for each colour pair (13 over 1, 12 over 13, 11 over 12). The table compares neighbours: how many pixels of the first scatter are still set in the next, against what two independent scatters of those densities would share.</p>
+    <p class="note" id="grassSame"></p>
+    <div id="grassInfo"></div>
+  </div>
+</div>
+
+<h2>5. The four seasons rewrite part of the table</h2>
+<p>Slots 0x1d to 0x2e are a working copy. The table also stores three finished versions of those 18 slots. When the season changes, the game copies 16 pixels per tick from the new version into the live slots, visiting them in the order of a 13-bit linear congruential sequence. A full change takes 8191 steps, about 512 ticks. Drag the slider to freeze the change part-way.</p>
+<div class="bar">
+  <label>From <select id="selFrom"></select></label>
+  <label>To <select id="selTo"></select></label>
+  <label>LCG steps <input type="range" id="rngFade" min="0" max="8191" value="8191" style="width:220px"> <span id="lblFade" class="mono"></span></label>
+  <button id="btnCaptured">Use the captured table</button>
+  <span id="fadeCheck" class="note"></span>
+</div>
+<div class="row">
+  <div style="flex:0 0 auto;max-width:100%"><div class="stage"><canvas id="cvSeason"></canvas></div></div>
+  <div class="grow" id="seasonStrips"></div>
+</div>
+<p class="note">The autumn table is the spring table: the game uses the same source for both. Bytes 0x2f and above are not replaced, so high ground keeps the same colours in every season; its slots are also the stored summer table.</p>
+
+<h2>6. Reference</h2>
+<table>
+<thead><tr><th>Colour byte</th><th>Palette colours</th><th>Where it comes from</th></tr></thead>
+<tbody>
+<tr><td class="mono">0x00 to 0x03</td><td>0 (black), 14, 15</td><td>Open sea. Byte 0 plus the water tick. Four stipples of the same three colours.</td></tr>
+<tr><td class="mono">0x04 to 0x0b</td><td>0/14/15 and 4/14/15</td><td>Water bytes 4 to 11. Not produced by any map checked (every sub-12 byte seen was 0). 0x04 to 0x07 are four identical tiles, as are 0x08 to 0x0b.</td></tr>
+<tr><td class="mono">0x0c to 0x1b</td><td>1, 2, 3</td><td>Low ground, coast and rock: two 8-step ramps, dark brown to grey.</td></tr>
+<tr><td class="mono">0x1c</td><td>0, 1, 6</td><td>Only ever the forced colour for away-facing triangles.</td></tr>
+<tr><td class="mono">0x1d to 0x2e</td><td>season dependent</td><td>Grass and slopes. Live copy of the current season's table.</td></tr>
+<tr><td class="mono">0x2f to 0x40</td><td>6, 7, 9, 11, 12, 13</td><td>High ground. Fixed; these slots are also the stored summer table.</td></tr>
+<tr><td class="mono">0x41 to 0x64</td><td>various</td><td>The spring and winter tables, stored. Terrain bytes seen on the maps checked never exceed 0x3f.</td></tr>
+</tbody></table>
+
+<footer id="foot"></footer>
+</main>
+
+<script>
+const D = __DATA__;
+const $ = s => document.querySelector(s);
+const hex = (n, w = 2) => "0x" + n.toString(16).padStart(w, "0");
+function unb64(s){const b=atob(s),a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+const W = D.W, H = D.H, PAL = D.palette, LIVE0 = D.live0, NLIVE = D.nlive;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function parseSlots(arr){return arr.map(h=>{const a=new Uint8Array(256);for(let i=0;i<256;i++)a[i]=parseInt(h[i],16);return a;});}
+const scenes = D.scenes.map(s => ({...s, triid: unb64(s.triid), ref: unb64(s.ref), slots: parseSlots(s.slots)}));
+
+// ---- planar block (18 slots x 128 bytes) -> pixel indices, and the season fade -------------
+function decodeBlock(bytes){
+  const out = new Uint8Array(NLIVE*256);
+  for(let row=0; row<NLIVE*16; row++){
+    const o=row*8, w=k=>(bytes[o+k]<<8)|bytes[o+k+1], p=[w(0),w(2),w(4),w(6)];
+    for(let x=0;x<16;x++){const b=15-x;
+      out[row*16+x]=((p[0]>>b)&1)|(((p[1]>>b)&1)<<1)|(((p[2]>>b)&1)<<2)|(((p[3]>>b)&1)<<3);}
+  }
+  return out;
+}
+const SRC = {}; for (const k in D.fade.blocks) SRC[k] = decodeBlock(unb64(D.fade.blocks[k]));
+SRC.autumn = SRC.spring;
+function fadeState(from, to, steps){
+  const live = SRC[from].slice(); let x = 0;
+  for(let i=0;i<steps;i++){
+    x = (x*0x24A1 + 0x24DF) & 0x1FFF;
+    if(x===0) break;
+    const row=x>>4, bit=x&15;
+    if(row<NLIVE*16){const px=15-bit; live[row*16+px]=SRC[to][row*16+px];}
+  }
+  return live;
+}
+{ // self-check: the model reproduces pm74_late's live slots
+  const want = decodeBlock(unb64(D.fade.live)), got = fadeState("winter","spring",D.fade.steps);
+  let bad=0; for(let i=0;i<want.length;i++) if(want[i]!==got[i]) bad++;
+  $("#fadeCheck").innerHTML = bad===0
+    ? `<span class="ok">Model check passed</span>: winter to spring after ${D.fade.steps} steps equals ${D.fade.ram}'s live slots, ${want.length} pixels.`
+    : `<span class="bad">Model check failed: ${bad} pixels differ</span>`;
+}
+
+// ---- state ---------------------------------------------------------------------------
+const S = { scene: 0, layer: "final", tri: false, tick: null, phase: null, hi: null,
+            table: null, sel: null, hover: null };
+const scene = () => scenes[S.scene];
+const tickNow = () => S.tick ?? scene().tick;
+const phaseNow = () => S.phase ?? scene().phase;
+function slotPix(sc, s){
+  if (S.table && s>=LIVE0 && s<LIVE0+NLIVE) return S.table.subarray((s-LIVE0)*256,(s-LIVE0+1)*256);
+  return sc.slots[s];
+}
+function colourOf(t, tick){ return t.forced ? 0x1c : (t.raw<12 ? (t.raw+tick)&255 : t.raw); }
+function pixelAt(sc, x, y, tick, phase){
+  const n = sc.triid[y*W+x]; if(!n) return -1;
+  const t = sc.tris[n-1], c = colourOf(t, tick);
+  return slotPix(sc, c)[(((y + (phase>>3)) & 15) << 4) | (x & 15)];
+}
+function bbox(sc){
+  let x0=W,y0=H,x1=0,y1=0;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++) if(sc.triid[y*W+x]){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  return {x0,y0,x1,y1,w:x1-x0+1,h:y1-y0+1};
+}
+scenes.forEach(s => s.box = bbox(s));
+function rank(sc){ // distinct colour bytes, ascending
+  const set = new Set(sc.tris.map(t=>colourOf(t,tickNow())));
+  return [...set].sort((a,b)=>a-b);
+}
+function ramp(i,n){ const h = n<2?210:230-230*i/(n-1); return `hsl(${h} 68% ${i%2?48:58}%)`; }
+const rgbOf = c => `rgb(${PAL[c][0]},${PAL[c][1]},${PAL[c][2]})`;
+
+function drawTile(cv, pix, scale=1){
+  cv.width = 16*scale; cv.height = 16*scale; const g = cv.getContext("2d"); g.imageSmoothingEnabled=false;
+  for(let y=0;y<16;y++)for(let x=0;x<16;x++){ g.fillStyle=rgbOf(pix[y*16+x]); g.fillRect(x*scale,y*scale,scale,scale); }
+}
+function mixBar(pix){
+  const cnt = new Array(16).fill(0); for(const v of pix) cnt[v]++;
+  const d = document.createElement("div"); d.className="mix";
+  cnt.forEach((n,c)=>{ if(n){ const s=document.createElement("i"); s.style.cssText=`width:${n/256*100}%;background:${rgbOf(c)}`; d.appendChild(s);} });
+  return d;
+}
+
+// ---- scene renderer ------------------------------------------------------------------
+function renderInto(cv, sc, opt){
+  const b = opt.box || sc.box, tick = opt.tick, phase = opt.phase, layer = opt.layer, hi = opt.hi;
+  cv.width = b.w; cv.height = b.h;
+  const g = cv.getContext("2d"), img = g.createImageData(b.w, b.h), d = img.data;
+  const ranks = layer==="cb" ? rank(sc) : null;
+  const tcol = [[31,95,139],[180,70,30]];
+  let exact=0, tot=0;
+  for(let y=b.y0;y<b.y0+b.h;y++)for(let x=b.x0;x<b.x0+b.w;x++){
+    const inb=x>=0&&x<W&&y>=0&&y<H, p=y*W+x, o=((y-b.y0)*b.w+(x-b.x0))*4, n=inb?sc.triid[p]:0;
+    let r=22,gg=21,bb=17;
+    if(n){
+      const t=sc.tris[n-1], c=colourOf(t,tick);
+      const v=slotPix(sc,c)[(((y+(phase>>3))&15)<<4)|(x&15)], gm=sc.ref[p];
+      tot++; if(v===gm) exact++;
+      let col=PAL[v];
+      if(layer==="cb"){ const m=ranks.indexOf(c); const s=ramp(m,ranks.length).match(/hsl\(([\d.]+) 68% (\d+)%/); col=hslToRgb(+s[1],.68,+s[2]/100); }
+      else if(layer==="plane"){ col = t.src==="type"?tcol[0]:tcol[1]; const sh=(v&3)*10; col=[col[0]+sh,col[1]+sh,col[2]+sh]; }
+      else if(layer==="forced"){ col = t.forced?[176,48,138]:[PAL[v][0]*.45,PAL[v][1]*.45,PAL[v][2]*.45]; }
+      else if(layer==="game"){ col=PAL[gm]; }
+      else if(layer==="diff"){ col = v===gm?[PAL[v][0]*.35,PAL[v][1]*.35,PAL[v][2]*.35]:[230,50,50]; }
+      if(hi!=null && c!==hi) col=[col[0]*.22+14,col[1]*.22+14,col[2]*.22+14];
+      r=col[0];gg=col[1];bb=col[2];
+    }
+    d[o]=r;d[o+1]=gg;d[o+2]=bb;d[o+3]=255;
+  }
+  g.putImageData(img,0,0);
+  return {exact,tot};
+}
+function hslToRgb(h,s,l){const a=s*Math.min(l,1-l),f=n=>{const k=(n+h/30)%12;return l-a*Math.max(-1,Math.min(k-3,9-k,1));};return [f(0)*255,f(8)*255,f(4)*255];}
+function scaleFor(cv, box, target){ const k=Math.max(1,Math.round(target/box.w)); cv.style.width=(box.w*k)+"px"; cv.style.height=(box.h*k)+"px"; return k; }
+
+// ---- main explorer -------------------------------------------------------------------
+const cvMain=$("#cvMain"), cvOver=$("#cvOver");
+function drawMain(){
+  const sc=scene(), b=sc.box;
+  const r=renderInto(cvMain, sc, {tick:tickNow(), phase:phaseNow(), layer:S.layer, hi:null});
+  const k=Math.min(4, Math.max(1, Math.floor(Math.min(1060, $("#stage").parentElement.clientWidth||900)/b.w)));
+  cvMain.style.width=(b.w*k)+"px"; cvMain.style.height=(b.h*k)+"px";
+  cvOver.width=b.w*k; cvOver.height=b.h*k; cvOver.style.width=cvOver.width+"px"; cvOver.style.height=cvOver.height+"px";
+  S.k=k; drawOver();
+  const pct = (100*r.exact/r.tot).toFixed(1);
+  $("#sceneNote").innerHTML = `${sc.title}: captured from <code>${sc.source}</code>, camera cell (${sc.cam}), ${sc.tris.length} triangles. Water tick ${tickNow()}${S.tick==null&&sc.ram_tick!==sc.tick?` (the frame buffer was finished one tick before the counter read ${sc.ram_tick})`:""}, phase ${phaseNow()}. `
+    + `<b>${pct}%</b> of the ${r.tot} terrain pixels equal the game's own frame at these settings; the rest are unit sprites, markers and any setting you changed.`;
+  drawLegend();
+  { const f=sc.tris.filter(t=>t.forced); $("#forcedStat").textContent=`In the scene above, ${f.length} of ${sc.tris.length} triangles are forced and ${f.reduce((q,t)=>q+t.px,0)} of their pixels survive nearer land.`; }
+  $("#tableState").textContent = S.table ? `Table: season fade ${$("#selFrom").value} to ${$("#selTo").value}, ${$("#rngFade").value} steps` : "Table: as captured";
+}
+function drawOver(){
+  const sc=scene(), b=sc.box, k=S.k, g=cvOver.getContext("2d");
+  g.clearRect(0,0,cvOver.width,cvOver.height);
+  const poly=(t,fill,stroke,dash)=>{ g.beginPath(); t.verts.forEach(([x,y],i)=>{const X=(x-b.x0+.5)*k,Y=(y-b.y0+.5)*k; i?g.lineTo(X,Y):g.moveTo(X,Y);}); g.closePath();
+    if(fill){g.fillStyle=fill;g.fill();} if(stroke){g.setLineDash(dash||[]);g.strokeStyle=stroke;g.lineWidth=1;g.stroke();} };
+  if(S.tri) sc.tris.forEach(t=>poly(t,null,t.px?"rgba(255,255,255,.55)":"rgba(255,255,255,.18)",t.px?null:[3,3]));
+  if(S.hover) { const t=sc.tris[S.hover-1]; poly(t,"rgba(255,220,80,.22)","rgba(255,220,80,.95)"); }
+  if(S.sel){ const {x,y}=S.sel; g.setLineDash([]); g.strokeStyle="#fff"; g.lineWidth=2; g.strokeRect((x-b.x0)*k-1,(y-b.y0)*k-1,k+2,k+2); g.strokeStyle="#000"; g.lineWidth=1; g.strokeRect((x-b.x0)*k-2,(y-b.y0)*k-2,k+4,k+4); }
+}
+function drawLegend(){
+  const sc=scene(), el=$("#legend"); el.innerHTML="";
+  const tick=tickNow(), counts={}; sc.tris.forEach(t=>{const c=colourOf(t,tick); counts[c]=(counts[c]||0)+t.px;});
+  const rk=rank(sc);
+  const add=(sw,txt)=>{const s=document.createElement("span");const i=document.createElement("i");i.style.background=sw;s.appendChild(i);s.append(txt);el.appendChild(s);};
+  if(S.layer==="plane"){ add("rgb(31,95,139)","type plane"); add("rgb(180,70,30)","height plane"); }
+  else if(S.layer==="forced"){ add("rgb(176,48,138)","forced to 0x1c"); add("#444","other, dimmed"); }
+  else if(S.layer==="diff"){ add("rgb(230,50,50)","differs from the game"); add("#444","equal, dimmed"); }
+  else if(S.layer==="game"){ add("#888","the game's frame buffer, sprites included"); }
+  else {
+    rk.forEach((c,i)=>{ const s=document.createElement("span"); s.style.cssText="flex-direction:column;align-items:center;gap:1px;cursor:pointer"; 
+      const cv=document.createElement("canvas"); drawTile(cv,slotPix(sc,c),2); cv.style.cssText="width:32px;height:32px;border:2px solid "+(S.layer==="cb"?ramp(i,rk.length):"var(--line)");
+      s.appendChild(cv); s.insertAdjacentHTML("beforeend",`<b>${hex(c)}</b><small>${(counts[c]||0).toLocaleString()} px</small>`); s.onclick=()=>{ S.hi=S.hi===c?null:c; buildAtlas(); drawAtlasPreview(); };
+      el.appendChild(s); });
+  }
+}
+function evt(e){ const r=cvMain.getBoundingClientRect(), b=scene().box;
+  const x=Math.floor((e.clientX-r.left)/r.width*b.w)+b.x0, y=Math.floor((e.clientY-r.top)/r.height*b.h)+b.y0; return {x,y}; }
+const LW=25, LH=17, LK=12;
+function drawLens(cx,cy){
+  const sc=scene(), box={x0:cx-(LW>>1),y0:cy-(LH>>1),w:LW,h:LH}, cv=$("#cvLens"), ov=$("#cvLensOver");
+  renderInto(cv,sc,{tick:tickNow(),phase:phaseNow(),layer:S.layer,hi:null,box});
+  cv.style.width=ov.style.width=(LW*LK)+"px"; cv.style.height=ov.style.height=(LH*LK)+"px"; ov.width=LW*LK; ov.height=LH*LK;
+  const g=ov.getContext("2d"); g.clearRect(0,0,ov.width,ov.height); g.lineWidth=1;
+  g.strokeStyle="rgba(255,255,255,.85)";
+  for(let x=box.x0;x<box.x0+LW;x++) if(x%16===0){ g.beginPath(); g.moveTo((x-box.x0)*LK+.5,0); g.lineTo((x-box.x0)*LK+.5,ov.height); g.stroke(); }
+  g.strokeStyle="rgba(255,220,80,.95)";
+  for(let y=box.y0;y<box.y0+LH;y++) if(((y+(phaseNow()>>3))&15)===0){ g.beginPath(); g.moveTo(0,(y-box.y0)*LK+.5); g.lineTo(ov.width,(y-box.y0)*LK+.5); g.stroke(); }
+  g.strokeStyle="#fff"; g.lineWidth=2; g.strokeRect((LW>>1)*LK+1,(LH>>1)*LK+1,LK-2,LK-2);
+  const n=cx>=0&&cx<W&&cy>=0&&cy<H?sc.triid[cy*W+cx]:0;
+  $("#lensNote").innerHTML=`Pixel (${cx}, ${cy})${n?`, triangle ${n}`:""}. White vertical lines: x divisible by 16. Yellow horizontal lines: row 0 of the tile (${phaseNow()?"shifted by 8 scanlines, phase 64":"y divisible by 16, phase 0"}).`;
+}
+cvMain.addEventListener("mousemove",e=>{ const {x,y}=evt(e); const n=scene().triid[y*W+x]||0; if(n!==S.hover){S.hover=n;drawOver();} S.lens={x,y}; drawLens(x,y); });
+cvMain.addEventListener("mouseleave",()=>{S.hover=null;drawOver();});
+cvMain.addEventListener("click",e=>{ S.sel=evt(e); S.lens=S.sel; drawOver(); drawProbe(); drawLens(S.sel.x,S.sel.y); });
+cvMain.parentElement.addEventListener("touchstart",()=>{},{passive:true});
+
+// ---- probe panel ---------------------------------------------------------------------
+function bitsRow(word, col, label){
+  let s=`<div>p${label} `; for(let x=0;x<16;x++){ const v=(word>>(15-x))&1; s+=`<span class="${v?"on":""} ${x===col?"hit":""}">${v}</span>`; } return s+`</div>`;
+}
+function drawProbe(){
+  const el=$("#probe"), sc=scene();
+  if(!S.sel){ el.innerHTML='<span class="note">No pixel selected.</span>'; return; }
+  const {x,y}=S.sel, n=sc.triid[y*W+x];
+  if(!n){ el.innerHTML=`<b>Pixel (${x}, ${y})</b><p class="note">No terrain triangle paints here (the left panel strip, the pre-drawn sea, or empty screen).</p>`; return; }
+  const t=sc.tris[n-1], tick=tickNow(), phase=phaseNow(), c=colourOf(t,tick), pix=slotPix(sc,c);
+  const row=((y+(phase>>3))&15), col=x&15, v=pix[row*16+col], base=0x2e000+c*128+row*8;
+  const p=[0,1,2,3].map(k=>{let w=0;for(let i=0;i<16;i++) w|=((pix[row*16+i]>>k)&1)<<(15-i);return w;});
+  const bytes=[p[0]>>8,p[0]&255,p[1]>>8,p[1]&255,p[2]>>8,p[2]&255,p[3]>>8,p[3]&255].map(b=>b.toString(16).padStart(2,"0")).join(" ");
+  const other=sc.tris.findIndex((u,i)=>i!==n-1 && u.cell[0]===t.cell[0] && u.cell[1]===t.cell[1]);
+  const o=sc.tris[other], oc=colourOf(o,tick);
+  const chips=(u)=>`<span class="chip ${u.src==="type"?"t":"h"}">${u.src}</span>${u.raw<12?`<span class="chip w">+tick ${tick}</span>`:""}${u.forced?'<span class="chip f">forced</span>':""}`;
+  const gm=sc.ref[y*W+x];
+  el.innerHTML=`<b>Pixel (${x}, ${y})</b>
+  <ol class="steps" style="margin-top:6px">
+   <li><b>Triangle ${n}</b> of ${sc.tris.length}, in cell (${t.cell}). ${chips(t)}<br><span class="note">raw byte ${hex(t.raw)}${t.forced?`, replaced by 0x1c`:(t.raw<12?`, +${tick} = ${hex(c)}`:"")}</span></li>
+   <li><b>Slot ${hex(c)}</b><br><span class="note mono">$2e000 + ${hex(c)} x 128 = $${(0x2e000+c*128).toString(16)}</span></li>
+   <li><b>Row ${row}</b><br><span class="note mono">(${y} + ${phase>>3}) mod 16; bytes at $${base.toString(16)}: ${bytes}</span></li>
+   <li><b>Column ${col}</b> = bit ${15-col}<br><div class="bits">${[0,1,2,3].map(k=>bitsRow(p[k],col,k)).join("")}</div></li>
+   <li><b>Index ${v}</b> <span class="mono">(${[0,1,2,3].map(k=>(p[k]>>(15-col))&1).reverse().join("")}b)</span><br><span class="swatch" style="background:${rgbOf(v)}"></span><span class="note mono">rgb(${PAL[v]}); the game shows index ${gm}${gm===v?"":" (a sprite or marker is over it)"}</span></li>
+  </ol>
+  <div class="row" style="align-items:center"><div><canvas id="cvProbeTile" style="width:144px;height:144px"></canvas><div class="note mono" style="text-align:center">slot ${hex(c)}</div></div>
+  <div class="note" style="flex:1">The other half of this cell is triangle ${other+1}: ${chips(o)} raw ${hex(o.raw)}, slot ${hex(oc)}.</div></div>`;
+  const cv=$("#cvProbeTile"); drawTile(cv,pix,9);
+  const g=cv.getContext("2d"); g.fillStyle="rgba(255,255,255,.25)"; g.fillRect(0,row*9,144,9); g.fillRect(col*9,0,9,144);
+  g.strokeStyle="#fff"; g.lineWidth=2; g.strokeRect(col*9+1,row*9+1,7,7);
+}
+
+// ---- atlas ---------------------------------------------------------------------------
+const atlasGroups=[
+  ["Open sea (byte 0 plus the tick)","0x00 to 0x03, four stipples of the same colours",0x00,0x03],
+  ["Water bytes 4 to 11","copies; no map checked produces them",0x04,0x0b],
+  ["Rock ramp","low ground, coast",0x0c,0x1b],
+  ["Forced","away-facing triangles only",0x1c,0x1c],
+  ["Season slots","live working copy",0x1d,0x2e],
+  ["High ground","never replaced; also the stored summer table",0x2f,0x40],
+];
+function buildAtlas(){
+  const host=$("#atlasHost"); host.innerHTML=""; const sc=scene();
+  const counts={}; sc.tris.forEach(t=>{counts[colourOf(t,tickNow())]=(counts[colourOf(t,tickNow())]||0)+t.px;});
+  atlasGroups.forEach(([name,sub,lo,hi])=>{
+    const gh=document.createElement("div"); gh.className="group"; gh.innerHTML=`${name}<small>${sub}</small>`; host.appendChild(gh);
+    const grid=document.createElement("div"); grid.className="atlas"; host.appendChild(grid);
+    for(let s=lo;s<=hi;s++){
+      const d=document.createElement("div"); d.className="tile"+(S.hi===s?" sel":""); d.dataset.s=s;
+      const cv=document.createElement("canvas"); drawTile(cv,slotPix(sc,s),4);
+      d.appendChild(cv); d.appendChild(mixBar(slotPix(sc,s)));
+      const nm=document.createElement("span"); nm.className="n"; nm.textContent=hex(s); d.appendChild(nm);
+      const px=document.createElement("span"); px.className="px"; px.textContent=counts[s]?counts[s].toLocaleString()+" px":""; d.appendChild(px);
+      d.onclick=()=>{ S.hi = S.hi===s?null:s; buildAtlas(); drawAtlasPreview(); };
+      grid.appendChild(d);
+    }
+  });
+}
+function drawAtlasPreview(){
+  const sc=scene(); renderInto($("#cvAtlas"),sc,{tick:tickNow(),phase:phaseNow(),layer:"final",hi:S.hi}); scaleFor($("#cvAtlas"),sc.box,420);
+  $("#atlasNote").textContent = S.hi==null ? "Nothing selected: showing the whole scene." : `Slot ${hex(S.hi)} lit; everything else dimmed.`;
+}
+
+// ---- ramps ---------------------------------------------------------------------------
+function buildRamps(){
+  const sc=scenes[0].slots, cv=$("#cvRank"), g=cv.getContext("2d"), img=g.createImageData(16,16);
+  const rk=new Array(256).fill(8);
+  for(let i=0;i<256;i++) for(let k=0;k<8;k++) if(sc[0x0c+k][i]===2){ rk[i]=k; break; }
+  // check nesting and that the second half uses the same map
+  let nested=true, same=true;
+  for(let k=0;k<8;k++){ for(let i=0;i<256;i++){ const on=sc[0x0c+k][i]===2; if(on!==(rk[i]<=k)) nested=false; if((sc[0x14+k][i]===3)!==on) same=false; } }
+  for(let i=0;i<256;i++){ const v=Math.round(255-rk[i]*28); img.data[i*4]=v; img.data[i*4+1]=Math.round(v*.8); img.data[i*4+2]=Math.round(v*.45); img.data[i*4+3]=255; }
+  g.putImageData(img,0,0);
+  const hist=new Array(9).fill(0); rk.forEach(r=>hist[r]++);
+  $("#rankInfo").innerHTML = `rank 0 = on from the first slot (darkest)<br>pixels per rank: ${hist.map((n,r)=>`${r}:${n}`).join(" ")}<br>nested: <span class="${nested?"ok":"bad"}">${nested}</span>, second half uses the same map: <span class="${same?"ok":"bad"}">${same}</span>`;
+  const strip=$("#rockStrip"); strip.innerHTML="";
+  for(let k=0;k<8;k++){ const d=document.createElement("div"); d.className="tile"; const c=document.createElement("canvas"); drawTile(c,sc[0x0c+k],4); d.appendChild(c); d.appendChild(mixBar(sc[0x0c+k])); d.insertAdjacentHTML("beforeend",`<span class="n">${hex(0x0c+k)}</span><span class="px">${16+32*k} of 256</span>`); strip.appendChild(d); }
+  // grass ramps: overlap of the minority colour between adjacent slots (spring table)
+  const spring=SRC.spring, rows=[];
+  const tileOf=s=>spring.subarray((s-LIVE0)*256,(s-LIVE0+1)*256);
+  const groups=[[0x1f,0x23,13],[0x24,0x28,12],[0x29,0x2d,11]];
+  groups.forEach(([a,z,colr])=>{
+    for(let s=a;s<z;s++){ const A=tileOf(s), B=tileOf(s+1); let na=0,kept=0; for(let i=0;i<256;i++) if(A[i]===colr){ na++; if(B[i]===colr) kept++; }
+      const nb=B.reduce((q,v)=>q+(v===colr),0); rows.push(`<tr><td class="mono">${hex(s)} to ${hex(s+1)}</td><td class="mono">colour ${colr}</td><td class="mono">${na} to ${nb}</td><td class="mono">${kept} of ${na}</td><td class="mono">${(na*nb/256).toFixed(0)}</td></tr>`); }
+  });
+  { const mk=(sl,c)=>{const t=tileOf(sl),o=[];for(let i=0;i<256;i++)if(t[i]===c)o.push(i);return o.join();};
+    let same=true; for(let k=0;k<5;k++){ const a=mk(0x1f+k,13),b=mk(0x24+k,12),c=mk(0x29+k,11); if(a!==b||b!==c) same=false; }
+    $("#grassSame").innerHTML=`Masks identical across the three colour pairs: <span class="${same?"ok":"bad"}">${same}</span> (spring table).`; }
+  $("#grassInfo").innerHTML=`<table><thead><tr><th>slots</th><th>colour</th><th>pixels</th><th>kept</th><th>if independent</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
+}
+
+// ---- seasons -------------------------------------------------------------------------
+const seasonNames=["winter","spring","summer","autumn"];
+function buildSeasons(){
+  ["#selFrom","#selTo"].forEach((id,i)=>{ const s=$(id); s.innerHTML=seasonNames.map(n=>`<option>${n}</option>`).join(""); s.value=i?"spring":"winter"; s.onchange=applyFade; });
+  $("#rngFade").oninput=applyFade; $("#btnCaptured").onclick=()=>{ S.table=null; refresh(); };
+}
+function applyFade(){
+  const st=+$("#rngFade").value; $("#lblFade").textContent=`${st} / 8191`;
+  S.table=fadeState($("#selFrom").value,$("#selTo").value,st); refresh();
+}
+function drawSeason(){
+  const sc=scene(); renderInto($("#cvSeason"),sc,{tick:tickNow(),phase:phaseNow(),layer:"final",hi:null}); scaleFor($("#cvSeason"),sc.box,420);
+  const host=$("#seasonStrips"); host.innerHTML="";
+  const strip=(label,pixAt)=>{ const w=document.createElement("div"); w.innerHTML=`<div class="group" style="margin:8px 0 2px">${label}</div>`; const g=document.createElement("div"); g.className="atlas"; g.style.gridTemplateColumns="repeat(9,1fr)"; g.style.gap="4px";
+    for(let i=0;i<NLIVE;i++){ const d=document.createElement("div"); d.className="tile"; const c=document.createElement("canvas"); drawTile(c,pixAt(i),2); d.appendChild(c); g.appendChild(d);} w.appendChild(g); host.appendChild(w); };
+  strip("Live slots 0x1d to 0x2e now", i=>S.table?S.table.subarray(i*256,(i+1)*256):sc.slots[LIVE0+i]);
+  ["winter","spring","summer"].forEach(k=>strip(`${k} table`, i=>SRC[k].subarray(i*256,(i+1)*256)));
+}
+
+// ---- wiring --------------------------------------------------------------------------
+function refresh(){ drawMain(); drawProbe(); { const c=S.lens||S.sel||{x:scene().box.x0+(scene().box.w>>1),y:scene().box.y0+(scene().box.h>>1)}; drawLens(c.x,c.y); } buildAtlas(); drawAtlasPreview(); drawSeason(); }
+function initControls(){
+  $("#selScene").innerHTML=scenes.map((s,i)=>`<option value="${i}">${s.title}</option>`).join("");
+  $("#selScene").onchange=e=>{ S.scene=+e.target.value; S.sel=null; S.lens=null; S.hi=null; S.tick=null; S.phase=null; syncCtl(); refresh(); };
+  $("#selLayer").onchange=e=>{ S.layer=e.target.value; drawMain(); const c=S.lens||S.sel; if(c) drawLens(c.x,c.y); };
+  $("#chkTri").onchange=e=>{ S.tri=e.target.checked; drawOver(); };
+  $("#rngTick").oninput=e=>{ S.tick=+e.target.value; syncCtl(); refresh(); };
+  $("#selPhase").innerHTML=`<option value="0">0 bytes</option><option value="64">64 bytes (after a camera move)</option>`;
+  $("#selPhase").onchange=e=>{ S.phase=+e.target.value; refresh(); };
+  syncCtl();
+}
+function syncCtl(){ $("#rngTick").value=tickNow(); $("#lblTick").textContent=tickNow(); $("#selPhase").value=String(phaseNow()); }
+initControls(); buildSeasons(); buildRamps();
+$("#lblFade").textContent="8191 / 8191";
+refresh();
+addEventListener("resize",()=>drawMain());
+
+// ---- proof line and footer -----------------------------------------------------------
+{
+  const ts=D.tick_series.map(c=>`tick ${c.tick}: ${(100*c.exact/c.drawn).toFixed(1)}%`).join(", ");
+  $("#proofline").innerHTML=`every scene's pixels rebuilt from (triangle, table) alone equal the reference renderer exactly; against the game's own frame buffer they agree on ${scenes.map(s=>{let e=0,t=0;for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=pixelAt(s,x,y,s.tick,s.phase);if(v<0)continue;t++;if(v===s.ref[y*W+x])e++;}return `${s.title} ${(100*e/t).toFixed(1)}%`;}).join(", ")} (the rest are sprites); four consecutive water ticks of one coast view: ${ts}.`;
+  $("#foot").innerHTML=`Generated by <code>py/dither_atlas.py</code> from <code>${scenes.map(s=>s.source).join(", ")}</code>. Frame tick = the $4bb3e counter minus one for the coast captures, because the compose buffer is finished one tick before the counter is read. Details: <code>graphics.md</code> "The pattern fill".`;
+}
+</script>
+</body>
+</html>

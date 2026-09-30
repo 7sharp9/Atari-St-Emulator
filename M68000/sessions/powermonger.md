@@ -1,12 +1,12 @@
 # PowerMonger: handoff
 
-Updated 2026-09-29 by the 129th pass (a subagent ran the alliance census and the runs; the parent
-re-read its outputs and integrated them; no port/stepper work this pass).
+Updated 2026-09-30 by the 130th pass (a hidden-features audit by a subagent, re-checked by the parent, and a
+terrain-dither deep dive; the 129th's alliance item 1 below is still the next game-mechanics step).
 
 ## Resume point
 
-- Last commit of this workstream: the 129th pass, "powermonger: 129th pass -- natural alliance completes
-  end to end" (`git log --oneline -3`). Before it: `37212b7` (port README: index `--playtest`).
+- Last commit of this workstream: the 130th pass (`git log --oneline -3`); before it the 129th, "natural alliance
+  completes end to end" (`f0cb17c`).
 - Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell
   pitfalls"). New this pass, indexed in `scratchpad/ANCHORS.md`: `pm129/` (about 46 MB, `.ram` beside each
   `.snap`): `wp5_45M.snap` is the launch point for the `$1e` offer click on land 25's lord 15, and
@@ -27,6 +27,15 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 `py/diff_2776.py` 4119/4119; `py/diff_5cde.py` 768/768 + 85/85; `py/diff_revolt.py` 1778/1778;
 `py/diff_4f68.py` 1804/1804.
 
+- **Terrain fill fully characterised (130th).** `py/dither_atlas.py` rebuilds mission 1 and a coast scene from
+  (triangle, colour byte, slot): 0 pixels differ from `pm_render_ref`, 94.6 % / 95.6 % equal the game's frame (rest
+  sprites); season fade model equals `pm74_late`'s live slots byte for byte. Table layout, ramp structure, the
+  forced-`0x1c`-only slot and the tick-minus-one buffer lag are in graphics.md "The pattern fill";
+  `dither_infographic.html` is the interactive version.
+- **No hidden keys or debug commands (130th audit)**, with the exceptions and the uncovered list in strategy.md
+  "Hidden features audit": arrow keys scroll the camera cell ungated (graphics.md camera loop corrected), dormant
+  word `$5809a` draws all sides' markers when set, startup command-line string `$123c` reaches the serial-link role
+  parser `$12d88`.
 - **A natural alliance completes end to end (129th, land 25, no pokes).** After a second `$10`
   take-equipment (5 pots) and an `$02` waypoint at (40,28) round a water strip, order `$1e` on lord 15's
   ungarrisoned lone town gives `$33b0` 1, `$34a8` 1, `$c9f8` 1 hit, `$c706`/`$cada`/`$4c2a` 0; peace bits
@@ -71,7 +80,10 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 4. `$1b8c` via `$5778` (a gate over natural `$5778` states); `$4342`'s arrival/unlink branch
    (`scratchpad/pm113/diff_4342.py`, natural states from `capture_hits.py`); `$4f68` arms not covered
    (`$51dc` finding an ally's target, `$548a`'s `39 == 2`).
-5. Smaller: weather is now in the stepper (`C` key, this pass) but still not in the Godot view
+5. Smaller: `tools/pm_render_ref.py` `load_ram` reads `[$4bb3e] & 3` but the compose buffer was drawn with that minus one
+   (130th; one-line fix, shared tool, gates in `port/` use it, so not changed unasked); `$5809a` writers (run
+   `find_field_writers.py`, check the save block); link-mode key paths (ESC abort `$1c34e`); whether `BITMAP.DAT` loads.
+   Weather: weather is now in the stepper (`C` key, this pass) but still not in the Godot view
    (`godot/game/TerrainView.cs` has no `Weather` reference); where the crack writes its `$b842`
    patch; the fixed-map `$df52(7)` branch; `$2df98` is "the other button" (inferred right); the port
    and stepper still use the old names (`troops_reserve`, budget, discipline) if they model them.
