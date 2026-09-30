@@ -1427,6 +1427,8 @@ Per §22g's own priority order: static/data work only, no `kbd`/`mouse` input, a
 ### 23a. The interpreter's top-level dispatch table, found by raw byte-scan at `$010000`-`$010075`
     (59 entries) — LOCK is entry 18, an exact, non-coincidental address match
 
+> **Corrected (77th pass, `secrets.md` "Object scripts: who runs the verb interpreter").** The verb table is at `$00ffba` and has 94 entries (first word `$bc` = its size; it ends where `$010076` begins); the consumer `$00fe54` indexes it there. The 59 entries read from `$010000` here and in §24 and §64 are only its last 59 with every target off by `$46`, and their ids are the true ids minus 35: hence §64d's mid-instruction landings, and "UNLOCK is not in the table" is false (LOCK is verb 54, UNLOCK 55, KILL/UNINV/WAKE/SLEEP 50/89/74/75). The interpreter's caller is the ring-304 consumer `$00fdbc`, which runs an object's script blocks on a matching queued event (open item 1 closed; proofs in `secrets.md`).
+
 Per §22g item 1's own reasoning (LOCK/UNLOCK have zero `bsr`/`jsr` callers anywhere in the image —
 reconfirmed this pass with `find_ram_callers.py` against `$0104a0`/`$01049a`/`$0104a8` and every
 neighbouring handler address named in §22c: still 0 hits each, only the block's own internal `bne`
@@ -3517,6 +3519,8 @@ already set the precedent for.
 ## 51. Raw disk-layout inspection of the one-disk Empire crack: no second level's worth of data
     anywhere on the physical disk, independent of §48c/§48d's loaded-image caller search (51st pass)
 
+> **Superseded (77th pass, `secrets.md` "Loading, the expander and the level directory").** The game has its own LZHUF expander (`$0118ec`) and nearly every level resource is packed, so the raw entropy/layout reading below (§51-§56, including §28c's and §56's "no depacker found") is wrong: the one-disk image holds **two** levels (directory at sector 400), the second loads and renders, and the Empire `[t]` Disk 2's levels 3 and 5 are damaged.
+
 Dave's pushback on §48c/§48d (cadaver.md handoff, Open item 1) was that "no caller of `$00b1e0`
 found in the loaded image" only rules out a *currently loaded* level-reload path, not a
 runtime-loaded or self-modifying one reading a second level straight off disk. That's a real gap in
@@ -3976,7 +3980,7 @@ consistent with the player sprite standing at a slightly different position/faci
 different approach routes, not a content change. Confirms §59b's room-table finding (byte-identical
 72-room map) extends to at least this one room's rendered art, not just its geometry.
 
-**The `2516(A5)` "day-count/variant selector" candidate §32a flagged but never confirmed reads
+**(Retired, `secrets.md`: `2516(A5)` is maximum health; the day is `2166(A5)`.) The `2516(A5)` "day-count/variant selector" candidate §32a flagged but never confirmed reads
 `100` in `past_wall_mounted_90M.snap`**, not a small day index — inconsistent with it being a
 literal "Day 1" counter (the status bar's "DAY 1" text is evidently a separate field). Not pursued
 further this pass; still unconfirmed either way, see Open item 3 below.
@@ -4078,6 +4082,8 @@ TUNNEL.
 ## 64. The object-verb interpreter's 59-entry dispatch table mapped against the full debug-string
     vocabulary, not just LOCK — three more opcode ids confirmed, one causally proven live, and the
     rest of the verb vocabulary's handlers located even where the exact id isn't pinned (70th pass)
+
+> **Corrected (77th pass, `secrets.md` "Object scripts: who runs the verb interpreter").** The verb table is at `$00ffba` and has 94 entries (first word `$bc` = its size; it ends where `$010076` begins); the consumer `$00fe54` indexes it there. The 59 entries read from `$010000` here and in §24 and §64 are only its last 59 with every target off by `$46`, and their ids are the true ids minus 35: hence §64d's mid-instruction landings, and "UNLOCK is not in the table" is false (LOCK is verb 54, UNLOCK 55, KILL/UNINV/WAKE/SLEEP 50/89/74/75). The interpreter's caller is the ring-304 consumer `$00fdbc`, which runs an object's script blocks on a matching queued event (open item 1 closed; proofs in `secrets.md`).
 
 §23a validated the dispatch table's shape by resolving 6 of its 59 entries to plausible handler
 prologues, but only ever matched a debug string to one of them (LOCK = id 18). This pass generalizes
@@ -4617,6 +4623,8 @@ the shape the walkthrough's game-wide lever/teleport pattern needs — sitting i
 named verbs §64 already mapped. Genuinely new territory in that block.
 
 ### 69b. Four independent techniques agree: nothing reaches it in this playthrough's loaded state
+
+> **Corrected (77th pass, `secrets.md` "The level code overlay", `py/secrets/export_service8.py`).** The raw bytes `$00010974` at `$0060a2` are not a coincidence: the table starts at `$006082` (2 mod 4, installed by `move.l #$6082,392(A5)` at `$00b5ec`) and `$0060a2` is its entry 8. The overlay's trampoline `$04caaa` reaches the teleport verb as service 8 (`D6 = 32`); calling it with a crafted 4-byte stream loads TUNNEL from CAVERN. Only the loaded level-1 overlay never calls service 8.
 
 - **`find_ram_callers.py 10974`**: 0 hits — no `bsr`/`jsr`/`bcc` anywhere in the whole image targets
   the routine's real entry point.

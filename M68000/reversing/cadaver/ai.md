@@ -1,5 +1,7 @@
 # Cadaver — entity/action-script bytecode interpreter (14th pass)
 
+> **Superseded reading (77th pass, `secrets.md` "The sound engine").** §1-5 describe the sound engine, not an entity interpreter: the "3 action slots" are the three YM2149 voices, the "action scripts" are music and effect bytecode, `$01616c` is the 62-entry sound request table (indexed by sound id, not scancode), and the "action 101" script is sound 30. The opcode table and helper routines below are correct as bytecode facts and now have a transcription, `py/secrets/cad_sound.py`, matching the real PSG writes for 62 of 62 sounds. Creature behaviour lives in the level's native code overlay (`secrets.md` "The level code overlay"), not here. §6 (the object-verb interpreter) is unaffected.
+
 Grounded in a full linear disassembly of `EntityScriptDispatch` (`$15c70`-`$16056`) and its helper
 routines against `room2_lever_boundary.snap`. Static analysis only — no live creature has been found
 in either room explored so far (CAVERN's 22-entry sprite array, TUNNEL's 2-entry one; both all
