@@ -60,7 +60,9 @@ labelled inferred or read (from code, not run). `/handoff` re-checks this list a
   shut (crocodiles are platforms only then). (R "What the route costs in health", "Unpoked, hop 3 is playable")
 - **The level's shape is a health budget.** Measured on the Amazon route from room `188..285` to the boss: 92 contact decrements and 9 water hits with a
   refilled hero, against 18 points. Walking it and swiping what is ahead dies in the fourth pit; with a guard that snipes perched monkeys, timed pit
-  crossings and a few waits, hop 3 reaches its exit with 11 of 18 points and no poke. (R "What the route costs in health", "Unpoked, hop 3 is playable")
+  crossings and a few waits, hop 3 reaches its exit with 11 of 18 points and no poke; hop 4 costs 2 more, one shop purchase (75 of the 100 coins held there) gives 7 back, and the
+  boss then has to be beaten from 16 points against a 7-damage lob and 1-damage shots. (R "What the route costs in health", "Unpoked, hop 3 is playable",
+  "Unpoked, the whole Amazon")
 - **A boss ends the level.** One 60-hit-point boss per world in a dead-end room; a flag, a 125-frame count, a fade and reload lead to world select
   with the world crossed out. The Amazon boss is vulnerable only in an open-mouth phase and only to a jumping hero; other worlds add a
   hit-ignoring flag (Klondike) or a shielded phase (Bermuda). (R "Boss", "How a level ends"; W "Bosses")
@@ -1430,6 +1432,34 @@ process to the same snapshot, and the live route was run twice from scratch with
     (start delay 24 frames, the only zero in the sweep), segment 8 5 hp (waits: one at wx 8526; the monkey `$015934`, leaf bush `$015d9c`, rock `$01439e` and two
     fliers remain), segment 9 0 hp (waits at wx 8600 x18 frames and 8812 x24; the fliers `$0142be`), segment 10 0 hp (wait at wx 8996 x24; `$015b3c`), segment 11
     0 hp. Health at the ends of segments 5-11: 16, 16, 16, 11, 11, 11, 11.
+- **Unpoked, the whole Amazon from room `188..285` to the dead boss** (`py/route/route_hop4.py`, `py/boss/boss_unpoked.py`): one recorded file of 12,032
+  commands (`agents/unpoked/amazon_unpoked_room188_to_boss_dead.repl`: hop 3, hop 4 with the shop, the boss fight) replays in one process from
+  `pass103/room188.snap` in 3 min 19 s to a snapshot byte-identical with the live one (`agents/unpoked/boss/kill_d900000_end.snap`; the only `w` is hop 3's
+  no-op `w bb74 12120300`). At the end the boss is at 0 hit points, `$22803 = $ff`, health 10, weapon 3, coins 25.
+  - **Hop 4 costs 2 hp** (`route_hop4.py --guard none`, 1237 commands from `s11/seg11_shaft_exit.snap`, replay identical): health 11 at the room start, 9 in the
+    boss room. The two contacts are during the hops at the tunnel wall: a flier `$0142be` at wx 9900 (onto the 32 px ledge) and a flier plus `$015c7a` at wx 9932
+    (onto the rock top); the poked run's four contacts (above) become two here, presumably because the fliers' phase differs with the different arrival time. The heal pickup of
+    block 302 (spawn column 1208, object `(128, 88)` on the `y=96` log ledge over the start) is not taken: a straight jump peaks at hero `y=104`, one row short of the
+    pickup box (health unchanged), the ledge is reached by the left ladder (cols 1200-1201), and the two `$015b3c` fliers (hp 255) beside the start cost 3 hp on the
+    way there in the one trial run (11 to 8), so a search over their timing would be needed for a gain of at most 7.
+  - **The shop heals what hop 4 cost** (`route_hop4.py --shop`: seg1-4, then seg6-10, then seg5, all no poke, chain replay identical). The natural coins (25 in `room188.snap`, 100 after hop 3) buy one worm can (75): `$bb72..75` `03 64 09 12` to `03 19 10 12` (weapon 3, coins 100 to 25, health 9 to 16 of 18). The mole climbs out for
+    about 1.1M steps, `DOWN` on it installs blocks `410..418`, the can is at hero `x=158`, fire once (45,000 steps), leave at the keeper by fire; the return room
+    is `308..318` at wx 10080, and seg5 walks on to the pit. Boss room with health 16.
+  - **The damage-7 shot is a lob that flies toward the hero's side** (`$016184`, verified by a live probe of 400 samples, `py/boss/shot140_probe.py`).
+    At its first call the handler takes `rand & 1 + 1` as the horizontal speed `16(A0)` (1 or 2 px per frame, `jsr $bef4`) and sets the direction `20(A0)` to
+    the hero's side of the shot. The shot spawns at the boss's mouth (x 231 for the boss at 224, y 121), rises to y 108 in 8 frames, then falls 1, 1, 1, 1, 2,
+    2, 2, 3, 3, 4 px per frame to y 164 on frame 27 (the earlier "(-2, +4) per frame" is only the tail of the fall). Speed 1 was measured; speed 2 is read from the code and matches
+    the hits (hero x 172 to 192, boss at 224): a shot of speed 2 crosses the hero's row at x about 187 on frame 22. So the hero on the platform is inside the
+    sweep when the boss stands at 224, and outside it (x >= 176 against a sweep ending at x 125) when the boss stands at 64. Hero hit box `(x+8, y, 16, 24)`.
+  - **The fight** (`boss_unpoked.py` on `boss_fight.py`'s `Fight`): when the boss is at 224 the hero fights from the platform as before (hop over the step,
+    straight jumps, swipes only while the boss is open and the hero is in the swipe model's window); a grounded hero within 80 px of a live 140's spawn point
+    walks away from it until it is gone (walks are cut short the moment a 140 appears); when the boss is at 64 the hero waits on the platform out of the sweep.
+    Twelve start delays (0 to 1,100,000 steps, the boss's random phase) from health 16: one kill (delay 900,000: 20 hits, 25 pulses, 14 jumps, 3 retreats,
+    15.65M steps), the other eleven die with the boss at 30, 3, 27, 18, 48, 18, 12, 42, 30, 60 and 30 hit points. From health 9 (no shop) the same policy
+    never killed in 18 runs (best: 9 hit points left; without the retreat, 36 to 39 in all six delays, dead within 3.7M steps). The 140 costs 7; the
+    aimed 139 and the boss's contact cost 1 each, roughly one per 1.5M steps (read from the damage logs) that this policy does not dodge. The fight is therefore feasible unpoked and
+    marginal, as the earlier "2 of 12" with a poked weapon and full health suggested; a controller that also dodges the 139 (a flat shot aimed at the hero's
+    position at spawn, 3 px per frame) and fights the boss's left position from the right side would raise the rate.
 - **Controls learned.** The jump starts on the game's next joystick poll, 24-30k steps after up is pressed, so the driver holds up+direction until
   the state reads jump and then the direction only (apex is always 40 px); a full jump and fall takes about 1M steps; stairs and bead platforms
   are one-way (a hop from below lands on top); holding up+right on stairs re-jumps at every landing, so use single hops; read an obstacle's height
@@ -1484,10 +1514,11 @@ process to the same snapshot, and the live route was run twice from scratch with
   hit is `$bb72`, which only takes 1-3 (`$bbc8` resets it to 1, the upgrade pickup `$12e50` adds one, capped at 3; spawn type 4, two
   records in the Amazon at blocks 27 and 134); there is no ammo (`$bb73` is a separate item counter, `$13044` adds 25, `$fd4c`
   subtracts 5). Weapon and health pokes were used in most runs; with health unpoked and the weapon poked to 3, 2 of 12
-  phase-varied runs killed the boss (finishing at health 1), with weapon 2 none of 6, so an unpoked natural fight is marginal.
+  phase-varied runs killed the boss (finishing at health 1), with weapon 2 none of 6. With no poke at all and a retreat from the 140 the fight was won
+  in 1 of 12 timings ("Unpoked, the whole Amazon", below), so it is feasible and marginal.
   The boss attacks with contact damage 1 while open (`104(A0)`; measured 18 to 17 with no shot alive) and two projectiles from its script:
   byte 3 spawns type 139 (`$15f5a`, handler `$14790`, 12x12, damage 1, aimed at the hero's position at spawn, about (-3, +1) per
-  frame) and byte 4 type 140 (`$15f76`, handler `$16184`, 16x12, damage 7, falls about (-2, +4) per frame). An idle hero at x=32 dies
+  frame) and byte 4 type 140 (`$15f76`, handler `$16184`, 16x12, damage 7, a lob toward the hero's side, path in "Unpoked, the whole Amazon"). An idle hero at x=32 dies
   in about 9.2M steps. Heal pickups (type 5, heal `4 + $bb76`) sit at blocks 46, 140, 244, 302, 413 (two records).
 - **The boss cycles between two animations**: `22(A0) = $221f6` (mouth closed; `$15ea2` skips the hit check
   entirely, so it is shielded) and `$221d0` (open, vulnerable), each a script step (`94(A0)` script pointer,
@@ -1845,12 +1876,11 @@ Added by the 104th pass (parallel route, boss, shop, level-end and world passes)
 
 Current open items, in the order `sessions/impossamole.md` ranks them (everything else this README once listed here has been done):
 
-- **Natural play, unpoked.** The Amazon route from the start room to the boss room is on real input from room `118..137` on, with health
-  refilled per segment and a labelled poke into `118..137`; the boss falls to real swipes but with the weapon or health poked. Hop 3 (`188..285` to the
-  block-283 exit) is now played unpoked with health 11 left (previous section). Still poked: hops 1 and 2 (`118..137`, `160..173`), hop 4 (room `299..318` to the
-  boss room, which costs 4 hp of contacts at the tunnel wall and has a heal at block 302) and the boss fight; an unpoked run also needs the two type-4
-  upgrades (blocks 27 and 134) and a dodge policy for the boss's type 139/140 shots. The other four worlds have cold-boot, warp and boss-kill proofs only,
-  no played route.
+- **Natural play, unpoked.** From `pass103/room188.snap` (weapon 3, 25 coins) the Amazon is played with no health, weapon or shot poke: hop 3, hop 4 with
+  the shop's worm can, and the boss (previous section, one recorded file of 12,032 commands). Still poked or staged: hops 1 and 2 (`118..137`, `160..173`) and
+  the start room (a labelled poke into `118..137`, health refilled per segment), plus the two type-4 upgrades (blocks 27 and 134) that `room188.snap` already
+  carries; the boss kill is 1 of 12 timings and needs a controller that also dodges the aimed 139. The other four worlds have cold-boot, warp and boss-kill
+  proofs only, no played route.
 - **Damage sources:** the water tiles and room `299..318`'s drain are pinned (previous section); the type-2 enemies met in segments 2-5 are identified by handler
   but their approach paths are not modelled.
 - **Shop items:** only the worm can (code 1) was bought; codes 0, 2, 3, 4, 5 and the shop ladder are undriven.
