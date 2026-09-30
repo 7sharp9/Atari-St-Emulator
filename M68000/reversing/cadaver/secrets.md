@@ -22,7 +22,7 @@ loop handler is where the keyboard does anything. Each row below was driven live
 | P | `$19` | `$006c04` -> `$011834` | pause: waits at `$011842`-`$011892` until fire or any key other than F2-F4. Proven: after P the main loop (`$006ba2`) gets 0 hits in 1M steps and the pause loop 81,144; after X the main loop 41 hits, the pause loop 0 (`pause_and_map.py`) |
 | S | `$1f` | `$006bd0` sets bit 3 of `2519(A5)`; `$006a40` -> `$00b61c` | save the game, for gold (next section). `save_unaffordable.png`, `save_price_prompt.png` |
 | L | `$26` | `$006bde` sets bit 4; `$006a60` -> `$00b692` | the restore prompt "RESTORE GAME. PLACE A DISK IN DRIVE ONE AND PRESS 0 TO 9 OR ESC" (live, and the round trip works, below) |
-| Return / Space | `$1c` `$39` | `$006cce` | the interact action (`moveq #21,D0 / jsr $15aaa`, then `$009682`), the keyboard twin of fire; Return also leaves bit 1 of `2519(A5)` set (Space clears it at `$006cc2`), which the icon-choice loop reads at `$009c98` (*read*) |
+| Return / Space | `$1c` `$39` | `$006cce` | opens the panel for the held rucksack item, not the keyboard twin of fire: `$006c28` waits for the key to release first, `$009682` returns at once when the rucksack is empty, otherwise the item is selected (`$009724`) and its icon panel opened (`$009c82`). Space clears bit 1 of `2519(A5)` (`$006cc2`) and goes straight to the icons, Return leaves it set and shows the rucksack grid `$0097b4` first (proven, "The player's action panel" below) |
 | Down | `$50` | `$006cb0` | sets bit 0 of `2474(A5)` (cleared at `$006a8a` every frame): "down pressed", the README's crouch/interact gesture |
 | H | `$23` | `$006c46` | stashes the currently selected object `1262(A5)` into `2126(A5)` and deselects it (proven: poke 168, press H: `1262 = 0`, `2126 = $00a8`); a second press restores it only if `$011256` finds the id in the type-8 list (*read*: not reached from this snapshot, `2126` is otherwise never written) |
 | C | `$2e` | `$006bf2` | `bsr $a810 / jsr $11898`: clears the message window slots at `$00600a` and waits for the key to release (*read*, no visible effect from CAVERN) |
@@ -211,24 +211,36 @@ A script is data on a type-6 object template. The template holds one or two list
 
 A block runs to completion inside one consumer call: there are no loops, calls or yields (the message verb fades, prints and waits inside its handler, which is the only pause seen). All state that survives between events lives outside the script: the object's state bits, the type-4 flags (doors and levers), the script variables at `2282(A5)`, the type-8 list (what the player holds), gold, XP and health, and the timers. Conditions are not expressions: each condition verb adds one to a counter that a run clears on failure, and a structured `IF ... [ELSE ...]` tests the counter. A block without the keep bit rewrites its own event byte to `$ff` after its first run, which is how a one-shot lever stays used.
 
-Scripts influence each other only through the queue. KILL queues event 23 for the target, verb 9 queues event 19, PUT IN RUCK (verb 35) queues event 0, and verb 66 writes `[type][sub][object]` records into the list `1266(A5)` that the overlay's creature-class event tables consume (`$00e218`). The path a lever takes is therefore: the player's use command queues an event for it (*inferred*, from the producer table below), the consumer finds its block, the gate passes, the verbs toggle its state bit, play a sound and teleport (verb 37 into export service 8), and the room change happens inside that one call (from the consumer on, proven live for objects 2, 86 and 144).
+Scripts influence each other only through the queue. KILL queues event 23 for the target, verb 9 queues event 19, PUT IN RUCK (verb 35) queues event 0, and verb 66 writes `[type][sub][object]` records into the list `1266(A5)` that the overlay's creature-class event tables consume (`$00e218`). The path a lever takes is therefore: the player's operate icon (icon 7) queues event 5 for it (live, table below), the consumer finds its block, the gate passes, the verbs toggle its state bit, play a sound and teleport (verb 37 into export service 8), and the room change happens inside that one call (from the consumer on, proven live for objects 2, 86 and 144).
 
-**Who pushes events** (`py/secrets/overlay/queue_producers.py`, a static scan of the whole image: 48 push sites, 25 distinct events; *inferred* from the producer bodies, none driven except the injected touches of the live proofs below):
+**Who pushes events** (`py/secrets/overlay/queue_producers.py`: a static scan of the whole image, 48 push sites, 25 distinct events; the player-action rows were then driven live with natural joystick and key input, `overlay/action/action_survey.py`, 3 of 3 fresh runs each; the other rows are *inferred* from the producer bodies):
 
 | event | producers | reading |
 |---|---|---|
-| 9 | `$008a34`, `$008a68` in the movement collision test (behind the seen-pairs cache, mechanics.md §4a); nine more: the timer service (`$009382`, `$0095c0`), six in `$00edb8`-`$00f396` engine code and one in the main-loop key handler (`$006dc6`), unread | physical contact with an object; the hazard scripts gate on it |
-| 5 | `$00a486`, `$00a59c`, `$00a5d2`, `$00a7ce` in the player's action block `$00a3d0`-`$00a7d8`; `$00a59c` follows a toggle of state bit 0 and sound `$38` | the player's **use** action on the selected object (a button or lever is operated, not bumped) |
-| 16 | `$00a418` in the same block, taken when the object's bit 5 (byte 3) is set; otherwise the block shows a generic banner | **examine**: the scripts answer it with verb 72 |
-| 18 | `$00a6f4`, after a check that a rucksack slot is free (`$00a702` shows message 27 when it is not) | pick-up into the rucksack |
-| 26, 27 | `$00a7a4`, `$00a72e`; 27 also stores the selected object id in `1262(A5)` | select / deselect of an object |
+| 0 | `$00a184` in icon 2 TAKE (`$00a136`); verb 35 (`$010816`) | the object is taken into the rucksack. Live: coin 412, pickaxe 168, diary 5. The push follows `$00c30e` (unlink from the room) and `$00c42a` (append to the type-8 list); the object's own event-0 block then runs (the coin's: `GOLD += 7`, delete self) |
+| 16 | `$00a418` in `$00a3d0` (icon `$b`, EXAMINE), taken when the template's byte 3 bit 5 is set; otherwise a generic banner and no push | examine. Live: coin 412, pickaxe 168, boat 257 (their blocks run); the barrel has no bit 5 and pushes nothing |
+| 5 | `$00a486` (the shared path `$00a474`, reached from icon 8 READ `$00a292` and icon 7 `$00a448`), `$00a5d2` (icon 9, `$00a5c0`), `$00a59c` (icon 3, `$00a494`, follows a toggle of state bit 0 and sound `$38`), `$00a7ce` (icon `$e`, `$00a7b4`) | the object's own action icon: read a book, operate a lever, use a barrel. Live: BOOK 488 and TOME 510 (icon 8), TUNNEL lever 144 (icon 7: consumer `$00fe24` 1 hit, `$00fe5a` 2 hits), barrel 60 (icon 9, no block). Icons 3 and `$e` need a subclass-5 chest or a template with byte 29 = `$12`, not reachable from CAVERN: *read* |
+| 27 | `$00a72e` in icon `$d`, SELECT (`$00a70e`); `1262(A5)` is written at `$00a73a` right after | the held rucksack item is selected. Live: Space with the pickaxe: event 27 for 168, `1262(A5)` = `$00a8` |
+| 18 | `$00a6f4` in icon `$c` (`$00a682`), after a free-slot check (`$00a702` shows message 27 when there is none) | *the held item applied to or put into the object in front*, not a pick-up (that is event 0). The word is the item id. Reached only with the class byte poked to `$b` or 8 (no such object in CAVERN or TUNNEL): with class 8 and a free instance slot `$00a6a6` writes the item id into the container's first instance word and the item leaves the rucksack |
+| 26 | `$00a7a4` in icon `$f` (`$00a782`) | an item given to a class-`$c` object. Reached only with the class byte poked to `$c`: the item leaves the type-8 list |
+| 9, 7 | `$0095c0` and `$0095d8` in `$009440`, every frame that builds the icon list for the object in front; event 9 also at `$008a34` and `$008a68` in the movement collision test, six sites in `$00edb8`-`$00f396` and one in the main-loop key handler (`$006dc6`), unread | proximity. Live: while the hero faces an object both are pushed every frame (12 of 12 frames at the coin, 13 of 13 at the lever, 0 in open floor, 3 runs each); these are the level-0 event-7 scripts and the hazards' event-9 gate |
 | 23 | `$00fb24`, verb 50 (`$01036c`), overlay code (`$04c89a`, `$04cdd2`, `$04ce24`, `$04cea0`) | an object or creature is killed |
-| 0 | verb 35 (`$010816`), the timer service (`$00a184`) | rucksack pick-up, timer expiry |
-| 19 | verb 9 (`$010c66`) | script-raised event |
-| 1, 4, 6, 7, 10-15, 17, 20, 24, 25, 28 | the timer service (`$0090aa`-`$0095d8`) and the engine code around `$00e8b2`-`$00fa62` | not read; the timer service pushes the `$400e`, `$4014`, `$c00f`, `$c011` family |
+| 19 | verb 9 (`$010c66`), queued for the ROOM record | script-raised room event |
+| 20 | the room countdown of verb 42 (`$4014`) | room event on expiry |
+| 1, 4, 6, 10-15, 17, 24, 25, 28 | the timer service (`$0090aa`-`$0095d8`) and the engine code around `$00e8b2`-`$00fa62` | not read; the timer service pushes the `$400e`, `$4014`, `$c00f`, `$c011` family |
 | 8 | `$00733c`, `$00df14`, `$00e196`, `$04cc52` | not a script event: the name-banner request (mechanics.md §18, `$00ffa4`) |
 
-The script blocks of both levels answer events 0, 3, 4, 5, 7, 9, 11, 12, 13, 16, 18, 21, 23 and 27. Events 3 and 21 have no producer that pushes an immediate opcode, so they come through a register or a computed opcode not yet found.
+The script blocks of both levels answer events 0, 3, 4, 5, 7, 9, 11, 12, 13, 16, 18, 21, 23 and 27. **Events 3 and 21 have no producer.** `overlay/action/event_3_21_static.py` scans 11 listings (the resident image, both level overlays, and every disk-1 and Disk 2 overlay `.lst`): every push writes an immediate opcode (48 sites in CAVERN, 47 in level 1, the overlays only 5, 8 and 23) and there is no computed-opcode push, so the events pushed are exactly 0, 1, 4-20 and 23-28. The blocks for event 3 (the hazards 114, 115, 117, 120) and event 21 (one level-1 block) are therefore *inferred* dead script content, unless the ring is written by a route that is not a `movea.l 304(A5),A0` sequence.
+
+### The player's action panel (driven live)
+
+The inputs reach the events above through one panel (`panel_coin.png`: the icon panel with the silver coin in front of the hero). **Joystick-1 fire (state bit 7) next to an object**: the main loop's movement code `$006e44` reaches `$00737a`, which probes one step ahead along the facing vector (table `$5bea`); `$008870` finds the object and `$009440` builds the icon list at `$5ff6` for it; `$00954a` sends bit 7 of `2243` to `$0095ea` and the icon-choice loop `$009c82`, which returns the chosen icon id, and `bsr $00a08c` dispatches through the word table at `$00a0ac` with A1 = the object's type-6 record and A2 = its class template. The loop first waits for the joystick to release (`$0118ac`), so fire must be released and pressed again to confirm; in the object panel the cancel box is skipped by right and left, Space cancels (`$00a134`), and moving the cursor needs a pulse of at least one loop pass (about 12,500 steps). **Space or Return**: `$006c28` calls `$011898` first, which waits for the key to *release*, so the action runs on the break and a key held forever does nothing; then `$006cce` (`moveq #21`, sound) and `$009682`, which returns at once when the rucksack count `2438(A5)` is 0 (live: `$009682` hit, `$009724` not) and otherwise selects the held item (`$009724`), builds its icons (`$009f02`) and runs `$009c82`. Space clears bit 1 of `2519(A5)` so the item's icon panel opens directly; Return leaves it set, so the rucksack grid `$0097b4` comes first and fire in the grid confirms the item. Down (`2474(A5)` bit 0) is only a flag, not a panel key.
+
+Icon handlers (`$00a0ac`, live where marked): 1 `$00a1e0` drop; 2 `$00a136` TAKE (event 0); 3 `$00a494`; 4 `$00a43c`; 5 `$00a1c6`; 6 `$00a134` cancel; 7 `$00a448` (operate, event 5); 8 `$00a292` (read: event 5 through `$00a474`, or the stats window for a class-7 diary); 9 `$00a5c0` (event 5); `$a` `$00a66a` (pushes nothing); `$b` `$00a3d0` EXAMINE (event 16); `$c` `$00a682` (event 18); `$d` `$00a70e` SELECT (event 27); `$e` `$00a7b4`; `$f` `$00a782` (event 26). The icons an object offers come from the table `$005c1c` indexed by class-template byte 23 (subclass 1 gives 4, 2 gives 9, 4 gives 7, 5 gives 3, 6 gives 8) plus fixed ones: the coin and pickaxe show 2, `$a`, `$b`; a book or tome 8; the lever 7 and `$b`; the barrel 9, `$a`, `$b`; the boat only `$b`. Icon `$c` shows for class `$b`, or class 8 with instance flags 4 and 0; icon `$f` for class `$c`; `overlay/action/class_census.py` puts class 8 on 13 placed objects in other rooms (ids 83, 224, 72, 35, 475, 478, 483 and more) and class `$c` on id 70.
+
+**What a pick-up writes** (`overlay/action/pickup_write.py`, a `watch` on the pickaxe): icon 2 runs `$00a136`, `bsr $00c30e` (unlink from the room, a shared list shift that touches the same bytes first), `bsr $00c42a` and then the event-0 push. `$00c42a` puts the record `[object id][template +6, the class-template id]` at the next 4-byte slot of the type-8 data (`$00c4cc move.w D3,(A3)`, `$00c4d4 move.w 6(A0),2(A3)`: the pickaxe gives `(168, $20)` at `$07550a`, the coin `(412, 54)`, the diary `(5, $78)`), rewrites the 64 index words at `$04c536` (`$00c4fe`-`$00c516`) and adds one to `2438(A5)` (`$00c4da`). The type-8 descriptor is `96(A5) + 8*$12` = `$04a4f6`. The coin's event-0 block deletes it again at once through `$00c3d4`, which is why gold rises by 7 and the count returns to 0. Fire with an item selected and nothing in front is a drop or throw (`$006f48`, `$00a19e`, `$00a1ea`, `$00f44a`, `$00c3d4`: count 1 to 0, selection cleared).
+
+**Negative controls**, each with a signal that the input was read (`negatives.py`): fire with nothing in front hits `$006e70`, `$006f28`, `$006f62`, `$00737a` and never `$009c82`; Return and Space with an empty rucksack hit `$006cce` and `$009682` and stop; Down next to the coin hits `$006cb0` and never opens the panel; Space in the object panel cancels through `$00a134`. **Not run naturally**: events 18 and 26 (the class byte of the TUNNEL lever's live record, `$059910` + 22, was poked to `$b`, `$c` or 8, everything else natural input; `poke_classes.py`, `poke_class8.py`), and icons 3, 4 and `$e`. Walking to a class-8 chest (id 83, 224) would remove the poke.
 
 **The interpreter's caller is the ring-304 queue consumer `$00fdbc`** (cadaver.md's open item 1, closed). Queue entries `[opcode.w][object ptr.l][word]` are read from `152(A5)` (count `1154(A5)`); the injected event of the live proofs is opcode 5 (see the table above for what queues it in play). For the object the consumer walks its script blocks, `[len][event | $80 = keep][verb bytes ... $17]` (`len` counts itself; blocks start at template +`$10`, count at +11, or at +`$20`, count at +31, when opcode bit 14 is set); when the opcode equals a block's event byte it runs the gate from the table at `$00fe84` and then executes the verb bytes through the **verb table at `$00ffba`, which has 94 entries**
 (its first word `$bc` is its size in bytes; it ends exactly where `$010076` begins; dump `verb_table94.txt`). The "59-entry table at `$010000`" of mechanics.md §23a, §24, §64 and §69 was read from the wrong base: it is the last 59 entries with every target off by `$46`, which explains every "mid-instruction landing" of §64d, and its ids are the true ids minus 35. UNLOCK and LOCK are verbs 55 (`$0104a8`) and 54 (`$01049a`); KILL, UNINV, WAKE, SLEEP are 50, 89, 74, 75
@@ -240,7 +252,7 @@ The script blocks of both levels answer events 0, 3, 4, 5, 7, 9, 11, 12, 13, 16,
 
 ### The script language
 
-Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consumer stops at the first `$17` (verb 23); 11 level-0 blocks carry one more `$17` of padding inside their `len`, which is never executed. Without bit 7 the consumer overwrites the event byte with `$ff` after the first run (`$00fe3e`), so the block never matches again (130 of the 212 level-0 blocks have the keep bit); verb 29 does the same to the running block. No block uses the second set at +`$20`.
+Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consumer stops at the first `$17` (verb 23); 11 level-0 blocks carry one more `$17` of padding inside their `len`, which is never executed. Without bit 7 the consumer overwrites the event byte with `$ff` after the first run (`$00fe3e`), so the block never matches again (130 of the 212 level-0 blocks have the keep bit); verb 29 does the same to the running block. No object block uses the second set at +`$20`, but room records do: verb 9 and the room countdown (verb 42) queue events 19 and 20 for the room record, and level 1's room 80 carries an event-19 block (`2e 93 00 | 27 04 01 ...`) that a real `09 00` runs (VAR 4 goes 0 to 1); `verb_decode.py` covers only type-6 objects, so the room-record blocks of both levels are not yet decoded.
 
 **Gate bytes.** The event's precondition routine (table `$00fe84`, 29 entries, events 0-28) reads its operands from the script before the verbs run, and compares them with the word `1156(A5)` or byte `1157(A5)` of the queue entry (the id or code of what touched, hit or used the object): one byte for events 1, 12, 13, 15, 17, 19, 20, 24; two bytes for 4, 9, 10, 18, 26; none for the rest (events 2 and 8 always reject). Examples: object 113 (event 4) gates on id `$0067`; the contact scripts (event 9) gate on `00 00` or `ff ff`.
 
@@ -248,7 +260,7 @@ Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consum
 
 **Operands.** Object ids are big-endian words; `$ffff` (printed `actor`) stands for the running object. Verbs 62 to 64 address any byte of the `(A5)` block: the first word is the offset, bit 15 set means a one-byte value and clear a word value. Verbs 40 and 64 compare with op 0 `>`, 1 `<`, 2 `==` and anything else `!=`. The `MESSAGE` and `DESCRIBE` words index the packed text table (`text_atlas.py`); the gold and XP counters are the longwords `1188(A5)` and `1192(A5)`, health `1174(A5)` of the maximum `2516(A5)`, the script variables the bytes from `2282(A5)`, timers table 3 above.
 
-**Proof.** `verb_decode.py` parses every block of both levels with the lengths below and each one consumes exactly its `len`, ends on the terminator and agrees with every IF and ELSE length byte: 212 of 212 in level 0 and 264 of 264 in level 1 (61 of the 94 verbs occur). `verb_lengths_callcap.py` calls 92 of the 94 handlers under `callcap` on a scratch script and reads A1's advance (99 checks with the IF true and false runs and the word and byte forms of 62 to 64: 99 of 99); the other two are verb 15 (asserts by design) and verb 51 (jumps into the level loader; its one byte is tiled by the level-0 block `33 00`). `verb_effects_callcap.py` measures the effects of the gold and XP verbs (5, 6, 13, 85, 86), 38, 39, 45, 62, 63, 79 and 81 (21 checks) and the comparison ops of 40 and 64 (24 checks): 45 of 45. The names are read from the handler bodies and from the author's own assert strings (`GOANI A NONANI OBJECT`, `PUT IN RUCK RTN. RUCK FULL`, `KILLING A NON-EXISTANT CRE`, `UNTRAP CHEST NON-X OBJECT`, `DIRTY POTION NON-X OBJECT`, ...); only the effects listed above and the teleport, level-start and lever verbs proven earlier were driven, so treat the rest of the effect column as read, not run. `treasury_gate_live.py` runs object 2's whole script under the real consumer: with the type-8 list empty or holding only 16, 32 and 28 the four COND verbs (34), the IF (58) and the ELSE message (28) run and nothing teleports; with 16, 32, 28 and 26 in the list the same four tests, the sound (70), the teleport (37, room `0000` -> `0025`) and four PLACE verbs (41) run and the message does not (3 of 3 runs match the decode, the nested skip included).
+**Proof.** `verb_decode.py` parses every block of both levels with the lengths below and each one consumes exactly its `len`, ends on the terminator and agrees with every IF and ELSE length byte: 212 of 212 in level 0 and 264 of 264 in level 1 (61 of the 94 verbs occur). `verb_lengths_callcap.py` calls 92 of the 94 handlers under `callcap` on a scratch script and reads A1's advance (99 checks with the IF true and false runs and the word and byte forms of 62 to 64: 99 of 99); the other two are verb 15 (asserts by design) and verb 51 (jumps into the level loader; its one byte is tiled by the level-0 block `33 00`). `verb_effects_callcap.py` measures the effects of the gold and XP verbs (5, 6, 13, 85, 86), 38, 39, 45, 62, 63, 79 and 81 (21 checks) and the comparison ops of 40 and 64 (24 checks): 45 of 45. The names are read from the handler bodies and from the author's own assert strings (`GOANI A NONANI OBJECT`, `PUT IN RUCK RTN. RUCK FULL`, `KILLING A NON-EXISTANT CRE`, `UNTRAP CHEST NON-X OBJECT`, `DIRTY POTION NON-X OBJECT`, ...); the effects of about 65 verbs are proven live by `overlay/verbs2/verb_effects2.py` (212 checks, 0 bad: callcap memory deltas on scratch scripts, then the same verb inside the live game through the consumer, either from a level script's own event or a scratch script written over an event-5 block; the injection appends at the write pointer `304(A5)`, advances it by 8 and adds one to `1154(A5)`, because an entry written at `152(A5)` alone is overwritten by the game's own pushes in level 1). Not measured: verb 56 (box condition), 90 (POISON), verb 44's branch for a template with class bit 7 set, verb 41's collision search and its "CANT FIND A SPACE" asserts; verbs 84 and 91 have no use in either level (callcap only). The meaning of the anim byte states (`$fe`, `$ff`, 0) and the mover states (0, 1, 4) is not identified, only the transitions. `treasury_gate_live.py` runs object 2's whole script under the real consumer: with the type-8 list empty or holding only 16, 32 and 28 the four COND verbs (34), the IF (58) and the ELSE message (28) run and nothing teleports; with 16, 32, 28 and 26 in the list the same four tests, the sound (70), the teleport (37, room `0000` -> `0025`) and four PLACE verbs (41) run and the message does not (3 of 3 runs match the decode, the nested skip included).
 
 **Two corrections.** Verbs 5 and 85 read their operand and then never add it: `$0102e0` and `$0102d4` load the sound id into D0 (`move.w #$1a,D0` or `#$24`) before `add.l D0,1192(A5)`, and the sound routine `$0158f8` returns D0 unchanged. Verb 5 therefore adds 26 XP for any operand (0, 1, 10, 200 all measured), verb 85 adds 26 for a positive word, and a negative word adds `$ffff0024`, which the game clamps to 0 (XP 100 becomes 0). The gold-pile verb is 6 (gold n, XP n/4). A single-byte "n XP" verb does not exist.
 
@@ -256,19 +268,19 @@ Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consum
 
 | verb | handler | operand bytes | effect | uses (L0 / L1) |
 |---|---|---|---|---|
-| 0 | `$010076` | obj:2 | DELETE object (pending-delete list 1386(A5)) | 6 / 30 |
-| 1 | `$0100b0` | obj:2 | SHOW object: clear hidden bit, place, draw | 29 / 25 |
-| 2 | `$0101c2` | - | DELETE the current object | 55 / 63 |
-| 3 | `$0101d0` | obj:2 | GOANI: start the object animation | 0 / 33 |
-| 4 | `$01026c` | obj:2 | STOPANI | 0 / 1 |
+| 0 | `$010076` | obj:2 | DELETE object, in two steps: now `1164(A5)` = id, the id goes onto the pending list `1386(A5)` and out of its room's type-5 list (room record +29 and +27 or +28 drop by one); on the next frame service the type-6 record is freed | 6 / 30 |
+| 1 | `$0100b0` | obj:2 | SHOW object: clear bit 7 of record +3 (set bit 3 instead if its room is not the current one); no-op if not hidden | 29 / 25 |
+| 2 | `$0101c2` | - | DELETE the current object (verb 0 on the record `348(A5)` points at) | 55 / 63 |
+| 3 | `$0101d0` | obj:2 | GOANI: needs template +12 bit 2 (else assert); acts only when the anim byte is `$fe`: it becomes 0, ext +3 += 1 | 0 / 33 |
+| 4 | `$01026c` | obj:2 | STOPANI: anim byte := `$ff`, record +15 bit 0 set | 0 / 1 |
 | 5 | `$0102cc` | b | XP += 26 (operand read and ignored) | 7 / 13 |
 | 6 | `$010304` | b | GOLD += n, XP += n/4 | 36 / 31 |
 | 7 | `$01031e` | word:2 | REGISTER creature id (list 396(A5), max 6) | 0 / 1 |
 | 8 | `$01032c` | word:2 | UNREGISTER creature id (asserts if absent) | 6 / 10 |
-| 9 | `$010c4e` | b | queue event $4013 for record 164(A5) with n | 0 / 10 |
-| 10 | `$0104e2` | b | CLEAR FLAG n (type-4 record +2), sound $2a | 9 / 11 |
-| 11 | `$010554` | obj:2 | GOMOVE | 1 / 25 |
-| 12 | `$0105b4` | obj:2 | STOPMOVE | 1 / 2 |
+| 9 | `$010c4e` | b | queue `[$4013][164(A5) = the room record][n]`: event 19 on the ROOM's second script list | 0 / 10 |
+| 10 | `$0104e2` | b | CLEAR FLAG n (type-4 record +2 := 0; nothing if already 0), sound `$12` if the flag is in the room record's list, else `$2a` | 9 / 11 |
+| 11 | `$010554` | obj:2 | GOMOVE: mover byte (`rec+rec[13]`) := 0 (if it was 4, the next byte += 1) | 1 / 25 |
+| 12 | `$0105b4` | obj:2 | STOPMOVE: mover byte := 1 | 1 / 2 |
 | 13 | `$0105f2` | b | GOLD -= n | 0 / 0 |
 | 14 | `$010626` | len | IF (2270 != 0) | 21 / 37 |
 | 15 | `$0106a8` | - | ELSE marker (executing it asserts) | 10 / 18 |
@@ -282,8 +294,8 @@ Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consum
 | 23 | `$01124e` | - | END of script ($17) | 212 / 264 |
 | 24 | `$01071a` | obj:2 | obj state bit 0 ^= 1 | 0 / 1 |
 | 25 | `$010728` | obj:2 | obj state bit 1 ^= 1 | 0 / 0 |
-| 26 | `$0101a8` | obj:2 | HIDE object | 3 / 6 |
-| 27 | `$010520` | b word:2 | SET FLAG n = word (type-4 record +2), sound | 1 / 0 |
+| 26 | `$0101a8` | obj:2 | HIDE object: bit 7 of record +3 set | 3 / 6 |
+| 27 | `$010520` | b word:2 | SET FLAG n = word (type-4 record +2; nothing if equal), sound as verb 10 | 1 / 0 |
 | 28 | `$011230` | word:2 | MESSAGE n (fade, text, wait) | 42 / 33 |
 | 29 | `$01074e` | - | mark this block spent (event byte = $ff) | 1 / 4 |
 | 30 | `$010756` | - | COND current obj state bit 0 set | 4 / 21 |
@@ -291,16 +303,16 @@ Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consum
 | 32 | `$010778` | - | current obj state bit 0 = 1 | 7 / 10 |
 | 33 | `$010784` | - | current obj state bit 0 ^= 1 | 1 / 6 |
 | 34 | `$01079c` | word:2 | COND object id in the type-8 list | 9 / 3 |
-| 35 | `$0107ca` | obj:2 | PUT IN RUCK (rucksack; asserts if full) | 0 / 0 |
-| 36 | `$0108ce` | obj:2 b b b b | CREATE object o at fixed (x, y, z, facing) | 7 / 10 |
+| 35 | `$0107ca` | obj:2 | PUT IN RUCK: type-8 record `[id][template idx]` appended (`2438(A5)` += 1, capacity `2148(A5)` = 32), removed from its room list, `1164(A5)` = id, ring entry `[0000][record ptr]`; asserts if full or absent | 0 / 0 |
+| 36 | `$0108ce` | obj:2 b b b b | CREATE a clone of o at (x, y, z, facing): a spawn entry on `1466(A5)`, a type-9 copy of the record, drained by the frame service `$00e38c` into a new type-6 record; the position is a request handed to the free-space search | 7 / 10 |
 | 37 | `$010974` | b b b b | TELEPORT room, x, y, z | 4 / 13 |
 | 38 | `$010be2` | b b | VAR n = v (bytes at 2282(A5)) | 4 / 2 |
 | 39 | `$010bf0` | b b | VAR n += v | 7 / 9 |
 | 40 | `$010c00` | b b b | COND VAR n op v (op 0 >, 1 <, 2 ==, 3+ !=) | 9 / 5 |
-| 41 | `$010aaa` | obj:2 b b b b | PLACE object in room r at (x, y, z) ($fe = this room) | 8 / 1 |
-| 42 | `$010c74` | b b | set 2462(A5) = a, 2461(A5) = b | 1 / 0 |
+| 41 | `$010aaa` | obj:2 b b b b | PLACE object in room r at (x, y, z): another room writes x, y, z exactly, sets bit 3 of +3, `+10` = r and moves the id between the two rooms' type-5 lists; room 0 or `$fe` = this room (position adjusted, `+10` = 0); class 3 asserts | 8 / 1 |
+| 42 | `$010c74` | b b | arm a room countdown: `2462(A5)` = a, `2461(A5)` = b ticks; the tick service `$009094` decrements b and at 0 sets `2462` := `$ff` and queues `$4014` (event 20 on the room record) with a | 1 / 0 |
 | 43 | `$0107ae` | obj:2 b | COND object in room n ($fe = this room) | 0 / 0 |
-| 44 | `$01083e` | obj:2 obj:2 b b | CREATE object o2 next to o1 (offset slot, facing) | 1 / 0 |
+| 44 | `$01083e` | obj:2 obj:2 b b | CREATE a clone of o2 at o1's position (spawn entry as verb 36, D6 from table `$5d2c[slot]`) | 1 / 0 |
 | 45 | `$010c84` | word:2 | HEALTH += signed word (0 or less: death) | 14 / 48 |
 | 46 | `$0100ae` | - | no-op | 0 / 0 |
 | 47 | `$010d16` | obj:2 | COND object exists | 0 / 0 |
@@ -316,20 +328,20 @@ Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consum
 | 57 | `$010dd0` | word:2 | COND selected object 1262(A5) == id | 0 / 0 |
 | 58 | `$01061a` | n len | IF (2270 == n) | 1 / 1 |
 | 59 | `$01060e` | n len | IF (2270 != n) | 0 / 0 |
-| 60 | `$010df2` | word:2 word:2 | COND $df46(a, b) | 0 / 1 |
-| 61 | `$010de0` | b | COND FLAG n set | 0 / 0 |
+| 60 | `$010df2` | price:2 msg:2 | BUY prompt: false if gold `1188(A5)` < price; else prints message msg with the price and waits for a key: Y (`$15`) takes the gold and is true, N (`$31`) declines | 0 / 1 |
+| 61 | `$010de0` | b | COND FLAG n non-zero | 0 / 0 |
 | 62 | `$010b6a` | off, value (word; byte if off bit 15) | SET (A5)+off = value (word, or byte if off bit 15) | 0 / 0 |
 | 63 | `$010b90` | off, value (word; byte if off bit 15) | ADD (A5)+off += value | 0 / 0 |
 | 64 | `$010bb6` | off, value, op | COND (A5)+off op value (ops as verb 40) | 0 / 0 |
-| 65 | `$010e0c` | obj:2 b | obj field +1 += signed n (clamped 0..255) | 0 / 0 |
-| 66 | `$010e38` | obj:2 b | queue [type][sub][obj] record into 1266(A5) | 1 / 0 |
+| 65 | `$010e0c` | obj:2 b | byte +1 of the object's first sub-block (`rec+rec[12]`) += signed n, clamped 0..255 | 0 / 0 |
+| 66 | `$010e38` | obj:2 b | queue `[class (sub-block byte +1)][operand][record ptr]` on the list at `308(A5)` (`1264(A5)` += 1); `$00e24e` calls the class handler (class 10: the fire, -20 health) | 1 / 0 |
 | 67 | `$010e5c` | obj:2 | GOACTI (object state bit 6 of +15 = 0) | 0 / 1 |
 | 68 | `$010e7c` | obj:2 | STOPACTI (bit 6 = 1) | 0 / 1 |
 | 69 | `$010e9c` | obj:2 b b b | MOVE: set the +3,+4,+5 bytes of the object record | 0 / 1 |
 | 70 | `$010ec8` | b | PLAY SOUND n | 5 / 19 |
 | 71 | `$010ed4` | - | no-op | 0 / 0 |
 | 72 | `$010ffa` | word:2 | DESCRIBE: examine text n with the object details | 80 / 53 |
-| 73 | `$010a7c` | obj:2 obj:2 | MOVE object o1 to the position of o2 | 7 / 4 |
+| 73 | `$010a7c` | obj:2 obj:2 | MOVE o2 to the position and room of o1 (o1 is untouched; a free spot is found in the current room) | 7 / 4 |
 | 74 | `$0103e0` | obj:2 | WAKE creature | 0 / 0 |
 | 75 | `$0103f8` | obj:2 | SLEEP creature | 0 / 0 |
 | 76 | `$010d26` | b | COND shield bit n of 2436(A5) | 1 / 4 |
@@ -338,16 +350,16 @@ Every block is `[len][event | $80][gate bytes][verb bytes ...][$17]`. The consum
 | 79 | `$010f2a` | b b | RANDOM lo..hi -> 2520(A5) | 0 / 0 |
 | 80 | `$010f3c` | b | COND 2520(A5) == n | 0 / 0 |
 | 81 | `$010c3e` | b | 2520(A5) = VAR n | 0 / 0 |
-| 82 | `$010f4a` | b | delete type-8 list entries whose word +2 == n | 0 / 0 |
+| 82 | `$010f4a` | b | delete type-8 list entries whose template idx (word +2) == n | 0 / 0 |
 | 83 | `$010f78` | b | no-op (reads a byte) | 0 / 0 |
-| 84 | `$0108b6` | obj:2 obj:2 b b b b | CREATE object o2 relative to o1 (dx, dy, z, facing) | 0 / 0 |
+| 84 | `$0108b6` | obj:2 obj:2 b b b b | CREATE a clone of o2 at o1's (x+dx, y+dy, z, facing); D6 left 0 | 0 / 0 |
 | 85 | `$0102c0` | word:2 | word > 0: XP += 26; word < 0: XP = 0 | 0 / 2 |
 | 86 | `$0102fa` | word:2 | GOLD += word, XP += word/4 | 0 / 1 |
-| 87 | `$010ed6` | b | sound op $015ae0(n) | 0 / 6 |
-| 88 | `$010790` | b | COND n == 2489(A5) | 0 / 0 |
+| 87 | `$010ed6` | b | STOP SOUND n: `$015ae0` clears the queued word of the sound table `$0162a2` whose high byte is n | 0 / 6 |
+| 88 | `$010790` | b | COND n == byte `2489(A5)` (written by the tick code at `$0092c0`, cleared at `$0090e8`; not a timer table) | 0 / 0 |
 | 89 | `$01038a` | obj:2 | UNINV (clear bit 0 of +6) | 0 / 0 |
 | 90 | `$010f7c` | b b b | POISON strength, duration, interval | 0 / 0 |
-| 91 | `$010f9e` | b | COND current obj word +6 == n | 0 / 0 |
+| 91 | `$010f9e` | b | COND low byte of the current object's template idx == n | 0 / 0 |
 | 92 | `$010fb2` | obj:2 | CLEAR CHEST | 0 / 0 |
 | 93 | `$010fd4` | obj:2 | DIRTY POTION | 0 / 0 |
 
@@ -444,5 +456,6 @@ The deliberate `moveq #0,D0 / divu D0,D0` crash (`$0117c6`, and one copy in each
 - The Disk 2 overlays' two extra header words and negative class-1 record, spell 28 in the Disk 2 builds, services 9, 13, 19, and the real A3/A4 at a spell cast (only `callcap` with inferred registers for the class-gated spells); the projectile-hit paths `$00fa72`/`$00fb60`; list 4's values.
 - Which sound ids fire in play: 36 of the 62 have no literal call site (data-driven: the object class table `$00620b`, the movement stream, ring handlers, verb ops).
 - Whether XP 60,000 is reachable (the rank table's overrun).
-- Verb semantics that are read, not run: DELETE (0, 2), SHOW (1), GOANI/STOPANI/GOMOVE/STOPMOVE, the CREATE and PLACE family (36, 41, 44, 73, 84), PUT IN RUCK (35, never used in the two levels' scripts), the type-4 flag verbs (10, 27, 61), and the meaning of verbs 9, 42, 60, 65, 66, 87, 88 and 91. The two levels' scripts use 61 of the 94 verbs; the Disk 2 levels' scripts are not decoded.
-- What each event opcode is when the game queues it: the producers are enumerated (`queue_producers.py`, table under "Object scripts") but only 5 has been driven, by injection. Drive the player-action block `$00a3d0`-`$00a7d8` (use, examine, pick-up, select) and the contact sites, and find the producer of events 3 and 21, which script blocks answer but no immediate-opcode push names. Also which object ids the type-8 list tests (34) name.
+- Verbs not measured (see "Proof" under the script language): 56, 90, verb 44's class-bit-7 branch, verb 41's collision search; what the anim-byte states (`$fe`, `$ff`, 0) and mover states (0, 1, 4) mean beyond the transitions; the class handlers reached through verb 66 other than class 10 (a bad sub jumps to garbage). The Disk 2 levels' scripts are not decoded.
+- Room-record script blocks: rooms carry a second block list at +`$20` (level 1's room 80 has an event-19 block that a real `09 00` runs), and `verb_decode.py` covers only type-6 objects, so those blocks are undecoded in both levels. Verbs 9 (event 19) and 42 (event 20) are their producers.
+- Events 18 and 26 and icons 3, 4, `$e` were reached only with a poked class byte or not at all; walk to a class-8 chest (ids 83, 224) and a class-`$c` object (id 70) to drive them naturally. The events the timer service and the engine code queue (1, 4, 6, 10-15, 17, 24, 25, 28) are still unread. Events 3 and 21 have no producer in any listing (inferred dead script content). Which object ids the type-8 list tests (34) name: the treasury's four are 16, 32, 28, 26, and a pick-up writes `[id][class-template id]`; whether all four can be picked up by walking is not driven.
