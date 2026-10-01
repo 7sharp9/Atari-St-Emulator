@@ -701,12 +701,12 @@ object record; `36(A3)` a running total).
 | `$7a` | `$1578c` | – | arrival of order `$20` (spy): `$3da4` links the lone captain into the target settlement's unit chain, takes its owner's side, `bset #7`, mode `$7e`; the lord's `troops_field += 1` |
 | `$52` | `$15a80` | 51 | read the nation's destination cell `12($4f916+34)` → target, mode `$10`; issue an order message via `$4e514+46` (`$159de`) |
 | `$54` | `$15ad2` | 29 | walk the `$4e514` leader records selecting the text for a status message (speech generation, not movement) |
-| `$56` | `$15b94` | **168** | **regroup at the muster cell**: unpack `42(A1)` → target (20/21/22), consult the per-cell control byte `$3f86c[42]` to choose sprite `$70`/`$90`, prevmode `$58`, mode → `$10` |
-| `$58` | `$15bec` | 11 | arrived at muster — settle |
-| `$5a` | `$15c46` | **119** | **proximity gate**: dwell; scan the cell bucket `$47970[42]` for a neighbour of category `$18` (flags `$10`) or `$20`; found → mode `$62`; timeout → mode `$62`, dwell `$64` |
-| `$5c` | `$15d66` | **152** | move; `$15fa8` on-screen test; on arrival set up target from `$3f86c[42]` / `$4f916`, mode → `$60` |
-| `$60` | `$15ddc` | 86 | move to (20,22); on `$164bc` arrival `addi.w #$4,6($4e514+idx)` (register the arriving detachment with the settlement), mode → `$62` |
-| `$62` | `$15bfc` | 3 | group idle / wait for the next order |
+| `$56` | `$15b94` | **168** | **fisherman: go to the fishing cell** (every man seen in modes `$56`..`$62` is job 4, fisher: 93 of 93 over seven states, `py/job_census.py`; original labels `fish_*`): unpack `42(A1)` → target (20/21/22), consult the per-cell control byte `$3f86c[42]` to choose sprite `$70`/`$90`, prevmode `$58`, mode → `$10` |
+| `$58` | `$15bec` | 11 | fisherman: arrived at the cell — settle |
+| `$5a` | `$15c46` | **119** | fisherman: **look for the catch** (the old name was "proximity gate"): dwell; scan the cell bucket `$47970[42]` for a neighbour of category `$18` (flags `$10`) or `$20`; found → mode `$62`; timeout → mode `$62`, dwell `$64` |
+| `$5c` | `$15d66` | **152** | fisherman: **head home**: move; `$15fa8` on-screen test; on arrival set up target from `$3f86c[42]` / `$4f916`, mode → `$60` |
+| `$60` | `$15ddc` | 86 | fisherman: **deliver the catch**: move to (20,22); on `$164bc` arrival `addi.w #$4,6($4e514+idx)` (`+6` is the lord's food store, economy.md §1: **+4 food per trip**), mode → `$62` |
+| `$62` | `$15bfc` | 3 | fisherman: idle between trips (original `fish_get`) |
 
 ### Static / upkeep / boats / effects
 
@@ -768,11 +768,11 @@ stateDiagram-v2
     state "1A group: take food from a town" as S1A
     state "1C group: get men, summon the town" as S1C
     state "26 group: unpack dest -> march" as S26
-    state "56 regroup: unpack muster cell" as S56
-    state "58 regroup: settle" as S58
-    state "5A regroup: proximity gate" as S5A
-    state "5C regroup: move to settlement" as S5C
-    state "60 regroup: register w/ settlement" as S60
+    state "56 fisher: go to the fishing cell" as S56
+    state "58 fisher: settle" as S58
+    state "5A fisher: look for the catch" as S5A
+    state "5C fisher: head home" as S5C
+    state "60 fisher: deliver, food += 4" as S60
     state "62 group idle" as S62
     state "92 -> free slot, mode 00" as S92
     state "$15302 reached (routine)" as S15302
@@ -817,11 +817,11 @@ stateDiagram-v2
     S1A --> S35F4 : group state != $C (free slot)
     S1C --> S28 : always (garrison := reserve >> roll, dwell $32)
     S26 --> S10 : group state $C -> unpack origin as dest cell
-    S56 --> S10 : always, prev_mode := $58, target := muster cell
+    S56 --> S10 : always, prev_mode := $58, target := the fishing cell
     S58 --> S5A : dwell $A
     S5A --> S62 : neighbour of category $18/$20 found, or timeout
     S5C --> S60 : $164bc arrival at settlement
-    S60 --> S62 : arrival; leader.field6 += 4
+    S60 --> S62 : arrival; leader.field6 (food) += 4
     S62 --> S62 : dwell > 0
     S68 --> S68 : always (upkeep only; position stamped by lead)
     S8A --> S8A : always (upkeep only)
@@ -1096,21 +1096,21 @@ void h_formation(pm_object *A1) {
 // ---- $161b2  mode $8A : garrison -------------------------------------
 void h_garrison(pm_object *A1) { jsr_5c80(A1); goto next_record; }
 
-// ---- $15b94  mode $56 : regroup -- unpack the muster cell ------------
-void h_regroup_unpack(pm_object *A1) {
+// ---- $15b94  mode $56 : fisherman -- unpack the fishing cell ----------
+void h_fisher_go(pm_object *A1) {
     if (--A1->dwell >= 0) goto epilogue_161c4;
-    A1->target_x_lo = A1->group_off & 0x3f;          // {x:6} of the packed muster cell
-    A1->b21 = 0x70;                                  // sprite tag "friendly muster"
+    A1->target_x_lo = A1->group_off & 0x3f;          // {x:6} of the packed fishing cell (42(A1))
+    A1->b21 = 0x70;                                  // sprite tag (0x70 / 0x90 by the cell's control byte)
     cellctrl *cc = &cellctrl[A1->group_off];         // per-cell control byte, $3f86c
-    if (cc->byte1 || cc->byte65) A1->b21 = 0x90;     // "contested muster"
+    if (cc->byte1 || cc->byte65) A1->b21 = 0x90;
     A1->target_y = ((A1->group_off & 0x1fc0) << 2) + 0x80;   // {y:7} -> world_y centre
     A1->prev_mode = 0x58;
-    A1->mode      = 0x10;                            // march to the muster cell
+    A1->mode      = 0x10;                            // march to the cell
     goto epilogue_161c4;
 }
 
-// ---- $15c46  mode $5A : regroup -- proximity gate -------------------
-void h_regroup_gate(pm_object *A1) {
+// ---- $15c46  mode $5A : fisherman -- look for the catch --------------
+void h_fisher_scan(pm_object *A1) {
     if (--A1->dwell >= 0) goto next_record;
     for (pm_object *p = bucket_head($47970, A1->group_off); p; p = &obj[p->bucket_next]) {
         if (p->category == 0x18 && (p->flags == 0x10)) goto found;
@@ -1124,8 +1124,8 @@ void h_regroup_gate(pm_object *A1) {
     ...
 }
 
-// ---- $15d66 / $15ddc  mode $5C -> $60 : move to & register with a settlement
-void h_regroup_move(pm_object *A1) {                 // $15d66
+// ---- $15d66 / $15ddc  mode $5C -> $60 : fisherman heads home & delivers
+void h_fisher_home(pm_object *A1) {                 // $15d66
     D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
     if (on_screen_test($15fa8) == 0 && --A1->dwell >= 0) goto epilogue_16202;
     A1->mode = 0x60;
@@ -1136,12 +1136,12 @@ void h_regroup_move(pm_object *A1) {                 // $15d66
     jsr_164bc(A1, A1->target_x, A1->target_y);
     goto epilogue_16202;
 }
-void h_regroup_register(pm_object *A1) {             // $15ddc  mode $60
+void h_fisher_deliver(pm_object *A1) {              // $15ddc  mode $60
     D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
     if (--A1->dwell >= 0) goto epilogue_16202;
     if (jsr_164bc(A1, A1->target_x, A1->target_y) != REACHED) goto epilogue_16202;
     nation *n = &nation[A1->nation_off];
-    leader[n->leader_off].field6 += 4;               // "a detachment has arrived"
+    leader[n->leader_off].field6 += 4;               // the catch: +4 food
     A1->mode = 0x62;
     D6 = A1->target_x;  D7 = A1->target_y;
     goto epilogue_16202;
@@ -1156,24 +1156,23 @@ event-driven, in three places:
 1. **Group order → destination cell.** When a lord decides to move an army, the
    group-order record `$51538` is set to state `$c` and the destination is
    written as a packed cell into either the lead man's `36(A1)` (mode `$1e`) or
-   the nation record `12($4f916+34)` (mode `$52`). The men unpack that cell and
-   march (`$56` → `$10`). The decision itself (which cell) is made by the
+   the nation record `12($4f916+34)` (mode `$52`). The lead unpacks that cell and
+   marches (mode `$26` or `$52` → `$10`; `$56` is the fisherman's own trip, not a group order). The decision itself (which cell) is made by the
    higher-level strategy code reached from `$13040`'s `jsr $6522` / `$d322` /
    `$3e06` — **not decoded this pass**; those run every tick and own the
    `$51538` / `$4f916` tables.
 
 2. **Contact → engage.** While marching, mode `$10` probes `$1648e` a few cells
-   ahead; the regroup modes (`$5a`, `$5c`) and the notify scan (`$16260`) walk
+   ahead; the fisher modes (`$5a`, `$5c`) and the notify scan (`$16260`) walk
    the current cell's `$47970` bucket. A neighbour of an enemy category within
    range flips the record to mode `$32` and calls `$56a6`, which re-checks the
    linked enemy `28(A3)` is within `$fff` world units before `$5778` resolves a
    round. So "attack" is decided by **bucket proximity at ~2.4 Hz**, using the
    Manhattan-max distance, not by any threat evaluation.
 
-3. **Adjacent settlement → capture.** Mode `$28`/`$2a` sits on a village record
-   (`46(A1)`), counts its garrison `46(A0)` down while the group state stays 3,
-   and on 0 decrements the settlement's troop count in `$4e514` and calls the
-   capture routine `$1d70`. Ownership is reconciled by `$5c2c`: it compares the
+3. **Own settlement → recruits.** Order `$08` (modes `$1c`, `$28`, `$2a`, above) summons a town's men to the lead
+   and moves them into the group, counting the lord's `troops_field` down; it never targets another side. Ownership
+   is reconciled by `$5c2c`: it compares the
    settlement's stored owner (`$4e514[14($4f916+34)]`) against the entity's
    `5(A1)` and calls `$4bc8` on a mismatch.
 
@@ -1206,8 +1205,7 @@ For a **garrison** (mode `$8a`): upkeep only, until a `$8a8a` removal or a
 group order pulls it out.
 
 For a **group lead** carrying a live order (`$51538` state `$c`): unpack the
-destination cell and enter mode `$10`; on arrival register with the settlement
-(`$60`) or begin a siege (`$1c` → `$28`); take food from a town (`$1a`).
+destination cell and enter mode `$10`; on arrival take food from a town (`$1a`) or get men from one (`$1c` → `$28`).
 
 The lords' strategic choices — *declare* an attack, *pick* which village,
 *decide* to recruit or build — live one level up, in `$6522` / `$d322` /

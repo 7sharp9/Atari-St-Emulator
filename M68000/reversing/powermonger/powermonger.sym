@@ -194,10 +194,10 @@
 00015264	h_mode28_wait_men      # 50-tick wait after get men, then $35f4 frees the slot (original wait_men)
 00015282	h_mode2a_recruit_joins # a summoned man joins the lead's group: quota--, $1b2a, lord troops_8--, $1d70 (original wait_mee; read, not seen live)
 0001533c	h_mode32_melee         # = pm_melee
-00015b94	h_mode56_regroup       # unpack packed muster cell {x:6,y:7} + $3f86c control byte -> mode $10
-00015c46	h_mode5a_proxgate      # wait for a category $18/$20 neighbour in the cell bucket, else timeout -> mode $62
-00015d66	h_mode5c_tosettle      # move toward the settlement, re-derive target -> mode $60
-00015ddc	h_mode60_register      # arrive: leader.reserve_6 += 4, mode $62
+00015b94	h_mode56_fisher_go     # fisherman: unpack the fishing cell {x:6,y:7} (42(A1)) + $3f86c control byte -> mode $10 (original fish_at_)
+00015c46	h_mode5a_fisher_scan   # fisherman: wait for a category $18/$20 neighbour in the cell bucket, else timeout -> mode $62 (original fish_get)
+00015d66	h_mode5c_fisher_home   # fisherman: head for the settlement, re-derive target -> mode $60 (original fish_hea)
+00015ddc	h_mode60_fisher_deliver # fisherman arrives: lord food (+6) += 4, mode $62 (original fish_hea)
 00016048	h_mode68_formation     # follower: $5c80 upkeep, then clr.w 12(A1) (step_x/y) + clr.b 17(A1) (heading), bra $1622c (NO position write-back, NO relink). 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test)
 000161b2	h_mode8a_garrison      # $5c80 upkeep only, bra $1622c. 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test)
 0001648e	pm_terrain_sample      # terrain sample at (D6,D7): cell = ((D7&$ff00)>>2) + ((D6>>6)&$ff) >>2; A4 = $438ee+cell; sign of byte[A4+8257] + (D6&$ff vs D7&$ff / carry) picks byte[A4] (type plane) vs byte[A4-8257]; Z <=> == 0 (water/impassable). 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test)

@@ -52,7 +52,7 @@ against every session's changes.
   each entity decides per tick", A "The entity FSM")
 - **Men are conserved.** A lord's men in the field move between lords and armies (joining,
   dismissal, capture) and are never born. A side grows only by taking men from another. (E 1, E 6)
-- **Food is the pressure.** Each lord has a food store that herds and returning men fill and his
+- **Food is the pressure.** Each lord has a food store that his fishermen and returning men fill and his
   settlements eat; each army carries its own food. Armies take food from towns and drop it back;
   taking food angers a town, giving food or goods calms it. A town with at most 4 food per man in
   the field grows unrest. The posture sets how much an order moves: aggressive all, neutral half,
@@ -469,8 +469,8 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 12. The 74th pass opened the **economy** (`economy.md`, pass 1 of 2). PM has no
     single "economy tick"; the subsystems are diffuse. A lord's food store and
     men are `pm_leader.food` / `.troops_field` (`$4e514` +6/+8; `+6` was read as
-    men at home until the 124th pass) — food fills when men and herds come home
-    (entity modes `$16`/`$60`, +2/+4) and empties when an army takes food
+    men at home until the 124th pass) — food fills when disbanded men come home and when fishermen deliver a catch
+    (entity modes `$16`/`$60`, +2/+4; the fishermen were identified by the 133rd pass, `strategy.md` "Original names") and empties when an army takes food
     (mode `$1a`); nothing grew it passively in 400M traced
     steps. Food is **sheep herded to towns**: the `$4d252` herd array, the
     `$57f68` herding-operation array, the `$4c5f4` moving markers, and the

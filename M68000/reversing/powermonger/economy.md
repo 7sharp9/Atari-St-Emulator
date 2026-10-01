@@ -37,7 +37,7 @@ the entity level by the same `$14b62` FSM that runs everything else:
 
 | subsystem | where the number lives | how it moves | status |
 |-----------|------------------------|--------------|--------|
-| **food** (a lord's store) and **manpower** (his men in the field) | `pm_leader.food` = `$4e514`+6; `.troops_field` = +8 | food: a herd or a man arriving home adds 4 / 2; an army takes a posture-scaled slice (order `$06`) or drops one (`$12`, teardown); each settlement pulse eats one (`$163b8`). Men: `troops_field` moves by ±1 as men join, leave or change hands | **Proven (124th: orders `$06`/`$12` move exactly `food >> shift` between `+6` and the army's food `36(group)`, which the captain panel labels "Food")** |
+| **food** (a lord's store) and **manpower** (his men in the field) | `pm_leader.food` = `$4e514`+6; `.troops_field` = +8 | food: a fisherman delivering a catch adds 4, a disbanded man arriving home 2; an army takes a posture-scaled slice (order `$06`) or drops one (`$12`, teardown); each settlement pulse eats one (`$163b8`). Men: `troops_field` moves by ±1 as men join, leave or change hands | **Proven (124th: orders `$06`/`$12` move exactly `food >> shift` between `+6` and the army's food `36(group)`, which the captain panel labels "Food")** |
 | **goods** ("livestock", "invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed herd-drive credits `+1` to one counter (`$60dc`), heavily throttled; porter units shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
 | **livestock** (the herds that feed the goods counters) | `$4d252` herd array + `$57f68` herding ops + `$4c5f4` markers | shepherd FSM (modes `$3e`→`$44`→`$42`) drives an animal home, marks it consumed (`breed:=$d`), credits the goods counter; `$4342` only animates the on-screen marker | **traced** |
 | **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes when a lord revolts (`$550e`, §3): the lord and all his settlements change side, then `$5c2c`/`$25d6` turn his garrison men over | **Proven (122nd, `diff_revolt.py` 1778/1778 over 49 states, all 27 natural revolts)** |
@@ -94,7 +94,7 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | PC | handler / mode | effect on the pool |
 |----|----------------|--------------------|
 | `$1507c` | `$15042`, entity **mode `$16`** ("disband — go home") | `food += 2` (`+= 2` again if `order_class == 8`) |
-| `$15e18` | `$15ddc`, entity **mode `$60`** ("register with settlement") | `food += 4` |
+| `$15e18` | `$15ddc`, entity **mode `$60`** (the fisherman delivering his catch: every man in modes `$56`..`$62` is job 4, fisher, 93 of 93 over seven states, `py/job_census.py`, ai.md) | `food += 4` per trip |
 | `$150f2` | `$150c0`, entity **mode `$1a`** (an army takes food from a town: order `$06`) | `slice = food >> (posture-2)`; `food -= slice`; `36(group) += slice` (the army's food); `loyalty_pressure += 16 >> (posture-2)` (the `14(A5)` write, A5 = the lord). 124th, 1 run: 22 → 11, loyalty 0 → 8 |
 | `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` teardown family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. 124th, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven 98th** — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
 | `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.food -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (97th).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
@@ -105,8 +105,8 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | `$42be` | `$3e06` tail, courier/arrow array | a `$51b66` object died and credited a leader: `troops_field += 1` |
 | — | `$d322` per tick | reads both, never writes; totals into `$57fba` |
 
-So a lord's food store fills when men and herds arrive home (`$16`/`$60`) or an
-army drops food (`$3bc0`), and empties when an army takes food (`$1a`), through
+So a lord's food store fills when his fishermen deliver a catch (`$60`), when disbanded men
+arrive home (`$16`) or an army drops food (`$3bc0`), and empties when an army takes food (`$1a`), through
 detached shepherds (`$603e`), and through a slow per-settlement drain
 (`$163b8`, intermittent in mission 1, see §3a). Men are a separate count
 (`troops_field`), which is **strict conservation of soldiers**: nothing
@@ -859,7 +859,7 @@ against a cruel ruler".
 
    pm_leader.food  ($4e514 +6)                       ── SEPARATE LEDGER ──
       +2  mode $16 disband-home ($1507c)          -1  settlement pulse upkeep ($163b8, mode $7c)
-      +4  mode $60 register     ($15e18)          -2  mode $42 shepherds      ($603e)
+      +4  mode $60 fisher's catch ($15e18)        -2  mode $42 shepherds      ($603e)
       +f  army drops food       ($3bc0, order $12) -n army takes food        ($150f2, order $06)
    pm_leader.troops_field  ($4e514 +8)
       +1  kill credit           ($42be)           -1  capture / re-parent     ($2644/$382a)

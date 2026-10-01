@@ -1580,10 +1580,13 @@ What the names changed:
 - `$123c` is the label `shitpiss` (the startup string `_command` parses); the unhandled-exception labels are `fuckup`/`none` at
   `$1378` and mode `$0a` is `fucking_`. The linker's whole source file list is not recoverable (no module names).
 - Modes `$56..$62` are labelled `fish_*`, `$80..$88` `shep_*`, `$4e..$54` `merch_*`: the job state machines of the people
-  the panel calls farmer, merchant, fisher and shepherd (`jobnames` at `$a200`). The documented roles of `$56`, `$5a`,
-  `$5c` and `$60` ("regroup", "proximity gate", "register": `food += 4` on arrival, economy.md) are behaviour read from
-  the code and stay; whether that chain is the **fishermen's catch** is open (three side-2 men sit in each of `$5a`, `$5c`
-  and `$60` on `m1_s0`; their job index and cells were not read).
+  the panel calls farmer, merchant, fisher and shepherd (`jobnames` at `$a200`; a man's job is `7(obj) & $f`, 9 with bit 4
+  set, as the panel routine `$9d6e` reads it). Census over seven snapshots (`py/job_census.py`, live persons only): every man
+  in `$56..$62` is a fisher (93 of 93), every man in `$4e..$54` a merchant (115 of 115), `$80..$88` shepherds,
+  `$0e` farmers (202 of 208), `$8a` leaders; `$10` and `$12` are shared by all jobs. So **`$60`'s `food += 4` is the
+  fisherman's catch**, the lord's regular food income, and the old "regroup" labels of `$56`..`$60` named a fishing trip
+  (ai.md: to the cell `42(A1)`, a gate scan for the catch, home, deliver); the group-order "muster" cell is
+  unrelated to them.
 
 The entity mode names (table `$14bb4`, mode `$xx` is the table offset, so it matches the documented mode numbers):
 
