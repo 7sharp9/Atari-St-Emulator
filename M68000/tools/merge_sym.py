@@ -7,8 +7,8 @@ top). Without --write it only reports:
   EXISTING  the target already names the address differently (the target's name is kept)
   CLASH     two input files name a new address differently (the first file's name is kept)
 Most are synonyms; a real semantic disagreement has to be settled in the code (skill section 3c).
-`addr=name` arguments override both, including existing target names. --write rewrites the
-target sorted by address, six-digit lower-case hex, LF line endings.
+`addr=name` arguments override both, including existing target names. --write keeps the
+target's existing lines and comments (an override renames in place) and appends the new addresses sorted, six-digit lower-case hex.
 """
 import sys
 
@@ -50,8 +50,24 @@ def main(argv):
     have.update(over)
     print('%d new names, %d overrides, %d total' % (len(added), len(over), len(have)))
     if write:
-        body = ['%06x\t%s' % (a, have[a]) for a in sorted(have)]
-        open(target, 'w', encoding='utf-8', newline='\n').write('\n'.join(hdr + body) + '\n')
+        # keep every existing line (the comments carry the proof notes); only an override renames in place,
+        # new addresses are appended sorted
+        raw = open(target, encoding='utf-8', newline='').read()
+        nl = '\r\n' if '\r\n' in raw else '\n'
+        out = []
+        for line in raw.rstrip('\r\n').split(nl):
+            parts = line.split('\t')
+            if len(parts) >= 2 and not line.startswith('#'):
+                try:
+                    a = int(parts[0], 16)
+                except ValueError:
+                    a = None
+                if a in over:
+                    parts[1] = parts[1].replace(parts[1].split()[0], over[a], 1)
+                    line = '\t'.join(parts)
+            out.append(line)
+        out += ['%06x\t%s' % (a, have[a]) for a in sorted(added)]
+        open(target, 'w', encoding='utf-8', newline='').write(nl.join(out) + nl)
 
 
 if __name__ == '__main__':
