@@ -238,6 +238,10 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   from memory: that brief got the object table wrong, and every agent had to correct it.
 - Subagents cannot write `report.md` (the tool refuses). Ask for the report as the final
   message and save it yourself into the agent's directory.
+- Put addresses and symbol names in the BRIEF, not roles: all four PowerMonger 140th-pass area briefs
+  gave a role read off the symbol names ("map and road drawing", "panel builders", "PSG music engine",
+  "shifters", "soldier draw") and every agent found it wrong (terrain build with roads as causeways, panel
+  templates, a Timer A sample player, masked sprite blitters). Write "role unknown: name it from its body".
 - Corpus capture: `tools/capture_hits.py`. `callcap` runs with interrupts masked, so a routine
   that plays a sound waits forever on a flag the interrupt clears (PowerMonger: poke `$2c993`
   to 0 in the state).
