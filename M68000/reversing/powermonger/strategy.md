@@ -208,7 +208,7 @@ typedef struct pm_leader {
 /*14*/  s16  loyalty_pressure;        // >= 600 -> $550e revolt, reset to 300
 /*16*/  u16  herd_throttle;           // $5cde / $60dc
 /*18*/  u16  build_site;              // $5cde: $4f916 offset of the settlement under construction
-/*20*/  u16  herd_op;                 // $5cde: the nearest $57f68 herd op
+/*20*/  u16  herd_op;                 // $5cde: the nearest $57f68 forest op
 /*24*/  u8   goods[8];                // pike, sword, bow, plough, boat, pot, catapult, cannon ($159a4/$16376 index 23 + code/2)
 } pm_leader;                          // sizeof 32
 
@@ -502,7 +502,7 @@ A lord's `+6` (`$4e514`) is his town's **food store** (economy.md §1).
 | `$02` go to | `$3888` | any cell | `$1e` (`$1515c` → `$35f4`) | state 5, march there, go idle |
 | `$04` transfer men | `$1c18` (D0 side, D1 from, D2 to group) | a captain box, with captain-select on | – | `men >> shift` move from one captain's group to the other (`$1b8c` out, `$1b2a` in); static only (mission 1 has one captain) |
 | `$06` take food | `$3154` D3=2 D4=`$1a`; else `$38ce` | own or allied town; else a cell | `$1a` (`$150c0`); `$72` (`$1605a`) | from a town: `food >> shift` into `36(group)`, `loyalty_pressure += 16 >> shift`; on a cell: pick up a food pile (`$2c`) there |
-| `$08` get men | `$3154` D3=3 D4=`$1c`, else `$3248` | an own settlement, else an own man standing on the cell (byte6 0) | `$1c` (`$15122`: quota `lord.troops_field >> shift` into `46(lead)`, `$34f2` sends the town's men to the cell), `$6c` for a lone man | the town's men walk to the group and, read from `$15282` (not seen live), join it (`$1b2a`), cost the lord one `troops_field` each and trigger `$1d70`'s re-forming of the ranks (ai.md); the executor's original name is `get_men` ("Original names") |
+| `$08` get men | `$3154` D3=3 D4=`$1c`, else `$3248` | an own settlement, else an own man standing on the cell (byte6 0) | `$1c` (`$15122`: quota `lord.troops_field >> shift` into `46(lead)`, `$34f2` sends the town's men to the cell), `$6c` for a lone man | the town's able men step to the lord's cell, where the lead waits, and the first `quota` of them join (`$1b2a`), cost the lord one `troops_field` each and trigger `$1d70`'s re-forming of the ranks; later arrivals are refused (proven live, below; ai.md `$2a`); the executor's original name is `get_men` ("Original names") |
 | `$0c` march & engage | `$4a7a` | any cell holding a tracked entity (a settlement, tested; not empty ground, which never commits — "Diplomacy") | – | "How a land ends" |
 | `$0e` set men to work | `$3154` D3=9 D4=`$22` | own town | `$22` (`$151a8` → `$5fa0`) | the town lord's work order `$5cde` goes to every man; `$5cde` refuses a lord without a capital (kind 7) |
 | `$10` take equipment | `$3154` D3=`$a` D4=`$6e`; else `$6128` | own or allied town; else a pile / object byte6 `$0a`, `$18`+`$10` | `$6e` (`$15740` → `$61f8`) | `goods >> shift` from the lord, handed to the men (`$6352`/`$638c`) |
@@ -540,8 +540,30 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
   non-zero) it ran `$15122` once and left the lead in mode `$28` (a 50-tick wait, then `$35f4` frees the slot),
   group state 3, 22 `$15264` entries in 6M steps. `callcap $34f2` (the summons `$15122` makes) on lord 0's town
   sends 4 men (object records 2, 3, 5, 7: target cell `20/22`, mode byte `31 := $10`, `30 := $14`) and on the
-  player's own town none: its house chain holds no inhabitants in mission 1, so a join could not be observed
+  player's own town none: its house chain holds no inhabitants in mission 1, so no join happens there
   (`$15282`, `$1b2a`, `$1d70` 0 hits). `scratchpad/pm133/o08*/cmds`, `cc34f2*.json`.
+- **A man joins live (134th, `py/join08_run.sh`).** `pm123/win/m1_ready.snap` is mission 1 after the natural
+  conquest: lord 0's town is side 1 with `troops_field` 5 and 5 able side-1 men in its houses (the corpses
+  carry side byte 254 and are skipped), the player's lead idles at (28,47). Armed icon `(275,162)`, click on
+  the town on the minimap `(22,51)`: `$6bea` and `$3154` 1 hit each, `$57fd4` back to 0, `$3248` 0 (the town path), the
+  lead reaches the cell and `$15122` fires 6,604,819 steps after the click. `$34f2` (1 hit) gives all 5 men
+  mode `$3c` → `$10`/`$14`, `46(man)` = the lead's offset `$41a`; the men reach mode `$2a` (`$15282`, 5 first-tick tests)
+  between 0.4M and 1.9M steps later. The quota `46(lead) = troops_field >> (posture - 2)` is decremented by
+  every arrival *before* `$1b2a`, so the first `quota` men join and the rest are refused (their `46(lead)` goes
+  negative), wait out the 50-tick dwell in `$2a` and fall into `$3c08` (back to civilian modes). Measured, one run per row
+  (all four rerun-identical; the posture and the `troops_field` 7 row are pokes, `w 516fc 000p0000` and `w 4e51c 00070000`):
+
+  | posture | `troops_field` | quota set | `$1501a` arrivals | `$1b2a` / `$1d70` hits | group men | `troops_field` after |
+  |---|---|---|---|---|---|---|
+  | 3 neutral | 5 | 2 | 5 | 2 / 2 | 26 → 28 | 3 |
+  | 2 aggressive | 5 | 5 | 5 | 5 / 5 | 26 → 31 | 0 |
+  | 4 passive | 5 | 1 | 5 | 1 / 1 | 26 → 27 | 4 |
+  | 3 neutral | 7 (poke) | 3 | 5 | 3 / 3 | 26 → 29 | 4 |
+
+  A joined man is pushed at the head of the roster (`-36`) with flag bit 6 set and `28(man)` = the lead; `$1d70` gives him mode
+  `$08` → `$06` → `$68` (idle in the group). The lead stays in `$28` for the 50 `$15264` ticks (about 200k steps each, ten
+  million in all), then `$35f4` frees the slot and the group goes from state 3 to 6. `py/townmen.py`, `scratchpad/pm134/join/`.
+  Not run: `$1b2a`'s rule for a man of another side (read from the code: he joins only when his home settlement's owner is the lead's side).
 - `$20` on lord 0's town, 25M steps: men 0, the captain inside (22,45) with side byte 2. Lord 0
   then defected to side 3 (loyalty reset to 300); the 25M control keeps him on side 2 at 608. The
   spy idles in the town in mode `$7e`, which runs the settlement heartbeat with no `$57fd0` gate;
@@ -830,20 +852,22 @@ record into a 160-tick corpse (`byte5` negated, category `$c`).
 
 ### 5. Settlement capture / regroup — `$1d70`
 
-The get-men modes (`$28`/`$2a`, `ai.md`; order `$08`) are not a siege: `$28` waits 50 ticks and `$2a`, read from
-`$15282`, moves one recruit into the group, counts down the lead's quota and calls **`$1d70`** to re-form
-the ranks (settlement ownership is transferred elsewhere — `$25d6`/`$2644`, `economy.md`).
+The get-men modes (`$28`/`$2a`, `ai.md`; order `$08`) are not a siege: `$28` waits 50 ticks and `$2a` (`$15282`)
+moves one recruit into the group, counts down the lead's quota and calls **`$1d70`** (`_rerank`) to re-form
+the ranks (observed live, "What each order does"; settlement ownership is transferred elsewhere — `$25d6`/`$2644`, `economy.md`).
 
-**`$1d70` proven (99th, via `$3c08`'s bit-4 teardown — `ai.md`):** it is a
-**route-string expander**, not the ownership writer. It picks a terrain route
+**`$1d70` proven (99th, via `$3c08`'s bit-4 teardown — `ai.md`):** it is the
+**rank former** (`_rerank`), not the ownership writer. It picks a rank-shape
 string from the `'C'`(`$43`)-delimited table at `$1e9e` (indexed by the highest
 set bit of `word[grouprec−24]`), then for every roster member (chain via
-`word[+26]`) does a two-way scan of that string — a 1-D slice of terrain codes,
-`'P'`/`'S'`/`'B'` passable, `$ba` blocked — for the nearest cell matching the
-member's preferred terrain (`word[$1e8c + 44(member)]`), marks it taken so the
+`word[+26]`) does a two-way scan of that string — a row layout of weapon-class
+letters, `'P'` pike, `'S'` sword, `'B'` bow, `$ba` unusable — for the nearest slot matching the
+member's weapon class (`word[$1e8c + 44(member)]`; ai.md `$1d70`), marks it taken so the
 next member picks a different one, and writes the member a step vector
 (`20/22 := (dx,dy) << 6`), mode `$08`, `dwell 0`, `category 0`. Net effect: the
-group is dispersed / sent home along a terrain-following path.
+roster is re-ranked, each man stepping to his preferred-terrain slot along the route (the developers' name is `_rerank`); a
+member then settles in mode `$06` → `$68`, idle in the group (live on a join, "What each order does"). The earlier
+"dispersed / sent home" reading came from the teardown call sites, where the same steps run before the men are released.
 
 ### Measured — the re-armed mission-1 fight (73rd pass)
 
@@ -865,7 +889,7 @@ with a single poke; the counts that overlap match.)
 | — ROUT (`$560a`) | **10** | `$30fe` → `2` every time (`group.field_60 == 4`) |
 | `$5bd2` wear removal | **0** | `anim_wear` never crossed `$3c` in 276 ticks |
 | `$57f0` spawn projectile | 3 | |
-| `$1d70` group route-expand | **15** | fires on capture *and* regroup; the route/disperse step, not the ownership write (99th) |
+| `$1d70` group route-expand (`_rerank`) | **15** | fires whenever a roster changes (a join `$15282`, an unlink `$1b8c`, a teardown `$37c2`); the re-rank step, not the ownership write (99th, 134th) |
 | `$4bc8` contact reconcile | 1 | one nation-pair peace break |
 | `$5c80` upkeep | 2136 | ~8 entities/tick |
 
@@ -1539,7 +1563,7 @@ are limitations rather than choices:
 
 6. **Rout, not attrition, decides the AI's fights — and rout is pinned.** The AI
    attacks at posture 4, which forces every morale-kill into a rout, so its
-   field combat almost never kills (the player chooses: aggressive kills); territory changes hands by **capture** (`$1d70`) while
+   field combat almost never kills (the player chooses: aggressive kills); territory changes hands by **conquest** (`$539a` → `$550e`, economy.md §3) while
    armies just get scattered and re-form. A modern version would let the AI
    choose its posture from the situation so that its fights have consequences.
 
@@ -1579,6 +1603,34 @@ What the names changed:
   one-instruction stubs (`rts`), and nothing calls them.
 - `$123c` is the label `shitpiss` (the startup string `_command` parses); the unhandled-exception labels are `fuckup`/`none` at
   `$1378` and mode `$0a` is `fucking_`. The linker's whole source file list is not recoverable (no module names).
+- **`$4d252` is the tree array, not animals** (134th): the labels are `_trees` (`$4d252`), `_forests` (`$57f68`), `_birds` (`$4c5f4`),
+  `_do_fore...` (`$4342`), `at_fores...` (mode `$44`), `at_works` (`$42`), and the census agrees (203 of 203 live entries on byte6 4 tree
+  records, none on byte6 8 animals, `py/tree_census.py`; 10M live steps: 28 `$3e`, 24 `$44`, 25 `$42`/`$60dc` hits, 0 `$5ec6`, 3 trees
+  felled). The gather modes `$3e..$46`/`$6a` are run by men of every job, not shepherds (shepherds are `$80..$88`); economy.md §2.
+- `$1d70` is `_rerank`: it re-forms a group's ranks on every join and roster change (live, "What each order does"), not a
+  "send everyone home" step.
+- **The farmer cycle is modes `$0c`/`$0e`/`$16`/`$18`/`$24`** (labels `start_fl...`, `in_fligh...`, `at_farme...`, `at_farme...`,
+  `farmer_f...`; 134th audit): `init_far` → walk `$10` → `$18` at the field cell (`42/43`) → `$0c` loads the `farm` entry of the
+  spline table `$168ee` (`_flights`: `fp1..fp3`, `farm` at cursor `$50`, `pots` at `$76`, `eyes`) → `$0e` walks it (terminator `$7d26`
+  = mode `$24`, walk home) → `$16` at home. Census: 275 of 281 live `$0e` men are farmers (11 snapshots); live from
+  `m1_s0`, 40M steps: `$15042` 10, `$1507c` (the `food += 2`) 10, `$150b0` 11, `$14e56` 11, `$151c2` 11. So `$0e` is not a
+  "patrol", `$18` not a "neutral garrison" and `$16` not a "disband"; `$2984` (`_set_peo...`) builds the village population, one man
+  per population slot with a random job (`init_she/fis/far/mer`; a lord of kind > 3 gets captains), not garrisons (static).
+  The farmer job is bit 0 of byte 7 (`$3c08` maps bits 0..3 to `$16`/`$4e`/`$5e`/`$80`), so the 126th's "one site sets flag
+  bit 0" is `init_far` at `$2cd0`.
+- **Mode `$68` is camp rest, not a marching column** (`rest_in_...`, `a_sitting`, `at_camp`, `in_camp`): 118 of 123 live `$68` men are
+  byte6 14, the sitting category; marching men are `$06`/`$08`. `$35f4` (`_make_ca...`) is read to set group state 6 and ring the
+  men around the lead in mode `$10`, prev `$20`, which settles into `$68` (static, one positive live match on `m1_ready`: the
+  state-6 group's lead is `$68` at its camp marker). `$7c` is the winter state of a parked civilian (`in_winte...`), `$7e` a soldier
+  staying at home, `$8a` a captain resting at his town (29 of 29 job 9).
+- **Byte 33 is a carried item code** (`2 * (slot + 1)` for a boat or tool: `$0a` Boat, 8 Plough, 12 Pot ...; modes `$02` and `$8c`
+  are 71 of 71 and 17 of 17 with bit 5 set and 33 = `$0a`: `boating`, not "hold position") and **byte 45 is health** (the captain
+  panel prints `(45 >> 4) & 7` through `healthnames` at `$a2dc`, "Very Sickly" ... "Dead", read from the code and the string table,
+  `$5c80` is `_add_str...`; the docs' "strength" and "morale" for byte 45 are the first reading).
+- **`$3f86c` is `_alts`, the altitude plane**, not a "control byte" or influence field: `$ffa6` (`_fill_al...`) accumulates a random
+  walk into it, `$10410` (`_smooth_`) averages neighbours, `$10458` lays the rivers; graphics.md already reads it as the height
+  source (static, no live count). Likewise `$127e6` is the sound-event dispatcher (`_do_soun...`), `$178ae` the HUD group bars (food
+  `112`, men `52`, the lead's health `45`; `callcap` 138 bytes written) and `$17878` the compass (51 bytes), not "render setup A/B".
 - Modes `$56..$62` are labelled `fish_*`, `$80..$88` `shep_*`, `$4e..$54` `merch_*`: the job state machines of the people
   the panel calls farmer, merchant, fisher and shepherd (`jobnames` at `$a200`; a man's job is `7(obj) & $f`, 9 with bit 4
   set, as the panel routine `$9d6e` reads it). Census over seven snapshots (`py/job_census.py`, live persons only): every man

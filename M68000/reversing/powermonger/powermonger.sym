@@ -232,18 +232,18 @@
 # pm_leader ($4e514, stride 32): +0 side, +2 chain_head->g_settlement_table, +4 cell, +6 troops_reserve,
 #   +8 troops_field, +12 gather_kind, +14 loyalty_pressure (>=600 -> $550e defection), +16 herd_throttle,
 #   +20 shepherd_obj, +22 nearest_herd, +24..31 goods[8] = Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon counts
-0004d252	g_herd_array           # wildlife/livestock records, stride 12, live length $4e512, cap 400. +2 shepherd obj, +6 cat $4, +7 breed $e-$11 / $0d claimed/consumed, +10 packed cell = liveness
-0004e512	g_herd_count           # live byte-length of g_herd_array (init $c, += $c per animal)
-00057f68	g_herd_ops             # herding operations, stride 8, <=10 (ends at $57fb8). +0 target cell, +4 -> g_herd_array, +6 -> g_herd_markers
-0004c5f4	g_herd_markers         # moving on-screen herd-drive markers, stride 22, <=80 (ends at $4ccd4). +15 signed progress, +20 chain link. COSMETIC ONLY
-00004342	pm_herd_service        # per-tick (from $3e06): animate herd markers toward towns; at arrival ($44c6) just sets breed bit7 + unlinks the marker sprite. NO economic effect. disassembled (scratchpad/pm96/disasm/herd_4342.txt), leaves $164bc/$163ea/$16778 proven + $16808 transcribed; NOT differentially tested -- no-op in every capture incl. the 97th's pm97_map0 (all bit7 animals have shepherd_obj==0 -> claim path dead; all markers have byte15==0 -> animate path dead), needs a synthesised corpus (pm97_map0 = the anchor) -> own pass
-00004672	pm_world_features_seed # world-build: scatter 10 clusters of animals + herd markers over buildable cells
-00004788	pm_seed_animal         # place one g_herd_array entry on a buildable land cell; link it into a g_herd_ops entry
-00005ec6	pm_shepherd_assign     # bind a unit to an animal, set leader.gather_kind from $3f86c control byte + animal flags, -> shepherd FSM mode $3e
-000155ac	h_mode3e_findanimal    # shepherd: find a live animal near the lord's herd cell -> target, mode $10, prev $44
-000156be	h_mode44_collect       # shepherd arrives: 4-tick countdown then animal.breed_state := $0d (consumed); head to deposit, prev $42
-00015736	h_mode42_deliver       # shepherd delivery: -> $600a
-0000600a	pm_deliver_dispatch    # dispatch on leader.gather_kind ($6062 table); every non-idle case -> $60dc
+0004d252	g_trees               # tree array (`_trees`), stride 12, live length $4e512, cap 400. +2 worker obj (nothing natural sets it), +6 cat $4 (the byte6-4 render category), +7 tree_state $e-$11 / $0d felled, +8 next tree of the forest, +10 packed cell = liveness. 203/203 on byte6 4 records (py/tree_census.py)
+0004e512	g_tree_count          # live byte-length of g_trees (init $c, += $c per tree)
+00057f68	g_forests             # forest operations (`_forests`), stride 8, <=10 (ends at $57fb8). +0 target cell, +4 -> g_trees (first tree), +6 -> g_birds
+0004c5f4	g_birds               # forest markers (`_birds`), stride 22, <=80 (ends at $4ccd4). +15 signed progress, +20 chain link. COSMETIC ONLY (what they show on screen is not established)
+00004342	pm_forest_service      # `_do_fore...`, per-tick (from $3e06): animate the forest markers; at arrival ($44c6) just sets tree_state bit7 + unlinks the marker sprite. NO economic effect. Proven 8/9 branches (113th, ai.md); no-op in every natural capture
+00004672	pm_world_features_seed # `_setup_f...`: world-build: scatter 10 forests (clusters of trees) + markers over buildable cells
+00004788	pm_seed_tree           # `place_tr...`: place one g_trees entry on a buildable land cell; link it into a g_forests entry
+00005ec6	pm_work_assign         # tail of $5cde: hand the lord's work (mode, deposit object, start value) to every living non-leader man of his settlements; forest op -> 20(lord)
+000155ac	h_mode3e_find_tree     # `head_for...`: first unfelled tree of the lord's forest chain (skipping 14(man)&3) -> target, mode $10, prev $44
+000156be	h_mode44_fell          # `at_fores...`: 4-tick countdown then tree_state := $0d (felled); head to the deposit object, prev $42
+00015736	h_mode42_deliver       # `at_works`: arrival at the deposit object -> $600a
+0000600a	pm_deliver_dispatch    # dispatch on leader.gather_kind ($6062 table: 2/6/8/a/e fell trees ($3e), 4 workshop loop ($40), c field path ($0c)); every non-idle case -> $60dc; non-leader men cost the lord 2 food
 000060dc	pm_deliver_goods       # THE payoff: throttled by leader+16 (reload $580a6[side].word8+4, +$2000 if kind>=$e); leader.goods[(kind>>1)-1] += 1 (cap $ff)
 000159de	pm_porter_pickup       # r = $57fec%6; src_leader.goods[r] -= 1; stamp code (r+1)*2 onto porter byte 44 (r<3) / byte 33
 000159a4	pm_porter_dropoff      # read carried code off byte 33/44; dst_leader.goods[(code>>1)-1] += 1 (cap $ff); clear the byte
@@ -261,7 +261,7 @@
 00016848	pm_side_reconcile      # 96th: settlement.owner (5(A3), A3=$4f916+34(A1)) vs marker.side (5(A1)): equal -> skip; else btst#7 clear + btst#4 clear -> 5(A1):=owner (adopt); btst#4 set -> jsr $5c2c. Then if 24(A1)!=0 && 24(A1)==0(A1): $57ff4 := 24(A1). Tail jsr $5c80. Also the mode-$16 ($15042) prologue call. PROVEN in the 96th mode-$7c test ($5c2c arm asserted off)
 000163b8	pm_settlement_upkeep   # RIDER 3b: PROVEN vs real 68k (96th synthesised 85/85, 97th natural 99/99). settlement.leader.troops_reserve -= 1, floored at 0 (settlement = $4f916+34(A1), leader = $4e514 + word[settl+14]). movem saves/restores A0 only. Per-settlement manpower drain / desertion -- fires via mode $7c, i.e. in mission 1 only during the intermittent $57fd0==0 phases ($1abaa rotation)
 0000550e	pm_revolt              # loyalty_pressure >= 600: lord + all its settlements defect to side (marker.field8 % 4)+1; reset loyalty to $12c (300). ASSERTED OFF in the mode-$7c proof (loyalty kept < 600); reached only from mode $7c. 97th: in pm97_map0 both AI lords climbed 300 -> 316/318 in 80M steps (field*4=40 > reserve=0 -> +2/pulse), so 600 is within reach of a long game when $57fd0 rotation favours $7c
-00005cde	pm_settlement_herdop   # settlement herd-op assessment (from mode $7c, field*4<reserve && (anim&3)!=3): walks the nation's settlement chain for the capital, scans $57f68 herd ops + the $3f86c control byte, may allocate a $4f916 record ($51536 += $12) + $16808. Large; ASSERTED OFF in the 96th mode-$7c proof, on the deferred list with $4342
+00005cde	pm_settlement_workorder # `_set_tow...`: the lord's work order (from mode $7c, field*4<food && (anim&3)!=3, and from order $0e via $5fa0): walks the nation's settlement chain for the capital, scans $57f68 forest ops + the $3f86c control byte, may allocate a $4f916 record ($51536 += $12) + $16808, then $5ec6 stamps the men. Proven 768/768 (diff_5cde.py)
 00003bc0	pm_group_return_men    # group teardown: leader.troops_reserve += group.force >> discipline
 000034f2	pm_rally_garrisons     # order every garrison in a nation's settlement chain to march to a cell (mode $10, prev $14)
 00002984	pm_spawn_garrisons     # world-build: allocate a $51b66 marker per settlement (guard $57f66<$5460), owner_leader.troops_field += 1, seed morale

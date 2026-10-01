@@ -12,8 +12,8 @@ noted) driven live through the game's own UI:
 
 | document | covers | proof |
 |---|---|---|
-| [`ai.md`](ai.md) | the entity/commander decision loop: the `$14b62` per-tick iterator, the 75-entry mode table, the 50-byte object record, spatial buckets, target selection (`$4f68`), the regroup/dissolve/herd-servicer dispatch, and the revolt chain `$550e`→`$5c2c`→`$25d6` | differential tests vs the real 68000: entity FSM core **675/1335/413/85/99** tracked bytes over 154 states; regroup `$3c08` **71/71** (22 states) + its group-teardown subtree **1847/1847** (13 states); contact reconcile `$4bc8` **51/51** + **20/20**; dying-entity `$1623c` **275/275** (23 states); group dissolve `$2776` **4119/4119** (28 states); lord's work order `$5cde` **768/768** + **85/85** returns (47 states); the revolt chain **1778/1778** over 49 states — all 27 natural `$550e` calls on 4 lands; conquest target pick `$4f68` **1804/1804** (192 states, 170 natural) |
-| [`economy.md`](economy.md) | the goods ledger (herding → invention → army-supply upgrades), the separate food/manpower ledger and every writer of it, the settlement record + world-build, the settlement heartbeat and the loyalty/revolt accumulator, weapon-grade "invention" | shares `ai.md`'s FSM and revolt-chain proofs; settlement heartbeat `$157e6` **99/99** natural (27 states, 12 branch families) + **85/85** synthesised; every `food`/`troops_field` writer enumerated from a ~1B-step watch and cross-checked against the player's own order paths |
+| [`ai.md`](ai.md) | the entity/commander decision loop: the `$14b62` per-tick iterator, the 75-entry mode table, the 50-byte object record, spatial buckets, target selection (`$4f68`), the regroup/dissolve/forest-animator dispatch, and the revolt chain `$550e`→`$5c2c`→`$25d6` | differential tests vs the real 68000: entity FSM core **675/1335/413/85/99** tracked bytes over 154 states; regroup `$3c08` **71/71** (22 states) + its group-teardown subtree **1847/1847** (13 states); contact reconcile `$4bc8` **51/51** + **20/20**; dying-entity `$1623c` **275/275** (23 states); group dissolve `$2776` **4119/4119** (28 states); lord's work order `$5cde` **768/768** + **85/85** returns (47 states); the revolt chain **1778/1778** over 49 states — all 27 natural `$550e` calls on 4 lands; conquest target pick `$4f68` **1804/1804** (192 states, 170 natural) |
+| [`economy.md`](economy.md) | the goods ledger (felling trees → invention → army-supply upgrades), the separate food/manpower ledger and every writer of it, the settlement record + world-build, the settlement heartbeat and the loyalty/revolt accumulator, weapon-grade "invention" | shares `ai.md`'s FSM and revolt-chain proofs; settlement heartbeat `$157e6` **99/99** natural (27 states, 12 branch families) + **85/85** synthesised; every `food`/`troops_field` writer enumerated from a ~1B-step watch and cross-checked against the player's own order paths |
 | [`strategy.md`](strategy.md) | the sim tick + measured cadence, the order executor pipeline (`$6522` decide → `$58016` command buffer → `$6a3a` execute → `$4b80` stamp), force accounting, the 195-land campaign, diplomacy, combat, RNG/determinism, how a land ends | driven live through the real UI and the emulator's REPL: mission 1 won and lost both ways (retire + natural defeat), every player order but `$04` and a real `$0e` exercised at least once, diplomacy's envoy/tribute/break traced end to end, and 4 lands' natural `$6522`/`$661a` decisions captured over 200M steps each and matched against the disassembly |
 | [`graphics.md`](graphics.md) | asset formats, the software heightmap rasteriser (projection, DDA span walker, dither), all 4 yaw quadrants, the 4 sprite sheets (men, structures, buildings/trees), camera control, zoom, seasons | frame-pixel scoring against the real emulator's own composited buffer: **100.00%** match on 27 captures across every drawn category; the projection reproduces the game's own corner buffer byte-exact (81/81 vertices); the rasteriser maths (`$ef62`/`$e420`) Proven vs the real 68000 at the instruction level |
 
@@ -57,12 +57,12 @@ against every session's changes.
   taking food angers a town, giving food or goods calms it. A town with at most 4 food per man in
   the field grows unrest. The posture sets how much an order moves: aggressive all, neutral half,
   passive a quarter. (E 1, E 6, S "The player's commands")
-- **Goods are a separate ledger.** Herding animals home credits one of eight item counters (pike,
+- **Goods are a separate ledger.** Men felling trees and carrying them to the workshop credit one of eight item counters (pike,
   sword, bow, plough, boat, pot, catapult, cannon); porters move goods between a nation's lords;
   "invention" is supply: a unit's weapon improves only when a better item reaches its lord and
   is handed out. There is no research timer. (E 2a, E 2b, E 2c, E 4)
 - **Combat is a morale grind.** Units in contact lock into melee; each tick the attacker takes 1..4
-  (by weapon) off the target's morale, which is its hit points. At zero the loser is killed or
+  (by weapon) off the target's health (byte 45; the captain panel reads it as "Very Sickly" ... "Dead", earlier passes called it morale, 134th audit, S "Original names"), which is its hit points. At zero the loser is killed or
   routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
   group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
   A "Natural runs on later lands")
@@ -75,7 +75,7 @@ against every session's changes.
   effectively arbitrary side. The park write is pinned (`$015052`, inside entity mode `$16`, gated
   on the global `$57fd0` season LCG) and **it is not something the player triggers**: `$3c08` only
   sends a record into mode `$16` when its flags byte has bit 0 set, and the one place in the game
-  that sets that bit is a garrison/neutral-village world-build placement, not any order. A player's
+  that sets that bit is the world-build creation of a farmer (`init_far`, the village population), not any order. A player's
   own dismissed or deserting men default to mode `$7e` instead (the "no flags set" case), which runs
   the same heartbeat body but never gets its own dwell reset — traced end to end for one starvation
   deserter, 0/0. A spy (order `$20`) also lands directly in mode `$7e` and — like any `$7e`
@@ -83,7 +83,7 @@ against every session's changes.
   sees the `$ff9d → $ff9c` edge depends on whatever stale dwell that pooled slot inherited, not on
   the spy action itself; an earlier pass's "the spy run revolted lord 0" is therefore read as
   incidental slot reuse, not a designed trigger. So revolt is a **periodic self-cycle of a
-  settlement's own garrison marker** (`$7c` ⇄ `$16` on `$57fd0`'s ~110M-step rotation), running
+  parked farmer's winter state** (`$7c` ⇄ `$16` on `$57fd0`'s ~110M-step rotation; `$7c` is `in_winte...`, S "Original names"), running
   independently of the player — and it does cross 600 unassisted: differential-tested against the
   real 68000 (`diff_revolt.py`, 1778/1778) on four 200M-step no-input land runs, 11 of 27 natural
   `$550e` defections fired from this heartbeat cycle at loyalty 600-608 (the other 16 from a
@@ -472,10 +472,10 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     men at home until the 124th pass) — food fills when disbanded men come home and when fishermen deliver a catch
     (entity modes `$16`/`$60`, +2/+4; the fishermen were identified by the 133rd pass, `strategy.md` "Original names") and empties when an army takes food
     (mode `$1a`); nothing grew it passively in 400M traced
-    steps. Food is **sheep herded to towns**: the `$4d252` herd array, the
-    `$57f68` herding-operation array, the `$4c5f4` moving markers, and the
-    per-tick servicer `$4342` (a child of `$3e06`) that animates the delivery —
-    but the delivery *payoff* was not observed and is pass 2's first target.
+    steps. The goods come from **felled trees**: the `$4d252` tree array, the
+    `$57f68` forest-operation array, the `$4c5f4` markers, and the
+    per-tick animator `$4342` (a child of `$3e06`), with the payoff `$60dc`
+    (economy.md §2; the 75th read these arrays as herded animals, the 134th corrected it).
     "Invention" as the player sees it is object byte 44 (weapon grade): it drives
     melee damage (`min(grade,6)`) and projectile type, is stamped once at unit
     spawn (`6` for leads, `0` for tutorial followers), and **no routine advances
@@ -483,7 +483,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     `$2fc0`). Also flagged: `$163ea` bucket-relink writes landing in the `$4f916`
     region for some dead object slots — needs verification.
 13. The 75th pass closed the **economy** (`economy.md` is now complete). The
-    "livestock payoff" is `+1` to one of `pm_leader.goods[0..7]` (`$4e514` +24) —
+    "gathering payoff" is `+1` to one of `pm_leader.goods[0..7]` (`$4e514` +24) —
     eight per-lord counters, one for each item type (Pike, Sword, Bow, Plough,
     Boat, Pot, Catapult, Cannon), heavily throttled (`$60dc`). They are shown in
     the lord panel (`$9bae`), shuffled between a nation's lords by porter units
@@ -872,7 +872,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     - **Deferred (recorded, not covered):** the movement modes
       `$0e`/`$10`/`$06`/`$08`/`$48`/`$4a`, all combat (`$28`/`$2e`/`$32` →
       `$1533c`/`$5590`), the regroup/group modes (`$1a`/`$1c`/`$56`/`$5a`/`$5c`/
-      `$60`), shepherd/porter (`$42`/`$46`/`$52`/`$54`), the dying-entity path
+      `$60`), gatherer/porter (`$42`/`$46`/`$52`/`$54`), the dying-entity path
       `$1623c`, and `$5bd2`. Each needs its own leaf reconstruction
       (`$164bc` DIVU step-toward, `$14262` heading, `$12d56` rotate, the
       `$168ee` patrol spline).
@@ -979,12 +979,12 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       **PASS.** Four negative controls (`$163b8` drain, `±` loyalty, dwell
       reload word) all bite. Determinism re-checked (`detcheck` clean on a poked
       state; two consecutive `callcap` byte-identical).
-    - **Asserted OFF** (`raise` guards it): `$5cde` (settlement herd-op
-      assessment), `$550e` (hunger revolt), `$5c2c` (owner reconcile).
-    - **`$4342`** (the herd-drive servicer) is now disassembled and its
+    - **Asserted OFF** (`raise` guards it): `$5cde` (the lord's work-order
+      choice), `$550e` (hunger revolt), `$5c2c` (owner reconcile).
+    - **`$4342`** (the forest animator) is now disassembled and its
       reconstruction skeleton drafted, but **not differentially tested** — it is
-      a no-op in every natural capture (all `breed`-bit-7 animals have
-      `shepherd_obj == 0`; all `$4c5f4` markers have `progress == 0`) and needs
+      a no-op in every natural capture (all `tree_state`-bit-7 trees have
+      `worker_obj == 0`; all `$4c5f4` markers have `progress == 0`) and needs
       its own synthesised-corpus pass.
     - **Corrections:** economy.md §1's `h_disband` pseudocode had the `$57fd0`
       test inverted (mission 1 *does* take the `food += 2` path);
@@ -1021,8 +1021,8 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       negative controls all bite. Upgrades economy.md §3a / ai.md / SPEC / sym
       from "Proven (synthesised)" to "Proven (natural corpus)".
     - **`$4342` still not testable naturally** — even in `pm97_map0` every
-      `$4c5f4` marker has `byte15 == 0` and every bit-7 animal has
-      `shepherd_obj == 0`, so the claim head (which would set `byte15`) never
+      `$4c5f4` marker has `byte15 == 0` and every bit-7 tree has
+      `worker_obj == 0`, so the claim head (which would set `byte15`) never
       runs. Needs its own synthesised-corpus pass; `pm97_map0` is the anchor.
     - **Still deferred:** `$4342`, `$5cde`, the regroup/group modes, `$1623c`,
       RIDER 3c/3d/3e, Task 1's territory-flip capture.
@@ -1123,7 +1123,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       ≥ 12 states, ≥ 7 families): PASS. `hostile.py`'s 5 negative controls all
       bite; two `callcap 37c2` byte-identical; `detcheck 1M` clean.
     - **Still deferred:** `$4bc8` / `$2776` / the `$5590`-tail `$1b8c` (a
-      different call site), `$4342` herd servicer, `$5cde`, `$1623c`
+      different call site), `$4342` forest animator, `$5cde`, `$1623c`
       dying-entity, mode `$28`/`$2e`.
 
 ## Files
@@ -1145,9 +1145,9 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `dither_triangles.png` | mission 1 terrain: as drawn, by colour byte, by source plane (130th) |
 | `dither_infographic.html` | interactive pixel probe, tile atlas, ramp anatomy, season fade; built by `py/dither_atlas.py` (130th) |
 | `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |
-| `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads; 113th pass: the herd servicer `$4342` differentially tested Proven for 8/9 branches (the arrival/unlink branch stays Corroborated — reproducibly hangs the real emulator under every synthesised poke tried, not yet root-caused) |
+| `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads; 113th pass: the forest animator `$4342` differentially tested Proven for 8/9 branches (the arrival/unlink branch stays Corroborated — reproducibly hangs the real emulator under every synthesised poke tried, not yet root-caused) |
 | `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |
-| `economy.md` | the economy (complete, 74th-75th): the **goods** ledger — `pm_leader.goods[0..7]` (`$4e514` +24), fed by the shepherd FSM (`$5ec6`→modes `$3e`/`$44`/`$42`→`$60dc`), circulated by porters (`$159de`/`$159a4`), spent on unit equipment tiers by the army-supply subsystem (`$6352`/`$638c` = "invention"); the **separate** manpower ledger (`$4e514` +6/+8) and its full flow table incl. the per-settlement upkeep drain (`$163b8`); the per-settlement heartbeat (mode `$7c`, `$157e6`) and the loyalty/defection accumulator (`$4e514` +14 → `$550e`); the `$4f916` settlement records + builders `$2fc0`/`$2984`; world-gen (`$10d1e` / `$ffa6` / `$4592f`); and the characterised-benign `$163ea` write aliasing. 114th pass: no weather system exists anywhere in the game; `g_tileset_sel` (`$57fd0`) is the one real scenery-driving mechanic, rendered and characterised as a partial building-damage / tree-growth gradient, not a clean season swap (`pm114_prop_contact.png` / `pm114_tileset_families.png`) |
+| `economy.md` | the economy (complete, 74th-75th): the **goods** ledger — `pm_leader.goods[0..7]` (`$4e514` +24), fed by the tree-felling gatherer FSM (`$5ec6`→modes `$3e`/`$44`/`$42`→`$60dc`), circulated by porters (`$159de`/`$159a4`), spent on unit equipment tiers by the army-supply subsystem (`$6352`/`$638c` = "invention"); the **separate** manpower ledger (`$4e514` +6/+8) and its full flow table incl. the per-settlement upkeep drain (`$163b8`); the per-settlement heartbeat (mode `$7c`, `$157e6`) and the loyalty/defection accumulator (`$4e514` +14 → `$550e`); the `$4f916` settlement records + builders `$2fc0`/`$2984`; world-gen (`$10d1e` / `$ffa6` / `$4592f`); and the characterised-benign `$163ea` write aliasing. 114th pass: no weather system exists anywhere in the game; `g_tileset_sel` (`$57fd0`) is the one real scenery-driving mechanic, rendered and characterised as a partial building-damage / tree-growth gradient, not a clean season swap (`pm114_prop_contact.png` / `pm114_tileset_families.png`) |
 | `powermonger.sym` | `addr<TAB>name` symbol table for `trace_cfg.py --names` (routines + data tables named across all five docs) |
 | `powermonger_orig.sym` | the original developer symbols (text, data and bss, 8-character names) unpacked from `DATA\SPRITE40.DAT`; `py/s40_symbols.py` regenerates it, `py/s40_orphans.py` lists the unreferenced routine starts (133rd) |
 | `port/` | **iso-renderer port precursor (76th pass).** `port/assets/` = every asset + constant the terrain renderer reads, extracted from a live RAM image (`tools/pm_export.py`), with `manifest.json` provenance. `port/SPEC.md` = the porting contract (coordinate systems, the `$fecc`/`$ff7c` projection with exact constants, the rolling-bitplane dither, sprites, zoom, frame pipeline). `port/godot/` = a Godot 4.x + F# skeleton (F# logic lib, C# node glue, one heightmap mesh). `tools/pm_render_ref.py` rebuilds a frame from `port/assets/` alone. **77th:** the projection now reproduces the game's `$3f364` corner buffer byte-exact and the dither phase is corrected (`colourByte*128 + (topY&15)*8`, rolling); the colour families match the reference, a pixel-exact fill needs the span walker ported (`SPEC.md` §9). |

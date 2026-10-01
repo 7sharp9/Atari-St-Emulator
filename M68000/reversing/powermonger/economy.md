@@ -1,4 +1,4 @@
-# PowerMonger ST — the economy: food, manpower, livestock, settlements, invention
+# PowerMonger ST — the economy: food, manpower, timber gathering, settlements, invention
 
 Reverse-engineered 74th–75th pass, continuing `ai.md` / `strategy.md`. Those two
 files cover the autonomous military layer and confirm it has **no** economic
@@ -17,14 +17,14 @@ no such code path exists. The army-supply *mechanism* (`$61f8`/`$638c`) is
 Corroborated (static + a forced-delivery trace); its dormancy in mission 1 is
 Observed.
 
-**75th-pass summary.** All five pass-2 questions closed. The livestock payoff is
+**75th-pass summary.** All five pass-2 questions closed. The gathering payoff is
 `+1` to one of `pm_leader.goods[0..7]` (§2a) — eight per-lord counters, one for
 each of Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon, shown in the lord panel,
 shuffled between lords by porter units (§2b), and spent to equip and upgrade
 field units (§2c). "Invention" is that upgrade step (`$638c`), not a research
 timer. Men are a **separate** ledger with **no growth term** (§6): conservation
 of soldiers. A lord's `+6` is his food store (124th), drained by a
-per-settlement upkeep (`$163b8`) and filled by herds and returning men. The
+per-settlement upkeep (`$163b8`) and filled by the fishermen's catches and returning men. The
 "periodic settlement update" is entity mode `$7c` (§3a). The `$163ea` write
 aliasing is characterised and benign (§3b).
 
@@ -38,8 +38,8 @@ the entity level by the same `$14b62` FSM that runs everything else:
 | subsystem | where the number lives | how it moves | status |
 |-----------|------------------------|--------------|--------|
 | **food** (a lord's store) and **manpower** (his men in the field) | `pm_leader.food` = `$4e514`+6; `.troops_field` = +8 | food: a fisherman delivering a catch adds 4, a disbanded man arriving home 2; an army takes a posture-scaled slice (order `$06`) or drops one (`$12`, teardown); each settlement pulse eats one (`$163b8`). Men: `troops_field` moves by ±1 as men join, leave or change hands | **Proven (124th: orders `$06`/`$12` move exactly `food >> shift` between `+6` and the army's food `36(group)`, which the captain panel labels "Food")** |
-| **goods** ("livestock", "invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed herd-drive credits `+1` to one counter (`$60dc`), heavily throttled; porter units shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
-| **livestock** (the herds that feed the goods counters) | `$4d252` herd array + `$57f68` herding ops + `$4c5f4` markers | shepherd FSM (modes `$3e`→`$44`→`$42`) drives an animal home, marks it consumed (`breed:=$d`), credits the goods counter; `$4342` only animates the on-screen marker | **traced** |
+| **goods** ("invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed gathering trip credits `+1` to one counter (`$60dc`), heavily throttled; porter units shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
+| **timber gathering** (what feeds the goods counters) | `$4d252` tree array (`_trees`) + `$57f68` forest ops (`_forests`) + `$4c5f4` markers (`_birds`) | the gatherer chain (modes `$3e`→`$44`→`$42`, run by men of every job) walks to an unfelled tree of the lord's nearest forest, fells it (`tree_state := $0d`), carries it to the lord's workshop and credits the goods counter; `$4342` (`_do_forest`) only animates the on-screen markers | **traced; live 134th (below)** |
 | **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes when a lord revolts (`$550e`, §3): the lord and all his settlements change side, then `$5c2c`/`$25d6` turn his garrison men over | **Proven (122nd, `diff_revolt.py` 1778/1778 over 49 states, all 27 natural revolts)** |
 | **weapon grade** ("invention") | `pm_object` byte 44 (items 1–6) / byte 33 (items 7–8) | stamped at spawn (`6` for leads, `0` for tutorial followers); **advanced by the army-supply subsystem** (`$638c`: `if slot < delivered_item: slot := delivered_item`) — no research timer | **traced; observed on later lands (121st): `$63e8` equipped 22 empty slots on land 25 and 14 on land 0 in 200M steps; `$63be` (replacing a lower item) never fired** |
 | **passive population growth** | — | **does not exist** — men are strict conservation-of-soldiers (see §6) | **traced negative** |
@@ -52,7 +52,7 @@ commands"). Over a ~1-billion-instruction watched resume from
 `food` / `troops_field` write came from the fixed set in §6; no counter
 grew a lord's manpower on its own, and **no lord's side byte was written once**.
 The 74th pass's "delivery payoff not observed" is resolved:
-the payoff is a `+1` to a goods counter, and in the tutorial the food-tier herd
+the payoff is a `+1` to a goods counter, and in the tutorial the food-tier gather
 throttle (`$580a6[side].word8 + $2000` ≈ 8200 ticks, ~1 game-hour) is why the
 400M window saw none complete.
 
@@ -76,12 +76,12 @@ player's own town moves `food >> shift` (22 → 11) into the army's `36(group)`
 /* 4*/  u16  cell;             // packed {x:6,y:7}
 /* 6*/  u16  food;             // <<< the lord's food store (124th; was read as troops_reserve)
 /* 8*/  u16  troops_field;     // <<< men currently in an army / garrison
-/*12*/  u16  gather_kind;      // $5cde: {2,4,6,8,$a,$e} herd, $c fallback, 4/$10 build -- the lord's current work order
+/*12*/  u16  gather_kind;      // $5cde: {2,6,8,$a,$e} fell trees, 4 workshop loop, $c field path -- the lord's current work order ($5cde, read by $600a)
 /*14*/  s16  loyalty_pressure; // ramps +2 (field*4 >= food: hunger) / -1 per settlement pulse; +16>>shift when an army takes food, -8 when one drops food or goods; >=600 -> $550e defection, reset 300
 /*16*/  u16  herd_throttle;    // $60dc countdown; $5cde reloads $580a6[side].word8 + 4 (+$2000 if gather_kind >= $e and the reload >= the old value)
 /*18*/  u16  build_site;       // $5cde: $4f916 offset of the settlement being built (0 = none)
-/*20*/  u16  herd_op;          // $5cde: $51b66-relative offset of the nearest $57f68 herd op (written on the herd order)
-/*22*/  u16  nearest_herd;     // $2906: byte offset into $57f68 of the closest herding op ($5cde recomputes it, never reads this)
+/*20*/  u16  herd_op;          // $5cde: $51b66-relative offset of the nearest $57f68 forest op (written on the work order)
+/*22*/  u16  nearest_herd;     // $2906: byte offset into $57f68 of the closest forest op ($5cde recomputes it, never reads this)
 /*24*/  u8   goods[8];         // <<< Pike,Sword,Bow,Plough,Boat,Pot,Catapult,Cannon counts (0..255)
 ```
 
@@ -98,7 +98,7 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | `$150f2` | `$150c0`, entity **mode `$1a`** (an army takes food from a town: order `$06`) | `slice = food >> (posture-2)`; `food -= slice`; `36(group) += slice` (the army's food); `loyalty_pressure += 16 >> (posture-2)` (the `14(A5)` write, A5 = the lord). 124th, 1 run: 22 → 11, loyalty 0 → 8 |
 | `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` teardown family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. 124th, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven 98th** — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
 | `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.food -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (97th).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
-| `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.food -= 2`, floored — besieging/detached shepherds cost the lord (75th) |
+| `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.food -= 2`, floored — a detached gatherer costs the lord (75th) |
 | `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-7-set, bit-6-clear arm). *(**Proven, 99th** — `$37c2` + its `$1d70`/`$1b8c`/`$17a46` leaves differential-tested vs the real 68000, 1847/1847 over 13 states; reached via `$3c08`'s flag-bit-4 teardown sub-path. The inverse `+= 1` on the bit-6-set arm is `$1b8c`'s `$1c04`.)* |
 | `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
 | `$2644` | `$25d6`, from `$5c2c` after a revolt | the garrison man's old leader: `troops_field -= 1`, only when the man led no group (land 60: leader 4, 18 → 17, `scratchpad/pm121/flip/`). *(Proven, 122nd, `diff_revolt.py`.)* |
@@ -107,12 +107,12 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 
 So a lord's food store fills when his fishermen deliver a catch (`$60`), when disbanded men
 arrive home (`$16`) or an army drops food (`$3bc0`), and empties when an army takes food (`$1a`), through
-detached shepherds (`$603e`), and through a slow per-settlement drain
+detached gatherers (`$603e`), and through a slow per-settlement drain
 (`$163b8`, intermittent in mission 1, see §3a). Men are a separate count
 (`troops_field`), which is **strict conservation of soldiers**: nothing
 manufactures a man from nothing (§6). In the tutorial the enemy's two sub-leaders
 (`$4e514[0]`, `[1]`, both side 2) sat with `food` between 0 and `$a6`. In
-mission 1 the enemy's store rises by 4 per herd delivery (28 → 40 in 3M steps,
+mission 1 the enemy's store rises by 4 per fisherman's delivery (28 → 40 in 3M steps,
 56 in 25M, `scratchpad/pm124/ctl25`); an army eats its own food `36(group)` in `$3e06`
 (`$3f6a`: `-= men/8 + 1` every `$580a6[side].word0` ticks, doubled while idle;
 at zero each man deserts with chance 1/8; strategy.md "`$d322` + `$3e06`").
@@ -144,82 +144,97 @@ whenever it is `0` the disbanding unit parks as a mode-`$7c` heartbeat marker
 instead. Mode `$7c` and the whole loyalty/revolt system therefore run in mission
 1 in brief intermittent bursts, not never.
 
-## 2. The livestock / food-gathering system
+## 2. Timber gathering: trees, forests and the goods payoff
 
-PowerMonger's food supply is **sheep and wild animals herded to towns**. Three
-arrays and one per-tick servicer implement it.
+The goods counters are fed by men felling trees and carrying them home; food is a different
+thing (the fishermen, §1). The arrays keep the `herd_*`/`shepherd_*` field names of the first reading
+(`$4d252` as sheep and wild animals) in `tools/pm_fsm_ref.py` and the older proof scripts, but the
+developer symbols (`$4d252` `_trees`, `$57f68` `_forests`, `$4c5f4` `_birds`, `$4342` `_do_fore...`,
+modes `$44` `at_fores...`, `$42` `at_works`) and a live check say trees (strategy.md "Original names"):
 
-### `$4d252` — the herd / wildlife array (stride 12, count in `$4e512`)
+- all 203 live `$4d252` entries of `pm123/win/m1_s0` (154 of 154 in `pm129/env5_12M`) sit on a
+  byte6 == 4 record, the building/tree frame category of graphics.md, and that is the whole byte6 == 4
+  population; none sits on a byte6 == 8 record (the animals, drawn by `$11a86`, a different set:
+  3 in `m1_s0`, 40 in `env5_12M`; `py/tree_census.py`);
+- from land 5 (`pm121/run/k5_s4.snap`, 10M steps, `hits` on the chain): `$3e` (`$155ac`) 28 hits, `$44`
+  (`$156be`) 24, `$42` (`$15736`/`$600a`) 25, `$60dc` 25, **`$5ec6` 0**; the trees in state `$0d` went 2 → 5 while
+  the live `$0e..$11` trees went 100 → 97 (3 felled), and the one goods credit among the 25 `$60dc` calls (lord 8's Plough 2 → 3)
+  is the throttle at work;
+- the men found in modes `$3e/$40/$42/$44/$46/$6a` over every `pm*` snapshot are of every job (fisher, farmer,
+  shepherd, merchant, plus soldiers in `$46`/`$6a`), not shepherds (shepherds are `$80..$88`; `py/tree_census.py --chain`).
+
+Three arrays and one per-tick animator implement it.
+
+### `$4d252` — the tree array (stride 12, count in `$4e512`)
 
 ```c
-typedef struct pm_herd {           // $4d252 .. $4d252 + $4e512, stride 12
+typedef struct pm_tree {           // $4d252 .. $4d252 + $4e512, stride 12
 /* 0*/  u16  _w0;                   // ?? (dead slots hold stale large values -> see "$163ea aliasing")
-/* 2*/  u16  shepherd_obj;          // $51b66 offset of the unit herding this animal (0 = free-roaming)
+/* 2*/  u16  worker_obj;            // $51b66 offset of a unit working this tree (0 = none); the 97th: nothing natural sets it
 /* 4*/  u16  _w4;                   // ??
-/* 6*/  u8   category;              // $4672/$4788 seeder writes $04 for every animal
-/* 7*/  u8   breed_state;           // $0e..$11 = one of four live breeds (rand&3 + $e at spawn);
-                                    //   $0d = claimed/consumed (all animals drifted $0e-$11 -> $0d
-                                    //   over the 400M settle); bit7 = "handled this tick" flag
-/* 8*/  u16  _w8;                   // ??  (worldY?)
-/*10*/  u16  cell;                  // packed {x:6,y:7}; nonzero == a live animal ($b8f4 counts these)
-} pm_herd;                          // sizeof 12
+/* 6*/  u8   category;              // $4672/$4788 seeder writes $04 for every tree (= the byte6 4 render category)
+/* 7*/  u8   tree_state;            // $0e..$11 = one of four tree kinds (rand&3 + $e at spawn);
+                                    //   $0d = felled (set by mode $44, $156d0); bit7 = "handled this tick" flag
+/* 8*/  u16  next_in_forest;        // next tree of the same forest ($155f8 walks it; 0 = the walk restarts at the op's first tree)
+/*10*/  u16  cell;                  // packed {x:6,y:7}; nonzero == a live tree ($b8f4 counts these)
+} pm_tree;                          // sizeof 12
 ```
 
 `$4e512` holds the live byte-length, initialised to `$c` (one reserved slot) by
-`$4672` and grown `+= $c` per animal by `$47fa`. Hard cap `$12c0` → 400 animals.
+`$4672` and grown `+= $c` per tree by `$47fa`. Hard cap `$12c0` → 400 trees.
 
-`$4788` (the seeder, reached from `$4672` at world-build) picks a buildable land
+`$4788` (the tree seeder, `place_tr...`, reached from `$4672` `_setup_f...` at world-build) picks a buildable land
 cell (`$438ee` type byte `>= $1f` on both planes, `$47970` bucket free), writes
 `category := $4`, `breed_state := $e + (rand & 3)`, `cell := packed`, and links
-the animal both ways into a `$57f68` herding-operation entry.
+the tree both ways into a `$57f68` forest-operation entry.
 
-### `$57f68` — herding operations (stride 8, live length in `$57fb8`, ≤10)
+### `$57f68` — forest operations (`_forests`; stride 8, live length in `$57fb8`, ≤10)
 
 ```c
-typedef struct pm_herd_op {         // $57f68 .. $57fb8, stride 8
-/* 0*/  u16  target_cell;           // where the herd is being driven (a settlement cell)
+typedef struct pm_forest_op {         // $57f68 .. $57fb8, stride 8
+/* 0*/  u16  target_cell;           // the settlement cell the forest serves
 /* 2*/  u16  _w2;
-/* 4*/  u16  herd_off;              // -> $4d252 (the animal)
-/* 6*/  u16  marker_off;            // -> $4c5f4 (the moving on-screen herd marker)
-} pm_herd_op;                       // sizeof 8
+/* 4*/  u16  herd_off;              // -> $4d252 (the forest's first tree; `$155ac` reads it as 4(op))
+/* 6*/  u16  marker_off;            // -> $4c5f4 (the on-screen marker chain)
+} pm_forest_op;                       // sizeof 8
 ```
 
-Each leader caches the nearest op in `pm_leader.nearest_herd` (`+22`), computed
+Each leader caches the nearest forest in `pm_leader.nearest_herd` (`+22`), computed
 by `$2906` (`pm_place_nations`-adjacent) at setup and, per its caller, refreshed.
 
-### `$4c5f4` — herd-drive markers (stride 22, ≤80, live length in `$4ccd4`)
+### `$4c5f4` — forest markers (`_birds`; stride 22, ≤80, live length in `$4ccd4`)
 
 Seeded by `$4672` (`$46e8`): `byte5 := 1` (active), `byte6 := $16`, `byte8/9` =
 packed x + `$80`, `byte10` = worldY, `byte15 := 0`, `byte16 := $40`, `word20` =
 link to the previous marker in the chain. `$4342` animates it: `byte15` is a
 signed progress counter that ramps from `$d0` (−48) up toward `$30` while the
-marker walks (via `$164bc`) from the animal's cell to the destination town; when
+marker walks (via `$164bc`) from the tree's cell to the destination cell; when
 it reaches `$30` the delivery completes and the op unlinks.
 
-### `$4342` — the per-tick herding servicer (from `$3e06` / `pm_flag_health`)
+### `$4342` — the per-tick forest animator (`_do_fore...`; from `$3e06` / `pm_flag_health`)
 
 Confirmed once per sim tick in the 74th-pass callgraph (`pm_flag_health ->
 ram_004342  x651` over 651 ticks). Structure:
 
 ```c
-void pm_herd_service(void) {                    // $4342
+void pm_forest_service(void) {                    // $4342
   for (herd_op *op = $57f68; op->target_cell; op++) {   // <= 10 ops
-    pm_herd *h = &$4d252[op->herd_off];
-    if ((h->breed_state & 0x80) && h->category && h->shepherd_obj) {
-      // walk the shepherd object's bucket chain; find the op's $4c5f4 marker;
+    pm_tree *h = &$4d252[op->herd_off];
+    if ((h->tree_state & 0x80) && h->category && h->worker_obj) {
+      // walk the worker object's bucket chain; find the op's $4c5f4 marker;
       // if the marker is idle (byte15 == 0) claim it: byte15 := $d0, snap it to
-      // the animal's cell, spawn its screen record ($16808).
+      // the tree's cell, spawn its screen record ($16808).
       ...
     }
     // then, for each $4c5f4 marker in this op's chain (word20 link):
     for (marker *m = &$4c5f4[op->marker_off]; m; m = &$4c5f4[m->link20]) {
       if (m->byte15 < 0) {                       // ramp-in: -48 -> +48, +1..+2/tick
           m->byte15 = min(0x30, m->byte15 + 1 + slot_index);
-      } else {                                   // moving: step toward the animal
+      } else {                                   // moving: step toward the tree
           if (--m->dwell18 <= 0) {
-              int d2 = 2 * step_toward($164bc, m, animal_cell);
+              int d2 = 2 * step_toward($164bc, m, tree_cell);
               m->byte15 = min(0x30, d2);
-              if (m->byte15 == 0) { h->breed_state |= 0x80; unlink(m); }  // arrived
+              if (m->byte15 == 0) { h->tree_state |= 0x80; unlink(m); }  // arrived
           }
       }
       m->byte14 -= 4;                             // trail/animation decay
@@ -231,26 +246,26 @@ void pm_herd_service(void) {                    // $4342
 
 What `$4342` does **not** contain: any add to `food`, any goods
 counter, any population maths. `$4342` is **only the animation** — it walks the
-`$4c5f4` marker sprite from the animal's cell toward the destination town
+`$4c5f4` marker sprite from the tree's cell toward the destination cell
 (`$164bc` one step per `18(marker)` dwell), and at arrival (`$44c6`: `$164bc`
-returns 0) it does exactly two things — `bset #7, breed_state` of the animal and
+returns 0) it does exactly two things — `bset #7, tree_state` of the tree and
 `jsr $16778` to unlink the marker's screen object. The economic credit is
-elsewhere, in the shepherd unit's own FSM (§2a).
+elsewhere, in the gatherer's own FSM (§2a). What a `$4c5f4` marker is on screen is not established: the label `_birds` suggests flocks over the forests, but that is the label, not a check.
 
-**96th.** Fully disassembled (`scratchpad/pm96/disasm/herd_4342.txt`): the
-marker-CLAIM head (`$437e`..`$4422`, gated on `animal.shepherd_obj != 0` +
+**96th.** Fully disassembled (`scratchpad/pm96/disasm/herd_4342.txt` (file name from the old reading)): the
+marker-CLAIM head (`$437e`..`$4422`, gated on `tree.worker_obj != 0` +
 `$16808` bucket link-at-head) and the animate loop (`$4436`.., `$164bc` step +
 `$163ea` relink, or `$16778` unlink at arrival). All three non-trivial leaves
 (`$164bc` / `$163ea` / `$16778`) are already Proven (93rd/94th) and `$16808` is
 transcribed. But `$4342` is a **no-op in every natural capture** — every
-`breed`-bit-7 animal has `shepherd_obj == 0` (claim path skipped) and every
+`tree_state`-bit-7 tree has `worker_obj == 0` (claim path skipped) and every
 `$4c5f4` marker has `progress (byte15) == 0` (animate loop skipped). The 97th's
-`pm97_map0` (mode `$7c` live, 8 herd ops, 68 markers, ~40 shepherded animals)
+`pm97_map0` (mode `$7c` live, 8 forest ops, 68 markers, ~40 trees with a worker)
 did **not** unblock it — markers still seed `byte15 := 0` and only `$4342`'s own
-claim head writes `byte15 := $d0`, and that head needs a bit-7 animal *with* a
-shepherd, which no natural state reaches. So, like mode `$7c` before the 97th, a
+claim head writes `byte15 := $d0`, and that head needs a bit-7 tree *with* a
+worker, which no natural state reaches. So, like mode `$7c` before the 97th, a
 real differential test needs a synthesised corpus (poke a marker's `byte15` +
-an animal's `shepherd_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains).
+a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains).
 
 **113th, Proven for 8/9 branches** (`tools/pm_fsm_ref.py` `call_4342`,
 `scratchpad/pm113/diff_4342.py`): the CLAIM mechanism is genuinely more
@@ -268,21 +283,29 @@ machinery and the one branch (arrival/unlink) still only Corroborated because
 it reproducibly hangs the real emulator under every synthesised poke tried so
 far.
 
-### 2a. The shepherd FSM and the real delivery payoff (75th pass)
+### 2a. The gatherer FSM and the delivery payoff
 
-The unit that herds an animal runs a four-mode chain. `$5ec6` (`pm_shepherd_assign`)
-kicks it off: it binds the unit to an animal (`20(herd_op)` ← shepherd object),
-gives it a `$16964`-relative patrol path, and — the part that matters — sets
-**`pm_leader.gather_kind` (`$4e514`+12)** to one of `$2/$4/$6/$8/$a/$c/$e` from
-the `$3f86c` terrain-control byte at the lord's cell plus the animal's flags.
-That value picks which of the eight goods the lord's herds currently yield.
+`$5ec6` (the tail of the work-order setup `$5cde`, `_set_tow...`) hands the lord's work to every living
+non-leader man of every settlement in his chain (it skips a man with flag bit 6 or bit 4 set and one
+already in a fisherman's mode `$5c`/`$60`/`$62`): it writes the man's mode `31`, a deposit object `46` and a
+start value `36`, and stores the forest op's offset in the lord's `20`. The kind **`pm_leader.gather_kind` (`$4e514`+12)** is chosen in `$5cde` (ai.md, proven 768/768) from `D1` and the OR of the
+men's flags, and the forest is the nearest `$57f68` op within 20 cells. `$600a` dispatches on that kind (table `$6062`, read from RAM):
+
+| `gather_kind` | what the men run after each delivery | goods counter `(kind>>1)-1` |
+|---|---|---|
+| `$2`, `$6`, `$8`, `$a`, `$e` | `$60dc`, then mode `$3e`: fell the next tree | Pike, Bow, Plough, Boat, Catapult |
+| `$4` | the building loop: count `8(house)` down by `10(house)`, `$60dc` when it reaches 0, then mode `$40` | Sword |
+| `$c` | `$60dc`, then the `$16964`-relative path in `40(man)` and mode `$c` (the field-path walk, §3a) | Pot |
+
+The kinds 4 and `$c` rows are read from the code and were not run live. The tree cycle was observed live (land 5, 10M steps, counts above):
 
 | mode | handler | what it does |
 |------|---------|--------------|
-| `$3e` | `$155ac` | scan `$4d252` for a live animal near the lord's herd cell (`breed_state` in `$0e..$11`); set it as `target`, → mode `$10` (walk), `prev_mode := $44` |
-| `$44` | `$156be` | on arrival: 4-tick countdown (`byte 39`), then `animal.breed_state := $0d` (**consumed**); re-target the deposit object (`46(A1)`), → mode `$6a` body → mode `$46` → mode `$10`, `prev_mode := $42` |
-| `$42` | `$15736` → `$600a` | dispatch on `pm_leader.gather_kind`; every non-idle case calls **`$60dc`** then re-arms the chain (`prev_mode := $3e`/`$40`/`$c`) |
-| `$46` | `$15724` | short dwell (`18(A1)`) then → mode `$10` |
+| `$3e` | `$155ac` | take the lord's forest op (`$51b66 + 20(lord)`, its `4` is the first tree); walk the trees' `next_in_forest` chain (word `+8`), skipping `14(man) & 3` of them so the men of a group pick different trees, to the first tree whose `tree_state != $d` (not felled); no tree left → `$35f4` on his lead's group for a man with flag bit 6 (a group follower), else `$3c08`. Otherwise `36(man) :=` that tree, target := its cell (`+10`), mode `$10` (walk), `prev_mode := $44` |
+| `$44` | `$156be` | on arrival: 4-tick countdown (`byte 39`), then `tree_state := $0d` (**felled**); re-target the deposit object `46(man)`'s cell, dwell 10, mode `$46`, `prev_mode := $42` |
+| `$46` | `$15724` | dwell `18(man)` ticks, then mode `$10` (walk to the deposit object) |
+| `$42` | `$15736` → `$600a` | arrival at the deposit object: mode `$46`, dwell 10; for a man without flag bit 6 the lord's `food -= 2` (floored; at 0, `$3c08` sends him home, §1); then the dispatch above, which calls **`$60dc`** and re-arms the cycle |
+| `$40` | `$15680` | the kind-4 variant: target the house `36(man)` in `$4f916` (`+12` its cell), mode `$10`, `prev_mode := $6a` |
 
 **`$60dc` is the payoff:**
 
@@ -291,18 +314,18 @@ void pm_deliver_goods(pm_leader *L) {           // $60dc, from $600a (mode $42)
     if (--L->herd_throttle /*+16*/ != 0) return;         // one delivery per throttle window
     L->herd_throttle = side_assess(L->side)->word8 + 4;  // $580a6[side].word8 + 4
     int kind = L->gather_kind;                           // +12
-    if (kind >= 0x0e) L->herd_throttle += 0x2000;        // "food"-tier herds are ~4x rarer
+    if (kind >= 0x0e) L->herd_throttle += 0x2000;        // the `$e` tier is ~4x rarer
     int r = (kind >> 1) - 1;                             // 0..6
     if (L->goods[r] /*byte 24+r*/ != 0xff) L->goods[r] += 1;   // <<< the credit
 }
 ```
 
-So a completed herd-drive is worth **exactly +1 to one of `pm_leader.goods[0..7]`**,
+So a completed delivery is worth **exactly +1 to one of `pm_leader.goods[0..7]`**,
 and the throttle (`+16`, reload `$580a6[side].word8 + 4`, `+$2000` for `gather_kind
 ≥ $e`) is why deliveries are so rare in the settled view. In `pm75_big.err` the
 `$6120` credit fired 3 times in the first ~40M instructions; `$4e544` (a lord's
 `+16` throttle) reloads to `~$1fc9`, i.e. ~8100 ticks (~1 game-hour) between
-food deliveries.
+deliveries.
 
 The eight `goods[]` slots map 1:1 to the `$a242` string table used for the unit
 "carrying …" clause, and are read straight back out for the player in the lord /
@@ -381,8 +404,8 @@ before clearing the dead unit's byte 44 — a fallen unit's weapon returns to th
 lord's stockpile. `pm75_big.err` caught this (`$01611a`, 7×).
 
 `$b8f4` is a **statistics collector** for the UI/score screen: it counts live
-projectiles (`$4ccd6`, type `$11`/`$12`) and live animals (`$4d252`,
-`cell != 0`) into a caller buffer. Confirms `pm_herd.cell` is the liveness key.
+projectiles (`$4ccd6`, type `$11`/`$12`) and live trees (`$4d252`,
+`cell != 0`) into a caller buffer. Confirms `pm_tree.cell` is the liveness key.
 
 ## 3. Settlements — `$4f916`
 
@@ -617,7 +640,7 @@ void h_mode7c_settlement(pm_object *M) {           // $157e6
             if (D5 == (short)0xff9c) L->loyalty_pressure += 2;   // <<< only on the
         } else {                                                //     first post-park
             if (D5 == (short)0xff9c) L->loyalty_pressure -= 1;   //     tick (dwell was
-            if ((M->anim /*+14*/ & 3) != 3) settlement_herdop_5cde(L);  // -99 -> -100)
+            if ((M->anim /*+14*/ & 3) != 3) settlement_workorder_5cde(L);  // -99 -> -100)
         }
         if (L->loyalty_pressure >= 0x258) revolt_550e(L, M);     // >= 600
     }
@@ -636,7 +659,7 @@ early-outs. (3) `$16848` itself ends in a `jsr $5c80`, so upkeep runs twice per
 pulse.
 
 Asserted **off** in the proof (`raise` guards each): `$5cde` (settlement
-herd-op assessment — a whole routine), `$550e` (revolt — economy.md §6: never
+work-order assignment — a whole routine), `$550e` (revolt — economy.md §6: never
 observed), `$5c2c` (owner reconcile in `$16848`).
 
 **What sets `dwell := $ff9d` (Proven, 126th pass, live).** The write is
@@ -779,7 +802,7 @@ the **influence / carrying-capacity** field, not a fertility input to a growth
 payoff (there is no growth payoff). It is read by `$5ec6` to pick `gather_kind`,
 by the regroup modes (`$15b94`) for sprite selection, and by the strategy layer
 for territory ownership — not by any manpower or goods maths. `$4672` scatters
-10 clusters of animals (`$4788`) and herd markers across buildable cells.
+10 forests, clusters of trees (`$4788`), and their markers across buildable cells.
 
 `$2984` (task 4, now disassembled) is **world-build settlement-garrison spawn**,
 not a periodic pass: per lord it walks the settlement chain, allocates a `$51b66`
@@ -843,8 +866,8 @@ against a cruel ruler".
 ## Complete picture
 
 ```
-   HERDS ($4d252)                                    ARMIES (groups, $51538)
-      │  shepherd FSM  $3e→$44→$42                       │
+   TREES ($4d252)                                    ARMIES (groups, $51538)
+      │  gatherer FSM  $3e→$44→$42                       │
       ▼                                                  │ group teardown $3c08/$35f4
    pm_leader.goods[0..7]  ($4e514 +24)  ◄───────────────┤ ($3b5a deposit remainder)
       │  ▲                                               │
@@ -859,7 +882,7 @@ against a cruel ruler".
 
    pm_leader.food  ($4e514 +6)                       ── SEPARATE LEDGER ──
       +2  mode $16 disband-home ($1507c)          -1  settlement pulse upkeep ($163b8, mode $7c)
-      +4  mode $60 fisher's catch ($15e18)        -2  mode $42 shepherds      ($603e)
+      +4  mode $60 fisher's catch ($15e18)        -2  mode $42 gatherers      ($603e)
       +f  army drops food       ($3bc0, order $12) -n army takes food        ($150f2, order $06)
    pm_leader.troops_field  ($4e514 +8)
       +1  kill credit           ($42be)           -1  capture / re-parent     ($2644/$382a)
