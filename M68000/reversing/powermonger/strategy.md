@@ -141,7 +141,8 @@ group `k = D7/2`'s word, walked from group 5 down to group 0 (the captain's):
 | `52(A1)`  | +52..+62  | the group's **men** (group `-24`, captain panel "Troops") |
 | `76(A1)`  | +76..+86  | the group **state** (group `0`: `$6` camp, `$9`, `$d` support, ...) |
 | `112(A1)` | +112..+122| the group's **food** (group `36`, captain panel "Food"; eaten by `$3e06`, AI groups seeded `$5fff`) |
-| `136(A1)` | +136..+146| AI sub-state scratch |
+| `136(A1)` | +136..+146| the group's **posture** (group `60`: 2 Aggressive, 3 Neutral, 4 Passive; the second half of the captain panel's "Aggression" line; `$90fe`) |
+| `148(A1)` | +148..+158| the group's **aggression** rank (group `72`: 0 PowerMonger .. 7 Wimp, the first half of that line; `$90de`; group 0 holds `$580a6[side].word12`, 7 in every land seen, the others `rng & word12`) |
 | `256(A1)` | +256..+266| wait-until timestamp, compared to `$2df72` |
 | `268(A1)` | +268..+278| campaign-order id, matched against `$67d0[0]` |
 | `280(A1)` | +280..+290| campaign phase / sub-order |
@@ -1670,6 +1671,34 @@ the grid-walk quadrants `$fbb4`/`$fccc` (reached through the table at `$f986`) a
 helper beside `_pospos`/`_mapline`/`_distanc`: 0 entries in 60M steps from each of two states, and its neighbours were not
 entered in 120M either, so it is probably dead. The image has essentially no dead code; the earlier count of 117 orphans
 came from a walker blind to the dispatch tables.
+
+## The game's own text: names for the fields (139th)
+
+The UI text tables name the fields the panel code reads, so each name is the developers' word for what the byte means (code read at the selector, plus the live check noted). The text sits in `$9000..$b000`; a
+selector returns a string pointer in A5.
+
+| field | selector | the game's names |
+|---|---|---|
+| group state, `76(A3)` = `0(sub)` | `$90ca`, 9-byte entries from `$9497` | 1 Waiting, 2 Get Food, 3 Get Men, 4 Meeting, 5 Going To, 6 In Camp, 7 Go Home, 8 Attack, 9 Invent, 10 Equip, 11 Pickup, 12 Supply, 13 Fighting, 14 Alliance, 15 Trading, 16 Spying (0 blank). Seen in 5 snapshots: 3, 6, 7, 8, 13; 6 is the player's resting group, 3 and 8 the AI's "get men" and "march and engage" |
+| lord kind, byte 1 of the `$4e514` record | `$9c80`, words at `$a128` | 1 Village, 2 Hamlet, 3 Town, 4 City, 5 Capital, 6 Base (the layouts of `economy.md` "Buildings and town layouts": a Village is a single FarmHouse, a Hamlet a single FishHut, a Town 5 buildings, a City 9, the Capital 17 round a Tower, a Base a single Tower, mission 1's own lord) |
+| building kind, byte 7 of the `$4f916` record | `$9ccc`, words at `$a15a` | 0 TownHall .. 12 Mine (`economy.md`) |
+| group posture, `136(A3)` | `$90fe`, from `$9580` | 2 Aggressive, 3 Neutral, 4 Passive (value minus 2) |
+| group aggression, `148(A3)` | `$90de`, from `$9530` | 0 PowerMonger, 1 Bellicose, 2 Domineering, 3 Aggressive, 4 Firm, 5 Quite Firm, 6 Weak, 7 Wimp; the panel shows PowerMonger instead when the flag word `$9218` is set (the panel opens with it set and clears it for any group that is not the side's first) |
+| loyalty line | `$9116` | an unconditional `move.w #3,D0`: the line always reads "trusting" (`$95c1`; `callcap $9116` on `m1_s0` and `k5_s4` returns A5 = `$95c1` both times). The lord's loyalty is never displayed |
+| speed word | `$9d52` | `(byte16 >> 4) & 3`: 0 hardly, 1 slowly, 2 tirelessly, 3 endlessly (a march speed of 30 reads "slowly", 32 "tirelessly") |
+| job | `$9d6e` | `jobnames` `$a200`: 0 soldier, 1 farmer, 2 merchant, 4 fisher, 8 shepherd, 9 leader (bit 4 of byte 7 forces 9) |
+| health | `$912a`, `$9e2c` | `healthnames` `$a2dc`, `(byte45 >> 4) & 7`: Very Sickly, Sickly, Very Weak, Weak, Well, Strong, Very Strong; Dead for a negative owner byte |
+| age class, byte 14 | `$a4ae`, words at `$a508` | `(age - 12) / 20` capped at 4: Tender, Young, Mature, Ripe, Great; byte 14 is the man's age in years (`$2e1e` starts every man at 12 to 43), shown as a number by `$a4d6` |
+| carried item, byte 33 / 44 | `$9da8` | Nothing, a Pike, a Sword, a Bow, a Plough, a Boat, a Pot, a Catapult, a Cannon (`$a242`) |
+| side names | `$9e04`, `$a4ee`, 16 bytes each from `$582f9` | side 1 is the name typed at "What Is Thy Name Oh Lord" ("dave" in `m1_s0`), sides 2 to 4 are Jayne III, Jos XVIII, Harold II (live in `m1_s0` and `k5_s4`); "Philip II", the first of the four stored names, is the default for side 1 (inferred); the multi-player menu lists the four sides as White, Blue, Red, Yellow |
+
+Other panels read the same way: the **house panel** (`$9ea1`: House, Town, People and Kingdom names, Food, Men "who are" a job, Near Forest, Stock), the **person panel** (`$a353`: name, rank and
+kingdom, health, "lives in a <building> with <n>", job, the carried item, age and years old, "obeys <captain>"; the death line `$a50d` "has died at the Tender age of N, whilst faithfully in the service of ..."),
+the mine panel (`$a677`, a Mine's metal "makes the <weapon>s"), the tree panel (`$a827`: A Stump, A Pine, An Oak, An Elm, An Ash, the season, "There are birds in the tree"), the animal panel
+(`$a095`, selector `$9a12`: category 8 and the carcass category `$1c` read "Sheep", any other category "Cow": the animals of `ai.md` "Shepherds, animals and carrier pigeons" are sheep, and the category `$22` that their update loop also accepts is the cow, which nothing creates) and the pigeon panel ("Pigeon Flying to" a name).
+Names of people, houses and towns are made by `$a9ce` (`_getname`) from a syllable table at `$aa5b` (`br ih ea pa rr op sc rv om br it o g fi ...`) keyed by the record offset: the same record always gets the same name.
+The panel text is the place to look first when a field's meaning is in doubt: the 133rd pass's group-state and mode labels, the 134th's "Strength" row and this pass's building kinds all agree with it, and
+it is what retired the "capital (kind 7)" reading.
 
 ## Hidden features audit (130th)
 

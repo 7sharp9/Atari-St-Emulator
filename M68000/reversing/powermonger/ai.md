@@ -1471,7 +1471,7 @@ forward, `$80` 5, `$84` 76, `$86` 20, `$82` 1, plus 16 each of synthetic `$88`, 
 `py/gate_animals.py` **45094/45094 compared values identical over 55 snapshots** (`callcap 3e06`, see below for what is compared; free walk 1073, free turn 820, herded 187, pigeon
 flights 81, pigeon re-steers 5, two natural pigeon arrivals).
 
-**The animals** live in a pool of 40 records of 20 bytes at `$4ccd6..$4cff6`; the word at `$4cff6` is the bytes used. The pool is filled once, by the shepherds' world-build pick (`$2d0e`
+**The animals** (sheep: the panel names category 8 "Sheep"; the 8-character symbol `init_she` is shared by `$2b08`, the shepherd, and `$2d0e`, which by the panel text is presumably `init_sheep`) live in a pool of 40 records of 20 bytes at `$4ccd6..$4cff6`; the word at `$4cff6` is the bytes used. The pool is filled once, by the shepherds' world-build pick (`$2d0e`
 is called from one place, `$2b32`; the count word is only ever added to), no animal is born or freed afterwards, and the count stayed at 720 and 800 bytes over 30 snapshots on two
 lands. They are not the tree array `$4d252` and not projectiles (`$4be00`).
 
@@ -1480,7 +1480,7 @@ typedef struct pm_animal {            // $4ccd6, stride 20, 40 slots
 /* 0*/ u16 bucket_next;               // the $47970 cell chains, offsets from $51b66 (negative: the pool lies below the man table)
 /* 2*/ u16 bucket_prev;
 /* 5*/ u8  owner;                     // the shepherd's side + 4 (> 0 = alive for $15e30 and the statistics routine $b8f4)
-/* 6*/ u8  category;                  // 8; the slaughter (mode $38, 137th) makes it $1c; the loop below also takes $22, which nothing writes
+/* 6*/ u8  category;                  // 8 = Sheep (the game's own panel text, strategy.md "The game's own text"); the slaughter (mode $38) makes it $1c, a carcass; the loop below also takes $22 = Cow, which nothing writes
 /* 7*/ u8  state;                     // $11 free, $12 herded, $10 dead or still (skipped)
 /* 8*/ s16 x;   /*10*/ s16 y;         // world position
 /*12*/ s8  vx;  /*13*/ s8  vy;        // velocity per tick; a herded animal's are the fixed offset from the shepherd (both |= $40)

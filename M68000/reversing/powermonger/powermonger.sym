@@ -339,13 +339,13 @@
 00002776	_remove_	# orig T
 00002906	_setup_w	# orig T
 00002a98	_its_my_	# orig T: the job pick, up to 5 rounds of shepherd 3/32, fisher 16/32, farmer 12/32, give-up 1/32, then merchant; leader -> captain. Proven (py/gate_jobs.py 3310/3310)
-00002b08	init_she	# orig T (init_shepherd): 2..5 animals through $2d0e, mode $80, flag bit 3; refused past 38 animals. Proven (gate_jobs.py)
+00002b08	init_she	# orig T (init_shepherd, presumably): 2..5 sheep through $2d0e, mode $80, flag bit 3; refused past 38 animals. Proven (gate_jobs.py)
 00002b68	init_fis	# orig T: catch marker (cat $18) at the nearest shore cell within 9, mode $5e, flag bit 2; at most 30. Proven (gate_jobs.py)
 00002c5a	init_far	# orig T: the nearest flag-bit-4 cell within 9 becomes the field ($1e planes), mode $10 prev $18, flag bit 0; its row bound tests the CALLER's D1 (stale after a failed fisher arm). Proven (gate_jobs.py)
 00002ce8	init_mer	# orig T: merchant, mode $4e, flag bit 1. Proven (gate_jobs.py)
 00002cf8	init_cap	# orig T: captain at rest, mode $8a. Proven (gate_jobs.py)
 00002d02	init_dum	# orig T
-00002d0e	init_she	# orig T (init_sheep): one animal of the shepherd A1 in the $4ccd6 pool; the A1 == 0 random-cell branch has no caller. Proven (gate_jobs.py)
+00002d0e	init_she	# orig T (shares the symbol init_she with $2b08; presumably init_sheep, the panel calls category 8 a Sheep): one animal of the shepherd A1 in the $4ccd6 pool; the A1 == 0 random-cell branch has no caller. Proven (gate_jobs.py)
 00002e1e	_get_per	# orig T (get_person): allocate the first free man record from slot 1. Proven (gate_pop.py)
 00002eac	_set_tow	# orig T (set_town): a lord of kind D4 and his buildings, placed from the layout stream at $3078 + word[$3078 + 2*kind] ($2fc0 allocates each building); read, not gated (economy.md "Buildings and town layouts")
 00003078	_town_si	# orig T

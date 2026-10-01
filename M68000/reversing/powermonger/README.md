@@ -142,6 +142,7 @@ against every session's changes.
 
 ### Bugs and accidents a new design should drop
 
+- The captain panel's loyalty line is a constant: its selector loads index 3 unconditionally, so it always reads "trusting" whatever the lord's loyalty is. (S "The game's own text")
 - The starting job pick bounds the farmer's search row with a stale register (the cell index the failed fisherman search left behind), so a man whose fisherman draw fails can never become a
   farmer and ends a merchant: 222 of the 281 merchants in eight builds, and every one of 1234 failed farmer searches. (E 5a)
 - The relation bytes are misaddressed three ways: the update reads one byte and writes the next,
