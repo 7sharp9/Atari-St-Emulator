@@ -58,6 +58,11 @@ know they existed.
   compiles with `dotnet build -c Debug M68000.fsproj -o <scratch dir>` and leave its process alone.
 - Emulator changes go behind the regression net in the skill's section 6 (verify, 30M-step
   snapshot compare, build, selftest 0 wrong).
+- Emulator hot path (`M68000/DEVELOPING.md`, "Performance"): a new decoder's `printfn`/`sprintf` goes
+  behind `if Trace.enabled`, per-step constants stay literals, new active patterns are struct
+  `ValueOption`. `selftest` runs the flat bus and does not exercise the MMU RAM fast path, so an
+  MMU change is gated by the 30M snapshot compare plus a game snapshot compare. A speed claim needs
+  an interleaved A/B of two builds: a change that cut allocation 30% (struct `ResolveEa`) was 7% slower.
 - Git: stage named files only, never `git add -A` (ROMs, game disks and cracked archives sit
   untracked in the tree); check `git diff --cached --stat` before committing. No
   `Co-Authored-By` trailers: history was scrubbed of them.

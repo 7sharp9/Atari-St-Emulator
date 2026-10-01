@@ -122,6 +122,61 @@ So `ATARI_NOTRACE=1 ... verify` prints its PASS/FAIL, and a `NOTRACE` REPL still
 answers `r` / `m`. `watch` / `ATARI_TRACE_GEMDOS` already used stderr and are
 unaffected.
 
+## Performance
+
+A 30M-step diskless boot (`snap 30000000`, trace off) takes about 6.8 s on the Intel Xeon W-3223
+Mac, 4.4M steps/s; a real ST executes roughly 1M instructions/s. The same run took 74 s (0.41M
+steps/s) before the work below. Where the cost went, in the order it was removed:
+
+| Cost | Fix | 30M boot |
+|---|---|---|
+| Unoptimized `Debug` build | `M68000.fsproj` optimizes the `Debug` configuration | 74.0 s -> 35.6 s |
+| Trace text built per instruction and discarded under `ATARI_NOTRACE` | `Trace.enabled` gate (see above) | -> 16.4 s |
+| RAM was the last arm of every MMU `match`, with a per-byte `Some` and bank-size recompute | `ramDirect` fast path at the top of `ReadByte/Word/Long`, `WriteByte/Word` | -> 13.4 s |
+| Ungated `printf` of the PC in `AtartSt.Step` | same gate | -> 8.6 s |
+| Five `stepCount % period` tests compiled to 64-bit `div` | periods are `[<Literal>]`s in `Program.fs`'s `StepPeriods` | -> 7.9 s |
+| MOVE fault bookkeeping on every MOVE (`mergeFixup` closure + `Set`, `Some` for `FaultCcr`, `Move` pattern in `TryFastForwardTbdrPoll`) | empty-list short-circuit, `FaultCcr` as a `voption`, bit-mask pre-test | -> 7.1 s |
+| Every active pattern allocated `Some(tuple)` | `[<return: Struct>]`, `ValueSome(struct (...))`; call sites unchanged | -> 6.9 s |
+
+Rules that keep it there:
+
+- A new decoder's `printfn`, and any operand-description `sprintf`, sits behind `if Trace.enabled`.
+- Periods and other per-step constants in `AtartSt.Step` are literals, not instance fields.
+- A new active pattern in `Instructions.fs` is a struct `ValueOption` pattern.
+- `ramDirect` (`MMU.fs`) only covers `memConfigByte` low nibble 5 and `[$8, $100000)`; everything
+  else takes the original dispatch. `selftest` runs the flat test bus and never reaches it, so an
+  MMU change is gated by the 30M snapshot compare and a game snapshot compare, not by `selftest`.
+
+What remains is allocation in the CPU core: the immutable `Cpu` record is copied (104 B) two or
+three times per instruction, about 250 B and several objects per step, and macOS's slow
+thread-local allocation helper makes each one dear. The one remaining fix is a mutable `Cpu`
+(estimated ~15%, not attempted; it needs a per-instruction register snapshot for the group-0
+fault handler and clones for `Preview` and for callers of `st.Cpu`). Tried and rejected:
+
+- Struct `EaResolved` plus a struct-tuple `ResolveEa`: allocation fell from 247 to 173 B/step but
+  the boot got about 7% slower (interleaved A/B, 5 runs each). The nested value tuple is probably
+  too large for the JIT to enregister (an inference, not checked).
+- GC and tiering knobs (`gcConcurrent`, `GCgen0size`, `TieredPGO`, `TieredCompilation`, W^X, .NET
+  10): none beat the default.
+- A 64K-entry opcode dispatch table: the sequential pattern chain costs about 0.7 ns per failed
+  pattern, so the estimate is 1-2%; not worth the aliasing-order risk.
+
+Measuring on macOS (no `dotnet-trace`; the runtime writes no perf map there):
+
+- Time with `ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll 30000000 snapshot <path>` and
+  byte-compare the snapshot against a pre-change build's. Run-to-run noise is about 0.3 s, so a
+  change under ~5% needs an interleaved A/B of two builds (`dotnet build -c Debug -o <dir>` for
+  each), five runs apiece, not two sequential runs.
+- `sample <pid> 4 -file out.txt` on the running process names the native frames; 40% in
+  `JIT_NewS_MP_FastPortable`, `_tlv_get_addr` and `bzero` is allocation. JIT'd frames stay
+  unsymbolised: match a hot address cluster against `DOTNET_JitDisasm=Step
+  DOTNET_JitStdOutFile=<f>` output by instruction offsets.
+- For per-opcode allocation and time, drive `AtartSt` from a `dotnet fsi` script that `#r`s the
+  DLL and reads `GC.GetAllocatedBytesForCurrentThread()` around each `Step()`. Run it with
+  `DOTNET_gcServer=0` (fsi defaults to Server GC, which inflates allocation-heavy opcodes by
+  ~1.7x); its per-opcode ns include the harness's own ~60 ns, so use it for ranking and for bytes,
+  not for absolute times. Boot is 83% ROM code: time a game snapshot as well.
+
 ## Regression tests: `selftest`
 
 There is no full unit suite. `selftest` runs the
