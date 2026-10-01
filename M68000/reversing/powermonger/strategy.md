@@ -218,7 +218,7 @@ typedef struct pm_settlement {        // object.34 and leader.chain_head index t
 /* 2*/  u16  bucket_prev;
 /* 5*/  u8   owner;                   // commander colour holding the settlement; $550e rewrites it
 /* 6*/  u8   category;                // render byte6 ($1e = a site being built)
-/* 7*/  u8   kind;                    // 7 = capital ($5cde looks for it)
+/* 7*/  u8   kind;                    // the building: 7 = WorkShop ($5cde looks for it), names in economy.md "Buildings and town layouts"
 /* 8*/  u16  chain_next;              // the lord's next settlement
 /*10*/  u16  unit_head;               // first unit of the settlement (next at 24(unit))
 /*12*/  u16  cell;                    // packed cell (the settlement's own cell; a merchant's mode $52 walks home to it)
@@ -506,7 +506,7 @@ A lord's `+6` (`$4e514`) is his town's **food store** (economy.md §1).
 | `$06` take food | `$3154` D3=2 D4=`$1a`; else `$38ce` | own or allied town; else a cell | `$1a` (`$150c0`); `$72` (`$1605a`) | from a town: `food >> shift` into `36(group)`, `loyalty_pressure += 16 >> shift`; on a cell: pick up a food pile (`$2c`) there |
 | `$08` get men | `$3154` D3=3 D4=`$1c`, else `$3248` | an own settlement, else an own man standing on the cell (byte6 0) | `$1c` (`$15122`: quota `lord.troops_field >> shift` into `46(lead)`, `$34f2` sends the town's men to the cell), `$6c` for a lone man | the town's able men step to the lord's cell, where the lead waits, and the first `quota` of them join (`$1b2a`), cost the lord one `troops_field` each and trigger `$1d70`'s re-forming of the ranks; later arrivals are refused (proven live, below; ai.md `$2a`); the executor's original name is `get_men` ("Original names") |
 | `$0c` march & engage | `$4a7a` | any cell holding a tracked entity (a settlement, tested; not empty ground, which never commits — "Diplomacy") | – | "How a land ends" |
-| `$0e` set men to work | `$3154` D3=9 D4=`$22` | own town | `$22` (`$151a8` → `$5fa0`) | the town lord's work order `$5cde` goes to every man; `$5cde` refuses a lord without a capital (kind 7) |
+| `$0e` set men to work | `$3154` D3=9 D4=`$22` | own town | `$22` (`$151a8` → `$5fa0`) | the town lord's work order `$5cde` goes to every man; `$5cde` refuses a lord without a WorkShop (building kind 7) |
 | `$10` take equipment | `$3154` D3=`$a` D4=`$6e`; else `$6128` | own or allied town; else a pile / object byte6 `$0a`, `$18`+`$10` | `$6e` (`$15740` → `$61f8`) | `goods >> shift` from the lord, handed to the men (`$6352`/`$638c`) |
 | `$12` drop food | `$39d4` D7=1 | the lead's cell, now | – | `36(group) >> shift` to the town's food (`loyalty_pressure −= 8` if own town) or to a new or existing pile (byte6 `$2c`, `$4bb4e`) |
 | `$14` dismiss men | `$1cc4` | now | – | `men >> shift` leave, least equipped first (lowest `44 + 33`), back to the lord's `troops_field` |
@@ -1783,7 +1783,7 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 - `$3c08` (rout / besiege-fail group restructure; order `$0a`, the HOME icon)
   — first-look only.
 - The player's orders ("What each order does"): each is named from 1 run. Not
-  yet seen: `$04` (needs two captains), `$0e` on a real capital (a campaign land
-  whose player town is kind 7), `$10`/`$1c` on a pile. Driving a revolt
+  yet seen: `$04` (needs two captains), `$0e` on a lord with a WorkShop (a campaign land
+  whose player lord is of kind 3 or 4, `economy.md` "Buildings and town layouts"), `$10`/`$1c` on a pile. Driving a revolt
   on purpose: take a lord's food (order `$06` on his town is refused, it is not
   ours; a trade adds +8) and then plant a spy to pulse him.

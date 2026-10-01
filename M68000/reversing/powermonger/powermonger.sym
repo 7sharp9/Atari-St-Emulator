@@ -347,7 +347,7 @@
 00002d02	init_dum	# orig T
 00002d0e	init_she	# orig T (init_sheep): one animal of the shepherd A1 in the $4ccd6 pool; the A1 == 0 random-cell branch has no caller. Proven (gate_jobs.py)
 00002e1e	_get_per	# orig T (get_person): allocate the first free man record from slot 1. Proven (gate_pop.py)
-00002eac	_set_tow	# orig T
+00002eac	_set_tow	# orig T (set_town): a lord of kind D4 and his buildings, placed from the layout stream at $3078 + word[$3078 + 2*kind] ($2fc0 allocates each building); read, not gated (economy.md "Buildings and town layouts")
 00003078	_town_si	# orig T
 00003086	town_1	# orig T
 000030bc	town_2	# orig T
@@ -492,7 +492,7 @@
 0000a0d0	cow_text	# orig T
 0000a0d4	masterpi	# orig T
 0000a128	townname	# orig T
-0000a15a	housenam	# orig T
+0000a15a	housenam	# orig T: the 13 building names (0 TownHall .. 7 WorkShop .. 12 Mine), words at +0, strings from +26; printed by $9ccc
 0000a1d0	noonenam	# orig T
 0000a1d8	speednam	# orig T
 0000a200	jobnames	# orig T

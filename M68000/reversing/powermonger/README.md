@@ -980,7 +980,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       `dwell` early-out, `$16848` (incl. the adopt-owner path), the `$580a6`
       pulse-period reload, `$163b8` (incl. the floor at 0), the construction
       timer (`nation_kind $a` → `16(settl)++`, at `$78` → `dest_cell % 10`,
-      `== 7` → capital), and the loyalty accumulator — which **only moves on the
+      `== 7` → a WorkShop), and the loyalty accumulator — which **only moves on the
       first pulse after a `#$ff9d`-dwell park (`D5 == $ff9c`)**, not every pulse
       as the 75th pass said.
     - Pre-registered falsifier / bar (100 % over ≥ 15 states, ≥ 8 branches):

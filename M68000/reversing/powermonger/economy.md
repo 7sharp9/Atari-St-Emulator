@@ -436,8 +436,8 @@ typedef struct pm_settlement {      // $4f916, stride $12 (18), count in $51536,
                                     //   NOT a population field (it is cleared/rewritten as a link word)
 /* 4*/  u8   _b4;
 /* 5*/  u8   owner;                  // $2fc0/$3018: commander colour holding the settlement (0 = free slot)
-/* 6*/  u8   kind;                   // $3020: $02 normal, $10 if seeded kind == $7 (capital)
-/* 7*/  u8   nation_kind;            // $2fc0: stream byte 2(A2); $7 == capital; read by the UI text gen ($9ccc)
+/* 6*/  u8   kind;                   // $3020: $02 normal, $10 for a WorkShop (building kind 7)
+/* 7*/  u8   nation_kind;            // $2fc0: the building's kind, stream byte 2(A2); the names are the game's own table `housenam` ($a15a), printed by the UI text gen ($9ccc), see "Buildings and town layouts"
 /* 8*/  u16  chain_next;             // $3014: byte offset into $4f916 of the next settlement in this nation
 /*10*/  u16  linked_obj;             // $51b66 offset of the settlement's own map marker
 /*12*/  u16  dest_cell;              // $3034: packed {x:6,y:7} of the settlement
@@ -508,6 +508,34 @@ four later lands ran `$550e` six times in 200M steps. Nothing moves stored
 population or goods: the settlement's future production follows the owner
 byte, and the goods sit on the lord record (`$4e514`). `$1d70` is the
 route expander that sends men home, not an ownership writer (`ai.md`).
+
+### Buildings and town layouts (139th)
+
+A `$4f916` record is a **building**, not a settlement in the sense of a town: the developers call the array `_houses`, and the UI prints the record's kind (byte 7) from their own text table `housenam`
+at `$a15a` (`$9ccc`; 13 of 13 entries read from RAM): **0 TownHall, 1 Tavern, 2 FishHut, 3 FarmHouse, 4 Ranch, 5 Barn, 6 Church, 7 WorkShop, 8 Turret, 9 Square, 10 Ruin, 11 Tower, 12 Mine**.
+The earlier reading of kind 7 as a "capital" is withdrawn: the lord's work order `$5cde` looks for a **WorkShop** in the lord's chain (`+7 == 7`), the building also gets render category `$10`,
+the developers' mode `$6a` is `workshop`, and timber is carried to it (section 2). A Ruin (kind 10) is the one building that changes kind: the heartbeat `$157e6` counts a Ruin's word 16 up and at
+`$78` pulses makes it a random building, kind `dest_cell % 10` (kinds 0 to 9).
+
+A lord is placed by `$2eac` (the developers' `_set_tow...`) with a **kind** (byte 1 of his record; layouts exist for 1 to 6: kinds 1 to 5 occur in the eight builds, kind 6 in mission 1 and on land 5 later) that selects a layout: a stream of 3-byte records (dx, dy, building kind) at
+`$3078 + word[$3078 + 2*kind]`, ended by a record whose first byte is `$9d`, walked by `$2fc0`; a record whose four corner altitudes sum to 0 (open sea) or whose cell already holds a building (a record of category 2 or `$10` in its bucket; lord kind 6 skips this test) is refused.
+Decoded from RAM, with the centre first:
+
+| lord kind | buildings | layout (offsets (dx, dy) from the centre) |
+|--:|--:|---|
+| 1 | 1 | a FarmHouse |
+| 2 | 1 | a FishHut |
+| 3 | 5 | a Square at the centre with a FarmHouse (0,-1), a Barn (-1,0), a WorkShop (+1,0) and a Ruin (0,+1) |
+| 4 | 9 | a Square with a Tavern (0,-2), a FarmHouse (-1,-1), a FishHut (+1,-1), Barns (-2,0) and (+2,0), a Ranch (-1,+1), a WorkShop (+1,+1) and a Church (0,+2) |
+| 5 | 17 | a Tower at the centre, a Church (0,-4), a Tavern (-1,-3), Turrets (-4,0), (+4,0) and (0,+4), and 11 TownHalls on the diamond of radius 3 to 4 round it |
+| 6 | 1 | a Tower |
+
+Kinds 4 and 5 are the lords that get a captain (section 5a). Counted over the eight builds of section 5a: 72 of 74 lords have a chain whose kinds are exactly their layout's, the other 2 lost 5 sites to sea
+cells, and none has a building the layout lacks (kinds seen: TownHall 173, Barn 46, Turret 47, FarmHouse 45, WorkShop 32, Square 32, Tavern 31, Church 31, FishHut 28, Ruin 17, Tower 16, Ranch 15, Mine 0).
+Only lords of kind 3 and 4 start with a WorkShop, so the player's order `$0e` (set men to work) is accepted at the start only on a land where the player's lord has one. In mission 1 the player's own lord
+is a single Tower (kind 6, lord 2 of `m1_s0`) and refuses it; `callcap 5cde` on the two kind-6 lords of `m1_s0` and `m1_ready` returns at once (D2 stays 0), on both kind-3 lords of `m1_ready` (the enemy's and
+the conquered one, whose chain holds a WorkShop) it goes on and sets D2 to `$3e`, the gather mode (2 of 2 each; the earlier poke of a kind 7 into the Tower, `strategy.md` "What each order does", is the same gate). Kinds 0, 7 and 8 index past the table (0 and 7 read the table's own words, 8 reads data) and are not used by any land seen.
+`py/town_layouts.py` prints the table.
 
 ### 3a. The per-settlement heartbeat — entity mode `$7c` (75th; **Proven — natural corpus, 97th**)
 
@@ -653,10 +681,10 @@ void h_mode7c_settlement(pm_object *M) {           // $157e6
     pm_settlement *S = &settlement_at(M->off34);   // $4f916 + 34(M)
     settlement_upkeep_163b8(S);                    // $163b8: S->leader->food -= 1, floored
     if (M->flags & 0x10) goto epilogue;            // btst #4
-    if (S->nation_kind == 0x0a) {                  // "under construction"
+    if (S->nation_kind == 0x0a) {                  // a Ruin: rebuilt as a random building
         if (++S->build_progress /*+16*/ >= 0x78) {
             S->nation_kind = S->dest_cell % 10;    // divu #$a ; swap  (remainder)
-            if (S->nation_kind == 7) S->kind = 0x10;
+            if (S->nation_kind == 7) S->kind = 0x10;     // a WorkShop
             S->build_progress = 0;
         }
     }

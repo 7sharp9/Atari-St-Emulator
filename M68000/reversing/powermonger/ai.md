@@ -231,8 +231,8 @@ markers.
 - **`$157e6`** — `dwell` decrement (`> 0` → next record, no epilogue);
   `jsr $16848` + `jsr $5c80` (twice); `D5 := post-decrement dwell`; reload
   `18(A1) := $580a6[side·$20].word0`; `jsr $163b8`; `btst #4,7(A1)` →
-  straight to the epilogue; construction (`7(settl) == $a` → `16(settl)++`, at
-  `>= $78` → `nation_kind := dest_cell % 10` via `divu #$a`/`swap`, `== 7` →
+  straight to the epilogue; construction (`7(settl) == $a`, a Ruin → `16(settl)++`, at
+  `>= $78` → `nation_kind := dest_cell % 10` via `divu #$a`/`swap`, `== 7` (a WorkShop) →
   `kind := $10`, `16 := 0`); `troops_field·4` vs `food`
   (`== 0` → skip; `>= food` and `D5 == $ff9c` → `loyalty += 2`;
   `< food` and `D5 == $ff9c` → `loyalty −= 1`); epilogue `$161c4`.
@@ -697,7 +697,7 @@ object record; `36(A3)` a running total).
 | `$1c` | `$15122` | – | arrival of order `$08` (**get men**): the quota `46(A1) = lord.troops_field(8(A5)) >> shift` (aggressive all, neutral half, passive a quarter); `$34f2` sends every able man of the town's house chain to the cell (`20/22 := the lord's cell`, `31 := $10`, `30 := $14`, `46 :=` the lead offset when the group is in state 3: callcap on lord 0's town sends 4 men); the lead → mode `$28`, dwell `$32` |
 | `$1e` | `$1515c` | – | arrival mode of order `$02` (go to): `$35f4`, the group camps there |
 | `$26` | `$15200` | – | if group state == `$c`, unpack `36(A1)` as a target cell → mode `$10` (march there), prevmode `$74` (the `$1a` supply line's return leg) |
-| `$22` | `$151a8` | – | arrival of order `$0e`: `$5fa0` hands the lord's work order (`$5cde`) to every man of the group, then mode `$92`. `$5cde` refuses a lord without a capital (kind 7), so the player's single mission-1 town (kind 11) refuses it |
+| `$22` | `$151a8` | – | arrival of order `$0e`: `$5fa0` hands the lord's work order (`$5cde`) to every man of the group, then mode `$92`. `$5cde` refuses a lord without a WorkShop (building kind 7), so the player's single mission-1 building (a Tower, kind 11) refuses it |
 | `$6e` | `$15740` | – | arrival of order `$10`: `$61f8`, take `goods >> $30fe` from the town lord and equip the men (economy.md §2c) |
 | `$72` | `$1605a` | – | arrival of order `$06` on a cell with no friendly town: pick up the food of a `$2c` pile there into `36(A3)`, free the pile when empty |
 | `$74` | `$160d6` | – | the `$1a` supply line (`$3956`): drop food at the cell (`$39d4` D7=1), find the own lord with the most food (`$3bc8`, field `+6`), march there with arrival `$1a` |
@@ -1409,8 +1409,8 @@ herd-op assessment", undersold it).
 Callers: the settlement heartbeat (`$1589a`, `D1 = 14(marker) & 3`) and the
 group-order handler (`$5fc0`, `D1` = the `$30fe` result). `A0` = the leader.
 
-1. Walk the lord's settlement chain (`2(L)`, next `+8`) for a capital
-   (`+7 == 7`). No settlements or no capital: return 0 (27 of 32 natural hits).
+1. Walk the lord's settlement chain (`2(L)`, next `+8`) for a WorkShop
+   (`+7 == 7`). No buildings or no WorkShop: return 0 (27 of 32 natural hits).
 2. Find the nearest live forest op in `$57f68..$57fb8` by `max(|dx|,|dy|)` from
    the lord's cell `4(L)`, and read the cell's altitude `$3f86c[4(L)]`.
 3. **Build** (`D2 = $40`) when a site is already under way (`18(L) != 0`), or
@@ -1425,7 +1425,7 @@ group-order handler (`$5fc0`, `D1` = the `$30fe` result). `A0` = the leader.
    wanted build with no flagged unit or a full table.
 4. Every non-zero path reloads `16(L) := $580a6[side].word8 + 4` (`+$2000` if
    `12(L) >= $e` and the reload is not below the old value) and stamps
-   `31 := D2`, `46 := capital`, `36 := D4` (and `39 := 4` when `D4 == 0`) on
+   `31 := D2`, `46 := the WorkShop`, `36 := D4` (and `39 := 4` when `D4 == 0`) on
    every eligible unit of every settlement in the chain (owner `> 0`, flags
    bits 6 and 4 clear, mode not `$5c`/`$60`/`$62`). The unit loop has no
    empty-chain test, so a settlement with no units stamps object slot 0.
