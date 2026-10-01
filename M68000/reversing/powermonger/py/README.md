@@ -7,6 +7,8 @@ Run everything from `M68000/`. Shell scripts write under `$PM_WORK` (default
 | script | what it does |
 |--------|--------------|
 | `build_land.sh <k> [steps] [season]` | builds land `k` (0-143) from `pm67_ok_pre.snap` through the briefing-OK poke, optionally in season 0-3, settles, snaps at `$f898`, prints the census (`../README.md` "Driving a later land") |
+| `s40_symbols.py [disk.st] [ram.snap]` | unpacks `DATA\SPRITE40.DAT` from the disk image (the developer build with its linker symbols), checks its text against a RAM snapshot (28,936 of 28,942 windows at offset `$10a6`) and writes `../powermonger_orig.sym` (`../strategy.md` "Original names") |
+| `s40_orphans.py [ram] [listing]` | routine starts of `powermonger_orig.sym` that no operand, literal pointer, relative word or table word names: 978 starts, 97 direct orphans, 14 after the table scan |
 | `census.py <snap-or-ram>...` | byte6 histogram of the whole-map `$47970` bucket walk (what `$115e0` can draw), season and world parameters |
 | `recs.py <snap> <b6,b6,...>` | every render record of those categories: address, cell, first 34 bytes |
 | `capture.sh <snap> <name> <cx> <cy> <n> [settle] [yaw]` | pokes the camera centre, settles, snapshots `n` consecutive `$f898` frames and dumps each (`dump_frame.py`) |

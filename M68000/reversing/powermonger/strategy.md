@@ -265,10 +265,14 @@ the next"):
   Steps 2-4 run only for a group in state `$9`, or in state `$6` once `$6762`
   declines (`$6584`/`$658e`; any other state → next group).
   2. `52() < $16` (**fewer** than 22 men: `cmpi.w #$16,52(A1); bge $65dc` skips
-     it at 22 or more; passes before the 124th had this inverted) → **`$69b4`** scans `$4e514` for the nearest
-     enemy leader (skip own/empty sides; cost = `max(|dx|,|dy|)` weighted by the
-     leader's troop count; already-adjacent leaders excluded) → issue order
-     **`$08`** (→ group state 3 = besiege) toward it.
+     it at 22 or more; passes before the 124th had this inverted) → **`$69b4(8)`** scans `$4e514` for the
+     nearest **own-side** lord that has more than one man in his `troops_field` (`cmp.b 5(A2),D0` skips
+     every other side; the selector `D1` is the word offset read, 8 here and 6 for food; cost = that word `<< 3`
+     over `max(|dx|,|dy|)`, a lord on the group's own cell scoring `$7fff`) → issue order
+     **`$08`** (**get men**, group state 3) toward his town. Live, `callcap $69b4` with the
+     player's lead as `A2` on `m1_s0`: `D1 = 6` returned the player's own lord 2 (enemy lords 0 and 1, food 28 and 32, skipped),
+     `D1 = 8` found nobody while lord 2's field troops were 0 and returned lord 2 once they were poked to 10
+     (3/3, `scratchpad/pm133/cc69b4.cmds`). The same routine with `D1 = 6` is the AI's food fallback (order `$06`).
   3. groups 1..5 (`D7 != 0`), when group 0 (`A3 = A1 − D7`) is in state `$d`
      with `280(A3) == 4` → issue order **`$0c`** to **escort** group 0's
      `292(A3)` object.
@@ -310,7 +314,7 @@ offset as D2. Who posts each type is in "The player's commands" below.
 | `$02` | `$6b8e` | `$3888(x,y)`, D6 = `$ea` | icon, targeted |
 | `$04` | `$6ba8` | `$1c18(cmd,x,y)` | captain-select mode (icon `$04`, then a captain click) |
 | `$06` | `$6bbe` | `$3154` D3=2 D4=`$1a`, then `$38ce` | icon, targeted; AI (`$6762`) |
-| `$08` | `$6bea` | `$3154` D3=3 D4=`$1c`, then `$3248` | icon, targeted; AI (`$69b4`, besiege) |
+| `$08` | `$6bea` | `$3154` D3=3 D4=`$1c`, then `$3248` | icon, targeted; AI (`$69b4(8)`, "get men") |
 | `$0a` | `$6c16` | `$3c08` (regroup, the lead `-12(A3)`) | HOME icon |
 | `$0c` | `$6c32` | `$4a7a(x,y)` → `$4b80` (group state 8) | sword icon, targeted; AI (`$68fe`) — **march & engage** |
 | `$0e` | `$6c48` | `$3154` D3=9 D4=`$22` | bulb icon, targeted |
@@ -343,8 +347,8 @@ all landed at `$6b5a + word` (`scratchpad/pm123/disp.txt`).
 the rest 0. `$6822` (the AI's order write) compares the entry with the
 objective's state `76(A1)` and does not re-issue an order whose state the
 objective is already in (except `$0c` with D7 = 0). The states line up with the
-group-state → entity-mode table in `ai.md` (state 3 ⇔ besiege modes
-`$28`/`$2a`; state `$c` ⇔ the `$1a` food supply line).
+group-state → entity-mode table in `ai.md` (state 3 ⇔ order `$08`, get men: the modes `$1c`/`$28`/`$2a`;
+state `$c` ⇔ the `$1a` food supply line).
 
 `$3154` is the common order dispatcher: it turns the packed target cell into a
 word offset `(cellY*64 + cellX)*2`, looks up the `$47970` bucket for that cell
@@ -433,7 +437,7 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    | `$02` | `$ea` | (299,182) | figure | `$135fe`: arm `$57fd4 := $02`: **go to** |
    | `$04` | `$c4` | (103,186) | two men | `$13620`: toggle captain-select `$57fd6`: **transfer men** to another captain |
    | `$06` | `$d7` | (201,181) | sphere | arm `$06`: **take food** |
-   | `$08` | `$da` | (275,162) | arrow into men | arm `$08` (besiege) |
+   | `$08` | `$da` | (275,162) | arrow into men | arm `$08`: **get men** (recruit) |
    | `$0a` | `$b4` | (100,170) | HOME | `$13652`: post `$0a` now |
    | `$0c` | `$e8` | (243,190) | sword | arm `$0c` (march & engage) |
    | `$0e` | `$e9` | (274,187) | light bulb | arm `$0e`: **set the men to work** (invent) |
@@ -498,7 +502,7 @@ A lord's `+6` (`$4e514`) is his town's **food store** (economy.md §1).
 | `$02` go to | `$3888` | any cell | `$1e` (`$1515c` → `$35f4`) | state 5, march there, go idle |
 | `$04` transfer men | `$1c18` (D0 side, D1 from, D2 to group) | a captain box, with captain-select on | – | `men >> shift` move from one captain's group to the other (`$1b8c` out, `$1b2a` in); static only (mission 1 has one captain) |
 | `$06` take food | `$3154` D3=2 D4=`$1a`; else `$38ce` | own or allied town; else a cell | `$1a` (`$150c0`); `$72` (`$1605a`) | from a town: `food >> shift` into `36(group)`, `loyalty_pressure += 16 >> shift`; on a cell: pick up a food pile (`$2c`) there |
-| `$08` besiege | `$3154` D3=3 D4=`$1c`, else `$3248` | town | `$1c` | ai.md |
+| `$08` get men | `$3154` D3=3 D4=`$1c`, else `$3248` | an own settlement, else an own man standing on the cell (byte6 0) | `$1c` (`$15122`: quota `lord.troops_field >> shift` into `46(lead)`, `$34f2` sends the town's men to the cell), `$6c` for a lone man | the town's men walk to the group and, read from `$15282` (not seen live), join it (`$1b2a`), cost the lord one `troops_field` each and trigger `$1d70`'s re-forming of the ranks (ai.md); the executor's original name is `get_men` ("Original names") |
 | `$0c` march & engage | `$4a7a` | any cell holding a tracked entity (a settlement, tested; not empty ground, which never commits — "Diplomacy") | – | "How a land ends" |
 | `$0e` set men to work | `$3154` D3=9 D4=`$22` | own town | `$22` (`$151a8` → `$5fa0`) | the town lord's work order `$5cde` goes to every man; `$5cde` refuses a lord without a capital (kind 7) |
 | `$10` take equipment | `$3154` D3=`$a` D4=`$6e`; else `$6128` | own or allied town; else a pile / object byte6 `$0a`, `$18`+`$10` | `$6e` (`$15740` → `$61f8`) | `goods >> shift` from the lord, handed to the men (`$6352`/`$638c`) |
@@ -528,6 +532,16 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
 - `$1a` to (35,51), 25M steps: a food pile of 123 at (35,51), town food 22 → 11, state `$c`, the
   lead on its way back.
 - `$1c` on lord 0's town, carried goods poked to 10,6: 6 men get swords, army food 235.
+- `$08` is **get men**, not besiege (133rd; the executor's own name in the developer symbols is `get_men`,
+  "Original names"). Both of its target routines, `$3154` and `$3248`, take D5 = the commander's side and
+  accept only a target of that side (`$3154`: `D5 > 0` branch; `$3248`: `cmp.b 5(A1),D5`, byte6 0). Live on `m1_s0`: the
+  armed icon clicked on enemy lord 0's town (minimap `(22,51)`) posted nothing (`$57fd4` stayed `8`, 0 `$6bea`
+  and 0 `$3154` hits in 60M steps); clicked on the own town (lord 2's field troops poked to 10 so the quota is
+  non-zero) it ran `$15122` once and left the lead in mode `$28` (a 50-tick wait, then `$35f4` frees the slot),
+  group state 3, 22 `$15264` entries in 6M steps. `callcap $34f2` (the summons `$15122` makes) on lord 0's town
+  sends 4 men (object records 2, 3, 5, 7: target cell `20/22`, mode byte `31 := $10`, `30 := $14`) and on the
+  player's own town none: its house chain holds no inhabitants in mission 1, so a join could not be observed
+  (`$15282`, `$1b2a`, `$1d70` 0 hits). `scratchpad/pm133/o08*/cmds`, `cc34f2*.json`.
 - `$20` on lord 0's town, 25M steps: men 0, the captain inside (22,45) with side byte 2. Lord 0
   then defected to side 3 (loyalty reset to 300); the 25M control keeps him on side 2 at 608. The
   spy idles in the town in mode `$7e`, which runs the settlement heartbeat with no `$57fd0` gate;
@@ -816,9 +830,9 @@ record into a 160-tick corpse (`byte5` negated, category `$c`).
 
 ### 5. Settlement capture / regroup — `$1d70`
 
-The besiege modes (`$28`/`$2a`, `ai.md`) grind a settlement's garrison count
-down while the group stays in state 3; at 0 they call **`$1d70`** (ownership
-itself is transferred by the besiege caller — `$25d6`/`$2644`, `economy.md`).
+The get-men modes (`$28`/`$2a`, `ai.md`; order `$08`) are not a siege: `$28` waits 50 ticks and `$2a`, read from
+`$15282`, moves one recruit into the group, counts down the lead's quota and calls **`$1d70`** to re-form
+the ranks (settlement ownership is transferred elsewhere — `$25d6`/`$2644`, `economy.md`).
 
 **`$1d70` proven (99th, via `$3c08`'s bit-4 teardown — `ai.md`):** it is a
 **route-string expander**, not the ownership writer. It picks a terrain route
@@ -1397,10 +1411,10 @@ def sim_tick(world):
                     obj.posture = world.campaign_order.sub or (world.tick & 3) + 2
                     slot.emit(world.campaign_order.type, obj.target.cell); break
             if obj.state not in (PATROL, 9): continue
-            # 2. a small group besieges the nearest enemy lord ($69b4)
+            # 2. a small group goes to its own best town for men ($69b4(8))
             if obj.men < 22:
-                tgt = nearest_enemy_leader(obj, weight=lambda L: L.troops)
-                if tgt: slot.emit(BESIEGE, tgt.cell); break     # -> group state 3
+                tgt = nearest_own_lord(obj, word=FIELD_TROOPS, weight=lambda L: L.troops_field)   # troops_field > 1
+                if tgt: slot.emit(GET_MEN, tgt.cell); break     # order $08, group state 3
             # 3. escort the captain's group when it is in support state $d
             g0 = group.groups[0]
             if k > 0 and g0.state == SUPPORT and g0.camp_phase == 4:
@@ -1529,6 +1543,72 @@ are limitations rather than choices:
    armies just get scattered and re-form. A modern version would let the AI
    choose its posture from the situation so that its fights have consequences.
 
+## Original names: the developer symbol table (133rd)
+
+`DATA\SPRITE40.DAT` on the disk is not sprite data (the loader table `$e0c4` never names it, and nothing
+in the image or on the disk does). It is a self-extracting GEMDOS program, 137,652 bytes once unpacked, and the
+same game build as the loaded image: every one of the 28,942 unique 16-byte windows of its text except 6 sits in
+the running RAM at the constant offset `$10a6`, and 2,855 absolute operands differ by exactly that offset. It still
+carries the linker's symbol table (1,639 entries, 1,196 unique, 978 distinct routine starts), with each name cut
+to 8 characters. `py/s40_symbols.py` unpacks it from the disk image (a port of the stub at file `$1c..$ba`) and writes
+`powermonger_orig.sym`: a text symbol is at (text offset + `$10a6`); a bss symbol's value is bss-relative, so its
+address is value + `$1c48e`. Rebuilt from the disk, no other input but one RAM snapshot to find the offset.
+
+The names are the developers' own labels, so they answer "what did the authors call this", not "what does it do":
+a label can be reused by neighbouring code, and 8 characters drop the tail (`wait_mee` is `wait_meet...`). Checked
+against everything already proven, they agree almost everywhere (the exceptions are listed below): all 25 order executors, the group-order
+table `$51538` (`_kings`), the object table `$51b66` (`_sprites`, 512 records of 50 bytes), the lords `$4e514`
+(`_towns`) and houses `$4f916` (`_houses`), the cell buckets `$47970` (`_map_who`), the command slots `$58016`
+(`_packets`), the key array `$2de6c` (`_key_on`) and shift flag `$2df8a` (`_shift`), the selected group `$57fd2` (`_the_cap`),
+the armed order `$57fd4` (`_mouse_m`), `$57fd0` (`_season`, so the settlement heartbeat is the winter state `in_winte`
+at `$157ba`), the conquest save `$3f2a0` (`_conques`), the control plane `$3f86c` (`_alts`), `$438ee` (`_block2`),
+`$4be00` (`_shots`), `$4d252` (`_trees`), `$12d88` (`_command`, the startup parser), `$1962` (`its_a_ke`, the keyboard ISR's
+key writer), `$df52` (`_load_co`), `$e2b8` (`decrunch`) and `$f898` (`_draw_it`). The order executors, in table order
+from `$02`: `send_cap`, `xfer_men`, `get_food`, `get_men`, `go_home`, `send_att`, `send_inv`, `send_equ`, `drop_foo`,
+`derank`, `set_leve`, `drop_equ`, `supply_f`, `send_tra`, `send_all`, `send_spy`, `select_c`, `pause`, `message`,
+`restart`, `do_accep`, `do_seria`, `do_retir`, `do_rando`, `do_rejec`.
+
+What the names changed:
+
+- **Order `$08` is `get_men`, not besiege**; `$69b4` finds the best *own* lord for `D1` = 8 (men) or 6 (food)
+  (live, "What each order does"). The `$28`/`$2a` modes are `wait_men` and `wait_mee(t)`.
+- **`$14e4e` is `_test_en...`**, the word the protection check sets to `$2c` (the gate of the AI block, Save and
+  Continue Conquest, "The campaign"): the label reads as the test's result, not as an AI switch. `$5809a` is `_show_de...`
+  (show debug?), the dormant switch of the audit below.
+- The debug monitor was stripped, not hidden: `_debug_m`, `_setup_d`, `_reset_d` and `_debug_s` at `$1ba62..$1ba70` are
+  one-instruction stubs (`rts`), and nothing calls them.
+- `$123c` is the label `shitpiss` (the startup string `_command` parses); the unhandled-exception labels are `fuckup`/`none` at
+  `$1378` and mode `$0a` is `fucking_`. The linker's whole source file list is not recoverable (no module names).
+- Modes `$56..$62` are labelled `fish_*`, `$80..$88` `shep_*`, `$4e..$54` `merch_*`: the job state machines of the people
+  the panel calls farmer, merchant, fisher and shepherd (`jobnames` at `$a200`). The documented roles of `$56`, `$5a`,
+  `$5c` and `$60` ("regroup", "proximity gate", "register": `food += 4` on arrival, economy.md) are behaviour read from
+  the code and stay; whether that chain is the **fishermen's catch** is open (three side-2 men sit in each of `$5a`, `$5c`
+  and `$60` on `m1_s0`; their job index and cells were not read).
+
+The entity mode names (table `$14bb4`, mode `$xx` is the table offset, so it matches the documented mode numbers):
+
+`$00` `out_of_b`, `$02` `in_fleet`, `$04` `in_rank`, `$06` `in_rank`, `$08` `lost`, `$0a` `fucking_`,
+`$0c` `start_fl`, `$0e` `in_fligh`, `$10` `home_in`, `$12` `on_route`, `$14` `at_meeti`, `$16` `at_farme`,
+`$18` `at_farme`, `$1a` `at_town_`, `$1c` `at_town_`, `$1e` `at_camp`, `$20` `in_camp`, `$22` `at_inven`,
+`$24` `farmer_f`, `$26` `wait_foo`, `$28` `wait_men`, `$2a` `wait_mee`, `$2c` `set_figh`, `$2e` `at_goto_`,
+`$30` `at_attac`, `$32` `fighting`, `$34` `shooting`, `$36` `goto_ani`, `$38` `fighting`, `$3a` `fighting`,
+`$3c` `run_away`, `$3e` `head_for`, `$40` `head_for`, `$42` `at_works`, `$44` `at_fores`, `$46` `wait_at_`,
+`$48` `scanning`, `$4a` `blocked`, `$4c` `captain_`, `$4e` `merch_ar`, `$50` `merch_st`, `$52` `merch_se`,
+`$54` `merch_at`, `$56` `fish_at_`, `$58` `fish_at_`, `$5a` `fish_get`, `$5c` `fish_hea`, `$5e` `fish_arr`,
+`$60` `fish_hea`, `$62` `fish_get`, `$64` `i_am_sha`, `$66` `at_goto_`, `$68` `rest_in_`, `$6a` `workshop`,
+`$6c` `get_man`, `$6e` `at_equip`, `$70` `retreat_`, `$72` `pickup_f`, `$74` `pickup_f+7c`, `$76` `at_allia`,
+`$78` `at_trade`, `$7a` `at_spy`, `$7c` `in_winte`, `$7e` `stay_at_`, `$80` `shep_arr`, `$82` `shep_go_`,
+`$84` `shep_at_`, `$86` `shep_fin`, `$88` `shep_go_`, `$8a` `captain_`, `$8c` `boating`, `$8e` `fight_ge`, `$90` `townee_g`, `$92` `do_nothi`.
+
+Unreferenced routines (`scratchpad/pm133/orphans.py`): of the 978 starts, 97 have no direct operand, literal pointer or
+`jsr`/`bsr` target; reading every word within `$120` bytes of any symbol as a table offset leaves 14. Thirteen of those
+are explained: four data labels (`qcom`, `com`, `x0`, `y0`), the fall-through label `xfer_com` (`$668c`, inside `_compute`),
+the grid-walk quadrants `$fbb4`/`$fccc` (reached through the table at `$f986`) and six mode handlers (`shooting`, `run_away`,
+`at_allia`, `at_spy`, `get_man`, `shep_arr`; the table `$14bb4`). One is left, `_how_far` (`$10cae`), a line-sampling
+helper beside `_pospos`/`_mapline`/`_distanc`: 0 entries in 60M steps from each of two states, and its neighbours were not
+entered in 120M either, so it is probably dead. The image has essentially no dead code; the earlier count of 117 orphans
+came from a walker blind to the dispatch tables.
+
 ## Hidden features audit (130th)
 
 No cheat keys, debug commands or developer hooks found in the loaded game image. Evidence:
@@ -1556,7 +1636,7 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
   command-line twin of the MULTI PLAY button (order `$2c` sets `$71fe`, `$6a3a` then calls `$6eb6`, panel `$c`
   CONNECT sets `$2df6c`; `$6eb6` and the handshake were not read). With the static string neither role is set. Patching `$123c` in a running
   snapshot is useless (the routine runs once, before the game loads); to test a role, write the slot states.
-- **Dormant word `$5809a`** (read at `$16640` in a loop over the entity table, written nowhere by an absolute
+- **Dormant word `$5809a`** (`_show_de...`, "Original names"; read at `$16640` in a loop over the entity table, written nowhere by an absolute
   operand; 0 in both snapshots). Poking it to 1 raised that loop's `$16738` calls from 54 to 94 per 500k steps and
   `$e6ee` marker draws from 27 to 47, and on 4 of 8 samples added 24-26 bytes of extra dots to the minimap: a
   "draw all sides' markers" switch. Nothing in the image sets it (131st, static; no live write was attempted):
@@ -1572,9 +1652,19 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
   OR IT MAY BE THE LAST ST PRODUCT FROM BULLFROG"; three MFP vectors (`$120`, `$138`, `$13c`) set the palette to
   `$700`/`$770`/`$007` (stray-interrupt flashes, never fired in 2M steps); vector 5 (divide by zero) points at an
   `rte`, so a zero divide is ignored.
-- **Disk vs loader table** (`$e0c4`): `DATA\SPRITE40.DAT` is on the disk with no name in the table; `CAP_SPR.DAT` and
-  `BITMAP.DAT` are in the table but not on the disk (static only; whether `BITMAP.DAT` is fetched at mission 1 is
-  unchecked).
+- **Data loads** (`$e0c4`, "Original names"). The table holds 16 resources (`TEXTURES`, `QAZ`, `SPRITE16`, `SPRITE8`,
+  `SPRITE24`, `SPRITE32`, `CAP_SPR`, `BITMAP`, `CAPGRAPH`, `FX`, `MAP`, `MAPDATA`, `END_PIC1`, `END`, `LOSE`, `WIN`, index 0..15) and
+  the loader `$df52(index)` copies a resource from its cache slot (`$e040`, filled by `$dff8`) or reads the file (`$def0`,
+  `$d4d2`, `$e2b8` decrunch). Its 17 call sites push literal indices: startup loads 9 (`$11c0`) and the sprite sets 0, 2, 3, 4, 5 (`$12f70..$12fa0`),
+  the briefing 10 and 11 (`$11224`, `$113d0`), the land build 1 and 8 (`$187e8`, `$13d0a`, `$18804`), the end screens
+  15, 14, 12, 13 (`$1a524..$1a66e`). Indices 6 (`CAP_SPR.DAT`) and 7
+  (`BITMAP.DAT`) are not on the disk; 6 has no caller and 7 only the fixed-map branch (`$13c0e`, `$58148 < $100`, which
+  no land takes). Live, `hits` from the build's `$13b9a` on `pm67_ok_pre`: `$df52` 2 hits (indices 1 and 8, both from the
+  cache, `$def0` 0), `$13c0e` 0; 30M further steps load nothing (`scratchpad/pm133/land0.cmds`). `DATA\SPRITE40.DAT` is the
+  developer-symbol build above. `NuDATA/MAP0000.DAT` (`$e38a`) and `B_FLOOD.ECH` (`$1adaa`) have no reference of any kind (no
+  literal, no PC-relative `lea`, none in the whole-image listing): leftovers of the fixed-map and sound code. `DATA\SPRITE8.DAT`
+  at `$1bafc` is a probe file: `$1bd0e(index)` opens it (`$d574`) when the resource is not cached and `$1bec8` asks
+  for "PLEASE INSERT THE POWERMONGER DISK" until the open succeeds (read from the code, not run).
 - **Link chat (`$26`).** Reachable in a normal game: GAME panel button `$131` SEND MESSAGE (`$7878`) calls `$d194`,
   which sets `$d03e := $fe`; the main loop (`$13750`) then hands every frame to `$cf46`, which branches at `$cf4e`
   to `$d13e`: `jsr $19c2` (getkey), and for a key posts order `$26` with the character as the slot parameter into
@@ -1585,10 +1675,13 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
   character on its second row: a slot `02 26 00 58` in state 4 gave 1 `$6dd0`, 1 `$d0dc`, 1 `$affe` and an `X` on
   the panel (`scratchpad/pm132/chat.cmds`; `chat_message.png`). A character from the local side is not shown on
   its own message line (`$6dd0` tests `cmd == $57ffe` first). How the mode is left was not traced (`$d03e` is cleared at `$78a0`/`$78be` by the panel `$c` buttons and at `$6f04`, `$73c4`, `$abf6`, `$ccf0`, `$cffc`).
-- **Not covered:** the link handshake (`$6eb6`, panel `$c`/`$12`); the crack's own title/intro screens and `MREP`; indirect writers of any
-  flag; about 100 of 117 unreferenced routine starts (the reachability walker is incomplete: it called `$b892`
-  unreferenced although `$b3d0` calls it, so an orphan list is not evidence of dead code). Scripts and raw output:
-  `scratchpad/pm130/audit/` (`keysweep.py`, `sweep_diff.py`, `reach_scan.py`, `rw_census.py`).
+- **The developer symbols add no hidden command.** The only labels that read as debug are the four `rts` stubs at
+  `$1ba62..$1ba70`; the `_test_*` words belong to the protection check (`_test_en...` `$14e4e`, `_test_wh...` `$57ff8`, the random
+  question index set at `$b430`; `_test_se...` at `$2df9a` has no reference), `_protect` is `$5809c`, the page number the briefing asks about.
+- **Not covered:** the link handshake (`$6eb6`, panel `$c`/`$12`); the crack's own title/intro screens and `MREP`; indirect
+  writers of any flag. Scripts and raw output: `scratchpad/pm130/audit/` (`keysweep.py`, `sweep_diff.py`, `rw_census.py`);
+  the reachability walk `reach_scan.py` there misses dispatch tables (it called `$b892` unreferenced although `$b3d0` calls
+  it), which is why "Original names" counts unreferenced routines from the symbol starts instead.
 
 ## Open threads
 

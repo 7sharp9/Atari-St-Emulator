@@ -17,8 +17,9 @@ noted) driven live through the game's own UI:
 | [`strategy.md`](strategy.md) | the sim tick + measured cadence, the order executor pipeline (`$6522` decide → `$58016` command buffer → `$6a3a` execute → `$4b80` stamp), force accounting, the 195-land campaign, diplomacy, combat, RNG/determinism, how a land ends | driven live through the real UI and the emulator's REPL: mission 1 won and lost both ways (retire + natural defeat), every player order but `$04` and a real `$0e` exercised at least once, diplomacy's envoy/tribute/break traced end to end, and 4 lands' natural `$6522`/`$661a` decisions captured over 200M steps each and matched against the disassembly |
 | [`graphics.md`](graphics.md) | asset formats, the software heightmap rasteriser (projection, DDA span walker, dither), all 4 yaw quadrants, the 4 sprite sheets (men, structures, buildings/trees), camera control, zoom, seasons | frame-pixel scoring against the real emulator's own composited buffer: **100.00%** match on 27 captures across every drawn category; the projection reproduces the game's own corner buffer byte-exact (81/81 vertices); the rasteriser maths (`$ef62`/`$e420`) Proven vs the real 68000 at the instruction level |
 
-`powermonger.sym` (261 names) is the shared symbol file, feeding `trace_cfg.py --names` and the
-disassembler. `port/` is a from-scratch Godot 4.x + F# port built on `graphics.md`'s proofs
+`powermonger.sym` (about 280 names) is the shared symbol file, feeding `trace_cfg.py --names` and the
+disassembler. `powermonger_orig.sym` is the developers' own symbol table (1,196 names, cut to 8 characters),
+recovered from `DATA\SPRITE40.DAT` by `py/s40_symbols.py` (`strategy.md` "Original names"). `port/` is a from-scratch Godot 4.x + F# port built on `graphics.md`'s proofs
 (`port/SPEC.md`), cross-checked byte-exact against a Python reference renderer.
 
 **Disks are not committed** (commercial). Reproduce:
@@ -39,7 +40,7 @@ against every session's changes.
 
 ### What carries the game
 
-- **You give orders, not controls.** The player picks an order icon (go, attack, besiege, take
+- **You give orders, not controls.** The player picks an order icon (go, attack, get men, take
   or drop food, take or drop equipment, trade, set men to work, spy, a food supply line, offer an
   alliance, dismiss men, go home, a posture level ...) and clicks a target on the map; the order goes
   to the captain's group, whose lead walks there with the men following in formation. The
@@ -104,8 +105,9 @@ against every session's changes.
   (S "Diplomacy")
 - **The opponent is simple.** Each commander marches at the nearest enemy lord when its army has
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast); AI
-  armies start with so much food that the test never binds. It has no economy, build or recruit
-  reasoning.
+  armies start with so much food that the test never binds. A group under 22 men first goes to its
+  own best town for men (order `$08`, get men), and the food fallback fetches food the same way; beyond
+  those two refills it has no economy or build reasoning.
   (S "`$6522` — the commander AI", S "The AI as modern pseudocode")
 - **Deterministic.** The AI's "random" numbers are low bits of the tick counter, and a land's map
   is a pure function of its seed, so a run replays exactly from a snapshot. (S "RNG and determinism")
@@ -1147,4 +1149,5 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |
 | `economy.md` | the economy (complete, 74th-75th): the **goods** ledger — `pm_leader.goods[0..7]` (`$4e514` +24), fed by the shepherd FSM (`$5ec6`→modes `$3e`/`$44`/`$42`→`$60dc`), circulated by porters (`$159de`/`$159a4`), spent on unit equipment tiers by the army-supply subsystem (`$6352`/`$638c` = "invention"); the **separate** manpower ledger (`$4e514` +6/+8) and its full flow table incl. the per-settlement upkeep drain (`$163b8`); the per-settlement heartbeat (mode `$7c`, `$157e6`) and the loyalty/defection accumulator (`$4e514` +14 → `$550e`); the `$4f916` settlement records + builders `$2fc0`/`$2984`; world-gen (`$10d1e` / `$ffa6` / `$4592f`); and the characterised-benign `$163ea` write aliasing. 114th pass: no weather system exists anywhere in the game; `g_tileset_sel` (`$57fd0`) is the one real scenery-driving mechanic, rendered and characterised as a partial building-damage / tree-growth gradient, not a clean season swap (`pm114_prop_contact.png` / `pm114_tileset_families.png`) |
 | `powermonger.sym` | `addr<TAB>name` symbol table for `trace_cfg.py --names` (routines + data tables named across all five docs) |
+| `powermonger_orig.sym` | the original developer symbols (text, data and bss, 8-character names) unpacked from `DATA\SPRITE40.DAT`; `py/s40_symbols.py` regenerates it, `py/s40_orphans.py` lists the unreferenced routine starts (133rd) |
 | `port/` | **iso-renderer port precursor (76th pass).** `port/assets/` = every asset + constant the terrain renderer reads, extracted from a live RAM image (`tools/pm_export.py`), with `manifest.json` provenance. `port/SPEC.md` = the porting contract (coordinate systems, the `$fecc`/`$ff7c` projection with exact constants, the rolling-bitplane dither, sprites, zoom, frame pipeline). `port/godot/` = a Godot 4.x + F# skeleton (F# logic lib, C# node glue, one heightmap mesh). `tools/pm_render_ref.py` rebuilds a frame from `port/assets/` alone. **77th:** the projection now reproduces the game's `$3f364` corner buffer byte-exact and the dither phase is corrected (`colourByte*128 + (topY&15)*8`, rolling); the colour families match the reference, a pixel-exact fill needs the span walker ported (`SPEC.md` §9). |

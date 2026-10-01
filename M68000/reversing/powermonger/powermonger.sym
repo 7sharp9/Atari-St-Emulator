@@ -92,7 +92,7 @@
 0000661a	pm_cmd_primary_slot    # primary objective (i==0): march at nearest enemy leader
 000068fe	pm_find_enemy_leader   # nearest enemy leader, weight = $580a6[side].byte16 >> 2
 000068ee	pm_score_target        # score ~ (d/2)*(force/8 + 1) vs objective budget 112()
-000069b4	pm_find_besiege_target # nearest enemy leader for the $08 besiege path (>=22 troops)
+000069b4	pm_find_own_lord       # nearest OWN lord with word[D1] > 1, weighted word<<3 / distance; D1 8 = men (order $08), 6 = food ($06); live 3/3 (133rd)
 00006762	pm_campaign_hook       # obey $67d0 scripted campaign order if id matches 268()
 000067d0	g_campaign_order       # {word0 campaignId, word2 orderType, word4 subMode}; no in-game writer
 000067ee	pm_order_pack          # re-pack found leader cell -> {x:6,y:7}
@@ -103,11 +103,34 @@
 00006a80	t_slotstate_dispatch   # data: byte4 slot-state -> handler
 00006ac6	pm_order_exec_slot     # one command slot
 00006b38	pm_order_dispatch      # read byte1 order type, clear it, jmp $6b5c table
-00006b5c	t_ordertype_handler    # data: 26-entry order-type -> handler jump table
-00006bec	pm_ord_06_scriptmove
-00006c18	pm_ord_08_besiege
-00006c4a	pm_ord_0c_march_engage
-00006c98	pm_ord_10_regroup
+00006b5a	t_ordertype_handler    # data: order-type -> handler word table, handler = $6b5a + word[$6b5a + type] (the old $6b5c base was 2 off)
+# order executors, original names from DATA\SPRITE40.DAT (strategy.md "Original names"); the four earlier entries
+# here ($6bec, $6c18, $6c4a, $6c98) were mid-instruction addresses and are replaced
+00006b8e	pm_ord_02_send_cap     # go to
+00006ba8	pm_ord_04_xfer_men     # transfer men
+00006bbe	pm_ord_06_get_food
+00006bea	pm_ord_08_get_men      # own side only ($3154 / $3248); arrival $1c
+00006c16	pm_ord_0a_go_home
+00006c32	pm_ord_0c_send_att     # march and engage
+00006c48	pm_ord_0e_send_inv     # set men to work (invent)
+00006c6a	pm_ord_10_send_equ     # take equipment
+00006c96	pm_ord_12_drop_food
+00006cbc	pm_ord_14_derank       # dismiss men
+00006cc6	pm_ord_16_set_level    # posture
+00006cda	pm_ord_18_drop_equip
+00006d00	pm_ord_1a_supply_food
+00006d12	pm_ord_1c_send_trade
+00006d32	pm_ord_1e_send_alliance
+00006d56	pm_ord_20_send_spy
+00006d90	pm_ord_22_select_captain
+00006dbc	pm_ord_24_pause
+00006dd0	pm_ord_26_message
+00006dc6	pm_ord_28_restart
+00006dea	pm_ord_2a_accept
+00006e04	pm_ord_2c_serial
+00006e10	pm_ord_2e_retire
+00006e36	pm_ord_30_random
+00006e56	pm_ord_32_reject
 00003154	pm_order_to_cell       # packed cell -> $47970 bucket -> entity; friend/foe by sign(cmdid); -> $4b80
 00004b80	pm_commit_group_target # group exec sub-record state=8; lead man -> mode $10 toward cell centre
 000037c2	pm_group_teardown_lead # RIDER 3b routine 6: PROVEN vs real 68k (99th, 1847/1847 over 13 states; scratchpad/pm99/diff_pm99.py). Entry: D2 = group offset; A1 = $51538+D2 (group rec), A0 = $51b66 + word[group-12] (lead entity). Clear lead category 6 (if alive). flags bit7 set: lead.owner := byte[group-47], lead.word34 := group[24], settlement[10] := lead[24], flags bit7->0 bit4->1; bit6 clear -> owner_leader.troops_field -= 1 ($4e514+word[settl+14], +8 = the $382a economy row); bit6 set -> jsr $1b8c. flags bit7 clear: if group.state==6 and 46(lead) in [$4cff8,$4d250) -> 7(that rec) := $11; then jsr $1d70
@@ -167,9 +190,9 @@
 00014f08	h_mode10_advance       # advance to target_x/y (prev_mode $2e: chase link_target 48(A1), copy its live pos 8/10; target gone -> mode/prev := $2c); $164bc step; reached -> $15302 (chase) / $14fdc (fixed, snap on target); else probe up to dwell cells ahead along (12,13) via $1648e dbeq -> blocked: mode $4a; else mode := $12 + run $14ff8 body. 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states; $15302 + $1518a group-state-8 hand-off asserted OFF)
 00014ff8	h_mode12_halt          # cool-down dwell: D6+=step_x D7+=step_y; subq.w #1,18(A1); >0 -> epilogue $161c4 (stay $12); <=0 -> mode := $10 -> $161c4. 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test) incl. the $161c4 water-veto (mode := $0, no write-back) and the $163ea relink
 000150c0	h_mode1a_absorb        # group absorbs reinforcements: slice reserve_6 -> march_14 by ($30fe) shift
-00015122	h_mode1c_detach        # size a raiding party (troops_8 >> $30fe) -> mode $28 besiege
-00015264	h_mode28_besiege       # assault pulse: garrison-- while group state 3; at 0 leader troops-- + $1d70
-00015282	h_mode2a_besiege       # $28 variant
+00015122	h_mode1c_get_men       # arrival of order $08: quota 46 = lord.troops_8 >> $30fe, $34f2 summons the town's men -> mode $28
+00015264	h_mode28_wait_men      # 50-tick wait after get men, then $35f4 frees the slot (original wait_men)
+00015282	h_mode2a_recruit_joins # a summoned man joins the lead's group: quota--, $1b2a, lord troops_8--, $1d70 (original wait_mee; read, not seen live)
 0001533c	h_mode32_melee         # = pm_melee
 00015b94	h_mode56_regroup       # unpack packed muster cell {x:6,y:7} + $3f86c control byte -> mode $10
 00015c46	h_mode5a_proxgate      # wait for a category $18/$20 neighbour in the cell bucket, else timeout -> mode $62
@@ -258,4 +281,4 @@
 00057fee	g_game_speed          # $57ff0 reload (tick subdivision; 1:1 at normal speed)
 00057ff0	g_tick_subdiv         # counts down each $13000; underflow -> present + reload
 00057ff2	g_paused              # nonzero = paused (skips the AI + render, not the executor)
-00014e4e	g_population          # nonzero = a game is running (set by the briefing OK click)
+00014e4e	g_population          # nonzero = a game is running (set by the briefing OK click); `$2c` after the protection check passes (original _test_en)

@@ -51,7 +51,7 @@ The "commander AI" (whether the Red/Green/Blue lords attack, recruit, or build)
 is a thin layer on top: it is expressed as **group-order records** in the table
 at `$51538`, one per army, holding a state enum and a link to the group's lead
 object record. The group-order state drives which mode the lead man is put into
-(`$10` march-to-cell, `$28` besiege, `$1a` take food from a town); the
+(`$10` march-to-cell, `$28` wait for recruits (get men), `$1a` take food from a town); the
 individual men then follow their own state machines toward the goal.
 
 ### The simulation tick
@@ -543,7 +543,7 @@ typedef struct pm_object {           // array $51b66, stride 50, slots 1..510
                                      //   Low 6 bits + next 7 bits also decode as a packed muster cell {x:6,y:7}.
 /*44*/  u8   msg_code;               // pending "under attack" message, consumed + cleared by $16260 / $159a4
 /*45*/  s8   morale;                 // combat HP in melee: $1533c drains it, <=0 -> $5590 (kill/rout). $5c80 creeps it up.
-/*46*/  u16  garrison_or_leader;     // $15282: besiege garrison count; $5bd2: offset into $4e514 for the kill credit
+/*46*/  u16  garrison_or_leader;     // $15122: a lead's recruit quota (order $08); $34f2 sets a townsman's to the lead's offset, read by $15282; $5bd2: offset into $4e514 for the kill credit
 /*48*/  u16  link_target;            // the entity being chased / attacked ($14f08 mode $10, $15302, $56a6)
 } pm_object;                         // sizeof == 50
 ```
@@ -648,7 +648,8 @@ the settled first-mission view.
 
 | mode | handler | tick | behaviour |
 |------|---------|-----:|-----------|
-| `$28`/`$2a` | `$15282` | – | **besiege** the target record `46(A1)`: while its group state (`$51538`) is 3, decrement its garrison `46(A0)` each tick; at 0, decrement the settlement's troop count in `$4e514` and `jsr $1d70` (capture) |
+| `$28` | `$15264` | – | **wait for recruits** (arrival of order `$08`, via `$1c`): `subq 18(A1)` each tick; at 0 `$35f4` frees the order slot (live, 133rd: 22 entries in 6M steps on the player's lead) |
+| `$2a` | `$15282` | – | **a recruit joins** (the original name is `wait_mee`, "Original names" below), read from the code, not seen live: on the first tick (dwell `$32`) the man's `46(A1)` names the group lead `A0`; if the lead is alive and its group is in state 3, `46(A0)` (the quota `$15122` set) is decremented and, while it stays non-negative, `$1b2a` adds the man to the group, his home lord's `troops_field` (`8(A4,D0)`) drops by one and `$1d70` re-forms the ranks; otherwise the dwell runs out into `$3c08` |
 | `$2c` | `$152f8` | – | **pick a target** (`jsr $4f68`; `$36` counts down back to `$2c`). `$4f68` dispatches on `38(A1)` unmasked through `$4fa2` (handler = `$4fa2 + word[$4fa2 + 38]`): 0/2/`$18`..`$1e` `$4fc4` hunt a lord (`46` = `$4e514` record): every man of his settlements that can fight, within `$fff`; 4 `$503c` hunt a group (roster of `obj[46]`'s group); 6 `$50b2` one target `obj[46]`; 8 `$50da` follow it (mode `$36`, prev `$66`); `$a` `$5150` shoot it (mode `$34`, `$57f0` type `$28`); `$c` `$519a` walk to its cell (mode `$10`, prev `$3a`); `$e`/`$10` `$51dc` help allies of my lord, else `$5402` sends my lord's idle men home (`$3c08`); `$12`/`$14`/`$16` `$5240` group done: nobody engaged → `$539a` (conquest: `38 == $12` → `$550e`, economy.md §3), else `$3c08`. Each candidate is weighed by `$548a` (Chebyshev distance; stronger weapon or morale, or a third retry; the best key stored is D0, not the distance: a game bug that changes 48 of 169 natural picks). No candidate: `38 += $10` (flag bit 6, or bit 4 with a group) else `+= $c` (`$538a`/`$5392`). *Proven, 124th: `py/diff_4f68.py`, 1804/1804 over 192 states, 170 natural (`scratchpad/pm124/conquest/`)* |
 | `$2e` | `$15302` | – | **reached the target** `48(A1)`: snap `(D6,D7)` onto it, set both mode bytes `$32`; if engageable (`mode(target) > $2c`, `prev_mode(target) >= $3c`) `jsr $56a6` *(disassembled, not yet differentially tested)* |
 | `$32` | `$1533c` | – | *(Proven, 95th — see the [Proven] combat block above)* **melee**: `tst.b 5(A3) <= 0` or `30(A3) == $3c` (target dead/corpse) → mode/prev `:= $2c`, epilogue `$161c4`. Else face away (`17(A3) := 17(A1) + $80`); if target `31 != $32` → `jsr $56a6`. **Drain `45(A3)` by `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** via `sub.b` (the `>= 6` arm is a hard `moveq #0`, *not* `min`). `> 0` → mutual retaliation (`48(A3) := self`, `31(A3) := $32`, `bra $1622c` — no epilogue). `<= 0` → `jsr $5590`, then mode/prev `:= $2c` + `$161c4` |
@@ -689,7 +690,7 @@ object record; `36(A3)` a running total).
 |------|---------|-----:|-----------|
 | `$18` | `$150b0` | 6 | → mode `$0c` (begin the patrol route). This is the state the neutral-village garrisons sit in (`prevmode $18` on every mode-`$0e` record) |
 | `$1a` | `$150c0` | – | **take food from a town** (arrival mode of order `$06`, and of the `$1a` supply line): A5 = the target lord (`$51b66 + 24(A3)`, set by `$3154`); `loyalty_pressure 14(A5) += 16 >> $30fe`; `slice = food 6(A5) >> $30fe` moves into the army's food `36(A3)`; group state `$c` → mode `$26` (back to the supply-line cell), else `$35f4`. 124th: 22 → 11, army +11 vs control, `scratchpad/pm124/o06` |
-| `$1c` | `$15122` | – | **detach a raiding party**: `46(A1) = 8(A5) >> shift`; → mode `$28` (siege), dwell `$32` |
+| `$1c` | `$15122` | – | arrival of order `$08` (**get men**): the quota `46(A1) = lord.troops_field(8(A5)) >> shift` (aggressive all, neutral half, passive a quarter); `$34f2` sends every able man of the town's house chain to the cell (`20/22 := the lord's cell`, `31 := $10`, `30 := $14`, `46 :=` the lead offset when the group is in state 3: callcap on lord 0's town sends 4 men); the lead → mode `$28`, dwell `$32` |
 | `$1e` | `$1515c` | – | arrival mode of order `$02` (go to): `$35f4`, the group goes idle |
 | `$26` | `$15200` | – | if group state == `$c`, unpack `36(A1)` as a target cell → mode `$10` (march there), prevmode `$74` (the `$1a` supply line's return leg) |
 | `$22` | `$151a8` | – | arrival of order `$0e`: `$5fa0` hands the lord's work order (`$5cde`) to every man of the group, then mode `$92`. `$5cde` refuses a lord without a capital (kind 7), so the player's single mission-1 town (kind 11) refuses it |
@@ -760,12 +761,12 @@ stateDiagram-v2
     state "32 melee" as S32
     state "2C fighting-hold" as S2C
     state "36 fight recoil" as S36
-    state "28 besiege settlement" as S28
+    state "28 get men: wait" as S28
     state "68 in-formation (follower)" as S68
     state "8A garrison" as S8A
     state "18 group: begin route" as S18
     state "1A group: take food from a town" as S1A
-    state "1C group: detach raiding party" as S1C
+    state "1C group: get men, summon the town" as S1C
     state "26 group: unpack dest -> march" as S26
     state "56 regroup: unpack muster cell" as S56
     state "58 regroup: settle" as S58
@@ -777,8 +778,6 @@ stateDiagram-v2
     state "$15302 reached (routine)" as S15302
     state "$1518a $4bc8 reconcile" as S18A
     state "$5590 kill / rout" as S5590
-    state "$1d70 capture" as S1D70
-    state "$3c08 restructure" as S3C08
     state "$35f4 free group slot" as S35F4
 
     S00 --> S8C : order_class == 0A
@@ -812,8 +811,7 @@ stateDiagram-v2
     S5590 --> S2C : after the roll, self -> mode $2c
     S2C --> S36 : (via $153b2)
     S36 --> S2C : recoil dwell 0
-    S28 --> S1D70 : garrison count hits 0 -> capture
-    S28 --> S3C08 : group left besiege state
+    S28 --> S35F4 : dwell 0 (order slot freed)
     S18 --> S0C : always (40 := $50)
     S1A --> S26 : group state == $C, dwell $23
     S1A --> S35F4 : group state != $C (free slot)
@@ -990,32 +988,38 @@ void h_take_food(pm_object *A1) {
     goto epilogue_161c4;
 }
 
-// ---- $15122  mode $1C : group detaches a raiding party -------------------
-void h_detach(pm_object *A1) {
+// ---- $15122  mode $1C : arrival of order $08, get men ---------------------
+void h_get_men(pm_object *A1) {                      // A5 = the target lord ($3154 stored it in group[+24])
     group *g   = &group[A1->group_off];
-    pm_object *lead = &obj[g->lead_off];
-    int roll = jsr_30fe(A1);
-    A1->garrison_or_leader = lead->troops_8 >> roll; // size the raiding party
-    jsr_34f2();
-    A1->mode  = 0x28;                                // -> besiege
+    int roll = jsr_30fe(A1);                         // posture - 2
+    A1->recruit_quota = lord_of(g)->troops_8 >> roll;   // 46(A1)
+    jsr_34f2();                                      // send the town's men to the lord's cell (31 := $10, 30 := $14)
+    A1->mode  = 0x28;                                // wait
     A1->dwell = 0x32;
     goto epilogue_161c4;
 }
 
-// ---- $15264 / $15282  mode $28/$2A : besiege a settlement ---------------
-void h_besiege(pm_object *A1) {                      // handler = $15282 for $2a
-    if (A1->dwell == 0x32) {                         // one "assault pulse" per 50 ticks
-        pm_object *garr = &obj[A1->garrison_or_leader];
-        if (garr->owner > 0 && group[garr->group_off].exec_state == 3) {
-            if (--garr->garrison_or_leader >= 0) {   // still defenders left
-                nation *n   = &nation[A1->nation_off];
-                leader *L   = &leader_by_off(n->leader_off);   // via $1b2a
-                if (found) { L->troops_8 -= 1; jsr_1d70(A1); } // capture
-            }
+// ---- $15264  mode $28 : wait for the recruits ---------------------------
+void h_wait_men(pm_object *A1) {
+    if (--A1->dwell != 0) goto next_tick;            // $161bc
+    jsr_35f4(&group[A1->group_off]);                 // order done, slot freed
+    goto epilogue_161c4;
+}
+
+// ---- $15282  mode $2A : one recruit joins (read, not seen live) -----------
+void h_recruit_joins(pm_object *A1) {                // A1 is the townsman; 46(A1) = the group lead
+    if (A1->dwell == 0x32 && A1->link_46 != 0) {
+        pm_object *lead = &obj[A1->link_46];
+        if (lead->owner <= 0 || group[lead->group_off].exec_state != 3) goto restructure;   // $152ee
+        if (--lead->recruit_quota >= 0 && jsr_1b2a(A1)) {                                   // add the man to the group
+            home_lord(A1)->troops_8 -= 1;
+            jsr_1d70(A1);                            // re-form the ranks
+            goto epilogue_161c4;
         }
     }
     if (--A1->dwell > 0) goto epilogue_161c4;
-    jsr_3c08(&group[A1->group_off]);                 // pulse over -> restructure group
+restructure:
+    jsr_3c08(&group[A1->group_off]);
     goto epilogue_161c4;
 }
 
