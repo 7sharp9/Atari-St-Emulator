@@ -1,7 +1,7 @@
 """route_lib.py: helpers of route_to_room16.py (placement dump, door words, goto, wall summary); imports trek/drv from this directory."""
 import sys, os
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+_HERE = os.path.dirname(os.path.abspath(__file__))   # underscore: `from route_lib import *` must not overwrite the importer's own HERE (86th pass: three agents' snapshots landed here)
+sys.path.insert(0, _HERE)
 from trek import *
 SN = OUT + 'r16/'
 os.makedirs(SN, exist_ok=True)
