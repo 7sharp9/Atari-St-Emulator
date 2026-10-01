@@ -452,14 +452,16 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         //touching every printfn in 68k.fs - makes a captured trace directly greppable/correlatable
         //against ROM addresses, instead of needing a separate disassembly pass just to figure out
         //which address a given trace line came from (a real time sink in past debugging sessions).
-        printf "$%06x: " cpu.PC
-        //Symbol label when the PC is a known routine entry (tos100uk.sym). Only fires on exact
-        //matches - enough to see "<flop_rw>" as execution enters it - and only when the trace is
-        //on (Console.Out is a null sink under ATARI_NOTRACE, so this costs a dict lookup at most).
-        if symbols.Count > 0 then
-            match symbols.TryGetValue (int cpu.PC) with
-            | true, n -> printf "<%s> " n
-            | _ -> ()
+        //Gated on Trace.enabled: F#'s printf rebuilds its format machinery on every call, which
+        //made this one line a large share of each step under ATARI_NOTRACE.
+        if Trace.enabled then
+            printf "$%06x: " cpu.PC
+            //Symbol label when the PC is a known routine entry (tos100uk.sym). Only fires on exact
+            //matches - enough to see "<flop_rw>" as execution enters it.
+            if symbols.Count > 0 then
+                match symbols.TryGetValue (int cpu.PC) with
+                | true, n -> printf "<%s> " n
+                | _ -> ()
         //Structured flow-event trace (ATARI_TRACE_EVENTS) - one emission point, here, rather than
         //the 221 printfn sites. Capture the pre-step PC/opcode and the interrupt-ack count, then
         //classify the transition once cpu.Step() has produced the new PC. See Atari.TraceEvents.
