@@ -61,8 +61,8 @@ against every session's changes.
   sword, bow, plough, boat, pot, catapult, cannon); porters move goods between a nation's lords;
   "invention" is supply: a unit's weapon improves only when a better item reaches its lord and
   is handed out. There is no research timer. (E 2a, E 2b, E 2c, E 4)
-- **Combat is a morale grind.** Units in contact lock into melee; each tick the attacker takes 1..4
-  (by weapon) off the target's health (byte 45; the captain panel reads it as "Very Sickly" ... "Dead", earlier passes called it morale, 134th audit, S "Original names"), which is its hit points. At zero the loser is killed or
+- **Combat is a health grind.** Units in contact lock into melee; each tick the attacker takes 1..4
+  (by weapon) off the target's health (byte 45, the value the captain panel prints as "Very Sickly" ... "Very Strong", "Dead"). At zero the loser is killed or
   routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
   group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
   A "Natural runs on later lands")
@@ -141,7 +141,7 @@ against every session's changes.
 - Breaking an alliance with the player loses the two −8 relation changes: a message call clobbers
   a register, so they are written outside the table. (S "Diplomacy")
 - The AI sets posture 4 (passive) on every group it sends to attack, and posture 4 pins every
-  morale defeat that group inflicts to a rout (unless the victim's flag bit 5 is set): AI attackers
+  kill that group inflicts to a rout (unless the victim's flag bit 5 is set): AI attackers
   rout men rather than kill them. The player's army at posture 3 rolls: 5 kills and 5 routs in the
   mission-1 win. Earlier passes read posture as "discipline" and said mission 1 never kills.
   (S "`$6522` — the commander AI" step 4, S "Combat" 0, A "Natural runs on later lands";
@@ -305,7 +305,7 @@ stored block (4 here) unless you also poke that byte at `$13b9a`:
 `reversing/powermonger/py/build_land.sh <k> [steps] [season]` does all of this and
 prints the land's render-record census (`census.py`). The unpoked
 control reproduces mission 1's terrain byte for byte. `k` = 20/60/100/143 give
-44-69 settlement records (mission 1: 11) and non-zero `$3f86c` control values
+44-69 settlement records (mission 1: 11) and non-zero `$3f86c` altitudes
 on 37-72 % of cells (mission 1: 10 %). `scratchpad/pm120/k60_iso.snap` is
 land 60 (`$580a0 = $68f`), settled at the frame driver.
 
@@ -446,7 +446,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     structures as C structs, the entity FSM as a state diagram, per-handler
     pseudocode for the load-bearing modes, and a re-armed 276-tick mission-1
     fight that traced the **melee casualty mechanic** for the first time.
-    Combat is a **morale grind**: mode `$32` drains the enemy's morale byte 1–4
+    Combat is a **health grind**: mode `$32` drains the enemy's health byte 1–4
     per tick; at zero `$5590` rolls kill-vs-rout off the group's discipline
     value, which in mission 1 pins every result to **rout** — ten routs, zero
     kills, fifteen captures over the fight. It also sketched **mission setup**
@@ -497,7 +497,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     ticks). The "periodic settlement update" turned out to be entity **mode `$7c`**
     (`$157e6`), which also runs a loyalty accumulator (`pm_leader` +14): at ≥ 600
     (army too big for the manpower base, sustained) the lord and all its
-    settlements **defect** (`$550e`). `$2984` is world-build garrison spawn; the
+    settlements **defect** (`$550e`). `$2984` is the world-build village population; the
     `$163ea` write aliasing is characterised (a corrupt object forward-link, not a
     fault in `$163ea`) and benign (`pm_settlement._w2`, which nothing reads).
 14. The 76th pass is a **port precursor** (`port/`, doc + tooling only, no
@@ -789,7 +789,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       the 26-record banner ring + the man on the hill.
     - **Task 1:** static-diffed the minimap sub-rect vs the `$78000` master
       across `pm78_settle`/`pm73_fight`/`pm74_late`/`pm89_pan_e` + a one-frame
-      `watch` of `pm88_f1`. The master's minimap region + the `$3f86c` control
+      `watch` of `pm88_f1`. The master's minimap region + the `$3f86c` altitude
       plane are **byte-identical across all four** (no ownership change present
       → an ownership tint is unconfirmed); **the game draws no camera-viewport
       rectangle** (`TerrainView.cs`'s is a port addition); the only real
@@ -859,11 +859,11 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       `next.prev` fix-up, old-bucket clear — all exercised by the naturals);
       **mode `$68`** `$16048` (formation follower — `$5c80`, then `clr` step +
       heading, no write-back); **mode `$8a`** `$161b2` (garrison — `$5c80`);
-      **`$5c80`** upkeep (morale creep `45(A1) += $57fec & 1` toward the
-      `flags`-indexed survivability cap `$5ccc`; `morale < 0` → clear).
+      **`$5c80`** upkeep (health recovery `45(A1) += $57fec & 1` toward the
+      job-indexed health cap `$5ccc`; `health < 0` → clear).
     - **Corpus:** `pm88_f1` / `pm78_settle` / `pm74_late` / `pm73_fight` naturals
       + poked variants driving each branch (dwell → mode flip, world-Y negative →
-      water veto, forced anim trigger ± the freeze bit, morale below/at/under
+      water veto, forced anim trigger ± the freeze bit, health below/at/under
       the cap, single-record isolation). Pre-registered falsifier (any tracked
       byte differing in any state) / bar (100% over ≥ 20 states): **PASS**. The
       `$5c80` wear/removal path (`$5bd2`) is asserted **OFF** — `anim_wear`
@@ -875,7 +875,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       `$60`), gatherer/porter (`$42`/`$46`/`$52`/`$54`), the dying-entity path
       `$1623c`, and `$5bd2`. Each needs its own leaf reconstruction
       (`$164bc` DIVU step-toward, `$14262` heading, `$12d56` rotate, the
-      `$168ee` patrol spline).
+      `$168ee` path spline).
 
 30. The 94th pass (RIDER 3b routine 2 cont., doc + tooling only — no emulator
     change, regression net skipped) **proves the four movement modes of the
@@ -890,7 +890,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       `mode $08`, water → `mode $0` no write-back); **mode `$08`** `$14d7c`
       (escort/orbit — `$12d56`-rotate the orbit offset by the lead's heading,
       `$164bc`, arrival snap, then fall into the `$14d32` / `$14cfa` body);
-      **mode `$0e`** `$14e70` (patrol — integrate, at dwell 0 advance the
+      **mode `$0e`** `$14e70` (the farmer's walk — integrate, at dwell 0 advance the
       `$168ee` spline: recompute step `(nextpt−seg)>>3` + heading; the `$7d01`
       loop / `$7d02+n` jump-to-mode / `$7d00` end terminators); **mode `$10`**
       `$14f08` (advance / chase — `$164bc` step, `prev_mode $2e` chase tracking
@@ -930,10 +930,10 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       families):** `$1533c` every branch — target-loss (`5(A3) <= 0` /
       `30(A3) == $3c`) → `_melee_lost` (mode/prev `:= $2c`, epilogue `$161c4`);
       face-away `17(A3) := 17(A1) + $80`; `31(A3) != $32` → `$56a6`; the
-      **morale drain `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** (`>= 6` is a
+      **health drain `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** (`>= 6` is a
       hard `moveq #0`, *not* `min(44,6)` as the old docs said); mutual
       retaliation (`48(A3) := self`, `31(A3) := $32`, no epilogue);
-      `morale <= 0` → `$5590` → `_melee_lost`. `$56a6`'s `$574a` leaf (skip
+      `health <= 0` → `$5590` → `_melee_lost`. `$56a6`'s `$574a` leaf (skip
       `$5778`, set both mode bytes, `46(A3) := leader-entry offset`,
       `38(A3) := 2`). `$5590`'s no-lead KILL, the group-lead walk +
       `$30fe` + the `D0 == 2 → $560a` selector, the RNG-parity branch

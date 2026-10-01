@@ -20,7 +20,7 @@ $13026  tst.w $57ff2 ; bne $13058        ; PAUSED -> skip the AI + accounting bl
 $1302e  addq.l #1,$2df70                 ; sim clock ++
 $13034  addq.l #1,$4bb3e                 ; master tick ++
 $1303a  tst.l 46($14e20) ; beq $13058    ; no running game -> skip
-$13040  jsr $127e6   ; event-marker / "Lord X under attack" ticker feed
+$13040  jsr $127e6   ; sound-event dispatcher (original _do_soun...): plays the 2 highest-priority pending sounds
 $13046  jsr $6522    ; << the commander AI (order pipeline)
 $1304c  jsr $d322    ; per-side troop totals -> $57fba
 $13052  jsr $3e06    ; flag-health UI + the armies eat (food decay) + $57fba group term
@@ -32,10 +32,10 @@ $13088  move.w #$1,$12f58
 $13090  jsr $1870    ; per-frame VBL sync / present
 $13096  jsr $12ce0   ; offscreen buffer -> shifter (double-buffer flush)
 $1309c  tst.w $57ff2 ; bne $130c8        ; paused -> skip the two heavy renderers
-$130a4  jsr $178ae   ; render setup A (group $4c exec sub-record)
+$130a4  jsr $178ae   ; HUD group bars (food 112, men 52, the lead's health 45; callcap: 138 bytes written)
 $130aa  jsr $f898    ; terrain raster
 $130b0  jsr $1abaa   ; seasons: fade the grass 16 px ($57ff6 LCG), $57fec++; weather ($1ad2a)
-$130b6  jsr $17878   ; render setup B (rotation row-table select)
+$130b6  jsr $17878   ; compass (callcap: 51 bytes written)
 $130bc  jsr $165b2   ; water / terrain animation for the selected group
 $130c2  jsr $14b62   ; << the entity iterator (ai.md)
 $130c8  jsr $6a3a    ; << order executor: consume $58016, drive group state + lead mode
@@ -139,7 +139,7 @@ group `k = D7/2`'s word, walked from group 5 down to group 0 (the captain's):
 | `4(A1)`   | +4..+14   | slot-index / link, written back by `$6822` |
 | `28(A1)`  | +28..+38  | the group's **owner side** (group `-48`; `<= 0`: no group, skip) |
 | `52(A1)`  | +52..+62  | the group's **men** (group `-24`, captain panel "Troops") |
-| `76(A1)`  | +76..+86  | the group **state** (group `0`: `$6` idle/patrol, `$9`, `$d` support, ...) |
+| `76(A1)`  | +76..+86  | the group **state** (group `0`: `$6` camp, `$9`, `$d` support, ...) |
 | `112(A1)` | +112..+122| the group's **food** (group `36`, captain panel "Food"; eaten by `$3e06`, AI groups seeded `$5fff`) |
 | `136(A1)` | +136..+146| AI sub-state scratch |
 | `256(A1)` | +256..+266| wait-until timestamp, compared to `$2df72` |
@@ -181,7 +181,7 @@ typedef struct pm_side_groups {       // base = $51538 + side*$13c
 /* +40*/  s16  first_man  [6];        // [-36] roster head (next via 26(man))
 /* +52*/  s16  men        [6];        // [-24] captain panel "Troops"
 /* +64*/  s16  lead       [6];        // [-12] lead object offset
-/* +76*/  s16  state      [6];        // [0]   $6 idle/patrol, 2/3/5/8/9/$a/$c/$e/$f/$10 per order, $d support
+/* +76*/  s16  state      [6];        // [0]   $6 camp, 2/3/5/8/9/$a/$c/$e/$f/$10 per order, $d support
 /* +88*/  s16  eat_timer  [6];        // [12]  $3e06: counts to $580a6[side].word0 (doubled in state 6)
 /* +100*/ s16  target     [6];        // [24]  target link: a lord, settlement or object ($3154, $68fe/$6762)
 /* +112*/ s16  food       [6];        // [36]  captain panel "Food"; -= men/8+1 per eat tick; AI groups seeded $5fff
@@ -537,7 +537,7 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
   accept only a target of that side (`$3154`: `D5 > 0` branch; `$3248`: `cmp.b 5(A1),D5`, byte6 0). Live on `m1_s0`: the
   armed icon clicked on enemy lord 0's town (minimap `(22,51)`) posted nothing (`$57fd4` stayed `8`, 0 `$6bea`
   and 0 `$3154` hits in 60M steps); clicked on the own town (lord 2's field troops poked to 10 so the quota is
-  non-zero) it ran `$15122` once and left the lead in mode `$28` (a 50-tick wait, then `$35f4` frees the slot),
+  non-zero) it ran `$15122` once and left the lead in mode `$28` (a 50-tick wait, then `$35f4` makes the camp),
   group state 3, 22 `$15264` entries in 6M steps. `callcap $34f2` (the summons `$15122` makes) on lord 0's town
   sends 4 men (object records 2, 3, 5, 7: target cell `20/22`, mode byte `31 := $10`, `30 := $14`) and on the
   player's own town none: its house chain holds no inhabitants in mission 1, so no join happens there
@@ -562,7 +562,7 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
 
   A joined man is pushed at the head of the roster (`-36`) with flag bit 6 set and `28(man)` = the lead; `$1d70` gives him mode
   `$08` → `$06` → `$68` (idle in the group). The lead stays in `$28` for the 50 `$15264` ticks (about 200k steps each, ten
-  million in all), then `$35f4` frees the slot and the group goes from state 3 to 6. `py/townmen.py`, `scratchpad/pm134/join/`.
+  million in all), then `$35f4` ends the order and makes the camp: the group goes from state 3 to 6. `py/townmen.py`, `scratchpad/pm134/join/`.
   Not run: `$1b2a`'s rule for a man of another side (read from the code: he joins only when his home settlement's owner is the lead's side).
 - `$20` on lord 0's town, 25M steps: men 0, the captain inside (22,45) with side byte 2. Lord 0
   then defected to side 3 (loyalty reset to 300); the 25M control keeps him on side 2 at 608. The
@@ -580,8 +580,8 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
   group is strong enough (`8(leader) >> 1 > -24(groupRecord)`) is in contact it
   calls `$4bc8` — troop-count / ownership reconciliation. That is bookkeeping,
   **not an order.**
-- **`$3e06`** — larger than the 69th-pass "morale→UI" reading. Its head is the
-  flag-health indicator (morale byte 45 of the selected group's lead,
+- **`$3e06`** — more than a UI routine. Its head is the
+  flag-health indicator (health byte 45 of the selected group's lead,
   `divu #$14`, → `$58056`). Then it walks **every** side's 6 groups (A2 =
   side base + 2k): adds the group's men `52(A2)` into `$57fba[side].word0`, and
   **the army eats** (`$3f44..$3faa`): `88(A2)` counts ticks to
@@ -636,10 +636,12 @@ below); `$68fe` reads one wrong byte of it as a targeting weight.
 
 ## `$127e6`
 
-Min-of-2 selector over a 59-entry / 58-byte table at `$12952` keyed on
-`10(entry)`, emitting the two smallest into `$58058`. It feeds the on-screen
-event markers / the "Lord X's men are under attack" ticker. Not a decision
-routine — listed only because it shares the `$13040` call site.
+The **sound-event dispatcher** (original `_do_soun...`). A min-of-2 selector over the `$3b`-entry table at `$12952`
+(14-byte entries, pending when word 0 is nonzero, keyed on the priority word `10(entry)`) picks the two best pending
+events, clears them, and `$1283c` hands each to `$1ba3e`, the sound player (`move.w 6(A1),-(A7)` = the sound id,
+`jsr $1ba3e` at `$128d2`), unless the same id is already playing on the channel. Live: from `pm123/win/m1_atk` over
+6M steps `$127e6` runs 24 times and one run reaches `$128d2` and `$1ba3e` (the other 23 find nothing pending). It is not
+an event-marker or "under attack" ticker feed, and not a decision routine.
 
 ## The campaign-order hook — `$6762` / `$67d0` (72nd pass, static)
 
@@ -681,7 +683,7 @@ gap and assumed it was a battle resolver with odds and casualty rolls.
 **It is not.** PowerMonger has no discrete battle resolver. Combat is a set of
 loosely-coupled mechanisms, all running at the entity level in `ai.md`'s
 `$14b62` tick. The 73rd pass traced the first real field fight (`$5590` fired
-ten times) and found the decisive one is a **morale grind ending in a rout**,
+ten times) and found the decisive one is a **health grind ending in a rout**,
 not the wear-attrition path the 72nd pass focused on.
 
 ### 0. The melee grind (`$1533c`, mode `$32`) — the primary mechanic
@@ -699,17 +701,17 @@ void h_melee(obj *A1 /*attacker*/) {              // $1533c
     if (T->mode != 0x32) pm_engage(T /*A3*/, A1); // drag the target into the fight
     int dmg = min((u8)A1->msg_code, 6) >> 1;      // 0..3
     dmg += 1;                                     // 1..4 per tick
-    T->morale -= dmg;                             // <<< byte 45 is the melee HP
-    if (T->morale <= 0) { pm_kill_or_rout(A1, T); return; }  // -> $5590
+    T->health -= dmg;                             // <<< byte 45 is the melee HP (the panel's healthnames)
+    if (T->health <= 0) { pm_kill_or_rout(A1, T); return; }  // -> $5590
     A1->link_into(T);  T->mode = 0x32;            // keep grinding
 }
 ```
 
-`$5590` — reached when a unit's `morale` is ground to `<= 0`:
+`$5590` — reached when a unit's `health` is ground to `<= 0`:
 
 ```c
 void pm_kill_or_rout(obj *A1 /*attacker*/, obj *A3 /*loser*/) {
-    A3->morale = 0;
+    A3->health = 0;
     int roll = 0;
     if ((A1->flags & BIT4) ? A1->group_off != 0 : (A1->flags & BIT6)) {
         obj *lead = A1->link_related ? &obj[A1->link_related] : A1;
@@ -817,25 +819,25 @@ levels issue faster / deadlier projectile types.
 
 ```c
 int pm_upkeep(obj *A1) {                                // $5c80, exactly
-    int surv = t_survivability[A1->flags & 0x1f];       // inline table at $5ccc
+    int cap = t_health_cap[A1->flags & 0x1f];           // inline table at $5ccc, indexed by the job byte 7
     int wear = (u8)A1->anim_wear - 0x3c;
     if (wear >= 0) {                                    // bmi skips otherwise
-        surv -= wear * 4;
-        if (surv < 0) { pm_unit_remove(A1); }           // -> $5bd2
+        cap -= wear * 4;
+        if (cap < 0) { pm_unit_remove(A1); }            // -> $5bd2
     }
-    int morale = (s8)A1->morale;
-    if (morale < 0) { A1->morale = 0; return 1; }
-    if (surv > morale) { A1->morale += (g_tick_rng & 1); return 1; }  // creep up
-    return 0;                                           // surv <= morale: spent, no recovery
+    int health = (s8)A1->health;
+    if (health < 0) { A1->health = 0; return 1; }
+    if (cap > health) { A1->health += (g_tick_rng & 1); return 1; }  // recover
+    return 0;                                           // cap <= health: at the cap, nothing to do
 }
 ```
 
-`t_survivability` (`$5ccc`) is a sparse **17-byte** table indexed by
+`t_health_cap` (`$5ccc`, the health a man of that job recovers to; byte 45 sits on it in 203 of 225 live persons over three snapshots, `py/health_check.py`) is a sparse **17-byte** table indexed by
 `flags & $1f` (a small enum, not a bitfield): index `0/1/2/4/8/$10` →
 `90/82/69/79/72/95`; every other index is `0` (and `>= 17` reads into the next
 routine's code — never happens, the enum only takes those six values plus
-`$11`). `$5778` stamps an engaged garrison's flags to `$11` → survivability `0`,
-so it stops recovering morale and is removed once `anim_wear` crosses `$3c`.
+`$11`). `$5778` stamps an engaged garrison's flags to `$11` → health cap `0`,
+so it stops recovering health and is removed once `anim_wear` crosses `$3c`.
 
 `anim_wear` (object byte 14) is only ever **incremented** — by the iterator's
 animation-advance at `$14b9a`, roughly once per animation cycle for a
@@ -915,7 +917,7 @@ There are **three** "random" sources; none is a seeded PRNG in the *AI* path:
 - **`$57fec`** — a free-running 16-bit counter, `addi.w #$1,$57fec` in `$1abc0`
   (reached from `$1abaa`, once per tick, gated by a phase accumulator so it
   advances a little under once per tick). Every AI use takes low bits only:
-  `& 1` (morale creep, `$5c80`), `& 3` (campaign sub-mode, `$6762`), `& 7`
+  `& 1` (health recovery, `$5c80`), `& 3` (campaign sub-mode, `$6762`), `& 7`
   (a speech-line pick, `$3e06`/`$3f08`). Because it is just the low bits of the
   tick count, **the AI is fully deterministic** given the tick number — there is
   no seeding, no entropy, and a save/restore at the same tick replays
@@ -1132,7 +1134,7 @@ void envoy_arrives_33b0(group *g, leader *L) {
             else { s->order = 0x2a; s->param = g - $51538; }   // $3458; the executor runs $34a8
         } else if (g->side == local) refusal_message_cada(L->side);
     }
-    free_group_35f4(g);                              // the envoy group is always disbanded
+    make_camp_35f4(g);                               // the envoy group's order always ends (camp, state 6)
 }
 void accept_alliance_34a8(int a, group *g) {         // order $2a
     bset(g->side, &assess[a].peace_bits);  bset(a, &assess[g->side].peace_bits);
@@ -1510,14 +1512,14 @@ def melee_tick(attacker):                          # entity mode $32 / $1533c
     T = attacker.target
     if T.dead: attacker.mode = FIGHT_HOLD; return
     dmg = (min(attacker.msg_code, 6) >> 1) + 1     # 1..4 per tick
-    T.morale -= dmg
-    if T.morale <= 0:                              # $5590
+    T.health -= dmg
+    if T.health <= 0:                              # $5590
         roll = attacker.group.discipline - 2       # field_60 - 2
         kill = (roll == 0) or (roll not in (0,2) and (world.tick + attacker.phase) & 2 == 0)
         if attacker.target.encircled: kill = True
         if kill: T.to_corpse(decay=160)
         else:    T.rout()                          # scattered, survives
-    # slow second channel, $5c80: survivability[flags] - (age-60)*4 < 0 -> removed
+    # slow second channel, $5c80: health_cap[job] - (age-60)*4 < 0 -> removed
 ```
 
 ## What's crude, and what a modern version changes
@@ -1550,7 +1552,7 @@ are limitations rather than choices:
 
 4. **2.6 Hz, and compute-bound.** The whole sim — every entity, both renderers —
    runs in one thread at whatever rate a frame builds. Decisions land ~2.5 s
-   apart and combat resolves in ~1–4 morale/tick. A modern port decouples the
+   apart and combat resolves in ~1–4 health/tick. A modern port decouples the
    sim tick from the render, runs the AI on its own budget, and can afford
    per-frame steering while keeping the coarse "issue an order every few
    seconds" cadence that gives PM its feel.
@@ -1562,7 +1564,7 @@ are limitations rather than choices:
    cosmetic jitter; use a real seeded PRNG for anything the player can exploit.
 
 6. **Rout, not attrition, decides the AI's fights — and rout is pinned.** The AI
-   attacks at posture 4, which forces every morale-kill into a rout, so its
+   attacks at posture 4, which forces every kill into a rout, so its
    field combat almost never kills (the player chooses: aggressive kills); territory changes hands by **conquest** (`$539a` → `$550e`, economy.md §3) while
    armies just get scattered and re-form. A modern version would let the AI
    choose its posture from the situation so that its fights have consequences.
@@ -1625,11 +1627,12 @@ What the names changed:
   staying at home, `$8a` a captain resting at his town (29 of 29 job 9).
 - **Byte 33 is a carried item code** (`2 * (slot + 1)` for a boat or tool: `$0a` Boat, 8 Plough, 12 Pot ...; modes `$02` and `$8c`
   are 71 of 71 and 17 of 17 with bit 5 set and 33 = `$0a`: `boating`, not "hold position") and **byte 45 is health** (the captain
-  panel prints `(45 >> 4) & 7` through `healthnames` at `$a2dc`, "Very Sickly" ... "Dead", read from the code and the string table,
-  `$5c80` is `_add_str...`; the docs' "strength" and "morale" for byte 45 are the first reading).
+  panel prints `(45 >> 4) & 7` through `healthnames` at `$a2dc`, "Very Sickly" ... "Dead": 11 of 11 `callcap $912a` calls with a poked
+  byte return the table's string, and 203 of 225 live persons sit exactly on their `$5ccc` cap, `py/health_check.py`;
+  `$5c80` is `_add_str...`, which recovers it to the job's cap).
 - **`$3f86c` is `_alts`, the altitude plane**, not a "control byte" or influence field: `$ffa6` (`_fill_al...`) accumulates a random
   walk into it, `$10410` (`_smooth_`) averages neighbours, `$10458` lays the rivers; graphics.md already reads it as the height
-  source (static, no live count). Likewise `$127e6` is the sound-event dispatcher (`_do_soun...`), `$178ae` the HUD group bars (food
+  source: poking a block of it raises a plateau in the redrawn terrain, 10938 pixels differ (`py/alts_render_check.py`). Likewise `$127e6` is the sound-event dispatcher (`_do_soun...`), `$178ae` the HUD group bars (food
   `112`, men `52`, the lead's health `45`; `callcap` 138 bytes written) and `$17878` the compass (51 bytes), not "render setup A/B".
 - Modes `$56..$62` are labelled `fish_*`, `$80..$88` `shep_*`, `$4e..$54` `merch_*`: the job state machines of the people
   the panel calls farmer, merchant, fisher and shepherd (`jobnames` at `$a200`; a man's job is `7(obj) & $f`, 9 with bit 4
@@ -1741,7 +1744,7 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 ## Open threads
 
 - **Economy / population / invention — see economy.md** (this entry predates it). Confirmed *not* in the
-  per-tick path (`$1abaa` is sound, `$3e06` is the armies eating + morale-UI,
+  per-tick path (`$1abaa` is sound, `$3e06` is the armies eating + the health indicator,
   `$d322` is force-totalling). Initial population/settlement counts come from
   the `$10d1e`/`$2266` procedural generator. Growth and invention are either
   event-driven (a revolt, `$550e`, moves a lord and his settlements; economy.md §3) or live in the setup-time

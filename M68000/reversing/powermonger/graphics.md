@@ -40,8 +40,8 @@ buffer with software plane blits and shown by a base-register swap.
 There is **no vertex list in RAM**. The terrain lives in parallel 8 KB planes
 around `$438ee` (`ai.md`): a **type** byte at `0(A1)` (grass / rock / water), a
 **height** byte at `-8257(A1)`, and a per-cell flag byte at `+8257(A1)` whose
-bit 7 selects the diagonal that splits the cell. The control array `$3f86c` is
-the height source the projector reads. Corners are generated during the walk,
+bit 7 selects the diagonal that splits the cell. The altitude plane `$3f86c` (`_alts`) is
+the height source the projector reads (proven by poking it, `py/alts_render_check.py`). Corners are generated during the walk,
 so the mesh is implicit in the grid.
 
 ### `$fec6` — project the grid corners
@@ -277,7 +277,7 @@ the stone border, the pre-rendered open sea and a hole where the island goes.
   per simulation tick ($13000), present rate gated by $57ff0/$57fee (= 1 normally):
     $1870   spin until the VBL flag $2df8c is set                 ; frame sync
     $12ce0  copy terrain master ($78000) -> back buffer ($2df78)  ; 500 rows, movem
-    $178ae  render setup (group exec sub-record)
+    $178ae  HUD group bars (food, men, the lead's health)
     $f898   re-project if camera/yaw/zoom changed; refill every island cell, sprites inline
   --- every tick ---
     $14b62  entity FSM      (ai.md), relinks $47970 buckets via $163ea

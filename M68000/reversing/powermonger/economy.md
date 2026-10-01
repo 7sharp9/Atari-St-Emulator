@@ -93,10 +93,10 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 
 | PC | handler / mode | effect on the pool |
 |----|----------------|--------------------|
-| `$1507c` | `$15042`, entity **mode `$16`** ("disband — go home") | `food += 2` (`+= 2` again if `order_class == 8`) |
+| `$1507c` | `$15042`, entity **mode `$16`** (a farmer home from his field) | `food += 2` (`+= 2` again when he carries a Plough, byte 33 `== 8`) |
 | `$15e18` | `$15ddc`, entity **mode `$60`** (the fisherman delivering his catch: every man in modes `$56`..`$62` is job 4, fisher, 93 of 93 over seven states, `py/job_census.py`, ai.md) | `food += 4` per trip |
 | `$150f2` | `$150c0`, entity **mode `$1a`** (an army takes food from a town: order `$06`) | `slice = food >> (posture-2)`; `food -= slice`; `36(group) += slice` (the army's food); `loyalty_pressure += 16 >> (posture-2)` (the `14(A5)` write, A5 = the lord). 124th, 1 run: 22 → 11, loyalty 0 → 8 |
-| `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` teardown family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. 124th, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven 98th** — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
+| `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` camp-making family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. 124th, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven 98th** — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
 | `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.food -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (97th).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (~1/110M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
 | `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.food -= 2`, floored — a detached gatherer costs the lord (75th) |
 | `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-7-set, bit-6-clear arm). *(**Proven, 99th** — `$37c2` + its `$1d70`/`$1b8c`/`$17a46` leaves differential-tested vs the real 68000, 1847/1847 over 13 states; reached via `$3c08`'s flag-bit-4 teardown sub-path. The inverse `+= 1` on the bit-6-set arm is `$1b8c`'s `$1c04`.)* |
@@ -118,19 +118,19 @@ mission 1 the enemy's store rises by 4 per fisherman's delivery (28 → 40 in 3M
 at zero each man deserts with chance 1/8; strategy.md "`$d322` + `$3e06`").
 Mission 1, 26 men: 251 → 247 → 243 in 25M steps, both writes at `$3f6a`.
 
-**Mode `$16` disband** (`$15042`, the "go home" path):
+**Mode `$16`, a farmer home from his field** (`$15042`; the first reading called it "disband"):
 
 ```c
 // $15042 -- CORRECTED 96th: the $57fd0 test was written backwards below, and the
 // "veteran" test is on byte 33, not order_class (byte 1).
-void h_disband(pm_object *A1) {                 // entity mode $16
+void h_farm_home(pm_object *A1) {               // entity mode $16
     jsr_16848(A1);                              // side<->owner reconcile + $5c80
     if (g_tileset_sel /*$57fd0*/ == 0) {        // <- == 0, NOT != 0
         A1->dwell = -99; A1->prev_mode = A1->mode; A1->mode = 0x7c; return;
     }                                          // (park as a $157e6 heartbeat marker)
     leader *L = &leader_of(A1->nation_off);
     L->food += 2;                     // the mission-1 path: DOES credit +2
-    if (A1->byte33 == 8) L->food += 2;
+    if (A1->byte33 == 8) L->food += 2;       // carrying a Plough
     A1->target = unpack_cell(A1->group_off_lobyte);
     A1->prev_mode = 0x18;  A1->mode = 0x10;             // walk to the muster cell
 }
@@ -429,9 +429,10 @@ typedef struct pm_settlement {      // $4f916, stride $12 (18), count in $51536,
 Built by the routine at `$2fc0` (world-build, from `$13b9a`'s cluster): it walks
 a 3-byte-per-record mission stream, allocates `$4f916` slots, chains them per
 nation (`chain_next` at +8, head stored in `2(leader)`), and stamps
-owner/kind/cell/leader. On the terrain plane it also sets influence bits
-(`ori.b #$2,8257(A3)` + `bset #1` on three neighbours) so the settlement claims
-its cells in `$3f86c`.
+owner/kind/cell/leader. A site is refused when the four corner altitudes of its cell
+(`-16514(A3)`, `-16513`, `-16450`, `-16449`: the `$3f86c` plane, A3 being the `$438ee` cell pointer; `$2f72`, static) sum to 0,
+that is open sea; otherwise it sets bit 1 in four cells of the flag plane (`ori.b #$2,8257(A3)` + `bset #1` on
+three neighbours) to claim them.
 
 **How a settlement changes hands: the revolt `$550e`** (Proven, 122nd:
 `reversing/powermonger/py/diff_revolt.py`, 1778/1778 over 49 states, 27 of
@@ -461,7 +462,7 @@ callers, and they are the only two ways land changes side (124th,
   (dead or routed), `38` becomes `$12` (`$538a`), and on the next tick `$5240`
   checks that nobody in his group is still engaged and runs `$539a`, which calls
   `$550e` with the lord and makes the lord's side the attacker's `5(A1)`, then
-  scatters the group (`$35f4`). It made 16 of the 27 natural calls (loyalty 0 to
+  ends the group's order and makes its camp (`$35f4`). It made 16 of the 27 natural calls (loyalty 0 to
   292), and the mission-1 win: 5 kills + 5 routs of lord 0's 10 men, then
   `$539a` once at +26,268,828 steps after `m1_atk.snap`, lord 0 → side 1 with
   `troops_field` still 5. The lord's field count is not the test; his
@@ -793,21 +794,24 @@ table). The economy-relevant ones:
 | `$58148` | `$5809c` override else `rand & $7fff + $1500` | map size / richness; `< $2000` ⇒ "small" preset (more lords, more settlements) |
 | `$5814a` | `rand & 7 + (small ? $a : 2)` | lord count |
 | `$58150` | `(rand & 3) + 2 + (small ? $a : 2)` | settlement-count knob |
-| `$5814b` | (byte of `$58148`) | **land richness / fertility byte** — added to every cell's `$3f86c` control value by `$ffa6` |
+| `$5814b` | low byte of the lord-count word `$5814a` | the height step `$ffa6` adds per random-walk step to the altitude plane `$3f86c` |
 
-`$ffa6` seeds the per-cell control plane `$3f86c` ($1fff cells) from a base map
-at `$4592f`, offset by `$5814b`, gated by `bit 1` of `$4592f`-plane flags, then
-clamps every cell `>= 0`. The 75th pass corrects the pass-1 guess: `$3f86c` is
-the **influence / carrying-capacity** field, not a fertility input to a growth
-payoff (there is no growth payoff). It is read by `$5ec6` to pick `gather_kind`,
-by the regroup modes (`$15b94`) for sprite selection, and by the strategy layer
-for territory ownership — not by any manpower or goods maths. `$4672` scatters
+`$ffa6` (original `_fill_al...`) builds the **altitude plane `$3f86c`** (`$2000` bytes, 64 columns by 128 rows, cell
+`y*64 + x`; original `_alts`): `$58148` random-walk steps (the point starts at (`$5814c`, `$5814e`) and moves -1..+1 per axis,
+wrapped to 64 x 128) each add `$5814b` to the cell under the point unless bit 1 of that cell's `$4592f` flag is set,
+then every cell is clamped `>= 0` and `$10410` (neighbour averaging) runs `$58150` times (`$ffa6`..`$10056`, static).
+That the renderer projects this plane as the terrain height is proven by poking it: a block of 39 longwords of `$3c`
+under the camera raises a plateau, 10938 pixels differ against the same forced redraw without the poke
+(`py/alts_render_check.py`). Altitude 0 is sea level: settlements are refused on a cell whose four corners are 0 (`$2f72`), and a
+fisherman picks his sprite `$70` or `$90` by whether the cell's `+1` and `+64` neighbours are nonzero (`$15bae`, static,
+not seen live); `$5d80` (the build decision, ai.md "Build") reads the altitude at the lord's cell, `>= $10` meaning high
+ground. It is not an influence, ownership or carrying-capacity field, and not read by any manpower or goods maths. `$4672` scatters
 10 forests, clusters of trees (`$4788`), and their markers across buildable cells.
 
-`$2984` (task 4, now disassembled) is **world-build settlement-garrison spawn**,
-not a periodic pass: per lord it walks the settlement chain, allocates a `$51b66`
+`$2984` (original `_set_peo...`) is the **world-build village population**: one man per population slot with a random
+job (`init_she/fis/far/mer`; a lord of kind > 3 gets captains), not a periodic pass and not a garrison: per lord it walks the settlement chain, allocates a `$51b66`
 marker per settlement (guarded by the object high-water `$57f66 < $5460`),
-`owner_leader.troops_field += 1`, and seeds the marker's morale byte 45. It runs
+`owner_leader.troops_field += 1`, and seeds the marker's health byte 45. It runs
 once, alongside `$238c`.
 
 ## 6. Men are conserved, food is not grown by any counter (75th, task 2; 124th: `+6` is food)
@@ -868,7 +872,7 @@ against a cruel ruler".
 ```
    TREES ($4d252)                                    ARMIES (groups, $51538)
       │  gatherer FSM  $3e→$44→$42                       │
-      ▼                                                  │ group teardown $3c08/$35f4
+      ▼                                                  │ group end   $3c08/$35f4 
    pm_leader.goods[0..7]  ($4e514 +24)  ◄───────────────┤ ($3b5a deposit remainder)
       │  ▲                                               │
       │  │ porters (modes $4e/$50/$52/$54/$5e)           │ army-supply $61f8 / $6352
