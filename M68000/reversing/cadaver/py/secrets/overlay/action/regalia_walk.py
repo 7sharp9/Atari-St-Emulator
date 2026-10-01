@@ -8,7 +8,11 @@ $009c82 opens when an object is in front, the result is the object's template id
 probe returns the wanted id with the wanted icon offered; `take` then opens the panel and picks icon 2 (TAKE) with fire, and the
 type-8 list and rucksack count `2438(A5)` are read back.
 
-    python reversing/cadaver/py/secrets/overlay/action/regalia_walk.py [enter|search ID|full|finish]
+    python reversing/cadaver/py/secrets/overlay/action/regalia_walk.py [enter|search ID|jump32|full|finish]
+
+Object 32 (the circlet) is not found by the walk search: it rests on top of the large object 31 (z 18..31 on 31's z 0..17), so a hero standing on the floor never
+overlaps it.  Holding fire with nothing in front starts a jump (the hero's z span at 0x38338+4 rises 0 -> 18 over ~50,000 steps, one cell of x per 10,000 with
+a direction held); a jump that peaks after crossing 31's edge lands on 31 at z base 18, where `U` puts 32 in front (`jump32`).
 
 Snapshots are written under scratchpad/cadaver/secrets_out/action/rw/.  Result of the 81st pass: see secrets.md "Room scripts" / the
 puzzle paragraph; the search and take are deterministic from the same start snapshot."""
@@ -32,6 +36,25 @@ def enter_room33():
     assert room == 0x21, room
     h.r.snap(ROOM33); h.close()
     return ROOM33
+
+
+def jump_onto_31(snap, back=60000):
+    """from room 33's entry: walk right to the stall against object 31 (x 44..55, z 0..17), walk `back` steps left, hold fire+right (jump; with nothing in front fire
+    is not a probe), keep right held until the hero lands on 31 (z base 18, x lead 55), then walk up to the stall; returns the snapshot at that stall"""
+    r = Repl(snap)
+    walk(r, RIGHT, max_steps=1500000)
+    joy(r, LEFT); r.cmd('s %d' % back); joy(r, 0); r.cmd('s 30000')
+    joy(r, FIRE | RIGHT); r.cmd('s 300000')       # the arc starts after ~55,000 steps and is still rising when fire is released
+    joy(r, RIGHT)
+    last = None
+    for _ in range(60):
+        r.cmd('s 10000'); z = tuple(r.mem(0x38338 + 4, 2))
+        if z == last and z[1] == 18: break      # landed: z base 18 = 31's top (17) + 1, two reads equal
+        last = z
+    p = walk(r, UP, max_steps=1500000)
+    print('  on 31, after U: pos', p, 'z', tuple(r.mem(0x38338 + 4, 2)), flush=True)
+    out = RW + 'on31_u.snap'; r.snap(out); r.close()
+    return out
 
 
 _n = [0]
@@ -58,6 +81,11 @@ def search(snap, goal, icon, maxdepth=5, budget=900, seen=None):
     return None
 
 
+def probe_snap(snap):
+    r = Repl(snap); res = probe(r); r.close()
+    return (res[0], res[1]) if res else None
+
+
 def take(snap, out):
     """panel on the object in front, icon 2 (TAKE); returns type-8 records and count; snapshot after"""
     r = Repl(snap); t = Tally(r)
@@ -68,14 +96,8 @@ def take(snap, out):
 
 
 def finish(cur):
-    """from the state after the three natural takes: poke object 32 into the type-8 list (its box lies inside the altar 31's, so the
-    fire probe returns 31; see the docstring result), find the BUTTON by natural walks and operate it with its own icon"""
-    r = Repl(cur)
-    d = type8(r); n = d['count']
-    idx, dat = int(d['index'], 16), int(d['data'], 16)
-    print('  type-8 before poke: count', n, 'recs', d['recs'][:n], 'index words', r.mem(idx, 4 * (n + 1)).hex(' '))
-    r.cmd('w %x %08x' % (idx + 4 * n, 0x00040000 | (4 * n))); r.cmd('w %x %08x' % (dat + 4 * n, 32 << 16))   # the game's own index format: flag 4, offset 4*slot
-    s2 = RW + 'poked32.snap'; r.snap(s2); r.close()
+    """from the state after the four natural takes: find the BUTTON by natural walks and operate it with its own icon"""
+    s2 = cur
     found = search(s2, 2, None, maxdepth=6, budget=1200)
     if not found: print('BUTTON not found'); return
     path, snap = found
@@ -100,14 +122,24 @@ if __name__ == '__main__':
     print('room 33 snapshot', s)
     if what == 'search':
         print(search(s, int(sys.argv[2]), 2))
+    elif what == 'jump32':
+        at = jump_onto_31(s)
+        print('probe', probe_snap(at))
+        cnt, recs, hits = take(at, RW + 'taken32.snap')
+        print('  take 32: rucksack count', cnt, 'type-8 records', recs, 'hits', {hex(k): v for k, v in hits.items() if k in (0xa136, 0xc42a, 0xa184)})
     elif what == 'finish':
         finish(RW + 'taken26.snap')
     elif what == 'full':
-        cur = s
+        at = jump_onto_31(s)
+        cnt, recs, hits = take(at, RW + 'taken32.snap')
+        print('  take 32: rucksack count', cnt, 'type-8 records', recs, flush=True)
+        cur = RW + 'taken32.snap'
         for goal in (28, 16, 26):
             found = search(cur, goal, 2)
             print('goal', goal, 'path', found[0] if found else None, flush=True)
             if not found: break
-            cnt, recs, hits = take(found[1] if False else found[1], RW + 'taken%d.snap' % goal)
+            cnt, recs, hits = take(found[1], RW + 'taken%d.snap' % goal)
             print('  take', goal, ': rucksack count', cnt, 'type-8 records', recs, 'hits', {hex(k): v for k, v in hits.items() if k in (0xa136, 0xc42a, 0xa184)}, flush=True)
             cur = RW + 'taken%d.snap' % goal
+        else:
+            finish(cur)
