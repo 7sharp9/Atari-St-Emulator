@@ -1303,10 +1303,11 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///`i_MOVE`, `cpu_level < 2` branch: "if data prefetches needed for destination EA, CCR is
     ///set before fetch completes"). `DecodeBucketMove` records the computed CCR here right before
     ///the potentially-faulting `WriteEa`; the group-0 handler applies it to the frame-pushed Cpu
-    ///if set. `None` on every non-MOVE instruction and on a MOVE whose write did not fault (the
+    ///if set. `ValueNone` on every non-MOVE instruction and on a MOVE whose write did not fault (the
     ///happy path already carries the CCR in its own return record). Reset per instruction in
-    ///`Cpu.Step`, like `FaultPcAdvance`/`FaultRegFixup`, and not part of the snapshot.
-    member val FaultCcr : int16 option = None with get, set
+    ///`Cpu.Step`, like `FaultPcAdvance`/`FaultRegFixup`, and not part of the snapshot. A struct
+    ///option: every MOVE sets it, and a reference `Some` was an allocation per MOVE.
+    member val FaultCcr : int16 voption = ValueNone with get, set
 
     ///A composite fingerprint of every piece of latent device state that a forward Step() consumes
     ///but that deliberately does NOT bump `mutations` - the Timer B HBL prescaler, the FDC INTRQ

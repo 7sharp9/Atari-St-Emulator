@@ -1013,6 +1013,19 @@ type Cpu =
         if not Trace.enabled then "" else
         sprintf "%i(a%u,%s%u.%s)" ext.Disp baseReg (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w")
 
+    ///Merges a MOVE destination's fault-fixup list into the source's: a register the destination
+    ///didn't touch keeps whatever the source committed; the same register on both sides (an aliased
+    ///mem->mem MOVE) lets the destination's entry win, matching real hardware's last-write-stands
+    ///ordering. Most MOVEs have an empty list on one side or both, and then the result is the other
+    ///list unchanged, so the `Set`/`filter`/`@` work only runs for a genuine mem->mem auto-update.
+    static member private MergeFixup (srcFix: (int * int) list) (dstFix: (int * int) list) : (int * int) list =
+        match srcFix, dstFix with
+        | [], _ -> dstFix
+        | _, [] -> srcFix
+        | _ ->
+            let dstRegs = dstFix |> List.map fst |> Set.ofList
+            (srcFix |> List.filter (fun (r, _) -> not (dstRegs.Contains r))) @ dstFix
+
     ///Bytes an operand of this access size occupies in memory / an immediate consumes as extension.
     static member private EaOpBytes (size: OperandSize) =
         match size with
@@ -1312,6 +1325,10 @@ type Cpu =
     ///fetch again anyway would double the cost of every instruction's first-word read, not just
     ///the rare ones this guard actually resolves.
     member x.TryFastForwardTbdrPoll(instruction: int) : Cpu option =
+        //Only `move.b (An),Dn` (0001 ddd 000 010 sss) can start the idiom; testing those bits first
+        //keeps every other opcode, including all the other MOVEs, from running the `Move` pattern
+        //(which allocates its result tuple on a match) just to be rejected.
+        if instruction &&& 0xF1F8 <> 0x1010 then None else
         match instruction with
         | Move(OperandSize.Byte, dReg, 0b000uy, 0b010uy, sReg)
                 when (uint32 (x.AddressRegister sReg) &&& 0xFFFFFFu) = x.MMU.TbdrAddress
@@ -1362,7 +1379,7 @@ type Cpu =
             //commit any -(An)/(An)+ side effect the faulting access had already applied.
             x.MMU.FaultPcAdvance <- 0
             x.MMU.FaultRegFixup <- []
-            x.MMU.FaultCcr <- None
+            x.MMU.FaultCcr <- ValueNone
             let instruction = x.MMU.ReadWord (uint32 x.PC)
             //Trace mode is sampled on `x` (the state BEFORE this instruction runs) - real hardware
             //latches T1 at the start of an instruction, so an instruction that itself just turned
@@ -1443,7 +1460,7 @@ type Cpu =
                 (x, x.MMU.FaultRegFixup)
                 ||> List.fold (fun (c: Cpu) (r, v) -> c.WithAddressRegister (byte r) v)
             //MOVE's CCR update (see MMU.FaultCcr) survives a faulting destination write.
-            let faulted = match x.MMU.FaultCcr with Some c -> { faulted with CCR = c } | None -> faulted
+            let faulted = match x.MMU.FaultCcr with ValueSome c -> { faulted with CCR = c } | ValueNone -> faulted
             let newCpu = faulted.EnterGroup0Vector 3 faultAddress isWrite opcode stackedPC
             if Trace.enabled then
                 printfn "address error: misaligned %s at $%08x -> vector 3 ($%08x)"
@@ -1462,7 +1479,7 @@ type Cpu =
                 (x, x.MMU.FaultRegFixup)
                 ||> List.fold (fun (c: Cpu) (r, v) -> c.WithAddressRegister (byte r) v)
             //MOVE's CCR update (see MMU.FaultCcr) survives a faulting destination write.
-            let faulted = match x.MMU.FaultCcr with Some c -> { faulted with CCR = c } | None -> faulted
+            let faulted = match x.MMU.FaultCcr with ValueSome c -> { faulted with CCR = c } | ValueNone -> faulted
             let newCpu = faulted.EnterGroup0Vector 2 faultAddress isWrite opcode stackedPC
             if Trace.enabled then
                 printfn "bus error: unmapped %s at $%08x -> vector 2 ($%08x)"
@@ -1660,10 +1677,7 @@ type Cpu =
             //destination didn't touch keeps whatever the source committed (the fix above); the
             //same register on both sides (an aliased mem->mem MOVE) lets the destination's entry
             //win, matching real hardware's last-write-stands ordering.
-            let mergeFixup (dstFix: (int * int) list) =
-                let dstRegs = dstFix |> List.map fst |> Set.ofList
-                (srcFaultFixup |> List.filter (fun (r, _) -> not (dstRegs.Contains r))) @ dstFix
-            x.MMU.FaultRegFixup <- mergeFixup dstFaultFixup
+            x.MMU.FaultRegFixup <- Cpu.MergeFixup srcFaultFixup dstFaultFixup
 
             match dstLoc with
             | EaAn r ->
@@ -1683,11 +1697,11 @@ type Cpu =
                 //READ commits the full -4 in one bus cycle on real hardware; only a WRITE splits
                 //it into two.
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR rawSource
-                x.MMU.FaultCcr <- Some ccr
+                x.MMU.FaultCcr <- ValueSome ccr
                 let x = dstUpdate x
-                x.MMU.FaultRegFixup <- mergeFixup [(int dReg, int a + 2)]
+                x.MMU.FaultRegFixup <- Cpu.MergeFixup srcFaultFixup [(int dReg, int a + 2)]
                 x.MMU.WriteWord (a + 2u) (int16 rawSource)
-                x.MMU.FaultRegFixup <- mergeFixup dstFaultFixup
+                x.MMU.FaultRegFixup <- Cpu.MergeFixup srcFaultFixup dstFaultFixup
                 x.MMU.WriteWord a (int16 (rawSource >>> 16))
                 if Trace.enabled then
                     printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
@@ -1700,7 +1714,7 @@ type Cpu =
                     | _ -> CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR rawSource
                 //MOVE's CCR is set from the source value before the destination write is
                 //attempted, so it sticks even when that write faults - see MMU.FaultCcr.
-                x.MMU.FaultCcr <- Some ccr
+                x.MMU.FaultCcr <- ValueSome ccr
                 let written = x.WriteEa size dstLoc rawSource (dstUpdate x)
                 if Trace.enabled then
                     printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
