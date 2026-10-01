@@ -85,6 +85,10 @@ know they existed.
 - Name a routine's role from its own body, not from where it is seen running: Impossamole's `$1c6de` was called "the shared depacker" for many passes because
   PC was seen at `$1c68e` during resource reloads (the tail of the VBL wait loop next to it); its first instructions are `Fopen` (`move.w #$3d`, `trap #1`), it is a file loader, and the depacking is a crack hook in low
   RAM (`reversing/impossamole/secrets.md`). Read the routine to its first branch before writing its role into a doc, and grep for such a label before reusing it.
+- Name a table's contents by matching its entries against an independent record set, not by what its seeder or first reader is
+  called: PowerMonger's `$4d252` was documented as herded animals for sixty passes; 203 of 203 live entries sit on byte6-4
+  (tree) render records, none on the animal records, and the men working it are of every job, not shepherds
+  (`reversing/powermonger/economy.md` §2, `py/tree_census.py`). The same applies to a mode or flag named from one observed user.
 - When a session decodes a graphics asset for the first time (spritesheet, tileset, icon/panel
   art, palette) well enough to render it, commit the rendered image (PNG) alongside the doc that
   proves the format, not just a prose description or an untracked scratchpad file — future
