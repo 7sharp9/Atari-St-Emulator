@@ -115,6 +115,16 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 #   $550e    call_550e               2408   122nd        Proven (diff_revolt.py 1778/1778, 49 states)
 #   $5c2c    call_5c2c               2437   122nd        Proven (diff_revolt.py)
 #   $25d6    call_25d6               2456   122nd        Proven (diff_revolt.py; player-side $187d8 arm asserted off)
+#   $2984    call_2984                3224   139th        Proven (gate_pop.py 29860/29860, 8 land builds)
+#   $2a98    call_2a98                3175   139th        Proven (gate_jobs.py 3310/3310, 146 states; arms $2b08 $2b68 $2c5a, merchant, captain)
+#   $2b08    call_2b08                3057   139th        Proven via $2a98
+#   $2b68    call_2b68                3080   139th        Proven via $2a98
+#   $2c5a    call_2c5a                3135   139th        Proven via $2a98 (reads the caller's D1 as its row bound)
+#   $2d0e    call_2d0e                3028   139th        Proven via $2a98 (the A1 == 0 branch has no caller, not modelled)
+#   $2e1e    call_2e1e                3009   139th        Proven via $2984
+#   $15f80..$15eb0 h_mode80/82/84/86/88     3291   139th        Proven (gate_shepherd.py 1043/1043, 198 states)
+#   $4044    call_animals             3373   139th        Proven (gate_animals.py 45094/45094, 55 snapshots; inside $3e06)
+#   $416e    call_pigeons             3442   139th        Proven for flight and re-steer; the $41dc arrival only its bucket effect ($6b38 not modelled, $4244 asserted off)
 #
 # Not indexed: pure-arithmetic/plumbing helpers with no standalone 68k
 # routine identity of their own (s8/s16/u16/_swap/_movew/_divu/_trig/_sin/
@@ -225,7 +235,7 @@ def bucket_unlink(m, cell, rec_off):
 def relink(m, A1, D6, D7):
     """$163ea: write the new position back and, if the screen cell changed,
     move the record between $47970 buckets."""
-    rec_off = A1 - OBJ
+    rec_off = (A1 - OBJ) & 0xffff           # 16 bit: a record below OBJ (an animal) has a negative offset
     D4 = (m.wu(A1 + 10) & 0xff00) >> 2      # OLD cell (pre-writeback stored pos)
     D4 = (D4 + m.bu(A1 + 8)) & 0xffff       # add.b 8(A1),D4
     m.ww(A1 + 8, D6)                        # move.w D6,8(A1)
@@ -237,23 +247,23 @@ def relink(m, A1, D6, D7):
     # -- unlink from old bucket --
     D5 = m.wu(A1 + 2)                       # bucket_prev
     if D5 != 0:
-        m.ww(OBJ + D5 + 0, m.wu(A1 + 0))    # prev.next = self.next
+        m.ww(_objaddr(D5) + 0, m.wu(A1 + 0))    # prev.next = self.next
         nxt = m.wu(A1 + 0)
         if nxt != 0:
-            m.ww(OBJ + nxt + 2, D5)         # next.prev = prev
+            m.ww(_objaddr(nxt) + 2, D5)         # next.prev = prev
     else:
         cell = (D4 * 2) & 0xffff            # add.w D4,D4
         nxt = m.wu(A1 + 0)
         m.ww(BUCKETS + cell, nxt)           # head = self.next
         if nxt != 0:
-            m.ww(OBJ + nxt + 2, 0)          # next.prev = 0
+            m.ww(_objaddr(nxt) + 2, 0)          # next.prev = 0
     m.wl(A1 + 0, 0)                         # clr.l 0(A1)
     # -- link at head of new bucket --
     cell = (D7c * 2) & 0xffff               # add.w D7,D7
     old_head = m.wu(BUCKETS + cell)
     if old_head != 0:
         m.ww(A1 + 0, old_head)
-        m.ww(OBJ + old_head + 2, rec_off)
+        m.ww(_objaddr(old_head) + 2, rec_off)
     m.ww(BUCKETS + cell, rec_off)
 
 
@@ -1961,6 +1971,9 @@ def reconstruct(m):
             else:
                 h_mode7c_regroup(m, A1)    # $3c08 regroup branch (98th)
 
+        elif mode in SHEP_MODES:           # ---- $15e30..$15f96 shepherd cycle (139th) ----
+            SHEP_MODES[mode](m, A1, D6, D7)
+
         else:
             raise AssertionError("rec %d live in unsupported mode $%02x"
                                  % ((A1 - OBJ) // REC, mode))
@@ -2974,3 +2987,489 @@ def arm_group_done(m, c, A1):
     if c.D7 & 0xffff:
         return pick_52f4(m, c, A1)
     return call_539a(m, A1)
+
+
+# ================================================================ 139th pass:
+# the world-build population: `$2984` seeds the men of every settlement, `$2a98` (original `_its_my_`)
+# gives each man his job, `$2d0e` creates a shepherd's animals, `$2b68` a fisherman's catch marker,
+# `$2e1e` allocates the man's record.  Gate: reversing/powermonger/py/gate_jobs.py.
+# Includes the original's stale-register bound check in `$2c5a` (`cmpi.w #$80,D1` tests the caller's D1,
+# not the row in D0), so the incoming D1 is a parameter.
+# ================================================================
+ANIMALS = 0x4ccd6          # 20-byte animal records (byte6 8, byte7 $11); word $4cff6 = bytes used (cap $320 = 40 records)
+ANIMAL_COUNT = 0x4cff6
+FISH = 0x4cff8             # 10-byte catch markers (byte6 $18, byte7 $10); word $4d250 = bytes used (cap $12c = 30)
+FISH_COUNT = 0x4d250
+FLAGS = TERRAIN + 8257     # $4592f flag plane (bit 4: a free field site)
+OBJ_HIGH = 0x57f66         # word: 50 * records allocated by $2e1e; the build stops at $5460
+JOB_COUNTER = 0x2b06       # the word inside the code that $2a98 uses as its retry counter
+JOB_TRACE = []             # arms taken by the last call_2a98 (corpus bookkeeping; the caller clears it)
+
+
+def call_2e1e(m, D5, D6, D7):
+    """$2e1e: allocate a man of side D5 at world (D6, D7) (words).  Returns the record address, 0 if the table is full."""
+    A1 = OBJ + REC
+    while m.bu(A1 + 5) != 0:                         # tst.b 5(A1) ; beq $2e42
+        A1 += REC
+        if A1 >= END:                                # cmpa.l #$57f66,A1 ; blt
+            return 0
+    m.ww(OBJ_HIGH, m.wu(OBJ_HIGH) + REC)             # move.w $57f66,D0 ; addi.w #$32,D0 ; move.w D0,$57f66
+    m.wb(A1 + 5, D5)
+    m.wb(A1 + 6, 0)
+    m.wb(A1 + 14, (rng_12c9a(m) & 0x1f) + 0xc)       # jsr $12c9a ; andi.w #$1f,D0 ; addi.w #$c,D0
+    m.ww(A1 + 8, D6)                                 # movem.w #$00c0,8(A1)
+    m.ww(A1 + 10, D7)
+    m.wb(A1 + 16, m.bu(0x580a6 + (D5 & 0xff) * 32 + 3))
+    cell = (((D7 & 0xff00) >> 2) + m.bu(A1 + 8)) & 0xffff    # andi.w #$ff00 ; lsr.w #2 ; add.b 8(A1),D7
+    call_16808(m, cell, (A1 - OBJ) & 0xffff)
+    return A1
+
+
+def call_2d0e(m, A1):
+    """$2d0e: one animal for the shepherd A1 (the A1 == 0 branch that picks a random cell has no caller and is not modelled).
+    Returns the animal's address, 0 if the pool is full."""
+    if s16(m.wu(ANIMAL_COUNT)) >= 0x320:             # cmpi.w #$320 ; bge $2e16
+        return 0
+    assert A1 != 0
+    D3 = (m.wu(A1 + 10) >> 2) & 0x1fc0               # lsr.w #2 ; andi.w #$1fc0
+    D3 = (D3 & 0xff00) | ((D3 + m.bu(A1 + 8)) & 0xff)    # add.b 8(A1),D3
+    D4 = m.bu(A1 + 5)
+    A0 = ANIMALS + s16(m.wu(ANIMAL_COUNT))
+    m.ww(ANIMAL_COUNT, m.wu(ANIMAL_COUNT) + 0x14)
+    D0 = (rng_12c9a(m) & 7) + 2
+    m.wb(A0 + 15, D0)
+    D1 = (-D0) & 0xffff
+    D0 = rng_12c9a(m) & 0xff
+    m.wb(A0 + 14, D0)
+    D0, D1 = rotate(m, 0, D1, D0)                    # moveq #0,D0 ; jsr $12d56 (D2 = the heading)
+    m.wb(A0 + 12, D0)
+    m.wb(A0 + 13, D1)
+    m.wb(A0 + 8, D3 & 0x3f)
+    m.wb(A0 + 9, 0x80)
+    m.ww(A0 + 10, (((D3 & 0x1fc0) << 2) + 0x80) & 0xffff)
+    call_16808(m, D3 & 0xffff, (A0 - OBJ) & 0xffff)
+    m.wb(A0 + 5, D4 + 4)
+    m.wb(A0 + 7, 0x11)
+    m.wb(A0 + 6, 8)
+    return A0
+
+
+def call_2b08(m, A1):
+    """$2b08 (`init_she`): the shepherd arm.  Returns (D0, D1): 8 on success, 0 if the animal pool was already past $2f8."""
+    if s16(m.wu(ANIMAL_COUNT)) >= 0x2f8:             # cmpi.w #$2f8 ; bge $2b64 (D0 is 0 on this path)
+        return 0, None
+    D3 = (rng_12c9a(m) & 3) + 1
+    D1 = 0
+    D2 = (A1 - OBJ) & 0xffff
+    while True:
+        A4 = call_2d0e(m, A1)
+        if A4 == 0:                                  # beq $2b50
+            break
+        m.ww(A4 + 16, D1)                            # the previous animal (0 for the first)
+        m.ww(A4 + 18, D2)                            # the shepherd
+        D1 = (A4 - ANIMALS) & 0xffffffff
+        D3 = (D3 - 1) & 0xffff                       # dbf D3
+        if D3 == 0xffff:
+            break
+    m.ww(A1 + 42, D1 & 0xffff)                       # the head of the animal chain
+    m.wb(A1 + 31, 0x80)
+    m.wb(A1 + 7, m.bu(A1 + 7) | 0x08)
+    return 8, D1
+
+
+def call_2b68(m, A1, D6, D7):
+    """$2b68 (`init_fis`): the fisherman arm: the nearest shore cell (altitude 0, exactly one of the two colour planes
+    non-zero) with no catch marker yet.  Returns (D0, D1): 4 on success, 0 if no cell or the marker pool ($4d250 >= $12c) is full."""
+    D1 = None
+    D3 = 1
+    while True:
+        D5 = -D3
+        while True:
+            D4 = -D3
+            while True:
+                D0 = (D6 + D4) & 0xffff                  # $2b72 .. the inner cell loop
+                ok = False
+                if not (s16(D0) < 0 or s16(D0) >= 0x40):
+                    D1 = (D7 + D5) & 0xffff
+                    if not (s16(D1) < 0 or s16(D1) >= 0x80):
+                        D1 = ((D1 << 6) + D0) & 0xffff
+                        A2 = TERRAIN + s16(D1)
+                        if m.bu(A2 - 16514) == 0:        # altitude 0
+                            if m.bu(A2 - 8257) != 0:
+                                ok = m.bu(A2) == 0
+                            else:
+                                ok = m.bu(A2) != 0
+                        if ok:
+                            d0 = m.wu(BUCKETS + 2 * s16(D1))
+                            while d0 != 0:               # a catch marker already in the cell
+                                a2 = OBJ + s16(d0)
+                                if m.bu(a2 + 6) == 0x18:
+                                    ok = False
+                                    break
+                                d0 = m.wu(a2)
+                if ok:
+                    cnt = m.wu(FISH_COUNT)
+                    if s16(cnt) >= 0x12c:                # bge $2c56
+                        return 0, D1
+                    m.ww(FISH_COUNT, cnt + 0xa)
+                    A2 = FISH + s16(cnt)
+                    m.ww(A1 + 42, D1)
+                    m.wb(A2 + 6, 0x18)
+                    m.wb(A2 + 7, 0x10)
+                    m.wb(A2 + 5, m.bu(A1 + 5))
+                    m.wb(A1 + 7, m.bu(A1 + 7) | 0x04)
+                    m.wb(A1 + 31, 0x5e)
+                    call_16808(m, D1, (A2 - OBJ) & 0xffff)
+                    return 4, D1
+                D4 += 1                                  # $2c3c
+                if not D3 >= D4:
+                    break
+            D5 += 1
+            if not D3 >= D5:
+                break
+        D3 += 1
+        if D3 == 0xa:
+            return 0, D1
+
+
+def call_2c5a(m, A1, D6, D7, D1):
+    """$2c5a: the farmer arm: the nearest cell (radius 1..9) whose flag byte has bit 4; clear it, set both colour planes to
+    $1e and send the man there (mode $10, previous mode $18).  D1 is the caller's register: the row bound tests it, not D0."""
+    D3 = 1
+    while True:
+        D5 = -D3
+        while True:
+            D4 = -D3
+            while True:
+                D0 = (D6 + D4) & 0xffff
+                if not (s16(D0) < 0 or s16(D0) >= 0x40):
+                    A2 = FLAGS + s16(D0)
+                    D0 = (D7 + D5) & 0xffff
+                    if not (s16(D0) < 0 or s16(D1) >= 0x80):   # bmi ; cmpi.w #$80,D1 ; bge
+                        A2 += s16((D0 << 6) & 0xffff)
+                        if m.bu(A2) & 0x10:
+                            m.wb(A2, m.bu(A2) & ~0x10)
+                            m.wb(A2 - 16514, 0x1e)
+                            m.wb(A2 - 8257, 0x1e)
+                            D4 = (D4 + D6) & 0xffff
+                            D5 = (D5 + D7) & 0xffff
+                            m.wb(A1 + 42, D4)
+                            m.wb(A1 + 43, D5)
+                            m.ww(A1 + 20, D4 << 8)
+                            m.ww(A1 + 22, D5 << 8)
+                            m.wb(A1 + 7, m.bu(A1 + 7) | 0x01)
+                            m.wb(A1 + 31, 0x10)
+                            m.wb(A1 + 30, 0x18)
+                            return 1
+                D4 += 1
+                if not D3 >= D4:
+                    break
+            D5 += 1
+            if not D3 >= D5:
+                break
+        D3 += 1
+        if D3 == 0xa:
+            return 0
+
+
+def call_2a98(m, A1, D1):
+    """$2a98 (`_its_my_`): the man A1's first job.  A leader (byte 7 bit 4) is the captain at rest (mode $8a, returns -1).
+    Otherwise up to five rounds of: 1 in 32 gives up to merchant; else 1 in 8 shepherd; an odd draw fisherman;
+    then farmer.  Out of rounds: merchant (mode $4e).  Returns D0: 8 shepherd, 4 fisher, 1 farmer, 2 merchant, -1 captain.
+    D1 = the caller's register (see call_2c5a)."""
+    D6 = m.bu(A1 + 8)
+    D7 = m.bu(A1 + 10)
+    if m.bu(A1 + 7) & 0x10:
+        JOB_TRACE.append("captain")
+        m.wb(A1 + 31, 0x8a)
+        return -1
+    m.ww(JOB_COUNTER, 5)
+    while True:
+        D0 = rng_12c9a(m) & 0x1f
+        if D0 == 0:
+            JOB_TRACE.append("giveup")
+            break
+        D0 &= 7
+        if D0 == 0:
+            r, d1 = call_2b08(m, A1)
+            if d1 is not None:
+                D1 = d1
+            if r:
+                JOB_TRACE.append("shepherd")
+                return r
+            D0 = r                                    # 0: the animal pool is full
+        if D0 & 1:
+            r, d1 = call_2b68(m, A1, D6, D7)
+            if d1 is not None:
+                D1 = d1
+            if r:
+                JOB_TRACE.append("fisher")
+                return r
+            JOB_TRACE.append("fisher_fail")
+        stale = s16(D1) >= 0x80                           # the row bound in $2c5a tests this, so no site can be found
+        if call_2c5a(m, A1, D6, D7, D1):
+            JOB_TRACE.append("farmer")
+            return 1
+        JOB_TRACE.append("farmer_fail_stale" if stale else "farmer_fail")
+        n = (m.wu(JOB_COUNTER) - 1) & 0xffff
+        m.ww(JOB_COUNTER, n)
+        if n == 0:
+            break
+    JOB_TRACE.append("merchant")
+    m.wb(A1 + 31, 0x4e)
+    m.wb(A1 + 7, m.bu(A1 + 7) | 0x02)
+    return 2
+
+
+def call_2984(m):
+    """$2984 (`_set_peo...`): the world-build village population.  For each lord with a settlement chain, each settlement of
+    the chain gets `$580a6[side*32 + 14]` men (D1 + 1 rounds of the dbf loop): `$2e1e` allocates, the man is chained into the
+    settlement (word 10 head, word 24 next), counted into the lord (`troops_field`, word 8), given the job by `$2a98` and the
+    health byte of that job.  A lord of kind > 3 gives only its FIRST man the leader flag (D2 bit 4 is cleared after one use,
+    and survives across the lord's settlements).  Stops for good when the allocator fails or `$57f66` reaches `$5460`."""
+    A0 = LEADER
+    while A0 < 0x4f914:                                  # cmpa.l #$4f914,A0 ; blt $298e
+        D0 = m.wu(A0 + 2)
+        if m.bu(A0) != 0 and D0 != 0:
+            D2 = 0x10 if s8(m.bu(A0 + 1)) > 3 else 0     # cmpi.b #3,1(A0) ; ble
+            while True:                                  # $29ac, once per settlement of the chain
+                D1 = (m.wu(0x580a6 + m.bu(A0) * 32 + 14) - 1) & 0xffff
+                A2 = (SETTL + s16(D0)) & 0xfffff
+                while True:                              # $29cc, once per man (dbf D1)
+                    D5 = m.bu(A2 + 5)
+                    w12 = m.wu(A2 + 12)
+                    D6 = (((w12 & 0x3f) << 8) + 0x80) & 0xffff
+                    D7 = (((w12 & 0x1fc0) << 2) + 0x80) & 0xffff
+                    if s16(m.wu(OBJ_HIGH)) >= 0x5460:    # cmpi.w #$5460 ; bge $2a92
+                        return
+                    A1 = call_2e1e(m, D5, D6, D7)
+                    if A1 == 0:                          # beq $2a92
+                        return
+                    m.ww(A1 + 24, m.wu(A2 + 10))         # the settlement's old head becomes the next man
+                    m.ww(A2 + 10, (A1 - OBJ) & 0xffff)
+                    m.ww(A1 + 34, (A2 - SETTL) & 0xffff)
+                    m.wb(A1 + 7, D2)
+                    D2 &= ~0x10                          # bclr #4,D2
+                    m.ww(A0 + 8, m.wu(A0 + 8) + 1)       # troops_field += 1
+                    call_2a98(m, A1, D1)
+                    b7 = m.bu(A1 + 7)
+                    if b7 & 0x01: m.wb(A1 + 45, 0x52)
+                    if b7 & 0x04: m.wb(A1 + 45, 0x4f)
+                    if b7 & 0x02: m.wb(A1 + 45, 0x45)
+                    if b7 & 0x08: m.wb(A1 + 45, 0x48)
+                    if b7 & 0x10: m.wb(A1 + 45, 0x5f)
+                    D1 = (D1 - 1) & 0xffff               # dbf D1
+                    if D1 == 0xffff:
+                        break
+                D0 = m.wu(A2 + 8)                        # the next settlement of the chain
+                if D0 == 0:
+                    break
+        A0 += 0x20
+
+
+# ================================================================ 139th pass:
+# the shepherd cycle (modes $80 $84 $86 $88 $82, handlers $15f80 $15f96 $15e30 $15eb0 $15eee) and the animals'
+# own update (the `$4044..$4166` loop of `$3e06`).  Gates: reversing/powermonger/py/gate_shepherd.py (callcap 14b62),
+# gate_animals.py (callcap 3e06).  Animals: 20-byte records at ANIMALS, byte 7 $11 free, $12 herded, $10 dead/idle.
+# ================================================================
+ANIMAL_END = 0x4cff6      # the loop runs over all 40 slots, whatever the count word says
+ANIMAL_TRACE = []         # arms taken by the last call_animals (corpus bookkeeping)
+
+
+def _herd_target(m, A1, south):
+    """The settlement cell of the man's home as the walk target (20/21/22): x byte, $80, y word (+$100 when `south`)."""
+    A3 = (SETTL + s16(m.wu(A1 + 34))) & 0xfffff
+    w12 = m.wu(A3 + 12)
+    m.wb(A1 + 20, w12 & 0x3f)
+    m.wb(A1 + 21, 0x80)
+    D0 = (((w12 << 2) & 0xff00) | 0x80) & 0xffff       # lsl.w #2 ; move.b #$80,D0
+    if south:
+        D0 = (D0 + 0x100) & 0xffff                     # addi.w #$100,D0 (the cell below the town)
+    m.ww(A1 + 22, D0)
+
+
+def h_mode80(m, A1, D6, D7):
+    """$15f80 `shep_arr`: at the town: the arrival upkeep, a 50-tick wait, mode $84."""
+    call_16848(m, A1)
+    m.ww(A1 + 18, 0x32)
+    m.wb(A1 + 31, 0x84)
+    epilogue_161c4(m, A1, D6, D7)
+
+
+def h_mode84(m, A1, D6, D7):
+    """$15f96: the wait; at 0, mode $86."""
+    n = (m.wu(A1 + 18) - 1) & 0xffff
+    m.ww(A1 + 18, n)
+    if n == 0:
+        m.wb(A1 + 31, 0x86)
+    epilogue_161c4(m, A1, D6, D7)
+
+
+def h_mode86(m, A1, D6, D7):
+    """$15e30 `shep_fin`: walk toward the next free ($11) animal of the chain at 42(A1), to the midpoint between man and animal;
+    on arrival mark it herded ($12, both velocity bytes |= $40).  No free animal left: mode $88."""
+    D0 = m.wu(A1 + 42)
+    A3 = None
+    while D0 != 0:                                     # $15e36
+        a = (ANIMALS + s16(D0)) & 0xfffff
+        if s8(m.bu(a + 5)) > 0 and m.bu(a + 7) == 0x11:
+            A3 = a
+            break
+        D0 = m.wu(a + 16)                              # the previous animal of the chain
+    if A3 is None:
+        m.wb(A1 + 31, 0x88)
+        epilogue_161c4(m, A1, D6, D7)
+        return
+    D0 = (s16((m.wu(A3 + 8) - m.wu(A1 + 8)) & 0xffff) >> 1) & 0xffff      # sub.w ; asr.w #1
+    D1 = (s16((m.wu(A3 + 10) - m.wu(A1 + 10)) & 0xffff) >> 1) & 0xffff
+    D0 = (D0 + m.wu(A1 + 8)) & 0xffff
+    D1 = (D1 + m.wu(A1 + 10)) & 0xffff
+    m.ww(A1 + 20, D0)
+    m.ww(A1 + 22, D1)
+    _c, _d, reached = step_toward(m, D0, D1, D6, D7, A1)
+    if not reached:                                    # bne -> keep walking, come back to $86
+        m.wb(A1 + 30, 0x86)
+        m.wb(A1 + 31, 0x10)
+    else:
+        m.wb(A3 + 7, 0x12)
+        m.wb(A3 + 12, m.bu(A3 + 12) | 0x40)
+        m.wb(A3 + 13, m.bu(A3 + 13) | 0x40)
+    epilogue_161c4(m, A1, D6, D7)
+
+
+def h_mode88(m, A1, D6, D7):
+    """$15eb0 `shep_go_`: walk to the cell just south of the home town, then mode $82."""
+    _herd_target(m, A1, True)
+    m.wb(A1 + 30, 0x82)
+    m.wb(A1 + 31, 0x10)
+    epilogue_161c4(m, A1, D6, D7)
+
+
+def h_mode82(m, A1, D6, D7):
+    """$15eee `shep_go_`: walk onto the town (then mode $80) and let the herd go: every $12 animal of the chain becomes
+    $11 again with a fresh random speed (2..9) and heading."""
+    _herd_target(m, A1, False)
+    m.wb(A1 + 30, 0x80)
+    m.wb(A1 + 31, 0x10)
+    D0 = m.wu(A1 + 42)
+    while D0 != 0:                                     # $15f2a
+        a = (ANIMALS + s16(D0)) & 0xfffff
+        if m.bu(a + 7) == 0x12:
+            m.wb(a + 7, 0x11)
+            sp = (rng_12c9a(m) & 7) + 2
+            m.wb(a + 15, sp)
+            hd = rng_12c9a(m) & 0xff
+            m.wb(a + 14, hd)
+            x, y = rotate(m, 0, (-sp) & 0xffff, hd)
+            m.wb(a + 12, x)
+            m.wb(a + 13, y)
+        D0 = m.wu(a + 16)
+    epilogue_161c4(m, A1, D6, D7)
+
+
+SHEP_MODES = {0x80: h_mode80, 0x82: h_mode82, 0x84: h_mode84, 0x86: h_mode86, 0x88: h_mode88}
+
+
+def call_animals(m):
+    """`$4044..$4166` of `$3e06`: the per-tick animal update.  Category (byte 6) 8 or $22, byte 7 not $10:
+    $11 = free: walk on by the velocity bytes 12/13 while all four corners of the new cell are above sea level, else turn
+    (heading 14 += 1, velocity = rotate((0, ~speed), heading)) and stay;
+    anything else (the herded $12) = stand at the shepherd's position (word 18 = his record) plus the velocity, heading := his byte 17."""
+    for i in range(40):
+        A1 = ANIMALS + 20 * i
+        cat = m.bs(A1 + 6)
+        if cat <= 0 or cat not in (8, 0x22):
+            continue
+        b7 = m.bu(A1 + 7)
+        if b7 == 0x10:
+            continue
+        if b7 == 0x11:
+            D6 = (s8(m.bu(A1 + 12)) + m.wu(A1 + 8)) & 0xffff          # ext.w ; add.w 8(A1),D6
+            if s16(D6) < 0:
+                D6 = 0
+            D7 = (s8(m.bu(A1 + 13)) & 0xffff)                         # D7 long was 0: ext.w fills the low word only
+            D7 = (D7 + m.wu(A1 + 10)) & 0xffff
+            if D7 >= 0x6000:                                          # cmp.l #$6000,D7 ; blt (the high word is 0)
+                D7 = 0
+            D6 &= 0x3fff
+            D7 &= 0x7fff
+            cell = ((D7 >> 2) & 0x1fc0) + (D6 >> 8)
+            A0 = 0x3f86c + cell
+            if m.bu(A0) and m.bu(A0 + 1) and m.bu(A0 + 64) and m.bu(A0 + 65):
+                ANIMAL_TRACE.append("free_walk")
+                relink(m, A1, D6, D7)
+            else:
+                ANIMAL_TRACE.append("free_turn")
+                hd = (m.bu(A1 + 14) + 1) & 0x1ff                     # addi.w #1 (a word: 256 is possible)
+                m.wb(A1 + 14, hd)
+                D1 = (~s8(m.bu(A1 + 15))) & 0xffff
+                x, y = rotate(m, 0, D1, hd)
+                m.wb(A1 + 12, x)
+                m.wb(A1 + 13, y)
+        else:
+            A0 = (OBJ + s16(m.wu(A1 + 18))) & 0xfffff
+            D6 = (m.wu(A0 + 8) + s8(m.bu(A1 + 12))) & 0xffff
+            D7 = (m.wu(A0 + 10) + s8(m.bu(A1 + 13))) & 0xffff
+            D6, D7 = _clamp(D6, D7)
+            m.wb(A1 + 14, m.bu(A0 + 17))
+            ANIMAL_TRACE.append("herded")
+            relink(m, A1, D6, D7)
+
+
+def _pigeon_arrival(m, A1, A3):
+    """`$41dc`..`$42f0`: a non-player pigeon reaches its rider A3.  The rider's group (word 42 = its offset in `$51538`): when it
+    is the local side's, its pending-pigeon counter `$57fd8[2k]` is decremented.  A living rider's group word -72 is cleared and
+    the order packet {group side, 23(A1), 24(A1)} goes to `$6b38` (NOT modelled: its effects are the order executor's, outside
+    the bucket and animal state this module compares).  Then the pigeon leaves its bucket and its category byte becomes 0."""
+    D2 = m.wu(A3 + 42)
+    A0 = (0x51538 + s16(D2)) & 0xfffff
+    D0 = m.wu(0x57ffe)
+    if D0 == m.wu(A0 - 48):
+        k2 = (D2 - D0 * 0x13c - 0x4c) & 0xffff
+        m.ww(0x57fd8 + s16(k2), m.wu(0x57fd8 + s16(k2)) - 1)
+    PIGEON_TRACE.append("arrive_order_skipped" if m.bs(A3 + 5) > 0 else "arrive_rider_dead")
+    cell = ((m.bu(A1 + 10) << 8) | m.bu(A1 + 8)) & 0xffff               # move.w 10(A1),D0 ; move.b 8(A1),D0
+    cell = (((cell & 0xff) * 4 & 0xff) | (cell & 0xff00)) >> 2           # add.b D0,D0 twice ; lsr.w #2
+    bucket_unlink(m, cell, (A1 - OBJ) & 0xffff)
+    m.wb(A1 + 6, 0)
+
+
+PIGEONS = 0x4c112         # 48 pigeon records of 26 bytes; slot 0 is the player's (the 137th, $4244 its landing)
+PIGEON_END = 0x4c5f2
+PIGEON_TRACE = []         # arms taken by the last call_pigeons
+
+
+def call_pigeons(m):
+    """`$416e..$4326` of `$3e06`: the carrier-pigeon records, the part that moves them (the arrival arms `$41dc`/`$4244` raise).
+    A live record (owner byte > 0, category byte 6 != 0): `word 18` counts down; above 0 the pigeon flies on by its velocity
+    bytes 12/13; at 0 it re-steers toward its target (its own word 22/24 for the player's pigeon, the rider's position for the
+    others: `20(A1)` is the rider man's offset) with `$164bc`, the new flight time is doubled and capped at $30 into byte 15,
+    and a time of 0 is the arrival."""
+    A1 = PIGEONS
+    while A1 != PIGEON_END:
+        if m.bs(A1 + 5) > 0 and m.bu(A1 + 6) != 0:
+            D6, D7 = m.wu(A1 + 8), m.wu(A1 + 10)
+            n = s16((m.wu(A1 + 18) - 1) & 0xffff)
+            m.ww(A1 + 18, n & 0xffff)
+            if not n > 0:
+                if A1 == PIGEONS:
+                    D0, D1 = m.wu(A1 + 22), m.wu(A1 + 24)
+                else:
+                    A3 = (OBJ + s16(m.wu(A1 + 20))) & 0xfffff
+                    D0, D1 = m.wu(A3 + 8), m.wu(A3 + 10)
+                _c, dwell, _r = step_toward(m, D0, D1, D6, D7, A1)
+                D2 = min((dwell * 2) & 0xffff, 0x30)
+                m.wb(A1 + 15, D2)
+                if (D2 & 0xff) == 0:
+                    if A1 == PIGEONS:
+                        raise AssertionError("the player's pigeon lands ($4244) - out of scope")
+                    _pigeon_arrival(m, A1, A3)
+                    A1 += 26
+                    continue
+                PIGEON_TRACE.append("steer")
+            else:
+                PIGEON_TRACE.append("fly")
+            D6 = (D6 + s8(m.bu(A1 + 12))) & 0xffff
+            D7 = (D7 + s8(m.bu(A1 + 13))) & 0xffff
+            relink(m, A1, D6, D7)
+        A1 += 26

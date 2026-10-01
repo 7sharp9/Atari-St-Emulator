@@ -239,6 +239,8 @@ typedef struct pm_assess {            // index by side id: $580a6 + side*$20
 /*20*/  u8   start_equip[4];          // $238c world build: 20/21 -> the side's first unit's 33/44 ($244c/$2452; $245c then forces 44 := 6), 22/23 -> the followers' ($24fa/$2500)
 /*24*/  u8   _b24[8];
 } pm_assess;                          // sizeof $20; $2200-$3500 cluster owns the rest
+// The word at +14 is the men per settlement that $2984 creates (economy.md 5a): 2 on every side of eight builds, so +15 is its low byte and
+// overlaps rel[0] above; the layout of +14..+20 is not settled (rel[] may start at +16, which would make the +15+t reads one byte early).
 // Also read: word 8 (+4 = the herd-throttle reload, $5cde), word 12 (the RNG
 // mask for a new group's 72(sub), $25d6). The whole block is part of the
 // campaign table entry each land loads ("The campaign").
@@ -1618,8 +1620,8 @@ What the names changed:
   spline table `$168ee` (`_flights`: `fp1..fp3`, `farm` at cursor `$50`, `pots` at `$76`, `eyes`) → `$0e` walks it (terminator `$7d26`
   = mode `$24`, walk home) → `$16` at home. Census: 275 of 281 live `$0e` men are farmers (11 snapshots); live from
   `m1_s0`, 40M steps: `$15042` 10, `$1507c` (the `food += 2`) 10, `$150b0` 11, `$14e56` 11, `$151c2` 11. So `$0e` is not a
-  "patrol", `$18` not a "neutral garrison" and `$16` not a "disband"; `$2984` (`_set_peo...`) builds the village population, one man
-  per population slot with a random job (`init_she/fis/far/mer`; a lord of kind > 3 gets captains), not garrisons (static).
+  "patrol", `$18` not a "neutral garrison" and `$16` not a "disband"; `$2984` (`_set_peo...`) builds the village population, two men
+  per settlement with a random job (`init_she/fis/far/mer`; one captain per lord of kind > 3), not garrisons (`economy.md` 5a, Proven).
   The farmer job is bit 0 of byte 7 (`$3c08` maps bits 0..3 to `$16`/`$4e`/`$5e`/`$80`), so the 126th's "one site sets flag
   bit 0" is `init_far` at `$2cd0`.
 - **Mode `$68` is camp rest, not a marching column** (`rest_in_...`, `a_sitting`, `at_camp`, `in_camp`): 118 of 123 live `$68` men are
@@ -1745,13 +1747,11 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 
 ## Open threads
 
-- **Economy / population / invention — see economy.md** (this entry predates it). Confirmed *not* in the
-  per-tick path (`$1abaa` is sound, `$3e06` is the armies eating + the health indicator,
-  `$d322` is force-totalling). Initial population/settlement counts come from
-  the `$10d1e`/`$2266` procedural generator. Growth and invention are either
-  event-driven (a revolt, `$550e`, moves a lord and his settlements; economy.md §3) or live in the setup-time
-  cluster `$2984`/`$238c`/`$2906`/`$ac20` which may also run periodically —
-  none of that code is mapped. This is the largest remaining subsystem.
+- **Economy / population / invention — see economy.md.** Not in the per-tick path: `$1abaa` is sound, `$3e06` is the armies eating, the health indicator, the
+  animals and the carrier pigeons (`ai.md` "Shepherds, animals and carrier pigeons"), `$d322` is force-totalling. The land is made by `$10d1e`/`$ffa6`/`$2266`/`$ac20`;
+  `$2984` then gives every settlement its two men and each man a job, once per build (`economy.md` 5a, Proven: a build runs it once, 8 of 8). Growth after that does not exist
+  (a revolt, `$550e`, only moves a lord and his settlements). Still unmapped: `$238c`, which builds each side's army (leader, captain group, soldiers; read, not differentially
+  tested) and `$2906`, the assessment seeding.
 - **The AI on a live enemy (122nd).** All 25 natural `$661a` primary
   decisions in the four 200M-step runs (lands 0/5/25/60: 8/7/4/6) were
   captured at `$662a`/`$6632` (`scratchpad/pm122/dec/`, `parse.py`). `$68fe`

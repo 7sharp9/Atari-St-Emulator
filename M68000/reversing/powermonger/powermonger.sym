@@ -10,7 +10,9 @@
 000127e6	pm_do_sound	# _do_soun sound dispatcher (135th: picks the two best pending sounds from the $3b-entry table $12952, calls $1ba3e; 24 calls in 6M steps from m1_atk)
 00006522	pm_cmd_decide           # per-commander order pipeline (the commander AI)
 0000d322	pm_force_accum          # per-side troop totals -> $57fba
-00003e06	pm_flag_health          # morale->UI + per-objective budget decay + $57fba objective term
+00003e06	pm_flag_health          # morale->UI + per-objective budget decay + $57fba objective term; $4044 is the animal loop, $416e the pigeon loop, then $4342 and $596a (ai.md "Shepherds, animals and carrier pigeons")
+00004044	pm_animals_update	# inside $3e06: the 40 animals of $4ccd6 (free walk / shore turn / herded follow). Proven (py/gate_animals.py 45094/45094)
+0000416e	pm_pigeons_update	# inside $3e06: the 48 pigeon records of $4c112 (fly, re-steer, the $41dc arrival of another lord's pigeon -> $6b38). Proven except the arrival's order effect (gate_animals.py)
 0001abaa	pm_sound_ambient        # NOT economy: sound LCG x16 + $ff9e sample mix + one $4d252 wildlife poke. 97th: on each sound-LCG ($57ff6) wrap ($1ac3c) it ALSO rotates $57fd0 = ($57fd0 + 2) & 6 (cycling {0,2,4,6}) -- so g_tileset_sel / the mode-$7c gate is NOT static per mission (~1 rotation / 110M steps in mission 1)
 0001abc0	pm_rng_step             # $57fec++ (tick-count "RNG") + $57ff6 sound LCG x=(x*$24a1+$24df)&$1fff
 000178ae	pm_do_bars	# _do_bar (135th): HUD bars
@@ -264,7 +266,7 @@
 00005cde	pm_settlement_workorder # `_set_tow...`: the lord's work order (from mode $7c, field*4<food && (anim&3)!=3, and from order $0e via $5fa0): walks the nation's settlement chain for the capital, scans $57f68 forest ops + the $3f86c control byte, may allocate a $4f916 record ($51536 += $12) + $16808, then $5ec6 stamps the men. Proven 768/768 (diff_5cde.py)
 00003bc0	pm_group_return_men    # group teardown: leader.troops_reserve += group.force >> discipline
 000034f2	pm_rally_garrisons     # order every garrison in a nation's settlement chain to march to a cell (mode $10, prev $14)
-00002984	pm_set_people	# orig _set_peo(ple): populates the settlements at world-build. world-build: allocate a $51b66 marker per settlement (guard $57f66<$5460), owner_leader.troops_field += 1, seed morale
+00002984	pm_set_people	# orig _set_peo(ple): the world-build population, once per build: $580a6[side]+14 (2) men per settlement, each from $2e1e, chained into the settlement, troops_field += 1, job from $2a98, health byte by job. Proven (economy.md 5a, py/gate_pop.py 29860/29860, 8 builds)
 00002fc0	pm_build_settlements   # world-build: consume the 3-byte settlement stream, chain g_settlement_table per nation (+8)
 0000ffa6	pm_fill_alts	# _fill_al (135th): builds the altitude plane $3f86c: $58148 random-walk steps adding $5814b (low byte of the lord-count word $5814a) unless $4592f bit 1, clamp >= 0, then $10410 smoothing $58150 times.
 0004592f	g_terrain_influence_base # per-cell base influence/flags map, read by pm_seed_cell_control
@@ -333,18 +335,18 @@
 00001d36	_derank_	# orig T
 000021ae	_check_o	# orig T
 0000234e	_restore	# orig T
-0000238c	_setup_k	# orig T
+0000238c	_setup_k	# orig T (setup_kings): per side slot, the lord ($2eac), a leader man (mode $4c) and the soldiers, $1d70, $25d6; read, not differentially tested
 00002776	_remove_	# orig T
 00002906	_setup_w	# orig T
-00002a98	_its_my_	# orig T
-00002b08	init_she	# orig T
-00002b68	init_fis	# orig T
-00002c5a	init_far	# orig T
-00002ce8	init_mer	# orig T
-00002cf8	init_cap	# orig T
+00002a98	_its_my_	# orig T: the job pick, up to 5 rounds of shepherd 3/32, fisher 16/32, farmer 12/32, give-up 1/32, then merchant; leader -> captain. Proven (py/gate_jobs.py 3310/3310)
+00002b08	init_she	# orig T (init_shepherd): 2..5 animals through $2d0e, mode $80, flag bit 3; refused past 38 animals. Proven (gate_jobs.py)
+00002b68	init_fis	# orig T: catch marker (cat $18) at the nearest shore cell within 9, mode $5e, flag bit 2; at most 30. Proven (gate_jobs.py)
+00002c5a	init_far	# orig T: the nearest flag-bit-4 cell within 9 becomes the field ($1e planes), mode $10 prev $18, flag bit 0; its row bound tests the CALLER's D1 (stale after a failed fisher arm). Proven (gate_jobs.py)
+00002ce8	init_mer	# orig T: merchant, mode $4e, flag bit 1. Proven (gate_jobs.py)
+00002cf8	init_cap	# orig T: captain at rest, mode $8a. Proven (gate_jobs.py)
 00002d02	init_dum	# orig T
-00002d0e	init_she	# orig T
-00002e1e	_get_per	# orig T
+00002d0e	init_she	# orig T (init_sheep): one animal of the shepherd A1 in the $4ccd6 pool; the A1 == 0 random-cell branch has no caller. Proven (gate_jobs.py)
+00002e1e	_get_per	# orig T (get_person): allocate the first free man record from slot 1. Proven (gate_pop.py)
 00002eac	_set_tow	# orig T
 00003078	_town_si	# orig T
 00003086	town_1	# orig T
@@ -900,11 +902,11 @@
 00015bec	fish_at_	# orig T
 00015bfc	fish_get	# orig T
 00015c3c	go_home_	# orig T
-00015e30	shep_fin	# orig T
-00015eb0	shep_go_	# orig T
-00015eee	shep_go_	# orig T
-00015f80	shep_arr	# orig T
-00015f96	shep_at_	# orig T
+00015e30	shep_fin	# orig T: shepherd rounds up the next free animal (midpoint walk, then state $12), else mode $88. Proven (py/gate_shepherd.py)
+00015eb0	shep_go_	# orig T: shepherd walks to the cell south of his town, prev mode $82. Proven (gate_shepherd.py)
+00015eee	shep_go_	# orig T: shepherd walks onto the town and releases the herd ($12 -> $11), prev mode $80. Proven (gate_shepherd.py)
+00015f80	shep_arr	# orig T: at the town: $16848, wait 50, mode $84. Proven (gate_shepherd.py)
+00015f96	shep_at_	# orig T: the wait; at 0 mode $86. Proven (gate_shepherd.py)
 00015fa8	check_co	# orig T
 00016044	i_am_sha	# orig T
 0001605a	pickup_f	# orig T

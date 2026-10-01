@@ -12,7 +12,7 @@ noted) driven live through the game's own UI:
 
 | document | covers | proof |
 |---|---|---|
-| [`ai.md`](ai.md) | the entity/commander decision loop: the `$14b62` per-tick iterator, the 75-entry mode table, the 50-byte object record, spatial buckets, target selection (`$4f68`), the regroup/dissolve/forest-animator dispatch, and the revolt chain `$550e`→`$5c2c`→`$25d6` | differential tests vs the real 68000: entity FSM core **675/1335/413/85/99** tracked bytes over 154 states; regroup `$3c08` **71/71** (22 states) + its group-teardown subtree **1847/1847** (13 states); contact reconcile `$4bc8` **51/51** + **20/20**; dying-entity `$1623c` **275/275** (23 states); group dissolve `$2776` **4119/4119** (28 states); lord's work order `$5cde` **768/768** + **85/85** returns (47 states); the revolt chain **1778/1778** over 49 states — all 27 natural `$550e` calls on 4 lands; conquest target pick `$4f68` **1804/1804** (192 states, 170 natural) |
+| [`ai.md`](ai.md) | the entity/commander decision loop: the `$14b62` per-tick iterator, the 75-entry mode table, the 50-byte object record, spatial buckets, target selection (`$4f68`), the regroup/dissolve/forest-animator dispatch, and the revolt chain `$550e`→`$5c2c`→`$25d6` | differential tests vs the real 68000: entity FSM core **675/1335/413/85/99** tracked bytes over 154 states; regroup `$3c08` **71/71** (22 states) + its group-teardown subtree **1847/1847** (13 states); contact reconcile `$4bc8` **51/51** + **20/20**; dying-entity `$1623c` **275/275** (23 states); group dissolve `$2776` **4119/4119** (28 states); lord's work order `$5cde` **768/768** + **85/85** returns (47 states); the revolt chain **1778/1778** over 49 states — all 27 natural `$550e` calls on 4 lands; conquest target pick `$4f68` **1804/1804** (192 states, 170 natural); shepherd cycle **1043/1043** (198 states), animal update **45094/45094** (55 snapshots) |
 | [`economy.md`](economy.md) | the goods ledger (felling trees → invention → army-supply upgrades), the separate food/manpower ledger and every writer of it, the settlement record + world-build, the settlement heartbeat and the loyalty/revolt accumulator, weapon-grade "invention" | shares `ai.md`'s FSM and revolt-chain proofs; settlement heartbeat `$157e6` **99/99** natural (27 states, 12 branch families) + **85/85** synthesised; every `food`/`troops_field` writer enumerated from a ~1B-step watch and cross-checked against the player's own order paths |
 | [`strategy.md`](strategy.md) | the sim tick + measured cadence, the order executor pipeline (`$6522` decide → `$58016` command buffer → `$6a3a` execute → `$4b80` stamp), force accounting, the 195-land campaign, diplomacy, combat, RNG/determinism, how a land ends | driven live through the real UI and the emulator's REPL: mission 1 won and lost both ways (retire + natural defeat), every player order but `$04` and a real `$0e` exercised at least once, diplomacy's envoy/tribute/break traced end to end, and 4 lands' natural `$6522`/`$661a` decisions captured over 200M steps each and matched against the disassembly |
 | [`graphics.md`](graphics.md) | asset formats, the software heightmap rasteriser (projection, DDA span walker, dither), all 4 yaw quadrants, the 4 sprite sheets (men, structures, buildings/trees), camera control, zoom, seasons | frame-pixel scoring against the real emulator's own composited buffer: **100.00%** match on 27 captures across every drawn category; the projection reproduces the game's own corner buffer byte-exact (81/81 vertices); the rasteriser maths (`$ef62`/`$e420`) Proven vs the real 68000 at the instruction level |
@@ -53,13 +53,17 @@ against every session's changes.
 - **Men are conserved.** A lord's counter is his men at home, not in an army: a man joining an army takes
   one off it, leaving puts one back, capture moves one between lords, and none is born. A side grows only by
   taking men from another, apart from the pigeon, which revives a dead man's record as a live home man where it lands (E 1, row `$42be`). (E 1, E 6)
+- **The map starts populated, and the starting jobs are a lottery.** Every settlement begins with two men. Each draws a job in up to five rounds: a captain for the first man of every lord of
+  kind > 3, otherwise shepherd (3 in 32), fisherman (16 in 32, needs a shore cell within nine cells, at most 30 per land), farmer (the rest, needs a free field site within nine cells) or,
+  after five failed rounds, merchant. Shepherds come with 2 to 5 animals each (36 to 40 per land, a fixed pool), which wander, turn at the shore and are herded back to the town in a cycle;
+  they have no effect on food or goods. (E 5a, A "Shepherds, animals and carrier pigeons")
 - **Food is the pressure.** Each lord has a food store that his fishermen and returning men fill and his
   settlements eat; each army carries its own food. Armies take food from towns and drop it back;
   taking food angers a town, giving food or goods calms it. A town with at most 4 food per man at
   home grows unrest. The posture sets how much an order moves: aggressive all, neutral half,
   passive a quarter. (E 1, E 6, S "The player's commands")
 - **Goods are a separate ledger.** Men felling trees and carrying them to the workshop credit one of eight item counters (pike,
-  sword, bow, plough, boat, pot, catapult, cannon); merchants are meant to carry goods between a nation's lords
+  sword, bow, plough, boat, pot, catapult, cannon); merchants, the men the starting job lottery could place nowhere else (E 5a), are meant to carry goods between a nation's lords
   but none was seen carrying anything and the destination always resolved to the home lord (E 2b, inferred
   from the encoding and a census); "invention" is supply: a man who walks to his lord's cell hands back his weapon
   and takes the best in stock (bow, then sword, then pike; a farmer also takes a Plough), so a weapon improves only when a
@@ -138,6 +142,8 @@ against every session's changes.
 
 ### Bugs and accidents a new design should drop
 
+- The starting job pick bounds the farmer's search row with a stale register (the cell index the failed fisherman search left behind), so a man whose fisherman draw fails can never become a
+  farmer and ends a merchant: 222 of the 281 merchants in eight builds, and every one of 1234 failed farmer searches. (E 5a)
 - The relation bytes are misaddressed three ways: the update reads one byte and writes the next,
   reading negatives as large positives; the envoy check reads the attitude toward the wrong side;
   and the targeting weight reads outside the relation table, so relations never affect who the AI

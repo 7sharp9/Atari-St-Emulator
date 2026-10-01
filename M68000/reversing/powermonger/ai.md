@@ -719,8 +719,11 @@ object record; `36(A3)` a running total).
 | `$68` | `$16048` | **2559** | **resting in camp** (original `rest_in_...`; 118 of 123 live `$68` men are byte6 14, the sitting category; the old "in formation / marching column" reading was wrong, marching men are `$06`/`$08`; the camp is made by `$35f4`, read from the code) *(Proven, 93rd)*: `jsr $5c80` (upkeep), zero velocity + heading, next. The dominant mode — the men drawn in an army's marching column. Their position is written by the lead record, not by themselves |
 | `$8a` | `$161b2` | 99 | **captain resting at his town** (original `captain_...`; the "garrison" label was the first reading; job 9, 29 of 29 in the 134th audit; byte 7 `== $10` in 660 of 661 men in the mode over 400 snapshots, 137th, `py/census_8a.py`; `$5c80` is the per-job health regeneration toward the `$5ccc` cap, 95 for bit 4) *(Proven, 93rd)*: `jsr $5c80` only |
 | `$8c` | `$14c48` | – | afloat with a Boat (flag bit 5): re-add the last step, re-test terrain, drop to `$10`/`$06` if pushed off |
-| `$84` | `$15f96` | 30 | dwell → mode `$86` |
-| `$86` | `$15e30` | 10 | (chain to `$88`) |
+| `$80` | `$15f80` | 5 | **shepherd at his town** (original `shep_arr...`; job 8; *Proven, 139th*, section "Shepherds, animals and carrier pigeons"): `jsr $16848` (owner reconcile and upkeep), dwell := `$32`, mode `$84` |
+| `$84` | `$15f96` | 76 | shepherd waits: dwell − 1; at 0 mode `$86` *(Proven, 139th)* |
+| `$86` | `$15e30` | 20 | **shepherd rounds up the herd** (original `shep_fin...`): the first free (`$11`) animal of his chain (word 42, then each animal's word 16) becomes the target, at the midpoint between man and animal; walking there is mode `$10` with previous mode `$86`; on arrival the animal becomes herded (`$12`, both velocity bytes `|= $40`). No free animal left (or no chain): mode `$88` *(Proven, 139th)* |
+| `$88` | `$15eb0` | – | **shepherd goes home** (original `shep_go_...`): target the cell just south of his town (`+$100` in y), previous mode `$82`, mode `$10` *(Proven, 139th)* |
+| `$82` | `$15eee` | 1 | **shepherd at the gate** (original `shep_go_...`): target the town cell, previous mode `$80`, mode `$10`; releases the herd: every `$12` animal of the chain becomes `$11` again with a fresh speed (`rng & 7 + 2`) and heading and the velocity of `(0, -speed)` rotated by it *(Proven, 139th)* |
 | `$14` | `$1501a` | – | **arrive at the meeting** (original `at_meeti...`; arrival mode of the order-`$08` recruits `$34f2` sends, 5 hits live, 134th): copy `5(A3)` (strength) from the `$4f916+34` record into `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
 | `$16` | `$15042` | 6 | **a farmer home from his field** (original `at_farme...`; the "disband" label was the first reading, the same code also receives men sent home by `$3c08`'s bit-0 case, which is the farmer job): `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker) — *the dwell-park write, Proven live 126th, economy.md §3a*. **Else** (`$57fd0 != 0`): `owner_leader.food += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). `$57fd0` rotates {0,2,4,6} (§3a), so mission 1 takes both branches over time. economy.md §1's pseudocode had this branch inverted. Only reached via `$3c08`'s flag-bit-0 case, set by exactly one site in the image (`$002cd0`, a garrison/neutral-village site-scan at world-build) — not by any player action (126th) |
 | `$7e` | `$157e6` | – | **idle at home** (original `stay_at_...`; 23 live men, all soldiers): the winter-pulse body, like `$7c` but with no `$57fd0` gate. A man dismissed home or a spy (`$3da4`) sits here, so each pulses his lord's loyalty check (economy.md §3; the spy run revolted lord 0) — but arrives with whatever stale `dwell` the record already had, never freshly parked at `$ff9d`, so the `D5 == $ff9c` "just parked" edge cannot fire for it (126th, economy.md §3a; traced live for one starvation deserter, entity `$52462`) |
@@ -1459,6 +1462,57 @@ against a second, independent corpus.
 
 Not reached: `$187d8` from `$25d6` on the player's side with D3 ≠ 0 (asserted
 off in the transcription), and the RNG's zero-seed reload.
+
+### [Proven] — shepherds, animals and carrier pigeons (139th pass)
+
+`tools/pm_fsm_ref.py` `h_mode80/82/84/86/88` (wired into `reconstruct`), `call_animals`, `call_pigeons`; `economy.md` section 5a for how the shepherds and animals come to exist.
+Differential tests: `py/gate_shepherd.py` **1043/1043 tracked bytes identical over 198 states** (`callcap 14b62` with one record live: natural shepherds of two land builds run
+forward, `$80` 5, `$84` 76, `$86` 20, `$82` 1, plus 16 each of synthetic `$88`, `$82`, `$86` arrival, `$86` one step short, `$86` with the whole chain herded and `$86` without a chain);
+`py/gate_animals.py` **45094/45094 compared values identical over 55 snapshots** (`callcap 3e06`, see below for what is compared; free walk 1073, free turn 820, herded 187, pigeon
+flights 81, pigeon re-steers 5, two natural pigeon arrivals).
+
+**The animals** live in a pool of 40 records of 20 bytes at `$4ccd6..$4cff6`; the word at `$4cff6` is the bytes used. The pool is filled once, by the shepherds' world-build pick (`$2d0e`
+is called from one place, `$2b32`; the count word is only ever added to), no animal is born or freed afterwards, and the count stayed at 720 and 800 bytes over 30 snapshots on two
+lands. They are not the tree array `$4d252` and not projectiles (`$4be00`).
+
+```c
+typedef struct pm_animal {            // $4ccd6, stride 20, 40 slots
+/* 0*/ u16 bucket_next;               // the $47970 cell chains, offsets from $51b66 (negative: the pool lies below the man table)
+/* 2*/ u16 bucket_prev;
+/* 5*/ u8  owner;                     // the shepherd's side + 4 (> 0 = alive for $15e30 and the statistics routine $b8f4)
+/* 6*/ u8  category;                  // 8; the slaughter (mode $38, 137th) makes it $1c; the loop below also takes $22, which nothing writes
+/* 7*/ u8  state;                     // $11 free, $12 herded, $10 dead or still (skipped)
+/* 8*/ s16 x;   /*10*/ s16 y;         // world position
+/*12*/ s8  vx;  /*13*/ s8  vy;        // velocity per tick; a herded animal's are the fixed offset from the shepherd (both |= $40)
+/*14*/ u8  heading;
+/*15*/ u8  speed;                     // 2..9
+/*16*/ u16 prev_animal;               // the shepherd's chain, 0 at its end (offset from $4ccd6)
+/*18*/ u16 shepherd;                  // the man's offset from $51b66
+} pm_animal;
+```
+
+**The update** is the loop `$4044..$4166` inside `$3e06`, once per tick for all 40 slots: a slot with category 8 (or `$22`) and state other than `$10` is
+- **free** (`$11`): the new position is the position plus `(vx, vy)`, clamped (`x >= 0`, `y < $6000`); if all four corners of the cell it falls in (`$3f86c`, `+1`, `+64`, `+65`) are above sea level
+  the animal moves there and is relinked (`$163ea`); otherwise it stays, its heading goes up by one and the velocity becomes `(0, ~speed)` rotated by the new heading, so an animal that meets
+  the shore turns by 1/256 of a circle a tick until it points inland, then walks straight on (820 turns against 1073 steps in the 55 snapshots);
+- **herded** (any other state, in practice `$12`): it stands at the shepherd's position plus `(vx, vy)` (clamped like a man), its heading copied from his byte 17, and is relinked.
+
+**The shepherd cycle**: `$80` (at the town) → `$84` (wait 50 ticks) → `$86` (round up the chain's free animals one by one: walk to the midpoint, mark it herded) → `$88` (walk to the cell
+south of the town) → `$82` (walk onto the town and let the herd go) → `$80`. Nothing in the cycle touches food, goods or `troops_field`; the one economy-relevant call is `$16848` at the
+town, the same arrival upkeep every job uses. Animals matter to the rest of the game only as targets: the objective class of category 8 (`$4dae`, picked by `$50da` into mode `$36` and then the slaughter mode `$38`), which nothing a shepherd
+does triggers and which was never seen naturally (the `$36` row above). Natural coverage: of 210 shepherd samples (ten snapshots of each of two lands), 102 were in `$84` (the 50-tick wait dominates), 21 in `$80` and 11 in `$86`; `$88` and `$82` last a single walk each and were not caught.
+
+**The carrier-pigeon pool `$4c112..$4c5f2`** (48 records of 26 bytes; `$416e..$4326` of `$3e06`, after the animals): slot 0 is the player's pigeon (launched through `$45ee`, which falls into `$45f2`, from the request served in `$1623c`; landing `$4244`, the
+revival of a dead man described in `economy.md` section 1), the other 47 are the other lords' pigeons launched through `$45f2` (category `$14`, byte 16 = `$40`). Per tick a live record (owner byte > 0, category
+byte non-zero) counts word 18 down; above 0 it flies on by its velocity bytes 12/13 and relinks; at 0 it re-steers with `$164bc` toward its target (the player's own word 22/24; any other pigeon
+the position of its rider, the man at its word 20), the new flight time is `min(2 * dwell, $30)` into byte 15, and a time of 0 is the arrival. An **arrival of another lord's pigeon** (`$41dc`,
+natural in two of the 55 compared snapshots) hands the rider's group the order packet `{the group's side, byte 23, word 24}` through `$6b38` (the order executor, `strategy.md`) when the rider is still alive,
+decrements the local side's pending-pigeon counter `$57fd8[2k]` when the group is the local one, then unlinks the pigeon from its cell and frees it (category 0). So the 47 other records of the pool are the AI lords' pigeons, the visible side of `$661a` issuing orders, and `$41dc` never touches `troops_field` (code read).
+
+What the gates compare and leave out: `gate_animals.py` compares the 40 animal records (links included) and, for every cell an animal left or entered, the whole bucket chain with forward
+and backward links, because `$3e06` also moves the pigeons (modelled: flights, re-steers, the `$41dc` bucket effect) and runs `$596a` (projectiles; the 5 snapshots with a live projectile are
+excluded), `$4342` (Proven above), the army food and health indicator (not compared). Not modelled: the effect of `$6b38` on the arrival, and the player's landing `$4244`
+(asserted off; the 137th pass counted it live). `py/gate_shepherd.py` needs a time series of snapshots after a land build (the recipe is in `py/README.md`).
 
 ## Open threads
 

@@ -343,7 +343,8 @@ for (int i = 0; i < 8; i++)
 Goods are meant to move: a separate carrier FSM (modes `$4e`/`$50`/`$52`/`$54`, the merchants) picks up one good from a lord and deposits it at another.
 **Not observed to move anything (136th):** 0 of 136 merchants in transit carried a code, and `$54`'s lord-selection loop, as encoded, never leaves the
 home lord (`lea 32(A3),A0` at `$15b0c`, A3 never advances; inferred from the encoding and the census, not a differential test), so the destination equals the
-home lord in 404 of 404 men in `$52/$50` and the net transfer is zero. The "biased toward the capital" reading is unsupported:
+home lord in 404 of 404 men in `$52/$50` and the net transfer is zero. The merchants are also not a designed trade class: they are the men left over when the world-build job pick
+could place neither a farmer nor a fisherman (281 of 281 merchants in eight builds, §5a: 59 gave up on a 1-in-32 roll, 222 failed five rounds, mostly through a stale register). The "biased toward the capital" reading is unsupported:
 
 | routine | direction | effect |
 |---------|-----------|--------|
@@ -422,9 +423,9 @@ man's own lord, equals `Original` for every lord < 8 (89 of 89 cases), and for e
 (192 of 192). The `Corrected` mode has no oracle in the game, only those properties. The port has no game simulation yet (the stepper replays the draw order of one frame),
 so nothing calls these; `$3c08`, which `arriveGoods` runs first, is a parameter, not ported.
 
-`$b8f4` is a **statistics collector** for the UI/score screen: it counts live
-projectiles (`$4ccd6`, type `$11`/`$12`) and live trees (`$4d252`,
-`cell != 0`) into a caller buffer. Confirms `pm_tree.cell` is the liveness key.
+`$b8f4` is a **statistics collector** for the UI/score screen: it counts the live animals (the 40 records of `$4ccd6` with an owner byte and byte 7 `$11` or
+`$12`, free or herded; `ai.md` "Shepherds, animals and carrier pigeons", not projectiles, which live in `$4be00`) and live trees (`$4d252`, `cell != 0`) into a caller buffer.
+Confirms `pm_tree.cell` is the liveness key.
 
 ## 3. Settlements — `$4f916`
 
@@ -833,11 +834,70 @@ not seen live); `$5d80` (the build decision, ai.md "Build") reads the altitude a
 ground. It is not an influence, ownership or carrying-capacity field, and not read by any manpower or goods maths. `$4672` scatters
 10 forests, clusters of trees (`$4788`), and their markers across buildable cells.
 
-`$2984` (original `_set_peo...`) is the **world-build village population**: one man per population slot with a random
-job (`init_she/fis/far/mer`; a lord of kind > 3 gets captains), not a periodic pass and not a garrison: per lord it walks the settlement chain, allocates a `$51b66`
-marker per settlement (guarded by the object high-water `$57f66 < $5460`),
-`owner_leader.troops_field += 1`, and seeds the marker's health byte 45. It runs
-once, alongside `$238c`.
+### 5a. The starting population: who each man is (139th)
+
+`$2984` (the developers' `_set_peo...`) runs once per land build, after the map is made and before `$238c`, which builds each side's army (the only other
+caller of the man allocator `$2e1e`). It is not a periodic pass and not a garrison. For each lord that has a settlement chain and each settlement of the chain
+it creates `word[$580a6 + side*32 + 14]` men, which is 2 on every side of every build seen (so 70 men on land 0, 35 settlements, and 210 on land 25).
+Each man is allocated by `$2e1e` (the first free record from slot 1; the high-water word `$57f66` grows by 50 per man and the routine stops for good at `$5460`,
+432 men, never reached), chained into his settlement (word 10 is the head, word 24 the next man), counted into his lord (`troops_field += 1`), and given a job by `$2a98`.
+Only the first man of a lord of kind > 3 carries the leader flag (the flag survives across that lord's settlements and is cleared after one use), so a land has one
+captain per such lord (8 of 8 builds: 31 captains for 31 lords of kind 4 or 5, 2 to 6 a land). The health byte follows the job: farmer `$52`, fisher `$4f`, merchant `$45`, shepherd `$48`, captain `$5f`.
+
+The job pick `$2a98` (developers' `_its_my_`; `reversing/powermonger/py/gate_jobs.py`):
+
+```c
+int job_pick(man *m, int d1_from_caller) {
+    if (m->flags & LEADER) { m->mode = 0x8a; return CAPTAIN; }            // captain at rest
+    retry = 5;                                                           // a word inside the code, $2b06
+    do {
+        r = rng() & 0x1f;
+        if (r == 0) break;                                               // 1 in 32: give up
+        if ((r & 7) == 0 && init_shepherd(m)) return SHEPHERD;           // 3 in 32 (r = 8, 16, 24)
+        if ((r & 1) && init_fisher(m)) return FISHER;                    // 16 in 32, odd draws
+        if (init_farmer(m, d1)) return FARMER;                           // the rest, and the fall-through of both arms above
+    } while (--retry);
+    m->mode = 0x4e; m->flags |= MERCHANT; return MERCHANT;
+}
+```
+
+- **Shepherd `$2b08`** (`init_she`): refused only when the animal pool is already past `$2f8` bytes (38 animals). Otherwise 2 to 5 animals are created by `$2d0e`
+  (`(rng & 3) + 1` passes of a `dbf` loop), chained through the animals' words 16 (the previous animal, 0 for the first) and 18 (the shepherd); the man's word 42
+  is the last animal made, his mode is `$80` and his flag bit 3 is set. Animals are described in `ai.md` "Shepherds, animals and carrier pigeons".
+- **Fisherman `$2b68`** (`init_fis`): scans squares of radius 1 to 9 around the man for the first cell with altitude 0 where exactly one of the two colour planes is
+  non-zero (read as a shore cell, inferred from the plane meanings) and whose bucket holds no category-`$18` record, and plants a catch marker there (category `$18`, flags `$10`, the man's side) in the pool
+  `[$4cff8, $4d250)` (10-byte records; `$4d250` counts bytes used). The man's word 42 is that cell, his mode `$5e`, his flag bit 2. Refused when `$4d250 >= $12c`,
+  so at most 30 markers are made by this arm (the pool has room for 60: `$3744` puts the category-6 camp and garrison markers in the same pool).
+- **Farmer `$2c5a`** (`init_far`): scans squares of radius 1 to 9 for the first cell whose flag byte (`$4592f` plane) has bit 4 set, clears the bit, sets both colour
+  planes (`$418ad`, `$438ee`) of that cell to `$1e` (the field), makes the cell his target (bytes 42/43 the cell, words 20/22 the position) and sets mode `$10`, previous
+  mode `$18` (the farmer cycle, `ai.md`), flag bit 0. Altitude is never tested. Every farmer takes one site: free sites fell by exactly the farmer count in all eight builds.
+- **Merchant / captain** (`$2ce8`, `$2cf8`): mode `$4e` with flag bit 1; mode `$8a`, no flag change.
+
+**A stale-register bug decides the job mix.** `$2c5a` bounds the row of the cell it examines with `cmpi.w #$80,D1`, which tests D1, not the row (D0). D1 is the caller's
+register: `$2984`'s remaining-men counter on entry, but the fisher arm leaves in it the cell index of the last cell it visited whenever it fails (no shore cell within nine, or
+the 30-marker pool full), normally above `$80`. From then on every farmer attempt of that man fails at once, in all five rounds, so a man whose fisher arm fails once can no
+longer become a farmer. Counted over eight builds: 1234 of 1234 farmer-arm failures were this stale bound and none was a genuine "no free site within nine cells"
+(every merchant has a free site within nine cells in the final state, on lands 0, 25 and 142 checked). The merchant class is therefore mostly this bug's output:
+
+| land | men | captains | farmers | fishers | shepherds | merchants: gave up / five rounds failed | animals | catch markers |
+|---|--:|--:|--:|--:|--:|---|--:|--:|
+| 0 | 70 | 3 | 32 | 17 | 10 | 3 / 5 | 36 | 17 |
+| 1 | 168 | 3 | 71 | 30 | 10 | 9 / 45 | 40 | 30 |
+| 5 | 176 | 6 | 73 | 30 | 11 | 12 / 44 | 40 | 30 |
+| 10 | 128 | 4 | 56 | 30 | 10 | 7 / 21 | 39 | 30 |
+| 25 | 210 | 6 | 91 | 30 | 11 | 12 / 60 | 40 | 30 |
+| 60 | 132 | 4 | 56 | 30 | 10 | 8 / 24 | 38 | 30 |
+| 100 | 84 | 3 | 34 | 18 | 11 | 4 / 14 | 38 | 18 |
+| 142 | 58 | 2 | 23 | 9 | 11 | 4 / 9 | 40 | 9 |
+
+Fishermen stop at 30 because of the marker cap, shepherds at 10 or 11 once the animal pool is past 38 (seven of the eight builds end at 38 to 40 animals; land 0 ends at 36 and its 70 men are
+simply too few to reach the cap), and the 59 + 222 merchants are the overflow. Whether a clean D1 would be the intended behaviour is not decidable from the code; the port, which does not simulate the entity loop, keeps no choice to make.
+
+Proof: `py/gate_jobs.py` runs `$2a98` against the real 68000 (`callcap 2a98`) on 146 states: the 70 natural entries of land 0's build plus synthetic RNG seeds (each arm drawn),
+full animal and marker pools, a leader, and an incoming D1 over `$80`: 3310 of 3310 tracked bytes and returned D0 identical (men, buckets, planes, both pools, the RNG seed, the
+retry word). `py/gate_pop.py` runs the whole `$2984` (`callcap 2984`) on the build of eight lands (0, 1, 5, 10, 25, 60, 100, 142): 29860 of 29860 tracked bytes identical over 1026 men.
+The model is `call_2984`, `call_2a98`, `call_2b08`, `call_2b68`, `call_2c5a`, `call_2d0e`, `call_2e1e` in `tools/pm_fsm_ref.py`. The per-round probabilities (1, 3, 16 and 12 in 32) are read from
+the masks in `$2a98` and agree with the counts; `$2984` itself takes 1.4 to 8.7 M steps a build. That the farmer arm never fails for lack of a site is counted on the final states of eight builds only.
 
 ## 6. Men are conserved, food is not grown by any counter (75th, task 2; 124th: `+6` is food)
 
