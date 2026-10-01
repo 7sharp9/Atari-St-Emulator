@@ -32,6 +32,14 @@ module Diag =
     let captureResultOut () = resultOut <- Console.Out
     let result fmt = Printf.kprintf resultOut.WriteLine fmt
 
+///Gate for the per-instruction disassembly text (`printfn` in every decoder, and the operand
+///description strings `ResolveEa` returns). Building that text costs far more than executing the
+///instruction, and with `ATARI_NOTRACE` it was built only to be discarded by the null `Console.Out`.
+///Call sites test `Trace.enabled` so the formatting is skipped outright; with the variable unset the
+///trace is byte-identical to before. `Program.main` clears it alongside the `Console.Out` redirect.
+module Trace =
+    let mutable enabled = true
+
 ///Structured, machine-readable execution trace for program analysis (control-flow reconstruction,
 ///basic blocks, call graphs, coverage) - a compact binary alternative to the 221 per-instruction
 ///`printfn` disassembly sites, which are meant for a human reading a text trace, not for tooling.
@@ -883,7 +891,8 @@ type Cpu =
             x.MMU.WriteWord (uint32 (frameBase + 8))   result.CCR
             x.MMU.WriteLong (uint32 (frameBase + 10))  (result.PC - 4)
             let newPC = x.MMU.ReadLong (uint32 (3 * 4))
-            printfn "address error: prefetch of odd branch target $%08x -> vector 3 ($%08x)" result.PC newPC
+            if Trace.enabled then
+                printfn "address error: prefetch of odd branch target $%08x -> vector 3 ($%08x)" result.PC newPC
             {switched with A7 = frameBase; PC = newPC}
 
     member x.AddressRegister (register: byte) =
@@ -947,14 +956,16 @@ type Cpu =
             | 0b10uy -> x.MMU.WriteLong (uint32 xAddr) result
             | 0b01uy -> x.MMU.WriteWord (uint32 xAddr) (int16 result)
             | _      -> x.MMU.WriteByte (uint32 xAddr) (byte result)
-            printfn "%s -(a%u),-(a%u)" mnem ry rx
+            if Trace.enabled then
+                printfn "%s -(a%u),-(a%u)" mnem ry rx
             {afterX with PC = x.PC+2; CCR = ccr}
         else
             let dest = x.DataRegister rx &&& m
             let source = x.DataRegister ry &&& m
             let result, ccr = ExtendedArith.step isAdd m sb x.CCR x.X dest source
             let newValue = (x.DataRegister rx &&& ~~~m) ||| result
-            printfn "%s D%u,D%u" mnem ry rx
+            if Trace.enabled then
+                printfn "%s D%u,D%u" mnem ry rx
             {x.WithDataRegister rx newValue with PC = x.PC+2; CCR = ccr}
 
     ///ABCD / SBCD, both the Dy,Dx register form and the -(Ay),-(Ax) predecrement form (byte only).
@@ -974,14 +985,16 @@ type Cpu =
             let dest = int (x.MMU.ReadByte (uint32 xAddr))
             let result, ccr = Bcd.step isAdd x.CCR x.X dest source
             x.MMU.WriteByte (uint32 xAddr) (byte result)
-            printfn "%s -(a%u),-(a%u)" mnem ry rx
+            if Trace.enabled then
+                printfn "%s -(a%u),-(a%u)" mnem ry rx
             {afterX with PC = x.PC+2; CCR = ccr}
         else
             let dest = x.DataRegister rx &&& 0xff
             let source = x.DataRegister ry &&& 0xff
             let result, ccr = Bcd.step isAdd x.CCR x.X dest source
             let newValue = (x.DataRegister rx &&& ~~~0xff) ||| result
-            printfn "%s D%u,D%u" mnem ry rx
+            if Trace.enabled then
+                printfn "%s D%u,D%u" mnem ry rx
             {x.WithDataRegister rx newValue with PC = x.PC+2; CCR = ccr}
 
     ///Decodes a (d8,An,Xn) brief extension word. Index register is D/A bit15, register bits14-12,
@@ -997,6 +1010,7 @@ type Cpu =
         { Disp = disp; Offset = indexValue + disp; IndexIsAddress = indexIsAddress; IndexReg = indexReg; UseLong = useLong }
 
     member x.DescribeIndexed (baseReg: byte) (ext: IndexedAddressing) =
+        if not Trace.enabled then "" else
         sprintf "%i(a%u,%s%u.%s)" ext.Disp baseReg (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w")
 
     ///Bytes an operand of this access size occupies in memory / an immediate consumes as extension.
@@ -1022,47 +1036,48 @@ type Cpu =
     member x.ResolveEa (size: OperandSize) (mode: byte) (reg: byte) (extAddr: int) : EaResolved * int * string * (Cpu -> Cpu) =
         let readW a = x.MMU.ReadWord (uint32 a)
         let readL a = x.MMU.ReadLong (uint32 a)
+        let tr = Trace.enabled
         let resolved =
           match mode, reg with
-          | 0b000uy, r -> EaDn r, 0, sprintf "D%u" r, id
-          | 0b001uy, r -> EaAn r, 0, sprintf "A%u" r, id
-          | 0b010uy, r -> EaMem (uint32 (x.AddressRegister r)), 0, sprintf "(a%u)" r, id
+          | 0b000uy, r -> EaDn r, 0, (if tr then sprintf "D%u" r else ""), id
+          | 0b001uy, r -> EaAn r, 0, (if tr then sprintf "A%u" r else ""), id
+          | 0b010uy, r -> EaMem (uint32 (x.AddressRegister r)), 0, (if tr then sprintf "(a%u)" r else ""), id
           | 0b011uy, r ->
               let a = x.AddressRegister r
               let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
               // A fault mid-access still commits the postincrement (see MMU.FaultRegFixup).
               x.MMU.FaultRegFixup <- [(int r, a + step)]
-              EaMem (uint32 a), 0, sprintf "(a%u)+" r, (fun (c: Cpu) -> c.WithAddressRegister r (a + step))
+              EaMem (uint32 a), 0, (if tr then sprintf "(a%u)+" r else ""), (fun (c: Cpu) -> c.WithAddressRegister r (a + step))
           | 0b100uy, r ->
               let step = if r = 7uy && Cpu.EaOpBytes size = 1 then 2 else Cpu.EaOpBytes size
               let a = x.AddressRegister r - step
               // A fault mid-access still commits the predecrement (see MMU.FaultRegFixup).
               x.MMU.FaultRegFixup <- [(int r, a)]
-              EaMem (uint32 a), 0, sprintf "-(a%u)" r, (fun (c: Cpu) -> c.WithAddressRegister r a)
+              EaMem (uint32 a), 0, (if tr then sprintf "-(a%u)" r else ""), (fun (c: Cpu) -> c.WithAddressRegister r a)
           | 0b101uy, r ->
               let d = int (int16 (readW extAddr))
-              EaMem (uint32 (x.AddressRegister r + d)), 2, sprintf "%i(a%u)" d r, id
+              EaMem (uint32 (x.AddressRegister r + d)), 2, (if tr then sprintf "%i(a%u)" d r else ""), id
           | 0b110uy, r ->
               let ext = x.DecodeBriefExtension (readW extAddr)
               EaMem (uint32 (x.AddressRegister r + ext.Offset)), 2, x.DescribeIndexed r ext, id
           | 0b111uy, 0b000uy ->
               let a = int (int16 (readW extAddr))
-              EaMem (uint32 a), 2, sprintf "$%x.w" a, id
+              EaMem (uint32 a), 2, (if tr then sprintf "$%x.w" a else ""), id
           | 0b111uy, 0b001uy ->
               let a = readL extAddr
-              EaMem (uint32 a), 4, sprintf "$%x.l" a, id
+              EaMem (uint32 a), 4, (if tr then sprintf "$%x.l" a else ""), id
           | 0b111uy, 0b010uy ->
               let d = int (int16 (readW extAddr))
-              EaMem (uint32 (extAddr + d)), 2, sprintf "%i(pc)" d, id
+              EaMem (uint32 (extAddr + d)), 2, (if tr then sprintf "%i(pc)" d else ""), id
           | 0b111uy, 0b011uy ->
               let ext = x.DecodeBriefExtension (readW extAddr)
               EaMem (uint32 (extAddr + ext.Offset)), 2,
-                  (sprintf "%i(pc,%s%u.%s)" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w")), id
+                  ((if tr then sprintf "%i(pc,%s%u.%s)" ext.Disp (if ext.IndexIsAddress then "a" else "d") ext.IndexReg (if ext.UseLong then "l" else "w") else "")), id
           | 0b111uy, 0b100uy ->
               match size with
-              | OperandSize.Byte -> EaImm (readW extAddr &&& 0xff), 2, sprintf "#$%x" (readW extAddr &&& 0xff), id
-              | OperandSize.Word -> EaImm (readW extAddr &&& 0xffff), 2, sprintf "#$%x" (readW extAddr &&& 0xffff), id
-              | _ -> EaImm (readL extAddr), 4, sprintf "#$%x" (readL extAddr), id
+              | OperandSize.Byte -> EaImm (readW extAddr &&& 0xff), 2, (if tr then sprintf "#$%x" (readW extAddr &&& 0xff) else ""), id
+              | OperandSize.Word -> EaImm (readW extAddr &&& 0xffff), 2, (if tr then sprintf "#$%x" (readW extAddr &&& 0xffff) else ""), id
+              | _ -> EaImm (readL extAddr), 4, (if tr then sprintf "#$%x" (readL extAddr) else ""), id
           | _ -> failwithf "ResolveEa: unimplemented addressing mode %d reg %d" mode reg
         // How far into this instruction the decoder has now read - for the 68000 group-0
         // exception frame's stacked PC if the operand access that follows faults. `extAddr` is
@@ -1130,7 +1145,8 @@ type Cpu =
         let dest = x.ReadEa size loc
         let result, ccr = combine size dest imm
         let after = if write then x.WriteEa size loc result (regUpdate x) else regUpdate x
-        printfn "%s.%s #$%x,%s" mnemonic (match size with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") imm desc
+        if Trace.enabled then
+            printfn "%s.%s #$%x,%s" mnemonic (match size with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") imm desc
         { after with PC = x.PC + 2 + immBytes + extBytes; CCR = ccr }
 
     ///N/Z from a logical result at `size`, V and C cleared, X untouched - the ORI/ANDI/EORI CCR.
@@ -1161,7 +1177,8 @@ type Cpu =
             | 0b01uy -> x.WriteEa size loc (current ^^^ mask) (regUpdate x)      // BCHG
             | 0b10uy -> x.WriteEa size loc (current &&& ~~~mask) (regUpdate x)   // BCLR
             | _      -> x.WriteEa size loc (current ||| mask) (regUpdate x)      // BSET
-        printfn "%s %s" mnemonic desc
+        if Trace.enabled then
+            printfn "%s %s" mnemonic desc
         { after with PC = extAddr + extBytes; CCR = ccr }
 
     ///Shared "<ea> op Dn -> Dn" / "Dn op <ea> -> <ea>" decoder for the register data buckets
@@ -1186,9 +1203,10 @@ type Cpu =
         let dest, source, target = if eaToDn then dnVal, eaVal, EaDn dn else eaVal, dnVal, loc
         let result, ccr = combine size dest source
         let after = if write then x.WriteEa size target result (regUpdate x) else regUpdate x
-        printfn "%s.%s %s" mnemonic
-            (match size with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l")
-            (if eaToDn then sprintf "%s,D%u" desc dn else sprintf "D%u,%s" dn desc)
+        if Trace.enabled then
+            printfn "%s.%s %s" mnemonic
+                (match size with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l")
+                (if eaToDn then sprintf "%s,D%u" desc dn else sprintf "D%u,%s" dn desc)
         { after with PC = x.PC + 2 + extBytes; CCR = ccr }
 
     ///Shared ADDQ / SUBQ (`isAdd` selects). An destination (word/long encodings only) is a plain
@@ -1202,7 +1220,8 @@ type Cpu =
         match eamode with
         | 0b001uy -> //An - 32-bit, CCR unaffected
             let result = x.AddressRegister eareg + (if isAdd then amount else -amount)
-            printfn "%s.%s #%u,A%u" mn szName amount eareg
+            if Trace.enabled then
+                printfn "%s.%s #%u,A%u" mn szName amount eareg
             { x.WithAddressRegister eareg result with PC = x.PC + 2 }
         | _ ->
             let sz =
@@ -1227,7 +1246,8 @@ type Cpu =
                     (if isAdd then dest + amount else dest - amount),
                     (if isAdd then CCR.Add x.CCR dest amount else CCR.Subtract x.CCR dest amount)
             let after = x.WriteEa sz loc result (regUpdate x)
-            printfn "%s.%s #%u,%s" mn szName amount desc
+            if Trace.enabled then
+                printfn "%s.%s #%u,%s" mn szName amount desc
             { after with PC = x.PC + 2 + extBytes; CCR = ccr }
 
     member x.EvaluateCondition (cond: Condition) =
@@ -1309,7 +1329,8 @@ type Cpu =
                         let newValue = (x.DataRegister dReg &&& ~~~0xff) ||| int target
                         let ccr = CCR.Subtract_IgnoringX_Byte x.CCR target target
                         let newCpu = {x.WithDataRegister dReg newValue with PC = x.PC + 6; CCR = ccr}
-                        printfn "fastforward: tbdr poll -> D%u=$%02x (skipped busy-wait)" dReg target
+                        if Trace.enabled then
+                            printfn "fastforward: tbdr poll -> D%u=$%02x (skipped busy-wait)" dReg target
                         Some newCpu
                 | _ -> None
             | _ -> None
@@ -1331,7 +1352,8 @@ type Cpu =
             //needs different handling than TRAP/Line-A/Line-F's shared EnterVector path.
             let vector = x.MMU.PendingInterruptVector
             x.MMU.AcknowledgeInterrupt()
-            printfn "interrupt: level %d -> vector %d" pendingLevel vector
+            if Trace.enabled then
+                printfn "interrupt: level %d -> vector %d" pendingLevel vector
             (if x.Stopped then { x with Stopped = false } else x).EnterInterrupt pendingLevel vector
         else
         try
@@ -1371,7 +1393,8 @@ type Cpu =
                          //number) - confirmed via a direct Hatari cpu_disasm trace of $a30e live, see
                          //[[atari-st-emulator-next-instructions]]'s twenty-ninth pass.
                          let newCpu = x.EnterVector 10 x.PC
-                         printfn "line-a $%04x" instruction
+                         if Trace.enabled then
+                             printfn "line-a $%04x" instruction
                          newCpu
                 | 0xB -> x.DecodeBucketB instruction
                 | 0xC -> x.DecodeBucketC instruction
@@ -1384,7 +1407,8 @@ type Cpu =
                          //pushed PC (see the Line-A case above for the full explanation - same fix,
                          //same reason).
                          let newCpu = x.EnterVector 11 x.PC
-                         printfn "line-f $%04x" instruction
+                         if Trace.enabled then
+                             printfn "line-f $%04x" instruction
                          newCpu
                 | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
             //Real 68000 trace exception (vector 9, $024): fires after an instruction completes
@@ -1421,8 +1445,9 @@ type Cpu =
             //MOVE's CCR update (see MMU.FaultCcr) survives a faulting destination write.
             let faulted = match x.MMU.FaultCcr with Some c -> { faulted with CCR = c } | None -> faulted
             let newCpu = faulted.EnterGroup0Vector 3 faultAddress isWrite opcode stackedPC
-            printfn "address error: misaligned %s at $%08x -> vector 3 ($%08x)"
-                    (if isWrite then "write" else "read") faultAddress newCpu.PC
+            if Trace.enabled then
+                printfn "address error: misaligned %s at $%08x -> vector 3 ($%08x)"
+                        (if isWrite then "write" else "read") faultAddress newCpu.PC
             newCpu
         | BusError (faultAddress, isWrite) ->
             //Real 68000 hardware traps to the Bus Error vector (vector 2, at address $8) when an
@@ -1439,8 +1464,9 @@ type Cpu =
             //MOVE's CCR update (see MMU.FaultCcr) survives a faulting destination write.
             let faulted = match x.MMU.FaultCcr with Some c -> { faulted with CCR = c } | None -> faulted
             let newCpu = faulted.EnterGroup0Vector 2 faultAddress isWrite opcode stackedPC
-            printfn "bus error: unmapped %s at $%08x -> vector 2 ($%08x)"
-                    (if isWrite then "write" else "read") faultAddress newCpu.PC
+            if Trace.enabled then
+                printfn "bus error: unmapped %s at $%08x -> vector 2 ($%08x)"
+                        (if isWrite then "write" else "read") faultAddress newCpu.PC
             newCpu
 
     member x.DecodeBucket0 (instruction: int) : Cpu =
@@ -1450,7 +1476,8 @@ type Cpu =
             //CCR=4..0) so an OR can never leave the unused bits set - the 680x0 vectors check this.
             let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xA71F)
             let newCcr = x.CCR ||| immediate
-            printfn "ori #$%x,SR" immediate
+            if Trace.enabled then
+                printfn "ori #$%x,SR" immediate
             {x with PC = x.PC+4; CCR = newCcr}
 
         | AndiToSR ->
@@ -1460,19 +1487,22 @@ type Cpu =
             let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
             let newCcr = x.CCR &&& immediate
             let switched = x.WithSR newCcr
-            printfn "andi #$%x,SR" immediate
+            if Trace.enabled then
+                printfn "andi #$%x,SR" immediate
             {switched with PC = x.PC+4}
 
         | OriToCcr ->
             //Opcode-space alias of ORI's mode=111/reg=100 EA slot (see [[68k-opcode-space-aliasing]]).
             //Byte operation on the condition-code half of SR; the unused CCR bits 5-7 stay 0.
             let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0x1f)
-            printfn "ori #$%x,CCR" immediate
+            if Trace.enabled then
+                printfn "ori #$%x,CCR" immediate
             {x with PC = x.PC+4; CCR = x.CCR ||| immediate}
 
         | AndiToCcr ->
             let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xff)
-            printfn "andi #$%x,CCR" immediate
+            if Trace.enabled then
+                printfn "andi #$%x,CCR" immediate
             {x with PC = x.PC+4; CCR = x.CCR &&& (immediate ||| 0xff00s)}
 
         | EoriToSR ->
@@ -1481,7 +1511,8 @@ type Cpu =
             //Mask to the implemented SR bits so the unused ones can't be toggled (see OriToSR).
             let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0xA71F)
             let switched = x.WithSR (x.CCR ^^^ immediate)
-            printfn "eori #$%x,SR" immediate
+            if Trace.enabled then
+                printfn "eori #$%x,SR" immediate
             {switched with PC = x.PC+4}
 
         | ORI(size, mode, register) ->
@@ -1499,7 +1530,8 @@ type Cpu =
             //bits 5-7 stay 0 (the 680x0 vectors check this).
             let immediate = int16 (x.MMU.ReadWord(uint32 (x.PC+2)) &&& 0x1f)
             let newCcr = x.CCR ^^^ immediate
-            printfn "eori #$%x,CCR" immediate
+            if Trace.enabled then
+                printfn "eori #$%x,CCR" immediate
             {x with PC = x.PC+4; CCR = newCcr}
 
         | EORI(size, mode, register) ->
@@ -1636,7 +1668,8 @@ type Cpu =
             match dstLoc with
             | EaAn r ->
                 let value = match size with OperandSize.Word -> int (int16 rawSource) | _ -> rawSource
-                printfn "movea.%s %s,A%u" sizeChar srcDesc r
+                if Trace.enabled then
+                    printfn "movea.%s %s,A%u" sizeChar srcDesc r
                 { x.WithAddressRegister r value with PC = newPC }
             | EaMem a when size = OperandSize.Long && dMode = 0b100uy ->
                 //Real 68000 hardware decrements a LONG -(An) destination in TWO word-sized bus
@@ -1656,7 +1689,8 @@ type Cpu =
                 x.MMU.WriteWord (a + 2u) (int16 rawSource)
                 x.MMU.FaultRegFixup <- mergeFixup dstFaultFixup
                 x.MMU.WriteWord a (int16 (rawSource >>> 16))
-                printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
+                if Trace.enabled then
+                    printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
                 { x with PC = newPC; CCR = ccr }
             | _ ->
                 let ccr =
@@ -1668,7 +1702,8 @@ type Cpu =
                 //attempted, so it sticks even when that write faults - see MMU.FaultCcr.
                 x.MMU.FaultCcr <- Some ccr
                 let written = x.WriteEa size dstLoc rawSource (dstUpdate x)
-                printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
+                if Trace.enabled then
+                    printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
                 { written with PC = newPC; CCR = ccr }
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
@@ -1690,7 +1725,8 @@ type Cpu =
             //Only CCR bits 0-4 exist on the 68000; bits 5-7 of the source byte are discarded
             //(they read back as 0), same masking bug as commit a4f473e for the -to-CCR immediates.
             let newCcr = (x.CCR &&& ~~~0xffs) ||| (source &&& 0x1fs)
-            printfn "move %s,ccr" desc
+            if Trace.enabled then
+                printfn "move %s,ccr" desc
             { regUpdate x with PC = x.PC + 2 + extBytes; CCR = newCcr }
 
         | Move2SR(mode, register) ->
@@ -1713,7 +1749,8 @@ type Cpu =
             //actually popped from (the pre-switch A7), leaving the other stack pointer untouched.
             //WithSR then swaps A7/USP/SSP from that already-updated state.
             let updated = regUpdate x
-            printfn "move %s,sr" desc
+            if Trace.enabled then
+                printfn "move %s,sr" desc
             { updated.WithSR newCcr with PC = x.PC + 2 + extBytes }
         | MoveFromSR(eamode, eareg) ->
             //Destination-only: real hardware doesn't encode An-direct, #imm, or either
@@ -1734,7 +1771,8 @@ type Cpu =
                 x.ReadEa OperandSize.Word loc |> ignore
                 let written = x.WriteEa OperandSize.Word loc (int x.CCR) x
                 let newCpu = { regUpdate written with PC = x.PC + 2 + extBytes }
-                printfn "move sr,%s" desc
+                if Trace.enabled then
+                    printfn "move sr,%s" desc
                 newCpu
 
         | Reset ->
@@ -1743,7 +1781,8 @@ type Cpu =
             else printfn "TRAP: Not supervisor"
             {x with PC = x.PC + 2}
         | NOP ->
-            printfn "nop"
+            if Trace.enabled then
+                printfn "nop"
             {x with PC = x.PC + 2}
         | CHK(dn, eamode, eareg) ->
             //CHK.W <ea>,Dn: trap to vector 6 if Dn.w < 0 or Dn.w > <ea>.w. Flags (matching MAME's
@@ -1762,7 +1801,8 @@ type Cpu =
             let ccr0 =
                 let c = if z16 then afterEA.CCR ||| 0x4s else afterEA.CCR &&& ~~~0x4s
                 c &&& ~~~0x3s  // V = C = 0
-            printfn "chk.w %s,D%u" desc dn
+            if Trace.enabled then
+                printfn "chk.w %s,D%u" desc dn
             if src >= 0 && src <= bound then
                 { afterEA with CCR = ccr0 }
             else
@@ -1779,7 +1819,8 @@ type Cpu =
                 let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
                 match loc with
                 | EaMem addr ->
-                    printfn "lea %s,a%i" desc a_reg
+                    if Trace.enabled then
+                        printfn "lea %s,a%i" desc a_reg
                     { x.WithAddressRegister a_reg (int addr) with PC = x.PC + 2 + extBytes }
                 | _ -> failwithf "lea: EA did not resolve to memory (%x/%x)" eamode eareg
             | _ -> failwithf "lea: illegal addressing mode %x/%x" eamode eareg
@@ -1804,7 +1845,8 @@ type Cpu =
             if (src &&& signBit <> 0) && (result &&& signBit <> 0) then ccr <- ccr ||| 0x2s //V
             if borrow then ccr <- ccr ||| 0x1s ||| 0x10s else ccr <- ccr &&& ~~~0x10s //C and X=C
             let newCpu = { x.WriteEa sz loc result (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "negx.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
+            if Trace.enabled then
+                printfn "negx.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
             newCpu
 
         | NEG(size, eamode, eareg) ->
@@ -1821,7 +1863,8 @@ type Cpu =
                 | _ -> let s = raw in (0 - s), CCR.Subtract x.CCR 0 s
             let ccr = if ccr &&& 0x1s <> 0s then ccr ||| 0x10s else ccr &&& ~~~0x10s
             let newCpu = { x.WriteEa sz loc result (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "neg.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
+            if Trace.enabled then
+                printfn "neg.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
             newCpu
 
         | NOT(size, eamode, eareg) ->
@@ -1836,7 +1879,8 @@ type Cpu =
                 | OperandSize.Word -> let r = ~~~(int16 raw) in (int r &&& 0xffff), CCR.IgnoreX_ZeroV_And_ZeroC x.CCR r
                 | _ -> let r = ~~~raw in r, CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR r
             let newCpu = { x.WriteEa sz loc result (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "not.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
+            if Trace.enabled then
+                printfn "not.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
             newCpu
 
         | CLR(size, eamode, eareg) ->
@@ -1855,7 +1899,8 @@ type Cpu =
                 | _ -> CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR 0
             let written = x.WriteEa sz loc 0 (regUpdate x)
             let newCpu = { written with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "clr.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
+            if Trace.enabled then
+                printfn "clr.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
             newCpu
 
         | NBCD(eamode, eareg) ->
@@ -1868,7 +1913,8 @@ type Cpu =
             let result, ccr = Bcd.negate x.CCR x.X source
             let written = x.WriteEa OperandSize.Byte loc result (regUpdate x)
             let newCpu = { written with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "nbcd %s" desc
+            if Trace.enabled then
+                printfn "nbcd %s" desc
             newCpu
 
         | TAS(eamode, eareg) ->
@@ -1879,7 +1925,8 @@ type Cpu =
             let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Byte x.CCR value
             let written = x.WriteEa OperandSize.Byte loc (int (value ||| 0x80uy)) (regUpdate x)
             let newCpu = { written with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "tas %s" desc
+            if Trace.enabled then
+                printfn "tas %s" desc
             newCpu
 
         | TST(size, eamode, eareg) ->
@@ -1895,7 +1942,8 @@ type Cpu =
                 | OperandSize.Word -> CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 raw)
                 | _ -> CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR raw
             let newCpu = { regUpdate x with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "tst.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
+            if Trace.enabled then
+                printfn "tst.%s %s" (match sz with OperandSize.Byte -> "b" | OperandSize.Word -> "w" | _ -> "l") desc
             newCpu
 
         | MOVEM(direction, size, eamode, eareg) ->
@@ -1959,7 +2007,8 @@ type Cpu =
                             x.MMU.WriteWord (uint32 addr) (int16 (value >>> 16))
                         else
                             storeValue (uint32 addr) value
-                printfn "movem.%s #$%04x,-(a%u)" szChar mask eareg
+                if Trace.enabled then
+                    printfn "movem.%s #$%04x,-(a%u)" szChar mask eareg
                 {x.WithAddressRegister eareg addr with PC = x.PC+4}
             | 1uy, 0b011uy -> //(An)+,reglist : postincrement, ascending mask order
                 let mutable addr = x.AddressRegister eareg
@@ -1970,7 +2019,8 @@ type Cpu =
                     if (mask >>> bit) &&& 1us = 1us then
                         cpu <- ascWriteReg cpu bit (loadValue (uint32 addr))
                         addr <- addr + step
-                printfn "movem.%s (a%u)+,#$%04x" szChar eareg mask
+                if Trace.enabled then
+                    printfn "movem.%s (a%u)+,#$%04x" szChar eareg mask
                 {cpu.WithAddressRegister eareg addr with PC = x.PC+4}
             | _ ->
                 let loc, extBytes, desc, _ = x.ResolveEa sz eamode eareg (x.PC + 4)
@@ -1985,7 +2035,8 @@ type Cpu =
                         if (mask >>> bit) &&& 1us = 1us then
                             storeValue addr (ascReadReg bit)
                             addr <- addr + uint32 step
-                    printfn "movem.%s #$%04x,%s" szChar mask desc
+                    if Trace.enabled then
+                        printfn "movem.%s #$%04x,%s" szChar mask desc
                     {x with PC = x.PC + 4 + extBytes}
                 | _ -> //control-mode memory -> reglist, ascending
                     let mutable addr = baseAddr
@@ -1994,7 +2045,8 @@ type Cpu =
                         if (mask >>> bit) &&& 1us = 1us then
                             cpu <- ascWriteReg cpu bit (loadValue addr)
                             addr <- addr + uint32 step
-                    printfn "movem.%s %s,#$%04x" szChar desc mask
+                    if Trace.enabled then
+                        printfn "movem.%s %s,#$%04x" szChar desc mask
                     {cpu with PC = x.PC + 4 + extBytes}
 
         | EXT(size, register) ->
@@ -2007,14 +2059,16 @@ type Cpu =
                 let newValue = (current &&& ~~~0xffff) ||| (int extended &&& 0xffff)
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR extended
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
-                printfn "ext.w D%u" register
+                if Trace.enabled then
+                    printfn "ext.w D%u" register
                 newCpu
             | _ -> //EXT.L: word -> long
                 let current = x.DataRegister register
                 let extended = int (int16 current)
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR extended
                 let newCpu = {x.WithDataRegister register extended with PC = x.PC+2; CCR = ccr}
-                printfn "ext.l D%u" register
+                if Trace.enabled then
+                    printfn "ext.l D%u" register
                 newCpu
 
         | SWAP register ->
@@ -2024,7 +2078,8 @@ type Cpu =
             let swapped = (current <<< 16) ||| ((current >>> 16) &&& 0xffff)
             let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR swapped
             let newCpu = {x.WithDataRegister register swapped with PC = x.PC+2; CCR = ccr}
-            printfn "swap D%u" register
+            if Trace.enabled then
+                printfn "swap D%u" register
             newCpu
 
         | PEA(eamode, eareg) ->
@@ -2039,7 +2094,8 @@ type Cpu =
                 | EaMem addr ->
                     let newSP = x.A7 - 4
                     x.MMU.WriteLong (uint32 newSP) (int addr)
-                    printfn "pea %s == $%x" desc addr
+                    if Trace.enabled then
+                        printfn "pea %s == $%x" desc addr
                     {x with PC = x.PC + 2 + extBytes; A7 = newSP}
                 | _ -> failwithf "pea: EA did not resolve to memory (%x/%x)" eamode eareg
             | _ -> failwithf "pea: illegal addressing mode %x/%x" eamode eareg
@@ -2047,7 +2103,8 @@ type Cpu =
         | RTS ->
             let returnAddr = x.MMU.ReadLong(uint32 x.A7)
             let newCpu = {x with PC = returnAddr; A7 = x.A7 + 4}
-            printfn "rts"
+            if Trace.enabled then
+                printfn "rts"
             x.FetchTargetOrFault newCpu instruction
 
         | RTE ->
@@ -2062,7 +2119,8 @@ type Cpu =
             let pc = x.MMU.ReadLong(uint32 (x.A7+2))
             let poppedCpu = {x with A7 = x.A7 + 6}
             let newCpu = {poppedCpu.WithSR sr with PC = pc}
-            printfn "rte"
+            if Trace.enabled then
+                printfn "rte"
             x.FetchTargetOrFault newCpu instruction
 
         | RTR ->
@@ -2072,17 +2130,20 @@ type Cpu =
             let poppedCcr = int16 (x.MMU.ReadWord(uint32 x.A7) &&& 0x1f)
             let pc = x.MMU.ReadLong(uint32 (x.A7+2))
             let newCcr = (x.CCR &&& ~~~0x1fs) ||| poppedCcr
-            printfn "rtr"
+            if Trace.enabled then
+                printfn "rtr"
             x.FetchTargetOrFault {x with A7 = x.A7 + 6; PC = pc; CCR = newCcr} instruction
 
         | TRAPV ->
             //Trap to vector 7 when V is set, otherwise fall through. The stacked return PC is the
             //instruction after TRAPV (a completed instruction, unlike an address error).
             if x.CCR &&& 0x2s <> 0s then
-                printfn "trapv (taken)"
+                if Trace.enabled then
+                    printfn "trapv (taken)"
                 x.EnterVector 7 (x.PC+2)
             else
-                printfn "trapv (not taken)"
+                if Trace.enabled then
+                    printfn "trapv (not taken)"
                 {x with PC = x.PC+2}
 
         | Illegal ->
@@ -2092,7 +2153,8 @@ type Cpu =
             //stacked return address is the ILLEGAL opcode's own address, matching RTE resuming
             //back at the same instruction (of no use here since nothing rewrites it first, but
             //correct is correct).
-            printfn "illegal"
+            if Trace.enabled then
+                printfn "illegal"
             x.EnterVector 4 x.PC
 
         | TRAP(vector) ->
@@ -2104,17 +2166,20 @@ type Cpu =
                 let func = x.MMU.ReadWord(uint32 x.A7)
                 eprintfn "GEMDOS_CALL pc=$%08x func=$%04x" x.PC (uint16 func)
             let newCpu = x.EnterVector (32 + int vector) (x.PC+2)
-            printfn "trap #%u" vector
+            if Trace.enabled then
+                printfn "trap #%u" vector
             newCpu
 
         | MoveUsp(direction, register) ->
             if direction = 0uy then //MOVE An,USP
                 let newCpu = {x with USP = x.AddressRegister register; PC = x.PC+2}
-                printfn "move A%u,usp" register
+                if Trace.enabled then
+                    printfn "move A%u,usp" register
                 newCpu
             else //MOVE USP,An
                 let newCpu = {x.WithAddressRegister register x.USP with PC = x.PC+2}
-                printfn "move usp,A%u" register
+                if Trace.enabled then
+                    printfn "move usp,A%u" register
                 newCpu
 
         | LINK(register) ->
@@ -2127,7 +2192,8 @@ type Cpu =
             x.MMU.WriteLong (uint32 newSP) pushed
             let newCpu = (x.WithAddressRegister register newSP).WithAddressRegister 0b111uy (newSP + int displacement)
             let newCpu = {newCpu with PC = x.PC+4}
-            printfn "link A%u,#%d" register displacement
+            if Trace.enabled then
+                printfn "link A%u,#%d" register displacement
             newCpu
 
         | UNLK(register) ->
@@ -2136,7 +2202,8 @@ type Cpu =
             let restored = x.MMU.ReadLong(uint32 addr)
             let newCpu = (x.WithAddressRegister 0b111uy (addr+4)).WithAddressRegister register restored
             let newCpu = {newCpu with PC = x.PC+2}
-            printfn "unlk A%u" register
+            if Trace.enabled then
+                printfn "unlk A%u" register
             newCpu
 
         | JSR(eamode, eareg) ->
@@ -2146,7 +2213,8 @@ type Cpu =
             let loc, extBytes, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
             match loc with
             | EaMem target ->
-                printfn "jsr %s == $%x" desc target
+                if Trace.enabled then
+                    printfn "jsr %s == $%x" desc target
                 if int target &&& 1 <> 0 then
                     //The 68000 prefetches the target before pushing the return address, so an
                     //odd target faults with the push never having happened (A7 unmoved).
@@ -2162,7 +2230,8 @@ type Cpu =
             let loc, _, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
             match loc with
             | EaMem jump ->
-                printfn "jmp %s == $%x" desc jump
+                if Trace.enabled then
+                    printfn "jmp %s == $%x" desc jump
                 x.FetchTargetOrFault {x with PC = int jump} instruction
             | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg
         | _ when instruction &&& 0xFFFF = 0x4E72 ->
@@ -2172,11 +2241,13 @@ type Cpu =
             //without a per-scanline chip scheduler the sync is only interrupt-granular, so a raster
             //palette split still comes out flat (the accepted limitation), but the code runs on.
             if not x.S then
-                printfn "stop (privilege violation)"
+                if Trace.enabled then
+                    printfn "stop (privilege violation)"
                 x.EnterVector 8 x.PC
             else
                 let imm = int16 (x.MMU.ReadWord (uint32 (x.PC + 2)) &&& 0xA71F)
-                printfn "stop #$%04x" (uint16 imm)
+                if Trace.enabled then
+                    printfn "stop #$%04x" (uint16 imm)
                 { x.WithSR imm with PC = x.PC + 4; Stopped = true }
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
 
@@ -2194,7 +2265,8 @@ type Cpu =
             let value = if x.EvaluateCondition cond then 0xff else 0x00
             let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Byte eamode eareg (x.PC + 2)
             let newCpu = { x.WriteEa OperandSize.Byte loc value (regUpdate x) with PC = x.PC + 2 + extBytes }
-            printfn "s%s %s" (conditionName cond) desc
+            if Trace.enabled then
+                printfn "s%s %s" (conditionName cond) desc
             newCpu
 
         | DBcc(cond, register) ->
@@ -2208,7 +2280,8 @@ type Cpu =
                 let branch = newLowWord <> -1s
                 let newPC = if branch then x.PC + 2 + int displacement else x.PC + 4
                 let newCpu = {x.WithDataRegister register newValue with PC = newPC}
-                printfn "db%s D%u,$%x" (conditionName cond) register newPC
+                if Trace.enabled then
+                    printfn "db%s D%u,$%x" (conditionName cond) register newPC
                 //On the taken (condition-false, count-not-expired) path the decrement stands even
                 //when the target is odd - the SingleStepTests DBcc frame vectors show Dn's low
                 //word already decremented. So fault on `newCpu`, not a pre-decrement copy.
@@ -2230,7 +2303,8 @@ type Cpu =
                     let returnAddr = x.PC + 4
                     x.MMU.WriteLong (uint32 newSP) returnAddr
                     let newPC = (x.PC+2) + int wordDisp
-                    printfn "bsr.w $%x" newPC
+                    if Trace.enabled then
+                        printfn "bsr.w $%x" newPC
                     //Unlike JSR, the 68000 pushes the return address THEN prefetches, so an odd
                     //target faults with the push already committed (frame delta 18, not 14).
                     x.FetchTargetOrFault {x with PC = newPC; A7 = newSP} instruction
@@ -2247,13 +2321,15 @@ type Cpu =
                     //PC+2, pushed first) - same "push-then-fault" convention the .w/.s arms use.
                     let returnAddr = x.PC + 2
                     x.MMU.WriteLong (uint32 newSP) returnAddr
-                    printfn "bsr.l (unsupported disp - address error)"
+                    if Trace.enabled then
+                        printfn "bsr.l (unsupported disp - address error)"
                     x.FetchTargetOrFault {x with PC = x.PC + 1; A7 = newSP} instruction
                 | byteDisp ->
                     let returnAddr = x.PC + 2
                     x.MMU.WriteLong (uint32 newSP) returnAddr
                     let newPC = (x.PC+2) + int (sbyte byteDisp)
-                    printfn "bsr.s $%x" newPC
+                    if Trace.enabled then
+                        printfn "bsr.s $%x" newPC
                     x.FetchTargetOrFault {x with PC = newPC; A7 = newSP} instruction
             | _ ->
                 let takeBranch = x.EvaluateCondition cond
@@ -2261,7 +2337,8 @@ type Cpu =
                 | 0x00uy ->
                     let wordDisp = int16 (x.MMU.ReadWord(uint32 (x.PC+2)))
                     let newPC = if takeBranch then (x.PC+2) + int wordDisp else x.PC + 4
-                    printfn "b%s.w $%x (%b)" (conditionName cond) newPC takeBranch
+                    if Trace.enabled then
+                        printfn "b%s.w $%x (%b)" (conditionName cond) newPC takeBranch
                     x.FetchTargetOrFault {x with PC = newPC} instruction
                 | 0xFFuy ->
                     //Not the 68020+ 32-bit-displacement encoding - see the BSR 0xFFuy arm above for
@@ -2271,14 +2348,17 @@ type Cpu =
                     //fin.pc=ini.pc+2/fin.ssp unchanged on real vectors. Taken: same forced-odd-PC
                     //FetchTargetOrFault reuse as BSR, no return-address push (Bcc isn't a call).
                     if takeBranch then
-                        printfn "b%s.l (unsupported disp - address error)" (conditionName cond)
+                        if Trace.enabled then
+                            printfn "b%s.l (unsupported disp - address error)" (conditionName cond)
                         x.FetchTargetOrFault {x with PC = x.PC + 1} instruction
                     else
-                        printfn "b%s.l $%x (false, not taken)" (conditionName cond) (x.PC + 2)
+                        if Trace.enabled then
+                            printfn "b%s.l $%x (false, not taken)" (conditionName cond) (x.PC + 2)
                         {x with PC = x.PC + 2}
                 | byteDisp ->
                     let newPC = if takeBranch then (x.PC+2) + int (sbyte byteDisp) else x.PC + 2
-                    printfn "b%s.s $%x (%b)" (conditionName cond) newPC takeBranch
+                    if Trace.enabled then
+                        printfn "b%s.s $%x (%b)" (conditionName cond) newPC takeBranch
                     x.FetchTargetOrFault {x with PC = newPC} instruction
         
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
@@ -2289,13 +2369,15 @@ type Cpu =
             let value = int data
             let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 value)
             let newCpu = {x.WithDataRegister register value with PC = x.PC+2; CCR = ccr}
-            printfn "moveq #$%x,D%u" value register
+            if Trace.enabled then
+                printfn "moveq #$%x,D%u" value register
             newCpu
 
         | ReservedMoveq ->
             //See ReservedMoveq's own comment: bit 8 set is unassigned in MOVEQ's line, and real
             //68000 hardware traps it to vector 4 exactly like ILLEGAL/$4E7A/$4E7B.
-            printfn "reserved (bit8) - illegal"
+            if Trace.enabled then
+                printfn "reserved (bit8) - illegal"
             x.EnterVector 4 x.PC
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
@@ -2321,7 +2403,8 @@ type Cpu =
                     //cleared, then N/Z from the dividend's high word for DIVU). The EA writeback
                     //(regUpdate) still applies first.
                     let trapCcr = CCR.DivByZero x.CCR false (x.DataRegister register)
-                    printfn "divu.w %s,D%u (divide by zero -> vector 5)" desc register
+                    if Trace.enabled then
+                        printfn "divu.w %s,D%u (divide by zero -> vector 5)" desc register
                     ({ regUpdate x with CCR = trapCcr }).EnterVector 5 (x.PC + 2 + extBytes)
                 else
                 let dividend = uint32 (x.DataRegister register)
@@ -2335,13 +2418,15 @@ type Cpu =
                     //chip revision). The EA writeback (regUpdate) still applies.
                     let ccr = CCR.SetV_ClearC x.CCR
                     let newCpu = { (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
-                    printfn "divu.w %s,D%u (overflow)" desc register
+                    if Trace.enabled then
+                        printfn "divu.w %s,D%u (overflow)" desc register
                     newCpu
                 else
                 let result = int ((remainder <<< 16) ||| quotient)
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 quotient)
                 let newCpu = {(regUpdate x).WithDataRegister register result with PC = x.PC + 2 + extBytes; CCR = ccr}
-                printfn "divu.w %s,D%u" desc register
+                if Trace.enabled then
+                    printfn "divu.w %s,D%u" desc register
                 newCpu
             let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
             doDivide (uint32 (uint16 (x.ReadEa OperandSize.Word loc))) regUpdate extBytes desc
@@ -2356,7 +2441,8 @@ type Cpu =
                     //DIVU note above; gencpu.c i_DIVS has the same incpc-then-exception order).
                     //DIVS's divbyzero_special just sets Z (dividend value unused).
                     let trapCcr = CCR.DivByZero x.CCR true 0
-                    printfn "divs.w %s,D%u (divide by zero -> vector 5)" desc register
+                    if Trace.enabled then
+                        printfn "divs.w %s,D%u (divide by zero -> vector 5)" desc register
                     ({ regUpdate x with CCR = trapCcr }).EnterVector 5 (x.PC + 2 + extBytes)
                 else
                 let dividend = x.DataRegister register
@@ -2369,7 +2455,8 @@ type Cpu =
                     //68000 vectors exactly (overflow sets only V, clears C).
                     let ccr = CCR.SetV_ClearC x.CCR
                     let newCpu = { (regUpdate x) with PC = x.PC + 2 + extBytes; CCR = ccr }
-                    printfn "divs.w %s,D%u (overflow)" desc register
+                    if Trace.enabled then
+                        printfn "divs.w %s,D%u (overflow)" desc register
                     newCpu
                 else
                 let quotient = int quotient64
@@ -2377,7 +2464,8 @@ type Cpu =
                 let result = ((remainder &&& 0xffff) <<< 16) ||| (quotient &&& 0xffff)
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC x.CCR (int16 quotient)
                 let newCpu = {(regUpdate x).WithDataRegister register result with PC = x.PC + 2 + extBytes; CCR = ccr}
-                printfn "divs.w %s,D%u" desc register
+                if Trace.enabled then
+                    printfn "divs.w %s,D%u" desc register
                 newCpu
             let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
             doDivide (int16 (x.ReadEa OperandSize.Word loc)) regUpdate extBytes desc
@@ -2414,7 +2502,8 @@ type Cpu =
                 let afterEa = regUpdate x
                 let result = afterEa.AddressRegister address - source
                 let newCpu = { afterEa.WithAddressRegister address result with PC = x.PC + 2 + extBytes }
-                printfn "suba.w %s,A%u" desc address
+                if Trace.enabled then
+                    printfn "suba.w %s,A%u" desc address
                 newCpu
             | 0b111uy -> //SUBA.L <ea>,An - full 32-bit subtract from An, no flags. Shared EA decoder,
                 //mirroring CMPA.L / SUBA.W above (the old hand-coded match only covered Dn/An/#imm/
@@ -2424,7 +2513,8 @@ type Cpu =
                 let afterEa = regUpdate x
                 let result = afterEa.AddressRegister address - source
                 let newCpu = { afterEa.WithAddressRegister address result with PC = x.PC + 2 + extBytes }
-                printfn "suba.l %s,A%u" desc address
+                if Trace.enabled then
+                    printfn "suba.l %s,A%u" desc address
                 newCpu
             | _ ->
                 //SUB.B/W/L in both directions via the shared EA decoder. SUBX already consumed
@@ -2461,7 +2551,8 @@ type Cpu =
                 let source = x.ReadEa OperandSize.Long loc
                 let ccr = CCR.Subtract_IgnoringX x.CCR (x.AddressRegister register) source
                 let newCpu = { regUpdate x with PC = x.PC + 2 + extBytes; CCR = ccr }
-                printfn "cmpa.l %s,A%u" desc register
+                if Trace.enabled then
+                    printfn "cmpa.l %s,A%u" desc register
                 newCpu
             | 0b011uy -> //CMPA.W <ea>,An - source word sign-extended to long, full 32-bit compare
                 //against An; X untouched (CMP-family). Migrated to the shared EA decoder.
@@ -2469,7 +2560,8 @@ type Cpu =
                 let source = int (int16 (x.ReadEa OperandSize.Word loc))
                 let ccr = CCR.Subtract_IgnoringX x.CCR (x.AddressRegister register) source
                 let newCpu = { regUpdate x with PC = x.PC + 2 + extBytes; CCR = ccr }
-                printfn "cmpa.w %s,A%u" desc register
+                if Trace.enabled then
+                    printfn "cmpa.w %s,A%u" desc register
                 newCpu
             | _ -> //EOR.B/W/L Dn,<ea> -> <ea> (opmode 100/101/110). eamode 001 is not a legal EOR
                    //destination: real hardware repurposes it for CMPM.B/W (An)+,(An)+, which keeps
@@ -2488,7 +2580,8 @@ type Cpu =
                         let dStep = if register = 0b111uy then 2 else 1
                         let newCpu =
                             (x.WithAddressRegister eareg (srcAddr+sStep)).WithAddressRegister register (destAddr+dStep)
-                        printfn "cmpm.b (a%u)+,(a%u)+" eareg register
+                        if Trace.enabled then
+                            printfn "cmpm.b (a%u)+,(a%u)+" eareg register
                         {newCpu with PC = x.PC+2; CCR = ccr}
                     | 0b101uy -> //CMPM.W (An)+,(An)+ - both sides always postincrement by 2. Word
                         //reads can hit an odd address (address error); prime MMU.FaultRegFixup
@@ -2504,7 +2597,8 @@ type Cpu =
                         let ccr = CCR.Subtract_IgnoringX_Word x.CCR dest source
                         let newCpu =
                             (x.WithAddressRegister eareg (srcAddr+2)).WithAddressRegister register (destAddr+2)
-                        printfn "cmpm.w (a%u)+,(a%u)+" eareg register
+                        if Trace.enabled then
+                            printfn "cmpm.w (a%u)+,(a%u)+" eareg register
                         {newCpu with PC = x.PC+2; CCR = ccr}
                     | 0b110uy -> //CMPM.L (An)+,(An)+ - both sides always postincrement by 4, same as
                         //CMPM.W's uniform step (unlike CMPM.B, where only the byte size gives A7 the
@@ -2526,7 +2620,8 @@ type Cpu =
                         let ccr = CCR.Subtract_IgnoringX x.CCR dest source
                         let newCpu =
                             (x.WithAddressRegister eareg (srcAddr+4)).WithAddressRegister register (destAddr+4)
-                        printfn "cmpm.l (a%u)+,(a%u)+" eareg register
+                        if Trace.enabled then
+                            printfn "cmpm.l (a%u)+,(a%u)+" eareg register
                         {newCpu with PC = x.PC+2; CCR = ccr}
                     | _ -> failwithf "cmpm: opmode %x not a valid CMPM size" opmode
                 | _ ->
@@ -2543,19 +2638,22 @@ type Cpu =
                 let vx = x.DataRegister rx
                 let vy = x.DataRegister ry
                 let newCpu = {(x.WithDataRegister rx vy).WithDataRegister ry vx with PC = x.PC+2}
-                printfn "exg D%u,D%u" rx ry
+                if Trace.enabled then
+                    printfn "exg D%u,D%u" rx ry
                 newCpu
             | 0b01001uy -> //Ax,Ay
                 let vx = x.AddressRegister rx
                 let vy = x.AddressRegister ry
                 let newCpu = {(x.WithAddressRegister rx vy).WithAddressRegister ry vx with PC = x.PC+2}
-                printfn "exg A%u,A%u" rx ry
+                if Trace.enabled then
+                    printfn "exg A%u,A%u" rx ry
                 newCpu
             | 0b10001uy -> //Dx,Ay
                 let vx = x.DataRegister rx
                 let vy = x.AddressRegister ry
                 let newCpu = {(x.WithDataRegister rx vy).WithAddressRegister ry vx with PC = x.PC+2}
-                printfn "exg D%u,A%u" rx ry
+                if Trace.enabled then
+                    printfn "exg D%u,A%u" rx ry
                 newCpu
             | _ -> failwithf "exg: unknown mode %x" mode
 
@@ -2569,7 +2667,8 @@ type Cpu =
             let result = int (source * dest)
             let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
             let newCpu = { (regUpdate x).WithDataRegister register result with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "mulu.w %s,D%u" desc register
+            if Trace.enabled then
+                printfn "mulu.w %s,D%u" desc register
             newCpu
 
         | MULS(register, eamode, eareg) ->
@@ -2581,7 +2680,8 @@ type Cpu =
             let result = source * dest
             let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR result
             let newCpu = { (regUpdate x).WithDataRegister register result with PC = x.PC + 2 + extBytes; CCR = ccr }
-            printfn "muls.w %s,D%u" desc register
+            if Trace.enabled then
+                printfn "muls.w %s,D%u" desc register
             newCpu
 
         | AND(register, opmode, eamode, eareg) ->
@@ -2617,7 +2717,8 @@ type Cpu =
                 let afterEa = regUpdate x
                 let result = afterEa.AddressRegister address + source
                 let newCpu = { afterEa.WithAddressRegister address result with PC = x.PC + 2 + extBytes }
-                printfn "adda.%s %s,A%u" (if size = OperandSize.Word then "w" else "l") desc address
+                if Trace.enabled then
+                    printfn "adda.%s %s,A%u" (if size = OperandSize.Word then "w" else "l") desc address
                 newCpu
             | _ ->
                 //ADD.B/W/L in both directions via the shared EA decoder. ADDX already claimed
@@ -2669,7 +2770,8 @@ type Cpu =
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "asl.%s #%u,D%u" sizeChar amount register
+                if Trace.enabled then
+                    printfn "asl.%s #%u,D%u" sizeChar amount register
                 newCpu
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b01uy -> //LSL.B/W/L #imm,Dn
                 //Logical shift: same bit motion as ASL, but V is always cleared (no sign-change check).
@@ -2691,7 +2793,8 @@ type Cpu =
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "lsl.%s #%u,D%u" sizeChar amount register
+                if Trace.enabled then
+                    printfn "lsl.%s #%u,D%u" sizeChar amount register
                 newCpu
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b00uy -> //ASL.B/W/L Dn,Dn - shift count taken from a register, mod 64
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
@@ -2716,7 +2819,8 @@ type Cpu =
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "asl.%s D%u,D%u" sizeChar countOrReg register
+                if Trace.enabled then
+                    printfn "asl.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b00uy -> //ASR.B/W/L Dn,Dn - shift count taken from a register, mod 64
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
@@ -2744,7 +2848,8 @@ type Cpu =
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "asr.%s D%u,D%u" sizeChar countOrReg register
+                if Trace.enabled then
+                    printfn "asr.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b00uy -> //ASR.B/W/L #imm,Dn
                 //Arithmetic shift right: sign-fills from the top (V always cleared - never overflows).
@@ -2767,7 +2872,8 @@ type Cpu =
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "asr.%s #%u,D%u" sizeChar amount register
+                if Trace.enabled then
+                    printfn "asr.%s #%u,D%u" sizeChar amount register
                 newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b01uy -> //LSR.B/W/L #imm,Dn
                 //Logical shift right: zero-fills from the top, carry/X take the last bit shifted out, V always cleared.
@@ -2789,7 +2895,8 @@ type Cpu =
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "lsr.%s #%u,D%u" sizeChar amount register
+                if Trace.enabled then
+                    printfn "lsr.%s #%u,D%u" sizeChar amount register
                 newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b01uy -> //LSR.B/W/L Dn,Dn - shift count taken from a register, mod 64
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
@@ -2810,7 +2917,8 @@ type Cpu =
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "lsr.%s D%u,D%u" sizeChar countOrReg register
+                if Trace.enabled then
+                    printfn "lsr.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b01uy -> //LSL.B/W/L Dn,Dn - shift count taken from a register, mod 64
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
@@ -2831,7 +2939,8 @@ type Cpu =
                     else ccr <- ccr &&& ~~~0x10s //X follows C
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "lsl.%s D%u,D%u" sizeChar countOrReg register
+                if Trace.enabled then
+                    printfn "lsl.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b10uy -> //ROXL.B/W/L #imm,Dn - rotates through the X flag
                 let amount = if countOrReg = 0uy then 8 else int countOrReg
@@ -2851,7 +2960,8 @@ type Cpu =
                 if xFlag then ccr <- ccr ||| 0x1s ||| 0x10s //C mirrors the resulting X, even at amount=0 - a real ROXd quirk
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "roxl.%s #%u,D%u" sizeChar amount register
+                if Trace.enabled then
+                    printfn "roxl.%s #%u,D%u" sizeChar amount register
                 newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b10uy -> //ROXR.B/W/L #imm,Dn - rotate right through the X flag
                 let amount = if countOrReg = 0uy then 8 else int countOrReg
@@ -2871,7 +2981,8 @@ type Cpu =
                 if xFlag then ccr <- ccr ||| 0x1s ||| 0x10s //C mirrors the resulting X (true even at amount=0)
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "roxr.%s #%u,D%u" sizeChar amount register
+                if Trace.enabled then
+                    printfn "roxr.%s #%u,D%u" sizeChar amount register
                 newCpu
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b10uy -> //ROXL.B/W/L Dn,Dn - count from register, mod 64
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
@@ -2891,7 +3002,8 @@ type Cpu =
                 if xFlag then ccr <- ccr ||| 0x1s ||| 0x10s //C mirrors the resulting X (true even at amount=0)
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "roxl.%s D%u,D%u" sizeChar countOrReg register
+                if Trace.enabled then
+                    printfn "roxl.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b10uy -> //ROXR.B/W/L Dn,Dn - count from register, mod 64
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
@@ -2911,7 +3023,8 @@ type Cpu =
                 if xFlag then ccr <- ccr ||| 0x1s ||| 0x10s //C mirrors the resulting X (true even at amount=0)
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "roxr.%s D%u,D%u" sizeChar countOrReg register
+                if Trace.enabled then
+                    printfn "roxr.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b11uy -> //ROL.B/W/L Dn,Dn - rotate count from register, mod 64. Plain rotate: X unaffected, C mirrors the bit rotated out.
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
@@ -2931,7 +3044,8 @@ type Cpu =
                 if amount > 0 && carryOut then ccr <- ccr ||| 0x1s //C only - X is unaffected by plain rotate
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "rol.%s D%u,D%u" sizeChar countOrReg register
+                if Trace.enabled then
+                    printfn "rol.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 1uy, 0b11uy -> //ROR.B/W/L Dn,Dn - rotate count from register, mod 64
                 let amount = (x.DataRegister countOrReg) &&& 0x3F
@@ -2951,7 +3065,8 @@ type Cpu =
                 if amount > 0 && carryOut then ccr <- ccr ||| 0x1s //C only - X is unaffected by plain rotate
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "ror.%s D%u,D%u" sizeChar countOrReg register
+                if Trace.enabled then
+                    printfn "ror.%s D%u,D%u" sizeChar countOrReg register
                 newCpu
             | 0uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b11uy -> //ROR.B/W/L #imm,Dn
                 let amount = if countOrReg = 0uy then 8 else int countOrReg
@@ -2971,7 +3086,8 @@ type Cpu =
                 if amount > 0 && carryOut then ccr <- ccr ||| 0x1s //C only - X is unaffected by plain rotate
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "ror.%s #%u,D%u" sizeChar amount register
+                if Trace.enabled then
+                    printfn "ror.%s #%u,D%u" sizeChar amount register
                 newCpu
             | 1uy, (0b00uy | 0b01uy | 0b10uy), 0uy, 0b11uy -> //ROL.B/W/L #imm,Dn - mirror of ROR #imm just above, rotating left like ROL Dn,Dn
                 let amount = if countOrReg = 0uy then 8 else int countOrReg
@@ -2991,7 +3107,8 @@ type Cpu =
                 if amount > 0 && carryOut then ccr <- ccr ||| 0x1s //C only - X is unaffected by plain rotate
                 let newCpu = {x.WithDataRegister register newValue with PC = x.PC+2; CCR = ccr}
                 let sizeChar = match size with 0b00uy -> "b" | 0b01uy -> "w" | _ -> "l"
-                printfn "rol.%s #%u,D%u" sizeChar amount register
+                if Trace.enabled then
+                    printfn "rol.%s #%u,D%u" sizeChar amount register
                 newCpu
             | _ -> failwithf "shift/rotate not implemented for direction %x size %x useRegCount %x type %x" direction size useRegisterCount shiftType
 
@@ -3027,7 +3144,8 @@ type Cpu =
             if overflow then ccr <- ccr ||| 0x2s //V
             if carry then ccr <- ccr ||| 0x1s //C
             if affectX then (if carry then ccr <- ccr ||| 0x10s else ccr <- ccr &&& ~~~0x10s) //X follows C (not for plain rotate)
-            printfn "%s.w %s" mnem desc
+            if Trace.enabled then
+                printfn "%s.w %s" mnem desc
             { after with PC = x.PC + 2 + extBytes; CCR = ccr }
 
         | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x

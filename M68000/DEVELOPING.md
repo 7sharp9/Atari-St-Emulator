@@ -110,8 +110,12 @@ mouse up   l|r           button release
 
 ## `ATARI_NOTRACE`
 
-`ATARI_NOTRACE=1` redirects `Console.Out` to a null sink so the ~221 per-step
-`printfn` trace sites cost nothing on bulk runs. It no longer silences result
+`ATARI_NOTRACE=1` clears `Trace.enabled` (68k.fs), which the per-step `printfn`
+trace sites and `ResolveEa`'s operand-description strings test before formatting
+anything, and redirects `Console.Out` to a null sink for the few ungated prints.
+Building the trace text used to cost more than executing the instruction, so a
+new decoder's `printfn` must sit behind `if Trace.enabled then` (and an operand
+string must be `if Trace.enabled then sprintf ... else ""`). It no longer silences result
 output: REPL replies, `verify` / `selftest` verdicts and snapshot/until status
 lines go through `Diag.result` (68k.fs), which is captured before the redirect.
 So `ATARI_NOTRACE=1 ... verify` prints its PASS/FAIL, and a `NOTRACE` REPL still

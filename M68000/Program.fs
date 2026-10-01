@@ -1451,13 +1451,13 @@ module Main =
         //Flush/close the structured flow-event log (ATARI_TRACE_EVENTS) on any process exit,
         //including the reraise path when an unimplemented instruction aborts the run.
         AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> TraceEvents.close())
-        //Every executed instruction calls printfn (221 call sites in 68k.fs) to build the
-        //PC-tagged trace this project's debugging workflow depends on - see
-        //atari-st-emulator-efficiency-tooling. That's the right default, but it means tracing
-        //cost is paid on every step even for bulk snapshot/resume runs where nobody reads the
-        //output. ATARI_NOTRACE=1 redirects Console.Out to a null sink so printfn's formatting
-        //and I/O are skipped entirely, without touching any of the 221 call sites.
+        //Every executed instruction prints a PC-tagged disassembly line (printfn in 68k.fs) that
+        //this project's debugging workflow depends on - see atari-st-emulator-efficiency-tooling.
+        //That's the right default, but building the text costs more than executing the
+        //instruction, so ATARI_NOTRACE=1 clears Trace.enabled (call sites skip the formatting) and
+        //redirects Console.Out to a null sink for the few prints that are not gated.
         if not (isNull (Environment.GetEnvironmentVariable "ATARI_NOTRACE")) then
+            Trace.enabled <- false
             Console.SetOut(IO.TextWriter.Null)
         //ATARI_ROM_PATH lets a caller point this at a different ROM dump (e.g. for an A/B
         //comparison against a different TOS revision) without touching the default TOS100UK.IMG.
