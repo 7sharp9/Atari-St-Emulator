@@ -8,8 +8,8 @@ first lines of a hit with `tools/disassemble.py --snap <snap> --all <lo> <hi>` b
 
     cd M68000 && python reversing/powermonger/py/doc_coverage.py [--min 40] [--out unmentioned.txt]
 
-139th pass: 29498 bytes (472 of 978 routines) were unmentioned before the world-build population, the shepherd modes and the animal and
-pigeon loops were documented, 28632 (464) after; what is left is mostly data (`scale_da`, `arrows`, `text`, `modedat`, `eyes`) and the UI click
+139th pass: 29498 bytes (472 of 978 routines) were unmentioned before the world-build population, the shepherd modes, the animal and
+pigeon loops, the building kinds and the UI text tables were documented, 26213 (455) after; what is left is mostly data (`scale_da`, `arrows`, `text`, `modedat`, `eyes`) and the UI click
 handlers (`$9000..$b000`), the map and road drawing (`$10000`), the sound code (`$1a000..$1c000`) and the serial link (`$ba74`).
 """
 import argparse

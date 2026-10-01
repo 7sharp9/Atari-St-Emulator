@@ -51,7 +51,7 @@ against every session's changes.
   pay upkeep. Followers do nothing but upkeep; their position is stamped from the lead. (A "What
   each entity decides per tick", A "The entity FSM")
 - **Men are conserved.** A lord's counter is his men at home, not in an army: a man joining an army takes
-  one off it, leaving puts one back, capture moves one between lords, and none is born. A side grows only by
+  one off it, leaving puts one back, capture moves one between lords, and none is born after the world build (which gives every settlement two men). A side grows only by
   taking men from another, apart from the pigeon, which revives a dead man's record as a live home man where it lands (E 1, row `$42be`). (E 1, E 6)
 - **The map starts populated, and the starting jobs are a lottery.** Every settlement begins with two men. Each draws a job in up to five rounds: a captain for the first man of every lord of
   kind > 3, otherwise shepherd (3 in 32), fisherman (16 in 32, needs a shore cell within nine cells, at most 30 per land), farmer (the rest, needs a free field site within nine cells) or,
