@@ -5,7 +5,7 @@ level 1), with joystick/keyboard input only: nothing poked, nothing injected (th
 is lost on any leg after the heal chain.
 
     cd M68000
-    .venv/bin/python reversing/cadaver/py/secrets/overlay/action/exit_level0/route_level0_exit.py OUTDIR [START.snap] [--upto=heal|d1|e1|g1|g2]
+    .venv/bin/python reversing/cadaver/py/secrets/overlay/action/exit_level0/route_level0_exit.py OUTDIR [START.snap] [--upto=heal|d1|e1|g1|g2|level1|room31]
 
 About 4 minutes (heal 37 s, d1 34 s, e1 42 s, g1 98 s, g2 21 s).  The master runs the five segments as subprocesses, one emulator at a time, with `M68000_ROOT`, `ATARI_NOTRACE=1` and `.venv/bin/python`, and
 `CAD_OUT=OUTDIR/<segment>/_scratch`; everything is written under `OUTDIR/<segment>/` (snapshots, `log.txt`, `_scratch/`).  It prints a line per segment and the final room/health/XP, and exits non-zero on a
@@ -20,6 +20,8 @@ failed segment, a missing hand-off snapshot or an end other than room 60.  `--up
 | `e1` | `e1/route_room27_to_room22_natural.py` (+ `play.py`) | room 27: guard-clearing wait `WQ`, chest stand, gems thrown by id (`SG<id>`), urn 143 and key 167 carried, to room 22 | last `e1/route/NN_*.snap` |
 | `g1` | `g1/route_room22_to_altar99.py [phases=ABCD]` (+ `route_room22_to_371.py`, `e3lib.py`, `route_cross38.py`, `profile38.json`, `run.sh`) | room 22 -> 15 -> 16 -> 38 (F1 crossing, `down`) -> 39 -> 40: scroll 371 and key 110; the south-east cluster, urn 165, altar 99 jump; 324 in front | `g1/D_end.snap` (room 39, hero on altar 99's top, health 20) |
 | `g2` | `g2/route_altar_to_room36_real.py` (+ `lib.py`, `f1/route_cross38.py`, `f1/profile38.json`) | READ MAGIC 371 cast at 324, take 324, room 38 `up` (F1), rooms 17, 16, 15, 13, door `$2a`, room 36: MASSACRE, object 486, door `$29` -> room 60 | `g2/end_room60.snap` (also `g2/level_change.py <that> <OUTDIR>`: START LEVEL, a separate, optional step) |
+| `level1` (optional) | `g2/level_change.py <end_room60.snap> OUTDIR` | room 60 -> START LEVEL (object 84), Space at PLACE LEVELS DISK, about 20M steps (7 s) | `level1/level1_room0.snap` (level 1 room 0, health 20 of 200, XP 980, rucksack empty) |
+| `room31` (optional) | `l1/route_level1_first.py <level1_room0.snap> OUTDIR` | room 0 -> 34 -> 29: jump onto block 425, take STAMINA 556, two doses (20 -> 60), the damage-free lane -> room 31 | `room31/end_room31.snap` (room 31 at (10,20,4,14), health 60, XP 980) |
 
 The hand-off rule is the one of the 88th-pass driver: the last snapshot whose name starts with digits, sorted by name (`d1/gems/`, `e1/route/`), or the fixed name above.  `lib/` is one shared copy of
 `drv.py`, `h.py`, `ov.py`, `route_lib.py`, `trek.py`, `route_chain.py` (the d1/e1/g1/f1 copies of the exploration were identical except for their output directory); every output of the libs

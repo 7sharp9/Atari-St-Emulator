@@ -19,6 +19,7 @@ README's "How it was run" if missing). Keyboard input is a real make, a 40,000-6
 | `text_atlas.py` | every primary message of the packed text table plus the ASCII prompts and assert strings | 390 lines + ASCII blocks |
 | `msg_refs.py` | which of the messages 0-127 a code literal names (static, main code and overlay) | list of indices with no literal |
 | `item_census.py` | placed spells and potions over the 72 rooms from the type-5 lists and type-6 templates | 7 distinct spells, 2 potions in name range |
+| `potion_amounts.py` | per placed STAMINA, WATER, CURE, CURE POISON, STRENGTH and shield potion: room, object id and the block bytes (+1 amount, +2 doses; driven for STAMINA 556: +20, 2 doses) | level 1: 556 +20 x2, 521 +10, 475 +25, 219 and 535 +100 |
 | `export_service8.py` | export table entry 8 is the teleport verb `$010974`: the trampoline with `D6=32` loads room 1 | `(A5)+1166` 00 -> 01, `(A5)+164` byte `0a` -> `84`, A1 + 4 |
 | `rng.py` | the LCG `$011544` (export service 16) transcribed; the game's D0 from `callcap` against it | 40/40 |
 | `cad_lzh.py`, `lzh_proof_callcap.py` | the `$0118ec` LZHUF expander in Python; each packed block of the one-disk image poked into RAM and expanded by the game | tables 256/256; 8 of 8 blocks, 383,893/383,893 bytes |
