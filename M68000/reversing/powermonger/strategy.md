@@ -1193,8 +1193,24 @@ Caveats: the ally is side 4, not side 3; the walk survived because lord 15
 is an ungarrisoned lone town, not because of an escort; the route needs the
 `$02` waypoint and the tribute needs the second `$10`. The earlier
 reading that an unescorted envoy inevitably dies to contact is wrong: the
-death is specific to a garrisoned target. Not yet checked from this natural state: that `$3154` accepts `$06`/`$10`
-on lord 15's town and that the `$1394c` `$1e` test no longer accepts it.
+death is specific to a garrisoned target.
+
+*The alliance's effects, checked from the natural state.* From `pm129/env5_12M.snap`
+(peace bits `$12`/`$12`, group `$188` alive at lord 15's town (39,31), 5 men), the
+icon is armed and lord 15's town clicked on the minimap (`scratchpad/pm131/o06|o10|o1e.cmds`,
+`hits` started before the click, 3M steps each):
+
+| armed order | `$3154` | `$31a6` → | pointer test | result |
+|---|---|---|---|---|
+| `$06` take food | 1 | `$31b2` 6, `$31cc` 1, `$31c8` 0, `$38ce` 0 | `$139da` 1, `$131be` 1 | accepted as an own town: lord 15's food 36 to 0, group food 0 to 35, loyalty 0 to 16 |
+| `$10` take equipment | 1 | `$31b2` 6, `$31cc` 1, `$31c8` 0, `$38ce` 0 | `$13a3c` 1, `$131be` 1 | accepted (lord 15 holds no goods, so nothing moves) |
+| `$1e` offer alliance | 0 | not reached | `$1394c` 14, `$13b1e` 14, `$131be` 0 | refused: nothing posted, `$57fd4` stays `$1e` |
+
+So `+6` is read exactly as documented above: an ally's town passes the friendly filter of
+`$06`/`$10` and fails the foe filter of `$1e`. The same click on the same town before the
+alliance posted `$1e` and ran to `$34a8` (129th, `run9.cmds`), which is the unallied control.
+The `$1e` row proves the refusal at the pointer test only (no `$131be` in 14 passes over 3M
+steps); the group lost one to two men to starvation in each run (food 0), unrelated to the order.
 
 **What an alliance changes.** Only the two readers of `+6`:
 
@@ -1513,7 +1529,14 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 - **Dormant word `$5809a`** (read at `$16640` in a loop over the entity table, written nowhere by an absolute
   operand; 0 in both snapshots). Poking it to 1 raised that loop's `$16738` calls from 54 to 94 per 500k steps and
   `$e6ee` marker draws from 27 to 47, and on 4 of 8 samples added 24-26 bytes of extra dots to the minimap: a
-  "draw all sides' markers" switch. Register-relative writers and whether a save game can set it are unchecked.
+  "draw all sides' markers" switch. Nothing in the image sets it (131st, static; no live write was attempted):
+  the only absolute operand of `$5809a` is the read at `$16640`; a byte scan of the RAM image finds the longword
+  `$0005809a` once (that read) and no pointer to `$58094..$58098` other than the six `$58098` word accesses; every
+  bulk copy or clear that could sweep it starts higher (link/save blocks `$580a0..$58368` at `$6fa2`, `$7150`,
+  `$b866`; the campaign pick `$1140e` copies 333 bytes to `$580a6`) or lower and stops short (`$58058` clears 16
+  words, `$58042` is a 12-entry word table, `$5801c`/`$58016` are the 6-byte command slots, side 0..5). The save
+  game (`$3f2a0`, 196 bytes of conquered lands) is not RAM-block data. Treat it as an unset debug flag: reachable only
+  by a patch, like `$123c`.
 - **Developer leftovers.** `d:\samples\ste.tos` (`$123e`) and `d:\samples\qaz.spl` (`$1251`), no code references; the
   live save-disk header at `$1bb0e` (checked by `$1bd64` against `POWE`) carries the text "PLEASE STOP HACKING THIS GAME
   OR IT MAY BE THE LAST ST PRODUCT FROM BULLFROG"; three MFP vectors (`$120`, `$138`, `$13c`) set the palette to

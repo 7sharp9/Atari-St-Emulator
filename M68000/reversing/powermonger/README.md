@@ -99,6 +99,8 @@ against every session's changes.
   the ally's settlements valid for friendly orders, and any contact between the two sides breaks
   it. Only the player ever offers. Proven end to end on land 25 with no pokes (5 pots to an ungarrisoned
   lord whose attitude is -8; 3 pots are refused); an envoy to a garrisoned lord dies to contact first.
+  Afterwards take-food and take-equipment on the ally's town are accepted and a second offer is refused at
+  the pointer test.
   (S "Diplomacy")
 - **The opponent is simple.** Each commander marches at the nearest enemy lord when its army has
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast); AI
