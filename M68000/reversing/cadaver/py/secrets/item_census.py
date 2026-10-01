@@ -1,6 +1,8 @@
 """item_census.py <snap>: which spells and potions the 72-room world actually places.
-The object description routine $011066 (run for the "what is this" action) reads the template class byte at template+22 and a
-type-specific block at template + template[12]:  class 1 = spell scroll: (blk+0) spell id (name via the (A5)+108 table, 8-byte
+The object description routine $011066 (run for the "what is this" action) reads the class byte at +22 of the TYPE-2 class
+template named by the type-6 record's word at +6 (not byte 22 of the type-6 record, which is body data: the census read it that way
+until the 87th pass and called potion 450 a MASSACRE scroll and the stone bags' ammunition 463/469/121 scrolls) and a
+type-specific block at record + record[12]:  class 1 = spell scroll: (blk+0) spell id (name via the (A5)+108 table, 8-byte
 records, word 0 = string index), (blk+1) power, (blk+2) charges, blk+3 bit0 = "UNKNOWN" name; class 2 = potion: (blk+0) potion id
 (name via (A5)+112); class bit7 = weapon/ammo; 4 = container (open/closed, locked); 8 = other use item.  Walks every room's
 type-5 object id list (room_object_census.py's resolver), reads each type-6 template, and prints the spell/potion placements plus
@@ -20,6 +22,7 @@ name = lambda i: decode_index(ram, 0, t168, t172, i).split(b'\0')[0].decode('lat
 room_idx, room_dat, room_cnt = resource_type(ram, base, a5, 3)
 obj_idx, obj_dat, _ = resource_type(ram, base, a5, 5)
 t6 = resource_type(ram, base, a5, 6)
+t2 = resource_type(ram, base, a5, 2)
 spells, potions, classes = collections.defaultdict(list), collections.defaultdict(list), collections.Counter()
 for slot in range(room_cnt):
     rec = resolve(ram, base, room_idx, room_dat, slot)
@@ -31,11 +34,13 @@ for slot in range(room_cnt):
         if oid == 0 or oid >= t6[2]: continue
         t = resolve(ram, base, t6[0], t6[1], oid)
         if t is None: continue
-        cls = ram[t + 22]; classes[cls] += 1
+        c2 = resolve(ram, base, t2[0], t2[1], u16(t + 6))
+        if c2 is None: continue
+        cls = ram[c2 + 22]; classes[cls] += 1
         blk = t + ram[t + 12]
         if cls == 1: spells[ram[blk]].append((slot, oid, ram[blk + 1], ram[blk + 2], ram[blk + 3] & 1))
         if cls == 2: potions[ram[blk]].append((slot, oid))
-print('placed-object class histogram (class byte at template+22):', dict(sorted(classes.items())))
+print('placed-object class histogram (class byte at +22 of the type-2 class template):', dict(sorted(classes.items())))
 sp = resolve.__globals__  # noqa
 stab, ptab = u32(a5 + 108), u32(a5 + 112)
 print('\nSPELLS  id name  -> placements (room slot, object id, power, charges, unknown-name flag)')
