@@ -89,6 +89,9 @@ know they existed.
   called: PowerMonger's `$4d252` was documented as herded animals for sixty passes; 203 of 203 live entries sit on byte6-4
   (tree) render records, none on the animal records, and the men working it are of every job, not shepherds
   (`reversing/powermonger/economy.md` §2, `py/tree_census.py`). The same applies to a mode or flag named from one observed user.
+- Before naming a byte field from how code uses it, read the UI selector that prints it: the panel text tables in `$9000..$b000` (`$9ccc`, `$9c80`, `$90ca`, `$9d52`...) return a string
+  pointer in A5 and are the developers' own words. PowerMonger's building kind 7 was "capital" for sixty passes; `housenam` at `$a15a` says WorkShop, the lord kind byte says Village/Hamlet/Town/City/
+  Capital/Base, category 8 says Sheep, and the loyalty line is a constant (`reversing/powermonger/strategy.md` "The game's own text"). `py/doc_coverage.py` lists the routines no doc cites.
 - A census column (class, type, kind) is only as good as the table the game's own routine reads it from: before building conclusions on one, find the game's reader of that field (here the
   description routine `$011066`) and check one live object against it. Cadaver's `item_census.py` read the class byte from the wrong record for four passes and named a potion "the MASSACRE scroll"
   and three stone-ammunition templates "magic missile scrolls", which scoped the dragon search around weapons that did not exist (`reversing/cadaver/mechanics.md` 76).
