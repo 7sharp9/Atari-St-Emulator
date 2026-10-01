@@ -5,6 +5,79 @@ milestone ladder used for PowerMonger/Super Sprint — it exists to get the game
 establish a known-good boot path, since that alone took three real emulator fixes. AI/UI content
 reversing (the actual goal) has not started yet; see "Next steps".
 
+## Design digest
+
+The game's rules restated for re-use in another design, without addresses. Each line names the section that proves it (S = `secrets.md`, M = `mechanics.md`, G = `graphics.md`,
+R = this README); anything not proven there is labelled read (from code, not run) or inferred. The proofs are for level 0 of the one-disk Empire build unless a line says level 1 or Disk 2.
+`/handoff` re-checks this list against every session's changes.
+
+### What carries the game
+
+- **A world of small rooms on one grid, one room live at a time.** Level 0 has 72 rooms (level 1 has 97) as rectangles of 3 to 10 cells a side on a shared world grid (CAVERN is 10 by 10, TUNNEL 3 by 5); a room
+  is a short compressed recipe plus its own object list and script blocks. Entering a room clears the old objects and installs the new ones. (M 27, 38; S "Room scripts")
+- **A door is a descriptor in a global door list, and the destination is found by position, not by an id.** The room you arrive in is the room whose rectangle contains the door's own coordinate; the hero
+  lands at the door's edge. A door whose word is `$ffff` does nothing but play a cue until a script clears it (13 of level 0's 71 doors, each with an opener). (M 27c, 72; `door_walk.py`)
+- **One word makes a door a lock.** 0 is open, `$ffff` is closed to everything but a script (a lever or a button clears it), and a positive id means "the rucksack must hold this item"; a flag byte decides
+  whether the key is consumed, kept, or only needed as a permanent pass (the crown). Walking into the door does the test; there is no unlock action. (S "The keyed doors"; M 72, 73: nine doors driven on the road to the treasury)
+- **Everything in a room is a box in three axes.** A placement entry gives each object (x, y) lead and trail edges and a z base and top; the hero is a 7 by 7 footprint 30 high, collision is box overlap on all
+  three axes, and a box that overlaps an interactive object raises a touch event instead of blocking (the gem and the hazard of room 15 are walked through live; the classification itself is read). Things rest on top of each other (the circlet on its pedestal, a key on a tomb) and the hero cannot
+  walk up a step unless the template allows it. (M 27b, 74; S "The regalia walk")
+- **The fire button is both the probe and the jump.** With an object directly ahead it opens that object's icon panel; with nothing ahead it starts a jump (a fixed arc about 34 units high that carries the hero in the held direction). Objects only reveal what they offer to a hero standing next to them and facing them. (S "The player's action panel", "The regalia walk")
+- **One icon panel per object, built from its class.** The icons are TAKE, DROP, EXAMINE, operate, read, use or drink, open (read; its trap damage driven), apply an item, select and give; the class table decides which appear. Space opens the panel of the held
+  rucksack item, which in front of a keyed object (class `$b`: a keyhole, a lock) offers "apply" (the held item's id is compared with the object's gate). (S "The player's action panel", "Applying an item"; M 73)
+- **The puzzle layer is data: a small event language, not code.** Each object template can carry blocks of the form "when event E (gated by a byte) run these verbs"; 94 verbs cover messages, gold and XP, health,
+  door and state flags, variables, show, hide, create, delete, place, teleport and the level load. Events come from a 200-entry queue fed by touches, icons, timers, room entry, regions and verbs. A block runs to
+  completion; everything that persists lives outside it (state bits, door flags, 8-bit variables, the rucksack, gold, XP, health, timers). Conditions add to a counter and an IF tests it. (S "How the script system fits together", "The script language")
+- **Creatures, spells, potions and timers are native code in a per-level overlay,** reached through a header table of effect routines and an export table of engine services; the scripts touch them only by
+  queueing events. The same overlay routines are shared by every level decoded (17 of 18 potion routines and 29 of 31 spell routines identical in 7 overlays). (S "The level code overlay")
+- **The inventory is a short list of (item, class) records.** A pick-up writes the record and then runs the object's own pick-up block (a coin adds gold, a gem adds gold and XP and vanishes); conditions test
+  the list ("the rucksack holds 16, 32, 28 and 26"). Throwing a held tool (select, fire with nothing ahead) is a way to deliver a touch to a distant object, which is how the pickaxe breaks room 12's wall. (S "What a pick-up writes", "The player's action panel"; M 73)
+- **The main puzzle is a chain, and each link is a different verb.** Pickaxe, the lever that opens the tunnel door, an iron key for CAVERN's east door, a second lever, a wall broken by thrown pickaxes, a steel key
+  applied to a lock object, a bronze key, a skeleton key that appears only after a tomb is examined, and finally four regalia picked out from decoys to open the treasury: all driven by
+  natural input from CAVERN to the treasury, in four scripts. The treasury's crown is then the permanent pass to the exit: door `$29` and the transport object that starts the next level (read: not driven past the crown). (M 72, 73, 74; S "The regalia walk")
+- **Health is a budget with almost no income.** The maximum is 100 and a level start grants two thirds of it; nothing regenerates it. The only gains are a few flasks (+2 and +10), potions and a save restore, while
+  hazards cost 1 to 50 per touch; the road above takes 67 at CAVERN down to 33 at room 16, and one drink on the way leaves 35 at the treasury. (S "The stats scroll"; M 74)
+- **Gold and XP are the score.** Gold piles pay n gold and n/4 XP, first-entry blocks and treasures pay XP, a 20-title rank table maps XP to a rank and the stats scroll
+  shows rooms entered as a completion percentage. (S "The stats scroll and the rank table", "Room scripts")
+- **Saving costs gold.** The save price is `max(floor, (level + 1) * 50 - 45)`, each save raises the floor by 6 times (level + 1), and declining costs nothing; dying leads to the
+  same price prompt (read). A save is the resource tables plus a block of global state, written by formatting the save disk. (S "Saving costs gold")
+- **Spells are scrolls with power and charges, and a room can answer a spell.** 27 named spells (17 do something: missile, massacre, freeze, slow, confusion, turn, map, unlock chest or door, lock door, destroy, bless,
+  dispel trap, purify, read magic) and 18 potions; the MAP spell draws the whole world graph where F1 shows only visited rooms; level 1's rooms answer the SLEEP spell with their own scripts, which is what gives an otherwise
+  stubbed spell any effect. (S "The level code overlay", "Room scripts"; `map_live.py`)
+- **Rooms are drawn from a shared tile sheet by a tiny recipe, and sprites are depth-ordered by pairwise box tests.** 80 tiles of 32 by 32 pixels are loaded once; a room lists tile numbers for its two wall faces (well under 128 bytes) and the draw list is built once on entry. Sprites keep a "behind me" bitset per entity
+  from the box relation (x lead at least the other's x trail, y lead at least its y trail, z top at least its z base); a moved sprite is cleaned and the sprites in front of it repainted, so there is no z-buffer and no sort. (G 5j, 5k)
+- **Sound is a three-voice sequencer with request priorities.** 62 request records (41 effects shared round robin over free voices, 12 sustained and looping, 9 three-voice priority sounds) drive a 17-opcode
+  bytecode with software pitch and volume envelopes; sound stops during disk I/O. (S "The sound engine")
+- **Randomness is a function of input timing.** One 16-bit generator is seeded once and never from a clock, so the same input timing gives the same creatures, drops and rolls (replay inferred, not run). The day counter
+  is wall-clock only: one day is 90,000 VBLs, about 30 minutes, and nothing reads it. (S "Random numbers", "The day")
+- **A level is a directory record of packed blocks plus its overlay.** The one-disk build holds two populated levels, the two-disk build five; a level start depacks the blocks, installs the overlay and sets health. (S "Loading, the expander and the level directory")
+
+### Limits that became features
+
+- **No expressions and no loops.** Puzzles are chains of single tests and counters: room 15 counts entries in one variable and shows a stone at each step until the tenth entry reveals a gem (driven: gold 0 to 100,
+  XP +51); a level-1 room counts verb calls and reveals animations at 4, 8 and 10. (S "Room scripts"; M 74)
+- **A block that is not marked keep rewrites its own event byte after running once,** which is the whole implementation of a one-shot lever or a first-visit reward. (S "How the script system fits together")
+- **Items reveal themselves by script, not by placement.** The skeleton key does not exist until its tomb is examined (a SHOW in the tomb's examine block), and the key sits on top of the tomb, so the
+  jump and the probe together are the puzzle. (M 73)
+- **A touch is a per-frame event with a dedup cache,** so a hazard is just an object that answers event 9, and a wall can answer only one mover by gating on its template id: the pickaxe
+  wall answers only the pickaxe and the axe. (M 4a, 73; S "Who pushes events")
+- **A door lock and a door's room are separate words,** so one descriptor serves as a link, a cue, a sealed door or a keyed door with no extra data. (M 72)
+- **Save-for-gold turns one disk write into a pacing rule:** a rising price and a refused save make the player decide where a checkpoint is worth it. (S "Saving costs gold")
+- **Regions (six-byte boxes per room) split the hero from every other mover:** event 15 for the hero, 17 for anything else, so one region can teleport the hero and relocate any other object that enters it (room 4 sends both to room 28; proven for the hero, for
+  other objects with a poked object).  (S "Room scripts")
+- **Hard caps stop with a message:** 7 icons, a full rucksack, an exceeded collision list each have an assert string, and an assert is reported by a deliberate crash. (S "The assert layer")
+
+### Bugs and accidents a new design should drop
+
+- The rank table has no terminator: 60,000 XP or more reads past it and the title becomes "DOOR", and the top title "BITMAP BROTHER" is referenced by nothing. (S "The stats scroll and the rank table"; 12 of 12 XP values matched)
+- The XP verbs ignore their operand: verb 5 adds 26 for any value (0, 1, 10, 200 measured) and verb 85 adds 26 or, for a negative word, wraps and clamps XP to 0. (S "The script language", "Two corrections")
+- Abandoning a save at the disk prompt keeps the gold the player paid. (S "Saving costs gold")
+- A hazard on the walking lane drains health at frame rate with no invulnerability window: one Up crossing of room 15's roaming object cost 30 of 33 health, six touches of 5 (the absence of an invulnerability window is inferred from that). (M 74)
+- Content that was cut or never finished: four spells that do nothing, six that only flash, 16 of 18 potions that no room places, 24 sound scripts that nothing requests, a second sound path the intro text mentions,
+  and a divide by zero left in BLESS WEAPON's error branch as an assertion marker. (S "Dead and unreferenced content", "The level code overlay")
+- The status bar's DAY text stays stale after the "A DAY PASSES" banner until the next refresh, and nothing in any level reads the day, so the day is decoration. (S "The day")
+- Undocumented keys only toggle UI bits: F4 strips left and right from the joystick while up or down is held (proven), F2 and F3 flip the other two bits (their effects read); no key changes health, gold, XP or items. (S "Keys the game reads")
+
 ## Disk images
 
 Two separate releases were tried, both under `Atari-St-Emulator/Cadaver/` and

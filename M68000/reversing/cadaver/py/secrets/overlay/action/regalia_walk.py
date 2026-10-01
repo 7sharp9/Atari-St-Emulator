@@ -20,14 +20,16 @@ import sys, os, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'verbs2'))
 from drv import *            # Repl, A5, walk, probe, Tally, open_panel, pick_icon_id, type8, pos, UP DOWN LEFT RIGHT FIRE, OUT
 import h as H_               # verbs2 harness (H, real)
-RW = OUT + 'rw/'
+RW = OUT + os.environ.get('RW_DIR', 'rw') + '/'
 os.makedirs(RW, exist_ok=True)
 NAMES = {UP: 'U', DOWN: 'D', LEFT: 'L', RIGHT: 'R'}
 ROOM33 = RW + 'room33.snap'
+START = os.environ.get('RW_START')     # a snapshot already in room 33 (the natural arrival of route_to_room33.py): nothing is injected, and the walk to the stall against 31 goes Up first
 
 
 def enter_room33():
-    """teleport into room `$21` at (4,4,0) through a real verb 37 and save the snapshot"""
+    """teleport into room `$21` at (4,4,0) through a real verb 37 and save the snapshot (or, with RW_START, use the snapshot of a natural arrival)"""
+    if START: return START
     if os.path.exists(ROOM33): return ROOM33
     h = H_.H(H_.SNAP0)
     h.owner = 86        # the scratch script goes over LEVER 86's event-5 block, never over the BUTTON's (id 2), which must stay intact
@@ -42,6 +44,8 @@ def jump_onto_31(snap, back=60000):
     """from room 33's entry: walk right to the stall against object 31 (x 44..55, z 0..17), walk `back` steps left, hold fire+right (jump; with nothing in front fire
     is not a probe), keep right held until the hero lands on 31 (z base 18, x lead 55), then walk up to the stall; returns the snapshot at that stall"""
     r = Repl(snap)
+    if START:    # the natural arrival is the south edge (y 41..47), south of 31's rows 8..31: go up to a row band inside them and below the circlet (y 20..22) first
+        print('  up to', walk(r, UP, until=lambda p: p[1] <= 30), flush=True)
     walk(r, RIGHT, max_steps=1500000)
     joy(r, LEFT); r.cmd('s %d' % back); joy(r, 0); r.cmd('s 30000')
     joy(r, FIRE | RIGHT); r.cmd('s 300000')       # the arc starts after ~55,000 steps and is still rising when fire is released
@@ -51,6 +55,7 @@ def jump_onto_31(snap, back=60000):
         r.cmd('s 10000'); z = tuple(r.mem(0x38338 + 4, 2))
         if z == last and z[1] == 18: break      # landed: z base 18 = 31's top (17) + 1, two reads equal
         last = z
+    if START: print('  east on 31:', walk(r, RIGHT, max_steps=1500000), flush=True)     # a jump from the south-west lands on 31's west edge (x lead 46); the circlet's column is x 47..50
     p = walk(r, UP, max_steps=1500000)
     print('  on 31, after U: pos', p, 'z', tuple(r.mem(0x38338 + 4, 2)), flush=True)
     out = RW + 'on31_u.snap'; r.snap(out); r.close()
@@ -129,8 +134,15 @@ if __name__ == '__main__':
         print('  take 32: rucksack count', cnt, 'type-8 records', recs, 'hits', {hex(k): v for k, v in hits.items() if k in (0xa136, 0xc42a, 0xa184)})
     elif what == 'finish':
         finish(RW + 'taken26.snap')
+    elif what == 'crown':      # from the treasury (room 37, `finish`'s treasury.snap): the royal crown 53, the pass of doors $2a and $29, lies one step east of the arrival
+        found = search(RW + 'treasury.snap', 53, 2, maxdepth=4)
+        print('crown path', found and found[0])
+        cnt, recs, hits = take(found[1], RW + 'taken53.snap')
+        print('  take 53: rucksack count', cnt, 'type-8 records', recs, 'hits', {hex(k): v for k, v in hits.items() if k in (0xa136, 0xc42a, 0xa184)})
     elif what == 'full':
         at = jump_onto_31(s)
+        if START:      # a natural arrival stands on 31 away from the circlet: the search finds the stall that puts 32 in front (RDUD from the on-31 snapshot)
+            found = search(at, 32, 2, maxdepth=4); print('goal 32 path', found and found[0], flush=True); at = found[1]
         cnt, recs, hits = take(at, RW + 'taken32.snap')
         print('  take 32: rucksack count', cnt, 'type-8 records', recs, flush=True)
         cur = RW + 'taken32.snap'
