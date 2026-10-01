@@ -125,6 +125,9 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 #   $15f80..$15eb0 h_mode80/82/84/86/88     3291   139th        Proven (gate_shepherd.py 1043/1043, 198 states)
 #   $4044    call_animals             3373   139th        Proven (gate_animals.py 45094/45094, 55 snapshots; inside $3e06)
 #   $416e    call_pigeons             3442   139th        Proven for flight and re-steer; the $41dc arrival only its bucket effect ($6b38 not modelled, $4244 asserted off)
+#   $596a    call_596a                3552   140th        Proven (gate_proj.py 4210/4210, 456 states; 8 states excluded where $5590 reaches its $1b8c tail)
+#   $4624    call_4624                3500   140th        Proven via $596a (a pigeon hit by an arrow)
+#   $4562    call_4562                3522   140th        Proven (gate_pigeon_send.py 1567/1567, 125 states; calls $45ee)
 #
 # Not indexed: pure-arithmetic/plumbing helpers with no standalone 68k
 # routine identity of their own (s8/s16/u16/_swap/_movew/_divu/_trig/_sin/
@@ -3473,3 +3476,213 @@ def call_pigeons(m):
             D7 = (D7 + s8(m.bu(A1 + 13))) & 0xffff
             relink(m, A1, D6, D7)
         A1 += 26
+
+
+# ---------------------------------------------------------------- $596a, $4562, $4624 (140th)
+PROJ = 0x4be00             # effect slots, stride 16, to $4c110 (49 slots)
+PROJ_END = 0x4c110
+PROJ_TRACE = []            # arms taken by the last call_596a (corpus bookkeeping)
+LOCAL_SIDE = 0x57ffe       # word: the local side; byte at $57fff is its low byte
+PENDING = 0x57fd8          # words: the local side's pending-pigeon counters, indexed by group slot * 2
+
+
+def _cell_5bac(m, A):
+    """`$5bac`/`$59cc`: D0 = (word10 >> 2) & $1fc0, then `add.b 8(A),D0` (a byte add: the carry is lost)."""
+    d0 = (m.wu(A + 10) >> 2) & 0x1fc0
+    return (d0 & 0xff00) | ((d0 + m.bu(A + 8)) & 0xff)
+
+
+def _proj_unlink(m, A1):
+    """`$5bac`: take the effect slot out of its cell's bucket (`$16778`)."""
+    bucket_unlink(m, _cell_5bac(m, A1), (A1 - OBJ) & 0xffff)
+
+
+def call_4624(m, A3):
+    """`$4624` (`_kill_pi...`): an arrow hit the carrier pigeon A3.  The pigeon's owner byte is negated (dead: the pool loop of
+    `$3e06` and `$4562` skip it, nothing frees it), and if its rider is a man of the local side the pending-pigeon counter of the
+    rider's group is decremented (only when non-zero)."""
+    m.wb(A3 + 5, (-m.bu(A3 + 5)) & 0xff)                    # neg.b 5(A3)
+    d0 = m.wu(A3 + 20)                                      # move.w 20(A3),D0 ; beq end
+    if d0 == 0:
+        return
+    A1 = (OBJ + s16(d0)) & 0xfffff                          # lea $51b66 ; adda.w D0,A1
+    d0 = m.wu(A1 + 42)                                      # move.w 42(A1),D0 ; beq end
+    if d0 == 0:
+        return
+    d1 = m.bu(A1 + 5)                                       # move.b 5(A1),D1 ; ble end
+    if s8(d1) <= 0:
+        return
+    if d1 != m.bu(LOCAL_SIDE + 1):                          # cmp.b $57fff,D1 ; bne end
+        return
+    k2 = ((d0 - 0x4c) & 0xffff) % 0x13c                     # subi.w #$4c,D0 ; divu #$13c,D0 ; swap D0: the remainder
+    if m.wu(PENDING + k2) != 0:                             # tst.w 0(A1,D0.w) ; beq end
+        m.ww(PENDING + k2, m.wu(PENDING + k2) - 1)          # subi.w #1
+
+
+def call_4562(m, A0, D2):
+    """`$4562` (`_setup_p...`, "set up a pigeon"): the order delivery to a subordinate captain.  A0 = the order slot of `$58016`
+    ({byte 0 side, byte 1 type, word 2 target}); D2 = the target group's offset in `$51538` (parallel arrays: owner `-48`, lead
+    `-12`, sender `+48`).  The first free record (category 0) of `$4c12c..$4c5f2` (slot 0 of the pool is the player's) takes the
+    sender's owner and position (`OBJ + word 48(group)`: the side's first group's lead), the packet's type and word 2, and the
+    rider `-12(group)` (the target group's lead, the man the pigeon flies to); it is launched (`$45ee`, flight time byte 16
+    then `$78`) and the slot's type byte is cleared.  For the local side's group the pending counter `$57fd8` of its slot is
+    counted first.  No free record: nothing happens (D0 comes back unchanged)."""
+    A1 = PIGEONS + 26
+    while A1 != PIGEON_END:
+        if m.bu(A1 + 6) != 0:
+            A1 += 26
+            continue
+        A2 = (0x51538 + s16(D2)) & 0xfffff
+        d0 = m.wu(LOCAL_SIDE)
+        if d0 == m.wu(A2 - 48):
+            k2 = (D2 - d0 * 0x13c - 0x4c) & 0xffff
+            m.ww(PENDING + s16(k2), m.wu(PENDING + s16(k2)) + 1)
+        A3 = (OBJ + s16(m.wu(A2 + 48))) & 0xfffff
+        m.wb(A1 + 5, m.bu(A3 + 5))
+        m.wl(A1 + 8, m.lu(A3 + 8))
+        m.wb(A1 + 23, m.bu(A0 + 1))
+        m.ww(A1 + 24, m.wu(A0 + 2))
+        m.ww(A1 + 20, m.wu(A2 - 12))
+        call_45ee(m, A1)
+        m.wb(A1 + 16, 0x78)
+        m.wb(A0 + 1, 0)
+        return
+
+
+def call_596a(m):
+    """`$596a` (`_process_...`, called once per tick from `$3e06`): the 49 effect slots of `$4be00` (16 bytes: bucket links 0/2,
+    velocity bytes 4/5, type byte 6, position words 8/10, shooter offset word 12, life word 14).  Life 0 = free; negative = a
+    spent area effect counting up to 0 (`$5b90`: then unlinked); positive: life-1 == 0 is the impact, else the flight step.
+    Flight: position += (byte 4, byte 5) clamped to 0..$3fff / 0..; relinked (`$163ea`); a projectile of type `$12` flies on
+    unhindered; any other type looks at its new cell's chain for the first record of category 0 (man), `$14` (pigeon) or
+    `$16` (marker) whose owner byte is positive, differs from the shooter's and lies within
+    |dx| < $10, |dy| < $16 (flags are not looked at): a man loses `$52` health (`$5590` when it drops to 0 or below), a pigeon is shot down (`$4624`),
+    a marker's owner is negated; the projectile ends (`$599e`).  The end of life (impact, `$599e`): when the shooter's byte 31 is
+    `$34` and it is alive its dwell high byte 18 is cleared (the shot cool-down ends); a type other than `$12` is unlinked and
+    freed; a type `$12` becomes an area effect (life -4) acting on every record of its cell: category 2 gets flags `$a`,
+    category `$10` becomes category 2 (flags `$a`, the lord's eight bytes at `$4e514 + 24 + word 14` cleared), a man of another
+    side than the shooter's goes to `$5590`, category 4 gets flags `$d`."""
+    A1 = PROJ
+    while A1 < PROJ_END:
+        life = s16(m.wu(A1 + 14))
+        if life == 0:
+            A1 += 16
+            continue
+        if life < 0:                                         # $5b90
+            m.ww(A1 + 14, life + 1)
+            if life + 1 == 0:
+                _proj_unlink(m, A1)
+            PROJ_TRACE.append("fade")
+            A1 += 16
+            continue
+        life -= 1
+        if life == 0:                                        # impact
+            PROJ_TRACE.append("impact")
+            A0 = (OBJ + s16(m.wu(A1 + 12))) & 0xfffff
+            _proj_end(m, A1, A0)
+            if m.bu(A1 + 6) == 0x12:
+                _proj_area(m, A1)
+            A1 += 16
+            continue
+        m.ww(A1 + 14, life)                                  # $5a7e: flight
+        D6 = s16(m.wu(A1 + 8))
+        D7 = s16(m.wu(A1 + 10))
+        D6 = s16(D6 + s8(m.bu(A1 + 4)))
+        D7 = s16(D7 + s8(m.bu(A1 + 5)))
+        if D6 < 0:
+            D6 = 0
+        elif D6 >= 0x4000:
+            D6 = 0x3fff
+        if D7 < 0:
+            D7 = 0                                           # the cmpi.w #$8000 / bmi pair never clamps the top: the bmi is always taken
+        relink(m, A1, D6 & 0xffff, D7 & 0xffff)
+        if m.bu(A1 + 6) == 0x12:
+            A1 += 16
+            continue
+        d0 = ((D7 & 0xffff) >> 2) & 0x1fc0
+        d0 = (d0 & 0xff00) | ((d0 + ((D6 & 0xffff) >> 8)) & 0xff)
+        head = m.wu(BUCKETS + 2 * d0)
+        if head == 0:
+            PROJ_TRACE.append("fly_empty")
+            A1 += 16
+            continue
+        A0 = (OBJ + s16(m.wu(A1 + 12))) & 0xfffff
+        hit = False
+        D0 = head
+        while True:
+            A3 = (OBJ + s16(D0)) & 0xfffff
+            t = m.bu(A3 + 6)
+            if t in (0x00, 0x14, 0x16) and s8(m.bu(A3 + 5)) > 0 and m.bu(A3 + 5) != m.bu(A0 + 5):
+                dx = s16(m.wu(A3 + 8) - (D6 & 0xffff))
+                dx = s16(-dx) if dx < 0 else dx
+                dy = s16(m.wu(A3 + 10) - (D7 & 0xffff))
+                dy = s16(-dy) if dy < 0 else dy
+                if dx < 0x10 and dy < 0x16:
+                    if t == 0x00:
+                        old = m.bu(A3 + 45)
+                        new = (old - 0x52) & 0xff
+                        v = ((old ^ 0x52) & (old ^ new) & 0x80) != 0
+                        n = (new & 0x80) != 0
+                        m.wb(A3 + 45, new)
+                        if new != 0 and n == v:              # bgt
+                            PROJ_TRACE.append("hit_man")
+                        else:
+                            PROJ_TRACE.append("hit_man_down")
+                            kill_rout_5590(m, A0, A3)
+                    elif t == 0x14:
+                        PROJ_TRACE.append("hit_pigeon")
+                        call_4624(m, A3)
+                    else:
+                        PROJ_TRACE.append("hit_marker")
+                        m.wb(A3 + 5, (-m.bu(A3 + 5)) & 0xff)
+                    hit = True
+                    break
+            D0 = m.wu(A3 + 0)
+            if D0 == 0:
+                break
+        if hit:
+            _proj_end(m, A1, A0)
+        else:
+            PROJ_TRACE.append("fly_miss")
+        A1 += 16
+
+
+def _proj_end(m, A1, A0):
+    """`$599e`: the projectile A1 (shooter A0) is spent."""
+    m.ww(A1 + 14, 0)                                         # clr.w 14(A1)
+    if m.bu(A0 + 31) == 0x34 and s8(m.bu(A0 + 5)) > 0:       # cmpi.b #$34,31(A0) ; tst.b 5(A0) ; ble
+        m.wb(A0 + 18, 0)                                     # clr.b 18(A0)
+    if m.bu(A1 + 6) != 0x12:
+        _proj_unlink(m, A1)
+    else:
+        m.ww(A1 + 14, 0xfffc)                                # $59c4
+
+
+def _proj_area(m, A1):
+    """`$59c4..$5a72`: the area effect of a type `$12` projectile on the records of its own cell."""
+    D0 = m.wu(BUCKETS + 2 * _cell_5bac(m, A1))
+    if D0 == 0:
+        return
+    A0 = (OBJ + s16(m.wu(A1 + 12))) & 0xfffff
+    while True:
+        A3 = (OBJ + s16(D0)) & 0xfffff
+        t = m.bu(A3 + 6)
+        if t == 2:
+            m.wb(A3 + 7, 0x0a)
+            m.wb(A3 + 16, 0)
+        elif t == 0x10:
+            m.wb(A3 + 6, 2)
+            m.wb(A3 + 7, 0x0a)
+            m.wb(A3 + 16, 0)
+            a5 = 0x4e514 + 24 + s16(m.wu(A3 + 14))
+            for i in range(8):
+                m.wb(a5 + i, 0)
+        elif t == 0:
+            d = s8(m.bu(A0 + 5))
+            if not (d > 0 and m.bu(A0 + 5) == m.bu(A3 + 5)):
+                kill_rout_5590(m, A0, A3)
+        elif t == 4:
+            m.wb(A3 + 7, 0x0d)
+        D0 = m.wu(A3 + 0)
+        if D0 == 0:
+            break

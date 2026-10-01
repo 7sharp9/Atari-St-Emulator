@@ -662,25 +662,23 @@ the settled first-mission view.
 | — | `$5778` | – | **contact bookkeeping, not a resolver** — see `strategy.md` "Combat". Marks an engaged garrison `flags = $11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify) *(Proven, 115th)* when group state `!= $d`. |
 | — | `$5590` | – | *(Proven on the KILL branches, 95th)* **kill-or-rout roll** (from mode `$32` when `health <= 0`): `45(A3) := 0`; `D0 := $30fe = group.field60 − 2` (attacker in a group with a live lead), else `D0 := 0`. `D0 == 0` → **KILL**; `D0 == 2` → `$560a`; else `($57fec + 24(A1)) & 2` parity → KILL / `$560a`. **KILL**: `neg.b 5(A3)`, `32(A3) := 0`, `category $6 := $c` corpse, `dwell := $a0` (160-tick decay), then the `$5628` tail (`$567e` → `leader.population -= 1`). **`$560a`**: `flags.bit5(target)` set → KILL anyway; else `jsr $3c08` (**ROUT** — restructure the group, `prev_mode := $3c`, unit survives; *asserted off in the 95th proof*) |
 | — | `$30fe` | – | *(Proven, 95th)* `word[$51538 + 42(A1) + 60] − 2` — the `$5590` roll selector; `2` for the pm73_fight attack group |
-| — | `$57f0` | – | **spawn a projectile** into the `$4bdf0` effect array (slot 0 is a header; 48 slots × 16 B from `$4be00`): copy position, `life := $14` (20 ticks), `type := D1` (weapon / invention tier), `shooter := A1-$51b66`, velocity toward the resolved target cell via `divu #$78`. Shooter's `dwell` set from the slot's reload byte |
-| — | `$596a` | – | **projectile update loop** (every tick): `life--`; at 0, if `type == $12` the projectile does an **area hit** on whatever entity stands in its cell (stamp `category := $2`, `flags := $a`, `speed := 0` — i.e. disable/rout it) then lingers 4 more ticks; other types just unlink (`$16778`) and free the slot |
+| — | `$57f0` | – | **spawn a projectile** into the first free slot (life word 0) of the 49 effect slots `$4be00..$4c110` (16 B each; D2 = 0 when none is free): copy the shooter's position, `life := $14` (20 ticks; a type `$12` gets its flight time + 1), `type := D1`, `shooter := A1-$51b66`, per-axis velocity bytes 4/5 toward the target via `divu #$78`, link it into its cell (`$16808`), and set the shooter's dwell high byte 18 := `$14`, the low byte of the life word just written (there is no per-weapon reload table) |
+| — | `$596a` | – | **projectile update loop** (every tick, from `$3e06`; *Proven, 140th*, section "Arrows and carrier pigeons" below: `py/gate_proj.py`, 456 states, 4210/4210 bytes): an arrow (type `$28`, the only type anything creates) flies by its velocity bytes for 20 ticks and ends on the first man, pigeon or marker of another side within 15 × 21 units in its cell (a man loses `$52` health, the `$5590` roll when that leaves 0 or less; a pigeon is shot down, `$4624`); the end of its life or a hit unlinks it and ends the shooter's `$34` cool-down. The type-`$12` area effect (stamp categories in the arrow's cell) is unreachable |
 
-The effect slot reinterprets the first 16 bytes of an object-record-sized area
-(array `$4bdf0`, but the loop iterates `$4be00`..`$4c110` = 48 usable slots of
-16 B; slot 0 is a template holding the per-weapon `reload` byte at +15):
+The effect slots are 49 records of 16 bytes at `$4be00..$4c110` (the spawn searches
+them from `$4bdf0 + $10`; there is no header or template slot):
 
 ```c
-typedef struct pm_effect {           // $4be00, stride 16, 48 slots
+typedef struct pm_effect {           // $4be00, stride 16, 49 slots
 /* 0*/  u16  bucket_next;             // shares the $47970 chain machinery
 /* 2*/  u16  bucket_prev;
-/* 4*/  u8   _pad4[2];
-/* 6*/  u8   type;                    // D1 at spawn: weapon / invention tier. $12 = area-effect on expiry
+/* 4*/  s8   vx, vy;                  // per-tick velocity in map units, from $57f0
+/* 6*/  u8   type;                    // D1 at spawn: $28 for a bow. $12 = area effect on expiry (never created)
 /* 7*/  u8   _pad7;
 /* 8*/  s16  world_x;                 // copied from the shooter at spawn
 /*10*/  s16  world_y;
 /*12*/  u16  shooter_off;             // offset into $51b66 of the firing unit
-/*14*/  s16  life;                    // $14 at spawn; --/tick in $596a; 0 -> impact; -4 = "area lingering"; <0 fade
-/*15*/  u8   reload;                  // (template slot only) ticks written back into shooter->dwell
+/*14*/  s16  life;                    // $14 at spawn (the low byte, 15, is what $57f0 copies into the shooter's dwell); --/tick in $596a; 0 = free; 1 -> impact; -4..-1 = a spent area effect counting up
 } pm_effect;
 ```
 
@@ -1503,16 +1501,52 @@ town, the same arrival upkeep every job uses. Animals matter to the rest of the 
 does triggers and which was never seen naturally (the `$36` row above). Natural coverage: of 210 shepherd samples (ten snapshots of each of two lands), 102 were in `$84` (the 50-tick wait dominates), 21 in `$80` and 11 in `$86`; `$88` and `$82` last a single walk each and were not caught.
 
 **The carrier-pigeon pool `$4c112..$4c5f2`** (48 records of 26 bytes; `$416e..$4326` of `$3e06`, after the animals): slot 0 is the player's pigeon (launched through `$45ee`, which falls into `$45f2`, from the request served in `$1623c`; landing `$4244`, the
-revival of a dead man described in `economy.md` section 1), the other 47 are the other lords' pigeons launched through `$45f2` (category `$14`, byte 16 = `$40`). Per tick a live record (owner byte > 0, category
+revival of a dead man described in `economy.md` section 1), the other 47 are the order pigeons launched by `$4562` (through `$45ee`, category `$14`; section "Arrows and carrier pigeons" below). Per tick a live record (owner byte > 0, category
 byte non-zero) counts word 18 down; above 0 it flies on by its velocity bytes 12/13 and relinks; at 0 it re-steers with `$164bc` toward its target (the player's own word 22/24; any other pigeon
 the position of its rider, the man at its word 20), the new flight time is `min(2 * dwell, $30)` into byte 15, and a time of 0 is the arrival. An **arrival of another lord's pigeon** (`$41dc`,
 natural in two of the 55 compared snapshots) hands the rider's group the order packet `{the group's side, byte 23, word 24}` through `$6b38` (the order executor, `strategy.md`) when the rider is still alive,
-decrements the local side's pending-pigeon counter `$57fd8[2k]` when the group is the local one, then unlinks the pigeon from its cell and frees it (category 0). So the 47 other records of the pool are the AI lords' pigeons, the visible side of `$661a` issuing orders, and `$41dc` never touches `troops_field` (code read).
+decrements the local side's pending-pigeon counter `$57fd8[2k]` when the group is the local one, then unlinks the pigeon from its cell and frees it (category 0). So the 47 other records of the pool are the order pigeons that deliver a commander's orders to his other captains (the visible side of `$661a` issuing orders), and `$41dc` never touches `troops_field` (code read).
 
 What the gates compare and leave out: `gate_animals.py` compares the 40 animal records (links included) and, for every cell an animal left or entered, the whole bucket chain with forward
 and backward links, because `$3e06` also moves the pigeons (modelled: flights, re-steers, the `$41dc` bucket effect) and runs `$596a` (projectiles; the 5 snapshots with a live projectile are
 excluded), `$4342` (Proven above), the army food and health indicator (not compared). Not modelled: the effect of `$6b38` on the arrival, and the player's landing `$4244`
-(asserted off; the 137th pass counted it live). `py/gate_shepherd.py` needs a time series of snapshots after a land build (the recipe is in `py/README.md`).
+(asserted off; the 137th pass counted it live). The projectile loop `$596a`, once excluded, is modelled and proven below. `py/gate_shepherd.py` needs a time series of snapshots after a land build (the recipe is in `py/README.md`).
+
+### [Proven] — arrows and carrier pigeons: `$596a`, `$4562`, `$4624` (140th pass)
+
+`tools/pm_fsm_ref.py` `call_596a` (with `_proj_end`, `_proj_area`, `call_4624`) and `call_4562`; gates `py/gate_proj.py` and `py/gate_pigeon_send.py`, each against `callcap` of the whole routine,
+comparing every byte the real call wrote against every byte the model wrote (the stack excluded). Corpora: the entries of `$596a` and `$4562` in the 21 stretches of lands 0, 5 (also in winter), 25 and 60 that hold a live arrow or a
+launch (`py/proj_scan.py`, `py/proj_corpus.py`, `tools/capture_hits.py`; recipes in the docstrings), plus synthetic states poked from them.
+
+**`$596a` — the arrow loop** (once per tick; 49 slots of the effect array above). Per slot with life ≠ 0:
+
+- life < 0: counts up one a tick and the slot is unlinked when it reaches 0.
+- life > 1: **flight**. Position += (vx, vy), clamped to x in 0..`$3fff` and y ≥ 0 (the upper clamp on y is dead: `cmpi.w #$8000` is followed by `bmi`, which is always taken); relinked into its new cell (`$163ea`). A type `$12` flies on
+  unhindered. Any other type then walks the chain of its new cell for the first record of category 0 (man), `$14` (pigeon) or `$16` (marker) whose owner byte is positive, differs from the shooter's byte 5 and lies within |dx| < `$10`,
+  |dy| < `$16` of the arrow. **No flags are tested** (the garrison bits 6 and 4 that `$32c6` honours do not exempt anyone). A man's health byte 45 loses `$52`; when the signed `subi.b` result is not positive
+  (zero, negative, or an overflow: byte 45 is 0..`$7f` in play, so a value of `$80` or more would misfire) the `$5590` roll runs with the shooter as the attacker. A pigeon goes to `$4624`. A marker's owner byte is negated. The arrow is then spent (`$599e`).
+- life == 1: the **end of life**, the same `$599e`. The slot's life := 0; if the shooter's byte 31 is `$34` (the shot cool-down, `$153b2`) and it is alive, its dwell byte 18 := 0, so **the archer's cool-down ends with the arrow**, after the full 20 ticks or at the hit; a type other than `$12` is unlinked.
+  A type `$12` instead becomes an area effect (life −4) on every record in its cell: category 2 gets flags `$a`, category `$10` becomes 2 with flags `$a` and the lord's eight goods bytes `$4e514 + 24 + word 14` cleared, a man
+  of another side than the shooter's goes to `$5590`, category 4 gets flags `$d`. Nothing creates a type `$12` (the port SPEC's "Why 18 and 28 are missing"), so this is covered by synthetic states only.
+
+The gate: 364 natural entries (354 with an arrow flying with nothing in its path, 86 impacts, and one hit that is excluded below) plus 92 synthetic states, **4210/4210 changed bytes identical over 456 states**. The synthetic ones place a target at the arrow's position
+(a man with health `$60/$30/$90/$52/$53/$00/$7f/$80`, at the edges of the 15 × 21 box, of the shooter's own side and dead; a pigeon with and without a rider, with a rider of the local side and a group; a marker; moving arrows; the type-`$12` flight, fade and area
+cases on a building, a building going up, a tree and a man). 8 states are excluded because the roll `$5590` reaches its group cleanup tail (`$1b8c`), which `kill_rout_5590` asserts off. Natural firing over 21 stretches of 50M steps: 6195 `$596a` ticks, 91 `$57f0` shots,
+127 `$5590` rolls of every cause and **no pigeon ever shot down** (`$4624` 0 hits). The shipped example of a natural kill by an arrow is `k0_s1_202` (excluded, for the same tail).
+
+**`$4624` — a pigeon shot down.** The pigeon's owner byte is negated (dead) and nothing frees it: the pool loop of `$3e06` and the free-record search of `$4562` both skip a record with a non-zero category, and the only code that clears a pigeon's category is the
+arrival `$41dc`, the landing `$4244` and the group dissolve `$2776` (code read of every reference to `$4c112`/`$4c12c`/`$4c5f2` in the whole image). `$2776` frees it when its rider (word 20) is the dissolved group's lead. If the rider is a man of the local side with a group, the
+group slot's counter `$57fd8 + 2j` is decremented when non-zero (the offset is the rider's word 42, `(w − $4c) mod $13c`: word 42 is a group offset only for a lead, a farmer's is its field cell, and an odd remainder is an address error).
+
+**`$4562` — how an order reaches a subordinate captain.** `$6ac6` (per tick, once per command slot 1..4 with a type byte): types `$22` and above (chat, the alliance reply, the link commands) and groups without a lead run `$6b38` at once; otherwise D2 = the side's group offset (`$58042[2 × side]`, 0 = nothing; the group the executor acts for: `$6822` writes an order straight into the slot only when its group is that one, otherwise it stores it in the group's pending record `1(group − D7)` and posts `$22`, a captain select (`$3ce8`), code read) and the group's **word 48 is the sender**: the lead of the side's first group, 0 for that group itself. No sender: the order runs at once (`$6b2e`). So the commander's own group, the player's first captain and an AI lord's own army, acts directly (live: order `$12` from `m1_s0`,
+`$6ac6` → `$6b2e` → `$6b38` → `$39d4` with `$4562` 0 hits). Any other group is reached by a **carrier pigeon**: `$4562` takes the first free record of `$4c12c..$4c5f2` (47; slot 0 is the player's), copies the sender's owner and position (`$51b66 + word 48`), the order's type
+(byte 23) and target word (24), sets the rider (word 20) to the group's lead (`-12`), launches it (`$45ee`, then flight time byte 16 = `$78`) and clears the order's type byte. The pigeon flies to the lead (`$3e06`, above); its arrival `$41dc` hands `{side, type, target}` to `$6b38`.
+With no free record nothing is launched and the order is lost (`$6a3a` clears the slot's type byte anyway). For the local side's group `$4562` first counts the pigeon in `$57fd8 + 2j` (j = the group's slot, 0..4), and `$3e06` (`$3ee8`) draws a flapping pigeon (frame `$127 + (tick & 7)`, positions from the table `$4548`) over captain box j
+while the counter is non-zero (code read, not seen on screen). The direct branch is dead in practice: the test `$6b06..$6b1e` was meant to compare the sender's cell with the target lead's, but it loads its second record from `$51b66 + word[$51b5a]` (`-12` of the wrong base: word 0, record 0, all zero),
+so it is taken only for a sender at cell (0, 0) (code read; the `$6b20` branch has no hit in 21 stretches). Group census, two snapshots (`m1_s0`, `k5_s4`): the first group of each side has word 48 = 0 (3 of 3 live first groups); 3 of the 4 other live groups carry the first group's lead, and the fourth (side 3 in `k5_s4`, whose first group is gone) a stale record offset of a man of side 4.
+
+`py/gate_pigeon_send.py`: **1567/1567 changed bytes identical over 125 states**: 95 natural launches (all by AI groups, `$4562` 48 times and `$6b38` 171 in the 21 stretches), 12 synthetic states with the pool full (no launch), 12 with the group's side made the local side (the counter), and the pool with only its first
+or last record free. The player's own order to a second captain is therefore a code read plus the synthetic local-side states, not a natural run.
 
 ## Open threads
 
