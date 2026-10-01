@@ -156,7 +156,7 @@ switches the icon panel to a lever-specific icon pair — this is a **separate, 
 proximity hotspot** (a name/icon lookup keyed on the player's screen position, evaluated regardless
 of the object-table collision system above), the same class of mechanism as CAVERN's "BOAT" name
 hotspot at the boat prop (11th pass). No input tried against it (13th pass: keyboard interact,
-joystick fire tap/hold/combined-with-direction, Space) opens the door behind it; fire does drive
+joystick fire tap/hold/combined-with-direction, Space) opened the door behind it, because none confirmed an icon in the object panel the fire opens: **superseded by §71, icon 7 of that panel operates the lever and opens the door**; fire does drive
 real writes to the player descriptor through unnamed code `$00afb2`→`$00db4a`→`$00db54`→`$00db58`→
 `$00db5e`→`$00db68`, confirmed by `watch` but not yet disassembled — the concrete next step for this
 half of the spike, not chased further this pass (see the README's own scope note for the 14th pass).
@@ -325,6 +325,8 @@ current portals. Traced each special case to the end:
   claimed.
 
 ### 10d. Conclusion for the lever
+
+*Superseded (§71): the conclusion below that nothing reaches the lever is retired. Operating the lever from its icon panel writes `0` over `$ffff` in entry 1's descriptor word `+2` (live, `lever_operate.py`), which is the rewrite this section guessed at.*
 
 TUNNEL's portal table, as populated in this snapshot, has **exactly one entry capable of a real
 transition outcome at all** (entry 0 — its geometry at the room's south/`RoomMaxY` edge matches the
@@ -3343,7 +3345,7 @@ wins.
 **Result: 71 distinct door ids referenced across all 72 rooms. Every single one resolves to either
 the door's own owning room (the "self" side of a shared edge) or a room `world_map.py`'s
 `adjacency()` classifies as `edge`-adjacent to it — zero non-adjacent ("teleport") resolutions, zero
-unresolved ids.** This holds regardless of the descriptor's own id word (§47c) — the five ids with a
+unresolved ids.** This holds regardless of the descriptor's own id word (§47c; except that a `$ffff` word commits no room change at all until a script rewrites it, §71) — the five ids with a
 genuine positive value (`53`, `73`, `155`, `167`, `244`) resolve exactly the same spatial way as the
 ordinary `$0`/`$ffff`-sentinel doors, landing on an adjacent room just like every other door. Full
 per-door table in the script's own output (door id, candidate coordinate, id-word tag, resolved
@@ -3370,7 +3372,7 @@ gates on "target room registered." That doesn't hold up. §31 (31st pass, sixtee
 one) already established type 8 was never the room table — type 3 is, all 72 rooms are already
 resident, and this image contains no disk-I/O-capable code at all (§30a/§31a) — and §38d's own
 disassembly of `$de5e`, reused directly for this pass's `door_walk.py`, shows the resolver never
-reads the id word at all, only the descriptor's coordinate. There is no live "unregistered room"
+reads the id word at all, only the descriptor's coordinate (the caller `$00716e`-`$007182` does read it, before `$de5e` is reached: 0 continues to the resolver, `$ffff` takes the sound-cue path `$00731e`, §71). There is no live "unregistered room"
 state left for the id word to gate: CAVERN's east door resolving to the "already resident" branch
 (§13, id `73`) is fully explained by ordinary spatial adjacency under the corrected model, not by a
 registration check that (per §31) was never real in the first place.
@@ -4697,6 +4699,26 @@ negative, not a repeat of the static one — it extends
 covering the two ordinary-play actions available from this snapshot (movement/pickup, room
 transition). It does not close item 1: creature encounters, inventory-menu actions, and any
 mechanism reachable only from rooms/state this one snapshot doesn't cover are still untested live.
+
+## 71. The TUNNEL lever works: its operate icon, confirmed from the object panel, clears the door's `$ffff` sentinel (82nd pass)
+
+**This retires §7, §10d, §20-§29's conclusion that no input reaches the lever.** The passes of §7-§29 held fire at the lever's boundary tile and watched the player descriptor, the portal table and the object array; none of them opened the object panel and confirmed an icon, because the panel was only understood in the 80th pass (secrets.md, "The player's action panel": the icon loop `$009c82` first waits for fire to be released, a second press confirms the highlighted icon, and the loop returns the icon id that `$00a0ac` dispatches).
+
+**Live** (`py/secrets/overlay/action/lever_operate.py`, natural joystick input from `room2_tunnel_entry.snap`, nothing injected or poked):
+- Left holds the hero to the stall at bbox (14,12,8,6), one step short of the lever's box (7,15,5,12). The fire probe there returns object 144 with the icon list 7, 11, 6 (operate, a second icon, cancel): the "bracket icon and key icon" of the 13th pass.
+- Fire opens the panel (`$009c82` 1), icon 7 is already highlighted and fire confirms it: `$00a448` -> `$00a486` (event 5) 1 each, the consumer `$00fe24` 1, `$00fe30` 1. The lever's record byte 3 goes 0 to 1 (state bit 0, `32` in its ELSE branch).
+- The lever's event-5 block (`scripts_level0.txt`, object 144) is `30 COND state bit 0 set; 14 IF ...: 27 SET FLAG 33 = $ffff, sound, 31 state bit 0 = 0; 15 ELSE: 10 CLEAR FLAG 33, sound $2a, 32 state bit 0 = 1`. A RAM diff before and after the confirm shows the door descriptor of type-4 record `$33` (`$6d4f2`, TUNNEL's north door, the "entry 1" of §10b) go from `14 0b ff ff 01 01 00 00` to `14 0b 00 00 01 01 00 00`: **the id word at +2 is the door's open/closed latch, `$ffff` closed (the sound-cue-only reading of §10c) and 0 open.** §10d's guess that pulling the lever "most plausibly rewrites entry 1's descriptor word +2 from `$ffff` to a real room id" was right about the word and wrong that it needs a room id: 0 is enough, the destination is the point-in-rectangle result of §38d as before.
+- The reader of the word is the door branch of the movement code, `$00716e`-`$007182`: `movea.l 2(A0),A0; move.b 5(A0),2275(A5); move.w 2(A0),D3; beq $0071ca` (0: the transition proceeds to the resolver of §38d), `cmpi.w #$ffff,D3; beq $00731e` (the sound cue, no room change), anything else the `$011256` lookup of §14 (*read*; the 0 and `$ffff` outcomes are the live ones).
+- After the confirm, Up from the stall leaves TUNNEL for room 2 (bbox (52,12,46,6) in the clean run) and Left then reaches room 3. The control run (same walks, no panel) leaves Up at (14,12,8,6), room 1, unchanged.
+
+**What this corrects.**
+- §47's "the descriptor's id word plays no role in the destination" is wrong for the `$ffff` value: a descriptor with `$ffff` does not commit a room change (a sound cue), one with 0 does. `door_walk.py` marks 11 level-0 doors `id=-1 sound-cue-only`: `$09 $12 $18 $1c $22 $23 $24 $25 $26 $29 $33`; with only the other doors open, CAVERN's reachable set is {CAVERN, TUNNEL}, so every route out of CAVERN goes through one of these.
+- The clearing verb 10 (`CLEAR FLAG n`) occurs in 9 level-0 blocks, and its operand names the door: `$33` object 144 (event 5, the lever), `$18` object 81 (event 18, an item applied), `$23 $24 $25 $26` object 239 (event 18, four doors at once), `$09` object 391 (event 18), `$29` object 486 (event 5, the crown gate of §secrets "Id 486"), and `$14` object 458 (event 18; that door's word is already 0 in the static image). *Read*; only the lever is driven. The doors `$12`, `$1c` and `$22` have no clearing script in either the object or the room blocks, so what opens them is not identified.
+- The earlier ground truth ("the lever opens a door in front of it") holds. §22-§29's descriptions of LOCK/UNLOCK, the portal table and the touch events as candidate mechanisms are not the lever's mechanism.
+
+**Jumping** (found while looking at why the circlet of the regalia walk was unreachable, secrets.md "The regalia walk"): fire held with nothing in front is a jump, and the collision scan `$008870` compares the hero's z base `D2` with each object's z top: a mover whose `D2` equals an object's top z reaches the branch at `$008a02` and queues event 9 for it (`$008a26`, `$008a5a`) every frame it stands on it. Landing on the TUNNEL lever (right 24,000 steps, then fire+left, so that the hero is at base z 34 when its x trail reaches 7; `lever_operate.py jump`: 11 passes through `$008a02` and `$008a26` in 600,000 steps, lever byte 3 stays 0) queues those touch events; the lever has no event-9 block and is not operated that way, so this is the real reading of the 22nd pass's "touch unreachable" (it was reachable only from above) and not the lever's mechanism.
+
+**Next.** The door `$33` is open from here, so the route beyond TUNNEL (rooms 2, 3, 6, 7, 9, 70) is walkable, but the rectangle graph from CAVERN to the regalia room 33 still crosses the sentinel doors `$22` (room 7 to 12, no clearing script found) and `$18` (room 15 to 16, object 81's event 18): see cadaver.md.
 
 ## Files
 
