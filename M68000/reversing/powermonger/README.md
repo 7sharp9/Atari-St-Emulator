@@ -1132,6 +1132,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `title.png` / `credits.png` | PowerMonger title, scrolling credits |
 | `empire_intro.png` | Empire "Pondering over the map…" intro |
 | `name_entry.png` / `menu.png` / `world_map.png` | name dialog, option menu, campaign world map (66th) |
+| `chat_message.png` | the link chat panel ("message from <lord>") showing a received character, from a `$26` order injected into slot 2 (132nd) |
 | `briefing.png` | "Between Pages 1-5" mission briefing (67th) |
 | `iso_view.png` | isometric battle view, past the briefing OK button (68th) |
 | `iso_rotated.png` | iso view after ~5 keypad rotation steps (`$ff9a` $f0→$a0), 69th |

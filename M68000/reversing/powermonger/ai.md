@@ -1380,7 +1380,7 @@ land 25; the other 12 come from kills).
   sub-record 0 the side's current group; `$187d8` redraws the local side's
   panel.
 - For a captain group whose side's command-slot state is 8 or 6, `$71ae`
-  re-arms every command slot. The state is read at `$58016 + 3*side + 4`
+  tears the link down and demotes every command slot (6 to 2, 8 and the rest to 4, 0 and 2 unchanged; strategy.md "Serial-link states"). The state is read at `$58016 + 3*side + 4`
   (`$28e4: mulu #$3`), not `6*side`, so side 2 reads side 1's slot and side 1
   reads its own order byte (confirmed on the real CPU by `k5_s1_1_cmd8`). That
   this is a bug is inferred.

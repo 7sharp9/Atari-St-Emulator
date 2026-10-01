@@ -96,7 +96,28 @@ which is the unit the game logic actually counts in.**
 | 0 | byte | commander index — `× $13c` → the `$51538` record |
 | 1 | byte | **order type** (even, `$00`..`$32`; `$00` = none). Cleared every tick by `$6a3a` after the executor reads it |
 | 2 | word | **order parameter** — a packed cell `{x: bits 0-5, y: bits 6-12}` for movement orders |
-| 4 | byte | **slot state** `0/2/4/6/8/$0a`. `$6a3a` dispatches on it each tick; `$6522` issues a new order only when it is `4` |
+| 4 | byte | **slot state** `0/2/4/6/8/$0a`. `$6a3a` dispatches on it each tick through the word table at `$6a80` (state 0 no work, 2 and 4 execute the order locally, 6 and 8 are the serial-link states below, `$0a` is a bare `rts`); `$6522` issues a new order only when it is `4` |
+
+`$6a3a` walks slots 1..4 only (`$5801c..$58033`); slot 0 (`$58016`) is never dispatched.
+
+**Serial-link states (6 and 8).** State 2 is a local human, state 4 an AI side. State 6 is a human whose
+orders are mirrored to a peer: `$6a9e` calls `$1c390` to write the slot's first 4 bytes (commander, order,
+parameter) to the MFP USART data register (`$fffffa2f`), then executes the order. State 8 is the remote
+human: `$6ab2` calls `$1c340` to read 4 bytes from the receive ring buffer `$58368` into the slot
+(read index word `$58368`, write index word `$5836a` advanced by the receive interrupt, wrap limit word `$58372`, baud code `$5836e` = 1200 here, data from `$58374`), then executes them. Both loops spin
+until the byte moves, so a slot in state 6 or 8 with no peer stops the whole game. The aborts differ:
+the receive loop (`$1c34e`) leaves on ESC alone (`$2de6d`); the send loop (`$1c39e`) needs ESC plus a
+non-zero `$2dea2` or `$2de96`, the key-array cells of the right and left shift scancodes `$36`/`$2a`.
+The key ISR (`$1962`) never stores those two scancodes in the array (it only sets and clears the shift
+flag `$2df8a` and returns), so the send-side abort cannot fire from the keyboard. Abort calls the
+link teardown `$71ae`: it flushes the receive ring (`$1c328` clears both indices), calls `$c3f6` (not read) and demotes each slot
+(0 stays 0, 2 stays 2, 6 becomes 2, everything else including 8 becomes 4), so a remote human falls
+back to an AI side and the game continues. Proven on `pm123/win/m1_s0.snap` with the slot states
+poked (`scratchpad/pm132/`, "Serial-link roles" in "Hidden features audit"): the state-6 send loop
+entered once from `$6a9e` and spun 571,668 times in 3M steps; the state-8 receive loop spun 122,257
+times in 1M steps, ESC reached `$71ae` 41 steps later (1/1), slot 2 went 8 to 4 and `$6a3a` ran 11 more
+times in the next 3M steps. The spin in state 6 is the emulator's MFP never setting the transmitter-empty
+bit that `btst #7,44(A1)` (`$fffffa2d`) polls; there is no peer to test the protocol against.
 
 ### `$51538` — group-order table
 
@@ -304,7 +325,7 @@ offset as D2. Who posts each type is in "The player's commands" below.
 | `$20` | `$6d56` | `$3154` D3=`$10` D4=`$7a` D5=−cmd, then `$1d36` | icon, targeted |
 | `$22` | `$6d90` | `$3ce8(D1=cmd, D2=param)` | captain-portrait click (`$134a4`); AI |
 | `$24` | `$6dbc` | `not.w $57ff2` (pause) | PAUSE button |
-| `$26` | `$6dd0` | `$d0dc(param)` when cmd ≠ local side: one character into the message line (panel `$16`) | linked play: the local side posts it at `$d14c` (inferred: chat) |
+| `$26` | `$6dd0` | `$d0dc(param)` when cmd ≠ local side: one character into the message line (panel `$16`) | chat: SEND MESSAGE (`$131`) sets `$d03e := $fe`; `$d13e` posts each typed key at `$d14c` (live, "Hidden features audit") |
 | `$28` | `$6dc6` | `$13d1a` (rebuild the land) | REPLAY MAP button |
 | `$2a` | `$6dea` | `$34a8(D0=cmd, A3=$51538+param)`: accept an alliance | alliance panel YES; `$33b0` (`$3458`) for an AI lord |
 | `$2c` | `$6e04` | `$71fe := 1` | MULTI PLAY button |
@@ -1519,13 +1540,22 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
   (`$19c2`, tables `$19e8`/`$1a7a`, UK layout). A live sweep of scancodes `$01..$72` (500,000-step holds in
   `pm78_settle`, reader hits counted with `hits`, RAM diffed against F1): only the four arrow keys change state
   (`$13824` block, each reader body 2 hits; left moved camera X 40 to 38, re-checked 130th). ESC reaches the link
-  receive loop (`$1c34e`), which calls `$71ae` (link teardown); it was not exercised in link mode. Name entry
+  receive loop (`$1c34e`), which calls `$71ae` (link teardown): exercised, see "Serial-link states" under the command
+  buffer. The send loop's ESC-plus-shift abort cannot fire, because `$1962` never stores the shift scancodes in the
+  array. Name entry
   (`$cf46`, only entered while `$d03e` is set) treats only CR and BS specially and compares the name against nothing.
 - **Joystick.** Polled every frame; joystick 1 lands in `$2c1b8`, which nothing reads (8 injected values per stick:
   RAM identical to the control).
-- **Startup command line.** `$11b2` passes the string at `$123c` (one space) to `$12d88`, which tests for `S`/`M` and
-  sets side states 6 and 8 (the serial-link roles, inferred). With the static string neither fires; reachable only by
-  patching `$123c`. Not live-tested.
+- **Startup command line.** `$11b2` passes the string at `$123c` (one space) to `$12d88`. Called through `callcap`
+  with A0 pointing at `S`, `M` and the static string on `pm123/win/m1_s0.snap` (local side 1; 3/3 as the code reads),
+  it picks a side (`$57ffe`, a `$b940` draw, 0 becoming 1), fills the side table `$58038` with 6, 12, 18, 24,
+  and sets the local command slot `$58016 + 6*side` to state 2 with its commander byte. `S` or `s` then makes the
+  *previous* slot state 8 and the local slot 6 (`$5801a := 8`, `$58020 := 6`); `M` or `m` makes the local slot 6
+  and the *next* slot 8 (`$58026 := 8`); anything else changes nothing. Slot 0 is never dispatched, so `S` with
+  side 1 leaves a send-only local side. These are the serial-link roles of "Serial-link states": the string is the
+  command-line twin of the MULTI PLAY button (order `$2c` sets `$71fe`, `$6a3a` then calls `$6eb6`, panel `$c`
+  CONNECT sets `$2df6c`; `$6eb6` and the handshake were not read). With the static string neither role is set. Patching `$123c` in a running
+  snapshot is useless (the routine runs once, before the game loads); to test a role, write the slot states.
 - **Dormant word `$5809a`** (read at `$16640` in a loop over the entity table, written nowhere by an absolute
   operand; 0 in both snapshots). Poking it to 1 raised that loop's `$16738` calls from 54 to 94 per 500k steps and
   `$e6ee` marker draws from 27 to 47, and on 4 of 8 samples added 24-26 bytes of extra dots to the minimap: a
@@ -1545,7 +1575,17 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 - **Disk vs loader table** (`$e0c4`): `DATA\SPRITE40.DAT` is on the disk with no name in the table; `CAP_SPR.DAT` and
   `BITMAP.DAT` are in the table but not on the disk (static only; whether `BITMAP.DAT` is fetched at mission 1 is
   unchecked).
-- **Not covered:** link/multiplayer mode keys; the crack's own title/intro screens and `MREP`; indirect writers of any
+- **Link chat (`$26`).** Reachable in a normal game: GAME panel button `$131` SEND MESSAGE (`$7878`) calls `$d194`,
+  which sets `$d03e := $fe`; the main loop (`$13750`) then hands every frame to `$cf46`, which branches at `$cf4e`
+  to `$d13e`: `jsr $19c2` (getkey), and for a key posts order `$26` with the character as the slot parameter into
+  the local slot (`$d14c`, `$d152`) and echoes it into the edit buffer through `$d162` (CR and BS only). Held `a`
+  (`kbd 1e`, held past the main-loop poll: a make and break sent together are erased by the ISR before getkey
+  sees them) left the local slot `01 26 00 61 02 00` (1/1). The receiving half `$6dd0`, for a slot whose
+  commander is not the local side, calls `$d0dc` and opens panel `$16`, "message from <lord name>" with the
+  character on its second row: a slot `02 26 00 58` in state 4 gave 1 `$6dd0`, 1 `$d0dc`, 1 `$affe` and an `X` on
+  the panel (`scratchpad/pm132/chat.cmds`; `chat_message.png`). A character from the local side is not shown on
+  its own message line (`$6dd0` tests `cmd == $57ffe` first). How the mode is left was not traced (`$d03e` is cleared at `$78a0`/`$78be` by the panel `$c` buttons and at `$6f04`, `$73c4`, `$abf6`, `$ccf0`, `$cffc`).
+- **Not covered:** the link handshake (`$6eb6`, panel `$c`/`$12`); the crack's own title/intro screens and `MREP`; indirect writers of any
   flag; about 100 of 117 unreferenced routine starts (the reachability walker is incomplete: it called `$b892`
   unreferenced although `$b3d0` calls it, so an orphan list is not evidence of dead code). Scripts and raw output:
   `scratchpad/pm130/audit/` (`keysweep.py`, `sweep_diff.py`, `reach_scan.py`, `rw_census.py`).
