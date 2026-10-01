@@ -1,10 +1,10 @@
 # Cadaver: handoff
 
-Updated 2026-10-01 by the 83rd-pass session (door id words are keys; the walk from CAVERN to room 16 by natural input; the script census repaired).
+Updated 2026-10-01 by the 84th-pass session (a short pass: how sprites are depth-ordered, `graphics.md` §5k; the walk to room 16 is the 83rd pass's).
 
 ## Resume point
 
-- Last work commit: `61db170` (`cadaver: 83rd pass -- event 18 by natural input ...`); before it `c52ea62` (keys, `route_to_room12.py`, `verb_decode` fix) and the skill lesson `a1ebeaf`; this handoff is the commit after them.
+- Last work commit: the 84th-pass commit (`cadaver: 84th pass -- sprite depth order ...`, `graphics.md` §5k and two scripts); before it `61db170` (83rd pass, event 18 by natural input), `c52ea62` (keys, `route_to_room12.py`, `verb_decode` fix) and the skill lesson `a1ebeaf`; this handoff is the commit after them.
 - Read `reversing/cadaver/mechanics.md` §72 (door id words, the corrected door table, the walk to room 12) and §73 (event 18 by icon `$c`, the pickaxe wall, keys 240/155/104, room 16), then `secrets.md` "The keyed doors and the walk to room 12" and "Applying an item (event 18)".
 - Scripts (from `M68000/` with `.venv`, table in `reversing/cadaver/py/secrets/README.md`): `overlay/action/trek.py` (BFS over natural holds), `route_to_room12.py` (about 4 min), `route_to_room16.py [all|a..e]` (about 5 min, `route_lib.py`), `door_reach.py` (reachability under opened doors and carried keys), `verb_decode.py` (corrected census). Snapshots: `scratchpad/cadaver/secrets_out/action/r12/`, `r16/ck_*.snap`; indexed in `scratchpad/ANCHORS.md`. Subagent working data: `scratchpad/cadaver/agent_door22/`, `agent_trek2/` (exploration scripts `e1.py`-`e58.py`, not for re-use).
 - Start from: `scratchpad/cadaver/secrets_out/action/r16/ck_e_room16.snap` (room 16, hero (20,13,14,7), health 33, rucksack holds skeleton key 104, doors `$33 $3b $22 $23-$26 $20 $18` open) for the trek; `lever_after.snap` (TUNNEL, lever operated) for the route scripts; `gameplay_empire.snap` (CAVERN), `level1_loaded.snap` (level 1, room 0).
@@ -22,6 +22,10 @@ Passes 77-82: main-loop keys, saves, rank table, assert layer, level overlay and
 - **Event 18 by natural input** (`route_to_room16.py`, re-run here: log identical to the agent's two runs, 15 checkpoint snapshots byte-identical): Space opens the rucksack panel, icon `$c` first in front of a class-`$b` object (239, 81, 474), fire runs `$00a682` -> `$00a6f4`; steel key 240 on 239 opens `$23-$26`, skeleton key 104 on 81 opens `$18` (door `$1c` with 474 in a side run); bronze key 155 opens `$20`. Room 12's wall (class-10 blocks gated on pickaxe 168 / axe 169) falls to two thrown pickaxes (icon `$d` select, fire with nothing in front = throw `$00a19e`). Key 104 appears only after object 325 is EXAMINEd (`SHOW #104`).
 - `door_reach.py`: opening `$22` with keyed doors closed reaches 21 rooms; every later door on the road to the regalia (16 -> `$1d` -> 30 -> 31 -> 32 -> 33) is a hardcoded open link.
 
+84th pass (`graphics.md` §5k, no emulator change):
+- **Sprites are ordered by a pairwise box relation, not a sort.** `$00d656` keeps, per entity at `56(A5)` (stride `$46`), a 96-bit "behind me" set at `68(A5)+16*index`: B is in A's set iff `A.xlead >= B.xtrail && A.ylead >= B.ytrail && A.ztop >= B.zbase`. Sets equal the relation on 1060/1060 live (row, sample) pairs while the hero walked (`py/sprite_depth_graph.py` for snapshots: 22/22, 8/8, 6/6). `$00d856`'s overlap list (`340(A5)`) = the entity plus every screen-overlapping entity not in its set, in table order: 90/90 live lists, 40 with more than one entry, 4 where a row excluded an overlapping entity (`py/sprite_redraw_list.py`). The table is not depth-sorted (5 of 20 overlapping CAVERN pairs have the lower index in front), so this is a repair-style painter's algorithm: draw A, repaint what is in front.
+- Terrain is two 16-byte-stride tile-descriptor lists (`72(A5)` and `76(A5)`), built once per room entry and always painted under sprites. `graphics.md` §5i/§5j had called `76(A5)` the 70-byte object array and the draw list a per-frame one; both corrected.
+
 ## Open, in priority order
 
 1. **Walk room 16 to room 33 and the BUTTON by natural input, replacing `regalia_walk.py`'s injected entry** (doors `$1d`, `$2b`, `$2c`, `$2d` are id-0 links per `door_walk_level0.txt`). Health is the limit (33 at room 16; objects 902/904 beside 81 and 474 cost about 5 per 150,000 steps, CAVERN's south and room 68's west end more): first find how health is restored (potions: `potions_callcap.py`, food, resting, the day clock `2166(A5)`) or route around hazards. Proof: a script from `ck_e_room16.snap` ending in room 33 and then `regalia_walk.py full` without the poke, XP 0 -> 26 in the treasury.
@@ -32,7 +36,8 @@ Passes 77-82: main-loop keys, saves, rank table, assert layer, level overlay and
 6. **Reach the rest of the game**: walk level 1 from `level1_loaded.snap` through its teleport scripts and room blocks (room 87's disarming, room 88's level exit); level 1's census also changed (442 blocks), re-read its tables from the regenerated `scripts_level1.txt`.
 7. **The Disk 2 builds**: levels' scripts and room blocks (`level2_load.py`); overlays with two extra header words, negative class-1 record, service table `$005eee`, spell 28.
 8. **Still read, not run**: verbs 56 and 90, verb 44's class-bit-7 branch, verb 41's collision search; producers of events 1, 4, 10-13, 25; class handlers reached through verb 66 other than class 10; the jump's table (`$5ce6`/`$5d09`/`$5cc3`, state `2266(A5)`), `$006f80`.
-9. Older loose ends in `secrets.md` "Open": F2/F3 effects, the escape-number lock, class bytes of type-6 templates, which sound ids fire in play, `$0115a2`, whether XP 60,000 is reachable; mechanics.md §67 census oddities, STOPACTI's `$f8ba`, the sconce's art source, the tile-stack direction (graphics.md 5e).
+9. Depth-order loose ends (`graphics.md` §5k "Not settled"): row word 0's meaning (it differs from the set size on some rows), what `76(A5)` holds beside `72(A5)` (which wall pass, or decor), `$00db8a`'s own redraw list against `$00d856`'s (same ordering?), a live case of a sprite overlapping a wall tile, and the claim that a z unit lifts a sprite one scanline (read from `$00da08`, not measured).
+10. Older loose ends in `secrets.md` "Open": F2/F3 effects, the escape-number lock, class bytes of type-6 templates, which sound ids fire in play, `$0115a2`, whether XP 60,000 is reachable; mechanics.md §67 census oddities, STOPACTI's `$f8ba`, the sconce's art source, the tile-stack direction (graphics.md 5e).
 
 ## Known traps
 
