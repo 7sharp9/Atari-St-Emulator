@@ -506,17 +506,19 @@ array, `-1`-terminated on field `+10`. **The one bug that blocked live confirmat
 pass: `(A5)+72` is a POINTER to that array's base, not the array's own address** — `movea.l
 72(A5),A3` dereferences it; reading raw bytes starting at address `(A5)+72` itself (this pass's first
 several attempts) finds an unrelated 134-entry structure that happens to sit there and never holds a
-tile-catalog pointer. Once corrected, `$00dbc0`/`$00dbc8` (inside a per-frame routine) pass both
-`(A5)+76` (the already-documented persistent object array, `mechanics.md` §37d, 70-byte stride) and
-the dereferenced `(A5)+72` list through a shared clip-cull helper (`$00ddb6`, previously untraced:
-walks a `-1`(field`+10`)-terminated list, keeps entries whose bounds overlap the caller's clip rect)
-into one combined visible-entry list at `(A5)+344`. `$00dd1c` (previously untraced) then walks *that*
-list, reads each entry's fields (`+2,+3,+8,+10,+14`), and calls `jsr $14d64` — §4b's already-proven
-masked-shift blitter dispatcher. **This closes §4d's inference** ("every tile is composited through
-the same sub-pixel masked shift-blitter as the sprite/object array") **into a fully-traced
-mechanism**: tiles and sprites are unified into one per-frame draw list before the shared blitter
-runs — the `(A5)+72` list is that list's *tile* half, freshly rebuilt from the grid once per room
-entry (not per frame), `(A5)+76` its *object* half, rebuilt every frame.
+tile-catalog pointer. Once corrected, `$00dbc0`/`$00dbc8` (inside `$00db8a`, the redraw of one dirty
+entity A0) pass both `(A5)+76` and the dereferenced `(A5)+72` list through a shared overlap helper
+(`$00ddb6`: walks a 16-byte-stride list terminated by a negative long at `+10`, keeps entries whose
+screen bounds overlap A0's rectangle, tagged with bit 31) into the redraw list at `(A5)+344`.
+**`(A5)+76` is a second tile-descriptor list of the same 16-byte format** (live: `+10` points into
+the tile area at `$3a000`-`$3dxxx`; at least 60 entries in CAVERN, 49 in level 1), not the 70-byte
+entity table, which is `56(A5)` (§5k). `$00dd1c` walks the redraw list; an entry with bit 31 is a static
+tile, blitted clipped to the rows being redrawn with `jsr $14d64` (§4b's already-proven masked-shift
+blitter), and a plain pointer is a sprite entity, redrawn by `$00d76a`. **This closes §4d's inference**
+("every tile is composited through the same sub-pixel masked shift-blitter as the sprite/object array")
+**into a fully-traced mechanism**: tiles and sprites share one blitter, but the list is built per
+redrawn entity and per overlapped rectangle, not as one per-frame draw list. Both tile lists are
+rebuilt from the grid once per room entry.
 
 **Live confirmation**: `$00cab6` only fires at the moment of a genuine room entry (confirmed absent
 otherwise — 0 hits over 5M steps of ordinary play and 0 hits over 30M steps spanning a room crossing,
@@ -673,10 +675,10 @@ A room's terrain is never stored as a picture. Two things make it appear on scre
    frame, since the walls don't move.
 5. **One shared paintbrush for everything.** Those wall instructions are placed alongside a second,
    separate list of instructions for the room's movable things (the player, torches, the boat,
-   chests — rebuilt fresh every frame, since those *can* move). Once a frame, both lists are filtered
-   down to whichever instructions are actually on screen right now, and every survivor — wall tile or
-   sprite, no distinction at this point — is handed to the exact same low-level "copy this picture to
-   this screen address" routine, which can shift a picture by a fraction of a pixel so nothing has to
+   chests — each with a 3D box and redrawn when it moves, §5k). Whenever a sprite is redrawn, the wall
+   tiles under its rectangle and the sprites that overlap it and are in front of it are repainted over
+   the cleaned area, and every one of them — wall tile or sprite — is handed to the exact same low-level
+   "copy this picture to this screen address" routine, which can shift a picture by a fraction of a pixel so nothing has to
    land on a fixed grid. That's why the finished screen never shows a visible tile seam: the same
    blur-free but position-flexible paintbrush draws the walls and the props side by side.
 
@@ -706,11 +708,58 @@ state 4, object id 413, live name index 224 — mechanics.md §66) actual art so
 ruled out type 2's 255-slot table for it specifically — a one-off, low-priority curiosity, not
 blocking anything.
 
+**5k. Depth order: terrain is a fixed back layer, sprites are ordered by a pairwise box relation held as bitsets.**
+There is no z-buffer and no per-frame sort. Cadaver paints in three layers.
+
+1. *Terrain.* The two tile-descriptor lists at `(A5)+72` and `(A5)+76` (§5i) are built once per
+   room entry and blitted in list order. In `$00db8a`'s redraw list they come before every sprite
+   (`$00dbc0`/`$00dbc8`, entries tagged with bit 31 and blitted by `$00dd1c`), so a sprite is always painted over
+   terrain; a room's walls are only the back two faces of its corner view, so nothing needs to cover a sprite. That
+   reading is from the code; no live case with a sprite and a wall tile overlapping was checked.
+2. *Sprites are entities with a 3D box.* The placement table at `56(A5)` (stride `$46`)
+   holds, per entity, x/y lead and trail (bytes 0-3) and z top/base (bytes 4-5), room-local units; `$00d54e`-`$00d5a4`
+   derives the trail edges from the sprite's footprint. The viewer is on the +x, +y, +z side: screen x follows x - y,
+   screen y follows x + y and a z unit lifts a sprite one scanline (`$00da08`'s `(z + ...) * 160`, the same
+   `(A5)+2634` cell table as the terrain; read from the code, not measured). The ground-level hero is z 0-29, props
+   are z 0-12.
+3. *The order between two sprites is one relation.* `$00d656` (called from `$00d5ec` when an entity is created and
+   `$00d62a` when one moves) keeps, for each entity A, a row of 16 bytes at `68(A5) + 16*index`: a counter word, a
+   second word, and a 96-bit set indexed by entity index. B is in A's set exactly when
+   `A.xlead >= B.xtrail and A.ylead >= B.ytrail and A.ztop >= B.zbase`, that is when A is not behind B on any axis, so
+   B is painted before A. When A moves the routine also sets or clears A's bit in every other row, so both
+   directions stay current. Boxes separated on two axes in opposite senses are in neither set: no order is imposed.
+   Live check (CAVERN, hero walked left, down and right for 3 million steps, hero relations changed ten times):
+   the sets equal the relation on 1060 of 1060 (row, sample) pairs; the static snapshots agree 22/22 (CAVERN), 8/8
+   (level 1) and 6/6 (room 16) (`py/sprite_depth_graph.py`). Word 0 of a row does not always equal the set's size
+   (e.g. 8 against 6); not explained, not needed for the ordering.
+
+How the relation is used (`$00d76a`/`$00d856`, from the main loop's `$00d78a` and `$00d792` passes after
+`$00dde8` gives new entities their screen rectangles): when entity A is drawn or redrawn, every other live entity
+whose screen rectangle (words 18/46, bytes 20/23) overlaps A's, and which is **not** in A's row, is gathered in table
+order behind A into one list at `340(A5)`, composited through the `356(A5)` buffer and copied to the screen (`$00d8f6`-`$00d9ce`, `$7dd6`/`$7be6`/`$7fba`; the compositing is read from the code only). Entities in
+A's row are skipped: they are behind A, so A simply covers them. Live check at `$00d8b6`: that list equals the
+rule on 90 of 90 lists (40 with more than one entry, 4 where a row excluded an overlapping entity;
+`py/sprite_redraw_list.py`). The first redraw pass only takes entities whose state byte 42 is 5, the second takes
+any.
+
+This is a painter's algorithm in repair form: draw A, then repaint whatever is in front of it. It does not need a
+sorted table, and the table is not sorted: 5 of 20 screen-overlapping pairs in CAVERN have the lower index in front
+(level 1: 1 of 7), so a plain index-order paint would be wrong. For an ordered pair, the final image is right
+whichever of the two is processed last (A last covers B; B last repaints A). Two sprites in front of the same A are
+repainted in table order, whatever their mutual order, and a pair with each in the other's set (overlapping boxes)
+is decided by whichever is processed last; both follow from the code and were not looked for in a render.
+
+Not settled: what `$00dd1c`'s static blit and `$00d8f6`'s composite do when a sprite straddles the room's edge, the
+meaning of row word 0, and whether `$00db8a`'s own list (A0, then statics, then entities, used by `$00d3b4`,
+`$00d60c` and the fire chain's `$00b17a`/`$00b198`) orders overlapping entities in the same way as `$00d856`.
+
 ## Files
 
 | File | What |
 |---|---|
 | `graphics.md` | this file |
+| `py/sprite_depth_graph.py` | 5k: the 68(A5) depth rows against the box relation, and the index-order violation count, from snapshots |
+| `py/sprite_redraw_list.py` | 5k: live check of the `$00d856` overlap list against the row rule (REPL, hero walking) |
 | `ram_contact.png` | whole-RAM contact sheet (`gfxview.py --contact`), regenerated this pass |
 | `gfxview.html` | interactive per-region viewer (`gfxview.py --html`), regenerated this pass |
 | `spritesheet_29800.png` | the player's `$029800`-`$02de08` frame sheet, rendered as a 6×5 grid of 32×42 4bpp cells (struct-confirmed stride), live palette `$5a9c` |
