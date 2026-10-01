@@ -978,7 +978,7 @@ $13b9a  ff9c := $15 ; jsr $fe04 (zoom index 4)      ; render geometry
         elif ($58148 < $100)   jsr $df52(7) / $10a46 / $10410  ; fixed map from resource 7
         else                   jsr $ffa6 / $2266 / $ac20       ; stored parameters (mission 1)
         jsr $1073c / $10058 / $4672                   ; terrain init + scatter
-        jsr $2984 / $238c / $2906                    ; objective-slot + assessment seeding
+        jsr $2984 / $238c / $2906                    ; the men (economy.md 5a), each side's base and army, each lord's nearest forest op
         ...
         $57fee := 1 ; $57ff0 := 1 ; ff9a := $fff0    ; speed = normal, camera reset
         rts   ($13ce6)
@@ -1026,6 +1026,18 @@ None of the 195 table entries has `$58148 < $100` (their range is
 `$400..$7f20`; 67 are below `$2000`, the "small" preset), so the campaign never
 takes the fixed-map `$df52(7)` branch; that branch is unreached by every route
 found (campaign, random land, briefing preview).
+
+### The starting armies (`$238c`, code read; counts checked)
+
+`$238c` (the developers' `_setup_k...`, kings) runs once per build after `$2984`, for each side's group block of `$51538` whose word 100 holds a start cell (the campaign stream, `$2266`):
+it makes the side's **Base** with `$2eac` (lord kind 6, a single Tower; `$10638` then levels its ground), a **leader** man (age 21, leader flag, health `$5f`, mode `$4c`) who becomes
+the group's lead (`64(A3)`) and the first man of the Base's chain, and `word[$580a6 + side*32 + 10]` **followers** (each `$2e1e`, chained into the Base after him, carried-item bytes from the side block's 20 to 23, joined to the group
+with `$1b2a`, health `$5a`), then re-forms the ranks (`$1d70`). The group gets its food from the side block's word 4 (`$5fff` for a side whose command slot is in state 4, the AI sides, which also
+carry a Boat), posture 3, aggression `word 12`, and the side's peace bit for itself; the local side's group becomes the selected group `$57fd2`. Finally every man of the side's *other* lords
+who has the leader flag (the captains `$2984` made for lords of kind 4 and 5) is made the lead of a new group of his own through `$25d6` (Proven, `diff_revolt.py`), which is where the side's
+groups 1 to 5 come from. Counted, 30 M steps after the build: the first group's men equal the side block's word 10 on every side that still has one (10 sides in four snapshots: 26, 12, 7, 8, 8, 8, 14, 13, 14, 8; the 26 is
+mission 1's player), and that group is in state 6 "In Camp" for side 1 and 3 "Get Men" or 13 "Fighting" for the AI sides. Not differentially tested; `$10638` (the ground levelling, which walks the layout stream to its `$9d` end for a footprint
+and then dispatches on which neighbour cells hold buildings) and `$2eac`'s lord allocation are read only as far as this paragraph says.
 
 ## How a land ends (122nd pass)
 
