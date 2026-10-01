@@ -12,6 +12,36 @@ open System
 open Bits
 open Instructions
 
+///The emulated-time periods, in instructions. Module-level literals rather than `let` fields of
+///`AtartSt`: as instance fields the JIT cannot fold them, so the five `stepCount % period` tests
+///in `Step` compiled to 64-bit `div` instructions (about 8% of a boot step). See the emulated-time
+///comment inside `AtartSt` for what each one means.
+[<AutoOpen>]
+module StepPeriods =
+    [<Literal>]
+    let instructionsPerFrame = 12000UL
+    /// Timer C is 4x the VBL rate; the 4:1 ratio is the invariant, not the absolute period.
+    [<Literal>]
+    let timerCPeriod = instructionsPerFrame / 4UL
+    /// Timer B (games' raster-split palette timer, off unless armed). A real event-count Timer B at
+    /// TBDR=2 fires ~156x/frame; this is a coarse fraction of that - enough to run a counter-only
+    /// ISR, not to place a mid-frame palette write at a specific scanline (see MMU.RaiseTimerB).
+    [<Literal>]
+    let timerBPeriod = instructionsPerFrame / 32UL
+    /// Timer A (games' free application timer, off unless armed). Super Hang-On's intro runs a
+    /// software-synth music player off Timer A at ~15 kHz and busy-waits on the counter its ISR
+    /// bumps; this coarse ~64x/frame tick is enough to advance that counter (wrong tempo, same
+    /// deliberate limitation as Timer B - see MMU.RaiseTimerA).
+    [<Literal>]
+    let timerAPeriod = instructionsPerFrame / 64UL
+    /// One emulated scanline == one HBLANK. PAL is ~313 lines/frame; this uses 300 so it divides
+    /// instructionsPerFrame exactly (12000/300 = 40) - that alignment matters: line 0's crossing
+    /// then coincides with the VBL boundary, so the per-scanline frame recorder captures line 0
+    /// instead of leaving it stale (an un-aligned divisor skips it on most frames). Drives
+    /// mmu.HblTick() (event-count Timer B + the recorder). Coarse like every period here.
+    [<Literal>]
+    let instructionsPerLine = instructionsPerFrame / 300UL
+
 ///Plain snapshot of every CPU-visible register - a struct, so comparing/copying it is a handful
 ///of int compares, not an allocation. Exists solely for the loop detector below.
 [<Struct>]
@@ -119,24 +149,6 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     //
     // 12,000 is an estimate, not a cycle-accurate figure - within ~2x is enough
     // for "the clock ticks at roughly the right rate and the sub-rates agree".
-    let instructionsPerFrame = 12000UL
-    /// Timer C is 4x the VBL rate; the 4:1 ratio is the invariant, not the absolute period.
-    let timerCPeriod = instructionsPerFrame / 4UL
-    /// Timer B (games' raster-split palette timer, off unless armed). A real event-count Timer B at
-    /// TBDR=2 fires ~156x/frame; this is a coarse fraction of that - enough to run a counter-only
-    /// ISR, not to place a mid-frame palette write at a specific scanline (see MMU.RaiseTimerB).
-    let timerBPeriod = instructionsPerFrame / 32UL
-    /// Timer A (games' free application timer, off unless armed). Super Hang-On's intro runs a
-    /// software-synth music player off Timer A at ~15 kHz and busy-waits on the counter its ISR
-    /// bumps; this coarse ~64x/frame tick is enough to advance that counter (wrong tempo, same
-    /// deliberate limitation as Timer B - see MMU.RaiseTimerA).
-    let timerAPeriod = instructionsPerFrame / 64UL
-    /// One emulated scanline == one HBLANK. PAL is ~313 lines/frame; this uses 300 so it divides
-    /// instructionsPerFrame exactly (12000/300 = 40) - that alignment matters: line 0's crossing
-    /// then coincides with the VBL boundary, so the per-scanline frame recorder captures line 0
-    /// instead of leaving it stale (an un-aligned divisor skips it on most frames). Drives
-    /// mmu.HblTick() (event-count Timer B + the recorder). Coarse like every period here.
-    let instructionsPerLine = instructionsPerFrame / 300UL
     let mutable stepCount = 0UL
 
     ///Headless keyboard/mouse test hook (ATARI_KEY_INPUT / ATARI_KEY_DELAY env vars, set up in
