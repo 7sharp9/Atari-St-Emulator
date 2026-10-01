@@ -24,7 +24,9 @@ the `M68000/` directory (so `TOS100UK.IMG` / `checkpoint.txt` resolve).
 ```
 
 Trace is ON for `boot`/`trace` (you run those to read it) and OFF elsewhere.
-`-Trace` forces it on; `-NoBuild` skips the build. Run `./run.ps1` with no args
+`-Trace` forces it on; `-NoBuild` skips the build. The `Debug` configuration is built
+optimized (`M68000.fsproj`), so `bin/Debug/...` is the fast build; set `Optimize` to false there
+only to step the emulator in a debugger. Run `./run.ps1` with no args
 for the full subcommand list.
 
 The raw form still works: `dotnet exec bin/Debug/net8.0/M68000.dll <argv>` where

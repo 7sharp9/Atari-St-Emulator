@@ -6,6 +6,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- The `Debug` configuration is optimized on purpose: every script and doc runs
+       bin/Debug/net8.0/M68000.dll, and an unoptimized build is about 2x slower on the boot
+       regression. Set Optimize=false here when stepping the emulator itself in a debugger. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <Optimize>true</Optimize>
+    <Tailcalls>true</Tailcalls>
+  </PropertyGroup>
+
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Extensions.fs" />
