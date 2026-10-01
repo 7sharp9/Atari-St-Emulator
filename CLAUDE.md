@@ -89,6 +89,9 @@ know they existed.
   called: PowerMonger's `$4d252` was documented as herded animals for sixty passes; 203 of 203 live entries sit on byte6-4
   (tree) render records, none on the animal records, and the men working it are of every job, not shepherds
   (`reversing/powermonger/economy.md` §2, `py/tree_census.py`). The same applies to a mode or flag named from one observed user.
+- A census column (class, type, kind) is only as good as the table the game's own routine reads it from: before building conclusions on one, find the game's reader of that field (here the
+  description routine `$011066`) and check one live object against it. Cadaver's `item_census.py` read the class byte from the wrong record for four passes and named a potion "the MASSACRE scroll"
+  and three stone-ammunition templates "magic missile scrolls", which scoped the dragon search around weapons that did not exist (`reversing/cadaver/mechanics.md` 76).
 - When a session decodes a graphics asset for the first time (spritesheet, tileset, icon/panel
   art, palette) well enough to render it, commit the rendered image (PNG) alongside the doc that
   proves the format, not just a prose description or an untracked scratchpad file — future
