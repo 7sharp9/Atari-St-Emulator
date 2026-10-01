@@ -308,7 +308,8 @@ Per tick, `$6a3a` dispatches command slots 1..4 on `byte4` through the table at
 `$1c390` / `$1c340`), **then clears `byte1`/`word2`**. `$6ac6` → `$6b38` reads
 `byte1` (order type), clears it, and dispatches types below `$34` through the
 table at `$6b5a` (`move.w 6(PC,D0.w)` at `$6b52`, `jmp 2(PC,D0.w)` at `$6b56`:
-handler = `$6b5a + word[$6b5a + type]`). Handlers read the slot as A0
+handler = `$6b5a + word[$6b5a + type]`). `$6ac6` runs `$6b38` at once for the commander's own group, but an order for any other captain's group travels by carrier pigeon (`$4562`) and
+reaches `$6b38` when the pigeon lands (`ai.md` "Arrows and carrier pigeons"). Handlers read the slot as A0
 (`0(A0)` commander, `2(A0)`/`3(A0)` target cell x/y) and the commander's group
 offset as D2. Who posts each type is in "The player's commands" below.
 
@@ -413,8 +414,10 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    captain's lead to the pointer, and a click posts `type = $57fd4`, target
    `(x, y−6)` (`$131be..$131cc`). Without one, a click recentres the view
    (`$4bb3a`/`$4bb3c`). Clicks in the strip above the map (y < 6) set
-   `$58098 := x/16` and redraw the minimap (`$107d6`; inferred: the minimap
-   overlay selector).
+   `$58098 := x/16` (`_show_ma`) and redraw the minimap (`$107d6`): mode 0 contour
+   colours, 1 terrain with trees, buildings and bases marked, 2 terrain (the default),
+   3 terrain with each lord's food margin as a dot (`graphics.md` "The minimap and the
+   conquest map"; 16 of 16 renders pixel-exact).
 3. **`$13212`**: four rectangles by the compass (`$13250`). The first two turn
    the view by ∓4 (`$ff9a`); one entry path (`$13270`, taken when `$2df96` is
    set) also sets the auto-rotate `$12f56` to ∓4, the other (`$13278`) clears
@@ -453,7 +456,7 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    | `$1e` | `$a3` | (73,161) | eye with arrows | arm `$1e`: offer an alliance to the clicked settlement's lord |
    | `$20` | `$93` | (72,149) | eye | arm `$20`: **spy** (a settlement not ours) |
    | `$26`/`$28`/`$2a` | `$a4`/`$94`/`$84` | (97,156)/(94,145)/(92,135) | posture | `$13678`: post `$16`, param 2/3/4: **aggressive / neutral / passive** |
-   | `$2c` | `$c3` | (75,191) | – | `$136b2`: toggle `$57fea`, disarm `$57fd4` |
+   | `$2c` | `$c3` | (75,191) | – | `$136b2`: toggle `$57fea`, disarm `$57fd4`: the **examine tool**: while it is on, a click on a drawn sprite opens that record's info panel ("The game's own text", "How a panel opens") |
    | `$2e` | `$83` | (71,138) | – | `$13716`: options panel 4 (`$af6c`) |
 
    Arming the icon that is already armed disarms it (`$1898e`). Screen
@@ -639,11 +642,11 @@ below); `$68fe` reads one wrong byte of it as a targeting weight.
 
 ## `$127e6`
 
-The **sound-event dispatcher** (original `_do_soun...`). A min-of-2 selector over the `$3b`-entry table at `$12952`
-(14-byte entries, pending when word 0 is nonzero, keyed on the priority word `10(entry)`) picks the two best pending
-events, clears them, and `$1283c` hands each to `$1ba3e`, the sound player (`move.w 6(A1),-(A7)` = the sound id,
-`jsr $1ba3e` at `$128d2`), unless the same id is already playing on the channel. Live: from `pm123/win/m1_atk` over
-6M steps `$127e6` runs 24 times and one run reaches `$128d2` and `$1ba3e` (the other 23 find nothing pending). It is not
+The **sound-event dispatcher** (original `_do_soun...`). A min-of-2 selector over the table at `$1290c` (entry 0 is a sentinel, then 59 entries of 14 bytes: pending count word 0, cooldown long 2 (50 ticks), sound id word 6 = the entry's index,
+channel word 8 or −1, priority word 10 (99, 9 or 7), flags word 12 `$a0`) picks the two best pending events, clears them, and `$1283c` hands each to `$1ba3e`, the sound player (`move.w 6(A1),-(A7)` = the sound id, `jsr $1ba3e` at `$128d2`),
+unless the same id is already playing on the channel. **The renderer posts the events**: the sprite preparers of `$115e0` add one to word 0 of an entry (the man preparer at `$11d2c` does `addi.w #1,$129d0` for a man whose mode byte 31 is 6 and indexes the table by class for mode `$46`; `$129fa`, `$12a16`, `$12a6a`, `$12a78`, `$12b3c`,
+`$12b58`, `$12bf2`, `$12c2a` are word 0 of entries 17, 19, 25, 26, 40, 42, 53 and 57, counting the sentinel as entry 0, bumped by the other preparers; the pigeon preparers `a_pigeon`/`a_flight` raise `$12a78`/`$12b58`), so only drawn objects make a sound and the count is a number of visible objects, not a flag (live: `watch $129d0` over `pm123/win/m1_atk`, the only writer is `$11d34`, values 1, 2, 3 ...).
+From `pm123/win/m1_atk` over 6M steps `$127e6` runs 24 times and one run reaches `$128d2` and `$1ba3e` (the other 23 find nothing pending). `$1ba3e` ignores its second argument and plays sequence id − 1; the driver is in `system.md`. It is not
 an event-marker or "under attack" ticker feed, and not a decision routine.
 
 ## The campaign-order hook — `$6762` / `$67d0` (72nd pass, static)
@@ -1691,24 +1694,37 @@ selector returns a string pointer in A5.
 
 | field | selector | the game's names |
 |---|---|---|
-| group state, `76(A3)` = `0(sub)` | `$90ca`, 9-byte entries from `$9497` | 1 Waiting, 2 Get Food, 3 Get Men, 4 Meeting, 5 Going To, 6 In Camp, 7 Go Home, 8 Attack, 9 Invent, 10 Equip, 11 Pickup, 12 Supply, 13 Fighting, 14 Alliance, 15 Trading, 16 Spying (0 blank). Seen in 5 snapshots: 3, 6, 7, 8, 13; 6 is the player's resting group, 3 and 8 the AI's "get men" and "march and engage" |
+| group state, `76(A3)` = `0(sub)` | `$90ca`, 9-byte entries from `$9497` | 1 Waiting, 2 Get Food, 3 Get Men, 4 Meeting, 5 Going To, 6 In Camp, 7 Go Home, 8 Attack, 9 Invent, 10 Equip, 11 Pickup, 12 Supply, 13 Fighting, 14 Alliance, 15 Trading, 16 Spying (0 blank). Seen in 5 snapshots: 3, 6, 7, 8, 13; 6 is the player's resting group, 3 and 8 the AI's "get men" and "march and engage". The captain panel's "Job:" row prints this state (`$9486`), not the man's job (12 of 12 panels) |
 | lord kind, byte 1 of the `$4e514` record | `$9c80`, words at `$a128` | 1 Village, 2 Hamlet, 3 Town, 4 City, 5 Capital, 6 Base (the layouts of `economy.md` "Buildings and town layouts": a Village is a single FarmHouse, a Hamlet a single FishHut, a Town 5 buildings, a City 9, the Capital 17 round a Tower, a Base a single Tower, mission 1's own lord) |
 | building kind, byte 7 of the `$4f916` record | `$9ccc`, words at `$a15a` | 0 TownHall .. 12 Mine (`economy.md`) |
 | group posture, `136(A3)` | `$90fe`, from `$9580` | 2 Aggressive, 3 Neutral, 4 Passive (value minus 2) |
-| group aggression, `148(A3)` | `$90de`, from `$9530` | 0 PowerMonger, 1 Bellicose, 2 Domineering, 3 Aggressive, 4 Firm, 5 Quite Firm, 6 Weak, 7 Wimp; the panel shows PowerMonger instead when the flag word `$9218` is set (the panel opens with it set and clears it for any group that is not the side's first) |
-| loyalty line | `$9116` | an unconditional `move.w #3,D0`: the line always reads "trusting" (`$95c1`; `callcap $9116` on `m1_s0` and `k5_s4` returns A5 = `$95c1` both times). The lord's loyalty is never displayed |
-| speed word | `$9d52` | `(byte16 >> 4) & 3`: 0 hardly, 1 slowly, 2 tirelessly, 3 endlessly (a march speed of 30 reads "slowly", 32 "tirelessly") |
+| group aggression, `148(A3)` | `$90de`, from `$9530` | 0 PowerMonger, 1 Bellicose, 2 Domineering, 3 Aggressive, 4 Firm, 5 Quite Firm, 6 Weak, 7 Wimp; the panel shows PowerMonger instead when the flag word `$9218` is set (`$9088` sets it on entry, `$90b2` clears it for any group whose `(A3 − $51538) mod $13c` is not 0, i.e. any group but the side's first). **Display only**: two writers, `$2446` (the side-army builder `$238c`: the first group gets word 12 of its `$580a6[32 × side]` block) and `$275c` (`rand & word 12`, every later captain group made by the restructure behind `$25d6`), and one reader, `$90de`, in a whole-image grep of `148(An)` and the sub-record view `72(sub)`; no AI test reads it (code read). Live: the player's first group holds 7 and its panel reads PowerMonger; poking 5 into it still reads PowerMonger (2 of 2 callcaps) while another group holding 7 reads Wimp |
+| loyalty line | `$9116` | the captain panel's line is an unconditional `move.w #3,D0`: it always reads "trusting" (`$95c1`; `callcap $9116` on `m1_s0` and `k5_s4` returns A5 = `$95c1` both times). The lord's loyalty is shown on the **house panel**: its "Men: N who are <adjective>" line prints the lord's `loyalty_pressure` (word 14 of the `$4e514` record) as index `word / 75` capped at 7, a negative value giving 0: sycophantic, faithful, loyal, trusting, discontent, untrusting, tratorious, rebellious. A revolt fires at 600, so "rebellious" means 525 or more (house gate 103 of 103; the mapping for values the snapshots do not hold is a code read) |
+| speed word | `$9d52` | `(byte16 >> 4) & 3`: 0 hardly, 1 slowly, 2 tirelessly, 3 endlessly (a march speed of 30 reads "slowly", 32 "tirelessly"); the captain panel's "Speed:" row prints byte 16 of the lead as a decimal instead (48 in `m1_s0`, 12 of 12 panels) |
 | job | `$9d6e` | `jobnames` `$a200`: 0 soldier, 1 farmer, 2 merchant, 4 fisher, 8 shepherd, 9 leader (bit 4 of byte 7 forces 9) |
-| health | `$912a`, `$9e2c` | `healthnames` `$a2dc`, `(byte45 >> 4) & 7`: Very Sickly, Sickly, Very Weak, Weak, Well, Strong, Very Strong; Dead for a negative owner byte |
+| health | `$912a`, `$9e2c` | `healthnames` `$a2dc`, `(byte45 >> 4) & 7`: Very Sickly, Sickly, Very Weak, Weak, Well, Fit, Strong, Very Strong; Dead for a negative owner byte ("Fit" is index 5, in every panel snapshot: "Is Fit", "Strength: Fit") |
 | age class, byte 14 | `$a4ae`, words at `$a508` | `(age - 12) / 20` capped at 4: Tender, Young, Mature, Ripe, Great; byte 14 is the man's age in years (`$2e1e` starts every man at 12 to 43), shown as a number by `$a4d6` |
 | carried item, byte 33 / 44 | `$9da8` | Nothing, a Pike, a Sword, a Bow, a Plough, a Boat, a Pot, a Catapult, a Cannon (`$a242`) |
-| side names | `$9e04`, `$a4ee`, 16 bytes each from `$582f9` | side 1 is the name typed at "What Is Thy Name Oh Lord" ("dave" in `m1_s0`), sides 2 to 4 are Jayne III, Jos XVIII, Harold II (live in `m1_s0` and `k5_s4`); "Philip II", the first of the four stored names, is the default for side 1 (inferred); the multi-player menu lists the four sides as White, Blue, Red, Yellow |
+| side names | `$9e04`, `$a4ee`, 16 bytes each from `$582f9` | side 1 is the name typed at "What Is Thy Name Oh Lord" ("dave" in `m1_s0`), sides 2 to 4 are Jayne III, Jos XVIII, Harold II (live in `m1_s0` and `k5_s4`); the four defaults are the data `_defplay` `$a29c` (4 × 16 bytes: "Philip II", "Jayne III", "Jos XVIII", "Harold II"), copied to `$582f9` by `_first_s` `$13d2e` (the name-entry screen, called once by `_display` `$12f5a`), which then blanks side 1's slot; an entry left empty falls back to `startbla` `$13e6a` ("Mr X", "Master X", "Miss X", "Mrs X", chosen by `(word[$2df92] + word[$6f306]) & 3`; RETURN with the pointer at x = 0 gave "Mr X", 1 of 1 live), and "Philip II" comes back only through `_restore` `$12e34`'s 64-byte copy; the multi-player menu lists the four sides as White, Blue, Red, Yellow |
 
 Other panels read the same way: the **house panel** (`$9ea1`: House, Town, People and Kingdom names, Food, Men "who are" a job, Near Forest, Stock), the **person panel** (`$a353`: name, rank and
 kingdom, health, "lives in a <building> with <n>", job, the carried item, age and years old, "obeys <captain>"; the death line `$a50d` "has died at the Tender age of N, whilst faithfully in the service of ..."),
 the mine panel (`$a677`, a Mine's metal "makes the <weapon>s"), the tree panel (`$a827`: A Stump, A Pine, An Oak, An Elm, An Ash, the season, "There are birds in the tree"), the animal panel
 (`$a095`, selector `$9a12`: category 8 and the carcass category `$1c` read "Sheep", any other category "Cow": the animals of `ai.md` "Shepherds, animals and carrier pigeons" are sheep, and the category `$22` that their update loop also accepts is the cow, which nothing creates) and the pigeon panel ("Pigeon Flying to" a name).
-Names of people, houses and towns are made by `$a9ce` (`_getname`) from a syllable table at `$aa5b` (`br ih ea pa rr op sc rv om br it o g fi ...`) keyed by the record offset: the same record always gets the same name.
+Names of people, houses and towns are made by `$a9ce` (`_getname`, three syllables from `_start_w` `$aa5c`, `_mid_wor` `$aaa4` and `_end_wor` `$aaec`, table `$aa5b` `br ih ea pa rr op sc rv om br it o g fi ...`) from a seed word, so the same record always gets the same name
+(`py/ui/gate_getname.py`: **80 of 80** seeds, string, length and the preserved seed `$2df84`, against `callcap $a9ce`). The seed depends on the panel: the person, equipment and death panels use `A3 − $51b66`; a non-first captain `64(A3)` (its lead man); a town (house, person and mine panels) word 4 of the lord record, his cell, so a town's name follows
+its lord's position; the pigeon's destination `20(A3)`; a forest word 0 of its `$57f68` record. A side's lord, and the first group of a side, show the typed side name instead (`check_fo` `$a704` for men, the flag `$9218` for the captain panel). `_get_nam` `$bdc2` is not a generator: it opens the "What Is Thy Name Oh Lord" entry panel (template `$be34`)
+for the side-1 name field `$582f9`, once, from `_first_s`.
+
+**How a panel opens** (140th). The `master*` symbols are templates, not builders: a `{width/4, height}` pair and a character grid with runs of `@` as placeholders (`masterca` `$921a`, `masterst` `$9712`, `mastereq` `$9878`, `masterob` `$9954`, `masteran` `$a082`, `masterpi` `$a0d4`, `masterho` `$9e76`, `masterpe` `$a328`, `mastertr` `$a7f8`).
+An opener (`click_*`) does `lea template,A1 / jsr $7b10` (allocate a panel slot; the grid is built at `$7bac + slot × $320`) `/ lea fmt,A6 / jsr $a91a`, and in `$a91a` the n-th `@` run calls the routine at `A6 + word[n]`, which returns a string pointer in A5 or writes into A4. The panels have no buttons (no `$80` corner cells) and only the captain panel sets `$7a3c`,
+so there are no panel button codes. There are two ways in. The captain boxes (`$1343a`) call `_click_c` `$9036` (captain panel, `$7a3c := 2`). The **examine tool** (icon `$2c`, `$57fea = 1`) makes a click on a drawn sprite run `$95f6`: the hit test `check_sh` `$12138` runs with every sprite draw and, with `$57fea` set and a click pending, calls it, and it dispatches on the
+record's category byte through the word table `cjt` `$9624`: 0, `$e`, `$1a` person (`$9c16`); 2 and `$10` house (`$9a38`, `$10` forced to WorkShop); 4 tree (`$a738`); 6 and `$18` object, fire and boat (`$98ec`); 8, `$1c`, `$22` animal (`$99e0`); `$a` equipment (`$9806`); `$c` death (`$a46c`); `$14` pigeon (`$99ac`); `$1e` mine (`$a5d8`);
+`$2c` stockpile (`$9656`); `$12 $16 $20 $24 $26 $28 $2a` open nothing; `$2e` goes to `$b2d4` (the protection seed, not run). Category `$18` is "Boat" in the game's own click text, which `graphics.md` and the README call a territory marker (not reconciled: a sprite crop of a `$18` record is open). Live from `m1_s0` (`py/ui/uiclick.py`, each with a no-toggle
+and a toggle-only control): a Tower at (196,41) opens the house panel, an ash at (218,70) the tree panel ("An Ash in the forest of Mninise / It is Summer"), a man at (202,49) the person panel; without the toggle or without the click nothing opens (0 hits of `$95f6`; `info_click.png`). Gates against `callcap` with the model built from the pre-call RAM only:
+person panel **247/247** (47 in `m1_s0`, 200 in `k5_s4`, all six text rows), house panel **103/103** (kind, town, people, kingdom, food, men and loyalty, near forest; the Stock rows are not compared), captain panel **12/12** groups (name, state, aggression and posture, loyalty, health, speed, food, troops, the carrying list; `py/ui/gate_panels.py`, `gate_captain.py`);
+the equipment and mine panels were checked by their live text only. The person panel stores no sex: "he/she" is the parity of the man's place in his home settlement's chain (`$9ce8` sets `$9e74` to 0 or 4; a leader is always "he"), the companion shown is the next man, or the previous one for the first. The death panel's age class is `(byte14 − 12) / 20` capped at 4 and its "service of" line
+prints the side of the *negated* owner byte. Never seen in 547 scanned snapshots: category `$22` (the Cow), `$1a`, a carcass (`$1c`, "DEAD Sheep"), tree state `$d` (a stump) and the camp fire (`$12`): those panel strings are reachable by the code and nothing produces them.
 The panel text is the place to look first when a field's meaning is in doubt: the 133rd pass's group-state and mode labels, the 134th's "Strength" row and this pass's building kinds all agree with it, and
 it is what retired the "capital (kind 7)" reading.
 
@@ -1765,7 +1781,7 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
   no land takes). Live, `hits` from the build's `$13b9a` on `pm67_ok_pre`: `$df52` 2 hits (indices 1 and 8, both from the
   cache, `$def0` 0), `$13c0e` 0; 30M further steps load nothing (`scratchpad/pm133/land0.cmds`). `DATA\SPRITE40.DAT` is the
   developer-symbol build above. `NuDATA/MAP0000.DAT` (`$e38a`) and `B_FLOOD.ECH` (`$1adaa`) have no reference of any kind (no
-  literal, no PC-relative `lea`, none in the whole-image listing): leftovers of the fixed-map and sound code. `DATA\SPRITE8.DAT`
+  literal, no PC-relative `lea`, none in the whole-image listing): leftovers of the fixed-map and sound code (`$1adaa` is `nom1`, the name beside `ptr_ech` `$1ada6` in the sample driver's data, `system.md`). `DATA\SPRITE8.DAT`
   at `$1bafc` is a probe file: `$1bd0e(index)` opens it (`$d574`) when the resource is not cached and `$1bec8` asks
   for "PLEASE INSERT THE POWERMONGER DISK" until the open succeeds (read from the code, not run).
 - **Link chat (`$26`).** Reachable in a normal game: GAME panel button `$131` SEND MESSAGE (`$7878`) calls `$d194`,
@@ -1788,7 +1804,7 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 
 ## Open threads
 
-- **Economy / population / invention — see economy.md.** Not in the per-tick path: `$1abaa` is sound, `$3e06` is the armies eating, the health indicator, the
+- **Economy / population / invention — see economy.md.** Not in the per-tick path: `$1abaa` is the seasons and weather (its four `$1ba3e` calls are only the season sounds), `$3e06` is the armies eating, the health indicator, the
   animals and the carrier pigeons (`ai.md` "Shepherds, animals and carrier pigeons"), `$d322` is force-totalling. The land is made by `$10d1e`/`$ffa6`/`$2266`/`$ac20`;
   `$2984` then gives every settlement its two men and each man a job, once per build (`economy.md` 5a, Proven: a build runs it once, 8 of 8). Growth after that does not exist
   (a revolt, `$550e`, only moves a lord and his settlements). Still unmapped: `$238c`, which builds each side's army (leader, captain group, soldiers; read, not differentially

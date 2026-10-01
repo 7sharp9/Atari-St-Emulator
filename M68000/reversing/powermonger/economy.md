@@ -860,7 +860,8 @@ under the camera raises a plateau, 10938 pixels differ against the same forced r
 fisherman picks his sprite `$70` or `$90` by whether the cell's `+1` and `+64` neighbours are nonzero (`$15bae`, static,
 not seen live); `$5d80` (the build decision, ai.md "Build") reads the altitude at the lord's cell, `>= $10` meaning high
 ground. It is not an influence, ownership or carrying-capacity field, and not read by any manpower or goods maths. `$4672` scatters
-10 forests, clusters of trees (`$4788`), and their markers across buildable cells.
+10 forests, clusters of trees (`$4788`), and their markers across buildable cells. The sites, group start cells, roads and stamped shapes of a land come from the 4-byte records
+`$ac20` decodes (`graphics.md` "The land build", 14539/14539 over 16 calls); `$10638` then levels each site's ground and `$10058` bakes the colour planes (same section).
 
 ### 5a. The starting population: who each man is (139th)
 

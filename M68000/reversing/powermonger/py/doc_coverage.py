@@ -2,7 +2,7 @@
 
 A routine is a symbol start of `powermonger_orig.sym` (the developers' own text symbols, runtime addresses). It counts as
 mentioned when any hex address inside it (even offsets) appears as `$xxxx` in `README.md`, `ai.md`, `economy.md`, `strategy.md`,
-`graphics.md`, `port/**/*.md|*.fs`, `py/*.py`, `tools/pm_*.py` or the handoff. Output: totals, the unmentioned routines by size, and
+`graphics.md`, `system.md`, `port/**/*.md|*.fs`, `py/*.py`, `tools/pm_*.py` or the handoff. Output: totals, the unmentioned routines by size, and
 the bytes per 4 KB page. Many large entries are data tables (the symbol table has no sizes and the text section holds data), so read the
 first lines of a hit with `tools/disassemble.py --snap <snap> --all <lo> <hi>` before calling it code.
 
@@ -11,6 +11,9 @@ first lines of a hit with `tools/disassemble.py --snap <snap> --all <lo> <hi>` b
 139th pass: 29498 bytes (472 of 978 routines) were unmentioned before the world-build population, the shepherd modes, the animal and
 pigeon loops, the building kinds and the UI text tables were documented, 26213 (455) after; what is left is mostly data (`scale_da`, `arrows`, `text`, `modedat`, `eyes`) and the UI click
 handlers (`$9000..$b000`), the map and road drawing (`$10000`), the sound code (`$1a000..$1c000`) and the serial link (`$ba74`).
+
+140th pass: 12956 bytes (334 of 978 routines) after the panels (`strategy.md`), the land build, minimap and blitters (`graphics.md`), the sample player and save disks (`system.md`) and the arrow and pigeon routines (`ai.md`).
+What is left is data (`arrows`, `cunt`, `modedat`, `corners`, `forest_l`, `done_str`, `wank`, `ymax`) and small helpers of the commander AI (`$66e8`, `$68aa`) and the UI (`$7552` `radio_on`).
 """
 import argparse
 import collections
@@ -25,7 +28,7 @@ ap.add_argument("--out")
 a = ap.parse_args()
 
 docs = ""
-for f in ("README.md", "ai.md", "economy.md", "strategy.md", "graphics.md"):
+for f in ("README.md", "ai.md", "economy.md", "strategy.md", "graphics.md", "system.md"):
     docs += (PM / f).read_text()
 docs += (ROOT / "sessions/powermonger.md").read_text()
 for pat in ("py/*.py", "port/**/*.md", "port/**/*.fs"):

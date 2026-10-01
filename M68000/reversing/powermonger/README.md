@@ -6,7 +6,7 @@ As of the 68th pass, [cr Replicants] runs cold-boot all the way into the
 option menu, campaign world map, "Between Pages 1-5" mission briefing, and past
 the briefing's OK button into the height-mapped terrain view (`iso_view.png`).
 The four emulator bugs the cracks exposed on the way are documented below. Past
-gameplay, mechanics and AI are analysed in four topic documents, each backed by
+gameplay, mechanics and AI are analysed in five topic documents, each backed by
 a Python reconstruction diffed against the real 68000 via `callcap`, or (where
 noted) driven live through the game's own UI:
 
@@ -16,6 +16,7 @@ noted) driven live through the game's own UI:
 | [`economy.md`](economy.md) | the goods ledger (felling trees → invention → army-supply upgrades), the separate food/manpower ledger and every writer of it, the settlement record + world-build, the settlement heartbeat and the loyalty/revolt accumulator, weapon-grade "invention" | shares `ai.md`'s FSM and revolt-chain proofs; settlement heartbeat `$157e6` **99/99** natural (27 states, 12 branch families) + **85/85** synthesised; every `food`/`troops_field` writer enumerated from a ~1B-step watch and cross-checked against the player's own order paths |
 | [`strategy.md`](strategy.md) | the sim tick + measured cadence, the order executor pipeline (`$6522` decide → `$58016` command buffer → `$6a3a` execute → `$4b80` stamp), force accounting, the 195-land campaign, diplomacy, combat, RNG/determinism, how a land ends | driven live through the real UI and the emulator's REPL: mission 1 won and lost both ways (retire + natural defeat), every player order but `$04` and a real `$0e` exercised at least once, diplomacy's envoy/tribute/break traced end to end, and 4 lands' natural `$6522`/`$661a` decisions captured over 200M steps each and matched against the disassembly |
 | [`graphics.md`](graphics.md) | asset formats, the software heightmap rasteriser (projection, DDA span walker, dither), all 4 yaw quadrants, the 4 sprite sheets (men, structures, buildings/trees), camera control, zoom, seasons | frame-pixel scoring against the real emulator's own composited buffer: **100.00%** match on 27 captures across every drawn category; the projection reproduces the game's own corner buffer byte-exact (81/81 vertices); the rasteriser maths (`$ef62`/`$e420`) Proven vs the real 68000 at the instruction level |
+| [`system.md`](system.md) | the system services: the sample player (a Timer A DAC on the PSG volume registers, the per-frame sequencer, the bank layout), the save-disk code and its message strings, the serial link's MFP setup | `callcap` gates: 328/328 sequencer states, 300/300 Timer A passes, 56/56 sequence and 58/58 sample records |
 
 `powermonger.sym` (about 280 names) is the shared symbol file, feeding `trace_cfg.py --names` and the
 disassembler. `powermonger_orig.sym` is the developers' own symbol table (1,196 names, cut to 8 characters),
@@ -43,9 +44,11 @@ against every session's changes.
 - **You give orders, not controls.** The player picks an order icon (go, attack, get men, take
   or drop food, take or drop equipment, trade, set men to work, spy, a food supply line, offer an
   alliance, dismiss men, go home, a posture level ...) and clicks a target on the map; the order goes
-  to the captain's group, whose lead walks there with the men following in formation. The
+  to the captain's group, whose lead walks there with the men following in formation. The first
+  captain's own group acts at once; an order for any other captain is carried to him by a pigeon from the
+  first captain's position and takes effect when it lands (code read for the player, 95 natural launches for the AI). The
   opponent lords issue orders through the same command slots and the same executor. (S "The
-  player's commands", S "The order executor", A "What each entity decides per tick")
+  player's commands", S "The order executor", A "Arrows and carrier pigeons", A "What each entity decides per tick")
 - **Every man is an individual in one table.** Each runs a small per-tick state machine: step
   toward the lead's target, check the ground, turn around an obstacle, fight a neighbouring enemy,
   pay upkeep. Followers do nothing but upkeep; their position is stamped from the lead. (A "What
@@ -72,8 +75,9 @@ against every session's changes.
 - **Combat is a health grind.** Units in contact lock into melee; each tick the attacker takes 1..4
   (by weapon) off the target's health (byte 45, the value the captain panel prints as "Very Sickly" ... "Very Strong", "Dead"). At zero the loser is killed or
   routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
-  group, which re-forms. Bows fire arrows. There is no battle resolver. (S "Combat" 0, 1, 3;
-  A "Natural runs on later lands")
+  group, which re-forms. Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
+  in its path (a man loses 82 health), and its end frees the archer to shoot again. There is no battle resolver. (S "Combat" 0, 1, 3;
+  A "Natural runs on later lands", A "Arrows and carrier pigeons")
 - **Land changes hands two ways: conquest by the player, revolt by the game's own clock.**
   *Conquest*: when every man of a lord's settlements is dead or routed by an army hunting him, the
   lord and all his settlements join the attacker — proven, and how mission 1 is won. *Revolt*: a
@@ -142,7 +146,9 @@ against every session's changes.
 
 ### Bugs and accidents a new design should drop
 
-- The captain panel's loyalty line is a constant: its selector loads index 3 unconditionally, so it always reads "trusting" whatever the lord's loyalty is. (S "The game's own text")
+- The captain panel's loyalty line is a constant: its selector loads index 3 unconditionally, so it always reads "trusting" whatever the lord's loyalty is (the house panel does print it). The group aggression the panel names is never read by any AI code. (S "The game's own text")
+- An order for a subordinate captain compares the sender's cell with record 0 (all zero) instead of the target lead's cell, so it always goes by pigeon; a pigeon shot down by an arrow keeps its record until its target group dissolves, and the pool of 47 order pigeons has no other reclaim. (A "Arrows and carrier pigeons")
+- The arrow's damage test (`subi.b #$52`, then `bgt`) misreads a health byte of `$80` or more as already dead; play keeps health below `$80`. The type-`$12` area effect of the arrow loop has no producer. (A "Arrows and carrier pigeons")
 - The starting job pick bounds the farmer's search row with a stale register (the cell index the failed fisherman search left behind), so a man whose fisherman draw fails can never become a
   farmer and ends a merchant: 222 of the 281 merchants in eight builds, and every one of 1234 failed farmer searches. (E 5a)
 - The relation bytes are misaddressed three ways: the update reads one byte and writes the next,
@@ -462,7 +468,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     kills, fifteen captures over the fight. It also sketched **mission setup**
     (`$13b9a` → `$10d1e`/`$2266`: "Between Pages 1-5" is procedurally generated,
     which arms the enemy command slots and explains the inert `$67d0` hook),
-    ruled `$1abaa` out as the economy engine (it is sound + ambient wildlife),
+    ruled `$1abaa` out as the economy engine (it is the seasons and weather),
     and added an **AI reconstruction** section — the whole autonomous layer as
     modern pseudocode plus what a modern version changes. `ai.md` /
     `strategy.md`.
@@ -1153,7 +1159,15 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
 | `dither_atlas.png` | pattern-table slots `0x00`-`0x40` decoded against the real palette (130th) |
 | `dither_triangles.png` | mission 1 terrain: as drawn, by colour byte, by source plane (130th) |
 | `dither_infographic.html` | interactive pixel probe, tile atlas, ramp anatomy, season fade; built by `py/dither_atlas.py` (130th) |
-| `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes |
+| `graphics.md` | the graphics pipeline + measured renderer profile + camera control + zoom comparison + modern-port notes; 140th: the land build (colour bake, roads, land script), the clip blitters and the sprite pick, the minimap and the conquest map, the palettes and fades |
+| `system.md` | the sample player, the save-disk code, the serial link setup (140th) |
+| `blit_variants.png` | one call of each of the six clip back ends of the 16/32 px blitters, before and after (`py/blit/blit_demo.py`, 140th) |
+| `info_click.png` | the examine tool: icon `$2c`, then a click on a tree opens its info panel (`m1_s0`, 140th) |
+| `minimap_modes.png` | the four minimap modes of `$107d6` on `k5_s4`: contour, terrain with marks, terrain, terrain with lord dots (`py/maps/render_maps.py`, 140th) |
+| `terrain_roads.png` | the land `k5_s4` as a cell map with the `$1d` road and town-ground cells white: the roads link the islands as causeways (140th) |
+| `worldmap_full.png` | the whole 320 × 608 conquest-map bitmap with the 13 × 15 land grid (140th) |
+| `scale_da.png` | the five frames of the force-ratio balance `scale_da` (140th) |
+| `fade_palettes.png` | the five fixed palettes `_work_pa`, `_zero_pa`, `_game_pa`, `_con_pal`, `_lost_pa` (rows in that order, 140th) |
 | `ai.md` | the entity / commander decision loop: the `$14b62` iterator, the 50-byte object record, the 75-entry `$14bb4` mode table, the spatial primitives, the mode catalogue, target selection, and the tables it reads; 113th pass: the forest animator `$4342` differentially tested Proven for 8/9 branches (the arrival/unlink branch stays Corroborated — reproducibly hangs the real emulator under every synthesised poke tried, not yet root-caused) |
 | `strategy.md` | the strategic layer: the sim tick `$13000` (call order + measured cadence), the `$6522` commander AI, the `$58016` command buffer + `$51538` group-order table, the `$6a3a`/`$6b38`/`$4b80` order executor, `$d322`+`$3e06` force accounting → `$57fba` → `$57fce`, the campaign hook `$6762`/`$67d0`, the combat pipeline (`$56a6`/`$5778`/`$57f0`/`$5c80`/`$5bd2`/`$1d70`), RNG/determinism, and what fired vs didn't in mission 1 |
 | `economy.md` | the economy (complete, 74th-75th): the **goods** ledger — `pm_leader.goods[0..7]` (`$4e514` +24), fed by the tree-felling gatherer FSM (`$5ec6`→modes `$3e`/`$44`/`$42`→`$60dc`), circulated by porters (`$159de`/`$159a4`), spent on unit equipment tiers by the army-supply subsystem (`$6352`/`$638c` = "invention"); the **separate** manpower ledger (`$4e514` +6/+8) and its full flow table incl. the per-settlement upkeep drain (`$163b8`); the per-settlement heartbeat (mode `$7c`, `$157e6`) and the loyalty/defection accumulator (`$4e514` +14 → `$550e`); the `$4f916` settlement records + builders `$2fc0`/`$2984`; world-gen (`$10d1e` / `$ffa6` / `$4592f`); and the characterised-benign `$163ea` write aliasing. 114th pass: no weather system exists anywhere in the game; `g_tileset_sel` (`$57fd0`) is the one real scenery-driving mechanic, rendered and characterised as a partial building-damage / tree-growth gradient, not a clean season swap (`pm114_prop_contact.png` / `pm114_tileset_families.png`) |
