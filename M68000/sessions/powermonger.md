@@ -1,18 +1,18 @@
 # PowerMonger: handoff
 
-Updated 2026-09-30 by the 130th pass (a hidden-features audit by a subagent, re-checked by the parent, a
-terrain-dither deep dive, and the `load_ram` water-tick fix). The 129th's alliance item 1 is still the next
-game-mechanics step; the unfinished half of the audit is item 2.
+Updated 2026-10-01 by the 131st pass (alliance effects checked from the natural state; `$5809a` closed
+statically). The unfinished half of the 130th's audit is item 1; the orders not yet seen naturally are item 2.
 
 ## Resume point
 
-- Last commit of this workstream: the 130th pass's handoff commit (`git log --oneline -3`; the pass itself is
-  `11d91bb`); before it the 129th, "natural alliance completes end to end" (`f0cb17c`).
+- Last commit of this workstream: the 131st pass's handoff commit (`git log --oneline -3`; the pass itself is
+  `6e55bee`); before it the 130th (`11d91bb`) and the 129th, "natural alliance completes end to end" (`f0cb17c`).
 - Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell
-  pitfalls"). New this pass, indexed in `scratchpad/ANCHORS.md`: `pm129/` (about 46 MB, `.ram` beside each
-  `.snap`): `wp5_45M.snap` is the launch point for the `$1e` offer click on land 25's lord 15, and
-  `env5_12M.snap` is the post-alliance state. `pm130/audit/` holds the audit's scripts, whole-image listing
-  and raw output; `pm130/dither/dither_data.json` the infographic's data (both in `ANCHORS.md`).
+  pitfalls"). Indexed in `scratchpad/ANCHORS.md`: `pm129/` (about 46 MB, `.ram` beside each `.snap`):
+  `wp5_45M.snap` is the launch point for the `$1e` offer click on land 25's lord 15, and `env5_12M.snap` is the
+  post-alliance state. `pm131/` holds the alliance-effects runs (`o06`/`o10`/`o1e`: `.cmds`, `.out.txt`, `.snap`).
+  `pm130/audit/` holds the audit's scripts, whole-image listing and raw output; `pm130/dither/dither_data.json`
+  the infographic's data.
 - Start from: `scratchpad/pm129/env5_12M.snap` for anything about the alliance's effects;
   `scratchpad/pm123/win/m1_s0.snap` (mission 1 settled) for work not touching the live goods economy
   (mission 1 has no goods anywhere).
@@ -29,6 +29,16 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 `py/diff_2776.py` 4119/4119; `py/diff_5cde.py` 768/768 + 85/85; `py/diff_revolt.py` 1778/1778;
 `py/diff_4f68.py` 1804/1804.
 
+- **The alliance's effects hold from the natural state (131st).** From `pm129/env5_12M.snap` (group `$188` alive at
+  lord 15's town, 5 men): `$06` and `$10` on the ally's town go `$3154` 1, `$31a6` to `$31b2` to `$31cc` 1,
+  `$31c8`/`$38ce` 0 (accepted like an own town; `$06` moved lord 15's food 36 to 0 and the group's 0 to 35); `$1e`
+  reaches the pointer test `$13b1e` 14 times and `$131be` 0 times (refused, `$57fd4` stays `$1e`). Control: the same
+  click before the alliance posted `$1e` (129th `run9.cmds`). `scratchpad/pm131/o06|o10|o1e.cmds`, strategy.md
+  "Diplomacy".
+- **`$5809a` has no writer in the image (131st, static).** One absolute operand (the read at `$16640`), the
+  longword `$0005809a` occurs once in the RAM image, no pointer to `$58094..$58096`, and every bulk copy or clear
+  starts at `$580a0` or higher or stops short (strategy.md "Hidden features audit"). Not live-tested; treat as an
+  unset flag reachable only by a patch.
 - **Terrain fill fully characterised (130th).** `py/dither_atlas.py` rebuilds mission 1 and a coast scene from
   (triangle, colour byte, slot): 0 pixels differ from `pm_render_ref`, 94.6 % / 95.6 % equal the game's frame (rest
   sprites); season fade model equals `pm74_late`'s live slots byte for byte. Table layout, ramp structure, the
@@ -71,15 +81,8 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Open, in priority order
 
-1. **The alliance's effects from the natural state.** From `pm129/env5_12M.snap`: order `$06`/`$10` on
-   lord 15's town should be accepted like an own town (`$3154`'s peace-bit filter), and a `$1e` click
-   there should no longer be accepted by the `$1394c` pointer test. Then a side-3 alliance with 3 pots
-   (formula predicts v = 4, not run) needs an escort past lord 4's 18-entity garrison; not a fix found yet.
-2. **The rest of the secrets audit** (strategy.md "Hidden features audit" lists what was and was not covered).
+1. **The rest of the secrets audit** (strategy.md "Hidden features audit" lists what was and was not covered; `$5809a` is closed).
    In order of likely payoff, each with how to prove it:
-   - `$5809a` (dormant "draw all sides' markers" word): find register-relative writers
-     (`find_field_writers.py`, it sits just below the `$5809c`/`$580a0` briefing variables, so check whether a
-     block copy or a save covers it); prove by setting it through that path and counting `$16738`/`$e6ee` hits.
    - Link mode: the ESC abort (`$1c34e` receive, `$1c39e..$1c3ae` send), the chat command `$26` (`$d13e`), and the
      startup string `$123c` reaching `$12d88` (states 6 and 8). Patch `$123c` to `S` and `M` in a snapshot and
      watch what the side records and `$d13e` do; the parse is inferred, not traced.
@@ -93,20 +96,20 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
      rule before trusting its list, then run the orphans under `hits` through a land build and a few minutes of play.
    - The crack's own stage (title, cracktro, `MREP`, packed `WAR`) was not audited; one byte at `$27028` changes
      when `$2a` (left shift) is pressed and is unexplained; `$58000` and `$4bb48` are read-only absolutes.
-3. **The orders not yet seen naturally**: `$04` transfer (needs two captains, a later land), `$0e`
+2. **The orders not yet seen naturally**: `$04` transfer (needs two captains, a later land), `$0e`
    on a real capital (does the work order produce pots naturally?), `$10`/`$06` on a food pile, the
    `$1a` supply line over several loops (food delivered per loop).
-4. **What refills strength** (lead/man byte 45, the captain panel's "Strength:", drained by `$5c80`);
+3. **What refills strength** (lead/man byte 45, the captain panel's "Strength:", drained by `$5c80`);
    the old "food" item 4 reads byte 45 wrongly. Watch byte 45 of a man over a march with and without
    food.
-5. `$1b8c` via `$5778` (a gate over natural `$5778` states); `$4342`'s arrival/unlink branch
+4. `$1b8c` via `$5778` (a gate over natural `$5778` states); `$4342`'s arrival/unlink branch
    (`scratchpad/pm113/diff_4342.py`, natural states from `capture_hits.py`); `$4f68` arms not covered
    (`$51dc` finding an ally's target, `$548a`'s `39 == 2`).
-6. Smaller: weather is now in the stepper (`C` key, this pass) but still not in the Godot view
+5. Smaller: weather is now in the stepper (`C` key, this pass) but still not in the Godot view
    (`godot/game/TerrainView.cs` has no `Weather` reference); where the crack writes its `$b842`
    patch; the fixed-map `$df52(7)` branch; `$2df98` is "the other button" (inferred right); the port
    and stepper still use the old names (`troops_reserve`, budget, discipline) if they model them.
-7. **A deeper game summary/mechanics writeup**, if Dave wants to keep extending it toward
+6. **A deeper game summary/mechanics writeup**, if Dave wants to keep extending it toward
    populous's depth: the README now opens with a doc-index table (added 127th) and the Design
    digest is current; a further step would be an explicit "architecture" thread (per-tick dispatch,
    core data structures, which mechanics are instances of a shared idiom) the way
@@ -205,7 +208,9 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Next session
 
-Open item 1: from `scratchpad/pm129/env5_12M.snap`, test the alliance effects on lord 15's town (`$06`/`$10`
-accepted, `$1e` refused by the pointer test), watching `$31a6`/`$31b2`/`$31cc` and `$139da`/`$13b1e` with
-`hits`. If that confirms the documented behaviour, take item 2 (the rest of the secrets audit), starting with the
-`$5809a` writers and the link-mode/startup-string path, then item 3 (orders not yet seen naturally).
+Open item 1: the link-mode and startup-string path first (patch `$123c` to `S` and `M` in a snapshot, watch the
+side records and `$d13e`; the parse of `$12d88` is inferred), then the unreferenced data loads (`hits` on `$df52`
+over a land build) and the dead-code triage after fixing `reach_scan.py` for dispatch tables. Item 2 (orders not
+yet seen naturally: `$04` transfer, `$0e` on a capital, `$10`/`$06` on a food pile) is the game-mechanics
+alternative if the audit stops paying. A side-3 alliance needs an escort past lord 4's garrison and is not
+scoped.
