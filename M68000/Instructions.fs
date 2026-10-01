@@ -61,102 +61,124 @@ module Instructions =
         | Condition.GE -> "GE" | Condition.LT -> "LT" | Condition.GT -> "GT" | Condition.LE -> "LE"
         | _ -> string (int c)
 
+    [<return: Struct>]
+
     let (|Move2SR|_|) data =
         if ((data >>> 6) = 0b0100011011) then
             let mode = (data &&& 0b0000000000111000) >>> 3
             let reg  = (data &&& 0b0000000000000111)
-            Some(mode,reg)
-        else None
+            ValueSome(struct (mode,reg))
+        else ValueNone
     
     /// 0100 0100 11 mmm rrr : MOVE <ea>,CCR (unprivileged, unlike MOVE <ea>,SR - only the low
     /// byte of the source word replaces the condition codes, S/T/interrupt-mask are untouched)
+    [<return: Struct>]
     let (|Move2CCR|_|) data =
         if data &&& 0b1111111111000000 = 0b0100010011000000 then
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
-            Some(mode, register)
-        else None
+            ValueSome(struct (mode, register))
+        else ValueNone
 
     /// 0100 ddd 110 mmm rrr : CHK.W <ea>,Dn - trap to vector 6 if Dn.w < 0 or Dn.w > <ea>.w
     /// (size bits [8-7] = 11 for .w on the 68000; 10 = .l is 68020+, not decoded here).
+    [<return: Struct>]
     let (|CHK|_|) data =
         if data &&& 0b1111000111000000 = 0b0100000110000000 then
             let dn = byte (data >>> 9) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(dn, eamode, eareg)
-        else None
+            ValueSome(struct (dn, eamode, eareg))
+        else ValueNone
 
     /// 0100 0000 11 mmm rrr : MOVE SR,<ea>
+    [<return: Struct>]
     let (|MoveFromSR|_|) data =
         if data &&& 0b1111111111000000 = 0b0100000011000000 then
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(eamode, eareg)
-        else None
+            ValueSome(struct (eamode, eareg))
+        else ValueNone
 
     /// 0000 0000 0111 1100 : ORI #<data>,SR
+    [<return: Struct>]
     let (|OriToSR|_|) data =
-        if data = 0b0000000001111100 then Some()
-        else None
+        if data = 0b0000000001111100 then ValueSome()
+        else ValueNone
 
     /// 0000 0010 0111 1100 : ANDI #<data>,SR
+    [<return: Struct>]
     let (|AndiToSR|_|) data =
-        if data = 0b0000001001111100 then Some()
-        else None
+        if data = 0b0000001001111100 then ValueSome()
+        else ValueNone
 
     /// 0000 1010 0011 1100 : EORI #<data>,CCR
+    [<return: Struct>]
     let (|EoriToCcr|_|) data =
-        if data = 0b0000101000111100 then Some()
-        else None
+        if data = 0b0000101000111100 then ValueSome()
+        else ValueNone
 
     /// 0000 0000 0011 1100 : ORI #<data>,CCR
+    [<return: Struct>]
     let (|OriToCcr|_|) data =
-        if data = 0b0000000000111100 then Some()
-        else None
+        if data = 0b0000000000111100 then ValueSome()
+        else ValueNone
 
     /// 0000 0010 0011 1100 : ANDI #<data>,CCR
+    [<return: Struct>]
     let (|AndiToCcr|_|) data =
-        if data = 0b0000001000111100 then Some()
-        else None
+        if data = 0b0000001000111100 then ValueSome()
+        else ValueNone
 
     /// 0000 1010 0111 1100 : EORI #<data>,SR
+    [<return: Struct>]
     let (|EoriToSR|_|) data =
-        if data = 0b0000101001111100 then Some()
-        else None
+        if data = 0b0000101001111100 then ValueSome()
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|Reset|_|) data =
-        if data = 0b0100111001110000 then Some()
-        else None
+        if data = 0b0100111001110000 then ValueSome()
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|NOP|_|) data =
-        if data = 0b0100111001110001 then Some()
-        else None
+        if data = 0b0100111001110001 then ValueSome()
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|RTS|_|) data =
-        if data = 0b0100111001110101 then Some()
-        else None
+        if data = 0b0100111001110101 then ValueSome()
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|RTE|_|) data =
-        if data = 0b0100111001110011 then Some()
-        else None
+        if data = 0b0100111001110011 then ValueSome()
+        else ValueNone
 
     /// 0100 1110 0111 0111 : RTR - restore CCR and PC from the stack
+    [<return: Struct>]
     let (|RTR|_|) data =
-        if data = 0b0100111001110111 then Some()
-        else None
+        if data = 0b0100111001110111 then ValueSome()
+        else ValueNone
 
     /// 0100 1110 0111 0110 : TRAPV - trap to vector 7 if V is set
+    [<return: Struct>]
     let (|TRAPV|_|) data =
-        if data = 0b0100111001110110 then Some()
-        else None
+        if data = 0b0100111001110110 then ValueSome()
+        else ValueNone
 
     /// 0100 1110 0100 nnnn : TRAP #<vector>
+    [<return: Struct>]
     let (|TRAP|_|) data =
         if data &&& 0b1111111111110000 = 0b0100111001000000 then
             let vector = byte data &&& 0b1111uy
-            Some(vector)
-        else None
+            ValueSome(vector)
+        else ValueNone
 
     /// 0100 1010 1111 1100 ($4AFC) : ILLEGAL - the one opcode in the "TAS-shaped" 0100 1010 11
     /// mmm rrr slot (mmm=111 rrr=100, i.e. the immediate-addressing-mode encoding TAS itself
@@ -173,83 +195,96 @@ module Instructions =
     /// exclusion - most of "unimplemented" opcode space is real, valid 68000 instructions this
     /// project hasn't implemented yet and must keep failing loudly (selftest's `unimpl` count),
     /// not silently start illegal-trapping.
+    [<return: Struct>]
     let (|Illegal|_|) data =
-        if data = 0x4AFC || data = 0x4E7A || data = 0x4E7B then Some() else None
+        if data = 0x4AFC || data = 0x4E7A || data = 0x4E7B then ValueSome() else ValueNone
 
     /// 0100 1110 0110 d rrr : MOVE An,USP (d=0) / MOVE USP,An (d=1)
+    [<return: Struct>]
     let (|MoveUsp|_|) data =
         if data &&& 0b1111111111110000 = 0b0100111001100000 then
             let direction = byte (data >>> 3) &&& 0b1uy
             let register = byte data &&& 0b111uy
-            Some(direction, register)
-        else None
+            ValueSome(struct (direction, register))
+        else ValueNone
 
     /// 0100 1110 0101 0 rrr : LINK An,#<displacement>
+    [<return: Struct>]
     let (|LINK|_|) data =
         if data &&& 0b1111111111111000 = 0b0100111001010000 then
             let register = byte data &&& 0b111uy
-            Some(register)
-        else None
+            ValueSome(register)
+        else ValueNone
 
     /// 0100 1110 0101 1 rrr : UNLK An
+    [<return: Struct>]
     let (|UNLK|_|) data =
         if data &&& 0b1111111111111000 = 0b0100111001011000 then
             let register = byte data &&& 0b111uy
-            Some(register)
-        else None
+            ValueSome(register)
+        else ValueNone
+        
+    [<return: Struct>]
         
     let (|CMPI|_|) data =
         if (data &&& 0b1111111100000000) = 0b0000110000000000 then
             let size = byte (data &&& 0b0000000011000000) >>> 6
             let mode = byte (data &&& 0b0000000000111000) >>> 3
             let register = byte (data &&& 0b0000000000000111)
-            Some(size, mode, register)
-        else None
+            ValueSome(struct (size, mode, register))
+        else ValueNone
         
     /// 0000 0000 ss mmm rrr : ORI #<data>,<ea>
+    [<return: Struct>]
     let (|ORI|_|) data =
         if data &&& 0b1111111100000000 = 0b0000000000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
-            Some(size, mode, register)
-        else None
+            ValueSome(struct (size, mode, register))
+        else ValueNone
 
     /// 0000 0010 ss mmm rrr : ANDI #<data>,<ea>
+    [<return: Struct>]
     let (|ANDI|_|) data =
         if data &&& 0b1111111100000000 = 0b0000001000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
-            Some(size, mode, register)
-        else None
+            ValueSome(struct (size, mode, register))
+        else ValueNone
 
     /// 0000 0110 ss mmm rrr : ADDI #<data>,<ea>
+    [<return: Struct>]
     let (|ADDI|_|) data =
         if data &&& 0b1111111100000000 = 0b0000011000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
-            Some(size, mode, register)
-        else None
+            ValueSome(struct (size, mode, register))
+        else ValueNone
 
     /// 0000 0100 ss mmm rrr : SUBI #<data>,<ea>
+    [<return: Struct>]
     let (|SUBI|_|) data =
         if data &&& 0b1111111100000000 = 0b0000010000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
-            Some(size, mode, register)
-        else None
+            ValueSome(struct (size, mode, register))
+        else ValueNone
 
     /// 0000 1010 ss mmm rrr : EORI #<data>,<ea>
+    [<return: Struct>]
     let (|EORI|_|) data =
         if data &&& 0b1111111100000000 = 0b0000101000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
-            Some(size, mode, register)
-        else None
+            ValueSome(struct (size, mode, register))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|LEA|_|) data =
         //0100 rrr1 11ss sSSS
@@ -257,8 +292,10 @@ module Instructions =
             let register = byte (data >>> 9) &&& 0b111uy
             let mode = byte (data >>> 3) &&& 0b111uy
             let register2 = byte data &&& 0b111uy
-            Some(register, mode, register2)
-        else None
+            ValueSome(struct (register, mode, register2))
+        else ValueNone
+        
+    [<return: Struct>]
         
     let (|BCC|_|) data =
         //sample:
@@ -267,13 +304,14 @@ module Instructions =
         
         if data &&& 0b1111000000000000 = 0b0110000000000000 then
             let condition : Condition = enum (data &&& 0b0000111100000000) >>> 8
-            Some(condition, byte (data &&& 0b0000000011111111))
-        else None
+            ValueSome(struct (condition, byte (data &&& 0b0000000011111111)))
+        else ValueNone
   
     /// 1001 xxx 1 ss 00 0 yyy : SUBX.size Dy,Dx  /  ...00 1 yyy : SUBX.size -(Ay),-(Ax)
     /// Same opcode-space alias as ADDX vs ADD: opmode 100/101/110 (Dn->ea direction) with eamode
     /// 000/001 is reserved for SUBX, so it must be tried before the generic SUB pattern below.
     /// size=11 is opmode 111 (SUBA.L), not a SUBX size - falls through to SUB.
+    [<return: Struct>]
     let (|SUBX|_|) data =
         if data &&& 0b1111000100110000 = 0b1001000100000000 then
             let size = byte (data >>> 6) &&& 0b11uy
@@ -281,9 +319,11 @@ module Instructions =
                 let registerX = byte (data >>> 9) &&& 0b111uy
                 let usePredecrement = data &&& 0b0000000000001000 <> 0
                 let registerY = byte data &&& 0b111uy
-                Some(registerX, size, usePredecrement, registerY)
-            else None
-        else None
+                ValueSome(struct (registerX, size, usePredecrement, registerY))
+            else ValueNone
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|SUB|_|) data =
         //1001101111001101
@@ -297,8 +337,8 @@ module Instructions =
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
             //printfn "%s" data.toBits
-            Some(register, opmode, eamode, eareg)
-        else None
+            ValueSome(struct (register, opmode, eamode, eareg))
+        else ValueNone
         
     /// 1100 xxx1 ooooo yyy : EXG (mode: 01000=Dx,Dy 01001=Ax,Ay 10001=Dx,Ay)
     /// Shares AND's top nibble but occupies EA-mode values that are otherwise illegal for AND,
@@ -311,14 +351,17 @@ module Instructions =
     /// hardware. Distinct from ShiftRotate below (the Dn-direct, immediate/register-count form),
     /// which explicitly excludes this size=11 encoding - see that pattern's own comment.
     /// (ooo: 000=AS,001=LS,010=ROXd,011=ROd; d: 0=right,1=left)
+    [<return: Struct>]
     let (|MemoryShiftRotate|_|) data =
         if data &&& 0b1111000011000000 = 0b1110000011000000 then
             let shiftType = byte (data >>> 9) &&& 0b111uy
             let direction = byte (data >>> 8) &&& 0b1uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(shiftType, direction, eamode, eareg)
-        else None
+            ValueSome(struct (shiftType, direction, eamode, eareg))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|ShiftRotate|_|) data =
         if data &&& 0b1111000000000000 = 0b1110000000000000 && (byte (data >>> 6) &&& 0b11uy) <> 0b11uy then
@@ -328,11 +371,12 @@ module Instructions =
             let useRegisterCount = byte (data >>> 5) &&& 0b1uy
             let shiftType = byte (data >>> 3) &&& 0b11uy
             let register = byte data &&& 0b111uy
-            Some(countOrReg, direction, size, useRegisterCount, shiftType, register)
-        else None
+            ValueSome(struct (countOrReg, direction, size, useRegisterCount, shiftType, register))
+        else ValueNone
 
     /// 0000 rrr1 oo mmm rrr : BTST/BCHG/BCLR/BSET Dn,<ea>  (oo: 00=BTST,01=BCHG,10=BCLR,11=BSET)
     /// EAmode=001 (An) is illegal for bit ops and is reserved for MOVEP instead - excluded here.
+    [<return: Struct>]
     let (|BitOpDynamic|_|) data =
         if data &&& 0b1111000100000000 = 0b0000000100000000 then
             let eamode = byte (data >>> 3) &&& 0b111uy
@@ -340,11 +384,12 @@ module Instructions =
                 let register = byte (data >>> 9) &&& 0b111uy
                 let opmode = byte (data >>> 6) &&& 0b11uy
                 let eareg = byte data &&& 0b111uy
-                Some(register, opmode, eamode, eareg)
-            else None
-        else None
+                ValueSome(struct (register, opmode, eamode, eareg))
+            else ValueNone
+        else ValueNone
 
     /// 0101 ddd0 ssmmmrrr : ADDQ #<data>,<ea>  (size 11 is reserved for Scc/DBcc, excluded here)
+    [<return: Struct>]
     let (|ADDQ|_|) data =
         if data &&& 0b1111000100000000 = 0b0101000000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
@@ -352,11 +397,12 @@ module Instructions =
                 let quickData = byte (data >>> 9) &&& 0b111uy
                 let eamode = byte (data >>> 3) &&& 0b111uy
                 let eareg = byte data &&& 0b111uy
-                Some(quickData, size, eamode, eareg)
-            else None
-        else None
+                ValueSome(struct (quickData, size, eamode, eareg))
+            else ValueNone
+        else ValueNone
 
     /// 0101 ddd1 ssmmmrrr : SUBQ #<data>,<ea>  (size 11 is reserved for Scc/DBcc, excluded here)
+    [<return: Struct>]
     let (|SUBQ|_|) data =
         if data &&& 0b1111000100000000 = 0b0101000100000000 then
             let size = byte (data >>> 6) &&& 0b11uy
@@ -364,9 +410,11 @@ module Instructions =
                 let quickData = byte (data >>> 9) &&& 0b111uy
                 let eamode = byte (data >>> 3) &&& 0b111uy
                 let eareg = byte data &&& 0b111uy
-                Some(quickData, size, eamode, eareg)
-            else None
-        else None
+                ValueSome(struct (quickData, size, eamode, eareg))
+            else ValueNone
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|OR|_|) data =
         //1000 reg opm EAm EAr : OR/DIVU/DIVS
@@ -380,9 +428,11 @@ module Instructions =
             let opmode = byte (data >>> 6) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            if opmode = 0b011uy || opmode = 0b111uy then None
-            else Some(register, opmode, eamode, eareg)
-        else None
+            if opmode = 0b011uy || opmode = 0b111uy then ValueNone
+            else ValueSome(struct (register, opmode, eamode, eareg))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|DIVU|_|) data =
         //1000 reg 011 EAm EAr : DIVU.W <ea>,Dn
@@ -390,8 +440,10 @@ module Instructions =
             let register = byte (data >>> 9) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(register, eamode, eareg)
-        else None
+            ValueSome(struct (register, eamode, eareg))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|DIVS|_|) data =
         //1000 reg 111 EAm EAr : DIVS.W <ea>,Dn
@@ -399,8 +451,10 @@ module Instructions =
             let register = byte (data >>> 9) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(register, eamode, eareg)
-        else None
+            ValueSome(struct (register, eamode, eareg))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|EXG|_|) data =
         if data &&& 0b1111000100000000 = 0b1100000100000000 then
@@ -408,9 +462,11 @@ module Instructions =
             if mode = 0b01000uy || mode = 0b01001uy || mode = 0b10001uy then
                 let rx = byte (data >>> 9) &&& 0b111uy
                 let ry = byte data &&& 0b111uy
-                Some(rx, mode, ry)
-            else None
-        else None
+                ValueSome(struct (rx, mode, ry))
+            else ValueNone
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|AND|_|) data =
         //1100 reg opm EAm EAr : AND/MULU/MULS
@@ -424,9 +480,11 @@ module Instructions =
             let opmode = byte (data >>> 6) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            if opmode = 0b011uy || opmode = 0b111uy then None
-            else Some(register, opmode, eamode, eareg)
-        else None
+            if opmode = 0b011uy || opmode = 0b111uy then ValueNone
+            else ValueSome(struct (register, opmode, eamode, eareg))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|MULU|_|) data =
         //1100 reg 011 EAm EAr : MULU.W <ea>,Dn
@@ -434,8 +492,10 @@ module Instructions =
             let register = byte (data >>> 9) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(register, eamode, eareg)
-        else None
+            ValueSome(struct (register, eamode, eareg))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|MULS|_|) data =
         //1100 reg 111 EAm EAr : MULS.W <ea>,Dn
@@ -443,14 +503,15 @@ module Instructions =
             let register = byte (data >>> 9) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(register, eamode, eareg)
-        else None
+            ValueSome(struct (register, eamode, eareg))
+        else ValueNone
 
     /// 1101 xxx 1 ss 00 0 yyy : ADDX.size Dy,Dx (register-direct form)
     /// 1101 xxx 1 ss 00 1 yyy : ADDX.size -(Ay),-(Ax) (memory, predecrement form)
     /// Opcode-space alias: opmode 100/101/110 (byte/word/long, Dn->ea direction) combined with
     /// eamode 000/001 is reserved for ADDX, not plain ADD - must be tried before the generic ADD
     /// pattern below, same reasoning as EXG vs AND - see [[68k-opcode-space-aliasing]].
+    [<return: Struct>]
     let (|ADDX|_|) data =
         if data &&& 0b1111000100110000 = 0b1101000100000000 then
             let size = byte (data >>> 6) &&& 0b11uy
@@ -460,9 +521,11 @@ module Instructions =
                 let registerX = byte (data >>> 9) &&& 0b111uy
                 let usePredecrement = data &&& 0b0000000000001000 <> 0
                 let registerY = byte data &&& 0b111uy
-                Some(registerX, size, usePredecrement, registerY)
-            else None
-        else None
+                ValueSome(struct (registerX, size, usePredecrement, registerY))
+            else ValueNone
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|ADD|_|) data =
         //1101 reg opm EAm EAr : ADD/ADDA/ADDX
@@ -475,27 +538,31 @@ module Instructions =
             let opmode = byte (data >>> 6) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(register, opmode, eamode, eareg)
-        else None
+            ValueSome(struct (register, opmode, eamode, eareg))
+        else ValueNone
 
     /// 0101 cccc 11001 rrr : DBcc Dr,<disp>
+    [<return: Struct>]
     let (|DBcc|_|) data =
         if data &&& 0b1111000011111000 = 0b0101000011001000 then
             let condition : Condition = enum (data &&& 0b0000111100000000) >>> 8
             let register = byte data &&& 0b111uy
-            Some(condition, register)
-        else None
+            ValueSome(struct (condition, register))
+        else ValueNone
 
     /// 0101 cccc 11 EEE eee : Scc <ea> (EAmode=001 is DBcc instead, not Scc)
+    [<return: Struct>]
     let (|Scc|_|) data =
         if data &&& 0b1111000011000000 = 0b0101000011000000 then
             let eamode = byte (data >>> 3) &&& 0b111uy
             if eamode <> 0b001uy then
                 let condition : Condition = enum (data &&& 0b0000111100000000) >>> 8
                 let eareg = byte data &&& 0b111uy
-                Some(condition, eamode, eareg)
-            else None
-        else None
+                ValueSome(struct (condition, eamode, eareg))
+            else ValueNone
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|CMP|_|) data =
         //1011 rrr opm EAmEAr : CMP/CMPA/EOR
@@ -508,8 +575,10 @@ module Instructions =
             let opmode = byte (data >>> 6) &&& 0b111uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(register, opmode, eamode, eareg)
-        else None
+            ValueSome(struct (register, opmode, eamode, eareg))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|JSR|_|) data =
         //0100111010sssSSS
@@ -517,8 +586,10 @@ module Instructions =
         if data &&& 0b1111111111000000 = 0b0100111010000000 then
             let eaMode = byte (data >>> 3) &&& 0b111uy
             let eaReg = byte (data &&& 0b111)
-            Some(eaMode, eaReg)
-        else None
+            ValueSome(struct (eaMode, eaReg))
+        else ValueNone
+
+    [<return: Struct>]
 
     let (|JMP|_|) data =
         //0100111011sssSSS
@@ -528,12 +599,13 @@ module Instructions =
         if data &&& 0b1111111111000000 = 0b0100111011000000 then
             let eaMode = byte (data >>> 3) &&& 0b111uy
             let eaReg = byte (data &&& 0b111)
-            Some(eaMode, eaReg)
-        else None
+            ValueSome(struct (eaMode, eaReg))
+        else ValueNone
     
     ///Represents the move instuction
     ///size, dest_reg, dest_mode, source_mode, source_reg 
     ///00zzdddDDDsssSSS
+    [<return: Struct>]
     let (|Move|_|) (data: int) = 
         let inline byteWordOrLong b =
             match b with 0b01 | 0b11 | 0b10 -> true | _ -> false
@@ -558,39 +630,42 @@ module Instructions =
             //which crashed inside the TryFastForwardTbdrPoll probe (68k.fs) before the normal
             //decode path could run and raise an exception the program might handle. The main
             //decoder resolves the destination EA itself via ResolveEa and never consumed this.
-            if dest_mode = 0b111uy && dest_reg > 0b001uy then None
-            else Some(size, dest_reg, dest_mode, source_mode, source_reg)
-        else None
+            if dest_mode = 0b111uy && dest_reg > 0b001uy then ValueNone
+            else ValueSome(struct (size, dest_reg, dest_mode, source_mode, source_reg))
+        else ValueNone
         
     /// 0000 1000 00ss sSSS:00: BTST    #1,s[!Areg]
     ///return EA mode, EA register
+    [<return: Struct>]
     let (|BTSTImmediate|_|) data =
         if data &&& 0b1111111111000000 = 0b0000100000000000 then
             let mode = byte (data >>> 3) &&& 0b111uy
             let register = byte data &&& 0b111uy
-            Some(mode,register)
-        else None
+            ValueSome(struct (mode,register))
+        else ValueNone
 
     /// 0000 1000 oo mmm rrr : BCHG/BCLR/BSET #<bit>,<ea>  (oo: 01=BCHG,10=BCLR,11=BSET - oo=00 is
     /// BTST, already handled by the dedicated BTSTImmediate above)
+    [<return: Struct>]
     let (|BitOpImmediate|_|) data =
         if data &&& 0b1111111100000000 = 0b0000100000000000 then
             let opmode = byte (data >>> 6) &&& 0b11uy
             if opmode <> 0b00uy then
                 let mode = byte (data >>> 3) &&& 0b111uy
                 let register = byte data &&& 0b111uy
-                Some(opmode, mode, register)
-            else None
-        else None
+                ValueSome(struct (opmode, mode, register))
+            else ValueNone
+        else ValueNone
 
     /// 0111 rrr0 dddddddd: MOVEQ #<data>,Dr
     ///return dest register, 8-bit signed data
+    [<return: Struct>]
     let (|MOVEQ|_|) data =
         if data &&& 0b1111000100000000 = 0b0111000000000000 then
             let register = byte (data >>> 9) &&& 0b111uy
             let data8 = sbyte (data &&& 0xff)
-            Some(register, data8)
-        else None
+            ValueSome(struct (register, data8))
+        else ValueNone
 
     /// 0111 rrr1 dddddddd: the bit-8-set half of MOVEQ's own opcode space (line 0111 has no other
     /// valid 68000 instruction), which real 68000 hardware traps to vector 4 like any other
@@ -599,48 +674,54 @@ module Instructions =
     /// the $4E7A one: it installs its own vector-4 handler then executes this to trigger it. Kept
     /// as its own pattern rather than folded into the cross-bucket Illegal pattern above because
     /// DecodeBucket7 (unlike DecodeBucket4) has no other Illegal-trapping case to attach it to.
+    [<return: Struct>]
     let (|ReservedMoveq|_|) data =
-        if data &&& 0b1111000100000000 = 0b0111000100000000 then Some() else None
+        if data &&& 0b1111000100000000 = 0b0111000100000000 then ValueSome() else ValueNone
     
     
     /// 0100 0000 ss mmm rrr : NEGX (negate with extend: dest = 0 - dest - X).
     /// size 11 in this shape is MOVE from SR (0100 0000 11 mmm rrr), not NEGX - excluded.
+    [<return: Struct>]
     let (|NEGX|_|) data =
         if data &&& 0b1111111100000000 = 0b0100000000000000 && data &&& 0b0000000011000000 <> 0b0000000011000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(size, eamode, eareg)
-        else None
+            ValueSome(struct (size, eamode, eareg))
+        else ValueNone
 
     /// 0100 0010 ss mmm rrr : CLR
+    [<return: Struct>]
     let (|CLR|_|) data =
         if data &&& 0b1111111100000000 = 0b0100001000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(size, eamode, eareg)
-        else None
+            ValueSome(struct (size, eamode, eareg))
+        else ValueNone
 
     /// 0100 0100 ss mmm rrr : NEG (two's complement negation)
+    [<return: Struct>]
     let (|NEG|_|) data =
         if data &&& 0b1111111100000000 = 0b0100010000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(size, eamode, eareg)
-        else None
+            ValueSome(struct (size, eamode, eareg))
+        else ValueNone
 
     /// 0100 0110 ss mmm rrr : NOT (one's complement)
+    [<return: Struct>]
     let (|NOT|_|) data =
         if data &&& 0b1111111100000000 = 0b0100011000000000 then
             let size = byte (data >>> 6) &&& 0b11uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(size, eamode, eareg)
-        else None
+            ValueSome(struct (size, eamode, eareg))
+        else ValueNone
 
     /// 0100 1010 ss mmm rrr : TST
+    [<return: Struct>]
     let (|TST|_|) data =
         // size = 0b11 in this opcode slot is TAS (byte test-and-set), not TST - matched separately
         // below so TST only ever sees the .b/.w/.l sizes.
@@ -648,31 +729,34 @@ module Instructions =
             let size = byte (data >>> 6) &&& 0b11uy
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(size, eamode, eareg)
-        else None
+            ValueSome(struct (size, eamode, eareg))
+        else ValueNone
 
     /// 0100 1010 11 mmm rrr : TAS - byte test-and-set. Reads the operand byte, sets N/Z from it,
     /// then writes it back with bit 7 forced to 1. mmm=111,rrr=100 (0x4AFC) is ILLEGAL, not TAS.
+    [<return: Struct>]
     let (|TAS|_|) data =
         if data &&& 0b1111111111000000 = 0b0100101011000000 && data <> 0x4AFC then
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(eamode, eareg)
-        else None
+            ValueSome(struct (eamode, eareg))
+        else ValueNone
 
     /// 0000 ddd1 oo 001 aaa : MOVEP
+    [<return: Struct>]
     let (|MOVEP|_|) data =
         if data &&& 0b1111000100111000 = 0b0000000100001000 then
             let register = byte (data >>> 9) &&& 0b111uy
             let opmode = byte (data >>> 6) &&& 0b111uy
             let addressReg = byte data &&& 0b111uy
-            Some(register, opmode, addressReg)
-        else None
+            ValueSome(struct (register, opmode, addressReg))
+        else ValueNone
 
     /// 0100 1d00 1s mmm rrr : MOVEM  (d: 0=reg->mem, 1=mem->reg; s: 0=word, 1=long)
     /// EAmode=000 (Dn direct) is illegal for MOVEM's memory-list operand and is reserved for EXT
     /// instead - see [[68k-opcode-space-aliasing]]. Excluded here so the two patterns are
     /// mutually exclusive by construction.
+    [<return: Struct>]
     let (|MOVEM|_|) data =
         if data &&& 0b1111101110000000 = 0b0100100010000000 then
             let eamode = byte (data >>> 3) &&& 0b111uy
@@ -680,44 +764,48 @@ module Instructions =
                 let direction = byte (data >>> 10) &&& 0b1uy
                 let size = byte (data >>> 6) &&& 0b1uy
                 let eareg = byte data &&& 0b111uy
-                Some(direction, size, eamode, eareg)
-            else None
-        else None
+                ValueSome(struct (direction, size, eamode, eareg))
+            else ValueNone
+        else ValueNone
 
     /// 0100 1000 00 mmm rrr : NBCD <ea> - negate packed-BCD byte (dest = 0 - dest - X, decimal).
+    [<return: Struct>]
     let (|NBCD|_|) data =
         if data &&& 0b1111111111000000 = 0b0100100000000000 then
             let eamode = byte (data >>> 3) &&& 0b111uy
             let eareg = byte data &&& 0b111uy
-            Some(eamode, eareg)
-        else None
+            ValueSome(struct (eamode, eareg))
+        else ValueNone
 
     /// 0100 1000 1s 000 rrr : EXT (s: 0=EXT.W byte->word, 1=EXT.L word->long, sign-extend Dn in place)
+    [<return: Struct>]
     let (|EXT|_|) data =
         if data &&& 0b1111111110111000 = 0b0100100010000000 then
             let size = byte (data >>> 6) &&& 0b1uy
             let register = byte data &&& 0b111uy
-            Some(size, register)
-        else None
+            ValueSome(struct (size, register))
+        else ValueNone
 
     /// 0100 1000 0100 0 rrr : SWAP Dn (swap the two 16-bit halves of a data register)
+    [<return: Struct>]
     let (|SWAP|_|) data =
         if data &&& 0b1111111111111000 = 0b0100100001000000 then
             let register = byte data &&& 0b111uy
-            Some register
-        else None
+            ValueSome register
+        else ValueNone
 
     /// 0100 1000 01 mmm rrr : PEA <ea> (push the effective address, not its contents, onto the stack)
     /// EAmode=000 (Dn direct) is illegal for PEA (control addressing modes only) and is reserved
     /// for SWAP instead - see [[68k-opcode-space-aliasing]]. Excluded here so the two patterns are
     /// mutually exclusive by construction.
+    [<return: Struct>]
     let (|PEA|_|) data =
         if data &&& 0b1111111111000000 = 0b0100100001000000 then
             let eamode = byte (data >>> 3) &&& 0b111uy
             if eamode <> 0b000uy then
                 let eareg = byte data &&& 0b111uy
-                Some(eamode, eareg)
-            else None
-        else None
+                ValueSome(struct (eamode, eareg))
+            else ValueNone
+        else ValueNone
 
     /// 0000 rrr1 00ss sSSS:00: BTST    Dr,s[!Areg]
