@@ -942,7 +942,8 @@ In "Between Pages 1-5" (`$57ffe` = player = side 1; enemy = side 2 with two
 sub-leaders in `$4e514`), across a **250M-step** watched resume (~1000 sim
 ticks) the only writes to `$58016`..`$58033` were `$6a3a`'s per-tick clear of
 `byte1`/`word2`. **No command slot's `byte4` ever reached 4; no order was ever
-issued.** The lone enemy captain sat on its standing patrol objective the whole
+issued.** The lone enemy captain stayed in its standing state (inferred idle, group state 6: the
+player's own group is in state 6 in 6 of 6 snapshots of `py/group_states.py`; no snapshot holds side 2's group) the whole
 time. Mission 1 is a tutorial and its enemy AI is near-dormant.
 
 The `$6564` path above was read statically and then **confirmed by force**:
@@ -1416,6 +1417,7 @@ Everything above, decoupled from the 68000 and from the 2.6 Hz tick, as one
 loop. This is the whole autonomous AI — there is nothing else.
 
 ```python
+IDLE = 6                                           # group state 6: idle (the player's group sits in it, 6 of 6 snapshots)
 # ---- once per simulation tick (~2.6 Hz on the ST; compute-bound) --------
 def sim_tick(world):
     for side in world.sides:                       # $6522: the "commander AI"
@@ -1432,11 +1434,11 @@ def sim_tick(world):
             if obj.owner_side <= 0 or obj.link != 0:
                 continue
             # 1. scripted campaign order, if this mission has one ($6762)
-            if obj.state == PATROL and world.clock >= obj.wait_at + 20:
+            if obj.state == IDLE and world.clock >= obj.wait_at + 20:
                 if world.campaign_order.id == obj.camp_id:
                     obj.posture = world.campaign_order.sub or (world.tick & 3) + 2
                     slot.emit(world.campaign_order.type, obj.target.cell); break
-            if obj.state not in (PATROL, 9): continue
+            if obj.state not in (IDLE, 9): continue
             # 2. a small group goes to its own best town for men ($69b4(8))
             if obj.men < 22:
                 tgt = nearest_own_lord(obj, word=FIELD_TROOPS, weight=lambda L: L.troops_field)   # troops_field > 1

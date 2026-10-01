@@ -75,7 +75,7 @@ player's own town moves `food >> shift` (22 → 11) into the army's `36(group)`
 /* 2*/  u16  chain_head;       // -> $4f916 first settlement of this lord's nation (walk via +8)
 /* 4*/  u16  cell;             // packed {x:6,y:7}
 /* 6*/  u16  food;             // <<< the lord's food store (124th; was read as troops_reserve)
-/* 8*/  u16  troops_field;     // <<< men at home: this lord's men (home settlement `34(man)` → `$4f916 + 14`) whose byte-7 bit 6 is clear, i.e. not in a group roster; joining an army (`$152d4`) takes one off, leaving it (`$1b8c`) puts one back
+/* 8*/  u16  troops_field;     // <<< men at home: this lord's men (home settlement `34(man)` → `$4f916 + 14`) whose byte-7 bit 6 is clear, i.e. not in a group roster, and, for the one leader-flag man (byte-7 bit 4) a lord may have, only while `42(man) == 0` (leads no group; counted 144 of 144, and the leader-flag men with `42 != 0` are not counted in 874 of 879, the 5 others in pre-game map snapshots; whole-corpus rule 2280 of 2280 exact over the game snapshots, `py/troops_rule.py`, instances rather than independent lords; why the count follows the group link is inferred); joining an army (`$152d4`) takes one off, leaving it (`$1b8c`) puts one back
 /*12*/  u16  gather_kind;      // $5cde: {2,6,8,$a,$e} fell trees, 4 workshop loop, $c field path -- the lord's current work order ($5cde, read by $600a)
 /*14*/  s16  loyalty_pressure; // ramps +2 (field*4 >= food: hunger) / -1 per settlement pulse; +16>>shift when an army takes food, -8 when one drops food or goods; >=600 -> $550e defection, reset 300
 /*16*/  u16  herd_throttle;    // $60dc countdown; $5cde reloads $580a6[side].word8 + 4 (+$2000 if gather_kind >= $e and the reload >= the old value)
@@ -102,7 +102,7 @@ accumulator** (§6). +24..31 are the goods counters (§2a).
 | `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-7-set, bit-6-clear arm). *(**Proven, 99th** — `$37c2` + its `$1d70`/`$1b8c`/`$17a46` leaves differential-tested vs the real 68000, 1847/1847 over 13 states; reached via `$3c08`'s flag-bit-4 teardown sub-path. The inverse `+= 1` on the bit-6-set arm is `$1b8c`'s `$1c04`.)* |
 | `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
 | `$2644` | `$25d6`, from `$5c2c` after a revolt | the garrison man's old leader: `troops_field -= 1`, only when the man led no group (land 60: leader 4, 18 → 17, `scratchpad/pm121/flip/`). *(Proven, 122nd, `diff_revolt.py`.)* |
-| `$42be` | `$3e06` tail, courier/arrow array | `troops_field += 1` for the lord of the object's own settlement after `5(A0) :=` that settlement's side byte (fired 6 times in 2 x 150M steps): read as a man becoming a home man; the earlier "died and credited a leader" reading is unverified and its caller is not traced (136th) |
+| `$42be` | `$4244`, the player's-pigeon landing arm of `$3e06`'s effect-array loop (sole caller `$13052`; only the first record `$4c112` takes the arm) | **a dead man's record revived (137th, counted 6 of 6 hits, `scratchpad/pm137/B_42be/probe42be.py`)**: the record at `20(pigeon)` is the dead man whose `$1623c` countdown served the pigeon request (side byte negative, byte 6 `$0a` or `$20`, 6 of 6 launches); on landing `$4244` makes it live again (`neg.b 5`, byte-7 bits 4..6 cleared, byte 14 `:= $c`, repositioned to the pigeon's landing point, mode by `$3c08`), `5(A0) :=` its home settlement's side, then `$42be` adds 1 to that settlement's lord. Live persons +1 and one entity record changed at every hit. Neither a kill credit nor a settlement birth; whether the death path had already taken the man off `troops_field` is inferred, not counted |
 | — | `$d322` per tick | reads both, never writes; totals into `$57fba` |
 
 So a lord's food store fills when his fishermen deliver a catch (`$60`), when disbanded men
@@ -405,8 +405,14 @@ mode `$8e` (`fight_ge`, `$160e4`: swap, then back to `$2c`), runs the shared tai
 `goods`, (b) the first non-zero of `goods[2]`, `[1]`, `[0]` (bow, sword, pike) is taken into byte 44, (c) a farmer (byte 7 bit 0) with `goods[3]` non-zero
 returns his carried item and takes a Plough (byte 33 `:= 8`, `goods[3] -= 1`). It never compares the lord's weapon with the man's own, so he
 ends with the best in stock. The tail has a stale-register bug: D0.w still holds the lord's record offset `14(A0)` when `move.b 44(A1),D0` / `move.b 33(A1),D0`
-run, so for a lord with index >= 8 the returned item is credited `128 * (index >> 3)` bytes further on (lord 8's Plough went to lord 12's `goods[3]`,
-captured live twice; lords 0..7 are unaffected), which breaks goods conservation. Natural counts, `k5_s4` run in 12 stretches of 10M steps
+run, so a returned item is credited `128 * (D0.w >> 8)` bytes further on, i.e. into leader record `lord + 4*(lord>>3)` for lord >= 8 (lord 8's Plough went to
+lord 12's `goods[3]`, captured live twice; lords 0..7 are unaffected), which breaks goods conservation. The rule is exact only with D0 tracked through the whole
+tail (137th, `tools/pm_fsm_ref.py` `call_160f8`, gate `py/gate_equip.py`: 201 states, 385/385 bytes and D0.w/D1.w 201/201, 41 misdirected weapon returns and
+8 misdirected item returns among them): a weapon returned is always misdirected for lord >= 8; the farmer's item return reuses whatever D0.w is left, so it is credited
+correctly if a weapon was taken in the same call (D0.w = 2*(slot+1) <= 6), misdirected if nothing was taken and no weapon returned, and credited correctly for lords 8..15 but
+misdirected from lord 16 up after a weapon return without a take. The take follows the return, so a weapon returned to a higher slot can be re-taken in the same call
+(code read; seen in the synthetic states). Of 48 natural men in `k5_s4`, `k25_s3` and the `pm136` e1/e2 snapshots, 3 carry a weapon and belong to a lord >= 8 (the model and the 68000 agree
+their weapon is credited past the lord). Natural counts, `k5_s4` run in 12 stretches of 10M steps
 (`scratchpad/pm136/equip/run1.sh`): `$16892` 3, 61, 66, 81, 41, 15, 51, 5, 82, 6 hits per stretch, `$160f2` 1, `$1616c` 1 and 2; `m1_s0` 0 (every lord's goods are zero).
 The earlier "`pm75_big.err` caught this, 7×" was the `$1611a` instruction, not a dead unit's weapon.
 
@@ -584,6 +590,9 @@ one tile (`port/SPEC.md` §4 "Seasons": tree frames 15-17, 18-20, 21-23 and 24-2
 are bare, blossoming, leafy and autumn brown), and `$57fd0` steps through them
 once per season fade (118.4M steps). Families whose four slots look unrelated are
 tiles the sheet packs into the same stride-3 layout, not stages of one object.
+The four prop slots are four distinct pictures (`py/family_distinct.py`: 12 of 12 families `r7 = 0..11` have four different
+frames on `k5_s4`), so "four" is right for the prop sheet; the terrain colour tables are the ones with only three distinct sets
+(`graphics.md` "Seasons": spring and autumn share one table, `py/season_tilediff.py`), and the two counts are not the same thing.
 
 **Aside — driving the menus: click timing and the Timer A hang.** Getting to
 `pm114_rand2.snap` needed a click-timing fix: `mouse down`/`mouse up` alone
@@ -833,8 +842,8 @@ Combining §1's flow table with the `pm75_big.err` (~1B steps) / `pm75_w1.err`
 closed set. Food: `$1507c` (`+2`, mode `$16`), `$15e18` (`+4`, mode `$60`), `$3bc0`
 (`+= 36(group)>>shift`, an army drops food), `$150f2` (`-=`, an army takes food),
 `$603e` (`-2`, mode `$42`), `$163b8` (`-1`, settlement pulse). Men
-(`troops_field`): `$1c04` (`+1`, capture, new owner), `$42be` (`+1`, kill
-credit), `$382a` / `$2644` (`-1`, re-parent / old owner on capture). The 124th
+(`troops_field`): `$1c04` (`+1`, capture, new owner), `$42be` (`+1`, a pigeon
+landing revives a dead man's record), `$382a` / `$2644` (`-1`, re-parent / old owner on capture). The 124th
 pass adds the player's order paths, which the AI-only watches could not see:
 order `$14` (`$1cc4` → `$1b8c`) returns dismissed men to `troops_field`, and
 order `$20` (`$3da4`) adds the spy to the target lord's `troops_field`. `$1b8c`
@@ -899,9 +908,10 @@ against a cruel ruler".
       +4  mode $60 fisher's catch ($15e18)        -2  mode $42 gatherers      ($603e)
       +f  army drops food       ($3bc0, order $12) -n army takes food        ($150f2, order $06)
    pm_leader.troops_field  ($4e514 +8)
-      +1  kill credit           ($42be)           -1  capture / re-parent     ($2644/$382a)
+      +1  pigeon revives a dead man ($42be)     -1  capture / re-parent     ($2644/$382a)
       +n  dismissed men / spy   ($1b8c, $3da4)
-                                (no birth term — §6)
+                                (no birth term — §6; the one path that raises the live count without a capture or a dismissal is `$42be`,
+                                 which recycles a dead record)
 ```
 
 ## Traces / artefacts

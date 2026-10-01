@@ -939,8 +939,8 @@ def h_mode7c(m, A1, D6, D7):
 # ================================================================
 
 
-def call_16892(m, A1):
-    """$16892: goods-driven regroup.  Returns True (and has written the record)
+def call_16892(m, A1, D2=0x90):
+    """$16892: goods-driven regroup (D2 = the caller's mode byte: $157d2 passes $90, $4f82 $8e).  Returns True (and has written the record)
     if owner_leader.goods[3..0] has a non-zero entry, else False (record
     untouched)."""
     A0s = (SETTL + s16(m.wu(A1 + 34))) & 0xfffff     # lea $4f916 ; adda.w 34(A1),A0
@@ -953,13 +953,86 @@ def call_16892(m, A1):
             break
     if not hit:
         return False                                # $168ea moveq #0,D0 ; rts
-    m.wb(A1 + 30, 0x90)                             # move.b D2,30(A1)   (D2 = $90 from $157ce)
+    m.wb(A1 + 30, D2)                               # move.b D2,30(A1)
     m.wb(A1 + 31, 0x10)                             # move.b #$10,31(A1)
     cell = m.wu(A0 + 4)                             # move.w 4(A0),D0
     m.wb(A1 + 20, cell & 0x3f)                      # andi.w #$3f,D0 ; move.b D0,20(A1)
     m.wb(A1 + 21, 0x80)                             # move.b #$80,21(A1)
     m.ww(A1 + 22, _unpack_cell_y(cell))             # andi.w #$1fc0,D0 ; lsl.w #2,D0 ; addi.w #$80,D0
     return True                                     # $168e8 moveq #1,D0 ; rts
+
+
+# ================================================================ 137th pass:
+# the equipment-exchange tail $160f8 (modes $90 `townee_g` via $160f2, $8e `fight_ge` via $160e4).
+# Gate: reversing/powermonger/py/gate_equip.py (201 states, 385/385 tracked bytes, D0.w/D1.w 201/201).
+# Includes the original's stale-D0 bug: D0.w keeps the lord offset's high byte (lord>>3) when
+# `move.b 44(A1),D0` / `move.b 33(A1),D0` run, so a returned item is credited 128*(lord>>3) bytes
+# past the lord's goods for lord >= 8 (EQUIP_TRACE gets 'ret44_mis' / 'ret33_mis').
+# ================================================================
+
+
+EQUIP_TRACE = []     # arms taken by the last call_160f8 (corpus bookkeeping; the caller clears it)
+
+
+def _add_b(m, a, delta):
+    """addi.b / subi.b #1 on a byte in memory (wraps at 8 bits)."""
+    m.wb(a & 0xfffff, (m.bu(a & 0xfffff) + delta) & 0xff)
+
+
+def call_160f8(m, A1):
+    """$160f8: equipment exchange tail.  Entry: A1 = the man's record.  Returns (D0.w, D1.w)."""
+    A0 = (SETTL + s16(m.wu(A1 + 34))) & 0xfffff      # lea $4f916,A0 ; adda.w 34(A1),A0
+    D0 = m.wu(A0 + 14)                               # move.w 14(A0),D0   (D0.w = L = 32*lord)
+    A0 = (LEADER + s16(D0)) & 0xfffff                # lea $4e514,A0 ; adda.w D0,A0
+    D0 = (D0 & 0xff00) | m.bu(A1 + 44)               # move.b 44(A1),D0   (high byte of D0.w stays L's)
+    if m.bu(A1 + 44) != 0:                           # beq $16124  (Z from the byte move)
+        EQUIP_TRACE.append("ret44")
+        D0 = (D0 - 2) & 0xffff                       # subi.w #2,D0
+        D0 = D0 >> 1                                 # lsr.w #1,D0
+        if D0 >= 0x80:
+            EQUIP_TRACE.append("ret44_mis")                # credited into another leader record (stale high byte)
+        _add_b(m, A0 + 24 + s16(D0), +1)             # addi.b #1,24(A0,D0.w)   (D0.w sign-extended as index)
+        m.wb(A1 + 44, 0)                             # clr.b 44(A1)
+    D1 = 2                                           # $16124 move.w #2,D1
+    while True:
+        if m.bu(A0 + 24 + D1) != 0:                  # $16128 tst.b 24(A0,D1.w) ; beq $16142 (else fall)
+            _add_b(m, A0 + 24 + D1, -1)              # subi.b #1,24(A0,D1.w)
+            D0 = (D1 + 1) & 0xffff                   # move.w D1,D0 ; addi.w #1,D0
+            D0 = (D0 + D0) & 0xffff                  # add.w D0,D0          (D0.w = 2*(D1+1): bow 6, sword 4, pike 2)
+            m.wb(A1 + 44, D0)                        # move.b D0,44(A1)
+            EQUIP_TRACE.append("take%d" % D1)
+            break                                    # bra $16146
+        D1 = (D1 - 1) & 0xffff                       # $16142 dbf D1,$16128
+        if D1 == 0xffff:                             # counter expired: fall to $16146 with D1.w = $ffff
+            EQUIP_TRACE.append("take_none")
+            break
+    if m.bu(A1 + 7) & 1:                             # $16146 btst #0,7(A1) ; beq $16172   (farmer)
+        if m.bu(A0 + 27) != 0:                       # tst.b 27(A0) ; beq $16172          (goods[3], Plough)
+            D0 = (D0 & 0xff00) | m.bu(A1 + 33)       # move.b 33(A1),D0
+            if m.bu(A1 + 33) != 0:                   # beq $16166
+                EQUIP_TRACE.append("ret33")
+                D0 = (D0 - 2) & 0xffff               # subi.w #2,D0
+                D0 = D0 >> 1                         # lsr.w #1,D0
+                if D0 >= 0x80:
+                    EQUIP_TRACE.append("ret33_mis")        # credited into another leader record (stale high byte)
+                _add_b(m, A0 + 24 + s16(D0), +1)     # addi.b #1,24(A0,D0.w)
+            _add_b(m, A0 + 27, -1)                   # $16166 subi.b #1,27(A0)
+            m.wb(A1 + 33, 8)                         # move.b #8,33(A1)    (Plough)
+            EQUIP_TRACE.append("plough")
+    return D0 & 0xffff, D1 & 0xffff                  # $16172 bra $1622c (iterator continues; D0/D1 stay)
+
+
+def call_160e4(m, A1):
+    """$160e4: arrival in mode $8e: both mode bytes := $2c, then the tail."""
+    m.wb(A1 + 31, 0x2c)                              # move.b #$2c,31(A1)
+    m.wb(A1 + 30, 0x2c)                              # move.b #$2c,30(A1)
+    return call_160f8(m, A1)                         # bra $160f8
+
+
+def call_160f2(m, A1):
+    """$160f2: arrival in mode $90: $3c08 regroup (sets the return-home walk), then the tail."""
+    call_3c08(m, A1)                                 # jsr $3c08
+    return call_160f8(m, A1)                         # falls into $160f8
 
 
 _FLAGBIT_MODE30 = [(7, 0x7e), (0, 0x16), (1, 0x4e), (2, 0x5e), (3, 0x80)]

@@ -52,7 +52,7 @@ against every session's changes.
   each entity decides per tick", A "The entity FSM")
 - **Men are conserved.** A lord's counter is his men at home, not in an army: a man joining an army takes
   one off it, leaving puts one back, capture moves one between lords, and none is born. A side grows only by
-  taking men from another. (E 1, E 6)
+  taking men from another, apart from the pigeon, which revives a dead man's record as a live home man where it lands (E 1, row `$42be`). (E 1, E 6)
 - **Food is the pressure.** Each lord has a food store that his fishermen and returning men fill and his
   settlements eat; each army carries its own food. Armies take food from towns and drop it back;
   taking food angers a town, giving food or goods calms it. A town with at most 4 food per man at
