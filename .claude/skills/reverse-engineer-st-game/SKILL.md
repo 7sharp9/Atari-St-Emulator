@@ -292,6 +292,8 @@ inputs: a hardcoded per-frame correction independent of any input timing, unrela
 trials assumed was a tile-collision wall. Recognize the pattern (uniform failure across varied
 inputs) and switch tools instead of extending the same kind of trial a fourth or fifth time.
 
+**A "no input opens X" verdict is only as strong as the input list: confirm each icon of the object's own panel, and check the z axis.** Cadaver spent the 13th to 33rd passes on a lever "no input opens", holding fire at its stall and watching the player descriptor; fire only opens the object panel, and the lever's own operate icon (7) had to be confirmed with a second press, after which the door opened on the first try (`reversing/cadaver/mechanics.md` §71). Before writing "unreachable", list the object's icons (`probe` returns them), confirm each in turn against a no-panel control from the same snapshot, and read the object's z span next to the mover's: in Cadaver an object resting at z 18..31 on another's 0..17 is never overlapped from the floor, and fire with nothing in front is a jump (peak base z 34), which reaches it (`secrets.md` "The regalia walk"). A single scan of the whole door/flag table (every clearing verb's operand) also shows which doors have a switch at all.
+
 ## 6. Regression net (every commit that touches the emulator)
 
 1. `./run.ps1 -NoBuild verify 5000000`, PASS (re-run 2–3× on a byte-identical FAIL, that's a build-cache race, not a real failure).
