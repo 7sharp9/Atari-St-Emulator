@@ -245,6 +245,14 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   into the game's reference module, move the gates to `reversing/<game>/py/` (corpora stay in
   scratchpad, listed in `ANCHORS.md`), then run all older gates of that module again.
 
+- Chaining segment scripts: a leg that costs nothing in its own agent's run is proven only for that lineage's creature phase. Roaming
+  creatures (Cadaver rooms 38 and 39) move as a function of the steps spent inside their room, so a fixed wait is a lottery that differs
+  per lineage: E2's room 38 walk cost 0 in its own run and 24 when the parent ran it from the real hand-off snapshot. Before merging, run each
+  segment from the previous segment's actual end snapshot, then the whole chain twice and `cmp` every snapshot (Cadaver 88th pass: 427
+  identical). Wait by reading the creature table (`overlay/action/exit_level0/g2/f1/route_cross38.py`), not by counting steps. A check that
+  an id is "selected" must read the game's own item word (`1236(A5)`), not the cursor cell: with six or more items the Return grid's cursor
+  names a different item than the one FIRE opens.
+
 ## Shell pitfalls on this machine
 
 - Git-bash `sed -i` rewrites a CRLF file with LF endings (`Program.fs` is CRLF), turning a
