@@ -726,6 +726,16 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         else
             None
 
+    ///Fast path for the overwhelmingly common access: plain RAM. With both banks configured
+    ///512KB (`memConfigByte` low nibble 5, the value TOS settles on) `translateRamAddress` is the
+    ///identity over the physical 1MB, so the byte lives at `ram.[address]` with no bank arithmetic
+    ///and no `Some` allocation. `address` is already masked to 24 bits. Addresses 0-7 read the ROM
+    ///mirror and everything from $100000 up needs the full dispatch, so they miss this test and
+    ///take the original `match` below unchanged. Reads the live `memConfigByte`, so a write to
+    ///$FF8001 or a snapshot restore needs no invalidation.
+    let ramDirect (address: uint32) =
+        address >= 8u && address < 0x100000u && (memConfigByte &&& 0xFuy) = 5uy
+
     ///Copies a real 512-byte sector from the mounted disk-A image into RAM at `dmaAddr` (the DMA
     ///Address Counter's current value), if a disk is loaded and (track,sector) is a valid location
     ///on it (`sector` is the WD1772's real 1-based sector number). Returns whether the copy
@@ -797,6 +807,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
         if flatBus then flatGet address else
+        if ramDirect address then ram.[int address] else
         match address with
         | a when a <= 7u ->
             //Read from roms first 8 bytes
@@ -934,6 +945,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if address % 2u <> 0u then raise (AddressError (address, false))
         let address = address &&& maxMemory
         if flatBus then (int (flatGet address) <<< 8) ||| int (flatGet ((address + 1u) &&& maxMemory)) else
+        if ramDirect address then (int ram.[int address] <<< 8) ||| int ram.[int address + 1] else
         match address with
         | a when a < 7u ->
             ((int rom.[int a]) <<< 8) |||
@@ -997,6 +1009,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if flatBus then
             flatMem.[address] <- byte (int input >>> 8)
             flatMem.[(address + 1u) &&& maxMemory] <- byte input
+        elif ramDirect address then
+            store ram (int address) (byte (input >>> 8))
+            store ram (int address + 1) (byte (input &&& 0xffs))
         else
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
@@ -1045,6 +1060,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
         checkWatch address "WriteByte" (uint32 input)
         if flatBus then flatMem.[address] <- input else
+        if ramDirect address then store ram (int address) input else
         match address with
         | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
@@ -1709,6 +1725,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if flatBus then
             (int (flatGet address) <<< 24) ||| (int (flatGet ((address + 1u) &&& maxMemory)) <<< 16)
             ||| (int (flatGet ((address + 2u) &&& maxMemory)) <<< 8) ||| int (flatGet ((address + 3u) &&& maxMemory))
+        elif ramDirect address then
+            let i = int address
+            (int ram.[i] <<< 24) ||| (int ram.[i + 1] <<< 16) ||| (int ram.[i + 2] <<< 8) ||| int ram.[i + 3]
         else
         match address with
         | a when a = 0u || a = 4u ->
