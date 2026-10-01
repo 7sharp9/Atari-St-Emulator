@@ -1,16 +1,17 @@
 # PowerMonger: handoff
 
-Updated 2026-10-01 by the 131st pass (alliance effects checked from the natural state; `$5809a` closed
-statically). The unfinished half of the 130th's audit is item 1; the orders not yet seen naturally are item 2.
+Updated 2026-10-01 by the 132nd pass (link-mode roles, ESC abort and chat checked live). The unfinished half
+of the 130th's audit is item 1 (data loads and dead-code triage left); the orders not yet seen naturally are item 2.
 
 ## Resume point
 
-- Last commit of this workstream: the 131st pass's handoff commit (`git log --oneline -3`; the pass itself is
-  `6e55bee`); before it the 130th (`11d91bb`) and the 129th, "natural alliance completes end to end" (`f0cb17c`).
+- Last commit of this workstream: the 132nd pass's handoff commit (`git log --oneline -3`; the pass itself is
+  `38ce8e2`); before it the 131st (`6e55bee`) and the 129th, "natural alliance completes end to end" (`f0cb17c`).
 - Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell
   pitfalls"). Indexed in `scratchpad/ANCHORS.md`: `pm129/` (about 46 MB, `.ram` beside each `.snap`):
   `wp5_45M.snap` is the launch point for the `$1e` offer click on land 25's lord 15, and `env5_12M.snap` is the
   post-alliance state. `pm131/` holds the alliance-effects runs (`o06`/`o10`/`o1e`: `.cmds`, `.out.txt`, `.snap`).
+  `pm132/` holds the link-mode runs (`*.cmds`, `cc.out.txt`, `chat_remote.snap`; raw argv in ANCHORS.md).
   `pm130/audit/` holds the audit's scripts, whole-image listing and raw output; `pm130/dither/dither_data.json`
   the infographic's data.
 - Start from: `scratchpad/pm129/env5_12M.snap` for anything about the alliance's effects;
@@ -29,6 +30,15 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 `py/diff_2776.py` 4119/4119; `py/diff_5cde.py` 768/768 + 85/85; `py/diff_revolt.py` 1778/1778;
 `py/diff_4f68.py` 1804/1804.
 
+- **Serial-link roles, ESC abort and chat, all live (132nd, `pm123/win/m1_s0.snap`, `scratchpad/pm132/*.cmds`).**
+  `callcap $12d88` with `S`/`M`/blank at `$123c`: 3/3 as read (`S`: previous slot 8, local 6; `M`: local 6, next
+  slot 8; blank: nothing). Slot state 6 enters `$6a9e` once then spins in the `$1c390` send loop (571,668 passes
+  in 3M steps; the emulator's MFP never sets TSR bit 7); state 8 spins in the `$1c340` receive loop (122,257 in
+  1M) and ESC reaches `$71ae` in 41 steps, demoting 8 to 4 so the game resumes (1/1). The send-side abort (ESC
+  plus `$2de96`/`$2dea2`) cannot fire: `$1962` never stores scancodes `$2a`/`$36` in the key array (0 hits at
+  `$1c3b6` with ESC and shift held). Chat `$26`: SEND MESSAGE `$131` sets `$d03e := $fe`; a held `a` left slot
+  `01 26 00 61 02 00` (1/1); an injected `02 26 00 58` in state 4 gave 1 `$6dd0`, 1 `$d0dc`, 1 `$affe` and an `X`
+  on panel `$16` (`chat_message.png`). strategy.md "Serial-link states" and "Hidden features audit".
 - **The alliance's effects hold from the natural state (131st).** From `pm129/env5_12M.snap` (group `$188` alive at
   lord 15's town, 5 men): `$06` and `$10` on the ally's town go `$3154` 1, `$31a6` to `$31b2` to `$31cc` 1,
   `$31c8`/`$38ce` 0 (accepted like an own town; `$06` moved lord 15's food 36 to 0 and the group's 0 to 35); `$1e`
@@ -81,11 +91,12 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Open, in priority order
 
-1. **The rest of the secrets audit** (strategy.md "Hidden features audit" lists what was and was not covered; `$5809a` is closed).
-   In order of likely payoff, each with how to prove it:
-   - Link mode: the ESC abort (`$1c34e` receive, `$1c39e..$1c3ae` send), the chat command `$26` (`$d13e`), and the
-     startup string `$123c` reaching `$12d88` (states 6 and 8). Patch `$123c` to `S` and `M` in a snapshot and
-     watch what the side records and `$d13e` do; the parse is inferred, not traced.
+1. **The rest of the secrets audit** (strategy.md "Hidden features audit"; `$5809a`, the startup string, the ESC
+   abort and chat are closed). In order of likely payoff, each with how to prove it:
+   - The link handshake: MULTI PLAY (`$2c` sets `$71fe`, `$6a3a` calls `$6eb6`), panel `$c` CONNECT (`$2df6c := 1`)
+     and the modem panel `$12`. Unread. Click through GAME > MULTI PLAY > CONNECT with `hits` on `$6eb6`, then read
+     what it does with no peer (does it time out, or end in a state 6/8 pair?). Low game-mechanics value; it only
+     matters for the port if multiplayer is wanted.
    - Unreferenced data: `DATA\SPRITE40.DAT` (on disk, not in the `$e0c4` loader table), `B_FLOOD.ECH` (`$1adaa`),
      `DATA/MAP0000.DAT` (`$e388`, the fixed-map branch `$df52(7)`), and whether `BITMAP.DAT` loads at mission 1
      (`$13c0e`, needs `$58148 < $100`). Prove with `hits` on the loader `$df52` and its index argument over a
@@ -95,7 +106,8 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
      tables (it called the live `$b892` an orphan), so improve it with the `movea.l <field>(A5),A6 / jmp (A6,Dn)`
      rule before trusting its list, then run the orphans under `hits` through a land build and a few minutes of play.
    - The crack's own stage (title, cracktro, `MREP`, packed `WAR`) was not audited; one byte at `$27028` changes
-     when `$2a` (left shift) is pressed and is unexplained; `$58000` and `$4bb48` are read-only absolutes.
+     when `$2a` (left shift) is pressed and is unexplained (likely the shift flag path of `$1962`, unchecked);
+     `$58000` and `$4bb48` are read-only absolutes.
 2. **The orders not yet seen naturally**: `$04` transfer (needs two captains, a later land), `$0e`
    on a real capital (does the work order produce pots naturally?), `$10`/`$06` on a food pile, the
    `$1a` supply line over several loops (food delivered per loop).
@@ -117,6 +129,15 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
    fresh pass.
 
 ## Known traps
+
+- **A routine that runs once at startup cannot be tested by patching its input in a snapshot.** The 131st's note
+  to "patch `$123c` in a snapshot" would have done nothing (`$12d88` ran before the snapshot). Call it with
+  `callcap <addr> <steps> - A0=<scratch>` and read the delta, then poke the resulting bytes to test downstream.
+- **`$6a3a` dispatches slot state through the word table at `$6a80`, and the static listing around it is out of
+  phase** (it shows `ori.b` garbage); read the table from RAM (`m 6a80 14`). The same holds for `$d126..$d13e`
+  (use `tools/disassemble.py --snap <snap> <lo> <hi>` from the real entry, or decode the bytes).
+- **A make and break `kbd` pair sent together can vanish**: the ISR clears `$1c490` on the break before the main
+  loop's getkey polls. Send the make, run to the checkpoint, then the break.
 
 - **A subagent's "the docs are wrong" claim gets one live check before it goes into a doc.** The 130th audit's
   arrow-key finding contradicted graphics.md; a 3-command REPL run (`kbd 4b`, `s 500000`, `m 4bb3a 4`: X `$28` to
@@ -208,9 +229,8 @@ Gates (differential tests vs the real 68000 through `callcap`), unchanged this p
 
 ## Next session
 
-Open item 1: the link-mode and startup-string path first (patch `$123c` to `S` and `M` in a snapshot, watch the
-side records and `$d13e`; the parse of `$12d88` is inferred), then the unreferenced data loads (`hits` on `$df52`
-over a land build) and the dead-code triage after fixing `reach_scan.py` for dispatch tables. Item 2 (orders not
-yet seen naturally: `$04` transfer, `$0e` on a capital, `$10`/`$06` on a food pile) is the game-mechanics
-alternative if the audit stops paying. A side-3 alliance needs an escort past lord 4's garrison and is not
-scoped.
+Open item 1: the unreferenced data loads (`hits` on `$df52` over a land build) and the dead-code triage after
+fixing `reach_scan.py` for dispatch tables; the link handshake (`$6eb6`) only if multiplayer matters to Dave.
+Item 2 (orders not yet seen naturally: `$04` transfer, `$0e` on a capital, `$10`/`$06` on a food pile) is the
+game-mechanics alternative if the audit stops paying. A side-3 alliance needs an escort past lord 4's garrison and
+is not scoped.
