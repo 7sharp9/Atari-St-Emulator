@@ -1,6 +1,6 @@
 # PowerMonger: handoff
 
-Updated 2026-10-01 by the 138th pass (the pigeon landing is not a manpower leak; one proof, no emulator change).
+Updated 2026-10-01 by the 138th pass (the pigeon landing is not a manpower leak; the equipment exchange ported to F# with a credit-mode flag; no emulator change).
 
 ## Resume point
 
@@ -22,6 +22,7 @@ gained the `D2` parameter); `pm99/diff_pm99.py` 1847/1847; `pm115/diff_4bc8.py` 
 - **The equipment tail `$160f8` is in `tools/pm_fsm_ref.py` (`call_160f8`, `call_160e4`, `call_160f2`, `call_16892(m, A1, D2)`), stale-D0 bug included (137th).** The credit rule is exact only with D0 tracked: a returned weapon is
   misdirected for lord >= 8 (41 states); the farmer's item return reuses the left-over D0.w (correct after a take, misdirected with no take and no weapon return, correct for lords 8..15 after a weapon return without a take). 3 of 48 natural men
   carry a weapon and belong to a lord >= 8. Port decision, not made: keep the bug or flag it.
+- **The equipment exchange is ported (138th): `port/godot/logic/Equipment.fs`, `CreditMode = Original | Corrected`** (Dave chose "faithfully, with the flag"). `Original` = the 68000 on 202 of 202 cases, 1451038 bytes and D0.w/D1.w (`py/equip_check.fsx`, corpus from `py/export_equip_corpus.py`; negative control with `Corrected` in the `Original` slot fails 64); `Corrected` has no oracle, only properties (equal to `Original` for lord < 8 in 89 of 89, only the own lord's goods change and goods plus held items are conserved in 192 of 192). The port has **no entity simulation** (the stepper replays one frame's draw order, PmLogic renders static records), so nothing calls it and `$3c08` is a parameter of `arriveGoods`.
 - **The pigeon landing is not a manpower leak (138th, 5 of 5 landings, `py/pigeon_ledger.py` on `py/probe42be.py` captures of `k5_s4` and `m1_ready`):** every lord's `troops_field` equals the live-man rule count before and after the `$4244` arm, and only the home lord's `+1` changes, so the death had already taken the man off the count (the KILL tail `$567e`, `word[leader+8] -= 1` for a man in no group roster, proven by the 95th `$5590` gate; `economy.md` section 6's closed list had omitted it and now carries it). Not counted: a man who died inside a group roster (`$5658` -> `$1b8c`, out of the `$5590` gate's scope); the invariant held at all 5 hits whichever path the rider took.
 - **`$42be` is the player's pigeon landing, a dead man revived (137th, counted 6 of 6 hits, `scratchpad/pm137/B_42be/probe42be.py`).** Sole caller of `$3e06` is `$13052`; only effect record `$4c112` takes the `$4244` arm; the record at
   `20(pigeon)` (a dead man whose `$1623c` countdown served the request) becomes a live man of its home settlement at the landing point, home lord `troops_field += 1`; live persons +1, one entity record changed at every hit.
@@ -37,7 +38,7 @@ gained the `D2` parameter); `pm99/diff_pm99.py` 1847/1847; `pm115/diff_4bc8.py` 
 
 ## Open, in priority order
 
-1. **Port the equipment exchange if the Godot port wants men to equip:** the reference model and gate exist; the port's `stepper` has no equipment step. Needs Dave's decision on the stale-D0 credit (keep as the original's behaviour, or flag). Also the `$54` merchant loop (`$15b0c`): a `callcap $159de` with a lord's `goods[]` poked would show whether a merchant ever carries anything.
+1. **Give the port an entity simulation, or leave `Equipment.fs` uncalled:** the port renders captured records and has no tick; `tools/pm_fsm_ref.py` (about 3000 lines, gated) is the model to transcribe, and the equipment module is the first piece done. Dave decides whether the port should simulate at all. Also the `$54` merchant loop (`$15b0c`): a `callcap $159de` with a lord's `goods[]` poked would show whether a merchant ever carries anything.
 2. **A natural `$36` contact:** which callers produce a category-8 (animal) engagement (the `$4cb8` class table has bare `rts` for classes 8, `$a`, `$c` as the alerted party; only as the interloper does it reach `38 := 8`); and who creates the byte6-8 animals (3 in `m1_s0`, 40 in `env5_12M`). Also what `$4c5f4` (`_birds`) shows on screen; the tree-record conversion at a season wrap (`byte7 == $d`) is dormant in the snapshots seen (inferred).
 3. **The `$42be`/`$3e06` neighbours:** `$41dc` (the other effect records, ~2 hits per 150M steps in `k5_s4`) is a fall-through that never touches `troops_field` (code read); name what those records are.
 4. **The orders not yet seen naturally**: `$04` transfer, `$0e` on a real capital, `$10`/`$06` on a food pile, the `$1a` supply line over several loops; `$1b2a`'s other-side rule.
@@ -67,4 +68,4 @@ gained the `D2` parameter); `pm99/diff_pm99.py` 1847/1847; `pm115/diff_4bc8.py` 
 
 ## Next session
 
-Item 1 if Dave wants the port to equip men (ask about the stale-D0 credit first); otherwise item 2 (a natural animal contact) needs a driven fight with a category-8 record; check first whether any snapshot has one near a party. Run subagent proofs under the same `scratchpad/pm137/BRIEF.md` shape (about 35 tool calls, own directory, no git or build).
+Item 2 (a natural animal contact) needs a driven fight with a category-8 record; check first whether any snapshot has one near a party. Run subagent proofs under the same `scratchpad/pm137/BRIEF.md` shape (about 35 tool calls, own directory, no git or build).

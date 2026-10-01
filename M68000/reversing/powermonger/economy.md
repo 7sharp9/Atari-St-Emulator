@@ -416,6 +416,12 @@ their weapon is credited past the lord). Natural counts, `k5_s4` run in 12 stret
 (`scratchpad/pm136/equip/run1.sh`): `$16892` 3, 61, 66, 81, 41, 15, 51, 5, 82, 6 hits per stretch, `$160f2` 1, `$1616c` 1 and 2; `m1_s0` 0 (every lord's goods are zero).
 The earlier "`pm75_big.err` caught this, 7×" was the `$1611a` instruction, not a dead unit's weapon.
 
+The port has it as `port/godot/logic/Equipment.fs` (`tail`, `arriveFight`, `arriveGoods`, `goodsRegroup`) with a `CreditMode`: `Original` keeps the stale D0 and is identical to the
+68000 on all 202 corpus cases (the 201 gate states plus the native exchange, 1451038 compared bytes, `py/equip_check.fsx`); `Corrected` clears the high byte so the item goes to the
+man's own lord, equals `Original` for every lord < 8 (89 of 89 cases), and for every case keeps all bytes outside the own lord's goods and conserves goods plus items held
+(192 of 192). The `Corrected` mode has no oracle in the game, only those properties. The port has no game simulation yet (the stepper replays the draw order of one frame),
+so nothing calls these; `$3c08`, which `arriveGoods` runs first, is a parameter, not ported.
+
 `$b8f4` is a **statistics collector** for the UI/score screen: it counts live
 projectiles (`$4ccd6`, type `$11`/`$12`) and live trees (`$4d252`,
 `cell != 0`) into a caller buffer. Confirms `pm_tree.cell` is the liveness key.
