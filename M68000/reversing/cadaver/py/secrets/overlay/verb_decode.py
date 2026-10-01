@@ -226,8 +226,13 @@ def collect(snap):
             p = a + start; ok = True; bl = []
             for _ in range(cnt):
                 ln = ram[p]
-                if ln < 3 or ln > 120 or ram[p + ln - 1] != 0x17: ok = False; break
-                bl.append((ram[p + 1], bytes(ram[p + 2:p + ln]))); p += ln
+                if ln < 3 or ln > 120: ok = False; break
+                # a block whose content through the $17 has odd length is followed by one pad byte: `$17` for 11 level-0 blocks, uninitialised for the
+                # rest (LEVER 472's is `$32`); requiring `$17` at len-1 dropped 49 level-0 objects (door `$22`'s opener among them)
+                if ram[p + ln - 1] == 0x17: end = p + ln
+                elif ln >= 4 and ram[p + ln - 2] == 0x17: end = p + ln - 1
+                else: ok = False; break
+                bl.append((ram[p + 1], bytes(ram[p + 2:end]))); p += ln
             if ok:
                 for e, body in bl: res.append((oid, start, e, body))
     return res

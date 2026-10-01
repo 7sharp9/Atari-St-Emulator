@@ -783,6 +783,8 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
 
 - **Resolved (82nd pass, `mechanics.md` §71): the lever is operated from its icon panel.** The passes below (13th to 33rd) never confirmed an icon in the object panel; fire at the boundary stall opens it, icon 7 operates the lever and clears door `$33` (`$ffff` -> 0), and Up then leaves TUNNEL for room 2. The "no input opens the door" conclusions in this and the following entries are retired.
 
+- **Resolved (83rd pass, `mechanics.md` §72): a positive door id word is a key, and the walk out of CAVERN's region runs through it.** CAVERN's east door `$3b` (id 73, retired as a "permanent self-loop") opens for "A SIMPLE IRON KEY" from room 11 into room 8, where LEVER 472 opens door `$22` (room 7 to 12); `overlay/action/route_to_room12.py` walks all of it with natural input. The earlier "no opener for `$22`" came from a script decoder that dropped 49 objects, now fixed.
+
 - **13th pass — found the TUNNEL lever's proximity hotspot and its per-object UI, but no tested
   input opens the door behind it.** User-supplied ground truth ("there's a lever on the left that
   opens a door in front of it, leading to a third room") pointed at a riveted wall panel with a

@@ -1826,8 +1826,7 @@ back to the section it was originally derived in.
   `$0000` ("hardcoded" — this is the initial CAVERN↔TUNNEL link, wired at boot outside the generic
   resource system per §14, not a same-room self-loop) and `$ffff` ("no room, sound/event cue only",
   pushes a ring-304 opcode, no geometry/room-load call at all). A positive id runs the generic
-  `jsr $11256` room-id lookup (currently an always-miss, §14, since the type-8 registration table
-  is never populated in any snapshot this spike has taken). **The actual destination room is not
+  `jsr $11256` lookup (*superseded, §72*: it scans the type-8 list, which is the rucksack, so the id is an item id and the door a lock; it "always missed" because the rucksack was empty in every snapshot taken). **The actual destination room is not
   read off this id word at all** — every case, positive id included, falls through to `$de5e`
   (§38d/§47: a linear point-in-rectangle scan of every type-3 room against the descriptor's own
   `+0`/`+1` candidate coordinate) → `$e854`/`$e84a` (ring-304 push + `2271(A5)` block-flag, both the
@@ -3366,6 +3365,8 @@ condition test).
 ### 47c. The id word's meaning is still open — the first-draft "type-8 registration gate" reading
     doesn't survive checking against §31/§38's own, already-corrected model, and is retracted here
 
+*Superseded (§72): the id word is an item id, a lock the rucksack opens (`$011256` scans the type-8 list, which is the rucksack, not a room-registration table); this section's reading of the destination (spatial only) stands, its "encodes nothing known" and the "registration table" language do not.*
+
 First-draft reading, written before double-checking and retracted in this same edit: `$de5e`'s
 spatial-only algorithm (§38d) was paired with §14's type-8 framing to guess the positive id word
 gates on "target room registered." That doesn't hold up. §31 (31st pass, sixteen passes before this
@@ -3511,7 +3512,7 @@ points to (155, not an arbitrary test id like §24c's 144) provably flips that o
 and provably leaves the door descriptor's executor-tested byte untouched. Combined with §49c's static
 result (no caller anywhere in the image resolves a door descriptor's id word through the type-6/9
 id-resolve path), Open item 1 is now doubly negative — structural and causal — on every mechanism
-this spike has found: **nothing currently known reads or acts on the five doors' positive id words.**
+this spike has found: **nothing currently known reads or acts on the five doors' positive id words** (*superseded, §72*: `$00716e`-`$0071bc` reads them, `jsr $011256` against the rucksack; §49-§50 searched for a caller of the type-6 resolver and the reader uses the type-8 scan).
 This doesn't prove the id word is meaningless (an unfound reader is still possible, same caveat as
 every other "no caller found" result in this doc), but it removes the last untested "maybe LOCK's
 target and the door executor still interact some other way we haven't poked" gap — the two mechanisms
@@ -4046,7 +4047,7 @@ door 0x3b candidate=(22,20) [id=73 generic-lookup, always-miss per §27c]   0->s
 
 These are the only three door ids referencing CAVERN (slot 0) or TUNNEL (slot 1) anywhere in the
 71-door table. `0x32` is the CAVERN↔TUNNEL link already driven live in §61. The other two are not
-untested leads, they're already-closed by mechanism (§27c) or by an earlier live test:
+untested leads, they're already-closed by mechanism (§27c) or by an earlier live test (*both conclusions retired in §72: `$33` is the lever's door, §71, and `$3b` opens into room 8 for the iron key 73*):
 
 - **`0x3b` is CAVERN's own east door from §13 (17th pass)** — id 73 decimal is exactly `$49`, the
   target id §13 already named, live-triggered, and found resolving to "already resident" (no new
@@ -4712,13 +4713,49 @@ mechanism reachable only from rooms/state this one snapshot doesn't cover are st
 - After the confirm, Up from the stall leaves TUNNEL for room 2 (bbox (52,12,46,6) in the clean run) and Left then reaches room 3. The control run (same walks, no panel) leaves Up at (14,12,8,6), room 1, unchanged.
 
 **What this corrects.**
-- §47's "the descriptor's id word plays no role in the destination" is wrong for the `$ffff` value: a descriptor with `$ffff` does not commit a room change (a sound cue), one with 0 does. `door_walk.py` marks 11 level-0 doors `id=-1 sound-cue-only`: `$09 $12 $18 $1c $22 $23 $24 $25 $26 $29 $33`; with only the other doors open, CAVERN's reachable set is {CAVERN, TUNNEL}, so every route out of CAVERN goes through one of these.
-- The clearing verb 10 (`CLEAR FLAG n`) occurs in 9 level-0 blocks, and its operand names the door: `$33` object 144 (event 5, the lever), `$18` object 81 (event 18, an item applied), `$23 $24 $25 $26` object 239 (event 18, four doors at once), `$09` object 391 (event 18), `$29` object 486 (event 5, the crown gate of §secrets "Id 486"), and `$14` object 458 (event 18; that door's word is already 0 in the static image). *Read*; only the lever is driven. The doors `$12`, `$1c` and `$22` have no clearing script in either the object or the room blocks, so what opens them is not identified.
+- §47's "the descriptor's id word plays no role in the destination" is wrong for the `$ffff` value: a descriptor with `$ffff` does not commit a room change (a sound cue), one with 0 does. `door_walk.py` marks 13 level-0 doors `id=-1 sound-cue-only` (`$09 $12 $18 $1c $22 $23 $24 $25 $26 $29 $33 $3f $40`; the first count of 11 missed `$3f $40`); every one has an opener (§72). With only the other doors open, CAVERN's reachable set is {CAVERN, TUNNEL}, so every route out of CAVERN goes through one of these or through the keyed east door `$3b` (§72).
+- The clearing verb 10 (`CLEAR FLAG n`) occurs in 17 level-0 blocks once the census is corrected (§72; the first count of 9 came from a decoder that dropped 49 objects), and its operand names the door: `$33` object 144 (event 5, the lever), `$18` object 81 (event 18, an item applied), `$23 $24 $25 $26` object 239 (event 18, four doors at once), `$09` object 391 (event 18), `$29` object 486 (event 5, the crown gate of §secrets "Id 486"), and `$14` object 458 (event 18; that door's word is already 0 in the static image). plus the sites the corrected census added in §72 (`$22` object 472 in room 8, `$1c` object 474, `$12` objects 211 and 212, `$3f $40` object 454, `$2a` object 179). *Read* here; the lever 144 is driven in this section and `$22`'s lever 472 in §72.
 - The earlier ground truth ("the lever opens a door in front of it") holds. §22-§29's descriptions of LOCK/UNLOCK, the portal table and the touch events as candidate mechanisms are not the lever's mechanism.
 
 **Jumping** (found while looking at why the circlet of the regalia walk was unreachable, secrets.md "The regalia walk"): fire held with nothing in front is a jump, and the collision scan `$008870` compares the hero's z base `D2` with each object's z top: a mover whose `D2` equals an object's top z reaches the branch at `$008a02` and queues event 9 for it (`$008a26`, `$008a5a`) every frame it stands on it. Landing on the TUNNEL lever (right 24,000 steps, then fire+left, so that the hero is at base z 34 when its x trail reaches 7; `lever_operate.py jump`: 11 passes through `$008a02` and `$008a26` in 600,000 steps, lever byte 3 stays 0) queues those touch events; the lever has no event-9 block and is not operated that way, so this is the real reading of the 22nd pass's "touch unreachable" (it was reachable only from above) and not the lever's mechanism.
 
-**Next.** The door `$33` is open from here, so the route beyond TUNNEL (rooms 2, 3, 6, 7, 9, 70) is walkable, but the rectangle graph from CAVERN to the regalia room 33 still crosses the sentinel doors `$22` (room 7 to 12, no clearing script found) and `$18` (room 15 to 16, object 81's event 18): see cadaver.md.
+**Next.** The door `$33` is open from here, so the route beyond TUNNEL (rooms 2, 3, 6, 7, 9, 70) is walkable; the next gate, `$22` (room 7 to 12), is opened by a lever in room 8 behind CAVERN's keyed east door (§72), and the one after, `$18` (room 15 to 16, object 81's event 18), by item 104: see cadaver.md.
+
+## 72. A positive door id word is an item id: the key doors, door `$22`'s lever, and the walk from CAVERN to room 12 (83rd pass)
+
+**What reads the word** (`$00716e`-`$0071bc`, the same door branch as §71; *read*, with the key crossing driven live below). For a descriptor `A0` whose id word `D3` is neither 0 nor `$ffff`, `move.l D3,D2; jsr $011256` runs a linear scan of the **type-8 list**, the rucksack (`moveq #8,D0`; `$00c628` yields each 4-byte record `[id][template idx]`, `cmp.w 0(A0,D3.w),D2`; `D0` = 1 found, 0 not). Found: byte `+7` of the descriptor decides what the crossing costs, **bit 1** calls `$00c3d4` and `$0e4fa` (the key leaves the rucksack) and then clears the word (`bra $0071b8`, `clr.w 2(A0)`), **bit 2 alone** clears the word and keeps the key, neither bit leaves the word as it is (the item must be carried at every crossing); sound `$12`, then the resolver `$0071ca` and the point-in-rectangle result of §38d as for any open door. Not found (`beq $00734a`): the crossing is dropped, no sound and no room change. So the id word has three states: `0` open, `$ffff` closed to everything but a script (a sound cue, bit 6 of `+7` queues op 8), and an item id, a lock that the item opens. §14's, §47c's and §49-§50's "type-8 registration table, never populated" is the rucksack, empty in every snapshot before a pick-up; that is why `$011256` always missed, and the five positive id words of §49b (`53 73 155 167 244`, real type-6 ids) are the keys:
+
+| door | rooms | id word | item | flag `+7` | item placed in |
+|---|---|---|---|---|---|
+| `$3b` | 0 (CAVERN east) to 8 | 73 | "A SIMPLE IRON KEY" | 2 (consumed) | room 11 |
+| `$20` | 19 to 20 | 155 | "A BRONZE DOOR KEY" | 2 | room 66 |
+| `$31` | 27 to 28 | 167 | "A SMALL LEAD KEY" | 2 | room 69 |
+| `$3c` | 4 to 22 | 244 | not yet read | 2 | room 4 |
+| `$2a` | 13 to 36 | 53 | "THE ROYAL CROWN" | 0 (carried, never consumed) | room 37 (the treasury) |
+
+**Live** (`py/secrets/overlay/action/route_to_room12.py`, below): the iron key taken by TAKE gives the rucksack record `(73, 57)`; CAVERN's east door at x lead 79, y 13..19 stalls without it (the word stays `0049`, `$00719a` not reached) and with it crosses into room 8, the word `0049` -> `0000`, the rucksack 1 -> 0. §13's "id 73 resolves to an already-resident room", §59's "`$3b` is a permanent self-loop" and §47c's "the id word encodes nothing" are all wrong: the destination still comes from the rectangle scan, the id word is the lock.
+
+**The census hid the opener of `$22`** (and 48 other objects). `verb_decode.collect()` required `$17` at `len-1` of every block of an object, but a block whose script has odd length is followed by one pad byte that is `$17` only by luck (LEVER 472's is `$32`), and one such block dropped the whole object. With the pad accepted (`$17` at `len-1` or `len-2`) level 0 decodes 315 blocks in 224 objects (was 212 in 174), all exactly to their lengths; level 1 442 in 328 (was 264 in 220). The `scripts_level*.txt` dumps and the verb-use counts of secrets.md are regenerated. The corrected door table (verb 10 `CLEAR FLAG` and verb 27 sites, operands are hex door numbers):
+
+| door | rooms | object, event | what the player does |
+|---|---|---|---|
+| `$33` | 1 to 2 | 144 LEVER, 5 | operate it from its panel (§71) |
+| `$22` | 7 to 12 | **472 LEVER in room 8, 5** (`05 05 \| 0a 22 \| 17`: XP += 26, CLEAR FLAG `$22`) | operate it from its panel; room 8 is the closet behind CAVERN's keyed east door |
+| `$18` | 15 to 16 | 81, 18 (gate `00 68`) | apply item 104 (room 23) |
+| `$1c` | 17 to 18 | 474 KEYHOLE in room 18, 18 (gate `00 68`) | apply item 104 too; its block sets its own state bit and deletes item 104 once object 81's bit is also set (*read*) |
+| `$12` | 38 to 48 | FLAMEs 211 and 212 in room 38, 9 (gate `ffff`) | two touches in either order (*read*; the toucher is not driven) |
+| `$23-$26` | 62 to 63, 64, 65, 66 | 239, 18 (gate `00 f0`) | apply item 240 (room 68) |
+| `$09` | 40 to 41 | 391, 18 (gate `00 6e`) | apply item 110 (room 40) |
+| `$14` | 52 to 53 | 458, 18 (gate `01 cb`) | apply item 459 (room 53); the word is already 0 |
+| `$3f`, `$40` | 23 to 26, 25 | 454, 18 (gate item 455) | apply item 455 (KEY, room 24); also creates three #447 objects |
+| `$2a` | 13 to 36 | BUTTON 179 in room 14, 5, and the crown (53) | (both: the word is 53 and the descriptor never consumes it) |
+| `$29` | 36 to 60 | 486, 5 (type-8 id `$35` = the crown) | carry the crown into room 36 and operate 486 |
+
+So the door words are not "11 sentinel doors": 13 level-0 doors start `$ffff` (`$09 $12 $18 $1c $22 $23 $24 $25 $26 $29 $33 $3f $40`), 5 are keyed, and every one of the 13 has an opener in the corrected census. §71's "no clearing script found for `$12 $1c $22`" is retired; verb 10 and verb 27 are the only writers of a descriptor's id word besides `$0071b8` (a whole-image read of the main image and the overlay by the subagent, no write to `$6d35a + 8n + 2` elsewhere; the overlay's UNLOCK/LOCK DOOR spells act on type-6 object records, §49-§50).
+
+**The walk** (`route_to_room12.py`, natural joystick input only, from `lever_after.snap`; two runs give byte-identical logs and final snapshots): TUNNEL, 2, 6, 7 (door `$44`), 10 (`$39`, at the east wall with y lead 19), 11 (`$1a`); the iron key is the small object 73 (z 3), the stall at (44,35,38,29) probes `(73, icons 2 10 11 6)`, TAKE; back to CAVERN (the other doors stay open), Down to y lead 18 and Right at the east wall into room 8 (key consumed); room 8 has LEVER 472 at rect (6,17,4,14) z 16..33, the stall one step short of it (Up from the arrival, bbox (10,24,4,18)) probes `(472, icons 7 11 6)`, fire opens the panel, icon 7 confirms: `$00a448`, `$00a486`, `$00fe24` once each, XP 40 -> 66, door `$22`'s descriptor `25 16 ff ff 01 01 00 00` -> `25 16 00 00 01 01 00 00`. Back through CAVERN, TUNNEL, 2, 6 to room 7; door `$22` is on the south wall at local x about 64 (world (37,22) against room 7's rectangle [29,12]-[39,22], 8 px per grid cell): Down along the south wall at x lead 66 enters room 12 (arrival bbox (20,13,14,7)). Without the lever the same walk holds the hero at y 79 (a subagent's control: `$00716e` 11 times, the `$ffff` cue `$00731e` 11 times, room stays 7). Opening `$22` with the keyed doors still closed adds ten rooms (`door_reach.py --open 33 22 --keys 73`: 21 reachable, the new ones 12, 13, 14, 15, 18, 19, 61, 62, 67, 68); the keyed doors `$20 $2a $31 $3c` and the item doors beyond stay shut until their keys are found: item 240 (room 68) for object 239 (room 62, doors `$23-$26`) leads to key 155 (room 66) for `$20`, and item 104 sits in room 23, beyond it. Room 7's own contents (`probe`): 62-65 are scenery (no script), 253 sits at z 64..74, 271 is a takeable class-12 object ("VERY STRONG, ABOUT 11 FOOT LONG"; its event-4 block places it elsewhere), a random creature (279, 411 or 278) arrives by the room's event-14 timer at (46,32); the south half of CAVERN and the west of room 7 cost health (CAVERN's south walks fall from 67 to 1).
+
+**Method.** A natural BFS over holds (`trek.py`: U/D/L/R to a stall or a room change, each node a snapshot, goal a room id or a probe) found rooms 2-7 in 33 nodes; walking to a door that sits mid-edge needs a finer hold (`goto`, 5,000-step chunks, one grid cell per ~10,000 steps after a ~40,000-step start lag), because a stall detector of fewer than six 20,000-step chunks ends the hold before the hero has begun to move.
 
 ## Files
 

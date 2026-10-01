@@ -109,7 +109,7 @@ def main():
         elif tw == -1:
             tag = "[id=-1 sound-cue-only, no room commit]"
         else:
-            tag = f"[id={tw} generic-lookup, currently always-miss per sec14]"
+            tag = f"[id={tw} keyed: item id in the rucksack opens it, mechanics sec72]"
         rel = []
         for owner in owners:
             if dest_slot is None:
