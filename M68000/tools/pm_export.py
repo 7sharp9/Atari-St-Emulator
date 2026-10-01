@@ -24,8 +24,8 @@ Inputs
 Everything here is READ-ONLY analysis. No emulator behaviour changes.
 
 Address map (relocated game image, base $1050) -- see reversing/powermonger/*.md
-  $438ee  g_terrain        type plane +0, height plane -8257, flag plane +8257
-  $3f86c  g_cell_control    per-cell height the projector ($fec6) actually reads
+  $438ee  g_terrain        colour A plane +0, colour B plane -8257 (slope-shade bytes, 0 = sea), flag plane +8257
+  $3f86c  g_alts           the altitude plane the projector ($fec6) actually reads (byte names typ/hgt in terrain.bin are the old labels for colour A/B)
   $2e000  dither table      base = long at $ff9e; cyclic 16-bit bitplane masks
   $33000  g_minisprite_sheet 0x37 (55) bytes/frame, 11 rows x 5 bytes, 1bpp+mask
   $1675a  t_heading_frame   16 bytes, heading 0..15 -> sprite frame, $ff = skip
@@ -190,8 +190,8 @@ def export_terrain(ram: Ram, out: Path, man: list):
         "file": "terrain.bin",
         "bytes": len(packed),
         "provenance": (
-            f"$438ee type plane (+0), $438ee-8257 height plane, $438ee+8257 flag "
-            f"plane, $3f86c control/height plane. Read by pm_render_terrain ($f898) "
+            f"$438ee colour plane A (+0, keyed typ), $438ee-8257 colour plane B (keyed hgt), $438ee+8257 flag "
+            f"plane, $3f86c altitude plane (keyed ctl). Read by pm_render_terrain ($f898) "
             f"for colour and pm_project_grid ($fec6/$fecc) for geometry "
             f"(the projector reads $3f86c, entity sampling reads $438ee)."),
         "format": (
@@ -202,9 +202,9 @@ def export_terrain(ram: Ram, out: Path, man: list):
         "island_bbox_xyxy": bbox,
     })
     for name, note in (
-        ("terrain_height.png", "height plane, 4x nearest, grey = raw byte"),
-        ("terrain_type.png", "type plane (== palette colour index for the type triangle)"),
-        ("terrain_control.png", "$3f86c control plane (projector height source)"),
+        ("terrain_height.png", "colour plane B (-8257; the file keeps its old name), 4x nearest, grey = raw byte"),
+        ("terrain_type.png", "colour plane A (0; the file keeps its old name; == palette colour index for the first triangle)"),
+        ("terrain_control.png", "$3f86c altitude plane (projector height source)"),
     ):
         man.append({"file": name, "provenance": note,
                     "format": f"{GRID_STRIDE*4} x {GRID_ROWS*4} grayscale PNG"})

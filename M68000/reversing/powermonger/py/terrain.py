@@ -1,4 +1,4 @@
-"""pm129: print the $438ee terrain-type plane (type 0 = water/impassable, ai.md $1648e) for a cell window,
+"""pm129: print the $438ee colour plane A (colour 0 = open sea, ai.md $1648e; the file name keeps the old 'terrain-type' reading) for a cell window,
 marking own/foreign entities. Usage: terrain.py <ram> x0 x1 y0 y1"""
 import struct, sys
 R = open(sys.argv[1], 'rb').read()

@@ -247,7 +247,7 @@ Tooling + asset + doc + `Terrain.fs` / `Sprites.fs` / `pm_render_ref.py` /
     the master (`pm88_f1`: 0 px diff; the only per-frame change near it is a
     generic `$11f82` 8 × 11 sprite ≈ screen `(37..47, 46..60)`).
   - `$13b9a` `$df8c`-copies a frame bitmap, then builds a **64 × 128 byte
-    per-cell source buffer at `$418ae`** (≈ the terrain type plane) and
+    per-cell source buffer at `$418ae`** (≈ colour plane A) and
     **`$e6ee` rasters it 1:1** into the master. **Mapping: `screen = (cellX + 1,
     cellY + 6)`, no scaling** (98.8% land/water agreement, 2442 cells).
   - `$e6ee` LUTs the source byte → shifter palette index (100% deterministic):

@@ -15,8 +15,8 @@ What is faithful here (77th pass)
     ($ff7c: sx = x*eye/(eye-depth); sy = (z-horizon)*eye/(eye-depth) + horizon).
     Verified byte-exact against the game's own $3f364 corner buffer (81/81).
   - far -> near walk, 2 triangles per cell, quad split on the packed-corner test
-  - colour byte = the terrain byte itself (height byte on one triangle, type
-    byte on the other); water (< 0x0c) += [$4bb3e]&3 (== 2 in this frame)
+  - colour byte = the per-triangle colour byte itself (plane B `-8257` on one triangle, plane A
+    `0` on the other; both slope shades built from the altitude plane `$3f86c` by `$10058`); water (< 0x0c) += [$4bb3e]&3 (== 2 in this frame)
   - dither fill: A5(y) = colourByte*128 + ((8*y) mod 128) into dither.bin; one
     16-px pattern per scanline, planes {0,1}=long@A5, {2,3}=long@A5+4, tiled
     screen-X-aligned (see dither_index -- live-traced from $e420, exact)
@@ -276,8 +276,8 @@ def render(terr, tables, dith, cam_x, cam_y, half, tick=WATER_ADD, flat=False,
         tr = corners[(gr, gc + 1)]
         bl = corners[(gr + 1, gc)]
         br = corners[(gr + 1, gc + 1)]
-        hb = cell(terr, cam_x + gc, cam_y + gr, 1)       # height plane ($438ee-8257)
-        tb = cell(terr, cam_x + gc, cam_y + gr, 0)       # type plane   ($438ee+0)
+        hb = cell(terr, cam_x + gc, cam_y + gr, 1)       # colour plane B ($438ee-8257)
+        tb = cell(terr, cam_x + gc, cam_y + gr, 0)       # colour plane A ($438ee+0)
         # $f898 colour: if byte < 0x0c add [$4bb3e]&3 (water shimmer)
         ch = hb + tick if hb < 0x0c else hb
         ct = tb + tick if tb < 0x0c else tb

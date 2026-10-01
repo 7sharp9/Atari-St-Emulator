@@ -50,17 +50,21 @@ against every session's changes.
   toward the lead's target, check the ground, turn around an obstacle, fight a neighbouring enemy,
   pay upkeep. Followers do nothing but upkeep; their position is stamped from the lead. (A "What
   each entity decides per tick", A "The entity FSM")
-- **Men are conserved.** A lord's men in the field move between lords and armies (joining,
-  dismissal, capture) and are never born. A side grows only by taking men from another. (E 1, E 6)
+- **Men are conserved.** A lord's counter is his men at home, not in an army: a man joining an army takes
+  one off it, leaving puts one back, capture moves one between lords, and none is born. A side grows only by
+  taking men from another. (E 1, E 6)
 - **Food is the pressure.** Each lord has a food store that his fishermen and returning men fill and his
   settlements eat; each army carries its own food. Armies take food from towns and drop it back;
-  taking food angers a town, giving food or goods calms it. A town with at most 4 food per man in
-  the field grows unrest. The posture sets how much an order moves: aggressive all, neutral half,
+  taking food angers a town, giving food or goods calms it. A town with at most 4 food per man at
+  home grows unrest. The posture sets how much an order moves: aggressive all, neutral half,
   passive a quarter. (E 1, E 6, S "The player's commands")
 - **Goods are a separate ledger.** Men felling trees and carrying them to the workshop credit one of eight item counters (pike,
-  sword, bow, plough, boat, pot, catapult, cannon); porters move goods between a nation's lords;
-  "invention" is supply: a unit's weapon improves only when a better item reaches its lord and
-  is handed out. There is no research timer. (E 2a, E 2b, E 2c, E 4)
+  sword, bow, plough, boat, pot, catapult, cannon); merchants are meant to carry goods between a nation's lords
+  but none was seen carrying anything and the destination always resolved to the home lord (E 2b, inferred
+  from the encoding and a census); "invention" is supply: a man who walks to his lord's cell hands back his weapon
+  and takes the best in stock (bow, then sword, then pike; a farmer also takes a Plough), so a weapon improves only when a
+  better item reaches the lord. The hand-back has a stale-register bug that credits it to another lord's slot for lord
+  indices 8 and up. There is no research timer. (E 2a, E 2b, E 2c, E 4)
 - **Combat is a health grind.** Units in contact lock into melee; each tick the attacker takes 1..4
   (by weapon) off the target's health (byte 45, the value the captain panel prints as "Very Sickly" ... "Very Strong", "Dead"). At zero the loser is killed or
   routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
@@ -73,7 +77,7 @@ against every session's changes.
   `+2`/`-1`, but **only on a marker's first pulse after it parks** (`dwell $ff9d → $ff9c`) —
   ordinary steady pulses do nothing, and at 600 the pulse sends him and his settlements to an
   effectively arbitrary side. The park write is pinned (`$015052`, inside entity mode `$16`, gated
-  on the global `$57fd0` season LCG) and **it is not something the player triggers**: `$3c08` only
+  on the global `$57fd0` season word) and **it is not something the player triggers**: `$3c08` only
   sends a record into mode `$16` when its flags byte has bit 0 set, and the one place in the game
   that sets that bit is the world-build creation of a farmer (`init_far`, the village population), not any order. A player's
   own dismissed or deserting men default to mode `$7e` instead (the "no flags set" case), which runs
@@ -83,7 +87,7 @@ against every session's changes.
   sees the `$ff9d → $ff9c` edge depends on whatever stale dwell that pooled slot inherited, not on
   the spy action itself; an earlier pass's "the spy run revolted lord 0" is therefore read as
   incidental slot reuse, not a designed trigger. So revolt is a **periodic self-cycle of a
-  parked farmer's winter state** (`$7c` ⇄ `$16` on `$57fd0`'s ~110M-step rotation; `$7c` is `in_winte...`, S "Original names"), running
+  parked farmer's winter state** (`$7c` ⇄ `$16` on `$57fd0`'s 118.4M-step rotation; `$7c` is `in_winte...`, S "Original names"), running
   independently of the player — and it does cross 600 unassisted: differential-tested against the
   real 68000 (`diff_revolt.py`, 1778/1778) on four 200M-step no-input land runs, 11 of 27 natural
   `$550e` defections fired from this heartbeat cycle at loyalty 600-608 (the other 16 from a
@@ -113,10 +117,10 @@ against every session's changes.
   is a pure function of its seed, so a run replays exactly from a snapshot. (S "RNG and determinism")
 - **The world is drawn as a heightmap.** A software rasteriser projects the grid with perspective,
   fills two triangles per cell far to near, and draws each cell's sprites straight after it, so
-  walk order is depth order. A triangle has no colour of its own: its terrain byte (type plane for one
-  half of a cell, height plane for the other, water plus a 0-3 tick, or a fixed dark slot for
+  walk order is depth order. A triangle has no colour of its own: its colour byte (colour plane A for one
+  half of a cell, colour plane B for the other, both slope shades baked from the altitude plane at world build, water plus a 0-3 tick, or a fixed dark slot for
   back-facing triangles) picks one of about 60 16 x 16 stipple tiles, the scanline and screen column
-  pick the pixel, and the byte rises with height so the tiles are dither ramps. Seasons rewrite 18 of
+  pick the pixel, and the byte is a slope shade (lighter or darker with the cell's tilt) so the tiles are dither ramps. Seasons rewrite 18 of
   the tiles pixel by pixel; rain and snow are drawn on top.
   (G "The pattern fill", G "Seasons", P 4 "Seasons", S "What `$1abaa` actually is")
 
@@ -428,7 +432,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    autonomous decision (`$6522`'s `$6564` branch) is "march at the nearest enemy
    leader if its army has the food for the trip" (124th: the old "force-scaled budget" is the group's food) — no economy
    or build reasoning. `$d322` + `$3e06` build the per-side force totals
-   `$57fba`, reduced by `$d23a` to a UI-only strength ratio `$57fce`. Mission
+   `$57fba`, reduced by `$d23a` to the 0..4 force ratio `$57fce` (original `_win_state`: shown as a fist indicator by `$16bb8` and tested `== 4` by the end-of-land verdict `$d2c8`; the AI never reads it). Mission
    1's enemy captain never issues an autonomous order in ~1000 traced ticks; the
    `$6564` path was confirmed by forcing a command slot ready.
 9. The 72nd pass tightened the **scheduler** (the sim tick `$13000`
@@ -438,8 +442,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    attrition via `$5c80`/`$5bd2`, projectiles via `$57f0`, and capture via
    `$1d70`; a 166-tick forced mission-1 fight produced engagement + 5 captures
    + 0 field deaths), decoded the **campaign hook** `$6762`/`$67d0`, and settled
-   the **RNG** question (`$57fec` is the low bits of a tick counter — the AI is
-   deterministic; `$57ff6` is a sound-only LCG). All in `strategy.md`; a
+   the **RNG** question (the AI is deterministic; `$57ff6` is the pixel-order generator of the season tileset dissolve, `$57fec` counts the `$1abaa` calls since the last season change, 0..512). All in `strategy.md`; a
    `powermonger.sym` symbol table was added for `trace_cfg.py --names`.
 10. The 73rd pass finished the **AI** deliverable: every object-record field and
     the command-slot / group-order / leader / nation / assessment / effect
@@ -468,8 +471,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     buffer swap. A renderer-as-pseudocode reconstruction is in `graphics.md`.
 12. The 74th pass opened the **economy** (`economy.md`, pass 1 of 2). PM has no
     single "economy tick"; the subsystems are diffuse. A lord's food store and
-    men are `pm_leader.food` / `.troops_field` (`$4e514` +6/+8; `+6` was read as
-    men at home until the 124th pass) — food fills when disbanded men come home and when fishermen deliver a catch
+    men are `pm_leader.food` / `.troops_field` (`$4e514` +6/+8; `+8` is the lord's men at home, not in an army: 416 lord instances over 33 snapshots, 378 exact and 416 within 1 of the live men with byte-7 bit 6 clear, 136th `scratchpad/pm136/ledger/troops_audit.py`) — food fills when disbanded men come home and when fishermen deliver a catch
     (entity modes `$16`/`$60`, +2/+4; the fishermen were identified by the 133rd pass, `strategy.md` "Original names") and empties when an army takes food
     (mode `$1a`); nothing grew it passively in 400M traced
     steps. The goods come from **felled trees**: the `$4d252` tree array, the
@@ -757,11 +759,11 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     trace of `pm88_f1` — the minimap is **baked once into the `$78000` master by
     `$13b9a`, not per-frame** (a settled compose buffer's minimap region is
     byte-identical to the master). `$13b9a` builds a 64 × 128 byte per-cell
-    source buffer at `$418ae` (≈ the terrain type plane) and `$e6ee`
+    source buffer at `$418ae` (≈ colour plane A) and `$e6ee`
     (`pm_blit_hud_sprite`) rasters it **1:1 at screen origin `(cellX+1,
     cellY+6)`** (98.8 % land/water agreement), LUT'ing the source byte to a
     palette-index elevation ramp. Ported: `pm_render_ref.draw_minimap`
-    (100 % vs the master from `$418ae`, 94.5 % from the type plane) +
+    (100 % vs the master from `$418ae`, 94.5 % from colour plane A) +
     `TerrainView.cs` minimap panel with a live camera-window box, verified with
     a real Godot screenshot. **Task 4:** `Sprites.fs` gains `EntityRec` /
     `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`; a `dotnet fsi`
@@ -998,9 +1000,9 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     `$7c`) on a NATURAL corpus and corrects "dead in mission 1".**
     - **`$57fd0` is not static.** It is initialised at world-build
       (`$13be8`: `(byte[$58146] & 3) * 2` = 4 for mission 1) but the
-      sound/ambient routine `$1abaa` (`$130b0` in the tick) **rotates it**
-      `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}, once per 13-bit sound-LCG
-      wrap — raw-verified, and **observed 2 times over a 220M-step mission-1
+      seasons routine `$1abaa` (`_seasons`, `$130b0` in the tick) **rotates it**
+      `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6} (0 winter, 2 spring, 4 summer, 6 autumn), once per full cycle of its 13-bit pixel-order LCG
+      (512 calls, 118.4M steps; 3 writes watched over 330M steps, 136th) — raw-verified, and **observed 2 times over a 220M-step mission-1
       drive**. So mode `$7c` (and the `$163b8` drain + construction timer +
       loyalty/revolt accumulator) **runs in mission 1 in brief intermittent
       bursts** during the `$57fd0 == 0` phases, not never. No prior long capture
@@ -1064,9 +1066,9 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
       `$157ba`, and a leaf `jsr`'d from 17 sites across the entity FSM and the
       group-order system (mode `$16`/`$4e`/`$5e`, the `$5590` ROUT path, …).
       Entry contract: **just `A1`**, like every other `$14b62` handler.
-    - `$157ba` tries `$16892` first — a **goods-driven regroup**: if any of
+    - `$157ba` tries `$16892` first — the **equipment pickup gate**: if any of
       `owner_leader.goods[0..3]` is non-zero it retargets the unit to the
-      leader's cell and returns (skipping `$3c08`). All goods zero → `$3c08`.
+      leader's cell (arrival mode `$90`, the weapon/Plough swap, economy.md §2c) and returns (skipping `$3c08`). All goods zero → `$3c08`.
     - `$3c08` — **flag-driven regroup**: pick `prev_mode` (byte 30) from the
       record's flag bits (bit 7 → `$7e`, 0 → `$16`, 1 → `$4e`, 2 → `$5e`,
       3 → `$80`, 4 → group-teardown then `$4c`, none → `$7e`), retarget bytes

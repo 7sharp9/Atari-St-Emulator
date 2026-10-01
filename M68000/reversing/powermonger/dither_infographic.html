@@ -88,7 +88,7 @@ footer{margin-top:3em;color:var(--muted);font-size:.85rem}
 <div class="panel">
 <dl class="kv">
 <dt>The rule</dt><dd>pixel(x, y) = tile[colourByte][(y + phase/8) mod 16][x mod 16]</dd>
-<dt>colourByte</dt><dd>the terrain byte of the triangle (type plane or height plane), +tick if below 12, or 0x1c if forced</dd>
+<dt>colourByte</dt><dd>the colour byte of the triangle (colour plane A at +0 or colour plane B at -8257 of $438ee: a slope shade built from the altitude plane), +tick if below 12, or 0x1c if forced</dd>
 <dt>table</dt><dd>16 KB at $2e000: 128 bytes per colour byte = 16 rows of 8 bytes = one 16x16 tile of 4-bit pixels</dd>
 <dt>checked</dt><dd id="proofline">loading</dd>
 </dl>
@@ -343,7 +343,7 @@ function drawLegend(){
   const tick=tickNow(), counts={}; sc.tris.forEach(t=>{const c=colourOf(t,tick); counts[c]=(counts[c]||0)+t.px;});
   const rk=rank(sc);
   const add=(sw,txt)=>{const s=document.createElement("span");const i=document.createElement("i");i.style.background=sw;s.appendChild(i);s.append(txt);el.appendChild(s);};
-  if(S.layer==="plane"){ add("rgb(31,95,139)","type plane"); add("rgb(180,70,30)","height plane"); }
+  if(S.layer==="plane"){ add("rgb(31,95,139)","colour plane A"); add("rgb(180,70,30)","colour plane B"); }
   else if(S.layer==="forced"){ add("rgb(176,48,138)","forced to 0x1c"); add("#444","other, dimmed"); }
   else if(S.layer==="diff"){ add("rgb(230,50,50)","differs from the game"); add("#444","equal, dimmed"); }
   else if(S.layer==="game"){ add("#888","the game's frame buffer, sprites included"); }

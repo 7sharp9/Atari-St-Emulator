@@ -38,11 +38,13 @@ buffer with software plane blits and shown by a base-register swap.
 ### The model is a heightmap grid
 
 There is **no vertex list in RAM**. The terrain lives in parallel 8 KB planes
-around `$438ee` (`ai.md`): a **type** byte at `0(A1)` (grass / rock / water), a
-**height** byte at `-8257(A1)`, and a per-cell flag byte at `+8257(A1)` whose
-bit 7 selects the diagonal that splits the cell. The altitude plane `$3f86c` (`_alts`) is
-the height source the projector reads (proven by poking it, `py/alts_render_check.py`). Corners are generated during the walk,
-so the mesh is implicit in the grid.
+around `$438ee` (`ai.md`), index `(y << 6) + x`: the **altitude** plane `-16514(A1)` = `$3f86c` (`_alts`), the height source the
+projector reads (proven by poking it: a plateau, 10938 pixels, `py/alts_render_check.py`); a **colour** byte for the cell's first
+triangle at `0(A1)` and one for the second at `-8257(A1)`, both derived from the altitude plane by the build pass `$10058` (a slope
+shade, so the lighting is baked in; 0 = open sea; poking either changes the tone of one triangle, ~2200 pixels, geometry unchanged,
+136th `scratchpad/pm136/planes/plane_ab.py`); and a flag byte at `+8257(A1)` (`$4592f`): bit 7 selects the diagonal that splits
+the cell, bit 1 pins the cell's altitude against the `$10410` smoothing pass (settlement sites, rivers `$10458`). Corners are generated
+during the walk, so the mesh is implicit in the grid.
 
 ### `$fec6` — project the grid corners
 
@@ -97,8 +99,8 @@ for (D7 = rows; ...; A0 += $fdf4, A1 += $fdf2)          // next grid row
   for (D6 = cols; ...; A0 += 4, A1 += 1, A2 += 2) {     // next cell
      C00=A0[0], C10=A0[4], C01=A0[64], C11=A0[68];      // 64 = one corner row
      if (!(A1[+8257] & 0x80)) {                         // split on C00-C11
-         tri(C10,C11,C00, colour(A1[0]));               // type plane
-         tri(C01,C00,C11, colour(A1[-8257]));           // height plane
+         tri(C10,C11,C00, colour(A1[0]));               // colour plane A
+         tri(C01,C00,C11, colour(A1[-8257]));           // colour plane B
      } else {                                           // split on C10-C01,
          ...                                            // order by packed(C01) vs packed(C10)
      }
@@ -106,10 +108,11 @@ for (D7 = rows; ...; A0 += $fdf4, A1 += $fdf2)          // next grid row
   }
 ```
 
-`colour(b)` is the raw terrain byte, plus `[$4bb3e] & 3` when `b < 0x0c`
-(water). The colour index is therefore the terrain value itself: height banding
-is the shading. One triangle of each cell takes the height byte and the other
-the type byte, which gives sloped cells their two-tone split.
+`colour(b)` is the raw colour byte, plus `[$4bb3e] & 3` when `b < 0x0c`
+(the water shimmer). The colour is a slope shade computed from the four corner
+altitudes at world build (`$10058`, read in code; the band arithmetic is not checked cell by cell); the height only
+enters through the projection `$fec6`. Each triangle of a cell has its own colour byte (`0` and `-8257`), which gives sloped
+cells their two-tone split.
 
 ### `$ef62` → `$e3e6` → `$e420` — the pattern fill
 
@@ -305,7 +308,7 @@ settled view.
 |---------|------|--------------|----------|
 | `$14b62` | entity iteration + projection driver | walks the 50-byte object records `$51b66+$32 .. $57f66` (~490 slots), `tst.b 5(A1)` active-gate, per-type `jmp` table `$14bba` keyed on `31(A1)`; calls `$163ea` per moved entity | ~27 active entities scanned/frame (×511 over 19 VBLs) |
 | `$163ea` | entity world → grid cell | `cell = ((worldY & $ff00) >> 2) + (worldX & $ff)`: shift + add, no MUL/DIV; `beq $1648c` skips the relink when the cell is unchanged | per moved entity |
-| `$1648e` | terrain height / type sampler | `lea $438ee,A4`, index by `worldX>>2` / `worldX>>6`; type at `0(A4)`, height/flag at `∓8257(A4)` | per terrain cell touched |
+| `$1648e` | terrain colour sampler | `lea $438ee,A4`, index by `worldX>>2` / `worldX>>6`; returns the colour byte of the triangle the point lies in, `0(A4)` or `-8257(A4)`, chosen by flag bit 7 (`+8257(A4)`) and the position inside the cell | per terrain cell touched |
 | `$164bc` | entity step toward a target | `sub.w D6,D0 / sub.w D7,D1 / ext.l / divu D2,D0 / divu D0,D1`: 4-quadrant fold, then `divu speed` on the major axis; `16(A1)` = speed, can be 0 | per moving entity |
 | `$16738` | selected-group marker blit | visibility test `btst #7,7(A6)` / `btst #6,7(A6)`; feeds `$e6ee` | per marked record |
 | `$e4de`+ | unrolled span filler | `$e4da: jmp 82(PC,D6.w)` into a ~120-deep `move.l D0/D1,(A2)+` chain, span length in D6; caller loop `$e45a`/`$e45e`/`$e462`. The fill-rate hot path | ~40 % of all instructions in the settled view |

@@ -171,7 +171,7 @@ def terrain_sample(m, D6, D7):
     A4 = (TERRAIN + s16(D0)) & 0xfffff      # adda.w D0,A4
     if m.bs(A4 + 8257) < 0:                 # tst.b 8257(A4) ; bpl $164b2
         lo = (D6 & 0xff) + (D7 & 0xff)      # move.b D6,D0 ; add.b D7,D0
-        if lo > 0xff:                       # bcc $164b6  (carry -> take type plane)
+        if lo > 0xff:                       # bcc $164b6  (carry -> take colour plane A)
             return m.bu(A4)                 # $164ac  move.b 0(A4),D0
         return m.bu((A4 - 8257) & 0xfffff)  # $164b6  move.b -8257(A4),D0
     else:

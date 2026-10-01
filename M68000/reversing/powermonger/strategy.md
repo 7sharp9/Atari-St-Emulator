@@ -34,14 +34,14 @@ $13096  jsr $12ce0   ; offscreen buffer -> shifter (double-buffer flush)
 $1309c  tst.w $57ff2 ; bne $130c8        ; paused -> skip the two heavy renderers
 $130a4  jsr $178ae   ; HUD group bars (food 112, men 52, the lead's health 45; callcap: 138 bytes written)
 $130aa  jsr $f898    ; terrain raster
-$130b0  jsr $1abaa   ; seasons: fade the grass 16 px ($57ff6 LCG), $57fec++; weather ($1ad2a)
+$130b0  jsr $1abaa   ; _seasons: dissolve the live tileset 16 px per call ($57ff6 LCG), $57fec++; weather ($1ad2a)
 $130b6  jsr $17878   ; compass (callcap: 51 bytes written)
 $130bc  jsr $165b2   ; water / terrain animation for the selected group
 $130c2  jsr $14b62   ; << the entity iterator (ai.md)
 $130c8  jsr $6a3a    ; << order executor: consume $58016, drive group state + lead mode
 $130ce  jsr $7a56    ; sprite / HUD compositor
 $130d4  $ff9a += $12f56 ; ...andi #$3f... clr $12f56 when it wraps  ; AUTO-ROTATE hook
-$130f6  jsr $d23a    ; $57fba -> $57fce UI mood ratio
+$130f6  jsr $d23a    ; $57fba -> $57fce force ratio (0..4; 4 = victory at $d2c8)
 $130fc  jsr $7202 ; text panels, then the minimap / compass / captain boxes / icon floor ("The player's commands")
 ```
 
@@ -203,7 +203,7 @@ typedef struct pm_leader {
 /* 2*/  u16  chain_head;              // -> $4f916 first settlement of the lord (walk via +8)
 /* 4*/  u16  cell;                    // packed {x: bits 0-5, y: bits 6-12} of the lord's position
 /* 6*/  u16  food;                    // the lord's food store (124th; was troops_reserve). $d322: += into $57fba[side].word2 ; $15e18/$15760: += 4 on arrival
-/* 8*/  u16  troops_field;            // $d322: += into $57fba[side].word0 ; sieges/$5bd2 decrement it; $68fe scores vs it
+/* 8*/  u16  troops_field;            // the lord's men at home (not in an army roster); $d322: += into $57fba[side].word0 ; $152d4 (join) / sieges/$5bd2 decrement it, $1b8c (leave) increments; $68fe scores vs it
 /*12*/  u16  gather_kind;             // $5cde: the lord's current work order
 /*14*/  s16  loyalty_pressure;        // >= 600 -> $550e revolt, reset to 300
 /*16*/  u16  herd_throttle;           // $5cde / $60dc
@@ -221,7 +221,7 @@ typedef struct pm_settlement {        // object.34 and leader.chain_head index t
 /* 7*/  u8   kind;                    // 7 = capital ($5cde looks for it)
 /* 8*/  u16  chain_next;              // the lord's next settlement
 /*10*/  u16  unit_head;               // first unit of the settlement (next at 24(unit))
-/*12*/  u16  cell;                    // packed cell (mode $52 destination)
+/*12*/  u16  cell;                    // packed cell (the settlement's own cell; a merchant's mode $52 walks home to it)
 /*14*/  u16  leader_off;              // byte offset into $4e514 for this settlement's lord
 } pm_settlement;                      // sizeof 18
 
@@ -392,7 +392,7 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
 
    | id | template | opened by | buttons (D3) → effect |
    |----|----------|-----------|------------------------|
-   | 2 | `$921a` | `$9036` (captain info) | none: name, job, aggression, loyalty, strength, speed, food, troops, carrying |
+   | 2 | `$921a` | `$9036` (captain info) | none: name, job, aggression, loyalty, health (the row is labelled "Strength:" but `$912a` prints the `healthnames` string from byte 45), speed, food, troops, carrying |
    | 4 | `$b03a` | options icon `$2e` (`$af6c`) | game speed slider; `$31` "@@@@" (`$aeac`, only when the local slot state is 2); `$39` GAME → panel 8 (`$af52`) |
    | 6 | `$b0ad` | `$aeac` | FILE: `$17` LOAD (`$3f768` → `$3f2a0` OR-merge, `$e29c`); `$47` save (`$3f2a0` → `$3f768`, `$e288`, only when `$14e4e == $2c`); `$77` (`$1ba72`) |
    | 8 | `$b160` | GAME | `$11` RETIRE → order `$2e`; `$41` REPLAY MAP → `$28`; `$71` SELECT MAP (`$abcc`, `$13ce8`); `$a1` MULTI PLAY → `$2c`; `$d1` RANDOM MAP → `$30`, param `$2df84`; `$101` PAUSE → `$24`; `$131` SEND MESSAGE → panel `$14` (`$d194`) |
@@ -923,10 +923,10 @@ There are **three** "random" sources; none is a seeded PRNG in the *AI* path:
   no seeding, no entropy, and a save/restore at the same tick replays
   identically.
 - **`$57ff6`** — a genuine 13-bit LCG, `x = (x * $24a1 + $24df) & $1fff`,
-  stepped 16× per housekeeping pass in `$1abc0`. It feeds the **sound** driver
-  (`$ff9e`-relative table lookups); its **wrap** to 0 also drives the `$57fd0`
-  rotation + the `$4d252` wildlife poke (see "What `$1abaa` actually is"). Never
-  the AI or combat directly.
+  stepped 16× per `$1abaa` call (`$1abc0`). It is the **pixel-order generator of the season tileset
+  dissolve** (each step copies one pixel of the new season's art into the live tileset at `[$ff9e]+3712`; 136th, `scratchpad/pm136/season/tilediff.py`:
+  half summer and half autumn art at count 255, 98% the new art at 496); full period 8192 = 512 calls, and its **wrap** to 0 rotates `$57fd0`, plays a season
+  sound and nudges one `$4d252` tree record (see "What `$1abaa` actually is"). Never the AI or combat.
 - **`$12c9a` / `$2df84`** — a 32-bit LCG (`state = state * $bb40e62d + …`,
   default seed `$bc614e`), used **only at world-build** (`$10d1e` reseeds
   `$2df84` from `$580a0`, then draws map size / lord count / placement). Makes
@@ -1398,15 +1398,15 @@ pixel of the season's grass patterns into the live dither slots per step
 with `$1a856` and counts the spell `$4bb42`/`$4bb44` down, or starts one via
 `$1ad74`; SPEC §7 "Weather"). **Once per LCG wrap** (`$1ac3c`, when `$57ff6`
 reaches 0):
-- pokes **one** random `$4d252` record — if its `byte7 == $d` it becomes
-  `$e + (byte10 & 3)` (wildlife / ambient nudge);
+- pokes **one** random `$4d252` (tree array) record — if its `byte7 == $d` it becomes
+  `$e + (byte10 & 3)` (a tree-state nudge; 0 of 204 records changed over one watched wrap, the array holds no type-`$d` record: effectively dormant, inferred);
 - **rotates `$57fd0`** — `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}
   (`$1ac5e..$1ac6a`, raw-verified 97th). `$57fd0` is the season *and* the
   mode-`$7c` settlement-heartbeat gate (economy.md §3a), so this rotation is
   what makes the heartbeat + loyalty/revolt system **transiently active in
   mission 1** despite its seed giving `$57fd0 = 4` at world-build. Observed
-  rate: ~1 rotation per ~110M steps;
-- clears `$57fec` / `$57ff6` and ends any weather (`$4bb42`/`$4bb44` := 0).
+  rate: 118.44M steps per rotation (512 calls × ~231k, three writes watched);
+- clears `$57fec` (the call count since the last change, 0..512) / `$57ff6` and ends any weather (`$4bb42`/`$4bb44` := 0).
 
 No population, food or invention maths anywhere in it.
 
@@ -1477,7 +1477,7 @@ def sim_tick(world):
                     for man in obj.roster:                     # a starving army deserts
                         if rng() & 7 == 0: man.leave_group()
 
-    # $d23a: UI-only mood ratio (the AI never reads it back)
+    # $d23a: force ratio $57fce (the AI never reads it back; $d2c8 tests it == 4 for victory)
     enemy = sum(force[s] for s in other_sides) + 1
     ui.mood = clamp(0, 4, (2*force[me] + enemy//4) // enemy)
 
