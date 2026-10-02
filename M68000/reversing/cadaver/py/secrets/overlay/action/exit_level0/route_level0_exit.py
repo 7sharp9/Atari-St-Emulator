@@ -1,4 +1,4 @@
-"""route_level0_exit.py <OUTDIR> [START] [--upto=heal|d1|e1|g1|g2|level1|room31]: the whole natural chain out of level 0 (Cadaver 88th pass).  Zero injected input, nothing poked.
+"""route_level0_exit.py <OUTDIR> [START] [--upto=heal|d1|e1|g1|g2|level1|room31|room90]: the whole natural chain out of level 0 (Cadaver 88th pass).  Zero injected input, nothing poked.
 
     cd M68000 && .venv/bin/python reversing/cadaver/py/secrets/overlay/action/exit_level0/route_level0_exit.py OUTDIR [START.snap] [--upto=<segment>]      (about 4 min, one emulator process at a time)
 
@@ -10,6 +10,7 @@ START defaults to scratchpad/cadaver/secrets_out/action/rwn2/taken53.snap (the t
   g2    g2/route_altar_to_room36_real.py  altar 99 -> READ MAGIC, 324 -> room 38 -> door $2a -> room 36, MASSACRE -> room 60
   level1  g2/level_change.py (optional)   room 60 -> START LEVEL (object 84), Space at PLACE LEVELS DISK -> level 1 room 0, health 20 of 200, XP 980
   room31  l1/route_level1_first.py (optional)   level 1 room 0 -> 34 -> 29 -> 31, health unchanged (the default stops after g2)
+  room90  l1/route_level1_room90.py (optional)  room 31 altar puzzle -> room 12 -> room 32 (armour 578, lever 146) -> room 12 (throw, lever 225, pillars) -> room 90, health unchanged (about 12 min)
 Every output lives under OUTDIR/<segment>/ (checkpoint snapshots, log.txt, _scratch/ = the libs' own working dirs, CAD_OUT).  Prints one line per segment and the final room/health/XP; exits non-zero on any failure.
 The hand-off rule is the one of the 88th-pass driver full_chain.sh: the last snapshot whose name starts with digits (sorted by name)."""
 import sys, os, re, subprocess, time
@@ -18,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.environ.get('M68000_ROOT') or os.path.abspath(os.path.join(HERE, *(['..'] * 7)))
 ACT = os.path.join(ROOT, 'reversing', 'cadaver', 'py', 'secrets', 'overlay', 'action')
 DEFAULT_START = os.path.join(ROOT, 'scratchpad', 'cadaver', 'secrets_out', 'action', 'rwn2', 'taken53.snap')
-SEGS = ['heal', 'd1', 'e1', 'g1', 'g2', 'level1', 'room31']
+SEGS = ['heal', 'd1', 'e1', 'g1', 'g2', 'level1', 'room31', 'room90']
 
 
 def last_numbered(d):
@@ -101,6 +102,15 @@ def main():
     ends = [l for l in lines if l.startswith('end ')]
     m = ends and re.match(r'end room (\d+) .* health (\d+) xp (\d+)', ends[-1])
     if not m or int(m.group(1)) != 31: sys.exit('FAIL: room31 did not end in room 31: %s' % (ends[-1:] or lines[-1:]))
+    if upto == 'room31': return done(final, out, t0)
+    # room90 (optional): room 31's altar puzzle, room 32's armour, room 12's throw and pillars -> room 90
+    sd, lines, dt = run('room90', os.path.join(HERE, 'l1', 'route_level1_room90.py'), [cur, os.path.join(out, 'room90')])
+    cur = os.path.join(sd, 'end_room90.snap')
+    if not os.path.isfile(cur): sys.exit('FAIL: room90 did not write %s' % cur)
+    report('room90', sd, lines, dt, cur)
+    ends = [l for l in lines if l.startswith('end ')]
+    m = ends and re.match(r'end room (\d+) .* health (\d+) xp (\d+)', ends[-1])
+    if not m or int(m.group(1)) != 90: sys.exit('FAIL: room90 did not end in room 90: %s' % (ends[-1:] or lines[-1:]))
     return done(final, out, t0)
 
 
