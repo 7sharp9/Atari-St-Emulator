@@ -11,6 +11,7 @@ shepherd on top of a free animal of its chain ($86 arrival) or turn a chain's an
     python reversing/powermonger/py/gate_shepherd.py [name-substring]
 """
 import collections
+import os
 import sys
 from pathlib import Path
 
@@ -20,8 +21,9 @@ import pm_fsm_ref as P
 from pm_fsm_diff import Harness, State
 from disassemble import ram_from_snap
 
-S = "scratchpad/pm139/series"
-OUT = "scratchpad/pm139/g3"
+S = os.environ.get("PM_SERIES", "scratchpad/pm139/series")      # PM_SERIES / PM_GATE_OUT: another roll, `build_series.py` with `PAGES0=1`
+OUT = os.environ.get("PM_GATE_OUT", "scratchpad/pm139/g3")
+(ROOT / OUT).mkdir(parents=True, exist_ok=True)
 P.REGIONS = P.REGIONS + [(P.ANIMALS, P.ANIMAL_COUNT + 2, "animals"), (P.RNG_SEED, P.RNG_SEED + 4, "rng")]
 MODES = (0x80, 0x82, 0x84, 0x86, 0x88)
 

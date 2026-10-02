@@ -316,6 +316,8 @@ the next"):
   `$69b4` call (95; whether it found a lord is not counted), arm 2 (2 issues), arm 3's attack (77),
   `$6762` (179 issues) and `$66e8` (137 re-issues) occur; arm 3's food fallback, arms 4 and 5
   and `$6822`'s refusal never did (synthetic states only).
+  The same census on the Play Random Land roll (59 start snapshots, 60M steps each, 3.5G steps, `PM_CENSUS_GLOB`) reaches the same arms more often (`$661a` 193, `$6762` 698, `$66e8` 64729)
+  and again never reaches `$66a4` (the food fallback), `$664c`, `$668c` (the xfer fall-through, order `$04`) or `$6884` (`$6822`'s refusal): 0 hits each. Those arms stay synthetic-only on both rolls.
 
 Order writes go through `$67ee` → `$6822`: `$67ee` re-packs the found leader's
 cell `4(A3)` into `{x:6, y:7}` (`x << 8 | y`), `$6822` stores `{type, param}` into
@@ -736,13 +738,18 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
 
 The routines that start and finish the player's targeted orders are proven against the real 68000 by `py/orders/gate_orders.py` (models in `py/orders/orders_ref.py`,
 which imports `tools/pm_fsm_ref.py`): every byte the real `callcap` changed against every byte the model changed over the whole of RAM except the stack and the screen
-(`$78000..$7fcff`: `$17a46` redraws the selected group's panel icons, which the model leaves untracked), plus the returned registers. **57039/57039 over 2234 states, 0
-mismatches**: the states are real groups of `m1_ready`, `k25_s4` and `k5_s4` with planted cell contents and poked fields, and 33 natural entries (player clicks from
-`m1_s0` captured with `py/orders/nat_capture.sh`; `$600a`/`$35f4` from land runs). Per routine (states, bytes + registers, natural entries): `$3248` 42, 1484/1484, 0;
-`$3888` 8, 916/916, 1; `$38ce` 7, 728/728, 0; `$390e` 8, 932/932, 1; `$3956` 36, 1195/1195, 1; `$39d4` 344, 1292/1292, 8; `$3bc8` 72, 216/216, 0; `$3da4` 15, 178/178, 1;
-`$4a7a` 58, 5079/5079, 1; `$5fa0` 135, 17466/17466, 1; `$6128` 24, 1762/1762, 0; `$311a` 72, 65/65, 0; `$35f4` (with `$3744`) 57, 6505/6505, 1. `$600a`, `$60dc`, `$61f8`,
-`$6352`, `$638c` and `$63f4` are in economy.md §2a/§2c. `$3248`, `$38ce` and `$6128` have no natural entry (they are the fallbacks after `$3154`, and no click I tried on an own man or
-empty ground reached them), so those three are synthetic states only.
+(`$78000..$7fcff`: `$17a46` redraws the selected group's panel icons, which the model leaves untracked), plus the returned registers. **61143/61143 over 2273 states, 0
+mismatches**: the states are real groups of `m1_ready`, `k25_s4` and `k5_s4` with planted cell contents and poked fields, and 72 natural entries (player clicks from
+`m1_s0` captured with `py/orders/nat_capture.sh`; `$600a`/`$35f4` from land runs on the preview roll; `$3248`, `$38ce`, `$6128` and `$5fa0` from Play Random Land lands, below). Per routine (states, bytes + registers, natural entries): `$3248` 52, 1793/1793, 10;
+`$3888` 8, 916/916, 1; `$38ce` 9, 980/980, 2; `$390e` 8, 932/932, 1; `$3956` 36, 1195/1195, 1; `$39d4` 344, 1292/1292, 8; `$3bc8` 72, 216/216, 0; `$3da4` 15, 178/178, 1;
+`$4a7a` 58, 5079/5079, 1; `$5fa0` 161, 21008/21008, 27; `$6128` 25, 1763/1763, 1; `$311a` 72, 65/65, 0; `$35f4` (with `$3744`) 57, 6505/6505, 1. `$600a`, `$60dc`, `$61f8`,
+`$6352`, `$638c` and `$63f4` are in economy.md §2a/§2c.
+
+`$3248`, `$38ce`, `$6128` and `$5fa0` have no natural entry from a player click (they are the fallbacks after `$3154`, and no click tried on an own man or empty ground reached them) and
+none on the preview-roll lands, but the AI reaches them on the Play Random Land roll: a `hits` census over 59 start snapshots of 60M steps (`py/cmdai/census.py` with `PM_CENSUS_GLOB`: 39 freshly built lands plus the 20
+stretch snapshots of five `runland.sh` runs) counts `$3154` 532, `$3248` 101 (83 of them on one land, seed 5), `$38ce` 3, `$6128` 1 and `$5fa0` 28 (counts overlap where a run snapshot follows its own land snapshot;
+the preview-roll census of `$3154` and those four was not made, so "none" there means not looked for). `capture_hits.py` took natural entries of 23 lands into `nat/` (`$3248` 10 from three lands,
+`$38ce` 2, `$6128` 1, `$5fa0` 26 from 21 lands): all pass the gate. `$38ce` and `$3248` are entered with return addresses `$6be6` and `$6c12`, `$6128` with `$6c92`, `$5fa0` with `$151b8`; 11 of the 27 natural `$5fa0` entries take the success arm and 16 the refusal, and 3 of the 10 `$3248` entries find a target.
 
 All cell senders first call `$37c2` (detach the lead from its old group) and stamp the target into the lead as `x, $80, y, $80` (bytes 20..23); the arrival mode goes in byte 30
 and `31 := $10` (advance).

@@ -558,8 +558,9 @@ Decoded from RAM, with the centre first:
 | 5 | 17 | a Tower at the centre, a Church (0,-4), a Tavern (-1,-3), Turrets (-4,0), (+4,0) and (0,+4), and 11 TownHalls on the diamond of radius 3 to 4 round it |
 | 6 | 1 | a Tower |
 
-Kinds 4 and 5 are the lords that get a captain (section 5a). Counted over the eight builds of section 5a: 72 of 74 lords have a chain whose kinds are exactly their layout's, the other 2 lost 5 sites to sea
-cells, and none has a building the layout lacks (kinds seen: TownHall 173, Barn 46, Turret 47, FarmHouse 45, WorkShop 32, Square 32, Tavern 31, Church 31, FishHut 28, Ruin 17, Tower 16, Ranch 15, Mine 0).
+Kinds 4 and 5 are the lords that get a captain (section 5a). Counted over the eight builds of section 5a on each roll (`py/lord_chains.py`): on the preview roll 72 of 74 lords have a chain whose kinds are exactly their layout's, the other 2 lost 5 sites to sea
+cells, and none has a building the layout lacks (kinds seen: TownHall 173, Barn 46, Turret 47, FarmHouse 45, WorkShop 32, Square 32, Tavern 31, Church 31, FishHut 28, Ruin 17, Tower 16, Ranch 15, Mine 0);
+on the Play Random Land roll 118 of 122 (the other 4 lost 18 sites to `$2fc0`'s refusals, open sea or an occupied cell, not split by cause; none has a building the layout lacks; TownHall 234, Barn 79, FarmHouse 74, Turret 62, FishHut 52, Square 51, WorkShop 51, Tavern 50, Church 49, Ranch 28, Ruin 24, Tower 22, Mine 0).
 Only lords of kind 3 and 4 start with a WorkShop, so the player's order `$0e` (set men to work) is accepted at the start only on a land where the player's lord has one. In mission 1 the player's own lord
 is a single Tower (kind 6, lord 2 of `m1_s0`) and refuses it; `callcap 5cde` on the two kind-6 lords of `m1_s0` and `m1_ready` returns at once (D2 stays 0), on both kind-3 lords of `m1_ready` (the enemy's and
 the conquered one, whose chain holds a WorkShop) it goes on and sets D2 to `$3e`, the gather mode (2 of 2 each; the poke of a kind 7 into the Tower, `strategy.md` "What each order does", is the same gate). Kinds 0, 7 and 8 index past the table (0 and 7 read the table's own words, 8 reads data) and are not used by any land seen.
@@ -872,11 +873,12 @@ ground. It is not an influence, ownership or carrying-capacity field, and not re
 
 `$2984` (the developers' `_set_peo...`) runs once per land build, after the map is made and before `$238c`, which builds each side's army (the only other
 caller of the man allocator `$2e1e`). It is not a periodic pass and not a garrison. For each lord that has a settlement chain and each settlement of the chain
-it creates `word[$580a6 + side*32 + 14]` men, which is 2 on every side of every build seen (so 70 men on land 0, 35 settlements, and 210 on land 25).
+it creates `word[$580a6 + side*32 + 14]` men, which is 2 on every side of every build seen (16 of 16 builds, two rolls of eight lands), so a land has twice as many men as buildings on lord chains
+(land 0: 70 men for 35 buildings on the briefing-preview roll, 148 for 74 on the Play Random Land roll; land 25: 210 and 314). The two rolls (`$5809c` non-zero or 0, `strategy.md` "Mission / world setup") give different lands for the same `k`; every count below says which it is from.
 Each man is allocated by `$2e1e` (the first free record from slot 1; the high-water word `$57f66` grows by 50 per man and the routine stops for good at `$5460`,
 432 men, never reached), chained into his settlement (word 10 is the head, word 24 the next man), counted into his lord (`troops_field += 1`), and given a job by `$2a98`.
 Only the first man of a lord of kind > 3 carries the leader flag (the flag survives across that lord's settlements and is cleared after one use), so a land has one
-captain per such lord (8 of 8 builds: 31 captains for 31 lords of kind 4 or 5, 2 to 6 a land). The health byte follows the job: farmer `$52`, fisher `$4f`, merchant `$45`, shepherd `$48`, captain `$5f`.
+captain per such lord (16 of 16 builds: 31 captains for 31 lords of kind 4 or 5 on the preview roll, 2 to 6 a land; 50 for 50 on the Play Random Land roll, 3 to 11 a land; `py/lord_chains.py`). The health byte follows the job: farmer `$52`, fisher `$4f`, merchant `$45`, shepherd `$48`, captain `$5f`.
 
 The job pick `$2a98` (developers' `_its_my_`; `reversing/powermonger/py/gate_jobs.py`):
 
@@ -904,14 +906,16 @@ int job_pick(man *m, int d1_from_caller) {
   so at most 30 markers are made by this arm (the pool has room for 60: `$3744` puts the category-6 camp and garrison markers in the same pool).
 - **Farmer `$2c5a`** (`init_far`): scans squares of radius 1 to 9 for the first cell whose flag byte (`$4592f` plane) has bit 4 set, clears the bit, sets both colour
   planes (`$418ad`, `$438ee`) of that cell to `$1e` (the field), makes the cell his target (bytes 42/43 the cell, words 20/22 the position) and sets mode `$10`, previous
-  mode `$18` (the farmer cycle, `ai.md`), flag bit 0. Altitude is never tested. Every farmer takes one site: free sites fell by exactly the farmer count in all eight builds.
+  mode `$18` (the farmer cycle, `ai.md`), flag bit 0. Altitude is never tested. Every farmer takes one site: free sites fell by exactly the farmer count in all 16 builds (both rolls).
 - **Merchant / captain** (`$2ce8`, `$2cf8`): mode `$4e` with flag bit 1; mode `$8a`, no flag change.
 
 **A stale-register bug decides the job mix.** `$2c5a` bounds the row of the cell it examines with `cmpi.w #$80,D1`, which tests D1, not the row (D0). D1 is the caller's
 register: `$2984`'s remaining-men counter on entry, but the fisher arm leaves in it the cell index of the last cell it visited whenever it fails (no shore cell within nine, or
 the 30-marker pool full), normally above `$80`. From then on every farmer attempt of that man fails at once, in all five rounds, so a man whose fisher arm fails once can no
-longer become a farmer. Counted over eight builds: 1234 of 1234 farmer-arm failures were this stale bound and none was a genuine "no free site within nine cells"
-(every merchant has a free site within nine cells in the final state, on lands 0, 25 and 142 checked). The merchant class is therefore mostly this bug's output:
+longer become a farmer. Counted over eight builds on each roll: 1234 of 1234 farmer-arm failures (preview roll) and 2473 of 2473 (Play Random Land roll) were this stale bound and none was a genuine "no free site within nine cells"
+(on the preview roll every merchant also has a free site within nine cells in the final state, on lands 0, 25 and 142 checked). The merchant class is therefore mostly this bug's output:
+
+Preview roll (`$5809c` non-zero, `build_land.sh` without `PAGES0`; `pm139/corpus_2984`, `py/pop_census.py`):
 
 | land | men | captains | farmers | fishers | shepherds | merchants: gave up / five rounds failed | animals | catch markers |
 |---|--:|--:|--:|--:|--:|---|--:|--:|
@@ -924,14 +928,28 @@ longer become a farmer. Counted over eight builds: 1234 of 1234 farmer-arm failu
 | 100 | 84 | 3 | 34 | 18 | 11 | 4 / 14 | 38 | 18 |
 | 142 | 58 | 2 | 23 | 9 | 11 | 4 / 9 | 40 | 9 |
 
-Fishermen stop at 30 because of the marker cap, shepherds at 10 or 11 once the animal pool is past 38 (seven of the eight builds end at 38 to 40 animals; land 0 ends at 36 and its 70 men are
-simply too few to reach the cap), and the 59 + 222 merchants are the overflow. Whether a clean D1 would be the intended behaviour is not decidable from the code; the port, which does not simulate the entity loop, keeps no choice to make.
+Play Random Land roll (`$5809c = 0`, `PAGES0=1`; the same seeds `k`, which are different lands; `pm142/corpus_2984a`). This is the roll a real random land runs with, and it is denser:
+
+| seed k | men | captains | farmers | fishers | shepherds | merchants: gave up / five rounds failed | animals | catch markers |
+|---|--:|--:|--:|--:|--:|---|--:|--:|
+| 0 | 148 | 4 | 61 | 30 | 12 | 8 / 33 | 40 | 30 |
+| 1 | 114 | 3 | 49 | 20 | 10 | 4 / 28 | 38 | 20 |
+| 5 | 232 | 9 | 88 | 30 | 10 | 20 / 75 | 39 | 30 |
+| 10 | 160 | 5 | 71 | 30 | 10 | 12 / 32 | 40 | 30 |
+| 25 | 314 | 11 | 142 | 30 | 11 | 24 / 96 | 38 | 30 |
+| 60 | 186 | 6 | 79 | 30 | 11 | 11 / 49 | 39 | 30 |
+| 100 | 210 | 7 | 91 | 30 | 10 | 13 / 59 | 40 | 30 |
+| 142 | 188 | 5 | 75 | 3 | 11 | 18 / 76 | 40 | 3 |
+
+On both rolls fishermen stop at 30 because of the marker cap (preview: 5 of 8 builds; Play Random Land: 6 of 8, and the other two end at 20 and 3), shepherds at 10 to 12 once the animal pool is past 38
+(14 of the 16 builds end at 38 to 40 animals; preview land 0 ends at 36 and its 70 men are simply too few to reach the cap, and seed 1 of the other roll ends at 38 with 114), and the merchants are the overflow:
+59 + 222 = 281 of 1026 men on the preview roll, 110 + 448 = 558 of 1552 on the Play Random Land roll (27 % against 36 %). Whether a clean D1 would be the intended behaviour is not decidable from the code; the port, which does not simulate the entity loop, keeps no choice to make.
 
 Proof: `py/gate_jobs.py` runs `$2a98` against the real 68000 (`callcap 2a98`) on 146 states: the 70 natural entries of land 0's build plus synthetic RNG seeds (each arm drawn),
 full animal and marker pools, a leader, and an incoming D1 over `$80`: 3310 of 3310 tracked bytes and returned D0 identical (men, buckets, planes, both pools, the RNG seed, the
-retry word). `py/gate_pop.py` runs the whole `$2984` (`callcap 2984`) on the build of eight lands (0, 1, 5, 10, 25, 60, 100, 142): 29860 of 29860 tracked bytes identical over 1026 men.
+retry word). `py/gate_pop.py` runs the whole `$2984` (`callcap 2984`) on the build of eight lands (0, 1, 5, 10, 25, 60, 100, 142): 29860 of 29860 tracked bytes identical over 1026 men on the preview roll, and 41760 of 41760 over 1552 men on the same eight seeds with `$5809c = 0` (`PM_POP_CORPUS=scratchpad/pm142/corpus_2984a`).
 The model is `call_2984`, `call_2a98`, `call_2b08`, `call_2b68`, `call_2c5a`, `call_2d0e`, `call_2e1e` in `tools/pm_fsm_ref.py`. The per-round probabilities (1, 3, 16 and 12 in 32) are read from
-the masks in `$2a98` and agree with the counts; `$2984` itself takes 1.4 to 8.7 M steps a build. That the farmer arm never fails for lack of a site is counted on the final states of eight builds only.
+the masks in `$2a98` and agree with the counts; `$2984` itself takes 1.4 to 8.7 M steps a build. That the farmer arm never fails for lack of a site is counted by the model's trace on the 16 builds (the model is the proven one); the free-site check on the final state was made on three preview lands only.
 
 ## 6. Men are conserved, food is not grown by any counter
 

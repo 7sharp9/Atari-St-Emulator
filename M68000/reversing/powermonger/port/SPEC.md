@@ -53,8 +53,8 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 **Open.**
 
 - Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn on 37 lands (the writers of 18 are
-  dead code in this build, §6), and what `byte6` 6 itself is is not established (it shares the `$117b0`
-  drawer with the catch markers of 24). The plough and siege-engine overlays of the men and the
+  dead code in this build, §6), and the frame a `byte6` 6 camp marker draws (`$111` by the shared `$117b0`
+  formula) has not been captured. The plough and siege-engine overlays of the men and the
   `record[7] == $0a` overlay of a settlement building (`$119b2`) are ported from the code but were
   never seen on screen. Per-category frame counts are not tabulated.
 - HUD art: the glyph sheet behind `$e6ee`'s descriptor table and the compass panel are not decoded as
@@ -72,8 +72,7 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 live only in the gitignored `scratchpad/` (some only on `gpubox`, not on the Mac), so they cannot be
 re-run from the repository: `scratchpad/pm92/proj_ref.py` and `diff_fecc.py` (the integer `$fecc`
 reconstruction and its `callcap` diff), `scratchpad/pm83_synth_check.{py,fsx}` (F# vs Python on
-synthetic quadrant data), `scratchpad/pm98/repro93..97.py` (the graduation acceptance of the entity-FSM
-gates), `scratchpad/pm90_xcheck.{py,fsx}` and `pm91_ent_{fs.fsx,py.py}` (entity pass cross-checks),
+synthetic quadrant data), `scratchpad/pm90_xcheck.{py,fsx}` and `pm91_ent_{fs.fsx,py.py}` (entity pass cross-checks),
 `scratchpad/pm118/` (`baseline.fsx`, `order_test.fsx`, `phase_test.fsx`), `pm118b/` (`lastrow_fix.fsx`),
 `pm119/` (`season_check.fsx`, `pan_check.fsx`, `zoom_check.fsx`, `jitter_check.fsx`) and
 `scratchpad/pm121/allpairs.txt`. The committed equivalents are `../py/parity.py`, `../py/score.fsx`,
@@ -715,7 +714,7 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 | 0 | `$11c8a` / `$11f78` | man | walk or melee frame; plough and siege-engine overlays; flags bit 5 → the boat of 26 | walk, melee, boat (lands 0, 5, 25, 60) |
 | 2 | `$117d8` / – | settlement building | building frame `record[7]` | all |
 | 4 | `$1168c` / – | tree, building | `record[7]` + season offset | all |
-| 6, 24 | `$117b0` (`a_object`) / `$11f78` | 24: the fishermen's catch marker; 6: same drawer, role not established | `record[7] + $100` (a catch marker has `record[7] = $10`, frame `$110` = a rowboat on the pond) | 24: all |
+| 6, 24 | `$117b0` (`a_object`) / `$11f78` | 24: the fishermen's catch marker; 6: a group's camp marker, placed by `$3744` (same drawer, `record[7] = $11`) | `record[7] + $100` (a catch marker has `record[7] = $10`, frame `$110` = a rowboat on the pond; a camp marker, formula only, `$111`) | 24: all; 6: not captured |
 | 8 | `$11a86` / `$11f78` | animal | 16 facings | all |
 | 10 | `$11772` / – | dropped equipment (a dead man's `record[33]`/`[44]` once `$1623c` finishes) | `$10f + (r33 − 8) >> 1`, `$142 + r44 >> 1` | land 5 |
 | 12 | `$11bbc` / `$11f78` | dead man (`$5590` kill: side negated, `word[18] := $a0`) | body `$103 + (−record[5] & $ff)`; figure `$100 + record[32]` lifted `$a0 − word[18]` | land 5 |
@@ -733,10 +732,11 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 | 40 | `$11c64` / – | projectile (`$57f0`, weapon tier in `D1`) | one colour-0 pixel (`$e6ee`) | land 25 |
 | 44 | `$1184e` / – | dropped goods pile (`$3ac8`) | a goods icon per non-zero word at `record + 10 + 2e` | lands 5, 25 |
 
-Screened on 37 lands (33 built with `../py/build_land.sh` and settled
+Screened on 37 lands of the preview roll (33 built with `../py/build_land.sh` and settled
 30M steps, `k` = 0-142, plus `k` = 20, 60, 100, 143): 20, 22, 32, 40, 44 and 12 occur at settle; 10, 30
 and more 40/44 appear once armies fight (200M-step runs). No land showed 18, 28
-or 34.
+or 34. The same screen on the Play Random Land roll (`PAGES0=1`, `k` = 0, 4, .., 140 and 143, settled 30M steps; `py/census.py`) finds
+0, 2, 4, 8, 14, 16 and 24 on all 37, 20 on 31, 32 on 24, 6 on 17, 12 on 13, 22 on 10, 44 on 7, 40 on 4, and again none of 10, 18, 28, 30, 34, 36, 38 and 42 (tree records 221 to 342 a land).
 
 **Goods icons, `$11886`.** Nine entries, each a frame and an offset from the
 blit corner, laid out as a 3 x 3 block 2 px apart: `$116` (−2,−2), `$143`
@@ -822,7 +822,7 @@ use.
 | 0 | man | `$33000` | `(side−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. side = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative** (8 steps). Melee, plough and siege-engine overlays and the boat: "Men" above. |
 | 2 | settlement building | `$37c7c` | `record[7]`, centroid (see "Settlement buildings" below) |
 | 4 | tree / building | `$37c7c` | **(live-verified, D2 at `$12288`)** `r7 = record[7]`: `r7 == 0x0d` → `0x0d`; `(r7 & 0x7f) == 0x0e` → `0x0e`; else `(r7 & 0x7f) + word[$11746 + word[$57fd0]]`. `word[$57fd0] = ($58146 & 3)*2` (per-mission tile-set selector); table `$11746 = {0:0, 2:3, 4:6, 6:9}`. Mission 1 (`$57fd0`==4) → `+6`, so `r7` 0x11/0x10/0x0f → frame 0x17/0x16/0x15. **Position: `$11f1a` sub-cell lerp** (like the men) with an *address-jitter* `fx/fy` = `fx = (((A2+A3)&0xffff)<<3)&0xff`, `fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff` where `A2 = &$47970[cellY*64+cellX]`, `A3 = record`, `A0 = &$3f364[row*64+col*4]`; then `$12272` `−4/−8` → raw anchor `(lerpX+0x38, lerpY−16)`. |
-| 6, 24 | 24: the fishermen's catch marker (`a_object` `$117b0`; planted on shore cells by `$2984`, `../economy.md` 5a; side in `record[5]`, `record[7] = $10`); 6: same drawer, role not established (one record seen, in a land built with `$5809c = 0`) | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Centroid (`$1182a`). A catch marker (`r7 == 0x10`) draws frame 0x110, a rowboat on the pond (`../catch_marker_boats.png`; live: `bp 1182a`, 30 of 30 marker records had `D4` low word `$0110`). `$61f8` turns the marker into one boat for the group that takes it (`../economy.md`, `../strategy.md`). |
+| 6, 24 | 24: the fishermen's catch marker (`a_object` `$117b0`; planted on shore cells by `$2984`, `../economy.md` 5a; side in `record[5]`, `record[7] = $10`); 6: a camp marker (`$35f4` calls `$3744`, which writes it into the pool slots after the fishermen's markers, `record[5]` an AI side, `record[7] = $11`; 2 of 2 new records between two snapshots of one land matched 2 `$3744` hits, and 4 of 4 records read on two lands (0 and 60) sit at pool slots 30 to 32 with byte 7 `$11` and sides 2 to 4; it occurs only after the build, in 17 of 37 Play Random Land lands settled 30M steps; the preview-roll screen below did not list it) | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Centroid (`$1182a`). A catch marker (`r7 == 0x10`) draws frame 0x110, a rowboat on the pond (`../catch_marker_boats.png`; live: `bp 1182a`, 30 of 30 marker records had `D4` low word `$0110`). `$61f8` turns the marker into one boat for the group that takes it (`../economy.md`, `../strategy.md`). |
 | 8 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. **(89th: live-verified — D2 = 0x123/0x124 at `$11ab6`.)** Sub-cell lerp. |
 | 10 | dropped equipment | `$33000` | `$10f + ((record[33] − 8) >> 1)` if `record[33] != 0`, then `$142 + (record[44] >> 1)` if `record[44] != 0`, same place |
 | 12 | dead man | `$33000` | body `$103 + (−record[5] & $ff)`; figure `$100 + record[32]` at `screenY − ($a0 − word[18])` |

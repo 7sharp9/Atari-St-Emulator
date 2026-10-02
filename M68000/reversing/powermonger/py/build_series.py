@@ -4,6 +4,9 @@ snapshot at a fixed interval: the time series `gate_shepherd.py` and `gate_anima
     cd M68000
     python reversing/powermonger/py/build_series.py <k> [count=30] [step=700000] [out=scratchpad/pm139/series]
 
+`PAGES0=1` pokes `$5809c` to 0 (the Play Random Land roll, `build_land.sh`) instead of `k * $96 + $672` (the briefing preview's); the
+two rolls make different lands for one `k`, so give the other roll its own `out`.
+
 The build itself takes 2.5 M steps and `$2984` 1.4 to 8.7 M more (`bpc 2a96` waits for its `rts`, 12 M cap). Deterministic: two
 runs give identical snapshots. ATARI_NOTRACE is set, as every raw `dotnet exec` run here needs.
 """
@@ -19,7 +22,7 @@ step = int(sys.argv[3]) if len(sys.argv) > 3 else 700000
 out = sys.argv[4] if len(sys.argv) > 4 else "scratchpad/pm139/series"
 (M68 / out).mkdir(parents=True, exist_ok=True)
 cmds = ["w 2df92 001400b1", "w 2df8e 001400b1", "w 2df96 00010001", "u 13b9a 80000000",
-        f"w 580a0 {k * 0xb + 0x3fb:08x}", f"w 5809c {k * 0x96 + 0x672:04x}0000", "bpc 2a96 1 12000000"]
+        f"w 580a0 {k * 0xb + 0x3fb:08x}", f"w 5809c {0 if os.environ.get('PAGES0') else k * 0x96 + 0x672:04x}0000", "bpc 2a96 1 12000000"]
 for i in range(count):
     cmds += [f"s {step}", f"snap {out}/k{k}_{i:02d}.snap"]
 cmds.append("q")

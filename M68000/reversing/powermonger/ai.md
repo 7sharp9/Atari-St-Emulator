@@ -153,9 +153,9 @@ into `tools/pm_fsm_ref.py`, and the model is compared against `callcap` of the r
 natural and poked states, "isolate-by-disabling" (every record other than the one under test is disabled, so
 only the routine under test changes memory); a gate passes when every changed byte matches ("tracked bytes
 identical"). Branches the corpus cannot reach are asserted off with a `raise` and listed per block. The gate drivers
-of the earliest blocks (dwell/upkeep through the group teardown, the forest animator and `$4bc8`) are working scripts in
-`scratchpad/pm93`..`pm99`, `pm113` and `pm115`, indexed with their anchor snapshots in `scratchpad/ANCHORS.md`
-(`scratchpad/pm98/repro93.py`..`repro96.py` re-run the comparison set); the later gates are in `py/` (`py/README.md`).
+of the earliest blocks (dwell/upkeep through the group teardown, the forest animator and `$4bc8`) are in `py/fsm/` (`repro93.py`..`repro97.py`,
+`diff_pm98.py`, `diff_pm99.py`, `diff_4342.py`, `diff_4bc8.py`, `diff_4bc8_kind2.py`; run from `M68000/`; the `repro*` scripts reuse the earlier
+passes' cached callcap deltas only with the argument `reuse`), their anchor snapshots indexed in `scratchpad/ANCHORS.md`; the later gates are in `py/` (`py/README.md`).
 
 ### [Proven] — the dwell/upkeep core, vs the real 68000
 
@@ -252,9 +252,9 @@ the `$5590` tail calls `$2776` / `$1b8c`.
 (`$157e6`, the per-settlement heartbeat) and its leaves **`$16848`** (side ↔
 settlement-owner reconcile) and **`$163b8`** (the manpower drain — economy.md
 §3a). Isolate-by-disabling differential test:
-- **Natural corpus (`scratchpad/pm97/diff_pm97.py`): 99/99 tracked bytes
+- **Natural corpus (`py/fsm/repro97.py`): 99/99 tracked bytes
   identical over 27 states, all 12 branch families.**
-- Synthesised corpus (`scratchpad/pm96/diff_pm96.py`): 85/85 over 25 states.
+- Synthesised corpus (`py/fsm/repro96.py`): 85/85 over 25 states.
 (obj / `$4e514` leader / `$4f916` settlement / `$47970` bucket regions compared.)
 
 Mode `$7c` requires `word[$57fd0] == 0`. `$57fd0` (original `_season`) starts at
@@ -309,7 +309,7 @@ trees, `$4c5f4` markers). Structure and field meanings: economy.md §2.
 
 The model is `tools/pm_fsm_ref.py` `call_4342` plus a leaf `call_16808` (bucket-chain insert, the CLAIM
 path's screen-record spawn; `bucket_unlink`/`$16778` was already Proven from the entity FSM). Differential test
-`scratchpad/pm113/diff_4342.py`: **110/110 tracked bytes identical over 9 states, 8 branch families**
+`py/fsm/diff_4342.py`: **110/110 tracked bytes identical over 9 states, 8 branch families**
 (natural idle; the CLAIM mechanism itself, its precondition-guard failure, and its "no empty op slot"
 fallback; both ramp-in sub-cases, unclamped and clamping to `+$30`; the dwell-not-yet-expired skip; a real
 `$164bc` step that doesn't arrive; and the owner-sync byte-14 write). Pre-registered bar (100% over >= 9
@@ -334,7 +334,7 @@ the real emulator within ~3000 steps, parked in a timer-interrupt `rte` (`$14e4`
 root-caused: `bucket_unlink` alone cannot loop forever on these inputs (it is a bounded walk with no cycle
 risk from what was poked), so this is either a separate real-68000/game-state interaction that the synthetic
 state exposes, or a missing precondition (a marker that was never actually `$16808`-inserted at that cell,
-unlike a naturally claimed one). The repro is left in `scratchpad/pm113/diff_4342.py`, excluded from the pass
+unlike a naturally claimed one). The repro is left in `py/fsm/diff_4342.py`, excluded from the pass
 bar.
 
 **Tracked-region note.** The forest tables (`$4c5f4`/`$4d252`/`$57f68`; `HERD_REGIONS` in the code, a name
@@ -354,7 +354,7 @@ Entry contract: **just `A1`** (the object record) — it `lea`s its own
 `$51538`/`$4f916`/`$4e514` bases, like every other `$14b62` handler.
 
 `tools/pm_fsm_ref.py` `call_3c08` + `call_16892` + `h_mode7c_regroup`.
-Differential test `scratchpad/pm98/diff_pm98.py`: **71/71 tracked bytes identical
+Differential test `py/fsm/diff_pm98.py`: **71/71 tracked bytes identical
 over 22 states, 11 branch families** (`callcap 3c08` direct with `A1` preset for
 16, `callcap 14b62` end-to-end through the `$157ba` dispatch for 5). Pre-registered
 falsifier / bar (100% over ≥ 15 states, ≥ 8 families): PASS. `hostile.py`'s 5
@@ -396,7 +396,7 @@ role above is read from the body, not from the name.)
 `tools/pm_fsm_ref.py` `call_4bc8` (+ leaves `_classify`/`$4de2`, `call_4dae`/
 `$4dae`, `call_35f4`/`$35f4`, `call_3744`/`$3744`). Entry: `A0`/`A1` = the two
 `$51b66` object records in contact. Differential test
-`scratchpad/pm115/diff_4bc8.py`: **51/51 tracked bytes identical over 8
+`py/fsm/diff_4bc8.py`: **51/51 tracked bytes identical over 8
 states, 6 branch families** — both sides classified via `$4de2` into a
 `(byte_class, kind)` pair (kind ∈ `{4,6,8,10,12}` covered; kind 6 is the
 settlement-distance fallback, kind 4 is the bit4-direct-group-check-on-self
@@ -432,7 +432,7 @@ bug the first model missed). `_case_4cd0`'s tail then walks every settlement
 this leader owns (`2(leader)` chain) and every resident man at each (`10(settl)`,
 then the `24(man)` chain), `$4dae`-resetting any that isn't already
 group-linked-active (bit4 + `42 != 0`), bit6-flagged, or in a regroup mode
-(`$5c`/`$60`/`$62`). Differential test `scratchpad/pm115/diff_4bc8_kind2.py`:
+(`$5c`/`$60`/`$62`). Differential test `py/fsm/diff_4bc8_kind2.py`:
 **20/20 tracked bytes identical over 2 states, 2 branch families** — one
 exercising the `$4ee8` recursion landing on a real nested mismatch/notify
 (verified the recursion's register-restore fix actually matters, not just
@@ -446,7 +446,7 @@ Proven end-to-end for all three real call sites.
 
 `tools/pm_fsm_ref.py` `call_37c2` / `call_1d70` / `call_1b8c` / `call_17a46`;
 the `raise` in `call_3c08`'s bit-4 arm is gone. Differential test
-`scratchpad/pm99/diff_pm99.py`: **1847/1847 tracked bytes identical over 13
+`py/fsm/diff_pm99.py`: **1847/1847 tracked bytes identical over 13
 states, 10 branch families** — `callcap 37c2` (entry contract: `D2` = group
 offset), `callcap 1d70` (`A3` = group record), `callcap 1b8c` (`A0`/`A1`/`D1`),
 `callcap 3c08` (the whole arm), and `callcap 14b62` end-to-end. Anchor
@@ -1336,7 +1336,7 @@ disciplined attacker group (`field60 != 4`) or `flags.bit5` (a man in a boat).
 ### Natural runs on later lands
 
 Four lands built through the briefing-OK poke (`README.md` "Driving a later
-land") and run 200M steps each with no pokes, in four 50M stretches, counting PC
+land"; the briefing preview's roll, `$5809c` non-zero, not the Play Random Land roll, whose lands are denser and were not run this long) and run 200M steps each with no pokes, in four 50M stretches, counting PC
 hits with the REPL's `hits` command (`reversing/powermonger/py/runland.sh`; snapshots
 `scratchpad/pm121/run/<land>_s1..s4.snap`). Totals over the 200M steps:
 
@@ -1370,6 +1370,32 @@ over and over, the visible side of `$661a` issuing orders. `$5bd2` never fired.
 `$53f6`, the conquest arm `$539a`; gate `py/diff_4f68.py`) is how land changes hands (economy.md §3 and the revolt-chain proof below). Re-running two lands from the same snapshot
 reproduced every count exactly. Land 5's run started at step 0 of
 `scratchpad/pm121/k5.snap`; the first kill is at step 27,732,607 of stretch 1.
+
+The same census on the Play Random Land roll (`$5809c = 0`, `PAGES0=1 build_land.sh`, the same four seeds plus a land the game itself rolled, `scratchpad/pm142/rand1.snap`;
+`runland.sh`, four 50M stretches each, `scratchpad/pm143/run/`), totals over the 200M steps. These lands are denser (more men, buildings and trees) and the counts move,
+the picture does not:
+
+| routine | seed 5 | seed 60 | seed 0 | seed 25 | `rand1` |
+|---------|-------:|--------:|-------:|--------:|--------:|
+| `$6522` commander decide | 482 | 1140 | 1097 | 1044 | 1198 |
+| `$661a` the attack arm | 8 | 9 | 12 | 12 | 8 |
+| `$56a6` engage | 51 | 83 | 142 | 46 | 88 |
+| `$5590` kill-or-rout | 53 | 64 | 130 | 61 | 107 |
+| — KILL `$55f2` / ROUT `$560a` | 27 / 26 | 60 / 4 | 89 / 41 | 55 / 5 | 55 / 52 |
+| `$5bd2` wear removal | 0 | 0 | 0 | 0 | 0 |
+| `$57f0` projectile | 15 | 37 | 25 | 41 | 35 |
+| `$2776` / `$1b8c` | 3 / 28 | 4 / 85 | 4 / 92 | 3 / 82 | 4 / 78 |
+| `$3c08` regroup | 116 | 139 | 133 | 84 | 151 |
+| `$4bc8` contact reconcile | 11 | 19 | 26 | 10 | 22 |
+| `$5cde` work-order choice | 7 | 401 | 79 | 209 | 46 |
+| `$550e` revolt | 5 | 8 | 14 | 4 | 6 |
+| `$25d6` | 0 | 0 | 0 | 0 | 1 |
+| `$45f2` pigeon launched | 24 | 37 | 29 | 36 | 26 |
+| `$60dc` | 0 | 0 | 0 | 11 | 56 |
+| `$163b8` | 6 | 1132 | 111 | 403 | 118 |
+
+Every land kills men, `$5bd2` never fires, and `$2776` and `$1b8c` follow kills as before. Two differences matter for the gates: `$60dc` has natural entries (11 on seed 25, 56 on `rand1`; the preview-roll table above does not list it) and `$5e3a` (a building going up, byte6 30) fired once each on seeds 60, 0 and 25. The 200M-step counts are not repeated per roll for the rest of this document;
+the preview-roll table above is the one the later sections quote unless they say otherwise.
 
 ## Proofs against the real 68000: dying entities, groups, orders, animals and the `$15000` page
 
@@ -1518,6 +1544,7 @@ Differential tests: `py/gate_shepherd.py` **1043/1043 tracked bytes identical ov
 forward, `$80` 5, `$84` 76, `$86` 20, `$82` 1, plus 16 each of synthetic `$88`, `$82`, `$86` arrival, `$86` one step short, `$86` with the whole chain herded and `$86` without a chain);
 `py/gate_animals.py` **45094/45094 compared values identical over 55 snapshots** (`callcap 3e06`, see below for what is compared; free walk 1073, free turn 820, herded 187, pigeon
 flights 81, pigeon re-steers 5, two natural pigeon arrivals).
+Both gates were rerun on the Play Random Land roll (`$5809c = 0`, `build_series.py` with `PAGES0=1`, lands 0 and 5, 30 snapshots each): shepherds **1010/1010 over 215 states** (natural `$80` 27, `$84` 70, `$86` 21, `$88` 1, plus the same 96 synthetic ones) and animals **49178/49178 over 60 snapshots** (free walk 1640, free turn 384, herded 346, pigeon flights 126, re-steers 11, two pigeon arrivals; no live projectile, nothing excluded), so neither depends on the roll.
 
 **The animals** (sheep: the panel names category 8 "Sheep"; the 8-character symbol `init_she` is shared by `$2b08`, the shepherd, and `$2d0e`, which by the panel text is presumably `init_sheep`) live in a pool of 40 records of 20 bytes at `$4ccd6..$4cff6`; the word at `$4cff6` is the bytes used. The pool is filled once, by the shepherds' world-build pick (`$2d0e`
 is called from one place, `$2b32`; the count word is only ever added to), no animal is born or freed afterwards, and the count stayed at 720 and 800 bytes over 30 snapshots on two

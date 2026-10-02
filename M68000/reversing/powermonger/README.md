@@ -351,7 +351,7 @@ states 2, 0, 0, 0; `$b85a` and `$b2dc` had 0 hits. The real anchor is
 passes 41760/41760 over 8 such builds (`PM_POP_CORPUS=scratchpad/pm142/corpus_2984a`).
 `py/worldbuild/gate_build.py` runs both settings (`strategy.md` "The world build, proven").
 
-What 37 lands draw, and what they do when left to run, is in `port/SPEC.md` §6
+What 37 lands of each roll draw, and what the preview-roll ones do when left to run, is in `port/SPEC.md` §6
 ("Every category") and `ai.md` ("Natural runs on later lands"). To look at a
 record in the game, poke the camera centre and let a frame render:
 `w 4bb3a <x><y>` (two words), `s 2000000`, `u f898` (`reversing/powermonger/py/capture.sh`
@@ -551,15 +551,15 @@ reconstructions (corpora, scripts and the branch lists are in the cited sections
   pick `$4f68` 1804/1804 (192 states, 170 natural, `py/diff_4f68.py`).
 - Forest animator `$4342`: 8 of 9 branches proven; the arrival/unlink branch stays
   Corroborated (`ai.md` "the forest animator").
-- Shepherd cycle 1043/1043 (198 states, `py/gate_shepherd.py`), animals and pigeons 45094/45094
-  (55 snapshots, `py/gate_animals.py`), arrows `$596a` 4210/4210 (456 states,
+- Shepherd cycle 1043/1043 (198 states, `py/gate_shepherd.py`; 1010/1010 over 215 on the Play Random Land roll), animals and pigeons 45094/45094
+  (55 snapshots, `py/gate_animals.py`; 49178/49178 over 60 on that roll), arrows `$596a` 4210/4210 (456 states,
   `py/gate_proj.py`), order pigeon `$4562` 1567/1567 (125 states, `py/gate_pigeon_send.py`);
   the `$15000` page of mode bodies 18452/18452 over 1889 states (`py/fsm15/gate_fsm15.py`).
 - Commander AI `$6522` with its helpers: 323/323 natural and 280/280 synthetic states
   (3975/3975 bytes), leaves 180/180 and 160/160 (`py/cmdai/gate_cmdai.py`); order executor
   `$6a3a` / `$6ac6` / `$6b38` 288 natural states (157/157 bytes) and 80/80 synthetic
-  (2393/2393) (`py/cmdai/gate_exec.py`); the order senders and arrival executors 57039/57039
-  bytes over 2234 states, 33 natural (`py/orders/gate_orders.py`) (`strategy.md` "Proof of the
+  (2393/2393) (`py/cmdai/gate_exec.py`); the order senders and arrival executors 61143/61143
+  bytes over 2273 states, 72 natural (`py/orders/gate_orders.py`) (`strategy.md` "Proof of the
   commander AI", "The order senders and arrival executors, proven").
 
 Driven live through the real UI and the REPL (`strategy.md`): mission 1 won and lost both ways
@@ -691,8 +691,7 @@ by `init_tables(ram)`) and the harness (`tools/pm_fsm_diff.py`: `Harness`, `Stat
 `run_corpus`) are committed, with `tools/capture_hits.py` for natural corpora and
 `tools/disassemble.py --snap` for the listings; on graduation they reproduced the five
 earlier FSM gates byte for byte (675/675, 1335/1335, 413/413, 85/85, 99/99: 2607 tracked
-bytes over 154 states; the acceptance scripts `scratchpad/pm98/repro93..97.py` are scratch only,
-not promoted). Later gates live in `py/` and its subdirectories, indexed in
+bytes over 154 states; the acceptance scripts are `py/fsm/repro93..97.py`). Later gates live in `py/` and its subdirectories, indexed in
 `py/README.md`; `py/gate_coverage.py` lists the routines no gate names.
 
 ### Retired readings
