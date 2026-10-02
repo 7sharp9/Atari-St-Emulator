@@ -121,13 +121,13 @@ know they existed.
   listing (`disassemble.py --snap <snap> --all <lo> <hi>`) and read each writer's full block;
   the next instruction can overwrite the value (PowerMonger `$2452` is undone by `$245c`).
   A game's static `<name>_ad58.asm`/`.c` export sitting in scratchpad is not automatically that
-  whole-image listing: it can be truncated (Populous's `pop_ad58.asm` stops at $1d462, well short
-  of the image's real end at $3d550 -- under 40% of the program) with no warning in the file
-  itself. Grepping it found no writer for two addresses and called them dead code; both had a
-  writer in the missing ~60%, found only by rerunning `find_field_writers.py`/`disassemble.py
-  --all` fresh (populous mechanics.md/graphics.md's `$37eae`/`$3c4e4` correction). Before trusting
-  a "no writer" result from any pre-existing `.asm`/`.c` file, confirm its address range actually
-  covers the image end, or just re-run the tool.
+  whole-image listing: it can be truncated (Populous's `pop_ad58.asm` stopped at $1d462, short of
+  the text segment's end at $21464: about 18% of the code, the last 4,500 lines, with no warning in
+  the file itself; `$3d550` is the end of data and bss, not of code). Grepping it found no writer
+  for two addresses and called them dead code; both writers were in the missing tail (`$02004e`,
+  `$01fbc4`), found only by rerunning `find_field_writers.py`/`disassemble.py --all` fresh. Before
+  trusting a "no writer" result from any pre-existing `.asm`/`.c` file, confirm its last address
+  reaches the end of the text segment (the PRG header's text size), or just re-run the tool.
 - A field that reads the same static value across two far-apart snapshots is not proof it is
   "stuck" or ungated: it can be a value a busy-poll utility sets and clears within a couple hundred
   steps of each interrupt tick, in which case any snapshot taken during that poll's otherwise-idle
