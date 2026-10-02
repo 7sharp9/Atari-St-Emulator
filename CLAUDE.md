@@ -278,6 +278,8 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   in zsh (`=word` expands to a command path); quote it.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or
   `bp` before the down, or the census misses the handler.
+- `hits <n> <addrs>` after a `bp` that stopped the run counts only what happens after the stop: a routine that ran before it reads "0 hits", which looks like "never called" (PowerMonger 142nd: `$13ece`, `$b85a`, `$b2dc` read 0 after a `bp 10d1e`; run `hits` from the end of the click, before any `bp`, to count a whole route).
+- `grep -r` from `M68000/` walks the multi-GB `scratchpad/` and blows the 120 s tool timeout: name the directories (`reversing/ tools/ sessions/`) or pass `--exclude-dir=scratchpad`.
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event: it holds whatever
   the last packet wrote until the next one changes it. A press-then-release pulse timed only by the
   `s <n>` gap between one packet's two bytes can land entirely between two of the game's per-frame
