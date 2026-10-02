@@ -61,7 +61,7 @@
 0001168c	h_prep_bldg_tree       # 89th: byte6 == 4 prepare ($1162e[4]). pos = $11f1a sub-cell lerp with an ADDRESS-jitter fx/fy (fx = (((A2+A3)&0xffff)<<3)&0xff, fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff; A2 = &$47970[cell], A3 = record, A0 = &$3f364[row*64+col*4]), then $12272 -4/-8. frame: r7==0x0d -> 0x0d; (r7&0x7f)==0x0e -> 0x0e; else (r7&0x7f) + word[$11746 + word[$57fd0]]. blits inline via $12244 ($1165c[4] == 0). live-verified D2 at $12288
 00011746	t_prop_tile_offset     # byte6 == 4 frame-offset table, word[$11746 + word[$57fd0]] = {0:0, 2:3, 4:6, 6:9}; index 8+ is code ($1174e). $57fd0 starts at (byte[$58146] & 3) * 2 (mission 1 = 4 -> +6) but rotates {0,2,4,6} via $1abaa (97th), so the tile-set is not strictly static
 00011a86	h_prep_animal          # 89th: byte6 == 8 prepare ($1162e[8]). frame = 0x117 + (((record[14] + [$ff9a]) & 0xff) >> 5) * 2, +1 if [$4bb41]&1. $33000 sheet, sub-cell lerp. live-verified D2 0x123/0x124 at $11ab6
-000117b0	h_prep_settle_marker   # 89th: byte6 == 6 and byte6 == 24 prepare ($1162e[6]/[24]). frame = record[7] + 0x100 (+ [$57fec]&3 if == 0x112). CENTROID position ($1182a). $33000 sheet, blit $11f78. mission 1: r7=0x10 -> frame 0x110 (12 territory-boundary markers)
+000117b0	h_prep_object   # `a_object`: byte6 == 6 and byte6 == 24 prepare ($1162e[6]/[24]). frame = record[7] + 0x100 (+ [$57fec]&3 if == 0x112). CENTROID position ($1182a). $33000 sheet, blit $11f78. byte6 24 = a fisherman's catch marker (byte7 $10): frame 0x110 = a rowboat on the pond (live bp $1182a, 30/30; catch_marker_boats.png); byte6 6: same drawer, role not established
 00012244	pm_blit_prop_dispatch  # 89th: multi-sheet dispatch by [$57ffc] (mission 1 == 4): <=3 -> $3af1c 64px (-8/-16 pos), <=5 -> $37c7c 32x24 ($12272, -4/-8 pos), else -> $312a0 16x16 (no pos adj). mulu the frame stride, bra the blit loop. entry from $1168c (byte6 4) / $117d8 (2) / $1192e (16)
 0001182a	pm_entity_prep_centred # centred position: (C00+C10+C01+C11)>>2, +$38 X / -8 Y, D2=D4 (used by cats 1/8/9); $1198a has its own copy
 00012138	pm_sprite_window_cull  # cull a sprite vs the iso window ($2df8e/$90 origin, $2df92/$94 extent, D3=size); early-rts if outside
@@ -91,7 +91,7 @@
 
 # ---- commander AI internals (strategy.md "$6522") ----
 00006564	pm_cmd_synth            # synthesise an order (no queued player order)
-0000661a	pm_cmd_primary_slot    # primary objective (i==0): march at nearest enemy leader
+0000661a	pm_cmd_attack_arm    # the attack arm of the decide chain (arm 3 of `$6522`; was called 'primary slot'): march at nearest enemy leader
 000068fe	pm_find_enemy_leader   # nearest enemy leader, weight = $580a6[side].byte16 >> 2
 000068ee	pm_score_target        # score ~ (d/2)*(force/8 + 1) vs objective budget 112()
 000069b4	pm_find_own_lord       # nearest OWN lord with word[D1] > 1, weighted word<<3 / distance; D1 8 = men (order $08), 6 = food ($06); live 3/3 (133rd)

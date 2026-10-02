@@ -1,9 +1,17 @@
 # PowerMonger ST — the graphics pipeline, and what a modern port would change
 
-This is the narrative account of how PowerMonger draws its screens. The
-porting contract, with every constant, table layout and verification record, is
+This is the narrative account of how PowerMonger draws its screens and what a port
+would change: the terrain rasteriser (projection, grid walk, pattern fill, seasons,
+water shimmer), the land build that bakes the planes, sprites and their draw order,
+the minimap and conquest map, backdrop pieces, palettes and fades, the frame
+pipeline, measured renderer profiles, camera control, zoom, and a modern-port plan.
+The porting contract, with every constant, table layout and verification record, is
 `port/SPEC.md`; where this file is less detailed, SPEC is the reference.
-Addresses are in the relocated game image (link base `$1050`).
+Addresses are in the relocated game image (link base `$1050`). Claims are labelled as
+in `strategy.md`: **proven** (a gate script with a match count), **live**, **code
+read** or **inferred**. The system services of the same address range (sound, save
+disks, serial link) are in `system.md`; the simulation that feeds the renderer is
+`ai.md` / `strategy.md`.
 
 ## Summary
 
@@ -42,7 +50,7 @@ around `$438ee` (`ai.md`), index `(y << 6) + x`: the **altitude** plane `-16514(
 projector reads (proven by poking it: a plateau, 10938 pixels, `py/alts_render_check.py`); a **colour** byte for the cell's first
 triangle at `0(A1)` and one for the second at `-8257(A1)`, both derived from the altitude plane by the build pass `$10058` (a slope
 shade, so the lighting is baked in; 0 = open sea; poking either changes the tone of one triangle, ~2200 pixels, geometry unchanged,
-136th `scratchpad/pm136/planes/plane_ab.py`); and a flag byte at `+8257(A1)` (`$4592f`): bit 7 selects the diagonal that splits
+`scratchpad/pm136/planes/plane_ab.py`); and a flag byte at `+8257(A1)` (`$4592f`): bit 7 selects the diagonal that splits
 the cell, bit 1 pins the cell's altitude against the `$10410` smoothing pass (settlement sites; the river walker `$10458` has no caller). Corners are generated
 during the walk, so the mesh is implicit in the grid.
 
@@ -73,7 +81,12 @@ for (row = -H; row <= H; row++)             // H = $fdec, zoom-dependent half-ex
   iso. The isometric look comes from a fixed camera pitch plus 16 yaw steps
   (`$ff9a`). `$ff7c` does two `divs` per corner.
 - The integer maths reproduces the game's `$3f364` corner buffer byte for byte
-  (SPEC §3).
+  (SPEC §3). `$fec6` is the entry (`lea $13f8a.l,A3`, then it falls into the body at `$fecc`).
+  **Proven vs the real 68000 with `callcap`:** `$fecc` called in isolation with `A3 = $13f8a` (a bare call with a
+  garbage `A3` leaves 158 of 162 corner bytes wrong) recomputes a `$3f364` byte-identical to the stored buffer on
+  four captures, and an integer reconstruction of `$fecc` + `$fe8e` (HBIAS) + `$ff7c` (the divide), with no float and
+  no fudge, matches it on 36 generated camera-cell states plus 4 natural captures, **3240/3240** vertices
+  (`scratchpad/pm92/proj_ref.py`, `diff_fecc.py`; not promoted to `py/`, SPEC §3 "Proven vs the real 68000").
 
 ### `$f898` — the render entry
 
@@ -81,7 +94,7 @@ for (row = -H; row <= H; row++)             // H = $fdec, zoom-dependent half-ex
 half-extent (`$fdec`) with copies it keeps at `$f890..$f896`. On any difference
 it toggles bit 7 of `$ffa5` and calls `$fec6` to re-project. It then always
 runs the grid walk, so **every island cell is refilled each time `$f898` runs**,
-whether or not the camera moved. It runs once per sim tick. Before the walk it
+whether or not the camera moved. It runs once per present, which at normal speed (`$57fee` = 1) is once per sim tick. Before the walk it
 loads the water-shimmer term `D5 = [$4bb3e] & 3` (`$f95e`) and picks one of
 four yaw-quadrant walk handlers:
 
@@ -99,8 +112,8 @@ for (D7 = rows; ...; A0 += $fdf4, A1 += $fdf2)          // next grid row
   for (D6 = cols; ...; A0 += 4, A1 += 1, A2 += 2) {     // next cell
      C00=A0[0], C10=A0[4], C01=A0[64], C11=A0[68];      // 64 = one corner row
      if (!(A1[+8257] & 0x80)) {                         // split on C00-C11
-         tri(C10,C11,C00, colour(A1[0]));               // colour plane A
-         tri(C01,C00,C11, colour(A1[-8257]));           // colour plane B
+         tri(C10,C11,C00, colour(A1[0]));               // colour plane B ($438ee)
+         tri(C01,C00,C11, colour(A1[-8257]));           // colour plane A ($418ad)
      } else {                                           // split on C10-C01,
          ...                                            // order by packed(C01) vs packed(C10)
      }
@@ -139,7 +152,9 @@ The setup (`$e3e6..$e3fa`) starts at `colourByte*128 + (topY & 15)*8`. The
 `$e44a` roll adds 8 to the low byte of `2*A5` each scanline; the byte overflow
 keeps `A5` inside the colour's slot, which is why the phase depends only on the
 absolute scanline. The span on one scanline is a single 16-px pattern tiled in
-screen-X alignment. No texture map is read anywhere in the terrain path.
+screen-X alignment. The pattern-table pointer `[$ffa2]` is also flipped by 128 (`bchg #7,$ffa5` at `$f8e4`) every time `$f898`
+re-projects, which moves the read point 64 bytes inside the slot: the phase is added inside the mod-128 wrap and is 0 or 64 (port/SPEC.md §4 "Dither phase";
+terrain exact-index on three rotated captures 43.5 / 46.7 / 47.1% without it, 93.8 / 84.6 / 91.1% with it). No texture map is read anywhere in the terrain path.
 
 The table is 128 slots of 128 bytes (`dither_atlas.png` decodes slots `0x00`-`0x40`;
 `dither_infographic.html` is the interactive version). A slot is a 16 x 16 tile of
@@ -151,7 +166,7 @@ The table is 128 slots of 128 bytes (`dither_atlas.png` decodes slots `0x00`-`0x
 | `0x04`-`0x07`, `0x08`-`0x0b` | 0/14/15, 4/14/15 | water bytes 4-11: four identical tiles each, no shimmer. Not produced by any map checked (seven RAM images, five lands: every sub-12 byte in either plane is 0) |
 | `0x0c`-`0x1b` | 1, 2, 3 | rock / low ground: two 8-step ramps, 1 to 2 (`0x0c`-`0x13`) then 2 to 3 (`0x14`-`0x1b`) |
 | `0x1c` | 0, 1, 6 | only ever the `$ef62` forced colour: no terrain cell holds byte `0x1c` (the plane bytes seen skip 28) |
-| `0x1d`-`0x2e` | season dependent | the **live** copy of the current season's 18 slots (Seasons, below) |
+| `0x1d`-`0x2e` | season dependent | the **live** copy of the current season's 18 slots (`port/SPEC.md` §4 "Seasons") |
 | `0x2f`-`0x40` | 6, 7, 9, 11, 12, 13 | high ground. Never replaced; these 18 slots are also the stored summer table (source `$2e000+$1780`), so terrain bytes above `0x2e` (seen up to `0x3f`) read the summer colours in every season |
 | `0x41`-`0x52`, `0x53`-`0x64` | spring/autumn, winter | the other two stored season tables. No terrain byte seen reaches them |
 | `0x65`-`0x7f` | mixed | not dither tiles (other data) |
@@ -172,6 +187,24 @@ which draw 3298 px; 6 px of those remain in the finished frame, because
 nearer terrain paints over the rest (`port/walkthrough/probe.fsx rasters`). At
 that pose it therefore marks mostly back-facing triangles, and the visible
 effect is limited to a few dark pixels along the island silhouette.
+
+### Seasons
+
+`$57fd0` holds the season as 0, 2, 4 or 6 (winter, spring, summer, autumn;
+`port/SPEC.md` §4 "Seasons"), and two things follow it. **The grass:** slots
+`0x1d`-`0x2e` of the pattern table are a working copy of one of three stored 18-slot
+sources (winter `$2e000 + $2980` = slots `0x53`-`0x64`, spring and autumn `$2080` =
+`0x41`-`0x52`, summer `$1780` = `0x2f`-`0x40`). The copy is made in one go at world
+build (`$1ab60`) and after that `$1abaa` dissolves it towards the current season's
+source, 16 pixels per tick, in the pixel order of the 13-bit LCG `$57ff6`. A fade takes
+512 ticks (about 118M emulator steps, measured) and its end rotates
+`$57fd0 = ($57fd0 + 2) & 6` (`strategy.md` "What `$1abaa` actually is"). **Proven**
+(SPEC §4): the port's `Season.fading` equals the whole 16 KB table byte for byte on seven
+captures, with steps = 16 × `$57fec`; `scratchpad/pm136/season/tilediff.py` shows the
+dissolve live (half summer and half autumn art at count 255, 98% the new art at 496).
+**The trees:** `$116c6` adds `word[$11746 + $57fd0]` = {0, 3, 6, 9} to the tree and
+building frame, so the frames change the moment `$57fd0` advances while the grass takes
+the whole fade to catch up. The sprite sheets are identical in every season.
 
 ### Water shimmer
 
@@ -202,9 +235,9 @@ change.
 **selected group's lead** (`$51538[$57fd2]` → lead object → world x/y). Bit 0 of
 `$4bb41` toggles it.
 
-## The land build: planes, roads, town ground, the script (140th)
+## The land build: planes, roads, town ground, the script
 
-`$13b9a` builds a land in this order (live, from `pm67_ok_pre` after the briefing OK): `$10768` clears `$3f364..$57ff8`; `$10d1e` (a random land's parameters) or `$ffa6` (a stored land's altitude walk, then the `$10410` smoothing); `$2266`; `$ac20` (the land script below);
+`$13b9a` builds a land in this order (live, from `pm67_ok_pre` after the briefing OK; the same sequence is in `strategy.md` "Mission / world setup"): `$10768` clears `$3f364..$57ff8`; `$10d1e` (a random land's parameters) or `$ffa6` (a stored land's altitude walk, then the `$10410` smoothing); `$2266`; `$ac20` (the land script below);
 `$1073c` (every `$4b9f2` site: `$2eac` places the town's buildings, `$10638` levels the ground); `$10058` (the colour bake); `$4672` (forests); `$2984` (the population); `$238c`; `$2906`; `$107d6` (the minimap). The planes are all 64 × 128, cell n = y × 64 + x: altitude `$3f86c`,
 colour A `$418ad`, colour B `$438ee`, flags `$4592f`, bucket heads `$47970` (a word per cell). Flag bits: 7 the diagonal selector, 6 an edge mark (only the dead `$10b62` uses it), 5 skip the split, 4 a near-ambiguous diagonal, 3 and 2 colour B and colour A fixed, 1 altitude pinned.
 
@@ -269,6 +302,10 @@ void draw_cell_entities(int cell) {
 }
 ```
 
+The head word of a cell's chain and every link are **signed** 16-bit offsets from `$51b66` (`adda.w D4,A3`), so scenery and
+animal records also live below `$51b66`, and the category byte 6 takes even values 0 to 30 (`word[$1162e + byte6]`). The
+26-record marching group is byte 6 == 14, drawn by `$115e0` to `$11bf4` to `$11f78` to `$11f82` (frame `record[5] + 0x13e`).
+
 Because the grid is walked **far cell to near cell** and each cell's sprites
 follow its terrain, the painter's algorithm falls out of the walk order: there
 is no depth sort and no Z buffer. A near hill is drawn over a far unit, and a
@@ -301,9 +338,9 @@ on slopes. Frame selection is per category in the `$1162e` handlers; for men
 it is `(faction−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2`, so facing is
 relative to the camera. Per-category formulas are in SPEC §6.
 
-### The preparers and drawers by category (140th, code read unless noted)
+### The preparers and drawers by category (code read unless noted)
 
-`sjt` `$1162e` and `djt` `$1165c` are 23-word tables indexed by byte 6: 0 `a_person`, 2 `a_house`, 4 `a_tree`, 6 and `$18` `a_boat`/`a_object`, 8 `a_animal` (`$11a86`), `$a` `a_equipm`, `$c` `a_special` (`$11bbc`), `$e` `a_sitting` (`$11bf4`, 2316 hits per 30M steps on `k5_s4`), `$10` `a_workshop`, `$12` `a_ball` (`$11c36`),
+`sjt` `$1162e` and `djt` `$1165c` are 23-word tables indexed by byte 6: 0 `a_person`, 2 `a_house`, 4 `a_tree`, 6 and `$18` `a_object` (`$117b0`: frame `$100 + byte 7`; byte6 `$18` is a fisherman's catch marker with byte 7 `$10`, so it draws frame `$110`, a rowboat on the pond, `catch_marker_boats.png`; the developer table names the pair `a_boat`/`a_object`), 8 `a_animal` (`$11a86`), `$a` `a_equipm`, `$c` `a_special` (`$11bbc`), `$e` `a_sitting` (`$11bf4`, 2316 hits per 30M steps on `k5_s4`), `$10` `a_workshop`, `$12` `a_ball` (`$11c36`),
 `$14` `a_pigeon` (`$11b3c`), `$16` `a_flight` (`$11b2a`), `$1a` `a_inboat`, `$1c` `a_shag` (`$11b0c`), `$1e` `a_mine` (`$1198a`, with `a_part_b` `$119b2` for a building going up: D6 = `8(A3)` rows of progress, the frame offset and shortened by D6), `$20` no draw, `$22` `a_bigcow` (`$11ab8`), `$28` `a_arrow` (`$11c64`).
 `$120ea` `scaled` (22 words by category, 1 for 2, 4, `$a`, `$10`, `$1c`: those use the large sprite's rectangle in `check_sh`, live dump on `m1_s0`) and `$12116` `dscale` (by zoom) are data. `a_pigeon` and `a_flight` share the tail `do_for_a` `$11b44`: the interpolated position (`$11f12`), a colour-5 dot at `(x, y − 14(A3))` (`$e6ee`)
 when `14(A3)` is non-zero, the shadow icon `$148` (`$11f82`), y lowered by `15(A3)` (plus `$30` when it is negative) and the frame `$127 + (tick $57fec & 7)`, the flapping bird; category `$16` is drawn the same way, which fits the developers' name `_birds` for the `$4c5f4` records. Not natural: 0 hits in 30M steps on `k5_s4` and `m1_atk`
@@ -311,7 +348,7 @@ and 7 `k5` series frames; with a flag record poked to byte6 `$16`, `callcap $11b
 bow `$145`, plough `$109`, boat `$110`, pot `$146`; the catapult `$1b` and cannon `$23` as 16 × 16 sprites through `check_sh`), `a_workshop` `$1192e` the workshop frame 7 plus the icons of the stocked weapons of the eight goods slots `24($4e514 + 14(A3), k)`. `$1182a` (`do_for_a`, the first) is the cell-centre position
 (x = (c0 + c1 + c2 + c3)/4 + `$38`, y = ... − 8). The main loop's tail `$13864` (`after_ke`) redraws the panels and fades (`$187a`, `$1a276`) and re-enters `_again` `$12fd8`: once per tick (193 hits per 30M steps on `k5_s4`).
 
-### The 16 and 32 pixel blitters and the sprite pick (140th)
+### The 16 and 32 pixel blitters and the sprite pick
 
 `$12244` (`_draw_sp`) takes the sheet from the zoom `$57ffc`: 3 or less the 32 × 32 sheet `$3af1c` (D0 − 8, D1 − 16), 4 and 5 the 32 × 24 sheet `$37c7c` (D0 − 4, D1 − 8), 6 and above the 16 × 16 sheet `$312a0`; `$1225c`, `$119ca`, `$11a02`, `$11a44` and the HUD (`$178ac`, the eyes `$1699e`)
 reach the same two clip fronts. These are a family of masked planar blitters, not a scroller:
@@ -366,8 +403,14 @@ iso view. Details: port SPEC §6 "The pixel plotter".
 Mountains are terrain: a run of high cells drawn by the same triangle fill.
 Trees and buildings are bucket sprites drawn over the cell they occupy, which
 is why they appear and disappear at cell granularity when the camera rotates.
+A tree or building (byte 6 == 4, handler `$1168c`, blitted inline by `$12244`) takes the frame
+`(record[7] & 0x7f) + word[$11746 + word[$57fd0]]`, with the table `$11746 = {0, 3, 6, 9}`, `word[$57fd0] = ($58146 & 3) * 2`
+(a per-land tile-set selector; mission 1 reads 4, so `+6`) and the special cases `record[7] == 0x0d` and `(record[7] & 0x7f) == 0x0e`
+(no offset). Its position is the `$11f1a` lerp over the cell's four raw `$3f364` corners with a jitter derived from the
+record, bucket-slot and corner addresses (`fx = (((A2 + A3) & 0xffff) << 3) & 0xff`), then `$12272` subtracts 4 and 8;
+live-checked against D2 at `$12288` and D0/D1, with the 32 x 24 decode byte-exact against a live frame (`port/SPEC.md` §6).
 
-## The minimap and the conquest map (140th)
+## The minimap and the conquest map
 
 **The minimap** `$107d6` (`_draw_ma`, with `$1078e` `draw_con`; called from `$13c5a`, `$187f0`, `$b3ca` and the strip click `$131ee`) is baked once into the master buffer (`[$e0d4]` = `$78000`): cell (x, y) with x < 63 is the pixel (x, y + 6), plotted by `$e6ee`. The mode word `$58098` (`_show_ma`; default 2) is set by a click in the strip above the map
 (x / 16):
@@ -384,7 +427,7 @@ a straight copy: 96000/96000 bytes at scrolls 0, 137 and 408). `_draw_da` `$1145
 the start (an odd start splits over two 16-pixel groups) and 6400 per land row; 89310/89310 changed bytes over 12 poked tables. The pick box is 16 × 32 at (24c + 8, 40r + 8), drawn by `$e5aa` as a 17 × 33 outline at (24c + 7, 40r + 7 − scroll), colour 10 for a conquered land and 8 for land 0 or a free land with a conquered 4-neighbour
 (`gate_pick.py`: 18 of 18 probes agree: 4 boxes, 14 negatives). A click on any boxed land, even a conquered one, runs `$113a8` by the code (not tested).
 
-## Backdrop pieces, palettes and fades (140th)
+## Backdrop pieces, palettes and fades
 
 - **The balance** `scale_da` `$16bf8` (5 frames of 640 bytes, 20 rows of 32 bytes, 64 pixels wide) is the force-ratio picture: `_draw_sc` `$16bb8` copies frame `4 − D0`, D0 = the ratio word `$57fce` (0..4), into the backdrop at `$e0d4 + $5320` (pixel row 133, x 0..63); callers `$d2be` (when the ratio changes) and `$188e0`. A pair of scales with a shield on each
   side tilting with the ratio (`scale_da.png`; which pan is the player's is inferred). 2 natural hits live in `m1_atk`.
@@ -412,17 +455,21 @@ the stone border, the pre-rendered open sea and a hole where the island goes.
     $12ce0  copy terrain master ($78000) -> back buffer ($2df78)  ; 500 rows, movem
     $178ae  HUD group bars (food, men, the lead's health)
     $f898   re-project if camera/yaw/zoom changed; refill every island cell, sprites inline
-  --- every tick ---
+  --- every tick (the full order is in strategy.md "Where it runs") ---
+    $1abaa  seasons and weather (dissolves the live tileset 16 px per call)
+    $17878  compass
+    $165b2  selected-group marker
     $14b62  entity FSM      (ai.md), relinks $47970 buckets via $163ea
     $6a3a   order executor
     $7a56   sprite / HUD compositor -> back buffer
-    $165b2  selected-group marker
     ... at the VBL ISR: $187a swaps $2df7c <-> $2df78, writes ($2df7c >> 8) to $FFFF8200
 ```
 
 On `pm71_run1.snap` the master copy `$12ce0`, the island refill `$f898` and the
 buffer swap `$187a` each run exactly once per sim tick (13 hits each in ~2.78M
-steps, one tick ≈ 15 VBLs), so every presented frame holds a complete island.
+steps, so a tick is ~214k steps, about 18 VBLs; `strategy.md` "Measured cadence"
+counts 13 ticks in 3M steps, 19 VBLs each), so every presented frame holds a complete
+island.
 
 The zoom LOD (`$fe04`, 7 levels → 13 constants `$fdea..$fe02`) changes the grid
 extent, strides and the `$ff9c` scale; it never switches tile art. Every zoom
@@ -644,7 +691,7 @@ dropped frames at either zoom):
 ## Open questions
 
 - The `pm68_isoview.snap` profile counted `$12ce0` 10 times in 30 frames,
-  where `pm71_run1.snap` runs it once per ~15-frame tick. Whether the tick rate
+  where `pm71_run1.snap` runs it once per ~18-VBL tick. Whether the tick rate
   differs between the two captures has not been checked.
 - The `0x1c` override has been measured at one pose only; its effect at other
   yaws and cameras is untested.

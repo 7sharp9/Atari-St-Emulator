@@ -5,6 +5,7 @@
 k=$1; settle=${2:-30000000}; season=$3; tag=k$k${season:+_s$season}
 d=${PM_WORK:-scratchpad/pmwork}; mkdir -p $d
 seed=$(printf '%08x' $((k*0xb+0x3fb))); pages=$(printf '%04x0000' $((k*0x96+0x672)))
+[ -n "$PAGES0" ] && pages=00000000   # PAGES0=1: the Play Random Land roll ($5809c == 0, strategy.md "The world build, proven")
 # the season is byte[$58146] & 3, read at $13bdc before $10d1e: poke it here
 SEASON_POKE=$( [ -n "$season" ] && printf 'w 58146 %02x190750' $((0x1c+season)) || echo 'r' )
 cat > $d/$tag.cmds <<C
@@ -21,7 +22,8 @@ u f898 5000000
 snap $d/$tag.snap
 q
 C
+PY=$(command -v py >/dev/null && echo 'py -3' || echo python3)   # Windows launcher, else python3 (the Mac)
 start=$(date +%s)
 ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll resume scratchpad/pm67_ok_pre.snap repl --disk-a scratchpad/powermonger.st < $d/$tag.cmds > $d/$tag.txt 2>&1
 echo "$tag $(( $(date +%s)-start ))s $(grep -E 'reached|gave up' $d/$tag.txt | tr '\n' ' ')"
-py -3 reversing/powermonger/py/census.py $d/$tag.snap
+$PY reversing/powermonger/py/census.py $d/$tag.snap

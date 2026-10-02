@@ -12,6 +12,7 @@ poke of `build_land.sh`).  Same tracked regions as gate_jobs.py plus every lord 
 """
 import collections
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -20,8 +21,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 import pm_fsm_ref as P
 from pm_fsm_diff import Harness
 
-D = "scratchpad/pm139/corpus_2984"
-OUT = "scratchpad/pm139/g2"
+D = os.environ.get("PM_POP_CORPUS", "scratchpad/pm139/corpus_2984")   # PM_POP_CORPUS: a capture made with `w 5809c 00000000` (the Play Random Land roll)
+OUT = os.environ.get("PM_POP_OUT", "scratchpad/pm139/g2")
 LANDS = [0, 1, 5, 10, 25, 60, 100, 142]
 P.REGIONS = [(P.OBJ + P.REC, P.END, "obj"), (P.BUCKETS, P.BUCKETS + 0x4000, "bucket"),
              (0x4e514, 0x4f914, "leader"), (0x4f916, 0x4f916 + 18 * 240, "settlement"),

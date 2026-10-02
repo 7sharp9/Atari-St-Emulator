@@ -1,29 +1,40 @@
 # PowerMonger ST — the economy: food, manpower, timber gathering, settlements, invention
 
-Reverse-engineered 74th–75th pass, continuing `ai.md` / `strategy.md`. Those two
-files cover the autonomous military layer and confirm it has **no** economic
-reasoning; this file covers what the economy actually is and where its numbers
-live. Same method: disassembly of `scratchpad/pm70_iso.ram` (game image at its
-absolute addresses, base `$1050`), block traces, and field `watch`es driven from
-`scratchpad/pm71_run1.snap` / `pm74_late.snap` ("Between Pages 1-5", the
-procedurally-generated tutorial mission).
+**Scope.** This file covers what the economy actually is and where its numbers live: the food and manpower
+ledger of a lord (`$4e514`), the timber-gathering chain that feeds the goods counters (trees, forests, markers,
+the gatherer modes), goods circulation and the equipment ("invention") mechanism, the building/settlement
+records (`$4f916`) with their layouts and the per-settlement heartbeat, the world-build of the starting
+population, and the conservation argument for men. `ai.md` and `strategy.md` cover the autonomous military layer
+and confirm it has **no** economic reasoning. Method: disassembly of `scratchpad/pm70_iso.ram` (game image at its
+absolute addresses, base `$1050`), block traces, field `watch`es and differential tests, driven from
+`scratchpad/pm71_run1.snap` / `pm74_late.snap` ("Between Pages 1-5", the procedurally generated tutorial mission)
+and later from built lands.
 
-**Evidence level (91st).** See `ai.md` "Evidence taxonomy". The **negatives in
+Contents: Summary; Headline (the subsystem table); 1. The food and manpower ledger; 2. Timber gathering (trees,
+forest operations, markers, the animator `$4342`; 2a. the gatherer FSM and the delivery payoff; 2b. goods
+circulation; 2c. goods to equipment); 3. Settlements (revolt; Buildings and town layouts; 3a. the heartbeat, mode
+`$7c`, with the season word `$57fd0`; 3b. the `$163ea` aliasing); 4. Weapon grade; 5. World-generation of the
+initial economy (5a. the starting population); 6. Men are conserved; Complete picture; Trace files.
+Section numbers are cited from other files, so they are stable.
+
+**Evidence level.** See `ai.md` "Evidence taxonomy". The **negatives in
 this file are Observed, not Proven**: "no growth term", "no research counter",
 "strict conservation of soldiers", "invention never advances" were each checked
 by tracing mission 1 for a bounded step budget (≤400M) with field `watch`es on
 the relevant counters and finding zero unexplained increments — not by proving
 no such code path exists. The army-supply *mechanism* (`$61f8`/`$638c`) is
-Corroborated (static + a forced-delivery trace); its dormancy in mission 1 is
+Corroborated (static + a forced-delivery trace) and Proven by gate (section 2c); its dormancy in mission 1 is
 Observed.
 
-**75th-pass summary.** All five pass-2 questions closed. The gathering payoff is
+## Summary
+
+All the questions about the economy's shape are closed. The gathering payoff is
 `+1` to one of `pm_leader.goods[0..7]` (§2a) — eight per-lord counters, one for
 each of Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon, shown in the lord panel,
-shuffled between lords by porter units (§2b), and spent to equip and upgrade
+shuffled between lords by the merchants (§2b), and spent to equip and upgrade
 field units (§2c). "Invention" is that upgrade step (`$638c`), not a research
 timer. Men are a **separate** ledger with **no growth term** (§6): conservation
-of soldiers. A lord's `+6` is his food store (124th), drained by a
+of soldiers. A lord's `+6` is his food store, drained by a
 per-settlement upkeep (`$163b8`) and filled by the fishermen's catches and returning men. The
 "periodic settlement update" is entity mode `$7c` (§3a). The `$163ea` write
 aliasing is characterised and benign (§3b).
@@ -37,11 +48,11 @@ the entity level by the same `$14b62` FSM that runs everything else:
 
 | subsystem | where the number lives | how it moves | status |
 |-----------|------------------------|--------------|--------|
-| **food** (a lord's store) and **manpower** (his men at home, not in an army) | `pm_leader.food` = `$4e514`+6; `.troops_field` = +8 | food: a fisherman delivering a catch adds 4, a disbanded man arriving home 2; an army takes a posture-scaled slice (order `$06`) or drops one (`$12`, teardown); each settlement pulse eats one (`$163b8`). Men: `troops_field` moves by ±1 as men join, leave or change hands | **Proven (124th: orders `$06`/`$12` move exactly `food >> shift` between `+6` and the army's food `36(group)`, which the captain panel labels "Food")** |
-| **goods** ("invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed gathering trip credits `+1` to one counter (`$60dc`), heavily throttled; porter units shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
-| **timber gathering** (what feeds the goods counters) | `$4d252` tree array (`_trees`) + `$57f68` forest ops (`_forests`) + `$4c5f4` markers (`_birds`) | the gatherer chain (modes `$3e`→`$44`→`$42`, run by men of every job) walks to an unfelled tree of the lord's nearest forest, fells it (`tree_state := $0d`), carries it to the lord's workshop and credits the goods counter; `$4342` (`_do_forest`) only animates the on-screen markers | **traced; live 134th (below)** |
-| **settlements** | `$4f916`, 18-byte records, ≤240, chained per nation (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes when a lord revolts (`$550e`, §3): the lord and all his settlements change side, then `$5c2c`/`$25d6` turn his garrison men over | **Proven (122nd, `diff_revolt.py` 1778/1778 over 49 states, all 27 natural revolts)** |
-| **weapon grade** ("invention") | `pm_object` byte 44 (items 1–6) / byte 33 (items 7–8) | stamped at spawn (`6` for leads, `0` for tutorial followers); **advanced by the army-supply subsystem** (`$638c`: `if slot < delivered_item: slot := delivered_item`) — no research timer | **traced; observed on later lands (121st): `$63e8` equipped 22 empty slots on land 25 and 14 on land 0 in 200M steps; `$63be` (replacing a lower item) never fired** |
+| **food** (a lord's store) and **manpower** (his men at home, not in an army) | `pm_leader.food` = `$4e514`+6; `.troops_field` = +8 | food: a fisherman delivering a catch adds 4, a farmer arriving home 2; an army takes a posture-scaled slice (order `$06`) or drops one (`$12`, teardown); each settlement pulse eats one (`$163b8`). Men: `troops_field` moves by ±1 as men join, leave or change hands | **Proven (orders `$06`/`$12` move exactly `food >> shift` between `+6` and the army's food `36(group)`, which the captain panel labels "Food")** |
+| **goods** ("invention" and the granary line the player sees) | `pm_leader` bytes **24..31** — 8 counters, one per item type (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon) | a completed gathering trip credits `+1` to one counter (`$60dc`), heavily throttled; merchants shuttle counters between a nation's lords (`$159de`/`$159a4`); the army-supply subsystem spends them to equip/upgrade field units (`$6352`/`$638c`) | **traced** |
+| **timber gathering** (what feeds the goods counters) | `$4d252` tree array (`_trees`) + `$57f68` forest ops (`_forests`) + `$4c5f4` markers (`_birds`) | the gatherer chain (modes `$3e`→`$44`→`$42`, run by men of every job) walks to an unfelled tree of the lord's nearest forest, fells it (`tree_state := $0d`), carries it to the lord's workshop and credits the goods counter; `$4342` (`_do_forest`) only animates the on-screen markers | **traced; live (below)** |
+| **settlements** (buildings) | `$4f916`, 18-byte records, ≤400 (the table is `$1c20` bytes), chained per lord (+8) | built at world-build (`$2fc0`/`$2984`); a per-settlement heartbeat is entity **mode `$7c`** (`$157e6`); ownership changes when a lord revolts (`$550e`, §3): the lord and all his settlements change side, then `$5c2c`/`$25d6` turn his garrison men over | **Proven (`diff_revolt.py` 1778/1778 over 49 states, all 27 natural revolts)** |
+| **weapon grade** ("invention") | `pm_object` byte 44 (items 1–6) / byte 33 (items 7–8) | stamped at spawn (`6` for leads, `0` for tutorial followers); **advanced by the army-supply subsystem** (`$638c`: `if slot < delivered_item: slot := delivered_item`) — no research timer | **traced; observed on later lands: `$63e8` equipped 22 empty slots on land 25 and 14 on land 0 in 200M steps; `$63be` (replacing a lower item) never fired** |
 | **passive population growth** | — | **does not exist** — men are strict conservation-of-soldiers (see §6) | **traced negative** |
 
 Men and goods are **two separate ledgers**. Goods never become soldiers and
@@ -51,61 +62,63 @@ commands"). Over a ~1-billion-instruction watched resume from
 `pm74_late.snap` (`pm75_big.err`) plus a 135M cross-check (`pm75_w1.err`), every
 `food` / `troops_field` write came from the fixed set in §6; no counter
 grew a lord's manpower on its own, and **no lord's side byte was written once**.
-The 74th pass's "delivery payoff not observed" is resolved:
-the payoff is a `+1` to a goods counter, and in the tutorial the food-tier gather
-throttle (`$580a6[side].word8 + $2000` ≈ 8200 ticks, ~1 game-hour) is why the
-400M window saw none complete.
+The delivery payoff is a `+1` to a goods counter, and in the tutorial the food-tier gather
+throttle (`$580a6[side].word8 + $2000` ≈ 8200 ticks, ~1 game-hour) is why a
+400M-step window saw none complete.
 
 ## 1. The food and manpower ledger — `pm_leader.food` / `.troops_field`
 
-`+6` is the lord's **food store** and `+8` his men at home (not in an army). Passes before the
-124th read `+6` as `troops_reserve` (men at home). It is food: order `$06` at the
+`+6` is the lord's **food store** and `+8` his men at home (not in an army). Earlier notes read `+6` as
+`troops_reserve` (men at home); it is food: order `$06` at the
 player's own town moves `food >> shift` (22 → 11) into the army's `36(group)`
 (247 → 258 against a no-order control's 247, `scratchpad/pm124/o06`, `ctl`), order
 `$12` moves `36(group) >> shift` back (town 22 → 147), and the captain panel
 (`$921a`, formatter `$917c`) prints `36(group)` on its "Food:" line
 (strategy.md "The player's commands"). The strategic layer reads both fields
 (`$d322` sums them per side into `$57fba`, the ratio uses only `troops_field`;
-`$68fe`/`$69b4` score enemy leaders on `troops_field`).
+`$68fe` scores enemy leaders on `troops_field`; `$69b4` picks the best own lord by food or men at home).
 
 ```c
-// $4e514, 32-byte records (ai.md / strategy.md: pm_leader). Economy fields (75th):
+// $4e514, 32-byte records (ai.md / strategy.md: pm_leader). Economy fields:
 /* 0*/  u8   side;             // owning commander (1..4); $550e rewrites it on a defection
 /* 1*/  u8   order_class;
 /* 2*/  u16  chain_head;       // -> $4f916 first settlement of this lord's nation (walk via +8)
 /* 4*/  u16  cell;             // packed {x:6,y:7}
-/* 6*/  u16  food;             // <<< the lord's food store (124th; was read as troops_reserve)
+/* 6*/  u16  food;             // <<< the lord's food store (first read as troops_reserve)
 /* 8*/  u16  troops_field;     // <<< men at home: this lord's men (home settlement `34(man)` → `$4f916 + 14`) whose byte-7 bit 6 is clear, i.e. not in a group roster, and, for the one leader-flag man (byte-7 bit 4) a lord may have, only while `42(man) == 0` (leads no group; counted 144 of 144, and the leader-flag men with `42 != 0` are not counted in 874 of 879, the 5 others in pre-game map snapshots; whole-corpus rule 2280 of 2280 exact over the game snapshots, `py/troops_rule.py`, instances rather than independent lords; why the count follows the group link is inferred); joining an army (`$152d4`) takes one off, leaving it (`$1b8c`) puts one back
-/*12*/  u16  gather_kind;      // $5cde: {2,6,8,$a,$e} fell trees, 4 workshop loop, $c field path -- the lord's current work order ($5cde, read by $600a)
-/*14*/  s16  loyalty_pressure; // ramps +2 (field*4 >= food: hunger) / -1 per settlement pulse; +16>>shift when an army takes food, -8 when one drops food or goods; >=600 -> $550e defection, reset 300
-/*16*/  u16  herd_throttle;    // $60dc countdown; $5cde reloads $580a6[side].word8 + 4 (+$2000 if gather_kind >= $e and the reload >= the old value)
+/*12*/  u16  gather_kind;      // $5cde: {2,6,8,$a,$e} fell trees, 4 and $10 the building loop, $c field path -- the lord's current work order ($5cde, read by $600a)
+/*14*/  s16  loyalty_pressure; // +2 (field*4 >= food: hunger) / -1, each only on the first pulse after a marker parks (section 3a); +16>>shift when an army takes food, -8 when one drops food or goods; >=600 -> $550e defection, reset 300
+/*16*/  u16  herd_throttle;    // (the forest-delivery throttle; `herd_*` is a code name, see below) $60dc countdown; $5cde reloads $580a6[side].word8 + 4 (+$2000 if gather_kind >= $e and the reload >= the old value)
 /*18*/  u16  build_site;       // $5cde: $4f916 offset of the settlement being built (0 = none)
 /*20*/  u16  herd_op;          // $5cde: $51b66-relative offset of the nearest $57f68 forest op (written on the work order)
 /*22*/  u16  nearest_herd;     // $2906: byte offset into $57f68 of the closest forest op (max(|dx|,|dy|); proven, py/worldbuild gate `water` 262/262; $5cde recomputes it, never reads this)
 /*24*/  u8   goods[8];         // <<< Pike,Sword,Bow,Plough,Boat,Pot,Catapult,Cannon counts (0..255)
 ```
 
-The 74th pass's `pm_leader` guesses at +14 (`nation_off`) were wrong: the
-settlement chain head is at **+2**, and **+14 is the loyalty / recruitment-pressure
-accumulator** (§6). +24..31 are the goods counters (§2a).
+The settlement chain head is at **+2**, and **+14 is the loyalty / recruitment-pressure
+accumulator** (§6); `nation_off` is not a leader field (it names the object record's word 34, the man's
+home settlement). +24..31 are the goods counters (§2a). The field names `herd_throttle`, `herd_op` and
+`nearest_herd` are code names kept from the first reading of the `$4d252` array as animals (they appear in
+`tools/pm_fsm_ref.py` and the older proof scripts); they mean the forest-delivery throttle, the lord's forest
+operation and the nearest forest operation (§2).
 
 ### The flows (all traced, `watch $4e51a` / `$4e53a` over 80–400M steps)
 
 | PC | handler / mode | effect on the pool |
 |----|----------------|--------------------|
-| `$1507c` | `$15042`, entity **mode `$16`** (a farmer home from his field; non-winter only) | `food += 2` (`+= 2` again at `$1508a`, behind the `$15082` compare, when he carries a Plough, byte 33 `== 8`; 2 of 73 returns doubled in 40M steps of land 5, and only 1 farmer in ~73 carries a Plough, 136th) |
+| `$1507c` | `$15042`, entity **mode `$16`** (a farmer home from his field; non-winter only) | `food += 2` (`+= 2` again at `$1508a`, behind the `$15082` compare, when he carries a Plough, byte 33 `== 8`; 2 of 73 returns doubled in 40M steps of land 5, and only 1 farmer in ~73 carries a Plough) |
 | `$15e18` | `$15ddc`, entity **mode `$60`** (the fisherman delivering his catch: every man in modes `$56`..`$62` is job 4, fisher, 93 of 93 over seven states, `py/job_census.py`, ai.md) | `food += 4` per trip |
-| `$150f2` | `$150c0`, entity **mode `$1a`** (an army takes food from a town: order `$06`) | `slice = food >> (posture-2)`; `food -= slice`; `36(group) += slice` (the army's food); `loyalty_pressure += 16 >> (posture-2)` (the `14(A5)` write, A5 = the lord). 124th, 1 run: 22 → 11, loyalty 0 → 8 |
-| `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` camp-making family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. 124th, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven 98th** — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
-| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.food -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (97th).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (1 rotation per 118.4M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
-| `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.food -= 2`, floored — a detached gatherer costs the lord (75th) |
-| `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-7-set, bit-6-clear arm). *(**Proven, 99th** — `$37c2` + its `$1d70`/`$1b8c`/`$17a46` leaves differential-tested vs the real 68000, 1847/1847 over 13 states; reached via `$3c08`'s flag-bit-4 teardown sub-path. The inverse `+= 1` on the bit-6-set arm is `$1b8c`'s `$1c04`.)* |
-| `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); a captured garrison changes hands, it is not created |
-| `$2644` | `$25d6`, from `$5c2c` after a revolt | the garrison man's old leader: `troops_field -= 1`, only when the man led no group (land 60: leader 4, 18 → 17, `scratchpad/pm121/flip/`). *(Proven, 122nd, `diff_revolt.py`.)* |
-| `$42be` | `$4244`, the player's-pigeon landing arm of `$3e06`'s effect-array loop (sole caller `$13052`; only the first record `$4c112` takes the arm) | **a dead man's record revived (137th, counted 6 of 6 hits, `scratchpad/pm137/B_42be/probe42be.py`)**: the record at `20(pigeon)` is the dead man whose `$1623c` countdown served the pigeon request (side byte negative, byte 6 `$0a` or `$20`, 6 of 6 launches); on landing `$4244` makes it live again (`neg.b 5`, byte-7 bits 4..6 cleared, byte 14 `:= $c`, repositioned to the pigeon's landing point, mode by `$3c08`), `5(A0) :=` its home settlement's side, then `$42be` adds 1 to that settlement's lord. Live persons +1 and one entity record changed at every hit. Neither a kill credit nor a settlement birth. The `+1` restores a count the death had already removed: the KILL tail `$567e` takes an ungrouped man off the home lord's `troops_field` (section 6), and in all 5 landings captured on `k5_s4` and `m1_ready` every lord's `troops_field` equals the live-man rule count both before and after, the home lord's `+1` the only change (`py/pigeon_ledger.py`), so the pigeon is not a manpower leak |
+| `$150f2` | `$150c0`, entity **mode `$1a`** (an army takes food from a town: order `$06`) | `slice = food >> (posture-2)`; `food -= slice`; `36(group) += slice` (the army's food); `loyalty_pressure += 16 >> (posture-2)` (the `14(A5)` write, A5 = the lord). Live, 1 run: 22 → 11, loyalty 0 → 8 |
+| `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` camp-making family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. Live, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven** (ai.md) — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
+| `$163b8` | entity **mode `$7c`** settlement heartbeat (§3a) | `owner_leader.food -= 1`, floored at 0 — **per-settlement upkeep / desertion**, once per `$580a6[side].word0` ticks. **Proven (ai.md, heartbeat block).** Mode `$7c` needs `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (1 rotation per 118.4M steps), so in mission 1 this drain runs only in brief bursts during the `== 0` phases — a small, intermittent leak, not a steady term of the ledger |
+| `$603e` | `$600a` (mode `$42`, no `flags.bit6`) | `leader.food -= 2`, floored — a detached gatherer costs the lord |
+| `$382a` | `$37c2` (marker re-parent) | `leader.troops_field -= 1` when a settlement marker changes group (bit-7-set, bit-6-clear arm). *(**Proven** (ai.md, group-teardown block) — `$37c2` + its `$1d70`/`$1b8c`/`$17a46` leaves differential-tested vs the real 68000, 1847/1847 over 13 states; reached via `$3c08`'s flag-bit-4 teardown sub-path. The inverse `+= 1` on the bit-6-set arm is `$1b8c`'s `$1c04`.)* |
+| `$1c04` | `$1bf0` (capture consequence) | **new** owner's `troops_field += 1` — pairs with `$2644` (old owner `-1`); the converted man changes hands, none is created |
+| `$2644` | `$25d6`, from `$5c2c` after a revolt | the defecting captain's old leader: `troops_field -= 1`, only when the man led no group (land 60: leader 4, 18 → 17, `scratchpad/pm121/flip/`). *(Proven, `diff_revolt.py`.)* |
+| `$42be` | `$4244`, the player's-pigeon landing arm of `$3e06`'s effect-array loop (sole caller `$13052`; only the first record `$4c112` takes the arm) | **a dead man's record revived (counted 6 of 6 hits, `scratchpad/pm137/B_42be/probe42be.py`)**: the record at `20(pigeon)` is the dead man whose `$1623c` countdown served the pigeon request (side byte negative, byte 6 `$0a` or `$20`, 6 of 6 launches); on landing `$4244` makes it live again (`neg.b 5`, byte-7 bits 4..6 cleared, byte 14 `:= $c`, repositioned to the pigeon's landing point, mode by `$3c08`), `5(A0) :=` its home settlement's side, then `$42be` adds 1 to that settlement's lord. Live persons +1 and one entity record changed at every hit. Neither a kill credit nor a settlement birth. The `+1` restores a count the death had already removed: the KILL tail `$567e` takes an ungrouped man off the home lord's `troops_field` (section 6), and in all 5 landings captured on `k5_s4` and `m1_ready` every lord's `troops_field` equals the live-man rule count both before and after, the home lord's `+1` the only change (`py/pigeon_ledger.py`), so the pigeon is not a manpower leak |
 | — | `$d322` per tick | reads both, never writes; totals into `$57fba` |
 
-So a lord's food store fills when his fishermen deliver a catch (`$60`), when disbanded men
+So a lord's food store fills when his fishermen deliver a catch (`$60`), when farmers
 arrive home (`$16`) or an army drops food (`$3bc0`), and empties when an army takes food (`$1a`), through
 detached gatherers (`$603e`), and through a slow per-settlement drain
 (`$163b8`, intermittent in mission 1, see §3a). Men are a separate count
@@ -118,11 +131,10 @@ mission 1 the enemy's store rises by 4 per fisherman's delivery (28 → 40 in 3M
 at zero each man deserts with chance 1/8; strategy.md "`$d322` + `$3e06`").
 Mission 1, 26 men: 251 → 247 → 243 in 25M steps, both writes at `$3f6a`.
 
-**Mode `$16`, a farmer home from his field** (`$15042`; the first reading called it "disband"):
+**Mode `$16`, a farmer home from his field** (`$15042`; not a "disband"):
 
 ```c
-// $15042 -- CORRECTED 96th: the $57fd0 test was written backwards below, and the
-// "veteran" test is on byte 33, not order_class (byte 1).
+// $15042 -- the $57fd0 test is "== 0 parks"; the "veteran" test is on byte 33 (a Plough), not order_class (byte 1).
 void h_farm_home(pm_object *A1) {               // entity mode $16
     jsr_16848(A1);                              // side<->owner reconcile + $5c80
     if (g_tileset_sel /*$57fd0*/ == 0) {        // <- == 0, NOT != 0
@@ -131,26 +143,28 @@ void h_farm_home(pm_object *A1) {               // entity mode $16
     leader *L = &leader_of(A1->nation_off);
     L->food += 2;                     // the mission-1 path: DOES credit +2
     if (A1->byte33 == 8) L->food += 2;       // carrying a Plough
-    A1->target = unpack_cell(A1->group_off_lobyte);
-    A1->prev_mode = 0x18;  A1->mode = 0x10;             // walk to the muster cell
+    A1->target = unpack_cell(A1->group_off_lobyte);     // the field cell, bytes 42/43
+    A1->prev_mode = 0x18;  A1->mode = 0x10;             // walk to the field cell
 }
 ```
 
 `$57fd0` (`g_tileset_sel`, initialised to `(byte[$58146] & 3) * 2` at
-world-build) is not a "world still animating" flag. It starts at `4` in mission
-1, so a disbanding unit *usually* takes the **`food += 2`** path — but
+world-build) is the season word (original `_season`), not a "world still animating" flag. It starts at `4` in mission
+1, so a returning farmer *usually* takes the **`food += 2`** path — but
 `$57fd0` rotates {0,2,4,6} via `$1abaa` (1 rotation per 118.4M steps, §3a), and
-whenever it is `0` the disbanding unit parks as a mode-`$7c` heartbeat marker
+whenever it is `0` the farmer parks as a mode-`$7c` heartbeat marker
 instead. Mode `$7c` and the whole loyalty/revolt system therefore run in mission
 1 in brief intermittent bursts, not never.
 
 ## 2. Timber gathering: trees, forests and the goods payoff
 
 The goods counters are fed by men felling trees and carrying them home; food is a different
-thing (the fishermen, §1). The arrays keep the `herd_*`/`shepherd_*` field names of the first reading
-(`$4d252` as sheep and wild animals) in `tools/pm_fsm_ref.py` and the older proof scripts, but the
-developer symbols (`$4d252` `_trees`, `$57f68` `_forests`, `$4c5f4` `_birds`, `$4342` `_do_fore...`,
-modes `$44` `at_fores...`, `$42` `at_works`) and a live check say trees (strategy.md "Original names"):
+thing (the fishermen, §1). `$4d252` is the **tree array**: the developer symbols (`$4d252` `_trees`, `$57f68`
+`_forests`, `$4c5f4` `_birds`, `$4342` `_do_fore...`, modes `$44` `at_fores...`, `$42` `at_works`) and the live
+checks below say so (strategy.md "Original names"). `tools/pm_fsm_ref.py` and the older proof scripts still carry the `herd_*` /
+`shepherd_*` field and region names (`HERD_REGIONS`, `herd_off`, `call_4342`'s `herd_op`) from a first reading of the
+array as sheep and wild animals; read them as forest operation, tree and gatherer. The animals are a different pool
+(`$4ccd6`, ai.md "Shepherds, animals and carrier pigeons").
 
 - all 203 live `$4d252` entries of `pm123/win/m1_s0` (154 of 154 in `pm129/env5_12M`) sit on a
   byte6 == 4 record, the building/tree frame category of graphics.md, and that is the whole byte6 == 4
@@ -170,7 +184,7 @@ Three arrays and one per-tick animator implement it.
 ```c
 typedef struct pm_tree {           // $4d252 .. $4d252 + $4e512, stride 12
 /* 0*/  u16  _w0;                   // ?? (dead slots hold stale large values -> see "$163ea aliasing")
-/* 2*/  u16  worker_obj;            // $51b66 offset of a unit working this tree (0 = none); the 97th: nothing natural sets it
+/* 2*/  u16  worker_obj;            // $51b66 offset of a unit working this tree (0 = none); nothing natural sets it
 /* 4*/  u16  _w4;                   // ??
 /* 6*/  u8   category;              // $4672/$4788 seeder writes $04 for every tree (= the byte6 4 render category)
 /* 7*/  u8   tree_state;            // $0e..$11 = one of four tree kinds ($e + rnd&3 in 4 of 16 draws, else $e + the forest's centre cell & 3);
@@ -209,7 +223,7 @@ by `$2906` (`pm_place_nations`-adjacent) at setup and, per its caller, refreshed
 
 ### `$4c5f4` — forest markers (`_birds`; stride 22, live length in `$4ccd4`)
 
-The pool starts at `$16` and `$4672` takes `$16` per marker up to `$6e0`: 77 markers. Each op after the first gets `(centre & 7) + 6`
+The pool starts at `$16` (the first record is reserved) and `$4672` takes `$16` per marker until the length word reaches `$6e0`: at most 79 markers (code read at `$46d4..$46e0`; `$4ccd4` read `$6e0` in 6 of 6 built-land snapshots). Each op after the first gets `(centre & 7) + 6`
 (6 to 13) markers, op 0 none; the pool ran out in 42 of the 52 gated builds, so the later forests get a short or empty chain.
 Seeded by `$4672` (`$46e8`): `byte5 := 1` (active), `byte6 := $16`, `byte8/9` =
 packed x + `$80`, `byte10` = worldY, `byte15 := 0`, `byte16 := $40`, `word20` =
@@ -220,7 +234,7 @@ it reaches `$30` the delivery completes and the op unlinks.
 
 ### `$4342` — the per-tick forest animator (`_do_fore...`; from `$3e06` / `pm_flag_health`)
 
-Confirmed once per sim tick in the 74th-pass callgraph (`pm_flag_health ->
+Confirmed once per sim tick in the call graph (`pm_flag_health ->
 ram_004342  x651` over 651 ticks). Structure:
 
 ```c
@@ -259,36 +273,26 @@ returns 0) it does exactly two things — `bset #7, tree_state` of the tree and
 `jsr $16778` to unlink the marker's screen object. The economic credit is
 elsewhere, in the gatherer's own FSM (§2a). What a `$4c5f4` marker is on screen is not established: the label `_birds` suggests flocks over the forests, but that is the label, not a check.
 
-**96th.** Fully disassembled (`scratchpad/pm96/disasm/herd_4342.txt` (file name from the old reading)): the
-marker-CLAIM head (`$437e`..`$4422`, gated on `tree.worker_obj != 0` +
-`$16808` bucket link-at-head) and the animate loop (`$4436`.., `$164bc` step +
-`$163ea` relink, or `$16778` unlink at arrival). All three non-trivial leaves
-(`$164bc` / `$163ea` / `$16778`) are already Proven (93rd/94th) and `$16808` is
-transcribed. But `$4342` is a **no-op in every natural capture** — every
-`tree_state`-bit-7 tree has `worker_obj == 0` (claim path skipped) and every
-`$4c5f4` marker has `progress (byte15) == 0` (animate loop skipped). The 97th's
-`pm97_map0` (mode `$7c` live, 8 forest ops, 68 markers, ~40 trees with a worker)
-did **not** unblock it — markers still seed `byte15 := 0` and only `$4342`'s own
-claim head writes `byte15 := $d0`, and that head needs a bit-7 tree *with* a
-worker, which no natural state reaches. So, like mode `$7c` before the 97th, a
-real differential test needs a synthesised corpus (poke a marker's `byte15` +
-a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains).
+**Proof status.** `$4342` is fully disassembled (`scratchpad/pm96/disasm/herd_4342.txt`, a file name from the old
+reading): the marker-CLAIM head (`$437e`..`$4422`, gated on `tree.worker_obj != 0` + `$16808` bucket
+link-at-head) and the animate loop (`$4436`.., `$164bc` step + `$163ea` relink, or `$16778` unlink at arrival).
+All three non-trivial leaves (`$164bc` / `$163ea` / `$16778`) are Proven and `$16808` is transcribed. But `$4342`
+is a **no-op in every natural capture** — every `tree_state`-bit-7 tree has `worker_obj == 0` (claim path
+skipped) and every `$4c5f4` marker has `progress (byte15) == 0` (animate loop skipped). `pm97_map0` (mode `$7c`
+live, 8 forest ops, 68 markers, ~40 trees with a worker) does not unblock it either: markers seed `byte15 := 0`
+and only `$4342`'s own claim head writes `byte15 := $d0`, and that head needs a bit-7 tree *with* a worker, which
+no natural state reaches. A differential test therefore needs a synthesised corpus (poke a marker's `byte15` and
+a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains), and that gate exists: **Proven for 8 of 9
+branches** (`tools/pm_fsm_ref.py` `call_4342`, `scratchpad/pm113/diff_4342.py`, 110/110 tracked bytes over 9 states;
+ai.md "the forest animator `$4342`" has the branch list, the two model bugs it caught in the bucket-link
+machinery, and the arrival/unlink branch that stays Corroborated because every synthesised poke that reaches it
+hangs the real emulator).
 
-**113th, Proven for 8/9 branches** (`tools/pm_fsm_ref.py` `call_4342`,
-`scratchpad/pm113/diff_4342.py`): the CLAIM mechanism is genuinely more
-involved than the pseudocode above lets on — it does NOT reuse the triggering
-op's *own* marker chain. It clears the op's own `marker_off`, scans the whole
-`$57f68` array from the start for the first OTHER op whose `marker_off` is
-still 0, and transplants the triggering op's chain into that op instead (a
-fallback keeps the triggering op's original chain if no empty slot exists
-anywhere). Every `byte5 > 0` marker in the transplanted chain then gets
-(re)initialised via `$16808`. 110/110 tracked bytes identical over 9 states
-(claim + guard-fail + no-empty-op fallback, both ramp-in cases, the dwell-skip,
-a real step, and the owner-sync write) — see `ai.md`'s own entry for full
-detail, including the two real bugs the pass caught in the bucket-link
-machinery and the one branch (arrival/unlink) still only Corroborated because
-it reproducibly hangs the real emulator under every synthesised poke tried so
-far.
+The CLAIM mechanism is more involved than the pseudocode above lets on: it does **not** reuse the triggering
+op's *own* marker chain. It clears the op's own `marker_off`, scans the whole `$57f68` array from the start for
+the first OTHER op whose `marker_off` is still 0, and transplants the triggering op's chain into that op instead
+(a fallback keeps the triggering op's original chain if no empty slot exists anywhere). Every `byte5 > 0` marker
+in the transplanted chain is then (re)initialised via `$16808`.
 
 ### 2a. The gatherer FSM and the delivery payoff
 
@@ -345,17 +349,17 @@ for (int i = 0; i < 8; i++)
 // a242[1..8] = Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon
 ```
 
-### 2b. Goods circulation — porter units
+### 2b. Goods circulation — the merchants
 
 Goods are meant to move: a separate carrier FSM (modes `$4e`/`$50`/`$52`/`$54`, the merchants) picks up one good from a lord and deposits it at another.
-**Not observed to move anything (136th):** 0 of 136 merchants in transit carried a code, and `$54`'s lord-selection loop, as encoded, never leaves the
+**Not observed to move anything:** 0 of 136 merchants in transit carried a code, and `$54`'s lord-selection loop, as encoded, never leaves the
 home lord (`lea 32(A3),A0` at `$15b0c`, A3 never advances; proven, `py/fsm15/gate_fsm15.py`, ai.md `$54` row), so the destination equals the
 home lord in 404 of 404 men in `$52/$50`; the pickup, though, runs with the stale A0 (the record after the home lord's for `14(A1) & 7 >= 2`), so what a merchant could carry is that record's goods banked at the home lord. The merchants are also not a designed trade class: they are the men left over when the world-build job pick
 could place neither a farmer nor a fisherman (281 of 281 merchants in eight builds, §5a: 59 gave up on a 1-in-32 roll, 222 failed five rounds, mostly through a stale register). The "biased toward the capital" reading is unsupported:
 
 | routine | direction | effect |
 |---------|-----------|--------|
-| `$159de` | pick up | `r = $57fec % 6`; if `src_leader.goods[r] != 0`: `goods[r] -= 1`, stamp the carried code `(r+1)*2` onto the porter's byte 44 (r<3) or byte 33 (r≥3) |
+| `$159de` | pick up | `r = $57fec % 6`; if `src_leader.goods[r] != 0`: `goods[r] -= 1`, stamp the carried code `(r+1)*2` onto the merchant's byte 44 (r<3) or byte 33 (r≥3) |
 | `$159a4` | drop off | read the carried code off byte 33 / byte 44, `dst_leader.goods[(code>>1)-1] += 1` (cap `$ff`), clear the byte |
 
 `$57fec` (the count of `$1abaa` calls since the last season change, ~231k steps each) round-robins the resource, so over time
@@ -417,31 +421,30 @@ Two more modes close the loop:
   `- 2`; if `≥ 0` the target lord **accepts an alliance** (order `$2a` → `$34a8`,
   peace bits; strategy.md "Diplomacy"), else a refusal message; the envoy group is
   freed either way. The carried goods are the tribute: this is how the economy
-  feeds diplomacy (123rd; the 75th pass read `$2a` as an attack order).
+  feeds diplomacy (`$2a` is not an attack order).
 
 All of `$61f8` / `$638c` / modes `$76`–`$78` sit in the strategic layer that
 `strategy.md` measured as **near-dormant in "Between Pages 1-5"** (the enemy
 captain issues no autonomous orders in ~1000 ticks). So in the tutorial, tier
-byte 44 keeps its spawn value and the 74th pass's "no routine advances byte 44"
-is *practically* true there — but the mechanism is fully present and would fire
-in a live campaign.
+byte 44 keeps its spawn value ("no routine advances byte 44" is *practically* true
+there), but the mechanism is fully present and fires in a live campaign (§4: `$63e8` fired on later lands).
 
-There is no salvage of a fallen unit's weapon. `$1611a`'s `goods[(byte44>>1)-1] += 1` (earlier read as a unit-removal handler) is the
-return half of the **equipment exchange** (136th): a *living* man at his lord's cell, in mode `$90` (`townee_g`, `$160f2`: `$3c08` regroup, then the swap) or
+There is no salvage of a fallen unit's weapon. `$1611a`'s `goods[(byte44>>1)-1] += 1` (not a unit-removal handler) is the
+return half of the **equipment exchange**: a *living* man at his lord's cell, in mode `$90` (`townee_g`, `$160f2`: `$3c08` regroup, then the swap) or
 mode `$8e` (`fight_ge`, `$160e4`: swap, then back to `$2c`), runs the shared tail `$160f8`: (a) a weapon in byte 44 goes back into the lord's
 `goods`, (b) the first non-zero of `goods[2]`, `[1]`, `[0]` (bow, sword, pike) is taken into byte 44, (c) a farmer (byte 7 bit 0) with `goods[3]` non-zero
 returns his carried item and takes a Plough (byte 33 `:= 8`, `goods[3] -= 1`). It never compares the lord's weapon with the man's own, so he
 ends with the best in stock. The tail has a stale-register bug: D0.w still holds the lord's record offset `14(A0)` when `move.b 44(A1),D0` / `move.b 33(A1),D0`
 run, so a returned item is credited `128 * (D0.w >> 8)` bytes further on, i.e. into leader record `lord + 4*(lord>>3)` for lord >= 8 (lord 8's Plough went to
 lord 12's `goods[3]`, captured live twice; lords 0..7 are unaffected), which breaks goods conservation. The rule is exact only with D0 tracked through the whole
-tail (137th, `tools/pm_fsm_ref.py` `call_160f8`, gate `py/gate_equip.py`: 201 states, 385/385 bytes and D0.w/D1.w 201/201, 41 misdirected weapon returns and
+tail (`tools/pm_fsm_ref.py` `call_160f8`, gate `py/gate_equip.py`: 201 states, 385/385 bytes and D0.w/D1.w 201/201, 41 misdirected weapon returns and
 8 misdirected item returns among them): a weapon returned is always misdirected for lord >= 8; the farmer's item return reuses whatever D0.w is left, so it is credited
 correctly if a weapon was taken in the same call (D0.w = 2*(slot+1) <= 6), misdirected if nothing was taken and no weapon returned, and credited correctly for lords 8..15 but
 misdirected from lord 16 up after a weapon return without a take. The take follows the return, so a weapon returned to a higher slot can be re-taken in the same call
 (code read; seen in the synthetic states). Of 48 natural men in `k5_s4`, `k25_s3` and the `pm136` e1/e2 snapshots, 3 carry a weapon and belong to a lord >= 8 (the model and the 68000 agree
 their weapon is credited past the lord). Natural counts, `k5_s4` run in 12 stretches of 10M steps
 (`scratchpad/pm136/equip/run1.sh`): `$16892` 3, 61, 66, 81, 41, 15, 51, 5, 82, 6 hits per stretch, `$160f2` 1, `$1616c` 1 and 2; `m1_s0` 0 (every lord's goods are zero).
-The earlier "`pm75_big.err` caught this, 7×" was the `$1611a` instruction, not a dead unit's weapon.
+The 7 hits `pm75_big.err` shows at `$1611a` are this return, not a dead unit's weapon.
 
 The port has it as `port/godot/logic/Equipment.fs` (`tail`, `arriveFight`, `arriveGoods`, `goodsRegroup`) with a `CreditMode`: `Original` keeps the stale D0 and is identical to the
 68000 on all 202 corpus cases (the 201 gate states plus the native exchange, 1451038 compared bytes, `py/equip_check.fsx`); `Corrected` clears the high byte so the item goes to the
@@ -456,35 +459,34 @@ Confirms `pm_tree.cell` is the liveness key.
 ## 3. Settlements — `$4f916`
 
 ```c
-typedef struct pm_settlement {      // $4f916, stride $12 (18), count in $51536, <= 240
-/* 0*/  u16  _w0;
-/* 2*/  u16  _w2;                    // written by $163ea bucket-relink for some records -- see below.
-                                    //   NOT a population field (it is cleared/rewritten as a link word)
+typedef struct pm_settlement {      // $4f916 (original _houses), stride $12 (18); $51536 holds the bytes in use, table size $1c20 = 400 records
+/* 0*/  u16  bucket_next;            // a settlement is also a $47970 bucket node ($5cde links new sites with $16808; section 3b)
+/* 2*/  u16  bucket_prev;            // written by $163ea bucket-relink for some records -- NOT a population field (section 3b)
 /* 4*/  u8   _b4;
 /* 5*/  u8   owner;                  // $2fc0/$3018: commander colour holding the settlement (0 = free slot)
-/* 6*/  u8   kind;                   // $3020: $02 normal, $10 for a WorkShop (building kind 7)
-/* 7*/  u8   nation_kind;            // $2fc0: the building's kind, stream byte 2(A2); the names are the game's own table `housenam` ($a15a), printed by the UI text gen ($9ccc), see "Buildings and town layouts"
-/* 8*/  u16  chain_next;             // $3014: byte offset into $4f916 of the next settlement in this nation
-/*10*/  u16  linked_obj;             // $51b66 offset of the settlement's own map marker
+/* 6*/  u8   category;               // $3020: the render byte6: $02 normal house, $10 for a WorkShop (building kind 7), $1e a site being built
+/* 7*/  u8   building_kind;          // $2fc0: the building's kind, stream byte 2(A2) (`nation_kind` in older notes and in tools/pm_fsm_ref.py); the names are the game's own table `housenam` ($a15a), printed by the UI text gen ($9ccc), see "Buildings and town layouts"
+/* 8*/  u16  chain_next;             // $3014: byte offset into $4f916 of the next settlement of this lord
+/*10*/  u16  unit_head;              // $51b66 offset of the first man living there (word 24 of each man chains on; section 5a)
 /*12*/  u16  dest_cell;              // $3034: packed {x:6,y:7} of the settlement
 /*14*/  u16  leader_off;             // $3046: byte offset into $4e514 of this settlement's lord
-/*16*/  u16  _w16;
+/*16*/  u16  build_progress;         // a Ruin's construction counter ($157e6: ++ per pulse, rebuilt at $78)
 } pm_settlement;                     // sizeof 18
 ```
 
 Built by the routine at `$2fc0` (world-build, from `$13b9a`'s cluster): it walks
 a 3-byte-per-record mission stream, allocates `$4f916` slots, chains them per
-nation (`chain_next` at +8, head stored in `2(leader)`), and stamps
+lord (`chain_next` at +8, head stored in `2(leader)`), and stamps
 owner/kind/cell/leader. A site is refused when the four corner altitudes of its cell
 (`-16514(A3)`, `-16513`, `-16450`, `-16449`: the `$3f86c` plane, A3 being the `$438ee` cell pointer; `$2f72`, static) sum to 0,
 that is open sea; otherwise it sets bit 1 in four cells of the flag plane (`ori.b #$2,8257(A3)` + `bset #1` on
 three neighbours). Bit 1 pins a cell's altitude against the `$10410` smoothing pass (`btst #1`), and `$10458`/`$10b3e` set it too, so it is not
-a settlement-only mark: in `m1_s0` all 28 bit-1 cells lie in the 11 settlements' four-cell claims, in `k5_s4` 232 of 506 do not (136th `planes/flag_census.py`).
+a settlement-only mark: in `m1_s0` all 28 bit-1 cells lie in the 11 settlements' four-cell claims, in `k5_s4` 232 of 506 do not (`py/flag_census.py`).
 
-**How a settlement changes hands: the revolt `$550e`** (Proven, 122nd:
+**How a settlement changes hands: the revolt `$550e`** (Proven:
 `reversing/powermonger/py/diff_revolt.py`, 1778/1778 over 49 states, 27 of
 them every natural `$550e` call on the four run lands). `$550e` has two
-callers, and they are the only two ways land changes side (124th,
+callers, and they are the only two ways land changes side (gate
 `reversing/powermonger/py/diff_4f68.py`, 1804/1804 over 192 states, 170 natural):
 
 - **Revolt, the settlement heartbeat** (`$157e6`, entered from mode `$7c` while
@@ -517,7 +519,7 @@ callers, and they are the only two ways land changes side (124th,
 `5(A1)` the leader's side, resets `word[14]` to 300, and walks the leader's
 settlement chain (`2(leader)`, next at `8(settlement)`): each settlement not
 already on the new side gets owner byte 5 rewritten, and its unit chain
-(`10(settlement)`, next at `24(unit)`) is scanned for a garrison man (owner
+(`10(settlement)`, next at `24(unit)`) is scanned for a captain (owner
 `> 0`, flags bit 4, mode `$8a` or `$3c`); the last one found is reconciled by
 `$5c2c`. If his settlement's leader is now on another side, `$5c2c` either
 hands the contact to `$4bc8` (he leads a group that still has members, or the
@@ -533,13 +535,13 @@ byte of settlement `$4fa90` written 2 → 3 at `$5538`, `$25d6` at 4,509,837); a
 four later lands ran `$550e` six times in 200M steps. Nothing moves stored
 population or goods: the settlement's future production follows the owner
 byte, and the goods sit on the lord record (`$4e514`). `$1d70` is the
-route expander that sends men home, not an ownership writer (`ai.md`).
+rank former (original `_rerank`), not an ownership writer (`ai.md`).
 
-### Buildings and town layouts (139th)
+### Buildings and town layouts
 
 A `$4f916` record is a **building**, not a settlement in the sense of a town: the developers call the array `_houses`, and the UI prints the record's kind (byte 7) from their own text table `housenam`
 at `$a15a` (`$9ccc`; 13 of 13 entries read from RAM): **0 TownHall, 1 Tavern, 2 FishHut, 3 FarmHouse, 4 Ranch, 5 Barn, 6 Church, 7 WorkShop, 8 Turret, 9 Square, 10 Ruin, 11 Tower, 12 Mine**.
-The earlier reading of kind 7 as a "capital" is withdrawn: the lord's work order `$5cde` looks for a **WorkShop** in the lord's chain (`+7 == 7`), the building also gets render category `$10`,
+Kind 7 is a WorkShop, not a "capital": the lord's work order `$5cde` looks for a **WorkShop** in the lord's chain (`+7 == 7`), the building also gets render category `$10`,
 the developers' mode `$6a` is `workshop`, and timber is carried to it (section 2). A Ruin (kind 10) is the one building that changes kind: the heartbeat `$157e6` counts a Ruin's word 16 up and at
 `$78` pulses makes it a random building, kind `dest_cell % 10` (kinds 0 to 9).
 
@@ -560,10 +562,10 @@ Kinds 4 and 5 are the lords that get a captain (section 5a). Counted over the ei
 cells, and none has a building the layout lacks (kinds seen: TownHall 173, Barn 46, Turret 47, FarmHouse 45, WorkShop 32, Square 32, Tavern 31, Church 31, FishHut 28, Ruin 17, Tower 16, Ranch 15, Mine 0).
 Only lords of kind 3 and 4 start with a WorkShop, so the player's order `$0e` (set men to work) is accepted at the start only on a land where the player's lord has one. In mission 1 the player's own lord
 is a single Tower (kind 6, lord 2 of `m1_s0`) and refuses it; `callcap 5cde` on the two kind-6 lords of `m1_s0` and `m1_ready` returns at once (D2 stays 0), on both kind-3 lords of `m1_ready` (the enemy's and
-the conquered one, whose chain holds a WorkShop) it goes on and sets D2 to `$3e`, the gather mode (2 of 2 each; the earlier poke of a kind 7 into the Tower, `strategy.md` "What each order does", is the same gate). Kinds 0, 7 and 8 index past the table (0 and 7 read the table's own words, 8 reads data) and are not used by any land seen.
+the conquered one, whose chain holds a WorkShop) it goes on and sets D2 to `$3e`, the gather mode (2 of 2 each; the poke of a kind 7 into the Tower, `strategy.md` "What each order does", is the same gate). Kinds 0, 7 and 8 index past the table (0 and 7 read the table's own words, 8 reads data) and are not used by any land seen.
 `py/town_layouts.py` prints the table.
 
-### 3a. The per-settlement heartbeat — entity mode `$7c` (75th; **Proven — natural corpus, 97th**)
+### 3a. The per-settlement heartbeat — entity mode `$7c` (**Proven**, natural corpus)
 
 There is no global "settlement update" routine. A settlement marker in **entity
 mode `$7c`** (`t_mode_handlers[$7c]` → `$157ba`, body `$157e6`) pulses once every
@@ -571,27 +573,25 @@ mode `$7c`** (`t_mode_handlers[$7c]` → `$157ba`, body `$157e6`) pulses once ev
 logic below.
 
 **Mode `$7c` requires `word[$57fd0] == 0`.** `$157ba` branches on it (`== 0` →
-`$157e6`, else `jsr $16892` then `jsr $3c08` regroup — **Proven, 98th**), and so
-does every instruction that *enters* mode `$7c` — `$1505e` (mode `$16` disband), `$15a46` and `$15b7a` (porter /
-regroup). `$57fd0` is set at world-build to `g_tileset_sel = (byte[$58146] & 3)
+`$157e6`, else `jsr $16892` then `jsr $3c08` regroup — **Proven**, ai.md regroup block), and so
+do the three instructions that *enter* mode `$7c`: `$1505e` (in the mode-`$16` farmer-home handler), `$15a46` (in the mode-`$4e`
+merchant arrival) and `$15b7a` (in the mode-`$5e` fisher arrival). `$57fd0` is set at world-build to `g_tileset_sel = (byte[$58146] & 3)
 * 2` (= 4 for mission 1's seed) — **but it is not static**: the seasons
 routine `$1abaa` (`_seasons`, `$130b0` in the sim tick) **rotates it**, `$1ac5e..$1ac6a` =
 `$57fd0 = ($57fd0 + 2) & 6`, cycling {0 winter, 2 spring, 4 summer, 6 autumn}, once per full 8192-iteration cycle of its 13-bit
 pixel-order LCG `$57ff6` (512 calls of 16 pixels; Hull-Dobell full period). Measured: writes at steps 789,032,489 (4 → 6),
-907,448,489 (6 → 0) and 1,025,912,489 (0 → 2), a period of 118.44M steps = 512 calls × ~231k (`watch 57fd0`, 136th `scratchpad/pm136/season/`; 2 writes
-over a 220M-step mission-1 drive earlier; 0 over 40M of pm78_settle). The word is the *target* season: the live tileset then dissolves pixel by pixel
+907,448,489 (6 → 0) and 1,025,912,489 (0 → 2), a period of 118.44M steps = 512 calls × ~231k (`watch 57fd0`, `scratchpad/pm136/season/`; 2 writes
+over a 220M-step mission-1 drive; 0 over 40M of pm78_settle). The word is the *target* season: the live tileset then dissolves pixel by pixel
 into the new art over the following 512 calls. So the per-settlement
 heartbeat — the `$163b8` food drain, the construction timer, the
 loyalty/revolt accumulator — **is transiently reachable in mission 1**, during
 the brief `$57fd0 == 0` phases of that rotation, not permanently dead. It is
 *dormant*, not absent: none of pm78_settle / pm88_f1 / pm73_fight / pm74_late
 (400M steps) happened to freeze a `$7c` record because those windows are short
-and rare, and when `$57fd0` rotates off 0 any live `$7c` markers convert to mode
-`$56`/`$3c08` and `food` refills through the mission-1 `$1507c` path.
-(This also refines the 89th's "`$57fd0` static per mission" for the `byte6 == 4`
-building/tree tile-set — it shifts once per rotation too.) The 75th pass's "each
-settlement's marker sits in mode `$7c`" was static + a `$163b8` `watch` that
-actually caught a same-address routine in TOS.
+and rare, and when `$57fd0` rotates off 0 the live `$7c` markers go home through `$157ba`'s `$16892` / `$3c08` regroup (ai.md) and
+`food` refills through the mission-1 `$1507c` path. The `byte6 == 4` building/tree tile-set is not static per mission
+either: it shifts once per rotation too. Not every settlement's marker sits in mode `$7c`: a `watch` on `$163b8` once seemed to show
+that, but had caught a same-address routine in TOS.
 
 **Weather and the season art.** PowerMonger has weather: rain in spring and
 autumn and snow in winter, started by `$1ad74` from `word[$1ad9c + word[$57fd0]]`
@@ -623,8 +623,7 @@ lands' RAM, the reductions were not measured in motion.* On lands 0 and 25 `$1a8
 and building frames (`g_tileset_sel`, below); the sprite art itself is the same
 in every season.
 
-The `$37c7c` prop sheet (28 × 480 B, `32×24` word-plane, decode already pinned
-89th) was pulled from a live RAM snapshot (`scratchpad/pm114_rand2.snap` —
+The `$37c7c` prop sheet (28 × 480 B, `32×24` word-plane, decode in graphics.md) was pulled from a live RAM snapshot (`scratchpad/pm114_rand2.snap` —
 world-build had run; the sheet is **not** resident before that, confirmed by
 diffing against a pre-world-build snapshot where all 480×28 bytes at `$37c7c`
 are zero) and every frame rendered against `port/assets/palette.json`
@@ -655,46 +654,38 @@ The four prop slots are four distinct pictures (`py/family_distinct.py`: 12 of 1
 frames on `k5_s4`), so "four" is right for the prop sheet; the terrain colour tables are the ones with only three distinct sets
 (`graphics.md` "Seasons": spring and autumn share one table, `py/season_tilediff.py`), and the two counts are not the same thing.
 
-**Aside — driving the menus: click timing and the Timer A hang.** Getting to
-`pm114_rand2.snap` needed a click-timing fix: `mouse down`/`mouse up` alone
-enqueue no IKBD packet at all in relative-report mode (`MMU.fs`
-`EnqueueMouseButton` only emits a byte when `MouseButtonsReportAsKeys` is
-true) — the button state only reaches the game embedded in a *subsequent*
-`mouse move` packet's header, so a bare `down;up` with no flush is silently
-dropped. Fix: `down`, `mouse move 0 0` (flush), hold ~300k steps, `up`,
-`mouse move 0 0` (flush) — confirmed working for the Welcome-menu →
-world-map transition. But driving *from* the world map (both the top-left
-compass icon at `~(18,18)` — the README's documented "scroll icon" — and
-"PLAY RANDOM LAND" from the Welcome menu) lands in the identical
-`$1ae40: tst.b $2c993.l / bne $1ae40` busy-wait. `$2c993` is a busy flag
-that the MFP Timer A handler (`$134` → `$1af32`) clears (`sf $2c993` at
-`$1af72`); it is not an FDC poll. The same wait hung the briefing-OK world build until an emulator
-regression was fixed: `RaiseTimerA` read TACR from a register array that TACR
-writes no longer reached, so Timer A never fired (README "Bug 5"). The build
-now completes. PLAY RANDOM LAND, re-driven from `pm114_postclick2.snap` (cursor
-`mouse move 0 35`, then down / `move 0 0` / up / `move 0 0`), now builds a world
-(`$13b9a` 2.5M steps after the click, a winter land;
-`scratchpad/pm121/random_land2.snap`), shows "Please Wait For The Protection
-Check" while the build finishes, then asks the manual-lookup question. The AI
-block does not run on that land because the uncracked answer check leaves the
-flag `$14e4e` at 0 (strategy.md "The campaign", protection check). The
-top-left "scroll icon" at `~(18,18)` of the world map is land 0's cell on the
-13 × 15 conquest map (`$1120e`), and land 0 is mission 1 (inferred from the
-cell geometry; the pick itself is traced for land 1 in strategy.md).
-`pm114_rand2.snap` was taken mid-hang; its RAM already had a fully populated
-`$37c7c` sheet (used above).
+**Aside — how the prop-sheet snapshot was reached (menu driving).** `pm114_rand2.snap` came from PLAY RANDOM LAND.
+*Click timing:* `mouse down` / `mouse up` alone enqueue no IKBD packet in relative-report mode (`MMU.fs`
+`EnqueueMouseButton` only emits a byte when `MouseButtonsReportAsKeys` is true); the button state reaches the game only
+embedded in a *subsequent* `mouse move` packet's header, so a bare `down;up` with no flush is silently dropped. The
+working form is `down`, `mouse move 0 0` (flush), hold ~300k steps, `up`, `mouse move 0 0` (flush); it was confirmed
+for the Welcome-menu → world-map transition (`py/clicks.py`). *The Timer A hang:* driving from the world map (both
+the top-left compass icon at `~(18,18)`, the README's documented "scroll icon", and "PLAY RANDOM LAND" from the Welcome
+menu) landed in the identical busy-wait `$1ae40: tst.b $2c993.l / bne $1ae40`. `$2c993` is a busy flag that the MFP
+Timer A handler (`$134` → `$1af32`) clears (`sf $2c993` at `$1af72`); it is not an FDC poll. The same wait hung the
+briefing-OK world build until an emulator regression was fixed: `RaiseTimerA` read TACR from a register array that
+TACR writes no longer reached, so Timer A never fired (README "Bug 5"). The build now completes. PLAY RANDOM LAND,
+re-driven from `pm114_postclick2.snap` (cursor `mouse move 0 35`, then down / `move 0 0` / up / `move 0 0`), builds a
+world (`$13b9a` 2.5M steps after the click, a winter land; `scratchpad/pm121/random_land2.snap`), shows "Please Wait
+For The Protection Check" while the build finishes, then asks the manual-lookup question. The AI block does not run
+on that land because the uncracked answer check leaves the flag `$14e4e` at 0 (strategy.md "The campaign", protection
+check). The top-left "scroll icon" at `~(18,18)` of the world map is land 0's cell on the 13 × 15 conquest map
+(`$1120e`), and land 0 is mission 1 (inferred from the cell geometry; the pick itself is traced for land 1 in
+strategy.md). `pm114_rand2.snap` was taken mid-hang; its RAM already had a fully populated `$37c7c` sheet (used
+above). This procedure belongs with README "Driving a later land"; it stays here only because the prop-sheet
+provenance depends on it.
 
-**Proven — natural corpus (97th).** `pm97_map0` (`scratchpad/pm97/`) is a real
+**Proven — natural corpus.** `pm97_map0` (`scratchpad/pm97/`) is a real
 mission-1 world with `word[$57fd0]` forced to 0 at world-build (the single
 intervention — it only *pins* the value the game visits transiently) and driven
-80M steps: disbanding / regrouping / porter units then park as `$7c` heartbeat
+80M steps: returning farmers, merchants and fishermen then park as `$7c` heartbeat
 markers through the game's own `$1505e` / `$15a46` / `$15b7a`, giving **19
 natural mode-`$7c` records** on 10 real `$4f916` settlements (2 under
-construction), leaders at `loyalty_pressure` 316 / 318. The 96th's
-reconstruction (unchanged) differential-tested against the real 68000 via
+construction), leaders at `loyalty_pressure` 316 / 318. The
+reconstruction built on the synthesised corpus, unchanged, differential-tested against the real 68000 via
 `callcap 14b62` on this corpus: **99/99 tracked bytes over 27 states, all 12
 branch families** — construction exercised naturally, `hostile.py` 5 negative
-controls all bite. (The 96th first proved it on a *synthesised* corpus — poke
+controls all bite. (It was first proved on a *synthesised* corpus — poke
 `$57fd0 := 0` on pm78_settle, repurpose inert records into fake `$7c` markers —
 85/85 over 25 states; `scratchpad/pm96/`.)
 
@@ -707,44 +698,49 @@ void h_mode7c_settlement(pm_object *M) {           // $157e6
     pm_settlement *S = &settlement_at(M->off34);   // $4f916 + 34(M)
     settlement_upkeep_163b8(S);                    // $163b8: S->leader->food -= 1, floored
     if (M->flags & 0x10) goto epilogue;            // btst #4
-    if (S->nation_kind == 0x0a) {                  // a Ruin: rebuilt as a random building
+    if (S->building_kind == 0x0a) {                // a Ruin: rebuilt as a random building
         if (++S->build_progress /*+16*/ >= 0x78) {
-            S->nation_kind = S->dest_cell % 10;    // divu #$a ; swap  (remainder)
-            if (S->nation_kind == 7) S->kind = 0x10;     // a WorkShop
+            S->building_kind = S->dest_cell % 10;  // divu #$a ; swap  (remainder)
+            if (S->building_kind == 7) S->category = 0x10;   // a WorkShop
             S->build_progress = 0;
         }
     }
     pm_leader *L = S->leader;                      // $4e514 + word[S+14]
     int f4 = L->troops_field * 4;
     if (f4 != 0) {
-        if (f4 >= L->food) {
-            if (D5 == (short)0xff9c) L->loyalty_pressure += 2;   // <<< only on the
-        } else {                                                //     first post-park
-            if (D5 == (short)0xff9c) L->loyalty_pressure -= 1;   //     tick (dwell was
-            if ((M->anim /*+14*/ & 3) != 3) settlement_workorder_5cde(L);  // -99 -> -100)
+        if (f4 >= L->food) {                                    // hungry ($15878..$158a2)
+            if (D5 != (short)0xff9c) goto epilogue;             // $158a6 bne $158d6: no check unless just parked
+            L->loyalty_pressure += 2;                           // <<< only on the first post-park tick
+        } else {                                                // fed
+            if (D5 == (short)0xff9c) L->loyalty_pressure -= 1;  //     (dwell was -99 -> -100)
+            if ((M->anim /*+14*/ & 3) != 3) settlement_workorder_5cde(L);
         }
-        if (L->loyalty_pressure >= 0x258) revolt_550e(L, M);     // >= 600
+        if (L->loyalty_pressure >= 0x258) {                     // >= 600, $158ae
+            int side = M->world_x_lo % 4 + 1;                   // byte 8 (x) mod 4, + 1: $158b6..$158c0
+            int keep = M->owner;  M->owner = side;              // $158c4/$158c8
+            revolt_550e(L, M);                                  // $158cc
+            M->owner = keep;                                    // $158d2
+        }
     }
 epilogue:
     epilogue_161c4(M);
 }
 ```
 
-**Corrections to the 75th-pass reading.** (1) The loyalty accumulator moves
+**Three details a quick read gets wrong.** (1) The loyalty accumulator moves
 **only when `D5 == $ff9c`** — the pulse immediately after the marker was parked
 with dwell `#$ff9d` (`-99`), which decrements to `-100` on that first tick. On
 every ordinary steady-state pulse `D5 == 0` and neither `±` branch runs (the
 `-1` branch's `$5cde` call still does, gated on `(anim & 3) != 3`). (2) The
-`$163b8` drain and construction run *before* the `btst #4` / `field·4 == 0`
-early-outs. (3) `$16848` itself ends in a `jsr $5c80`, so upkeep runs twice per
+`$163b8` drain runs *before* the `btst #4` early-out (so it runs for a leader-flag man too), and the construction counter
+before the `field·4 == 0` early-out (code read of `$157e6..$158d6`). (3) `$16848` itself ends in a `jsr $5c80`, so upkeep runs twice per
 pulse.
 
 Asserted **off** in the proof (`raise` guards each): `$5cde` (settlement
-work-order assignment — a whole routine), `$550e` (revolt — economy.md §6: never
-observed), `$5c2c` (owner reconcile in `$16848`).
+work-order assignment — a whole routine, Proven on its own: ai.md), `$550e` (revolt, section 3, Proven on its own), `$5c2c` (owner reconcile in `$16848`).
 
-**What sets `dwell := $ff9d` (Proven, 126th pass, live).** The write is
-`$015052`, inside mode `$16`'s handler (`$015042`, ai.md's "disband" row),
+**What sets `dwell := $ff9d` (Proven live).** The write is
+`$015052`, inside mode `$16`'s handler (`$015042`, ai.md's `$16` row),
 gated on `word[$57fd0] == 0`: `jsr $16848`; if `$57fd0 == 0`, `18(A1) := $ff9d`
 (dwell), `30(A1) := 31(A1)` (save the entering mode as `prev_mode`),
 `31(A1) := $7c` (park as the settlement heartbeat marker); else the record
@@ -756,50 +752,34 @@ field untouched) on the same state made the very next mode-`$16` entry take
 the park branch — 1/3 over a further 150M steps, at the one step `$57fd0` read
 0. 1/1 dwell-writes land exactly where the disassembly predicts, 0 elsewhere.
 
-**Mode `$16` belongs to garrison/neutral markers, not to player-dismissed
-troops (126th, live-traced).** `$3c08`'s flag-bit dispatch only picks
-`prev_mode := $16` for a record whose flags byte `7(A1)` has **bit 0 set**;
-the sole site in the whole image that sets that bit is `$002cd0`, inside a
-grid site-scan that also stamps mode `$18`/`$0c` (the neutral-village-garrison
-patrol setup, ai.md's `$18` row) — a world-build-time placement, not anything
-a player action reaches. Captured live: the mode-`$16` entity at a natural
-`$015042` hit (`A1 = $51bfc`, 15.3M steps into `m1_s0` with no input at all)
-carries flags byte `$01`. By contrast, tracing one *player* desertion end to
-end (starvation via `$3f6a` → `$1b8c` → its own recursive `$1bea: jsr $3c08`
-call, entity `$52462`) hit `$3c08`'s **"no flag bits set" default** at `$3c3c`
-(`prev_mode := $7e`), walked home under mode `$10` (five probe/blocked
-`$10`↔`$12` cycles), and arrived in mode `$7e` (`$014fdc: mode := prev_mode`)
-— never touching `$16`. Mode `$7e` runs the same heartbeat body (`$157e6`) as
-`$7c` but **ungated and without ever having its own dwell reset to `$ff9d`**,
-so the `D5 == $ff9c` "just parked" edge structurally cannot fire for a unit
-that arrives this way. This is why the 125th's dismiss/starve test saw zero
-loyalty pulses over 104 settlement beats: player-triggered troop movement
-never reaches the one instruction that arms the loyalty edge. **The
-"hunger revolt by clicks" framing is very likely wrong as stated** — the
-loyalty park-tick looks like a periodic self-cycle of the settlement's own
-garrison marker (`$7c` ⇄ `$16`, gated purely by the global `$57fd0` season word,
-1 rotation per 118.4M steps), independent of what the player does with troops or
-food on that settlement. What order `$06` moves (`loyalty_pressure` 0 → 16,
-corroborated 125th) is that order's own `+16 >> (posture−2)` formula, a
-completely separate write path from the parked-marker pulse.
+**Mode `$16` is the farmer's homecoming, not a path player orders reach (live-traced).** `$3c08`'s flag-bit dispatch
+only picks `prev_mode := $16` for a record whose flags byte `7(A1)` has **bit 0 set**, the farmer flag
+(strategy.md "Original names"); the sole site in the whole image that sets that bit is `$002cd0`, inside the farmer
+job's site scan `init_far` (`$2c5a`, section 5a), a world-build-time placement, not anything a player action reaches.
+Captured live: the mode-`$16` entity at a natural `$015042` hit (`A1 = $51bfc`, 15.3M steps into `m1_s0` with no input at
+all) carries flags byte `$01`. By contrast, tracing one *player* desertion end to end (starvation via `$3f6a` → `$1b8c`
+→ its own recursive `$1bea: jsr $3c08` call, entity `$52462`) hit `$3c08`'s **"no flag bits set" default** at `$3c3c`
+(`prev_mode := $7e`), walked home under mode `$10` (five probe/blocked `$10`↔`$12` cycles), and arrived in mode `$7e`
+(`$014fdc: mode := prev_mode`), never touching `$16`. Mode `$7e` runs the same heartbeat body (`$157e6`) as `$7c`
+but **ungated and without ever having its own dwell reset to `$ff9d`**, so the `D5 == $ff9c` "just parked" edge
+structurally cannot fire for a unit that arrives this way. This is why a dismiss/starve test saw zero loyalty pulses
+over 104 settlement beats: player-triggered troop movement never reaches the one instruction that arms the loyalty
+edge. **The "hunger revolt by clicks" framing is very likely wrong as stated**: the loyalty park-tick looks like a
+periodic self-cycle of the settlement's own civilians (`$7c` ⇄ `$16`/`$4e`/`$5e`, gated purely by the global `$57fd0`
+season word, 1 rotation per 118.4M steps), independent of what the player does with troops or food on that
+settlement. What order `$06` moves (`loyalty_pressure` 0 → 16, corroborated live) is that order's own
+`+16 >> (posture−2)` formula, a completely separate write path from the parked-marker pulse.
 
-**"Does a settlement ever revolt on its own?" is already answered, and yes**
-(127th: this framing had gone stale — §6/`ai.md`'s `$550e` proof already
-settled it four passes before the 125th/126th re-opened it as a fresh
-question). The 122nd pass's `diff_revolt.py` (1778/1778 tracked bytes over 49
-states, `ai.md` "The revolt chain") ran on the four `pm121/run/<land>_s1..s4`
-corpora — 200M steps per land, **no player input at all**. Of the 27 natural
-`$550e` calls it captured, **11 fired from the settlement heartbeat at loyalty
-600-608** (the other 16 from mode `$2c`'s conquest arm, loyalty 0-292; §6).
-That is exactly the `$7c`/`$16` self-cycle described above crossing 600
-unassisted, differential-tested against the real 68000 rather than merely
-observed. What is still genuinely open is narrower: whether the settlement's
-own `$7c` marker is itself the bit-0-flagged record feeding the mode-`$16`
-traffic, or some other garrison entity — the `$51bfc` record above was caught
-already inside `$16`, not followed backward to its own prior `$3c08` call.
-`scratchpad/pm125b/` (gitignored; `ANCHORS.md`).
+**Does a settlement ever revolt on its own? Yes.** The revolt proof `diff_revolt.py` (1778/1778 tracked bytes over
+49 states, `ai.md` "The revolt chain") ran on the four `pm121/run/<land>_s1..s4` corpora — 200M steps per land,
+**no player input at all**. Of the 27 natural `$550e` calls it captured, **11 fired from the settlement heartbeat at
+loyalty 600-608** (the other 16 from mode `$2c`'s conquest arm, loyalty 0-292; §6). That is the `$7c` self-cycle
+crossing 600 unassisted, differential-tested against the real 68000 rather than merely observed. What is still
+genuinely open is narrower: the live `$7c` men are jobs 1, 2 and 4 (farmer, merchant, fisher), entered through
+`$1505e`, `$15a46` and `$15b7a`, but the `$51bfc` record above was caught already inside `$16`, not followed
+backward through a full `$16` → `$7c` → home cycle. `scratchpad/pm125b/` (gitignored; `ANCHORS.md`).
 
-### 3b. The `$163ea` aliasing — characterised, benign (75th pass, task 5)
+### 3b. The `$163ea` aliasing — characterised, benign
 
 `watch $4f916 240` (`pm75_w2.err`) confirms the writes land on
 **`$4f916 + i*$12 + 2`** (i.e. `pm_settlement._w2`) for i ≈ 1..11, from PCs
@@ -823,20 +803,19 @@ stride: `$32 $64 $fa $12c $190 $1f4 $258`) with occasional garbage
 Conclusion: **these are real bucket links, not corruption.** `$5cde` builds a
 new settlement by allocating a `$4f916` record and inserting it into the
 `$47970` cell bucket with `$16808`, passing its offset from `$51b66`, which is
-negative (`$5e62..$5e70`; Proven, 122nd, `scratchpad/pm122/agents/herdop/`,
+negative (`$5e62..$5e70`; Proven, `scratchpad/pm122/agents/herdop/`,
 state `p_newsettl`: the new record's `+0` becomes the old bucket head). So a
 settlement record is also a bucket node: `+0` is its forward link and `+2` its
 back link, and an object whose forward link is negative points at such a
 record (byte6 `$1e`, the building going up). The occasional values `$b184` /
-`$af48` were not investigated. The chain link of the lord's settlements is `+8`,
-as the 73rd pass's `pm_nation.chain_next @ +2` had wrong.
+`$af48` were not investigated. The chain link of the lord's settlements is `+8`
+(`+2` is the bucket back link).
 
 ## 4. Weapon grade — "invention" as the game surfaces it
 
-**`pm_object` byte 44 is triple-purpose** (70th "msg_code", 74th "weapon tier",
-and now a third role): a transient notify code in `$16260`; the equipment tier
+**`pm_object` byte 44 has three roles**: a transient notify code in `$16260`; the equipment tier
 for item types 1..6 on a combat unit; and a transient *carried-item* tag on a
-porter unit (§2b). Bytes 44 and 33 both hold an item code `2 * (goods slot + 1)`: 44 a
+merchant (§2b). Bytes 44 and 33 both hold an item code `2 * (goods slot + 1)`: 44 a
 weapon (2 pike, 4 sword, 6 bow; `$e` catapult and `$10` cannon are never
 written), byte **33** a tool (8 plough, `$a` boat, `$c` pot: `$159de` for goods
 slots 3-5, `$1616c` for the plough: the lord's `goods[3]` is decremented there, the only live Plough source seen).
@@ -884,12 +863,12 @@ That the renderer projects this plane as the terrain height is proven by poking 
 under the camera raises a plateau, 10938 pixels differ against the same forced redraw without the poke
 (`py/alts_render_check.py`). Altitude 0 is sea level: settlements are refused on a cell whose four corners are 0 (`$2f72`), and a
 fisherman picks his sprite `$70` or `$90` by whether the cell's `+1` and `+64` neighbours are nonzero (`$15bae`, static,
-not seen live); `$5d80` (the build decision, ai.md "Build") reads the altitude at the lord's cell, `>= $10` meaning high
+not seen live); `$5d80` (the build decision inside `$5cde`, ai.md "the lord's work order `$5cde`") reads the altitude at the lord's cell, `>= $10` meaning high
 ground. It is not an influence, ownership or carrying-capacity field, and not read by any manpower or goods maths. `$4672` scatters
 10 forests, clusters of trees (`$4788`), and their markers across buildable cells. The sites, group start cells, roads and stamped shapes of a land come from the 4-byte records
 `$ac20` decodes (`graphics.md` "The land build", 14539/14539 over 16 calls); `$10638` then levels each site's ground and `$10058` bakes the colour planes (same section).
 
-### 5a. The starting population: who each man is (139th)
+### 5a. The starting population: who each man is
 
 `$2984` (the developers' `_set_peo...`) runs once per land build, after the map is made and before `$238c`, which builds each side's army (the only other
 caller of the man allocator `$2e1e`). It is not a periodic pass and not a garrison. For each lord that has a settlement chain and each settlement of the chain
@@ -954,7 +933,7 @@ retry word). `py/gate_pop.py` runs the whole `$2984` (`callcap 2984`) on the bui
 The model is `call_2984`, `call_2a98`, `call_2b08`, `call_2b68`, `call_2c5a`, `call_2d0e`, `call_2e1e` in `tools/pm_fsm_ref.py`. The per-round probabilities (1, 3, 16 and 12 in 32) are read from
 the masks in `$2a98` and agree with the counts; `$2984` itself takes 1.4 to 8.7 M steps a build. That the farmer arm never fails for lack of a site is counted on the final states of eight builds only.
 
-## 6. Men are conserved, food is not grown by any counter (75th, task 2; 124th: `+6` is food)
+## 6. Men are conserved, food is not grown by any counter
 
 Combining §1's flow table with the `pm75_big.err` (~1B steps) / `pm75_w1.err`
 (135M steps) watches from `pm74_late.snap` (`watch $4e514 160` / `128`):
@@ -965,12 +944,11 @@ closed set. Food: `$1507c` (`+2`, mode `$16`), `$15e18` (`+4`, mode `$60`), `$3b
 `$603e` (`-2`, mode `$42`), `$163b8` (`-1`, settlement pulse). Men
 (`troops_field`): `$1c04` (`+1`, capture, new owner), `$42be` (`+1`, a pigeon
 landing revives a dead man's record), `$382a` / `$2644` (`-1`, re-parent / old owner on capture),
-`$567e` (`-1`, the KILL tail of `$5590` for a man in no group roster: the dead man leaves the home lord's count, `ai.md` `$5590`, proven by the 95th gate; the watches behind this list ran on AI-only play without kills, which is why it was missing). The 124th
-pass adds the player's order paths, which the AI-only watches could not see:
+`$567e` (`-1`, the KILL tail of `$5590` for a man in no group roster: the dead man leaves the home lord's count, `ai.md` `$5590`, proven by the combat-block gate; the watches behind this list ran on AI-only play without kills, so it is not in the watched set). The player's order paths, which the AI-only watches could not see, add:
 order `$14` (`$1cc4` → `$1b8c`) returns dismissed men to `troops_field`, and
 order `$20` (`$3da4`) adds the spy to the target lord's `troops_field`. `$1b8c`
 is also the starvation-desertion sink (strategy.md "`$d322` + `$3e06`"): driven
-live (125th) by dropping an army's food at posture 2 and marching it to 0, the
+live by dropping an army's food at posture 2 and marching it to 0, the
 roster fell 26 → 13 over 50M steps and the local lord's `troops_field` rose
 0 → 13 by the same amount — a starving man leaves by the identical `$1b8c` path
 as a dismissed one, just LCG-triggered instead of player-triggered.
@@ -978,12 +956,12 @@ There is **no accumulator, no per-tick `+n`, no birth rate**. A nation's men can
 only be redistributed among its lords; they grow only by winning battles (men
 who would have died walk home instead) and shrink by losing them.
 
-**96th/97th refinement.** In mission 1 the drain side of that ledger is
+**Intermittent drain in mission 1.** In mission 1 the drain side of that ledger is
 thinner than the flow table suggests: `$163b8` (the settlement pulse) fires only
 **intermittently** — mode `$7c` is `$57fd0`-gated, and `$57fd0` rotates {0,2,4,6}
 via `$1abaa` (1 rotation per 118.4M steps, §3a), so the drain runs in brief
 bursts during the `$57fd0 == 0` phases and is off the rest of the time. The
-steady sinks in the tutorial are `$150f2` (recruit), `$603e` (besiege) and the
+steady sinks in the tutorial are `$150f2` (an army takes food), `$603e` (detached gatherers) and the
 capture pair. The conservation observation stands.
 
 The one thing that *looks* like a growth counter — `pm_leader.loyalty_pressure`
@@ -991,12 +969,12 @@ The one thing that *looks* like a growth counter — `pm_leader.loyalty_pressure
 (the town holds at most 4 food per man in the field: hunger) and `-1` otherwise —
 but only on the *first* settlement pulse after a marker is parked
 (`D5 == $ff9c`, the `#$ff9d` dwell decrementing to `-100`); on ordinary
-steady-state pulses `D5 == 0` and neither arm runs (96th correction, §3a).
+steady-state pulses `D5 == 0` and neither arm runs (§3a).
 At `loyalty_pressure` **≥ 600** the pulse sets the marker's side to
 `(marker.field8 % 4) + 1` (`$158b6`) and calls `$550e`: the lord and every one
 of his settlements not already on that side defect, `loyalty_pressure` resets
-to 300, and one garrison man is reconciled (§3 "How a settlement changes
-hands", Proven 122nd). On the four later lands this fired naturally 11 times
+to 300, and one captain is reconciled (§3 "How a settlement changes
+hands", Proven). On the four later lands this fired naturally 11 times
 in 800M steps, at loyalty 600-608. In the plain tutorial `loyalty_pressure` only
 oscillated 296–306 (the settlement pulse is intermittent); in `pm97_map0` (a
 mission-1 world with `$57fd0` pinned to 0) both AI lords climbed to 316 / 318
@@ -1016,7 +994,7 @@ against a cruel ruler".
       ▼                                                  │ group end   $3c08/$35f4 
    pm_leader.goods[0..7]  ($4e514 +24)  ◄───────────────┤ ($3b5a deposit remainder)
       │  ▲                                               │
-      │  │ porters (modes $4e/$50/$52/$54/$5e)           │ army-supply $61f8 / $6352
+      │  │ merchants (modes $4e/$50/$52/$54)             │ army-supply $61f8 / $6352
       │  │ $159de pick up  /  $159a4 drop off            ▼
       │  └──────────────────────────────────►  $638c  equip / UPGRADE unit tier
       │                                          (pm_object byte 44 / byte 33)
@@ -1026,7 +1004,7 @@ against a cruel ruler".
 
 
    pm_leader.food  ($4e514 +6)                       ── SEPARATE LEDGER ──
-      +2  mode $16 disband-home ($1507c)          -1  settlement pulse upkeep ($163b8, mode $7c)
+      +2  mode $16 farmer home ($1507c)           -1  settlement pulse upkeep ($163b8, mode $7c)
       +4  mode $60 fisher's catch ($15e18)        -2  mode $42 gatherers      ($603e)
       +f  army drops food       ($3bc0, order $12) -n army takes food        ($150f2, order $06)
    pm_leader.troops_field  ($4e514 +8)
@@ -1036,11 +1014,10 @@ against a cruel ruler".
                                  which recycles a dead record)
 ```
 
-## Traces / artefacts
+## Trace files
 
-75th pass:
-- `scratchpad/pm75_big.err` — `watch $4e514 160`, ~1B steps from `pm74_late.snap`
-  (the §6 conservation evidence; `$6120` goods credit fires ~3×/40M).
+Under `scratchpad/` (gitignored). From `pm74_late.snap` (`pm71_run1` + 400M, PC `$000124c0`):
+- `scratchpad/pm75_big.err` — `watch $4e514 160`, ~1B steps (the §6 conservation evidence; `$6120` goods credit fires ~3×/40M).
 - `scratchpad/pm75_w1.err` — `watch $4e514 128`, 135M steps (`$163b8` food
   drain 273×, `$60dc` throttle, mode `$16`/`$60` returns).
 - `scratchpad/pm75_w2.err` — `watch $4f916 240` (the §3b `$163ea`→`_w2` writes,
@@ -1048,10 +1025,9 @@ against a cruel ruler".
   form (two regions) suppressed the `$4e514` events in that run — **`watch` is
   reliable for one region at a time**; use separate runs.
 - `scratchpad/pm75_w3.out` — `m 4e514 128` dumps (leader field map verification).
+- `scratchpad/pm74_late.snap`, `pm74_run1.ram` / `pm74_late.ram`; `scratchpad/pm74_disasm.txt` — linear disasm
+  `$1000`..~`$45000` of `pm70_iso.ram`.
 
-74th pass:
-- `scratchpad/pm74_quiet.evt` (352 MB, 150M steps from `pm71_run1`) →
+From `pm71_run1`:
+- `scratchpad/pm74_quiet.evt` (352 MB, 150M steps) →
   `pm74_blocks.txt` / `pm74_cg.dot` / `pm74.names`. `$4342` per-tick child of `$3e06`.
-- `scratchpad/pm74_late.snap` (`pm71_run1` + 400M, PC `$000124c0`),
-  `pm74_run1.ram` / `pm74_late.ram`.
-- `scratchpad/pm74_disasm.txt` — linear disasm `$1000`..~`$45000` of `pm70_iso.ram`.

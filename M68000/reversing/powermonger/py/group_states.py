@@ -1,5 +1,5 @@
 """group_states.py <snap>...: group state (+0), men (-24), owner (-48) of every group of every side ($51538 + side*$13c + $4c + 2k, k 0..5), live ones only,
-and a tally of the states. strategy.md "What each order does": state 3 get men, 4 / 8 march, 6 idle, 9 support."""
+and a tally of the states. strategy.md "What each order does": state 3 Get Men, 4 Meeting, 6 In Camp, 8 Attack, 9 Invent, 13 Fighting (the game's own panel text)."""
 import struct
 import sys
 from collections import Counter

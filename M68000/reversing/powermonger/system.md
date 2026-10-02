@@ -7,7 +7,7 @@ The scripts are in `py/sound/` (data under `scratchpad/pm140/agents/sound/`); th
 ## The sound driver is a sample player
 
 `$1af32..$1ba70` is not a tone or music engine. "Ech" is French *échantillon* (sample): a Timer A interrupt writes one PSG volume triple per tick, using registers 8, 9 and 10 as a three-channel DAC, and a per-frame sequencer chains
-`(sample, rate)` pairs. The tone and noise generators are switched off (`InitPsg` `$1aeb0` zeroes registers 0..6 and 8..10 and sets register 7 to `(reg7 & $c0) | $3f`).
+`(sample, rate)` pairs. The tone and noise generators are switched off (`InitPsg` `$1aeb0` zeroes registers 0..6 and 8..10 and sets register 7 to `(reg7 & $c0) | $3f`). The driver's data sits just before its code: `ptr_ech` `$1ada6` and `nom1` `$1adaa`, which holds the string `B_FLOOD.ECH` (read from RAM; nothing references it, so it is a leftover of an earlier file-loading version: inferred; `strategy.md` "Hidden features audit").
 
 **The bank** at `$5879a` is filled by the game's loader (which resource is not identified: startup zeroes `$5879a..$6f30c` at `$10ba`, then `$11c0` calls `$df52(9)` just before `NewEcha`; resource 9 is inferred). Word 0 is the number of samples (58), word 1 the number of sequences (56), then longs `tab[i]` from `+4`: `tab[0..55]` are
 sequence offsets, `tab[56]` is skipped (the end marker), `tab[57..]` are sample offsets. `_NewEcha` `$1b83c` builds `$2c9a0[i] = bank + tab[i]` (56 longs) and for each sample a 12-byte record at `$2cba6 + 12j`, `{start, start, tab[next] − tab[this]}`; the length is never used for playback (samples are zero-terminated; the last has no end offset).
@@ -20,7 +20,7 @@ sequences (0, 1, 4, 5, 24, 25, 36, 54) are started by the same call as the effec
 and two `movep`s write the entry to `$ff8800..` (registers 8, 9, 10). **Proven: 300/300 consecutive interrupt passes** from `pm123/win/m1_s0` (D1 and D0 equal the table entry of the byte at `ptr − 1`; `py/sound/gate_timera.py`), and the PSG registers 8, 9, 10 read back equal the entry's volumes (11, 11, 10). That the table is a three-channel
 volume sum is **inferred** (`dac_table.py`: all 255 entries select registers 8, 9, 10; amplitude falls with the signed byte, Spearman ρ = −0.952, 182 of 253 adjacent steps non-increasing, 195 distinct triples; byte `$ff` indexes 1841 times past the table into code, read as a harmless PSG no-op, inferred).
 
-**The sequencer** `_EchInter` `$1b77e` runs once a VBL (called from the VBL handler `$1270` at `$1294`, only when `$2de66 != 0`):
+**The sequencer** `EchInter` `$1b77e` runs once a VBL (called from the VBL handler `$1270` at `$1294`, only when `$2de66 != 0`):
 
 ```
 if active and not busy:
@@ -32,7 +32,7 @@ if active and not busy:
 **Proven: 328/328 `callcap` states against the Python model** (`gate_echinter.py`: all 56 sequences, idx in {0, n − 1, n}, loop 0 and 1, plus the inactive and busy cases). Live from `m1_s0` over 1.5M steps: 125 VBL hits, 126 `EchInter`, 7363 interrupt passes, 12 `PlayEch`, 12 `FinJoue` (the VBL period is 12000 steps).
 **The emulator fires Timer A about 59 to 64 times a frame whatever `TADR` says** (`Program.fs` `timerAPeriod`), so the samples play at the wrong speed here; real pitch and tempo cannot be measured on this emulator.
 
-**The API.** `_InitEch` `$1b7fc` (startup `$1108`: clears `$2c993/4/6`, calls `$1adcc`, which saves the Timer A vector, installs `Joue`, sets `TADR = $2c99a`, `TACR = 1`); `_ClrEcha` `$1b81c` (exit `$120e`: `$2de66 = 0`, `ClrEch` `$1ae4c` stops the stream and restores the vector);
+**The API.** `_InitEch` `$1b7fc` (startup `$1108`: clears `$2c993/4/6`, calls `$1adcc`, which saves the Timer A vector, installs `Joue`, sets `TADR = $2c99a`, `TACR = 1`); `_ClrEcha` `$1b81c` (exit `$120e`: `$2de66 = 0`, `_ClrEch` `$1ae4c` stops the stream and restores the vector);
 `_JoueEch(seq, flags)` `$1b978` (stops the current sequence; if `flags & $80`: idx = 0, `$2cba2 = seq`, `$2c994 = (flags & $20 != 0)` the loop flag, `$2c992 = 1`); `_Sample(n, flags)` `$1b9d0` (`flags & $10` only asks: 1 if a sequence is active, else −1; otherwise if `n < $2c99c` runs `JoueEch($2c9a0[n], flags)` and returns 2);
 `_Noise` `$1ba3e` / `_Effect` `$1ba42` (`Sample(max(D0 − 1, 0), $80)`: **the second argument of every caller is ignored**). `$1ba62..$1ba70` are four `rts` stubs. Call sites of `$1ba3e` (26): exit `$1206` (id 0); `$25f8`, `$2612`, `$286c`, `$2852` (id 0, second argument `$2002` or `$58054 ^ 5`; `$2852` and `$286c`
 are the end of the group dissolve `$2776`); `$26ea` (id `$2c`), `$26fc` (`$3f`), `$271c` (`$2d`), `$76e6` (`$30`); `$126ea` (0); `$12706` (`($57fd0 >> 1) + 1`, the season sound); `_stop_so` `$12726` (ids 0 with second arguments `$81 $82 $84 $88 $2001..$2008`, so it silences everything: sequence 0 with flag `$80`, effect inferred); `$128d2` (id `6(A1)`, the event dispatcher);
@@ -85,4 +85,4 @@ are in `strategy.md` "Serial-link states"; the handshake `$6eb6` is not read.
 
 ## Not exercised
 
-Playback rate (see the Timer A note), `_format_`, `_dda_loa`, `_dda_sav`, `_do_req` and `do_text` live; the loader that fills the sound bank; the event ids behind each of the 59 sound-event classes; the audible effect of `$1b9d0(0, $80)`.
+Playback rate (see the Timer A note); `_format_`, `_dda_loa`, `_dda_sav`, `_do_req` and `do_text` were not run live; the loader that fills the sound bank; the event ids behind each of the 59 sound-event classes; the audible effect of `$1b9d0(0, $80)`.

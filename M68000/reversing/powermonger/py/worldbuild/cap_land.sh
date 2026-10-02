@@ -4,6 +4,7 @@
 k=$1
 B=${PM_WORK:-scratchpad/pm141/agents/build}/cap; mkdir -p $B
 seed=$(printf '%08x' $((k*0xb+0x3fb))); pages=$(printf '%04x0000' $((k*0x96+0x672)))
+[ -n "$PAGES0" ] && pages=00000000   # PAGES0=1: the Play Random Land roll ($5809c == 0, strategy.md "The world build, proven")
 cat > $B/k$k.cmds <<C
 w 2df92 001400b1
 w 2df8e 001400b1

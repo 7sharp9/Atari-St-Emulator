@@ -1,18 +1,23 @@
 # PowerMonger ST — the strategic layer (the commander AI)
 
-Reverse-engineered 71st pass, continuing `ai.md`. `ai.md` covers the per-entity
-state machine (`$14b62`, ~2.4 Hz); this file covers the layer above it: how a
-captain decides to march an army at an enemy, and how that decision reaches the
-entity loop. Same method — disassembly of `scratchpad/pm70_iso.ram` (game image
-at its absolute addresses), block traces, and field watches — driven from
-`scratchpad/pm68_isoview.snap` / `pm71_run1.snap` (first mission, "Between
-Pages 1-5").
+This file covers the layer above the per-entity state machine of `ai.md` (`$14b62`, ~2.4 Hz): how a captain decides to march an army at an enemy, how that decision reaches the entity loop, and the machinery around it that shapes a land's life. It holds the sim tick `$13000` and its measured cadence, the two tables the AI reads and writes (`$58016` command buffer, `$51538` group orders), the commander AI `$6522`, the order executor and every order the player can post, the per-side force totals and the armies' food, combat as a mechanism, the RNG, the world build and the starting armies, how a land ends, diplomacy, the campaign map, and the developers' own names for routines and fields (their symbol table and the game's UI text). A hidden-feature audit and the open threads close it.
 
-## Where it runs — the sim tick `$13000`, disassembled (72nd pass)
+Method: disassembly of `scratchpad/pm70_iso.ram` (the game image at its absolute addresses), block traces, field watches and `callcap` gates against Python models, driven from snapshots such as `scratchpad/pm68_isoview.snap`, `pm71_run1.snap` and `pm123/win/m1_s0.snap` (the first mission, "Between Pages 1-5"). Claims are labelled **proven** (a gate script with a match count), **live** (an emulator run), **code read** (disassembly only) or **inferred** (the code supports it, nothing ran it); an unlabelled claim carries the evidence stated beside it. The other docs cite sections of this file by title, so keep the titles when editing.
 
-`$13000` **is** the simulation tick. The 70th/71st passes had the call order and
-the gating slightly wrong; here is the routine as it actually reads, with the
-72nd-pass measured cadence.
+## Contents
+
+- Tick and tables: "Where it runs", "The two tables the AI reads and writes" (`$58016` with the serial-link states, `$51538`), "Data structures (C)".
+- The AI and its orders: "The commander AI `$6522`" (lord scans, target recheck, "The follow-up table `$6762` / `$67d0`" with the routine as C, issuing an order, proof), "`$6a3a` / `$6ac6` / `$6b38` — the order executor" (with "The executor, proven"), "The player's commands" (panels, minimap, icon floor, "What each order does", "The order senders and arrival executors, proven").
+- Per-tick accounting: "`$d322` + `$3e06`", "`$127e6` — the sound-event dispatcher".
+- Mechanics: "Combat", "RNG and determinism", "What actually fired, and what didn't".
+- Lands: "Mission / world setup" (including "The starting armies" and "The world build, proven"), "How a land ends", "Diplomacy", "The campaign", "What `$1abaa` actually is".
+- Synthesis: "The AI as modern pseudocode", "What's crude, and what a modern version changes".
+- Names and audits: "Original names: the developer symbol table", "The game's own text: names for the fields", "Hidden features audit".
+- "Open threads".
+
+## Where it runs — the sim tick `$13000`, disassembled
+
+`$13000` **is** the simulation tick. The routine as it reads, with its measured cadence:
 
 ```
 $13000  ...clamp $4bb3a/$4bb3c (camera bounds)...
@@ -23,7 +28,7 @@ $1303a  tst.l 46($14e20) ; beq $13058    ; no running game -> skip
 $13040  jsr $127e6   ; sound-event dispatcher (original _do_soun...): plays the 2 highest-priority pending sounds
 $13046  jsr $6522    ; << the commander AI (order pipeline)
 $1304c  jsr $d322    ; per-side troop totals -> $57fba
-$13052  jsr $3e06    ; flag-health UI + the armies eat (food decay) + $57fba group term
+$13052  jsr $3e06    ; flag-health UI + the armies eat (food decay) + $57fba group term; also animals, pigeons, projectiles ($596a)
 $13058  clr.w $12f58
  ...set up $e3e2 / $e0d4 pointers...
 $13074  subi.w #$1,$57ff0 ; bne $130b0   ; tick-subdivision gate (see below)
@@ -45,12 +50,11 @@ $130f6  jsr $d23a    ; $57fba -> $57fce force ratio (0..4; 4 = victory at $d2c8)
 $130fc  jsr $7202 ; text panels, then the minimap / compass / captain boxes / icon floor ("The player's commands")
 ```
 
-**Correction to the 70th/71st passes.** `$6522`, `$d322`, `$3e06` and the
-executor `$6a3a` are **not** all in one "tail" block. `$6522`/`$d322`/`$3e06`
+**Where the calls sit.** The AI calls are not one "tail" block. `$6522`, `$d322` and `$3e06`
 run near the *top* of the tick (right after the pause + running gates);
 `$14b62` and `$6a3a` run near the *bottom*, after the renderers. Only `$1870`,
 `$12ce0`, `$178ae` and `$f898` sit behind the `$57ff0`/`$57fee` subdivision
-gate — everything else (`$6522`, `$14b62`, `$6a3a`, `$1abaa`, `$165b2`,
+gate; everything else (`$6522`, `$14b62`, `$6a3a`, `$1abaa`, `$165b2`,
 `$7a56`) runs on **every** `$13000` call. The `$57ff0`/`$57fee` counter is the
 *present-rate* divider (how often the frame is pushed to the shifter and the
 terrain re-rastered), not a sim-rate divider; at normal game speed `$57fee`
@@ -59,10 +63,10 @@ observed at 1, so it reloads every tick and the two rates coincide.
 **Auto-rotate.** `$130d4` unconditionally adds `$12f56` to the camera rotation
 `$ff9a` every tick. `$12f56` is normally 0; it is set non-zero by the
 "rotate the view" mouse command so a rotation glides over several ticks rather
-than snapping. This is the reader for `$ff9a` that `graphics.md`'s 69th-pass
-camera decode was missing.
+than snapping. It is the tick's reader of `$ff9a`; the writers (keys, compass, mouse) are in
+`graphics.md` "In-game camera control".
 
-### Measured cadence (72nd pass)
+### Measured cadence
 
 3M-instruction traced resume from `pm71_run1.snap` (`ATARI_TRACE_EVENTS`,
 `trace_cfg.py --blocks`):
@@ -100,7 +104,9 @@ which is the unit the game logic actually counts in.**
 
 `$6a3a` walks slots 1..4 only (`$5801c..$58033`); slot 0 (`$58016`) is never dispatched.
 
-**Serial-link states (6 and 8).** State 2 is a local human, state 4 an AI side. State 6 is a human whose
+#### Serial-link states (6 and 8)
+
+State 2 is a local human, state 4 an AI side. State 6 is a human whose
 orders are mirrored to a peer: `$6a9e` calls `$1c390` to write the slot's first 4 bytes (commander, order,
 parameter) to the MFP USART data register (`$fffffa2f`), then executes the order. State 8 is the remote
 human: `$6ab2` calls `$1c340` to read 4 bytes from the receive ring buffer `$58368` into the slot
@@ -113,7 +119,7 @@ flag `$2df8a` and returns), so the send-side abort cannot fire from the keyboard
 link teardown `$71ae`: it flushes the receive ring (`$1c328` clears both indices), calls `$c3f6` (not read) and demotes each slot
 (0 stays 0, 2 stays 2, 6 becomes 2, everything else including 8 becomes 4), so a remote human falls
 back to an AI side and the game continues. Proven on `pm123/win/m1_s0.snap` with the slot states
-poked (`scratchpad/pm132/`, "Serial-link roles" in "Hidden features audit"): the state-6 send loop
+poked (`scratchpad/pm132/`, "Startup command line" in "Hidden features audit"): the state-6 send loop
 entered once from `$6a9e` and spun 571,668 times in 3M steps; the state-8 receive loop spun 122,257
 times in 1M steps, ESC reached `$71ae` 41 steps later (1/1), slot 2 went 8 to 4 and `$6a3a` ran 11 more
 times in the next 3M steps. The spin in state 6 is the emulator's MFP never setting the transmitter-empty
@@ -129,8 +135,8 @@ and the group offset `D2` that the executor, the entity modes (`42(obj)`) and
 `$57fd2` use is `side*$13c + $4c + 2k`, so a field at `x(A3)` of a group is the
 array at `base + $4c + x`. The captain panel (`$9090`: `A3 - $51538` divided by
 `$13c` gives side and `2k`) prints four of these arrays as Food, Troops and
-aggression. Passes before the 124th called the six entries "objective slots";
-they are the side's six captains' groups ("What each order does"). The
+aggression. The six entries are the side's six captains' groups ("What each order
+does"), not objective slots. The
 `$6564` AI loop sets `A1 = base + D7` with `D7 = 10, 8, ..., 0`, so `n(A1)` is
 group `k = D7/2`'s word, walked from group 5 down to group 0 (the captain's):
 
@@ -139,7 +145,7 @@ group `k = D7/2`'s word, walked from group 5 down to group 0 (the captain's):
 | `4(A1)`   | +4..+14   | slot-index / link, written back by `$6822` |
 | `28(A1)`  | +28..+38  | the group's **owner side** (group `-48`; `<= 0`: no group, skip) |
 | `52(A1)`  | +52..+62  | the group's **men** (group `-24`, captain panel "Troops") |
-| `76(A1)`  | +76..+86  | the group **state** (group `0`: `$6` camp, `$9`, `$d` support, ...) |
+| `76(A1)`  | +76..+86  | the group **state** (group `0`: `$6` camp, `$9` invent, `$d` fighting; the game's names are in "The game's own text") |
 | `112(A1)` | +112..+122| the group's **food** (group `36`, captain panel "Food"; eaten by `$3e06`, AI groups seeded `$5fff`) |
 | `136(A1)` | +136..+146| the group's **posture** (group `60`: 2 Aggressive, 3 Neutral, 4 Passive; the second half of the captain panel's "Aggression" line; `$90fe`) |
 | `148(A1)` | +148..+158| the group's **aggression** rank (group `72`: 0 PowerMonger .. 7 Wimp, the first half of that line; `$90de`; group 0 holds `$580a6[side].word12`, 7 in every land seen, the others `rng & word12`) |
@@ -148,8 +154,8 @@ group `k = D7/2`'s word, walked from group 5 down to group 0 (the captain's):
 | `280(A1)` | +280..+290| campaign phase / sub-order |
 | `292(A1)` | +292..+302| escort-target object offset |
 
-The "execution sub-record" older passes described at `base+$4c` / `base+$64`
-is group 0's state word and its `24` target link (`$4b80`, below).
+The "execution sub-record" that `$4b80` writes (state at `base+$4c`, target link at `base+$64`)
+is group 0's state word and its `24` target link (below).
 
 ## Data structures (C)
 
@@ -182,7 +188,7 @@ typedef struct pm_side_groups {       // base = $51538 + side*$13c
 /* +40*/  s16  first_man  [6];        // [-36] roster head (next via 26(man))
 /* +52*/  s16  men        [6];        // [-24] captain panel "Troops"
 /* +64*/  s16  lead       [6];        // [-12] lead object offset
-/* +76*/  s16  state      [6];        // [0]   $6 camp, 2/3/5/8/9/$a/$c/$e/$f/$10 per order, $d support
+/* +76*/  s16  state      [6];        // [0]   $6 camp, 2/3/5/8/9/$a/$c/$e/$f/$10 per order, $d fighting
 /* +88*/  s16  eat_timer  [6];        // [12]  $3e06: counts to $580a6[side].word0 (doubled in state 6)
 /* +100*/ s16  target     [6];        // [24]  target link: a lord, settlement or object ($3154, $68fe/$6762)
 /* +112*/ s16  food       [6];        // [36]  captain panel "Food"; -= men/8+1 per eat tick; AI groups seeded $5fff
@@ -203,7 +209,7 @@ typedef struct pm_leader {
 /* 0*/  u8   nation;                  // side id 1..5; 0 = empty slot (not a terminator: `$3bc8` walks all 160 slots to the array end $4f914); $550e rewrites it
 /* 2*/  u16  chain_head;              // -> $4f916 first settlement of the lord (walk via +8)
 /* 4*/  u16  cell;                    // packed {x: bits 0-5, y: bits 6-12} of the lord's position
-/* 6*/  u16  food;                    // the lord's food store (124th; was troops_reserve). $d322: += into $57fba[side].word2 ; $15e18/$15760: += 4 on arrival
+/* 6*/  u16  food;                    // the lord's food store (the town's food, economy.md §1). $d322: += into $57fba[side].word2 ; $15e18/$15760: += 4 on arrival
 /* 8*/  u16  troops_field;            // the lord's men at home (not in an army roster); $d322: += into $57fba[side].word0 ; $152d4 (join) / sieges/$5bd2 decrement it, $1b8c (leave) increments; $68fe scores vs it
 /*12*/  u16  gather_kind;             // $5cde: the lord's current work order
 /*14*/  s16  loyalty_pressure;        // >= 600 -> $550e revolt, reset to 300
@@ -237,16 +243,17 @@ typedef struct pm_assess {            // index by side id: $580a6 + side*$20
                                       // ... and WRITES +16+t (one byte higher, clamped -100..100): a game bug, "Diplomacy"
                                       // $33b0 reads +16+proposer; $68fe reads byte 15 of block[me+t] instead (weight 0 or garbage)
 /*17*/  u8   _b17[3];
-/*20*/  u8   start_equip[4];          // $238c world build: 20/21 -> the side's first unit's 33/44 ($244c/$2452; $245c then forces 44 := 6), 22/23 -> the followers' ($24fa/$2500)
+/*20*/  u8   start_equip[4];          // $238c world build: 20/21 -> the side's first unit's byte 33 (tool tier) and 44 (weapon tier) ($244c/$2452; $245c then forces 44 := 6), 22/23 -> the followers' ($24fa/$2500)
 /*24*/  u8   _b24[8];
 } pm_assess;                          // sizeof $20; $2200-$3500 cluster owns the rest
 // The word at +14 is the men per settlement that $2984 creates (economy.md 5a): 2 on every side of eight builds, so +15 is its low byte and
 // overlaps rel[0] above; the layout of +14..+20 is not settled (rel[] may start at +16, which would make the +15+t reads one byte early).
-// Also read: word 8 (+4 = the herd-throttle reload, $5cde), word 12 (the RNG
+// Also read: word 8 (word 8 + 4 is the herd-throttle reload, $5cde), word 12 (the RNG
 // mask for a new group's 72(sub), $25d6). The whole block is part of the
 // campaign table entry each land loads ("The campaign").
+```
 
-## `$6522` — the commander AI
+## The commander AI `$6522`
 
 Outer loop over the 5 command slots. A slot with `4(A0) != 4` is skipped
 (scan only). For `4(A0) == 4` ("engine has consumed the last order, ready for
@@ -271,7 +278,7 @@ the next"):
 
   Decide, first match wins (`$65b4`):
   1. `52() < $16` (**fewer** than 22 men, signed: `cmpi.w #$16,52(A1); bge $65dc`
-     skips it at 22 or more; passes before the 124th had this inverted) → **`$69b4(8)`**
+     skips it at 22 or more) → **`$69b4(8)`**
      scans `$4e514` for the best **own-side** lord that has more than one man in his
      `troops_field` (`cmp.b 5(A2),D0` skips every other side; the selector `D1` is
      the word offset read, 8 here and 6 for food) → posture `136()` := 2 and order
@@ -288,7 +295,7 @@ the next"):
      (the bytes are proven, 119 escort states; the handler's reading is a code read, so a
      transposed march is **inferred**). Natural: 2 hits in a 150M-step census of 29
      start snapshots.
-  3. `52() - 4 > 0` (any group) → **`$68fe(D1 = men − 4)`** scans
+  3. `52() - 4 > 0` (any group; this arm is the code at `$661a`, whose posture stamp is `$6638`) → **`$68fe(D1 = men − 4)`** scans
      `$4e514` for the nearest enemy leader whose men at home are below `men − 4` (cost
      weighted by the per-side assessment byte `16($580a6 + side*$20)`); **`$68ee`** scores it
      `(d/2)·((men−4)/8 + 1) + d/2` (word arithmetic, `d` the score `$68fe` returned); if
@@ -366,7 +373,7 @@ state, order type, posture}` ending at id 0:
 
 | previous state (`268()`) | order | posture |
 |---|---|---|
-| `$d` (support), with `280() == 2` | `$06` get food | 4 |
+| `$d` (fighting), with `280() == 2` | `$06` get food | 4 |
 | 2 (the state of order `$06`) | `$08` get men | 3 |
 | 3 (get men) | `$10` equipment (`$6128`) | 2 |
 | `$a` (equipment) | `$0e` (the bulb icon's order) | 0 → `($57fec & 3) + 2` |
@@ -380,9 +387,30 @@ follow-up states in the whole-call gate, 28 active synthetic leaf states). **Liv
 issues over 4 start snapshots, every one a table pair (`$d`→6 ×15, 2→8 ×9, 3→`$10` ×6, `$a`→`$e` ×4);
 179 `$67b4` hits in the 29-snapshot census.
 
+The routine as C (transcribed in `py/cmdai/cmdai_ref.py` `call_6762`, proven there):
+
+```c
+// A1 = side base + 2k (group k); table = $67d0, entries {prev_state, order, posture}, prev_state 0 ends
+int pm_followup(group *A1) {
+    for (e = table; e->prev_state != 0; e++) {
+        if (e->prev_state != A1->prev_state_268) continue;          // the state the group came back to camp from
+        if (e->prev_state == 0x0d && A1->phase_280 != 2) return 0;
+        obj *t = &g_object_records[A1->target_100];                 // the group's target (a lord)
+        if (t->byte0 != A1->owner_28_low_byte)       return 0;      // no longer the group's own nation: stop scanning
+        A1->posture_136 = e->posture ? e->posture : (g_rng_bits_57fec & 3) + 2;
+        pm_issue_at_cell_of(t, e->order);                           // -> $67ee -> $6822
+        return 1;                                                   // even when $6822 refused
+    }
+    return 0;
+}
+```
+
+The table is read-only data in the code segment (nothing writes it; it is a constant).
+`268()` is the group's previous state, written by `$3728`, so the hook fires in ordinary play.
+
 ### `$6822`: issuing an order
 
-`$6888[type]` (above) is the group state the order creates. A group already in it
+`$6888[type]` (the word table under "The order executor") is the group state the order creates. A group already in it
 refuses (D0 := 0), except group 0 with `$0c`. Otherwise `4(A1) := D7` and `D2 = side*$13c +
 $4c + D7` is compared with `$58042[2*side]`: the side's own group (group 0 in every
 snapshot) gets the order straight into the slot (byte 1 type, word 2 parameter); any other
@@ -441,12 +469,13 @@ offset as D2. Who posts each type is in "The player's commands" below.
 | `$30` | `$6e36` | `$580a0/$580a2 := param`, `$13d1a` | RANDOM MAP button (param `$2df84`) |
 | `$32` | `$6e56` | `$cada` (refusal message) when cmd ≠ local side | alliance panel NO (into the local slot, so locally a no-op; inferred: for a linked proposer) |
 
-The 121st-pass version of this table read the base as `$6b5c` and was one
-entry off (`$06` → `$6bec`, `$08` → `$6c18` are mid-instruction). Checked on
-the real CPU: 12 dispatches at `$6b56` over 6 handlers on `pm121/run/k60_s2`
-all landed at `$6b5a + word` (`scratchpad/pm123/disp.txt`).
+The table base is `$6b5a`, not `$6b5c` (`$06` → `$6bec` and `$08` → `$6c18` would land
+mid-instruction). Checked on the real CPU: 12 dispatches at `$6b56` over 6 handlers on
+`pm121/run/k60_s2` all landed at `$6b5a + word` (`scratchpad/pm123/disp.txt`).
 
-**The executor, proven.** `$6a3a` walks slots 1..4 only (`$5801c..$58033`; slot 0 is never
+### The executor, proven
+
+`$6a3a` walks slots 1..4 only (`$5801c..$58033`; slot 0 is never
 dispatched), reads the state byte as an index into the word table at `$6a80` (offsets from
 `$6a80`: 0 and `$a` do nothing, 2 and 4 `$6ac6`, 6 and 8 the serial write/read first, `$1c390` /
 `$1c340`), clears the slot's type byte and parameter word afterwards, and after the loop
@@ -475,7 +504,8 @@ another).
 
 `$6888` is a word table indexed by order type: `$02`→5, `$06`→2, `$08`→3,
 `$0a`→7, `$0c`→8, `$0e`→9, `$10`→`$a`, `$1a`→`$c`, `$1c`→`$f`, `$1e`→`$10`,
-the rest 0. `$6822` (the AI's order write) compares the entry with the
+the rest 0 (the table ends at `$1e`; its `$1e` entry, `$10`, is not the state the `$1e` handler sets, `$e`,
+because the AI never posts `$1e` or `$20`; read from the code segment of `pm74_late.ram`). `$6822` (the AI's order write) compares the entry with the
 objective's state `76(A1)` and does not re-issue an order whose state the
 objective is already in (except `$0c` with D7 = 0). The states line up with the
 group-state → entity-mode table in `ai.md` (state 3 ⇔ order `$08`, get men: the modes `$1c`/`$28`/`$2a`;
@@ -503,7 +533,7 @@ tick (velocity integration toward `20/22`, terrain probe, obstacle divert to
 mode `$48`); the formation followers (mode `$68`) are stamped from the lead;
 bucket proximity flips men to combat (`$32` → `$56a6` → `$5778`).
 
-## The player's commands (123rd pass)
+## The player's commands
 
 The player's orders do not go through the `$51538` queue: every UI path writes
 the local side's command slot directly (`movea.l $58034,A0` then
@@ -533,7 +563,7 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    | `$10` | `$cd82` | disk requester | `$e2` OK, `$f6` CANCEL |
    | `$12` | `$c332` | modem connect | `$68` CANCEL |
    | `$14`/`$16` | `$d048` | SEND MESSAGE / `$d0dc` | none (a message line) |
-   | `$18` | `$c512` | Start New Conquest with lands conquered | `$7a` YES clears `$3f2a0` (196 bytes), `$8a` NO |
+   | `$18` | `$c512` | Start New Conquest with lands conquered | `$7a` YES clears **62** bytes of `$3f2a0` (the loop at `$7986` is `move.w #$c3,D0` then `neg.b D0`, which leaves the word `$003d`; live from `m1_win`: 240 bytes poked to 1, then Start New Conquest and YES left `$3f2a0..$3f2dd` zero and the rest untouched), not the 195 of the conquest map: a game bug, so a new conquest keeps the conquered flags of lands 62 and up, `$8a` NO |
    | `$1a` | `$c820` | `$c706`, from `$33b0`, when an envoy reaches a lord of the local side | `$146` YES → order `$2a`, param `$5809e` (only if that group's `-48(A3) != 0`, `192(A3) == $e` and its lead is on the local side); `$162` NO → `$32` |
 
 2. **The minimap** (x < `$40`, 6 ≤ y < `$86`; cells 1:1, `(x, y−6)`). With a
@@ -589,8 +619,8 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    Arming the icon that is already armed disarms it (`$1898e`). Screen
    positions are centroids from the game's own hit-test
    (`reversing/powermonger/py/iconmap.py`); the sword `$0c` and the options
-   `$2e` were clicked and behaved as listed, and every other order was clicked
-   in the 124th pass ("What each order does", below). The glyph names are read
+   `$2e` were clicked and behaved as listed, and every other order but `$04` and `$0a` was
+   clicked ("What each order does", below). The glyph names are read
    off a rainy frame; the order names are the effects, with the manual's words
    where they fit.
 
@@ -600,7 +630,7 @@ move and click at absolute (x, y). `reversing/powermonger/py/drive_win.sh`
 plays mission 1 to a natural victory this way (next section, "How a land
 ends").
 
-### What each order does (124th pass)
+### What each order does
 
 A targeted order marches the group's lead to the target with `31 := $10`
 (advance) and `30 :=` an **arrival mode**; the order's meaning is that mode.
@@ -665,7 +695,7 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
 - `$1a` to (35,51), 25M steps: a food pile of 123 at (35,51), town food 22 → 11, state `$c`, the
   lead on its way back.
 - `$1c` on lord 0's town, carried goods poked to 10,6: 6 men get swords, army food 235.
-- `$08` is **get men**, not besiege (133rd; the executor's own name in the developer symbols is `get_men`,
+- `$08` is **get men**, not besiege (the executor's own name in the developer symbols is `get_men`,
   "Original names"). Both of its target routines, `$3154` and `$3248`, take D5 = the commander's side and
   accept only a target of that side (`$3154`: `D5 > 0` branch; `$3248`: `cmp.b 5(A1),D5`, byte6 0). Live on `m1_s0`: the
   armed icon clicked on enemy lord 0's town (minimap `(22,51)`) posted nothing (`$57fd4` stayed `8`, 0 `$6bea`
@@ -675,7 +705,7 @@ for example `order_run.sh o12 3000000 home 142,193`, byte-identical). 1 run each
   sends 4 men (object records 2, 3, 5, 7: target cell `20/22`, mode byte `31 := $10`, `30 := $14`) and on the
   player's own town none: its house chain holds no inhabitants in mission 1, so no join happens there
   (`$15282`, `$1b2a`, `$1d70` 0 hits). `scratchpad/pm133/o08*/cmds`, `cc34f2*.json`.
-- **A man joins live (134th, `py/join08_run.sh`).** `pm123/win/m1_ready.snap` is mission 1 after the natural
+- **A man joins live (`py/join08_run.sh`).** `pm123/win/m1_ready.snap` is mission 1 after the natural
   conquest: lord 0's town is side 1 with `troops_field` 5 and 5 able side-1 men in its houses (the corpses
   carry side byte 254 and are skipped), the player's lead idles at (28,47). Armed icon `(275,162)`, click on
   the town on the minimap `(22,51)`: `$6bea` and `$3154` 1 hit each, `$57fd4` back to 0, `$3248` 0 (the town path), the
@@ -750,7 +780,7 @@ and `31 := $10` (advance).
   (14 states); the natural entry (the player's single Tower) is the refusal.
 - **`$311a`** (`_set_hat...`, "set hate": the original name) bumps the relation byte `16 + b` of `$580a6[a*$20]` by `D1`, clamped to 100, but **reads** `15 + b` (unsigned): 72/72.
 - **`$35f4`/`$3744`**: the marker placement and its table-full, free-slot and evict arms are proven (57 direct states); the bucket-chain walk sign-extends the record offsets, so a building or effect
-  slot (offset >= `$8000`, below `$51b66`) in the lead's cell blocks the marker. The earlier model read them with `OBJ + d0` and misjudged exactly those cells.
+  slot (offset >= `$8000`, below `$51b66`) in the lead's cell blocks the marker. A model that reads them as `OBJ + d0` misjudges exactly those cells.
 
 ## `$d322` + `$3e06` → `$57fba` → `$d23a` → `$57fce`
 
@@ -763,7 +793,8 @@ and `31 := $10` (advance).
   group is strong enough (`8(leader) >> 1 > -24(groupRecord)`) is in contact it
   calls `$4bc8` — troop-count / ownership reconciliation. That is bookkeeping,
   **not an order.**
-- **`$3e06`** — more than a UI routine. Its head is the
+- **`$3e06`** — more than a UI routine; besides what follows it also runs the forest animator `$4342`
+  (`economy.md`), the animals and carrier pigeons and the projectile update `$596a` (`ai.md`). Its head is the
   flag-health indicator (health byte 45 of the selected group's lead,
   `divu #$14`, → `$58056`). Then it walks **every** side's 6 groups (A2 =
   side base + 2k): adds the group's men `52(A2)` into `$57fba[side].word0`, and
@@ -772,12 +803,12 @@ and `31 := $10` (advance).
   `food 112(A2) -= men/8 + 1` (`$3f6a`). At below zero the food is cleared and
   every man of the roster (`40(A2)`, next `26(man)`) leaves with chance 1/8
   (`$12c9a` LCG `& 7 == 0` → `$1b8c`, D1 = 0 in state `$d`, else 1): **a
-  starving army deserts**. Observed (124th): our 26-man group on mission 1,
+  starving army deserts**. Observed: our 26-man group on mission 1,
   `watch $516e4` over 25M steps, 2 writes, both at `$3f6a`, 251 → 247 → 243
   (`26/8 + 1 = 4`). A big army eats fast; the AI's march test `$68ee` charges
   the same rate per cell of distance.
 
-  **Driven live and proven (125th).** From `m1_s0` (26 men, food 251), posture
+  **Driven live and proven.** From `m1_s0` (26 men, food 251), posture
   set to 2 (`$26`, so the next order moves the full amount), then `$12` drop
   food (empties `36(group)` to the town) and `$02` go-to (35,51) so the group
   keeps marching. Food hit 0 and stayed clamped there for the rest of the run:
@@ -802,7 +833,7 @@ ratio = min(4, (2*myForce + enemy/4) / enemy)      ; clamp 0..4
 $57fce = ratio ; jsr $16bb8                         ; captain's mood / fist indicator
 ```
 
-`$6522` never reads `$57fce`; besides the fist indicator (`$16bb8`, `$188dc`)
+`$6522` never reads `$57fce`; besides the fist indicator (`$16bb8`, called from `$d2be` and `$188e0`)
 its one consumer is the end-of-land verdict `$d2c8`: **ratio 4 at the moment
 the land ends is a win, anything less a defeat** ("How a land ends", below).
 Before the ratio, `$d23a` checks the local side's captain group: if
@@ -817,7 +848,7 @@ the groups' food `112()` (through `$68ee`) and the per-side assessment weight in
 The relation and peace-bit fields are the diplomacy layer ("Diplomacy",
 below); `$68fe` reads one wrong byte of it as a targeting weight.
 
-## `$127e6`
+## `$127e6` — the sound-event dispatcher
 
 The **sound-event dispatcher** (original `_do_soun...`). A min-of-2 selector over the table at `$1290c` (entry 0 is a sentinel, then 59 entries of 14 bytes: pending count word 0, cooldown long 2 (50 ticks), sound id word 6 = the entry's index,
 channel word 8 or −1, priority word 10 (99, 9 or 7), flags word 12 `$a0`) picks the two best pending events, clears them, and `$1283c` hands each to `$1ba3e`, the sound player (`move.w 6(A1),-(A7)` = the sound id, `jsr $1ba3e` at `$128d2`),
@@ -826,40 +857,15 @@ unless the same id is already playing on the channel. **The renderer posts the e
 From `pm123/win/m1_atk` over 6M steps `$127e6` runs 24 times and one run reaches `$128d2` and `$1ba3e` (the other 23 find nothing pending). `$1ba3e` ignores its second argument and plays sequence id − 1; the driver is in `system.md`. It is not
 an event-marker or "under attack" ticker feed, and not a decision routine.
 
-## The follow-up table — `$6762` / `$67d0`, as C
+## Combat
 
-`$6762` is the first thing `$6564` tries for a group in state `$6` past its wait
-timer; "The follow-up table" under `$6522` gives the table, the evidence and the
-natural counts. The routine (transcribed in `py/cmdai/cmdai_ref.py` `call_6762`, proven there):
-
-```c
-// A1 = side base + 2k (group k); table = $67d0, entries {prev_state, order, posture}, prev_state 0 ends
-int pm_followup(group *A1) {
-    for (e = table; e->prev_state != 0; e++) {
-        if (e->prev_state != A1->prev_state_268) continue;          // the state the group came back to camp from
-        if (e->prev_state == 0x0d && A1->phase_280 != 2) return 0;
-        obj *t = &g_object_records[A1->target_100];                 // the group's target (a lord)
-        if (t->byte0 != A1->owner_28_low_byte)       return 0;      // no longer the group's own nation: stop scanning
-        A1->posture_136 = e->posture ? e->posture : (g_rng_bits_57fec & 3) + 2;
-        pm_issue_at_cell_of(t, e->order);                           // -> $67ee -> $6822
-        return 1;                                                   // even when $6822 refused
-    }
-    return 0;
-}
-```
-
-The table is read-only data in the code segment (nothing writes it; it is a constant).
-`268()` is the group's previous state, written by `$3728`, so the hook fires in ordinary play.
-
-## Combat (73rd pass — mechanism closed, rout is the real outcome)
-
-The 70th/71st passes flagged "`$5778` combat resolution" as the biggest open
-gap and assumed it was a battle resolver with odds and casualty rolls.
-**It is not.** PowerMonger has no discrete battle resolver. Combat is a set of
-loosely-coupled mechanisms, all running at the entity level in `ai.md`'s
-`$14b62` tick. The 73rd pass traced the first real field fight (`$5590` fired
-ten times) and found the decisive one is a **health grind ending in a rout**,
-not the wear-attrition path the 72nd pass focused on.
+PowerMonger has no discrete battle resolver with odds and casualty rolls. Combat is a set
+of loosely-coupled mechanisms, all running at the entity level in `ai.md`'s `$14b62` tick,
+and the routine once suspected of being the resolver, `$5778`, is contact bookkeeping
+(mechanism 2). The decisive mechanism is a **health grind ending in a rout** (mechanism 0;
+the first real field fight traced fired `$5590` ten times, "Measured" below); the
+wear-attrition path (mechanism 4) is a slow second channel that never fired in it. Rout,
+not death, is what an AI attack produces.
 
 ### 0. The melee grind (`$1533c`, mode `$32`) — the primary mechanic
 
@@ -895,7 +901,7 @@ void pm_kill_or_rout(obj *A1 /*attacker*/, obj *A3 /*loser*/) {
     bool kill;
     if      (roll == 0) kill = true;
     else if (roll == 2) kill = false;                // <-- mission 1: field_60 == 4 -> roll 2 -> always rout
-    else kill = ((g_tick_rng + A1->anim_phase) & 2) == 0;
+    else kill = ((g_tick_rng + A1->anim_phase) & 2) != 0;   // bit 1 set: kill (btst #1 / beq $560a at $55ec)
     if (A3->flags & BIT5) kill = true;               // encircled: no escape
 
     if (kill) {                                      // $55f2
@@ -911,10 +917,9 @@ void pm_kill_or_rout(obj *A1 /*attacker*/, obj *A3 /*loser*/) {
 ```
 
 The `group.field_60` term is the group's **posture** (2 aggressive, 3 neutral,
-4 passive; the player's three posture icons, "What each order does"; passes
-before the 124th called it discipline). The AI stamps posture 4 on every group
+4 passive; the player's three posture icons, "What each order does"). The AI stamps posture 4 on every group
 it sends to attack (`$6638`), so `pm_30fe` returns `2` and the roll is pinned to
-**rout**: ten routs, zero kills in the 73rd-pass fight. Posture 2 always kills;
+**rout**: ten routs, zero kills in the re-armed fight. Posture 2 always kills;
 posture 3 rolls (the player's mission-1 army: 5 kills, 5 routs in the win run,
 `scratchpad/pm124/conquest/REPORT.md`); an encircled loser (`flags.bit5`) is
 killed whatever the posture.
@@ -923,7 +928,8 @@ killed whatever the posture.
 
 `$15302` (an entity reached the record it was chasing, `48(A1)`) snaps to the
 target's cell, sets both mode bytes to `$32`, and if the target is "engageable"
-(`31(target) > $2c` and `30(target) >= $3c`) calls **`$56a6`**:
+(`s8(31(target)) <= $2c` **or** `s8(30(target)) >= $3c`; signed byte tests, proven in `ai.md` for `$15302`)
+calls **`$56a6`**:
 
 ```c
 void pm_engage(obj *A3 /*me*/, obj *A1 /*enemy*/) {
@@ -944,11 +950,11 @@ void pm_engage(obj *A3 /*me*/, obj *A1 /*enemy*/) {
 ```c
 void pm_engage_bookkeep(obj *A3) {
     group *g = &g_group_orders[A3->group_42];
-    if (g->state == 6) {                          // besiege in progress
+    if (g->state == 6) {                          // In Camp
         obj *garr = &g_object_records[A3->link_46];
         if (garr in [$4cff8,$4d250)) garr->flags = 0x11;   // mark garrison "engaged"
     }
-    if (g->state == 0x0d)                         // support objective
+    if (g->state == 0x0d)                         // Fighting
         g->field_204 = offset_of(attacker);       // record who is attacking
     else
         pm_contact_reconcile(target=A1, attacker=A3);  // -> $4bc8
@@ -966,11 +972,11 @@ not attrition.**
 ### 3. Projectiles — `$57f0`
 
 `$5bd2`/`$56a6` and the mode handlers spawn projectiles into the effect array
-`$4bdf0` (`$30` slots × `$10` bytes):
+`$4be00` (49 slots × `$10` bytes, `ai.md`):
 
 ```c
 effect *pm_spawn_projectile(obj *shooter, int type /*D1*/, int tx, int ty) {
-    effect *e = first slot with life==0;         // 14(slot); dbeq scan, $30 slots
+    effect *e = first slot with life==0;         // 14(slot); dbeq scan, counter $30 = 49 slots
     if (!e) return NULL;
     e->shooter_12 = offset_of(shooter);
     e->x = shooter->x; e->y = shooter->y;        // movem.w 8(shooter) -> 8(e)
@@ -1009,9 +1015,9 @@ int pm_upkeep(obj *A1) {                                // $5c80, exactly
 
 `t_health_cap` (`$5ccc`, the health a man of that job recovers to; byte 45 sits on it in 203 of 225 live persons over three snapshots, `py/health_check.py`) is a sparse **17-byte** table indexed by
 `flags & $1f` (a small enum, not a bitfield): index `0/1/2/4/8/$10` →
-`90/82/69/79/72/95`; every other index is `0` (and `>= 17` reads into the next
-routine's code — never happens, the enum only takes those six values plus
-`$11`). `$5778` stamps an engaged garrison's flags to `$11` → health cap `0`,
+`90/82/69/79/72/95`; every other index is `0` (index `$11`, which `$5778` stamps on an engaged garrison, reads the pad byte
+after the table, also `0`; the next routine's code starts at index 18 and the enum only takes those six
+values plus `$11`; table bytes read from `pm74_late.ram`). `$5778` stamps an engaged garrison's flags to `$11` → health cap `0`,
 so it stops recovering health and is removed once `anim_wear` crosses `$3c`.
 
 `anim_wear` (object byte 14) is only ever **incremented** — by the iterator's
@@ -1019,7 +1025,7 @@ animation-advance at `$14b9a`, roughly once per animation cycle for a
 moving/animating unit — and **never reset** by any handler. It is a lifetime
 counter: a unit that has been continuously active for ~`$3c` animation cycles
 becomes attrition-vulnerable. This is why the wear path is a long-campaign
-mechanic and fired **zero** times in the 73rd-pass 276-tick fight.
+mechanic and fired **zero** times in the 276-tick re-armed fight.
 
 `$5bd2` (removal) decrements the parent's strength — a **group follower**
 (`flags & BIT6`) decrements the group's committed-force counter
@@ -1027,13 +1033,13 @@ mechanic and fired **zero** times in the 73rd-pass 276-tick fight.
 leader's troop count `8($4e514 + 14($4f916 + 34(A1)))`. Then `$5c10` turns the
 record into a 160-tick corpse (`byte5` negated, category `$c`).
 
-### 5. Settlement capture / regroup — `$1d70`
+### 5. Get men and rank re-forming — `$1d70`
 
 The get-men modes (`$28`/`$2a`, `ai.md`; order `$08`) are not a siege: `$28` waits 50 ticks and `$2a` (`$15282`)
 moves one recruit into the group, counts down the lead's quota and calls **`$1d70`** (`_rerank`) to re-form
 the ranks (observed live, "What each order does"; settlement ownership is transferred elsewhere — `$25d6`/`$2644`, `economy.md`).
 
-**`$1d70` proven (99th, via `$3c08`'s bit-4 teardown — `ai.md`):** it is the
+**`$1d70` proven (via `$3c08`'s bit-4 teardown, `ai.md`):** it is the
 **rank former** (`_rerank`), not the ownership writer. It picks a rank-shape
 string from the `'C'`(`$43`)-delimited table at `$1e9e` (indexed by the highest
 set bit of `word[grouprec−24]`), then for every roster member (chain via
@@ -1046,17 +1052,17 @@ roster is re-ranked, each man stepping to his preferred-terrain slot along the r
 member then settles in mode `$06` → `$68`, idle in the group (live on a join, "What each order does"). The earlier
 "dispersed / sent home" reading came from the teardown call sites, where the same steps run before the men are released.
 
-### Measured — the re-armed mission-1 fight (73rd pass)
+### Measured: the re-armed mission-1 fight
 
 66M-instruction traced resume from `pm71_slot4.snap`, re-arming slot 1's
 `byte4 := 4` every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`,
-`trace_cfg.py --blocks`), ~276 sim ticks. (The 72nd pass ran 40M / 166 ticks
-with a single poke; the counts that overlap match.)
+`trace_cfg.py --blocks`), ~276 sim ticks. (An earlier 40M-step / 166-tick run with a single poke,
+`scratchpad/pm72_fight2.evt`, gave matching counts where they overlap.)
 
 | routine | hits | reading |
 |---------|-----:|---------|
 | `$6522` decide | 276 | once/tick |
-| `$661a` primary-slot decide | **2** | re-arming `byte4` mostly does *not* re-trip `$661a` — the objective slot's `obj_active`/`obj_force` stop qualifying after the first order issues. Only 2 autonomous primary decisions in 276 ticks |
+| `$661a` attack arm (decide arm 3) | **2** | re-arming `byte4` mostly does *not* re-trip it: after the first order the groups are skipped or go to the `$66e8` recheck (inferred). Only 2 autonomous attack decisions in 276 ticks |
 | `$68fe` / `$68ee` | 2 / 2 | both decisions: food enough for the trip |
 | `$15302` reached-enemy | 41 | men closing on enemy positions |
 | `$56a6` engage | 9 | contacts made |
@@ -1066,7 +1072,7 @@ with a single poke; the counts that overlap match.)
 | — ROUT (`$560a`) | **10** | `$30fe` → `2` every time (`group.field_60 == 4`) |
 | `$5bd2` wear removal | **0** | `anim_wear` never crossed `$3c` in 276 ticks |
 | `$57f0` spawn projectile | 3 | |
-| `$1d70` group route-expand (`_rerank`) | **15** | fires whenever a roster changes (a join `$15282`, an unlink `$1b8c`, a teardown `$37c2`); the re-rank step, not the ownership write (99th, 134th) |
+| `$1d70` group route-expand (`_rerank`) | **15** | fires whenever a roster changes (a join `$15282`, an unlink `$1b8c`, a teardown `$37c2`); the re-rank step, not the ownership write |
 | `$4bc8` contact reconcile | 1 | one nation-pair peace break |
 | `$5c80` upkeep | 2136 | ~8 entities/tick |
 
@@ -1075,37 +1081,45 @@ projectiles, ten **routs** (units scattered by `$3c08`, none killed), and
 fifteen **captures**. So territory changes hands and armies get broken up, but
 almost nobody dies on the field — because the attack group's posture
 (`field_60 == 4`, the AI's attack stamp) pins the `$5590` roll to "rout", and the wear channel is far
-too slow for a 276-tick fight. The 72nd pass's "no casualties" verdict was right
+too slow for a 276-tick fight. A "no casualties" reading would be right
 about deaths and wrong about outcome: **routing is what combat does here**, and
 it fired ten times.
 
 On later lands the same pipeline runs by itself (`ai.md` "Natural runs on later
-lands"): over 200M steps each, lands 5, 60, 0 and 25 made 4-8 `$661a` primary
-decisions (each scored by `$68fe`/`$68ee`), killed 7-59 men through `$55f2`, and
-the enemy lords' pigeons carried the orders. The `$5bd2` wear path still never
-fired. Histogramming `$68fe`/`$68ee` over those decisions is still to do.
+lands"): over 200M steps each, lands 5, 60, 0 and 25 made 4-8 attack decisions (`$661a`,
+each scored by `$68fe`/`$68ee`), killed 7-59 men through `$55f2`, and the enemy lords'
+pigeons carried the orders. The `$5bd2` wear path still never fired. The 25 natural
+decisions and their costs are in "Open threads".
 
-## RNG and determinism (72nd pass)
+## RNG and determinism
 
-There are **three** "random" sources; none is a seeded PRNG in the *AI* path:
+There are **three** "random" sources. The commander AI (`$6522`) and the combat roll draw
+only low bits of a counter; the one genuine PRNG serves the world build and a few per-tick
+rolls elsewhere.
 
-- **`$57fec`** — a free-running 16-bit counter, `addi.w #$1,$57fec` in `$1abc0`
-  (reached from `$1abaa`, once per tick, gated by a phase accumulator so it
-  advances a little under once per tick). Every AI use takes low bits only:
-  `& 1` (health recovery, `$5c80`), `& 3` (campaign sub-mode, `$6762`), `& 7`
-  (a speech-line pick, `$3e06`/`$3f08`). Because it is just the low bits of the
-  tick count, **the AI is fully deterministic** given the tick number — there is
-  no seeding, no entropy, and a save/restore at the same tick replays
-  identically.
+- **`$57fec`** (`_season_`) — the count of `$1abaa` calls since the last season change:
+  `addi.w #$1,$57fec` in `$1abc0`, once per `$13000` call, cleared when the season LCG
+  wraps, so it runs 0..512 ("What `$1abaa` actually is"; the port's `Season.fading`
+  reproduces the live tileset from steps = 16 × `$57fec`, `port/SPEC.md` §4). Every AI use
+  takes low bits only: `& 1` (health recovery, `$5c80`), `& 3` (campaign sub-mode,
+  `$6762`), `& 7` (a speech-line pick, `$3e06`/`$3f08`; the flapping-bird frame,
+  `graphics.md`), `($57fec + anim_phase) & 2` (the kill/rout roll), `mod 6` (a porter's
+  pickup kind, `economy.md` 2b). Because it is a counter that advances once per tick,
+  **the commander AI and the combat roll are fully deterministic** given the tick number:
+  no seeding, no entropy, and a save/restore at the same tick replays identically.
 - **`$57ff6`** — a genuine 13-bit LCG, `x = (x * $24a1 + $24df) & $1fff`,
   stepped 16× per `$1abaa` call (`$1abc0`). It is the **pixel-order generator of the season tileset
-  dissolve** (each step copies one pixel of the new season's art into the live tileset at `[$ff9e]+3712`; 136th, `scratchpad/pm136/season/tilediff.py`:
+  dissolve** (each step copies one pixel of the new season's art into the live tileset at `[$ff9e]+3712`; `scratchpad/pm136/season/tilediff.py`:
   half summer and half autumn art at count 255, 98% the new art at 496); full period 8192 = 512 calls, and its **wrap** to 0 rotates `$57fd0`, plays a season
   sound and nudges one `$4d252` tree record (see "What `$1abaa` actually is"). Never the AI or combat.
-- **`$12c9a` / `$2df84`** — a 32-bit LCG (`state = state * $bb40e62d + …`,
-  default seed `$bc614e`), used **only at world-build** (`$10d1e` reseeds
-  `$2df84` from `$580a0`, then draws map size / lord count / placement). Makes
-  the generated map a pure deterministic function of `$580a0` (97th).
+- **`$12c9a` / `$2df84`** (`_newrand`, `_seed`) — a 32-bit LCG (`state = state * $bb40e62d + …`,
+  default seed `$bc614e`). The world build is its main user: `$10d1e` reseeds `$2df84` from
+  `$580a0`, then draws map size / lord count / placement, which makes the generated map a
+  pure deterministic function of `$580a0` (and of `$5809c`, "Mission / world setup"). In
+  play it feeds a few rolls outside the commander AI: the starvation-desertion roll of
+  `$3e06` (`& 7`, "`$d322` + `$3e06`") and a new captain group's aggression (`rng & word 12`,
+  `$275c`); `ai.md` lists its other draws. The state is part of the RAM image, so a snapshot
+  replays identically.
 
 A modern reimplementation that wants PM's feel can keep the tick-counter trick
 for the coarse AI jitter and add a real PRNG only where it wants
@@ -1117,12 +1131,13 @@ In "Between Pages 1-5" (`$57ffe` = player = side 1; enemy = side 2 with two
 sub-leaders in `$4e514`), across a **250M-step** watched resume (~1000 sim
 ticks) the only writes to `$58016`..`$58033` were `$6a3a`'s per-tick clear of
 `byte1`/`word2`. **No command slot's `byte4` ever reached 4; no order was ever
-issued.** The lone enemy captain stayed in its standing state (inferred idle, group state 6: the
-player's own group is in state 6 in 6 of 6 snapshots of `py/group_states.py`; no snapshot holds side 2's group) the whole
+issued.** The lone enemy captain stayed in its standing state (its group state is not recorded for this snapshot: the player's own group is in state 6 in 6 of 6 snapshots of
+`py/group_states.py`, but the AI sides' first groups sit in state 3 or `$d` in the four builds counted under "The
+starting armies", so a state-6 camp is not to be assumed) the whole
 time. Mission 1 is a tutorial and its enemy AI is near-dormant.
 
 The `$6564` path above was read statically and then **confirmed by force**:
-poking `$58020` (slot 1 `byte4`) = 4, `$6522` took `$6564` → primary-slot
+poking `$58020` (slot 1 `byte4`) = 4, `$6522` took `$6564` → the attack arm
 `$661a` → `$68fe` (picked the nearer enemy leader) → `$68ee` (food enough) →
 `$67ee`/`$6822`, which wrote `{type $0c, cell $1d3e}` into the command buffer.
 The next tick `$6a3a` → `$6ac6` → `$6b38` → `$6c4a` → `$3154` → `$4b80` set the
@@ -1133,10 +1148,10 @@ own.
 
 Snapshots: `scratchpad/pm71_run1.snap` (settled, ~677M), `pm71_run2.snap`
 (~927M, still quiet), `pm71_slot4.snap` (slot 1 forced to `byte4`=4, PC at
-`$6522`). 72nd-pass traces: `scratchpad/pm72_sched.evt` (3M, cadence),
+`$6522`). Traces: `scratchpad/pm72_sched.evt` (3M, cadence),
 `scratchpad/pm72_fight2.evt` (40M from `pm71_slot4`, the forced fight).
 
-## Mission / world setup (73rd pass)
+## Mission / world setup
 
 The briefing OK click (`$b814`, README) copies the saved game-state block
 `$584c4..` over `$580a0..$58367` (`$b860`; it includes the world parameters at
@@ -1144,7 +1159,7 @@ The briefing OK click (`$b814`, README) copies the saved game-state block
 
 ```
 $13b9a  ff9c := $15 ; jsr $fe04 (zoom index 4)      ; render geometry
-        $51536 := $12                               ; group-order table live count
+        $51536 := $12                               ; settlement array live byte length (one 18-byte record: slot 0 is reserved)
         $57fd0 := (byte[$58146] & 3) * 2            ; tile-set / mode-$7c gate ($1abaa rotates it later)
         if ($580a0 != 0)       jsr $10d1e ; jsr $2266 / $ac20  ; re-roll the parameters from the seed
         elif ($58148 < $100)   jsr $df52(7) / $10a46 / $10410  ; fixed map from resource 7
@@ -1160,10 +1175,25 @@ For mission 1 the saved block holds `$580a0 = 0` and the parameters `1e19 0750
 0008 0023 0031 0004` (at `$5856a` in `pm67_ok_pre`; a write-watch on
 `$58146` sees no write during `$13b9a`), so `$10d1e` is skipped and the map is
 built from those stored parameters. `$580a0 = $45e` is the briefing *preview*:
-`$b2dc` picks a land index `k` from entropy, sets `$580a0 = k*$b + $3fb` and
+`$b2dc` first copies the live block `$580a0..$58367` to `$584c4`, then picks a land index `k` from entropy, sets `$580a0 = k*$b + $3fb` and
 `$5809c = k*$96 + $672`, and rolls a preview through `$b394 → $10d1e`
-(`$45e` is `k = 9`). That preview is a different map from the one the OK path
-builds.
+(`$45e` is `k = 9`). The OK path (`$b85a`) clears `$5809c` and copies `$584c4` back over `$580a0..`: the block of
+*before* the preview, so the preview's map is discarded. `$5809c` is therefore non-zero only between a preview and its OK, and every
+land the game really builds runs with `$5809c == 0` (`pm123/win/m1_s0` has it 0 after the OK, `pm67_ok_pre` has `$0bb8`).
+
+Which builds reach `$10d1e` was counted live (`hits` from the end of the click; `scratchpad/pm142/`):
+
+| route | `$13b9a` | `$10d1e` | `$5809c` | `$580a0` |
+|---|---|---|---|---|
+| mission 1, briefing OK (`pm67_ok_pre`, the click pokes) | yes | no (`tst.l $580a0` is 0) | 0 (`$b85a` ran) | 0, restored from `$584c4` |
+| campaign pick of land 1 (`m1_map`, click (40,20)) | step 678 | 0 hits (`$4788` 927) | 0 | cleared by `$13ec6` |
+| Play Random Land (`m1_win`, click (160,120) in 320-space) | `$13e8e` at 264686, `$13ece` 264689, `$13b9a` 265397 | 330184, branch A (side states 2, 0, 0, 0; `$4788` 810, `$111e2` 14) | 0 | `$f9abdbf1` (entropy OR `$71010101`) |
+
+`$b85a` and `$b2dc` are not reached from Play Random Land. A settled real random land is `scratchpad/pm142/rand1.snap`
+(size `$3ae1`, 4 lords, 263 tree records, 18 catch markers). The `build_land.sh` lands are the preview's rolls; `PAGES0=1`
+(`build_land.sh`, `cap_land.sh`) builds the Play Random Land roll. The population model `call_2984` passes on both:
+`gate_pop.py` 29860/29860 over 8 preview-roll lands and 41760/41760 over the same 8 with `$5809c = 0`
+(`PM_POP_CORPUS=scratchpad/pm142/corpus_2984a`).
 
 `$10d1e` is **not** a byte-script parser: it **reseeds the RNG from `$580a0`**
 (`$10d22: move.l $580a0,$2df84`) and fills the parameter block from `$12c9a`
@@ -1172,10 +1202,10 @@ draws. `$12c9a` is a **32-bit LCG** (`state = state * $bb40e62d + …`, seed
 `$580a0`** (and `$5809c`). Poking both at `$13b9a` builds any of the 144 lands
 for real (README "Driving a later land").
 
-| addr | filled with (`$10d1e`, 97th disasm) | meaning |
+| addr | filled with (`$10d1e`, from its disassembly) | meaning |
 |------|-------------|---------|
 | `$58146` | 1st `$12c9a` draw | world RNG seed; `byte[$58146] & 3` picks the initial `$57fd0` |
-| `$58148` | `$5809c` override (else `(2nd draw & $7fff) + $1500`) | map size; `< $2000` ⇒ "small" preset (`D1 := $a`, `D2 := 3`); `$b85a` clears `$5809c` before the OK path's block copy (which starts at `$580a0`, so it stays 0): the OK path therefore rolls with `$5809c == 0` (branch A below) where the briefing preview and every `build_land.sh` land roll with it non-zero (branch C); inferred from `$b85a` and the `$10d1e`/`$4788` code, not driven through the UI; an unseeded build uses the stored `$58148` from the copied block |
+| `$58148` | `$5809c` override (else `(2nd draw & $7fff) + $1500`) | map size; `< $2000` ⇒ "small" preset (`D1 := $a`, `D2 := 3`); the only builds that roll `$58148` run with `$5809c == 0` (Play Random Land, branch A below); the briefing preview and every `build_land.sh` land (without `PAGES0=1`) roll with it non-zero (branch C), so their sizes are `$672 + k*$96` (44 of the 144 are below `$2000`, "small") against `$1500..$94ff` for a real random land; an unseeded build (`$580a0 == 0`: mission 1's OK, every campaign pick) uses the stored `$58148` and never reaches `$10d1e` |
 | `$5814a` | `(draw & 7) + (small ? $a : 2)` | lord count |
 | `$5814c` / `$5814e` | `draw & $3f` / `draw & $7f` | seed cell coords |
 | `$58150` | `(draw & 3) + 2 + (small ? $a : 2)` | settlement count knob |
@@ -1185,11 +1215,10 @@ for real (README "Driving a later land").
 **lord** — it writes `id` into `$58016[id].commander` and, if the slot isn't
 already armed, sets `slot_state := 4`. **This is where the enemy command slots
 are armed at mission start** (and why a fresh procedural mission's enemy has a
-slot ready but — per "What actually fired" — its objective fields never
-re-qualify `$661a` after the opening move). Records with `kind < $10` seed the
+slot ready to issue orders, while mission 1's enemy never trips it, "What actually fired"). Records with `kind < $10` seed the
 player start position; `kind == 0` ends the stream. `$2266` then appends
 procedurally-placed settlements (`kind $10`, random cells `rand%$30+8`,
-`rand%$70+8`).
+`rand%$70+8`). `$ac20` reads the same stream for the group start cells (`graphics.md` "`$ac20` — the land script").
 
 Neither branch is a byte-script mission, and there is no mission-file grammar:
 a campaign land is a stored parameter block from a fixed 195-entry table
@@ -1201,7 +1230,7 @@ found (campaign, random land, briefing preview).
 
 ### The starting armies (`$238c`, proven; counts checked)
 
-`$238c` (the developers' `_setup_k...`, kings) runs once per build after `$2984`, for each side's group block of `$51538` whose word 100 holds a start cell (the campaign stream, `$2266`):
+`$238c` (the developers' `_setup_k...`, kings) runs once per build after `$2984`, for each side's group block of `$51538` whose word 100 holds a start cell (`$ac20` writes it from the `$58152` stream, `graphics.md`):
 it makes the side's **Base** with `$2eac` (lord kind 6, a single Tower; `$10638` then levels its ground), a **leader** man (age 21, leader flag, health `$5f`, mode `$4c`) who becomes
 the group's lead (`64(A3)`) and the first man put in the Base's chain, and `word[$580a6 + side*32 + 10]` **followers** (each `$2e1e`, pushed at the head of the Base's chain `10(settlement)`, so the leader ends as its tail; carried-item bytes from the side block's 20 to 23, joined to the group
 with `$1b2a`, health `$5a`), then re-forms the ranks (`$1d70`). The group gets its food from the side block's word 4 (`$5fff` for a side whose command slot is in state 4, the AI sides, which also
@@ -1240,16 +1269,16 @@ chosen by the command-state byte of each side (`$5801c + 6*(side-1) + 4`):
 - **B**, some side in state 6 or 8: the sites of a side in 6 or 8 are handed to the last side not in 6 or 8 (all four in 6 or 8: nothing more
   is written); one draw fills the scratch block `$580a6`; every side with a non-zero state gets a start site `{x, y, side, $10}` (plus the
   tail `{D3, $11, D2, $63}` when the last site's word is non-zero) and its `$580c6 + 32*(side-1)` block.
-- **A**, no such side and `$5809c == 0` (the OK path, inferred as above): each side's block from one draw, then sites move from the heaviest side to
+- **A**, no such side and `$5809c == 0` (Play Random Land, live: side states 2, 0, 0, 0 at the entry): each side's block from one draw, then sites move from the heaviest side to
   each side in turn until its weight is at least a quarter of the total (the first movable site of the heaviest side, last of equals, `kind < 6`),
   and a start group is added for side `i` when the **state of side 1** is non-zero or draw bit 1 is set. The test reads side 1's slot on all four
   iterations (`4(A3)` with `A3 = $5801c`; `D4*3` is computed and unused); proven by poked states with side 1 at 0 and the others set, and the reverse.
-- **C**, no such side and `$5809c != 0` (briefing preview, `build_land.sh`): a start site for the local side `$57fff` (0 becomes 1), then four
+- **C**, no such side and `$5809c != 0` (briefing preview; `build_land.sh` without `PAGES0=1`): a start site for the local side `$57fff` (0 becomes 1), then four
   draws pick sides 1 to 4 and a side already served (the local side included) gets none; each of the four blocks is filled from one draw.
 
 `$4672` and `$4788` are described in `economy.md` (trees, forest ops, markers); `$4788` plants with probability `1/divisor` per try over the
 81 triples of `$488c` (centre first, divisors 2 at the centre to 6 at the edge, irregular), one try when `$5809c != 0` and two when it is 0, so
-OK-path forests are denser than those of the `build_land.sh` lands (inferred for the OK path; the gate runs both settings). Code reads, not reached by the gates: the
+real random lands (and any other land built with `$5809c == 0`) have denser forests than the `build_land.sh` lands: with `PAGES0=1` land 60 has 304 tree records against 120, land 25 281 against 154; the gate runs both settings. Code reads, not reached by the gates: the
 tree pool at `$12c0` and `$4672`'s `$57fb8 == $50` arm (stale `A4`).
 
 `$2eac` takes the first lord slot with byte 5 zero (none: fail), adds `$20` to `$4f914`, and fails with the slot consumed when the four altitude
@@ -1268,7 +1297,7 @@ byte `44 + 33` (the last of equals); posture 2 dismisses everyone, 0 and 1 nobod
 rest. `$2906` stores in word 22 of each lord that has an owner the offset into `$57f68` of the nearest op by `max(|dx|, |dy|)`, the first of equals
 (0 when none).
 
-## How a land ends (122nd pass)
+## How a land ends
 
 A land ends only through command **`$2e`** in the local side's command slot
 (`[$58034]`, the `$58016` slot of side `$57ffe`). The order executor
@@ -1322,7 +1351,8 @@ input from there, `$d23a` posts `$2e` (+605,283 steps), `$6e10` +780,340,
 `$d2c8` +780,343 with `word[$51690] = 0` and `$57fce = 0`, and the defeat
 screen `$1a5b2` +781,229 (`scratchpad/pm122/end/k60_natloss.png`). The other
 three run lands did not end in 300M steps.
-**A natural victory (123rd).** Mission 1 (campaign land 0; player side 1
+
+**A natural victory.** Mission 1 (campaign land 0; player side 1
 with 26 men in the field, side 2 with two lords of 10 garrison men each, ratio
 2), played with clicks only (`reversing/powermonger/py/drive_win.sh`, from
 `scratchpad/pm67_ok_pre.snap` through the briefing OK and 30M steps of
@@ -1341,14 +1371,14 @@ ratio stays at 2. So the attack caused the defection (both runs are
 deterministic, one run each). Loyalty 608 is already over the 600 threshold
 at the start and no defection happens without the attack: in mission 1 nothing
 pulses the heartbeat for lord 0, so 608 is never checked. The defection is the
-field conquest `$539a` (124th: `$53f6` 1 hit, `$158cc` 0; lord 0's 10 men all
+field conquest `$539a` (`$53f6` 1 hit, `$158cc` 0; lord 0's 10 men all
 dead or routed; economy.md §3 "How a settlement changes hands", gate
 `py/diff_4f68.py`). Snapshots `scratchpad/pm123/win/`.
 
 *Rule: Proven from the code. Defeat observed both ways (retire and the natural
 captain loss); victory observed naturally (mission 1, clicks only).*
 
-## Diplomacy (123rd pass)
+## Diplomacy
 
 An alliance is a pair of peace bits: bit `t` of `+6` in side `s`'s `$580a6`
 block means `s` is at peace with `t`. Outside the bulk copies of the whole
@@ -1387,65 +1417,52 @@ void accept_alliance_34a8(int a, group *g) {         // order $2a
 }
 ```
 
-Checked (`scratchpad/pm123/diplo/`, from `offer_a_end.snap`, the player's
-envoy dispatched with `w 5801c 011e2d15` toward side 3's settlement (45,21) on
-land 60, its lead's mode then set to `$76`): with no goods carried, `v = −2`,
-`$cada` and `$35f4` run once and nothing is written; with one unit of goods 0,
-`v = 2`, `$3458` posts `$2a` into side 3's slot, and the executor's `$34a8`
-writes `$5810c := $0a` and `$580cc := $0a` (sides 3 and 1 allied), then
-`$c9f8`. Re-run this session: byte-identical `t2_end.snap`. The unforced walk
-never arrived: after 180M steps the envoy touched side 3's men first, which
-breaks the approach (below).
+**Forced-goods check** (`scratchpad/pm123/diplo/`, from `offer_a_end.snap`): the player's
+envoy was dispatched with `w 5801c 011e2d15` toward side 3's settlement (45,21) on
+land 60 and its lead's mode then set to `$76`. With no goods carried, `v = −2`: `$cada` and
+`$35f4` run once and nothing is written. With one unit of goods 0, `v = 2`: `$3458` posts
+`$2a` into side 3's slot, and the executor's `$34a8` writes `$5810c := $0a` and
+`$580cc := $0a` (sides 3 and 1 allied), then `$c9f8`. Re-run: byte-identical `t2_end.snap`.
+The unforced walk never arrived: after 180M steps the envoy touched side 3's men first,
+which breaks the approach (next paragraph).
 
-**A fully organic attempt corroborates this (127th pass, no pokes anywhere in
-the chain).** Land 25's side-1 captain group (8 men, `scratchpad/pm121/run/k25_s4.snap`)
-was sent with order `$10` to its own lord 7's town (24,21) — a real `take
-equipment` click, no register pokes — and came back carrying 3 pots pulled
-from lord 7's actual stockpile (confirms economy.md §2c: `$61f8`/`$6352` really
-does fill a group's `carrying[]`/`supply_acc[]`, not just equip individual
-men). Still carrying those 3 pots, the same group was then sent with order
-`$1e` toward the nearest foreign lord (side 3's lord 4, capital at (28,14),
-7 cells away) to offer an alliance. It never arrived: within 13M steps it hit
-a hostile unit at (26,17), `$4c2a` fired (contact reconciliation, not
-diplomacy), and the whole group was wiped out in the melee — its 3 pots
-dropped as a ground pile where it died (`scratchpad/pm127/diplo3/`). Between
-this and the 123rd's forced-goods run on land 60, two independent natural
-corpora showed the same failure mode: by the time a settled world has
-accumulated enough goods economy for a natural tribute, its territory is also
-contested enough that an unescorted envoy rarely completes the walk.
+**Why an envoy rarely arrives.** Every unforced attempt against a garrisoned lord ended in
+`$4c2a` (contact reconciliation, not diplomacy) before `$33b0` ran:
 
-**Neither of the two obvious fixes works on land 25 (128th pass, two parallel
-agents).** An earlier snapshot does not help: the same envoy, zero goods, sent
-on the identical route to side 3's lord 4 (28,14) from `pm121/k25.snap` (0
-ticks) and `pm121/run/k25_s1.snap` (50M ticks) died at the *same* cell (31,13)
-in both runs — the death is a structural feature of the corridor (a garrison
-cluster of 18+ side-3 entities sits right around the capital, confirmed by a
-spatial object-table scan), not something that accumulates over the land's
-runtime. An escort cannot be built either: land 25's side 1 has exactly one
-captain slot, always (censused across the whole `k25`/`k25b` corpus) — there
-is no second group to send ahead, and no player order grows a group or spawns
-a new captain (order `$04` transfer needs two captains that don't exist here
-either). A hypothetical escort couldn't pre-position on open ground ahead of
-the envoy regardless: order `$0c` (march & engage) aimed at an empty cell
-never commits at all (`$57fd4` stays armed, the group never leaves home,
-tested at the 127th's own death cell); it only commits against a cell holding
-something the game already tracks, such as a settlement (confirmed: the same
-click against lord 4's town at (28,14) committed within 5M steps). This
-corrects "any cell" in the `$0c` row of the order table below — read it as
-"no friend/foe filter", not "arbitrary ground". Details, commands and
-snapshots: `scratchpad/pm128a/REPORT.md`, `scratchpad/pm128b/REPORT.md`
-(indexed in `ANCHORS.md`).
+- *Land 25, fully organic (no pokes anywhere in the chain).* The side-1 captain group
+  (8 men, `scratchpad/pm121/run/k25_s4.snap`) was sent with order `$10` to its own lord 7's
+  town (24,21), a real `take equipment` click, and came back carrying 3 pots pulled from lord
+  7's actual stockpile (confirming economy.md §2c: `$61f8`/`$6352` really fill a group's
+  `carrying[]`/`supply_acc[]`, not just individual men's equipment). Still carrying them, the
+  same group was sent with order `$1e` toward the nearest foreign lord (side 3's lord 4,
+  capital at (28,14), 7 cells away). Within 13M steps it hit a hostile unit at (26,17),
+  `$4c2a` fired, and the whole group was wiped out in the melee, its 3 pots dropped as a
+  ground pile where it died (`scratchpad/pm127/diplo3/`).
+- *An earlier snapshot does not help.* The same envoy with zero goods on the identical route
+  from `pm121/k25.snap` (0 ticks) and `pm121/run/k25_s1.snap` (50M ticks) died at the same
+  cell (31,13) in both runs: the death is a structural feature of the corridor (a garrison
+  cluster of 18+ side-3 entities around the capital, confirmed by a spatial object-table
+  scan), not something that accumulates over the land's runtime.
+- *No escort can be built.* Land 25's side 1 has exactly one captain slot, always (censused
+  across the whole `k25`/`k25b` corpus): there is no second group to send ahead, no player
+  order grows a group or spawns a captain, and order `$04` (transfer) needs two captains.
+  Land 5's apparent second and third captain slots are dead records: groups 1 and 2 are
+  `owner 1` but `men 0` from the first snapshot (checked at the land's start, `pm121/k5.snap`,
+  and 50M/100M ticks in, `pm121/run/k5_s1.snap`/`k5_s2.snap`, with
+  `scratchpad/pm128a/census_groups.py`). An escort could not pre-position ahead of the
+  envoy anyway: order `$0c` (march & engage) aimed at an empty cell never commits (`$57fd4`
+  stays armed, the group never leaves home, tested at the death cell); it commits only
+  against a cell holding something the game already tracks, such as a settlement (the same
+  click against lord 4's town at (28,14) committed within 5M steps). Details, commands and
+  snapshots: `scratchpad/pm128a/REPORT.md`, `scratchpad/pm128b/REPORT.md` (indexed in
+  `ANCHORS.md`).
 
-Those failures (123rd, 127th, and the 128th's two land-25 probes) were all
-against garrisoned lords, and all ended in `$4c2a` before `$33b0` ran. **Land
-5's apparent second/third captain slots are not usable as an escort, checked
-at the land's start (`pm121/k5.snap`) and 50M/100M ticks in
-(`pm121/run/k5_s1.snap`/`k5_s2.snap`) with `scratchpad/pm128a/census_groups.py`:
-groups 1 and 2 are `owner 1` but `men 0` from the very first snapshot,
-dead captain records.** An escort is not needed if the target is not
-garrisoned, which the next paragraph shows.
+By the time a settled world has accumulated enough goods for a natural tribute, its territory
+is also contested enough that an unescorted envoy rarely completes the walk to a garrisoned
+lord. An envoy to a target that is not garrisoned needs no escort, as the next paragraph
+shows.
 
-**A natural alliance completes end to end (129th pass, land 25, no pokes).**
+**A natural alliance completes end to end (land 25, no pokes).**
 Start: `pm127/diplo3/equip_probe.snap` (the organic take-equipment state);
 the only inputs are three `clicks.py` click sequences
 (`scratchpad/pm129/`, commands `run5/6/9.cmds`, outputs beside them).
@@ -1497,9 +1514,8 @@ lord 4's garrison still kills the envoy).
 
 Caveats: the ally is side 4, not side 3; the walk survived because lord 15
 is an ungarrisoned lone town, not because of an escort; the route needs the
-`$02` waypoint and the tribute needs the second `$10`. The earlier
-reading that an unescorted envoy inevitably dies to contact is wrong: the
-death is specific to a garrisoned target.
+`$02` waypoint and the tribute needs the second `$10`. An unescorted envoy
+does not inevitably die to contact: the death is specific to a garrisoned target.
 
 *The alliance's effects, checked from the natural state.* From `pm129/env5_12M.snap`
 (peace bits `$12`/`$12`, group `$188` alive at lord 15's town (39,31), 5 men), the
@@ -1514,7 +1530,7 @@ icon is armed and lord 15's town clicked on the minimap (`scratchpad/pm131/o06|o
 
 So `+6` is read exactly as documented above: an ally's town passes the friendly filter of
 `$06`/`$10` and fails the foe filter of `$1e`. The same click on the same town before the
-alliance posted `$1e` and ran to `$34a8` (129th, `run9.cmds`), which is the unallied control.
+alliance posted `$1e` and ran to `$34a8` (`run9.cmds`), which is the unallied control.
 The `$1e` row proves the refusal at the pointer test only (no `$131be` in 14 passes over 3M
 steps); the group lost one to two men to starvation in each run (food 0), unrelated to the order.
 
@@ -1527,8 +1543,8 @@ steps); the group lost one to two men to starvation in each run (food 0), unrela
   settlements like one's own.
 - The pointer test `$1394c`, run while a command is armed (`$57fd4` = `$06`,
   `$10`, `$1e`): `$139da`/`$13a3c` accept a settlement whose owner's bit is set,
-  `$13b1e` (for `$1e`) one whose bit is clear. These three are the addresses the
-  122nd pass listed as "per-tick writers": they are reads.
+  `$13b1e` (for `$1e`) one whose bit is clear. These three addresses are reads of `+6`,
+  not per-tick writers of it.
 
 Combat does not look at `+6`. Any contact between two sides' units runs
 `$4bc8` → `$4c2a`, which clears both peace bits, calls `$c5ee` ("The alliance
@@ -1566,7 +1582,7 @@ writes to the block in 50M-step runs from a land's start: land 60, `$4c64`
 13 and `$314a` 26; land 25, 78 and 156 (77 of the 78 contacts between sides 2
 and 3); all contact-driven.
 
-## The campaign (122nd pass)
+## The campaign
 
 The main menu's four buttons set `$2df6e` (`$78d2..$7908`): 2 Start New
 Conquest, 4 Continue Conquest, 6 Play Random Land, 8 Load Data Disk. `$13e8e`
@@ -1610,7 +1626,10 @@ land 1 is built. The options panel's save/load buttons move the same 195 bytes:
 `D3 == $17` ORs `$3f768` into `$3f2a0` after `$e29c` (→ `$1bd70`). That these
 are the disk save and load is inferred from the call shape, not traced.
 `$b2dc`'s entropy pick of one of 144 lands (`k*$b + $3fb`) belongs to the
-briefing preview and Play Random Land; it has no part in the campaign.
+briefing preview ("Mission / world setup", README "Driving a later land"), not to the campaign;
+Play Random Land sets `$580a0` itself (`$13ece`, above). The pick `$113a8` also ORs the first 196 bytes of
+resource `$b` (loaded at `$3f364`) into `$3f2a0` (loop at `$113e4`, `moveq #61` plus `neg.b`; code read), which is
+where any `< 0` "not selectable" flags would come from (inferred).
 
 **The protection check.** The briefing dialog asks a manual-lookup question
 ("Between Pages 17-22 / How many People in this land?"). Its OK handler `$b814`
@@ -1646,7 +1665,7 @@ reaches 0):
 - pokes **one** random `$4d252` (tree array) record — if its `byte7 == $d` it becomes
   `$e + (byte10 & 3)` (a tree-state nudge; 0 of 204 records changed over one watched wrap, the array holds no type-`$d` record: effectively dormant, inferred);
 - **rotates `$57fd0`** — `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}
-  (`$1ac5e..$1ac6a`, raw-verified 97th). `$57fd0` is the season *and* the
+  (`$1ac5e..$1ac6a`, raw-verified). `$57fd0` is the season *and* the
   mode-`$7c` settlement-heartbeat gate (economy.md §3a), so this rotation is
   what makes the heartbeat + loyalty/revolt system **transiently active in
   mission 1** despite its seed giving `$57fd0 = 4` at world-build. Observed
@@ -1655,10 +1674,13 @@ reaches 0):
 
 No population, food or invention maths anywhere in it.
 
-## The AI as modern pseudocode (73rd pass)
+## The AI as modern pseudocode
 
-Everything above, decoupled from the 68000 and from the 2.6 Hz tick, as one
-loop. This is the whole autonomous AI — there is nothing else.
+Everything above, decoupled from the 68000 and from the 2.6 Hz tick, as one loop. It
+simplifies `$6522`: the follow-up table is tried first here (the real order is by group
+state, "The commander AI `$6522`"), and the `$66e8` target recheck, the fetch-behind-an-enemy
+and transfer arms and the food fallback are left out. With the entity modes of `ai.md` it is
+the whole autonomous AI; there is nothing else.
 
 ```python
 IDLE = 6                                           # group state 6: idle (the player's group sits in it, 6 of 6 snapshots)
@@ -1688,9 +1710,9 @@ def sim_tick(world):
             if obj.men < 22:
                 tgt = nearest_own_lord(obj, word=FIELD_TROOPS, weight=lambda L: L.troops_field)   # troops_field > 1
                 if tgt: slot.emit(GET_MEN, tgt.cell); break     # order $08, group state 3
-            # 3. escort the captain's group when it is in support state $d
+            # 3. escort the captain's group when it is in state $d (Fighting)
             g0 = group.groups[0]
-            if k > 0 and g0.state == SUPPORT and g0.camp_phase == 4:
+            if k > 0 and g0.state == FIGHTING and g0.camp_phase == 4:
                 slot.emit(MARCH, g0.escort_target.cell); break
             # 4. any group: march at the nearest enemy leader ($661a/$68fe/$68ee)
             if obj.men - 4 > 0:
@@ -1761,8 +1783,8 @@ def melee_tick(attacker):                          # entity mode $32 / $1533c
     dmg = (min(attacker.msg_code, 6) >> 1) + 1     # 1..4 per tick
     T.health -= dmg
     if T.health <= 0:                              # $5590
-        roll = attacker.group.discipline - 2       # field_60 - 2
-        kill = (roll == 0) or (roll not in (0,2) and (world.tick + attacker.phase) & 2 == 0)
+        roll = attacker.group.posture - 2          # field_60 - 2
+        kill = (roll == 0) or (roll not in (0,2) and (world.tick + attacker.phase) & 2 != 0)
         if attacker.target.encircled: kill = True
         if kill: T.to_corpse(decay=160)
         else:    T.rout()                          # scattered, survives
@@ -1776,7 +1798,7 @@ it fits the "you are the influence, not the general" design, but several parts
 are limitations rather than choices:
 
 1. **Targeting is nearest-enemy-leader, full stop.** `$68fe` picks the smallest
-   `max(|dx|,|dy|)` (weighted by a single relationship byte); `$68ee` scores it
+   `max(|dx|,|dy|)` (weighted by a single relationship byte, read from the wrong place: "Diplomacy"); `$68ee` scores it
    only on raw distance × a coarse troop bucket. No terrain cost, no
    choke-point awareness, no "is this the *valuable* target", no coordination
    between a side's own groups. A modern version would run an **influence /
@@ -1798,14 +1820,15 @@ are limitations rather than choices:
    `P(win) * value > food and opportunity cost`.
 
 4. **2.6 Hz, and compute-bound.** The whole sim — every entity, both renderers —
-   runs in one thread at whatever rate a frame builds. Decisions land ~2.5 s
-   apart and combat resolves in ~1–4 health/tick. A modern port decouples the
+   runs in one thread at whatever rate a frame builds. Ticks land ~0.4 s apart
+   (a camped group waits 20 of them, about 8 s, between orders) and combat resolves in ~1–4 health/tick. A modern port decouples the
    sim tick from the render, runs the AI on its own budget, and can afford
    per-frame steering while keeping the coarse "issue an order every few
    seconds" cadence that gives PM its feel.
 
-5. **Deterministic tick-count "RNG".** `$57fec` is just the low bits of the tick
-   counter (`ai.md`), so the AI and combat replay identically from a save.
+5. **Deterministic tick-count "RNG".** `$57fec` is a counter that advances once per tick (reset every
+   season fade, "RNG and determinism"), and the AI uses only its low bits, so the AI and combat replay
+   identically from a save.
    Fine for the kill/rout roll's *flavour*, but it means no genuine uncertainty
    — a human learns the exact outcome of a given engagement. Keep the trick for
    cosmetic jitter; use a real seeded PRNG for anything the player can exploit.
@@ -1816,7 +1839,7 @@ are limitations rather than choices:
    armies just get scattered and re-form. A modern version would let the AI
    choose its posture from the situation so that its fights have consequences.
 
-## Original names: the developer symbol table (133rd)
+## Original names: the developer symbol table
 
 `DATA\SPRITE40.DAT` on the disk is not sprite data (the loader table `$e0c4` never names it, and nothing
 in the image or on the disk does). It is a self-extracting GEMDOS program, 137,652 bytes once unpacked, and the
@@ -1835,7 +1858,7 @@ table `$51538` (`_kings`), the object table `$51b66` (`_sprites`, 512 records of
 (`_packets`), the key array `$2de6c` (`_key_on`) and shift flag `$2df8a` (`_shift`), the selected group `$57fd2` (`_the_cap`),
 the armed order `$57fd4` (`_mouse_m`), `$57fd0` (`_season`, so the settlement heartbeat is the winter state `in_winte`
 at `$157ba`), the conquest save `$3f2a0` (`_conques`), the control plane `$3f86c` (`_alts`), `$438ee` (`_block2`),
-`$4be00` (`_shots`), `$4d252` (`_trees`), `$12d88` (`_command`, the startup parser), `$1962` (`its_a_ke`, the keyboard ISR's
+`$4bdf0` (`_shots`; the effect slots start one record higher, at `$4be00`), `$4d252` (`_trees`), `$12d88` (`_command`, the startup parser), `$1962` (`its_a_ke`, the keyboard ISR's
 key writer), `$df52` (`_load_co`), `$e2b8` (`decrunch`) and `$f898` (`_draw_it`). The order executors, in table order
 from `$02`: `send_cap`, `xfer_men`, `get_food`, `get_men`, `go_home`, `send_att`, `send_inv`, `send_equ`, `drop_foo`,
 `derank`, `set_leve`, `drop_equ`, `supply_f`, `send_tra`, `send_all`, `send_spy`, `select_c`, `pause`, `message`,
@@ -1852,33 +1875,33 @@ What the names changed:
   one-instruction stubs (`rts`), and nothing calls them.
 - `$123c` is the label `shitpiss` (the startup string `_command` parses); the unhandled-exception labels are `fuckup`/`none` at
   `$1378` and mode `$0a` is `fucking_`. The linker's whole source file list is not recoverable (no module names).
-- **`$4d252` is the tree array, not animals** (134th): the labels are `_trees` (`$4d252`), `_forests` (`$57f68`), `_birds` (`$4c5f4`),
+- **`$4d252` is the tree array, not animals**: the labels are `_trees` (`$4d252`), `_forests` (`$57f68`), `_birds` (`$4c5f4`),
   `_do_fore...` (`$4342`), `at_fores...` (mode `$44`), `at_works` (`$42`), and the census agrees (203 of 203 live entries on byte6 4 tree
   records, none on byte6 8 animals, `py/tree_census.py`; 10M live steps: 28 `$3e`, 24 `$44`, 25 `$42`/`$60dc` hits, 0 `$5ec6`, 3 trees
   felled). The gather modes `$3e..$46`/`$6a` are run by men of every job, not shepherds (shepherds are `$80..$88`); economy.md §2.
 - `$1d70` is `_rerank`: it re-forms a group's ranks on every join and roster change (live, "What each order does"), not a
   "send everyone home" step.
 - **The farmer cycle is modes `$0c`/`$0e`/`$16`/`$18`/`$24`** (labels `start_fl...`, `in_fligh...`, `at_farme...`, `at_farme...`,
-  `farmer_f...`; 134th audit): `init_far` → walk `$10` → `$18` at the field cell (`42/43`) → `$0c` loads the `farm` entry of the
+  `farmer_f...`; audit): `init_far` → walk `$10` → `$18` at the field cell (`42/43`) → `$0c` loads the `farm` entry of the
   spline table `$168ee` (`_flights`: `fp1..fp3`, `farm` at cursor `$50`, `pots` at `$76`, `eyes`) → `$0e` walks it (terminator `$7d26`
   = mode `$24`, walk home) → `$16` at home. Census: 275 of 281 live `$0e` men are farmers (11 snapshots); live from
   `m1_s0`, 40M steps: `$15042` 10, `$1507c` (the `food += 2`) 10, `$150b0` 11, `$14e56` 11, `$151c2` 11. So `$0e` is not a
   "patrol", `$18` not a "neutral garrison" and `$16` not a "disband"; `$2984` (`_set_peo...`) builds the village population, two men
   per settlement with a random job (`init_she/fis/far/mer`; one captain per lord of kind > 3), not garrisons (`economy.md` 5a, Proven).
-  The farmer job is bit 0 of byte 7 (`$3c08` maps bits 0..3 to `$16`/`$4e`/`$5e`/`$80`), so the 126th's "one site sets flag
-  bit 0" is `init_far` at `$2cd0`.
+  The farmer job is bit 0 of byte 7 (`$3c08` maps bits 0..3 to `$16`/`$4e`/`$5e`/`$80`), so the one site that sets flag
+  bit 0 is `$2cd0`, inside `init_far` (`$2c5a`).
 - **Mode `$68` is camp rest, not a marching column** (`rest_in_...`, `a_sitting`, `at_camp`, `in_camp`): 118 of 123 live `$68` men are
   byte6 14, the sitting category; marching men are `$06`/`$08`. `$35f4` (`_make_ca...`) is read to set group state 6 and ring the
   men around the lead in mode `$10`, prev `$20`, which settles into `$68` (static, one positive live match on `m1_ready`: the
   state-6 group's lead is `$68` at its camp marker). `$7c` is the winter state of a parked civilian (`in_winte...`), `$7e` a soldier
   staying at home, `$8a` a captain resting at his town (29 of 29 job 9).
-- **Byte 33 is a carried item code** (`2 * (slot + 1)` for a boat or tool: `$0a` Boat, 8 Plough, 12 Pot ...; modes `$02` and `$8c`
+- **Byte 33 is the tool tier** (an item code `2 * (slot + 1)`: 8 Plough, `$0a` Boat, `$0c` Pot; byte 44 holds the weapon codes 2 Pike, 4 Sword, 6 Bow, economy.md §4; modes `$02` and `$8c`
   are 71 of 71 and 17 of 17 with bit 5 set and 33 = `$0a`: `boating`, not "hold position") and **byte 45 is health** (the captain
   panel prints `(45 >> 4) & 7` through `healthnames` at `$a2dc`, "Very Sickly" ... "Dead": 11 of 11 `callcap $912a` calls with a poked
   byte return the table's string, and 203 of 225 live persons sit exactly on their `$5ccc` cap, `py/health_check.py`;
   `$5c80` is `_add_str...`, which recovers it to the job's cap).
 - **`$3f86c` is `_alts`, the altitude plane**, not a "control byte" or influence field: `$ffa6` (`_fill_al...`) accumulates a random
-  walk into it, `$10410` (`_smooth_`) averages neighbours, `$10458` lays the rivers; graphics.md already reads it as the height
+  walk into it, `$10410` (`_smooth_`) averages neighbours, `$10458` lays the rivers (it has no caller, `graphics.md`); graphics.md already reads it as the height
   source: poking a block of it raises a plateau in the redrawn terrain, 10938 pixels differ (`py/alts_render_check.py`). Likewise `$127e6` is the sound-event dispatcher (`_do_soun...`), `$178ae` the HUD group bars (food
   `112`, men `52`, the lead's health `45`; `callcap` 138 bytes written) and `$17878` the compass (51 bytes), not "render setup A/B".
 - Modes `$56..$62` are labelled `fish_*`, `$80..$88` `shep_*`, `$4e..$54` `merch_*`: the job state machines of the people
@@ -1914,7 +1937,7 @@ helper beside `_pospos`/`_mapline`/`_distanc`: 0 entries in 60M steps from each 
 entered in 120M either, so it is probably dead. The image has essentially no dead code; the earlier count of 117 orphans
 came from a walker blind to the dispatch tables.
 
-## The game's own text: names for the fields (139th)
+## The game's own text: names for the fields
 
 The UI text tables name the fields the panel code reads, so each name is the developers' word for what the byte means (code read at the selector, plus the live check noted). The text sits in `$9000..$b000`; a
 selector returns a string pointer in A5.
@@ -1943,19 +1966,19 @@ Names of people, houses and towns are made by `$a9ce` (`_getname`, three syllabl
 its lord's position; the pigeon's destination `20(A3)`; a forest word 0 of its `$57f68` record. A side's lord, and the first group of a side, show the typed side name instead (`check_fo` `$a704` for men, the flag `$9218` for the captain panel). `_get_nam` `$bdc2` is not a generator: it opens the "What Is Thy Name Oh Lord" entry panel (template `$be34`)
 for the side-1 name field `$582f9`, once, from `_first_s`.
 
-**How a panel opens** (140th). The `master*` symbols are templates, not builders: a `{width/4, height}` pair and a character grid with runs of `@` as placeholders (`masterca` `$921a`, `masterst` `$9712`, `mastereq` `$9878`, `masterob` `$9954`, `masteran` `$a082`, `masterpi` `$a0d4`, `masterho` `$9e76`, `masterpe` `$a328`, `mastertr` `$a7f8`).
+**How a panel opens.** The `master*` symbols are templates, not builders: a `{width/4, height}` pair and a character grid with runs of `@` as placeholders (`masterca` `$921a`, `masterst` `$9712`, `mastereq` `$9878`, `masterob` `$9954`, `masteran` `$a082`, `masterpi` `$a0d4`, `masterho` `$9e76`, `masterpe` `$a328`, `mastertr` `$a7f8`).
 An opener (`click_*`) does `lea template,A1 / jsr $7b10` (allocate a panel slot; the grid is built at `$7bac + slot × $320`) `/ lea fmt,A6 / jsr $a91a`, and in `$a91a` the n-th `@` run calls the routine at `A6 + word[n]`, which returns a string pointer in A5 or writes into A4. The panels have no buttons (no `$80` corner cells) and only the captain panel sets `$7a3c`,
 so there are no panel button codes. There are two ways in. The captain boxes (`$1343a`) call `_click_c` `$9036` (captain panel, `$7a3c := 2`). The **examine tool** (icon `$2c`, `$57fea = 1`) makes a click on a drawn sprite run `$95f6`: the hit test `check_sh` `$12138` runs with every sprite draw and, with `$57fea` set and a click pending, calls it, and it dispatches on the
 record's category byte through the word table `cjt` `$9624`: 0, `$e`, `$1a` person (`$9c16`); 2 and `$10` house (`$9a38`, `$10` forced to WorkShop); 4 tree (`$a738`); 6 and `$18` object, fire and boat (`$98ec`); 8, `$1c`, `$22` animal (`$99e0`); `$a` equipment (`$9806`); `$c` death (`$a46c`); `$14` pigeon (`$99ac`); `$1e` mine (`$a5d8`);
-`$2c` stockpile (`$9656`); `$12 $16 $20 $24 $26 $28 $2a` open nothing; `$2e` goes to `$b2d4` (the protection seed, not run). Category `$18` is "Boat" in the game's own click text, which `graphics.md` and the README call a territory marker (not reconciled: a sprite crop of a `$18` record is open). Live from `m1_s0` (`py/ui/uiclick.py`, each with a no-toggle
+`$2c` stockpile (`$9656`); `$12 $16 $20 $24 $26 $28 $2a` open nothing; `$2e` goes to `$b2d4` (the protection seed, not run). Category `$18` is "Boat" in the game's own click text, and the sprite agrees: the record is a fisherman's catch marker (byte 7 `$10`) and `a_object` (`$117b0`) draws frame `$100 + byte 7 = $110`, a rowboat on the pond (`catch_marker_boats.png`; live `bp $1182a`, 30 of 30 marker records drew `$110`). Live from `m1_s0` (`py/ui/uiclick.py`, each with a no-toggle
 and a toggle-only control): a Tower at (196,41) opens the house panel, an ash at (218,70) the tree panel ("An Ash in the forest of Mninise / It is Summer"), a man at (202,49) the person panel; without the toggle or without the click nothing opens (0 hits of `$95f6`; `info_click.png`). Gates against `callcap` with the model built from the pre-call RAM only:
 person panel **247/247** (47 in `m1_s0`, 200 in `k5_s4`, all six text rows), house panel **103/103** (kind, town, people, kingdom, food, men and loyalty, near forest; the Stock rows are not compared), captain panel **12/12** groups (name, state, aggression and posture, loyalty, health, speed, food, troops, the carrying list; `py/ui/gate_panels.py`, `gate_captain.py`);
 the equipment and mine panels were checked by their live text only. The person panel stores no sex: "he/she" is the parity of the man's place in his home settlement's chain (`$9ce8` sets `$9e74` to 0 or 4; a leader is always "he"), the companion shown is the next man, or the previous one for the first. The death panel's age class is `(byte14 − 12) / 20` capped at 4 and its "service of" line
 prints the side of the *negated* owner byte. Never seen in 547 scanned snapshots: category `$22` (the Cow), `$1a`, a carcass (`$1c`, "DEAD Sheep"), tree state `$d` (a stump) and the camp fire (`$12`): those panel strings are reachable by the code and nothing produces them.
-The panel text is the place to look first when a field's meaning is in doubt: the 133rd pass's group-state and mode labels, the 134th's "Strength" row and this pass's building kinds all agree with it, and
+The panel text is the place to look first when a field's meaning is in doubt: the group-state and mode labels of "Original names", the "Strength" row and the building kinds all agree with it, and
 it is what retired the "capital (kind 7)" reading.
 
-## Hidden features audit (130th)
+## Hidden features audit
 
 No cheat keys, debug commands or developer hooks found in the loaded game image. Evidence:
 
@@ -1965,7 +1988,7 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
   modifier state is the shift flag `$2df8a`, which only selects the shifted ASCII table in the getkey routine
   (`$19c2`, tables `$19e8`/`$1a7a`, UK layout). A live sweep of scancodes `$01..$72` (500,000-step holds in
   `pm78_settle`, reader hits counted with `hits`, RAM diffed against F1): only the four arrow keys change state
-  (`$13824` block, each reader body 2 hits; left moved camera X 40 to 38, re-checked 130th). ESC reaches the link
+  (`$13824` block, each reader body 2 hits; left moved camera X 40 to 38, re-checked). ESC reaches the link
   receive loop (`$1c34e`), which calls `$71ae` (link teardown): exercised, see "Serial-link states" under the command
   buffer. The send loop's ESC-plus-shift abort cannot fire, because `$1962` never stores the shift scancodes in the
   array. Name entry
@@ -1985,13 +2008,13 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 - **Dormant word `$5809a`** (`_show_de...`, "Original names"; read at `$16640` in a loop over the entity table, written nowhere by an absolute
   operand; 0 in both snapshots). Poking it to 1 raised that loop's `$16738` calls from 54 to 94 per 500k steps and
   `$e6ee` marker draws from 27 to 47, and on 4 of 8 samples added 24-26 bytes of extra dots to the minimap: a
-  "draw all sides' markers" switch. Nothing in the image sets it (131st, static; no live write was attempted):
+  "draw all sides' markers" switch. Nothing in the image sets it (static; no live write was attempted):
   the only absolute operand of `$5809a` is the read at `$16640`; a byte scan of the RAM image finds the longword
   `$0005809a` once (that read) and no pointer to `$58094..$58098` other than the six `$58098` word accesses; every
   bulk copy or clear that could sweep it starts higher (link/save blocks `$580a0..$58368` at `$6fa2`, `$7150`,
-  `$b866`; the campaign pick `$1140e` copies 333 bytes to `$580a6`) or lower and stops short (`$58058` clears 16
+  `$b866`; the campaign pick `$1140e` copies `$14c` (332) bytes to `$580a6`) or lower and stops short (`$58058` clears 16
   words, `$58042` is a 12-entry word table, `$5801c`/`$58016` are the 6-byte command slots, side 0..5). The save
-  game (`$3f2a0`, 196 bytes of conquered lands) is not RAM-block data. Treat it as an unset debug flag: reachable only
+  game (`$3f2a0`, 195 bytes of conquered lands) is not RAM-block data. Treat it as an unset debug flag: reachable only
   by a patch, like `$123c`.
 - **Developer leftovers.** `d:\samples\ste.tos` (`$123e`) and `d:\samples\qaz.spl` (`$1251`), no code references; the
   live save-disk header at `$1bb0e` (checked by `$1bd64` against `POWE`) carries the text "PLEASE STOP HACKING THIS GAME
@@ -2031,42 +2054,43 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 
 ## Open threads
 
-- **Economy / population / invention — see economy.md.** Not in the per-tick path: `$1abaa` is the seasons and weather (its four `$1ba3e` calls are only the season sounds), `$3e06` is the armies eating, the health indicator, the
-  animals and the carrier pigeons (`ai.md` "Shepherds, animals and carrier pigeons"), `$d322` is force-totalling. The land is made by `$10d1e`/`$ffa6`/`$2266`/`$ac20`;
-  `$2984` then gives every settlement its two men and each man a job, once per build (`economy.md` 5a, Proven: a build runs it once, 8 of 8). Growth after that does not exist
-  (a revolt, `$550e`, only moves a lord and his settlements). Still unmapped: `$238c`, which builds each side's army (leader, captain group, soldiers; read, not differentially
-  tested) and `$2906`, the assessment seeding.
-- **The AI on a live enemy (122nd).** All 25 natural `$661a` primary
-  decisions in the four 200M-step runs (lands 0/5/25/60: 8/7/4/6) were
-  captured at `$662a`/`$6632` (`scratchpad/pm122/dec/`, `parse.py`). `$68fe`
-  found a target every time, and `$68ee`'s cost (4-66) was always far inside
-  the group's food `112(A1)` (24,218-24,671, i.e. the `$5fff` seed of
-  `$26c4` barely eaten), so every decision issued the attack order
-  (posture `136(A1) := 4`, `$67ee(12)`); the not-enough-food fallback `$69b4(6)` and the
-  no-target path `$69b4(8)` never ran. Targets were leaders of every other
-  side, the player's (side 1) in 6 of 25, usually with a small `troops_field`
-  (0-18). The food test does not bind at these values: AI armies never go hungry.
-- **Combat — mechanism closed** (73rd, see "Combat" + `ai.md`). The `$5590` kill
-  branch runs naturally on later lands (121st). Remainder: the `$5c80`/`$5bd2`
-  wear path (never fired in 800M later-land steps). Projectile type is byte6:
-  `$28` (40, an arrow, from a bow) is common; `$12` (18) never appeared.
-- **Land setup**: there is no mission-file grammar (campaign lands are the
-  195-entry `$3f428` table, "The campaign" above). Still unreached: the
-  fixed-map branch (`$58148 < $100` → `$df52(7)`), which no campaign entry
-  uses (possibly Load Data Disk).
-- Diplomacy ("Diplomacy" above): an alliance offered naturally by clicks with
-  organically-earned goods (no register pokes at all) is proven up through the
-  tribute forming — order `$10` genuinely fills a group's `carrying[]` from a
-  real stockpile (127th) — but the envoy reaching its target without
-  interception is not yet observed: two independent natural corpora (123rd
-  forced-goods, 127th fully organic) both had it die in unrelated combat
-  first. Try an escorted envoy (a second group clearing the corridor first) or
-  a land snapshot early enough that territory hasn't solidified. The panel-`$1a`
-  branch (an envoy arriving at the player) is static only.
-- `$3c08` (rout / besiege-fail group restructure; order `$0a`, the HOME icon)
-  — first-look only.
-- The player's orders ("What each order does"): each is named from 1 run. Not
-  yet seen: `$04` (needs two captains), `$0e` on a lord with a WorkShop (a campaign land
-  whose player lord is of kind 3 or 4, `economy.md` "Buildings and town layouts"), `$10`/`$1c` on a pile. Driving a revolt
-  on purpose: take a lord's food (order `$06` on his town is refused, it is not
-  ours; a trade adds +8) and then plant a spy to pulse him.
+- **Economy / population / invention: see economy.md.** None of it is in the per-tick
+  path: `$1abaa` is the seasons and weather (its four `$1ba3e` calls are only the season
+  sounds), `$3e06` is the armies eating, the health indicator, the animals, the carrier
+  pigeons and the projectile update (`ai.md` "Shepherds, animals and carrier pigeons",
+  "Arrows and carrier pigeons"), `$d322` is force-totalling. The land is made by
+  `$10d1e`/`$ffa6`/`$2266`/`$ac20`; `$2984` then gives every settlement its two men and each
+  man a job, once per build (`economy.md` 5a, Proven: a build runs it once, 8 of 8), and
+  `$238c` and `$2906` are proven in "The starting armies" and "The world build, proven".
+  Growth after that does not exist (a revolt, `$550e`, only moves a lord and his
+  settlements). Still open: which routines of the `$2200`-`$3500` cluster write each side's
+  `$580a6` assessment block beyond the campaign table, `$2458` and the diplomacy writers.
+- **The AI on a live enemy.** All 25 natural `$661a` attack decisions in the four 200M-step
+  runs (lands 0/5/25/60: 8/7/4/6) were captured at `$662a`/`$6632` (`scratchpad/pm122/dec/`,
+  `parse.py`). `$68fe` found a target every time, and `$68ee`'s cost (4-66) was always far
+  inside the group's food `112(A1)` (24,218-24,671, i.e. the `$5fff` seed of `$26c4` barely
+  eaten), so every decision issued the attack order (posture `136(A1) := 4`, `$67ee(12)`);
+  the not-enough-food fallback `$69b4(6)` and the no-target path `$69b4(8)` never ran.
+  Targets were leaders of every other side, the player's (side 1) in 6 of 25, usually with a
+  small `troops_field` (0-18). The food test does not bind at these values: AI armies never
+  go hungry.
+- **Combat: mechanism closed** ("Combat", `ai.md`). The `$5590` kill branch runs naturally on
+  later lands. Remainder: the `$5c80`/`$5bd2` wear path (never fired in 800M later-land
+  steps). Projectile type is byte6: `$28` (40, an arrow, from a bow) is common; `$12` (18)
+  never appeared.
+- **Land setup**: there is no mission-file grammar (campaign lands are the 195-entry `$3f428`
+  table, "The campaign" above). Still unreached: the fixed-map branch (`$58148 < $100` →
+  `$df52(7)`), which no campaign entry uses (possibly Load Data Disk). Whether the briefing OK
+  path reaches `$10d1e` at all is settled: it does not (stored block); see "Mission / world setup".
+- **Diplomacy.** A natural alliance is proven end to end (land 25, an ungarrisoned lone town,
+  a `$02` waypoint and goods earned by order `$10`, no pokes; "Diplomacy"). Not observed: an
+  envoy reaching a *garrisoned* lord (on lands 25 and 5 the side has one live captain, so no
+  escort can be built; it needs a land with two) and the panel-`$1a` branch (an envoy
+  arriving at the player), which is static only.
+- **Order `$0a` (the HOME icon, `$6c16` → `$3c08`).** No run is recorded in "What each order
+  does"; `$3c08` itself is proven (`ai.md`, "the regroup / return-home dispatcher").
+- **The player's orders ("What each order does")**: each is named from one run. Not yet
+  seen: `$04` (needs two captains), `$0e` on a lord with a WorkShop (a campaign land whose
+  player lord is of kind 3 or 4, `economy.md` "Buildings and town layouts"), `$10`/`$1c` on a
+  pile. Driving a revolt on purpose: take a lord's food (order `$06` on his town is refused,
+  it is not ours; a trade adds +8) and then plant a spy to pulse him.

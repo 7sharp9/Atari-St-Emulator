@@ -1,8 +1,10 @@
 # PowerMonger iso-renderer port
 
-A precursor to porting PowerMonger's isometric terrain view to a modern engine.
-Nothing here touches the emulator — it is asset extraction, a reference
-renderer, a porting spec, and a toolchain skeleton.
+A Godot 4.x + F# port of PowerMonger's isometric terrain view: asset extraction, a
+Python reference renderer, a porting spec, an F# logic library, a live Godot scene and a
+frame stepper. Nothing here touches the emulator. The renderer reproduces the game's
+frames pixel for pixel on the captures checked (`SPEC.md` Status); what is still open is
+listed under "Status" below.
 
 ## Layout
 
@@ -12,6 +14,32 @@ renderer, a porting spec, and a toolchain skeleton.
 | `SPEC.md` | the porting contract: coordinate systems, projection with exact constants, the triangle/dither rasteriser, sprites, zoom, the frame pipeline, and what a modern port should replace. Written to be implementable without the disassembly. |
 | `godot/` | Godot 4.x (.NET) + F# skeleton, **running live**. `godot/logic/Fill.fs` ports the closed rasteriser (`ef62_raster` + the `$e420` DDA + the dither fill) and all 4 yaw-quadrant grid walks (`planQ0`-`planQ3`, dispatched by `plan`/`walk`) at any zoom; `godot/logic/Season.fs` the seasons' grass colours; `godot/logic/Weather.fs` rain and snow; `godot/logic/Equipment.fs` the equipment exchange (`$160f8`, `$16892`) with its stale-register credit bug kept (`Original`) or removed (`Corrected`), gated by `../py/equip_check.fsx`, called by nothing yet because the port has no entity simulation; `godot/logic/Scene.fs` interleaves each cell's sprites after its triangles, as the game does; `godot/game/TerrainView.cs` wires it into a real scene — arrow keys pan the camera, PageUp/PageDown rotate it through all 16 yaw steps, Y cycles the season. |
 | `stepper/` | Slow-motion replay of one frame in the game's own draw order, a triangle or sprite at a time (Mibo.Raylib, F# only, same `PmLogic` code). See "Frame stepper" below. |
+
+## Status
+
+Done: the projection, the rasteriser and all four yaw-quadrant walks (F# `Fill.fs`, byte-exact
+against the Python reference and the game); sprites of every category seen on 37 lands, drawn
+inline in the game's own order; seasons, rain and snow; zoom 1-7 in the logic library; the
+HUD minimap; a Godot scene with panning, rotation and a season key; a stepper that replays one
+frame a triangle or sprite at a time. 27 frames from 12 views on lands 0, 5, 25 and 60 match the
+game's screen pixel for pixel, and terrain away from sprites matches at 99.7-99.96%
+(`SPEC.md` §6 "Scoring a capture").
+
+Open (the full list, with the reasons, is `SPEC.md` Status):
+
+- Godot runs at zoom 4 only; the stepper and the Godot view do not draw weather; `Equipment.fs`
+  is called by nothing, because the port has no entity simulation.
+- Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn; `byte6` 6 has no established
+  role; the plough and siege-engine overlays and the `$119b2` overlay are ported from the code but
+  never seen on screen.
+- HUD glyph sheet and compass panel are not decoded as assets; whether a territory change re-bakes
+  the minimap is undecided.
+- Dropping the per-pixel dither for a fragment-shader height ramp (`Terrain.flatPaletteIndex`, or the
+  colour-byte table in `SPEC.md` §4), or a `SubViewport` instead of a scaled `TextureRect`, is optional
+  and not started.
+
+Scripts that exist only in the gitignored `scratchpad/` are listed once, in `SPEC.md` Status
+("Scratch-only scripts"); the verification record below names them as scratch where it cites them.
 
 ## Frame stepper
 
@@ -64,631 +92,140 @@ python3 tools/pm_render_ref.py             # rebuild a frame from assets/ alone,
 
 `pm_export.py` reads `scratchpad/pm74_late.ram` (the settled mission-1 iso view;
 regenerate per `../README.md` if it is gone) and a frame-dump record for the
-live palette. `pm_render_ref.py` writes `assets/reference/render_from_assets.png`
-(dither fill), `render_flat.png` (height-ramp fill), and `render_compare.png` —
-reference terrain (top) over the frame rebuilt from `assets/` (bottom) — and
+live palette; `export_entities` reads `pm88_f1` (`--entities-ram`). `assets_k60/` is the
+same export for land 60 (`scratchpad/pm120/k60_iso.ram`, built per `../README.md` "Driving a
+later land"). `pm_render_ref.py` writes `assets/reference/render_from_assets.png`
+(dither fill), `render_flat.png` (height-ramp fill), and `render_compare.png`,
+reference terrain (top) over the frame rebuilt from `assets/` (bottom), and
 prints the block-mean dE and the per-index distribution vs the reference.
 
-## Verification status (121st pass) — later-land sprites, exact positions, weather
+## Verification record
 
-**Categories.** Everything a later land draws is ported except byte6 18 and 28,
-which no land showed (`SPEC.md` §6 "Every category"): dead men (12) and the
-equipment they leave (10), carrier pigeons (20) and bird flocks (22), a leader's
-base with its goods (16), dropped goods (44), buildings going up (30),
-projectiles (40, one pixel through the `$e6ee` plotter), boats (26, and men with
-flags bit 5), and men in melee. `Sprites.placeEntity` returns every frame a
-record draws, in order, because these categories draw two to ten. `EntityRec`
-gained `B15`, `B32`, `W18`, `Icons`, `B33`, `B44`; `pm_export.py` writes them, and
-loaders treat them as 0 in older exports.
+Grouped by topic. Counts and scripts are as measured; `scratchpad/` paths are scratch only (see
+`SPEC.md` Status). Planes are named as `../graphics.md` names them (`SPEC.md` §2).
 
-**Positions.** `Sprites.packedLerp` is now `$11f1a` word for word: the borrow
-between the packed x and y halves put about one sprite in ten a pixel off. With
-it, and with each snapshot's state scored against the screen in the *next*
-`$f898` snapshot (the screen in a snapshot is the frame drawn from the previous
-state), 27 frames from 12 views on lands 0, 5, 25 and 60 match the game pixel
-for pixel, water tick included (`scratchpad/pm121/allpairs.txt`). On the
-mission-1 captures the inline scores rise from 94.26-97.83% to 99.69-99.99%
-(`pm78_settle` 94.62%, its two buffers disagree).
+### Terrain, rasteriser and quadrants
 
-**Weather** (`SPEC.md` §7). Rain (spring, autumn) and snow (winter) are a
-pattern ORed over the iso window by `$1a856`; `Weather.draw` ports it from
-`assets/weather.bin`, and winter and autumn frames of land 5 match the game.
-The stepper and Godot view do not draw weather yet.
+- `godot/logic/Fill.fs` is a 1:1 port of `tools/pm_render_ref.py`'s `walk_q*` / `ef62_raster` /
+  `_fixed_slope` / `_dda_walk` / `dither_index`, cross-checked on synthetic triangles (every
+  rasteriser path: general split, flat-top, the `$f134` reorder, the `0x1c` coast-force, the mid-vertex
+  slope switch, water shimmer) and a synthetic 8 x 8-cell grid exercising both diagonal-selector
+  branches: identical coverage counts and pixel-index hashes. `Terrain.Map`'s flag-plane accessor is
+  `DiagonalSelector` (the diagonal selector, not "corners unmoved").
+- The three other yaw-quadrant walks (`Fill.walkQ0`/`walkQ1`/`walkQ2`, `Fill.plan`/`walk`
+  dispatching as `$f97e`/`$f982` do) are live-trace-verified at a yaw in each range (the vertex
+  assignment and the colour-plane choice at the first `$ef62` call after resuming to the settled PC)
+  and cross-checked byte-exact against the F# port on synthetic data exercising every CLEAR/SET
+  branch and both comparison directions (`scratchpad/pm83_synth_check.{py,fsx}`, scratch only). The
+  entry points are `$f98e` / `$fa9a` / `$fbb4`, not the `$f98c` / `$fa98` / `$fbb2` older notes carry.
+- Live single-step of a quadrant-2 capture (`pm83_q2c`): all 128/128 `$ef62` calls of a frame match
+  the game, the dither `A5` phase on two traced triangles and the `$e420` span endpoints of a 27-row
+  triangle are byte-exact (`SPEC.md` §9).
+- The camera-change dither phase (`[$ffa2]` flips by 128 at `$f8e4`, `Fill.withPhase`): three yaws of
+  `pm88_f1` rotated in the emulator score terrain exact-index 43.5 / 46.7 / 47.1% without it and
+  93.8 / 84.6 / 91.1% with it.
+- The span walker draws rows `0 .. totalRows-1`; drawing the extra bottom row put a one-pixel line of
+  wrong colour on every triangle (29 px per `pm88_f1` frame).
 
-Gates: logic, stepper and Godot builds; stepper `--selfcheck` 23/23 on `assets`
-and `assets_k60`; `pm118/baseline.fsx`: the 160 terrain hashes unchanged, the
-two entity lines changed by the exact lerp and re-recorded (`before_pre_lerp.txt`
-keeps the old ones); `order_test.fsx` 99.99 / 94.62 / 99.69 / 99.97 / 99.92 /
-99.81 (`SPEC.md` §6); `pm_render_ref.py` equal to `Scene.render` on all 15178
-drawn pixels of `pm88_f1` (`reversing/powermonger/py/parity.py`); walkthrough `showboat
-verify` clean.
+### The 64 px inset and the right-edge clip
 
-## Verification status (120th pass) — a second land
+`$ef62`'s own clip (`screenX <= 255`) runs on the raw `$3f364` vertex, before the +64 inset applied
+later through the `$e420` draw pointer. `ef62_raster`/`_dda_walk` take an `x_inset` parameter so the
+clip shifts with the coordinate space, and `TerrainView.cs` shifts at blit time (it read the buffer at
+`(x, y)` instead of `(x - 64, y)` and drew the terrain 64 px too far left). A synthetic triangle
+straddling the raw X = 255 boundary covers identical pixel sets in raw and inset mode up to the +64
+shift (56/56), and a real GPU screenshot at yaw step 11 shows the silhouette shifting right by that
+amount (`assets/reference/godot_screenshot_yaw11_q2_85th.png` against `godot_screenshot_yaw11_q2.png`).
+It is a coverage fix, not an accuracy fix: the exact-index score of the poor `pm83_q*c` captures does
+not improve, because their reference buffers are the problem (`SPEC.md` §9 "Ruled-out causes").
 
-`assets_k60/` is `pm_export.py` run on land 60 (`scratchpad/pm120/k60_iso.ram`,
-both `--ram` and `--entities-ram`, reference frame from a frame dump of the same
-state); `../README.md` "Driving a later land" builds it. Against mission 1's
-`assets/`: the four sprite sheets (`$33000`, `$37c7c`, `$312a0`, `$3af1c`), the
-palette, HUD tables, strings and headings are byte-identical. The backdrop
-differs in the minimap (rows 6-133) and the side-shield strip under it (rows
-134-152, x 7-63); `dither.bin` only in slots `$1d-$2e` (the capture sits at a
-different point of the season fade); `tables.json` only in
-`height_bias_fec4`. Its entity categories are in `SPEC.md` §6 ("Every
-category"): `byte6 32` is never drawn.
+### Sprites and the entity pass
 
-Scored against the screen in the next `$f898` snapshot at the RAM's water
-tick, camera (45,74), yaw `$f0`, the frame matches pixel for pixel (`SPEC.md` §6
-"Scoring a capture"); scored against the snapshot's own screen it only matches
-with the tick before, because that screen was drawn from the previous state. `--assets ../assets_k60 --selfcheck` passes
-23/23. The stepper's `--shot` and the game's screen give the same colour at
-five sampled ST coordinates, portrait included.
+The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6. Port side:
+`Sprites.fs` (`EntityRec`, `EntityCtx`, `entityFrame`, `blitEntity`, `drawEntities`,
+`drawEntitiesArr`, `frameForProp`, `propTileOffset`, `propJitter`, `propScreenPos`, `decodeFrameWord`,
+`Sprites.recordJitter`, `Sprites.packedLerp`, `Sprites.placeEntity`).
 
-Gates, all green: stepper `--selfcheck` 23/23; `pm118/baseline.fsx` identical
-to `before.txt`; `order_test.fsx` on `pm88_f1`, `rot40/90/c0` and freshly dumped
-`pm78_settle`/`pm74_late` reproduce the `SPEC.md` table (the old
-`pm78_settle.json`/`pm74_late.json` predate the `half` field and no longer
-load); walkthrough `showboat verify` clean; logic, stepper and Godot builds.
+- Cross-check against `pm_render_ref.draw_entities` on identical synthetic corners and record fields:
+  13/13 cases byte-identical, `byte6 ∈ {0, 4, 8, 14, 24}` (men with the `+0x40` armed gate and the
+  melee-to-nothing case, props with the `r7 ∈ {0x0d, 0x0e}` special cases and the tile-set offset,
+  animals, banners, and the `$1182a` centroid markers; scratch only). On the real 53-record stream
+  of `pm88_f1.ram` with its `$3f364` corners: 2881/2881 covered pixels, `byte6 ∈ {0,4,6,8,14,24}`.
+- `tools/pm_export.py` `export_entities` writes `assets/entities.json`: `render_entities[]` (the whole
+  map's `$47970` bucket walk with the signed `$51b66` offset and the record address, 276 records) and
+  `entity_ctx` (the per-frame constants). `byte6 == 4` jitter depends on the camera window and is
+  recomputed per frame (`Sprites.recordJitter` reproduces the 53 stored jitters at the capture camera).
+  At two cells panned in the emulator (`scratchpad/pm119/pan_{e,w}`, scratch only) the exported records
+  draw the same frame as each capture's own records (identical at `pan_e`; at `pan_w` one man had moved).
+- Drawing inline, each cell's sprites after its triangles (`Fill.plan` returns the walk as data,
+  `Scene.steps` interleaves, `Scene.render` draws), beats sprites-last on every captured frame, including
+  three rotated in the emulator: `pm88_f1` 96.80% against 89.17% exact at the time of that comparison
+  (later fixes raise it, see below), and the game agrees with inline at 1159 of the 1178 pixels where the
+  two orders differ. `pm_render_ref.py` draws inline too (a `_cell_done` hook per walk handler) and equals
+  `Scene.render` on all 15178 drawn pixels of `pm88_f1` (`../py/parity.py`). The settlement building
+  (`byte6 == 2`, the fort's keep) took `pm88_f1` from 95.93% to 96.80%.
+- Later lands: everything a later land draws is ported except `byte6` 18 and 28 (`SPEC.md` §6
+  "Every category"). `Sprites.placeEntity` returns every frame a record draws, in order (these
+  categories draw two to ten); `EntityRec` has `B15`, `B32`, `W18`, `Icons`, `B33`, `B44` and
+  `pm_export.py` writes them (loaders treat them as 0 in older exports). `Sprites.packedLerp` is `$11f1a`
+  word for word (the borrow between the packed x and y halves put about one sprite in ten a pixel
+  off). With each snapshot's state scored against the screen in the *next* `$f898` snapshot, 27 frames
+  from 12 views on lands 0, 5, 25 and 60 match pixel for pixel, water tick included
+  (`scratchpad/pm121/allpairs.txt`, scratch only); the inline scores on the mission-1 captures rose
+  from 94.26-97.83% to 99.69-99.99% (`pm78_settle` stays 94.62%: its two buffers disagree).
+- Gates: `order_test.fsx` 99.99 / 94.62 / 99.69 / 99.97 / 99.92 / 99.81 (`SPEC.md` §6);
+  `baseline.fsx` the 160 terrain hashes unchanged; stepper `--selfcheck` 23/23 on `assets` and
+  `assets_k60`; the walkthrough `showboat verify` clean; logic, stepper and Godot builds (the `pm118/`
+  scripts are scratch only).
 
-## Verification status (119th pass) — seasons, pan and zoom
+### Seasons, pan, zoom, weather, a second land
 
-**Seasons** (`SPEC.md` §4 "Seasons"). `word[$57fd0]` is a season, 0/2/4/6. At
-world build `$1ab60` copies one of three source versions of the grass slots
-`$1d`-`$2e`, held inside the pattern table itself, over the live slots. Every
-tick `$1abaa` fades 16 pixels towards the season's source through a 13-bit
-LCG, and advances the season when the LCG wraps, 512 ticks later. The tree
-frames (`+{0,3,6,9}` at `$116c6`) follow `$57fd0` at once. `Season.fs` ports
-both routines. `Season.fading` reproduces the whole 16 KB table byte for byte
-on seven captures, and the Hatari screenshots match settled season 2 at
-88-89% of terrain pixels. `assets/dither.bin` needs no per-season export: the
-live slots are recomputed from the sources it already holds. The earlier
-mismatch between `dither.bin` (pm74_late) and `entities.json` (pm88_f1) came
-from the game itself: `pm88_f1` is one tick into the fade into season 2, so it
-shows season 1's grass under season 2's trees.
+- **Seasons** (`SPEC.md` §4 "Seasons"). `Season.fs` ports `$1ab60` and `$1abaa`; `Season.fading`
+  reproduces the whole 16 KB table byte for byte on seven captures; the Hatari screenshots match the
+  settled season 2 at 88-89% of terrain pixels. `assets/dither.bin` needs no per-season export: the live
+  slots are recomputed from the sources it already holds. The mismatch once seen between `dither.bin`
+  (`pm74_late`) and `entities.json` (`pm88_f1`) came from the game: `pm88_f1` is one tick into the fade
+  into season 2, so it shows season 1's grass under season 2's trees.
+- **Zoom** (`SPEC.md` §5). The walks take loop counts and start offsets from the `$fe04` geometry, so
+  `Fill.planQ*` is the same code over N x N cells; against emulator captures at zooms 1-7, terrain away
+  from sprites matches 99.2-99.7% and sprite pixels 74-84%. `sprites/prop32_sheet_raw.bin` is the 32 x 32
+  building sheet (27 frames per sheet). `Projection.projectGrid` is float and agrees with the game's
+  corners within a pixel at 78-95% of vertices; the exact integer reconstruction is scratch only.
+  A mid-render capture records the tick after the one its displayed frame used, so scorers try all four
+  water ticks.
+- **Weather** (`SPEC.md` §7). `Weather.draw` ports `$1a856` from `assets/weather.bin`; winter and autumn
+  frames of land 5 match the game. The stepper and the Godot view do not draw it yet.
+- **A second land.** `assets_k60/` against mission 1's `assets/`: the four sprite sheets (`$33000`,
+  `$37c7c`, `$312a0`, `$3af1c`), the palette, HUD tables, strings and headings are byte-identical; the
+  backdrop differs in the minimap (rows 6-133) and the side-shield strip under it (rows 134-152, x 7-63),
+  `dither.bin` only in slots `$1d-$2e` (a different point of the season fade), `tables.json` only in
+  `height_bias_fec4`. Scored against the screen in the next `$f898` snapshot at the RAM's water tick
+  (camera (45,74), yaw `$f0`) the frame matches pixel for pixel; the stepper's `--shot` and the game's
+  screen give the same colour at five sampled ST coordinates.
 
-**Pan.** `export_entities` now reads `pm88_f1` itself (`--entities-ram`) and
-walks the whole map's buckets (276 records, each with its address).
-`Sprites.recordJitter` recomputes the building/tree jitter for the camera
-window; it reproduces the 53 stored jitters at the capture camera. At two
-cells panned in the emulator, the exported records draw the same frame as the
-capture's own records. `sprites/sprite_triggers.json` is hand-maintained;
-`pm_export.py` no longer overwrites it.
+### The minimap
 
-**Zoom** (`SPEC.md` §5). `$57ffc` is the zoom index and HALF; `$13f60` sets it
-with `$ff9c = $13f82[index]` and the `$fe04` geometry. The walks take their
-loop counts and start offsets from that geometry, so `Fill.planQ*` is the same
-code over N x N cells. `$12244` draws buildings and trees from a 32 x 32
-(zoom 1-3), 32 x 24 (4-5) or 16 x 16 (6-7) copy of the art;
-`sprites/prop32_sheet_raw.bin` is the new 32 x 32 export, and each sheet holds
-27 frames. Against emulator captures at zooms 1-7, terrain away from sprites
-matches 99.2-99.7% and sprite pixels 74-84%.
+`pm_render_ref.draw_minimap` (diagnostic) matches the master 100% from the `$418ae` source and 94.5%
+from colour plane B (the stand-in a from-scratch port uses); `TerrainView.cs` draws the panel with a
+camera-window box (`assets/reference/godot_screenshot_minimap_90th.png`). Mapping, palette table and the
+per-frame deltas are in `SPEC.md` §7 "The HUD minimap" (cell (x, y) of `$418ad` is pixel (x, y + 6);
+the port's origin `(1, 6)` is relative to `$418ae`).
 
-Gates: `stepper --selfcheck` 23/23 (16 yaws + zooms 1-7); `scratchpad/pm118/
-baseline.fsx` identical (160 terrain hashes + entities at zoom 4);
-`order_test.fsx` unchanged (96.80 / 97.83 / 96.57 / 94.26). Scripts:
-`scratchpad/pm119/` (`season_check.fsx`, `pan_check.fsx`, `zoom_check.fsx`,
-`jitter_check.fsx`). Screenshots: `assets/reference/stepper_seasons_119th.png`,
-`stepper_zoom_119th.png`.
+### The Godot scene
 
-Open: `Projection.projectGrid` is float and agrees with the game's corners to
-within a pixel at 78-95% of vertices (an exact integer reconstruction exists in
-`scratchpad/pm92/proj_ref.py`); Godot stays at zoom 4; a mid-render capture
-records the tick after the one its displayed frame used, so scorers try all
-four water ticks.
-
-## Verification status (118th pass) — the frame as a draw plan; sprites drawn inline
-
-`Fill.plan` returns the terrain walk as data (64 `Cell`s in draw order, two
-`Tri`s each) and `Scene.steps` interleaves each cell's sprites after its
-triangles, as `$f898` → `$115e0` does. `TerrainView.cs` draws with
-`Scene.render`, over the `$78000` master (`assets/backdrop.bin`). Against the
-game's own screen the inline order beats sprites-last on every captured frame,
-including three rotated in the emulator (`pm88_f1`: 96.80% vs 89.17% exact; the
-game agrees with inline at 1159 of the 1178 pixels where the orders differ).
-Also in this pass: the span walker draws rows `0..totalRows-1` (the port drew one
-extra row); the camera-change dither phase (`Fill.withPhase`, `$f8e4`); sprites
-at every yaw on the capture cell; the `byte6 == 2` settlement building (the fort's
-keep); `pm_render_ref.py` draws inline with the phase and matches `Scene.render`
-pixel for pixel on `pm88_f1`. Away from sprites the terrain matches the game at
-99.7-99.96% (`scratchpad/pm118b/`). Details and the six-capture table: `SPEC.md`
-§4 and §6, "Draw order". The plan is also what the slow-motion viewer replays.
-
-## Verification status (91st pass) — Task 2: the entity pass is live in Godot with a real record stream
-
-`tools/pm_export.py` `export_entities` now also emits, into `assets/entities.json`:
-
-- `render_entities[]` — one frame's `$47970` per-cell bucket walk (the SIGNED
-  `$51b66` offset, the record address, the `byte6`/`b5`/`b7`/`b14`/
-  `b17`/`b31`/`group`/world-cell fields), the same chain parse as
-  `tools/pm_render_ref.py` `load_ram`'s entity block. It covers the whole map;
-  the building/tree jitter is computed per camera (`Sprites.recordJitter`).
-- `entity_ctx` — the per-frame `Sprites.drawEntities` constants (yaw / anim /
-  sel_group / tile_off / rot_phase / sheet paths), baked for the mission-1 start
-  pose (cam 36,47, yaw `$f0`).
-
-`Sprites.drawEntitiesArr` (a C#-friendly array wrapper on `drawEntities`) is
-called from `TerrainView.cs` right after `Fill.walk`, into the same
-`Fill.Buffer` (now `Scene.render`, at every camera cell). Feeding it the real
-53-record stream + the `$3f364` corners from `pm88_f1.ram` produces a
-covered-pixel set **byte-identical to `pm_render_ref.draw_entities`** —
-2881/2881 px, all ported `byte6` in {0,4,6,8,14,24}
-(`scratchpad/pm91_ent_fs.fsx` / `pm91_ent_py.py`). Real Godot `--write-movie`
-screenshot: `assets/reference/godot_screenshot_entities_91st.png` (run
-`res://scenes/Main.tscn`, not bare `--path .`) — ~25 trees + the 26-record
-banner ring + the man on the hill, over the projected terrain + minimap.
-
-`pm_render_ref.py`'s `COMPOSITE_CATS` stays `{14}` (its exact-index score is
-against `pm78_settle`/`pm88_f1`, whose two compose buffers disagree on the
-entity layer — 89th); the from-scratch Godot port has no reference-buffer
-problem, so it draws all ported categories.
-
-**Task 1 (minimap per-event overlay) — premise mostly refuted.** See
-`SPEC.md` §9 item 6: the `$78000` master's minimap region + the `$3f86c`
-control plane are byte-identical across `pm78_settle`/`pm73_fight`/`pm74_late`/
-`pm89_pan_e`; the game draws no camera-viewport rectangle; the only real
-per-frame delta is the `$11f82` selected-unit marker + static chrome. An
-ownership *tint* is unconfirmed (no ownership-change capture exists).
-
-No emulator or port-runtime *behaviour* change → regression net skipped;
-selftest 807124/0/8 unchanged since the 67th. Baseline `detcheck 500000` on
-`pm78_settle` clean.
-
-## Verification status (90th pass) — Task 3 (HUD minimap) + Task 4 (the entity pass, ported + cross-checked)
-
-Tooling + asset + doc + `Terrain.fs` / `Sprites.fs` / `pm_render_ref.py` /
-`TerrainView.cs`; **no emulator change** (regression net skipped; selftest
-807124 / 0 / 8, unchanged since the 67th). Terrain 94.4% and the
-`COMPOSITE_CATS = {14}` 94.9% are untouched.
-
-- **Task 3 — the HUD world minimap. Mapping + raster path CLOSED.** Live-traced
-  `scratchpad/pm67_ok_pre.snap` through the briefing-OK poke into `$13b9a`, plus
-  a full-frame trace of `pm88_f1`:
-  - It is **baked once into the `$78000` master by `$13b9a`, not drawn per
-    frame** — a settled compose buffer's minimap region is byte-identical to
-    the master (`pm88_f1`: 0 px diff; the only per-frame change near it is a
-    generic `$11f82` 8 × 11 sprite ≈ screen `(37..47, 46..60)`).
-  - `$13b9a` `$df8c`-copies a frame bitmap, then builds a **64 × 128 byte
-    per-cell source buffer at `$418ae`** (≈ colour plane A) and
-    **`$e6ee` rasters it 1:1** into the master. **Mapping: `screen = (cellX + 1,
-    cellY + 6)`, no scaling** (98.8% land/water agreement, 2442 cells).
-  - `$e6ee` LUTs the source byte → shifter palette index (100% deterministic):
-    `Terrain.minimapPaletteIndex` / `pm_render_ref._minimap_palette_index`.
-  - **Ported**: `pm_render_ref.draw_minimap` (diagnostic — **100%** vs the
-    master from the `$418ae` buffer, 94.5% from the type plane) and
-    `TerrainView.cs` draws the minimap + a live camera-window box into the
-    top-left, verified with a real Godot `--write-movie` screenshot
-    (`assets/reference/godot_screenshot_minimap_90th.png`).
-  - **Still open**: the per-event overlay (territory tint + lord dots + a
-    fuller viewport rect) — drawn on game events, not in a still frame.
-- **Task 4 — the per-cell entity pass, ported + cross-checked byte-exact.**
-  `Sprites.fs` gains `EntityRec` / `EntityCtx` / `entityFrame` / `blitEntity` /
-  `drawEntities` (replays `$115e0` as a post-terrain far→near pass in `walkQ3`
-  cell order, the same approximation `pm_render_ref` uses). A `dotnet fsi`
-  harness (`scratchpad/pm90_xcheck.fsx`) vs a `pm_render_ref` import
-  (`pm90_xcheck.py`) on identical synthetic corners + record fields:
-  **13/13 cases identical covered-pixel sets + indices**, `byte6 ∈ {0, 4, 8,
-  14, 24}` — men (incl. the `+0x40` armed gate and the melee→nothing case),
-  props (`r7 ∈ {0x0d, 0x0e}` special-cases + the tile-set offset), animals,
-  banners, and the `$1182a` centroid markers. `pm_render_ref.draw_entities`
-  was aligned to use the centroid for `byte6 6/24` to match. **Not wired into
-  a live Godot frame** — the from-scratch port has no object-record source; the
-  call site + record-field contract are documented inline in `TerrainView.cs`.
-
-## Verification status (89th pass) — Task 2: the `byte6 == 4` building/tree frame formula is pinned + live-verified
-
-Tooling + asset + doc + `Sprites.fs`; no emulator or port-runtime change. The
-terrain-only 94.4% and the `COMPOSITE_CATS = {14}` 94.9% are both untouched.
-
-- **`byte6 == 4` (buildings/trees, `$37c7c` 32 × 24) frame formula — pinned,
-  live-verified.** Handler `$1168c` (`$1162e[4]`; `$1165c[4] == 0`, so it blits
-  inline via `$12244` → `$12326`/`$124a8`). Disassembled `$1168c`/`$12244`, then
-  live-traced D2 at `$12288` (the `mulu #$1e0` frame-index multiply) for the 25
-  building records in `pm88_f1`:
-  ```
-  r7 = record[7]
-  r7 == 0x0d            -> frame 0x0d          ($116a8 special-case)
-  (r7 & 0x7f) == 0x0e   -> frame 0x0e          ($116c0 special-case, no offset)
-  else                 -> frame (r7 & 0x7f) + word[$11746 + word[$57fd0]]
-  ```
-  `word[$57fd0] = ($58146 & 3) * 2` is a per-mission tile-set selector (even,
-  0..6); the table at `$11746` is `{0:0, 2:3, 4:6, 6:9}` (index 8+ is code).
-  Mission 1: `word[$57fd0] == 4` → `+6`, so `r7` 0x11/0x10/0x0f → frame
-  0x17/0x16/0x15 — matched the live D2 exactly (0x17, 0x16, 0x0e observed).
-- **The 32 × 24 word-plane decode is byte-exact.** Aligned the decoded frame 23
-  against `pm78_settle`'s `$24400` live tree pixels character-for-character over
-  the whole opaque canopy — an exact match. Format confirmed from `$124a8`:
-  rows of `[mask, p0, p1, p2, p3]` big-endian words, 2 groups of 16 px per row
-  (20 B/row), opaque where mask bit 0.
-- **Position is a sub-cell lerp with an address-jitter, byte-exact vs the live
-  D0/D1.** `$1168c` does `bsr $11f1a` (NOT the centroid path) with a `fx/fy`
-  derived from the *pointer* values:
-  ```
-  A2 = &$47970[cellY*64 + cellX]     ; bucket-array slot address
-  A3 = record address ; A0 = &$3f364[row*64 + col*4]   ; cell TL corner addr
-  fx = (((A2 + A3) & 0xffff) << 3) & 0xff              ; $11692 lsl.w #3
-  fy = (((A2 + A3) & 0xffff) + (A0 & 0xffff)) & 0xff   ; $11698 add.w A0
-  ```
-  then `$12272` applies `−4/−8` → raw anchor `(lerpX + 0x38, lerpY − 16)`.
-  Computed `(215, 67)` for record `$4d4c2` matched the live D0/D1 at `$12288`
-  exactly. (Faithful only for a port that replays the game's own record-pool
-  layout; a from-scratch port substitutes any deterministic scatter.)
-- **`byte6 == 8` (animal) also live-verified** — D2 = 0x123/0x124 at `$11ab6`,
-  matching `0x117 + (((record[14] + [$ff9a]) & 0xff) >> 5)*2 [+anim]`.
-  **`byte6 == 24`** (settlement/territory marker) disasm-derived from `$117b0`:
-  `record[7] + 0x100`, CENTROID position (`$1182a`), `$33000` sheet; mission 1
-  has 12 boundary markers (`r7` == 0x10 → frame 0x110).
-- **`pm_render_ref.py`**: `_entity_frame` `byte6 == 4` branch now uses the real
-  formula; `load_ram` computes `tile_off` + the per-record `fx4/fy4` jitter;
-  `draw_entities`' "prop" path is a sub-cell lerp + `(px − 8, py − 16)` (the
-  +64-inset-space equivalent of the raw anchor above). **`COMPOSITE_CATS`
-  stays `{14}`** — adding `byte6 == 4` still *lowers* the score, but not from a
-  formula error: `pm78_settle`'s two compose buffers disagree on the entity
-  layer by ~14.6 k px (`$115e0` redraws a *subset* of entities per frame,
-  double-buffered), so neither reference buffer holds all 25 trees. Even scored
-  against `$24400` (the buffer *with* the trees) it is only 20% — because most
-  of the 25 aren't in either buffer of this mid-flip capture. Needs a clean
-  single-buffer populated capture (see Task 1 below).
-- **`Sprites.fs`**: added `frameForProp` / `propTileOffset` / `frameForSettlementMarker`
-  / `propJitter` / `propScreenPos` / `decodeFrameWord` (the 32 × 24 / 16 × 16
-  word-plane decoder). F# lib builds clean; still not wired into `Fill.fs` /
-  `TerrainView.cs` (89th did not reach Task 4).
-- **Task 1 (a populated second reference) — findings, not a capture.** The
-  mission map is a pure function of the world RNG seed `$12c9a` (→ `$58146`) +
-  `$5809c` (map-size override), consumed by `$13b9a`/`$10d1e` on the briefing-OK
-  click. "Between Pages 1-5" is mission 1 and always rolls the procedural
-  generator; `$58148 < $2000` ("small preset") already gives ≈10-13 lords.
-  Mission 1's own map has `byte6 ∈ {0,2,4,8,14,16,24}` map-wide, but only
-  `{0,2,4,14}` land in the default camera window — the `byte6` 16/24 markers
-  sit NW of the player start. A camera poke (`$4bb3a`/`$4bb3c`) brings them into
-  view but re-triggers per-frame terrain redraw → the 86th's giant-blob capture
-  artifact (`scratchpad/pm89_pan_*.snap`, ~2.3 k px/frame instability on a
-  panned camera), so it is not a pixel-scoring reference. A genuinely different,
-  town-dense map needs the full campaign (missions gate on completion) or a real
-  mission-file. `pm88_f1`/`pm78_settle` stays the anchor.
-- **89th did NOT reach:** Task 3 (minimap) and Task 4 (wire `Fill.fs` /
-  `TerrainView.cs` + the F#-vs-Python cross-check). Deferred to the 90th.
-
-## Verification status (88th pass) — Task 2: both "blockers" were one indexing bug; the flag category composites
-
-- **Live single-stepped `$115e0` from `pm78_settle`** (`u f898`, register probes
-  at `$fdb2` / `$115f4` / `$115f8` / `$11f88`). The two 87th "blockers" were the
-  same mistake:
-  - `$115e0` walks the **`$47970` per-cell bucket array** (word per cell, index
-    `(cellY*64 + cellX)*2`); the head word goes into `adda.w D4,A3` with
-    `A3 = $51b66` and **D4 is SIGNED**, so scenery/animal records live in the
-    pool *below* `$51b66` too — the 87th's stride-50 slot scan of `$51b66` never
-    saw them. Records are per-cell singly-linked via `(int16)word[record+0]`.
-  - The dispatch is `word[$1162e + byte6]` with **`byte6` even, 0..30**. The
-    87th read `byte6` as `0..15` and built a `2×cat` table, so every frame
-    formula except the men's was keyed on the wrong record byte (that is why
-    the compositor lowered the score). `word[$1162e + 2N]` == the 87th's cat-N
-    handler for every N.
-  - So the **26-record marching group is `byte6 == 14`** (87th "cat 7",
-    flag/banner) and **IS drawn by `$115e0` → `$11bf4` → `$11f78` → `$11f82`**,
-    frame `record[5] + 0x13e == 0x13f`. `$11b0c` never fired because it is
-    `byte6 == 28`.
-  - Position: `$11f12` reads `fx = record[9]`, `fy = record[11]` (low byte of
-    the BE word at +8/+10), lerps the cell's 4 **raw** `$3f364` corners, then
-    `+0x3c` X / `−8` Y. All 26 computed positions match the live `$11f82`
-    D0/D1 to ≤ 1 px.
-  - `$16738`→`$e6ee` indexes `$1675a` by `record[5] + D4` (D4 ∈ {0,15}, the
-    `$4bb41` blink) and `record[8]` into a **descriptor table at `$e762`**, not
-    a pixel. In `pm78_settle` it is the selected-group roster and the blink is
-    "off", so most of its 27 `$16738` calls draw nothing.
-- **`pm_render_ref.py`**: entity parse rewritten as the `$47970` bucket walk
-  (signed links, below-`$51b66` pool); `_entity_frame` re-keyed on `byte6`;
-  `COMPOSITE_CATS = {14}` composited **for real** into the q3 output (the q3
-  synthetic captures aside — q0/q1/q2 skip it, their reference buffers are
-  unreliable per the 86th). `pm78_settle` **94.4% → 94.9%** exact-index
-  (pm74_late 94.3→94.7, pm70_iso 93.8→94.3); 47 % of the flag sprites' 577 px
-  match. `byte6 ∈ {4,8}` (buildings/trees on `$37c7c`, animals) are parsed +
-  positioned but **not drawn** — their frame formulas still lower the score.
-- **`Sprites.fs`**: added `frameForBanner` (`byte6 == 14`), corrected the
-  `entityScreenPos` / animal doc, documented the `byte6`-even dispatch + the
-  `$47970` signed-offset bucket walk. F# lib builds clean; not yet wired into
-  `Fill.fs` / `TerrainView.cs`.
-- **Not done (89th):** the `byte6 == 4` (`$37c7c`) building/tree frame formula
-  (needs the `[$57fd0]` offset table), per-category frame *counts*, then the
-  per-cell hook into `Fill.fs` / `TerrainView.cs` + the byte-exact F#-vs-Python
-  cross-check. No emulator or port-runtime code changed — tooling/asset/doc +
-  `Sprites.fs`; the terrain-only 94.4% is untouched.
-
-## Verification status (87th pass) — Task 2 started: the sprite rip
-
-- **Settled which blit path draws the iso-terrain entities** with a live trace
-  of one frame of `scratchpad/pm78_settle.snap`. It is **`$115e0`
-  (`pm_draw_cell_entities`), called inline per cell from the terrain grid-walk
-  handler** (`$fccc` at `$fdbc`) — right after the cell's two triangles, in
-  far→near order, so a man/tree/building is composited over its own cell and
-  occluded by nearer cells drawn later. `$16738`→`$e6ee` is a **separate
-  pass**: in `pm78_settle` it runs only from `$165b2` (the selected-group
-  marker — one glyph per object record whose byte 5 == `[$57ffe]`, positioned
-  by *raw* cell coordinate, blinking via `$4bb41` bit 0) plus HUD glyphs.
-  `assets/headings.json` feeds that path only, not the terrain men.
-- **Ripped the `$115e0` category dispatch** from the RAM jump tables + a
-  disassembly of each per-category prepare handler + the live men-path trace,
-  into `assets/sprites/sprite_triggers.json`:
-  - dispatch is `$1162e` (prepare) / **`$1165c`** (blit) — SPEC recorded the
-    blit table at `$1165a`, 2 bytes low;
-  - cat 0 (men) blits via **`$11f78`→`$11f82`**, *not* `$1187c` (which is a
-    melee/dying sub-case reached only from `$11c8a`'s mode branches);
-  - position is a bilinear lerp of the cell's 4 **projected** corners
-    (`$11f1a`, from `$3f364`) by the entity's sub-cell fraction
-    `(record[8]&0xff, record[10]&0xff)`, then `screenX += 0x3c`,
-    `screenY -= 8`;
-  - frame formulas for **all of cats 0–15** are ripped. Men and animals use a
-    **camera-yaw-relative** facing (`(heading + [$ff9a]) >> 5`); the `+0x40`
-    "armed" man variant = `record[7]` bit 4.
-- **Four sprite sheets, all decoded** and ripped by `pm_export.py`: `$33000`
-  8×11 byte-planes (full **352 frames** — was first 64 = men only;
-  `sheet_contact.png` now shows animals / glyphs / icons), `$312a0` 16×16
-  word-planes (small structures / siege engines / effects), `$37c7c` 32×24
-  word-planes (buildings + trees), plus the `$e6ee` glyph path. Contact PNGs
-  for all three (`*_sheet_contact.png`).
-- **`pm_render_ref.py` grew an entity compositor** (`_decode_frame_byte` /
-  `_decode_frame_word` for all 3 sheets, `$51b66` record parse, per-cell
-  bucketing, the `$11f1a` sub-cell lerp + a centroid, `_entity_frame` for cats
-  0/2/3/4/7/13/14). It runs as a **diagnostic only** — it currently *lowers*
-  the score (94.4% → 92.3%) so it is not composited in. Two blockers:
-  (a) `pm78_settle`'s main visible entity is a **26-record cat-14 marching
-  group** whose draw path is unconfirmed (`$11b0c` had zero trace calls —
-  cat 14 is drawn some other way); (b) the trace's cat-2/cat-7 scenery is
-  **not in `$51b66`** (a separate settlement/scenery array feeds the buckets).
-- **Not done (88th):** trace the cat-14 + scenery draw paths, fix the
-  compositor, get the re-score climbing; exact frame counts; the cat-2
-  `[$57fd0]` table; the `$11886` goods table; then `Sprites.fs` wiring + a
-  byte-exact cross-check. No emulator or port-runtime code changed —
-  tooling/asset/doc only; the tracked terrain 94.4% is untouched.
-
-## Verification status (86th pass)
-
-- **The q0/q1/q2 terrain renderer is byte-exact — the low `--ram` score
-  against `pm83_q{0,1,2}c` is a bad-capture artifact, not a renderer bug.**
-  Live single-stepped `pm83_q2c` (`walk_q2`, yaw `$90`): all **128/128**
-  `$ef62` calls in a frame match the live game (vertices + colour, zero
-  diff); the dither `A5` phase is byte-exact every scanline on two traced
-  triangles; the `$e420` DDA span endpoints (`ixL`/`ixR`) are byte-exact
-  every scanline of a traced 27-row triangle; `_fixed_slope` and the fill's
-  plane/tile model re-verified against fresh `$f000`/`$e3e6`/`$e420` disasm.
-  With geometry + colour + phase + spans + dither bytes all byte-exact, the
-  port's per-triangle output is byte-identical to the game's, so the 35–50%
-  exact-index measures the **captured reference buffer**, not the renderer.
-  The `pm83_q2c` `load_ram` heuristic picks `$24400` (35.4%) but `$1c700`
-  scores **52.7%** and matches the `$78000` master's HUD strip far better
-  (25 vs 153 px); `pm83_q1c` and `pm83_q2c` share a draw pointer yet need
-  opposite buffers — `pm83_q2c` was frozen mid-swap. The large-error regions
-  are coast/diamond-edge-shaped (65×49, 89×24 at the window edges), not 8×11
-  unit clusters; the ±1 errors are one frame-wide blob — both consistent
-  with sub-step camera drift between the displayed framebuffer and the
-  frozen `$3f364` corners. `pm78_settle` (clean natural-settle capture)
-  still scores 94.4%, residual = genuine unit sprites. **Next: a clean
-  q0/q1 capture via natural in-game rotation, or Task 2 (sprite rip). No 7th
-  rasteriser hypothesis against `pm83_*c`.** Full detail in SPEC.md §9
-  item 1. No code changed this pass (doc + scratchpad tooling only).
-
-## Verification status (85th pass)
-
-- **Continued further: live-traced the q0/q1 dither-formula lead, found a
-  real bug, but it's not the answer.** `[$ffa2]` (used by `$e3e6`'s A5 setup)
-  has been assumed `== 2*[$ff9e]` since the 78th pass; live-checked across
-  all 4 captures, that only holds for `pm78_settle`/`pm83_q2c` —
-  `pm83_q0c`/`q1c` have `[$ffa2] = 2*[$ff9e] + 128` (frame-stable, checked
-  across 20 consecutive `$ef62` calls). Single-stepped a real q1 triangle's
-  full A5 sequence and matched it exactly once the correction was applied
-  **inside** the mod-128 wrap (a first attempt outside the wrap was silently
-  wrong for about half the rows — caught by checking the raw hex, not by the
-  final score). But even with hardware-exact A5 and dither-table bytes
-  (both verified against live memory), that traced triangle still scored
-  0/327 against the reference — its colour is a totally different terrain
-  family (grass vs rock), not a phase-shifted grass, so this specific
-  mismatch is an occlusion/wrong-cell bug, not dither. Applying the
-  correction frame-wide made q0/q1's aggregate score WORSE (46.6%→40.4%,
-  44.6%→40.3%) — reverted the application (kept the `phase_bias` parameter
-  at default 0 for future use) rather than ship a net-negative change. Full
-  detail in SPEC.md §9 item 1. **q0/q1/q2's giant-blob mismatch is still
-  unexplained** — the next lead is occlusion/cell-identity, not the dither
-  formula.
-
-- **Continued (same pass): the `0x1c` coast-slope residual theory is wrong,
-  corrected.** Instrumented `walk_q3` with proper painter's-order occlusion
-  tracking (cross-checked against the official pixel count). Every tall
-  `0x1c`-forced coast triangle checked has **zero surviving pixels** in the
-  final composite (nearer cells always fully overdraw them) — only 12/14469
-  drawn pixels in `pm78_settle` end up `0x1c`-owned. **The real yaw-`$f0`
-  residual is unit sprites**: 8 of 44 connected mismatch components account
-  for 94% of all mismatches, several matching the documented 8×11 sprite
-  bounding box almost exactly. Task 2 (sprite rip, never started) is the
-  real path to closing this gap, not more rasteriser work. Also live-ruled-
-  out two more candidate causes for a hidden multi-segment mechanism (an
-  arbitrary-length edge-reload stream reading stale data past `$ef62`'s
-  record, and a garbage byte at record offset 1) — both read consistently
-  zero across 6-8 live triangle draws, neither fires in practice.
-  **New open lead, not yet traced**: q0/q1/q2 have a qualitatively different
-  mismatch — 95-97% of their mismatched pixels form ONE giant connected
-  region (not sprite-sized blobs), and the diff panel shows a diagonal
-  stripe/banding pattern suggesting the shared dither-phase formula
-  (verified against only one yaw-`$f0` triangle in the 80th pass) may not
-  generalise to other yaws' colour/topY/HBIAS combinations. This plausibly
-  subsumes the 84th's green-vs-black anomaly but that link is inferred, not
-  traced. See SPEC.md §9 item 1 for the full breakdown. No code changed this
-  half of the pass — findings only.
-
-- **Found + fixed a real ~64px right-edge under-clip / left-shift framing bug**
-  (distinct from, and not the explanation for, the 84th's unexplained
-  green-vs-black anomaly — see below). SPEC.md §3 already documents that
-  `$ef62`'s own clip check (`screenX <= 255`) runs on the *raw* `$3f364`
-  vertex, before the `+64` HUD-strip inset that only gets applied later via
-  the `$e420` draw pointer (`$e3e2`). `pm_render_ref.py --ram`'s `load_ram`
-  bakes the `+64` inset into the corners *before* calling `ef62_raster`, so
-  its old hardcoded `screenX <= 0xFF` clip was checking the wrong
-  (already-shifted) coordinate — truncating the real iso window's right
-  ~64px on every `--ram` score. `ef62_raster`/`_dda_walk` now take an
-  `x_inset` parameter and clip against `[x_inset, x_inset+0xFF]`; callers on
-  raw (non-inset) coordinates default to the old `[0, 0xFF]` behaviour
-  unchanged (verified byte-exact equivalent to the raw-space clip shifted by
-  `+64`, `scratchpad/` synthetic check). `TerrainView.cs` had the mirror bug
-  the other way — `Fill.fs`/`Projection.fs` stay in raw (pre-inset) space
-  throughout (matching `$ef62`'s own clip), so the live Godot blit was
-  reading the buffer at `(x, y)` directly instead of `(x - 64, y)`, rendering
-  the whole terrain layer 64px too far left and leaving the true right ~64px
-  of the window always magenta. Fixed the same way (shift at blit time,
-  mirroring the real `$e3e2` pointer offset) and **verified with a real GPU
-  screenshot** at yaw step 11 (q2): the island silhouette visibly shifts
-  right by the expected amount vs the 83rd's pre-fix shot
-  (`assets/reference/godot_screenshot_yaw11_q2_85th.png` vs `_yaw11_q2.png`).
-- **Effect on scoring is mixed, and that's expected, not a red flag.**
-  `pm78_settle` (q3, yaw `$f0`) ticks up slightly (94.0% -> 94.4% exact-index,
-  regression gate held). q0/q1/q2 exact-index moves *down*
-  (49.7%->46.6%, 47.3%->44.6%) or flat (35.4%->35.4%) even though the
-  **absolute count of correctly-matched pixels went up for every capture**
-  (q0 6436->6815, q1 7050->7690, q2 3952->4386) — the fix draws ~1200-2300
-  more pixels per capture in the newly-un-clipped right strip, most of which
-  really are terrain in the reference frame (51-70% idx 11-13 in that strip,
-  confirmed against the real captured `$1c700`/`$24400` buffer, not
-  inferred), but that strip is dominated by the *already-documented*,
-  *still-open* coast-slope dither residual (SPEC.md §9 item 1), so its
-  per-pixel accuracy is low. The exact-index percentage is the wrong lens for
-  this fix; treat it as closing a real geometry gap, not as progress on the
-  dither residual.
-- **Did NOT explain the 84th's specific green-vs-black anomaly** (cells
-  (36,47)/(37,47)/(38,47) in `pm83_q2c.ram`, screen y>=155 near the iso
-  window's right edge). Checked directly: those cells' own raw
-  (pre-inset) screen-X tops out around 210 — nowhere near either the old
-  (255) or corrected (255, same bound, just applied in the right space)
-  clip boundary, in either direction. **Also ruled out `$f202`
-  vertex-clip-and-resubmit for these specific cells** the same way: none of
-  their corners' raw X/Y ever leaves `$ef62`'s `[0,255]x[0,199]` in-bounds
-  test, so the real hardware never routes them through `$f202` either. The
-  anomaly's actual cause is still open — see SPEC.md §9 item 1 for the
-  current best guess (still the coast-slope dither residual, now more
-  exposed since more of the true drawing area is attempted).
-- `pm_render_ref.py`'s cross-check: a synthetic triangle straddling the raw
-  X=255 boundary, rasterised once in raw mode (`x_inset=0`) and once in
-  inset mode (`x_inset=64`, corners pre-shifted +64 like `load_ram` does) —
-  the two covered-pixel sets are identical after a `+64` shift (56/56 pixels,
-  exact), proving the `pm_render_ref.py`-side fix and the `TerrainView.cs`
-  shift-at-blit fix are the same fix applied at two different pipeline
-  stages, not two different behaviours.
-
-## Verification status (83rd pass)
-
-- **All 4 yaw-quadrant grid-walk handlers are ported and wired in.**
-  `Fill.walkQ0`/`walkQ1`/`walkQ2` join the 78th/80th's `walkQ3`, dispatched by
-  `Fill.walk` (mirrors `$f97e`/`$f982`'s `((yaw+8)>>5)&6` select). `TerrainView`
-  now has real camera rotation: PageUp/PageDown step `YawSteps` through all 16
-  values (arrow keys still pan the camera cell).
-- **Trace-verified, not guessed.** For each of q0/q1/q2, rotated the live
-  camera via the keypad-poke recipe (below) to a yaw in that quadrant's range,
-  captured RAM, resumed to the settled PC, and dumped registers at the first
-  `$ef62` call — the vertex assignment (which corner went to D0/D1/D2) and the
-  colour-plane choice (type vs height) matched the disassembly-derived port
-  exactly at every cell checked (one per quadrant; SPEC.md §4 has the
-  addresses and register values). Also fixed a stale-address bug this
-  surfaced: the true entry points are `$f98e`/`$fa9a`/`$fbb4`, not the
-  `$f98c`/`$fa98`/`$fbb2` an earlier pass recorded (2 bytes low each).
-- **Cross-checked against the F# port byte-exact** on synthetic corner/terrain
-  data designed to exercise every CLEAR/SET branch and both comparison
-  directions (`scratchpad/pm83_synth_check.py` + `.fsx`, `dotnet fsi`, same
-  method as the 81st's `walkQ3` check) — identical covered-pixel sets for all
-  three new handlers.
-- **Re-verified live in Godot with real GPU screenshots** at two more camera
-  angles: yaw step 3 (quadrant 0, `$30`) and yaw step 11 (quadrant 2, `$b0`) —
-  `assets/reference/godot_screenshot_yaw{3_q0,11_q2}.png`. Both show a
-  distinctly different island silhouette from the mission-1-start q3 shots,
-  through the same `RenderFrame()` path.
-- **Score against real captures is lower for the new quadrants** (35-50 %
-  exact-index vs q3's 94 %, `pm_render_ref.py --ram` on
-  `scratchpad/pm83_q{0,1,2}c.ram`) — this is the *already-documented* residual
-  (tall coast-slope dither needs a multi-segment DDA chain the port doesn't
-  model, SPEC.md §9 item 1) showing up more at these camera angles, not a new
-  geometry bug: the live-trace check above confirms the vertex/colour
-  assignment is exact.
-
-## Verification status (82nd pass)
-
-- **`Fill.walkQ3` + `Projection.projectGrid` are wired into `TerrainView.cs`
-  and run live in real Godot — verified with actual screenshots, not just a
-  build.** Godot 4.7.2-stable mono is installed at
-  `C:\Users\Dave\Documents\GitHub\Godot_v4.7.2-stable_mono_win64` (the 81st
-  pass's environment didn't have it on `PATH`; this one does). Shape (1) from
-  "Next steps" below: `TerrainView` (now `Node2D`, was `Node3D`) builds a
-  `Fill.Buffer` from `Projection.projectGrid` + `Fill.walkQ3` each time the
-  camera cell changes, blits `Index` through `assets/palette.json` into an
-  `Image`, and shows it on a `TextureRect` (`TextureFilter = Nearest`, magenta
-  = uncovered, same convention as `render_faithful.png`). Arrow keys pan
-  `CamCellX`/`CamCellY` (clamped to the terrain planes' bounds) and re-render
-  — yaw is fixed to quadrant 3 (`$f0`), the only grid-walk handler ported.
-- **Verified two ways:** `dotnet build PowerMongerPort.sln` (0 errors), and
-  real GPU screenshots — `godot.exe --quit-after 5 --write-movie <path>.png`
-  (NOT `--headless`: headless maps to the `dummy` rendering driver, which
-  returns a null image from `get_viewport().get_texture().get_image()`; the
-  normal `windows`/Vulkan driver renders for real even with no interactive
-  session). Two camera cells (`36,47` mission-1 start; `28,40`) produce two
-  different island slices from the same `RenderFrame()` code path —
-  `assets/reference/godot_screenshot_cam36_47.png` /
-  `_cam28_40.png`. The `36,47` shot's island silhouette and dither texture
-  match `assets/reference/render_faithful.png` (the Python reference render)
-  by eye — same shape, same dark-ridge patch, same speckle pattern.
-- **Found and fixed a real structural bug, not a porting bug:**
-  `Godot.NET.Sdk` writes its C# build output to
-  `$(MSBuildProjectDirectory)/.godot/mono/temp/bin/<config>/`, i.e. relative
-  to wherever the `.csproj` itself sits — NOT to the Godot project root found
-  by walking up to `project.godot`. The skeleton's original layout put
-  `PowerMongerPort.csproj` inside `game/`, so the build output landed in
-  `game/.godot/mono/temp/bin/Debug/` while Godot's runtime script loader only
-  ever looks under the *project root's* `.godot/mono/temp/bin/Debug/` — every
-  script instantiation failed with "Cannot instantiate C# script ... class
-  could not be found", silently, with no build error (`dotnet build` and even
-  `godot --build-solutions` both "succeed"). Fixed by moving the `.csproj` to
-  the project root (`port/godot/PowerMongerPort.csproj`); the `.cs` sources
-  stay in `game/` (default SDK glob still finds them). This was exactly the
-  kind of thing the 81st pass's "ship unverified C#" concern was about — it
-  would not have been caught without an actual Godot install.
-
-## Verification status (81st pass)
-
-- **`godot/logic/Fill.fs`: the closed rasteriser is now F#, byte-exact.**
-  `walkQ3` / `ef62Raster` / `fixedSlope` / `ditherIndex` are a 1:1 port of
-  `tools/pm_render_ref.py`'s `walk_q3` / `ef62_raster` / `_fixed_slope` /
-  `dither_index` — cross-checked against the Python reference on synthetic
-  triangles (every rasteriser path: general split, flat-top, the `$f134`
-  reorder, the `0x1c` coast-force, the mid-vertex slope switch, water
-  shimmer) and a synthetic 8×8-cell grid (both `walk_q3` diagonal-selector
-  branches): identical coverage counts and pixel-index hashes. `PmLogic.fsproj`
-  builds clean. Not yet wired into `TerrainView.cs` — see "Next steps".
-- `Terrain.Map`'s flag-plane accessor renamed `SeaStatic` → `DiagonalSelector`
-  (it was still named for the pre-78th "corners unmoved, skip fill" reading).
-
-### 80th-pass verification status (superseded above for the rasteriser; still current for projection/dither/sea)
-
-- **Projection: closed.** `pm_render_ref.py`'s projected 9×9 vertex grid equals
-  the game's own `$3f364` corner buffer **byte-exact** (81/81 vertices).
-  `EYE`/`HORIZON` confirmed `$ff98`=320 / `$ff96`=130.
-- **Quadrant-3 walk + rasteriser: closed, 96 % coverage, ~94 % exact-index.**
-  `pm_render_ref.py --ram` ports `$fccc` + `$ef62` + the real `$e420` 16.16 DDA
-  span walker (`_fixed_slope`, `_dda_walk`) from the game's own `$3f364`
-  corners (+64 px inset). Against `scratchpad/pm78_settle.ram` it covers 96 %
-  of the game's real per-frame terrain layer and scores **~94 % exact / ~95 %
-  within ±1** palette index (`pm74_late` 93.9 %, `pm70_iso` 93.4 %). The
-  `--assets` path still uses the naive quadrant-0 walk (shape proof only).
-- **No "sea fill" (79th).** The composed `$1c700` buffer differs from the
-  `$78000` master **only** in the island blob + a few sprites — the open sea
-  (idx 14/15) is byte-identical, **baked into the master** (`$13b9a`, once per
-  mission). A per-frame port draws only the projected 8×8 grid; a full frame
-  composites that over the master. `render_faithful_composite.png` shows it.
-- **Dither phase: closed (80th).** Live single-step of `$e420` showed `A5`
-  wraps **modulo 128** inside the colour's slot (`SPEC.md` §4): `A5 =
-  $2e000 + colourByte*128 + ((8*y) mod 128)`. This killed the 79th's empirical
-  `DITHER_COLOUR_BIAS = -1`, which was compensating for the missing wrap and
-  only happened to be right for 16–32 px-tall triangles.
-- **Residual (≈6 %):** unit sprites on the hill (`walk_q3` is terrain-only),
-  the tall `0x1c` coast slopes (game dithers idx 1-7, port lands nearer flat),
-  a ~1 px NE island edge, and the other 3 quadrant handlers
-  (`$f98c`/`$fa98`/`$fbb2`, camera rotation — not ported).
-- **Sprites: `$11f82` decode closed** (8×11 four-bitplane, `[mask,p0,p1,p2,p3]`
-  per row; `sheet_contact.png` decodes as the 4 faction-colour man blocks).
-  **HUD / border / minimap:** category dispatch (`$115e0`) mapped
-  (`SPEC.md` §6/§9); per-category frame rip, HUD glyphs, the `$78000` master
-  build and the minimap compositor are still deferred (Task 2, not started).
+Godot 4.7.2-stable mono, .NET 8. `TerrainView.cs` (a `Node2D`) builds a `Fill.Buffer` from
+`Projection.projectGrid` and `Scene.render` whenever the camera changes, blits `Index` through
+`assets/palette.json` into an `Image` shown on a `TextureRect` (nearest filter, magenta = uncovered),
+over the `$78000` master (`assets/backdrop.bin`). Arrow keys pan (clamped to the planes' bounds),
+PageUp / PageDown rotate through all 16 yaw steps, Y cycles the season. Verified with real GPU
+screenshots, not just a build: `godot --quit-after 5 --write-movie <path>.png` (not `--headless`, whose
+`dummy` driver returns a null image), cameras `36,47` and `28,40`, yaw step 3 (quadrant 0) and 11
+(quadrant 2): `assets/reference/godot_screenshot_{cam36_47,cam28_40,yaw3_q0,yaw11_q2,entities_91st,
+backdrop_118th,inline_118th,minimap_90th}.png`, with `render_faithful.png` (the Python reference render)
+matching the cam 36,47 shot by eye. `Godot.NET.Sdk` writes its build output relative to the csproj's own
+directory, so the csproj sits at the Godot project root (`godot/PowerMongerPort.csproj`) and the sources stay
+in `game/`; a csproj inside `game/` fails at runtime with "Cannot instantiate C# script ... class could not
+be found" and no build error.
 
 ## Why F# for logic, C# for Godot glue, no GDScript
 
@@ -705,8 +242,8 @@ hit sharp edges (generic node methods, the `partial` requirement). So:
 - **`godot/game/` (C#)** — thin node layer. `TerrainView.cs` is the only class:
   it calls `PmLogic` and blits the result to screen. Keep every node class
   here small and delegating. The `.csproj` itself lives at the Godot project
-  root (`godot/PowerMongerPort.csproj`), not inside `game/` — see "Verification
-  (82nd pass)" above for why that placement matters (it's not cosmetic).
+  root (`godot/PowerMongerPort.csproj`), not inside `game/` — see "The Godot scene" above
+  for why that placement matters (it's not cosmetic).
 - **No GDScript** — a second language with no share of the logic, and it can't
   call the F# lib without a C# shim anyway.
 
@@ -720,50 +257,10 @@ dotnet build PowerMongerPort.sln
 godot4 --path . scenes/Main.tscn      # or open project.godot in the editor
 ```
 
-Confirmed 82nd pass with a real install: **Godot 4.7.2-stable mono**. The
-project's `config_version`/features still say 4.3 and loaded/built/ran fine
-under 4.7.2 with no re-save needed; if a future Godot major bump complains,
-open once in the editor and let it re-save `project.godot`. .NET 8 SDK is
-assumed (`net8.0`, roll-forward covers newer installed SDKs fine).
+The project's `config_version`/features say 4.3 and load, build and run under 4.7.2 with no re-save;
+if a future Godot major bump complains, open the project once in the editor and let it re-save
+`project.godot`. .NET 8 SDK is assumed (`net8.0`, roll-forward covers newer installed SDKs).
 
-Expected result: the mission-1 island, dithered, at camera cell (36,47), yaw
-`$f0` — see `assets/reference/godot_screenshot_cam36_47.png`. Arrow keys pan
-the camera (clamped to the terrain planes' bounds); PageUp/PageDown rotate it
-through all 16 yaw steps (`assets/reference/godot_screenshot_yaw{3_q0,
-11_q2}.png` show two rotated views), all live re-render. Magenta = uncovered
-(the `$78000` master — HUD, stone border, baked sea — isn't exported yet,
-Task 2).
-
-## Next steps (in `SPEC.md` order)
-
-1. ~~Wire `Projection.projectGrid` + `Fill.walkQ3` into `TerrainView.cs`~~ —
-   **done, 82nd pass** (software-layer shape: `Fill.Buffer` → `Image` →
-   `TextureRect`). Two follow-ups if wanted, not required: (a) drop the
-   per-pixel dither for a fragment-shader height ramp (shape (b) from the
-   81st's options — `Terrain.flatPaletteIndex`, or the `colourByte`→index
-   table in `SPEC.md` §4), or (b) a `SubViewport` instead of a scaled
-   `TextureRect` if the port ever needs the raster to composite with other
-   Godot nodes (UI, sprites) rather than being the whole screen.
-2. Sprites (Task 2, **started 87th**): `assets/sprites/sprite_triggers.json`
-   has the `$115e0` category dispatch + per-category frame formulas; the full
-   `$33000` sheet is ripped. Remaining: per-category frame counts, cats
-   1/8/9/10/11/13/15, the `$37c7c` cat-2 row layout, then extend
-   `pm_render_ref.py` to composite each active entity (project its world
-   position, pick its frame, blit over the terrain layer in the far→near walk
-   order) and re-score vs `pm78_settle` (~94.4% → ~99% expected), then port
-   into `Sprites.fs` + wire the per-cell entity-bucket hook into `Fill.fs` /
-   `TerrainView.cs` with a byte-exact cross-check (81st/83rd method). Draw
-   per-cell inline in the grid walk — do not add a separate sorted pass.
-3. ~~Camera: the other 3 `pm_grid_walk_q*` handlers~~ — **done, 83rd pass**
-   (`Fill.walkQ0`/`walkQ1`/`walkQ2`, dispatched by `Fill.walk`; PageUp/PageDown
-   in `TerrainView.cs`). Remaining camera gap: **zoom** — 7 discrete geometry
-   sets (`assets/tables.json → zoom_geometry`), `Projection.Params.Zoom`/`Half`
-   are wired but only the zoom-index-4 constants have been exported/tested.
-4. The `$78000` master (HUD + stone border + baked sea) isn't exported —
-   `TerrainView`'s uncovered pixels stay magenta until it is (Task 2).
-5. The residual rasteriser inaccuracy (SPEC.md §9 item 1: the tall `0x1c`
-   coast-slope multi-segment dither spread) is more exposed at yaws other than
-   `$f0` (35-50% exact-index at q0/q1/q2 vs q3's 94%, `pm_render_ref.py --ram`
-   on `scratchpad/pm83_q{0,1,2}c.ram`) — LOW priority per the 81st/82nd's own
-   framing, but now affects most of the camera's range, not just the ~6%
-   residual at the mission-1 start yaw.
+Expected result: the mission-1 island at camera cell (36,47), yaw `$f0`, over the `$78000` master, with its
+trees, banner ring and men (`assets/reference/godot_screenshot_inline_118th.png`). Arrow keys pan, PageUp /
+PageDown rotate, Y cycles the season; all re-render live.

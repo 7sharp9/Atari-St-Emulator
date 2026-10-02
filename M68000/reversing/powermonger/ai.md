@@ -1,14 +1,42 @@
 # PowerMonger ST — the entity / commander decision loop
 
-Reverse-engineered from the live isometric battle view (70th pass), driven from
-`scratchpad/pm68_isoview.snap` (first mission, "Between Pages 1-5", one player
-island plus neutral villages). Every address is a RAM address in the relocated
-game image (base `$1050`); disassembled from the snapshot RAM
-(`scratchpad/pm70_iso.ram`, via `scratchpad/extract_ram.py`). Method: 25M-step
-traced resume (`ATARI_TRACE_EVENTS`), `trace_cfg.py --blocks`, plus `watch` on
-individual object-record fields to catch the writing PC.
+**Scope.** This file documents the per-entity behaviour state machine that drives every man and boat (the
+50-byte object records), and the pools updated beside it (animals, arrows, carrier pigeons): the iterator
+`$14b62`, the object record at `$51b66`,
+the 75-entry mode table `$14bb4` and its handlers, the group-order handlers that connect the entities to the
+commander AI, and the differential proofs of those routines against the real 68000. The commander AI that
+issues the orders (`$6522`), the order executor and the combat design are in `strategy.md`; the economy
+numbers the handlers touch (food, goods, settlements, the gatherer cycle) are in `economy.md`; rendering is in
+`graphics.md`; sound, save disks and the serial link are in `system.md`.
 
-## Evidence taxonomy (91st pass)
+Contents (section titles, in file order):
+
+- Evidence taxonomy; What the loop actually is (with "The simulation tick").
+- The iterator `$14b62`; then "Proofs against the real 68000: the iterator and its handlers": the Proven blocks
+  for the dwell/upkeep core, the movement modes, melee, the settlement heartbeat, the forest animator `$4342`,
+  the regroup dispatcher `$3c08`, `$4bc8` and the flag-bit-4 group teardown.
+- The object record (table and C struct); Spatial primitives (`$1648e`, `$164bc`, `$14262`, `$12d56`,
+  `$163ea`, `$16260`).
+- The behaviour modes (move/path, combat, group orders, static/upkeep/boats/effects); The entity FSM
+  (state diagram); Load-bearing handlers, pseudocode.
+- Where target selection happens, and what it reads; What each entity decides per tick.
+- Measured: the quiet view, the re-armed fight, natural runs on later lands; then "Proofs against the real 68000:
+  dying entities, groups, orders, animals and the `$15000` page": the Proven blocks for the dying-entity path
+  `$1623c`, the group dissolve `$2776`, the lord's work order `$5cde`, the revolt chain, shepherds / animals /
+  carrier pigeons, arrows and carrier pigeons, and the `$15000` page of mode bodies.
+- Open threads.
+
+**Method and sources.** First reverse-engineered from the live isometric battle view, driven from
+`scratchpad/pm68_isoview.snap` (first mission, "Between Pages 1-5": one player island plus neutral villages).
+Every address is a RAM address in the relocated game image (base `$1050`), disassembled from the snapshot RAM
+(`scratchpad/pm70_iso.ram`, via `scratchpad/extract_ram.py`). Method: a 25M-step traced resume
+(`ATARI_TRACE_EVENTS`), `trace_cfg.py --blocks`, and `watch` on individual object-record fields to catch the
+writing PC; later sections add differential tests of the routines against `callcap` of the real 68000
+(`tools/pm_fsm_ref.py` is the from-disassembly model, `tools/pm_fsm_diff.py` the harness). The developers'
+own symbol names (`powermonger_orig.sym`, 8-character truncations; `strategy.md` "Original names") are quoted
+as "original `name`" where a routine's role was checked against them.
+
+## Evidence taxonomy
 
 Claims in this file (and `strategy.md` / `economy.md` / `graphics.md` /
 `port/SPEC.md`) carry one of four confidence levels. The load-bearing ones are
@@ -16,14 +44,15 @@ tagged inline as **[Proven]** / **[Corroborated]** / **[Observed]** /
 **[Hypothesis]**; untagged prose is Corroborated-or-better.
 
 - **Proven** — exhaustive binary/dataflow reasoning, or differential equivalence
-  against the real 68000 over many states (the `detcheck`/Musashi standard).
-  Very little here is Proven yet; the renderer's `$ef62`/`$e420` path is the
-  closest (86th: 128/128 triangle inputs + every scanline's DDA span + dither
-  phase byte-exact vs a live single-step).
+  against the real 68000 over many states (the `detcheck`/Musashi standard). Each
+  `[Proven]` section below states its gate, state count and byte count. The renderer's
+  `$ef62`/`$e420` path (graphics.md) meets the same standard: 128/128 triangle inputs + every
+  scanline's DDA span + dither phase byte-exact vs a live single-step.
 - **Corroborated** — an independent static read (disassembly of the handler)
   **and** a dynamic check (a `watch` on the written field catching the PC, or a
-  register probe at the handler, or a frame diff) agree. Most of the FSM,
-  the record layout, the order pipeline, and the sprite frame formulas.
+  register probe at the handler, or a frame diff) agree. The record layout, the
+  mode-table groupings, the sprite frame formulas and every mode not named in a
+  `[Proven]` section.
 - **Observed** — true in the missions / traces actually run (mission 1
   "Between Pages 1-5", the `pm67`–`pm90` snapshots), not shown to hold in
   general. **Every strong negative below is at most Observed** unless it also
@@ -38,19 +67,23 @@ tagged inline as **[Proven]** / **[Corroborated]** / **[Observed]** /
 PowerMonger has **no per-unit-type AI** *(Observed — mission-1 traces; the
 dispatch through `$14bb4` is by mode opcode, not unit type, across every record
 seen, but a type-keyed branch elsewhere has not been exhaustively ruled out)*. It runs one **per-entity behaviour
-state machine**. Every man, boat, animal, projectile, spell effect and
-"pending order" in the world is a 50-byte **object record** in the array at
-`$51b66`. Each record carries a one-byte **mode opcode** at offset 31. Once per
-**simulation tick** the iterator `$14b62` walks all 511 records and, for each
-active one, `jmp`s through a 75-entry table at `$14bb4` to that mode's handler.
+state machine**. Every man and boat, and the building and marker records the
+people interact with, is a 50-byte **object record** in the array at `$51b66`
+(original `_sprites` / `_peeps`: 512 slots, slot 0 never walked, so records
+1..511). Animals (`$4ccd6`), arrows (`$4be00`), carrier pigeons (`$4c112`), trees
+(`$4d252`) and forest markers (`$4c5f4`) are separate pools updated by `$3e06` and
+`$4342`, not by this iterator. Each object record carries a one-byte **mode opcode**
+at offset 31. Once per **simulation tick** the iterator `$14b62` walks records
+1..511 and, for each active one, `jmp`s through a 75-entry table at `$14bb4` to
+that mode's handler.
 A handler integrates one tick of motion, tests the world, and usually rewrites
 its own mode byte to advance the state machine. Mode transitions *are* the AI;
 there is no separate planner.
 
 The "commander AI" (whether the Red/Green/Blue lords attack, recruit, or build)
-is a thin layer on top: it is expressed as **group-order records** in the table
-at `$51538`, one per army, holding a state enum and a link to the group's lead
-object record. The group-order state drives which mode the lead man is put into
+is a thin layer on top: it is expressed as **group records** in the table
+at `$51538` (one per captain's group, six per side; strategy.md "`$51538`"), holding
+a state enum and a link to the group's lead object record. The group-order state drives which mode the lead man is put into
 (`$10` march-to-cell, `$28` wait for recruits (get men), `$1a` take food from a town); the
 individual men then follow their own state machines toward the goal.
 
@@ -58,19 +91,20 @@ individual men then follow their own state machines toward the goal.
 
 `$14b62` runs once per pass through the sim-tick body `$13000` — see
 `strategy.md` "Where it runs — the sim tick `$13000`, disassembled" for the full
-call order and the 72nd-pass correction. In short: `$13000` **is** the tick;
+call order. In short: `$13000` **is** the tick;
 `$14b62` (at `$130c2`) and the executor `$6a3a` (at `$130c8`) run on *every*
 `$13000` call, not behind the `$57ff0`/`$57fee` gate (that gate is only the
 present-rate divider — `$1870` / `$12ce0` / the two renderers).
 
-Measured (72nd pass, 3M-instruction trace): the tick body runs **13× per 250
+Measured (3M-instruction trace): the tick body runs **13× per 250
 VBLs** — about once per 19 displayed frames, ≈ **2.6 Hz**. The tick is
 compute-bound in this instruction-counted emulator (one full body ≈ 19 VBLs of
-instructions; `$1870` only waits one VBL edge). The 70th-pass "97 in 25M / ~2.4
-Hz" is consistent. `$4bb3e` (long) is the master tick counter, bumped at
+instructions; `$1870` only waits one VBL edge). The 97 iterator passes in the 25M-step
+quiet view ("Measured" below, ~2.4 Hz) are consistent. `$4bb3e` (long) is the master tick counter, bumped at
 `$013034`; its low word `$4bb40` is the wrapping animation-phase value the
-iterator uses. `$14e4e` (population, written by the briefing OK click — see
-`README.md`) non-zero is the "a game is running" gate at `$1303a`; `$57ff2`
+iterator uses. `$14e4e` (original `_test_en...`: the protection check's result word, set to `$2c`
+by a correct answer, or to `population + $2c` by the cracked briefing OK handler, `README.md`
+and strategy.md "The campaign") non-zero is the "a game is running" gate at `$1303a`; `$57ff2`
 non-zero (paused) skips the AI + accounting + renderers but **not** the
 executor `$6a3a` or the entity iterator.
 
@@ -107,12 +141,23 @@ The loop tail:
 | `$16228` | `bsr $163ea` (relink spatial buckets, write back position) then fall into `$1622c` |
 | `$16202` | clamp D6 to `[0,$3fff]`, D7 to `[0,$1f40]`, then `$163ea` + next |
 | `$161c4` | same clamp, then re-sample terrain (`$1648e`): if the new cell is impassable, **revert to mode `$00`** and skip the position write; else clear the "blocked" flag (bit 5 of byte 7) and relink |
-| `$1623c` | dying-entity path (owner < 0, *Proven 121st*, below): count `18(A1)` down from `$a0`, stepping the flap phase `32(A1)`; at 0 stamp `$4bb3e` into `20(A1)`, credit the dead man's goods codes to a settlement/base leader in the same cell, then `byte6 := $0a` (equipment left lying) or `$20` + unlink |
+| `$1623c` | dying-entity path (owner < 0, Proven below, "the dying-entity path `$1623c`"): count `18(A1)` down from `$a0`, stepping the flap phase `32(A1)`; at 0 stamp `$4bb3e` into `20(A1)`, credit the dead man's goods codes to a settlement/base leader in the same cell, then `byte6 := $0a` (equipment left lying) or `$20` + unlink |
 
 Active-record count in this settled first-mission view: **~50 of 511 slots**,
 of which ~26 reach a handler each tick (the rest are `byte 5 == 0`).
 
-### [Proven] — the dwell/upkeep core, vs the real 68000 (93rd pass, RIDER 3b routine 2)
+## Proofs against the real 68000: the iterator and its handlers
+
+Method shared by the `[Proven]` blocks that follow: the routine is transcribed line by line from disassembly
+into `tools/pm_fsm_ref.py`, and the model is compared against `callcap` of the real routine over a corpus of
+natural and poked states, "isolate-by-disabling" (every record other than the one under test is disabled, so
+only the routine under test changes memory); a gate passes when every changed byte matches ("tracked bytes
+identical"). Branches the corpus cannot reach are asserted off with a `raise` and listed per block. The gate drivers
+of the earliest blocks (dwell/upkeep through the group teardown, the forest animator and `$4bc8`) are working scripts in
+`scratchpad/pm93`..`pm99`, `pm113` and `pm115`, indexed with their anchor snapshots in `scratchpad/ANCHORS.md`
+(`scratchpad/pm98/repro93.py`..`repro96.py` re-run the comparison set); the later gates are in `py/` (`py/README.md`).
+
+### [Proven] — the dwell/upkeep core, vs the real 68000
 
 `$14b62` has **no entry contract**: it `lea`s its own `$51b66` / `$47970` bases
 and reads everything else from fixed memory, so `callcap 14b62` runs the whole
@@ -130,7 +175,7 @@ negative → the `$1648e` water veto → `mode := $0`, forced anim trigger ± th
 `$5c80` wear-death path (`$5bd2`) is asserted **off** — `anim_wear` maxes at 44
 (`< $3c`) in all four captures.
 
-### [Proven] — the movement modes, vs the real 68000 (94th pass, RIDER 3b routine 2 cont.)
+### [Proven] — the movement modes, vs the real 68000
 
 `scratchpad/pm94/fsm_ref.py` extends the reconstruction with the four movement
 modes **`$06`** (`$14d32` walk-until-blocked), **`$08`** (`$14d7c` escort/orbit),
@@ -157,12 +202,12 @@ tracking a live entity), the `$2c` dead-target conversion, `$06` dwell→`mode $
   both `>> shift`, `dir_tbl[(dx<<5)+dy]`, per-quadrant fixup (`0x80-d` / `-d` /
   `d+0x80`).
 - **`$12d56`**: `cos = word[$1400a + 2h]`, `sin = word[$13f8a + 2h]` (the *same*
-  trig table as `$fecc`'s `A3`, 92nd); `x' = ((x·cos − y·sin)<<1)>>16` (Q15).
+  trig table as the renderer's `$fecc` `A3`); `x' = ((x·cos − y·sin)<<1)>>16` (Q15).
 - Asserted **off** (out of scope, same discipline as `$5bd2`): the chase-reached
   edge `$15302` (→ `$56a6` engage) and the group-state-8 hand-off `$1518a`
   (→ `$4bc8`) — no natural or poked state in the corpus reaches either.
 
-### [Proven] — the combat path (mode `$32` melee), vs the real 68000 (95th pass, RIDER 3b routine 3)
+### [Proven] — the combat path (mode `$32` melee), vs the real 68000
 
 `scratchpad/pm95/fsm_ref.py` extends the reconstruction with **mode `$32`**
 (`$1533c` melee) and its leaves **`$56a6`** (engage bookkeeping), **`$5590`**
@@ -176,12 +221,11 @@ Corpus is a **natural** capture: `pm73_fight` driven forward 10.6 M steps until
 then five more frames (`mel_g1..g5.snap`) as the battle escalates to 33 live
 mode-`$32` records — both armies in melee. Poked variants drive each branch.
 
-- **`$1533c`** — every branch: target-loss (`5(A3) <= 0` or `30(A3) == $3c`) →
+- **`$1533c`** — every branch: target-loss (`5(A3) <= 0`, or `30(A3) == $3c`, a routed man) →
   `$153a2` (self mode/prev `:= $2c`, epilogue `$161c4`); face-away
   (`17(A3) := 17(A1) + $80`); `31(A3) != $32` → `jsr $56a6`; **health drain =
   `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** applied `sub.b D0,45(A3)`
-  (the `>= 6` arm is a **hard `moveq #0`**, not `min(44,6)` — the old ai.md text
-  was wrong); `> 0` → mutual retaliation (`48(A3) := self`, `31(A3) := $32`,
+  (the `>= 6` arm is a **hard `moveq #0`**, not `min(44,6)`); `> 0` → mutual retaliation (`48(A3) := self`, `31(A3) := $32`,
   `bra $1622c`, no epilogue); `<= 0` → `jsr $5590` then fall into `$153a2`.
 - **`$56a6`** — the `btst #6/#4,7(A3)` gates that skip `$5778` when the target's
   flags are clear; `31/30(A3) := $32`; `48(A3) := attacker`; the `$5730` vs
@@ -198,33 +242,34 @@ mode-`$32` records — both armies in melee. Poked variants drive each branch.
 Asserted **off** (no corpus/poked state reaches; `raise` guards it — these are
 the deferred *regroup/group modes*): `$5778 → $4bc8` (group hand-off, group
 state `!= $d`); `$5590 → $560a → $3c08` (the true ROUT, unit survives — the
-`$3c08` dispatcher itself is now Proven, 98th, but the ROUT wrapper that
+`$3c08` dispatcher itself is Proven below, but the ROUT wrapper that
 overrides `prev_mode := $3c` and the `$5628` group cleanup around it is not);
 the `$5590` tail calls `$2776` / `$1b8c`.
 
-### [Proven] — the settlement heartbeat (mode `$7c`), vs the real 68000 (96th synthesised / 97th natural corpus, RIDER 3b routine 4)
+### [Proven] — the settlement heartbeat (mode `$7c`), vs the real 68000 (synthesised corpus, then a natural one)
 
 `scratchpad/pm96/fsm_ref.py` extends the reconstruction with **mode `$7c`**
 (`$157e6`, the per-settlement heartbeat) and its leaves **`$16848`** (side ↔
 settlement-owner reconcile) and **`$163b8`** (the manpower drain — economy.md
 §3a). Isolate-by-disabling differential test:
-- **97th, natural corpus (`scratchpad/pm97/diff_pm97.py`): 99/99 tracked bytes
+- **Natural corpus (`scratchpad/pm97/diff_pm97.py`): 99/99 tracked bytes
   identical over 27 states, all 12 branch families.**
-- 96th, synthesised corpus (`diff_pm96.py`): 85/85 over 25 states.
+- Synthesised corpus (`scratchpad/pm96/diff_pm96.py`): 85/85 over 25 states.
 (obj / `$4e514` leader / `$4f916` settlement / `$47970` bucket regions compared.)
 
-Mode `$7c` requires `word[$57fd0] == 0`. `$57fd0` starts at
+Mode `$7c` requires `word[$57fd0] == 0`. `$57fd0` (original `_season`) starts at
 `g_tileset_sel = (byte[$58146] & 3) * 2` (= 4 for mission 1) — but it is **not
 static**: `$1abaa` (`$130b0` in the tick) rotates it `($57fd0 + 2) & 6`, cycling
-{0,2,4,6}, once per 512 `$1abaa` calls (one wrap of its pixel-order LCG; 118.4M steps measured). So mode `$7c` — and
-the same-gated `$1505e` (mode `$16`), `$15a46` / `$15b7a` (porter/regroup) — run
+{0,2,4,6}, once per 512 `$1abaa` calls (one wrap of its pixel-order LCG; 118.4M steps measured). So mode `$7c`, and the three same-gated
+entries into it (`$1505e` in the mode-`$16` farmer-home handler, `$15a46` in the mode-`$4e` merchant arrival,
+`$15b7a` in the mode-`$5e` fisher arrival), run
 in mission 1 during the brief `$57fd0 == 0` phases, **transiently, not never**.
-No prior capture froze a `$7c` record because the windows are short.
-The 97th's **`pm97_map0`** is a real mission-1 world with `$57fd0` pinned to 0 at
+No ordinary capture froze a `$7c` record because the windows are short.
+The natural corpus **`pm97_map0`** is a real mission-1 world with `$57fd0` pinned to 0 at
 world-build (the value the game visits anyway — just pinned so the phase
 persists): 80M steps later, 19 natural `$7c` markers on 10 real `$4f916`
 settlements (2 under construction), entered by the game's own `$1505e` / `$15a46`
-/ `$15b7a`, leaders at `loyalty_pressure` 316 / 318. The 96th (synthesised) poked
+/ `$15b7a`, leaders at `loyalty_pressure` 316 / 318. The synthesised corpus poked
 `$57fd0 := 0` on pm78_settle and repurposed inert `$68` records into fake `$7c`
 markers.
 
@@ -232,14 +277,14 @@ markers.
   `jsr $16848` + `jsr $5c80` (twice); `D5 := post-decrement dwell`; reload
   `18(A1) := $580a6[side·$20].word0`; `jsr $163b8`; `btst #4,7(A1)` →
   straight to the epilogue; construction (`7(settl) == $a`, a Ruin → `16(settl)++`, at
-  `>= $78` → `nation_kind := dest_cell % 10` via `divu #$a`/`swap`, `== 7` (a WorkShop) →
-  `kind := $10`, `16 := 0`); `troops_field·4` vs `food`
+  `>= $78` → building kind (`7(settl)`) `:= dest_cell % 10` via `divu #$a`/`swap`, `== 7` (a WorkShop) →
+  `6(settl) := $10` (its render category), `16 := 0`); `troops_field·4` vs `food`
   (`== 0` → skip; `>= food` and `D5 == $ff9c` → `loyalty += 2`;
   `< food` and `D5 == $ff9c` → `loyalty −= 1`); epilogue `$161c4`.
 - **The loyalty accumulator only moves when `D5 == $ff9c`** — i.e. on the first
   `$7c` tick after the marker is parked with dwell `#$ff9d` (`−99` → `−100`).
-  On an ordinary steady-state pulse `D5 == 0` and neither `±` branch runs. The
-  75th pass's "one step per settlement pulse" was wrong.
+  On an ordinary steady-state pulse `D5 == 0` and neither `±` branch runs, so the accumulator does not
+  move one step per settlement pulse.
 - **`$163b8`** — `settlement.leader.food −= 1`, floored at 0. This is
   the entire per-settlement upkeep drain; in mission 1 it fires only during the
   intermittent `$57fd0 == 0` phases (above).
@@ -249,77 +294,58 @@ choice — a whole routine; every `field·4 < food` state is arranged with
 `(14(A1) & 3) == 3` so it is skipped), **`$550e`** (hunger revolt, loyalty
 kept `< 600`), **`$5c2c`** (owner reconcile inside `$16848`).
 
-`$5cde` is Proven on its own (122nd, below); the heartbeat proof still keeps it
-off. The dying-entity path `$1623c` is Proven (121st, below).
-Mode `$28` / `$2e` (`$15302`) handlers are disassembled but not yet
-differentially tested (`$2e` calls the same `$56a6`).
+`$5cde` is Proven on its own (below, "the lord's work order `$5cde`"); the heartbeat proof still keeps it
+off. The dying-entity path `$1623c` is Proven below too.
+Modes `$28` and `$2e` (`$15302`) are covered by the `$15000`-page gate (the last
+Proven block; `$2e` calls the same `$56a6`).
 
-### [Proven, 8/9 branches] — the forest animator `$4342` (`_do_fore...`; formerly "herd servicer"), vs the real 68000 (113th pass)
+### [Proven, 8/9 branches] — the forest animator `$4342` (original `_do_fore...`), vs the real 68000
 
-`$4342` (from `$3e06`/`pm_flag_health`, once per sim tick) is a no-op in every
-*natural* capture including the 97th's `pm97_map0` (every `tree_state`-bit-7 tree
-has `worker_obj == 0`; every `$4c5f4` marker has `progress == 0`), so — per
-the 96th/97th's own flagged next step — this pass built a synthesised corpus
-directly on `pm97_map0` (8 live forest ops, 68 markers). No entry contract (it
-`lea`s all three of its own tables: `$57f68` forest ops, `$4d252` trees,
-`$4c5f4` markers).
+`$4342` (called from `$3e06`, once per sim tick) animates the on-screen forest markers. It is a no-op in every
+*natural* capture, including `pm97_map0` (every `tree_state`-bit-7 tree has `worker_obj == 0`; every `$4c5f4`
+marker has `progress == 0`), so its gate uses a synthesised corpus built on `pm97_map0` (8 live forest ops,
+68 markers). It has no entry contract (it `lea`s all three of its own tables: `$57f68` forest ops, `$4d252`
+trees, `$4c5f4` markers). Structure and field meanings: economy.md §2.
 
-`tools/pm_fsm_ref.py` `call_4342` + a new leaf `call_16808` (bucket-chain
-insert, the CLAIM path's screen-record spawn — `bucket_unlink`/`$16778` was
-already Proven from the entity FSM). Differential test
-`scratchpad/pm113/diff_4342.py`: **110/110 tracked bytes identical over 9
-states, 8 branch families** (natural idle; the CLAIM mechanism itself, its
-precondition-guard failure, and its "no empty op slot" fallback; both
-ramp-in sub-cases — unclamped and clamping to `+$30`; the dwell-not-yet-
-expired skip; a real `$164bc` step that doesn't arrive; and the owner-sync
-byte14 write). Pre-registered bar (100% over ≥ 9 states, ≥ 7 families): PASS.
+The model is `tools/pm_fsm_ref.py` `call_4342` plus a leaf `call_16808` (bucket-chain insert, the CLAIM
+path's screen-record spawn; `bucket_unlink`/`$16778` was already Proven from the entity FSM). Differential test
+`scratchpad/pm113/diff_4342.py`: **110/110 tracked bytes identical over 9 states, 8 branch families**
+(natural idle; the CLAIM mechanism itself, its precondition-guard failure, and its "no empty op slot"
+fallback; both ramp-in sub-cases, unclamped and clamping to `+$30`; the dwell-not-yet-expired skip; a real
+`$164bc` step that doesn't arrive; and the owner-sync byte-14 write). Pre-registered bar (100% over >= 9
+states, >= 7 families): PASS.
 
-Two real bugs caught and fixed mid-pass, both in the *new* leaf machinery
-(`bucket_unlink`/`call_16808`), not in `$4342` itself — worth recording since
-they're a general 68k-semantics trap, not PowerMonger-specific:
-1. **Missing full-skip guard.** The first draft routed `byte15 == 0` into the
-   "moving" branch instead of skipping the marker entirely (`beq $452a` in the
-   real asm) — caught immediately by the **natural** ("nat", zero pokes) state
-   showing 235 spurious recon-only changes against a real hardware delta of
-   zero, i.e. the *simplest possible* state caught it before any synthesised
-   one was even needed.
-2. **Unsigned vs. sign-extended address arithmetic.** `bucket_unlink`/
-   `call_16808` computed `OBJ + rec_off` as a plain unsigned add. Every prior
-   caller only ever passed a *positive* rec_off (a normal `$51b66`-table
-   entity, which always lives above `OBJ`), so this was never wrong before.
-   `$4342`'s markers live at `$4c5f4`, *below* `OBJ` — a real `adda.w
-   D0,An` sign-extends the 16-bit word first, so their rec_off is genuinely
-   negative. Fixed with a shared `_objaddr(rec_off) = OBJ + s16(rec_off)`
-   helper in both functions (backward-compatible for every existing positive
-   caller, since sign-extension of a small positive word is a no-op).
+Two bugs in the model's leaf machinery (not in `$4342`) are general 68000-semantics traps, so they are
+recorded here:
+1. **Missing full-skip guard.** The first model routed `byte15 == 0` into the "moving" branch instead of
+   skipping the marker entirely (`beq $452a` in the real asm). The **natural** state (zero pokes) showed 235
+   spurious recon-only changes against a real hardware delta of zero, so the simplest possible state caught it.
+2. **Unsigned vs. sign-extended address arithmetic.** `bucket_unlink`/`call_16808` computed `OBJ + rec_off`
+   as a plain unsigned add. Every other caller passes a positive `rec_off` (a `$51b66`-table entity lives above
+   `OBJ`), but `$4342`'s markers live at `$4c5f4`, *below* `OBJ`, and a real `adda.w D0,An` sign-extends the
+   16-bit word first, so their `rec_off` is genuinely negative. The shared helper
+   `_objaddr(rec_off) = OBJ + s16(rec_off)` fixes both functions and is a no-op for positive offsets.
 
-**Not yet closed — the "arrived" branch (bset the tree's bit7 back on +
-`$16778`-unlink the marker).** It reuses the now-twice-proven
-`bucket_unlink`/`_objaddr` machinery (in the remove direction; the claim path
-above proves the insert direction extensively), so it's Corroborated, not
-untested guesswork — but every synthesised poke that reaches it (an exact-
-target degenerate `$164bc` divide-by-zero, and a 1-unit-off normal division)
-reproducibly hangs the real emulator within ~3000 steps, parked in a timer-
-interrupt `rte` ($14e4) per the loop detector. Not root-caused; `bucket_unlink`
-alone can't infinite-loop on these inputs (it's a bounded walk with no cycle
-risk from what was poked), so this is either a genuinely separate real-68k/
-game-state interaction the synthetic state exposes, or a still-missing
-precondition (a marker that was never actually `$16808`-inserted at that cell
-to begin with, unlike a naturally-claimed one). Left in
-`scratchpad/pm113/diff_4342.py` (excluded from the pass bar, with the repro
-inline) for whoever picks this up next.
+**Not closed: the "arrived" branch** (bset the tree's bit 7 back on and `$16778`-unlink the marker). It reuses
+the proven `bucket_unlink`/`_objaddr` machinery in the remove direction (the claim path proves the insert
+direction extensively), so it is Corroborated rather than untested, but every synthesised poke that reaches
+it (an exact-target degenerate `$164bc` divide by zero, and a 1-unit-off normal division) reproducibly hangs
+the real emulator within ~3000 steps, parked in a timer-interrupt `rte` (`$14e4`) per the loop detector. Not
+root-caused: `bucket_unlink` alone cannot loop forever on these inputs (it is a bounded walk with no cycle
+risk from what was poked), so this is either a separate real-68000/game-state interaction that the synthetic
+state exposes, or a missing precondition (a marker that was never actually `$16808`-inserted at that cell,
+unlike a naturally claimed one). The repro is left in `scratchpad/pm113/diff_4342.py`, excluded from the pass
+bar.
 
-**REGIONS note:** the new forest tables ($4c5f4/$4d252/$57f68, `HERD_REGIONS` in the code) are deliberately
-NOT folded into `pm_fsm_ref.REGIONS` — doing so widens every `$14b62`
-(`reconstruct()`) test's tracked window too, and surfaced a real, separately-
-owned gap (a live-hardware write into the tree table's unknown `_w4`
-field, `$4d819`, that `reconstruct()` doesn't model) that broke `repro93`/`94`'s
-established 675/675 and 1335/1335 bars. `pm_fsm_ref.HERD_REGIONS` holds them
-instead; a `$4342` test adds `pm_fsm_ref.REGIONS = pm_fsm_ref.REGIONS +
-pm_fsm_ref.HERD_REGIONS` itself (process-local, never mutates the module for
-anyone else) — see `diff_4342.py`'s own top for the pattern.
+**Tracked-region note.** The forest tables (`$4c5f4`/`$4d252`/`$57f68`; `HERD_REGIONS` in the code, a name
+kept from the first reading of `$4d252`) are deliberately not folded into `pm_fsm_ref.REGIONS`: doing so
+widens the tracked window of every `$14b62` (`reconstruct()`) test and surfaced a real, separately owned gap (a
+live write into the tree table's unknown `_w4` field, `$4d819`, that `reconstruct()` does not model) which broke
+the established 675/675 and 1335/1335 bars. `pm_fsm_ref.HERD_REGIONS` holds them instead; a `$4342` test adds
+`pm_fsm_ref.REGIONS = pm_fsm_ref.REGIONS + pm_fsm_ref.HERD_REGIONS` itself (process-local, never mutates the
+module for anyone else; see the top of `diff_4342.py`).
 
-### [Proven] — the regroup / return-home dispatcher `$3c08`, vs the real 68000 (98th pass, RIDER 3b routine 5)
+### [Proven] — the regroup / return-home dispatcher `$3c08`, vs the real 68000
 
 `$3c08` is the `word[$57fd0] != 0` branch of the mode-`$7c` dispatch `$157ba`,
 and a leaf `jsr`'d from 17 sites across the entity FSM and the group-order
@@ -354,17 +380,18 @@ negative controls (prev-mode table entry, `w22` low byte, the byte-6 guard, the
   `20 := cell & $3f`, `21 := $80`, `22 := ((cell & $1fc0) << 2) | $80`),
   `mode(31) := $10`, and `iff owner > 0` clear category byte `6 := 0`. The units
   then walk home under the already-Proven mode-`$10` handler.
-- **The flag-bit-4 group-teardown sub-path — now Proven too (99th, RIDER 3b
-  routine 6).** `$3c46`: `D2 := 42(A1)` (group offset); `!= 0` → `jsr $37c2` ;
+- **The flag-bit-4 group-teardown sub-path** (Proven, see the teardown block below). `$3c46`: `D2 := 42(A1)` (group offset); `!= 0` → `jsr $37c2` ;
   `group.state($51538+D2) := 7` ; `jsr $17a46` ; `prev_mode(30) := $4c` ; fall
   into the `$3ca2` tail. See the sub-section below.
-- **`$4bc8` — now fully Proven (115th + 116th passes), all three real call
-  sites** (`$5778`, `$1518a`, `$5c2c`). See the sub-section below.
-- **`$2776`** (the `$5590`-tail and `$25d6` group dissolve): Proven, 122nd
-  (below). **Still Corroborated:** `$1b8c`-via-`$5778`, a *different* `$1b8c`
+- **`$4bc8`** is Proven for all three real call sites (`$5778`, `$1518a`, `$5c2c`): see the next block.
+- **`$2776`** (the `$5590`-tail and `$25d6` group dissolve): Proven (below, "the group dissolve `$2776`"). **Still Corroborated:** `$1b8c`-via-`$5778`, a *different* `$1b8c`
   call site from the one proven here.
 
-### [Proven] — `$4bc8` contact reconcile ("nation-pair peace-break + player notify"), vs the real 68000 (115th + 116th passes)
+### [Proven] — `$4bc8` contact reconcile (nation-pair peace-break + player notify), vs the real 68000
+
+(Original `_setup_f...`, inferred to be "set up fight": it decides what a contact between two sides does. The
+role above is read from the body, not from the name.)
+
 
 `tools/pm_fsm_ref.py` `call_4bc8` (+ leaves `_classify`/`$4de2`, `call_4dae`/
 `$4dae`, `call_35f4`/`$35f4`, `call_3744`/`$3744`). Entry: `A0`/`A1` = the two
@@ -387,10 +414,10 @@ construction in every test state (lead's bit5 flag set) since that table
 isn't in `REGIONS` — a diff there would be invisible regardless, so it's
 flagged as a followup rather than silently assumed correct. `$c5ee`
 (player-notify) / `$311a` (relation-event) are asserted, not verified, to
-write only outside every tracked region (same precedent as `$17a46`, 99th
-pass) — never differential-tested directly.
+write only outside every tracked region (same precedent as `$17a46`, in the
+teardown block below) — never differential-tested directly.
 
-**Kind 2 (leader/settlement) — closed, 116th pass.** Reached via `$5c2c`'s own
+**Kind 2 (leader/settlement).** Reached via `$5c2c`'s own
 call (`A0` = a `$4e514` leader record, always kind 2) or `$4de2`'s "close to
 home settlement" redirect; drives `$4ee8` + `_case_4cd0`. `$4ee8`: `self_side`'s
 own `$13c`-stride `$51538` record carries 6 word arrays (bases 28/76/64/40),
@@ -401,21 +428,21 @@ re-enters `$4bc8` against that lead (real `$4bc8`'s `movem.l #$fffe` prologue
 saves/restores nearly every register, so the recursion is transparent to the
 caller's own D5/D7 bookkeeping — `tools/pm_fsm_ref.py` mirrors this by
 save/restoring its `_NOTIFY_OTHER_*` globals around the recursive call, a real
-bug the first draft missed). `_case_4cd0`'s tail then walks every settlement
-this leader owns (`2(leader)` chain) and every garrison at each (`10(settl)`,
-then `24(garrison)` chain), `$4dae`-resetting any that isn't already
+bug the first model missed). `_case_4cd0`'s tail then walks every settlement
+this leader owns (`2(leader)` chain) and every resident man at each (`10(settl)`,
+then the `24(man)` chain), `$4dae`-resetting any that isn't already
 group-linked-active (bit4 + `42 != 0`), bit6-flagged, or in a regroup mode
 (`$5c`/`$60`/`$62`). Differential test `scratchpad/pm115/diff_4bc8_kind2.py`:
 **20/20 tracked bytes identical over 2 states, 2 branch families** — one
 exercising the `$4ee8` recursion landing on a real nested mismatch/notify
 (verified the recursion's register-restore fix actually matters, not just
-theoretical), one exercising a 2-settlement chain with a 2-garrison sub-chain
+theoretical), one exercising a 2-settlement chain with a 2-man sub-chain
 covering all three skip conditions plus the normal reset (spot-checked
 per-record: the reset and both skips landed on exactly the intended slots,
 not a "both sides happen to agree on doing nothing" false pass). `$4bc8` is
-now Proven end-to-end for all three real call sites.
+Proven end-to-end for all three real call sites.
 
-### [Proven] — the flag-bit-4 group teardown behind `$3c08` (`$37c2` / `$1d70` / `$1b8c` / `$17a46`), vs the real 68000 (99th pass, RIDER 3b routine 6)
+### [Proven] — the flag-bit-4 group teardown behind `$3c08` (`$37c2` / `$1d70` / `$1b8c` / `$17a46`), vs the real 68000
 
 `tools/pm_fsm_ref.py` `call_37c2` / `call_1d70` / `call_1b8c` / `call_17a46`;
 the `raise` in `call_3c08`'s bit-4 arm is gone. Differential test
@@ -439,12 +466,12 @@ bite; per-family delta address classes are exactly the disasm's fields; two
   - **bit 7 set** (re-parent / hand-off): `lead.owner(5) := byte[grouprec−47]`;
     `lead.settlement.word10 := lead.word24`; `lead.word34 := grouprec.word24`;
     clear flag bit 7, set flag bit 4. Then on `lead.flags` bit 6: **clear** →
-    `owner_leader.troops_field(8) −= 1` (the `$382a` economy row — **now Proven**);
+    `owner_leader.troops_field(8) −= 1` (the `$382a` economy row, Proven here);
     **set** → `jsr $1b8c` (`A0 := $51b66 + lead.word28`, `D1 := 0`).
   - **bit 7 clear** (the natural slot-21 case): if `grouprec.state == 6` and
     `lead.word46` resolves into `[$4cff8, $4d250)` → that record's `flags(7) :=
     $11`; then `jsr $1d70` (`A3 := grouprec`).
-- **`$1d70` — the rank former, the developers' `_rerank`: it places each man of a group in a formation slot by weapon class** (also run on every successful join, strategy.md "What each order does"; the 99th's "send everyone home" described the teardown call sites, and its "terrain" reading of the strings was wrong: `word[$1e8c + byte44]` maps the carried weapon code to a class letter, 2 Pike `'P'`, 4 Sword `'S'`, 6 Bow `'B'`, else `'N'`, read from RAM and shown live by a `callcap` with 4 swords, 4 bows and 18 pikes poked into the 26-man group: swords placed on row 0, bows on row -2, pikes on rows -1 and 1..3, `scratchpad/pm134/audit/live/cc1d70.json`). Selects a
+- **`$1d70` — the rank former, the developers' `_rerank`: it places each man of a group in a formation slot by weapon class** (also run on every successful join, strategy.md "What each order does", so it is a rank former and neither a "send everyone home" step nor a capture routine; the rank-shape strings are weapon-class layouts, not terrain: `word[$1e8c + byte44]` maps the carried weapon code to a class letter, 2 Pike `'P'`, 4 Sword `'S'`, 6 Bow `'B'`, else `'N'`, read from RAM and shown live by a `callcap` with 4 swords, 4 bows and 18 pikes poked into the 26-man group: swords placed on row 0, bows on row -2, pikes on rows -1 and 1..3, `scratchpad/pm134/audit/live/cc1d70.json`). Selects a
   rank-shape string (`rank_sha...`) from a table at `$1e9e`, whose head is the signed column table 0..10, -10..-1 (21 columns), indexed by the highest set bit of
   `word[grouprec−24]` (`D1 := 2·(15 − highbit)`); the string is a row layout of
   weapon-class letters (`'C'`=`$43` the lead's slot, `$00` boundaries, `$ba` an unusable slot). For each roster member (chain via `word[+26]` from
@@ -475,8 +502,8 @@ effect reuse the same bytes for different things. This is the common layout:
 | 0 | word | **next** in this cell's entity bucket (offset into `$51b66`, 0 = tail) |
 | 2 | word | **prev** in the bucket |
 | 5 | byte | **owner / strength**. 0 = slot free (skip). `>0` = live, value is the owning commander colour (1..4) or a small count. `<0` = dying, `18(A1)` counts down to removal |
-| 6 | byte | **category**: `$00` man/troop, `$04`, `$0e` formation node, `$10`, `$18`, `$1e`, `$20`, `$3c`… (checked by the neighbour scans) |
-| 7 | byte | **flags**: bit4 = freeze animation, bit5 = "blocked / needs repath", bit6/bit7 = render-cull + "can fight" |
+| 6 | byte | **category** (the render/click tag; `$115e0`'s draw dispatch and the click table `cjt`, strategy.md "The game's own text"): `$00` man, `$02` house, `$04` tree frame, `$0a` loose equipment, `$0c` corpse in decay, `$0e` a sitting man (the camp), `$10` house (WorkShop), `$18` catch marker or boat, `$1e` building going up, `$20` never drawn (free), `$2c` goods pile, `$3c`… (checked by the neighbour scans) |
+| 7 | byte | **flags** (overloaded): bits 0..3 the job (farmer, merchant, fisher, shepherd; `$3c08` maps them to the home modes `$16` / `$4e` / `$5e` / `$80`, economy.md §5a); bit 4 the leader flag (a lord's captain, a group lead; the iterator does not advance the animation frame while it is set; also "stamped by the lead" in `$d322` / `$14f08`); bit 5 afloat (a Boat carrier) / "blocked, needs repath"; bit 6 member of a group roster (`$1b2a` sets it, `$1b8c` clears it; also the "can fight" test of `$56a6`); bit 7 render-cull / hand-off marker (`$d322`, `$37c2`) |
 | 8 | word | **worldX** (0..`$3fff`) |
 | 10 | word | **worldY** (0..`$1f40`) |
 | 12 | byte | signed **X step** this tick (velocity) |
@@ -491,14 +518,14 @@ effect reuse the same bytes for different things. This is the common layout:
 | 30 | byte | **previous mode** (saved before a transition; several handlers branch on it) |
 | 31 | byte | **current mode opcode** — the state-machine dispatch key |
 | 33 | byte | **carried item code** `2 * (slot + 1)` (`$0a` = Boat, 8 = Plough, `$0c` Pot ...; porters pick it up and drop it at `$159de`/`$159a4`, economy.md §3); a man carrying a Boat is `$02`/`$8c` afloat with flag bit 5 (71 of 71 and 17 of 17 live) |
-| 34 | word | byte offset into the **nation/settlement table `$4f916`** (18-byte records) |
+| 34 | word | byte offset into the **building table `$4f916`** (original `_houses`; the 18-byte settlement records; this is the man's home settlement, `nation_off` in the code); the iterator also compares it with the animation phase (`cmp.w 34(A1),D0` at `$14b8c`) as the frame-advance trigger |
 | 36 | word | saved origin X, or a packed destination cell |
 | 38 | word | saved origin Y |
 | 40 | word | cursor into the **patrol-path table `$168ee`** (or the obstacle-sweep angle for mode `$48`) |
 | 42 | word | **packed muster cell** {x = bits 0-5, y = bits 6-12}, *and* the group id: byte offset into the **group-order table `$51538`** |
-| 44 | byte | pending message code (consumed + cleared by `$16260`) |
+| 44 | byte | **weapon item code** `2 * (slot + 1)` (pike 2, sword 4, bow 6; catapult and cannon only for a man with flag bit 4, never written in practice; economy.md §2c and §4: byte 44 is the weapon tier, byte 33 the tool tier); also a transient notify code (consumed + cleared by `$16260`) and the carried-item tag of a merchant |
 | 45 | byte | **health**: the captain panel prints `(45 >> 4) & 7` through `healthnames` (`$a2dc`, "Very Sickly" ... "Very Strong"; "Dead" when byte 5 < 0). Drained by melee (`$1533c`), recovered by `$5c80` up to the job's cap |
-| 46 | word | offset into `$4e514` (leader table), or a siege garrison count |
+| 46 | word | offset into `$4e514` (leader table), or a lead's recruit quota (order `$08`, `$15122`) |
 | 48 | word | link to the **target** object record (the entity being chased / attacked) |
 
 ### As a C struct
@@ -506,19 +533,21 @@ effect reuse the same bytes for different things. This is the common layout:
 Every offset below is confirmed by disassembly of a handler that touches it.
 The comment says which handler / routine pins it. `//` = decoded; `// ??` = seen
 referenced but purpose not proven. The record is a tagged union on `category`
-(byte 6): a man, a boat, a projectile and a "pending group order" all share the
-50 bytes and reinterpret the tail.
+(byte 6): a man, a boat, a building or marker record and equipment lying on the
+ground share the 50 bytes and reinterpret the tail.
 
 ```c
-typedef struct pm_object {           // array $51b66, stride 50, slots 1..510
+typedef struct pm_object {           // array $51b66, stride 50, slots 1..511 (512 slots, slot 0 never walked)
 /* 0*/  u16  bucket_next;            // $163ea: next in this cell's $47970 chain (byte offset into $51b66, 0 = tail)
 /* 2*/  u16  bucket_prev;            // $163ea / $16778: prev in chain
 /* 4*/  u8   _pad4;                  // ?? (never read in the traced handlers)
 /* 5*/  s8   owner;                  // $14b72: 0 = free slot, >0 = live (commander colour 1..4 / small count), <0 = dying
-/* 6*/  u8   category;               // dispatch tag: $00 man, $02 tree/obstacle, $04, $0a loose, $0e army node,
-                                     //   $10, $18, $1e, $20, $2c corpse-in-decay, $3c
-/* 7*/  u8   flags;                  // bit4 = in-formation / stamped by lead ($d322,$14f08); bit5 = blocked-needs-repath;
-                                     //   bit6 = can-fight ($56a6); bit7 = render-cull / don't-count ($d322)
+/* 6*/  u8   category;               // render/click tag: $00 man, $02 house, $04 tree frame, $0a loose equipment, $0c corpse in decay
+                                     //   (dwell $a0), $0e sitting man (camp), $10 WorkShop house, $18 catch marker / boat,
+                                     //   $1e building going up, $20 never drawn (free), $2c goods pile, $3c ??
+/* 7*/  u8   flags;                  // bits 0..3 job (farmer, merchant, fisher, shepherd); bit4 = leader flag / stamped by lead
+                                     //   ($d322,$14f08); bit5 = afloat / blocked-needs-repath; bit6 = in a group roster, can-fight
+                                     //   ($56a6); bit7 = render-cull / don't-count ($d322), hand-off marker ($37c2)
 /* 8*/  s16  world_x;                // 0..$3fff   (movem.w 8(A1),D6/D7 at the top of every handler)
 /*10*/  s16  world_y;                // 0..$1f40
 /*12*/  s8   step_x;                 // signed per-tick velocity, added to world_x by nearly every handler
@@ -537,22 +566,23 @@ typedef struct pm_object {           // array $51b66, stride 50, slots 1..510
 /*31*/  u8   mode;                   // <<< the FSM dispatch key: jmp $14bb4 + word[$14bb4 + mode]
 /*32*/  u8   anim_sub;               // $1623c / $16260: 0..3 rotating animation phase
 /*33*/  u8   carried;                // item code 2*(slot+1); $0a = a Boat: special-cased in $14c92,$14d32,$14f08,... (afloat, flag bit 5)
-/*34*/  u16  nation_off;             // byte offset into the nation/settlement table $4f916
+/*34*/  u16  nation_off;             // byte offset into the building (settlement) table $4f916: the man's home settlement
 /*36*/  u16  origin_x;               // $14e56: saved (x,y) at the start of a patrol; also a packed dest cell
 /*38*/  u16  origin_y;
 /*40*/  u16  path_cursor;            // $14e70: byte cursor into the patrol-path table $168ee.
                                      //   $158da ($48): the obstacle-sweep angle instead.
 /*42*/  u16  group_off;              // byte offset into the group-order table $51538 (== the group id).
                                      //   Low 6 bits + next 7 bits also decode as a packed muster cell {x:6,y:7}.
-/*44*/  u8   msg_code;               // pending "under attack" message, consumed + cleared by $16260 / $159a4
+/*44*/  u8   weapon;                 // item code 2*(slot+1), the weapon tier ($1533c, $52fc); also a transient "under attack"
+                                     //   notify code (consumed + cleared by $16260 / $159a4) and a merchant's carried item
 /*45*/  s8   health;                 // melee HP (panel: healthnames): $1533c drains it, <=0 -> $5590 (kill/rout). $5c80 recovers it, 1 per tick at random, up to the job's cap $5ccc.
-/*46*/  u16  garrison_or_leader;     // $15122: a lead's recruit quota (order $08); $34f2 sets a townsman's to the lead's offset, read by $15282; $5bd2: offset into $4e514 for the kill credit
+/*46*/  u16  leader_or_quota;        // $15122: a lead's recruit quota (order $08); $34f2 sets a townsman's to the lead's offset, read by $15282; $5bd2: offset into $4e514 for the kill credit
 /*48*/  u16  link_target;            // the entity being chased / attacked ($14f08 mode $10, $15302, $56a6)
 } pm_object;                         // sizeof == 50
 ```
 
-The projectile / effect reinterpretation of the same slot is in `## Combat`
-below (`pm_effect`).
+Arrows have their own 16-byte slots (`pm_effect`, after the mode table's Combat rows below); animals and carrier
+pigeons have their own pools (the "Shepherds, animals and carrier pigeons" block below).
 
 ## Spatial primitives
 
@@ -577,7 +607,7 @@ Callers `beq` on **colour 0** = open sea (all four corner altitudes 0) / off-map
 "can I stand here" test after a move and, probed in a `dbeq` loop, as a
 short-range "is the path ahead clear" test.
 
-### `$164bc` — one step toward (D0, D1)   *[Proven, 94th — see the movement-modes block above]*
+### `$164bc` — one step toward (D0, D1)   *[Proven, see the movement-modes block above]*
 
 `dx = D0-D6`, `dy = D1-D7`, `sub.w`; the sign of each picks one of four
 quadrants (each folds to magnitudes with `neg.w`). Within a quadrant,
@@ -589,9 +619,9 @@ per-tick increment; a swap-dance rebuilds `D0.w = step_x`, `D1.w = step_y`,
 **`beq` on return ⇔ `count>>1 == 0` ⇔ reached**. `divu #0` (target == current,
 or `speed == 0`) traps vector 5 — PM's handler resumes with the operand
 unchanged, so the routine still returns a well-formed "reached" rather than
-crashing. This is the routine the 67th-pass DIVU fix unblocked.
+crashing. This is the routine the emulator's DIVU fix unblocked (`README.md`, "Bug 4").
 
-### `$14262` — (dx, dy) → heading 0..255   *[Proven, 94th]*
+### `$14262` — (dx, dy) → heading 0..255   *[Proven, movement-modes block]*
 
 Octant fold on `sign(dx)/sign(dy)`; `shift = shift_tbl[$14360 + (max(|dx|,|dy|)
 >> 5)]` (a `bit_length`-style ramp); `dx >>= shift`, `dy >>= shift` (both now
@@ -599,10 +629,10 @@ Octant fold on `sign(dx)/sign(dy)`; `shift = shift_tbl[$14360 + (max(|dx|,|dy|)
 (`0x80 - d` / `-d` / `d + 0x80`). Returns 0..255 in D0. Written to `17(A1)`; the
 sprite blit and `$12d56` read it.
 
-### `$12d56` — rotate (D0, D1) by heading D2   *[Proven, 94th]*
+### `$12d56` — rotate (D0, D1) by heading D2   *[Proven, movement-modes block]*
 
 `cos = word[$1400a + 2·h]`, `sin = word[$13f8a + 2·h]` — the **same trig table**
-as `$fecc`'s `A3` contract (92nd). `x' = ((x·cos − y·sin) << 1) >> 16`,
+as the renderer's `$fecc` `A3` contract. `x' = ((x·cos − y·sin) << 1) >> 16`,
 `y' = ((x·sin + y·cos) << 1) >> 16` (`muls`, 32-bit, `add.l` for the `<<1`,
 `swap` for the `>>16` — a Q15 rotate). Turns a heading back into a unit velocity
 vector — used by mode `$08` (escort) and the obstacle-avoidance mode `$48`.
@@ -635,15 +665,15 @@ the settled first-mission view.
 
 | mode | handler | tick | behaviour |
 |------|---------|-----:|-----------|
-| `$00` | `$14c92` | – | **idle**. If `33(A1)==$a` (carrying a Boat) → bit 5 set, become `$8c` (afloat, holding course). Else `$14caa`: set dwell 20, face a direction from `17(A1)` + flags, small fidget |
-| `$02` | `$14cfa` | – | step by (12,13); sample terrain; on hitting an obstacle clear bit5 and drop to mode `$06` *(Proven, 94th — reached from mode `$08`)* |
-| `$04`/`$06` | `$14d32` | – | *(Proven, 94th)* step by (12,13); `$1648e`; **land** → `subq.w #1,18(A1)` (`==0` → mode `$08`) → epilogue `$16202`; **water** → carrying a Boat (`33 == $a`): `bset #5` (afloat) + mode `$02`, else mode `$00` + `bra $1622c` (no write-back) |
-| `$08` | `$14d7c` | – | *(Proven, 94th)* **orbit the lead `28(A1)`**: `$12d56`-rotate the orbit offset `(20,22)` by the lead's heading, `+` lead position `8/10`, `speed := lead.speed + 4`, `$164bc`; on arrival copy the lead's step `12` + dwell `$a`; then `$1648e` at the new spot → land: mode `$06` + fall into the `$14d32` body / water: mode `$02` (`$14cfa`) or `$00` |
+| `$00` | `$14c92` | – | **idle** (original `out_of_b...`). If `33(A1)==$a` (carrying a Boat) → bit 5 set, become `$8c` (afloat, holding course). Else `$14caa`: set dwell 20, face a direction from `17(A1)` + flags, small fidget |
+| `$02` | `$14cfa` | – | **afloat step** (original `in_fleet`): step by (12,13); sample terrain; on hitting an obstacle clear bit5 and drop to mode `$06` *(Proven, movement-modes block; reached from mode `$08`)* |
+| `$04`/`$06` | `$14d32` | – | *(Proven, movement-modes block)* step by (12,13); `$1648e`; **land** → `subq.w #1,18(A1)` (`==0` → mode `$08`) → epilogue `$16202`; **water** → carrying a Boat (`33 == $a`): `bset #5` (afloat) + mode `$02`, else mode `$00` + `bra $1622c` (no write-back) |
+| `$08` | `$14d7c` | – | *(Proven, movement-modes block; original `lost`)* **orbit the lead `28(A1)`**: `$12d56`-rotate the orbit offset `(20,22)` by the lead's heading, `+` lead position `8/10`, `speed := lead.speed + 4`, `$164bc`; on arrival copy the lead's step `12` + dwell `$a`; then `$1648e` at the new spot → land: mode `$06` + fall into the `$14d32` body / water: mode `$02` (`$14cfa`) or `$00` |
 | `$0a` | `$14e1e` | – | dwell `18`; at 0 → mode `$08`, or mode `$10` if no linked entity |
 | `$0c` | `$14e56` | 6 | save (D6,D7) → (36,38), load the `farm` path (original `start_fl...`; the `$168ee` table's `farm` entry, cursor `$50..$73`), → mode `$0e` |
-| `$0e` | `$14e70` | **445** | *(Proven, 94th)* **the farmer's walk along the `farm` path of the spline table `$168ee`** (original `in_fligh...`; 275 of 281 live men in the mode are farmers over 11 snapshots, 134th; the old "patrol" label was the first reading): integrate step + `subq.w #1,18(A1)` (`!=0` → epilogue `$16202`); at 0 snap to origin+segment, read the next point, recompute step `(nextpt−seg)>>3` + heading, dwell 8; segment word ≥ `$7d00` = terminator (`$7d01` loop: `D2 -= D1`; `$7d02+n`: `mode := n`; `$7d00`: `mode := $92`) |
-| `$10` | `$14f08` | **180** | *(Proven, 94th)* **advance to the target** `20/22` (or, `prev_mode == $2e`, chase entity `48(A1)` copying its live position; target gone → mode/prev `:= $2c`). `$164bc` for the step; **reached** → `$15302` (chase) / `$14fdc` (fixed — snap onto target); else probe up to `dwell` cells ahead along (12,13) with `$1648e` (`dbeq`) — blocked → mode `$4a`; else mode `:= $12` + run the `$14ff8` body. `$15302` + the group-state-8 hand-off `$1518a` asserted off |
-| `$12` | `$14ff8` | **774** | **the moving leg between `$10` re-plans** *(Proven, 93rd; the man moves every tick, it is not a halt)*: add the step `(12,13)` to the position, `subq.w #1,18(A1)`; at `<= 0` → mode `$10`. Its prev byte is the job mode that planned the leg (`$58` for the fishermen in the mission-1 snapshots, `$42`/`$44` for 33 of 33 men in `k5_s4`, 136th `planes/mode_census.py`) |
+| `$0e` | `$14e70` | **445** | *(Proven, movement-modes block)* **the farmer's walk along the `farm` path of the spline table `$168ee`** (original `in_fligh...`; 275 of 281 live men in the mode are farmers over 11 snapshots, so it is not a "patrol"): integrate step + `subq.w #1,18(A1)` (`!=0` → epilogue `$16202`); at 0 snap to origin+segment, read the next point, recompute step `(nextpt−seg)>>3` + heading, dwell 8; segment word ≥ `$7d00` = terminator (`$7d01` loop: `D2 -= D1`; `$7d02+n`: `mode := n`; `$7d00`: `mode := $92`) |
+| `$10` | `$14f08` | **180** | *(Proven, movement-modes block; original `home_in`)* **advance to the target** `20/22` (or, `prev_mode == $2e`, chase entity `48(A1)` copying its live position; target gone → mode/prev `:= $2c`). `$164bc` for the step; **reached** → `$15302` (chase) / `$14fdc` (fixed — snap onto target); else probe up to `dwell` cells ahead along (12,13) with `$1648e` (`dbeq`) — blocked → mode `$4a`; else mode `:= $12` + run the `$14ff8` body. `$15302` + the group-state-8 hand-off `$1518a` asserted off |
+| `$12` | `$14ff8` | **774** | **the moving leg between `$10` re-plans** (original `on_route`) *(Proven, dwell/upkeep block; the man moves every tick, it is not a halt)*: add the step `(12,13)` to the position, `subq.w #1,18(A1)`; at `<= 0` → mode `$10`. Its prev byte is the job mode that planned the leg (`$58` for the fishermen in the mission-1 snapshots, `$42`/`$44` for 33 of 33 men in `k5_s4`, `py/mode_census.py`) |
 | `$48` | `$158da` | 13 | **obstacle avoidance**: `12(A1)/13(A1)` from heading via `$12d56`; probe ahead (`dbeq` on `$1648e`); if blocked, add a growing ± sweep (`40(A1)` += 4, negate) to `17(A1)` and retry — turn by ever-wider angles until a lane opens |
 | `$4a` | `$1597a` | 3 | set up mode `$48`: copy target from `28(A1)`, sweep = 8, clear low 2 bits of heading |
 
@@ -651,19 +681,19 @@ the settled first-mission view.
 
 | mode | handler | tick | behaviour |
 |------|---------|-----:|-----------|
-| `$28` | `$15264` | – | **wait for recruits** (arrival of order `$08`, via `$1c`): `subq 18(A1)` each tick; at 0 `$35f4` ends the order and makes the camp (group state 6, men ringed round the lead; live, 133rd: 22 entries in 6M steps on the player's lead) |
-| `$2a` | `$15282` | – | **a recruit joins** (the original name is `wait_mee`, "Original names" below; *proven live, 134th*, strategy.md "What each order does": 4 runs, 5 first-tick tests each, `$1b2a`/`$1d70` hits = the quota): on the first tick (dwell `$32`) the man's `46(A1)` names the group lead `A0`; if the lead is alive and its group is in state 3, `46(A0)` (the quota `$15122` set) is decremented, **by every arrival, so refused ones push it negative**, and while it stays non-negative `$1b2a` adds the man to the group (head of the roster, flag bit 6, `28` = the lead), his home lord's `troops_field` (`8(A4,D0)`) drops by one and `$1d70` re-forms the ranks (the man goes mode `$08` → `$06` → `$68`); a refused man runs his 50-tick dwell out (about 200k steps per tick) into `$3c08`, which sends him back to a civilian mode |
-| `$2c` | `$152f8` | – | **pick a target** (`jsr $4f68`). `$4f68` dispatches on `38(A1)` unmasked through `$4fa2` (handler = `$4fa2 + word[$4fa2 + 38]`): 0/2/`$18`..`$1e` `$4fc4` hunt a lord (`46` = `$4e514` record): every man of his settlements that can fight, within `$fff`; 4 `$503c` hunt a group (roster of `obj[46]`'s group); 6 `$50b2` one target `obj[46]`; 8 `$50da` follow it (mode `$36`, prev `$66`); `$a` `$5150` shoot it (mode `$34`, `$57f0` type `$28`); `$c` `$519a` walk to its cell (mode `$10`, prev `$3a`); `$e`/`$10` `$51dc` help allies of my lord, else `$5402` sends my lord's idle men home (`$3c08`); `$12`/`$14`/`$16` `$5240` group done: nobody engaged → `$539a` (conquest: `38 == $12` → `$550e`, economy.md §3), else `$3c08`. Each candidate is weighed by `$548a` (Chebyshev distance; stronger weapon or health, or a third retry; the best key stored is D0, not the distance: a game bug that changes 48 of 169 natural picks). No candidate: `38 += $10` (flag bit 6, or bit 4 with a group) else `+= $c` (`$538a`/`$5392`). *Proven, 124th: `py/diff_4f68.py`, 1804/1804 over 192 states, 170 natural (`scratchpad/pm124/conquest/`)* |
+| `$28` | `$15264` | – | **wait for recruits** (arrival of order `$08`, via `$1c`): `subq 18(A1)` each tick; at 0 `$35f4` ends the order and makes the camp (group state 6, men ringed round the lead; live: 22 entries in 6M steps on the player's lead) |
+| `$2a` | `$15282` | – | **a recruit joins** (the original name is `wait_mee`, strategy.md "Original names"; *proven live*, strategy.md "What each order does": 4 runs, 5 first-tick tests each, `$1b2a`/`$1d70` hits = the quota): on the first tick (dwell `$32`) the man's `46(A1)` names the group lead `A0`; if the lead is alive and its group is in state 3, `46(A0)` (the quota `$15122` set) is decremented, **by every arrival, so refused ones push it negative**, and while it stays non-negative `$1b2a` adds the man to the group (head of the roster, flag bit 6, `28` = the lead), his home lord's `troops_field` (`8(A4,D0)`) drops by one and `$1d70` re-forms the ranks (the man goes mode `$08` → `$06` → `$68`); a refused man runs his 50-tick dwell out (about 200k steps per tick) into `$3c08`, which sends him back to a civilian mode |
+| `$2c` | `$152f8` | – | **pick a target** (`jsr $4f68`). `$4f68` dispatches on `38(A1)` unmasked through `$4fa2` (handler = `$4fa2 + word[$4fa2 + 38]`): 0/2/`$18`..`$1e` `$4fc4` hunt a lord (`46` = `$4e514` record): every man of his settlements that can fight, within `$fff`; 4 `$503c` hunt a group (roster of `obj[46]`'s group); 6 `$50b2` one target `obj[46]`; 8 `$50da` follow it (mode `$36`, prev `$66`); `$a` `$5150` shoot it (mode `$34`, `$57f0` type `$28`); `$c` `$519a` walk to its cell (mode `$10`, prev `$3a`); `$e`/`$10` `$51dc` help allies of my lord, else `$5402` sends my lord's idle men home (`$3c08`); `$12`/`$14`/`$16` `$5240` group done: nobody engaged → `$539a` (conquest: `38 == $12` → `$550e`, economy.md §3), else `$3c08`. Each candidate is weighed by `$548a` (Chebyshev distance; stronger weapon or health, or a third retry; the best key stored is D0, not the distance: a game bug that changes 48 of 169 natural picks). No candidate: `38 += $10` (flag bit 6, or bit 4 with a group) else `+= $c` (`$538a`/`$5392`). *Proven: `py/diff_4f68.py`, 1804/1804 over 192 states, 170 natural (`scratchpad/pm124/conquest/`)* |
 | `$2e` | `$15302` | – | **reached the target** `48(A1)`: snap `(D6,D7)` onto it, set both mode bytes `$32`; `jsr $56a6` iff `s8(mode(target)) <= $2c` **or** `s8(prev_mode(target)) >= $3c` (signed byte tests; a target in a combat or order mode with an old prev mode below `$3c` is not engaged). *Proven, `py/fsm15/gate_fsm15.py`: 49 states over seven target mode/prev pairs; the engage fired in 6 of 7 for ($10,$10), 7 of 7 for ($68,$68)* |
-| `$32` | `$1533c` | – | *(Proven, 95th — see the [Proven] combat block above)* **melee**: `tst.b 5(A3) <= 0` or `30(A3) == $3c` (target dead/corpse) → mode/prev `:= $2c`, epilogue `$161c4`. Else face away (`17(A3) := 17(A1) + $80`); if target `31 != $32` → `jsr $56a6`. **Drain health `45(A3)` by `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** via `sub.b` (the `>= 6` arm is a hard `moveq #0`, *not* `min`). `> 0` → mutual retaliation (`48(A3) := self`, `31(A3) := $32`, `bra $1622c` — no epilogue). `<= 0` → `jsr $5590`, then mode/prev `:= $2c` + `$161c4` |
-| `$34` | `$153b2` | – | **shot cool-down** (*137th, counted*: 400 snapshots hold men in it with the dwell high byte 5..20; bytes 30 and 31 both `$34`, `48(A1)` a live man of another side, shooters all byte 7 `$10`): set by `$5150` after its `$57f0` call, which seeds the dwell high byte with `$14` (`move.b 15(A0),18(A1)`); `subi.b #1,18(A1)` per tick (a byte, the low byte 19 is untouched; `watch` over 900k steps: five byte writes `$0f`..`$0b`, one per ~216k steps), then at negative mode/prev `:= $2c`, so 21 ticks |
+| `$32` | `$1533c` | – | *(Proven, see the combat block above)* **melee**: `tst.b 5(A3) <= 0` or `30(A3) == $3c` (target dead, or routed: the ROUT roll stamps `prev_mode := $3c`, original `run_away`) → mode/prev `:= $2c`, epilogue `$161c4`. Else face away (`17(A3) := 17(A1) + $80`); if target `31 != $32` → `jsr $56a6`. **Drain health `45(A3)` by `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** via `sub.b` (the `>= 6` arm is a hard `moveq #0`, *not* `min`). `> 0` → mutual retaliation (`48(A3) := self`, `31(A3) := $32`, `bra $1622c` — no epilogue). `<= 0` → `jsr $5590`, then mode/prev `:= $2c` + `$161c4` |
+| `$34` | `$153b2` | – | **shot cool-down** (*counted*: 400 snapshots hold men in it with the dwell high byte 5..20; bytes 30 and 31 both `$34`, `48(A1)` a live man of another side, shooters all byte 7 `$10`): set by `$5150` after its `$57f0` call, which seeds the dwell high byte with `$14` (`move.b 15(A0),18(A1)`); `subi.b #1,18(A1)` per tick (a byte, the low byte 19 is untouched; `watch` over 900k steps: five byte writes `$0f`..`$0b`, one per ~216k steps), then at negative mode/prev `:= $2c`, so 21 ticks |
 | `$36` | `$153cc` | – | **chase the entity `48(A1)`** (original `goto_ani`, "go to animal"; 0 men in mode `$36` or `$38` in 400 snapshots, so never seen naturally). Set only by `$5100` in `$50da`, the `38(A1) == 8` arm of the `$4f68` picker (one `move.b #$36,31(A1)` in the whole image, fresh `0..$1d000` listing), when `5(target) > 0`; `38 := 8` comes from `$4dae` with the class `D7 = 8` of a category-8 (animal) record that engages the party, so the natural target is an animal (inferred; no live animal contact seen). Target dead (`5(A3) <= 0`) → `6(A1) := $e`, mode `$68`; else `$164bc` steps toward its position; on contact (the block at `$15428..$1545c` is unreachable) dwell `18 := $a`, mode `$38` (`$1547e`, the slaughter: `subi.w #1,18`), the target's byte 7 `:= $10`; at 0 the target becomes category `$1c` (carcass) with its side byte negated, and the chaser either adds `$b4` food to its home lord and calls `$3c08` (no byte-7 bit 4/6) or adds `$b4` to the group's food and calls `$35f4`. *Poke-driven, 3 of 3* (`k5_s4`, chaser `30/31 = $66 $36`, `48` = a man: target byte 7 -> `$10`, side negated, category `$1c`; the lord's food `+$b2` against the code's `+$b4`, 2 unattributed; the group branch left the lord's food unchanged); `scratchpad/pm137/C_modes/drive36.py` |
-| — | `$56a6` | – | *(Proven on the `$574a` path, 95th)* **engage**: if `flags.bit6(target)` and the linked enemy `28(A3)` is within `$fff` (Manhattan-max) → `jsr $5778`; then set both mode bytes `$32`, link attacker into `48(A3)`, and pick `46(A3)` — from `28(A1)` / self (`$5730`, if the attacker has a group) or the attacker's leader-table entry (`$574a`, `38(A3) := 2`) |
-| — | `$5778` | – | **contact bookkeeping, not a resolver** — see `strategy.md` "Combat". Marks an engaged garrison `flags = $11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify) *(Proven, 115th)* when group state `!= $d`. |
-| — | `$5590` | – | *(Proven on the KILL branches, 95th)* **kill-or-rout roll** (from mode `$32` when `health <= 0`): `45(A3) := 0`; `D0 := $30fe = group.field60 − 2` (attacker in a group with a live lead), else `D0 := 0`. `D0 == 0` → **KILL**; `D0 == 2` → `$560a`; else `($57fec + 24(A1)) & 2` parity → KILL / `$560a`. **KILL**: `neg.b 5(A3)`, `32(A3) := 0`, `category $6 := $c` corpse, `dwell := $a0` (160-tick decay), then the `$5628` tail (`$567e` → `leader.population -= 1`). **`$560a`**: `flags.bit5(target)` set → KILL anyway; else `jsr $3c08` (**ROUT** — restructure the group, `prev_mode := $3c`, unit survives; *asserted off in the 95th proof*) |
-| — | `$30fe` | – | *(Proven, 95th)* `word[$51538 + 42(A1) + 60] − 2` — the `$5590` roll selector; `2` for the pm73_fight attack group |
+| — | `$56a6` | – | *(Proven on the `$574a` path, combat block)* **engage**: if `flags.bit6(target)` and the linked enemy `28(A3)` is within `$fff` (Manhattan-max) → `jsr $5778`; then set both mode bytes `$32`, link attacker into `48(A3)`, and pick `46(A3)` — from `28(A1)` / self (`$5730`, if the attacker has a group) or the attacker's leader-table entry (`$574a`, `38(A3) := 2`) |
+| — | `$5778` | – | **contact bookkeeping, not a resolver** — see `strategy.md` "Combat". Marks an engaged garrison `flags = $11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify; Proven, its own block) when group state `!= $d`. |
+| — | `$5590` | – | *(Proven on the KILL branches, combat block)* **kill-or-rout roll** (from mode `$32` when `health <= 0`): `45(A3) := 0`; `D0 := $30fe = group.field60 − 2` (attacker in a group with a live lead), else `D0 := 0`. `D0 == 0` → **KILL**; `D0 == 2` → `$560a`; else `($57fec + 24(A1)) & 2` parity → KILL / `$560a`. **KILL**: `neg.b 5(A3)`, `32(A3) := 0`, `category $6 := $c` corpse, `dwell := $a0` (160-tick decay), then the `$5628` tail (`$567e` → `leader.population -= 1`). **`$560a`**: `flags.bit5(target)` set → KILL anyway; else `jsr $3c08` (**ROUT** — restructure the group, `prev_mode := $3c`, unit survives; *asserted off in the combat-block proof*) |
+| — | `$30fe` | – | *(Proven, combat block; original `_get_agg...`)* `word[$51538 + 42(A1) + 60] − 2` — the `$5590` roll selector; `2` for the pm73_fight attack group |
 | — | `$57f0` | – | **spawn a projectile** into the first free slot (life word 0) of the 49 effect slots `$4be00..$4c110` (16 B each; D2 = 0 when none is free): copy the shooter's position, `life := $14` (20 ticks; a type `$12` gets its flight time + 1), `type := D1`, `shooter := A1-$51b66`, per-axis velocity bytes 4/5 toward the target via `divu #$78`, link it into its cell (`$16808`), and set the shooter's dwell high byte 18 := `$14`, the low byte of the life word just written (there is no per-weapon reload table) |
-| — | `$596a` | – | **projectile update loop** (every tick, from `$3e06`; *Proven, 140th*, section "Arrows and carrier pigeons" below: `py/gate_proj.py`, 456 states, 4210/4210 bytes): an arrow (type `$28`, the only type anything creates) flies by its velocity bytes for 20 ticks and ends on the first man, pigeon or marker of another side within 15 × 21 units in its cell (a man loses `$52` health, the `$5590` roll when that leaves 0 or less; a pigeon is shot down, `$4624`); the end of its life or a hit unlinks it and ends the shooter's `$34` cool-down. The type-`$12` area effect (stamp categories in the arrow's cell) is unreachable |
+| — | `$596a` | – | **projectile update loop** (every tick, from `$3e06`; *Proven*, section "Arrows and carrier pigeons" below: `py/gate_proj.py`, 456 states, 4210/4210 bytes): an arrow (type `$28`, the only type anything creates) flies by its velocity bytes for 20 ticks and ends on the first man, pigeon or marker of another side within 15 × 21 units in its cell (a man loses `$52` health, the `$5590` roll when that leaves 0 or less; a pigeon is shot down, `$4624`); the end of its life or a hit unlinks it and ends the shooter's `$34` cool-down. The type-`$12` area effect (stamp categories in the arrow's cell) is unreachable |
 
 The effect slots are 49 records of 16 bytes at `$4be00..$4c110` (the spawn searches
 them from `$4bdf0 + $10`; there is no header or template slot):
@@ -682,16 +712,18 @@ typedef struct pm_effect {           // $4be00, stride 16, 49 slots
 } pm_effect;
 ```
 
-### Group orders (the "commander AI")
+### Group-order arrivals, merchants and fishermen
 
-These read/write the **group-order table `$51538`** (indexed by `42(A1)`; word
-0 = state enum, seen values 3 / 8 / `$c`; `24(A3)` links the group's lead
-object record; `36(A3)` a running total).
+The first rows read/write the **group table `$51538`** (indexed by `42(A1)`, so `A3 = $51538 + 42(A1)`; group
+field `0(A3)` = the state enum, seen values 3 / 8 / `$c` (the game's own names: 3 Get Men, 8 Attack, 12 Supply;
+strategy.md "The game's own text"); `-12(A3)` links the group's lead object record, `24(A3)` the target (a lord,
+settlement or object); `36(A3)` is the army's food, the captain panel's "Food" line). The rest of the table is
+the merchant (`$4e`..`$54`) and fisherman (`$56`..`$62`) job cycles, which have no group.
 
 | mode | handler | tick | behaviour |
 |------|---------|-----:|-----------|
 | `$18` | `$150b0` | 6 | → mode `$0c` (begin the field path). Original `at_farme...`: a farmer who reached his field cell (`42/43`); `prevmode $18` on every mode-`$0e` record (the villagers' farm cycle, not a garrison) |
-| `$1a` | `$150c0` | – | **take food from a town** (arrival mode of order `$06`, and of the `$1a` supply line): A5 = the target lord (`$51b66 + 24(A3)`, set by `$3154`); `loyalty_pressure 14(A5) += 16 >> $30fe`; `slice = food 6(A5) >> $30fe` moves into the army's food `36(A3)`; group state `$c` → mode `$26` (back to the supply-line cell), else `$35f4`. 124th: 22 → 11, army +11 vs control, `scratchpad/pm124/o06` |
+| `$1a` | `$150c0` | – | **take food from a town** (arrival mode of order `$06`, and of the `$1a` supply line): A5 = the target lord (`$51b66 + 24(A3)`, set by `$3154`); `loyalty_pressure 14(A5) += 16 >> $30fe`; `slice = food 6(A5) >> $30fe` moves into the army's food `36(A3)`; group state `$c` → mode `$26` (back to the supply-line cell), else `$35f4`. Live: 22 → 11, army +11 vs control, `scratchpad/pm124/o06` |
 | `$1c` | `$15122` | – | arrival of order `$08` (**get men**): the quota `46(A1) = lord.troops_field(8(A5)) >> shift` (aggressive all, neutral half, passive a quarter); `$34f2` sends every able man of the town's house chain to the cell (`20/22 := the lord's cell`, `31 := $10`, `30 := $14`, `46 :=` the lead offset when the group is in state 3: callcap on lord 0's town sends 4 men); the lead → mode `$28`, dwell `$32` |
 | `$1e` | `$1515c` | – | arrival mode of order `$02` (go to): `$35f4`, the group camps there |
 | `$26` | `$15200` | – | if group state == `$c`, unpack `36(A1)` as a target cell → mode `$10` (march there), prevmode `$74` (the `$1a` supply line's return leg) |
@@ -701,12 +733,15 @@ object record; `36(A3)` a running total).
 | `$74` | `$160d6` | – | the `$1a` supply line (`$3956`): drop food at the cell (`$39d4` D7=1), find the own lord with the most food (`$3bc8`, field `+6`), march there with arrival `$1a` |
 | `$78` | `$15772` | – | arrival of order `$1c`: `$63f4` trade (strategy.md "The player's commands"), then mode `$92` |
 | `$7a` | `$1578c` | – | arrival of order `$20` (spy): `$3da4` links the lone captain into the target settlement's unit chain, takes its owner's side, `bset #7`, mode `$7e`; the lord's `troops_field += 1` |
-| `$52` | `$15a80` | 51 | **merchant, wait at the far lord** (after `$50`'s deposit into lord `46(A1)`, a 50-tick dwell; 404 of 404 men in `$52/$50` have `46 ==` the home lord offset, 136th): at `< 0` target := the home settlement's cell `12($4f916+34)`, prev := `$4e`, mode `$10`, and `$159de` picks up one good from the lord at `46(A1)`; arrival `$4e` deposits it at the home lord. There is no order message |
+| `$4e` | `$15a0e` | – | **merchant arrives at the home lord** (original `merch_ar...`; `init_mer` starts every merchant here, economy.md §5a): deposits the carried good at the home lord (`$159a4`), dwell `$32`, then mode `$54`; also one of the three same-gated entries into the `$7c` park (`$15a46`, economy.md §3a) |
+| `$50` | `$15a60` | – | **merchant arrives at the far lord** (original `merch_st...`): after the `$10` leg with previous mode `$50`, deposits into lord `46(A1)`, then mode `$52` |
+| `$52` | `$15a80` | 51 | **merchant, wait at the far lord** (after `$50`'s deposit into lord `46(A1)`, a 50-tick dwell; 404 of 404 men in `$52/$50` have `46 ==` the home lord offset): at `< 0` target := the home settlement's cell `12($4f916+34)`, prev := `$4e`, mode `$10`, and `$159de` picks up one good from the lord at `46(A1)`; arrival `$4e` deposits it at the home lord. There is no order message |
 | `$54` | `$15ad2` | 29 | **merchant, start of a trip** (after `$4e`'s deposit, dwell `$32`; one merchant followed live through four identical 16M-step cycles `$4e` → `$54` → `$10` (prev `$50`) → `$50` → `$52` → `$10` (prev `$4e`) → `$4e`; `$54/$4e` 639 and `$52/$50` 404 of 1156 men in `$4e..$54`, all job 2): at dwell `< 0` choose a lord by walking `14(A1) & 7` steps along the leader table, target := his cell, prev := `$50`, mode `$10`, `$159de` picks up one good. *Proven, `py/fsm15/gate_fsm15.py` (119 states of mode `$54`, 884 tracked bytes): the walk register A3 never advances (`lea 32(A3),A0` at `$15b0c` loads A0, and the loop tests A3) except that A3 wraps to leader 0 when the home lord is the last record, so `46(A1)` is the home lord; and `$159de` at `$15b54` runs with that stale A0, i.e. the record after A3 (`A3 + 32`) whenever `14(A1) & 7 >= 2` (A3 itself for 0 and 1): 48 of 48 states with goods only on the next record took the good from it. A game defect: `$159de` at `$15abe` (mode `$52`) reloads A0 from `46(A1)`, this one does not*. The earlier "speech generation" label is wrong |
+| `$5e` | `$15b5e` | – | **fisherman arrives** (original `fish_arr...`; `init_fis` starts every fisherman here and `$3c08`'s flag-bit-2 case sends a man home to it): the other `$7c` park entry (`$15b7a`, economy.md §3a); the `$15000`-page gate covers it (11 states) |
 | `$56` | `$15b94` | **168** | **fisherman: go to the fishing cell** (every man seen in modes `$56`..`$62` is job 4, fisher: 93 of 93 over seven states, `py/job_census.py`; original labels `fish_*`): unpack `42(A1)` → target (20/21/22), read the altitude `$3f86c[42]` (and its `+1`/`+64` neighbours) to choose sprite `$70` (open sea) / `$90` (land adjacent), prevmode `$58`, mode → `$10` |
 | `$58` | `$15bec` | 11 | fisherman: arrived at the cell — settle |
-| `$5a` | `$15c46` | **119** | fisherman: **look for the catch** (the old name was "proximity gate"): dwell; scan the cell bucket `$47970[42]` for a neighbour of category `$18` (flags `$10`) or `$20`; found → mode `$62`; timeout → mode `$62`, dwell `$64` |
-| `$5c` | `$15d66` | **152** | fisherman: **head home**: move; `$15fa8` on-screen test; on arrival set up target from the altitude `$3f86c[42]` / `$4f916`, mode → `$60` |
+| `$5a` | `$15c46` | **119** | fisherman: **look for the catch** (not a "proximity gate"): dwell; scan the cell bucket `$47970[42]` for a neighbour of category `$18` (flags `$10`) or `$20`; found → mode `$62`; timeout → mode `$62`, dwell `$64` |
+| `$5c` | `$15d66` | **152** | fisherman: **head home**: move; `$15fa8` clamps (D6,D7) to the map and tests the four altitude-plane bytes of the cell for collision (original `check_co...`, see the `$15000`-page block); on arrival set up target from the altitude `$3f86c[42]` / `$4f916`, mode → `$60` |
 | `$60` | `$15ddc` | 86 | fisherman: **deliver the catch**: move to (20,22); on `$164bc` arrival `addi.w #$4,6($4e514+idx)` (`+6` is the lord's food store, economy.md §1: **+4 food per trip**), mode → `$62` |
 | `$62` | `$15bfc` | 3 | fisherman: idle between trips (original `fish_get`) |
 
@@ -714,27 +749,29 @@ object record; `36(A3)` a running total).
 
 | mode | handler | tick | behaviour |
 |------|---------|-----:|-----------|
-| `$68` | `$16048` | **2559** | **resting in camp** (original `rest_in_...`; 118 of 123 live `$68` men are byte6 14, the sitting category; the old "in formation / marching column" reading was wrong, marching men are `$06`/`$08`; the camp is made by `$35f4`, read from the code) *(Proven, 93rd)*: `jsr $5c80` (upkeep), zero velocity + heading, next. The dominant mode — the men drawn in an army's marching column. Their position is written by the lead record, not by themselves |
-| `$8a` | `$161b2` | 99 | **captain resting at his town** (original `captain_...`; the "garrison" label was the first reading; job 9, 29 of 29 in the 134th audit; byte 7 `== $10` in 660 of 661 men in the mode over 400 snapshots, 137th, `py/census_8a.py`; `$5c80` is the per-job health regeneration toward the `$5ccc` cap, 95 for bit 4) *(Proven, 93rd)*: `jsr $5c80` only |
+| `$68` | `$16048` | **2559** | **resting in camp** (original `rest_in_...`; 118 of 123 live `$68` men are byte6 14, the sitting category; marching men are `$06`/`$08`, not `$68`; the camp is made by `$35f4`, read from the code) *(Proven, dwell/upkeep block)*: `jsr $5c80` (upkeep), zero velocity + heading, next. The dominant mode: the bulk of an army sits in it, and the handler never moves the man (the camp positions are set by `$35f4` and the rank former `$1d70`) |
+| `$8a` | `$161b2` | 99 | **captain resting at his town** (original `captain_...`; not a garrison: job 9, 29 of 29 men in it; byte 7 `== $10` in 660 of 661 men in the mode over 400 snapshots, `py/census_8a.py`; `$5c80` is the per-job health regeneration toward the `$5ccc` cap, 95 for bit 4) *(Proven, dwell/upkeep block)*: `jsr $5c80` only |
 | `$8c` | `$14c48` | – | afloat with a Boat (flag bit 5): re-add the last step, re-test terrain, drop to `$10`/`$06` if pushed off |
-| `$80` | `$15f80` | 5 | **shepherd at his town** (original `shep_arr...`; job 8; *Proven, 139th*, section "Shepherds, animals and carrier pigeons"): `jsr $16848` (owner reconcile and upkeep), dwell := `$32`, mode `$84` |
-| `$84` | `$15f96` | 76 | shepherd waits: dwell − 1; at 0 mode `$86` *(Proven, 139th)* |
-| `$86` | `$15e30` | 20 | **shepherd rounds up the herd** (original `shep_fin...`): the first free (`$11`) animal of his chain (word 42, then each animal's word 16) becomes the target, at the midpoint between man and animal; walking there is mode `$10` with previous mode `$86`; on arrival the animal becomes herded (`$12`, both velocity bytes `|= $40`). No free animal left (or no chain): mode `$88` *(Proven, 139th)* |
-| `$88` | `$15eb0` | – | **shepherd goes home** (original `shep_go_...`): target the cell just south of his town (`+$100` in y), previous mode `$82`, mode `$10` *(Proven, 139th)* |
-| `$82` | `$15eee` | 1 | **shepherd at the gate** (original `shep_go_...`): target the town cell, previous mode `$80`, mode `$10`; releases the herd: every `$12` animal of the chain becomes `$11` again with a fresh speed (`rng & 7 + 2`) and heading and the velocity of `(0, -speed)` rotated by it *(Proven, 139th)* |
-| `$14` | `$1501a` | – | **arrive at the meeting** (original `at_meeti...`; arrival mode of the order-`$08` recruits `$34f2` sends, 5 hits live, 134th): copy the settlement's owner byte `5(A3)` (record `$4f916+34`) into the man's owner byte `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
-| `$16` | `$15042` | 6 | **a farmer home from his field** (original `at_farme...`; the "disband" label was the first reading, the same code also receives men sent home by `$3c08`'s bit-0 case, which is the farmer job): `jsr $16848`; then **iff `$57fd0 == 0`**: save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker) — *the dwell-park write, Proven live 126th, economy.md §3a*. **Else** (`$57fd0 != 0`): `owner_leader.food += 2` (`+= 2` again if `33(A1) == 8`), then mode `$10` prev `$18` (walk to the muster cell). `$57fd0` rotates {0,2,4,6} (§3a), so mission 1 takes both branches over time. economy.md §1's pseudocode had this branch inverted. Only reached via `$3c08`'s flag-bit-0 case, set by exactly one site in the image (`$002cd0`, a garrison/neutral-village site-scan at world-build) — not by any player action (126th) |
-| `$7e` | `$157e6` | – | **idle at home** (original `stay_at_...`; 23 live men, all soldiers): the winter-pulse body, like `$7c` but with no `$57fd0` gate. A man dismissed home or a spy (`$3da4`) sits here, so each pulses his lord's loyalty check (economy.md §3; the spy run revolted lord 0) — but arrives with whatever stale `dwell` the record already had, never freshly parked at `$ff9d`, so the `D5 == $ff9c` "just parked" edge cannot fire for it (126th, economy.md §3a; traced live for one starvation deserter, entity `$52462`) |
-| `$7c` | `$157ba`→`$157e6` | – | **winter state of a parked civilian: the "settlement heartbeat"** (original `in_winte...`; the live men in it are jobs 1, 2 and 4, 19 over 11 snapshots, 134th audit: the pulse belongs to each parked man, so `$163b8`'s upkeep, original `_eat_tow...`, is one food per man per pulse, not per settlement) *(Proven — 96th synthesised / 97th natural corpus)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (1 per 118.4M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.food -= 1`, floored); construction progress (`nation_kind $a` → `16(settl)++`, at `$78` → `nation_kind := dest_cell % 10`, `== 7` → capital); loyalty accumulator (`field·4` vs `food`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $16892` (goods-driven regroup) then `jsr $3c08` (flag-driven regroup) — ***Proven, 98th*** (71/71 over 22 states); its **flag-bit-4 group-teardown** sub-path (`$37c2` → `$1d70`/`$1b8c`, `$17a46`) — ***Proven, 99th*** (1847/1847 over 13 states) |
-| `$8a8a` write | `$16176` | – | **removal**: adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches — *Proven end-to-end, 116th*, see the `$4bc8` sub-section), end the group's order and make its camp (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
-| — | `$16848` | – | *(Proven, 96th)* **side ↔ owner reconcile**: `A3 = $4f916 + 34(A1)`; `settlement.owner == marker.side` → skip; else `btst #7` clear + `btst #4` clear → `5(A1) := owner` (adopt), `btst #4` set → `jsr $5c2c`. Then `24(A1) != 0 && == 0(A1)` → `$57ff4 := 24(A1)`. Tail `jsr $5c80`. Also called from the mode-`$16` prologue |
+| `$80` | `$15f80` | 5 | **shepherd at his town** (original `shep_arr...`; job 8; *Proven*, section "Shepherds, animals and carrier pigeons"): `jsr $16848` (owner reconcile and upkeep), dwell := `$32`, mode `$84` |
+| `$84` | `$15f96` | 76 | shepherd waits: dwell − 1; at 0 mode `$86` *(Proven)* |
+| `$86` | `$15e30` | 20 | **shepherd rounds up the herd** (original `shep_fin...`): the first free (`$11`) animal of his chain (word 42, then each animal's word 16) becomes the target, at the midpoint between man and animal; walking there is mode `$10` with previous mode `$86`; on arrival the animal becomes herded (`$12`, both velocity bytes `|= $40`). No free animal left (or no chain): mode `$88` *(Proven)* |
+| `$88` | `$15eb0` | – | **shepherd goes home** (original `shep_go_...`): target the cell just south of his town (`+$100` in y), previous mode `$82`, mode `$10` *(Proven)* |
+| `$82` | `$15eee` | 1 | **shepherd at the gate** (original `shep_go_...`): target the town cell, previous mode `$80`, mode `$10`; releases the herd: every `$12` animal of the chain becomes `$11` again with a fresh speed (`rng & 7 + 2`) and heading and the velocity of `(0, -speed)` rotated by it *(Proven)* |
+| `$14` | `$1501a` | – | **arrive at the meeting** (original `at_meeti...`; arrival mode of the order-`$08` recruits `$34f2` sends, 5 hits live): copy the settlement's owner byte `5(A3)` (record `$4f916+34`) into the man's owner byte `5(A1)` unless its bit7 is set, mode `$2a`, dwell `$32` |
+| `$16` | `$15042` | 6 | **a farmer home from his field** (original `at_farme...`; not a "disband"): `jsr $16848`; then **iff `$57fd0 == 0`** (winter): save mode → 30, mode `$7c`, dwell `-99` (park as a settlement heartbeat marker): the dwell-park write, Proven live (economy.md §3a: 0 of 28 natural entries parked with `$57fd0` non-zero; poking it to 0 made the next entry park). **Else** (`$57fd0 != 0`): `owner_leader.food += 2` (`+= 2` again if `33(A1) == 8`, a Plough), then mode `$10` prev `$18` (walk to the field cell, bytes `42/43`). `$57fd0` rotates {0,2,4,6} (economy.md §3a), so mission 1 takes both branches over time (economy.md §1's first pseudocode had this branch inverted). Entered at the end of the farmer cycle (`$0e` → `$24` walk home → `$16`, strategy.md "Original names") and by `$3c08`'s flag-bit-0 case; bit 0 of byte 7 is the farmer flag, set at build by `init_far` (`$2cd0` inside `$2c5a`, economy.md §5a), not by any player action |
+| `$7e` | `$157e6` | – | **idle at home** (original `stay_at_...`; 23 live men, all soldiers): the winter-pulse body, like `$7c` but with no `$57fd0` gate. A man dismissed home or a spy (`$3da4`) sits here, so each pulses his lord's loyalty check (economy.md §3; the spy run revolted lord 0) — but arrives with whatever stale `dwell` the record already had, never freshly parked at `$ff9d`, so the `D5 == $ff9c` "just parked" edge cannot fire for it (economy.md §3a; traced live for one starvation deserter, entity `$52462`) |
+| `$7c` | `$157ba`→`$157e6` | – | **winter state of a parked civilian: the "settlement heartbeat"** (original `in_winte...`; the live men in it are jobs 1, 2 and 4, 19 over 11 snapshots: the pulse belongs to each parked man, so `$163b8`'s upkeep, original `_eat_tow...`, is one food per man per pulse, not per settlement) *(Proven, heartbeat block)* — runs when `$57fd0 == 0`; `$57fd0` rotates {0,2,4,6} via `$1abaa` (1 per 118.4M steps) so mission 1 sees it in intermittent bursts. `dwell--` (`>0` → next); `jsr $16848`; `jsr $5c80` (×2); reload `dwell := $580a6[side·$20].word0`; **`jsr $163b8`** (`owner_leader.food -= 1`, floored); construction progress (building kind `$a`, a Ruin → `16(settl)++`, at `$78` → kind `:= dest_cell % 10`, `== 7` → a WorkShop, `settl.category := $10`); loyalty accumulator (`field·4` vs `food`, `±` only on the first post-park tick where `D5 == $ff9c`); `>= 600` → `$550e` revolt; epilogue `$161c4`. `$5cde` / `$550e` / `$5c2c` asserted off. `$57fd0 != 0` at `$157ba` → `jsr $16892` (goods-driven regroup) then `jsr $3c08` (flag-driven regroup) — ***Proven*** (regroup block: 71/71 over 22 states); its **flag-bit-4 group-teardown** sub-path (`$37c2` → `$1d70`/`$1b8c`, `$17a46`) — ***Proven*** (teardown block: 1847/1847 over 13 states) |
+| `$4c` | `$16176` | – | **captain back at his town** (original `captain_...`; the handler stores `$8a` in both mode bytes): adjust the owning commander's troop count (`$5c2c` → `$4bc8` when the settlement's owner no longer matches; Proven end-to-end, see the `$4bc8` block), end the group's order and make its camp (`$35f4`), `$5c80`, zero velocity, mode `$8a` |
+| — | `$16848` | – | *(Proven, heartbeat block)* **side ↔ owner reconcile**: `A3 = $4f916 + 34(A1)`; `settlement.owner == marker.side` → skip; else `btst #7` clear + `btst #4` clear → `5(A1) := owner` (adopt), `btst #4` set → `jsr $5c2c`. Then `24(A1) != 0 && == 0(A1)` → `$57ff4 := 24(A1)`. Tail `jsr $5c80`. Also called from the mode-`$16` prologue |
 | — | `$5c80` | 2600+ | **per-entity upkeep**: job-indexed cap table `$5ccc` + byte14 age + byte45 health; `byte45 += ($57fec & 1)` while below the cap (recovery with a 1-bit random term; 203 of 225 live persons sit on their cap, `py/health_check.py`); past age `$3c` the cap falls by 4 per unit and `jsr $5bd2` removes the man when it reaches 0 |
 
-Modes not listed (`$1f`…`$92` sparse entries, indices > `$94` alias into
-following code and are never selected) were catalogued by address only.
+Modes with no row here (`$20`, `$24`, `$30`, `$38`, `$3a`, `$3c`, `$3e`..`$46`, `$64`..`$66`, `$6a`..`$72`, `$76`..`$7a`, `$8e`, `$90`
+and the other sparse entries) are modelled, with their handler addresses, in the `$15000`-page block (the last
+Proven section below); the gatherer modes `$3e`..`$46` and `$6a` are in economy.md §2a. Indices > `$94` alias into
+following code and are never selected.
 
 The full table (`$14bb4`, `handler = $14bb4 + (s16)word[$14bb4 + mode]`) was
-re-dumped this pass; every valid entry `$00`..`$94` resolves inside the handler
+dumped from RAM; every valid entry `$00`..`$94` resolves inside the handler
 block `$14c48`..`$1620e`. Entries `$96`+ point back into the dispatch prologue
 or into `$19434`/`$1acb4`/`$1b2b4` (unrelated code) and are dead — `mode` is
 never written a value above `$92` by any handler.
@@ -751,25 +788,27 @@ stateDiagram-v2
     [*] --> S00 : slot spawned
 
     state "00 idle" as S00
-    state "8C hold-position" as S8C
+    state "8C afloat with a Boat" as S8C
     state "0A pre-move dwell" as S0A
-    state "08 walk-to-linked-entity" as S08
-    state "06 step+repath" as S06
-    state "02 step-until-blocked" as S02
-    state "0C load-path" as S0C
+    state "08 orbit / rejoin the linked lead" as S08
+    state "06 walk until blocked" as S06
+    state "02 step until blocked (afloat)" as S02
+    state "0C load the farm path" as S0C
     state "0E farmer walk along the spline" as S0E
-    state "10 advance-to-target" as S10
-    state "12 halt / cool-down" as S12
+    state "24 farmer walks home" as S24
+    state "10 advance to the target" as S10
+    state "12 the moving leg between re-plans" as S12
     state "48 obstacle-avoidance sweep" as S48
-    state "4A set-up sweep" as S4A
-    state "2E reached-target" as S2E
+    state "4A set up the sweep" as S4A
+    state "2E reached the target" as S2E
     state "32 melee" as S32
-    state "2C fighting-hold" as S2C
-    state "36 fight recoil" as S36
-    state "28 get men: wait" as S28
-    state "68 in-formation (follower)" as S68
-    state "8A garrison" as S8A
-    state "18 group: begin route" as S18
+    state "2C pick a target" as S2C
+    state "34 shot cool-down" as S34
+    state "36 chase an animal" as S36
+    state "28 get men: wait for recruits" as S28
+    state "68 resting in camp" as S68
+    state "8A captain resting at his town" as S8A
+    state "18 farmer at his field: begin path" as S18
     state "1A group: take food from a town" as S1A
     state "1C group: get men, summon the town" as S1C
     state "26 group: unpack dest -> march" as S26
@@ -778,8 +817,8 @@ stateDiagram-v2
     state "5A fisher: look for the catch" as S5A
     state "5C fisher: head home" as S5C
     state "60 fisher: deliver, food += 4" as S60
-    state "62 group idle" as S62
-    state "92 -> free slot, mode 00" as S92
+    state "62 fisher: idle between trips" as S62
+    state "92 do nothing (zero velocity)" as S92
     state "$15302 reached (routine)" as S15302
     state "$1518a $4bc8 reconcile" as S18A
     state "$5590 kill / rout" as S5590
@@ -793,16 +832,17 @@ stateDiagram-v2
     S0A --> S10 : dwell 0 && no link
     S08 --> S06 : arrived at linked entity
     S02 --> S06 : hit obstacle
-    S06 --> S00 : path clear && carried != 0A
-    S06 --> S02 : path clear && carried == 0A
-    S06 --> S08 : blocked, dwell 0 (repath)
+    S06 --> S00 : water, carried != 0A (no write-back)
+    S06 --> S02 : water, carried == 0A (afloat)
+    S06 --> S08 : land, dwell 0 (rejoin the lead)
     S0C --> S0E : always (saves origin, loads path)
     S0E --> S0E : segment end word == $7D01 (loop)
-    S0E --> S92 : segment end word == $7D02+n, n>0
+    S0E --> S24 : segment end word == $7D26 (mode := n = $24)
+    S0E --> S92 : segment end word == $7D00 (end)
     S0E --> S0E : dwell > 0 (integrate step)
-    S10 --> S15302 : $164bc says target reached
+    S10 --> S15302 : $164bc says target reached (chase)
     S10 --> S4A : terrain probe blocked ahead
-    S10 --> S12 : arrived, carried 0A / group not state 8
+    S10 --> S12 : path ahead clear (mode := $12)
     S10 --> S18A : group state 8 && dwell <= $12 (hand to $1518a)
     S12 --> S10 : dwell expired
     S4A --> S48 : copies target, sweep = 8
@@ -810,30 +850,34 @@ stateDiagram-v2
     S48 --> S4A : sweep exhausted one way
     S48 --> S12 : gave up (D2 < 0)
     S2E --> S32 : snap to target; engageable -> $56a6
-    S32 --> S32 : target alive & not corpse; drain 45(A3); health > 0 -> target retaliates (mutual $32)
-    S32 --> S2C : target dead (5(A3)<=0) or corpse (30(A3)==$3c)
+    S32 --> S32 : target alive & not routed; drain 45(A3); health > 0 -> target retaliates (mutual $32)
+    S32 --> S2C : target dead (5(A3)<=0) or routed (30(A3)==$3c)
     S32 --> S5590 : drained target health <= 0 (kill-or-rout roll)
     S5590 --> S2C : after the roll, self -> mode $2c
-    S2C --> S36 : (via $153b2)
-    S36 --> S2C : recoil dwell 0
+    S2C --> S34 : picker shoots (via $5150 / $57f0)
+    S34 --> S2C : cool-down over (dwell byte < 0)
+    S2C --> S36 : picker follows an animal (via $50da)
+    S36 --> S68 : target dead (6(A1) := $e)
     S28 --> S35F4 : dwell 0 (order slot freed)
     S18 --> S0C : always (40 := $50)
     S1A --> S26 : group state == $C, dwell $23
     S1A --> S35F4 : group state != $C (free slot)
-    S1C --> S28 : always (garrison := reserve >> roll, dwell $32)
+    S1C --> S28 : always (quota := lord troops >> roll, dwell $32)
     S26 --> S10 : group state $C -> unpack origin as dest cell
     S56 --> S10 : always, prev_mode := $58, target := the fishing cell
     S58 --> S5A : dwell $A
     S5A --> S62 : neighbour of category $18/$20 found, or timeout
     S5C --> S60 : $164bc arrival at settlement
-    S60 --> S62 : arrival; leader.field6 (food) += 4
+    S60 --> S62 : arrival; leader.food += 4
     S62 --> S62 : dwell > 0
-    S68 --> S68 : always (upkeep only; position stamped by lead)
+    S68 --> S68 : always (upkeep only; handler never moves the man)
     S8A --> S8A : always (upkeep only)
 ```
 
-`$92` (`$1615c`) ends the group's order with `$35f4` (the camp) and drops to mode `$0` — the
-terminal patrol state. `$1518a` is `$4bc8` (contact reconcile) then epilogue.
+`$92` is the do-nothing mode (handler `$161bc`, original `do_nothi...`; code read of the table word and the body:
+`clr.w 12(A1)` / `clr.b 17(A1)`, then the epilogue `$161c4`, and the mode byte is not rewritten): the farm path's
+`$7d00` terminator and the arrival handlers `$22` and `$78` leave a man in it. (Do not confuse it with `$1615c`, which lies inside the
+equipment-exchange tail `$160f8`, or with the `$35f4` call at `$16190..$1619e`, which belongs to mode `$4c`, `$16176`.) `$1518a` is `$4bc8` (contact reconcile) then epilogue.
 `$5590`, `$1d70`, `$3c08`, `$35f4`, `$15302` are routines, not modes, but sit
 on FSM edges and are listed in the symbol table.
 
@@ -890,7 +934,7 @@ void h_farm_walk(pm_object *A1) {
   seg_terminator:
     if (sx == 0x7d01) { c -= sy; goto next_seg; }   // loop the path
     if (sx >= 0x7d02) { A1->mode = sx - 0x7d02; goto epilogue_161c4; }  // jump to an explicit mode
-    A1->mode = 0x92;                                // $7d00 : end -> free the group slot
+    A1->mode = 0x92;                                // $7d00 : end -> mode $92 (do nothing)
     goto epilogue_161c4;
 }
 
@@ -898,7 +942,7 @@ void h_farm_walk(pm_object *A1) {
 void h_advance(pm_object *A1) {
     if (A1->prev_mode == 0x2e) {                    // chasing a live entity, not a fixed cell
         pm_object *e = &obj[A1->link_target];
-        if (e->owner <= 0 || e->prev_mode == 0x3c) {// target gone / already a corpse
+        if (e->owner <= 0 || e->prev_mode == 0x3c) {// target gone / already routed
             A1->mode = A1->prev_mode = 0x2c;        // -> fighting-hold
             goto epilogue_161c4;
         }
@@ -921,7 +965,7 @@ void h_advance(pm_object *A1) {
         if (A1->dwell <= 0x12) { jsr_1518a(); return; }         // $4bc8 reconcile
         A1->dwell >>= 1;
     }
-    A1->mode = 0x12;                                // -> halt / cool-down
+    A1->mode = 0x12;                                // -> the moving leg (original on_route)
     goto tail_of_$14ff8;
   arrived_$14fdc:
     A1->mode = A1->prev_mode;                       // resume the previous state
@@ -929,16 +973,16 @@ void h_advance(pm_object *A1) {
     goto (A1->flags & BIT5 ? epilogue_16202 : epilogue_161c4);
 }
 
-// ---- $14ff8  mode $12 : halt / cool-down --------------------------------
-void h_halt(pm_object *A1) {
+// ---- $14ff8  mode $12 : the moving leg between $10 re-plans ----------------
+void h_on_route(pm_object *A1) {
     D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
     if (--A1->dwell > 0) goto epilogue_161c4;
-    A1->mode = 0x10;                                // resume advancing
+    A1->mode = 0x10;                                // re-plan: advance again
     goto epilogue_161c4;
 }
 
 // ---- $14d32  mode $06 : walk until blocked ------------------------------
-void h_walk(pm_object *A1) {                        // Proven, 94th
+void h_walk(pm_object *A1) {                        // Proven, movement-modes block
     D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
     if (terrain_ok($1648e, D6, D7)) {               // land
         if (--A1->dwell == 0) A1->mode = 0x08;      // ($14d6a / $14d20)
@@ -953,7 +997,7 @@ void h_walk(pm_object *A1) {                        // Proven, 94th
 }
 
 // ---- $14d7c  mode $08 : escort / orbit the lead ------------------------
-void h_escort(pm_object *A1) {                      // Proven, 94th
+void h_escort(pm_object *A1) {                      // Proven, movement-modes block
     pm_object *L = &obj[A1->link_related];          // 28(A1)
     s16 x = A1->target_x, y = A1->target_y;         // orbit offset (20,22)
     jsr_12d56(&x, &y, L->heading);                  // rotate by the lead's heading
@@ -977,7 +1021,7 @@ void h_escort(pm_object *A1) {                      // Proven, 94th
     A1->mode = 0x00;  goto next_record;
 }
 
-// ---- $150c0  mode $1A : the army takes food from a town (124th) -----------
+// ---- $150c0  mode $1A : the army takes food from a town -------------------
 void h_take_food(pm_object *A1) {
     (*(u16*)0x12a24)++;                             // a UI/stat counter
     group *g   = &group[A1->group_off];
@@ -1011,7 +1055,7 @@ void h_wait_men(pm_object *A1) {
     goto epilogue_161c4;
 }
 
-// ---- $15282  mode $2A : one recruit joins (read, not seen live) -----------
+// ---- $15282  mode $2A : one recruit joins (proven live, see the $2a row) ----
 void h_recruit_joins(pm_object *A1) {                // A1 is the townsman; 46(A1) = the group lead
     if (A1->dwell == 0x32 && A1->link_46 != 0) {
         pm_object *lead = &obj[A1->link_46];
@@ -1028,10 +1072,10 @@ restructure:
     goto epilogue_161c4;
 }
 
-// ---- $1533c  mode $32 : melee ----------------------------------------- Proven, 95th
+// ---- $1533c  mode $32 : melee ------------------------------- Proven, combat block
 void h_melee(pm_object *A1) {
     pm_object *T = &obj_at_off(A1->link_target);         // A3 = $51b66 + 48(A1)
-    if (T->owner <= 0 || T->prev_mode == 0x3c) {       // dead / corpse
+    if (T->owner <= 0 || T->prev_mode == 0x3c) {       // dead / routed
         A1->mode = A1->prev_mode = 0x2c;
         goto epilogue_161c4;                             // $153a2
     }
@@ -1049,7 +1093,7 @@ void h_melee(pm_object *A1) {
     goto next_record;                                    // $1622c -- no epilogue
 }
 
-// ---- $56a6  engage bookkeeping --------------------------------------- Proven ($574a), 95th
+// ---- $56a6  engage bookkeeping ------------------------ Proven ($574a), combat block
 void jsr_56a6(pm_object *A1 /*attacker*/, pm_object *T /*target*/) {
     if ((T->flags & BIT6) && T->group_lead_off) {
         pm_object *L = &obj_at_off(T->group_lead_off);
@@ -1067,7 +1111,7 @@ void jsr_56a6(pm_object *A1 /*attacker*/, pm_object *T /*target*/) {
     }
 }
 
-// ---- $5590  kill / rout roll --------------------------------- Proven (KILL paths), 95th
+// ---- $5590  kill / rout roll ------------------- Proven (KILL paths), combat block
 void jsr_5590(pm_object *A1 /*attacker*/, pm_object *T /*loser*/) {
     T->health = 0;
     int sel = 0;
@@ -1091,14 +1135,14 @@ tail:                                                    // $5628 -- flag-routed
     leader[roster[T->roster_off].leader_byte_off].population -= 1;
 }
 
-// ---- $16048  mode $68 : formation follower -----------------------------
-void h_formation(pm_object *A1) {
+// ---- $16048  mode $68 : resting in camp (original rest_in_...) ---------
+void h_camp_rest(pm_object *A1) {
     jsr_5c80(A1);                                    // upkeep only
     A1->step_x = 0;  A1->heading = 0;                // never moves itself
-    goto next_record;                               // position is stamped by the group lead
+    goto next_record;                               // the camp position was set by $35f4 / $1d70
 }
 
-// ---- $161b2  mode $8A : captain at rest --------------------------------
+// ---- $161b2  mode $8A : captain resting at his town ---------------------
 void h_captain_rest(pm_object *A1) { jsr_5c80(A1); goto next_record; }
 
 // ---- $15b94  mode $56 : fisherman -- unpack the fishing cell ----------
@@ -1125,14 +1169,14 @@ void h_fisher_scan(pm_object *A1) {
   found:
     p->category = 0x20;                              // claim it
     A1->flags |= BIT5;
-    // then a $12c9a-driven random nudge of (D6,D7) by $20, $15fa8 on-screen test ...
+    // then a $12c9a-driven random nudge of (D6,D7) by $20, $15fa8 collision test ...
     ...
 }
 
 // ---- $15d66 / $15ddc  mode $5C -> $60 : fisherman heads home & delivers
 void h_fisher_home(pm_object *A1) {                 // $15d66
     D6 += (s8)A1->step_x;  D7 += (s8)A1->step_y;
-    if (on_screen_test($15fa8) == 0 && --A1->dwell >= 0) goto epilogue_16202;
+    if (cell_collision($15fa8) == 0 && --A1->dwell >= 0) goto epilogue_16202;
     A1->mode = 0x60;
     // re-derive target from the packed cell + $3f86c altitude (same as $56):
     A1->target_x_lo = A1->group_off & 0x3f;
@@ -1158,28 +1202,29 @@ void h_fisher_deliver(pm_object *A1) {              // $15ddc  mode $60
 There is **no global "pick the best target" pass**. Targeting is local and
 event-driven, in three places:
 
-1. **Group order → destination cell.** When a lord decides to move an army, the
-   group-order record `$51538` is set to state `$c` and the destination is
-   written as a packed cell into either the lead man's `36(A1)` (mode `$1e`) or
-   the nation record `12($4f916+34)` (136th: mode `$52`'s read of that field is a merchant's walk home to the settlement's cell, see the `$52` row, not a group order). The lead unpacks that cell and
-   marches (mode `$26` or `$52` → `$10`; `$56` is the fisherman's own trip, not a group order). The decision itself (which cell) is made by the
-   higher-level strategy code reached from `$13040`'s `jsr $6522` / `$d322` /
-   `$3e06` — **not decoded this pass**; those run every tick and own the
-   `$51538` / `$4f916` tables.
+1. **Group order → destination cell.** When a lord (or the player) orders an army to move, the group
+   record `$51538` takes the order's state (the game's own names: 8 Attack, 5 Going To, 2 Get Food, 3 Get Men, 12 Supply;
+   strategy.md "The game's own text") and the destination is handed to the lead as a packed cell: through the order
+   executor `$6a3a` → `$4b80` for a march, or into the lead man's `36(A1)` for the supply line's return leg
+   (mode `$26`). The lead unpacks it and marches in mode `$10`. Two other reads of a packed cell are not group
+   orders: mode `$52`'s read of the settlement record's `12($4f916+34)` is a merchant's walk home to the settlement's
+   cell (see the `$52` row), and the fisherman's trip (`$56`) is his own. Which cell the lord chooses is decided by
+   the higher-level strategy code reached from `$13040`'s `jsr $6522` / `$d322` / `$3e06`, which runs every
+   tick and owns the `$51538` / `$4f916` tables; it is decoded in `strategy.md`, not here.
 
 2. **Contact → engage.** While marching, mode `$10` probes `$1648e` a few cells
    ahead; the fisher modes (`$5a`, `$5c`) and the notify scan (`$16260`) walk
    the current cell's `$47970` bucket. A neighbour of an enemy category within
    range flips the record to mode `$32` and calls `$56a6`, which re-checks the
-   linked enemy `28(A3)` is within `$fff` world units before `$5778` resolves a
-   round. So "attack" is decided by **bucket proximity at ~2.4 Hz**, using the
-   Manhattan-max distance, not by any threat evaluation.
+   linked enemy `28(A3)` is within `$fff` world units before `$5778` records the contact
+   (the casualties come from the melee grind of `$1533c`, strategy.md "Combat"). So "attack" is decided by
+   **bucket proximity at ~2.4 Hz**, using the Manhattan-max distance, not by any threat evaluation.
 
 3. **Own settlement → recruits.** Order `$08` (modes `$1c`, `$28`, `$2a`, above) summons a town's men to the lead
    and moves them into the group, counting the lord's `troops_field` down; it never targets another side. Ownership
-   is reconciled by `$5c2c`: it compares the
+   is reconciled by `$5c2c` (the revolt chain block below): it compares the
    settlement's stored owner (`$4e514[14($4f916+34)]`) against the entity's
-   `5(A1)` and calls `$4bc8` on a mismatch.
+   `5(A1)` and calls `$4bc8` on a mismatch (or defects a man who leads no group).
 
 Inputs read by the loop, in order of how often:
 
@@ -1188,11 +1233,11 @@ Inputs read by the loop, in order of how often:
 | object records | `$51b66` | 50 | the entities (above) |
 | spatial buckets | `$47970` | 2 | per-cell linked-list heads (broad phase) |
 | terrain | `$438ee` | — | four 8 KB planes: altitude `-16514` (`$3f86c`), colour B `-8257`, colour A `0`, flags `+8257` (graphics.md) |
-| nation / settlement | `$4f916` | 18 | `+5` owner colour, `+8` linked object, `+12` destination cell, `+14` leader index |
-| group orders | `$51538` | ~`$13c` | `+0` state enum, `+24` lead object link, `+36` running total |
+| building (settlement) | `$4f916` | 18 | `+5` owner colour, `+6` render category, `+7` building kind, `+8` chain to the lord's next settlement, `+10` first unit (the unit chain runs through `24(unit)`), `+12` destination cell, `+14` byte offset of the lord in `$4e514` (economy.md §3) |
+| group records | `$51538` | `$13c` per side | 5 side records of six-word arrays, one word per captain's group (group field `x` at `$4c + x + 2k`): `0` state enum, `-12` lead object link, `24` target link, `36` the army's food (strategy.md "`$51538`") |
 | altitude plane (`_alts`) | `$3f86c` | 1 | terrain height per map cell, 64 x 128; the renderer projects it (`py/alts_render_check.py`) |
-| leader / message | `$4e514` | 32 | per-lord troop counts + message counters + name index |
-| patrol paths | `$168ee` | var | {dx,dy} word lists, terminated by a word ≥ `$7d00` |
+| leader / message | `$4e514` | 32 | per-lord food and men at home, goods counters, loyalty, message counters, name index (economy.md §1) |
+| patrol paths | `$168ee` | var | {dx,dy} word lists (the `_flights` spline table: `farm`, `pots`, `eyes`), terminated by a word ≥ `$7d00` |
 
 ## What each entity decides per tick (the answer)
 
@@ -1203,22 +1248,23 @@ blocked; if a bucket neighbour is an enemy, switch to fighting (`$32` →
 `$56a6`); recover health (`$5c80`). It does **not** choose where to go — that
 came from its group order.
 
-For a **formation follower** (mode `$68`, the bulk of an army): nothing but
-upkeep; its position is stamped by the group lead.
+For a man **resting in camp** (mode `$68`, the bulk of an army): nothing but
+upkeep; the handler never moves him.
 
-For a **garrison** (mode `$8a`): upkeep only, until a `$8a8a` removal or a
-group order pulls it out.
+For a **captain resting at his town** (mode `$8a`): upkeep only, until a group order
+or the `$4c` return handler (`$16176`) changes his mode.
 
-For a **group lead** carrying a live order (`$51538` state `$c`): unpack the
-destination cell and enter mode `$10`; on arrival take food from a town (`$1a`) or get men from one (`$1c` → `$28`).
+For a **group lead** carrying a live order (`$51538` state 8 Attack, 5 Going To, 2 Get Food, 3 Get Men, ...): walk to the
+destination cell in mode `$10`; on arrival the order's arrival mode runs: take food from a town (`$1a`), get men
+from one (`$1c` → `$28`), camp (`$1e`), and so on.
 
 The lords' strategic choices — *declare* an attack, *pick* which village,
 *decide* to recruit or build — live one level up, in `$6522` / `$d322` /
 `$3e06` (called from `$13040` every tick, operating on `$51538` and `$4f916`).
-**That layer is decoded in `strategy.md` (71st pass):** `$6522`'s `$6564`
+**That layer is decoded in `strategy.md`:** `$6522`'s `$6564`
 branch is the commander AI — it picks the nearest enemy leader (`$68fe`),
 scores the trip's food against the group's food (`$68ee` vs `112()`, the
-group's `36`; strategy.md, 124th), and issues order `$0c` → group state 8 → the group lead enters mode
+group's `36`; strategy.md "`$6522`"), and issues order `$0c` → group state 8 → the group lead enters mode
 `$10` toward that cell (via `$6a3a` → `$4b80`). No economy or build planning
 at that layer; the one economic sequence is the follow-up table `$6762`/`$67d0` (food, men,
 equipment, invention orders chained after each finished state, `strategy.md` "The follow-up table"). `$d322` + `$3e06` only build the per-side force totals `$57fba`,
@@ -1237,12 +1283,12 @@ which `$d23a` reduces to the 0..4 force ratio `$57fce` (a fist indicator, and th
   `$48` 13, `$58` 11, `$86` 10 — everything else in single digits. In a quiet
   view the loop is almost entirely camp rest + farm walks + regroup dwell;
   combat modes (`$32`, `$5778`) did not fire.
-- `$5c80` upkeep: ~2600 calls (once per moving/garrison entity per pass).
+- `$5c80` upkeep: ~2600 calls (once per moving or resting entity per pass).
 - Instruction weight of the whole `$14b62` subtree: small next to the renderer
   — `$163ea` relink 1806 calls, `$1648e` 1979, `$164bc` 213. Consistent with
   `graphics.md`: the sim tick is cheap, the per-VBL fill is not.
 
-### The re-armed fight (73rd pass) — the melee casualty mechanic seen
+### The re-armed fight — the melee casualty mechanic seen
 
 66M-step traced resume from `pm71_slot4.snap` re-arming slot 1's `byte4 := 4`
 every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`, `trace_cfg.py --blocks`).
@@ -1251,7 +1297,7 @@ every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`, `trace_cfg.py --blocks`)
 | routine | hits | reading |
 |---------|-----:|---------|
 | `$6522` decide | 276 | once/tick |
-| `$661a` primary-slot decide | **2** | re-arming `byte4` mostly does *not* re-trip `$661a` — the objective slot's `active`/`force` fields stop qualifying after the first order. Only 2 autonomous primary decisions in 276 ticks |
+| `$661a` the attack arm of the decide chain | **2** | re-arming `byte4` mostly does *not* re-trip `$661a` — the objective slot's `active`/`force` fields stop qualifying after the first order. Only 2 autonomous primary decisions in 276 ticks |
 | `$68fe` / `$68ee` | 2 / 2 | the two decisions; both scored in budget |
 | `$15302` reached-enemy | 41 | men closing on enemy positions |
 | `$56a6` engage | 9 | contacts made |
@@ -1262,7 +1308,7 @@ every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`, `trace_cfg.py --blocks`)
 | — of those, ROUT (`$560a`) | **10** | `$30fe` returned `2` every time (`group.field60 == 4`) → always rout |
 | `$5bd2` wear removal | **0** | `anim_wear` never crossed `$3c` in ~276 ticks |
 | `$57f0` projectile | 3 | |
-| `$1d70` re-rank | **15** | runs on every roster change (the 73rd called it "capture"; it does not write ownership, 99th) |
+| `$1d70` re-rank | **15** | runs on every roster change (it re-forms the ranks and writes no ownership) |
 | `$4bc8` contact reconcile | 1 | one nation-pair peace break |
 | `$5c80` upkeep | 2136 | ~8 entities/tick |
 
@@ -1271,23 +1317,23 @@ roll: mode `$32` (`$1533c`) subtracts `(field44 >> 1) + 1` (`field44 >= 6` → j
 `1`) from the enemy's `health` byte every tick a unit stays in contact; at
 `health <= 0` `$5590` rolls **kill vs rout** off `$30fe = group.field60 − 2` (the
 group's posture 2/3/4, strategy.md "What each order does") and, when that is neither 0 nor 2, the
-`($57fec + anim_phase)` parity. In the 73rd-pass fight the attack group's `field60 == 4` (the AI's attack stamp, `$6638`)
+`($57fec + anim_phase)` parity. In this fight the attack group's `field60 == 4` (the AI's attack stamp, `$6638`)
 → `$30fe == 2` → the roll is pinned to `$560a`; a unit there dies only if
 `flags.bit5` is set (afloat: bit 5 men are drawn as boats, `$1174e`), otherwise it *routs* — survives, scattered by
-`$3c08`. *(95th: `$1533c` + the `$5590` KILL branches + `$30fe` + `$56a6`'s
-`$574a` leaf are now Proven vs the real 68000 — 413/413 tracked bytes over 48
-differential states; 98th: the `$3c08` regroup dispatcher that scatters the
-routed unit is now Proven too — 71/71 over 22 states; the `$5778`/`$2776`/`$1b8c`
-group plumbing and `$3c08`'s own bit-4 group-teardown stay asserted-off.)* The `$5c80`/`$5bd2` **wear** path
+`$3c08`. *(`$1533c` + the `$5590` KILL branches + `$30fe` + `$56a6`'s
+`$574a` leaf are Proven vs the real 68000 — 413/413 tracked bytes over 48
+differential states; the `$3c08` regroup dispatcher that scatters the
+routed unit is Proven too — 71/71 over 22 states; the `$5778` group plumbing stays asserted off in the
+combat proof, while `$2776`, `$1b8c` and `$3c08`'s bit-4 group teardown are Proven in their own blocks below.)* The `$5c80`/`$5bd2` **wear** path
 (`anim_wear - $3c`, health-cap table `$5ccc`) is a slow second channel that a
 short fight never reaches — `anim_wear` is only bumped by the iterator's
 animation-advance (`$14b9a`, ~once per animation cycle) and is not reset by any
 handler, so it is a lifetime-exhaustion counter, relevant only over a long
-campaign. So the 72nd pass's "no casualties" was right about *deaths* but missed
-that **routing is the real outcome** and it fired ten times. Kills need either a
+campaign. So the quiet view's "no casualties" is right about *deaths*, but
+**routing is the real outcome** of a short fight and it fired ten times. Kills need either a
 disciplined attacker group (`field60 != 4`) or `flags.bit5` (a man in a boat).
 
-### Natural runs on later lands (121st pass)
+### Natural runs on later lands
 
 Four lands built through the briefing-OK poke (`README.md` "Driving a later
 land") and run 200M steps each with no pokes, in four 50M stretches, counting PC
@@ -1297,7 +1343,7 @@ hits with the REPL's `hits` command (`reversing/powermonger/py/runland.sh`; snap
 | routine | land 5 | land 60 | land 0 | land 25 |
 |---------|-------:|--------:|-------:|--------:|
 | `$6522` commander decide | 1153 | 1110 | 1321 | 1135 |
-| `$661a` primary-slot decide | 7 | 6 | 8 | 4 |
+| `$661a` the attack arm of the decide chain | 7 | 6 | 8 | 4 |
 | `$56a6` engage | 19 | 27 | 36 | 135 |
 | `$5590` kill-or-rout | 17 | 26 | 29 | 78 |
 | — KILL `$55f2` | 9 | 7 | 18 | 59 |
@@ -1310,26 +1356,30 @@ hits with the REPL's `hits` command (`reversing/powermonger/py/runland.sh`; snap
 | `$4bc8` contact reconcile | 9 | 16 | 10 | 92 |
 | `$5cde` work-order choice | 336 | 59 | 309 | 707 |
 | `$550e` revolt | 6 | 6 | 6 | 6 |
-| `$25d6` (garrison defects, via `$5c2c`; land 25's from the `$1618a` removal path, land 60's from a revolt) | 0 | 1 | 0 | 1 |
+| `$25d6` (a captain defects, via `$5c2c`; land 25's from the `$1618a` removal path, land 60's from a revolt) | 0 | 1 | 0 | 1 |
 | `$45f2` pigeon launched | 17 | 13 | 19 | 25 |
 
 A later land fights without being prompted: every land killed men (`$55f2`),
 the first kills seen anywhere (mission 1's forced fight: 0), and `$2776` fires
 17-37 steps after a kill (two instances checked), from the `$5628` tail when the
 dead man was in a group (12 of the 13 hits; the thirteenth comes from a
-garrison defection, `$25d6`). The
+captain's defection, `$25d6`). The
 enemy lords' pigeons (byte6 20, owners 2 and 4 on land 5) fly to their groups
 over and over, the visible side of `$661a` issuing orders. `$5bd2` never fired.
 `$550e` (called from the `$7c`/`$7e` heartbeat at `$158cc` and from mode `$2c` at
-`$53f6`, the conquest arm `$539a`: economy.md §3, gate `py/diff_4f68.py`) is how land changes hands: `../economy.md` §3 and the proof below. Re-running two lands from the same snapshot
+`$53f6`, the conquest arm `$539a`; gate `py/diff_4f68.py`) is how land changes hands (economy.md §3 and the revolt-chain proof below). Re-running two lands from the same snapshot
 reproduced every count exactly. Land 5's run started at step 0 of
 `scratchpad/pm121/k5.snap`; the first kill is at step 27,732,607 of stretch 1.
 
-### [Proven] — the dying-entity path `$1623c`, vs the real 68000 (121st pass)
+## Proofs against the real 68000: dying entities, groups, orders, animals and the `$15000` page
+
+The same method and bar as above, for the routines around the entity loop.
+
+### [Proven] — the dying-entity path `$1623c`, vs the real 68000
 
 `tools/pm_fsm_ref.py` `call_1623c` (+ `$16376` goods credit, `$16392` unlink,
-`$45ee` pigeon launch); `reconstruct()` now runs it for every record with a
-negative owner instead of asserting. Differential test
+`$45ee` pigeon launch); `reconstruct()` runs it for every record with a
+negative owner. Differential test
 `reversing/powermonger/py/diff_1623c.py`: **275/275 tracked bytes identical over 23
 states, 9 branch families**, on dead men the game made itself on lands 0, 5, 25
 and 60 (8 natural states with every dead record live, plus pokes of one field on
@@ -1352,7 +1402,7 @@ a natural record). Tracked: `REGIONS` + the player's pigeon record `$4c112`
   and, if the player's pigeon (`$4c112`) is free (`byte6 == 0`), launches it
   (`owner := 1`, `22(A0) :=` the requested object's position, `8(A0) := $01800180`,
   `$45ee`, `20(A0) :=` this record) and unlinks the record if it is byte6 `$0a`. The launching record is the pigeon's rider: when the pigeon lands, `$4244` (in `$3e06`) revives that
-  same dead record as a live man of its home settlement at the landing point and adds one to the home lord's `troops_field` (`$42be`; 137th, 6 of 6, `economy.md` section 1).
+  same dead record as a live man of its home settlement at the landing point and adds one to the home lord's `troops_field` (`$42be`; counted live, 6 of 6, `economy.md` section 1).
   The `cmp.l #$3e8` at `$16322` has no branch after it.
 
 Branches exercised: natural countdown (8), countdown reaching 0 with no base in
@@ -1360,7 +1410,7 @@ the cell (3), with a base (4), with a base and no goods (1), flags bit 5 (2),
 goods counter already `$ff` (1), pigeon launched (2), pigeon busy (1), pigeon
 launched from byte6 `$0a` remains (1).
 
-### [Proven] — the group dissolve `$2776`, vs the real 68000 (122nd pass)
+### [Proven] — the group dissolve `$2776`, vs the real 68000
 
 `tools/pm_fsm_ref.py` `call_2776` (+ `$39d4` goods handover, `$1d36` roster
 unlink, `$3ce8` current-group select, the tracked parts of `$187d8` and
@@ -1373,11 +1423,11 @@ Entry: `A3 = $51538 + group_off`, a group exec sub-record
 (`side*$13c + $4c + 2k`). Two callers: the `$5590` kill tail at `$564e`
 (`A3 = $51538 + 42(victim)`), which runs only when the victim's owner byte is
 `<= 0` (`$563e: tst.b 5(A3); bgt $56a0`, so a routed survivor skips it), and
-the garrison defection `$25d6` at `$262a` (1 of the 13 natural census hits,
+the captain defection `$25d6` at `$262a` (1 of the 13 natural census hits,
 land 25; the other 12 come from kills).
 
 - **Captain group** (sub-record 0 of its side, `(A3-$51584) mod $13c == 0`):
-  every record of the 26-byte effect table `$4c12c..$4c5f2` owned by that side
+  every record of the order-pigeon pool (26-byte records, `$4c12c..$4c5f2`; slot 0 at `$4c112` is the player's pigeon) owned by that side
   is unlinked (`$16778`) and cleared. **Other groups**: the effect records whose
   `20(rec)` is the group's lead are cleared (and the local side's `$57fd8`
   entry for that sub-record).
@@ -1398,13 +1448,12 @@ Clearing `-48` of the local side's sub-record 0 is how the player loses a land
 (`strategy.md` "How a land ends"); one natural corpus state is exactly that
 (`k60_x1`, land 60, step 94,725,510 after `run/k60_s4.snap`).
 
-### [Proven] — the lord's work order `$5cde`, vs the real 68000 (122nd pass)
+### [Proven] — the lord's work order `$5cde`, vs the real 68000
 
 `tools/pm_fsm_ref.py` `call_5cde`. Differential test
 `reversing/powermonger/py/diff_5cde.py`: **768/768 tracked bytes identical over
 47 states** (32 natural, 15 poked or with a register preset), 15 branch tags,
-and the returned `D2`/`D3`/`D4` low words 85/85. `$5cde` chooses the lord's whole work order (the 122nd's first name for it, "settlement
-herd-op assessment", undersold it).
+and the returned `D2`/`D3`/`D4` low words 85/85. `$5cde` chooses the lord's whole work order (original `_set_tow...`, a prefix shared with `$2eac` and `$550e`).
 Callers: the settlement heartbeat (`$1589a`, `D1 = 14(marker) & 3`) and the
 group-order handler (`$5fc0`, `D1` = the `$30fe` result). `A0` = the leader.
 
@@ -1429,13 +1478,13 @@ group-order handler (`$5fc0`, `D1` = the `$30fe` result). `A0` = the leader.
    bits 6 and 4 clear, mode not `$5c`/`$60`/`$62`). The unit loop has no
    empty-chain test, so a settlement with no units stamps object slot 0.
 
-Natural states: 27 no-capital exits, 4 tree-felling, 1 fallback. No natural state took
+Natural states: 27 no-WorkShop exits, 4 tree-felling, 1 fallback. No natural state took
 the build side (the control byte was 1..6 and `18(L)` 0 in all of them), so the
 build arms are proven on poked states only and how often lords build in play
 is not measured. Not reached: the `31 == $62` filter, and the `12 := 6` /
 `12 := 8` arms.
 
-### [Proven] — the revolt chain `$550e` → `$5c2c` → `$25d6`, vs the real 68000 (122nd pass)
+### [Proven] — the revolt chain `$550e` → `$5c2c` → `$25d6`, vs the real 68000
 
 `tools/pm_fsm_ref.py` `call_550e`, `call_5c2c`, `call_25d6` (+ `rng_12c9a`,
 and the `$2776` family above). Differential test
@@ -1462,7 +1511,7 @@ against a second, independent corpus.
 Not reached: `$187d8` from `$25d6` on the player's side with D3 ≠ 0 (asserted
 off in the transcription), and the RNG's zero-seed reload.
 
-### [Proven] — shepherds, animals and carrier pigeons (139th pass)
+### [Proven] — shepherds, animals and carrier pigeons
 
 `tools/pm_fsm_ref.py` `h_mode80/82/84/86/88` (wired into `reconstruct`), `call_animals`, `call_pigeons`; `economy.md` section 5a for how the shepherds and animals come to exist.
 Differential tests: `py/gate_shepherd.py` **1043/1043 tracked bytes identical over 198 states** (`callcap 14b62` with one record live: natural shepherds of two land builds run
@@ -1472,7 +1521,7 @@ flights 81, pigeon re-steers 5, two natural pigeon arrivals).
 
 **The animals** (sheep: the panel names category 8 "Sheep"; the 8-character symbol `init_she` is shared by `$2b08`, the shepherd, and `$2d0e`, which by the panel text is presumably `init_sheep`) live in a pool of 40 records of 20 bytes at `$4ccd6..$4cff6`; the word at `$4cff6` is the bytes used. The pool is filled once, by the shepherds' world-build pick (`$2d0e`
 is called from one place, `$2b32`; the count word is only ever added to), no animal is born or freed afterwards, and the count stayed at 720 and 800 bytes over 30 snapshots on two
-lands. They are not the tree array `$4d252` and not projectiles (`$4be00`).
+lands. They are a pool of their own: separate from the tree array `$4d252` (economy.md §2) and from arrows (`$4be00`).
 
 ```c
 typedef struct pm_animal {            // $4ccd6, stride 20, 40 slots
@@ -1511,9 +1560,9 @@ decrements the local side's pending-pigeon counter `$57fd8[2k]` when the group i
 What the gates compare and leave out: `gate_animals.py` compares the 40 animal records (links included) and, for every cell an animal left or entered, the whole bucket chain with forward
 and backward links, because `$3e06` also moves the pigeons (modelled: flights, re-steers, the `$41dc` bucket effect) and runs `$596a` (projectiles; the 5 snapshots with a live projectile are
 excluded), `$4342` (Proven above), the army food and health indicator (not compared). Not modelled: the effect of `$6b38` on the arrival, and the player's landing `$4244`
-(asserted off; the 137th pass counted it live). The projectile loop `$596a`, once excluded, is modelled and proven below. `py/gate_shepherd.py` needs a time series of snapshots after a land build (the recipe is in `py/README.md`).
+(asserted off; counted live separately, `economy.md` section 1). The projectile loop `$596a`, once excluded, is modelled and proven below. `py/gate_shepherd.py` needs a time series of snapshots after a land build (the recipe is in `py/README.md`).
 
-### [Proven] — arrows and carrier pigeons: `$596a`, `$4562`, `$4624` (140th pass)
+### [Proven] — arrows and carrier pigeons: `$596a`, `$4562`, `$4624`
 
 `tools/pm_fsm_ref.py` `call_596a` (with `_proj_end`, `_proj_area`, `call_4624`) and `call_4562`; gates `py/gate_proj.py` and `py/gate_pigeon_send.py`, each against `callcap` of the whole routine,
 comparing every byte the real call wrote against every byte the model wrote (the stack excluded). Corpora: the entries of `$596a` and `$4562` in the 21 stretches of lands 0, 5 (also in winter), 25 and 60 that hold a live arrow or a
@@ -1524,7 +1573,7 @@ launch (`py/proj_scan.py`, `py/proj_corpus.py`, `tools/capture_hits.py`; recipes
 - life < 0: counts up one a tick and the slot is unlinked when it reaches 0.
 - life > 1: **flight**. Position += (vx, vy), clamped to x in 0..`$3fff` and y ≥ 0 (the upper clamp on y is dead: `cmpi.w #$8000` is followed by `bmi`, which is always taken); relinked into its new cell (`$163ea`). A type `$12` flies on
   unhindered. Any other type then walks the chain of its new cell for the first record of category 0 (man), `$14` (pigeon) or `$16` (marker) whose owner byte is positive, differs from the shooter's byte 5 and lies within |dx| < `$10`,
-  |dy| < `$16` of the arrow. **No flags are tested** (the garrison bits 6 and 4 that `$32c6` honours do not exempt anyone). A man's health byte 45 loses `$52`; when the signed `subi.b` result is not positive
+  |dy| < `$16` of the arrow. **No flags are tested** (the flag bits 6 and 4, group member and leader, that `$32c6` honours do not exempt anyone). A man's health byte 45 loses `$52`; when the signed `subi.b` result is not positive
   (zero, negative, or an overflow: byte 45 is 0..`$7f` in play, so a value of `$80` or more would misfire) the `$5590` roll runs with the shooter as the attacker. A pigeon goes to `$4624`. A marker's owner byte is negated. The arrow is then spent (`$599e`).
 - life == 1: the **end of life**, the same `$599e`. The slot's life := 0; if the shooter's byte 31 is `$34` (the shot cool-down, `$153b2`) and it is alive, its dwell byte 18 := 0, so **the archer's cool-down ends with the arrow**, after the full 20 ticks or at the hit; a type other than `$12` is unlinked.
   A type `$12` instead becomes an area effect (life −4) on every record in its cell: category 2 gets flags `$a`, category `$10` becomes 2 with flags `$a` and the lord's eight goods bytes `$4e514 + 24 + word 14` cleared, a man
@@ -1580,7 +1629,7 @@ the `$155ac` no-tree exit with flag bit 6, three edge-fail statements of `$15c46
 | `$4e` `$50` `$52` `$54` | `$15a0e` `$15a60` `$15a80` `$15ad2` | 17, 3, 57, 119 | 97, 6, 387, 884 | merchants; `$54` stale-A0 pickup (row above) |
 | `$5e` `$56` `$58` `$62` `$5a` `$5c` `$60` | `$15b5e` `$15b94` `$15bec` `$15bfc` `$15c46` `$15d66` `$15ddc` | 11, 13, 2, 45, 633, 237, 29 | 34, 50, 4, 242, 6292, 1448, 148 | fishers; `$5a` with 18 RNG seeds and map edges, `$5c` with all 16 corner combinations of the altitude cell |
 | `$72` | `$1605a` | 12 | 767 | synthetic only; non-empty pile only |
-| `$64` `$70` `$7e` `$8e` `$90` | `$16044` `$160e0` `$157e6` `$160e4` `$160f2` | 2, 1, 6, 3, 3 | 0, 0, 6, 6, 13 | glue; `$7e` is the heartbeat body (96th/97th), `$8e`/`$90` call `$160f8` (`gate_equip.py`) |
+| `$64` `$70` `$7e` `$8e` `$90` | `$16044` `$160e0` `$157e6` `$160e4` `$160f2` | 2, 1, 6, 3, 3 | 0, 0, 6, 6, 13 | glue; `$7e` is the heartbeat body (heartbeat block), `$8e`/`$90` call `$160f8` (`gate_equip.py`) |
 
 Not modelled (their callees belong to the orders executors): `$22` (`$5fa0`), `$42` (`$600a`), `$6c` (`$32c6`), `$6e` (`$61f8`), `$74` (`$3956`),
 `$76` (`$33b0`), `$78` (`$63f4`), `$7a` (`$3da4`).
@@ -1600,15 +1649,17 @@ sign (`$15c46`'s scaled target is not clamped to 0 when the sum is positive but 
 - **The strategic layer** — decoded in `strategy.md`, including the natural
   `$661a` decisions and how a land ends. Still open there: the `$580a6`
   per-side assessment / diplomacy subsystem (`$2200`–`$3500`).
-- **`$5778` / combat — mechanism now closed** (73rd pass, above + `strategy.md`
+- **`$5778` / combat** — the mechanism is closed (this file's combat block plus `strategy.md`
   "Combat"). `field44` is written only by the world build (`$2452`/`$2500`,
   from the side block) and the equip paths `$16124`/`$159de` (codes 2/4/6);
   the projectile type is `$28` for a bow (6) and `$12` for `$e`/`$10`, a value
   no writer produces, so `$12` is unreachable (`port/SPEC.md` "Why 18 and 28
-  are missing"). `group.field60` is the posture (124th): the player's
+  are missing"). `group.field60` is the posture: the player's
   posture icons (order `$16`) and the AI's `$6638`/`$6762` set it.
-- `$51538` group-order record: `strategy.md` has the stride (`$13c`), the header
-  (pending long / type / param) and the six groups' parallel arrays (124th:
-  the old "objective slots" and "execution sub-records" are the side's groups;
-  field table in strategy.md "`$51538`"). Still open: `+4`, `+256..+292`.
-- How the mouse "move / attack / fully engage" commands map to the group-order state.
+- `$51538` group record: `strategy.md` has the stride (`$13c`), the header
+  (pending long / type / param) and the six groups' parallel arrays (the old
+  "objective slots" and "execution sub-records" are the side's groups; field table in
+  strategy.md "`$51538`"). The least explained array is `+280` (campaign phase / sub-order).
+- The mouse "move / attack / fully engage" commands reach the group state through the order-to-state table `$6888`
+  (strategy.md "The player's commands" and "`$6822`: issuing an order"); the order table's remaining handlers
+  are in strategy.md, not here.
