@@ -106,7 +106,7 @@ operation and the nearest forest operation (§2).
 
 | PC | handler / mode | effect on the pool |
 |----|----------------|--------------------|
-| `$1507c` | `$15042`, entity **mode `$16`** (a farmer home from his field; non-winter only) | `food += 2` (`+= 2` again at `$1508a`, behind the `$15082` compare, when he carries a Plough, byte 33 `== 8`; 2 of 73 returns doubled in 40M steps of land 5, and only 1 farmer in ~73 carries a Plough) |
+| `$1507c` | `$15042`, entity **mode `$16`** (a farmer home from his field; non-winter only) | `food += 2` (`+= 2` again at `$1508a`, behind the `$15082` compare, when he carries a Plough, byte 33 `== 8`; 2 of 73 returns doubled in 40M steps of land 5, and only 1 farmer in ~73 carries a Plough; `py/equip_census.py` finds none on `k5_s4` itself, and none among 1178 farmer observations in 20 Play Random Land snapshots, where 11 of 372 lord records hold any goods) |
 | `$15e18` | `$15ddc`, entity **mode `$60`** (the fisherman delivering his catch: every man in modes `$56`..`$62` is job 4, fisher, 93 of 93 over seven states, `py/job_census.py`, ai.md) | `food += 4` per trip |
 | `$150f2` | `$150c0`, entity **mode `$1a`** (an army takes food from a town: order `$06`) | `slice = food >> (posture-2)`; `food -= slice`; `36(group) += slice` (the army's food); `loyalty_pressure += 16 >> (posture-2)` (the `14(A5)` write, A5 = the lord). Live, 1 run: 22 → 11, loyalty 0 → 8 |
 | `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` camp-making family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. Live, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven** (ai.md) — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
@@ -169,7 +169,7 @@ array as sheep and wild animals; read them as forest operation, tree and gathere
 - all 203 live `$4d252` entries of `pm123/win/m1_s0` (154 of 154 in `pm129/env5_12M`) sit on a
   byte6 == 4 record, the building/tree frame category of graphics.md, and that is the whole byte6 == 4
   population; none sits on a byte6 == 8 record (the animals, drawn by `$11a86`, a different set:
-  3 in `m1_s0`, 40 in `env5_12M`; `py/tree_census.py`);
+  3 in `m1_s0`, 40 in `env5_12M`; `py/tree_census.py`). On the Play Random Land roll the same holds in all 20 snapshots of five lands (`pm143/run`: 263 to 304 live entries, every one on a byte6 4 record's cell, and the array count equals the byte6 4 record count in each). The test is a cell match, so it cannot tell a tree from an animal standing in the tree's cell: 0 to 5 entries a snapshot also match a byte6 8 record's cell. The count equality is the identity evidence;
 - from land 5 (`pm121/run/k5_s4.snap`, 10M steps, `hits` on the chain): `$3e` (`$155ac`) 28 hits, `$44`
   (`$156be`) 24, `$42` (`$15736`/`$600a`) 25, `$60dc` 25, **`$5ec6` 0**; the trees in state `$0d` went 2 → 5 while
   the live `$0e..$11` trees went 100 → 97 (3 felled), and the one goods credit among the 25 `$60dc` calls (lord 8's Plough 2 → 3)
@@ -481,7 +481,7 @@ owner/kind/cell/leader. A site is refused when the four corner altitudes of its 
 (`-16514(A3)`, `-16513`, `-16450`, `-16449`: the `$3f86c` plane, A3 being the `$438ee` cell pointer; `$2f72`, static) sum to 0,
 that is open sea; otherwise it sets bit 1 in four cells of the flag plane (`ori.b #$2,8257(A3)` + `bset #1` on
 three neighbours). Bit 1 pins a cell's altitude against the `$10410` smoothing pass (`btst #1`), and `$10458`/`$10b3e` set it too, so it is not
-a settlement-only mark: in `m1_s0` all 28 bit-1 cells lie in the 11 settlements' four-cell claims, in `k5_s4` 232 of 506 do not (`py/flag_census.py`).
+a settlement-only mark: in `m1_s0` all 28 bit-1 cells lie in the 11 settlements' four-cell claims, in `k5_s4` 232 of 506 do not (`py/flag_census.py`). On the Play Random Land roll every settlement's four cells carry it and so do many others: 312 of 544 bit-1 cells lie outside the claims on land 0, 282 of 748 on land 25, 167 of 513 on land 5, 332 of 621 on land 60 and 165 of 370 on the `rand1` land (first snapshot of each run).
 
 **How a settlement changes hands: the revolt `$550e`** (Proven:
 `reversing/powermonger/py/diff_revolt.py`, 1778/1778 over 49 states, 27 of

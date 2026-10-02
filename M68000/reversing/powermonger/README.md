@@ -120,7 +120,7 @@ against every session's changes.
   (S "Diplomacy")
 - **The opponent is simple.** Each commander marches at the nearest enemy lord when its army has
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast); AI
-  armies start with so much food that the test never binds. A group under 22 men first goes to its
+  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 12G steps, and the food fallback, the transfer order and the order refusal are reached only by pokes (S "Natural coverage"). A group under 22 men first goes to its
   own best town for men (order `$08`, get men), and the food fallback fetches food the same way. A group
   that has been in camp for 20 ticks then chains food, men, equipment and invention orders from a
   4-entry table (`$6762`/`$67d0`, keyed on the state it came back from); beyond those sequences it has no
@@ -155,7 +155,7 @@ against every session's changes.
 - An order for a subordinate captain compares the sender's cell with record 0 (all zero) instead of the target lead's cell, so it always goes by pigeon; a pigeon shot down by an arrow keeps its record until its target group dissolves, and the pool of 47 order pigeons has no other reclaim. (A "Arrows and carrier pigeons")
 - The arrow's damage test (`subi.b #$52`, then `bgt`) misreads a health byte of `$80` or more as already dead; play keeps health below `$80`. The type-`$12` area effect of the arrow loop has no producer. (A "Arrows and carrier pigeons")
 - The starting job pick bounds the farmer's search row with a stale register (the cell index the failed fisherman search left behind), so a man whose fisherman draw fails can never become a
-  farmer and ends a merchant: 222 of the 281 merchants in eight builds, and every one of 1234 failed farmer searches. (E 5a)
+  farmer and ends a merchant: 222 of the 281 merchants in eight builds, and every one of 1234 failed farmer searches (the briefing-preview roll; the Play Random Land roll: 448 of 558 and 2473 of 2473). (E 5a)
 - The relation bytes are misaddressed three ways: the update reads one byte and writes the next,
   reading negatives as large positives; the envoy check reads the attitude toward the wrong side;
   and the targeting weight reads outside the relation table, so relations never affect who the AI

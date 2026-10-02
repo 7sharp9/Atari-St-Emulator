@@ -317,7 +317,12 @@ the next"):
   `$6762` (179 issues) and `$66e8` (137 re-issues) occur; arm 3's food fallback, arms 4 and 5
   and `$6822`'s refusal never did (synthetic states only).
   The same census on the Play Random Land roll (59 start snapshots, 60M steps each, 3.5G steps, `PM_CENSUS_GLOB`) reaches the same arms more often (`$661a` 193, `$6762` 698, `$66e8` 64729)
-  and again never reaches `$66a4` (the food fallback), `$664c`, `$668c` (the xfer fall-through, order `$04`) or `$6884` (`$6822`'s refusal): 0 hits each. Those arms stay synthetic-only on both rolls.
+  and again never reaches `$66a4` (the food fallback), `$664c`, `$668c` (the xfer fall-through, order `$04`) or `$6884` (`$6822`'s refusal): 0 hits each. The real code takes all but the last of them, and none can be reached by a run of any length that has been tried (`py/cmdai/arm_census.py`, `py/cmdai/arm_pokes.py`; the model's `_decide` on every AI group of 159 snapshots, then pokes on the real 68000 from `pm143/run/p0k0_s1.snap`):
+
+- Only state 6 (after the wait and an empty follow-up table) or state 9 decides. In 159 snapshots 65 AI groups are deciding (39 attack, 26 get men); decided as a camped group, all 636 groups take arm 1, the escort (6 times) or the attack, never the three arms below.
+- **Food fallback `$66a4`**: needs the march cost `$68ee` (about 450 for 40 men and a target 150 cells away) above the group's food. AI groups start at `$5fff` (`$26c4`) and `$3f6a` takes `men/8 + 1` a period, about 96 over 50M steps (24523, 24427, 24331, 24239 in four snapshots of one run), so the arm is about 12G steps away, sixty times the longest run. Live: food `112(A1)` := 0 at the decision point (17.7M steps into `p0k0_s1`) takes `$66a4`, `$66b0`, `$67ee`, `$6822` where the control takes `$6638`.
+- **Transfer `$664c`, `$668c`**: a deciding group with `D7 != 0` and 1 to 4 men (or no enemy lord with fewer than `men - 4` at home), on a side where no lord has more than one man at home (else arm 1 or `$6680`'s get-men fires). Live: state := 9, men := 3 and the home troops of side 3's six lords := 0 reach `$664c`, `$6680`, `$668c`, `$6822` and leave order `$22`, parameter 4 in the slot with `4(A1) = 4` (the pending-record route); without the lord pokes arm 1 (`$65c8`) takes the group.
+- **Refusal `$6884` cannot hold from any caller** (code read of the five `$6822` call sites, `$6610`, `$669a`, `$674a` and the two inside `$67ee`, and the goal table `$6888`, not a live miss). It refuses only when the group's state equals `$6888[type]`. The call sites issue `$0c` (goal 8, from state 6 or 9), `$04` (goal 0, which never refuses), `$02` from `$66e8` (goal 5; `$66e8` acts only for the states 2, 3, 8, 9, 10, 13, 14, 16, whose flag byte at `$6750 + state` is non-zero, and 5 is not among them), `$08` (3), `$06` (2), and the follow-up table's `$06`, `$08`, `$10`, `$0e` (goals 2, 3, 10, 9) from state 6. No goal is 6 and no deciding state is a goal of an order issued from it. The refusal itself stays gated by the synthetic states.
 
 Order writes go through `$67ee` → `$6822`: `$67ee` re-packs the found leader's
 cell `4(A3)` into `{x:6, y:7}` (`x << 8 | y`), `$6822` stores `{type, param}` into
@@ -1561,7 +1566,7 @@ relation delta both ways through `$311a`. Replaying the envoy run with the
 1 hit each). An alliance with no contact persists (60M steps, bits unchanged).
 
 **Who proposes.** Order `$1e` is posted only by the UI (`$131c4`, `$1365e`);
-the AI's order writer `$6822` posts only `$02/$04/$06/$08/$0c/$22`. In 150M
+the AI's order writer `$6822` posts only `$02/$04/$06/$08/$0c/$22` and, from the follow-up table, `$0e/$10`. In 150M
 natural steps over three lands `$6d32` and `$15754` had 0 hits, and
 `$34a8`/`$33b0`/`$c706` never ran. So only the player offers alliances, and
 panel `$1a` (an envoy arriving at the player) needs a linked opponent
