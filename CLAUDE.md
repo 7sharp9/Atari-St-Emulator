@@ -190,6 +190,9 @@ know they existed.
   was a second, different, previously-unconfirmed hazard the maneuver had actually already dodged.
   Both the short window and the assumed identity were wrong (`reversing/impossamole/README.md`'s
   "Known traps" section).
+- "No natural entry" / "never reached" holds only for the world-build roll and the address list it was measured with. PowerMonger's `$3248`, `$38ce`, `$6128` and `$5fa0` were
+  "synthetic only" through every preview-roll run (`$5809c` non-zero); 59 Play Random Land snapshots (`PAGES0=1`, the roll a real random land runs with) hit them 101, 3, 1 and 28 times
+  (`py/cmdai/census.py`, `strategy.md` "The order senders"). A census file with no line for an address says "not looked for", not zero: check the address list before writing "never".
 - A hero pinned at one screen coordinate is usually a camera-follow trigger, not a wall, and a
   trial that "lands at the same spot" has only shown the same *screen* spot. Before calling a position
   stuck, `watch` the scroll counter across the trial and find its writer (`find_field_writers.py`).
