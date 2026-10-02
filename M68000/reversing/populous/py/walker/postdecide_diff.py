@@ -2,14 +2,14 @@
 $f13c onward -- settle, merge $feca, fight start $10e7e, join-fight $11006, occupancy/visit
 bookkeeping) vs the real $ef4c via callcap.
 
-populous.md open item 1 / mechanics.md section 10: these writes were only checked "through the
-frame-by-frame walker cells", never diff-tested on their own. This calls the real $ef4c (decision
+mechanics.md 3.3: proves these writes on their own, not only through the frame-by-frame walker
+cells. This calls the real $ef4c (decision
 + post-decision together), predicts `off` with the already-proven walker_ref.choose() (1200/1200
 in walker_diff.py), then applies apply_decision() with that `off` and compares the full memory
 delta -- EXCEPT the god-record window $21e0c..$21e68, which ai/fdiff.py already proves separately
 (the AI auto-lower-at-a-ruin write at $f01a..$f138 that apply_decision does not model).
 
-usage: python postdecide_diff.py [N_per_snap] [seed]
+usage: uv run python reversing/populous/py/walker/postdecide_diff.py [N_per_snap] [seed]   (from M68000/)
 """
 import os, random, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))

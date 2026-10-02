@@ -62,7 +62,8 @@ with Setcolor.
 
 ## Asset formats
 
-All packed files use `[u32 packed_len incl. 8-byte header][u32 unpacked_len][LZ stream]`,
+Every packed asset holds `[u32 packed_len incl. 8-byte header][u32 unpacked_len][LZ stream]`
+(bare, or after a fixed header: LAND `$72` bytes, LORD.PIC/LOAD.PIC 128 bytes),
 depacked in place by `$15054` → `$2019a` (it reads the packed data to the end of the destination
 buffer, then unpacks forward). Decoders are in `py/pop_assets.py`. Every decode was byte-compared
 with the RAM copy the game loaded (LAND0, SPRITES0, FONT identical; SPR_320 identical except the
@@ -79,7 +80,7 @@ A 0x72-byte header, then a packed 33600-byte block sheet.
 | hdr off | len | RAM dest | consumer / meaning |
 |---|---|---|---|
 | 0x00 | 2 | `$37eb0` | game parameter (1/8/8/4); read at `$e0f4`, `$eac8`, `$ecae` (not graphics) |
-| 0x02 | 22 | `$24998` | 11 words, added to walker strength at `$e8b8` (not graphics) |
+| 0x02 | 22 | `$24998` | 11 words, settlement growth per 8 frames by level, added at `$e8b8` (not graphics) |
 | 0x18 | 22 | `$3b20c` | 11 words, read at `$e66c` (not graphics) |
 | 0x2e | 22 | `$3b248` | 11 words, copied and sorted into `$3b25e` (`$14d96..$14e62`); `$3b25e` is the rank ladder the shield matches (`$d4fa`) |
 | 0x44 | 22 | `$3c4fe` | 11 words (50,100,200,...,2000), read at `$1096e` (not graphics) |
@@ -109,12 +110,13 @@ and lava):
 | 47..49 | rocks; 50..52 trees; 53 swamp-ish flat; 54..65 ruins and burning settlements; 66 flat |
 | 67..69 | empty |
 
-`$2f` (47) is also a special value in the block map: `$c0ee` never overwrites it, and `$18198`
+`$2f` (47) is also a special value in the block map: `$c0ee` overwrites it only when the cell
+becomes fully sea (`terrain.md` 1), and `$18198`
 reports it as "rock" (return code 2).
 
 The header's 16 minimap colours in LAND0 are `0e 0c 0b 0b 0c 0c 0b 0b 0d 0d 0c 0c 0d 0d 0c 0c`
 (sea = 14, land = 11/12/13 by shape). Entries 32..46 of `$21ea0` are `$19`; `$c27a` replaces `$19`
-with `$21ebf` (= 2).
+with the byte at `$21ebf` (header entry 15: 12 in LAND0, 9/4/2 in the other lands).
 
 ### SPRITES0.DAT: 147 sprites, 16x16 masked, 160 bytes each
 
@@ -125,17 +127,18 @@ See `sprites0.png`. Index use found in the code:
 |---|---|
 | 0..15 / 16..31 | walker, side 0 / 1: `2*dir + [$3b222]` (dir 0..7 from `$21ee8`, `+$10*side`) |
 | 32..63 | the same with `+$20` when the record's long `+14` is non-zero (knight form) |
-| `$40..$43` (64..67) | settled-walker flag `$40 + [$3b222] + 2*side` (`$146b6`) |
+| `$40..$43` (64..67) | settlement flag `$40 + [$3b222] + 2*side` (`$146b6`) |
 | `$44` (68) | selected-walker shield marker, also pointer 0 (`$148ee`) |
 | `$45` (69) | mana marker on the power rail (`$da52`) |
 | `$4a/$4b` | leader marker, side 0 / 1 (`$14972`) |
 | `$4c/$4d` (76/77) | earth side-wall tiles, front / right face (`$144fc` / `$144b4`) |
 | 78..83 | mouse pointers (via `$22ac8`) |
 | `$54` (84) | crosshair: minimap view marker (`$b7a8`) |
-| `$5d..$6c` | bit-4 state walkers: `$5d + (ctr&3) + 4*side (+$10)` (swimming, inferred from art) |
-| `$65..$6c` / `$7d..` | bit-5/6 state (`$d796`): `$65/$7d + 2*side + [$3b222]` (fighting, inferred from art) |
+| `$5d..$64` / `$6d..$74` | bit-4 state walkers: `$5d + (ctr&3) + 4*side` (+`$10` with a knight pointer) (`$14888..$148b2`; swimming, inferred from art) |
+| `$65..$68` / `$7d..$80` | bit-5/6 paused state: the anim word `+12`, which `$101a0` cycles between `$65` and `$66`, plus `2*side` and `$18` for a knight (`$1466c`) |
 | `$69..$6c` | bit-7 state: `$69 + (ctr&3)`, fire (`$14644`) |
-| 145, 146 | misc ("SPAT" text tile) |
+| `$46`, `$82`, `$86`, `$8a` (+0..2) | fighting walkers (`$101a0` animation, `mechanics.md` 3.5) |
+| `$55..$57` | celebrating after a win (`mechanics.md` 2.1) |
 
 ### SPR_320.DAT: 13 sprites, 32x32 masked, 640 bytes each
 
@@ -186,7 +189,7 @@ $b6ea  $da52  : mana marker
 $b6fc  $14364(cx=[$37e7a], cy=[$249ae])     terrain + walls; walkers appended to $3b00c
 $b704  draw list: entity < $d1 -> $16916 16x16 at (x,y); else $169e8 32x32 at (x-8,y-16)
 $b766  $16916 sprite $54 at (64+(cx+3)-(cy+3)-3, ((cx+3)+(cy+3))/2-3)   minimap view marker
-$b7c2  $12f84 (special objects) + $db4c (AI; plots minimap dots)
+$b7c2  $12f84 (special objects) + $db4c (entity_update; plots minimap dots)
        [or, if $3b274|$3b276: the $b7e2 loop plots dots for every entity]
 $b8fc  $d482  : shield / status bars
 $b902  $16ed8 : wait for VBL flag, swap buffers
@@ -198,9 +201,11 @@ All drawing goes to the draw screen `[$3c4d2]`, except the mouse pointer (below)
 
 `$16f0a` spins until the VBL handler sets `$16cea`. `$16ed8` then swaps `[$3c4d2]` and
 `[$3c4ce]`, and writes the new displayed base with `lsr.w #8,D0; move.l D0,$ffff8200`. That one
-long write fills `$ff8201` (high byte) and `$ff8203` (mid byte). XBIOS `Setscreen` is used only
-at level setup (`$b488`: `Setscreen($3afd8,$3afd8,-1)` while the backdrop and minimap are
-built, then `$14a10` copies the backdrop to both screens, then `Setscreen(-1, [$3c4d2], -1)`).
+long write fills `$ff8201` (high byte) and `$ff8203` (mid byte). XBIOS `Setscreen` is used at level
+setup and around every minimap repaint. Level setup (`$b488`) calls `Setscreen($3afd8,$3afd8,-1)`
+while the backdrop and minimap are built, then `$14a10` copies the backdrop to both screens, then
+`Setscreen(-1, [$3c4d2], -1)`; raise/lower, flood, earthquake, volcano and swamp bracket `$c27a` with
+`Setscreen([$3afd8], -1, -1)` and `Setscreen(.., [$3c4d2], ..)`.
 In play the displayed base alternates between **`$4f500` and `$57200`**. `$f8000` is the
 backdrop, not a display buffer.
 
@@ -231,7 +236,7 @@ b = blk[cell];  if b == 0 and [$3b222] == 0: b = $10          ; sea shimmer: blo
 lift = 8*hgt[cell]           ; draw block b
 lift += 8;  if ovl[cell]: draw block ovl[cell] one level higher
 if ent[cell] and [$2287a] == $2858: $1457e(...)              ; walker -> draw list (not drawn yet)
-if cell == [$3d526]: draw block $2e ; if cell == [$3c4ca]: draw block $2d   ($2080 = none)
+if cell == [$3d526]: draw block $2e ; if cell == [$3c4ca]: draw block $2d   (0 = none)
 ```
 
 Walkers are added to a list and drawn after the whole terrain, so terrain never hides a walker.
@@ -257,7 +262,7 @@ avg = (c00 + c10 + c11 + c01) >> 2
 shape = (c00>avg) | (c10>avg)<<1 | (c11>avg)<<2 | (c01>avg)<<3
 if avg != 0 and shape == 0:  avg -= 1, shape = 15          ; flat land block, one level down
 if avg == 0 and shape not in (0, 15): shape += 16           ; shoreline slope set
-hgt[cell] = avg;  blk[cell] = shape  (unless it is $2f);  shape 0 clears ovl[cell]
+hgt[cell] = avg;  blk[cell] = shape  (unless it is $2f and the cell is not fully sea);  shape 0 clears ovl[cell]
 ```
 
 The block index therefore encodes which corners are raised, and `hgt` is the base level it
@@ -300,48 +305,36 @@ is always fully on the 64x64 map. Keypad scan codes in `$37eae` step it by one c
 | `$6f` | cx+1 |
 
 There is no sub-cell scrolling. `$66` (unused by any physical keypad direction in the table above) goes
-to `$b9fa` instead of a scroll: if the mouse is at x>310, 10<=y<=20 *and* the cursor tool is query mode
+to `$b9fa` instead of a scroll: if the latched click position (`$3c518/$3c51c`) is at x>310, 10<=y<=20 *and* the cursor tool is query mode
 (`$21d50` bit 0, "Command panel" below), it prints `$21478` "CHEAT" at (0,10) and clears the acting
 side's god\_rec AI-request fields (`mechanics.md` 2.3 +0/+1/+2), then sets +1/+2 to (side, 15).
 
-**Not dead — an earlier pass here called this unreachable and was wrong.** It grepped
-`pop_ad58.asm` for a writer to `$37eae` (the byte `$b90e`/`$b918` read), found only a `clr.b` at
-`$be0c`, and concluded the image had none. `pop_ad58.asm` isn't actually a whole-image listing
-despite the name: it stops at $1d462, under 40% of the real image ($ad58..$3d550, from
-`pop_ad58.img`'s size). Re-checked with the tool `CLAUDE.md` actually specifies for this
-("A 'nothing writes X' claim needs every writer") -- `tools/find_field_writers.py <snap> 37eae`,
-a whole-RAM instruction scan -- turns up a real writer at `$02004e`, inside `ikbd_read_byte`
-($01ffb4, named in `populous.sym`): the central IKBD-byte dispatcher every keyboard/mouse byte
-passes through. For any byte that isn't a mouse-motion-packet byte, a shift make/break ($2a/$36
-press, $aa/$b6 release), or an IKBD status header (>$f5), it stores the byte into both
-`key_scancode` and `$37eae` if it's a make code (top bit clear), or 0 if it's a break code (top
-bit set, zeroed before the store). So `$37eae` tracks "the last non-shift key event, 0 once
-released" -- an ordinary, central piece of input handling, not a stub some debug build fed. The
-`$66` branch is reachable by holding down whatever ST scancode `$66` is while the mouse sits in
-that screen corner with query mode selected; a control test with a known scroll code failed the
-same way for an unrelated reason (see below), so this hasn't been triggered live yet, but "no
-writer" no longer holds as the reason to expect it can't be.
+The `$66` branch is real code, not a dead stub: `$37eae` has a writer at `$02004e` inside
+`ikbd_read_byte` (`$01ffb4`), the central IKBD-byte dispatcher every keyboard and mouse byte passes
+through. For any byte that is not a mouse-motion byte, a shift make/break ($2a/$36 press, $aa/$b6
+release) or an IKBD status header (>$f5), it stores the byte into `key_scancode` and `$37eae` if it
+is a make code (top bit clear), or 0 if it is a break code, so `$37eae` holds the last non-shift
+key event and 0 once released. The `$b9fa` guard reads the latched click position
+(`$3c518/$3c51c`), not the live pointer. The branch clears the acting side's command byte
+(`$ba68`) and writes +1 = side, +2 = 15, but `$1e712` treats command 0 as "no command" and `$1eef4`
+zeroes the record after each dispatch, so it only draws "CHEAT" and flushes the record (code-read;
+not run). It cannot cause command 14 sub 15.
 
-A second, independent "CHEAT" sits inside the AI planner `$db4c` (`mechanics.md` 3.3/7), gated on
-`$3c4e4`. Same correction: `find_field_writers.py <snap> 3c4e4` finds a real writer at `$01fbc4`,
-inside a "misc" sub-command dispatcher (`FUN_0001daf6`, reached as command 14's sub-command
-handler per `terrain.md` section 2's cmd table) whose `case 0xf` sets `$3c4e4` (`emit_cap50_side`
-in `populous.sym`) to `sub_arg + 1`. That same dispatcher's `case 10` doubles the local player's
-mana (capped at 100000) when its sub-arg is 0 -- a second, more striking cheat effect living in
-the same handler. terrain.md's existing sub-command table (3 armageddon, 4 flood, 5 knight, 11
-mirror land, 12 clear land, 13 landscape type) is missing both of these. How command 14 with these
-particular sub-values gets issued isn't traced yet; one candidate is a text-entry flow at
-`FUN_0001a01e`, guarded by `DAT_0003c4e0`, that reads keystrokes through `ikbd_read_byte` a
-character at a time and then calls this same dispatcher -- unconfirmed, a real cheat-code-entry
-screen would explain both hooks at once, but needs its own pass to trace `DAT_0003c4e0` and
-what the typed text is compared against before claiming that.
+A second "CHEAT" sits inside `entity_update` `$db4c`, gated on `$3c4e4` (`mechanics.md` 7, `ai.md`
+3.4). Its only writer is `$01fbc4`, `case 0xf` (entry `$1fbbe`) of `cmd_misc` (`$1f0fa`, jump table
+`$21632`, command 14's sub-command handler), which stores `sub_arg + 1`. The same dispatcher's `case
+9` and `case 10` act on side 0's and side 1's mana (`$3b232`, `$3b242`): `2*mana + 500` for arg 0
+while below 100000, half otherwise. `terrain.md`'s sub-command table (`terrain.md` 2) lists both.
+In paint-map mode (`$3b276`) the key handler `$1d996` posts command 14 sub 9 for F6 and sub 10 for
+F7 (arg = shift state `$3d538`), and F1..F5, F8 and Delete post the other paint commands, so the
+mana subs are reachable from the keyboard there (code-read). What would post sub 15 was not found;
+the two-player serial menu `FUN_0001a01e` calls `edit_text_field` and `FUN_0001daf6` (a delay
+loop) but never `cmd_misc`.
 
-The `qaz.pic` string that sits right after the two "CHEAT" strings in the data segment (`$21484`,
-immediately below `$21478`/`$2147e`) is unrelated: it's just string-table proximity. `$014b50`
-(`Fopen("qaz.pic", ...)`, GEMDOS call `$3d` via the trap wrapper `$20698`) is the ordinary,
-already-documented load of `QAZ.PIC` — the 320x200 panel/border backdrop, rendered at `qaz.png` and
-modelled by `py/pop_render.py` ($3afd8, composited with the minimap at `$c27a`). No connection to
-either CHEAT hook.
+`QAZ.PIC` (the 320x200 panel and border backdrop, `qaz.png`, loaded at `$014b50` and modelled by
+`py/pop_render.py`, `$3afd8`, composited with the minimap at `$c27a`) is unrelated to either hook:
+its filename string sits next to the two "CHEAT" strings (`$21478`, `$2147e`, `$21484`) only by
+string-table proximity.
 
 ## Minimap (the book, top-left)
 
@@ -379,7 +372,7 @@ either CHEAT hook.
   frame**. The shield quarters are:
   - **Top-left** (272,4): icon = side (ankh / skull).
   - **Top-right** (288,4): icon `k+1`, where `$3b25e[k] == record byte +3` (rank weapon).
-  - **Bottom-left** (272,22): the walker's sprite. For a settled walker it is instead flag sprite
+  - **Bottom-left** (272,22): the walker's sprite. For a settlement it is instead flag sprite
     `$40+[$3b222]+2*side` at (268,22).
   - **Bottom-right**: two 16-row bars at xcol `$24/$25`, bottom y=37:
     - **Fighting** (bit 3): the good/evil strength share, colours 15/8.
@@ -394,13 +387,14 @@ either CHEAT hook.
 
 ## Mouse pointer (VBL, `$16d32`)
 
-`$16bd8` installs `$16d32` in the first free `$456` VBL-queue slot. Each VBL it does four things:
+`$16bd8` installs `$16d32` in the first free `$456` VBL-queue slot. Each VBL it does five things:
 
 - latches the mouse buttons (`$16c58`)
 - if the pointer is not hidden (`$16ce8 == 0`), restores the 16x16 background saved at `$2474e`
   (`$16dac`), then draws the pointer on the **displayed** screen `[$3c4ce]` (`$16de2`)
 - sends IKBD `$0d` (interrogate mouse position)
 - sets the flip flag `$16cea` and bumps the tick count `$16cec`
+- while the FX toggle `$21920` is set, starts the sound effect from `$36d02` (`$16d4a..$16d80`; `systems.md` 6)
 
 The pointer is sprite `$22ac8[$2165c]` (table: 68, 78, 80, 81, 79, 83, 82; `$2165c` is set to
 `3*side+1` at game start). It is drawn at (`$24748`, `$2474a`). Rows are clipped when y > 184,
@@ -475,7 +469,8 @@ Proof (`py/popdrive.py`, which implements all of this and plans clicks from a sn
 (`verify_cmd.py`) and none elsewhere; a right click there lowered it exactly as
 `popgen.lower_pt`; the magnet icon then a click on corner (12,17) moved the papal magnet to
 cell (11,16) for 200 mana; and 13 icon clicks (the four modes, query/magnet/land, three scroll
-arrows, pause, FX, music) each changed exactly the variables the table predicts, **13/13**.
+arrows, pause, FX, music) matched the table, **13/13** (11 changed exactly the predicted variables;
+settle mode and the land cursor are already the base state, so they predict no change).
 
 ## Blitter routines (every one is a CPU routine)
 
@@ -495,7 +490,7 @@ arrows, pause, FX, music) each changed exactly the variables the table predicts,
 | `$149ea` / `$14a10` | 32000-byte screen copies |
 | `$16dac` / `$16de2` | pointer restore / save and draw |
 
-**Correction to the per-frame call list:** these hot routines are **not** blitters.
+Three hot routines that are not blitters:
 
 - `$18198` returns a probe code (0 land, 1 off-map, 2 block `$2f`, 3 water).
 - `$18206(side, cell)` is the settlement score over the 17 offsets at `$22b4e`, returning `$bea`
@@ -519,8 +514,8 @@ The draw list rebuilt by the Python port of `$1457e` equals RAM `$3b00c` on ever
 needed, because the AI moves walkers after the terrain pass. Rendering from a post-AI snapshot
 alone misplaces a moving walker by 2 px.
 
-Not exercised: 32x32 special objects (entity >= `$d1`), the fighting-shield path, text
-rendering in play, and the LORD/mouths screen live.
+Not exercised: SPR_320 frames 9 and 11 (the trail sprites are verified in `systems.md` 1.3), the
+fighting-shield path, text rendering in play, and the LORD/mouths screen live.
 
-Reproduce (from this directory; the pre/post snapshot pairs live in `$POP_WORK` (default `M68000/scratchpad/pop/`, see README) under `agents/graphics/`):
-`python py/pop_render.py $POP_WORK/agents/graphics/v5547_pre.snap out.png --post $POP_WORK/agents/graphics/v5547_post.snap --truth --files`.
+Reproduce (from `M68000/`; the pre/post snapshot pairs live in `$POP_WORK` (default `M68000/scratchpad/pop/`, see README) under `agents/graphics/`):
+`uv run python reversing/populous/py/pop_render.py $POP_WORK/agents/graphics/v5547_pre.snap out.png --post $POP_WORK/agents/graphics/v5547_post.snap --truth --files`.

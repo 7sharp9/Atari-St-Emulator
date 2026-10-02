@@ -139,7 +139,7 @@ edge.
   slot below $d0 gets str 1, put back as soon as the spawn returns; the edge is the natural stack
   word): the pop-208 spawn from `$e8a0` with type 1. From `ai/cg2.snap` (frame 464, both trail slots
   unused): edge 0, cell 4074, spawn MATCH, **400/400** frames (43 steps north-west, dies at the west
-  edge; its path crossed no flat cell). From `systems/spawn.snap` (frame 4112, after the frame-$1000
+  edge; its path crossed no flat cell). From `systems/spawn.snap` advanced to the emission scan by `swamp208.py poke` (frame 4112, after the frame-$1000
   trail): edge 0, cell 4070, spawn MATCH, **237/238** frames, 29 cells marked, **20 of them made
   swamp** live; the other frame is a settlement on a marked cell (`$10366`, not modelled). The run
   ends at frame 4350 when the human side dies. `swamp208.py edges` gives the edge distribution above.
@@ -149,8 +149,8 @@ edge.
 
 ## 2. The key checks ("checksums")
 
-None of the three is a checksum over code or data. All three compare a stored key with a constant
-built from a DATA long, and all three constants equal **$54ac0842**, the immediate the crack's loader
+None of the five is a checksum over code or data. All five compare a stored key with a constant
+built from a DATA long, and all five constants equal **$54ac0842**, the immediate the crack's loader
 writes into the two Supexec routines `$16014` and `$17a1c` (README: "remnants of the original
 trace-mode protection"). Each routine is `move.l #imm,D0; move.l D0,$24`: it points the trace vector
 at the key and returns it.
@@ -160,15 +160,17 @@ at the key and returns it.
 | A | `$db4c` at entity index 20 (`$e182`) | `$3c4c0 == $21d4c + $14725836` ($4039b00c) | `$3d524` = 1 (armageddon), both god_rec ctrl = 1 |
 | B | `$db4c` at entity index 18 (`$edae`) | `super_peek_long($24)` (`$15fe2`: Supexec read of the trace vector) `== 2 * $21d54` ($2a560421) | both ctrl = 1, `$3d524` = 1 |
 | C | `$13372` after a spawn | `$3c4b4 == $21d58 + $12312378` ($427ae4ca) | ctrl of both sides = 1, word 1 written through the uninitialised local -14(A6), `$3c4c8` -= 1 |
+| D | `$1d032`, the score screen's NEW GAME / TRY IT AGAIN button (`mechanics.md` 6) | `$3c4b0 == $21466 + $15151515` | `$219b0` = 0 (no computer opponent) and the 25 footprint words `$22b4e` cleared |
+| E | `human_mouse_land_input` (`$11b08..$11b14`) | `$3c4b8 == $21d60 + $20202020` | 36 `rand()` words written over `$22b4e` (the 25-word footprint table), overrunning it by 11 words |
 
 The key: `$16004` (called once from `main`, `$af40`) stores the returned value in `$3c4c0`; each new
 game copies it to `$3c4b4` (`$be12`); `$14b72` calls the second routine `$17a0c` and stores the result
-in `$3c4b0`, which nothing reads. Check B reads the trace vector itself, so it also fails if anything
+in `$3c4b0`, which check D reads and `game_mode_setup` (`$1c84a`) copies to `$3c4b8` for check E. Check B reads the trace vector itself, so it also fails if anything
 else rewrites `$24`.
 
-With the crack all three pass: every anchor snapshot holds $54ac0842 in `$3c4c0`, `$3c4b4`, `$3c4b0`
+With the crack all five pass (D and E are keyed on `$3c4b0` and `$3c4b8`, not exercised by `protect.py`): every anchor snapshot holds $54ac0842 in `$3c4c0`, `$3c4b4`, `$3c4b0`
 and `$24`, and `py/systems/protect.py` over 20 frames of `late4` (58 entities) executes A and B 23 times each
-with 0 failures. Forced (`py/systems/protect.py`): poking `$3c4c0` = 0 or `$24` = 0 into `late4` gives
+(23 frames, 3.4M steps) with 0 failures. Forced (`py/systems/protect.py`): poking `$3c4c0` = 0 or `$24` = 0 into `late4` gives
 armageddon 1 and ctrl 1/1 within 2 frames; poking `$3c4b4` = 0 at the tick spawn gives ctrl 1/1,
 frame $fff, and the next frame spawns the second slot and fails again (both slots live, frame 4097
 after 3 frames). "ctrl = 1 on both sides" is ATARI VS ATARI: the player's own side is handed to the

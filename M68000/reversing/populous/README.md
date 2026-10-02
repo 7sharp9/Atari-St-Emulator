@@ -4,8 +4,9 @@
 [cr Replicants] scene crack ("CRACKED BY DOM"). It runs from a cold boot through the
 crack's loader, the intro (`DEMO.GOD`) and its TUTORIAL / CONQUEST / CUSTOM title menu,
 the "World to conquer: GENESIS" briefing, and into the isometric game with the book
-minimap, the command panel and a computer opponent terraforming its corner. **Reaching
-gameplay needed no emulator changes**; driving its mouse UI exposed one IKBD bug (below).
+minimap, the command panel and a computer opponent terraforming its corner. No emulator
+changes were needed to reach gameplay; driving its mouse UI needed one IKBD fix (see "What it
+needed from the emulator").
 
 The game program is compiled C (Alcyon / DRI), uncompressed, with LINK/UNLK frames on
 every function, so most of the analysis is a headless Ghidra decompile checked against the
@@ -16,8 +17,8 @@ reproduction diffed against the real code:
 |---|---|---|
 | [`graphics.md`](graphics.md) | asset formats (LZ packer, blocks, sprites, font, pictures), palette, 8x8 isometric block renderer, walls, water, sprite list, minimap, panels, mouse pointer, double buffering | `py/pop_render.py` rebuilds the frame from RAM + asset files: **64000/64000 pixels on 12/12 frames**, draw list identical |
 | [`terrain.md`](terrain.md) | 65x65 corner heights and the per-cell maps, raise/lower (neighbour-difference recursion, cost 4n+10), world generator (PRNG, three random-walk hills, rock/tree scatter), world names, `LEVEL.DAT`, conquest progression, the terrain powers | `py/verify_gen.py`: heights + 3 derived maps + final seed **byte-identical for 3 worlds**; `py/verify_cmd.py`: raise at a peak **134/134 corners**; `py/powers/`: the six powers, `$fe00`/`$feca`/`$108b8` vs `callcap` **2670/2670**, 8/8 casts through the UI identical on all 37824 state bytes; `py/endgame/`: next world `$1d0e6` **65/65** and 3/3 through the UI, typed world names round-tripped through the briefing **45/45**, the three start paths **35/35**, starting walkers **28/28** |
-| [`mechanics.md`](mechanics.md) | entity record, walker stepping/merging/drowning, combat, settlement land value and building size, growth and walker emission, mana, power costs, win/lose, score | `py/people_model.py` over 400 frames: settlements **4122/4122**, mana **774/774**, spawns **12/12**; combat `$1063a` every live call: rounds **97/97**, resolutions **19/19** incl. 7 town take-overs (`py/powers/live.py fight`); `py/walker/`: direction choice `$f2f4`/`$f6b2` **2400/2400** callcaps, gather and fight played through the UI with every decision (**8000/8000**) and every walker cell per frame (**51863/51863**) predicted; knight target/merge/raze **720/720** callcaps and **154/154** live calls; `py/endgame/`: score screen `$1c858` **200/200** callcaps and **56/56** fields over 7 real end states; the Armageddon brawl after a computer cast, 441 frames: magnets and footprint release **441/441**, vacates **20/20** (`py/endgame/brawlcheck.py`) |
-| [`systems.md`](systems.md) | trail effects, the three key checks (the crack's $54ac0842), pause, the save-game format and LOLO1.GAM, sound effects and speech | `py/systems/`: trails **400/400 + 400/400** callcaps and **394/394** live frames, pop-208 swamp monster (poked) **637/638**, trail sprites rendered 32/32 frames; pause 40/40; LOLO1 reproduced by a real save; 12/12 sounds |
+| [`mechanics.md`](mechanics.md) | entity record, walker stepping/merging/drowning, combat, settlement land value and building size, growth and walker emission, mana, power costs, win/lose, score | `py/people_model.py` over 400 frames: settlements **4122/4122**, mana **774/774**, spawns **12/12**; combat `$1063a` every live call: rounds **97/97**, resolutions **19/19** incl. 7 town take-overs (`py/powers/live.py fight`); `py/walker/`: direction choice `$f2f4`/`$f6b2` **2400/2400** callcaps, gather and fight played through the UI with every decision (**8000/8000**) and every walker cell per frame (**51863/51863**) predicted; knight target/merge/raze and take-over **960/960** callcaps (`$fe00` 240, `$feca` 240, `$108b8` 480 including 240 take-overs) and **154/154** live calls; `py/endgame/`: score screen `$1c858` **200/200** callcaps and **56/56** fields over 7 real end states; the Armageddon brawl after a computer cast, 441 frames: magnets and footprint release **441/441**, vacates **20/20** (`py/endgame/brawlcheck.py`) |
+| [`systems.md`](systems.md) | trail effects, the five key checks (the crack's $54ac0842), pause, the save-game format and LOLO1.GAM, sound effects and speech | `py/systems/`: trails **400/400 + 400/400** callcaps and **394/394** live frames, pop-208 swamp monster, slots poked, **400/400** and **237/238** frames (the miss is an unmodelled `$10366` settlement), trail sprites rendered 32/32 frames; pause 40/40; LOLO1 reproduced by a real save; 12/12 sounds |
 | [`ai.md`](ai.md) | the computer god: per-side god record, reaction-rate limiting, magnet/mode strategy, power casting thresholds and targeting, site levelling, how conquest levels and the custom "OPTIONS FOR EVIL" set it up; strategy notes | `py/ai_diff.py`: 4 decision routines vs `callcap`, **4800/4800** full memory deltas; `py/ai/`: a rating-1, reaction-1, all-powers opponent set up through the menus, every AI command in two natural runs predicted (**1854/1854** vs an idle human, **2766/2766** Atari vs Atari; every AI call in them matched under `callcap`), and with its mana poked, flood **111/111** and armageddon **169/169**, walker land edits **2400/2400** |
 
 `populous.sym` (302 names) is the shared symbol file; `level_table.txt` decodes all 99
@@ -27,8 +28,7 @@ reproduction diffed against the real code:
 
 The game's rules restated for re-use in another design, without addresses. Each line names the
 section that proves it (T = `terrain.md`, M = `mechanics.md`, A = `ai.md`, S = `systems.md`);
-anything not proven there is labelled inferred. `/handoff` re-checks this list against every
-session's changes.
+anything not proven there is labelled inferred.
 
 ### What carries the game
 
@@ -37,7 +37,7 @@ session's changes.
   spreads until no two neighbouring corners differ by more than one level, so every cell is flat
   or a one-level slope. Cost is 10 plus 4 per corner moved. (T 1, T 2)
 - **Flat land is wealth.** A settlement's size is read from how much flat land lies in its
-  17-cell footprint: 11 levels from hut to castle, a castle only when all 17 cells are flat and
+  17-cell footprint: 10 sizes from hut to castle, a castle only when all 17 cells are flat and
   clear. Size sets its capacity, its fighters' weapon, and the mana it earns. (M 4.1, M 4.2)
 - **One growth loop.** Settlements gain strength every 8 frames; above capacity they emit a walker
   carrying the surplus; walkers look for flat land and found new settlements. Mana comes as a small
@@ -63,20 +63,21 @@ session's changes.
 - **An endgame that forces a finish.** Armageddon empties every settlement and pulls both
   populations to the map centre to fight it out. (M 5)
 - **Deterministic.** One linear-congruential random-number generator drives the simulation, so a
-  game replays exactly from its state; that is what makes the diff-tests here, and the two-machine
-  serial link, possible (the link was not run). (M 3.5)
+  game replays exactly from its state, except for the swamp monster's entry edge (below); that is
+  what makes the diff-tests here, and the two-machine serial link, possible (the link was not
+  run). (M 3.5)
 
 ### Limits that became features
 
 - **No pathfinding, so the player terraforms.** Walkers only step toward a heading or use the ray
-  scan; a lake or cliff stops them until the land changes. The computer god's walkers post a raise
-  request when water blocks their heading, so its terraforming is partly driven by its own stuck
+  scan; a lake or cliff stops them until the land changes. The computer god's magnet-mode walkers
+  post a raise request when water blocks their heading, so its terraforming is partly driven by its own stuck
   walkers. This matches Molyneux's account of the raise/lower mechanic as a workaround for
   pathfinding he could not get working (external, not checkable in code). (M 3.2, A 3.3)
 - **One height per cell with a one-level slope limit** makes a click's effect easy to predict and
   makes "flat" a simple exact test. (T 2, M 4.1)
-- **A fixed table of 208 people.** Merging keeps the count low: natural games held 45 to 71
-  entities up to the end (S 1.4). The full-table swamp monster is a guard that almost never fires.
+- **A fixed table of 208 people.** Merging keeps the count low: natural games held at most 71
+  entities (S 1.4; the anchor snapshots hold 13 to 58). The full-table swamp monster is a guard that almost never fires.
 - **The opponent is rate-limited, not smart.** One action slot per reaction period, shared between
   land edits, magnet moves and powers; levelling uses most of the slots and keeps it short of mana.
   (A 4)
@@ -130,8 +131,10 @@ user is expected to double-click `LOADER.TOS`. The disk is full.
 | `LOLO1.GAM` | 14336 | a save cut short by a full disk: the `$1db98` layout (29646 bytes) truncated in the terrain-class map (`systems.md` 5.2) |
 | `ONE-BACK.EXT`, `ONE-WYCH.EXT`, `LOLA.WCP` | 0 | zero-length entries, unreferenced by the game's strings |
 
-Every data file except `LEVEL.DAT`, `GWORDS` and `GMUSIC1` uses one LZ format:
-`[u32 packed length incl. header][u32 unpacked length][stream]`, the stream a sequence of
+Every asset except `LEVEL.DAT`, `GWORDS`, `GMUSIC1` and the save `LOLO1.GAM` holds one LZ
+stream behind `[u32 packed length incl. 8-byte header][u32 unpacked length]`, bare (`SPRITES0`,
+`SPR_320`, `FONT`, `QAZ`, `MOUTHS`, `DEMOBACK`) or after a fixed header (`LAND0`..`LAND3` $72
+bytes, `LORD.PIC`/`LOAD.PIC` 128 bytes). The stream is a sequence of
 big-endian control words (`w >= 0`: copy `w+1` literal bytes; `w < 0`: copy `1-w` bytes from
 the absolute output offset in the next word). The depacker is `$2019a` (`lz_depack`); the
 Python port is `py/popdepack.py`.
@@ -177,16 +180,16 @@ OS  46757783       Fopen("land0")                        <- START GAME: world bu
 
 ## What it needed from the emulator
 
-No instruction wall and no peripheral gap from cold boot to gameplay. Two fixes came later:
+No instruction wall and no peripheral gap from cold boot to gameplay. Two emulator fixes were needed:
 
 | symptom | fix |
 |---|---|
 | `mouse move` in the REPL (and the live window) sent relative `$F8 dx dy` packets although the game had put the IKBD in absolute mode; Populous's handler (`$20048`) stored the dx/dy bytes as key presses, so a text field opened after a move started with a stray character and keypad-scroll codes could reach the game | `MMU.MoveMouse` / `Video.sendMousePacket`: in absolute mode only the 6301's cursor moves, as on real hardware |
 | `ATARI_TRACE_GEMDOS` reported the parent's basepage for a Pexec mode-0 child (`demo.god` showed the loader's `$a204`) | the Pexec hook waits until `act_pd` moves off the caller's basepage; `demo.god` now reports `$ac58` |
 
-Both passed the regression net (verify, 30M-step snapshot byte-identical, selftest 0 wrong), and
-PowerMonger's click-driven drives (also absolute mode) gave byte-identical snapshots before and
-after the mouse fix.
+Both fixes pass the regression net (verify, 30M-step snapshot byte-identical, selftest 0 wrong);
+PowerMonger's click-driven drives (also absolute mode) give byte-identical snapshots with and
+without the mouse fix.
 
 One tool fix: `tools/disassemble.py` decoded PEA as SWAP (the `$4840` mask covered PEA's
 whole EA space), which garbles every Alcyon-compiled call that passes a pointer. Commit
@@ -195,12 +198,16 @@ whole EA space), which garbles every Alcyon-compiled call that passes a pointer.
 
 ## Drive recipe: cold boot to gameplay
 
+Run from `M68000/`:
+
 ```
-python tools/add_file_to_disk.py "<...>[cr Replicants].st" --from-disk LOADER.TOS --name LOADER.PRG \
+uv run python tools/add_file_to_disk.py "<...>[cr Replicants].st" --from-disk LOADER.TOS --name LOADER.PRG \
     --remove LOADER.TOS --remove DESKTOP.INF --auto --out scratchpad/pop/pop_auto.st
-dotnet exec bin/Debug/net8.0/M68000.dll 3000000 repl --disk-a scratchpad/pop/pop_auto.st \
-    < reversing/populous/drive.txt            # writes pop_game_start.snap in the cwd
+ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll 3000000 repl --disk-a scratchpad/pop/pop_auto.st \
+    < reversing/populous/drive.txt            # writes pop_game_start.snap in the cwd (about 73M steps)
 ```
+
+The snapshot it writes is the committed recipe's exact output, `repro.snap` in "Working data".
 
 The disk is full, so the loader move first frees the `LOADER.TOS` and `DESKTOP.INF` entries,
 then re-adds the loader as `\AUTO\LOADER.PRG`; nothing else changes. `drive.txt`:
@@ -219,9 +226,9 @@ of `$c3e2` (panel, minimap) and `$119e6` (land cursor) documented in `graphics.m
 input". `run(snap_in, lines, snap_out)` feeds them to a resumed REPL.
 
 ```
-python py/popdrive.py <snap> raise 11 16     # minimap click to show the corner, then the land click
-python py/popdrive.py <snap> icon mode_fight
-python py/panelmap.py <snap> panel_regions.png
+uv run python reversing/populous/py/popdrive.py <snap> raise 11 16   # minimap click, then the land click
+uv run python reversing/populous/py/popdrive.py <snap> icon mode_fight
+uv run python reversing/populous/py/panelmap.py <snap> panel_regions.png
 ```
 
 `py/verify_drive.py` proves the model from `game_start.snap` (**17/17** checks): the minimap
@@ -250,10 +257,11 @@ program relocated to `$ad58`, `tools/prg2img.py files/POPULOUS.GOD pop_ad58.img 
 
 **Decompile.** `tools/ghidra/DecompileAll.java` runs under Ghidra 12.1 `analyzeHeadless` on
 the relocated image (raw binary, `68000:BE:32:default`, base `$ad58`), seeds functions at
-every LINK A6 and every `jsr`/`jmp abs.l` target, and writes one C file (run from `M68000/`):
+every LINK A6 and every `jsr`/`jmp abs.l` target, and writes one C file (run from `M68000/`;
+`<ghidra>` is the install directory, see `DEVELOPING.md`; the figures below are from 12.1.4):
 
 ```
-analyzeHeadless <projdir> popproj -import scratchpad/pop/pop_ad58.img -overwrite \
+<ghidra>/support/analyzeHeadless <projdir> popproj -import scratchpad/pop/pop_ad58.img -overwrite \
   -processor 68000:BE:32:default -loader BinaryLoader -loader-baseAddr 0xad58 \
   -scriptPath tools/ghidra -postScript DecompileAll.java 0x1670c scratchpad/pop/pop_ad58.c \
   reversing/populous/populous.sym reversing/populous/py/ghidra/purge.txt reversing/populous/py/ghidra/traps.txt
@@ -261,22 +269,22 @@ analyzeHeadless <projdir> popproj -import scratchpad/pop/pop_ad58.img -overwrite
 
 Alcyon's `lmul`/`ldiv` helpers return through their stack argument slots, so the script sets
 their stack purge (`py/ghidra/purge.txt`) and marks the GEMDOS/XBIOS trap wrappers varargs
-(`py/ghidra/traps.txt`). With `populous.sym` applied, 108 functions and the named globals
-carry their names in the output. 227 of 231 functions decompile cleanly; the four largest (`$b510`, `$bbd4`,
-`$f2f4`, `$113ce`) lose stack tracking and were read from the disassembly. Trap-call
-argument lists are unreliable in the decompile, so those were read from the disassembly too.
+(`py/ghidra/traps.txt`). With `populous.sym` applied, 137 functions and the named globals
+carry their names in the output. 225 of 231 functions decompile; six fail (`$ae14`, `$13dce`,
+`$188b0`, `$192ea`, `$20a66`, `$21244`) and were read from the disassembly, as were all trap-call
+argument lists, which are unreliable in the decompile.
 
 **Trace.** `ATARI_TRACE_EVENTS` over 20M steps of gameplay (191 frames) from
 `game_start.snap`, then
 
 ```
-python tools/trace_cfg.py scratchpad/pop/game.evt --range ad58 21464 \
+uv run python tools/trace_cfg.py scratchpad/pop/game.evt --range ad58 21464 \
     --names reversing/populous/populous.sym --callgraph callgraph.dot --blocks blocks.txt
 dot -Tsvg callgraph.dot -o callgraph.svg
 ```
 
 found the once-per-frame routines (`main_loop` `$b510` → `entity_update` `$db4c`,
-`draw_terrain_window` `$14364`, `exec_player_commands` `$1e712`, ...) that seeded the four
+`draw_terrain_window` `$14364`, `exec_player_commands` `$1e712`, ...) that seeded the five
 topic studies. The hottest edges are `land_value` → `cell_step_check` (29649 calls: every
 settlement rescans its 17-cell footprint each frame) and the terrain block blitter (12368).
 
@@ -297,7 +305,7 @@ rate; the rates in `systems.md` 6 come from the code.
 | `drive.txt` | cold-boot-to-gameplay REPL script |
 | `callgraph.dot` / `.svg`, `blocks.txt` | named call graph and executed-block map of 191 gameplay frames |
 | `panel_regions.png` | the `$c3e2` click regions of every command icon and the minimap, over a game frame |
-| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; driving `popdrive.py`, `panelmap.py`, `verify_drive.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; landscape infographic `landscape_infographic.py` (build and `--check`), `landscape_core.js`, `landscape_check.js`, `landscape_infographic.tmpl.html`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java`; per-area subdirectories `walker/`, `powers/`, `endgame/`, `ai/`, `systems/` (listed in `mechanics.md` 9), their snapshots and captures under `$POP_WORK/<area>/` |
+| `py/` | `popcfg.py` (paths), `popdepack.py`, `snapram.py`, `planar.py`; driving `popdrive.py`, `panelmap.py`, `verify_drive.py`; graphics `pop_assets.py`, `pop_render.py`; terrain `popgen.py`, `popworld.py`, `popmem.py`, `verify_gen.py`, `verify_cmd.py`, `maps_png.py`; people `people_model.py`, `capframes.py`, `fightcheck.py`, `dument.py`, `repl.py`; landscape infographic `landscape_infographic.py` (build and `--check`), `landscape_core.js`, `landscape_check.js`, `landscape_infographic.tmpl.html`; AI `ai_ref.py`, `ai_diff.py`, `hx.py`, `fieldxref.py`; `ghidra/` overrides for `tools/ghidra/DecompileAll.java`; per-area subdirectories `walker/`, `powers/`, `endgame/`, `ai/`, `systems/` (listed in `mechanics.md` 9, `ai.md` 5 and `systems.md` 8), their snapshots and captures under `$POP_WORK/<area>/` |
 | `intro.png`, `title_menu.png`, `conquest_briefing.png`, `gameplay.png` | milestones: intro credits, the LOAD.PIC title menu, the GENESIS briefing, the first gameplay frame |
 | `real_game_start.png`, `mine_v5547.png`, `mine_v5547_diff.png` | emulator frame vs `pop_render.py` output and their (empty) diff |
 | `land0..3_blocks.png`, `sprites0.png`, `spr_320.png`, `font.png`, `icons_150e2.png` | decoded block/sprite/font/icon sheets |

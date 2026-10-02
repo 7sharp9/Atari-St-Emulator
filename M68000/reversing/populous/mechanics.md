@@ -5,13 +5,13 @@ emulator with the scripts in `py/`; "inferred" means read from code but not exer
 
 ## 1. Where it runs
 
-The main loop `$b510` (one iteration per game frame) calls, when neither `$3b274` nor `$3b276` is set
-(both non-zero only in the non-simulating paint/setup modes):
+The main loop `$b510` (one iteration per game frame) calls, when neither `$3b274` (pause) nor `$3b276` (paint-map mode)
+is set:
 
 - `$12f84` moving hazard effects in entity slots $d1/$d2 (section 7);
 - `$db4c` **entity update**: the whole people/settlement/mana simulation, once per frame.
 
-`$3b222` toggles 0/1 every main-loop iteration (`$b6a2`); it drives the half-rate mana tick and the
+`$3b222` toggles 0/1 every main-loop iteration (`$b6a4`); it drives the half-rate mana tick and the
 walker sprite animation phase. `$3c4c8` is the frame counter (incremented at `$db58`).
 
 ## 2. Data structures
@@ -53,7 +53,7 @@ Flags (`$db4c` dispatch at `$df76..$edac`; animation by `$101a0`):
 Occupancy: `$37fd4` byte per cell = entity index+1 (0 empty). `$38fd8` word per cell = walker visit
 count (incremented when a walker leaves a cell, `$f29e`). Terrain class `$36e78` byte per cell
 (0 water, $0f flat unclaimed, $1f/$20 flat claimed by good/evil, $2f..$31 rock, $35 swamp, $42 ruined
-ground); building overlay `$3c522` byte per cell ($21..$29 houses, $2a castle, $29..$2c castle walls,
+ground); building overlay `$3c522` byte per cell ($21..$29 houses, $2a castle, $2b/$2c castle wall pieces,
 +$15 when burnt). The terrain area owns these maps; here they are only read.
 
 ### 2.2 Side record, `$3b226 + 16*side`
@@ -71,12 +71,14 @@ ground); building overlay `$3c522` byte per cell ($21..$29 houses, $2a castle, $
 
 ### 2.3 Per-side options/AI record, `$21e0c + 0x2e*side` (DATA segment)
 
-Fields used here: +0 b AI request code (1 = raise land at (+1,+2), 2 = at a ruin), +1/+2 b request x/y,
+Fields used here: +0 b AI request code (1 = raise land at (+1,+2), 2 = lower land there), +1/+2 b request x/y,
 +6 w computer-controlled flag (1), +8 w AI request pending (the AI planners `$13eda`/`$13a44`/`$135fc`/
 `$13816` only run while it is 0), +14 w permitted-power mask ("OPTIONS FOR ..." menu): bit 3 earthquake,
 4 swamp, 5 knight, 6 volcano, 7 flood, 8 armageddon (bits 0..2 = modify land / attack towns / attack
-leader, the "OPTIONS FOR EVIL" items 1-3, `ai.md` section 2), +16 w aggression/rate used in the score.
-+34/+38/+42 l are the planner's "biggest town", "oldest town", "a walker" pointers written by `$db4c`.
+leader, the "OPTIONS FOR EVIL" items 1-3, `ai.md` section 2), +12 w aggression (rating), +16 w reaction interval (the score uses +16).
++34/+38/+42 l are the planner's pointers written by `$db4c`: the enemy's largest settlement, the
+enemy's oldest settlement (an enemy walker in state 2 if there is none) and the side's own newest
+settlement (`ai.md` 1.1).
 The AI area documents the rest.
 
 ### 2.4 Game options `$219b2` (menu `$1bc0e`, bit = 1 << row/2)
@@ -95,7 +97,7 @@ towns. `$219b0` = computer opponent present.
 | $3c4fe [11] | mana for capturing/destroying a town by level: 50 100 200 ... 900, castle 2000 |
 | $3c4e8 [3] | mana for killing a walker: 100, knight 1000, leader 3000 |
 
-Level index = settlement sprite - $20 (0..9 houses, 10 castle).
+Level index = settlement sprite - $20 (1..9 houses, 10 castle; slot 0 is never used by a settlement).
 
 ## 3. Walkers
 
@@ -216,8 +218,7 @@ frames), island runs **12932/12932** (703 frames).
   `cell - off` is cell +18 "last" re-derived rather than read.
 - AI auto-lower: computer-controlled side, standing on a burnt field ($42), not busy -> lower
   request, already proven separately (`ai.md` 3.3: `ai/fdiff.py`'s `$ef4c` case, **1200/1200** +
-  live 7767/7767) and not modelled by `apply_decision()` below, which starts after it (section 10's
-  "the lower request on a $42 cell... not diff-tested" was stale on this point).
+  live 7767/7767) and not modelled by `apply_decision()` below, which starts after it.
 - The follower pause, flag $20 (`$eb8c`, in the per-frame walker code after the step): for walker B,
   if `A = occupant[B.cell]-1` is another entity with A < $d0, A.anim == 0 and A not in water, then
   A.flags |= $20, A.anim = $65, A.t6 = 0. Since the occupant mark is the cell a walker is leaving and
@@ -236,7 +237,7 @@ frames), island runs **12932/12932** (703 frames).
   its low 3 bits and gains bit 3; t6 becomes each other's index; both get `$101a0` (not modelled
   anywhere in this repo -- no fighter-case model exists, only `powers_ref.anim_settlement` for
   flags==1). j releases its *own* stale occupancy marks (on its previous cell and its current
-  cell -- not s's, a first draft got this backwards and postdecide_diff.py caught it). If j was a
+  cell -- not s's). If j was a
   settlement (its old flags bit 0), s's own cell is marked occupied by s; otherwise j snaps onto
   s's cell ("they share one cell") and that cell is marked occupied by s.
 - Merge `$feca(i, j)` (walker i into entity j):
@@ -333,7 +334,7 @@ not occur), with walker losers **10/10** in the same run.
 ## 4. Settlements
 
 ### 4.1 Land value and building size, `$18206(side, cell)`
-Over the 17 cells centre + ring 1 + four ring-2 axis/diagonal cells (`$22b4e[0..16]`):
+Over the 17 cells centre + ring 1 + the eight cells two out (`$22b4e[0..16]`):
 - off-map: ignored; rock: value -= 15;
 - flat (own claimed colour or $0f): value = 50 on the first hit, then += 15 each;
 - centre not flat: return 0;
@@ -343,7 +344,8 @@ Values below 35 become 0; exactly 305 (all 17 flat) becomes 3050 = castle. Side 
 cleared and counts the castle wall pieces seen, and `$37eb6` is set when a footprint cell is unclaimed
 `$0f` (both reproduced by the power models under `callcap`; `people_model.py` does not track them).
 
-Sprite/level: value < 3050 -> $20 + value*10/305 (levels 0..9), else $2a castle (level 10).
+Sprite/level: value < 3050 -> $20 + value*10/305, else $2a castle (level 10). A non-zero value is at
+least 35, so levels 1..9 occur and level 0 never does; the 11-entry tables below keep an unused slot 0.
 Capacity = value (castle 3050). Value 0 makes the settlement leave as a walker next frame.
 Verified: 4122/4122 settlement sprites over 400 frames.
 
@@ -363,7 +365,7 @@ Every 8th frame (`$3c4c8 & 7 == 0`):
 Every 8th frame, a castle of a computer-controlled side with str > 305 whose side is **not** busy gets
 capacity 305 instead of 3050 and sets the side busy (`$e5a6..$e638`): an AI action, so the castle then
 emits a walker (verified 332/332 live, `ai.md` 3.4). If the table is full
-(208), `$13372(1)` spawns a swamp trail, once per game (`$3c4c4`; `systems.md` 1.3, not run). Verified: settlement str 4122/4122,
+(208), `$13372(1)` spawns a swamp trail, once per game (`$3c4c4`; `systems.md` 1.4, run only with poked slots). Verified: settlement str 4122/4122,
 weapon 516/516, emitted walkers 12/12 (str, side, cell).
 
 ### 4.3 Claiming land, `$10366(e, release)`
@@ -417,8 +419,8 @@ Armageddon (`$3d524` != 0), per frame in `$db4c`:
 - `$e270`: every settlement is vacated whatever its land value: flags `(f & ~1) | 2`, +12 = +10 = 0,
   `$10366(e, 1)` releases its footprint (4.3);
 - all walkers steer with `$f6b2` (3.2; rock is passable on the direct heading), so the populations
-  meet at the centre and fight (3.5); the power gate and raise/lower refuse everything while it is
-  on (`terrain.md` 4, `ai.md` 5).
+  meet at the centre and fight (3.5); the power gate refuses every power while it is on; raise
+  and lower still run and are not charged (`terrain.md` 2, `ai.md` 5).
 
 Verified on an Armageddon cast by the computer (`ai.md` 5, run M: `M0.snap`, cast at frame 1066,
 GAME LOST at 1506, human 0, evil 838) with `py/endgame/brawlcheck.py` over a `capframes.py` capture
@@ -433,13 +435,13 @@ killed) match the full model, section 3.5.
 
 `$db4c` end (`$ee3c`): if the human side's population is 0 or it surrendered (`$2287e` = side),
 `$1c858(1)` (lost); else if the other side's population is 0 (or it surrendered), `$1c858(0)` (won).
-Population bar `$d482`: height = pop*31/50000 + 1.
+Population bar (side bars drawn inside `query_panel_draw` `$d482`, at `$d918`): height = pop*31/50000 + 1.
 
 `$2287e` (surrendered side) is -1 after `reset_world_state` (`$bdee`) and is set to `$3affe` by GAME
 SETUP > SURRENDER THIS GAME (`$1bafe`).
 
-`$1c858(lost)` score screen: seven rows at `$225d8 + $2e*r`, "you" = entities whose side byte equals
-`$3affe`, everything else "him":
+`$1c858(lost)` score screen: seven rows at `$225d8 + $2e*r` (row 1 is the `YOU  HIM` column header at
+`$22606`; the other six are below), "you" = entities whose side byte equals `$3affe`, everything else "him":
 
 | row | value (you, him) |
 |---|---|
@@ -465,7 +467,7 @@ if score > 555555: score = 515090
 (The clamp keeps the `divu #10` conversion at `$18336` from overflowing: inferred reason.) It draws one
 button, TRY IT AGAIN after a lost conquest game (`$21d5e` != -1), else NEW GAME, and waits for a click
 in it. Then: `$21efa` = 1 (no reader found); after a won conquest game `$1d0e6(score)` (terrain.md 3);
-the **third protection check** at `$1d032`: if `$3c4b0` != `$21466 + $15151515`, clear `$219b0` (no
+key check D at `$1d032` (`systems.md` 2): if `$3c4b0` != `$21466 + $15151515`, clear `$219b0` (no
 computer opponent) and the 25 words of `$22b4e` (footprint offsets) (both sides hold `$54ac0842`, the
 loader's patch value, so the check passes on the crack); the human god record's ctrl = 0; and
 `new_world(0, -1)`.
@@ -483,23 +485,20 @@ fields over 7 real end states: win and loss by zeroing one side's strengths, a n
   the entity table is full; they walk one cell every 8 frames, mark trees, swamp or rock beside the
   path and kill what they cross. They are not power effects. `systems.md` 1.
 - `$d482`: query panel for the selected entity.
-- `$3c4e4` (`emit_cap50_side` in `populous.sym`) inside `$db4c` (`$e63e/$e64e`, `$ef1c..ef42`):
-  mid-scan, if `$3c4e4 != 0` and it equals the current entity's side+1, the planner's command
-  choice for that entity's pending request is forced to `$32` instead of whatever it computed.
-  Every 8th frame (`$3c4c8 & 7 == 0`) at the function's tail, if `$3c4e4` is still non-zero it
-  prints `$2147e` "CHEAT" at (0,0) and clears it (a one-shot confirmation flash), immediately
-  before falling into the walker step-decision routine (section 3.2, `$ef4c`). A first pass here
-  grepped `pop_ad58.asm` for a writer, found none but the `clr.w` at `$ef42`, and called this dead
-  -- wrong: `pop_ad58.asm` stops at $1d462, well short of the image's real end ($3d550); a fresh
-  `tools/find_field_writers.py <snap> 3c4e4` finds a writer at `$01fbc4`, inside a "misc"
-  sub-command dispatcher reached as `terrain.md` section 2's command 14 (`case 0xf` sets `$3c4e4`
-  to `sub_arg + 1`; the same dispatcher's `case 10` also doubles the local player's mana, capped
-  at 100000, when its sub-arg is 0 -- terrain.md's cmd-14 sub-command table doesn't list either).
-  How command 14 gets issued with these sub-values isn't traced (`graphics.md`'s Scrolling section
-  has the fuller writeup, including a candidate text-entry path). *Live triggering still open*
-  (populous.md open item 3, "the command that sets `$3c4e4`": answered -- command 14/sub 15,
-  through the normal per-player command-record path -- but not yet reproduced live, and how a
-  player or the AI would actually issue that sub-value is open).
+- `$3c4e4` (`emit_cap50_side` in `populous.sym`), a hidden hook in `$db4c` (`$e63e/$e64e`,
+  `$ef1c..$ef42`): while it equals an entity's side+1, that side's settlements use capacity 50 (`$32`,
+  `move.w #$32,-12(A6)` at `$e65e`) instead of their land value, so each emits a walker once its str
+  exceeds 50 (section 4.2). Every 8th frame (`$3c4c8 & 7 == 0`) at the function's tail, if it is still
+  non-zero, `$db4c` prints `$2147e` "CHEAT" at (0,0) and clears it (a one-shot flash), immediately
+  before falling into the walker step-decision routine (section 3.2, `$ef4c`). The only writer is
+  `$01fbc4`, `case 0xf` (entry `$1fbbe`) of `cmd_misc` (`$1f0fa`, command 14, `terrain.md` 2): sub 15
+  stores `sub_arg + 1`. The same dispatcher's `case 10` sets side 1's mana (`player1_mana`, `$3b242`)
+  to `mana*2 + 500` while it is below 100000 when its sub-arg is 0, and halves it otherwise (decompile
+  read, not run); `terrain.md`'s command-14 sub-command table lists neither. In paint-map mode
+  (`$3b276`) the key handler `$1d996` posts command 14 sub 9 for F6 and sub 10 for F7 (arg = shift
+  state `$3d538`), so the mana subs are keyboard-reachable there (code-read, not run). Nothing found
+  posts sub 15: the `$66` branch of the scroll handler (`graphics.md` Scrolling) leaves the command
+  byte 0, which `$1e712` skips. Not triggered live.
 - Key checks, not checksums: at entity index $14 `$db4c` compares `$3c4c0` with `$21d4c+$14725836`,
   at index $12 the trace vector (read by the supervisor peek `$15fe2`) with `2*$21d54`; a mismatch sets
   `$3d524` (Armageddon) and both sides' ctrl = 1. Both constants equal the crack loader's key
@@ -510,8 +509,8 @@ fields over 7 real end states: win and loss by zeroing one side's strengths, a n
 game_start.snap (frame 285): 8 entities. Good: 3 settlements (0 at (10,3) str 78 level 2, 1 at (6,4) str
 63 level 3, 2 at (9,13) str 50 level 2) and walker 7 at (8,4) str 42 just emitted. Evil: 4 settlements
 (3 (57,60), 4 (26,59), 5 (56,55), 6 (26,56)). Leaders: good = entity 2, evil = entity 5 (settlements
-can hold the leader). Both modes = 1 (settle), magnets at $820. Mana 542 / 42; population 191 / 78.
-g90.snap: 13 entities; 5 new walkers/settlements (7..12). Evil mana stays near 0 because the computer
+can hold the leader). Both modes = 1 (settle), magnets at $820. Mana 542 / 42; population 233 / 221 (`$3b22e`).
+g90.snap: 13 entities; 5 more walkers/settlements (8..12). Evil mana stays near 0 because the computer
 spends it on raising land. late1..4.snap: without input the array barely changes (the 400-frame run
 from game_start is the evidence used here).
 
@@ -519,15 +518,14 @@ from game_start is the evidence used here).
 - `dument.py <snap>`: print the entity array.
 - `capframes.py <snap> <n> <out>`: capture RAM at entry/exit of `$db4c` for n frames.
 - `people_model.py <capture>`: Python model of section 4/5 rules and the per-field match report.
-  Regenerate: `python py/capframes.py $POP_WORK/game_start.snap 400 run400.bin; python py/people_model.py run400.bin`
+  Regenerate (from `M68000/`): `uv run python reversing/populous/py/capframes.py $POP_WORK/game_start.snap 400 run400.bin; uv run python reversing/populous/py/people_model.py run400.bin`
   (a 21 MB capture; the one used here is kept at `$POP_WORK/agents/people/fr/run400.bin`).
 - `fightcheck.py <snap> <n>`: forces Armageddon and checks `$1063a` rounds against the model.
 - `repl.py`: interactive REPL driver.
 - `walker/` (data in `$POP_WORK/walker/`): `walker_ref.py` models `$18198`, `$18206`, `$f2f4`, `$fe00`,
   `$f6b2`, the `$ef4c` dispatch and (section 3.3) its post-decision writes -- `fight_start` $10e7e,
   `join_fight` $11006, `apply_decision` $f13c onward; `walker_diff.py 400 7` the decision callcap
-  corpus (2400/2400), `postdecide_diff.py 500 <seed>` the post-decision one (1600/1600 over two
-  seeds); `capcalls.py <snap> <n> <out>` records every live `$ef4c` call; `livecheck.py <calls>
+  corpus (2400/2400), `postdecide_diff.py 400 <seed>` the post-decision one (800/800 per seed: 400 on each of `game_start` and `g90`; 1600/1600 over seeds 8080 and 77); `capcalls.py <snap> <n> <out>` records every live `$ef4c` call; `livecheck.py <calls>
   [<frames>]` checks live decisions and per-frame walker cells; `quirk.py` counts decisions a full
   8-way scan would change; `pause_study.py` the flag-$20 pauses; `campaign.py`, `campaign2.py`,
   `mkmode.py` are the UI-driven play that made `snaps/near`, `front`, `gather1`, `fight1`.
@@ -546,12 +544,11 @@ from game_start is the evidence used here).
 
 ## 10. Open questions
 - The `$ef4c` writes after the decision (settle, merge, fight start, occupancy and visit counts) are
-  now diff-tested on their own (section 3.3, `postdecide_diff.py`, 1600/1600), still only through
-  callcap; the fight-start/join-fight/merge branches haven't been checked against live play (the
-  live counts in the decision-scan proof above only confirm `choose()`'s *return value*, not what
-  the post-decision code then did with it). The lower request on a `$42` cell was already proven
-  separately (`ai.md` 3.3, `ai/fdiff.py`, 1200/1200 + live 7767/7767) before this pass; a session
-  re-reading `$ef4c` from scratch nearly redid that part before checking `ai.md` first.
+  diff-tested on their own (section 3.3, `postdecide_diff.py`, 1600/1600), but only through callcap: the
+  fight-start and join-fight branches have not been checked against live play (the live counts in the
+  decision-scan proof above confirm `choose()`'s *return value* and the walker cells, not the
+  post-decision code's own writes). The lower request on a `$42` cell is proven separately
+  (`ai.md` 3.3, `ai/fdiff.py`, 1200/1200 + live 7767/7767).
 - $10e7e's and $11006's two `$101a0` fighter-animation calls (entity+12, the anim byte low-order:
   base $46/$82/$86/$8a per whether either combatant has a knight pointer, mechanics.md 3.5) have no
   Python model anywhere in this repo; `postdecide_diff.py` excludes those two bytes from its

@@ -1,23 +1,24 @@
 # Populous: handoff
 
-Updated 2026-09-30 by the session that ended at commit `509283d` (landscape infographic). The
-previous handoff (2026-09-23) was stale: two later sessions committed without updating it, so this
-rewrite folds in their results (`014c25c`, `a2e901b`, `0dcc1bc`, `ebcffc5`).
+Updated 2026-10-02 by the docs-accuracy and cleanup session: all six docs audited against the code
+(three read-only agents, about 320 claims), about 60 corrections applied, the truncated
+`pop_ad58.asm` replaced, scratchpad leftovers removed. No emulator source changed.
 
 ## Resume point
 
-- Last commits of this workstream: `509283d` (landscape infographic), `a2e901b` (CHEAT hooks are
-  not dead), `014c25c` ($ef4c post-decision writes proven), then the handoff commit.
+- Last commits of this workstream: the docs-accuracy commit of this session, `509283d` (landscape
+  infographic), `a2e901b` (CHEAT hooks have writers), `014c25c` ($ef4c post-decision writes proven).
 - `bin/` is built from HEAD on macOS; no `*.fs` has changed since `5c32af8`, so it is the same
   emulator every earlier count ran on.
 - Working data: `$POP_WORK` = `M68000/scratchpad/pop/`, rebuilt on this Mac. Source files:
   `~/Library/CloudStorage/Dropbox/Daves/ST games/` (the Populous zip, hash in the README;
   `hatari-v2.6.1-480/tos100uk.img` copied to `M68000/TOS100UK.IMG`). Present: `files/`,
-  `pop_ad58.img`, `pop_ad58.asm` (**truncated at $1d462, under 40% of the image: never use it for
-  a "no writer" claim**), `pop_ad58.c` (Ghidra 12.1.4), `pop_auto.st`, `repro`/`game_start`/`g90`/
+  `pop_ad58.img`, `pop_ad58.asm` (now the whole text segment $ad58..$21464, regenerated with
+  `disassemble.py --rom pop_ad58.img --base ad58 --all ad58 21464`; the old file stopped at $1d462 and
+  `py/fieldxref.py` and `py/ai/asm.py` read it), `pop_ad58.c` (Ghidra 12.1.4, in `ghidra121/`), `pop_auto.st`, `repro`/`game_start`/`g90`/
   `late1..4.snap`, `walker/snaps/near`, `front`, `gather1`, `fight1`. Everything else in
-  `ANCHORS.md` (drive/A, ai/cg1, cg2, M1, powers/snaps, systems/spawn, swamp208, endgame) is **not**
-  rebuilt here yet.
+  `ANCHORS.md` (drive/A, ai/cg1, cg2, M1, g40, powers/snaps, systems/spawn, swamp208, endgame) is
+  **not** rebuilt here yet; `ai_diff.py` lists `g40.snap` and `agents/` captures that are absent.
 - Start from: `walker/snaps/fight1.snap` (frame 2665) for combat and take-overs.
 - Uncommitted work left behind: none from this workstream (`M68000/sessions/README.md` and
   `Cadaver/`, `.obsidian/` belong to other sessions).
@@ -39,11 +40,15 @@ Five topic docs, each count in the table at the top of `reversing/populous/READM
 - AI: 4800/4800 decision routines; natural runs 1854/1854, 2766/2766; flood/armageddon casts.
 - Systems: trails 400/400 + 400/400 callcaps, 394/394 live; the pop-208 swamp spawn 400/400 and
   237/238 frames (`systems.md` 1.3).
-- Hidden hooks: the two "CHEAT" prints are **not** dead code. `$37eae` has a writer in
-  `ikbd_read_byte` (`$02004e`); `$3c4e4` is set by command 14 sub 15 (`$01fbc4`), and the same
-  dispatcher's sub 10 doubles the local mana. Found with `tools/find_field_writers.py`, after a
-  grep of the truncated `pop_ad58.asm` had said otherwise (`graphics.md` Scrolling, `mechanics.md`
-  section 7). Not triggered live yet.
+- Hidden hooks (`graphics.md` Scrolling, `mechanics.md` section 7; all code-read, none run live):
+  `$37eae` has a writer in `ikbd_read_byte` (`$02004e`); `$3c4e4` caps a side's settlement capacity at
+  50 and is set by command 14 sub 15 (`$01fbc4`); subs 9 and 10 of the same `cmd_misc` (`$1f0fa`)
+  set side 0's and side 1's mana to `2*mana + 500` (arg 0) or halve it, and in paint-map mode the key
+  handler `$1d996` posts them from F6 and F7. The `$66` scroll branch cannot post sub 15 (it leaves
+  command 0, which `$1e712` skips).
+- Docs audit: the three audits' "checked and sound" lists are the evidence for everything not
+  corrected; `postdecide_diff.py 400 <seed>` reproduced on this Mac, 800/800 for each of seeds 8080 and
+  77 (1600/1600). `landscape_infographic.py --check` gives 375/375 here.
 - Landscape infographic `reversing/populous/landscape_infographic.html` (this session): JS port of
   the terrain code, **375/375** random cases against `popgen`, `powers_ref`, `pop_render`,
   `popdrive` (`uv run python reversing/populous/py/landscape_infographic.py --check`, from
@@ -59,10 +64,10 @@ Five topic docs, each count in the table at the top of `reversing/populous/READM
    (`$18206` = 0), a castle claimed by `$10366`, `$10068` killing a settlement outside a fight are
    modelled but never compared live. Live pass from `fight1`/`gather1` with `py/powers/live.py`,
    and a model of `$101a0`'s two fighter-animation bytes to drop the exclusion.
-2. **How command 14 sub 15 and sub 10 are issued** (the cheat path): trace `FUN_0001a01e` and its
-   guard `DAT_0003c4e0` (keystrokes through `ikbd_read_byte` into the sub-dispatcher), name what text
-   the game compares, then trigger it live (and the `$b9fa` print via scancode `$66` with the mouse
-   in the top-right corner in query mode). This would settle whether the game has a cheat code.
+2. **Trigger the hidden hooks live**: in a paint-map session press F6/F7 and watch `bp 1fbc4`-style
+   hits on `$1f0fa` (subs 9/10 are keyboard-reachable); find what posts sub 15 (`$1d996` does not;
+   scan every writer of `$21e0c+0..2` with `find_field_writers.py`); poke `$37eae = $66` with the
+   latched click at x>310, 10<=y<=20 and query mode to confirm the `$b9fa` branch only prints.
 3. **The swamp208 237/238 frame**: `trail_ref.py` skips a settlement on a marked cell because
    `$10366` was not modelled; `powers_ref.claim_land` now is. Wire it in and re-run
    `py/systems/trailrun.py` from `swamp208/p_spawn.snap` (needs `swamp208.py poke` on this Mac
@@ -77,6 +82,18 @@ Five topic docs, each count in the table at the top of `reversing/populous/READM
 For the emulator workstream: Timer A is a stub (64 interrupts per frame), so sampled sound plays at
 the wrong rate (`systems.md` 6.2).
 
+## Audit findings still needing an emulator run
+
+From the docs audit; none changes a doc claim yet: the `$e012..$e058` water-raise block (`ai.md` 1,
+not in the AI corpora; run a flood in a custom game with `join.py`); "260 frames" for run F in
+`ai.md` 5 (the table shows about 399 `$13eda` calls); whether `swamp208.py run` from `cg2.snap`
+reproduces run B's first 2997 frames; pause lengths (`$40` pauses 8 frames in the text, the
+`t6 > 14` test gives 9; `$20` 15 or 16); trail-sprite frames 9 and 11 (`systems.md` 1.3 states a
+sampling skip that the 8-tick sprite cycle does not guarantee); `graphics.md` "12 of 12" frames
+(its table lists 10 plus a pointer variant); the strategy-note counts in `ai.md` 4 (16 of 19 swamp
+decisions lost, volcano and knight timing, 4 quakes) have no script. Ghidra: this Mac's run fails 6
+functions (`$ae14`, `$13dce`, `$188b0`, `$192ea`, `$20a66`, `$21244`), README now says so.
+
 ## Known traps
 
 - A live compare over a call can catch Timer A ticks: the sample player's `$24952..$24963` changes
@@ -90,6 +107,8 @@ the wrong rate (`systems.md` 6.2).
 - A land click acts only when one of your entities is in view (`$3d54e`).
 - `walker/snaps/*` rebuilt here differ from the Windows ones (fight1 frame 2665, not 2731): counts
   taken on the old states (8000/8000 decisions, 51863 cells) were not re-run on these.
+- `pop_ad58.asm` was a strict prefix of the real listing; any other `<game>_ad58.asm` should be
+  checked against the PRG header's text size before a "no writer" claim.
 - Scripts spawn the emulator with cwd `M68000/`: pass absolute snapshot paths.
 - On this Mac the emulator runs about 28M steps a minute; `live.py fight` and `resolve` over 1500
   frames run fine as two parallel processes.

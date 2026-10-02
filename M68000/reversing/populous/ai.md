@@ -9,11 +9,11 @@ Inferred items are marked as such.
 The computer god has no private "brain" loop. Both sides are driven through the same per-side
 **god record** (`god_rec`, $21e0c + side*$2e). Each frame:
 
-1. `$db4c` (walkers_tick) increments the frame counter `$3c4c8`, then for side 0 and 1:
+1. `$db4c` (`entity_update`) increments the frame counter `$3c4c8`, then for side 0 and 1:
    if `rec.busy == 0` call `$13eda` (ai_think); if still not busy call `$13a44` (ai_powers).
    While iterating the walkers it also calls the land levellers `$135fc` / `$13816`, and
    `$ef4c`/`$f6b2` post raise/lower commands for computer-side walkers.
-2. `$1e712` (god_commands_exec) clears `rec.busy` for every side with `rec.ctrl == 1` when
+2. `$1e712` (`exec_player_commands`) clears `rec.busy` for every side with `rec.ctrl == 1` when
    `frame % rec.reaction == 0` ($1eab6..$1eaea, `divu`), then executes `rec.cmd` for both
    sides, then `$1eef4` clears the command bytes.
 
@@ -21,9 +21,13 @@ A decision routine writes at most one command per call and sets `busy = 1`, so t
 one decision per `reaction` frames. Four exceptions, all seen in play: the swamp cast (3.2) and the
 `$ef4c` burnt-field lower (3.3) do not set busy, so a land edit later in the same frame replaces them;
 the `$f6b2` raise ignores busy and overwrites whatever was posted; and the castle release (3.4) sets
-busy without posting a command. The routines run
-for the human side too, but the human's `busy` is never cleared (`ctrl == 0`), so they are inert
-unless that side is switched to computer control.
+busy without posting a command. A fifth, code-read only, is the water raise in `$db4c`
+(`$e012..$e0ee`): an entity flagged in water (`$10`) (water not fatal, option bit 0 clear) on a
+computer-controlled side with "cannot build" (bit 2) clear, or on any side under Armageddon, posts a raise at its own cell, sets busy
+and overwrites a pending command; `ai_ref.py` does not model it and the 4800/4800 corpus does not
+cover it (`terrain.md` 2). The routines run for the human side too, but the human's `busy` is never
+cleared (`ctrl == 0`; it starts at 1 in the DATA image), so they are inert unless that side is
+switched to computer control.
 
 ### 1.1 god_rec ($21e0c side 0, $21e3a side 1; $2e bytes)
 
@@ -37,8 +41,8 @@ unless that side is switched to computer control.
 | +14 | w | options mask: 1 modify land, 2 attack towns, 4 attack leader, 8 earthquake, $10 swamp, $20 knight, $40 volcano, $80 flood, $100 armageddon |
 | +16 | w | reaction interval in frames, 1..10 (1 fastest) |
 | +18 | w | power-cast counter c (quake/swamp cycle) |
-| +20 | w | castles this frame (settlements with strength >= 3050) |
-| +22 | w | other settlements ($3b22c copy) |
+| +20 | w | castles counted by the previous frame's settlement scan (land value >= 3050, sprite $2a) |
+| +22 | w | other settlements in the previous frame's scan ($3b22c copy) |
 | +24 | w | swamp cap: set at land init to +26 + 1 + rand%5 |
 | +26 | w | earthquake quota: rand%3 at land init ($bcc8) |
 | +28 | w | target hold counter (2 when a magnet target is set) |
@@ -48,7 +52,9 @@ unless that side is switched to computer control.
 | +38 | l | ptr: enemy oldest settlement (largest frame - birth age); falls back to an enemy walker in state 2 |
 | +42 | l | ptr: own newest settlement |
 
-Fields +20..+42 are rebuilt every frame by `$db4c` ($dc74-$dcdc reset, $e3ae/$e428/$e4a0/$ea32 set).
+Fields +20, +22, +34, +38 and +42 are rebuilt every frame by `$db4c` (`$dc74-$dcdc` reset the
+pointers; `$e3b6`, `$e430`, `$e4a8`, `$ea32` set them; `$eed2`/`$ef02` store the counts). +24..+32 persist;
++28/+30 are written by `$13eda` and `$108b8`.
 
 ### 1.2 side_state ($3b226 + side*16)
 
@@ -77,7 +83,7 @@ Fields +20..+42 are rebuilt every frame by `$db4c` ($dc74-$dcdc reset, $e3ae/$e4
 ## 2. Where the options come from
 
 ### Conquest
-`$b316` copies the level record `$22ad8` (conquest level data; loader not traced here) into both god records:
+`$b316` copies the level record `$22ad8` (conquest level data, read by `$1a5c4`; `terrain.md` 3 "LEVEL.DAT") into both god records:
 
 | level byte | goes to | shown as |
 |---|---|---|
@@ -192,7 +198,7 @@ if mana > 3000 and r.enemy_oldest.state == 1 and opts&8
     cmd3 earthquake at target(); busy; c++
 ```
 `target()` = `$13dce`: if the side has no leader and the cell under its own magnet is occupied by
-an enemy walker ($37fd4), strike the magnet cell; otherwise strike
+an enemy entity ($37fd4, any entity whose side byte differs), strike the magnet cell; otherwise strike
 (oldest_enemy.x - 3, oldest_enemy.y - 3), clamped at 0.
 Resulting cycle when all three are allowed: `quake_quota` (0-2) earthquakes, then swamps on the
 enemy leader until c > swamp_cap, then nothing cheaper until volcano mana, and the volcano resets c.
@@ -240,16 +246,15 @@ over capacity the castle then emits a walker (child str - 152, parent 152; `mech
 AI castle is emptied into walkers once it holds more than 305, one castle per decision slot. Verified:
 every busy write from `$e638` fell on a frame%8 == 0 frame with busy 0 before it, **332/332** over the
 two runs of section 5. The same block caps the capacity at 50 for side `$3c4e4 - 1`; `$3c4e4` is set by
-a `$1f0fa` case (`$1fbbe`, arg+1) and cleared every 8th frame (`$ef42`); which command posts it was not
-traced.
+a `$1f0fa` case (`$1fbbe`, arg+1) and cleared every 8th frame (`$ef42`); command 14 sub 15 sets it
+(`mechanics.md` 7); not reproduced live.
 
 ## 4. Strategy notes (derived from the code)
 
 - Reaction speed is a hard rate limit: at most one land edit, magnet move or power per
   `reaction` frames, and all three compete for the same slot. VERY SLOW (10) = one action per
   10 ticks.
-- Rating/aggression gates offence: until the AI owns `2*rating + 15` settlements (35 at VERY
-  POOR, 17 at VERY GOOD) it never moves its magnet to attack; it only flips between settle,
+- Rating/aggression gates offence: until the AI owns `2*rating + 15` settlements (35 at rating 10, 17 at rating 1) it never moves its magnet to attack; it only flips between settle,
   gather and fight at random, and only when it was in magnet mode. Even after that, it spends
   `rating + 10` of every 90 frames in that passive mode.
 - Its leader is fed first: while its leader is below 6000 strength it parks the magnet on its
@@ -290,8 +295,9 @@ Observed in play (the two natural runs of section 5, rating 1, reaction 1, all o
   from (32,32) to (8,11) with no command, written by `set_magnet_cell $129d6` (`$129f2`) as the leader
   vanished (the caller is inferred to be `entity_kill $10068`, `$10156..$1017a`).
 - **An idle human loses in about 2700 frames** to this opponent on GENESIS (A: GAME LOST at frame
-  2978, evil with 31 castles and 3 knights). Two such AIs are even: B had no winner after 3000
-  frames, both at 10-15 castles and ~10000 population.
+  2978, evil with 31 castles and 3 knights). Two such AIs are even for the first 3000 frames
+  (B: both at 10-15 castles and ~10000 population); the same ATARI VS ATARI setup continued by
+  `swamp208.py` ends with side 0 dead at frame 9365 (`systems.md` 1.4).
 
 ## 5. Verification
 
@@ -308,7 +314,7 @@ non-stack memory delta (and $135fc's returned D0 byte) with `ai_ref.py`:
 | $135fc | 1200/1200 | raise 420, lower 514, ret0 90, ret1 52, ret4 124 |
 | $13816 | 1200/1200 | raise 42, lower 33, none 1125 |
 
-Command: `python py/ai_diff.py 400 7`.
+Command (from `M68000/`): `uv run python reversing/populous/py/ai_diff.py 400 7`.
 Live check (GENESIS, computer rating 10, reaction 10, no player input): `$13eda` runs for side 1
 at each busy clear ($1eaea) and never posts a magnet or mode command, as the model predicts (4
 settlements < 35 and mode 1, so it only acts in mode 0; power options are 0). The levellers do
@@ -356,9 +362,10 @@ and M poke it:
 | M (100M steps) | `$13eda` 441, `$13a44` 441, `$13816` 202, `$ef4c` 620, `$f6b2` 620 | **169/169** (armageddon 1, raise 138, lower 8, swamp 6, volcano 16) |
 
 Run F's two floods lowered the heights exactly as `terrain.md` 4 models them: 4225/4225 corners
-after each, 973 changed. Under Armageddon the computer keeps issuing raises, volcanoes and swamps,
-and the power gate refuses them all: its mana (10006 after the cast, above 13000 after a combat
-transfer at frame 1386) is never charged although 16 volcanoes were commanded. `$135fc` is not
+after each, 973 changed. Under Armageddon the computer keeps issuing raises, volcanoes and swamps;
+the power gate refuses every volcano and swamp, while raises still run and are not charged. Its mana
+(10006 after the cast, above 13000 after a combat transfer at frame 1386) is never charged although 16
+volcanoes were commanded. `$135fc` is not
 called at all. In run M one raise (frame 1175) was written by `$f6b2` and then again, identical,
 by `$13816`; `join.py` counts it under the leveller's call. Not reached live: the `$f6b2` swamp
 raise and `$135fc`'s second call site `$e580`. No ctrl word was written in any run, so neither
@@ -373,8 +380,7 @@ parallel; `join.py` alone replays the recorded logs in `$POP_WORK/ai/live/` in m
 `castlecheck.py`, `magnetcheck.py`, `strategy.py`, `livecov.py` the statistics.
 
 ## 6. Open questions and cross-references
-- Resolved by the other areas: `$33be4`, which gates `$135fc`, is the per-cell altitude (`terrain.md`
-  section 1). Why the gate treats altitude 0 differently is not traced. $2f is rock and $42 a burnt field (`terrain.md`, `mechanics.md`); +34 ranks by the
+- `$33be4`, which gates `$135fc`, is the per-cell altitude (`terrain.md` section 1). Why the gate treats altitude 0 differently is not traced. $2f is rock and $42 a burnt field (`terrain.md`, `mechanics.md`); +34 ranks by the
   `$18206` land value, which is also the settlement capacity (`mechanics.md` 4.1). `$2287e` is the
   surrender flag (`mechanics.md` 6).
 - **ONE PLAYER in two-player mode is a source bug** (`$1b452`). Two-player needs a serial peer, so
@@ -383,5 +389,5 @@ parallel; `join.py` alone replays the recorded logs in `$POP_WORK/ai/live/` in m
   menu shows HUMAN VS ATARI but both sides are computer-controlled (side 0 posted a command at 100 of
   the next 100 frames). The second write was surely meant for `ctrl[other]`, as HUMAN VS ATARI
   `$1b8b2` does.
-- Not traced: which command sets `$3c4e4` (3.4). Not run: the conquest route to a rating-1 world (the
+- `$3c4e4` is set by command 14 sub 15 (`mechanics.md` 7); what posts that sub is not found. Not run: the conquest route to a rating-1 world (the
   custom route gives the same god record).

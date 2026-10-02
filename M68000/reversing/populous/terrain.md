@@ -27,13 +27,13 @@ diamond view. (0,0) is the top of the book minimap, checked against the in-game 
 | `$34be4` | 65x65 | word | **corner height** 0..8. 0 = sea level. Only ever changed through `$bf60`/`$d262`, flood and clear |
 | `$33be4` | 64x64 | byte | **cell altitude** (derived by `$c0ee`) |
 | `$36e78` | 64x64 | byte | **cell shape / terrain code** (derived by `$c0ee`, then overwritten by rocks, swamps and buildings) |
-| `$3c522` | 64x64 | byte | **cell feature**: trees `$32..$34`, building codes `$20..$2b` and `'*'` ($2a) from the people code, +$15 when a building is destroyed (`$108b8`) |
+| `$3c522` | 64x64 | byte | **cell feature**: trees `$32..$34`, building codes `$21..$29` houses, `$2a` castle (`'*'`) and `$2b/$2c` castle wall pieces from the people code, +$15 when a building is destroyed (`$108b8`) |
 | `$37fd4` | 64x64 | byte | **cell occupant**: entity index+1 (entity array `$3b278`, $16 bytes, entity+8 = cell index) |
-| `$38fd8` | 64x64 | byte | per-cell visit counter used by walkers when they choose a cell (`$ef4c`/`$f2f4`); zeroed by `$c0ee` |
+| `$38fd8` | 64x64 | word | per-cell visit counter used by walkers when they choose a cell (`$ef4c`/`$f2f4`); zeroed by `$c0ee` |
 | `$36ce8,$3b006,$3d522,$37eb8` | word | | dirty box min x, max x, min y, max y. `$bf60`/`$d262` grow it, and the callers clamp it to 1..63 and pass it to `$c0ee`/`$c27a` |
 | `$37f8a` | word | | count of unit corner changes by the last raise/lower (cost basis) |
 
-`$bbd4` (reset_world_state) zeroes all six maps (heights `$1081` words, the others `$1000` bytes), the
+`$bbd4` (reset_world_state) zeroes all six maps (heights `$1081` words, the visit map `$1000` words, the other maps `$1000` bytes), the
 211 entities, and both player records. Its initial values: mana 399, magnet at cell $820 = (32,32). In the
 tutorial ($37ebc==3) the mana is 10000. In a conquest world numbered above 1235, evil's mana is 2700.
 
@@ -77,8 +77,8 @@ Commands reach the terrain through the per-player command record `$21e0c + p*$2e
 | 5 | `$111be` | papal magnet (cost 200, sets `$3b228+p*16`) |
 | 6 | `$1263c` | volcano (x,y = view origin `$37e7a,$249ae`, written at `$d00e`) |
 | 7-10 | `$11486` | spawn a walker |
-| 11,12,13 | inline | paint-map editing: cycle trees `$32..$34`, cycle rocks `$2f..$31`, remove a rock (the cell height must be below 7) |
-| 14 | `$1f0fa(p,arg,sub)` | misc. Sub 3 armageddon, 4 flood, 5 knight, 11 mirror land `$11270`, 12 clear land `$113ce`, 13 set landscape type |
+| 11,12,13 | inline | paint-map editing: 11 (`$1ec62`) cycles trees `$32..$34` in the feature map and 12 (`$1ecfe`) cycles rocks `$2f..$31` in the shape map, both only where the cell altitude `$33be4` is below 7; 13 (`$1ed9a`) removes a rock (no altitude test: shape `$0f`, re-derived, feature and occupant cleared, the occupant killed by `$10068`) |
+| 14 | `$1f0fa(p,arg,sub)` `cmd_misc` | misc, switch on `sub` (table `$21632`): 1 set mode, 2 send message, 3 armageddon, 4 flood, 5 knight, 6 pause (toggles `$3b274`), 7 options, 8 game setup, 9 and 10 mana of side 0 / side 1 (`2*mana + 500` for arg 0 while below 100000, otherwise halved), 11 mirror land `$11270`, 12 clear land `$113ce`, 13 set landscape type, 15 sets `$3c4e4` = arg+1 (`mechanics.md` 7); other values do nothing. Subs 1, 2, 6, 7, 8 are described under "Command panel" in `graphics.md` |
 
 **raise_point `$bf60(x,y)`** (verified): reject if x or y is outside 0..64 (returns 0). If h<8:
 `$37f8a++`, h++, then visit the eight neighbours in the order E, SE, S, SW, W, NW, N, NE. For each neighbour
@@ -102,13 +102,13 @@ Emulator proof (`verify_cmd.py`, command injected into `$21e0c` from game_start)
 
 Effect on contents: `$c0ee` rewrites shape for every cell in the box, so a house field (`$1f/$20`) that
 stops being flat loses its code. The feature is cleared only when the cell becomes sea. The occupant map
-is untouched. The people code then reacts to the new shape (not traced here).
+is untouched. The people code then reacts to the new shape (`mechanics.md` 4.1 and 4.2: a settlement whose land value falls to 0 leaves as a walker).
 
 The computer player uses the same commands. `$135fc(cell,p)` scans the 9x9 spiral `$227d8`. It issues
 cmd 1 where the centre is higher than a neighbour, and cmd 2 where it is lower or the cell is swamp or a
 burnt field; when a cell is rock it issues cmd 2 and bumps the rock code. With harmful water, the
-computer queues cmd 1 under a drowning walker (`$e012..$e058`, inferred). A no-input run shows this: the
-heights diverge from the generated map only in the south-east start area. The count of differing cells is
+computer queues cmd 1 under a drowning walker (`$e012..$e058`, code-read; not covered by the `ai.md` corpora). A no-input run shows this: the
+heights diverge from the generated map only in the south-east start area. The count of differing corners is
 42 at `repro`/`game_start` (tick 285), 53 at g90, and 233 at late4 (tick 2161). Evil's mana is spent
 (42 at repro). `watch` on the height map caught the writes from `$bfb2`/`$d2b2`, called by `$1e712`.
 
@@ -121,7 +121,7 @@ is 32768.
 **new_world `$b316(skip, type)`** (verified with three callcaps from game_start):
 1. Seed. In conquest (`$21d5e` = world number, not -1): `seed = LEVEL.w8 + (world & 7)`; landscape type
    = LEVEL.b5; `$14be8(type,0)` loads LANDn (tile graphics plus a $72-byte header of tables; it holds no
-   heights). b0..b4 are copied into the player records (see section 4). Otherwise (custom game) the seed
+   heights). b0..b4 are copied into the player records (`mechanics.md` 2.3, `ai.md` 2). Otherwise (custom game) the seed
    is the current `$3d52e` (a number typed at the world dialog only survives to here from GAME SETUP >
    CONQUEST; see "The world dialog" below). In that case, if seed != 0 and `rand()&1` and type == -1,
    the landscape type advances by 1 (mod 4). `$37ec2` keeps the seed.
@@ -255,7 +255,7 @@ the DEMO.GOD title menu (`py/endgame/boot_check.py`, 35/35: mode, first world ag
 All six powers share one gate (`$11f6e`, `$12354`, `$12640`, `$12a18`, `$12bbc`, `$12d2a`):
 
 ```
-if paint map ($3b276): skip all of this (no cost, no checks)
+if paint map ($3b276): skip the checks and the cost
 refuse if mana[side] < cost               (signed long $3b232 + 16*side; costs $21990..$219a4)
 refuse if armageddon ($3d524)             (armageddon itself does not test it)
 refuse if paused ($3b274)
@@ -297,7 +297,7 @@ view origin `$37e7a,$249ae` (the UI posts it; graphics.md, "Mouse input").
 - **Swamp `$12a14`**: 30 tries: `cx = x + rand()%7 - 3; cy = y + rand()%7 - 3` (both draws always
   taken); inside the map, if the shape is `$0f/$1f/$20/$42` and the cell has no occupant, shape =
   `$35`. No dirty box, no re-derive, no minimap redraw. A walker on `$35` dies (`$e9a4`); with
-  shallow swamps (option bit 2 clear) the cell reverts to `$0f` after one victim.
+  shallow swamps (option bit 1, mask 2, clear) the cell reverts to `$0f` after one victim.
 - **Flood `$11f6a`**: every corner with h > 0 drops by 1 (the sea rises one level), then
   `$c0ee(0,0,63,63)` and `$c27a(0,0,63,63)`. Settlements on cells that become sea turn into flags $12
   and, with "water is fatal", die: on GENESIS a flood from `drive/A.snap` drowned 4 of the 8

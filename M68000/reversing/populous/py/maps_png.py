@@ -1,5 +1,5 @@
 """maps_png.py - render the terrain maps of a snapshot (or a callcap result) as PNG heatmaps.
-Proves the layouts: $34be4 65x65 words (corner heights), $33be4/$36e78/$3c522/$37fd4/$38fd8 64x64 bytes."""
+Proves the layouts: $34be4 65x65 words (corner heights), $33be4/$36e78/$3c522/$37fd4 64x64 bytes, $38fd8 64x64 words."""
 import sys; sys.setrecursionlimit(100000)
 from PIL import Image, ImageDraw
 from popmem import *
