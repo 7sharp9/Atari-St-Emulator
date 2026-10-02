@@ -81,7 +81,7 @@ player's own town moves `food >> shift` (22 → 11) into the army's `36(group)`
 /*16*/  u16  herd_throttle;    // $60dc countdown; $5cde reloads $580a6[side].word8 + 4 (+$2000 if gather_kind >= $e and the reload >= the old value)
 /*18*/  u16  build_site;       // $5cde: $4f916 offset of the settlement being built (0 = none)
 /*20*/  u16  herd_op;          // $5cde: $51b66-relative offset of the nearest $57f68 forest op (written on the work order)
-/*22*/  u16  nearest_herd;     // $2906: byte offset into $57f68 of the closest forest op ($5cde recomputes it, never reads this)
+/*22*/  u16  nearest_herd;     // $2906: byte offset into $57f68 of the closest forest op (max(|dx|,|dy|); proven, py/worldbuild gate `water` 262/262; $5cde recomputes it, never reads this)
 /*24*/  u8   goods[8];         // <<< Pike,Sword,Bow,Plough,Boat,Pot,Catapult,Cannon counts (0..255)
 ```
 
@@ -173,27 +173,32 @@ typedef struct pm_tree {           // $4d252 .. $4d252 + $4e512, stride 12
 /* 2*/  u16  worker_obj;            // $51b66 offset of a unit working this tree (0 = none); the 97th: nothing natural sets it
 /* 4*/  u16  _w4;                   // ??
 /* 6*/  u8   category;              // $4672/$4788 seeder writes $04 for every tree (= the byte6 4 render category)
-/* 7*/  u8   tree_state;            // $0e..$11 = one of four tree kinds (rand&3 + $e at spawn);
-                                    //   $0d = felled (set by mode $44, $156d0); bit7 = "handled this tick" flag
+/* 7*/  u8   tree_state;            // $0e..$11 = one of four tree kinds ($e + rnd&3 in 4 of 16 draws, else $e + the forest's centre cell & 3);
+                                    //   $0d = felled (set by mode $44, $156d0); bit7 = "handled this tick" flag, set at seeding on
+                                    //   the first tree of every forest op except op 0
 /* 8*/  u16  next_in_forest;        // next tree of the same forest ($155f8 walks it; 0 = the walk restarts at the op's first tree)
 /*10*/  u16  cell;                  // packed {x:6,y:7}; nonzero == a live tree ($b8f4 counts these)
 } pm_tree;                          // sizeof 12
 ```
 
 `$4e512` holds the live byte-length, initialised to `$c` (one reserved slot) by
-`$4672` and grown `+= $c` per tree by `$47fa`. Hard cap `$12c0` → 400 trees.
+`$4672` and grown `+= $c` per tree by `$47fa`. Hard cap `$12c0`: slot 0 is reserved, so 399 trees (`$4788` accepts the cell and
+places nothing once the length reaches `$12c0`; code read, the gates never fill the pool because `$4672` resets the length).
 
-`$4788` (the tree seeder, `place_tr...`, reached from `$4672` `_setup_f...` at world-build) picks a buildable land
-cell (`$438ee` type byte `>= $1f` on both planes, `$47970` bucket free), writes
-`category := $4`, `breed_state := $e + (rand & 3)`, `cell := packed`, and links
-the tree both ways into a `$57f68` forest-operation entry.
+`$4788` (the tree seeder, `place_tr...`, reached from `$4672` `_setup_f...` at world-build) takes a cell and refuses it unless
+both colour planes read `>= $1f` (signed, `$418ad` and `$438ee`) and every record already in the cell's `$47970` bucket chain is a
+tree (byte6 `4`; any other category refuses). It then plants a tree with probability 1/D3 per try (one try when `$5809c != 0`, two
+when it is 0), writing `category := 4`, `tree_state := $e + k` (with `r = rnd & $f`: `k = r` if `r <= 3`, else the low two bits of
+the forest's centre cell, so a forest is mostly one kind), `cell := the cell index`, linking the tree into the op's chain
+(`4(op)` first tree, `8(prev)` next; the first tree of every op but op 0 gets bit 7 of byte 7) and into the cell's bucket
+(`$16808`). Proven, `py/worldbuild/gate_build.py forest`: 114947/114947 bytes over 52 states ("The world build" in `strategy.md`).
 
 ### `$57f68` — forest operations (`_forests`; stride 8, live length in `$57fb8`, ≤10)
 
 ```c
 typedef struct pm_forest_op {         // $57f68 .. $57fb8, stride 8
-/* 0*/  u16  target_cell;           // the settlement cell the forest serves
-/* 2*/  u16  _w2;
+/* 0*/  u16  target_cell;           // the forest's centre cell: the random land cell `$4672` accepted (its only writer, `$46be`); 0 ends the table
+/* 2*/  u16  tree_count;            // trees planted around it (`$4808`); an op with 0 trees is overwritten by the next attempt
 /* 4*/  u16  herd_off;              // -> $4d252 (the forest's first tree; `$155ac` reads it as 4(op))
 /* 6*/  u16  marker_off;            // -> $4c5f4 (the on-screen marker chain)
 } pm_forest_op;                       // sizeof 8
@@ -202,8 +207,10 @@ typedef struct pm_forest_op {         // $57f68 .. $57fb8, stride 8
 Each leader caches the nearest forest in `pm_leader.nearest_herd` (`+22`), computed
 by `$2906` (`pm_place_nations`-adjacent) at setup and, per its caller, refreshed.
 
-### `$4c5f4` — forest markers (`_birds`; stride 22, ≤80, live length in `$4ccd4`)
+### `$4c5f4` — forest markers (`_birds`; stride 22, live length in `$4ccd4`)
 
+The pool starts at `$16` and `$4672` takes `$16` per marker up to `$6e0`: 77 markers. Each op after the first gets `(centre & 7) + 6`
+(6 to 13) markers, op 0 none; the pool ran out in 42 of the 52 gated builds, so the later forests get a short or empty chain.
 Seeded by `$4672` (`$46e8`): `byte5 := 1` (active), `byte6 := $16`, `byte8/9` =
 packed x + `$80`, `byte10` = worldY, `byte15 := 0`, `byte16 := $40`, `word20` =
 link to the previous marker in the chain. `$4342` animates it: `byte15` is a
@@ -294,17 +301,17 @@ men's flags, and the forest is the nearest `$57f68` op within 20 cells. `$600a` 
 | `gather_kind` | what the men run after each delivery | goods counter `(kind>>1)-1` |
 |---|---|---|
 | `$2`, `$6`, `$8`, `$a`, `$e` | `$60dc`, then mode `$3e`: fell the next tree | Pike, Bow, Plough, Boat, Catapult |
-| `$4` | the building loop: count `8(house)` down by `10(house)`, `$60dc` when it reaches 0, then mode `$40` | Sword |
+| `$4`, `$10` | the building loop: count `8(house)` down by `10(house)`, `$60dc` when it reaches 0, then mode `$40` (the table has nine words, kinds 0..`$10`; `$10`, which `$5cde` writes instead of 4 when the men's OR-ed flags have bit 1 and the shift is 0, shares the `$4` arm) | Sword, Cannon |
 | `$c` | `$60dc`, then the `$16964`-relative path in `40(man)` and mode `$c` (the field-path walk, §3a) | Pot |
 
-The kinds 4 and `$c` rows are read from the code and were not run live. The tree cycle was observed live (land 5, 10M steps, counts above):
+`$600a` and `$60dc` are **proven** against the real 68000 (`py/orders/gate_orders.py`: `$600a` 632 states, 4491/4491 bytes, 16 of them natural entries from `k5_s4`/`k25_s4`; `$60dc` 456 states, 741/741), all seven kinds including the build and field arms; land 25 runs kind `$10` naturally. The tree cycle was observed live (land 5, 10M steps, counts above):
 
 | mode | handler | what it does |
 |------|---------|--------------|
 | `$3e` | `$155ac` | take the lord's forest op (`$51b66 + 20(lord)`, its `4` is the first tree); walk the trees' `next_in_forest` chain (word `+8`), skipping `14(man) & 3` of them so the men of a group pick different trees, to the first tree whose `tree_state != $d` (not felled); no tree left → `$35f4` on his lead's group for a man with flag bit 6 (a group follower), else `$3c08`. Otherwise `36(man) :=` that tree, target := its cell (`+10`), mode `$10` (walk), `prev_mode := $44` |
 | `$44` | `$156be` | on arrival: 4-tick countdown (`byte 39`), then `tree_state := $0d` (**felled**); re-target the deposit object `46(man)`'s cell, dwell 10, mode `$46`, `prev_mode := $42` |
 | `$46` | `$15724` | dwell `18(man)` ticks, then mode `$10` (walk to the deposit object) |
-| `$42` | `$15736` → `$600a` | arrival at the deposit object: mode `$46`, dwell 10; for a man without flag bit 6 the lord's `food -= 2` (floored; at 0, `$3c08` sends him home, §1); then the dispatch above, which calls **`$60dc`** and re-arms the cycle |
+| `$42` | `$15736` → `$600a` | arrival at the deposit object: mode `$46`, dwell 10; for a man without flag bit 6 the lord's `food -= 2` (the test is on the signed old value: food `<= 2` leaves 0 and `$3c08` sends him home on that same arrival, so the delivery is lost; §1); then the dispatch above, which calls **`$60dc`** and re-arms the cycle |
 | `$40` | `$15680` | the kind-4 variant: target the house `36(man)` in `$4f916` (`+12` its cell), mode `$10`, `prev_mode := $6a` |
 
 **`$60dc` is the payoff:**
@@ -342,8 +349,8 @@ for (int i = 0; i < 8; i++)
 
 Goods are meant to move: a separate carrier FSM (modes `$4e`/`$50`/`$52`/`$54`, the merchants) picks up one good from a lord and deposits it at another.
 **Not observed to move anything (136th):** 0 of 136 merchants in transit carried a code, and `$54`'s lord-selection loop, as encoded, never leaves the
-home lord (`lea 32(A3),A0` at `$15b0c`, A3 never advances; inferred from the encoding and the census, not a differential test), so the destination equals the
-home lord in 404 of 404 men in `$52/$50` and the net transfer is zero. The merchants are also not a designed trade class: they are the men left over when the world-build job pick
+home lord (`lea 32(A3),A0` at `$15b0c`, A3 never advances; proven, `py/fsm15/gate_fsm15.py`, ai.md `$54` row), so the destination equals the
+home lord in 404 of 404 men in `$52/$50`; the pickup, though, runs with the stale A0 (the record after the home lord's for `14(A1) & 7 >= 2`), so what a merchant could carry is that record's goods banked at the home lord. The merchants are also not a designed trade class: they are the men left over when the world-build job pick
 could place neither a farmer nor a fisherman (281 of 281 merchants in eight builds, §5a: 59 gave up on a 1-in-32 roll, 222 failed five rounds, mostly through a stale register). The "biased toward the capital" reading is unsupported:
 
 | routine | direction | effect |
@@ -361,31 +368,50 @@ The player-facing "your men have invented Swords / Bows / Cannon" is **not** a
 research timer. It is the moment a higher-tier item first reaches a lord's
 `goods[]` and its field units get re-equipped from it.
 
-`pm_object` carries the unit's equipment in **byte 44** (tier for items 1..6 —
-Pike/Sword/Bow/Plough/Boat/Pot) and **byte 33** (tier for items 7..8 —
-Catapult/Cannon). `$1533c` (melee) reads byte 44 as `damage = (min(v,6) >> 1) + 1`;
+`pm_object` carries the unit's equipment in two bytes, each holding an **item code** `2*(i+1)` (pike 2, sword 4, bow 6, plough 8, boat `$a`, pot `$c`,
+catapult `$e`, cannon `$10`): **byte 44** is the weapon tier (pike, sword, bow, and catapult/cannon for a man with flag bit 4) and **byte 33** the tool tier
+(plough, boat). A pot is never accepted by `$638c`. `$1533c` (melee) reads byte 44 as `damage = (min(v,6) >> 1) + 1`;
 `$52fc` reads it for the projectile type.
 
-The distribution runs from the commander-AI group-supply routine (`$61f8`, ahead
-of `$6522`) and from the group-teardown family (`$3a66`/`$3aee`/`$3b32`, reached
-via `$3c08`/`$35f4`):
+The distribution is two player-order arrival executors, not the commander AI: `$61f8` (mode `$6e`, order `$10` "take equipment", its only caller `$1574a`) takes goods from a
+leader, a goods pile or a dropped kit and hands them to the group, and `$63f4` (mode `$78`, order `$1c` "trade") sells and re-buys. Both feed the group's carried stock
+(`84 + 12i` of the group record) through `$6352`; the group-teardown family (`$3a66`/`$3aee`/`$3b32`, reached via `$3c08`/`$35f4`) is the way back.
+**Proven** (`py/orders/gate_orders.py`, `$6352` 70 states 579/579 bytes, `$638c` 70 states 127/127, `$61f8` 85 states 8599/8599 with 1 natural entry, `$63f4` 43 states
+4684/4684 with 1 natural entry; the nested swap path ran 2642 times):
 
 ```c
-// per group-order record, D0 = shift from group discipline ($30fe)
-for (int i = 0; i < 8; i++) {
-    int take = L->goods[i] >> D0;      L->goods[i] -= take;      // spend a discipline-scaled slice
-    grp->supply_acc[i] /*word[84 + i*12]*/ += push_to_units(i+1, take);   // $6352
-}
-// $638c, per candidate field unit, slot = (item <= 6 ? byte44 : byte33):
-//   if unit.slot == 0      -> unit.slot = item          (equip)
-//   else if unit.slot < item -> unit.slot = item; recycle the displaced lower item   (UPGRADE)
-//   else                    -> no change
+// $61f8, A3 = the group; D0 = shift = posture - 2 ($30fe, "get aggression")
+if (24(A3) < 0) {                         // a leader record
+    for (i = 0; i < 8; i++) { take = L->goods[i] >> D0;  L->goods[i] -= take;  give_things(A3, take, 2*(i+1), 12*i); }  // $6352
+} else for each record on the cell 24(A3)/2:                   // the cell's bucket chain, first to last
+    byte6 $0a (dropped kit):  give 1 of each non-zero byte 33 and byte 44; clear both; unlink the record
+    byte6 $2c (goods pile):   for i<8: take = word[12+2i] >> D0; word -= take; give_things(take, 2*(i+1));
+                              unlink it (byte6 := $ff) only when nothing is left, food (word 10) included; the food is never taken
+    byte6 $18, byte7 $10:     give 1 boat ($a); the record dies (5 := 0), unlinked
+$35f4;                                    // always ends by breaking the contact
+
+give_things(A3, n, code, off):            // $6352
+    n += stock[off]; if (n == 0) return; stock[off] = 0;
+    n = offer(lead, n, code); for (m in roster) if (n) n = offer(m, n, code);   // $638c
+    stock[off] += n;                      // what nobody took stays carried
+
+offer(man, n, code):                      // $638c
+    slot = code <= 6 ? 44 : code <= 10 ? 33 : /* $e, $10 */ (man.flag4 ? 44 : REFUSE);   // $c (pot) is refused
+    if (man[slot] == 0)    { man[slot] = code; return n - 1; }                          // equip
+    if (code > man[slot])  { old = man[slot]; man[slot] = code; give_things(A3, 1, old, 12*(old/2-1)); return n - 1; }   // upgrade, displaced item back
+    return n;                              // not better: refused
 ```
+
+`$63f4`, the trade: every carried unit is sold into the lord's stock (byte `24+i`, saturating at `$ff`) at `2 * price[i]` (prices 5, 10, 20, 4, 6, 2, 100, 200 at `$6502`),
+so the credit is `army food + sum(sold * 2 * price)`; then, in the posture's row of `$650a` (row `posture - 2`; the `$ff` pads are skipped, not terminators:
+aggressive cannon, catapult, bow, sword, pike, boat; neutral boat, pike, plough, sword, bow, catapult, cannon; passive plough, boat, pot, pike, sword, bow, catapult, cannon),
+it buys as much of each stocked item as the credit pays (the last one partially, `credit / (2*price)`), each through `$6352`. The credit left becomes the army's food
+(its low word, **inferred** to wrap above 65535, no state reaches it), the food spent is added to the lord's food (`6(lord)`), `loyalty_pressure` (`14(lord)`, §3a)
+moves by `-8` for the group's own side and `+8` otherwise, `$311a` adds 2 to the relation byte (strategy.md "Diplomacy") and `$35f4` ends the contact.
 
 Two more modes close the loop:
 
-* **mode `$78`** (`$15772` → `$63f4`): deposit a group's `supply_acc[]` back into
-  `L->goods[]` (cap `$ff`), then → mode `$92` (free the group slot).
+* **mode `$78`** (`$15772` → `$63f4`): the trade above (the carried goods go into `L->goods[]`, cap `$ff`, and are bought back with the credit), then `$35f4`.
 * **mode `$76`** (`$15754` → `$33b0`): weighted sum of *this-tick* deliveries
   (`supply_acc[i] × weight[$3498]`) `+` the assessment byte toward a target side
   `- 2`; if `≥ 0` the target lord **accepts an alliance** (order `$2a` → `$34a8`,

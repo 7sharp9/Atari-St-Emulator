@@ -67,8 +67,8 @@ against every session's changes.
   passive a quarter. (E 1, E 6, S "The player's commands")
 - **Goods are a separate ledger.** Men felling trees and carrying them to the workshop credit one of eight item counters (pike,
   sword, bow, plough, boat, pot, catapult, cannon); merchants, the men the starting job lottery could place nowhere else (E 5a), are meant to carry goods between a nation's lords
-  but none was seen carrying anything and the destination always resolved to the home lord (E 2b, inferred
-  from the encoding and a census); "invention" is supply: a man who walks to his lord's cell hands back his weapon
+  but none was seen carrying anything: a merchant's trip walks a table that never advances, so the destination is his home lord (leader 0 when the home lord is the last record) and the goods he banks on
+  arrival come from the record after his home lord (a stale-register bug, proven on 48 of 48 synthetic states; A `$54` row, E 2b); "invention" is supply: a man who walks to his lord's cell hands back his weapon
   and takes the best in stock (bow, then sword, then pike; a farmer also takes a Plough), so a weapon improves only when a
   better item reaches the lord. The hand-back has a stale-register bug that credits it to another lord's slot for lord
   indices 8 and up. There is no research timer. (E 2a, E 2b, E 2c, E 4)
@@ -118,8 +118,10 @@ against every session's changes.
 - **The opponent is simple.** Each commander marches at the nearest enemy lord when its army has
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast); AI
   armies start with so much food that the test never binds. A group under 22 men first goes to its
-  own best town for men (order `$08`, get men), and the food fallback fetches food the same way; beyond
-  those two refills it has no economy or build reasoning.
+  own best town for men (order `$08`, get men), and the food fallback fetches food the same way. A group
+  that has been in camp for 20 ticks then chains food, men, equipment and invention orders from a
+  4-entry table (`$6762`/`$67d0`, keyed on the state it came back from); beyond those sequences it has no
+  economy or build planning.
   (S "`$6522` — the commander AI", S "The AI as modern pseudocode")
 - **Deterministic.** The AI's "random" numbers are low bits of the tick counter, and a land's map
   is a pure function of its seed, so a run replays exactly from a snapshot. (S "RNG and determinism")
@@ -168,8 +170,9 @@ against every session's changes.
 - The group dissolve reads the command slot at `3 × side` instead of `6 × side`, and the revolt
   chain passes the side in the wrong register; both are transcribed as the code does them. (A
   "The group dissolve", A "The revolt chain")
-- The campaign-order hook that could script the AI's economy is dead code. (S "The campaign-order
-  hook")
+- The AI's follow-up table `$67d0` is live (34 natural issues, food to men to equipment to invention);
+  whether an AI side's invention order (`$0e`) does anything at the entity level is unchecked.
+  (S "The follow-up table")
 - The wear-removal path never fired in 800M steps on four lands (inferred: unreachable in
   practice). (S "Open threads")
 
@@ -326,6 +329,12 @@ control reproduces mission 1's terrain byte for byte. `k` = 20/60/100/143 give
 on 37-72 % of cells (mission 1: 10 %). `scratchpad/pm120/k60_iso.snap` is
 land 60 (`$580a0 = $68f`), settled at the frame driver.
 
+The poke leaves `$5809c` non-zero, which is the briefing preview's setting. The OK path clears it (`$b85a`), so a real random-land OK build
+reaches `$13b9a` with `$5809c == 0` (inferred from `$b85a` and the code, not driven through the UI), and then `$10d1e` takes its other
+branch (the sides' sites rebalanced by weight, `$58148` rolled instead of overridden) and `$4788` makes two tries per tree cell instead of one.
+The lands of `build_land.sh` are thus the preview's maps and thinner in trees than the OK path's; poke `w 5809c 00000000` after the seed
+poke to build the OK-path variant (`strategy.md` "The world build, proven"; `py/worldbuild/gate_build.py` runs both settings).
+
 What 37 lands draw, and what they do when left to run, is in `port/SPEC.md` §6
 ("Every category") and `ai.md` ("Natural runs on later lands"). To look at a
 record in the game, poke the camera centre and let a frame render:
@@ -443,8 +452,8 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
    per-commander order pipeline `$6522` (decide) → `$58016` command buffer →
    `$6a3a` (execute) → `$4b80` (stamp the group lead into mode `$10`). The
    autonomous decision (`$6522`'s `$6564` branch) is "march at the nearest enemy
-   leader if its army has the food for the trip" (124th: the old "force-scaled budget" is the group's food) — no economy
-   or build reasoning. `$d322` + `$3e06` build the per-side force totals
+   leader if its army has the food for the trip" (the group's food, not a force-scaled budget), plus the
+   follow-up table `$6762`/`$67d0` — no economy or build planning. `$d322` + `$3e06` build the per-side force totals
    `$57fba`, reduced by `$d23a` to the 0..4 force ratio `$57fce` (original `_win_state`: shown as a fist indicator by `$16bb8` and tested `== 4` by the end-of-land verdict `$d2c8`; the AI never reads it). Mission
    1's enemy captain never issues an autonomous order in ~1000 traced ticks; the
    `$6564` path was confirmed by forcing a command slot ready.
@@ -467,7 +476,7 @@ bytes low so `$7a3c=$0a` looked like it routed to a handler that ignores OK.
     value, which in mission 1 pins every result to **rout** — ten routs, zero
     kills, fifteen captures over the fight. It also sketched **mission setup**
     (`$13b9a` → `$10d1e`/`$2266`: "Between Pages 1-5" is procedurally generated,
-    which arms the enemy command slots and explains the inert `$67d0` hook),
+    which arms the enemy command slots),
     ruled `$1abaa` out as the economy engine (it is the seasons and weather),
     and added an **AI reconstruction** section — the whole autonomous layer as
     modern pseudocode plus what a modern version changes. `ai.md` /

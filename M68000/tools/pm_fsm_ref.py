@@ -92,7 +92,7 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 #   $3744    call_3744              1451    115th        Corroborated (call site exercised via $35f4; the
 #                                                         routine's own body is bypassed by construction in
 #                                                         every test state - flagged as a followup in ai.md)
-#   $35f4    call_35f4              1490    115th/116th  Proven (+ the $3720 stamp, 124th)
+#   $35f4    call_35f4              1490    115th/116th  Proven (+ the $3720 stamp, 124th; the bucket walk sign-extends, gates orders 57, fsm15)
 #   $4d9a    _case_4d9a             1552    115th        Proven (kind-6 case)
 #   $4d40    _case_4d40             1560    115th        Proven (kind-4 case)
 #   $4ee8    call_4ee8              1582    116th        Proven
@@ -1606,7 +1606,7 @@ def call_35f4(m, A3grp):
         blocked = False
         d0 = m.wu(BUCKETS + cell * 2)
         while d0 != 0:
-            a0 = OBJ + d0
+            a0 = _objaddr(d0)                     # adda.w sign-extends: buildings and markers sit below OBJ
             cat = m.bu(a0 + 6)
             if cat in (0x02, 0x10) or (cat == 0x06 and m.bu(a0 + 7) == 0x12):
                 blocked = True
