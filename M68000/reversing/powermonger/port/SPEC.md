@@ -408,7 +408,10 @@ repeat 16 times:
             from the source into the live slots
 ```
 
-A fade takes 8191 LCG steps, 512 ticks (about 110M emulator steps). `x = 0`
+A fade takes 8192 LCG steps (the 13-bit LCG has a full period of 8192 including 0, so the
+wrap, the step that reaches 0, is the 8192nd), 512 ticks: about 118M emulator steps in
+mission 1 and 86M on a Play Random Land (`pm142/rand1.snap`). The word-sized phase counter
+at the head of `$1abaa` (`$1aba0 += $1ab9e`, always `$100`) never skips a tick. `x = 0`
 ends the fade without copying, so pixel 0 of row 0 only changes at world build;
 it is the same in all three sources. The first fade after world build copies
 the season's source onto itself and so changes nothing.
@@ -1085,7 +1088,7 @@ frame holds a freshly filled island.
 **Weather.** Rain and snow are drawn over the finished frame.
 `$1ad74` starts a spell when `([$4bb4a] + [$57fec]) & $a0 == $a0`:
 `[$4bb42] := word[$1ad9c + word[$57fd0]]` (winter 2 = snow, spring and autumn 1
-= rain, summer 0 = none) and `[$4bb44] := (that sum & $3f) + $20` ticks. While
+= rain, summer 0 = none) and `[$4bb44] := (that sum & $3f) + $20` ticks (`$4bb4a` is always 0, so the start is at `[$57fec]` = 160 and the counter `$40`, which draws 65 times). The start needs `[$4bb44] >= 0`: the wrap of a season sets it to 0 and the end of a spell leaves -1, so each season has at most one spell. While
 `[$4bb42] != 0`, `$1ad2a` calls `$1a856` (16 word-groups by `$c2` rows from row 6,
 x 64, i.e. the whole iso window) and counts `[$4bb44]` down; below 0 the spell
 ends. Each call adds `$40` to the byte at `$1aac8` (4 animation frames); row r

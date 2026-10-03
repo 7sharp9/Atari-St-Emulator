@@ -51,7 +51,7 @@ projector reads (proven by poking it: a plateau, 10938 pixels, `py/alts_render_c
 triangle at `0(A1)` and one for the second at `-8257(A1)`, both derived from the altitude plane by the build pass `$10058` (a slope
 shade, so the lighting is baked in; 0 = open sea; poking either changes the tone of one triangle, ~2200 pixels, geometry unchanged,
 `scratchpad/pm136/planes/plane_ab.py`); and a flag byte at `+8257(A1)` (`$4592f`): bit 7 selects the diagonal that splits
-the cell, bit 1 pins the cell's altitude against the `$10410` smoothing pass (settlement sites; the river walker `$10458` has no caller). Corners are generated
+the cell, bit 1 pins the cell's altitude against the `$10410` smoothing pass (settlement sites; the river carver `$10458` has no direct caller). Corners are generated
 during the walk, so the mesh is implicit in the grid.
 
 ### `$fec6` — project the grid corners
@@ -197,7 +197,7 @@ sources (winter `$2e000 + $2980` = slots `0x53`-`0x64`, spring and autumn `$2080
 `0x41`-`0x52`, summer `$1780` = `0x2f`-`0x40`). The copy is made in one go at world
 build (`$1ab60`) and after that `$1abaa` dissolves it towards the current season's
 source, 16 pixels per tick, in the pixel order of the 13-bit LCG `$57ff6`. A fade takes
-512 ticks (about 118M emulator steps, measured) and its end rotates
+512 ticks (about 118M emulator steps in mission 1, 86M on a Play Random Land; the tick count is fixed, the cost per tick is not) and its end rotates
 `$57fd0 = ($57fd0 + 2) & 6` (`strategy.md` "What `$1abaa` actually is"). **Proven**
 (SPEC §4): the port's `Season.fading` equals the whole 16 KB table byte for byte on seven
 captures, with steps = 16 × `$57fec`; `scratchpad/pm136/season/tilediff.py` shows the
@@ -275,8 +275,8 @@ loop: paint both triangles of the cell colour $1d; flags |= $0e, and |= 2 on the
 ```
 
 A road crosses open sea as a causeway (`terrain_roads.png`: land `k5_s4`, the roads link the islands; the `$1d` cells are white, 383 of them). **Proven: 2561/2561** over 12 calls. `$10638` (`_town_gr`) levels a settlement site the same way: it paints `$1d` on the occupied cells and on the edge triangles by the 4-neighbour occupancy pattern, **260/260** over 11 calls.
-`_pospos` `$10c18`, `_mapline` `$10c7e`, `_how_far` `$10cae` and `_distanc` `$10ce4` are an unreferenced DDA line-walk library, `_do_vriv` `$10458` a random river walker and `_fix_map` `$10a46`/`_edge_ro` `$10b62` a BITMAP.DAT decoder only the fixed-map branch (`$58148 < $100`, no land) would reach: no caller, no literal pointer
-(`find_literal_ptr.py`), 0 hits over 3M steps of a built land; their roles are code reads.
+`_pospos` `$10c18`, `_mapline` `$10c7e`, `_how_far` `$10cae` and `_distanc` `$10ce4` are a DDA line-walk library over the **colour** planes (not the altitude plane). `$10c18` takes two packed cell indices (`y<<6|x`) in D0/D1 and returns a 16.16 DDA (D0/D2 start row/column, D1/D3 per-step row/column, D4 = max(|dx|,|dy|) steps); the other three call it and walk the line (cell index `y*64+x`, planes `-8257(A1)` = A and `0(A1)` = B). `$10c7e` adds `$80` to both colour bytes of every cell after the start (flips bit 7, self-inverse); `$10cae` returns in D0.w the first cell where the signed byte D6 is >= both colour bytes (else -1); `$10ce4` returns -1 at the first cell whose two colour bytes are both 0, else the line length. `callcap` from `m1_ready` on a 10-cell row (D0 = `$28a`, D1 = `$294`): `$10c7e` changed exactly 20 map bytes `00->80` (10 per colour plane), `$10cae` (D6 = `$20`) returned cell `$28b`, `$10ce4` returned -1 (`py/capture_misc/line_walkers.sh`). `_do_vriv` `$10458` (a river carver) walks all 64 rows from column 32, shifting one column per row by `(rand & $fff) mod 3 - 1` (RNG `$12c9a`, biased by the previous step), and per row writes a random 8-cell-wide cross-section (six cells set, mirrored: outer bank `$1e+(r&4)`, inner bank `$19+(r&8)`, bed `$01+(r&4)`, the two centre cells left alone), colour bytes `$0c..$15` on the bed-side cells (which of `$0c/$0d`, `$0e/$0f`, `$10/$11`, `$12..$15` depends on the sign of the step; code read), and flag bits 1 (altitude pinned), 2 and 3 (colour A/B fixed). `callcap` from `m1_ready` (15,298 steps) changed 382 altitude, 128 colour-A, 128 colour-B and 504 flag bytes, in all 64 rows (`py/capture_misc/vriv_planes.py`). `_fix_map` `$10a46`/`_edge_ro` `$10b62` a BITMAP.DAT decoder only the fixed-map branch (`$58148 < $100`, no land) would reach: no direct caller or literal pointer
+(`find_ram_callers.py`, `find_literal_ptr.py`; `find_jump_table_hit.py` finds no table entry for `$10458` and one for `$10c7e` that is ASCII text at `$aaa0`, a false positive), 0 hits in 20M steps on two snapshots (`m1_ready`, `pm142/rand1`) for `$10458`, `$10c18`, `$10c7e`, `$10cae` and `$10ce4`. The shipped build therefore never runs them; the DDA routines' purpose is not established (the callers' names suggest distance and line-of-sight tests).
 
 ### `$ac20` — the land script
 
@@ -368,7 +368,7 @@ a set mask bit keeps the screen pixel, `new = (old & mask) | plane`; the screen 
 The 32-wide front also sends x −31..−17 to `_left_16` on block 1 and group 19 to `_right_1` on block 0; x ≤ −32 or group ≥ 20 draws nothing, and for 16 px x ≤ −16 or ≥ 320 draws nothing. **Proven: `py/blit/blit_gate.py`, 450/450** `callcap` calls (150 per sheet, random frames, x in −40..330 plus the edge set, y in −40..210, against a model of the
 pixel rule; every variant exercised, 56 to 58 fully clipped calls per sheet changed nothing); `blit_route.py` confirms from the steps per drawn row that the label named is the routine that ran; `blit_variants.png` shows one call of each (before and after).
 
-`check_sh` `$12138` is the **sprite pick**: it runs with every sprite draw, after the pointer test, so it decides which drawn sprite a click belongs to (9 callers: `$11912`, `$11922`, `$119ca`, `$11a02`, `$11a44`, `$11f78`, `$12258`, `$12278`, `$1229a`).
+`check_sh` `$12138` is the **sprite pick** (not a window cull, as an older `.sym` comment had it: `$2df92/$2df94` are the live cursor and `$2df8e/$2df90` the pending click, not an extent): it runs with every sprite draw, after the pointer test, so it decides which drawn sprite a click belongs to (9 callers: `$11912`, `$11922`, `$119ca`, `$11a02`, `$11a44`, `$11f78`, `$12258`, `$12278`, `$1229a`).
 
 ```
 check_sh(D0 = x, D1 = y of the sprite, A3 = record, A2 = its cell's bucket slot, D2 = frame):
@@ -382,7 +382,7 @@ check_sh(D0 = x, D1 = y of the sprite, A3 = record, A2 = its cell's bucket slot,
   if D2 != 0 and $2df96: $115de = 0; slot = [$58034]; slot[1] = $57fd4; slot[2] = X; slot[3] = Y − 6; $1898e()    // post the armed order at the sprite's cell and disarm
 ```
 
-Live, six `callcap $12138` cases from one natural entry (a tree, D0 = 215, D1 = 67; pokes of `$2df92/$2df8e/$2df96/$57fd4/$57fea`): idle 0 bytes; an armed order with the pointer inside and no click draws only the line; armed plus click posts `{02, 43, 48}` into the command slot (the cell predicted from A2 exactly) and disarms;
+Live, six `callcap $12138` cases from one natural entry (a tree, D0 = 215, D1 = 67; pokes of `$2df92/$2df8e/$2df96/$57fd4/$57fea`; rerun from `rand1` as `py/capture_misc/check12138.sh`: 6/6, 0, 33, 84, 0, 368 and 0 bytes): idle 0 bytes; an armed order with the pointer inside and no click draws only the line; armed plus click posts `{02, 43, 48}` into the command slot (the cell predicted from A2 exactly) and disarms;
 the pointer outside 0 bytes; `$57fea = 1` plus a click opens the tree panel; `$57fea = 1` without a click 0 bytes. The same through the real UI (icon `$2c` at (75,191), then a tree at (225,78): `info_click.png`). `$115de` (`_used_bu`) is set to 1 at the start of each record of `$115e0`'s chain and `$11624` clears `$2df96` only if it is still 0, so with several sprites
 under the pointer only the last record's flag survives (inferred).
 
@@ -431,7 +431,7 @@ the start (an odd start splits over two 16-pixel groups) and 6400 per land row; 
 
 - **The balance** `scale_da` `$16bf8` (5 frames of 640 bytes, 20 rows of 32 bytes, 64 pixels wide) is the force-ratio picture: `_draw_sc` `$16bb8` copies frame `4 − D0`, D0 = the ratio word `$57fce` (0..4), into the backdrop at `$e0d4 + $5320` (pixel row 133, x 0..63); callers `$d2be` (when the ratio changes) and `$188e0`. A pair of scales with a shield on each
   side tilting with the ratio (`scale_da.png`; which pan is the player's is inferred). 2 natural hits live in `m1_atk`.
-- **The captains' eyes** `eyes` `$169d8` (6 captains × 4 frames × 20 bytes) are one-row, 32-pixel strips blitted by `_draw_ey` `$1699e` (D0 = 2 × slot, D1 = frame `word[$2df92] & 3`, sole caller `$3ea8` in `$3e06` for a slot whose `28(A3)` is non-zero) at the pairs of `eye_coor` `$16986`, (85,30) (132,29) (182,20) (224,29) (260,30) (295,40), into the backdrop through
+- **The captains' eyes** `eyes` `$169d8` (data, not code: 480 bytes up to `_draw_sc` `$16bb8`, reached only by the PC-relative `lea 22(PC,D2.w)` at `$169c0` inside `_draw_ey`; 6 captains × 4 frames × 20 bytes) are one-row, 32-pixel strips blitted by `_draw_ey` `$1699e` (D0 = 2 × slot, D1 = frame `word[$2df92] & 3` (the cursor X: poking `$2df92` to `$a0..$a3` at `$3e9e` gives D1 = 0, 1, 2, 3, `py/capture_misc/eyes_frame_poke.sh`), sole caller `$3ea8` in `$3e06` for a slot whose `28(A3)` is non-zero) at the pairs of `eye_coor` `$16986`, (85,30) (132,29) (182,20) (224,29) (260,30) (295,40), into the backdrop through
   `$12326` with D2 = 1. The routine opens with its own `movem.l #$ffe0,-(A7)` (`48e7 ffe0` at `$1699e`) and ends in the matching pop, so it is `callcap`able (97 hits per 30M steps on `k5_s4`; an earlier reading that it had no push came from a listing that started two bytes early). `py/fsm15/eyes_check.py`: all 6 slots x 4 frames return in 141 steps (slots 0-4) or 128 (slot 5, whose strip is clipped at the right edge, inferred); 21 of the 24 calls write backdrop bytes, every one of them in the single row y of the slot's pair and only in the 16-pixel groups covering x..x+31 (the 3 that write nothing are frame 0 of slots 0-2, probably strips equal to the backdrop: inferred).
 - **Palettes.** `_work_pa` `$1a2d8` and `_game_pa` `$1a358` (the same earth-tone palette), `_zero_pa` `$1a318` (all black), `_con_pal` `$1a398` (red-brown, "glorious victory", resource `$f`) and `_lost_pa` `$1a3d8` (orange and brown, defeat, resource `$e`) are 64 bytes each: sixteen `$0RGB` words with a 4-bit linear nibble per
   channel, plus padding (`fade_palettes.png`, rows in that order). `_show_a_` `$1a82a` rotates each nibble into the STe hardware order (`(x << 3 & $888) | (x >> 1 & $777)`) and writes `$ff8240..`.
@@ -461,7 +461,7 @@ the stone border, the pre-rendered open sea and a hole where the island goes.
     $165b2  selected-group marker
     $14b62  entity FSM      (ai.md), relinks $47970 buckets via $163ea
     $6a3a   order executor
-    $7a56   sprite / HUD compositor -> back buffer
+    $7a56   dialog / info-panel renderer (cell grids of the `$7a36` slots) -> back buffer
     ... at the VBL ISR: $187a swaps $2df7c <-> $2df78, writes ($2df7c >> 8) to $FFFF8200
 ```
 
@@ -620,8 +620,8 @@ block cannot be reached from the keyboard.
 scancodes `$48` up, `$4b` left, `$4d` right, `$50` down): each held tick moves
 the camera cell `$4bb3a`/`$4bb3c` by 1. Live from `pm78_settle.snap`, holding `$4b`
 for 500,000 steps moves X `$28` to `$26`, and the reader bodies `$13838` etc. fire
-2 times (the loop runs about every 226k steps); `$48`/`$50` likewise move Y.
-Keyboard scrolling therefore exists besides the cursor/edge scroll. To drive it from the REPL, poke the
+2 times (the loop runs every 187k steps on `pm142/rand1.snap`, 226k on `pm78_settle.snap`); `$48`/`$50` likewise move Y.
+Keyboard scrolling therefore exists besides the minimap and compass scrolling. To drive it from the REPL, poke the
 gate and the key together:
 
 ```
@@ -636,8 +636,9 @@ Effects:
   discrete angles.
 - **`$ff96` / `$ff98`** are HORIZON and EYE. The keypad changes them but does not
   force a `$fec6` rebuild, so the frame does not change until something else
-  triggers a re-projection. Iso-view scrolling is cursor/edge driven
-  (`$13118`+) and also arrow-key driven (see "Per-frame camera loop"). Poking the camera cell `$4bb3a`/`$4bb3c` directly (e.g.
+  triggers a re-projection. Iso-view scrolling is minimap click and drag, the compass rose
+  and the arrow keys (`strategy.md` "The player's commands" items 2 and 4, "Per-frame camera loop");
+  there is no pointer-at-screen-edge test in the main loop `$12fd8`..`$13888` (code read). Poking the camera cell `$4bb3a`/`$4bb3c` directly (e.g.
   `w 4bb3a 002c0033`) does trigger a re-projection on the next `$f898`.
 - **`$ff9c` (keypad zoom) has no effect.** `$137da` / `$137e8` change `$ff9c`
   but never call `$fe04`, so the tile geometry (`$fdea`–`$fe02`) is never

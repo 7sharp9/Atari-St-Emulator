@@ -94,7 +94,7 @@ against every session's changes.
   triggers**: `$3c08` only sends a record into mode `$16` when its flags byte has bit 0 set, and the
   one place in the game that sets that bit is the world-build creation of a farmer (`init_far`, the
   village population), not any order. So revolt is a **periodic self-cycle of a parked farmer's
-  winter state** (`$7c` and `$16` alternating on `$57fd0`'s 118.4M-step rotation; `$7c` is
+  winter state** (`$7c` and `$16` alternating on `$57fd0`'s rotation (512 calls of `$1abaa`: 118.4M steps in mission 1, 85.7M on a Play Random Land); `$7c` is
   `in_winte...`, S "Original names"), running independently of the player, and it does cross 600
   unassisted: 11 of the 27 natural `$550e` defections on four 200M-step no-input land runs fired
   from this heartbeat cycle at loyalty 600-608, differential-tested against the real 68000
@@ -431,6 +431,23 @@ $788a  cmpi.w #$2b1,D3 ; bne $7896     ; right OK
 $7890  jsr $b814
 ```
 
+**Dialog buttons by id.** After the click sound, `$7658` jumps through the word table at `$76fa + id` (ids below 4 are ignored; `D3` is the clicked button's grid offset, row * width + column of its `$80` corner). A grid with a text-entry field (cell `$89`) is also handled at the top of `$7658` (`$d03e`, `$d038..$d046`). All rows below are code read except id `$18`, which was clicked live (`py/clicks_ui/dlg_click.sh`, `pm142/yes_dlg.snap`; strategy.md "Panel slots and dialogs").
+
+| id | handler | buttons (`D3`) and effect |
+|----|---------|---------------------------|
+| `$04` | `$7716` | any button: if byte 4 of the order record `$58034` is 2, `bsr $aeac` |
+| `$06` | `$7740` | `$17` merges `$3f768` into `$3f2a0` after `$12726`/`$e29c`; with `$14e4e = $2c`: `$47` copies `$3f2a0` to `$3f768` and calls `$e288`, `$77` calls `$1ba72` |
+| `$08` | `$77c2` | seven command buttons post order codes into byte 1 of `$58034`: `$11` `$2e`, `$41` `$28`, `$a1` `$2c`, `$d1` `$30` (with `$2df84`), `$101` `$24`; `$71` redraws via `$13ce8`/`$12ce0`; `$131` calls `$d194` |
+| `$0a` | `$7884` | the briefing: OK at `$2a3`/`$2b1` runs `$b814` (the protection check below) |
+| `$0c` | `$789a` | `$1ba` clears `$d03e`, closes the dialog and sets `$2df6c := 1`; `$1d6` clears `$d03e` and closes |
+| `$0e` | `$78d2` | `$92 $da $122 $16a` set `$2df6e` to 2, 4, 6, 8 and close |
+| `$10` | `$7928` | `$e2` sets `$2df6c := 0`, `$f6` sets `$2df6c := 1`, both close |
+| `$12` | `$7958` | `$68` closes |
+| `$18` | `$796e` | YES `$7a` zeroes the conquered-lands record `$3f2a0` (`$c4` bytes) and `$11420`; NO `$8a` sets `$2df6c := 0`; both close. Live: YES leaves `$3f2a0[0]` 0 (was 1); after NO the menu loop opens the id-`$0e` dialog |
+| `$1a` | `$79ae` | `$146` and `$162` post orders `$2a` / `$32` for the current captain (`$51538 + $5809e`) into `$58034` |
+
+Ids `$14` and `$16` have no handler. Openers set the id: `$9044` (2, captain), `$b45c` (`$0a`), `$bb4a` (`$0c`), the rest through `$affe`.
+
 `$b814` parses the population digit string, then **unconditionally** (the crack
 nopped the "must enter a value" check at `$b842`: `moveq #0,D0 / nop / bne`)
 writes `population + $2c` to `$14e4e` (the gate `$739e` and `$7774` test), copies
@@ -516,7 +533,7 @@ The AI is deterministic: its "random" numbers are low bits of the tick counter `
 the pixels of the season tileset dissolve, not an AI RNG; a land's map is a pure function of
 its seed (`strategy.md` "RNG and determinism"). `$1abaa` is the seasons and weather routine,
 not an economy engine; it rotates the season word `$57fd0` through {0, 2, 4, 6} once per full
-cycle of its LCG (512 calls, 118.4M steps), which gates the settlement heartbeat (`strategy.md`
+cycle of its LCG (512 calls; 118.4M steps in mission 1, 85.7M on a Play Random Land), which gates the settlement heartbeat (`strategy.md`
 "What `$1abaa` actually is").
 
 ### The AI and the player's orders

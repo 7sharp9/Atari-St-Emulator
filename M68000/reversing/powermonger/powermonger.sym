@@ -13,8 +13,9 @@
 00003e06	pm_flag_health          # morale->UI + per-objective budget decay + $57fba objective term; $4044 is the animal loop, $416e the pigeon loop, then $4342 and $596a (ai.md "Shepherds, animals and carrier pigeons")
 00004044	pm_animals_update	# inside $3e06: the 40 animals of $4ccd6 (free walk / shore turn / herded follow). Proven (py/gate_animals.py 45094/45094)
 0000416e	pm_pigeons_update	# inside $3e06: the 48 pigeon records of $4c112 (fly, re-steer, the $41dc arrival of another lord's pigeon -> $6b38). Proven except the arrival's order effect (gate_animals.py)
-0001abaa	pm_sound_ambient        # NOT economy: sound LCG x16 + $ff9e sample mix + one $4d252 wildlife poke. 97th: on each sound-LCG ($57ff6) wrap ($1ac3c) it ALSO rotates $57fd0 = ($57fd0 + 2) & 6 (cycling {0,2,4,6}) -- so g_tileset_sel / the mode-$7c gate is NOT static per mission (~1 rotation / 110M steps in mission 1)
+0001abaa	pm_season_tick       # season fade + weather (NOT economy, NOT sound; was pm_sound_ambient): 16 steps of the 13-bit LCG $57ff6 per call copy season pixels into the live dither slots, weather via $1ad2a; entry gate $1aba0/$1ab9e is dead (rate always $100). On each LCG wrap ($1ac3c, every 512 calls = 85.7M steps on rand1, 118.4M in mission 1) it rotates $57fd0 = ($57fd0 + 2) & 6 {0,2,4,6}, clears $57fec/weather, pokes one $4d252 record and plays 4 $1ba3e cues -- so g_tileset_sel / the mode-$7c gate is NOT static per mission (97th). One weather spell per season (strategy.md 'What $1abaa actually is', py/season/)
 0001abc0	pm_rng_step             # $57fec++ (tick-count "RNG") + $57ff6 sound LCG x=(x*$24a1+$24df)&$1fff
+0001aacc	dead_terrain_recolour # DEAD CODE (pm146): 128 random cells per call of colour planes $418ad/$438ee recoloured by level $4bb4c (step $4bb48, LCG $4bb4a); no caller, no pointer, 0 hits in 125M steps. Likely a snow/greening overlay
 000178ae	pm_do_bars	# _do_bar (135th): HUD bars
 0000f898	pm_render_terrain       # $f97e picks 1 of 4 yaw-quadrant grid-walk handlers by ((yaw+8)>>5)&6; sets $ffa2 = 2*[$ff9e] on first call
 0000f986	pm_grid_walk_dispatch_table    # 4 words, offsets from $f986 itself: $8/$114/$22e/$346 -> q0/q1/q2/q3 entry points (NOT the $f98c/$fa98/$fbb2 guesses of earlier passes -- those were the RTS of the PRECEDING handler / a byte inside this table; fixed 83rd via jmp 2(PC,D0.w) at $f982)
@@ -56,7 +57,7 @@
 00011f1a	pm_entity_cell_lerp     # 87th: bilinear lerp of the 4 projected cell corners (a0=&$3f364[cellRow*64+cellCol*4]; C00/C10/C01/C11) by (record[8]&0xff, record[10]&0xff); then screenX+=$3c, screenY-=8
 00011f82	pm_blit_minisprite      # 77th: 8x11 4-bitplane sprite from $33000 ($37 B/frame = 11 rows x [mask,p0,p1,p2,p3]); opaque where mask bit 0; rol.w (8-(x&15)); dest row stride $98. frames 0-127 men (4 faction blocks), 0x117 animals, 0x100+ glyphs
 0001187c	pm_blit_man_sprite     # men melee/dying sub-case blitter, from $11c8a's mode branches (byte31 in {$32,$34,$06,$46}) -- NOT the normal men path ($1165c cat0 = $11f78)
-00011f78	pm_blit_minisprite_clip # $12138 window-cull then $11f82; the $1165c blit-table target for the $33000-sheet categories
+00011f78	pm_blit_minisprite_clip # $12138 sprite pick (check_sh) then $11f82; the $1165c blit-table target for the $33000-sheet categories
 00011f12	pm_entity_prep         # common prepare head: sub-cell lerp ($11f1a) into D0/D1, returns for the frame-formula tail
 0001168c	h_prep_bldg_tree       # 89th: byte6 == 4 prepare ($1162e[4]). pos = $11f1a sub-cell lerp with an ADDRESS-jitter fx/fy (fx = (((A2+A3)&0xffff)<<3)&0xff, fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff; A2 = &$47970[cell], A3 = record, A0 = &$3f364[row*64+col*4]), then $12272 -4/-8. frame: r7==0x0d -> 0x0d; (r7&0x7f)==0x0e -> 0x0e; else (r7&0x7f) + word[$11746 + word[$57fd0]]. blits inline via $12244 ($1165c[4] == 0). live-verified D2 at $12288
 00011746	t_prop_tile_offset     # byte6 == 4 frame-offset table, word[$11746 + word[$57fd0]] = {0:0, 2:3, 4:6, 6:9}; index 8+ is code ($1174e). $57fd0 starts at (byte[$58146] & 3) * 2 (mission 1 = 4 -> +6) but rotates {0,2,4,6} via $1abaa (97th), so the tile-set is not strictly static
@@ -64,7 +65,7 @@
 000117b0	h_prep_object   # `a_object`: byte6 == 6 and byte6 == 24 prepare ($1162e[6]/[24]). frame = record[7] + 0x100 (+ [$57fec]&3 if == 0x112). CENTROID position ($1182a). $33000 sheet, blit $11f78. byte6 24 = a fisherman's catch marker (byte7 $10): frame 0x110 = a rowboat on the pond (live bp $1182a, 30/30; catch_marker_boats.png); byte6 6: same drawer, role not established
 00012244	pm_blit_prop_dispatch  # 89th: multi-sheet dispatch by [$57ffc] (mission 1 == 4): <=3 -> $3af1c 64px (-8/-16 pos), <=5 -> $37c7c 32x24 ($12272, -4/-8 pos), else -> $312a0 16x16 (no pos adj). mulu the frame stride, bra the blit loop. entry from $1168c (byte6 4) / $117d8 (2) / $1192e (16)
 0001182a	pm_entity_prep_centred # centred position: (C00+C10+C01+C11)>>2, +$38 X / -8 Y, D2=D4 (used by cats 1/8/9); $1198a has its own copy
-00012138	pm_sprite_window_cull  # cull a sprite vs the iso window ($2df8e/$90 origin, $2df92/$94 extent, D3=size); early-rts if outside
+00012138	pm_sprite_pick         # check_sh: hit-test one drawn sprite (D0/D1 = x/y, A3 record, A2 bucket slot) against the cursor $2df92/$94, or the pending click $2df8e/$90 when $2df96 != 0; size 8 or dscale[zoom]. $57fea examine -> $95f6; else $13892 order line + (click) post the armed order $57fd4 via $1898e. 6 callcap cases 6/6 (py/capture_misc); graphics.md 'sprite pick'
 0001225c	pm_blit_struct_16      # $312a0 sheet, mulu #$a0,D2, 16 rows via $122b6 -> 16x16 centred sprite (cat 9)
 0001227c	pm_blit_prop_32        # $37c7c sheet, mulu #$1e0,D2, 24 rows via $12326 -> 32x24 centred sprite (cat 2)
 000124a8	pm_blit_prop_row       # $37c7c row inner loop: 2x [mask,p0..p3] word groups, ror.l D0 rotate, and/or into screen
@@ -84,7 +85,7 @@
 0000e0d4	g_terrain_master       # composed full-terrain buffer; $12ce0'd into the back buffer each present
 00014b62	pm_entity_iter          # walk the 511 object records, dispatch each mode (ai.md). 93rd RIDER 3b: NO entry contract (lea's its own $51b66/$47970 bases); callcap 14b62 runs the whole iterator, returns clean (4554 steps), deterministic. dwell/upkeep core (prologue + modes $12/$68/$8a + $5c80 + $161c4/$1648e/$163ea) PROVEN vs real 68k = 675/675 over 22 states (93rd, scratchpad/pm93/). 94th: the MOVEMENT modes $06/$08/$0e/$10 + leaves $164bc/$14262/$12d56 + epilogue $16202 PROVEN = 1335/1335 tracked bytes over 32 states (scratchpad/pm94/fsm_ref.py + diff_fsm.py). 95th: mode $32 melee ($1533c) + $56a6 ($574a leaf) + $5590 KILL branches + $30fe PROVEN = 413/413 tracked bytes over 48 states (scratchpad/pm95/). 96th: mode $7c settlement heartbeat ($157e6) + $16848 + $163b8 PROVEN = 85/85 over 25 states (scratchpad/pm96/; synthesised corpus). 97th: re-proved on a NATURAL corpus = 99/99 tracked bytes over 27 states, 12 families (scratchpad/pm97/diff_pm97.py, anchor pm97_map0 = mission 1 with $57fd0 pinned to 0 at world-build -> 19 natural $7c markers). $4342 herd servicer disassembled + deferred (no-op even in pm97_map0); regroup/group modes ($3c08/$4bc8/$2776/$1b8c), $5cde, dying-entity $1623c still deferred. 98th: the reconstruction is graduated to tools/pm_fsm_ref.py (init_tables(ram) + reconstruct(m)) + the harness to tools/pm_fsm_diff.py; all five prior results reproduced byte-for-byte (scratchpad/pm98/repro9[3-7].py). 98th commit 2: mode $7c dispatch $157ba `$57fd0 != 0` branch -> $16892 + $3c08 regroup PROVEN = 71/71 over 22 states (scratchpad/pm98/diff_pm98.py). 99th: $3c08's flag-bit-4 group teardown ($37c2 -> $1d70 route-expand / $1b8c roster-unlink ; $17a46 minimap no-op) PROVEN = 1847/1847 over 13 states (scratchpad/pm99/diff_pm99.py); the $382a economy row (troops_field -= 1) is now Proven. Still deferred: $4342 herd servicer, $5cde, $4bc8/$2776, $1623c dying-entity, mode $28/$2e
 00006a3a	pm_order_exec           # order executor: consume $58016, drive group state + lead mode
-00007a56	pm_render_sprites_hud   # sprite / HUD compositor into offscreen+32000
+00007a56	pm_render_sprites_hud   # dialog / info-panel renderer: draws the four $7a36 slots into offscreen via $8838 (146th; was "sprite / HUD compositor")
 0000d23a	pm_force_ratio          # $57fba -> $57fce UI mood ratio (min(4,(2*mine+enemy/4)/enemy))
 00001870	pm_vbl_sync             # per-frame VBL wait / present
 00012ce0	pm_blit_to_shifter      # offscreen buffer -> shifter screen (periodic double-buffer flush)
@@ -447,7 +448,7 @@
 0000760a	count_co	# orig T
 00007624	button_o	# orig T
 00007626	button_o	# orig T
-00007658	not_a_sp	# orig T
+00007658	not_a_sp	# orig T; dialog button dispatcher, ids $04..$1a via $76fa+id (146th, README Dialog buttons by id)
 00007a22	end_of_p	# orig T
 00007a26	end_of_p	# orig T
 00007a28	pr_the_e	# orig T
@@ -458,7 +459,7 @@
 00007b10	_alloc_r	# orig T
 00007bac	req_mem	# orig T
 00008834	bot_of_s	# orig T
-00008838	do_4_cha	# orig T
+00008838	do_4_cha	# orig T; dialog cell blitter: 4 glyph cells -> 16px x 6 rows planar (146th)
 0000896e	s3	# orig T
 0000896f	s2	# orig T
 00008970	s1	# orig T
@@ -475,7 +476,7 @@
 00009622	no_click	# orig T
 00009624	cjt	# orig T
 00009654	click_ar	# orig T
-00009656	click_st	# orig T
+00009656	click_st	# orig T; cjt[$2c] stockpile panel opener (146th)
 00009712	masterst	# orig T
 00009806	click_eq	# orig T
 00009878	mastereq	# orig T
@@ -500,10 +501,10 @@
 0000a29c	_defplay	# orig T
 0000a2dc	healthna	# orig T
 0000a328	masterpe	# orig T
-0000a46c	click_sp	# orig T
-0000a5d8	click_mi	# orig T
+0000a46c	click_sp	# orig T; cjt[$0c] death panel opener (146th)
+0000a5d8	click_mi	# orig T; cjt[$1e] mine panel opener (146th)
 0000a704	check_fo	# orig T
-0000a738	click_tr	# orig T
+0000a738	click_tr	# orig T; cjt[$04] tree/forest panel opener (146th)
 0000a7f8	mastertr	# orig T
 0000a8ac	treename	# orig T
 0000a8da	seasonna	# orig T
@@ -526,15 +527,15 @@
 0000af6c	_init_gc	# orig T
 0000afd0	gcr_alre	# orig T
 0000afd6	gcr_jt	# orig T
-0000affe	init_in	# orig T
+0000affe	init_in	# orig T; dialog-slot opener: allocate or evict a slot, set $7a3c from D7, $a91a (146th)
 0000b03a	gcr	# orig T
 0000b0ad	filer	# orig T
 0000b160	gamer	# orig T
-0000b2d4	click_pr	# orig T
+0000b2d4	click_pr	# orig T; cjt[$2e] land set-up + briefing entry (code read; never reached by click) (146th)
 0000b510	masterpr	# orig T
 0000b814	protect_	# orig T
 0000b892	_count_w	# orig T
-0000b9ac	click_wr	# orig T
+0000b9ac	click_wr	# orig T; demo-mode refusal panel, only caller $b886 in $b814 (146th)
 0000ba74	_do_seri	# orig T
 0000bb5a	baud_rat	# orig T
 0000bb66	masterse	# orig T
@@ -706,7 +707,7 @@
 000103d8	landse	# orig T
 000103ec	renderse	# orig T
 00010410	_smooth_	# orig T
-00010458	_do_vriv	# orig T
+00010458	_do_vriv	# orig T; carve_river: 64-row N-S river from column 32, altitude/colour/flag planes (callcap: alt 382 colA 128 colB 128 flags 504 bytes); no direct caller, literal pointer or jump-table entry
 000105d0	_fix_it	# orig T
 00010638	_town_gr	# orig T
 00010682	tgyloop	# orig T
@@ -751,10 +752,10 @@
 00010bec	rmnw	# orig T
 00010bfa	rmfill	# orig T
 00010c0c	rmnone	# orig T
-00010c18	_pospos	# orig T
-00010c7e	_mapline	# orig T
-00010cae	_how_far	# orig T
-00010ce4	_distanc	# orig T
+00010c18	_pospos	# orig T; dda_setup: D0/D1 packed cells (y<<6|x) -> 16.16 DDA (D0/D2 start, D1/D3 step, D4 steps); only callers are $10c7e/$10cae/$10ce4
+00010c7e	_mapline	# orig T; line_flip_colours: adds $80 to both colour-plane bytes of each cell on the line (callcap 20/20 bytes); no direct caller or literal pointer
+00010cae	_how_far	# orig T; line_first_le: first cell on the line where signed D6 >= both colour bytes -> D0.w cell, else -1; no direct caller or literal pointer
+00010ce4	_distanc	# orig T; line_clear_len: -1 at the first cell with both colour bytes 0, else the line length; no direct caller or literal pointer
 0001120e	_select_	# orig T
 00011420	_bmscrol	# orig T
 00011422	_draw_pa	# orig T
@@ -928,7 +929,7 @@
 00016964	pots	# orig T
 00016986	eye_coor	# orig T
 0001699e	_draw_ey	# orig T
-000169d8	eyes	# orig T
+000169d8	eyes	# orig T; DATA: 6 captains x 4 frames x 20 bytes of eye strips, read only by the PC-relative lea at $169c0 in _draw_ey
 00016bb8	_draw_sc	# orig T
 00016bf8	scale_da	# orig T
 000179a2	wank	# orig T
@@ -965,9 +966,9 @@
 0001a3d8	_lost_pa	# orig T
 0001a418	_do_one_	# orig T
 0001a486	_conques	# orig T
-0001a4da	_conques	# orig T
+0001a4da	_conques	# orig T; = victory_screen (pm146): end-of-land win screen, resource $f, text $19c12/$19c36, 2000-tick wait; last land ($2df6e==4 && $580a4==$c2) -> $1a486 -> $1a648. Reached live from $d2ea (step 790, $57fce=4)
 0001a5b2	_conques	# orig T
-0001a648	_play_an	# orig T
+0001a648	_play_an	# orig T; = finale_animation (pm146, code read; reached live with $2df6e=4,$580a4=$c2): resources $c/$d, 7 frames of screen copy ($1a7a6) + delta list from $3f768 ($1a808) + flip ($187a), then text $19c5a
 0001a7a6	_copymem	# orig T
 0001a808	_draw_ne	# orig T
 0001a81e	_draw_ne	# orig T

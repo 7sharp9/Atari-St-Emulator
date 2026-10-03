@@ -151,7 +151,7 @@ void h_farm_home(pm_object *A1) {               // entity mode $16
 `$57fd0` (`g_tileset_sel`, initialised to `(byte[$58146] & 3) * 2` at
 world-build) is the season word (original `_season`), not a "world still animating" flag. It starts at `4` in mission
 1, so a returning farmer *usually* takes the **`food += 2`** path — but
-`$57fd0` rotates {0,2,4,6} via `$1abaa` (1 rotation per 118.4M steps, §3a), and
+`$57fd0` rotates {0,2,4,6} via `$1abaa` (1 rotation per 512 calls, 118.4M steps in mission 1 and 85.7M on a Play Random Land, §3a), and
 whenever it is `0` the farmer parks as a mode-`$7c` heartbeat marker
 instead. Mode `$7c` and the whole loyalty/revolt system therefore run in mission
 1 in brief intermittent bursts, not never.
@@ -581,7 +581,7 @@ merchant arrival) and `$15b7a` (in the mode-`$5e` fisher arrival). `$57fd0` is s
 routine `$1abaa` (`_seasons`, `$130b0` in the sim tick) **rotates it**, `$1ac5e..$1ac6a` =
 `$57fd0 = ($57fd0 + 2) & 6`, cycling {0 winter, 2 spring, 4 summer, 6 autumn}, once per full 8192-iteration cycle of its 13-bit
 pixel-order LCG `$57ff6` (512 calls of 16 pixels; Hull-Dobell full period). Measured: writes at steps 789,032,489 (4 → 6),
-907,448,489 (6 → 0) and 1,025,912,489 (0 → 2), a period of 118.44M steps = 512 calls × ~231k (`watch 57fd0`, `scratchpad/pm136/season/`; 2 writes
+907,448,489 (6 → 0) and 1,025,912,489 (0 → 2), a period of 118.44M steps = 512 calls × ~231k in mission 1 (the step cost per call is land-dependent: 85.7M on a Play Random Land; `watch 57fd0`, `scratchpad/pm136/season/`; 2 writes
 over a 220M-step mission-1 drive; 0 over 40M of pm78_settle). The word is the *target* season: the live tileset then dissolves pixel by pixel
 into the new art over the following 512 calls. So the per-settlement
 heartbeat — the `$163b8` food drain, the construction timer, the
@@ -649,7 +649,7 @@ Findings, from the actual pixels:
 **Reading.** The four slots of each family are the four seasons' versions of
 one tile (`port/SPEC.md` §4 "Seasons": tree frames 15-17, 18-20, 21-23 and 24-26
 are bare, blossoming, leafy and autumn brown), and `$57fd0` steps through them
-once per season fade (118.4M steps). Families whose four slots look unrelated are
+once per season fade (512 calls; 118.4M steps in mission 1). Families whose four slots look unrelated are
 tiles the sheet packs into the same stride-3 layout, not stages of one object.
 The four prop slots are four distinct pictures (`py/family_distinct.py`: 12 of 12 families `r7 = 0..11` have four different
 frames on `k5_s4`), so "four" is right for the prop sheet; the terrain colour tables are the ones with only three distinct sets
@@ -767,7 +767,7 @@ structurally cannot fire for a unit that arrives this way. This is why a dismiss
 over 104 settlement beats: player-triggered troop movement never reaches the one instruction that arms the loyalty
 edge. **The "hunger revolt by clicks" framing is very likely wrong as stated**: the loyalty park-tick looks like a
 periodic self-cycle of the settlement's own civilians (`$7c` ⇄ `$16`/`$4e`/`$5e`, gated purely by the global `$57fd0`
-season word, 1 rotation per 118.4M steps), independent of what the player does with troops or food on that
+season word, 1 rotation per 512 calls, 118.4M steps in mission 1), independent of what the player does with troops or food on that
 settlement. What order `$06` moves (`loyalty_pressure` 0 → 16, corroborated live) is that order's own
 `+16 >> (posture−2)` formula, a completely separate write path from the parked-marker pulse.
 
@@ -977,7 +977,7 @@ who would have died walk home instead) and shrink by losing them.
 **Intermittent drain in mission 1.** In mission 1 the drain side of that ledger is
 thinner than the flow table suggests: `$163b8` (the settlement pulse) fires only
 **intermittently** — mode `$7c` is `$57fd0`-gated, and `$57fd0` rotates {0,2,4,6}
-via `$1abaa` (1 rotation per 118.4M steps, §3a), so the drain runs in brief
+via `$1abaa` (1 rotation per 512 calls, 118.4M steps in mission 1 and 85.7M on a Play Random Land, §3a), so the drain runs in brief
 bursts during the `$57fd0 == 0` phases and is off the rest of the time. The
 steady sinks in the tutorial are `$150f2` (an army takes food), `$603e` (detached gatherers) and the
 capture pair. The conservation observation stands.

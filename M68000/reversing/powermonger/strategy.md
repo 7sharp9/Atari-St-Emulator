@@ -44,7 +44,7 @@ $130b6  jsr $17878   ; compass (callcap: 51 bytes written)
 $130bc  jsr $165b2   ; water / terrain animation for the selected group
 $130c2  jsr $14b62   ; << the entity iterator (ai.md)
 $130c8  jsr $6a3a    ; << order executor: consume $58016, drive group state + lead mode
-$130ce  jsr $7a56    ; sprite / HUD compositor
+$130ce  jsr $7a56    ; dialog / info-panel renderer (the four `$7a36` slots, via `$8838`)
 $130d4  $ff9a += $12f56 ; ...andi #$3f... clr $12f56 when it wraps  ; AUTO-ROTATE hook
 $130f6  jsr $d23a    ; $57fba -> $57fce force ratio (0..4; 4 = victory at $d2c8)
 $130fc  jsr $7202 ; text panels, then the minimap / compass / captain boxes / icon floor ("The player's commands")
@@ -556,7 +556,14 @@ The player's orders do not go through the `$51538` queue: every UI path writes
 the local side's command slot directly (`movea.l $58034,A0` then
 `1(A0)` = type, `2(A0)`/`3(A0)` = target cell), and the executor consumes it on
 the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
-`$2df92`, the click position `$2df8e` and the click flags `$2df96`/`$2df98`:
+`$2df92`, the click position `$2df8e` and the click flags `$2df96`/`$2df98`. The level
+bytes `$2df9c` (left) and `$2df9e` (right) stay set while a button is held. Items 2 to 6 are
+consecutive sections of one function, the main per-tick loop `_again` `$12fd8` ... `bra $12fd8`
+(`$13888`), not separate routines: `$1310e` (sym `do_the_m`) is the fall-through after `$7202`
+returns zero (and `$3039` is not in D0), `$133ba` begins the captain boxes, `$134f4` the icon floor,
+and `$1373c` is the per-tick tail (below). Position choice: with a left or right press pending
+(`$2df96`/`$2df98`) the section tests the latched click `$2df8e`, otherwise the live pointer
+`$2df92` (so a held button is acted on at the pointer's current position each tick):
 
 1. **`$7202`, the text panels.** Up to four draggable panels, 8-byte entries
    at `$7a36` (word: template offset from `$7a36`; bytes: x/16, y); `$7a3c` is
@@ -586,8 +593,14 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
 2. **The minimap** (x < `$40`, 6 ≤ y < `$86`; cells 1:1, `(x, y−6)`). With a
    command armed (`$57fd4 != 0`), `$13892` draws the line from the selected
    captain's lead to the pointer, and a click posts `type = $57fd4`, target
-   `(x, y−6)` (`$131be..$131cc`). Without one, a click recentres the view
-   (`$4bb3a`/`$4bb3c`). Clicks in the strip above the map (y < 6) set
+   `(x, y−6)` (`$131be..$131cc`), but only if the target passes `$1394c` (below): `$13892`
+   returns Z, and the click does nothing, when no captain is selected (`$57fd2 = 0`) or the
+   cell is not a valid target for that order (live: `$0c` armed, click on an empty cell,
+   `$13892`/`$1394c` once, `$1898e` 0 hits, `$57fd4` stays `$0c`). Without an order, a click
+   recentres the view (`$4bb3a`/`$4bb3c`) and so does holding either button: the live-pointer
+   branch (`$1311e`) sets the cell from the pointer every tick while `$2df9c`/`$2df9e` is
+   non-zero, a drag (live, pm142/rand1: left held at (20,40) gives cell (20,34), then
+   `mouse move 10 0` gives (30,34)). Clicks in the strip above the map (y < 6) set
    `$58098 := x/16` (`_show_ma`) and redraw the minimap (`$107d6`): mode 0 contour
    colours, 1 terrain with trees, buildings and bases marked, 2 terrain (the default),
    3 terrain with each lord's food margin as a dot (`graphics.md` "The minimap and the
@@ -596,16 +609,31 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    the view by ∓4 (`$ff9a`); one entry path (`$13270`, taken when `$2df96` is
    set) also sets the auto-rotate `$12f56` to ∓4, the other (`$13278`) clears
    it. The other two zoom through `$13f60`: `$57ffc` ∓1 clamped 1..7, or
-   straight to 2 / 7 on the second path.
+   straight to 2 / 7 on the second path. The rectangles (x0,y0,x1,y1) are (24,155,32,161) rotate
+   −4, (34,161,40,169) rotate +4, (45,159,61,174) zoom in, (45,178,61,193) zoom out. The first
+   path is the **left click** (`$13362`, `$13374`, `$1338e`, `$133a0`; one step, plus the
+   auto-rotate for the two rotate rectangles); the second is the **right button held**
+   (`$2df9e`; `$13342`, `$13352`, `$13386`, `$1338a`), which repeats every tick: live, a held right
+   button on the first rectangle gives `$13342` 6 hits in 6 ticks, `$ff9a` `$f0` to `$d8` and
+   `$12f56` 0; a left click gives `$ff9a` −4 once and leaves `$12f56` = −4, so the view keeps
+   turning; a held right button on the zoom-in rectangle sets `$57ffc` = 2.
 4. **The compass rose** (x < `$20`, y > `$a7`): an 8-way camera pan
-   (`$1420c` angle minus the yaw `$ff9a`, table `$132ca`).
+   (`$1420c` angle minus the yaw `$ff9a`, table `$132ca`; sectors are 32 angle units wide with a +8 bias, code read). Each handler moves
+   the cell by one in the screen direction. A left click moves one cell; the right button held
+   moves one cell per tick (live, yaw `$f0`: clicks at (18,172), (30,181), (18,195), (6,181) hit
+   `$132da`, `$132f4`, `$1330e`, `$13328` once each; right held on the north point, `$132da` 6 hits
+   and cell y 119 to 113). Only `$2df96` and `$2df9e` are tested here, so a held left button does
+   not repeat.
 5. **The captain boxes** (twelve rectangles at `$138ec`, each live only while
    the local side's `$51538` record has a non-zero word for it): the first six
    open the captain panel 2 (`$9036`, A3 = that captain's group). On the second
    six, the other button (`$2df98`) recentres the view on that group's lead;
    with the captain-select mode on (`$57fd6`, icon `$04`) a click posts order
    `$04` with the selected group (`$57fd2`) and the box index; otherwise it
-   posts `$22`, param = box index.
+   posts `$22`, param = box index. Code read only: no click on a box has been run. Rectangles
+   `$138ec` (x0,y0,x1,y1): the first six (102,56,114,68) (157,49,169,61) (201,46,213,57)
+   (237,49,249,61) (263,54,275,66) (306,62,318,74); the second six (65,21,118,86) (119,16,177,82)
+   (178,10,232,78) (224,17,250,77) (250,19,281,92) (282,27,319,109).
 6. **The icon floor** (`$13506`): the icon grid is the perspective floor under
    the view. Column edges `$12e6a` and row edges `$12ee4` are lines
    `(x0,y0,x1,y1)`; the icon id is `columns crossed + 16 × rows crossed`, each
@@ -641,9 +669,34 @@ the next tick. The tick's UI tail (`$130fc`) runs in this order, on the pointer
    off a rainy frame; the order names are the effects, with the manual's words
    where they fit.
 
+**The order-target test `$1394c`** (sym `_check_l`; D7 = x<<16 | map row, `$57fd4` = the armed
+order; returns D2 = 1 and D3 = 8 for a valid target, D2 = 0 and D3 = `$10` otherwise, and bumps
+the counters `$12bc8` / `$12be4`). It reads the cell list `$47970[(row·64 + x)·2]`, a **signed**
+word offset into the `$51b66` records (`adda.w` sign-extends, so offsets from `$8000` are
+below the base), and follows each record's link word (+0) until a record passes. Per record,
+with kind = byte 6, owner = byte 5, ally = the owner's bit in byte 6 of `$580a6 + side·$20`:
+`$02` and `$1a` accept every cell (no lookup); `$1c` kind 2 or `$10`; `$06` kind `$2c`, or kind
+2/`$10` with the ally bit; `$10` kind `$0a` or `$2c`, kind `$18` with byte 7 = `$10`, or kind 2/`$10`
+with the ally bit; `$0c` owner not the local side and kind in {2, `$10`, 0, `$0e`, 8, 4}; `$08`
+owner the local side and kind 2/`$10`, or kind 0/`$0e` with bits 6 and 4 of byte 7 clear; `$1e`
+kind 2/`$10` with the ally bit clear; any other order (`$0e` invent, `$20` spy): kind 2/`$10`, with
+owner = local side for `$0e` and owner ≠ local side otherwise. Gate: `py/input/validity.py`
+callcaps `$1394c` for 10 orders over 61 cell classes of `pm142/rand1.snap`, 610 of 610 match
+the transcription above.
+
+**The tick tail `$1373c`**: when the sim clock `$2df70` differs from `$2df74` it clears both click
+flags (`clr.l $2df96`); while name entry is on (`$d03e`) it calls `$cf46`; then the key rows
+(`graphics.md` "Per-frame camera loop"), `$13864` (panels, fades) and the jump back to `$12fd8`.
+On `pm142/rand1.snap` the loop runs every 187k steps (16 ticks in 3M idle steps).
+
 **Driving it headless** (`reversing/powermonger/py/clicks.py`): the pointer
 moves 1:1 with `mouse move` and clamps at 0, so home it with a large negative
-move and click at absolute (x, y). `reversing/powermonger/py/drive_win.sh`
+move and click at absolute (x, y). Do not poke the live pointer `$2df92`/`$2df94`: the
+IKBD `$0D` answer rewrites them every frame, so a poked position tests nothing (held-button
+tests with a poked pointer matched no rectangle, the same tests with `mouse move` and
+`mouse down r` did). To test a click without the settle, poke the latched click and the
+pending flag instead (`w 2df8e <x><y>` and `w 2df96 00010000`), or hold a real button and
+count `hits` (`py/input/seg.py`, `py/input/hold.py`). `reversing/powermonger/py/drive_win.sh`
 plays mission 1 to a natural victory this way (next section, "How a land
 ends").
 
@@ -1365,6 +1418,21 @@ then the main menu at 28.4M steps (`lose_after.png`). The same state with
 must go on to conquer the whole world" (`win_screen.png`), and
 `$3f2a0[0]` goes 0 → 1.
 
+`$1a4da` is the victory screen (`py/season/victory_run.sh`): it loads
+resource `$f` (`$1bd0e`), fades in, draws two text lines (`$19c12` "AFTER A GLORIOUS VICTORY
+YOU MUST ...", `$19c36`), waits 2000 ticks of `$6f304` and fades out (`$1a2bc`
+reached 392,357 steps after the `$1a4da` hit, then it sits in the wait at `$1a580`; the
+rest is code read). When the verdict comes with `$2df6e == 4` and `$580a4 == $c2` (the last land) it
+calls `$1a486` instead, which reaches `$1a648` (741,627 steps after the fade, with `$2df6e = 4` and
+`$580a4 = $c2` poked), the finale animation (code read): resources `$c` and `$d` are drawn,
+then 7 frames, each copying the 32000-byte screen (`$1a7a6`), patching it with the next record
+list of a table A6 walks from `$3f768` ((offset, count - 1, longs); a negative offset ends a
+frame; `$1a808`), waiting for the vblank flag, flipping (`$187a`) and pausing 2 ticks (30 on
+frame 4); it ends with the text "AT LAST I RULE THE WORLD" (`$19c5a`, `$19c7e`) for 2000 ticks.
+The delta table comes with the resource (zero in the snapshot) and is not decoded. A resumed
+snapshot has no disk in drive A: without `disk scratchpad/powermonger.st` the resource load fails
+and `$1bd0e` loops in its retry prompt (`$1bd30`, 481,567 steps after `$1a4da`).
+
 **A natural defeat.** Land 60 run on from `pm121/run/k60_s4.snap` (where the
 player's force total is already 0) dissolves the player's captain group
 through `$2776` at step 94,725,510 (`A3 = $516c0`, side 1's sub-record 0, no
@@ -1691,10 +1759,40 @@ reaches 0):
   mode-`$7c` settlement-heartbeat gate (economy.md §3a), so this rotation is
   what makes the heartbeat + loyalty/revolt system **transiently active in
   mission 1** despite its seed giving `$57fd0 = 4` at world-build. Observed
-  rate: 118.44M steps per rotation (512 calls × ~231k, three writes watched);
+  rate: always 512 calls per rotation, but the steps per call depend on the land: 118.44M steps per rotation in mission 1 (~231k per call, three writes watched), 85.7M on the Play Random Land snapshot `pm142/rand1.snap` (~167k per call; wraps at 85,853,129 and 84.7M steps in two runs, `py/season/season_run.sh`);
 - clears `$57fec` (the call count since the last change, 0..512) / `$57ff6` and ends any weather (`$4bb42`/`$4bb44` := 0).
 
 No population, food or invention maths anywhere in it.
+
+Four details of the routine itself (`py/season/season_run.sh`, `spell_watch.sh`; the
+counts are from `pm142/rand1.snap` with `$57ff6` poked to `$0681`, the one value whose
+LCG successor is 0, so the first call wraps):
+
+- **The entry gate is dead.** The first instructions add `word[$1ab9e]` to the phase
+  word `$1aba0` and return if its high byte did not change. `$1ab90` sets `$1ab9e`
+  and clears the phase; its only callers (`$1ab60` at world build, and the wrap)
+  both pass `$100`, so the byte changes on every call and `$1abaa` never returns
+  early. The byte equals `$57fec & $ff` (`$74` and 116 in `rand1.snap`) because both restart together.
+- **The LCG has period 8192 including 0**, so a rotation is exactly 512 calls × 16
+  steps (Python check, and 739 calls = 1 + 512 + 226 for two wraps in 125M steps).
+  A wrap call stops at x = 0 without copying.
+- **The wrap's four sound calls** (`$1acc8`, `$1acec`, `$1ad06`, `$1ad20`: `$1ba3e`
+  with ids 0, `($57fd0 >> 1) + 1`, 0, `$a`, and `$58054 ^= 5` between them; 8 hits for 2 wraps).
+  Id 0 stops the sound sequence (system.md "The sound driver is a sample player"), so only the last cue is
+  probably audible *(inferred)*.
+- **One weather spell per season.** `$1ad74` can start a spell only while
+  `$4bb44 >= 0`; the wrap sets it to 0 and the spell's end leaves it at -1.
+  `$4bb4a` is constant 0 (its only writer is the dead routine below), so the start
+  is at `$57fec` = 160 (`$1ad74` at step 25,302,965 in two runs), `$4bb44 := ($57fec & $3f) + $20 = $40` and
+  the spell draws 65 times (`$1ad40` 65, `$1ad4a` 1 at step 36,808,977;
+  `watch 4bb44` shows `$40`, `$3f`, ..., 0, `$ffff`). Winter gets snow, spring and autumn
+  rain, summer none (a summer start finds type 0 and retests on every call). Measured
+  second-season spells ran 65 to 66 draws (not explained).
+- **`$1aacc..$1ab5e` is dead code** with no sym label: 128 random cells per call of the colour planes
+  (`$418ad`/`$438ee`) get their colour byte `$10..$23` or `$40..` recoloured by a level
+  word `$4bb4c`, stepped by `$4bb48` on a 14-bit LCG (`$4bb4a`) wrap, probably a
+  snow or greening overlay. No `bsr`/`jsr`/`jmp`/pointer reaches it
+  (`find_ram_callers` 0, `find_literal_ptr` 0) and `hits` over 40M and 125M steps is 0.
 
 ## The AI as modern pseudocode
 
@@ -1928,7 +2026,7 @@ What the names changed:
   byte return the table's string, and 203 of 225 live persons sit exactly on their `$5ccc` cap, `py/health_check.py`;
   `$5c80` is `_add_str...`, which recovers it to the job's cap).
 - **`$3f86c` is `_alts`, the altitude plane**, not a "control byte" or influence field: `$ffa6` (`_fill_al...`) accumulates a random
-  walk into it, `$10410` (`_smooth_`) averages neighbours, `$10458` lays the rivers (it has no caller, `graphics.md`); graphics.md already reads it as the height
+  walk into it, `$10410` (`_smooth_`) averages neighbours, `$10458` would lay the rivers (it has no direct caller and 0 hits in 20M steps, `graphics.md`); graphics.md already reads it as the height
   source: poking a block of it raises a plateau in the redrawn terrain, 10938 pixels differ (`py/alts_render_check.py`). Likewise `$127e6` is the sound-event dispatcher (`_do_soun...`), `$178ae` the HUD group bars (food
   `112`, men `52`, the lead's health `45`; `callcap` 138 bytes written) and `$17878` the compass (51 bytes), not "render setup A/B".
 - Modes `$56..$62` are labelled `fish_*`, `$80..$88` `shep_*`, `$4e..$54` `merch_*`: the job state machines of the people
@@ -1997,13 +2095,17 @@ for the side-1 name field `$582f9`, once, from `_first_s`.
 An opener (`click_*`) does `lea template,A1 / jsr $7b10` (allocate a panel slot; the grid is built at `$7bac + slot × $320`) `/ lea fmt,A6 / jsr $a91a`, and in `$a91a` the n-th `@` run calls the routine at `A6 + word[n]`, which returns a string pointer in A5 or writes into A4. The panels have no buttons (no `$80` corner cells) and only the captain panel sets `$7a3c`,
 so there are no panel button codes. There are two ways in. The captain boxes (`$1343a`) call `_click_c` `$9036` (captain panel, `$7a3c := 2`). The **examine tool** (icon `$2c`, `$57fea = 1`) makes a click on a drawn sprite run `$95f6`: the hit test `check_sh` `$12138` runs with every sprite draw and, with `$57fea` set and a click pending, calls it, and it dispatches on the
 record's category byte through the word table `cjt` `$9624`: 0, `$e`, `$1a` person (`$9c16`); 2 and `$10` house (`$9a38`, `$10` forced to WorkShop); 4 tree (`$a738`); 6 and `$18` object, fire and boat (`$98ec`); 8, `$1c`, `$22` animal (`$99e0`); `$a` equipment (`$9806`); `$c` death (`$a46c`); `$14` pigeon (`$99ac`); `$1e` mine (`$a5d8`);
-`$2c` stockpile (`$9656`); `$12 $16 $20 $24 $26 $28 $2a` open nothing; `$2e` goes to `$b2d4` (the protection seed, not run). Category `$18` is "Boat" in the game's own click text, and the sprite agrees: the record is a fisherman's catch marker (byte 7 `$10`) and `a_object` (`$117b0`) draws frame `$100 + byte 7 = $110`, a rowboat on the pond (`catch_marker_boats.png`; live `bp $1182a`, 30 of 30 marker records drew `$110`). Live from `m1_s0` (`py/ui/uiclick.py`, each with a no-toggle
+`$2c` stockpile (`$9656`); `$12 $16 $20 $24 $26 $28 $2a` open nothing; `$2e`, the table's 24th word (`$9652`), goes to `$b2d4`. That is not a panel opener but the whole land set-up and briefing entry ("The land set-up `$b2d4`" below); no record of category `$2e` has ever been seen, so it is never reached (code read; `callcap $b2d4` cannot return, it stalls in a masked-interrupt wait at `$1ae46`). The table is indexed by the record's byte 6 (even values `$00..$2e`); none of the openers `$a738 $a46c $a5d8 $9656 $b2d4` has a direct caller (`find_ram_callers.py`: 0 hits each), the table is their only entry. Category `$18` is "Boat" in the game's own click text, and the sprite agrees: the record is a fisherman's catch marker (byte 7 `$10`) and `a_object` (`$117b0`) draws frame `$100 + byte 7 = $110`, a rowboat on the pond (`catch_marker_boats.png`; live `bp $1182a`, 30 of 30 marker records drew `$110`). Live from `m1_s0` (`py/ui/uiclick.py`, each with a no-toggle
 and a toggle-only control): a Tower at (196,41) opens the house panel, an ash at (218,70) the tree panel ("An Ash in the forest of Mninise / It is Summer"), a man at (202,49) the person panel; without the toggle or without the click nothing opens (0 hits of `$95f6`; `info_click.png`). Gates against `callcap` with the model built from the pre-call RAM only:
 person panel **247/247** (47 in `m1_s0`, 200 in `k5_s4`, all six text rows), house panel **103/103** (kind, town, people, kingdom, food, men and loyalty, near forest; the Stock rows are not compared), captain panel **12/12** groups (name, state, aggression and posture, loyalty, health, speed, food, troops, the carrying list; `py/ui/gate_panels.py`, `gate_captain.py`);
 the equipment and mine panels were checked by their live text only. The person panel stores no sex: "he/she" is the parity of the man's place in his home settlement's chain (`$9ce8` sets `$9e74` to 0 or 4; a leader is always "he"), the companion shown is the next man, or the previous one for the first. The death panel's age class is `(byte14 − 12) / 20` capped at 4 and its "service of" line
 prints the side of the *negated* owner byte. Never seen in 547 scanned snapshots: category `$22` (the Cow), `$1a`, a carcass (`$1c`, "DEAD Sheep"), tree state `$d` (a stump) and the camp fire (`$12`): those panel strings are reachable by the code and nothing produces them.
 The panel text is the place to look first when a field's meaning is in doubt: the group-state and mode labels of "Original names", the "Strength" row and the building kinds all agree with it, and
 it is what retired the "capital (kind 7)" reading.
+
+**Panel slots and dialogs.** The info panels and the modal dialogs share one table of four 8-byte slots at `$7a36` (word 0 offset to the grid, word 1 packed origin, word 3 of slot 0 = `$7a3c` the dialog id). `$7b10` takes the first free slot; `$affe` is the dialog-slot opener (allocate, else evict a slot whose id word is below 4, then store the id from D7 in `$7a3c` and fill the grid with `$a91a`). `$7a56` draws every active slot and runs each tick (`$130ce`; the menu loops call it at `$cf12`, `$13d82`, `$13e24`: 6 hits per 300000 idle steps in the menu loop, 6 of 6 at `$cf12`). Per four grid cells it calls `$8838`, which composes four 4x6-pixel glyph cells into one 16-pixel, four-plane row group: each cell byte's low two bits pick one of four glyphs packed in a 16-bit word, the rest index a 12-byte, six-row group in the font at `$8976`; rows step 160 bytes and the blit is clipped at `$8834` (live: 53 calls in the first 28,000 steps of the id-`$18` dialog, before the YES click). The click side is `$7658` (README "Dialog buttons by id"); ten ids are dispatched, only id `$18` ("delete all of your conquered lands", `pm142/yes_dlg.snap`) has been clicked live: YES gives `$7658` 1, `$796e` 1, `$7a36` word 0 to 0 and `$3f2a0[0]` 1 to 0; NO gives `$7658` 1, `$796e` 1 and the menu loop reopens the id-`$e` dialog at once (`py/clicks_ui/dlg_click.sh`).
+
+**The land set-up `$b2d4`** (`_protect`, code read to `$b470`). It saves `$580a0..$58368` to `$584c4`, folds the shifter base-address registers `$ff8205/07/09`, `$2df92`, `$6f304`, `$12c9a` and `$2df84` into `$580a0`, reduces it mod `$90` to a land index n (`$5809c := n*$96 + $672`, the page number the briefing asks for; `$580a0 := n*$b + $3fb`), runs the land build (`$fe04 $10768 $10d1e $2266 $ac20 $1073c $10058 $4672 $2984 $238c $2906 $107d6 $b892 $13f60`), sets `$58792 := 3 + (rand & $f)`, picks the question bit `$57ff8`, zeroes `$14e4e` and opens the briefing dialog (id `$a`, template `$b510`). It is the "protection seed" of the earlier reading only in that last part; the routine is the whole entry of a new land.
 
 ## Hidden features audit
 
