@@ -102,6 +102,11 @@ know they existed.
   `graphics.md`/the README's files table the way screenshots already are.
 - Every behavioural claim about a game needs an emulator check (callcap diff, frame capture or
   screenshot diff) with a match count, or is labelled inferred.
+- A door-graph or dataflow chain ("walk through door X, operate Y") is a hypothesis about geometry, hazards and one-way doors: drive each leg before building on it. Cadaver's 91st-pass
+  137-action chain looked closed; the 92nd pass's first natural drive (`l1/route_level1_room89.py`, 46 legs, 40 s, `l1/explore.py`) found eight gates in the first twelve rooms (a lever for the
+  pillars, a lever puzzle in front of a door, a trap region only a SLEEP cast clears, a lever on a shelf with no stairs, four tokens behind a slot) and a health budget the graph did not
+  have (`reversing/cadaver/mechanics.md` 81). A hold that stalls, a room change that bounces back, or a health drop that arrives legs later (a POISON bite: check `2434(A5)`) is geometry
+  or timing to read, not a dead end.
 - A verb/opcode table named from reading its handler bodies is a hypothesis: call each handler under
   `callcap <addr> <steps> - A1=<scratch script> ...` (the `regdelta` line gives the final A1, so the operand
   length; the `mem` lines give the effect) and tile the whole script corpus with the grammar. Cadaver's 78th
@@ -277,7 +282,7 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   world index `$bb76` to 3 and zeroed the shop flag `$bb77`; read the neighbouring fields and write the whole longword deliberately.
 - Bash heredocs and inline `python -c` mangle backslashes (Windows paths, `\AUTO\`, regexes).
   For text containing backslashes use the Edit/Write tools, not shell string surgery.
-- The Bash tool's working directory drifts between calls: `cd` to an absolute path first.
+- The Bash tool's working directory drifts between calls: `cd` to an absolute path first. zsh also reads an unquoted `GR:x>=24` as a redirect to a file named `24`: quote REPL and `explore.py` words that contain `<` or `>`.
 - zsh (the Mac shell) does not word-split an unquoted `$VAR`: a variable holding several REPL tokens
   arrives as one malformed line and the REPL stops there. Pass tokens separately. `echo =====` fails
   in zsh (`=word` expands to a command path); quote it.
