@@ -14,9 +14,11 @@ Commands (one argv word each; a leg is a list of them; `run(inp, out, cmds)` is 
   F                     FIRE hold with nothing in front (casts the selected scroll)
   Z<door hex>[:lane[:chunk]]  align with the portal of that door (lane = hero lead coordinate across the portal, - for the default) and hold through it, retrying up to 5 holds
                         (chunk = steps of the hold's stall test, default 20,000: a hound blocking the door needs 60,000 or more)
+  M<door hex>[:chunk]   Z with the lane searched on forks (every 4 cells across the portal): first lane that changes the room with no health loss and no new poison
   X<door hex>[:lane[:wmax[:step]]]  Z preceded by a standing wait W searched on forks (first W with no health loss and a room change)
   Q                     probe (FIRE toward an object in front; cancels the panel; leaves the hero mid-jump when nothing is in front: end a leg before it)
   A<room>[:<min health>] assert the room (and health) so a leg fails loudly
+  N                     assert no POISON strength is pending (2434(A5) == 0): a bite's ticks arrive later, -10 each, so health alone does not show it
   T P D B<ids> E<doors> print state / portals / placement table / variables+object bytes / door words
 """
 import sys, os
@@ -54,7 +56,7 @@ def zdoor(r, c, log=print):
 
 
 def run(inp, out, cmds, log=print, tmp=None):
-    """run the commands from snapshot `inp`, write the final state to `out`; returns the Repl's final (room, bbox, health)"""
+    """run the commands from snapshot `inp`, write the final state to `out`; returns the final (room, bbox, health, poison strength)"""
     inp, out = os.path.abspath(inp), os.path.abspath(out); tmp = tmp or out + '.'
     r = Repl(inp)
     log('start %s xp %d' % (st(r), r.l(A5 + 1192)))
@@ -102,6 +104,27 @@ def run(inp, out, cmds, log=print, tmp=None):
         elif c == 'F':
             tt = Tally(r); tt.joy(FIRE); tt.run(40000); tt.joy(0); tt.run(70000); r.cmd('s 300000'); log('%s %s xp %d' % (c, st(r), r.l(A5 + 1192)))
         elif c[0] == 'Z': zdoor(r, c, log)
+        elif c[0] == 'M':
+            # M<door hex>[:chunk]: try lanes across the portal (every 4 cells) on forks; keep the first that changes the room with no health loss and no poison taken
+            a = c[1:].split(':'); door_ = a[0]; chunk = a[1] if len(a) > 1 else '20000'
+            snap = tmp + '_m.snap'; r.snap(snap); h0 = hp(r); p0 = r.b(A5 + 2434); room0 = r.w(ROOM)
+            tbl = r.l(A5 + 88); n = r.w(A5 + 1162); pb = None
+            for i in range(n):
+                e = r.mem(tbl + 70 * i, 70); d_ = int.from_bytes(e[10:14], 'big')
+                if (d_ - 0x6d35a) // 8 == int(door_, 16): pb = tuple(e[0:4])
+            assert pb, ('no portal', door_); xl, yl, xt, yt = pb
+            vertical = (yl - yt) < (xl - xt); lo, hi = (xt + 2, xl) if vertical else (yt + 2, yl)
+            lanes = list(range((lo + hi) // 2, hi + 1, 4)) + list(range((lo + hi) // 2 - 4, lo - 1, -4)); good = None
+            for lane in lanes:
+                f = Repl(snap)
+                try: zdoor(f, 'Z%s:%d:%s' % (door_, lane, chunk), lambda s_: None)
+                except AssertionError: f.close(); continue
+                ok = hp(f) >= h0 and f.b(A5 + 2434) == p0 and f.w(ROOM) != room0
+                log('  lane %d -> room %d health %d%s' % (lane, f.w(ROOM), hp(f), '  <- taken' if ok else ''))
+                if ok: f.snap(tmp + '_mend.snap'); f.close(); good = lane; break
+                f.close()
+            assert good is not None, 'no lane crosses'
+            r.close(); r = Repl(tmp + '_mend.snap'); log('%s lane %d %s' % (c, good, st(r)))
         elif c[0] == 'X':
             a = c[1:].split(':'); lane = a[1] if len(a) > 1 and a[1] != '-' else None
             wmax = int(a[2]) if len(a) > 2 else 3000000; step = int(a[3]) if len(a) > 3 else 100000
@@ -123,13 +146,14 @@ def run(inp, out, cmds, log=print, tmp=None):
             ax = {'x': 0, 'y': 1, 'X': 2, 'Y': 3}[cond[0]]; op = '>=' if '>=' in cond else '<='; n = int(cond.split(op)[1])
             f = (lambda p, ax=ax, n=n: p[ax] >= n) if op == '>=' else (lambda p, ax=ax, n=n: p[ax] <= n)
             goto(r, K[d], f, maxn=1200); log('%s -> %s' % (c, st(r)))
+        elif c == 'N': assert r.b(A5 + 2434) == 0, ('poison pending', r.b(A5 + 2434))
         elif c[0] == 'A':
             a = c[1:].split(':'); room = r.w(ROOM)
             assert room == int(a[0]), ('room', room, c, st(r))
             if len(a) > 1: assert hp(r) >= int(a[1]), ('health', hp(r), c)
         else:
             raise SystemExit('unknown command ' + c)
-    res = (r.w(ROOM), pos(r), hp(r))
+    res = (r.w(ROOM), pos(r), hp(r), r.b(A5 + 2434))      # 2434(A5) = poison strength: non-zero means a POISON bite whose ticks (-strength each) are still to come
     r.snap(out); r.close()
     return res
 

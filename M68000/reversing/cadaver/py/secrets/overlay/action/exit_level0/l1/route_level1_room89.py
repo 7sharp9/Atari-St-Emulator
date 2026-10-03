@@ -75,8 +75,8 @@ cur = start; n = 0
 for name, cmds in LEGS:
     n += 1; out = os.path.join(outdir, '%02d_%s.snap' % (n, name))
     print('== leg %d %s: %s' % (n, name, ' '.join(cmds)), flush=True)
-    room, p, h = run(cur, out, cmds, tmp=os.path.join(outdir, '_scratch_%s' % name))
-    print('   -> room %d pos %s health %d' % (room, p, h), flush=True)
+    room, p, h, ps = run(cur, out, cmds, tmp=os.path.join(outdir, '_scratch_%s' % name))
+    print('   -> room %d pos %s health %d poison %d' % (room, p, h, ps), flush=True)
     cur = out
     if upto == name: break
 print('end room %d health %d' % (room, h), flush=True)
