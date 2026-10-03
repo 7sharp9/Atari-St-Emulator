@@ -124,8 +124,9 @@ against every session's changes.
   own best town for men (order `$08`, get men), and the food fallback fetches food the same way. A group
   that has been in camp for 20 ticks then chains food, men, equipment and invention orders from a
   4-entry table (`$6762`/`$67d0`, keyed on the state it came back from); beyond those sequences it has no
-  economy or build planning.
-  (S "`$6522` — the commander AI", S "The AI as modern pseudocode")
+  economy or build planning. The invention order is a race: the group holds state 9 for two or three decision passes
+  and 26 of 30 natural orders arrive and give the lord's work order to the men (4 are overwritten by an attack or get-men order first).
+  (S "`$6522` — the commander AI", S "The AI as modern pseudocode", S "What an AI invention order does")
 - **Deterministic.** The AI's "random" numbers are low bits of the tick counter, and a land's map
   is a pure function of its seed, so a run replays exactly from a snapshot. (S "RNG and determinism")
 - **The world is drawn as a heightmap.** A software rasteriser projects the grid with perspective,
@@ -173,8 +174,8 @@ against every session's changes.
   chain passes the side in the wrong register; both are transcribed as the code does them. (A
   "The group dissolve", A "The revolt chain")
 - The AI's follow-up table `$67d0` is live (34 natural issues, food to men to equipment to invention);
-  whether an AI side's invention order (`$0e`) does anything at the entity level is unchecked.
-  (S "The follow-up table")
+  the invention order reaches its arrival `$5fa0` in 26 of 30 natural cases on the Play Random Land roll, and the chain ends there.
+  (S "The follow-up table", S "What an AI invention order does")
 - The wear-removal path never fired in 800M steps on four lands (inferred: unreachable in
   practice). (S "Open threads")
 - Starting a new conquest clears only 62 of the 195 conquered-land flags (the clear loop's count is `move.w #$c3,D0` then `neg.b D0`, which leaves `$3d`): the flags of lands 62 and up survive.

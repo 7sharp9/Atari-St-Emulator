@@ -334,7 +334,7 @@ are "fetch men from an own lord", "escort", "march the army at the nearest enemy
 leader, if I have more than ~4–22 men and my army has the food to get there" and "fetch food". AI groups start
 with `$5fff` food (`$26c4`), so the food test never binds in practice ("Open threads"). Food is taken from towns at the entity level (mode `$1a`, `ai.md`).
 Food, men, equipment and invention orders come in sequence from the follow-up table
-below; whether the invention order (`$0e`) does anything for an AI side is not checked.
+below. The invention order does reach its arrival for an AI side (26 of 30 natural orders, "What an AI invention order does" below).
 
 ### The lord scans: `$68fe`, `$69b4`, `$68ee`
 
@@ -414,6 +414,16 @@ int pm_followup(group *A1) {
 
 The table is read-only data in the code segment (nothing writes it; it is a constant).
 `268()` is the group's previous state, written by `$3728`, so the hook fires in ordinary play.
+
+### What an AI invention order does
+
+The chain's last link is the only one whose effect had not been followed. Live, one `$a` → `$0e` issue at a time (`capture_hits.py` on `$67b4`, then `watch` on the group's state `76(A1)` and the lead's mode byte `31(lead)`, `scratchpad/pm145/inv/`):
+
+- `$6822` posts `$0e` into the side's slot; the executor `$6c48` runs it about 157k to 181k steps later (156,748, 175,881, 180,634, 174,401 in four issues) and its `$3154` (D3 = 9, D4 = `$22`) writes **group state 9** (`$3202`), stamps the lead's mode `$10` and previous mode `$22`, and aims the lead at the lord's cell (`$3218..$323a`).
+- State 9 is a deciding state, and `$6522` runs about every 168k steps (`$6522` hits at 172,586 and 340,841 in the first issue), so a state-9 group is offered to the arms at the next pass with no wait. The lead walks to the cell centre (mode `$10`, ending in `$14fdc`, which writes the arrival mode `$22`); the arrival handler `$151a8` → `$5fa0` runs on the lead's next entity tick, so an uninterrupted order arrives 295k to 525k steps after `$6c48` (22 of 22 measured arrivals on the Play Random Land roll) and the state is held for two or three passes.
+- **Outcome over 39 Play Random Land lands of 60M steps (`py/cmdai/invent_census.py`): 30 executed `$0e` orders, 26 reach `$5fa0`, 4 do not.** The four were replaced by a later order of the commander AI before the arrival tick: `$0c` three times (`k4`, `k5`, `k60`: `$6c32` at +209,719, +271,524, +190,622) and `$08` once (`k143`: `$6bea` at +185,771); each of those hits `$4b80` or `$3154` and rewrites the lead's mode and previous mode, so the pending `$22` never runs. On the preview-roll land 25 (`pm121/run/k25_s2`, `k25_s4`) all four natural orders were replaced that way (two `$0c`, two `$08`), because that land's AI group always had a target at the next pass. `$5cde` hits are not an invention count: the winter heartbeat `$157ba` calls it too (`k4` shows two with no `$5fa0`).
+- The Play Random Land natural `$5fa0` states the order gate reads (`py/orders/gate_orders.py`, `nat/n5fa0_p0k*.json`) are these arrivals: all 26 have group state 9, previous state `$a` and a lead of side 2, 3 or 4 in mode `$22`, so every natural entry of `$5fa0` is an AI invention order. The arrival hands the lord's work order `$5cde` to the men, which does something only for a lord with a WorkShop (11 of the gate's 27 natural entries take that arm, `economy.md` 3). The chain stops here: `$67d0` has no entry for previous state 9, so an AI group that finished inventing stays in camp until the commander decides again.
+- Why no snapshot ever showed a group in state 9 (159 snapshots, 0 groups): the state lasts about 0.3M to 0.5M steps and 30 orders in 2.3G steps cover about 0.5% of the time.
 
 ### `$6822`: issuing an order
 
@@ -1908,7 +1918,12 @@ What the names changed:
   state-6 group's lead is `$68` at its camp marker). `$7c` is the winter state of a parked civilian (`in_winte...`), `$7e` a soldier
   staying at home, `$8a` a captain resting at his town (29 of 29 job 9).
 - **Byte 33 is the tool tier** (an item code `2 * (slot + 1)`: 8 Plough, `$0a` Boat, `$0c` Pot; byte 44 holds the weapon codes 2 Pike, 4 Sword, 6 Bow, economy.md §4; modes `$02` and `$8c`
-  are 71 of 71 and 17 of 17 with bit 5 set and 33 = `$0a`: `boating`, not "hold position") and **byte 45 is health** (the captain
+  are 71 of 71 and 17 of 17 with bit 5 set and 33 = `$0a`: `boating`, not "hold position"). Most men carry nothing (byte 33 `0`: 538 of 730 men over six snapshots,
+  every local-side man but two); the `$0a` ones are the boat men, and the build puts the boat there: the side setup `$239e..$25c6` copies the mission table's bytes 20 and 22
+  into byte 33 of the lead and the followers and, for a side whose command slot state `4(A5)` is 4 (an AI side), then writes `$0a` over it for the lead (`$2498`), each follower
+  (`$250e`) and each flag-bit-4 record of the side's lord chains that `$25d6` accepts (`$2596`): on `k0` (preview roll) the three sites hit 2, 22 and 2 times in the build and the settled snapshot has 26 non-local men with
+  33 = `$0a` (`scratchpad/pm145/b33/`; 0 local). So "byte 33 is `$0a` on every job" read off `equip_census.py` (which prints only non-zero values) is the AI sides' starting
+  boat, not a tool every man holds; no live Plough has been seen (the Plough rule `$160f8` needs a lord with goods). **Byte 45 is health** (the captain
   panel prints `(45 >> 4) & 7` through `healthnames` at `$a2dc`, "Very Sickly" ... "Dead": 11 of 11 `callcap $912a` calls with a poked
   byte return the table's string, and 203 of 225 live persons sit exactly on their `$5ccc` cap, `py/health_check.py`;
   `$5c80` is `_add_str...`, which recovers it to the job's cap).

@@ -106,7 +106,7 @@ operation and the nearest forest operation (§2).
 
 | PC | handler / mode | effect on the pool |
 |----|----------------|--------------------|
-| `$1507c` | `$15042`, entity **mode `$16`** (a farmer home from his field; non-winter only) | `food += 2` (`+= 2` again at `$1508a`, behind the `$15082` compare, when he carries a Plough, byte 33 `== 8`; 2 of 73 returns doubled in 40M steps of land 5, and only 1 farmer in ~73 carries a Plough; `py/equip_census.py` finds none on `k5_s4` itself, and none among 1178 farmer observations in 20 Play Random Land snapshots, where 11 of 372 lord records hold any goods) |
+| `$1507c` | `$15042`, entity **mode `$16`** (a farmer home from his field; non-winter only) | `food += 2` (`+= 2` again at `$1508a`, behind the `$15082` compare, when he carries a Plough, byte 33 `== 8`; 2 of 73 returns doubled in 40M steps of preview-roll land 5; `py/equip_census.py` finds no Plough on `k5_s4` itself, and none among 1178 farmer observations in 20 Play Random Land snapshots, where 11 of 372 lord records hold any goods; a `hits` census of `$1507c`/`$1508a` over the 39 Play Random Land lands of 60M steps (`py/cmdai/invent_census.py` with `PM_CENSUS_ADDRS="15042 1507c 1508a"`) counts 5164 returns and **0 doublings**, so the doubling is rare to absent there; a non-zero byte 33 on a farmer was `$0a` in every observation, the AI sides' build stamp, `strategy.md` "Original names") |
 | `$15e18` | `$15ddc`, entity **mode `$60`** (the fisherman delivering his catch: every man in modes `$56`..`$62` is job 4, fisher, 93 of 93 over seven states, `py/job_census.py`, ai.md) | `food += 4` per trip |
 | `$150f2` | `$150c0`, entity **mode `$1a`** (an army takes food from a town: order `$06`) | `slice = food >> (posture-2)`; `food -= slice`; `36(group) += slice` (the army's food); `loyalty_pressure += 16 >> (posture-2)` (the `14(A5)` write, A5 = the lord). Live, 1 run: 22 → 11, loyalty 0 → 8 |
 | `$3bc0` | `$39d4`/`$3b32` (order `$12` drop food at a settlement; also the `$35f4` camp-making family) | `food += 36(group) >> (posture-2)`, `36(group) -= that`; `loyalty_pressure -= 8` when the town is the army's side. Live, 1 run: town 22 → 147, army 247 → 122. *(Corroborated. Note: `$3c08` — the flag-driven regroup dispatcher, **Proven** (ai.md) — does NOT itself write the ledger on the common non-grouped path; its bit-4 group-teardown sub-path calls `$37c2`, which is the `$382a` row below, not `$3bc0`.)* |
@@ -374,7 +374,7 @@ research timer. It is the moment a higher-tier item first reaches a lord's
 
 `pm_object` carries the unit's equipment in two bytes, each holding an **item code** `2*(i+1)` (pike 2, sword 4, bow 6, plough 8, boat `$a`, pot `$c`,
 catapult `$e`, cannon `$10`): **byte 44** is the weapon tier (pike, sword, bow, and catapult/cannon for a man with flag bit 4) and **byte 33** the tool tier
-(plough, boat). A pot is never accepted by `$638c`. `$1533c` (melee) reads byte 44 as `damage = (min(v,6) >> 1) + 1`;
+(plough, boat). The world build stamps a boat (`$0a`) on the AI sides' lead, followers and lord-chain records (`strategy.md` "Original names": 26 of 26 on `k0`); a man who carries nothing has byte 33 `0`. A pot is never accepted by `$638c`. `$1533c` (melee) reads byte 44 as `damage = (min(v,6) >> 1) + 1`;
 `$52fc` reads it for the projectile type.
 
 The distribution is two player-order arrival executors, not the commander AI: `$61f8` (mode `$6e`, order `$10` "take equipment", its only caller `$1574a`) takes goods from a

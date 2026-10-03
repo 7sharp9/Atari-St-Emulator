@@ -22,7 +22,7 @@ for p in sys.argv[1:]:
         if r[a+31] in (0x7c, 0x90): special.append((i, r[a+5], job, hex(r[a+30]), hex(r[a+31]), r[a+33], r[a+44]))
     print(' modes', {hex(k): v for k, v in sorted(modes.items())})
     print(' farmers', farm, 'carrying code 8:', farm8)
-    print(' (job,byte33)', {k: v for k, v in sorted(c33.items()) if k[1]})
+    print(' (job,byte33)', {k: v for k, v in sorted(c33.items())})   # zeros included: most men carry nothing, a non-zero 33 is mostly the AI build stamp $0a
     print(' (job,byte44)', {k: v for k, v in sorted(c44.items())})
     print(' mode 7c/90 men (idx,side,job,prev,mode,b33,b44):', special)
     for k in range(64):
