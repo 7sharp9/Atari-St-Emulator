@@ -60,12 +60,14 @@ def resource_type(ram, base, a5, type_id):
 
 
 def resolve(ram, base, idx_ptr, data_ptr, index):
+    # An index entry is one long: size = entry >> 17, offset = entry & $1ffff (17 bits).  Reading only the low word of the long
+    # (the old code) is right for types 3-6, whose data areas are under $10000, but puts every type-2 class template at offset
+    # >= $10000 (level 1: indices 100-254) $10000 too low.
     entry = idx_ptr + index * 4
-    size = u16(ram, base, entry)
-    if size == 0:
+    e = u32(ram, base, entry)
+    if (e >> 17) == 0:
         return None
-    off = u16(ram, base, entry + 2) & 0x1FFFF
-    return data_ptr + off
+    return data_ptr + (e & 0x1FFFF)
 
 
 def main():

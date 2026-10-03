@@ -5,7 +5,7 @@ import lib2
 def size6(h, oid): return int.from_bytes(h.ram[h.rows[6][0] + 4 * oid:h.rows[6][0] + 4 * oid + 2], 'big')
 
 def spawn_entry(h, d):
-    """the entry the verb appended to the spawn list 1466(A5): count word, then 16-byte entries [size.w][clone ptr.l][x][y][z][facing][D6.w][template ptr.l]"""
+    """the entry the verb appended to the spawn list 1466(A5): count word, then 16-byte entries [size.w][clone ptr.l][x][y][z][room][D6.w][template ptr.l]"""
     n = a5w(h, 1466, d)
     b = a5b(h, 1468 + 16 * (n - 1), 16, d)
     return n, {'size': int.from_bytes(b[0:2], 'big'), 'ptr': int.from_bytes(b[2:6], 'big'), 'x': b[6], 'y': b[7], 'z': b[8], 'f': b[9],
@@ -13,31 +13,31 @@ def spawn_entry(h, d):
 
 def run():
     h = H(SNAP0); r = h.r
-    # ---------------- 36 CREATE object o at fixed (x, y, z, facing): the level-0 uses: #447 (12,b,32,fe), #448 (26,11,b,fe), #466 (10,1b,2,fe)
+    # ---------------- 36 CREATE object o at fixed (x, y, z, room): the level-0 uses: #447 (12,b,32,fe), #448 (26,11,b,fe), #466 (10,1b,2,fe)
     for oid, (x, y, z, f) in ((447, (0x12, 0x0b, 0x32, 0xfe)), (448, (0x26, 0x11, 0x0b, 0xfe)), (466, (0x10, 0x1b, 0x02, 0xfe))):
         d = h.call(36, [oid >> 8, oid & 255, x, y, z, f])
         n, e = spawn_entry(h, d)
         rec = h.obj(oid); sz = size6(h, oid)
         tmpl = h.res(2, int.from_bytes(h.ram[rec + 6:rec + 8], 'big'))
-        lab = 'verb 36 CREATE #%d at (%x,%x,%x) facing %02x' % (oid, x, y, z, f)
+        lab = 'verb 36 CREATE #%d at (%x,%x,%x) room byte %02x' % (oid, x, y, z, f)
         chk(lab + ': returns, consumes 6 bytes, no assert', d['ret'] and not d['thrown'] and d['da1'] == 6)
-        chk(lab + ': spawn list count 1466(A5) 0 -> %d; entry x,y,z,facing = operands' % n, a5w(h, 1466) == 0 and n == 1 and (e['x'], e['y'], e['z'], e['f']) == (x, y, z, f), e)
-        chk(lab + ': entry D6 word = $000f (fixed-position mode), size %d = index-entry size of #%d (%d), template ptr $%06x' % (e['size'], oid, sz, e['tmpl']), e['d6'] == 0x0f and e['size'] == sz and e['tmpl'] == tmpl)
+        chk(lab + ': spawn list count 1466(A5) 0 -> %d; entry x,y,z,room byte = operands' % n, a5w(h, 1466) == 0 and n == 1 and (e['x'], e['y'], e['z'], e['f']) == (x, y, z, f), e)
+        chk(lab + ': entry D6 word = $000f (bit 7 clear: the drain searches with D6 forced to $3f, verbs3/m44.py), size %d = index-entry size of #%d (%d), template ptr $%06x' % (e['size'], oid, sz, e['tmpl']), e['d6'] == 0x0f and e['size'] == sz and e['tmpl'] == tmpl)
         clone = after(h, d, e['ptr'], sz)
         src = r.mem(rec, sz)
         diff = [i for i in range(sz) if clone[i] != src[i]]
         chk(lab + ': a fresh type-9 slot $%06x (2120(A5)=%d) holds a copy of #%d\'s record (differs at %s)' % (e['ptr'], a5w(h, 2120, d), oid, diff), len(diff) <= 2 and e['ptr'] == a5l(h, 48, d), diff)
-    # ---------------- 44 CREATE o2 next to o1 (slot, facing) / 84 CREATE o2 relative to o1 (dx, dy, z, facing): o1 = #193 (50,11,0)
+    # ---------------- 44 CREATE o2 next to o1 (slot, room) / 84 CREATE o2 relative to o1 (dx, dy, z, room): o1 = #193 (50,11,0)
     o1 = 193; p1 = r.mem(h.obj(o1), 3)
     d = h.call(44, [0, o1, 0x01, 0xc0, 6, 0xfe])
     n, e = spawn_entry(h, d)
     tb448 = tmpl_bytes(h, 448)
-    chk('verb 44 CREATE #448 next to #193 (slot 6, facing fe): consumes 6 bytes; entry position = #193\'s (%d,%d,%d); facing fe' % tuple(p1), d['ret'] and d['da1'] == 6 and (e['x'], e['y'], e['z'], e['f']) == tuple(p1) + (0xfe,) and n == 1, e)
+    chk('verb 44 CREATE #448 next to #193 (slot 6, room fe): consumes 6 bytes; entry position = #193\'s (%d,%d,%d); room fe' % tuple(p1), d['ret'] and d['da1'] == 6 and (e['x'], e['y'], e['z'], e['f']) == tuple(p1) + (0xfe,) and n == 1, e)
     tab5d2c = h.ram[0x5d2c:0x5d2c + 16]
     chk('verb 44 ... template #448 class byte22 = $%02x (bit 7 clear) so D6 = table $5d2c[slot 6] = $%02x' % (tb448[22], tab5d2c[6]), not tb448[22] & 0x80 and e['d6'] == tab5d2c[6], e)
     d = h.call(84, [0, o1, 0x01, 0xc0, 3, 4, 5, 0xfe])
     n, e = spawn_entry(h, d)
-    chk('verb 84 CREATE #448 relative to #193 (dx 3, dy 4, z 5, facing fe): consumes 8 bytes; entry = (%d+3, %d+4, 5) facing fe' % (p1[0], p1[1]), d['ret'] and d['da1'] == 8 and (e['x'], e['y'], e['z'], e['f']) == (p1[0] + 3, p1[1] + 4, 5, 0xfe) and n == 1, e)
+    chk('verb 84 CREATE #448 relative to #193 (dx 3, dy 4, z 5, room fe): consumes 8 bytes; entry = (%d+3, %d+4, 5) room fe' % (p1[0], p1[1]), d['ret'] and d['da1'] == 8 and (e['x'], e['y'], e['z'], e['f']) == (p1[0] + 3, p1[1] + 4, 5, 0xfe) and n == 1, e)
     # ---------------- 41 PLACE object in room r at (x, y, z)
     room16 = r.b(h.obj(16) + 10)
     ids_a0, sa0, _ = t5_list(h, 0x21); ids_b0, sb0, _ = t5_list(h, 0x25)
