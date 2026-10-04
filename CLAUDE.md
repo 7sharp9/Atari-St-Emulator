@@ -133,6 +133,11 @@ know they existed.
   `$01fbc4`), found only by rerunning `find_field_writers.py`/`disassemble.py --all` fresh. Before
   trusting a "no writer" result from any pre-existing `.asm`/`.c` file, confirm its last address
   reaches the end of the text segment (the PRG header's text size), or just re-run the tool.
+- A writer scan by operand text (`find_field_writers.py "148(A3)"`) cannot see a block clear or copy
+  (`lea $3f364,A0 / clr.l (A0)+` loop) that reaches the field from a lower base. Before "display only"
+  or "only writers X and Y", poke a marker into the field, run the land build, and `watch` it if it
+  vanishes; PowerMonger's group aggression rank had a third writer, `$10768`, found only that way
+  (`py/aggr/scan_block_writers.py` lists such loops).
 - A field that reads the same static value across two far-apart snapshots is not proof it is
   "stuck" or ungated: it can be a value a busy-poll utility sets and clears within a couple hundred
   steps of each interrupt tick, in which case any snapshot taken during that poll's otherwise-idle
