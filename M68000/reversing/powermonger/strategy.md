@@ -2219,8 +2219,12 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
   man a job, once per build (`economy.md` 5a, Proven: a build runs it once, 8 of 8), and
   `$238c` and `$2906` are proven in "The starting armies" and "The world build, proven".
   Growth after that does not exist (a revolt, `$550e`, only moves a lord and his
-  settlements). Still open: which routines of the `$2200`-`$3500` cluster write each side's
-  `$580a6` assessment block beyond the campaign table, `$2458` and the diplomacy writers.
+  settlements). The `$580a6` assessment blocks have no unread accessor: the 23 `lea $580a6`
+  sites are in 14 routines that are all documented (`ai.md` "Open threads"). Other absolute
+  references (`find_field_writers.py <snap> '$580'`) hit the side-0 words `$580a8..$580b4`
+  (the mission-parameter preload in `$10d1e`, copied on to `$580c6`), the link block head
+  `$580a0` (`$6e36..$7162`, `$b2e2..$b35a` as a screen-base scratch) and a word at `$580a4`
+  (`$d2fe`, `$113ba`; scan only, those two not read for this note).
 - **The AI on a live enemy.** All 25 natural `$661a` attack decisions in the four 200M-step
   runs (lands 0/5/25/60: 8/7/4/6) were captured at `$662a`/`$6632` (`scratchpad/pm122/dec/`,
   `parse.py`). `$68fe` found a target every time, and `$68ee`'s cost (4-66) was always far

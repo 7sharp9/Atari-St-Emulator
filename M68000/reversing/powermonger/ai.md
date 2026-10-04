@@ -1675,8 +1675,10 @@ sign (`$15c46`'s scaled target is not clamped to 0 when the sum is positive but 
 ## Open threads
 
 - **The strategic layer** — decoded in `strategy.md`, including the natural
-  `$661a` decisions and how a land ends. Still open there: the `$580a6`
-  per-side assessment / diplomacy subsystem (`$2200`–`$3500`).
+  `$661a` decisions and how a land ends. The `$580a6` per-side assessment blocks are
+  not open: every `lea $580a6` in the image (23 sites, 14 routines, `find_field_writers.py
+  <snap> "580a6"`) lies in a routine the docs already cover (the world build, `$311a`, `$33b0`,
+  `$34a8`, `$4c2a`, `$3e06`, `$60dc`, `$68fe`, `$157e6`, `$1394c`, `$10d1e`).
 - **`$5778` / combat** — the mechanism is closed (this file's combat block plus `strategy.md`
   "Combat"). `field44` is written only by the world build (`$2452`/`$2500`,
   from the side block) and the equip paths `$16124`/`$159de` (codes 2/4/6);
