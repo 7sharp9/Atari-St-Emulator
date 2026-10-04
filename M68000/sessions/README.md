@@ -5,6 +5,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 
 | file | workstream |
 |---|---|
+| `black_tiger.md` | Black Tiger reversing (`reversing/black_tiger/`) |
 | `cadaver.md` | Cadaver spike (`reversing/cadaver/`) |
 | `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
