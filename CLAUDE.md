@@ -314,6 +314,7 @@ What made the PowerMonger 122nd pass's three parallel proofs work, and what went
   (`reversing/impossamole/README.md`'s "Gameplay input" section).
 - On the Mac, scratchpad data made on Windows lives on `gpubox` (`~/Documents/GitHub/Atari-St-Emulator`). scp fails
   there (its PowerShell profile errors); stream it: `ssh gpubox 'tar -cf - -C C:/Users/Dave/Documents/GitHub/Atari-St-Emulator/M68000/scratchpad <names>' | tar -xf -`.
+- A game that polls the keyboard ACIA data register directly (`cmpi.b #$39,$fc02.w` / `bne` back) never sees a key here: `MMU.fs` pops the FIFO on a read of `$fffc02` and returns 0 when it is empty, so TOS's keyboard ISR (still installed at `$118`) takes the byte first; a real 6850 keeps the last byte. Black Tiger's cracktro `$a562` and trainer menu `$c658` both stall this way. Bypass with a labelled `w` poke of the branch in the drive script (`reversing/black_tiger/drive.txt`); the real fix is an emulator change behind the regression net. Check the game's own key service (TOS Bconin vs direct ACIA) before assuming input is broken.
 - Ghidra 12.1 is at `C:/Program Files/ghidra_12.1_PUBLIC` (`support/analyzeHeadless.bat`); on the Mac at
   `~/Downloads/ghidra_12.1.4_PUBLIC` (natives built with `buildNatives`; 12.0 there lacks 17 functions).
   In Ghidra Java scripts write regexes as `"\\s+"`; `"\s"` is Java's single-space escape and
