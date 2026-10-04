@@ -384,7 +384,7 @@ leader, a goods pile or a dropped kit and hands them to the group, and `$63f4` (
 4684/4684 with 1 natural entry; the nested swap path ran 2642 times):
 
 ```c
-// $61f8, A3 = the group; D0 = shift = posture - 2 ($30fe, "get aggression")
+// $61f8, A3 = the group; D0 = shift = posture - 2 ($30fe, the developers' `_get_agg...`: it reads the group's posture word 60, the second half of the panel's "Aggression" line; the rank in the first half is a separate word nothing reads)
 if (24(A3) < 0) {                         // a leader record
     for (i = 0; i < 8; i++) { take = L->goods[i] >> D0;  L->goods[i] -= take;  give_things(A3, take, 2*(i+1), 12*i); }  // $6352
 } else for each record on the cell 24(A3)/2:                   // the cell's bucket chain, first to last

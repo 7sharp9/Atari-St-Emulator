@@ -93,8 +93,10 @@
 # ---- commander AI internals (strategy.md "$6522") ----
 00006564	pm_cmd_synth            # synthesise an order (no queued player order)
 0000661a	pm_cmd_attack_arm    # the attack arm of the decide chain (arm 3 of `$6522`; was called 'primary slot'): march at nearest enemy leader
+0000664c	pm_cmd_nolord_arms     # head of arms 4 and 5 (reached when no attack applies): $69b4(8) own lord with men at home, then $666c; else $6680 (D7 == 0: idle, men == 0: idle, else $668c transfer)
+0000666c	pm_cmd_getmen_behind   # arm 4 (get men behind an enemy): own lord L has home > 1 and $68fe(men + home(L)) finds an enemy lord -> posture 2, order $08 toward L. Natural (145 hits in 75 lands; strategy.md "Natural coverage")
 000068fe	pm_find_enemy_leader   # nearest enemy leader, weight = $580a6[side].byte16 >> 2
-000068ee	pm_score_target        # score ~ (d/2)*(force/8 + 1) vs objective budget 112()
+000068ee	pm_food_needed         # `food_nee...`: the food a march costs, D0 = D3 >> 1, D1 = ((D1 >> 3) + 1) * D0 + D0 (D3 = distance, D1 = men); the AI compares it with the group's food 112() (strategy.md "The lord scans"; Proven 40/40)
 000069b4	pm_find_own_lord       # nearest OWN lord with word[D1] > 1, weighted word<<3 / distance; D1 8 = men (order $08), 6 = food ($06); live 3/3 (133rd)
 00006762	pm_campaign_hook       # obey $67d0 scripted campaign order if id matches 268()
 000067d0	g_campaign_order       # {word0 campaignId, word2 orderType, word4 subMode}; no in-game writer
@@ -136,15 +138,15 @@
 00006e56	pm_ord_32_reject
 00003154	pm_order_to_cell       # packed cell -> $47970 bucket -> entity; friend/foe by sign(cmdid); -> $4b80
 00004b80	pm_commit_group_target # group exec sub-record state=8; lead man -> mode $10 toward cell centre
-000037c2	pm_group_teardown_lead # RIDER 3b routine 6: PROVEN vs real 68k (99th, 1847/1847 over 13 states; scratchpad/pm99/diff_pm99.py). Entry: D2 = group offset; A1 = $51538+D2 (group rec), A0 = $51b66 + word[group-12] (lead entity). Clear lead category 6 (if alive). flags bit7 set: lead.owner := byte[group-47], lead.word34 := group[24], settlement[10] := lead[24], flags bit7->0 bit4->1; bit6 clear -> owner_leader.troops_field -= 1 ($4e514+word[settl+14], +8 = the $382a economy row); bit6 set -> jsr $1b8c. flags bit7 clear: if group.state==6 and 46(lead) in [$4cff8,$4d250) -> 7(that rec) := $11; then jsr $1d70
-000030fe	pm_regroup_split       # D0 = word[$51538 + 42(A1) + 60] - 2. Used as a shift amount ($150c0/$15122) and as the $5590 kill/rout selector. 95th: transcribed + raw-verified; == 2 for the pm73_fight attack group
-000039d4	pm_regroup_march       # order $10: lead man toward muster
+000037c2	pm_break_camp_fall_in  # `_current...` (name unresolved beyond the prefix). Common path (flags bit7 clear): douse the camp fire and re-rank the group, the group record and roster stay (live: callcap on a camped group, 26 men $68 -> $08, marker $12 -> $11, state still 6); the prologue of every order sender. Bit7 path = the hand-off teardown behind $3c08. RIDER 3b routine 6: PROVEN vs real 68k (99th, 1847/1847 over 13 states; scratchpad/pm99/diff_pm99.py). Entry: D2 = group offset; A1 = $51538+D2 (group rec), A0 = $51b66 + word[group-12] (lead entity). Clear lead category 6 (if alive). flags bit7 set: lead.owner := byte[group-47], lead.word34 := group[24], settlement[10] := lead[24], flags bit7->0 bit4->1; bit6 clear -> owner_leader.troops_field -= 1 ($4e514+word[settl+14], +8 = the $382a economy row); bit6 set -> jsr $1b8c. flags bit7 clear: if group.state==6 and 46(lead) in [$4cff8,$4d250) -> 7(that rec) := $11; then jsr $1d70
+000030fe	pm_get_posture         # developers' _get_agg: the group's POSTURE (group 60 = record +136: 2 Aggressive, 3 Neutral, 4 Passive), not the aggression rank (148). D0 = word[$51538 + 42(A1) + 60] - 2. Used as a shift amount ($150c0/$15122) and as the $5590 kill/rout selector. 95th: transcribed + raw-verified; == 2 for the pm73_fight attack group
+000039d4	pm_drop_stock          # `_drop_st...`: orders $12 (drop food, D7 = 1) and $18 (drop equipment, D7 = 2) at the lead's cell: hand the shifted food/goods to the town lord ($3b32) or to a goods pile (category $2c, $4bb4e; strategy.md "The player's commands")
 
 # ---- force accounting / diplomacy ----
 00057fba	g_side_force           # 5 x 4 bytes per-side force totals (rebuilt each tick)
 00057fce	g_force_ratio          # UI mood ratio 0..4 (UI only; $6522 never reads it)
 000580a6	g_side_assessment      # 5 x $20-byte per-side assessment/relationship blocks. word0 = the mode-$7c settlement-heartbeat pulse period (dwell reload; pm78_settle: side1 $20, side2 $0f, else $0a); word8 = the $60dc herd-throttle base
-00004bc8	pm_contact_reconcile   # troop-count + relationship reconcile on contact (NOT casualties)
+00004bc8	pm_setup_fight         # `_setup_f...` = set up the fight: two parties meet; different sides at war -> $4c2a breaks the peace bits + notifies ($c5ee, $311a -8), and $4cb8/$4d40 sets both groups to state $d (the only writer of 13 in the image, $4d70) and every man to mode $2c with the opponent in 46; same side and a state-8 group -> $35f4 camp (0 natural hits). Live: 16 of 16 natural calls took the war arm
 00004c2a	pm_diplo_break         # clear relationship bits in $580a6, notify player ($c5ee), $311a
 00004de2	pm_leader_nation       # read a leader's nation byte, D7=2 if it is a leader record
 0000311a	pm_assessment_write    # write a side-pair assessment byte in $580a6
@@ -154,7 +156,7 @@
 0001533c	pm_melee               # mode $32 handler. 95th RIDER 3b: PROVEN vs real 68k (413/413 tracked bytes over 48 states, scratchpad/pm95/). 5(A3)<=0 or 30(A3)==$3c (dead/corpse) -> mode/prev:=$2c + $161c4; 17(A3):=17(A1)+$80; 31(A3)!=$32 -> jsr $56a6; drain 45(A3) by (s8(44(A1))<6 ? 44(A1) : 0)>>1 +1 via sub.b, ble -> jsr $5590 + mode/prev:=$2c; else mutual (48(A3):=self, 31(A3):=$32, bra $1622c no epilogue)
 00005590	pm_kill_or_rout        # from $1533c when morale<=0. 95th: KILL branches PROVEN vs real 68k. 45(A3):=0; sel=(attacker grouped w/ live lead ? $30fe : 0); sel==0 KILL, sel==2 -> $560a, else ($57fec+24(A1))&2 parity. KILL($55f2): neg.b 5(A3), 32:=0, 6:=$c corpse, 18:=$a0; tail $5628 -> $567e -> leader.population-=1. $560a: bit5(A3) forces KILL else jsr $3c08 ROUT (asserted OFF); $2776/$1b8c tail branches asserted OFF
 000056a6	pm_engage              # engagement bookkeeping (from $1533c + $15302). 95th: the $574a path PROVEN vs real 68k. btst #6/#4,7(A3) gate $5778 (skipped when target flags clear); 31/30(A3):=$32; 48(A3):=attacker; $5730 (attacker grouped) 46(A3):=A1 group/self, 38(A3):=4  /  $574a 46(A3):=(attacker leader entry)-$51b66, 38(A3):=2
-00005778	pm_engage_bookkeep     # deep contact/ownership bookkeeping (group state 6 -> obj[46(A3)].flags:=$11; state $d -> record; else jsr $4bc8). 95th: asserted OFF (no corpus reaches it)
+00005778	pm_lead_engaged        # `_make_ca...` (shares the truncation with $35f4 only; name unresolved). A group lead is engaged (from $56a6): a camped group (state 6) has its camp-fire prop 46(A3) put out ($12 -> $11, the table $4cff8..$4d250); a group not yet fighting -> jsr $4bc8 (set up the fight); a fighting one records the opponent leader in 204(group). Live: 18 natural calls, 1 changed state 6 -> 13 (35 men $68 -> $2c), 17 no-ops. 95th: asserted OFF in the early corpus
 000057f0	pm_spawn_projectile    # spawn into $4be00 effect array; vel toward target /$78, life $14, type=D1
 0000596a	pm_effect_update       # per-tick projectile loop over $4be00..$4c110; life--; type $12 -> area hit on impact
 00016778	pm_bucket_unlink       # remove one object from its $47970 cell chain. 93rd RIDER 3b: PROVEN vs real 68k (via the $163ea unlink-at-head branch, part of the 675/675 $14b62 differential test)
@@ -162,7 +164,7 @@
 00015302	pm_reached_enemy       # mode $2e: A3=obj[48(A1)]; snap (D6,D7) onto it; mode/prev:=$32; engageable (31(A3)>$2c && 30(A3)>=$3c) -> jsr $56a6; $161c4. Disassembled, not yet differentially tested
 00003c08	pm_regroup_dispatch    # RIDER 3b routine 5: PROVEN vs real 68k (98th, 71/71 over 22 states; scratchpad/pm98/diff_pm98.py). Regroup / return-home dispatcher. Entry: A1 = record. Pick prev_mode (30) from flags: bit7->$7e bit0->$16 bit1->$4e bit2->$5e bit3->$80 bit4->(group teardown; $4c) none->$7e. Tail $3ca2: retarget 20/21/22 from settlement cell (12($4f916+34)), mode(31):=$10, iff owner>0 clear category 6. Reached from $157ba ($57fd0!=0), the $5590 ROUT ($560a), and 15 other sites. FLAG-BIT-4 group teardown ($3c46: D2=42(A1); !=0 -> jsr $37c2 ; group.state($51538+D2):=7 ; jsr $17a46 ; prev_mode:=$4c ; $3ca2 tail) -- PROVEN vs real 68k (99th, scratchpad/pm99/diff_pm99.py, 1847/1847 over 13 states)
 00016892	pm_regroup_goods       # 98th: goods-driven regroup, tried before $3c08 from $157ba. A0 = $4e514 + word[$4f916+34(A1)+14]; if any owner_leader.goods[3..0] (24(A0)+i) != 0 -> retarget 20/21/22 from 4(A0), prev_mode(30):=$90 (D2), mode(31):=$10, return 1 (D0); else return 0. PROVEN in the 98th $3c08 test (e2e states)
-00005c80	pm_upkeep              # per-entity upkeep: D0 = sbyte[$5ccc + (flags&$1f)] (survivability cap); if anim_wear(14) >= $3c and cap - 4*(wear-$3c) < 0 -> $5bd2 removal; then if morale(45) < 0 -> clr, elif cap > morale -> morale += ($57fec & 1). 93rd RIDER 3b: morale-creep + clr paths PROVEN vs real 68k (675/675 $14b62 test); wear/$5bd2 path asserted OFF (max wear 44 < $3c across pm88_f1/pm78_settle/pm73_fight/pm74_late)
+00005c80	pm_add_strength        # `_add_str...` = add strength (byte 45 is the strength/health the captain panel prints as "Strength:", `$912a`; older notes call it morale): D0 = sbyte[$5ccc + (flags&$1f)] (the cap for the job); if anim_wear(14) >= $3c and cap - 4*(wear-$3c) < 0 -> $5bd2 removal; then if strength(45) < 0 -> clr, elif cap > strength -> strength += ($57fec & 1). 93rd RIDER 3b: morale-creep + clr paths PROVEN vs real 68k (675/675 $14b62 test); wear/$5bd2 path asserted OFF (max wear 44 < $3c across pm88_f1/pm78_settle/pm73_fight/pm74_late)
 00005ccc	t_survivability        # data: 17 sparse bytes, flags&$1f in {0,1,2,4,8,$10}->{90,82,69,79,72,95}, else 0; $11->0
 00005bd2	pm_unit_remove         # remove a spent unit: decrement leader troops (8($4e514)) or group force (-24($51538)); $5c10
 00005c10	pm_unit_to_corpse      # neg byte5, morale 0, category $c, countdown $a0
@@ -172,7 +174,7 @@
 00001e8c	pm_route_targetchar_tbl # $1d70: word[$1e8c + 44(member)] -> preferred terrain char ('N'/'P'/'S'/'B'/...); member byte44 must be even
 00001e9e	pm_rank_shape_tbl	# orig rank_sha (audit, 134th): its head is a 21-column signed table of the rank former $1d70; the old "route string table" reading is retired. $1d70: word[$1e9e + D1] = offset (from $1e9e) of a 'C'($43)-delimited terrain-code string; D1 = 2*(15 - highbit(word[grouprec-24]))
 00017a46	pm_group_minimap_redraw # $3c46 teardown: D2 = group offset. iff word[$51538+D2-48] == word[$57ffe] (selected group): copy group-state glyphs from $184d8 into *($e0d4) (HUD minimap buffer). 99th: a tracked-region NO-OP (callcap touches 0 bytes in obj/$47970/$4e514/$4f916)
-000025d6	pm_ui_counter_bump     # bump $12abe/$12acc UI counters, AES/VDI redraw
+000025d6	pm_add_captain         # `_add_cap...`: make the man in A1 a captain of side byte5(A1): (D3 == 2: bump the counters $12abe/$12acc), two sounds, dissolve his old group ($2776) or take 1 off his old leader's troops_field ($2644, only when he led no group), then build a new group in the side's first free sub-record; the new group's aggression rank is rand & word 12 of $580a6[side] ($275c) and its posture 3. Callers: the revolt chain $5c2c, land 25's $1618a removal path
 
 # ---- entity FSM (ai.md) ----
 00051b66	g_object_records       # 511 x 50-byte object records, slots 1..511
@@ -187,8 +189,8 @@
 00014bb4	t_mode_handlers        # data: mode $00..$94 -> handler word-offset table (handler = $14bb4 + s16 word[$14bb4+mode])
 00014c92	h_mode00_idle          # face + fidget -> mode $0a, or mode $8c if order_class $a
 00014cfa	h_mode02_step          # step (12,13); terrain; land -> bclr#5 + mode $06 + dwell dance; water -> dwell dance. 94th RIDER 3b: PROVEN vs real 68k (reached from mode $08 fall-through)
-00014d32	h_mode06_walk          # step (12,13); $1648e; land -> subq.w #1,18(A1) (==0 -> mode $08) -> epilogue $16202; water -> (order_class $a: bset#5 mode $2) else mode $0 + bra $1622c (NO write-back). 94th RIDER 3b: PROVEN vs real 68k (1335/1335 tracked bytes over 32 states; scratchpad/pm94/fsm_ref.py h_mode06)
-00014d7c	h_mode08_escort        # orbit the lead 28(A1): $12d56 rotate orbit-offset (20,22) by lead heading, + lead pos 8/10, speed := lead.speed+4, $164bc; reached -> copy lead step 12, dwell $a; then $1648e -> land: mode $6 + fall into $14d32 body / water: mode $2 + $14cfa or mode $0. 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states incl. all 5 pm73_fight $08 records)
+00014d32	h_mode06_in_rank       # modes $04/$06, `in_rank` (also labelled `fleet_lo...`): a group follower at his rank slot marches with the lead's step (mode $04 is a table alias nothing sets: 0 men in 2,352 snapshots). step (12,13); $1648e; land -> subq.w #1,18(A1) (==0 -> mode $08) -> epilogue $16202; water -> (order_class $a: bset#5 mode $2) else mode $0 + bra $1622c (NO write-back). 94th RIDER 3b: PROVEN vs real 68k (1335/1335 tracked bytes over 32 states; scratchpad/pm94/fsm_ref.py h_mode06)
+00014d7c	h_mode08_lost          # `lost`: the man is not at his rank slot ($1d70 `_rerank` puts every follower here after assigning (20,22)); walk to the slot: orbit the lead 28(A1): $12d56 rotate orbit-offset (20,22) by lead heading, + lead pos 8/10, speed := lead.speed+4, $164bc; reached -> copy lead step 12, dwell $a; then $1648e -> land: mode $6 + fall into $14d32 body / water: mode $2 + $14cfa or mode $0. 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states incl. all 5 pm73_fight $08 records)
 00014e70	h_mode0e_in_flight	# orig in_fligh; the moving leg of the farmer cycle $18 -> $0c -> $0e -> $24 -> $16 (135th: 275 of 281 $0e men are farmers). march the $168ee spline; integrate step + subq.w #1,18(A1) (!=0 -> epilogue $16202); at 0 -> snap to origin+seg, next point, recompute step (nextpt-seg)>>3 + heading, dwell 8; seg word >=$7d00 = terminator ($7d01 loop: D2-=D1; $7d02+n: mode := n; $7d00: mode := $92). 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states incl. all three terminators)
 00014f08	h_mode10_advance       # advance to target_x/y (prev_mode $2e: chase link_target 48(A1), copy its live pos 8/10; target gone -> mode/prev := $2c); $164bc step; reached -> $15302 (chase) / $14fdc (fixed, snap on target); else probe up to dwell cells ahead along (12,13) via $1648e dbeq -> blocked: mode $4a; else mode := $12 + run $14ff8 body. 94th RIDER 3b: PROVEN vs real 68k (1335/1335 over 32 states; $15302 + $1518a group-state-8 hand-off asserted OFF)
 00014ff8	h_mode12_halt          # cool-down dwell: D6+=step_x D7+=step_y; subq.w #1,18(A1); >0 -> epilogue $161c4 (stay $12); <=0 -> mode := $10 -> $161c4. 93rd RIDER 3b: PROVEN vs real 68k (675/675 $14b62 test) incl. the $161c4 water-veto (mode := $0, no write-back) and the $163ea relink
@@ -403,7 +405,7 @@
 00005fa0	_start_i	# orig T
 000060da	aw_the_e	# orig T
 00006128	_send_eq	# orig T
-0000668c	xfer_com	# orig T
+0000668c	xfer_com	# orig T; the developers' name. The transfer arm (arm 5): D7 != 0, men != 0, nothing else applied: order $04, param D7<<8 = hand this captain group's men to group 0 (`$1c18`). Natural, 5 hits in 75 lands (strategy.md "Natural coverage")
 000066e8	check_va	# orig T
 00006808	set_stoc	# orig T
 000068aa	captain_	# orig T

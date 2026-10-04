@@ -387,10 +387,15 @@ negative controls (prev-mode table entry, `w22` low byte, the byte-6 guard, the
 - **`$2776`** (the `$5590`-tail and `$25d6` group dissolve): Proven (below, "the group dissolve `$2776`"). **Still Corroborated:** `$1b8c`-via-`$5778`, a *different* `$1b8c`
   call site from the one proven here.
 
-### [Proven] — `$4bc8` contact reconcile (nation-pair peace-break + player notify), vs the real 68000
+### [Proven] — `$4bc8` set up the fight (nation-pair peace-break, player notify, both parties to Fighting), vs the real 68000
 
-(Original `_setup_f...`, inferred to be "set up fight": it decides what a contact between two sides does. The
-role above is read from the body, not from the name.)
+(Original `_setup_f...`; the name fits the body: for two parties of different sides it is the place where a contact becomes a fight.
+Its war arm `$4c2a` breaks the peace bits and notifies the player, then `$4cb8` puts each party into the fight: a group goes to state `$d`
+(`$4d70`, the only writer of 13 in the image) and every man of the roster, or of the lord's settlements, goes to mode `$2c` with the opponent in
+`46` through `$4dae`. Live, `py/names/probe.py` from `pm143/run/p0k0_s1.snap`: 5 of 5 natural calls, groups to 13 in 5 of 5 and 19 to 53 records
+re-moded per call (the camped group's 35 men `$68` to `$2c`); `py/names/hits_census.py` over four 50M-step runs: `$4c2a` hits equal `$4bc8` hits, 16 of 16,
+and 0 at peace (`m1_ready`). The same-side arm (a state-8 group makes camp, `$35f4`) had 0 natural hits. Call sites: `$5778`, `$1518a` (arrival of the attack),
+`$5c2c`, the AI's `$68e2`, the help call `$4ee8` (`$4f44` and the recursion below) and `$d322`'s `$d474`.)
 
 
 `tools/pm_fsm_ref.py` `call_4bc8` (+ leaves `_classify`/`$4de2`, `call_4dae`/
@@ -409,7 +414,7 @@ group order via `$35f4` (the camp) iff that side is kind 4 and its own group is 
 (both the `D6==4` and the mirrored `D7==4` arm covered). `$35f4`'s own ring-
 scatter (up to 4 rings, `$12d56`-rotated radial placement) and lead-to-
 formation-follower (`$68`) conversion are fully exercised; its `$4cff8`
-GARRISON-table marker-placement sub-path (`$3744`) is bypassed by
+prop-table camp-fire placement (kind `$12`, `$3744`; the model's name for the table, GARRISON, is a misnomer: it also holds the fish markers) is bypassed by
 construction in every test state (lead's bit5 flag set) since that table
 isn't in `REGIONS` — a diff there would be invisible regardless, so it's
 flagged as a followup rather than silently assumed correct. `$c5ee`
@@ -459,7 +464,7 @@ bar (100% over ≥ 12 states, ≥ 7 families): PASS. `scratchpad/pm99/hostile.py
 bite; per-family delta address classes are exactly the disasm's fields; two
 `callcap 37c2` byte-identical (`$05ad26002a549747`); `detcheck 1000000` clean.
 
-- **`$37c2` — tear the group lead out of its group.** `D2` = group offset; `A1'
+- **`$37c2` — break camp and fall in (the developers' `_current...`, unresolved beyond the prefix); only its bit-7 arm tears the lead out of its group.** It is the first instruction of every order sender (`$3888`, `$38ce`, `$390e`, `$4b80`, the diplomacy senders), of the `$3c08` bit-4 arm and of the classifier `$4de2`, and on its ordinary path (bit 7 clear) it leaves the group record, roster and state alone: live callcap on the player's camped group in `m1_ready` (`D2 = $188`): state stays 6, 26 of 26 men `$68` to `$08`, one camp-fire byte `$12` to `$11`; 12 of 12 natural calls in `pm143/run/p0k0_s1.snap` only re-mode men to `$08` (`py/names/probe.py`). `D2` = group offset; `A1'
   := $51538 + D2` (group record), lead entity `A0' := $51b66 + word[grouprec−12]`.
   `iff lead.owner > 0` clear `lead.category(6) := 0`. Then branch on
   `lead.flags` bit 7:
@@ -470,7 +475,7 @@ bite; per-family delta address classes are exactly the disasm's fields; two
     **set** → `jsr $1b8c` (`A0 := $51b66 + lead.word28`, `D1 := 0`).
   - **bit 7 clear** (the natural slot-21 case): if `grouprec.state == 6` and
     `lead.word46` resolves into `[$4cff8, $4d250)` → that record's `flags(7) :=
-    $11`; then `jsr $1d70` (`A3 := grouprec`).
+    $11` (the camp fire `$35f4` lit with kind `$12` goes out; `$3744` reuses kind-`$11` records); then `jsr $1d70` (`A3 := grouprec`).
 - **`$1d70` — the rank former, the developers' `_rerank`: it places each man of a group in a formation slot by weapon class** (also run on every successful join, strategy.md "What each order does", so it is a rank former and neither a "send everyone home" step nor a capture routine; the rank-shape strings are weapon-class layouts, not terrain: `word[$1e8c + byte44]` maps the carried weapon code to a class letter, 2 Pike `'P'`, 4 Sword `'S'`, 6 Bow `'B'`, else `'N'`, read from RAM and shown live by a `callcap` with 4 swords, 4 bows and 18 pikes poked into the 26-man group: swords placed on row 0, bows on row -2, pikes on rows -1 and 1..3, `scratchpad/pm134/audit/live/cc1d70.json`). Selects a
   rank-shape string (`rank_sha...`) from a table at `$1e9e`, whose head is the signed column table 0..10, -10..-1 (21 columns), indexed by the highest set bit of
   `word[grouprec−24]` (`D1 := 2·(15 − highbit)`); the string is a row layout of
@@ -667,8 +672,8 @@ the settled first-mission view.
 |------|---------|-----:|-----------|
 | `$00` | `$14c92` | – | **idle** (original `out_of_b...`). If `33(A1)==$a` (carrying a Boat) → bit 5 set, become `$8c` (afloat, holding course). Else `$14caa`: set dwell 20, face a direction from `17(A1)` + flags, small fidget |
 | `$02` | `$14cfa` | – | **afloat step** (original `in_fleet`): step by (12,13); sample terrain; on hitting an obstacle clear bit5 and drop to mode `$06` *(Proven, movement-modes block; reached from mode `$08`)* |
-| `$04`/`$06` | `$14d32` | – | *(Proven, movement-modes block)* step by (12,13); `$1648e`; **land** → `subq.w #1,18(A1)` (`==0` → mode `$08`) → epilogue `$16202`; **water** → carrying a Boat (`33 == $a`): `bset #5` (afloat) + mode `$02`, else mode `$00` + `bra $1622c` (no write-back) |
-| `$08` | `$14d7c` | – | *(Proven, movement-modes block; original `lost`)* **orbit the lead `28(A1)`**: `$12d56`-rotate the orbit offset `(20,22)` by the lead's heading, `+` lead position `8/10`, `speed := lead.speed + 4`, `$164bc`; on arrival copy the lead's step `12` + dwell `$a`; then `$1648e` at the new spot → land: mode `$06` + fall into the `$14d32` body / water: mode `$02` (`$14cfa`) or `$00` |
+| `$04`/`$06` | `$14d32` | – | *(Proven, movement-modes block; original `in_rank`, also labelled `fleet_lo...`)* **a follower at his rank slot marches with the lead's step**: every man in `$06` is a group follower (flag bit 6) with a live leader in `28` and non-zero `(20,22)` rank offsets (31,995 of 31,996 over 2,352 snapshots, `py/names/census_modes.py`); mode `$04` is a table alias nothing sets (no immediate writer, 0 men in those snapshots). Step by (12,13); `$1648e`; **land** → `subq.w #1,18(A1)` (`==0` → mode `$08`) → epilogue `$16202`; **water** → carrying a Boat (`33 == $a`): `bset #5` (afloat) + mode `$02`, else mode `$00` + `bra $1622c` (no write-back) |
+| `$08` | `$14d7c` | – | *(Proven, movement-modes block; original `lost`)* **not at his rank slot: walk to it.** `$1d70` (`_rerank`) sets mode and previous mode `$08` on every follower after it assigns the slot offset `(20,22)`; live from `p0k0_s1`, 17 of 17 and 34 of 34 men go to `$08` and then to `$06` and back (`py/names/rerank_follow.py`); 10,970 of 10,970 men over 2,352 snapshots are followers of a live leader. The body **orbits the lead `28(A1)`**: `$12d56`-rotate the orbit offset `(20,22)` by the lead's heading, `+` lead position `8/10`, `speed := lead.speed + 4`, `$164bc`; on arrival copy the lead's step `12` + dwell `$a`; then `$1648e` at the new spot → land: mode `$06` + fall into the `$14d32` body / water: mode `$02` (`$14cfa`) or `$00` |
 | `$0a` | `$14e1e` | – | dwell `18`; at 0 → mode `$08`, or mode `$10` if no linked entity |
 | `$0c` | `$14e56` | 6 | save (D6,D7) → (36,38), load the `farm` path (original `start_fl...`; the `$168ee` table's `farm` entry, cursor `$50..$73`), → mode `$0e` |
 | `$0e` | `$14e70` | **445** | *(Proven, movement-modes block)* **the farmer's walk along the `farm` path of the spline table `$168ee`** (original `in_fligh...`; 275 of 281 live men in the mode are farmers over 11 snapshots, so it is not a "patrol"): integrate step + `subq.w #1,18(A1)` (`!=0` → epilogue `$16202`); at 0 snap to origin+segment, read the next point, recompute step `(nextpt−seg)>>3` + heading, dwell 8; segment word ≥ `$7d00` = terminator (`$7d01` loop: `D2 -= D1`; `$7d02+n`: `mode := n`; `$7d00`: `mode := $92`) |
@@ -687,9 +692,9 @@ the settled first-mission view.
 | `$2e` | `$15302` | – | **reached the target** `48(A1)`: snap `(D6,D7)` onto it, set both mode bytes `$32`; `jsr $56a6` iff `s8(mode(target)) <= $2c` **or** `s8(prev_mode(target)) >= $3c` (signed byte tests; a target in a combat or order mode with an old prev mode below `$3c` is not engaged). *Proven, `py/fsm15/gate_fsm15.py`: 49 states over seven target mode/prev pairs; the engage fired in 6 of 7 for ($10,$10), 7 of 7 for ($68,$68)* |
 | `$32` | `$1533c` | – | *(Proven, see the combat block above)* **melee**: `tst.b 5(A3) <= 0` or `30(A3) == $3c` (target dead, or routed: the ROUT roll stamps `prev_mode := $3c`, original `run_away`) → mode/prev `:= $2c`, epilogue `$161c4`. Else face away (`17(A3) := 17(A1) + $80`); if target `31 != $32` → `jsr $56a6`. **Drain health `45(A3)` by `(s8(44(A1)) < 6 ? 44(A1) : 0) >> 1 + 1`** via `sub.b` (the `>= 6` arm is a hard `moveq #0`, *not* `min`). `> 0` → mutual retaliation (`48(A3) := self`, `31(A3) := $32`, `bra $1622c` — no epilogue). `<= 0` → `jsr $5590`, then mode/prev `:= $2c` + `$161c4` |
 | `$34` | `$153b2` | – | **shot cool-down** (*counted*: 400 snapshots hold men in it with the dwell high byte 5..20; bytes 30 and 31 both `$34`, `48(A1)` a live man of another side, shooters all byte 7 `$10`): set by `$5150` after its `$57f0` call, which seeds the dwell high byte with `$14` (`move.b 15(A0),18(A1)`); `subi.b #1,18(A1)` per tick (a byte, the low byte 19 is untouched; `watch` over 900k steps: five byte writes `$0f`..`$0b`, one per ~216k steps), then at negative mode/prev `:= $2c`, so 21 ticks |
-| `$36` | `$153cc` | – | **chase the entity `48(A1)`** (original `goto_ani`, "go to animal"; 0 men in mode `$36` or `$38` in 400 snapshots and in 20 Play Random Land snapshots, so never seen naturally). Set only by `$5100` in `$50da`, the `38(A1) == 8` arm of the `$4f68` picker (one `move.b #$36,31(A1)` in the whole image, fresh `0..$1d000` listing), when `5(target) > 0`; `38 := 8` comes from `$4dae` with the class `D7 = 8` of a category-8 (animal) record that engages the party, so the natural target is an animal (inferred; no live animal contact seen). Target dead (`5(A3) <= 0`) → `6(A1) := $e`, mode `$68`; else `$164bc` steps toward its position; on contact (the block at `$15428..$1545c` is unreachable) dwell `18 := $a`, mode `$38` (`$1547e`, the slaughter: `subi.w #1,18`), the target's byte 7 `:= $10`; at 0 the target becomes category `$1c` (carcass) with its side byte negated, and the chaser either adds `$b4` food to its home lord and calls `$3c08` (no byte-7 bit 4/6) or adds `$b4` to the group's food and calls `$35f4`. *Poke-driven, 3 of 3* (`k5_s4`, chaser `30/31 = $66 $36`, `48` = a man: target byte 7 -> `$10`, side negated, category `$1c`; the lord's food `+$b2` against the code's `+$b4`, 2 unattributed; the group branch left the lord's food unchanged); `scratchpad/pm137/C_modes/drive36.py` |
+| `$36` | `$153cc` | – | **chase the entity `48(A1)`** (original `goto_ani`, "go to animal"; **natural**: 0 men in mode `$36` or `$38` in 400 snapshots and in 20 Play Random Land snapshots only because the mode lasts about three ticks; `hits` over 75 unpoked Play Random Land lands of 2G steps found it once from the AI (below) and a player's sword click on a lone sheep reaches it in 3 of 3 lands). Set only by `$5100` in `$50da`, the `38(A1) == 8` arm of the `$4f68` picker (one `move.b #$36,31(A1)` in the whole image, fresh `0..$1d000` listing), when `5(target) > 0`; `38 := 8` comes from `$4dae` with the class `D7 = 8` of a category-8 (animal) record that engages the party, so the target is an animal. **Who gets there** (`py/arms/`): `$4bc8` is entered from `$1518a` when a group's march `$0c` ends (mode `$30` arrival), and `$4a7a`, which resolves the order's target cell, takes a foreign settlement (kind 2 or `$10`, other owner) first, then a foreign man, then the first animal-class record (kinds 8, `$14`, `$16`; it sets `204(group) := 8`), then a tree (`$c`). A cell with none of the first two but a sheep therefore sends the whole party after the sheep. *Player, live, 3 of 3* (Play Random Land k56, k25, k120; `py/arms/run_sheep.sh`, player inputs only: sword icon (243,190), minimap pixel (x, y+6) of a cell holding one sheep; `$1394c` accepts kind 8 for `$0c`): `$4bc8`, `$4dae` 117 (k56), `$50da`/`$5100` 14, 11 and 17, `$153cc`, then `$1547e`; 8 to 16 men in `$36`, up to 14 in `$38`, the sheep becomes category `$1c` with its side negated and the group's food rises `$b4` (138 → 316, 210 → 390, 144 → 324, less eats); the k56 rerun is byte-identical. *AI, live, 1 of 75 lands* (k108, `py/arms/repro_nat36.sh`, no input): at 55,343,859 steps `bp 5100` with A1 = `$5284a` (a side 2 man, byte 7 `$40`, `38 = 8`), A3 = `$4ccea` (a sheep of side 3's shepherd); side 2's group 0 (31 men) had been ordered to attack lord 8 (nation 1, 0 men at home) at cell (20,42), which already held side 2's own men and a kind-`$10` record, so `$4a7a` found a sheep; `hits`: `$5100` 32, `$153cc` 71, `$1547e` 222; 3M steps later the sheep is category `$1c`, owner -7, and the group's food went 24493 → 24669. Target dead (`5(A3) <= 0`) → `6(A1) := $e`, mode `$68`; else `$164bc` steps toward its position; on contact (the block at `$15428..$1545c` is skipped by the unconditional `bra $15468` at `$15426`; `$15468`, which sets the mode, is live) dwell `18 := $a`, mode `$38` (`$1547e`, the slaughter: `subi.w #1,18`), the target's byte 7 `:= $10`; at 0 the target becomes category `$1c` (carcass) with its side byte negated, and the chaser either adds `$b4` food to its home lord and calls `$3c08` (no byte-7 bit 4/6) or adds `$b4` to the group's food and calls `$35f4`. *Poke-driven, 3 of 3* (`k5_s4`, chaser `30/31 = $66 $36`, `48` = a man: target byte 7 -> `$10`, side negated, category `$1c`; the lord's food `+$b2` against the code's `+$b4`, 2 unattributed; the group branch left the lord's food unchanged); `scratchpad/pm137/C_modes/drive36.py` |
 | — | `$56a6` | – | *(Proven on the `$574a` path, combat block)* **engage**: if `flags.bit6(target)` and the linked enemy `28(A3)` is within `$fff` (Manhattan-max) → `jsr $5778`; then set both mode bytes `$32`, link attacker into `48(A3)`, and pick `46(A3)` — from `28(A1)` / self (`$5730`, if the attacker has a group) or the attacker's leader-table entry (`$574a`, `38(A3) := 2`) |
-| — | `$5778` | – | **contact bookkeeping, not a resolver** — see `strategy.md` "Combat". Marks an engaged garrison `flags = $11`, records the attacker for a support objective, else `$4bc8` (nation peace-break + player notify; Proven, its own block) when group state `!= $d`. |
+| — | `$5778` | – | **the group lead is engaged, not a resolver** (original `_make_ca...`, which it shares only as a truncation with the camp builder `$35f4`; unresolved) — see `strategy.md` "Combat". A camped group (state 6) has its camp-fire prop `46(A3)` put out (`$12` → `$11`, live), the attacker's leader is recorded in `204(group)` when the group already fights, else `$4bc8` (set up the fight, group to state `$d`; Proven, its own block) when group state `!= $d`. Live: 18 natural calls in `p0k0_s1`, 1 changed state 6 → 13, 17 were no-ops. |
 | — | `$5590` | – | *(Proven on the KILL branches, combat block)* **kill-or-rout roll** (from mode `$32` when `health <= 0`): `45(A3) := 0`; `D0 := $30fe = group.field60 − 2` (attacker in a group with a live lead), else `D0 := 0`. `D0 == 0` → **KILL**; `D0 == 2` → `$560a`; else `($57fec + 24(A1)) & 2` parity → KILL / `$560a`. **KILL**: `neg.b 5(A3)`, `32(A3) := 0`, `category $6 := $c` corpse, `dwell := $a0` (160-tick decay), then the `$5628` tail (`$567e` → `leader.population -= 1`). **`$560a`**: `flags.bit5(target)` set → KILL anyway; else `jsr $3c08` (**ROUT** — restructure the group, `prev_mode := $3c`, unit survives; *asserted off in the combat-block proof*) |
 | — | `$30fe` | – | *(Proven, combat block; original `_get_agg...`)* `word[$51538 + 42(A1) + 60] − 2` — the `$5590` roll selector; `2` for the pm73_fight attack group |
 | — | `$57f0` | – | **spawn a projectile** into the first free slot (life word 0) of the 49 effect slots `$4be00..$4c110` (16 B each; D2 = 0 when none is free): copy the shooter's position, `life := $14` (20 ticks; a type `$12` gets its flight time + 1), `type := D1`, `shooter := A1-$51b66`, per-axis velocity bytes 4/5 toward the target via `divu #$78`, link it into its cell (`$16808`), and set the shooter's dwell high byte 18 := `$14`, the low byte of the life word just written (there is no per-weapon reload table) |
@@ -878,7 +883,7 @@ stateDiagram-v2
 `$92` is the do-nothing mode (handler `$161bc`, original `do_nothi...`; code read of the table word and the body:
 `clr.w 12(A1)` / `clr.b 17(A1)`, then the epilogue `$161c4`, and the mode byte is not rewritten): the farm path's
 `$7d00` terminator and the arrival handlers `$22` and `$78` leave a man in it. (Do not confuse it with `$1615c`, which lies inside the
-equipment-exchange tail `$160f8`, or with the `$35f4` call at `$16190..$1619e`, which belongs to mode `$4c`, `$16176`.) `$1518a` is `$4bc8` (contact reconcile) then epilogue.
+equipment-exchange tail `$160f8`, or with the `$35f4` call at `$16190..$1619e`, which belongs to mode `$4c`, `$16176`.) `$1518a` is `$4bc8` (set up the fight) then epilogue.
 `$5590`, `$1d70`, `$3c08`, `$35f4`, `$15302` are routines, not modes, but sit
 on FSM edges and are listed in the symbol table.
 
@@ -1310,7 +1315,7 @@ every ~4M steps (16 pokes; `scratchpad/pm73_fight.evt`, `trace_cfg.py --blocks`)
 | `$5bd2` wear removal | **0** | `anim_wear` never crossed `$3c` in ~276 ticks |
 | `$57f0` projectile | 3 | |
 | `$1d70` re-rank | **15** | runs on every roster change (it re-forms the ranks and writes no ownership) |
-| `$4bc8` contact reconcile | 1 | one nation-pair peace break |
+| `$4bc8` set up the fight | 1 | one nation-pair peace break, groups to Fighting |
 | `$5c80` upkeep | 2136 | ~8 entities/tick |
 
 **Finding.** PowerMonger's battlefield death is a **health-grind**, not an odds
@@ -1354,7 +1359,7 @@ hits with the REPL's `hits` command (`reversing/powermonger/py/runland.sh`; snap
 | `$1623c` dying-entity ticks | 21896 | 5361 | 9756 | 40945 |
 | `$2776` / `$1b8c` | 3 / 74 | 2 / 26 | 2 / 27 | 3 / 52 |
 | `$3c08` regroup | 237 | 155 | 86 | 213 |
-| `$4bc8` contact reconcile | 9 | 16 | 10 | 92 |
+| `$4bc8` set up the fight | 9 | 16 | 10 | 92 |
 | `$5cde` work-order choice | 336 | 59 | 309 | 707 |
 | `$550e` revolt | 6 | 6 | 6 | 6 |
 | `$25d6` (a captain defects, via `$5c2c`; land 25's from the `$1618a` removal path, land 60's from a revolt) | 0 | 1 | 0 | 1 |
@@ -1387,7 +1392,7 @@ the picture does not:
 | `$57f0` projectile | 15 | 37 | 25 | 41 | 35 |
 | `$2776` / `$1b8c` | 3 / 28 | 4 / 85 | 4 / 92 | 3 / 82 | 4 / 78 |
 | `$3c08` regroup | 116 | 139 | 133 | 84 | 151 |
-| `$4bc8` contact reconcile | 11 | 19 | 26 | 10 | 22 |
+| `$4bc8` set up the fight | 11 | 19 | 26 | 10 | 22 |
 | `$5cde` work-order choice | 7 | 401 | 79 | 209 | 46 |
 | `$550e` revolt | 5 | 8 | 14 | 4 | 6 |
 | `$25d6` | 0 | 0 | 0 | 0 | 1 |
@@ -1576,7 +1581,7 @@ typedef struct pm_animal {            // $4ccd6, stride 20, 40 slots
 **The shepherd cycle**: `$80` (at the town) → `$84` (wait 50 ticks) → `$86` (round up the chain's free animals one by one: walk to the midpoint, mark it herded) → `$88` (walk to the cell
 south of the town) → `$82` (walk onto the town and let the herd go) → `$80`. Nothing in the cycle touches food, goods or `troops_field`; the one economy-relevant call is `$16848` at the
 town, the same arrival upkeep every job uses. Animals matter to the rest of the game only as targets: the objective class of category 8 (`$4dae`, picked by `$50da` into mode `$36` and then the slaughter mode `$38`), which nothing a shepherd
-does triggers and which was never seen naturally (the `$36` row above). Natural coverage: of 210 shepherd samples (ten snapshots of each of two lands), 102 were in `$84` (the 50-tick wait dominates), 21 in `$80` and 11 in `$86`; `$88` and `$82` last a single walk each and were not caught.
+does triggers; a march order that ends on a cell holding a sheep does, and that was seen naturally (the `$36` row above). Natural coverage: of 210 shepherd samples (ten snapshots of each of two lands), 102 were in `$84` (the 50-tick wait dominates), 21 in `$80` and 11 in `$86`; `$88` and `$82` last a single walk each and were not caught.
 
 **The carrier-pigeon pool `$4c112..$4c5f2`** (48 records of 26 bytes; `$416e..$4326` of `$3e06`, after the animals): slot 0 is the player's pigeon (launched through `$45ee`, which falls into `$45f2`, from the request served in `$1623c`; landing `$4244`, the
 revival of a dead man described in `economy.md` section 1), the other 47 are the order pigeons launched by `$4562` (through `$45ee`, category `$14`; section "Arrows and carrier pigeons" below). Per tick a live record (owner byte > 0, category
@@ -1650,7 +1655,7 @@ the `$155ac` no-tree exit with flag bit 6, three edge-fail statements of `$15c46
 | `$2a` | `$15282` | 37 | 209 | join, quota 0, negative quota, side mismatch, refused, first-tick dwell, lead not in state 3 |
 | `$2c` `$30` `$34` | `$152f8` `$1518a` `$153b2` | 5, 4, 8 | 5, 309, 12 | `$2c` glue only; `$4f68` is `diff_4f68.py` |
 | `$2e` | `$15302` | 49 | 1088 | seven target mode/prev pairs |
-| `$36` `$66` `$38` `$3a` | `$153cc` `$1540c` `$1547e` `$15518` | 49, 7, 12, 26 | 392, 21, 208, 552 | all four synthetic only; `$3a` indexes the bucket array with `2 * y(target)` (y up to `$7fff`, so it reads outside the array: a defect), proven for in-range y only |
+| `$36` `$66` `$38` `$3a` | `$153cc` `$1540c` `$1547e` `$15518` | 49, 7, 12, 26 | 392, 21, 208, 552 | `$66` synthetic only; `$36` and `$38` have natural entries (AI k108 and a player's sword click on a sheep, the `$36` row; not yet fed to this gate), and `$3a` one natural entry (a sword click on a lone tree cell in k120, `$4a7a` class `$c`, the walk `$519a`, `$15518` 1 hit; `$3a` is the previous mode of that walk, not set by `$5100`); `$3a` indexes the bucket array with `2 * y(target)` (y up to `$7fff`, so it reads outside the array: a defect), proven for in-range y only |
 | `$3c` `$3e` `$40` `$44` `$46` `$6a` | `$15598` `$155ac` `$15680` `$156be` `$15724` `$156e0` | 9, 53, 3, 5, 9, 3 | 20, 258, 14, 35, 11, 19 | |
 | `$48` `$4a` | `$158da` `$1597a` | 277, 9 | 1046, 32 | incl. map-edge probes and the `$80` sweep word |
 | `$4c` | `$16176` | 12 | 453 | `$5c2c` side reconcile (the callcap needs the sound flag `$2c993` poked to 0) |

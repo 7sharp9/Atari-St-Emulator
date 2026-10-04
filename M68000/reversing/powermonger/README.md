@@ -120,7 +120,7 @@ against every session's changes.
   (S "Diplomacy")
 - **The opponent is simple.** Each commander marches at the nearest enemy lord when its army has
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast); AI
-  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 12G steps, and the food fallback, the transfer order and the order refusal are reached only by pokes (S "Natural coverage"). A group under 22 men first goes to its
+  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it. The transfer order (a small captain group handing its men to group 0) is natural but rare: 5 hits in 75 lands, after a defection leaves a lone captain; the order refusal cannot happen from any shipped call site (S "Natural coverage"). A group under 22 men first goes to its
   own best town for men (order `$08`, get men), and the food fallback fetches food the same way. A group
   that has been in camp for 20 ticks then chains food, men, equipment and invention orders from a
   4-entry table (`$6762`/`$67d0`, keyed on the state it came back from); beyond those sequences it has no
@@ -152,7 +152,7 @@ against every session's changes.
 
 ### Bugs and accidents a new design should drop
 
-- The captain panel's loyalty line is a constant: its selector loads index 3 unconditionally, so it always reads "trusting" whatever the lord's loyalty is (the house panel does print it). The group aggression rank the panel prints (group word 72, 0 PowerMonger to 7 Wimp; the posture is the other half of that line and is read) has no AI reader in the field table (inferred, no whole-image reader scan). (S "The game's own text", S "`$51538` — group-order table")
+- The captain panel's loyalty line is a constant: its selector loads index 3 unconditionally, so it always reads "trusting" whatever the lord's loyalty is (the house panel does print it). The group aggression rank the panel prints (group word 72, 0 PowerMonger to 7 Wimp; the posture is the other half of that line and is read) is read by nothing but the panel (a whole-image scan, and 0 differing RAM bytes over 50M steps with all 30 words poked; the land build's block clear `$10768` also writes it). (S "The game's own text", S "`$51538` — group-order table")
 - An order for a subordinate captain compares the sender's cell with record 0 (all zero) instead of the target lead's cell, so it always goes by pigeon; a pigeon shot down by an arrow keeps its record until its target group dissolves, and the pool of 47 order pigeons has no other reclaim. (A "Arrows and carrier pigeons")
 - The arrow's damage test (`subi.b #$52`, then `bgt`) misreads a health byte of `$80` or more as already dead; play keeps health below `$80`. The type-`$12` area effect of the arrow loop has no producer. (A "Arrows and carrier pigeons")
 - The starting job pick bounds the farmer's search row with a stale register (the cell index the failed fisherman search left behind), so a man whose fisherman draw fails can never become a
@@ -173,6 +173,11 @@ against every session's changes.
 - The group dissolve reads the command slot at `3 × side` instead of `6 × side` (a bug, inferred), and the revolt
   chain passes the side in the wrong register; both are transcribed as the code does them. (A
   "The group dissolve", A "The revolt chain")
+- The camp wait compares the group's stamp plus 20 with the 16-bit sim clock as signed words (`$65a0`..`$65a6`, a single use of the clock), so once the clock passes 32768 a camped group with an old stamp
+  waits for the clock to wrap, an estimated 34,800 ticks: decisions fell from about 1,500 and 1,840 per 250M steps to 0 in two lands, at 4.5 to 5.75G steps. Probably unintentional (inferred); a run
+  rarely lasts that long. (S "Natural coverage", the signed-clock stall)
+- An attack on a lord whose cell holds only the attacker's own records is re-issued every tick and never starts (`$4a7a` returns without `$4b80`): 9,660 and 13,594 attack decisions in 2G steps on two
+  lands. (S "Natural coverage", the livelock bullet)
 - The AI's follow-up table `$67d0` is live (34 natural issues, food to men to equipment to invention);
   the invention order reaches its arrival `$5fa0` in 26 of 30 natural cases on the Play Random Land roll, and the chain ends there.
   (S "The follow-up table", S "What an AI invention order does")
@@ -523,7 +528,7 @@ zero `$5590` rolls kill or rout from the attacking group's posture (`$30fe`: 2 a
 4 always routs, 3 rolls on the tick parity; an encircled loser is always killed). The AI stamps
 posture 4 on every group it sends to attack, so AI attackers rout (ten routs and zero kills in a
 re-armed 276-tick mission-1 fight); the player's posture 3 army in the mission-1 win made 5 kills
-and 5 routs. `$5778` is contact bookkeeping, not
+and 5 routs. `$5778` starts the fight (it puts a camp out and calls `$4bc8`, group to Fighting), not
 casualties; arrows (`$596a`) and the slow attrition path (`$5c80` to `$5bd2`, never fired in
 800M later-land steps) are the other channels (`strategy.md` "Combat", `ai.md` "the combat
 path", "Arrows and carrier pigeons").
@@ -561,7 +566,7 @@ reconstructions (corpora, scripts and the branch lists are in the cited sections
   `$56a6`, `$5590`, `$30fe`), settlement heartbeat `$157e6` 99/99 over 27 natural states
   (12 branch families; 85/85 over 25 synthesised states first).
 - Regroup `$3c08` 71/71 (22 states) and its flag-bit-4 group teardown `$37c2` / `$1d70` /
-  `$1b8c` / `$17a46` 1847/1847 (13 states); contact reconcile `$4bc8` 51/51 and 20/20;
+  `$1b8c` / `$17a46` 1847/1847 (13 states); set up the fight `$4bc8` 51/51 and 20/20;
   dying-entity path `$1623c` 275/275 (23 states, `py/diff_1623c.py`); group dissolve `$2776`
   4119/4119 (28 states, `py/diff_2776.py`); lord's work order `$5cde` 768/768 plus 85/85
   returns (47 states, `py/diff_5cde.py`); revolt chain `$550e` to `$5c2c` to `$25d6` 1778/1778
