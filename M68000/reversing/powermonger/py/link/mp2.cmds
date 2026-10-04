@@ -1,0 +1,19 @@
+mouse move -400 -400
+s 300000
+mouse move 0 0
+s 300000
+mouse move 105 115
+s 300000
+mouse move 0 0
+s 300000
+mouse down l
+mouse move 0 0
+hits 300000 6eb6 ba74 c1be 1c390 1c340 1c30a 1c328 cee6 71ae 6f28 6f74 6f10 71a2 7658
+mouse up l
+mouse move 0 0
+hits 2000000 6eb6 ba74 c1be 1c390 1c340 1c30a 1c328 cee6 71ae 6f28 6f74 71a2 7658
+m 2df6c 2
+m 7a36 16
+m 71fc 4
+snap scratchpad/pm147/link/mp_trying.snap
+q

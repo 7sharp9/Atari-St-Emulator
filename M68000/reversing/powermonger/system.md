@@ -43,15 +43,49 @@ the four season and weather sounds of `$1abaa` (`$1acc8`, `$1acec`, `$1ad06`, `$
 channel or −1, priority 99/9/7, flags `$a0`); ids 57..59 have no sequence (`events.txt`). Start and stop: `_start_s` `$126d6` (called at the end of the land build, `$13c60`) plays `$1ba3e(0)` then `$1ba3e(($57fd0 >> 1) + 1)` and clears `$58058..$58077`, `$58054 := 1` (live, natural); `_stop_so` `$12726`
 (callers `$6eba`, `$774c`, `$d2d2`, `$13ce8`, `$13d1a`) makes 8 `$1ba3e` calls and clears the event table (live: 8 calls, every one `$1b9d0(0, $80)`; `callcap $12726` never returns because the driver spins on an interrupt-cleared flag at `$1ae46`, use the natural hit).
 
+## The file layer: FAT12 reader, FDC driver, depacker
+
+The game does no GEMDOS, BIOS or XBIOS disk call. It carries its own FAT12 reader and a direct WD1772 DMA driver, so its files are read with the game's own code on any disk image (`py/disk/`).
+
+- **`diskio` `$d9fc`** (code read; its reads are live in every load below). D0 bit 0 = drive, D0's high word = sectors per track (forced to 9..11, 10 when 0), D1 = logical sector, D2 = count, D3 low byte = 0 read / 1 write / 2 format (the `$80` high byte of the saves' D3 is tested at `$dde8`, meaning not read), A0 = buffer. It programs the FDC through the DMA registers `$8604..$860d`, polls MFP `$fa01` bit 5 for completion, retries three times with recalibrate and seek, and a `callcap` of `$1bd70` or `$1bdfe` ends in "Loop detected at PC=$1876", the frame wait `$1870` (`tst.w $2df8c / beq`, the flag is set by the VBL handler, which `callcap` masks; the caller of that wait was not identified).
+- **`fileio` `$d574`** reads `A:\DIR\NAME.EXT` into A1 (code read; its reads are the live loads below). `$d594` takes the drive letter, `$d5b6` upper-cases and pads to 8.3, `$d62a` reads the boot sector into the geometry variables `$d7e4..$d7ef` (root entries, sectors per FAT, sectors per track, double-sided flag), `$d66e` scans the root directory and descends into `DATA`, `$d6f4` walks the 12-bit FAT chain (`$d770`) and reads runs of contiguous clusters in one `diskio` call. D0 = 0 on success, `-33` file not found, `-1` read error.
+- **Resource table `$e0c4`**, 16 entries of 12 bytes: name pointer, destination, last file length (`$def0` returns it from the constant length table `$df12`, which equals the real file sizes; `$df52` stores it at `+8`). `$e084` holds the unpacked sizes, `$e040` the cache slots (`$e03e` enables caching into the pool at `$2c1ba`). `$df52(i)` copies from the cache if the slot is set; otherwise `$d4d2` loads the file at its destination (resource 0's destination is computed, `($2dfa0 + $80) & ~$7f = $2e000`; a missing file puts up `$1bec8` "PLEASE INSERT THE POWERMONGER DISK" and retries, code read), `$e2b8` unpacks it in place when the file length differs from `$e084`, and the result is copied into the cache.
+
+| i | file | destination | unpacked size |
+|---|---|---|---|
+| 0 | TEXTURES | `$2e000` | 12928 |
+| 1 | QAZ | `$78000` | 32000 |
+| 2, 3, 4, 5 | SPRITE16, SPRITE8, SPRITE24, SPRITE32 | `$312a0`, `$33000`, `$37c7c`, `$3af1c` | 7520, 19580, 12960, 17280 |
+| 6, 7 | CAP_SPR, BITMAP (not on the disk) | `$3f29c`, `$3f29e` | `$1800`, `$1000` |
+| 8 | CAPGRAPH | `$1c700` | 32000 |
+| 9 | FX | `$5879a` | 93034 |
+| 10, 11 | MAP, MAPDATA | `$3f364` (both) | 97280, 65268 |
+| 12, 13, 14, 15 | END_PIC1, END, LOSE, WIN | 0, `$3f768`, 0, `$24400` | 32000, 73310, 32000, 32000 |
+
+All names are `DATA\<NAME>.DAT`. Every on-disk file is crunched, with the unpacked size in its trailer equal to `$e084` (14 of 14; `SPRITE40.DAT` is a plain developer file nothing loads). END (the end-screen resource) loads over `$3f768`, the save buffer. The table's destination 0 for END_PIC1 and LOSE means the caller supplies the screen buffer (not traced).
+
+**`decrunch` `$e2b8`** (A1 = buffer, D0 = packed length) is a header-less backward LZ depacker that works in place: the stream occupies A1..A1+D0, the last three longs are `[bit-buffer seed][checksum seed][unpacked size]`, and output is written downward from A1 + size. Bits are taken LSB first from the longword buffer; each refill reads the next lower long and shifts a sentinel 1 in at the top (so a refill supplies 32 data bits and the seed 0..31). D5 starts as `checksum ^ seed` and is XORed with every longword read; it must be 0 at the end, otherwise the routine spins at `$e352` (a corrupt file hangs, it does not report). Tokens, multi-bit fields MSB first:
+
+| bits | meaning |
+|---|---|
+| `00` + 3-bit n | literal run of n + 1 bytes (8 bits each) |
+| `01` + 8-bit off | copy 2 bytes from `A2 + off` |
+| `100` + 9-bit off | copy 3 |
+| `101` + 10-bit off | copy 4 |
+| `110` + 8-bit v + 12-bit off | copy v + 1 |
+| `111` + 8-bit v | literal run of v + 9 bytes |
+
+A copy is `repeat { A2 -= 1; (A2) = (A2 + off) }`, so overlapping copies repeat a pattern; the loop ends when A2 reaches A1. This is not the "Ice!" packer of the crack (README "Bugs 2 and 3"); it is the game's own. Gates, `py/disk/`: `gate_decrunch.py` **48/48** (the real routine through `callcap` on 40 synthetic streams from the model's own encoder and 8 real files, byte-identical output plus D5 = 0 and A2 = A1; the checksum-failure spin is not tested), `gate_load.py` **6/6** (`callcap $df52` for resources 0, 2, 3, 4, 5, 9 from `m1_win` with the game disk mounted: the file is read by the game's FAT12 reader and unpacked, and RAM at the destination equals the model's decode of the file extracted from the image, with the `+8` length and cache slot updated); `decrunch_model.py` alone decodes all 14 files with checksum 0. Live, Play Random Land from `m1_win` calls `$df52` twice (indices 1 and 8) and reads no disk (`$d574`, `$d9fc`, `$e2b8` 0 hits in 70M steps): both are in the cache.
+
 ## The save-disk code
 
-A save disk is formatted by the game itself (code read throughout; the FDC and the requester were not run, apart from the sector-0 read).
+A save disk is formatted by the game itself (code read throughout; the FDC and the requester were not run, apart from the sector-0 read). **A saved game is not the 195 conquest bytes**: a slot is 198 sectors (101,376 bytes) read from or written to RAM `$3f768..$58368`, the conquest map being only its first 195 bytes (code read; `callcap` could not complete the slot transfer, see below).
 
 - `_format_` `$1ba72` formats 800 sectors (`diskio $d9fc`, D3 = 2), writes the ID sector `sgmsg` `$1bb0e` and prompts through `$1c16c`. It is the file-menu code `$77` of `strategy.md`.
 - **Sector 0** is the 512-byte buffer `$1bb0e`: the text "POWERMONGER ST SAVED GAME DISC ... LAST ST PRODUCT FROM BULLFROG!", then at `+$ec` 26 slot-used flags (`save_use` `$1bbfa` is that tail, not a separate table), zero padding to `$1bd0e`. `_is_it_s` `$1bd52` reads sector 0 (D1 = 0, D2 = 1, D3 = 0) into the buffer and compares its first long with `'POWE'`
   (live with the game disk mounted: the buffer becomes the boot sector `60 38 ..` and the compare fails).
-- `_dda_loa` `$1bd70` loads a slot: the slot letter is byte `$e296`, the fourth character of the leftover name `A:\WARx.GAM`, slot = letter − 'A'; 198 sectors from sector `slot × 198 + 1` into `$3f768` (D3 = `$8000`); an unused slot shows "SAVE GAME DOES NOT EXIST". `_dda_sav` `$1bdfe` saves: the overwrite prompt if the flag is set,
-  198 sectors with D3 = `$8001`, sets the flag, rewrites sector 0. Callers `$e29c` (load) and `$e288` (save). Slots A..D fit an 800-sector disk (4 × 198 + 1 = 793; inferred: the menu's slot count at `$aeac` was not read).
+- `_dda_loa` `$1bd70` loads a slot: the slot letter is byte `$e296` (the fourth character of the leftover name `A:\WARx.GAM` at `$e290`; nothing opens that name, it is vestigial, and the only writer of `$e296` is `$75ce`, `move.b D0,$e296` after `+ 'A'` of the slot-row index the FILE panel's row handler `$75c4` finds, whole-image grep), slot = letter − 'A'; 198 sectors (`moveq #58,D2 / neg.b D2` = 198) from sector `slot × 198 + 1` into `$3f768` (D3 = `$8000`), that is RAM `$3f768..$58368`: not only the 195 conquest bytes but the whole region above them (this overlaps resource 13's buffer, the terrain `$438ee`, the object array `$51b66` and the `$580a0..$58368` link/save block, so a load from inside a live land would overwrite them; not tried); an unused slot shows "SAVE GAME DOES NOT EXIST". The disk carries no checksum: the only checks are the `'POWE'` header and the slot flag. `_dda_sav` `$1bdfe` saves: the overwrite prompt if the flag is set,
+  198 sectors with D3 = `$8001`, sets the flag, rewrites sector 0. Callers `$e29c` (load) and `$e288` (save). Slots A..D fit an 800-sector disk (4 × 198 + 1 = 793); the FILE panel (`$aeac`, template `$b0ad`, a data block, not code) has four slot rows A..D and shows SAVE and FORMAT only when `$14e4e == $2c` (formatter `$af06`). With `callcap`, sector 0 (`$1bd52`) reads from a synthetic save disk (`py/disk/gate_save.py`, header documents the limit) but `$1bd70` and `$1bdfe` never return even with the `$1870` wait patched out: they stop in the retry loop after the first few KB, so the 198-sector transfer and the write path are code read, not run.
 - `_do_req` `$1bf0e` takes a message pair in A0, turns the drive off (`_turn_mo` `$1bf2e`: PSG register 14 `|= 7`, both drives and the side deselected), calls the requester `$cce2` and returns D0. The stubs `$1bec2..$1bf0a` are `lea msg,A0 / bra $1bf0e`:
 
 | stub | message | text |
@@ -81,7 +115,9 @@ A save disk is formatted by the game itself (code read throughout; the FDC and t
 | TDDR | 01 | 02 | 04 | 05 | 08 | 0a | 0b | 10 | 20 | 40 | 60 | 80 |
 
 `_check_s` `$1c30a` returns `|write − read|` (`callcap` with indices 5 and 3: D0 = 2), `_clear_s` `$1c328` zeroes both indices; `_reset_s` `$1c298` only copies the two vectors into `old_tbe` and `old_rbf`, restores nothing and has no caller. The ring struct at `$58368` (read index `+0`, write `+2`, limit `+10`, data `+12`) and the link states `$1c340` and `$1c390`
-are in `strategy.md` "Serial-link states"; the handshake `$6eb6` is not read.
+are in `strategy.md` "Serial-link states".
+
+**What the setup serves.** The hardware is one USART byte stream with no framing, protocol or error recovery below the game: a blocking write `$1c390`, a blocking read `$1c340`, a 201-byte ring. `_set_ser` does not touch the RBF/TBE enable bits (live `m1_win`: IERA = IMRA = `$3e`, TCDCR `$51`, Timer D running; presumably TOS's boot setting, not traced). The only users are the per-tick order mirroring of slot states 6 and 8 and the connection handshake `$6eb6`, read in `strategy.md` "The link handshake `$6eb6`": probe with `'?'` (`$71fc`), swap the 712-byte setup block `$580a0..$58367` byte for byte in lockstep, compare 8-bit sum checksums, OR the "computer" flags, make the own slot state 6 and the peer's 8, and let the lower-numbered side's block overwrite the other machine's (both then rebuild the same land). Proven by `py/link/link_gate.py`: the real routine against a scripted peer (four scenarios, 715 of 715 bytes sent each, RAM equal to the model in the two merge cases). The emulator's MFP is a plain byte array (no USART): TSR bit 7 never sets, so the real `$1c390` spins at `$1c39e` until the gate pokes TSR (`w fffa2a 00010081`) and the busy flag `$5836c` per byte.
 
 ## Not exercised
 

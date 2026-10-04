@@ -647,7 +647,7 @@ are baked once into the `$78000` master by `$13b9a`; there is no per-frame sea f
 
 Evidence: the projection is proven against the real 68000 by `callcap` (called in isolation
 with `A3 = $13f8a`, the recomputed `$3f364` is byte-identical to the stored corner buffer on
-four captures; an integer reconstruction, `scratchpad/pm92/proj_ref.py` (scratch only, not promoted), matches 3240/3240
+four captures; an integer reconstruction, `py/proj/proj_ref.py` (gate `py/proj/gate_fecc.py`), matches 3240/3240
 vertices over 36 generated camera states plus four natural captures, zero fudge; the earlier
 float version agrees to one pixel); the rasteriser is byte-exact against a live single-step
 (all 128/128 `$ef62` calls of a frame, the dither phase on every scanline of two traced

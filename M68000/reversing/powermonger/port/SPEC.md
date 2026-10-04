@@ -70,8 +70,7 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 
 **Scratch-only scripts (not promoted).** Several results above and below were produced by scripts that
 live only in the gitignored `scratchpad/` (some only on `gpubox`, not on the Mac), so they cannot be
-re-run from the repository: `scratchpad/pm92/proj_ref.py` and `diff_fecc.py` (the integer `$fecc`
-reconstruction and its `callcap` diff), `scratchpad/pm83_synth_check.{py,fsx}` (F# vs Python on
+re-run from the repository: `scratchpad/pm83_synth_check.{py,fsx}` (F# vs Python on
 synthetic quadrant data), `scratchpad/pm90_xcheck.{py,fsx}` and `pm91_ent_{fs.fsx,py.py}` (entity pass cross-checks),
 `scratchpad/pm118/` (`baseline.fsx`, `order_test.fsx`, `phase_test.fsx`), `pm118b/` (`lastrow_fix.fsx`),
 `pm119/` (`season_check.fsx`, `pan_check.fsx`, `zoom_check.fsx`, `jitter_check.fsx`) and
@@ -240,11 +239,11 @@ state, capture its full register + changed-memory delta, snapshot-restore):
   stored buffer** across `pm78_settle` / `pm88_f1` / `pm73_fight` / `pm74_late`.
   So the in-RAM corner buffer that the terrain scores rely on *is* the projection
   output, reproducibly; the comparison is not circular.
-- A from-disassembly integer reconstruction (`scratchpad/pm92/proj_ref.py`, scratch only, see Status —
+- A from-disassembly integer reconstruction (`py/proj/proj_ref.py`; promoted, see Status —
   `$fecc` + `$fe8e` HBIAS + `$ff7c` divide, transcribed line-for-line, **no float
   `sin`/`cos`, zero fudge factors**) matches the real `$fecc` output over **36
   generated camera-cell states + 4 natural captures: 3240/3240 vertices exact**,
-  full corner-buffer comparison (`scratchpad/pm92/diff_fecc.py`, scratch only).
+  full corner-buffer comparison (`py/proj/gate_fecc.py`, rerun from the repository).
 - Pre-registered falsifier: any single vertex X or Y off by ≥1. Pass bar: 100%
   exact over ≥30 generated states + all 4 natural captures. Result: PASS.
 

@@ -1285,3 +1285,17 @@
 012a78	snd_ev_pigeon
 01c464	baud_tab
 01c47c	tddr_tab
+0075c4	panel6_slot_row
+00af06	panel6_formatter
+00af0a	file_label_save
+00af24	file_label_format
+00b476	brief_pages
+00b4be	put_number
+00b4d0	brief_noun
+00bf94	centre_name_hook
+00d594	fio_parse_drive
+00d5b6	fio_name83
+00d62a	fio_boot
+00d66e	fio_rootdir
+00d6f4	fio_read_chain
+00d770	fio_fat12_entry

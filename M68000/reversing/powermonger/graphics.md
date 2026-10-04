@@ -86,7 +86,7 @@ for (row = -H; row <= H; row++)             // H = $fdec, zoom-dependent half-ex
   garbage `A3` leaves 158 of 162 corner bytes wrong) recomputes a `$3f364` byte-identical to the stored buffer on
   four captures, and an integer reconstruction of `$fecc` + `$fe8e` (HBIAS) + `$ff7c` (the divide), with no float and
   no fudge, matches it on 36 generated camera-cell states plus 4 natural captures, **3240/3240** vertices
-  (`scratchpad/pm92/proj_ref.py`, `diff_fecc.py`; not promoted to `py/`, SPEC §3 "Proven vs the real 68000").
+  (`py/proj/proj_ref.py`, gate `py/proj/gate_fecc.py`, rerun from there: 3240/3240; SPEC §3 "Proven vs the real 68000").
 
 ### `$f898` — the render entry
 
