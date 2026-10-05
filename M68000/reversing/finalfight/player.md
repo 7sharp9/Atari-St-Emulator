@@ -189,8 +189,11 @@ Enemy damage on Cody is the unscaled `$7a04` (`frame.md`).
 | 36-38 | `rts` | | [R] |
 
 **Weapons** (pool 6, 6 records at `$ff90a8`, updater `$5962`, 6 kinds `$57a76`, `$5828e`, `$58b1c`, `$5935e`, `$5957a`, `$59b2e`): a drop byte `D2 >= $24` creates kind `D2 - $24`
-(`$5a9a4`, allocator `$38ce`). Kinds 0, 1, 2 are picked up by Cody [L]; kinds 3 and 4 spawned but Button 1 started a grapple instead (2 of 2), kind 5 vanished within 115 frames:
-[I] enemy-side objects. Pickup `$9c72`: record in use, `64 == 0`, `74 == 0`, `|x diff + $16| <= $2c`, `|y diff + $b| <= $16`. Use: the move table. Names (knife, sword, pipe) are [I]; a carried weapon at area clear is converted to points (state 10).
+(`$5a9a4`, allocator `$38ce`). Kinds 0, 1, 2 are picked up by Cody [L] (`py/objects/pick_run.sh`: kinds 0 and 2 held, `64 = $ff`, `66 = 2`, `74 = 1`, player sub `$18`). Pickup `$9c72`: record in use, `64 == 0`, `74 == 0`,
+`|x diff + $16| <= $2c`, `|y diff + $b| <= $16`. **Kinds 3 and 4 can never be picked up**: kind 3 (SHELL, `$5935e`) is the EDI.E gun bullet (created at `$467d2` with the owner in `+76`; it flies at 10 px per frame
+with `74 = $ff`, hurts both players and the pool-2 fighters for a flat 40 hp and reaction 3 through `$6a2c`/`$6af2` (damage byte table `$6b1a`, all `$28`; Cody 144 to 104, `py/objects/gates.sh` "shell") [L]) and kind 4 (BOTTLE, `$5957a`)
+is the fire bottle (`ai.md`, "The bottle and the fire") whose `74` is never 0; a Button 1 press at the feet of a resting kind 4 started an ordinary attack (sub `$14`, 1 of 1). Kind 5 vanished within
+115 frames: [I] an enemy-side object (BELGER's arrow, created at `$4fe00`..`$4fe9e`, and by `$a83e`; the handler `$59b2e` is unread). Use: the move table. Names (knife, sword, pipe) are [I]; a carried weapon at area clear is converted to points (state 10).
 
 **Breakable props** (pool `$a`, 16 records at `$ffb2e8`, updater `$59a4`, 19 kinds `$515a6, $517b6, $51bfc, $52018, $522e6, $52476, $526f4, $5298c, $52d3e, $52f84, $5368a, $53f68, $5423c, $5440a, $545dc, $5477a, $54b4a, $54df8, $551e2`):
 stage 1 holds only kind 5. Hit handlers (`$70f4`): default `$7156` for kinds 0, 2 to 8, 10, 18 (attacker `19(A1)` into `105`, `60 = A1`, hit type, sound `$7334`, scaled damage `$79d8`, spark, facing `$7a38`, hit-stop 6,
@@ -265,5 +268,5 @@ Guy's and Haggar's rows were run live from states with the character chosen on t
 - Hit types 2 (seen once), 4, 5, 7, 8, 9 on the player: poke `63(A6)` with sub 6 `4 = 0`, or find the enemy attack boxes that carry them.
 - Sub 4 (pit fall), `$1c`, `$22`, the held-by-enemy grapple subs 4, `$e`, `$10` (sub `$16` is Guy's wall jump, [L] in `twoplayer.md`; Guy's and Haggar's combos, specials and throws are proven live there).
 - The rest of state 12 (the scene's own steps) and the stage-6 behaviour (`$bdf4`, `$bab6` disabled when `190(A5) = 6`); the per-stage scripts of states 8 and 10 are tabulated in `transitions.md`.
-- Item names, prop names, weapon names, pool-6 kinds 3 to 5, item type 35, the continue scene's sub-states and digit timing (player 2, mid-game joining and `127(A5)` are proven in `twoplayer.md`).
+- Item names, prop names, weapon names, pool-6 kind 5 (ARROW, `$59b2e`), item type 35, the continue scene's sub-states and digit timing (player 2, mid-game joining and `127(A5)` are proven in `twoplayer.md`).
 - The role of the pool-8 kind `$1b` record ([I] respawn marker); the tag `$a` hit handlers of kinds 1, 9, 12 to 14 beyond reading.

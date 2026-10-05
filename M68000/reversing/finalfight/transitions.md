@@ -107,7 +107,7 @@ The state table is `$e8f8` (sub 0, 2, 4, 6, 8, `$a`):
   4 `$eada`, 6 `$eae8`; the last two are the bonus stages). The default `$ea10` clears 278, compares x with the target (`target - x + 8`) and chooses step 4 (walk to the target, `$eb18`: animation `$c578`,
   step `$f5ba`, ends when `$f58e` matches, then sub 4), step 6 (`$eb50`: a back-jump to a target left of the player: animation `$c55a`, velocities `$f64c`, airborne, landing recovery, then step 4; Button 1
   in the air still attacks, `$c6a8`), or a variant for an airborne player. `$ea7e` (stage 1 area 0, stage 2 area 1) does **not** clear 278.
-- **sub 4** (`$eda0`): a canned walk-off per stage and area (`$edd0`, routines `$ee0e`, `$ef02`, `$efd0` for stage 0: a per-character table of x and y steps, the player leaves toward the top right). When
+- **sub 4** (`$eda0`): a canned walk-off per stage and area (`$edd0`, routines `$ee0e`, `$ef02`, `$efd0` for stage 0: a per-character table of x and y steps, the player leaves toward the top right). Stage 2 area 0 (`$f15a`) does not walk: step 0 `$f1b8` spawns the pool-4 kind 7 carrier that grabs the player and carries him off (`placement.md`; seen with `297(A5)` poked, 2 of 2 runs). When
   the walk is done `$f6e6` sets `166(A6) := 1` and starts the fade (`$252e`). The sub then waits for 166 and `140(A5) = 0`, takes sub 8 (`$e91e`).
 - **sub 8** (`$ed68`): step 0 and 2: if `140(A5) = 0` then **297 := $ff** (`$ed94`); the second player's record idles at step 4. **sub 6** (`$ed2e`) fades out at once and then does the same;
   **sub `$a`** (`$ed9e`) is an `rts`: the area ends through its camera hook.
@@ -143,7 +143,7 @@ The player's spawn offset from the camera (`$9d76`, table `$9dba`) is `+$40, +$3
 Entered from `$9ce0` when `291(A5)` is set (after the 297 test), sub table `$c852`: sub 0 (`$c85a`) sets 299 := 1 and waits 80 frames, then sub 2 (`$c8b2`), sub 4 (`$c97c`, an eight-step scene that uses
 the x constants `$6b0` to `$710`) and sub 6 (`$cb8c`). [L] with 291 poked to 1 at 12000 in stage 1: state 12 at 12001, 299 := 1 at 12002 and 0 at 12082, sub 2 at 12082, sub 4 at 12083 and the player parks
 at sub 4 step 4; TIME stays frozen (`176(A5)` constant to 12690) (gate `state12_poke`, 6 of 6). In the game it is the scene of stage 5 area 0 (script continuation code 6 at trigger `$600`, the scene
-actor `$5acdc` moving y to `$780`, then `$5b0a2` sets the right limit `$1280` and clears 291): [I], stage 5 was not reached.
+actor `$5acdc` moving y to `$780`, then `$5b0a2` sets the right limit `$1280` and clears 291): the actor is the elevator platform (`placement.md`, "The `$ffb228` actor"); run from `p5b_s5pre` with the camera x and player x poked to `$560`/`$5e0` and `291(A5)` poked to 1 (the scene starts by the stage script in play; stage 5 was not played).
 
 ## The camera
 
@@ -192,8 +192,7 @@ if not bonus and x mode != 2 and cam != right limit and 278 == 0:
 of stage 0 area 2, whose w18 is 0 (gates `go_prompt_420`, `go_not_on_cont0_w18_0`).
 
 Pool-8 **kind `$22`** pairs (ch 0 and 1) are spawned at each area start of stages 0 to 5 by `$62a34` at positions from `$62ac2/$62b16` (stage 0: x `$0028/$0568`, `$0618/$08a8`, `$08c8/$0c38`; stage 1 area 0:
-`$1fb8/$04f8` [L 3 of 3 areas]); the handler `$1fa5a` rewrites the attribute bits of an 80-tile block of the scroll map (`$1400`; channel 1 `$0c00` once the camera is within `$20` of the right limit): area-edge map patches,
-role [I]. Kind `$25` is the TIME OVER banner, kind `$26` the bonus-stage TIME OVER banner (below).
+`$1fb8/$04f8` [L 3 of 3 areas]); the handler `$1fa5a` rewrites the attribute bits of an 80-tile block of the scroll map (`$1400`; channel 1 `$0c00` once the camera is within `$20` of the right limit): not a visible patch but the terrain codes 5 and 3, an invisible wall at each area edge (`placement.md`, "Terrain codes"). Kind `$25` is the TIME OVER banner, kind `$26` the bonus-stage TIME OVER banner (below).
 
 ## TIME and the difficulty rank
 
@@ -228,7 +227,7 @@ All exercised by `py/transitions/gates.sh` (the pokes are byte writes at frame e
 
 - Only stage 0, stage 1 areas 0 and 1 (and 3 by poke), bonus stage 1 and the start of stage 2 were played; the area clears of stages 2 to 5, bonus stage 7, the ending (phase a with `193 > 7`, phase c) and every `$e9c2` variant other
   than `$ea10` and `$ea7e` were read, not run. Steps 8, `$a`, `$c` of state 10 sub 2 and everything with `145(A6)` (two players) are unexercised.
-- State 12's scene is the stage 5 area 0 elevator [I]. What the executor does after a code 2 continuation is unknown ([I]: the data that follows is the next area's).
-- The effect of `116/118/120(A5)`, the y limit words `1082/1084(A5)`, the y camera `$62316`, the record-2 mode table `$624ce` and the role of kind `$22` are [I]; the bonus-stage state machine of phase `$e` is [R] only except for the
+- State 12's scene is the stage 5 area 0 elevator (run on pokes, not reached by play). What the executor does after a code 2 continuation is unknown ([I]: the data that follows is the next area's).
+- The effect of `116/118/120(A5)`, the y limit words `1082/1084(A5)`, the y camera `$62316`, and the record-2 mode table `$624ce` are [I]; the bonus-stage state machine of phase `$e` is [R] only except for the
   play, time-out and walk-out path above.
 - A resumed state can stamp a write one frame off against a cold boot (2 of 4008, gate `cold_vs_resumed`), and a state loaded under `-debug` resumes on another trajectory; the gates run without `-debug`.

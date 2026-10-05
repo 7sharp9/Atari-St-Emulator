@@ -1,3 +1,4 @@
+-- dmk.lua (pass 5 agent B: dm.lua + DMK_KILLAT=<frames after the spawn>: write hp $ffff into the spawned pool-4 record every frame from then on, BOSS = the spawned record). Original header follows.
 -- dm.lua: Agent A (pass 4) harness. Loads a saved state, plays player 1 with an optional bot, pokes, logs the pool-4 boss and writes per-frame RAM dumps and breakpoint counts.
 -- Environment (all optional except DM_LOAD):
 --   DM_LOAD     state name in <run>/sta/ffightuc/ (without .sta)
@@ -46,7 +47,7 @@ local function spawn4(k, c, x, y, l)
   local a = m:read_u16(p); if a >= 0x8000 then a = a | 0xffff0000 end
   a = a & 0xffffff
   m:write_u16(p, 0); m:write_u32(A5 + 20282, p + 2); m:write_u16(A5 + 20280, m:read_u16(A5 + 20280) - 1)
-  for o = 0, 127 do if o ~= 78 and o ~= 79 then m:write_u8(a + o, 0) end end  -- allocator contract: zero +0..+127 except +78 (effect-group handle; zeroing it faulted EDI.E at $44fc via $3a52, py/engine)
+  for o = 0, 127 do if o ~= 78 and o ~= 79 then m:write_u8(a + o, 0) end end   -- the allocator contract: zero +0..+127 except +78 (effect group handle); dm.lua zeroed +78 and EDI.E took an address error in $44fc
   m:write_u8(a, 1); m:write_u16(a + 6, x); m:write_u16(a + 10, y); m:write_u8(a + 18, 4); m:write_u8(a + 19, k); m:write_u8(a + 20, c)
   m:write_u8(a + 96, l < 0 and m:read_u8(A5 + 169) or l)
   return a
@@ -89,6 +90,8 @@ local function nearest()
 end
 local last_b1 = -100
 local loaded, f0 = false, nil
+local killrec, killf = nil, 0
+lastexc = 0
 local function bossline(f)
   local b = BOSS
   local function u8(o) return m:read_u8(b + o) end
@@ -142,9 +145,12 @@ emu.register_frame_done(function()
     if dumpf then dumpf:close() end
     manager.machine:exit()
   end
+  do local e = m:read_u16(0xff167e); if e ~= (lastexc or 0) and logf then lastexc = e; logf:write(string.format("EXC f=%d code=%04x sr=%04x pc=%08x addr=%08x d0-d7=%s a0-a6=%s\n", f, e, m:read_u16(0xff1688), m:read_u32(0xff168a), m:read_u32(0xff168e), "", "")); for i = 0, 14 do logf:write(string.format(" r%d=%08x", i, m:read_u32(0xff169e + 4 * i))) end logf:write("\n") end end
+  if killrec and f >= killf then m:write_u16(killrec + 24, 0xffff) end
   for _, sp in ipairs(spawns) do
     if sp[6] == f then
       local a = spawn4(sp[1], sp[2], sp[3], sp[4], sp[5])
+      if a then killrec = a; killf = f + tonumber(os.getenv("DMK_KILLAT") or "60"); BOSS = a end
       if logf then logf:write(string.format("SPAWN %d kind %d at %s\n", f, sp[1], a and string.format("%06x", a) or "none")) end
     end
   end

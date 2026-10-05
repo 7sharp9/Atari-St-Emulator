@@ -76,7 +76,7 @@ walks [R] [L]:
 |---|---|---|---|
 | (players) | 2 at `$ff8568` | `$5764` | player 1, player 2 (active only after a two-player start or a join, `twoplayer.md`; the character is `+20`) |
 | 2 | 13 at `$ff86e8` (`1768(A5)`) | `$57f2` | fighters: enemies and bosses, 9 kind handlers: 0 `$21cec` (BRED, DUG, JAKE, SIMONS), 1 `$2813a` (J, TWO.P), 2 `$2a310` (AXL, SLASH), 3 `$2ccac` (the ANDORE family), 4 `$3136c` (G.ORIBER, BILL BULL, WONG WHO), 5 `$3514c` (HOLLY WOOD, EL GADO), 6 `$389b8` (ROXY, POISON), 7 `$3c446`, 8 `$3c48e` (roles in `ai.md`); the only damage-taking pool apart from `$a` |
-| 6 | 6 at `$ff90a8` | `$5962` | weapons: 6 kinds (`$57a76`, `$5828e`, `$58b1c`, `$5935e`, `$5957a`, `$59b2e`); a drop byte `>= $24` creates kind `byte - $24`; kinds 0, 1, 2 are picked up by Cody with Button 1 (`$9c72`; 3 of 3 [L]), kinds 3 and 4 spawned but were not picked up (2 of 2 [L]); kind 4 (`$5957a`) is the fire bottle of the tag-2 kind 8 fighter and a tag-2 kind 5 fighter draws a kind 0 weapon (`ai.md`); HUD names by kind: KNIFE, MURAMASA!, PIPE, SHELL, BOTTLE, ARROW; a stage-0 run saw kind 0 three times, kind 2 once and kind 4 twice (`placement.md`, "Weapons") |
+| 6 | 6 at `$ff90a8` | `$5962` | weapons: 6 kinds (`$57a76`, `$5828e`, `$58b1c`, `$5935e`, `$5957a`, `$59b2e`); a drop byte `>= $24` creates kind `byte - $24`; kinds 0, 1, 2 are picked up by Cody with Button 1 (`$9c72`; 3 of 3 [L]), kinds 3 and 4 can never be picked up (`74` is never 0; `player.md` "Weapons"): kind 3 is the EDI.E gun bullet (a flying 40-hp projectile) and kind 4 (`$5957a`) is the fire bottle of the tag-2 kind 8 fighter, which a player's attack can deflect in flight (`ai.md`, "The bottle and the fire"); a tag-2 kind 5 fighter draws a kind 0 weapon; HUD names by kind: KNIFE, MURAMASA!, PIPE, SHELL, BOTTLE, ARROW; a stage-0 run saw kind 0 three times, kind 2 once and kind 4 twice (`placement.md`, "Weapons") |
 | 4 | 8 at `$ff9528` (`5416(A5)`) | `$5a1a` | the bosses: eight kinds through the long table at `$5a52` (0 DAMND `$3d3d6`, 1 SODOM, 2 EDI.E, 3 ROLENTO, 4 ABIGAIL, 5 BELGER, 6 the BOSSTEST dummy, 7 a scene object), allocator `$390a`, free `$38f0`; DAMND is record 7 (`$ff9a68`), live from the first frame of stage 0 area 2 [L]; `boss.md` |
 | 8 | 30 at `$ff9b28` (`6952(A5)`) | `$5848` | 60 kind handlers from `$1a1f0`: scenery and event objects, created by the placement lists, the camera records and other handlers. Kind 1 (`$0300` in `+20..+21` is ch 3 of the tile-patch objects, x `$518`) is an invisible tile-patch object, 2 the GO arrow, 3 the screen shaker, `$f` a door opener, `$15` a ceiling lamp, `$22` an area-bound marker, `$23` the door gang; the table is in `placement.md`, "Pool 8 kinds". Records 56 and 57 of the array are live already in `ff_gameplay` [S]. Fighter helpers create three kinds [L]: `$34` (`$20f4e`, follows its owner's x and ground line while it falls in), `$1f` (`$1f3b0`, the ground shadow of an ANDORE-family fighter), `$1b` (`$1f1a4`, a 180-frame marker that follows a respawned player, role [I]) |
 | `$10` | `$ffb1a8` and `$ffb1e8`, 64 bytes each | `$6026`, `$5aea` | the placement record and the stage-script record (below) |
@@ -234,8 +234,9 @@ The two `bra *` entries are assert traps that the eligibility filter makes unrea
 - `$75d0`, a fighter hitting Cody: the same shape with the unscaled damage `$7a04`, then `exg A1,A3; jsr
   $28d0`. Live: 13 of 13.
 - `$70e6` (a tag `$a` victim, kind table `$70f4`): the default `$7156` is the breakable-prop hit (1 live hit on
-  kind 5); kinds 1, 9, 12-14 have their own handlers, kinds 11 and 15-17 a bare `rts`. `$759c` (a tag `$a` attacker,
-  table `$75aa`): kind 2 fixed damage 50, kinds 16-18 damage 40, kind 15 a distance table; not exercised live.
+  kind 5); kinds 1, 9, 12-14 have their own handlers, kinds 11 and 15-17 a bare `rts`. Kind 1 (DRUMCAN) `$711a` takes the default path when the prop's variant `128(A3)` (placement byte 10) is below 2; for variant 2 and up it damages and sparks with hit-stop 6 but sets no attacker flags, gives no award (`$7aa8`) and queues no HUD entry: these are the six opening-scene barrels (cold boot, frames 1 to 1900: `$711a` 6, `$7156` 0, `$7aa8` 0 [L]). Kind 11 (GLASS) ignores every hit. Kinds 12 and 13 accept a hit only when the attacker's facing byte `46(A1)` is 0 (12) or non-zero (13), kind 14 always; the accepted hit (`$7232`) spawns a pool-8 kind `$2d` effect, subtracts the attack-box damage (`$72fc`; `$1e` for a hard hit when `22184(A5)` flags the player) from `+24` clamped at 0, and a zero-damage hit bounces the attacker. Live in bonus stage 1: 12 of 12 hits on the kind 12 pane from the left (health `$8c` to `$14`, break +5000); kinds 11, 13 and 14 were not reached. Kind 9 (the bonus 2 car pane) `$71a2` calls `$53182`: a broken pane (`136(A3)`) hurts the attacker for 1 and bounces it; otherwise the ground-line difference `dy` takes 2 from the counter `133(A3)` (`dy` < 3), 1 (`dy` < 7) or nothing; live 2 of 2 hits then the break (+100, +1000). The break sound of every prop is read from the table `$7348` by kind (`$7334`). `$759c` (a tag `$a` attacker,
+  table `$75aa`): kind 2 fixed damage 50, kind 16 (the fire) `$764c` and kinds 17-18 `$768e` fixed damage 40 with reaction 8, kind 15 a distance table;
+  the fire's 40 was run live on Cody (7 of 7, `ai.md` "The bottle and the fire"), the others are [R]. The same props also hurt pool-2 fighters through `$639e` (table `$63ca`).
 - A negative attack id (`45(A1)` bit 7) is a grab: `$74ee` (table `$74fc`: tag 2 `$7520`, tag 4 `$7512`) sets `64(A1) =
   1`, `68(A1) = A3`, `64(A3) = $ff`, `68(A3) = A1`. 14 grab overlaps and 14 `$754e` completions live.
 
@@ -260,7 +261,7 @@ All thirteen callees of `$5668` run every frame [L] (`lua/hitcount.lua`). `$5668
 | `$5b1cc` | HUD manager, state word `$ff1312`: state 1 draws both panels (`$1eca`, `$14e8`), state 2 keeps the enemy bar objects at `-27884(A5)` and `-27628(A5)` fed from the ring at `644(A5)` and the last-hit pointers `302(A5)`/`1452(A5)` |
 | `$5aea` | the stage spawn script (above) |
 | `$5acdc` | the single record at `$ffb228` |
-| `$90fa` | camera-triggered sound-cue script (A6 = `21634(A5) = $ffd482`): entries compare the camera and call `$9d0`, which enqueues a sound command in the ring at `388(A5)`; `$9b2` writes `$800180`. Its state byte was 6 (ended) in every run, so it did nothing |
+| `$90fa` | camera-triggered sound-cue script (A6 = `21634(A5) = $ffd482`): entries compare the camera and call `$9d0`, which enqueues a sound command in the ring at `388(A5)`; the pump `$984` in the VBL handler writes one command per two frames to `$800180` (`kernel.md`, "The two deferred rings", with the sound id table). Its state byte was 6 (ended) in every run, so it did nothing |
 | `$57f2`, `$5848`, `$5962`, `$59a4`, `$5a1a`, `$5a72`, `$5fc6`, `$5ff4` | the pool updaters of the table above; each calls the kind handler for every live record |
 
 ## Sprite list (`$16600`)
@@ -274,12 +275,40 @@ over frames 2150-2154: 928 writes, 464 into each of the two buffers, all from `$
 `$16a3c` (228 each: the four words of one object entry) and `$16656`/`$16658` (8 each: the stale-tail clear)
 [L]. The same VBL handler (`$53e`) reads its inputs and copies the scroll values; `kernel.md` lists the rest.
 
+## The screen shaker (`$1b428`, pool 8 kind 3)
+
+One shaker record exists at a time (flag `-27916(A5)`, record pointer `-27920(A5)`). `$1b428` starts it or restarts it; the kind 3 handler `$1b478` then moves the camera for 28 frames [R] [L]:
+
+```
+$1b428: if !flag: rec = alloc8($3946); rec.in_use = 1; rec.kind = 3; rec.+96 = 0; ptr = rec; flag = 1; return
+        rec = ptr; rec.+2.w = 0 (restart); d = rec.+96; rec.+96 = 0
+        if d < 0: apply(rec.+20, -d)                               // undo the pending offset
+apply(ch, d): ch 0: camY(1046(A5)) += d ; ch 2: camY += d, cam2Y(1174(A5)) += d ; ch 4: 918(A5) -= d, 1116(A5) += d, camY += d
+$1b478 state 0: +2 = 2 ; +96 = 4 ; +30 = 7 ; +31 = 3 ; +20 = axis(stage 190, area 191)
+        state 2: if --31 == 0 { 31 = 4; if --30 == 0 { +2 = 4; +96 = 0; return }; +96 = word[$1b55c + 2 * 30] }   // 1 1 1 2 2 2 3 4
+                 +96 = -+96 ; apply(+20, +96)                      // every frame
+        state 4, 6: flag = 0; free ($392c)
+```
+
+The axis `+20` comes from the table `$1b592` by stage and area (stage 0: 0, 2, 0; stage 1: 2, 0, 0, 2; stage 3: 0, 4; every other area 0) except stage 2: area 0 gives 0, or 2 once the camera x is `$100` or more; area 1 gives 2; area 2 gives 2 for camera x in `[$980, $c20)`, else 0. The amplitude does not depend on the caller: the signed offsets alternate, so the displaced frames carry 4, 3, 3, then 2 six times and 1 four times (13 frames) and the pair of steps cancels; the record lives 28 frames (Haggar's pile driver 1986 to 2014, DAMND's death 11262 to 11290 [L]). The camera y reaches the CPS-A scroll registers two frames later: the rendered playfield (rows 32 to 223) shifted by exactly the logged camera y in 35 of 35 frames for each axis. Axis 0 moves scroll 2 y (`$800112`) and every sprite (the sprite builder subtracts the camera y); axis 2 also moves scroll 3 y (`$800116`, through the second camera record); axis 4 (stage 3 area 1) moves `918(A5)`, which `$61f86` copies to the scroll 1 y shadow, and `1116(A5)`, the camera y copy that area compares against (the jitter was seen on `1116(A5)` live, 26 frames; the scroll 1 side is [R]).
+
+Callers (13 call sites of `$1b428`; `py/engine/` gates `shaker`, `shake_sites`, `haggar`, `edi`): Haggar's pile driver `$d17a` and jump slam `$d3ae` (below); the kind 3 (ANDORE family) entrances 8, 10 and 12 at `$2d0c2`, `$2d178`, `$2d352` (the drop-in landing, [L] one run each, five subs for entrance 8), its aimed-leap landing `$2de58` (the end of attack sub-state 18: a shock test on both players, damage `byte[92(A6) + $20]`, hit type 3; [L] 13 in 16000 frames for ANDORE, 4 each for G., U. and F.ANDORE) and its carry slam `$2ed96` (hit type 5; [L] 10); the kind 4 entrance 8 landing `$315e0` ([L] 3 of 3 subs); the pool-4 deaths of DAMND `$3ed0e` ([L] 1), SODOM `$426d8` ([R]), EDI.E `$477bc` ([L] 1, hand spawn) and ABIGAIL `$4d550` ([R]); and the ending scene object `$184b2` ([R]). The sum of the live hits at the sites equals the hits of `$1b428` in every run.
+
+Haggar's damage does not come from the shaker. The pile driver (`$d128`, sub-state 8 of his grapple, step `$d14c`) and the jump slam (`$d37c`, step `$d386`) first call `$d9b6` or `$d9e2`, then the award, the HUD push `$28be`, the sound `$aaa` and `$1b428`:
+
+```
+$d9b6 pile driver:  hp <= $18: hp = -1 ; hp <= $64: hp >>= 1 ; else hp -= $32      // 50
+$d9e2 jump slam:    hp <= $1e: hp = -1 ; hp <= $8c: hp >>= 1 ; else hp -= $46      // 70
+```
+
+Ten victim health values (`$300 $65 $64 $19 $18` for the driver, `$300 $8d $8c $1f $1e` for the slam) matched in 10 of 10 runs, each with a shaker created.
+
 ## Not read, not proven
 
-- `$61e24`'s camera follow and lock (`transitions.md`; its first lines compute the in-use mask `21610(A5)`, `twoplayer.md`), the tag-`$a` victim handlers `$711a`, `$71a2`, `$7222-$7232`, and the producer of the enemy-bar ring. (`$27fc4` refreshes the formation
+- `$61e24`'s camera follow and lock (`transitions.md`; its first lines compute the in-use mask `21610(A5)`, `twoplayer.md`), and the producer of the enemy-bar ring (the tag-`$a` victim handlers are in "Damage dispatch"). (`$27fc4` refreshes the formation
   slot flags, `$73b8` and `$73e4` are the kind 1 dodge and kind 2 guard victim handlers, `$7456` the kind 6 one, `ai.md`;
   the continue screen is `$5da78` and `22188(A5)` is the attract-demo flag, `player.md`.)
-- Pool 8's other kinds (`placement.md` lists the ones read; pool 4 is the boss pool, `boss.md`). Player 2, mid-game joining and two-player play were run live (`twoplayer.md`). The fighters of kinds 1 to 8 were
+- Pool 8's kinds are all read in `placement.md` ("Pool 8 kinds"); pool 4 is the boss pool, `boss.md`. Player 2, mid-game joining and two-player play were run live (`twoplayer.md`). The fighters of kinds 1 to 8 were
   exercised in spawned records (`ai.md`); stage 0 was also played by a bot, 18 of 18 script entries (`py/stage/`).
 - The relation of the `$15854` bar object to the `$1eca` tile bar.
 - The difficulty counter's falling side (`$5382` at a stage change is in `transitions.md`; `$53b2`, `$53dc` are not exercised) and its effect with two players (`ai.md` has the rising side and its readers).

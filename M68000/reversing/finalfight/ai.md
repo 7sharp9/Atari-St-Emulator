@@ -1222,13 +1222,61 @@ concurrency cap used by the script spawner, lets kind >= 7 through without count
 
 ### The bottle and the fire
 
-The bottle is a tag-6 kind-4 record (handler `$5957a`); the fire is a tag-`$a` kind-16 record (handler `$54b4a`). **Neither handler has been
-read**; what follows is from logs. The bottle is held (`64 = $ff`, the follower code of `$41ba` keeps it at the hand), is released with the
-velocities above, and on landing spawns the fire in the same frame, then lasts 60 frames and frees itself through `$38b4`. The fire lasts 86
-frames (states (2,0) 11, (2,2) 32, (2,4) 19, (2,6) 24) with an attack box that pulses every other frame. [L] It hit Cody once for 40 damage
-(78 to 38, Cody's reaction id 8, attacker `+60` the fire record; this matches `$759c` "kinds 16-18 damage 40"), and it killed a kind 8 that was
-hit before its throw (hp 10 to -30), 1 run each. `$3d0d2` pops a held bottle upward (vy `$800`, vx +-`$100`, gravity `$48`) whenever the
-fighter is hit, grabbed, killed or all-cleared, so it burns on the spot [L] (hit in mode 0, killed by its own fire; thrown by Cody, Cody burned).
+The bottle is a tag-6 kind-4 record (handler `$5957a`); the fire is a tag-`$a` kind-16 record (handler `$54b4a`). Both are read and run
+(`py/objects/`, `gates.sh`).
+
+**Bottle** (`+2`: 0 init, 2 active, 4 landed, 6 free through `$38b4`). Init sets `56 = $59af2`, `74 = 1` and the ground line `14 := 10`, and enters the
+active state at once if `64 != 0`. The active state first calls `$42ca` (the grab-link service: `64 != 0` and the holder's `74 != 0` set `66 = 2`), then
+dispatches on `66`:
+- `66 = 2`, held: the follower `$5982c` copies the holder's position plus a hand offset from the table at `70(A6)` (indexed by the holder's `43`);
+  a set bit 7 in the holder's `43` is the release event, which clears `64`, `66` and restarts the record at mode 0 step 0.
+- `66 = 0`, free: mode 0 (thrown) step 0 sets `74 = $ff`, step 2 integrates (`$30d4`), tests walls (`$7d6c`) and runs `$6752`; a nonzero result
+  (a player's attack box on the bottle's hurt box) deflects it: vy `$400`, vx +-`$400` away from the attacker, `74 = 1`, sound `$aba`, award event
+  `$17` (2,000 points) to the attacker. Mode 2 (popped by `$3d0d2`, gravity `$48`) rises, sets `74 = 1` and then `74 = $ff` again once vy <= 0, and falls
+  with the same hit test. Landing (ground line above y) sets `2(A6) = $400`, state 4 mode 0.
+- State 4 mode 0 starts a 60-frame timer and, **only if `74 < 0`**, plays sound `$ae2` and creates the fire (`$3982`, kind `$10`, at the bottle's x, y and
+  ground line) in the same frame; state 6 frees the record when the timer ends. `74` is therefore the arm flag: a bottle deflected in flight lands with
+  `74 = 1` and makes no fire.
+
+[L] (`bottle_run.sh`, 3 runs at three phases): released 83, 75 and 91 frames after the thrower's spawn, 26 frames of flight, state 4 on landing, the fire's
+first frame the next frame, the bottle freed 60 frames later (`bt1`, `bt2`, `bt4`). A punch on the bottle in flight (`bottle_hit_run.sh`, Button 1 held
+from rel 286, 290, 294, 298, 302) deflected it in 5 of 5, each time with +2,100 on Cody's score (2,000 plus the jab's 100) and no fire; a press at rel 306
+came too late and the fire appeared at rel 311 (1 of 1). A hovering bottle punched at rel 234 gave +2,000 exactly in 4 of 4 (`deflect_run.sh`). A thrower
+culled off screen while holding the bottle frees it without a fire (1 run).
+
+**Fire** (`+2`: 0 init, 2 active, 4 and 6 free through `$3968`). Init zeroes `24/26/28`, sets `30 = 11`, `31 = 1`, `128 = 5`, the ground line `14 := 10`
+and animation `$54cf8`. State 2 steps `3(A6)` through four animations with the timers 11, 32, 19 and 24 frames (86 frames in state 2; the record is
+seen for 88 frames from creation to its free). Every animation frame lasts one tick and alternates a box with none, so the attack box "pulses every other frame":
+
+| mode | frames | animation | attack boxes (row `$54da8 + 16 * idx`: dx, dy 24, half width 17, half height 24, `+11 = 8`) |
+|---|---|---|---|
+| 0 | 11 | `$54cf8` | idx 1, dx 0, on odd frames |
+| 2 | 32 | `$54d04` | idx 2 dx +32 and idx 3 dx -33, alternating every 2 frames |
+| 4 | 19 | `$54d18` | idx 4 dx +64 and idx 5 dx -65 |
+| 6 | 24 | `$54d2c` | none |
+
+Damage is not read from a box row: the fire hurts through two code paths, both 40 damage and hit reaction 8 (the burn launch):
+- **Players**: the ordinary resolution, `$7564` then `$759c`, whose kind table (`$75aa`) sends kind 16 to `$764c` (`hp -= $28`, `63 := 8`, attacker `+60` = the
+  fire, hit-stop 6 on both, `104(A1) |= 1`, spark, queue `$28d0`). Kinds 17 and 18 use `$768e` (also 40), kind 15 the distance rule `$76c8`, kind 2 a fixed 50
+  with reaction 3.
+- **Pool-2 fighters**: the fire's own handler calls `$639e` when `((167(A5) >> 1) + D7) & 3 == 0` (D7 = 0 for pool-`$a` record 15, so on 2 consecutive
+  frames out of 8). Its kind table (`$63ca`) sends kind 16 to `$6472`: the record in `302(A5)` (the last hit target) first, then the 13 pool-2 records, each
+  tested by `$656e` (in use, visible, state 2, has a hurt box), a ground-line window |dy| <= 10 and the overlap test `$7932`; a hit runs `$664a`
+  (`hp -= $28`, `63 := 8`, `105 := $ff`) and `$66c6` awards both players. Pool-4 bosses and props are not in the loop [R].
+  Because the sample window is 2 frames of 8 and the side boxes pulse every 4 frames, **a fighter standing under a side box is hit only for some start
+  phases of the fire**; the central box (pulsing every 2 frames) always catches it.
+
+Burning is reaction 8: a fighter or player hit by the fire shows `99 = 1` two frames later. The fire also creates flame sparks (pool `$e` kind 2) every
+11 frames through `$54c4c`, as mirrored pairs (the first three at x +-12, +-28 and +-40 from the fire), but `$3a52` takes them from the owner record's own group of 6 effect slots (`78(A6)`) and a
+flame lives 65 frames, so only the first 3 pairs ever appear (6 flames, `fe.log`, 1 run).
+
+[L] (`fire_run.sh`; `gates.sh` reruns all): the 11/32/19/24 schedule in every fire run (26 of 26: 22 hand-spawned fires, three natural bottles and one late punch); Cody (hand-spawned
+fire, player pinned at dx 0, 20, -21, 40, -41, 60, 80) lost 40 hp with `63 = 8` and `+60` = the fire in 7 of 7, and the frame of the fall equals the first frame
+where the `$7932` replay of the ROM box rows overlaps Cody's hurt box in 7 of 7 (fire+3 for dx 0, 20, -21; +12 for 40 and 60; +14 for -41; +44 for 80). A
+Bred (hp 28) under the fire died from one 40-point hit at fire+4 (dx 0, 28) or fire+19 (dx -41) and was not hit at dx +40, 64, 80 in that phase. A Bred at
++40 over 8 start phases (`fire_phase.py`) was hit at fire+17 or fire+13 in 4 phases and never in the other 4, and the sampling model above predicted the
+outcome and the frame in 8 of 8. The thrower itself dies to a fire on it (hp 10 to -30). `$3d0d2` pops a held bottle upward (vy `$800`, vx +-`$100`, gravity
+`$48`) whenever the fighter is hit, grabbed, killed or all-cleared, so it burns on the spot [L] (hit in mode 0, killed by its own fire; thrown by Cody, Cody burned).
 
 ### The leap
 
@@ -1329,7 +1377,8 @@ to run stage 5 area 0 to camera x `$1280` and watch `278(A5)` and the script poi
 
 - Kind 7's role as a scroll-lock hold ([I], above).
 - The exact scoring rule (100 per hit, 1000 per kill): one run each; the consumer of the `516(A5)` ring is unread.
-- `$5957a` (bottle) and `$54b4a` (fire) are unread; the fire's box sizes, 86-frame schedule and 40 damage are from logs.
+- The fire against a second player, a pool-4 boss or a prop is [R] only (`py/objects/`: the ordinary path covers both players; `$639e` loops pool 2).
+  The last three flame pairs of the fire's table were never spawned (the slot group is full), so their offsets are unread.
 - Reaction ids 2, 4, 5, 6, 7 were forced, not caused by a player attack; drive each Cody move and log `+63`.
 - `$6c96` (a thrown body hitting other fighters) is [R] only; throw a kind 8 into a standing enemy and watch its hp.
 - Stage 5's leap damage for variants 2, 6, 8, 10 is read from bytes, not run (`spawn.lua` field 7 = 2, 6, 8, 10 with box 6 forced).
