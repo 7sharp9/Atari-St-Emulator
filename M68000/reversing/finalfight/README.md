@@ -122,7 +122,7 @@ registers, then programs the CPS-A layer base pointers (`$800100..$80010e`); VBL
 `$53e` latches scroll registers into CPS-A/B, reads the inputs into `84..103(A5)`, calls `$984`, `$fac`,
 `$e46`, then counts down the sleep timers of the task records. The task kernel (16 records at
 `$ff1000`, `trap #0..#8` as create/exit/kill/sleep/yield/suspend/wake/restart/reset) is in `kernel.md`.
-The in-level frame (TIME, the object pools, health, hit boxes, damage, the sprite list builder) is in `frame.md`.
+The in-level frame (TIME, the object pools, health, hit boxes, damage, the sprite list builder) is in `frame.md`. The enemy handlers (kinds 0 to 8) are in `ai.md`, the player's states, moves, pickups, score and continue scene in `player.md`.
 
 ## Scripts
 
@@ -139,6 +139,12 @@ from a saved state, `FF_STOP=<frame>`):
 | `py/hpcheck.py`, `boxcheck.py`, `hitcheck.py` | gates: HUD bar versus health, box derivation versus `$32c4`, the overlap test versus 818 live calls |
 | `py/hudbar.py`, `hudenemy.py`, `namesheet.py`, `poolcensus.py` | HUD pixel width versus health, enemy-name sheets, the census of `ff_enemies` |
 | `py/rd.py`, `jt.py`, `callers.py` | read ROM or state words, resolve a `move.w 6(PC,Dn.w),D1 / jmp 2(PC,D1.w)` table (pass the address of the `move.w`), find direct callers |
+| `py/ai_kind0/` (README there) | `ai.md` "Shared helpers and kind 0": `run_ai.sh` (rec/cold/hit/poke wrapper), `poolrec.lua` and `hitc.lua` (per-frame record dump, breakpoint counts, `FF_POKE`/`FF_COPY`/`FF_WTAP`), `rdl.py` (recursive lister with jump tables), `anims.py` (animation and attack-box decoder), gates `counters.py`, `dmgcheck.py` (59/59), `slotcheck.py` (2855/2857), `rngcheck.py` (505/505), `hist.py`, `animstate.py`, `st28.py`; `gates.sh` reruns all (`AI_OUT`, `FF_RUN`) |
+| `py/ai_kind123/` (README there) | `ai.md` "Kinds 1, 2 and 3": `run.sh`, `fdrive.lua` (spawns the kinds into `ff_enemies` by emulating `$3892`, `FF_NOSCRIPT` clean arena), `hits.lua`, state/transition/damage logs, combo-script, stat-table and animation decoders; `gates.py` redoes names 9/9, damage 98/98, slot geometry, target rule 8/8, guard rolls, dodge length and the `ff_kinds123` determinism (`AI123_RUN`, `AI123_OUT`) |
+| `py/ai_kind45/` (README there) | `ai.md` "Kinds 4 and 5": `drv.lua` spawns one fighter into `ff_enemies` and dumps per-frame RAM; `gate_dmg.py` (151/151), `gate_zone.py`, `gate_zone4.py`, `gate_names.py` (5/5), `gate_caps.sh` (`$3e88` caps, 16/16); `anim.py`, `chars.py`, `script.py`, `mklist.py` decode animations, characters, the `$5f7e` stage script and ROM ranges (`AI45_RUN`, `AI45_OUT`; `runs.sh`, then `gates.sh`) |
+| `py/ai_kind6/` (README there) | `ai.md` "Kind 6": recursive-descent lister, stage-script parser, `k6run.lua` (spawn, force, poke, bot harness through the real script engine, `ffrun_k6.sh`), `k6hit.lua` breakpoints, state histograms, decision, dodge and attack-mask checks, `gate_dmg` 85/85, `gate_score` 15/16 (`K6_RUN_DIR`; `make_pre.sh`, then `run_checks.sh`, about 15 min) |
+| `py/ai_kind78/` (README there) | `ai.md` "Kinds 7 and 8": `rdis.py`, `scripts.py`, `hudnames.py`, `anims.py`, the spawn harness (`spawn.lua`, `sp.sh`, `ffrun.sh`) and the handler-count gates (`corpus.sh`/`corpus.py`, `forced*.sh`/`corpus2.py`, `cover.py`, `kind7.sh`, `script_spawn.sh`, `determinism.sh`; `FF_E_RUN`, `FF_E_OUT`) |
+| `py/player/` (README there) | `player.md`: Cody driver and logger (`pdrive.lua` with plans, pokes, taps and breakpoints), ROM readers (`ffchar.py`, `boxes.py`, `dmg.py`, `anim.py`, `rdis.py`, `tab.py`) and 19 gates for the move set, damage, throws, items, weapons, kill awards, walk speed, drop rule, death and lives (`sh gates.sh`; `FFP_RUN`, `FFP_OUT`) |
 
 Gates run this pass from fresh runs: health bar 1100/1100, `+24` writer `$7a12` 8/8, box derivation 1100/1100, overlap
 818/818, a third cold boot of `ff_enemies` with identical work RAM (`2657a253...b0ae`) and gfx RAM (`1a4357c4...e94a`),
@@ -146,12 +152,15 @@ and the original cold drive (`ff_gameplay`) still giving `79ed3cc1...0b2c` after
 
 ## Next
 
-1. Get the pools no stage-1 run fills (tags 4, 6, `$12`, `$14`, pool 8, `$ffb228`): drive past the first boss
-   or into stage 2 from a saved state, then census and `py/hitcheck.py` again. Name the three unnamed props
-   and confirm AXL (`frame.md` "Fighter identity").
-2. Read what `frame.md` lists as unread: `$6026`/`$61e24`/`$27fc4`, the player-versus-player path
-   `$7766-$7920`, the kind handlers behind `$70c6`/`$70e6`/`$759c`, the continue screen.
-3. Trace slot 11's ring-buffer consumers (`516(A5)`, `324(A5)`, `$1a22`), the `jsr $2874` senders and the sound
-   queue at `388(A5)` (`$9d0`/`$9b2` write `$800180`), and read the Z80 side.
-4. Graphics: `hardware.md` has the layouts and mapper ranges; the plane/byte order across
+1. Play a stage instead of spawning into `ff_enemies`: drive past the first boss (the kind 4 and 6 group at camera x `$aa0`, stage 0 area 2) or into
+   stage 2 from a saved state, then run the pool census and the `ai.md` gates against the script-spawned records. That reaches pools 4 and `$14`,
+   pool 8's other kinds, the kind 4 stage entries, the kind 7 scroll-lock reading and the tag-`$a` props that are still unnamed.
+2. Read what is still unread (`frame.md` "Not read, not proven"): `$6026`/`$61e24`/`$6241e`, the player-versus-player path `$7766-$7920` and
+   `$2934`, the fire bottle `$5957a` and fire prop `$54b4a`, the tag-`$a` victim handlers, the state 8, 10 and 12 scripts of the player.
+3. The command queues: `516(A5)` is the score-award ring (`$288c` to `$1a22`, `player.md`), the ring at `324(A5)` is written by `$2874` and
+   dispatched by the high byte of each word through the table at `$4ba6` (consumer not yet read), and `388(A5)` is the sound ring
+   (`$9d0`/`$9b2` write `$800180`). Tap `$800180`/`$800188`, match to queue entries, then read the Z80 side.
+4. Two players and the other characters: drive player 2 and Guy/Haggar (poke `+20`, `+56`, `+92` from `$a124`), then recheck the target rule,
+   the two-player spawn flag (script byte 15) and the player-versus-player path.
+5. Graphics: `hardware.md` has the layouts and mapper ranges; the plane/byte order across
    `ff-5m/7m/1m/3m` is inferred. Decode one known tile, render a sheet, commit the PNG with the doc.

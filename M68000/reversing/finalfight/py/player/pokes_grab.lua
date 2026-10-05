@@ -1,0 +1,3 @@
+return {
+ {0, 0xff85a8, 1, 0}, {0, 0xff85aa, 1, 0}, {0, 0xff856b, 1, 0}, {0, 0xff856c, 1, 0},   -- drop the grapple link/mode left in the saved state
+}
