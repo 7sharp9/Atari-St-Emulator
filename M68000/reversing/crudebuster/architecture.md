@@ -35,11 +35,11 @@ VBL handler `$b1e` (read): counts VBLs since the last logic step in `$80002`; if
 
 Main loop of a play frame (`$6be`, read): wait `$bbe`; `$1308` continue countdown; `$126c` "insert coin / credits" line; `$3d66`/`$3f06` health bars of P1 and P2 into the text layer; `$3e84`; players `$7626`; `$1948` and `$7fe4` (level-specific per-frame logic, bosses); **the object dispatcher `$10254`**; `$18cc` (a lone `rts`); `$da2` (builds sprite RAM from seven source lists, count in `$8004e`, then blanks the rest to fill 256 entries). Then: `$80040` bit 4 (level cleared) goes to `$71c`; both players inactive (`$80100`/`$80180` bit 7 clear) goes to game over; otherwise loop.
 
-The levels: `$80046` is the level 0-5 (six levels). `$71c`: level+1 > 5 sets `$80040` bit 6 and runs the ending `$5fba` (state word `$80016` through a table at `$600e`), else `$8624`, `$172a` and back to the per-level setup `$1488` (clears `$8004a`, loads palettes `$706e`/`$7098`, music `$e1c` from tables at `$1532`/`$153e`, scroll/level data, the players' reset `$154a`). Game over sets bit 5 and returns to the attract loop `$66c` (`clr.w $80040`).
+The levels: `$80046` is the level 0-5 (six levels). `$71c`: level+1 > 5 sets `$80040` bit 6 and runs the ending `$5fba` (state word `$80016` through a table at `$600e`), else the level byte goes up, `$8624` (a grid wipe, eight effects in table `$8758`, effect id in `$804ae`; there is no score tally), `$172a` (the clear sequence: three 128-frame text pages `NICE FIGHT!`, `STAGE n CLEAR`, `GO TO NEXT STAGE!`, then the stage card, which loops until `$80040` bit 4 clears) and back to the per-level setup `$1488` (clears `$8004a`, loads palettes `$706e`/`$7098` (`$708c` = `$1111 $2121 $3131 $4141 $5151 $6162`, `$70b6` = 1-6), music `$e1c` from tables at `$1532`/`$153e` (levels 0-5 = 1, 7, 9, 8, 7, 6 in a game; 6, 7, 9, 8, 7, 6 in the demo), scroll/level data, the players' reset `$154a`). Game over sets bit 5 and returns to the attract loop `$66c` (`clr.w $80040`).
 
 Start of a game (read): `$e3c`, called **from the VBL handler**, on a start press with a credit in `$80032` (BCD, `sbcd`) sets `$80040` bit 7 and `jmp $696`, which resets the stack to `$84000` and enters the game from interrupt context (the interrupted attract is abandoned). Credits: `$1148` adds per coin using a coin-per-credit table at `$11f8` indexed by the dip switches. Observed: coin held at frame 600 gives `CREDIT 1`, start at 700 begins level 1 at about frame 720 (`plans/play1.lua`).
 
-Attract loop `$66c` (read for the order, *inferred* for the screens): `$8038`, protection `$13e2`, intro `$4a9e` (eight states, word `$80016`, table `$4b0e`), then repeatedly `$8038`, `$4076`, `$762`, `$6c94`. A cold boot with no input shows (screenshots every 250 frames, `scratchpad/crudebuster/sheet3.png`): the story crawl (New York A.D., nuclear text, "20 years after", "and now", the two heroes), the title logo, a two-player demo (levels 1 and 4 seen), the best-scores table, then the story again; the demo is level `$80046` stepping 0 to 1 at frame 4307 and 1 to 2 at frame 9833 in one 12,000-frame boot (`lua/flaglog.lua`). `$762` is the demo: `$83e`/`$8ce` fill both player flags and point the input reader at recorded input streams, and the controller read `$fec` replays pairs (input byte, repeat count) from ROM `$5c000` (P1) and `$5d000` (P2), with pointer tables at `$5e000`/`$5f000` (read; the record mode behind `$80014` bit 7 writes the same buffers).
+Attract loop `$66c` (`world/world.md` section 1 has the full frame table; the cold-boot cycle with no input is 5,526 frames after the first 4306): `$8038`, protection `$13e2`, intro `$4a9e` (state word `$80016`, seven states through table `$4b2a`...: skyline loading, `NEW YORK A.D.2010`, sun and silhouette, nuclear dome text, `20 YEARS AFTER`, `AND NOW`, the two heroes), then repeatedly `$4076` (title: logo, `INSERT COIN`; `$80041` bit 2 set for the phase), `$762` (two-player demo: levels 1, 2, 3 in turn, demo 0 from frame 4307, 633 recorded frames), `$6c94` (best scores, ending with the `DATA EAST PRESENTS` logo) and the story again. `$80016` is shared by `$4a9e`, `$4076`, `$6c94` and `$5fba`. The demo: `$83e`/`$8ce` fill both player flags and point the input reader at recorded streams; `$fec`/`$10b2` replay pairs (held input byte, repeat count) from ROM `$5c000` (P1) and `$5d000` (P2), pointer tables `$5e000`/`$5f000`. **3798 of 3798 frames** of the three demos' expanded streams equal the attract run's inputs (`world/py/demo_check.py`); a fresh game fed the same streams follows the demo for 386 to 536 of 633 frames, then drifts by 1-2 px (cause inferred: enemy random numbers).
 
 ## Input and sound
 
@@ -52,9 +52,9 @@ Three pools, each a table of record pointers (`py/kernel/static_gate.py`, all PA
 
 | pool | records | table | type handlers | content (read, to be named by the mechanics pass) |
 |---|---|---|---|---|
-| A | 16 x `$40` at `$81000` | `$10358` | 80, `$10418`, code `$10778-$21fff` (78 distinct) | enemies, bosses, and (types 0-2, `$10778`) a shared fighter pipeline |
-| B | 32 x `$40` at `$81400` | `$10398` | 84, `$10558`, code `$28000-$2bfff` (46 distinct) | props, pickups, bonus objects |
-| C | 8 x `$20` at `$81c00` | `$106a8` | 44, `$106c8`, code `$22000-$22fff` (5 distinct) | effects |
+| A | 16 x `$40` at `$81000` | `$10358` | 80, `$10418`, code `$10778-$21fff` (78 distinct) | enemies, bosses, the health item (type 61, `$1e706`, +8 energy) and other items (59 explosion, 60 `BUTTON!!`, 62 timer object); types 0-2 share `$10778` |
+| B | 32 x `$40` at `$81400` | `$10398` | 84, `$10558`, code `$28000-$2bfff` (46 distinct) | props, hazards, decoration and comic hit text; liftable props show a 192-frame `PICKUP!!` hint in stages 1-3; **no pick-up items and no score for destroying a prop** (`world/world.md` section 4) |
+| C | 8 x `$20` at `$81c00` | `$106a8` | 44, `$106c8`, code `$22000-$22fff` (5 distinct) | **enemy attack hit boxes**: one frame each, re-created by the owner every frame; damage `4 x` a ROM table at `$fcba` (four DIP rows; 16 of 16 overlapping types match row 0); `$220ac`/`$2227c` are multi-frame (`world/world.md` section 6) |
 
 `$10254` (read): first the two script spawners `$f388` (list A) and `$f438` (list B), then for each pool every record whose byte 0 has bit 7 set gets `handler[record+2]` called with A6 = the record. Pool A also counts its live records in `$81e02` and sets `$81e03` bit 7 when the count is 5 or more; `$f388` does not spawn while that flag is set. **Gate** (`throttle_gate.py`, 4000-frame play of `plans/walk1.lua`): 21 of 21 list A spawns happened with fewer than 5 live pool A records and the block flag clear at the previous frame's end; the flag was set whenever the count reached 5 (11 of 11 change events with count >= 5). So at most five script enemies are alive at once. Players are not in the pools: P1 is `$80100`, P2 `$80180` (stride `$80`), updated by `$7626`. Shared engine helpers (movement, animation, collision, damage) are in `$22000-$27fff`; the type-1-to-3 handler `$10778` calls `$22c56`, `$22dac`, a state dispatch on `record+3`, `$22540`, `$2331c`, `$2242c`.
 
@@ -69,23 +69,21 @@ Record fields proven by the spawn gate: `+0` bit 7 active (`$80` set by the spaw
 | list A entries (enemies) | 42 | 33 | 59 | 32 | 60 | 47 |
 | list B entries (props) | 26 | 57 | 25 | 34 | 28 | 6 |
 
-Entry: word trigger, byte type, byte variant, word x, word y. Bit 15 of the trigger selects the compared scroll counter: clear compares against `$8040a` (horizontal), set against `$80406` (vertical); an entry fires when the trigger is at or below the counter (horizontal) or equal to it (vertical). The spawner copies type to `+2`, variant to `+16`, x to `+8`, y to `+12` of the first free record and advances the list by 8; list A spawns at most one entry per frame and drops the entry if its 16 records are all in use, list B spawns every due entry in the frame and, if the type's bit 7 is set, searches from record 24 instead of record 0 (and clears that bit). **Gate** (`spawn_gate.py`): 32 of 32 entries the two pointers passed over in the 4000-frame play matched a newly active record with the entry's type, variant, x and y in the same frame. The scroll counters: `$8040a` starts at `$100` in level 1 and rises as the screen scrolls right; `$80406` stayed `$100` (level 1 does not scroll vertically).
+Entry: word trigger, byte type, byte variant, word x, word y. Bit 15 of the trigger selects the compared scroll counter: clear compares against `$8040a` (horizontal), set against `$80406` (vertical; **no entry of the 449 uses it**, stage 6 climbs through its scroll map); an entry fires when the trigger is at or below the counter (horizontal) or equal to it (vertical). The spawner copies type to `+2`, variant to `+16`, x to `+8`, y to `+12` of the first free record and advances the list by 8; list A spawns at most one entry per frame and drops the entry if its 16 records are all in use, list B spawns every due entry in the frame and, if the type's bit 7 is set, searches from record 24 instead of record 0 (and clears that bit). **Gate** (`spawn_gate.py`): 32 of 32 entries the two pointers passed over in the 4000-frame play matched a newly active record with the entry's type, variant, x and y in the same frame. The scroll counters (`$8040a` x, `$80406` y, high byte = page, origin `$100`) start at `$100`, except level 5 where `$80406` starts at `$700`. Scrolling is driven by the per-level page map `$8908` (blocked directions, hold zone, forced scroll, end of area), stops while `$80400` bit 5 is set (25 handlers set it, 12 clear it) and while 5 pool A records live (`world/world.md` section 2.2).
 
-## Flags (writers from the linear listing of `$0-$2d000`; meanings *inferred* unless stated)
+## Flags
 
-| byte | bit | set by | cleared by | reading |
-|---|---|---|---|---|
-| `$80040` | 7 | `$eda` (start) | `$758` (`clr.w`) | a game is in progress (gates sound, input source, attract versus play: read) |
-| | 6 | `$746` | `$758` | game completed (ending) |
-| | 5 | `$70c` | `$758` | game over |
-| | 4 | `$c86a`, `$ca6e` (end-of-level objects, counter reached), `$20bd4` | `$da14` | level cleared: the frame loop at `$6f4` branches to `$71c` (read) |
-| | 3 | `$1725a`, `$23e5c`, `$23fac` | `$1708` | |
-| | 2 | 17 boss and event handlers (`$13208`, `$13882`, `$14438`, ...) | `$17238`, `$20426`, `$23e2e`, `$23f7e` | an event (boss) is running; the same sites set `$80041` bit 7 |
-| `$80041` | 0 | `$8624`, `$86be` | `$1444`, `$86ae`, `$8748` | a scene transition or text-box is running: the draw/update routines `$28fa`, `$1c8a`, `$3d66`, ... skip when set (read) |
-| | 7 | boss/event handlers (see `$80040` bit 2) | `$17252`, `$20bdc`, `$23e54`, `$23fa4` | |
-| `$80014` | 4 / 3 / 1 / 0 | `$12c2` / `$7a0` / `$10a8` / `$1046` | `$762`, `$834`, `$144c` | demo and input-record state (bit 7 is never set in code: it is the developers' record switch) |
+Named from their handlers with a check per bit in `world/world.md` section 7 (writers from the linear listing, observed transitions with frame numbers). Summary:
 
-The mechanics pass will rename these from their handlers.
+| cell | bit | name |
+|---|---|---|
+| `$80040` | 7 / 6 / 5 / 4 | game running (start `$eda`, cleared by `$758`) / game completed (ending) / game over (blocks joining) / level cleared (set by `$c86a`, `$ca6e`, `$20bd4`, consumed at `$6f4`, cleared `$da14`; a poke runs the full clear sequence) |
+| | 3 / 2 | scene lock (inferred) / boss fight (17 setting handlers, enables the boss energy bar `$3f06`; observed `80>84` at frame 4250 and `84>80` at 6738 while boss energy `$8005c` fell `$10` to 0) |
+| `$80041` | 0 / 2 / 3 / 4 / 7 | transition (wipes) / title screen / clear sequence / continue prompt / boss event B (set by 7 of the 17 boss handlers) |
+| `$80014` | 4 / 3 / 1, 0 | demo armed / demo replaying / developers' record switches (never set) |
+| `$8005a` | 7 / 6 / 5 | continue accepted / continue running / continue button held |
+| `$80400` | 5 / 7 / 6 | lock holder alive / scroll frozen / forced scroll |
+| `$8005c` | | boss energy |
 
 ## Corrections to what a first look suggests
 
