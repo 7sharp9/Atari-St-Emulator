@@ -12,6 +12,7 @@ decrypted image.
 | `graphics.md`, `gfx/` | graphics: ROM formats, tilemap/sprite/palette hardware, game-side lists and maps; the renderer, gates (`gfx/proof.sh`), sheets and level strips |
 | `sound.md`, `snd/` | sound: the HuC6280 program, the command ids and the 94 68000 senders, sequencer and patch formats, OKI phrase tables, gates (logs in `snd/out`, scratchpad) |
 | `world/world.md`, `world/strings.md` | levels and flow (state machine, attract table, clear sequence, scroll maps and lock rule), the four text engines and every string, pool B props, pool C hit boxes and damage, flags, demo streams; gate `world/py/gates.sh` |
+| `enemies1/enemies1.md` | pool A types of levels 0-2: the shared engine contract (record, states, hit and damage rules, scores, the `$2438a` brain), street thugs, bruiser, cyborg, dog, throwers, scooters, bosses; lab and natural-run scripts |
 | `architecture.md` | memory map, boot, vectors, protection, frame/VBL structure, game flow, object pools, level scripts, flags |
 | `cbmame.sh` | headless MAME wrapper (`script` = with debugger for Lua, `run` = no debugger; `CB_SET`, `CB_RUN`, `CB_ROMS`) |
 | `lua/lib.lua`, `lua/drive.lua` | helpers and the input-plan driver (`CB_PLAN`, `CB_SHOTS`, `CB_DUMP`, `CB_SAVE`, `CB_LOAD`) |

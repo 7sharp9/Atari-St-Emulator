@@ -77,8 +77,8 @@ Named from their handlers with a check per bit in `world/world.md` section 7 (wr
 
 | cell | bit | name |
 |---|---|---|
-| `$80040` | 7 / 6 / 5 / 4 | game running (start `$eda`, cleared by `$758`) / game completed (ending) / game over (blocks joining) / level cleared (set by `$c86a`, `$ca6e`, `$20bd4`, consumed at `$6f4`, cleared `$da14`; a poke runs the full clear sequence) |
-| | 3 / 2 | scene lock (inferred) / boss fight (17 setting handlers, enables the boss energy bar `$3f06`; observed `80>84` at frame 4250 and `84>80` at 6738 while boss energy `$8005c` fell `$10` to 0) |
+| `$80040` | 7 / 6 / 5 / 4 | game running (start `$eda`, cleared by `$758`) / game completed (ending) / game over (blocks joining) / level cleared: set by the **player's** victory pose (`$c86a`, `$ca6e` are in the player handler; `$20bd4` is pool A type 72, levels 3-5), consumed at `$6f4`, cleared `$da14`; a poke runs the full clear sequence |
+| | 3 / 2 | victory: set when a boss that raised `$80041` bit 7 finishes dying (each player then enters action `$f`, the victory pose, and bit 4 follows 255 frames later: frames 14626, 14627, 14882 of a natural god-mode level 0 run, `enemies1/enemies1.md` 6.2) / boss fight (17 setting handlers, enables the boss energy bar `$3f06`; observed `80>84` at frame 4250 and `84>80` at 6738 while boss energy `$8005c` fell `$10` to 0) |
 | `$80041` | 0 / 2 / 3 / 4 / 7 | transition (wipes) / title screen / clear sequence / continue prompt / boss event B (set by 7 of the 17 boss handlers) |
 | `$80014` | 4 / 3 / 1, 0 | demo armed / demo replaying / developers' record switches (never set) |
 | `$8005a` | 7 / 6 / 5 | continue accepted / continue running / continue button held |
