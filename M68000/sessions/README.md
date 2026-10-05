@@ -7,6 +7,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 |---|---|
 | `black_tiger.md` | Black Tiger reversing (`reversing/black_tiger/`) |
 | `cadaver.md` | Cadaver spike (`reversing/cadaver/`) |
+| `crudebuster.md` | Crude Buster reversing, Data East arcade under MAME (`reversing/crudebuster/`) |
 | `final_fight.md` | Final Fight reversing, CPS1 arcade under MAME (`reversing/finalfight/`) |
 | `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
