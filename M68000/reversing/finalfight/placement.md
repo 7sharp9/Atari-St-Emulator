@@ -295,13 +295,15 @@ dispatch: word table $7fe6, entries 0 to 42; 0, 1 open ground; 2, 4 push the mov
 
 Pool 8 kind `$22` (`$1fa5a`) writes code 5 (`$1400`, push right) over an 80-entry block (5 columns of 16 rows) at each area's left edge and code 3 (`$0c00`, push left) at the right edge: an invisible wall. Nothing changes on screen: writing code 3, code 5 or `$3f` over 80 tiles left the rendered frame identical in 4 of 4 compared frames. A code-3 block put on the player's row held Cody at x `$1df` for 160 frames while Right was pressed (he started inside it at `$22b`), a code-5 block let him walk on, and with no block he reached `$3a5`; the probe's read at `$8a1e` hit the block 976 times in 500 frames (`py/engine/` gate `terrain`, `bb_2500`). Whether the walls matter for fighters is not shown: the player is already held by the camera-window clamp (`$8e46`, x `>= cam + $18`; `px = $173` at `bb_2500`).
 
+**A natural wall of codes 7 and 8: stage 2 area 0, x `$3a0`.** The scroll-2 map of the second lock's screen (camera `$2dc`) holds code 7 at x `$3a0-$3af` and code 8 at `$3b0-$3bf` on the row y `$30-$3f`, code 1 (open) on the rows `$10-$2f` and code 4 above (read from the gfx RAM with the probe's address formula, `sb_stall2b`). A player in the lane y `$31` is held at x `$3ab`: the walk `$c0e6` writes x + 2 and `$7c72` takes it back every frame (61 of 61 frames, the write tap on `$ff856e`), which is also one pixel short of the camera's follow threshold `p.x - cam >= $d0`, so the camera stays. Moving the player to y `$20` with Right held walked him from `$3ab` to `$4cf` in 150 frames with the camera following (`$2dc` to `$3ff`). A bot that does not change lane stalls here for ever (`py/stage/README.md`, `FF_BOT_UNSTICK`); the codes 7 and 8 are a curb or step the lane `y >= $30` cannot climb at this x [I: dispatch `$7fe6` not read for them].
+
 ## The region word `$726e0`
 
 A ROM data word, 2 in this set: 0 Japan, 2 USA, 4 World. The boot code `$e68` indexes the warning text by it (`$ea8`: `$1a` Japan only, `$39` USA, Canada and Mexico, `$1b` elsewhere) and the banner (`$ede`: `$3f` JAPAN, `$40` U.S.A., `$41` ETC); the live ring commands `$0040` (frame 115) and `$0039` (frame 314) are the US pair. `$5b1e` takes the script table `$5f7e` and `$607a` the placement tables `$6346` when it is non-zero. About twenty more of its 26 absolute references in the attract, title and ending code choose Japanese or English text and logos, and `$17a46` separates 2 from 4 for the copyright line. It is neither a dip setting nor a player count.
 
 ## Pool-4 kind 7: the carrier
 
-Handler `$513f8`, spawned by `$f1ca` inside the player's area-clear walk-off for stage 2 area 0 (area-clear sub 4 reads the row of `$edd0` for the stage and area, here `$f15a`; its step table `$f16c` step 0 is `$f1b8`, which allocates the record unless `145(A6)` is set). Proven only with the clear forced by poking `297(A5) := 1` (state `p5b_k7`, 2 of 2 runs); the natural area clear of stage 2 area 0 was not played.
+Handler `$513f8`, spawned by `$f1ca` inside the player's area-clear walk-off for stage 2 area 0 (area-clear sub 4 reads the row of `$edd0` for the stage and area, here `$f15a`; its step table `$f16c` step 0 is `$f1b8`, which allocates the record unless `145(A6)` is set). Seen with the clear forced by poking `297(A5) := 1` (state `p5b_k7`, 2 of 2 runs) and in a played area clear: the bot (`py/stage/README.md`, "Stage 2") killed the last fighter of stage 2 area 0 and pool 4 slot 7 took kind 7 at x `$708`, y `$24`, camera `$750`, frame 52,760, and the camera at `$f00` (stage 2 area 1) by frame 55,270 (1 of 1; the record's `+3` steps were not logged).
 
 ```
 init $5140c: target = a player; x = camX - $48; y = player y; destination x = player x - $20; sprite data $d2db4
@@ -322,7 +324,7 @@ Live (`sb_s2`, `297(A5)` poked at relative frame 600): slot 7 of pool 4 holds ki
   player or boss code), the tail of `$2b` (brightness 0), and the natural trigger of `$e` (the camera hook `$61848`) and `$d` (the script's `22192(A5)` pulses): those two were driven by poking the flag.
 - The setters of the tile-patch flags in prop and boss code.
 - Terrain codes 6 to 38 (read, not exercised; only 3 and 5 were poked), the lift lookup `$8a28`, and whether the edge walls matter for fighters.
-- The natural area clear of stage 2 area 0 (the carrier was run on a poked clear), the placement type 12 kind 2 blink (read only) and the stage 3 area 1 and stage 5 area 0 scenes without the camera and player pokes.
+- The `+3` steps of the carrier in the natural clear (the spawn is seen, `py/stage`), the placement type 12 kind 2 blink (read only) and the stage 3 area 1 and stage 5 area 0 scenes without the camera and player pokes.
 - Modes 0, 4 and 6 of the trigger lists were not run (stage 3 area 1 and stage 5).
 
 ## Saved states of the logging runs

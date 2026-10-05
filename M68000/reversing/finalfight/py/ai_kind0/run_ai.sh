@@ -5,6 +5,7 @@
 #   hit  <name> <state> <stop> "<addrs>" [keys]   breakpoint execution counts -> $AI_OUT/<name>_hits.txt (FF_LOG=1 also _log.txt with D0/D1/A6/S)
 #   poke <name> <idx> <type63> <hp-hex> [facing]  hit-type poke on pool-2 array index <idx> at the end of frame 4200, dump to frame 4420
 # Environment: FF_RUN  MAME cfg/nvram/state/snap dir (default $root/scratchpad/finalfight/p3/a/run; give each concurrent run its own)
+#              FF_SECONDS  emulated seconds MAME may run (default 300; a state loaded at frame N needs more than N/59.6, or MAME exits one frame after the load)
 #              AI_OUT  output dir (default $root/scratchpad/finalfight/p3/a/out)   FF_ROMS ROM path (default ~/mame-roms)
 # <state> is a .sta name; it is copied from scratchpad/finalfight/<state>.sta into $FF_RUN/sta/ffightuc/ when missing.
 here=$(cd "$(dirname "$0")" && pwd)
@@ -21,7 +22,7 @@ mame_run() { # $1 = script, rest = extra mame args
   cd "$run" || exit 1
   mame ffightuc -rompath "${FF_ROMS:-$HOME/mame-roms}" -cfg_directory "$run/cfg" -nvram_directory "$run/nvram" \
     -state_directory "$run/sta" -snapshot_directory "$run/snap" -video none -sound none -nothrottle "$@" \
-    -seconds_to_run 300 -autoboot_script "$s"
+    -seconds_to_run "${FF_SECONDS:-300}" -autoboot_script "$s"
 }
 h() { printf '%x' "$1"; }
 case $mode in

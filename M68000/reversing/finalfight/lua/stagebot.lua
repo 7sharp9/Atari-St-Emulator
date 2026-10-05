@@ -9,6 +9,12 @@
 --   FF_BOT_HP0     1: treat a pool-4 record at hp 0 as alive (the rule is hp >= 0). Off by default only to keep the states sb_boss (a0cb6b52...) and sb_s1 that the pass-4 proofs start from: with it on, the bot chases DAMND from his allocation at frame 7810 and the run differs
 --   FF_BOT_LANEFIX 1: Up raises the lane word (the measured mapping); off by default, see the comment at the use
 --   FF_BOT_PROPS   1: with no fighter alive, attack a breakable prop (pool $a, +2 = 2) within 120 px ahead (off by default: it changes the run of stage 0)
+--   FF_BOT_LURE    1: when the nearest target has stood within $80 px outside the camera window for 120 frames, walk to mid-screen instead of at it (a kind 3 fighter parks its destination `$50`/`$80` px beside the player,
+--                  off screen when the player hugs the locked camera's edge: stage 2 area 0, `ai.md`). Off by default: it changes the run
+--   FF_BOT_UNSTICK 1: when Right has not moved the player for 45 frames, press Down (physically lowers the lane), then Up on the next stall, for 40 frames, and with FF_BOT_PROPS prefers a prop ahead for 600 frames (stage 2 area 2: a DOOR prop at x $888 walls every lane). Stage 2 area 0 past the
+--                  second lock: the lane y >= $30 is blocked at x $3a0 by terrain codes 7 and 8 (a curb), the rows below it are open (`placement.md`, "Terrain codes"). Off by default
+--                  FF_BOT_UNSTICK also selects the stage 2 to 5 prop rules: FLAME props (kinds $10, $11) are never targeted, and a prop is swung at only with the lane aligned (|dy| <= 5; 12 once the lane has not moved for 40 frames)
+--   FF_BOT_PROPRANGE  dx within which the bot swings at a prop (default 60, as in the states sb_s1 and sb_s6; 48 clears stage 3's first props)
 --   FF_BOT_LEAVE   stop when the stage byte 190(A5) differs from this value (after the subway it is 6, not 2); with FF_SAVE_PREFIX=<p> the state is saved as <p><new stage byte>
 --   FF_BOT_STAGE   stop (and save FF_SAVE) when the stage byte 190(A5) reaches this value; FF_BOT_STOPF stops at that frame
 --   FF_BOT_SCRIPT  stop (and save FF_SAVE) when the stage-script pointer long at $ffb1ee reaches this value
@@ -22,6 +28,11 @@ local CAMSTOP = tonumber(os.getenv("FF_BOT_CAM") or "")
 local HP0 = os.getenv("FF_BOT_HP0") == "1"
 local LANEFIX = os.getenv("FF_BOT_LANEFIX") == "1"
 local PROPS = os.getenv("FF_BOT_PROPS") == "1"
+local LURE = os.getenv("FF_BOT_LURE") == "1"
+local lure_since
+local UNSTICK = os.getenv("FF_BOT_UNSTICK") == "1"
+local PROPRANGE = tonumber(os.getenv("FF_BOT_PROPRANGE") or "60") -- swing at a prop only within this dx; walking stops at 45, so a value above it can swing out of reach for ever (stage 3: whiffing at dx 58)
+local unstick_x, unstick_still, unstick_until, unstick_dir = nil, 0, -1, "up"
 local STAGESTOP = tonumber(os.getenv("FF_BOT_STAGE") or "")
 local LEAVE = tonumber(os.getenv("FF_BOT_LEAVE") or "")
 local SAVEPFX = os.getenv("FF_SAVE_PREFIX")
@@ -35,6 +46,8 @@ local pools = { { "2", 0xff86e8, 13 }, { "6", 0xff90a8, 6 }, { "4", 0xff9528, 8 
 local seen = {}
 local held = {}
 local function set(field, v) if held[field] ~= v then held[field] = v; L.F[field]:set_value(v) end end
+local lane_py, lane_still = nil, 0
+local f_now, prop_first_until = 0, -1 -- frame number for nearest(); a stuck bot (UNSTICK) prefers a prop ahead until this frame
 local function nearest()
   local px, py = m:read_u16(P1 + 6), m:read_u16(P1 + 14)
   local best, bd
@@ -52,18 +65,20 @@ local function nearest()
       end
     end
   end
-  if PROPS and not best then -- no fighter: a breakable prop (pool $a) just ahead blocks the walk (three barrels held the bot in stage 1 area 1)
+  if PROPS and (not best or f_now < prop_first_until) then -- no fighter (or stuck: FF_BOT_UNSTICK): a breakable prop (pool $a) just ahead blocks the walk (three barrels held the bot in stage 1 area 1)
+    local pbest, pbd
     for i = 0, 15 do
       local a = 0xffb2e8 + 0xc0 * i
-      if m:read_u8(a) == 1 and m:read_u8(a + 2) == 2 then
+      if m:read_u8(a) == 1 and m:read_u8(a + 2) == 2 and (not UNSTICK or m:read_u8(a + 19) < 0x10 or m:read_u8(a + 19) > 0x11) then -- kinds 16 and 17 are FLAME hazards (stage 3), not breakable
         local ex, ey = m:read_u16(a + 6), m:read_u16(a + 10) -- props keep no ground line copy at +14
         local dx = ex - px
         if dx >= -20 and dx < 120 then
           local d = math.abs(dx) + 2 * math.abs(ey - py)
-          if not bd or d < bd then best, bd = { x = ex, y = ey, a = a, prop = true }, d end
+          if not pbd or d < pbd then pbest, pbd = { x = ex, y = ey, a = a, prop = true }, d end
         end
       end
     end
+    if pbest then best = pbest end
   end
   return px, py, best
 end
@@ -80,9 +95,14 @@ emu.register_frame_done(function()
     if m:read_u16(P1 + 24) < mx and m:read_u8(P1 + 2) == 2 then m:write_u16(P1 + 24, mx) end
     if m:read_u8(P1 + 128) < 2 then m:write_u8(P1 + 128, 2) end
   end
+  f_now = f
   local px, py, e = nearest()
   local right, left, up, down = 0, 0, 0, 0
-  if e then
+  if LURE and e and not e.prop and ((e.x < cam and e.x >= cam - 0x80) or (e.x >= cam + 0x180 and e.x < cam + 0x200)) then lure_since = lure_since or f else lure_since = nil end
+  if lure_since and f - lure_since >= 120 then
+    local tx = cam + 0xc0
+    if px < tx - 12 then right = 1 elseif px > tx + 12 then left = 1 end
+  elseif e then
     local dx, dy = e.x - px, e.y - py
     -- Measured (py/twoplayer, 6 of 6 runs): Up RAISES +10 and +14 by 0.8 px per frame, lane limits `$10` and `$3f`. The default mapping below is the opposite and is kept only because the
     -- states sb_boss and sb_s1 come from it (enemies walk up to the bot, so it still kills them); FF_BOT_LANEFIX=1 selects the correct one.
@@ -92,10 +112,20 @@ emu.register_frame_done(function()
       if dy > 5 then down = 1 elseif dy < -5 then up = 1 end
     end
     if math.abs(dx) > (e.prop and 45 or 40) then if dx > 0 then right = 1 else left = 1 end end
-    local ry = 8
-    if math.abs(dx) <= (e.prop and 60 or 60) and math.abs(dy) <= ry and f - last_b1 >= 14 then last_b1 = f end
+    -- a prop does not walk to the bot: swing only when the lane is aligned (a swing at |dy| 6..12 whiffs and its animation blocks the lane change for ever: stage 3 area 0, a DRUMCAN 12 px off);
+    -- if the lane has not moved for 40 frames while misaligned (terrain row, stage 2 area 2's door at dy 9) swing from where the bot stands
+    if e.prop and math.abs(dy) > 5 and py == lane_py then lane_still = lane_still + 1 else lane_still = 0 end
+    lane_py = py
+    local ry = (e.prop and UNSTICK) and (lane_still >= 40 and 12 or 5) or 8
+    if math.abs(dx) <= (e.prop and PROPRANGE or 60) and math.abs(dy) <= ry and f - last_b1 >= 14 then last_b1 = f end
   else
     right = 1
+  end
+  if UNSTICK then
+    if px == unstick_x and right == 1 and left == 0 then unstick_still = unstick_still + 1 else unstick_still = 0 end
+    unstick_x = px
+    if unstick_still >= 45 then unstick_still = 0; unstick_until = f + 40; prop_first_until = f + 600; unstick_dir = (unstick_dir == "down") and "up" or "down" end
+    if f < unstick_until then if unstick_dir == "down" then down, up = 1, 0 else up, down = 1, 0 end end
   end
   set("right", right); set("left", left); set("up", up); set("down", down)
   set("b1", (f - last_b1 < 5) and 1 or 0)

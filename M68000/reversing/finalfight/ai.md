@@ -483,6 +483,13 @@ at `$ff116c + 2 * player + side` is set (`$2e598` increments, `$2e5a6` decrement
 ground `$2e6f4` starts a script at once when `138 = $50`, else with probability `(147 + 1)/32` the charge (id 8, below), else a new destination; `178(A6)` at `>= 250` forces id 24. `147` is
 `$2cdc0 + 32 * sub + rank` (sub 0: 3, 4, 4, 5, 5, 6, ...; sub 1: 3, 4, 5, 6, ...; subs 2-4 as 0).
 
+**The destination is never tested against the camera** (`$2e3f6` writes `+132` x, `+134` y, `+137` side, `+138` offset; its one block test `$2e55a` is the terrain probe `$7fac`; the variant `$2e494`, called from the
+attack states `$2d49c-$2dc50`, is the one that rejects `x - cam` outside `0..$180`, `$2e4b8`). Every new destination equals the player's x plus (side byte 1) or minus (0) the offset: 19 of 19 changes in two 400-frame
+runs, 11 of them left of the camera (`py/stage/dest_gate.py`). So a fighter on the player's side of a locked camera's edge parks outside the screen when the player stands within `$50` of that edge, and walks
+between points `$50` and `$80` px beyond him without ever entering the melee window. Stage 2 area 0, last of the 13 trash fighters (an ANDORE from the left edge, `x = $1cf`, `+3` flipping 2 and 4 each
+few frames with the punch `+4 = $c` whiffing from 74 px): the bot stood at x `$219` against `cam = $201` for 54,000 frames (the frame limit) with Left held. With the bot walking to mid-screen
+(`FF_BOT_LURE=1`) he walked in and died, and the camera moved on (`py/stage/README.md`). A player at the window edge with the fighter on that side is not a state the original game forbids [I].
+
 Scripts (`$2e768`, base `$2e790`, script table `$2e79a`; `atkscripts.py 2e790 5 2e79a`). ANDORE Jr. picks the script by `table[RNG & $1f]`: ids 0 x5, 2 x5, 4 x10, 6 x2, 8 x2, 10 x7, 12 x1 of 32, which run (script id: elements) 0: `12 4 6`; 2: `10 2 10 2 12 4 6`;
 4: `10 2 10 2 14 4 6`; 6: `10 2 10 2 16 4 6`; 8: `12 2 18 4 6`; 10: `12 2 18 18 4 6`; 12: `10 2 16 2 18 4 6`; ANDORE reweights the same scripts (6 x8, 8 x8, 12 x4); G, U and F use grab-heavy scripts
 (`10 2 14 4 6`, `10 2 16 4 6`, `14 4 6`, `16 4 6`, `12 2 18 2 18 4 6`, `12 2 18 2 18 2 18 4 6`, `16 2 18 2 18 4 6`). Every script ends with 4 (long wait) and 6 (retreat).
