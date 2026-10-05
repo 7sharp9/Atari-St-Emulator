@@ -28,6 +28,48 @@ at about 18x real time. MAME's cfg/nvram/state go under `scratchpad/finalfight/r
 python3 tools/disassemble.py --rom <abs path>/ff_main.bin --base 0 --linear 5e88c 24
 ```
 
+`./ffrun.sh <script.lua>` is the second wrapper: no `-debug`, `-nothrottle` (about 4-8x real time with
+RAM dumps), same `scratchpad/finalfight/run/` directories. Use it for input-driven scripts
+(`lua/lib.lua`, `ffdrive.lua`, `resume_check.lua`, `ioport_dump.lua`); use `ffmame.sh` for `callcap`.
+
+## Driving the game
+
+`FF_SAVE=ff_gameplay ./ffrun.sh $PWD/lua/ffdrive.lua` plays the scripted drive from a cold boot and
+saves the state at the end of frame 2200 (about 9 s of wall time; `FF_TRACE=1 FF_TRACE_LO/HI` dumps
+work RAM per frame to `<FF_OUT>/tmp/`, `FF_VARIANT=ctl` is the control run without the walk-test
+presses, `FF_LOAD=<state>` loads one at frame 1). Inputs are set in `emu.register_frame_done` with
+`field:set_value(1/0)`; a level set at the end of frame N is what the game reads from N+1.
+`ioport.txt` lists the 36 ioport fields (`:IN0`, `:IN1`, `:DSWA/B/C`, polarity measured: all active low;
+Coin 1 reads `$00fe` only from the frame after a multi-frame hold).
+
+| frames | input | result |
+|---|---|---|
+| 1100-1112 | Coin 1 | `CREDIT =1` on the title screen (credit byte `$ff804d`) |
+| 1150-1162 | P1 Start | SELECT PLAYER, cursor on Guy |
+| 1250-1256 | Right | cursor on Cody |
+| 1280-1292 | Button 1 | confirm Cody |
+| 1370-1700 | none | scripted stage intro: Cody walks in and kicks the barrels by himself; Right/Left held at 1500-1580 give identical x at every frame, so input is ignored |
+| 1800+ | Right, Left, Up, Down | the walk test below |
+| 2040-2195 | Right | Bred appears and grapples Cody; state saved at 2200 (`gameplay.png`) |
+
+A hold-right test before about frame 1700 reads as "input does nothing"; test after the intro.
+
+Proven (`lua/analyze_inputs.py`, per-frame work-RAM trace of frames 1790-2029, reproduced from the
+promoted scripts): player x word `$ff856e` changed in 59 of 60 Right frames (steps +1/+2, monotone, the
+missing one is the one-frame latency), 39 of 40 Left (-1/-2), 0 on 81 idle frames and 0 in the other
+axis's phases; y word `$ff8572` changed in 19 of 30 Up frames and 16 of 20 Down (it clamps at 44..63);
+the control run stays at x=194, y=44 over the same frames and its work RAM equals the drive's through
+frame 1800 and first differs at 1801. Also seen (names inferred from behaviour, no game reader of them
+identified): `$ff85dc` tracks x+12 while walking but moves on its own in the kick animation (a
+hit box?); `$ff805c` rises `$0100`, `$0101` while Right is held (an input shadow?); `$ff85ee` is the
+P1 score as BCD in hundreds (the one name checked against the game's own HUD: `$0300`, `$0600`, `$1600`
+against HUD 300, 600, 1600 in 6 of 6 screenshots). TIME and player health were not found.
+
+Determinism and resume: work RAM at frame 2200 sha256 `79ed3cc1...0b2c` and gfx RAM
+`d6fbca5f...d8b0` are identical over three cold boots; a state loaded in
+a fresh MAME matches a fresh run's next 6 frames of work RAM byte for byte (6 of 6). The `.sta` file
+itself differs by one byte of device state between boots: compare RAM, not the file.
+
 ## Harness facts (checked on this build, MAME 0.289)
 
 - Lua sees the debugger only under `-debug`; `-debugger none` keeps it headless.
@@ -37,6 +79,11 @@ python3 tools/disassemble.py --rom <abs path>/ff_main.bin --base 0 --linear 5e88
 - While stopped, `cpu.state["PC"]` reads **2 above** the breakpoint address (`$540` for `bpset 53e`);
   `cpu.state["CURPC"]` is the instruction address. Compare on `CURPC`.
 - The stack pointer is `SP` (no `A7`). Registers: `D0-D7 A0-A6 SP USP SR PC CURPC`.
+- `emu.register_frame_done` works without `-debug`. `manager.machine:save("n")`/`:load("n")` work from
+  it (file `<state_dir>/ffightuc/n.sta`; the load applies before the next callback and restores the
+  screen frame counter). `screen:snapshot(name)` renders under `-video none` (384x224). Ports:
+  `manager.machine.ioport.ports[":IN0"].fields["Coin 1"]:set_value(1)`.
+- Not tested: the drive with `-debug` on (`callcap.lua`'s stop at `$53e` may interact with the frame callback).
 - Setting registers from a periodic callback while the CPU free-runs did not take (PC stayed in the
   idle loop, sentinel never reached). `callcap.lua` therefore stops the CPU at the VBL entry `$53e`
   once per frame, and sets the call up only after `warm` frames of that.
@@ -69,19 +116,18 @@ unconfirmed in the source); there is no raster interrupt on this board. Z80: ROM
 
 From the ROM: SSP `$00ff1000`, reset PC `$0005e88c`; the reset code clears the sound latch and coin
 registers, then programs the CPS-A layer base pointers (`$800100..$80010e`); VBL vector `$68` ->
-`$53e`, which latches scroll registers into CPS-A/B, calls `$984`, `$fac`, `$e46`, then runs a
-countdown over 16 sixteen-byte records at `-28672(A5)` (`$ff1000`): state byte 1 counts down to state
-4. The idle loop sits in `$7f6-$8c0`. `trap #4/#5` appear at `$8b6`/`$8de`. Reading: a small
-cooperative/preemptive task kernel with 16 task control blocks (state, timer, saved SR/PC/USP at
-`+2/+4/+8`). **Inferred from code only**; prove it with `callcap` on the trap handlers and a `watch`
-on the record states before it goes in a topic doc.
+`$53e` latches scroll registers into CPS-A/B, reads the inputs into `84..103(A5)`, calls `$984`, `$fac`,
+`$e46`, then counts down the sleep timers of the task records. The task kernel (16 records at
+`$ff1000`, `trap #0..#8` as create/exit/kill/sleep/yield/suspend/wake/restart/reset) is in `kernel.md`.
 
 ## Next
 
-1. Prove the task kernel (`$7f0-$8c0`; the handlers of `trap #4`/`#5`, vectors 36/37 at `$90`/`$94`,
-   not read yet) live, then name its states.
-2. Census the object/entity pool the tasks drive and find the game's own readers before naming fields
-   (the CLAUDE.md rules on census columns apply unchanged).
-3. Graphics: the four 512 KB gfx ROMs load at offsets 0/2/4/6 in `-listxml`, so they are interleaved
-   (tile format not yet decoded; MAME's gfx layout in `cps1.cpp` is the reference). Render a sprite
-   sheet and commit the PNG with the doc that proves the decode.
+1. Run the kernel under a breakpoint: `callcap`/`bp` on `$8be`, `$88a`, `$832` to turn `kernel.md`'s
+   code-read trap semantics into live checks, and settle the `register_frame_done` sampling point
+   relative to the VBL interrupt.
+2. Name the tasks: log each task's entry point (`+4` at creation, `trap #0`/`#7`) over the drive and read
+   their bodies. Then census the object/entity pool they drive (enemy table, health, TIME counter were
+   not found by value search) and find the game's own readers before naming fields (the CLAUDE.md rules on
+   census columns apply unchanged).
+3. Graphics: `hardware.md` has the layouts and mapper ranges; the plane/byte order across
+   `ff-5m/7m/1m/3m` is inferred. Decode one known tile, render a sheet, commit the PNG with the doc.

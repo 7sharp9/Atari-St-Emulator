@@ -1,0 +1,36 @@
+# port | field | mask | default | type | live idle | live pressed (digital fields only)
+:DSWA | 2 Coins to Start, 1 to Continue | 0040 | 0040 | 5 | 00ff | -
+:DSWA | Coin A | 0007 | 0007 | 5 | 00ff | -
+:DSWA | Coin B | 0038 | 0038 | 5 | 00ff | -
+:DSWA | Unused | 0080 | 0080 | 5 | 00ff | -
+:DSWB | Bonus Life | 0060 | 0060 | 5 | 00f4 | -
+:DSWB | Difficulty Level 1 | 0007 | 0004 | 5 | 00f4 | -
+:DSWB | Difficulty Level 2 | 0018 | 0010 | 5 | 00f4 | -
+:DSWB | Unused | 0080 | 0080 | 5 | 00f4 | -
+:DSWC | Allow Continue | 0040 | 0000 | 5 | 009f | -
+:DSWC | Demo Sounds | 0020 | 0000 | 5 | 009f | -
+:DSWC | Flip Screen | 0010 | 0010 | 5 | 009f | -
+:DSWC | Free Play | 0004 | 0004 | 5 | 009f | -
+:DSWC | Freeze | 0008 | 0008 | 5 | 009f | -
+:DSWC | Game Mode | 0080 | 0080 | 5 | 009f | -
+:DSWC | Lives | 0003 | 0003 | 5 | 009f | -
+:IN0 | 1 Player Start | 0010 | 0010 | 7 | 00ff | 00ef
+:IN0 | 2 Players Start | 0020 | 0020 | 8 | 00ff | 00df
+:IN0 | Coin 1 | 0001 | 0001 | 17 | 00ff | 00ff
+:IN0 | Coin 2 | 0002 | 0002 | 18 | 00ff | 00ff
+:IN0 | Service 1 | 0004 | 0004 | 30 | 00ff | 00fb
+:IN0 | Service Mode | 0040 | 0040 | 5 | 00ff | 00ff
+:IN1 | P1 Button 1 | 0010 | 0010 | 60 | ffff | ffef
+:IN1 | P1 Button 2 | 0020 | 0020 | 61 | ffff | ffdf
+:IN1 | P1 Button 3 | 0040 | 0040 | 62 | ffff | ffbf
+:IN1 | P1 Down | 0004 | 0004 | 48 | ffff | fffb
+:IN1 | P1 Left | 0002 | 0002 | 49 | ffff | fffd
+:IN1 | P1 Right | 0001 | 0001 | 50 | ffff | fffe
+:IN1 | P1 Up | 0008 | 0008 | 47 | ffff | fff7
+:IN1 | P2 Button 1 | 1000 | 1000 | 60 | ffff | efff
+:IN1 | P2 Button 2 | 2000 | 2000 | 61 | ffff | dfff
+:IN1 | P2 Button 3 | 4000 | 4000 | 62 | ffff | bfff
+:IN1 | P2 Down | 0400 | 0400 | 48 | ffff | fbff
+:IN1 | P2 Left | 0200 | 0200 | 49 | ffff | fdff
+:IN1 | P2 Right | 0100 | 0100 | 50 | ffff | feff
+:IN1 | P2 Up | 0800 | 0800 | 47 | ffff | f7ff
