@@ -9,7 +9,7 @@ method (census, callcap, gates, claims need a match count).
 
 | file | sha256 | role |
 |---|---|---|
-| `ffight.zip` | `a7cc8894...7eab` | parent set: gfx (`ff-1m/3m/5m/7m`), OKI samples, `ff-32m.8h` bank ROM, PLD dumps |
+| `ffight.zip` | `a7cc8894...7eab` | parent set: gfx (`ff-1m/3m/5m/7m`), OKI samples, `ff-32m.8h` (program ROM at `$080000-$0fffff`, not a bank ROM), PLD dumps |
 | `ffightub.zip` | `b9f8098e...e49c2` | misnamed: its CRCs are the **`ffightuc`** program ROMs + Z80 `ff_23.12b`, not MAME 0.289's `ffightub` |
 
 MAME looks for `ffightuc.zip` beside `ffight.zip`, so the second file is copied to
@@ -53,15 +53,19 @@ Live: 32/32 words written (the odd bytes `20`→`53`; the even bytes were alread
 (`validate_50e_gated.lua`) returns with an empty diff. The check covers one routine in the attract
 mode; it does not yet cover a routine that sleeps, yields (`trap #4/#5`) or waits on a VBL flag.
 
-## Hardware and boot (MAME driver summary plus this ROM)
+## Hardware and boot
 
-Map recalled from `cps1.cpp` through a web summary (not read line by line), cross-checked against the
-ROM's own reset code: program ROM `$000000-$3fffff`; `$800000` inputs; `$800018` DIP/system;
-`$800030` coin control; `$800100-$80013f` CPS-A; `$800140-$80017f` CPS-B; `$800180` sound latch;
-`$900000-$92ffff` gfx RAM; `$ff0000-$ffffff` work RAM. Z80: ROM `$0000-$7fff`, banked `$8000-$bfff`,
-RAM `$d000`, YM2151 `$f000`, OKI `$f002`, bank `$f004`, latch `$f008`. VBL is IRQ2 (vector 26, `$68`)
-at scanline 240. The CPS-B layer/palette register ids for Final Fight were not in the summary: read
-`cps1.cpp` before relying on them.
+The hardware reference is `hardware.md` (read from `cps1.cpp` 0.289, every address with a source line
+and a tag for what the ROM confirms). What the rest of this README depends on: `ffightuc` is board
+89624B-3 with **CPS-B-05** (layer control `$800168`, priority masks `$80016a-$800170`, palette control
+`$800172`, ID register `$800160` reads `$0005`), not the `CPS_B_04` of `ffight`/`ffightu`; the ROM's
+own writes match B-05. The 68000 map is program ROM `$000000-$3fffff` (including `ff-32m.8h` at
+`$080000`, no main-CPU bank switching), inputs `$800000` (IN1 word, P1 low byte, P2 high byte) and
+`$800018-$80001e` (IN0, DSWA/B/C bytes), coin control `$800030`, CPS-A `$800100-$80013f`, CPS-B
+`$800140-$80017f`, sound latches `$800180`/`$800188`, gfx RAM `$900000-$92ffff`, work RAM
+`$ff0000-$ffffff`. VBL is one interrupt at scanline 240 (IPL1, vector `$68` by autovector convention,
+unconfirmed in the source); there is no raster interrupt on this board. Z80: ROM `$0000-$7fff`, banked
+`$8000-$bfff`, RAM `$d000`, YM2151 `$f000`, OKI `$f002`, bank `$f004`, latches `$f008`/`$f00a`.
 
 From the ROM: SSP `$00ff1000`, reset PC `$0005e88c`; the reset code clears the sound latch and coin
 registers, then programs the CPS-A layer base pointers (`$800100..$80010e`); VBL vector `$68` ->
@@ -74,11 +78,10 @@ on the record states before it goes in a topic doc.
 
 ## Next
 
-1. Read `cps1.cpp` for the CPS-B register ids and the input/DSW layout; replace the summary above.
-2. Prove the task kernel (`$7f0-$8c0`; the handlers of `trap #4`/`#5`, vectors 36/37 at `$90`/`$94`,
+1. Prove the task kernel (`$7f0-$8c0`; the handlers of `trap #4`/`#5`, vectors 36/37 at `$90`/`$94`,
    not read yet) live, then name its states.
-3. Census the object/entity pool the tasks drive and find the game's own readers before naming fields
+2. Census the object/entity pool the tasks drive and find the game's own readers before naming fields
    (the CLAUDE.md rules on census columns apply unchanged).
-4. Graphics: the four 512 KB gfx ROMs load at offsets 0/2/4/6 in `-listxml`, so they are interleaved
+3. Graphics: the four 512 KB gfx ROMs load at offsets 0/2/4/6 in `-listxml`, so they are interleaved
    (tile format not yet decoded; MAME's gfx layout in `cps1.cpp` is the reference). Render a sprite
    sheet and commit the PNG with the doc that proves the decode.
