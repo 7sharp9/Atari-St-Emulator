@@ -107,7 +107,7 @@ Slot 1's dispatch word took the values 0 (frame 1169), 2 (1200), 4 (1312) and 6 
 frame 2200), written by `$4cde`, `$4d46` and `$4d74`, the bodies the table gives for states 0, 2 and 4 [L].
 State 6 (`$4e3a`) is the in-level frame: it calls `$5326`, `$5238`, `$5668`, then `$6396`, `$6026`,
 `$61e24` and `$16600` with `$50e` calls (`D0 = $43, $53, $54`) between them, and tests `297(A5)` for the
-stage-clear and death exits to states 8, `$a` and `$c` [R]. The pipeline, TIME, the object array and the sprite
+stage-clear and death exits to states 8, `$a` and `$c` [R]. The pipeline, TIME, the object pools, health, hit boxes and the sprite
 list builder are in `frame.md`.
 
 Writing `127(A5)` and `126(A5)` at frame 1150 (`pc $1202`, value `$0101`) is the Start press: both bytes become 1.

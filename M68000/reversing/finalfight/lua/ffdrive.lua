@@ -36,6 +36,32 @@ end
 sched[#sched + 1] = { 2040, "right", 1 }
 sched[#sched + 1] = { 2195, "right", 0 }
 
+-- p2/b extension: FF_PLAN=<file.lua> returns extra {frame, field, value} entries (levels), FF_CENSUS=<file> logs live records
+local plan = os.getenv("FF_PLAN")
+if plan then for _, e in ipairs(dofile(plan)) do sched[#sched + 1] = e end end
+local census = os.getenv("FF_CENSUS") and io.open(os.getenv("FF_CENSUS"), "w")
+local census_lo = tonumber(os.getenv("FF_CENSUS_LO") or "2200")
+local function census_dump(f)
+  local mm = L.mem
+  census:write(string.format("F %d\n", f))
+  do -- HUD queue of P1: ring of 8-byte entries {record pointer, hp, shadow, max} at 644(A5), write index 900(A5) (routine $28d0)
+    local wi = mm:read_u16(0xff8000 + 900)
+    local e = 0xff8000 + 644 + ((wi - 8) & 0x7f)
+    census:write(string.format("Q wi=%d ptr=%04x hp=%04x sh=%04x max=%04x\n", wi, mm:read_u16(e), mm:read_u16(e + 2), mm:read_u16(e + 4), mm:read_u16(e + 6)))
+  end
+  for i = 0, 59 do
+    local a = 0xff8568 + 0xc0 * i
+    local b0 = mm:read_u8(a)
+    local b1 = mm:read_u8(a + 1)
+    if b0 ~= 0 or b1 ~= 0 then
+      census:write(string.format("R %d %06x b0=%02x b1=%02x pool=%02x b19=%02x b20=%02x x=%04x y=%04x hp=%04x w20=%04x st2=%02x st3=%02x p92=%06x p56=%06x b55=%02x b96=%02x b98=%02x b44=%02x b45=%02x\n", i, a, b0, b1,
+        mm:read_u8(a + 18), mm:read_u8(a + 19), mm:read_u8(a + 20), mm:read_u16(a + 6), mm:read_u16(a + 10), mm:read_u16(a + 24),
+        mm:read_u16(a + 20), mm:read_u8(a + 2), mm:read_u8(a + 3), mm:read_u32(a + 92) & 0xffffff, mm:read_u32(a + 56) & 0xffffff,
+        mm:read_u8(a + 55), mm:read_u8(a + 96), mm:read_u8(a + 98), mm:read_u8(a + 44), mm:read_u8(a + 45)))
+    end
+  end
+end
+
 local function fnv(s)
   local h = 2166136261
   for i = 1, #s, 4 do
@@ -62,13 +88,19 @@ emu.register_frame_done(function()
     manager.machine:load(lf)
     return
   end
-  if not lf then L.apply(sched, f) end
+  L.apply(sched, f)
+  if census and f >= census_lo then census_dump(f) end
   if f >= 1000 and f % 10 == 0 then
     trace:write(string.format("%d %04x %04x %04x %08x\n", f, m:read_u16(0xff856e), m:read_u16(0xff85dc),
       m:read_u16(0xff85e4), fnv(L.ram())))
   end
   if frames_bin and f >= TRACE_LO and f < TRACE_HI then frames_bin:write(L.ram()) end
   if os.getenv("FF_SHOTS") == "1" and f % 50 == 0 and f >= 1000 then L.screen:snapshot(string.format("%s_%05d.png", tag, f)) end
+  local sl, sh, ss = tonumber(os.getenv("FF_SHOT_LO") or "0"), tonumber(os.getenv("FF_SHOT_HI") or "-1"), tonumber(os.getenv("FF_SHOT_STEP") or "1")
+  if f >= sl and f <= sh and (f - sl) % ss == 0 then L.screen:snapshot(string.format("%s_%05d.png", tag, f)) end
+  for a, b in string.gmatch(os.getenv("FF_SHOT_WIN") or "", "(%d+)-(%d+)") do
+    if f >= tonumber(a) and f <= tonumber(b) then L.screen:snapshot(string.format("%s_%05d.png", tag, f)) end
+  end
   if f == save_frame and os.getenv("FF_SAVE") then
     L.write(string.format("%s/%s_ram.bin", out, os.getenv("FF_SAVE")), L.ram())
     L.write(string.format("%s/%s_gfxram.bin", out, os.getenv("FF_SAVE")), L.region(0x900000, 0x30000))
@@ -77,6 +109,7 @@ emu.register_frame_done(function()
     saved = true
   end
   if f >= stop_frame then
+    if census then census:close() end
     trace:close(); if frames_bin then frames_bin:close() end
     manager.machine:exit()
   end

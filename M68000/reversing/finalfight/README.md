@@ -63,10 +63,10 @@ missing one is the one-frame latency), 39 of 40 Left (-1/-2), 0 on 81 idle frame
 axis's phases; y word `$ff8572` changed in 19 of 30 Up frames and 16 of 20 Down (it clamps at 44..63);
 the control run stays at x=194, y=44 over the same frames and its work RAM equals the drive's through
 frame 1800 and first differs at 1801. Also seen (names inferred from behaviour, no game reader of them
-identified): `$ff85dc` tracks x+12 while walking but moves on its own in the kick animation (a
-hit box?); `$ff805c` rises `$0100`, `$0101` while Right is held (an input shadow?); `$ff85ee` is the
-P1 score as BCD in hundreds (the one name checked against the game's own HUD: `$0300`, `$0600`, `$1600`
-against HUD 300, 600, 1600 in 6 of 6 screenshots). TIME and player health were not found.
+identified): `$ff805c` rises `$0100`, `$0101` while Right is held (an input shadow?). Named later from
+their readers (`frame.md`): `$ff85dc` is Cody's attack-box centre x (`+116` of his record), `$ff85ee` the P1
+score (`+134`, BCD in hundreds; `$0300`, `$0600`, `$1600` against HUD 300, 600, 1600 in 6 of 6 screenshots),
+`$ff8580` his health (`+24`), `175(A5)` TIME.
 
 Determinism and resume: work RAM at frame 2200 sha256 `79ed3cc1...0b2c` and gfx RAM
 `d6fbca5f...d8b0` are identical over three cold boots; a state loaded in
@@ -122,15 +122,36 @@ registers, then programs the CPS-A layer base pointers (`$800100..$80010e`); VBL
 `$53e` latches scroll registers into CPS-A/B, reads the inputs into `84..103(A5)`, calls `$984`, `$fac`,
 `$e46`, then counts down the sleep timers of the task records. The task kernel (16 records at
 `$ff1000`, `trap #0..#8` as create/exit/kill/sleep/yield/suspend/wake/restart/reset) is in `kernel.md`.
-The in-level frame (TIME, the object array with the players and Bred, hit resolution, the sprite list builder)
-is in `frame.md`.
+The in-level frame (TIME, the object pools, health, hit boxes, damage, the sprite list builder) is in `frame.md`.
+
+## Scripts
+
+Lua (run through `ffrun.sh`, or `ffmame.sh` for `-debug` ones; all wrap `ffdrive.lua`, `FF_LOAD=<state>` starts
+from a saved state, `FF_STOP=<frame>`):
+
+| script | what it does |
+|---|---|
+| `lua/ffdrive.lua` | the cold-boot drive and state save; `FF_PLAN=<plan.lua>` adds `{frame, field, level}` input entries (`lua/plans/`), `FF_CENSUS=<file>` logs the live records per frame, `FF_SHOT_*` takes screenshots. `plans/plan3.lua` is the drive to `ff_enemies` (`FF_SAVE=ff_enemies FF_SAVE_FRAME=4150 FF_PLAN=...`) |
+| `lua/tap.lua`, `fieldtap.lua`, `htap.lua` | write/read taps on word ranges (`FF_W`, `FF_R`), on record byte ranges over the object pools (`FF_FIELDS`), and on the overlap-test operands |
+| `lua/hpbar.lua`, `recdump.lua` | per-frame HUD bar tiles with Cody's and Bred's health words; per-frame records of Cody and Bred (`FF_PRESS` holds Button 1) |
+| `lua/hitcount.lua` | count executions of listed addresses (`FF_ADDRS`, needs `FF_MAMEARGS="-debug -debugger none"`) |
+| `lua/occ.lua`, `spawnlog.lua`, `poke_hp.lua` | pool occupancy per frame; spawn writes with the camera and script pointer; the lives and health poke |
+| `py/hpcheck.py`, `boxcheck.py`, `hitcheck.py` | gates: HUD bar versus health, box derivation versus `$32c4`, the overlap test versus 818 live calls |
+| `py/hudbar.py`, `hudenemy.py`, `namesheet.py`, `poolcensus.py` | HUD pixel width versus health, enemy-name sheets, the census of `ff_enemies` |
+| `py/rd.py`, `jt.py`, `callers.py` | read ROM or state words, resolve a `move.w 6(PC,Dn.w),D1 / jmp 2(PC,D1.w)` table (pass the address of the `move.w`), find direct callers |
+
+Gates run this pass from fresh runs: health bar 1100/1100, `+24` writer `$7a12` 8/8, box derivation 1100/1100, overlap
+818/818, a third cold boot of `ff_enemies` with identical work RAM (`2657a253...b0ae`) and gfx RAM (`1a4357c4...e94a`),
+and the original cold drive (`ff_gameplay`) still giving `79ed3cc1...0b2c` after the `ffdrive.lua` extension.
 
 ## Next
 
-1. Read the callees `frame.md` lists as unread: the thirteen of `$5668`, `$708e`/`$7564` (damage), `$6026`'s
-   and `$61e24`'s tables, `$27fc4`. Player health, hit boxes and the enemy pools are there. Find the game's
-   own reader of each field (HUD, `$ff85dc`, `$ff85ee`) before naming it (the CLAUDE.md census rules apply).
-2. Trace slot 11's ring-buffer consumers (`516(A5)`, `324(A5)`, `$1a22`) and the `jsr $2874` senders to
-   confirm the sound-command queue and read the Z80 side.
-3. Graphics: `hardware.md` has the layouts and mapper ranges; the plane/byte order across
+1. Get the pools no stage-1 run fills (tags 4, 6, `$12`, `$14`, pool 8, `$ffb228`): drive past the first boss
+   or into stage 2 from a saved state, then census and `py/hitcheck.py` again. Name the three unnamed props
+   and confirm AXL (`frame.md` "Fighter identity").
+2. Read what `frame.md` lists as unread: `$6026`/`$61e24`/`$27fc4`, the player-versus-player path
+   `$7766-$7920`, the kind handlers behind `$70c6`/`$70e6`/`$759c`, the continue screen.
+3. Trace slot 11's ring-buffer consumers (`516(A5)`, `324(A5)`, `$1a22`), the `jsr $2874` senders and the sound
+   queue at `388(A5)` (`$9d0`/`$9b2` write `$800180`), and read the Z80 side.
+4. Graphics: `hardware.md` has the layouts and mapper ranges; the plane/byte order across
    `ff-5m/7m/1m/3m` is inferred. Decode one known tile, render a sheet, commit the PNG with the doc.
