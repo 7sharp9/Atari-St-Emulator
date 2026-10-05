@@ -10,6 +10,7 @@ decrypted image.
 | file | content |
 |---|---|
 | `graphics.md`, `gfx/` | graphics: ROM formats, tilemap/sprite/palette hardware, game-side lists and maps; the renderer, gates (`gfx/proof.sh`), sheets and level strips |
+| `sound.md`, `snd/` | sound: the HuC6280 program, the command ids and the 94 68000 senders, sequencer and patch formats, OKI phrase tables, gates (logs in `snd/out`, scratchpad) |
 | `architecture.md` | memory map, boot, vectors, protection, frame/VBL structure, game flow, object pools, level scripts, flags |
 | `cbmame.sh` | headless MAME wrapper (`script` = with debugger for Lua, `run` = no debugger; `CB_SET`, `CB_RUN`, `CB_ROMS`) |
 | `lua/lib.lua`, `lua/drive.lua` | helpers and the input-plan driver (`CB_PLAN`, `CB_SHOTS`, `CB_DUMP`, `CB_SAVE`, `CB_LOAD`) |

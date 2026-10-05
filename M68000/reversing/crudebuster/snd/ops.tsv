@@ -1,0 +1,73 @@
+opcode	idx	handler	name	observed_dispatches	operand_counts_seen	channels_seen	regs_after(first 4)	effect
+90	0	ea0a	rest	484	{0: 460}	0,1,2,3,4,5,6,7,14,15	2151:08, 2203:0b, 2203:0c	key off now, set bit4 (suppress next key-on), end the parse: the note length still elapses
+91	1	ea18	octave+1	65	{0: 65}	0,1,2,3,4,5,6	-	$2380,x += 1 (clamped 0..7)
+92	2	ea1e	octave-1	77	{0: 77}	0,1,2,3,4,5,6	-	$2380,x -= 1
+93	3	ea24	octave=n	66	{1: 66}	0,1,2,3,4,5,6,7	-	$2380,x = n (clamped 7)
+94	4	ea3d	volume n	393	{1: 393}	0,1,2,3,4,5,6,7,8,9,10,14,15	2151:60, 2151:68, 2151:70, 2151:78	$2200,x = n (x 11-13: n*8), re-apply TL / SSG volume ($EA49)
+95	5	eaf7	legato	105	{0: 105}	0,1,2,3,4,5,6,7	-	set bit3 of $2400,x: the gate-time key-off of the next note is skipped
+96	6	eb00	gate n	228	{1: 228}	0,1,2,3,4,5,6,7,14,15	-	$23C0,x = n; gate ticks = max(1, length*n>>8)
+97	7	eb39	patch ptr lo hi	29	{2: 29}	8,9,10	2203:41, 2203:49, 2203:45, 2203:4d	YM2203 channels 8-10: write inline FM patch (operator regs $30-$9f, FB/ALG) from the pointer via $F53B; YM2151 channels ignore it but the 2 bytes are consumed
+98	8	eb5a	tempo lo hi	13	{2: 13}	0,14	-	$08/$09 = value, tempo T=$06/$07 = $08/$09 + signed $27 ($E2A4)
+99	9	eb6e	jump lo hi	28	-	0,1,2,3,4,5,6,7,14	-	stream pointer = lo|hi<<8
+9a	10	eb7d	repeat n	22	{1: 22}	4,5,8,9,10,15	-	push (return pointer, n) on the channel stack ($2400 page, ptr $11/$12 from $E2E2/$E2F2)
+9b	11	eba0	end repeat	403	{0: 19}	4,5,8,9,10	-	decrement the top count; loop back to the pointer or pop
+9c	12	ebc8	call lo hi	0	-	-	-	push return pointer, jump
+9d	13	ebf3	return	0	-	-	-	pop pointer
+9e	14	ec8c	detune +n	200	{1: 200}	9,10	2203:a6, 2203:a2, 2203:a5, 2203:a1	16-bit $2390/$2380 += n, re-apply pitch ($EE72 YM2151/FM, $EE55 SSG)
+9f	15	ecc3	transpose +n	91	{1: 91}	9,10	2203:a5, 2203:a1, 2203:a6, 2203:a2	$2380,x += n, re-apply pitch
+a0	16	eca7	detune -n	0	-	-	-	$2390/$2380 -= n
+a1	17	ecd7	transpose -n	70	{1: 70}	9	2203:a5, 2203:a1	$2380,x -= n
+a2	18	ec76	pitch lo hi	28	{2: 28}	8,9,10	2203:a5, 2203:a1, 2203:a4, 2203:a0	$2390,x = lo, $2380,x = hi, re-apply pitch
+a3	19	ed51	FM TL add	39	{2: 39}	9,10	2203:4e, 2203:4d	YM2203 FM / SSG: add to a carrier operator TL (op, value) (x 11+: value only); YM2151 channels return without reading
+a4	20	ed95	FM TL sub	0	-	-	-	as $a3, subtract
+a5	21	edd9	FM TL set	19	{2: 19}	9,10	2203:4d, 2203:4e	as $a3, set
+a6	22	ec31	key on	64	{0: 64}	8,9,10	2203:28	key on now ($EC31): YM2151 reg $08 / YM2203 reg $28
+a7	23	ec09	key off	46	{0: 46}	8,9,10	2203:28	key off now ($EC09)
+a8	24	efa0	END	183	-	0,1,2,3,4,5,6,7,8,9,10,11,14,15	2151:08, 2203:28, 2203:08, 2203:0b	end of channel: key off, $2400,x = 0, slot count -1; the last channel of a slot frees the slot ($2310,slot = 0)
+a9	25	ecfe	CH3 op freq +16 (op,n)	0	-	-	-	YM2203 channel 3 special mode: 16-bit add to operator freq $2426/$2422,op, rewrite regs $A8-$AE ($EF31)
+aa	26	ed2f	CH3 op freq hi + (op,n)	0	-	-	-	add to the high byte only
+ab	27	ed16	CH3 op freq -16 (op,n)	0	-	-	-	16-bit subtract
+ac	28	ed40	CH3 op freq hi - (op,n)	0	-	-	-	subtract high byte only
+ad	29	eceb	CH3 op freq set (op,lo,hi)	24	{3: 24}	8,9,10	2203:ad, 2203:a9, 2203:ae, 2203:aa	set the operator frequency, rewrite regs
+ae	30	efe8	SSG mixer tone on	0	-	-	-	YM2203 reg 7 &= ~mask[x]
+af	31	eff1	SSG mixer tone off	0	-	-	-	reg 7 |= mask[x]
+b0	32	effa	SSG mixer noise on	0	-	-	-	reg 7 &= ~mask
+b1	33	f00b	SSG mixer noise off	0	-	-	-	reg 7 |= mask
+b2	34	f01a	SSG noise period n	0	-	-	-	YM2203 reg 6 = n
+b3	35	f026	noise +n	0	-	-	-	reg 6 += n
+b4	36	f036	noise -n	0	-	-	-	reg 6 -= n
+b5	37	f050	volume slide n	25	{1: 25}	0,1,2,3,4,5,6,7,8,9,10	-	$2270,x = n ? ~n : 0 (target-seeking volume step in $E8BE every 4th IRQ2)
+b6	38	f05d	portamento n	118	{1: 118}	0,1,2,3,4,5,6,7,14,15	-	$2260,x = n ? ~n : 0 (pitch slide step $E854)
+b7	39	f0a6	PMS n	137	{1: 137}	0,1,2,3,4,5,6,7,14,15	2151:38	YM2151 reg $38+x bits 4-6
+b8	40	f0c9	AMS n	122	{1: 122}	0,1,2,3,4,5,6,7,14,15	2151:38	YM2151 reg $38+x bits 0-1
+b9	41	f0e8	PMD n	137	{1: 137}	0,1,2,3,4,5,6,7,14,15	2151:19	YM2151 reg $19 = n|$80
+ba	42	f0f6	AMD n	122	{1: 122}	0,1,2,3,4,5,6,7,14,15	2151:19	YM2151 reg $19 = n&$7f
+bb	43	f104	LFO freq n	118	{1: 118}	0,1,2,3,4,5,6,7,14,15	2151:18	YM2151 reg $18 = n
+bc	44	f112	LFO wave n	118	{1: 118}	0,1,2,3,4,5,6,7,14,15	2151:1b	YM2151 reg $1b = n&3 | $62&$c0
+bd	45	f12c	LFO sync on	0	-	-	-	$2470,x bit7: YM2151 reg $01 test bit pulse at every key-on
+be	46	f135	LFO sync off	118	{0: 118}	0,1,2,3,4,5,6,7,14,15	-	clear it
+bf	47	f13e	OKI continue	48	{0: 48}	14,15	-	channels 14/15: $60 = 1 so the parser continues after an OKI note trigger
+c0	48	f16b	level n	120	{1: 120}	0,1,2,3,4,5,6,7,14,15	2151:60, 2151:68, 2151:70, 2151:78	$2250,x = n (velocity), re-apply TL
+c1	49	f147	level $10	0	-	-	-	$2250,x = preset, re-apply TL
+c2	50	f14b	level $30	0	-	-	-	$2250,x = preset, re-apply TL
+c3	51	f14f	level $50	10	{0: 10}	0,1,3,6,7	2151:60, 2151:68, 2151:70, 2151:78	$2250,x = preset, re-apply TL
+c4	52	f153	level $70	0	-	-	-	$2250,x = preset, re-apply TL
+c5	53	f157	level $80	14	{0: 14}	1,2,3,4,5,6,7	2151:60, 2151:68, 2151:70, 2151:78	$2250,x = preset, re-apply TL
+c6	54	f15b	level $90	0	-	-	-	$2250,x = preset, re-apply TL
+c7	55	f15f	level $b0	8	{0: 8}	0,1,2,4,5,6,7	2151:60, 2151:68, 2151:70, 2151:78	$2250,x = preset, re-apply TL
+c8	56	f163	level $d0	8	{0: 8}	0,1,3,4,5,6	2151:60, 2151:68, 2151:70, 2151:78	$2250,x = preset, re-apply TL
+c9	57	f167	level $f0	13	{0: 13}	0,1,2,3,4,5,6,7	2151:60, 2151:68, 2151:70, 2151:78	$2250,x = preset, re-apply TL
+ca	58	f296	pan n	118	{1: 118}	0,1,2,3,4,5,6,7,14,15	2151:20	YM2151 reg $20+x bits 6-7 (RL) = n
+cb	59	f07c	OKI2 start n	0	-	-	-	table entry n of the OKI2 table ($F651 with $53=1)
+cc	60	f08f	OKI1 start n	63	{1: 63}	11	i1:byte	table entry n of table A ($F651 with $53=0)
+cd	61	f06a	OKI2 stop all	4	{0: 4}	14,15	i2:byte	write $78 to OKI2
+ce	62	f074	OKI1 stop all	3	{0: 3}	11	i1:byte	write $78 to OKI1
+cf	63	f2bd	CT=0	127	{0: 127}	0,1,2,3,4,5,6,7,14,15	2151:1b	YM2151 reg $1b: $62 &= 3
+d0	64	f2cb	CT=$c0	0	-	-	-	YM2151 reg $1b: $62 |= $c0, selects OKI2 table C (identity table)
+d1	65	f0a0	OKI vol n	0	-	-	-	$61 = n (OKI attenuation override)
+d2	66	f1a9	load patch n	67	{1: 67}	0,1,2,3,4,5,6,7	2151:60, 2151:80, 2151:e0, 2151:70	YM2151 (x<8): load FM patch n from the patch bank (bank 6 loader $4203, data in banks 7+); YM2203: $4200
+d3	67	f1a3	clock param n	9	{1: 9}	0	-	$72 = n (read only by the clock code $FDD9)
+d4	68	f196	$2738 n	29	{1: 29}	0,1,2,3,4,5,6,7,14,15	-	$2738,x = n (read only by FD50/FD77: output to the unread ring $2798)
+d5	69	f2d9	attack n	124	{1: 124}	0,1,2,3,4,5,6,7,14,15	2151:80, 2151:88, 2151:90, 2151:98	$2230,x = n, rewrite YM2151 KS/AR regs $80-$9f ($F303)
+d6	70	f2ee	release n	144	{1: 144}	0,1,2,3,4,5,6,7,14,15	2151:e0, 2151:e8, 2151:f0, 2151:f8	$2240,x = n, rewrite D1L/RR regs $e0-$ff ($F338)
+d7	71	f49f	fine+transpose kf tr	119	{2: 119}	0,1,2,3,4,5,6,7,14,15	2151:28, 2151:30	$22B0,x = kf (YM2151 KF), $22C0,x = tr (semitones), re-apply pitch ($E712)

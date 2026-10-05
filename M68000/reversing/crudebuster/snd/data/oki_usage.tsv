@@ -1,0 +1,110 @@
+chip	phrase	start	end	length	duration_s	table_entries	started_by_latch_ids
+oki1	0	000178	000577	1024	0.268	A0(att4,pri1,maskc) A47(att5,pri1,maskc)	3f
+oki1	1	000578	000977	1024	0.268	A1(att4,pri2,maskc) A48(att5,pri1,maskc)	40 6b 6c
+oki1	2	000978	000d77	1024	0.268	A2(att5,pri1,maskc) A49(att5,pri1,maskc)	41 6d
+oki1	3	000d78	0010b7	832	0.218	A3(att4,pri3,maskc) A50(att5,pri1,maskc)	42
+oki1	4	0010b8	0013b7	768	0.201	A4(att4,pri3,maskc) A51(att5,pri2,maskc)	43
+oki1	5	0013b8	001bf7	2112	0.554	A5(att2,pri1,mask3) A52(att5,pri2,mask3)	44
+oki1	6	001bf8	002a37	3648	0.956	A6(att4,pri1,mask3) A53(att5,pri2,mask3)	45
+oki1	7	002a38	002f37	1280	0.336	A7(att4,pri1,mask3) A54(att5,pri2,mask3)	46
+oki1	8	002f38	003c37	3328	0.873	A8(att3,pri1,mask3) A55(att5,pri1,mask3)	47
+oki1	9	000178	000178	1	0.000	A9(att4,pri1,mask3) A56(att5,pri1,mask3)	48
+oki1	10	003c38	004777	2880	0.755	A10(att3,pri1,mask3) A57(att5,pri1,mask3)	49
+oki1	11	004778	004b77	1024	0.268	A11(att1,pri1,mask3) A58(att5,pri2,mask3)	4a
+oki1	12	004b78	005577	2560	0.671	A12(att0,pri1,mask3) A59(att5,pri2,mask3)	4b
+oki1	13	005578	0066b7	4416	1.158	A13(att1,pri1,mask3) A60(att5,pri2,mask3)	4c
+oki1	14	0066b8	0070b7	2560	0.671	A14(att1,pri1,mask3) A61(att5,pri2,mask0)	4d
+oki1	15	0070b8	007ab7	2560	0.671	A15(att2,pri1,mask3) A62(att5,pri2,mask0)	4e
+oki1	16	007ab8	008437	2432	0.638	A16(att2,pri1,mask3) A63(att5,pri2,mask0)	4e
+oki1	17	008438	0092f7	3776	0.990	A17(att3,pri1,mask3)	50
+oki1	18	0092f8	00a137	3648	0.956	A18(att2,pri1,mask3)	4f 51
+oki1	19	00a138	00aaf7	2496	0.654	A19(att3,pri1,mask3)	52 56 57 5c 5d 5e
+oki1	20	00aaf8	00b277	1920	0.503	A20(att2,pri1,mask3)	53
+oki1	21	00b278	00bcf7	2688	0.705	A21(att3,pri1,mask3)	54
+oki1	22	000178	000178	1	0.000	A22(att2,pri1,mask3)	55
+oki1	23	00bcf8	00ce77	4480	1.175	A23(att3,pri1,mask3)	56
+oki1	24	00ce78	00de77	4096	1.074	A24(att3,pri1,mask3)	57
+oki1	25	00de78	00eb37	3264	0.856	A25(att3,pri1,mask3)	57 58 5d 5e
+oki1	26	00eb38	00fd77	4672	1.225	A26(att2,pri1,mask3)	59
+oki1	27	00fd78	0102b7	1344	0.352	A27(att2,pri1,mask3)	5a
+oki1	28	0102b8	0109f7	1856	0.487	A28(att2,pri1,mask3)	5b
+oki1	29	0109f8	011937	3904	1.024	A29(att3,pri1,mask3)	5c
+oki1	30	011938	0126b7	3456	0.906	A30(att3,pri1,mask3)	5d
+oki1	31	0126b8	013277	3008	0.789	A31(att3,pri1,mask3)	5e
+oki1	32	013278	013f37	3264	0.856	A32(att3,pri1,mask3)	5f
+oki1	33	013f38	014e77	3904	1.024	A33(att2,pri1,mask3)	60
+oki1	34	014e78	0157f7	2432	0.638	A34(att3,pri2,mask3)	61
+oki1	35	0157f8	015ef7	1792	0.470	A35(att3,pri2,mask3)	62
+oki1	36	015ef8	0164f7	1536	0.403	A36(att3,pri2,mask3)	63
+oki1	37	0164f8	0168f7	1024	0.268	A37(att3,pri2,mask3)	64
+oki1	38	0168f8	016db7	1216	0.319	A38(att3,pri2,mask3)	65
+oki1	39	016db8	017b37	3456	0.906	A39(att3,pri2,mask3)	66
+oki1	40	017b38	018337	2048	0.537	A40(att3,pri2,mask3)	67
+oki1	41	018338	018b77	2112	0.554	A41(att4,pri1,mask3)	68
+oki1	42	018b78	019b77	4096	1.074	A42(att3,pri1,mask3)	69
+oki1	43	019b78	01a377	2048	0.537	A43(att3,pri1,mask3)	6a
+oki1	44	01a378	01c577	8704	2.282	A44(att3,pri3,maskc)	4f 6e
+oki1	45	01c578	01dd77	6144	1.611	A45(att3,pri3,maskc)	6f
+oki1	46	01dd78	01ed77	4096	1.074	A46(att3,pri3,maskc)	70
+oki2	0	016030	016c42	3091	0.405	B0(att5,pri1,maskc)	-
+oki2	1	01c340	01cbbf	2176	0.285	B1(att5,pri1,maskc)	-
+oki2	2	01cbc0	01cfff	1088	0.143	B2(att5,pri1,maskc)	-
+oki2	3	01d000	01d44f	1104	0.145	B3(att5,pri1,maskc)	-
+oki2	4	01d450	01da0f	1472	0.193	B4(att5,pri2,maskc)	-
+oki2	5	0001f0	0009ef	2048	0.268	B5(att5,pri2,mask3)	0b
+oki2	6	0009f0	0012ef	2304	0.302	B6(att5,pri2,mask3)	0b
+oki2	7	0012f0	001bef	2304	0.302	B7(att5,pri2,mask3)	0b
+oki2	8	001be0	00214f	1392	0.182	B8(att5,pri1,mask3)	04 06 07 08 09 0a 0b 0c 0d 11
+oki2	9	002150	0028df	1936	0.254	B9(att5,pri1,mask3)	04 06 07 09 0a 0b 0c 0d 11
+oki2	10	0028e0	002e5f	1408	0.185	B10(att5,pri1,mask3)	-
+oki2	11	002e60	00354f	1776	0.233	B11(att5,pri2,mask3)	06 0a 0b 11
+oki2	12	003550	003c4f	1792	0.235	B12(att5,pri2,mask3)	06 0a 0b 11
+oki2	13	003c50	00444f	2048	0.268	B13(att5,pri2,mask3)	0a 0b 11
+oki2	14	0001f0	0001f0	1	0.000	B14(att5,pri2,mask0)	-
+oki2	15	0001f0	0001f0	1	0.000	B15(att5,pri2,mask0)	-
+oki2	16	0001f0	0001f0	1	0.000	B16(att5,pri2,mask0)	-
+oki2	17	004450	0047bf	880	0.115	B17(att5,pri2,maskf)	-
+oki2	18	0047c0	004bbf	1024	0.134	B18(att5,pri2,mask7)	06 0d
+oki2	19	004bc0	004fbf	1024	0.134	B19(att5,pri2,mask7)	06 0d
+oki2	20	004fc0	0050bf	256	0.034	B20(att5,pri2,mask7)	06 07
+oki2	21	0001f0	0001f0	1	0.000	B21(att5,pri2,mask0)	-
+oki2	22	0050c0	0051bf	256	0.034	B22(att5,pri2,mask1)	06 08 09 0b 0e 0f
+oki2	23	0051c0	005abf	2304	0.302	B23(att5,pri2,mask1)	06 08 0f
+oki2	24	005ac0	00782f	7536	0.988	B24(att5,pri2,maskf)	06 0b
+oki2	25	007830	0078ef	192	0.025	B25(att5,pri1,mask4)	-
+oki2	26	007830	00811f	2288	0.300	B26(att5,pri1,mask4)	09
+oki2	27	008120	00898f	2160	0.283	B27(att5,pri1,mask4)	09
+oki2	28	008990	009abf	4400	0.577	B28(att5,pri1,mask4)	0c
+oki2	29	009430	009abf	1680	0.220	B29(att5,pri1,mask4)	09 0c
+oki2	30	009ac0	00a39f	2272	0.298	B30(att5,pri1,mask4)	09 0c 0d
+oki2	31	00a3a0	00b55f	4544	0.596	B31(att5,pri1,mask4)	06 0b
+oki2	32	00b560	00c86f	4880	0.640	B32(att5,pri1,mask4)	06 08 0d
+oki2	33	00c870	00db8f	4896	0.642	B33(att5,pri1,mask4)	08 0d
+oki2	34	00db90	00f1df	5712	0.749	B34(att5,pri1,mask4)	08 0d
+oki2	35	00f1e0	01071f	5440	0.713	B35(att5,pri1,mask4)	06 0c 0d
+oki2	36	010720	011b5f	5184	0.680	B36(att5,pri1,mask8)	07 0a 0d 11
+oki2	37	011b60	01288f	3376	0.443	B37(att5,pri1,mask4)	08
+oki2	38	012890	012f2f	1696	0.222	B38(att5,pri1,mask4)	-
+oki2	39	012f30	013638	1801	0.236	B39(att5,pri1,mask4)	0d
+oki2	40	013639	013c2c	1524	0.200	B40(att5,pri1,mask4)	08 0d
+oki2	41	013c2d	015506	6362	0.834	B41(att5,pri1,mask4)	-
+oki2	42	015507	016c42	5948	0.780	B42(att5,pri1,mask4)	-
+oki2	43	016c43	017a42	3584	0.470	B43(att5,pri1,maskc)	-
+oki2	44	017a43	018042	1536	0.201	B44(att5,pri1,mask8)	-
+oki2	45	018043	018442	1024	0.134	B45(att5,pri1,mask8)	-
+oki2	46	018443	018842	1024	0.134	B46(att5,pri1,mask8)	09
+oki2	47	018843	018c42	1024	0.134	B47(att5,pri1,mask8)	09
+oki2	48	018c43	018e42	512	0.067	B48(att5,pri1,mask8)	-
+oki2	49	018e43	019122	736	0.096	B49(att5,pri1,maskc)	-
+oki2	50	019123	0193c2	672	0.088	B50(att5,pri1,maskc)	08
+oki2	51	0193c3	01aec2	6912	0.906	B51(att5,pri1,mask4)	-
+oki2	52	01aec3	01c33f	5245	0.688	B52(att5,pri1,mask4)	-
+oki2	53	01da10	01dc9f	656	0.086	B53(att5,pri1,mask3)	-
+oki2	54	01dca0	01ea9f	3584	0.470	B54(att5,pri1,mask3)	-
+oki2	55	01eaa0	01ed4f	688	0.090	B55(att5,pri1,mask3)	0f
+oki2	56	01ed50	01ee4f	256	0.034	B56(att5,pri1,mask3)	05 09 0e 0f
+oki2	57	01ee50	01f04f	512	0.067	B57(att5,pri1,mask3)	0e
+oki2	58	01f050	01f4ff	1200	0.157	B58(att5,pri1,mask8)	-
+oki2	59	01f500	01f97f	1152	0.151	B59(att5,pri1,mask8)	-
+oki2	60	01f980	01fe6f	1264	0.166	B60(att5,pri1,mask8)	-
+oki2	61	01fe70	01ffff	400	0.052	B61(att5,pri1,mask8)	-

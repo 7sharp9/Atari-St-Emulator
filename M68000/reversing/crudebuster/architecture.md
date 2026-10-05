@@ -25,7 +25,7 @@ The sound CPU is a HuC6280 with its own 64 KiB program (identical in all five se
 
 - Reset: SSP `$84000`, PC `$600`. `$600` sets `$b5000 = $90`, writes `$bc006` (IRQ4 clear), zeroes `$80000-$83fff` (4096 longs), calls the video init `$8038` and the clears `$cc2`, enables interrupts (`$2300`), does the protection handshake, then falls into the attract loop `$66c`.
 - 33 vectors are used (bus/address error, illegal and so on, traps, autovectors 1 to 7). **Only level 4 (VBL, `$b1e`) is real**; the other 32 point below `$400` at a crash dumper (`$100-$3b6`: prints registers and a stack dump into the text layer through `$3ee`, then spins at `$3b8`). Gate: `static_gate.py`.
-- Protection (`$bc004`): the program writes a key byte and reads back a response, and jumps to the failure screen `$1a68` (palette, text, sound `$4f`, then it hangs) on a mismatch. Checks sit at `$654` (`$9a` -> `0`), `$13e2` (`$9a`, `$0e` -> `$0e`), `$11d2` (`$9a`, `$02` -> `$63`), `$1218`, `$1380` and in each level setup (`$8284-$85d8`: the level key). The port is MAME's `prot_w`/`prot_r` table (response and layer-priority flag `m_pri` by key); a cold boot plus the demo levels shows the pairs `$9a -> 0`, `$0e -> $0e` (x2), `$f1 -> $36` (level 1 setup `$839a`), `$80 -> $2e` (level 2 setup `$83da`) (`lua/protlog.lua`, one 10,500-frame cold boot, 6 of 6 reads equal the table). So the key also selects the layer priority (graphics, see `graphics.md` when written).
+- Protection (`$bc004`): the program writes a key byte and reads back a response, and jumps to the failure screen `$1a68` (palette, text, sound `$4f`, then it hangs) on a mismatch. Checks sit at `$654` (`$9a` -> `0`), `$13e2` (`$9a`, `$0e` -> `$0e`), `$11d2` (`$9a`, `$02` -> `$63`), `$1218`, `$1380` and in each level setup (`$8284-$85d8`: the level key). The port is MAME's `prot_w`/`prot_r` table (response and layer-priority flag `m_pri` by key); a cold boot plus the demo levels shows the pairs `$9a -> 0`, `$0e -> $0e` (x2), `$f1 -> $36` (level 1 setup `$839a`), `$80 -> $2e` (level 2 setup `$83da`) (`lua/protlog.lua`, one 10,500-frame cold boot, 6 of 6 reads equal the table). So the key also selects the layer priority (`graphics.md`).
 
 ## The frame
 
@@ -44,7 +44,7 @@ Attract loop `$66c` (read for the order, *inferred* for the screens): `$8038`, p
 ## Input and sound
 
 - Controllers: `$faa` reads `$bc001` (P1) and `$bc000` (P2), inverts them, and keeps held bits in `$80051`/`$80053` and newly pressed bits in `$80050`/`$80052` (bit 7 start, bits 4-6 buttons, bits 0-3 up/down/left/right as in the port). DIP switches: `$f94` stores the inverted `$bc002` word at `$80054` (low byte `$80055` is SW1: bit 6 = flip; bit 7 of `$80054` = demo sounds on).
-- Sound: every music or effect request goes through `$e1c`, which writes the byte in D7 to `$bc002` unless demo sounds are off and no game is running. The 68000 callers and the HuC6280 side are described in `sound.md` when written.
+- Sound: every music or effect request goes through `$e1c`, which writes the byte in D7 to `$bc002` unless demo sounds are off and no game is running. The only other latch write is `move.w #$13,$bc002` at `$11ee` (coin sound, after the protection check). 94 `jsr $e1c` sites exist; a recursive listing finds only 27 of them, a raw scan of the image all (`sound.md`).
 
 ## Objects
 

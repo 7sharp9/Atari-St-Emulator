@@ -1,0 +1,124 @@
+id	kind	channels	sweep_effect	oki_phrases	68000_static_sites	observed_in_play(retaddr:n)
+00	reset	-	3 register writes, no key-on	-	-	-
+01	control: take over channels and end them (silence)	0 1 2 3 4 5 6 7 8 9 10 11 14 15	61 register writes, no key-on	-	00067c 0006aa 00080a 00172c 006008	0006ae:4 001506:4
+02	control: take over channels and end them (silence)	8 9 10 11	17 register writes, no key-on	-	-	-
+03	control: end all music channels (stop music, silence all)	0 1 2 3 4 5 6 7 14 15	98 register writes, no key-on	-	020ad8	-
+04	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch0:4,ch1:4,ch2:4,ch3:16,ch4:16	oki2 phrases 8 9 9 9 9 8 9 9 9 9 8 9 9 9 9 8 9 9 9 9	-	-
+05	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch0:1,ch1:1,ch2:1	oki2 phrases 56	-	-
+06	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch0:2,ch1:2,ch2:2,ch3:2,ch4:29,ch5:28,ch6:2,ch7:2	oki2 phrases 8 35 8 35 8 35 8 24 18 18 9 19 22 9 23 31 18 8 32 18 8 19 11 11 11 11 11 20 12 23 20 8 24 18 22 18 9 22 19 22 9 23 18 8 8 19 11 11 11 11	-	00a35e:4
+07	music	0 1 2 14 15	YM2151 key-ons ch0:2,ch1:2,ch2:2	oki2 phrases 36 8 8 20 20 9 9 8 8 8 8 20 20 9 9 9 9 8 8 20 20 9 9 8 8 8 8 20 20 9 9 20 20 20 9 9 36 8 8 20 20 9 9	-	-
+08	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch4:2,ch5:2,ch6:2,ch7:2	oki2 phrases 8 37 40 40 40 32 40 33 40 34 37 40 40 40 40 40 40 40 50 50 40 40 40 40 40 40 40 37 23 40 40 40 40 40 40 40 50 50 40 40 40 40 40 40 22 40 22 37 23 40 22 40 22	-	-
+09	music	0 14 15	290 register writes, no key-on	oki2 phrases 26 56 56 27 46 46 47 29 29 27 26 56 56 27 46 46 47 29 29 30 26 8 56 56 27 22 9 46 22 46 8 47	-	-
+0a	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch0:21,ch1:21,ch2:12,ch3:12,ch4:3,ch5:12,ch6:12,ch7:3	oki2 phrases 36 8 8 9 36 8 8 8 9 9 8 8 9 9 11 11 12 13 36 8 9 36 8 9 36 8 9 36 8 9	-	-
+0b	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch0:2,ch2:2,ch3:2,ch4:2,ch5:2,ch6:2,ch7:10	oki2 phrases 8 11 11 8 11 11 11 11 8 12 12 8 12 12 12 12 8 13 13 13 13 13 13 5 5 5 5 5 5 8 8 9 9 9 9 6 6 6 6 6 6 11 11 11 11 11 11 12 12 12 12 13 13 13 13 13 13 9 9 9 9 31 8 24 22 6 22 31 9 22 6 22 22 6 8 6 8 7	01509e 015c8a 0201bc	-
+0c	music	14 15	344 register writes, no key-on	oki2 phrases 35 8 8 8 8 35 9 9 9 9 35 8 8 8 8 35 9 9 9 9 28 8 28 8 29 8 28 8 28 9 29 9 28 9 28 9 29 8 28 8 28 8 30 8 9 30 9 9 30 9 28 8 28 8 29 8	015660 0162ea 0165e6 02118a	-
+0d	music	0 1 2 3 4 5 6 7 14 15	480 register writes, no key-on	oki2 phrases 39 18 40 18 39 19 40 19 39 39 18 40 18 39 19 40 32 9 33 9 34 9 30 36 8 35 9 30 36 8 35 9	001890	001894:2
+0e	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch0:26,ch1:13,ch2:8,ch3:4,ch4:22,ch5:4,ch6:4	oki2 phrases 22 22 22 22 57 57 57 57 22 22 22 56 56 22 22 22 22 57 57 57 57 22 22	00611c	-
+0f	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch0:18,ch1:18,ch2:20,ch3:20,ch4:20,ch5:20,ch6:20,ch7:20	oki2 phrases 56 22 22 23 22 22 23 22 55 22 23 22 56 22 56 22 22 23 22 22 23 22 22 23 55 22 22 56 22 56 22	-	-
+10	control: reset channel parameters to defaults, then END on every channel	0 1 2 3 4 5 6 7 14 15	286 register writes, no key-on	-	-	-
+11	music	0 1 2 3 4 5 6 7 14 15	YM2151 key-ons ch0:21,ch1:21,ch2:12,ch3:12,ch4:3,ch5:12,ch6:12,ch7:3	oki2 phrases 36 8 8 9 36 8 8 8 9 9 8 8 9 9 11 11 12 13 36 8 9 36 8 9 36 8 9 36 8 9	-	-
+12	control: take over channels and end them (silence)	8 9 10 11	17 register writes, no key-on	-	-	-
+13	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:1	-	-	000b82:9
+14	sound effect on YM2203 FM channel 0	8	YM2203 FM key-ons fm0:1	-	-	00a35e:29
+15	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:1	-	029722	029728:13
+16	sound effect on YM2203 FM channel 0	8	YM2203 FM key-ons fm0:9	-	-	-
+17	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:1	-	-	02347e:2
+18	sound effect on YM2203 FM channel 0	8	YM2203 FM key-ons fm0:1	-	017050 01712a 021c96 021d56 024382	-
+19	sound effect on YM2203 FM channel 0	8	YM2203 FM key-ons fm0:1	-	02bf00 02c04a	02bf06:1
+1a	sound effect on YM2203 FM channel 0	8	1 register writes, no key-on	-	-	-
+1b	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:1	-	0221c8 0221e6 022218 022236	0221ce:44
+1c	sound effect on YM2203 FM channel 0	8	1 register writes, no key-on	-	-	-
+1d	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:1	-	-	-
+1e	sound effect on YM2203 FM channel 0	8	1 register writes, no key-on	-	-	-
+1f	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:1	-	-	-
+20	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:1	-	-	-
+21	sound effect on YM2203 FM channel 1	9	1 register writes, no key-on	-	-	-
+22	sound effect on YM2203 FM channel 1	9	1 register writes, no key-on	-	-	-
+23	sound effect on YM2203 FM channel 1	9	1 register writes, no key-on	-	01e5f6	-
+24	sound effect on YM2203 FM channel 1	9	1 register writes, no key-on	-	-	-
+25	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:1	-	0152aa 015380 01545c 0154ae	-
+26	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:1	-	-	-
+27	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:2	-	-	-
+28	sound effect on YM2203 FM channel 0	8	1 register writes, no key-on	-	-	-
+29	sound effect on YM2203 FM channel 1	9	1 register writes, no key-on	-	-	-
+2a	sound effect on YM2203 FM channel 1	9	1 register writes, no key-on	-	-	-
+2b	sound effect on YM2203 FM channel 1	9	1 register writes, no key-on	-	-	-
+2c	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:1	-	0207f0	-
+2d	sound effect on YM2203 FM channel 1	9	1 register writes, no key-on	-	-	-
+2e	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:4	-	-	02347e:8
+2f	sound effect on YM2203 FM channel 1/2	9 10	YM2203 FM key-ons fm1:1,fm2:2	-	0184ca 0188fe 018912	-
+30	sound effect on YM2203 FM channel 2	10	1 register writes, no key-on	-	-	-
+31	sound effect on YM2203 FM channel 0	8	YM2203 FM key-ons fm0:1	-	02b020	-
+32	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:1	-	02b970	-
+33	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:6	-	018c3e 01933c	-
+34	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:1	-	-	-
+35	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:1	-	-	-
+36	sound effect on YM2203 FM channel 0	8	YM2203 FM key-ons fm0:1	-	-	-
+37	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:10	-	-	-
+38	sound effect on YM2203 FM channel 1	9	YM2203 FM key-ons fm1:3	-	00801a	-
+39	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:7	-	02a8e8	02a8ee:3
+3a	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:1	-	-	-
+3b	sound effect on YM2203 FM channel 2	10	YM2203 FM key-ons fm2:1	-	0067d2 006898 00695e 028d84	-
+3c	sound effect on YM2203 FM channel 0	8	1 register writes, no key-on	-	-	-
+3d	sound effect on YM2203 FM channel 0	8	1 register writes, no key-on	-	-	-
+3e	sound effect on YM2203 FM channel 0	8	1 register writes, no key-on	-	-	-
+3f	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 0	-	00f956:11
+40	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 1	-	00f956:2
+41	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 2	-	00a35e:5
+42	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 3	-	00a35e:9
+43	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 4	-	00a35e:3
+44	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 5	023396	02339c:2
+45	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 6	-	00a35e:7
+46	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 7	-	00a35e:88
+47	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 8	-	-
+48	voice effect on OKI1 (opcode $CC) via channel 11	11	10 register writes, no key-on	oki1 phrases 9 9 9 9	-	-
+49	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 10	02a6aa	-
+4a	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 11	-	-
+4b	voice effect on OKI1 (opcode $CC) via channel 11	11	10 register writes, no key-on	oki1 phrases 12 12 12	-	-
+4c	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 13	-	-
+4d	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 14	02a7a8	-
+4e	voice effect on OKI1 (opcode $CC) via channel 11	11	7 register writes, no key-on	oki1 phrases 15 16	-	-
+4f	voice effect on OKI1 (opcode $CC) via channel 11	11	7 register writes, no key-on	oki1 phrases 44 18	-	00a35e:4
+50	voice effect on OKI1 (opcode $CC) via channel 11	11	7 register writes, no key-on	oki1 phrases 17 17	00152c	-
+51	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 18	-	-
+52	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 19	029cfa 02a0be	-
+53	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 20	029204 0295a2 029a58	0295a8:1
+54	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 21	028efa	-
+55	voice effect on OKI1 (opcode $CC) via channel 11	11	10 register writes, no key-on	oki1 phrases 22 22 22 22	-	-
+56	voice effect on OKI1 (opcode $CC) via channel 11	11	7 register writes, no key-on	oki1 phrases 23 19	0234a0	-
+57	voice effect on OKI1 (opcode $CC) via channel 11	11	10 register writes, no key-on	oki1 phrases 24 19 25	01497a 01512e 015d42 016398	-
+58	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 25	0234de	0234e4:1
+59	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 26	007d04	-
+5a	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 27	0122a4	-
+5b	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 28	00d6d0	-
+5c	voice effect on OKI1 (opcode $CC) via channel 11	11	7 register writes, no key-on	oki1 phrases 29 19	01a3ee	-
+5d	voice effect on OKI1 (opcode $CC) via channel 11	11	10 register writes, no key-on	oki1 phrases 30 19 25	0144b0 01a2be	-
+5e	voice effect on OKI1 (opcode $CC) via channel 11	11	10 register writes, no key-on	oki1 phrases 31 19 25	0156ec	-
+5f	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 32	-	00a35e:15
+60	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 33	01a472 01a514	-
+61	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 34	-	-
+62	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 35	016b36 016bda 016cfc 016fee 017194 021770 021822 02195c 021c2e 021dba	-
+63	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 36	-	-
+64	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 37	02494a	024950:19
+65	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 38	02494a	024950:12
+66	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 39	-	-
+67	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 40	02494a	024950:20
+68	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 41	-	-
+69	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 42	-	-
+6a	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 43	-	-
+6b	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 1	00fbcc 01004a	00fbd2:40 010050:6
+6c	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 1	-	-
+6d	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 2	-	-
+6e	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 44	029e72 02a9ba 02b1b4 02b284	-
+6f	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 45	02b37c	-
+70	voice effect on OKI1 (opcode $CC) via channel 11	11	4 register writes, no key-on	oki1 phrases 46	02ab46	-
+71-7b	ignored (id > $70, `cmp $4000`)	-	no chip write (11 ids x 300 frames)	-	-	-
+7c	service tone: next command byte -> YM2203 reg 1 (SSG A period hi) [$56 = 1]	-	none until the following byte	-	-	-
+7d	service tone: next command byte -> reg 0 (period lo), then reg 3/2 = period-1 (SSG B), vols 8/8/0 [$56 = 2]	-	none until the following byte	-	-	-
+7e	service tone on: YM2203 reg 7 = $fc, vol A/B = 8, C = 0	-	4 YM2203 writes (2 non-zero SSG volumes)	-	-	-
+7f	service tone off: reg 7 = $ff, vols 0	-	4 YM2203 writes	-	-	-
+80-9f	YM2151 master volume: $28 = ~((id-$80)*4) (bit 7 = refresh flag); attenuation 127-4n added to carrier TL	-	no chip write at the latch; TL of later key-ons + att (3 values x 64 writes exact)	-	-	-
+a0-bf	YM2203 FM/SSG master volume: $29 = ~((id-$a0)*4) (bit 7 never cleared)	-	none observable (no YM2203/SSG stream is refreshed)	-	-	-
+c0-c7	OKI2 master attenuation: $2a = (id-$c0) ^ $87	-	phrase start attenuation nibble = table att + (7-n), clamped 8	-	-	-
+c8-cf	OKI1 master attenuation: $2b = (id-$c8) ^ $87	-	as above for OKI1	-	-	-
+d0-ff	tempo offset: $27 = (id-$e0)*4 (signed byte), T = $08/$09 + $27	-	music tempo changes (exact: T 150 -> 86 / 150 -> 274)	-	-	-

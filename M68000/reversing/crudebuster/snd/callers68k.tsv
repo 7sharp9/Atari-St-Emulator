@@ -1,0 +1,95 @@
+site	kind	ids	predecessor(s)	region(handler type table $10418 index @ addr)
+00067c	jsr.w	$01	moveq #1,D7<-20	-
+0006aa	jsr.w	$01	moveq #1,D7<-19	-
+00080a	jsr.w	$01	moveq #1,D7<-20	-
+001502	jsr.w	?	move.w 0(A0,D0.w),D7<-17	-
+00152c	jsr.w	$50	moveq #80,D7<-19	-
+00172c	jsr.w	$01	moveq #1,D7<-20	-
+001890	jsr.w	$0d	moveq #13,D7<-20	-
+006008	jsr.w	$01	moveq #1,D7<-19 | subi.w #$7e01,D4<-1	-
+00611c	jsr.w	$0e	moveq #14,D7<-19	-
+0067d2	jsr.w	$3b	moveq #59,D7<-20	-
+006898	jsr.w	$3b	moveq #59,D7<-19	-
+00695e	jsr.w	$3b	moveq #59,D7<-20	-
+007d04	jsr.w	$59	moveq #89,D7<-20	-
+00801a	jsr.l	$38	moveq #56,D7<-19 | subi.w #$7e38,(A4)+<-1	-
+00a358	jsr.l	?	move.b 31(A6),D7<-18	-
+00d6d0	jsr.l	$5b	move.b #$5b,D7<-18	-
+00f950	jsr.l	?	move.b D0,D0<-1 | move.b 0(A0,D1.w),D7<-19	-
+00fbcc	jsr.l	$6b	move.b #$6b,D7<-19	-
+01004a	jsr.l	$6b	move.b #$6b,D7<-19	-
+0122a4	jsr.l	$5a	moveq #90,D7<-19 | ori.b #$5a,D3<-1	type 6 @121a4
+0144b0	jsr.l	$5d	moveq #93,D7<-19 | move.l 32349(A4),D6<-1	type 11 @14354
+01497a	jsr.l	$57	moveq #87,D7<-19 | ori.b #$57,D1<-1	type 12 @14824
+01509e	jsr.l	$0b	moveq #11,D7<-20	type 14 @14fe6
+01512e	jsr.l	$57	moveq #87,D7<-19 | move.l 32343(A4),D6<-1	type 14 @14fe6
+0152aa	jsr.l	$25	moveq #37,D7<-19 | ori.b #$25,D0<-1	type 14 @14fe6
+015380	jsr.l	$25	moveq #37,D7<-19 | ori.b #$25,D0<-1	type 14 @14fe6
+01545c	jsr.l	$25	moveq #37,D7<-19 | ori.b #$25,D0<-1	type 14 @14fe6
+0154ae	jsr.l	$25	moveq #37,D7<-19 | ori.b #$25,D0<-1	type 14 @14fe6
+015660	jsr.l	$0c	moveq #12,D7<-20	type 15 @15510
+0156ec	jsr.l	$5e	moveq #94,D7<-19 | move.l 32350(A4),D6<-1	type 15 @15510
+015c8a	jsr.l	$0b	moveq #11,D7<-14	type 16 @15b3a
+015d42	jsr.l	$57	moveq #87,D7<-18 | ori.b #$57,D1<-1	type 16 @15b3a
+0162ea	jsr.l	$0c	moveq #12,D7<-13	type 17 @16200
+016398	jsr.l	$57	moveq #87,D7<-19 | ori.b #$57,D1<-1	type 17 @16200
+0165e6	jsr.l	$0c	move.b #$c,D7<-18	type 18 @1654c
+016b36	jsr.l	$62	move.b #$62,D7<-17	type 18 @1654c
+016bda	jsr.l	$62	move.b #$62,D7<-17	type 18 @1654c
+016cfc	jsr.l	$62	move.b #$62,D7<-17	type 18 @1654c
+016fee	jsr.l	$62	move.b #$62,D7<-18	type 18 @1654c
+017050	jsr.l	$18	move.b #$18,D7<-14	type 18 @1654c
+01712a	jsr.l	$18	move.b #$18,D7<-16	type 18 @1654c
+017194	jsr.l	$62	move.b #$62,D7<-18	type 18 @1654c
+0184ca	jsr.l	$2f	move.b #$2f,D7<-18 | ori.b #$3c,47(A0,D0.w)<-1	type 22 @184a2
+0188fe	jsr.l	$2f	move.b #$2f,D7<-18	type 22 @184a2
+018912	jsr.l	$2f	move.b #$2f,D7<-14 | ori.l #$1e3c002f,(A6)<-2	type 23 @18906
+018c3e	jsr.l	$33	move.b #$33,D7<-18	type 25 @18c0e
+01933c	jsr.l	$33	move.b #$33,D7<-18	type 25 @18c0e
+01a2be	jsr.l	$5d	moveq #93,D7<-19 | move.l 32349(A4),D6<-1	type 30 @1a14c
+01a3ee	jsr.l	$5c	moveq #92,D7<-19 | move.l 32348(A4),D6<-1	type 31 @1a2c6
+01a472	jsr.l	$60	moveq #96,D7<-19 | move.l 32352(A4),D6<-1	type 31 @1a2c6
+01a514	jsr.l	$60	moveq #96,D7<-19 | move.l 32352(A4),D6<-1	type 31 @1a2c6
+01e5f6	jsr.l	$23	moveq #35,D7<-19 | ori.b #$23,D3<-1	type 60 @1e4a0
+0201bc	jsr.l	$0b	moveq #11,D7<-20	type 72 @1ffbc
+0207f0	jsr.l	$2c	moveq #44,D7<-19 | ori.b #$2c,D0<-1	type 72 @1ffbc
+020ad8	jsr.l	$03	moveq #3,D7<-18 | ori.w #$7e03,D1<-2	type 72 @1ffbc
+02118a	jsr.l	$0c	moveq #12,D7<-14	type 77 @210cc
+021770	jsr.l	$62	move.b #$62,D7<-17	type 79 @21448
+021822	jsr.l	$62	move.b #$62,D7<-17	type 79 @21448
+02195c	jsr.l	$62	move.b #$62,D7<-16	type 79 @21448
+021c2e	jsr.l	$62	move.b #$62,D7<-18	type 79 @21448
+021c96	jsr.l	$18	move.b #$18,D7<-18	type 79 @21448
+021d56	jsr.l	$18	move.b #$18,D7<-19	type 79 @21448
+021dba	jsr.l	$62	move.b #$62,D7<-18	type 79 @21448
+0221c8	jsr.l	$1b	moveq #27,D7<-20	type 79 @21448
+0221e6	jsr.l	$1b	moveq #27,D7<-19	type 79 @21448
+022218	jsr.l	$1b	moveq #27,D7<-20	type 79 @21448
+022236	jsr.l	$1b	moveq #27,D7<-19	type 79 @21448
+023396	jsr.l	$44	moveq #68,D7<-20	type 79 @21448
+023478	jsr.l	?	movea.b D0,A7<-1 | ori.b #$40,A0<-1 | move.w $81e40.l,D7<-18	type 79 @21448
+0234a0	jsr.l	$56	moveq #86,D7<-18 | ori.b #$56,-(A3)<-1	type 79 @21448
+0234de	jsr.l	$58	moveq #88,D7<-19 | ori.b #$58,-(A3)<-1	type 79 @21448
+024382	jsr.l	$18	moveq #24,D7<-19 | move.b 32280(PC) == $2c198,(A7)+<-1	type 79 @21448
+02494a	jsr.l	$64,$65,$67	moveq #103,D7<-20	type 79 @21448
+028d84	jsr.l	$3b	move.b #$3b,D7<-17	type 85 @28d60
+028efa	jsr.l	$54	move.b #$54,D7<-18	type 148 @28df4
+029204	jsr.l	$53	move.b #$53,D7<-18	type 144 @290e4
+0295a2	jsr.l	$53	move.b #$53,D7<-18	type 141 @2946e
+029722	jsr.l	$15	move.b #$15,D7<-17 | ori.b #$3c,21(A3,D0.w)<-2	type 110 @29694
+029a58	jsr.l	$53	move.b #$53,D7<-18	type 106 @298ea
+029cfa	jsr.l	$52	move.b #$52,D7<-18	type 107 @29bbc
+029e72	jsr.l	$6e	move.b #$6e,D7<-18	type 111 @29df4
+02a0be	jsr.l	$52	move.b #$52,D7<-18	type 112 @29f78
+02a6aa	jsr.l	$49	move.b #$49,D7<-19	type 121 @2a6a0
+02a7a8	jsr.l	$4d	move.b #$4d,D7<-19	type 122 @2a79e
+02a8e8	jsr.l	$39	move.b #$39,D7<-16	type 125 @2a8d4
+02a9ba	jsr.l	$6e	move.b #$6e,D7<-18	type 126 @2a94c
+02ab46	jsr.l	$70	move.b #$70,D7<-18	type 128 @2aac4
+02b020	jsr.l	$31	move.b #$31,D7<-17	type 138 @2aff6
+02b1b4	jsr.l	$6e	move.b #$6e,D7<-18	type 145 @2b120
+02b284	jsr.l	$6e	move.b #$6e,D7<-18	type 151 @2b1ca
+02b37c	jsr.l	$6f	move.b #$6f,D7<-18	type 152 @2b308
+02b970	jsr.l	$32	move.b #$32,D7<-18	type 152 @2b308
+02bf00	jsr.l	$19	move.b #$19,D7<-18	type 152 @2b308
+02c04a	jsr.l	$19	move.b #$19,D7<-18	type 152 @2b308
