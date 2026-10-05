@@ -75,7 +75,8 @@ on the record states before it goes in a topic doc.
 ## Next
 
 1. Read `cps1.cpp` for the CPS-B register ids and the input/DSW layout; replace the summary above.
-2. Prove the task kernel (`$7f0-$8c0`, trap vectors 4 and 5) live, then name its states.
+2. Prove the task kernel (`$7f0-$8c0`; the handlers of `trap #4`/`#5`, vectors 36/37 at `$90`/`$94`,
+   not read yet) live, then name its states.
 3. Census the object/entity pool the tasks drive and find the game's own readers before naming fields
    (the CLAUDE.md rules on census columns apply unchanged).
 4. Graphics: the four 512 KB gfx ROMs load at offsets 0/2/4/6 in `-listxml`, so they are interleaved
