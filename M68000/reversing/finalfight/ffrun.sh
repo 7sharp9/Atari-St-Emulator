@@ -11,6 +11,8 @@ run="$root/scratchpad/finalfight/run"
 export FF_DIR="$here/lua"
 export FF_OUT=${FF_OUT:-$run}
 mkdir -p "$run/cfg" "$run/nvram" "$run/sta" "$run/snap" "$FF_OUT/tmp"
+# headless: without the dummy SDL driver macOS still makes mame the frontmost app, even with -video none
+export SDL_VIDEODRIVER=dummy
 cd "$run" || exit 1
 exec mame ffightuc -rompath "${FF_ROMS:-$HOME/mame-roms}" -cfg_directory "$run/cfg" \
   -nvram_directory "$run/nvram" -state_directory "$run/sta" -snapshot_directory "$run/snap" \

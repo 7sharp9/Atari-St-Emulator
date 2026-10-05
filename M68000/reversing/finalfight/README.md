@@ -30,7 +30,10 @@ python3 tools/disassemble.py --rom <abs path>/ff_main.bin --base 0 --linear 5e88
 
 `./ffrun.sh <script.lua>` is the second wrapper: no `-debug`, `-nothrottle` (about 4-8x real time with
 RAM dumps), same `scratchpad/finalfight/run/` directories. Use it for input-driven scripts
-(`lua/lib.lua`, `ffdrive.lua`, `resume_check.lua`, `ioport_dump.lua`); use `ffmame.sh` for `callcap`.
+(`lua/lib.lua`, `ffdrive.lua`, `resume_check.lua`, `ioport_dump.lua`, `kernel_log.lua`); use `ffmame.sh` for `callcap`.
+Both wrappers export `SDL_VIDEODRIVER=dummy`: with `-video none` alone macOS still makes `mame` the
+frontmost (full-screen-looking) app on every run. A Lua `install_write_tap` handle must be kept in a
+global, or a garbage collection silently removes the tap (a short probe never collected, the drive did).
 
 ## Driving the game
 
@@ -122,12 +125,11 @@ registers, then programs the CPS-A layer base pointers (`$800100..$80010e`); VBL
 
 ## Next
 
-1. Run the kernel under a breakpoint: `callcap`/`bp` on `$8be`, `$88a`, `$832` to turn `kernel.md`'s
-   code-read trap semantics into live checks, and settle the `register_frame_done` sampling point
-   relative to the VBL interrupt.
-2. Name the tasks: log each task's entry point (`+4` at creation, `trap #0`/`#7`) over the drive and read
-   their bodies. Then census the object/entity pool they drive (enemy table, health, TIME counter were
-   not found by value search) and find the game's own readers before naming fields (the CLAUDE.md rules on
-   census columns apply unchanged).
+1. Read the state-6 frame pipeline `$4e3a` (`$5326`, `$5238`, `$5668`, `$6396`, `$6026`, `$61e24`, `$16600`,
+   with the `$50e` calls between them): the entity/object pools, player records (`$ff1204`, `$ff1244`),
+   health, TIME and hit boxes are updated there (`kernel.md` "Tasks seen over the drive"). Find the game's
+   own reader of each field before naming it (the CLAUDE.md rules on census columns apply unchanged).
+2. Trace slot 11's ring-buffer consumers (`516(A5)`, `324(A5)`, `$1a22`) and the `jsr $2874` senders to
+   confirm the sound-command queue and read the Z80 side.
 3. Graphics: `hardware.md` has the layouts and mapper ranges; the plane/byte order across
    `ff-5m/7m/1m/3m` is inferred. Decode one known tile, render a sheet, commit the PNG with the doc.

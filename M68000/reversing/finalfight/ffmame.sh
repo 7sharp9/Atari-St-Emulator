@@ -14,6 +14,8 @@ case "$1" in
   script)  script="$2" ;;
   *) echo "usage: $0 callcap | script <file.lua>" >&2; exit 2 ;;
 esac
+# headless: without the dummy SDL driver macOS still makes mame the frontmost app, even with -video none
+export SDL_VIDEODRIVER=dummy
 cd "$run" || exit 1
 exec mame ffightuc -rompath "$roms" -cfg_directory "$run/cfg" -nvram_directory "$run/nvram" \
   -state_directory "$run/sta" -debug -debugger none -video none -sound none \
