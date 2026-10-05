@@ -1,75 +1,70 @@
 # Final Fight (Capcom CPS1 arcade, MAME): handoff
 
-Updated 2026-10-05 by the session that ended at the commit after `b18ff59` (frame.md; plus the handoff commit).
+Updated 2026-10-05 by the session that ended at commit `7f23b50` (plus the handoff commit).
 
 ## Resume point
 
-- Last commit of this workstream: `b18ff59` finalfight: task kernel checked live by write taps, 15 task
-  starts named, headless wrappers stop taking focus.
-- Workspace: `M68000/reversing/finalfight/` (`README.md`, `hardware.md`, `kernel.md`, `ioport.txt`,
-  `ffmame.sh` for the debugger/callcap runs, `ffrun.sh` for input-driven runs, `lua/`). The emulator and
-  oracle is **MAME 0.289** (`/usr/local/bin/mame`), not the F# core.
-- Working data: `M68000/scratchpad/finalfight/` (gitignored, indexed in `scratchpad/ANCHORS.md`):
-  `ff_main.bin` (sha256 `8535dd51...e6ec`), `ff_z80.bin` (`2703eedf...2ddd`), `src/` (raw `cps1.cpp`,
-  `cps1_v.cpp`, `cps1.h` from tag `mame0289`), `ff_gameplay.sta`, `run/` (MAME cfg/nvram/state,
-  `kernel_log.txt` 1,657,594 lines from this session, md5 `941ffa23...f30`, disposable), `verify/`
-  (`ff_gameplay_ram.bin`, traces). Rebuild the dumps: `FF_OUT=<dir> reversing/finalfight/ffmame.sh script
-  $PWD/reversing/finalfight/lua/dumprom.lua`; rebuild the state: `FF_SAVE=ff_gameplay
-  reversing/finalfight/ffrun.sh $PWD/reversing/finalfight/lua/ffdrive.lua` (about 9 s); rebuild the kernel
-  log: `FF_KLOG_LO=0 FF_VARIANT=ctl reversing/finalfight/ffrun.sh $PWD/reversing/finalfight/lua/kernel_log.lua 300`
-  (about 40 s), then `python3 reversing/finalfight/lua/kernel_tasks.py`.
+- Last commit of this workstream: `7f23b50` finalfight: health, lives, hit/hurt boxes and the damage chain
+  proved live; object pools by tag; `$5668`'s callees named; second saved state `ff_enemies`.
+- Workspace: `M68000/reversing/finalfight/` (`README.md` incl. the script index, `hardware.md`, `kernel.md`,
+  `frame.md`, `ioport.txt`, `ffmame.sh` for debugger/callcap runs, `ffrun.sh` for input-driven runs, `lua/`,
+  `py/`). The emulator and oracle is **MAME 0.289** (`/usr/local/bin/mame`), not the F# core.
+- Working data: `M68000/scratchpad/finalfight/` (gitignored, indexed in `scratchpad/ANCHORS.md`): `ff_main.bin`
+  (sha256 `8535dd51...e6ec`), `ff_z80.bin`, `src/` (raw `cps1.cpp` etc.), `ff_gameplay.sta` and
+  `ff_enemies.sta`, `run/` (MAME cfg/nvram/state, disposable logs), `verify/` (RAM dumps of both states).
+  `p2/a/`, `p2/b/` hold the two agents' working copies and outputs (the promoted scripts are in
+  `reversing/finalfight/`). Rebuild the dumps, states and logs with the recipes in `README.md` and
+  `ANCHORS.md`.
 - ROMs: `~/mame-roms/{ffight,ffightuc}.zip` (`$FF_ROMS` overrides). Not committed.
-- Start from: the state `ff_gameplay` (stage 1, Cody, Bred on screen, end of frame 2200, `0(A5) = 6`).
+- Start from: `ff_gameplay` (stage 1, Cody, Bred, end of frame 2200) or `ff_enemies` (frame 4150, five enemies).
+  Copy the `.sta` into `scratchpad/finalfight/run/sta/ffightuc/` and start with `FF_LOAD=<name>`.
 - Uncommitted work left behind: none of this workstream. `sessions/README.md` carries another session's
   line-rewrap in the working tree; do not stage it.
 
 ## Proven so far
 
-Detail in `reversing/finalfight/README.md`, `hardware.md`, `kernel.md`.
+Detail in `reversing/finalfight/README.md`, `hardware.md`, `kernel.md`, `frame.md`.
 
-- Hardware read from `cps1.cpp` 0.289 with line numbers (`hardware.md`): `ffightuc` is CPS-B-05, `ff-32m.8h`
-  is program ROM at `$080000`, no main-CPU bank switching; inputs and DIPs checked against the live ioport.
-- Drive from cold boot to stage 1 by coin, Start, Right, Button 1 (`lua/ffdrive.lua`): work RAM and gfx RAM
-  identical over three cold boots, a loaded state matches 6 of 6 next frames (`lua/resume_check.lua`);
-  input gating by x/y counters (59/60, 39/40, 19/30, 16/20, 0 on 81 idle frames, `lua/analyze_inputs.py`).
-- Task kernel checked live by write taps (`lua/kernel_log.lua`, `lua/kernel_tasks.py`, `kernel.md`): 1,657,594
-  TCB-area writes over frames 0-2200, md5-identical across two runs; every state write comes from the trap
-  body the listing names (12 creates at `$842`, 3 pool creates at `$966`, 1 restart, 4 exits, 3 kills, 9186
-  sleeps, 117008 yields); 15 creates = 12 + 3. `D0` of a create is `slot * 16`. `trap #5` and `#8` never ran.
-- VBL flag `$ff1100` written once in each of 2086 frames, a median 3.8 scanlines after MAME's frame-done
-  callback: samples taken in `register_frame_done` are the state before that frame's VBL handler.
-- 15 task starts by entry point, with slots and lifetimes (`kernel.md` "Tasks seen over the drive"). Strong
-  from body plus a second observation: slot 2/3 are the P1/P2 controllers (records `$ff1204`/`$ff1244`, byte 0
-  = player index, word 2 = 0 active / 2 inactive in the saved state), slot 9 credit and Start handler
-  (`76(A5)` credits 0 after Start), slot 15 credit jingle (created by the coin, killed by Start), slot 1 stage
-  clock (dispatch word `0(A5)`: 0, 2, 4, 6 at frames 1169, 1200, 1312, 1313, written by the table's own
-  bodies). Slots 7, 8, 11, 12, 5, 6 are named from the body alone and tagged inferred.
-- In-level frame (`frame.md`): TIME is `175(A5)` BCD, decremented every 480 frames by `$5238` from frame 1677 (tap:
-  one decrement at frame 2156 = 1677 + 479, saved state `$29`, HUD "TIME 29": 1 of 1). One object array of `$c0`
-  records at `$ff8568`: players 0-1, Bred is record 14 (`$ff8fe8`, found by layout and HUD, 1 live sample).
-  `$16600` builds the OBJ list: 928 gfx RAM writes in 5 frames, 464 into each of `$900000`/`$904000`, all by
-  `$16a36-$16a3c` and `$16656/58` (`lua/kernel_log.lua` with `FF_KLOG_EXTRA=900000-907fff`). `$50e` is the Service
-  Mode colour bar, not game logic. Enemies are not tasks (no create 1311-2200).
-- `lua/callcap.lua` on `$50e` (earlier pass): 32/32 words, negative control empty.
+- Hardware, drive to stage 1, input gating, task kernel and TIME: earlier passes, `README.md`, `kernel.md`,
+  `frame.md` "TIME".
+- Health is the word at `+24` of a fighter record (`+26` shadow, `+28` max), read by the HUD tile bar `$1eca`
+  and by the state handlers: the decoded bar equals `+24` in 1100 of 1100 frames, a write tap on Cody's `+24`
+  shows 8 of 8 writes from `$7a12` (`py/hpcheck.py`, `lua/hpbar.lua`, `lua/tap.lua`; rerun fresh).
+- Lives are `+128` BCD (HUD draws `+128 - 1`); the death countdown `$a5ee` decrements it; poked 5 to 4 with the
+  refill and HUD redraw, 1 of 1 (`lua/poke_hp.lua`). Score is `+134` (`$ff85ee`), the attack-box centre x of
+  Cody is `$ff85dc` (`+116`).
+- Hit and hurt boxes are rebuilt by `$32c4` from `56(A6)`, `44`, `45`, `46`, `97`: 1100/1100 for the pointers,
+  545/545 and 1100/1100 for the hurt centres (`py/boxcheck.py`, `lua/recdump.lua`). The overlap test `$7932`
+  predicted 818/818 y-word writes and 63/63 outcomes (44 overlaps, 19 misses; `py/hitcheck.py`, `lua/htap.lua`).
+- Damage: a per-pool dispatch (`$70ae`, `$7584`), amount = `byte[92(.) + 8(attack box)]`, scaled by `+55` through
+  `$79d8`: 26/26 hits; Bred on Cody 8/8.
+- The objects are tagged pools with their own bases, not one 60-record array (`frame.md` "The object pools");
+  `$5668`'s thirteen callees are named from their bodies and each ran 60 of 60 frames (`lua/hitcount.lua`).
+- The stage spawn script `$5aea`/`$61a8` is moved by the camera: pointer `$70676` to `$70684` at camera x
+  `$3f0`, a tag-2 record 94 frames later, 1 of 1 (`lua/spawnlog.lua`).
+- `ff_enemies`: five fighters named from the HUD's own text (BRED, DUG, JAKE, HOLLY WOOD; AXL inferred) with their
+  data pointers at `92(A6)`; work RAM `2657a253...b0ae` and gfx RAM `1a4357c4...e94a` identical over three
+  cold boots (`lua/plans/plan3.lua`, `py/poolcensus.py`). The extended `ffdrive.lua` still gives the original
+  `ff_gameplay` hashes (`79ed3cc1...0b2c`, `d6fbca5f...d8b0`).
 
 ## Open, in priority order
 
-1. **Read the callees `frame.md` lists as unread**: the thirteen of `$5668` (`$5acdc`, `$5764`, `$5b1cc`, `$5aea`,
-   `$57f2`, `$5a1a`, `$5fc6`, `$5962`, `$59a4`, `$5848`, `$5a72`, `$5ff4`, `$90fa`), `$708e`/`$7564` (damage),
-   `$6026`'s and `$61e24`'s tables, `$27fc4`. Player health and the hit boxes are there. Method: read to the first
-   branch, grep the docs for the address, then write-tap the field (`FF_KLOG_EXTRA`) and histogram the writer PCs
-   (the object-record histogram in `frame.md` is the model). Name a field from its reader (HUD, `$ff85dc`,
-   `$ff85ee`), not its writer.
-2. **Second state with several enemy kinds on screen** (needed for what each pool of the object array holds: only Bred is live in `ff_gameplay`) (the drive reaches one, Bred), plus a search for the TIME
-   counter and player health by their readers, not by value.
-3. **Slot 11's queues** (`516(A5)`, `324(A5)`, `$1a22`) and the `jsr $2874` senders: confirm it is the sound
-   command queue (tap `$800180`/`$800188` writes and match them to queue entries), then read the Z80 side.
-4. **Confirm the `[I]` task roles** (slots 7, 8, 12, 5, 6): tap `106(A5)`/`110(A5)` and `$800030`, and get
-   the slot 5 body past its wait by letting the player die (needs an input script that loses all lives).
-5. **Graphics**: layouts and mapper ranges are in `hardware.md`; the plane/byte order across
-   `ff-5m/7m/1m/3m` is inferred. Decode one known tile, render a sheet, commit the PNG with the doc.
-6. **Z80 sound CPU** (`ff_z80.bin`, YM2151, OKI), then Ghouls'n Ghosts: test whether Capcom's
-   object/sprite engine is shared (only after items 1 and 2).
+1. **Fill the pools stage 1 never filled**: tags 4, 6, `$12`, `$14`, pool 8 and the `$ffb228` slot (and name the
+   three unnamed tag-`$a` props, confirm AXL by `$5b4aa`'s name selection or a clean HUD frame). Drive past the first
+   boss or into stage 2 (extend `plans/plan3.lua`; watch the stage counter `190/191(A5)`), save a state, rerun
+   `py/poolcensus.py` and `py/hitcheck.py`. Needs a determinism check as for `ff_enemies`.
+2. **Read the unread handlers**: `$6026` and tables `$604a`, `$61e24`/`$6241e`, `$27fc4`, the player-versus-player
+   path `$7766-$7920` and `$2934`, the kind handlers `$73b8`, `$73e4`, `$7456`, `$711a`, `$71a2`, `$7222-$7232`, the
+   continue screen (state 6 `$c840`, `22188(A5)`). Method as in `frame.md`: read to the first branch, grep the
+   docs, write-tap the field, histogram writer PCs.
+3. **The `$15854` bar object versus the `$1eca` tile bar**: both read `+24`; find out which one draws what you
+   see (a sprite-layer test or a tile-layer test on the screenshot).
+4. **The sound queue**: slot 11's queues (`516(A5)`, `324(A5)`, `$1a22`), the `jsr $2874` senders and the cue ring
+   at `388(A5)` (`$9d0`/`$9b2` write `$800180`): tap `$800180`/`$800188`, match to queue entries, then read the Z80.
+5. **Confirm the `[I]` task roles** (slots 7, 8, 12, 5, 6; `kernel.md`); needs an input script that loses all lives
+   (the lives poke in `lua/poke_hp.lua` shows how to reach state 6).
+6. **Graphics**: decode one known tile, render a sheet, commit the PNG with the doc. Then the Z80 and Ghouls'n
+   Ghosts (test whether Capcom's object engine is shared) only after items 1 and 2.
 
 ## Known traps
 
@@ -80,24 +75,35 @@ Detail in `reversing/finalfight/README.md`, `hardware.md`, `kernel.md`.
   awk '/<machine name=/{m=$0} /crc="<crc>"/{print m}'`, then rename the copy.
 - MAME on macOS grabs focus even with `-video none` unless `SDL_VIDEODRIVER=dummy` is set; both wrappers
   now export it. Never launch `mame` directly from a Bash call.
+- Two MAME runs at once collide on `scratchpad/finalfight/run/` (cfg, nvram, states): give each agent a copy of the
+  wrapper with its own `run=` directory (`p2/a/ffrun_a.sh`) and a copy of the `.sta` in its own `sta/ffightuc/`.
 - Lua `install_write_tap` returns a handle; if it is not held in a global, a garbage collection removes the
-  tap silently (a short probe works, a drive that allocates RAM dumps does not). Tap ranges must be
-  word-aligned (`ff807e-ff807f`). `screen:vpos()` does not exist in 0.289: use `machine.time:as_double()`
-  with `screen.frame_period` and `scan_period`. A tap callback that errors prints `LUA ERROR`; wrap in
-  `pcall` while debugging.
+  tap silently. Tap ranges must be word-aligned (`ff807e-ff807f`). `screen:vpos()` does not exist in 0.289: use
+  `machine.time:as_double()` with `screen.frame_period` and `scan_period`. A tap callback that errors prints `LUA
+  ERROR`; wrap in `pcall` while debugging.
 - In `callcap.lua`: `PC` reads 2 above the breakpoint while stopped, use `CURPC`; the stack pointer is
   `SP`; registers set while the CPU free-runs do not take; `register_periodic` keeps firing while stopped.
+  `lua/hitcount.lua` (breakpoint `printf; g`) counts executions without that stop-and-set dance.
 - `-video none` needs `-seconds_to_run` and a script that calls `manager.machine:exit()`.
 - Inputs are levels read once per frame: hold several frames; a level set at the end of frame N is seen
-  from N+1. Test movement only after frame ~1700.
-- `ffdrive.lua` silently skips `FF_TRACE` dumps if `<FF_OUT>/tmp` does not exist (`ffrun.sh` creates it).
-- System `python3` has no numpy: use `M68000/.venv/bin/python` for `analyze_inputs.py`.
+  from N+1. Test movement only after frame ~1700. Cody has no attack box in the grapple states, so offence checks
+  need a run where he hits something that is not holding him.
+- `ffdrive.lua` silently skips `FF_TRACE` dumps if `<FF_OUT>/tmp` does not exist (`ffrun.sh` creates it). With
+  `FF_LOAD` the plan and the base schedule are now both applied (`L.apply` is unconditional), which is harmless
+  because the base schedule ends at frame 2195.
+- Pool-local indices and array indices differ: Bred is array index 14, pool-2 local index 12 (`py/poolcensus.py`
+  prints local).
+- `py/jt.py` takes the address of the `move.w 6(PC,Dn.w),D1` instruction (`70a6`), not the routine start (`708e`):
+  the wrong address decodes garbage without an error.
+- System `python3` has no numpy: use `M68000/.venv/bin/python` for `analyze_inputs.py`; `py/hudbar.py` and
+  `py/namesheet.py` need Pillow (same venv).
 - A task's variable (`$ff1288`) keeps its last value after the task dies: read the TCB state before saying
   a task "is in state N".
 - zsh does not word-split `$D`: use a shell function for repeated `disassemble.py` arguments.
 
 ## Next session
 
-Run `/resume final_fight`. Item 1: read the unread callees of `$5668` and `$708e`/`$7564`, tapping the player and
-Bred records as in `frame.md`. Two agents fit: one for `$5668`'s callees, one for a second multi-enemy state and the
-pool contents. Do not start graphics or Ghouls'n Ghosts before health and hit boxes are read.
+Run `/resume final_fight`. Item 1: drive past the first boss from `ff_enemies` (or stage 2) and census the pools
+that stayed empty, then item 2 on whatever the new state exercises. Two agents fit again: one for the drive and
+census, one for the unread handlers (`$6026`/`$61e24`/`$27fc4` and the player-versus-player path). Give each its own
+MAME run directory. Do not start graphics or Ghouls'n Ghosts before items 1 and 2.
