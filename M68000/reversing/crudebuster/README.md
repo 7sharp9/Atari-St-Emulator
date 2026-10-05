@@ -15,6 +15,8 @@ decrypted image.
 | `enemies1/enemies1.md` | pool A types of levels 0-2: the shared engine contract (record, states, hit and damage rules, scores, the `$2438a` brain), street thugs, bruiser, cyborg, dog, throwers, scooters, bosses; lab and natural-run scripts |
 | `player/player.md` | the players (`$80100`/`$80180`), controls and move table, grab and throw, hit geometry, damage and score tables, lives/continue/timer, two players; reusable god-mode bot `player/lua/bot.lua`; gates `player/py/gates.sh` |
 | `enemies2/enemies2.md` (+ `grunts/`, `special34/`, `l5a/`, `l5b/`) | pool A types of levels 3-5, bosses, the level 5 final boss chain and ending, camera cell maps and freeze rule, level-end writers, spawn graph, per-level census |
+| `player/natural.md`, `player/lua/natbot.lua` | natural plays of levels 1-5: the bot (reach prediction, wall jabs, step jumps, ladder search), what it learned about walls, steps and ladders, results per level, reproduce commands; `walllab.lua` and `ladderlab.lua` are the two small labs behind its rules |
+| `infographic/` | `crudebuster_hitboxes_and_ai.html` (one-page figure set: real hit boxes over MAME frames, move reach, the enemy decision tables, damage and boss health), `py/build.py`, `py/overlay.py`, `assets/`; the enemy decisions come from `enemies1/py/brain_probs.py` |
 | `architecture.md` | memory map, boot, vectors, protection, frame/VBL structure, game flow, object pools, level scripts, flags |
 | `cbmame.sh` | headless MAME wrapper (`script` = with debugger for Lua, `run` = no debugger; `CB_SET`, `CB_RUN`, `CB_ROMS`) |
 | `lua/lib.lua`, `lua/drive.lua` | helpers and the input-plan driver (`CB_PLAN`, `CB_SHOTS`, `CB_DUMP`, `CB_SAVE`, `CB_LOAD`) |

@@ -234,7 +234,7 @@ Starts level `CB_LEVEL` (0-5) like `lua/startlevel.lua`, waits out the scripted 
 with a button 1 tap every 5 frames inside `CB_RANGE` (36 px). Options: `CB_GOD=1` pokes health and the blink timer (`$80113 = $38`, `$80136 = $7fff`), `CB_SAVEAT="frame:name,..."` saves MAME states, `CB_STOPAT=x:NNN` saves `bot_end`
 when the scroll counter reaches a value, `CB_LOAD` resumes from a state, `CB_SHOTS` screenshots, `CB_NOSOLID=1` clears the solid bit of pool B records 24-31, `CB_PLAYER2=1` starts P2 too. Results (5000 frames, god mode):
 level 0 stops at the rubble wall (scroll `$200`, x `$2b3`, score 500: the scroll gate is not opened by killing the enemies; a thrown can flies through x `$2c0-$2ff` and the wall record B24 stays unchanged for the whole flight, `out/wall`); levels 1-5 reach scroll `$300`, `$3ed`, `$581`, `$35d`, `$201` with scores 4950, 7500, 8500, 32000, 15600.
-The policy does not pick up objects or use ladders, so it stalls at the first scroll gate. Its state files (`bot_end`) are an easy way to get a populated screen.
+The policy does not pick up objects or use ladders, so it stalls at the first scroll gate. Its state files (`bot_end`) are an easy way to get a populated screen. **For natural play use `lua/natbot.lua`** (reach prediction from the hit boxes, jabbing lock walls, jump over steps, ladder search, jump kick and bait): it clears level 1 with no pokes but the health cell and the timer (`natural.md`).
 
 ## 8. Errors in the brief and open items
 
@@ -243,6 +243,5 @@ Brief errors: (1) `$1308` is the level **timer**, not the continue countdown: th
 player's own damage and hit code is in `$e000-$ffff` (`$f82e`, `$f4f4`, `$fa10`, `$100b2`); (4) the "crude bar" and a special attack do not exist in the code: three buttons only; (5) the continue countdown runs at 29 Hz logic rate, one digit per 126 VBLs.
 
 Open: (a) the Hard and Hardest damage tables and the 128+ values at Hardest were not run (DIP unchanged); (b) the escape rule of action `$d` (held by an enemy): observed ending only when the enemy died; (c) action `$c` / sub-actions
-6 and 8 (ledge fall, ledge hop) are read, not driven; (d) the rubble wall of level 1 (pool B type `$1d`, solid box x `$2c0-$2ff`, y `$160-$1df`) neither a thrown can nor the dead enemies unlock the scroll; the unlock condition belongs to the world agent
-(scroll gate flags `$80400`, `$8044e`, table `$8908`); (e) the mode 2/3 (game-over wait, initials entry) screens were read only; (f) pool B props `$17`, `$1d` cannot be picked up, `$2c` is carried but not thrown by b3 in 190 frames;
+6 and 8 (ledge fall, ledge hop) are read, not driven; (d) *answered*: the solid rubble walls (pool B types 24, 28, 29, 30) wear down under repeated jabs (`natural.md`, `world.md` section 4), which neither the thrown can of the first test nor the bot of this section did; (e) the mode 2/3 (game-over wait, initials entry) screens were read only; (f) pool B props `$17`, `$1d` cannot be picked up, `$2c` is carried but not thrown by b3 in 190 frames;
 (g) per-type enemy HP: types 0, 1, 2, `$14` 2; type 4 1; type 7 3; type 9 `$10` (first frame after the spawn handler; `lua/hitlab.lua`) - the enemy agents own the rest.

@@ -1,0 +1,8 @@
+[
+ {"level": "1 (bridge)", "cls": "ok", "status": "cleared", "reached": "clear flag at frame 14262, twice, same frame", "notes": "33 of 33 script spawns in order. Roller dead at 5998, helicopter before 11773, gang leader dead at 14006, victory pose, flag 256 frames later. The bot jabbed lock walls at frames 943, 2244, 2940 and 3131 and walked on."},
+ {"level": "0 (street)", "cls": "part", "status": "to the boss arena", "reached": "scroll $502 by frame 4000", "notes": "The rubble wall at scroll $2f4 is jabbed away. An earlier assisted bot cleared level 0 at frame 14882; this bot was stopped at frame 6000."},
+ {"level": "2 (construction)", "cls": "part", "status": "to the helicopter", "reached": "scroll $802, $864 in an earlier version", "notes": "The helicopter and its parts blew up in a replay from a stall state (frame 14520). The player then halts at x 2291 in front of a wall tile; a jump over it is untested."},
+ {"level": "3 (snow street)", "cls": "part", "status": "past the first boss, earlier version", "reached": "$801 earlier, $5d4 now", "notes": "The type 12 boss at $600 sits off screen: the bot has to back away so that it walks in. At $801 the bot ends up on a ledge above the fight."},
+ {"level": "4 (mine)", "cls": "part", "status": "down the ladder", "reached": "scroll $664, lower floor y 592", "notes": "The descent is a ladder 5 px wide (x 1502 to 1506). Found by a press sweep at frame 13879, then the lower arena was fought."},
+ {"level": "5 (laboratory)", "cls": "part", "status": "to the last screen, earlier version", "reached": "scroll $e21 earlier, $1c0 now", "notes": "Ladder up at x 990 found by the sweep, the staircase fought, the final block reached at frame 30460 with 88,700 points. The final boss was not met."}
+]

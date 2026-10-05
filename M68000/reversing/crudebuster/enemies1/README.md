@@ -20,7 +20,7 @@ Pictures: `portraits_l0.png`, `portraits_l1.png`, `portraits_l2.png` (crops from
 | `census.py` | script entries against a natural run: which spawned when, at which scroll position, non-script records |
 | `states.py`, `fingerprint.py`, `showtype.py` | state tables of the 80 pool A handlers (longword dispatch that `rdis.py` does not follow), per-state fingerprint (velocities, spawns, next states), annotated listing |
 | `lst.py` | slice of `scratchpad/crudebuster/all_lin.txt` by address |
-| `brain.py` | decode of the `$2438a` decision tables |
+| `brain.py`, `brain_probs.py` | decode of the `$2438a` decision tables; `brain_probs.py` turns them into exact next-state probabilities per type, table and distance bucket (`--json` for the infographic) |
 | `boxes.py`, `cboxes.py`, `cdamage.py` | body boxes `$6b000`, attack boxes `$69000`, damage per C type and difficulty |
 | `scrollmap.py` | per-level scroll/lock map `$8908` |
 | `loglib.py`, `labana.py`, `bosslog.py`, `statetab.py`, `trans.py` | log parser and views (timeline, hp drops, per-state table, transition census) |
