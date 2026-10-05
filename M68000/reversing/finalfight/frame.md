@@ -20,8 +20,8 @@ current at frame 4300 [L]. Its body, in order:
 | `bsr $5238` | TIME countdown (below) | [R] [L] [S] |
 | `jsr $5668` | the thirteen updaters, below ("The per-frame updates"), called 60 of 60 frames each | [R] [L] |
 | `jsr $6396` | hit resolution: `bsr $6f6c`, `bra $7766` (below) | [R] |
-| `jsr $6026` | `A6 = $ffb1a8` (`12712(A5)`, a 64-byte record with tag `$10`), dispatches on byte `2(A6)` (table `$604a`), then `jmp $27fc4`; skipped while `299(A5)` is set. `$27fc4` parks unused player records at the camera (`+6,+10,+14` from `1042/1046(A5)`) and, while `-28332(A5)` (kind 0-2 alive count) is non-zero, refreshes one formation-slot flag per player and frame through `$2804e` (`ai.md`, "`$27fc4`"; [R], flags [L]). Its spawner variants (`$6278-$62f6`) feed the stage-script executor `$61a8`, below; its other states are not read | [R] |
-| `jsr $61e24` | stores the active-player mask (bit 0 of each player record's first byte) in `21610(A5)`, then updates the two player objects at `1036(A5)` and `1164(A5)` by their state byte `2(A6)` (dispatch table `$61e5a` for the first, a routine at `$6241e` for the second); not read | [R] |
+| `jsr $6026` | `A6 = $ffb1a8` (`12712(A5)`, a 64-byte record with tag `$10`), dispatches on byte `2(A6)` (table `$604a`), then `jmp $27fc4`; skipped while `299(A5)` is set. `$27fc4` parks unused player records at the camera (`+6,+10,+14` from `1042/1046(A5)`) and, while `-28332(A5)` (kind 0-2 alive count) is non-zero, refreshes one formation-slot flag per player and frame through `$2804e` (`ai.md`, "`$27fc4`"; [R], flags [L]). Its states, the 14-byte entries, the spawner `$61a8` (variants `$6278-$62f6`) and the tables are in `placement.md` | [R] [L] |
+| `jsr $61e24` | stores the active-player mask (bit 0 of each player record's first byte) in `21610(A5)`, then updates the two **camera** records at `1036(A5)` and `1164(A5)` (`+6`, `+10` are the camera x and y `1042/1046(A5)`; the players are at `1384(A5)` and `1576(A5)`) by their state byte `2(A6)` (dispatch table `$61e5a` for the first, a routine at `$6241e` for the second); state 0 spawns the area-bound markers, state 2 runs the GO-arrow timer (`placement.md`, "The camera records") | [R] [L] |
 | `jsr $16600` | sprite list builder (below) | [R] [L] |
 | `tst.b 297(A5)` ... | `297(A5)` negative and `140(A5)` zero: `jsr $2636`, phase := 8 (stage over); otherwise `$4e9c` sets `21416(A5)` when both player records' first byte is zero | [R] |
 
@@ -38,19 +38,18 @@ at `$5210` indexed by `190(A5) * 4 + 191(A5)`; `190(A5)` and `191(A5)` are the s
 script `$5aea` selects its script from the same pair, below). Entry 0 is `$30` and the tap saw `$ff80ae <-
 $0030` at that frame [L]. The table is `30 30 50 99 | 50 70 30 70 | 50 50 50 99 | 70 50 99 99 | 99 99 99 99 |
 60 70 70 99 | 30 99 99 99 | 20 99 99 99 | ...` in rows of four (`$5210`, 40 bytes read, `$99` in many entries); it
-was not mapped to the game's actual stages and areas. From frame 1677, when the scripted intro has ended,
+is read as stage * 4 + area (stage 0 has the three areas 30, 30, 50; the full mapping and the stage order are in `transitions.md`). From frame 1677, when the scripted intro has ended,
 `$5238` increments `176(A5)` once per frame and at `$1e0` (480 frames, about 8.05 s at 59.63 Hz) clears it and
 decrements `175(A5)` with `sbcd` (`$5266`) and redraws through `$559a`. The tap saw the single decrement at
 frame 2156 (`$ff80ae <- $2929`), 1677 + 479, and the saved state holds `175(A5) = $29` with `176(A5) = 43 =
 2200 - 1677 - 480`. The HUD of that frame shows "TIME 29" (`gameplay.png`): 1 of 1 [L] [S]. `$559a` writes the
 two digits as tile words at `$909014` (the second digit 256 bytes lower, 8 KB higher for player 2's HUD when
 `21417(A5)` is set) from a tile table at `$55f4` with attribute `$186` [R]. A second countdown, `$52b6`, uses a
-60-frame period and on reaching zero sets `297(A5) = 1` and phase 6; phase 6 does not call it, and its caller
-was not searched [R].
+60-frame period and on reaching zero sets `297(A5) = 1` and phase 6; phase 6 does not call it, the bonus-stage frame (phase `$e`, `$5000`) does: a 60-frame tick, 30 ticks live, and at 0 the stage ends without a death (`transitions.md`) [R] [L].
 
 `$5238` skips the count while `298(A5)`, `297(A5)` or `291(A5)` is non-zero, and at TIME 0 calls `$51de` (reload
-`174(A5)` from `186(A5)`, redraw) and `$5298` for each player record [R], so the end-of-time behaviour is a
-reload at that call site, not obviously "time over"; unproven.
+`174(A5)` from `186(A5)`, redraw) and `$5298` for each player record [R]: it kills them (`63 := 3`, health `$ffff`) and spawns the pool-8 kind `$25` TIME OVER banner. Live with an idle
+Cody from a cold boot: TIME 00 at 16077, at 16557 TIME reloaded to 30, banner, fatal knockdown, state 4 at 16649, respawn with lives 2 to 1 at 16709 (7 of 7, `transitions.md`) [L].
 
 ## Difficulty counter
 
@@ -62,7 +61,7 @@ ceiling `word[$5372 + 2*172(A5)]`; other entry points subtract table amounts (`$
 `188(A5)`. In Service Mode `$554e` prints `168`, `172` and `276` on the screen. Live in `ff_enemies` (`172(A5) = 1`): the rank rose from 8 at
 frame 4151 to 10 after 1501 frames and to 13 after 3001 (+1 per 600 frames, 2 of 2) [L]. Its readers: `$3e88` caps the number of live
 fighters per kind by the rank (`ai.md`), and a stage-script entry whose level byte is `$ff` gets `169(A5)` (the rank's low byte) as `+96`, which
-indexes the fighter's health, defence class, damage column and attack-roll masks (`ai.md`) [R] [L]. The events that lower it were not
+indexes the fighter's health, defence class, damage column and attack-roll masks (`ai.md`) [R] [L]. The stage change lowers it (`$5382` subtracts `word[$53aa + 2*172(A5)]`, 1 here: 18 to 17 at frame 11595 [L], `transitions.md`); the death drop `$53b2` was not
 triggered; `134/135(A5)` are probably the difficulty DIP bytes (not checked against `hardware.md`) **[I]**.
 
 ## The object pools
@@ -75,17 +74,17 @@ walks [R] [L]:
 
 | tag | records, base | updater | contents |
 |---|---|---|---|
-| (players) | 2 at `$ff8568` | `$5764` | player 1 (Cody), player 2 (inactive in every run) |
+| (players) | 2 at `$ff8568` | `$5764` | player 1, player 2 (active only after a two-player start or a join, `twoplayer.md`; the character is `+20`) |
 | 2 | 13 at `$ff86e8` (`1768(A5)`) | `$57f2` | fighters: enemies and bosses, 9 kind handlers: 0 `$21cec` (BRED, DUG, JAKE, SIMONS), 1 `$2813a` (J, TWO.P), 2 `$2a310` (AXL, SLASH), 3 `$2ccac` (the ANDORE family), 4 `$3136c` (G.ORIBER, BILL BULL, WONG WHO), 5 `$3514c` (HOLLY WOOD, EL GADO), 6 `$389b8` (ROXY, POISON), 7 `$3c446`, 8 `$3c48e` (roles in `ai.md`); the only damage-taking pool apart from `$a` |
-| 6 | 6 at `$ff90a8` | `$5962` | weapons: 6 kinds (`$57a76`, `$5828e`, `$58b1c`, `$5935e`, `$5957a`, `$59b2e`); a drop byte `>= $24` creates kind `byte - $24`; kinds 0, 1, 2 are picked up by Cody with Button 1 (`$9c72`; 3 of 3 [L]), kinds 3 and 4 spawned but were not picked up (2 of 2 [L]); kind 4 (`$5957a`) is the fire bottle of the tag-2 kind 8 fighter and a tag-2 kind 5 fighter draws a kind 0 weapon (`ai.md`); never live in the saved states (`player.md`) |
-| 4 | 8 at `$ff9528` | `$5a1a` | never live in stage 1 |
-| 8 | 30 at `$ff9b28` (`6952(A5)`) | `$5848` | 60 kind handlers from `$1a1f0`; one record live in `ff_enemies` (kind 1, word `20 = $0300`, x `$518`), role unknown. Records 56 and 57 of the array are live already in `ff_gameplay` [S]. Fighter helpers create three kinds [L]: `$34` (`$20f4e`, follows its owner's x and ground line while it falls in), `$1f` (`$1f3b0`, the ground shadow of an ANDORE-family fighter), `$1b` (`$1f1a4`, a 180-frame marker that follows a respawned player, role [I]) |
+| 6 | 6 at `$ff90a8` | `$5962` | weapons: 6 kinds (`$57a76`, `$5828e`, `$58b1c`, `$5935e`, `$5957a`, `$59b2e`); a drop byte `>= $24` creates kind `byte - $24`; kinds 0, 1, 2 are picked up by Cody with Button 1 (`$9c72`; 3 of 3 [L]), kinds 3 and 4 spawned but were not picked up (2 of 2 [L]); kind 4 (`$5957a`) is the fire bottle of the tag-2 kind 8 fighter and a tag-2 kind 5 fighter draws a kind 0 weapon (`ai.md`); HUD names by kind: KNIFE, MURAMASA!, PIPE, SHELL, BOTTLE, ARROW; a stage-0 run saw kind 0 three times, kind 2 once and kind 4 twice (`placement.md`, "Weapons") |
+| 4 | 8 at `$ff9528` (`5416(A5)`) | `$5a1a` | the bosses: eight kinds through the long table at `$5a52` (0 DAMND `$3d3d6`, 1 SODOM, 2 EDI.E, 3 ROLENTO, 4 ABIGAIL, 5 BELGER, 6 the BOSSTEST dummy, 7 a scene object), allocator `$390a`, free `$38f0`; DAMND is record 7 (`$ff9a68`), live from the first frame of stage 0 area 2 [L]; `boss.md` |
+| 8 | 30 at `$ff9b28` (`6952(A5)`) | `$5848` | 60 kind handlers from `$1a1f0`: scenery and event objects, created by the placement lists, the camera records and other handlers. Kind 1 (`$0300` in `+20..+21` is ch 3 of the tile-patch objects, x `$518`) is an invisible tile-patch object, 2 the GO arrow, 3 the screen shaker, `$f` a door opener, `$15` a ceiling lamp, `$22` an area-bound marker, `$23` the door gang; the table is in `placement.md`, "Pool 8 kinds". Records 56 and 57 of the array are live already in `ff_gameplay` [S]. Fighter helpers create three kinds [L]: `$34` (`$20f4e`, follows its owner's x and ground line while it falls in), `$1f` (`$1f3b0`, the ground shadow of an ANDORE-family fighter), `$1b` (`$1f1a4`, a 180-frame marker that follows a respawned player, role [I]) |
 | `$10` | `$ffb1a8` and `$ffb1e8`, 64 bytes each | `$6026`, `$5aea` | the placement record and the stage-script record (below) |
 | `$c` | one `$c0` record at `$ffb228` (`12840(A5)`) | `$5acdc` | a scripted scene actor, three types (table `$5acf2`); never in use in any run **[I]** |
-| `$a` | 16 at `$ffb2e8` (`13032(A5)`) | `$59a4` | breakable props: 19 kinds (`$515a6` to `$551e2`); kind 5 (4 live in `ff_enemies`; one was named TEL.BOOTH by the HUD when hit, 1 sample; hp 0, one hit breaks it, +500 on break [L]); kinds 5 and 8 seen; the break calls the drop routine `$5a934` (explicit item or weapon from `+21`, random row of `$5a9e0`, or a 10,000-point item when the killer presses a direction or jump on the kill frame, [L] 1 of 1), break awards per kind and the hit handlers are in `player.md` |
+| `$a` | 16 at `$ffb2e8` (`13032(A5)`) | `$59a4` | breakable props: 19 kinds (`$515a6` to `$551e2`), named by the game's text `$5bbaa` (0 DOOR, 1 DRUMCAN, 2 CHANDELIER, 3 BILLBOARD, 4 FREIGHT, 5 DUSTBIN, 6 BARREL, 7 TIRE, 8 TEL.BOOTH, 9 and 11-14 GLASS, 10 DRUMCAN, 15 GRANADE, 16-17 FLAME, 18 WHEELCHAIR; 8 of 8 live HUD checks); kind 5 (hp 0, one hit breaks it, +500 on break [L]); stage 0 places kinds 1, 4, 5, 6, 7, 8 (`placement.md`); the break calls the drop routine `$5a934` (explicit item or weapon from `+21`, random row of `$5a9e0`, or a 10,000-point item when the killer presses a direction or jump on the kill frame, [L] 1 of 1), break awards per kind and the hit handlers are in `player.md` |
 | `$e` | 271 records of 64 bytes at `$ff3000`, handed out in groups of 6 by `$5a72` | `$5a72` | effects: kind 0 is a hit spark created on the frame of each hit on Cody (8 of 8); kinds 1 and 3 seen |
-| `$12` | 10 at `$ffbee8` | `$5fc6` | pickup items: `+20` = type 0 to 35 (`$9b88`), heal `$80`, `$40`, `$20`, `$10` for types 0-2, 3-7, 8-12, 13-19 (to a cap of `$90`) or, at full health and for types 20 to 34, a score of 10,000, 5,000, 3,000 or 1,000 (24 of 24 [L]); created by the prop break `$5a934`; one kind handler (`$5a55a`) |
-| `$14` | 10 at `$ffc668`, 64 bytes | `$5ff4` | one kind (`$563dc`), kind 0 seen in the earlier run |
+| `$12` | 10 at `$ffbee8` | `$5fc6` | pickup items: `+20` = type 0 to 35 (`$9b88`), heal `$80`, `$40`, `$20`, `$10` for types 0-2, 3-7, 8-12, 13-19 (to a cap of `$90`) or, at full health and for types 20 to 34, a score of 10,000, 5,000, 3,000 or 1,000 (24 of 24 [L]); created by the prop break `$5a934`, by placement type 18 and by pool-4 kind 2; item names `$5bee2` (`placement.md`); one kind handler (`$5a55a`) |
+| `$14` | **30** at `$ffc668`, 64 bytes (`$998e`, `D2 = $40`) | `$5ff4` | debris: kind 0 `$563dc` a flying piece, kind 1 `$56e44` a glass shard; created by prop breaks, the player's area-intro and area-clear scripts and DAMND (44 pieces in a stage-0 run to the boss trigger [L]; `placement.md`, "Pool `$14`") |
 
 The allocators are `$3892` (tag 2), `$38ce` (6), `$390a` (4), `$3946` (8), `$3982` (`$a`), `$39be` (`$12`), `$39fa`
 (`$14`); the effect allocator is `$3a96`. Earlier text called `$ffb1a8` the last record of one 60-record array
@@ -102,8 +101,8 @@ the entry start: `+0` delay in frames, `+2` track flag (non-zero: the segment wa
 set: the low 15 bits plus a random value in -15..+15), `+8` pool tag (2 `$3892`, 4 `$390a`, `$a` `$3982`), `+9` kind to `+19`, `+10/+11` to
 `+20/+21`, `+12` to `+54`, `+13` to `+98`, `+14` to `+96` (negative: `169(A5)`), `+15` two-player-only (skipped unless both players are
 live, `$5f46`). For tag 2 `$3e88` first applies the per-kind spawn cap (`ai.md`, difficulty). `$61a8` is a different spawner (byte 6 selects
-the pool: 1 tag 2, 2 tag 4, 3 tag 6, 4 tag 8, 5 tag `$a`, 6 the `$ffb228` slot, 8 `$ffb1e8`, 9 tag `$12`, 10 tag `$14`; byte 7 becomes `+19`,
-word 8 `+20`, byte 12 `+96`) fed by the placement record `$6026` [R]. Live: the script pointer moved from `$70676` to `$70684` at frame
+the pool: a word table `$61b6` indexed by the even byte 6: 2 tag 2, 4 tag 4, 6 tag 6, 8 tag 8, 10 tag `$a`, 12 the `$ffb228` slot, 16 `$ffb1e8`, 18 tag `$12`, 20 tag `$14`; byte 7 becomes `+19`,
+word 8 `+20`, byte 12 `+96`) fed by the placement record `$6026` (`placement.md`) [R]. Live: the script pointer moved from `$70676` to `$70684` at frame
 3223, when the camera x reached `$3f0` (the entry's trigger), and a tag-2 record was created at `$5ee6` 94 frames later, 1 of 1 [L].
 `py/ai_kind45/script.py` decodes the set.
 
@@ -214,7 +213,7 @@ half-heights, runs only if x passed [R]. Replayed against 818 live calls: 818 of
 written iff x passed; 63 calls reached the y test and the prediction matched all 63 (44 predicted overlaps had
 their effect, 30 damages or `+60` writes and 14 grab completions at `$754e`; 19 predicted misses had none;
 `py/hitcheck.py`, rerun fresh this pass). The body-versus-body variant `$7984` (centres `116/118` on both sides)
-serves player-versus-player contact from `$78c6`; `$7766` and `$2934` are not read.
+serves player-versus-player contact from `$78c6` (the clash of two hard attack boxes). The player-versus-player path `$7766-$7920` (gates, the lane window, 1 hp per soft hit, the 100-frame immunity `+148`, the award to the attacker) and `$2934` (the partner's health into each player's HUD ring) are read and run live in `twoplayer.md`.
 
 ## Damage dispatch
 
@@ -277,14 +276,10 @@ over frames 2150-2154: 928 writes, 464 into each of the two buffers, all from `$
 
 ## Not read, not proven
 
-- `$6026`'s other states and its table `$604a`, `$61e24` and `$6241e`, `$2934`, `$7766-$7920`
-  (player-versus-player), the tag-`$a` victim handlers `$711a`, `$71a2`, `$7222-$7232`, the per-stage scripts of player
-  states 8 and 10 and the state 12 scene (`player.md`), and the producer of the enemy-bar ring. (`$27fc4` refreshes the formation
+- `$61e24`'s camera follow and lock (`transitions.md`; its first lines compute the in-use mask `21610(A5)`, `twoplayer.md`), the tag-`$a` victim handlers `$711a`, `$71a2`, `$7222-$7232`, and the producer of the enemy-bar ring. (`$27fc4` refreshes the formation
   slot flags, `$73b8` and `$73e4` are the kind 1 dodge and kind 2 guard victim handlers, `$7456` the kind 6 one, `ai.md`;
   the continue screen is `$5da78` and `22188(A5)` is the attract-demo flag, `player.md`.)
-- What pools 4 and `$14` hold, and pool 8's other kinds: none was live in stage 1. Player 2 was inactive in every run (its record is
-  `$1eca`-shaped by [R] only). Names for the three unnamed tag-`$a` props and for the pool-8 record. The fighters of kinds 1 to 8 were
-  exercised in spawned records only, not by playing a stage (`ai.md`).
+- Pool 8's other kinds (`placement.md` lists the ones read; pool 4 is the boss pool, `boss.md`). Player 2, mid-game joining and two-player play were run live (`twoplayer.md`). The fighters of kinds 1 to 8 were
+  exercised in spawned records (`ai.md`); stage 0 was also played by a bot, 18 of 18 script entries (`py/stage/`).
 - The relation of the `$15854` bar object to the `$1eca` tile bar.
-- The TIME table per stage and area, and what happens at TIME 0.
-- The difficulty counter's falling side (`$53b2`, `$5386`, `$53dc`) and its effect with two players (`ai.md` has the rising side and its readers).
+- The difficulty counter's falling side (`$5382` at a stage change is in `transitions.md`; `$53b2`, `$53dc` are not exercised) and its effect with two players (`ai.md` has the rising side and its readers).

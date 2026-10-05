@@ -30,7 +30,8 @@ Fields of the player record beyond `frame.md`, all [R] unless tagged:
 | +104 | bit 0: "my hit connected", set by the hit handlers (`$718e`, `$73a4`); gates the special's health cost [L] |
 | +136, +137, +139, +140 | airborne; "untargetable by the enemy AI" (`$8cf0-$8d62`: sub 8, sub 6 with `4(A6) > 6`, sub 2, `$ff` when the state is not 2; read by the fighter handlers only); special active; respawn drop |
 | +142 | respawn flag, set by `$a144`, consumed by state 0 |
-| +144, +146, +148 | extra-life state, next threshold word, accumulated threshold [L] |
+| +144, +146/+147 | extra-life state, next threshold word (`$4ab4` adds the BCD repeat word through `-(A2)` from `148(A6)`, so it writes bytes 147 and 146) [L] |
+| +148 | player-versus-player immunity: set to `$64` when the other player hits this one (`$782a`, unless `22195(A5)`), no hit lands while it is non-zero (`$77e8`), counted down by 1 per frame in state 2 (`$a660`) [L: 100, 99, 50, 1 sampled, hits 100 frames apart; `twoplayer.md`] |
 | +149 | "enemy ahead" bits for the knife (one pool per frame, `167(A5) & 3`, `$bce8`; character 1 only) |
 | +150, +151, +152, +153 | weapon-pickup cooldown (`$23` after a pickup); grab cooldown; throw direction (1 forward slam, 0 back throw); grab hold timer (30, 50, 70, 90, 110 or 130 frames from `$d7b6`, the held enemy breaks free at 0) |
 | +154, +1 | blink enable; visible flag (`$8dea`: `+1` is cleared on frames where `+97 & 4`) [L] |
@@ -48,9 +49,9 @@ The byte takes the values 0, 2, 4, 6, 8, 10, 12 (word table `$a566`, the index i
 | 2 | `$a64e` | alive (below) | [L] 2469 of 3001 frames in a random drive |
 | 4 | `$a5aa` | dying: sub 0 sets `30 = $3c`, sub 2 counts it down (60 frames); then `$53b2` (difficulty drop), lives `-1` (BCD, `$a5fe`); lives left: `$1e5a` and `$a144` (refill `24/26` from `28`, clear fields, `142 = 1`, state 0); lives 0: `0(A6) = 0`, `19(A6)` saved to `22198(A5)`, state 6. Sub-table `$a5b6` has 2 entries | [L] 60 frames, lives 2 to 1; lives 1 to 0 then state 6 |
 | 6 | `$a62e` | inactive record (clears `0, 1, 44`); the continue scene runs instead of the pipeline | [L] 768 frames |
-| 8 | `$dc08` | area-intro scripted walk-in, one sub-table per stage and area (`190/191(A5)`); the start state of an area comes from `$a414` and table `$a446` | [L] 166 frames (subs 0, 2, 4, 6) |
-| 10 | `$e8e8` | area-clear walk-out, entered at `$9d26` when `297(A5) != 0` and the player stands on the ground; a carried weapon becomes points (`$e962`: kind 0 500, kind 1 1000, kind 2 800, kind 3 none) | [L] 305 frames (subs 2, 4, 8, directly followed by state 8 of the next area); the bonus [R] |
-| 12 | `$c840` | scripted scene entered at `$9d5c` when `291(A5) != 0` (x constants `$6b0-$710`, flags `22191/22193/22194(A5)`) | [R] not reached |
+| 8 | `$dc08` | area-intro scripted walk-in, one sub-table per stage and area (`190/191(A5)`); every area starts in state 8 sub 0 (`$a414`, table `$a446` holds `$08000000` for all of them), the handlers are tabulated in `transitions.md` | [L] 166 frames (subs 0, 2, 4, 6); stage 0 area 0 362 frames ending in state 2 sub `$10`, stage 1 area 0 155 frames |
+| 10 | `$e8e8` | area-clear walk-out, entered at `$9d26` when `297(A5) != 0` and the player stands on the ground; a carried weapon becomes points (`$e962`: kind 0 500, kind 1 1000, kind 2 800, kind 3 none) | [L] 315 frames in the DAMND area (sub 0, sub 2 step 0 for 80 frames, a back-jump, a walk, sub 4, an 81-frame fade, sub 8); no score or TIME bonus is paid between areas (0 changes in 695 frames); sub-states, targets and the 297 protocol in `transitions.md` |
+| 12 | `$c840` | scripted scene entered at `$9d5c` when `291(A5) != 0` (x constants `$6b0-$710`, flags `22191/22193/22194(A5)`) | [L] reached by poking `291(A5) := 1`: state 12 one frame later, 299 := 1 for 80 frames, sub 2 and sub 4, then it parks at sub 4 step 4 with TIME frozen (`transitions.md`); the real scene is [I] stage 5 area 0 |
 
 Death and respawn timeline [L, lives poked to 2]: knockdown to rel 72, state 4 at 73, state 4 sub 2 for 59 frames, state 0 at 133 (lives 2 to 1, hp `$90`), drop-in
 for 20 frames (y `$d0` to `$33`, `+97 = $b4` counting down by 1 per frame), landing sub `$12` at 154, idle from 161. At the landing a pool-8 record of kind `$1b`
@@ -85,7 +86,7 @@ Live counts are frames of `rand1b` (3001 frames, random inputs, no healing, one 
 Grapple mode `66 = 2` is set by `$412a` one frame after the hit resolver links `64/68` (`$74ee`) [L 5 of 5 walk-in grabs]). Its sub-table is `$cd24` (characters 0 and 1; character 2
 uses `$cfb8`, selected through the long table `$a6bc`): 0 `$cd3c` entry, 2 `$cd82` hold loop [L 96 frames], 4 `$ce02` held by an enemy [R], 6 `$ce9a` strike [L],
 8, `$a`, `$c` `$cf20` throw [L 26 frames in sub 8], `$e` `$d428` and `$10` `$d5da` player thrown by an enemy (landing damage `$9df6`) [R]. In the hold loop `$d8be`
-acts on a new Button 1: no direction = strike chain; direction toward the facing = forward slam (`152 = 1`, no turn); any other direction = back throw (`152 = 0`, facing flips);
+acts on a new Button 1 (Guy and Cody; Haggar's `$da76` with the selector table `$dab0` is the inverse and his sub-table has different numbering, `twoplayer.md`): no direction = strike chain; direction toward the facing = forward slam (`152 = 1`, no turn); any other direction = back throw (`152 = 0`, facing flips) [L: Guy and Cody turn on the away press, 4 of 4; Haggar turns on the toward press, 2 of 2];
 a new Button 2 = jump out (`$da99e`, clears `64/66/152`) [L]; a new Button 3 = release [R].
 
 ## Per-frame order (pseudo-code; [R], with the [L] results in the move table)
@@ -257,10 +258,12 @@ With a coin (credit byte `$ff804d`) and Start pressed during the countdown the s
 
 The animation pointer tables (about 35 four-entry tables in `$c3c4-$c840`) are per character as well.
 
+Guy's and Haggar's rows were run live from states with the character chosen on the select screen: chain ids and damage rows 5 of 5 (Guy) and 3 of 3 (Haggar) against the ROM, jump attacks 5 of 5 and 6 of 6, specials 4 of 4 each, grapple strikes 3 of 3 each (damage, type, award), the thrown-victim landing rule for Guy (-30) and Cody (-40), 18, 28 and 30 attack-box hits of random drives equal to the ROM rows. Measured: walk 2.067 / 1.917 / 1.817 px per frame, jab animations 12 / 14 / 22 frames, specials 42 / 49 / 46 frames (Haggar's has no vertical motion), Guy's wall jump (sub `$16`) and Haggar's pile driver and jump slam, all in `twoplayer.md`.
+
 ## Not proven
 
 - Hit types 2 (seen once), 4, 5, 7, 8, 9 on the player: poke `63(A6)` with sub 6 `4 = 0`, or find the enemy attack boxes that carry them.
-- Sub 4 (pit fall), `$16`, `$1c`, `$22`, the held-by-enemy grapple subs 4, `$e`, `$10`; Guy and Haggar combos, specials and throws (ROM tables only): poke `+20`, `+56`, `+92` from the `$a124` row to run their code on the same state.
-- State 12 and the stage-6 behaviour (`$bdf4`, `$bab6` disabled when `190(A5) = 6`); the per-stage scripts of states 8 and 10.
-- Item names, prop names, weapon names, pool-6 kinds 3 to 5, item type 35, the continue scene's sub-states and digit timing, player 2 and mid-game joining (`$11ea` sets `127(A5)` bits).
+- Sub 4 (pit fall), `$1c`, `$22`, the held-by-enemy grapple subs 4, `$e`, `$10` (sub `$16` is Guy's wall jump, [L] in `twoplayer.md`; Guy's and Haggar's combos, specials and throws are proven live there).
+- The rest of state 12 (the scene's own steps) and the stage-6 behaviour (`$bdf4`, `$bab6` disabled when `190(A5) = 6`); the per-stage scripts of states 8 and 10 are tabulated in `transitions.md`.
+- Item names, prop names, weapon names, pool-6 kinds 3 to 5, item type 35, the continue scene's sub-states and digit timing (player 2, mid-game joining and `127(A5)` are proven in `twoplayer.md`).
 - The role of the pool-8 kind `$1b` record ([I] respawn marker); the tag `$a` hit handlers of kinds 1, 9, 12 to 14 beyond reading.

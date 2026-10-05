@@ -1,0 +1,176 @@
+== stage order ($54f8: 193(A5) += 1; 190(A5) = byte[$553a + 2*193]; 290(A5) = byte[$553b + 2*193])
+  193: 0:(stage 0, bonus 0) 1:(stage 1, bonus 0) 2:(stage 6, bonus 1) 3:(stage 2, bonus 0) 4:(stage 3, bonus 0) 5:(stage 7, bonus 1) 6:(stage 4, bonus 0) 7:(stage 5, bonus 0) 8:(stage 8, bonus 0) 9:(stage 9, bonus 0)
+== areas per stage ($54b4, byte table $54c0): [3, 4, 3, 2, 1, 3, 1, 1, 1, 1]
+== TIME BCD per stage*4+area ($51ec, byte table $5210); a 60-frame second in a bonus stage ($52b6), 480 frames in a normal one ($5238, $1e0)
+  stage 0: 30 30 50 99
+  stage 1: 50 70 30 70
+  stage 2: 50 50 50 99
+  stage 3: 70 50 99 99
+  stage 4: 99 99 99 99
+  stage 5: 60 70 70 99
+  stage 6: 30 99 99 99
+  stage 7: 20 99 99 99
+== area start camera ($626c0, table $62940): 1042(A5) x, 1046(A5) y, 1170(A5) x2, 1174(A5) y2
+  stage 0 @062954 ['x=0060 y=0000 x2=0000 y2=00e0', 'x=0650 y=0000 x2=07b0 y2=0000', 'x=0900 y=0000 x2=0000 y2=00e0']
+  stage 1 @06296c ['x=0000 y=0000 x2=0000 y2=0000', 'x=0500 y=0000 x2=0000 y2=0100', 'x=0f00 y=0000 x2=0000 y2=0210', 'x=1200 y=0000 x2=0300 y2=0210']
+  stage 2 @06298c ['x=0000 y=0000 x2=0000 y2=0000', 'x=0f00 y=0000 x2=1300 y2=0000', 'x=0700 y=0000 x2=0940 y2=0000']
+  stage 3 @0629a4 ['x=0000 y=0000 x2=0000 y2=0000', 'x=0d00 y=0000 x2=0600 y2=0000']
+  stage 4 @0629b4 ['x=0000 y=0000 x2=0000 y2=0000']
+  stage 5 @0629cc ['x=0000 y=0000 x2=0000 y2=0000', 'x=1410 y=0800 x2=0b88 y2=0200', 'x=2700 y=0800 x2=1500 y2=0200']
+  stage 6 @0629e4 ['x=0000 y=0000 x2=0ff0 y2=000e']
+  stage 7 @0629ec ['x=0000 y=0000 x2=0000 y2=0000']
+  stage 8 @062a04 ['x=0000 y=0000 x2=0000 y2=0000']
+  stage 9 @062a1c ['x=0000 y=0000 x2=0000 y2=0000']
+== camera limits ($626fa, table $6285c): words -> 1080(A5) left x limit (+44), 1078(A5) right x limit (+42), 1084(A5) (+48), 1082(A5) (+46) (y limits [I]; w3, w4 below)
+  stage 0 @062870 ['L=0060 R=03f0 w3=0000 w4=0000', 'L=0650 R=0730 w3=0000 w4=0000', 'L=0900 R=0b00 w3=0000 w4=0000']
+  stage 1 @062888 ['L=0000 R=0380 w3=0000 w4=0000', 'L=0500 R=0ce0 w3=0000 w4=0000', 'L=0f00 R=1080 w3=0000 w4=0000', 'L=1200 R=1380 w3=0000 w4=0000']
+  stage 2 @0628a8 ['L=0000 R=0750 w3=0000 w4=0000', 'L=0f00 R=0f00 w3=0000 w4=0000', 'L=0700 R=0d80 w3=0000 w4=0000']
+  stage 3 @0628c0 ['L=0000 R=0b40 w3=0000 w4=0000', 'L=0d00 R=0d00 w3=0000 w4=0b00']
+  stage 4 @0628d0 ['L=0000 R=2280 w3=0000 w4=0000']
+  stage 5 @0628d8 ['L=0000 R=0600 w3=0000 w4=0f00', 'L=1400 R=24f0 w3=0000 w4=0f00', 'L=2700 R=3240 w3=0000 w4=0f00']
+  stage 6 @0628f0 ['L=0000 R=0000 w3=0000 w4=0000']
+  stage 7 @0628f8 ['L=0000 R=0280 w3=0000 w4=0000']
+  stage 8 @062910 ['L=0000 R=0fff w3=0000 w4=0000']
+  stage 9 @062928 ['L=0000 R=0fff w3=0000 w4=0000']
+== camera modes ($6268e, table $627d8): bytes -> 1086(A5) x mode (50(A6)), 1087(A5) y mode (51(A6)), 1214(A5) record 2 mode, 4th unread
+  stage 0 @0627ec ['00 00 00 04', '00 00 00 04', '00 00 00 04']
+  stage 1 @0627f8 ['00 00 02 04', '00 00 02 04', '00 00 00 04', '02 00 00 04']
+  stage 2 @062808 ['00 00 00 04', '00 00 00 04', '00 00 00 04']
+  stage 3 @062814 ['00 00 00 04', '08 02 00 00']
+  stage 4 @06281c ['00 00 00 04']
+  stage 5 @062820 ['00 00 00 00', '00 00 00 04', '00 00 00 04']
+  stage 6 @06282c ['00 00 00 00']
+  stage 7 @062838 ['00 00 00 00']
+  stage 8 @062844 ['00 00 00 00']
+  stage 9 @062850 ['00 00 00 00']
+== record 2 parameters ($6272a, table $62754): 1216(A5), 1218(A5)
+  stage 0 @062768 ['0002,8000', '0000,8000', '0002,8000']
+  stage 1 @062774 ['0000,8000', '0e00,8000', '0000,8000', '0000,8000']
+  stage 2 @062784 ['0001,8000', '0000,8000', '0001,8000']
+  stage 3 @062790 ['0001,8000', '8000,0002']
+  stage 4 @062798 ['0003,8000']
+  stage 5 @06279c ['0001,0002', '0001,8000', '0001,8000']
+  stage 6 @0627a8 ['0000,8000']
+  stage 7 @0627b4 ['0000,8000']
+  stage 8 @0627c0 ['0000,8000']
+  stage 9 @0627cc ['0000,8000']
+== pool-8 kind $22 ch 0 spawned by $62a34 at an area start (stage < 6)
+  stage 0 @062ace ['x=0028 y=00f8', 'x=0618 y=00f8', 'x=08c8 y=00f8']
+  stage 1 @062ada ['x=1fb8 y=00f8', 'x=04c8 y=00f8', 'x=0ec8 y=00f8', 'x=11b8 y=00f8']
+  stage 2 @062aea ['x=1fb8 y=00f8', 'x=0ec8 y=00f8', 'x=06c8 y=00f8']
+  stage 3 @062af6 ['x=0fb8 y=00f8', 'x=0cb8 y=00f8']
+  stage 4 @062afe ['x=3fb8 y=00f8']
+  stage 5 @062b0a ['x=3fb8 y=00f8', 'x=13b8 y=08f8', 'x=26d8 y=08f8']
+== pool-8 kind $22 ch 1 spawned by $62a34 at an area start (stage < 6)
+  stage 0 @062b22 ['x=0568 y=00f8', 'x=08a8 y=00f8', 'x=0c38 y=00f8']
+  stage 1 @062b2e ['x=04f8 y=00f8', 'x=0e58 y=00f8', 'x=1208 y=00f8', 'x=14e8 y=00f8']
+  stage 2 @062b3e ['x=08a8 y=00f8', 'x=1078 y=00f8', 'x=0ef8 y=00f8']
+  stage 3 @062b4a ['x=0cb8 y=00f8', 'x=0e88 y=00f8']
+  stage 4 @062b52 ['x=2408 y=00f8']
+  stage 5 @062b5e ['x=0778 y=00f8', 'x=2658 y=08f8', 'x=33b8 y=08f8']
+== player state 8 handler ($dc08): A0 = $dc2a + word[$dc2a + 2*stage]; handler = A0 + word[A0 + 2*area]
+  stage 0 ['00dc6e', '00dd06', '00de5a']
+  stage 1 ['00df88', '00e054', '00e092', '00e0d0']
+  stage 2 ['00e1b4', '00e1f8', '00e250']
+  stage 3 ['00e292', '00e2d0']
+  stage 4 ['00e30e']
+  stage 5 ['00e34c', '00e38a', '00e3bc']
+  stage 6 ['00e3ee']
+  stage 7 ['00e4a0']
+  stage 8 ['00e4f6']
+  stage 9 ['00e4f6']
+== player state 10 sub 0 ($f44e, table $f488): 156(A6) x target, 158(A6) y (negative x: no walk, 158 word selects sub 6 / $a); one player, then 145(A6) != 0
+  stage 0 ['a0: 04d0 0030 | 04b0 0030', 'a1: 0850 0032 | 0830 0032', 'a2: 0bd0 0030 | 0bb0 0030']
+  stage 1 ['a0: 03d9 003b | 03d9 0030', 'a1: ffff 0004 | ffff 0004', 'a2: 1148 003c | 1148 0034', 'a3: ffff 0000 | ffff 0000']
+  stage 2 ['a0: 0850 0026 | 0840 0030', 'a1: 0fcc 004c | 0fcc 004c', 'a2: ffff 0000 | ffff 0000']
+  stage 3 ['a0: 0cf0 002b | 0cf0 0036', 'a1: ffff 0000 | ffff 0000']
+  stage 4 ['a0: ffff 0000 | ffff 0000']
+  stage 5 ['a0: ffff 0000 | ffff 0000', 'a1: ffff 0000 | ffff 0000', 'a2: ffff 0000 | ffff 0000']
+  stage 6 ['a0: 0200 0018 | 0200 0018']
+  stage 7 ['a0: 03c0 003c | 03a0 003c']
+== player state 10 sub 2 step 2 ($e9c2): byte table $e9e8 + word[$e9e8 + 2*stage], index = area; byte b = offset into the word table at $e9e0 (0 $ea10 default, 2 $ea7e, 4 $eada, 6 $eae8)
+  stage 0 [0, 0, 0] ['00ea10', '00ea10', '00ea10']
+  stage 1 [2, 0, 0, 0] ['00ea7e', '00ea10', '00ea10', '00ea10']
+  stage 2 [0, 2, 0] ['00ea10', '00ea7e', '00ea10']
+  stage 3 [0, 0] ['00ea10', '00ea10']
+  stage 4 [0] ['00ea10']
+  stage 5 [0, 0, 0] ['00ea10', '00ea10', '00ea10']
+  stage 6 [6] ['00eae8']
+  stage 7 [4] ['00eada']
+  stage 8 [0] ['00ea10']
+  stage 9 [0] ['00ea10']
+== player state 10 sub 4 ($eda0): A0 = $edd0 + word[$edd0 + 2*stage]; routine = A0 + word[A0 + 2*area]
+  stage 0 ['00ee0e', '00ef02', '00efd0']
+  stage 1 ['00f034', '00f060', '00f064', '00f406']
+  stage 2 ['00f15a', '00f25c', '00f406']
+  stage 3 ['00f268', '00f2cc']
+  stage 4 ['00f2d8']
+  stage 5 ['00f406', '00f406', '00f406']
+  stage 6 ['00f2e2']
+  stage 7 ['00f36e']
+  stage 8 ['00f406']
+  stage 9 ['00f406']
+== start state of every area ($a414, table $a446): long written to 2(A4)
+  stage 0 ['08000000', '08000000', '08000000']
+  stage 1 ['08000000', '08000000', '08000000', '08000000']
+  stage 2 ['08000000', '08000000', '08000000']
+  stage 3 ['08000000', '08000000']
+  stage 4 ['08000000']
+  stage 5 ['08000000', '08000000', '08000000']
+  stage 6 ['08000000']
+  stage 7 ['08000000']
+  stage 8 ['08000000']
+  stage 9 ['08000000']
+== player spawn offset from the camera ($9d76, table $9dba): P1 dx,dy | P2 dx,dy
+  stage 0 ['0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030']
+  stage 1 ['0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030']
+  stage 2 ['0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030']
+  stage 3 ['0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030']
+  stage 4 ['0040,0030 | 00a0,0030']
+  stage 5 ['0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030', '0040,0030 | 00a0,0030']
+  stage 6 ['0040,0030 | 00a0,0030']
+  stage 7 ['0040,0030 | 00a0,0030']
+== stage-script segments and their continuation words ($5cb6: word after the entries = $8000 + 2*index of the table at $5cc2)
+  stage 0 area 0 script 70674
+    seg @070676 trigger 03f0 timer  7200 count 5 w18 0 locks 278 cont 4: stage end, 297=1 ($5d26) (entries 5, tracked 5)
+  stage 0 area 1 script 706d8
+    seg @0706da trigger 06e0 timer  7200 count 4 w18 0 locks 278 cont 4: stage end, 297=1 ($5d26) (entries 4, tracked 4)
+  stage 0 area 2 script 7072c
+    pause command @07072e
+    seg @070730 trigger 0aa0 timer   180 count 0 w18 0 no lock cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 4, tracked 0)
+    pause command @070780
+    seg @070782 trigger 0aa0 timer   540 count 0 w18 0 no lock cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 6, tracked 0)
+  stage 1 area 0 script 707fc
+    seg @0707fe trigger 0340 timer  7200 count 6 w18 0 locks 278 cont 4: stage end, 297=1 ($5d26) (entries 6, tracked 6)
+  stage 1 area 1 script 70870
+    seg @070872 trigger 0980 timer  7200 count 5 w18 1 locks 278 cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 5, tracked 5)
+    seg @0708d2 trigger 0ce0 timer  7200 count 6 w18 0 locks 278 cont 4: stage end, 297=1 ($5d26) (entries 6, tracked 6)
+  stage 1 area 2 script 70944
+    seg @070946 trigger 1000 timer  7200 count 4 w18 0 locks 278 cont 4: stage end, 297=1 ($5d26) (entries 7, tracked 4)
+  stage 1 area 3 script 709c8
+  stage 2 area 0 script 709d2
+    seg @0709d4 trigger 0200 timer  7200 count 10 w18 1 locks 278 cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 13, tracked 10)
+    seg @070ab4 trigger 04e0 timer  7200 count 4 w18 1 locks 278 cont 2: next segment now ($5d1a) (entries 4, tracked 4)
+  stage 2 area 1 script 70b94
+    seg @070b96 trigger 0f00 timer  7200 count 3 w18 0 locks 278 cont 4: stage end, 297=1 ($5d26) (entries 3, tracked 3)
+  stage 2 area 2 script 70bd8
+    seg @070bda trigger 0d60 timer 32400 count 6 w18 0 locks 278 cont 2: next segment now ($5d1a) (entries 6, tracked 6)
+  stage 3 area 0 script 70d42
+    seg @070d44 trigger 04c0 timer 10800 count 10 w18 1 locks 278 cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 27, tracked 10)
+    seg @070f04 trigger 0b40 timer  7200 count 10 w18 0 locks 278 cont 8: stage end, 297=1 and $ff12fa=1 ($5d56) (entries 11, tracked 10)
+  stage 3 area 1 script 70fc6
+  stage 4 area 0 script 70fcc
+    seg @070fce trigger 0760 timer  7200 count 4 w18 0 locks 278 cont 2: next segment now ($5d1a) (entries 4, tracked 4)
+  stage 5 area 0 script 71442
+    seg @071444 trigger 0600 timer  7200 count 10 w18 0 locks 278 cont 6: 291=1, 278=0 ($5d3e) (entries 11, tracked 10)
+    seg @071504 trigger 0c80 timer  7200 count 10 w18 1 locks 278 cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 10, tracked 10)
+    seg @0715b4 trigger 1280 timer  3600 count 1 w18 0 locks 278 cont 4: stage end, 297=1 ($5d26) (entries 1, tracked 1)
+  stage 5 area 1 script 715d6
+    seg @0715d8 trigger 1f80 timer  7200 count 10 w18 1 locks 278 cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 12, tracked 10)
+    seg @0716a8 trigger 24f0 timer  7200 count 10 w18 0 locks 278 cont 4: stage end, 297=1 ($5d26) (entries 10, tracked 10)
+  stage 5 area 2 script 7175a
+    seg @07175c trigger 2c00 timer  7200 count 10 w18 1 locks 278 cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 12, tracked 10)
+    seg @07182c trigger 2d80 timer  7200 count 9 w18 1 locks 278 cont 0: wait for the tracked records or the timer, GO if w18, 30 frames, 278=0 ($5cce) (entries 9, tracked 9)
+    seg @0718cc trigger 3240 timer  7200 count 4 w18 0 locks 278 cont 2: next segment now ($5d1a) (entries 4, tracked 4)
+  stage 6 area 0 script 719b2
+  stage 7 area 0 script 719b8

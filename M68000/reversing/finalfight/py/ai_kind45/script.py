@@ -6,7 +6,8 @@ $5c68/$5cb6 continuation commands):
   cmd      = word with bit 15 set: (w & $fff) 0: next word is a new mode; 2: pause (22(A6)=1); 4: jump to the long at +2
   segment  = trigger.w, header (w16, w12, w18, w_flag, long continuation), entries 16 bytes each until a word with bit 15 set
   entry    = delay.w, track.w, x.w, y.w, tag.b, kind.b, w20.w (+20 high, +21 low), b12 (-> +54), b13 (-> +98), level.b (-> +96), 2p.b
-  The word that ends the entry list is the continuation command 0x8000+code ($5c68-$5c7e: 20(A6) = word - $8000, handled at $5cb6).
+  The word that ends the entry list is the continuation command 0x8000+code ($5c68-$5c7e: 20(A6) = word - $8000, handled at $5cb6). The code is a BYTE
+  offset into the word table at $5cc2 (entry = code / 2), so the codes are 0, 2, 4, 6, 8, 10 (see CONT; ../transitions/tables.py and ../../transitions.md).
 usage: script.py [set=2] [filter tag:kind]
 """
 import sys, os
@@ -19,7 +20,8 @@ def sw(a):
 def l(a): return int.from_bytes(rom[a:a + 4], 'big')
 def b(a): return rom[a]
 SETS = {1: 0x5f5e, 2: 0x5f7e}
-CONT = {0: 'wait-clear+GO', 1: 'next-segment-now', 2: 'stage-end(297)', 3: 'flag291', 4: 'stage-end2', 5: 'pause30'}
+# keys are the continuation codes (word - $8000), handlers $5cce, $5d1a, $5d26, $5d3e, $5d56, $5d74 (an earlier version keyed them by table index, which mislabelled every code but 0)
+CONT = {0: 'wait-clear+GO($5cce)', 2: 'next-segment-now($5d1a)', 4: 'stage-end 297=1($5d26)', 6: 'flag291=1,unlock278($5d3e)', 8: 'stage-end 297=1,$ff12fa=1($5d56)', 10: 'pause30($5d74)'}
 
 def parse(a, seen=None):
     out = []
@@ -50,7 +52,7 @@ def parse(a, seen=None):
         seg['cont_at'] = e
         out.append(('seg', seg))
         a = e + 2
-        if seg['cont'] in (2, 4): break
+        if seg['cont'] in (2, 4): break   # code 4 ends the stage (the executor state advances); code 2 occurs only on the last segment of an area, where no valid segment follows
     return out
 
 if __name__ == '__main__':

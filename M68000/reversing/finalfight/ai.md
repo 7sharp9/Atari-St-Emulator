@@ -3,7 +3,7 @@
 How the enemies decide what to do. Evidence tags as in `kernel.md`: **[R]** read in the ROM listing, **[L]** checked live in MAME with a count,
 **[S]** read from a saved state, **[I]** inferred. The pool and record layout are in `frame.md`; the player side is in `player.md`. Every fighter
 is a pool-2 record whose `+19` selects the handler through the long table at `$5824`; `+20` is the character index within the kind, `+21` the
-entrance type, `+96` the difficulty level. The scripts that reproduce each claim are in the README script index.
+entrance type, `+96` the difficulty level. The bosses are not pool 2: they are pool 4 records with their own handlers (`boss.md`). The scripts that reproduce each claim are in the README script index.
 
 ## Overview
 
@@ -57,9 +57,10 @@ POISON attacks as often as ROXY. Kind 7 indexes a 16-byte delay table with a `$1
 the delay runs up to 255 frames. `$27c34` skips the `lea` that loads the other player when the target is player 1. Kind 3's health table overlaps
 other data at ranks 15 and 31.
 
-**What was not reached.** All live checks run on `ff_enemies` (stage 1, one player) or on records spawned into it through the real allocator or the
-real script engine; no run played a stage to the boss. Two-player behaviour beyond the tie rule, the grounded-death variant of every kind, entrance
-variants no script uses, and the thrown weapon's damage are open (each section's "Not proven" says how to prove them).
+**What was not reached.** The per-kind gates in this document ran on `ff_enemies` (stage 1, one player) or on records spawned into it through the real allocator or the
+real script engine. Stage 0 has since been played by a bot from a cold boot through its boss (`py/stage/`, `transitions.md`): its 18 one-player script entries
+spawned in order with the fields given here (`py/stage/census.py`), and the kind 4 and kind 6 group of area 2 (`$70782`) spawns only after DAMND's second retreat (`boss.md`);
+the other stages and the grounded-death variant of every kind, entrance variants no script uses, and the thrown weapon's damage are open (each section's "Not proven" says how to prove them).
 
 ## Shared helpers and kind 0 (BRED, DUG, JAKE, SIMONS)
 
@@ -99,14 +100,14 @@ scripted Cody inputs), 8450 frames, 21580 kind-0 record-frames, Cody's health to
 | `$27ab4` | adjacent slot by side | `146 = 3` if the target is right of the fighter else 7 | [L] 32 of 32 |
 | `$27ace` | in attack range | D0=1 if `|dy| <= 4` and `|dx|` in `[$28,$48]`; every other path tail-jumps into `$27b00` (so also true when a player is in the melee window) | [R]; [L] 156 attack starts, 55 in range, 8 out |
 | `$27b00` (`$27b2a`) | player in the melee window | `|dx| <= $30` and `|dy| <= 9` for P1, then P2: takes a token, sets `144/148`, D0=1 | [L] 49 of 3851 calls |
-| `$27b5a` | attack token request | granted if `$ff115a < cap`; cap = `tok1[168(A5)]` = 1 (rank 0-6), 2 (7-12), 3 (13-18), 4, 5, 6 (30,31); for two players (`127(A5)==3`) `tok2` = 2 (0-5), 3 (6-10), ... 8 | [R] |
+| `$27b5a` | attack token request | granted if `$ff115a < cap`; cap = `tok1[168(A5)]` = 1 (rank 0-6), 2 (7-12), 3 (13-18), 4, 5, 6 (30,31); for two players (`127(A5)==3`) `tok2` = 2 (0-5), 3 (6-10), 4 (11-15), 5 (16-20), 6 (21-25), 7 (26-29), 8 (30, 31) | [R]; [L] 86 of 86 calls agree (breakpoints on the entry and exits; `127(A5)` poked to 1 and 3 and a fuzz of tokens, rank and mask), `twoplayer.md` |
 | `$27c08` / `$27c20` | take / release a token | `136(A6)` 1 or 0, `138(A6)=0`, `$ff115a` +-1 | [L] `$ff115a` equals the kind 0/2 records with `136 != 0`: 8450 of 8450 |
 | `$27c34` | abandon-target check | -1 if `299(A5)`; 0 if no player; 1 if the target record is unused, a player's `+142` is set, or (`150(A6)=0`, 8th frame) the other player is within `|dx| <= $50`, `|dy| <= $20`. The `beq` at `$27c6c` skips `lea 1576(A5),A0`, so with target P1 the other-player test reads a stale A0 | [R]; [L] 0 of 4007 calls returned 1 (one player) |
 | `$27cb6` / `$27cdc` | face the target (dead zone +-10 px / none) | `46(A6)` | [R] |
 | `$27cf6`, `$27d06` | target's `138` flag / slot blocked flag | `138(A4)` is the player's "moved >= 16 px this frame" pulse (`$8eb8`); slot flags `$ff115c` (P1), `$ff1164` (P2) | [L] `138` pulses 8 times in 2000 frames |
 | `$27d30`, `$27d76`, `$27e0c` | at the slot / step toward it / speed ramp | at slot: x error -8..+8 and y error -4..+12 against target + `$28084[146]`; steps `152/156`, ramp `$c00/$600` per frame from `160/164 >> 2` to `160/164` | [L] state 16 frames inside the tolerance 2855 of 2857 |
 | `$27e84`, `$27f28` | choose a slot side / reshuffle | side: random slot of the fighter's own side (weights 5,6,5 of 16) unless all three are flagged; reshuffle from row `$27f44[146*16 + RNG&$f]` (slots 3 and 7 never move) | [L] state 14 uses only slots 0,1,2,4,5,6 |
-| `$280c8` (`$2811a`) | acquire a target | -1 if `298 \| 297(A5)`; 0 no live player; else A0 = nearest live (`2 == 2`) player by `|dx|`, P1 only if strictly closer (ties go to P2) | [R]; [L] one record chose P2 on a tie against a cloned P2 |
+| `$280c8` (`$2811a`) | acquire a target | -1 if `298 \| 297(A5)`; 0 no live player; else A0 = nearest live (`2 == 2`) player by `|dx|`, P1 only if strictly closer (ties go to P2) | [R]; [L] one record chose P2 on a tie against a cloned P2; with two real moving players 70 of 70 acquire events agree (33 P1, 37 P2), `twoplayer.md` |
 | `$27fc4`, `$2804e` | slot flag refresh (called from `$6026`, outside the kind-0 range) | parks unused player records at the camera; refreshes one of the 8 slots per player per frame (`166(A5) & 7`): flag 4 off the camera window, else the `$7fac` terrain/prop result | [R]; [L] arrays hold 0, 1, 3, 4 |
 | `$22b62` | default target | P2 if its record is in use else P1 | [R] |
 | `$22b0a` | engage | `$22b62`, face, then `$22b26` (speeds `160=$20000, 164=$10000`, `3=8`, `4=0`, walk anim) | [L] type 0 spawn: `3=8` next frame |
@@ -131,7 +132,7 @@ bank override (`$12..$15` while materialising), `+54` movement direction, `+62` 
 grab link and mode (`66 = 2` held), `+80,+82` vx and its decel, `+84,+86` vy and gravity, `+88,+89` collision result, `+99` knock variant, `+102` last
 prop touched, `+105` kind of the last hitter (0 P1, 1 P2, `$ff` prop: no score), `+128` thrown-wall-hit-once, `+129` killed by stage clear, `+136`
 token flag, `+137` stance B flag, `+138` long pointer to the next combo script byte, `+142` attack roll threshold, `+143` combo-continue threshold,
-`+144` target index (1 or 2), `+146` slot id, `+148` target record (word), `+150` re-target cooldown (180 at acquire), `+152,+156` current x and y step
+`+144` target index (1 or 2; a word, `move.w` at `$21d52`), `+146` slot id, `+148` target record (word; already a player record at spawn), `+150` re-target cooldown (a word, 180 at acquire), `+152,+156` current x and y step
 (16.16), `+160,+164` target steps, `+168` word used by entrance type 9, `+174` moved flag, `+175` blocked countdown. A record whose `+0` has bit 7 set is skipped for
 one frame and the bit cleared (`$5806`), so a spawn shows state 0/0 for a frame and runs its init on the next [L].
 Globals: `$ff1150` RNG, `$ff1154` alive count of kinds 0-2, `$ff115a` tokens, `$ff115c/$ff1164` slot flags, `166(A5)` frame word (+1 per frame, 8438 of 8442; it
@@ -184,7 +185,7 @@ every frame (seen once). `hist.py` prints these.
 |---|---|---|
 | 0 | engage at once (`$22b0a`) | [L] spawn: `3 = 8` next frame |
 | 1-6, 8 | idle, hurt box 0 (invulnerable) for types 1, 2, 3, 5, 8, hittable for 4 and 6: `+30` word = `{60 x4, 120 x7, 180 x10, 240 x7, 300 x4}` frames by `RNG & $3e`; every 8th frame `$27a04` or the timer ends it (`30 = 10, 4 = 4`, then `$22b0a`) | [L] type 2 cold boot: 66 frames with `44 = 0`, woke 12 frames early; types 4 and 6 spawn waiting; type 1 (poked) 162 frames, then 10, then `3 = 8` |
-| 7 | stage 0 only: hidden wait `{20, 80}[54]` frames in class 0 with palette bank `47 = $12 + char`, then a 16 px drop (`y += $10`, steps `-3,-2,-2,-2,-1 x5,0,0,-1,0,0,-1,0`) with a 16-step palette fade, then `$22b0a`; other stages engage | [L] type 7 poked on a fresh record: 80 frames class 0, 48 frames at y 46 to 30, `47` from 18 to 0, then `3 = 8` |
+| 7 | stage 0 only: hidden wait `{20, 80}[54]` frames in class 0 with palette bank `47 = $12 + char`, then a 16 px drop (`y += $10`, steps `-3,-2,-2,-2,-1 x5,0,0,-1,0,0,-1,0`) with a 16-step palette fade, then `$22b0a`; other stages engage. Spawned by the door gangs of stage 0 area 0 (pool 8 kind `$23`, `placement.md`; 6 of 6 [L]) | [L] type 7 poked on a fresh record: 80 frames class 0, 48 frames at y 46 to 30, `47` from 18 to 0, then `3 = 8` |
 | 9 | `$ff1154++`, `4 = 8`: scripted walk-in at 4 px per frame toward P1, attack anim `$22ee6`, sets `129(A0) = 1` on the player; `168(A6)` must be set by the spawner | [R]; a poked type 9 (no `168`) falls through to `3 = 8` in 1 frame |
 | 10-14 | drop from above: `4 = 10`, random hover wait `{36..180}`, `ground = $3f`, fall with `$30d4` and `$7d6c`, landing anim `$22f28`, 6 frames, `$22b0a` | [L] type 10 poked: 17 frames from spawn to `3 = 8` through `5 = 0, 2, 4, 6, 8` |
 
@@ -291,7 +292,7 @@ weapon and does not run (the circle state is slower than the chase: `$19900/$cc0
 ### Not proven
 
 - Entrance type 9 (needs the spawner's `+168`) and types 11-14; the thrown flight, `$3f7a` and `$6c96`: need a Cody throw or a poked link (`64 = $ff`, `68 = holder`) on a held enemy.
-- Two-player targeting beyond the tie to P2 (a cloned P2 mirrors P1, so distances could not be separated) and the `$27c34` abandon branch (0 of 4007 calls). Method: drive P2's inputs.
+- The `$27c34` abandon branch with a second player (two-player targeting itself is proven, 70 of 70, `twoplayer.md`; the branch's return was not separately counted).
 - `$7d6c` result codes other than prop contact and stage edge, `$7fac`, and the meaning of `+42,+43,+48,+49` (sprite attributes).
 - The alive-cap and token tables are [R]; only their consequences are [L]. The `169(A5)` variant path has no live spawn.
 
@@ -341,7 +342,7 @@ The parser covers the ordinary groups; unusual modes may hide some, so this is a
 | G, U, F.ANDORE | 2/0 and 2/1: `$70ba4`, `$70bb4` (U, 2P), `$70bc4`, all `+21 = 8` |
 
 The first group of stage 0 (trigger camera x `$3f0`, group `$70676`) holds Dug, Bred, Holly Wood, AXL and J (2P). Live [L]: the cold drive of `plans/plan3.lua` from frame 3000 spawns kind 5 at
-3545 and kind 2 at 3665 and **no kind 1 record in 1151 frames**: J is skipped in a one-player game (1 of 1; the two-player spawn is [I]). Kinds 1 and 2 only ever get `+21 = 0` from the scanned
+3545 and kind 2 at 3665 and **no kind 1 record in 1151 frames**: J is skipped in a one-player game (1 of 1) and spawns in a two-player one (entry `$706c4`, the same segment played with two players: 1 of 1, `twoplayer.md`). Kinds 1 and 2 only ever get `+21 = 0` from the scanned
 entries, kind 3 gets 0, 4 and 8.
 
 Throttle (`$3e88`, see the helper table): kinds 0-2 share `$ff1154`; kinds 3-6 each have their own counter at `$ff1155 + kind - 3`, capped by the 32-byte row `$3efa + 32 * (kind - 3)` indexed by
@@ -528,10 +529,10 @@ TWO.P 27 of 27 (20, 8, 8), AXL 17 of 17 (34 x13, 44 x4), SLASH 14 of 14 (44 x8, 
 ### Not proven
 
 - State 30 (prop smash) and kind 3's `$2d850`: needs a breakable prop on the walk path with `88 == 3`; an attempt with the prop at x `$540` did not trigger it. Proof: tap `24` of the prop and `102(A6)`.
-- States 22 (airborne release) and kind 2 state 26 (looks dead); J's two-player spawn; the two-player token and throttle tables.
+- States 22 (airborne release) and kind 2 state 26 (looks dead); the two-player throttle table (the token tables are proven, `twoplayer.md`; the alive caps `$3e88` have no two-player term).
 - Kind 3: the linked states `$2e9c0`, `$2ee94`, `$2ef14`, `$2e254`, `$2e21c`, hit types 5-9 in state 6, the player flags `164/165/169`, and the throw damage 31/61 (not a box: the `$3f7a`-style release).
 - The guard slide distance of AXL; the TWO.P roll rate.
-- Kind 1 and 2 entrance variants 1-5 and kind 3's 2, 6, 10, 12 are never produced by the scanned script entries; they were exercised by spawning only.
+- Kind 1 and 2 entrance variants 1-5 and kind 3's 2, 6, 10, 12 are never produced by the scanned script entries (the placement trigger lists, `placement.md`, place kind 1 variants 1, 2, 3, 5, kind 2 variants 1, 2 and kind 3 variants 4, 6, 10, 12, not exercised live); they were exercised by spawning only.
 
 ## Kinds 4 and 5 (G.ORIBER, BILL BULL, WONG WHO; HOLLY WOOD, EL GADO)
 
@@ -816,7 +817,7 @@ the kill list), words 4 and 6 x and y (negative values get a random jitter of -1
 
 | `190/191(A5)` | entry (`$5f7e` table) | character, `+21` | x, y | note |
 |---|---|---|---|---|
-| 0, 2 | `$707a0` | ROXY, 4 | 2696, 48 | second group of the first boss area; trigger camera x `$aa0` after a pause command; delay 30 after a kind-4 entry; spawned at relative frame 36 after poking the script pointer to `$70782` and the camera to 2720 [L, 1 of 1] |
+| 0, 2 | `$707a0` | ROXY, 4 | 2696, 48 | second group of the first boss area; trigger camera x `$aa0` after a pause command (the pause at `$70780` is released only by DAMND's second retreat at hp <= 100, `boss.md`; killing him before that leaves this group unspawned, 1 of 1 [L]); delay 30 after a kind-4 entry; spawned at relative frame 36 after poking the script pointer to `$70782` and the camera to 2720 [L, 1 of 1] |
 | 1, 0 | `$7084c`, `$7085c` | ROXY, POISON; 6 | 800 and 1248, 36 | two-player only |
 | 1, 1 | `$70890` | ROXY, 0 | 2400, 33 | |
 | 2, 2 | `$70c76`, `$70c96` | ROXY, POISON; 0 | 3392, 64 | POISON two-player only |
@@ -1046,8 +1047,8 @@ and no hit effect, which is the evade above [R, 9 of 9 live].
 
 ### Not proven
 
-- Reaching the first boss area by play; the spawn by the ROM's own entries was proven with a poked camera (1 of 1).
-- Entrances 2, 8, 10 are not used by any script; the pool-8 kind `$34` object that entrance 8 spawns is unnamed.
+- The kind 4 and kind 6 group `$70782` was played to in stage 0 (after DAMND's second release, `boss.md`); no gate of this section was re-run on those script-spawned records.
+- Entrances 2, 8, 10 are not used by any script (the placement lists use 2, 8 and 10 for kind 6, `placement.md`); the pool-8 kind `$34` object that entrance 8 spawns is unnamed.
 - Op `$12` (breaking a blocking prop) and behaviour 10 have no live trigger; the meaning of `88(A6) = 3` is [I] (the class that `$8474` returns for
   the right screen edge, and the stuck detector's trigger). Proof: place a pool-`$a` prop beside her, or force `3 = 10` in the air.
 - Two players: only a retarget to player 2 and the byte-15 spawn gate were seen. Thrown-landing rows `$3fd8`: only the kill case.
@@ -1321,8 +1322,7 @@ $f8 $38 $78`: delays 83, 46, 0 which counts down from 255, 30, 102, 4, 84, 46, 0
 over-read (3 of 6 runs). This is a mask bug in the original (`#$1f` where `#$0f` was meant, [I]).
 
 The only entry is stage 5 area 0 (`$0715c2`, x = `$1280`, y = `$820`, tracked, delay 1). The wave block before it has trigger (camera x)
-`$1280`, timer `$e10`, count 1 and flag 0; flag 0 makes `$5e0e` set `278(A5) = 1`, which the player update `$61ed8` reads to skip its position
-and camera step. So it reads as a timed scroll lock released when the one tracked record disappears [R] header, [I] reading; a test would be
+`$1280`, timer `$e10`, count 1 and flag 0; flag 0 makes `$5e0e` set `278(A5) = 1`, which the camera update `$61ed8` reads to skip the camera step (`transitions.md`). So it reads as a timed scroll lock released when the one tracked record disappears [R] header, [I] reading; a test would be
 to run stage 5 area 0 to camera x `$1280` and watch `278(A5)` and the script pointer.
 
 ### Not proven
@@ -1333,5 +1333,4 @@ to run stage 5 area 0 to camera x `$1280` and watch `278(A5)` and the script poi
 - Reaction ids 2, 4, 5, 6, 7 were forced, not caused by a player attack; drive each Cody move and log `+63`.
 - `$6c96` (a thrown body hitting other fighters) is [R] only; throw a kind 8 into a standing enemy and watch its hp.
 - Stage 5's leap damage for variants 2, 6, 8, 10 is read from bytes, not run (`spawn.lua` field 7 = 2, 6, 8, 10 with box 6 forced).
-- Only stage 0 area 2 was reached through the script; the other entries were not played to. Player 2's offset tables and the 2-player
-  targeting beyond the `$3068` rule are unchecked.
+- Stage 0 was played through the script (all 18 entries); the entries of stages 1 to 5 were not (the bot stalls at stage 2, `py/stage/README.md`). The target rule with a real player 2 is confirmed (`twoplayer.md`).

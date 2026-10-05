@@ -122,7 +122,7 @@ registers, then programs the CPS-A layer base pointers (`$800100..$80010e`); VBL
 `$53e` latches scroll registers into CPS-A/B, reads the inputs into `84..103(A5)`, calls `$984`, `$fac`,
 `$e46`, then counts down the sleep timers of the task records. The task kernel (16 records at
 `$ff1000`, `trap #0..#8` as create/exit/kill/sleep/yield/suspend/wake/restart/reset) is in `kernel.md`.
-The in-level frame (TIME, the object pools, health, hit boxes, damage, the sprite list builder) is in `frame.md`. The enemy handlers (kinds 0 to 8) are in `ai.md`, the player's states, moves, pickups, score and continue scene in `player.md`.
+The in-level frame (TIME, the object pools, health, hit boxes, damage, the sprite list builder) is in `frame.md`. The enemy handlers (kinds 0 to 8) are in `ai.md`, the player's states, moves, pickups, score and continue scene in `player.md`. The bosses (pool 4, DAMND first) are in `boss.md`, the placement path and the other pools of a played stage in `placement.md`, the phase machine, area and stage transitions, camera, TIME and the player's scripted states in `transitions.md`, two players, Guy, Haggar and player versus player in `twoplayer.md`.
 
 ## Scripts
 
@@ -145,6 +145,11 @@ from a saved state, `FF_STOP=<frame>`):
 | `py/ai_kind6/` (README there) | `ai.md` "Kind 6": recursive-descent lister, stage-script parser, `k6run.lua` (spawn, force, poke, bot harness through the real script engine, `ffrun_k6.sh`), `k6hit.lua` breakpoints, state histograms, decision, dodge and attack-mask checks, `gate_dmg` 85/85, `gate_score` 15/16 (`K6_RUN_DIR`; `make_pre.sh`, then `run_checks.sh`, about 15 min) |
 | `py/ai_kind78/` (README there) | `ai.md` "Kinds 7 and 8": `rdis.py`, `scripts.py`, `hudnames.py`, `anims.py`, the spawn harness (`spawn.lua`, `sp.sh`, `ffrun.sh`) and the handler-count gates (`corpus.sh`/`corpus.py`, `forced*.sh`/`corpus2.py`, `cover.py`, `kind7.sh`, `script_spawn.sh`, `determinism.sh`; `FF_E_RUN`, `FF_E_OUT`) |
 | `py/player/` (README there) | `player.md`: Cody driver and logger (`pdrive.lua` with plans, pokes, taps and breakpoints), ROM readers (`ffchar.py`, `boxes.py`, `dmg.py`, `anim.py`, `rdis.py`, `tab.py`) and 19 gates for the move set, damage, throws, items, weapons, kill awards, walk speed, drop rule, death and lives (`sh gates.sh`; `FFP_RUN`, `FFP_OUT`) |
+| `lua/stagebot.lua`, `py/stage/` (README there) | plays player 1 from live records instead of spawning: `run.sh boss` (cold boot to the stage 0 area 2 trigger, state `sb_boss`, frame 8298), `run.sh stage1` (through DAMND and the area clear, `sb_s1`, frame 11595), `chain.sh` (stage 1, bonus stage 6, into stage 2), `census.py` (18 of 18 script entries seen). The health poke, the inverted lane mapping and the stage 2 stall are in the README there |
+| `py/boss/` (README there) | `boss.md`: harness `dm.lua`/`par.sh`/`runs.sh`, readers, `rdis2.py` (table-aware lister) and 14 gates: damage on Cody 127/127, on DAMND 31/32, attack pick 160/160, thresholds, pause release, death (`gates.sh`; about 3 minutes in parallel) |
+| `py/placement/` (README there) | `placement.md`: the placement table readers, entry-to-record match (44 of 46), creator of every record (118/118 to the boss trigger, 159/159 to stage 1), tile patches 6/6, HUD names, allocator call sites (`gates.sh`, about 70 s) |
+| `py/transitions/` (README there) | `transitions.md`: `trans.lua` change logs and taps, `tables.py`, 23 gates for the phase machine, the 297/278/291 protocol, camera, GO prompt, TIME, bonus-stage entry (`gates.sh`, about 2.5 minutes) |
+| `py/twoplayer/` (README there) | `twoplayer.md`: two-player bot and select-screen drives, `py/char` (Guy, Cody, Haggar, 26 gates) and `py/pvp` (player versus player, 14 gates), states and run scripts (`run/all.sh`, about 25 minutes) |
 
 Gates run this pass from fresh runs: health bar 1100/1100, `+24` writer `$7a12` 8/8, box derivation 1100/1100, overlap
 818/818, a third cold boot of `ff_enemies` with identical work RAM (`2657a253...b0ae`) and gfx RAM (`1a4357c4...e94a`),
@@ -152,15 +157,7 @@ and the original cold drive (`ff_gameplay`) still giving `79ed3cc1...0b2c` after
 
 ## Next
 
-1. Play a stage instead of spawning into `ff_enemies`: drive past the first boss (the kind 4 and 6 group at camera x `$aa0`, stage 0 area 2) or into
-   stage 2 from a saved state, then run the pool census and the `ai.md` gates against the script-spawned records. That reaches pools 4 and `$14`,
-   pool 8's other kinds, the kind 4 stage entries, the kind 7 scroll-lock reading and the tag-`$a` props that are still unnamed.
-2. Read what is still unread (`frame.md` "Not read, not proven"): `$6026`/`$61e24`/`$6241e`, the player-versus-player path `$7766-$7920` and
-   `$2934`, the fire bottle `$5957a` and fire prop `$54b4a`, the tag-`$a` victim handlers, the state 8, 10 and 12 scripts of the player.
-3. The command queues: `516(A5)` is the score-award ring (`$288c` to `$1a22`, `player.md`), the ring at `324(A5)` is written by `$2874` and
-   dispatched by the high byte of each word through the table at `$4ba6` (consumer not yet read), and `388(A5)` is the sound ring
-   (`$9d0`/`$9b2` write `$800180`). Tap `$800180`/`$800188`, match to queue entries, then read the Z80 side.
-4. Two players and the other characters: drive player 2 and Guy/Haggar (poke `+20`, `+56`, `+92` from `$a124`), then recheck the target rule,
-   the two-player spawn flag (script byte 15) and the player-versus-player path.
-5. Graphics: `hardware.md` has the layouts and mapper ranges; the plane/byte order across
-   `ff-5m/7m/1m/3m` is inferred. Decode one known tile, render a sheet, commit the PNG with the doc.
+1. Stages 2 to 5 by play: the bot stalls at stage 2 area 0 (`py/stage/README.md`). Poke recipes in `transitions.md` skip an area (`297(A5) = 1`, `191(A5)` to jump); then census each stage against `placement.md` and run the `ai.md` and `boss.md` gates on the bosses of stages 1 to 5 (kinds 1 to 5 of pool 4 are read, not played), and the kind 7 scroll-lock reading (stage 5 area 0, camera `$1280`).
+2. What is still unread: the fire bottle `$5957a` and fire prop `$54b4a`, the pool 8 kinds of stages 1 to 5 (about 48), pool 4 kind 7 (`$f1ca`), `$1b428` and the screen shaker, `$1fa5a`'s attribute bits, the `324(A5)` command ring (`$2874`, table `$4ba6`), `$726e0`, Haggar's `$d128`/`$d3a6` throws into `$1b428`.
+3. Paths no run took (each section of `ai.md`, `boss.md` and `twoplayer.md` lists its own): DAMND's attack A2 and hit types 2, 4 to 8, the grounded-death variants, thrown flight `$6c96`, entrance types 9 and 11 to 14, Haggar's chain-end back grab, the player-versus-player hard boxes and clash.
+4. The sound queue and the Z80 (tap `$800180`/`$800188`, match to the ring at `388(A5)`, then read the Z80), then graphics (decode one known tile, render a sheet, commit the PNG), then Ghouls'n Ghosts only after 1 to 3.
