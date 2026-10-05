@@ -223,10 +223,27 @@ All exercised by `py/transitions/gates.sh` (the pokes are byte writes at frame e
 | move the camera right limit | `1078(A5)` (`$ff8436`, word) | the camera follows to the new limit |
 | TIME | `175(A5)` (`$ff80af`, BCD) and `176(A5)` | a poke of 00 with `176` at `$1df` triggers the TIME 0 branch (not exercised; the gate uses the real count) |
 
+## The whole game and the ending, played by the bot
+
+`py/stage/README.md` ("Stages 2 to 5, played"): the bot (god mode, health poke) took the game through stage bytes 0, 1, 6, 2, 3, 7, 4, 5, the order of the table at `$553a`. After the stage 5 boss the player's area clear (state 10, sub 6)
+runs at frame 289,030 and the game goes on without a player. Runs of the (stage byte, area) pair `(190, 191)` from the state `sb_s8` (frame 289,034; `py/stage/` log `end.log`, screenshots every 400 frames; `ending.png` is the contact sheet,
+frame number on each tile):
+
+| frames | `190/191` | screen |
+|---|---|---|
+| 289,040-289,050 | 8/3 | the byte the chain log shows for 21 frames, then 5 again |
+| 289,060-289,770 | 5/0 | ROUND CLEAR over the stage 5 arena with the boss down (289,440) |
+| 289,780-291,520 | 9/0 | the father and daughter dialogue panel, text typed out ("Oh Father! I was so scared...") |
+| 291,530-294,290 | 5/0 | the staff roll (programmer, character design, music and sound, special thanks) over Metro City scenes, Cody and Guy walking, Jessica in the park |
+| 294,300-299,060 | 9/0 | a second dialogue ("Where are you going?"), the cast roll ("My name is POM", EAMEKON, TISSUE, PRINCE...), then GAME OVER |
+| 299,070 on | 8/0 | the Mad Gear story text and a portrait scene (attract mode): the game has returned to its start |
+
+So the ending is not a stage with its own area table: it reuses stage bytes 5 and 9 (and 8 for the attract story) while no player is live. [L, 1 run; the pair of bytes is read from work RAM every 10 frames, the screens from the screenshots]
+
 ## Not proven
 
-- Only stage 0, stage 1 areas 0 and 1 (and 3 by poke), bonus stage 1 and the start of stage 2 were played; the area clears of stages 2 to 5, bonus stage 7, the ending (phase a with `193 > 7`, phase c) and every `$e9c2` variant other
-  than `$ea10` and `$ea7e` were read, not run. Steps 8, `$a`, `$c` of state 10 sub 2 and everything with `145(A6)` (two players) are unexercised.
+- The stages and the ending were played (below), but only the stage byte and the screenshots were logged: the area-clear walk-offs of stages 2 to 5, bonus stage 7, the phase handlers of the ending (phase a with `193 > 7`, phase `$c`)
+  and every `$e9c2` variant other than `$ea10` and `$ea7e` were not traced, and the mapping of the ending's stage-byte runs to `193` and to the phases was not read. Steps 8, `$a`, `$c` of state 10 sub 2 and everything with `145(A6)` (two players) are unexercised.
 - State 12's scene is the stage 5 area 0 elevator (run on pokes, not reached by play). What the executor does after a code 2 continuation is unknown ([I]: the data that follows is the next area's).
 - The effect of `116/118/120(A5)`, the y limit words `1082/1084(A5)`, the y camera `$62316`, and the record-2 mode table `$624ce` are [I]; the bonus-stage state machine of phase `$e` is [R] only except for the
   play, time-out and walk-out path above.
