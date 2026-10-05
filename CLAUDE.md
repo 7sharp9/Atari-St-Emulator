@@ -246,6 +246,8 @@ know they existed.
 ## Proving routines with parallel subagents
 
 What made the PowerMonger 122nd pass's three parallel proofs work, and what went wrong:
+- Name the tool index in the brief (`M68000/DEVELOPING.md` "Other tools"): six Final Fight agents each wrote their own recursive-descent lister because
+  `disassemble.py --all` loses sync over interleaved jump tables and animation data; it is now `tools/rdis.py`.
 - One shared `BRIEF.md` in the working dir. Take its addresses, strides and struct offsets
   from the code (`tools/pm_common.py`, `tools/pm_fsm_ref.py`, the docs' proven sections), never
   from memory: that brief got the object table wrong, and every agent had to correct it.
