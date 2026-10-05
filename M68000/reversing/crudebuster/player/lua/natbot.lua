@@ -50,7 +50,8 @@ local fetching = false
 local prevpx, prevpress, blockf, jk = -1, 0, 0, -1  -- blockf: frames a horizontal press moved nothing; jk: jump-kick macro start frame
 local tries, wasgrab, grabtarget = {}, false, nil -- grab attempts per pool B record (address:type); a record that gives two empty grabs is skipped
 local cleared, started, over = false, false, false
-local nstall, ladoff, hop = nil, 0, -1
+local nstall, ladoff, hop, hopreal = nil, 0, -1, false
+local landf, wasbelt = 0, false
 local anchor, stagnant = nil, 0
 local useban = os.getenv("CB_BAN") == "1" -- CB_BAN=1: skip records that took no damage through 360 frames of fighting (it also skips bosses that are only hurt at times: off by default)
 local track, ban = {}, {} -- per pool A record: last hp and the frame it last changed; records that took no damage for 450 frames of fighting are ignored for 1200 frames
@@ -123,6 +124,17 @@ local function policy(f)
       if d2 < nd then nd, near = d2, e end
     end
   end
+  -- helicopter parts (types 47..49, hit-tested from state 0): they sweep over the arena and come within reach of a standing jab only at the low point of the
+  -- sweep (level 2: x 2031..2352, y 288..450; a part's body box reaches 32 px below its y, the jab box 32 above the player's). While one is within 70 px of the
+  -- player's y, follow it in x and jab continuously (lab: part hp 32 -> 5 in 150 frames of jabs from x 2179). Level 1's parts hover at y 356 and never qualify.
+  local heli = nil
+  for _, e in ipairs(E) do if e.type >= 47 and e.type <= 49 and e.hp > 0 and e.y > py - 70 and (not heli or e.y > heli.y) then heli = e end end
+  -- level 2 conveyor: the raised block at x >= $900 (y 416 on top of it, y 448 on the ground) moves the player left at 1 px/frame, which cancels a walk, and he drifts off its left edge in
+  -- about 25 frames. A right + b2 press about 6 frames after each landing (a fresh b2 edge) jumps on 50 px (lab seqlab.lua S3: x 2329 -> 2380); only at y 400..424 and not airborne (+57 bit 7).
+  local belt = want == 2 and not hold and px >= 2290 and sx < 0x9f0 and py >= 400 and py <= 424 and m:read_u8(p + 5) == 0 and m:read_u8(p + 57) & 0x80 == 0 -- y 416 on the block (the ground y in +44 is not a reliable test: the ladder search ran on it)
+  if belt then lad = nil end
+  if belt and not wasbelt then landf = f end
+  wasbelt = belt
   if stuckf > 300 and stuckf <= 700 then near = nil; en = {} end -- no progress for 300 frames: stop chasing, just walk on
   local lockwall, nlw = nil, 1e9
   local lift, nl = nil, 1e9
@@ -137,6 +149,10 @@ local function policy(f)
     end
   end
   local mdesc
+  if os.getenv("CB_ARENA") and f % 60 == 0 and sx >= tonumber(os.getenv("CB_ARENA"), 16) then -- CB_ARENA=<scroll x in hex, e.g. a00>: every 60 frames the live pool A records while the scroll is at or past it (the last arena of a level)
+    local t = {} for _, e in ipairs(E) do t[#t + 1] = string.format("%d:%02x:%d:%d:%d", e.type, e.state, e.x, e.y, e.hp) end
+    log(f, string.format("ARENA sx=%x P(%d,%d) mode=%s A %s", sx, px, py, tostring(mode), table.concat(t, " ")))
+  end
   if stuckf % 500 == 250 then -- dump what the bot sees when progress stops
     log(f, string.format("STUCK px=%d py=%d sx=%x sy=%x s400=%02x%02x%02x flags40=%02x%02x hold=%s", px, py, sx, sy, m:read_u8(0x80400), m:read_u8(0x80401), m:read_u8(0x80402), m:read_u8(0x80040), m:read_u8(0x80041), tostring(hold)))
     local t = {} for k = 0, 0x7f do t[#t + 1] = string.format("%02x", m:read_u8(p + k)) end
@@ -157,7 +173,7 @@ local function policy(f)
     lad = { dir = (allowed & 1 == 0) and "up" or "down", offs = { 0 }, i = 1, x0 = px, y0 = py, phase = "climb", t0 = f, moved = f, lasty = py, sx0 = sx }
     log(f, string.format("LADDER already climbing at x=%d y=%d dir=%s", px, py, lad.dir))
   end
-  if not lad and stagnant >= 150 and #en == 0 and not hold and not (lockwall and nlw < 70) and (not lockbit or others) and f >= ladoff then
+  if not lad and not belt and stagnant >= 150 and #en == 0 and not hold and not (lockwall and nlw < 70) and (not lockbit or others) and f >= ladoff then
     local dirs = {}
     if others then dirs[1] = others.y > py and "down" or "up"
     else
@@ -203,6 +219,14 @@ local function policy(f)
     b1 = f % 6 < 2; b3 = k == 5 and f % 4 < 2
     mdesc = "watchdog"
     if stuckf > 800 then stuckf = 0 end
+  elseif belt then
+    mdesc = "belt-hop"; stuckf = 0; r = true
+    b2 = f - landf >= 6 and f - landf < 30
+  elseif heli and not hold then
+    mdesc = "heli"; stuckf = 0
+    local dx = heli.x - px
+    if math.abs(dx) > 10 then r, l = dx > 0, dx < 0 end
+    if tick % 6 < 2 then b1 = true end
   elseif hold then
     fetching = false
     local flags = m:read_u8(p + 26)
@@ -281,10 +305,19 @@ local function policy(f)
       if others.y > py then d = true else u = true end
     elseif hop >= 0 then
       local k = f - hop
-      mdesc = "hop"; r = true; b2 = k < 3
-      if k > 44 then hop = -1; blockf = 0 end
+      mdesc = "hop"; r = true
+      if hopreal then -- terrain in the way (nothing to punch ahead): the walk-punch phase just before keeps the player in the punch chain for about 40 frames, and a b2 that goes down during it
+        b2 = k >= 42 and k < 72 -- is lost (it is an edge, holding on does not start the jump): wait, then press (lab seqlab.lua, level 2 x 2291: G jumps, E and F do not)
+        if k > 80 then hop = -1; blockf = 0 end
+      else
+        b2 = k < 3 -- an object ahead: the original hop, which a punch in progress swallows (level 1 relies on the pause between punch phases; a real jump there loses the clear)
+        if k > 44 then hop = -1; blockf = 0 end
+      end
     elseif blockf > 20 then -- blocked: something solid (a drum, a wall) is in the way: break it; or a step too high to walk onto: jump it (jump height 48, 1.75 px/frame forward for 32 frames)
-      if (blockf // 40) % 2 == 1 and not lockbit then hop = f -- not inside a lock zone: there the blocker is the screen edge and the fight comes to you
+      if (blockf // 40) % 2 == 1 and not lockbit then -- not inside a lock zone: there the blocker is the screen edge and the fight comes to you
+        hop = f; hopreal = true
+        for _, e in ipairs(E) do if e.x > px and e.x - px < 70 and math.abs(e.y - py) < 48 then hopreal = false end end
+        for _, b in ipairs(B) do if b.type ~= 43 and b.type ~= 50 and b.type ~= 53 and b.x > px and b.x - px < 70 and math.abs(b.y - py) < 48 then hopreal = false end end
       else mdesc = "walk-punch"; if tick % 6 < 2 then b1 = true end end
     end
   end
