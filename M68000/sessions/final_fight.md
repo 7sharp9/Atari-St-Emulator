@@ -1,6 +1,6 @@
 # Final Fight (Capcom CPS1 arcade, MAME): handoff
 
-Updated 2026-10-05 by the session that ended at commit `b18ff59` (plus the handoff commit after it).
+Updated 2026-10-05 by the session that ended at the commit after `b18ff59` (frame.md; plus the handoff commit).
 
 ## Resume point
 
@@ -44,17 +44,23 @@ Detail in `reversing/finalfight/README.md`, `hardware.md`, `kernel.md`.
   (`76(A5)` credits 0 after Start), slot 15 credit jingle (created by the coin, killed by Start), slot 1 stage
   clock (dispatch word `0(A5)`: 0, 2, 4, 6 at frames 1169, 1200, 1312, 1313, written by the table's own
   bodies). Slots 7, 8, 11, 12, 5, 6 are named from the body alone and tagged inferred.
-- No task is created for enemies between frames 1311 and 2200 while Bred appears: they are not tasks.
+- In-level frame (`frame.md`): TIME is `175(A5)` BCD, decremented every 480 frames by `$5238` from frame 1677 (tap:
+  one decrement at frame 2156 = 1677 + 479, saved state `$29`, HUD "TIME 29": 1 of 1). One object array of `$c0`
+  records at `$ff8568`: players 0-1, Bred is record 14 (`$ff8fe8`, found by layout and HUD, 1 live sample).
+  `$16600` builds the OBJ list: 928 gfx RAM writes in 5 frames, 464 into each of `$900000`/`$904000`, all by
+  `$16a36-$16a3c` and `$16656/58` (`lua/kernel_log.lua` with `FF_KLOG_EXTRA=900000-907fff`). `$50e` is the Service
+  Mode colour bar, not game logic. Enemies are not tasks (no create 1311-2200).
 - `lua/callcap.lua` on `$50e` (earlier pass): 32/32 words, negative control empty.
 
 ## Open, in priority order
 
-1. **Read the state-6 frame pipeline `$4e3a`** (`$5326`, `$5238`, `$5668`, `$6396`, `$6026`, `$61e24`,
-   `$16600`, with `$50e` calls between). Enemies, items, player health, TIME and hit boxes are updated
-   there. Method: read each callee to its first branch, grep the topic docs for the address first, then a
-   write tap (as in `kernel_log.lua`, `FF_KLOG_EXTRA`) on the object pool and player records to see who writes
-   which field. Census rule: find the game's own reader of a field (HUD, `$ff85dc`, `$ff85ee`) before naming it.
-2. **Second state with two or more enemies** (the drive reaches one, Bred), plus a search for the TIME
+1. **Read the callees `frame.md` lists as unread**: the thirteen of `$5668` (`$5acdc`, `$5764`, `$5b1cc`, `$5aea`,
+   `$57f2`, `$5a1a`, `$5fc6`, `$5962`, `$59a4`, `$5848`, `$5a72`, `$5ff4`, `$90fa`), `$708e`/`$7564` (damage),
+   `$6026`'s and `$61e24`'s tables, `$27fc4`. Player health and the hit boxes are there. Method: read to the first
+   branch, grep the docs for the address, then write-tap the field (`FF_KLOG_EXTRA`) and histogram the writer PCs
+   (the object-record histogram in `frame.md` is the model). Name a field from its reader (HUD, `$ff85dc`,
+   `$ff85ee`), not its writer.
+2. **Second state with several enemy kinds on screen** (needed for what each pool of the object array holds: only Bred is live in `ff_gameplay`) (the drive reaches one, Bred), plus a search for the TIME
    counter and player health by their readers, not by value.
 3. **Slot 11's queues** (`516(A5)`, `324(A5)`, `$1a22`) and the `jsr $2874` senders: confirm it is the sound
    command queue (tap `$800180`/`$800188` writes and match them to queue entries), then read the Z80 side.
@@ -92,8 +98,6 @@ Detail in `reversing/finalfight/README.md`, `hardware.md`, `kernel.md`.
 
 ## Next session
 
-Run `/resume final_fight`. Item 1: disassemble the state-6 pipeline callees from `$4e3a`, then put write taps
-on the player records (`$ff1204`, `$ff1244`) and the object pool fields found there, using
-`FF_KLOG_EXTRA` in `kernel_log.lua`. Two agents fit: one for the pipeline read, one for a second
-multi-enemy state plus the TIME/health readers. Do not start graphics or Ghouls'n Ghosts before the pipeline
-is read.
+Run `/resume final_fight`. Item 1: read the unread callees of `$5668` and `$708e`/`$7564`, tapping the player and
+Bred records as in `frame.md`. Two agents fit: one for `$5668`'s callees, one for a second multi-enemy state and the
+pool contents. Do not start graphics or Ghouls'n Ghosts before health and hit boxes are read.

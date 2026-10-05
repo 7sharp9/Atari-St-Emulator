@@ -122,13 +122,14 @@ registers, then programs the CPS-A layer base pointers (`$800100..$80010e`); VBL
 `$53e` latches scroll registers into CPS-A/B, reads the inputs into `84..103(A5)`, calls `$984`, `$fac`,
 `$e46`, then counts down the sleep timers of the task records. The task kernel (16 records at
 `$ff1000`, `trap #0..#8` as create/exit/kill/sleep/yield/suspend/wake/restart/reset) is in `kernel.md`.
+The in-level frame (TIME, the object array with the players and Bred, hit resolution, the sprite list builder)
+is in `frame.md`.
 
 ## Next
 
-1. Read the state-6 frame pipeline `$4e3a` (`$5326`, `$5238`, `$5668`, `$6396`, `$6026`, `$61e24`, `$16600`,
-   with the `$50e` calls between them): the entity/object pools, player records (`$ff1204`, `$ff1244`),
-   health, TIME and hit boxes are updated there (`kernel.md` "Tasks seen over the drive"). Find the game's
-   own reader of each field before naming it (the CLAUDE.md rules on census columns apply unchanged).
+1. Read the callees `frame.md` lists as unread: the thirteen of `$5668`, `$708e`/`$7564` (damage), `$6026`'s
+   and `$61e24`'s tables, `$27fc4`. Player health, hit boxes and the enemy pools are there. Find the game's
+   own reader of each field (HUD, `$ff85dc`, `$ff85ee`) before naming it (the CLAUDE.md census rules apply).
 2. Trace slot 11's ring-buffer consumers (`516(A5)`, `324(A5)`, `$1a22`) and the `jsr $2874` senders to
    confirm the sound-command queue and read the Z80 side.
 3. Graphics: `hardware.md` has the layouts and mapper ranges; the plane/byte order across

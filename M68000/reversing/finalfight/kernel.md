@@ -107,8 +107,8 @@ Slot 1's dispatch word took the values 0 (frame 1169), 2 (1200), 4 (1312) and 6 
 frame 2200), written by `$4cde`, `$4d46` and `$4d74`, the bodies the table gives for states 0, 2 and 4 [L].
 State 6 (`$4e3a`) is the in-level frame: it calls `$5326`, `$5238`, `$5668`, then `$6396`, `$6026`,
 `$61e24` and `$16600` with `$50e` calls (`D0 = $43, $53, $54`) between them, and tests `297(A5)` for the
-stage-clear and death exits to states 8, `$a` and `$c` [R]. The entity update is inside this pipeline,
-which is the next read.
+stage-clear and death exits to states 8, `$a` and `$c` [R]. The pipeline, TIME, the object array and the sprite
+list builder are in `frame.md`.
 
 Writing `127(A5)` and `126(A5)` at frame 1150 (`pc $1202`, value `$0101`) is the Start press: both bytes become 1.
 
@@ -133,6 +133,5 @@ Writing `127(A5)` and `126(A5)` at frame 1150 (`pc $1202`, value `$0101`) is the
   `trap #5` suspend was never executed in 2200 frames; `trap #8` restart-machine likewise.
 - The role names marked **[I]** (slots 7, 8, 11, 12, 5, 6) rest on the task body alone. Slot 11's queues
   and the `$50e` calls in the stage frame are not yet traced to their consumers.
-- Enemies and items did not appear as tasks: no create happened between frames 1311 and 2200 while Bred
-  came on screen, so they are entries in object pools updated from inside the state-6 pipeline, not
-  tasks **[I from the absence of creates in one 900-frame window]**.
+- Enemies are not tasks: no create happened between frames 1311 and 2200 while Bred came on screen. Bred is
+  record 14 of the object array at `$ff8568` (`frame.md`), updated from the state-6 pipeline.
