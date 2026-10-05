@@ -1,0 +1,83 @@
+# $28fa message table $2962: index, then sub-records (attribute word ORed into every tile word, destination in chip0 pf1 RAM, glyph codes)
+# a glyph code g writes 4 tiles: (dest) = g, (dest+0x80) = g+1, (dest-2) = g+2, (dest-2+0x80) = g+3 ; dest += 4 per glyph; 0xfffe = new sub-record, 0xffff = end
+# glyph g = 0x8c + 4*k : k 0-9 digits, 10-35 A-Z, 36 left arrow, 37 '?'; chars are char-ROM codes 0x4000 + (g & 0xfff)
+ 0  [att e000 dst 0a0636: 8c]   0
+ 1  [att e000 dst 0a0636: 90]   1
+ 2  [att e000 dst 0a0636: 94]   2
+ 3  [att e000 dst 0a0636: 98]   3
+ 4  [att e000 dst 0a0636: 9c]   4
+ 5  [att e000 dst 0a0636: a0]   5
+ 6  [att e000 dst 0a0636: a4]   6
+ 7  [att e000 dst 0a0636: a8]   7
+ 8  [att e000 dst 0a0636: ac]   8
+ 9  [att e000 dst 0a0636: b0]   9
+10  [att e000 dst 0a060e: bc ec e8 100 d4 e8 104 c4 120]  [att 0000 dst 0a0822: 114 c4 fc]  [att 1000 dst 0a0922: e8 ec]   CONTINUE? | YES | NO
+11  [att e000 dst 0a062e: 90]   1
+12  [att e000 dst 0a062e: 94]   2
+13  [att e000 dst 0a062e: 98]   3
+14  [att e000 dst 0a062e: 9c]   4
+15  [att e000 dst 0a062e: a0]   5
+16  [att e000 dst 0a062e: a4]   6
+17  [att e000 dst 0a0616: fc 100 b4 cc c4]   STAGE
+18  [att e000 dst 0a0406: bc ec e8 cc f8 b4 100 104 e0 b4 100 d4 ec e8]   CONGRATULATION
+19  [att e000 dst 0a060e: cc b4 e4 c4]  [att e000 dst 0a0622: ec 108 c4 f8]   GAME | OVER
+20  [att 0000 dst 0a082e: 11c]   <-
+21  [att 1000 dst 0a092e: 11c]   <-
+22  [att e000 dst 0a020a: b8 c4 fc 100]  [att e000 dst 0a021e: fc bc ec f8 c4 fc]  [att 0000 dst 0a040a: 90]  [att 1000 dst 0a060a: 94]  [att 0000 dst 0a080a: 98]  [att 1000 dst 0a0a0a: 9c]  [att 0000 dst 0a0c0a: a0]  [att 1000 dst 0a0436: a4]  [att 0000 dst 0a0636: a8]  [att 1000 dst 0a0836: ac]  [att 0000 dst 0a0a36: b0]  [att 1000 dst 0a0c36: 140]   BEST | SCORES | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | [140]
+23  [att 3000 dst 0a0084: 12c]   [12c]
+24  [att 3000 dst 0a0084: 124]   [124]
+25  [att 3000 dst 0a0084: 134]   [134]
+26  [att 3000 dst 0a0084: 13c]   [13c]
+27  [att 4000 dst 0a00bc: 130]   [130]
+28  [att 4000 dst 0a00bc: 128]   [128]
+29  [att 4000 dst 0a00bc: 138]   [138]
+30  [att 4000 dst 0a00bc: 13c]   [13c]
+31  [att 1000 dst 0a0c52: f0 f8 c4 fc c4 e8 100 fc]   PRESENTS
+32  [att e000 dst 0a0616: 0 0 0 0 0 0 0]   <0><0><0><0><0><0><0>
+33  [att 0000 dst 0a082e: 0]   <0>
+34  [att 1000 dst 0a092e: 0]   <0>
+35  [att e000 dst 0a060e: 0 0 0 0 0 0 0 0 0]  [att 0000 dst 0a0822: 0 0 0 0]  [att 1000 dst 0a0922: 0 0 0 0]  [att e000 dst 0a0636: 0]   <0><0><0><0><0><0><0><0><0> | <0><0><0><0> | <0><0><0><0> | <0>
+36  [att 2000 dst 0a0202: b34]  [att 7000 dst 0a0302: b38]   [b34] | [b38]
+37  [att 2000 dst 0a0306: b3c b40]  [att e000 dst 0a0208: 0]   [b3c][b40] | <0>
+38  [att 2000 dst 0a0306: b1c b20]  [att e000 dst 0a0208: af0]   [b1c][b20] | [af0]
+39  [att 7000 dst 0a030e: b4c b50]  [att e000 dst 0a0210: 0]   [b4c][b50] | <0>
+40  [att 7000 dst 0a030e: b2c b30]  [att e000 dst 0a0210: af0]   [b2c][b30] | [af0]
+41  [att 2000 dst 0a0316: b44 b48]  [att e000 dst 0a0218: 0]   [b44][b48] | <0>
+42  [att 2000 dst 0a0316: b24 b28]  [att e000 dst 0a0218: af0]   [b24][b28] | [af0]
+43  [att 2000 dst 0a0226: b34]  [att 7000 dst 0a0326: b38]   [b34] | [b38]
+44  [att 2000 dst 0a032a: b3c b40]  [att e000 dst 0a022c: 0]   [b3c][b40] | <0>
+45  [att 2000 dst 0a032a: b1c b20]  [att e000 dst 0a022c: af0]   [b1c][b20] | [af0]
+46  [att 7000 dst 0a0332: b4c b50]  [att e000 dst 0a0234: 0]   [b4c][b50] | <0>
+47  [att 7000 dst 0a0332: b2c b30]  [att e000 dst 0a0234: af0]   [b2c][b30] | [af0]
+48  [att 2000 dst 0a033a: b44 b48]  [att e000 dst 0a023c: 0]   [b44][b48] | <0>
+49  [att 2000 dst 0a033a: b24 b28]  [att e000 dst 0a023c: af0]   [b24][b28] | [af0]
+50  [att e000 dst 0a061e: a88 a80]   [a88][a80]
+51  [att e000 dst 0a061e: a84 a80]   [a84][a80]
+52  [att e000 dst 0a061e: a7c a80]   [a7c][a80]
+53  [att e000 dst 0a061e: a74 a78]   [a74][a78]
+54  [att e000 dst 0a061e: a6c a70]   [a6c][a70]
+55  [att e000 dst 0a061e: a5c a68]   [a5c][a68]
+56  [att e000 dst 0a061e: a5c a64]   [a5c][a64]
+57  [att e000 dst 0a061e: a5c a60]   [a5c][a60]
+58  [att e000 dst 0a061e: 0 0]   <0><0>
+59  [att e000 dst 0a0c36: 0]  [att e000 dst 0a0d36: 0]   <0> | <0>
+60  [att e000 dst 0a0c36: b18]  [att e000 dst 0a0d36: b10]   [b18] | [b10]
+61  [att e000 dst 0a0c36: b14]  [att e000 dst 0a0d36: b10]   [b14] | [b10]
+62  [att e000 dst 0a0c36: b0c]  [att e000 dst 0a0d36: b10]   [b0c] | [b10]
+63  [att e000 dst 0a0c36: b04]  [att e000 dst 0a0d36: b08]   [b04] | [b08]
+64  [att e000 dst 0a0c36: afc]  [att e000 dst 0a0d36: b00]   [afc] | [b00]
+65  [att e000 dst 0a0c36: aec]  [att e000 dst 0a0d36: af8]   [aec] | [af8]
+66  [att e000 dst 0a0c36: aec]  [att e000 dst 0a0d36: af4]   [aec] | [af4]
+67  [att e000 dst 0a0c36: aec]  [att e000 dst 0a0d36: af0]   [aec] | [af0]
+68  [att d000 dst 0a0306: 0 0 0 0 0 0 0 0 0 0 0 0 0 0]  [att d000 dst 0a0406: 0 0 0 0 0 0 0 0 0 0 0 0 0 0]  [att d000 dst 0a0506: 0 0 0 0 0 0 0 0 0 0 0 0 0 0]  [att d000 dst 0a0606: 0 0 0 0 0 0 0 0 0 0 0 0 0 0]  [att d000 dst 0a0706: 0 0 0 0 0 0 0 0 0 0 0 0 0 0]  [att d000 dst 0a0806: 0 0 0 0 0 0 0 0 0 0 0 0 0 0]   <0><0><0><0><0><0><0><0><0><0><0><0><0><0> | <0><0><0><0><0><0><0><0><0><0><0><0><0><0> | <0><0><0><0><0><0><0><0><0><0><0><0><0><0> | <0><0><0><0><0><0><0><0><0><0><0><0><0><0> | <0><0><0><0><0><0><0><0><0><0><0><0><0><0> | <0><0><0><0><0><0><0><0><0><0><0><0><0><0>
+69  [att 0000 dst 0a024a: bc f8 104 c0 c4 0 b8 104 fc 100 c4 f8]  [att 0000 dst 0a0456: fc 100 b4 c8 c8]   CRUDE<0>BUSTER | STAFF
+70  [att d000 dst 0a034a: 1ec 8c0 0 8c4]  [att d000 dst 0a0862: 954 a30 0 8c8 8c4]  [att d000 dst 0a0a62: 8cc a2c 0 8d0 614]   [1ec][8c0]<0>[8c4] | [954][a30]<0>[8c8][8c4] | [8cc][a2c]<0>[8d0][614]
+71  [att d000 dst 0a024a: 8e4 97c 0 614 8e8]  [att d000 dst 0a044a: 8ec 8f0 0 8f4 8f8]  [att d000 dst 0a064a: 91c 920 0 924 928]  [att d000 dst 0a095a: 93c 1a4 0 940 944]  [att d000 dst 0a0b5a: 1ec 948 0 94c 950]  [att d000 dst 0a0d5a: 8d4 9dc 0 92c 930]   [8e4][97c]<0>[614][8e8] | [8ec][8f0]<0>[8f4][8f8] | [91c][920]<0>[924][928] | [93c][1a4]<0>[940][944] | [1ec][948]<0>[94c][950] | [8d4][9dc]<0>[92c][930]
+72  [att d000 dst 0a025e: 974 1a4 0 978 948]  [att d000 dst 0a045e: 96c 1a4 0 970 8f8]  [att d000 dst 0a074a: 90c 938 0 910 914]  [att d000 dst 0a094a: 918 938 0 9e0 8f8]   [974][1a4]<0>[978][948] | [96c][1a4]<0>[970][8f8] | [90c][938]<0>[910][914] | [918][938]<0>[9e0][8f8]
+73  [att d000 dst 0a024a: 8d4 8d8 0 8dc 8e0]  [att d000 dst 0a044a: 934 938 0 9e0 8e0]  [att d000 dst 0a064a: 8fc 944 0 900]  [att d000 dst 0a084a: 960 964 0 968 614]   [8d4][8d8]<0>[8dc][8e0] | [934][938]<0>[9e0][8e0] | [8fc][944]<0>[900] | [960][964]<0>[968][614]
+74  [att d000 dst 0a075a: 954 1d8 0 884 95c]  [att d000 dst 0a095a: 97c 904 0 908]  [att d000 dst 0a0b5a: a2c 980 0 8f8 914]  [att d000 dst 0a0d5a: b54 b58 0 978 8b4]   [954][1d8]<0>[884][95c] | [97c][904]<0>[908] | [a2c][980]<0>[8f8][914] | [b54][b58]<0>[978][8b4]
+75  [att d000 dst 0a024a: 97c 980 0 8dc 984]  [att d000 dst 0a044a: 9ac 678 0 9b0]  [att d000 dst 0a064a: 998 9dc 0 99c 9a0]  [att d000 dst 0a084a: 988 98c 0 990 994]  [att d000 dst 0a0a4a: 9a4 9a8 0 99c 9a0]   [97c][980]<0>[8dc][984] | [9ac][678]<0>[9b0] | [998][9dc]<0>[99c][9a0] | [988][98c]<0>[990][994] | [9a4][9a8]<0>[99c][9a0]
+76  [att d000 dst 0a034a: 1a4 0 9ec 9f0 64c]  [att d000 dst 0a054a: 924 9dc 0 9f4 9f8]  [att d000 dst 0a074a: 9fc a00 0 a04 a08]  [att d000 dst 0a0c62: 1ec 9fc 0 884 b6c]   [1a4]<0>[9ec][9f0][64c] | [924][9dc]<0>[9f4][9f8] | [9fc][a00]<0>[a04][a08] | [1ec][9fc]<0>[884][b6c]
+77  [att d000 dst 0a0366: b64 9dc 0 b68]  [att d000 dst 0a074a: 9d8 9dc 0 9e0 984]  [att d000 dst 0a094a: 9b4 9b8 9bc 9c0 9c4 9c8 9cc]  [att d000 dst 0a0b4a: 9d0 9d4 9bc 9c0 9c4 9c8 9cc]  [att d000 dst 0a0d4a: 9e4 1b4 9e8 1b4 8e4 64c 738]   [b64][9dc]<0>[b68] | [9d8][9dc]<0>[9e0][984] | [9b4][9b8][9bc][9c0][9c4][9c8][9cc] | [9d0][9d4][9bc][9c0][9c4][9c8][9cc] | [9e4][1b4][9e8][1b4][8e4][64c][738]
+78  [att d000 dst 0a064c: a0c 86c a10 9c8 86c a14 9cc a18 a1c a20 90c]   [a0c][86c][a10][9c8][86c][a14][9cc][a18][a1c][a20][90c]
+79  [att e000 dst 0a060a: 10c d4 e8 e8 c4 f8 0 c0 ec 0 e8 ec 100 0]  [att e000 dst 0a080e: e4 b4 dc c4 0 bc ec f0 114 b5c b5c]   WINNER<0>DO<0>NOT<0> | MAKE<0>COPY[b5c][b5c]

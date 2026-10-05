@@ -1,0 +1,35 @@
+# room map $8908 (word per [row=$80406 hi-1][col=$8040a hi-1], 16 columns; bit meanings: see doc)
+level 0 @08920: 000d 200d 000d 000d 200d 000d 000d 800f
+level 1 @08930: 000d 000d 200d 000d 200d 000d 200d 800f
+level 2 @08940: 000d 000d 200d 000d 200d 000d 000d 200d 000d 800f
+level 3 @08954: 000d 000d 000d 000d 000d 200d 000d 200d 000d 800f
+level 4 @08968: 000d 000d 000d 000d 000b 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 200d 000d 000d 000d 800f 800f 800f 800f 800f 800f 800f 800f
+level 5 @089a8: 800f 800f 800f 800f 800f 800f 800f 800f 800f 400c 400d 000d 000d 000d 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 400c 400c 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 800f 400c
+# layer A screen table $8c94 (chip0 pf2, blocks $41000+0x200*i, lo=top hi=bottom, ff=none)
+level 0 @08cac: ff00 ff01 ff02 ff03 ff04 ff05 ff06 ff07
+level 1 @08cbc: ff08 ff09 ff0a ff0b ff0c ff0d ff0e ff0f
+level 2 @08ccc: ff10 ff11 ff12 ff13 ff14 ff15 ff16 ff17 ff18 ff19
+level 3 @08ce0: ff1a ff1b ff1c ff1d ff1e ff1f ff20 ff21 ff22 ff23
+level 4 @08cf4: ff24 ff25 ff26 ff27 2928 2aff 2bff 2cff 2dff
+level 5 @08d06: ff2e ff2f ff30 3231 3334 3635 3837 3937 3a3b 3d3c 3e3f ff40 ff41 ff42 ff43 ffff 3039 0008 048a 5240 0240 003f 33c0 0008 048a 1039 0008 0451 0c00 00ff 675e 2039 0008 046a 7200 3239 0008 0466 e349 d081
+# layer B screen table $98fe (chip1 pf1, blocks $4ba00+0x200*i)
+level 0 @09916: ff00 ffff ffff ffff ffff ffff ffff ffff
+level 1 @09926: ffff ffff ffff ffff ffff ffff ffff ffff
+level 2 @09936: ffff ffff ffff ffff ffff ffff ffff ffff
+level 3 @09946: ffff ffff ffff ffff ffff ffff ffff ffff
+level 4 @09956: ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff
+level 5 @09976: ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff 0c39 0001 0008 0046 671e 0c39 0002 0008 0046 672c 0c39 0005 0008 0046 6736 6100 0044 6100 023a 603a 0839 0004 0008 0040
+# layer C screen table $9d20 (chip1 pf2, blocks $4da00+0x200*i)
+level 0 @09d38: ff00 ff01 ff02 ff00 ff01 ff02 ff00 ff01
+level 1 @09d48: ff03 ff04 ff05 ff06 ff03 ff04 ff05 ff06
+level 2 @09d58: ff07 ff08 ff09 ff0a ff0b ff0c ff0a ff0b
+level 3 @09d68: ff0f ff0e ff0d ff0f ff0e ff0f ff0f ff0f
+level 4 @09d78: ff10 ff11 ff10 ff11 00ff 00ff 00ff 00ff
+level 5 @09d88: ff00 ff00 ff00 ff00 ff00 ff00 ff00 ff00 ff00 ff00 ff00 ff00 ff00 ffff ffff ffff 7000 1039 0008 041a 5300 e548 41fa 0038 2070 0000 7000 3039 0008 0460 e688 0240 0003 33c0 0008 04b2 e348 3030 0000 243c
+# event table $8f52 (word per screen -> function index into $8ff2, ffff none)
+level 0 @08f6a: 0000 0000 0000 0000 0000 0001 0001 ffff
+level 1 @08f7a: ffff 0008 0008 0008 0008 0006 ffff ffff
+level 2 @08f8a: ffff ffff ffff ffff ffff ffff 0007 ffff ffff ffff
+level 3 @08f9e: 0003 0003 0003 0003 0003 0003 0003 0003 0003 0003
+level 4 @08fb2: ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff ffff
+level 5 @08fd2: ffff ffff 0004 ffff ffff ffff ffff ffff ffff ffff ffff 0005 ffff ffff ffff ffff 0000 9016 0000 906e 0000 9078 0000 908c 0000 90a4 0000 90dc 0000 90ec 0000 9140 0000 918c 6100 0408 6100 042a 6100 05fe

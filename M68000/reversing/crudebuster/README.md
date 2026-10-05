@@ -9,6 +9,7 @@ decrypted image.
 
 | file | content |
 |---|---|
+| `graphics.md`, `gfx/` | graphics: ROM formats, tilemap/sprite/palette hardware, game-side lists and maps; the renderer, gates (`gfx/proof.sh`), sheets and level strips |
 | `architecture.md` | memory map, boot, vectors, protection, frame/VBL structure, game flow, object pools, level scripts, flags |
 | `cbmame.sh` | headless MAME wrapper (`script` = with debugger for Lua, `run` = no debugger; `CB_SET`, `CB_RUN`, `CB_ROMS`) |
 | `lua/lib.lua`, `lua/drive.lua` | helpers and the input-plan driver (`CB_PLAN`, `CB_SHOTS`, `CB_DUMP`, `CB_SAVE`, `CB_LOAD`) |
@@ -25,6 +26,6 @@ Attract cycle seen on a cold boot with no input: story crawl, title, two-player 
 
 ## Notes
 
-- Forcing the level-cleared flag (`$80040` bit 4) by poke hangs at the next stage card; start the level you want with `startlevel.lua` instead.
+- Forcing the level-cleared flag (`$80040` bit 4) by poke reaches the next stage only if the bit is cleared again about 400 frames later (the interlude `$183c` loops while it is set; my first test left it set and hung at the stage card). `startlevel.lua` is the cleaner way to a given level.
 - `tools/rdis.py` does not follow the longword state tables inside the type handlers; scan the linear listing (`tools/disassemble.py --rom <img> --base 0 --all 0 2d000`) before claiming a writer or caller.
 - Input names for `lua/lib.lua`: ports `:P1_P2` (`P1 Up`, `P1 Button 1`, `1 Player Start`, ...), `:COINS` (`Coin 1`); levels are read once per frame, hold several frames.

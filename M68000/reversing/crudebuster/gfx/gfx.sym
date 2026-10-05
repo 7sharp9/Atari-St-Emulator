@@ -1,0 +1,66 @@
+# Crude Buster (68000 program ROM, cbuster_main.bin) graphics routines: addr<TAB>name<TAB>role from the routine body
+# Names are from the code read (and, where marked [live], from the writer census / emitter / palette gates in README.md).
+# RAM: shadow video registers $80420..$8044c, camera counters $80406 (Y) / $8040a (X), mailboxes $80008 $8000a $8000c $8000e.
+000b1e	vbl_irq4_handler	frame tick; $810c shadow to hardware, palette mailboxes, inputs, ack $bc006, waits for vblank end
+000ba2	sprite_kick	if sprite RAM ready ($80004 bit0) write 1 to $b4000 (MAME: nopw) and clear the flag
+000bbe	wait_frame_sync	set $80000 bit 7, spin until the VBL handler clears it; latches input bytes into the player records
+000cc2	clear_video_ram	clears chip1 pf2, chip1 pf1, chip0 pf2, sprite RAM, chip0 pf1 ($d68 $d54 $d40 $cd8 $cec)
+000cd8	clear_sprite_ram	zero $b0000-$b07ff
+000cec	clear_pf_c0_pf1	zero $a0000-$a0fff (text/HUD layer)
+000d7c	clear_palette_ram	zero $b8000 and $b9000 halves
+000da2	build_sprite_ram	copy the 7 sprite lists (table $e00, $83800 first ... $82000 last) to $b0000, pad to 256 entries with y=$100 [live]
+000e00	sprite_list_table_desc	7 pointers $83800 $83400 $83000 $82c00 $82800 $82400 $82000 (copy order)
+001ab2	write_bcd_number	BCD digits to 8x8 tiles with leading-zero blanking (table $1b4a: attr, dest, source, count)
+001c8a	write_tile_string	byte-coded tile strings to chip0 pf1 (table $1cce; $fffe new run, $ffff end)
+0028fa	write_glyph_message	2x2-tile big letters (table $2962, 80 messages), glyph g writes g g+1 (col right) and g+2 g+3 (col left) [live pf RAM]
+003c68	draw_two_digit_counter	two BCD nibbles of $80042/$80043 as 2-tile digits at $a009e..$a00a2
+003d66	draw_player_energy_bars	energy bytes $80113 / $80193 to tile bars at $a0106 / $a013a
+003e84	draw_player_face_icons	portrait glyph messages 23-30 from the energy thresholds
+003f06	draw_boss_energy_bar	byte $8005c to a tile bar at $a0e1e
+0070c2	palette_request_wait	store mailboxes A/B, yield frames until the VBL handler has consumed both
+0070f0	palette_mailbox_a	$80008 nibbles select ROM sets for pens 000/200/300/400 blocks (tables $73da/$7456 $73e2/$745e $7402/$747e $7412/$748e); 0 keep, f clear [live]
+007324	palette_mailbox_b	$8000a selects the sprite palette set (table $73be/$743a, 2 x 512 B to pens 100 and 500); $ff clears [live]
+0074b6	palette_cycle_mailbox_c	$8000c: 8-long colour cycling of one 16-colour palette, frame = ($8004a >> 2) & mask (table $74fc)
+007526	palette_blink_mailbox_d	$8000e: pairs of single-entry pokes selected by a bit of $8004b (table $757c)
+0075de	clear_palette_block	zero 256 entries at pens D7/2 in both halves
+00706e	palette_level_init_a	mailbox A value for the level from word table $708c
+007098	palette_level_init_b	mailbox B value for the level from word table $70b6
+008038	init_video_shadow	initial control registers (also written to hardware) and zeroed scroll shadows; $b5000 = $90 or $10 by DIP flip bit
+00810c	apply_shadow_to_hw	each logic frame: $80404 to $bc000 (sprite buffer trigger), scroll shadows to $b5002-8 / $b6002-8, $8044a to $b600c [live: all control writes]
+008172	copy_tile_column16	16 rows of one column from a 16x16-word block (stride $20) to tilemap RAM (stride $40)
+008190	copy_tile_column10	same, 10 rows (level 1 water layer)
+0081ae	copy_tile_block16	copy a 16x16-word block to tilemap RAM at A1 (row stride $40)
+0081c4	level_graphics_init	reset camera counters, per-level setup via table $8246, then $85fc $8e18 $984e $a090
+00825e	level0_gfx_setup	
+0082a8	level1_gfx_setup	static blocks $4d200 / $4e000, chip1 rowscroll mode, $bc004 code f1 (expect $36)
+0083b8	level2_gfx_setup	$bc004 code 80 (expect $2e)
+0083f8	level3_gfx_setup	snow: chip1 pf1 blocks $4c600, chip1 column scroll, $bc004 code 40 (expect $1e)
+0084d6	level4_gfx_setup	$bc004 code c0 (expect $3e)
+008516	level5_gfx_setup	static blocks $4fe00-$51c00, $bc004 code ff (expect $76)
+0085fc	fill_pf_c0_pf1_blank	fill chip0 pf1 with tile $f164
+008624	scroll_in_sequence	interlude / title slide of two pages using table $8758 and shadow $80420
+0087f0	fill_playfield_page	fill a 32x32 page with D0
+00886c	level_scroll_update	room lookup ($8876) and layer-A column pump ($8bea)
+008876	room_scroll_lock	room map word [row][col] ($8908) to scroll-lock flags $80400-$80402
+008a88	scroll_direction_step	applies $80402 bits: camera counters and chip0 pf2 shadow ($8b32 $8b6a $8ba2)
+008bea	layer_a_column_pump	every 16 px of camera X: next column ($8d26), every 16 columns next block ($8c24)
+008c24	layer_a_select_blocks	screen table $8c94 -> top/bottom block addresses ($41000 + $200 * i)
+008d26	layer_a_stream_column	column of block to chip0 pf2 ring column ($8048a)
+008e18	layer_a_init	load first two screens of layer A [live]
+008f14	level_event_dispatch	per-screen event function (tables $8f52 / $8ff2)
+00984e	layer_b_init	chip1 pf1 first block from table $98fe, base $4ba00
+009996	level_effects	per-level layer C streaming, water rowscroll ($9a3e -> $ae0a0), parallax ($9b40 $9b76 $9bae)
+009a3e	water_rowscroll	32 accumulating longs ($804b4, steps $9a6e) to rowscroll RAM $ae0a0
+009cb0	layer_c_select_blocks	screen table $9d20 -> blocks $4da00 + $200 * i
+00a090	layer_c_init	load first two screens of layer C
+00efc0	emit_parts_plain	actor parts (A5) to sprite list D7 ($f068 table), position from object A6 and the camera [live 114571 entries]
+00f068	sprite_list_table_asc	7 pointers $82000 .. $83800 indexed by D7
+00f084	emit_parts_flip_obj7	as above, mirrored when obj+7 == 1 [live 34385]
+00f150	emit_parts_flip_obj4n	mirrored when obj+4 != 1 [live 65244]
+00f21c	emit_parts_flip_obj4	mirrored when obj+4 == 1 [live 1715]
+00f388	spawn_script_pool_a	level script $6c000 + 4 * level, trigger on camera counters, spawns into the 16-record pool
+00f438	spawn_script_pool_b	script $6d000 + 4 * level into the 32-record pool
+010254	actor_dispatcher	three pools (16 @ table $10358 / handlers $10418, 32 @ $10398 / $10558, 8 @ $106a8 / $106c8)
+022540	draw_actor	animation database $30000: type obj+2, state obj+3, frame obj+20 -> parts A5, list D7 = obj+7, emitter $f150, then $22612
+022612	advance_actor_animation	tick obj+18 / ticks obj+19, frame obj+20 / last obj+21, end flag obj+1 bit 7
+022664	move_actor	pos.l (+8, +12) += vel.l (+22, +26)
