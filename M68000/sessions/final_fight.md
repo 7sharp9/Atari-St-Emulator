@@ -11,6 +11,7 @@ Updated 2026-10-06 by the session that ended at commit `4ab66ca` (plus the hando
 - Working data: `M68000/scratchpad/finalfight/` (gitignored, indexed in `scratchpad/ANCHORS.md`): `ff_main.bin`, `ff_z80.bin`, `src/` (MAME driver sources), the old states `ff_gameplay`, `ff_enemies`, `ff_kinds123`;
   the whole-game states **`stage/run/sta/ffightuc/sb_s2a2` (stage 2 area 2 start), `sb_s3`, `sb_s7`, `sb_s4`, `sb_s5`, `sb_s8`** (plus `sb_boss`, `sb_s1`, `sb_s2`, `sb_s6`), logs and RAM dumps in `stage/out5/`, `stage/out6/` (the ending);
   `gfx/dump/` (34 MB, 107 gfx RAM dumps) and `gfx/out/` (sheets, 70 character sheets, pristine strips; regenerate with `py/gfx/README.md`).
+- Tooling work dirs (gitignored): `scratchpad/finalfight/gdb/` (`py/gdbstub/`: run, out, `pyext/` = Ghidra's offline wheels, `ghproj/`), `scratchpad/fsi/dll/` (copy of `bin/` for `tools/fsi_drive.fsx`), `scratchpad/mame_st/` (`tools/mame_st/`). The agents' raw reports and scripts of pass 8 are under `scratchpad/fsx_spike/` (not needed).
 - ROMs: `~/mame-roms/{ffight,ffightuc}.zip` (`$FF_ROMS` overrides). Not committed.
 - Start from: `sb_s4` (stage 4 start, frame 87,000; the bot loses lives to TIME there) or `sb_s5` (boss kind 5 spawns at frame 277,309) for item 1. Copy the `.sta` into the MAME run directory's `sta/ffightuc/`; load **without `-debug`**.
 - Uncommitted work left behind: none of this workstream. `sessions/README.md` carries another session's line-rewrap and `reversing/crudebuster/` is another session's; do not stage them.
@@ -64,6 +65,9 @@ Pass 8 (tooling; nothing about the game changed, every item below is gated):
 7. **Graphics remainder** (`graphics.md`, "Not done"): gameplay dumps of stages 4 and 6 and stage 1 areas 0, 2, 3 (from `sb_s4`, `sb_s6`, `sb_s1` with `py/gfx/gfxdump.lua`) to validate and colour their strips; player scripts reached through pointer tables;
    held weapons and effects pools; 28 character sheets use a fallback palette. Then **read the Z80 program**, then Ghouls'n Ghosts only after 1 to 3.
 8. **Hit detection remainder** (`frame.md` "Hit resolution"): a live count that one multi-frame blow lands once (write tap on the victim's `+22` and `$7aa8` during a jab on a dummy); the special's +-24 lane live (state with Cody in sub `$10`, read `21250(A5)+6..12`); the attacker-list variants for tags 4 and `$a` (`$3688`, `$35ec`) and the prop lane table `$34c4` entry by entry; a gate for the box-to-screen mapping (x - camera, 240 - y): compare the box edges of a standing fighter with the bounds of his sprite rows from `py/gfx/ffframes.py`.
+
+9. **Tooling leftovers** (all optional, none unblocks game findings): the Ghidra GUI attach (`py/gdbstub/README.md` has the procedure; headless chain proven); `-frameskip` in the other wrappers (`ffrun.sh`, `py/placement/run.sh`, `py/transitions/run.sh`: pass it through `FF_MAMEARGS` and rerun that wrapper's gate);
+   the `callcap` pattern through the gdbstub; a typed `lib.lua` with a tap registry only if a typo costs time. The three F# model gaps MAME showed (HBL, FDC, IKBD) are in `DEVELOPING.md`, not this workstream.
 
 ## Known traps
 
