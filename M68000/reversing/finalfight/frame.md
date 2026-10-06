@@ -185,8 +185,8 @@ HUD) and `$a144` (respawn). Live, with lives poked to 5 and health to 0: state b
 
 `$32c4` rebuilds a record's boxes each frame (called from `$8cc4` for the players and `$3382` for the other
 records; 11162 calls in 1300 frames [L]) [R]. From the record: attack box = `A0 + (byte45 & $7f) * 16 + word(A0)`
-with `A0 = 56(A6)`, none if `+45` is 0 or if bit 7 is set while the record is airborne (`14 != 10`); hurt box =
-`A0 + byte44 * 8`, none if `+97` is set. A box entry is dx, dy, half-width, half-height (words) and, for an
+with `A0 = 56(A6)` and the word added sign-extended (`adda.w`; Poison's descriptors need it), none if `+45` is 0 or if bit 7 is set while the record is airborne (`14 != 10`); hurt box =
+`A0 + byte44 * 8`, none if `+44` is 0 or `+97` is set. A box entry is dx, dy, half-width, half-height (words) and, for an
 attack, `+8` the damage-table index, `+11` bit 7 (hard hit) and `+12` a sound id. The centre is `y + dy` and
 `x + dx`, mirrored (`x - dx`) when `+46` is non-zero. `$ff85dc` (`+116` of Cody) is therefore the attack-box centre
 x, which is why it tracked x + 12 while walking and moved in the kick animation.
@@ -195,15 +195,13 @@ Live (`py/boxcheck.py`, frames 2201-3300): re-deriving `112`, `120` from `56`, `
 matches 1100 of 1100 frames for Cody and Bred, `124`/`126` 545 of 545 (Cody) and 1100 of 1100 (Bred), `116`/`118`
 118 of 118 for Bred. Cody has no attack box in that run, so his offence side is derived only; two separate runs
 agree on the field writers (`$32dc`/`$32f2` write 112, `$3310`/`$3320` write 120, `$3344`/`$336a` write 116,
-`$32fe` 118, `$3356`/`$337c` 124, `$332c` 126).
+`$32fe` 118, `$3356`/`$337c` 124, `$332c` 126). The same rule re-derived over the live player, fighter and boss records of 127 saved work-RAM dumps (state byte 2): attack boxes 51 of 52, hurt boxes 212 of 213, and 216 of 216 and 55 of 55 absent boxes; the one miss is a hand-spawned kind 7 boss on its first frame, before its boxes are built (`infographic/py/boxes_gate.py` [S]). `infographic/finalfight_hit_detection.html` draws these boxes over two MAME frames and the blow tables of the three characters.
 
 ## Hit resolution
 
-Candidates are queued first, then tested. A record is added to a player's victim list (`21250(A5)`) or attacker
-list (`21306(A5)`; player 2: `21354` and `21410`) when the attacker has `+45` set, the candidate has `+44` set,
-the candidate's x is within 128 of the player, and its ground line `14(A6)` is inside a depth lane around the
-player's: `[-12, +9]`, or `[-24, +24]` when the player is airborne (`139(A6)`, set by `$8d70`) (`$33c4`,
-`$33f2`, `$3578`) [R]. Only tags 2, 4 and `$a` are eligible (tables `$3410`, `$3596`). `$6f6c` walks the lists
+Candidates are queued first, then tested, and the whole queue hangs off the two players. Once per frame `$8d70` (from `$8c6e`) writes each player's candidate rectangle into words 6, 8, 10, 12 of the victim-list descriptor (`21250(A5)`; player 2 `21354(A5)`): lane low `-12`, lane high `+9`, x offset `$80`, x width `$100`, or `-24`/`+24` while the player's sub-state `3(A6)` is `$10` (the special; `$8d1e` sets `139(A6)` for exactly that sub-state, so a jump attack does not widen the lane), and all zero while the player's state byte `+2` is not 2 or `+22` is non-zero. The rectangle equals that rule for 115 of 115 active player records in 127 saved dumps and is zero for the 26 of 26 others (`infographic/py/lanes_gate.py` [S]); the `+-24` case is [R] only. Every other record calls `$3382` after rebuilding its boxes, and `$33c4` offers it to each player: to the victim list (`21250(A5)`) when the player has an attack box (`+45`) and the candidate a hurt box (`+44` set, `+97` clear), to the attacker list (`21306(A5)`; player 2 `21354` and `21410`) when the candidate has an attack box and the player a hurt box (`$33c4`, `$33f2`, `$3578`) [R]. A victim candidate of tag 2 or 4 (`$3428`) must satisfy `(x - player x + $80) <= $100` unsigned, that is within 128 px, and its ground line gap `14(A6) - 14(player)` must lie in the rectangle's lane (`>= 0` up to `+9`, negative down to `-12`); a tag `$a` prop (`$3466`) takes its lane limits from the per-kind word table at `$34c4` (two pairs per kind, 0 to 48 px, the second pair while `139(player)` is set) instead; other tags return at once. The attacker list uses the fixed `+-128` and `[-12, +9]` for tag 2 (`$35ae`); the tag 4 and tag `$a` variants (`$3688`, `$35ec`) were not read. The tables `$3410`, `$3596` admit only tags 2, 4 and `$a`. A fighter never appears as a victim of another fighter's box: the lists exist only for the two players, and fighters hurt each other only through props, thrown bodies and the bottle and fire (`$639e`, `$6c7a`) [R].
+
+**One blow lands once** (`$3386-$33a0`, `$8cc8-$8cdc`): a victim handler leaves the attacker in `+60` and the blow id in `+22`. While `+22` is non-zero and the attacker (`+60`) is in use with an attack box (`+45`), a non-player record returns from `$3382` before it is offered to any list, and a player's rectangle is zeroed (`$8d84`); once the attacker's attack box ends the next pass clears `+22`. Of 17 records with `+22` set in 127 saved dumps, 13 had the attacker's box still on and 4 had it already off, consistent with the clear running on the next pass [S] [I]; a live count of one hit per multi-frame blow is not made. `$6f6c` walks the lists
 (up to 21 entries, reset at `$6fde`) and calls `$708e` (player attacks, A1 player, A3 victim) or `$7564` (enemy
 attacks), which test `45(A1)` and then `$7932`.
 
