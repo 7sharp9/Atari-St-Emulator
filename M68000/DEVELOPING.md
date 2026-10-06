@@ -550,6 +550,33 @@ the hardware registers (Impossamole, most demos) never touch `$44E`, so a `$44E`
 capture would dump a stale/black buffer. TOS keeps the two in sync, so ROM-driven
 frames are unaffected.
 
+## F# Interactive: typed scripts against the core (`tools/fsi_drive.fsx`)
+
+`Atari.AtartSt` is a public class, so an `.fsx` can load a snapshot, step, read and write memory and registers with types and no rebuild
+(`Program.fs` already has an `#if INTERACTIVE` block for it). `tools/fsi_prep.sh` copies `bin/Debug/net8.0` to `scratchpad/fsi/dll`; the script references that copy, never `bin/`, so
+fsi cannot hold `M68000.dll` and fail another session's build at the copy step, and a run stays pinned to one build (re-run after each rebuild). From `M68000/`:
+
+```
+sh tools/fsi_prep.sh
+DOTNET_gcServer=0 dotnet fsi tools/fsi_drive.fsx --snap <snap> --steps <N> [--disk <.st>] [--out <snap>] [--watch <lo>[-<hi>]] [--poke <addr>=<byte>]
+```
+
+Checked on Cadaver (`gameplay_empire.snap` with the one-disk Empire image, 2,000,000 steps): the end snapshot is byte-identical to the REPL's `resume <snap> repl --disk-a <st>` / `s 2000000` / `snap <out>` (five
+files over two REPL and three fsi runs, all 1,048,935 bytes), and `--watch 189ca-189cd` over 300,000 steps prints the REPL's 25 `WATCH` lines (the same steps, writer PC `$01529c`, values `$1e` down to `$06`).
+A typed poke of the VBL second sub-counter to 1 made the game's own interrupt carry into the seconds byte, as expected.
+
+- **Set `DOTNET_gcServer=0`.** `fsi.runtimeconfig.json` of both installed SDKs (8.0.402 and 10.0.303) sets `System.GC.Server: true`; the core allocates per step, and fsi measured 344 to 352 ms per million steps
+  against about 240 for `dotnet exec`, and 207 to 257 with workstation GC. Tiered-JIT switches did not help. Noise on a loaded machine is about +-20%: use interleaved runs.
+- Startup is about 1.7 s for a no-op script (fsi itself, not the core: construct plus `LoadState` is 15 ms). Use fsi for scripts with logic, not for one `s <n>` the REPL does in a second.
+- The core prints a line per instruction unless `Trace.enabled <- false` (`ATARI_NOTRACE`'s switch) and `Console.SetOut(IO.TextWriter.Null)`; its `--- state loaded/saved ---` lines go to stderr and cannot be silenced.
+- **No public write callback.** The options are `MMU.SetWatch lo hi` (what the REPL's `watch` uses; its `WATCH` lines go to stderr, capture them as `fsi_drive.fsx` does; the odd-address blind spot of `watch` applies)
+  or polling reads after each `Step()`: a per-step hook of four byte reads cost about 1.1 s per million steps, sees value changes only (not a same-value rewrite) and attributes a change to the PC before the
+  step (the `WATCH` label is the same; its step number is post-increment). What a hook gives that `watch` does not is arbitrary typed state at the hit (registers, the stack, other memory).
+- A resume that writes an end snapshot is only possible through the REPL or `SaveState` here: the raw `<N> resume <snap>` argv runs and exits without saving. `run.ps1`'s `rrepl` and `snap` are aliases, not argv.
+- The ROM path is cwd-relative (`AtartSt("TOS100UK.IMG")` from `M68000/`); the disk image is not in a snapshot, so pass the same `--disk` the snapshot was taken with.
+- Not checked: a `Release` build (the `Debug` one is already built with `Optimize=true`, see "Build and run"), a second game's snapshot, a hook on a field that is rewritten with the same value. The core is the Atari ST only: the arcade games (Final Fight, Crude Buster) run under MAME and
+  are scripted in Lua (`reversing/finalfight/README.md`, "Harness facts").
+
 ## Other tools
 
 Check this list before writing a one-off helper; each of these has been rewritten ad hoc at
@@ -557,6 +584,7 @@ least once by a session that did not know it existed.
 
 | tool | use |
 |---|---|
+| `tools/fsi_drive.fsx`, `tools/fsi_prep.sh` | F# Interactive driver: load a snapshot, run N steps, optionally `--watch` a range (the REPL's WATCH lines) or `--poke` a byte, save an end snapshot; a template for typed per-step scripts (section "F# Interactive" above; needs `DOTNET_gcServer=0`) |
 | `tools/snap_render.py snap png` | the live screen of a snapshot as a PNG (base, rez and palette from the shifter registers, so double-buffered games come out right) |
 | `tools/sprite_array_export.py` | game-agnostic struct-driven sprite/object-array batch export (`--base`/`--array-ptr-field` + `--stride --count --w-off --h-off --ptr-off`) or fixed-stride sheet export (`--sequence BASE STRIDE COUNT W H`) or a one-off region (`--region ADDR W H`); st-interleaved 4bpp decode, `--palette` for a live 16-word `$0RGB` table (cadaver `graphics.md` §3/§5) |
 | `tools/disassemble.py` | 68000 disassembler; `--snap` for a loaded program, `--rom img --base <hex>` for a relocated image, `--jumptable` |
