@@ -1,11 +1,11 @@
 # Final Fight (Capcom CPS1 arcade, MAME): handoff
 
-Updated 2026-10-06 by the session that ended at commit `aaa0edf` (plus the handoff commit).
+Updated 2026-10-06 by the session that ended at commit `4ab66ca` (plus the handoff commit).
 
 ## Resume point
 
-- Last commit of this workstream: `aaa0edf` finalfight: hit detection infographic (`infographic/`), lane rule and once-per-blow rule in `frame.md`.
-  Before it: `c279b1c` (graphics decoded and proven against MAME), `39ef56c` (the ending played by the bot, `ending.png`), `758d175` (the bot plays stages 2 to 5, kind 3 destination, stage 2 curb), `d1d499b` (previous handoff).
+- Last commits of this workstream: `4ab66ca` (frameskip in `py/stage/run.sh`, `py/gdbstub/`), `aa7185e` (faster Lua harness, `README.md` "Lua cost"); the tooling session (pass 8) changed no game finding. Shared-file commits of that session: `0e8353d` (`tools/fsi_drive.fsx`), `fa29b0a` (`tools/mame_st/`, `DEVELOPING.md`).
+  Before them: `aaa0edf` hit detection infographic (`infographic/`), lane rule and once-per-blow rule in `frame.md`; `c279b1c` (graphics decoded and proven against MAME), `39ef56c` (the ending played by the bot, `ending.png`), `758d175` (the bot plays stages 2 to 5, kind 3 destination, stage 2 curb), `d1d499b` (previous handoff).
 - Workspace: `M68000/reversing/finalfight/` (`README.md` with the script index; docs `hardware.md`, `kernel.md`, `frame.md`, `ai.md`, `player.md`, `boss.md`, `placement.md`, `transitions.md`, `twoplayer.md`,
   **`graphics.md`**). The emulator and oracle is **MAME 0.289** (`/usr/local/bin/mame`), not the F# core.
 - Working data: `M68000/scratchpad/finalfight/` (gitignored, indexed in `scratchpad/ANCHORS.md`): `ff_main.bin`, `ff_z80.bin`, `src/` (MAME driver sources), the old states `ff_gameplay`, `ff_enemies`, `ff_kinds123`;
@@ -39,6 +39,15 @@ Pass 7 (hit detection, `infographic/finalfight_hit_detection.html`, published as
 - **The candidate rectangle**: lane -12 to +9, x +-128, written per player by `$8d70`, zero unless the player's state is 2 and `+22` is 0: 115 of 115 active, 26 of 26 inactive (`py/lanes_gate.py`). `139` is the special (sub-state `$10`), not "airborne": corrects the old `frame.md` text. **One blow lands once** through `+22`/`+60` (`$3386`, `$8cc8`, `frame.md` "Hit resolution"): [R] and 13 of 17 saved records, no live count.
 - Two landing frames (`st_bb_4800_1`, `st_a_boss_mid_1`): the victim's `+60`, `+22` and hit-stop name the blow and the game's overlap test on the drawn boxes passes in x and y (`py/frames.py`). Box to screen is x - camera, 240 - y (from `$16910`), no pixel gate.
 
+Pass 8 (tooling; nothing about the game changed, every item below is gated):
+
+- **Lua harness faster, byte-identical** (`README.md` "Lua cost"): `lib.lua` `M.ram`/`M.region` use `read_range` (about 100x per dump; 65,536 and 196,608 of those bytes equal); `stagebot.lua`/`ffdrive.lua` cache the memory methods (34.6 s to 31.5 s per 20,000 frames of `sb_s4`;
+  MAME is about 79% of a bot run). The default-option gates `py/stage/run.sh boss`/`stage1` reproduce `a0cb6b52`, `6389dc8c`, `359a7c73`.
+- **`-frameskip 10 -joystickprovider none` in `py/stage/run.sh`** (`FFS_FRAMESKIP=0` to turn off): about 12% faster, RAM, gfx RAM and logs identical (5 of 5 pairs; the gate above reruns with it). Other wrappers (`ffrun.sh`, `py/placement/run.sh`, `py/transitions/run.sh`, ...) do not have it yet: `FF_MAMEARGS` can carry it.
+- **`py/gdbstub/`**: MAME's gdbstub for gdb, a Python RSP client and Ghidra's Debugger, `gate.sh` 600 of 600 stops and 65,536 of 65,536 RAM bytes at six hit counts, `ghidra/chain.sh` 65,536 of 65,536 through a Ghidra trace. The Ghidra GUI is not run (procedure in its README).
+- Tried, no gain, do not repeat: GC and JIT settings for the F# core (`DEVELOPING.md` "Performance"), TypeScriptToLua over the Lua scripts (compiles and runs in MAME and catches method typos and bad argument types, not tap garbage collection, float addresses or wrong offsets; only worth it for
+  `lib.lua` with a tap registry), several windows chained in one MAME process (a dependent `boss` then `stage1` chain differs from the first frame after the load).
+
 ## Open, in priority order
 
 1. **Bosses of stages 1 to 5, natural, against `boss.md` and `ai.md`** (pool 4 kinds 1 to 5; kinds 2 to 5 killed by the bot, logs only). Take a state one frame before each spawn (`FF_BOT_STOPF=<spawn-1> FF_SAVE=...` from `sb_s2a2` (56,841), `sb_s3`
@@ -57,6 +66,10 @@ Pass 7 (hit detection, `infographic/finalfight_hit_detection.html`, published as
 8. **Hit detection remainder** (`frame.md` "Hit resolution"): a live count that one multi-frame blow lands once (write tap on the victim's `+22` and `$7aa8` during a jab on a dummy); the special's +-24 lane live (state with Cody in sub `$10`, read `21250(A5)+6..12`); the attacker-list variants for tags 4 and `$a` (`$3688`, `$35ec`) and the prop lane table `$34c4` entry by entry; a gate for the box-to-screen mapping (x - camera, 240 - y): compare the box edges of a standing fighter with the bounds of his sprite rows from `py/gfx/ffframes.py`.
 
 ## Known traps
+
+- **`-frameskip` makes `screen:snapshot` stale** on skipped frames (35 of 60 PNGs differed): `py/stage/run.sh` skips by default, so a bot run's stop-frame PNG is unreliable; use `FFS_FRAMESKIP=0`, or set `manager.machine.video.frameskip = 0` a frame before a snapshot. RAM, gfx RAM and logs are unaffected.
+- **Never chain dependent windows in one MAME process** (a state saved by one window loaded by the next): `boss` then `stage1` in one process differs from the first frame after the load; independent windows are identical. Use one process per window.
+- The gdbstub needs `-debug` and serves one client per MAME process; a state loaded under `-debug` resumes on another trajectory, so take stub evidence from cold boots (`py/gdbstub/README.md`).
 
 - A web-fetch summary of a source file is a paraphrase from a small model: `curl` the raw file (`scratchpad/finalfight/src/`). A ROM zip's file name does not say which MAME set it is: find the set by CRC.
 - MAME on macOS grabs focus even with `-video none` unless `SDL_VIDEODRIVER=dummy`; all wrappers export it. Never launch `mame` directly from a Bash call.
