@@ -5,6 +5,8 @@
 #   stage1   from sb_boss: bot through DAMND and the rest of area 2 to stage byte 1, saves state sb_s1               (about 2000 frames)
 #   custom   FF_LOAD/FF_BOT_* taken from the environment as they are
 # Environment: FFS_RUN (default scratchpad/finalfight/stage/run), FFS_OUT (default scratchpad/finalfight/stage/out), FF_BOT_GOD=0 turns the health poke off.
+# FFS_FRAMESKIP (default 10): MAME skips drawing 9 frames in 10, about 12% faster with byte-identical RAM, gfx RAM and logs (README.md "Lua cost"); a PNG taken at a stop frame can be a stale
+# frame, so set FFS_FRAMESKIP=0 for a run whose screenshots matter. -joystickprovider none saves 0.5 s of startup.
 here=$(cd "$(dirname "$0")" && pwd)
 ff=$(cd "$here/../.." && pwd)
 root=$(cd "$ff/../.." && pwd)
@@ -22,5 +24,5 @@ case "$step" in
 esac
 cd "$run" || exit 1
 exec mame ffightuc -rompath "${FF_ROMS:-$HOME/mame-roms}" -cfg_directory "$run/cfg" -nvram_directory "$run/nvram" \
-  -state_directory "$run/sta" -snapshot_directory "$run/snap" -video none -sound none -nothrottle ${FF_MAMEARGS} \
+  -state_directory "$run/sta" -snapshot_directory "$run/snap" -video none -sound none -nothrottle -frameskip "${FFS_FRAMESKIP:-10}" -joystickprovider none ${FF_MAMEARGS} \
   -seconds_to_run "${FFS_SECONDS:-6000}" -autoboot_script "$ff/lua/stagebot.lua"

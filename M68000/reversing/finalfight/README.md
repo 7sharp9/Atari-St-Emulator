@@ -96,6 +96,13 @@ itself differs by one byte of device state between boots: compare RAM, not the f
   0.85 us for `m:read_u8(a)` (the method lookup on the userdata dominates). Whole-run effect on the bot of caching, no per-frame tables and a cheaper `ffdrive.lua` trace hash: 34.6 s to 31.5 s
   (1.10x, 3 interleaved runs each); work RAM, gfx RAM, `bot.log` and `drive_trace.txt` are byte-identical to the unoptimised files, and the default-option gates (`py/stage/run.sh boss`, `stage1`) still give
   the hashes of `py/stage/README.md`. MAME silently accepts bad arguments (`read_u16("abc")` returns 255, a float address is accepted): a script typo reads wrong data rather than failing.
+- **MAME flags** (20,000 frames of `sb_s4`, interleaved, 5 pairs): `-frameskip 10` skips drawing, 28.8 s against 32.7 s median (won 5 of 5 pairs, about 12%; under heavy host load the gap shrank to 5%), final RAM, gfx RAM, `bot.log` and `drive_trace.txt`
+  `cmp`-identical; `py/stage/run.sh` passes it (`FFS_FRAMESKIP`, 0 turns it off) and `boss`/`stage1` still give the hashes of `py/stage/README.md` (13.9 s to 11.5 s and 7.8 s to 6.5 s). A `screen:snapshot` on a skipped frame is stale or blank (35 of 60 PNGs
+  differed): a script that needs pixels sets `manager.machine.video.frameskip = 0` a frame before the snapshot, or runs with `FFS_FRAMESKIP=0`. `-autoframeskip` is noise. Startup is 2.9 s of process launch (`mame -version`) of about 4.1 s, state load is free;
+  only `-joystickprovider none` helps (0.5 s), `-skip_gameinfo`, `-nosleep`, `-numprocessors`, ROM-directory form do nothing. **Do not chain dependent windows in one MAME process to save the startup**: three independent windows saved 31% with identical RAM, but a
+  `boss` then `stage1` chain in one process differs from the first frame after the load (10 bytes at frame 8299, 2 bytes of final work RAM, 184 of gfx RAM), reproducibly; the cause is bot-side (held input levels or the pre-load callback), not the reload.
+- **Live debugging**: `py/gdbstub/` (MAME's gdbstub for gdb, a Python client and Ghidra's Debugger, with a gate).
+- Runtime settings of the Atari core and MAME's other flags gave nothing: see `DEVELOPING.md` "Performance".
 
 ## callcap
 
