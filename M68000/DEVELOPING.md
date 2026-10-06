@@ -158,6 +158,11 @@ fault handler and clones for `Preview` and for callers of `st.Cpu`). Tried and r
   too large for the JIT to enregister (an inference, not checked).
 - GC and tiering knobs (`gcConcurrent`, `GCgen0size`, `TieredPGO`, `TieredCompilation`, W^X, .NET
   10): none beat the default.
+  Re-measured on a Cadaver and a Populous snapshot (`s 10000000` through `dotnet exec`, 10 interleaved rounds, end snapshots `cmp`-identical in all 228 runs): `gcConcurrent=0`, `GCgen0size` 32M/64M/256M,
+  `TieredCompilation=0`, `TC_QuickJitForLoops=0`, `TieredPGO=0`, `OSR_HitLimit=1` and two combinations all landed within about +-3% of the default, none won every pair, and 256M, `TieredPGO=0` and
+  `TieredCompilation=0` leaned slower. `GCgen0size` is honoured (gen-0 collections fell from 66 to 8 on Cadaver) without any gain, so the cost is the allocation helper, not collection. Allocation is 287 B
+  per step on Cadaver and 385 on Populous, with no zero-allocation step: a branch is exactly one 104 B `Cpu` copy, MOVEQ and shifts two, MOVE 400 to 600 B (`ResolveEa` returns a tuple with a boxed `EaResolved` and a
+  closure for `(An)+`/`-(An)`, `68k.fs:1049-1075`). `AtartSt.Step`'s `MachineState` is a struct and allocates nothing.
 - A 64K-entry opcode dispatch table: the sequential pattern chain costs about 0.7 ns per failed
   pattern, so the estimate is 1-2%; not worth the aliasing-order risk.
 
@@ -577,6 +582,37 @@ A typed poke of the VBL second sub-counter to 1 made the game's own interrupt ca
 - Not checked: a `Release` build (the `Debug` one is already built with `Optimize=true`, see "Build and run"), a second game's snapshot, a hook on a field that is rewritten with the same value. The core is the Atari ST only: the arcade games (Final Fight, Crude Buster) run under MAME and
   are scripted in Lua (`reversing/finalfight/README.md`, "Harness facts").
 
+## MAME as a second oracle for the ST core (`tools/mame_st/`)
+
+MAME 0.289's `st_uk` driver boots TOS 1.00 UK: `mame -listroms st_uk` wants `tos100uk.bin` (196,608 bytes, CRC `1a586c64`), which `TOS100UK.IMG` equals, plus the IKBD ROM (`keyboard.u1`). The zips are in `~/GitHub/mame/roms`
+(`MAMEST_ROMS` overrides), not `~/mame-roms`. It is a second opinion on device behaviour and interrupt flow, **not** a timing oracle (the F# core has no cycle counting) and it cannot load an F# snapshot (a transplant of RAM and CPU
+registers at the idle desktop cold-rebooted TOS within a frame; a working one would also need the MFP, shifter, YM, ACIA/IKBD and FDC registers). Real Hatari (`tools/hatari_trace.py`) remains the OS-trace oracle.
+
+```
+sh tools/mame_st/mamerun.sh $PWD/scratchpad/mame_st/out_b $PWD/tools/mame_st/boot.lua     # diskless boot, dumps RAM/screen/palette 300 frames after the desktop (about 33 s; frame 3246)
+printf 's 5999000\nsnap %s/scratchpad/mame_st/f6m.snap\nq\n' $PWD | ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll 1000 repl
+.venv/bin/python tools/mame_st/cmp_state.py scratchpad/mame_st/f6m.snap scratchpad/mame_st/out_b 3246
+sh tools/mame_st/mamerun.sh $PWD/scratchpad/mame_st/out_t $PWD/tools/mame_st/trace.lua    # every executed PC from reset (debugger `trace`, `noloop`, `curpc`; call `traceflush` before exit)
+.venv/bin/python tools/mame_st/cmp_trace.py <pc.trace> <ATARI_TRACE_EVENTS_ALL .evt> ...   # loop-reduced comparison, see its header
+```
+
+Idle desktop (F# at 6.0M steps, MAME at frame 3246): screen RAM 32,000 of 32,000 bytes (cursor included), palette 16 of 16 (`& $777`), `phystop`, `membot`, `memtop`, `_v_bas_ad`, `_drvbits` and the other OS variables equal,
+`$600-$7ff` 512 of 512, vectors 1,019 of 1,024, sysvars 505 of 512, all 1 MB 1,047,943 of 1,048,576 (reproduced from `tools/mame_st/`). The differences: the 621 RAM bytes sit in about 47 stack and AES clusters (different boot histories,
+saved SRs differ in the IPL byte), `_frclock`/`_hz_200` (timing), `_nflops` (MAME 1, F# 2), and `$0-$7` (MAME shows the ROM vectors there; **F# has no ROM shadow at 0**).
+Instruction trace from reset: the identical prefix is only 31 instructions (the Timer B calibration poll at `$fc0d06` loops 6,557 times in MAME and falls through in F#: the intended `TryFastForwardTbdrPoll`), then 216,462
+instructions match exactly to the end of MAME's 244,279-instruction trace; no CPU-semantics difference showed. A first-touch comparison to MAME frame 3100 aligns 10,852 of about 11,000 distinct PCs with 11 divergences.
+
+Three F# model gaps found (each from the MAME log or trace plus the F# source; none confirmed by an F# patch or a real program):
+
+1. **No HBL interrupt.** TOS's level-2 handler (`$fc061e`, vector `$68`) runs only in MAME and does `ori.w #$300,2(A7)`, so the first HBL at IPL 0 leaves the machine at IPL 3 (MAME logs IRQ 2 three times in 3,100 frames); `MMU.PendingInterruptLevel` returns only
+   0, 4 or 6. F# runs the desktop at SR `$2000` where MAME runs `$2300`. A program that reads SR's IPL or installs a `$68` handler can differ.
+2. **Coarse FDC.** MAME's WD1772 never raises INTRQ for a diskless Type I command, so TOS's `flop_cmd` loop (`$fc1bd4`-`$fc1bf2`) times out and retries and the desktop takes 7 times the emulated time (frame 2946 against about 5.4M F# steps);
+   F# has no per-command state machine, so its success path (`read_le_word`, `$fc15b4`-`$fc1610`) runs instead.
+3. **No keyboard power-up traffic.** MAME runs the HD6301 IKBD firmware, which answers TOS's init and fires one ACIA interrupt (`acia_isr`, `$fc281c`, about 59 instructions); F# never takes it in 7M steps.
+
+One divergence is unexplained: at `$fc03b6` (`move #$2300,SR`) MAME takes the pending Timer C interrupt at once and F# one instruction later (a step-clock effect, unverified). Gotchas: `-debugscript` does not run under `-debugger none` (use `machine.debugger:command(...)`),
+the `trace` action's `pc` is prefetch-advanced (use `curpc`), and a diskless MAME boot spends minutes in FDC timeouts, so use it for questions about one interrupt or device read, not whole-game runs.
+
 ## Other tools
 
 Check this list before writing a one-off helper; each of these has been rewritten ad hoc at
@@ -585,6 +621,8 @@ least once by a session that did not know it existed.
 | tool | use |
 |---|---|
 | `tools/fsi_drive.fsx`, `tools/fsi_prep.sh` | F# Interactive driver: load a snapshot, run N steps, optionally `--watch` a range (the REPL's WATCH lines) or `--poke` a byte, save an end snapshot; a template for typed per-step scripts (section "F# Interactive" above; needs `DOTNET_gcServer=0`) |
+| `tools/mame_st/` | MAME `st_uk` as a second oracle for the F# core: diskless boot dump and state compare, executed-PC trace and loop-reduced comparison (section "MAME as a second oracle" above) |
+| `reversing/finalfight/py/gdbstub/` | MAME's gdbstub for gdb, a Python RSP client and Ghidra's Debugger (headless), with a 600-stop gate against the Lua harness (its README) |
 | `tools/snap_render.py snap png` | the live screen of a snapshot as a PNG (base, rez and palette from the shifter registers, so double-buffered games come out right) |
 | `tools/sprite_array_export.py` | game-agnostic struct-driven sprite/object-array batch export (`--base`/`--array-ptr-field` + `--stride --count --w-off --h-off --ptr-off`) or fixed-stride sheet export (`--sequence BASE STRIDE COUNT W H`) or a one-off region (`--region ADDR W H`); st-interleaved 4bpp decode, `--palette` for a live 16-word `$0RGB` table (cadaver `graphics.md` §3/§5) |
 | `tools/disassemble.py` | 68000 disassembler; `--snap` for a loaded program, `--rom img --base <hex>` for a relocated image, `--jumptable` |
