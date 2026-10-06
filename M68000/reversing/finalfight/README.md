@@ -90,6 +90,12 @@ itself differs by one byte of device state between boots: compare RAM, not the f
 - Setting registers from a periodic callback while the CPU free-runs did not take (PC stayed in the
   idle loop, sentinel never reached). `callcap.lua` therefore stops the CPU at the VBL entry `$53e`
   once per frame, and sets the call up only after `warm` frames of that.
+- **Lua cost** (measured on 0.289, `sb_s4` frames 87,000 to 107,000; MAME itself is about 79% of a bot run's wall time, about 870 frames/s): `mem:read_range(lo, hi, 8)` returns the bytes in bus order and
+  equals a per-word `read_u16` loop (work RAM 65,536 of 65,536 bytes, gfx RAM 196,608 of 196,608, two smaller regions), about 100 times faster for a dump: `lib.lua` `M.ram`/`M.region` use it.
+  For many small reads it is the wrong tool (a 2,496-byte pool: 23 us against 33 us for 113 cached byte reads); there cache the method, `local ru8 = m.read_u8` then `ru8(m, a)`, 0.25 us a call against
+  0.85 us for `m:read_u8(a)` (the method lookup on the userdata dominates). Whole-run effect on the bot of caching, no per-frame tables and a cheaper `ffdrive.lua` trace hash: 34.6 s to 31.5 s
+  (1.10x, 3 interleaved runs each); work RAM, gfx RAM, `bot.log` and `drive_trace.txt` are byte-identical to the unoptimised files, and the default-option gates (`py/stage/run.sh boss`, `stage1`) still give
+  the hashes of `py/stage/README.md`. MAME silently accepts bad arguments (`read_u16("abc")` returns 255, a float address is accepted): a script typo reads wrong data rather than failing.
 
 ## callcap
 

@@ -62,16 +62,22 @@ local function census_dump(f)
   end
 end
 
+-- same FNV-1a value as before: the low 32 bits of (h ^ b) * P do not depend on the high bits, so the 32-bit mask is applied once at the end, and string.byte returns 8 bytes per call
 local function fnv(s)
   local h = 2166136261
-  for i = 1, #s, 4 do
-    local a, b, c, d = s:byte(i, i + 3)
-    h = ((h ~ a) * 16777619) & 0xffffffff
-    h = ((h ~ b) * 16777619) & 0xffffffff
-    h = ((h ~ c) * 16777619) & 0xffffffff
-    h = ((h ~ d) * 16777619) & 0xffffffff
+  local byte = string.byte
+  for i = 1, #s, 8 do
+    local a, b, c, d, e, f, g, k = byte(s, i, i + 7)
+    h = (h ~ a) * 16777619
+    h = (h ~ b) * 16777619
+    h = (h ~ c) * 16777619
+    h = (h ~ d) * 16777619
+    h = (h ~ e) * 16777619
+    h = (h ~ f) * 16777619
+    h = (h ~ g) * 16777619
+    h = (h ~ k) * 16777619
   end
-  return h
+  return h & 0xffffffff
 end
 
 local trace = io.open(string.format("%s/%s_trace.txt", out, tag), "w")
@@ -80,9 +86,16 @@ if os.getenv("FF_TRACE") == "1" then frames_bin = io.open(string.format("%s/tmp/
 local m = L.mem
 local loaded = false
 local saved = false
+local lf = os.getenv("FF_LOAD")
+local ru16 = m.read_u16
+local scr, frame_number = L.screen, L.screen.frame_number
+local do_shots = os.getenv("FF_SHOTS") == "1"
+local sl, sh, ss = tonumber(os.getenv("FF_SHOT_LO") or "0"), tonumber(os.getenv("FF_SHOT_HI") or "-1"), tonumber(os.getenv("FF_SHOT_STEP") or "1")
+local shot_win = {}
+for a, b in string.gmatch(os.getenv("FF_SHOT_WIN") or "", "(%d+)-(%d+)") do shot_win[#shot_win + 1] = { tonumber(a), tonumber(b) } end
+local env_save = os.getenv("FF_SAVE")
 emu.register_frame_done(function()
-  local f = L.frame()
-  local lf = os.getenv("FF_LOAD")
+  local f = frame_number(scr)
   if lf and not loaded then
     loaded = true
     manager.machine:load(lf)
@@ -91,17 +104,16 @@ emu.register_frame_done(function()
   L.apply(sched, f)
   if census and f >= census_lo then census_dump(f) end
   if f >= 1000 and f % 10 == 0 then
-    trace:write(string.format("%d %04x %04x %04x %08x\n", f, m:read_u16(0xff856e), m:read_u16(0xff85dc),
-      m:read_u16(0xff85e4), fnv(L.ram())))
+    trace:write(string.format("%d %04x %04x %04x %08x\n", f, ru16(m, 0xff856e), ru16(m, 0xff85dc),
+      ru16(m, 0xff85e4), fnv(L.ram())))
   end
   if frames_bin and f >= TRACE_LO and f < TRACE_HI then frames_bin:write(L.ram()) end
-  if os.getenv("FF_SHOTS") == "1" and f % 50 == 0 and f >= 1000 then L.screen:snapshot(string.format("%s_%05d.png", tag, f)) end
-  local sl, sh, ss = tonumber(os.getenv("FF_SHOT_LO") or "0"), tonumber(os.getenv("FF_SHOT_HI") or "-1"), tonumber(os.getenv("FF_SHOT_STEP") or "1")
+  if do_shots and f % 50 == 0 and f >= 1000 then L.screen:snapshot(string.format("%s_%05d.png", tag, f)) end
   if f >= sl and f <= sh and (f - sl) % ss == 0 then L.screen:snapshot(string.format("%s_%05d.png", tag, f)) end
-  for a, b in string.gmatch(os.getenv("FF_SHOT_WIN") or "", "(%d+)-(%d+)") do
-    if f >= tonumber(a) and f <= tonumber(b) then L.screen:snapshot(string.format("%s_%05d.png", tag, f)) end
+  for i = 1, #shot_win do
+    if f >= shot_win[i][1] and f <= shot_win[i][2] then L.screen:snapshot(string.format("%s_%05d.png", tag, f)) end
   end
-  if f == save_frame and os.getenv("FF_SAVE") then
+  if f == save_frame and env_save then
     L.write(string.format("%s/%s_ram.bin", out, os.getenv("FF_SAVE")), L.ram())
     L.write(string.format("%s/%s_gfxram.bin", out, os.getenv("FF_SAVE")), L.region(0x900000, 0x30000))
     L.screen:snapshot(os.getenv("FF_SAVE") .. ".png")

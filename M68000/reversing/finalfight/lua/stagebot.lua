@@ -20,8 +20,13 @@
 --   FF_BOT_SCRIPT  stop (and save FF_SAVE) when the stage-script pointer long at $ffb1ee reaches this value
 --   FF_BOT_DUMP    comma list of frames at which every live record of the pools is written to the log ("D" lines)
 --   FF_BOT_HOLD    comma list "frame:field:level" extra inputs applied after the bot (rarely needed)
+-- stagebot_opt.lua: same decisions, log and RAM as stagebot.lua. m:read_u8(a) costs 0.85 us (userdata method lookup), the cached function ru8(m, a) 0.25 us:
+-- every per-frame access below goes through cached functions, fields are read only for records in use, and no table is created per frame.
 local L = dofile(os.getenv("FF_DIR") .. "/lib.lua")
 local m = L.mem
+local ru8, ru16, ru32, wu8, wu16 = m.read_u8, m.read_u16, m.read_u32, m.write_u8, m.write_u16
+local frame_number, scr_dev = L.screen.frame_number, L.screen
+local abs = math.abs
 local START = tonumber(os.getenv("FF_BOT_START") or "2450")
 local GOD = (os.getenv("FF_BOT_GOD") or "1") == "1"
 local CAMSTOP = tonumber(os.getenv("FF_BOT_CAM") or "")
@@ -47,63 +52,75 @@ local seen = {}
 local held = {}
 local function set(field, v) if held[field] ~= v then held[field] = v; L.F[field]:set_value(v) end end
 local lane_py, lane_still = nil, 0
-local f_now, prop_first_until = 0, -1 -- frame number for nearest(); a stuck bot (UNSTICK) prefers a prop ahead until this frame
+local f_now, prop_first_until = 0, -1
+local ne_x, ne_y, ne_a, ne_prop -- the target nearest() found (ne_a == nil: none), kept in upvalues instead of a table per frame
 local function nearest()
-  local px, py = m:read_u16(P1 + 6), m:read_u16(P1 + 14)
-  local best, bd
-  -- pool 2 (13 fighters) and pool 4 (8 records: the boss DAMND is one). Alive: in use, not new, state 0 or 2 (4 dying, 6 gone), health word not negative
+  local px, py = ru16(m, P1 + 6), ru16(m, P1 + 14)
+  local bd
+  ne_a = nil
+  -- pool 2 (13 fighters) then pool 4 (8 records: the boss DAMND is one), strict < so the first of equals wins. Alive: in use, not new, state 0 or 2 (4 dying, 6 gone), health word not negative
   -- (a fighter dies at hp < 0: HOLLY WOOD sits at hp 0 and still fights; DAMND too, see FF_BOT_HP0). y is the ground line +14 (a jumping boss has +10 high in the air).
-  for _, p in ipairs({ { 0xff86e8, 13 }, { 0xff9528, 8 } }) do
-    for i = 0, p[2] - 1 do
-      local a = p[1] + 0xc0 * i
-      local st = m:read_u8(a + 2)
-      local hp = m:read_u16(a + 24)
-      if m:read_u8(a) ~= 0 and m:read_u8(a) < 0x80 and (st == 0 or st == 2) and hp < 0x8000 and (HP0 or p[1] == 0xff86e8 or hp > 0) then
-        local ex, ey = m:read_u16(a + 6), m:read_u16(a + 14)
-        local d = math.abs(ex - px) + 2 * math.abs(ey - py)
-        if not bd or d < bd then best, bd = { x = ex, y = ey, a = a }, d end
-      end
-    end
-  end
-  if PROPS and (not best or f_now < prop_first_until) then -- no fighter (or stuck: FF_BOT_UNSTICK): a breakable prop (pool $a) just ahead blocks the walk (three barrels held the bot in stage 1 area 1)
-    local pbest, pbd
-    for i = 0, 15 do
-      local a = 0xffb2e8 + 0xc0 * i
-      if m:read_u8(a) == 1 and m:read_u8(a + 2) == 2 and (not UNSTICK or m:read_u8(a + 19) < 0x10 or m:read_u8(a + 19) > 0x11) then -- kinds 16 and 17 are FLAME hazards (stage 3), not breakable
-        local ex, ey = m:read_u16(a + 6), m:read_u16(a + 10) -- props keep no ground line copy at +14
-        local dx = ex - px
-        if dx >= -20 and dx < 120 then
-          local d = math.abs(dx) + 2 * math.abs(ey - py)
-          if not pbd or d < pbd then pbest, pbd = { x = ex, y = ey, a = a, prop = true }, d end
+  for pass = 1, 2 do
+    local base, cnt, p2
+    if pass == 1 then base, cnt, p2 = 0xff86e8, 13, true else base, cnt, p2 = 0xff9528, 8, false end
+    for i = 0, cnt - 1 do
+      local a = base + 0xc0 * i
+      local b0 = ru8(m, a)
+      if b0 ~= 0 and b0 < 0x80 then
+        local st = ru8(m, a + 2)
+        if st == 0 or st == 2 then
+          local hp = ru16(m, a + 24)
+          if hp < 0x8000 and (HP0 or p2 or hp > 0) then
+            local ex, ey = ru16(m, a + 6), ru16(m, a + 14)
+            local d = abs(ex - px) + 2 * abs(ey - py)
+            if not bd or d < bd then ne_x, ne_y, ne_a, ne_prop, bd = ex, ey, a, false, d end
+          end
         end
       end
     end
-    if pbest then best = pbest end
   end
-  return px, py, best
+  if PROPS and (not ne_a or f_now < prop_first_until) then -- no fighter (or stuck: FF_BOT_UNSTICK): a breakable prop (pool $a) just ahead blocks the walk (three barrels held the bot in stage 1 area 1)
+    local pbd, pa, pxx, pyy
+    for i = 0, 15 do
+      local a = 0xffb2e8 + 0xc0 * i
+      if ru8(m, a) == 1 and ru8(m, a + 2) == 2 and (not UNSTICK or ru8(m, a + 19) < 0x10 or ru8(m, a + 19) > 0x11) then -- kinds 16 and 17 are FLAME hazards (stage 3), not breakable
+        local ex, ey = ru16(m, a + 6), ru16(m, a + 10) -- props keep no ground line copy at +14
+        local dx = ex - px
+        if dx >= -20 and dx < 120 then
+          local d = abs(dx) + 2 * abs(ey - py)
+          if not pbd or d < pbd then pa, pxx, pyy, pbd = a, ex, ey, d end
+        end
+      end
+    end
+    if pa then ne_x, ne_y, ne_a, ne_prop = pxx, pyy, pa, true end
+  end
+  return px, py
 end
 local DUMPS = {}
 for n in string.gmatch(os.getenv("FF_BOT_DUMP") or "", "%d+") do DUMPS[tonumber(n)] = true end
 local last_b1 = -100
+local NP = #pools
+local fmt, concat = string.format, table.concat
 emu.register_frame_done(function()
-  local f = L.frame()
+  local f = frame_number(scr_dev)
   if f < START then return end
-  local cam = m:read_u16(0xff8412)
-  local scr = m:read_u32(0xffb1ee)
+  local cam = ru16(m, 0xff8412)
+  local scr = ru32(m, 0xffb1ee)
   if GOD then
-    local mx = m:read_u16(P1 + 28)
-    if m:read_u16(P1 + 24) < mx and m:read_u8(P1 + 2) == 2 then m:write_u16(P1 + 24, mx) end
-    if m:read_u8(P1 + 128) < 2 then m:write_u8(P1 + 128, 2) end
+    local mx = ru16(m, P1 + 28)
+    if ru16(m, P1 + 24) < mx and ru8(m, P1 + 2) == 2 then wu16(m, P1 + 24, mx) end
+    if ru8(m, P1 + 128) < 2 then wu8(m, P1 + 128, 2) end
   end
   f_now = f
-  local px, py, e = nearest()
+  local px, py = nearest()
+  local e = ne_a
   local right, left, up, down = 0, 0, 0, 0
-  if LURE and e and not e.prop and ((e.x < cam and e.x >= cam - 0x80) or (e.x >= cam + 0x180 and e.x < cam + 0x200)) then lure_since = lure_since or f else lure_since = nil end
+  if LURE and e and not ne_prop and ((ne_x < cam and ne_x >= cam - 0x80) or (ne_x >= cam + 0x180 and ne_x < cam + 0x200)) then lure_since = lure_since or f else lure_since = nil end
   if lure_since and f - lure_since >= 120 then
     local tx = cam + 0xc0
     if px < tx - 12 then right = 1 elseif px > tx + 12 then left = 1 end
   elseif e then
-    local dx, dy = e.x - px, e.y - py
+    local dx, dy = ne_x - px, ne_y - py
     -- Measured (py/twoplayer, 6 of 6 runs): Up RAISES +10 and +14 by 0.8 px per frame, lane limits `$10` and `$3f`. The default mapping below is the opposite and is kept only because the
     -- states sb_boss and sb_s1 come from it (enemies walk up to the bot, so it still kills them); FF_BOT_LANEFIX=1 selects the correct one.
     if LANEFIX then
@@ -111,13 +128,13 @@ emu.register_frame_done(function()
     else
       if dy > 5 then down = 1 elseif dy < -5 then up = 1 end
     end
-    if math.abs(dx) > (e.prop and 45 or 40) then if dx > 0 then right = 1 else left = 1 end end
+    if abs(dx) > (ne_prop and 45 or 40) then if dx > 0 then right = 1 else left = 1 end end
     -- a prop does not walk to the bot: swing only when the lane is aligned (a swing at |dy| 6..12 whiffs and its animation blocks the lane change for ever: stage 3 area 0, a DRUMCAN 12 px off);
     -- if the lane has not moved for 40 frames while misaligned (terrain row, stage 2 area 2's door at dy 9) swing from where the bot stands
-    if e.prop and math.abs(dy) > 5 and py == lane_py then lane_still = lane_still + 1 else lane_still = 0 end
+    if ne_prop and abs(dy) > 5 and py == lane_py then lane_still = lane_still + 1 else lane_still = 0 end
     lane_py = py
-    local ry = (e.prop and UNSTICK) and (lane_still >= 40 and 12 or 5) or 8
-    if math.abs(dx) <= (e.prop and PROPRANGE or 60) and math.abs(dy) <= ry and f - last_b1 >= 14 then last_b1 = f end
+    local ry = (ne_prop and UNSTICK) and (lane_still >= 40 and 12 or 5) or 8
+    if abs(dx) <= (ne_prop and PROPRANGE or 60) and abs(dy) <= ry and f - last_b1 >= 14 then last_b1 = f end
   else
     right = 1
   end
@@ -130,28 +147,35 @@ emu.register_frame_done(function()
   set("right", right); set("left", left); set("up", up); set("down", down)
   set("b1", (f - last_b1 < 5) and 1 or 0)
   if LOGF then
+    local wrote = false
     if f % 10 == 0 then
       local c = {}
-      for _, p in ipairs(pools) do
-        local n = 0
-        for i = 0, p[3] - 1 do if m:read_u8(p[2] + (p[4] or 0xc0) * i) ~= 0 then n = n + 1 end end
-        c[#c + 1] = p[1] .. "=" .. n
+      for pi = 1, NP do
+        local p = pools[pi]
+        local n, base, stride = 0, p[2], p[4] or 0xc0
+        for i = 0, p[3] - 1 do if ru8(m, base + stride * i) ~= 0 then n = n + 1 end end
+        c[pi] = p[1] .. "=" .. n
       end
-      LOGF:write(string.format("%d sa=%02x%02x cam=%04x scr=%06x x=%04x y=%04x st=%02x%02x hp=%04x lives=%02x tgt=%s %s\n", f, m:read_u8(0xff80be), m:read_u8(0xff80bf), cam, scr, px, py,
-        m:read_u8(P1 + 2), m:read_u8(P1 + 3), m:read_u16(P1 + 24), m:read_u8(P1 + 128), e and string.format("%06x:%04x,%04x%s", e.a, e.x, e.y, e.prop and "p" or "") or "-", table.concat(c, " ")))
+      LOGF:write(fmt("%d sa=%02x%02x cam=%04x scr=%06x x=%04x y=%04x st=%02x%02x hp=%04x lives=%02x tgt=%s %s\n", f, ru8(m, 0xff80be), ru8(m, 0xff80bf), cam, scr, px, py,
+        ru8(m, P1 + 2), ru8(m, P1 + 3), ru16(m, P1 + 24), ru8(m, P1 + 128), e and fmt("%06x:%04x,%04x%s", ne_a, ne_x, ne_y, ne_prop and "p" or "") or "-", concat(c, " ")))
+      wrote = true
     end
-    for _, p in ipairs(pools) do
+    for pi = 1, NP do
+      local p = pools[pi]
+      local base, stride = p[2], p[4] or 0xc0
       for i = 0, p[3] - 1 do
-        local a = p[2] + (p[4] or 0xc0) * i
-        local live = m:read_u8(a) ~= 0
-        if live and not seen[a] then
-          seen[a] = true
-          LOGF:write(string.format("S %d pool=%s rec=%d %06x kind=%02x ch=%02x ent=%02x lvl=%02x x=%04x y=%04x hp=%04x cam=%04x scr=%06x\n", f, p[1], i, a,
-            m:read_u8(a + 19), m:read_u8(a + 20), m:read_u8(a + 21), m:read_u8(a + 96), m:read_u16(a + 6), m:read_u16(a + 10), m:read_u16(a + 24), cam, scr))
-        elseif not live then seen[a] = nil end
+        local a = base + stride * i
+        if ru8(m, a) ~= 0 then
+          if not seen[a] then
+            seen[a] = true
+            LOGF:write(fmt("S %d pool=%s rec=%d %06x kind=%02x ch=%02x ent=%02x lvl=%02x x=%04x y=%04x hp=%04x cam=%04x scr=%06x\n", f, p[1], i, a,
+              ru8(m, a + 19), ru8(m, a + 20), ru8(m, a + 21), ru8(m, a + 96), ru16(m, a + 6), ru16(m, a + 10), ru16(m, a + 24), cam, scr))
+            wrote = true
+          end
+        else seen[a] = nil end
       end
     end
-    LOGF:flush()
+    if wrote then LOGF:flush() end -- an empty buffer flushed nothing before either
   end
   if LOGF and DUMPS[f] then
     for _, p in ipairs(pools) do
@@ -164,8 +188,9 @@ emu.register_frame_done(function()
         end
       end
     end
+    LOGF:flush()
   end
-  local stg = m:read_u8(0xff80be)
+  local stg = ru8(m, 0xff80be)
   if (CAMSTOP and cam >= CAMSTOP) or (SCRSTOP and scr >= SCRSTOP) or (STAGESTOP and stg >= STAGESTOP) or (LEAVE and stg ~= LEAVE and f > 1) or (STOPFRAME and f >= STOPFRAME) then
     if LOGF then LOGF:write(string.format("STOP %d cam=%04x scr=%06x stage=%d\n", f, cam, scr, stg)); LOGF:close() end
     local sname = SAVEPFX and (SAVEPFX .. ((LEAVE and stg == LEAVE) and ("stuck" .. stg) or stg)) or os.getenv("FF_SAVE") -- a run that hit the frame limit never overwrites the state it started from
