@@ -1,11 +1,11 @@
 # Final Fight (Capcom CPS1 arcade, MAME): handoff
 
-Updated 2026-10-05 by the session that ended at commit `c279b1c` (plus the handoff commit).
+Updated 2026-10-06 by the session that ended at commit `aaa0edf` (plus the handoff commit).
 
 ## Resume point
 
-- Last commit of this workstream: `c279b1c` finalfight: graphics decoded and proven against MAME (`py/gfx/`, `graphics.md`, `gfx/*.png`).
-  Before it: `39ef56c` (the ending played by the bot, `ending.png`), `758d175` (the bot plays stages 2 to 5, kind 3 destination, stage 2 curb), `d1d499b` (previous handoff).
+- Last commit of this workstream: `aaa0edf` finalfight: hit detection infographic (`infographic/`), lane rule and once-per-blow rule in `frame.md`.
+  Before it: `c279b1c` (graphics decoded and proven against MAME), `39ef56c` (the ending played by the bot, `ending.png`), `758d175` (the bot plays stages 2 to 5, kind 3 destination, stage 2 curb), `d1d499b` (previous handoff).
 - Workspace: `M68000/reversing/finalfight/` (`README.md` with the script index; docs `hardware.md`, `kernel.md`, `frame.md`, `ai.md`, `player.md`, `boss.md`, `placement.md`, `transitions.md`, `twoplayer.md`,
   **`graphics.md`**). The emulator and oracle is **MAME 0.289** (`/usr/local/bin/mame`), not the F# core.
 - Working data: `M68000/scratchpad/finalfight/` (gitignored, indexed in `scratchpad/ANCHORS.md`): `ff_main.bin`, `ff_z80.bin`, `src/` (MAME driver sources), the old states `ff_gameplay`, `ff_enemies`, `ff_kinds123`;
@@ -33,6 +33,12 @@ score, continue scene; stage 0 by the bot, pool 4 and DAMND, placement, transiti
   object-list builder `$16910` ported and equal to the game's own routine in 4,572 of 4,572 tests (`gate_oracle.py`); whole-stage backgrounds from the game's own column streamers equal 151,230 of 153,678 map entries of
   90 gameplay dumps (`gate_pristine.py`). Corrections to `hardware.md`: object entries are drawn last to first; the sprite table shown is the previous frame's.
 
+Pass 7 (hit detection, `infographic/finalfight_hit_detection.html`, published as https://claude.ai/artifact/1PjfeXcUbWnmPisZL9SJW7, same file path keeps the URL):
+
+- **Both hit boxes re-derived from the ROM over 127 saved dumps**: attack 51 of 52, hurt 212 of 213, 216 of 216 and 55 of 55 absent; the one miss is a hand-spawned kind 7 boss on its first frame (`infographic/py/boxes_gate.py`). The descriptor word is added sign-extended (`adda.w`).
+- **The candidate rectangle**: lane -12 to +9, x +-128, written per player by `$8d70`, zero unless the player's state is 2 and `+22` is 0: 115 of 115 active, 26 of 26 inactive (`py/lanes_gate.py`). `139` is the special (sub-state `$10`), not "airborne": corrects the old `frame.md` text. **One blow lands once** through `+22`/`+60` (`$3386`, `$8cc8`, `frame.md` "Hit resolution"): [R] and 13 of 17 saved records, no live count.
+- Two landing frames (`st_bb_4800_1`, `st_a_boss_mid_1`): the victim's `+60`, `+22` and hit-stop name the blow and the game's overlap test on the drawn boxes passes in x and y (`py/frames.py`). Box to screen is x - camera, 240 - y (from `$16910`), no pixel gate.
+
 ## Open, in priority order
 
 1. **Bosses of stages 1 to 5, natural, against `boss.md` and `ai.md`** (pool 4 kinds 1 to 5; kinds 2 to 5 killed by the bot, logs only). Take a state one frame before each spawn (`FF_BOT_STOPF=<spawn-1> FF_SAVE=...` from `sb_s2a2` (56,841), `sb_s3`
@@ -48,6 +54,7 @@ score, continue scene; stage 0 by the bot, pool 4 and DAMND, placement, transiti
    and the `$78c6` clash.
 7. **Graphics remainder** (`graphics.md`, "Not done"): gameplay dumps of stages 4 and 6 and stage 1 areas 0, 2, 3 (from `sb_s4`, `sb_s6`, `sb_s1` with `py/gfx/gfxdump.lua`) to validate and colour their strips; player scripts reached through pointer tables;
    held weapons and effects pools; 28 character sheets use a fallback palette. Then **read the Z80 program**, then Ghouls'n Ghosts only after 1 to 3.
+8. **Hit detection remainder** (`frame.md` "Hit resolution"): a live count that one multi-frame blow lands once (write tap on the victim's `+22` and `$7aa8` during a jab on a dummy); the special's +-24 lane live (state with Cody in sub `$10`, read `21250(A5)+6..12`); the attacker-list variants for tags 4 and `$a` (`$3688`, `$35ec`) and the prop lane table `$34c4` entry by entry; a gate for the box-to-screen mapping (x - camera, 240 - y): compare the box edges of a standing fighter with the bounds of his sprite rows from `py/gfx/ffframes.py`.
 
 ## Known traps
 
@@ -58,6 +65,7 @@ score, continue scene; stage 0 by the bot, pool 4 and DAMND, placement, transiti
 - **A state loaded under `-debug` resumes on a different trajectory** from the same state without `-debug`. Cold boots are identical either way. Take breakpoint evidence from cold boots; run state-resume gates without `-debug`.
 - **Kill a background MAME run completely before restarting one.** `pkill -f stagebot.lua` missed one process and MAME ignored SIGTERM on two: two runs appended to one `s2.log` and looked like one impossible trajectory. After a kill, `ps aux | grep mame` and
   `lsof <log>`, `kill -9` your own leftovers, and give every run its own `FFS_OUT`. `chain.sh` is a shell loop around `run.sh`: kill it too.
+- The saved gfx/work-RAM dumps are taken at the end of a frame: the player candidate lists are already reset (empty, descriptor words zero) and a landed blow shows only as `+60`/`+22`/`+23` on the victim. Test list membership with a live tap, not from a dump. The stage bot plays with a survival poke, so health in these dumps does not show hits.
 - Parallel MAME runs collide on a shared `run/`: every promoted script takes its own run directory from an environment variable (`FFS_RUN`, `FFD_RUN`, `FFT_RUN`, `BB_RUN`, `DM_*`, `FF_RUN`, `FFA_RUN`, `FFB_BASE`, ...).
 - **`stagebot.lua` defaults are pinned to what `sb_boss` and `sb_s1` came from** (a pool-4 record at hp 0 is alive: `FF_BOT_HP0=1`; Up raises the lane: `FF_BOT_LANEFIX=1`), and the stage 2 to 5 behaviour is behind `FF_BOT_LURE`, `FF_BOT_UNSTICK` (also the
   prop rules: no FLAME targets, lane-aligned swings), `FF_BOT_PROPS`. Play stages 2 to 5 with all of them: `FF_BOT_LANEFIX=1 FF_BOT_LURE=1 FF_BOT_UNSTICK=1 FF_BOT_HP0=1` (`chain.sh` sets PROPS). `FF_BOT_SCRIPT` cannot stop at a pointer below `$719b4` (the
