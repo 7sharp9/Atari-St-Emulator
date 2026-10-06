@@ -1,8 +1,7 @@
 """gfxview.py - browse the graphics a running ST program has decoded into RAM.
 
-Added in the 54th pass of atari-st-emulator-next-instructions. Until now the only
-windows into video memory were screendump.py (the *live framebuffer* only) and the
-REPL `m` hex dump. A game like Super Sprint unpacks its title bitmap, HUD font, car
+screendump.py shows only the *live framebuffer* and the REPL `m` is a hex dump;
+this tool shows everything else. A game like Super Sprint unpacks its title bitmap, HUD font, car
 sprites and track tiles out of SUPER.DAT into RAM long before any of it reaches the
 screen; this tool lets you look at all of it.
 

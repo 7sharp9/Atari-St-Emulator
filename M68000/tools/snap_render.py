@@ -5,7 +5,7 @@ Reads base/rez/palette from the real shifter registers via gfxview.load_video_re
 (the same VideoDisplayRegisters bank the emulator's own headless frame recorder
 uses), not a guessed/cached buffer address - immune to games that swap which of
 two back buffers is "live" from frame to frame (Cadaver does this; see
-reversing/cadaver/README.md's 10th-pass entry on the ScreenBufferA/B trap).
+reversing/cadaver/README.md on the ScreenBufferA/B trap).
 
 Currently handles rez 0 (320x200x4bpp st-interleaved) only, the only mode any
 game reversed in this repo so far has used for live gameplay; extend the

@@ -1,7 +1,7 @@
 """sprite_array_export.py - batch-export every entry of a struct-driven sprite/object
 array as individual PNGs plus a contact sheet and a manifest.
 
-Built in the Cadaver spike (7th pass) after finding that a sprite array's real per-object
+Cadaver showed that a sprite array's real per-object
 width/height/bitmap-pointer are ordinary struct fields (Cadaver: offsets +50/+51/+52 on a
 70-byte-stride array), not something you have to guess a fixed grid size for. Rendering at
 a guessed uniform tile size (e.g. 32x32) produces sheared, cross-contaminated garbage the

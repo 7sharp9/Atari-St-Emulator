@@ -5,8 +5,8 @@ disassembled instruction's own text names it as a branch/call operand.
 find_ram_callers.py only finds direct bsr/jsr/jmp/bcc instructions whose own operand text encodes
 the target literally - it is blind to indirect calls set up via a jump/dispatch table, where the
 target sits as plain data that later gets loaded into a register and jsr'd through. This scan finds
-that data reference instead (the Cadaver spike used this ad hoc, un-promoted, for `$b5a8`/`$67ea` -
-mechanics.md's 19th pass, §17a/§17d - and again for `$b1e0`, 48th pass).
+that data reference instead (Cadaver's `$b5a8`, `$67ea` and `$b1e0` are worked examples: reversing/cadaver/mechanics.md
+§17a/§17d and §48b).
 
 Caveat: this only matches an absolute address literal. A jump table built from PC/table-relative
 16-bit displacements (like the Cadaver spike's own 59-entry verb dispatch table, mechanics.md §24)

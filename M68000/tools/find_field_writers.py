@@ -1,7 +1,7 @@
 """Whole-RAM scan for every decoded instruction whose operand text names a given (A5)+N (or any
 other) displacement/field string, to find its writer(s) (or all references) directly instead of
-tracing call chains by hand. Mirrors the Cadaver spike's 16th-pass method for 2455(A5) and the
-19th pass's for 2518(A5) - see M68000/reversing/cadaver/mechanics.md.
+tracing call chains by hand (worked examples: 2455(A5) and 2518(A5) in
+M68000/reversing/cadaver/mechanics.md).
 
 Game-agnostic - takes any .snap and any operand substring (e.g. "2518(A5)", "1162(A5)").
 

@@ -5,8 +5,7 @@ game code isn't self-describing about where routines start, so this necessarily 
 data as if it were code; a real hit is still a real hit, false ones read as garbage in context)
 and keeps any instruction whose resolved branch/call target matches one of the given addresses.
 
-Game-agnostic - built for the Cadaver reversing spike (18th/19th passes; see
-M68000/reversing/cadaver/mechanics.md) but takes any .snap.
+Game-agnostic: takes any .snap (worked examples in M68000/reversing/cadaver/mechanics.md).
 
 Usage: python find_ram_callers.py <snap> <target_hex> [<target_hex> ...]
 """

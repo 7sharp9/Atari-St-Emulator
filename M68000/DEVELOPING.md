@@ -88,7 +88,7 @@ host input back to the emulator as IKBD serial packets:
 ## IKBD command interpreter (`MMU.fs`)
 
 There is no emulated 6301, but the bytes the CPU sends to the keyboard ACIA
-transmit register (`$FFFC02`) are now parsed (`ikbdTransmit` / `ikbdDispatch`,
+transmit register (`$FFFC02`) are parsed (`ikbdTransmit` / `ikbdDispatch`,
 command lengths transcribed from Hatari `src/ikbd.c`). It tracks only what target
 programs set: the mouse report mode (`$08`/`$09`/`$0A`/`$12`), the mouse
 button-action mode (`$07` - bit 2 = "buttons report as keycodes `$74`/`$75`",
@@ -113,9 +113,9 @@ mouse up   l|r           button release
 `ATARI_NOTRACE=1` clears `Trace.enabled` (68k.fs), which the per-step `printfn`
 trace sites and `ResolveEa`'s operand-description strings test before formatting
 anything, and redirects `Console.Out` to a null sink for the few ungated prints.
-Building the trace text used to cost more than executing the instruction, so a
+Building the trace text costs more than executing the instruction, so a
 new decoder's `printfn` must sit behind `if Trace.enabled then` (and an operand
-string must be `if Trace.enabled then sprintf ... else ""`). It no longer silences result
+string must be `if Trace.enabled then sprintf ... else ""`). It does not silence result
 output: REPL replies, `verify` / `selftest` verdicts and snapshot/until status
 lines go through `Diag.result` (68k.fs), which is captured before the redirect.
 So `ATARI_NOTRACE=1 ... verify` prints its PASS/FAIL, and a `NOTRACE` REPL still
@@ -188,9 +188,8 @@ There is no full unit suite. `selftest` runs the
 [SingleStepTests / ProcessorTests](https://github.com/SingleStepTests/ProcessorTests)
 68000 vectors (`680x0/68000/v1`, one `NAME.json.gz` per opcode, ~8000 randomised
 cases each: full initial state -> expected final registers / SR / memory) against
-`Cpu.Step`. This is what catches the silent-for-passes class of bug (e.g. the
-39th-pass `LSR.L` / `ROR.L` sign-smear, which fails thousands of shift cases the
-instant it is written).
+`Cpu.Step`. It catches the class of bug that stays silent under ROM-driven testing (an
+`LSR.L` / `ROR.L` sign-smear fails thousands of shift cases the instant it is written).
 
 ```
 python tools/fetch_680x0_tests.py            # -> M68000/tests/680x0/ (git-ignored, ~190 MB)
@@ -207,11 +206,12 @@ file that still has a genuine flag/register bug, worst first. An empty digest
 means all that is left is the two known structural classes. Non-zero exit if
 anything failed.
 
-As of the 59th pass the wrong-answer lane is **clean** (0 wrong across all
-124 files); the residual fails are all `frame` (169k, the 14-byte group-0 frame)
-and `unimpl` (33k, undecoded opcodes/modes). `skip` includes two corrupt
-`ASL.b.json` vectors (opcode `$E502` expects a byte shift to rewrite all 32 bits
-of D2 - see `isCorruptVector` in `Program.fs`).
+The wrong-answer lane is **clean** (0 wrong across all 124 files); the residual
+fails are all `frame` (169k, the 14-byte group-0 frame) and `unimpl` (33k,
+undecoded opcodes/modes). The gate is 0 wrong and 9 skip; the pass total drifts up
+with coverage, so do not gate on it. `skip` includes two corrupt `ASL.b.json`
+vectors (opcode `$E502` expects a byte shift to rewrite all 32 bits of D2; see
+`isCorruptVector` in `Program.fs`).
 
 The three failure classes:
 - **`wrong`** - a real flag / register / memory divergence. Fix these.
@@ -239,17 +239,12 @@ What it does and does not cover:
     TRAP / CHK / privilege / address-error cases mismatch on the stacked frame
     (the `frame` count).
 
-Baseline (25 shift/logic/move opcodes, Aug 2026): register-operand `.b` / `.l`
-shift and rotate forms pass ~100%; `.w` memory forms and the arithmetic/move
-families still carry real gaps. Drive the numbers down in future correctness
-passes.
-
 ## Snapshot / preview fidelity: `detcheck`
 
-The REPL and `.snap` files are used as lab instruments for the Powermonger
-reverse-engineering work, so a restore has to be an *identity operation on every
-piece of state a later `Step()` can read* - not just RAM + CPU registers. The
-`detcheck N` REPL command asserts exactly that:
+The REPL and `.snap` files are the lab instruments of every reverse-engineering
+workstream, so a restore has to be an *identity operation on every piece of state
+a later `Step()` can read* - not just RAM + CPU registers. The `detcheck N` REPL
+command asserts exactly that:
 
 ```
 save S  ->  run N steps, FNV-hash the per-step (stepCount, PC, CCR, D0-7/A0-7,
@@ -258,30 +253,28 @@ restore S  ->  run N again  ->  T2
 assert T1 == T2   (and report the first divergent step if not)
 ```
 
-`AtartSt.DeterminismCheck`. Run it with live Powermonger gameplay, an armed
-Timer B, active FDC I/O and queued IKBD input - the cases the old `MmuSnapshot`
-silently dropped before the 91st pass. Verified byte-identical: diskless idle
-(100k), the PM boot loader through FDC reads (3M), `pm78_settle` live gameplay
-(2M), `pm73_fight`, `pm74_late`, `pm67_ok_pre`, queued-IKBD.
+`AtartSt.DeterminismCheck`. Run it with live PowerMonger gameplay, an armed
+Timer B, active FDC I/O and queued IKBD input: the cases a snapshot most easily
+loses. It is byte-identical on diskless idle (100k), the PowerMonger boot loader
+through FDC reads (3M), live gameplay (2M) and queued IKBD input.
 
-What the 91st pass fixed so this passes:
-- `MmuSnapshot` (and `SaveState`/`LoadState`, format v9) now carry the latent
-  future-determining device state that was missing: the six pending-interrupt
-  slots + `mfpVector`, `tbCounter` (Timer B's HBL prescaler), the FDC INTRQ
-  countdown (`fdcIrq`/`fdcIrqPending`), the DMA sector counter, the IKBD
-  reporting-mode latches, and the absolute-mouse / joystick registers. Pre-v9
-  `.snap` files load with documented power-on defaults - byte-identical to how
-  `RestoreRam` left those fields before (it never touched them).
-- `Preview` now restores `stepCount` too. It was the phase clock for the
-  VBL/HBL/Timer raises and scheduled IKBD injection, so `p 10000` used to shift
-  the machine's temporal phase permanently while PC and RAM looked untouched.
+What makes a restore an identity operation:
+- `MmuSnapshot` (and `SaveState`/`LoadState`, format v9) carries the latent
+  future-determining device state: the six pending-interrupt slots + `mfpVector`,
+  `tbCounter` (Timer B's HBL prescaler), the FDC INTRQ countdown
+  (`fdcIrq`/`fdcIrqPending`), the DMA sector counter, the IKBD reporting-mode
+  latches, and the absolute-mouse / joystick registers. Pre-v9 `.snap` files load
+  with documented power-on defaults.
+- `Preview` restores `stepCount` too. It is the phase clock for the VBL/HBL/Timer
+  raises and scheduled IKBD injection, so a `p 10000` that did not would shift the
+  machine's temporal phase permanently while PC and RAM looked untouched.
 - The loop detector folds `mmu.PeripheralPhase` (a fingerprint of those latent
-  counters) into its recurrence gate, so "provably stuck" is now a real proof:
-  same CPU state + unchanged mutation counter + unchanged latent device phase +
-  no interrupt acked for a frame => the next step's inputs are identical to an
-  earlier step's. Residual: an armed self-reloading event-count timer keeps
-  `PeripheralPhase` churning, which *suppresses* the check rather than firing it
-  falsely - a missed detection, never a false positive.
+  counters) into its recurrence gate, so "provably stuck" is a real proof: same CPU
+  state + unchanged mutation counter + unchanged latent device phase + no interrupt
+  acked for a frame => the next step's inputs are identical to an earlier step's.
+  Residual: an armed self-reloading event-count timer keeps `PeripheralPhase`
+  churning, which *suppresses* the check rather than firing it falsely: a missed
+  detection, never a false positive.
 
 `mutations` / `interruptAcks` are deliberately NOT restored (nothing reads their
 absolute value; the loop detector re-baselines them each epoch) - `detcheck`
@@ -386,36 +379,38 @@ fixes (STOP, MOVEP, ADDA.L/LEA modes, a coarse MFP Timer A for its software-synt
 music, PSG `$FF88xx` mirror, ReadLong shifter-register case). Hang-On's intro
 crawls through a long software-synth sequence on the coarse Timer A tick and is
 slow to reach its title; its post-title raster split uses event-count Timer B,
-now driven per-scanline (see MFP timers below).
-Pool's mouse menu is not clickable from the live SDL window yet - it uses the
-IKBD "mouse buttons act as keys" mode ($07 $04) and the emulator does not
-interpret IKBD commands. See `reversing/a_013/`.
+driven per-scanline (see MFP timers below). Pool's mouse menu works through the
+IKBD "mouse buttons act as keys" mode (`$07 $04`, see the IKBD command
+interpreter above). See `reversing/a_013/`.
 
 **FDC completion signalling (WD1772 INTRQ / MFP GPIP bit 5).** GPIP bit 5 (FDC
-interrupt line, active-low) is now idle-high and re-raises a coarse delay after a
+interrupt line, active-low) idles high and re-raises a coarse delay after a
 command, cleared on a status read or a new command (`MMU`'s `fdcIrq` /
-`FdcTick`). Before the 63rd pass it was hardwired 0 ("always complete"): raw
-register pokes that issued no real command read back "done", so TOS's
-post-autoboot FDC self-test at `$fc04a8` (8 bogus WD1772 commands, expecting each
-to still be running when its `_hz_200`+10 poll expires) re-`jsr`d the boot sector
-in `_dskbufp` every iteration, and a crack whose boot sector checksums to `$1234`
-(PowerMonger `[cr Replicants]`, TDT "ALTAIR ANTI VIRUS") looped forever. With the
-delay the self-test's first polled command (a Restore) times out like real
-hardware and the loop exits; `[cr Replicants]` now boots to the Replicants
-cracktro key-wait. There is no per-command WD1772 state machine (Hatari's
-`src/fdc.c` has one), so the delay is bucketed: a Read/Write Sector that moved
-data raises INTRQ immediately (bytes are already in RAM - a per-sector delay
-would add tens of millions of steps to a big load), a Seek/Step gets ~4000
-steps, a Restore / failed-search / Read Address gets ~120000 (~4x the
-self-test's ~30000-step deadline, ~1/12 of the GEMDOS `$40000`-iteration poll
-budget). `$fc04d6` issues a Restore first every self-test iteration, so that
-bucket is what times the self-test out; verified `$fc04cc` runs 0 times.
-The boot timeline shifted ~1.4M steps (the self-test now spins instead of
-short-circuiting), so the diskless-boot checkpoint was re-baselined this pass.
+`FdcTick`). The delay matters because TOS's post-autoboot FDC self-test at
+`$fc04a8` issues 8 bogus WD1772 commands and expects each to still be running
+when its `_hz_200`+10 poll expires. If the line read "always complete", the
+self-test would re-`jsr` the boot sector in `_dskbufp` every iteration, and a
+crack whose boot sector checksums to `$1234` (PowerMonger `[cr Replicants]`, TDT
+"ALTAIR ANTI VIRUS") would loop forever. With the delay the self-test's first
+polled command (a Restore) times out like real hardware and the loop exits;
+`[cr Replicants]` boots to its cracktro key-wait. There is no per-command WD1772
+state machine (Hatari's `src/fdc.c` has one), so the delay is bucketed:
 
-Not yet fixed: past the cracktro key-wait `[cr Replicants]` loads ~1 MB of game
-data (all FDC reads OK) then its depacker derails to `PC=$20` - the same
-undiagnosed class as `[cr Empire]`'s WARI.PRG and the 60th-pass HxC WAR.PRG.
+- a Read/Write Sector that moved data raises INTRQ immediately (the bytes are
+  already in RAM, and a per-sector delay would add tens of millions of steps to a
+  big load);
+- a Seek/Step gets about 4000 steps;
+- a Restore, failed search or Read Address gets about 120000 (about 4x the
+  self-test's ~30000-step deadline, about 1/12 of the GEMDOS `$40000`-iteration
+  poll budget). `$fc04d6` issues a Restore first every self-test iteration, so
+  this bucket is what times the self-test out (`$fc04cc` runs 0 times).
+
+The diskless-boot checkpoint (`checkpoint.txt`) is baselined with this self-test
+spinning rather than short-circuiting.
+
+Known gap: past the cracktro key-wait `[cr Replicants]` loads about 1 MB of game
+data (all FDC reads OK) then its depacker derails to `PC=$20`. `[cr Empire]`'s
+WARI.PRG and the HxC WAR.PRG fail the same undiagnosed way.
 
 **MFP timers.** Timer C is the system tick (`instructionsPerFrame/4`). Timer A
 (`/64`) and Timer B's delay / pulse modes are off until a program arms them
@@ -517,19 +512,18 @@ emulator dump one `fNNNNNN.bin` per captured VBL:
 one row-record per visible scanline, captured on that line's HBL crossing, so a
 mid-frame raster palette split renders with the right colours per band instead of
 one flat palette. Each dump is written at the VBL *after* the frame it describes,
-so the screen grab and the 200 row-records come from the same frame (before the
-63rd pass the row-records lagged the screen by one frame - fine for a static
-screen, wrong for anything that repaints its palette every frame; it mis-read
-Super Sprint's raster split in the 61st pass). The last frame is held pending and
+so the screen grab and the 200 row-records come from the same frame (a lag of one
+frame would be invisible on a static screen and wrong for anything that repaints
+its palette every frame, such as Super Sprint's raster split). The last frame is held pending and
 never flushed. Behaviourally inert, like `ATARI_GFX_SIDECAR` (only writes files;
 30M diskless boot stays byte-identical). Works under `boot`/`rrepl`/any mode that
 steps the CPU, so you can drive with `kbd` in a REPL run and capture at the same
 time. (Per-row *screen-base* changes are recorded but not honoured - the screen
 is one VBL-time grab; palette splits are the common case and are exact.)
 
-Verified 63rd pass: Super Sprint's SELECT TRACK / "PREPARE TO RACE" menu screens
-render their three ready-cars blue / yellow / red via this split (3-4 palette
-bands) - `reversing/supersprint/` has the split-vs-flat pair. The split is
+Super Sprint's SELECT TRACK / "PREPARE TO RACE" menu screens render their three
+ready-cars blue / yellow / red via this split (3-4 palette bands);
+`reversing/supersprint/` has the split-vs-flat pair. The split is
 *visible* but not scanline-stable: the band boundaries jitter ~18 rows frame to
 frame (instruction-count tick vs real HBLANK, and the /300 divisor vs ~313 real
 lines), so on some frames a boundary cuts through the top cars. The on-track
@@ -636,14 +630,14 @@ least once by a session that did not know it existed.
 | `tools/hatari_trace.py` | headless real Hatari on the same ROM (a CPU/OS-trace oracle, not a video one) |
 | `tools/pm_fsm_diff.py` | game-agnostic `callcap` differential-test harness (`Harness`/`State`/`run_corpus`); a corpus script's first argument (other than `reuse`) runs only the states whose name contains it. `callcap` runs the routine with interrupts masked, so a routine that waits on an interrupt-cleared flag never returns ("Loop detected"): for PowerMonger's sound calls (`$1ba3e` → `$1ae36`) poke the busy byte `$2c993` to 0 in the state first |
 | `tools/capture_hits.py` | corpus capture for a callcap gate: from a start snapshot, stop at chosen natural hits of a routine (`bpc`), snapshot each (+ `.ram`) and write the entry registers and return address to `<name>.json` (usage in the header) |
-| `tools/rdis.py [--rom img] [--base <hex>] <lo> <hi> <root>...` | recursive-descent lister: follows branches from the roots, resolves `move.w N(PC,Dn.w) / jmp M(PC,D1.w)` word-offset tables (signed), marks data gaps. Use it instead of `--all` for a handler that interleaves jump tables and animation data (`--all` loses sync there: Final Fight's `$389b8` was not an instruction line in the linear listing). Six sessions wrote their own copies in `reversing/finalfight/py/ai_kind*/` and `player/`. **It does not follow longword state tables** (`jsr (A0)` after `movea.l 0(A0,D0.w),A0`): handlers behind them are not listed, so it is no basis for a "no caller / no writer" claim (Crudebuster: 67 of 94 callers missed); scan the raw image or the `--all` linear listing |
+| `tools/rdis.py [--rom img] [--base <hex>] <lo> <hi> <root>...` | recursive-descent lister: follows branches from the roots, resolves `move.w N(PC,Dn.w) / jmp M(PC,D1.w)` word-offset tables (signed), marks data gaps. Use it instead of `--all` for a handler that interleaves jump tables and animation data (`--all` loses sync there: Final Fight's `$389b8` was not an instruction line in the linear listing). **It does not follow longword state tables** (`jsr (A0)` after `movea.l 0(A0,D0.w),A0`): handlers behind them are not listed, so it is no basis for a "no caller / no writer" claim (Crudebuster: 67 of 94 callers missed); scan the raw image or the `--all` linear listing |
 | `tools/disassemble.py --snap <snap> --all <lo> <hi>` | whole-image listing that carries on past jump-table stops; grep it for callers and field writers (`,44(A[0-7])$`) before trusting any "who writes X" claim |
 | `tools/find_ram_callers.py <snap> <addr>...` | whole-RAM scan for direct `bsr`/`bcc`/`jsr`/`jmp` instructions whose own decoded text names one of the given target addresses (`disassemble.py --callers` only covers the TOS ROM) |
 | `tools/find_field_writers.py <snap> "<field text>"` | whole-RAM scan for every decoded instruction whose operand text names a given field/displacement string (e.g. `"2518(A5)"`), to find its writers/readers directly |
 | `tools/find_literal_ptr.py <snap> <addr>` | whole-RAM raw-bytes scan for an address appearing as **data** (4-byte or 2-byte, any alignment) — finds abs-long `jsr`/jump-table references `find_ram_callers.py` can't see, since those encode the target as a literal operand rather than a PC-relative displacement; doesn't catch a displacement-style jump table (use `find_jump_table_hit.py` for that) (cadaver mechanics.md §17a/§48b) |
 | `tools/find_jump_table_hit.py <snap> <addr>` | does any `table_base + entry` jump table (this game's own dispatch idiom, cadaver mechanics.md §23a) resolve to a target address — collects every literal absolute address any instruction names as a candidate table base, then checks each one's entries for `target - base` (cadaver mechanics.md §48c) |
 | `tools/pm_export.py`, `tools/pm_render_ref.py`, `tools/pm_fsm_ref.py` | PowerMonger: asset export, the Python reference renderer, the from-disassembly entity/AI reconstruction |
-| `tools/merge_sym.py <game.sym> <sym.txt>... [addr=name] [--write]` | merge subagent `sym.txt` files into a game's `.sym`, reporting addresses named differently (settle each in the code; `addr=name` overrides); `--write` keeps the target's existing lines and comments and appends the new names (it used to rewrite the file name-only, dropping every proof note) |
+| `tools/merge_sym.py <game.sym> <sym.txt>... [addr=name] [--write]` | merge subagent `sym.txt` files into a game's `.sym`, reporting addresses named differently (settle each in the code; `addr=name` overrides); `--write` keeps the target's existing lines and comments and appends the new names |
 | `reversing/populous/py/popdrive.py` | Populous: plan exact mouse clicks (icons, land corners, minimap) from a snapshot; a worked example of driving a game through its own hit-test code |
 | `reversing/powermonger/py/` | PowerMonger working scripts: build any of the 144 lands, capture frame runs, score the port pixel for pixel, `hits` census runs (its README lists them) |
 

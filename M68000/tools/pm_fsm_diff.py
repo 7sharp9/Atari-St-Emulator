@@ -1,6 +1,6 @@
 """Reusable differential-test harness: tools/pm_fsm_ref.py vs the real 68000.
 
-The method (unchanged since the 93rd pass): isolate the entity FSM tick $14b62
+The method: isolate the entity FSM tick $14b62
 down to the records under test by zeroing the owner byte (offset 5) of every
 other live record, run the real routine in isolation with `callcap 14b62`,
 apply its captured changed-memory delta, and compare the full delta over the
@@ -173,8 +173,8 @@ class Harness:
         extent (OBJ..END).  A synthesized test slot past this silently
         aliases memory outside every tracked region - both real hardware and
         `reconstruct()` write there identically, so `tracked_delta` reports
-        0/0 "ok" while the actual writes land nowhere meaningful (bit us once,
-        116th pass: slots 520-523 were past END and produced a false pass).
+        0/0 "ok" while the actual writes land nowhere meaningful (slots 520-523
+        are past END and produce a false pass).
         Use this instead of hand-rolling `OBJ + slot*REC` in a corpus script."""
         if not (0 <= slot <= Harness.MAX_SLOT):
             raise ValueError(f"slot {slot} out of range 0..{Harness.MAX_SLOT} "
