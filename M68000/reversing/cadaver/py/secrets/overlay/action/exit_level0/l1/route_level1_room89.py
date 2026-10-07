@@ -1,6 +1,6 @@
 """route_level1_room89.py <end_room90.snap> <OUTDIR> [--upto=<leg name>]: level 1 from room 90 (health 60) to room 89 by natural joystick input (92nd pass).  Nothing poked.
 
-The 91st-pass chain (mechanics.md 80d) is a door graph; driving it shows what its legs hide.  This script is the part that is driven, leg by leg (`explore.py` commands, one snapshot
+The 91st-pass chain (mechanics.md section 12) is a door graph; driving it shows what its legs hide.  This script is the part that is driven, leg by leg (`explore.py` commands, one snapshot
 reload per leg, an assertion per leg):
   lever562   room 90's lever 562 deletes the pillars 213 and 214 of room 12 (the way back west is free only after it);
   to29       door $7b, $7a, then room 29: jump onto the block 558 (the item 493 lies on it), step off west, TAKE 493 (teleports to room 30);
@@ -11,7 +11,7 @@ reload per leg, an assertion per leg):
   sleep      SLEEP scroll 570 on the floor of room 14, between the four plates (each plate step spawns flyers that cost 20 per touch: 95 -> 55), then back to room 1;
   room1      room 1's region 1 (x 0..47, y 0..15) teleports the hero to (4,7) unless object 659's bit 0 is set, which a cast of SLEEP in room 1 does (r1.0@24, +26 XP); door $0f -> room 89;
   token      room 89: the token F (223) is taken, and applied to the slot 206 (VAR 9 = 1).
-Then the tokens U (room 28, left by door $33: the arrival at door $2f overlaps the trap 635 and the move is refused) and W (room 14, from the east at y lead 50, no plate hit).  Ends in room 13 with health 35 and the rucksack 570, 680, 224, 338, 493 (F applied).  The lever 27 of room 89 is on a shelf at z 64..83 reached only from room 9's door $0e: see mechanics.md 81.
+Then the tokens U (room 28, left by door $33: the arrival at door $2f overlaps the trap 635 and the move is refused) and W (room 14, from the east at y lead 50, no plate hit).  Ends in room 13 with health 35 and the rucksack 570, 680, 224, 338, 493 (F applied).  The lever 27 of room 89 is on a shelf at z 64..83 reached only from room 9's door $0e: see mechanics.md section 12.
 Writes NN_<leg>.snap in OUTDIR and ends with `end room 89 ...`."""
 import sys, os
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)

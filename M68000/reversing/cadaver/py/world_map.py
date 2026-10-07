@@ -1,4 +1,4 @@
-"""world_map.py - walk the type-3 resource-manager table (mechanics.md sec38a/38d) and decode
+"""world_map.py - walk the type-3 resource-manager table (mechanics.md sections 2 and 4) and decode
 every populated room's world-space bounding-box rectangle, to build the full room-adjacency graph.
 
 Resource manager (sec38a): 18-byte type record at (A5)+96, indexed by type. Type 3 is the room
@@ -14,7 +14,7 @@ of the resource manager (A5+96) at runtime, so a different crack/relocation shif
 two-disk Disk 2 build's whole resource manager sits +0x100 past the one-disk build's, confirmed by
 comparing `room2_tunnel_entry.snap`'s A5=$18152 against a post-58th-pass Disk 2 snapshot's
 A5=$182b4 - hardcoding the old build's $4ac36/$6bf0a against the new build silently walks garbage
-and reports 100/100 "populated" slots with massive bogus overlap, cadaver mechanics.md sec59).
+and reports 100/100 "populated" slots with massive bogus overlap, cadaver mechanics.md section 13).
 Always resolve type 3's pointers fresh from each snapshot's own resource manager.
 
 These fields are static per snapshot (game data, not per-frame state), so any snapshot with the

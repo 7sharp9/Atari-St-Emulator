@@ -1,7 +1,7 @@
 """door_reach.py [--open HEX ...] [--keys ID ...]: rooms of level 0 reachable from CAVERN (room 0) under a set of opened doors and carried keys.
 
 Edges are the doors of scratchpad/cadaver/secrets_out/door_walk_level0.txt (`py/door_walk.py gameplay_empire.snap`), each joining the two rooms printed on its line.
-A door whose id word is 0 is open; `$ffff` (id -1) is closed until its number is in --open (mechanics.md section 72 lists each door's opener); a positive id word is
+A door whose id word is 0 is open; `$ffff` (id -1) is closed until its number is in --open (mechanics.md section 11 lists each door's opener); a positive id word is
 an item id, open when that id is in --keys (the rucksack carries it).  Teleport scripts (verb 37) are not edges.
 
     door_reach.py                                  CAVERN, TUNNEL

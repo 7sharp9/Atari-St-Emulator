@@ -1,6 +1,6 @@
 """door_id_words.py - probe the 5 doors with a genuine positive id word (cadaver.md Open item 2).
 
-For each of doors 53/73/155/167/244 (mechanics.md sec47b/47c), dumps the door descriptor's own
+For each of doors 53/73/155/167/244 (mechanics.md section 4), dumps the door descriptor's own
 +4..+7 bytes (sec47a: "unread, not needed to close item 1") and checks whether the id word, read
 as a type-6 object id (sec38a), resolves to a real populated record, and if so that record's own
 +15 byte (LOCK/UNLOCK's bit-2 flag, sec22c/23c). Proof for sec49.

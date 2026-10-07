@@ -1,15 +1,15 @@
 """room_object_names.py - for the CURRENTLY LOADED room only, resolve every placed object's own
 live display-name index and decode it to real text, closing cadaver.md open item 1's missing link.
 
-72nd pass. The field is NOT in the type-6 template (mechanics.md sec65c's own read of the raw
+72nd pass. The field is NOT in the type-6 template (mechanics.md section 8's own read of the raw
 template bytes found no match for the lever's known index 200 anywhere in the record) - it is a
 separate, room-load-populated "live instance" record, reached by the exact chain disassembled at
-$009440 (mechanics.md sec42, the icon-panel/status-bar proximity check):
+$009440 (mechanics.md section 6, the icon-panel/status-bar proximity check):
 
     template = resolve(type=6, id)          # sec65a/door_id_words.py's read_type6
     slot_off = u16(template + 8)            # the object's own currently-assigned array-slot byte
                                              # offset, written by the room loader ($00ce5c-$00ce60,
-                                             # mechanics.md sec37d) at room-entry time - only valid
+                                             # mechanics.md section 5) at room-entry time - only valid
                                              # while this object is instantiated in the CURRENT room
     slot_addr = u32((A5)+56) + slot_off      # SpriteObjectArrayPtr_A5Plus56 + slot_off (sec21a/43)
     live_rec = u32(slot_addr + 6)            # NOT the room-record back-pointer sec37d's prose
@@ -23,14 +23,14 @@ $009440 (mechanics.md sec42, the icon-panel/status-bar proximity check):
 
 Verified byte-for-byte against room2_tunnel_entry.snap in its pristine, never-stepped state (no
 emulator run needed - this is a pure static read): id 144 (LEVER) decodes to index 200, matching
-mechanics.md sec65b's already-proven live name exactly. Live `bpc 946a`/register capture during a
+mechanics.md section 8's already-proven live name exactly. Live `bpc 946a`/register capture during a
 real Left-hold approach (this pass) confirms the same chain executes for real at
 `$00944e`-`$00947c` (`move.w 10(A4),D0; cmp.w 1222(A5),D0`) with identical addresses.
 
 **Still open**: who writes `slot_addr+6` after the room loader's own initial (and evidently
 superseded) write, and whether `live_rec`'s underlying array is itself resident for every room
 simultaneously (making a name census of all 72 rooms possible from one snapshot) or is rebuilt
-per-room like the 70-byte placement array itself (mechanics.md sec43) - not yet determined. This
+per-room like the 70-byte placement array itself (mechanics.md section 6) - not yet determined. This
 script only resolves objects belonging to the room actually loaded in the given snapshot.
 
     python reversing/cadaver/py/room_object_names.py <snap>
@@ -45,7 +45,7 @@ from gfxview import load_ram, snapshot_regs  # noqa: E402
 from room_object_census import resource_type, resolve  # noqa: E402
 from name_strings import decode_index  # noqa: E402
 
-ARRAY_BASE_OFFSET = 56  # SpriteObjectArrayPtr_A5Plus56, mechanics.md sec21a/43
+ARRAY_BASE_OFFSET = 56  # SpriteObjectArrayPtr_A5Plus56, mechanics.md sections 3 and 6
 
 
 def u32(ram, base, addr):

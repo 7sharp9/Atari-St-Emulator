@@ -1,8 +1,8 @@
 """full_room_name_census.py - combine the static per-room object-id census (room_object_census.py's
 resolvers, type 5) with the live-driven array back-pointer writes captured by driving $00e854 (the
-real room-transition trigger, mechanics.md sec38c) for every room slot in one REPL session, to
+real room-transition trigger, mechanics.md section 4) for every room slot in one REPL session, to
 resolve every placed object's own live display-name index for ALL 72 rooms from a single base
-snapshot (gameplay_empire.snap) - not just the currently-loaded one. mechanics.md sec67 has the full
+snapshot (gameplay_empire.snap) - not just the currently-loaded one. mechanics.md section 8 has the full
 writeup and proof (23/23 cross-room validation, the GIANT RAT/slot-27 finding); this docstring only
 covers how to re-run the tool.
 
@@ -34,7 +34,7 @@ from room_object_census import resource_type, resolve  # noqa: E402
 from name_strings import decode_index  # noqa: E402
 from parse_rooms import parse as parse_rooms  # noqa: E402
 
-MONSTER_LO, MONSTER_HI = 224, 234  # SCONCE..SKELETON cluster, mechanics.md sec66/sec65b
+MONSTER_LO, MONSTER_HI = 224, 234  # SCONCE..SKELETON cluster, mechanics.md section 8/sec65b
 
 
 def u16(ram, base, addr):

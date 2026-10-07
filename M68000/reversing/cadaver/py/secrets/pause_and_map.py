@@ -15,7 +15,7 @@ h = r.hits(1000000, 0x6ba2, 0x11842); print('after X: main loop', h[0x6ba2], 'pa
 r.close()
 r = Repl()
 print('2118(A5) rooms entered =', r.w(A5 + 2118))
-out = r.cmd('w 185e0 00012888', 'callcap e854 2000000 -')       # (A5)+1166 = 1 (TUNNEL), low word of the longword keeps $2888 (mechanics.md 67)
+out = r.cmd('w 185e0 00012888', 'callcap e854 2000000 -')       # (A5)+1166 = 1 (TUNNEL), low word of the longword keeps $2888 (mechanics.md section 5)
 d = [l for l in out if l.startswith('mem $') and int(l.split()[1][1:], 16) in (A5 + 2118, A5 + 2119)]
 print('callcap e854 room 1: rooms-entered byte writes:', d)
 r.close()

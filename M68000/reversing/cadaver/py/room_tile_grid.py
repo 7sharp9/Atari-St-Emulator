@@ -3,9 +3,9 @@ against the shared tile catalog at (A5)+16.
 
 Proven mechanism (graphics.md 5th section, `$00add0`-`$00ae62` decode / `$00cab6`-`$00cb28` draw):
 each room's wall/floor layout is NOT stored as pixel art. A small per-room byte stream (resource
-type 1, keyed by the room's own slot via the type-3/type-1 resource manager, mechanics.md 38a) is
+type 1, keyed by the room's own slot via the type-3/type-1 resource manager, mechanics.md section 2) is
 run-length decoded into a live table at (A5)+2914: two passes, one sized by the room record's width
-byte (+4), one by its height byte (+5, mechanics.md 38d/40), each pass holding one ragged column per
+byte (+4), one by its height byte (+5, mechanics.md sections 4 and 5), each pass holding one ragged column per
 width/height unit - a wall "height-field" stack of tile ids, not a rectangular grid. Cell values with
 the top bit set are a separate, mostly-inert marker channel (graphics.md 5f), not ordinary tile ids;
 this script renders them as a hatched placeholder rather than guessing a tile.
@@ -17,7 +17,7 @@ tiles this session; re-read live, don't hardcode across builds/sessions).
     python reversing/cadaver/py/room_tile_grid.py <snap> --room-record 0x6bf0a --w 10 --h 10 \
         --json out.json --png out.png
 
-Room record address and w/h are read live from mechanics.md 38a/38d's type-3 table for a given room
+Room record address and w/h are read live from mechanics.md sections 2 and 4's type-3 table for a given room
 slot if --room-slot is passed instead of --room-record/--w/--h; both forms re-derive (A5), the tile
 catalog base/size and the palette fresh from the snapshot, per the workstream's "A5-relative fields
 are build-relocatable" rule (mechanics.md, Known traps).
@@ -34,7 +34,7 @@ import sprite_array_export as sae  # noqa: E402
 GRID_OFF = 2914       # (A5)+2914: decoded tile-id table, 20 rows x 8 words x 2 bytes = 320 bytes
 ROWS_PER_PASS = 10     # reserved rows per pass, regardless of the room's real width/height
 CELL = 32
-TYPE3_INDEX, TYPE3_DATA = 0x4ac36, 0x6bf0a  # mechanics.md 38a; re-derive per build, not hardcoded
+TYPE3_INDEX, TYPE3_DATA = 0x4ac36, 0x6bf0a  # mechanics.md section 2; re-derive per build, not hardcoded
 
 
 def read_u8(ram, base, a):
@@ -50,7 +50,7 @@ def read_u32(ram, base, a):
 
 
 def room_record_for_slot(ram, base, slot):
-    """mechanics.md 38a: type-3 index entry -> (size, offset) into the type-3 data area."""
+    """mechanics.md section 2: type-3 index entry -> (size, offset) into the type-3 data area."""
     entry = TYPE3_INDEX + slot * 4
     offset = read_u16(ram, base, entry + 2)
     return TYPE3_DATA + offset
@@ -134,7 +134,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("snap")
-    ap.add_argument("--room-slot", type=int, help="room slot index (mechanics.md 38b) - derives "
+    ap.add_argument("--room-slot", type=int, help="room slot index (mechanics.md section 4) - derives "
                      "the room record from the live type-3 table")
     ap.add_argument("--room-record", help="hex room-record address (alternative to --room-slot)")
     ap.add_argument("--w", type=int, help="room width in tile units (record byte +4); required "

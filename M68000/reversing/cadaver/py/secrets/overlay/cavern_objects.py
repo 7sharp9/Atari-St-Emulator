@@ -1,7 +1,7 @@
 """cavern_objects.py [snap]: list the loaded room's objects with their type-6 template record (A0 after resolve(6,id)),
 class byte 22(tmpl), instance offset 12(tmpl), instance bytes, display name; and the spell table (A5)+108 / potion table
 (A5)+112 names.  Start snapshot default scratchpad/cadaver/gameplay_empire.snap.  Used to pick real target records for
-callcap-ing overlay spell/use routines.  Expected: CAVERN's 22 objects (mechanics.md 65a/67), 27 spell names, 18 potions."""
+callcap-ing overlay spell/use routines.  Expected: CAVERN's 22 objects (mechanics.md section 8), 27 spell names, 18 potions."""
 import sys, struct
 from pathlib import Path
 sys.path.insert(0, 'reversing/cadaver/py'); sys.path.insert(0, 'tools')

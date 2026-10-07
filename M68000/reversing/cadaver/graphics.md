@@ -162,14 +162,14 @@ All 22 entries decode cleanly with no bleed, and most are immediately identifiab
 bitmap), a barrel (3), an axe/pick (4), two red flowers (5, 12), two small stools (6-7), three small
 red stemmed items (8-10, two sharing a bitmap), a pale fragment (11), a small teal gem (13), two
 bones (14-15), a sconce (16, visually goblet/chalice-shaped — its live display name is actually
-"SCONCE", not a goblet: mechanics.md §66), a **rowing boat** (17, 64×33 — the only entry wider than 32px, matches
+"SCONCE", not a goblet: mechanics.md section 8), a **rowing boat** (17, 64×33 — the only entry wider than 32px, matches
 `gameplay.png`), and three woven mats/rugs (18-19, 21) plus a **chest** (20) — both also visible in
 `gameplay.png`. Full descriptions in `sprites/manifest.csv`.
 
 State byte (`+42`): slot 0 (player) is `0`, slot 16 (the sconce, visually goblet-shaped) is `4`, all
 other 20 are `5`. Every state-`5`/`4` entry reads as static room dressing, not a creature — so
 **"monster slot" in the 6th pass's next-steps framing doesn't have a confirmed target**; nothing in
-this room's array is a creature (mechanics.md §66 confirms this directly too: neither this object's
+this room's array is a creature (mechanics.md section 8 confirms this directly too: neither this object's
 own live name index nor any other of CAVERN's 22 or TUNNEL's 2 objects' resolves to a monster name).
 The sconce's `state=4` outlier's art source is confirmed different from the other 20 (§5a-2: it's
 the one entry that doesn't resolve into type 2's 255-slot template catalog); what a differing state
@@ -336,7 +336,7 @@ width/height fields match that type-2 entry's own header `w,h` exactly (e.g. slo
 chest/slot 20↔idx 53) by decoding both independently and diffing every pixel: **identical, 0
 different pixels each** — not an address coincidence, the same bitmap. The one exception, **slot 16
 (the sconce, visually goblet-shaped, `+42` state `4` — §3's flagged "state=4 outlier", live display
-name index 224 = "SCONCE" per mechanics.md §66)**, decodes to a real, recognisable goblet/chalice
+name index 224 = "SCONCE" per mechanics.md section 8)**, decodes to a real, recognisable goblet/chalice
 shape via its own struct fields (`32×23@$5fbaa`) but that address falls inside type 2's overall
 data span (`$5115a`-`$6b92d`) without landing on any of the 255 index-table-listed entries' own
 offset+size boundary — genuine art, sourced from somewhere `resource2_export.py`'s enumeration
@@ -436,7 +436,7 @@ its wall than the marker byte's own cell, not on top of it.
 **Net**: the terrain-grid's `0xc2` marker is a real, generic, fully-proven mechanism — "paint this
 grid cell as one of §5a's 255-entry item catalog instead of a plain tile," reusing the exact same
 placement/clip/blit pipeline (§5h/§5i/§4b) rather than a separate object-instantiation path. It is
-**not** related to the free-floating persistent object array (`mechanics.md` §37d) or the earlier
+**not** related to the free-floating persistent object array (`mechanics.md` section 5) or the earlier
 guess that it "writes into struct fields at offsets 2,3,10,14 off a pointer taken from 52(A5)" —
 that guess (from reading only the first half of `$cbe0`-`$cc42` in isolation) conflated `$92e8`'s own
 internal bookkeeping fields (`52(A5)`/`2209(A5)`, unrelated to the draw descriptor) with the *actual*
@@ -476,12 +476,12 @@ change this: it names a specific catalog item for a specific cell, still level *
 compatibility rule between tiles.
 
 **5h. The per-cell screen-placement formula, byte-exact and live-verified in both rooms — `$00e7b0`'s
-own nested loop (`mechanics.md` §39, full transcription there), not a separate mechanism.** Full
-disassembly of the loop `mechanics.md` §39 had only summarized (`$00e7de`-`$00e80a`) gives:
+own nested loop (`mechanics.md` section 5, full transcription there), not a separate mechanism.** Full
+disassembly of the loop `mechanics.md` section 5 had only summarized (`$00e7de`-`$00e80a`) gives:
 `screen_offset(row, col) = base_offset + row*$4f8 + col*$508` (bytes, relative to the screen-buffer
 base at `(A5)+0`), for `row` in `[0,height)`, `col` in `[0,width)`, stored row-major (stride =
 width) into the table at `(A5)+2634`; `base_offset` is the same `$5a10`-lookup value this routine
-also commits to `(A5)+148` (`mechanics.md` §39). **Checked against every cell of both live room
+also commits to `(A5)+148` (`mechanics.md` section 5). **Checked against every cell of both live room
 instances, not sampled**: `room2_tunnel_entry.snap` (TUNNEL, `w=3,h=5`, `base_offset=$2d50`) — all
 15 cells match the formula exactly; `gameplay_empire.snap` (CAVERN, `w=10,h=10`,
 `base_offset=$1268`) — all 100 cells match exactly (both read live off `(A5)+2634`, computed
@@ -525,7 +525,7 @@ otherwise — 0 hits over 5M steps of ordinary play and 0 hits over 30M steps sp
 both from resumed mid-game snapshots; a `callcap` into `$00cab6` or its caller `$00ccd4` from a
 resting snapshot also does not reach it, since the real call needs state only the actual crossing
 sets up). Caught it for real with the REPL, driving the proven TUNNEL→CAVERN crossing
-(`mechanics.md` §38) from `room2_tunnel_entry.snap`: `kbd ff 02` (hold down), `bpc cab6 1 3000000`
+(`mechanics.md` section 4) from `room2_tunnel_entry.snap`: `kbd ff 02` (hold down), `bpc cab6 1 3000000`
 (hits at step 703,353, `A6=$6bf0a` — CAVERN's own room record), `s 5000` (let `$00d1f8` finish the
 walk), `snap ...mid_cab6_cavern.snap`. Reading the dereferenced list from that snapshot
 (`reversing/cadaver/py/room_mosaic.py`) gives **76 entries, all 76 real tile-catalog pointers** (tile
@@ -585,8 +585,7 @@ overlap/z-order detail this pass didn't chase further, not a placement-formula e
 correct — 96.0% pixel-exact once scored against the reference with the right palette formula, in
 line with CAVERN's 96.6%. The earlier "only 19.7%, left wall shows detail the catalog doesn't have"
 reading (below, kept for the record) was a tooling artifact, not a content or mechanism gap.** The
-real CAVERN→TUNNEL crossing route is the "documented zigzag" already named in `mechanics.md`
-§32/§60c (`kbd ff 08` (Right) 1.2M steps → `kbd ff 01` (Up) 0.5M steps → `kbd ff 08` 1.2M steps →
+real CAVERN→TUNNEL crossing route is the "documented zigzag" already named in `mechanics.md` sections 5 and 13 (`kbd ff 08` (Right) 1.2M steps → `kbd ff 01` (Up) 0.5M steps → `kbd ff 08` 1.2M steps →
 `kbd ff 01` 1.2M steps, from `gameplay_empire.snap`) — arming `bpc cab6 1 <budget>` per leg catches
 it at the very start of the final Up leg (step 52,887), giving `mid_cab6_tunnel.snap`.
 **Cross-checked two independent ways**: (a) its `(A5)+2634` placement table is byte-for-byte
@@ -687,7 +686,7 @@ one-time arithmetic placement table, and a shared blitter" — no per-room art, 
 rules, and (per §5g) no adjacency logic deciding which tile goes where. A level designer chose the
 recipe by hand; the engine just plays it back.
 
-**Net**: `mechanics.md` §37's "a room's background is just its object array" is wrong and is
+**Net**: `mechanics.md` section 5's "a room's background is just its object array" is wrong and is
 corrected there — the walls and floor are a genuinely separate, shared, tile-indexed system, decoded
 per room from a tiny compressed stream into a per-column tile stack (§5e) that a flat-indexed 80-tile
 catalog is drawn through, with no runtime adjacency rules (§5g), placed on screen by a byte-exact
@@ -704,7 +703,7 @@ proven; (b) the remaining 3.4% overlap-edge pixel mismatch in the CAVERN score (
 the two tools' differing palette formulas (§5i-3 addendum: closed — neither reference is an authentic
 Hatari render, so there is nothing to unify, and each tool already matches its own reference) — small
 and visually negligible, cause not identified; (c) the sconce's (visually goblet-shaped, §3 slot 16,
-state 4, object id 413, live name index 224 — mechanics.md §66) actual art source, now that §5a-2 has
+state 4, object id 413, live name index 224 — mechanics.md section 8) actual art source, now that §5a-2 has
 ruled out type 2's 255-slot table for it specifically — a one-off, low-priority curiosity, not
 blocking anything.
 

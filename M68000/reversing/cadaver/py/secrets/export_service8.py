@@ -1,10 +1,10 @@
-"""export_service8.py: the object-verb block's "teleport to room N" verb ($010974, mechanics.md 69) IS reachable: it is entry 8
+"""export_service8.py: the object-verb block's "teleport to room N" verb ($010974, mechanics.md section 4) IS reachable: it is entry 8
 (D6=32) of the level overlay's engine export table at $006082 (installed by `move.l #$6082,392(A5)` at $00b5ec, read by the trampoline
-$04caaa: `movea.l 392(A5),A6 / movea.l 0(A6,D6.w),A6 / jmp (A6)`).  mechanics.md 69b dismissed the raw bytes $00010974 at $0060a2 as
-a 1-byte-alignment coincidence of a table it read as 4-byte aligned from $006080; the table is 2 mod 4 ($006082), $0060a2 = $006082 + 8*4.
+$04caaa: `movea.l 392(A5),A6 / movea.l 0(A6,D6.w),A6 / jmp (A6)`).  The raw bytes $00010974 at $0060a2 are not a coincidence of a table read as 4-byte aligned from
+$006080: the table is 2 mod 4 ($006082) and $0060a2 = $006082 + 8*4.
 Start gameplay_empire.snap (CAVERN loaded, (A5)+1166 = 0).  Writes the 4 script bytes 01 02 03 04 (room 1, dx, dy, facing) at $0f0000,
 calls the trampoline with D6=32 A1=$0f0000 under `callcap` (state restored afterwards) and prints the delta of the room fields:
-(A5)+1166 -> 1, (A5)+164 (room record pointer) $06bf0a -> $06bf84 (TUNNEL's record, mechanics.md 67), A1 advanced by exactly 4.
+(A5)+1166 -> 1, (A5)+164 (room record pointer) $06bf0a -> $06bf84 (TUNNEL's record, mechanics.md section 5), A1 advanced by exactly 4.
     uv run python reversing/cadaver/py/secrets/export_service8.py"""
 import sys
 sys.path.insert(0, __file__.rsplit('/', 1)[0])

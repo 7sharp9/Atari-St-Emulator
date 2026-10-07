@@ -1,12 +1,12 @@
 """SUPERSEDED (78th pass): this walks the 59-entry table at $010000, which was read from the wrong base; the real verb table has 94
 entries at $00ffba (secrets.md, "The script language"; py/secrets/overlay/verb_decode.py).  Kept for the history of §64.
 
-Cadaver object-verb bytecode interpreter ($010000-$011256, mechanics.md #22-26/64,
+Cadaver object-verb bytecode interpreter ($010000-$011256, mechanics.md section 9,
 ai.md #6): dumps the embedded debug-string table with real addresses, decodes the 59-entry
 opcode dispatch table at $010000, and for each entry tries to resolve which verb's
-"object doesn't exist" error string its code path reaches (LOCK's own id=18 was found by
-hand in the 24th pass, mechanics.md #23a; this generalizes that technique across all 59
-entries instead of one at a time).
+"object doesn't exist" error string its code path reaches (LOCK's own entry was found by hand; this
+generalizes that technique across all 59 entries instead of one at a time; mechanics.md section 9
+explains why those 59 are the tail of the real table).
 
 Verb resolution is a best-effort static walk: follow the entry's own straight-line body
 (stopping at rts/rte/jmp/bra, but treating an unconditional bra/jmp as a same-routine
@@ -15,8 +15,7 @@ more level the same way. This is deliberately shallow - a fuller transitive walk
 into shared/neighbouring routines and reports unrelated strings (verified by hand against
 several entries during the 70th pass; not repeated here to avoid false positives). Some
 targets land on a real instruction this disassembler doesn't decode ("(line-F ...)"
-etc.) - a known tooling gap, not proof the entry is invalid; check by hand (mechanics.md
-#64 does this for id 31/STOPACTI).
+etc.) - a known tooling gap, not proof the entry is invalid; check by hand.
 
 Usage: python verb_opcode_map.py <snap>
 """
@@ -30,7 +29,7 @@ from disassemble import ram_from_snap, Disassembler  # noqa: E402
 STRING_TABLE_LO, STRING_TABLE_HI = 0x172c7, 0x17951
 DISPATCH_TABLE = 0x010000
 DISPATCH_COUNT = 59
-BSR_RESOLVER = 0x010738  # shared type-6/9 object-id resolver, mechanics.md #22d
+BSR_RESOLVER = 0x010738  # shared type-6/9 object-id resolver, mechanics.md section 9
 
 COND_RE = re.compile(r'^b(eq|ne|cc|cs|pl|mi|gt|lt|ge|le|hi|ls|vc|vs)\s+\$([0-9a-f]+)')
 UNCOND_RE = re.compile(r'^(bra|jmp)\s+\$([0-9a-f]+)')

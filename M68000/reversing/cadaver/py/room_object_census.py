@@ -2,7 +2,7 @@
 slots), statically read that room's own object-id list and print it, without ever driving the
 player there.
 
-Found this pass by disassembling the room-load routine (`$00cd50`, mechanics.md sec37d) in full:
+Found this pass by disassembling the room-load routine (`$00cd50`, mechanics.md section 5) in full:
 it resolves the room's object list via `bsr $c5a8` with **type 5**, index = the room's own slot
 number (confirmed live: `(A5)+1166` reads 0 in gameplay_empire.snap/CAVERN and 1 in
 room2_tunnel_entry.snap/TUNNEL, exactly world_map.py's own slot numbering) - a resource type this
@@ -11,7 +11,7 @@ spike had never resolved before (types 3/6/8/9 were already known, sec23c/38a). 
 
 Cross-checked against already-proven ground truth: slot 0 (CAVERN) decodes to 22 objects matching
 graphics.md's own 22-entry sprite-object-array export, and slot 1 (TUNNEL) decodes to exactly
-`[0, 144]` - id 144 is the already-triple-confirmed lever object (mechanics.md sec23d). Both
+`[0, 144]` - id 144 is the already-triple-confirmed lever object (mechanics.md section 9). Both
 match, 2/2 - this is a real resource type, not a guess.
 
 **Does not, on its own, identify which room has a creature.** An object's own display-name index

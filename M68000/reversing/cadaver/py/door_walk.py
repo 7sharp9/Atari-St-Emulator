@@ -1,6 +1,6 @@
 """door_walk.py - static door-connectivity walk (cadaver.md Open item 1).
 
-For every populated type-3 room's 7 door-link slots (record +6..+19, mechanics.md sec14), resolve
+For every populated type-3 room's 7 door-link slots (record +6..+19, mechanics.md section 2), resolve
 the door id through the type-4 resource table (sec38a, 8-byte records, confirmed against the 3
 known descriptors $6d4ea/$6d4f2/$6d532 in the one-disk build) to get each descriptor's candidate
 entry coordinate (bytes +0/+1) and stated target-id word (+2). Then run the exact algorithm $de5e
@@ -61,7 +61,7 @@ def resolve_descriptor(ram, base, index_table, data_area, door_id):
 
 
 def resolve_room_for_point(rooms, cx, cy):
-    """Mirror $de5e (mechanics.md sec38d): linear scan in slot order, first containing rect wins."""
+    """Mirror $de5e (mechanics.md section 4): linear scan in slot order, first containing rect wins."""
     for r in rooms:
         if r["x0"] <= cx <= r["x1"] and r["y0"] <= cy <= r["y1"]:
             return r
@@ -109,7 +109,7 @@ def main():
         elif tw == -1:
             tag = "[id=-1 sound-cue-only, no room commit]"
         else:
-            tag = f"[id={tw} keyed: item id in the rucksack opens it, mechanics sec72]"
+            tag = f"[id={tw} keyed: item id in the rucksack opens it, mechanics section 4]"
         rel = []
         for owner in owners:
             if dest_slot is None:

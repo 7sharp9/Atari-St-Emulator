@@ -1,7 +1,7 @@
 """text_atlas.py <snap>: every primary message of the packed text table ($075876 offsets, $076046 stream, (A5)+168/172, decoded through
 the 6-bit map at $005ac0 -- py/name_strings.py's decoder), index 0-389, one per line: the text up to its first NUL (the stream carries
 several messages back to back; each index starts at its own).  Indices past 389 decode to a repeating `DOOR` pattern then zero padding
-(mechanics.md 67).  Also prints the assert strings ($0172c8-$017951, plain ASCII) and the plain-ASCII UI strings ($0062xx-$0067xx).
+(mechanics.md section 8).  Also prints the assert strings ($0172c8-$017951, plain ASCII) and the plain-ASCII UI strings ($0062xx-$0067xx).
     uv run python reversing/cadaver/py/secrets/text_atlas.py [snap]"""
 import struct, sys, re
 sys.path.insert(0, 'tools'); sys.path.insert(0, 'reversing/cadaver/py')

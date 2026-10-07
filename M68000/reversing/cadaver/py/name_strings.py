@@ -1,5 +1,5 @@
 """name_strings.py - decode the packed dialogue/UI string table at (A5)+168/172, found this pass
-by tracing every caller of $00fd2c (the routine mechanics.md sec18b already named as the
+by tracing every caller of $00fd2c (the routine mechanics.md section 7 already named as the
 name-banner's string decoder, but never enumerated beyond the couple of indices sec18b's own
 call-tree walk touched).
 

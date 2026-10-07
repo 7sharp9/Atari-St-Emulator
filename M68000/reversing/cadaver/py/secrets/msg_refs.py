@@ -1,6 +1,6 @@
 """msg_refs.py <snap>: which of the UI messages (string indices 0-127) a literal in the code names.  Scans the whole loaded image
 ($006e00-$011800 main code and the level overlay $04c6a8-$04e200) for (a) `move.w #N,2142(A5)` (the message-index register the
-banner routine $00defa reads, mechanics.md 18c) and (b) an immediate index loaded into D0 (`moveq #N,D0` / `move.w #N,D0`) within 8
+banner routine $00defa reads, mechanics.md section 7) and (b) an immediate index loaded into D0 (`moveq #N,D0` / `move.w #N,D0`) within 8
 instructions before a `bsr`/`jsr` of a text routine: $00fd2c (decode), $011770 (decode + append), $00a82c (show at line D7), $0111fe-
 style table lookups are data-driven and not seen.  Prints the indices with no such literal: candidates for dead text, or text chosen
 from data (object records, the $6xxx/$a5 tables) -- not proof either way.

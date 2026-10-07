@@ -5,7 +5,7 @@ The push idiom (all 48 sites of `gameplay_empire.snap` fit it) is
 so the script finds each `addq.w #1,1154(A5)` in a whole-image listing (`tools/disassemble.py --all`) and takes the first
 `move.w ...,(An)+` after the preceding `movea.l 304(A5),An`.  The consumer `$00fdbc` compares the LOW BYTE of the opcode with
 a script block's event byte; bit 14 selects the second script set (template +$20) and bit 15 adds a fourth longword to the
-entry (mechanics.md 18a, secrets.md "Object scripts"), so `$4013` is event 19 for the +$20 set.
+entry (mechanics.md section 7, secrets.md "Object scripts"), so `$4013` is event 19 for the +$20 set.
 
 Static only: it names the producer, not what makes it run.  Prints one line per site (address, opcode, event, flags) and a
 table event -> sites.  A site whose opcode is not an immediate is printed as `reg`.  Output also goes to

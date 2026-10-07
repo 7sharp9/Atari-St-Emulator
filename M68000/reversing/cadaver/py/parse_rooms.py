@@ -1,7 +1,7 @@
 """Parse all_rooms_combined.log (72 sequential `w 185e0.. / watch / callcap e854 / unwatch` blocks,
 one per room slot, stdout+stderr interleaved in real execution order) into a per-room list of
 (array_index, live_rec) pairs, using the $00ce78 WriteWord pairs as the array back-pointer writer
-(mechanics.md sec66's slot_addr+6 field). Room boundaries are found via each block's own
+(mechanics.md section 8's slot_addr+6 field). Room boundaries are found via each block's own
 "Watching [$lo,$hi]" stdout marker (72 of them, one per `watch` command re-issued per room).
 """
 import re

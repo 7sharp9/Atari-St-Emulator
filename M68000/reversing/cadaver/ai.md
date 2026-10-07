@@ -129,25 +129,25 @@ if a differential test becomes worthwhile once a live creature exists.
 ## 6. The object-verb bytecode interpreter (`$010000`-`$011256`) — a separate room/level-scripting
    system, distinct from §1-5's entity/action-script interpreter (23rd-26th passes)
 
-Found via the embedded debug-string table (`mechanics.md` §22b), not via the same top-down
+Found via the embedded debug-string table (`mechanics.md` section 9), not via the same top-down
 compositor trace that found §1-5's interpreter — this is a genuinely different mechanism, driving
 room/level object state (locks, movement, chests, creatures) rather than a per-entity animation
-tick. Full derivation: `mechanics.md` §22-25.
+tick. Full derivation: `mechanics.md` section 9.
 
 ### 6a. Dispatch table and calling convention
 
 Same idiom as §2's own jump table and `mechanics.md`'s `$00fe84`/`$011728`
 (`add.w D0,D0; adda.w 0(A2,D0.w),A2; jmp (A2)`): a 59-entry word-relative offset table at
-`$010000`-`$010075`, real handler code resuming exactly at `$010076` (`mechanics.md` §23a). Handlers
+`$010000`-`$010075`, real handler code resuming exactly at `$010076` (`mechanics.md` section 9). Handlers
 read their operand — typically a big-endian 16-bit object id — from a script-stream cursor in `A1`
 via `(A1)+`. Most handlers resolve that id through a shared id-resolver, `$010738` → `$00c542`/
-`$00c56e` (`mechanics.md` §22d), which reuses the *same* generic `(A5)+96` resource-type-descriptor
+`$00c56e` (`mechanics.md` section 9), which reuses the *same* generic `(A5)+96` resource-type-descriptor
 system §15b describes for rooms (type 8), but against **types 6 (objects) and 9 (creatures)** —
 `tst.w D1; bpl` → type 6 for a positive id, a negative sentinel → type 9 with the id replaced by a
 global, and `$ffff` → the current "self/current actor" slot (`348(A5)`) directly, bypassing the
 resource system entirely.
 
-### 6b. Opcode vocabulary (from the debug-string error table, `mechanics.md` §22b)
+### 6b. Opcode vocabulary (from the debug-string error table, `mechanics.md` section 9)
 
 Only **LOCK**'s numeric id is confirmed by an exact address match (below); the rest of this list is
 the full verb vocabulary the engine's own debug strings name, not yet each individually pinned to a
@@ -158,7 +158,7 @@ creature WAKE, creature SLEEP, rucksack ADD, FLAG ops, chest UNLOCK, chest UNTRA
 potion op (DIRTY). (`GOACTI`/`STOPACTI` and a generic object MOVE also appear in the string table but
 weren't individually chased.)
 
-### 6c. LOCK and UNLOCK, disassembled exactly (`mechanics.md` §22c)
+### 6c. LOCK and UNLOCK, disassembled exactly (`mechanics.md` section 9)
 
 ```
 $01049a: bsr  $10738        ; resolve object by 16-bit id operand
@@ -177,14 +177,14 @@ test reads via its `+10` link (§4's "interactive/pickup" `AND` test in `mechani
 own struct-shape note in §1 that entity structs and sprite-array structs are numbered similarly but
 distinct — this is a third, separate struct again, the type-6 resource record). **LOCK's real
 dispatch-table id is 18** — `$010000`'s entry 18 resolves to exactly `$01049a`, an exact match on a
-specific two-word instruction among ~3,400 possible values, not a coincidence (`mechanics.md` §23a).
+specific two-word instruction among ~3,400 possible values, not a coincidence (`mechanics.md` section 9).
 **UNLOCK's own address is *not* one of the 59 table entries** — the "LOCK=18, UNLOCK=19" adjacency
 guess is directly refuted (entry 19 lands on an unrelated `rts`); UNLOCK is reached some other way,
-genuinely unresolved (`mechanics.md` §23b).
+genuinely unresolved (`mechanics.md` section 9).
 
 ### 6c-2. Three more opcodes numerically pinned, one causally proven live (70th pass)
 
-Generalizing §23a's one-off LOCK match across all 59 entries (`mechanics.md` §64,
+Generalizing §23a's one-off LOCK match across all 59 entries (`mechanics.md` section 9,
 `py/verb_opcode_map.py`): **id 1 = a CREATE-style allocator** (`$010914`, errors `"CREATE SIZE
 ZERO"`; the first confirmed case of one verb handler calling another directly, `$010844`'s handler
 reaches it via `bsr`, not through the byte-dispatch table); **id 31 = STOPACTI** (`$010e7e`, pairs
@@ -193,7 +193,7 @@ confirming it's a general per-object flag byte, not lock-specific); **id 34 = UN
 (`$010ee2`), and this one is now causally proven the same way §24c proved LOCK: `callcap $010ee2`
 against the lever object (144) with a scratch id operand clears a real 16-bit field in the object's
 own record (`object+2`, indexed by the object's own `+12` byte — a per-object chest-slot array, a
-different shape from LOCK/UNLOCK's fixed bit), confirmed live (`mechanics.md` §64a). Second causal
+different shape from LOCK/UNLOCK's fixed bit), confirmed live (`mechanics.md` section 9). Second causal
 proof in the whole spike, on a structurally different opcode — real evidence the mechanism
 generalizes past LOCK/UNLOCK specifically.
 
@@ -201,33 +201,33 @@ generalizes past LOCK/UNLOCK specifically.
 
 Object id 144 resolves (type-6 index table → `$0006fa0e`) to the exact same address the live sprite-
 array entry's own `+10` field points to for TUNNEL's lever, cross-confirmed three independent ways
-(`mechanics.md` §23d). `callcap $01049a` with `A1` pointing at a scratch buffer holding id 144 flips
+(`mechanics.md` section 9). `callcap $01049a` with `A1` pointing at a scratch buffer holding id 144 flips
 that record's `+15` byte from `$01` to `$05` (bit 2 set) exactly as LOCK's own `bset` predicts — a
 causal, not just structural, proof that LOCK-on-144 does what every static reading inferred
-(`mechanics.md` §24c). **What calls LOCK with id 144 during ordinary play is closed as a documented
-negative — not resident in RAM in any snapshot this spike has taken** (`mechanics.md` §26); this
+(`mechanics.md` section 9). **What calls LOCK with id 144 during ordinary play is closed as a documented
+negative — not resident in RAM in any snapshot this spike has taken** (`mechanics.md` section 9); this
 file's job is the mechanism, not the caller search, and that thread is not reopened here.
 
 ### 6e. Not chased
 
 - Beyond LOCK (18)/UNLOCK CHEST (34)/STOPACTI (31)/CREATE (1, §6c-2), the rest of §6b's vocabulary
-  now has real, disassembled handler addresses (`mechanics.md` §64b: MOVEING, GOANI, GOMOVE,
+  now has real, disassembled handler addresses (`mechanics.md` section 9: MOVEING, GOANI, GOMOVE,
   STOPMOVE, FLAG OP, GOACTI, UNTRAP CHEST, CLEAR CHEST, DIRTY POTION, KILL/UNINV/WAKE/SLEEP) but not
   each one's exact numeric opcode id — a further per-entry manual pass could push this, at the risk
   of the same false-attribution failure mode `py/verb_opcode_map.py`'s bounded walk was built to
-  avoid (`mechanics.md` §64d).
+  avoid (`mechanics.md` section 9).
 - Two new architectural facts from that same pass, also not chased further: MOVEING/GOANI resolve
   their target through a *different* resource type (4, via `$00c5a8`) than every other verb here
   (6/9, via `$010738`) — worth remembering given type 4 is also the door-descriptor table's own type
-  (`mechanics.md` §47a); and FLAG OP (`$0106bc`) is confirmed as the condition-setting opcode for
+  (`mechanics.md` section 4); and FLAG OP (`$0106bc`) is confirmed as the condition-setting opcode for
   the small nested-IF bytecode table at `$0000ffba` that §23b's "aside" noted but didn't identify a
   writer for (both toggle/read `2270(A5)`).
-- `$010076`'s own alternate entry point into the id-resolver (`mechanics.md` §24a) — a real routine,
+- `$010076`'s own alternate entry point into the id-resolver (`mechanics.md` section 9) — a real routine,
   zero found callers.
 - The verb interpreter's own top-level "read a room's init script, dispatch opcode bytes" entry
   point — not the reusable generic-jump-table stubs at `$011700`-`$01172e` (confirmed via
-  `find_ram_callers.py`, `mechanics.md` §23d/§24b), and not a bridge through `$00fe84`
-  (`mechanics.md` §25, a clean negative) — still unlocated. Every new caller found in the 70th pass
+  `find_ram_callers.py`, `mechanics.md` section 9), and not a bridge through `$00fe84`
+  (`mechanics.md` section 9, a clean negative) — still unlocated. Every new caller found in the 70th pass
   is internal to the `$010000`-`$011256` block itself; external reachability is unchanged.
 
 ## Files

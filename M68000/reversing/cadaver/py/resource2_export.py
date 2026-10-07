@@ -2,7 +2,7 @@
 5f/5a) to a contact sheet + manifest, the same way tiles/contact_sheet.png proves the terrain
 catalog and sprites/ proves the object array.
 
-Resource type 2 (mechanics.md 38a's manager, `(A5)+96` -> 18-byte row * 2) is a 255-entry catalog
+Resource type 2 (mechanics.md section 2's manager, `(A5)+96` -> 18-byte row * 2) is a 255-entry catalog
 of wall-panel/building/item art, reached only through a dedicated fetch primitive at `$00c576`
 (hardcoded `moveq #2,D0`, distinct from the generic `(type,index)` fetch `$00c5a8` that graphics.md
 5a's original census grepped for - that's why the census concluded type 2 was dead when it's
