@@ -9,7 +9,7 @@ that data reference instead (Cadaver's `$b5a8`, `$67ea` and `$b1e0` are worked e
 §17a/§17d and §48b).
 
 Caveat: this only matches an absolute address literal. A jump table built from PC/table-relative
-16-bit displacements (like the Cadaver spike's own 59-entry verb dispatch table, mechanics.md §24)
+16-bit displacements (like the Cadaver spike's verb dispatch table, mechanics.md section 9)
 won't contain the plain target address anywhere and needs a different technique (compute the
 displacement from a candidate table base and search for that instead).
 
