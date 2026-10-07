@@ -14,30 +14,30 @@ R = this README); anything not proven there is labelled read (from code, not run
 ### What carries the game
 
 - **A world of small rooms on one grid, one room live at a time.** Level 0 has 72 rooms (level 1 has 97) as rectangles of 3 to 10 cells a side on a shared world grid (CAVERN is 10 by 10, TUNNEL 3 by 5); a room
-  is a short compressed recipe plus its own object list and script blocks. Entering a room clears the old objects and installs the new ones. (M 27, 38; S "Room scripts")
+  is a short compressed recipe plus its own object list and script blocks. Entering a room clears the old objects and installs the new ones. (M 1, 5; S "Room scripts")
 - **A door is a descriptor in a global door list, and the destination is found by position, not by an id.** The room you arrive in is the room whose rectangle contains the door's own coordinate; the hero
-  lands at the door's edge. A door whose word is `$ffff` does nothing but play a cue until a script clears it (13 of level 0's 71 doors, each with an opener). (M 27c, 72; `door_walk.py`)
+  lands at the door's edge. A door whose word is `$ffff` does nothing but play a cue until a script clears it (13 of level 0's 71 doors, each with an opener). (M 4; `door_walk.py`)
 - **One word makes a door a lock.** 0 is open, `$ffff` is closed to everything but a script (a lever or a button clears it), and a positive id means "the rucksack must hold this item"; a flag byte decides
-  whether the key is consumed, kept, or only needed as a permanent pass (the crown). Walking into the door does the test; there is no unlock action. (S "The keyed doors"; M 72, 73: nine doors driven on the road to the treasury)
+  whether the key is consumed, kept, or only needed as a permanent pass (the crown). Walking into the door does the test; there is no unlock action. (S "The keyed doors"; M 4, 11: nine doors driven on the road to the treasury)
 - **Everything in a room is a box in three axes.** A placement entry gives each object (x, y) lead and trail edges and a z base and top; the hero is a 7 by 7 footprint 30 high, collision is box overlap on all
   three axes, and a box that overlaps an interactive object raises a touch event instead of blocking (the gem and the hazard of room 15 are walked through live; the classification itself is read). Things rest on top of each other (the circlet on its pedestal, a key on a tomb) and the hero cannot
-  walk up a step unless the template allows it. (M 27b, 74; S "The regalia walk")
+  walk up a step unless the template allows it. (M 3, 11; S "The regalia walk")
 - **The fire button is both the probe and the jump.** With an object directly ahead it opens that object's icon panel; with nothing ahead it starts a jump (a fixed arc that rises 35 units, takes about 450,000 steps and carries the hero in the held direction; it lands on any top at z 22 or lower, which is how the hero reaches the items on the two altars). Objects only reveal what they offer to a hero standing next to them and facing them. (S "The player's action panel", "The regalia walk")
 - **One icon panel per object, built from its class.** The icons are TAKE, DROP, EXAMINE, operate, read, use or drink, open (read; its trap damage driven), apply an item, select and give; the class table decides which appear. Space opens the panel of the held
-  rucksack item, which in front of a keyed object (class `$b`: a keyhole, a lock) offers "apply" (the held item's id is compared with the object's gate). (S "The player's action panel", "Applying an item"; M 73)
+  rucksack item, which in front of a keyed object (class `$b`: a keyhole, a lock) offers "apply" (the held item's id is compared with the object's gate). (S "The player's action panel", "Applying an item"; M 11)
 - **The puzzle layer is data: a small event language, not code.** Each object template can carry blocks of the form "when event E (gated by a byte) run these verbs"; 94 verbs cover messages, gold and XP, health,
   door and state flags, variables, show, hide, create, delete, place, teleport and the level load. Events come from a 200-entry queue fed by touches, icons, timers, room entry, regions and verbs. A block runs to
-  completion; everything that persists lives outside it (state bits, door flags, 8-bit variables, the rucksack, gold, XP, health, timers). Conditions add to a counter and an IF tests it. Eight of the events are addressed to a room record, not an object (every entry, first entry, a periodic tick, a region overlap by the hero or another object, a spell cast, two raised by verbs), so a room carries its own script blocks; events 3 and 21 have no producer and their blocks are dead content, and a verb byte of 94 or more is unchecked and crashes. (S "How the script system fits together", "The script language", "Room scripts"; M 80a, 80b)
-- **Objects are animated and moved by two tiny per-object programs, and the scripts only start and stop them.** An animation is a list of frames with halt, wait, loop and event ops, ticked once a frame; a mover is a small counter-and-program machine (steps, relative jumps, waits, an event op) that asks the collision test before every step and then falls under a gravity table. GOANI and GOMOVE resume a halted one, so a lever "pulls" because its animation is released, not because a state bit changes (the script's own bit is a latch the engine never reads); hiding an object removes it from drawing, animation, movement and collision at once. (S "The type-6 record's state bytes"; M 80c: models match 4963 of 4963 animation passes and 3284 of 3286 mover passes)
+  completion; everything that persists lives outside it (state bits, door flags, 8-bit variables, the rucksack, gold, XP, health, timers). Conditions add to a counter and an IF tests it. Eight of the events are addressed to a room record, not an object (every entry, first entry, a periodic tick, a region overlap by the hero or another object, a spell cast, two raised by verbs), so a room carries its own script blocks; events 3 and 21 have no producer and their blocks are dead content, and a verb byte of 94 or more is unchecked and crashes. (S "How the script system fits together", "The script language", "Room scripts"; M 9)
+- **Objects are animated and moved by two tiny per-object programs, and the scripts only start and stop them.** An animation is a list of frames with halt, wait, loop and event ops, ticked once a frame; a mover is a small counter-and-program machine (steps, relative jumps, waits, an event op) that asks the collision test before every step and then falls under a gravity table. GOANI and GOMOVE resume a halted one, so a lever "pulls" because its animation is released, not because a state bit changes (the script's own bit is a latch the engine never reads); hiding an object removes it from drawing, animation, movement and collision at once. (S "The type-6 record's state bytes"; M 9: models match 4963 of 4963 animation passes and 3284 of 3286 mover passes)
 - **Creatures, spells, potions and timers are native code in a per-level overlay,** reached through a header table of effect routines and an export table of engine services; the scripts touch them only by
   queueing events. The same overlay routines are shared by every level decoded (17 of 18 potion routines and 29 of 31 spell routines identical in 7 overlays). (S "The level code overlay")
 - **The inventory is a short list of (object id, template) records, and every script test, gate and key door compares the object id.** A pick-up writes the record and then runs the object's own pick-up block (a coin adds gold, a gem adds gold and XP and vanishes); conditions test
-  the list ("the rucksack holds 16, 32, 28 and 26"). Throwing a held item (select, fire with nothing ahead) is a way to deliver a touch to a distant object, which is how the pickaxe breaks room 12's wall and how a gem is counted in a pit, an urn wakes a statue and a flask an altar; a drop only places the item and fires no event on any target. (S "What a pick-up writes", "The player's action panel"; M 73, 77)
+  the list ("the rucksack holds 16, 32, 28 and 26"). Throwing a held item (select, fire with nothing ahead) is a way to deliver a touch to a distant object, which is how the pickaxe breaks room 12's wall and how a gem is counted in a pit, an urn wakes a statue and a flask an altar; a drop only places the item and fires no event on any target. (S "What a pick-up writes", "The player's action panel"; M 10, 11)
 - **The main puzzle is a chain, and each link is a different verb.** Pickaxe, the lever that opens the tunnel door, an iron key for CAVERN's east door, a second lever, a wall broken by thrown pickaxes, a steel key
   applied to a lock object, a bronze key, a skeleton key that appears only after a tomb is examined, and finally four regalia picked out from decoys to open the treasury: all driven by
-  natural input from CAVERN to the treasury, in four scripts. From the treasury a lever returns the hero, two more scripts walk it to room 13's door `$2a` (a chain of four buttons in room 14 opens that door as well as the crown does), and room 36 beyond it holds a dragon that stands between the hero and the exit: its death is what places the lever that opens door `$29`. Nothing the hero can aim reaches it (stones, the missile scroll and thrown tools fly under its height and the hero cannot shoot from the air); the one thing that kills it is the MASSACRE scroll 324 cast once, after READ MAGIC 371 has taught it, and both are the end of long puzzle chains (a soul urn in a trapped chest thrown onto a dead lord's altar and the scroll taken from its top by one jump; a gem teleport out of a pit, then an urn, a flask and an altar of the cluster 38-47, each thrown, not dropped). **The whole road from the treasury to room 60, the cast included, is one script chain driven by joystick and keyboard alone** (`py/secrets/overlay/action/exit_level0/`, about 4 minutes, two runs identical over 427 snapshots, arriving at health 20), and the transport object in room 60 then loads the next level after a disk-swap prompt with health, XP and gold carried over. (M 72-77; S "The regalia walk")
+  natural input from CAVERN to the treasury, in four scripts. From the treasury a lever returns the hero, two more scripts walk it to room 13's door `$2a` (a chain of four buttons in room 14 opens that door as well as the crown does), and room 36 beyond it holds a dragon that stands between the hero and the exit: its death is what places the lever that opens door `$29`. Nothing the hero can aim reaches it (stones, the missile scroll and thrown tools fly under its height and the hero cannot shoot from the air); the one thing that kills it is the MASSACRE scroll 324 cast once, after READ MAGIC 371 has taught it, and both are the end of long puzzle chains (a soul urn in a trapped chest thrown onto a dead lord's altar and the scroll taken from its top by one jump; a gem teleport out of a pit, then an urn, a flask and an altar of the cluster 38-47, each thrown, not dropped). **The whole road from the treasury to room 60, the cast included, is one script chain driven by joystick and keyboard alone** (`py/secrets/overlay/action/exit_level0/`, about 4 minutes, two runs identical over 427 snapshots, arriving at health 20), and the transport object in room 60 then loads the next level after a disk-swap prompt with health, XP and gold carried over. (M 4, 11; S "The regalia walk")
 - **Health is a budget with almost no income.** The maximum is 100 and a level start grants two thirds of it; nothing regenerates it. The only gains are a few flasks (+2 and +10), potions and a save restore, while
-  hazards cost 1 to 50 per touch; the road above takes 67 at CAVERN down to 33 at room 16, and one drink on the way leaves 35 at the treasury; the way back drinks a second water and waits out a patrol, so 37 reaches room 36, and the +10 flask in room 46 (zero cost, 30 identical checkpoints) makes it 47; the gem road and the scroll road then cost 27 (a creature fireball in room 27, the fall, spiders, an urn's -5) and the chain reaches room 36 with 20, enough because the cast comes before the first fireball; the FIRE SHIELD potion that stops fireballs stays out of reach. Level 1 starts with the 20 carried over (maximum 200) and its first income is STAMINA 556 on a block in room 29 (+20 a dose, two doses, driven), which room 31 is reached with at 60; room 31's altar and skull open the way to room 12, whose lever needs an object thrown into a floor region first and whose two pillars are crossed in frame-clocked windows, and room 32's gates need a timed lever pull, so room 90 is reached at 60 (M 79). (S "The stats scroll"; M 74-79)
+  hazards cost 1 to 50 per touch; the road above takes 67 at CAVERN down to 33 at room 16, and one drink on the way leaves 35 at the treasury; the way back drinks a second water and waits out a patrol, so 37 reaches room 36, and the +10 flask in room 46 (zero cost, 30 identical checkpoints) makes it 47; the gem road and the scroll road then cost 27 (a creature fireball in room 27, the fall, spiders, an urn's -5) and the chain reaches room 36 with 20, enough because the cast comes before the first fireball; the FIRE SHIELD potion that stops fireballs stays out of reach. Level 1 starts with the 20 carried over (maximum 200) and its first income is STAMINA 556 on a block in room 29 (+20 a dose, two doses, driven), which room 31 is reached with at 60; room 31's altar and skull open the way to room 12, whose lever needs an object thrown into a floor region first and whose two pillars are crossed in frame-clocked windows, and room 32's gates need a timed lever pull, so room 90 is reached at 60 (M 12). (S "The stats scroll"; M 10, 11, 12)
 - **Gold and XP are the score.** Gold piles pay n gold and n/4 XP, first-entry blocks and treasures pay XP, a 20-title rank table maps XP to a rank and the stats scroll
   shows rooms entered as a completion percentage. (S "The stats scroll and the rank table", "Room scripts")
 - **Saving costs gold.** The save price is `max(floor, (level + 1) * 50 - 45)`, each save raises the floor by 6 times (level + 1), and declining costs nothing; dying leads to the
@@ -49,7 +49,7 @@ R = this README); anything not proven there is labelled read (from code, not run
   from the box relation (x lead at least the other's x trail, y lead at least its y trail, z top at least its z base); a moved sprite is cleaned and the sprites in front of it repainted, so there is no z-buffer and no sort. (G 5j, 5k)
 - **Sound is a three-voice sequencer with request priorities.** 62 request records (41 effects shared round robin over free voices, 12 sustained and looping, 9 three-voice priority sounds) drive a 17-opcode
   bytecode with software pitch and volume envelopes; sound stops during disk I/O. (S "The sound engine")
-- **Roaming creatures advance only while the hero is in their room.** Their positions are a function of the steps spent inside it: leaving freezes them and re-entering resumes them, so a wait outside a room changes nothing and the danger of a crossing depends on the phase left behind. They walk at the hero's own speed, so they cannot be outrun, only timed. (M 77)
+- **Roaming creatures advance only while the hero is in their room.** Their positions are a function of the steps spent inside it: leaving freezes them and re-entering resumes them, so a wait outside a room changes nothing and the danger of a crossing depends on the phase left behind. They walk at the hero's own speed, so they cannot be outrun, only timed. (M 10)
 - **Randomness is a function of input timing.** One 16-bit generator is seeded once and never from a clock, so the same input timing gives the same creatures, drops and rolls (replay inferred, not run). The day counter
   is wall-clock only: one day is 90,000 VBLs, about 30 minutes, and nothing reads it. (S "Random numbers", "The day")
 - **A level is a directory record of packed blocks plus its overlay.** The one-disk build holds two populated levels, the two-disk build five; a level start depacks the blocks, installs the overlay and sets health. (S "Loading, the expander and the level directory")
@@ -57,14 +57,14 @@ R = this README); anything not proven there is labelled read (from code, not run
 ### Limits that became features
 
 - **No expressions and no loops.** Puzzles are chains of single tests and counters: room 15 counts entries in one variable and shows a stone at each step until the tenth entry reveals a gem (driven: gold 0 to 100,
-  XP +51); a level-1 room counts verb calls and reveals animations at 4, 8 and 10. (S "Room scripts"; M 74)
+  XP +51); a level-1 room counts verb calls and reveals animations at 4, 8 and 10. (S "Room scripts"; M 11)
 - **A block that is not marked keep rewrites its own event byte after running once,** which is the whole implementation of a one-shot lever or a first-visit reward. (S "How the script system fits together")
 - **Items reveal themselves by script, not by placement.** The skeleton key does not exist until its tomb is examined (a SHOW in the tomb's examine block), and the key sits on top of the tomb, so the
-  jump and the probe together are the puzzle. (M 73)
+  jump and the probe together are the puzzle. (M 11)
 - **A touch is a per-frame event with a dedup cache,** so a hazard is just an object that answers event 9, and a wall can answer only one mover by gating on its template id: the pickaxe
-  wall answers only the pickaxe and the axe. (M 4a, 73; S "Who pushes events")
-- **A hazard can be a patrol with a pause, so waiting is a move.** Room 15's roaming object costs 30 for a climb started soon after the arrival and nothing for one started 2,300,000 steps later, when it rests in the middle of its lane (driven; the damage condition itself is not identified). (M 75)
-- **A door lock and a door's room are separate words,** so one descriptor serves as a link, a cue, a sealed door or a keyed door with no extra data. (M 72)
+  wall answers only the pickaxe and the axe. (M 3, 11; S "Who pushes events")
+- **A hazard can be a patrol with a pause, so waiting is a move.** Room 15's roaming object costs 30 for a climb started soon after the arrival and nothing for one started 2,300,000 steps later, when it rests in the middle of its lane (driven; the damage condition itself is not identified). (M 10, 11)
+- **A door lock and a door's room are separate words,** so one descriptor serves as a link, a cue, a sealed door or a keyed door with no extra data. (M 4)
 - **Save-for-gold turns one disk write into a pacing rule:** a rising price and a refused save make the player decide where a checkpoint is worth it. (S "Saving costs gold")
 - **Regions (six-byte boxes per room) split the hero from every other mover:** event 15 for the hero, 17 for anything else, so one region can teleport the hero and relocate any other object that enters it (room 4 sends both to room 28; proven for the hero, for
   other objects with a poked object).  (S "Room scripts")
@@ -75,7 +75,7 @@ R = this README); anything not proven there is labelled read (from code, not run
 - The rank table has no terminator: 60,000 XP or more reads past it and the title becomes "DOOR", and the top title "BITMAP BROTHER" is referenced by nothing. (S "The stats scroll and the rank table"; 12 of 12 XP values matched)
 - The XP verbs ignore their operand: verb 5 adds 26 for any value (0, 1, 10, 200 measured) and verb 85 adds 26 or, for a negative word, wraps and clamps XP to 0. (S "The script language", "Two corrections")
 - Abandoning a save at the disk prompt keeps the gold the player paid. (S "Saving costs gold")
-- A hazard on the walking lane drains health at frame rate with no invulnerability window: one Up crossing of room 15's roaming object cost 30 of 33 health, six touches of 5 (the absence of an invulnerability window is inferred from that). (M 74)
+- A hazard on the walking lane drains health at frame rate with no invulnerability window: one Up crossing of room 15's roaming object cost 30 of 33 health, six touches of 5 (the absence of an invulnerability window is inferred from that). (M 10)
 - Content that was cut or never finished: four spells that do nothing, six that only flash, 16 of 18 potions that no room places, 24 sound scripts that nothing requests, a second sound path the intro text mentions,
   and a divide by zero left in BLESS WEAPON's error branch as an assertion marker. (S "Dead and unreferenced content", "The level code overlay")
 - The status bar's DAY text stays stale after the "A DAY PASSES" banner until the next refresh, and nothing in any level reads the day, so the day is decoration. (S "The day")
@@ -107,14 +107,14 @@ Two separate releases were tried, both under `Atari-St-Emulator/Cadaver/` and
   original/uncracked) pair. `disk1_empire`/`disk2_empire` (extracted from Dropbox's `[cr
   Empire][t]` "trained" pair, 52nd pass) is Disk 2 confirmed by Dave to be a real, distinct
   levels disk (a commercial expansion shipped as a straight Disk-2 replacement) — see
-  `mechanics.md` §52 for the static byte-level evidence. Booting this pair's Disk 1 to reach the
+  `mechanics.md` section 13 for the static byte-level evidence. Booting this pair's Disk 1 to reach the
   "place levels disk" prompt for a *live* swap was tried and abandoned (§52: the `[t]` trained
   crack's intro loops for well over a billion emulated steps without reaching it).
 - The `[!]` verified-dump pair is **`.stx`** (Pasti flux-dump format, not a raw `.st` sector image —
   see `DEVELOPING.md`'s disk-image note) and cannot be booted by this emulator without a converter
   that does not exist yet in `tools/`. Tried the Replicants/ST Amigos pair instead
   (`disk1_replicants`/`disk2_replicants`): its Disk 1 reaches the "place levels disk" prompt live in
-  under 100M steps (mechanics.md §53). The Disk 2 swap's "error on this disk" message (§53) turned
+  under 100M steps (mechanics.md section 13). The Disk 2 swap's "error on this disk" message (§53) turned
   out to be this emulator's own bug, not a crack/protection failure: `disk2_replicants.st`'s
   boot-sector BPB wrongly declares 1 side despite being a real double-sided 819,200-byte dump, and
   `MMU.LoadDiskA` trusted it verbatim, so every side-1 sector read failed. Fixed (§55, commit
@@ -234,14 +234,14 @@ turned out not to need it.
 | `room2_lever_boundary.snap` | 13th pass: live snapshot at the screenshot above — resume point for trying new inputs against the lever (all tried this pass were inert; see the 13th-pass entries) |
 | `secrets.md` | 77th pass survey of what the player is not told and the non-trivial machinery: the main loop's key handler (F1 map, P pause, S/L save and load, F2-F4 toggles), the gold price of a save, the rank table overrun, the text table and its developer leftovers, the 67-site assert layer, the level code overlay (spells, potions, timers, creature classes, the 23-entry engine export table), the object-script consumer and the 94-verb table (open item 1 closed), the LZHUF expander and the level directory (two levels on the one-disk image), the sound sequencer, the day clock, the RNG; scripts in `py/secrets/` (`py/secrets/README.md`) |
 | `fatal_error_screen.png`, `f1_map_scroll.png`, `map_f1_one_room.png`, `map_spell_whole_world.png`, `save_price_prompt.png`, `save_unaffordable.png`, `level2_loaded.png` | screenshots behind `secrets.md`: the assert screen, the F1 scroll, F1 vs the MAP spell's whole-world map, the save price prompt and refusal, and the second level (a sandstone temple room, first decoded asset of level 1) |
-| `mechanics.md` | 14th pass: the collision/obstacle-check algorithm (`$008870`) and the TUNNEL lever's proximity-hotspot mechanism; 15th pass (§10): TUNNEL's live portal table fully decoded, settling "does the lever's door have an entry" as no; 17th pass (§13): CAVERN's own portal table decoded, a second real door found + live-triggered, closing the creature hunt as a fully-enumerated dead end; 18th pass (§15): found the type-8 room-registration table's only writer — the save-game restore deserializer (`$00c9ee`), gated behind a boot-menu branch this spike has never taken; 19th pass (§17): found the SAVE-serializer's real trigger — it's not a player hotkey, it fires automatically once at the very start of every boot on an always-empty type-8 table, retiring the planned save→restore live test; axe/pick navigation attempted, not reached; 20th pass (§18): found and fully disassembled the ring-304 queue's consumer — opcode `$8` is a name-banner/message-box display trigger, not a room loader, closing the "does `$defa` do real disk I/O" question as no; (§19) the axe/pickaxe reached and picked up live, closing the 16th pass's open item and opening a new "retest the lever with it held" lead; 21st pass (§20): the pickaxe-precondition reading retracted per user ground truth, replaced with a settled directional sweep — the player is hard-blocked with zero clearance toward the object and the "LEVER" hotspot itself is gone by 3 units in either free direction, closing the finer-position-sweep lead as a real negative, not an untested one; 22nd pass (§21): read the lever's own object-array entry in full and ran it through §4's own interactive/pickup classification test for the first time — it fails (byte24's top bit is set, but the linked `+10`→`+15` bit-2 flag isn't), so the object is plain scenery, not interactive; combined with §20's own "AABB overlap unreachable" finding, this is a double negative that closes the touch/opcode-`$9` pathway for the lever without needing to trace §18a's dispatcher against it; 23rd pass (§22): decoded action 101's own script (animation-only, confirmed) and finished the embedded debug-string scan past where §9 stopped — found a whole previously-undocumented "object verb" bytecode interpreter (LOCK/UNLOCK/MOVE/creature kill-wake-sleep/rucksack/chest ops, `$010000`-ish–`$011256`ish) whose LOCK/UNLOCK opcodes (`$0104a0`/`$0104ae`) write the *exact* `+15` bit-2 flag §21b found clear on the lever's linked struct, via an id-resolver using resource types 6/9 (unlike rooms' always-empty type 8); also disassembled the ring-304 queue's generic (non-`$8`) opcode path (`$00fe0c`-`$00fe70`) as a per-entity tagged-record dispatcher, and ruled the fire chain back out as still cosmetic-only — neither new mechanism is yet tied to the lever specifically, see `mechanics.md` §22g for the priority-ordered next steps; 24th pass (§23): found the verb interpreter's own top-level dispatch table (`$010000`-`$010075`, 59 word-relative entries) by raw byte-scan and confirmed LOCK's real numeric opcode id is 18 (exact address match, not a guess) — UNLOCK's own address isn't one of the 59 entries, still open; dumped resource types 6/8/9 live (no `kbd`/`mouse` needed, RAM-only against the already-known `A5=$18152`) and found type 6 (objects) fully populated (1000/1000) — then the headline result: **the lever is object id 144** in that exact table, triple-confirmed (id-resolve → `$06fa0e`, the lever's own sprite-array `+10` field → the same address, and `+15`/`+24` reading exactly as §21b originally found), settling that the LOCK/UNLOCK mechanism operates on the lever specifically, by a confirmed id and opcode — only "what script/event actually invokes opcode 18 with operand 144" is still open, see `mechanics.md` §23e; 25th pass (§24): four independent static searches for the dispatch table's caller (absolute-literal, PC-relative-`lea`, opcode-read-pattern, and an 18-site whole-block external-caller sweep) all came back negative — no static call site anywhere in the loaded image reaches the byte-opcode dispatcher — so ran the causal test directly on LOCK's own address instead of through it: `callcap $01049a A1=<scratch id-144 buffer>` from `room2_lever_boundary.snap` flips the lever's `+15` byte from `$01` to `$05` (bit 2 set), the first genuinely causal (not just structural) proof that LOCK-on-144 does what every prior pass inferred; whether anything in this game state actually calls it that way remains open, now backed by a much broader negative, see `mechanics.md` §24d; 26th pass (§25): decoded `$00fe84`'s jump table in full (29 entries, `$00fe84`-`$00febd`, same "table then code" shape as `$010000`) — every handler is a precondition gate (pass/fail against small state fields `1156`/`1157`/`1167(A5)`) or a minor unrelated mutation (actor-pointer swap, a bit-clear, a score+sound accumulator), and **none references the lever's record, object id 144, or anything in `$010000`-`$011256`** — a clean negative closing the standing "does the ring-304 queue reach LOCK/UNLOCK" question from §22e/§22g/§24d outright, see `mechanics.md` §25c for the resulting reframe (the caller may not be loaded into RAM at all, since room 3's own script/init data — as opposed to its graphics — has never been shown to load in any snapshot this spike has taken); 27th pass (§26): closed the whole lever-caller thread as a documented negative in one paragraph, not reopened by further searching, and (§27) added a consolidated schema-style room/level-encoding reference — room-extent test (§3), live object-array collision/classification (§4), portal-table format and both rooms' live examples (§10b/§10c/§13), and the type-6/8/9 master resource-table system (§15b/§23c/§23d) — pulling facts already found across those sections into one place rather than re-deriving anything; 28th pass (§28): tested the flag-poll hypothesis live for the first time — held object 144's own `+15` byte set with a real memory write (not `callcap`, which reverts) across 5,000,000 steps from `room2_lever_boundary.snap` — completely inert, `RoomLoadQueuedFlag`/`DoorFacingOrBlockedFlag`/TUNNEL's whole live portal table all stayed byte-identical (§28a); re-ran both of §25c's remaining fallbacks and found them already closed — the one literal write of `2142(A5)=2` is the display-register site the 18th pass's own §18c already named, not a room-load flag (§28b), and the "already resident" branch (`$69da`), disassembled in full for the first time, turns out to be the game's own main-loop re-entry point with no decompress/copy step hiding in it (§28c); **reframes the whole thread** (§28d) — combined with the 17th pass's user-supplied ground truth that the lever really does open the door in the real game, and the 22nd pass's double negative that genuine touch is unreachable by ordinary movement, LOCK(144) now reads as the wrong mechanism entirely, not a real-but-unreached one, and the next pass should look past it rather than continue the caller search; 29th pass (§29): re-examined whether the hard wall toward the object (§20b) is a Left-only route artefact — no: a genuinely different route (Down×3 then Left×3 from `room2_tunnel_entry.snap`, never using the original approach corridor) reaches a new boundary tile on the object's *south* side, still exactly 1 unit short (mirrored axis: x-overlapping, y off by 1, vs. the original y-touching, x off by 1), and true diagonal packets (not sequential moves) at both corners are also fully blocked — three independent approach vectors, one consistent wall (§29a/§29b); the save→restore lead was not re-run live since §17c already closed it analytically (no player-reachable SAVE trigger exists anywhere in the loaded image, and the auto-serialize-at-boot always writes an empty type-8 table regardless of which boot-menu branch runs after it) (§29c); the 6 alias action ids (`127/129/158/159/188/198`) were each driven through the real IKBD pipeline for the first time (not the 9th pass's own hand-write shortcut, which it had already shown isn't equivalent) at the lever boundary specifically — completely inert, closing this as a live negative rather than a structural inference (§29d); leaves the whole spike's input/route/action-id space exhausted against this specific puzzle (§29e), with only the never-attempted pickaxe-at-the-lever retest and the still-undecoded `$defa` room-load path open; 33rd pass (§32b): got the live register dump at `$014b28` the 32nd pass's `bp` runs couldn't reproduce (`bpc 014b28 1 <maxSteps>` proved reliable both directions) — `A0=$55b6` is **identical** across the TUNNEL→CAVERN and CAVERN→TUNNEL crossings, settling `$014a90`/`$014b28` as a fixed status/icon-panel redraw (matching §7's independently-known "icon panel switches on room entry" behaviour), not the still-unfound room-background painter — closes that lead and reframes the open search; 41st pass (§41): rebuilt `room2_lever_boundary.snap` (missing from this Mac checkout) from `room2_tunnel_entry.snap` via the 13th pass's own Left-hold recipe, this time with `bpc 014a90` armed for the whole approach rather than just the settled boundary — **zero hits** across the full proximity transition (status bar going blank→"LEVER", icon panel gaining its two icons, confirmed by render and pixel diff against the idle state), settling that `$014a90`/`$014b28` is room-crossing-only and never involved in a same-room proximity icon-panel change; the actual proximity-icon writer is now a distinct, still-unidentified open item; 47th pass (§47): closed cadaver.md's door-connectivity Open item 1 — walked all 71 door ids referenced across every one of the 72 populated rooms (`py/door_walk.py`), resolving each through the type-4 resource table (corrected the descriptor size from an earlier "20 bytes" guess to the confirmed 8 bytes) and then through `$de5e`'s own point-in-rectangle scan; every door resolves to its owning room or an edge-adjacent neighbour, zero teleports, and the descriptor's id word turns out to play no role in the destination, more likely a "target room resident/registered" gate given §14's already-empty type-8 table; 51st pass (§51): raw disk-layout inspection of the one-disk Empire `.st` image (`py/disk_layout.py`) — no FAT12 file table (root dir is all-`0xE5`, a non-filesystem self-booting disk like the Medway Boys Disk B), and only 45.6% of the 800KB image is real (non-uniform) data, concentrated in one ~270KB contiguous block plus a few small fragments, the rest sitting at the format's blank/erase pattern; with no depacker found anywhere in this spike's disassembly (§28c and others), this closes the physical half of Dave's §50-item-1 pushback — there is no second level's worth of data on this disk for any loader to find, independent of §48c/§48d's loaded-image caller-search negative; 52nd pass (§52): reframes §51 for the now-available two-disk Image Works original — Dave confirmed a real commercial expansion shipped as a straight replacement for Disk 2, and a static byte-level comparison of the two-disk Empire `[t]` crack's Disk 2 (91.9% real data after correcting the blank-sector classifier for a 3-byte filler pattern it missed, vs. Disk 1's 46.4%; not a duplicate of either Disk 1 or the one-disk image; its two large data blocks read flatter/more uniform than Disk 1's own proven-real resource-table block) independently supports Disk 2 holding real, distinct content — though nothing internal to the analysis positively identifies it as levels specifically, and no depacker exists anywhere in this spike's disassembly to explain the data's denser-than-Disk-1 profile if it's compressed; a live boot-and-swap attempt on the two-disk trained crack was abandoned after ~1.6 billion steps stuck in a looping cracktro, unrelated to keypress input (ruled out by a controlled test); 55th pass (§55): found and fixed the Disk 2 sides bug (`5547ae9`), then hit and misdiagnosed the crack's own protection code past it as stale framebuffer data; 56th pass (§56): exhaustive static width/layout scan of Disk 2's raw bytes comes back negative; 57th pass (§57): corrected the 55th pass's misdiagnosis — the wall was two real emulator gaps (a reserved opcode, and the trace exception/vector 9, both probed by a Rob Northen CPU-detection/self-decrypt chain), fixed in `1cb269b`/`1f41114` with full regression-net proof; past both, execution reaches genuinely new FDC-driven code and hits a further, still-open `READ-SECTOR` wall at track 0/sector 8; 82nd pass (§71): the TUNNEL lever operated with natural input through its action panel (icon 7, event 5), clearing door `$33`'s `$ffff` id word and opening the way to room 2; the lever-unreachable conclusions of §7, §10d and §20-§29 are retired; jumping (fire with nothing in front) puts the hero on top of objects, which raises event 9 touches |
+| `mechanics.md` | how the engine works around the hero: rooms on the world grid and the resource manager, collision and the portal test (`$008870`), doors and room changes (the id word as a lock, destination by position), room activation and the screen buffers, the proximity list behind the status bar and icon panel, the ring queue, object names, what was measured of the script layer, the health budget, and the driven roads through level 0 and the first part of level 1 |
 | `cavern_east_door_matched.snap` | 17th pass: live snapshot at CAVERN's newly-found east door, at the "already resident" branch's post-resolution state (20th pass, §18d: live-checked and corrected — the ring-304 queue here is empty, this door never reaches `$defa` at all, contra this entry's original framing) — resume point for pushing further on `$de5e`/`$e854`/`$11256` without re-deriving the route |
-| `ai.md` | 14th pass: the entity/action-script bytecode interpreter (`$15c70`), its 17-opcode instruction set, and the 3-slot structure it drives; 27th pass (§6): promoted the separate "object verb" bytecode interpreter (`$010000`-`$011256`, LOCK/UNLOCK/MOVE/creature/rucksack/chest ops, found 23rd-26th passes) out of `mechanics.md`'s narrative into its own proper writeup — dispatch table, opcode vocabulary, LOCK's confirmed id (18) and the lever's confirmed object id (144), with the caller search cross-referenced as a closed negative (`mechanics.md` §26) rather than re-argued here |
+| `ai.md` | 14th pass: the entity/action-script bytecode interpreter (`$15c70`), its 17-opcode instruction set, and the 3-slot structure it drives; 27th pass (§6): promoted the separate "object verb" bytecode interpreter (`$010000`-`$011256`, LOCK/UNLOCK/MOVE/creature/rucksack/chest ops, found 23rd-26th passes) out of `mechanics.md`'s narrative into its own proper writeup — dispatch table, opcode vocabulary, LOCK's confirmed id (18) and the lever's confirmed object id (144), with the caller search cross-referenced as a closed negative (`mechanics.md` section 9) rather than re-argued here |
 | `axe_touch.snap` | 20th pass: live snapshot with the pickaxe just picked up (status bar "PICKAXE", inventory count 22→23) — resume point for retesting TUNNEL's lever with it held, untracked like the other `.snap` resume points |
 | `axe_touch.png` | 20th pass: screenshot at the snapshot above, status bar reading "PICKAXE" / "CAVERN" |
-| `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar "TUNNEL" only, no "LEVER"; the resume point behind `mechanics.md` §20c/§20d, untracked like the other `.snap` resume points |
+| `lever_sweep_down_clean.snap` | 21st pass: live snapshot 3 settled units below the lever hotspot — status bar "TUNNEL" only, no "LEVER"; the resume point behind `mechanics.md` section 3, untracked like the other `.snap` resume points |
 | `lever_hotspot_gone_3units_down.png` | 21st pass: screenshot at the snapshot above, proving the "LEVER" name-hotspot is gone 3 units below the baseline tile |
-| `room2_lever_south_boundary.snap` | 29th pass: live snapshot at the new south-approach hard-block tile (`x6-12,y16-22`), reached via Down×3 then Left×3 from `room2_tunnel_entry.snap` — a genuinely different route from the original Left-only approach; resume point behind `mechanics.md` §29a/§29b; untracked like the other `.snap` resume points |
+| `room2_lever_south_boundary.snap` | 29th pass: live snapshot at the new south-approach hard-block tile (`x6-12,y16-22`), reached via Down×3 then Left×3 from `room2_tunnel_entry.snap` — a genuinely different route from the original Left-only approach; resume point behind `mechanics.md` section 3; untracked like the other `.snap` resume points |
 
 ## Control flow (2nd pass, from `gameplay_empire.snap`)
 
@@ -261,17 +261,17 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
 - **Screen buffers**: the running game keeps a small struct at global `A5=$18152`. `(A5)+0` and
   `(A5)+$7d00` (32000) are the two halves of *one* 64000-byte double-buffer feeding the shifter
   directly (observed as `$19100`/`$20f00` in one snapshot) — **not** a two-way role-swap with
-  `120(A5)` as previously written here (corrected 35th/36th pass, `mechanics.md` §34a-35;
+  `120(A5)` as previously written here (corrected 35th/36th pass, `mechanics.md` section 5;
   `CompositeBackBuffer` below is the old, wrong name for what `120(A5)` actually is). `120(A5)`
   (observed as `$2de08`) is a **separate, third resident buffer** — not the room's source art, but
-  a *cache* of it (corrected again, 37th pass, `mechanics.md` §36: see below).
+  a *cache* of it (corrected again, 37th pass, `mechanics.md` section 5: see below).
   `ScreenFlip_ScanlineCopy` (`$144b8`) is a fully-unrolled `movem.l` copy loop (571×56-byte chunks
   plus one 24-byte remainder chunk, `$5a99`-gated) with a `trap #4`-based mid-loop yield (`$90.w`
   vector) that splits the ~32KB copy across several VBLs so it never tears — but the copy is not a
   straight memcpy: forward-read/backward-write `movem` reverses **chunk order** end-to-end, so
   `120(A5)` stores its content byte-chunk-reversed relative to normal raster order (fully decoded,
-  byte-exact, `mechanics.md` §35; `reversing/cadaver/py/decode_backbuffer.py`). **This same routine
-  runs in *either* direction** (`mechanics.md` §36): normally `120(A5)` → the display buffer's
+  byte-exact, `mechanics.md` section 5; `reversing/cadaver/py/decode_backbuffer.py`). **This same routine
+  runs in *either* direction** (`mechanics.md` section 5): normally `120(A5)` → the display buffer's
   inactive half, refreshing it each frame; on a room crossing, traced live with zero disk/FDC
   activity either way, it runs *backwards* — the display buffer's inactive half (freshly painted by
   some other, still-unidentified RAM-to-RAM writer) → `120(A5)`, banking the new room's art into the
@@ -857,9 +857,9 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   certainly the ladder/tool visible in the screenshot). **No monster in this room either** — the
   creature-search item from the 10th/11th passes is still open, now one room further in.
 
-- **Resolved (82nd pass, `mechanics.md` §71): the lever is operated from its icon panel.** The passes below (13th to 33rd) never confirmed an icon in the object panel; fire at the boundary stall opens it, icon 7 operates the lever and clears door `$33` (`$ffff` -> 0), and Up then leaves TUNNEL for room 2. The "no input opens the door" conclusions in this and the following entries are retired.
+- **Resolved (82nd pass, `mechanics.md` section 4): the lever is operated from its icon panel.** The passes below (13th to 33rd) never confirmed an icon in the object panel; fire at the boundary stall opens it, icon 7 operates the lever and clears door `$33` (`$ffff` -> 0), and Up then leaves TUNNEL for room 2. The "no input opens the door" conclusions in this and the following entries are retired.
 
-- **Resolved (83rd pass, `mechanics.md` §72): a positive door id word is a key, and the walk out of CAVERN's region runs through it.** CAVERN's east door `$3b` (id 73, retired as a "permanent self-loop") opens for "A SIMPLE IRON KEY" from room 11 into room 8, where LEVER 472 opens door `$22` (room 7 to 12); `overlay/action/route_to_room12.py` walks all of it with natural input. The earlier "no opener for `$22`" came from a script decoder that dropped 49 objects, now fixed.
+- **Resolved (83rd pass, `mechanics.md` section 4): a positive door id word is a key, and the walk out of CAVERN's region runs through it.** CAVERN's east door `$3b` (id 73, retired as a "permanent self-loop") opens for "A SIMPLE IRON KEY" from room 11 into room 8, where LEVER 472 opens door `$22` (room 7 to 12); `overlay/action/route_to_room12.py` walks all of it with natural input. The earlier "no opener for `$22`" came from a script decoder that dropped 49 objects, now fixed.
 
 - **13th pass — found the TUNNEL lever's proximity hotspot and its per-object UI, but no tested
   input opens the door behind it.** User-supplied ground truth ("there's a lever on the left that
@@ -945,12 +945,12 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
      content) would remain to reverse later. Also found, as a side effect of tracing the dispatcher's
      epilogue: it flushes 11 PSG sound-chip registers once per dispatch pass, not
      `TimerQueueService`'s command queue as previously assumed for sound.
-  4. **Bounded look at the lever's fire chain** (`mechanics.md` §8, timeboxed as scoped): traced
+  4. **Bounded look at the lever's fire chain** (`mechanics.md` section 6, timeboxed as scoped): traced
      `$00afb2`'s per-object rescan loop and `$00db4a`'s field-packaging into a `state==5`-gated queue
      push, consistent with a generic "select the nearest interactable prop" pipeline (matches the
      highlight-flash seen at other props too, not lever-specific) — not chased to `$b1a2`/`$ddb6`,
      still doesn't explain the door.
-  5. **Bonus, found via embedded debug strings rather than more disassembly** (`mechanics.md` §9): a
+  5. **Bonus, found via embedded debug strings rather than more disassembly** (`mechanics.md` section 4): a
      developer error-string table sits right after the AI opcode `$89` table (`$1729d`+`$2a`
      onward) — `"DOOR ERROR"`, `"BOTH ROOMS BLOCKED"`, and a dozen other engine diagnostics. A raw
      scan for code referencing those two strings' addresses landed directly on the **real
@@ -959,11 +959,11 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
      failure, `$e84a` = "BOTH ROOMS BLOCKED" on failure), and either treats the target room as
      already resident or calls an undisassembled `$defa` to load it. This reframes the lever
      question from "what input opens it" to "does its portal-table entry exist and pass these two
-     gates" — three concrete disassembly-only next steps in `mechanics.md` §9, no more input
+     gates" — three concrete disassembly-only next steps in `mechanics.md` section 4, no more input
      guessing needed.
 
   **Update, 39th pass**: `$de5e` (left undisassembled here since the 14th pass) is now fully
-  decoded, `mechanics.md` §38d — it's not a portal-table lookup at all, it's a **spatial
+  decoded, `mechanics.md` section 4 — it's not a portal-table lookup at all, it's a **spatial
   point-in-rectangle scan over every room record** (type 3, §38a), testing a world coordinate
   against each room's bounding box (record fields `+1`/`+3`/`+4`/`+5` = x0/y0/width/height) until
   one contains the point; `D7<0` (the "DOOR ERROR" case this section already named) means no room's
@@ -972,11 +972,11 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   `[19,12]`-`[22,17]` and CAVERN's rect `[12,18]`-`[22,28]`, and the actual current-room commit
   (`$0000727c`) writes slot 0 (CAVERN). This also answers item 2 of "Next steps" below and the
   room-connectivity half of item 7 — rooms connect by geometric adjacency on a shared coordinate
-  grid, not an explicit exit graph; see `mechanics.md` §38 for the full writeup.
+  grid, not an explicit exit graph; see `mechanics.md` section 4 for the full writeup.
 
 - **15th pass — settled: TUNNEL's portal table has no entry for the lever's door at all; the "no
   input opens it" finding is now explained, not just re-confirmed.** Ran the 14th pass's own
-  three-step plan (`mechanics.md` §10, new): dumped TUNNEL's portal table directly from
+  three-step plan (`mechanics.md` section 4, new): dumped TUNNEL's portal table directly from
   `room2_lever_boundary.snap` (2 live entries, both non-degenerate — `$8ac8`'s bbox bytes turned out
   to be a direction-dependent threshold test, not min/max containment, correcting §5's
   oversimplified analogy to §4), then dereferenced both entries' door descriptors to read the actual
@@ -994,7 +994,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   `$00b1a2`/`$00ddb6` fire-chain tail from §8) must write before `$008870` can ever route there.
   Driving `$007104` directly via `callcap` (the 14th pass's fallback suggestion) would not help,
   since the blocker is upstream of the executor, in the portal table itself. Full derivation and all
-  raw addresses/bytes in `mechanics.md` §10.
+  raw addresses/bytes in `mechanics.md` section 4.
 - **15th pass, cont. — the fire chain's last two unknowns disassembled, and the whole pipeline ruled
   out both statically and live: fire cannot open this door under any tested input.** `$00b1a2` (§8's
   remaining unknown) is a generic even-alignment assert on an animation-frame pointer (prints
@@ -1008,7 +1008,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   plausible hint this needs an inventory item clicked onto the object (a mouse-icon-click action),
   a whole input class this spike has never properly exercised (the 8th pass found mouse-motion
   packets get misinterpreted as spurious keystrokes, and no pass has tried clicking a specific
-  inventory/UI icon slot). Full writeup `mechanics.md` §11.
+  inventory/UI icon slot). Full writeup `mechanics.md` section 6.
 - **16th pass — both of the 15th pass's remaining leads closed; the lever's door is now this
   one-disk spike's confirmed boundary.** Two disassembly/trace-only checks, no new input-guessing:
   1. **The icon panel is not UI-driven at all.** `$00bef0`/`$00bf72` has exactly two callers in the
@@ -1032,7 +1032,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   input-guessed. Combined with §§7-11 (no portal entry, fire chain proven inert, keyboard/joystick/
   interact exhausted), **every currently-identifiable input path to the lever's door is closed** —
   this spike is switching scope to next-steps item 7 (find a creature/monster in either room) rather
-  than continuing to chase the door. Full writeup `mechanics.md` §12.
+  than continuing to chase the door. Full writeup `mechanics.md` section 6.
 
 ## Next steps
 
@@ -1042,7 +1042,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    (`$00d856`→`$14d64` is), so what it *does* draw is unknown. `callcap` differential testing against
    it (vary `D0`-`D2` register presets, diff the write footprint) is the concrete way to find out.
 2. ~~Settle "tile-indexed room vs. one pre-rendered background per room"~~ — **done, 39th pass,
-   `mechanics.md` §37: neither.** A room's "background" is its full set of static objects (walls,
+   `mechanics.md` section 5: neither.** A room's "background" is its full set of static objects (walls,
    props, terrain pieces), instantiated from the current room record (`(A5)+164`, a new field this
    pass identifies) into the same shared object array real entities live in (`56(A5)`), then drawn
    once via the ordinary entity masked-blit renderer (§33b/34b) — not a tile grid, not a pre-rendered
@@ -1077,7 +1077,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    direction-code translation, what `$008870` actually tests, whether D0/D1 here *are* the
    player's world position or just this loop's locals).
 7. ~~Walk to a room edge and find a real transition~~ — **done, 12th pass: CAVERN → TUNNEL**; a
-   second, self-looping CAVERN door found the 17th pass (`mechanics.md` §13). **Find a creature in
+   second, self-looping CAVERN door found the 17th pass (`mechanics.md` section 4). **Find a creature in
    either room — STILL OPEN, and confirmed to exist just past TUNNEL's lever.** The 17th pass briefly
    claimed this was a closed, no-creature search after enumerating both rooms' *current* portal
    tables; that was wrong and got retracted the same pass. Ground truth (the game's own published
@@ -1093,7 +1093,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    spike had only accounted for 2) and confirmed a **104KB span (`$51000`-`$6b000`)** only ever sampled
    at 2-3 pointers so far (torch/goblet/boat) — real evidence more rooms' assets are already resident
    in this one-disk image, matching its own "self-contained, no swap needed" milestone note (top of
-   this file). That resource table was found and fully traced (`mechanics.md` §14): **all 64 slots
+   this file). That resource table was found and fully traced (`mechanics.md` section 2): **all 64 slots
    are still empty** — `callcap`-verified, three different target ids all miss — so CAVERN/TUNNEL were
    linked directly at boot, not through this generic system, and nothing has registered a new room
    into it yet. A from-scratch, descriptor-level re-sweep of every keyboard/joystick/fire input at the
@@ -1107,14 +1107,14 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    position sweep right at the lever, since only the one position reached by the 13th pass's original
    held-Left approach has ever been tested. **Update, 18th/19th pass**: item (1)'s writer was found —
    `$00c9ee`, the save-game *restore* deserializer, gated behind a boot-menu branch this spike has
-   never taken (`mechanics.md` §15) — and the 19th pass traced the *serialize* side's own trigger all
+   never taken (`mechanics.md` section 2) — and the 19th pass traced the *serialize* side's own trigger all
    the way up: it's not a player action at all, it fires automatically once at the very start of every
-   boot on an always-empty table (`mechanics.md` §17), which retires the previously-planned
+   boot on an always-empty table (`mechanics.md` section 2), which retires the previously-planned
    save→reboot→restore live test as uninformative (the buffer it would produce is always empty by
    construction). Item (2), the axe/pick check, was attempted the 19th pass but not completed —
    navigation to the prop stalled against what reads as real room geometry, not a mechanism finding;
-   see `mechanics.md` §17d for the concrete resume options. **Update, 21st pass**: item (3), the finer
-   position sweep, is now also closed (`mechanics.md` §20) — retracting the pickaxe-precondition
+   see `mechanics.md` section 2 for the concrete resume options. **Update, 21st pass**: item (3), the finer
+   position sweep, is now also closed (`mechanics.md` section 3) — retracting the pickaxe-precondition
    reading per direct user ground truth ("the lever needs no item, just the action") reopened item (3)
    as the live next step, but a careful, settled (not short-nudge — see §20a's own methodology note)
    directional sweep from `room2_lever_boundary.snap` found the player **hard-blocked with zero
@@ -1125,8 +1125,8 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    interact retried at every position reached along the way, watching TUNNEL's live portal table
    directly rather than guessing from a screenshot, produced zero effect every time. **Update, 22nd
    pass**: the standing "is the lever object even flagged interactive" question (never actually
-   checked despite `mechanics.md` §4 documenting the classification mechanism since the 4th pass) is
-   now answered — it isn't (`mechanics.md` §21). The object's own `byte24` top bit is set, but the
+   checked despite `mechanics.md` section 3 documenting the classification mechanism since the 4th pass) is
+   now answered — it isn't (`mechanics.md` section 3). The object's own `byte24` top bit is set, but the
    linked `+10`→`+15` bit-2 flag §4 requires alongside it is clear, so the AND fails and the object is
    plain scenery, not "interactive/pickup." Combined with §20's own "AABB overlap unreachable"
    finding, the touch/opcode-`$9`/ring-304-queue pathway (§4a/§18a) is now a double negative for this
@@ -1137,7 +1137,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    (§10) nor the touch/interactive pathway (§21) turned out to be it — §21d recommends the
    caller-graph scan as the next concrete step, matching this spike's own pattern of static techniques
    outperforming live input-guessing from §9 onward. **Update, 23rd pass**: following §21d's own
-   recommendation, finished the embedded debug-string scan (`mechanics.md` §9) past where it had
+   recommendation, finished the embedded debug-string scan (`mechanics.md` section 4) past where it had
    stopped, and found something bigger than expected — a whole previously-undocumented "object verb"
    bytecode interpreter (LOCK/UNLOCK, MOVE/GOMOVE/STOPMOVE, GOANI/STOPANI, creature KILL/WAKE/SLEEP,
    rucksack add, chest UNLOCK/UNTRAP/CLEAR, a potion op), found via the same unique-debug-string
@@ -1146,15 +1146,15 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    the exact bit the 22nd pass's own §21b found clear on the lever's `+10`-linked struct, via a
    resource-table lookup (types 6/9, not rooms' always-empty type 8) that's plausibly populated where
    type 8 wasn't. Also disassembled the ring-304 queue's generic (non-`$8`) opcode path as a genuinely
-   new per-entity tagged-record event dispatcher (`mechanics.md` §22e), and confirmed the fire chain
+   new per-entity tagged-record event dispatcher (`mechanics.md` section 9), and confirmed the fire chain
    still doesn't reach any of this (§22f — §11's "cosmetic only" finding stands). Neither new
    mechanism is yet tied to the lever specifically — the LOCK/UNLOCK opcodes have zero direct
    `bsr`/`jsr` callers (reached only through an unlocated computed-jump dispatch table), so the
-   concrete next steps (`mechanics.md` §22g) are finding that dispatch table (to get LOCK/UNLOCK's
+   concrete next steps (`mechanics.md` section 9) are finding that dispatch table (to get LOCK/UNLOCK's
    real opcode numbers), dumping resource types 6/9 live to check whether they're populated, and
    decoding the ring-304 tagged-record jump table (`$00fe84`) to see whether it can reach the verb
    interpreter from some entity other than the lever's own inert scenery object. **Update, 24th
-   pass**: found the dispatch table (`mechanics.md` §23a, `$010000`-`$010075`, 59 word-relative
+   pass**: found the dispatch table (`mechanics.md` section 9, `$010000`-`$010075`, 59 word-relative
    entries) and confirmed LOCK's real opcode id is 18 by an exact address match, not a guess —
    UNLOCK's own address isn't one of the 59 entries, still open (§23b). Dumped resource types 6/8/9
    live (§23c): type 6 (objects) is fully populated, 1000/1000. Then the actual headline result:
@@ -1171,15 +1171,15 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    unfound one — four independent static techniques (absolute-literal scan, PC-relative-`lea` scan,
    opcode-read-pattern scan, and an 18-site whole-verb-block external-caller sweep) all found no
    static call site anywhere in the loaded image that reaches the byte-opcode dispatcher
-   (`mechanics.md` §24a/§24b). Item (2) was done anyway, directly on LOCK's own already-known address
+   (`mechanics.md` section 9). Item (2) was done anyway, directly on LOCK's own already-known address
    rather than waiting on (1): `callcap $01049a` with `A1` pointing at a scratch buffer holding id
    144, from `room2_lever_boundary.snap`, flips the lever's `+15` byte from `$01` to `$05` (bit 2
-   set) exactly as LOCK's own `bset` instruction would (`mechanics.md` §24c) — the first causal, not
+   set) exactly as LOCK's own `bset` instruction would (`mechanics.md` section 9) — the first causal, not
    merely structural, confirmation in this whole spike that the mechanism works. Whether anything in
    this game state actually invokes it that way is still open, and now a stronger negative than
-   before — see `mechanics.md` §24d for the one remaining lead (`$00fe84`'s still-undecoded jump
+   before — see `mechanics.md` section 9 for the one remaining lead (`$00fe84`'s still-undecoded jump
    table).
-   **Update, 26th pass**: that lead is now closed too - `$00fe84`'s 29 handlers (`mechanics.md` §25)
+   **Update, 26th pass**: that lead is now closed too - `$00fe84`'s 29 handlers (`mechanics.md` section 9)
    are all precondition gates or minor unrelated mutations, none reaching LOCK/UNLOCK or referencing
    the lever's own record or id 144 anywhere. Both concrete next steps standing after the 25th pass
    are now clean negatives, not unfound leads. The most coherent reading left (§25c): the code that
@@ -1195,14 +1195,14 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    Action 101's script (pointer `$16f07`) remains a usable second seed regardless, for the interact/UI
    side of the interpreter.
    **Update, 27th pass**: closed the whole lever-caller thread as a documented negative
-   (`mechanics.md` §26) — not reopened, the reading above stands as the final word on "who calls
+   (`mechanics.md` section 9) — not reopened, the reading above stands as the final word on "who calls
    LOCK with id 144." Also consolidated the room/object/portal/resource-table facts scattered across
-   §§3/4/10/13/15/23 into one schema-style reference (`mechanics.md` §27).
+   §§3/4/10/13/15/23 into one schema-style reference (`mechanics.md` section 3).
    **Update, 28th pass**: tested the flag-poll hypothesis live for the first time — held object
    144's own `+15` byte set (a real memory write, not `callcap`, which reverts after reporting)
    across 5,000,000 steps from `room2_lever_boundary.snap` — and nothing reacted: `RoomLoadQueuedFlag`,
    `DoorFacingOrBlockedFlag`, and TUNNEL's whole live portal table all stayed byte-identical
-   (`mechanics.md` §28a). Also re-ran both of §25c's own remaining fallbacks and found them already
+   (`mechanics.md` section 14). Also re-ran both of §25c's own remaining fallbacks and found them already
    closed by earlier passes: `find_field_writers.py` filtered to literal writes of `2142(A5)=2` finds
    exactly one site, already named and correctly read as a display-register write by the 18th pass's
    own §18c, not a room-load flag (§28b); and the "already resident" branch (`$69da`), previously only
@@ -1214,7 +1214,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    unreachable by ordinary movement in the first place, the balance of evidence now points toward
    LOCK(144) being the wrong mechanism entirely, not a real-but-unreached one — a hypothesis this
    spike backed into via the 23rd pass's opcode-ID match, not evidence the door's actual trigger uses
-   it. See `mechanics.md` §28d for the concrete reframe and what the next pass should try instead of
+   it. See `mechanics.md` section 14 for the concrete reframe and what the next pass should try instead of
    more LOCK-specific searching.
 8. `tools/snap_render.py` (**promoted to the repo, 11th pass** — was scratchpad-only twice in a row,
    10th and 11th pass, before this) renders a `.snap`'s live screen straight to PNG via
@@ -1230,12 +1230,12 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
    field semantics from one static dump.
 10. ~~Open the TUNNEL lever~~ — **CLOSED, dead end (13th-16th passes), boundary of this spike.** Found
     its proximity hotspot (13th, `room2_lever_boundary.snap`, named "LEVER", own icon pair); no tested
-    input opens the door (13th); explained by the 15th pass (`mechanics.md` §10-11): TUNNEL's live
+    input opens the door (13th); explained by the 15th pass (`mechanics.md` sections 4 and 6): TUNNEL's live
     portal table has exactly 2 entries and neither is the lever's door (one is the already-working
     CAVERN exit, the other a sound/event cue with no room-transition semantics), and the entire
     fire-driven pipeline (`$00afb2`→...→`$00b1a2`/`$00ddb6`) never writes to it under any tested
     input. The 15th pass's one remaining lead — the icon panel's bracket/key icon pair hinting at a
-    mouse-driven inventory-item click — is now also closed by the **16th pass** (`mechanics.md` §12):
+    mouse-driven inventory-item click — is now also closed by the **16th pass** (`mechanics.md` section 6):
     the icon-panel draw (`$00bef0`/`$00bf72`) takes its icon argument from the player's own
     movement-animation-frame byte, not any UI-selection state, so there is no icon-cycling input to
     find; and a cold-boot `ATARI_TRACE_IKBD` trace plus a live check at `room2_lever_boundary.snap`
@@ -1245,7 +1245,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
     planned; see item 7 for the active next step.
 - **17th pass — found and live-triggered a genuinely new CAVERN door, wrongly concluded from it that
   the game's connectivity was fully closed, then retracted that same pass on direct outside evidence.**
-  Dumped **CAVERN's own portal table for the first time** (`mechanics.md` §13): 2 entries, entry 0 the
+  Dumped **CAVERN's own portal table for the first time** (`mechanics.md` section 4): 2 entries, entry 0 the
   known shared CAVERN↔TUNNEL door descriptor, **entry 1 a new descriptor (`$6d532`) with a real,
   positive target room id (`$49`=73)** — the first non-special-case target seen anywhere in this
   spike. Mapped all 22 CAVERN prop bboxes to find a walkable lane around the chest that blocked the
@@ -1274,8 +1274,8 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   walk — it resolved CAVERN's own east-door target id `$49` to something (not a lookup failure),
   meaning that id names a real entry in whatever table `$c628` scans. Locating that table directly
   would enumerate every room's descriptor without more input-guessing. Full writeup (including the
-  retraction) in `mechanics.md` §13. `cavern_east_door_matched.snap` remains a valid resume point.
-  **Same-pass follow-up (`mechanics.md` §14)**: found and fully traced the resource table — 64 slots
+  retraction) in `mechanics.md` section 4. `cavern_east_door_matched.snap` remains a valid resume point.
+  **Same-pass follow-up (`mechanics.md` section 2)**: found and fully traced the resource table — 64 slots
   reserved for rooms, **every single one still empty**, confirmed via `callcap`-testing `$011256`
   with three different target ids (all miss). Decoded the room-record format from CAVERN/TUNNEL's two
   known-good records (7-slot door-id list + floor-clamp bytes, matching live globals exactly) and
@@ -1290,7 +1290,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   descriptor level).
 - **18th pass — found the type-8 index table's only writer in the whole loaded image: the
   save-game restore deserializer, gated behind a boot-menu branch never taken this spike.** Per the
-  17th pass's own priority-1 next step, static-only (`mechanics.md` §15). A literal-address sweep
+  17th pass's own priority-1 next step, static-only (`mechanics.md` section 2). A literal-address sweep
   for `$4c536`-`$4c636` (the same technique that found `$568e`/`88(A5)`) came back with zero hits —
   a real negative: unlike those targets, the table is only ever reached through a pointer loaded
   from the resource-table row, never as a literal operand, so that technique structurally cannot
@@ -1314,6 +1314,6 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   body), or type 8 only ever gets populated via an actual save/restore round-trip. Concrete
   untried next step: trigger a real in-game SAVE, reboot, choose restore instead of ESC, and check
   live whether type 8 picks up a non-zero slot — settles which of the two readings is right.
-  Secondary check (`mechanics.md` §16): CAVERN's axe/pick prop (sprite-array slot 4) is still an
+  Secondary check (`mechanics.md` section 11): CAVERN's axe/pick prop (sprite-array slot 4) is still an
   untouched static prop (state `5`) in every existing CAVERN snapshot — never picked up this whole
   spike, still untried live.
