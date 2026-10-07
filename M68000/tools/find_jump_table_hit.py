@@ -1,6 +1,6 @@
 """Does any word/longword-relative jump table resolve to <target>? Neither find_ram_callers.py
 (direct bsr/jsr/jmp text) nor find_literal_ptr.py (target as a raw absolute-address literal) can
-see this shape: this game's own dispatch idiom (mechanics.md §23a/§23b - `add.w D0,D0; adda.w
+see this shape: this game's own dispatch idiom (cadaver mechanics.md section 9: `add.w D0,D0; adda.w
 0(An,D0.w),An; jmp (An)`, table base held in an address register) stores each entry as
 `target - table_base`, so the target address itself never appears anywhere in the image; only the
 small per-entry offset does, at some a-priori-unknown table base.
@@ -10,7 +10,8 @@ jsr, jmp, move #imm, ...) as a candidate table base - a table base is always set
 plain immediate address into a register, so this covers every real table this game's own code can
 construct - then, for each candidate base, check up to `--span` word/long-sized entries starting
 there for a value equal to (target - base). Validated by re-finding the already-known `$010000`
-verb-dispatch table's entry 18 (LOCK, mechanics.md §23a) before trusting it on a new target.
+verb-dispatch table's entry that resolves to LOCK (`$01049a`, cadaver mechanics.md section 9)
+before trusting it on a new target.
 
 Usage: python find_jump_table_hit.py <snap> <target_hex> [--span N (default 300)]
 """
