@@ -70,9 +70,13 @@ against every session's changes.
   home grows unrest. The posture sets how much an order moves: aggressive all, neutral half,
   passive a quarter. (E 1, E 6, S "The player's commands")
 - **Goods are a separate ledger.** Men felling trees and carrying them to the workshop credit one of eight item counters (pike,
-  sword, bow, plough, boat, pot, catapult, cannon); merchants, the men the starting job lottery could place nowhere else (E 5a), are meant to carry goods between a nation's lords
-  but none was seen carrying anything: a merchant's trip walks a table that never advances, so the destination is his home lord (leader 0 when the home lord is the last record) and the goods he banks on
-  arrival come from the record after his home lord (a stale-register bug, proven by `py/fsm15/gate_fsm15.py` over 119 states of mode `$54`; A `$54` row, E 2b); "invention" is supply: a man who walks to his lord's cell hands back his weapon
+  sword, bow, plough, boat, pot, catapult, cannon).
+
+  **Merchants.** Merchants, the men the starting job lottery could place nowhere else (E 5a), are meant to carry goods between a nation's lords
+  but none was seen carrying anything. A merchant's trip walks a table that never advances, so the destination is his home lord (leader 0 when the home lord is the last record), and the goods he banks on
+  arrival come from the record after his home lord (a stale-register bug, proven by `py/fsm15/gate_fsm15.py` over 119 states of mode `$54`; A `$54` row, E 2b).
+
+  **"Invention" is supply.** A man who walks to his lord's cell hands back his weapon
   and takes the best in stock (bow, then sword, then pike; a farmer also takes a Plough), so a weapon improves only when a
   better item reaches the lord. The hand-back has a stale-register bug that credits it to another lord's slot for lord
   indices 8 and up. There is no research timer. (E 2a, E 2b, E 2c, E 4)
@@ -83,22 +87,29 @@ against every session's changes.
   in its path (a man loses 82 health), and its end frees the archer to shoot again. There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain;
   A "Natural runs on later lands", A "Arrows and carrier pigeons")
 - **Land changes hands two ways: conquest by the player, revolt by the game's own clock.**
-  *Conquest*: when every man of a lord's settlements is dead or routed by an army hunting him, the
+
+  **Conquest.** When every man of a lord's settlements is dead or routed by an army hunting him, the
   lord and all his settlements join the attacker (proven, and how mission 1 is won; the conquest arm
-  of mode `$2c` made 16 of the 27 natural `$550e` calls). *Revolt*: a settlement's heartbeat pulse
-  (`$157e6`) adds `+2` to its lord's loyalty pressure when his towns go hungry (`troops_field·4 >= food`)
-  and takes `1` off when they do not, but **only on a marker's first pulse after it parks** (dwell
-  `$ff9d` to `$ff9c`); every pulse checks the pressure, and at 600 it sends the lord and his
-  settlements to an effectively arbitrary side. The park write is pinned (`$015052`, inside entity
-  mode `$16`, gated on the global `$57fd0` season word) and **it is not something the player
-  triggers**: `$3c08` only sends a record into mode `$16` when its flags byte has bit 0 set, and the
+  of mode `$2c` made 16 of the 27 natural `$550e` calls).
+
+  **Revolt mechanism.** A settlement's heartbeat pulse (`$157e6`) adds `+2` to its lord's loyalty pressure when his towns go hungry
+  (`troops_field·4 >= food`) and takes `1` off when they do not, but **only on a marker's first pulse after it parks** (dwell
+  `$ff9d` to `$ff9c`). Every pulse checks the pressure, and at 600 it sends the lord and his
+  settlements to an effectively arbitrary side.
+
+  **The player does not trigger it.** The park write is pinned (`$015052`, inside entity
+  mode `$16`, gated on the global `$57fd0` season word). `$3c08` only sends a record into mode `$16` when its flags byte has bit 0 set, and the
   one place in the game that sets that bit is the world-build creation of a farmer (`init_far`, the
   village population), not any order. So revolt is a **periodic self-cycle of a parked farmer's
-  winter state** (`$7c` and `$16` alternating on `$57fd0`'s rotation (512 calls of `$1abaa`: 118.4M steps in mission 1, 85.7M on a Play Random Land); `$7c` is
-  `in_winte...`, S "Original names"), running independently of the player, and it does cross 600
+  winter state** (`$7c` and `$16` alternating on `$57fd0`'s rotation: 512 calls of `$1abaa`, 118.4M steps in mission 1, 85.7M on a Play Random Land; `$7c` is
+  `in_winte...`, S "Original names"), running independently of the player.
+
+  **Evidence.** The cycle crosses 600
   unassisted: 11 of the 27 natural `$550e` defections on four 200M-step no-input land runs fired
   from this heartbeat cycle at loyalty 600-608, differential-tested against the real 68000
-  (`diff_revolt.py`, 1778/1778). A man dismissed or deserting and a spy (order `$20`) arrive in mode
+  (`diff_revolt.py`, 1778/1778).
+
+  **Deserters and spies.** A man dismissed or deserting and a spy (order `$20`) arrive in mode
   `$7e`, the same body with no season gate and a stale dwell: they never trigger the first-pulse
   adjustment (traced end to end for one starvation deserter), but each pulse still checks the
   pressure, so a spy walked into mission-1 lord 0's town (loyalty 608) revolted him on his first
@@ -118,13 +129,21 @@ against every session's changes.
   Afterwards take-food and take-equipment on the ally's town are accepted and a second offer is refused at
   the pointer test.
   (S "Diplomacy")
-- **The opponent is simple.** Each commander marches at the nearest enemy lord when its army has
-  the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast); AI
-  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it. The transfer order (a small captain group handing its men to group 0) is natural but rare: 5 hits in 75 lands, after a defection leaves a lone captain; the order refusal cannot happen from any shipped call site (S "Natural coverage"). A group under 22 men first goes to its
+- **The opponent is simple.**
+
+  **Marching.** Each commander marches at the nearest enemy lord when its army has
+  the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast). AI
+  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it.
+
+  **Transfer order.** A small captain group handing its men to group 0 is natural but rare: 5 hits in 75 lands, after a defection leaves a lone captain. The order refusal cannot happen from any shipped call site (S "Natural coverage").
+
+  **Get men, food, follow-ups.** A group under 22 men first goes to its
   own best town for men (order `$08`, get men), and the food fallback fetches food the same way. A group
   that has been in camp for 20 ticks then chains food, men, equipment and invention orders from a
   4-entry table (`$6762`/`$67d0`, keyed on the state it came back from); beyond those sequences it has no
-  economy or build planning. The invention order is a race: the group holds state 9 for two or three decision passes
+  economy or build planning.
+
+  **Invention order.** It is a race: the group holds state 9 for two or three decision passes
   and 26 of 30 natural orders arrive and give the lord's work order to the men (4 are overwritten by an attack or get-men order first).
   (S "`$6522` — the commander AI", S "The AI as modern pseudocode", S "What an AI invention order does")
 - **Deterministic.** The AI's "random" numbers are low bits of the tick counter, and a land's map
@@ -174,7 +193,7 @@ against every session's changes.
   chain passes the side in the wrong register; both are transcribed as the code does them. (A
   "The group dissolve", A "The revolt chain")
 - The camp wait compares the group's stamp plus 20 with the 16-bit sim clock as signed words (`$65a0`..`$65a6`, a single use of the clock), so once the clock passes 32768 a camped group with an old stamp
-  waits for the clock to wrap, an estimated 34,800 ticks: decisions fell from about 1,500 and 1,840 per 250M steps to 0 in two lands, at 4.5 to 5.75G steps. Probably unintentional (inferred); a run
+  waits for the clock to wrap, an estimated 34,800 ticks: decisions fell from about 1,500 and 1,840 per 250M steps to 0 in two lands, at 4.5 to 5.75G steps. Isolated by clock pokes (only the clock changed: the stall starts at 32768 and ends at `stamp + 20`); probably unintentional (inferred); a run
   rarely lasts that long. (S "Natural coverage", the signed-clock stall)
 - An attack on a lord whose cell holds only the attacker's own records is re-issued every tick and never starts (`$4a7a` returns without `$4b80`): 9,660 and 13,594 attack decisions in 2G steps on two
   lands. (S "Natural coverage", the livelock bullet)
@@ -211,114 +230,118 @@ Empire build: `s 8000000` / `kbd 39 b9` (SPACE) / `s 45000000` → title, then t
 
 ## Bug 1: FDC self-test hang
 
-Booted with the Replicants disk, TOS printed "TDT ALTAIR ANTI VIRUS V3.00:
-CHECK OK:" forever. Traced against a real Hatari `cpu_disasm`:
+**Symptom.** Booted with the Replicants disk, TOS printed "TDT ALTAIR ANTI VIRUS V3.00:
+CHECK OK:" forever.
 
-After the primary autoboot, TOS runs an **FDC self-test loop at ROM `$fc04a8`**:
-8 iterations, each firing one raw WD1772 command and polling
-`$fc0580: btst #5,$fffffa01 / beq` with a `_hz_200 + 10` (~50 ms) deadline. It is
+**Cause** (traced against a real Hatari `cpu_disasm`). After the primary autoboot, TOS runs an
+**FDC self-test loop at ROM `$fc04a8`**: 8 iterations, each firing one raw WD1772 command and
+polling `$fc0580: btst #5,$fffffa01 / beq` with a `_hz_200 + 10` (~50 ms) deadline. It is
 a *presence* check: on real hardware those bare commands are still running when
 the deadline expires, every poll times out, and the loop exits after 8 tries
 without ever running its `$fc04cc: jsr (A0)`.
 
-This emulator hardwired **MFP GPIP bit 5 (FDC IRQ, active-low) to 0** ("a command
+The emulator had **MFP GPIP bit 5 (FDC IRQ, active-low) hardwired to 0** ("a command
 is always complete"), so every poll succeeded instantly and `$fc04cc: jsr (A0)`
 re-executed the still-valid `$1234` boot sector in `_dskbufp` every iteration.
 The boot sector's own `move.w #$ff,d7` clobbered the ROM loop's
 `add.b #$20,d7 / bne` counter, so the loop never terminated. (A plain TOS boot
-survived only because its buffer didn't checksum to `$1234`; this crack's does.)
+survives because its buffer does not checksum to `$1234`; this crack's does.)
 
-**Fix** (`MMU` `fdcIrq` / `FdcTick`): GPIP bit 5 idle-high, re-raises INTRQ on a
-coarse bucketed delay after a command (immediate for a Read/Write Sector that
-moved data, ~4000 steps Seek/Step, ~40000+ Restore / failed search / Read
-Address). The self-test's first polled command is a Restore, so it times out and
-the loop exits. Diskless-boot `checkpoint.txt` re-baselined.
-
+**Fix** (`MMU` `fdcIrq` / `FdcTick`). GPIP bit 5 is idle-high and INTRQ is re-raised on a
+coarse bucketed delay after a command: immediate for a Read/Write Sector that
+moved data, ~4000 steps for Seek/Step, ~40000+ for Restore, a failed search or Read
+Address. The self-test's first polled command is a Restore, so it times out and
+the loop exits. The diskless-boot `checkpoint.txt` was re-baselined.
 ## Bugs 2 and 3: the depacker derail
 
-Past the cracktro, both cracks load ~1 MB of game data and hand off to an **ICE
+**Symptom.** Past the cracktro, both cracks load ~1 MB of game data and hand off to an **ICE
 depacker** ("Ice!" magic `$49636521`, plain-68000 at `$70880` in Replicants).
-Depacking completed cleanly; execution then derailed (Replicants to `PC=$20`,
+Depacking completes cleanly; execution then derailed (Replicants to `PC=$20`,
 Empire to `$5a6`).
 
-Traced instruction-by-instruction from the depacker's `rts`. The cracktro's VBL
+**Cause of Bug 2** (traced instruction by instruction from the depacker's `rts`). The cracktro's VBL
 handler at `$660` ends with `move.l #$00078000,$ffff8260.w`. That long write's
-low word lands on **`$ff8262`/`$ff8263`**. This emulator's video-register region
+low word lands on **`$ff8262`/`$ff8263`**. The emulator's video-register region
 ended at `$ff8260`, so the second word hit the generic `raise (BusError …)`
-fall-through, which vectored through a cracktro table that doesn't handle bus
-errors → garbage PC → vector-table-as-code crash. On a plain ST the shifter is
-selected for the whole `$ff8200`–`$ff827f` page but decodes no register in
-`$ff8262`–`$ff827f`; Hatari's `IoMemTable_ST`: `{ 0xff8262, 30, IoMem_VoidRead,
-IoMem_VoidWrite }` "No bus errors here".
+fall-through, which vectored through a cracktro table that does not handle bus
+errors: garbage PC, then a vector-table-as-code crash. On a plain ST the shifter is
+selected for the whole `$ff8200`-`$ff827f` page but decodes no register in
+`$ff8262`-`$ff827f`; Hatari's `IoMemTable_ST` has `{ 0xff8262, 30, IoMem_VoidRead,
+IoMem_VoidWrite }`, "No bus errors here".
 
-**Fix 2** (`MMU.fs`): `videoDisplayRegisterEnd` `$ff8260` → `$ff8261`
-(`Video_ResShifter` is real), plus a new `ShifterVoid` region `$ff8262`–`$ff827f`
-(reads open-bus `$ff`, writes dropped, no bus error). `videoDisplayRegisterMemory`
-unchanged (98 bytes), snapshot format and diskless boot untouched.
+**Fix 2** (`MMU.fs`). `videoDisplayRegisterEnd` moves from `$ff8260` to `$ff8261`
+(`Video_ResShifter` is real), and a new `ShifterVoid` region covers `$ff8262`-`$ff827f`
+(reads return open-bus `$ff`, writes are dropped, no bus error). `videoDisplayRegisterMemory`
+is unchanged (98 bytes); the snapshot format and diskless boot are untouched.
 
-**Fix 3** (`68k.fs` `DecodeBucket9`): with the bus error gone the depacked code
-hit `suba.l (d16,PC),A5`; the hand-coded SUBA.L handler only covered
-`Dn`/`An`/`#imm.L`/`(xxx).L`. Replaced the `match eamode` block with the shared
-EA decoder (`x.ResolveEa` / `x.ReadEa`). Selftest +~3000 pass, wrong-answer lane
-still 0.
+**Cause of Bug 3.** With the bus error gone, the depacked code reaches `suba.l (d16,PC),A5`.
+The hand-coded SUBA.L handler covered only `Dn`/`An`/`#imm.L`/`(xxx).L`.
 
+**Fix 3** (`68k.fs` `DecodeBucket9`). The `match eamode` block is replaced by the shared
+EA decoder (`x.ResolveEa` / `x.ReadEa`). Selftest gains about 3000 passes; the wrong-answer lane
+stays 0.
 ## Bug 4: the isometric-view setup code needs real 68000 DIVU/DIVS
 
-Clicking the world-map scroll icon loads the mission-setup overlay above `$1050`,
+**Symptom.** Clicking the world-map scroll icon loads the mission-setup overlay above `$1050`,
 which does projection with `DIVU` / `DIVS`. Two `failwith`s in `68k.fs`
-`DecodeBucket8`:
+`DecodeBucket8` aborted it.
 
-- **Quotient overflow** was `failwith`. On overflow the 68000 sets **V=1, C=0**
-  and leaves **N, Z, X and the destination untouched**, PC advancing (no trap).
-  Verified against the SingleStepTests 68000 vectors, every overflow vector
-  there touches only V and C (Hatari's `setdivuflags` forces `N=1/Z=0`, a
-  different chip revision). DIVS fit-check runs in `int64` so `Int32.MinValue /
-  -1` is caught as overflow, not a CLR exception.
-- **Divide by zero** was `failwith`. Now traps to **vector 5** with the standard
-  group-2 frame via `EnterVector`, same shape as CHK/TRAPV. No zero-divisor
-  vectors in the suite so selftest can't check the trap path.
+**Quotient overflow.** On overflow the 68000 sets **V=1, C=0** and leaves **N, Z, X and the
+destination untouched**, PC advancing (no trap). This is verified against the SingleStepTests
+68000 vectors: every overflow vector there touches only V and C (Hatari's `setdivuflags` forces
+`N=1/Z=0`, a different chip revision). The DIVS fit-check runs in `int64` so
+`Int32.MinValue / -1` is caught as overflow, not a CLR exception.
 
-Selftest after: DIVU 2494→4963, DIVS ~2500→4992, **0 wrong / 0 unimpl** for both.
-30M diskless boot byte-identical.
+**Divide by zero.** It now traps to **vector 5** with the standard group-2 frame via
+`EnterVector`, the same shape as CHK/TRAPV. The suite has no zero-divisor vectors, so selftest
+cannot check the trap path.
 
+**Result.** Selftest: DIVU 4963, DIVS 4992, **0 wrong / 0 unimpl** for both. The 30M-step
+diskless boot is byte-identical.
 ## Bug 5: Timer A never fired; zero divide re-executed the DIVU
 
-Two emulator regressions stopped every world build from `pm67_ok_pre`:
+Two emulator regressions stopped every world build from `pm67_ok_pre`.
 
-- **Timer A.** `$13b9a` ends in `$1ae40: tst.b $2c993 / bne $1ae40`, waiting for
-  the sample player's busy flag. The MFP Timer A handler (`$134` → `$1af32`)
-  clears it (`sf $2c993` at `$1af72`). TACR writes are stored in
-  `MMU.fs`'s `tacr` field, but `RaiseTimerA` still read TACR from
-  `mfpRegisters`, which stayed 0, so Timer A never raised. Fixed by reading
-  `tacr`, as `RaiseTimerB` reads `tbcr`.
-- **Zero divide.** Land 60 ("Driving a later land") hits `divu D0,D1` with `D0 = 0` at `$164d6`
-  within 20M steps of its build. PM's vector-5 handler (`$14e4`) is a bare
-  `rte`, so it relies on the 68000 stacking the address of the *next*
-  instruction. A regression had made DIVU/DIVS stack the instruction's
-  own address, so the `rte` re-ran the divide forever. They now stack
-  `PC + 2 + extension bytes`, which is what Hatari's 68000 path does
+**Timer A.**
+
+- Symptom: `$13b9a` ends in `$1ae40: tst.b $2c993 / bne $1ae40`, waiting for
+  the sample player's busy flag, and never returned. The MFP Timer A handler (`$134` to `$1af32`)
+  clears the flag (`sf $2c993` at `$1af72`).
+- Cause: TACR writes are stored in `MMU.fs`'s `tacr` field, but `RaiseTimerA` read TACR from
+  `mfpRegisters`, which stayed 0, so Timer A never raised.
+- Fix: `RaiseTimerA` reads `tacr`, as `RaiseTimerB` reads `tbcr`.
+
+**Zero divide.**
+
+- Symptom: land 60 ("Driving a later land") hits `divu D0,D1` with `D0 = 0` at `$164d6`
+  within 20M steps of its build, then re-runs the divide forever.
+- Cause: PM's vector-5 handler (`$14e4`) is a bare `rte`, so it relies on the 68000 stacking
+  the address of the *next* instruction. The emulator's DIVU/DIVS stacked the instruction's own
+  address, so the `rte` re-ran the divide.
+- Fix: DIVU/DIVS stack `PC + 2 + extension bytes`, which is what Hatari's 68000 path does
   (`gencpu.c` i_DIVU: `incpc` before `exception_cpu(5)`; `newcpu.c`
   `Exception_normal` stacks `m68k_getpc()`; `exception_oldpc` applies only to
   the generic 68020+ tables). The one SingleStepTests zero-divisor vector
-  (`80ef`) expects the opcode address; it was already skipped for its flags.
+  (`80ef`) expects the opcode address; it is skipped for its flags.
 
-Selftest after: 1000051 pass, 0 wrong, 9 skip. `verify 5000000` passes.
-
+**Result.** Selftest: 1000051 pass, 0 wrong, 9 skip. `verify 5000000` passes.
 ## Driving a later land
 
-The briefing preview routine (`$b2dc`) first saves the block `$580a0..$58367` to
-`$584c4`, then rolls one of 144 preview lands from entropy (video counter, timers,
-RNG): `$580a0 = k*$b + $3fb`, `$5809c = k*$96 + $672` (non-zero), `k = 0..$8f`, and
-builds it through `$b394` and `$10d1e` (branch C of `strategy.md` "The world build,
+**The briefing preview roll.** The preview routine (`$b2dc`) first saves the block
+`$580a0..$58367` to `$584c4`, then rolls one of 144 preview lands from entropy (video counter,
+timers, RNG): `$580a0 = k*$b + $3fb`, `$5809c = k*$96 + $672` (non-zero), `k = 0..$8f`. It
+builds the land through `$b394` and `$10d1e` (branch C of `strategy.md` "The world build,
 proven"); that build is discarded. The briefing's "Between Pages" numbers come from
-`$5809c` (`$b472`), so a larger `k` gets later pages. The OK button (`$b860`) clears
-`$5809c` (`$b85a`) and restores the saved block over `$580a0..$58367`, which includes
-the world parameters at `$58146`. For mission 1 that block holds seed long
-`$580a0 = 0` and parameters `1e19 0750 0008 0023 0031 0004`, so `$13b9a` skips
-`$10d1e` and, because `$58148 = $0750 >= $100`, builds procedurally
-(`$ffa6`/`$2266`/`$ac20`) from those stored parameters. To build preview land `k`
-for real, break at `$13b9a` after the OK click and poke both, so `$10d1e` runs with
-the size override:
+`$5809c` (`$b472`), so a larger `k` gets later pages.
+
+**The OK button.** `$b860` clears `$5809c` (`$b85a`) and restores the saved block over
+`$580a0..$58367`, which includes the world parameters at `$58146`. For mission 1 that block
+holds seed long `$580a0 = 0` and parameters `1e19 0750 0008 0023 0031 0004`, so `$13b9a`
+skips `$10d1e` and, because `$58148 = $0750 >= $100`, builds procedurally
+(`$ffa6`/`$2266`/`$ac20`) from those stored parameters.
+
+**Building preview land `k` for real.** Break at `$13b9a` after the OK click and poke both
+words, so `$10d1e` runs with the size override:
 
 ```
 ./run.ps1 -NoBuild rrepl scratchpad/pm67_ok_pre.snap -DiskA scratchpad/powermonger.st
@@ -328,42 +351,53 @@ the size override:
   u 13ce6 80000000 ; s 30000000 ; u f898 5000000 ; snap <out>
 ```
 
-Mount the Replicants image (`scratchpad/powermonger.st`), as in the drive
-recipe. `$57fd0` (the season) is `(byte[$58146] & 3) * 2`, read at `$13bdc`
-*before* `$10d1e` refills `$58146`, so a poked land keeps the season of the
-stored block (4 here) unless you also poke that byte at `$13b9a`:
-`w 58146 1c190750` builds winter (season word 0), `1d..` spring, `1f..` autumn.
-`reversing/powermonger/py/build_land.sh <k> [steps] [season]` does all of this and
-prints the land's render-record census (`census.py`). The unpoked
-control reproduces mission 1's terrain byte for byte. `k` = 20/60/100/143 give
-44-69 settlement records (mission 1: 11) and non-zero `$3f86c` altitudes
-on 37-72 % of cells (mission 1: 10 %). `scratchpad/pm120/k60_iso.snap` is
-land 60 (`$580a0 = $68f`), settled at the frame driver.
+Mount the Replicants image (`scratchpad/powermonger.st`), as in the drive recipe.
 
-Which builds reach `$10d1e` in play. The poke above leaves `$5809c` non-zero, which is the
-preview's setting, so the lands of `build_land.sh` and `cap_land.sh` are branch C. A campaign
-land pick copies a table block and `$13ec6` clears `$580a0`, so `$13b9a` skips `$10d1e`
-(live: 0 hits for `$10d1e`, 927 for `$4788`). Only Play Random Land (`$13e8e` to `$13ece`,
-seed = video counter + mouse + RNG OR `$71010101`) reaches `$10d1e` outside the preview, and it
-does so with `$5809c == 0`: branch A when no side is in command state 6 or 8 (the sides' sites
-rebalanced by weight, `$58148` rolled instead of overridden, and `$4788` makes two tries per
-tree cell instead of one, so these lands carry more trees). Live from
-`scratchpad/pm123/win/m1_win.snap`, click (160,120): `$13e8e` at step 264686, `$13ece` at
-264689, `$13b9a` at 265397, `$10d1e` at 330184 with `$5809c = 0`, `$580a0 = $f9abdbf1`, side
-states 2, 0, 0, 0; `$b85a` and `$b2dc` had 0 hits. The real anchor is
-`scratchpad/pm142/rand1.snap`. `PAGES0=1` on `build_land.sh` / `cap_land.sh` pokes
-`$5809c = 0` instead, which gives the Play Random Land roll: land 60 has 304 tree records
-(byte6 4) against 120 with the preview poke, land 25 281 against 154, and `py/gate_pop.py`
-passes 41760/41760 over 8 such builds (`PM_POP_CORPUS=scratchpad/pm142/corpus_2984a`).
+**Season.** `$57fd0` (the season) is `(byte[$58146] & 3) * 2`, read at `$13bdc`
+*before* `$10d1e` refills `$58146`. A poked land therefore keeps the season of the stored
+block (4 here) unless that byte is also poked at `$13b9a`: `w 58146 1c190750` builds winter
+(season word 0), `1d..` spring, `1f..` autumn.
+
+**Script and results.** `reversing/powermonger/py/build_land.sh <k> [steps] [season]` does all
+of this and prints the land's render-record census (`census.py`). The unpoked control
+reproduces mission 1's terrain byte for byte. `k` = 20/60/100/143 give 44-69 settlement
+records (mission 1: 11) and non-zero `$3f86c` altitudes on 37-72 % of cells (mission 1:
+10 %). `scratchpad/pm120/k60_iso.snap` is land 60 (`$580a0 = $68f`), settled at the frame
+driver.
+
+#### Which builds reach `$10d1e` in play
+
+**The preview poke is branch C.** It leaves `$5809c` non-zero, which is the preview's
+setting, so the lands of `build_land.sh` and `cap_land.sh` are branch C.
+
+**Campaign land picks do not build.** A campaign land pick copies a table block and `$13ec6`
+clears `$580a0`, so `$13b9a` skips `$10d1e` (live: 0 hits for `$10d1e`, 927 for `$4788`).
+
+**Play Random Land is branch A.** It is the only path that reaches `$10d1e` outside the
+preview (`$13e8e` to `$13ece`, seed = video counter + mouse + RNG OR `$71010101`), and it does
+so with `$5809c == 0`. Branch A applies when no side is in command state 6 or 8: the sides'
+sites are rebalanced by weight, `$58148` is rolled instead of overridden, and `$4788` makes
+two tries per tree cell instead of one, so these lands carry more trees.
+
+Live trace from `scratchpad/pm123/win/m1_win.snap`, click (160,120): `$13e8e` at step
+264686, `$13ece` at 264689, `$13b9a` at 265397, `$10d1e` at 330184 with `$5809c = 0`,
+`$580a0 = $f9abdbf1`, side states 2, 0, 0, 0; `$b85a` and `$b2dc` had 0 hits. The real
+anchor is `scratchpad/pm142/rand1.snap`.
+
+**Reproducing the Play Random Land roll.** `PAGES0=1` on `build_land.sh` / `cap_land.sh`
+pokes `$5809c = 0` instead, which gives that roll: land 60 has 304 tree records (byte6 4)
+against 120 with the preview poke, and land 25 has 281 against 154. `py/gate_pop.py` passes
+41760/41760 over 8 such builds (`PM_POP_CORPUS=scratchpad/pm142/corpus_2984a`).
 `py/worldbuild/gate_build.py` runs both settings (`strategy.md` "The world build, proven").
 
-What 37 lands of each roll draw, and what the preview-roll ones do when left to run, is in `port/SPEC.md` §6
-("Every category") and `ai.md` ("Natural runs on later lands"). To look at a
+#### Looking at a record in the game
+
+What 37 lands of each roll draw, and what the preview-roll ones do when left to run, is in
+`port/SPEC.md` §6 ("Every category") and `ai.md` ("Natural runs on later lands"). To look at a
 record in the game, poke the camera centre and let a frame render:
 `w 4bb3a <x><y>` (two words), `s 2000000`, `u f898` (`reversing/powermonger/py/capture.sh`
 snapshots N frames in a row from there). The REPL's `hits <steps> <addr>...`
 counts how often each address runs over a stretch, with the first and last step.
-
 ## Ending a land and driving the campaign
 
 How a land is won or lost (`$d2c8`, command `$2e`), the 195-land conquest map
@@ -460,10 +494,9 @@ the game-state seed table `$584c4` → `$580a0`, `jsr $13b9a` (world generation 
 `$10d1e` load path), and `move.w #$1,$1c48a` to advance the state machine. One
 frame later PM composites the isometric view.
 
-A "no click accepted" result comes from one of two mistakes: click positions outside the
-`(0,0)`-anchored grid, or reading the per-dialog OK table with the base four
-bytes low, so that `$7a3c=$0a` looks as if it routes to a handler that ignores OK.
-
+**Traps when driving a click.** A "no click accepted" result comes from clicking outside the
+`(0,0)`-anchored grid, or from reading the per-dialog OK table with the base four bytes low, so
+that `$7a3c=$0a` looks as if it routes to a handler that ignores OK.
 ## What runs, and what the analysis established
 
 This section is the overview of current understanding by topic. Each paragraph states the
@@ -496,13 +529,16 @@ PM's own IKBD handler `$18be` (vector `$118`) parses the `$F7` absolute-mouse pa
 `$2de6c`; the shift keys only set the flag `$2df8a`. The per-frame camera loop `$13762` gates
 its rotate, horizon, eye and keypad-zoom rows on array slot 54, the right-shift slot that
 `$18be` never writes, so those rows cannot be reached from the keyboard (the REPL pokes the
-gate and the key together; recipe and effects in `graphics.md` "In-game camera control"). The
-arrow keys are a separate, ungated block `$13824` that moves the camera cell `$4bb3a` / `$4bb3c`
+gate and the key together; recipe and effects in `graphics.md` "In-game camera control").
+Rotation re-projects the whole terrain (`iso_rotated.png`).
+
+The arrow keys are a separate, ungated block `$13824` that moves the camera cell `$4bb3a` / `$4bb3c`
 by one per held tick (live: holding `$4b` for 500,000 steps moves X `$28` to `$26`). Keypad zoom
 changes `$ff9c` but never calls the geometry rebuild `$fe04`, so it does nothing; the real zoom
 path is the mouse command through `$13f60` into `$fe04` (7 levels), and both extremes are
-profiled in `graphics.md` "Zoom comparison" (`iso_zoom_in.png`, `iso_zoom_out.png`). Rotation
-re-projects the whole terrain (`iso_rotated.png`). The mouse dialog protocol, the briefing hit
+profiled in `graphics.md` "Zoom comparison" (`iso_zoom_in.png`, `iso_zoom_out.png`).
+
+The mouse dialog protocol, the briefing hit
 test and the OK path are decoded in "PM's mouse dialog state machine" above; the icon floor,
 the text panels and the info panels are in `strategy.md` "The player's commands".
 
@@ -517,15 +553,19 @@ Target selection is local: bucket-proximity contact, adjacent-settlement siege, 
 group-order destination cell (`ai.md` "The iterator", "The object record", "Where target
 selection happens").
 
-The tick body is `$13000`: about 13 ticks per 250 VBLs (roughly 2.6 Hz, compute-bound in the
+**Tick.** The tick body is `$13000`: about 13 ticks per 250 VBLs (roughly 2.6 Hz, compute-bound in the
 emulator), with `$6522` / `$d322` / `$3e06` near the top and `$14b62` / `$6a3a` near the
 bottom; only the renderers sit behind the present-rate divider `$57ff0` / `$57fee`
-(`strategy.md` "Where it runs", "Measured cadence"). There is no battle resolver. Combat is
+(`strategy.md` "Where it runs", "Measured cadence").
+
+**Combat.** There is no battle resolver. Combat is
 the melee grind of mode `$32` (`$1533c`): the attacker takes 1 to 3 off the target's health
 (byte 45, the value the captain panel prints as "Very Sickly" .. "Very Strong"; weapon
 grades 0, 2, 4 give 1, 2, 3 and grade 6 and above gives 1, the gate's `moveq #0` arm); at
 zero `$5590` rolls kill or rout from the attacking group's posture (`$30fe`: 2 always kills,
-4 always routs, 3 rolls on the tick parity; an encircled loser is always killed). The AI stamps
+4 always routs, 3 rolls on the tick parity; an encircled loser is always killed).
+
+The AI stamps
 posture 4 on every group it sends to attack, so AI attackers rout (ten routs and zero kills in a
 re-armed 276-tick mission-1 fight); the player's posture 3 army in the mission-1 win made 5 kills
 and 5 routs. `$5778` starts the fight (it puts a camp out and calls `$4bc8`, group to Fighting), not
@@ -533,30 +573,34 @@ casualties; arrows (`$596a`) and the slow attrition path (`$5c80` to `$5bd2`, ne
 800M later-land steps) are the other channels (`strategy.md` "Combat", `ai.md` "the combat
 path", "Arrows and carrier pigeons").
 
-The AI is deterministic: its "random" numbers are low bits of the tick counter `$57fec`
+**Determinism and seasons.** The AI is deterministic: its "random" numbers are low bits of the tick counter `$57fec`
 (counts `$1abaa` calls, 0..512 per season step), and `$57ff6` is the 13-bit LCG that orders
 the pixels of the season tileset dissolve, not an AI RNG; a land's map is a pure function of
 its seed (`strategy.md` "RNG and determinism"). `$1abaa` is the seasons and weather routine,
 not an economy engine; it rotates the season word `$57fd0` through {0, 2, 4, 6} once per full
-cycle of its LCG (512 calls; 118.4M steps in mission 1, 85.7M on a Play Random Land), which gates the settlement heartbeat (`strategy.md`
-"What `$1abaa` actually is").
+cycle of its LCG (512 calls; 118.4M steps in mission 1, 85.7M on a Play Random Land), which gates the settlement
+heartbeat (`strategy.md` "What `$1abaa` actually is").
 
 ### The AI and the player's orders
 
 The commander `$6522` decides, `$58016` carries the command buffer, `$6a3a` executes and `$4b80`
-stamps the group lead into mode `$10` (march). The autonomous decision is "march at the nearest
+stamps the group lead into mode `$10` (march).
+
+The autonomous decision is "march at the nearest
 enemy lord if the army has the food for the trip" (the group's own food, not a force-scaled
 budget), plus the follow-up table `$6762` / `$67d0` that chains food, men, equipment and
 invention orders after a finished state; there is no economy or build planning. The follow-up
 table is live (34 natural issues); `$6808` / `$68aa` are dead. The per-side force totals
 `$57fba` (from `$d322` and `$3e06`) reduce through `$d23a` to the 0..4 ratio `$57fce`
 (original `_win_state`, drawn as the balance `scale_da` by `$16bb8`, tested `== 4` by the
-end-of-land verdict `$d2c8`; the AI never reads it). Mission 1's enemy captain issues no
+end-of-land verdict `$d2c8`; the AI never reads it).
+
+Mission 1's enemy captain issues no
 autonomous order in about 1000 traced ticks (250M steps); the `$6564` path was confirmed by
 forcing a command slot ready, and later lands run it by themselves (`strategy.md` "What
 actually fired", `ai.md` "Natural runs on later lands").
 
-Proofs against the real 68000, all differential tests of `tools/pm_fsm_ref.py`-style
+**Proofs against the real 68000.** All are differential tests of `tools/pm_fsm_ref.py`-style
 reconstructions (corpora, scripts and the branch lists are in the cited sections):
 
 - Entity FSM core (`ai.md` "the dwell/upkeep core", "the movement modes", "the combat path",
@@ -564,7 +608,7 @@ reconstructions (corpora, scripts and the branch lists are in the cited sections
   `$68`, `$8a`, `$5c80`, the epilogue), 1335/1335 over 32 (movement modes `$06`, `$08`, `$0e`,
   `$10` and the leaves `$164bc`, `$14262`, `$12d56`), 413/413 over 48 (melee `$1533c`,
   `$56a6`, `$5590`, `$30fe`), settlement heartbeat `$157e6` 99/99 over 27 natural states
-  (12 branch families; 85/85 over 25 synthesised states first).
+  (12 branch families) and 85/85 over 25 synthesised states.
 - Regroup `$3c08` 71/71 (22 states) and its flag-bit-4 group teardown `$37c2` / `$1d70` /
   `$1b8c` / `$17a46` 1847/1847 (13 states); set up the fight `$4bc8` 51/51 and 20/20;
   dying-entity path `$1623c` 275/275 (23 states, `py/diff_1623c.py`); group dissolve `$2776`
@@ -585,7 +629,7 @@ reconstructions (corpora, scripts and the branch lists are in the cited sections
   bytes over 2273 states, 72 natural (`py/orders/gate_orders.py`) (`strategy.md` "Proof of the
   commander AI", "The order senders and arrival executors, proven").
 
-Driven live through the real UI and the REPL (`strategy.md`): mission 1 won and lost both ways
+**Driven live** through the real UI and the REPL (`strategy.md`): mission 1 won and lost both ways
 (retire, natural defeat), every player order but `$04` and a real `$0e` exercised at least
 once, diplomacy's envoy, tribute and break traced end to end, and four lands' natural `$6522` /
 `$661a` decisions captured over 200M steps each and matched against the disassembly. How a
@@ -594,17 +638,19 @@ land ends, the 195-land campaign and its manual-lookup protection check are in `
 
 ### The economy
 
-PM has no single economy tick. A lord's food (`pm_leader.food`, `$4e514` +6) and men at home
+**Food and men.** PM has no single economy tick. A lord's food (`pm_leader.food`, `$4e514` +6) and men at home
 (`troops_field`, +8) are a ledger that no counter grows: food fills when farmers come
 home from their field and when fishermen deliver a catch, and empties when an army takes food, gatherers work
 (`$603e`) and the settlement pulse runs; men are only redistributed, captured or dismissed,
 and the one path that raises the live count without a capture is a pigeon landing that
-revives a dead man's record (`$42be`). Every writer was enumerated from a watch of about 1B
+revives a dead man's record (`$42be`).
+
+Every writer was enumerated from a watch of about 1B
 steps, plus the player's own order paths (`economy.md` 1, 6); `troops_field` equals the live
 men of each lord by home settlement on 416 lord instances over 33 snapshots (378 exact, all
 within 1, `py/troops_audit.py`), and rule D matches 2280 of 2280 (`py/troops_rule.py`).
 
-The goods are a separate ledger: eight counters per lord (`pm_leader.goods[0..7]`, `$4e514` +24,
+**Goods.** The goods are a separate ledger: eight counters per lord (`pm_leader.goods[0..7]`, `$4e514` +24,
 one per item type), credited by men felling the trees of the `$4d252` tree array (the forest
 operations `$57f68`, the markers `$4c5f4`, the animator `$4342`, the payoff `$60dc`), moved
 between lords by merchants (arrival handlers `$159de` / `$159a4`; the merchant start `$15ad2` never advances its
@@ -615,18 +661,22 @@ That upgrade is the whole of "invention": no research timer exists (`economy.md`
 385/385 over 201 states (`py/gate_equip.py`, the F# `Equipment.fs` against 202 cases,
 `py/equip_check.fsx`).
 
-Settlements are 18-byte records in `$4f916` (at most 400, chained per nation, built by
+**Settlements.** Settlements are 18-byte records in `$4f916` (at most 400, chained per nation, built by
 `$2fc0`). Their heartbeat is entity mode `$7c` (`$157e6`), switched on by the season word
 (`$57fd0 == 0`), so upkeep and defections run in bursts. Its loyalty accumulator
 (`pm_leader` +14) moves only on the first pulse after a marker parks (`$ff9d` to `$ff9c`),
 and at 600 the lord and his settlements defect through `$550e`; the park write is not
 something the player triggers, and 11 of the 27 natural defections came from this cycle (the
-other 16 from the conquest arm of mode `$2c`). The village population `$2984` gives every
+other 16 from the conquest arm of mode `$2c`).
+
+The village population `$2984` gives every
 settlement two men and a job from `$2a98`; a stale register in the farmer search decides the
 mix (gates `py/gate_jobs.py` 3310/3310 over 146 states, `py/gate_pop.py` 29860/29860 over
-1026 men on eight lands and 41760/41760 over eight Play Random Land builds; `economy.md` 5a). The `$163ea` bucket-relink writes that landed in
+1026 men on eight lands and 41760/41760 over eight Play Random Land builds; `economy.md` 5a). The `$163ea` bucket-relink writes that land in
 the `$4f916` region for some dead object slots are a corrupt object forward-link, benign
-(`economy.md` 3b). The mission setup `$13b9a` (`$10d1e`, `$2266`, `$ac20`, `$4672`, `$2984`,
+(`economy.md` 3b).
+
+The mission setup `$13b9a` (`$10d1e`, `$2266`, `$ac20`, `$4672`, `$2984`,
 `$238c`) is gated in `strategy.md` "The world build, proven" (`py/worldbuild/gate_build.py`:
 `$10d1e` 22501/22501, `$4672` / `$4788` 114947/114947, `$238c` 44963/44963, `$2eac`
 14631/14631, `$2906` 262/262, `$1073c` 24433/24433, `$1b2a` 996/996, `$1cc4` 4241/4241).
@@ -650,24 +700,28 @@ runs on the raw corner before that inset. The open sea, the HUD and the minimap
 are baked once into the `$78000` master by `$13b9a`; there is no per-frame sea fill
 (`graphics.md` "The terrain mechanism", "The frame pipeline"; `port/SPEC.md` 3, 4).
 
-Evidence: the projection is proven against the real 68000 by `callcap` (called in isolation
+**Evidence.** The projection is proven against the real 68000 by `callcap` (called in isolation
 with `A3 = $13f8a`, the recomputed `$3f364` is byte-identical to the stored corner buffer on
 four captures; an integer reconstruction, `py/proj/proj_ref.py` (gate `py/proj/gate_fecc.py`), matches 3240/3240
-vertices over 36 generated camera states plus four natural captures, zero fudge; the earlier
-float version agrees to one pixel); the rasteriser is byte-exact against a live single-step
+vertices over 36 generated camera states plus four natural captures, zero fudge; a float
+version of the projection agrees to one pixel); the rasteriser is byte-exact against a live single-step
 (all 128/128 `$ef62` calls of a frame, the dither phase on every scanline of two traced
 triangles, the DDA span endpoints of a 27-row triangle, in quadrant 2); and the whole frame
 matches the game's compose buffer 100.00% on 27 captures from 12 views on lands 0, 5, 25 and
 60 (including snow, rain, a fight, a projectile and boats), scored against the screen in the
 next `$f898` snapshot, with terrain away from sprites at 99.7 to 99.96% (`port/SPEC.md` 6
-"Scoring a capture", 4). The sprite path is `$115e0` through the dispatch tables
+"Scoring a capture", 4).
+
+**Sprites.** The sprite path is `$115e0` through the dispatch tables
 `$1162e` (prepare) and `$1165c` (blit), keyed on the record's category byte 6 (even values,
 0 to 30), over the `$47970` bucket chains whose offsets are signed words (scenery and animals
 live below `$51b66`). Four sheets are decoded: `$33000` 8 x 11 (352 frames, `port/assets/sprites/sheet_contact.png`),
 `$312a0` 16 x 16, `$37c7c` 32 x 24 and `$3af1c` 32 x 32; the frame formulas for every
 category are in `port/SPEC.md` 6 and `port/assets/sprites/sprite_triggers.json`, and a
 building or tree is `(record[7] & 0x7f) + word[$11746 + word[$57fd0]]` with the table
-`{0, 3, 6, 9}` (`graphics.md` "Trees / buildings / mountains"). The 16 and 32 pixel clip
+`{0, 3, 6, 9}` (`graphics.md` "Trees / buildings / mountains").
+
+The 16 and 32 pixel clip
 blitters are gated 450/450 (`py/blit/blit_gate.py`), the minimap `$107d6` 512000/512000 bytes
 over four modes (`py/maps/gate_minimap.py`), and the land build (`$10058` 125219/125219,
 `$10410` 45779/45779, `$10910` 2561/2561, `$10638` 260/260, `$ac20` 14539/14539, all in
@@ -698,12 +752,14 @@ The `callcap <addr> [maxSteps] [out|-] [Rn=hex ...]` REPL primitive calls one su
 isolation from a captured state (sentinel return address, interrupts masked, register
 presets), records the register and changed-memory delta and a per-step trace hash, then
 restores the snapshot through the verified-identity path, so a session replays
-byte-identically after any number of `callcap`s (`detcheck`). It landed in two emulator
-commits (`f6d574f`, `df140df`) behind the regression net (`verify 5M` pass, 30M diskless boot
-snapshot byte-identical, selftest 807124 pass / 0 wrong / 8 skip at the time). Because `callcap` masks interrupts, a routine that waits on a flag the interrupt
+byte-identically after any number of `callcap`s (`detcheck`). It is in two emulator
+commits (`f6d574f`, `df140df`), which went in behind the regression net (`verify 5M` pass, 30M diskless boot
+snapshot byte-identical, selftest 807124 pass / 0 wrong / 8 skip when they landed).
+
+Because `callcap` masks interrupts, a routine that waits on a flag the interrupt
 clears never returns (for PM's sound calls poke `$2c993` to 0 in the state).
 
-Each gate follows one method: disable every record but the target's (owner byte := 0) so
+**Method.** Each gate follows one method: disable every record but the target's (owner byte := 0) so
 `callcap 14b62` runs exactly the reconstructed subset, or call the leaf directly with its
 entry contract (`$fecc` needs `A3 = $13f8a`; `$3c08` needs `A1`; `$37c2` needs `D2`; `$1d70`
 needs `A3`; `$14b62` needs nothing), compare the full changed-memory delta over the object
@@ -712,35 +768,10 @@ run negative controls that must flip the result. Arms the corpus does not reach 
 off with a `raise`. The reconstruction (`tools/pm_fsm_ref.py`, tables sliced from a RAM image
 by `init_tables(ram)`) and the harness (`tools/pm_fsm_diff.py`: `Harness`, `State`,
 `run_corpus`) are committed, with `tools/capture_hits.py` for natural corpora and
-`tools/disassemble.py --snap` for the listings; on graduation they reproduced the five
-earlier FSM gates byte for byte (675/675, 1335/1335, 413/413, 85/85, 99/99: 2607 tracked
-bytes over 154 states; the acceptance scripts are `py/fsm/repro93..97.py`). Later gates live in `py/` and its subdirectories, indexed in
+`tools/disassemble.py --snap` for the listings. The committed harness reproduces the five
+original FSM gates byte for byte (675/675, 1335/1335, 413/413, 85/85, 99/99: 2607 tracked
+bytes over 154 states; the acceptance scripts are `py/fsm/repro93..97.py`). The other gates live in `py/` and its subdirectories, indexed in
 `py/README.md`; `py/gate_coverage.py` lists the routines no gate names.
-
-### Retired readings
-
-Readings an older note or a stale snapshot may still suggest; each is corrected in the section
-named.
-
-- A "sea fill inside the iso diamond" drawn per frame: the open sea is byte-identical to the
-  `$78000` master (`graphics.md` "The frame pipeline"). The empirical `DITHER_COLOUR_BIAS = -1`
-  only compensated for the missing mod-128 wrap of the dither phase.
-- The `0x1c` coast-slope dither as the residual at other yaws, and the "giant blob" scores
-  against `pm83_q{0,1,2}c`: every `0x1c` triangle checked is fully overdrawn, and those
-  captures were frozen mid-swap (`port/SPEC.md` 9).
-- The quadrant handler entry points `$f98c` / `$fa98` / `$fbb2` (real: `$f98e` / `$fa9a`
-  / `$fbb4`), the blit table at `$1165a` (real: `$1165c`), and a category byte 6 of 0..15
-  (real: even 0..30, so the marching group is byte 6 == 14, not "category 7").
-- `$4d252` as herded animals (it is the tree array), `$1abaa` as the economy engine
-  (seasons and weather), `$5778` as a battle resolver, `$1d70` as the ownership writer (a
-  route and rank former), and the merchants as a designed trade class (the job pick's
-  overflow).
-- Mode `$7c` as dead in mission 1 (it runs in bursts while `$57fd0 == 0`), the loyalty
-  accumulator moving on every pulse (only on the first pulse after a park), and mission 1 as
-  "never kills" read from group discipline (the AI's posture 4 pins every kill to a rout).
-- Melee damage as `min(grade, 6) >> 1 + 1` (the gate's arm for grade 6 and above is a
-  hard zero) and keypad zoom as a working zoom.
-
 ## Files
 
 The documents are in the table at the top. The rest of the directory:

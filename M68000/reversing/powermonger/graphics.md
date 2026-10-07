@@ -46,13 +46,11 @@ buffer with software plane blits and shown by a base-register swap.
 ### The model is a heightmap grid
 
 There is **no vertex list in RAM**. The terrain lives in parallel 8 KB planes
-around `$438ee` (`ai.md`), index `(y << 6) + x`: the **altitude** plane `-16514(A1)` = `$3f86c` (`_alts`), the height source the
-projector reads (proven by poking it: a plateau, 10938 pixels, `py/alts_render_check.py`); a **colour** byte for the cell's first
-triangle at `0(A1)` and one for the second at `-8257(A1)`, both derived from the altitude plane by the build pass `$10058` (a slope
-shade, so the lighting is baked in; 0 = open sea; poking either changes the tone of one triangle, ~2200 pixels, geometry unchanged,
-`scratchpad/pm136/planes/plane_ab.py`); and a flag byte at `+8257(A1)` (`$4592f`): bit 7 selects the diagonal that splits
-the cell, bit 1 pins the cell's altitude against the `$10410` smoothing pass (settlement sites; the river carver `$10458` has no direct caller). Corners are generated
-during the walk, so the mesh is implicit in the grid.
+around `$438ee` (`ai.md`), index `(y << 6) + x`. Corners are generated during the walk, so the mesh is implicit in the grid. The planes:
+
+- **Altitude**, `-16514(A1)` = `$3f86c` (`_alts`): the height source the projector reads. Proven by poking it: a plateau, 10938 pixels (`py/alts_render_check.py`).
+- **Colour**, one byte for the cell's first triangle at `0(A1)` and one for the second at `-8257(A1)`. Both are derived from the altitude plane by the build pass `$10058`: a slope shade, so the lighting is baked in; 0 = open sea. Poking either changes the tone of one triangle, about 2200 pixels, geometry unchanged (`scratchpad/pm136/planes/plane_ab.py`).
+- **Flags**, a byte at `+8257(A1)` (`$4592f`). Bit 7 selects the diagonal that splits the cell. Bit 1 pins the cell's altitude against the `$10410` smoothing pass (settlement sites); the river carver `$10458` has no direct caller.
 
 ### `$fec6` — project the grid corners
 
@@ -80,13 +78,13 @@ for (row = -H; row <= H; row++)             // H = $fdec, zoom-dependent half-ex
 - The projection **is perspective** (`x / (EYE - depth)`), not an affine 2:1
   iso. The isometric look comes from a fixed camera pitch plus 16 yaw steps
   (`$ff9a`). `$ff7c` does two `divs` per corner.
-- The integer maths reproduces the game's `$3f364` corner buffer byte for byte
-  (SPEC §3). `$fec6` is the entry (`lea $13f8a.l,A3`, then it falls into the body at `$fecc`).
-  **Proven vs the real 68000 with `callcap`:** `$fecc` called in isolation with `A3 = $13f8a` (a bare call with a
-  garbage `A3` leaves 158 of 162 corner bytes wrong) recomputes a `$3f364` byte-identical to the stored buffer on
-  four captures, and an integer reconstruction of `$fecc` + `$fe8e` (HBIAS) + `$ff7c` (the divide), with no float and
-  no fudge, matches it on 36 generated camera-cell states plus 4 natural captures, **3240/3240** vertices
-  (`py/proj/proj_ref.py`, gate `py/proj/gate_fecc.py`, rerun from there: 3240/3240; SPEC §3 "Proven vs the real 68000").
+- `$fec6` is the entry (`lea $13f8a.l,A3`, then it falls into the body at `$fecc`).
+
+**Evidence.** The integer maths reproduces the game's `$3f364` corner buffer byte for byte
+(SPEC §3). **Proven vs the real 68000 with `callcap`:** `$fecc` called in isolation with `A3 = $13f8a` recomputes a `$3f364` byte-identical to the stored buffer on
+four captures. The negative control: a bare call with a garbage `A3` leaves 158 of 162 corner bytes wrong. An integer reconstruction of `$fecc` + `$fe8e` (HBIAS) + `$ff7c` (the divide), with no float and
+no fudge, matches the buffer on 36 generated camera-cell states plus 4 natural captures, **3240/3240** vertices
+(`py/proj/proj_ref.py`, gate `py/proj/gate_fecc.py`; SPEC §3 "Proven vs the real 68000").
 
 ### `$f898` — the render entry
 
@@ -122,10 +120,10 @@ for (D7 = rows; ...; A0 += $fdf4, A1 += $fdf2)          // next grid row
 ```
 
 `colour(b)` is the raw colour byte, plus `[$4bb3e] & 3` when `b < 0x0c`
-(the water shimmer). The colour is a slope shade computed from the four corner
-altitudes at world build (`$10058`, read in code; the band arithmetic is not checked cell by cell); the height only
-enters through the projection `$fec6`. Each triangle of a cell has its own colour byte (`0` and `-8257`), which gives sloped
-cells their two-tone split.
+(the water shimmer). Each triangle of a cell has its own colour byte (`0` and `-8257`), which gives sloped
+cells their two-tone split. The colour is a slope shade computed from the four corner
+altitudes at world build (`$10058`; code read, the band arithmetic is not checked cell by cell); the height only
+enters through the projection `$fec6`.
 
 ### `$ef62` → `$e3e6` → `$e420` — the pattern fill
 
@@ -152,9 +150,11 @@ The setup (`$e3e6..$e3fa`) starts at `colourByte*128 + (topY & 15)*8`. The
 `$e44a` roll adds 8 to the low byte of `2*A5` each scanline; the byte overflow
 keeps `A5` inside the colour's slot, which is why the phase depends only on the
 absolute scanline. The span on one scanline is a single 16-px pattern tiled in
-screen-X alignment. The pattern-table pointer `[$ffa2]` is also flipped by 128 (`bchg #7,$ffa5` at `$f8e4`) every time `$f898`
-re-projects, which moves the read point 64 bytes inside the slot: the phase is added inside the mod-128 wrap and is 0 or 64 (port/SPEC.md §4 "Dither phase";
-terrain exact-index on three rotated captures 43.5 / 46.7 / 47.1% without it, 93.8 / 84.6 / 91.1% with it). No texture map is read anywhere in the terrain path.
+screen-X alignment. No texture map is read anywhere in the terrain path.
+
+**Dither phase.** The pattern-table pointer `[$ffa2]` is flipped by 128 (`bchg #7,$ffa5` at `$f8e4`) every time `$f898`
+re-projects, which moves the read point 64 bytes inside the slot: the phase is added inside the mod-128 wrap and is 0 or 64 (port/SPEC.md §4 "Dither phase").
+Evidence: terrain exact-index on three rotated captures is 43.5 / 46.7 / 47.1% without the phase and 93.8 / 84.6 / 91.1% with it.
 
 The table is 128 slots of 128 bytes (`dither_atlas.png` decodes slots `0x00`-`0x40`;
 `dither_infographic.html` is the interactive version). A slot is a 16 x 16 tile of
@@ -171,7 +171,7 @@ The table is 128 slots of 128 bytes (`dither_atlas.png` decodes slots `0x00`-`0x
 | `0x41`-`0x52`, `0x53`-`0x64` | spring/autumn, winter | the other two stored season tables. No terrain byte seen reaches them |
 | `0x65`-`0x7f` | mixed | not dither tiles (other data) |
 
-**Ramp structure** (`py/dither_atlas.py`, checked on `pm78_settle`): the rock ramp
+**Ramp structure** (`py/dither_atlas.py`, checked on `pm78_settle`). The rock ramp
 is a nested ordered dither. One fixed 16 x 16 threshold map gives each pixel a
 rank 0-8 (16, 32 x 7, 16 pixels per rank); slot `0x0c + k` switches the rank <= k
 pixels to the next colour, each slot containing the previous one, and the second
@@ -180,29 +180,32 @@ scatters of 32, 80, 128, 192 and 224 pixels, the same five masks for each colour
 pair (13 over 1, 12 over 13, 11 over 12; identical in all three), with overlaps
 between neighbours of 0 of 32, 48 of 80, 64 of 128 and 160 of 192.
 
-**The `0x1c` override** (`$f072` / `$f154`): `$ef62` forces the colour byte to
+**The `0x1c` override** (`$f072` / `$f154`). `$ef62` forces the colour byte to
 `0x1c` when the triangle's winding puts the middle vertex on the left. At the
 mission-1 start pose (cam 36,47, yaw 15) it applies to 52 of 128 triangles,
 which draw 3298 px; 6 px of those remain in the finished frame, because
 nearer terrain paints over the rest (`port/walkthrough/probe.fsx rasters`). At
 that pose it therefore marks mostly back-facing triangles, and the visible
-effect is limited to a few dark pixels along the island silhouette.
+effect is limited to a few dark pixels along the island silhouette. Other poses
+are not measured (see "Open questions").
 
 ### Seasons
 
 `$57fd0` holds the season as 0, 2, 4 or 6 (winter, spring, summer, autumn;
-`port/SPEC.md` §4 "Seasons"), and two things follow it. **The grass:** slots
-`0x1d`-`0x2e` of the pattern table are a working copy of one of three stored 18-slot
+`port/SPEC.md` §4 "Seasons"), and two things follow it.
+
+**The grass.** Slots `0x1d`-`0x2e` of the pattern table are a working copy of one of three stored 18-slot
 sources (winter `$2e000 + $2980` = slots `0x53`-`0x64`, spring and autumn `$2080` =
 `0x41`-`0x52`, summer `$1780` = `0x2f`-`0x40`). The copy is made in one go at world
-build (`$1ab60`) and after that `$1abaa` dissolves it towards the current season's
+build (`$1ab60`); after that `$1abaa` dissolves it towards the current season's
 source, 16 pixels per tick, in the pixel order of the 13-bit LCG `$57ff6`. A fade takes
 512 ticks (about 118M emulator steps in mission 1, 86M on a Play Random Land; the tick count is fixed, the cost per tick is not) and its end rotates
-`$57fd0 = ($57fd0 + 2) & 6` (`strategy.md` "What `$1abaa` actually is"). **Proven**
-(SPEC §4): the port's `Season.fading` equals the whole 16 KB table byte for byte on seven
-captures, with steps = 16 × `$57fec`; `scratchpad/pm136/season/tilediff.py` shows the
+`$57fd0 = ($57fd0 + 2) & 6` (`strategy.md` "What `$1abaa` actually is").
+**Proven** (SPEC §4): the port's `Season.fading` equals the whole 16 KB table byte for byte on seven
+captures, with steps = 16 × `$57fec`. `scratchpad/pm136/season/tilediff.py` shows the
 dissolve live (half summer and half autumn art at count 255, 98% the new art at 496).
-**The trees:** `$116c6` adds `word[$11746 + $57fd0]` = {0, 3, 6, 9} to the tree and
+
+**The trees.** `$116c6` adds `word[$11746 + $57fd0]` = {0, 3, 6, 9} to the tree and
 building frame, so the frames change the moment `$57fd0` advances while the grass takes
 the whole fade to catch up. The sprite sheets are identical in every season.
 
@@ -215,10 +218,10 @@ colour byte, so each tick moves them to the next of four stipple slots and the
 pattern repeats every four ticks.
 
 The compose buffer holds the frame finished one tick earlier, so a RAM image taken at
-the `$f898` frame driver shows terrain drawn with `([$4bb3e] - 1) & 3`: four consecutive
+the `$f898` frame driver shows terrain drawn with `([$4bb3e] - 1) & 3`. Evidence: four consecutive
 captures of one coast view (`pm121/cap/k5_22_0..3`) match the rebuilt frame at 100.0, 100.0,
 99.9 and 99.9 % with that offset, and six water scenes score 90-100 % with it against 40-70 %
-without; `tools/pm_render_ref.py`'s `load_ram` applies the offset (`tick`; the raw counter is `ram_tick`). Dither phase on those captures is 64.
+without. `tools/pm_render_ref.py`'s `load_ram` applies the offset (`tick`; the raw counter is `ram_tick`). Dither phase on those captures is 64.
 
 The shimmer appears only where water lies inside the drawn window. The open
 sea outside the window is part of the static `$78000` master and does not
@@ -237,8 +240,18 @@ change.
 
 ## The land build: planes, roads, town ground, the script
 
-`$13b9a` builds a land in this order (live, from `pm67_ok_pre` after the briefing OK; the same sequence is in `strategy.md` "Mission / world setup"): `$10768` clears `$3f364..$57ff8`; `$10d1e` (a random land's parameters) or `$ffa6` (a stored land's altitude walk, then the `$10410` smoothing); `$2266`; `$ac20` (the land script below);
-`$1073c` (every `$4b9f2` site: `$2eac` places the town's buildings, `$10638` levels the ground); `$10058` (the colour bake); `$4672` (forests); `$2984` (the population); `$238c`; `$2906`; `$107d6` (the minimap). The planes are all 64 × 128, cell n = y × 64 + x: altitude `$3f86c`,
+`$13b9a` builds a land in this order (live, from `pm67_ok_pre` after the briefing OK; the same sequence is in `strategy.md` "Mission / world setup"):
+
+1. `$10768` clears `$3f364..$57ff8`.
+2. `$10d1e` (a random land's parameters) or `$ffa6` (a stored land's altitude walk, then the `$10410` smoothing).
+3. `$2266`.
+4. `$ac20` (the land script below).
+5. `$1073c` (every `$4b9f2` site: `$2eac` places the town's buildings, `$10638` levels the ground).
+6. `$10058` (the colour bake).
+7. `$4672` (forests), `$2984` (the population), `$238c`, `$2906`.
+8. `$107d6` (the minimap).
+
+The planes are all 64 × 128, cell n = y × 64 + x: altitude `$3f86c`,
 colour A `$418ad`, colour B `$438ee`, flags `$4592f`, bucket heads `$47970` (a word per cell). Flag bits: 7 the diagonal selector, 6 an edge mark (only the dead `$10b62` uses it), 5 skip the split, 4 a near-ambiguous diagonal, 3 and 2 colour B and colour A fixed, 1 altitude pinned.
 
 ### `$10058` — the colour planes are baked from the altitudes
@@ -274,15 +287,37 @@ loop: paint both triangles of the cell colour $1d; flags |= $0e, and |= 2 on the
       a diagonal step also paints the corner cell $1d with flags $28/$24/$a8/$a4, so the road is 4-connected
 ```
 
-A road crosses open sea as a causeway (`terrain_roads.png`: land `k5_s4`, the roads link the islands; the `$1d` cells are white, 383 of them). **Proven: 2561/2561** over 12 calls. `$10638` (`_town_gr`) levels a settlement site the same way: it paints `$1d` on the occupied cells and on the edge triangles by the 4-neighbour occupancy pattern, **260/260** over 11 calls.
-`_pospos` `$10c18`, `_mapline` `$10c7e`, `_how_far` `$10cae` and `_distanc` `$10ce4` are a DDA line-walk library over the **colour** planes (not the altitude plane). `$10c18` takes two packed cell indices (`y<<6|x`) in D0/D1 and returns a 16.16 DDA (D0/D2 start row/column, D1/D3 per-step row/column, D4 = max(|dx|,|dy|) steps); the other three call it and walk the line (cell index `y*64+x`, planes `-8257(A1)` = A and `0(A1)` = B). `$10c7e` adds `$80` to both colour bytes of every cell after the start (flips bit 7, self-inverse); `$10cae` returns in D0.w the first cell where the signed byte D6 is >= both colour bytes (else -1); `$10ce4` returns -1 at the first cell whose two colour bytes are both 0, else the line length. `callcap` from `m1_ready` on a 10-cell row (D0 = `$28a`, D1 = `$294`): `$10c7e` changed exactly 20 map bytes `00->80` (10 per colour plane), `$10cae` (D6 = `$20`) returned cell `$28b`, `$10ce4` returned -1 (`py/capture_misc/line_walkers.sh`). `_do_vriv` `$10458` (a river carver) walks all 64 rows from column 32, shifting one column per row by `(rand & $fff) mod 3 - 1` (RNG `$12c9a`, biased by the previous step), and per row writes a random 8-cell-wide cross-section (six cells set, mirrored: outer bank `$1e+(r&4)`, inner bank `$19+(r&8)`, bed `$01+(r&4)`, the two centre cells left alone), colour bytes `$0c..$15` on the bed-side cells (which of `$0c/$0d`, `$0e/$0f`, `$10/$11`, `$12..$15` depends on the sign of the step; code read), and flag bits 1 (altitude pinned), 2 and 3 (colour A/B fixed). `callcap` from `m1_ready` (15,298 steps) changed 382 altitude, 128 colour-A, 128 colour-B and 504 flag bytes, in all 64 rows (`py/capture_misc/vriv_planes.py`). `_fix_map` `$10a46`/`_edge_ro` `$10b62` a BITMAP.DAT decoder only the fixed-map branch (`$58148 < $100`, no land) would reach: no direct caller or literal pointer
-(`find_ram_callers.py`, `find_literal_ptr.py`; `find_jump_table_hit.py` finds no table entry for `$10458` and one for `$10c7e` that is ASCII text at `$aaa0`, a false positive), 0 hits in 20M steps on two snapshots (`m1_ready`, `pm142/rand1`) for `$10458`, `$10c18`, `$10c7e`, `$10cae` and `$10ce4`. The shipped build therefore never runs them; the DDA routines' purpose is not established (the callers' names suggest distance and line-of-sight tests).
+A road crosses open sea as a causeway (`terrain_roads.png`: land `k5_s4`, the roads link the islands; the `$1d` cells are white, 383 of them). **Proven: 2561/2561** over 12 calls.
+
+**`$10638` (`_town_gr`).** Levels a settlement site the same way: it paints `$1d` on the occupied cells and on the edge triangles by the 4-neighbour occupancy pattern. **260/260** over 11 calls.
+
+**The DDA line-walk library.** `_pospos` `$10c18`, `_mapline` `$10c7e`, `_how_far` `$10cae` and `_distanc` `$10ce4` walk a line over the **colour** planes (not the altitude plane); cell index `y*64+x`, planes `-8257(A1)` = A and `0(A1)` = B.
+
+- `$10c18` takes two packed cell indices (`y<<6|x`) in D0/D1 and returns a 16.16 DDA (D0/D2 start row/column, D1/D3 per-step row/column, D4 = max(|dx|,|dy|) steps). The other three call it and walk the line.
+- `$10c7e` adds `$80` to both colour bytes of every cell after the start (flips bit 7, self-inverse).
+- `$10cae` returns in D0.w the first cell where the signed byte D6 is >= both colour bytes (else -1).
+- `$10ce4` returns -1 at the first cell whose two colour bytes are both 0, else the line length.
+
+Evidence: `callcap` from `m1_ready` on a 10-cell row (D0 = `$28a`, D1 = `$294`): `$10c7e` changed exactly 20 map bytes `00->80` (10 per colour plane), `$10cae` (D6 = `$20`) returned cell `$28b`, `$10ce4` returned -1 (`py/capture_misc/line_walkers.sh`).
+
+**The river carver `_do_vriv` `$10458`.** Walks all 64 rows from column 32, shifting one column per row by `(rand & $fff) mod 3 - 1` (RNG `$12c9a`, biased by the previous step). Per row it writes a random 8-cell-wide cross-section (six cells set, mirrored: outer bank `$1e+(r&4)`, inner bank `$19+(r&8)`, bed `$01+(r&4)`, the two centre cells left alone), colour bytes `$0c..$15` on the bed-side cells (which of `$0c/$0d`, `$0e/$0f`, `$10/$11`, `$12..$15` depends on the sign of the step; code read), and flag bits 1 (altitude pinned), 2 and 3 (colour A/B fixed). Evidence: `callcap` from `m1_ready` (15,298 steps) changed 382 altitude, 128 colour-A, 128 colour-B and 504 flag bytes, in all 64 rows (`py/capture_misc/vriv_planes.py`).
+
+**Routines the shipped build never runs.** `_fix_map` `$10a46`/`_edge_ro` `$10b62` are a BITMAP.DAT decoder that only the fixed-map branch (`$58148 < $100`, no land) would reach: no direct caller or literal pointer
+(`find_ram_callers.py`, `find_literal_ptr.py`; `find_jump_table_hit.py` finds no table entry for `$10458` and one for `$10c7e` that is ASCII text at `$aaa0`, a false positive). For `$10458`, `$10c18`, `$10c7e`, `$10cae` and `$10ce4` there were 0 hits in 20M steps on two snapshots (`m1_ready`, `pm142/rand1`). The shipped build therefore never runs them. The DDA routines' purpose is not established (the callers' names suggest distance and line-of-sight tests).
 
 ### `$ac20` — the land script
 
-`_dec_oth` decodes the 4-byte records `{x, y, d0, type}` at `$58152` (type 0 ends). Type < `$10`: a site; when `d0 != 0` the words `{d0, x, y, kind}` are queued at `$4b9f2` (the pointer advances 8 either way), then `_flat_ci` `$ae58` flattens a disc of radius = type cells to the centre altitude
-(minimum 1). `$10`: a side's group start cell, written to `word[$51538 + d0 × $13c + 100]`, its 2 × 2 block raised to at least 5. `$11`: a road from this cell to the next record's cell (that record is consumed; one that is itself `$11` is re-read as the next road's start). `$12`: a hand-made shape `d0` stamped by `_fix_it` `$105d0`
-(altitude, colour A and colour B planes); when it follows an `$11` it is only the road's end. Above `$12`: ignored. Over the 195 stored lands (`py/maps/script_census.py`): 456 group starts, 1695 sites, 507 roads and 15 stamps (lands 12, 19, 20, 21, 38, 40, 53, 67, 72, 150, 162, 173, 180).
+`_dec_oth` decodes the 4-byte records `{x, y, d0, type}` at `$58152` (type 0 ends). By type:
+
+- **Type < `$10`: a site.** When `d0 != 0` the words `{d0, x, y, kind}` are queued at `$4b9f2` (the pointer advances 8 either way), then `_flat_ci` `$ae58` flattens a disc of radius = type cells to the centre altitude
+  (minimum 1).
+- **`$10`: a side's group start cell**, written to `word[$51538 + d0 × $13c + 100]`, its 2 × 2 block raised to at least 5.
+- **`$11`: a road** from this cell to the next record's cell (that record is consumed; one that is itself `$11` is re-read as the next road's start).
+- **`$12`: a hand-made shape** `d0` stamped by `_fix_it` `$105d0`
+  (altitude, colour A and colour B planes); when it follows an `$11` it is only the road's end.
+- **Above `$12`:** ignored.
+
+Over the 195 stored lands (`py/maps/script_census.py`): 456 group starts, 1695 sites, 507 roads and 15 stamps (lands 12, 19, 20, 21, 38, 40, 53, 67, 72, 150, 162, 173, 180).
 **Proven: 14539/14539** tracked bytes over 16 `callcap $ac20` calls.
 
 ## Sprites and draw order
@@ -340,12 +375,40 @@ relative to the camera. Per-category formulas are in SPEC §6.
 
 ### The preparers and drawers by category (code read unless noted)
 
-`sjt` `$1162e` and `djt` `$1165c` are 23-word tables indexed by byte 6: 0 `a_person`, 2 `a_house`, 4 `a_tree`, 6 and `$18` `a_object` (`$117b0`: frame `$100 + byte 7`; byte6 `$18` is a fisherman's catch marker with byte 7 `$10`, so it draws frame `$110`, a rowboat on the pond, `catch_marker_boats.png`; the developer table names the pair `a_boat`/`a_object`), 8 `a_animal` (`$11a86`), `$a` `a_equipm`, `$c` `a_special` (`$11bbc`), `$e` `a_sitting` (`$11bf4`, 2316 hits per 30M steps on `k5_s4`), `$10` `a_workshop`, `$12` `a_ball` (`$11c36`),
-`$14` `a_pigeon` (`$11b3c`), `$16` `a_flight` (`$11b2a`), `$1a` `a_inboat`, `$1c` `a_shag` (`$11b0c`), `$1e` `a_mine` (`$1198a`, with `a_part_b` `$119b2` for a building going up: D6 = `8(A3)` rows of progress, the frame offset and shortened by D6), `$20` no draw, `$22` `a_bigcow` (`$11ab8`), `$28` `a_arrow` (`$11c64`).
-`$120ea` `scaled` (22 words by category, 1 for 2, 4, `$a`, `$10`, `$1c`: those use the large sprite's rectangle in `check_sh`, live dump on `m1_s0`) and `$12116` `dscale` (by zoom) are data. `a_pigeon` and `a_flight` share the tail `do_for_a` `$11b44`: the interpolated position (`$11f12`), a colour-5 dot at `(x, y − 14(A3))` (`$e6ee`)
-when `14(A3)` is non-zero, the shadow icon `$148` (`$11f82`), y lowered by `15(A3)` (plus `$30` when it is negative) and the frame `$127 + (tick $57fec & 7)`, the flapping bird; category `$16` is drawn the same way, which fits the developers' name `_birds` for the `$4c5f4` records. Not natural: 0 hits in 30M steps on `k5_s4` and `m1_atk`
-and 7 `k5` series frames; with a flag record poked to byte6 `$16`, `callcap $11b2a` returned D0 = 204, D1 = 46, D2 = `$12d`, raised the sound event word `$12a79` and changed 6 screen bytes. `a_stock` `$1184e` draws a goods pile with nine icons (`draw_foo/pik/swo/bow/plo/boa/pot/cat/can` `$11898..$1191e`: food `$116`, pike `$143`, sword `$144`,
-bow `$145`, plough `$109`, boat `$110`, pot `$146`; the catapult `$1b` and cannon `$23` as 16 × 16 sprites through `check_sh`), `a_workshop` `$1192e` the workshop frame 7 plus the icons of the stocked weapons of the eight goods slots `24($4e514 + 14(A3), k)`. `$1182a` (`do_for_a`, the first) is the cell-centre position
+`sjt` `$1162e` and `djt` `$1165c` are 23-word tables indexed by byte 6:
+
+| byte 6 | name | handler and notes |
+|---|---|---|
+| 0 | `a_person` | |
+| 2 | `a_house` | |
+| 4 | `a_tree` | handler `$1168c` (see "Trees / buildings / mountains") |
+| 6 and `$18` | `a_object` | `$117b0`: frame `$100 + byte 7`. Byte6 `$18` is a fisherman's catch marker with byte 7 `$10`, so it draws frame `$110`, a rowboat on the pond (`catch_marker_boats.png`). The developer table names the pair `a_boat`/`a_object` |
+| 8 | `a_animal` | `$11a86` |
+| `$a` | `a_equipm` | |
+| `$c` | `a_special` | `$11bbc` |
+| `$e` | `a_sitting` | `$11bf4`, 2316 hits per 30M steps on `k5_s4` |
+| `$10` | `a_workshop` | `$1192e` (below) |
+| `$12` | `a_ball` | `$11c36` |
+| `$14` | `a_pigeon` | `$11b3c` |
+| `$16` | `a_flight` | `$11b2a` |
+| `$1a` | `a_inboat` | |
+| `$1c` | `a_shag` | `$11b0c` |
+| `$1e` | `a_mine` | `$1198a`, with `a_part_b` `$119b2` for a building going up: D6 = `8(A3)` rows of progress, the frame offset and shortened by D6 |
+| `$20` | no draw | |
+| `$22` | `a_bigcow` | `$11ab8` |
+| `$28` | `a_arrow` | `$11c64` |
+
+**Scale tables.** `$120ea` `scaled` (22 words by category, 1 for 2, 4, `$a`, `$10`, `$1c`: those use the large sprite's rectangle in `check_sh`; live dump on `m1_s0`) and `$12116` `dscale` (by zoom) are data.
+
+**`a_pigeon` and `a_flight`** share the tail `do_for_a` `$11b44`: the interpolated position (`$11f12`), a colour-5 dot at `(x, y − 14(A3))` (`$e6ee`)
+when `14(A3)` is non-zero, the shadow icon `$148` (`$11f82`), y lowered by `15(A3)` (plus `$30` when it is negative) and the frame `$127 + (tick $57fec & 7)`, the flapping bird. Category `$16` is drawn the same way, which fits the developers' name `_birds` for the `$4c5f4` records.
+Category `$16` is not natural: 0 hits in 30M steps on `k5_s4` and `m1_atk`
+and 7 `k5` series frames. With a flag record poked to byte6 `$16`, `callcap $11b2a` returned D0 = 204, D1 = 46, D2 = `$12d`, raised the sound event word `$12a79` and changed 6 screen bytes.
+
+**`a_stock` and `a_workshop`.** `a_stock` `$1184e` draws a goods pile with nine icons (`draw_foo/pik/swo/bow/plo/boa/pot/cat/can` `$11898..$1191e`: food `$116`, pike `$143`, sword `$144`,
+bow `$145`, plough `$109`, boat `$110`, pot `$146`; the catapult `$1b` and cannon `$23` as 16 × 16 sprites through `check_sh`). `a_workshop` `$1192e` draws the workshop frame 7 plus the icons of the stocked weapons of the eight goods slots `24($4e514 + 14(A3), k)`.
+
+**Position and cadence.** `$1182a` (`do_for_a`, the first) is the cell-centre position
 (x = (c0 + c1 + c2 + c3)/4 + `$38`, y = ... − 8). The main loop's tail `$13864` (`after_ke`) redraws the panels and fades (`$187a`, `$1a276`) and re-enters `_again` `$12fd8`: once per tick (193 hits per 30M steps on `k5_s4`).
 
 ### The 16 and 32 pixel blitters and the sprite pick
@@ -365,10 +428,14 @@ a set mask bit keeps the screen pixel, `new = (old & mask) | plane`; the screen 
 | `_left_32` `$12576` | x −15..−1: block 0 shifted left into group 0, block 1 right into groups 0 and 1 | 73 |
 | `_right_3` `$12628` | group 18: block 0 to g, g+1, block 1 to g+1 only | 75 |
 
-The 32-wide front also sends x −31..−17 to `_left_16` on block 1 and group 19 to `_right_1` on block 0; x ≤ −32 or group ≥ 20 draws nothing, and for 16 px x ≤ −16 or ≥ 320 draws nothing. **Proven: `py/blit/blit_gate.py`, 450/450** `callcap` calls (150 per sheet, random frames, x in −40..330 plus the edge set, y in −40..210, against a model of the
-pixel rule; every variant exercised, 56 to 58 fully clipped calls per sheet changed nothing); `blit_route.py` confirms from the steps per drawn row that the label named is the routine that ran; `blit_variants.png` shows one call of each (before and after).
+The 32-wide front also sends x −31..−17 to `_left_16` on block 1 and group 19 to `_right_1` on block 0; x ≤ −32 or group ≥ 20 draws nothing, and for 16 px x ≤ −16 or ≥ 320 draws nothing.
 
-`check_sh` `$12138` is the **sprite pick** (not a window cull, as an older `.sym` comment had it: `$2df92/$2df94` are the live cursor and `$2df8e/$2df90` the pending click, not an extent): it runs with every sprite draw, after the pointer test, so it decides which drawn sprite a click belongs to (9 callers: `$11912`, `$11922`, `$119ca`, `$11a02`, `$11a44`, `$11f78`, `$12258`, `$12278`, `$1229a`).
+**Evidence. Proven: `py/blit/blit_gate.py`, 450/450** `callcap` calls (150 per sheet, random frames, x in −40..330 plus the edge set, y in −40..210, against a model of the
+pixel rule; every variant exercised, 56 to 58 fully clipped calls per sheet changed nothing). `blit_route.py` confirms from the steps per drawn row that the label named is the routine that ran; `blit_variants.png` shows one call of each (before and after).
+
+#### `check_sh` `$12138`, the sprite pick
+
+`check_sh` is the **sprite pick**, not a window cull: `$2df92/$2df94` are the live cursor and `$2df8e/$2df90` the pending click, not an extent. It runs with every sprite draw, after the pointer test, so it decides which drawn sprite a click belongs to (9 callers: `$11912`, `$11922`, `$119ca`, `$11a02`, `$11a44`, `$11f78`, `$12258`, `$12278`, `$1229a`).
 
 ```
 check_sh(D0 = x, D1 = y of the sprite, A3 = record, A2 = its cell's bucket slot, D2 = frame):
@@ -382,8 +449,18 @@ check_sh(D0 = x, D1 = y of the sprite, A3 = record, A2 = its cell's bucket slot,
   if D2 != 0 and $2df96: $115de = 0; slot = [$58034]; slot[1] = $57fd4; slot[2] = X; slot[3] = Y − 6; $1898e()    // post the armed order at the sprite's cell and disarm
 ```
 
-Live, six `callcap $12138` cases from one natural entry (a tree, D0 = 215, D1 = 67; pokes of `$2df92/$2df8e/$2df96/$57fd4/$57fea`; rerun from `rand1` as `py/capture_misc/check12138.sh`: 6/6, 0, 33, 84, 0, 368 and 0 bytes): idle 0 bytes; an armed order with the pointer inside and no click draws only the line; armed plus click posts `{02, 43, 48}` into the command slot (the cell predicted from A2 exactly) and disarms;
-the pointer outside 0 bytes; `$57fea = 1` plus a click opens the tree panel; `$57fea = 1` without a click 0 bytes. The same through the real UI (icon `$2c` at (75,191), then a tree at (225,78): `info_click.png`). `$115de` (`_used_bu`) is set to 1 at the start of each record of `$115e0`'s chain and `$11624` clears `$2df96` only if it is still 0, so with several sprites
+**Evidence (live).** Six `callcap $12138` cases from one natural entry (a tree, D0 = 215, D1 = 67; pokes of `$2df92/$2df8e/$2df96/$57fd4/$57fea`; rerun from `rand1` as `py/capture_misc/check12138.sh`: 6/6, with 0, 33, 84, 0, 368 and 0 bytes changed in case order):
+
+- idle: 0 bytes;
+- an armed order with the pointer inside and no click: draws only the line;
+- armed plus click: posts `{02, 43, 48}` into the command slot (the cell predicted from A2 exactly) and disarms;
+- the pointer outside: 0 bytes;
+- `$57fea = 1` plus a click: opens the tree panel;
+- `$57fea = 1` without a click: 0 bytes.
+
+The same through the real UI (icon `$2c` at (75,191), then a tree at (225,78): `info_click.png`).
+
+**Open (inferred).** `$115de` (`_used_bu`) is set to 1 at the start of each record of `$115e0`'s chain and `$11624` clears `$2df96` only if it is still 0, so with several sprites
 under the pointer only the last record's flag survives (inferred).
 
 The draw preparers also post the sound events: see `strategy.md` `$127e6`.
@@ -407,9 +484,8 @@ A tree or building (byte 6 == 4, handler `$1168c`, blitted inline by `$12244`) t
 `(record[7] & 0x7f) + word[$11746 + word[$57fd0]]`, with the table `$11746 = {0, 3, 6, 9}`, `word[$57fd0] = ($58146 & 3) * 2`
 (a per-land tile-set selector; mission 1 reads 4, so `+6`) and the special cases `record[7] == 0x0d` and `(record[7] & 0x7f) == 0x0e`
 (no offset). Its position is the `$11f1a` lerp over the cell's four raw `$3f364` corners with a jitter derived from the
-record, bucket-slot and corner addresses (`fx = (((A2 + A3) & 0xffff) << 3) & 0xff`), then `$12272` subtracts 4 and 8;
-live-checked against D2 at `$12288` and D0/D1, with the 32 x 24 decode byte-exact against a live frame (`port/SPEC.md` §6).
-
+record, bucket-slot and corner addresses (`fx = (((A2 + A3) & 0xffff) << 3) & 0xff`), then `$12272` subtracts 4 and 8.
+Evidence (live-checked): D2 at `$12288` and D0/D1 match, and the 32 x 24 decode is byte-exact against a live frame (`port/SPEC.md` §6).
 ## The minimap and the conquest map
 
 **The minimap** `$107d6` (`_draw_ma`, with `$1078e` `draw_con`; called from `$13c5a`, `$187f0`, `$b3ca` and the strip click `$131ee`) is baked once into the master buffer (`[$e0d4]` = `$78000`): cell (x, y) with x < 63 is the pixel (x, y + 6), plotted by `$e6ee`. The mode word `$58098` (`_show_ma`; default 2) is set by a click in the strip above the map
@@ -420,26 +496,41 @@ live-checked against D2 at `$12288` and D0/D1, with the 32 x 24 decode byte-exac
 - mode 1: as 2, but the first record of the cell's bucket chain with byte6 4 / 2 / `$10` colours it 8 (tree) / 9 (settlement building) / 10 (base);
 - mode 3: chain records of byte6 2 or `$10` use their lord: d = `word[$4e514 + lord + 6] − word[... + 8]` (food less manpower), colour 0 when d ≤ 0, else `min((d >> 5) + 1, 5)`.
 
-Chain offsets are sign-extended words: a tree record sits below `$51b66` (bucket `$b800` is `$4d366`); a transcription that missed it was off by 169 pixels. **Proven: `py/maps/gate_minimap.py`, 512000/512000 bytes and 1024000/1024000 pixels** over 4 modes on 4 snapshots (`m1_s0`, `k5_s4`, `k0`, `pm78_settle`); `minimap_modes.png` shows the four modes on `k5_s4`.
+Chain offsets are sign-extended words: a tree record sits below `$51b66` (bucket `$b800` is `$4d366`), so a transcription must sign-extend or it is off by 169 pixels. **Proven: `py/maps/gate_minimap.py`, 512000/512000 bytes and 1024000/1024000 pixels** over 4 modes on 4 snapshots (`m1_s0`, `k5_s4`, `k0`, `pm78_settle`); `minimap_modes.png` shows the four modes on `k5_s4`.
 
-**The conquest map** (`_select_` `$1120e`, entered from `$13cfa` and `$13ec0`) is a 320 × 608, 4-plane bitmap (resource 10, `$3f364..$57164`) holding a **13 × 15 land grid of 24 × 40 cells** (`worldmap_full.png`). `_draw_pa` `$11422` copies 32000 bytes from `$3f364 + scroll × 160` to the screen (the scroll `$11420`, 0..`$198`, set by dragging;
-a straight copy: 96000/96000 bytes at scrolls 0, 137 and 408). `_draw_da` `$11458`, once at the picker's entry, ORs the 16 × 16 dagger glyph (`dagger` `$1153e`: 16 rows of a keep-mask word and four plane words, 160 bytes) onto every land whose byte in `$3f2a0` is non-zero: the first at byte `$3fd65` (row 16, x = 8), advancing 15 or 9 bytes by the address parity of
-the start (an odd start splits over two 16-pixel groups) and 6400 per land row; 89310/89310 changed bytes over 12 poked tables. The pick box is 16 × 32 at (24c + 8, 40r + 8), drawn by `$e5aa` as a 17 × 33 outline at (24c + 7, 40r + 7 − scroll), colour 10 for a conquered land and 8 for land 0 or a free land with a conquered 4-neighbour
-(`gate_pick.py`: 18 of 18 probes agree: 4 boxes, 14 negatives). A click on any boxed land, even a conquered one, runs `$113a8` by the code (not tested).
+**The conquest map** (`_select_` `$1120e`, entered from `$13cfa` and `$13ec0`) is a 320 × 608, 4-plane bitmap (resource 10, `$3f364..$57164`) holding a **13 × 15 land grid of 24 × 40 cells** (`worldmap_full.png`).
 
+- **Screen copy.** `_draw_pa` `$11422` copies 32000 bytes from `$3f364 + scroll × 160` to the screen (the scroll `$11420`, 0..`$198`, set by dragging). It is a straight copy: 96000/96000 bytes at scrolls 0, 137 and 408.
+- **Daggers.** `_draw_da` `$11458`, once at the picker's entry, ORs the 16 × 16 dagger glyph (`dagger` `$1153e`: 16 rows of a keep-mask word and four plane words, 160 bytes) onto every land whose byte in `$3f2a0` is non-zero: the first at byte `$3fd65` (row 16, x = 8), advancing 15 or 9 bytes by the address parity of
+  the start (an odd start splits over two 16-pixel groups) and 6400 per land row. Evidence: 89310/89310 changed bytes over 12 poked tables.
+- **Pick box.** 16 × 32 at (24c + 8, 40r + 8), drawn by `$e5aa` as a 17 × 33 outline at (24c + 7, 40r + 7 − scroll), colour 10 for a conquered land and 8 for land 0 or a free land with a conquered 4-neighbour
+  (`gate_pick.py`: 18 of 18 probes agree: 4 boxes, 14 negatives).
+- **Open.** A click on any boxed land, even a conquered one, runs `$113a8` by the code (not tested).
 ## Backdrop pieces, palettes and fades
 
-- **The balance** `scale_da` `$16bf8` (5 frames of 640 bytes, 20 rows of 32 bytes, 64 pixels wide) is the force-ratio picture: `_draw_sc` `$16bb8` copies frame `4 − D0`, D0 = the ratio word `$57fce` (0..4), into the backdrop at `$e0d4 + $5320` (pixel row 133, x 0..63); callers `$d2be` (when the ratio changes) and `$188e0`. A pair of scales with a shield on each
-  side tilting with the ratio (`scale_da.png`; which pan is the player's is inferred). 2 natural hits live in `m1_atk`.
-- **The captains' eyes** `eyes` `$169d8` (data, not code: 480 bytes up to `_draw_sc` `$16bb8`, reached only by the PC-relative `lea 22(PC,D2.w)` at `$169c0` inside `_draw_ey`; 6 captains × 4 frames × 20 bytes) are one-row, 32-pixel strips blitted by `_draw_ey` `$1699e` (D0 = 2 × slot, D1 = frame `word[$2df92] & 3` (the cursor X: poking `$2df92` to `$a0..$a3` at `$3e9e` gives D1 = 0, 1, 2, 3, `py/capture_misc/eyes_frame_poke.sh`), sole caller `$3ea8` in `$3e06` for a slot whose `28(A3)` is non-zero) at the pairs of `eye_coor` `$16986`, (85,30) (132,29) (182,20) (224,29) (260,30) (295,40), into the backdrop through
-  `$12326` with D2 = 1. The routine opens with its own `movem.l #$ffe0,-(A7)` (`48e7 ffe0` at `$1699e`) and ends in the matching pop, so it is `callcap`able (97 hits per 30M steps on `k5_s4`; an earlier reading that it had no push came from a listing that started two bytes early). `py/fsm15/eyes_check.py`: all 6 slots x 4 frames return in 141 steps (slots 0-4) or 128 (slot 5, whose strip is clipped at the right edge, inferred); 21 of the 24 calls write backdrop bytes, every one of them in the single row y of the slot's pair and only in the 16-pixel groups covering x..x+31 (the 3 that write nothing are frame 0 of slots 0-2, probably strips equal to the backdrop: inferred).
-- **Palettes.** `_work_pa` `$1a2d8` and `_game_pa` `$1a358` (the same earth-tone palette), `_zero_pa` `$1a318` (all black), `_con_pal` `$1a398` (red-brown, "glorious victory", resource `$f`) and `_lost_pa` `$1a3d8` (orange and brown, defeat, resource `$e`) are 64 bytes each: sixteen `$0RGB` words with a 4-bit linear nibble per
-  channel, plus padding (`fade_palettes.png`, rows in that order). `_show_a_` `$1a82a` rotates each nibble into the STe hardware order (`(x << 3 & $888) | (x >> 1 & $777)`) and writes `$ff8240..`.
-- **The fade** `_do_one_` `$1a418` moves each differing nibble of the 16 colours by D0 (±1) toward the target at A1, shows it (`$1a82a`) and waits 20000 iterations; `_fade_sc` `$1a2bc` makes 16 calls; fade-in (`$1a276`: flag `$1a2ba` cleared, D0 = +1, target `$1a358`) is called from `$cf24`, `$11398`, `$13872`, `$13d94`, `$13e36` and fade-out
-  (D0 = −1, target zero, flag −1) from `$6f0a`, `$113c6`, `$13d60`, `$13e62` and the conquest screens. `callcap $1a418` with work colours 0..3 zeroed and D0 = +1: colours 1, 2 and 3 each gained `$0111`, colour 0 stayed (3 of 3 nibbles).
-- **Text** `do_text` `$1a238` draws a string at A2 (D0 = x, D1 = y): the letters A..Z only, 55-byte glyph records at `$19ca2`, advance 9, through `$11f90` (code read). `_copymem` `$1a7a6` copies 32000 bytes; `_draw_ne*` `$1a808`/`$1a81e` store `{offset.w, count.w, longs...}` lists at `A4 + offset` until the offset is negative (the end screens' delta frames,
-  `strategy.md` "How a land ends").
+**The balance.** `scale_da` `$16bf8` (5 frames of 640 bytes, 20 rows of 32 bytes, 64 pixels wide) is the force-ratio picture: `_draw_sc` `$16bb8` copies frame `4 − D0`, D0 = the ratio word `$57fce` (0..4), into the backdrop at `$e0d4 + $5320` (pixel row 133, x 0..63); callers `$d2be` (when the ratio changes) and `$188e0`. It is a pair of scales with a shield on each
+side tilting with the ratio (`scale_da.png`; which pan is the player's is inferred). 2 natural hits live in `m1_atk`.
 
+**The captains' eyes.** `eyes` `$169d8` is data, not code: 480 bytes up to `_draw_sc` `$16bb8`, reached only by the PC-relative `lea 22(PC,D2.w)` at `$169c0` inside `_draw_ey`; 6 captains × 4 frames × 20 bytes. They are one-row, 32-pixel strips blitted by `_draw_ey` `$1699e` into the backdrop through
+`$12326` with D2 = 1.
+
+- Arguments: D0 = 2 × slot; D1 = frame `word[$2df92] & 3` (the cursor X: poking `$2df92` to `$a0..$a3` at `$3e9e` gives D1 = 0, 1, 2, 3, `py/capture_misc/eyes_frame_poke.sh`).
+- Caller: the sole caller is `$3ea8` in `$3e06`, for a slot whose `28(A3)` is non-zero.
+- Positions: the pairs of `eye_coor` `$16986`, (85,30) (132,29) (182,20) (224,29) (260,30) (295,40).
+- Calling convention: the routine opens with its own `movem.l #$ffe0,-(A7)` (`48e7 ffe0` at `$1699e`) and ends in the matching pop, so it is `callcap`able (97 hits per 30M steps on `k5_s4`). A listing that starts two bytes before `$1699e` hides the push.
+- Evidence (`py/fsm15/eyes_check.py`): all 6 slots x 4 frames return in 141 steps (slots 0-4) or 128 (slot 5, whose strip is clipped at the right edge, inferred). 21 of the 24 calls write backdrop bytes, every one of them in the single row y of the slot's pair and only in the 16-pixel groups covering x..x+31. The 3 that write nothing are frame 0 of slots 0-2, probably strips equal to the backdrop (inferred).
+
+**Palettes.** `_work_pa` `$1a2d8` and `_game_pa` `$1a358` (the same earth-tone palette), `_zero_pa` `$1a318` (all black), `_con_pal` `$1a398` (red-brown, "glorious victory", resource `$f`) and `_lost_pa` `$1a3d8` (orange and brown, defeat, resource `$e`) are 64 bytes each: sixteen `$0RGB` words with a 4-bit linear nibble per
+channel, plus padding (`fade_palettes.png`, rows in that order). `_show_a_` `$1a82a` rotates each nibble into the STe hardware order (`(x << 3 & $888) | (x >> 1 & $777)`) and writes `$ff8240..`.
+
+**The fade.** `_do_one_` `$1a418` moves each differing nibble of the 16 colours by D0 (±1) toward the target at A1, shows it (`$1a82a`) and waits 20000 iterations; `_fade_sc` `$1a2bc` makes 16 calls.
+
+- Fade-in (`$1a276`: flag `$1a2ba` cleared, D0 = +1, target `$1a358`) is called from `$cf24`, `$11398`, `$13872`, `$13d94`, `$13e36`.
+- Fade-out (D0 = −1, target zero, flag −1) is called from `$6f0a`, `$113c6`, `$13d60`, `$13e62` and the conquest screens.
+- Evidence: `callcap $1a418` with work colours 0..3 zeroed and D0 = +1: colours 1, 2 and 3 each gained `$0111`, colour 0 stayed (3 of 3 nibbles).
+
+**Text.** `do_text` `$1a238` draws a string at A2 (D0 = x, D1 = y): the letters A..Z only, 55-byte glyph records at `$19ca2`, advance 9, through `$11f90` (code read). `_copymem` `$1a7a6` copies 32000 bytes; `_draw_ne*` `$1a808`/`$1a81e` store `{offset.w, count.w, longs...}` lists at `A4 + offset` until the offset is negative (the end screens' delta frames,
+`strategy.md` "How a land ends").
 ## The frame pipeline
 
 Two compose buffers, `$2df7c` (on screen) and `$2df78` (back), are swapped via

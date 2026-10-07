@@ -201,15 +201,14 @@ pointer) = `compose_buffer + 0x20` bytes = **+64 screen pixels**. So the final
 **The clip check runs on the RAW, pre-inset value.** `$ef62`'s own
 `screenX <= 255` clip (§4) applies to `$3f364.sx` directly, before the `+64`
 above -- i.e. the real window is `raw sx in [0,255]`, which is `absolute
-screenX in [64,319]`, not `[0,255]`. `pm_render_ref.py`'s `--ram` path used to
-apply the `<=255` bound to the already-inset-shifted coordinate, truncating
-the true window's right ~64 px on every score (since fixed by threading `x_inset`
-through `ef62_raster`/`_dda_walk`, so the clip bound shifts with the
-coordinate space it's given; `port/README.md`, "Verification record"). `Fill.fs`/`Projection.fs`
-never had this bug -- they stay in raw space throughout, matching `$ef62`
-itself -- but `TerrainView.cs`'s blit read the buffer at `(x,y)` instead of
-`(x-64,y)`, which is the same bug at the opposite end of the pipeline (fixed
-the same pass, verified with a real screenshot).
+screenX in [64,319]`, not `[0,255]`. Applying the `<=255` bound to the
+already-inset-shifted coordinate would truncate the true window's right ~64 px,
+so `pm_render_ref.py`'s `--ram` path threads an `x_inset` parameter through
+`ef62_raster`/`_dda_walk`, and the clip bound shifts with the coordinate space
+it is given (`port/README.md`, "Verification record"). `Fill.fs`/`Projection.fs`
+stay in raw space throughout, matching `$ef62` itself; `TerrainView.cs`'s blit
+reads the buffer at `(x-64,y)` (reading `(x,y)` is the same error at the
+opposite end of the pipeline), verified with a real screenshot.
 
 All arithmetic is 16.16-ish fixed point on the 68000 (`muls`/`divs`, `>>15` via
 `add.l`+`swap`). A port does it in float; the `>>15` after the rotate keeps
@@ -225,7 +224,7 @@ forward from the camera cell (row stride 64), corner buffer `$3f364` row stride
 64 bytes (9 × 4 used). `tools/pm_render_ref.py`'s float version matches to ≤1 px.
 
 **Proven vs the real 68000.** Using the
-emulator's new `callcap` primitive (call a routine in isolation from a captured
+emulator's `callcap` primitive (call a routine in isolation from a captured
 state, capture its full register + changed-memory delta, snapshot-restore):
 
 - **Entry contract:** `$fecc` reads `0(A3,D0.w)` with `D0 = YAW*2` on entry, so
@@ -347,8 +346,7 @@ partial-word mask — see the DDA section). `colourByte` owns a **128-byte slot 
 16 eight-byte sub-patterns**; `(8*y) mod 128` cycles through all 16 with period
 16 scanlines. A form with `(topY&15)*8 + 8*(y-topY)` is equivalent for the
 first slot only; the mod-128 wrap makes the `topY` term drop out (`128*(topY>>4)` ≡ 0
-mod 128). An empirical `DITHER_COLOUR_BIAS = -1` once compensated for the missing
-wrap and was right only for 16-32 px-tall triangles; it is gone.
+mod 128).
 
 `colourByte` is the raw colour byte (colour plane A `$418ad` for one
 triangle, colour plane B `$438ee` for the other), **+ `[$4bb3e] & 3`** if `< 0x0c`
@@ -456,7 +454,7 @@ handler = [$f98e, $fa9a, $fbb4, $fccc][q >> 1]     // jump via the $f986 word ta
 (The entry points are `$f98e`/`$fa9a`/`$fbb4`/`$fccc`, read exactly
 from the jump table at `$f986` — `jmp 2(PC,D0.w)` with offsets `$8`/`$114`/
 `$22e`/`$346` from `$f986` itself. The addresses `$f98c`/`$fa98`/
-`$fbb2` that older notes carry are each 2 bytes low: they land on the RTS of the *preceding* handler
+`$fbb2` found in older notes are each 2 bytes low: they land on the RTS of the *preceding* handler
 (`$fbb2`/`$fa98`), or, for `$f98c`, a byte inside the jump table.)
 
 Each handler walks the **projected corner buffer `$3f364` and the terrain
@@ -464,9 +462,9 @@ planes `$438ee` together**, but with a quadrant-specific **start offset**
 (`A0 += $fe02`, `A1 += $fdf0` …), **iteration count** (`$fdf0` = 7, not 8) and
 **corner→triangle-vertex assignment** (`(A0)`, `4(A0)`, `64(A0)`, `68(A0)` in
 different D0/D1/D2 slots), so the far→near painter order stays correct as the
-camera rotates. This is why `pm_render_ref.py`'s naive
+camera rotates. A naive
 `cell(camCell + gc, camCell + gr)` walk draws a slightly different cell set
-(and misses the sea wedge + the shadowed NW slope) — it always uses the
+(and misses the sea wedge + the shadowed NW slope), because it always uses the
 quadrant-0 assignment.
 
 **All 4 handlers are ported** — `pm_render_ref.py`'s `walk_q0` /
@@ -485,8 +483,7 @@ differ:
 | q3 (`$fccc`) | `$c0-$f0` | col 7→0 (E→W) | row 0→7 (N→S) | `(camX+col, camY+row)` | unconditional, split C00-C11 | split C10-C01, sub-order by packed(C01) vs packed(C10) |
 
 q0/q2 and q1/q3 pair up (same CLEAR/SET shape, mirrored start point and loop
-direction) — a symmetry that fell out of the derivation, not an assumption
-going in. **Trace-verified**: for each of q0/q1/q2, a live RAM capture
+direction). **Trace-verified**: for each of q0/q1/q2, a live RAM capture
 at a yaw in that quadrant's range (`scratchpad/pm83_q{0,1,2}c.ram`, rotated
 via the keypad-poke recipe in `../graphics.md` "In-game camera control") plus a register dump at the first `$ef62`
 call after resuming to the settled PC matched the derived vertex assignment
@@ -512,7 +509,7 @@ cell (cx, cy)   = (camCellX + col, camCellY + row)     col = 7-k, row = j
 corner names    C00=(A0)  C10=4(A0)  C01=64(A0)  C11=68(A0)   [(row,col) .. (row+1,col+1)]
 ```
 
-Per cell, `8257(A1)` bit 7 (**not** "corner unmoved" -- it is the **diagonal
+Per cell, `8257(A1)` bit 7 (the **diagonal
 selector**, a per-cell heightmap-derived bit; both branches draw):
 
 ```
@@ -572,8 +569,8 @@ the triangle if `ixR < ixL` (`$e468`). The walk draws rows `0 .. totalRows-1`,
 where `totalRows = max(dy1, dy2)`: a run counter reaching zero ends the walk before
 that row is drawn (`$e42a`/`$e43e`; the run stream ends on a zero word, `$f12c` /
 `$f13e` clear `record[20]`), so the bottom vertex's own scanline is never filled.
-Evidence: drawing that extra row put a one-pixel line of wrong colour on every
-triangle's bottom (21-22 px per triangle where the game shows what is behind),
+Evidence: drawing that extra row puts a one-pixel line of wrong colour at the bottom of
+every triangle (21-22 px per triangle where the game shows what is behind),
 29 px per `pm88_f1` frame; with the bound `row < totalRows` all of them match
 (`scratchpad/pm118b/`, `lastrow_fix.fsx`, scratch only).
 
@@ -664,23 +661,23 @@ corners.
 
 ### Two separate sprite paths — settled by a live trace
 
-A live trace of one frame of `scratchpad/pm78_settle.snap` answers
-the question "which path draws the terrain men":
+A live trace of one frame of `scratchpad/pm78_settle.snap` shows which path draws
+the terrain men:
 
 - **`$115e0` (`pm_draw_cell_entities`) is the iso-terrain entity path.** It is
   called **inline, per cell, from the terrain grid-walk handler** (`$fccc` for
-  q3, at `$fdbc`) — right after that cell's two triangles are filled, in
+  q3, at `$fdbc`), right after that cell's two triangles are filled, in
   far→near painter's order. So a man / animal / tree / building is composited
   immediately over its own cell's terrain and correctly occluded by nearer
   cells drawn later. This draws **everything that stands on the hill.**
 - **`$16738` → `$e6ee` is NOT that path.** In `pm78_settle` it fires only from
-  `$165b2` (the selected-group marker) — a flat scan over every object record
+  `$165b2` (the selected-group marker): a flat scan over every object record
   (`$16626` loop, stride 50, to `$57f66`) that draws one glyph per record whose
   **byte 5 == `[$57ffe]`** (the selected group id), positioned by *raw cell
   coordinate* (`record[8]`, `record[10]+6`) plus a fixed per-frame descriptor X,
   not by a projected position. It blinks via `$4bb41` bit 0 (which flips
   `flipHalf` 0↔15; `flipHalf` 15 pushes every heading to the `0xff` "draw
-  nothing" table slot — that is the "off" phase). `$e6ee` is also the HUD-glyph
+  nothing" table slot, which is the "off" phase). `$e6ee` is also the HUD-glyph
   blitter. `assets/headings.json` feeds *this* path only.
 
 ### Category dispatch (`$115e0` → `$1162e` / `$1165c`)
@@ -701,12 +698,13 @@ tables have entries for 0..44 (0 = no handler), and dispatches:
 | blit | `$1165c` | `$1165c + word[$1165c + byte6]`; **word 0 ⇒ no separate blit** | hand D2 to a blitter |
 
 `byte6` indexes the table *directly* (it is already even, 0..44), not as `0..15`
-times 2: an earlier numbering called what is `byte6 == 2N` "category N" and keyed
-every frame formula except the men's on the wrong record byte. The blit table is at **`$1165c`**
-(not `$1165a`, which older notes carry); `byte6 == 0` (men) blits via **`$11f78` → `$11f82`**, *not*
-`$1187c` (a melee/dying sub-case, record byte 31 ∈ {`$32`,`$34`,`$06`,`$46`}).
+times 2. `byte6 == 2N` is not "category N" (the numbering of older notes and
+scripts), and every frame formula except the men's is keyed on `byte6` itself.
+The blit table is at **`$1165c`** (`$1165a` in older notes is wrong);
+`byte6 == 0` (men) blits via **`$11f78` → `$11f82`**, *not* `$1187c` (a
+melee/dying sub-case, record byte 31 ∈ {`$32`,`$34`,`$06`,`$46`}).
 
-**Every category.** Prepare and blit targets decoded from the two
+**Every category.** Prepare and blit targets are decoded from the two
 tables with `disassemble.py --jumptable 1162e 23` / `--jumptable 1165c 23`.
 "Frames" says what the port draws; "checked" names the captures where the
 port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
@@ -734,11 +732,17 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 | 40 | `$11c64` / – | projectile (`$57f0`, weapon tier in `D1`) | one colour-0 pixel (`$e6ee`) | land 25 |
 | 44 | `$1184e` / – | dropped goods pile (`$3ac8`) | a goods icon per non-zero word at `record + 10 + 2e` | lands 5, 25 |
 
-Screened on 37 lands of the preview roll (33 built with `../py/build_land.sh` and settled
-30M steps, `k` = 0-142, plus `k` = 20, 60, 100, 143): 20, 22, 32, 40, 44 and 12 occur at settle; 10, 30
-and more 40/44 appear once armies fight (200M-step runs). No land showed 18, 28
-or 34. The same screen on the Play Random Land roll (`PAGES0=1`, `k` = 0, 4, .., 140 and 143, settled 30M steps; `py/census.py`) finds
-0, 2, 4, 8, 14, 16 and 24 on all 37, 20 on 31, 32 on 24, 6 on 17, 12 on 13, 22 on 10, 44 on 7, 40 on 4, and again none of 10, 18, 28, 30, 34, 36, 38 and 42 (tree records 221 to 342 a land).
+**Census of the categories.** Two rolls were screened, each by settling lands
+and reading the bucket records.
+
+- *Preview roll.* 37 lands: 33 built with `../py/build_land.sh` and settled 30M
+  steps (`k` = 0-142), plus `k` = 20, 60, 100, 143. Categories 20, 22, 32, 40, 44
+  and 12 occur at settle; 10, 30 and more 40/44 appear once armies fight
+  (200M-step runs). No land showed 18, 28 or 34.
+- *Play Random Land roll.* `PAGES0=1`, `k` = 0, 4, .., 140 and 143, settled 30M
+  steps (`py/census.py`), 37 lands: categories 0, 2, 4, 8, 14, 16 and 24 occur on
+  all 37, 20 on 31, 32 on 24, 6 on 17, 12 on 13, 22 on 10, 44 on 7, 40 on 4; none
+  of 10, 18, 28, 30, 34, 36, 38 and 42 (tree records 221 to 342 a land).
 
 **Goods icons, `$11886`.** Nine entries, each a frame and an offset from the
 blit corner, laid out as a 3 x 3 block 2 px apart: `$116` (−2,−2), `$143`
@@ -790,7 +794,7 @@ matches the game's `D0`/`D1` at every blit checked and scores the captures
 below pixel for pixel.
 
 The corners here are the **raw** `$3f364` values (window-relative, no +64 HUD
-inset — that inset is applied only via the terrain draw pointer `$e3e2`). So a
+inset; that inset is applied only via the terrain draw pointer `$e3e2`). So a
 sprite sits at `raw + 0x3c` while its terrain cell sits at `raw + 64`, i.e. the
 `0x3c` is "+64 inset − 4 for the half-frame". `pm_render_ref.py`'s `px − 4` over
 +64-inset corners is the identical anchor. **Live-verified:** the 26
@@ -800,8 +804,8 @@ sprite sits at `raw + 0x3c` while its terrain cell sits at `raw + 64`, i.e. the
 
 ### Frame index per category
 
-`assets/sprites/sprite_triggers.json` carries the full ripped dispatch + every
-per-category frame formula. The important ones:
+`assets/sprites/sprite_triggers.json` carries the full ripped dispatch and every
+per-category frame formula; the important ones follow the sheet table.
 
 There are **four sprite sheets** (all 4-bitplane + AND-mask, MSB-first, opaque
 where the mask bit is 0):
@@ -824,8 +828,8 @@ use.
 | 0 | man | `$33000` | `(side−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. side = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative** (8 steps). Melee, plough and siege-engine overlays and the boat: "Men" above. |
 | 2 | settlement building | `$37c7c` | `record[7]`, centroid (see "Settlement buildings" below) |
 | 4 | tree / building | `$37c7c` | **(live-verified, D2 at `$12288`)** `r7 = record[7]`: `r7 == 0x0d` → `0x0d`; `(r7 & 0x7f) == 0x0e` → `0x0e`; else `(r7 & 0x7f) + word[$11746 + word[$57fd0]]`. `word[$57fd0] = ($58146 & 3)*2` (per-mission tile-set selector); table `$11746 = {0:0, 2:3, 4:6, 6:9}`. Mission 1 (`$57fd0`==4) → `+6`, so `r7` 0x11/0x10/0x0f → frame 0x17/0x16/0x15. **Position: `$11f1a` sub-cell lerp** (like the men) with an *address-jitter* `fx/fy` = `fx = (((A2+A3)&0xffff)<<3)&0xff`, `fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff` where `A2 = &$47970[cellY*64+cellX]`, `A3 = record`, `A0 = &$3f364[row*64+col*4]`; then `$12272` `−4/−8` → raw anchor `(lerpX+0x38, lerpY−16)`. |
-| 6, 24 | 24: the fishermen's catch marker (`a_object` `$117b0`; planted on shore cells by `$2984`, `../economy.md` 5a; side in `record[5]`, `record[7] = $10`); 6: a camp marker (`$35f4` calls `$3744`, which writes it into the pool slots after the fishermen's markers, `record[5]` an AI side, `record[7] = $11`; 2 of 2 new records between two snapshots of one land matched 2 `$3744` hits, and 4 of 4 records read on two lands (0 and 60) sit at pool slots 30 to 32 with byte 7 `$11` and sides 2 to 4; it occurs only after the build, in 17 of 37 Play Random Land lands settled 30M steps; the preview-roll screen below did not list it) | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Centroid (`$1182a`). A catch marker (`r7 == 0x10`) draws frame 0x110, a rowboat on the pond (`../catch_marker_boats.png`; live: `bp 1182a`, 30 of 30 marker records had `D4` low word `$0110`). `$61f8` turns the marker into one boat for the group that takes it (`../economy.md`, `../strategy.md`). |
-| 8 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. **(89th: live-verified — D2 = 0x123/0x124 at `$11ab6`.)** Sub-cell lerp. |
+| 6, 24 | 24: the fishermen's catch marker (`a_object` `$117b0`; planted on shore cells by `$2984`, `../economy.md` 5a; side in `record[5]`, `record[7] = $10`); 6: a camp marker (`$35f4` calls `$3744`, which writes it into the pool slots after the fishermen's markers, `record[5]` an AI side, `record[7] = $11`; evidence under the table) | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Centroid (`$1182a`). A catch marker (`r7 == 0x10`) draws frame 0x110, a rowboat on the pond (`../catch_marker_boats.png`; live: `bp 1182a`, 30 of 30 marker records had `D4` low word `$0110`). `$61f8` turns the marker into one boat for the group that takes it (`../economy.md`, `../strategy.md`). |
+| 8 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. **Live-verified:** D2 = 0x123/0x124 at `$11ab6`. Sub-cell lerp. |
 | 10 | dropped equipment | `$33000` | `$10f + ((record[33] − 8) >> 1)` if `record[33] != 0`, then `$142 + (record[44] >> 1)` if `record[44] != 0`, same place |
 | 12 | dead man | `$33000` | body `$103 + (−record[5] & $ff)`; figure `$100 + record[32]` at `screenY − ($a0 − word[18])` |
 | 14 | banner / group member | `$33000` | `record[5] + 0x13e` (side-indexed) |
@@ -838,35 +842,46 @@ use.
 | 40 | projectile | `$e6ee` | one pixel, colour 0 |
 | 44 | dropped goods | icons | the goods icons |
 
+**Camp markers (byte6 6).** The camp marker is created by `$35f4` through
+`$3744`. Evidence that `$3744` is the writer: 2 of 2 new records between two
+snapshots of one land matched 2 `$3744` hits, and 4 of 4 records read on two lands
+(0 and 60) sit at pool slots 30 to 32 with byte 7 `$11` and sides 2 to 4. A camp
+marker occurs only after the build: it is present in 17 of 37 Play Random Land
+lands settled 30M steps, and the preview-roll screen under "Census of the
+categories" did not list it.
+
 **The `+0x40` "armed" variant (cat 0):** `D2 += 0x40` iff `record[7] bit 4` set
 **and** (`record[7] bit 7` clear **or** the unit's group == `[$57ffe]` the
 selected group). (The live man checked had `record[7] = 0x10` → frame 64.)
 
-The byte6 4 building/tree frame formula + the `$11746`/`$57fd0`
-offset table and the address-jitter position are all **pinned and live-verified**
-(D2 at `$12288`); the 32 × 24 word-plane decode is byte-exact against `$24400`'s
-live tree pixels. `word[$57fd0]` is the season, which `$1abaa` advances once per fade
-(§4 "Seasons"), so a faithful port reads it each frame rather than baking `+6`. `pm_render_ref.py`'s `_entity_frame` + `load_ram` + the
-`draw_entities` "prop" path are updated, and `Sprites.fs` has `frameForProp` /
-`Season.treeTileOffset` / `propJitter` / `propScreenPos` / `decodeFrameWord`. It is
-**not in `COMPOSITE_CATS`** — compositing it lowers the score, but not from a
-formula error: `pm78_settle`'s two compose buffers disagree on the entity layer
-by ~14.6 k px (`$115e0` redraws a *subset* of entities per frame, double
-buffered), so neither reference buffer holds all 25 trees. Scoring it needs a
-clean single-buffer populated capture (§9 "Ruled-out causes").
+**Byte6 4 (trees and buildings).** The frame formula, the `$11746`/`$57fd0`
+offset table and the address-jitter position are all **pinned and
+live-verified** (D2 at `$12288`); the 32 × 24 word-plane decode is byte-exact
+against `$24400`'s live tree pixels. `word[$57fd0]` is the season, which
+`$1abaa` advances once per fade (§4 "Seasons"), so a faithful port reads it each
+frame rather than baking `+6`. `pm_render_ref.py`'s `_entity_frame` + `load_ram` +
+the `draw_entities` "prop" path implement it, and `Sprites.fs` has
+`frameForProp` / `Season.treeTileOffset` / `propJitter` / `propScreenPos` /
+`decodeFrameWord`. It is **not in `COMPOSITE_CATS`**: compositing it lowers the
+score, but not from a formula error. `pm78_settle`'s two compose buffers
+disagree on the entity layer by ~14.6 k px (`$115e0` redraws a *subset* of
+entities per frame, double buffered), so neither reference buffer holds all 25
+trees. Scoring it needs a clean single-buffer populated capture (§9 "Ruled-out
+causes").
 
-The per-cell entity pass is ported to `Sprites.fs`
-(`EntityRec` / `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`) and
+**The per-cell entity pass in F#.** It lives in `Sprites.fs` (`EntityRec` /
+`EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`) and is
 **cross-checked byte-exact** against `pm_render_ref.draw_entities` on synthetic
-corners + record fields — 13/13 cases, `byte6 ∈ {0, 4, 8, 14, 24}`, covering the
+corners + record fields: 13/13 cases, `byte6 ∈ {0, 4, 8, 14, 24}`, covering the
 melee→nothing case, the prop `r7 ∈ {0x0d, 0x0e}` special-cases, animal/banner
-facing, and the centroid markers (`scratchpad/pm90_xcheck.fsx` / `.py`, scratch only, see Status).
-`drawEntities` replays `$115e0` as a post-terrain far→near pass in `walkQ3` cell
-order (same approximation `pm_render_ref` uses); `byte6 6/24` use the `$1182a`
-centroid, everything else the `$11f1a` sub-cell lerp. Fed the real 53-record stream and the
-`$3f364` corners of `pm88_f1.ram`, the F# output is byte-identical to `pm_render_ref.draw_entities`:
-2881/2881 covered pixels, `byte6 ∈ {0, 4, 6, 8, 14, 24}` (`scratchpad/pm91_ent_fs.fsx` / `pm91_ent_py.py`,
-scratch only).
+facing, and the centroid markers (`scratchpad/pm90_xcheck.fsx` / `.py`, scratch
+only, see Status). `drawEntities` replays `$115e0` as a post-terrain far→near
+pass in `walkQ3` cell order (same approximation `pm_render_ref` uses); `byte6
+6/24` use the `$1182a` centroid, everything else the `$11f1a` sub-cell lerp. Fed
+the real 53-record stream and the `$3f364` corners of `pm88_f1.ram`, the F#
+output is byte-identical to `pm_render_ref.draw_entities`: 2881/2881 covered
+pixels, `byte6 ∈ {0, 4, 6, 8, 14, 24}` (`scratchpad/pm91_ent_fs.fsx` /
+`pm91_ent_py.py`, scratch only).
 
 **The record stream (`entities.json`).** `tools/pm_export.py`'s `export_entities`
 walks every cell's `$47970` bucket chain over the whole map, from `pm88_f1`
@@ -875,16 +890,18 @@ world cell and the fields the drawn categories read (`byte6`/`b5`/`b7`/`b14`/
 `b17`/`b31`/`fx`/`fy`/`group`), 276 records. `entity_ctx` carries the capture's
 view (`cam_x`/`cam_y`/`yaw`/`half`), `season`, the animation phases and the four
 sheet paths. A record reached twice, or a link outside the record pools, is an
-export error: it means the capture caught a bucket chain mid-relink. The
-`byte6 == 4` jitter is not stored: it depends on the cell's place in the window,
-so `Sprites.recordJitter` computes it per frame from the record address, the
-bucket slot and the corner address. At the capture camera it reproduces the 53
-jitters `load_ram` computes. With the records from the whole map, the port
-draws sprites at every camera cell. At two cells panned in the emulator from
-`pm88_f1.snap` (`w 4bb3a`, 2M steps; `scratchpad/pm119/pan_{e,w}`,
-`pan_check.fsx`), drawing the exported records gives the same frame as drawing
-each capture's own records (identical at `pan_e`; at `pan_w` one man had moved),
-and the inline order beats sprites-last there too.
+export error: it means the capture caught a bucket chain mid-relink.
+
+The `byte6 == 4` jitter is not stored: it depends on the cell's place in the
+window, so `Sprites.recordJitter` computes it per frame from the record address,
+the bucket slot and the corner address. At the capture camera it reproduces the 53
+jitters `load_ram` computes.
+
+With the records from the whole map, the port draws sprites at every camera cell.
+At two cells panned in the emulator from `pm88_f1.snap` (`w 4bb3a`, 2M steps;
+`scratchpad/pm119/pan_{e,w}`, `pan_check.fsx`), drawing the exported records gives
+the same frame as drawing each capture's own records (identical at `pan_e`; at
+`pan_w` one man had moved), and the inline order beats sprites-last there too.
 
 **Draw order: sprites are drawn inside the walk.** `$f898`'s walk calls `$115e0` for each
 cell straight after drawing that cell's two triangles, so nearer terrain covers farther
@@ -910,18 +927,23 @@ The `rot*` captures are `pm88_f1.snap` rotated in the emulator (`w ff9a 00YY0015
 2M steps, `scratchpad/pm118/rot*.snap`). Terrain-only scores are low where trees and
 buildings cover the most terrain (`rot90`); away from sprites the terrain matches at
 99.7-99.96% (`scratchpad/pm118b/`). Drawn inline, every ported category raises the
-score, and `pm_render_ref.py` draws the same way (a per-cell `_cell_done` hook in
-every walk handler, all categories it knows): it matches `Scene.render` on all 15178
-drawn pixels of `pm88_f1` (`reversing/powermonger/py/parity.py`). It lacks the later-land
-categories. `pm78_settle` stays near its terrain-only score, consistent with its two
-compose buffers disagreeing on the entity layer (not checked further). The
-remaining pixels of the other five are units that moved between the snapshot and
-the frame on screen (next paragraph). At yaws `$40`/`$90`/`$c0` the game shows every
-visible sprite pixel the port draws. Screenshots:
-`assets/reference/godot_screenshot_backdrop_118th.png` (inline, over the `$78000`
-backdrop), `godot_screenshot_inline_118th.png`, and `godot_screenshot_entities_91st.png`
-(sprites last). `Sprites.drawEntities` / `pm_render_ref.draw_entities` are the sprites-last
-path, kept for the parity checks.
+score.
+
+`pm_render_ref.py` draws the same way (a per-cell `_cell_done` hook in every walk
+handler, all categories it knows): it matches `Scene.render` on all 15178 drawn
+pixels of `pm88_f1` (`reversing/powermonger/py/parity.py`). It lacks the later-land
+categories. `Sprites.drawEntities` / `pm_render_ref.draw_entities` are the
+sprites-last path, kept for the parity checks.
+
+`pm78_settle` stays near its terrain-only score, consistent with its two compose
+buffers disagreeing on the entity layer (not checked further). The remaining pixels
+of the other five are units that moved between the snapshot and the frame on screen
+(see "Scoring a capture"). At yaws `$40`/`$90`/`$c0` the game shows every visible
+sprite pixel the port draws.
+
+Screenshots: `assets/reference/godot_screenshot_backdrop_118th.png` (inline, over
+the `$78000` backdrop), `godot_screenshot_inline_118th.png`, and
+`godot_screenshot_entities_91st.png` (sprites last).
 
 **Scoring a capture.** A snapshot stopped at `$f898` holds the state the
 next frame is drawn from, while its finished compose buffer holds the frame drawn
@@ -932,16 +954,15 @@ sequence, `score.fsx a.json+b.json` pairs them). Scored that way at the RAM's ow
 water tick, 27 frames from 12 views on lands 0, 5, 25 and 60 (including winter
 snow, autumn rain, a fight, a projectile and boats) match the game pixel for
 pixel, 100.00%, with every category in view at 100% of its visible pixels
-(`scratchpad/pm121/allpairs.txt`). The same
-pairing explains the old "score it with tick − 1" note on land 60: that was the
-previous frame's tick.
+(`scratchpad/pm121/allpairs.txt`). Scoring land 60 with tick − 1 is the same
+pairing seen from the other side: that tick is the previous frame's tick.
 
 **Settlement buildings, `byte6 == 2` (`$117d8`).** Frame `record[7]` with no tile-set
 offset, anchored at the cell centroid (`$1182a`: +`$38`, -8 over raw corners), then
 `$12244` like the trees. At zoom 4-5 that is the 32 x 24 sheet and (-4, -8), so in
 +64-inset corner space the top-left is centroid + (-12, -16). `record[7] == $0a` also
 draws an overlay via `$119b2` from `record[12]`/`[16]` (not ported). This is the keep
-inside the hilltop fort; adding it took `pm88_f1` inline from 95.93% to 96.80%.
+inside the hilltop fort; drawing it raises `pm88_f1` inline from 95.93% to 96.80%.
 
 **Zoom: `$12244` picks the building/tree art.** The same 27 pictures exist at three sizes,
 packed back to back: `$37c7c + 27 * 480 = $3af1c`, and the 27 32 x 32 frames end before
@@ -956,22 +977,25 @@ the `$3f364` corner buffer. `$12244` picks by the zoom index `[$57ffc]`:
 Men, animals, banners and markers use the 8 x 11 `$33000` frames at every zoom; only
 their positions scale. Port: `Sprites.propSheet`. Evidence in §5.
 
-Still open: per-category frame *counts*; byte6 18 and 28, and the plough and
-siege-engine overlays, ported from the code but never seen on screen (18 and 28
-not ported); the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`), which a
-byte6 18 hit on a settlement building sets (`$596a`).
+**Open.** Per-category frame *counts*; byte6 18 and 28, and the plough and
+siege-engine overlays, are ported from the code but never seen on screen (18 and
+28 not ported); and the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`), which
+a byte6 18 hit on a settlement building sets (`$596a`).
 
-Why 18 and 28 are missing from the runs (from the writers): `$52fc`
-fires byte6 18 when the shooter's `44(obj)` is `$e` or `$10`, and byte6 40 when
-it is 6. Nothing ever writes `$e` or `$10` there. The writers of `44` are the
-world build (`$2452` copies byte 21 of the side block `$580a6[side]` into the
-side's first unit, but `$245c` then overwrites it with 6; `$2500` gives each
-follower byte 23, which is 0, 2, 4 or 6 in all 195 campaign-table entries) and
-the equip paths `$16124` / `$159de`, which write 2, 4 or 6. So byte6 18 is
-unreachable in this build: the `$e`/`$10` arm of `$52fc` is dead, and so are
-the other `44 >= $e` tests (`$3ffc`, `$39d4`). The four run lands' men carry
-only `44 ∈ {0, 6}` (3,851 bucket-walk men over the 28 `pm121/run` snapshots).
-Byte6 28 (`$15462`) needs winter, a group of 2 or fewer and `33(obj) == 8` (a
+**Why 18 and 28 are missing from the runs** (from the writers).
+
+*Byte6 18 and 40.* `$52fc` fires byte6 18 when the shooter's `44(obj)` is `$e` or
+`$10`, and byte6 40 when it is 6. Nothing ever writes `$e` or `$10` there. The
+writers of `44` are the world build (`$2452` copies byte 21 of the side block
+`$580a6[side]` into the side's first unit, but `$245c` then overwrites it with 6;
+`$2500` gives each follower byte 23, which is 0, 2, 4 or 6 in all 195
+campaign-table entries) and the equip paths `$16124` / `$159de`, which write 2, 4
+or 6. So byte6 18 is unreachable in this build: the `$e`/`$10` arm of `$52fc` is
+dead, and so are the other `44 >= $e` tests (`$3ffc`, `$39d4`). The four run
+lands' men carry only `44 ∈ {0, 6}` (3,851 bucket-walk men over the 28
+`pm121/run` snapshots).
+
+*Byte6 28.* `$15462` needs winter, a group of 2 or fewer and `33(obj) == 8` (a
 plough), which only `$1616c` writes, from the leader's goods slot `27(L)`; that
 slot was stocked in 1 leader-snapshot of the runs. So 28 is reachable but rare
 and not observed.
@@ -1002,8 +1026,8 @@ The 4 planes are the 4 interleaved screen words of one 16-px group → a real
 `assets/sprites/sheet_contact.png` shows the **full 352-frame `$33000` sheet**
 (0–127 = the four faction man blocks, stand/walk
 + armed variants; 128–287 = the melee/action poses; `0x117`+ = animals;
-`0x100`+ = number / flag glyphs; `0x14e`/`0x150` = icons). `prop_sheet_contact
-.png` (`$37c7c`, `decode_wordsprite(f,32,24)`) and `struct_sheet_contact.png`
+`0x100`+ = number / flag glyphs; `0x14e`/`0x150` = icons). `prop_sheet_contact.png`
+(`$37c7c`, `decode_wordsprite(f,32,24)`) and `struct_sheet_contact.png`
 (`$312a0`, 16 × 16) decode cleanly as buildings/trees and small
 structures/siege-engines respectively.
 
@@ -1024,14 +1048,13 @@ relative to `$e6f4`); all 320 entries match the formula above.
 
 ### Trees / buildings / mountains
 
-- **Mountains are terrain** — a run of high cells, drawn by the same triangle
+- **Mountains are terrain**: a run of high cells, drawn by the same triangle
   fill with a high colour byte. No mountain sprites.
 - **Trees / buildings are bucket sprites** (`$115e0`, their own category
-  values) drawn over the cell they occupy — they pop in/out at cell granularity
+  values) drawn over the cell they occupy; they pop in/out at cell granularity
   when the camera rotates.
 
 ---
-
 ## 7. Frame pipeline
 
 Screen output is **direct-to-shifter**, double-buffered by the base register
@@ -1041,21 +1064,21 @@ Screen output is **direct-to-shifter**, double-buffered by the base register
 **The `$78000` master.** `$12ce0` copies from
 `A0 = $78000` (32000 B) to the back buffer every ~3rd frame. `$78000` is the
 **HUD + stone border + the pre-rendered open sea + a hole where the island
-goes** — built once at mission load by `$13b9a`. It is NOT "a solid black
-diamond with no terrain": the sea (palette idx 14/15) is baked into it.
+goes**, built once at mission load by `$13b9a`. The sea (palette idx 14/15) is
+baked into it; it is not a solid black diamond.
 
-Per frame, `$f898` redraws **only the island** into that hole (verified: the
+Per frame, `$f898` redraws **only the island** into that hole. Verified: the
 composed `$1c700` buffer differs from the `$78000` master **only** in idx
-6/7/11/12/13 pixels — the island — plus a few unit sprites; the ~2 460 water
+6/7/11/12/13 pixels (the island) plus a few unit sprites; the ~2 460 water
 pixels in the viewport are byte-identical to the master across `pm78_settle` /
-`pm74_late` / `pm70_iso`). `$f898` refills the whole island each time it runs;
+`pm74_late` / `pm70_iso`. `$f898` refills the whole island each time it runs;
 its camera/yaw/zoom compare (`$f8b6..$f8e2`, against copies at `$f890..$f896`)
 gates only the `$fec6` re-projection, never the fill.
 
 Consequence for a port: the per-frame renderer draws the projected 8×8 terrain
 grid and nothing else. A from-scratch full frame composites that over the master
 (HUD + border + sea). The `$f922` `jsr $11f82` with frame `0x149` and
-`D0 = camCellX-3` is **not** a sea fill — `$11f82` is the 8×11 four-plane
+`D0 = camCellX-3` is **not** a sea fill: `$11f82` is the 8×11 four-plane
 mini-sprite blitter (`mulu #$37,D2`, `$33000` base, D0/D1 = screen x/y), so this
 draws sprite frame 329 at a camera-derived screen position (a small overlay /
 marker).
@@ -1085,19 +1108,27 @@ sim tick (13 hits each in ~2.78M steps; one tick ≈ 15 VBLs), so every presente
 frame holds a freshly filled island.
 
 **Weather.** Rain and snow are drawn over the finished frame.
-`$1ad74` starts a spell when `([$4bb4a] + [$57fec]) & $a0 == $a0`:
-`[$4bb42] := word[$1ad9c + word[$57fd0]]` (winter 2 = snow, spring and autumn 1
-= rain, summer 0 = none) and `[$4bb44] := (that sum & $3f) + $20` ticks (`$4bb4a` is always 0, so the start is at `[$57fec]` = 160 and the counter `$40`, which draws 65 times). The start needs `[$4bb44] >= 0`: the wrap of a season sets it to 0 and the end of a spell leaves -1, so each season has at most one spell. While
-`[$4bb42] != 0`, `$1ad2a` calls `$1a856` (16 word-groups by `$c2` rows from row 6,
-x 64, i.e. the whole iso window) and counts `[$4bb44]` down; below 0 the spell
-ends. Each call adds `$40` to the byte at `$1aac8` (4 animation frames); row r
-takes the long at `table[(phase − 4r) & $ff]`, its low word on even groups and
+
+*Start and end of a spell.* `$1ad74` starts a spell when
+`([$4bb4a] + [$57fec]) & $a0 == $a0`: `[$4bb42] := word[$1ad9c + word[$57fd0]]`
+(winter 2 = snow, spring and autumn 1 = rain, summer 0 = none) and
+`[$4bb44] := (that sum & $3f) + $20` ticks. `$4bb4a` is always 0, so the start is
+at `[$57fec]` = 160 and the counter is `$40`, which draws 65 times. The start
+needs `[$4bb44] >= 0`: the wrap of a season sets it to 0 and the end of a spell
+leaves -1, so each season has at most one spell. While `[$4bb42] != 0`, `$1ad2a`
+calls `$1a856` (16 word-groups by `$c2` rows from row 6, x 64, i.e. the whole iso
+window) and counts `[$4bb44]` down; below 0 the spell ends.
+
+*Drawing.* Each call adds `$40` to the byte at `$1aac8` (4 animation frames); row
+r takes the long at `table[(phase − 4r) & $ff]`, its low word on even groups and
 its high word on odd ones. Rain (`$1a8a4`) ORs the word into all four planes,
 colour 15; snow (`$1a9c8`) ORs planes 0 and 2 and clears 1 and 3, colour 5. The
 two tables are `assets/weather.bin`, the port is `Weather.fs`, and winter snow
-and autumn rain frames of land 5 match the game pixel for pixel. While a spell
-lasts, `$3fb0` takes `$10` off a group figure (and winter 8 more), so weather
-also slows something in the strategy layer (`../economy.md` §3).
+and autumn rain frames of land 5 match the game pixel for pixel.
+
+*Strategy effect.* While a spell lasts, `$3fb0` takes `$10` off a group figure
+(and winter 8 more), so weather also slows something in the strategy layer
+(`../economy.md` §3).
 
 **Water shimmer.** `$4bb3e` is a longword tick counter, written only at `$13034`
 in the `$13000` tick and incremented once per tick. Water cells (`< 0x0c`) add
@@ -1112,33 +1143,47 @@ changes.
 | start camera (window cells x 36-43, y 47-54, heights `0x1d`-`0x3b`, no water) | ~77 bytes change, all unit sprites and the marker blink |
 | `w 4bb3a 002c0033` (window x 40-47, over the east coast) | every tick 2147-2371 px change, ~96 % water (idx 14/15) in the walk-drawn sea strip (x 197-317, y 91-158); frame N == frame N+60 |
 
-**The HUD minimap.** Baked once into the `$78000` master by `$13b9a` (`$107d6`, `../graphics.md`
-"The minimap and the conquest map"), not drawn per frame. `$13b9a` first `$df8c`-copies a
-pre-built frame bitmap (resource dispatch via the `$e040` / `$e084` / `$e0c4` tables), then
-`$107d6` plots the 63 x 128 cells with `$e6ee`. Cell (x, y) of the source plane `$418ad` (colour
-A) is the master pixel (x, y + 6): a static read of `$107d6` shows `D3` counting x from 0 into
-`D0`, `D4` starting at 6, and `$e762[0]` mapping x = 0 to byte 0 / mask `$80`, so there is no
-`+1`; this is also what `py/maps/gate_minimap.py` proves pixel-exact (1024000/1024000 pixels over
-4 modes on 4 snapshots). The port's `MinimapOrigin = (1, 6)` plots cells indexed from `$418ae`
-(`pm_render_ref.draw_minimap(src="418ae")`, 100% against the master), which is the same pixel;
-the stand-in that plots colour plane B (`TypeAt`, a from-scratch port with no `$13b9a` buffer)
-agrees with the master at 94.5% and 98.8% land/water over 2442 cells at that empirical offset.
-`$107d6` maps the source byte to a shifter palette index through the 66-byte table `$108ce` (mode 2; reconstructed as
-`Terrain.minimapPaletteIndex` / `pm_render_ref._minimap_palette_index`): `0 → 14` (sea); `≤ 0x1c → 3`;
-`0x1d → 2`; `0x1e, 0x28 → 12`; `0x23-0x27 → 13`; `0x29-0x2c → 11`; `0x2d-0x38 → 10`; `0x39 → 6`;
-`0x3a → 7`; `0x3b+ → 9` (gold coast and peaks), a terrain-elevation ramp like
-`Terrain.flatPaletteIndex`. The HUD chrome clips the visible part to roughly `y ≤ 82`.
-`TerrainView.cs` draws the minimap panel with a live camera-window box (`assets/reference/godot_screenshot_minimap_90th.png`);
-the game draws no camera-viewport rectangle, the box is a port addition. The per-frame difference
-between a settled compose buffer and the master in the minimap rectangle is (a) the software
-cursor / selected-unit marker `pm_draw_cursor_marker` `$138c` (a save-under sprite, saved address
-`$1c49a`, position `$2df92` / `$2df94`, about 8 x 11, colour 8; it is drawn over the iso view and
-the minimap wherever the cursor sits), (b) a static diagonal chrome mark of about 6 px at the minimap's
-top-left corner (screen (5..10, 6..10)), and (c) in `pm73_fight` only, about 5 px of colour 5 at an
-enemy lord's own cell (29, 62) during the fight there, a candidate lord-position dot not confirmed as
-systematic. The master's minimap region and the `$3f86c` plane are byte-identical across `pm78_settle`,
-`pm73_fight`, `pm74_late` and `pm89_pan_e`, and a one-frame `watch` of `pm88_f1` found 0 px of
-difference, so an ownership tint is unconfirmed (Status).
+**The HUD minimap.** It is baked once into the `$78000` master by `$13b9a`
+(`$107d6`, `../graphics.md` "The minimap and the conquest map"), not drawn per
+frame. `$13b9a` first `$df8c`-copies a pre-built frame bitmap (resource dispatch
+via the `$e040` / `$e084` / `$e0c4` tables), then `$107d6` plots the 63 x 128
+cells with `$e6ee`.
+
+*Placement.* Cell (x, y) of the source plane `$418ad` (colour A) is the master
+pixel (x, y + 6): a static read of `$107d6` shows `D3` counting x from 0 into
+`D0`, `D4` starting at 6, and `$e762[0]` mapping x = 0 to byte 0 / mask `$80`, so
+there is no `+1`; this is also what `py/maps/gate_minimap.py` proves pixel-exact
+(1024000/1024000 pixels over 4 modes on 4 snapshots). The port's
+`MinimapOrigin = (1, 6)` plots cells indexed from `$418ae`
+(`pm_render_ref.draw_minimap(src="418ae")`, 100% against the master), which is the
+same pixel. The stand-in that plots colour plane B (`TypeAt`, a from-scratch port
+with no `$13b9a` buffer) agrees with the master at 94.5% and 98.8% land/water over
+2442 cells at that empirical offset.
+
+*Colours.* `$107d6` maps the source byte to a shifter palette index through the
+66-byte table `$108ce` (mode 2; reconstructed as `Terrain.minimapPaletteIndex` /
+`pm_render_ref._minimap_palette_index`): `0 → 14` (sea); `≤ 0x1c → 3`;
+`0x1d → 2`; `0x1e, 0x28 → 12`; `0x23-0x27 → 13`; `0x29-0x2c → 11`;
+`0x2d-0x38 → 10`; `0x39 → 6`; `0x3a → 7`; `0x3b+ → 9` (gold coast and peaks), a
+terrain-elevation ramp like `Terrain.flatPaletteIndex`. The HUD chrome clips the
+visible part to roughly `y ≤ 82`.
+
+*Camera box.* `TerrainView.cs` draws the minimap panel with a live camera-window
+box (`assets/reference/godot_screenshot_minimap_90th.png`); the game draws no
+camera-viewport rectangle, the box is a port addition.
+
+*Per-frame differences.* Between a settled compose buffer and the master in the
+minimap rectangle there are three: (a) the software cursor / selected-unit marker
+`pm_draw_cursor_marker` `$138c` (a save-under sprite, saved address `$1c49a`,
+position `$2df92` / `$2df94`, about 8 x 11, colour 8; it is drawn over the iso view
+and the minimap wherever the cursor sits), (b) a static diagonal chrome mark of
+about 6 px at the minimap's top-left corner (screen (5..10, 6..10)), and (c) in
+`pm73_fight` only, about 5 px of colour 5 at an enemy lord's own cell (29, 62)
+during the fight there, a candidate lord-position dot not confirmed as systematic.
+The master's minimap region and the `$3f86c` plane are byte-identical across
+`pm78_settle`, `pm73_fight`, `pm74_late` and `pm89_pan_e`, and a one-frame `watch`
+of `pm88_f1` found 0 px of difference, so an ownership tint is unconfirmed
+(Status).
 
 Palette: one 16-colour shifter palette for the whole iso view
 (`assets/palette.json`, `distinct_palettes: 1`). Index semantics:
@@ -1151,7 +1196,6 @@ Palette: one 16-colour shifter palette for the whole iso view
 | — | — | — | 14-15 | 0,72,109 / 72,109,145 | **water** |
 
 ---
-
 ## 8. Faithful vs. modern
 
 | element | faithful (emulate) | modern port |
@@ -1171,18 +1215,21 @@ Palette: one 16-colour shifter palette for the whole iso view
 What is open is listed in "Status" at the top. This section keeps the evidence levels and
 the causes that were checked and excluded, so they are not re-investigated.
 
-**Evidence levels.** See `../ai.md` "Evidence taxonomy". The projection maths (§3) and the
-`$ef62` / `$e420` rasteriser (§4) are **Proven**: every triangle input, every scanline's DDA span
-and the dither phase byte-exact against a live single-step, all 81 projected vertices
-byte-exact, and `$fecc` Proven by `callcap` (3240/3240 vertices). The sprite frame formulas and
-the `$115e0` bucket walk (§6) are **Corroborated** by disassembly, live `D0`/`D1`/`D2` probes
-and the F#-vs-Python cross-check, and every ported category in view matches the game pixel for
-pixel on 27 later-land frames (§6 "Scoring a capture"). The dying-entity path `$1623c` that feeds
-byte6 12/10/32 is **Proven** against the real 68000 (275/275 tracked bytes over 23 states on
-natural kills, `../py/diff_1623c.py`). The simulation routines (entity FSM, combat, heartbeat,
-regroup, teardown and the rest) are proven in `../ai.md` and `../economy.md`, not here. "No
-per-frame sea fill" and "the minimap is baked once" are **Observed** (true for `pm78_settle`,
-`pm88_f1`, `pm73_fight`, `pm74_late`, `pm89_pan_e`).
+**Evidence levels.** See `../ai.md` "Evidence taxonomy".
+
+- **Proven.** The projection maths (§3) and the `$ef62` / `$e420` rasteriser (§4): every
+  triangle input, every scanline's DDA span and the dither phase byte-exact against a live
+  single-step, all 81 projected vertices byte-exact, and `$fecc` Proven by `callcap`
+  (3240/3240 vertices). The dying-entity path `$1623c` that feeds byte6 12/10/32, against the
+  real 68000 (275/275 tracked bytes over 23 states on natural kills, `../py/diff_1623c.py`).
+- **Corroborated.** The sprite frame formulas and the `$115e0` bucket walk (§6): by
+  disassembly, live `D0`/`D1`/`D2` probes and the F#-vs-Python cross-check, and every ported
+  category in view matches the game pixel for pixel on 27 later-land frames (§6 "Scoring a
+  capture").
+- **Observed.** "No per-frame sea fill" and "the minimap is baked once" (true for
+  `pm78_settle`, `pm88_f1`, `pm73_fight`, `pm74_late`, `pm89_pan_e`).
+- **Not covered here.** The simulation routines (entity FSM, combat, heartbeat, regroup,
+  teardown and the rest) are proven in `../ai.md` and `../economy.md`.
 
 **Ruled-out causes of the residual error.**
 
@@ -1199,35 +1246,37 @@ per-frame sea fill" and "the minimap is baked once" are **Observed** (true for `
    screen.
 3. **No stale bytes in the `$ef62` record.** `$e420`'s edge-reload loop reads an
    arbitrary-length (run, slope) stream from one pointer shared by both edges, ending the triangle
-   on any zero run count, which could read stale data past the documented 26-byte record; the 6
+   on any zero run count, so it could read stale data past the documented 26-byte record. The 6
    spare bytes at record offsets 26-31 read **zero across 8 live triangle draws**. The dither
    setup's `move.w (A0)+,D6` at `$e3e6` reads a word at record offset 0-1 although `$ef62` writes
    only the colour byte; offset 1 read `$00` across 6 live draws.
-4. **The low scores of `pm83_q{0,1,2}c.ram` (35-50% exact-index) measure the captures.** They
-   were reached by 16 synthetic rotation pulses and frozen mid-swap. `[$ffa2]` flips by 128 on every
-   re-projection (§4 "Dither phase"); a real q1 triangle's 22-row `A5` sequence matches exactly
-   (22/22) with the phase added inside the mod-128 wrap, but the captures score 35-47% with or
-   without it, while clean captures at the same yaws (`scratchpad/pm118/rot*`) score 85-94% with it
-   and 99.7-99.96% on terrain away from sprites. In `pm83_q2c` the buffer heuristic picks `$24400`
-   (35.4%) but `$1c700` scores 52.7% and is far closer to the `$78000` master in the HUD strip
-   (25 vs 153 px); `pm83_q1c` and `pm83_q2c` have the same `$e3e2` draw pointer (`0x1c720`) yet need
-   opposite buffers. The large errors form coast / diamond-edge-shaped blobs (65 x 49, 89 x 24) and
-   the ±1 errors one frame-wide blob (q0: 3035 px, 150 x 89): sub-step camera drift between the
-   displayed framebuffer and the captured corners, not a per-triangle error. On the live
-   single-step of `pm83_q2c` all 128/128 `$ef62` calls, the `A5` phase of two triangles and the DDA
-   endpoints of a 27-row triangle are byte-exact (§Status). Do not form further rasteriser
-   hypotheses against `pm83_*c`.
+4. **The low scores of `pm83_q{0,1,2}c.ram` (35-50% exact-index) measure the captures.**
+   - *How the captures were made.* They were reached by 16 synthetic rotation pulses and frozen
+     mid-swap. `[$ffa2]` flips by 128 on every re-projection (§4 "Dither phase").
+   - *Evidence.* A real q1 triangle's 22-row `A5` sequence matches exactly (22/22) with the
+     phase added inside the mod-128 wrap, but the captures score 35-47% with or without it,
+     while clean captures at the same yaws (`scratchpad/pm118/rot*`) score 85-94% with it and
+     99.7-99.96% on terrain away from sprites. In `pm83_q2c` the buffer heuristic picks `$24400`
+     (35.4%) but `$1c700` scores 52.7% and is far closer to the `$78000` master in the HUD strip
+     (25 vs 153 px); `pm83_q1c` and `pm83_q2c` have the same `$e3e2` draw pointer (`0x1c720`) yet
+     need opposite buffers.
+   - *Error shape.* The large errors form coast / diamond-edge-shaped blobs (65 x 49, 89 x 24)
+     and the ±1 errors one frame-wide blob (q0: 3035 px, 150 x 89): sub-step camera drift
+     between the displayed framebuffer and the captured corners, not a per-triangle error.
+   - *Live single-step.* On `pm83_q2c` all 128/128 `$ef62` calls, the `A5` phase of two
+     triangles and the DDA endpoints of a 27-row triangle are byte-exact (§Status).
+   - *Gate.* Do not form further rasteriser hypotheses against `pm83_*c`.
 5. **The green-versus-black region in `pm83_q2c`** (rows y ≥ 155 near the iso window's right edge,
    33-36 scanline grass cells at (36,47), (37,47), (38,47): solid green in the port, near-black in the
-   reference) is not explained. Ruled out: `$f202` vertex clip-and-resubmit (the cells' raw screenX
+   reference) is not explained. Excluded: `$f202` vertex clip-and-resubmit (the cells' raw screenX
    tops out near 210, inside `$ef62`'s `[0,255] x [0,199]` bounds) and the right-edge clip (§3). The
    likeliest cause is the capture (item 4); that is inferred, not traced.
-6. **A populated second reference.** The mission map is a pure function of the world RNG
-   seed `$12c9a` (which fills `$58146`) plus the size override `$5809c`, consumed by `$13b9a` /
-   `$10d1e` on the briefing-OK click; `$58148 < $2000` ("small preset") already gives 10-13 lords.
-   Mission 1's own map has `byte6 ∈ {0,2,4,8,14,16,24}` map-wide (only `{0,2,4,14}` in the default
-   camera window; the 16 and 24 records, the lord's base and the catch markers, are NW of the
-   start). A camera poke (`$4bb3a` / `$4bb3c`) brings them into view but re-triggers the per-frame
-   terrain redraw and gives a capture that is not a scoring reference. Populated references are
-   built lands (`../py/build_land.sh`, `../README.md` "Driving a later land"); `pm88_f1` remains the
-   regression anchor.
+6. **A populated second reference is not obtainable by moving the camera.** The mission map is a
+   pure function of the world RNG seed `$12c9a` (which fills `$58146`) plus the size override
+   `$5809c`, consumed by `$13b9a` / `$10d1e` on the briefing-OK click; `$58148 < $2000` ("small
+   preset") already gives 10-13 lords. Mission 1's own map has `byte6 ∈ {0,2,4,8,14,16,24}`
+   map-wide (only `{0,2,4,14}` in the default camera window; the 16 and 24 records, the lord's
+   base and the catch markers, are NW of the start). A camera poke (`$4bb3a` / `$4bb3c`) brings
+   them into view but re-triggers the per-frame terrain redraw and gives a capture that is not a
+   scoring reference. Populated references are built lands (`../py/build_land.sh`,
+   `../README.md` "Driving a later land"); `pm88_f1` remains the regression anchor.
