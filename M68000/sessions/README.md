@@ -20,8 +20,7 @@ Add a row when a workstream gets its first handoff (for example `powermonger.md`
 ## Rules
 
 - **One writer per file.** A session writes only the handoff of the workstream it is working on. A
-  session that finds another workstream's handoff stale says so to that session or to Dave; it does
-  not edit it.
+  session that finds another workstream's handoff stale says so to that session or to Dave; it does not edit it.
 - **Rewrite, never append.** The file is the current state. Git history keeps the old versions, so
   there is no per-pass diary here (same rule as the docs).
 - **Written by `/handoff`, read by `/resume`** (skills in `.claude/skills/`). `_template.md` is the
@@ -33,9 +32,7 @@ Add a row when a workstream gets its first handoff (for example `powermonger.md`
 
 ## Shared resources
 
-Two sessions often share this checkout. These are shared, and a session changes them only after
-checking who else is live (`ListAgents`) and messaging them, then waiting for an answer or an idle
-notice:
+Two sessions often share this checkout. These are shared, and a session changes them only after checking who else is live (`ListAgents`) and messaging them, then waiting for an answer or an idle notice:
 
 - `bin/Debug/net8.0/M68000.dll`: any `dotnet build` into `bin/`, and `taskkill` of dotnet;
 - the emulator sources `*.fs`;
