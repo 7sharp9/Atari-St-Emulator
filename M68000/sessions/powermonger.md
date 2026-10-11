@@ -1,85 +1,101 @@
 # PowerMonger: handoff
 
-Updated 2026-10-07 by the 149th session (the signed-clock stall isolated by clock pokes; every PowerMonger doc rewritten from diary into reference prose; no emulator change). Its last work commit is `a17a641` (`git log --oneline -4`); the handoff commit follows it.
+Updated 2026-10-11 by the 150th session, which ended at the handoff commit after `6ab6e77`. It fanned out 12 agents plus merge passes: the Open 1 doc contradictions resolved, Open 2/3/4/8/9/10 and most of 5 settled live, eight figures added, and no emulator change.
 
 ## Resume point
 
-- Last commit of this workstream: `a17a641` (py/docs doc-rewrite tools), after `47b48a5` (docs rewritten + `py/arms/clock_poke.sh` + the poke table in `strategy.md` "Natural coverage") and `efb0335` (148th pass).
-- Working data: `M68000/scratchpad/` (gitignored; on the Mac copied from gpubox, CLAUDE.md "Shell pitfalls"). `pm149/clock/` the stall pokes (`k80_*.txt`), `pm148/arms/long/` (chunk snapshots; `L2G_k80_c8.snap` is the poke start), `pm147/`, `pm145/`, `pm144/`, `pm143/` (about 180 MB, the Play Random Land roll: `lands/k<k>.snap`, `run/`, `census/`; `sweep.sh`, `gates.sh`, `runs.sh`, `fsm.sh`, `nat.cmds` regenerate it); `docclean/` under the session scratchpad is gone with the session (the tools are in `py/docs/`). Reusable scripts: `reversing/powermonger/py/` (README table).
-- Start from: `scratchpad/pm123/win/m1_ready.snap` (mission 1 conquered), `pm123/win/m1_win.snap` (main menu), `pm142/rand1.snap` and `pm143/run/rand1_s1..s4.snap` (a real Play Random Land), `pm143/run/p0k0_s1.snap` (50M steps in, fights from step 7.4M), `pm121/run/k5_s4.snap`, `pm148/arms/long/L2G_k25_c1.snap` (`bp 668c` hits after exactly 63,678,190 steps: the natural transfer arm).
+- Last commits of this workstream: `6ab6e77` (all doc, script, figure and `.sym` work of the 150th pass), `3640ad9` (CLAUDE.md: the `hits` overcount and the save-disk BPB trap), then the handoff commit.
+- Working data: `M68000/scratchpad/pm150/` (gitignored). `BRIEF.md` is the shared agent brief; `reports/*.md` holds each agent's report, as saved and spot-checked. The data sits under `<area>/` (`captain2`, `saveload/out`, `arms/{x,nat,pig,rerun}`, `weather/{trial,alli,coast}`, `small/{camp,finale,replay,link}`, `sim_unread/ab`, `docfix_*`). Earlier data is still in `pm149/`, `pm148/arms/long/` (the chunk snapshots) and `pm143/` (the Play Random Land roll). `scratchpad/pm150/arms/nat/` is the natural corpus that `py/fsm15/gate_fsm15.py nat` reads.
+- Start from:
+  - `scratchpad/pm142/rand1.snap`: Play Random Land with **two player captains** (the second-captain and `$04` drives use it).
+  - `pm143/run/rand1_s1.snap`: the FILE-panel drives.
+  - `pm123/win/m1_ready.snap`: mission 1 conquered.
+  - `pm148/arms/long/M2G_k34_c5.snap`: `bp 668c` after 233,300,606 steps.
+  - `scratchpad/pm150/saveload/out/file.snap` plus `blank.st`: a save and load round trip.
 - Uncommitted work left behind: none from this workstream. Not this workstream's: `.obsidian/`, `Cadaver/`.
 
 ## Proven so far
 
-Gates (differential tests against the real 68000 through `callcap`): entity FSM `py/fsm/repro93..97.py` 675/1335/413/85/99, `py/fsm/diff_pm99.py` 1847/1847, `diff_pm98.py` 71/71, `diff_4342.py` 110/110, `diff_4bc8.py` 51/51 + `diff_4bc8_kind2.py` 20/20; `py/diff_1623c.py` 275/275; `py/diff_2776.py` 4119/4119; `py/diff_5cde.py` 768/768 + 85/85; `py/diff_revolt.py` 1778/1778; `py/diff_4f68.py` 1804/1804; `py/gate_equip.py` 385/385; `py/gate_jobs.py` 3310/3310; `py/gate_pop.py` 29860/29860 and 41760/41760; `py/gate_shepherd.py`, `py/gate_animals.py`, `py/gate_proj.py` 4210/4210, `py/gate_pigeon_send.py` 1567/1567; the commander AI `py/cmdai/` 323/323 + 280/280 and executor 288 + 80 states; `py/orders/gate_orders.py` 61143/61143 over 2273 states, 72 natural; `py/worldbuild/gate_build.py all`; `py/fsm15/gate_fsm15.py` 18452/18452; the sound, panel, blitter, map, disk, link and projector gates (`py/sound|ui|blit|maps|disk|link|proj/`). Per-gate detail: `strategy.md` "Proof of the commander AI", "The order senders and arrival executors, proven"; `ai.md` "Proofs against the real 68000"; `economy.md`.
+Older gates carry over unchanged; the list is in `strategy.md`, `ai.md` and `economy.md`, with reruns from the `py/README.md` table. A sample: entity FSM `py/fsm/repro93..97.py`, `diff_pm99.py` 1847/1847, `gate_orders.py` 61143/61143 over 2273 states (the 13 strategy rows plus the 6 economy rows), `gate_pop.py`, `gate_equip.py`, the commander AI `py/cmdai/` 323/323 + 280/280, and `gate_fsm15.py` 18452/18452.
 
-The commander AI's reach (`strategy.md` "Natural coverage", `py/arms/`; the 75-land census, `gate_nat_arms.py` 4/4 states, 21/21 changed bytes):
+New or changed this pass:
 
-- **The transfer arm `$664c`/`$668c` is natural**: 5 hits in 75 unpoked Play Random Land lands (k25, k8, M2G k106 examined; k34 and k50 not). `$666c` get-men-behind-an-enemy is natural (145 hits). The refusal `$6884` cannot hold from any shipped caller (`check_refusal.py`: 25 reachable triples, 0 refusing, tables byte-identical in 159/159 snapshots; code read plus enumeration). The food fallback `$66a4` is not reached: 0 hits in 75 lands and in four 12G-step runs, lowest AI food 2965 at 12G, about 13.4G to the score ceiling (inferred); it also needs a `$68fe` target. Predicates equal the model on 5724/5724 (model only); `xfer_matrix.py` 10/10 and `food_boundary.py` 15/15 on the real code (poked).
-- **The signed-clock stall is isolated** (`py/arms/clock_poke.sh`, one variable: the clock word `$2df72`, all from `L2G_k80_c8.snap`, 100M steps unless stated; predictions written before each run): no poke 599 `$65b4` decisions; clock `$7ff0` 15, none after step 2.35M (crosses 32768 at tick 16; `$6522` still runs, 604 hits); `$7000` 599 (same write, no crossing: identical to no poke); `$0800` first decision at 9.71M (predicted about 10M, 60 ticks below `stamp + 20`); `$ffe0` over 450M steps first decision at 357,344,956 (predicted about 357M, 2140 ticks). The cause is the signed `cmp.w $2df72,D0 / bgt` at `$65a0..$65a6` (proven in the emulator). Natural onset: 4.5 to 5.75G steps by land (`W5G_k80`, `W5G_k108`). An attack livelock (a lord whose cell holds only the attacker's own records is re-ordered every tick) sits in front of it.
-- **Mode `$36` is natural**: AI (k108, `bp 5100` after 55,343,859 steps; 1 land in 75) and player (a sword click on a lone sheep: k56 8 men in `$36`, k25 11, k120 16; k56 rerun byte-identical). `$38` is set at `$1546e`, `$3a` is the arrival of the `$519a` walk. The escort order's target is transposed, live 1/1 (packed `$4126` for x 38, y 65).
-- **The pending flag gates the decision pool**: `4(group)` is cleared only by an NPC pigeon landing (`$4220`) or the local immediate path (`$6b20`); 185 of 250 camped groups carry it, 41 of 394 non-lead groups were eligible. Group word 28 is the owner side, men are word 52, fields are structure-of-arrays at stride `2k`.
-- **Aggression rank (`148(group)`) is display only** (`py/aggr/`, `strategy.md` "The game's own text"): one CPU reader `$90de` (`panel_rank_check.py` 8/8); three writers (`$2446` in `$238c`, `$275c` in `$25d6`, the land build's block clear `$10768`); `gate_aggr.py` 0 differing bytes in 9 of 9 variants. `$30fe` returns the posture, renamed `pm_get_posture`.
-- **Role names** (`py/names/`, `.sym`): `$4bc8` `pm_setup_fight`, `$37c2` `pm_break_camp_fall_in`, `$5778` `pm_lead_engaged`, `$14d32`/`$14d7c` `h_mode06_in_rank`/`h_mode08_lost`, `$39d4` `pm_drop_stock`, `$25d6` `pm_add_captain`, `$68ee` `pm_food_needed`, `$5c80` `pm_add_strength`; the `$4cff8..$4d250` records are camp-fire props. Code reads, labelled in the docs: the friendly `$4bc8` arm, the `$d474` caller, the bit-7 arm of `$37c2`.
-- **The `$580a6` assessment blocks have no unread accessor** (23 literal sites in 14 documented routines, `ai.md` "Open threads").
-
-Also in the topic docs: the disk layer, the save slot (198 sectors, code read), the serial handshake `$6eb6`, panels; the player's input page, click handlers, seasons and finale; the invention-order race, byte 33, mode `$20`; roll audits and the four AI arms' census; two world-build rolls and the Play Random Land category screen.
-
-**Doc state.** All PowerMonger docs (`README.md`, `strategy.md`, `ai.md`, `economy.md`, `graphics.md`, `system.md`, `py/README.md`, `port/README.md`, `port/SPEC.md`) were rewritten from diary into reference prose in `47b48a5`: run-on bullets split into mechanism, evidence, reproduction and status; the README "Retired readings" list deleted (each of its six corrections checked present in its section); no `#`..`###` heading changed; every address, file name, ratio and 3-digit number kept (whole-document fact diff against `HEAD`: only the deleted retired-readings fragments missing). `port/walkthrough/walkthrough.md` (generated) was not touched.
+- **Gate results**:
+  - `py/gate_proj.py`, with `$1b8c` and `$2776` wired into `kill_rout_5590` (`tools/pm_fsm_ref.py`): 473 states, 5082/5082 with `synth noscreen`; 464/4509 without the lead kills. Nothing is excluded now.
+  - `gate_fsm15.py nat` (the natural `$36`/`$38`/`$3a` entries): 822/822 over 99 states.
+  - `py/arms/gate_nat_arms.py`: 6/6 states, 28/28 bytes. All five natural `$668c` hits are examined: k25 and k8 take the small-group route; k106, k34 and k50 the large-group route with no target left.
+  - `py/cmdai/gate_party_class.py` (`$4de2`): 468/468, rerun fresh by the orchestrator.
+- **Opponent class.** `280()` (group +204) is the opponent class, not a phase: 2 lord, 4 group, 6 lone man, 8/`$a`/`$c` other. `292()` is the opponent offset. `$5778` overwrites the class with an entity offset, a game bug: live 1/1; an A/B over 8 cases changed 1 posture (`py/cmdai/ab_5778.py`).
+- **Stuck pending words are a game bug** (watch-proven). When a side's first group dies, `$2776` frees its pigeons at `$27c6` without clearing the receivers' pending words; `$4562` then copies the dead sender's negative owner byte (`$45a8`), and `$3e06` skips owners <= 0 (`$417a`). Census by `py/arms/pending_census.py`: 595 pending words, 187 dead-sender, 219 orphan.
+- **Second captain, live** (`py/captain2/`, `pm142/rand1`).
+  - The pigeon order: `$4562` 1 hit; it lands about 9.97M steps later; posture 3 → 2.
+  - The pigeon icon is drawn at (71+40j, −4) in the status strip.
+  - `$04` transfer: 13 → 7 / 0 → 6, with 6 `$1c04`/`$1c96` pairs.
+  - The icon-floor table entries are `$135fc`, `$1361e`, and so on: the old doc addresses were 2 too high.
+- **SAVE/LOAD, live** (`py/saveload/`). A round trip matches 101,376/101,376 bytes, and a LOAD replaces the whole land. It keeps the destination's clock and restores the camp stamps, so the first `$65b4` comes at clock = min stamp + 20: predicted 2108, observed at 276,745,802 steps.
+- **External claims.**
+  - Deforestation does not change the weather (3 arms, `py/season/tree_weather.py`), and felled trees regrow one per season.
+  - Posture picks the woodcutters' goods at `$5fa0` (`py/orders/posture_work.py`), but plays no part in alliance acceptance (6/6); it only picks the verb.
+  - Men stall at coasts: there is no pathfinding (`py/fsm/stuck_census.py`).
+- **Code read plus live.**
+  - Requesters, the line editor and Modem Message, and the radios (`py/ui/req_panels.py` 7/7, `py/link/radio.repl`).
+  - HUD bars, the `$17a46` mode icon, and sound-ack events 31..36 (`py/ui/sndpost.repl`).
+  - Format `$1ba72` (code read).
+  - Camp marker frames (`camp_fire_frames.png`).
+  - The finale is a crowning: 7/7 frames rebuilt (`py/season/finale_delta.py`, `finale_crown.png`).
+  - `$58054` has no effect.
+  - A spell draws 65 times.
+  - The link-rebuild causeway comes from `$2266` `_setup_p`, which gives a linked side a random start plus a road (a REPLAY MAP control paints none).
+  - The Ruin is kind `$0a`, placed by the town layouts at `$302a`.
+- **Doc corrections.**
+  - Mode table: 74 entries, `$00..$92`.
+  - `$168ee` is the walk-path table `_flights`.
+  - `$1c390`/`$1c340` are serial.
+  - `$550e`: 10 heartbeat / 17 conquest calls.
+  - Mission 1 loyalty starts at 608 and the first winter revolts to the same side.
+  - Sprite categories run 0..`$2c`.
+  - The fill reads two colour planes.
+  - The text segment is `$10a6..$1c48a`.
+- **Figures.** `fig/` holds eight SVGs, each with a `.facts.md`, placed in strategy.md, ai.md and economy.md (README files table). The two mode graphs are generated from the code by `py/fsm/mode_edges.py`.
 
 ## Open, in priority order
 
-1. **Resolve the contradictions the doc rewrite surfaced.** Each was kept as written (the rewrite may not choose a side) and needs one check against the code or a gate. One agent per doc with an addresses-only BRIEF (`py/docs/BRIEF.md` for the method), then fix in place:
-   - `strategy.md` executor intro says orders 6 and 8 "poke a UI effect via `$1c390`/`$1c340`", while the link section and the executor proof say those are the serial USART write and receive-ring read.
-   - `strategy.md` "The player's commands": the per-routine gate rows sum to 917 states, 41,922 bytes, 54 natural against the headline 2273 / 61,143 / 72 (presumably the economy.md routines `$600a`, `$60dc`, `$61f8`, `$6352`, `$638c`, `$63f4`; say so); `$5fa0` is counted 28, 26 from 21 lands and 27 in three places, and "no natural entry from a player click" conflicts with the `$5fa0` refusal note "the player's single Tower".
-   - `$3f86c` is the altitude plane `_alts` ("Original names"), but the `$6128` row of the same doc says "cell control byte 1 or 65 (`$3f86c`)" and `ai.md` (about line 1514) "the control byte was 1..6"; `ai.md` still says "patrol-path table `$168ee`" at four places while `$0e` is "not a patrol".
-   - `strategy.md` "Natural coverage": escort 248 natural issues (39 lands, 78G) against 2286 hits in 75 lands (issues vs hits, or different runs?); `X10G` "40G steps run, about 43G alive"; the pointer "`$b4` per slaughtered sheep (live, below)" has no target; the transfer gate covers 4 states but three instances are described.
-   - `ai.md` "Measured": `$2776` follows a kill in "12 of the 13 hits" but the table sums to 10 plus 2 `$25d6` (check `py/diff_2776.py`); "`$596a` 364 natural entries (354 + 86 + 1)" does not add up; the `$36` single-writer claim cites a "fresh `0..$1d000` listing" with no proof that it reaches the end of the text segment (CLAUDE.md evidence rules); the mode table says "75 table entries" while valid ids run `$00..$94`.
-   - `strategy.md` "Combat": mechanism 5 says `$1d70` is the rank former, "not the ownership writer", while the Reading paragraph says its 15 hits are "captures" where "territory changes hands".
-   - `economy.md`: tutorial `loyalty_pressure` "oscillated 296-306" against "lords start at 608 and nothing pulses"; "all four later lands ran `$550e` six times in 200M steps" (24) against 27 natural calls; `k5_s4` "12 stretches" but 10 hit counts listed; `$57fec` round-robin "makes `goods[]` oscillate" against "no merchant moved anything".
-   - `graphics.md` sprites: category byte 6 "even 0..30" against preparers `$22`, `$28` (34, 40); `$119d4` against `$119ca`; the renderer pseudocode names `heightmap`/`typemap` where the game reads two colour planes.
-   - `README.md` Bug 4 says no zero-divisor vectors exist in the SingleStepTests suite, Bug 5 says one (`80ef`) exists and is skipped.
-   - `strategy.md` "The game's own text": the mine panel is gated 27/27 and also called "live text only" (the rewrite chose the gate; confirm).
-   - `port/README.md` says the exact integer projection is scratch only, `port/SPEC.md` says `py/proj/proj_ref.py` is promoted; SPEC "float matches to <= 1 px" against 78 to 95 % of vertices (two float implementations?); SPEC sprites: `COMPOSITE_CATS` vs draw order, `pm88_f1` 96.80 % vs 99.99 % (different stages?), the `$119b2` overlay needs a byte6 18 hit that the same section calls unreachable; the naive-walk sentence about `pm_render_ref.py` was generalised.
-   - `py/README.md`: the `gate_coverage.py` baseline (693 of 964, 56777 of 105180 bytes) predates the later gates; rerun for the current figure. `doc_coverage.py` still 12956? (not rerun).
-2. **The player's order to a second captain by pigeon, live** (also the captain-box section `$133ba`/`$138ec`, code read only): needs a land with two player captains (`$04` transfer, select the second box, order); expect `$4562` 1 hit, `$57fd8` counter 1, the pigeon icon over the captain box (`$3ee8`, never seen on screen). The escort packing is settled (transposed, 1/1).
-3. **A natural player route to `$668c`** (inferred, not driven): capture every lord of an AI side and cut a non-lead camped group to 1..4 men with pending clear. Loose ends: k34 and k50 natural `$668c` hits unexamined; side 4's pending captains in `rand1` never clear (pigeons lost, shot or stuck, unexplained); the natural `$36/$38/$3a` entries are not yet fed to `gate_fsm15.py`.
-4. **External claims to test** (web sources, unverified; Wikipedia, Time Extension, ST NEWS): that deforestation triggers weather changes (one LCG weather spell per season found, no forest reader; scan for readers of the tree counts near the weather code); that posture affects what towns produce and that passive favours alliances (found only as the `men >> (posture-2)` quota); that men get stuck behind lakes (pathing, `$158da` avoidance).
-5. **Remaining ungated code**: `gate_coverage.py` counts cites. Bodies nobody has read: the requester family `$c48e`, `$c706`, `$c9f8`, `$cada`, `$cd42`, `$cf46`, panel `$c`'s radio handlers, `$1a29c`, `$d322`'s neighbours, the FORMAT routine `$1ba72`, `$178ae`, `$127e6`/`$12726`, `$155ac`, `$15c46`. Developer-named routines not yet read against their names: `$33b0` (`_at_alli`), `$6762` (`end_rest`), `$5c2c` (`_defeate`), `$17a46` (`_show_mo`), `$1a856` (`_do_weat`); the developers' names for `$37c2` and `$5778` are only prefixes. One agent per area with an addresses-only BRIEF worked (146th to 148th passes).
-6. **The stall on the original machine**: a Hatari run of the real game past clock 32768 with a camped group (expected to stall, inferred from the code; the emulator is not in doubt). Low priority: it changes no emulator behaviour.
-7. **Promote the F# and Python graphics cross-checks** listed in `port/SPEC.md` "Status" (`pm83_synth_check`, `pm90_xcheck`, `pm91_ent_*`, `pm118*`, `pm119*`).
-8. **Save and load, live**: drive the FILE panel LOAD naturally with a synthetic save disk (`scratchpad/pm147/disk/out/save.st`) and `hits` started before the click: expect the 198-sector read from sector `slot*198+1`, the `$e296` write at `$75ce`, and whether a load overwrites a live land (and whether it resets `$2df72`, which is outside the saved range; relevant to the stall).
-9. **Small live checks**: capture the frame a byte6 6 camp marker draws (`bp 1182a`, expect `$0111`); `$57fec` +1 per `$13000` call; what phases 2 and 4 of `280()` mean (group state `$d` has one writer, `$4d70`); whether `$5c80` ever sees a camp-fire prop; the `$12ce0` rate; `$17a46` and the `$12abe` counter in `$6e6e`; wire `$1b8c`/`$2776` into `kill_rout_5590` (removes 8 excluded `gate_proj.py` states); the sixth captain's eyes clip; sound and map leftovers.
-10. **Season and finale leftovers**: capture the 7 finale frames of `$1a648` (`py/season/victory_run.sh <tag> final`, which mounts the disk); what `$58054 ^= 5` toggles; second-season weather draws 65 to 66; the other nine `$7658` dialog ids; death and mine entity clicks; `$80` in D3's high byte (`$dde8`); a pile record's words 8 and 28; the `$af6c` already-open test; `$13d1a` after a link merge.
-11. Older: whether food or a captain's position changes the health cap (`$5ccc`); `$4342`'s arrival branch; the crack's `$b842` patch; the `$54` merchant loop `$15b0c`; the person panel's remaining Stock rows.
+1. **A natural player route to `$668c`.** The code read says: capture or drain every lord of an AI side while its commander lives. Drive it, and check whether `$6522` still runs for a side with no lords (`hits 6522`). Also the 19 stuck pending words on sides whose first group is alive: `watch` the pending word and the pigeon slots from one such snapshot (`py/arms/pending_census.py` lists them).
+2. **Does the `$5778` overwrite ever cost an escort?** It needs a natural state with the offset in group 0 and another free group of that side (link 0, state 6 or 9). Census the `pm148/arms` chunks with `py/cmdai/phase_census.py`, or run k25 long (its group 0 holds an offset through all 40 X10G chunks). Also: `$4a7a` has no model gate, and class `$a` is unseen.
+3. **Emulator save-disk geometry.** `LoadDiskA` should not trust BPB text on a non-TOS disk. This is an emulator change behind the regression net (shared `*.fs`: coordinate first). It unblocks driving FORMAT (`$1ba72`, Write Track probably unimplemented) and the OVERWRITE? requester `$1bed4`.
+4. **Mode-graph loose ends** (`py/fsm/mode_edges.py`, `fig/fsm.facts.md`): mode `$66`'s entry route; modes `$04`, `$64`, `$70` that nothing writes; the unreached write `$3c74`; and the claim that `$3c` is entered via the previous mode (trace one rout).
+5. **Graphics cross-checks** (`port/SPEC.md` "Whether they still run"): the F# halves no longer compile (`walkQ0` is now `Fill.planQ0`; `EntityCtx.Zoom` and `EntityRec.B15` are missing). Fix and promote `order_test.fsx` and `baseline.fsx`; settle pm91's 3061 against 2881 px; re-export the `pm74_late`/`pm78_settle`/`pm119` inputs with `objs`. The Ruin overlay `$119b2` is not ported: capture at (22,46) or (29,63) on mission 1.
+6. **UI leftovers.** The `$c5ee` entry contract; word `-36` in the sound pick; sound event 17 is queued and cleared but never played (`bp 12820`); the double handling of a captain-box click in transfer mode (`bpc 133d4 2`, watch `$2df96`); `$04` sent from a group that has a sender (by pigeon, inferred); the other `$7658` dialog ids; the person panel's Stock rows.
+7. **Small checks.** The season after a LOAD (`$57fd0` writers); posture 5 from `$67d0` (`rand & 3` + 2); an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch; the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); `$4342`'s arrival branch.
+8. **The stall on the original machine.** A Hatari run past clock 32768 with a camped group (low priority).
 
 ## Known traps
 
-- **A "never natural" census holds only for its sample and its eligible pool.** The 144th pass said the transfer arm was unreachable from 159 snapshots; 75 whole lands found it 5 times. Count the eligible pool (pending flag, state 6 or 9) and the steps alive, not the snapshots (`py/arms/summarize.py`, `census_groups.py`).
-- **Runs past about 4.5G steps have a stalled commander in lands where groups camp long** (the signed-clock stall, proven by pokes): zero decisions late in a run is not evidence an arm is unreachable. k143 and k44 do not stall, so the threshold is per land. A poked clock moves the onset: keep the clock word `$2df72` in mind when a snapshot is poked or resumed.
-- **Editing the docs through the pieces**: rewrite the pieces and rebuild with `py/docs/doc_pieces.py join`; an edit made in `out/joined/` is discarded by the next join (it cost a re-apply this session). `check` every piece, and compare the whole document with `git show HEAD:<doc>` before copying it into the tree.
-- **A subagent's background runs outlive its report**: Agent A's six `dotnet` processes kept running for hours after it reported. Ask each agent to finish or stop its runs before the merge pass, and check `ps` before committing.
-- **Doc-rewrite agents add scaffolding, not cuts**: the rewritten docs are about 1 to 3 % larger; the gain is structure (no line over 1,500 characters now, was 11), not size. Their added "Why"/"Proof" clauses in `strategy.md` "Open threads" are suggestions (for example `bp $df52` after Load Data Disk), not recorded evidence.
-- **Group fields are structure-of-arrays**: group k's word n is at base + n + 2k (`D7 = 2k`); word 28 is the owner side, men are word 52. The code wins over any BRIEF.
-- **A field named "aggression" has two meanings**: the rank (record `+148`, display only) and the posture (`+136`, read; `$30fe` is `_get_agg`).
-- **`callcap` cannot run the multi-sector disk transfer** (`diskio` waits in `$1870` on the VBL flag `$2df8c`, masked under `callcap`): use a natural REPL drive for the save layer.
-- **The link gate needs a scripted peer** (`py/link/link_gate.py`); a longword `w` at an odd address kills the REPL silently. REPL `w` writes a longword: the clock word is written as `<word>0000` because `$2df74` is 0.
-- **A resumed snapshot may have no disk mounted**: put `disk scratchpad/powermonger.st` as the first REPL line (`py/season/victory_run.sh` does).
-- **Poking the live pointer `$2df92/$2df94` does not stick**: use `mouse move`/`mouse down` holds, or a pending click (`w 2df8e` + `w 2df96 00010000`). Hold tests need at least one full tick.
-- **`py/ui/uilib.repl` runs with cwd `M68000/`**: give snapshot paths absolute or relative to `M68000/`.
-- **A rotation length in steps belongs to a land**: 512 calls of `$1abaa` is constant, 118.4M steps is mission 1 only.
-- **`hits` must start before the run it counts** (`u <addr>` or an earlier stop already ran the routine); `bpc` counts from the start snapshot and `max` bounds the whole gap; chained `bp`s each continue from the previous stop; after a poke use one `hits <n> <addrs>` over everything of interest.
-- **The emulator reads `TOS100UK.IMG` relative to the working directory**: run from `M68000/`, also inside a background `( ... &)`.
-- **`capture_hits.py` snapshots at the stop**, so a `hits` run from that snapshot counts the routine's own entry as 0.
-- **`arm_census.py` forces the state to 6**; `census_8a.py` takes a file of snapshot paths; `tree_census.py`'s "on byte6 8" is a cell match.
-- **`PAGES0=1` is an environment variable of `build_land.sh` and `build_series.py`**; a seed `k` makes a different land on each roll; `sweep.sh` built k = 0, 4, .., 140, 143 only; `runland.sh` names `_s1..s4` are the ends of the stretches.
-- **`gate_orders.py` takes natural entries from `nat/n<addr>_<anything>.json`**; **`callcap` `THREW ... WriteEa: immediate operand`** is a runaway; **a model gate caches callcap JSON** (delete it or run without `reuse`).
-- **`gate_coverage.py` counts a cite, not an execution** (`$15c46` runs in the fsm15 gate and still lists as ungated; `py/input/validity.py` gates `$1394c`).
-- **Transcribe from the listing, not from a similar neighbour**; **`add.w`/`subi.w` + `bge/blt` test N xor V**; **bucket links of records below `$51b66` are negative 16-bit offsets**; **macOS `seq -s,` leaves a trailing comma**; **the Edit tool drops trailing spaces from `new_string`**.
-- A subagent audit of docs finds real contradictions and invents none so far, but spot check one claim per agent (148th and 149th: every spot-checked claim held).
-- Earlier traps still apply: a routine's tail that ends in the iterator's `bra $1622c` cannot be `callcap`ed in place; entity records are the first 512 only; one entity tick is about 200k steps; do not reopen the SingleStepTests track or `$4342`'s 8 proven branches; a full `pm_export.py` rerun regresses `entities.json`.
-- Port traps (`port/stepper`): `--shot`/`--selfcheck` prove one instant (use `--playtest`); the port stays a renderer by Dave's decision (no entity simulation; `Equipment.fs` stays uncalled); the `port/` and `tools/pm_fsm_ref.py` identifiers still say herd/shepherd, morale, survivability, `nation_kind` (is `building_kind`): rename only with a gate rerun. The `.sym` renames (`pm_setup_fight`, `pm_get_posture`, ...) are not in code identifiers.
+- **Parallel agents on shared docs: one writer per doc at a time.** Owners edit in place. Explorers write only under `scratchpad/pm150/<area>/` and report suggested prose. The orchestrator saves each report under `reports/` with its PENDING items, then hands a free doc to one merge agent with the report paths. Spot-check one claim per agent against the listing: every check held this pass.
+- **Merge agents leave scratch citations.** Grep the docs for `scratchpad/pm150/.../*.py` before committing and repoint them to the promoted `py/` path. Data paths in scratchpad may stay.
+- **`hits` can overcount by one** (now in CLAUDE.md). The "66 draws" and "`$57fec` 180" readings were this.
+- **A save disk needs real geometry bytes** (now in CLAUDE.md): `py/saveload/mk_savedisk.py`.
+- **REPL `m <addr> <len>` takes a decimal length**: `m 4f970 6c` aborts the REPL and loses the snapshot that follows.
+- **Group frames.** Group views are `76 + 316*side + 2k`. `n(A1)` is the side-record frame and `n-76(A3)` the group-offset frame: `148(A1) = 72(A3)`, `136(A1) = 60(A3)`.
+- **`py/cmdai/` scripts default to `PM_WORK=scratchpad/pmwork`.** Set `PM_WORK` explicitly for a rerun.
+- **`gate_fsm15.py nat` reads `scratchpad/pm150/arms/nat/`.** Copy `nat/` along with it if `PM_WORK` changes.
+- **The clock word.** `$2df72` is the low word of the long `$2df70`. A poked clock or a LOAD moves the stall onset.
+- **A "never natural" census holds only for its sample and pool.** Count the eligible pool and the steps alive.
+- **Runs past about 4.5G steps can have a stalled commander.**
+- **Group fields are structure-of-arrays.** Word 28 is the owner, word 52 the men.
+- **"Aggression" has two meanings:** the rank `+148` (display only) and the posture `+136`.
+- **`callcap` masks interrupts.** It cannot run the disk transfer, and a sound wait spins unless `$2c993 := 0` (`gate_proj.py` lead kills).
+- **A resumed snapshot may have no disk.** Make `disk scratchpad/powermonger.st` the first REPL line.
+- **REPL `w` writes a longword.** Read the neighbours first. A longword `w` at an odd address kills the REPL.
+- **Poking `$2df92`/`$2df94` does not stick.** Use mouse holds of at least one tick.
+- **`hits` must start before the run it counts.**
+- **Doc rewrites through `py/docs/doc_pieces.py`:** edit the pieces, not `out/joined/`.
+- **Earlier traps still apply.**
+  - The port stays a renderer.
+  - The `port/` identifiers still say herd/shepherd, morale, `nation_kind`.
+  - A full `pm_export.py` rerun regresses `entities.json`.
+  - Do not reopen the SingleStepTests track.
 
 ## Next session
 
-Open 1 first: one agent per doc (strategy, ai, economy, graphics and README plus port, with `py/docs/BRIEF.md` adapted to "verify against the code, then correct in place, label what you could not check"), addresses-only brief, each contradiction resolved with a listing read or a `callcap`/`hits` count, then the whole-document fact diff before staging. Then Open 2 (a land with two player captains: the pigeon order and the captain boxes) or Open 4 (the weather-from-deforestation claim, a whole-image scan for readers of the tree counts near `$1abaa`'s weather code). Keep proofs in the gate style (a model, a script in `py/<area>/`, a match count); label code reads as code reads.
+Pick Open 1: a drive that takes every lord of one AI side while its commander lives, then `bp 668c`, with a `hits 6522` control on a side that has no lords. Run Open 2's census in parallel, since it is cheap and pure Python over existing chunks. If an emulator session is free, Open 3 (save-disk geometry) is a small, well-scoped emulator fix. Keep the method of this pass: one owner per doc, reports saved to `scratchpad/pm<N>/reports/`, a spot check per agent, merge agents for free docs, and a scratch-citation grep before committing.

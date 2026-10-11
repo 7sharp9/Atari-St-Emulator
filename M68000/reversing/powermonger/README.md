@@ -70,10 +70,11 @@ against every session's changes.
   home grows unrest. The posture sets how much an order moves: aggressive all, neutral half,
   passive a quarter. (E 1, E 6, S "The player's commands")
 - **Goods are a separate ledger.** Men felling trees and carrying them to the workshop credit one of eight item counters (pike,
-  sword, bow, plough, boat, pot, catapult, cannon).
+  sword, bow, plough, boat, pot, catapult, cannon); which item a lord's woodcutters work for follows the posture of the
+  group that delivered the invention order (aggressive Bow or Catapult, neutral Pike, passive Plough or Boat; E 2a).
 
   **Merchants.** Merchants, the men the starting job lottery could place nowhere else (E 5a), are meant to carry goods between a nation's lords
-  but none was seen carrying anything. A merchant's trip walks a table that never advances, so the destination is his home lord (leader 0 when the home lord is the last record), and the goods he banks on
+  but the goods mostly churn by one at the home lord (`k5_s4`, 100M steps: 10 taken, 8 banked; 1 of 10 sampled pickups took the next lord record's Plough, `py/merch_moves.py`). A merchant's trip walks a table that never advances, so the destination is his home lord (leader 0 when the home lord is the last record), and the goods he banks on
   arrival come from the record after his home lord (a stale-register bug, proven by `py/fsm15/gate_fsm15.py` over 119 states of mode `$54`; A `$54` row, E 2b).
 
   **"Invention" is supply.** A man who walks to his lord's cell hands back his weapon
@@ -135,7 +136,7 @@ against every session's changes.
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast). AI
   armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it.
 
-  **Transfer order.** A small captain group handing its men to group 0 is natural but rare: 5 hits in 75 lands, after a defection leaves a lone captain. The order refusal cannot happen from any shipped call site (S "Natural coverage").
+  **Transfer order.** A small captain group handing its men to group 0 is natural but rare: 5 hits in 75 lands, all executed, by two routes: a small group left by a defection (k25, k8) or a large group whose side has no enemy lord it can take (k106, k34, k50). The order refusal cannot happen from any shipped call site (S "Natural coverage").
 
   **Get men, food, follow-ups.** A group under 22 men first goes to its
   own best town for men (order `$08`, get men), and the food fallback fetches food the same way. A group
@@ -162,8 +163,13 @@ against every session's changes.
 - **A slow, coarse tick.** The whole simulation and both renderers run in one loop that takes
   about 19 frames (2.6 Hz measured in the emulator); orders land seconds apart, which gives the
   game its deliberate pace. (S "Measured cadence")
-- **No pathfinding.** A lead steps straight at its target and probes a few cells ahead, turning
-  around what blocks it. (A "What each entity decides per tick")
+- **No pathfinding.** A lead steps straight at its target and probes half the way ahead, turning
+  through a fixed fan of headings around what blocks it, with no coast following or memory, so a man whose target
+  lies across water stays at the shore (one man for 10G steps; 125 of 143 stuck men have water on their line,
+  `py/fsm/stuck_census.py`). (A "What each entity decides per tick", A mode `$48`)
+- **Weather is a seasonal roll, not ecology.** One spell per season from the season clock; nothing on the weather
+  path reads the trees, and felling or emptying the forest leaves every spell unchanged (3 arms, 125M steps,
+  `py/season/tree_weather.py`). Felled trees regrow one per season. (E "Weather and the season art")
 - **Fixed tables:** 511 objects, five sides (side 0 neutral), 400 settlements, one order record
   per side holding its six captains' groups as parallel arrays. (A "The object record", E 3, S "`$51538` — group-order table")
 - **The season clock is also a gate.** The season rotation switches the per-settlement heartbeat on
@@ -195,7 +201,7 @@ against every session's changes.
   "The group dissolve", A "The revolt chain")
 - The camp wait compares the group's stamp plus 20 with the 16-bit sim clock as signed words (`$65a0`..`$65a6`, a single use of the clock), so once the clock passes 32768 a camped group with an old stamp
   waits for the clock to wrap, an estimated 34,800 ticks: decisions fell from about 1,500 and 1,840 per 250M steps to 0 in two lands, at 4.5 to 5.75G steps. Isolated by clock pokes (only the clock changed: the stall starts at 32768 and ends at `stamp + 20`); probably unintentional (inferred); a run
-  rarely lasts that long. (S "Natural coverage", the signed-clock stall)
+  rarely lasts that long. A LOAD restores the camp stamps but keeps the destination's clock, a second way into the same wait (`py/saveload/camp_stamps.py`). (S "Natural coverage", the signed-clock stall, S "What the campaign keeps between lands")
 - An attack on a lord whose cell holds only the attacker's own records is re-issued every tick and never starts (`$4a7a` returns without `$4b80`): 9,660 and 13,594 attack decisions in 2G steps on two
   lands. (S "Natural coverage", the livelock bullet)
 - The AI's follow-up table `$67d0` is live (34 natural issues, food to men to equipment to invention);
