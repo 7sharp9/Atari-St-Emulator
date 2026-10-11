@@ -73,7 +73,7 @@ R = this README); anything not proven there is labelled read (from code, not run
 ### Bugs and accidents a new design should drop
 
 - The rank table has no terminator: 60,000 XP or more reads past it and the title becomes "DOOR", and the top title "BITMAP BROTHER" is referenced by nothing. (S "The stats scroll and the rank table"; 12 of 12 XP values matched)
-- The XP verbs ignore their operand: verb 5 adds 26 for any value (0, 1, 10, 200 measured) and verb 85 adds 26 or, for a negative word, wraps and clamps XP to 0. (S "The script language", "Two corrections")
+- The XP verbs ignore their operand: verb 5 adds 26 for any value (0, 1, 10, 200 measured; the same on real Hatari) and verb 85 adds 26 or, for a negative word, wraps and clamps XP to 0. The shipped scripts ask for 7,359 XP over 45 rewards and pay 1,170. The handler loads a sound id into the register it then adds; the gold verbs next to it save the register around the same call, and a 26-byte fix in that idiom makes verb 5 pay its operand (Hatari, 15 of 15). (S "The script language", "Two corrections")
 - Abandoning a save at the disk prompt keeps the gold the player paid. (S "Saving costs gold")
 - A hazard on the walking lane drains health at frame rate with no invulnerability window: one Up crossing of room 15's roaming object cost 30 of 33 health, six touches of 5 (the absence of an invulnerability window is inferred from that). (M 10)
 - Content that was cut or never finished: four spells that do nothing, six that only flash, 16 of 18 potions that no room places, 24 sound scripts that nothing requests, a second sound path the intro text mentions,
