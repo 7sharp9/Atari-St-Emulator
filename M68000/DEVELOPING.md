@@ -44,6 +44,15 @@ no `timeout` command, so bound runs with step counts instead. Ghidra 12.1 ships 
 with `cd <ghidra>/support/gradle && ./gradlew buildNatives` (Xcode command-line tools, JDK 21; the
 wrapper fetches Gradle), otherwise `analyzeHeadless` imports and analyses but writes no C.
 
+Real Hatari has no Mac binary here: build `~/GitHub/hatari` out of tree as x86_64 (`cmake ~/GitHub/hatari
+-DENABLE_OSX_BUNDLE=0 -DCMAKE_OSX_ARCHITECTURES=x86_64 && make hatari`; the Homebrew libraries in `/usr/local` are
+x86_64, so an arm64 link fails) and run it under `arch -x86_64`. `tools/hatari_trace.py` expects a Windows
+`hatari.exe`; to drive Hatari headless on the Mac use its control socket the way
+`reversing/cadaver/py/secrets/hatari_xp_check.py` does: `SDL_VIDEODRIVER=dummy`, a socket path short enough for
+AF_UNIX, a pty for stdout (debugger output is block-buffered into a file), every `hatari-debug` command sent while
+the emulation runs (they are ignored while `hatari-stop` has paused it), and Esc as `0x01` (a one-character key
+argument is ASCII).
+
 ## Python tooling (`tools/`, `reversing/<game>/py/`)
 
 `M68000/pyproject.toml` lists the two third-party deps the scripts use (`numpy`, `pillow`,
@@ -627,7 +636,7 @@ least once by a session that did not know it existed.
 | `tools/make_blank_disk.py`, `tools/make_test_prg.py` | blank images, test programs |
 | `tools/extract_disk.py image.st outdir` | dump every file of a FAT12 `.ST` image, recursing into directories (the reverse of `add_file_to_disk.py`) |
 | `tools/gfxview.py`, `tools/screendump.py` | RAM graphics explorer; raw screen-dump-to-PNG. `gfxview.py`'s `load_ram(path)` / `load_video_regs(path)` / `snapshot_regs(path)` already parse a `.snap`'s header (registers, RAM, the live shifter base/resolution/palette) — import them instead of hand-deriving the binary layout (`A68S` magic, 19 regs, then `cpu.CCR` as an **int16**, not a byte, which desyncs every field after it if assumed otherwise; cadaver mechanics.md section 5) |
-| `tools/hatari_trace.py` | headless real Hatari on the same ROM (a CPU/OS-trace oracle, not a video one) |
+| `tools/hatari_trace.py` | headless real Hatari on the same ROM (a CPU/OS-trace oracle, not a video one); Windows `hatari.exe` only, on the Mac see "macOS" |
 | `tools/pm_fsm_diff.py` | game-agnostic `callcap` differential-test harness (`Harness`/`State`/`run_corpus`); a corpus script's first argument (other than `reuse`) runs only the states whose name contains it. `callcap` runs the routine with interrupts masked, so a routine that waits on an interrupt-cleared flag never returns ("Loop detected"): for PowerMonger's sound calls (`$1ba3e` → `$1ae36`) poke the busy byte `$2c993` to 0 in the state first |
 | `tools/capture_hits.py` | corpus capture for a callcap gate: from a start snapshot, stop at chosen natural hits of a routine (`bpc`), snapshot each (+ `.ram`) and write the entry registers and return address to `<name>.json` (usage in the header) |
 | `tools/rdis.py [--rom img] [--base <hex>] <lo> <hi> <root>...` | recursive-descent lister: follows branches from the roots, resolves `move.w N(PC,Dn.w) / jmp M(PC,D1.w)` word-offset tables (signed), marks data gaps. Use it instead of `--all` for a handler that interleaves jump tables and animation data (`--all` loses sync there: Final Fight's `$389b8` was not an instruction line in the linear listing). **It does not follow longword state tables** (`jsr (A0)` after `movea.l 0(A0,D0.w),A0`): handlers behind them are not listed, so it is no basis for a "no caller / no writer" claim (Crudebuster: 67 of 94 callers missed); scan the raw image or the `--all` linear listing |
