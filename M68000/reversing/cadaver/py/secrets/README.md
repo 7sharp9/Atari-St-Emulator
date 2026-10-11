@@ -13,6 +13,7 @@ README's "How it was run" if missing). Keyboard input is a real make, a 40,000-6
 | `save_price.py` | the S-key price `max(1186(A5), (level+1)*50-45)`, Y takes it, ESC does not refund | levels 0,1,4,9: 5, 55, 205, 455; gold 995, 945, 795, 545 |
 | `save_load_roundtrip.py` | N declines; S, Y, key 1 saves; L and key 1 restore (scratch copy of the disk) | N: 1000/5; saved: 995/11; after L: 995/11 |
 | `rank_table.py` | the rank table at `(A5)+176` and its overrun at XP >= 60000, through the game's own stats scroll | 12/12 match; 60000+ gives index 14392 ("DOOR") |
+| `hatari_xp_check.py [outdir]` | verb 5 pays 26 XP whatever its operand on real Hatari, not only here: cold boot to CAVERN, event 0 pushed for object 161 (`06 00 05 36 17`, operand 54) through Hatari's debugger. Needs `HATARI` (Mac: x86_64 build of `~/GitHub/hatari`, see the docstring) and `CADAVER_DISK` if the image is not at `../Cadaver/` | `ok: 9/9 checks`: code bytes same, control XP 0, XP 26 after the push, block event byte `$ff` |
 | `render_buffer.py snap hexaddr png` | render a back buffer (the stats scroll and pause loops never present) | PNG |
 | `fatal_screen.py [out.snap]` | the assert handler `$011788`: contact line, main loop dead, spin loop hot | main 0, spin 196,092 of 200,000 |
 | `assert_sites.py` | the 67 call sites of `$011788` with their messages | `67 sites` |
