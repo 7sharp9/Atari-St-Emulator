@@ -1,0 +1,6 @@
+disk scratchpad/powermonger.st
+watch 57fda 2
+bp 35a0 12000000
+m 57fd8 12
+bt 4
+q

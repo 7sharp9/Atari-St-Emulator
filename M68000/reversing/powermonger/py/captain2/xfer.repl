@@ -1,0 +1,30 @@
+disk scratchpad/powermonger.st
+mouse move -400 -400
+s 300000
+mouse move 0 0
+s 300000
+mouse move 103 186
+s 300000
+mouse move 0 0
+s 300000
+mouse down l
+mouse move 0 0
+hits 300000 13620 133d4 13456 1349e 6ac6 6b2e 6d90 3ce8 4562 1c18 1b8c 41dc
+mouse up l
+mouse move 0 0
+hits 300000 13620 133d4 13456 1349e 6ac6 6b2e 6d90 3ce8 4562 1c18 1b8c 41dc
+m 57fd2 8
+mouse move 32 -151
+s 300000
+mouse move 0 0
+s 300000
+mouse down l
+mouse move 0 0
+hits 300000 13620 133d4 13456 1349e 6ac6 6b2e 6d90 3ce8 4562 1c18 1b8c 41dc
+m 5801c 4
+mouse up l
+mouse move 0 0
+hits 3000000 13620 133d4 13456 1349e 6ac6 6b2e 6d90 3ce8 4562 1c18 1b8c 41dc
+m 57fd2 8
+snap scratchpad/pm150/captain2/xfer2.snap
+q

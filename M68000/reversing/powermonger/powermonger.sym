@@ -69,7 +69,6 @@
 0001225c	pm_blit_struct_16      # $312a0 sheet, mulu #$a0,D2, 16 rows via $122b6 -> 16x16 centred sprite (cat 9)
 0001227c	pm_blit_prop_32        # $37c7c sheet, mulu #$1e0,D2, 24 rows via $12326 -> 32x24 centred sprite (cat 2)
 000124a8	pm_blit_prop_row       # $37c7c row inner loop: 2x [mask,p0..p3] word groups, ror.l D0 rotate, and/or into screen
-000119d4	pm_blit_struct_16b     # $312a0 blit from $1198a/$117d8 (cats 15/1), +record[8]-indexed sub-offset (mulu #$a)
 000312a0	g_struct_sheet         # 87th: cats 1/9/15 sheet, $a0 (160) B/frame = 16x16 4-plane+mask (10 B/row, words); blitted CENTRED via $1225c / $119d4. small structures / siege engines / effects
 00033000	g_minisprite_sheet      # mini-sprite sheet, $37 (55) B/frame = 8x11 4-plane+mask (byte planes); ~352 populated frames; blitted sub-cell via $11f82
 00037c7c	g_prop_sheet            # 87th: cat-2 sheet, $1e0 (480) B/frame = 32x24 4-plane+mask (20 B/row = 2 groups of [mask,p0..p3] words); blitted CENTRED via $1227c / $124a8. buildings + trees
@@ -98,8 +97,8 @@
 000068fe	pm_find_enemy_leader   # nearest enemy leader, weight = $580a6[side].byte16 >> 2
 000068ee	pm_food_needed         # `food_nee...`: the food a march costs, D0 = D3 >> 1, D1 = ((D1 >> 3) + 1) * D0 + D0 (D3 = distance, D1 = men); the AI compares it with the group's food 112() (strategy.md "The lord scans"; Proven 40/40)
 000069b4	pm_find_own_lord       # nearest OWN lord with word[D1] > 1, weighted word<<3 / distance; D1 8 = men (order $08), 6 = food ($06); live 3/3 (133rd)
-00006762	pm_campaign_hook       # obey $67d0 scripted campaign order if id matches 268()
-000067d0	g_campaign_order       # {word0 campaignId, word2 orderType, word4 subMode}; no in-game writer
+00006762	pm_end_rest            # orig end_rest; called from $65aa when a camped group's wait ends: matches the group's previous state 268() against the follow-up table $67d0 and issues that entry's order (strategy.md "The follow-up table")
+000067d0	g_followup_table       # {previous state, order type, posture} entries read by $6762; byte-identical in 159 of 159 snapshots, no in-game writer
 000067ee	pm_order_pack          # re-pack found leader cell -> {x:6,y:7}
 00006822	pm_order_store         # store {type,param} into $58016[cmd], stamp $58042 cross-index
 00006888	t_ordertype_groupstate # data: order type -> group state ($06->2 $08->3 $0c->8 ...)
@@ -127,7 +126,7 @@
 00006d12	pm_ord_1c_send_trade
 00006d32	pm_ord_1e_send_alliance
 00006d56	pm_ord_20_send_spy
-00006d90	pm_ord_22_select_captain
+00006d90	exec_select            # orig select_c; the executor of command $22 (select a captain): drops a stale local $22 unless $2df96 is still set, else jsr $3ce8
 00006dbc	pm_ord_24_pause
 00006dd0	pm_ord_26_message
 00006dc6	pm_ord_28_restart
@@ -148,7 +147,7 @@
 000580a6	g_side_assessment      # 5 x $20-byte per-side assessment/relationship blocks. word0 = the mode-$7c settlement-heartbeat pulse period (dwell reload; pm78_settle: side1 $20, side2 $0f, else $0a); word8 = the $60dc herd-throttle base
 00004bc8	pm_setup_fight         # `_setup_f...` = set up the fight: two parties meet; different sides at war -> $4c2a breaks the peace bits + notifies ($c5ee, $311a -8), and $4cb8/$4d40 sets both groups to state $d (the only writer of 13 in the image, $4d70) and every man to mode $2c with the opponent in 46; same side and a state-8 group -> $35f4 camp (0 natural hits). Live: 16 of 16 natural calls took the war arm
 00004c2a	pm_diplo_break         # clear relationship bits in $580a6, notify player ($c5ee), $311a
-00004de2	pm_leader_nation       # read a leader's nation byte, D7=2 if it is a leader record
+00004de2	pm_party_class         # the party classifier of $4bc8 -> D7: 2 lord (or a man within Chebyshev 9 of his settlement), 4 man in a group (lead/follower), 6 lone man, 8 cat 8 animal, $a cat $14/$16, $c cat 4, 0 unset. Proven: py/cmdai/gate_party_class.py 468/468 states, 10,985/10,985 bytes
 0000311a	pm_assessment_write    # write a side-pair assessment byte in $580a6
 0000c5ee	pm_notify_player       # "war has been declared" style player message
 
@@ -156,7 +155,7 @@
 0001533c	pm_melee               # mode $32 handler. 95th RIDER 3b: PROVEN vs real 68k (413/413 tracked bytes over 48 states, scratchpad/pm95/). 5(A3)<=0 or 30(A3)==$3c (dead/corpse) -> mode/prev:=$2c + $161c4; 17(A3):=17(A1)+$80; 31(A3)!=$32 -> jsr $56a6; drain 45(A3) by (s8(44(A1))<6 ? 44(A1) : 0)>>1 +1 via sub.b, ble -> jsr $5590 + mode/prev:=$2c; else mutual (48(A3):=self, 31(A3):=$32, bra $1622c no epilogue)
 00005590	pm_kill_or_rout        # from $1533c when morale<=0. 95th: KILL branches PROVEN vs real 68k. 45(A3):=0; sel=(attacker grouped w/ live lead ? $30fe : 0); sel==0 KILL, sel==2 -> $560a, else ($57fec+24(A1))&2 parity. KILL($55f2): neg.b 5(A3), 32:=0, 6:=$c corpse, 18:=$a0; tail $5628 -> $567e -> leader.population-=1. $560a: bit5(A3) forces KILL else jsr $3c08 ROUT (asserted OFF); $2776/$1b8c tail branches asserted OFF
 000056a6	pm_engage              # engagement bookkeeping (from $1533c + $15302). 95th: the $574a path PROVEN vs real 68k. btst #6/#4,7(A3) gate $5778 (skipped when target flags clear); 31/30(A3):=$32; 48(A3):=attacker; $5730 (attacker grouped) 46(A3):=A1 group/self, 38(A3):=4  /  $574a 46(A3):=(attacker leader entry)-$51b66, 38(A3):=2
-00005778	pm_lead_engaged        # `_make_ca...` (shares the truncation with $35f4 only; name unresolved). A group lead is engaged (from $56a6): a camped group (state 6) has its camp-fire prop 46(A3) put out ($12 -> $11, the table $4cff8..$4d250); a group not yet fighting -> jsr $4bc8 (set up the fight); a fighting one records the opponent leader in 204(group). Live: 18 natural calls, 1 changed state 6 -> 13 (35 men $68 -> $2c), 17 no-ops. 95th: asserted OFF in the early corpus
+00005778	pm_lead_engaged        # orig _make_ca (shares the truncation with $35f4). A group lead is engaged (from $56a6): a camped group (state 6) has its camp-fire prop 46(A3) put out ($12 -> $11); a group not yet fighting -> jsr $4bc8; a fighting one gets 4 then the attacker's entity offset in its opponent-class word 204 ($57d8/$57e6), a game bug (216 is the offset word; inferred). Live 1/1 rand1_s1; A/B py/cmdai/ab_5778.py: effect small
 000057f0	pm_spawn_projectile    # spawn into $4be00 effect array; vel toward target /$78, life $14, type=D1
 0000596a	pm_effect_update       # per-tick projectile loop over $4be00..$4c110; life--; type $12 -> area hit on impact
 00016778	pm_bucket_unlink       # remove one object from its $47970 cell chain. 93rd RIDER 3b: PROVEN vs real 68k (via the $163ea unlink-at-head branch, part of the 675/675 $14b62 differential test)
@@ -173,7 +172,7 @@
 00001d70	pm_rerank	# _rerank (134th): a rank former by weapon class, not a route-string expander; the mechanics below are PROVEN as before. RIDER 3b routine 6: PROVEN vs real 68k (99th, from $37c2 via $3c08 bit-4). NOT the ownership writer (that is the besiege caller $25d6/$2644). Route-string expander: pick a terrain route string from the 'C'($43)-delimited table at $1e9e (index = 2*(15 - highbit(word[grouprec-24]))); for each roster member (chain word[+26] off word[grouprec-36]) two-way-scan the string for the nearest cell of its preferred terrain char (word[$1e8c + 44(member)]; 'P'/'S'/'B' passable, $ba blocked), bset #7 that cell so the next member picks another, convert the offset to a step via divu(dist,len)+lookup, write member 20/22 := (dx,dy)<<6, mode/prev 30/31 := $08, dwell 18 := 0, category 6 := 0; then a cleanup pass clears the bset marks
 00001e8c	pm_route_targetchar_tbl # $1d70: word[$1e8c + 44(member)] -> preferred terrain char ('N'/'P'/'S'/'B'/...); member byte44 must be even
 00001e9e	pm_rank_shape_tbl	# orig rank_sha (audit, 134th): its head is a 21-column signed table of the rank former $1d70; the old "route string table" reading is retired. $1d70: word[$1e9e + D1] = offset (from $1e9e) of a 'C'($43)-delimited terrain-code string; D1 = 2*(15 - highbit(word[grouprec-24]))
-00017a46	pm_group_minimap_redraw # $3c46 teardown: D2 = group offset. iff word[$51538+D2-48] == word[$57ffe] (selected group): copy group-state glyphs from $184d8 into *($e0d4) (HUD minimap buffer). 99th: a tracked-region NO-OP (callcap touches 0 bytes in obj/$47970/$4e514/$4f916)
+00017a46	pm_show_mode_icon      # orig _show_mo. For a local-side group (owner word -48) copies the 16x6 four-plane icon modedat $184d8 + (state-1)*48 into the HUD master *($e0d4) ($78000) at byte 32 + 20k, rows 0..5. Live callcap (state 1 vs 8 give two icons; non-local groups write nothing); writes only outside the tracked regions
 000025d6	pm_add_captain         # `_add_cap...`: make the man in A1 a captain of side byte5(A1): (D3 == 2: bump the counters $12abe/$12acc), two sounds, dissolve his old group ($2776) or take 1 off his old leader's troops_field ($2644, only when he led no group), then build a new group in the side's first free sub-record; the new group's aggression rank is rand & word 12 of $580a6[side] ($275c) and its posture 3. Callers: the revolt chain $5c2c, land 25's $1618a removal path
 
 # ---- entity FSM (ai.md) ----
@@ -185,7 +184,7 @@
 00051538	g_group_orders         # 5 x $13c group-order records
 0003f86c	g_alts	# _alts (135th): the altitude plane the renderer projects ($438ee - 2*8257); poking 39 longwords raises a plateau, 10938 px (py/alts_render_check.py). Altitude 0 is sea.
 0004e514	g_leader_table         # 32-byte per-lord: troop counts (+6,+8), message counters, name index
-000168ee	g_patrol_paths         # {dx,dy} word lists, terminated by a word >= $7d00
+000168ee	g_walk_paths           # orig _flights: the walk-path table (fp1, fp2, fp3, farm at cursor $50, pots at $76): {dx,dy} word lists, terminated by a word >= $7d00; 40(man) is set by $150b0 and $60ca (ai.md)
 00014bb4	t_mode_handlers        # data: mode $00..$94 -> handler word-offset table (handler = $14bb4 + s16 word[$14bb4+mode])
 00014c92	h_mode00_idle          # face + fidget -> mode $0a, or mode $8c if order_class $a
 00014cfa	h_mode02_step          # step (12,13); terrain; land -> bclr#5 + mode $06 + dwell dance; water -> dwell dance. 94th RIDER 3b: PROVEN vs real 68k (reached from mode $08 fall-through)
@@ -231,10 +230,10 @@
 0000580a0	g_mission_descriptor   # $584c4 -> here on briefing OK; if != 0, $13b9a takes the defined path ($10d1e parses it); "Between Pages 1-5" -> small procedural descriptor. $5809c overrides $58148 (map size; < $2000 -> "small" preset = ~10-13 lords + more settlements)
 00058152	g_placement_stream     # 4-byte {x,y,id,kind} records; kind $10 = lord, <$10 = player start, 0 = end
 0001ba3e	pm_sound_mix           # sample-table mix into the audio buffers
-0001a856	pm_sound_cue           # ambient sound cue (bleat / call)
+0001a856	pm_draw_weather        # orig _do_weat; the weather draw, only reference is the jsr at $1ad3a (was misnamed a sound cue)
 
 # ---- economy: goods / livestock / settlements (economy.md, 74th-75th pass) ----
-# pm_leader ($4e514, stride 32): +0 side, +2 chain_head->g_settlement_table, +4 cell, +6 troops_reserve,
+# pm_leader ($4e514, stride 32): +0 side, +2 chain_head->g_settlement_table, +4 cell, +6 food,
 #   +8 troops_field, +12 gather_kind, +14 loyalty_pressure (>=600 -> $550e defection), +16 herd_throttle,
 #   +20 shepherd_obj, +22 nearest_herd, +24..31 goods[8] = Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon counts
 0004d252	g_trees               # tree array (`_trees`), stride 12, live length $4e512, cap 400. +2 worker obj (nothing natural sets it), +6 cat $4 (the byte6-4 render category), +7 tree_state $e-$11 / $0d felled, +8 next tree of the forest, +10 packed cell = liveness. 203/203 on byte6 4 records (py/tree_census.py)
@@ -260,14 +259,14 @@
 0000638c	pm_equip_unit          # if unit tier slot ($21 items>6 / $2c items<=6) < delivered item -> upgrade; recycle displaced item. THIS IS "INVENTION"
 000063f4	pm_supply_deposit      # mode $78: supply_acc[] -> leader.goods[] (cap $ff), then free the group slot
 000033b0	pm_prosperity_trigger  # mode $76: weighted this-tick delivery total + assessment byte - 2 >= 0 -> attack order $2a / $34a8 declare war. economy->strategy coupling
-00003498	t_supply_weights       # data: 8 words, per-resource weight for the $33b0 prosperity sum
+00003498	t_tribute_weight       # data: 8 words, per-goods weight of the $33b0 tribute/attitude sum
 0000a242	t_item_names           # data: string table, entries 1..8 = Pike/Sword/Bow/Plough/Boat/Pot/Catapult/Cannon
 000157e6	h_mode7c_stay_at	# orig stay_at_: per-settlement heartbeat body. 96th RIDER 3b: PROVEN vs real 68k (85/85 tracked bytes over 25 states, 12 branch families; scratchpad/pm96/). subi.w #$1,18(A1) bgt -> next (no epilogue); jsr $16848 + jsr $5c80 (x2); D5 := post-dec dwell; 18(A1) := $580a6[side*$20].word0 reload; jsr $163b8; btst#4 7(A1) -> epilogue; 7(settl)==$a -> 16(settl)++ (>=$78: nation_kind := dest_cell%10, ==7 -> kind:=$10, 16:=0); troops_field*4: ==0 -> epilogue / >=reserve -> (D5==$ff9c: loyalty+=2) / <reserve -> (D5==$ff9c: loyalty-=1) then (14(A1)&3)!=3 -> $5cde; loyalty>=$258 -> $550e; epilogue $161c4. $5cde/$550e/$5c2c ASSERTED OFF. Loyalty only moves when D5==$ff9c (first pulse after a #$ff9d-dwell park), NOT every pulse
 00016848	pm_side_reconcile      # 96th: settlement.owner (5(A3), A3=$4f916+34(A1)) vs marker.side (5(A1)): equal -> skip; else btst#7 clear + btst#4 clear -> 5(A1):=owner (adopt); btst#4 set -> jsr $5c2c. Then if 24(A1)!=0 && 24(A1)==0(A1): $57ff4 := 24(A1). Tail jsr $5c80. Also the mode-$16 ($15042) prologue call. PROVEN in the 96th mode-$7c test ($5c2c arm asserted off)
-000163b8	pm_settlement_upkeep   # RIDER 3b: PROVEN vs real 68k (96th synthesised 85/85, 97th natural 99/99). settlement.leader.troops_reserve -= 1, floored at 0 (settlement = $4f916+34(A1), leader = $4e514 + word[settl+14]). movem saves/restores A0 only. Per-settlement manpower drain / desertion -- fires via mode $7c, i.e. in mission 1 only during the intermittent $57fd0==0 phases ($1abaa rotation)
+000163b8	pm_settlement_upkeep   # RIDER 3b: PROVEN vs real 68k (96th synthesised 85/85, 97th natural 99/99). settlement.leader.food -= 1, floored at 0 (settlement = $4f916+34(A1), leader = $4e514 + word[settl+14]). movem saves/restores A0 only. Per-settlement manpower drain / desertion -- fires via mode $7c, i.e. in mission 1 only during the intermittent $57fd0==0 phases ($1abaa rotation)
 0000550e	pm_revolt              # loyalty_pressure >= 600: lord + all its settlements defect to side (marker.field8 % 4)+1; reset loyalty to $12c (300). ASSERTED OFF in the mode-$7c proof (loyalty kept < 600); reached only from mode $7c. 97th: in pm97_map0 both AI lords climbed 300 -> 316/318 in 80M steps (field*4=40 > reserve=0 -> +2/pulse), so 600 is within reach of a long game when $57fd0 rotation favours $7c
 00005cde	pm_settlement_workorder # `_set_tow...`: the lord's work order (from mode $7c, field*4<food && (anim&3)!=3, and from order $0e via $5fa0): walks the nation's settlement chain for the capital, scans $57f68 forest ops + the $3f86c control byte, may allocate a $4f916 record ($51536 += $12) + $16808, then $5ec6 stamps the men. Proven 768/768 (diff_5cde.py)
-00003bc0	pm_group_return_men    # group teardown: leader.troops_reserve += group.force >> discipline
+00003bc0	pm_drop_food_settl     # inside $39d4 (D7 = 1, order $12 / $1a drop food): leader.food (+6) += 36(group) >> (posture-2), 36(group) -= that; loyalty_pressure -= 8 when the town is the army's side. Proven via $39d4 (py/orders/gate_orders.py 344 states)
 000034f2	pm_rally_garrisons     # order every garrison in a nation's settlement chain to march to a cell (mode $10, prev $14)
 00002984	pm_set_people	# orig _set_peo(ple): the world-build population, once per build: $580a6[side]+14 (2) men per settlement, each from $2e1e, chained into the settlement, troops_field += 1, job from $2a98, health byte by job. Proven (economy.md 5a, py/gate_pop.py 29860/29860, 8 builds)
 00002fc0	pm_build_settlements   # world-build: consume the 3-byte settlement stream, chain g_settlement_table per nation (+8)
@@ -275,7 +274,7 @@
 0004592f	g_terrain_influence_base # per-cell base influence/flags map, read by pm_seed_cell_control
 0000b8f4	pm_stats_collect       # count live projectiles + live animals into a caller buffer (UI/score screen)
 0000b940	pm_atoi                # ASCII digit string -> integer (briefing population entry, from $b814)
-00015042	h_mode16_at_farm	# orig at_farme; the farmer at his field, not a disband (135th). entity mode $16: unit goes home -> leader.troops_reserve += 2 (+2 more if order_class 8)
+00015042	h_mode16_at_farm	# orig at_farme; the farmer at his field, not a disband (135th). entity mode $16: unit goes home -> leader.food += 2 (+2 more if order_class 8)
 
 # ---- RNG / clocks ----
 00057fec	g_tick_rng            # free-running counter, ++ in $1abc0; low bits used as "random" (deterministic)
@@ -370,14 +369,14 @@
 0000390e	_supply_	# orig T
 00003956	_at_supp	# orig T
 00003bc8	_get_lar	# orig T
-00003ce8	_select_	# orig T
+00003ce8	_select_	# orig T; pm_select_group: sets $58042[side] and, for the local side, $57fd2 and the posture highlight ($35ee, $189f8); live from py/captain2/drive_order.sh
 00003da4	_at_spy	# orig T
 00004548	_pigeon_	# orig T
 00004562	_setup_p	# orig T
 000045ee	_create_	# orig T
 00004624	_kill_pi	# orig T
 0000488c	forest_l	# orig T
-00004a7a	_send_at	# orig T
+00004a7a	_send_at	# orig T; pm_send_attack: order $0c sender; writes the opponent class word 204 (6, 8, $c, 2) of the group
 00004ee8	_call_he	# orig T
 00004f68	_set_fig	# orig T
 00004fa2	atjt	# orig T
@@ -546,14 +545,14 @@
 0000bf5a	_do_firs	# orig T
 0000c1be	_connect	# orig T
 0000c3f6	_show_br	# orig T
-0000c48e	_delete_	# orig T
-0000c706	_req_off	# orig T
-0000c9f8	_req_all	# orig T
-0000cada	_req_no_	# orig T
-0000cce2	_display	# orig T
-0000cd42	diskmess	# orig T
+0000c48e	_delete_	# orig T; pm_req_delete_lands: delete-lands confirm requester (id $18)
+0000c706	_req_off	# orig T; pm_req_alliance_offer: panel id $1a, verb by the proposer's posture (table $c802), tribute list (py/ui/req_panels.py)
+0000c9f8	_req_all	# orig T; pm_req_alliance_made: "An Alliance has been forged between A and B." (template $ca46)
+0000cada	_req_no_	# orig T; pm_req_refusal: four refusal notices picked by $57fec & 3 (table $cb36)
+0000cce2	_display	# orig T; pm_disk_requester: disk requester (id $10)
+0000cd42	diskmess	# orig T; pm_open_disk_req: opens the disk requester
 0000cee6	_show_re	# orig T
-0000cf46	_edit_st	# orig T
+0000cf46	_edit_st	# orig T; pm_line_editor: side-name entry and the Modem Message $58474 (max 79); Return sends line + CR to serial via $1c390 (live 1/1 py/link/modem.repl)
 0000d038	_ed_str_	# orig T
 0000d03c	_ed_str_	# orig T
 0000d03e	_req_usi	# orig T
@@ -568,9 +567,9 @@
 0000d15e	send_mes	# orig T
 0000d162	process_	# orig T
 0000d194	_init_se	# orig T
-0000d1ce	op_non_l	# orig T
+0000d1ce	op_non_l	# orig T; pm_remote_side_name: remote side-name hook of the link
 0000d1fc	sm2	# orig T
-0000d210	check_re	# orig T
+0000d210	check_re	# orig T; pm_check_obj_ptr: validates an object pointer
 0000d21a	not_odd_	# orig T
 0000d226	not_over	# orig T
 0000d232	not_unde	# orig T
@@ -958,7 +957,7 @@
 00019ca2	text	# orig T
 0001a238	do_text	# orig T
 0001a276	_game_fa	# orig T
-0001a29c	_game_fa	# orig T
+0001a29c	_game_fa	# orig T; pm_fade_out: $1a2ba := -1, fade toward _zero_pa $1a318; 7 callers
 0001a2ba	fade_sta	# orig T
 0001a2bc	_fade_sc	# orig T
 0001a2d8	_work_pa	# orig T
@@ -1028,7 +1027,7 @@
 0001ba66	_setup_d	# orig T
 0001ba68	_reset_d	# orig T
 0001ba6a	_debug_s	# orig T
-0001ba72	_format_	# orig T
+0001ba72	_format_	# orig T; pm_format_save_disk (code read; $1befe has no caller)
 0001bafc	idfile	# orig T
 0001bb0e	sgmsg	# orig T
 0001bbfa	save_use	# orig T
@@ -1301,3 +1300,15 @@
 00d66e	fio_rootdir
 00d6f4	fio_read_chain
 00d770	fio_fat12_entry
+
+# ---- UI icon floor, sound events, weather and season (strategy.md "The player's commands", system.md, economy.md "Weather and the season art") ----
+000135fc	ui_icon_arm_02         # icon-floor arm of order $02 in the jump table at $135cc (jmp 2(PC,D0.w) at $135c8)
+0001361e	ui_icon_arm_04         # icon-floor arm of order $04 (transfer men); live 1 hit
+00013650	ui_icon_arm_0a         # icon-floor arm of order $0a
+00013676	ui_icon_arm_posture    # icon-floor arm of the posture icons; live 1 hit
+000136b0	ui_icon_arm_examine    # icon-floor arm of the examine tool
+00013714	ui_icon_arm_options    # icon-floor arm of the options icon
+00012abe	pm_snd_ack_31          # data: sound event 31 of the 14-byte event table $1290c; entries 31..36 are the six order acknowledgements ($6e6e posts 31 + (state + w - 36) mod 6; live 1/1 py/ui/sndpost.repl)
+0001ad2a	pm_weather_tick        # the weather step of $1abaa (calls $1a856 at $1ad3a)
+0001ac92	pm_season_regrow       # at a season wrap regrows one felled tree (+7 $0d -> live); 512 of 830 snapshots hold felled trees (py/season/felled_census.py)
+0000c77e	capt_req_verb          # alliance-offer verb by posture: 2 "demands", 3 "asks for", 4 "begs for" (3/3 live)

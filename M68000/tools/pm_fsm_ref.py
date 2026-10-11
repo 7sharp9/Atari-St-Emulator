@@ -125,7 +125,7 @@ from a RAM image via init_tables() instead of loaded from committed .bin files.
 #   $15f80..$15eb0 h_mode80/82/84/86/88     3291   139th        Proven (gate_shepherd.py 1043/1043, 198 states)
 #   $4044    call_animals             3373   139th        Proven (gate_animals.py 45094/45094, 55 snapshots; inside $3e06)
 #   $416e    call_pigeons             3442   139th        Proven for flight and re-steer; the $41dc arrival only its bucket effect ($6b38 not modelled, $4244 asserted off)
-#   $596a    call_596a                3552   140th        Proven (gate_proj.py 4210/4210, 456 states; 8 states excluded where $5590 reaches its $1b8c tail)
+#   $596a    call_596a                3552   140th        Proven (gate_proj.py 4509/4509, 464 states; 473 with the lead kills, 5082/5082 noscreen)
 #   $4624    call_4624                3500   140th        Proven via $596a (a pigeon hit by an arrow)
 #   $4562    call_4562                3522   140th        Proven (gate_pigeon_send.py 1567/1567, 125 states; calls $45ee)
 #
@@ -662,7 +662,7 @@ def h_mode10(m, A1, D6, D7):
 # the COMBAT path  mode $32 $1533c (melee) + its leaves
 #   $56a6  engage bookkeeping        (also called from $15302, mode $2e)
 #   $5778  deep engage bookkeeping   ($4bc8 group hand-off = ASSERT OFF)
-#   $5590  kill / rout roll          ($3c08 rout, $2776/$1b8c cleanup = ASSERT OFF)
+#   $5590  kill / rout roll          ($3c08 rout = ASSERT OFF; $2776/$1b8c cleanup modelled)
 #   $30fe  group.field60 - 2         (roll selector, transcribable)
 # Transcribed line-for-line + raw-byte-verified from scratchpad/pm95/disasm/.
 # $51538 = group-record array (state at +0, field60 at +60).
@@ -751,8 +751,10 @@ def engage_56a6(m, A1self, A3tgt):
 # ---------------------------------------------------------------- $5590
 def kill_rout_5590(m, A1self, A3tgt):
     """$5590: the kill/rout roll.  A1self = attacker, A3tgt = the loser.
-    The ROUT branch ($3c08) and the group/leader cleanup calls $2776 / $1b8c are
-    ASSERTED OFF (no corpus/poked state reaches them)."""
+    The ROUT branch ($3c08) is ASSERTED OFF.  The cleanup tail calls $2776 (a killed
+    man with flag bit 7 or 4 and a group word 42) and $1b8c (flag bit 6 with a lead
+    word 28); both are gated by gate_proj.py (the $2776 arm on synthetic lead kills,
+    its sound and display writes untracked)."""
     m.wb(A3tgt + 45, 0)                          # move.b #$0,45(A3)
     D0 = 0                                       # move.w #$0,D0
     f = m.bu(A1self + 7)
@@ -792,11 +794,17 @@ def kill_rout_5590(m, A1self, A3tgt):
         if D0 != 0:
             if m.bs(A3tgt + 5) > 0:              # tst.b 5(A3) ; bgt $56a0
                 return
-            raise AssertionError("$5590 tail -> $2776 group cleanup - OUT OF SCOPE (95th)")
+            # $5644 exg A3,A0 ; lea $51538,A3 ; adda.w D0,A3 ; jsr $2776 ; exg A3,A0 ; bra $56a0
+            PROJ_TRACE.append("5590_2776")
+            call_2776(m, (GROUP + s16(D0)) & 0xfffff)
+            return
     # $5658
     if ff & 0x40:                               # btst #6,7(A3) ; beq $567e
         if m.wu(A3tgt + 28) != 0:                # move.w 28(A3),D0 ; beq $56a0
-            raise AssertionError("$5590 tail -> $1b8c - OUT OF SCOPE (95th)")
+            # $5660 lea $51b66,A0 ; adda.w 28(A3),A0 ; exg A3,A1 ; move.w #0,D1 ; jsr $1b8c ; exg A3,A1 ; bra $56a0
+            PROJ_TRACE.append("5590_1b8c")
+            call_1b8c(m, (OBJ + s16(m.wu(A3tgt + 28))) & 0xfffff, A3tgt, 0)
+            return
         return
     # $567e
     if m.bs(A3tgt + 5) > 0:                      # tst.b 5(A3) ; bgt $56a0

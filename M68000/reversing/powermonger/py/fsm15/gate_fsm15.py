@@ -7,7 +7,15 @@ changed-memory delta compared byte for byte with `pm_fsm_ref.reconstruct` (which
 `$51538..$51b66`, the tree array `$4d252..$4e514`, the stat counters `$12a24/$12a32`, the RNG seed, `$57ff4`.
 
     cd M68000
-    .venv/bin/python scratchpad/pm141/agents/fsm15/gate_fsm15.py [name-substring] [reuse]
+    .venv/bin/python reversing/powermonger/py/fsm15/gate_fsm15.py [name-substring] [reuse] [nat]
+
+`nat`: the natural entries of modes `$36`, `$38`, `$3a` only (no synthetic states), up to 3 records per mode per snapshot (first, middle,
+last), from NAT_GLOBS: AI k108 (`$PM_WORK/nat/k108_c1..c5`, 300k-step snapshots after `bp 5100` from
+`scratchpad/pm148/arms/nat36/k108_at5100.snap`; `k108e_2..4`, 50k-step snapshots after `k108_c5`, slaughter dwell 1), the player's sword
+click on a lone sheep (`pm148/arms/sheep/k56_a`, `k25_a`, `k120_a` chunk snapshots) and the k120 tree click (`$PM_WORK/nat/k120tree_3a.snap`,
+`bpc 14b62 4` from `pm148/arms/sheep/k120_tree_c0.snap`, the iterator pass of the one `$15518` hit). Data under `$PM_WORK/fsm15`
+(default `scratchpad/pm150/arms`). Environment: `FSM15_OUT` overrides the callcap JSON directory, `FSM15_WORKERS` the number of
+emulators run at once (default 10, `nat` 2).
 
 The RAM images are `ram_from_snap` of the snapshots listed in SNAPS (`prep_rams()` writes them under
 `scratchpad/pm141/agents/fsm15/ram/`).  Output: one line per state, then `TRACKED BYTES: ok/total` and the per-mode table.
@@ -21,7 +29,7 @@ import struct
 import sys
 from pathlib import Path
 
-ROOT = Path(os.environ.get("M68000_ROOT", Path(__file__).resolve().parents[4]))
+ROOT = Path(os.environ["M68000_ROOT"]) if os.environ.get("M68000_ROOT") else next(p for p in Path(__file__).resolve().parents if (p / "tools" / "rdis.py").exists())
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pm_fsm_ref as P
@@ -29,12 +37,21 @@ from pm_fsm_diff import Harness
 import fsm15_ref as F
 
 WORK = "scratchpad/pm141/agents/fsm15"     # data (ram/, out/) lives here, not beside the promoted script
+NAT = "nat" in sys.argv[1:]
+PM_WORK = os.environ.get("PM_WORK", "scratchpad/pm150/arms")
+if NAT:
+    WORK = f"{PM_WORK}/fsm15"
 AG = WORK
-OUT = f"{AG}/out"
+OUT = os.environ.get("FSM15_OUT", f"{AG}/out")
 OBJ, REC, SETTL, GROUP, LEADER = P.OBJ, P.REC, P.SETTL, P.GROUP, P.LEADER
 SNAP_GLOBS = ["scratchpad/pm121/k*.snap", "scratchpad/pm121/run/k5_s4.snap", "scratchpad/pm121/run/k25_s*.snap",
               "scratchpad/pm123/win/m1_s0.snap", "scratchpad/pm123/win/m1_ready.snap", "scratchpad/pm123/win/m1_atk.snap",
               "scratchpad/pm139/jobs/pop_done.snap"]
+NAT_GLOBS = [f"{PM_WORK}/nat/k108_c[1-5].snap", f"{PM_WORK}/nat/k108e_[234].snap", f"{PM_WORK}/nat/k120tree_3a.snap",
+             "scratchpad/pm148/arms/sheep/k56_a_c[4-8].snap", "scratchpad/pm148/arms/sheep/k25_a_c[2-9].snap",
+             "scratchpad/pm148/arms/sheep/k120_a_c[0-7].snap"]
+if NAT:
+    SNAP_GLOBS = NAT_GLOBS
 
 P.REGIONS = P.REGIONS + [(GROUP, OBJ, "groups"), (0x4d252, 0x4e514, "trees"), (0x12a24, 0x12a34, "stats"),
                          (P.RNG_SEED, P.RNG_SEED + 4, "rng"), (0x57ff4, 0x57ff6, "pigeon")]
@@ -137,6 +154,18 @@ def natural_states(per_mode=5):
         step = max(1, len(lst) // per_mode)
         for rn, s in lst[::step][:per_mode]:
             S.append(mk(f"nat_{md:02x}_{rn}_{s}", rn, s, f"{md:02x}", nat=True))
+    return S
+
+
+def nat_chase_states():
+    """`nat` mode: every snapshot, up to 3 records per mode `$36`/`$38`/`$3a` (first, middle, last of that snapshot's list)."""
+    S = []
+    for rn in all_rams():
+        r = ram(rn)
+        for md in (0x36, 0x38, 0x3a):
+            lst = [s for s in range(1, 512) if live_pos(r, s) and r[rec(s) + 31] == md]
+            for s in (sorted({lst[0], lst[len(lst) // 2], lst[-1]}) if lst else []):
+                S.append(mk(f"nat_{md:02x}_{rn}_{s}", rn, s, f"{md:02x}", nat=True))
     return S
 
 
@@ -608,11 +637,13 @@ def report_coverage():
 
 def main():
     F.install()
-    only = next((a for a in sys.argv[1:] if a != "reuse"), None)
+    only = next((a for a in sys.argv[1:] if a not in ("reuse", "nat")), None)
+    if NAT and len(list((ROOT / AG / "ram").glob("*.ram"))) != sum(len(glob.glob(str(ROOT / g))) for g in SNAP_GLOBS):
+        prep_rams()
     anchor = all_rams()[0]
     h = Harness(snap_of(anchor), f"{AG}/ram/{anchor}.ram", disk="scratchpad/powermonger.st", out_dir=OUT)
     (ROOT / OUT).mkdir(parents=True, exist_ok=True)
-    states = natural_states() + syn_states()
+    states = nat_chase_states() if NAT else natural_states() + syn_states()
     if only:
         states = [s for s in states if only in s["name"]]
     seen = set()
@@ -623,7 +654,7 @@ def main():
         seen.add(s["name"])
         uniq.append(s)
     states = uniq
-    with cf.ThreadPoolExecutor(max_workers=10) as ex:
+    with cf.ThreadPoolExecutor(max_workers=int(os.environ.get("FSM15_WORKERS", 2 if NAT else 10))) as ex:
         paths = list(ex.map(lambda s: run_state(h, s), states))
     tot = ok = n = 0
     bymode = collections.defaultdict(lambda: [0, 0, 0, 0])

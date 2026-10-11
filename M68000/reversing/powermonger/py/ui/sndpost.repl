@@ -1,0 +1,9 @@
+disk scratchpad/powermonger.st
+w 5801c 010a0000
+bp 6eac 2000000
+r
+m 12abe 84
+bp 128d2 3000000
+r
+m 12abe 84
+q

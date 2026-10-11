@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 830" width="900" height="830" role="img" aria-labelledby="t2 d2" xml:space="preserve">
+<title id="t2">The signed-clock stall of the camp wait</title>
+<desc id="d2">The camp wait compares stamp + $14 with the sim clock word $2df72 as signed words, so a group camped before tick 32768 waits about 34,800 ticks once the clock passes 32768.
+Sources (reversing/powermonger/strategy.md): "Where it runs" (the $13000 listing: $1302e addq.l #1,$2df70), "The commander AI `$6522`" bullet "The signed-clock stall" (mechanism, W5G_k80 / W5G_k108 chunks: 1500 and 1843 decisions per chunk, 168 / 93 in the crossing chunk, 0 after; clock 32599 / 32674; stamps 2088 / 2038),
+"Isolation by clock pokes" (the five-row table, start L2G_k80_c8.snap, clock 11729, stamp 2088, stamp + 20 = 2108, about 167k steps per tick), "$51538 group-order table" (word 256 stamped by $3720).
+Literal scans of scratchpad/pm123/win/m1_map.ram $0..$40000: $2df72 in the instructions at $3720 and $65a0 only; the long $2df70 at $12f6 and $1352 (copies to $2df74), $1302e (increment), $1373c (compare with $2df74), $13baa (clr.l). LOAD note: strategy.md "The loaded camp stamps against the kept clock" and the stall bullet "A LOAD is a second way into the stall" (py/saveload/camp_stamps.py). Full fact list: clock_stall.facts.md.</desc>
+<style>
+text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
+.t{font-size:16px;font-weight:bold}
+.c{font-size:11.5px;fill:#424a53}
+.m{font-family:Menlo, Consolas, "DejaVu Sans Mono", monospace;font-size:11.5px}
+.s{font-size:11px;fill:#424a53}
+.h{font-size:13px;font-weight:bold}
+.pv{fill:#dafbe1;stroke:#1a7f37;stroke-width:1.8}
+.lv{fill:#ddf4ff;stroke:#0969da;stroke-width:1.8}
+.cr{fill:#f6f8fa;stroke:#57606a;stroke-width:1.5;stroke-dasharray:6 3}
+.in{fill:#fff1e5;stroke:#bc4c00;stroke-width:1.5;stroke-dasharray:2 3}
+.on{fill:#aceebb;stroke:#1a7f37;stroke-width:1}
+.off{fill:#e6e9ed;stroke:#8c959f;stroke-width:1}
+.ax{stroke:#424a53;stroke-width:1.2;fill:none}
+.tk{stroke:#424a53;stroke-width:1}
+.ln{stroke:#424a53;stroke-width:1.3;fill:none;marker-end:url(#a)}
+</style>
+<defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#424a53"/></marker></defs>
+<rect x="0" y="0" width="900" height="830" fill="#ffffff"/>
+
+<text x="20" y="26" class="t">The signed-clock stall: the camp wait compares tick numbers as signed words</text>
+<text x="20" y="45" class="c">Box border = evidence. Green bars: the group decides ($65b4 reached); grey bars: it waits at $65a6.</text>
+<rect x="20" y="54" width="22" height="12" class="pv"/><text x="47" y="64" class="s">proven</text>
+<rect x="110" y="54" width="22" height="12" class="lv"/><text x="137" y="64" class="s">live (runs, with counts)</text>
+<rect x="290" y="54" width="22" height="12" class="cr"/><text x="317" y="64" class="s">code read</text>
+<rect x="405" y="54" width="22" height="12" class="in"/><text x="432" y="64" class="s">inferred</text>
+
+<!-- Panel A: three sites -->
+<text x="20" y="92" class="h">A. The three instructions</text>
+<rect x="20" y="100" width="270" height="74" rx="4" class="cr"/>
+<text x="30" y="118" class="m">$1302e addq.l #1,$2df70</text>
+<text x="30" y="136">sim tick: the long clock +1;</text>
+<text x="30" y="152"><tspan class="m">$2df72</tspan> is its low word</text>
+<text x="30" y="167" class="s">cleared at $13baa (clr.l)</text>
+<rect x="305" y="100" width="270" height="74" rx="4" class="cr"/>
+<text x="315" y="118" class="m">$3720 move.w $2df72,180(A3)</text>
+<text x="315" y="136">camp stamp: 180(A3) = word 256(A1)</text>
+<text x="315" y="152">as the group goes back to camp</text>
+<text x="315" y="167" class="s">with $3728 copying the old state (live 1/1)</text>
+<rect x="590" y="100" width="290" height="74" rx="4" class="pv"/>
+<text x="600" y="118" class="m">$6598 D0 = 256(A1) + $14</text>
+<text x="600" y="134" class="m">$65a0 cmp.w $2df72,D0 / bgt</text>
+<text x="600" y="152">wait while stamp + 20 &gt; clock, signed;</text>
+<text x="600" y="167" class="s">the only reader: literal scan finds $2df72 twice</text>
+
+<!-- Panel B: clock axis -->
+<text x="20" y="204" class="h">B. One camped group, stamp 2088 (k80 group 0): clock in ticks since the land was built</text>
+<!-- scale: x = 60 + tick * 800/70000 -->
+<rect x="84" y="226" width="350" height="22" class="on"/>
+<rect x="434" y="226" width="399" height="22" class="off"/>
+<text x="150" y="241">decides: stamp + 20 = 2108 &lt;= clock</text>
+<text x="470" y="241">waits about 34,800 ticks (to 65536 + 2108)</text>
+<line x1="60" y1="256" x2="860" y2="256" class="ax"/>
+<g class="tk">
+<line x1="60" y1="252" x2="60" y2="262"/><line x1="84" y1="252" x2="84" y2="262"/><line x1="247" y1="252" x2="247" y2="262"/>
+<line x1="434" y1="218" x2="434" y2="262" stroke-dasharray="3 2"/><line x1="622" y1="252" x2="622" y2="262"/><line x1="809" y1="252" x2="809" y2="262"/><line x1="833" y1="252" x2="833" y2="262"/>
+</g>
+<text x="20" y="276" class="s">tick</text>
+<text x="56" y="276" class="m">0</text><text x="76" y="276" class="m">2108</text><text x="229" y="276" class="m">16384</text><text x="416" y="276" class="m">32768</text><text x="604" y="276" class="m">49152</text><text x="786" y="276" class="m">65536</text>
+<text x="20" y="294" class="s">signed</text>
+<text x="56" y="294" class="m">0</text><text x="229" y="294" class="m">16384</text><text x="400" y="294" class="m">32767|-32768</text><text x="604" y="294" class="m">-16384</text><text x="790" y="294" class="m">-1|0</text>
+<text x="60" y="316" class="s">At tick 34104 the word reads -31432 and 2108 &gt; -31432, so the group waits. Groups that re-camp every few ticks (k143, k44: stamps within 20 ticks</text>
+<text x="60" y="331" class="s">of the clock) do not stall. Steps per tick differ per land, so the crossing falls at a different step count in each land.</text>
+
+<!-- Panel C: pokes -->
+<rect x="14" y="348" width="872" height="236" rx="4" class="lv" fill-opacity="0.35"/>
+<text x="24" y="368" class="h">C. Isolation by clock pokes: one write of $2df72, all from L2G_k80_c8.snap (clock 11729, about 167k steps per tick)</text>
+<text x="24" y="390" class="s">clock poked</text><text x="132" y="390" class="s">$65b4 hits</text>
+<!-- bar scale: x = 260 + steps(M) * 600/450 -->
+<line x1="260" y1="532" x2="860" y2="532" class="ax"/>
+<g class="tk"><line x1="260" y1="528" x2="260" y2="537"/><line x1="393" y1="528" x2="393" y2="537"/><line x1="527" y1="528" x2="527" y2="537"/><line x1="660" y1="528" x2="660" y2="537"/><line x1="793" y1="528" x2="793" y2="537"/><line x1="860" y1="528" x2="860" y2="537"/></g>
+<text x="256" y="550" class="m">0</text><text x="378" y="550" class="m">100M</text><text x="512" y="550" class="m">200M</text><text x="645" y="550" class="m">300M</text><text x="778" y="550" class="m">400M</text><text x="836" y="550" class="m">450M</text>
+<text x="24" y="550" class="s">steps after the poke</text>
+
+<text x="24" y="413" class="m">none</text><text x="132" y="413" class="h">599</text>
+<rect x="260" y="400" width="133" height="18" class="on"/>
+<text x="400" y="413" class="s">decides every tick; last hit 99,872,563</text>
+
+<text x="24" y="438" class="m">$7ff0 (32752)</text><text x="132" y="438" class="h">15</text>
+<rect x="260" y="425" width="3" height="18" class="on"/><rect x="263" y="425" width="130" height="18" class="off"/>
+<text x="400" y="438" class="s">crosses 32768 at tick 16; last hit 2,346,222, then none</text>
+
+<text x="24" y="463" class="m">$7000 (28672)</text><text x="132" y="463" class="h">599</text>
+<rect x="260" y="450" width="133" height="18" class="on"/>
+<text x="400" y="463" class="s">same write, no crossing in the budget: same as no poke</text>
+
+<text x="24" y="488" class="m">$0800 (2048)</text><text x="132" y="488" class="h">541</text>
+<rect x="260" y="475" width="13" height="18" class="off"/><rect x="273" y="475" width="120" height="18" class="on"/>
+<text x="400" y="488" class="s">below 2108: waits about 60 ticks; first hit 9,711,010</text>
+
+<text x="24" y="513" class="m">$ffe0 (-32)</text><text x="132" y="513" class="h">555</text>
+<rect x="260" y="500" width="476" height="18" class="off"/><rect x="736" y="500" width="124" height="18" class="on"/>
+<text x="268" y="513" class="s">waits until the clock reaches 2108: about 2140 ticks</text>
+<text x="742" y="513" class="s">first 357,344,956</text>
+
+<text x="24" y="572" class="s">Each prediction was written before its run; 5 of 5 met. With $7ff0, $6522 still runs (604 hits against 599), so only the compare at $65a0..$65a6 gates the decisions.</text>
+
+<!-- Panel D: natural onset -->
+<text x="20" y="612" class="h">D. Natural onset (W5G runs, py/arms/batch4.sh: 2G steps, then 20 chunks of 250M; $65b4 hits per chunk)</text>
+<!-- scale: x = 160 + (G - 2) * 700/5 -->
+<text x="24" y="643" class="m">k108</text>
+<rect x="160" y="630" width="350" height="18" class="on"/><rect x="510" y="630" width="35" height="18" class="on" fill-opacity="0.45"/><rect x="545" y="630" width="315" height="18" class="off"/>
+<text x="168" y="643" class="s">1843 per chunk</text><text x="512" y="643" class="s">93</text><text x="555" y="643" class="s">0 in chunks 12 to 20 (crossing chunk ends at clock 32674)</text>
+<text x="24" y="671" class="m">k80</text>
+<rect x="160" y="658" width="490" height="18" class="on"/><rect x="650" y="658" width="35" height="18" class="on" fill-opacity="0.45"/><rect x="685" y="658" width="175" height="18" class="off"/>
+<text x="168" y="671" class="s">1500 per chunk</text><text x="652" y="671" class="s">168</text><text x="692" y="671" class="s">0 in chunks 16 to 20</text>
+<line x1="160" y1="686" x2="860" y2="686" class="ax"/>
+<g class="tk"><line x1="160" y1="682" x2="160" y2="691"/><line x1="300" y1="682" x2="300" y2="691"/><line x1="440" y1="682" x2="440" y2="691"/><line x1="510" y1="682" x2="510" y2="691"/><line x1="580" y1="682" x2="580" y2="691"/><line x1="650" y1="682" x2="650" y2="691"/><line x1="720" y1="682" x2="720" y2="691"/><line x1="860" y1="682" x2="860" y2="691"/></g>
+<text x="152" y="704" class="m">2G</text><text x="292" y="704" class="m">3G</text><text x="432" y="704" class="m">4G</text><text x="498" y="704" class="m">4.5G</text><text x="572" y="704" class="m">5G</text><text x="638" y="704" class="m">5.5G</text><text x="712" y="704" class="m">6G</text><text x="852" y="704" class="m">7G</text>
+<text x="24" y="704" class="s">steps from land start</text>
+<text x="24" y="726" class="s">Bars are live counts; the pre-crossing rate is drawn flat from the one figure the doc gives. Chunk n covers 2G + (n-1) x 250M to 2G + n x 250M.</text>
+
+<text x="20" y="756" class="s">Status: the compare is the cause in the emulator (proven by panel C). The same stall on a real ST or in Hatari is inferred from the code, not run.</text>
+<text x="20" y="772" class="s">Consequence: a natural run past 4.5G to 5.75G steps loses its idle camped groups' decisions for about the next 6G steps; zero late decisions do not mean an arm is unreachable.</text>
+<rect x="20" y="784" width="860" height="36" rx="4" class="pv"/>
+<text x="30" y="799" class="s">Second route into the wait: a LOAD restores the saved camp stamps but keeps the destination's clock. lo.st into rand1 (clock 441), stamp 2088: first $65b4</text>
+<text x="30" y="814" class="s">predicted at clock 2108, about 279.2M steps; observed at clock 2108 after 276,745,802 steps (0.9% early). py/saveload/camp_stamps.py, proven by prediction.</text>
+</svg>

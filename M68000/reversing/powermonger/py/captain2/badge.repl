@@ -1,0 +1,22 @@
+disk scratchpad/powermonger.st
+m 4bb3a 4
+m 7a36 8
+mouse move -400 -400
+s 300000
+mouse move 0 0
+s 300000
+mouse move 163 55
+s 300000
+mouse move 0 0
+s 300000
+mouse down l
+mouse move 0 0
+hits 300000 133d4 1343a 1349e 13456 134b2 9036 6d90 3ce8
+mouse up l
+mouse move 0 0
+hits 300000 133d4 1343a 1349e 13456 134b2 9036 6d90 3ce8
+m 4bb3a 4
+m 7a36 8
+m 57fd2 2
+snap scratchpad/pm150/captain2/badge.snap
+q

@@ -1,4 +1,4 @@
-"""gate_nat_arms.py  (PowerMonger 148th, agent A)
+"""gate_nat_arms.py  (PowerMonger 148th, agent A; k34 and k50 added by the 150th arms agent)
 
 Natural `$6522` entries that contain an arm no earlier gate had a natural state for: the model (`cmdai_ref.call_6522`) against `callcap 6522`
 on the real 68000, every byte of RAM except the stack (same comparison as gate_cmdai.py nat).  Each entry is the snapshot at the `$6522` entry of
@@ -7,22 +7,28 @@ the tick whose pass reaches the arm (found with `hits` up to the arm's own hit, 
   k8   $668c                            L2G_k8_c1    72484631
   k143 $666c  (get men behind an enemy) L2G_k143_c3  45152624
   k106 $668c  (24-man captain group, own lords with 17/5/2 men at home, the one enemy lord has 33)  M2G_k106_c1  95761881 (run_arms2.sh batch)
-Run after run_arms.sh produced the chunk snapshots.   cd M68000 && .venv/bin/python reversing/powermonger/py/arms/gate_nat_arms.py   (ARMS_WORK env: where batch1/batch2 wrote long/, default scratchpad/pm148/arms)
+  k34  $668c  (side 2, 22 men, state 6; side 2 holds all 14 lords)      M2G_k34_c5   233300606
+  k50  $668c  (side 2, 24 men, state 9; enemy lords hold 33 and 34)     M2G_k50_c1   170835066
+Run after run_arms.sh produced the chunk snapshots.   cd M68000 && .venv/bin/python reversing/powermonger/py/arms/gate_nat_arms.py
+(ARMS_WORK env: where batch1/batch2 wrote long/, default scratchpad/pm148/arms; PM_WORK env: where natgate/ is written, default scratchpad/pm150/arms)
 """
 import json, os, re, subprocess, sys
 from pathlib import Path
 def _root():
     if os.environ.get('M68000_ROOT'): return Path(os.environ['M68000_ROOT'])
     for p in Path(__file__).resolve().parents:
-        if (p / 'tools' / 'pm_fsm_ref.py').exists(): return p
+        if (p / 'tools' / 'rdis.py').exists(): return p
 ROOT = _root()
-WORK = os.environ.get('ARMS_WORK', 'scratchpad/pm148/arms')
+WORK = os.environ.get('ARMS_WORK', 'scratchpad/pm148/arms')      # where the chunk snapshots long/<chunk>.snap live
+PM_WORK = os.environ.get('PM_WORK', 'scratchpad/pm150/arms')     # where natgate/ (entry snapshots, callcap JSON) is written
 sys.path.insert(0, str(ROOT / 'tools')); sys.path.insert(0, str(ROOT / 'reversing/powermonger/py/cmdai'))
 import pm_fsm_ref as P, cmdai_ref as C
 from disassemble import ram_from_snap
-OUT = ROOT / WORK / 'natgate'; OUT.mkdir(parents=True, exist_ok=True)
+OUT = ROOT / PM_WORK / 'natgate'; OUT.mkdir(parents=True, exist_ok=True)
 CASES = [('k25', 'L2G_k25_c1', 63678190, '668c'), ('k8', 'L2G_k8_c1', 72484631, '668c'), ('k143', 'L2G_k143_c3', 45152624, '666c'),
-         ('k106', 'M2G_k106_c1', 95761881, '668c')]
+         ('k106', 'M2G_k106_c1', 95761881, '668c'),
+         ('k34', 'M2G_k34_c5', 233300606, '668c'),   # side 2 group 1, 22 men, state 6: the side holds all 14 lords (no enemy lord left)
+         ('k50', 'M2G_k50_c1', 170835066, '668c')]   # side 2 group 2, 24 men, state 9: enemy lords hold 33 and 34 at home
 def repl(snap, cmds):
     return subprocess.run(['dotnet', 'exec', 'bin/Debug/net8.0/M68000.dll', 'resume', str(snap), 'repl'], input='\n'.join(cmds) + '\nq\n', capture_output=True, text=True,
                           cwd=ROOT, env=dict(os.environ, ATARI_NOTRACE='1')).stdout

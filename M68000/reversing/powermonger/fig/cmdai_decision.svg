@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 956" width="900" height="956" role="img" aria-labelledby="t1 d1" xml:space="preserve">
+<title id="t1">Commander AI decision: one group per pass of $6564</title>
+<desc id="d1">Flow of the commander AI's group loop $6564 and decision chain $65b4 with the natural hit count of each arm.
+Sources (reversing/powermonger/strategy.md): "The commander AI `$6522`" (the filters, the state switch, decide arms 1 to 5, "The pending word"),
+"Natural coverage" (short census 95 / 2 / 77 / 179 / 137; 75-land census $65c8 3507, $65f4 2286, $6638 31122, $666c 145, $668c 5, $664c 6913, $66a4 0, $6884 0),
+"The exact arm conditions" (predicate_check.py 5724/5724), "Food fallback `$66a4`" (food_boundary.py 15/15), "Transfer `$664c`, `$668c`",
+"Refusal `$6884` cannot hold from any caller", "Proof of the commander AI" (gate_cmdai.py 323/323 natural, 280/280 synthetic).
+Branch addresses checked against a disassembly of $6564..$66e6 (scratchpad/pm123/win/m1_map.ram). Full fact list: cmdai_decision.facts.md.</desc>
+<style>
+text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
+.t{font-size:16px;font-weight:bold}
+.c{font-size:11.5px;fill:#424a53}
+.m{font-family:Menlo, Consolas, "DejaVu Sans Mono", monospace;font-size:11.5px}
+.s{font-size:11px;fill:#424a53}
+.h{font-size:13px;font-weight:bold}
+.n{font-size:12px;font-weight:bold;fill:#0550ae}
+.pv{fill:#dafbe1;stroke:#1a7f37;stroke-width:1.8}
+.lv{fill:#ddf4ff;stroke:#0969da;stroke-width:1.8}
+.cr{fill:#f6f8fa;stroke:#57606a;stroke-width:1.5;stroke-dasharray:6 3}
+.in{fill:#fff1e5;stroke:#bc4c00;stroke-width:1.5;stroke-dasharray:2 3}
+.ln{stroke:#424a53;stroke-width:1.3;fill:none;marker-end:url(#a)}
+</style>
+<defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#424a53"/></marker></defs>
+<rect x="0" y="0" width="900" height="956" fill="#ffffff"/>
+
+<text x="20" y="26" class="t">Commander AI: how one group reaches an order ($6564, decide at $65b4)</text>
+<text x="20" y="45" class="c">Box border = evidence for the logic. Blue numbers = live hit counts (75-land census unless marked "short").</text>
+<rect x="20" y="54" width="22" height="12" class="pv"/><text x="47" y="64" class="s">proven (callcap gate)</text>
+<rect x="190" y="54" width="22" height="12" class="lv"/><text x="217" y="64" class="s">live (seen running)</text>
+<rect x="345" y="54" width="22" height="12" class="cr"/><text x="372" y="64" class="s">code read</text>
+<rect x="460" y="54" width="22" height="12" class="in"/><text x="487" y="64" class="s">inferred</text>
+
+<!-- gate section -->
+<rect x="20" y="80" width="430" height="32" rx="4" class="pv"/>
+<text x="30" y="100" class="m">$6564  groups k = 5..0, D7 = 10..0, A1 = side base + D7</text>
+
+<rect x="20" y="126" width="430" height="32" rx="4" class="pv"/>
+<text x="30" y="146"><tspan class="m">28(A1) &lt;= 0</tspan>  owner side: no group</text>
+<rect x="20" y="170" width="430" height="32" rx="4" class="pv"/>
+<text x="30" y="190"><tspan class="m">4(A1) != 0</tspan>  order pending (cleared by a pigeon landing)</text>
+<path d="M450,142 H612" class="ln"/><path d="M450,186 H612" class="ln"/>
+<text x="462" y="137" class="s">yes</text><text x="462" y="181" class="s">yes</text>
+<rect x="615" y="126" width="265" height="76" rx="4" class="pv"/>
+<text x="627" y="148" class="h">next group <tspan class="m">$66c8</tspan></text>
+<text x="627" y="166" class="s">159 snapshots: pending set on 185 of 250</text>
+<text x="627" y="181" class="s">camped AI groups; 65 deciding = 24 first</text>
+<text x="627" y="196" class="s">groups + 41 of 394 non-lead groups</text>
+
+<rect x="20" y="216" width="430" height="32" rx="4" class="pv"/>
+<text x="30" y="236">state <tspan class="m">76(A1)</tspan>?   9 = decide now,  6 = camp,  other</text>
+<path d="M450,232 H612" class="ln"/><text x="462" y="227" class="s">other</text>
+<rect x="615" y="216" width="265" height="32" rx="4" class="pv"/>
+<text x="627" y="236"><tspan class="m">$66e8</tspan> target recheck, order <tspan class="m">$02</tspan></text>
+
+<rect x="60" y="262" width="390" height="40" rx="4" class="pv"/>
+<text x="70" y="278" class="m">256(A1)+$14 &gt; $2df72 ?  ($65a0 cmp.w, bgt)</text>
+<text x="70" y="295" class="s">signed words: the signed-clock stall happens here</text>
+<path d="M235,248 V259" class="ln"/><text x="241" y="257" class="s">6</text>
+<path d="M450,282 H612" class="ln"/><text x="462" y="277" class="s">yes: wait</text>
+<rect x="615" y="266" width="265" height="32" rx="4" class="pv"/>
+<text x="627" y="286">next group (camped under 20 ticks)</text>
+
+<rect x="60" y="316" width="390" height="32" rx="4" class="pv"/>
+<text x="70" y="336"><tspan class="m">$6762</tspan> follow-up table <tspan class="m">$67d0</tspan> on <tspan class="m">268(A1)</tspan></text>
+<path d="M235,302 V313" class="ln"/><text x="241" y="311" class="s">no</text>
+<path d="M450,332 H612" class="ln"/><text x="462" y="327" class="s">returns 1</text>
+<rect x="615" y="316" width="265" height="32" rx="4" class="pv"/>
+<text x="627" y="336">slot done: food, men, equip, invent</text>
+
+<!-- state 9 bypass -->
+<path d="M20,240 H10 V400 H17" class="ln"/>
+<text x="0" y="0" class="s" transform="translate(30,378) rotate(-90)">state 9</text>
+<path d="M235,348 V378" class="ln"/><text x="241" y="368" class="s">returns 0</text>
+
+<!-- decide section -->
+<text x="20" y="396" class="h">Decide <tspan class="m">$65b4</tspan>: first match wins</text>
+<text x="615" y="396" class="h">Arm: posture <tspan class="m">136()</tspan>, order</text>
+
+<!-- row 1 -->
+<rect x="20" y="406" width="430" height="46" rx="4" class="pv"/>
+<text x="30" y="424"><tspan class="m">52(A1) &lt; $16</tspan> (fewer than 22 men) and</text>
+<text x="30" y="442"><tspan class="m">$69b4(8)</tspan> finds an own lord with more than 1 at home</text>
+<path d="M450,429 H482" class="ln"/>
+<rect x="485" y="406" width="395" height="46" rx="4" class="pv"/>
+<text x="495" y="424"><tspan class="m">$65c8</tspan> arm 1: posture 2, <tspan class="m">$08</tspan> get men at that lord</text>
+<text x="495" y="442"><tspan class="n">3507</tspan><tspan class="s">   short census: </tspan><tspan class="n">95</tspan><tspan class="s"> calls of </tspan><tspan class="m">$69b4</tspan></text>
+<path d="M235,452 V463" class="ln"/><text x="241" y="461" class="s">no</text>
+
+<!-- row 2 -->
+<rect x="20" y="466" width="430" height="46" rx="4" class="pv"/>
+<text x="30" y="484"><tspan class="m">D7 != 0</tspan> and group 0 is fighting another group</text>
+<text x="30" y="502">(state <tspan class="m">$d</tspan>, opponent class <tspan class="m">280(group 0) == 4</tspan>)</text>
+<path d="M450,489 H482" class="ln"/>
+<rect x="485" y="466" width="395" height="46" rx="4" class="pv"/>
+<text x="495" y="484"><tspan class="m">$65f4</tspan> escort: posture 2, <tspan class="m">$0c</tspan> to group 0's opponent (<tspan class="m">292</tspan>)</text>
+<text x="495" y="502"><tspan class="n">2286</tspan><tspan class="s"> (k25 alone 182 in 39 lands)   short: </tspan><tspan class="n">2</tspan></text>
+<path d="M235,512 V523" class="ln"/><text x="241" y="521" class="s">no</text>
+
+<!-- escort transposition note -->
+<rect x="485" y="518" width="395" height="22" rx="4" class="lv"/>
+<text x="495" y="533" class="s">target packed {y_hi, x_hi}: x and y swapped, live 1 of 1 (k25)</text>
+
+<!-- row 3 -->
+<rect x="20" y="526" width="430" height="84" rx="4" class="pv"/>
+<text x="30" y="544"><tspan class="m">$661a</tspan>: <tspan class="m">men - 4 &gt; 0</tspan> and <tspan class="m">$68fe(men - 4)</tspan> finds</text>
+<text x="30" y="562">the nearest enemy lord with fewer at home; then</text>
+<text x="30" y="580"><tspan class="m">$68ee</tspan> trip food score vs food <tspan class="m">112(A1)</tspan> (signed):</text>
+<text x="30" y="599" class="s">score = (d/2)((men-4)/8+1) + d/2, d the $68fe score</text>
+<path d="M450,568 H482" class="ln"/><text x="456" y="562" class="s">&lt;=</text>
+<rect x="485" y="550" width="395" height="40" rx="4" class="pv"/>
+<text x="495" y="566"><tspan class="m">$6638</tspan> attack: posture 4, <tspan class="m">$0c</tspan> march and engage</text>
+<text x="495" y="583"><tspan class="n">31122</tspan><tspan class="s">   short census: </tspan><tspan class="n">77</tspan></text>
+<path d="M450,600 V616 H482" class="ln"/><text x="456" y="612" class="s">&gt;</text>
+<rect x="485" y="598" width="395" height="54" rx="4" class="pv"/>
+<text x="495" y="614"><tspan class="m">$66a4</tspan> food fallback: <tspan class="m">$69b4(6)</tspan> own lord by food,</text>
+<text x="495" y="630"><tspan class="m">$06</tspan> get food, posture untouched;  natural <tspan class="n">0</tspan></text>
+<text x="495" y="645" class="s">compare proven 15 of 15 with food poked; food starts at $5fff</text>
+<path d="M235,610 V665" class="ln"/><text x="241" y="645" class="s">no (or no lord found)</text>
+
+<!-- row 4 -->
+<rect x="20" y="668" width="430" height="46" rx="4" class="pv"/>
+<text x="30" y="686"><tspan class="m">$664c</tspan>: <tspan class="m">$69b4(8)</tspan> finds an own lord (T at home) and</text>
+<text x="30" y="704"><tspan class="m">$68fe(men + T)</tspan> finds an enemy lord   <tspan class="n">6913</tspan><tspan class="s"> entries</tspan></text>
+<path d="M450,691 H482" class="ln"/>
+<rect x="485" y="668" width="395" height="46" rx="4" class="pv"/>
+<text x="495" y="686"><tspan class="m">$666c</tspan> arm 4: posture 2, <tspan class="m">$08</tspan> get men at the own lord</text>
+<text x="495" y="704"><tspan class="n">145</tspan><tspan class="s">  (k143 140, k106 and k50 5)</tspan></text>
+<path d="M235,714 V725" class="ln"/><text x="241" y="723" class="s">no</text>
+
+<!-- row 5 -->
+<rect x="20" y="728" width="430" height="46" rx="4" class="pv"/>
+<text x="30" y="746"><tspan class="m">$6680</tspan>: <tspan class="m">D7 != 0</tspan> (not group 0) and</text>
+<text x="30" y="764"><tspan class="m">52(A1) != 0</tspan> (the group has men)</text>
+<path d="M450,751 H482" class="ln"/>
+<rect x="485" y="728" width="395" height="46" rx="4" class="pv"/>
+<text x="495" y="746"><tspan class="m">$668c</tspan> transfer: posture 2, <tspan class="m">$04</tspan>, param <tspan class="m">D7 &lt;&lt; 8</tspan></text>
+<text x="495" y="764"><tspan class="n">5</tspan><tspan class="s">  all examined, all executed (k25, k8, k106, k34, k50)</tspan></text>
+<path d="M235,774 V785" class="ln"/><text x="241" y="783" class="s">no</text>
+<rect x="20" y="788" width="430" height="32" rx="4" class="pv"/>
+<text x="30" y="808">next group <tspan class="m">$66c8</tspan>: group 0 or an empty group idles</text>
+
+<!-- issue path -->
+<rect x="485" y="806" width="395" height="54" rx="4" class="cr"/>
+<text x="495" y="823">Every arm issues through <tspan class="m">$67ee</tspan> / <tspan class="m">$6822</tspan>. Refusal <tspan class="m">$6884</tspan></text>
+<text x="495" y="839">(state already <tspan class="m">$6888[type]</tspan>): cannot hold from the 5 call</text>
+<text x="495" y="854">sites, 25 triples, 0 refuse; natural <tspan class="n">0</tspan></text>
+
+<text x="20" y="886" class="s">Whole routine: py/cmdai/gate_cmdai.py 323/323 natural and 280/280 synthetic states. Predicates: py/arms/predicate_check.py 5724/5724.</text>
+<text x="20" y="902" class="s">75-land census: 75 unpoked Play Random Land lands x 2G steps (about 78G steps with the land alive), py/arms/summarize.py L2G M2G.</text>
+<text x="20" y="918" class="s">Short census: py/cmdai/census.py, 29 start snapshots x 150M steps. $664c's 6913 are mostly group 0 and empty groups re-deciding every tick.</text>
+<text x="20" y="934" class="s">Natural transfers and the k143 arm-4 decision: py/arms/gate_nat_arms.py 6/6 states, 28/28 changed bytes against callcap 6522.</text>
+</svg>

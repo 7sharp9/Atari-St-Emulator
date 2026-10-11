@@ -30,8 +30,9 @@ Open (the full list, with the reasons, is `SPEC.md` Status):
 - Godot runs at zoom 4 only; the stepper and the Godot view do not draw weather; `Equipment.fs`
   is called by nothing, because the port has no entity simulation.
 - Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn; `byte6` 6 has no established
-  role; the plough and siege-engine overlays and the `$119b2` overlay are ported from the code but
-  never seen on screen.
+  role; the plough and siege-engine overlays are ported from the code but never seen on screen; a
+  Ruin (`record[7] == $0a`: two are placed by mission 1's town layouts, drawn with the `$119b2`
+  overlay of the building it is rebuilt into) is not ported and was in view in none of the captures.
 - HUD glyph sheet and compass panel are not decoded as assets; whether a territory change re-bakes
   the minimap is undecided.
 - Dropping the per-pixel dither for a fragment-shader height ramp (`Terrain.flatPaletteIndex`, or the
@@ -163,12 +164,12 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
   at `pan_w` one man had moved).
 - **Inline draw order.** Each cell's sprites are drawn after its triangles (`Fill.plan` returns the
   walk as data, `Scene.steps` interleaves, `Scene.render` draws). Inline beats sprites-last on every
-  captured frame, including three rotated in the emulator: `pm88_f1` 96.80% against 89.17% exact
-  (measured before the later sprite and phase fixes; current scores are under "Later lands" below),
-  and the game agrees with inline at 1159 of the 1178 pixels where the two orders differ.
-  `pm_render_ref.py` draws inline too (a `_cell_done` hook per walk handler) and equals `Scene.render`
-  on all 15178 drawn pixels of `pm88_f1` (`../py/parity.py`). The settlement building (`byte6 == 2`, the
-  fort's keep) is part of this: `pm88_f1` scores 96.80% with it and 95.93% without.
+  captured frame, including three rotated in the emulator: `pm88_f1` 99.99% (15177/15178) against
+  92.28%, and the game agrees with inline at 1171 of the 1172 pixels where the two orders differ
+  (`order_test.fsx`, table in `SPEC.md` §6 "Draw order"). `pm_render_ref.py` draws inline too (a
+  `_cell_done` hook per walk handler) and equals `Scene.render` on all 15178 drawn pixels of
+  `pm88_f1` (`../py/parity.py`). The settlement building (`byte6 == 2`, the fort's keep) is part of
+  this: `pm88_f1` scores 99.99% with it and 99.15% (14923/15051) without.
 - **Later lands.** Everything a later land draws is ported except `byte6` 18 and 28 (`SPEC.md` §6
   "Every category"). `Sprites.placeEntity` returns every frame a record draws, in order (these
   categories draw two to ten). `EntityRec` has `B15`, `B32`, `W18`, `Icons`, `B33`, `B44` and
@@ -202,7 +203,8 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
   `Fill.planQ*` is the same code over N x N cells; against emulator captures at zooms 1-7, terrain away
   from sprites matches 99.2-99.7% and sprite pixels 74-84%. `sprites/prop32_sheet_raw.bin` is the 32 x 32
   building sheet (27 frames per sheet). `Projection.projectGrid` is float and agrees with the game's
-  corners within a pixel at 78-95% of vertices; the exact integer reconstruction is scratch only.
+  corners within a pixel at 78-95% of vertices (rounded to nearest); the exact integer reconstruction
+  is committed as `../py/proj/proj_ref.py`, gated 3240/3240 by `../py/proj/gate_fecc.py`.
   A mid-render capture records the tick after the one its displayed frame used, so scorers try all four
   water ticks.
 - **Weather** (`SPEC.md` §7). `Weather.draw` ports `$1a856` from `assets/weather.bin`; winter and autumn

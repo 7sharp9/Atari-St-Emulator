@@ -1,0 +1,184 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1026" width="900" height="1026">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#424242"/></marker></defs>
+<rect x="0" y="0" width="900" height="1026" fill="#ffffff"/>
+<text x="16.0" y="28.0" font-family='Helvetica, Arial, sans-serif' font-size="18" font-weight="bold" fill="#212121" text-anchor="start">PowerMonger economy: what moves a lord's food, men, goods and loyalty</text>
+<text x="16.0" y="47.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#424242" text-anchor="start">Flows into and out of one lord record $4e514 (32 bytes); every flow is a write by a named routine</text>
+<rect x="336.0" y="70.0" width="228.0" height="784.0" rx="8" fill="#f5f5f5" stroke="#9e9e9e" stroke-width="1.3"/>
+<text x="450.0" y="88.0" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="middle">lord record $4e514</text>
+<rect x="346.0" y="96.0" width="208.0" height="204.0" rx="5" fill="#ffffff" stroke="#757575" stroke-width="1"/>
+<text x="450.0" y="114.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="bold" fill="#212121" text-anchor="middle">+6  food (store)</text>
+<rect x="346.0" y="312.0" width="208.0" height="144.0" rx="5" fill="#ffffff" stroke="#757575" stroke-width="1"/>
+<text x="450.0" y="330.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="bold" fill="#212121" text-anchor="middle">+8  troops_field (men at home)</text>
+<rect x="346.0" y="468.0" width="208.0" height="240.0" rx="5" fill="#ffffff" stroke="#757575" stroke-width="1"/>
+<text x="450.0" y="486.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="bold" fill="#212121" text-anchor="middle">+24..31  goods[8]</text>
+<rect x="346.0" y="720.0" width="208.0" height="120.0" rx="5" fill="#ffffff" stroke="#757575" stroke-width="1"/>
+<text x="450.0" y="738.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="bold" fill="#212121" text-anchor="middle">+14  loyalty_pressure</text>
+<text x="358.0" y="520.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">Pike, Sword, Bow, Plough,</text>
+<text x="358.0" y="534.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">Boat, Pot, Catapult, Cannon</text>
+<text x="358.0" y="548.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">(0..255 each; the lord</text>
+<text x="358.0" y="562.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">panel prints them)</text>
+<text x="358.0" y="132.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">filled by catches and</text>
+<text x="358.0" y="146.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">returning farmers;</text>
+<text x="358.0" y="160.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">emptied by armies,</text>
+<text x="358.0" y="174.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">gatherers and winter upkeep</text>
+<text x="358.0" y="348.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">no growth term: men</text>
+<text x="358.0" y="362.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">are conserved (econ. 6)</text>
+<text x="358.0" y="756.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">&gt;= 600: $550e revolt,</text>
+<text x="358.0" y="770.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">lord and his buildings</text>
+<text x="358.0" y="784.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">change side, reset 300</text>
+<rect x="16.0" y="70.0" width="248.0" height="784.0" rx="8" fill="none" stroke="#9e9e9e" stroke-width="1"/>
+<text x="26.0" y="88.0" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="start">Civilian jobs (entity modes)</text>
+<rect x="636.0" y="70.0" width="248.0" height="784.0" rx="8" fill="none" stroke="#9e9e9e" stroke-width="1"/>
+<text x="646.0" y="88.0" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="start">The army: group $51538 + men</text>
+<text x="648.0" y="108.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">group food 36(group)  ("Food:")</text>
+<text x="648.0" y="122.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">carried stock 84 + 12i (8 items)</text>
+<text x="648.0" y="136.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">men: byte 44 weapon, 33 tool</text>
+<rect x="26.0" y="100.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="116.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">fisher delivers: mode $60</text>
+<text x="33.0" y="130.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">$15ddc, one catch per trip</text>
+<line x1="254.0" y1="119.0" x2="336.0" y2="119.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="112.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">+4</text>
+<rect x="26.0" y="148.0" width="228.0" height="52.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="164.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">farmer home: mode $16</text>
+<text x="33.0" y="178.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">+2 more with a Plough (byte 33 = 8):</text>
+<text x="33.0" y="192.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">0 of 5164 returns doubled</text>
+<line x1="254.0" y1="174.0" x2="336.0" y2="174.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="167.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">+2</text>
+<rect x="26.0" y="210.0" width="228.0" height="52.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="226.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">gatherer delivery, no group:</text>
+<text x="33.0" y="240.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">mode $42 -&gt; $600a (food &lt;= 2:</text>
+<text x="33.0" y="254.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">sent home, delivery lost)</text>
+<line x1="336.0" y1="236.0" x2="254.0" y2="236.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="229.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">-2</text>
+<rect x="26.0" y="268.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="284.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">winter park: mode $7c pulse</text>
+<text x="33.0" y="298.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">$163b8, each parked man</text>
+<line x1="336.0" y1="287.0" x2="254.0" y2="287.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="280.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">-1</text>
+<rect x="646.0" y="150.0" width="228.0" height="52.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="653.0" y="166.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">order $06 take food: mode $1a</text>
+<text x="653.0" y="180.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">food &gt;&gt; shift into 36(group)</text>
+<text x="653.0" y="194.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">live: town 22 -&gt; 11</text>
+<line x1="564.0" y1="176.0" x2="646.0" y2="176.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="169.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">slice</text>
+<rect x="646.0" y="206.0" width="228.0" height="52.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.1"/>
+<text x="653.0" y="222.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">order $12 drop food: $3bc0</text>
+<text x="653.0" y="236.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">36(group) &gt;&gt; shift to the town</text>
+<text x="653.0" y="250.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">live: town 22 -&gt; 147</text>
+<line x1="646.0" y1="232.0" x2="564.0" y2="232.0" stroke="#1565c0" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="225.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">slice</text>
+<rect x="646.0" y="262.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="653.0" y="278.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">trade $63f4 (order $1c, mode $78):</text>
+<text x="653.0" y="292.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">food spent goes to the lord</text>
+<line x1="646.0" y1="281.0" x2="564.0" y2="281.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="274.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">+spent</text>
+<rect x="646.0" y="318.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="653.0" y="334.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">a recruit joins: mode $2a</text>
+<text x="653.0" y="348.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">$1b2a; order $08 summons $34f2</text>
+<line x1="564.0" y1="337.0" x2="646.0" y2="337.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="330.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">-1</text>
+<rect x="646.0" y="362.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="653.0" y="378.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">leaves a group: $1b8c -&gt; $1c04;</text>
+<text x="653.0" y="392.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">$37c2 re-parent $382a: -1</text>
+<line x1="646.0" y1="378.0" x2="564.0" y2="378.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<line x1="564.0" y1="384.0" x2="646.0" y2="384.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="374.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">+1 / -1</text>
+<rect x="646.0" y="406.0" width="228.0" height="38.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.1"/>
+<text x="653.0" y="422.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">transfer men, order $04: $1c96</text>
+<text x="653.0" y="436.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">live: 6 pairs for 6 men</text>
+<line x1="646.0" y1="422.0" x2="564.0" y2="422.0" stroke="#1565c0" stroke-width="1.3" marker-end="url(#ah)"/>
+<line x1="564.0" y1="428.0" x2="646.0" y2="428.0" stroke="#1565c0" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="418.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">-1 / +1</text>
+<rect x="26.0" y="318.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="334.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">revolt: $25d6 $2644, old lord</text>
+<text x="33.0" y="348.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">of a captain with no group</text>
+<line x1="336.0" y1="337.0" x2="254.0" y2="337.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="330.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">-1</text>
+<rect x="26.0" y="362.0" width="228.0" height="38.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.1"/>
+<text x="33.0" y="378.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">player pigeon lands: $42be</text>
+<text x="33.0" y="392.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">a dead man revived, 6 of 6</text>
+<line x1="254.0" y1="381.0" x2="336.0" y2="381.0" stroke="#1565c0" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="374.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">+1</text>
+<rect x="26.0" y="406.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="422.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">kill: $5590 tail $567e</text>
+<text x="33.0" y="436.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">an ungrouped man dies</text>
+<line x1="336.0" y1="425.0" x2="254.0" y2="425.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="418.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">-1</text>
+<rect x="26.0" y="470.0" width="228.0" height="66.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="486.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">gatherers: $5cde work order</text>
+<text x="33.0" y="500.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">-&gt; $3e fell / $40 build / $6a pots</text>
+<text x="33.0" y="514.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">-&gt; $42 deliver -&gt; $600a -&gt; $60dc</text>
+<text x="33.0" y="528.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">throttled: ~8100 ticks between</text>
+<line x1="254.0" y1="503.0" x2="336.0" y2="503.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="496.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">+1</text>
+<rect x="26.0" y="548.0" width="228.0" height="80.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.1"/>
+<text x="33.0" y="564.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">merchants: $159de takes, $159a4</text>
+<text x="33.0" y="578.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">banks, nearly always at the home</text>
+<text x="33.0" y="592.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">lord (k5_s4, 100M: 10 taken, 8 banked);</text>
+<text x="33.0" y="606.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">1 of 10 moved a Plough to another</text>
+<text x="33.0" y="620.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">lord (stale A0 at $15b54)</text>
+<line x1="254.0" y1="585.0" x2="336.0" y2="585.0" stroke="#1565c0" stroke-width="1.3" marker-end="url(#ah)"/>
+<line x1="336.0" y1="591.0" x2="254.0" y2="591.0" stroke="#1565c0" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="581.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">-1 / +1</text>
+<rect x="646.0" y="470.0" width="228.0" height="52.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="653.0" y="486.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">order $10 take equipment:</text>
+<text x="653.0" y="500.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">mode $6e -&gt; $61f8, goods &gt;&gt; shift</text>
+<text x="653.0" y="514.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">-&gt; $6352 / $638c equip or upgrade</text>
+<line x1="564.0" y1="496.0" x2="646.0" y2="496.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="489.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">&gt;&gt; shift</text>
+<rect x="646.0" y="534.0" width="228.0" height="52.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="653.0" y="550.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">trade $63f4: carried stock sold</text>
+<text x="653.0" y="564.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">at 2 x price, credit buys back</text>
+<text x="653.0" y="578.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">in the posture's order ($650a)</text>
+<line x1="646.0" y1="557.0" x2="564.0" y2="557.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<line x1="564.0" y1="563.0" x2="646.0" y2="563.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="553.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">sell / buy</text>
+<rect x="646.0" y="598.0" width="228.0" height="66.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="653.0" y="614.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">exchange $160f8 (modes $8e, $90):</text>
+<text x="653.0" y="628.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">weapon back, best bow/sword/pike</text>
+<text x="653.0" y="642.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">taken, farmer takes a Plough;</text>
+<text x="653.0" y="656.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">lord &gt;= 8: return misdirected</text>
+<line x1="646.0" y1="628.0" x2="564.0" y2="628.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<line x1="564.0" y1="634.0" x2="646.0" y2="634.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="624.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">swap</text>
+<rect x="646.0" y="670.0" width="228.0" height="38.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.1"/>
+<text x="653.0" y="686.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">drop equipment, order $18:</text>
+<text x="653.0" y="700.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">$39d4 D7=2, carried &gt;&gt; shift</text>
+<line x1="646.0" y1="689.0" x2="564.0" y2="689.0" stroke="#757575" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="682.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">&gt;&gt; shift</text>
+<rect x="646.0" y="724.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="653.0" y="740.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">order $06 take food:</text>
+<text x="653.0" y="754.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">+16 &gt;&gt; shift</text>
+<line x1="646.0" y1="743.0" x2="564.0" y2="743.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="736.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">+</text>
+<rect x="646.0" y="766.0" width="228.0" height="38.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.1"/>
+<text x="653.0" y="782.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">order $12 drop food, trade:</text>
+<text x="653.0" y="796.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">-8 own side (trade +8 other)</text>
+<line x1="646.0" y1="785.0" x2="564.0" y2="785.0" stroke="#1565c0" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="605.0" y="778.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">-</text>
+<rect x="26.0" y="724.0" width="228.0" height="66.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="740.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">winter park, mode $7c, first</text>
+<text x="33.0" y="754.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">pulse after a park only:</text>
+<text x="33.0" y="768.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">hungry (troops_field x 4 &gt;= food) +2,</text>
+<text x="33.0" y="782.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">fed -1</text>
+<line x1="254.0" y1="757.0" x2="336.0" y2="757.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="295.0" y="750.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="middle">+2 / -1</text>
+<rect x="26.0" y="798.0" width="228.0" height="38.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.1"/>
+<text x="33.0" y="814.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="bold" fill="#212121" text-anchor="start">revolt $550e at &gt;= 600: 10 of the</text>
+<text x="33.0" y="828.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">27 natural calls (17: conquest $539a)</text>
+<line x1="336.0" y1="817.0" x2="254.0" y2="817.0" stroke="#2e7d32" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="16.0" y="880.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="bold" fill="#212121" text-anchor="start">Reading the figure</text>
+<text x="16.0" y="896.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">shift = posture - 2 ($30fe): aggressive takes all, neutral half, passive a quarter. Men and goods are separate ledgers:</text>
+<text x="16.0" y="912.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">goods never become men. Food and goods meet only in the trade. The winter park (mode $7c) needs the season word</text>
+<text x="16.0" y="928.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">$57fd0 == 0: farmers ($16), merchants ($4e) and fishers ($5e) park there, so upkeep and loyalty move only in winter</text>
+<text x="16.0" y="944.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">(a man idling in $7e pulses too, never on that first-pulse edge). Mission 1 builds both enemy lords at 608; the first winter pulse resets them to 300.</text>
+<text x="16.0" y="960.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Gates: gate_fsm15.py (job modes, 18452/18452 bytes), gate_orders.py ($600a, $60dc, $61f8, $6352, $638c, $63f4),</text>
+<text x="16.0" y="976.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">gate_equip.py ($160f8, 385/385 over 201 states), diff_revolt.py (1778/1778 over 49 states), heartbeat block (99/99).</text>
+<text x="16.0" y="1006.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">Evidence:</text>
+<rect x="80.0" y="995.0" width="14.0" height="14.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="99.0" y="1006.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">proven (gate vs the real 68000)</text>
+<rect x="298.2" y="995.0" width="14.0" height="14.0" rx="3" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.3"/>
+<text x="317.2" y="1006.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">live (seen running, counted)</text>
+<rect x="497.8" y="995.0" width="14.0" height="14.0" rx="3" fill="#ffffff" stroke="#757575" stroke-width="1.3"/>
+<text x="516.8" y="1006.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">code read</text>
+</svg>

@@ -6,7 +6,12 @@ up, a tree and a man; an arrow on a pigeon, a marker, a man).
 Compared: every byte the real call changed against every byte the model changed, over the whole of RAM except the stack
 (`$2c800..$2c930`).  A byte missing on either side is a mismatch.
 
-    cd M68000 && python reversing/powermonger/py/gate_proj.py [name-substring] [synth]
+With `synth` it also plants arrows on group leads (flag bit 7 or 4, a group word 42, health 0/1/5) so that `$5590`'s tail runs
+`$2776`; their `$1ba3e` calls write the sample player's state, which the model leaves untracked and the compare skips, and on
+some lands `$2776` -> `$187d8` redraws the HUD: `noscreen` also skips the two game pages and the TOS screen (`$44e`).
+Output dir: `$PM_PROJ_OUT` (default scratchpad/pm140/proj/g).
+
+    cd M68000 && python reversing/powermonger/py/gate_proj.py [name-substring] [synth] [reuse] [noscreen]
 """
 import collections
 import json
@@ -20,10 +25,19 @@ import pm_fsm_ref as P
 from pm_fsm_diff import Harness
 
 C = "scratchpad/pm140/proj/corpus"
-OUT = "scratchpad/pm140/proj/g"
+OUT = os.environ.get("PM_PROJ_OUT", "scratchpad/pm140/proj/g")
 STACK = (0x2c800, 0x2c930)
+SKIP = [STACK, (0x1af3a, 0x1af3e), (0x2c990, 0x2c9a0), (0x2cb9e, 0x2cbb0)]   # stack; sample player ($1af3a stream pointer, $2c99x, $2cbax)
+if "noscreen" in sys.argv:
+    SKIP += [(0x1c700, 0x1c700 + 32000), (0x24400, 0x24400 + 32000), (0x78000, 0x78000 + 32000)]
+
+
+def skip(a):
+    return any(lo <= a < hi for lo, hi in SKIP)
+
+
 (ROOT / OUT).mkdir(parents=True, exist_ok=True)
-args = [a for a in sys.argv[1:] if a not in ("synth", "reuse")]
+args = [a for a in sys.argv[1:] if a not in ("synth", "reuse", "noscreen")]
 only = args[0] if args else None
 snaps = sorted((ROOT / C).glob("*/*.snap"))
 anchor = snaps[0]
@@ -44,7 +58,7 @@ for sn in snaps:
     if j.get("outcome") != "returned":
         fails.append((name, "outcome", j.get("outcome")))
         continue
-    real = {a: b1 for a, b0, b1 in j["mem"] if not STACK[0] <= a < STACK[1]}
+    real = {a: b1 for a, b0, b1 in j["mem"] if not skip(a)}
     P.init_tables(ram0)
     m = P.Mem(ram0)
     P.PROJ_TRACE.clear()
@@ -53,7 +67,7 @@ for sn in snaps:
     except AssertionError as e:
         excluded.append((name, str(e)[:60]))
         continue
-    model = {a: m.r[a] for a in range(len(ram0)) if m.r[a] != ram0[a] and not STACK[0] <= a < STACK[1]}
+    model = {a: m.r[a] for a in range(len(ram0)) if m.r[a] != ram0[a] and not skip(a)}
     keys = set(real) | set(model)
     bad = [a for a in keys if real.get(a, ram0[a]) != model.get(a, ram0[a])]
     arms.update(P.PROJ_TRACE)
@@ -114,6 +128,8 @@ if "synth" in sys.argv:
         """A target of the kind, with room in its cell for dx/dy, and a shooter of another side."""
         if kind == "man":
             c = men(m)
+        elif kind == "lead":   # a man the $5628 tail sends to $2776: flag bit 7 or 4 and a group word 42
+            c = [a for a in men(m) if (m.bu(a + 7) & 0x90) and m.wu(a + 42) != 0]
         else:
             c = linked(m, 0x14 if kind == "pigeon" else 0x16)
         c = [a for a in c if (m.wu(a + 8) & 0xff) >= 0x10 and (m.wu(a + 10) & 0xff) >= 0x16]
@@ -130,6 +146,8 @@ if "synth" in sys.argv:
     cases.append(("man_dead", "man", lambda m, T, S: (m.wb(T + 5, 0xff), plant(m, T, S, 0x28, 5))))
     cases.append(("man_life1", "man", lambda m, T, S: (m.wb(T + 45, 0x60), plant(m, T, S, 0x28, 1))))
     cases.append(("man_shooter_cool", "man", lambda m, T, S: (m.wb(S + 31, 0x34), m.wb(S + 18, 9), m.wb(T + 45, 0x60), plant(m, T, S, 0x28, 1))))
+    for health in (0x00, 0x01, 0x05):   # $2c993 := 0: the sound driver would wait on an interrupt under callcap
+        cases.append((f"lead_h{health:02x}", "lead", lambda m, T, S, h_=health: (m.wb(0x2c993, 0), m.wb(T + 45, h_), plant(m, T, S, 0x28, 5))))
     cases.append(("pigeon_hit", "pigeon", lambda m, T, S: plant(m, T, S, 0x28, 5)))
     cases.append(("pigeon_miss", "pigeon", lambda m, T, S: plant(m, T, S, 0x28, 5, dx=16)))
     cases.append(("pigeon_moving", "pigeon", lambda m, T, S: plant(m, T, S, 0x28, 5, vx=0x05, vy=0xfb, dx=5, dy=-5 & 0xffff)))
@@ -191,7 +209,7 @@ if "synth" in sys.argv:
             if j.get("outcome") != "returned":
                 fails.append((tag, "outcome", j.get("outcome")))
                 continue
-            real = {a: b1 for a, b0, b1 in j["mem"] if not STACK[0] <= a < STACK[1]}
+            real = {a: b1 for a, b0, b1 in j["mem"] if not skip(a)}
             m = P.Mem(ram1)
             P.PROJ_TRACE.clear()
             try:
@@ -199,7 +217,7 @@ if "synth" in sys.argv:
             except AssertionError as e:
                 excluded.append((tag, str(e)[:60]))
                 continue
-            model = {a: m.r[a] for a in range(len(ram1)) if m.r[a] != ram1[a] and not STACK[0] <= a < STACK[1]}
+            model = {a: m.r[a] for a in range(len(ram1)) if m.r[a] != ram1[a] and not skip(a)}
             keys = set(real) | set(model)
             bad = [a for a in keys if real.get(a, ram1[a]) != model.get(a, ram1[a])]
             arms.update(P.PROJ_TRACE)

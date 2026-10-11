@@ -1,0 +1,28 @@
+disk scratchpad/powermonger.st
+m 7a36 8
+m d038 16
+m 58474 16
+w 2df92 00a0003d
+w 2df8e 00a0003d
+w 2df96 00010001
+hits 300000 7202 72fa 7658 768c 76c4 7a22 cf46
+s 150000
+m d038 16
+kbd 1e
+s 150000
+kbd 9e
+s 150000
+kbd 14
+s 150000
+kbd 94
+s 150000
+m 58474 16
+m d038 16
+kbd 1c
+hits 150000 cf46 cfd0 cffa d002 d02c 1c390 19c2
+kbd 9c
+hits 300000 cf46 cfd0 cffa d002 d02c 1c390 19c2
+m 58474 16
+m d038 16
+m 7a36 8
+q

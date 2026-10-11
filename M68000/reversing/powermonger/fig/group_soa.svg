@@ -1,0 +1,378 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 858" width="900" height="858" role="img" aria-labelledby="t4 d4" xml:space="preserve">
+<title id="t4">Group record: six-word arrays in the $51538 side record</title>
+<desc id="d4">The side record $51538 + side*$13c holds a 4-byte queued-order header and then parallel arrays of six words, one word per group k = 0..5: group k's word n is at base + n + 2k. Two frames address it: the AI loop uses A1 = base + 2k (offset n), the executor and entity modes use the group offset D2 = side*$13c + $4c + 2k (offset n - 76). Sources: reversing/powermonger/strategy.md "`$51538` group-order table" (the n(A1) table), "Data structures (C)" (pm_side_groups), "The commander AI `$6522`" (pending word), "The game's own text: names for the fields" (aggression display only); ai.md "`$4562` how an order reaches a subordinate captain" (word 48 the sender; $6ac6 reads 48(A1) with A1 = $51538 + D2, checked by disassembly). Full list: group_soa.facts.md.</desc>
+<style>
+text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
+.t{font-size:16px;font-weight:bold}
+.c{font-size:11.5px;fill:#424a53}
+.m{font-family:Menlo, Consolas, "DejaVu Sans Mono", monospace;font-size:11.5px}
+.mm{font-family:Menlo, Consolas, "DejaVu Sans Mono", monospace;font-size:10px;fill:#424a53}
+.s{font-size:11px;fill:#424a53}
+.h{font-size:12px;font-weight:bold}
+.pv{fill:#dafbe1;stroke:#1a7f37;stroke-width:1.5}
+.lv{fill:#ddf4ff;stroke:#0969da;stroke-width:1.5}
+.cr{fill:#f6f8fa;stroke:#57606a;stroke-width:1.3;stroke-dasharray:6 3}
+.in{fill:#fff1e5;stroke:#bc4c00;stroke-width:1.3;stroke-dasharray:2 3}
+.na{fill:#ffffff;stroke:#afb8c1;stroke-width:1}
+.cell{fill:#ffffff;stroke:#8c959f;stroke-width:0.8}
+.k2{fill:#fff8c5;stroke:#9a6700;stroke-width:1.4}
+</style>
+<rect x="0" y="0" width="900" height="858" fill="#ffffff"/>
+<text x="20" y="26" class="t">Group fields are six-word arrays: group k's word n is at side base + n + 2k</text>
+<text x="20" y="45" class="c">Meaning-cell border = evidence for the field's role. Yellow column: group 2, the worked example below.</text>
+<rect x="20" y="54" width="22" height="12" class="pv"/><text x="47" y="64" class="s">proven (gated routine or whole-image scan)</text>
+<rect x="300" y="54" width="22" height="12" class="cr"/><text x="327" y="64" class="s">code read</text>
+<rect x="395" y="54" width="22" height="12" class="na"/><text x="422" y="64" class="s">not named</text>
+<rect x="20" y="80" width="420" height="152" rx="4" fill="#f6f8fa" stroke="#57606a" stroke-width="1"/>
+<text x="30" y="100" class="h">Two frames for the same word</text>
+<text x="30" y="118">side base = <tspan class="m">$51538 + side * $13c</tspan> (316 bytes, 5 sides)</text>
+<text x="30" y="136">AI loop <tspan class="m">$6564</tspan>: <tspan class="m">A1 = base + D7</tspan>, <tspan class="m">D7 = 2k</tspan></text>
+<text x="30" y="154">   field at <tspan class="m">n(A1)</tspan>, e.g. men <tspan class="m">52(A1)</tspan></text>
+<text x="30" y="172">executor, entity modes: group offset</text>
+<text x="30" y="190">   <tspan class="m">D2 = side * $13c + $4c + 2k</tspan>, field at <tspan class="m">(n - 76)</tspan></text>
+<text x="30" y="208">   e.g. men <tspan class="m">-24(A3)</tspan>, pending <tspan class="m">-72(A0)</tspan> at <tspan class="m">$4220</tspan></text>
+<text x="30" y="226" class="s">Header: long +0 queued flag, byte +1 type, word +2 parameter.</text>
+<rect x="460" y="80" width="420" height="152" rx="4" class="k2"/>
+<text x="470" y="100" class="h">Worked example: side 1, group 2 (k = 2, D7 = 4)</text>
+<text x="470" y="118">base = <tspan class="m">$51538 + $13c = $51674</tspan></text>
+<text x="470" y="136">men: <tspan class="m">$51674 + 52 + 4 = $516ac</tspan></text>
+<text x="470" y="154">group offset <tspan class="m">D2 = $13c + $4c + 4 = $18c</tspan></text>
+<text x="470" y="172">men again: <tspan class="m">$51538 + $18c - 24 = $516ac</tspan></text>
+<text x="470" y="190">owner: <tspan class="m">$51674 + 28 + 4 = $51694</tspan></text>
+<text x="470" y="208" class="s">Trap: 30(A1) is group k+1's owner, not a field of group k;</text>
+<text x="470" y="226" class="s">a REPL "w" writes a longword, covering two groups' words.</text>
+<text x="20" y="250" class="h">n(A1)</text><text x="70" y="250" class="h">group</text><text x="120" y="250" class="h">field</text>
+<text x="247" y="250" class="h" text-anchor="middle">k=0</text>
+<text x="297" y="250" class="h" text-anchor="middle">k=1</text>
+<text x="347" y="250" class="h" text-anchor="middle">k=2</text>
+<text x="397" y="250" class="h" text-anchor="middle">k=3</text>
+<text x="447" y="250" class="h" text-anchor="middle">k=4</text>
+<text x="497" y="250" class="h" text-anchor="middle">k=5</text>
+<text x="534" y="250" class="h">meaning</text>
+<text x="20" y="274" class="m">+4</text>
+<text x="70" y="274" class="m">-72</text>
+<text x="120" y="274">pending / link</text>
+<rect x="222" y="260" width="50" height="21" class="cell"/>
+<text x="247.0" y="274" class="mm" text-anchor="middle">+4</text>
+<rect x="272" y="260" width="50" height="21" class="cell"/>
+<text x="297.0" y="274" class="mm" text-anchor="middle">+6</text>
+<rect x="322" y="260" width="50" height="21" class="k2"/>
+<text x="347.0" y="274" class="mm" text-anchor="middle">+8</text>
+<rect x="372" y="260" width="50" height="21" class="cell"/>
+<text x="397.0" y="274" class="mm" text-anchor="middle">+10</text>
+<rect x="422" y="260" width="50" height="21" class="cell"/>
+<text x="447.0" y="274" class="mm" text-anchor="middle">+12</text>
+<rect x="472" y="260" width="50" height="21" class="cell"/>
+<text x="497.0" y="274" class="mm" text-anchor="middle">+14</text>
+<rect x="530" y="260" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="274" class="s">4(A1) := D7 by $6822; cleared by $4220 (pigeon landing), $6b20</text>
+<text x="20" y="299" class="m">+16</text>
+<text x="120" y="299"></text>
+<rect x="222" y="285" width="50" height="21" class="na"/>
+<text x="247.0" y="299" class="mm" text-anchor="middle">+16</text>
+<rect x="272" y="285" width="50" height="21" class="na"/>
+<text x="297.0" y="299" class="mm" text-anchor="middle">+18</text>
+<rect x="322" y="285" width="50" height="21" class="k2"/>
+<text x="347.0" y="299" class="mm" text-anchor="middle">+20</text>
+<rect x="372" y="285" width="50" height="21" class="na"/>
+<text x="397.0" y="299" class="mm" text-anchor="middle">+22</text>
+<rect x="422" y="285" width="50" height="21" class="na"/>
+<text x="447.0" y="299" class="mm" text-anchor="middle">+24</text>
+<rect x="472" y="285" width="50" height="21" class="na"/>
+<text x="497.0" y="299" class="mm" text-anchor="middle">+26</text>
+<rect x="530" y="285" width="350" height="21" rx="3" class="na"/>
+<text x="536" y="299" class="s">not named in strategy.md</text>
+<text x="20" y="324" class="m">+28</text>
+<text x="70" y="324" class="m">-48</text>
+<text x="120" y="324">owner side</text>
+<rect x="222" y="310" width="50" height="21" class="cell"/>
+<text x="247.0" y="324" class="mm" text-anchor="middle">+28</text>
+<rect x="272" y="310" width="50" height="21" class="cell"/>
+<text x="297.0" y="324" class="mm" text-anchor="middle">+30</text>
+<rect x="322" y="310" width="50" height="21" class="k2"/>
+<text x="347.0" y="324" class="mm" text-anchor="middle">+32</text>
+<rect x="372" y="310" width="50" height="21" class="cell"/>
+<text x="397.0" y="324" class="mm" text-anchor="middle">+34</text>
+<rect x="422" y="310" width="50" height="21" class="cell"/>
+<text x="447.0" y="324" class="mm" text-anchor="middle">+36</text>
+<rect x="472" y="310" width="50" height="21" class="cell"/>
+<text x="497.0" y="324" class="mm" text-anchor="middle">+38</text>
+<rect x="530" y="310" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="324" class="s">&lt;= 0: no group, the AI skips it (not the men)</text>
+<text x="20" y="349" class="m">+40</text>
+<text x="70" y="349" class="m">-36</text>
+<text x="120" y="349">first man</text>
+<rect x="222" y="335" width="50" height="21" class="cell"/>
+<text x="247.0" y="349" class="mm" text-anchor="middle">+40</text>
+<rect x="272" y="335" width="50" height="21" class="cell"/>
+<text x="297.0" y="349" class="mm" text-anchor="middle">+42</text>
+<rect x="322" y="335" width="50" height="21" class="k2"/>
+<text x="347.0" y="349" class="mm" text-anchor="middle">+44</text>
+<rect x="372" y="335" width="50" height="21" class="cell"/>
+<text x="397.0" y="349" class="mm" text-anchor="middle">+46</text>
+<rect x="422" y="335" width="50" height="21" class="cell"/>
+<text x="447.0" y="349" class="mm" text-anchor="middle">+48</text>
+<rect x="472" y="335" width="50" height="21" class="cell"/>
+<text x="497.0" y="349" class="mm" text-anchor="middle">+50</text>
+<rect x="530" y="335" width="350" height="21" rx="3" class="cr"/>
+<text x="536" y="349" class="s">roster head, next man via 26(man)</text>
+<text x="20" y="374" class="m">+52</text>
+<text x="70" y="374" class="m">-24</text>
+<text x="120" y="374">men</text>
+<rect x="222" y="360" width="50" height="21" class="cell"/>
+<text x="247.0" y="374" class="mm" text-anchor="middle">+52</text>
+<rect x="272" y="360" width="50" height="21" class="cell"/>
+<text x="297.0" y="374" class="mm" text-anchor="middle">+54</text>
+<rect x="322" y="360" width="50" height="21" class="k2"/>
+<text x="347.0" y="374" class="mm" text-anchor="middle">+56</text>
+<rect x="372" y="360" width="50" height="21" class="cell"/>
+<text x="397.0" y="374" class="mm" text-anchor="middle">+58</text>
+<rect x="422" y="360" width="50" height="21" class="cell"/>
+<text x="447.0" y="374" class="mm" text-anchor="middle">+60</text>
+<rect x="472" y="360" width="50" height="21" class="cell"/>
+<text x="497.0" y="374" class="mm" text-anchor="middle">+62</text>
+<rect x="530" y="360" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="374" class="s">captain panel &quot;Troops&quot;; arm 1 tests &lt; 22</text>
+<text x="20" y="399" class="m">+64</text>
+<text x="70" y="399" class="m">-12</text>
+<text x="120" y="399">lead</text>
+<rect x="222" y="385" width="50" height="21" class="cell"/>
+<text x="247.0" y="399" class="mm" text-anchor="middle">+64</text>
+<rect x="272" y="385" width="50" height="21" class="cell"/>
+<text x="297.0" y="399" class="mm" text-anchor="middle">+66</text>
+<rect x="322" y="385" width="50" height="21" class="k2"/>
+<text x="347.0" y="399" class="mm" text-anchor="middle">+68</text>
+<rect x="372" y="385" width="50" height="21" class="cell"/>
+<text x="397.0" y="399" class="mm" text-anchor="middle">+70</text>
+<rect x="422" y="385" width="50" height="21" class="cell"/>
+<text x="447.0" y="399" class="mm" text-anchor="middle">+72</text>
+<rect x="472" y="385" width="50" height="21" class="cell"/>
+<text x="497.0" y="399" class="mm" text-anchor="middle">+74</text>
+<rect x="530" y="385" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="399" class="s">lead man&#x27;s object offset (from $51b66)</text>
+<text x="20" y="424" class="m">+76</text>
+<text x="70" y="424" class="m">0</text>
+<text x="120" y="424">state</text>
+<rect x="222" y="410" width="50" height="21" class="cell"/>
+<text x="247.0" y="424" class="mm" text-anchor="middle">+76</text>
+<rect x="272" y="410" width="50" height="21" class="cell"/>
+<text x="297.0" y="424" class="mm" text-anchor="middle">+78</text>
+<rect x="322" y="410" width="50" height="21" class="k2"/>
+<text x="347.0" y="424" class="mm" text-anchor="middle">+80</text>
+<rect x="372" y="410" width="50" height="21" class="cell"/>
+<text x="397.0" y="424" class="mm" text-anchor="middle">+82</text>
+<rect x="422" y="410" width="50" height="21" class="cell"/>
+<text x="447.0" y="424" class="mm" text-anchor="middle">+84</text>
+<rect x="472" y="410" width="50" height="21" class="cell"/>
+<text x="497.0" y="424" class="mm" text-anchor="middle">+86</text>
+<rect x="530" y="410" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="424" class="s">$6 camp, $9 invent, $d fighting, ...</text>
+<text x="20" y="449" class="m">+88</text>
+<text x="70" y="449" class="m">12</text>
+<text x="120" y="449">eat timer</text>
+<rect x="222" y="435" width="50" height="21" class="cell"/>
+<text x="247.0" y="449" class="mm" text-anchor="middle">+88</text>
+<rect x="272" y="435" width="50" height="21" class="cell"/>
+<text x="297.0" y="449" class="mm" text-anchor="middle">+90</text>
+<rect x="322" y="435" width="50" height="21" class="k2"/>
+<text x="347.0" y="449" class="mm" text-anchor="middle">+92</text>
+<rect x="372" y="435" width="50" height="21" class="cell"/>
+<text x="397.0" y="449" class="mm" text-anchor="middle">+94</text>
+<rect x="422" y="435" width="50" height="21" class="cell"/>
+<text x="447.0" y="449" class="mm" text-anchor="middle">+96</text>
+<rect x="472" y="435" width="50" height="21" class="cell"/>
+<text x="497.0" y="449" class="mm" text-anchor="middle">+98</text>
+<rect x="530" y="435" width="350" height="21" rx="3" class="cr"/>
+<text x="536" y="449" class="s">$3e06 counts it to the side&#x27;s eat period</text>
+<text x="20" y="474" class="m">+100</text>
+<text x="70" y="474" class="m">24</text>
+<text x="120" y="474">target</text>
+<rect x="222" y="460" width="50" height="21" class="cell"/>
+<text x="247.0" y="474" class="mm" text-anchor="middle">+100</text>
+<rect x="272" y="460" width="50" height="21" class="cell"/>
+<text x="297.0" y="474" class="mm" text-anchor="middle">+102</text>
+<rect x="322" y="460" width="50" height="21" class="k2"/>
+<text x="347.0" y="474" class="mm" text-anchor="middle">+104</text>
+<rect x="372" y="460" width="50" height="21" class="cell"/>
+<text x="397.0" y="474" class="mm" text-anchor="middle">+106</text>
+<rect x="422" y="460" width="50" height="21" class="cell"/>
+<text x="447.0" y="474" class="mm" text-anchor="middle">+108</text>
+<rect x="472" y="460" width="50" height="21" class="cell"/>
+<text x="497.0" y="474" class="mm" text-anchor="middle">+110</text>
+<rect x="530" y="460" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="474" class="s">target link: a lord, settlement or object</text>
+<text x="20" y="499" class="m">+112</text>
+<text x="70" y="499" class="m">36</text>
+<text x="120" y="499">food</text>
+<rect x="222" y="485" width="50" height="21" class="cell"/>
+<text x="247.0" y="499" class="mm" text-anchor="middle">+112</text>
+<rect x="272" y="485" width="50" height="21" class="cell"/>
+<text x="297.0" y="499" class="mm" text-anchor="middle">+114</text>
+<rect x="322" y="485" width="50" height="21" class="k2"/>
+<text x="347.0" y="499" class="mm" text-anchor="middle">+116</text>
+<rect x="372" y="485" width="50" height="21" class="cell"/>
+<text x="397.0" y="499" class="mm" text-anchor="middle">+118</text>
+<rect x="422" y="485" width="50" height="21" class="cell"/>
+<text x="447.0" y="499" class="mm" text-anchor="middle">+120</text>
+<rect x="472" y="485" width="50" height="21" class="cell"/>
+<text x="497.0" y="499" class="mm" text-anchor="middle">+122</text>
+<rect x="530" y="485" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="499" class="s">captain panel &quot;Food&quot;; AI groups seeded $5fff</text>
+<text x="20" y="524" class="m">+124</text>
+<text x="70" y="524" class="m">48</text>
+<text x="120" y="524">sender</text>
+<rect x="222" y="510" width="50" height="21" class="cell"/>
+<text x="247.0" y="524" class="mm" text-anchor="middle">+124</text>
+<rect x="272" y="510" width="50" height="21" class="cell"/>
+<text x="297.0" y="524" class="mm" text-anchor="middle">+126</text>
+<rect x="322" y="510" width="50" height="21" class="k2"/>
+<text x="347.0" y="524" class="mm" text-anchor="middle">+128</text>
+<rect x="372" y="510" width="50" height="21" class="cell"/>
+<text x="397.0" y="524" class="mm" text-anchor="middle">+130</text>
+<rect x="422" y="510" width="50" height="21" class="cell"/>
+<text x="447.0" y="524" class="mm" text-anchor="middle">+132</text>
+<rect x="472" y="510" width="50" height="21" class="cell"/>
+<text x="497.0" y="524" class="mm" text-anchor="middle">+134</text>
+<rect x="530" y="510" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="524" class="s">lead of the side&#x27;s first group; 0 for it ($6ac6)</text>
+<text x="20" y="549" class="m">+136</text>
+<text x="70" y="549" class="m">60</text>
+<text x="120" y="549">posture</text>
+<rect x="222" y="535" width="50" height="21" class="cell"/>
+<text x="247.0" y="549" class="mm" text-anchor="middle">+136</text>
+<rect x="272" y="535" width="50" height="21" class="cell"/>
+<text x="297.0" y="549" class="mm" text-anchor="middle">+138</text>
+<rect x="322" y="535" width="50" height="21" class="k2"/>
+<text x="347.0" y="549" class="mm" text-anchor="middle">+140</text>
+<rect x="372" y="535" width="50" height="21" class="cell"/>
+<text x="397.0" y="549" class="mm" text-anchor="middle">+142</text>
+<rect x="422" y="535" width="50" height="21" class="cell"/>
+<text x="447.0" y="549" class="mm" text-anchor="middle">+144</text>
+<rect x="472" y="535" width="50" height="21" class="cell"/>
+<text x="497.0" y="549" class="mm" text-anchor="middle">+146</text>
+<rect x="530" y="535" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="549" class="s">2 Aggressive, 3 Neutral, 4 Passive; set per AI decision</text>
+<text x="20" y="574" class="m">+148</text>
+<text x="70" y="574" class="m">72</text>
+<text x="120" y="574">aggression</text>
+<rect x="222" y="560" width="50" height="21" class="cell"/>
+<text x="247.0" y="574" class="mm" text-anchor="middle">+148</text>
+<rect x="272" y="560" width="50" height="21" class="cell"/>
+<text x="297.0" y="574" class="mm" text-anchor="middle">+150</text>
+<rect x="322" y="560" width="50" height="21" class="k2"/>
+<text x="347.0" y="574" class="mm" text-anchor="middle">+152</text>
+<rect x="372" y="560" width="50" height="21" class="cell"/>
+<text x="397.0" y="574" class="mm" text-anchor="middle">+154</text>
+<rect x="422" y="560" width="50" height="21" class="cell"/>
+<text x="447.0" y="574" class="mm" text-anchor="middle">+156</text>
+<rect x="472" y="560" width="50" height="21" class="cell"/>
+<text x="497.0" y="574" class="mm" text-anchor="middle">+158</text>
+<rect x="530" y="560" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="574" class="s">0 PowerMonger .. 7 Wimp; display only ($90de)</text>
+<text x="20" y="599" class="m">+160</text>
+<text x="70" y="599" class="m">84</text>
+<text x="120" y="599">goods x 8</text>
+<rect x="222" y="585" width="50" height="21" class="cell"/>
+<text x="247.0" y="599" class="mm" text-anchor="middle">+160</text>
+<rect x="272" y="585" width="50" height="21" class="cell"/>
+<text x="297.0" y="599" class="mm" text-anchor="middle">+162</text>
+<rect x="322" y="585" width="50" height="21" class="k2"/>
+<text x="347.0" y="599" class="mm" text-anchor="middle">+164</text>
+<rect x="372" y="585" width="50" height="21" class="cell"/>
+<text x="397.0" y="599" class="mm" text-anchor="middle">+166</text>
+<rect x="422" y="585" width="50" height="21" class="cell"/>
+<text x="447.0" y="599" class="mm" text-anchor="middle">+168</text>
+<rect x="472" y="585" width="50" height="21" class="cell"/>
+<text x="497.0" y="599" class="mm" text-anchor="middle">+170</text>
+<rect x="530" y="585" width="350" height="21" rx="3" class="cr"/>
+<text x="536" y="599" class="s">8 arrays, item i at +160 + 12i (pike .. cannon)</text>
+<text x="20" y="624" class="m">+256</text>
+<text x="70" y="624" class="m">180</text>
+<text x="120" y="624">camp stamp</text>
+<rect x="222" y="610" width="50" height="21" class="cell"/>
+<text x="247.0" y="624" class="mm" text-anchor="middle">+256</text>
+<rect x="272" y="610" width="50" height="21" class="cell"/>
+<text x="297.0" y="624" class="mm" text-anchor="middle">+258</text>
+<rect x="322" y="610" width="50" height="21" class="k2"/>
+<text x="347.0" y="624" class="mm" text-anchor="middle">+260</text>
+<rect x="372" y="610" width="50" height="21" class="cell"/>
+<text x="397.0" y="624" class="mm" text-anchor="middle">+262</text>
+<rect x="422" y="610" width="50" height="21" class="cell"/>
+<text x="447.0" y="624" class="mm" text-anchor="middle">+264</text>
+<rect x="472" y="610" width="50" height="21" class="cell"/>
+<text x="497.0" y="624" class="mm" text-anchor="middle">+266</text>
+<rect x="530" y="610" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="624" class="s">clock word at camp ($3720); waits $14 ticks</text>
+<text x="20" y="649" class="m">+268</text>
+<text x="70" y="649" class="m">192</text>
+<text x="120" y="649">prev state</text>
+<rect x="222" y="635" width="50" height="21" class="cell"/>
+<text x="247.0" y="649" class="mm" text-anchor="middle">+268</text>
+<rect x="272" y="635" width="50" height="21" class="cell"/>
+<text x="297.0" y="649" class="mm" text-anchor="middle">+270</text>
+<rect x="322" y="635" width="50" height="21" class="k2"/>
+<text x="347.0" y="649" class="mm" text-anchor="middle">+272</text>
+<rect x="372" y="635" width="50" height="21" class="cell"/>
+<text x="397.0" y="649" class="mm" text-anchor="middle">+274</text>
+<rect x="422" y="635" width="50" height="21" class="cell"/>
+<text x="447.0" y="649" class="mm" text-anchor="middle">+276</text>
+<rect x="472" y="635" width="50" height="21" class="cell"/>
+<text x="497.0" y="649" class="mm" text-anchor="middle">+278</text>
+<rect x="530" y="635" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="649" class="s">state before camp ($3728); $6762 key</text>
+<text x="20" y="674" class="m">+280</text>
+<text x="70" y="674" class="m">204</text>
+<text x="120" y="674">opponent class</text>
+<rect x="222" y="660" width="50" height="21" class="cell"/>
+<text x="247.0" y="674" class="mm" text-anchor="middle">+280</text>
+<rect x="272" y="660" width="50" height="21" class="cell"/>
+<text x="297.0" y="674" class="mm" text-anchor="middle">+282</text>
+<rect x="322" y="660" width="50" height="21" class="k2"/>
+<text x="347.0" y="674" class="mm" text-anchor="middle">+284</text>
+<rect x="372" y="660" width="50" height="21" class="cell"/>
+<text x="397.0" y="674" class="mm" text-anchor="middle">+286</text>
+<rect x="422" y="660" width="50" height="21" class="cell"/>
+<text x="447.0" y="674" class="mm" text-anchor="middle">+288</text>
+<rect x="472" y="660" width="50" height="21" class="cell"/>
+<text x="497.0" y="674" class="mm" text-anchor="middle">+290</text>
+<rect x="530" y="660" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="674" class="s">opponent or target: 2 lord, 4 group, 6 man, 8/$a animal, $c</text>
+<text x="20" y="699" class="m">+292</text>
+<text x="70" y="699" class="m">216</text>
+<text x="120" y="699">opponent</text>
+<rect x="222" y="685" width="50" height="21" class="cell"/>
+<text x="247.0" y="699" class="mm" text-anchor="middle">+292</text>
+<rect x="272" y="685" width="50" height="21" class="cell"/>
+<text x="297.0" y="699" class="mm" text-anchor="middle">+294</text>
+<rect x="322" y="685" width="50" height="21" class="k2"/>
+<text x="347.0" y="699" class="mm" text-anchor="middle">+296</text>
+<rect x="372" y="685" width="50" height="21" class="cell"/>
+<text x="397.0" y="699" class="mm" text-anchor="middle">+298</text>
+<rect x="422" y="685" width="50" height="21" class="cell"/>
+<text x="447.0" y="699" class="mm" text-anchor="middle">+300</text>
+<rect x="472" y="685" width="50" height="21" class="cell"/>
+<text x="497.0" y="699" class="mm" text-anchor="middle">+302</text>
+<rect x="530" y="685" width="350" height="21" rx="3" class="pv"/>
+<text x="536" y="699" class="s">opponent&#x27;s record at the last $4bc8 ($4d6c); escort target</text>
+<text x="20" y="724" class="m">+304</text>
+<text x="120" y="724"></text>
+<rect x="222" y="710" width="50" height="21" class="na"/>
+<text x="247.0" y="724" class="mm" text-anchor="middle">+304</text>
+<rect x="272" y="710" width="50" height="21" class="na"/>
+<text x="297.0" y="724" class="mm" text-anchor="middle">+306</text>
+<rect x="322" y="710" width="50" height="21" class="k2"/>
+<text x="347.0" y="724" class="mm" text-anchor="middle">+308</text>
+<rect x="372" y="710" width="50" height="21" class="na"/>
+<text x="397.0" y="724" class="mm" text-anchor="middle">+310</text>
+<rect x="422" y="710" width="50" height="21" class="na"/>
+<text x="447.0" y="724" class="mm" text-anchor="middle">+312</text>
+<rect x="472" y="710" width="50" height="21" class="na"/>
+<text x="497.0" y="724" class="mm" text-anchor="middle">+314</text>
+<rect x="530" y="710" width="350" height="21" rx="3" class="na"/>
+<text x="536" y="724" class="s">+304..+315 not named in strategy.md</text>
+<text x="20" y="755" class="s">Cell numbers are byte offsets from the side base. +160 shows only item 0 (pike); item i&#x27;s six words are at +160 + 12i .. +170 + 12i, up to +255.</text>
+<text x="20" y="771" class="s">Proven: the field is an input or output of $6522 (gate_cmdai.py 323/323 natural), $6ac6 (exec_census.py 44/44), $3e06 or the order senders (gate_orders.py);</text>
+<text x="20" y="787" class="s">aggression &quot;display only&quot; is a whole-image scan (py/aggr/scan_group_field.py, text segment to $1c488). Offsets are from the code, strategy.md &quot;$51538&quot;.</text>
+<text x="20" y="803" class="s">+280: $c a category-4 record, 0 unset; written by $4a7a and $4bc8 (classifier $4de2); $5778 overwrites it with the attacker&#x27;s offset (bug, live 1/1).</text>
+<text x="20" y="819" class="s">The captain panel $9090 recovers side and 2k from A3 - $51538 divided by $13c; it prints Food, Troops and the aggression line from these arrays.</text>
+</svg>

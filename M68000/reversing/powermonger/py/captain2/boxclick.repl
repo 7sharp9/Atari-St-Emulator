@@ -1,0 +1,18 @@
+disk scratchpad/powermonger.st
+mouse move -400 -400
+s 300000
+mouse move 0 0
+s 300000
+mouse move 135 35
+s 300000
+mouse move 0 0
+s 300000
+mouse down l
+mouse move 0 0
+bp 1349e 300000
+bt 3
+bp 134ae 100
+m 5801c 4
+bp 3ce8 300000
+bt 3
+q

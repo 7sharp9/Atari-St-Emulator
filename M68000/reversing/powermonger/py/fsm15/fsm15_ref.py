@@ -369,7 +369,7 @@ def _contact_38(m, A1):                           # $15468: begin the slaughter
     m.wb(A3 + 7, 0x10)
 
 
-def h36(m, A1, D6, D7):                          # $153cc goto_ani, mode $36 (never natural)
+def h36(m, A1, D6, D7):                          # $153cc goto_ani, mode $36 (natural: AI k108, player sheep click; gate_fsm15.py nat)
     A3 = ad(OBJ, m.wu(A1 + 48))
     if m.bs(A3 + 5) <= 0:
         m.wb(A1 + 6, 0x0e)
@@ -419,7 +419,7 @@ def h38(m, A1, D6, D7):                          # $1547e fighting (slaughter), 
     P.call_3c08(m, A1)
 
 
-def h3a(m, A1, D6, D7):                          # $15518 fighting, mode $3a (never natural)
+def h3a(m, A1, D6, D7):                          # $15518 fighting, mode $3a (natural: k120 tree click; gate_fsm15.py nat)
     A3 = ad(OBJ, m.wu(A1 + 48))
     A0 = (BUCKETS + 2 * s16(m.wu(A3 + 10))) & 0xfffff
     D0 = m.wu(A0)

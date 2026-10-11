@@ -1,0 +1,6 @@
+disk scratchpad/powermonger.st
+watch 4e514 1000
+u 6bba 100000
+unwatch
+snap scratchpad/pm150/captain2/xfer_post.snap
+q

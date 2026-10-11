@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 990" width="900" height="990" role="img" aria-labelledby="t3 d3" xml:space="preserve">
+<title id="t3">Order pipeline: from a click or an AI decision to the arrival executor</title>
+<desc id="d3">How an order travels: the player's click or the commander AI's $6822 write, the command slot $58016, the executor $6a3a / $6ac6, the three routes (run now, the dead direct branch $6b20, the carrier pigeon $4562), the pigeon's arrival $41dc clearing the pending word at $4220, the handler table $6b5a, the senders and the arrival executors, with the gate that proves each step.
+Sources: reversing/powermonger/strategy.md "The commander AI `$6522`" (queued orders, "The pending word"), "`$6822`: issuing an order", "`$6a3a` / `$6ac6` / `$6b38` the order executor", "The executor, proven", "What an AI invention order does", "The order senders and arrival executors, proven", "Transfer `$664c`, `$668c`" (k25: pigeon landed 6,279,910 steps later);
+reversing/powermonger/ai.md "`$4562` how an order reaches a subordinate captain" (routing, the dead direct branch, gate_pigeon_send.py), "The carrier-pigeon pool", "An arrival of another lord's pigeon" ($41dc).
+$4220 = clr.w -72(A0) inside the $41dc arrival block and $6b20 = clr.w -72(A1) checked by disassembly of scratchpad/pm123/win/m1_map.ram. Full fact list: order_pipeline.facts.md.</desc>
+<style>
+text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
+.t{font-size:16px;font-weight:bold}
+.c{font-size:11.5px;fill:#424a53}
+.m{font-family:Menlo, Consolas, "DejaVu Sans Mono", monospace;font-size:11.5px}
+.s{font-size:11px;fill:#424a53}
+.g{font-size:11px;fill:#1a7f37;font-weight:bold}
+.b{font-weight:bold}
+.pv{fill:#dafbe1;stroke:#1a7f37;stroke-width:1.8}
+.lv{fill:#ddf4ff;stroke:#0969da;stroke-width:1.8}
+.cr{fill:#f6f8fa;stroke:#57606a;stroke-width:1.5;stroke-dasharray:6 3}
+.in{fill:#fff1e5;stroke:#bc4c00;stroke-width:1.5;stroke-dasharray:2 3}
+.ln{stroke:#424a53;stroke-width:1.3;fill:none;marker-end:url(#a)}
+.lni{stroke:#bc4c00;stroke-width:1.5;fill:none;stroke-dasharray:2 3;marker-end:url(#a)}
+</style>
+<defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#424a53"/></marker></defs>
+<rect x="0" y="0" width="900" height="990" fill="#ffffff"/>
+
+<text x="20" y="26" class="t">Order pipeline: click or AI decision to arrival, and the pending word 4(group)</text>
+<text x="20" y="45" class="c">Box border = evidence for that step; the green line in a box names its gate. Each count is from the run or gate named in the box.</text>
+<rect x="20" y="54" width="22" height="12" class="pv"/><text x="47" y="64" class="s">proven (callcap gate)</text>
+<rect x="190" y="54" width="22" height="12" class="lv"/><text x="217" y="64" class="s">live (seen running)</text>
+<rect x="345" y="54" width="22" height="12" class="cr"/><text x="372" y="64" class="s">code read</text>
+<rect x="460" y="54" width="22" height="12" class="in"/><text x="487" y="64" class="s">inferred</text>
+
+<!-- Row 1: sources -->
+<rect x="20" y="80" width="270" height="56" rx="4" class="lv"/>
+<text x="30" y="98" class="b">Player: icon, then a target click</text>
+<text x="30" y="115">writes type and cell into the local slot</text>
+<text x="30" y="130" class="s">natural clicks captured from m1_s0</text>
+
+<rect x="310" y="80" width="570" height="56" rx="4" class="pv"/>
+<text x="320" y="98" class="b">Commander AI <tspan class="m">$6522</tspan> arm <tspan class="b">→</tspan> <tspan class="m">$67ee</tspan> (cell as x &lt;&lt; 8 | y) <tspan class="b">→</tspan> <tspan class="m">$6822</tspan></text>
+<text x="320" y="115">refuses only when <tspan class="m">76(group)</tspan> already equals <tspan class="m">$6888[type]</tspan> (never natural)</text>
+<text x="320" y="130" class="g">gate_cmdai.py leaves: 160 states, 666 changed bytes and D0</text>
+
+<!-- Row 2 -->
+<path d="M445,136 V157" class="ln"/><path d="M740,136 V157" class="ln"/>
+<rect x="310" y="160" width="270" height="56" rx="4" class="pv"/>
+<text x="320" y="178">the side's own group (<tspan class="m">$58042[2*side]</tspan>):</text>
+<text x="320" y="195">order straight into slot <tspan class="m">$58016[side]</tspan></text>
+<text x="320" y="210" class="s">byte 1 type, word 2 parameter</text>
+
+<rect x="600" y="160" width="280" height="56" rx="4" class="pv"/>
+<text x="610" y="178">any other group: <tspan class="m b">4(group) := D7</tspan>  (pending set)</text>
+<text x="610" y="195">order in the record header <tspan class="m">base+1/+2</tspan></text>
+<text x="610" y="210">slot gets type <tspan class="m">$22</tspan>, parameter <tspan class="m">D7</tspan></text>
+
+<path d="M740,216 V237" class="ln"/>
+<rect x="600" y="240" width="280" height="56" rx="4" class="lv"/>
+<text x="610" y="258"><tspan class="m">$22</tspan>→<tspan class="m">$6d90</tspan>→<tspan class="m">$3ce8</tspan>: <tspan class="m">$58042[side]</tspan> := group k;</text>
+<text x="610" y="274">the next <tspan class="m">$6522</tspan> pass copies the header order</text>
+<text x="610" y="289" class="s">1 hit each (rand1 click); AI end to end: k25 $04</text>
+
+<!-- Row 3: $6a3a -->
+<path d="M155,136 V317" class="ln"/><path d="M445,216 V317" class="ln"/><path d="M740,296 V317" class="ln"/>
+<rect x="20" y="320" width="860" height="40" rx="4" class="pv"/>
+<text x="30" y="337"><tspan class="m">$6a3a</tspan> every tick: slots 1..4, dispatch on state byte 4 through <tspan class="m">$6a80</tspan>; clears type and parameter afterwards</text>
+<text x="30" y="353" class="g">gate_exec.py: 80/80 synthetic states (2393 bytes), 288 natural states (157 bytes, 9 natural pigeon launches)</text>
+
+<!-- Row 4: $6ac6 -->
+<path d="M450,360 V375" class="ln"/>
+<rect x="20" y="378" width="860" height="40" rx="4" class="pv"/>
+<text x="30" y="395"><tspan class="m">$6ac6</tspan> routes on the type and the group's sender word <tspan class="m">48</tspan> (the lead of the side's first group; 0 for that group)</text>
+<text x="30" y="411" class="g">exec_census.py: routing 44/44 poked slots against the model</text>
+
+<!-- Row 5: three routes -->
+<path d="M155,418 V439" class="ln"/><path d="M445,418 V439" class="ln"/><path d="M740,418 V439" class="ln"/>
+<rect x="20" y="442" width="270" height="92" rx="4" class="pv"/>
+<text x="30" y="460" class="b">Run now: <tspan class="m">$6b2e</tspan></text>
+<text x="30" y="477">type <tspan class="m">&gt;= $22</tspan>, or no sender</text>
+<text x="30" y="493">(the commander's own group)</text>
+<text x="30" y="509"><tspan class="m b">4(group)</tspan> is left as it is</text>
+<text x="30" y="526" class="s">live: order $12 from m1_s0, $4562 0 hits</text>
+
+<rect x="310" y="442" width="270" height="92" rx="4" class="cr"/>
+<text x="320" y="460" class="b">Direct: <tspan class="m">$6b20 clr.w -72(A1)</tspan></text>
+<text x="320" y="477">meant for sender cell = lead's cell;</text>
+<text x="320" y="493">reads record 0 via <tspan class="m">$51b5a</tspan>, so taken</text>
+<text x="320" y="509">only for a sender at cell (0, 0)</text>
+<text x="320" y="526" class="s">0 hits in 21 stretches; 5/5 with $51b5a poked</text>
+
+<rect x="600" y="442" width="280" height="92" rx="4" class="pv"/>
+<text x="610" y="460" class="b">Carrier pigeon: <tspan class="m">$4562</tspan></text>
+<text x="610" y="477">first free of 47 records, rider = the</text>
+<text x="610" y="493">group's lead, flight byte <tspan class="m">$78</tspan>; none free:</text>
+<text x="610" y="509">the order is lost</text>
+<text x="610" y="526" class="g">gate_pigeon_send.py 1567/1567, 125 states</text>
+
+<!-- Row 6: flight -->
+<path d="M740,534 V555" class="ln"/>
+<rect x="600" y="558" width="280" height="62" rx="4" class="lv"/>
+<text x="610" y="576">flight in <tspan class="m">$3e06</tspan> (<tspan class="m">$416e..$4326</tspan>): count</text>
+<text x="610" y="592">down, re-steer toward the rider</text>
+<text x="610" y="612" class="s">about 70M steps (side 3); 6,279,910 (k25)</text>
+
+<!-- Row 7: arrival -->
+<path d="M740,620 V641" class="ln"/>
+<rect x="600" y="644" width="280" height="76" rx="4" class="lv"/>
+<text x="610" y="662"><tspan class="m">$41dc</tspan> arrival, rider alive:</text>
+<text x="610" y="678"><tspan class="m">$4220 clr.w -72(A0)</tspan>: <tspan class="m b">4(group) := 0</tspan></text>
+<text x="610" y="694">packet {side, type, target} → <tspan class="m">$6b38</tspan></text>
+<text x="610" y="712" class="s">live: 1 of 1 natural landing cleared it</text>
+
+<!-- pending note -->
+<rect x="20" y="558" width="560" height="162" rx="4" class="lv"/>
+<text x="30" y="577" class="b">The pending word <tspan class="m">4(group)</tspan> (array <tspan class="m">base + 4 + 2k</tspan> = <tspan class="m">-72</tspan> from the group offset)</text>
+<text x="30" y="597">Set by <tspan class="m">$6822</tspan> for any group but the side's own. Cleared only at <tspan class="m">$4220</tspan> (pigeon</text>
+<text x="30" y="613">landing) and <tspan class="m">$6b20</tspan>. While it is set, <tspan class="m">$6564</tspan> skips the group: no new decision.</text>
+<text x="30" y="631" class="b">Stuck words, a game bug after the side's first group dies:</text>
+<text x="30" y="647"><tspan class="m">$2776</tspan> frees the side's pigeons (<tspan class="m">$27c6</tspan>), pending words stay set;</text>
+<text x="30" y="663">a new <tspan class="m">$4562</tspan> copies the dead sender's owner byte (<tspan class="m">$45a8</tspan>), and</text>
+<text x="30" y="679"><tspan class="m">$3e06</tspan> skips a pigeon with owner &lt;= 0 (<tspan class="m">$417a</tspan>): it never flies.</text>
+<text x="30" y="697" class="s">py/arms/pending_census.py, 340 snapshots, 595 set words: 182 pigeon in flight, 187 dead sender,</text>
+<text x="30" y="712" class="s">219 no pigeon left, 7 queued; 19 with a live first group unexplained. Watch-proven on rand1_s1.</text>
+
+<!-- Row 8: $6b38 -->
+<path d="M20,488 H9 V780 H17" class="ln"/>
+<path d="M445,534 V546 H590 V757" class="ln"/>
+<path d="M740,720 V757" class="ln"/>
+<rect x="20" y="760" width="860" height="40" rx="4" class="pv"/>
+<text x="30" y="777"><tspan class="m">$6b38</tspan>: clear type; types <tspan class="m">&gt;= $34</tspan> exit; handler <tspan class="m">= $6b5a + word[$6b5a + type]</tspan></text>
+<text x="30" y="793" class="g">exec_census.py handler 32/32; live: 12 dispatches at $6b56 over 6 handlers (k60_s2)</text>
+
+<!-- Row 9 -->
+<path d="M230,800 V821" class="ln"/><path d="M670,800 V821" class="ln"/>
+<rect x="20" y="824" width="420" height="96" rx="4" class="pv"/>
+<text x="30" y="842" class="b">Senders</text>
+<text x="30" y="859"><tspan class="m">$3154</tspan>→<tspan class="m">$4b80</tspan>, <tspan class="m">$3888</tspan>, <tspan class="m">$38ce</tspan>, <tspan class="m">$390e</tspan>, <tspan class="m">$6128</tspan>, <tspan class="m">$3248</tspan>,</text>
+<text x="30" y="875"><tspan class="m">$4a7a</tspan>, <tspan class="m">$1c18</tspan>: group state, lead target cell, lead mode <tspan class="m">$10</tspan></text>
+<text x="30" y="893" class="g">gate_orders.py 61143/61143 bytes over 2273 states;</text>
+<text x="30" y="909" class="g">wrapper_check.py 36/36 register sets</text>
+
+<path d="M440,872 H457" class="ln"/>
+<rect x="460" y="824" width="420" height="96" rx="4" class="pv"/>
+<text x="470" y="842" class="b">The lead walks (<tspan class="m">$14b62</tspan>, ai.md), then the arrival executor</text>
+<text x="470" y="859"><tspan class="m">$3956</tspan> (mode <tspan class="m">$74</tspan>), <tspan class="m">$3da4</tspan> (<tspan class="m">$7a</tspan>), <tspan class="m">$5fa0</tspan> (<tspan class="m">$22</tspan>), in <tspan class="m">gate_orders.py</tspan></text>
+<text x="470" y="877" class="s">AI invention order $0e (live): handler 157k to 181k steps after $6822</text>
+<text x="470" y="893" class="s">(4 issues); arrival 295k to 525k steps after $6c48 (22 of 22);</text>
+<text x="470" y="909" class="s">26 of 30 natural orders reach $5fa0, 4 replaced by a later order</text>
+
+<text x="20" y="946" class="s">For the side's own group (D7 = 0) $6822 writes 4(group) := 0. A local $22 reaches $3ce8 only while $2df96 is set. Player order to a second captain, live (rand1.snap,</text>
+<text x="20" y="962" class="s">py/captain2/drive_order.sh): $3ce8 sets $58042[side] := $18a; the posture click launches $4562 (1 hit), counter $57fd8+2 goes 0 to 1, $41dc writes it back to 0</text>
+<text x="20" y="978" class="s">(at $4206) about 9.97M steps later, and $35a0 sets group 1's posture 3 to 2. Steps are emulator instructions.</text>
+</svg>

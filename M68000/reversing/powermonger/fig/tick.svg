@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 925" width="900" height="925">
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#424242"/></marker></defs>
+<rect x="0" y="0" width="900" height="925" fill="#ffffff"/>
+<text x="16.0" y="28.0" font-family='Helvetica, Arial, sans-serif' font-size="18" font-weight="bold" fill="#212121" text-anchor="start">PowerMonger: one simulation tick and the entity iterator</text>
+<text x="16.0" y="47.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#424242" text-anchor="start">The tick body $13000 runs every call; only the present-rate block sits behind the $57ff0/$57fee divider</text>
+<rect x="16.0" y="62.0" width="380.0" height="678.0" rx="8" fill="none" stroke="#9e9e9e" stroke-width="1"/>
+<text x="26.0" y="80.0" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="start">The tick: $13000, in call order</text>
+<rect x="28.0" y="90.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="107.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$13026</text>
+<text x="102.0" y="107.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">paused ($57ff2 != 0): skip to $13058</text>
+<rect x="28.0" y="122.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="139.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$1302e</text>
+<text x="102.0" y="139.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">sim clock $2df70 += 1; master tick $4bb3e += 1</text>
+<rect x="28.0" y="154.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="171.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$1303a</text>
+<text x="102.0" y="171.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">no game running ($14e4e == 0): skip to $13058</text>
+<rect x="28.0" y="186.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="203.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$127e6</text>
+<text x="102.0" y="203.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">sound events</text>
+<rect x="28.0" y="218.0" width="356.0" height="26.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.2"/>
+<text x="36.0" y="235.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$6522</text>
+<text x="102.0" y="235.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">commander AI (strategy.md)</text>
+<rect x="28.0" y="250.0" width="356.0" height="26.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.2"/>
+<text x="36.0" y="267.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$d322</text>
+<text x="102.0" y="267.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">per-side troop totals -&gt; $57fba</text>
+<rect x="28.0" y="282.0" width="356.0" height="26.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.2"/>
+<text x="36.0" y="299.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$3e06</text>
+<text x="102.0" y="299.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">side pools: animals, pigeons, arrows, forest</text>
+<text x="30.0" y="327.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" font-style="italic" fill="#6a1b9a" text-anchor="start">present-rate divider $57ff0 / $57fee (1 at normal speed)</text>
+<rect x="28.0" y="336.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="353.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$1870</text>
+<text x="102.0" y="353.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">VBL sync, then $12ce0 buffer flush</text>
+<rect x="28.0" y="368.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="385.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$178ae</text>
+<text x="102.0" y="385.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">HUD bars, then $f898 terrain raster</text>
+<text x="30.0" y="413.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" font-style="italic" fill="#6a1b9a" text-anchor="start">every tick again</text>
+<rect x="28.0" y="422.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="439.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$1abaa</text>
+<text x="102.0" y="439.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">seasons and weather; $57fec += 1</text>
+<rect x="28.0" y="454.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="471.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$17878</text>
+<text x="102.0" y="471.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">compass, then $165b2 water animation</text>
+<rect x="28.0" y="486.0" width="356.0" height="26.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="2"/>
+<text x="36.0" y="503.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$14b62</text>
+<text x="102.0" y="503.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">ENTITY ITERATOR (right)</text>
+<rect x="28.0" y="518.0" width="356.0" height="26.0" rx="4" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.2"/>
+<text x="36.0" y="535.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$6a3a</text>
+<text x="102.0" y="535.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">order executor: $58016 -&gt; group state, lead mode</text>
+<rect x="28.0" y="550.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="567.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$7a56</text>
+<text x="102.0" y="567.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">info panels; $130d4 auto-rotate</text>
+<rect x="28.0" y="582.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="599.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$d23a</text>
+<text x="102.0" y="599.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">force ratio $57fba -&gt; $57fce (0..4)</text>
+<rect x="28.0" y="614.0" width="356.0" height="26.0" rx="4" fill="#ffffff" stroke="#757575" stroke-width="1.2"/>
+<text x="36.0" y="631.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">$7202</text>
+<text x="102.0" y="631.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">text panels, minimap, captain boxes</text>
+<text x="30.0" y="654.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">$3e06 also runs, per tick:</text>
+<text x="30.0" y="668.3" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">animals $4044 (40 slots), pigeons $416e (48),</text>
+<text x="30.0" y="682.6" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">arrows $596a (49), forest animator $4342,</text>
+<text x="30.0" y="696.9" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">the armies eat (food decay)</text>
+<rect x="410.0" y="62.0" width="474.0" height="420.0" rx="8" fill="none" stroke="#9e9e9e" stroke-width="1"/>
+<text x="420.0" y="80.0" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="start">The iterator $14b62: one pass per tick</text>
+<rect x="424.0" y="90.0" width="446.0" height="44.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="432.0" y="107.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">object records $51b66: 512 slots x 50 bytes ($32);</text>
+<text x="432.0" y="122.6" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">slot 0 never walked: A1 = $51b98 .. $57f66 (records 1..511)</text>
+<line x1="647.0" y1="134.0" x2="647.0" y2="152.0" stroke="#424242" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="424.0" y="152.0" width="446.0" height="26.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="432.0" y="170.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">byte 5 (owner): $14b72  tst.b 5(A1)</text>
+<line x1="647.0" y1="178.0" x2="495.7" y2="196.0" stroke="#424242" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="424.0" y="196.0" width="143.3" height="74.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="430.0" y="212.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">== 0: free slot</text>
+<text x="430.0" y="229.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">skip to $1622c</text>
+<line x1="647.0" y1="178.0" x2="647.0" y2="196.0" stroke="#424242" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="575.3" y="196.0" width="143.3" height="74.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="581.3" y="212.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">&lt; 0: dying</text>
+<text x="581.3" y="229.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">$1623c: count 18 down</text>
+<text x="581.3" y="243.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">from $a0, then $0a loose</text>
+<text x="581.3" y="257.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">equipment or $20 freed</text>
+<line x1="647.0" y1="178.0" x2="798.3" y2="196.0" stroke="#424242" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="726.7" y="196.0" width="143.3" height="74.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="732.7" y="212.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="bold" fill="#212121" text-anchor="start">&gt; 0: live</text>
+<text x="732.7" y="229.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">anim frame: byte 14 += 1</text>
+<text x="732.7" y="243.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">when ($4bb40 + w24) &amp; $3ff</text>
+<text x="732.7" y="257.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#212121" text-anchor="start">== w34, flag bit 4 clear</text>
+<line x1="798.3" y1="270.0" x2="798.3" y2="288.0" stroke="#424242" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="424.0" y="288.0" width="446.0" height="44.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="432.0" y="305.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">D6, D7 := x, y (bytes 8, 10); D0 := mode, byte 31</text>
+<text x="432.0" y="320.6" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">jmp $14bb4 + word[$14bb4 + mode]: 75 entries, $00..$94</text>
+<line x1="647.0" y1="332.0" x2="647.0" y2="350.0" stroke="#424242" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="424.0" y="350.0" width="446.0" height="26.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="432.0" y="368.0" font-family='Helvetica, Arial, sans-serif' font-size="12" font-weight="normal" fill="#212121" text-anchor="start">one tick of the mode handler ($14c48..$1620e, ai.md)</text>
+<line x1="647.0" y1="376.0" x2="647.0" y2="394.0" stroke="#424242" stroke-width="1.3" marker-end="url(#ah)"/>
+<rect x="424.0" y="394.0" width="446.0" height="58.0" rx="4" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="432.0" y="410.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">epilogue: $161c4 clamp + terrain veto (water: mode $00) + relink;</text>
+<text x="432.0" y="424.5" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$16202 clamp + relink; $16228 relink; $1622c no write-back.</text>
+<text x="432.0" y="439.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$1622c: lea 50(A1),A1; cmpa.l #$57f66,A1; bne $14b72</text>
+<path d="M 647 452 L 647 466 L 880 466 L 880 112 L 870 112" fill="none" stroke="#424242" stroke-width="1.3" marker-end="url(#ah)"/>
+<text x="874.0" y="476.0" font-family='Helvetica, Arial, sans-serif' font-size="10" font-weight="normal" fill="#424242" text-anchor="end">next record</text>
+<rect x="410.0" y="490.0" width="474.0" height="250.0" rx="8" fill="none" stroke="#9e9e9e" stroke-width="1"/>
+<text x="420.0" y="508.0" font-family='Helvetica, Arial, sans-serif' font-size="13" font-weight="bold" fill="#212121" text-anchor="start">What shares the tick: the pools</text>
+<text x="422.0" y="530.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">pool</text>
+<text x="544.0" y="530.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">address, layout</text>
+<text x="740.0" y="530.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">updated by</text>
+<rect x="418.0" y="538.0" width="458.0" height="21.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1"/>
+<text x="422.0" y="553.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">men, boats, houses</text>
+<text x="544.0" y="553.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$51b66, 511 x 50 B</text>
+<text x="740.0" y="553.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$14b62</text>
+<rect x="418.0" y="562.0" width="458.0" height="21.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1"/>
+<text x="422.0" y="577.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">animals (sheep)</text>
+<text x="544.0" y="577.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$4ccd6, 40 x 20 B</text>
+<text x="740.0" y="577.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$3e06 ($4044)</text>
+<rect x="418.0" y="586.0" width="458.0" height="21.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1"/>
+<text x="422.0" y="601.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">carrier pigeons</text>
+<text x="544.0" y="601.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$4c112, 48 x 26 B</text>
+<text x="740.0" y="601.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$3e06 ($416e)</text>
+<rect x="418.0" y="610.0" width="458.0" height="21.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1"/>
+<text x="422.0" y="625.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">arrows</text>
+<text x="544.0" y="625.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$4be00, 49 x 16 B</text>
+<text x="740.0" y="625.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$596a</text>
+<rect x="418.0" y="634.0" width="458.0" height="21.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1"/>
+<text x="422.0" y="649.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">trees</text>
+<text x="544.0" y="649.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$4d252, stride 12</text>
+<text x="740.0" y="649.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$4342</text>
+<rect x="418.0" y="658.0" width="458.0" height="21.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1"/>
+<text x="422.0" y="673.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">forest markers</text>
+<text x="544.0" y="673.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$4c5f4, stride 22</text>
+<text x="740.0" y="673.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$4342</text>
+<rect x="418.0" y="682.0" width="458.0" height="21.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1"/>
+<text x="422.0" y="697.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">cell buckets</text>
+<text x="544.0" y="697.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">$47970, one chain/cell</text>
+<text x="740.0" y="697.0" font-family='Menlo, Consolas, "DejaVu Sans Mono", monospace' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">every mover</text>
+<text x="422.0" y="720.0" font-family='Helvetica, Arial, sans-serif' font-size="10.5" font-weight="normal" fill="#424242" text-anchor="start">The bucket chains link all pools by offsets from $51b66 (negative below it).</text>
+<text x="16.0" y="768.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="bold" fill="#212121" text-anchor="start">Reading the figure</text>
+<text x="16.0" y="784.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Cadence (3M-instruction trace, mission 1): 13 ticks per 250 VBLs, about 2.6 Hz; one tick body costs about 19 VBLs of</text>
+<text x="16.0" y="800.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">instructions (compute-bound). $6522, $d322, $3e06 and $6a3a 13 hits each, $14b62 14. About 200k to 230k steps per tick.</text>
+<text x="16.0" y="816.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">A man, boat, building or marker is one 50-byte record and runs its mode handler once per tick inside $14b62. Animals,</text>
+<text x="16.0" y="832.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">pigeons, arrows and trees are separate pools moved by $3e06 near the top of the same tick; they are not entity records.</text>
+<text x="16.0" y="848.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Mission 1, settled view: about 50 of the 511 slots are in use and about 26 reach a handler each tick.</text>
+<text x="16.0" y="864.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">Proven: $14b62 prologue and epilogues (675/675, 1335/1335 tracked bytes), $1623c 275/275, animals and pigeons</text>
+<text x="16.0" y="880.0" font-family='Helvetica, Arial, sans-serif' font-size="11.5" font-weight="normal" fill="#212121" text-anchor="start">45094/45094, arrows 4210/4210, $4342 8 of 9 branches. Live: the trace counts above. Code read: the call order listing.</text>
+<text x="16.0" y="908.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="bold" fill="#212121" text-anchor="start">Evidence:</text>
+<rect x="80.0" y="897.0" width="14.0" height="14.0" rx="3" fill="#d9f0d3" stroke="#2e7d32" stroke-width="1.3"/>
+<text x="99.0" y="908.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">proven (gate vs the real 68000)</text>
+<rect x="298.2" y="897.0" width="14.0" height="14.0" rx="3" fill="#dbe9f7" stroke="#1565c0" stroke-width="1.3"/>
+<text x="317.2" y="908.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">live (seen running, counted)</text>
+<rect x="497.8" y="897.0" width="14.0" height="14.0" rx="3" fill="#ffffff" stroke="#757575" stroke-width="1.3"/>
+<text x="516.8" y="908.0" font-family='Helvetica, Arial, sans-serif' font-size="11" font-weight="normal" fill="#212121" text-anchor="start">code read</text>
+</svg>

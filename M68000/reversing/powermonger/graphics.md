@@ -20,7 +20,8 @@ The isometric view is a **software heightmap-grid rasteriser**:
 - `$fec6` projects the grid corners with a rotation and a true perspective
   divide, and only when the camera cell, yaw or zoom changes.
 - `$f898` walks the grid far to near and fills **two triangles per cell** from
-  a 4-plane pattern table, using the terrain byte as the colour index.
+  a 4-plane pattern table, indexed by each triangle's byte in one of two colour
+  planes baked from the altitudes at world build.
 - Each cell's sprites are drawn straight after that cell's triangles, so the
   walk order is the depth order.
 - There is no mesh, no texture map, no light model and no palette cycling.
@@ -49,7 +50,7 @@ There is **no vertex list in RAM**. The terrain lives in parallel 8 KB planes
 around `$438ee` (`ai.md`), index `(y << 6) + x`. Corners are generated during the walk, so the mesh is implicit in the grid. The planes:
 
 - **Altitude**, `-16514(A1)` = `$3f86c` (`_alts`): the height source the projector reads. Proven by poking it: a plateau, 10938 pixels (`py/alts_render_check.py`).
-- **Colour**, one byte for the cell's first triangle at `0(A1)` and one for the second at `-8257(A1)`. Both are derived from the altitude plane by the build pass `$10058`: a slope shade, so the lighting is baked in; 0 = open sea. Poking either changes the tone of one triangle, about 2200 pixels, geometry unchanged (`scratchpad/pm136/planes/plane_ab.py`).
+- **Colour**, one byte for the cell's first triangle at `0(A1)` and one for the second at `-8257(A1)`. Both are derived from the altitude plane by the build pass `$10058`: a slope shade, so the lighting is baked in; 0 = open sea. Poking either changes the tone of one triangle, 2236 pixels for the `-8257` plane and 2124 for the `0` plane, geometry unchanged (`py/plane_ab.py`).
 - **Flags**, a byte at `+8257(A1)` (`$4592f`). Bit 7 selects the diagonal that splits the cell. Bit 1 pins the cell's altitude against the `$10410` smoothing pass (settlement sites); the river carver `$10458` has no direct caller.
 
 ### `$fec6` — project the grid corners
@@ -244,7 +245,7 @@ change.
 
 1. `$10768` clears `$3f364..$57ff8`.
 2. `$10d1e` (a random land's parameters) or `$ffa6` (a stored land's altitude walk, then the `$10410` smoothing).
-3. `$2266`.
+3. `$2266` (`_setup_p`): marks every side that has a `$10` start record in the stored script (slot byte 0, and state 4 for a slot at 0, after clearing old state-4 slots); for a side whose slot has a state but no start record (a linked player) it appends a start at a random cell (`x = rand % $30 + 8`, `y = (rand.w >> 8) % $70 + 8`) plus a road record `$11` from it to the first site, so that side's army starts joined to the land by road (code read; live once after a link merge, `strategy.md` "The `$58152` stream").
 4. `$ac20` (the land script below).
 5. `$1073c` (every `$4b9f2` site: `$2eac` places the town's buildings, `$10638` levels the ground).
 6. `$10058` (the colour bake).
@@ -287,7 +288,7 @@ loop: paint both triangles of the cell colour $1d; flags |= $0e, and |= 2 on the
       a diagonal step also paints the corner cell $1d with flags $28/$24/$a8/$a4, so the road is 4-connected
 ```
 
-A road crosses open sea as a causeway (`terrain_roads.png`: land `k5_s4`, the roads link the islands; the `$1d` cells are white, 383 of them). **Proven: 2561/2561** over 12 calls.
+A road crosses open sea as a causeway (`terrain_roads.png`: land `k5_s4`, the roads link the islands; the `$1d` cells are white, 383 of them); a linked game's second side gets such a causeway from its random start to the first site (81 cells after the `$13d1a` link rebuild of mission 1; a REPLAY MAP control without the link paints none). **Proven: 2561/2561** over 12 calls.
 
 **`$10638` (`_town_gr`).** Levels a settlement site the same way: it paints `$1d` on the occupied cells and on the edge triangles by the 4-neighbour occupancy pattern. **260/260** over 11 calls.
 
@@ -338,8 +339,9 @@ void draw_cell_entities(int cell) {
 ```
 
 The head word of a cell's chain and every link are **signed** 16-bit offsets from `$51b66` (`adda.w D4,A3`), so scenery and
-animal records also live below `$51b66`, and the category byte 6 takes even values 0 to 30 (`word[$1162e + byte6]`). The
-26-record marching group is byte 6 == 14, drawn by `$115e0` to `$11bf4` to `$11f78` to `$11f82` (frame `record[5] + 0x13e`).
+animal records also live below `$51b66`. Byte 6 is used directly as the byte offset into the two word tables (`word[$1162e + byte6]`,
+`word[$1165c + byte6]`, `ext.w` with no bound check), so a category is an even value from 0 to `$2c`: both tables have 23 words (the
+next section lists them). The 26-record marching group is byte 6 == 14, drawn by `$115e0` to `$11bf4` to `$11f78` to `$11f82` (frame `record[5] + 0x13e`).
 
 Because the grid is walked **far cell to near cell** and each cell's sprites
 follow its terrain, the painter's algorithm falls out of the walk order: there
@@ -352,7 +354,7 @@ unit in a near cell is drawn over the near hill.
 |-------|-------|---------|----------|
 | `$33000` | 8 × 11, 4 planes + AND mask, 55 B | `$11f82` (men via `$11f78`) | men, animals, markers, flags, icons |
 | `$37c7c` | 32 × 24 word planes, 480 B | `$12244` | trees, buildings |
-| `$312a0` | 16 × 16 word planes, 160 B | `$1225c` / `$119d4` | small structures, siege engines, explosions |
+| `$312a0` | 16 × 16 word planes, 160 B | `$1225c` / `a_part_b` `$119b2` (its zoom ≥ 6 arm `$119ca`, into `$122b6`) | small structures, siege engines, explosions |
 
 The `$11f82` mini-sprite blitter:
 
@@ -380,9 +382,9 @@ relative to the camera. Per-category formulas are in SPEC §6.
 | byte 6 | name | handler and notes |
 |---|---|---|
 | 0 | `a_person` | |
-| 2 | `a_house` | |
+| 2 | `a_house` | `$117d8`. A Ruin (`record[7] == $0a`, kind 10 of the game's `housenam` table; the town layouts place them at `$302a`, two in mission 1 at (22,46) and (29,63), watch 2 of 2) is drawn as a ruin being rebuilt: frame `$0a`, then `a_part_b` `$119b2` draws over it the building it will become, frame `word[12] mod 10`, its top rows cut by the rebuild counter `record[16]` (code read; `port/SPEC.md` "Ruins", `economy.md` "Buildings and town layouts") |
 | 4 | `a_tree` | handler `$1168c` (see "Trees / buildings / mountains") |
-| 6 and `$18` | `a_object` | `$117b0`: frame `$100 + byte 7`. Byte6 `$18` is a fisherman's catch marker with byte 7 `$10`, so it draws frame `$110`, a rowboat on the pond (`catch_marker_boats.png`). The developer table names the pair `a_boat`/`a_object` |
+| 6 and `$18` | `a_object` | `$117b0`: frame `$100 + byte 7`, drawn by `$11f78` from the 8 × 11 sheet `$33000` (`$37` bytes a frame). Byte6 `$18` is a fisherman's catch marker with byte 7 `$10`, so it draws frame `$110`, a rowboat on the pond (`catch_marker_boats.png`). Byte6 6 is a camp marker (`$3744`): byte 7 `$12`, a lit fire, draws `$112 + ($57fec & 3)` (four flame frames) and adds 1 to sound event 17 (`$129fa`) on every draw; byte 7 `$11`, the fire out, draws `$111`, a small ash pile (`camp_fire_frames.png`, frames `$110..$115`). Live from `pm143/run/rand1_s1.snap`: `bp $1184c`, 80 stops a view, three `$11` records drew `$111` 20 times each and one `$12` record drew `$112..$115` 20 times each; the `$111` sprite matches the screen on 18 of 18 opaque pixels in 3 frames. The developer table names the pair `a_boat`/`a_object` |
 | 8 | `a_animal` | `$11a86` |
 | `$a` | `a_equipm` | |
 | `$c` | `a_special` | `$11bbc` |
@@ -393,10 +395,14 @@ relative to the camera. Per-category formulas are in SPEC §6.
 | `$16` | `a_flight` | `$11b2a` |
 | `$1a` | `a_inboat` | |
 | `$1c` | `a_shag` | `$11b0c` |
-| `$1e` | `a_mine` | `$1198a`, with `a_part_b` `$119b2` for a building going up: D6 = `8(A3)` rows of progress, the frame offset and shortened by D6 |
+| `$1e` | `a_mine` | `$1198a`, with `a_part_b` `$119b2` for a building going up: D6 = `8(A3)` rows of progress, the frame offset and shortened by D6 (`a_part_b` is the same overlay that draws a Ruin's rebuild, row 2) |
 | `$20` | no draw | |
 | `$22` | `a_bigcow` | `$11ab8` |
 | `$28` | `a_arrow` | `$11c64` |
+| `$2c` | `a_stock` | `$1184e`, a goods pile (below); its `djt` word is 0, so the preparer draws its own icons |
+| `$24`, `$26`, `$2a` | none | the `sjt` word is 0, which would `jsr` to the table itself at `$1162e`: no valid preparer (code read; no record with these values is known) |
+
+`sjt` is the 23 words `$1162e..$1165b` and `djt` the 23 words `$1165c..$11689`; `$1168a` is an `rts` (code read of the m1_s0 image; the `$20` preparer points at it).
 
 **Scale tables.** `$120ea` `scaled` (22 words by category, 1 for 2, 4, `$a`, `$10`, `$1c`: those use the large sprite's rectangle in `check_sh`; live dump on `m1_s0`) and `$12116` `dscale` (by zoom) are data.
 
@@ -413,7 +419,7 @@ bow `$145`, plough `$109`, boat `$110`, pot `$146`; the catapult `$1b` and canno
 
 ### The 16 and 32 pixel blitters and the sprite pick
 
-`$12244` (`_draw_sp`) takes the sheet from the zoom `$57ffc`: 3 or less the 32 × 32 sheet `$3af1c` (D0 − 8, D1 − 16), 4 and 5 the 32 × 24 sheet `$37c7c` (D0 − 4, D1 − 8), 6 and above the 16 × 16 sheet `$312a0`; `$1225c`, `$119ca`, `$11a02`, `$11a44` and the HUD (`$178ac`, the eyes `$1699e`)
+`$12244` (`_draw_sp`) takes the sheet from the zoom `$57ffc`: 3 or less the 32 × 32 sheet `$3af1c` (D0 − 8, D1 − 16), 4 and 5 the 32 × 24 sheet `$37c7c` (D0 − 4, D1 − 8), 6 and above the 16 × 16 sheet `$312a0`; `$1225c`, the three zoom arms of `a_part_b` `$119b2` (`$119ca` zoom ≥ 6, `$11a02` zoom 4 and 5, `$11a44` zoom ≤ 3; mid-routine labels, not entries: a raw scan of `$1000..$2c000` in `m1_s0` finds no branch, `jsr`/`jmp` or long literal to `$119ca` or `$119d4`, and `$11a02`/`$11a44` are reached only from `a_part_b`'s own `ble` at `$119c8`/`$119bc`) and the HUD (`$178ac`, the eyes `$1699e`)
 reach the same two clip fronts. These are a family of masked planar blitters, not a scroller:
 
 `$122b6` (`_s16_dra`, 16 wide) and `$12326` (`_s32_dra`, 32 wide) take D0.w the x of the left pixel (negative or past 319 allowed), D1.w the y of the top row, D2.w the rows, A0 the screen page (the long at `$2df7c`) and A1 the frame. A 16-pixel row is `[mask, p0, p1, p2, p3]` words (10 bytes), a 32-pixel row two such blocks, left first;
@@ -526,11 +532,13 @@ channel, plus padding (`fade_palettes.png`, rows in that order). `_show_a_` `$1a
 **The fade.** `_do_one_` `$1a418` moves each differing nibble of the 16 colours by D0 (±1) toward the target at A1, shows it (`$1a82a`) and waits 20000 iterations; `_fade_sc` `$1a2bc` makes 16 calls.
 
 - Fade-in (`$1a276`: flag `$1a2ba` cleared, D0 = +1, target `$1a358`) is called from `$cf24`, `$11398`, `$13872`, `$13d94`, `$13e36`.
-- Fade-out (D0 = −1, target zero, flag −1) is called from `$6f0a`, `$113c6`, `$13d60`, `$13e62` and the conquest screens.
+- Fade-out is `$1a29c` (`_game_fa`): `$1a2ba := −1`, D0 = −1, `_fade_sc` toward `_zero_pa` `$1a318`. Its 7 callers are `$6f0a`, `$113c6`, `$13d60`, `$13e62`, `$1a490`, `$1a50a` and `$1a5c8` (code read, direct scan).
 - Evidence: `callcap $1a418` with work colours 0..3 zeroed and D0 = +1: colours 1, 2 and 3 each gained `$0111`, colour 0 stayed (3 of 3 nibbles).
 
 **Text.** `do_text` `$1a238` draws a string at A2 (D0 = x, D1 = y): the letters A..Z only, 55-byte glyph records at `$19ca2`, advance 9, through `$11f90` (code read). `_copymem` `$1a7a6` copies 32000 bytes; `_draw_ne*` `$1a808`/`$1a81e` store `{offset.w, count.w, longs...}` lists at `A4 + offset` until the offset is negative (the end screens' delta frames,
 `strategy.md` "How a land ends").
+
+**The finale.** `$1a648` shows the lord being crowned (`finale_crown.png`: the first picture, from resources `$c` and `$d`, then the 7 delta frames). Each frame copies the shown page to the other (`$1a7a6`), applies the next record list of the table at `$3f768` (`$1a808`), waits for the vblank flag and flips (`$187a`). The table is 73,310 bytes, 214 to 285 records and 2078 to 2534 longs a frame. **Proven:** `py/season/finale_delta.py` rebuilds each frame from the previous one and the table, 7 of 7 frames with 0 of 32000 bytes different (snapshots from `py/season/finale_frames.sh`, from `pm122/end/lose_d2c8.snap` with the victory_run "final" pokes).
 ## The frame pipeline
 
 Two compose buffers, `$2df7c` (on screen) and `$2df78` (back), are swapped via
@@ -561,6 +569,11 @@ buffer swap `$187a` each run exactly once per sim tick (13 hits each in ~2.78M
 steps, so a tick is ~214k steps, about 18 VBLs; `strategy.md` "Measured cadence"
 counts 13 ticks in 3M steps, 19 VBLs each), so every presented frame holds a complete
 island.
+
+**`$178ae`, the HUD group bars.** For each local group k it draws three two-line bars at screen byte `40 + 20k`, rows
+0, 2 and 4: food `min(23, word 112 >> 4)` in colours 15/14, men `word 52 >> 2` (at least 1 when non-zero, 23 at `$5f`) in
+8/6, and the lead's health byte 45 `>> 2` in 12/13; the selected group gets the bobbing marker sprite `$152` at `$17a2e[k]`.
+Live: 4 of 4 bar widths (0, 8, 14, 23) match. The group's mode icon beside them is `$17a46` (`ai.md`, the teardown block).
 
 The zoom LOD (`$fe04`, 7 levels → 13 constants `$fdea..$fe02`) changes the grid
 extent, strides and the `$ff9c` scale; it never switches tile art. Every zoom
@@ -612,7 +625,7 @@ def build_projection(camera):                 # $fec6 -- only on camera/yaw/zoom
     cos, sin = ROT_TABLE[camera.yaw]          # 16 discrete yaw steps
     for row in range(-H, H+1):                # H, strides from the zoom LOD ($fe04)
         for col in range(-H, H+1):
-            h  = heightmap[camera.y+row][camera.x+col]
+            h  = altitude[camera.y+row][camera.x+col]   # $3f86c (_alts), the only plane the projector reads
             z  = (h - H_BIAS) * camera.zoom_scale >> 4
             wx, wy = -col*camera.zoom_scale, -row*camera.zoom_scale
             rx = wx*cos - wy*sin
@@ -627,11 +640,11 @@ def draw_terrain(camera):                     # $f898, once per sim tick
         for col in far_to_near:
             c = corner                        # this cell's 4 projected corners
             split = 'C10-C01' if flag[row][col] & 0x80 else 'C00-C11'
-            h, t = heightmap[...][...], typemap[...][...]
-            if h < 0x0c: h += tick & 3        # water shimmer, [$4bb3e] & 3
-            if t < 0x0c: t += tick & 3
-            fill_tri(tri_a, colour_index=t)   # $ef62 -> $e3e6 -> $e420
-            fill_tri(tri_b, colour_index=h)
+            b, a = colour_b[row][col], colour_a[row][col]  # $438ee (0(A1)) and $418ad (-8257(A1)): slope shades baked by $10058
+            if b < 0x0c: b += tick & 3        # water shimmer, [$4bb3e] & 3
+            if a < 0x0c: a += tick & 3
+            fill_tri(tri_b, colour_index=b)   # $ef62 -> $e3e6 -> $e420; (C10,C11,C00) on the C00-C11 split
+            fill_tri(tri_a, colour_index=a)   # (C01,C00,C11) on the C00-C11 split
             for e in cell_bucket[row][col]:   # $115e0, same walk
                 blit_sprite(back_buffer, SHEET[frame_for(e)],
                             lerp_corners(c, e.frac_x, e.frac_y))
@@ -652,8 +665,10 @@ def present():                                # $1870 + $187a
 ```
 
 The simulation is one layer up (`ai.md` / `strategy.md`); the renderer only
-reads `heightmap`, `typemap`, `cell_bucket` and each entity's world position
-and heading.
+reads the altitude plane (in the projection only), the two colour planes and the flag plane (in the fill),
+`cell_bucket` and each entity's world position and heading. There is no terrain-type plane: the colour
+bytes are the only per-cell surface data, and the poke tests in "The model is a heightmap grid" show the
+altitude plane moves geometry while each colour plane changes the tone of one triangle.
 
 ## What a modern port would do differently
 

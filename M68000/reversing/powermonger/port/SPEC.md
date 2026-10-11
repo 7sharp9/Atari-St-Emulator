@@ -28,7 +28,8 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
   recomputes a `$3f364` byte-identical to the stored buffer on four captures, and an integer
   reconstruction of it matches 3240/3240 vertices (36 generated camera states plus 4 natural
   captures). The port's `Projection.projectGrid` is float and agrees with the game's corners to
-  within a pixel at 78-95% of vertices; the terrain scores use the game's own corners.
+  within a pixel at 78-95% of vertices (rounded to nearest; §3 "Verified byte-exact" gives the
+  floored figure); the terrain scores use the game's own corners.
 - **Rasteriser (§4), byte-exact against a live single-step.** `$ef62` / `$e3e6` / `$e420`: all
   128/128 `$ef62` calls of a quadrant-2 frame (vertices and colour), the dither `A5` phase on every
   scanline of two traced triangles, and the DDA span endpoints of a 27-row triangle. All four
@@ -54,9 +55,10 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 
 - Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn on 37 lands (the writers of 18 are
   dead code in this build, §6), and the frame a `byte6` 6 camp marker draws (`$111` by the shared `$117b0`
-  formula) has not been captured. The plough and siege-engine overlays of the men and the
-  `record[7] == $0a` overlay of a settlement building (`$119b2`) are ported from the code but were
-  never seen on screen. Per-category frame counts are not tabulated.
+  formula) has not been captured. The plough and siege-engine overlays of the men are ported from
+  the code but were never seen on screen. A Ruin (`record[7] == $0a`, frame `$0a` plus the `$119b2`
+  overlay of the building it is rebuilt into) is not ported and was in view in none of the captures (§6
+  "Settlement buildings"). Per-category frame counts are not tabulated.
 - HUD art: the glyph sheet behind `$e6ee`'s descriptor table and the compass panel are not decoded as
   assets (the `$78000` master as a whole is `assets/backdrop.bin`).
 - Whether a territory change re-bakes the minimap or tints it per frame is undecided: none of the
@@ -77,6 +79,15 @@ synthetic quadrant data), `scratchpad/pm90_xcheck.{py,fsx}` and `pm91_ent_{fs.fs
 `scratchpad/pm121/allpairs.txt`. The committed equivalents are `../py/parity.py`, `../py/score.fsx`,
 `../py/season_check.fsx`, `../py/dump_frame.py`, `../py/capture.sh` and `walkthrough/probe.fsx`;
 anything below that cites a scratch path is a record of what was run, not a reproduction recipe.
+
+**Whether they still run.** All of them except `pm121/allpairs.txt` exist only on `gpubox`. Against the `PmLogic.dll` of the
+current tree, `pm118/order_test.fsx` runs and reproduces the `pm88_f1`, `rot40`, `rot90` and `rotc0`
+rows of the §6 "Draw order" table (its `pm74_late`/`pm78_settle` inputs predate the `objs` field
+and fail); `baseline.fsx`, `phase_test.fsx`, `zoom_check.fsx` and `season_check.fsx` compile but
+were not run; the Python halves of `pm83_synth_check`, `pm90_xcheck` and `pm91_ent` run; their F#
+halves and `pan_check.fsx`, `jitter_check.fsx`, `tick_check.fsx` do not compile (they call `walkQ0`, which is
+`Fill.planQ0`, `EntityCtx` and `EntityRec` gained fields); `lastrow_fix.fsx` needs its
+`pm118b/ef62x.fsx`.
 
 ---
 
@@ -221,7 +232,11 @@ buffer. `$ff7c`'s PC-relative operands resolve to `26(PC)`→`$ff98` (EYE) and
 `12(PC)`/`4(PC)`→`$ff96` (HORIZON). The loop is 9×9 vertices at zoom 4 (`$fdec`
 = HALF = 4), row/col counters `-4..+4`, `A1` walking the `$3f86c` altitude plane
 forward from the camera cell (row stride 64), corner buffer `$3f364` row stride
-64 bytes (9 × 4 used). `tools/pm_render_ref.py`'s float version matches to ≤1 px.
+64 bytes (9 × 4 used). The float model (`tools/pm_render_ref.py` `project`, the same
+formula as `Projection.projectVertex`) is not exact: on `pm74_late.ram` it is within one pixel
+of the game's corner at 73 of 81 vertices when rounded to nearest and 80 of 81 when floored,
+worst error 2 px, exact at 12 (`py/proj/float_proj_check.py`). The 73 of 81 is
+the zoom-4 figure of §5's 78-95 %; only the integer reconstruction (`py/proj/proj_ref.py`) is exact.
 
 **Proven vs the real 68000.** Using the
 emulator's `callcap` primitive (call a routine in isolation from a captured
@@ -462,10 +477,11 @@ planes `$438ee` together**, but with a quadrant-specific **start offset**
 (`A0 += $fe02`, `A1 += $fdf0` …), **iteration count** (`$fdf0` = 7, not 8) and
 **corner→triangle-vertex assignment** (`(A0)`, `4(A0)`, `64(A0)`, `68(A0)` in
 different D0/D1/D2 slots), so the far→near painter order stays correct as the
-camera rotates. A naive
-`cell(camCell + gc, camCell + gr)` walk draws a slightly different cell set
-(and misses the sea wedge + the shadowed NW slope), because it always uses the
-quadrant-0 assignment.
+camera rotates. `pm_render_ref.py`'s `render()` (the `--assets` path, without `--ram`) is not
+one of these handlers: it draws all 2·HALF × 2·HALF cells `cell(camCell + gc, camCell + gr)` in
+`gr + gc` diagonal order, picks the split by the packed TL/BR test alone and ignores the
+flag-plane bit 7 and the per-quadrant start offset and count. It draws a slightly different cell
+set: its frame lacks the sea wedge and the shadowed NW slope (observed, no pixel count). The `--ram` path dispatches to the real handlers (`walk_by_yaw`).
 
 **All 4 handlers are ported** — `pm_render_ref.py`'s `walk_q0` /
 `walk_q1` / `walk_q2` / `walk_q3`, dispatched by `walk_by_yaw`, and their F#
@@ -862,12 +878,12 @@ against `$24400`'s live tree pixels. `word[$57fd0]` is the season, which
 frame rather than baking `+6`. `pm_render_ref.py`'s `_entity_frame` + `load_ram` +
 the `draw_entities` "prop" path implement it, and `Sprites.fs` has
 `frameForProp` / `Season.treeTileOffset` / `propJitter` / `propScreenPos` /
-`decodeFrameWord`. It is **not in `COMPOSITE_CATS`**: compositing it lowers the
-score, but not from a formula error. `pm78_settle`'s two compose buffers
-disagree on the entity layer by ~14.6 k px (`$115e0` redraws a *subset* of
-entities per frame, double buffered), so neither reference buffer holds all 25
-trees. Scoring it needs a clean single-buffer populated capture (§9 "Ruled-out
-causes").
+`decodeFrameWord`. `pm_render_ref.py`'s `COMPOSITE_CATS` is `None`, so every
+ported category, trees included, is composited; drawn inline (below) each one raises
+the score on the clean captures. `pm78_settle` gains nothing inline (94.62% against 94.6%
+terrain only) and loses drawn sprites-last (86.90%), and not from a formula error: its two compose buffers disagree on the entity layer by ~14.6 k px
+(`$115e0` redraws a *subset* of entities per frame, double buffered), so neither reference
+buffer holds all 25 trees, and it stays at 94.62% (§9 "Ruled-out causes").
 
 **The per-cell entity pass in F#.** It lives in `Sprites.fs` (`EntityRec` /
 `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`) and is
@@ -960,9 +976,45 @@ pairing seen from the other side: that tick is the previous frame's tick.
 **Settlement buildings, `byte6 == 2` (`$117d8`).** Frame `record[7]` with no tile-set
 offset, anchored at the cell centroid (`$1182a`: +`$38`, -8 over raw corners), then
 `$12244` like the trees. At zoom 4-5 that is the 32 x 24 sheet and (-4, -8), so in
-+64-inset corner space the top-left is centroid + (-12, -16). `record[7] == $0a` also
-draws an overlay via `$119b2` from `record[12]`/`[16]` (not ported). This is the keep
-inside the hilltop fort; drawing it raises `pm88_f1` inline from 95.93% to 96.80%.
++64-inset corner space the top-left is centroid + (-12, -16). The one `byte6 == 2` record in
+the `pm88_f1` window is the keep inside the hilltop fort (cell (40,51), `record[7] = $0b`);
+drawing it raises the inline score from 99.15% (14923/15051) to 99.99% (15177/15178)
+(`order_test.fsx` with and without `byte6` 2 records).
+
+**Ruins, `record[7] == $0a`.** Byte 7 of a `$4f916` building record is its kind, and kind 10
+is a **Ruin** in the game's own `housenam` table (`../economy.md` "Buildings and town layouts").
+A Ruin is drawn as a ruin being rebuilt (code read, `$117d8` to `$119b2`): frame `$0a` at the
+centroid, then `$119b2` (`a_part_b`) draws over it the building the Ruin will become, frame
+`word[12] mod 10`, with its top rows cut by the rebuild counter `record[16]` (zoom 4-5: D6 =
+(15 - record[16]/7) & 15, 24 - 3·D6/2 rows drawn). The port draws nothing for a Ruin, neither the
+base frame nor the overlay (`Sprites.entityFrame` returns `None`).
+
+Writers of kind `$0a` (the whole-text scan for `move.b #$a,7(An)` finds only `$59f6` and `$5a0e`;
+the build's writer stores a register):
+
+- **The world build, `$2fc0` (`pm_build_settlements`).** It walks the lord's town layout (3-byte
+  records `dx, dy, kind` at `$3078 + word[$3078 + 2*kind]`, ended by `$9d`) and per accepted site
+  takes a free `$4f916` slot and stores `5 = owner`, `6 = 2` (`$10` for kind 7, a WorkShop),
+  `7 = layout byte 2` (`$302a`), `12 = cell`, `14 = owner record`. Kind-3 lords' layouts hold a Ruin
+  at (0,+1), so mission 1 starts with two Ruins, `$4f970` at (22,46) and `$4f9ca` at (29,63).
+  Live: a `watch 4f970 108` across the mission-1 build from `pm67_ok_pre.snap` sees the pool block
+  cleared by `$1077e`, then `$302a` write `$0a` to `$4f977` and `$4f9d1` (2 of 2 Ruin records in
+  the range), with `$3020` writing byte 6 = 2 just before each.
+- **The rebuild, `$15838`..`$15862` in the settlement heartbeat `$157e6`.** Each pulse of the
+  settlement marker adds 1 to its building's byte 16 while the building is a Ruin; at `$78` it
+  becomes kind `word[12] mod 10` (a WorkShop also gets byte6 `$10`) and byte 16 is cleared. Live:
+  over 300M steps from `pm123/win/m1_ready.snap`, `$157e6` 16 hits, `$15830` 6, `$15838` 1,
+  `$15852` 0. At about one counter step per 300M steps, a Ruin needs 120 to rebuild, so none
+  completes in a normal run.
+- **Destruction, `$596a`.** When a type-`$12` effect ends it turns every byte6 2 building in its
+  cell into a Ruin (kind `$0a`, byte 16 cleared; a byte6 `$10` WorkShop also back to byte6 2). This
+  path is unreachable in this build (below, and `../ai.md` "Arrows and carrier pigeons"): 0 hits on
+  `$59f6`/`$5a0e` in the same 300M-step run.
+
+So a Ruin on screen is either a ruin placed by the town layout or, in principle, a destroyed
+building, and the overlay grows over 120 heartbeat pulses. No Ruin is in the window of `pm88_f1`
+or of any of the 43 `pm121/cap` captures behind the all-pairs score; `$117e4` (the Ruin branch)
+has 0 hits in the 300M-step run, against 1370 for `$117d8`.
 
 **Zoom: `$12244` picks the building/tree art.** The same 27 pictures exist at three sizes,
 packed back to back: `$37c7c + 27 * 480 = $3af1c`, and the 27 32 x 32 frames end before
@@ -977,10 +1029,11 @@ the `$3f364` corner buffer. `$12244` picks by the zoom index `[$57ffc]`:
 Men, animals, banners and markers use the 8 x 11 `$33000` frames at every zoom; only
 their positions scale. Port: `Sprites.propSheet`. Evidence in §5.
 
-**Open.** Per-category frame *counts*; byte6 18 and 28, and the plough and
-siege-engine overlays, are ported from the code but never seen on screen (18 and
-28 not ported); and the `byte6 == 2`, `record[7] == $0a` overlay (`$119b2`), which
-a byte6 18 hit on a settlement building sets (`$596a`).
+**Open.** Per-category frame *counts* are not tabulated. Byte6 18 and 28 are neither
+ported nor seen on screen (the reasons follow). The plough and siege-engine overlays of
+the men are ported from the code but never seen on screen. A Ruin (`byte6 == 2`, `record[7] == $0a`) is not ported and none of the
+captures has one in view (above); a capture with the camera on (22,46) or (29,63) of mission 1,
+scored with and without a port of `$117d8`'s Ruin branch, would settle it.
 
 **Why 18 and 28 are missing from the runs** (from the writers).
 
