@@ -184,6 +184,13 @@ that are easy to forget:
   before the down, or the census misses the handler. `hits <n> <addrs>` after a `bp` that stopped
   the run counts only what happens after the stop, so a routine that ran earlier reads 0 and looks
   uncalled: run `hits` from the end of the click, before any `bp`.
+- `hits` can count an address once more than it ran: PowerMonger's `$1abc0` read 180 against 177 writes
+  by `watch` of the routine's own store, a weather counter 131 against 130 (an interrupt taken at that
+  instruction boundary is the inferred cause). When an exact count matters, count a `watch` of the
+  routine's write, not `hits`.
+- `MMU.fs` `LoadDiskA` takes sectors per track and sides from BPB bytes 24..27. A game's own save disk
+  often has text there, so the image falls back to 9 sectors, 2 sides, and the game's reads fail
+  ("record not found"). Build test save disks with the right bytes (`reversing/powermonger/py/saveload/mk_savedisk.py`).
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event. A pulse shorter than
   the game's poll cycle can fall between two polls and never register: hold at least one full VBL
   frame (`instructionsPerFrame`: about 12,000 to 15,000 steps on an idle screen, about 24,000 in
