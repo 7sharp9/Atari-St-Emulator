@@ -2170,7 +2170,7 @@ snow with `$1a856` and counts the spell `$4bb42`/`$4bb44` down, or starts one vi
 
 - **Regrows one felled tree** (`$1ac92`): it pokes one `$4d252` (tree array)
   record, number `rng % (word[$4e512] / 12)` from one draw of `$12c9a` (record 0, the dummy, can be
-  picked; an array of fewer than 12 bytes would divide by zero at `$1ac88`, code read), and if its `byte7 == $d` (felled, the value mode `$44` writes at `$156d0`)
+  picked). The divide at `$1ac88` would fault only with fewer than 12 bytes, and that cannot happen in play: `$4e512` is written only by the block clear `$10768` (to 0), by the forest builder `$4672` (`$4680`, := 12, the dummy) and per tree by `$4816` (+= 12, capped at `$12c0`), and every caller of the clear (`$13bce`, the set-up `$b386`, the campaign pick `$113c0`) goes on to `$4672` (`$13c42`, `$b3b2`) before the game loop, the only path to `$1abaa` (`$130b0`), runs again; a LOAD restores a built land's value (whole-image scan for `$4e512` and for callers of `$10768`, `$4672`, `$1abaa`; code read), and if its `byte7 == $d` (felled, the value mode `$44` writes at `$156d0`)
   the tree becomes `$e + (byte10 & 3)`, a standing tree again. Live: 2 of 2 season
   wraps regrew one tree with every tree felled (`py/season/tree_weather.py felled`);
   felled trees are present in 512 of 830 snapshots, up to 80 of 299
