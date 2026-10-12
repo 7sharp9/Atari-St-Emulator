@@ -58,9 +58,7 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 - Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn on 37 lands (the writers of 18 are
   dead code in this build, §6), and the frame a `byte6` 6 camp marker draws (`$111` by the shared `$117b0`
   formula) has not been captured. The plough and siege-engine overlays of the men are ported from
-  the code but were never seen on screen. A Ruin (`record[7] == $0a`, frame `$0a` plus the `$119b2`
-  overlay of the building it is rebuilt into) is not ported and was in view in none of the captures (§6
-  "Settlement buildings"). Per-category frame counts are not tabulated.
+  the code but were never seen on screen. Per-category frame counts are not tabulated.
 - HUD art: the glyph sheet behind `$e6ee`'s descriptor table and the compass panel are not decoded as
   assets (the `$78000` master as a whole is `assets/backdrop.bin`).
 - Whether a territory change re-bakes the minimap or tints it per frame is undecided: none of the
@@ -1000,11 +998,22 @@ drawing it raises the inline score from 99.15% (14923/15051) to 99.99% (15177/15
 
 **Ruins, `record[7] == $0a`.** Byte 7 of a `$4f916` building record is its kind, and kind 10
 is a **Ruin** in the game's own `housenam` table (`../economy.md` "Buildings and town layouts").
-A Ruin is drawn as a ruin being rebuilt (code read, `$117d8` to `$119b2`): frame `$0a` at the
-centroid, then `$119b2` (`a_part_b`) draws over it the building the Ruin will become, frame
-`word[12] mod 10`, with its top rows cut by the rebuild counter `record[16]` (zoom 4-5: D6 =
-(15 - record[16]/7) & 15, 24 - 3·D6/2 rows drawn). The port draws nothing for a Ruin, neither the
-base frame nor the overlay (`Sprites.entityFrame` returns `None`).
+A Ruin is drawn as a ruin being rebuilt (`$117d8` to `$119b2`): frame `$0a` at the centroid
+(`$1182a`, `$12244`), then `$119b2` (`a_part_b`) draws over it, at the same corner, the building
+the Ruin will become, frame `word[12] mod 10` (word 12 is the building's cell). With D6 =
+(15 - record[16]/7) & 15 it cuts S rows off the top of that frame and starts S rows lower: S = D6
+on the 16 x 16 sheet (zoom 6-7), 3·D6/2 on the 32 x 24 (zoom 4-5), 2·D6 on the 32 x 32 (zoom 1-3);
+nothing is drawn when S reaches the frame height. A fresh Ruin (counter 0 to 6) has D6 = 15, so
+only the overlay's bottom 2 rows at zoom 4 are drawn, and they are blank in the frames seen.
+Port: `Sprites.placeEntity` returns both blits; `EntityRec.B16`/`W12` carry the two fields
+(`pm_export.py`, `dump_frame.py` export them as `b16`/`w12`).
+
+Live (`../py/xcheck/ruin_capture.sh`, scored by `run.sh`): mission 1 with the camera on each Ruin
+matches the game at 99.82% and 100.00% (98.31% and 98.41% before the port drew Ruins), the four
+settlement buildings in view 700/700 and 713/713 pixels. With the (22,46) Ruin's counter poked to
+70 and 100 (D6 = 5 and 1), the buildings' pixels grow to 752 and 783, all matching, and the whole
+frame stays at 99.82%; the same frames scored with the overlay frame off by one drop to 98.15% and
+97.68%, and with no overlay to 98.27% and 97.88%.
 
 Writers of kind `$0a` (the whole-text scan for `move.b #$a,7(An)` finds only `$59f6` and `$5a0e`;
 the build's writer stores a register):
@@ -1030,8 +1039,9 @@ the build's writer stores a register):
 
 So a Ruin on screen is either a ruin placed by the town layout or, in principle, a destroyed
 building, and the overlay grows over 120 heartbeat pulses. No Ruin is in the window of `pm88_f1`
-or of any of the 43 `pm121/cap` captures behind the all-pairs score; `$117e4` (the Ruin branch)
-has 0 hits in the 300M-step run, against 1370 for `$117d8`.
+or of any of the 43 `pm121/cap` captures behind the all-pairs score, which is why `$117e4` (the
+Ruin branch) has 0 hits in that 300M-step run against 1370 for `$117d8`; it runs whenever the
+camera is on one (the captures above).
 
 **Zoom: `$12244` picks the building/tree art.** The same 27 pictures exist at three sizes,
 packed back to back: `$37c7c + 27 * 480 = $3af1c`, and the 27 32 x 32 frames end before
@@ -1048,9 +1058,7 @@ their positions scale. Port: `Sprites.propSheet`. Evidence in §5.
 
 **Open.** Per-category frame *counts* are not tabulated. Byte6 18 and 28 are neither
 ported nor seen on screen (the reasons follow). The plough and siege-engine overlays of
-the men are ported from the code but never seen on screen. A Ruin (`byte6 == 2`, `record[7] == $0a`) is not ported and none of the
-captures has one in view (above); a capture with the camera on (22,46) or (29,63) of mission 1,
-scored with and without a port of `$117d8`'s Ruin branch, would settle it.
+the men are ported from the code but never seen on screen.
 
 **Why 18 and 28 are missing from the runs** (from the writers).
 

@@ -37,7 +37,7 @@ let run (path: string) =
             let go (k: string) = match o.TryGetProperty k with | true, v -> v.GetInt32() | _ -> 0
             ({ Addr = g "addr"; B6 = g "b6"; B5 = g "b5"; B7 = g "b7"; B14 = g "b14"; B17 = g "b17"; B31 = g "b31"
                Fx = g "fx"; Fy = g "fy"; Group = g "group"
-               Wcx = g "wcx"; Wcy = g "wcy"; B15 = go "b15"; B32 = go "b32"; W18 = go "w18"; Icons = go "icons"; B33 = go "b33"; B44 = go "b44" } : Sprites.EntityRec) ]
+               Wcx = g "wcx"; Wcy = g "wcy"; B15 = go "b15"; B32 = go "b32"; W18 = go "w18"; Icons = go "icons"; B33 = go "b33"; B44 = go "b44"; B16 = go "b16"; W12 = go "w12" } : Sprites.EntityRec) ]
 
     let terrain = Fill.Buffer.Create()
     Fill.walk terrain dith corners map camX camY tick (yaw / 16)

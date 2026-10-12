@@ -15,7 +15,8 @@ b64 = lambda bs: base64.b64encode(bytes(bs)).decode()
 def obj(o):
     a = o["addr"]
     d = {k: o[k] for k in ("addr", "b6", "b5", "b7", "b14", "b17", "b31", "fx", "fy", "group", "wcx", "wcy")}
-    d.update(b15=b[a + 15], b32=b[a + 32], w18=(b[a + 18] << 8) | b[a + 19], icons=render_icons(rb, a), b33=b[a + 33], b44=b[a + 44])
+    d.update(b15=b[a + 15], b32=b[a + 32], w18=(b[a + 18] << 8) | b[a + 19], icons=render_icons(rb, a), b33=b[a + 33], b44=b[a + 44],
+             b16=b[a + 16], w12=(b[a + 12] << 8) | b[a + 13])
     return d
 doc = dict(
     cam=list(R["cam"]), yaw=R["yaw"], tick=R["tick"], x_inset=xi, phase_bias=R["phase_bias"],

@@ -38,9 +38,11 @@ let run (arg: string) =
     let recs =
         [ for o in root.GetProperty("objs").EnumerateArray() ->
             let g (k: string) = o.GetProperty(k).GetInt32()
+            let go (k: string) = match o.TryGetProperty k with | true, v -> v.GetInt32() | _ -> 0
             ({ Addr = g "addr"; B6 = g "b6"; B5 = g "b5"; B7 = g "b7"; B14 = g "b14"; B17 = g "b17"; B31 = g "b31"
                Fx = g "fx"; Fy = g "fy"; Group = g "group"; Wcx = g "wcx"; Wcy = g "wcy"
-               B15 = g "b15"; B32 = g "b32"; W18 = g "w18"; Icons = g "icons"; B33 = g "b33"; B44 = g "b44" } : Sprites.EntityRec) ]
+               B15 = g "b15"; B32 = g "b32"; W18 = g "w18"; Icons = g "icons"; B33 = g "b33"; B44 = g "b44"
+               B16 = go "b16"; W12 = go "w12" } : Sprites.EntityRec) ]
     let refAt i = let y, x = i / W, i % W + inset in if x < W then Some reff.[y * W + x] else None
     // weather ($1ad2a -> $1a856): kind [$4bb42], drawn with [$1aac8] + $40
     let ram = ctx.Ram

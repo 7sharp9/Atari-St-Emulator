@@ -51,7 +51,7 @@ for k, (b6,b5,b7,b14,b17,b31,fx,fy,_,_,grp) in List.indexed cases do
     let r : Sprites.EntityRec =
         { Addr=addr; B6=b6; B5=b5; B7=b7; B14=b14; B17=b17; B31=b31
           Fx=fx; Fy=fy; Group=grp; Wcx=0; Wcy=0
-          B15=0; B32=0; W18=0; Icons=0; B33=0; B44=0 }
+          B15=0; B32=0; W18=0; Icons=0; B33=0; B44=0; B16=0; W12=0 }
     Sprites.blitEntity buf ctx c00 c10 c01 c11 0 0 r
     let px =
         [ for y in 0 .. Fill.ScreenHeight-1 do

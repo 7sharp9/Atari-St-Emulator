@@ -38,7 +38,7 @@ let mkRec (e: JsonElement) : Sprites.EntityRec =
     { Addr = gi e "addr"; B6 = gi e "b6"; B5 = gi e "b5"; B7 = gi e "b7"; B14 = gi e "b14"
       B17 = gi e "b17"; B31 = gi e "b31"; Fx = gi e "fx"; Fy = gi e "fy"
       Group = gi e "group"
-      Wcx = gi e "wcx"; Wcy = gi e "wcy"; B15 = 0; B32 = 0; W18 = 0; Icons = 0; B33 = 0; B44 = 0 }
+      Wcx = gi e "wcx"; Wcy = gi e "wcy"; B15 = 0; B32 = 0; W18 = 0; Icons = 0; B33 = 0; B44 = 0; B16 = 0; W12 = 0 }
 let recs =
     [| for e in doc.RootElement.GetProperty("render_entities").EnumerateArray() -> mkRec e |]
 

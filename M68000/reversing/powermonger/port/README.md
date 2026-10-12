@@ -30,9 +30,7 @@ Open (the full list, with the reasons, is `SPEC.md` Status):
 - Godot runs at zoom 4 only; the stepper and the Godot view do not draw weather; `Equipment.fs`
   is called by nothing, because the port has no entity simulation.
 - Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn; `byte6` 6 has no established
-  role; the plough and siege-engine overlays are ported from the code but never seen on screen; a
-  Ruin (`record[7] == $0a`: two are placed by mission 1's town layouts, drawn with the `$119b2`
-  overlay of the building it is rebuilt into) is not ported and was in view in none of the captures.
+  role; the plough and siege-engine overlays are ported from the code but never seen on screen.
 - HUD glyph sheet and compass panel are not decoded as assets; whether a territory change re-bakes
   the minimap is undecided.
 - Dropping the per-pixel dither for a fragment-shader height ramp (`Terrain.flatPaletteIndex`, or the
@@ -172,6 +170,11 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
   `_cell_done` hook per walk handler) and equals `Scene.render` on all 15178 drawn pixels of
   `pm88_f1` (`../py/parity.py`). The settlement building (`byte6 == 2`, the fort's keep) is part of
   this: `pm88_f1` scores 99.99% with it and 99.15% (14923/15051) without.
+- **Ruins.** A Ruin (`record[7] == $0a`, two placed by mission 1's town layouts) draws frame `$0a` and
+  the `$119b2` overlay of the building it is being rebuilt into, cut by its rebuild counter
+  (`EntityRec.B16`/`W12`). With the camera on each, mission 1 matches the game at 99.82% and 100.00%
+  (98.31% and 98.41% before), the overlay at two poked counter values (`SPEC.md` §6 "Ruins",
+  `../py/xcheck/ruin_capture.sh`).
 - **Later lands.** Everything a later land draws is ported except `byte6` 18 and 28 (`SPEC.md` §6
   "Every category"). `Sprites.placeEntity` returns every frame a record draws, in order (these
   categories draw two to ten). `EntityRec` has `B15`, `B32`, `W18`, `Icons`, `B33`, `B44` and

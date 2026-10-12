@@ -49,7 +49,7 @@ let load (dir: string) : Assets =
                 B17 = gi e "b17"; B31 = gi e "b31"; Fx = gi e "fx"; Fy = gi e "fy"
                 Group = gi e "group"; Wcx = gi e "wcx"; Wcy = gi e "wcy"
                 B15 = gio e "b15"; B32 = gio e "b32"; W18 = gio e "w18"; Icons = gio e "icons"
-                B33 = gio e "b33"; B44 = gio e "b44" } : Sprites.EntityRec) |]
+                B33 = gio e "b33"; B44 = gio e "b44"; B16 = gio e "b16"; W12 = gio e "w12" } : Sprites.EntityRec) |]
     { Map = Terrain.parse (File.ReadAllBytes(file "terrain.bin"))
       Dither = File.ReadAllBytes(file "dither.bin")
       Palette = palette

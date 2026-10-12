@@ -166,7 +166,8 @@ public partial class TerrainView : Node2D
             list.Add(new Sprites.EntityRec(
                 G("addr"), G("b6"), G("b5"), G("b7"), G("b14"), G("b17"), G("b31"),
                 G("fx"), G("fy"), G("group"), G("wcx"), G("wcy"),
-                Gopt("b15"), Gopt("b32"), Gopt("w18"), Gopt("icons"), Gopt("b33"), Gopt("b44")));
+                Gopt("b15"), Gopt("b32"), Gopt("w18"), Gopt("icons"), Gopt("b33"), Gopt("b44"),
+                Gopt("b16"), Gopt("w12")));
         }
         _entRecs = list.ToArray();
         if (root.TryGetProperty("objects", out var objs))

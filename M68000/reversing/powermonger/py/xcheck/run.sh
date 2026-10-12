@@ -54,6 +54,18 @@ Z4=(); for f in "${FRAMES[@]}"; do case $f in *zoom*|*pan_*) ;; *) Z4+=("$f");; 
 dotnet fsi $X/order_test.fsx "${Z4[@]}" | grep -E "^[a-z0-9_]+  cam|inline"
 echo "== score.fsx, every frame (inline order, best water tick)"
 dotnet fsi reversing/powermonger/py/score.fsx "${FRAMES[@]}" | grep "best tick" | sed 's/frame tick.*best/best/'
+RD=$OUT/ruin
+if [ -f "$RD/r1_0.ram" ]; then
+  echo "== Ruins (state + next frame; ruin_capture.sh makes them)"
+  RF=()
+  for n in r1 r2 k70 k100; do
+    for i in 0 1; do $PY reversing/powermonger/py/dump_frame.py "$RD/${n}_$i.ram" "$RD/${n}_$i.json" >/dev/null; done
+    RF+=("$RD/${n}_0.json+$RD/${n}_1.json")
+  done
+  dotnet fsi reversing/powermonger/py/score.fsx "${RF[@]}" | grep -E "best tick|byte6  2" | sed 's/frame tick.*best/best/'
+else
+  echo "skip Ruins: run $X/ruin_capture.sh first"
+fi
 echo "== zoom_check.fsx (port records, game corners)"
 ZF=(); for f in "${FRAMES[@]}"; do case $f in *zoom*|*pm88_f1*) ZF+=("$f");; esac; done
 dotnet fsi $X/zoom_check.fsx "${ZF[@]}" | grep -E "zoom [0-9]|terrain|sprite px"

@@ -853,6 +853,7 @@ def export_entities(ram: Ram, out: Path, man: list, source: str):
                     "group": (rec[42] << 8) | rec[43],
                     "b15": rec[15], "b32": rec[32], "w18": (rec[18] << 8) | rec[19],
                     "icons": render_icons(ram, o), "b33": rec[33], "b44": rec[44],
+                    "b16": rec[16], "w12": (rec[12] << 8) | rec[13],
                 })
                 d4 = ram.u16(o)
     tsel = ram.u16(0x57FD0)

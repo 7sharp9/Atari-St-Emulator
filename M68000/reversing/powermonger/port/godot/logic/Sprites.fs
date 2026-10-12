@@ -239,7 +239,9 @@ module Sprites =
           B32: int                  // byte6 12: rising figure's flap phase 0..3
           W18: int                  // byte6 12: word[18], counts $a0 -> 0 after the kill
           Icons: int                // byte6 16/44: bit e = draw $11886 entry e (see goodsIcon)
-          B33: int; B44: int }      // byte6 10: the dead man's equipment codes
+          B33: int; B44: int        // byte6 10: the dead man's equipment codes
+          B16: int                  // byte6 2: a Ruin's rebuild counter (building record[16])
+          W12: int }                // byte6 2: word[12], the building's cell; a Ruin's overlay frame is W12 mod 10
 
     /// The byte6 == 4 sub-cell jitter for a record drawn in the cell at
     /// (row, col) of the camera window: $1168c's A2 is the cell's $47970
@@ -300,10 +302,10 @@ module Sprites =
         | 26 -> Some(false, (r.B5 &&& 0xFF) + 0x149)             // the anim bit moves it, see placeEntity
         | 28 -> Some(false, (if r.B5 > 0 then 0x14E + (ctx.RotPhase &&& 1) else 0x150))
         | 2 ->
-            // settlement building ($117d8): frame record[7] from the 32x24
-            // $37c7c sheet, no tile-set offset. record[7] == $0a also draws an
-            // overlay via $119b2 (from record[12]/[16]) -- not ported.
-            if r.B7 <> 0x0A && r.B7 < 27 then Some(true, r.B7) else None
+            // settlement building ($117d8): frame record[7] (the kind) from
+            // $12244's sheet, no tile-set offset. A Ruin (kind $0a) also draws
+            // the $119b2 overlay, see placeEntity.
+            if r.B7 < 27 then Some(true, r.B7) else None
         | 4 ->
             match frameForProp r.B7 ctx.TileOff with
             | -1 -> None
@@ -517,8 +519,20 @@ module Sprites =
                     let fx4, fy4 = recordJitter row col r
                     let px, py = packedLerp c00 c10 c01 c11 fx4 fy4
                     px, py, px - 4, "sub-cell lerp at the address jitter ($1168c)"
-            [ { Sheet = Prop; Frame = fi; Skip = 0; AnchorX = ax; AnchorY = ay; Rule = rule
-                X = bx + sheet.Dx; Y = ay - 8 + sheet.Dy; W = sheet.W; H = sheet.H } ]
+            let x, y = bx + sheet.Dx, ay - 8 + sheet.Dy
+            [ yield { Sheet = Prop; Frame = fi; Skip = 0; AnchorX = ax; AnchorY = ay; Rule = rule
+                      X = x; Y = y; W = sheet.W; H = sheet.H }
+              // A Ruin ($117e4): after its own frame, `a_part_b` $119b2 draws the
+              // building it is being rebuilt into, frame word[12] mod 10, at the
+              // same corner with its top S rows cut: D6 = (15 - record[16]/7) & 15,
+              // S = D6 (16x16 sheet), 3*D6/2 (32x24) or 2*D6 (32x32).
+              if r.B6 = 2 && r.B7 = 0x0A then
+                  let d6 = (15 - r.B16 / 7) &&& 15
+                  let cut = if sheet.H = 16 then d6 elif sheet.H = 24 then (3 * d6) >>> 1 else 2 * d6
+                  if cut < sheet.H then
+                      yield { Sheet = Prop; Frame = r.W12 % 10; Skip = cut; AnchorX = ax; AnchorY = ay
+                              Rule = "Ruin rebuild overlay ($119b2)"
+                              X = x; Y = y + cut; W = sheet.W; H = sheet.H - cut } ]
         | Some(false, fi) when r.B6 = 6 || r.B6 = 24 ->
             let cx, cy = centroid ()
             [ mini fi cx cy "cell centroid ($1182a)" (cx - 8) (cy - 8) ]
