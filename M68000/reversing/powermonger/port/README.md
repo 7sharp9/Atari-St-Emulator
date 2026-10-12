@@ -113,11 +113,11 @@ Grouped by topic. Counts and scripts are as measured; `scratchpad/` paths are sc
   slope switch, water shimmer) and a synthetic 8 x 8-cell grid exercising both diagonal-selector
   branches: identical coverage counts and pixel-index hashes. `Terrain.Map`'s flag-plane accessor is
   `DiagonalSelector`.
-- The three other yaw-quadrant walks (`Fill.walkQ0`/`walkQ1`/`walkQ2`, `Fill.plan`/`walk`
+- The three other yaw-quadrant walks (`Fill.planQ0`/`planQ1`/`planQ2`, `Fill.plan`/`walk`
   dispatching as `$f97e`/`$f982` do) are live-trace-verified at a yaw in each range (the vertex
   assignment and the colour-plane choice at the first `$ef62` call after resuming to the settled PC)
   and cross-checked byte-exact against the F# port on synthetic data exercising every CLEAR/SET
-  branch and both comparison directions (`scratchpad/pm83_synth_check.{py,fsx}`, scratch only). The
+  branch and both comparison directions (`../py/xcheck/quad_{fs.fsx,py.py}`, all four quadrants). The
   entry points are `$f98e` / `$fa9a` / `$fbb4`; the `$f98c` / `$fa98` / `$fbb2` carried by older notes
   are each 2 bytes low.
 - Live single-step of a quadrant-2 capture (`pm83_q2c`): all 128/128 `$ef62` calls of a frame match
@@ -150,11 +150,13 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
 `Sprites.recordJitter`, `Sprites.packedLerp`, `Sprites.placeEntity`).
 
 - **Synthetic cross-check.** Against `pm_render_ref.draw_entities` on identical synthetic corners and
-  record fields: 13/13 cases byte-identical, `byte6 ∈ {0, 4, 8, 14, 24}` (men with the `+0x40` armed
-  gate and the melee-to-nothing case, props with the `r7 ∈ {0x0d, 0x0e}` special cases and the
-  tile-set offset, animals, banners, and the `$1182a` centroid markers; scratch only).
-- **Real record stream.** On the 53-record stream of `pm88_f1.ram` with its `$3f364` corners:
-  2881/2881 covered pixels, `byte6 ∈ {0,4,6,8,14,24}`.
+  record fields: 12 of 13 cases byte-identical, `byte6 ∈ {0, 4, 8, 14, 24}` (men with the `+0x40`
+  armed gate, props with the `r7 ∈ {0x0d, 0x0e}` special cases and the tile-set offset, animals,
+  banners, and the `$1182a` centroid markers; `../py/xcheck/blit_{fs.fsx,py.py}`). The 13th is a melee
+  man, which the port draws (`$11c8a`) and the reference still skips.
+- **Real record stream.** On `entities.json` with the `$3f364` corners of `pm88_f1.ram`: 3061/3061
+  covered pixels, `byte6 ∈ {0,4,6,8,14,24}` (`../py/xcheck/ent_{fs.fsx,py.py}`; `SPEC.md` §6 for why
+  the first run's 2881 is superseded).
 - **Entity export.** `tools/pm_export.py` `export_entities` writes `assets/entities.json`:
   `render_entities[]` (the whole map's `$47970` bucket walk with the signed `$51b66` offset and the
   record address, 276 records) and `entity_ctx` (the per-frame constants). `byte6 == 4` jitter depends on
@@ -183,13 +185,19 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
 
 #### Gates
 
+`../py/xcheck/run.sh` runs the first six rows (`SPEC.md` "Re-running the cross-checks").
+
 | gate | result |
 |------|--------|
 | `order_test.fsx` (`SPEC.md` §6) | 99.99 / 94.62 / 99.69 / 99.97 / 99.92 / 99.81 |
-| `baseline.fsx` | the 160 terrain hashes unchanged |
+| `baseline.fsx` | 162/162 lines equal to `baseline.txt` |
+| `quad_fs.fsx` / `quad_py.py` | 4 of 4 quadrants identical, 1020 px each |
+| `blit_fs.fsx` / `blit_py.py` | 12 of 13 (the melee case differs by design) |
+| `ent_fs.fsx` / `ent_py.py` | 3061/3061 |
+| `score.fsx`, 14 frames | 99.64-99.99% (`pm78_settle` 94.62%) |
 | stepper `--selfcheck` | 23/23 on `assets` and `assets_k60` |
 | walkthrough `showboat verify` | clean |
-| logic, stepper and Godot builds | build (the `pm118/` scripts are scratch only) |
+| logic, stepper and Godot builds | build |
 
 ### Seasons, pan, zoom, weather, a second land
 
@@ -201,7 +209,8 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
   fade into season 2, so it shows season 1's grass under season 2's trees.
 - **Zoom** (`SPEC.md` §5). The walks take loop counts and start offsets from the `$fe04` geometry, so
   `Fill.planQ*` is the same code over N x N cells; against emulator captures at zooms 1-7, terrain away
-  from sprites matches 99.2-99.7% and sprite pixels 74-84%. `sprites/prop32_sheet_raw.bin` is the 32 x 32
+  from sprites matches 99.78-99.95%, sprite pixels 98.2-100% and the whole frame 99.79-99.95%
+  (`../py/xcheck/zoom_check.fsx`, `score.fsx`). `sprites/prop32_sheet_raw.bin` is the 32 x 32
   building sheet (27 frames per sheet). `Projection.projectGrid` is float and agrees with the game's
   corners within a pixel at 78-95% of vertices (rounded to nearest); the exact integer reconstruction
   is committed as `../py/proj/proj_ref.py`, gated 3240/3240 by `../py/proj/gate_fecc.py`.

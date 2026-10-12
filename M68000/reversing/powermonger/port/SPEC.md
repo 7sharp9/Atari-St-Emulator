@@ -44,10 +44,12 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
   per-frame sea fill.
 - **Sprites (§6).** Four sheets decoded, the `$115e0` dispatch and every category's frame formula
   ripped (`assets/sprites/sprite_triggers.json`), positions byte-exact against live `D0`/`D1`, the
-  per-cell entity pass ported (`Sprites.fs`, 13/13 synthetic cases and 2881/2881 covered pixels on
-  the real 53-record stream, byte-identical to `pm_render_ref.draw_entities`).
+  per-cell entity pass ported (`Sprites.fs`; on the real record stream of `pm88_f1` byte-identical
+  to `pm_render_ref.draw_entities`, 3061/3061 covered pixels; 12 of 13 synthetic cases identical, the
+  13th a melee frame the port draws and the reference skips).
 - **Seasons, zoom, weather, minimap (§4 "Seasons", §5, §7).** `Season.fading` reproduces the whole
-  16 KB pattern table byte for byte on seven captures; zoom 1-7 terrain matches at 99.2-99.7%;
+  16 KB pattern table byte for byte on seven captures; whole frames at zoom 1-7 match at
+  99.79-99.99%;
   rain and snow match the game pixel for pixel; the minimap (`$107d6`) is gated 512000/512000
   bytes (`../graphics.md` "The minimap and the conquest map").
 
@@ -70,24 +72,19 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 - Godot runs at zoom 4 only; the stepper and the Godot view do not draw weather; `Equipment.fs` is
   called by nothing because the port has no entity simulation.
 
-**Scratch-only scripts (not promoted).** Several results above and below were produced by scripts that
-live only in the gitignored `scratchpad/` (some only on `gpubox`, not on the Mac), so they cannot be
-re-run from the repository: `scratchpad/pm83_synth_check.{py,fsx}` (F# vs Python on
-synthetic quadrant data), `scratchpad/pm90_xcheck.{py,fsx}` and `pm91_ent_{fs.fsx,py.py}` (entity pass cross-checks),
-`scratchpad/pm118/` (`baseline.fsx`, `order_test.fsx`, `phase_test.fsx`), `pm118b/` (`lastrow_fix.fsx`),
-`pm119/` (`season_check.fsx`, `pan_check.fsx`, `zoom_check.fsx`, `jitter_check.fsx`) and
-`scratchpad/pm121/allpairs.txt`. The committed equivalents are `../py/parity.py`, `../py/score.fsx`,
-`../py/season_check.fsx`, `../py/dump_frame.py`, `../py/capture.sh` and `walkthrough/probe.fsx`;
-anything below that cites a scratch path is a record of what was run, not a reproduction recipe.
-
-**Whether they still run.** All of them except `pm121/allpairs.txt` exist only on `gpubox`. Against the `PmLogic.dll` of the
-current tree, `pm118/order_test.fsx` runs and reproduces the `pm88_f1`, `rot40`, `rot90` and `rotc0`
-rows of the §6 "Draw order" table (its `pm74_late`/`pm78_settle` inputs predate the `objs` field
-and fail); `baseline.fsx`, `phase_test.fsx`, `zoom_check.fsx` and `season_check.fsx` compile but
-were not run; the Python halves of `pm83_synth_check`, `pm90_xcheck` and `pm91_ent` run; their F#
-halves and `pan_check.fsx`, `jitter_check.fsx`, `tick_check.fsx` do not compile (they call `walkQ0`, which is
-`Fill.planQ0`, `EntityCtx` and `EntityRec` gained fields); `lastrow_fix.fsx` needs its
-`pm118b/ef62x.fsx`.
+**Re-running the cross-checks.** `../py/xcheck/run.sh` (from `M68000/`, after `dotnet build` of
+`PmLogic.fsproj`) re-exports the 14 frame RAMs of `pm88_f1`, `pm74_late`, `pm78_settle`, the three
+`rot*` yaws, the six other zooms and the two pans through `../py/dump_frame.py`, then runs every
+graphics cross-check of the port and prints its result: the synthetic quadrant walks
+(`quad_fs.fsx`/`quad_py.py`, 4 of 4 identical), the synthetic blits (`blit_fs.fsx`/`blit_py.py`, 12 of
+13), the real record stream (`ent_fs.fsx`/`ent_py.py`, 3061/3061), the renderer baseline
+(`baseline.fsx` against `baseline.txt`, 162 lines), the draw-order table (`order_test.fsx`), `score.fsx`
+on every frame and `zoom_check.fsx`. The RAMs sit in `scratchpad/` (the frames of the 118th and 119th
+passes, on the Mac since the 154th). The experiments that settled a question once and are not
+re-run stay in `scratchpad/` as a record: `pm118/phase_test.fsx`, `pm118b/lastrow_fix.fsx` (its own
+copy of the rasteriser), `pm119/pan_check.fsx`, `jitter_check.fsx` and `tick_check.fsx` (the first two
+were brought up to date and run in the 154th session with the results quoted below), and
+`pm121/allpairs.txt`. A scratch path cited below is a record of what was run.
 
 ---
 
@@ -505,8 +502,8 @@ via the keypad-poke recipe in `../graphics.md` "In-game camera control") plus a 
 call after resuming to the settled PC matched the derived vertex assignment
 and colour-plane choice (A vs B) exactly — e.g. q1 at cell (40,50):
 `D0=C01 D1=C00 D2=C11 D3=$29`, and `hgt(40,50) == $29`. Cross-checked
-byte-exact against the F# port on synthetic data exercising every branch
-(`scratchpad/pm83_synth_check.py` / `.fsx`, scratch only, see Status).
+byte-exact against the F# port on synthetic data exercising every branch, all
+four quadrants, 1020/1020 pixels each (`../py/xcheck/quad_fs.fsx` / `quad_py.py`).
 
 **Scores at other yaws.** q0/q1/q2 score 35-50% exact-index against the captures
 `pm83_q{0,1,2}c.ram`, which were rotated by synthetic keypad pulses and frozen
@@ -663,10 +660,16 @@ for `$f898` (it compares `$fdec`), so it flips the dither phase.
 Port: `Projection.Params.WithZoom` (HALF and `zoomScale`), `Fill.planQ0..3` over
 N x N cells, `Sprites.propSheet` (§6). Evidence: captures of `pm88_f1.snap` at
 zooms 1, 2, 3, 5, 6 and 7 (`$57ffc`, `$ff9c` and the 13 words poked as `$13f60`
-writes them, then 2M steps; `scratchpad/pm119/zoom*.snap`,
-`zoom_check.fsx`, scratch only). Terrain away from sprites matches the game's screen at
-99.2-99.7% at every zoom. Sprite pixels match at 74-84% with `$12244`'s sheet,
-and at 17-52% at zooms 1-3 and 6-7 with the 32 x 24 sheet forced. The float
+writes them, then 2M steps; `scratchpad/pm119/zoom*.snap`; `../py/xcheck/zoom_check.fsx`
+and `score.fsx`, run by `run.sh`). With the port's own records, terrain away from sprites matches
+the game's screen at 99.78-99.95% at every zoom and sprite pixels at 100% (zooms 1, 2, 3, 5) and
+98.2/98.8% (zooms 6, 7) with `$12244`'s sheet, against 19-78% at zooms 1-3 and 6-7 with the
+32 x 24 sheet forced. Drawing each capture's own records, `score.fsx` matches 99.79-99.95% of the
+whole frame at every zoom. Two exporter gaps had held these scores down: `dump_frame.py` did not
+export the 32 x 32 sheet (zoom 1-3 buildings were not drawn: 95.02-99.06% before, 99.79-99.91%
+after, same frames), and `pm_render_ref.load_ram` walked a fixed 11 x 11 cell window, which drops
+the near rows of the 12- and 14-cell windows of zooms 6 and 7 (95.86% at zoom 7 before, 99.89%
+after); both now follow `[$fdec]`. The float
 `Projection.projectGrid` agrees with the game's own corners to within one pixel
 at 78-95% of vertices (zoom 4: 73 of 81); the terrain scores use the game's
 corners.
@@ -895,16 +898,23 @@ buffer holds all 25 trees, and it stays at 94.62% (§9 "Ruled-out causes").
 **The per-cell entity pass in F#.** It lives in `Sprites.fs` (`EntityRec` /
 `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`) and is
 **cross-checked byte-exact** against `pm_render_ref.draw_entities` on synthetic
-corners + record fields: 13/13 cases, `byte6 ∈ {0, 4, 8, 14, 24}`, covering the
-melee→nothing case, the prop `r7 ∈ {0x0d, 0x0e}` special-cases, animal/banner
-facing, and the centroid markers (`scratchpad/pm90_xcheck.fsx` / `.py`, scratch
-only, see Status). `drawEntities` replays `$115e0` as a post-terrain far→near
+corners + record fields: 12 of 13 cases, `byte6 ∈ {0, 4, 8, 14, 24}`, covering
+the prop `r7 ∈ {0x0d, 0x0e}` special-cases, animal/banner facing, and the
+centroid markers (`../py/xcheck/blit_fs.fsx` / `blit_py.py`). The 13th is the
+melee man (`b31 == $32`): the port draws its `$11c8a` frame, `pm_render_ref`
+still returns nothing for it. `drawEntities` replays `$115e0` as a post-terrain far→near
 pass in `walkQ3` cell order (same approximation `pm_render_ref` uses); `byte6
 6/24` use the `$1182a` centroid, everything else the `$11f1a` sub-cell lerp. Fed
-the real 53-record stream and the `$3f364` corners of `pm88_f1.ram`, the F#
-output is byte-identical to `pm_render_ref.draw_entities`: 2881/2881 covered
-pixels, `byte6 ∈ {0, 4, 6, 8, 14, 24}` (`scratchpad/pm91_ent_fs.fsx` /
-`pm91_ent_py.py`, scratch only).
+the `entities.json` records and the `$3f364` corners of `pm88_f1.ram`, the F#
+output is byte-identical to `pm_render_ref.draw_entities` on the same RAM:
+3061/3061 covered pixels, `byte6 ∈ {0, 4, 6, 8, 14, 24}` (`../py/xcheck/ent_fs.fsx` /
+`ent_py.py`). Both sides have moved on since the first run of this check gave
+2881/2881: on `pm88_f1`'s own screen the current output matches 1889 of its 3061
+pixels where the old matched 1182 of 2881, and of the 588 pixels whose colour
+changed, the new colour is the game's at 502 and the old at 11. The 1172 pixels
+the current output misses are as many as the pixels where the two draw orders
+differ on `pm88_f1` (table below): inferred to be nearer terrain that the inline
+order draws over the sprite and this sprites-last path does not.
 
 **The record stream (`entities.json`).** `tools/pm_export.py`'s `export_entities`
 walks every cell's `$47970` bucket chain over the whole map, from `pm88_f1`
@@ -933,9 +943,9 @@ as data (`planQ0`..`planQ3` → a `Cell list` in draw order, each cell with its 
 two `Tri`s in order), `Scene.steps` puts each cell's `$47970` bucket sprites after its
 triangles, and `Scene.render` draws the result, which is what `TerrainView.cs` and the viewer draw.
 `Fill.walk` draws the plan without sprites and is byte-identical to a direct walk (16 yaws ×
-5 cams × 2 ticks, `scratchpad/pm118/baseline.fsx`). Evidence for the order, drawing every
+5 cams × 2 ticks, `../py/xcheck/baseline.fsx`, record `baseline.txt`). Evidence for the order, drawing every
 ported category, scored against the game's own compose buffer
-(`scratchpad/pm118/order_test.fsx`, inputs from `load_ram` via `dump_frame.py`):
+(`../py/xcheck/order_test.fsx`, inputs from `load_ram` via `dump_frame.py`):
 
 | capture | terrain only | sprites last (`drawEntities`) | inline (`Scene.render`) | px where the orders differ: game = last / inline / neither |
 |---|---|---|---|---|

@@ -768,9 +768,10 @@ pan, PageUp / PageDown rotate through 16 yaw steps, Y cycles the season; the min
 its camera-window box are port additions, the game draws no viewport rectangle), and
 `port/stepper/` a slow-motion replay of one frame in the game's own draw order. The F#
 rasteriser, entity pass and projection are cross-checked byte-exact against
-`pm_render_ref.py` on synthetic and real data (entity pass 13/13 synthetic cases and 2881/2881
-covered pixels on the real 53-record stream; `py/parity.py` equal on all 15178 drawn pixels
-of one capture; stepper `--selfcheck` 23/23). Godot stays at zoom 4. Per-capture
+`pm_render_ref.py` on synthetic and real data (entity pass 12 of 13 synthetic cases, the 13th a
+melee frame only the port draws, and 3061/3061 covered pixels on the real record stream;
+`py/parity.py` equal on all 15178 drawn pixels of one capture; stepper `--selfcheck` 23/23;
+`py/xcheck/run.sh` reruns them all). Godot stays at zoom 4. Per-capture
 verification records are in `port/README.md`.
 
 ### Differential testing against the real 68000

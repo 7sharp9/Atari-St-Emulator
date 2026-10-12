@@ -18,6 +18,9 @@ let run (arg: string) =
     let root = JsonDocument.Parse(File.ReadAllText path).RootElement
     let gi (k: string) = root.GetProperty(k).GetInt32()
     let bytes (k: string) = Convert.FromBase64String(root.GetProperty(k).GetString())
+    // sheets a dump_frame.py older than the 154th did not export read as empty
+    let bytesOpt (k: string) =
+        match root.TryGetProperty k with | true, v -> Convert.FromBase64String(v.GetString()) | _ -> [||]
     let camX, camY = root.GetProperty("cam").[0].GetInt32(), root.GetProperty("cam").[1].GetInt32()
     let yaw, inset, half = gi "yaw", gi "x_inset", gi "half"
     let map : Terrain.Map = { Type = bytes "typ"; HeightPlane = bytes "hgt"; Flag = bytes "flg"; Control = bytes "ctl" }
@@ -31,7 +34,7 @@ let run (arg: string) =
     let ctx : Sprites.EntityCtx =
         { Yaw = yaw; Anim = gi "anim" <> 0; SelGroup = gi "sel_group"; TileOff = gi "tile_off"
           RotPhase = gi "rot_phase"; Sheet33 = bytes "sheet33"; SheetProp = bytes "sheet_prop"; Ram = bytes "ram"
-          Zoom = half; SheetProp32 = [||]; SheetProp16 = bytes "sheet_prop16" }
+          Zoom = half; SheetProp32 = bytesOpt "sheet_prop32"; SheetProp16 = bytesOpt "sheet_prop16" }
     let recs =
         [ for o in root.GetProperty("objs").EnumerateArray() ->
             let g (k: string) = o.GetProperty(k).GetInt32()

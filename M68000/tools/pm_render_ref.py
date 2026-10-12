@@ -406,8 +406,10 @@ def load_ram(ram_path: Path):
     BUCK = 0x47970
     objs = []
     seen_addr = set()
-    for wcy in range(cam_y - 1, cam_y + 10):
-        for wcx in range(cam_x - 1, cam_x + 10):
+    # the 2*half x 2*half cell window plus one cell of margin each side
+    # (cam-1 .. cam+9 at zoom 4; a fixed +10 drops the near rows at zoom 6-7)
+    for wcy in range(cam_y - 1, cam_y + 2 * half + 2):
+        for wcx in range(cam_x - 1, cam_x + 2 * half + 2):
             if not (0 <= wcx < 64 and 0 <= wcy < 128):
                 continue
             d4 = u16(BUCK + (wcy * 64 + wcx) * 2)

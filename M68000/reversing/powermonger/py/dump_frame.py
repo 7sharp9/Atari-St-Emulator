@@ -1,5 +1,6 @@
 """121st: pm118/dump_frame.py plus the later-land record fields (b15, b32,
-w18, icons), the unmasked $57fed tick byte and the 16x16 $312a0 sheet.
+w18, icons), the unmasked $57fed tick byte and the 16x16 $312a0 and 32x32
+$3af1c sheets.
     py -3 dump_frame.py <frame.ram> <out.json>   (input for score.fsx)"""
 import base64, json, sys
 from pathlib import Path
@@ -28,6 +29,7 @@ doc = dict(
     rot_phase=b[0x57FED],
     sheet33=b64(ent["sheet33"]), sheet_prop=b64(ent["sheet_prop"]),
     sheet_prop16=b64(b[0x312A0:0x312A0 + 47 * 160]),
+    sheet_prop32=b64(b[0x3AF1C:0x3AF1C + 27 * 640]),   # $12244 zoom 1-3 sheet
     ram=b64(b),
     objs=[obj(o) for o in ent["objs"]],
 )
