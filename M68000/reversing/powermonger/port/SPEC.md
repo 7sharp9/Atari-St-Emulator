@@ -80,7 +80,7 @@ passes, on the Mac since the 154th). The experiments that settled a question onc
 re-run stay in `scratchpad/` as a record: `pm118/phase_test.fsx`, `pm118b/lastrow_fix.fsx` (its own
 copy of the rasteriser), `pm119/pan_check.fsx`, `jitter_check.fsx` and `tick_check.fsx` (the first two
 were brought up to date and run in the 154th session with the results quoted below), and
-`pm121/allpairs.txt`. The labelled-poke checks of the men's overlays and of `byte6` 18, 28, 34 and 36-42 rerun with `../py/xcheck/overlay/run_cases.sh` (captures from `pm88_f1`) then `score_cases.sh` (each case against the no-poke control, plus wrong-frame controls). A scratch path cited below is a record of what was run.
+`pm121/allpairs.txt`. The labelled-poke checks of the men's overlays and of `byte6` 18, 28, 34 and 36-42 rerun with `../py/xcheck/overlay/run_cases.sh` (captures from `pm88_f1`) then `score_cases.sh` (each case against the no-poke control, plus wrong-frame controls); `bomb_check.sh` follows 36-42 into the crash. A scratch path cited below is a record of what was run.
 
 ---
 
@@ -750,7 +750,7 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 | 30 | `$1198a` / – | building going up (`$5e3a`) | frame `$0c`, top rows cut off while `word[8]` counts down from `$10` | land 25 |
 | 32 | `$1168a` / `$1168a` | nothing: `rts` in both passes (the end state of a dead man without goods) | – | – |
 | 34 | `$11ab8` / `$11f78` | – | f = `$100 + ((($57fec & 2) + record[7]) & $ff) + (((record[14] + yaw + $10) & $e0) >> 4) * 2` at the lerp, then f + 1 eight pixels right | never seen naturally; poked: 19/19 px |
-| 36, 38, 42 | prepare word 0 / `$12258`, `$12258`, `$12244` | – | none: `$115e0` jumps to `$1162e` + 0, into the table itself, which runs as code through `(A4)+`, `(A6)+` and `(A0)+` writes to `$0608` at `$11640`, an illegal instruction on a 68000 (inferred from the encoding) | cannot be drawn: a poked record stops the emulator at `$11644` (3 of 3) |
+| 36, 38, 42 | prepare word 0 / `$12258`, `$12258`, `$12244` | – | none: `$115e0` jumps to `$1162e` + 0, into the table itself, which runs as code through `(A4)+`, `(A6)+` and `(A0)+` writes to the word `$0608` at `$11640` (`addi.b` to `A0`, an unassigned encoding), which takes the illegal-instruction trap | crashes the game: a poked record reaches `$11640` 108,268 steps after the frame driver and takes vector 4 into TOS's bomb handler, which stores its crash record (`$380 = $12345678`, `$3c4 = 4`) and draws four bombs on the game's screen at row 100; 2,025 steps later the handler's exit returns into the vector table at `$20` with a garbage stack, where the emulator stops (a real ST would fault again; inferred). 3 of 3, end states equal apart from the poked byte (`../py/xcheck/overlay/bomb_check.sh`) |
 | 40 | `$11c64` / – | projectile (`$57f0`, weapon tier in `D1`) | one colour-0 pixel (`$e6ee`) | land 25 |
 | 44 | `$1184e` / – | dropped goods pile (`$3ac8`) | a goods icon per non-zero word at `record + 10 + 2e` | lands 5, 25 |
 
