@@ -206,7 +206,14 @@ fighting group's word (L2G k76, k44, k25, k8 and M2G k126, k14, k110 from `pm148
 - In B the posture rule `$672e` fires for the group (k44 0 → 151 hits, k8 6 → 114).
 - In seven cases the end states differ at most in the word itself and stack scratch, because the posture was already 2, or a later `$4bc8` rewrote the word (k8), or the AI did not run (k76, k110: `$6526` 0 hits).
 - In one case (M2G k14, side 2 group 1) the posture ends Aggressive (2) instead of Passive (4), with no other game byte changed in the 20M steps.
-- `$65ec` ran 0 times in every run. No snapshot of the 896 combines the overwrite on a group 0 with another free group of its side in state 6 or 9, so the escort arm's loss is not observed (code read only).
+- `$65ec` ran 0 times in every run.
+
+**What the overwrite costs when group 0 is the one hit.** The escort arm tests `280(A3) == 4` on group 0, so an offset there turns the escort off for the side's other groups. No natural state has been found that combines the overwrite on a group 0 with a deciding free group of its side: none of the 896 snapshots, and in k25's 10G extension (`X10G_k25`), side 2's group 0 holds the offset `$36e2` through all 40 chunks, but the side's only other group (group 2) fights until chunk 4 and dies without deciding. The cost is therefore measured by a reverse A/B (`ab_5778.py` with `snap:s:k:val`, 200M steps): B writes the offset that `$57e6` would (the `292()` value) into the class word of a group 0 fighting another group, and A is unpoked.
+- **`X10G_k25_c1`, side 3** (groups 1, 2 and 4 camped with 22 to 23 men, too many for arm 1): escort `$65f4` 46 → 0, attack `$6638` 0 → 7, new fights `$4bc8` 0 → 4, kills `$5590` 0 → 18. At the end of B, groups 1 and 4 target an enemy lord (class 2) and group 1 has 28 men; in A all three are still camped.
+- **`M2G_k14_c3`, side 4** (group 1 camped, 23 men): escort 247 → 0, attack 0 → 3, kills 0 → 22. Group 1 ends marching to attack (state 8) instead of camped.
+- `M2G_k14_c1`, side 3: no effect (2 bytes differ at the end, the poked word itself); its group 1 never decided in either run, and the 49 escorts in both came from another side.
+
+The escort pre-empts the attack (arm 2 before arm 3), and in A the escort is futile: its target is transposed (above), and the groups stay camped beside a fight that does not end. So when the overwrite lands on a group 0, it does not idle the side's free groups: it releases them to attack. Whether that ever happens naturally is still open.
 
 ## Data structures (C)
 

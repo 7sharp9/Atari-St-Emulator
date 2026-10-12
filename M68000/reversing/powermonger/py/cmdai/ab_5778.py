@@ -6,7 +6,10 @@ group k+1's +204, is read from the snapshot and written back unchanged). Each ru
 the word (`$65ec` escort test, `$65f4` escort issued, `$6726` posture test, `$672e` posture := 2) and a few combat/AI
 routines, then snapshots; the two end states are compared byte for byte and the group's fields printed.
 
-Usage: python3 ab_5778.py [steps] [snap:s:k ...]   (default: the natural cases listed in CASES, 20M steps)
+Reverse A/B: a case `snap:s:k:val` takes a group whose word holds a class (4, group 0 fighting a group) and B writes `val`
+(hex, an entity offset, as `$57e6` would): the escort arm `$65ec` of the side's other groups then sees no class 4.
+
+Usage: python3 ab_5778.py [steps] [snap:s:k[:val] ...]   (default: the natural cases listed in CASES, 20M steps)
 Output under $PM_WORK (default scratchpad/pmwork)/ab/.
 """
 import os
@@ -31,7 +34,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from gfxview import load_ram  # noqa: E402
 
 GROUPS = 0x51538
-HITS = "6526 66e8 6726 672e 6734 673e 65ec 65f4 6822 5590 5778 57e6 4bc8 4d70 3728 6762"
+HITS = "6526 66e8 6726 672e 6734 673e 65ec 65f4 65c8 6638 664c 666c 668c 66a4 6822 5590 5778 57e6 4bc8 4d70 3728 6762"
 CASES = ["scratchpad/pm148/arms/long/L2G_k76_c1.snap:4:0", "scratchpad/pm148/arms/long/L2G_k44_c1.snap:4:0",
          "scratchpad/pm143/run/p0k60_s3.snap:4:0", "scratchpad/pm148/arms/long/L2G_k25_c2.snap:2:0",
          "scratchpad/pm148/arms/long/M2G_k126_c1.snap:2:0", "scratchpad/pm148/arms/long/L2G_k8_c1.snap:2:1",
@@ -62,17 +65,18 @@ def main():
     args = sys.argv[1:]
     steps = int(args.pop(0)) if args and args[0].isdigit() else 20_000_000
     for case in args or CASES:
-        snap, s, k = case.rsplit(":", 2)
-        s, k = int(s), int(k)
+        parts = case.split(":")
+        val = int(parts.pop(), 16) if len(parts) == 4 else 4
+        snap, s, k = parts[0], int(parts[1]), int(parts[2])
         r, _ = load_ram(str(ROOT / snap))
         a = GROUPS + 316 * s + 2 * k + 280
         cur, nxt = w(r, a), struct.unpack_from(">H", r, a + 2)[0]
         tag = f"{Path(snap).stem}_s{s}k{k}"
         print(f"== {tag}: start {group_line(r, s, k)}")
-        if w(r, a - 280 + 76) != 13 or cur in (0, 2, 4, 6, 8, 10, 12):
-            print("   not a state-$d group with an offset in +280: skipped")
+        if w(r, a - 280 + 76) != 13 or (val == 4) == (cur in (0, 2, 4, 6, 8, 10, 12)):
+            print("   not a state-$d group with an offset (or, reverse, a class) in +280: skipped")
             continue
-        poke = f"w {a:x} {(4 << 16) | nxt:08x}"
+        poke = f"w {a:x} {(val << 16) | nxt:08x}"
         with ThreadPoolExecutor(2) as ex:
             fa = ex.submit(run, f"{tag}_A", snap, [], steps)
             fb = ex.submit(run, f"{tag}_B", snap, [poke], steps)
