@@ -349,17 +349,22 @@ the next"):
   `$3e06` skips a pigeon whose owner is not positive (`tst.b 5(A1); ble` at `$417a`), so the
   pigeon never flies and the word never clears. This is why side 4's two captains on `rand1_s1`
   stay pending through 150M steps (`watch` on the five words: 0 writes, 12 pigeons launched).
-  `py/arms/pending_census.py` over 340 snapshots classifies 595 set pending words: 182 with a live
-  pigeon in flight (the first group alive in every one), 187 waiting on a dead sender's pigeon (186
-  with the first group dead), 219 with no pigeon left (201 with the first group dead) and 7 with
-  the side's pending record queued. The census list is every `pm148/arms/long/*_c[2468].snap` (325)
-  and `pm150/arms/pig/r1_c*.snap` (15). 157 of those snapshots (238 of the words, 112 of the
-  pigeons in flight) were taken after the game had returned to the main menu (no `$6522` in the
-  chunk that ended there), so their pigeons never move.
+  `py/arms/pending_census.py` classifies the set pending words of non-lead groups in the snapshots
+  whose chunk still ran the commander AI. Over the census list (every
+  `pm148/arms/long/*_c[2468].snap` (325) and `pm150/arms/pig/r1_c*.snap` (15)) that is 183
+  snapshots and 357 words: 70 with a live pigeon in flight (the first group alive in every one), 142
+  waiting on a dead sender's pigeon (141 with the first group dead), 141 with no pigeon left (138
+  with the first group dead) and 4 with the side's pending record queued. The other 157 snapshots
+  were taken after the game had returned to the main menu (no `$6522` in the chunk that ended
+  there, `stuck_classes.frozen()`), so their words and pigeons are left-over RAM, not play;
+  `--all` counts them too (595 words: 182, 187, 219 and 7).
 
-  **A re-used group slot inherits the pending word** (a second game bug; watch-proven). The 19
-  words on sides whose first group is alive have three causes (`py/arms/stuck_classes.py`, which
-  classifies every case). Twelve (three groups, each seen in four chunks) are inherited: `$2776`
+  **A re-used group slot inherits the pending word** (a second game bug; watch-proven).
+  `py/arms/stuck_classes.py` classifies every dead-sender and orphan word by cause. Over all 340
+  snapshots the 19 on sides whose first group is alive are 12 inherited (three groups, each seen in
+  four chunks), 6 orders still in the command slot and 1 dead-sender leak, but only 4 of them are in
+  chunks where the AI still ran (1 inherited, 2 in slot, 1 dead-sender); those live chunks hold 8
+  more inherited words on sides whose first group is dead. Inheritance: `$2776`
   dissolves a group by clearing its owner word (`clr.w -48(A3)` at `$28ae`) and freeing the pigeons
   riding to its lead (`$283a`), but leaves the pending word `-72(A3)`; `$25d6` then builds the next
   captain's group in the first slot whose owner is 0 (lead `$2696`, sender `$269a`, owner `$26d0`,

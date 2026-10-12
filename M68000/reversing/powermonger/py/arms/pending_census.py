@@ -1,21 +1,30 @@
-"""pending_census.py <snap>...: classify every non-lead group (D7 != 0, owner > 0) whose pending word 4(group) is set:
+"""pending_census.py [--all] <snap>...: classify every non-lead group (D7 != 0, owner > 0) whose pending word 4(group) is set:
   flying   a live order pigeon (category $14, owner > 0) rides to the group's lead (word 20 == lead offset)
   deadpig  a pigeon to the lead with owner <= 0 (launched by a dead sender: $4562 copies 5(sender); the $3e06 pool loop skips it forever)
   queued   no pigeon, the side's pending record (long at the side's slot, $6522 `tst.l 0(A1)`) non-zero
   orphan   none of these (the pigeon was freed without clearing the word: $2776 on a first group frees every pigeon of the side)
-Also counts how many of those sides have a live first group (owner word > 0 and lead owner byte > 0)."""
+Also counts how many of those sides have a live first group (owner word > 0 and lead owner byte > 0).
+Skips the snapshots stuck_classes.frozen() calls 'frozen' (their chunk ran no $6522: the game is back at the main menu, so
+its groups and pigeons are left-over RAM, not play); --all counts them too."""
 import collections, sys
 from pathlib import Path
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / 'tools' / 'rdis.py').exists())
 sys.path.insert(0, str(ROOT / 'tools'))
 from disassemble import ram_from_snap
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from stuck_classes import frozen
 OBJ = 0x51b66
 def w(r, a): return (r[a] << 8) | r[a + 1]
 def s16(v): return v - 0x10000 if v & 0x8000 else v
 def s8(v): return v - 0x100 if v & 0x80 else v
+args = sys.argv[1:]
+keep_frozen = '--all' in args
+snaps = [Path(a) for a in args if a != '--all']
+state = collections.Counter(frozen(sn) for sn in snaps)
+if not keep_frozen: snaps = [sn for sn in snaps if frozen(sn) != 'frozen']
 tot = collections.Counter(); g0dead = collections.Counter()
-for sn in sys.argv[1:]:
-    r = ram_from_snap(sn)
+for sn in snaps:
+    r = ram_from_snap(str(sn))
     pig = [(0x4c112 + 26 * i) for i in range(1, 48)]
     pig = [p for p in pig if r[p + 6] == 0x14]
     for sd in range(1, 5):
@@ -32,4 +41,5 @@ for sn in sys.argv[1:]:
             elif any(r[slot:slot + 4]): c = 'queued'
             else: c = 'orphan'
             tot[c] += 1; g0dead[(c, 'g0 alive' if g0alive else 'g0 dead')] += 1
-print(len(sys.argv) - 1, 'snapshots;', dict(tot)); print(dict(g0dead))
+print(len(snaps), 'snapshots counted;', dict(state), '' if keep_frozen else '(frozen skipped)')
+print(dict(tot)); print(dict(g0dead))

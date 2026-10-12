@@ -1866,13 +1866,13 @@ frees every order pigeon of that side (`$27c6 clr.b 6(A1)`) but does not clear t
 `$4562` launch copies the sender's owner byte from the dead first group's lead, which is negative (`$45a8 move.b 5(A3),5(A1)`;
 rand1 side 4: `$4c131 := $fc`), and `$3e06` skips every pigeon whose owner is `<= 0` (`$417a tst.b 5(A1)` / `ble`): the record
 stays allocated, never flies or arrives, and the receiver's pending word never clears. Proven on `pm142/rand1` by watch (the
-launch, the owner byte and the stuck pending word). Census (`py/arms/pending_census.py`, 595 set pending words of non-lead
-groups in 340 snapshots, the pm148 L2G/M2G chunks and `pm150/arms/pig/r1_c*`): 182 have a pigeon in flight (all on a side
-whose first group is alive), 187 a dead-sender pigeon (186 on a side whose first group is dead), 219 no pigeon at all (201
-likewise), 7 a queued order. The 19 dead-sender and orphan cases with a live first group are explained in `strategy.md`
-"The pending word": twelve are a slot re-used by `$25d6` that inherits the dissolved group's pending word (`$2776` clears the
-owner word at `$28ae` but not the pending word `4(group)`), six an order still in the command slot, one a first group that
-`$25d6` re-formed after the leak.
+launch, the owner byte and the stuck pending word). Census (`py/arms/pending_census.py`, the set pending words of
+non-lead groups in the 183 snapshots of the pm148 L2G/M2G chunks and `pm150/arms/pig/r1_c*` whose chunk still ran the
+commander AI, 357 words): 70 have a pigeon in flight (all on a side whose first group is alive), 142 a dead-sender pigeon
+(141 on a side whose first group is dead), 141 no pigeon at all (138 likewise), 4 a queued order. The four dead-sender and
+orphan cases with a live first group are explained in `strategy.md` "The pending word": one is a slot re-used by `$25d6`
+that inherits the dissolved group's pending word (`$2776` clears the owner word at `$28ae` but not the pending word
+`4(group)`), two an order still in the command slot, one a first group that `$25d6` re-formed after the leak.
 `py/arms/pend_pigeons.py` lists a snapshot's groups and live pigeons. See `strategy.md` "The pending word".
 
 **`$4562` — how an order reaches a subordinate captain.**
