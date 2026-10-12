@@ -213,6 +213,11 @@ against every session's changes.
   practice). (S "Open threads")
 - Starting a new conquest clears only 62 of the 195 conquered-land flags (the clear loop's count is `move.w #$c3,D0` then `neg.b D0`, which leaves `$3d`): the flags of lands 62 and up survive.
   Live: 240 bytes poked to 1, then YES left exactly the first 62 zero. (S "The campaign", the panel `$18` row)
+- Ambient sounds play once. The sound table marks most events with flag `$20`, the driver's loop bit, and the dispatcher
+  refuses to restart a `$20` sound already on its one slot, but `$1ba3e` drops the flags and starts every sequence unlooped:
+  a lit camp fire in view crackles once, then 158 of 160 dispatches skip it until another sound takes the slot
+  (`py/ui/snd_slot.sh`; the looping intent is inferred). The dispatcher also computes a second-best event it never plays.
+  (S "`$127e6` — the sound-event dispatcher")
 
 ## Drive recipe: cold boot to the isometric view ([cr Replicants])
 
