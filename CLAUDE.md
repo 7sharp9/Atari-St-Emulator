@@ -184,10 +184,12 @@ that are easy to forget:
   before the down, or the census misses the handler. `hits <n> <addrs>` after a `bp` that stopped
   the run counts only what happens after the stop, so a routine that ran earlier reads 0 and looks
   uncalled: run `hits` from the end of the click, before any `bp`.
-- `hits` can count an address once more than it ran: PowerMonger's `$1abc0` read 180 against 177 writes
-  by `watch` of the routine's own store, a weather counter 131 against 130 (an interrupt taken at that
-  instruction boundary is the inferred cause). When an exact count matters, count a `watch` of the
-  routine's write, not `hits`.
+- `hits` and `bpc` count an address again when an interrupt is taken at it: the handler returns to the
+  same PC, which counts as a second arrival. PowerMonger's `$1abaa` was seen doing this (`s 1` from the stop
+  enters the level-6 sample-player handler; `bpc` stops there again 20 steps later with the routine's state
+  unchanged; 4 re-entries were the whole excess of `hits` over distinct calls, `py/season/gate_1abaa.py`).
+  When an exact count matters, count a `watch` of the routine's write, not `hits`; a `bpc` corpus drops a
+  stop that arrives a few steps after the previous one with the same state.
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event. A pulse shorter than
   the game's poll cycle can fall between two polls and never register: hold at least one full VBL
   frame (`instructionsPerFrame`: about 12,000 to 15,000 steps on an idle screen, about 24,000 in
