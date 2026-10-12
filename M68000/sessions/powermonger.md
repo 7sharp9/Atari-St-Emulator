@@ -1,6 +1,6 @@
 # PowerMonger: handoff
 
-Updated 2026-10-12 by the 155th session (a short pass: when the minimap is baked, `fd8a1a0`), after the 154th (graphics cross-checks promoted and rerun, Ruins ported, live-play pending census, FORMAT's ARE YOU SURE: `d5186d9`, `71bc060`, `ae188b6`, `b95f2f0`, `deb2304`, `bc3aac4`).
+Updated 2026-10-12 by the 155th session (a short pass: when the minimap is baked, `fd8a1a0`; lessons into CLAUDE.md and the skill, `8f96013`; `py -3` docstrings, `132c826`), after the 154th (graphics cross-checks promoted and rerun, Ruins ported, live-play pending census, FORMAT's ARE YOU SURE: `d5186d9`, `71bc060`, `ae188b6`, `b95f2f0`, `deb2304`, `bc3aac4`).
 
 ## Resume point
 
