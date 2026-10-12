@@ -51,7 +51,13 @@ x86_64, so an arm64 link fails) and run it under `arch -x86_64`. `tools/hatari_t
 `reversing/cadaver/py/secrets/hatari_xp_check.py` does: `SDL_VIDEODRIVER=dummy`, a socket path short enough for
 AF_UNIX, a pty for stdout (debugger output is block-buffered into a file), every `hatari-debug` command sent while
 the emulation runs (they are ignored while `hatari-stop` has paused it), and Esc as `0x01` (a one-character key
-argument is ASCII).
+argument is ASCII). The mouse: `hatari-event mousemove dx dy` is relative and the IKBD clamps the absolute cursor
+at 0, so pin with `mousemove -2000 -2000`, then move to the target and read the game's own pointer back;
+`leftdown`/`leftup` click. To sample memory on every hit without stopping, use `b pc=$addr :trace :quiet :file f.dbg`
+with `echo`/`m` lines in the file (single-quoted expressions such as `'a6-146'` and `'VBL'` are expanded). With
+only two such breakpoints set, Hatari once reported a stack word changing inside a call that no handler can reach;
+a third breakpoint made it vanish: cross-check any surprising mid-call change. Worked example with mouse menus:
+`reversing/populous/py/systems/hatari_edges.py`.
 
 ## Python tooling (`tools/`, `reversing/<game>/py/`)
 
