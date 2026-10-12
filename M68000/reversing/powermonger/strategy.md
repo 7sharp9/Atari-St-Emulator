@@ -902,9 +902,13 @@ and `$1373c` is the per-tick tail (below). Position choice: with a left or right
    (1 hit each) moves `$57fd2` and `$58042[1]` from `$188` to `$18a`; a right press there gives
    `$134b2` 2 hits over a 300k-step hold and moves the view cell from (31,119) to his lead at
    (15,92) with `$57fd2` unchanged. An order issued with captain 1 selected goes to him by pigeon
-   (`py/captain2/drive_order.sh`; ai.md "`$4562` — how an order reaches a subordinate captain"). A click in transfer mode was handled on two UI passes
-   (`$133d4` hit 239k steps apart); the second pass posted `$22`, which `$6d90` dropped
-   (whether this is the game or the emulator's mouse release is not settled). Rectangles
+   (`py/captain2/drive_order.sh`; ai.md "`$4562` — how an order reaches a subordinate captain"). A click on a figure in transfer mode is
+   usually handled on two passes of the loop (the tick tail, below): the first posts `$04` and turns
+   the mode off, the second finds the click still pending and posts `$22`, which `$6d90` drops because
+   the tail has cleared the flag by then. The game does this, not the emulator: with the click poked as a
+   latched click on the same snapshot and budget, a click visible before this pass's UI sections
+   (`$130fc`) gives `$133d4` 2 hits, `$04` then `$22`, `$6d90` 1 and `$3ce8` 0; one poked at the tail
+   (`$1373c`) gives `$133d4` 1 hit and `$04` only (`py/captain2/xfer_timing.sh`). Rectangles
    `$138ec` (x0,y0,x1,y1): the first six (102,56,114,68) (157,49,169,61) (201,46,213,57)
    (237,49,249,61) (263,54,275,66) (306,62,318,74); the second six (65,21,118,86) (119,16,177,82)
    (178,10,232,78) (224,17,250,77) (250,19,281,92) (282,27,319,109).
@@ -962,7 +966,13 @@ callcaps `$1394c` for 10 orders over 61 cell classes of `pm142/rand1.snap`, 610 
 the transcription above.
 
 **The tick tail `$1373c`**: when the sim clock `$2df70` differs from `$2df74` it clears both click
-flags (`clr.l $2df96`); while name entry is on (`$d03e`) it calls `$cf46`; then the key rows
+flags (`clr.l $2df96`). The IKBD packet handler stamps `$2df74 := $2df70` on a button press (`$12f6`,
+`$1352`), and the loop adds 1 to the clock at the top of every unpaused pass (`$1302e`, skipped while
+`$57ff2` is set), so a press is cleared at the end of the first pass whose clock differs from its stamp. A
+press that arrives after a pass's increment and before its UI sections is therefore seen by that pass and
+the next one, and that window is almost the whole pass (on `rand1`: about 177k steps from `$1302e` to the
+captain boxes `$133ba`, then 5 to the tail and 50 back to `$1302e`). A click is acted on twice unless its
+handler clears `$2df96` itself or the second action is dropped (the captain boxes, above); while name entry is on (`$d03e`) it calls `$cf46`; then the key rows
 (`graphics.md` "Per-frame camera loop"), `$13864` (panels, fades) and the jump back to `$12fd8`.
 On `pm142/rand1.snap` the loop runs every 187k steps (16 ticks in 3M idle steps).
 
