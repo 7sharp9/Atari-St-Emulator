@@ -748,11 +748,15 @@ cell (0, 0) and is dead in play (`ai.md` "`$4562`").
 **`$6b38` and the tail `$6e6e`.** `$6b38` clears the type byte and sends types `>= $34` to `$6eb0` (a bare exit).
 Every handler leaves through `$6e6e`: when byte 0 of the slot is the local side `$57ffe` it
 calls `$17a46`, which draws the group's mode icon in the HUD (`ai.md` "`$17a46`"), and raises the
-pending count of sound event `31 + (state + word − 36) mod 6` in the event table `$1290c` (entries 31..36
-are `$12abe + 14n`: cooldown `$5a`, word 8 `$28`, priority 2, flags `$80`), one of six order
-acknowledgements (live 1/1: `py/ui/sndpost.repl`, event 36 queued at `$6eac` and picked by `$127e6`
-559 steps later); otherwise it does nothing (live: `$6e7e` reached 1/1 for the local side, 0/1 for
-another).
+pending count of sound event `31 + (state + first_man) mod 6` in the event table `$1290c` (the group's
+words 0 and −36: its state and its roster head, an object offset; entries 31..36 are `$12abe + 14n`:
+cooldown `$5a`, word 8 `$28`, priority 2, flags `$80`), one of six order acknowledgements. The offset is
+50 × the object index and 50 ≡ 2 (mod 6), so the pick is `31 + (state + 2 × index) mod 6`: it keeps the
+state's parity, and a group answers an even state with event 31, 33 or 35 and an odd one with 32, 34 or 36,
+fixed by which man heads its roster. Live 1/1 (`py/ui/sndpost.repl` from `m1_ready`): side 1 group 0,
+state 7, roster head `$92e` (object 47), (7 + `$92e`) mod 6 = 5, event 36 queued at `$6eac` and picked by
+`$127e6` 559 steps later. For another side it does nothing (live: `$6e7e` reached 1/1 for the local side,
+0/1 for another).
 
 **Gates.**
 - `py/cmdai/gate_exec.py` (model `call_6a3a` / `call_6ac6`, with `call_4562` from `pm_fsm_ref`, every
