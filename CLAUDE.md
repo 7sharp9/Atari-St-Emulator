@@ -201,5 +201,6 @@ that are easy to forget:
   the last byte. Black Tiger's cracktro `$a562` and trainer menu `$c658` both stall this way. Bypass
   with a labelled `w` poke of the branch in the drive script (`reversing/black_tiger/drive.txt`); the
   real fix is an emulator change behind the regression net.
+- `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps"; step past it first (`s 2000000`, then `u`), as `capture.sh` does.
 - Appending to a game's ring-queue input at its read pointer is overwritten by the game's own
   pushes: append at the write pointer (Cadaver `304(A5)`, advance by 8, `1154(A5)` += 1).
