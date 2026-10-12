@@ -50,6 +50,9 @@ public partial class TerrainView : Node2D
     // corners, the tree jitter follows the cell's place in the window
     // (Sprites.recordJitter), and the yaw only picks facing frames.
     private Sprites.EntityRec[] _entRecs = System.Array.Empty<Sprites.EntityRec>();
+    // entities.json objects[]: every record with a side, as (side byte 5,
+    // cell x = record[8], cell y = record[10]) for the minimap people dots
+    private System.Tuple<int, int, int>[] _people = System.Array.Empty<System.Tuple<int, int, int>>();
     private byte[] _sheet33 = System.Array.Empty<byte>();
     private byte[] _sheetProp = System.Array.Empty<byte>();   // 32x24, zoom 4-5
     private byte[] _sheetProp32 = System.Array.Empty<byte>(); // 32x32, zoom 1-3
@@ -166,6 +169,10 @@ public partial class TerrainView : Node2D
                 Gopt("b15"), Gopt("b32"), Gopt("w18"), Gopt("icons"), Gopt("b33"), Gopt("b44")));
         }
         _entRecs = list.ToArray();
+        if (root.TryGetProperty("objects", out var objs))
+            _people = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Select(objs.EnumerateArray(),
+                o => System.Tuple.Create(o.GetProperty("active5").GetInt32(),
+                    o.GetProperty("world_x").GetInt32() >> 8, o.GetProperty("world_y").GetInt32() >> 8)));
         GD.Print($"loaded {_entRecs.Length} render entities (pose cam {_entCamX},{_entCamY} yaw {_entYaw})");
     }
 
@@ -224,8 +231,7 @@ public partial class TerrainView : Node2D
         // the $78000 master once, via $e6ee, as a 1:1 per-cell plot at screen
         // origin (1, 6). Here it is redrawn every frame from the type plane
         // (the from-scratch stand-in for $13b9a's $418ae buffer -- ~94% of the
-        // baked pixels). A real port would also overlay the camera viewport box
-        // and the lord dots (an event-driven pass, not yet reversed).
+        // baked pixels). The camera box and the people dots go over it below.
         // The backdrop already carries the exact baked minimap, so the
         // approximation is only drawn without it.
         if (_backdrop.Length == 0)
@@ -250,6 +256,11 @@ public partial class TerrainView : Node2D
                     img.SetPixel(sx, sy, _palette[0]); // black box, like the game's
             }
         }
+        // people dots ($165b2's first loop, Terrain.peepDots): the player's men,
+        // one pixel each, none in the blink-on phase ([$4bb41] bit 0 = anim).
+        // They are the capture's records, so they do not move with the camera.
+        foreach (var dot in Terrain.peepDots(_people, _entSelGroup, _entAnim))
+            img.SetPixel(dot.Item1, dot.Item2, _palette[dot.Item3 & 0x0f]);
 
         // (The entity pass ran above, inside Scene.render, so its sprites are
         // already in `buf` and go through the same XInset blit.)

@@ -90,9 +90,9 @@
    "format": "dispatch + position_lerp + per-category {prepare, blit, sheet, frame formula, verified}"
   },
   {
-   "file": "headings.json",
-   "provenance": "heading->frame table at $1675a, read by $16738 ($e6ee marker/HUD path, not the iso entities)",
-   "format": "heading_to_frame: {0..15: frame|null}"
+   "file": "peep_col.json",
+   "provenance": "t_peep_col at $1675a (developer label peep_col), read by $16738 pm_plot_person_dot for the minimap people dots",
+   "format": "index_to_colour: {side + blink(0|15): colour|null}"
   },
   {
    "file": "hud/descriptor_table.bin",
@@ -101,7 +101,7 @@
   },
   {
    "file": "tables.json",
-   "provenance": "$fdea..$fe02 (zoom geometry, $fe04 output), $ff96/$ff98/$ff9a/$ff9c (projection params), $fec4 (height bias), $1675a (heading->frame), $1400a (Q15 sin/cos), $13f8a (yaw table).",
+   "provenance": "$fdea..$fe02 (zoom geometry, $fe04 output), $ff96/$ff98/$ff9a/$ff9c (projection params), $fec4 (height bias), $1675a (peep_col), $1400a (Q15 sin/cos), $13f8a (yaw table).",
    "format": "see keys; all ints are decoded from big-endian words"
   },
   {

@@ -41,7 +41,7 @@ $130a4  jsr $178ae   ; HUD group bars (food 112, men 52, the lead's health 45; c
 $130aa  jsr $f898    ; terrain raster
 $130b0  jsr $1abaa   ; _seasons: dissolve the live tileset 16 px per call ($57ff6 LCG), $57fec++; weather ($1ad2a)
 $130b6  jsr $17878   ; compass (callcap: 51 bytes written)
-$130bc  jsr $165b2   ; water / terrain animation for the selected group
+$130bc  jsr $165b2   ; minimap people dots and the selected lead's glyph (graphics.md)
 $130c2  jsr $14b62   ; << the entity iterator (ai.md)
 $130c8  jsr $6a3a    ; << order executor: consume $58016, drive group state + lead mode
 $130ce  jsr $7a56    ; dialog / info-panel renderer (the four `$7a36` slots, via `$8838`)
@@ -2651,7 +2651,7 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
   write the slot states.
 - **Dormant word `$5809a`** (`_show_de...`, "Original names").
 
-  What it is: a "draw all sides' markers" switch. It is read at `$16640` in a loop over the entity table and written
+  What it is: a "draw every side's minimap people dots" switch (graphics.md "`$165b2`"). It is read at `$16640` in a loop over the entity table and written
   nowhere by an absolute operand; it is 0 in both snapshots. Poking it to 1 raised that loop's `$16738` calls from 54
   to 94 per 500k steps and `$e6ee` marker draws from 27 to 47, and on 4 of 8 samples added 24-26 bytes of extra dots
   to the minimap.

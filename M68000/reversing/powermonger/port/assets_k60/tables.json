@@ -51,7 +51,7 @@
   "height_bias_fec4": 0,
   "note": "pm_perspective_div ($ff7c): d = eye - z ; sx = x*eye/d ; sy = (z - horizon)*eye/d + horizon. Then $fecc: screenX = sx + 0x80, screenY = 0x7c - sy. z = (cellHeight - height_bias) * zoom_scale >> 4. grid pos = -col*zoom_scale, -row*zoom_scale, rotated by yaw."
  },
- "heading_to_frame": [
+ "peep_col": [
   255,
   5,
   15,
@@ -67,6 +67,14 @@
   12,
   5,
   16,
+  255,
+  255,
+  255,
+  255,
+  255,
+  255,
+  255,
+  255,
   255
  ],
  "sincos_1400a_q15": [

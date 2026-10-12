@@ -1,0 +1,31 @@
+{
+ "table_addr": "$1675a",
+ "note": "minimap people-dot colour (developer label peep_col), read by pm_plot_person_dot $16738 from $165b2: index = side (object record byte 5, or a group's owner word) + 15 when [$4bb41] bit 0 is set, else 0; null ($ff) = no dot, so sides 1..8 draw nothing in the blink-on half. $e6ee plots the colour at (record[8], record[10] + 6). Colour 16 (side 6) is past the 16-entry plane table at $e6ae and reads $e6ee's own opcode bytes. Gate: py/peep_dots.py. Not a heading-to-frame table.",
+ "index_to_colour": {
+  "0": null,
+  "1": 5,
+  "2": 15,
+  "3": 8,
+  "4": 10,
+  "5": 5,
+  "6": 16,
+  "7": null,
+  "8": null,
+  "9": 8,
+  "10": 10,
+  "11": 15,
+  "12": 12,
+  "13": 5,
+  "14": 16,
+  "15": null,
+  "16": null,
+  "17": null,
+  "18": null,
+  "19": null,
+  "20": null,
+  "21": null,
+  "22": null,
+  "23": null
+ },
+ "raw": "ff050f080a0510ffff080a0f0c0510ffffffffffffffffff"
+}

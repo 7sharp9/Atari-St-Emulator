@@ -233,11 +233,32 @@ change.
 | start camera (window cells x 36–43, y 47–54, heights `0x1d`–`0x3b`, no water) | 77 bytes change over 240 frames, all unit sprites and the marker blink; palette identical |
 | camera cell word `$4bb3a` = `$2c` (window x 40–47, over the east coast) | every tick (15 frames) 2147–2371 px change, ~96 % water (idx 14/15) inside the walk-drawn sea strip; frame N equals frame N+60; palette identical |
 
-### `$165b2` — the selected-group marker
+### `$165b2` — the minimap people dots and the lead glyph
 
-`$165b2` (called at `$130bc` in the tick) draws the pulsing marker over the
-**selected group's lead** (`$51538[$57fd2]` → lead object → world x/y). Bit 0 of
-`$4bb41` toggles it.
+`$165b2` (called at `$130bc` in the tick) draws over the minimap, in minimap
+coordinates (cell x = `record[8]`, cell y + 6 = `record[10] + 6`), in three steps:
+
+1. When a group is selected (`$57fd2` != 0), an `$11f82` 8x11 glyph on that group's
+   lead (the record at `-12($51538 + [$57fd2])`), frame
+   `(side - 1) * 16 + $40 + ((record[17] + $10) >> 4)`, 11 rows above the lead's dot.
+   It does not blink.
+2. A dot (`$16738`, `pm_plot_person_dot`) for every object record whose side byte 5 is
+   > 0 and equals `[$57ffe]` (`_player`), or every side when `[$5809a]` is set (nothing
+   sets it).
+3. For each of the player's six groups with an owner and state word 76 = `$10`, a dot
+   for the lead and, when lead byte 7 bit 7 is set, for each member of the opposing
+   party (bit 6 clear: the `$4f916`/`$4e514` chain through +10/+24/+8; set: the
+   `$51538` chain through −36/+26), each in its own side's colour.
+
+`$16738` reads the colour from `t_peep_col` at `$1675a` (developer label `peep_col`)
+at index side + D4, D4 = 15 when `[$4bb41]` bit 0 is set, else 0, and skips a
+negative byte; `$e6ee` plots it. The table gives sides 1..4 colours 5, 15, 8 and 10,
+and its blink-on half (`$16769..$16771`) is all `$ff`, so the dots flash on and off
+every other frame. Side 6's colour `$10` lies past the 16 plane patterns at `$e6ae`, so
+`$e6ee` reads its own opcode bytes and the pixel depends on x & 7.
+`py/peep_dots.py` transcribes steps 2 and 3 and matches the displayed screen in the
+dots-on phase: 9/9 dots on `pm78_settle`, `m1_s0` and `l1_built`, 12/13 on `m1_ready`,
+20/20 on `pm142/rand1` (all side 1, colour 5).
 
 ## The land build: planes, roads, town ground, the script
 
@@ -476,9 +497,8 @@ The draw preparers also post the sound events: see `strategy.md` `$127e6`.
 `$e6ee` sets one pixel (x `D0`, y `D1`, colour `D2`): a per-x table at `$e762`
 gives the byte in the row and a bit-mask index, `y * 160` is added, and two
 `movep.l` instructions read and write that bit in all four planes. It does not
-clip. It draws every minimap pixel (`$107d6`, "The minimap and the conquest map"), including the blinking selected group
-(`$165b2` → `$16738`, one dot per member at its raw cell coordinate, y + 6 = the
-minimap's rows), the one-pixel arrows (byte6 40) and the byte6 20/22 dot on the
+clip. It draws every minimap pixel (`$107d6`, "The minimap and the conquest map"), including the flashing people dots
+(`$165b2` → `$16738`, section above), the one-pixel arrows (byte6 40) and the byte6 20/22 dot on the
 iso view. Details: port SPEC §6 "The pixel plotter".
 
 ### Trees / buildings / mountains
@@ -557,7 +577,7 @@ the stone border, the pre-rendered open sea and a hole where the island goes.
   --- every tick (the full order is in strategy.md "Where it runs") ---
     $1abaa  seasons and weather (dissolves the live tileset 16 px per call)
     $17878  compass
-    $165b2  selected-group marker
+    $165b2  minimap people dots, lead glyph
     $14b62  entity FSM      (ai.md), relinks $47970 buckets via $163ea
     $6a3a   order executor
     $7a56   dialog / info-panel renderer (cell grids of the `$7a36` slots) -> back buffer
@@ -591,7 +611,7 @@ settled view.
 | `$163ea` | entity world → grid cell | `cell = ((worldY & $ff00) >> 2) + (worldX & $ff)`: shift + add, no MUL/DIV; `beq $1648c` skips the relink when the cell is unchanged | per moved entity |
 | `$1648e` | terrain colour sampler | `lea $438ee,A4`, index by `worldX>>2` / `worldX>>6`; returns the colour byte of the triangle the point lies in, `0(A4)` or `-8257(A4)`, chosen by flag bit 7 (`+8257(A4)`) and the position inside the cell | per terrain cell touched |
 | `$164bc` | entity step toward a target | `sub.w D6,D0 / sub.w D7,D1 / ext.l / divu D2,D0 / divu D0,D1`: 4-quadrant fold, then `divu speed` on the major axis; `16(A1)` = speed, can be 0 | per moving entity |
-| `$16738` | selected-group marker blit | visibility test `btst #7,7(A6)` / `btst #6,7(A6)`; feeds `$e6ee` | per marked record |
+| `$16738` | minimap people dot | colour `t_peep_col[side + blink]` (`$1675a`), `$ff` skips; feeds `$e6ee` | per player-side record |
 | `$e4de`+ | unrolled span filler | `$e4da: jmp 82(PC,D6.w)` into a ~120-deep `move.l D0/D1,(A2)+` chain, span length in D6; caller loop `$e45a`/`$e45e`/`$e462`. The fill-rate hot path | ~40 % of all instructions in the settled view |
 | `$f000`–`$f13c` | fixed-point slope divide | `divu` + `lsl.l #8` normalise, dx/dy and dy/dx, feeds the span walk | ~8800 instr-equiv / 30 settled frames |
 | `$12ce0` | terrain master → back buffer | `move.w #$1f3,D0` then `movem.l (A0)+,#$0cfc` / `movem.l #$0cfc,(A1)` ×2, `adda.w D1,A1`, `dbf`: 500 rows, 24 B/`movem` | 10 hits / 30 frames, same settled or moving |
@@ -770,7 +790,7 @@ dropped frames at either zoom):
 | region | zoom-in (idx 1) | zoom-out (idx 7) | out / in |
 |--------|----------------:|-----------------:|---------:|
 | `$14b62` entity driver          |  6196 |  1032 | 0.17× |
-| `$16738` marker blit            |   650 |   109 | 0.17× |
+| `$16738` people dot             |   650 |   109 | 0.17× |
 | `$163ea` entity cell projection |  1062 |   374 | 0.35× |
 | `$1648e` terrain sampler        |   417 |   118 | 0.28× |
 | `$164bc` entity step DIVU       |    14 |     0 | —     |

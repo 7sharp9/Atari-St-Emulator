@@ -28,7 +28,7 @@ Address map (relocated game image, base $1050) -- see reversing/powermonger/*.md
   $3f86c  g_alts           the altitude plane the projector ($fec6) actually reads (byte names typ/hgt in terrain.bin are the old labels for colour A/B)
   $2e000  dither table      base = long at $ff9e; cyclic 16-bit bitplane masks
   $33000  g_minisprite_sheet 0x37 (55) bytes/frame, 11 rows x 5 bytes, 1bpp+mask
-  $1675a  t_heading_frame   16 bytes, heading 0..15 -> sprite frame, $ff = skip
+  $1675a  t_peep_col        24 bytes, side + blink (0|15) -> minimap people-dot colour, $ff = no dot
   $ff96/$ff98/$ff9a/$ff9c   horizon / eye distance / yaw / zoom scale
   $fdea..$fe02             13 zoom-geometry constants ($fe04 output)
   $1400a  sin/cos table     Q15, used by $12d56
@@ -366,6 +366,27 @@ SPRITE4_SHEET = 0x3af1c         # 32x32 building/tree sheet ($12244, zoom 1-3)
 SPRITE4_FRAME_BYTES = 0x280
 
 
+PEEP_COL_LEN = 24           # $1675a..$16771: sides 1..8 in either blink half
+
+
+def peep_col_json(pc: bytes) -> dict:
+    """t_peep_col ($1675a): $16738 indexes it by side byte + blink (15 when [$4bb41] bit 0
+    is set, else 0) and plots the colour at the record's minimap cell via $e6ee."""
+    return {
+        "table_addr": "$1675a",
+        "note": ("minimap people-dot colour (developer label peep_col), read by "
+                 "pm_plot_person_dot $16738 from $165b2: index = side (object record "
+                 "byte 5, or a group's owner word) + 15 when [$4bb41] bit 0 is set, "
+                 "else 0; null ($ff) = no dot, so sides 1..8 draw nothing in the "
+                 "blink-on half. $e6ee plots the colour at (record[8], record[10] + 6). "
+                 "Colour 16 (side 6) is past the 16-entry plane table at $e6ae and "
+                 "reads $e6ee's own opcode bytes. Gate: py/peep_dots.py. Not a "
+                 "heading-to-frame table."),
+        "index_to_colour": {i: (None if pc[i] == 0xff else pc[i]) for i in range(len(pc))},
+        "raw": pc.hex(),
+    }
+
+
 def decode_minisprite(frame: bytes):
     """8 x 11 four-bitplane sprite (77th-pass, from the aligned $11fe4..$12034
     blitter loop). Per row = 5 bytes: [AND-mask, plane0, plane1, plane2, plane3].
@@ -486,20 +507,9 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
                                               SPRITE4_FRAME_BYTES), 32, 32)
                     for f in range(n4)], 32, 32, pal_rgb, 8)
 
-    # -- heading -> frame table (used only by the $e6ee marker/HUD path) --------
-    ht = ram.blk(0x1675a, 16)
-    headings = {h: (None if ht[h] == 0xff else ht[h]) for h in range(16)}
-    (out / "headings.json").write_text(json.dumps({
-        "table_addr": "$1675a",
-        "note": ("heading (byte 17 of the object record, 0..15) -> frame index "
-                 "for pm_pick_sprite_frame ($16738), which blits via $e6ee. "
-                 "0xff = draw nothing for this facing. 87th: this is the "
-                 "$165b2 selected-group-marker / HUD path -- NOT the iso-terrain "
-                 "entity path. The terrain men use cat 0's own yaw-relative "
-                 "formula (see sprites/sprite_triggers.json)."),
-        "heading_to_frame": headings,
-        "raw": ht.hex(),
-    }, indent=1))
+    # -- minimap people-dot colours (t_peep_col, read by $16738) ---------------
+    pc = ram.blk(0x1675a, PEEP_COL_LEN)
+    (out / "peep_col.json").write_text(json.dumps(peep_col_json(pc), indent=1))
 
     man.append({
         "file": "sprites/sheet_raw.bin + sprites/sheet_contact.png",
@@ -553,10 +563,10 @@ def export_sprites(ram: Ram, out: Path, man: list, dom_pal):
         "format": "dispatch + position_lerp + per-category {prepare, blit, "
                   "sheet, frame formula, verified}",
     })
-    man.append({"file": "headings.json",
-                "provenance": "heading->frame table at $1675a, read by $16738 "
-                              "($e6ee marker/HUD path, not the iso entities)",
-                "format": "heading_to_frame: {0..15: frame|null}"})
+    man.append({"file": "peep_col.json",
+                "provenance": "t_peep_col at $1675a (developer label peep_col), read by "
+                              "$16738 pm_plot_person_dot for the minimap people dots",
+                "format": "index_to_colour: {side + blink(0|15): colour|null}"})
     return nframes
 
 
@@ -613,7 +623,7 @@ def export_tables(ram: Ram, out: Path, man: list):
             "z = (cellHeight - height_bias) * zoom_scale >> 4. "
             "grid pos = -col*zoom_scale, -row*zoom_scale, rotated by yaw."),
     }
-    heading_frame = list(ram.blk(0x1675a, 16))
+    peep_col = list(ram.blk(0x1675a, PEEP_COL_LEN))
     sincos = [ram.s16(0x1400a + i * 2) for i in range(64)]
     yawtab = [ram.u16(0x13f8a + i * 2) for i in range(64)]
 
@@ -644,7 +654,7 @@ def export_tables(ram: Ram, out: Path, man: list):
                      "(inconsistent stride sends the span filler into code)."),
         },
         "projection": proj,
-        "heading_to_frame": heading_frame,
+        "peep_col": peep_col,
         "sincos_1400a_q15": sincos,
         "yaw_table_13f8a": yawtab,
         "yaw_table_note": (
@@ -661,7 +671,7 @@ def export_tables(ram: Ram, out: Path, man: list):
         "file": "tables.json",
         "provenance": (
             "$fdea..$fe02 (zoom geometry, $fe04 output), $ff96/$ff98/$ff9a/$ff9c "
-            "(projection params), $fec4 (height bias), $1675a (heading->frame), "
+            "(projection params), $fec4 (height bias), $1675a (peep_col), "
             "$1400a (Q15 sin/cos), $13f8a (yaw table)."),
         "format": "see keys; all ints are decoded from big-endian words",
     })

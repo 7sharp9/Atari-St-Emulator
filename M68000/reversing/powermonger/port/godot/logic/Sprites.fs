@@ -63,20 +63,6 @@ module Sprites =
     /// Pixel = -1 for "transparent" (mask bit set -> background shows through).
     type Frame = { Pixels: int[] }               // FrameWidth * FrameHeight, row-major
 
-    /// t_heading_frame ($1675a) — 16 headings -> sprite frame index, 0xff =
-    /// draw nothing for this facing. Read by $16738, the $e6ee marker/HUD
-    /// path, not by the iso terrain entities; the terrain men use
-    /// `frameForMan` below.
-    let headingFrame =
-        [| 0xff; 5; 15; 8; 10; 5; 16; 0xff
-           0xff; 8; 10; 15; 12; 5; 16; 0xff |]
-
-    /// Frame index for a heading byte (object record +17, 0..15) — $e6ee path.
-    let frameForHeading (heading: int) : int option =
-        match headingFrame.[heading &&& 0x0f] with
-        | 0xff -> None
-        | f -> Some f
-
     /// Men (category 0) frame index — $11c8a, camera-yaw-relative facing.
     /// faction = record[5] (1..4, blocks of 16), heading = record[17],
     /// yaw = [$ff9a] (0..0xf0). `armed` => the +0x40 variant (see `entityFrame`

@@ -76,12 +76,14 @@ module Terrain =
     // master (SPEC.md section 7): it builds a 64x128 byte per-cell source
     // buffer at $418ae (stride 64, ~= the terrain type plane; `src - type` is
     // 0 for 7424/8192 cells, -1..-4 for a shaded coastal fringe), then $e6ee
-    // (pm_blit_hud_sprite) rasters it 1:1 into the master at screen origin
-    // (1, 6): cell (wx, wy) -> screen pixel (wx + 1, wy + 6), colour =
-    // MinimapRamp[src byte]. On a settled still frame the composed buffer's
-    // minimap region is byte-identical to the master (verified by frame diff);
-    // the per-frame $11f82 8x11 sprite near it (~screen 33..47, 46..60) is a
-    // generic HUD marker, not a minimap raster.
+    // (pm_plot_pixel, one pixel per call) rasters it 1:1 into the master at
+    // screen origin (1, 6): cell (wx, wy) -> screen pixel (wx + 1, wy + 6),
+    // colour = MinimapRamp[src byte]. On a settled still frame the composed
+    // buffer's minimap region is byte-identical to the master (verified by
+    // frame diff) apart from what $165b2 draws over it each frame: the people
+    // dots (`peepDots` below) and an $11f82 8x11 glyph on the selected group's
+    // lead, frame (side-1)*16 + $40 + ((record[17] + $10) >> 4), at
+    // (record[8], record[10] + 6 - 11).
 
     [<Literal>]
     let MinimapOriginX = 1
@@ -122,3 +124,43 @@ module Terrain =
                 let sy = wy + MinimapOriginY
                 if sx >= 0 && sx < 320 && sy >= 0 && sy < 200 then
                     set sx sy (minimapPaletteIndex (m.TypeAt(wx, wy)))
+
+    /// t_peep_col ($1675a, developer label peep_col): the minimap people-dot
+    /// colour, read by $16738 (pm_plot_person_dot) at index side + blink, where
+    /// side is the object record's byte 5 (or a group's owner word) and blink
+    /// is 15 when [$4bb41] bit 0 is set, else 0. $ff = no dot. Bytes $1675a..
+    /// $16771: sides 1..8 in the blink half all read $ff, so the dots flash off
+    /// every other frame. Side 6's $10 is past the 16-colour table at $e6ae;
+    /// $e6ee then reads its own opcode bytes, giving colour 5 or 15 or 0
+    /// depending on x & 7 (not modelled: `peepColour` returns 16 as is).
+    let peepColTable =
+        [| 0xff; 0x05; 0x0f; 0x08; 0x0a; 0x05; 0x10; 0xff
+           0xff; 0x08; 0x0a; 0x0f; 0x0c; 0x05; 0x10; 0xff
+           0xff; 0xff; 0xff; 0xff; 0xff; 0xff; 0xff; 0xff |]
+
+    /// Dot colour for a side byte in one blink phase, None for no dot.
+    let peepColour (side: int) (blinkOn: bool) : int option =
+        let i = side + (if blinkOn then 15 else 0)
+        if i < 0 || i >= peepColTable.Length then None
+        else
+            match peepColTable.[i] with
+            | 0xff -> None
+            | c -> Some c
+
+    /// The people dots of $165b2's first loop: every object record with side
+    /// byte 5 > 0 that belongs to the player's side [$57ffe] (or every side
+    /// when [$5809a] != 0, which nothing sets), one pixel at screen
+    /// (record[8], record[10] + 6). Bytes 8 and 10 are the high bytes of the
+    /// world x/y words, i.e. the cell ($163ea), and cell (x, y) of colour
+    /// plane A ($418ad) is minimap pixel (x, y + 6), so a dot sits on its own
+    /// cell. MinimapOriginX = 1 is relative to $418ae and is not added here.
+    /// `people` = (side, record[8], record[10]). The second loop (the lead and
+    /// the opposing party of each player group in state $10) is not ported.
+    /// py/peep_dots.py gates the full routine against the game's screen.
+    /// Returns the dots as (screenX, screenY, colour), in record order.
+    let peepDots (people: (int * int * int)[]) (playerSide: int) (blinkOn: bool) : (int * int * int)[] =
+        [| for side, x, y in people do
+             if side > 0 && side = playerSide then
+                 match peepColour side blinkOn with
+                 | Some c when x < 320 && y + 6 < 200 -> yield x, y + 6, c
+                 | _ -> () |]

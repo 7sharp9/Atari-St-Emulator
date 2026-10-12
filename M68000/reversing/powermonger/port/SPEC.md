@@ -686,15 +686,22 @@ the terrain men:
   far→near painter's order. So a man / animal / tree / building is composited
   immediately over its own cell's terrain and correctly occluded by nearer
   cells drawn later. This draws **everything that stands on the hill.**
-- **`$16738` → `$e6ee` is NOT that path.** In `pm78_settle` it fires only from
-  `$165b2` (the selected-group marker): a flat scan over every object record
-  (`$16626` loop, stride 50, to `$57f66`) that draws one glyph per record whose
-  **byte 5 == `[$57ffe]`** (the selected group id), positioned by *raw cell
-  coordinate* (`record[8]`, `record[10]+6`) plus a fixed per-frame descriptor X,
-  not by a projected position. It blinks via `$4bb41` bit 0 (which flips
-  `flipHalf` 0↔15; `flipHalf` 15 pushes every heading to the `0xff` "draw
-  nothing" table slot, which is the "off" phase). `$e6ee` is also the HUD-glyph
-  blitter. `assets/headings.json` feeds *this* path only.
+- **`$16738` → `$e6ee` is NOT that path: it draws the minimap people dots.**
+  `$165b2` scans every object record (`$16626` loop, stride 50, to `$57f66`)
+  and calls `$16738` (`pm_plot_person_dot`) for each record whose side byte 5
+  is > 0 and equals `[$57ffe]` (`_player`; every side when `[$5809a]` is set,
+  which nothing does), then for each of the player's six groups in state `$10`
+  the lead and its opposing party. `$16738` plots one pixel with `$e6ee` at the
+  *raw cell coordinate* (`record[8]`, `record[10]+6`), colour
+  `t_peep_col[side + D4]` (`$1675a`, developer label `peep_col`), with D4 = 15
+  when `[$4bb41]` bit 0 is set, else 0. The table is indexed by side, not by
+  heading: `$1675a..$16771` give sides 1..4 colours 5, 15, 8 and 10 and the
+  whole blink-on half `$ff` (no dot), so the dots flash. `py/peep_dots.py`
+  transcribes both loops and matches the displayed screen pixel for pixel in the
+  dots-on phase: 9/9 on `pm78_settle`, `m1_s0` and `l1_built`, 12/13 on
+  `m1_ready`, 20/20 on `pm142/rand1`. The port draws the first loop
+  (`Terrain.peepDots`, from `entities.json` `objects[]`, the whole record pool)
+  and the table is `assets/peep_col.json`; the second loop is not ported.
 
 ### Category dispatch (`$115e0` → `$1162e` / `$1165c`)
 
@@ -1094,8 +1101,8 @@ word (the byte in the row), for x = 0..319. It adds `y * 160`, then
 one bit in all four planes, the colour's plane bytes coming from `$e6ae + 4c`. It
 does not clip. (`disassemble.py` shows the two `movep.l` opcodes, `$0549`/`$05c9`,
 as `subi`.) It draws the byte6 40 projectiles, the byte6 20/22 dot, and the
-minimap dots, including the blinking selected group (`$165b2`, one dot per member
-at its raw cell coordinate). `assets/hud/descriptor_table.bin` is this table
+minimap dots, including the flashing people dots of the player's side (`$165b2` →
+`$16738`, one dot per record at its raw cell coordinate). `assets/hud/descriptor_table.bin` is this table
 (320 longs from `$e762`; the operand of `move.l 110(PC,D0.w)` at `$e6f2` is
 relative to `$e6f4`); all 320 entries match the formula above.
 
@@ -1151,7 +1158,7 @@ per simulation tick ($13000), present rate gated by $57ff0/$57fee (=1 normally):
     $14b62  entity FSM      (relinks $47970 cell buckets via $163ea)
     $6a3a   order executor
     $7a56   dialog / info-panel renderer -> back buffer
-    $165b2  selected-group marker
+    $165b2  minimap people dots, lead glyph
   -- at the VBL ISR --
     $187a   swap front <-> back, write (front >> 8) to $FFFF8200
 ```

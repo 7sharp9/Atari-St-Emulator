@@ -210,7 +210,7 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
 - **Weather** (`SPEC.md` §7). `Weather.draw` ports `$1a856` from `assets/weather.bin`; winter and autumn
   frames of land 5 match the game. The stepper and the Godot view do not draw it.
 - **A second land.** `assets_k60/` against mission 1's `assets/`: the four sprite sheets (`$33000`,
-  `$37c7c`, `$312a0`, `$3af1c`), the palette, HUD tables, strings and headings are byte-identical; the
+  `$37c7c`, `$312a0`, `$3af1c`), the palette, HUD tables, strings and `peep_col.json` are byte-identical; the
   backdrop differs in the minimap (rows 6-133) and the side-shield strip under it (rows 134-152, x 7-63),
   `dither.bin` only in slots `$1d-$2e` (a different point of the season fade), `tables.json` only in
   `height_bias_fec4`. Scored against the screen in the next `$f898` snapshot at the RAM's water tick
@@ -221,7 +221,9 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
 
 `pm_render_ref.draw_minimap` (diagnostic) matches the master 100% from the `$418ae` source and 94.5%
 from colour plane B (the stand-in a from-scratch port uses); `TerrainView.cs` draws the panel with a
-camera-window box (`assets/reference/godot_screenshot_minimap_90th.png`). Mapping, palette table and the
+camera-window box (`assets/reference/godot_screenshot_minimap_90th.png`) and the player's people dots
+(`Terrain.peepDots` over `entities.json` `objects[]`, colours from `peep_col.json`; `$165b2`'s second
+loop, the engaged parties, is not ported). Mapping, palette table and the
 per-frame deltas are in `SPEC.md` §7 "The HUD minimap" (cell (x, y) of `$418ad` is pixel (x, y + 6);
 the port's origin `(1, 6)` is relative to `$418ae`).
 
