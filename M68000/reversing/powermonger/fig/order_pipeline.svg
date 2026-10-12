@@ -117,8 +117,8 @@ text{font-family:Helvetica, Arial, sans-serif;fill:#1f2328;font-size:12px}
 <text x="30" y="647"><tspan class="m">$2776</tspan> frees the side's pigeons (<tspan class="m">$27c6</tspan>), pending words stay set;</text>
 <text x="30" y="663">a new <tspan class="m">$4562</tspan> copies the dead sender's owner byte (<tspan class="m">$45a8</tspan>), and</text>
 <text x="30" y="679"><tspan class="m">$3e06</tspan> skips a pigeon with owner &lt;= 0 (<tspan class="m">$417a</tspan>): it never flies.</text>
-<text x="30" y="697" class="s">py/arms/pending_census.py, 340 snapshots, 595 set words: 182 pigeon in flight, 187 dead sender,</text>
-<text x="30" y="712" class="s">219 no pigeon left, 7 queued; 19 with a live first group unexplained. Watch-proven on rand1_s1.</text>
+<text x="30" y="697" class="s">py/arms/pending_census.py, 183 snapshots of live play, 357 set words: 70 pigeon in flight, 142 dead</text>
+<text x="30" y="712" class="s">sender, 141 no pigeon left, 4 queued; 4 with a live first group (strategy.md). Watch-proven on rand1_s1.</text>
 
 <!-- Row 8: $6b38 -->
 <path d="M20,488 H9 V780 H17" class="ln"/>

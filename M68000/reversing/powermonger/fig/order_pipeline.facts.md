@@ -41,5 +41,6 @@
 
 - The pending box now gives the mechanism: `$2776` frees the side's pigeons (`clr.b 6(A1)` at `$27c6`) and leaves the
   pending words set; `$4562` copies the dead sender's owner byte (`$45a8`); `$3e06` skips owner <= 0 (`$417a`).
-- `py/arms/pending_census.py`, 340 snapshots, 595 set words: 182 flying, 187 dead sender, 219 no pigeon, 7 queued;
-  19 with a live first group unexplained. The 159-snapshot counts (185 of 250, 41 of 394) moved to cmdai_decision.
+- `py/arms/pending_census.py` over the 183 snapshots of live play (frozen post-game chunks skipped), 357 set words:
+  70 flying, 142 dead sender, 141 no pigeon, 4 queued; the 4 with a live first group are explained in strategy.md "The
+  pending word". The 159-snapshot counts (185 of 250, 41 of 394) moved to cmdai_decision.
