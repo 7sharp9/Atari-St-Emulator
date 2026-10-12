@@ -216,6 +216,15 @@ def derive():
             E.discard(('m', y, 0x10, 'set', ''))
             for p in ps:
                 E.add(('m', y, p, 'walk', ''))
+    # the water veto: a mode whose walk ends in the epilogue $161c4 is set to $00 at $161f0 when its
+    # step lands on water, keeping byte 30; $00 goes to $0a ($14caa, then $10 at $14e44 when word 28 is 0) or, with a
+    # Boat, to $8c ($14c9a, then $10 at $14c66 on landing), and the $10 arrival $14fdc copies byte 30 into 31. So a mode
+    # Y that has a pending prev P and stops at $161c4 can end in P without a walk of its own (live: $36 -> $66).
+    for y, ps in pending.items():
+        r = D['modes'].get('%02x' % y, {})
+        if 'epi161c4' in r.get('stops', []) and ('m', y) not in unpaired_walk:
+            for p in ps:
+                E.add(('m', y, p, 'walk', 'water veto'))
     return E
 
 

@@ -1313,3 +1313,6 @@
 0001ad2a	pm_weather_tick        # the weather step of $1abaa (calls $1a856 at $1ad3a)
 0001ac92	pm_season_regrow       # at a season wrap regrows one felled tree (+7 $0d -> live); 512 of 830 snapshots hold felled trees (py/season/felled_census.py)
 0000c77e	capt_req_verb          # alliance-offer verb by posture: 2 "demands", 3 "asks for", 4 "begs for" (3/3 live)
+
+00003c74	rgrp_dead_unreached  # move.b #$92,30(A1) inside $3c08; no branch reaches it (the nop at $3c12 sits where a bra.s $3c74 would be, inferred patch); 0 hits in 4.1G steps
+0001540c	goto_ani_contact     # mode $66 = the contact tail of $36: dwell $a, mode $38, target byte 7 := $10, no distance test; entered only via the $161f0 water veto

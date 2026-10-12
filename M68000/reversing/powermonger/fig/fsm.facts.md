@@ -1,8 +1,8 @@
 # Facts behind `fsm_jobs.svg` and `fsm_army.svg`
 
-Generated: `py/mode_edges.py` (code read of `scratchpad/pm123/win/m1_ready.ram`, text `$1050..$1d000`) then
-`py/build_fsm.py`. Edge data: `out/mode_edges.json` (raw writes per walk), `out/fsm_edges.json` (177 derived edges:
-76 set, 41 walk, 1 prev-only, 59 calls). `py/dump_edges.py` prints the raw writes.
+Generated: `py/fsm/mode_edges.py` (code read of `scratchpad/pm123/win/m1_ready.ram`, text `$1050..$1d000`) then
+`py/fsm/build_fsm.py`. Edge data: `out/mode_edges.json` (raw writes per walk), `out/fsm_edges.json` (178 derived edges:
+76 set, 42 walk (one of them the water veto `$36 -> $66`), 1 prev-only, 59 calls).
 
 ## Structure (code)
 
@@ -14,7 +14,7 @@ Generated: `py/mode_edges.py` (code read of `scratchpad/pm123/win/m1_ready.ram`,
 | the walk: `$10` advances, `$12` is the leg, arrival `$14fdc` copies byte 30 into 31 (`move.b 30(A1),31(A1)`) | text.lst `$14fdc`; ai.md `$10`/`$12` rows |
 | path terminators: `farm` (cursor `$50`) ends `$7d26` -> mode `$24`; `pots` (cursor `$76`) ends `$7d6c` -> mode `$6a`; `$7d00` (mode `$92`, `$14efe`) ends only `fp2`, never loaded | read from RAM by `build_fsm.py` `path_end`; ai.md walk-path row ("only farm and pots are ever loaded") |
 | `$3c08` previous modes by flag: bit 7 `$7e`, bit 0 `$16`, bit 1 `$4e`, bit 2 `$5e`, bit 3 `$80`, bit 4 `$4c`, none `$7e`; then mode `$10` | text.lst `$3c08..$3cd0`; pm_fsm_ref `_FLAGBIT_MODE30` |
-| `$3c74 move.b #$92,30(A1)` inside `$3c08` has no branch to it in the whole listing (unreached) | `grep 3c74 out/text.lst`: one line, the instruction itself |
+| `$3c74 move.b #$92,30(A1)` inside `$3c08` has no branch to it in the whole listing (unreached): no decode at any even address, no longword and no PC-relative word table names it. The four bytes at `$3c10` are `bgt.s $3c14 / nop`; a `bra.s $3c74` (`6060`) in place of the `nop` would make it the owner `<= 0` arm (an inferred patch). `$3c08` ran 3565 times, every one with owner > 0, in 4.1G steps over 41 snapshots; with `w 3c10 6e026060` a `callcap` of `$3c08` on a corpse writes prev `$92` | `grep 3c74 out/text.lst`: one line, the instruction itself; `py/fsm/mode_write_scan.py` |
 | `$16892` D2 = `$8e` from `$4f7e`/`$4f82` (picker), `$90` from `$157ce`/`$157d2` (`$7c` regroup) | text.lst |
 | `$5cde`/`$5fa0` stamp `31 := D2`, D2 in {`$40` build, `$3e` fell, `$6a` fallback} | text.lst `$5dd0`, `$5e7a`, `$5ede`, `$5ee4`, `$5f78`; ai.md `$5cde` block |
 | `$3154` prev D4 per order: `$1a` (`$6bce`), `$1c` (`$6bfa`), `$22` (`$6c58`), `$6e` (`$6c7a`), `$78` (`$6d22`), `$76` (`$6d42`), `$7a` (`$6d66`) | text.lst, seven `jsr $3154` sites |
@@ -41,7 +41,8 @@ Labels: ai.md mode tables, economy.md 2a, strategy.md orders table, `powermonger
 ## Could not pin down / flags
 
 - **`$94`**: the table word resolves to `$15bdd` (odd). ai.md says every entry `$00..$94` resolves inside the handler block; nothing writes `$94`, so it is harmless, but the sentence is off by one entry. Contradiction flagged, not resolved.
-- **Never set as a mode** (no write of byte 31 and no walk arrival that ends in it): `$04` (alias), `$64`, `$70` (fsm15 glue, synthetic only), `$94`. `$66` is written only as a previous mode (`$5106`, with mode `$36`); `$36` leaves by `$38` or `$68`, never through `$10`, so how a man reaches mode `$66` is open (fsm15: `$66` synthetic only).
-- **`$3c` (rout)**: only `$5590` stamps prev `$3c` on the target; the mode is entered at that man's next walk arrival. Census shows 7956 natural `$3c` entries; the path is inferred from the code, not traced.
+- **Never set as a mode** (no write of byte 31 and no walk arrival that ends in it): `$04` (alias), `$64`, `$70` (fsm15 glue, synthetic only), `$94`. A whole-image scan of `$10a6..$1c48a` at every even address finds no immediate, register, table or walk-terminator write of `$04`, `$64` or `$70` to byte 30 or 31 (`py/fsm/mode_write_scan.py`).
+- **`$66`** is entered only at a `$10` arrival (`$14fdc`) after prev `$66` (`$5106`, with mode `$36`) survives a water veto: a `$36` step onto water sets mode `$00` at `$161f0`, and `$00` goes to `$0a` (then `$10` at `$14e44` when word 28 is 0) or, with a Boat, to `$8c` (then `$10` on landing, `$14c66`). Live under a one-byte prev poke (`k108e_4`, 1 of 1); not seen unaided in 1.2G steps, because a group's camp (`$35f4`) rewrites the prev first. Drawn as the dashed water-veto edge `$36 -> $66`, which `build_fsm.py` adds for every mode that stops at the `$161c4` epilogue with a pending prev (this one edge).
+- **`$3c` (rout)**: only `$5590` stamps prev `$3c` on the target (`$561c`); the mode is entered at that man's next walk arrival (`$14fdc`). Live: 23 of 44 rout stamps arrive as `$3c` on `rand1`, 54 of 89 on `k48`, 100M steps each (`py/fsm/rout_fate.py`). A routed group member never does: the rout tail's unlink `$1b8c` calls `$3c08` again and the man arrives in his job home mode.
 - Mode/prev pairing is by nearest write address within a walk. It matches every pair checked by hand (`$16`, `$52`, `$54`, `$56`, `$86`, `$88`, `$3c08`, `$600a`, `$4f68` tail), but it is a heuristic.
 - The call edges stop at depth 1 (a mode's direct callees and one intermediate). The `$16848 -> $5c2c -> $4bc8` owner-mismatch path, reachable from every job arrival, is not drawn.
