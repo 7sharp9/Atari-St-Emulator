@@ -2616,7 +2616,7 @@ Live checks. The player's first group holds 7 and its panel reads PowerMonger; p
 
 **Other panels** read the same way:
 
-- The **house panel** (`$9ea1`): House, Town, People and Kingdom names, Food, Men "who are" a job, Near Forest, Stock.
+- The **house panel** (`$9ea1`): House, Town, People and Kingdom names, Food, Men "who are" a job, Near Forest, Stock. The eight Stock runs (`$9bae`, all eight hook words `$152`) walk the lord's goods bytes `+24..+31` with the cursor `$9c14` (zeroed by the opener `$9a38`), skip zeros, and write `count` and the item name from `$a242 + 19` (past the article) directly, with an `s` when the count is not 1; as a direct write the row closes up after each item ("1 Pike  2 Swords", the singular keeping its trailing space), and the runs left over print nothing.
 - The **person panel** (`$a353`): name, rank and kingdom, health, "lives in a <building> with <n>", job, the carried item, age and years old, "obeys <captain>". The death line `$a50d` reads "has died at the Tender age of N, whilst faithfully in the service of ...".
 - The **mine panel** (opener `$a5d8`, template `$a658`, table `$a5f4`): "This Mine belongs to the <Village/Hamlet/Town/City/Capital/Base> of <name> it produces metal that makes the <weapon>s". All three fields come from the owning lord record `$4e514 + word 14` of the mine record: its kind byte 1 indexes `townname` `$a128` (minus 1), its word 4 seeds `_getname`, and its word 12 is the item offset into `$a242` (2 to `$10`, the weapon; the "s" is a template literal). Gate **27/27**, `py/ui/gate_mine.py`: the three natural mines of the `pm143` series plus 24 states with kind, seed and item poked.
 - The **tree panel** (`$a827`): A Stump, A Pine, An Oak, An Elm, An Ash, the season, "There are birds in the tree".
@@ -2666,7 +2666,7 @@ Category `$18` is "Boat" in the game's own click text, and the sprite agrees: th
 | panel | result | compared |
 |---|---|---|
 | person | **247/247** (47 in `m1_s0`, 200 in `k5_s4`) | all six text rows |
-| house | **103/103** | kind, town, people, kingdom, food, men and loyalty, near forest; the Stock rows are not compared |
+| house | **103/103** (19 with stock) | kind, town, people, kingdom, food, men and loyalty, near forest, the Stock items; and the Stock rows with one lord's eight goods bytes poked, **4/4** (up to seven items, counts 1 to 255) |
 | captain | **12/12** groups | name, state, aggression and posture, loyalty, health, speed, food, troops, the carrying list |
 
 The equipment panel was checked by its live text only (the mine panel has its own gate, above).

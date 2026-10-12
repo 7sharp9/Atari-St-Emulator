@@ -1,5 +1,5 @@
 """pm140 ui: gate for the person panel ($9c16, template $a328) and the house panel ($9a38, template $9e76) opened through the
-click dispatcher $95f6.  A Python model of every formatter, written from the code at $9c4c..$9e52 and $9a7c..$9bae, builds the
+click dispatcher $95f6.  A Python model of every formatter, written from the code at $9c4c..$9e52 and $9a7c..$9c12, builds the
 text rows from the pre-call RAM only; the real routine is run by callcap (A3 = record, $2df96 = 1) and the grid it builds is
 read back; every row must be identical.
     cd M68000 && .venv/bin/python reversing/powermonger/py/ui/gate_panels.py [snap ...]     (default: m1_s0 and k5_s4)
@@ -67,10 +67,14 @@ def mk(R):
             if not d0: break
         ps = w(lord + 14); idx = 0 if ps & 0x8000 else min(ps // 75, 7)
         goods = [(i, R[lord + 24 + i]) for i in range(8) if R[lord + 24 + i]]
-        stock = [f'{n} {T["item"][i + 1].strip()}' + ('s' if n != 1 else '') for i, n in goods]
+        stock = [f'{n} {T["item"][i + 1][1:].strip()}' + ('s' if n != 1 else '') for i, n in goods]   # $9be4: name at +19, past the article
         return dict(kind=T['house'][kind], town=gn(w(lord + 4)), people=' & '.join(men), kingdom=side(R[lord] if False else R[a + 5]),
                     food=w(lord + 6), men=w(lord + 8), loyal=T['loyal'][idx], forest=gn(w(0x57f68 + w(lord + 22))), stock=stock, ps=ps)
     return person, house
+
+def stock_of(t):   # the Stock items ($9bae, cursor $9c14), rows 8..11 left to right: $a91a does not pad an @ run, so the
+    # row closes up after each item ("1 Pike  2 Swords"); read them by pattern, not by column
+    return re.findall(r'\d+ [A-Za-z]+', ' '.join(r[8:] for r in t[8:12]))
 
 def rows_person(t): return [re.sub(r'^\. | *\.?$', '', r).rstrip('. ').strip() if False else r[2:].rstrip(' .') for r in t[1:7]]
 
@@ -99,7 +103,9 @@ def main(snaps):
                 h = house(a); g = {k: v for k, v in zip(('House Name', 'Town Name', 'People Name', 'Kingdom', 'Food', 'Men', 'Near Forest'),
                                                      [re.sub(r'^\. [A-Za-z ]+:\s*', '', r)[:-1].rstrip(' .') for r in t[1:8]])}
                 ok = (g['House Name'] == h['kind'] and g['Town Name'] == h['town'] and g['People Name'] == h['people'] and g['Kingdom'] == h['kingdom']
-                      and g['Food'] == str(h['food']) and g['Men'] == f"{h['men']} who are {h['loyal']}" and g['Near Forest'] == h['forest'])
+                      and g['Food'] == str(h['food']) and g['Men'] == f"{h['men']} who are {h['loyal']}" and g['Near Forest'] == h['forest']
+                      and stock_of(t) == h['stock'])
+                g['Stock'] = stock_of(t)
                 if ok: okh += 1
                 else: bad.append((hex(a), g, h))
         print(f'{Path(snap).name}: person panel {okp}/{len(men)}, house panel {okh}/{len(houses)}')
@@ -107,6 +113,23 @@ def main(snaps):
         bad_all += len(bad)
     return bad_all
 
+def synth(snap, patterns=((1, 2, 0, 255, 3, 1, 7, 9), (0, 0, 0, 0, 0, 0, 0, 12), (5, 5, 5, 5, 5, 5, 5, 5), (0, 1, 0, 1, 0, 1, 0, 1))):
+    """The Stock rows with the house's lord's eight goods bytes (+24..+31) poked: two whole longwords, nothing else touched."""
+    R0 = ram_of(snap); recs, _ = walk(R0)
+    a = next(o for o, _, _, rec in recs if rec[6] in (2, 0x10))
+    lord = 0x4e514 + ((R0[a + 14] << 8) | R0[a + 15])
+    ok = 0
+    for pat in patterns:
+        R = bytearray(R0); R[lord + 24:lord + 32] = bytes(pat)
+        _, house = mk(R)
+        hx = bytes(pat).hex()
+        cc = parse_callcaps(repl(snap, [f'w {lord + 24:x} {hx[:8]}', f'w {lord + 28:x} {hx[8:]}', 'w 2df96 00010001', f'callcap 95f6 60000 A3={a:x}']))
+        got = stock_of(panel_text(R, cc[-1])) if cc else None
+        ok += got == house(a)['stock']
+        if got != house(a)['stock']: print('   SYNTH MISMATCH', pat, got, house(a)['stock'])
+    print(f'{Path(snap).name}: Stock rows with poked goods {ok}/{len(patterns)}')
+    return len(patterns) - ok
+
 if __name__ == '__main__':
     snaps = sys.argv[1:] or [str(ROOT / 'scratchpad/pm123/win/m1_s0.snap'), str(ROOT / 'scratchpad/pm121/run/k5_s4.snap')]
-    sys.exit(1 if main(snaps) else 0)
+    sys.exit(1 if main(snaps) + synth(snaps[0]) else 0)
