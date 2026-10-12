@@ -3,10 +3,10 @@
 Builds a PowerMonger save disk in the geometry the game's own formatter `_format_` $1ba72 writes and
 `diskio` $d9fc addresses for the save calls (D0 = 0: 10 sectors per track, single-sided, 80 tracks =
 800 sectors = 409,600 bytes). Sector 0 is the game's ID sector, taken from RAM $1bb0e of <src.ram>, with
-the slot-used flags at +$ec set for the letters given. Bytes 24..27 are overwritten with 0a 00 01 00 so
-the emulator's MMU.LoadDiskA, which infers sectors/track and sides from BPB offsets 24 and 26, sees
-10 spt / 1 side (the game checks only the first long 'POWE'; the text there is "GA ME" otherwise, which
-the emulator reads as 9 spt and, for an 819,200-byte file, 2 sides: every 10th sector then fails).
+the slot-used flags at +$ec set for the letters given. Bytes 24..27 are overwritten with 0a 00 01 00 (the
+game checks only the first long 'POWE'). The emulator no longer needs them: MMU.LoadDiskA ignores a BPB
+whose total-sector field does not match the file and takes 10 spt / 1 side from the 409,600-byte size; an
+emulator that read "GA ME" there as a BPB would see 9 spt and fail every 10th sector.
 slotX=ramfile fills slot X (sectors 198*X+1..) with RAM $3f768..$58368 of that .ram after the SAVE button's
 own first step, the 195-byte copy $3f2a0 -> $3f768 ($77a2): that is what SAVE writes (a natural SAVE's
 sectors equal RAM at $1bdfe's exit byte for byte, py/roundtrip.sh BP=1).
