@@ -26,7 +26,7 @@ proved against the emulator with differential tests (every count is in the doc's
 
 **No cheat codes, hidden tracks or hidden modes exist** (`secrets.md`). What is unusual: walls are a vector outline flood-filled at
 race start, collision is a by-product of drawing the car, drones follow rails whose table carries its own control language, difficulty
-escalates across races (not within one), and the art is a tile-dedup codec. Also found: a removed `BOOT.DAT` protection check
+escalates across races (no in-race change measured with the human behind; not tested with the human leading), and the art is a tile-dedup codec. Also found: a removed `BOOT.DAT` protection check
 with a cracker tag, a never-played 59.5-second tune, an unshown credits text, a Track 8 data bug and a sound-driver bug.
 
 ## Decompile
@@ -199,8 +199,9 @@ So a run driven purely by injected IKBD packets (`kbd` in the REPL, or
    a joystick player. Each joined slot switches from "PRESS ACCELERATE TO PLAY" to
    "PREPARE TO RACE" and the screen becomes the three-cars ready screen with a
    countdown — `prepare.png`.
-3. **race:** the countdown expires, the game flood-fills the track bitmap into a
-   collision map (`$15080`), and Track 1 starts — `race.png`: correct playfield,
+3. **race:** the countdown expires, the race initialiser `$be40` builds the collision
+   planes (`$15884`: the wall polylines drawn and seed-filled by `$14cd4`, `tracks.md`
+   "Collision planes"), and Track 1 starts — `race.png`: correct playfield,
    HUD (`BLUE CAR` / `RED CAR` / `DRONE` lap panels), grandstands, trees, the drone
    car doing timed laps. Stable over 15M+ steps of racing.
 
