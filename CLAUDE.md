@@ -155,7 +155,7 @@ that are easy to forget:
     words that contain `<` or `>`.
   - fails `echo =====` (`=word` expands to a command path): quote it.
   - aborts a whole `for f in a/*.md a/*.sh; do ...` when one glob matches nothing: run such loops
-    with `bash`, or `setopt nonomatch`.
+    with `bash`, or `setopt nonomatch`. An unquoted `grep --include=*.fs` fails the same way ("no matches found"): quote it.
 - macOS has no `timeout`: `... | timeout 60 dotnet ...` fails before running, and a following
   `grep -c` prints 0, the same as "no hits". Print the raw output and a positive control before
   counting, and bound runs with step counts.

@@ -246,7 +246,7 @@ Once enough is known, add a short architecture thread to the README or `mechanic
 
 ## REPL commands (check `help` before assuming a gap)
 
-`s`, `p` (preview), `u`, `bp`/`bpc` (breakpoints, auto-print registers), `bt` (backtrace), `hits <steps> <addr>...` (PC-hit census, counting first and last step too), `callcap`, `detcheck`, `r`, `m`, `w` (big-endian long), `watch`/`unwatch`, `snap`, `disk` (hot-swap drive A), `wprot on|off` (drive A's write-protect tab, not in a snapshot), `kbd`, `mouse`.
+`s`, `p` (preview), `u`, `bp`/`bpc` (breakpoints, auto-print registers), `bt` (backtrace), `hits <steps> <addr>...` (PC-hit census, counting first and last step too), `callcap`, `detcheck`, `r`, `m`, `w` (big-endian long), `watch`/`unwatch` (each line carries the absolute step; no command prints the current step, so to stop at a watched write from a snapshot, `u <pc>` to the first write's PC gives the snapshot's base as that step minus the count, then `s <step − base>` stops on the writing instruction (`bt`, `r`); PowerMonger's tree-bird trace, `port/SPEC.md` §6), `snap`, `disk` (hot-swap drive A), `wprot on|off` (drive A's write-protect tab, not in a snapshot), `kbd`, `mouse`.
 
 ## Known tooling gaps
 
