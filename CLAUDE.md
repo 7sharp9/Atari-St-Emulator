@@ -115,7 +115,9 @@ that holds its worked example.
   called under `callcap`. A door graph or dataflow chain is a hypothesis until each leg is driven.
 - A trial that varies more than one thing proves no cause. An input test needs a same-snapshot,
   same-budget control, a hold longer than the game's poll cycle, and a signal that changes only if
-  the mechanism fired. A `bp`/`bpc`/`watch` that finds nothing is bounded by its own budget.
+  the mechanism fired. A `bp`/`bpc`/`watch` that finds nothing is bounded by its own budget, and by
+  its input: show the precondition live in the same run (PowerMonger's "sound event 17 never plays" came
+  from a view with no lit fire, its count 0 at every dispatch; with the fire in view it plays, `py/ui/snd_slot.sh`).
 - A hero pinned at one screen coordinate is usually a camera-follow trigger; a position reached is
   not proof the maneuver was safe (check health and status bytes across the run); a snapshot after
   a fixed hold may be a mid-motion frame.
