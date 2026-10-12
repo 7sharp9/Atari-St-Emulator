@@ -617,6 +617,11 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable diskA : byte[] option = None
     let mutable diskASectorsPerTrack = 9
     let mutable diskASides = 1
+    ///The write-protect tab of the disk in drive A (default off) - see SetWriteProtectA. With it
+    ///on and a disk in A, Write Sector and Write Track move no data and end with WPRT (status bit
+    ///6) and INTRQ, and a Type I command reports WPRT, as Hatari's fdc.c does. External state like
+    ///diskA: not part of MmuSnapshot.
+    let mutable diskAWriteProtected = false
 
     ///Real hardware resets this to 0 on cold boot (stMemory.c: "0xFF8001 is set to 0 on cold reset
     ///but keep its value on warm reset") - this emulator only ever cold-boots, so 0 is always the
@@ -781,6 +786,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///reversing/*/*.st CFG artefacts byte-stable. GEMDOS test programs (Dcreate/Fwrite/Fseek/...)
     ///and control-flow reconstruction only need within-run persistence, which this gives. A
     ///persistent write-through to the host file would be a separate, explicit feature.
+    ///Drive A selected with a disk in it and its write-protect tab on.
+    let writeProtectedA () = diskAWriteProtected && diskA.IsSome && fdcDrive = 0
+
     let tryWriteSector (track: byte) (sector: byte) (dmaAddr: uint32) =
         let r =
             match diskA with
@@ -1204,7 +1212,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     | 0x40uy when input &&& 0x10uy <> 0uy -> fdcTrack + 1uy  //Step-in with update
                     | 0x60uy when input &&& 0x10uy <> 0uy && fdcTrack > 0uy -> fdcTrack - 1uy
                     | _ -> fdcTrack
-                let newStatus = fdcCommandStatus input
+                let newStatus = fdcCommandStatus input ||| (if writeProtectedA () then 0x40uy else 0uy)
                 //Restore ($0x) takes the slow bucket the boot FDC self-test relies on timing out;
                 //a Seek/Step is a cheap adjacent move. See fdcIrq.
                 let delay = if input &&& 0xF0uy = 0uy then fdcIrqSlowSteps else fdcIrqFastSteps
@@ -1215,6 +1223,15 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 fdcStatus <- newStatus
                 fdcIrq <- false
                 fdcIrqPending <- delay
+            | 0uy when (input &&& 0xF0uy = 0xF0uy || input &&& 0xE0uy = 0xA0uy) && writeProtectedA () ->
+                //Write Track or Write Sector on a write-protected disk (Hatari fdc.c: "Stop now if
+                //disk is write protected"): no data moves, the DMA registers stay, the command ends
+                //at once with WPRT and INTRQ.
+                if fdcStatus <> 0x40uy || not fdcIrq || fdcIrqPending <> 0 then mutations <- mutations + 1UL
+                fdcStatus <- 0x40uy
+                fdcIrq <- true
+                fdcIrqPending <- 0
+                fdcLog (sprintf "cmd   $8604<-$%02x  WRITE-PROTECTED status=$40" input)
             | 0uy when input &&& 0xF0uy = 0xF0uy ->
                 //Type III Write Track ($Fx): see tryWriteTrack. Synchronous like the sector
                 //commands. The DMA counter advances by the stream bytes the FDC took, rounded up
@@ -1461,6 +1478,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             | _ -> 9, 1
         diskASectorsPerTrack <- spt
         diskASides <- sides
+
+    ///Sets the write-protect tab of the disk in drive A - see `diskAWriteProtected`. It stays set
+    ///across a `disk` hot-swap, like a drive whose next floppy has the same tab.
+    member x.SetWriteProtectA (on: bool) = diskAWriteProtected <- on
 
     ///Selects the monitor type reported through MFP GPIP bit 7 - see `colourMonitor`. `true` =
     ///colour (the default and Hatari's default), `false` = monochrome. Like LoadDiskA this is
