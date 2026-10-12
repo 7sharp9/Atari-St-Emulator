@@ -1,7 +1,7 @@
 """121st: pm118/dump_frame.py plus the later-land record fields (b15, b32,
 w18, icons), the unmasked $57fed tick byte and the 16x16 $312a0 and 32x32
 $3af1c sheets.
-    py -3 dump_frame.py <frame.ram> <out.json>   (input for score.fsx)"""
+    uv run python dump_frame.py <frame.ram> <out.json>   (input for score.fsx)"""
 import base64, json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))

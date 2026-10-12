@@ -33,7 +33,7 @@ State fields:
     ram   : per-state RAM path      (M68000-relative); defaults to the anchor
 
 run_corpus(states, min_states, min_branches=0, steps=2_000_000, reuse_json=False):
-    `py -3 script.py <substr>` runs only the states whose name contains <substr>;
+    `uv run python script.py <substr>` runs only the states whose name contains <substr>;
     a "reuse" argument is not taken as a filter.
     reuse_json=True skips the emulator whenever <out_dir>/o_<name>.json already
     exists (the callcap output is determinism-verified ground truth - see

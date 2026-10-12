@@ -5,7 +5,7 @@ each stopped at PC=$2776 (`bpc 2776 1`) and snapshotted into nat/.  callcap
 $2776 with the entry A3 as a preset.  Poked states follow, each named for
 the one branch it forces.
 
-    py -3 reversing/powermonger/py/diff_2776.py [filter] [reuse]
+    uv run python reversing/powermonger/py/diff_2776.py [filter] [reuse]
 (corpus: scratchpad/pm122/agents/dissolve/{nat,nat2,out})
 """
 import sys

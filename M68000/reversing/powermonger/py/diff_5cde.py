@@ -7,7 +7,7 @@ allocation counter $51536, OBJ slot 0 (the order loop walks it when a
 settlement has no units), the $57f68 herd-op table and the $580a6 side table
 (both read-only here: any write would be a failure).  Also checks the
 returned D2/D3/D4 low words against callcap regN.
-    py -3 reversing/powermonger/py/diff_5cde.py [substr] [reuse]
+    uv run python reversing/powermonger/py/diff_5cde.py [substr] [reuse]
 (corpus: scratchpad/pm122/agents/herdop/corpus)
 """
 import json

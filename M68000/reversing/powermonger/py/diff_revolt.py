@@ -7,7 +7,7 @@ registers as presets; the $5c2c / $25d6 calls reached naturally (land 60 inside
 the revolt, land 25 via the heartbeat's $16848) called directly on their own.
 Then minimal pokes for branches the natural states miss (named below).
 
-    py -3 reversing/powermonger/py/diff_revolt.py [filter] [reuse]
+    uv run python reversing/powermonger/py/diff_revolt.py [filter] [reuse]
 (corpus: scratchpad/pm122/agents/revolt/{nat,nat2,out})
 """
 import re

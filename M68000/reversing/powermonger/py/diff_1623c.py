@@ -3,7 +3,7 @@ over dead records that the game made itself on later lands (no synthetic
 kills). Every other live record's owner byte is zeroed, so $14b62 only runs
 $1623c. Tracked: pm_fsm_ref.REGIONS + the player's pigeon record ($4c112, 26 B)
 + the pigeon request word $57ff4.
-    py -3 reversing/powermonger/py/diff_1623c.py   (corpus: scratchpad/pm121/corpus_1623c)
+    uv run python reversing/powermonger/py/diff_1623c.py   (corpus: scratchpad/pm121/corpus_1623c)
 """
 import sys
 from pathlib import Path

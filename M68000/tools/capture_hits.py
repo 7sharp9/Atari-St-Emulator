@@ -13,8 +13,8 @@ so a gate builds State(..., presets={"A3": e["regs"]["A3"]}) without
 re-parsing REPL logs.  Hit numbers count from the start snapshot (take them
 from a `hits` census line: `count first last`).  Run from M68000/:
 
-    py -3 tools/capture_hits.py scratchpad/pm121/run/k25_s3.snap 2776 1,2 scratchpad/x --name k25_s4
-    py -3 tools/capture_hits.py <snap> <addr> <n,...> <out> [--name N] [--max STEPS] [--disk IMG] [--pre CMD]...
+    uv run python tools/capture_hits.py scratchpad/pm121/run/k25_s3.snap 2776 1,2 scratchpad/x --name k25_s4
+    uv run python tools/capture_hits.py <snap> <addr> <n,...> <out> [--name N] [--max STEPS] [--disk IMG] [--pre CMD]...
 
 --pre adds REPL commands before the first bpc (a poke, `watch`, ...).  The
 REPL log is kept as <out>/<name>.log.  A hit that is not reached within
