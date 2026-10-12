@@ -7,6 +7,7 @@ Openers and their entry contracts, read from their bodies:
   $c9f8 "An Alliance has been forged" (D0, D1 = the two sides)
   $cada refusal, one of four templates by $57fec & 3 (D0 = the refusing side)
   $cd42 "DISK STATUS REQUESTER" (A3 = two 30-byte lines; $13f26 is the Load Data Disk pair)
+  $c5ee alliance broken (D0 low byte = the other side; hooks $c628: +4 the local side's name, +$c the other's)
 Every callcap must return; the grid printed is the panel slot with the most changed bytes (uilib.panel_text).
 The run log goes to $PM_WORK (default scratchpad/pm150/ui_unread) as req_panels.out. Exit 1 if any callcap fails to return.
 """
@@ -40,6 +41,7 @@ cases = [
     ('c9f8 forged, sides 1 and 3', ['callcap c9f8 20000 D0=1 D1=3']),
 ] + [(f'cada refusal, $57fec & 3 = {t}', [f'w 57fec {t:04x}{tick_lo:04x}', 'callcap cada 20000 D0=3']) for t in range(4)] + [
     ('cd42 disk requester, lines $13f26', ['callcap cd42 20000 A3=13f26']),
+    (f'c5ee alliance broken, other side {3 if side != 3 else 2}', [f'callcap c5ee 20000 D0={3 if side != 3 else 2}']),
 ]
 bad = 0
 log = []

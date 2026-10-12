@@ -841,9 +841,9 @@ and `$1373c` is the per-tick tail (below). Position choice: with a left or right
    | `$1a` | `$c820` | `$c706`, from `$33b0`, when an envoy reaches a lord of the local side. The panel names the proposer (`name[-48(A3)]`); the verb follows his posture `60(A3)` (2 "demands", 3 "asks for", 4 "begs for", table `$c802`), and the tribute lists each non-zero goods word `84(A3) + 12j` with its `$a242` name, plural when the count is not 1 (`py/ui/req_panels.py`) | `$146` YES → order `$2a`, param `$5809e` (only if that group's `-48(A3) != 0`, `192(A3) == $e` and its lead is on the local side); `$162` NO → `$32` |
    | notice | `$ca46` | `$c9f8` (D0, D1 = the two sides), after `$34a8` sets the peace bits ("Diplomacy") | "An Alliance has been forged between A and B." |
    | notice | by `$57fec & 3` from `$cb36` | `$cada` (D0 = the refusing side), from `$33b0` and order `$32` | one of four refusals: "Despite Your Begging X just Laughs in your face.", X Says "Not just now pinhead", "Not a chance stupid", "No....Suffer" |
-   | notice | (shares the 8-character name with `$c9f8`) | `$c5ee`, from `$4c2a` | the alliance-broken notice; its entry contract is not read |
+   | notice | `$c642` | `$c5ee` (D0 low byte = the other side, kept in A3), from `$4c2a`, which passes whichever of its two sides is not the local one; opened through `$7b10` + `$a91a` like `$bf5a`, with the hook table `$c628` (+4 `$c62c` the local side's name `$582e9 + 16*$57ffe`, +`$c` `$c634` the other side's) | "The alliance between A and B is broken may a million fleas infest your undergarments." (A the local side) |
 
-   `py/ui/req_panels.py` renders the `$c706`, `$c9f8`, `$cada` (all four templates) and `$cd42` grids from `callcap` of each opener (7 of 7 return); `$c5ee` is not covered.
+   `py/ui/req_panels.py` renders the `$c706`, `$c9f8`, `$cada` (all four templates), `$cd42` and `$c5ee` grids from `callcap` of each opener (8 of 8 return).
 
 2. **The minimap** (x < `$40`, 6 ≤ y < `$86`; cells 1:1, `(x, y−6)`). With a
    command armed (`$57fd4 != 0`), `$13892` draws the line from the selected
