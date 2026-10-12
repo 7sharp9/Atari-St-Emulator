@@ -381,6 +381,28 @@ the next"):
   refilled with a new commander (k104: `$28ae` dissolves group 0 at 791,791,448, `$27c6` frees the
   side's pigeons, `$25d6` makes a new group 0 at 829,665,988, and group 1's sender word `$51aa6`
   still names the old commander). The census's "first group alive" test cannot see that refill.
+  A `watch 4c146 26` from `pm143/lands/k104.snap` shows that leak live: the next order to group 1
+  is launched with the corpse `$53dc6` as sender, and `$45a8` writes `$fc` into the pigeon's owner
+  byte `$4c14b` at step 794,192,700. On k4 the slot `$25d6` refills at step 871,145,825 already
+  holds pending 2, and the word takes 0 writes in 170M steps (`watch 51a28 316`).
+
+  The remaining 99 words, all on sides whose first group is gone, are the first-group-dissolve
+  case with the sender revived. On every one the first group's owner word is 0 and the group's
+  sender word is that group's stale lead word, the dead commander, but the record it names is
+  alive: the slot-0 pigeon landing `$4244` later brought the corpse back as an ordinary man
+  (`neg.b 5(A0)` at `$4258`, byte 7 bits 4..6 cleared, then side := his home settlement's side at
+  `$42ac`), so the dead-sender test sees a live record. Revival does not release the receivers.
+  `stuck_classes.py` counts these as `revived`: 51 words, all in live play, whose sender is dead in
+  an earlier snapshot of the lineage, and 48 (30 live, 18 frozen) where the death and the revival
+  fall inside one 250M-step chunk. All seven lineages of the second kind are watched
+  (`py/arms/revived/watches.sh`: k32, k124, k25, k60, M2G_k138, M2G_k22, M2G_k86; the frozen k112
+  and k96 words are classified by the same signature only): in each, `$55f2` kills the commander,
+  `$2776` clears the first group's owner word at `$28ae` within 3,300 steps (`revived/g0own.sh`),
+  the corpse becomes category `$0a`, and `$4258`/`$42ac` revive it 63M to 211M steps later, in four
+  of the eight watched revivals on another side (k25 and k22 from side 4 to 2, k138 from 2 to 3,
+  and M2G_k6, a first-kind case, from 3 to 4). The revived man then lives as anyone else: on k25 he
+  joins side 3's commander's army (`$1b78` writes his word 28 := the lead's offset `$4204`, and
+  `$1b7c` sets byte 7 bit 6). No word in the census is left unexplained.
   `py/arms/pend_pigeons.py` lists the pigeons of one snapshot.
 
   The group's state `76()` selects the path:

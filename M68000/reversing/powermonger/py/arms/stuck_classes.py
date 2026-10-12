@@ -13,6 +13,12 @@ pigeon riding to its lead and no queued side record (pending_census.py's 'orphan
   g0 dissolve no pigeon, and the sender word names a dead record: $2776 on the first group freed the pigeon ($27c6)
   transient   none of the above, and a later snapshot of the lineage has the word clear (an order between $6822 and its pigeon,
               or a pigeon in a state the census misses)
+  revived     none of the above, the first group's owner word is 0 and the sender word is its stale lead word 64 (the dead
+              commander): the commander died, $2776 dissolved his group and freed the side's pigeons ($27c6), and the
+              slot-0 pigeon landing $4244 later revived his corpse as a live man (`neg.b 5(A0)` at $4258, byte 7 bits 4..6
+              cleared, side := his home settlement's side at $42ac), so the sender no longer looks dead. '/seen' when an
+              earlier snapshot of the full lineage (back through the start snapshot's own run) has the record dead (side
+              byte <= 0); '/unseen' when death and revival fall inside one chunk (byte 7 bits 4..6 set before, clear after)
   unknown     none of these
 
 Prints the g0-alive cases and the class counts split by whether the side's first group is alive (pending_census.py's
@@ -80,7 +86,22 @@ def classify(sn, r, sd, k, deadpig):
         return 'g0 dissolve'
     for q in seq[i + 1:]:
         if fld(ram(q), sd, k, 4) == 0: return 'transient'
+    if fld(r, sd, 0, 28) <= 0 and sender == w(r, 0x51538 + sd * 0x13c + 64):
+        a = (OBJ + s16(sender)) & 0xfffff
+        fseq, fi = full_lineage(sn)
+        hist = [ram(q) for q in fseq[:fi + 1]]
+        if any(s8(q[a + 5]) <= 0 for q in hist[:-1]): return 'revived/seen'
+        if any(q0[a + 7] & 0x70 and not q1[a + 7] & 0x70 for q0, q1 in zip(hist, hist[1:])): return 'revived/unseen'
     return 'unknown'
+
+def full_lineage(sn):
+    """lineage() continued backwards while the start snapshot is itself a _c<N> chunk of an earlier run."""
+    seq, i = lineage(sn)
+    while seq[0] != sn and re.search(r'_c\d+\.snap$', seq[0].name):
+        pre, j = lineage(seq[0])
+        if j == 0: break
+        seq = pre[:j] + seq; i += j
+    return seq, i
 
 if __name__ == '__main__':
     tot = collections.Counter(); fz = collections.Counter(); rows = []

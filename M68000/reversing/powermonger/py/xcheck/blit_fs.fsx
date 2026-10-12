@@ -1,8 +1,7 @@
 // F# half of the synthetic blit cross-check: Sprites.blitEntity on 13 synthetic
 // records over one fixed cell, covered pixels per case in $XCHECK_OUT/blit_fs.txt.
 // byte6 4 records take their jitter from the address (Sprites.propJitter), as in
-// the game. The melee case (b31 $32) is expected to differ: the port draws it
-// ($11c8a), pm_render_ref skips it.
+// the game. The melee men (b31 $32/$34, $11c8a) are drawn by both.
 #r "../../port/godot/logic/bin/Debug/net8.0/PmLogic.dll"
 open PmLogic
 let outDir = match System.Environment.GetEnvironmentVariable "XCHECK_OUT" with null | "" -> "." | d -> d
@@ -60,5 +59,27 @@ for k, (b6,b5,b7,b14,b17,b31,fx,fy,_,_,grp) in List.indexed cases do
               if buf.Covered.[i] then yield sprintf "%d,%d,%d" x y (int buf.Index.[i]) ]
     sb.AppendLine(sprintf "CASE b6=%d b5=%d b7=%d b14=%d b17=%d b31=%d fx=%d fy=%d fx4=%d fy4=%d grp=%d | %s"
                     b6 b5 b7 b14 b17 b31 fx fy fx4 fy4 grp (String.concat " " px)) |> ignore
+// more melee men ($11c8a), the walk/melee fields the first
+// list leaves at 0: b5, b7, b17, b31, b44, w18 (no siege arm: pm_render_ref
+// draws no overlays)
+let melee =
+    [ (1, 0x00, 0x00, 0x32, 2, 0)          // pike, facing toward
+      (2, 0x10, 0x90, 0x34, 4, 0)          // sword, bit 4, facing away
+      (3, 0x00, 0x40, 0x32, 6, 0x1400)     // bow: + 1 only when byte 18 is $14
+      (4, 0x00, 0x40, 0x34, 6, 0x0a00) ]   // bow, byte 18 not $14
+for k, (b5,b7,b17,b31,b44,w18) in List.indexed melee do
+    let buf = Fill.Buffer.Create()
+    let r : Sprites.EntityRec =
+        { Addr=0x50000; B6=0; B5=b5; B7=b7; B14=0; B17=b17; B31=b31
+          Fx=100; Fy=120; Group=0; Wcx=0; Wcy=0
+          B15=0; B32=0; W18=w18; Icons=0; B33=0; B44=b44; B16=0; W12=0 }
+    Sprites.blitEntity buf ctx c00 c10 c01 c11 0 0 r
+    let px =
+        [ for y in 0 .. Fill.ScreenHeight-1 do
+            for x in 0 .. Fill.ScreenWidth-1 do
+              let i = y*Fill.ScreenWidth+x
+              if buf.Covered.[i] then yield sprintf "%d,%d,%d" x y (int buf.Index.[i]) ]
+    sb.AppendLine(sprintf "MELEE b5=%d b7=%d b17=%d b31=%d b44=%d w18=%d | %s"
+                    b5 b7 b17 b31 b44 w18 (String.concat " " px)) |> ignore
 System.IO.File.WriteAllText(System.IO.Path.Combine(outDir, "blit_fs.txt"), sb.ToString())
 printfn "wrote fs output, %d cases" cases.Length

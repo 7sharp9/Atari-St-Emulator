@@ -35,7 +35,7 @@ for q in q0 q1 q2 q3; do
   if cmp -s "$OUT/${q}_fs.txt" "$OUT/${q}_py.txt"; then echo "$q identical ($n px)"; else echo "$q DIFFERS"; fi
 done
 
-echo "== blits, synthetic (13 cases; the melee case is expected to differ)"
+echo "== blits, synthetic (17 cases, five melee men)"
 dotnet fsi $X/blit_fs.fsx >/dev/null && $PY $X/blit_py.py >/dev/null
 paste -d'\n' "$OUT/blit_fs.txt" "$OUT/blit_py.txt" | awk 'NR%2{a=$0; next} {n++; if (a==$0) s++; else print "differs: " substr(a, 1, index(a, "|") - 2)} END {print s "/" n " cases identical"}'
 

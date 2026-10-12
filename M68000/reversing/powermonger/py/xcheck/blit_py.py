@@ -59,5 +59,22 @@ for k, (b6,b5,b7,b14,b17,b31,fx,fy,_,_,grp) in enumerate(cases):
     px = [f"{x},{y},{idxbuf[y*W+x]}" for y in range(Hh) for x in range(W) if cov[y*W+x]]
     out.append(f"CASE b6={b6} b5={b5} b7={b7} b14={b14} b17={b17} b31={b31} "
                f"fx={fx} fy={fy} fx4={fx4} fy4={fy4} grp={grp} | " + " ".join(px))
+# more melee men, as blit_fs.fsx's second list
+for (b5, b7, b17, b31, b44, w18) in [(1, 0x00, 0x00, 0x32, 2, 0), (2, 0x10, 0x90, 0x34, 4, 0),
+                                     (3, 0x00, 0x40, 0x32, 6, 0x1400), (4, 0x00, 0x40, 0x34, 6, 0x0a00)]:
+    o = dict(b6=0, b5=b5, b7=b7, b14=0, b17=b17, b31=b31, fx=100, fy=120, group=0,
+             wcx=0, wcy=0, b44=b44, w18=w18)
+    idxbuf = bytearray(W*Hh); cov = bytearray(W*Hh)
+    fr = P._entity_frame(o, ent, yaw)
+    if fr is not None:
+        pxp, pyp = P._packed_lerp(c00, c10, c01, c11, 100, 120)
+        for r, rowpx in enumerate(P._decode_frame_byte(ent["sheet33"], fr[1])):
+            yy = pyp - 8 + r
+            if not (0 <= yy < Hh): continue
+            for cc, v in enumerate(rowpx):
+                xx = pxp - 4 + cc
+                if v >= 0 and 0 <= xx < W: idxbuf[yy*W+xx] = v; cov[yy*W+xx] = 1
+    px = [f"{x},{y},{idxbuf[y*W+x]}" for y in range(Hh) for x in range(W) if cov[y*W+x]]
+    out.append(f"MELEE b5={b5} b7={b7} b17={b17} b31={b31} b44={b44} w18={w18} | " + " ".join(px))
 open(OUT / "blit_py.txt", "w").write("\n".join(out) + "\n")
 print("wrote", len(cases), "cases")

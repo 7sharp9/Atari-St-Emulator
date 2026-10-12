@@ -29,8 +29,9 @@ Open (the full list, with the reasons, is `SPEC.md` Status):
 
 - Godot runs at zoom 4 only; the stepper and the Godot view do not draw weather; `Equipment.fs`
   is called by nothing, because the port has no entity simulation.
-- Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn; `byte6` 6 has no established
-  role; the plough and siege-engine overlays are ported from the code but never seen on screen.
+- Category `byte6` 18, 28 and 34 and the plough and siege-engine overlays were never seen in natural
+  play; they match the game under labelled pokes (`SPEC.md` §6). 36, 38 and 42 cannot be drawn in
+  this build. `byte6` 6 has no established role.
 - HUD glyph sheet and compass panel are not decoded as assets. The minimap is baked, not tinted per
   frame, and shows no ownership; mode 3 goes stale between bakes (`../graphics.md` "The minimap and
   the conquest map").
@@ -149,10 +150,9 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
 `Sprites.recordJitter`, `Sprites.packedLerp`, `Sprites.placeEntity`).
 
 - **Synthetic cross-check.** Against `pm_render_ref.draw_entities` on identical synthetic corners and
-  record fields: 12 of 13 cases byte-identical, `byte6 ∈ {0, 4, 8, 14, 24}` (men with the `+0x40`
+  record fields: 17 of 17 cases byte-identical, `byte6 ∈ {0, 4, 8, 14, 24}` (men with the `+0x40`
   armed gate, props with the `r7 ∈ {0x0d, 0x0e}` special cases and the tile-set offset, animals,
-  banners, and the `$1182a` centroid markers; `../py/xcheck/blit_{fs.fsx,py.py}`). The 13th is a melee
-  man, which the port draws (`$11c8a`) and the reference still skips.
+  banners, the `$1182a` centroid markers and five melee men `$11c8a`; `../py/xcheck/blit_{fs.fsx,py.py}`).
 - **Real record stream.** On `entities.json` with the `$3f364` corners of `pm88_f1.ram`: 3061/3061
   covered pixels, `byte6 ∈ {0,4,6,8,14,24}` (`../py/xcheck/ent_{fs.fsx,py.py}`; `SPEC.md` §6 for why
   the first run's 2881 is superseded).
@@ -196,7 +196,8 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
 | `order_test.fsx` (`SPEC.md` §6) | 99.99 / 94.62 / 99.69 / 99.97 / 99.92 / 99.81 |
 | `baseline.fsx` | 162/162 lines equal to `baseline.txt` |
 | `quad_fs.fsx` / `quad_py.py` | 4 of 4 quadrants identical, 1020 px each |
-| `blit_fs.fsx` / `blit_py.py` | 12 of 13 (the melee case differs by design) |
+| `blit_fs.fsx` / `blit_py.py` | 17 of 17, five melee men among them |
+| `overlay/run_cases.sh`, `overlay/score_cases.sh` | the labelled-poke checks of the plough and siege-engine overlays and of `byte6` 18, 28 and 34 (`SPEC.md` §6) |
 | `ent_fs.fsx` / `ent_py.py` | 3061/3061 |
 | `score.fsx`, 14 frames | 99.64-99.99% (`pm78_settle` 94.62%) |
 | stepper `--selfcheck` | 23/23 on `assets` and `assets_k60` |

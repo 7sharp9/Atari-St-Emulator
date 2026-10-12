@@ -45,8 +45,8 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 - **Sprites (§6).** Four sheets decoded, the `$115e0` dispatch and every category's frame formula
   ripped (`assets/sprites/sprite_triggers.json`), positions byte-exact against live `D0`/`D1`, the
   per-cell entity pass ported (`Sprites.fs`; on the real record stream of `pm88_f1` byte-identical
-  to `pm_render_ref.draw_entities`, 3061/3061 covered pixels; 12 of 13 synthetic cases identical, the
-  13th a melee frame the port draws and the reference skips).
+  to `pm_render_ref.draw_entities`, 3061/3061 covered pixels; 17 of 17 synthetic cases identical,
+  five of them melee men `$11c8a`).
 - **Seasons, zoom, weather, minimap (§4 "Seasons", §5, §7).** `Season.fading` reproduces the whole
   16 KB pattern table byte for byte on seven captures; whole frames at zoom 1-7 match at
   99.79-99.99%;
@@ -55,10 +55,11 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 
 **Open.**
 
-- Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn on 37 lands (the writers of 18 are
-  dead code in this build, §6), and the frame a `byte6` 6 camp marker draws (`$111` by the shared `$117b0`
-  formula) has not been captured. The plough and siege-engine overlays of the men are ported from
-  the code but were never seen on screen. Per-category frame counts are not tabulated.
+- The frame a `byte6` 6 camp marker draws (`$111` by the shared `$117b0` formula) has not been
+  captured, and per-category frame counts are not tabulated. Categories 18, 28 and 34 were never seen
+  in natural play on 37 lands (§6 gives the reasons for 18 and 28), nor were the men's plough and
+  siege-engine overlays; under labelled pokes the port matches the game on all five (§6, "Men" and
+  the category table). 36, 38 and 42 cannot be drawn in this build.
 - HUD art: the glyph sheet behind `$e6ee`'s descriptor table and the compass panel are not decoded as
   assets (the `$78000` master as a whole is `assets/backdrop.bin`).
 - `pm78_settle` scores 94.6% because its two compose buffers disagree on the entity layer (`$115e0`
@@ -79,7 +80,7 @@ passes, on the Mac since the 154th). The experiments that settled a question onc
 re-run stay in `scratchpad/` as a record: `pm118/phase_test.fsx`, `pm118b/lastrow_fix.fsx` (its own
 copy of the rasteriser), `pm119/pan_check.fsx`, `jitter_check.fsx` and `tick_check.fsx` (the first two
 were brought up to date and run in the 154th session with the results quoted below), and
-`pm121/allpairs.txt`. A scratch path cited below is a record of what was run.
+`pm121/allpairs.txt`. The labelled-poke checks of the men's overlays and of `byte6` 18, 28, 34 and 36-42 rerun with `../py/xcheck/overlay/run_cases.sh` (captures from `pm88_f1`) then `score_cases.sh` (each case against the no-poke control, plus wrong-frame controls). A scratch path cited below is a record of what was run.
 
 ---
 
@@ -732,7 +733,7 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 
 | `byte6` | prepare / blit | what it is | frames | checked |
 |---------|----------------|------------|--------|---------|
-| 0 | `$11c8a` / `$11f78` | man | walk or melee frame; plough and siege-engine overlays; flags bit 5 → the boat of 26 | walk, melee, boat (lands 0, 5, 25, 60) |
+| 0 | `$11c8a` / `$11f78` | man | walk or melee frame; plough and siege-engine overlays; flags bit 5 → the boat of 26 | walk, melee, boat (lands 0, 5, 25, 60); plough and siege engine (walk and melee) under labelled pokes on `pm88_f1` (`../py/xcheck/overlay/`) |
 | 2 | `$117d8` / – | settlement building | building frame `record[7]` | all |
 | 4 | `$1168c` / – | tree, building | `record[7]` + season offset | all |
 | 6, 24 | `$117b0` (`a_object`) / `$11f78` | 24: the fishermen's catch marker; 6: a group's camp marker, placed by `$3744` (same drawer, `record[7] = $11`) | `record[7] + $100` (a catch marker has `record[7] = $10`, frame `$110` = a rowboat on the pond; a camp marker, formula only, `$111`) | 24: all; 6: not captured |
@@ -741,15 +742,15 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 | 12 | `$11bbc` / `$11f78` | dead man (`$5590` kill: side negated, `word[18] := $a0`) | body `$103 + (−record[5] & $ff)`; figure `$100 + record[32]` lifted `$a0 − word[18]` | land 5 |
 | 14 | `$11bf4` / `$11f78` | banner / group member | `record[5] + $13e` | all |
 | 16 | `$1192e` / – | leader's base (`$4f916` record) | building frame 7, then the leader's goods icons | lands 0, 5 |
-| 18 | `$11c36` / – | projectile, `$312a0` art | `word[14] < 0`: 16 x 16 frame `word[14] + $2f` (`$1225c`); else 8 x 11 `$146` (`$11f7c`) | never seen; not ported |
+| 18 | `$11c36` / – | projectile, `$312a0` art | `word[14] < 0`: 16 x 16 frame `word[14] + $2f` (`$1225c`); else 8 x 11 `$146` (`$11f7c`); no `$12138` pass | never seen naturally; poked: 15/15 px, both arms |
 | 20 | `$11b3c` / `$11f78` | carrier pigeon (`$4c112` pool, 26 B) | shadow `$148`; bird `$127 + (tick & 7)` lifted `record[15]`; `$151` for `$4c112` only | land 5 |
 | 22 | `$11b2a` / `$11f78` | bird of a flock (`$4c5f4` pool, 22 B, `$4672` at world build) | as 20 | land 5 |
 | 26 | `$1174e` / `$11f78` | boat | `$149 + record[5]`, 1 px lower on `[$4bb41] & 1` | via byte6 0 bit 5 (land 0) |
-| 28 | `$11b0c` / `$11f78` | set at `$15462` in winter only | – | never seen; not ported |
+| 28 | `$11b0c` / `$11f78` | set at `$15462` in winter only | `$150` when `record[5]` ≤ 0 as a signed byte (`tst.b 5(A3) / ble` at `$11b14`), else `$14e + ($57fec & 1)` | never seen naturally; poked: 18/18 px, and 20/20 with side `$fe` |
 | 30 | `$1198a` / – | building going up (`$5e3a`) | frame `$0c`, top rows cut off while `word[8]` counts down from `$10` | land 25 |
 | 32 | `$1168a` / `$1168a` | nothing: `rts` in both passes (the end state of a dead man without goods) | – | – |
-| 34 | `$11ab8` / `$11f78` | – | – | never seen; not ported |
-| 36, 38, 42 | prepare word 0 / `$12258`, `$12258`, `$12244` | – | – | never seen |
+| 34 | `$11ab8` / `$11f78` | – | f = `$100 + ((($57fec & 2) + record[7]) & $ff) + (((record[14] + yaw + $10) & $e0) >> 4) * 2` at the lerp, then f + 1 eight pixels right | never seen naturally; poked: 19/19 px |
+| 36, 38, 42 | prepare word 0 / `$12258`, `$12258`, `$12244` | – | none: `$115e0` jumps to `$1162e` + 0, into the table itself, which runs as code through `(A4)+`, `(A6)+` and `(A0)+` writes to `$0608` at `$11640`, an illegal instruction on a 68000 (inferred from the encoding) | cannot be drawn: a poked record stops the emulator at `$11644` (3 of 3) |
 | 40 | `$11c64` / – | projectile (`$57f0`, weapon tier in `D1`) | one colour-0 pixel (`$e6ee`) | land 25 |
 | 44 | `$1184e` / – | dropped goods pile (`$3ac8`) | a goods icon per non-zero word at `record + 10 + 2e` | lands 5, 25 |
 
@@ -786,7 +787,13 @@ bit 4. Otherwise `(side − 1) * 16 + facing * 2` (8 facings), `+$40` armed, `+1
 first draws `$109 + k` at `$11e40/$11e50[k]`, k = frame & 7; a man hauling a
 siege engine (`record[44] >= $e`) first draws the 16 x 16 `$312a0` frame
 `$1b + (record[44] − $e) * 4 + k` at the same offsets (`$11ebc`), k = facing
-(melee: `(record[44] & $f) >> 1`). Plough and siege engines were never seen.
+(melee: `(record[44] & $f) >> 1`). Natural play never sets `record[44] ≥ $e` (below), and
+no plough was seen carried. Both overlays match the game under labelled pokes on `pm88_f1` (`../py/xcheck/overlay/`), camera on (22,46):
+the plough 16/16 px (and no plough when `record[7] ≠ 1`, 0/0 in both); the siege engine at
+`record[44]` = `$e`, `$f`, `$10`, `$11` 98/98, 22/22, 38/38 and 50/50 px walking, 65/65 and 32/32
+in melee; the melee frame alone 30/30. A wrong-frame control (`record[44] + 1`) scores 0 to 3 of
+the same pixels. The game tests `record[44]` signed (`cmp.b #$e / blt`) and the port unsigned,
+which differs only for values ≥ `$80`, which no writer produces.
 
 ### Position — bilinear over the projected cell corners (`$11f1a`)
 
@@ -858,7 +865,7 @@ use.
 | 18 | projectile | `$312a0` / `$33000` | `word[14] < 0`: `word[14] + 0x2f` (16 x 16); else `$146` |
 | 20, 22 | pigeon, flock bird | `$33000` | `$148` shadow; `$127 + ([$57fec] & 7)` and (record `$4c112` only) `$151` lifted `s8(record[15])` (`+$30` if negative); a colour-5 pixel at `screenY − record[14]` if `record[14] != 0` |
 | 26 | boat | `$33000` | `(record[5] & 0xff) + 0x149`, one pixel lower when `[$4bb41] & 1` |
-| 28 | (winter only, `$15462`) | `$33000` | `0x150`, or `([$57fec] & 1) + 0x14e` if `record[5] > 0` (not ported) |
+| 28 | (winter only, `$15462`) | `$33000` | `0x150`, or `([$57fec] & 1) + 0x14e` if `record[5] > 0` as a signed byte |
 | 30 | building going up | building sheet | frame `$0c` with the top rows cut off, see the table above |
 | 40 | projectile | `$e6ee` | one pixel, colour 0 |
 | 44 | dropped goods | icons | the goods icons |
@@ -893,11 +900,10 @@ buffer holds all 25 trees, and it stays at 94.62% (§9 "Ruled-out causes").
 **The per-cell entity pass in F#.** It lives in `Sprites.fs` (`EntityRec` /
 `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`) and is
 **cross-checked byte-exact** against `pm_render_ref.draw_entities` on synthetic
-corners + record fields: 12 of 13 cases, `byte6 ∈ {0, 4, 8, 14, 24}`, covering
-the prop `r7 ∈ {0x0d, 0x0e}` special-cases, animal/banner facing, and the
-centroid markers (`../py/xcheck/blit_fs.fsx` / `blit_py.py`). The 13th is the
-melee man (`b31 == $32`): the port draws its `$11c8a` frame, `pm_render_ref`
-still returns nothing for it. `drawEntities` replays `$115e0` as a post-terrain far→near
+corners + record fields: 17 of 17 cases, `byte6 ∈ {0, 4, 8, 14, 24}`, covering
+the prop `r7 ∈ {0x0d, 0x0e}` special-cases, animal/banner facing, the
+centroid markers and five melee men (`$11c8a`: weapon, side, the bow's byte-18
+gate, facing away, flags bit 4) (`../py/xcheck/blit_fs.fsx` / `blit_py.py`). `drawEntities` replays `$115e0` as a post-terrain far→near
 pass in `walkQ3` cell order (same approximation `pm_render_ref` uses); `byte6
 6/24` use the `$1182a` centroid, everything else the `$11f1a` sub-cell lerp. Fed
 the `entities.json` records and the `$3f364` corners of `pm88_f1.ram`, the F#
@@ -1053,9 +1059,9 @@ the `$3f364` corner buffer. `$12244` picks by the zoom index `[$57ffc]`:
 Men, animals, banners and markers use the 8 x 11 `$33000` frames at every zoom; only
 their positions scale. Port: `Sprites.propSheet`. Evidence in §5.
 
-**Open.** Per-category frame *counts* are not tabulated. Byte6 18 and 28 are neither
-ported nor seen on screen (the reasons follow). The plough and siege-engine overlays of
-the men are ported from the code but never seen on screen.
+**Open.** Per-category frame *counts* are not tabulated. Byte6 18 and 28 were not seen
+in natural play (the reasons follow); they and 34 are checked only under labelled pokes
+(the table above).
 
 **Why 18 and 28 are missing from the runs** (from the writers).
 

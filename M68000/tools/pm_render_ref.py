@@ -523,8 +523,25 @@ def _entity_frame(o, ent, yaw):
     b6 = o["b6"]
     anim = ent["anim"]
     if b6 == 0:                                    # man / troop
-        if o["b31"] in (0x32, 0x34):               # melee -- base 0x80, skip (rare)
-            return None
+        if o["b31"] in (0x32, 0x34):               # melee ($11c8a..$11d2a)
+            # $80 + weapon * 8 + (side - 1) * 4, weapon = record[44] (0 when
+            # >= $e, `cmp.b #$e` signed: the siege-engine arm $11ebc);
+            # + 1 when record[44] == 6 and byte 18 == $14, else + ($57fec & 1);
+            # + 2 when facing away (((b17 + yaw + $40) & $ff) >> 7); + $40 on
+            # flags bit 4 (no group test, unlike the walk frame)
+            b44 = o.get("b44", 0)
+            sb44 = b44 - 256 if b44 >= 0x80 else b44
+            weapon = 0 if sb44 >= 0x0E else b44
+            f = 0x80 + weapon * 8 + ((o["b5"] - 1) << 2)
+            if b44 == 6:
+                if (o.get("w18", 0) >> 8) == 0x14:
+                    f += 1
+            else:
+                f += ent["ram"][0x57FED] & 1
+            f += (((o["b17"] + yaw + 0x40) & 0xFF) >> 7) << 1
+            if (o["b7"] >> 4) & 1:
+                f += 0x40
+            return ("33", f & 0xFFFF, 8, 11)
         facing = ((o["b17"] + yaw + 0x10) & 0xFF) >> 5
         f = (o["b5"] - 1) * 16 + facing * 2
         bit4 = (o["b7"] >> 4) & 1

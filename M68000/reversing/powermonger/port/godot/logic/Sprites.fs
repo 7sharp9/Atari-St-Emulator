@@ -300,7 +300,8 @@ module Sprites =
             Some(false, f)
         | 14 -> Some(false, (r.B5 &&& 0xFF) + 0x13E)
         | 26 -> Some(false, (r.B5 &&& 0xFF) + 0x149)             // the anim bit moves it, see placeEntity
-        | 28 -> Some(false, (if r.B5 > 0 then 0x14E + (ctx.RotPhase &&& 1) else 0x150))
+        // $11b0c: `tst.b 5(A3) / ble` is a signed test, so a negative side byte draws $150
+        | 28 -> Some(false, (if r.B5 > 0 && r.B5 < 0x80 then 0x14E + (ctx.RotPhase &&& 1) else 0x150))
         | 2 ->
             // settlement building ($117d8): frame record[7] (the kind) from
             // $12244's sheet, no tile-set offset. A Ruin (kind $0a) also draws
@@ -503,6 +504,26 @@ module Sprites =
         | 44 ->
             let cx, cy = centroid ()
             icons 0 cx cy "cell centroid ($1184e -> $1182a)" (cx - 8) (cy - 8)
+        | 18 ->
+            // $11c36 (blit word 0): word[14] < 0 -> the 16x16 $312a0 frame
+            // word[14] + $2f ($1225c); else the 8x11 $146 ($11f7c). Both at the
+            // $11f12 sub-cell lerp, with no $12138 pass.
+            let lx, ly = packedLerp c00 c10 c01 c11 r.Fx r.Fy
+            let rule = "sub-cell lerp at record (fx, fy) ($11c36)"
+            let w14 = (r.B14 <<< 8) ||| r.B15
+            if w14 >= 0x8000 then
+                [ { Sheet = Struct16; Frame = (w14 + 0x2F) &&& 0xFFFF; Skip = 0; AnchorX = lx; AnchorY = ly
+                    Rule = rule; X = lx - 4; Y = ly - 8; W = 16; H = 16 } ]
+            else [ mini 0x146 lx ly rule (lx - 4) (ly - 8) ]
+        | 34 ->
+            // $11ab8: f = $100 + ((($57fec & 2) + record[7]) & $ff)
+            // + (((record[14] + yaw + $10) & $e0) >> 4) * 2, blitted at the lerp
+            // ($11f82), then f + 1 eight pixels right (blit word $11f78)
+            let lx, ly = packedLerp c00 c10 c01 c11 r.Fx r.Fy
+            let rule = "sub-cell lerp at record (fx, fy) ($11ab8)"
+            let f = 0x100 + (((ctx.RotPhase &&& 2) + r.B7) &&& 0xFF)
+                    + ((((r.B14 + ctx.Yaw + 0x10) &&& 0xE0) >>> 4) <<< 1)
+            [ mini f lx ly rule (lx - 4) (ly - 8); mini (f + 1) (lx + 8) ly rule (lx + 4) (ly - 8) ]
         | _ ->
         match entityFrame ctx r with
         | None -> []
@@ -543,7 +564,7 @@ module Sprites =
     /// True if the record's category draws anything (Scene.steps skips the rest).
     let draws (ctx: EntityCtx) (r: EntityRec) =
         match r.B6 with
-        | 0 | 12 | 16 | 20 | 22 | 26 | 30 | 40 -> true
+        | 0 | 12 | 16 | 18 | 20 | 22 | 26 | 30 | 34 | 40 -> true
         | 44 -> r.Icons <> 0
         | 10 -> r.B33 <> 0 || r.B44 <> 0
         | _ -> (entityFrame ctx r).IsSome
