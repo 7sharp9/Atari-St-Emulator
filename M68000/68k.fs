@@ -1186,7 +1186,19 @@ type Cpu =
     ///destination is 32 bits wide with the bit number taken mod 32; every memory destination is a
     ///byte with the bit number mod 8. Z is set from the *old* value of the addressed bit (Z <- ~bit);
     ///no other CCR bit is touched. BTST performs no write.
+    ///
+    ///On the 68000 BCHG/BCLR/BSET need a data-alterable destination (no An, PC-relative or #imm);
+    ///BTST takes any data mode, but the static form not #imm. Every other encoding (An in a static
+    ///form, mode 7 past those registers) is an unassigned opcode and traps to vector 4 with the
+    ///opcode's own PC stacked, like ILLEGAL. PowerMonger's byte6 36 crash executes $08fc here.
     member x.BitOp (mnemonic: string) (opmode: byte) (bitNumber: int) (eamode: byte) (eareg: byte) (extAddr: int) : Cpu =
+        let isStatic = extAddr = x.PC + 4     // the static forms carry the bit number in a word
+        let lastMode7 = if opmode <> 0b00uy then 0b001uy elif isStatic then 0b011uy else 0b100uy
+        if eamode = 0b001uy || (eamode = 0b111uy && eareg > lastMode7) then
+            if Trace.enabled then
+                printfn "%s: invalid EA - illegal" mnemonic
+            x.EnterVector 4 x.PC
+        else
         let isReg = eamode = 0b000uy
         let size = if isReg then OperandSize.Long else OperandSize.Byte
         let bit = bitNumber &&& (if isReg then 31 else 7)
