@@ -21,8 +21,24 @@ alone, and every lesson this session paid for is written where it will be read. 
 
 ## 2. Retro: what would have made this session faster
 
-List for yourself what cost time: wrong assumptions, rediscovered facts, missing tools, rules that
-were not written down, prompts that were ambiguous. For each, apply the fix where it will be read:
+Build the list from evidence, not from memory of how the session felt. Walk the session for:
+
+- commands that failed, hung, returned nothing or had to be re-run (each one is a pitfall or a tool gap);
+- helpers written inline or copied ad hoc (should they be a `py/` or `tools/` script?), and existing
+  tools that needed a workaround (fix the tool, not the next session);
+- every earlier claim this session corrected or retracted: name the general mistake that let it stand
+  (a missing control, a filter, an empty input, a stale lineage). That mistake is a skill lesson even
+  when the fact itself is game-specific;
+- facts re-derived that a doc already held, or that no doc held but should.
+
+Then run the mechanical checks over the session's diff (`git diff <start>..HEAD`):
+
+- docs that cite a script only under `scratchpad/`: promote the script or label the result a record;
+- scripts touched that hard-code a machine (`py -3`, `C:/...`, a literal repo path, a fixed `../` count);
+- tools written this session that duplicate one in `M68000/DEVELOPING.md` "Other tools", and new
+  `tools/` scripts missing their row there.
+
+For each lesson, apply the fix where it will be read:
 
 | lesson | goes to |
 |---|---|
@@ -33,9 +49,12 @@ were not written down, prompts that were ambiguous. For each, apply the fix wher
 | a trap specific to this workstream | the handoff's "Known traps" |
 | a correction of how you worked | a `feedback` memory naming the failure mode |
 
-Only verified lessons. Edits to `CLAUDE.md` or a skill: check `ListAgents`, tell any live session
-what you are changing, and commit those files in their own small commit. If nothing is worth
-changing, say so; do not invent improvements.
+Only verified lessons. Write the rule as it is now, with one worked example and a pointer to the doc
+that proves it. Before adding a line, grep `CLAUDE.md` and the skill for one that already covers it and
+extend or replace that one: a rule duplicated in two places drifts, and a longer file is read less
+carefully. Edits to `CLAUDE.md` or a skill: check `ListAgents`, tell any live session what you are
+changing, and commit those files in their own small commit. If nothing is worth changing, say so; do
+not invent improvements.
 
 ## 3. Re-check the design digest
 
@@ -69,7 +88,8 @@ handoff file. Commit the handoff.
 
 ## 5. Report
 
-Tell Dave: what was committed, what is left uncommitted and why, the lessons applied and where,
+Tell Dave: what was committed, what is left uncommitted and why, each retro lesson with where it went
+(or why it was rejected),
 whether the design digest changed, and
 the next-session prompt, which is always exactly:
 
