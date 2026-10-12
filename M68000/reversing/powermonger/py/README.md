@@ -68,6 +68,7 @@ Run everything from `M68000/`. Shell scripts write under `$PM_WORK` (default
 | `order_run.sh <name> <steps> <clicks...>` | one player order from mission 1 settled (`pm123/win/m1_s0.snap`, or `SNAP=`): clicks, runs, snapshots, prints the lords and the selected group; `strategy.md` "What each order does" |
 | `group.py <ram> [settl]` | the selected group's fields (state, men, food, posture, carried goods), its lead and roster, food piles; `settl` adds every settlement |
 | `shot.sh <snap> <png>` | screenshot from the shifter base (`$ffff8201/03`), macOS-safe; supersedes `scratchpad/pmshot.sh` |
+| `side_dump.py <snap>` | per side the lords (cell, food, men at home, loyalty) and the six groups (men, state, posture, pending word): which side is drained, which groups can decide (`../strategy.md` "Why a drained side is not enough") |
 | `census_lords.py <ram> start_x start_y [r]` | live entities by owner within `r` of each foreign lord and along the straight corridor from cell (x,y): the target-choice census before sending an envoy |
 | `terrain.py <ram> x0 x1 y0 y1` | the `$438ee` colour plane B (`0(A1)`; its docstring still says "A") for a cell window (colour 0 = open sea) with entities marked: explains a `$48` obstacle-avoidance stall |
 | `rel.py <ram>...` | each side's `assess` relation bytes (`$580a6 + 32*side`), the `$33b0` attitude term |
