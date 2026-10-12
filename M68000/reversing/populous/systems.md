@@ -327,6 +327,7 @@ frame (`Program.fs` `timerAPeriod`, a documented stub), so every sound plays at 
 | `trail_ref.py` | model of `$12f84`, `$13372`, `$18198`, `$10068` (walkers) |
 | `trail_diff.py [N] [seed]` | callcap corpus, 400/400 + 400/400 |
 | `trailrun.py [frames] [type]` | live spawn + per-frame diff from `spawn.snap` |
+| `hatari_edges.py run\|parse\|writers` | the `$db4c` edge word on real Hatari from a cold boot (1.3); `swamp208.py edges` is the same on this emulator |
 | `protect.py` | key checks, natural and forced |
 | `pause.py` | pause, 40/40 |
 | `lolo.py`, `fat12.py` | save layout vs LOLO1.GAM; FAT12 lister |
