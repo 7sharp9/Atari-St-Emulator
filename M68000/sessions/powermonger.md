@@ -1,11 +1,11 @@
 # PowerMonger: handoff
 
-Updated 2026-10-12 by the 154th session (graphics cross-checks promoted and rerun, Ruins ported, live-play pending census, FORMAT's ARE YOU SURE): `d5186d9`, `71bc060`, `ae188b6`, `b95f2f0`, `deb2304`, `bc3aac4`, then the handoff commit.
+Updated 2026-10-12 by the 155th session (a short pass: when the minimap is baked, `fd8a1a0`), after the 154th (graphics cross-checks promoted and rerun, Ruins ported, live-play pending census, FORMAT's ARE YOU SURE: `d5186d9`, `71bc060`, `ae188b6`, `b95f2f0`, `deb2304`, `bc3aac4`).
 
 ## Resume point
 
-- Last commits of this workstream: `d5186d9` (py/xcheck), `71bc060` (Ruins), `ae188b6` + `b95f2f0` (pending census), `deb2304` (ARE YOU SURE), `bc3aac4` (capture.sh), then the handoff commit.
-- Working data: `M68000/scratchpad/pm154/` (gitignored): `frames/` the re-exported frame JSONs, `ruin/` and `xcheck/ruin/` the Ruin captures, `format/`, `format2/` the FORMAT drives, `pm83/ pm90/ pm91/` the first fixed copies. The scratch-only F# scripts of passes 83-119 and their inputs were streamed from gpubox into `scratchpad/pm118/`, `pm118b/`, `pm119/` and `scratchpad/pm8x_*`, `pm9x_*`; the frame RAMs `run.sh` reads are now on the Mac. Earlier passes: `pm153/`, `pm152/`, `pm151/`, `pm150/`.
+- Last commits of this workstream: `fd8a1a0` (minimap bakes), `d5186d9` (py/xcheck), `71bc060` (Ruins), `ae188b6` + `b95f2f0` (pending census), `deb2304` (ARE YOU SURE), `bc3aac4` (capture.sh), then the handoff commit.
+- Working data: `M68000/scratchpad/pm155/minimap/` (the k60 revolt rerun `pre`/`post`, the mode-3 click and its 50M-step run); `M68000/scratchpad/pm154/` (gitignored): `frames/` the re-exported frame JSONs, `ruin/` and `xcheck/ruin/` the Ruin captures, `format/`, `format2/` the FORMAT drives, `pm83/ pm90/ pm91/` the first fixed copies. The scratch-only F# scripts of passes 83-119 and their inputs were streamed from gpubox into `scratchpad/pm118/`, `pm118b/`, `pm119/` and `scratchpad/pm8x_*`, `pm9x_*`; the frame RAMs `run.sh` reads are now on the Mac. Earlier passes: `pm153/`, `pm152/`, `pm151/`, `pm150/`.
 - Start from:
   - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains.
   - `pm143/run/rand1_s1.snap`: the FILE-panel drives.
@@ -17,6 +17,10 @@ Updated 2026-10-12 by the 154th session (graphics cross-checks promoted and reru
 ## Proven so far
 
 Older gates carry over unchanged; the list is in `strategy.md`, `ai.md` and `economy.md`, with reruns from the `py/README.md` table. A sample: entity FSM `py/fsm/repro93..97.py`, `diff_pm99.py` 1847/1847, `gate_orders.py` 61143/61143 over 2273 states, `gate_pop.py`, `gate_equip.py`, the commander AI `py/cmdai/` 323/323 + 280/280, `gate_fsm15.py` 18452/18452, `py/season/gate_1abaa.py` 1084/1084 calls.
+
+New in the 155th pass:
+
+- **The minimap is baked, never tinted, and shows no ownership.** `$107d6` runs only from the land build, the mode-strip click, `click_pr` and `_draw_ca` (from `_add_cap`/`_remove_` when the captain is on the player's side `$57ffe`); modes 0 and 2 stay exact, mode 3 (lord supply) goes stale: on `k60_s1` a strip click bakes mode 3 once, then 50M steps run with 0 bakes, the picture unchanged and 38 of 8064 pixels off a fresh bake (`py/maps/minimap_stale.py`). An AI-to-AI revolt does not re-bake. graphics.md "The minimap and the conquest map".
 
 New in the 154th pass:
 
@@ -83,7 +87,7 @@ The 150th pass's results (all still current; detail in the topic docs):
 
 ## Open, in priority order
 
-1. **Port checks still not run.** Category `byte6` 18, 28, 34, 36, 38, 42 never seen drawn; the plough and siege-engine overlays never seen on screen (a capture of a ploughing farmer or a siege engine, scored by `score.fsx`). Whether a territory change re-bakes the minimap: diff `scratchpad/pm121/flip/` (land 60, the `$550e` revolt). The Python reference `pm_render_ref` still skips melee frames; bring it level if the parity checks are to cover them.
+1. **Port checks still not run.** Category `byte6` 18, 28, 34, 36, 38, 42 never seen drawn; the plough and siege-engine overlays never seen on screen (a capture of a ploughing farmer or a siege engine, scored by `score.fsx`). The Python reference `pm_render_ref` still skips melee frames; bring it level if the parity checks are to cover them.
 2. **A player route to `$668c`.** The route is a drained side *gaining* a lord whose settlement holds a man: let one of the player's lords fall to a drained AI side (in `pm151/r1` side 2 took player lord 10 in chunk 2), then `bp 668c`; `py/side_dump.py` per chunk. Low value unless the drive is cheap; five natural hits already prove the arm.
 3. **Mode-graph residue.** An unaided `$66` entry needs a lone man (word 28 = 0), or a Boat follower who lands before the camp, chasing an animal across water: search the `W5G_k108` and long-arm chunk series with `scratchpad/pm153/modes/py/natrun.sh`, grepping `pc=$014fdc` writes of `$66`. Whether the rout stamps that reach no arrival (18 of 44 on `rand1`, 34 of 89 on `k48`) are re-engagements (`$5708`) or run ends: extend `rout_fate.py` with the last writer.
 4. **Pending-word residue.** 81 live "unknown" orphans on dead-commander sides (`stuck_classes.py`): the sender record was revived (the player's landing `$4244`) or reused; the k4 inheritance and the k104 `-4` pigeon launch are snapshot reads (`bpc 45a8` with `watch 4c146 26` from `lands/k104.snap` around step 793.8M).
@@ -96,6 +100,7 @@ The 150th pass's results (all still current; detail in the topic docs):
 
 - **`pm88_f1.snap` has a stuck sample-busy flag.** `$2c993 = $ff` with Timer A stopped (TACR 0), so a camera move that queues a sound waits at `$1ae40` forever; it looks like a dead snapshot. Clear it first with `w 2c990 a8100000` (keeps `$2c990..92`). A pan from the same snapshot may not queue a sound and runs fine, which hides the cause.
 - **`zoom_check.fsx` scores sprites as terrain when a sheet is missing.** Its "terrain away from sprites" counts a building it cannot draw as a terrain miss; frames need `sheet_prop32`/`sheet_prop16` from the current `dump_frame.py`.
+- **`pm121/flip/k60_flip_pre`/`_post` do not straddle the revolt**: the settlement owner byte is already 3 in both (they sit between `$5538` and `$25d6`, about 300 steps apart). For a before/after pair rerun from `run/k60_s3.snap`: `$550e` at step 4,509,545 (`scratchpad/pm155/minimap/pre.snap` is step 4,400,000).
 - **Files streamed from gpubox are CRLF.** `before.txt` differed on all 162 lines from the Mac rerun only by line ending; `tr -d '\r'` before diffing.
 - **Parallel agents on shared docs: one writer per doc at a time.** Owners edit in place. Explorers write only under `scratchpad/pm15x/<area>/` and report suggested prose. The orchestrator saves each report under `reports/` with its PENDING items, then hands a free doc to one merge agent with the report paths. Spot-check one claim per agent against the listing: every check held this pass.
 - **Merge agents leave scratch citations.** Grep the docs for `scratchpad/pm15x/.../*.py` before committing and repoint them to the promoted `py/` path. Data paths in scratchpad may stay.
@@ -129,4 +134,4 @@ The 150th pass's results (all still current; detail in the topic docs):
 
 ## Next session
 
-Open 1's cheapest piece is the minimap re-bake question: diff the `scratchpad/pm121/flip/` frames (land 60's revolt) through the minimap gate. Open 3's unaided `$66` search and Open 4's revived-sender orphans are agent-sized. Rerun `py/xcheck/run.sh` (after `PM_WORK=... py/xcheck/ruin_capture.sh` once) after any change to `port/godot/logic/`.
+Open 3's unaided `$66` search and Open 4's revived-sender orphans are agent-sized and need long emulator runs; Open 1's remaining port checks need captures of a ploughing farmer or a siege engine (`py/capture.sh`, then `score.fsx`). Rerun `py/xcheck/run.sh` (after `ruin_capture.sh` once) after any change to `port/godot/logic/`.
