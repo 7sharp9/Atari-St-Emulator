@@ -61,9 +61,6 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
   the code but were never seen on screen. Per-category frame counts are not tabulated.
 - HUD art: the glyph sheet behind `$e6ee`'s descriptor table and the compass panel are not decoded as
   assets (the `$78000` master as a whole is `assets/backdrop.bin`).
-- Whether a territory change re-bakes the minimap or tints it per frame is undecided: none of the
-  captures taken for the minimap holds an ownership change, and the one capture that does (land 60,
-  `scratchpad/pm121/flip/`, the `$550e` revolt) has not been diffed.
 - `pm78_settle` scores 94.6% because its two compose buffers disagree on the entity layer (`$115e0`
   redraws a subset per frame); that is the capture, not the renderer (§9). The `0x1c` override was
   measured at one pose only (§4).

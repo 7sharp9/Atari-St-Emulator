@@ -514,13 +514,17 @@ record, bucket-slot and corner addresses (`fx = (((A2 + A3) & 0xffff) << 3) & 0x
 Evidence (live-checked): D2 at `$12288` and D0/D1 match, and the 32 x 24 decode is byte-exact against a live frame (`port/SPEC.md` §6).
 ## The minimap and the conquest map
 
-**The minimap** `$107d6` (`_draw_ma`, with `$1078e` `draw_con`; called from `$13c5a`, `$187f0`, `$b3ca` and the strip click `$131ee`) is baked once into the master buffer (`[$e0d4]` = `$78000`): cell (x, y) with x < 63 is the pixel (x, y + 6), plotted by `$e6ee`. The mode word `$58098` (`_show_ma`; default 2) is set by a click in the strip above the map
+**The minimap** `$107d6` (`_draw_ma`, with `$1078e` `draw_con`; called from `$13c5a`, `$187f0`, `$b3ca` and the strip click `$131ee`) is baked into the master buffer (`[$e0d4]` = `$78000`), not redrawn per frame: cell (x, y) with x < 63 is the pixel (x, y + 6), plotted by `$e6ee`. The mode word `$58098` (`_show_ma`; default 2) is set by a click in the strip above the map
 (x / 16):
 
 - mode 0: contour colours, `$107c6[(altitude + 7) >> 3]`;
 - mode 2: the terrain colour, `$108ce[colour A]` (a 66-byte table);
 - mode 1: as 2, but the first record of the cell's bucket chain with byte6 4 / 2 / `$10` colours it 8 (tree) / 9 (settlement building) / 10 (base);
 - mode 3: chain records of byte6 2 or `$10` use their lord: d = `word[$4e514 + lord + 6] − word[... + 8]` (food less manpower), colour 0 when d ≤ 0, else `min((d >> 5) + 1, 5)`.
+
+No mode shows who owns a settlement: mode 1 marks that a building stands there, mode 3 colours it by its lord's supply.
+
+**When it is baked.** Only at the land build (`_init_ga` `$13c5a`), a click in the mode strip (`do_the_m` `$131ee`), `click_pr` (`$b3ca`) and `_draw_ca` `$187d8` (it redraws the captain boxes, then the minimap); a whole-image scan finds no other `jsr`, `bsr` or long literal to `$107d6`. `_draw_ca` runs from `_add_cap` `$25d6` (`$273a`) when the new captain is on the player's side (`$57ffe`) and D3 ≠ 0, from `_remove_` `$2776` (`$28c4`) when the dissolved group is the player's, and from `_restore`/`_setup_k` (`$2380`, `$25ca`). Modes 0 and 2 read the altitude and colour planes, which do not change in play, so they stay exact (0 of 8064 pixels stale on six land-60 snapshots); mode 3 goes stale as the lords' food and manpower move. Live (`py/maps/minimap_stale.py`): a strip click on `k60_s1` selects mode 3 and bakes once (`$131ee`, `$107d6` 1 hit each); over the next 50M steps `$107d6` has 0 hits (one `$2776` on an AI side, `$28c4` 0), the stored picture is unchanged pixel for pixel, and a fresh bake differs from it at 38 of 8064 pixels. A revolt between two AI sides (land 60, `$550e` → `$5c2c` → `$25d6` at step 4,509,837 of `run/k60_s3`) does not re-bake either.
 
 Chain offsets are sign-extended words: a tree record sits below `$51b66` (bucket `$b800` is `$4d366`), so a transcription must sign-extend or it is off by 169 pixels. **Proven: `py/maps/gate_minimap.py`, 512000/512000 bytes and 1024000/1024000 pixels** over 4 modes on 4 snapshots (`m1_s0`, `k5_s4`, `k0`, `pm78_settle`); `minimap_modes.png` shows the four modes on `k5_s4`.
 

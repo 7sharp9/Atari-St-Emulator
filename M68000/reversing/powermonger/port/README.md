@@ -31,8 +31,9 @@ Open (the full list, with the reasons, is `SPEC.md` Status):
   is called by nothing, because the port has no entity simulation.
 - Category `byte6` 18, 28, 34, 36, 38 and 42 were never seen drawn; `byte6` 6 has no established
   role; the plough and siege-engine overlays are ported from the code but never seen on screen.
-- HUD glyph sheet and compass panel are not decoded as assets; whether a territory change re-bakes
-  the minimap is undecided.
+- HUD glyph sheet and compass panel are not decoded as assets. The minimap is baked, not tinted per
+  frame, and shows no ownership; mode 3 goes stale between bakes (`../graphics.md` "The minimap and
+  the conquest map").
 - Dropping the per-pixel dither for a fragment-shader height ramp (`Terrain.flatPaletteIndex`, or the
   colour-byte table in `SPEC.md` §4), or a `SubViewport` instead of a scaled `TextureRect`, is optional
   and not started.
