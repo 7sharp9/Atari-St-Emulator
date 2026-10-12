@@ -333,6 +333,19 @@ Two emulator regressions stopped every world build from `pm67_ok_pre`.
   (`80ef`) expects the opcode address; it is skipped for its flags.
 
 **Result.** Selftest: 1000051 pass, 0 wrong, 9 skip. `verify 5000000` passes.
+## Bug 6: the save disk's geometry, and FORMAT's Write Track
+
+The game's save disk is 10 sectors per track, one side, 800 sectors, with the game's ID text where a
+BPB would be. `MMU.LoadDiskA` took sectors per track from BPB bytes 24..27, read the text as 9, and
+every tenth sector failed ("ERROR READING YOUR FILE"). FORMAT formats with raw Write Track (`$F0`),
+which the emulator answered with Record Not Found, as Hatari does for `.ST` images.
+
+**Fix** (`MMU.fs`, commit `8fd3fe4`). Geometry follows Hatari's `Floppy_FindDiskDetails`: the BPB is
+used only when its total-sector count matches the file, otherwise the size decides (over every `.st`
+in the tree only PowerMonger save disks change). Write Track parses the track stream's ID and data
+fields and writes each 512-byte sector into the in-memory image. FORMAT, SAVE, OVERWRITE? and LOAD
+then run on a zeroed disk (`py/saveload/format_proof.sh`, `system.md` "The save-disk code").
+
 ## Driving a later land
 
 **The briefing preview roll.** The preview routine (`$b2dc`) first saves the block
