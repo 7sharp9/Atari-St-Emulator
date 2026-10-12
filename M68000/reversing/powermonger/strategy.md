@@ -2347,8 +2347,9 @@ Checked against everything already proven, they agree almost everywhere (the exc
 Continue Conquest, "The campaign"): the label reads as the test's result, not as an AI switch. `$5809a` is `_show_de...`
 (show debug?), the dormant switch of the audit below.
 
-**The debug monitor is stripped, not hidden.** `_debug_m`, `_setup_d`, `_reset_d` and `_debug_s` at `$1ba62..$1ba70` are
-one-instruction stubs (`rts`), and nothing calls them.
+**The debug monitor is stripped, not hidden.** At `$1ba62..$1ba70` `_debug_m`, `_setup_d` and `_reset_d` are a bare `rts`
+each, `_debug_s` is `move.w #0,D2` / `rts` (it returns 0), and `_dbm` between them is the data word `$ffff` (bytes from
+`m1_s0.snap`); nothing calls them.
 
 **Labels with no function.** `$123c` is the label `shitpiss` (the startup string `_command` parses); the unhandled-exception
 labels are `fuckup`/`none` at `$1378` and mode `$0a` is `fucking_`. The linker's whole source file list is not recoverable
@@ -2695,8 +2696,8 @@ No cheat keys, debug commands or developer hooks found in the loaded game image.
 
   Open: how the mode is left was not traced (`$d03e` is cleared at `$78a0`/`$78be` by the panel `$c` buttons and at
   `$6f04`, `$73c4`, `$abf6`, `$ccf0`, `$cffc`).
-- **The developer symbols add no hidden command.** The only labels that read as debug are the four `rts` stubs at
-  `$1ba62..$1ba70`; the `_test_*` words belong to the protection check (`_test_en...` `$14e4e`, `_test_wh...` `$57ff8`, the random
+- **The developer symbols add no hidden command.** The only labels that read as debug are the four stubs at
+  `$1ba62..$1ba70` (three bare `rts`, one returning 0); the `_test_*` words belong to the protection check (`_test_en...` `$14e4e`, `_test_wh...` `$57ff8`, the random
   question index set at `$b430`; `_test_se...` at `$2df9a` has no reference), `_protect` is `$5809c`, the page number the briefing asks about.
 - **Not covered:** the radio click handlers of panel `$c` (the link handshake `$6eb6` and panels `$c`/`$12` are read, "Serial-link states"); the crack's own title/intro screens and `MREP`; indirect
   writers of any flag. Scripts and raw output: `scratchpad/pm130/audit/` (`keysweep.py`, `sweep_diff.py`, `rw_census.py`);
