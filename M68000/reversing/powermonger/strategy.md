@@ -394,13 +394,14 @@ the next"):
   `$42ac`), so the dead-sender test sees a live record. Revival does not release the receivers.
   `stuck_classes.py` counts these as `revived`: 51 words, all in live play, whose sender is dead in
   an earlier snapshot of the lineage, and 48 (30 live, 18 frozen) where the death and the revival
-  fall inside one 250M-step chunk. All seven lineages of the second kind are watched
-  (`py/arms/revived/watches.sh`: k32, k124, k25, k60, M2G_k138, M2G_k22, M2G_k86; the frozen k112
-  and k96 words are classified by the same signature only): in each, `$55f2` kills the commander,
-  `$2776` clears the first group's owner word at `$28ae` within 3,300 steps (`revived/g0own.sh`),
-  the corpse becomes category `$0a`, and `$4258`/`$42ac` revive it 63M to 211M steps later, in four
-  of the eight watched revivals on another side (k25 and k22 from side 4 to 2, k138 from 2 to 3,
-  and M2G_k6, a first-kind case, from 3 to 4). The revival takes the side of the man's home
+  fall inside one 250M-step chunk. All nine lineages of the second kind are watched
+  (`py/arms/revived/watches.sh`: k32, k124, k25, k60, M2G_k138, M2G_k22, M2G_k86, and k112 and k96,
+  whose games end inside their first chunk, so their 18 frozen words are copies of three live ones:
+  k112 side 2 group 1, k96 side 4 groups 1 and 2): in each, `$55f2` kills the commander, `$2776`
+  clears the first group's owner word at `$28ae` within 8,400 steps (`revived/g0own.sh`), the corpse
+  becomes category `$0a`, and `$4258`/`$42ac` revive it 55M to 211M steps later, in five of the ten
+  watched revivals on another side (k25 and k22 from side 4 to 2, k138 and k112 from 2 to 3, and
+  M2G_k6, a first-kind case, from 3 to 4). The revival takes the side of the man's home
   settlement (`$42ac` copies byte 5 of `$4f916 + word 34`), which need not be his old side: k25's
   home settlement `$50468` revolted from 4 to 2 (`$5538`, step 787.6M) before the revival at 933.4M.
   It revolted again, to 3, at 960.65M, and he adopted 3 at `$16874` (the `$16848` reconcile)
