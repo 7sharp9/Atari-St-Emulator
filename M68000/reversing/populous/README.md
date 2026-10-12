@@ -90,8 +90,9 @@ anything not proven there is labelled inferred.
   from the loop's shape; it changed 6 to 10% of live decisions). (M 3.2)
 - The heading fallback that finds no free direction reads past the end of its 8-entry table. (M 3.2)
 - The swamp monster's entry edge is stack debris left by interrupt handlers, so it depends on
-  interrupt timing, not on the game's generator: south on about 69% of frames, otherwise the slot's
-  stale cell. Two linked machines could spawn it differently (inferred). (S 1.3)
+  interrupt timing, not on the game's generator: south on about 76% of frames on real Hatari
+  (69-70% in this emulator, whose interrupt mix differs), otherwise the slot's stale cell. Two
+  linked machines could spawn it differently (inferred). (S 1.3)
 - The edge-1 spawn computes a cell off the map (writes into the visit-count map). (S 1.3)
 - The frame-$1000 trail of type 2 (rock) enters on the south edge heading south-east, so it dies on
   its first step without marking anything; GENESIS gets this one. (S 1.3)

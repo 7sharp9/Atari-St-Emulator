@@ -104,13 +104,28 @@ Both callers push only the type word, so `edge` is whatever the caller has in th
   end at -46 and its callees write only below A7 = A6-146, so nothing in the call writes that word:
   it holds whatever the interrupt handlers left there between frames. The game runs in supervisor
   mode on one stack, and the VBL handler `$16d32` (its `movem.l` register save) and the TOS
-  handlers at `$fc0644`, `$fc2f2c`, `$fc4c7a` all write `$3f418`. Measured at `$db4c` entry and at its
-  `unlk` (`$ef48`) over 1000 frames each from `ai/cg2.snap` and `ai/cg1.snap`: unchanged within the
-  call 2000/2000; the value is 0 on 1373 frames, 1 on one, and on the other 626 something else
-  (`$fd50`, `$fc`, -1, 4, `$302`, ...). So the swamp monster enters on the south edge about two times
-  in three and heads north-west; otherwise it starts on the slot's stale cell: 0 in a game where no
-  trail has run yet (the first step leaves the map, so it dies after 8 frames without marking),
-  else the cell where that slot's last trail stopped.
+  handlers at `$fc0644`, `$fc2f2c`, `$fc4c7a` all write `$3f418`; less often also the TOS code at
+  `$fc2f84` and `$fc0704`, the game's IKBD handler `$1ff8a` and, on Hatari, the TOS instruction
+  before `$fc9a08` (Hatari logs the PC after the write). Every write falls between calls: on Hatari no
+  handler taken inside `$db4c` had A7 above `$3f412` (1922 entries), so its exception frame never
+  reaches the word. Measured at `$db4c` entry and at its `unlk` (`$ef48`), with A6 = `$3f4aa` on every
+  call on both machines:
+
+  | run | calls | 0 (south) | other values |
+  |---|---|---|---|
+  | this emulator, `ai/cg2.snap` + `ai/cg1.snap` | 2000 | 1373 (68.7%) | 1 once; `$fd50`, `$fc`, -1, 4, `$302`, ... |
+  | this emulator, fresh cold boot, one-player CONQUEST (`swamp208.py edges`) | 1000 | 704 (70.4%) | `$fd50` 139, `$fc` 136, -1 10, 4 8 |
+  | real Hatari 2.6.1, five cold boots, same game (`hatari_edges.py`) | 3075 | 2335 (75.9%; 74.7-77.1% per boot) | `$fd50` 364, `$fc` 293, 4 29, -1 24, 3 7, 1 6, ... |
+
+  The values are the same family on both machines, so the mechanism is the game's, but the south share
+  depends on the interrupt mix and this emulator's is about 6 points low (69.0% against 73.9% over the
+  frames both cold-boot runs cover). The word is unchanged within the call on this emulator (2000/2000, 1000/1000); on Hatari it
+  is too whenever a third breakpoint is set, and only the two-breakpoint runs report mid-call changes,
+  which no handler's stack frame can make (read as a debugger artefact, inferred; the script's
+  docstring has the counts). So the swamp monster enters on the south edge about three times in four
+  and heads north-west; otherwise it starts on the slot's stale cell: 0 in a game where no trail has
+  run yet (the first step leaves the map, so it dies after 8 frames without marking), else the cell
+  where that slot's last trail stopped.
 
 The edge-1 south branch computes `(20+r)*64 + $fc0` where `(20+r) + $fc0` was evidently meant; the
 cell is 5312..7999, so `occ[cell]` writes into the walker visit-count map `$38fd8`, and the first
