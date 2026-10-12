@@ -841,11 +841,21 @@ watch of record bytes 0..7 and 28..31 (`py/fsm/routrun.sh`, `py/fsm/rout_fate.py
 | group member: `$3c08` resets the prev 41 to 145 steps after the stamp, `$5708` re-engages him, `$5590` routs him again 242 to 208,690 steps later | 18 | 34 |
 | died, freed, or still routing at the run end | 0 | 0 |
 
-The second stamps of the re-routed men arrive as `$3c` in 52 of 52. The re-engage comes mostly from an attacker already
-in melee: `$15368` for 48 of the 52 (`rand1` 15, `k48` 33), the `$2e` arrival `$15332` for 4 (3, 1). Each of the run's
-`$5708` writes was joined to the `$56a6` call before it with the same man in A3 and its return address read at the stop:
-76 of 76 and 124 of 124, the per-site split equal to a `hits` count of the two call sites (`py/fsm/rout_caller.sh`,
-`rout_caller.py`).
+The second stamps of the re-routed men arrive as `$3c` in 52 of 52. The man who delivers the routing blow never
+re-engages: `$5590` returns to `$153a2`, which sets the striker's mode and prev to `$2c` unconditionally. The re-engage
+comes from another attacker, in 52 of 52: from one already in melee (`$15368`) for 48 (`rand1` 15, `k48` 33), from a
+chaser arriving (`$15332`) for 4 (3, 1). Each of the runs' `$5708` writes was joined to the `$56a6` call before it with the
+same man in A3, its caller read from (A7) at the stop (76 of 76, 124 of 124, the per-site split equal to a `hits` count of
+the two call sites), and each stamp to its `$5590` call (melee `$1539c` 85 and arrow `$5b58` 5 in `rand1`, melee 91 in
+`k48`; the third caller `$5a5a` 0). Two hundred steps after the stamp, 42 of the 52 still have another man in `$32` or
+`$2e` targeting them (word 48); the other 10 (all `k48`) are picked up later.
+
+The four escapes of the table's second row are the cases with nobody left to re-engage the man, or no reset prev. The
+two men outside a group (`rand1` `$51dbe`, `k48` `$55e96`) keep prev `$3c`, so their attackers break off at `$1534c`,
+until get-men (`$357e`, prev `$14`, 9.1M steps later) or the order sender (`$38c0`, prev `$1e`, 7.7M) recalls them. The
+two group members had no second attacker: `rand1` `$51d28` was routed by an arrow (`$5b58`) with no man on him, and
+`$53d94` by a lone striker, the only record targeting him at +200 steps and already at `$2c`; each walked to his job
+mode (`$16`, `$7e`). Scripts: `py/fsm/rout_caller.sh`, `rout_caller.py`, `rout_after.py`.
 
 **`$596a`, hit effects.** A man hit by an arrow loses `$52` health (the `$5590` roll when that leaves 0 or less); a
 pigeon is shot down (`$4624`). The type-`$12` area effect (stamp categories in the arrow's cell) is unreachable.
