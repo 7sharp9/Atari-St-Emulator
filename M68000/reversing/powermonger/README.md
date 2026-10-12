@@ -348,6 +348,23 @@ in the tree only PowerMonger save disks change). Write Track parses the track st
 fields and writes each 512-byte sector into the in-memory image. FORMAT, SAVE, OVERWRITE? and LOAD
 then run on a zeroed disk (`py/saveload/format_proof.sh`, `system.md` "The save-disk code").
 
+## Bug 7: unassigned encodings threw, and no write-protect tab
+
+A record poked to byte6 36, 38 or 42 sends `$115e0` into its own dispatch table, which runs as code
+(`port/SPEC.md` §6, the category table). Two of the words it meets are unassigned encodings on the
+68000: `$0608` (`addi.b` to an address register) and `$08fc` (`bset` to an immediate). The emulator
+decoded the first as an `addi` and threw on the second, where a 68000 takes the illegal-instruction
+trap. FORMAT's "IS IT WRITE PROTECTED ?" branch could not be reached because the FDC had no
+write-protect tab.
+
+**Fixes.** `68k.fs` `ImmediateToEa` (commit `0687622`) and `BitOp` (`dcac71b`) trap to vector 4 on
+every destination the 68000 does not assign. Selftest stays 0 wrong (its vectors hold only legal
+encodings), so the trap path is checked by `py/xcheck/overlay/bomb_check.sh`: TOS's four bombs 3/3,
+then `$08fc` at `$20` re-enters vector 4 instead of throwing. `MMU.fs` (`a6eb21d`) adds drive A's
+write-protect tab, REPL `wprot on|off`, which refuses Write Sector and Write Track with WPRT as
+Hatari's `fdc.c` does (`py/saveload/format_wprot.sh`, `system.md` "The save-disk code"). Both changes
+leave the diskless 30M boot and `rand1` +30M byte-identical.
+
 ## Driving a later land
 
 **The briefing preview roll.** The preview routine (`$b2dc`) first saves the block
