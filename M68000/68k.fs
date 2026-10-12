@@ -1142,12 +1142,22 @@ type Cpu =
     ///extension words follow it. `combine size dest imm -> result * ccr` does the op at the masked
     ///size and computes the CCR; `write` is false for CMPI (compare only). `(An)+ / -(An)` register
     ///updates are applied after any result write, exactly as the shared EA decoder intends.
+    ///
+    ///On the 68000 the destination must be data alterable (Dn, (An), (An)+, -(An), d16(An),
+    ///d8(An,Xi), abs.w, abs.l) and size 11 is unassigned (CMP2/CHK2/CAS/RTM/CALLM there are
+    ///68020+). Every other encoding (An, PC-relative, #imm other than the CCR/SR aliases matched
+    ///before this) is an unassigned opcode and traps to vector 4 with the opcode's own PC stacked,
+    ///like ILLEGAL. PowerMonger's corrupted-byte6 cases execute $0608 / $04fc here.
     member x.ImmediateToEa (mnemonic: string) (sizeCode: byte) (mode: byte) (reg: byte)
                            (write: bool) (combine: OperandSize -> int -> int -> int * int16) : Cpu =
+        if sizeCode = 0b11uy || mode = 0b001uy || (mode = 0b111uy && reg > 0b001uy) then
+            if Trace.enabled then
+                printfn "%s: invalid size/EA - illegal" mnemonic
+            x.EnterVector 4 x.PC
+        else
         let size =
             match sizeCode with
-            | 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | 0b10uy -> OperandSize.Long
-            | s -> failwithf "%s: bad size %x" mnemonic s
+            | 0b00uy -> OperandSize.Byte | 0b01uy -> OperandSize.Word | _ -> OperandSize.Long
         let immBytes = match size with OperandSize.Long -> 4 | _ -> 2
         let imm =
             match size with
