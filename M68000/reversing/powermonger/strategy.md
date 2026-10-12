@@ -460,6 +460,8 @@ the next"):
 
   **Mechanism, large-group route (k106, k34, k50).** A group of 22 or more men on a side that has taken nearly everything and faces only strongly garrisoned lords, or none: no attack and no fetch-men target exists, so its men go to group 0.
 
+  **Why a drained side is not enough.** By the gated predicate above, a side whose lords all hold at most 1 at home still attacks before it transfers: the attack needs only more than 4 men and one enemy lord below `men − 4`, and every land censused has such weak lords. The transfer therefore needs a `D7 != 0` group of 1 to 4 men (the small-group route: a defector, which `$25d6` puts on the side of his settlement's new lord, so it arises when the AI side takes a lord, not when the player takes one of its lords) or a land with no weak enemy lord left (the large-group route). Live, unaided `pm142/rand1` (1G steps, `hits` per 100M, `scratchpad/pm151/r1/`): side 2's group 0 drains its own lords in the first chunk, side 3 then takes 13 of the 14 lords, `$6638` 21, `$65c8` 22, `$668c` 0, and the player's captain group dissolves (`$d2c8`) in chunk 7. `$6522` has no lord test (it skips a group only by its owner and pending words), so it keeps offering a lordless side's groups to the arms; there arm 1 finds nobody.
+
   **Arm 4 (`$666c`) is natural too:** 140 hits in k143 (the group re-decides it every tick), 5 in k106 and k50. **Rate:** 5 transfer hits in about 150G steps run (about 78G alive), one per 14 to 30G steps.
 
 - **Refusal `$6884` cannot hold from any caller** (code read).
