@@ -265,7 +265,7 @@ settlement-owner reconcile) and **`$163b8`** (the manpower drain, economy.md
 - Synthesised corpus (`py/fsm/repro96.py`): 85/85 over 25 states.
 
 **When mode `$7c` runs.** It requires `word[$57fd0] == 0`. `$57fd0` (original `_season`) starts at
-`g_tileset_sel = (byte[$58146] & 3) * 2` (= 4 for mission 1) but is **not
+`g_season = (byte[$58146] & 3) * 2` (= 4 for mission 1) but is **not
 static**: `$1abaa` (`$130b0` in the tick) rotates it `($57fd0 + 2) & 6`, cycling
 {0,2,4,6}, once per 512 `$1abaa` calls (one wrap of its pixel-order LCG). A full wrap takes 118.4M steps in mission 1 and 85.7M on a Play Random Land: the call count is fixed, the steps per call are not. So mode `$7c`, and the three same-gated
 entries into it (`$1505e` in the mode-`$16` farmer-home handler, `$15a46` in the mode-`$4e` merchant arrival,
@@ -551,7 +551,7 @@ effect reuse the same bytes for different things. This is the common layout:
 | 28 | word | link to a **related** object record (group leader, or the boat being boarded) |
 | 30 | byte | **previous mode** (saved before a transition; several handlers branch on it) |
 | 31 | byte | **current mode opcode** — the state-machine dispatch key |
-| 33 | byte | **carried item code** `2 * (slot + 1)` (`$0a` = Boat, 8 = Plough, `$0c` Pot ...; porters pick it up and drop it at `$159de`/`$159a4`, economy.md §3); a man carrying a Boat is `$02`/`$8c` afloat with flag bit 5 (71 of 71 and 17 of 17 live) |
+| 33 | byte | **carried item code** `2 * (slot + 1)` (`$0a` = Boat, 8 = Plough, `$0c` Pot ...; merchants pick it up and drop it at `$159de`/`$159a4`, economy.md §3); a man carrying a Boat is `$02`/`$8c` afloat with flag bit 5 (71 of 71 and 17 of 17 live) |
 | 34 | word | byte offset into the **building table `$4f916`** (original `_houses`; the 18-byte settlement records; this is the man's home settlement, `nation_off` in the code); the iterator also compares it with the animation phase (`cmp.w 34(A1),D0` at `$14b8c`) as the frame-advance trigger |
 | 36 | word | saved origin X, or a packed destination cell |
 | 38 | word | saved origin Y |

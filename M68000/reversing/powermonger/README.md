@@ -23,8 +23,8 @@ below is the overview by topic. The scripts are indexed in [`py/README.md`](py/R
 | [`system.md`](system.md) | the system services: the sample player (a Timer A DAC on the PSG volume registers, the per-frame sequencer, the bank layout), the save-disk code and its message strings, the serial link's MFP setup | `callcap` gates: 328/328 sequencer states, 300/300 Timer A passes, 56/56 sequence and 58/58 sample records |
 | [`port/`](port/README.md) | a from-scratch Godot 4.x + F# port of the iso renderer: the porting contract (`port/SPEC.md`), the asset pack, an F# logic library, a Godot scene and a frame stepper | the port's frame matches the game's pixel for pixel on the 27 captures above; the F# rasteriser, projection and entity pass cross-checked byte-exact against the Python reference renderer `tools/pm_render_ref.py`; stepper `--selfcheck` 23/23 |
 
-`powermonger.sym` (about 1,260 names) is the shared symbol file, feeding `trace_cfg.py --names` and the
-disassembler. `powermonger_orig.sym` is the developers' own symbol table (1,196 names, cut to 8 characters),
+`powermonger.sym` (about 1,280 names) is the shared symbol file, feeding `trace_cfg.py --names` and the
+disassembler. `powermonger_orig.sym` is the developers' own symbol table (1,196 entries, 1,099 distinct names cut to 8 characters),
 recovered from `DATA\SPRITE40.DAT` by `py/s40_symbols.py` (`strategy.md` "Original names").
 
 **Disks are not committed** (commercial). Reproduce:
@@ -497,11 +497,13 @@ Radio buttons never reach this table. The click processor `$7202` sends any grid
 
 Ids `$14` and `$16` have no handler. Openers set the id: `$9044` (2, captain), `$b45c` (`$0a`), `$bb4a` (`$0c`), the rest through `$affe`.
 
-`$b814` parses the population digit string, then **unconditionally** (the crack
-nopped the "must enter a value" check at `$b842`: `moveq #0,D0 / nop / bne`)
-writes `population + $2c` to `$14e4e` (the gate `$739e` and `$7774` test), copies
-the game-state seed table `$584c4` → `$580a0`, `jsr $13b9a` (world generation /
-`$10d1e` load path), and `move.w #$1,$1c48a` to advance the state machine. One
+`$b814` (`protect_`) parses the digit entry and subtracts the stored answer at `$b842`;
+the crack replaced that `sub.w` with `moveq #0,D0 / nop`, so the `bne` to the demo-mode
+refusal never fires and the handler **unconditionally** writes `difference + $2c` = `$2c`
+to `$14e4e` (`_test_en`, which `$739e`, `$7774` and the tick's AI block test;
+`strategy.md` "The protection check"), copies the game-state seed table `$584c4` →
+`$580a0`, calls `$13b9a` (`_init_ga`, the world build / `$10d1e` load path), and
+`move.w #$1,$1c48a` (`_bigstar`) to advance the state machine. One
 frame later PM composites the isometric view.
 
 **Traps when driving a click.** A "no click accepted" result comes from clicking outside the
@@ -801,7 +803,7 @@ The documents are in the table at the top. The rest of the directory:
 | `chat_message.png` | the link chat panel ("message from <lord>") showing a received character, from a `$26` order injected into slot 2 |
 | `info_click.png` | the examine tool: icon `$2c`, then a click on a tree opens its info panel (`m1_s0`) |
 | `pm114_prop_contact.png` | every `$37c7c` building/tree frame rendered against the real palette |
-| `pm114_tileset_families.png` | the four `g_tileset_sel` frame-offset variants for `r7 = 0, 1, 2, 12` side by side |
+| `pm114_tileset_families.png` | the four `g_season` (`$57fd0`) frame-offset variants for `r7 = 0, 1, 2, 12` side by side |
 | `dither_atlas.png` | pattern-table slots `0x00`-`0x40` decoded against the real palette |
 | `dither_triangles.png` | mission 1 terrain: as drawn, by colour byte, by source plane |
 | `dither_infographic.html` | interactive pixel probe, tile atlas, ramp anatomy, season fade; built by `py/dither_atlas.py` |

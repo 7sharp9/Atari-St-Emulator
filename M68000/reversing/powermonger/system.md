@@ -41,7 +41,7 @@ if active and not busy:
 - `_ClrEcha` `$1b81c` (exit `$120e`): `$2de66 = 0`; `_ClrEch` `$1ae4c` stops the stream and restores the vector.
 - `_JoueEch(seq, flags)` `$1b978`: stops the current sequence; if `flags & $80`: idx = 0, `$2cba2 = seq`, `$2c994 = (flags & $20 != 0)` the loop flag, `$2c992 = 1`.
 - `_Sample(n, flags)` `$1b9d0`: `flags & $10` only asks (1 if a sequence is active, else −1); otherwise if `n < $2c99c` it runs `JoueEch($2c9a0[n], flags)` and returns 2.
-- `_Noise` `$1ba3e` / `_Effect` `$1ba42`: `Sample(max(D0 − 1, 0), $80)`; **the second argument of every caller is ignored**. `$1ba62..$1ba70` are four `rts` stubs.
+- `_Noise` `$1ba3e` / `_Effect` `$1ba42`: `Sample(max(D0 − 1, 0), $80)`; **the second argument of every caller is ignored**. `$1ba62..$1ba70` are the stripped debug stubs (`_debug_m`, `_setup_d`, `_reset_d` a bare `rts` each, `_debug_s` `move.w #0,D2` / `rts`, the data word `_dbm` between them; `strategy.md` "Original names").
 
 **Call sites of `$1ba3e` (26).**
 

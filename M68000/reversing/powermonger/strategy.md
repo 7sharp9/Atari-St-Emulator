@@ -1406,7 +1406,7 @@ rolls elsewhere.
   reproduces the live tileset from steps = 16 × `$57fec`, `port/SPEC.md` §4). Every AI use
   takes low bits only: `& 1` (health recovery, `$5c80`), `& 3` (campaign sub-mode,
   `$6762`), `& 7` (a speech-line pick, `$3e06`/`$3f08`; the flapping-bird frame,
-  `graphics.md`), `($57fec + anim_phase) & 2` (the kill/rout roll), `mod 6` (a porter's
+  `graphics.md`), `($57fec + anim_phase) & 2` (the kill/rout roll), `mod 6` (a merchant's
   pickup kind, `economy.md` 2b). Because it is a counter that advances once per tick,
   **the commander AI and the combat roll are fully deterministic** given the tick number:
   no seeding, no entropy, and a save/restore at the same tick replays identically.
@@ -2310,15 +2310,24 @@ are limitations rather than choices:
 ## Original names: the developer symbol table
 
 **What the file is.** `DATA\SPRITE40.DAT` on the disk is not sprite data (the loader table `$e0c4` never names it, and nothing
-in the image or on the disk does). It is a self-extracting GEMDOS program, 137,652 bytes once unpacked, and the
-same game build as the loaded image: every one of the 28,942 unique 16-byte windows of its text except 6 sits in
-the running RAM at the constant offset `$10a6`, and 2,855 absolute operands differ by exactly that offset. It still
-carries the linker's symbol table (1,639 entries, 1,196 unique, 978 distinct routine starts), with each name cut
-to 8 characters.
+in the image or on the disk does). It is a self-extracting GEMDOS program, 137,652 bytes once unpacked (header, text `$1b3e4`, data 4, symbols
+`$59a2`, a 3,086-byte relocation table; bss `$52e80`), and the same game build as the loaded image, uncracked: every
+one of the 28,942 unique 16-byte windows of its text except 6 sits in the running RAM at the constant offset `$10a6`,
+and all 2,895 relocation fixups differ by exactly that offset. With the fixups applied, the one instruction that
+differs is the crack's `moveq #0,D0 / nop` over `sub.w 0(A0,D1.w),D0` at `$b842` ("The protection check"); the other 1,428
+differing bytes (against `pm123/win/m1_s0.snap`) are variables and buffers kept in the code segment, whose values in the
+file are only initial ones. It still carries the linker's symbol table: 1,639 DRI records (8-byte name, type
+word, value long), a sorted list of 440 followed by a sorted list of 1,199 that repeats all of them, so 1,196 unique
+entries and 1,099 distinct names (67 at more than one address), each cut to 8 characters. Every record is a defined
+global: type `$a200` text (1,292), `$a100` bss (345) or `$a400` data (2, `_bigstar` `$1c48a`, the 4-byte data section). The
+text symbols name 978 distinct addresses: routine entries, inner labels and data tables in the code segment (14 of
+them odd).
 
-**How the table is rebuilt.** `py/s40_symbols.py` unpacks the program from the disk image (a port of the stub at file
-`$1c..$ba`) and writes `powermonger_orig.sym`: a text symbol is at (text offset + `$10a6`); a bss symbol's value is
-bss-relative, so its address is value + `$1c48e`. The only input besides the disk is one RAM snapshot, used to find the
+**How the table is rebuilt.** `py/s40_symbols.py` unpacks the program from the disk image (a port of the stub's depacker, text
+offsets `$00..$64`, file `$1c..$80`; the stub's relocation pass after it is not needed) and writes `powermonger_orig.sym`: a text symbol is at (text offset + `$10a6`); a data or bss symbol's value is
+section-relative, so its address is value + `$1c48a` (data) or value + `$1c48e` (bss: text end `$10a6 + $1b3e4` plus
+the 4 data bytes). 158 of the 173 distinct bss and data addresses are absolute operands in the text at that base, against
+at most 93 at a base 2, 4 or 8 bytes off. The only input besides the disk is one RAM snapshot, used to find the
 offset.
 
 **What the names mean.** They are the developers' own labels, so they answer "what did the authors call this", not "what
@@ -2456,7 +2465,7 @@ The entity mode names (table `$14bb4`, mode `$xx` is the table offset, so it mat
 
 #### Unreferenced routines
 
-`scratchpad/pm133/orphans.py` lists the routine starts that nothing reaches. Of the 978 starts, 97 have no direct operand,
+`py/s40_orphans.py` lists the routine starts that nothing reaches. Of the 978 starts, 97 have no direct operand,
 literal pointer or `jsr`/`bsr` target; reading every word within `$120` bytes of any symbol as a table offset leaves 14.
 Thirteen of those are explained: four data labels (`qcom`, `com`, `x0`, `y0`), the fall-through label `xfer_com` (`$668c`,
 inside `_compute`), the grid-walk quadrants `$fbb4`/`$fccc` (reached through the table at `$f986`) and six mode handlers
@@ -2594,11 +2603,11 @@ Real click (`py/ui/click_pile.sh`; `vis_at.py` pokes the camera cell `$4bb3a` to
 - `$af52` is the GAME panel: it clears slot 0 and opens id 8 with template `$b160` and no formatter table (the template has no `@`).
 - `$af6c` is the options panel: it builds the game-speed slider by rewriting the template's `$14 .. $16` run from `$57fee`, then opens id 4 (template `$b03a`, table `$afd6`; one formatter prints a label when the local slot's byte 4 is 2). Its "already open" test compares `4` with D0, which the preceding loop loads from slot word 0 (the grid offset), not word 3 (the id), so it never fires: live, a second click on the options icon with the panel open opens a second id-4 slot.
 
-**The land set-up `$b2d4`** (`_protect`, code read to `$b470`). It saves `$580a0..$58368` to `$584c4`, folds the shifter base-address registers `$ff8205/07/09`, `$2df92`, `$6f304`, `$12c9a` and `$2df84` into `$580a0`, reduces it mod `$90` to a land index n (`$5809c := n*$96 + $672`, the page number the briefing asks for; `$580a0 := n*$b + $3fb`), runs the land build (`$fe04 $10768 $10d1e $2266 $ac20 $1073c $10058 $4672 $2984 $238c $2906 $107d6 $b892 $13f60`), sets `$58792 := 3 + (rand & $f)`, picks the question bit `$57ff8`, zeroes `$14e4e` and opens the briefing dialog (id `$a`, template `$b510`). The routine is the whole entry of a new land.
+**The land set-up `$b2d4`** (`click_pr`, code read to `$b470`). It saves `$580a0..$58368` to `$584c4`, folds the shifter base-address registers `$ff8205/07/09`, `$2df92`, `$6f304`, `$12c9a` and `$2df84` into `$580a0`, reduces it mod `$90` to a land index n (`$5809c := n*$96 + $672`, the page number the briefing asks for; `$580a0 := n*$b + $3fb`), runs the land build (`$fe04 $10768 $10d1e $2266 $ac20 $1073c $10058 $4672 $2984 $238c $2906 $107d6 $b892 $13f60`), sets `$58792 := 3 + (rand & $f)`, picks the question bit `$57ff8`, zeroes `$14e4e` and opens the briefing dialog (id `$a`, template `$b510`). The routine is the whole entry of a new land.
 
 `$b892` (`_count_w`) in that chain writes five words at `$5878c..$58795`: the live-record counts of the lords (`$4e514`, 32-byte records, byte 0 non-zero), settlements (`$4f916`, 18 bytes, byte 5), objects (`$51b66`, 50 bytes, signed byte 5 > 0), the 20-byte records at `$4ccd6` (byte 5 non-zero and byte 7 `$11` or `$12`) and the tree array (`$4d252`, 12 bytes, word 10). Gate `py/link/gate_b892.py`: `callcap` on 25 snapshots against a Python count, 25 of 25 equal (9 distinct vectors, e.g. 3, 11, 42, 3, 203 on `m1_ready`).
 
-Role (**inferred**): the five counts are the answers of the briefing's protection question, whose template `$b510` reads "How many @@@@@@ in this land ?" with a four-digit entry parsed by `$b940`, and whose OK handler `$b814` loads `$5878e` and `$57ff8` doubled (the listing from `$b82e` is only partly legible). Open: the compare itself was not driven (no click reached `$b2d4` live).
+Role: two of the counts are the answers of the briefing's protection question, whose template `$b510` reads "How many @@@@@@ in this land ?" with a four-digit entry parsed by `$b940`. The OK handler `$b814` compares the entry with word `$5878e + 2 * $57ff8` (`lea $5878e,A0 / move.w $57ff8,D1 / add.w D1,D1 / sub.w 0(A0,D1.w),D0` at `$b82e..$b842`, legible in the uncracked text of `DATA\SPRITE40.DAT`, "Original names"), so with the question bit 0 or 1 the answer is the settlement count `$5878e` or the object count `$58790`; the lord count `$5878c` and the last two words are never the answer (`$58792` is overwritten with `3 + (rand & $f)` after `$b892`). Which noun the template prints for each bit is inferred. The compare was driven once, after Play Random Land ("The protection check": an untouched entry gives `D0 = $feee` at `$b846`).
 ## Hidden features audit
 
 No cheat keys, debug commands or developer hooks found in the loaded game image. Evidence:

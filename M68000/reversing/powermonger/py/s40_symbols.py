@@ -12,8 +12,9 @@ scratchpad/pm133/ (the game's files are commercial). Output: reversing/powermong
 (addr<TAB>name; kind T text, D data, B bss as a trailing comment) and, with `--check`, the
 alignment statistics only.
 
-The unpacker is a port of the stub at SPRITE40.DAT $1c..$ba (bit-tree depacker, run-length escape
-$f100). The stub's own relocation pass is not needed: the inner program is read as a file.
+The unpacker is a port of the stub's depacker at text offsets $00..$64 (file $1c..$80; bit-tree
+depacker, run-length escape $f100). The stub's own relocation pass after it is not needed: the inner
+program is read as a file.
 """
 import collections
 import os

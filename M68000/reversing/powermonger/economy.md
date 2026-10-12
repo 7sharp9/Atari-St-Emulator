@@ -159,7 +159,7 @@ Mission 1, 26 men: 251 → 247 → 243 in 25M steps, both writes at `$3f6a`.
 // $15042 -- parks as a heartbeat marker when $57fd0 == 0; the plough test is on byte 33 (a Plough), not order_class (byte 1).
 void h_farm_home(pm_object *A1) {               // entity mode $16
     jsr_16848(A1);                              // side<->owner reconcile + $5c80
-    if (g_tileset_sel /*$57fd0*/ == 0) {
+    if (g_season /*$57fd0*/ == 0) {
         A1->dwell = -99; A1->prev_mode = A1->mode; A1->mode = 0x7c; return;
     }                                          // (park as a $157e6 heartbeat marker)
     leader *L = &leader_of(A1->nation_off);
@@ -170,8 +170,8 @@ void h_farm_home(pm_object *A1) {               // entity mode $16
 }
 ```
 
-`$57fd0` (`g_tileset_sel`, initialised to `(byte[$58146] & 3) * 2` at
-world-build) is the season word (original `_season`). It starts at `4` in mission
+`$57fd0` (`_season`, `g_season`, initialised to `(byte[$58146] & 3) * 2` at
+world-build) is the season word. It starts at `4` in mission
 1, so a returning farmer *usually* takes the **`food += 2`** path, but
 `$57fd0` rotates {0,2,4,6} via `$1abaa` (1 rotation per 512 calls, 118.4M steps in mission 1 and 85.7M on a Play Random Land, §3a), and
 whenever it is `0` the farmer parks as a mode-`$7c` heartbeat marker
@@ -678,7 +678,7 @@ logic below.
 do the three instructions that *enter* mode `$7c`: `$1505e` (in the mode-`$16` farmer-home handler), `$15a46` (in the mode-`$4e`
 merchant arrival) and `$15b7a` (in the mode-`$5e` fisher arrival).
 
-**The season word `$57fd0`.** It is set at world-build to `g_tileset_sel = (byte[$58146] & 3)
+**The season word `$57fd0`.** It is set at world-build to `g_season = (byte[$58146] & 3)
 * 2` (= 4 for mission 1's seed) and is not static: the seasons
 routine `$1abaa` (`_seasons`, `$130b0` in the sim tick) rotates it, `$1ac5e..$1ac6a` =
 `$57fd0 = ($57fd0 + 2) & 6`, cycling {0 winter, 2 spring, 4 summer, 6 autumn}, once per full 8192-iteration cycle of its 13-bit
@@ -735,7 +735,7 @@ a spell cuts the speed by about half, snow on top of winter by four-fifths.
 lands' RAM, the reductions were not measured in motion.* On lands 0 and 25 `$1a856` drew weather on 131-132 frames in
 200M steps. The water shimmer (`graphics.md`'s `colour(h) += masterTick & 3` for
 `h < 0x0c`) is a separate 4-phase dither cycle. The season also picks the tree
-and building frames (`g_tileset_sel`, below); the sprite art itself is the same
+and building frames (`g_season`, below); the sprite art itself is the same
 in every season.
 
 **The prop sheet across seasons.** The `$37c7c` prop sheet (28 × 480 B, `32×24` word-plane, decode in graphics.md) was read from a live RAM snapshot (`scratchpad/pm114_rand2.snap`, taken after

@@ -1150,7 +1150,7 @@ per simulation tick ($13000), present rate gated by $57ff0/$57fee (=1 normally):
   -- every tick --
     $14b62  entity FSM      (relinks $47970 cell buckets via $163ea)
     $6a3a   order executor
-    $7a56   sprite / HUD compositor -> back buffer
+    $7a56   dialog / info-panel renderer -> back buffer
     $165b2  selected-group marker
   -- at the VBL ISR --
     $187a   swap front <-> back, write (front >> 8) to $FFFF8200
