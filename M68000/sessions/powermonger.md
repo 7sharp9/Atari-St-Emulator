@@ -1,24 +1,28 @@
 # PowerMonger: handoff
 
-Updated 2026-10-12 by the 151st session, a short single-session pass on Open 1 and Open 2 with no emulator change: `8193f68` (the `$5778` reverse A/B), `f9efd5e` (why a drained side does not transfer), then the handoff commit.
+Updated 2026-10-12 by the 152nd session, a single-session pass on Open 3 (save-disk geometry), which needed an emulator change: `8fd3fe4` (emulator), `e86ef4c` (CLAUDE.md), `f107d9d` and `2b69d55` (PowerMonger docs and `py/saveload/format_proof.sh`), then the handoff commit.
 
 ## Resume point
 
-- Last commits of this workstream: `8193f68`, `f9efd5e`, then the handoff commit (with `py/side_dump.py` and the digest line).
-- Working data: `M68000/scratchpad/pm151/` (gitignored): `ab/` the reverse A/B runs (`X10G_k25_c1_s3k0`, `M2G_k14_c3_s4k0`, `M2G_k14_c1_s3k0`, A and B snapshots plus `.out`), `r1/` the unaided 1G run of `pm142/rand1` (`c1..c10.snap`, `run.txt` hits per 100M). The 150th pass's data is in `pm150/` (`BRIEF.md`, `reports/`, `arms/nat/` for `gate_fsm15.py nat`); earlier in `pm149/`, `pm148/arms/long/` (chunk snapshots), `pm143/`.
+- Last commits of this workstream: `8fd3fe4`, `e86ef4c`, `f107d9d`, `2b69d55`, then the handoff commit.
+- Working data: `M68000/scratchpad/pm152/` (gitignored): `format/` and `format2/` the FORMAT drives (`proof_*.snap`, `req.png` the save-disk requester, `p_ow.png` the OVERWRITE? requester, `zero.st`), `regress/old|new/` the game snapshot compare of the emulator change. The 151st pass's data is in `pm151/` (`ab/` the reverse A/B, `r1/` the unaided 1G run of `pm142/rand1`); the 150th in `pm150/` (`BRIEF.md`, `reports/`, `arms/nat/`, `saveload/out/`).
 - Start from:
   - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains. Unaided, side 3 sweeps the land and the player's group dissolves near 650M steps (`pm151/r1/`).
   - `pm143/run/rand1_s1.snap`: the FILE-panel drives.
+  - `pm150/saveload/out/file.snap`: FILE panel open, slot A selected (start of `format_proof.sh` and `roundtrip.sh`).
   - `pm123/win/m1_ready.snap`: mission 1 conquered.
   - `pm148/arms/long/M2G_k34_c5.snap`: `bp 668c` after 233,300,606 steps.
-  - `scratchpad/pm150/saveload/out/file.snap` plus `blank.st`: a save and load round trip.
 - Uncommitted work left behind: none from this workstream. Not this workstream's: `.obsidian/`, `Cadaver/`.
 
 ## Proven so far
 
 Older gates carry over unchanged; the list is in `strategy.md`, `ai.md` and `economy.md`, with reruns from the `py/README.md` table. A sample: entity FSM `py/fsm/repro93..97.py`, `diff_pm99.py` 1847/1847, `gate_orders.py` 61143/61143 over 2273 states (the 13 strategy rows plus the 6 economy rows), `gate_pop.py`, `gate_equip.py`, the commander AI `py/cmdai/` 323/323 + 280/280, and `gate_fsm15.py` 18452/18452.
 
-New or changed in the 151st pass:
+New in the 152nd pass:
+
+- **The emulator runs the game's own FORMAT** (`8fd3fe4`). `LoadDiskA` uses Hatari's geometry rule (BPB only when its total sectors match the file, else from the size), and Write Track on an `.ST` parses the ID and data fields into sectors. `py/saveload/format_proof.sh` on a zeroed disk: 80 Write Track commands, 10 sectors each, 0 skipped; SAVE A, then SAVE A again shows OVERWRITE? (`$1bed4` 1 hit), OK saves; LOAD A equals the second save in **101,376/101,376** bytes (the saves differ in 2,048). Regression net: verify PASS, diskless 30M identical, selftest 0 wrong 9 skip, `rand1` +30M and six `rt3` round-trip snapshots identical to the old build; the `pm147` save disk goes from 3 failed reads to 0. system.md "The save-disk code", README "Bug 6".
+
+Carried from the 151st pass:
 
 - **`$5778` on a group 0 costs the escort** (`py/cmdai/ab_5778.py` reverse mode `snap:s:k:val`, 200M steps, one word poked): `X10G_k25_c1` side 3 escort 46 → 0, attack 0 → 7, kills 0 → 18; `M2G_k14_c3` side 4 escort 247 → 0, attack 0 → 3; the third case's group never decided (2 bytes differ). The freed groups attack instead of escorting. No natural state combines it (k25 side 2's group 0 holds an offset for 10G steps but its only other group dies fighting). strategy.md "What the overwrite costs".
 - **A drained side still attacks before it transfers** (by the gated predicate): the transfer needs a `D7 != 0` group of 1 to 4 men, which comes from a defector when the AI side *gains* a lord, or a land with no weak enemy lord. `$6522` has no lord test. Unaided `rand1` 1G: `$668c` 0, side 3 takes 13 of 14 lords. strategy.md "Why a drained side is not enough".
@@ -67,19 +71,20 @@ The 150th pass's results (all still current; detail in the topic docs):
 
 1. **A player route to `$668c`, restated.** Taking an AI side's lords does not do it (above). The route is a side that has drained its own lords *gaining* a lord whose settlement holds a man (`$550e` then `$5c2c`/`$25d6` gives it a 1..4-man group). A player-caused version: let one of the player's lords fall to a drained AI side (in `pm151/r1` side 2 took player lord 10 in chunk 2), then `bp 668c`; `py/side_dump.py` per chunk shows when a side is drained and which groups can decide. Low value unless the drive is cheap; the five natural hits already prove the arm.
 2. **The 19 stuck pending words on sides whose first group is alive.** `watch` the pending word and the pigeon slots from one such snapshot (`py/arms/pending_census.py` lists them).
-3. **Emulator save-disk geometry.** `LoadDiskA` should not trust BPB text on a non-TOS disk. This is an emulator change behind the regression net (shared `*.fs`: coordinate first). It unblocks driving FORMAT (`$1ba72`, Write Track probably unimplemented) and the OVERWRITE? requester `$1bed4`.
-4. **Mode-graph loose ends** (`py/fsm/mode_edges.py`, `fig/fsm.facts.md`): mode `$66`'s entry route; modes `$04`, `$64`, `$70` that nothing writes; the unreached write `$3c74`; and the claim that `$3c` is entered via the previous mode (trace one rout).
-5. **Graphics cross-checks** (`port/SPEC.md` "Whether they still run"): the F# halves no longer compile (`walkQ0` is now `Fill.planQ0`; `EntityCtx.Zoom` and `EntityRec.B15` are missing). Fix and promote `order_test.fsx` and `baseline.fsx`; settle pm91's 3061 against 2881 px; re-export the `pm74_late`/`pm78_settle`/`pm119` inputs with `objs`. The Ruin overlay `$119b2` is not ported: capture at (22,46) or (29,63) on mission 1.
-6. **UI leftovers.** The `$c5ee` entry contract; word `-36` in the sound pick; sound event 17 is queued and cleared but never played (`bp 12820`); the double handling of a captain-box click in transfer mode (`bpc 133d4 2`, watch `$2df96`); `$04` sent from a group that has a sender (by pigeon, inferred); the other `$7658` dialog ids; the person panel's Stock rows.
-7. **Small checks.** `$4a7a` has no model gate, and opponent class `$a` is unseen. The season after a LOAD (`$57fd0` writers); posture 5 from `$67d0` (`rand & 3` + 2); an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch; the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); `$4342`'s arrival branch.
-8. **The stall on the original machine.** A Hatari run past clock 32768 with a camped group (low priority).
+3. **Mode-graph loose ends** (`py/fsm/mode_edges.py`, `fig/fsm.facts.md`): mode `$66`'s entry route; modes `$04`, `$64`, `$70` that nothing writes; the unreached write `$3c74`; and the claim that `$3c` is entered via the previous mode (trace one rout).
+4. **Graphics cross-checks** (`port/SPEC.md` "Whether they still run"): the F# halves no longer compile (`walkQ0` is now `Fill.planQ0`; `EntityCtx.Zoom` and `EntityRec.B15` are missing). Fix and promote `order_test.fsx` and `baseline.fsx`; settle pm91's 3061 against 2881 px; re-export the `pm74_late`/`pm78_settle`/`pm119` inputs with `objs`. The Ruin overlay `$119b2` is not ported: capture at (22,46) or (29,63) on mission 1.
+5. **UI leftovers.** The `$c5ee` entry contract; word `-36` in the sound pick; sound event 17 is queued and cleared but never played (`bp 12820`); the double handling of a captain-box click in transfer mode (`bpc 133d4 2`, watch `$2df96`); `$04` sent from a group that has a sender (by pigeon, inferred); the other `$7658` dialog ids; the person panel's Stock rows.
+6. **Small checks.** `$4a7a` has no model gate, and opponent class `$a` is unseen. The season after a LOAD (`$57fd0` writers); posture 5 from `$67d0` (`rand & 3` + 2); an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch; the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); `$4342`'s arrival branch.
+7. **The stall on the original machine.** A Hatari run past clock 32768 with a camped group (low priority).
+8. **FORMAT's other branches.** ARE YOU SURE (`$1bec2`): run `format_proof.sh`'s first two clicks with `disk scratchpad/powermonger.st` mounted instead of `zero.st` (`$1bd38` then opens `SPRITE8.DAT`). The write-protect requester `$1bf04` needs a write-protect flag in `MMU.fs` (emulator change, low value).
 
 ## Known traps
 
 - **Parallel agents on shared docs: one writer per doc at a time.** Owners edit in place. Explorers write only under `scratchpad/pm150/<area>/` and report suggested prose. The orchestrator saves each report under `reports/` with its PENDING items, then hands a free doc to one merge agent with the report paths. Spot-check one claim per agent against the listing: every check held this pass.
 - **Merge agents leave scratch citations.** Grep the docs for `scratchpad/pm150/.../*.py` before committing and repoint them to the promoted `py/` path. Data paths in scratchpad may stay.
 - **`hits` can overcount by one** (now in CLAUDE.md). The "66 draws" and "`$57fec` 180" readings were this.
-- **A save disk needs real geometry bytes** (now in CLAUDE.md): `py/saveload/mk_savedisk.py`.
+- **The options panel moves after a requester.** After FORMAT or an OVERWRITE? requester, FILE is at (111,92); after a plain SAVE or LOAD it is at (142,92). Render a frame before trusting a click position.
+- **Disk writes live only in process memory** (the host `.st` is never written, and a snapshot does not hold the disk): a FORMAT-then-SAVE proof must run in one process.
 - **REPL `m <addr> <len>` takes a decimal length**: `m 4f970 6c` aborts the REPL and loses the snapshot that follows.
 - **Group frames.** Group views are `76 + 316*side + 2k`. `n(A1)` is the side-record frame and `n-76(A3)` the group-offset frame: `148(A1) = 72(A3)`, `136(A1) = 60(A3)`.
 - **`py/cmdai/` scripts default to `PM_WORK=scratchpad/pmwork`.** Set `PM_WORK` explicitly for a rerun.
@@ -105,4 +110,4 @@ The 150th pass's results (all still current; detail in the topic docs):
 
 ## Next session
 
-Open 3 (save-disk geometry) is the best-scoped item, but it is an emulator change: check `ListAgents`, run the regression net, then drive FORMAT and the OVERWRITE? requester. Without an emulator slot, take Open 2 (one `watch` drive) or Open 4 (mode-graph loose ends from `py/fsm/mode_edges.py`). Open 1 only if a cheap drive of a player lord falling to a drained AI side turns up. Hatari is available for Open 8 through an agent (Dave's go-ahead, 2026-10-12).
+Open 2 (the 19 stuck pending words on sides whose first group is alive: one `watch` drive from a snapshot `py/arms/pending_census.py` lists) or Open 3 (mode-graph loose ends from `py/fsm/mode_edges.py`). Open 8's ARE YOU SURE branch is a cheap drive if a short task is wanted. Open 1 only if a cheap drive of a player lord falling to a drained AI side turns up. Hatari is available for Open 7 through an agent (Dave's go-ahead, 2026-10-12).
