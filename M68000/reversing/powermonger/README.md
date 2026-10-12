@@ -50,7 +50,7 @@ against every session's changes.
   alliance, dismiss men, go home, a posture level ...) and clicks a target on the map; the order goes
   to the captain's group, whose lead walks there with the men following in formation. The first
   captain's own group acts at once; an order for any other captain is carried to him by a pigeon from the
-  first captain's position and takes effect when it lands (live once for the player from `pm142/rand1`, `py/captain2/drive_order.sh`: the posture order lands about 9.97M steps after the click; 95 natural launches for the AI). The
+  first captain's position and takes effect when it lands (live once for the player from `pm142/rand1`, `py/captain2/drive_order.sh`: the posture order lands about 9.97M steps after the click, and a men transfer from a selected subordinate, `py/captain2/xfer_pigeon.repl`, about 9.99M; 95 natural launches for the AI). The
   opponent lords issue orders through the same command slots and the same executor. (S "The
   player's commands", S "`$6a3a` / `$6ac6` / `$6b38` — the order executor", A "Arrows and carrier pigeons", A "What each entity decides per tick")
 - **Every man is an individual in one table.** Each runs a small per-tick state machine: step
