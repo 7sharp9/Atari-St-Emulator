@@ -1,24 +1,30 @@
 # PowerMonger: handoff
 
-Updated 2026-10-12 by the 152nd session, a single-session pass on Open 3 (save-disk geometry), which needed an emulator change: `8fd3fe4` (emulator), `e86ef4c` (CLAUDE.md), `f107d9d` and `2b69d55` (PowerMonger docs and `py/saveload/format_proof.sh`), then the handoff commit.
+Updated 2026-10-12 by the 153rd session, a three-agent pass on the code without a gate and the open list: `991d493` (the `$1abaa` gate, the inherited pending words), `017098d` (CLAUDE.md: the `hits` overcount cause), `caa64d0` (mode-graph loose ends), then the handoff commit.
 
 ## Resume point
 
-- Last commits of this workstream: `8fd3fe4`, `e86ef4c`, `f107d9d`, `2b69d55`, then the handoff commit.
-- Working data: `M68000/scratchpad/pm152/` (gitignored): `format/` and `format2/` the FORMAT drives (`proof_*.snap`, `req.png` the save-disk requester, `p_ow.png` the OVERWRITE? requester, `zero.st`), `regress/old|new/` the game snapshot compare of the emulator change. The 151st pass's data is in `pm151/` (`ab/` the reverse A/B, `r1/` the unaided 1G run of `pm142/rand1`); the 150th in `pm150/` (`BRIEF.md`, `reports/`, `arms/nat/`, `saveload/out/`).
+- Last commits of this workstream: `991d493`, `017098d`, `caa64d0`, then the handoff commit.
+- Working data: `M68000/scratchpad/pm153/` (gitignored): `BRIEF.md` the shared agent brief, `reports/` the three agent reports (`seasons.md`, `pending.md`, `modes.md`), `seasons/`, `pending/` (`runs/` the k98/k104/k118/k52 watches, `all.lst` a `$1000..$2c000` listing), `modes/` (`run/` the `$66` poke and rout watches, `text.lst`). The fresh `$1abaa` corpus the gate reads by default is `scratchpad/season/corpus/` (364 MB); the FSM build output is `scratchpad/pm_fig/out/`. Earlier passes: `pm152/` (FORMAT drives), `pm151/`, `pm150/`.
 - Start from:
-  - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains. Unaided, side 3 sweeps the land and the player's group dissolves near 650M steps (`pm151/r1/`).
+  - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains.
   - `pm143/run/rand1_s1.snap`: the FILE-panel drives.
-  - `pm150/saveload/out/file.snap`: FILE panel open, slot A selected (start of `format_proof.sh` and `roundtrip.sh`).
+  - `pm150/saveload/out/file.snap`: FILE panel open, slot A selected (`format_proof.sh`, `roundtrip.sh`).
   - `pm123/win/m1_ready.snap`: mission 1 conquered.
-  - `pm148/arms/long/M2G_k34_c5.snap`: `bp 668c` after 233,300,606 steps.
+  - `pm150/arms/nat/k108e_4.snap`: the boat man of the `$66` poke drive.
 - Uncommitted work left behind: none from this workstream. Not this workstream's: `.obsidian/`, `Cadaver/`.
 
 ## Proven so far
 
 Older gates carry over unchanged; the list is in `strategy.md`, `ai.md` and `economy.md`, with reruns from the `py/README.md` table. A sample: entity FSM `py/fsm/repro93..97.py`, `diff_pm99.py` 1847/1847, `gate_orders.py` 61143/61143 over 2273 states (the 13 strategy rows plus the 6 economy rows), `gate_pop.py`, `gate_equip.py`, the commander AI `py/cmdai/` 323/323 + 280/280, and `gate_fsm15.py` 18452/18452.
 
-New in the 152nd pass:
+New in the 153rd pass:
+
+- **`$1abaa` (seasons and weather) is gated.** `py/season/gate_1abaa.py` diffs `model_1abaa.py` (dissolve, wrap, weather, rain and snow blit, tree regrowth, sample-player state) against callcaps over every changed byte of the 1 MB: **1084/1084 calls, 735,679/735,679 bytes** in four arms (m1 420, rand1 420, wrapw 240 and felled 4 under labelled pokes), rerun from fresh captures at the promoted path. A call copies about 9 pixels, not 16 (`$1ac04`: steps with `x >> 4 >= $120` copy nothing); winter's season cue is the stop sequence. strategy.md "What `$1abaa` actually is".
+- **Inherited pending words, a second pigeon-path bug** (watch-proven). `$2776` dissolves a group without clearing its pending word, and `$25d6` builds the next captain's group in that slot without clearing it; the new group is never ordered. The 19 stuck words with a live first group: 12 inherited, 6 orders still in the command slot (4 frozen by the game's end), 1 dead-sender on a re-formed first group (`py/arms/stuck_classes.py` over `py/arms/pending_snaps.txt`). 157 of the census's 340 snapshots are post-game main-menu RAM. strategy.md "The pending word", README bugs list.
+- **Mode-graph loose ends** (`py/fsm/mode_write_scan.py`, whole image). Nothing writes `$04`, `$64` or `$70`. `$66` is entered only through the `$161f0` water veto (a `$36` step onto water, then a `$10` arrival copies prev `$66`); live 1 of 1 under a one-byte prev poke, 0 unaided in 6 x 200M steps; `fsm_army` gains the dashed edge `$36 -> $66`. `$3c74` is unreached behind a `nop` (an inferred patched `bra.s`; 0 hits in 4.1G steps; reached under `w 3c10 6e026060`). A routed group member never enters `$3c` (`$1b8c`'s `$3c08` call resets the prev); a lone man does (`py/fsm/rout_fate.py`: 23 of 44 on `rand1`). ai.md, `fig/fsm.facts.md`.
+
+Carried from the 152nd pass:
 
 - **The emulator runs the game's own FORMAT** (`8fd3fe4`). `LoadDiskA` uses Hatari's geometry rule (BPB only when its total sectors match the file, else from the size), and Write Track on an `.ST` parses the ID and data fields into sectors. `py/saveload/format_proof.sh` on a zeroed disk: 80 Write Track commands, 10 sectors each, 0 skipped; SAVE A, then SAVE A again shows OVERWRITE? (`$1bed4` 1 hit), OK saves; LOAD A equals the second save in **101,376/101,376** bytes (the saves differ in 2,048). Regression net: verify PASS, diskless 30M identical, selftest 0 wrong 9 skip, `rand1` +30M and six `rt3` round-trip snapshots identical to the old build; the `pm147` save disk goes from 3 failed reads to 0. system.md "The save-disk code", README "Bug 6".
 
@@ -69,20 +75,22 @@ The 150th pass's results (all still current; detail in the topic docs):
 
 ## Open, in priority order
 
-1. **A player route to `$668c`, restated.** Taking an AI side's lords does not do it (above). The route is a side that has drained its own lords *gaining* a lord whose settlement holds a man (`$550e` then `$5c2c`/`$25d6` gives it a 1..4-man group). A player-caused version: let one of the player's lords fall to a drained AI side (in `pm151/r1` side 2 took player lord 10 in chunk 2), then `bp 668c`; `py/side_dump.py` per chunk shows when a side is drained and which groups can decide. Low value unless the drive is cheap; the five natural hits already prove the arm.
-2. **The 19 stuck pending words on sides whose first group is alive.** `watch` the pending word and the pigeon slots from one such snapshot (`py/arms/pending_census.py` lists them).
-3. **Mode-graph loose ends** (`py/fsm/mode_edges.py`, `fig/fsm.facts.md`): mode `$66`'s entry route; modes `$04`, `$64`, `$70` that nothing writes; the unreached write `$3c74`; and the claim that `$3c` is entered via the previous mode (trace one rout).
-4. **Graphics cross-checks** (`port/SPEC.md` "Whether they still run"): the F# halves no longer compile (`walkQ0` is now `Fill.planQ0`; `EntityCtx.Zoom` and `EntityRec.B15` are missing). Fix and promote `order_test.fsx` and `baseline.fsx`; settle pm91's 3061 against 2881 px; re-export the `pm74_late`/`pm78_settle`/`pm119` inputs with `objs`. The Ruin overlay `$119b2` is not ported: capture at (22,46) or (29,63) on mission 1.
+1. **Graphics cross-checks** (`port/SPEC.md` "Whether they still run"): the F# halves no longer compile (`walkQ0` is now `Fill.planQ0`; `EntityCtx.Zoom` and `EntityRec.B15` are missing). Fix and promote `order_test.fsx` and `baseline.fsx`; settle pm91's 3061 against 2881 px; re-export the `pm74_late`/`pm78_settle`/`pm119` inputs with `objs`. The Ruin overlay `$119b2` is not ported: capture at (22,46) or (29,63) on mission 1. This unblocks every later port check.
+2. **A player route to `$668c`.** Taking an AI side's lords does not do it. The route is a drained side *gaining* a lord whose settlement holds a man: let one of the player's lords fall to a drained AI side (in `pm151/r1` side 2 took player lord 10 in chunk 2), then `bp 668c`; `py/side_dump.py` per chunk. Low value unless the drive is cheap; five natural hits already prove the arm.
+3. **Mode-graph residue.** An unaided `$66` entry needs a lone man (word 28 = 0), or a Boat follower who lands before the camp, chasing an animal across water: search the `W5G_k108` and long-arm chunk series with `scratchpad/pm153/modes/py/natrun.sh`, grepping `pc=$014fdc` writes of `$66`. Whether the rout stamps that reach no arrival (18 of 44 on `rand1`, 34 of 89 on `k48`) are re-engagements (`$5708`) or run ends: extend `rout_fate.py` with the last writer.
+4. **Pending-word residue.** 99 orphans on sides whose first group is dead stay "unknown" because the sender record was revived (the player's landing `$4244`) or reused; the k4 inheritance and the k104 `-4` pigeon launch are snapshot reads (`bpc 45a8` with `watch 4c146 26` from `lands/k104.snap` around step 793.8M). `pending_census.py` should drop frozen snapshots (`stuck_classes.frozen()`).
 5. **UI leftovers.** The `$c5ee` entry contract; word `-36` in the sound pick; sound event 17 is queued and cleared but never played (`bp 12820`); the double handling of a captain-box click in transfer mode (`bpc 133d4 2`, watch `$2df96`); `$04` sent from a group that has a sender (by pigeon, inferred); the other `$7658` dialog ids; the person panel's Stock rows.
-6. **Small checks.** `$4a7a` has no model gate, and opponent class `$a` is unseen. The season after a LOAD (`$57fd0` writers); posture 5 from `$67d0` (`rand & 3` + 2); an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch; the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); `$4342`'s arrival branch.
-7. **The stall on the original machine.** A Hatari run past clock 32768 with a camped group (low priority).
-8. **FORMAT's other branches.** ARE YOU SURE (`$1bec2`): run `format_proof.sh`'s first two clicks with `disk scratchpad/powermonger.st` mounted instead of `zero.st` (`$1bd38` then opens `SPRITE8.DAT`). The write-protect requester `$1bf04` needs a write-protect flag in `MMU.fs` (emulator change, low value).
+6. **Small checks.** `$4a7a` has no model gate, and opponent class `$a` is unseen. The season after a LOAD (`$57fd0` writers); natural winter snow under the `$1abaa` gate (a lineage one wrap before `pm143/run/rand1_s4`); the divide by zero at `$1ac88` on an empty tree array (a `felled`-style arm with `$4e512 < 12`); posture 5 from `$67d0`; an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch (and whether `$3c12`'s `nop` is the crack's or the developers'); the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); `$4342`'s arrival branch.
+7. **The stall on the original machine.** A Hatari run past clock 32768 with a camped group (low priority; Hatari through an agent has Dave's go-ahead).
+8. **FORMAT's other branches.** ARE YOU SURE (`$1bec2`): run `format_proof.sh`'s first two clicks with `disk scratchpad/powermonger.st` mounted instead of `zero.st`. The write-protect requester `$1bf04` needs a write-protect flag in `MMU.fs` (emulator change, low value).
 
 ## Known traps
 
-- **Parallel agents on shared docs: one writer per doc at a time.** Owners edit in place. Explorers write only under `scratchpad/pm150/<area>/` and report suggested prose. The orchestrator saves each report under `reports/` with its PENDING items, then hands a free doc to one merge agent with the report paths. Spot-check one claim per agent against the listing: every check held this pass.
-- **Merge agents leave scratch citations.** Grep the docs for `scratchpad/pm150/.../*.py` before committing and repoint them to the promoted `py/` path. Data paths in scratchpad may stay.
-- **`hits` can overcount by one** (now in CLAUDE.md). The "66 draws" and "`$57fec` 180" readings were this.
+- **Parallel agents on shared docs: one writer per doc at a time.** Owners edit in place. Explorers write only under `scratchpad/pm15x/<area>/` and report suggested prose. The orchestrator saves each report under `reports/` with its PENDING items, then hands a free doc to one merge agent with the report paths. Spot-check one claim per agent against the listing: every check held this pass.
+- **Merge agents leave scratch citations.** Grep the docs for `scratchpad/pm15x/.../*.py` before committing and repoint them to the promoted `py/` path. Data paths in scratchpad may stay.
+- **The pm148 chunk series is half post-game RAM.** 157 of the 340 `*_c[2468].snap` chunks ran no `$6522` (the game is back at the main menu), so their groups and pigeons are frozen. Filter with `py/arms/stuck_classes.py`'s `frozen()` test before counting.
+- **A scan for a group-field writer needs both frames.** The pending word is `-72(A3)` in the group-offset frame and `4(A1)` in the side-record frame; a `-72(Ax)` scan finds only the clears `$4220`/`$6b20`, while `$683e` sets it through the other base. Confirm a "never writes" with a `watch`.
+- **The season wrap is driven by `$57ff6`, not `$57fec`.** Poke `$57ff6 := $0681` to wrap on the next call; a wrap call under `callcap` needs `$2c993 := 0` (`w 2c992 01000055` keeps the neighbours).
 - **The options panel moves after a requester.** After FORMAT or an OVERWRITE? requester, FILE is at (111,92); after a plain SAVE or LOAD it is at (142,92). Render a frame before trusting a click position.
 - **Disk writes live only in process memory** (the host `.st` is never written, and a snapshot does not hold the disk): a FORMAT-then-SAVE proof must run in one process.
 - **REPL `m <addr> <len>` takes a decimal length**: `m 4f970 6c` aborts the REPL and loses the snapshot that follows.
@@ -110,4 +118,4 @@ The 150th pass's results (all still current; detail in the topic docs):
 
 ## Next session
 
-Open 2 (the 19 stuck pending words on sides whose first group is alive: one `watch` drive from a snapshot `py/arms/pending_census.py` lists) or Open 3 (mode-graph loose ends from `py/fsm/mode_edges.py`). Open 8's ARE YOU SURE branch is a cheap drive if a short task is wanted. Open 1 only if a cheap drive of a player lord falling to a drained AI side turns up. Hatari is available for Open 7 through an agent (Dave's go-ahead, 2026-10-12).
+Open 1 (the graphics cross-checks: make the F# halves compile again, then rerun them) is the largest remaining unblocker. Open 3's unaided `$66` search and Open 4's frozen-snapshot filter for `pending_census.py` are cheap agent tasks. Open 8's ARE YOU SURE branch is a short drive if a small task is wanted.
