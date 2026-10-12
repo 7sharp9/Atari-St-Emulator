@@ -18,6 +18,8 @@ sys.path.insert(0, here)
 from disassemble import Disassembler
 
 argv = sys.argv[1:]
+if not argv or argv[0] in ('-h', '--help'):
+    sys.exit(__doc__.split('\n\n')[1])
 rom_path = os.path.join(root, 'scratchpad/finalfight/ff_main.bin')
 base = 0
 while argv and argv[0] in ('--rom', '--base'):
@@ -26,6 +28,8 @@ while argv and argv[0] in ('--rom', '--base'):
     else:
         base = int(argv[1], 16)
     argv = argv[2:]
+if len(argv) < 3 or any(not re.fullmatch(r'(0x)?[0-9a-fA-F]+', a) for a in argv):
+    sys.exit('rdis.py: options go first, then <lo> <hi> <root>... in hex\n' + __doc__.split('\n\n')[1])
 rom = open(rom_path, 'rb').read()
 dis = Disassembler(rom, rom_base=base)
 

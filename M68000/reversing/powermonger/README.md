@@ -84,8 +84,9 @@ against every session's changes.
 - **Combat is a health grind.** Units in contact lock into melee; each tick the attacker takes 1 to 3
   (weapon grade 0, 2, 4; grade 6 and above takes 1) off the target's health (byte 45, the value the captain panel prints as "Very Sickly" ... "Very Strong", "Dead"). At zero the loser is killed or
   routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
-  group, which re-forms. Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
-  in its path (a man loses 82 health), and its end frees the archer to shoot again. There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain;
+  group, which re-forms. A routed group member loses the routed mark as he is unlinked, so his attacker
+  keeps fighting him and routs him a second time; only then does he flee home (52 of 52 on two lands). Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
+  in its path (a man loses 82 health), and its end frees the archer to shoot again. There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
   A "Natural runs on later lands", A "Arrows and carrier pigeons")
 - **Land changes hands two ways: conquest by the player, revolt by the game's own clock.**
 
