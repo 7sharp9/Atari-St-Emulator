@@ -804,6 +804,59 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     fdcDrive (int track) fdcSide (int sector) dmaAddr (if r then "OK" else "no data"))
         r
 
+    ///One WD1772 track: 6250 bytes at 250 kbit/s and 300 rpm, index pulse to index pulse.
+    let trackBytes = 6250
+
+    ///Write Track ($Fx) on an .ST image, which stores sector data only: the raw track stream at
+    ///the DMA address is parsed for what a later Read Sector would find, and each sector's data is
+    ///written into the image like tryWriteSector. In the stream (WD1772 datasheet, "Write Track")
+    ///$F5 writes a sync byte and $F7 the CRC, so an ID field is `F5.. FE track side sector size F7`
+    ///and its data field `F5.. FB <128 << size bytes> F7`. Data lands at the head position
+    ///(`track`, the side line), the address a Read Sector there uses; a sector the image's geometry
+    ///cannot hold is skipped and logged. Hatari does not implement this for .ST/MSA (src/fdc.c
+    ///FDC_WriteTrack_ST reports Lost Data); this goes further so a game's own disk formatter runs.
+    ///The DMA supplies at most `dmaSectorCount` 512-byte blocks, and the FDC takes one track.
+    ///Returns the number of stream bytes consumed (0 when nothing could be written: no disk, drive B,
+    ///or a side the image does not have) and the number of sectors written.
+    let tryWriteTrack (track: byte) (dmaAddr: uint32) =
+        let streamLen = min trackBytes (int dmaSectorCount * 512)
+        let result =
+            match diskA with
+            | Some bytes when fdcDrive = 0 && fdcSide < diskASides && streamLen > 0 ->
+                let at i =
+                    match translateRamAddress (dmaAddr + uint32 i) with
+                    | Some idx -> ram.[int idx]
+                    | None -> 0uy
+                let mutable written = 0
+                let mutable i = 0
+                while i < streamLen do
+                    if at i = 0xFEuy && i > 0 && at (i - 1) = 0xF5uy && i + 4 < streamLen then
+                        let idTrack, sector, sizeCode = at (i + 1), int (at (i + 3)), int (at (i + 4) &&& 3uy)
+                        let size = 128 <<< sizeCode
+                        //The data field follows within the gap: the first $FB after a sync byte,
+                        //before the next ID mark.
+                        let mutable j = i + 5
+                        let mutable dam = -1
+                        while dam < 0 && j < streamLen && not (at j = 0xFEuy && at (j - 1) = 0xF5uy) do
+                            if at j = 0xFBuy && at (j - 1) = 0xF5uy then dam <- j
+                            j <- j + 1
+                        let logical = (int track * diskASides + fdcSide) * diskASectorsPerTrack + (sector - 1)
+                        let offset = logical * 512
+                        if dam >= 0 && dam + size < streamLen && size = 512 && idTrack = track
+                           && sector >= 1 && sector <= diskASectorsPerTrack && offset + 512 <= bytes.Length then
+                            for k in 0 .. 511 do bytes.[offset + k] <- at (dam + 1 + k)
+                            written <- written + 1
+                        else
+                            fdcLog (sprintf "wtrk  track=%d side=%d id=(%d,%d,size %d) dam=%d -> skipped"
+                                        (int track) fdcSide (int idTrack) sector size dam)
+                        i <- if dam >= 0 then dam + 1 + size else i + 5
+                    else i <- i + 1
+                streamLen, written
+            | _ -> 0, 0
+        fdcLog (sprintf "wtrk  drive=%d track=%d side=%d dma=$%06x -> %d bytes, %d sectors"
+                    fdcDrive (int track) fdcSide dmaAddr (fst result) (snd result))
+        result
+
     member x.ReadByte (address: uint32) =
         let address = address &&& maxMemory
         if flatBus then flatGet address else
@@ -1162,6 +1215,37 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 fdcStatus <- newStatus
                 fdcIrq <- false
                 fdcIrqPending <- delay
+            | 0uy when input &&& 0xF0uy = 0xF0uy ->
+                //Type III Write Track ($Fx): see tryWriteTrack. Synchronous like the sector
+                //commands. The DMA counter advances by the stream bytes the FDC took, rounded up
+                //to the DMA's 16-byte bursts, and the sector count by the 512-byte blocks those
+                //cover. Nothing written (no disk, drive B, missing side) falls back to the
+                //Record-Not-Found stub; a write-protect tab is not modelled.
+                let dmaAddr =
+                    (uint32 dmaAddrHighByte <<< 16) ||| (uint32 dmaAddrMidByte <<< 8) ||| uint32 dmaAddrLowByte
+                let consumed, _ = tryWriteTrack fdcTrack dmaAddr
+                let ok = consumed > 0
+                if ok then
+                    let burst = (consumed + 15) &&& ~~~15
+                    let advanced = (dmaAddr + uint32 burst) &&& 0xFFFFFEu
+                    dmaAddrHighByte <- byte (advanced >>> 16)
+                    dmaAddrMidByte <- byte (advanced >>> 8)
+                    dmaAddrLowByte <- byte advanced
+                    dmaSectorCount <- byte (max 0 (int dmaSectorCount - (burst + 511) / 512))
+                    mutations <- mutations + 1UL
+                let status = if ok then 0uy else fdcCommandStatus input
+                if status <> fdcStatus then mutations <- mutations + 1UL
+                fdcStatus <- status
+                if dmaNoError <> ok then
+                    dmaNoError <- ok
+                    mutations <- mutations + 1UL
+                fdcLog (sprintf "cmd   $8604<-$%02x  WRITE-TRACK consumed=%d status=$%02x" input consumed status)
+                if ok then
+                    fdcIrq <- true
+                    fdcIrqPending <- 0
+                else
+                    fdcIrq <- false
+                    fdcIrqPending <- fdcIrqSlowSteps
             | 0uy ->
                 //Type II sector transfer: Read Sector ($8x, media -> RAM) or Write Sector ($Ax,
                 //RAM -> media). Top 3 bits "100"/"101", bottom 2 bits "00" (FD-HD_Programming.pdf's
@@ -1350,32 +1434,33 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///disturb.
     member x.LoadDiskA (data: byte[] option) =
         diskA <- data
-        diskASectorsPerTrack <-
-            match data with
-            | Some bytes when bytes.Length >= 26 ->
-                let spt = int bytes.[24] ||| (int bytes.[25] <<< 8)
-                if spt >= 1 && spt <= 48 then spt else 9
-            | _ -> 9
-        diskASides <-
+        //Geometry: Hatari's Floppy_FindDiskDetails / Floppy_DoubleCheckFormat (src/floppy.c). The
+        //BPB (sectors per track at 24, heads at 26) is trusted only when its total-sector count at
+        //19 matches the image size and its fields are in range; otherwise the geometry is guessed
+        //from the size. Nothing requires a raw-sector disk's sector 0 to be a real BPB: Cadaver's
+        //levels disk (Replicants/ST Amigos) declares 800 sectors in an 819,200-byte double-sided
+        //dump (reversing/cadaver/mechanics.md), and PowerMonger's save disk holds the game's own
+        //ID text there (reversing/powermonger/system.md, "The save-disk code"). Over every .st in
+        //the tree this agrees with the previous rule (BPB sectors/track, 2 sides when the file is
+        //big enough) except on PowerMonger save disks, which that rule read as 9 sectors/track.
+        let spt, sides =
             match data with
             | Some bytes when bytes.Length >= 28 ->
-                let heads = int bytes.[26] ||| (int bytes.[27] <<< 8)   //BPB "number of heads", offset 26
-                let headerSides = if heads = 1 || heads = 2 then heads else 1
-                //The BPB is only ever validated by something that boots the image and reads a
-                //filesystem off it. A disk swapped in later purely so the *already-running* game
-                //can read its own raw sectors (Cadaver's "levels" disk, never Pexec'd or GEMDOS
-                //Fread from) is never booted, so nothing requires its BPB to be honest - a crack
-                //group's boilerplate header can simply be wrong. Confirmed live: Replicants/ST
-                //Amigos' disk2.st declares 1 side (409,600 bytes' worth) while the file itself is
-                //a full 819,200-byte double-sided dump, and trusting the header made every side-1
-                //read fail with "no data", which the game correctly reported as a disk error -
-                //not a real protection/crack failure (reversing/cadaver/mechanics.md). Prefer 2
-                //sides whenever the file is big enough for a standard 80-track double-sided disk
-                //at this sectors/track count but the header claims only 1 - a genuinely
-                //single-sided image never has that many extra bytes to begin with.
-                if headerSides = 1 && bytes.Length >= 80 * 2 * diskASectorsPerTrack * 512 then 2
-                else headerSides
-            | _ -> 1
+                let word i = int bytes.[i] ||| (int bytes.[i + 1] <<< 8)
+                let spt, heads, total = word 24, word 26, word 19
+                let imageSectors = bytes.Length / 512
+                if total = imageSectors && heads >= 1 && heads <= 2 && spt >= 1 && spt <= 48 then spt, heads
+                else
+                    let sides = if bytes.Length < 500 * 1024 then 1 else 2
+                    let common =
+                        [ 9; 10; 11; 12 ]
+                        |> List.tryFind (fun s -> [ 80 .. 84 ] |> List.exists (fun t -> imageSectors = t * s * sides))
+                    match common with
+                    | Some s -> s, sides
+                    | None -> (if spt >= 5 && spt <= 48 then spt else max 1 (imageSectors / 80 / sides)), sides
+            | _ -> 9, 1
+        diskASectorsPerTrack <- spt
+        diskASides <- sides
 
     ///Selects the monitor type reported through MFP GPIP bit 7 - see `colourMonitor`. `true` =
     ///colour (the default and Hatari's default), `false` = monochrome. Like LoadDiskA this is

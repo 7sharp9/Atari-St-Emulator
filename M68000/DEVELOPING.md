@@ -369,18 +369,25 @@ models single- and double-sided images, PSG side/drive select, Type I head
 movement (seek/restore/step), the DMA address counter and the `$FF8606` DMA
 status register - enough for TOS to read a FAT12 filesystem and `Pexec` a
 program. Write Sector (`$Ax`) is also modelled, so GEMDOS can create
-directories and write files (`Dcreate`/`Fcreate`/`Fwrite`/`Fseek`); writes hit
-the in-memory image only - the host `.ST` file is never modified, so runs stay
+directories and write files (`Dcreate`/`Fcreate`/`Fwrite`/`Fseek`), and so is
+Write Track (`$Fx`): the track stream is parsed for its ID and data fields and
+each 512-byte sector lands in the image, enough for a game's own formatter
+(PowerMonger's FORMAT, `reversing/powermonger/system.md`; Hatari does not do
+this for `.ST`). Writes hit the in-memory image only - the host `.ST` file is never modified, so runs stay
 deterministic and committed disk artefacts stay byte-stable. `ATARI_TRACE_FDC=1`
 logs every FDC register/command write and every sector read/write to stderr
 (compare against `tools/hatari_trace.py --trace fdc`).
 
 **Raw `.ST` sector dumps only - `.stx` (Pasti) is not supported.** `MMU.LoadDiskA` reads the file
-straight into a flat byte array and parses a standard FAT BPB at bytes 24-28 for geometry; every
-sector read/write is `logicalSector * 512` into that array. There is no image-format signature
+straight into a flat byte array and takes its geometry from the FAT BPB (sectors per track at 24,
+sides at 26) only when the BPB's total-sector count (bytes 19-20) matches the file size; otherwise it
+guesses from the size, as Hatari's `Floppy_DoubleCheckFormat` does (under 500 KB one side, then 9..12
+sectors per track over 80..84 tracks). That is what lets a raw-sector disk whose sector 0 is not a
+BPB (Cadaver's levels disk, PowerMonger's save disk) load with its real geometry. Every sector
+read/write is `logicalSector * 512` into that array. There is no image-format signature
 check anywhere in the tree, so handing it a `.stx` container (flux-level, used for copy-protected
 originals, `RSY\0`-prefixed and not a multiple of 512 bytes) is not rejected - it is silently
-misread as a raw sector image, the bogus BPB falls back to a 9-sectors/1-side default, and every
+misread as a raw sector image, the bogus BPB falls back to the size-based guess, and every
 "sector" comes back as garbage from wherever that offset lands in the Pasti container. Convert to
 `.st` first (no converter exists in `tools/` yet) or use a `.st`-format release of the same disk.
 
