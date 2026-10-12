@@ -400,9 +400,13 @@ the next"):
   `$2776` clears the first group's owner word at `$28ae` within 3,300 steps (`revived/g0own.sh`),
   the corpse becomes category `$0a`, and `$4258`/`$42ac` revive it 63M to 211M steps later, in four
   of the eight watched revivals on another side (k25 and k22 from side 4 to 2, k138 from 2 to 3,
-  and M2G_k6, a first-kind case, from 3 to 4). The revived man then lives as anyone else: on k25 he
-  joins side 3's commander's army (`$1b78` writes his word 28 := the lead's offset `$4204`, and
-  `$1b7c` sets byte 7 bit 6). No word in the census is left unexplained.
+  and M2G_k6, a first-kind case, from 3 to 4). The revival takes the side of the man's home
+  settlement (`$42ac` copies byte 5 of `$4f916 + word 34`), which need not be his old side: k25's
+  home settlement `$50468` revolted from 4 to 2 (`$5538`, step 787.6M) before the revival at 933.4M.
+  It revolted again, to 3, at 960.65M, and he adopted 3 at `$16874` (the `$16848` reconcile)
+  7.6M steps later; his word 34 is unchanged throughout (`revived/home_side.sh`). He then lives as
+  anyone else and joins side 3's commander's army (`$1b78` writes his word 28 := the lead's offset
+  `$4204`, and `$1b7c` sets byte 7 bit 6). No word in the census is left unexplained.
   `py/arms/pend_pigeons.py` lists the pigeons of one snapshot.
 
   The group's state `76()` selects the path:
