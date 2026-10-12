@@ -24,7 +24,7 @@ let c11 = (151,109)
 
 let ctx : Sprites.EntityCtx =
     { Yaw = 0xf0; Anim = false; SelGroup = 1; TileOff = 6; RotPhase = 2
-      Sheet33 = sheet33; SheetProp = sheetProp; Ram = [||]; Zoom = 4; SheetProp32 = [||]; SheetProp16 = [||] }
+      Sheet33 = sheet33; SheetProp = sheetProp; Ram = [||]; Seed = 0; Zoom = 4; SheetProp32 = [||]; SheetProp16 = [||] }
 
 let cases =
     [ // b6, b5, b7, b14, b17, b31, fx, fy, fx4, fy4, group

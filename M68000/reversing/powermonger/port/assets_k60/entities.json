@@ -4210,6 +4210,7 @@
   "sel_group": 1,
   "season": 2,
   "rot_phase": 170,
+  "seed": 4143589565,
   "source_ram": "k60_iso.ram",
   "half": 4,
   "sheet33": "sprites/sheet_raw.bin",

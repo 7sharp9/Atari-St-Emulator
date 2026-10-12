@@ -512,6 +512,9 @@ A tree or building (byte 6 == 4, handler `$1168c`, blitted inline by `$12244`) t
 (no offset). Its position is the `$11f1a` lerp over the cell's four raw `$3f364` corners with a jitter derived from the
 record, bucket-slot and corner addresses (`fx = (((A2 + A3) & 0xffff) << 3) & 0xff`), then `$12272` subtracts 4 and 8.
 Evidence (live-checked): D2 at `$12288` and D0/D1 match, and the 32 x 24 decode is byte-exact against a live frame (`port/SPEC.md` §6).
+When `record[7]` has bit 7 set (not the bare `$0d`) and the zoom is 5 or less, `$116d6` then draws five flapping birds,
+`$33000` frame `$127 + ($57fec & 15) / 2` through `$11f82`, on a diagonal 8 rows above the tree, offset by the low three bits
+of the RNG seed words `$2df84`/`$2df86` plus 4..0 (`port/SPEC.md` §6 "Birds over a tree", 22/22 px on a live frame).
 ## The minimap and the conquest map
 
 **The minimap** `$107d6` (`_draw_ma`, with `$1078e` `draw_con`; called from `$13c5a`, `$187f0`, `$b3ca` and the strip click `$131ee`) is baked into the master buffer (`[$e0d4]` = `$78000`), not redrawn per frame: cell (x, y) with x < 63 is the pixel (x, y + 6), plotted by `$e6ee`. The mode word `$58098` (`_show_ma`; default 2) is set by a click in the strip above the map

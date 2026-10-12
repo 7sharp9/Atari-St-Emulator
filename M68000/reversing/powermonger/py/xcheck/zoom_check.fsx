@@ -54,7 +54,7 @@ let run (path: string) =
     let ctx : Sprites.EntityCtx =
         { assets.EntityCtx with
             Yaw = yaw; Anim = gi "anim" <> 0; SelGroup = gi "sel_group"; TileOff = gi "tile_off"
-            RotPhase = gi "rot_phase"; Zoom = half; Ram = bytes "ram"; SheetProp32 = bytesOpt "sheet_prop32"; SheetProp16 = bytesOpt "sheet_prop16" }
+            RotPhase = gi "rot_phase"; Zoom = half; Ram = bytes "ram"; Seed = Sprites.seedOf (bytes "ram"); SheetProp32 = bytesOpt "sheet_prop32"; SheetProp16 = bytesOpt "sheet_prop16" }
     let render (c: Sprites.EntityCtx) =
         let b = Fill.Buffer.Create()
         Scene.render b dith tick c corners map camX camY (yaw / 16) assets.Entities

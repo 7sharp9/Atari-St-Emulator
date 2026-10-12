@@ -897,6 +897,25 @@ terrain only) and loses drawn sprites-last (86.90%), and not from a formula erro
 (`$115e0` redraws a *subset* of entities per frame, double buffered), so neither reference
 buffer holds all 25 trees, and it stays at 94.62% (§9 "Ruled-out causes").
 
+**Birds over a tree.** A byte6 4 record whose `record[7]` has bit 7 set (and is not the
+bare `$0d`, which returns at `$116b4`) gets five birds after its own frame when the zoom
+`$57ffc` is 5 or less (`$116d6..$1173c`). `$116bc` pushes the `$11f1a` point (D0, D1) before
+`$12244`; the loop lifts it 8 rows and, for k = 4 down to 0, blits the `$33000` frame
+`$127 + ([$57fec] & 15) / 2` (the flapping bird at half rate) through `$11f82` at
+`(D0 + ((seed_hi + k) & 7), D1 + ((seed_lo + k) & 7))`, where seed_hi and seed_lo are the
+words of the RNG long `_seed` `$2df84`. The offsets are consecutive, so the five birds sit on
+a diagonal. The seed did not advance between `pm88_f1` and the overlay captures 2M steps
+later (both `$5ee0459d`), so over that span the birds hover in place. A raw scan of the
+`ctl_0` RAM finds 95 byte6 4 records with bit 7, and both exported asset sets have bird trees
+(7 and 9). Found as the overlay
+checks' control-frame miss: on `ctl` (camera (22,46)) a screen-word `watch` of rows 101 to 109 shows
+the last writes there are `$11f82` blits returning to `$1173a` (the bird loop) with A3 = tree
+`$4d762` (`record[7] = $8d`), which leave colour 5 on 22 px the port drew as tree. `Sprites.fs` draws them
+(`EntityCtx.Seed`, `seedOf`; `pm_export.py` exports `seed`), as does `pm_render_ref.py`:
+the control frame's misses go from 22 to 0, a seed off by one in either word or a flap frame
+off by 1 or 2 gives 24 to 31, and `pan_w` scores 99.64 -> 99.78% (`../py/xcheck/run.sh`; the other
+13 frames score unchanged).
+
 **The per-cell entity pass in F#.** It lives in `Sprites.fs` (`EntityRec` /
 `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`) and is
 **cross-checked byte-exact** against `pm_render_ref.draw_entities` on synthetic

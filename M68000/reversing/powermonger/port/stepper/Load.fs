@@ -64,6 +64,7 @@ let load (dir: string) : Assets =
           SheetProp = File.ReadAllBytes(file (gs ctx "sheet_prop"))
           SheetProp32 = File.ReadAllBytes(file (gs ctx "sheet_prop32"))
           SheetProp16 = File.ReadAllBytes(file (gs ctx "sheet_prop16"))
+          Seed = (match ctx.TryGetProperty "seed" with | true, v -> int (v.GetInt64()) | _ -> 0)
           Ram = [||] }
       EntityCamX = gi ctx "cam_x"
       EntityCamY = gi ctx "cam_y"

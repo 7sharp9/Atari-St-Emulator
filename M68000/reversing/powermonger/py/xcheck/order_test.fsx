@@ -29,7 +29,7 @@ let run (path: string) =
     let dith = Fill.withPhase (bytes "dith") (gi "phase_bias")   // $f8e4 camera-change phase
     let ctx : Sprites.EntityCtx =
         { Yaw = yaw; Anim = gi "anim" <> 0; SelGroup = gi "sel_group"; TileOff = gi "tile_off"
-          RotPhase = gi "rot_phase"; Sheet33 = bytes "sheet33"; SheetProp = bytes "sheet_prop"; Ram = bytes "ram"
+          RotPhase = gi "rot_phase"; Sheet33 = bytes "sheet33"; SheetProp = bytes "sheet_prop"; Ram = bytes "ram"; Seed = Sprites.seedOf (bytes "ram")
           Zoom = half; SheetProp32 = bytesOpt "sheet_prop32"; SheetProp16 = bytesOpt "sheet_prop16" }
     let recs =
         [ for o in root.GetProperty("objs").EnumerateArray() ->

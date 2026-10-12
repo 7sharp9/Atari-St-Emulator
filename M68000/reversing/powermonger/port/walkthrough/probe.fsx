@@ -26,7 +26,8 @@ let ctx, recs =
     ({ Yaw = gi c "yaw"; Anim = gi c "anim" <> 0; SelGroup = gi c "sel_group"
        TileOff = Season.treeTileOffset (gi c "season"); RotPhase = gi c "rot_phase"; Zoom = gi c "half"
        Sheet33 = file "sheet33"; SheetProp = file "sheet_prop"
-       SheetProp32 = file "sheet_prop32"; SheetProp16 = file "sheet_prop16"; Ram = [||] }
+       SheetProp32 = file "sheet_prop32"; SheetProp16 = file "sheet_prop16"; Ram = [||]
+       Seed = (match c.TryGetProperty "seed" with | true, v -> int (v.GetInt64()) | _ -> 0) }
      : Sprites.EntityCtx),
     [| for e in doc.RootElement.GetProperty("render_entities").EnumerateArray() ->
          ({ B6 = gi e "b6"; B5 = gi e "b5"; B7 = gi e "b7"; B14 = gi e "b14"; B17 = gi e "b17"

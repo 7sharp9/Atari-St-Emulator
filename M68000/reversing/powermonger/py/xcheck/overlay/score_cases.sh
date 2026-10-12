@@ -2,7 +2,7 @@
 # Score every labelled-poke capture of run_cases.sh against the no-poke control
 # with the port (diff.fsx, port/godot/logic built first), plus the wrong-frame controls. Each line: the port's changed px the game shows with the
 # port's colour, and the game's changed px the port reproduces, after excluding the
-# control's own 22 missed px (the same in every run).
+# control's own missed px (0 since the port draws the tree birds, SPEC.md §6).
 #   score_cases.sh   (repo root found via tools/rdis.py)
 set -u
 here=$(cd "$(dirname "$0")" && pwd); d=$here

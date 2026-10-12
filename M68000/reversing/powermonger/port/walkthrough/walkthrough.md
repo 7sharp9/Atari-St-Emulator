@@ -800,7 +800,7 @@ sed -n '/private void RenderFrame()/,/Scene.render(buf, dither/p;/_rect.Texture 
         // terrain and sprites together.
         var ectx = new Sprites.EntityCtx(
             _yawSteps * 16, _entAnim, _entSelGroup, Season.treeTileOffset(_season), _entRotPhase,
-            proj.Half, _sheet33, _sheetProp, _sheetProp32, _sheetProp16, System.Array.Empty<byte>());
+            proj.Half, _sheet33, _sheetProp, _sheetProp32, _sheetProp16, _entSeed, System.Array.Empty<byte>());
         Scene.render(buf, dither, 0, ectx, corners, _map, _camX, _camY, _yawSteps, _entRecs);
         _rect.Texture = ImageTexture.CreateFromImage(img);
 ```

@@ -706,6 +706,17 @@ def draw_cell_entities(idxbuf, cov, R, ecov, row, col, cats=None):
             px, py = _packed_lerp(c00, c10, c01, c11, o["fx4"], o["fy4"])
             frame = _decode_frame_word(ent["sheet_prop"], fi, w, h, 480)
             blit(frame, px - 8, py - 16)
+            # record[7] bit 7 (not a bare $0d): five birds ($116f8, zoom <= 5),
+            # frame $127 + ([$57fec] & 15) / 2 at the $11f1a point lifted 8
+            # rows, k = 4..0 offset by ((seed_hi + k) & 7, (seed_lo + k) & 7)
+            # from the RNG long $2df84
+            r7, ram = o["b7"], ent["ram"]
+            if r7 != 0x0D and r7 & 0x80:
+                hi = (ram[0x2DF84] << 8) | ram[0x2DF85]
+                lo = (ram[0x2DF86] << 8) | ram[0x2DF87]
+                bird = _decode_frame_byte(ent["sheet33"], 0x127 + ((ram[0x57FED] & 15) >> 1))
+                for k in range(4, -1, -1):
+                    blit(bird, px - 4 + ((hi + k) & 7), py - 16 + ((lo + k) & 7))
 
 
 def _cell_done(R, row, col):

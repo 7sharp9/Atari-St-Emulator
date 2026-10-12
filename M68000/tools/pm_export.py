@@ -868,6 +868,8 @@ def export_entities(ram: Ram, out: Path, man: list, source: str):
         # word[$57fd0] / 2: picks the tree frames (and the grass colours)
         "season": tsel // 2,
         "rot_phase": ram.u8(0x57FED),
+        # the RNG long `_seed`: $1168c jitters a bird tree's five birds by its words
+        "seed": ram.u32(0x2DF84),
         "source_ram": source,
         "half": ram.u16(0xFDEC),
         "sheet33": "sprites/sheet_raw.bin",       # $33000, 55 B/frame

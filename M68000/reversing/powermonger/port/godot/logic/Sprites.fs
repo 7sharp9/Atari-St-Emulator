@@ -259,7 +259,13 @@ module Sprites =
           SheetProp: byte[]         // $37c7c, 32x24 (zoom 4-5)
           SheetProp32: byte[]       // $3af1c, 32x32 (zoom 1-3)
           SheetProp16: byte[]       // $312a0, 16x16 (zoom 6-7)
+          Seed: int                 // [$2df84] long, the RNG state `_seed`: jitters the tree birds
           Ram: byte[] }             // for the men $51538 group-word probe; may be [||]
+
+    /// The long `_seed` at $2df84 from a RAM image, 0 when there is none.
+    let seedOf (ram: byte[]) =
+        if ram.Length < 0x2DF88 then 0
+        else (int ram.[0x2DF84] <<< 24) ||| (int ram.[0x2DF85] <<< 16) ||| (int ram.[0x2DF86] <<< 8) ||| int ram.[0x2DF87]
 
     /// One of $12244's three building/tree sheets: frame size, bytes per
     /// frame, and the offset it adds to the anchor before blitting.
@@ -543,6 +549,16 @@ module Sprites =
             let x, y = bx + sheet.Dx, ay - 8 + sheet.Dy
             [ yield { Sheet = Prop; Frame = fi; Skip = 0; AnchorX = ax; AnchorY = ay; Rule = rule
                       X = x; Y = y; W = sheet.W; H = sheet.H }
+              // A tree or building with record[7] bit 7 ($116d6; not the bare
+              // $0d, which returns at $116b4) gets five birds when the zoom is
+              // 5 or less: frame $127 + ([$57fec] & 15) / 2 through $11f82 at
+              // the pushed lerp point lifted 8 rows, k = 4 down to 0 offset by
+              // ((seed_hi + k) & 7, (seed_lo + k) & 7) from the words of $2df84.
+              if r.B6 = 4 && r.B7 <> 0x0D && r.B7 &&& 0x80 <> 0 && ctx.Zoom <= 5 then
+                  let hi, lo = (ctx.Seed >>> 16) &&& 0xFFFF, ctx.Seed &&& 0xFFFF
+                  for k in 4 .. -1 .. 0 do
+                      yield mini (0x127 + ((ctx.RotPhase &&& 15) >>> 1)) ax ay "tree birds ($116f8)"
+                                 (bx + ((hi + k) &&& 7)) (ay - 16 + ((lo + k) &&& 7))
               // A Ruin ($117e4): after its own frame, `a_part_b` $119b2 draws the
               // building it is being rebuilt into, frame word[12] mod 10, at the
               // same corner with its top S rows cut: D6 = (15 - record[16]/7) & 15,
