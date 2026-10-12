@@ -515,7 +515,7 @@ $788a  cmpi.w #$2b1,D3 ; bne $7896     ; right OK
 $7890  jsr $b814
 ```
 
-**Dialog buttons by id.** After the click sound, `$7658` jumps through the word table at `$76fa + id` (ids below 4 are ignored; `D3` is the clicked button's grid offset, row * width + column of its `$80` corner). A grid with a text-entry field (cell `$89`) is also handled at the top of `$7658` (`$d03e`, `$d038..$d046`). All rows below are code read except id `$18`, which was clicked live (`py/clicks_ui/dlg_click.sh`, `pm142/yes_dlg.snap`; strategy.md "Panel slots and dialogs").
+**Dialog buttons by id.** After the click sound, `$7658` jumps through the word table at `$76fa + id` (ids below 4 are ignored; `D3` is the clicked button's grid offset, row * width + column of its `$80` corner). A grid with a text-entry field (cell `$89`) is also handled at the top of `$7658` (`$d03e`, `$d038..$d046`). Seventeen buttons are proven by `callcap` from `pm142/rand1` (`py/ui/dlg_ids.py`, **17/17**: the five order buttons of id `$08`, `$0c`, `$0e`, `$10`, `$12`, `$18` NO and `$1a`; each entered at `$76f0` through a stub that pushes the 14-register frame `$7a22` pops), id `$18` was also clicked live (`py/clicks_ui/dlg_click.sh`, `pm142/yes_dlg.snap`; strategy.md "Panel slots and dialogs"), and the FILE (`$06`), briefing (`$0a`) and login CONNECT drives are in `system.md` and strategy.md; `$04`, `$08`'s `$71` and `$131` are code read. Every button frees the dialog's slot (`clr.w $7a36`, or `$abcc` for REPLAY MAP and RANDOM MAP) except MULTI PLAY and PAUSE, which leave the panel open.
 
 | id | handler | buttons (`D3`) and effect |
 |----|---------|---------------------------|
