@@ -404,7 +404,7 @@ Everything outside the 18 live slots, the sources included, is identical in
 every capture, so `assets/dither.bin` plus a season gives the whole table.
 `$1ab60` (world build, `$13c66`) copies the season's source over the live slots
 in one go. After that, `$1abaa` (in the `$13000` tick, right after `$f898`)
-fades towards the source 16 pixels per tick:
+fades towards the source, 16 LCG steps per tick (a step copies one pixel only inside the 18 slots, about 9 per tick):
 
 ```
 [$57fec] += 1                              // ticks into the fade

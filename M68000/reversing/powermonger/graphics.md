@@ -199,7 +199,7 @@ are not measured (see "Open questions").
 sources (winter `$2e000 + $2980` = slots `0x53`-`0x64`, spring and autumn `$2080` =
 `0x41`-`0x52`, summer `$1780` = `0x2f`-`0x40`). The copy is made in one go at world
 build (`$1ab60`); after that `$1abaa` dissolves it towards the current season's
-source, 16 pixels per tick, in the pixel order of the 13-bit LCG `$57ff6`. A fade takes
+source, up to 16 pixels per tick (about 9: steps past the 18 slots copy nothing), in the pixel order of the 13-bit LCG `$57ff6`. A fade takes
 512 ticks (about 118M emulator steps in mission 1, 86M on a Play Random Land; the tick count is fixed, the cost per tick is not) and its end rotates
 `$57fd0 = ($57fd0 + 2) & 6` (`strategy.md` "What `$1abaa` actually is").
 **Proven** (SPEC §4): the port's `Season.fading` equals the whole 16 KB table byte for byte on seven
@@ -575,7 +575,7 @@ the stone border, the pre-rendered open sea and a hole where the island goes.
     $178ae  HUD group bars (food, men, the lead's health)
     $f898   re-project if camera/yaw/zoom changed; refill every island cell, sprites inline
   --- every tick (the full order is in strategy.md "Where it runs") ---
-    $1abaa  seasons and weather (dissolves the live tileset 16 px per call)
+    $1abaa  seasons and weather (dissolves the live tileset, 16 LCG steps per call)
     $17878  compass
     $165b2  minimap people dots, lead glyph
     $14b62  entity FSM      (ai.md), relinks $47970 buckets via $163ea

@@ -14,6 +14,9 @@
 00004044	pm_animals_update	# inside $3e06: the 40 animals of $4ccd6 (free walk / shore turn / herded follow). Proven (py/gate_animals.py 45094/45094)
 0000416e	pm_pigeons_update	# inside $3e06: the 48 pigeon records of $4c112 (fly, re-steer, the $41dc arrival of another lord's pigeon -> $6b38). Proven except the arrival's order effect (gate_animals.py)
 0001abaa	pm_season_tick       # orig _seasons; season fade + weather (NOT economy, NOT sound; was pm_sound_ambient): 16 steps of the 13-bit LCG $57ff6 per call copy season pixels into the live dither slots, weather via $1ad2a; entry gate $1aba0/$1ab9e is dead (rate always $100). On each LCG wrap ($1ac3c, every 512 calls = 85.7M steps on rand1, 118.4M in mission 1) it rotates $57fd0 = ($57fd0 + 2) & 6 {0,2,4,6}, clears $57fec/weather, pokes one $4d252 record and plays 4 $1ba3e cues -- so g_season / the mode-$7c gate is NOT static per mission (97th). One weather spell per season (strategy.md 'What $1abaa actually is', py/season/)
+0001ab60	pm_season_init       # orig _ginit_s: world build; copies $240 longs of the $1aba2[D0] season source into [$ff9e]+3712, clears $57ff6, calls $1ab90($100)
+0001ab90	pm_season_rate_reset # orig _season_: $1ab9e := D0, $1aba0 := 0 (callers $1ab60 and the wrap, both D0 = $100)
+0001ac3c	pm_season_wrap       # the $57ff6 LCG reached 0: rotate $57fd0, clear $57fec/weather, regrow one tree, 4 sound cues (gated: py/season/gate_1abaa.py)
 0001abc0	pm_rng_step             # $57fec++ (the season call count, used as the tick "RNG") + 16 steps of the $57ff6 season pixel-order LCG x=(x*$24a1+$24df)&$1fff
 0001aacc	dead_terrain_recolour # DEAD CODE (pm146): 128 random cells per call of colour planes $418ad/$438ee recoloured by level $4bb4c (step $4bb48, LCG $4bb4a); no caller, no pointer, 0 hits in 125M steps. Likely a snow/greening overlay
 000178ae	pm_do_bars	# _do_bar (135th): HUD bars
@@ -173,7 +176,7 @@
 00001e8c	pm_route_targetchar_tbl # $1d70: word[$1e8c + 44(member)] -> preferred terrain char ('N'/'P'/'S'/'B'/...); member byte44 must be even
 00001e9e	pm_rank_shape_tbl	# orig rank_sha (audit, 134th): its head is a 21-column signed table of the rank former $1d70; the old "route string table" reading is retired. $1d70: word[$1e9e + D1] = offset (from $1e9e) of a 'C'($43)-delimited terrain-code string; D1 = 2*(15 - highbit(word[grouprec-24]))
 00017a46	pm_show_mode_icon      # orig _show_mo. For a local-side group (owner word -48) copies the 16x6 four-plane icon modedat $184d8 + (state-1)*48 into the HUD master *($e0d4) ($78000) at byte 32 + 20k, rows 0..5. Live callcap (state 1 vs 8 give two icons; non-local groups write nothing); writes only outside the tracked regions
-000025d6	pm_add_captain         # `_add_cap...`: make the man in A1 a captain of side byte5(A1): (D3 == 2: bump the counters $12abe/$12acc), two sounds, dissolve his old group ($2776) or take 1 off his old leader's troops_field ($2644, only when he led no group), then build a new group in the side's first free sub-record; the new group's aggression rank is rand & word 12 of $580a6[side] ($275c) and its posture 3. Callers: the revolt chain $5c2c, land 25's $1618a removal path
+000025d6	pm_add_captain         # `_add_cap...`: make the man in A1 a captain of side byte5(A1): (D3 == 2: bump the counters $12abe/$12acc), two sounds, dissolve his old group ($2776) or take 1 off his old leader's troops_field ($2644, only when he led no group), then build a new group in the side's first free sub-record; the new group's aggression rank is rand & word 12 of $580a6[side] ($275c) and its posture 3; does not clear the slot's pending word 4(group), so a re-used slot inherits it (k98 watch). Callers: the revolt chain $5c2c, land 25's $1618a removal path
 
 # ---- entity FSM (ai.md) ----
 00051b66	g_object_records       # orig _peeps / _sprites; 511 x 50-byte object records, slots 1..511
@@ -277,7 +280,7 @@
 00015042	h_mode16_at_farm	# orig at_farme; the farmer at his field, not a disband (135th). entity mode $16: unit goes home -> leader.food += 2 (+2 more if order_class 8)
 
 # ---- RNG / clocks ----
-00057fec	g_tick_rng            # orig _season_: the count of $1abaa calls since the last season change (0..512), ++ in $1abc0, cleared at the season-LCG wrap; its low bits are the AI's "random" (deterministic)
+00057fec	g_tick_rng            # orig _season_: the count of $1abaa calls since the last season change (0..511 between calls; the wrap call takes it to 512 then clears it), ++ in $1abc0, cleared at the season-LCG wrap; its low bits are the AI's "random" (deterministic)
 00057ff6	g_season_lcg          # orig _seedoid: 13-bit LCG, the pixel order of the season tileset dissolve in $1abaa; its wrap rotates $57fd0 (not a sound or AI RNG)
 0002df70	g_sim_clock           # orig _game_tu; ++ each running tick
 0004bb3e	g_master_tick         # orig _frame; long master tick counter, ++ at $013034
@@ -338,7 +341,7 @@
 000021ae	_check_o	# orig T
 0000234e	_restore	# orig T
 0000238c	_setup_k	# orig T (setup_kings): per side slot, the lord ($2eac), a leader man (mode $4c) and the soldiers, $1d70, $25d6; read, not differentially tested
-00002776	_remove_	# orig T
+00002776	_remove_	# orig T; group dissolve: owner := 0 at $28ae, frees pigeons (a first group: the side's at $27c6; else those riding to its lead at $283a); leaves the pending word 4(group), which a slot re-used by $25d6 inherits
 00002906	_setup_w	# orig T
 00002a98	_its_my_	# orig T: the job pick, up to 5 rounds of shepherd 3/32, fisher 16/32, farmer 12/32, give-up 1/32, then merchant; leader -> captain. Proven (py/gate_jobs.py 3310/3310)
 00002b08	init_she	# orig T (init_shepherd, presumably): 2..5 sheep through $2d0e, mode $80, flag bit 3; refused past 38 animals. Proven (gate_jobs.py)

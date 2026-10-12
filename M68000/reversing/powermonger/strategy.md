@@ -39,7 +39,7 @@ $13096  jsr $12ce0   ; offscreen buffer -> shifter (double-buffer flush)
 $1309c  tst.w $57ff2 ; bne $130c8        ; paused -> skip the two heavy renderers
 $130a4  jsr $178ae   ; HUD group bars (food 112, men 52, the lead's health 45; callcap: 138 bytes written)
 $130aa  jsr $f898    ; terrain raster
-$130b0  jsr $1abaa   ; _seasons: dissolve the live tileset 16 px per call ($57ff6 LCG), $57fec++; weather ($1ad2a)
+$130b0  jsr $1abaa   ; _seasons: dissolve the live tileset, 16 LCG steps per call ($57ff6), $57fec++; weather ($1ad2a)
 $130b6  jsr $17878   ; compass (callcap: 51 bytes written)
 $130bc  jsr $165b2   ; minimap people dots and the selected lead's glyph (graphics.md)
 $130c2  jsr $14b62   ; << the entity iterator (ai.md)
@@ -352,8 +352,31 @@ the next"):
   `py/arms/pending_census.py` over 340 snapshots classifies 595 set pending words: 182 with a live
   pigeon in flight (the first group alive in every one), 187 waiting on a dead sender's pigeon (186
   with the first group dead), 219 with no pigeon left (201 with the first group dead) and 7 with
-  the side's pending record queued. 19 (18 without a pigeon, 1 dead-sender) have a live first
-  group and are not explained. `py/arms/pend_pigeons.py` lists the pigeons of one snapshot.
+  the side's pending record queued. The census list is every `pm148/arms/long/*_c[2468].snap` (325)
+  and `pm150/arms/pig/r1_c*.snap` (15). 157 of those snapshots (238 of the words, 112 of the
+  pigeons in flight) were taken after the game had returned to the main menu (no `$6522` in the
+  chunk that ended there), so their pigeons never move.
+
+  **A re-used group slot inherits the pending word** (a second game bug; watch-proven). The 19
+  words on sides whose first group is alive have three causes (`py/arms/stuck_classes.py`, which
+  classifies every case). Twelve (three groups, each seen in four chunks) are inherited: `$2776`
+  dissolves a group by clearing its owner word (`clr.w -48(A3)` at `$28ae`) and freeing the pigeons
+  riding to its lead (`$283a`), but leaves the pending word `-72(A3)`; `$25d6` then builds the next
+  captain's group in the first slot whose owner is 0 (lead `$2696`, sender `$269a`, owner `$26d0`,
+  words 72 and 60) and does not clear it either. The only writers of `-72(Ax)` in the text segment
+  are the clears `$4220` and `$6b20`. With no pigeon riding to the new lead the word never clears,
+  and `$6564` never offers the group to the arms again. On k98 (`watch 51a28 316` from
+  `pm148/arms/lands2/k98.snap`, 250M steps) `$683e` sets group 2's word `$51a30` to 4 at step
+  767,342,654, `$28ae` dissolves the group at 788,237,869, `$25d6` refills the slot at 793,842,718,
+  and the word takes 0 writes over the remaining 80M live AI steps; k118 shows the same refill
+  (`$6564` 2905 hits, 0 writes to `$51a2e`). Six are orders still waiting in the side's command slot
+  (`$58016 + 6*side + 1` non-zero, `$58042[side]` naming the group): two clear later in their
+  lineage, and the k52 four are frozen there because the game ended about 1M steps after `$655c`
+  queued the order. One is the dead-sender leak above on a side whose first slot `$25d6` has since
+  refilled with a new commander (k104: `$28ae` dissolves group 0 at 791,791,448, `$27c6` frees the
+  side's pigeons, `$25d6` makes a new group 0 at 829,665,988, and group 1's sender word `$51aa6`
+  still names the old commander). The census's "first group alive" test cannot see that refill.
+  `py/arms/pend_pigeons.py` lists the pigeons of one snapshot.
 
   The group's state `76()` selects the path:
 
@@ -1411,7 +1434,7 @@ rolls elsewhere.
 
 - **`$57fec`** (`_season_`) — the count of `$1abaa` calls since the last season change:
   `addi.w #$1,$57fec` in `$1abc0`, once per `$13000` call, cleared when the season LCG
-  wraps, so it runs 0..512 ("What `$1abaa` actually is"; the port's `Season.fading`
+  wraps, so it reads 0..511 between calls ("What `$1abaa` actually is"; the port's `Season.fading`
   reproduces the live tileset from steps = 16 × `$57fec`, `port/SPEC.md` §4). Every AI use
   takes low bits only: `& 1` (health recovery, `$5c80`), `& 3` (campaign sub-mode,
   `$6762`), `& 7` (a speech-line pick, `$3e06`/`$3f08`; the flapping-bird frame,
@@ -2083,16 +2106,21 @@ three off-grid values, seed `$2df84` poked per case so D3 took 2, 3, 4 and 5),
 ## What `$1abaa` actually is — seasons and weather, not economy
 
 `$1abaa` (`$130b0` in the tick) is the seasons and weather routine. It is not the
-economy/growth engine. Each tick it steps the 13-bit LCG `$57ff6` 16 times,
-copying one pixel of the season's grass patterns into the live dither slots per
-step (`port/SPEC.md` §4 "Seasons"), and runs the weather (`$1ad2a`: draws rain or
+economy/growth engine. Each tick it steps the 13-bit LCG `$57ff6` up to 16 times. A step whose
+value x has `x >> 4 < $120` (`$1ac04`) copies pixel `x & 15` of 8-byte group `x >> 4`, all four
+planes, from the season's grass patterns into the live dither slots; the other steps copy nothing.
+That is 4,607 of the 8,191 non-zero values, about 9 pixels per call (3,779 copies in 420 mission 1
+calls). Over the 512-call cycle every pixel is copied once except x = 0, the wrap value, which keeps
+its world-build colour; it is colour 2 in all four season sources (`py/season/pixel0.py`), so the
+missed pixel cannot be seen (`port/SPEC.md` §4 "Seasons"). It then runs the weather (`$1ad2a`: draws rain or
 snow with `$1a856` and counts the spell `$4bb42`/`$4bb44` down, or starts one via
 `$1ad74`; SPEC §7 "Weather"). It contains no population, food or invention maths.
 
 **Once per LCG wrap** (`$1ac3c`, when `$57ff6` reaches 0) it does three things:
 
-- **Regrows one felled tree** (`$1ac92`): it pokes one random `$4d252` (tree array)
-  record, and if its `byte7 == $d` (felled, the value mode `$44` writes at `$156d0`)
+- **Regrows one felled tree** (`$1ac92`): it pokes one `$4d252` (tree array)
+  record, number `rng % (word[$4e512] / 12)` from one draw of `$12c9a` (record 0, the dummy, can be
+  picked; an array of fewer than 12 bytes would divide by zero at `$1ac88`, code read), and if its `byte7 == $d` (felled, the value mode `$44` writes at `$156d0`)
   the tree becomes `$e + (byte10 & 3)`, a standing tree again. Live: 2 of 2 season
   wraps regrew one tree with every tree felled (`py/season/tree_weather.py felled`);
   felled trees are present in 512 of 830 snapshots, up to 80 of 299
@@ -2106,13 +2134,30 @@ snow with `$1a856` and counts the spell `$4bb42`/`$4bb44` down, or starts one vi
   settlement-heartbeat gate (economy.md §3a), so this rotation is what makes the
   heartbeat + loyalty/revolt system transiently active in mission 1 although its
   seed gives `$57fd0 = 4` at world-build.
-- Clears `$57fec` (the call count since the last change, 0..512) / `$57ff6` and
+- Clears `$57fec` (the call count since the last change: 0..511 between calls; the wrap call
+  increments it to 512 before clearing it) / `$57ff6` and
   ends any weather (`$4bb42`/`$4bb44` := 0).
 
 **Rotation rate.** A rotation is always 512 calls; the steps per call depend on
 the land. Mission 1: 118.44M steps per rotation (~231k per call, three writes
 watched). The Play Random Land snapshot `pm142/rand1.snap`: 85.7M steps (~167k per
 call; wraps at 85,853,129 and 84.7M steps in two runs, `py/season/season_run.sh`).
+
+**Proven by a differential gate.** `py/season/gate_1abaa.py` diffs a Python model of the whole
+routine (`model_1abaa.py`: the dissolve, the wrap, the weather `$1ad2a` with its rain and snow blit
+`$1a856`, the RNG, and the sample-player state that the sound calls write) against the 68000's
+callcaps (`capture_1abaa.py`), over every byte either side changes in the 1 MB:
+**1084/1084 calls, 735,679/735,679 bytes**, in four arms. The two natural arms are 420 consecutive
+calls each from `pm123/win/m1_ready.snap` (a wrap into autumn at call 174, then a 65-draw rain spell)
+and `pm142/rand1.snap` (a wrap at call 396, 128 summer start tests). The two poked arms start from
+`rand1` with `$57ff6 := $0681`: `wrapw` also sets `$57fd0 := 6`, so call 1 wraps into winter and a
+65-draw snow spell follows (240 calls); `felled` sets every live tree's byte 7 to `$d` and covers the
+regrowth (4 calls). Mirroring the pixel bit in the model fails 19 of 20 `wrapw` calls. `hits_1abaa.py`
+shows every branch ran (the wrap, the four sound calls, the regrowth, rain rows, snow rows, the start
+test, a spell's start and end) except the sample player's no-play path and the divide by zero. A wrap
+call under `callcap` spins in the sample player's `$1ae40` wait unless `$2c993` is 0 (interrupts are
+masked), so the capture reruns such a call from its own pre-state with that byte poked and marks it in
+`index.json`.
 
 #### Details of the routine
 
@@ -2130,6 +2175,9 @@ successor is 0, so the first call wraps.
   A wrap call stops at x = 0 without copying.
 - **The wrap's four sound calls** (`$1acc8`, `$1acec`, `$1ad06`, `$1ad20`: `$1ba3e`
   with ids 0, `($57fd0 >> 1) + 1`, 0, `$a`, and `$58054 ^= 5` between them; 8 hits for 2 wraps).
+  `$1ba3e` plays sample `max(id - 1, 0)`, so the season cue in winter (id 1) plays sample 0, the same
+  stop sequence (`$5896a`) as the id-0 cues; in autumn it is sample 3 (`$596fc`), and the last cue is
+  sample 9 (`$59f96`) (gated).
   `$58054` toggles between 1 and 4, and its only use is as the second argument of `$1ba3e`, which
   ignores that argument, so the toggle has no effect (code read; a literal scan, indexed accesses not checked).
   Id 0 stops the sound sequence (system.md "The sound driver is a sample player"), so only the last cue is
@@ -2140,9 +2188,13 @@ successor is 0, so the first call wraps.
   is at `$57fec` = 160 (`$1ad74` at step 25,302,965 in two runs), `$4bb44 := ($57fec & $3f) + $20 = $40` and
   the spell draws 65 times (`$1ad40` 65, `$1ad4a` 1 at step 36,808,977;
   `watch 4bb44` shows `$40`, `$3f`, ..., 0, `$ffff`). Winter gets snow, spring and autumn
-  rain, summer none (a summer start finds type 0 and retests on every call). Second-season spells
+  rain, summer none (a summer start finds type 0 and retests on each call whose count has bits `$a0` set:
+  counts 160-191, 224-255, 416-447 and 480-511, 128 of 512 calls; 128 in the `rand1` corpus). Second-season spells
   also draw 65 times by `watch`; the 66 that `hits` reports for some of them is the counter's
-  overcount when an interrupt is taken at the counted address (over 30M steps from `pm143/run/rand1_s1.snap`,
+  overcount when an interrupt is taken at the counted address (live: `s 1` from a `bpc` stop at `$1abaa`
+  enters the sample-player interrupt at `$1af32` with IPM 6, and on return `bpc` stops at `$1abaa` again 20
+  steps later with `$57ff6` and `$57fec` unchanged; 4 such re-entries in the gate's corpus, exactly the
+  excess of `hits` over distinct calls) (over 30M steps from `pm143/run/rand1_s1.snap`,
   `hits` gives `$13000` and `$1abaa` 177 each but `$1abc0` 180 and `$130b0` 178, while a `watch`
   shows 177 increments of `$57fec` at `$1abcc`, one per `$13000` call, and 1 clear at `$1ac4a`).
   Check a `hits` count against a `watch` before reading meaning into a difference of one or two.

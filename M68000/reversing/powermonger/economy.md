@@ -682,7 +682,7 @@ merchant arrival) and `$15b7a` (in the mode-`$5e` fisher arrival).
 * 2` (= 4 for mission 1's seed) and is not static: the seasons
 routine `$1abaa` (`_seasons`, `$130b0` in the sim tick) rotates it, `$1ac5e..$1ac6a` =
 `$57fd0 = ($57fd0 + 2) & 6`, cycling {0 winter, 2 spring, 4 summer, 6 autumn}, once per full 8192-iteration cycle of its 13-bit
-pixel-order LCG `$57ff6` (512 calls of 16 pixels; Hull-Dobell full period). The word is the *target* season: the live tileset then dissolves pixel by pixel
+pixel-order LCG `$57ff6` (512 calls of 16 LCG steps, about 9 of which copy a pixel; Hull-Dobell full period). The word is the *target* season: the live tileset then dissolves pixel by pixel
 into the new art over the following 512 calls. The `byte6 == 4` building/tree tile-set shifts once per rotation too.
 
 Evidence: `watch 57fd0` (`scratchpad/pm136/season/`) saw writes at steps 789,032,489 (4 → 6),

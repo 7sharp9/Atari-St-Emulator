@@ -1862,7 +1862,10 @@ stays allocated, never flies or arrives, and the receiver's pending word never c
 launch, the owner byte and the stuck pending word). Census (`py/arms/pending_census.py`, 595 set pending words of non-lead
 groups in 340 snapshots, the pm148 L2G/M2G chunks and `pm150/arms/pig/r1_c*`): 182 have a pigeon in flight (all on a side
 whose first group is alive), 187 a dead-sender pigeon (186 on a side whose first group is dead), 219 no pigeon at all (201
-likewise), 7 a queued order; 19 of the dead-sender and orphan cases have a live first group and are unexplained.
+likewise), 7 a queued order. The 19 dead-sender and orphan cases with a live first group are explained in `strategy.md`
+"The pending word": twelve are a slot re-used by `$25d6` that inherits the dissolved group's pending word (`$2776` clears the
+owner word at `$28ae` but not the pending word `4(group)`), six an order still in the command slot, one a first group that
+`$25d6` re-formed after the leak.
 `py/arms/pend_pigeons.py` lists a snapshot's groups and live pigeons. See `strategy.md` "The pending word".
 
 **`$4562` — how an order reaches a subordinate captain.**
