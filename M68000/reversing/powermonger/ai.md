@@ -847,8 +847,13 @@ comes from another attacker, in 52 of 52: from one already in melee (`$15368`) f
 chaser arriving (`$15332`) for 4 (3, 1). Each of the runs' `$5708` writes was joined to the `$56a6` call before it with the
 same man in A3, its caller read from (A7) at the stop (76 of 76, 124 of 124, the per-site split equal to a `hits` count of
 the two call sites), and each stamp to its `$5590` call (melee `$1539c` 85 and arrow `$5b58` 5 in `rand1`, melee 91 in
-`k48`; the third caller `$5a5a` 0). Two hundred steps after the stamp, 42 of the 52 still have another man in `$32` or
-`$2e` targeting them (word 48); the other 10 (all `k48`) are picked up later.
+`k48`; the third caller `$5a5a` 0). The re-engager was already on the man before the stamp, 52 of 52: his word 48 last
+named the man from `$1538e` (the man had struck him, so he struck back; 29) or from `$5350`, the end of the `$4f68`
+target pick (he chased the man; 23). Forty-eight stayed in `$32` with no mode write from the stamp to the re-engage, the
+`$15368` re-engages; the four `$15332` re-engages are chasers arriving. Two hundred steps after the stamp every
+re-routed man still has a `$32` or `$2e` man targeting him (18 of 18, 34 of 34; four `k48` stamps fall within 200 steps
+of the previous one and are dumped by a separate `bpc` run). Scripts: `py/fsm/routrun.sh` with the word-48 filter
+`46-49`, `rout_target.py`.
 
 The four escapes of the table's second row are the cases with nobody left to re-engage the man, or no reset prev. The
 two men outside a group (`rand1` `$51dbe`, `k48` `$55e96`) keep prev `$3c`, so their attackers break off at `$1534c`,
