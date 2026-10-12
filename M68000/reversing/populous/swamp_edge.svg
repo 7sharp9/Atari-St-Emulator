@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" width="700" height="400" font-family="system-ui,-apple-system,Segoe UI,sans-serif">
+<rect width="700" height="400" rx="8" fill="#fcfcfb"/>
+<text x="16" y="26" font-size="15" font-weight="600" fill="#0b0b0b">Swamp monster entry edge: the stack word at $3f418</text>
+<text x="16" y="45" font-size="12" fill="#52514e">Share of $db4c calls by value, game frames 623..1292. Real Hatari: 3258 calls over 5 cold boots; F# emulator: 670 calls.</text>
+<rect x="16" y="56" width="10" height="10" rx="2" fill="#2a78d6"/><text x="30" y="65" font-size="12" fill="#52514e">Real Hatari 2.6.1</text>
+<rect x="166" y="56" width="10" height="10" rx="2" fill="#eb6834"/><text x="180" y="65" font-size="12" fill="#52514e">F# emulator</text>
+<line x1="92.0" x2="92.0" y1="74" y2="354" stroke="#e4e3df" stroke-width="1"/>
+<text x="92.0" y="370" font-size="11" fill="#6f6e69" text-anchor="middle">0%</text>
+<line x1="230.0" x2="230.0" y1="74" y2="354" stroke="#e4e3df" stroke-width="1"/>
+<text x="230.0" y="370" font-size="11" fill="#6f6e69" text-anchor="middle">20%</text>
+<line x1="368.0" x2="368.0" y1="74" y2="354" stroke="#e4e3df" stroke-width="1"/>
+<text x="368.0" y="370" font-size="11" fill="#6f6e69" text-anchor="middle">40%</text>
+<line x1="506.0" x2="506.0" y1="74" y2="354" stroke="#e4e3df" stroke-width="1"/>
+<text x="506.0" y="370" font-size="11" fill="#6f6e69" text-anchor="middle">60%</text>
+<line x1="644.0" x2="644.0" y1="74" y2="354" stroke="#e4e3df" stroke-width="1"/>
+<text x="644.0" y="370" font-size="11" fill="#6f6e69" text-anchor="middle">80%</text>
+<text x="82" y="100" font-size="12" fill="#0b0b0b" text-anchor="end">0 (south)</text>
+<rect x="92" y="82" width="523.1" height="16" rx="3" fill="#2a78d6"><title>0 (south): 75.8%</title></rect>
+<line x1="601.4" x2="634.8" y1="90" y2="90" stroke="#0b0b0b" stroke-width="1.5"/>
+<text x="640.8" y="94" font-size="11" fill="#52514e">75.8%</text>
+<rect x="92" y="100" width="475.8" height="16" rx="3" fill="#eb6834"><title>0 (south): 69.0%</title></rect>
+<text x="573.8" y="112" font-size="11" fill="#52514e">69.0%</text>
+<text x="82" y="146" font-size="12" fill="#0b0b0b" text-anchor="end">$fd50</text>
+<rect x="92" y="128" width="82.2" height="16" rx="3" fill="#2a78d6"><title>$fd50: 11.9%</title></rect>
+<line x1="164.5" x2="184.1" y1="136" y2="136" stroke="#0b0b0b" stroke-width="1.5"/>
+<text x="190.1" y="140" font-size="11" fill="#52514e">11.9%</text>
+<rect x="92" y="146" width="110.2" height="16" rx="3" fill="#eb6834"><title>$fd50: 16.0%</title></rect>
+<text x="208.2" y="158" font-size="11" fill="#52514e">16.0%</text>
+<text x="82" y="192" font-size="12" fill="#0b0b0b" text-anchor="end">$fc</text>
+<rect x="92" y="174" width="67.6" height="16" rx="3" fill="#2a78d6"><title>$fc: 9.8%</title></rect>
+<line x1="153.0" x2="170.8" y1="182" y2="182" stroke="#0b0b0b" stroke-width="1.5"/>
+<text x="176.8" y="186" font-size="11" fill="#52514e">9.8%</text>
+<rect x="92" y="192" width="90.6" height="16" rx="3" fill="#eb6834"><title>$fc: 13.1%</title></rect>
+<text x="188.6" y="204" font-size="11" fill="#52514e">13.1%</text>
+<text x="82" y="238" font-size="12" fill="#0b0b0b" text-anchor="end">-1</text>
+<rect x="92" y="220" width="6.1" height="16" rx="3" fill="#2a78d6"><title>-1: 0.9%</title></rect>
+<line x1="95.2" x2="100.4" y1="228" y2="228" stroke="#0b0b0b" stroke-width="1.5"/>
+<text x="106.4" y="232" font-size="11" fill="#52514e">0.9%</text>
+<rect x="92" y="238" width="5.1" height="16" rx="3" fill="#eb6834"><title>-1: 0.7%</title></rect>
+<text x="103.1" y="250" font-size="11" fill="#52514e">0.7%</text>
+<text x="82" y="284" font-size="12" fill="#0b0b0b" text-anchor="end">4</text>
+<rect x="92" y="266" width="4.9" height="16" rx="3" fill="#2a78d6"><title>4: 0.7%</title></rect>
+<line x1="94.1" x2="98.3" y1="274" y2="274" stroke="#0b0b0b" stroke-width="1.5"/>
+<text x="104.3" y="278" font-size="11" fill="#52514e">0.7%</text>
+<rect x="92" y="284" width="6.2" height="16" rx="3" fill="#eb6834"><title>4: 0.9%</title></rect>
+<text x="104.2" y="296" font-size="11" fill="#52514e">0.9%</text>
+<text x="82" y="330" font-size="12" fill="#0b0b0b" text-anchor="end">other</text>
+<rect x="92" y="312" width="6.1" height="16" rx="3" fill="#2a78d6"><title>other: 0.9%</title></rect>
+<line x1="96.3" x2="99.4" y1="320" y2="320" stroke="#0b0b0b" stroke-width="1.5"/>
+<text x="105.4" y="324" font-size="11" fill="#52514e">0.9%</text>
+<rect x="92" y="330" width="2.1" height="16" rx="3" fill="#eb6834"><title>other: 0.3%</title></rect>
+<text x="100.1" y="342" font-size="11" fill="#52514e">0.3%</text>
+<text x="16" y="390" font-size="11" fill="#6f6e69">Whisker: Hatari's range over the 5 boots. Only 0 sends the monster in from the south edge.</text>
+</svg>

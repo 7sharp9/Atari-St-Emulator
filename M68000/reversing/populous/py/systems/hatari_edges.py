@@ -4,6 +4,7 @@ measured on real Hatari, as a check on this emulator's interrupt timing.
   python hatari_edges.py run [nframes] [tag] [watch-hex]
   python hatari_edges.py parse <hatari.log> [csv]
   python hatari_edges.py writers <hatari.log>
+  python hatari_edges.py chart <out.svg> <hatari.csv>... --ours <ours.csv>...
 
 run: cold-boot $POP_WORK/pop_auto.st in headless Hatari (TOS 1.00 UK, ST, 1 MB; HATARI = the binary, built per
 DEVELOPING.md "macOS"), drive it to a one-player CONQUEST game the way ../../drive.txt does (SPACE at the banner,
@@ -13,7 +14,9 @@ its unlk ($ef48): A6, A7, VBL, the word at A6-146 and the frame counter $3c4c8. 
 tag `watch` (or a watch-hex address) logs every change of that word with PC, A7, VBL, SR.
 parse: pair each entry record with its unlk record, tally the values, optional CSV.
 writers: for a watch run, classify each change as inside $db4c or between calls and tally the PCs.
-The same measurement on this emulator: swamp208.py edges <snap> <n>.
+chart: the entry values as a share of calls, Hatari (one CSV per boot, from parse) against this emulator (CSVs
+from swamp208.py edges <snap> <n> <csv>, cut to the frames the Hatari boots cover), as a standalone SVG.
+The same measurement on this emulator: swamp208.py edges <snap> <n> [csv].
 
 Hatari interface, from its source: control.c `hatari-event mousemove dx dy` is relative and ikbd.c
 IKBD_UpdateInternalMousePosition clamps the absolute cursor to 0..MaxX/MaxY, so the pointer is pinned with a large
@@ -206,6 +209,52 @@ def writers(logp):
         print(key, n, ex[key][:3])
 
 
+def chart(svgp, hatari_csvs, ours_csvs):
+    """grouped bar chart of the entry-word values (w_entry), share of calls per machine; Hatari's per-boot
+    range of each share as a whisker. Self-contained SVG on its own light surface (it is shown as an <img>)."""
+    def load(p, span=None):   # calls paired with their unlk (as parse counts); span: frames inside Hatari's range
+        rs = [r.split(',') for r in open(p).read().splitlines()[1:]]
+        return [int(r[4], 16) for r in rs if r[4] and r[6] and (span is None or span[0] <= int(r[0]) <= span[1])]
+    fr = [int(r.split(',')[0]) for p in hatari_csvs for r in open(p).read().splitlines()[1:] if r.split(',')[6]]
+    span = (min(fr), max(fr))
+    def share(ws, v):
+        n = sum(1 for w in ws if (w == v if v is not None else w not in TOP)); return 100.0 * n / len(ws)
+    TOP = (0, 0xfd50, 0xfc, 0xffff, 4)
+    rows = [(0, '0 (south)'), (0xfd50, '$fd50'), (0xfc, '$fc'), (0xffff, '-1'), (4, '4'), (None, 'other')]
+    hb = [load(p) for p in hatari_csvs]; hall = sum(hb, []); ours = sum((load(p, span) for p in ours_csvs), [])
+    W, L, R, T, RH = 700, 92, 56, 78, 46
+    H = T + RH * len(rows) + 46; pw = W - L - R; x = lambda pct: L + pw * pct / 80.0
+    S = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d" '
+         'font-family="system-ui,-apple-system,Segoe UI,sans-serif">' % (W, H, W, H),
+         '<rect width="%d" height="%d" rx="8" fill="#fcfcfb"/>' % (W, H),
+         '<text x="16" y="26" font-size="15" font-weight="600" fill="#0b0b0b">Swamp monster entry edge: the stack word at $3f418</text>',
+         '<text x="16" y="45" font-size="12" fill="#52514e">Share of $db4c calls by value, game frames %d..%d. '
+         'Real Hatari: %d calls over %d cold boots; F# emulator: %d calls.</text>' % (span[0], span[1], len(hall), len(hb), len(ours))]
+    for i, (lab, col) in enumerate((('Real Hatari 2.6.1', '#2a78d6'), ('F# emulator', '#eb6834'))):
+        S.append('<rect x="%d" y="56" width="10" height="10" rx="2" fill="%s"/><text x="%d" y="65" font-size="12" '
+                 'fill="#52514e">%s</text>' % (16 + i * 150, col, 30 + i * 150, lab))
+    for g in range(0, 81, 20):
+        S.append('<line x1="%.1f" x2="%.1f" y1="%d" y2="%d" stroke="#e4e3df" stroke-width="1"/>' % (x(g), x(g), T - 4, T + RH * len(rows)))
+        S.append('<text x="%.1f" y="%d" font-size="11" fill="#6f6e69" text-anchor="middle">%d%%</text>' % (x(g), T + RH * len(rows) + 16, g))
+    for k, (v, lab) in enumerate(rows):
+        y0 = T + k * RH
+        S.append('<text x="%d" y="%d" font-size="12" fill="#0b0b0b" text-anchor="end">%s</text>' % (L - 10, y0 + 22, lab))
+        for j, (ws, col) in enumerate(((hall, '#2a78d6'), (ours, '#eb6834'))):
+            p = share(ws, v); yb = y0 + 4 + j * 18
+            S.append('<rect x="%d" y="%d" width="%.1f" height="16" rx="3" fill="%s"><title>%s: %.1f%%</title></rect>'
+                     % (L, yb, max(x(p) - L, 1), col, lab, p))
+            lx = x(p) + 6
+            if j == 0:
+                per = [share(b, v) for b in hb]; lo, hi = min(per), max(per)
+                S.append('<line x1="%.1f" x2="%.1f" y1="%d" y2="%d" stroke="#0b0b0b" stroke-width="1.5"/>' % (x(lo), x(hi), yb + 8, yb + 8))
+                lx = max(lx, x(hi) + 6)
+            S.append('<text x="%.1f" y="%d" font-size="11" fill="#52514e">%.1f%%</text>' % (lx, yb + 12, p))
+    S.append('<text x="16" y="%d" font-size="11" fill="#6f6e69">Whisker: Hatari\'s range over the %d boots. '
+             'Only 0 sends the monster in from the south edge.</text>' % (H - 10, len(hb)))
+    S.append('</svg>')
+    open(svgp, 'w').write('\n'.join(S) + '\n'); print('wrote', svgp)
+
+
 if __name__ == '__main__':
     a = sys.argv[1:]
     if a and a[0] == 'run':
@@ -216,5 +265,7 @@ if __name__ == '__main__':
         parse(a[1], a[2] if len(a) > 2 else None)
     elif len(a) >= 2 and a[0] == 'writers':
         writers(a[1])
+    elif len(a) >= 4 and a[0] == 'chart' and '--ours' in a:
+        k = a.index('--ours'); chart(a[1], a[2:k], a[k + 1:])
     else:
         sys.exit(__doc__)

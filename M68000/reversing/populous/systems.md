@@ -114,12 +114,15 @@ Both callers push only the type word, so `edge` is whatever the caller has in th
   | run | calls | 0 (south) | other values |
   |---|---|---|---|
   | this emulator, `ai/cg2.snap` + `ai/cg1.snap` | 2000 | 1373 (68.7%) | 1 once; `$fd50`, `$fc`, -1, 4, `$302`, ... |
-  | this emulator, fresh cold boot, one-player CONQUEST (`swamp208.py edges`) | 1000 | 704 (70.4%) | `$fd50` 139, `$fc` 136, -1 10, 4 8 |
-  | real Hatari 2.6.1, five cold boots, same game (`hatari_edges.py`) | 3075 | 2335 (75.9%; 74.7-77.1% per boot) | `$fd50` 364, `$fc` 293, 4 29, -1 24, 3 7, 1 6, ... |
+  | this emulator, fresh cold boot (`repro.snap`), one-player CONQUEST (`swamp208.py edges`) | 3075 | 2151 (70.0%) | `$fd50` 440, `$fc` 404, -1 36, 4 32, `$1802` 3, `$4d2` 3, ... |
+  | real Hatari 2.6.1, ten cold boots in two sets of five, same game (`hatari_edges.py`) | 6333 | 4805 (75.9%; 73.8-78.7% per boot) | `$fd50` 752, `$fc` 612, -1 53, 4 52, 3 21, ... |
 
   The values are the same family on both machines, so the mechanism is the game's, but the south share
-  depends on the interrupt mix and this emulator's is about 6 points low (69.0% against 73.9% over the
-  frames both cold-boot runs cover). The word is unchanged within the call on this emulator (2000/2000, 1000/1000); on Hatari it
+  depends on the interrupt mix. Over the frames the second Hatari set covers (623..1292), this emulator
+  gives 462/670 = 69.0% against Hatari's 2470/3258 = 75.8%, below every one of the five boots
+  (73.8-78.7%); the missing share goes to `$fd50` (16.0% against 11.9%) and `$fc` (13.1% against 9.8%).
+  This emulator is deterministic from a cold boot (`repro.snap` reproduces byte for byte), so its one
+  run is the whole of its distribution. Chart: `swamp_edge.svg` (`hatari_edges.py chart`). The word is unchanged within the call on this emulator (2000/2000, 1000/1000); on Hatari it
   is too whenever a third breakpoint is set, and only the two-breakpoint runs report mid-call changes,
   which no handler's stack frame can make (read as a debugger artefact, inferred; the script's
   docstring has the counts). So the swamp monster enters on the south edge about three times in four
@@ -342,7 +345,7 @@ frame (`Program.fs` `timerAPeriod`, a documented stub), so every sound plays at 
 | `trail_ref.py` | model of `$12f84`, `$13372`, `$18198`, `$10068` (walkers) |
 | `trail_diff.py [N] [seed]` | callcap corpus, 400/400 + 400/400 |
 | `trailrun.py [frames] [type]` | live spawn + per-frame diff from `spawn.snap` |
-| `hatari_edges.py run\|parse\|writers` | the `$db4c` edge word on real Hatari from a cold boot (1.3); `swamp208.py edges` is the same on this emulator |
+| `hatari_edges.py run\|parse\|writers\|chart` | the `$db4c` edge word on real Hatari from a cold boot (1.3); `swamp208.py edges` is the same on this emulator |
 | `protect.py` | key checks, natural and forced |
 | `pause.py` | pause, 40/40 |
 | `lolo.py`, `fat12.py` | save layout vs LOLO1.GAM; FAT12 lister |

@@ -70,12 +70,13 @@ def poke(snap, name):
     r.close()
 
 
-def edges(snap, n):
+def edges(snap, n, csvp=None):
     """the word $13372 would take as its edge from $e89c: -146(A6) of $db4c, read at entry ($db50)
-    and at the unlk ($ef48) of the same call, over n frames."""
+    and at the unlk ($ef48) of the same call, over n frames; csvp: one row per call, columns as
+    hatari_edges.py parse writes (no VBL or A7 here: those columns are empty)."""
     import collections
     r = Repl2(snap)
-    seen = collections.Counter(); same = 0; f = 0
+    seen = collections.Counter(); same = 0; f = 0; rows = []
     for f in range(n):
         _, regs = r.cmd('u db50 20000000')
         if regs.get('PC') != 0xdb50:
@@ -88,6 +89,9 @@ def edges(snap, n):
         assert regs['A6'] - 146 == a, regs
         w1 = rw(r.mem(a, 2), 0)
         same += w0 == w1; seen[w0] += 1
+        rows.append('%d,,%x,,%04x,,%04x' % (rw(r.mem(0x3c4c8, 2), 0), a + 146, w0, w1))
+    if csvp:
+        open(csvp, 'w').write('frame,vbl_entry,a6,a7_entry,w_entry,vbl_unlk,w_unlk\n' + '\n'.join(rows) + '\n')
     print('%s: %d frames to frame %d, word at $%x unchanged through $db4c %d/%d; values %s'
           % (os.path.basename(snap), f + 1, rw(r.mem(0x3c4c8, 2), 0), a, same, f + 1,
              ', '.join('%04x x%d' % kv for kv in seen.most_common())))
@@ -96,7 +100,7 @@ def edges(snap, n):
 
 if __name__ == '__main__':
     if sys.argv[1] == 'edges':
-        edges(os.path.abspath(sys.argv[2]), int(sys.argv[3]))
+        edges(os.path.abspath(sys.argv[2]), int(sys.argv[3]), sys.argv[4] if len(sys.argv) > 4 else None)
     if sys.argv[1] == 'poke':
         poke(os.path.abspath(sys.argv[2]), sys.argv[3])
     if sys.argv[1] == 'run':
