@@ -1,128 +1,48 @@
 # PowerMonger: handoff
 
-Updated 2026-10-12 by the 159th session (`6fe45f6` .. `064e91d`; emulator `dcac71b`, `a6eb21d`; CLAUDE.md/skill `309f102`, `68ff9c3`), after the 158th (`74b1ea0` .. `7ad8719`).
+Updated 2026-10-13 by the 160th session (`aa19f3b` .. `a0ddb87`; CLAUDE.md/skill `2fdf420`), after the 159th (`6fe45f6` .. `43eccbb`).
 
 ## Resume point
 
-- Last commits of this workstream: `6fe45f6` (port tree birds), `dcac71b` (68k `BitOp` vector 4), `75d3870` (SPEC), `a6eb21d` (FDC write-protect tab), `963f7a6` (FORMAT write-protect live), `064e91d` (README Bug 7), then the handoff commit.
-- `bin/Debug/net8.0/M68000.dll` is this session's build (`a6eb21d`: `BitOp` traps and `wprot`). The pre-`BitOp` DLL is at `scratchpad/pm159/net/oldbin/`.
-- The infographic of the simulation's layers is a private claude.ai artifact (https://claude.ai/artifact/4kLf1iHgF67yKHRoGNANSQ, source `scratchpad` of session 159, not in the repo).
-- Working data: `M68000/scratchpad/pm159/` (gitignored): `tree/` (the screen-word watch of the control frame), `before|after/xcheck` (run.sh before and after the birds), `net/` (regression-net snapshots), `bomb/` (bomb_check reruns), `wprot/` (format_wprot.sh arms, `wp_ask.png`). `scratchpad/pm158/`: `rout/run/{k48t,rand1t}.*` (`routrun.sh ... 46-49` watches with word 48), `rout/caller/k48.fill` (the four skipped k48 stamps), `pending/runs/k112*`, `k96*` (revived and `_g0` watches), `modes66/run/b2_*` (the wait sweep). `scratchpad/pm157/`: `overlay/cap/` (byte6 36/38/42 captures, `_trap`/`_bomb` snapshots), `rout/caller/` (`rand1`/`k48` `.hits`, `.calls`, `.rout`, `.after`), `k25/` (home-settlement watches). `scratchpad/pm156/`: `BRIEF.md` (reusable agent brief), `agents/<area>/report.md`, `rout/run/` (the `routrun.sh` watches the rout scripts join against), `modes66/`, `pending/`, `overlay/`, `regate/`. Older: `pm155/minimap/`, `pm154/` (frames, Ruin, FORMAT), `pm118*/`, `pm119/`, `pm8x_*`, `pm9x_*` (streamed from gpubox), `pm150..153/`.
+- Last commits of this workstream: `aa19f3b` (sound slot), `b69fa6e` (`$c5ee`), `fba2240` (ack pick), `57121c2` (click timing), `ae21d9e` (`$04` by pigeon), `6bf245a` (Stock rows), `5b00a2a` (dialog ids), `8c52729` (`$1ac88`), `a0ddb87` (digest), then the handoff commit.
+- `bin/Debug/net8.0/M68000.dll` is the 159th session's build (`a6eb21d`); no emulator change this session.
+- Working data: `M68000/scratchpad/pm160/` (gitignored): `snd/` (dispatcher censuses, `lit.txt` and `drawscan.txt`: snapshots with a lit fire and which draw it), `xfer/` (click-timing arms, the `from1*.repl` drives), `ui/` (`req_panels.out`), `dlg/` (`dlg_ids.out`). Older: `pm159/` (`tree/`, `net/`, `bomb/`, `wprot/`), `pm158/`, `pm157/`, `pm156/` (`BRIEF.md`, the reusable agent brief), `pm150..155/`, `pm148/` (the long chunk series), `pm142/`, `pm143/`, `pm123/`.
 - Start from:
-  - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains.
-  - `pm143/run/rand1_s1.snap`: the FILE-panel drives.
-  - `pm150/saveload/out/file.snap`: FILE panel open, slot A selected (`format_proof.sh`, `format_sure.sh`, `roundtrip.sh`).
-  - `pm123/win/m1_ready.snap`: mission 1 conquered.
+  - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains (UI drives, dialog census).
+  - `scratchpad/pm148/arms/sheep/k120_tree_c1.snap`: lit camp fire in view, sound slot empty.
+  - `pm150/saveload/out/file.snap`: FILE panel open, slot A selected.
+  - `pm123/win/m1_ready.snap`: mission 1 conquered (`sndpost.repl`, `req_panels.py`).
   - `pm88_f1.snap`: mission 1 at the port's pose; clear its stuck `$2c993` first (Known traps).
 - Uncommitted work left behind: none from this workstream. Not this workstream's: `.obsidian/`, `Cadaver/`.
 
 ## Proven so far
 
-Older gates carry over unchanged; the list is in `strategy.md`, `ai.md` and `economy.md`, with reruns from the `py/README.md` table. A sample: entity FSM `py/fsm/repro93..97.py`, `diff_pm99.py` 1847/1847, `gate_orders.py` 61143/61143 over 2273 states, `gate_pop.py`, `gate_equip.py`, the commander AI `py/cmdai/` 323/323 + 280/280, `gate_fsm15.py` 18452/18452, `py/season/gate_1abaa.py` 1084/1084 calls.
+Older gates carry over unchanged; the list is in `strategy.md`, `ai.md`, `economy.md`, `system.md`, `graphics.md` and `port/SPEC.md`, with reruns from the `py/README.md` table (entity FSM `py/fsm/repro93..97.py`, `diff_pm99.py` 1847/1847, `gate_orders.py` 61143/61143, commander AI `py/cmdai/` 323/323 + 280/280, `gate_fsm15.py` 18452/18452, `gate_proj.py` 5082/5082, `py/season/gate_1abaa.py` 1084/1084, the overlay and xcheck runs of `py/xcheck/`).
 
-New in the 159th pass:
+New in the 160th pass (Open 4 closed):
 
-- **Birds over a tree** (`port/SPEC.md` §6 "Birds over a tree"): a byte6 4 record with `record[7]` bit 7 (not the bare `$0d`) gets five `$11f82` birds at zoom <= 5, frame `$127 + ($57fec & 15)/2`, on a diagonal offset by the RNG seed words `$2df84`. Found by a screen-word `watch` of the overlay checks' control frame. The port (`Sprites.fs`, `EntityCtx.Seed`), `pm_render_ref.py` and `pm_export.py` draw/export them; the control frame's misses 22 -> 0 (wrong seed or frame 24-31); `pan_w` 99.64 -> 99.78%, every other `py/xcheck/run.sh` number unchanged; overlay cases unchanged with 0 excluded px; stepper 23/23 on both asset sets; Godot builds; walkthrough verifies.
-- **Unassigned bit-op encodings take vector 4** (`dcac71b`): `BitOp` traps on An (static), and mode 7 past abs.l (BCHG/BCLR/BSET), PC-indexed (static BTST) or `#imm` (dynamic BTST). Net: verify PASS, diskless 30M identical, selftest 0 wrong 9 skip (bit-op files unchanged). `bomb_check.sh` 3/3 as before up to `$20`; `$08fc` there now re-enters vector 4 (garbage vector `$04fc0a1a`) and loops back to `$20` in 148 steps. README Bug 7.
-- **FORMAT's write-protect requester is live** (`a6eb21d`, `py/saveload/format_wprot.sh`): REPL `wprot on` makes the FDC refuse Write Sector/Track with WPRT and INTRQ (Hatari `fdc.c`). The first Write Track is refused, `$1bf04` asks IS IT WRITE PROTECTED ? once (frame rendered); OK with the tab off retries and formats (80 Write Tracks + ID sector); CANCEL runs `$1beec`, 0 writes. Net: diskless 30M and `rand1` +30M identical. system.md "The save-disk code".
-
-Carried from the 158th pass:
-
-- **Every re-engager was already on the routed man** (`py/fsm/rout_target.py` over `routrun.sh <snap> <tag> 100000000 46-49`): his word 48 last named the man before the stamp, 52/52 (`$1538e` retaliation 29, `$5350` the `$4f68` pick's chase 23); 48 stayed in `$32` with no mode write to the re-engage (the `$15368` ones), the four `$15332` ones are chasers arriving. A `$32`/`$2e` man is on every re-routed man at +200 steps, 18/18 and 34/34. The 157th pass's "10 k48 men with nobody on him" was an artifact: `rout_caller.sh`'s `s 200` loop skipped 5 of 89 k48 stamps and `rout_after.py` paired dumps by index; it now pairs by step, and `rout_caller.sh ... fill <i>...` dumps the skipped ones. ai.md "`$5590`, outcomes".
-- **The frozen revived words are watched live** (`py/arms/revived/watches.sh k112 k96`, `g0own.sh k112 k96`): both games end inside chunk 1, so the 18 frozen words are copies of three live ones (k112 side 2 group 1, k96 side 4 groups 1 and 2). k112: `$55f2` kills `$5417c` at 714,966,150, `$28ae` clears the owner word 5,230 steps later, `$4258`/`$42ac` revive him 143.1M later on side 3 (from 2); k96: `$54d66` killed at 723,779,890, cleared 8,384 later, revived 54.7M later on side 4. Nine lineages watched. strategy.md "The pending word".
-- **No unaided `$66` in a pre-click wait sweep** (`py/fsm/m66/batch2.sh`): k56 (26,28) and k80's two sheep sites, waits 0 to 20M, 40M steps each: 8 of 15 runs chase, 11 to 14 of 14 chasers water-vetoed, 0 arrive as `$66`, the four k80 arrivals come as `$20`. ai.md the `$36` row.
-
-Carried from the 157th pass:
-
-- **Byte6 36/38/42 crash the game with four TOS bombs** (`py/xcheck/overlay/bomb_check.sh`, from the `run_cases.sh` captures): the word `$0608` at `$11640` takes vector 4 108,268 steps after the frame driver; TOS's handler writes `$380 = $12345678`, `$3c4 = 4` and four bombs at row 100 of the game's screen (481 of 512 bytes changed), then returns into the vector table at `$20`, where `$08fc` re-enters vector 4 (159th pass; Open 2 for what a real ST does next). 3/3, end states equal apart from the poked byte. port/SPEC.md §6.
-- **Who re-engages a re-routed man** (`py/fsm/rout_caller.sh`, `rout_caller.py`; joins against `pm156/rout/run/`): never the striker, 52/52 (`$5590` returns to `$153a2`, which sets the striker to `$2c`); `$15368` (melee) 48, `$15332` (`$2e` arrival) 4; every `$5708` write joined to its call, 76/76 and 124/124, per-site split equal to `hits`. `$5590` callers: melee `$1539c` 85 + arrow `$5b58` 5 (`rand1`), melee 91 (`k48`), `$5a5a` 0. The four escapes: two non-group men recalled while prev `$3c` (`$357e`, `$38c0`), one group member routed by an arrow with nobody on him, one by a lone striker. ai.md "`$5590`, outcomes"; README digest corrected.
-- **k25's revived commander follows his home settlement** (`py/arms/revived/home_side.sh`): `$50468` revolts 4 → 2 (`$5538`, 787.6M) before the revival copies its side at `$42ac`, and 2 → 3 (960.65M), which he adopts at `$16874`; word 34 unchanged. strategy.md "The pending word".
-
-Carried from the 156th pass (four agents, every headline rerun from the promoted path):
-
-- **Rout stamps that never arrive are re-routes** (`py/fsm/routrun.sh` + `rout_fate.py`). A routed group member is unlinked, `$3c08` resets his prev 41-145 steps later, which drops the `$1534c` break-off mark; `$56a6` re-engages him (`$5702`/`$5708`, `$32`) and `$5590` routs him again: 18 of 18 (`rand1`) and 34 of 34 (`k48`), second stamps arrive as `$3c` 52/52, 0 died, 0 run end. Reproduces 44/23/3/18 and 89/54/1/34. ai.md "`$5590`, outcomes".
-- **No unaided `$66`** (`py/fsm/m66/`): 0 arrivals over 22 runs (L2G_k108's only natural `$5100` chase rerun under a watch; 11 sheep-click chases) and the pm148 long pool (130G live steps). Bound by the code: a Boat-less follower goes `$0a` → `$08` (`$14e36`); the vetoed lead walks to the order cell, unreachable for an island sheep (k56 click (26,28): 115M steps in `$48`); the camp rewrites the prev before a Boat man lands. ai.md the `$36` row.
-- **The last 99 pending words are revived senders** (`py/arms/stuck_classes.py` class `revived`, `py/arms/revived/watches.sh`): the dead commander's corpse is brought back by the slot-0 pigeon landing `$4244` (`$4258` neg side, `$42ac` side := home settlement's), so the dead-sender test sees a live record. 51 revived/seen, 48 revived/unseen (30 live, 18 frozen); 0 of 406 unknown. All 7 unseen lineages watched; k104's `-4` launch (`$45a8` `$fc` at 794,192,700) and k4's inheritance (0 writes in 170M) watched. strategy.md "The pending word".
-- **Port overlays and byte6 18/28/34 match the game under labelled pokes** (`py/xcheck/overlay/run_cases.sh`, `score_cases.sh`, from `pm88_f1`): plough 16/16 px, siege `$e..$11` walking 98/98, 22/22, 38/38, 50/50, in melee 65/65, 32/32; byte6 18 15/15, 28 18/18 and 20/20 (negative side), 34 19/19; wrong-frame controls 0-34 of the same pixels. `Sprites.fs` gained 18 (`$11c36`) and 34 (`$11ab8`) and a signed 28 test (`$11b14`). Byte6 36/38/42 jump into the dispatch table and crash the game (157th pass, above). `tools/pm_render_ref.py` draws melee: blits 17/17; quad 4/4, ent 3061/3061, baseline, score.fsx 14 frames unchanged; stepper selfcheck 23/23 on both asset sets. port/SPEC.md §6.
-
-Carried from the 155th pass:
-
-- **The minimap is baked, never tinted, and shows no ownership.** `$107d6` runs only from the land build, the mode-strip click, `click_pr` and `_draw_ca` (from `_add_cap`/`_remove_` when the captain is on the player's side `$57ffe`); modes 0 and 2 stay exact, mode 3 (lord supply) goes stale: on `k60_s1` a strip click bakes mode 3 once, then 50M steps run with 0 bakes, the picture unchanged and 38 of 8064 pixels off a fresh bake (`py/maps/minimap_stale.py`). An AI-to-AI revolt does not re-bake. graphics.md "The minimap and the conquest map".
-
-Carried from the 154th pass:
-
-- **Every graphics cross-check of the port reruns from the repo**: `py/xcheck/run.sh` (port/SPEC.md "Re-running the cross-checks"). Synthetic quadrant walks 4/4 identical (1020 px each); synthetic blits 12/13 (the melee case differs by design: the port draws `$11c8a`, `pm_render_ref` skips it); real record stream 3061/3061, superseding the first run's 2881 (the current output matches the game's screen at 1889 px against 1182); baseline 162/162; the §6 draw-order table reproduced; `score.fsx` on 14 frames 99.64-99.99% (`pm78_settle` 94.62%).
-- **Two exporter gaps fixed**: `dump_frame.py` now exports the 32x32 sheet (zoom 1-3: 95.02-99.06% -> 99.79-99.91%, same frames), and `pm_render_ref.load_ram` walks the `2*[$fdec]` window instead of a fixed 11x11 (zoom 7 95.86 -> 99.89%, zoom 6 98.74 -> 99.93%). Zoom 1-7 terrain away from sprites 99.78-99.95%, sprites 98.2-100%.
-- **The port draws Ruins** (`$117e4`: frame `$0a` plus the `$119b2` overlay, frame `word[12] mod 10`, top rows cut by `record[16]`). Mission 1 on each Ruin 98.31 -> 99.82% and 98.41 -> 100.00%; the overlay at counters 70 and 100 752/752 and 783/783 px, with wrong-frame and no-overlay controls at 97.68-98.27% (`py/xcheck/ruin_capture.sh`). `EntityRec` gained `B16`/`W12`; both `entities.json` patched from their source RAMs; stepper 23/23 on both asset sets, Godot builds, walkthrough verifies.
-- **Pending census over live play only** (`pending_census.py` skips frozen chunks, `--all` keeps them): 357 words in 183 snapshots, 70 flying, 142 dead-sender, 141 orphan, 4 queued. 11 of the 12 "inherited" words on live-commander sides were frozen post-game RAM; live play has 1 there plus 8 on dead-commander sides. strategy.md "The pending word", README bugs list, `fig/order_pipeline`.
-- **FORMAT's ARE YOU SURE is live** (`py/saveload/format_sure.sh`): with the game disk in, `$1bd38` finds it and `$1bec2` asks; CANCEL runs `$1beec` with no write, OK formats it (80 Write Track commands). system.md "The save-disk code".
-
-Carried from the 153rd pass:
-
-- **`$1abaa` (seasons and weather) is gated.** `py/season/gate_1abaa.py` diffs `model_1abaa.py` (dissolve, wrap, weather, rain and snow blit, tree regrowth, sample-player state) against callcaps over every changed byte of the 1 MB: **1084/1084 calls, 735,679/735,679 bytes** in four arms (m1 420, rand1 420, wrapw 240 and felled 4 under labelled pokes), rerun from fresh captures at the promoted path. A call copies about 9 pixels, not 16 (`$1ac04`: steps with `x >> 4 >= $120` copy nothing); winter's season cue is the stop sequence. strategy.md "What `$1abaa` actually is".
-- **Inherited pending words, a second pigeon-path bug** (watch-proven on k98 and k118). `$2776` dissolves a group without clearing its pending word, and `$25d6` builds the next captain's group in that slot without clearing it; the new group is never ordered. In live play it accounts for 9 stuck words (1 on a live-commander side, 8 on dead-commander sides; the 154th pass's frozen filter). strategy.md "The pending word", README bugs list.
-- **Mode-graph loose ends** (`py/fsm/mode_write_scan.py`, whole image). Nothing writes `$04`, `$64` or `$70`. `$66` is entered only through the `$161f0` water veto (a `$36` step onto water, then a `$10` arrival copies prev `$66`); live 1 of 1 under a one-byte prev poke, 0 unaided in 6 x 200M steps; `fsm_army` gains the dashed edge `$36 -> $66`. `$3c74` is unreached behind a `nop` (an inferred patched `bra.s`; 0 hits in 4.1G steps; reached under `w 3c10 6e026060`). A routed group member enters `$3c` only after a second rout (156th pass, above). ai.md, `fig/fsm.facts.md`.
-
-Carried from the 152nd pass:
-
-- **The emulator runs the game's own FORMAT** (`8fd3fe4`). `LoadDiskA` uses Hatari's geometry rule (BPB only when its total sectors match the file, else from the size), and Write Track on an `.ST` parses the ID and data fields into sectors. `py/saveload/format_proof.sh` on a zeroed disk: 80 Write Track commands, 10 sectors each, 0 skipped; SAVE A, then SAVE A again shows OVERWRITE? (`$1bed4` 1 hit), OK saves; LOAD A equals the second save in **101,376/101,376** bytes (the saves differ in 2,048). Regression net: verify PASS, diskless 30M identical, selftest 0 wrong 9 skip, `rand1` +30M and six `rt3` round-trip snapshots identical to the old build; the `pm147` save disk goes from 3 failed reads to 0. system.md "The save-disk code", README "Bug 6".
-
-Carried from the 151st pass:
-
-- **`$5778` on a group 0 costs the escort** (`py/cmdai/ab_5778.py` reverse mode `snap:s:k:val`, 200M steps, one word poked): `X10G_k25_c1` side 3 escort 46 → 0, attack 0 → 7, kills 0 → 18; `M2G_k14_c3` side 4 escort 247 → 0, attack 0 → 3; the third case's group never decided (2 bytes differ). The freed groups attack instead of escorting. No natural state combines it (k25 side 2's group 0 holds an offset for 10G steps but its only other group dies fighting). strategy.md "What the overwrite costs".
-- **A drained side still attacks before it transfers** (by the gated predicate): the transfer needs a `D7 != 0` group of 1 to 4 men, which comes from a defector when the AI side *gains* a lord, or a land with no weak enemy lord. `$6522` has no lord test. Unaided `rand1` 1G: `$668c` 0, side 3 takes 13 of 14 lords. strategy.md "Why a drained side is not enough".
-
-The 150th pass's results (all still current; detail in the topic docs):
-
-- **Gate results**:
-  - `py/gate_proj.py`, with `$1b8c` and `$2776` wired into `kill_rout_5590` (`tools/pm_fsm_ref.py`): 473 states, 5082/5082 with `synth noscreen`; 464/4509 without the lead kills. Nothing is excluded now.
-  - `gate_fsm15.py nat` (the natural `$36`/`$38`/`$3a` entries): 822/822 over 99 states.
-  - `py/arms/gate_nat_arms.py`: 6/6 states, 28/28 bytes. All five natural `$668c` hits are examined: k25 and k8 take the small-group route; k106, k34 and k50 the large-group route with no target left.
-  - `py/cmdai/gate_party_class.py` (`$4de2`): 468/468, rerun fresh by the orchestrator.
-- **Opponent class.** `280()` (group +204) is the opponent class, not a phase: 2 lord, 4 group, 6 lone man, 8/`$a`/`$c` other. `292()` is the opponent offset. `$5778` overwrites the class with an entity offset, a game bug: live 1/1; an A/B over 8 cases changed 1 posture (`py/cmdai/ab_5778.py`).
-- **Stuck pending words are a game bug** (watch-proven). When a side's first group dies, `$2776` frees its pigeons at `$27c6` without clearing the receivers' pending words; `$4562` then copies the dead sender's negative owner byte (`$45a8`), and `$3e06` skips owners <= 0 (`$417a`). Census by `py/arms/pending_census.py`: 595 pending words, 187 dead-sender, 219 orphan.
-- **Second captain, live** (`py/captain2/`, `pm142/rand1`).
-  - The pigeon order: `$4562` 1 hit; it lands about 9.97M steps later; posture 3 → 2.
-  - The pigeon icon is drawn at (71+40j, −4) in the status strip.
-  - `$04` transfer: 13 → 7 / 0 → 6, with 6 `$1c04`/`$1c96` pairs.
-  - The icon-floor table entries are `$135fc`, `$1361e`, and so on: the old doc addresses were 2 too high.
-- **SAVE/LOAD, live** (`py/saveload/`). A round trip matches 101,376/101,376 bytes, and a LOAD replaces the whole land. It keeps the destination's clock and restores the camp stamps, so the first `$65b4` comes at clock = min stamp + 20: predicted 2108, observed at 276,745,802 steps.
-- **External claims.**
-  - Deforestation does not change the weather (3 arms, `py/season/tree_weather.py`), and felled trees regrow one per season.
-  - Posture picks the woodcutters' goods at `$5fa0` (`py/orders/posture_work.py`), but plays no part in alliance acceptance (6/6); it only picks the verb.
-  - Men stall at coasts: there is no pathfinding (`py/fsm/stuck_census.py`).
-- **Code read plus live.**
-  - Requesters, the line editor and Modem Message, and the radios (`py/ui/req_panels.py` 7/7, `py/link/radio.repl`).
-  - HUD bars, the `$17a46` mode icon, and sound-ack events 31..36 (`py/ui/sndpost.repl`).
-  - Format `$1ba72` (code read).
-  - Camp marker frames (`camp_fire_frames.png`).
-  - The finale is a crowning: 7/7 frames rebuilt (`py/season/finale_delta.py`, `finale_crown.png`).
-  - `$58054` has no effect.
-  - A spell draws 65 times.
-  - The link-rebuild causeway comes from `$2266` `_setup_p`, which gives a linked side a random start plus a road (a REPLAY MAP control paints none).
-  - The Ruin is kind `$0a`, placed by the town layouts at `$302a`.
-- **Doc corrections.**
-  - Mode table: 74 entries, `$00..$92`.
-  - `$168ee` is the walk-path table `_flights`.
-  - `$1c390`/`$1c340` are serial.
-  - `$550e`: 10 heartbeat / 17 conquest calls.
-  - Mission 1 loyalty starts at 608 and the first winter revolts to the same side.
-  - Sprite categories run 0..`$2c`.
-  - The fill reads two colour planes.
-  - The text segment is `$10a6..$1c48a`.
-- **Figures.** `fig/` holds eight SVGs, each with a `.facts.md`, placed in strategy.md, ai.md and economy.md (README files table). The two mode graphs are generated from the code by `py/fsm/mode_edges.py`.
+- **The sound slot** (`py/ui/snd_slot.sh`, strategy.md `$127e6`): one slot `$58058`, entries 5..63 scanned, the second-best never used; a same-id flag-`$20` sound is not restarted, and `$1ba3e` drops the flags, so it plays once. Event 17 (camp fire) pending and chosen 60/60, played once, 158 of 160 later dispatches skip it, replayed after event 20 displaced it. README bug list.
+- **`$c5ee`** (strategy.md panel table, `py/ui/req_panels.py` 8/8): D0 = the side that is not the local one, hooks `$c628`; "The alliance between A and B is broken may a million fleas infest your undergarments."
+- **Order-ack pick** (`py/ui/sndpost.repl`, strategy.md `$6e6e`): `31 + (state + first_man) mod 6`, so it keeps the state's parity; live 1/1 (state 7, object 47, event 36).
+- **Clicks seen twice** (`py/captain2/xfer_timing.sh`, strategy.md tick tail): the press stamp `$2df74` and the per-pass clock `$1302e` let a press landing before the UI sections act on two passes (about 177k of a pass's 177.5k steps); poked before `$130fc`: `$133d4` 2, `$04` then `$22` (dropped); at `$1373c`: 1, `$04` only. The game's, not the emulator's.
+- **`$04` from a subordinate goes by pigeon** (`py/captain2/xfer_pigeon.repl`): `$4562` takes the local slot, `$1c18` 9.99M steps later from the executor (`$6bba`) with 1, 2, 0.
+- **House Stock rows** (`py/ui/gate_panels.py`): 103/103 with Stock compared (19 houses with stock), 4/4 with poked goods; the model's item-name offset was wrong (+18, the code reads +19).
+- **Dialog buttons** (`py/ui/dlg_ids.py`): 17/17 by `callcap` through a frame stub; MULTI PLAY and PAUSE leave the panel open.
+- **`$1ac88` cannot divide by zero in play** (strategy.md, tree regrowth): every writer of `$4e512` and every caller of the clear listed.
 
 ## Open, in priority order
 
-1. **Port residue.** The port tests `record[44] >= $e` unsigned where the game is signed (differs only for `>= $80`, never written). Natural byte6 18, 28 and the overlays are still unseen in play (36/38/42 crash the game, so a natural one would be a visible bug). The camp-marker frame `$111` from `$117b0` has not been captured. The birds sit still in the port because its seed is a constant from the export; whether the game's seed moves in long play (it did not over 2M steps) decides whether the port should advance it: `watch 2df84 4` over a long run.
-2. **Emulator gap: no bus error on an unmapped write** (not this workstream's alone). After the byte6 36 bombs, the vector-4 entry stacks at SSP `$4e73203c` (`$73203c` on the 24-bit bus, past the 1 MB of RAM); a real ST should bus-error into a double fault and halt (inferred), the emulator keeps looping. A fix belongs in `MMU.fs` behind the regression net and the cold-boot history of BusError (`MMU.fs` comments: an earlier BusError regressed boot); Hatari could confirm what the ST does.
-3. **A player route to `$668c`.** Let one of the player's lords fall to a drained AI side (`pm151/r1` side 2 took player lord 10 in chunk 2), then `bp 668c`; `py/side_dump.py` per chunk. Low value: five natural hits already prove the arm.
-4. **UI leftovers.** The `$c5ee` entry contract; word `-36` in the sound pick; sound event 17 is queued and cleared but never played (`bp 12820`); the double handling of a captain-box click in transfer mode (`bpc 133d4 2`, watch `$2df96`); `$04` sent from a group that has a sender (by pigeon, inferred); the other `$7658` dialog ids; the person panel's Stock rows.
-5. **Small checks.** `$4a7a` has no model gate, and opponent class `$a` is unseen. The season after a LOAD (`$57fd0` writers); natural winter snow under the `$1abaa` gate (a lineage one wrap before `pm143/run/rand1_s4`); the divide by zero at `$1ac88` on an empty tree array (a `felled`-style arm with `$4e512 < 12`); posture 5 from `$67d0`; an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch (and whether `$3c12`'s `nop` is the crack's or the developers'); the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); `$4342`'s arrival branch. Rout fates on other lands (death or run end while re-routing: `routrun.sh` on a third land). A natural `$66` now needs an AI sheep chase across a narrow channel with a Boat chaser landing before the first slaughter (37 runs, 0 arrivals).
-6. **The stall on the original machine.** A Hatari run past clock 32768 with a camped group (low priority; Hatari through an agent has Dave's go-ahead).
+1. **Port residue.** The port tests `record[44] >= $e` unsigned where the game is signed (differs only for `>= $80`, never written). Natural byte6 18, 28 and the overlays are still unseen in play (36/38/42 crash the game). The camp-marker frame `$111` from `$117b0` has not been captured. The birds sit still in the port because its seed is a constant; whether the game's seed `$2df84` moves in long play decides whether the port should advance it: `watch 2df84 4` over a long run.
+2. **Emulator gap: no bus error on an unmapped write** (not this workstream's alone). After the byte6 36 bombs the vector-4 entry stacks at SSP `$4e73203c`; a real ST should double-fault and halt (inferred). A fix belongs in `MMU.fs` behind the regression net; read the BusError history in `MMU.fs` first (it regressed cold boot once); Hatari could confirm.
+3. **Small checks.** `$4a7a` has no model gate, and opponent class `$a` is unseen. The season after a LOAD (`$57fd0` writers); natural winter snow under the `$1abaa` gate (a lineage one wrap before `pm143/run/rand1_s4`); posture 5 from `$67d0`; an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch (and whether `$3c12`'s `nop` is the crack's or the developers'); the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); `$4342`'s arrival branch; rout fates on a third land (`routrun.sh`). A natural `$66` needs an AI sheep chase across a narrow channel with a Boat chaser landing first (37 runs, 0 arrivals). The dialog buttons still code read: `$04`, `$08`'s `$71` (SELECT MAP) and `$131` (SEND MESSAGE).
+4. **A player route to `$668c`.** Let a player lord fall to a drained AI side (`pm151/r1` side 2 took player lord 10 in chunk 2), then `bp 668c`. Low value: five natural hits prove the arm.
+5. **The stall on the original machine.** A Hatari run past clock 32768 with a camped group (low priority; Hatari through an agent has Dave's go-ahead).
 
 ## Known traps
 
+- **An edited drive script can diverge.** Deleting the `hits` lines of `py/captain2/from1`-style drives removed their settles and the first click no longer selected the captain; a second edit that kept the step counts still posted no `$04` (cause not found). Keep a working drive verbatim and change only what follows its last action (`xfer_pigeon.repl` was made that way).
+- **The camp-fire sound needs a lit fire in view.** `pm143/run/rand1_s1.snap` draws none now (`$117b0` 0 hits); `pm148/arms/sheep/k120_tree_c1` and `pm150/small/camp/c12_*` do (`scratchpad/pm160/snd/drawscan.txt` lists the 20 that draw it out of 659 with a lit fire record).
+- **`callcap` into the dialog handlers needs the frame stub** (`py/ui/dlg_ids.py`): the shared exit `$7a22` pops 14 registers.
 - **`showboat verify --output` rewrites prose.** On `port/walkthrough/walkthrough.md` it dropped the paragraph after an image line; patch a changed quoted block by hand and rerun `uvx showboat verify` (exit 0).
 - **`EntityCtx` has a `Seed` field.** Every constructor (`py/score.fsx`, `py/xcheck/*.fsx`, `port/stepper/Load.fs`, `port/walkthrough/probe.fsx`, `TerrainView.cs`) sets it; a JSON without `seed` reads 0 (birds at the wrong offsets).
 - **`rout_caller.sh`'s `.after` loop skips stamps.** Its `bp 561c` / `s 200` / dump passes over a stamp within 200 steps of the previous one; join its dumps by step (`rout_after.py`, `rout_target.py` do) and dump the skipped ones with `fill`.
@@ -167,4 +87,4 @@ The 150th pass's results (all still current; detail in the topic docs):
 
 ## Next session
 
-Open 1 and Open 2 lost their main items this pass (the tree miss and both emulator gaps). The highest remaining value is in Open 4 and 5 (UI leftovers and small checks), each a single bounded REPL test; start with sound event 17 (`bp 12820`) and the `$c5ee` entry contract. Open 2's bus-error gap is an `MMU.fs` change: read the BusError history in `MMU.fs` first, it regressed cold boot once. Rerun `py/xcheck/run.sh` and `overlay/score_cases.sh` after any change to `port/godot/logic/`. The brief at `scratchpad/pm156/BRIEF.md` is reusable for parallel agents.
+Open 4 is closed. Open 1's seed question is one long `watch 2df84 4` run and decides a port change; do it first. Then Open 3's small checks, each a single bounded REPL test (start with the season after a LOAD and `$4342`'s arrival branch). Open 2 is an `MMU.fs` change: read the BusError history first. Rerun `py/xcheck/run.sh` and `overlay/score_cases.sh` after any change to `port/godot/logic/`.
