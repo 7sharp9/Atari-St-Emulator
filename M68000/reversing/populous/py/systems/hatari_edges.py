@@ -12,7 +12,8 @@ CONQUEST at pointer (250,176), START GAME at (85,176)), then log at every $db4c 
 its unlk ($ef48): A6, A7, VBL, the word at A6-146 and the frame counter $3c4c8. Output: $POP_WORK/hatari_edges/run[_tag]/
 (hatari.log, screenshots title/briefing/game/end). Tag `irq` also logs entry to $16d32, $fc0644, $fc2f2c, $fc4c7a;
 tag `watch` (or a watch-hex address) logs every change of that word with PC, A7, VBL, SR.
-parse: pair each entry record with its unlk record, tally the values, optional CSV.
+parse: pair each entry record with its unlk record, tally the values (paired calls only), optional CSV. The CSV
+also keeps the unpaired entries (about 7% of them, w_unlk empty, frames before the first pair): filter on w_unlk.
 writers: for a watch run, classify each change as inside $db4c or between calls and tally the PCs.
 chart: the entry values as a share of calls, Hatari (one CSV per boot, from parse) against this emulator (CSVs
 from swamp208.py edges <snap> <n> <csv>, cut to the frames the Hatari boots cover), as a standalone SVG.
