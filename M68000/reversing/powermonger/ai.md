@@ -841,8 +841,11 @@ watch of record bytes 0..7 and 28..31 (`py/fsm/routrun.sh`, `py/fsm/rout_fate.py
 | group member: `$3c08` resets the prev 41 to 145 steps after the stamp, `$5708` re-engages him, `$5590` routs him again 242 to 208,690 steps later | 18 | 34 |
 | died, freed, or still routing at the run end | 0 | 0 |
 
-The second stamps of the re-routed men arrive as `$3c` in 52 of 52. Which of the two `$56a6` callers re-engages each man
-is inferred (`$15368` by elimination for 46 of the 52; a `bpc` per call site would count it).
+The second stamps of the re-routed men arrive as `$3c` in 52 of 52. The re-engage comes mostly from an attacker already
+in melee: `$15368` for 48 of the 52 (`rand1` 15, `k48` 33), the `$2e` arrival `$15332` for 4 (3, 1). Each of the run's
+`$5708` writes was joined to the `$56a6` call before it with the same man in A3 and its return address read at the stop:
+76 of 76 and 124 of 124, the per-site split equal to a `hits` count of the two call sites (`py/fsm/rout_caller.sh`,
+`rout_caller.py`).
 
 **`$596a`, hit effects.** A man hit by an arrow loses `$52` health (the `$5590` roll when that leaves 0 or less); a
 pigeon is shot down (`$4624`). The type-`$12` area effect (stamp categories in the arrow's cell) is unreachable.
