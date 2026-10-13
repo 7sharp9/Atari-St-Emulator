@@ -1,0 +1,1 @@
+{"orders":[{"group":0,"order":"get_men","x":20,"y":65,"posture":2}],"retire":false,"why":"Gather the City's 17 home men at posture 2 to reach 58, then attack the 18-man enemy City at (35,56) at posture 4."}

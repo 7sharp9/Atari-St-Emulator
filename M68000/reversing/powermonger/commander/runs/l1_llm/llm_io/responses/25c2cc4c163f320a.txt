@@ -1,0 +1,1 @@
+{"orders":[{"group":0,"order":"get_men","x":13,"y":81,"posture":2}],"retire":false,"why":"Take all 10 home men from the nearby town to reach 41, then attack the 18-man City at (20,65)."}

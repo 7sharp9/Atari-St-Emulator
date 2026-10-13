@@ -1,0 +1,1 @@
+{"orders":[],"retire":false,"why":"41 men at posture 4 are already attacking the 18-man city at (20,65), so I'm leaving the order running."}

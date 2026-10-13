@@ -244,6 +244,21 @@ orders the land is still at ratio 2 after 1G steps. Two baseline runs give ident
 the tutorial land, won by one attack, so this proves the loop end to end (orders, verdict, victory) rather than
 strength.
 
+**Campaign land 1** (`pm123/win/l1_built.snap`: side 1 one lord and 21 men, side 3 five lords and 90, ratio 0; one
+run per policy, 2G steps, the LLM 1G):
+
+| policy | result |
+|---|---|
+| no orders | ratio 0 at 2G, nothing changes |
+| scripted baseline, with or without `--move` | won at 455M (5 lords, 70 men against 36) |
+| LLM | won at 180M in 10 calls, $0.53 (5 lords, 74 men) |
+| rollout (K 5, N 40M) | lost at 725M: the captain group died with side 1 ahead on lords (5 against 2) |
+
+Each win runs `$1a4da`, the loss `$1a5b2`. The LLM's ten decisions are one plan: attack the weakest town at posture
+4, take its men at posture 2, attack the next, and retire when the ratio reads 4 (`runs/l1_llm/decisions.jsonl`, with
+its prompts and replies in `llm_io/`; a replay of the log gives the same final snapshot). The rollout score is force
+over enemy force, which does not value the local captain's survival, the one thing that loses a land.
+
 **Policies against the game's AI** (side 3 from rand1, one run each, so a signal and not a rate; the land ends when
 local side 1's captain is lost):
 

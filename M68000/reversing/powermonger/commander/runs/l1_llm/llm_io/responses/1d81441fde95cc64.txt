@@ -1,0 +1,1 @@
+{"orders":[{"group":0,"order":"attack","x":14,"y":92,"posture":4}],"retire":false,"why":"Attack the nearest weak town (10 men vs my 21) at posture 4 so its captain defects to me."}

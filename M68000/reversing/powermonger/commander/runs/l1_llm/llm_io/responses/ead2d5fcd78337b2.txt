@@ -1,0 +1,1 @@
+{"orders":[{"group":0,"order":"get_men","x":14,"y":92,"posture":2}],"retire":false,"why":"Collect the town's 10 home men (31 total) before attacking the 10-man enemy town at (13,81)."}

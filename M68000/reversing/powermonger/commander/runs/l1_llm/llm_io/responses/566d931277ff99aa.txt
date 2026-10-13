@@ -1,0 +1,1 @@
+{"orders":[],"retire":true,"why":"Ratio is already 4 and retiring is allowed, so retire and bank the win."}

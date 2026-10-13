@@ -1,0 +1,1 @@
+{"orders":[{"group":0,"order":"attack","x":35,"y":56,"posture":4}],"retire":false,"why":"58 men outnumber the 18 settlement men at the nearest enemy city; attacking at posture 4 routs the garrison and gains its captain's group."}
