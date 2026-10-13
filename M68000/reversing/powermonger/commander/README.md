@@ -83,6 +83,29 @@ him, and `$3da4` joined the spy to the new owner): the side is checked only at d
 harness re-reads the target's owner at arrival. Go to `$02` and home `$0a` are not gated (the AI
 issues `$02` itself).
 
+**The local side and the end of a land** (`gate_local.sh`, `gate_retire.sh` + `parse_retire.py`, from `rand1.snap`
+against no-poke controls of the same budget). The verdict `$d2c8` judges only the local side (`$57ffe`, side 1 here;
+`../strategy.md` "How a land ends"), so a commander that plays to a result plays side 1. Side 1's slot `$5801c` is
+already in state 2 on rand1 and no AI writes it: in 200M unaided steps its only writers are `$6a3a`'s per-tick clear
+(`$6a52`/`$6a56`), and an injected order adds one write, the dispatch at `$6b46`. Orders run as on an AI side: an
+attack `$0c` on side 4's lord 13 at (40,115) runs `$6c32`, `$4a7a`, `$4b80` in the first `$6a3a` pass (control 0 of
+each in 30M) and the lord changes owner to side 1; a get men `$08` at own lord 9 leaves group 0 in state 3 with its lead
+at the lord in mode `$1c`. A click on the panels while the harness holds the slot, and a side-1 order to a non-captain
+group, are not tested.
+
+A `$2e` in side 1's slot ends the land in the same tick: `$6e10` sees state 2 and calls `$d2c8` directly (163,174
+steps after rand1's stop; `$71ae` 0 hits). The verdict reads `$57fce` as left by the previous tick's `$d23a`, so the
+harness decides from the ratio it observed: with `$57fce` poked to 4 in the same batch the victory routine `$1a4da`
+runs, otherwise the defeat routine `$1a5b2` (1 hit each, control 0 `$d2c8` in 50M). Zeroing the captain group's
+owner word `$51690` makes `$d23a` post `$2e` itself at `$d25a` and the verdict runs one tick later. Detection: `d2c8`
+in a step's `hits` list is exact; from a snapshot, `$57fce` stays frozen at the verdict's value, the menu mode word
+`$2df6e` drops from 6 to 0 once the main menu opens (about 8M steps later), and `$51690` stays 0 after a captain loss.
+`$3f2a0[land]` is set only by a win and rand1 already holds `$3f2a0[0] = 1`, so it is not a marker on this roll.
+
+On rand1 side 1 counts 30 men against 149 for the others: ratio 0, and ratio 4 needs about 65% of the land's counted
+men. Side 3 reaches 4 unaided by 400M steps of the 1G-step run (`pm151/r1`, by the formula; side 1 is not local
+there), so a win is reachable on this land but takes most of the map.
+
 **Observation (`observe.py`).** A per-decision JSON summary of a snapshot or RAM image, every
 offset cited to its doc section and unproven fields emitted raw: the clock, local side and
 selected group; the 160 lord slots (`$4e514`: kind, cell, food, men at home, loyalty, work order,
@@ -122,6 +145,8 @@ runs one REPL script and prints the observation of the result.
 | `gate_orders.sh [arm...]` | every player order from side 3's slot, 57/57 (`BUDGET`, `PAR`, `CHECK_ONLY=1`) |
 | `observe.py <snap\|ram> [--compact]` | the observation JSON |
 | `gate_observe.py`, `gate_ui.py` | observe.py against the older scripts and against the game's panels |
+| `gate_local.sh [arm...]` | orders from the local side 1's slot, and its writers over 200M steps |
+| `gate_retire.sh [arm...]`, `parse_retire.py` | `$2e` from side 1's slot: win at ratio 4, defeat below, captain loss; the end-of-land markers |
 | `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
 | `act.py <snap> gate` / `Poker` | order pokes; `gate` prints the injection gate's arms |
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
