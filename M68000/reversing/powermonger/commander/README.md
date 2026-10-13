@@ -120,6 +120,27 @@ On rand1 side 1 counts 30 men against 149 for the others: ratio 0, and ratio 4 n
 men. Side 3 reaches 4 unaided by 400M steps of the 1G-step run (`pm151/r1`, by the formula; side 1 is not local
 there), so a win is reachable on this land but takes most of the map.
 
+**Orders by carrier pigeon** (`pigeon/gate_pigeon.sh` 7/7; code read of `$6ac6`, `$4562`, `$41dc`, `$2776`, `$6822`).
+A group's sender word (`$51538 + side*$13c + 124 + 2k`) decides the route: 0 runs the order in the same executor pass,
+otherwise `$4562` takes the first free record of the pigeon pool (`$4c112 + 26i`, i = 1..47, shared by all sides; +5
+owner, +6 category, +20 the lead it rides to, +23 order type, +24 target) and copies the sender record's owner byte
+and position at launch; a full pool drops the order silently. On landing (`$41dc`) a live rider gets the order through
+`$6b38` and `$4220` clears the pending word. A second order while one is in flight gets its own pigeon: both land and
+run in order, so a replacement takes effect only after the group has started on the first (go to A at 0 then B at 2M:
+2.5M steps toward A, then camps at B). Flight is 1.2 to 1.5M steps per 1000 world units from the sender's launch
+point (6 deliveries; 26.5M for 18,500 units). When a side's first group dissolves, `$2776` frees every pigeon owned by
+that side (`$27c6`), so every order in flight is lost; later launches copy the dead sender's owner byte (0 or below),
+the pool loop skips them (`$417a`), and they never fly, even after the sender record is reused, each one holding a
+pool record until its rider's group dissolves (`$283a`). The pending word (word 4) is set only by the AI's `$6822`
+and cleared only by a landing: under the harness it is stale AI state that neither blocks nor reports an injected
+order (p9 in `gate_move.sh`: the AI's own pigeon was freed with its commander, the word stuck at 4 and every order
+was dead-sender). The excess executions after side 3's captain died in the LLM run were side 2's orders (26/26
+`$6b38` entries). `pigeon/pig.py <snap>` prints each group's route (none, direct, pigeon, never) and its pigeons in
+flight. For the policies: do not order a `never` group (the order cannot arrive and leaks a pool record), send once
+and wait while a pigeon to the group is in flight, start a stall timer at delivery, and ignore the pending word.
+Poking the sender word to 0 would deliver every order at once, but it changes the game's rules, so the harness does
+not do it.
+
 **Observation (`observe.py`).** A per-decision JSON summary of a snapshot or RAM image, every
 offset cited to its doc section and unproven fields emitted raw: the clock, local side and
 selected group; the 160 lord slots (`$4e514`: kind, cell, food, men at home, loyalty, work order,
@@ -248,6 +269,7 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `observe.py <snap\|ram> [--compact]` | the observation JSON |
 | `gate_observe.py`, `gate_ui.py` | observe.py against the older scripts and against the game's panels |
 | `gate_ungated.sh [arm...]`, `check_ungated.py` | go to, home, alliance with no goods / at the player (YES, NO), invent, equip: 52/52 |
+| `pigeon/pig.py <snap>`, `pigeon/run.py`, `pigeon/bptrace.py`, `pigeon/gate_pigeon.sh` | order routes and pigeons in flight per group; the pigeon trials, 7/7 |
 | `gate_local.sh [arm...]` | orders from the local side 1's slot, and its writers over 200M steps |
 | `gate_retire.sh [arm...]`, `parse_retire.py` | `$2e` from side 1's slot: win at ratio 4, defeat below, captain loss; the end-of-land markers |
 | `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
