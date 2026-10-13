@@ -138,6 +138,9 @@ FOLLOWUP = {0x0d: (GET_FOOD, 4), 2: (GET_MEN, 3), 3: (GET_EQUIP, 2), 0x0a: (INVE
                                                 # posture}; $67d0's invent posture is (rng & 3) + 2, 3 here
 LORD0, OBJ = 0x4e514, 0x51b66                   # lord records (32 bytes), object base (observe.py)
 RETIRE = 0x2e                                   # strategy.md "How a land ends": $2e in the local side's slot -> $d2c8
+GOTO = 0x02                                     # go to (move.py)
+cheb = lambda a, b: max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+THREAT = 16                                     # rollout: an enemy group this many cells away (Chebyshev) offers a retreat
 IDLE = (0, 1, 6)                                # state names (observe.STATE): none, Waiting, In Camp
 MEN_LOW = 22                                    # $6522's own get-men arm: men < 22 (strategy.md "The AI as modern pseudocode")
 STALE = 8                                       # decisions with no change of state or lead cell before re-ordering
@@ -268,24 +271,52 @@ class RolloutPolicy(Scripted):
     own lord with food, attack the nearest reachable enemy lord with men at home < men (a looser test than
     $6522's men - 4), attack the second-nearest enemy lord passing Scripted's test, and holding that group alone
     (the other groups keep Scripted's orders). Duplicates are dropped and the list is cut at K. Scripted's WAIT
-    bookkeeping stands whatever is chosen, so a group that was held is reconsidered 20M steps later, not at once."""
+    bookkeeping stands whatever is chosen, so a group that was held is reconsidered 20M steps later, not at once.
+    Playing the local side, a decision where Scripted orders nothing still forks when the captain group (group 0) is
+    alive with no pending word and either idle and not ordered or forked in the last WAIT steps, or threatened (below):
+    none against the same alternatives for the captain. Also on the local side only, when an enemy group with at least the group's men stands
+    within THREAT cells, the first alternative is a retreat: go to ($02) the reachable own lord farthest from every such
+    group (a heuristic, not the game's AI). Scripted has no rule for a group of MEN_LOW or more with no enemy lord under
+    men - 4, so without this the captain sat idle and starved on campaign land 1 (rollout.py's docstring)."""
 
     def __init__(self, side, mp, K):
         super().__init__(side, mp)       # no --move: a candidate is one decision's order list, not a Mover's legs
         self.K = K
 
-    def candidates(self, obs, pol):
-        if not pol or any('group' not in a for a in pol):
-            return []                    # nothing to choose, or a retire: issue Scripted's actions as they are
+    def _threats(self, obs, g):
+        """Lead cells of the enemy groups with at least g's men, when one of them is within THREAT cells of g."""
+        here = tuple(g['lead_obj']['cell'])
+        eg = [tuple(e['lead_obj']['cell']) for s, v in obs['sides'].items() if int(s) != self.side
+              for e in v['groups'] if e['alive'] and e['men'] >= g['men'] and 'lead_obj' in e]
+        return eg if eg and min(cheb(here, e) for e in eg) <= THREAT else []
+
+    def candidates(self, obs, pol, clock=None):
+        if any('group' not in a for a in pol):
+            return []                    # a retire: issue Scripted's actions as they are
         S = obs['sides'][self.side]
+        if not pol:                      # nothing ordered: fork for the local captain only
+            g = S['groups'][0]
+            if (self.side != obs['local_side'] or clock is None or not g['alive'] or 'lead_obj' not in g
+                    or g['raw_w4'] != 0):
+                return []
+            idle = g['state'] in IDLE and clock - self.ordered.get(0, -WAIT) >= WAIT
+            if not idle and not self._threats(obs, g):
+                return []
+            self.ordered[0] = clock      # reconsidered WAIT steps later whatever the rollout picks
+        else:
+            g = next(g for g in S['groups'] if g['k'] == pol[0]['group'])
         enemy = [l for s, v in obs['sides'].items() if int(s) != self.side for l in v['lords']]
-        first = pol[0]
-        g = next(g for g in S['groups'] if g['k'] == first['group'])
         here = tuple(g['lead_obj']['cell'])
         d = lambda l: max(abs(l['cell'][0] - here[0]), abs(l['cell'][1] - here[1]))
         srt = lambda ls: sorted(ls, key=lambda l: (d(l), l['idx']))
         o = lambda typ, l: dict(side=self.side, type=typ, x=l['cell'][0], y=l['cell'][1], group=g['k'])
         alt = []
+        eg = self._threats(obs, g) if self.side == obs['local_side'] else []
+        if eg:                           # go to ($02) the reachable own lord farthest from the threatening groups
+            safe = [l for l in S['lords'] if self._reach(g, l['cell'])]
+            if safe:
+                l = max(safe, key=lambda l: (min(cheb(l['cell'], e) for e in eg), -l['idx']))
+                alt.append(('retreat', o(GOTO, l)))
         men = srt([l for l in S['lords'] if l['men_home'] > 1 and self._reach(g, l['cell'])])
         if men: alt.append(('get_men', o(GET_MEN, men[0])))
         food = srt([l for l in S['lords'] if l['food'] > 0 and self._reach(g, l['cell'])])
@@ -294,6 +325,10 @@ class RolloutPolicy(Scripted):
         if weak: alt.append(('attack_loose', o(ATTACK, weak[0])))
         foes = srt([l for l in enemy if l['men_home'] < g['men'] - 4 and self._reach(g, l['cell'])])
         if len(foes) > 1: alt.append(('attack_2nd', o(ATTACK, foes[1])))
+        if not pol:
+            if foes: alt.insert(0, ('attack', o(ATTACK, foes[0])))
+            out = [('none', [])] + [(n, [a]) for n, a in alt]
+            return out[:self.K]
         out = [('scripted', pol), ('none', [])]
         if len(pol) > 1:
             out.append(('hold_first', pol[1:]))
@@ -409,7 +444,7 @@ def main(argv):
                         pre = [dict(side=side, take=True)]
                     if take and clock == 0:
                         pre = sched.pop(0, [])
-                    cands = cmdr.candidates(obs, acts) if policy == 'rollout' else []
+                    cands = cmdr.candidates(obs, acts, clock) if policy == 'rollout' else []
                     if cands:
                         dsnap = work / 'dec' / f'{clock}.snap'      # the decision point, before this decision's pokes
                         dsnap.parent.mkdir(exist_ok=True)

@@ -228,13 +228,21 @@ adds a no-order candidate, and returns per side the lords, men, food, groups, fo
 the land-end step. The score is `F/E`, a side's men at home plus group men over the others' plus 1, the unclamped
 core of `$d23a`'s ratio (the clamped ratio ties nearly every short-horizon candidate at 0). F is recomputed from the
 observation, not read from `$57fba`, which `$d322` rebuilds from zero every tick, so a snapshot can catch it torn
-(5 of 800 decision reads). The policy proposes Scripted's orders, none, hold-the-first, and for the first ordered
-group get men, get food, attack a lord with fewer men at home than the group (`attack_loose`) and the second-nearest
-target, scores each over N steps and issues the best (ties: own lords, then list order). It does not combine with
-`--move`. Forking is exact (`gate_rollout.sh`: five forced candidates from rand1, and every chosen candidate of a
-300M-step run against the loop's own snapshot N steps later, 15/15 `cmp`-equal; all 55 candidate snapshots of those
-decisions differ, so the check can fail). An order to a group far from the captain changes nothing but the pigeon's
-payload for 20M steps or more, so N must exceed the flight time to score it; at N = 40M 14 of 25 decisions tied.
+(5 of 800 decision reads). For the local side the score also values the captain, because only the captain group's
+loss ends a land against the player: a land end inside the horizon scores 10 + F/E when the ratio read at `$d2c8` is 4
+and −1 otherwise, a captain group with owner ≤ 0 scores −1, and otherwise F/E loses 1 × the fraction of the captain's
+men lost since the decision and 0.5 when the captain group ends the horizon with men and no food (heuristic weights).
+The policy proposes Scripted's orders, none, hold-the-first, and for the first ordered group get men, get food, attack a
+lord with fewer men at home than the group (`attack_loose`) and the second-nearest target, scores each over N steps
+and issues the best (ties: own lords, then list order); the list is cut at K. On the local side it also forks when
+Scripted orders nothing but the captain is idle (at most once per 20M steps) or threatened, with none, the scripted
+attack and the same alternatives for the captain; threatened means an enemy group with at least the captain's men
+within 16 cells, and then the first alternative is a retreat, a go to `$02` to the reachable own lord farthest from
+those groups. Neither addition can fire for an AI side: from rand1, side 3, the gate's 300M-step run ends in the same
+snapshot with and without them. It does not combine with `--move`. Forking is exact (`gate_rollout.sh`: five forced
+candidates from rand1, and every chosen candidate of a 300M-step run against the loop's own snapshot N steps later,
+20/20 `cmp`-equal). An order to a group far from the captain changes nothing but the pigeon's payload for 20M steps
+or more, so N must exceed the flight time to score it; at N = 40M 14 of 25 decisions tied.
 
 **The first won land** (`gate_win.sh`). On campaign land 0 (`pm123/win/m1_s0.snap`: side 1 26 men against side 2's 20,
 ratio 2) every policy wins as side 1: the scripted baseline sets posture 4, attacks lord 0 at (29,62), sees ratio 4
@@ -244,20 +252,28 @@ orders the land is still at ratio 2 after 1G steps. Two baseline runs give ident
 the tutorial land, won by one attack, so this proves the loop end to end (orders, verdict, victory) rather than
 strength.
 
-**Campaign land 1** (`pm123/win/l1_built.snap`: side 1 one lord and 21 men, side 3 five lords and 90, ratio 0; one
-run per policy, 2G steps, the LLM 1G):
+**The campaign.** `campaign_next.sh <final.snap> <land>` takes a loop's won `final.snap` (stopped at `$d2c8`) through
+the victory routine, Continue Conquest and a click on the next land to its first `$f898` (strategy.md "The
+campaign"); from the LLM's land-1 win it builds land 2 (`$3f2a0` = 01 01, `$580a4` = 2) byte-identical to a hand
+drive. One run per policy and land, side 1, 2G steps (the LLM 1G, a decision per 20M):
 
-| policy | result |
-|---|---|
-| no orders | ratio 0 at 2G, nothing changes |
-| scripted baseline, with or without `--move` | won at 455M (5 lords, 70 men against 36) |
-| LLM | won at 180M in 10 calls, $0.53 (5 lords, 74 men) |
-| rollout (K 5, N 40M) | lost at 725M: the captain group died with side 1 ahead on lords (5 against 2) |
+| policy | land 1 (side 1: 1 lord, 21 men; side 3: 5 lords, 90) | land 2 (side 1: 1 lord, 20; side 2: 2 lords, 53; side 3: 7 lords, 70) |
+|---|---|---|
+| no orders | ratio 0 at 2G | lost at 346M |
+| scripted baseline | won at 455M (5 lords, 70 men against 36); same with `--move` | lost at 444M: the captain's food hit 0 at 300M and its men starved 25 → 0 |
+| LLM | won at 180M, 10 calls, $0.53 (5 lords, 74 men) | lost at 298M, 15 calls: took 4 of side 3's lords, let food reach 0 (40 men to 17), then attacked a town side 2 had just taken |
+| rollout, F/E score (K 5, N 40M) | lost at 725M: idle captain starved (food 0 at 450M) with side 1 ahead 57 to 44 | not run |
+| rollout, captain score | won at 440M, 24 rollouts | lost at 229M: side 2's 69 men caught the captain; no candidate moved it away |
+| rollout, captain score and retreat | won at 440M, the same final snapshot | lost at 460M: survived side 2's sweep by retreating, then starved at home (food 0 at 370M) |
 
-Each win runs `$1a4da`, the loss `$1a5b2`. The LLM's ten decisions are one plan: attack the weakest town at posture
-4, take its men at posture 2, attack the next, and retire when the ratio reads 4 (`runs/l1_llm/decisions.jsonl`, with
-its prompts and replies in `llm_io/`; a replay of the log gives the same final snapshot). The rollout score is force
-over enemy force, which does not value the local captain's survival, the one thing that loses a land.
+Each win runs the victory routine `$1a4da` and each loss the defeat routine `$1a5b2`, 1 hit each. On land 2 the game's
+side 2 grows from 2 lords to 8 or 9 in every run, whatever side 1 does. The LLM's land-1 decisions are one plan:
+attack the weakest town at posture 4, take its men at posture 2, attack the next, and retire when the ratio reads 4
+(`runs/l1_llm/decisions.jsonl`, with its prompts and replies in `llm_io/`; a replay of the log gives the same final
+snapshot). The land-1 rollout win turned on the captain terms: at 360M get food scored 1.09 against 0.34 for the
+rest (the starve penalty), at 400M the captain's attack 2.64. Three of the four land-2 losses, and the old land-1
+rollout loss, are the captain group running out of food: no policy keeps the captain fed, and the rollout's K cut
+drops get food at most decisions where Scripted orders another group. Run records: `scratchpad/cmd3/l{1,2}/<policy>`.
 
 **Policies against the game's AI** (side 3 from rand1, one run each, so a signal and not a rate; the land ends when
 local side 1's captain is lost):
@@ -299,7 +315,7 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`) | done |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
 | 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Built: `llm.py` policy, one replayed 200M-step run | in progress |
-| 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 15/15) | in progress |
+| 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 20/20) | in progress |
 
 ## Files
 
@@ -317,7 +333,7 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `act.py <snap> gate` / `Poker` | order pokes; `gate` prints the injection gate's arms |
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
 | `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout] [--move] [--replay LOG]` | the decision loop |
-| `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 15/15 |
+| `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
 | `move.py <snap> <side> <k> <gx> <gy>`, `ab.py [pair...]`, `prep.py`, `gate_move.sh` | A* legs as go-to orders, the direct-vs-legs gate, boat stripping |
 | `gate_win.sh [snap] [loop args]` | side 1 played to a won land (campaign land 0 by default), twice, then the victory routine |
 | `gate_loop.sh [budget]`, `gate_loop_side1.sh [budget]` | loop determinism and replay, side 3 and side 1 |

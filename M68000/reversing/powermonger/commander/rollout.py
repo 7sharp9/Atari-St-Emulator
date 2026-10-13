@@ -27,6 +27,14 @@ the ratio is a clamped, floored, monotone function of F_s/E, so maximising F_s/E
 would read if s were local, without the clamp and floor that make most short-horizon candidates tie at 0. Ties
 (equal F_s/E) are broken by own lords, then by the candidate's order in the list (the first is the scripted choice).
 `ratio_as_local` reports the clamped formula itself for s.
+
+For the local side the score also values the captain, the one thing that loses a land (strategy.md "How a land ends":
+`$d23a` posts the defeat when group 0's owner word drops to 0). A land end inside the horizon is a win when the ratio
+read at `$d2c8` is 4 (score WIN + F/E) and a defeat otherwise (score LOSS); a captain group with owner <= 0 is a defeat.
+Otherwise the score is F/E - CAP_W * (captain men lost / captain men at the start) - STARVE_W when the captain group
+ends the horizon with men and no food. The weights are heuristics, not derived from the game: on campaign land 1 the
+F/E policy let the captain group sit idle until its food ran out and its men starved (cmd2/l1/rollout, 34 men at
+350M, food 0 at 450M, dissolved at 725M with side 1 ahead 57 to 44).
 """
 import json, os, struct, sys, time
 from concurrent.futures import ThreadPoolExecutor
@@ -42,9 +50,19 @@ from act import from_json                  # noqa: E402
 from loop import Emu, obs_hash             # noqa: E402
 
 F57FBA = 0x57fba                           # strategy.md: 5 x 4-byte per-side force totals, word0 = men
+WIN, LOSS = 10.0, -1.0                     # land end inside the horizon, local side only
+CAP_W, STARVE_W = 1.0, 0.5                 # captain men lost (fraction of the start), captain group starving
 
 
-def summary(R, side):
+def captain(obs, side):
+    """The local side's captain group (group 0): (owner, men, food), or None when side is not the local side."""
+    if side != obs['local_side'] or side not in obs['sides']:
+        return None
+    g = obs['sides'][side]['groups'][0]
+    return g['owner'], g['men'], g['food']
+
+
+def summary(R, side, cap0=None, land_end=False):
     obs = observe(R)
     raw = [struct.unpack_from('>H', R, F57FBA + 4 * s)[0] for s in range(5)]
     F = [0] * 5
@@ -56,12 +74,25 @@ def summary(R, side):
                              group_food=t['group_food'], groups_alive=t['groups_alive'], force=F[int(s)],
                              raw_57fba=raw[int(s)])
     E = sum(F) - F[side] + 1
+    score = F[side] / E
+    cap = captain(obs, side)
+    if cap is not None:
+        owner, men, food = cap
+        if land_end:
+            score = WIN + score if obs['ratio'] == 4 else LOSS
+        elif owner <= 0:
+            score = LOSS
+        else:
+            if cap0 and cap0[1] > 0:
+                score -= CAP_W * max(0, cap0[1] - men) / cap0[1]
+            if men > 0 and food == 0:
+                score -= STARVE_W
     return obs, dict(clock=obs['clock'], ratio=obs['ratio'], sides=sides, force=F,
-                     ratio_as_local=min(4, (2 * F[side] + E // 4) // E),
-                     score=round(F[side] / E, 6), obs_hash=obs_hash(obs))
+                     ratio_as_local=min(4, (2 * F[side] + E // 4) // E), captain=cap,
+                     score=round(score, 6), obs_hash=obs_hash(obs))
 
 
-def run_one(snap, side, name, actions, steps, gap, out, keep=True):
+def run_one(snap, side, name, actions, steps, gap, out, keep=True, cap0=None):
     """One candidate: returns its outcome dict."""
     t0 = time.time()
     emu = Emu(snap, out / f'{name}.err')
@@ -88,7 +119,7 @@ def run_one(snap, side, name, actions, steps, gap, out, keep=True):
     finally:
         emu.close()
     R = load(sp)
-    obs, res = summary(R, side)
+    obs, res = summary(R, side, cap0, end)
     if not keep:
         sp.unlink()
     wall = time.time() - t0
@@ -105,8 +136,9 @@ def rollout(snap, side, cands, steps, gap=400_000, par=4, out=None, keep=True, b
     assert len(set(names)) == len(names), f'candidate names must be unique (snapshot file names): {names}'
     if baseline and not any(not c['actions'] for c in cands) and 'none' not in names:
         cands = cands + [dict(name='none', actions=[])]
+    cap0 = captain(observe(load(snap)), side)
     with ThreadPoolExecutor(max_workers=par) as ex:
-        futs = [ex.submit(run_one, snap, side, c['name'], c['actions'], steps, gap, out, keep) for c in cands]
+        futs = [ex.submit(run_one, snap, side, c['name'], c['actions'], steps, gap, out, keep, cap0) for c in cands]
         res = [f.result() for f in futs]
     best = max(range(len(res)), key=lambda i: (res[i]['score'], res[i]['sides'][side]['lords'], -i))
     return res, best
