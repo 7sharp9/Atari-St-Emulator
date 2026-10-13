@@ -1828,7 +1828,8 @@ prev-mode `$76`). On arrival mode `$76` runs `$15754` → `$33b0`:
 
 ```c
 void envoy_arrives_33b0(group *g, leader *L) {
-    if (L->side == local) open_panel_1a(g);          // $c706: the player decides (YES $2a / NO $32)
+    if (L->side == local) open_panel_1a(g);          // $c706: the player decides (YES $2a / NO $32); returns with
+                                                     // A0 = 8, A1 = $c9f7, so the code below then reads side 0 (bug)
     int tribute = 0;
     for (i = 0; i < 8; i++) { tribute += g->supply_acc[i] * W_3498[i]; g->supply_acc[i] = 0; }
                                                      // W = {4,4,8,4,6,2,20,40}, per carried goods type
@@ -1999,9 +2000,12 @@ relation delta both ways through `$311a`. In a replay of the envoy run with the
 **Who proposes.** Order `$1e` is posted only by the UI (`$131c4`, `$1365e`);
 the AI's order writer `$6822` posts only `$02/$04/$06/$08/$0c/$22` and, from the follow-up table, `$0e/$10`. In 150M
 natural steps over three lands `$6d32` and `$15754` had 0 hits, and
-`$34a8`/`$33b0`/`$c706` never ran. So only the player offers alliances, and
-panel `$1a` (an envoy arriving at the player) needs a linked opponent
-(inferred; its branch is read statically only).
+`$34a8`/`$33b0`/`$c706` never ran. So only the player offers alliances. Panel `$1a` needs no linked opponent: an
+envoy injected from an AI side's slot opens it in single play, YES posts `$2a` (`$6dea` → `$34a8`, peace bits set on
+both sides) and NO posts `$32`. Because `$c706` returns with A0 = 8 (a zero side byte) and A1 = `$c9f7`, the rest of
+`$33b0` judges the offer for side 0: with tribute it runs `$34a8(0)` before the player answers (side 0's `$580ac`
+0 → 8, the proposer's bit 0 set) and the tribute is spent whatever the answer. Whether side 0's bit is read later is
+not known (`commander/gate_ungated.sh` arms `allyp`, `allyyes`, `allyno`).
 
 **Relations and their bugs.** The campaign table stores side `s`'s attitude to
 side `t` at `+15+t` (3 non-zero self-entries under that layout, 77 under

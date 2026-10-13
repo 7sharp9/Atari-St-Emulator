@@ -74,9 +74,23 @@ excludes the issuing side, not the local one. Encoding of bytes 1..3 and the sig
 | spy | `$20`, cell x, y of a town | `$6d56` → `$3154` → `$1d36` | arrival mode `$7a`, `$3dca`; the lord's men +1 |
 | alliance | `$1e`, town cell | `$6d32` → `$3154`; `$33b0` → `$3458` → `$34a8` | both sides' peace bytes to `$0c`; carried goods paid as tribute |
 | get food / men | `$06` / `$08`, town cell | `$3154`; `$150c0` / `$15122` | lord's food to the army / join-wait `$28` |
-| invent / equip / trade | `$0e` / `$10` / `$1c`, town cell | `$3154`; `$5fa0` / `$61f8` / `$63f4` | arrival handler runs (invent refused at a lord without a workshop, inferred) |
+| invent / equip / trade | `$0e` / `$10` / `$1c`, town cell | `$3154`; `$5fa0` / `$61f8` / `$63f4` | arrival handler runs; invent refused at a lord without a workshop (inferred) |
+| go to | `$02`, any cell | `$6b8e` → `$3888` | group state 5, arrival mode `$1e`, then camp (state 6) on the cell |
+| home | `$0a 00 00` | `$6c16` → `$3c08` | group state 7, target the cell of the lead's settlement `34(lead)`, arrival mode `$4c`, camp |
 | supply | `$1a`, any cell | `$6d00` → `$390e` | arrival mode `$74`, food dropped |
 | attack | `$0c`, cell of the target | `$6c32` → `$4a7a` | `gate_inject.sh` |
+
+`gate_ungated.sh` (52/52, 60M-step arms with a mid snapshot, two runs byte-identical) adds the rest, each
+against a same-snapshot control: go to and home as in the table; an alliance with no goods scores
+`rel - 2 < 0` and is refused silently (no `$3458`, peace bytes unchanged); an alliance aimed at the player opens panel
+`$1a` and YES (`$2a`, `$6dea` → `$34a8`) or NO (`$32`) answer it; invent at a lord with a WorkShop is accepted (lead mode
+`$92`, gather kind from posture) but credits nothing in practice, because `$60dc` credits one unit per
+`$580a6[side].word8 + 4` deliveries (`+$2000` for kind `$e` and up) and every side's word8 on rand1 is `$53e`..`$1c0a`:
+with side 3's word8 poked to 0 the lord's boats go 13 → 23; equip at a lord holding goods takes `goods >> (posture-2)`
+and hands them with the carried goods to the men (`pm143/run/rand1_s2.snap`: boats 13 → 10, men holding a boat 1 → 16).
+An envoy reaching the player also triggers a bug: `$c706` returns with A0 = 8 and A1 = `$c9f7`, so `$33b0` judges the
+offer for side 0 and, with tribute, runs `$34a8(0)` before the player answers (`$580ac` 0 → 8, side 3's bit 0 set) and
+consumes the tribute (`../strategy.md` "Diplomacy").
 
 A target can change sides during the walk (a lord defected 0.18M steps before the spy reached
 him, and `$3da4` joined the spy to the new owner): the side is checked only at dispatch, so the
@@ -145,6 +159,7 @@ runs one REPL script and prints the observation of the result.
 | `gate_orders.sh [arm...]` | every player order from side 3's slot, 57/57 (`BUDGET`, `PAR`, `CHECK_ONLY=1`) |
 | `observe.py <snap\|ram> [--compact]` | the observation JSON |
 | `gate_observe.py`, `gate_ui.py` | observe.py against the older scripts and against the game's panels |
+| `gate_ungated.sh [arm...]`, `check_ungated.py` | go to, home, alliance with no goods / at the player (YES, NO), invent, equip: 52/52 |
 | `gate_local.sh [arm...]` | orders from the local side 1's slot, and its writers over 200M steps |
 | `gate_retire.sh [arm...]`, `parse_retire.py` | `$2e` from side 1's slot: win at ratio 4, defeat below, captain loss; the end-of-land markers |
 | `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
