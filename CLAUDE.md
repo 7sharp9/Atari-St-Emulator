@@ -124,7 +124,9 @@ that holds its worked example.
 - A cause read off the state at a failure needs the run's trajectory before it rules a remedy out: the commander
   handoff said the captain starved with its own lords at 0 food, so fetching food could not help; that was true at
   330M, but at 150M those lords held 327 food it never took, and taking it won land 1 in half the steps
-  (`reversing/powermonger/commander/README.md` "The campaign").
+  (`reversing/powermonger/commander/README.md` "The campaign"). A variable that sets the losses apart is checked in a
+  win too: every land-2 captain death was against a posture-2 group, but the win fought posture-2 groups as well; the
+  lead's own melee mode is what differed ("Land 2 as a rate").
 
 ## Proving routines with parallel subagents
 
@@ -164,6 +166,8 @@ that are easy to forget:
   - fails `echo =====` (`=word` expands to a command path): quote it.
   - aborts a whole `for f in a/*.md a/*.sh; do ...` when one glob matches nothing: run such loops
     with `bash`, or `setopt nonomatch`. An unquoted `grep --include=*.fs` fails the same way ("no matches found"): quote it.
+- A waiter `until ! pgrep -f 'run.sh x'` matches its own shell's command line and never exits: bracket one
+  character (`pgrep -f 'run[.]sh x'`), or wait on the background task's own notification.
 - macOS has no `timeout`: `... | timeout 60 dotnet ...` fails before running, and a following
   `grep -c` prints 0, the same as "no hits". Print the raw output and a positive control before
   counting, and bound runs with step counts.
