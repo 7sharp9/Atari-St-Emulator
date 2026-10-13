@@ -8,6 +8,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `black_tiger.md` | Black Tiger reversing (`reversing/black_tiger/`) |
 | `blog.md` | blog posts for 7sharp9.dev curated from the game research (`~/GitHub/7sharp9.github.io`, `IDEAS.md`) |
 | `cadaver.md` | Cadaver spike (`reversing/cadaver/`) |
+| `commander.md` | an LLM commander for PowerMonger with A* movement and a rollout/SSM forecaster (`reversing/powermonger/commander/`) |
 | `crudebuster.md` | Crude Buster reversing, Data East arcade under MAME (`reversing/crudebuster/`) |
 | `final_fight.md` | Final Fight reversing, CPS1 arcade under MAME (`reversing/finalfight/`) |
 | `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
