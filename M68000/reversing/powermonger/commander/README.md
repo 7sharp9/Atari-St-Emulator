@@ -44,6 +44,15 @@ writes it before the order (a longword `w` there covers two sides' words). The c
 group (group 0) runs the order in the same pass; any other group gets it by carrier pigeon, as the
 game's own orders do (group 1 in the gate: landed 8.7M steps later).
 
+**The target cell is the cell centre** (`gate_cellpt.py`, 16/16: 8 supply orders including the map's corners, 8
+attacks on lords). The world is 256 units per cell, so cell (x, y) covers world `[256x, 256x+256)` by
+`[256y, 256y+256)` and a world point is in cell `(x>>8, y>>8)`. Supply `$390e` writes the lead's target words 20/22
+as the cell byte with `$80` below it; an attack on a settlement or lord goes through `$4a7a` → `$4b80`, which rebuilds
+the same centre from the lord's packed cell `y*64+x`. An attack on a cell holding only a foreign man takes `$4b96`
+with that man's own position instead (one case, not isolated). For movement this means an A* waypoint is sent as its
+cell's centre, two waypoints in one cell are one order, and the centre lies on the cell's diagonal, so `$1648e`
+samples it as triangle B: a waypoint whose cell has a wet triangle B is a water target.
+
 Gate (`gate_inject.sh`, from `pm142/rand1.snap`, 30M steps per arm, a watch on side 3's slot):
 unpoked, side 3's AI writes the slot 3 times (`$08`, `$22`, `$02`); with the slot at state 2 it
 writes nothing and no attack runs; an attack `$0c` on player lord 9 at (15,92) runs `$6c32`,
@@ -113,6 +122,7 @@ runs one REPL script and prints the observation of the result.
 | `gate_orders.sh [arm...]` | every player order from side 3's slot, 57/57 (`BUDGET`, `PAR`, `CHECK_ONLY=1`) |
 | `observe.py <snap\|ram> [--compact]` | the observation JSON |
 | `gate_observe.py`, `gate_ui.py` | observe.py against the older scripts and against the game's panels |
+| `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
 | `act.py <snap> gate` / `Poker` | order pokes; `gate` prints the injection gate's arms |
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
 | `astar.py <snap> x0 y0 x1 y1 [--cells] [--speed N]` | land path as world waypoints, with a verified flag |
