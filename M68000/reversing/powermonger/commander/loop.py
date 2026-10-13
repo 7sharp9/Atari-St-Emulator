@@ -148,6 +148,8 @@ FOOD_MIN = 20                                   # local side: an own lord's stor
 FOOD_CAP = 500                                  # local side: no top-up above this group food
 FOOD_BITES = 40                                 # local side: fetch food below this many meals (men/8 + 1 each, $3f6a;
                                                 # a 25-man captain ate one about every 5M steps on land 2, so ~200M)
+FIX_GAP = 10_000_000                            # local side: re-send a field-fight posture fix at most this often
+                                                # (a non-first group gets it by pigeon, ~9M steps)
 WAIT = 20_000_000                               # steps an ordered group is left alone: an injected order reaches a
                                                 # non-first group by pigeon ~9M steps later (README) and sets no
                                                 # pending word 4 (observed in this loop's first runs), so without
@@ -165,7 +167,11 @@ class Scripted:
     Postures are $16 orders sent just before the order, as $6638 / $65c8 stamp them: at posture 4 every kill the
     group makes is a rout ($5590), so a conquered lord's captain survives to defect and found a new group ($5c2c,
     $25d6); at posture 2 the men are killed, no group is ever made, and get men takes the whole garrison.
-    Playing the local side, before get men it provisions: a group within a cell of an own lord holding FOOD_MIN food
+    Playing the local side, a group fighting (state $d) an enemy group (opponent class 4) is set to posture 2 (FIX_GAP
+    apart, marked fix): $5590 kills the loser at posture 2 and routs him home at posture 4, and from the land-2 snapshot
+    at 300M (cmd5/l2/post, 30M steps per arm) the fix turned 34 kills and 34 routs into 49 and 4 and kept the captain
+    alive. Attacks on lords still go at posture 4 (posture 2 for every order near an enemy group lost the land-2 rollout
+    run at 1042M that the fight-only fix wins at 1120M; one run each, cmd6/l2). Also on the local side, before get men it provisions: a group within a cell of an own lord holding FOOD_MIN food
     takes it while under FOOD_CAP, and a group under FOOD_BITES meals fetches it from the nearest such lord; every
     local get food goes at posture 2, which moves the lord's whole store ($150f2, food >> 0) where posture 4 moves a
     quarter. Of $6762's chain the local side keeps get food after a fight and get men at a lord with men at home: a
@@ -180,6 +186,7 @@ class Scripted:
         self.events = []         # Mover events since the last decision (logged by the loop)
         self.seen = {}           # k -> ((state, lead cell), decisions unchanged)
         self.ordered = {}        # k -> step of the last order
+        self.fixed = {}          # k -> step of the last field-fight posture fix
         self.comps = mp.cell_components() if mp else None
 
     def _reach(self, g, cell):
@@ -222,6 +229,11 @@ class Scripted:
             k = g['k']
             if not g['alive'] or 'lead_obj' not in g or g['raw_w4'] != 0:
                 self.seen.pop(k, None); continue
+            if local and g['state'] == 0x0d and g['opp_class'] == 4 and g['posture'] != 2:
+                if clock - self.fixed.get(k, -FIX_GAP) >= FIX_GAP:   # field fight: posture 2 makes its wins kills
+                    self.fixed[k] = clock
+                    out.append(dict(side=self.side, type=POSTURE, x=0, y=2, group=k, fix=True))
+                continue
             if k in self.movers:
                 out += self._move(k, self.movers[k], obs, R, clock)
                 continue
@@ -314,6 +326,12 @@ class RolloutPolicy(Scripted):
         return eg if eg and min(cheb(here, e) for e in eg) <= THREAT else []
 
     def candidates(self, obs, pol, clock=None):
+        """Actions marked fix (Scripted's field-fight posture) are not forked on: they lead every candidate."""
+        fix = [a for a in pol if a.get('fix')]
+        cands = self._candidates(obs, [a for a in pol if not a.get('fix')], clock)
+        return [(n, fix + a) for n, a in cands]
+
+    def _candidates(self, obs, pol, clock=None):
         if any('group' not in a for a in pol):
             return []                    # a retire: issue Scripted's actions as they are
         S = obs['sides'][self.side]

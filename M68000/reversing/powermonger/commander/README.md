@@ -268,7 +268,8 @@ drive. One run per policy and land, side 1, 2G steps (the LLM 1G, a decision per
 |---|---|---|
 | no orders | ratio 0 at 2G | lost at 346M |
 | scripted baseline, before provisioning | won at 455M (5 lords, 70 men against 36); same with `--move` | lost at 444M: the captain's food hit 0 at 300M and its men starved 25 → 0 |
-| scripted baseline | won at 215M (5 lords, 71 men; captain food never under 200) | lost at 329M: captain food never under 117; side 3 gone by 240M, then a side-2 group at posture 2 met the captain's attack on (26,52) and fought it from 32 men to 1 |
+| scripted baseline, provisioning only | won at 215M (5 lords, 71 men; captain food never under 200) | lost at 329M: captain food never under 117; side 3 gone by 240M, then the captain, attacking (26,52) at posture 4, met side-2 men and fought from 32 men to 1 |
+| scripted baseline | won at 215M, the same final snapshot | lost at 1470M: the field-fight posture fix kept the captain alive through that fight with 4 men, then it sat camped with no lord to recruit from |
 | LLM | won at 180M, 10 calls, $0.53 (5 lords, 74 men) | lost at 298M, 15 calls: took 4 of side 3's lords, let food reach 0 (40 men to 17), then attacked a town side 2 had just taken |
 | rollout, F/E score (K 5, N 40M) | lost at 725M: idle captain starved (food 0 at 450M) with side 1 ahead 57 to 44 | not run |
 | rollout, captain score | won at 440M, 24 rollouts | lost at 229M: side 2's 69 men caught the captain; no candidate moved it away |
@@ -288,9 +289,31 @@ conquered the richest of them (137 food) with its store intact. Provisioning kee
 lands. The rollout policy still lets it starve: food scores nothing inside a 40M horizon until it reaches 0, so the
 rollouts chose an attack over Scripted's get food at 60M, 140M and 190M. A starve term graded from 0 at the 40-meal
 reserve to the full 0.5 at no food did not fix it (one run: food 0 at 400M, the captain group at 0 men from 1100M,
-which never ends the land) and is not kept. The land-2 win is one run and turned on a starved captain surviving at 4
-men; land 2's losses with a fed captain are now side 2's field groups (Open 2 of the handoff). Run records:
-`scratchpad/cmd3/l{1,2}/<policy>`, `scratchpad/cmd4/l{1,2}/<policy>` (provisioning; `l2/rollout_g` the graded term).
+which never ends the land) and is not kept. Run records: `scratchpad/cmd3/l{1,2}/<policy>`,
+`scratchpad/cmd4/l{1,2}/<policy>` (provisioning; `l2/rollout_g` the graded term).
+
+**Side 2 on land 2, and field-fight posture.** Side 2 is the game's own AI, and with no orders for side 1 it plays one
+plan (`scratchpad/cmd5/l2/none`, a snapshot every 25M): its two field groups (20 and 29 men) sweep side 3's lords from
+the south, (35,78), (54,77), (41,66), (26,52), (17,41), taking men at each (to 35 and 47), then turn north to side 1's
+capital (52,24) and end the land at 346M. An alliance cannot stop this: only `$3154` and the pointer test read the
+peace bits, and any contact breaks them (strategy.md "Diplomacy"). What does stop it is destroying the two field
+groups, which side 2 did not replace in the one run that destroyed them (why it makes no new group is not checked: it
+attacks lords at posture 4, the posture that lets a conquered lord's captain defect, and fights groups at posture 2).
+In the land-2 rollout win the captain, at posture 2 left over from a get food,
+destroyed side 2's 39-man group between 225M and 245M without losing a man, and its last group (34) at 305M to 315M
+(30 men to 18). Side 2 then made no group in the remaining 800M steps and lost its lords one by one.
+
+Posture decides those fights because `$5590` settles a beaten man by the winner's posture: killed at 2, routed home
+(where his lord can recruit him again) at 4 (strategy.md "Combat"). The scripted captain fought at posture 4, the
+posture of its attack orders. From the scripted run's 300M snapshot, with the captain fighting a side-2 group at
+posture 4 (`scratchpad/cmd5/l2/post`, 30M steps per arm, one variable): unchanged, 34 kills (`$55f2`) and 34 routs
+(`$560a`) and the captain group dissolved; with a posture-2 order to the captain, 49 kills, 4 routs, the captain alive
+with 4 men and side 2's group men 36 against 56. `Scripted` now sends that order (marked `fix`, which the rollout
+policy prepends to every candidate rather than forking on it) to a local group fighting an enemy group. In the full
+scripted run it fires once and the captain survives that fight, but with 4 men and no lord left to recruit from it
+then sits camped until the land ends at 1470M (lost). The fix leaves land 1 and the land-2 rollout win
+byte-identical (it never fires there). Extending posture 2 to every order given near an enemy group sent 0 fixes and
+lost the land-2 rollout run at 1042M (`scratchpad/cmd6`), so it is not kept.
 
 **Policies against the game's AI** (side 3 from rand1, one run each, so a signal and not a rate; the land ends when
 local side 1's captain is lost):
