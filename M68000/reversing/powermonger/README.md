@@ -93,7 +93,10 @@ against every session's changes.
   group, which re-forms. A routed group member loses the routed mark as he is unlinked; the man who struck the blow
   always breaks off, but another man already locked on him (one he struck, or one who chased him) re-engages him and routs him a second time, and only then does
   he flee home (52 of 52 on two lands); a group member with nobody else on him walks back to his job. Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
-  in its path (a man loses 82 health), and its end frees the archer to shoot again. There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
+  in its path (a man loses 82 health), and its end frees the archer to shoot again. A lead (every one holds a bow from
+  spawn) stands off shooting in a fight; when an enemy man reaches him in melee and the winner's posture is 2 he is
+  killed, his group dissolves, and for the player's captain that loses the land whatever his army's men: every one of
+  24 commander land-2 losses ended this way, one traced at `$564e` (commander README "Land 2 as a rate"). There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
   A "Natural runs on later lands", A "Arrows and carrier pigeons")
 - **Land changes hands two ways: conquest by the player, revolt by the game's own clock.**
 

@@ -1,17 +1,19 @@
 # Commander: handoff
 
-Updated 2026-10-13 by the session that ended at commit `af8d692` (plus the handoff commit after it).
+Updated 2026-10-14 by the session that ended at commit `f455c7b` (plus the digest and handoff commit after it).
 
 ## Resume point
 
-- Last work commit: `af8d692` commander: field-fight posture fix; side 2 on land 2 is beaten by destroying its two
-  field groups. Before it `36b21d2` (local-side provisioning; land 2 won by the rollout policy).
-- Working data: `M68000/scratchpad/cmd4/` (provisioning runs, l1 and l2 per policy, `l2/rollout_g` the dropped graded
-  starve term), `cmd5/` (posture fix runs, `l2/none` with a snapshot every 25M, `l2/post` the A/B), `cmd6/` (the dropped
-  pre-contact posture rule), `cmd7/` (gate re-runs). `python3 commander/runstat.py [--every M] <dirs>` reads any of them.
-- Start from: `scratchpad/cmd3/l2build/l2_built.snap` (campaign land 2, at its first `$f898`); rebuild with
-  `campaign_next.sh scratchpad/cmd2/l1/llm/final.snap 2`. Land 1: `pm123/win/l1_built.snap`. Land 3 is not built:
-  `campaign_next.sh scratchpad/cmd4/l2/rollout/final.snap 3` (or from a replay of `runs/l2_rollout`).
+- Last work commit: `f455c7b` commander: land 2 as a rate (`seeds.sh`, six starts per policy); every loss is the
+  captain's lead killed in melee by a posture-2 side-2 group. `b9cb0a2` is a CLAUDE.md commit from the same session.
+- Working data: `M68000/scratchpad/cmd9/` (the seed set: `start/o0..o5`, `<arm>/o<k>` for scripted, evade, diseng,
+  avoid, rollout; `o1_health/` replay snapshots of scripted o1 at 190M..211M; `loop_all_arms.py`, the loop.py with the
+  dropped rules, for re-running those arms), `cmd8/` (single-run probes: the 290M A/B, strength/hunt/evstr runs, the
+  replays `scr_rep`, `o1rep2` (212M, the `bp 564e` trace), `d1rep`, `r0rep` (the rollout win at 220M..315M)).
+  `python3 commander/runstat.py [--every M] <dirs>` reads any run.
+- Start from: `scratchpad/cmd3/l2build/l2_built.snap` (campaign land 2 at its first `$f898`); perturbed starts are
+  `cmd9/start/o<k>/final.snap` (rebuild: `seeds.sh` makes them). Land 1: `pm123/win/l1_built.snap`. Land 3 is not
+  built: `campaign_next.sh scratchpad/cmd9/rollout/o0/final.snap 3`.
 - Uncommitted work left behind: none.
 
 ## Proven so far
@@ -20,57 +22,58 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
 
 - Orders from any slot (`gate_inject.sh` 7/7, `gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`), retire
   verdicts (`gate_retire.sh`), order cell = cell centre (`gate_cellpt.py` 16/16), pigeons (`pigeon/gate_pigeon.sh` 7/7).
-- Deterministic replayable loop (`gate_loop.sh`, `gate_loop_side1.sh`); A* legs 8/8 (`gate_move.sh`); exact rollouts
-  (`gate_rollout.sh` 20/20, re-run after each change this session).
-- Provisioning (local side: top up at own lords, fetch below 40 meals, every get food at posture 2, `$6762` chain trimmed):
-  land 1 won at 215M by scripted and rollout (was 455M / 440M), scripted captain food never under 200 (land 1) or 117
-  (land 2). Land 2 **won by the rollout policy at 1120M** (`runs/l2_rollout`, replay byte-identical, `$1a4da` 1 hit,
-  `$1a5b2` 0).
-- Field-fight posture: `$5590` kills at the winner's posture 2 and routs home at 4. `gate_posture.sh` (one variable,
-  30M per arm from the land-2 300M snapshot): 34 kills / 34 routs / captain dissolved against 49 / 4 / captain alive.
-  Scripted sends posture 2 to a local group fighting an enemy group (fires once on land 2; land 1 and the rollout win
-  unchanged byte for byte).
-- Side 2 on land 2 is the game's AI: two field groups sweep side 3's lords from the south, then march on side 1's
-  capital (346M with no orders). The rollout win destroyed both groups (captain at posture 2, left over from a get
-  food), after which side 2 made no group for 800M steps (one run). Alliance cannot stop it (strategy.md "Diplomacy").
+- Deterministic replayable loop (`gate_loop.sh` re-run this session, `gate_loop_side1.sh`); A* legs 8/8
+  (`gate_move.sh`); exact rollouts (`gate_rollout.sh` 20/20, re-run this session).
+- Provisioning and the field-fight posture fix (land 1 won at 215M by scripted and rollout; `gate_posture.sh`).
+- **Land 2 as a rate** (`seeds.sh`, six starts 1M steps apart, start 0 reproducing each policy's earlier run to the
+  step): scripted 0/6 won (6 lost, five at 213M..258M); `--evade` 0/6 (5 lost at 292M..730M, one alive at 2G);
+  rollout 1/6 (o0 at 1120M; 4 lost at 347M..417M, one alive at 2G at ratio 0). Two dropped rules (pull the captain out
+  of melee; also evade posture-2 groups) 0/6 each.
+- **How the captain dies.** All 24 losses: the captain's lead at owner -1 and a side-2 group at posture 2 fighting.
+  Traced on scripted o1 (`bp 564e` from `cmd8/o1rep2/at_212000000.snap`): the lead killed (owner `$ff`, category `$0c`,
+  not encircled), group 0 dissolved by `$2776`, land lost, his army still 27 men. A lead stands off shooting (mode
+  `$34`) and dies only after an enemy man reaches him in melee (`$32`): health 95 → 0 in about 5M steps from 208M on
+  o1, while in the rollout win the lead never left `$34` through two posture-2 fights. A `$02` go to does not take a
+  lead out of melee (diseng o1 at 210M, one case).
 
 ## Open, in priority order
 
-1. **Scripted's land-2 loss after the fight.** The posture fix keeps the captain alive with 4 men, but side 1 has lost
-   every lord to side 2's remaining group and the captain sits camped until 1470M. Candidates: after a costly fight
-   fall back to the nearest own lord with men (or, with no lord, attack the weakest lord within reach at posture 2);
-   keep the captain at home while side 2's groups are alive and let them come to it (the rollout win's pattern).
-   Proof: a won land 2 for the scripted policy, then the same win under a second seed (item 3).
-2. **Rollout food blindness.** Inside a 40M horizon food costs nothing until it hits 0, so the rollouts took an attack
-   over Scripted's get food at every offer; the winning run starved from 375M to 550M (30 men to 4) and survived by
-   luck. A graded starve term (0 at 40 meals, 0.5 at none) did not fix it (one run, `cmd4/l2/rollout_g`). Try a longer
-   horizon only for get-food candidates, or score the food the candidate leaves against the captain's eating rate.
-3. **Evaluation across seeds** (pm143/lands, pm121/k*), each policy against the unpoked game, so the land-2 result is a
-   rate. One run per policy per land so far, on a chaotic game: the pre-contact posture rule flipped a win to a loss.
-4. **Why side 2 makes no new group** after losing both: it attacks lords at posture 4 (a conquered captain can defect)
-   and fights groups at posture 2. Check `$26d0` (group creation) hits for side 2 over the rollout win's 315M..1120M.
-5. LLM prompt: add captain food against trip cost and enemy groups near the captain; re-run land 2 and rand1 side 3 on
-   two seeds against the current prompt (the earlier prompt regression: `s1/llm_s3` against `llm500`).
-6. Land 3: build it from the land-2 win and play it.
-7. Movement with rollouts (`--policy rollout` refuses `--move`); state-space forecaster (plan step 5); smaller items
-   (side-0 peace bit from the `$c706` clobber, sender-word readers, `$25d6` rebuilding slot 0, UI click with side 1's
-   slot held).
+1. **What brings an enemy man onto the captain's lead.** It is the whole land-2 loss, and the posture of either side
+   does not decide it (the win fought posture-2 groups with the lead at range). 11 of 24 deaths are on a lord's cell,
+   13 in the field. Read `$4f68` (ai.md mode `$2c`, the target weighing, `py/diff_4f68.py`) for how a man picks the lead,
+   then show it live: from `cmd8/o1rep2` (or `cmd9/o1_health/at_205..208`) `watch` the lead's byte 31 (lead object `$52fe8` on
+   o1) and find the enemy man whose word 48 (target link) becomes the lead's object offset, and what he was doing before.
+   A proven cause gives a rule to test on the six seeds (`seeds.sh`, add an arm).
+2. **Rollout food blindness** (unchanged): inside a 40M horizon food costs nothing until it hits 0; try a longer
+   horizon for get-food candidates or score the food left against the eating rate.
+3. Seeds for land 1 and rand1 side 3 (`seeds.sh` on `pm123/win/l1_built.snap` and `pm142/rand1.snap`), so those
+   one-run results become rates too.
+4. **Why side 2 makes no new group** after losing both (`$26d0` hits over the rollout win's 315M..1120M).
+5. LLM prompt: captain food against trip cost and enemy groups near the captain; re-run on two seeds.
+6. Land 3: build it from the land-2 win (`cmd9/rollout/o0/final.snap`) and play it.
+7. Movement with rollouts; state-space forecaster (plan step 5); smaller items (side-0 peace bit from the `$c706`
+   clobber, sender-word readers, `$25d6` rebuilding slot 0, UI click with side 1's slot held).
 
 ## Known traps
 
 The PowerMonger traps in `sessions/powermonger.md` apply.
 
-- Killing `loop.py` leaves its emulator children (the loop's own and up to `--par` rollout workers) running, and a
-  restarted run in the same directory then shares it with them: `pkill -9 -f 'scratchpad/<run dir>'`, then check
-  `pgrep -fl <run dir>` is empty, before restarting.
-- A rollout process loads `rollout.py` and `loop.py` once at start: editing them mid-run changes nothing in that run
-  (useful for an A/B, misleading otherwise).
-- Every local-side rule in `Scripted` is gated on `local` so side-3 gate runs stay byte-identical; `gate_rollout.sh`'s
-  choices still depend on Scripted, so re-run it after any change and update its count.
-- `Scripted` skips a group whose lead object is missing, so a 0-man captain group is never ordered again, and the land
-  does not end while its owner word stays 1 (the retire rule needs no lord and no man).
-- Rollout decisions with a retreat or captain fork cost a 5-candidate rollout every decision while the captain is
-  threatened (land 2: 58 rollouts, about 820 s on a loaded machine).
+- A new `Scripted` rule whose run ends at the same step as the baseline never fired: compare end steps (or count its
+  orders in `decisions.jsonl`) before reading an outcome. The first disengage rule (health < 48 at 5M decisions) never
+  fired on six seeds, because the lead goes from 74 health to dead between two decisions.
+- `loop.py --replay` ignores `--budget` and runs the whole logged run (a 1.4G replay takes about 5 minutes); use
+  `--snap-at` to keep the states you need.
+- One run per arm on land 2 is noise: from the same 290M snapshot the unchanged scripted policy lost at +30M where the
+  original run survived to 1470M (`cmd8/a290/ctl`). Use `seeds.sh`.
+- Camped men are mostly not in the object table (side 1 had 4 man objects for a 32-man group at 290M); a per-man census
+  works only for a marching group, whose followers point at their lead through word 28.
+- Killing `loop.py` leaves its emulator children running: `pkill -9 -f 'scratchpad/<run dir>'`, check `pgrep -fl`.
+- A rollout process loads `rollout.py` and `loop.py` once at start: editing them mid-run changes nothing in that run.
+- Every local-side rule in `Scripted` is gated on `local` (and `--evade` on its flag) so side-3 gate runs stay
+  byte-identical; `gate_rollout.sh`'s choices depend on Scripted, so re-run it after any change.
+- `Scripted` skips a group whose lead object is missing; the land does not end while the captain group's owner word
+  stays 1 (the retire rule needs no lord and no man).
+- Rollout runs on land 2 cost 15 to 40 minutes each on a loaded machine; `seeds.sh` par counts each as 6 processes.
 - On rand1 every AI group's lead holds a Boat: movement tests need `prep.py`'s boat stripping.
 - An injected order sets no pending word and lasts one tick in the slot: write a decision's orders `--gap` apart.
 - `claude -p --output-format json` output carries session and account metadata (`*.cli.json`): never commit it.
@@ -79,7 +82,8 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 ## Next session
 
-Work Open 1: give the scripted captain a fallback after a costly field fight (recruit at an own lord, or hold at home
-while side 2's groups live), re-run land 2 scripted (and rollout as the control) and check with `runstat.py --every 25`
-that side 2's two groups die and the captain keeps men. Then start Open 3 (seeds) so the land-2 numbers become rates.
-The prompt that starts it is `/resume commander`.
+Work Open 1: find what sends an enemy man onto the captain's lead. Start from `cmd9/o1_health/at_205000000.snap`
+(lead in `$34`, health 95) and run to 208M watching the lead's mode byte and the enemy men's target words; read
+`$4f68` for why the lead is picked. Turn the cause into one rule, add it as an arm to `seeds.sh` on the six land-2
+starts, and compare its win count against scripted 0/6 and rollout 1/6. The prompt that starts it is
+`/resume commander`.
