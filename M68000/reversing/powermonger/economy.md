@@ -461,13 +461,16 @@ offer(man, n, code):                      // $638c
 ```
 
 **The trade (`$63f4`).** Every carried unit is sold into the lord's stock (byte `24+i`, saturating at `$ff`) at `2 * price[i]` (prices 5, 10, 20, 4, 6, 2, 100, 200 at `$6502`),
-so the credit is `army food + sum(sold * 2 * price)`.
+so the credit is `C = army food F0 + sum(sold * 2 * price)`; units lost to the `$ff` cap are still paid for.
 
-Then, in the posture's row of `$650a` (row `posture - 2`; the `$ff` pads are skipped, not terminators:
+Then, in the posture's row of `$650a` (row `posture - 2`, posture 0 reads row 0; the `$ff` pads are skipped, not terminators:
 aggressive cannon, catapult, bow, sword, pike, boat; neutral boat, pike, plough, sword, bow, catapult, cannon; passive plough, boat, pot, pike, sword, bow, catapult, cannon),
-it buys as much of each stocked item as the credit pays (the last one partially, `credit / (2*price)`), each through `$6352`. The credit left becomes the army's food
-(its low word, **inferred** to wrap above 65535, no state reaches it), the food spent is added to the lord's food (`6(lord)`), `loyalty_pressure` (`14(lord)`, §3a)
-moves by `-8` for the group's own side and `+8` otherwise, `$311a` adds 2 to the relation byte (strategy.md "Diplomacy") and `$35f4` ends the contact.
+it buys each stocked item through `$6352`: the whole stock when the credit covers it, otherwise `C / (2*price)` units with `C mod (2*price)` carried on, so a cheaper item later in the row can still be bought.
+The credit left becomes the army's food (its low word, **inferred** to wrap above 65535, no state reaches it). The lord's food (`6(lord)`) gains `F0 - C`, the food actually spent, only when
+`F0 >= C` (signed word compare at `$64c8`, `blt $64d0`): when the sale outweighs the purchases (goods the posture row does not buy back) the army keeps the surplus and the lord's food is untouched,
+and when nothing is spent `$64cc` adds 0. `loyalty_pressure` (`14(lord)`, §3a) moves by `-8` when the lord's side equals the group's and `+8` otherwise, `$311a` adds 2 to the relation byte
+(strategy.md "Diplomacy") and `$35f4` ends the contact. Proven by `callcap` of `$63f4` over 67 forced states (group food, carried goods, posture 0/2/3/4, lord food and stock): 268/268 fields
+(group food, lord food, lord stock, loyalty), every branch covered (spent > 0, = 0, < 0) (`py/gate_trade.py --run`). Posture 1 (its row index wraps before the table) is not tested.
 
 Two more modes close the loop:
 
