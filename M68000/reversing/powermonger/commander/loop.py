@@ -1,6 +1,6 @@
 """loop.py: the commander's decision loop with replay logging (commander README plan step 3).
 
-    loop.py <work> [--snap S] [--budget N] [--every N] [--side K] [--policy scripted|none|llm] [--no-take]
+    loop.py <work> [--snap S] [--budget N] [--every N] [--side K] [--policy scripted|none|llm] [--move] [--no-take]
             [--gap N] [--read m|snap] [--replay LOG] [--backend cli|replay:<llm logdir>] [--model sonnet]
 
 Policy llm (llm.py) logs every prompt and reply under <work>/llm/.
@@ -151,8 +151,10 @@ class Scripted:
     Playing the local side, it posts retire $2e as soon as the observed ratio $57fce is 4 (a win), or when the side
     has no lord and no man left (a loss the game does not end by itself)."""
 
-    def __init__(self, side, mp=None):
-        self.side, self.mp = side, mp
+    def __init__(self, side, mp=None, move=False):
+        self.side, self.mp, self.move = side, mp, move
+        self.movers = {}         # --move: k -> move.Mover in flight
+        self.events = []         # Mover events since the last decision (logged by the loop)
         self.seen = {}           # k -> ((state, lead cell), decisions unchanged)
         self.ordered = {}        # k -> step of the last order
         self.comps = mp.cell_components() if mp else None
@@ -164,7 +166,20 @@ class Scripted:
         b = self.comps[cell[1]][cell[0]]
         return a is not None and a == b
 
-    def decide(self, obs, clock):
+    def _move(self, k, mv, obs, R, clock):
+        n0 = len(mv.events)
+        acts = mv.tick(obs, R, clock)
+        self.events += [[k] + list(e) for e in mv.events[n0:]]
+        if mv.done or mv.failed:
+            del self.movers[k]
+            self.ordered[k] = clock
+            self.seen[k] = (None, 0)
+            if mv.failed:
+                self.events.append([k, clock, 'failed', mv.failed])
+        return acts
+
+    def decide(self, obs, clock, R=None):
+        self.events = []
         S = obs['sides'][self.side] if self.side in obs['sides'] else obs['sides'][str(self.side)]
         allside = obs['sides']
         own = [l for l in S['lords']]
@@ -181,6 +196,9 @@ class Scripted:
             k = g['k']
             if not g['alive'] or g['men'] <= 0 or 'lead_obj' not in g or g['raw_w4'] != 0:
                 self.seen.pop(k, None); continue
+            if k in self.movers:
+                out += self._move(k, self.movers[k], obs, R, clock)
+                continue
             here = tuple(g['lead_obj']['cell'])
             key = (g['state'], here)
             prev = self.seen.get(k)
@@ -209,7 +227,12 @@ class Scripted:
                 continue
             self.seen[k] = (None, 0)
             self.ordered[k] = clock
-            out.append(dict(side=self.side, type=typ, x=tgt['cell'][0], y=tgt['cell'][1], group=k))
+            if self.move:
+                from move import Mover
+                self.movers[k] = Mover(self.mp, self.side, k, tuple(tgt['cell']), typ)
+                out += self._move(k, self.movers[k], obs, R, clock)
+            else:
+                out.append(dict(side=self.side, type=typ, x=tgt['cell'][0], y=tgt['cell'][1], group=k))
         return out
 
 
@@ -232,6 +255,7 @@ def main(argv):
     how = opt('--read', 'm')
     replay = opt('--replay', None)
     take = not flag('--no-take')
+    move = flag('--move')
     backend = opt('--backend', 'cli')
     model = opt('--model', 'sonnet')
     work = (ROOT / a[0]).resolve()
@@ -253,7 +277,7 @@ def main(argv):
         sys.path.insert(0, str(CMD))
         from astar import Map
         mp = Map(load(snap))   # terrain from the start snapshot (inferred static during a land)
-        cmdr = Scripted(side, mp)
+        cmdr = Scripted(side, mp, move)
     elif policy == 'llm':
         from astar import Map
         import llm
@@ -267,7 +291,7 @@ def main(argv):
     log = open(work / 'decisions.jsonl', 'w')
     W = lambda r: (log.write(json.dumps(r, separators=(',', ':')) + '\n'), log.flush())
     W(dict(kind='start', snap=str(snap.relative_to(ROOT)), budget=budget, every=every, gap=gap, side=side,
-           take=take, policy=policy, **(dict(backend=backend, model=model) if policy == 'llm' else {})))
+           take=take, policy=policy, **(dict(move=True) if move else {}), **(dict(backend=backend, model=model) if policy == 'llm' else {})))
     emu = Emu(snap, work / 'emu.err')
     if policy == 'llm':
         holder['emu'] = emu
@@ -289,7 +313,9 @@ def main(argv):
                                     g.get('lead_obj', {}).get('cell')] for g in obs['sides'][side]['groups'] if g['alive']],
                            actions=[])
                 if dsteps is None:
-                    acts = list(cmdr.decide(obs, clock))
+                    acts = list(cmdr.decide(obs, clock, R) if isinstance(cmdr, Scripted) else cmdr.decide(obs, clock))
+                    if getattr(cmdr, 'events', None):
+                        rec['moves'] = cmdr.events
                     if getattr(cmdr, 'last', None):
                         L = cmdr.last
                         rec['llm'] = dict(prompt=L['prompt_hash'], response=L['response_hash'], parse=L['parse'],

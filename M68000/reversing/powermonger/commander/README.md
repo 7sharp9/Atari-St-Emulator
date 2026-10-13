@@ -168,6 +168,22 @@ nearest reachable own lord when under 22 men, get food `$06` when food is short 
 steps on side 3 it holds 1 lord, 28 men at home and no group, against 4 lords and 60 group men with the slot taken
 and no orders, and 13 lords unpoked (one run each, this seed).
 
+**Movement (`move.py`, `loop.py --move`).** `plan_legs` takes the cells of the A* triangle path in order, keeps those
+whose centre samples land, and string-pulls: from the current point (the start, then each leg's centre, where the
+walker snaps on arrival) the farthest kept cell whose straight leg passes `Map.leg`, then cells within two of the path
+when none does; a plan whose last leg fails is refused rather than issued (2738/2738 land goals 4..24 cells away
+behind water got a plan, 1 to 7 legs, `plan_stats`-style count, no emulation). `Mover` sends each leg as a go to
+`$02`, the next when the lead stands in the leg cell, the real order from the last leg, and re-plans after 12M
+steps without progress (12M more for a pigeon-carried group). A lead holding a Boat (byte 33 = `$0a`) skips the water
+probe and goes straight, and on rand1 every AI group's lead holds one (12/12, 13/13, 14/14 men of 2:0, 3:0, 4:0;
+drop equipment `$18` empties the carried boats but not the men's), so `prep.py` strips the held boats of named
+groups for the test. Gate (`gate_move.sh`, `ab.py`, same snapshot and 120M steps per arm): on 8 pairs where the
+straight walk crosses water to a goal on the same land the direct order never arrives and the legs arrive in all 8
+(21M to 67M steps, no re-plans; `Map.simulate_walk` called the direct verdict right in 9/9 boat-free pairs);
+p10 arrives both ways through the detour sweep; b1 (a boat lead) arrives straight. p9 does not arrive: its group's
+pending word stayed set, so the first orders were not taken (open). Two `--move` runs on side 1 over 400M steps are
+identical. The Mover does not yet wait on a set pending word.
+
 **The LLM policy (`llm.py`, `prompt_system.txt`).** The model is called through Claude Code's headless mode (no API key
 on this machine): `claude -p --output-format json --model sonnet --tools "" --system-prompt <digest>
 --no-session-persistence --strict-mcp-config --max-budget-usd 1.00`, the observation on stdin, from an empty working
@@ -209,7 +225,8 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
 | `act.py <snap> gate` / `Poker` | order pokes; `gate` prints the injection gate's arms |
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
-| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm] [--replay LOG]` | the decision loop |
+| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm] [--move] [--replay LOG]` | the decision loop |
+| `move.py <snap> <side> <k> <gx> <gy>`, `ab.py [pair...]`, `prep.py`, `gate_move.sh` | A* legs as go-to orders, the direct-vs-legs gate, boat stripping |
 | `gate_loop.sh [budget]`, `gate_loop_side1.sh [budget]` | loop determinism and replay, side 3 and side 1 |
 | `llm.py selftest` / `llm.py prompt <snap> [side]`, `prompt_system.txt` | the LLM policy, its offline test and its prompt |
 | `astar.py <snap> x0 y0 x1 y1 [--cells] [--speed N]` | land path as world waypoints, with a verified flag |
