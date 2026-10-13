@@ -134,7 +134,9 @@ that are easy to forget:
 - Tell agents to derive the repo root by walking up to the directory holding `tools/rdis.py` (or
   `M68000_ROOT`), never a literal path or fixed `../` count, and to keep temp files in one named
   scratchpad dir.
-- Re-run every gate from fresh callcaps, from the promoted location, before merging. Name a promoted
+- Re-run every gate from fresh callcaps, from the promoted location, before merging.
+  Give each promoted gate its own output subdirectory: two gates that both name an arm `ctl` in one directory overwrite
+  each other, and one then checks the other's run (commander `gate_local.sh` and `gate_retire.sh` did). Name a promoted
   directory anything but `build/`: `.gitignore` ignores it.
 - `callcap` runs with interrupts masked, so a routine that plays a sound waits forever on a flag the
   interrupt clears (PowerMonger: poke `$2c993` to 0 in the state). Corpus capture:
@@ -186,6 +188,9 @@ that are easy to forget:
   before the down, or the census misses the handler. `hits <n> <addrs>` after a `bp` that stopped
   the run counts only what happens after the stop, so a routine that ran earlier reads 0 and looks
   uncalled: run `hits` from the end of the click, before any `bp`.
+- `hits` on a routine every side runs (PowerMonger's executor `$6b38`, attack `$6c32`) counts all sides' calls, so a
+  count after a poke is not the poked side's: attribute each call by its own data (`bp`, then the packet's side byte at
+  A0). Side 2's 26 orders after side 3's captain died read as side 3's stale pigeons until `bp 6b38` showed byte 0 = 2.
 - `hits` and `bpc` count an address again when an interrupt is taken at it: the handler returns to the
   same PC, which counts as a second arrival. PowerMonger's `$1abaa` was seen doing this (`s 1` from the stop
   enters the level-6 sample-player handler; `bpc` stops there again 20 steps later with the routine's state
