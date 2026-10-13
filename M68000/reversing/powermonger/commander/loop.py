@@ -275,8 +275,8 @@ class RolloutPolicy(Scripted):
         self.K = K
 
     def candidates(self, obs, pol):
-        if not pol:
-            return []
+        if not pol or any('group' not in a for a in pol):
+            return []                    # nothing to choose, or a retire: issue Scripted's actions as they are
         S = obs['sides'][self.side]
         enemy = [l for s, v in obs['sides'].items() if int(s) != self.side for l in v['lords']]
         first = pol[0]
