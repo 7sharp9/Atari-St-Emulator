@@ -133,6 +133,10 @@ def obs_hash(obs):
 
 # ------------------------------------------------------------------ the scripted baseline
 GET_FOOD, GET_MEN, ATTACK = 0x06, 0x08, 0x0c   # commander README order table
+POSTURE, GET_EQUIP, INVENT = 0x16, 0x10, 0x0e     # commander README order table
+FOLLOWUP = {0x0d: (GET_FOOD, 4), 2: (GET_MEN, 3), 3: (GET_EQUIP, 2), 0x0a: (INVENT, 3)}   # $67d0 {prev state: order,
+                                                # posture}; $67d0's invent posture is (rng & 3) + 2, 3 here
+LORD0, OBJ = 0x4e514, 0x51b66                   # lord records (32 bytes), object base (observe.py)
 RETIRE = 0x2e                                   # strategy.md "How a land ends": $2e in the local side's slot -> $d2c8
 IDLE = (0, 1, 6)                                # state names (observe.STATE): none, Waiting, In Camp
 MEN_LOW = 22                                    # $6522's own get-men arm: men < 22 (strategy.md "The AI as modern pseudocode")
@@ -144,10 +148,16 @@ WAIT = 20_000_000                               # steps an ordered group is left
 
 
 class Scripted:
-    """Deterministic baseline for one side. For each live group with men, no pending pigeon (word 4, as $6564
-    skips) and idle (or stale): men < 22 -> get men at the nearest reachable own lord with men at home > 1; else
+    """Deterministic baseline for one side. For each live group with no pending pigeon (word 4, as $6564 skips)
+    and idle (or stale): a camped group 20 ticks after it made camp follows $6762's chain at its target lord when that
+    lord is now its own (after a fight with a lord: get food, posture 4; after get food: get men, posture 3; after get
+    men: equip, posture 2; after equip: invent); else men < 22 (0 included, as $6564 offers it to arm 1) -> posture 2
+    and get men at the nearest reachable own lord with men at home > 1; else
     food short of the trip ($68ee's cost: (d/2)*((men-4)/8+1) + d/2) -> get food at the nearest own lord with food;
-    else attack the nearest reachable enemy lord with men at home < men - 4 ($6522's attack arm test).
+    else posture 4 and attack the nearest reachable enemy lord with men at home < men - 4 ($6522's attack arm test).
+    Postures are $16 orders sent just before the order, as $6638 / $65c8 stamp them: at posture 4 every kill the
+    group makes is a rout ($5590), so a conquered lord's captain survives to defect and found a new group ($5c2c,
+    $25d6); at posture 2 the men are killed, no group is ever made, and get men takes the whole garrison.
     Playing the local side, it posts retire $2e as soon as the observed ratio $57fce is 4 (a win), or when the side
     has no lord and no man left (a loss the game does not end by itself)."""
 
@@ -184,6 +194,8 @@ class Scripted:
         allside = obs['sides']
         own = [l for l in S['lords']]
         enemy = [l for s, v in allside.items() if int(s) != self.side for l in v['lords']]
+        lords = {l['idx']: (int(s), l) for s, v in allside.items() for l in v['lords']}
+        tick = obs['clock'] >> 16               # observe's clock is the long at $2df72: the tick in its high word
         out = []
         if self.side == obs['local_side']:
             t = S['totals']
@@ -194,7 +206,7 @@ class Scripted:
                 return [dict(side=self.side, type=RETIRE, x=0, y=0)]
         for g in S['groups']:
             k = g['k']
-            if not g['alive'] or g['men'] <= 0 or 'lead_obj' not in g or g['raw_w4'] != 0:
+            if not g['alive'] or 'lead_obj' not in g or g['raw_w4'] != 0:
                 self.seen.pop(k, None); continue
             if k in self.movers:
                 out += self._move(k, self.movers[k], obs, R, clock)
@@ -210,10 +222,16 @@ class Scripted:
                 continue
             d = lambda l: max(abs(l['cell'][0] - here[0]), abs(l['cell'][1] - here[1]))
             pick = lambda ls: min(ls, key=lambda l: (d(l), l['idx'])) if ls else None
-            tgt = typ = None
-            if g['men'] < MEN_LOW:
-                tgt, typ = pick([l for l in own if l['men_home'] > 1 and self._reach(g, l['cell'])]), GET_MEN
-            if tgt is None:
+            tgt = typ = post = None
+            if g['state'] == 6 and tick >= g['camp_since'] + 20:          # $6762 / $67d0 (strategy.md)
+                e = FOLLOWUP.get(g['prev_state'])
+                a = OBJ + g['target']
+                if e and not (g['prev_state'] == 0x0d and g['opp_class'] != 2) and LORD0 <= a < LORD0 + 160 * 32 \
+                        and (a - LORD0) % 32 == 0 and lords.get((a - LORD0) // 32, (0,))[0] == self.side:
+                    tgt, typ, post = lords[(a - LORD0) // 32][1], e[0], e[1]
+            if tgt is None and g['men'] < MEN_LOW:
+                tgt, typ, post = pick([l for l in own if l['men_home'] > 1 and self._reach(g, l['cell'])]), GET_MEN, 2
+            if tgt is None and g['men'] > 4:
                 foes = [l for l in enemy if l['men_home'] < g['men'] - 4 and self._reach(g, l['cell'])]
                 foe = pick(foes)
                 if foe:
@@ -222,11 +240,13 @@ class Scripted:
                     if g['food'] < cost:
                         tgt, typ = pick([l for l in own if l['food'] > 0 and self._reach(g, l['cell'])]), GET_FOOD
                     if tgt is None:
-                        tgt, typ = foe, ATTACK
+                        tgt, typ, post = foe, ATTACK, 4
             if tgt is None:
                 continue
             self.seen[k] = (None, 0)
             self.ordered[k] = clock
+            if post is not None and g['posture'] != post:
+                out.append(dict(side=self.side, type=POSTURE, x=0, y=post, group=k))
             if self.move:
                 from move import Mover
                 self.movers[k] = Mover(self.mp, self.side, k, tuple(tgt['cell']), typ)

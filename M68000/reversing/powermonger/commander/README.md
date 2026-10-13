@@ -183,11 +183,28 @@ captain test nor `$d2c8` fires; without the retire rule the land ran on for 1.6G
 on ratio 4 or on a side with no lord and no man.
 
 The scripted baseline (`Scripted`) orders a group when it is alive, has no pending word and is idle (state 0, 1, 6)
-or unchanged for 8 decisions, then leaves it 20M steps (an injected order sets no pending word): get men `$08` at the
-nearest reachable own lord when under 22 men, get food `$06` when food is short of the `$68ee` trip cost, else attack
-`$0c` the nearest reachable enemy lord with fewer than men − 4 at home. It is weaker than the game's AI: after 1G
-steps on side 3 it holds 1 lord, 28 men at home and no group, against 4 lords and 60 group men with the slot taken
-and no orders, and 13 lords unpoked (one run each, this seed).
+or unchanged for 8 decisions, then leaves it 20M steps. In order: a group camped 20 ticks at a target lord that is now
+its own follows the AI's `$6762`/`$67d0` chain (after a fight with a lord get food at posture 4, after state 2 get men
+at posture 3, after state 3 equip at posture 2, after state `$a` invent at posture 3); a group under 22 men, empty ones
+included, gets men at posture 2 from the nearest reachable own lord; a larger one attacks at posture 4 the nearest
+reachable enemy lord with fewer than men − 4 at home, or gets food first when short of the trip cost. A posture
+order `$16` goes just before the main order when it differs. **Posture is what the first version lacked**: at
+posture 2 an attack kills the garrison instead of routing it (`$5590`), including the conquered lord's captain, the
+man who would defect and found a new group (`$5c2c` → `$25d6`), so the side never replaced a group. Counting group
+creations (`$26d0`) and dissolves (`$28ae`) over 1G steps from rand1: no posture 0 and 3, posture 4 1 and 2, the
+game's AI 2 and 2; conquered lords left with no men at home 20M later 11 of 14 against 6 of 21 for the AI. Side 3
+lords / men at 1G or at the land end (one run per cell; rand1_s2 is rand1 plus 100M steps, not a separate roll):
+
+| start | game's AI | slot taken, no orders | first baseline | current baseline |
+|---|---|---|---|---|
+| rand1 | 13/88 (end 676M) | 4/66 | 1/28 | 10/116 (end 600M) |
+| k25 | 14/113 | 4/79 | 4/26 | 20/220 (end 747M) |
+| k60 | 3/24 | 2/4 | 4/31 | 7/25 |
+| rand1_s2 | 13/88 (end 576M) | 5/72 | 13/78 (end 714M) | 12/106 (end 614M) |
+
+Waiting on pigeons in flight and skipping `never` groups gave mixed results against this policy (rand1 8/83, k25
+18/153, k60 7/24) and are not in it. The attack margin of 4 still sends about 20-man groups to die at the player's
+city, as the game's AI does.
 
 **Movement (`move.py`, `loop.py --move`).** `plan_legs` takes the cells of the A* triangle path in order, keeps those
 whose centre samples land, and string-pulls: from the current point (the start, then each leg's centre, where the
@@ -226,7 +243,8 @@ local side 1's captain is lost):
 |---|---|---|---|
 | unpoked (the game's AI) | 8 / 77 | 676M | 13 lords, force 88 |
 | slot taken, no orders | 4 / 65 | not by 1G | 4 lords at 1G |
-| scripted baseline | 7 / 54 | not by 1G | 1 lord, force 28 at 1G |
+| first scripted baseline | 7 / 54 | not by 1G | 1 lord, force 28 at 1G |
+| current scripted baseline | | 600M | 10 lords, 116 men |
 | rollout (K 5, N 40M, a decision per 5M) | 12 / 86 | 549M | 13 lords, force 70 |
 | LLM (`prompt_system.txt`, sonnet, a decision per 20M) | 12 / 73 | 491M | 13 lords (480M) |
 
