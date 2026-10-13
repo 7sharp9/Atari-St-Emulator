@@ -26,13 +26,23 @@ harness. Continuation record: `M68000/sessions/commander.md`.
   per-side aggregates (men, food, loyalty pressure) trained on the rollout traces comes second,
   judged against the rollouts and against a hand-written recurrence of the proven rules.
 
-**Action interface: the command buffer.** Each side has a 6-byte slot at `$58016 + 6*side`
-(byte 0 commander, byte 1 order type, word 2 parameter, byte 4 slot state; `../strategy.md`
-"`$58016` — command buffer"). The executor `$6a3a` runs slots 1..4 in states 2 and 4, and the
-commander AI `$6522` issues a new order only in state 4. Setting a side's slot to state 2 should
-therefore silence its built-in AI and leave the slot to the harness, with no UI clicks. Orders to
-a subordinate captain still go through `$6822`'s queued-order header and the pigeon, as the
-game's own do. Not yet proven: this is gate 1 below.
+**Action interface: the command buffer** (proven, `gate_inject.sh` 7/7). Each side has a 6-byte
+slot at `$58016 + 6*side`: byte 0 the side, byte 1 the order type, bytes 2 and 3 the target cell x
+and y (the AI's natural get-men order for side 3 carried `$306b`, its lord 1's cell (48,107)),
+byte 4 the slot state (`../strategy.md` "`$58016` — command buffer"). The executor `$6a3a` runs
+slots 1..4 in states 2 and 4, and the commander AI writes a slot only in state 4, so setting a
+side's slot to state 2 silences its built-in AI and leaves the slot to the harness, with no UI
+clicks. The order acts for the group named by the word `$58042[2*side]`
+(`side*$13c + $4c + 2k`), which the player's captain-portrait click sets the same way; the harness
+writes it before the order (a longword `w` there covers two sides' words). The commander's own
+group (group 0) runs the order in the same pass; any other group gets it by carrier pigeon, as the
+game's own orders do (group 1 in the gate: landed 8.7M steps later).
+
+Gate (`gate_inject.sh`, from `pm142/rand1.snap`, 30M steps per arm, a watch on side 3's slot):
+unpoked, side 3's AI writes the slot 3 times (`$08`, `$22`, `$02`); with the slot at state 2 it
+writes nothing and no attack runs; an attack `$0c` on player lord 9 at (15,92) runs `$6c32`,
+`$4a7a` and `$4b80` once each, leaving group 1 in state 8 with opponent class 2 (a lord), or with
+`$58042[3]` set to group 0, group 0 marching then fighting (state `$d`) within the 30M steps.
 
 **Observation.** A per-decision JSON summary read from RAM: lords (`$4e514`, 32 bytes, side byte
 0), settlements, groups (the structure-of-arrays record `$51538`, `../strategy.md` "group-order
@@ -42,7 +52,7 @@ table": owner, men, state, food, posture, opponent class), loyalty pressure, and
 
 | step | what | proof | status |
 |---|---|---|---|
-| 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | same-snapshot control with the slot left at 4; `hits` on `$6822` (by side), `$6b38`, the handler; the group's state after | open |
+| 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | `gate_inject.sh` 7/7 (above) | done |
 | 2 | A* reachability tool over the terrain planes | checked against the stuck census (`../py/fsm/stuck_census.py`): stuck men split into unreachable (island) and reachable-but-walker-fails | open |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | a land played to a result with every decision logged and replayable | open |
 | 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped | open |
