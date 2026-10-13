@@ -241,6 +241,52 @@ class Nobody:
         return []
 
 
+class RolloutPolicy(Scripted):
+    """The scripted baseline proposes; exact rollouts choose. At a decision where Scripted orders at least one group,
+    the candidates are: Scripted's own orders; a no-order baseline (none of them sent); and for the first ordered group
+    the alternatives get men at the nearest reachable own lord with men at home > 1, get food at the nearest reachable
+    own lord with food, attack the nearest reachable enemy lord with men at home < men (a looser test than
+    $6522's men - 4), attack the second-nearest enemy lord passing Scripted's test, and holding that group alone
+    (the other groups keep Scripted's orders). Duplicates are dropped and the list is cut at K. Scripted's WAIT
+    bookkeeping stands whatever is chosen, so a group that was held is reconsidered 20M steps later, not at once."""
+
+    def __init__(self, side, mp, K):
+        super().__init__(side, mp)       # no --move: a candidate is one decision's order list, not a Mover's legs
+        self.K = K
+
+    def candidates(self, obs, pol):
+        if not pol:
+            return []
+        S = obs['sides'][self.side]
+        enemy = [l for s, v in obs['sides'].items() if int(s) != self.side for l in v['lords']]
+        first = pol[0]
+        g = next(g for g in S['groups'] if g['k'] == first['group'])
+        here = tuple(g['lead_obj']['cell'])
+        d = lambda l: max(abs(l['cell'][0] - here[0]), abs(l['cell'][1] - here[1]))
+        srt = lambda ls: sorted(ls, key=lambda l: (d(l), l['idx']))
+        o = lambda typ, l: dict(side=self.side, type=typ, x=l['cell'][0], y=l['cell'][1], group=g['k'])
+        alt = []
+        men = srt([l for l in S['lords'] if l['men_home'] > 1 and self._reach(g, l['cell'])])
+        if men: alt.append(('get_men', o(GET_MEN, men[0])))
+        food = srt([l for l in S['lords'] if l['food'] > 0 and self._reach(g, l['cell'])])
+        if food: alt.append(('get_food', o(GET_FOOD, food[0])))
+        weak = srt([l for l in enemy if l['men_home'] < g['men'] and self._reach(g, l['cell'])])
+        if weak: alt.append(('attack_loose', o(ATTACK, weak[0])))
+        foes = srt([l for l in enemy if l['men_home'] < g['men'] - 4 and self._reach(g, l['cell'])])
+        if len(foes) > 1: alt.append(('attack_2nd', o(ATTACK, foes[1])))
+        out = [('scripted', pol), ('none', [])]
+        if len(pol) > 1:
+            out.append(('hold_first', pol[1:]))
+        for n, a in alt:
+            out.append((n, [a] + pol[1:]))
+        seen, ded = set(), []
+        for n, a in out:
+            key = json.dumps(a, sort_keys=True)
+            if key not in seen:
+                seen.add(key); ded.append((n, a))
+        return ded[:self.K]
+
+
 # ------------------------------------------------------------------ the loop
 def main(argv):
     a = list(argv)
@@ -254,6 +300,11 @@ def main(argv):
     policy = opt('--policy', 'scripted')
     how = opt('--read', 'm')
     replay = opt('--replay', None)
+    rK = int(opt('--K', '5'))                       # rollout: candidates per decision (incl. scripted and none)
+    rN = int(float(opt('--N', '40e6')))             # rollout: horizon in steps
+    rP = int(opt('--par', '5'))                     # rollout: processes at once (the loop's own emulator idles meanwhile)
+    force = opt('--force', None)                    # proof: always take the candidate with this name if present
+    snap_at = [int(float(x)) for x in opt('--snap-at', '').split(',') if x]   # proof: save <work>/at_<step>.snap
     take = not flag('--no-take')
     move = flag('--move')
     backend = opt('--backend', 'cli')
@@ -273,7 +324,14 @@ def main(argv):
             if r['kind'] == 'applied':
                 sched.setdefault(r['step'], []).extend(r['actions'])
     mp = None
-    if policy == 'scripted':
+    if policy == 'rollout':
+        assert not move, '--policy rollout does not take --move'
+        sys.path.insert(1, str(HERE))
+        from astar import Map
+        from rollout import rollout
+        mp = Map(load(snap))
+        cmdr = RolloutPolicy(side, mp, rK)
+    elif policy == 'scripted':
         sys.path.insert(0, str(CMD))
         from astar import Map
         mp = Map(load(snap))   # terrain from the start snapshot (inferred static during a land)
@@ -291,12 +349,14 @@ def main(argv):
     log = open(work / 'decisions.jsonl', 'w')
     W = lambda r: (log.write(json.dumps(r, separators=(',', ':')) + '\n'), log.flush())
     W(dict(kind='start', snap=str(snap.relative_to(ROOT)), budget=budget, every=every, gap=gap, side=side,
-           take=take, policy=policy, **(dict(move=True) if move else {}), **(dict(backend=backend, model=model) if policy == 'llm' else {})))
+           take=take, policy=policy, **(dict(move=True) if move else {}), **(dict(backend=backend, model=model) if policy == 'llm' else {}),
+           **(dict(K=rK, N=rN, par=rP, force=force) if policy == 'rollout' else {})))
     emu = Emu(snap, work / 'emu.err')
     if policy == 'llm':
         holder['emu'] = emu
     tmp = work / 'read.snap'
     clock, reason, t0, tread, nread = 0, 'budget', time.time(), 0.0, 0
+    trollout, nroll = 0.0, 0
     if take and not replay:
         sched.setdefault(0, []).append(dict(side=side, take=True))
     nextd = 0
@@ -304,6 +364,8 @@ def main(argv):
     rec = None
     try:
         while True:
+            if clock in snap_at:
+                emu.save(work / f'at_{clock}.snap')
             if (dsteps is None and clock == nextd and clock < budget) or (dsteps and di < len(dsteps) and dsteps[di] == clock):
                 t = time.time(); R = emu.read(how, tmp); tread += time.time() - t; nread += 1
                 obs = observe(R)
@@ -321,11 +383,31 @@ def main(argv):
                         rec['llm'] = dict(prompt=L['prompt_hash'], response=L['response_hash'], parse=L['parse'],
                                           n_orders=L['n_orders'], valid=L['valid'], invalid=len(L['invalid']),
                                           latency_s=L.get('latency_s'))
+                    pre = []
                     sl = obs['sides'][side]['slot']
                     if take and clock > 0 and sl['state'] != 2:     # re-take a slot something re-armed ($71ae)
-                        acts.insert(0, dict(side=side, take=True))
+                        pre = [dict(side=side, take=True)]
                     if take and clock == 0:
-                        acts = sched.pop(0, []) + acts
+                        pre = sched.pop(0, [])
+                    cands = cmdr.candidates(obs, acts) if policy == 'rollout' else []
+                    if cands:
+                        dsnap = work / 'dec' / f'{clock}.snap'      # the decision point, before this decision's pokes
+                        dsnap.parent.mkdir(exist_ok=True)
+                        emu.save(dsnap)
+                        t = time.time()
+                        res, best = rollout(dsnap, side, [dict(name=n, actions=pre + c) for n, c in cands],
+                                            rN, gap, rP, work / 'ro' / str(clock), baseline=False)
+                        if force is not None and any(n == force for n, _ in cands):
+                            best = [n for n, _ in cands].index(force)
+                        acts = cands[best][1]
+                        rec['rollout'] = dict(N=rN, best=cands[best][0], wall_s=round(time.time() - t, 2),
+                                              cands=[dict(name=r['name'], score=r['score'], steps=r['steps'],
+                                                          land_end=r['land_end'], obs_hash=r['obs_hash'],
+                                                          sides={s: [v['lords'], v['men_home'], v['group_men'],
+                                                                     v['force']] for s, v in r['sides'].items()},
+                                                          actions=r['actions'][len(pre):]) for r in res])
+                        trollout += time.time() - t; nroll += 1
+                    acts = pre + acts
                     for i, ac in enumerate(acts):
                         sched.setdefault(clock + i * gap, []).append(ac)
                     rec['actions'] = acts
@@ -344,6 +426,7 @@ def main(argv):
             if clock >= budget:
                 break
             cands = [budget] + [s0 for s0 in sched if s0 > clock]
+            cands += [s0 for s0 in snap_at if s0 > clock]
             cands.append(nextd if dsteps is None else (dsteps[di] if di < len(dsteps) else budget))
             nxt = min(c for c in cands if c > clock)
             n, hit = emu.run(nxt - clock)
@@ -366,7 +449,7 @@ def main(argv):
     log.close()
     print(json.dumps(dict(work=str(work), step=clock, reason=reason, wall_s=round(wall, 1),
                           s_per_10M=round(wall * 1e7 / max(clock, 1), 2), reads=nread,
-                          read_ms=round(1000 * tread / max(nread, 1), 1), **{k: fin.get(k) for k in ('clock', 'ratio')})))
+                          read_ms=round(1000 * tread / max(nread, 1), 1), rollouts=nroll, rollout_s=round(trollout, 1), **{k: fin.get(k) for k in ('clock', 'ratio')})))
     return 0
 
 

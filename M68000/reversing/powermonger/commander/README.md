@@ -24,13 +24,13 @@ harness. Continuation record: `M68000/sessions/commander.md`.
   probe (mode `$10` samples `P + k·step` for k = 1..dwell; any water point sends the man to the
   `$48` sweep). After a man reaches a waypoint his job rewrites his target, so the commander
   issues one order per leg and re-issues after each arrival.
-- **Forecaster.** First exact rollouts: the game is deterministic (`../strategy.md` "RNG and
-  determinism"), so snapshot, inject a candidate order, run N ticks and read the outcome. One sim
-  pass is about 177k steps and the emulator runs about 10M steps in 2.4 s (`step.py`, startup
-  included), so a 1000-tick lookahead (177M steps) costs about 45 s: a handful of candidates per
-  major decision, run in parallel, but still too slow for tree search. A state-space model over
-  per-side aggregates (men, food, loyalty pressure) trained on the rollout traces comes second,
-  judged against the rollouts and against a hand-written recurrence of the proven rules.
+- **Forecaster.** First exact rollouts: the game is deterministic (`../strategy.md` "RNG and determinism"), so
+  snapshot, inject a candidate order, run N steps and read the outcome (`rollout.py`, below). A 1000-tick lookahead
+  (177M steps) costs about 84 s for one candidate and about 115 s each for six in parallel on a loaded machine
+  (2.1M steps/s per process alone, 1.5M at six; process start 0.25 s): a handful of candidates per major decision,
+  too slow for tree search. A state-space model over per-side aggregates (men, food, loyalty pressure) trained on
+  the rollout traces comes second, judged against the rollouts and against a hand-written recurrence of the proven
+  rules.
 
 **Action interface: the command buffer** (proven, `gate_inject.sh` 7/7). Each side has a 6-byte
 slot at `$58016 + 6*side`: byte 0 the side, byte 1 the order type, bytes 2 and 3 the target cell x
@@ -184,6 +184,34 @@ p10 arrives both ways through the detour sweep; b1 (a boat lead) arrives straigh
 pending word stayed set, so the first orders were not taken (open). Two `--move` runs on side 1 over 400M steps are
 identical. The Mover does not yet wait on a set pending word.
 
+**Rollouts (`rollout.py`, `loop.py --policy rollout`).** `rollout(snap, side, cands, N)` runs each candidate (an
+action list, poked `gap` steps apart after an `m` read, as the loop does) in its own emulator, at most `par` at once,
+adds a no-order candidate, and returns per side the lords, men, food, groups, force and the ratio as if local, with
+the land-end step. The score is `F/E`, a side's men at home plus group men over the others' plus 1, the unclamped
+core of `$d23a`'s ratio (the clamped ratio ties nearly every short-horizon candidate at 0). F is recomputed from the
+observation, not read from `$57fba`, which `$d322` rebuilds from zero every tick, so a snapshot can catch it torn
+(5 of 800 decision reads). The policy proposes Scripted's orders, none, hold-the-first, and for the first ordered
+group get men, get food, attack a lord with fewer men at home than the group (`attack_loose`) and the second-nearest
+target, scores each over N steps and issues the best (ties: own lords, then list order). It does not combine with
+`--move`. Forking is exact (`gate_rollout.sh`: five forced candidates from rand1, and every chosen candidate of a
+300M-step run against the loop's own snapshot N steps later, 15/15 `cmp`-equal; all 55 candidate snapshots of those
+decisions differ, so the check can fail). An order to a group far from the captain changes nothing but the pigeon's
+payload for 20M steps or more, so N must exceed the flight time to score it; at N = 40M 14 of 25 decisions tied.
+
+**Policies against the game's AI** (side 3 from rand1, one run each, so a signal and not a rate; the land ends when
+local side 1's captain is lost):
+
+| policy | side 3 at 300M: lords / force | end of land | side 3 at the end |
+|---|---|---|---|
+| unpoked (the game's AI) | 8 / 77 | 676M | 13 lords, force 88 |
+| slot taken, no orders | 4 / 65 | not by 1G | 4 lords at 1G |
+| scripted baseline | 7 / 54 | not by 1G | 1 lord, force 28 at 1G |
+| rollout (K 5, N 40M, a decision per 5M) | 12 / 86 | 549M | 13 lords, force 70 |
+| LLM (`prompt_system.txt`, sonnet, a decision per 20M) | 12 / 73 | 491M | 13 lords (480M) |
+
+The rollout run took 364 s for 549M steps (246 s in 25 rollout batches); the LLM run 395 s, 25 calls, $1.48, 22
+orders, all valid (`scratchpad/cmd2/llm500`, `rollout1g`).
+
 **The LLM policy (`llm.py`, `prompt_system.txt`).** The model is called through Claude Code's headless mode (no API key
 on this machine): `claude -p --output-format json --model sonnet --tools "" --system-prompt <digest>
 --no-session-persistence --strict-mcp-config --max-budget-usd 1.00`, the observation on stdin, from an empty working
@@ -209,7 +237,7 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`) | done |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
 | 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Built: `llm.py` policy, one replayed 200M-step run | in progress |
-| 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence | open |
+| 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 15/15) | in progress |
 
 ## Files
 
@@ -225,7 +253,8 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
 | `act.py <snap> gate` / `Poker` | order pokes; `gate` prints the injection gate's arms |
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
-| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm] [--move] [--replay LOG]` | the decision loop |
+| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout] [--move] [--replay LOG]` | the decision loop |
+| `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 15/15 |
 | `move.py <snap> <side> <k> <gx> <gy>`, `ab.py [pair...]`, `prep.py`, `gate_move.sh` | A* legs as go-to orders, the direct-vs-legs gate, boat stripping |
 | `gate_loop.sh [budget]`, `gate_loop_side1.sh [budget]` | loop determinism and replay, side 3 and side 1 |
 | `llm.py selftest` / `llm.py prompt <snap> [side]`, `prompt_system.txt` | the LLM policy, its offline test and its prompt |
