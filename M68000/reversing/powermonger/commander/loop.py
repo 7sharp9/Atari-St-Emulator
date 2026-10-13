@@ -144,6 +144,10 @@ THREAT = 16                                     # rollout: an enemy group this m
 IDLE = (0, 1, 6)                                # state names (observe.STATE): none, Waiting, In Camp
 MEN_LOW = 22                                    # $6522's own get-men arm: men < 22 (strategy.md "The AI as modern pseudocode")
 STALE = 8                                       # decisions with no change of state or lead cell before re-ordering
+FOOD_MIN = 20                                   # local side: an own lord's store worth a trip or a top-up
+FOOD_CAP = 500                                  # local side: no top-up above this group food
+FOOD_BITES = 40                                 # local side: fetch food below this many meals (men/8 + 1 each, $3f6a;
+                                                # a 25-man captain ate one about every 5M steps on land 2, so ~200M)
 WAIT = 20_000_000                               # steps an ordered group is left alone: an injected order reaches a
                                                 # non-first group by pigeon ~9M steps later (README) and sets no
                                                 # pending word 4 (observed in this loop's first runs), so without
@@ -161,7 +165,13 @@ class Scripted:
     Postures are $16 orders sent just before the order, as $6638 / $65c8 stamp them: at posture 4 every kill the
     group makes is a rout ($5590), so a conquered lord's captain survives to defect and found a new group ($5c2c,
     $25d6); at posture 2 the men are killed, no group is ever made, and get men takes the whole garrison.
-    Playing the local side, it posts retire $2e as soon as the observed ratio $57fce is 4 (a win), or when the side
+    Playing the local side, before get men it provisions: a group within a cell of an own lord holding FOOD_MIN food
+    takes it while under FOOD_CAP, and a group under FOOD_BITES meals fetches it from the nearest such lord; every
+    local get food goes at posture 2, which moves the lord's whole store ($150f2, food >> 0) where posture 4 moves a
+    quarter. Of $6762's chain the local side keeps get food after a fight and get men at a lord with men at home: a
+    top-up at home otherwise led the captain through get men, equip and invent for 80M steps before its first attack.
+    Only the local captain's loss ends a land, and on land 2 it starved with 327 food in its own lords'
+    stores that side 2 then conquered. Also on the local side it posts retire $2e as soon as the observed ratio $57fce is 4 (a win), or when the side
     has no lord and no man left (a loss the game does not end by itself)."""
 
     def __init__(self, side, mp=None, move=False):
@@ -200,7 +210,8 @@ class Scripted:
         lords = {l['idx']: (int(s), l) for s, v in allside.items() for l in v['lords']}
         tick = obs['clock'] >> 16               # observe's clock is the long at $2df72: the tick in its high word
         out = []
-        if self.side == obs['local_side']:
+        local = self.side == obs['local_side']
+        if local:
             t = S['totals']
             # the scale is full ($57fce == 4): retire now, $d2c8 then shows the victory screen. Also retire a
             # hopeless side (no lord, no man in any group): a captain group at 0 men keeps its owner word and the
@@ -232,6 +243,17 @@ class Scripted:
                 if e and not (g['prev_state'] == 0x0d and g['opp_class'] != 2) and LORD0 <= a < LORD0 + 160 * 32 \
                         and (a - LORD0) % 32 == 0 and lords.get((a - LORD0) // 32, (0,))[0] == self.side:
                     tgt, typ, post = lords[(a - LORD0) // 32][1], e[0], e[1]
+                    if local and (typ in (GET_EQUIP, INVENT) or (typ == GET_MEN and tgt['men_home'] <= 1)):
+                        tgt = None       # local side: the chain only plunders and recruits (provisioning below)
+                    elif local and typ == GET_FOOD:
+                        post = 2
+            if tgt is None and local:                                   # provisioning, posture 2 takes the whole store
+                larder = [l for l in own if l['food'] >= FOOD_MIN and self._reach(g, l['cell'])]
+                at = [l for l in larder if d(l) <= 1]
+                if at and g['food'] < FOOD_CAP:
+                    tgt, typ, post = pick(at), GET_FOOD, 2
+                elif larder and g['food'] < FOOD_BITES * (g['men'] // 8 + 1):
+                    tgt, typ, post = pick(larder), GET_FOOD, 2
             if tgt is None and g['men'] < MEN_LOW:
                 tgt, typ, post = pick([l for l in own if l['men_home'] > 1 and self._reach(g, l['cell'])]), GET_MEN, 2
             if tgt is None and g['men'] > 4:
@@ -242,6 +264,7 @@ class Scripted:
                     cost = (dd // 2) * ((g['men'] - 4) // 8 + 1) + dd // 2
                     if g['food'] < cost:
                         tgt, typ = pick([l for l in own if l['food'] > 0 and self._reach(g, l['cell'])]), GET_FOOD
+                        post = 2 if local else None
                     if tgt is None:
                         tgt, typ, post = foe, ATTACK, 4
             if tgt is None:

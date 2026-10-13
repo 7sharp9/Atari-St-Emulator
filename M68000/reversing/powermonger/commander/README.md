@@ -187,7 +187,14 @@ or unchanged for 8 decisions, then leaves it 20M steps. In order: a group camped
 its own follows the AI's `$6762`/`$67d0` chain (after a fight with a lord get food at posture 4, after state 2 get men
 at posture 3, after state 3 equip at posture 2, after state `$a` invent at posture 3); a group under 22 men, empty ones
 included, gets men at posture 2 from the nearest reachable own lord; a larger one attacks at posture 4 the nearest
-reachable enemy lord with fewer than men − 4 at home, or gets food first when short of the trip cost. A posture
+reachable enemy lord with fewer than men − 4 at home, or gets food first when short of the trip cost. On the local
+side it also provisions, before get men: a group within a cell of an own lord holding 20 food or more takes it while
+under 500 food, and a group under 40 meals (`men/8 + 1` each, `$3f6a`) fetches it from the nearest such lord; every
+local get food goes at posture 2, which moves the whole store (`$150f2`, `food >> 0`) where posture 4 moves a
+quarter, and of the `$6762` chain the local side keeps only get food after a fight and get men at a lord with men at
+home (a top-up at home otherwise walked the captain through get men, equip and invent for 80M steps). An AI side's
+groups carry about 24,000 food each on land 2, so none of this applies to them, and the side-3 gate runs are
+unchanged (`gate_rollout.sh` 20/20 after the change). A posture
 order `$16` goes just before the main order when it differs. **Posture is what the first version lacked**: at
 posture 2 an attack kills the garrison instead of routing it (`$5590`), including the conquered lord's captain, the
 man who would defect and found a new group (`$5c2c` → `$25d6`), so the side never replaced a group. Counting group
@@ -260,20 +267,30 @@ drive. One run per policy and land, side 1, 2G steps (the LLM 1G, a decision per
 | policy | land 1 (side 1: 1 lord, 21 men; side 3: 5 lords, 90) | land 2 (side 1: 1 lord, 20; side 2: 2 lords, 53; side 3: 7 lords, 70) |
 |---|---|---|
 | no orders | ratio 0 at 2G | lost at 346M |
-| scripted baseline | won at 455M (5 lords, 70 men against 36); same with `--move` | lost at 444M: the captain's food hit 0 at 300M and its men starved 25 → 0 |
+| scripted baseline, before provisioning | won at 455M (5 lords, 70 men against 36); same with `--move` | lost at 444M: the captain's food hit 0 at 300M and its men starved 25 → 0 |
+| scripted baseline | won at 215M (5 lords, 71 men; captain food never under 200) | lost at 329M: captain food never under 117; side 3 gone by 240M, then a side-2 group at posture 2 met the captain's attack on (26,52) and fought it from 32 men to 1 |
 | LLM | won at 180M, 10 calls, $0.53 (5 lords, 74 men) | lost at 298M, 15 calls: took 4 of side 3's lords, let food reach 0 (40 men to 17), then attacked a town side 2 had just taken |
 | rollout, F/E score (K 5, N 40M) | lost at 725M: idle captain starved (food 0 at 450M) with side 1 ahead 57 to 44 | not run |
 | rollout, captain score | won at 440M, 24 rollouts | lost at 229M: side 2's 69 men caught the captain; no candidate moved it away |
 | rollout, captain score and retreat | won at 440M, the same final snapshot | lost at 460M: survived side 2's sweep by retreating, then starved at home (food 0 at 370M) |
+| rollout, captain score, retreat and provisioning | won at 215M, the scripted run's final snapshot | **won at 1120M**, 58 rollouts: the captain still starved from 375M to 550M (30 men → 4), refilled from towns it took, and side 1 ended with 9 lords against side 2's none; a replay of the log ends byte-identical |
 
 Each win runs the victory routine `$1a4da` and each loss the defeat routine `$1a5b2`, 1 hit each. On land 2 the game's
 side 2 grows from 2 lords to 8 or 9 in every run, whatever side 1 does. The LLM's land-1 decisions are one plan:
 attack the weakest town at posture 4, take its men at posture 2, attack the next, and retire when the ratio reads 4
 (`runs/l1_llm/decisions.jsonl`, with its prompts and replies in `llm_io/`; a replay of the log gives the same final
 snapshot). The land-1 rollout win turned on the captain terms: at 360M get food scored 1.09 against 0.34 for the
-rest (the starve penalty), at 400M the captain's attack 2.64. Three of the four land-2 losses, and the old land-1
-rollout loss, are the captain group running out of food: no policy keeps the captain fed, and the rollout's K cut
-drops get food at most decisions where Scripted orders another group. Run records: `scratchpad/cmd3/l{1,2}/<policy>`.
+rest (the starve penalty), at 400M the captain's attack 2.64.
+
+Before provisioning, three of the land-2 losses and the old land-1 rollout loss were the captain starving, and not
+for want of food: at 150M the retreat run's side 1 held 5 lords with 327 food the captain never took, and side 2
+conquered the richest of them (137 food) with its store intact. Provisioning keeps the scripted captain fed on both
+lands. The rollout policy still lets it starve: food scores nothing inside a 40M horizon until it reaches 0, so the
+rollouts chose an attack over Scripted's get food at 60M, 140M and 190M. A starve term graded from 0 at the 40-meal
+reserve to the full 0.5 at no food did not fix it (one run: food 0 at 400M, the captain group at 0 men from 1100M,
+which never ends the land) and is not kept. The land-2 win is one run and turned on a starved captain surviving at 4
+men; land 2's losses with a fed captain are now side 2's field groups (Open 2 of the handoff). Run records:
+`scratchpad/cmd3/l{1,2}/<policy>`, `scratchpad/cmd4/l{1,2}/<policy>` (provisioning; `l2/rollout_g` the graded term).
 
 **Policies against the game's AI** (side 3 from rand1, one run each, so a signal and not a rate; the land ends when
 local side 1's captain is lost):
