@@ -19,7 +19,8 @@ ORDERS (the game's own order set). "Own town" = the cell of a lord in "your_lord
 - supply (any cell): food supply line: drop food at the cell, fetch more from your best food lord, repeat.
 - drop_food: drop the group's food (>> shift) at its current cell, into a town there if any.
 - dismiss: (men >> shift) leave the group and go home to their lords.
-- posture: set posture (field "posture": 2, 3 or 4). Instant.
+- posture: set posture (field "posture": 2, 3 or 4). Instant. Any other order may also carry "posture": it is set just before that order.
+- ATTACK AT POSTURE 4. At posture 4 the garrison is routed instead of killed, so the conquered lord's captain survives and defects to you, founding a new group of yours; at posture 2 the garrison dies and you gain no group. A side that never attacks at posture 4 loses its groups one by one. Get men at posture 2 (the whole home force joins).
 - transfer: move (men >> shift) from this group to group "to_group".
 - equip (own town): take the lord's goods (weapons, boats) and hand them to the men.
 - trade (any town): sell carried goods, buy weapons with food.
@@ -27,11 +28,11 @@ ORDERS (the game's own order set). "Own town" = the cell of a lord in "your_lord
 - spy (enemy town): the captain walks in alone, all his men are dismissed. Rarely useful.
 - invent (own town with a WorkShop): sets the town's men to work on goods. USELESS here: the game throttles deliveries so hard that it credits nothing in a land's lifetime. Do not use it.
 
-TIMING. An order to group 0 starts at once; an order to another group arrives by carrier pigeon, up to about 25M steps (one or two decisions) later (a group marked busy has an order in transit: do not order it). Re-sending an order restarts the march, so give no order to a group that is already doing what you want. If a group did not move after your order, the pigeon may still be on its way; re-sending does not help. Orders take effect over many decisions: a march across 20 cells takes several decisions.
+TIMING. An order to group 0 (order_route "direct") starts at once; an order to another group (order_route "pigeon") flies by carrier pigeon, about 1.3M steps per 1000 world units (256 units per cell) from your captain, so up to about 25M steps (one or two decisions). Do not re-send an order while orders_in_flight > 0: a second order is a second pigeon and both run in turn. If your captain (group 0) dies, every order in flight is lost and orders to the other groups never arrive (order_route "never"): those groups act on their own.
 
 REPLY FORMAT. Exactly one JSON object, no prose, no code fences:
-{"orders":[{"group":<0-5>,"order":"<name>","x":<0-63>,"y":<0-127>}, ...], "retire":false, "why":"<one short sentence>"}
+{"orders":[{"group":<0-5>,"order":"<name>","x":<0-63>,"y":<0-127>,"posture":<optional 2|3|4>}, ...], "retire":false, "why":"<one short sentence>"}
 - x and y are required for get_men, get_food, attack, go_to, supply, equip, trade, alliance, spy, invent, and must be the cell exactly as given in the observation (a lord's cell for town orders).
 - posture needs "posture":2|3|4; transfer needs "to_group":<k>; home, drop_food, dismiss take no cell.
 - At most one order per group. Omit a group to leave it alone. "orders":[] is valid.
-- Only order your own groups that are alive and not busy. An invalid order is discarded.
+- Only order your own groups that are alive and whose order_route is not "never". An invalid order is discarded.

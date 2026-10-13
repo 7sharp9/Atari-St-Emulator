@@ -139,6 +139,12 @@ class World:
         self.groups = {g['k']: g for g in S['groups']}
         self.mp, self.comps = mp, comps
         self.eat = eat_period(R, side)
+        # order routes and pigeons in flight (README "Orders by carrier pigeon"); the pending word is stale AI state
+        self.pstat = {}
+        if R is not None:
+            sys.path.insert(0, str(CMD / 'pigeon'))
+            from pig import order_status
+            self.pstat = {k: order_status(R, int(side), k) for k in self.groups}
 
     def gcomp(self, g):
         if self.mp is None or 'lead_obj' not in g:
@@ -163,7 +169,15 @@ class World:
         return None if self.mp is None else self.ccomp(cell) is not None
 
     def orderable(self, g):
-        return g is not None and g['alive'] and 'lead_obj' in g and g['raw_w4'] == 0
+        return g is not None and g['alive'] and 'lead_obj' in g and self.route(g) in ('direct', 'pigeon', None)
+
+    def route(self, g):
+        st = self.pstat.get(g['k'])
+        return st['route'] if st else None
+
+    def in_flight(self, g):
+        st = self.pstat.get(g['k'])
+        return len(st['in_flight']) if st else 0
 
 
 def force(obs, s):
@@ -184,7 +198,7 @@ def compact_obs(W, history, every):
             continue
         e = dict(group=k, men=g['men'], food=g['food'], state=g['state_name'] or g['state'],
                  posture=g['posture'], cell=g['lead_obj']['cell'] if 'lead_obj' in g else None,
-                 busy=g['raw_w4'] != 0)
+                 order_route=W.route(g), orders_in_flight=W.in_flight(g))
         carried = {n: v for n, v in g['carrying'].items() if v}
         if carried:
             e['carrying'] = carried
@@ -272,8 +286,8 @@ def validate(o, W):
             why = 'group not alive'
         elif 'lead_obj' not in g:
             why = 'group has no lead'
-        elif g['raw_w4'] != 0:
-            why = 'group busy (order in transit)'
+        elif W.route(g) == 'never':
+            why = 'orders to this group can never arrive (its sender is dead)'
         if why:
             bad.append(dict(order=od, why=why)); continue
         typ, kind = ORDERS[name]
@@ -311,6 +325,12 @@ def validate(o, W):
         if why:
             bad.append(dict(order=od, why=why)); continue
         seen.add(k)
+        p = od.get('posture')
+        if kind != 'posture' and p is not None:
+            if p not in (2, 3, 4):
+                bad.append(dict(order=od, why='posture not 2..4 (order sent without it)'))
+            elif p != g.get('posture'):
+                acts.append(dict(side=side, type=ORDERS['posture'][0], x=0, y=p, group=k))
         acts.append(dict(side=side, type=typ, x=x, y=y, group=k))
     if o.get('retire') is True:
         if side == W.obs['local_side']:
