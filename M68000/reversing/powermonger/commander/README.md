@@ -141,14 +141,58 @@ ends in RAM identical to the gate's. The neighbours come from the input snapshot
 valid before the first step only. `step.py <in.snap> <out.snap> <steps> [order.json]` writes and
 runs one REPL script and prints the observation of the result.
 
+**The decision loop (`loop.py`).** One persistent emulator (`resume <snap> repl`) driven over stdin/stdout pipes: at
+each decision (every `--every` steps, default 5M) it reads observe.py's regions with `m`, builds a `Poker` from that
+RAM (so pokes are valid mid-run), asks the policy for actions and writes them `--gap` steps apart (400k: the executor
+runs once per tick and clears every slot after dispatch, so each order must be consumed before the next). It steps
+with `bp d2c8 <n>`, which runs exactly n steps unless the verdict is reached and gives every chunk a sync line, so a
+land end is caught at its step. The REPL prints nothing for `w` and `s`, one line for `m`, and ends on EOF, `q`, an
+empty line or an unknown command. Each run writes `decisions.jsonl` (a start record, per decision the step, clock,
+observation hash, per-side totals and actions, an `applied` record with the exact `w` lines, an end record with the
+reason and the ratio) and `final.snap`; `--replay LOG` re-issues the applied pokes at their steps without a policy.
+The loop costs 3 to 7% over plain `s` (three interleaved pairs of 300M steps; a decision read is about 12 ms).
+Policies: `scripted` (below), `none` (slot taken, no orders), `llm`.
+
+Gates (`gate_loop.sh`, side 3, 1G steps from rand1; `gate_loop_side1.sh`, side 1): two runs give identical logs and
+byte-identical final snapshots, a run reading RAM by `snap` instead of `m` and a replay of the first log give the same
+snapshot, and side 1 played to the end of the land twice gives the same log and snapshot (the replay too). On side 1
+the land ends by the baseline's own retire at 400.36M steps, a defeat at ratio 0: side 1 has no lord and no man left
+from about 400M, and **a captain group with no men does not dissolve**, so its owner word stays 1 and neither `$d23a`'s
+captain test nor `$d2c8` fires; without the retire rule the land ran on for 1.6G more steps (one run). The loop retires
+on ratio 4 or on a side with no lord and no man.
+
+The scripted baseline (`Scripted`) orders a group when it is alive, has no pending word and is idle (state 0, 1, 6)
+or unchanged for 8 decisions, then leaves it 20M steps (an injected order sets no pending word): get men `$08` at the
+nearest reachable own lord when under 22 men, get food `$06` when food is short of the `$68ee` trip cost, else attack
+`$0c` the nearest reachable enemy lord with fewer than men − 4 at home. It is weaker than the game's AI: after 1G
+steps on side 3 it holds 1 lord, 28 men at home and no group, against 4 lords and 60 group men with the slot taken
+and no orders, and 13 lords unpoked (one run each, this seed).
+
+**The LLM policy (`llm.py`, `prompt_system.txt`).** The model is called through Claude Code's headless mode (no API key
+on this machine): `claude -p --output-format json --model sonnet --tools "" --system-prompt <digest>
+--no-session-persistence --strict-mcp-config --max-budget-usd 1.00`, the observation on stdin, from an empty working
+directory; in CLI 2.1.292 `--output-format json` prints a list of events and the reply is the `result` event. The
+system prompt is a rules digest written from these docs (order set, posture, eating and desertion, the ratio and the
+retire, conquest by settlement residents, the invent throttle, the pigeon delay); the user message is a compact JSON
+of the side's groups, its lords and the enemy's (men at home, residents, distance and A* reachability per group) and
+visible enemy groups. The reply is strict JSON, `{"orders":[{"group","order","x","y","posture","to_group"}],
+"retire","why"}`, validated per order (group alive with no pending word, one order per group, town orders aimed at
+the right side's lord, no water centre for go to and supply, reachability for boatless groups) and an invalid order is
+dropped with its reason logged. Every prompt, reply and raw CLI output is stored by hash under `<work>/llm/`; backend
+`replay:<dir>` answers from such a log. `llm.py selftest` checks parse, validation and replay offline (15/15).
+One live run (side 3, rand1, a decision per 20M steps, 200M steps): 10 calls, all valid JSON, 12/12 orders valid,
+14.5 s and about $0.06 per call; replaying its log gives the same final snapshot. The model read a lord's men at home
+as his defence and attacked a lord it already owned; the prompt now lists residents and splits own and enemy lords
+(each fix checked by one or two calls, not by a run). Not yet measured against the game's AI.
+
 ## Plan and status
 
 | step | what | proof | status |
 |---|---|---|---|
 | 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | `gate_inject.sh` 7/7 (above) | done |
 | 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`) | done |
-| 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated (above); every player order gated from an AI slot (`gate_orders.sh` 57/57). Open: the decision loop and scripted baseline, a land played to a result with every decision logged and replayable | in progress |
-| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped | open |
+| 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
+| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Built: `llm.py` policy, one replayed 200M-step run | in progress |
 | 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence | open |
 
 ## Files
@@ -165,6 +209,9 @@ runs one REPL script and prints the observation of the result.
 | `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
 | `act.py <snap> gate` / `Poker` | order pokes; `gate` prints the injection gate's arms |
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
+| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm] [--replay LOG]` | the decision loop |
+| `gate_loop.sh [budget]`, `gate_loop_side1.sh [budget]` | loop determinism and replay, side 3 and side 1 |
+| `llm.py selftest` / `llm.py prompt <snap> [side]`, `prompt_system.txt` | the LLM policy, its offline test and its prompt |
 | `astar.py <snap> x0 y0 x1 y1 [--cells] [--speed N]` | land path as world waypoints, with a verified flag |
 | `gate_sampler.py [snap...]` | `tools/pm_fsm_ref.terrain_sample` against `$1648e` under callcap |
 | `classify_stuck.py [prefix...]` | the stuck census split into unreachable / water on line / not stuck / boat |
