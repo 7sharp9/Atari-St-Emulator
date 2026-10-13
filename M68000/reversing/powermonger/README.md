@@ -87,7 +87,9 @@ against every session's changes.
   indices 8 and up. There is no research timer. (E 2a, E 2b, E 2c, E 4)
 - **Combat is a health grind.** Units in contact lock into melee; each tick the attacker takes 1 to 3
   (weapon grade 0, 2, 4; grade 6 and above takes 1) off the target's health (byte 45, the value the captain panel prints as "Very Sickly" ... "Very Strong", "Dead"). At zero the loser is killed or
-  routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
+  routed by a roll that the winning group's posture can pin (posture 2 kills, posture 4 routs, posture 3 rolls); a rout
+  sends the man home, where his lord can field him again (from one land-2 fight, 34 kills and 34 routs at posture 4
+  against 49 and 4 at posture 2, `commander/gate_posture.sh`); a rout scatters the loser's
   group, which re-forms. A routed group member loses the routed mark as he is unlinked; the man who struck the blow
   always breaks off, but another man already locked on him (one he struck, or one who chased him) re-engages him and routs him a second time, and only then does
   he flee home (52 of 52 on two lands); a group member with nobody else on him walks back to his job. Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
@@ -145,8 +147,10 @@ against every session's changes.
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast). AI
   armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it. The player's captain group gets no such
   store (about 240 at the start of campaign lands 1 and 2), so food is a constraint only on the player: on land 2 the
-  captain ran out in 3 of 5 commander runs, with the side's own lords at 0 food, and starved to the land's end
-  (`commander/README.md` "The campaign", one run per policy).
+  captain ran out in 3 of 5 commander runs and starved to the land's end, though the side's own lords had held 327
+  food it never took, much of it later conquered by side 2. Taking each own lord's whole store at posture 2 kept the
+  scripted captain above 117 food on land 2 and won land 1 at 215M instead of 455M (`commander/README.md` "The
+  campaign", one run per policy).
 
   **Transfer order.** A small captain group handing its men to group 0 is natural but rare: 5 hits in 75 lands, all executed, by two routes: a small group left by a defection (k25, k8) or a large group whose side has no enemy lord it can take (k106, k34, k50). The order refusal cannot happen from any shipped call site (S "Natural coverage").
 

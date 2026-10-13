@@ -1,72 +1,85 @@
 # Commander: handoff
 
-Updated 2026-10-13 by the session that ended at commit `136e461` (plus the digest and handoff commit after it).
+Updated 2026-10-13 by the session that ended at commit `af8d692` (plus the handoff commit after it).
 
 ## Resume point
 
-- Last work commit: `136e461` commander: rollout score values the local captain, idle/threatened captain forks with a
-  retreat; campaign land 2 built (campaign_next.sh) and lost by every policy.
-- Working data: `M68000/scratchpad/cmd3/` (gitignored). Run records `cmd3/l1/{rollout,rollout_r}`,
-  `cmd3/l2/{none,scripted,llm,rollout,rollout_r}` (`decisions.jsonl`, `final.snap`, `dec/<step>.snap` per rollout
-  decision); `python3 commander/runstat.py <dirs>` summarises them. Earlier records: `cmd2/` (land 0, land 1, rand1).
-- Start from: `scratchpad/cmd3/l2build/l2_built.snap` (campaign land 2, lands 0 and 1 conquered, at its first `$f898`).
-  Rebuild: `campaign_next.sh scratchpad/cmd2/l1/llm/final.snap 2` (byte-identical). Land 1: `pm123/win/l1_built.snap`.
+- Last work commit: `af8d692` commander: field-fight posture fix; side 2 on land 2 is beaten by destroying its two
+  field groups. Before it `36b21d2` (local-side provisioning; land 2 won by the rollout policy).
+- Working data: `M68000/scratchpad/cmd4/` (provisioning runs, l1 and l2 per policy, `l2/rollout_g` the dropped graded
+  starve term), `cmd5/` (posture fix runs, `l2/none` with a snapshot every 25M, `l2/post` the A/B), `cmd6/` (the dropped
+  pre-contact posture rule), `cmd7/` (gate re-runs). `python3 commander/runstat.py [--every M] <dirs>` reads any of them.
+- Start from: `scratchpad/cmd3/l2build/l2_built.snap` (campaign land 2, at its first `$f898`); rebuild with
+  `campaign_next.sh scratchpad/cmd2/l1/llm/final.snap 2`. Land 1: `pm123/win/l1_built.snap`. Land 3 is not built:
+  `campaign_next.sh scratchpad/cmd4/l2/rollout/final.snap 3` (or from a replay of `runs/l2_rollout`).
 - Uncommitted work left behind: none.
 
 ## Proven so far
 
 All in `reversing/powermonger/commander/README.md`; every gate re-run from its promoted location.
 
-- Orders from any slot, local side 1 included: `gate_inject.sh` 7/7, `gate_orders.sh` 57/57, `gate_ungated.sh` 52/52,
-  `gate_local.sh`; a `$2e` ends the land with the observed ratio's verdict (`gate_retire.sh`); order cell = cell centre
-  (`gate_cellpt.py` 16/16). Orders by pigeon (`pigeon/gate_pigeon.sh` 7/7).
-- Decision loop deterministic and replayable (`gate_loop.sh`, `gate_loop_side1.sh`); A* legs 8/8 (`gate_move.sh`);
-  exact rollouts, fork determinism 20/20 (`gate_rollout.sh`, re-run this session).
-- Rollout score with the captain (land end win/loss, captain men lost, captain starving) and captain forks with a
-  retreat: off the local side the 300M side-3 gate run is byte-identical to the previous code.
-- Campaign: land 0 won by every policy (`gate_win.sh`); land 1 won by the LLM (180M), the baseline (455M) and now the
-  rollout policy (440M; lost at 725M before the captain score); `campaign_next.sh` builds land 2. Land 2 lost by every
-  policy (no orders 346M, baseline 444M, LLM 298M, rollout 229M, rollout + retreat 460M), each loss `$1a5b2` 1 hit,
-  each win `$1a4da` 1 hit. README "The campaign" table.
+- Orders from any slot (`gate_inject.sh` 7/7, `gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`), retire
+  verdicts (`gate_retire.sh`), order cell = cell centre (`gate_cellpt.py` 16/16), pigeons (`pigeon/gate_pigeon.sh` 7/7).
+- Deterministic replayable loop (`gate_loop.sh`, `gate_loop_side1.sh`); A* legs 8/8 (`gate_move.sh`); exact rollouts
+  (`gate_rollout.sh` 20/20, re-run after each change this session).
+- Provisioning (local side: top up at own lords, fetch below 40 meals, every get food at posture 2, `$6762` chain trimmed):
+  land 1 won at 215M by scripted and rollout (was 455M / 440M), scripted captain food never under 200 (land 1) or 117
+  (land 2). Land 2 **won by the rollout policy at 1120M** (`runs/l2_rollout`, replay byte-identical, `$1a4da` 1 hit,
+  `$1a5b2` 0).
+- Field-fight posture: `$5590` kills at the winner's posture 2 and routs home at 4. `gate_posture.sh` (one variable,
+  30M per arm from the land-2 300M snapshot): 34 kills / 34 routs / captain dissolved against 49 / 4 / captain alive.
+  Scripted sends posture 2 to a local group fighting an enemy group (fires once on land 2; land 1 and the rollout win
+  unchanged byte for byte).
+- Side 2 on land 2 is the game's AI: two field groups sweep side 3's lords from the south, then march on side 1's
+  capital (346M with no orders). The rollout win destroyed both groups (captain at posture 2, left over from a get
+  food), after which side 2 made no group for 800M steps (one run). Alliance cannot stop it (strategy.md "Diplomacy").
 
 ## Open, in priority order
 
-1. **Keep the captain fed.** Three of five land-2 losses and the old land-1 rollout loss are the captain starving; on
-   land 2 side 1's own lords hold 0 food when it does (`dec/330000000.snap`..`370000000.snap`), so get food at an own
-   lord cannot help. Candidates to try: take food from each conquered town right after the conquest (the game's own
-   `$6762` chain at posture 4; Scripted only follows it after 20 camped ticks), drop the rollout's K cut of get food
-   when the captain's food is under its trip cost, and a food-pile pickup (`$06` on a cell). Proof: land 2 played past
-   460M with the captain's food never at 0, then a won land 2.
-2. **Side 2 on land 2.** The game's side 2 grows from 2 lords to 8-9 in every run, whatever side 1 does (even with no
-   orders). Find what it does (`hits` on `$6c32`/`$6b38` attributed per side by the packet's side byte, CLAUDE.md) and
-   whether side 1 can pre-empt it (attack side 2 early while it has 2 lords) or ally with it (Diplomacy, `$1e`).
-3. **LLM prompt.** The land-2 LLM ignored side 2 and its own food (README table row). Add the captain's food against
-   the trip cost and the enemy groups' strength near the captain to the observation; re-run land 2 and rand1 side 3 on
-   two seeds against the current prompt before keeping it (the earlier prompt regression: `s1/llm_s3` against `llm500`).
-4. **Evaluation across seeds** (pm143/lands, pm121/k*), each policy against the unpoked game, so the tables become rates.
-5. Movement with rollouts (`--policy rollout` refuses `--move`); the Mover's stall timer from pigeon delivery.
-6. State-space forecaster (plan step 5): train on rollout traces; the walker still needs the job dispatchers.
-7. Smaller: the side-0 peace bit left by the `$c706` clobber; readers of the sender word beyond `$6af2`/`$25d6`;
-   `$25d6` rebuilding slot 0 while the harness holds it; a UI click while the harness holds side 1's slot.
+1. **Scripted's land-2 loss after the fight.** The posture fix keeps the captain alive with 4 men, but side 1 has lost
+   every lord to side 2's remaining group and the captain sits camped until 1470M. Candidates: after a costly fight
+   fall back to the nearest own lord with men (or, with no lord, attack the weakest lord within reach at posture 2);
+   keep the captain at home while side 2's groups are alive and let them come to it (the rollout win's pattern).
+   Proof: a won land 2 for the scripted policy, then the same win under a second seed (item 3).
+2. **Rollout food blindness.** Inside a 40M horizon food costs nothing until it hits 0, so the rollouts took an attack
+   over Scripted's get food at every offer; the winning run starved from 375M to 550M (30 men to 4) and survived by
+   luck. A graded starve term (0 at 40 meals, 0.5 at none) did not fix it (one run, `cmd4/l2/rollout_g`). Try a longer
+   horizon only for get-food candidates, or score the food the candidate leaves against the captain's eating rate.
+3. **Evaluation across seeds** (pm143/lands, pm121/k*), each policy against the unpoked game, so the land-2 result is a
+   rate. One run per policy per land so far, on a chaotic game: the pre-contact posture rule flipped a win to a loss.
+4. **Why side 2 makes no new group** after losing both: it attacks lords at posture 4 (a conquered captain can defect)
+   and fights groups at posture 2. Check `$26d0` (group creation) hits for side 2 over the rollout win's 315M..1120M.
+5. LLM prompt: add captain food against trip cost and enemy groups near the captain; re-run land 2 and rand1 side 3 on
+   two seeds against the current prompt (the earlier prompt regression: `s1/llm_s3` against `llm500`).
+6. Land 3: build it from the land-2 win and play it.
+7. Movement with rollouts (`--policy rollout` refuses `--move`); state-space forecaster (plan step 5); smaller items
+   (side-0 peace bit from the `$c706` clobber, sender-word readers, `$25d6` rebuilding slot 0, UI click with side 1's
+   slot held).
 
 ## Known traps
 
 The PowerMonger traps in `sessions/powermonger.md` apply.
 
-- `gate_rollout.sh`'s side-3 choices depend on Scripted: after any change to Scripted, re-run the gate and update its
-  count; the old `cmd2/gate_rollout.txt` (15 equal) predates later baseline commits and its choices no longer match.
+- Killing `loop.py` leaves its emulator children (the loop's own and up to `--par` rollout workers) running, and a
+  restarted run in the same directory then shares it with them: `pkill -9 -f 'scratchpad/<run dir>'`, then check
+  `pgrep -fl <run dir>` is empty, before restarting.
+- A rollout process loads `rollout.py` and `loop.py` once at start: editing them mid-run changes nothing in that run
+  (useful for an A/B, misleading otherwise).
+- Every local-side rule in `Scripted` is gated on `local` so side-3 gate runs stay byte-identical; `gate_rollout.sh`'s
+  choices still depend on Scripted, so re-run it after any change and update its count.
+- `Scripted` skips a group whose lead object is missing, so a 0-man captain group is never ordered again, and the land
+  does not end while its owner word stays 1 (the retire rule needs no lord and no man).
 - Rollout decisions with a retreat or captain fork cost a 5-candidate rollout every decision while the captain is
-  threatened: land 2 took 895 s for 460M steps (39 rollouts) with four other emulators sharing the machine.
-- On rand1 every AI group's lead holds a Boat (byte 33 = `$0a`): movement tests need `prep.py`'s boat stripping.
+  threatened (land 2: 58 rollouts, about 820 s on a loaded machine).
+- On rand1 every AI group's lead holds a Boat: movement tests need `prep.py`'s boat stripping.
 - An injected order sets no pending word and lasts one tick in the slot: write a decision's orders `--gap` apart.
-- A side with no lord and no men never ends the land (captain owner word stays 1): the loop retires such a side.
 - `claude -p --output-format json` output carries session and account metadata (`*.cli.json`): never commit it.
 - `$57fba` is rebuilt every tick and can be read torn; score from observe's totals.
 - `loop.py --replay` takes the log path relative to the current directory (pass an absolute path).
 
 ## Next session
 
-Work Open 1 on campaign land 2 (`cmd3/l2build/l2_built.snap`): make the captain take food from towns as it conquers
-them (rollout candidate and Scripted's follow-up), re-run the rollout and baseline policies to 2G, and check with
-`runstat.py` that the captain's food stays above 0. If land 2 is then still lost, look at side 2's growth (Open 2)
-before touching the LLM prompt (Open 3).
+Work Open 1: give the scripted captain a fallback after a costly field fight (recruit at an own lord, or hold at home
+while side 2's groups live), re-run land 2 scripted (and rollout as the control) and check with `runstat.py --every 25`
+that side 2's two groups die and the captain keeps men. Then start Open 3 (seeds) so the land-2 numbers become rates.
+The prompt that starts it is `/resume commander`.

@@ -274,7 +274,7 @@ drive. One run per policy and land, side 1, 2G steps (the LLM 1G, a decision per
 | rollout, F/E score (K 5, N 40M) | lost at 725M: idle captain starved (food 0 at 450M) with side 1 ahead 57 to 44 | not run |
 | rollout, captain score | won at 440M, 24 rollouts | lost at 229M: side 2's 69 men caught the captain; no candidate moved it away |
 | rollout, captain score and retreat | won at 440M, the same final snapshot | lost at 460M: survived side 2's sweep by retreating, then starved at home (food 0 at 370M) |
-| rollout, captain score, retreat and provisioning | won at 215M, the scripted run's final snapshot | **won at 1120M**, 58 rollouts: the captain still starved from 375M to 550M (30 men → 4), refilled from towns it took, and side 1 ended with 9 lords against side 2's none; a replay of the log ends byte-identical |
+| rollout, captain score, retreat and provisioning | won at 215M, the scripted run's final snapshot | **won at 1120M**, 58 rollouts: the captain still starved from 375M to 550M (30 men → 4), refilled from towns it took, and side 1 ended with 9 lords against side 2's none; a replay of the log (`runs/l2_rollout/decisions.jsonl`) ends byte-identical |
 
 Each win runs the victory routine `$1a4da` and each loss the defeat routine `$1a5b2`, 1 hit each. On land 2 the game's
 side 2 grows from 2 lords to 8 or 9 in every run, whatever side 1 does. The LLM's land-1 decisions are one plan:
@@ -306,7 +306,7 @@ destroyed side 2's 39-man group between 225M and 245M without losing a man, and 
 Posture decides those fights because `$5590` settles a beaten man by the winner's posture: killed at 2, routed home
 (where his lord can recruit him again) at 4 (strategy.md "Combat"). The scripted captain fought at posture 4, the
 posture of its attack orders. From the scripted run's 300M snapshot, with the captain fighting a side-2 group at
-posture 4 (`scratchpad/cmd5/l2/post`, 30M steps per arm, one variable): unchanged, 34 kills (`$55f2`) and 34 routs
+posture 4 (`gate_posture.sh`, replaying `runs/l2_scripted_prov`; 30M steps per arm, one variable): unchanged, 34 kills (`$55f2`) and 34 routs
 (`$560a`) and the captain group dissolved; with a posture-2 order to the captain, 49 kills, 4 routs, the captain alive
 with 4 men and side 2's group men 36 against 56. `Scripted` now sends that order (marked `fix`, which the rollout
 policy prepends to every candidate rather than forking on it) to a local group fighting an enemy group. In the full
@@ -374,6 +374,8 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
 | `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout] [--move] [--replay LOG]` | the decision loop |
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
+| `gate_posture.sh` | field-fight posture: kills against routs from the land-2 300M snapshot, one variable |
+| `runs/l2_rollout/`, `runs/l2_scripted_prov/` | the land-2 rollout win and the scripted run the posture gate replays |
 | `move.py <snap> <side> <k> <gx> <gy>`, `ab.py [pair...]`, `prep.py`, `gate_move.sh` | A* legs as go-to orders, the direct-vs-legs gate, boat stripping |
 | `gate_win.sh [snap] [loop args]` | side 1 played to a won land (campaign land 0 by default), twice, then the victory routine |
 | `campaign_next.sh <final.snap> <land> [out]` | a won land's loop end through Continue Conquest to the next campaign land, built |
