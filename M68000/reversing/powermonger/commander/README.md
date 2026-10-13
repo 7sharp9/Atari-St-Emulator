@@ -215,16 +215,25 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `astar.py <snap> x0 y0 x1 y1 [--cells] [--speed N]` | land path as world waypoints, with a verified flag |
 | `gate_sampler.py [snap...]` | `tools/pm_fsm_ref.terrain_sample` against `$1648e` under callcap |
 | `classify_stuck.py [prefix...]` | the stuck census split into unreachable / water on line / not stuck / boat |
+| `walk/` | the per-tick walker from a full record and the census that checks it: `list206.py` → `model206.py` → `census_run.py` (110 game runs) → `census_cmp.py` → `classify_fixed.py`; `trace_cmp.py` for one man, `reset_test.py` for the re-dispatched |
 | `live_check.py <snap> <obj> [--chunks N]` | a man's target poked to the first waypoint, against a control |
 
 All write under `$CMD_WORK` (default `scratchpad/cmd1`).
 
 ## Known risks
 
-- The walker model (`Map.simulate_walk`) is not yet a forecaster: for 206 stuck pairs it predicts
-  arrival through the `$48` sweep where the game stays stuck (121 of them side 4's prev-mode `$14`
-  men on k143). Group hand-off (`$14fa2`) and followers are not modelled. `Map.leg`, which only
-  rejects legs, is what the path search uses.
+- The walker is right per tick but not yet a forecaster (`walk/`). Started from a man's whole record, `walk/walker.py`
+  reproduces the game's position, step, heading, dwell, target, modes and sweep on 245,839 of 245,840 traced ticks of
+  the 206 pairs `Map.simulate_walk` got wrong (the one miss is a tick cut by the step budget). Those 206 have four
+  causes, none of them the hand-off `$14fa2` (no class b/c man has its flag bit 4): 121 men are re-dispatched by a job
+  routine every few dozen ticks (`$15122` → `$34f2` re-summons a get-men recruit to the lord's cell centre on each
+  get-men arrival, `$5cde`/`$155ac` send him to a tree, `$3c08`), so the `$48` sweep, which needs 500 to 1140 ticks to
+  round the water, never finishes (median gap 19 ticks, max 76); 49 are caught mid-sweep, and the sweep depends on its
+  history, which `simulate_walk`'s fresh mode-`$10` start discards; 25 arrive after the census window (one needed
+  2085 ticks, model 2115); 11 chase a moving target (a chased entity, or a camp seat that `$4a` rewrites to the
+  resting lead's position). From the full record with the observed re-dispatches, class b disagreements fall from
+  183 to 11 (all moving targets) and class c stays 0 of 239 (`walk/classify_fixed.py`). A forecaster still has to
+  model the job dispatchers, or stop at the next re-dispatch, and simulate the chased entity.
 - LLM output is not deterministic: every decision is logged with its tick so a run replays.
 - The game's own bugs act on injected orders too: the signed-clock camp stall after about 4.5G
   steps, stuck pending words from dead senders (`../README.md` "Bugs and accidents"). The harness

@@ -1726,6 +1726,10 @@ when the slot belongs to the local side. Two writers post `$2e`:
   `-48(sub)` = `word[$51538 + side*$13c + 28]`; the next tick `$d23a` sees it
   `<= 0`, clears `$57fce` and posts `$2e`.
 
+A side that loses every lord and every man does not end the land by itself: its captain group's owner word stays 1
+while the group is empty, so neither writer fires (side 1 on rand1 under the commander's baseline, run on for 1.6G steps
+after it emptied at about 400M; one run, `commander/README.md` "The decision loop").
+
 `$d2c8` is the verdict:
 
 ```c
