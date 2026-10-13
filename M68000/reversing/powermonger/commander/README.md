@@ -336,6 +336,8 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
 | `move.py <snap> <side> <k> <gx> <gy>`, `ab.py [pair...]`, `prep.py`, `gate_move.sh` | A* legs as go-to orders, the direct-vs-legs gate, boat stripping |
 | `gate_win.sh [snap] [loop args]` | side 1 played to a won land (campaign land 0 by default), twice, then the victory routine |
+| `campaign_next.sh <final.snap> <land> [out]` | a won land's loop end through Continue Conquest to the next campaign land, built |
+| `runstat.py <run dir> ...` | one status line per loop run (last decision, per-side lords and men, groups, end record) |
 | `gate_loop.sh [budget]`, `gate_loop_side1.sh [budget]` | loop determinism and replay, side 3 and side 1 |
 | `llm.py selftest` / `llm.py prompt <snap> [side]`, `prompt_system.txt` | the LLM policy, its offline test and its prompt |
 | `astar.py <snap> x0 y0 x1 y1 [--cells] [--speed N]` | land path as world waypoints, with a verified flag |

@@ -143,7 +143,10 @@ against every session's changes.
 
   **Marching.** Each commander marches at the nearest enemy lord when its army has
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast). AI
-  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it.
+  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it. The player's captain group gets no such
+  store (about 240 at the start of campaign lands 1 and 2), so food is a constraint only on the player: on land 2 the
+  captain ran out in 3 of 5 commander runs, with the side's own lords at 0 food, and starved to the land's end
+  (`commander/README.md` "The campaign", one run per policy).
 
   **Transfer order.** A small captain group handing its men to group 0 is natural but rare: 5 hits in 75 lands, all executed, by two routes: a small group left by a defection (k25, k8) or a large group whose side has no enemy lord it can take (k106, k34, k50). The order refusal cannot happen from any shipped call site (S "Natural coverage").
 
