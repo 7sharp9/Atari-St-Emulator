@@ -236,6 +236,14 @@ target, scores each over N steps and issues the best (ties: own lords, then list
 decisions differ, so the check can fail). An order to a group far from the captain changes nothing but the pigeon's
 payload for 20M steps or more, so N must exceed the flight time to score it; at N = 40M 14 of 25 decisions tied.
 
+**The first won land** (`gate_win.sh`). On campaign land 0 (`pm123/win/m1_s0.snap`: side 1 26 men against side 2's 20,
+ratio 2) every policy wins as side 1: the scripted baseline sets posture 4, attacks lord 0 at (29,62), sees ratio 4
+and retires at 35M steps; `$d2c8` runs with `$57fce` = 4 and the victory routine `$1a4da` follows (the defeat routine
+`$1a5b2` 0 hits). With movement and the rollout policy the run is the same to the step; the LLM retires at 40M; with no
+orders the land is still at ratio 2 after 1G steps. Two baseline runs give identical logs and snapshots. Land 0 is
+the tutorial land, won by one attack, so this proves the loop end to end (orders, verdict, victory) rather than
+strength.
+
 **Policies against the game's AI** (side 3 from rand1, one run each, so a signal and not a rate; the land ends when
 local side 1's captain is lost):
 
@@ -296,6 +304,7 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout] [--move] [--replay LOG]` | the decision loop |
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 15/15 |
 | `move.py <snap> <side> <k> <gx> <gy>`, `ab.py [pair...]`, `prep.py`, `gate_move.sh` | A* legs as go-to orders, the direct-vs-legs gate, boat stripping |
+| `gate_win.sh [snap] [loop args]` | side 1 played to a won land (campaign land 0 by default), twice, then the victory routine |
 | `gate_loop.sh [budget]`, `gate_loop_side1.sh [budget]` | loop determinism and replay, side 3 and side 1 |
 | `llm.py selftest` / `llm.py prompt <snap> [side]`, `prompt_system.txt` | the LLM policy, its offline test and its prompt |
 | `astar.py <snap> x0 y0 x1 y1 [--cells] [--speed N]` | land path as world waypoints, with a verified flag |
