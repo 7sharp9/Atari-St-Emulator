@@ -1,6 +1,6 @@
 """loop.py: the commander's decision loop with replay logging (commander README plan step 3).
 
-    loop.py <work> [--snap S] [--budget N] [--every N] [--side K] [--policy scripted|none|llm] [--move] [--no-take]
+    loop.py <work> [--snap S] [--budget N] [--every N] [--side K] [--policy scripted|none|llm] [--move] [--evade] [--no-take]
             [--gap N] [--read m|snap] [--replay LOG] [--backend cli|replay:<llm logdir>] [--model sonnet]
 
 Policy llm (llm.py) logs every prompt and reply under <work>/llm/.
@@ -178,16 +178,29 @@ class Scripted:
     top-up at home otherwise led the captain through get men, equip and invent for 80M steps before its first attack.
     Only the local captain's loss ends a land, and on land 2 it starved with 327 food in its own lords'
     stores that side 2 then conquered. Also on the local side it posts retire $2e as soon as the observed ratio $57fce is 4 (a win), or when the side
-    has no lord and no man left (a loss the game does not end by itself)."""
+    has no lord and no man left (a loss the game does not end by itself).
+    --evade (local side): while enemy groups whose men sum to at least the group's stand within THREAT cells, go to
+    the own lord farthest from them (re-sent every WAIT), and attack no lord such groups stand within THREAT of. On six
+    land-2 starts it lost later than the baseline (290M to 730M against 210M to 260M) and won none (README, "Land 2
+    as a rate")."""
 
-    def __init__(self, side, mp=None, move=False):
-        self.side, self.mp, self.move = side, mp, move
+    def __init__(self, side, mp=None, move=False, evade=False):
+        self.side, self.mp, self.move, self.evade = side, mp, move, evade
+        self.fled = {}           # --evade: k -> step of the last evade order
         self.movers = {}         # --move: k -> move.Mover in flight
         self.events = []         # Mover events since the last decision (logged by the loop)
         self.seen = {}           # k -> ((state, lead cell), decisions unchanged)
         self.ordered = {}        # k -> step of the last order
         self.fixed = {}          # k -> step of the last field-fight posture fix
         self.comps = mp.cell_components() if mp else None
+
+    def _outnumbered(self, obs, g, at=None):
+        """Lead cells of the enemy groups within THREAT cells of g (or of the cell at) when their men summed are at
+        least g's, else []."""
+        here = tuple(at or g['lead_obj']['cell'])
+        eg = [(tuple(e['lead_obj']['cell']), e['men']) for s, v in obs['sides'].items() if int(s) != self.side
+              for e in v['groups'] if e['alive'] and 'lead_obj' in e and cheb(here, e['lead_obj']['cell']) <= THREAT]
+        return [c for c, _ in eg] if eg and sum(m for _, m in eg) >= g['men'] else []
 
     def _reach(self, g, cell):
         if self.mp is None:
@@ -237,6 +250,17 @@ class Scripted:
             if k in self.movers:
                 out += self._move(k, self.movers[k], obs, R, clock)
                 continue
+            eg = self._outnumbered(obs, g) if local and self.evade else []
+            if eg and clock - self.fled.get(k, -WAIT) >= WAIT:   # evade: go to the own lord farthest from them
+                safe = [l for l in own if self._reach(g, l['cell'])]
+                if safe:
+                    l = max(safe, key=lambda l: (min(cheb(l['cell'], e) for e in eg), -l['idx']))
+                    self.fled[k] = self.ordered[k] = clock
+                    self.seen[k] = (None, 0)
+                    out.append(dict(side=self.side, type=GOTO, x=l['cell'][0], y=l['cell'][1], group=k))
+                    continue
+            if eg:
+                continue
             here = tuple(g['lead_obj']['cell'])
             key = (g['state'], here)
             prev = self.seen.get(k)
@@ -271,6 +295,8 @@ class Scripted:
             if tgt is None and g['men'] > 4:
                 foes = [l for l in enemy if l['men_home'] < g['men'] - 4 and self._reach(g, l['cell'])]
                 foe = pick(foes)
+                if foe and local and self.evade and self._outnumbered(obs, g, foe['cell']):
+                    foe = None   # evade: no attack on a lord that outnumbering enemy groups stand near
                 if foe:
                     dd = d(foe) * 2      # cells -> the half-cell units $68ee halves (inferred scale)
                     cost = (dd // 2) * ((g['men'] - 4) // 8 + 1) + dd // 2
@@ -403,6 +429,7 @@ def main(argv):
     snap_at = [int(float(x)) for x in opt('--snap-at', '').split(',') if x]   # proof: save <work>/at_<step>.snap
     take = not flag('--no-take')
     move = flag('--move')
+    evade = flag('--evade')
     backend = opt('--backend', 'cli')
     model = opt('--model', 'sonnet')
     work = (ROOT / a[0]).resolve()
@@ -431,7 +458,7 @@ def main(argv):
         sys.path.insert(0, str(CMD))
         from astar import Map
         mp = Map(load(snap))   # terrain from the start snapshot (inferred static during a land)
-        cmdr = Scripted(side, mp, move)
+        cmdr = Scripted(side, mp, move, evade)
     elif policy == 'llm':
         from astar import Map
         import llm
@@ -445,7 +472,7 @@ def main(argv):
     log = open(work / 'decisions.jsonl', 'w')
     W = lambda r: (log.write(json.dumps(r, separators=(',', ':')) + '\n'), log.flush())
     W(dict(kind='start', snap=str(snap.relative_to(ROOT)), budget=budget, every=every, gap=gap, side=side,
-           take=take, policy=policy, **(dict(move=True) if move else {}), **(dict(backend=backend, model=model) if policy == 'llm' else {}),
+           take=take, policy=policy, **(dict(move=True) if move else {}), **(dict(evade=True) if evade else {}), **(dict(backend=backend, model=model) if policy == 'llm' else {}),
            **(dict(K=rK, N=rN, par=rP, force=force) if policy == 'rollout' else {})))
     emu = Emu(snap, work / 'emu.err')
     if policy == 'llm':
