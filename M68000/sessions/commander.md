@@ -1,42 +1,74 @@
 # Commander: handoff
 
-Updated 2026-10-13 by the session that ended at commit `345a763`.
+Updated 2026-10-13 by the session that ended at commit `b51c614` (plus the digest and handoff commit after it).
 
 ## Resume point
 
-- Last commit of this workstream: `345a763` powermonger: digest, stuck men classified by A*; the executor takes any player order from any side's slot (work in `a57983b`).
-- Working data: `M68000/scratchpad/cmd1/` (gitignored; every gate rebuilds its own outputs under `$CMD_WORK`). Agent reports from the fan-out: `scratchpad/cmd1/agents/{astar,observe,orders}/report.md`.
-- Start from: `scratchpad/pm142/rand1.snap` (Play Random Land, side 1 local with two captains, AI sides 2..4 live).
+- Last work commit: `b51c614` commander: campaign land 1 won by the LLM (180M steps, 10 calls) and the baseline (455M).
+- Working data: `M68000/scratchpad/cmd2/` (gitignored; every gate rebuilds its outputs under `$CMD_WORK`, default
+  `scratchpad/cmd1`). Run records: `cmd2/{m1,l1,s1}/<policy>/decisions.jsonl` (land 0, land 1, rand1 side 1),
+  `cmd2/llm500`, `cmd2/rollout1g`. Agent outputs: `cmd2/agents/<name>/`.
+- Start from: `scratchpad/pm123/win/l1_built.snap` (campaign land 1, won by the LLM and the baseline) or
+  `pm123/win/m1_win.snap` / `map_cont.snap` to build land 2 (see Open 1).
 - Uncommitted work left behind: none.
 
 ## Proven so far
 
-All in `reversing/powermonger/commander/` (README "Design" and "Files"):
+All in `reversing/powermonger/commander/README.md`; every gate re-run from its promoted location.
 
-- Injection: a slot at state 2 silences a side's AI and takes injected orders, `gate_inject.sh` 7/7.
-- Every player order works from an AI slot (posture, transfer, dismiss, drop food/equipment, spy, alliance, get food/men, invent, equip, trade, supply, attack), `gate_orders.sh` 57/57; the executor has no local-side test. Encodings: README order table.
-- Terrain sampler port matches `$1648e` at 4128/4128 points (`gate_sampler.py`); A* over triangles (`astar.py`) gives a verified waypoint path for all 2417 stuck pairs with water on their line (`classify_stuck.py`); a waypoint is followed live where the control stays stuck (`live_check.py`).
-- Observation JSON (`observe.py`): 1312/945/4051/56 against the older scripts (`gate_observe.py`), 380/380 against the game's panels (`gate_ui.py`). `act.py` reproduces the injection gate byte for byte; `step.py` runs one step, about 2.4 s per 10M steps.
+- Orders from any slot, local side 1 included: `gate_inject.sh` 7/7, `gate_orders.sh` 57/57, `gate_ungated.sh` 52/52
+  (go to, home, alliances, invent throttle, equip), `gate_local.sh`; a `$2e` ends the land with the observed ratio's
+  verdict (`gate_retire.sh`). An order cell is the cell centre (`gate_cellpt.py` 16/16).
+- Orders by pigeon: second orders, the dead-sender leak after a commander dies, the pending word is stale AI state
+  (`pigeon/gate_pigeon.sh` 7/7).
+- Decision loop: one piped REPL, 3-7% overhead, deterministic and replayable (`gate_loop.sh`, `gate_loop_side1.sh`).
+- A* legs as go-to orders arrive where direct orders stick, 8/8 pairs (`gate_move.sh`); walker per tick 245,839/245,840
+  ticks, the 206 disagreements explained (`walk/`).
+- Exact rollouts, fork determinism 15/15 (`gate_rollout.sh`).
+- Scripted baseline with posture 4 attacks, the `$6762` chain and empty-group recruiting: level with the game's AI on
+  four starts (README table). Trade food rule corrected in economy.md (`py/gate_trade.py` 268/268).
+- Wins as side 1: campaign land 0 by every policy (`gate_win.sh`: twice identical, `$1a4da` runs); campaign land 1 by
+  the LLM in 180M steps / 10 calls / $0.53 and by the baseline in 455M (`runs/l1_llm/` replays to the same snapshot).
 
 ## Open, in priority order
 
-1. **Decision loop and scripted baseline** (README step 3): `step.py` in a loop, one decision per N ticks per group (orders from the README table, movement as one A* leg per order, re-issued at arrival), every decision logged with its clock so a run replays. Proof: a land played to a result (the `$57fce` ratio verdict, `$d2c8`) twice with identical logs and final snapshots (`cmp`). Needs mid-run pokes: `act.py` takes neighbour bytes from the input snapshot, so each step must start from a snapshot, or read the neighbours with `m` first.
-2. **Order target cell to world point**: which world point the game derives from bytes 2/3 (cell centre or corner); A* waypoints are world points. Proof: inject a `$1a` supply at a known cell and read the lead's target words 20/22.
-3. **Walker model disagreement**: `Map.simulate_walk` predicts arrival for 206 stuck pairs the game keeps stuck (121 on k143 side 4, prev mode `$14`). Needed before the walker is used as a cheap forecaster; check group hand-off `$14fa2` and followers first.
-4. Ungated order cases: an alliance with no goods to pay tribute, an alliance aimed at the player's side (panel `$1a` via `$c706`), invent at a lord with a workshop, equip at a lord with goods, go `$02` and home `$0a`.
-5. economy.md "The trade (`$63f4`)" says the food spent is added to the lord's food; one run saw lord food rewritten unchanged at `$64cc` when the sale covered the purchase (orders report). Settle from the code before editing the doc.
+1. **Play the campaign on.** Build land 2 (and on) from a won land: `m1_win` → Continue Conquest → pick a land next
+   to a conquered one (`py/drive_win.sh` drove land 0 → land 1; strategy.md "The campaign"), then run all policies
+   on it. Proof: lands won per policy, steps and calls to win, each win's `$1a4da`.
+2. **Rollout score that values the captain.** The rollout policy lost land 1 with 5 lords against 2 because its
+   F/E score ignores the local captain group. Add a large penalty for captain-group men or health lost (or a land-end
+   loss inside the horizon) and re-run land 1; proof: a won land 1 and no loss on rand1 side 3 against the current table.
+3. **LLM prompt regression.** With the pigeon and posture guidance (current `prompt_system.txt`) the side-3 rand1 run
+   issued 12 orders in 25 calls (2 attacks) and ended 5 lords / 67 men at 300M, against 22 orders (19 attacks) and
+   12 / 73 for the previous prompt (`scratchpad/cmd2/s1/llm_s3` against `cmd2/llm500`). One run each: re-run both
+   prompts on two seeds before changing the prompt; the land-1 win used the current prompt.
+4. **Evaluation across seeds**: several Play Random Land rolls (pm143/lands, pm121/k*) with side 1 and an AI side,
+   each policy against the unpoked game, so the README tables become rates, not single runs.
+5. Movement with rollouts (`--policy rollout` refuses `--move`) and the Mover's stall timer started at pigeon delivery
+   (README "Orders by carrier pigeon": 1.2-1.5M steps per 1000 world units).
+6. State-space forecaster (plan step 5): train on rollout traces; the walker still needs the job dispatchers
+   (`$15122`→`$34f2`, `$5cde`/`$155ac`, `$3c08`) and moving targets before it can forecast.
+7. Smaller: the side-0 peace bit left by the `$c706` clobber (is it read?); readers of the sender word beyond `$6af2`
+   and `$25d6` (whole-image scan); `$25d6` rebuilding slot 0 while the harness holds the slot; a UI click while the
+   harness holds side 1's slot.
 
 ## Known traps
 
-The PowerMonger traps in `sessions/powermonger.md` apply (REPL `w` writes a longword, a resumed snapshot may have no disk, `callcap` masks interrupts, group frames).
+The PowerMonger traps in `sessions/powermonger.md` apply.
 
-- A target can change sides while the group walks to it (`$3da4` then joins a spy to the new owner); the side is checked only at dispatch. Re-read the owner at arrival.
-- After a man reaches a poked waypoint his job rewrites the target: one order per leg, re-issued.
-- `stuck_census.py` counts men at their target and commuters as stuck; use `classify_stuck.py`'s type (b) for real shore cases.
-- In `gate_orders.sh` the spy arrives at 39.55M of the 40M budget: lowering `BUDGET` fails its arrival rows.
+- On rand1 every AI group's lead holds a Boat (byte 33 = `$0a`): it walks straight over water, so movement tests need
+  `prep.py`'s boat stripping or side 1's captain.
+- An injected order sets no pending word and lasts one tick in the slot (`$6a3a` clears bytes 1..3): write each order
+  of a decision `--gap` steps apart, and do not re-send on a timer shorter than the pigeon flight (a duplicate pigeon).
+- A side with no lord and no men never ends the land (captain owner word stays 1): the loop retires such a side.
+- `claude -p --output-format json` prints a list of events whose result event carries session and account metadata:
+  `llm.py` keeps it as `*.cli.json` under the work dir; never commit those (`runs/l1_llm/llm_io` holds prompts and
+  reply text only).
+- `$57fba` is rebuilt from zero every tick: a snapshot can catch it torn (5 of 800 reads); score from observe's totals.
+- `loop.py --replay` takes the log path relative to the current directory (pass an absolute path).
 
 ## Next session
 
-Build the decision loop with a scripted baseline commander for one side (Open 1), with replay
-logging, and prove it with two identical runs of one land. Settle Open 2 on the way, since the
-movement orders depend on it.
+Build campaign land 2 from `pm123/win/m1_win.snap` (Continue Conquest, pick a land adjacent to land 0 or 1) and run
+the baseline, LLM and rollout policies on it as side 1 (Open 1); fix the rollout score's captain blindness first
+(Open 2) so all three policies are worth comparing. Then start the multi-seed evaluation (Open 4).

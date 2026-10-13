@@ -52,7 +52,10 @@ against every session's changes.
   captain's own group acts at once; an order for any other captain is carried to him by a pigeon from the
   first captain's position and takes effect when it lands (live once for the player from `pm142/rand1`, `py/captain2/drive_order.sh`: the posture order lands about 9.97M steps after the click, and a men transfer from a selected subordinate, `py/captain2/xfer_pigeon.repl`, about 9.99M; 95 natural launches for the AI). The
   opponent lords issue orders through the same command slots and the same executor, which never tests the local
-  side: every player order written into an AI side's slot runs for that side (`commander/gate_orders.sh` 57/57). (S "The
+  side: every player order written into an AI side's slot runs for that side (`commander/gate_orders.sh` 57/57). A second
+  order sends a second pigeon and both run in turn; when the first captain's group dissolves every pigeon of its side is
+  freed, and later orders to the other captains copy the dead sender and never fly, each holding one of the 47 pigeon
+  records all sides share (a bug; `commander/README.md` "Orders by carrier pigeon", 7/7). (S "The
   player's commands", S "`$6a3a` / `$6ac6` / `$6b38` — the order executor", A "Arrows and carrier pigeons", A "What each entity decides per tick")
 - **Every man is an individual in one table.** Each runs a small per-tick state machine: step
   toward the lead's target, check the ground, turn around an obstacle, fight a neighbouring enemy,
@@ -121,7 +124,8 @@ against every session's changes.
   S "`$d322` + `$3e06`")
 - **Winning is a ratio, not annihilation.** The score is `(2·mine + enemy/4) / enemy`, clamped to
   0..4; a land is won only by retiring while it reads 4, and lost by retiring earlier or by the
-  captain's group dissolving. (S "`$d322` + `$3e06` → ... `$57fce`", S "How a land ends")
+  captain's group dissolving; a side left with no lord and no man but an empty captain group never ends the land.
+  (S "`$d322` + `$3e06` → ... `$57fce`", S "How a land ends")
 - **A campaign of 195 lands on a 13 × 15 map.** A land can be picked only next to a conquered one;
   each land's parameters come from a fixed table, and only the conquest map carries over. (S "The
   campaign")
@@ -130,6 +134,8 @@ against every session's changes.
   the ally's settlements valid for friendly orders, and any contact between the two sides breaks
   it. Only the player ever offers. Driven end to end on land 25 with real clicks and no register pokes (5 pots to an ungarrisoned
   lord whose attitude is -8 are accepted, 3 pots are refused; only those two outcomes were observed); an envoy to a garrisoned lord dies to contact first.
+  An envoy injected from an AI side opens the player's accept panel; the panel routine clobbers A0, so the offer is also
+  judged for side 0 and the tribute is spent before the player answers (a bug; S "Who proposes").
   Afterwards take-food and take-equipment on the ally's town are accepted and a second offer is refused at
   the pointer test.
   (S "Diplomacy")
