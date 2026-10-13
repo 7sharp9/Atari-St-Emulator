@@ -51,7 +51,8 @@ against every session's changes.
   to the captain's group, whose lead walks there with the men following in formation. The first
   captain's own group acts at once; an order for any other captain is carried to him by a pigeon from the
   first captain's position and takes effect when it lands (live once for the player from `pm142/rand1`, `py/captain2/drive_order.sh`: the posture order lands about 9.97M steps after the click, and a men transfer from a selected subordinate, `py/captain2/xfer_pigeon.repl`, about 9.99M; 95 natural launches for the AI). The
-  opponent lords issue orders through the same command slots and the same executor. (S "The
+  opponent lords issue orders through the same command slots and the same executor, which never tests the local
+  side: every player order written into an AI side's slot runs for that side (`commander/gate_orders.sh` 57/57). (S "The
   player's commands", S "`$6a3a` / `$6ac6` / `$6b38` — the order executor", A "Arrows and carrier pigeons", A "What each entity decides per tick")
 - **Every man is an individual in one table.** Each runs a small per-tick state machine: step
   toward the lead's target, check the ground, turn around an obstacle, fight a neighbouring enemy,
@@ -167,8 +168,9 @@ against every session's changes.
   game its deliberate pace. (S "Measured cadence")
 - **No pathfinding.** A lead steps straight at its target and probes half the way ahead, turning
   through a fixed fan of headings around what blocks it, with no coast following or memory, so a man whose target
-  lies across water stays at the shore (one man for 10G steps; 125 of 143 stuck men have water on their line,
-  `py/fsm/stuck_census.py`). (A "What each entity decides per tick", A mode `$48`)
+  lies across water stays at the shore (one man for 10G steps). In six long runs 2417 of the 4230 stuck pairs
+  have a land path whose straight line crosses water, and a triangle-level A* finds a walkable waypoint path for
+  each (`commander/classify_stuck.py`). (A "What each entity decides per tick", A mode `$48`)
 - **Weather is a seasonal roll, not ecology.** One spell per season from the season clock; nothing on the weather
   path reads the trees, and felling or emptying the forest leaves every spell unchanged (3 arms, 125M steps,
   `py/season/tree_weather.py`). Felled trees regrow one per season. (E "Weather and the season art")
