@@ -99,7 +99,7 @@ which is the unit the game logic actually counts in.**
 |-----|------|---------|
 | 0 | byte | commander index — `× $13c` → the `$51538` record |
 | 1 | byte | **order type** (even, `$00`..`$32`; `$00` = none). Cleared every tick by `$6a3a` after the executor reads it |
-| 2 | word | **order parameter** — a packed cell `{x: bits 0-5, y: bits 6-12}` for movement orders |
+| 2 | word | **order parameter** — for a targeted order the cell x in byte 2 and y in byte 3, one byte each (attack `$6c36`/`$6c3a`, the `$3154` orders `$6c4c`/`$6c50`; injected `$0c` at (15,92) is `0f5c`, `commander/gate_inject.sh`); posture `$16` reads the word as the posture value (`$6ccc`); transfer `$04` byte 2 the from-group `2k`, byte 3 the to-group (`commander/gate_orders.sh`) |
 | 4 | byte | **slot state** `0/2/4/6/8/$0a`. `$6a3a` dispatches on it each tick through the word table at `$6a80` (state 0 no work, 2 and 4 execute the order locally, 6 and 8 are the serial-link states below, `$0a` is a bare `rts`); `$6522` issues a new order only when it is `4` |
 
 `$6a3a` walks slots 1..4 only (`$5801c..$58033`); slot 0 (`$58016`) is never dispatched.
@@ -226,7 +226,7 @@ in `ai.md`.
 typedef struct pm_cmd_slot {          // one per side; $6a3a walks slots 1..4
 /* 0*/  u8   commander;               // x $13c -> the $51538 record. Sign: <0 attack |id|, 0 neutral, >0 own
 /* 1*/  u8   order_type;              // even $00..$32; $00 = none. Cleared by $6a3a after the executor reads it
-/* 2*/  u16  param;                   // packed cell {x: bits 0-5, y: bits 6-12} for a movement order
+/* 2*/  u16  param;                   // targeted order: cell x byte 2, y byte 3 ($6c36/$6c3a); $16: posture word; $04: from 2k, to
 /* 4*/  u8   slot_state;              // 0/2/4/6/8/$a. $6a3a advances it each tick; $6522 issues only when == 4
 /* 5*/  u8   _pad5;
 } pm_cmd_slot;
@@ -994,7 +994,8 @@ A targeted order marches the group's lead to the target with `31 := $10`
 `$3154` (orders `$06`/`$08`/`$0e`/`$10`/`$1c`/`$1e`/`$20`) only accepts a cell
 holding a settlement (object byte6 `$2` or `$10`) whose owner passes a filter
 set by D5: own side (D5 > 0; for D3 = 2 or `$a` also a side whose peace bit is
-set, "Diplomacy"), any side (D5 = 0), not the local side (D5 < 0). It then
+set, "Diplomacy"), any side (D5 = 0), any side but the issuing one, `|D5|` (D5 < 0, `$3186..$3192`:
+not the local side `$57ffe`, so an AI side's spy or envoy may target the player). It then
 targets the settlement's lord's cell (`4(lord)`; order `$20` the settlement's
 own cell `12(settl)`) and stores the lord as the group's target link `24(group)`.
 Every amount an order moves is `x >> (posture − 2)` (`$30fe`): aggressive
@@ -1167,8 +1168,9 @@ and `31 := $10` (advance).
 `$57fba` = 5 × 4-byte per-side force totals, rebuilt from scratch every tick:
 
 - **`$d322`** zeroes all five, then for each leader in `$4e514` (32-byte
-  records) adds `+0 += 8(leader)`, `+2 += 6(leader)` (its two troop-count
-  fields). It also walks the `$47970` buckets around each leader via the
+  records) with men at home adds `+0 += 8(leader)`, `+2 += 6(leader)` (its men at home
+  and its food; a lord with `8(leader) == 0` is skipped whole, `$d36a beq $d48a`, so `+2` is the food of the
+  lords with men at home: 56/56 side-snapshots, `commander/gate_observe.py`). It also walks the `$47970` buckets around each leader via the
   neighbour-offset ring `$d49e`, and where an enemy category-0 entity whose
   group is strong enough (`8(leader) >> 1 > -24(groupRecord)`) is in contact it
   calls `$4bc8` (`_setup_f...`, set up the fight, `ai.md` "`$4bc8`": war between the two sides, both parties

@@ -143,7 +143,7 @@ The loop tail:
 |----------|--------------|
 | `$1622c` | `lea 50(A1),A1 / cmpa.l #$57f66,A1 / bne $14b72` — next record; `rts` at `$57f66` |
 | `$16228` | `bsr $163ea` (relink spatial buckets, write back position) then fall into `$1622c` |
-| `$16202` | clamp D6 to `[0,$3fff]`, D7 to `[0,$1f40]`, then `$163ea` + next |
+| `$16202` | clamp D6 to `[0,$3fff]`; D7 is not clamped above: a negative D7 becomes 0 if its magnitude is at most `$1f40`, else `$7fff` (`$16214..$16224`); then `$163ea` + next |
 | `$161c4` | same clamp, then re-sample terrain (`$1648e`): if the new cell is impassable, **revert to mode `$00`** and skip the position write; else clear the "blocked" flag (bit 5 of byte 7) and relink |
 | `$1623c` | dying-entity path (owner < 0, Proven below, "the dying-entity path `$1623c`"): count `18(A1)` down from `$a0`, stepping the flap phase `32(A1)`; at 0 stamp `$4bb3e` into `20(A1)`, credit the dead man's goods codes to a settlement/base leader in the same cell, then `byte6 := $0a` (equipment left lying) or `$20` + unlink |
 
@@ -637,7 +637,11 @@ D0 = byte[A4]      ; colour byte of the triangle the point lies in (A4 -= 8257 f
 rts               ; Z set  <=>  colour == 0
 ```
 
-Callers `beq` on **colour 0** = open sea (all four corner altitudes 0) / off-map. Used both as a
+Callers `beq` on **colour 0** = open sea (all four corner altitudes 0). The routine has no bounds
+test: X wraps modulo `$4000` and a negative Y reads rows 128..255 past the plane (non-zero 79% of the
+time), so only the callers' own bound tests (mode `$48`, `$161c4`) make the map edge block. The Python
+port `tools/pm_fsm_ref.terrain_sample` matches the 68000 at 4128/4128 points, shore triangles and
+off-map points included (`commander/gate_sampler.py`). Used both as a
 "can I stand here" test after a move and, probed in a `dbeq` loop, as a
 short-range "is the path ahead clear" test.
 
@@ -708,9 +712,9 @@ the settled first-mission view.
 | `$0a` | `$14e1e` | – | dwell `18`; at 0 → mode `$08`, or mode `$10` if no linked entity |
 | `$0c` | `$14e56` | 6 | save (D6,D7) → (36,38), start the walk path whose offset is already in `40(A1)` (original `start_fl...`): `$50`, `farm` (bytes `$50..$73`, set by the farmer's `$18` handler `$150b0`), or `$76`, `pots` (set by the gatherer kind-`$c` arm `$60ca`, economy.md §2a), → mode `$0e` |
 | `$0e` | `$14e70` | **445** | *(Proven, movement-modes block)* **the walk along a path of the walk-path table `$168ee`**: the farmer's `farm` path, or the `pots` path of a Pot gatherer (kind `$c`) (original `in_fligh...`; census in the note below the table): integrate step + `subq.w #1,18(A1)` (`!=0` → epilogue `$16202`); at 0 snap to origin+segment, read the next point, recompute step `(nextpt−seg)>>3` + heading, dwell 8; segment word ≥ `$7d00` = terminator (`$7d01` loop: `D2 -= D1`; `$7d02+n`: `mode := n`; `$7d00`: `mode := $92`) |
-| `$10` | `$14f08` | **180** | *(Proven, movement-modes block; original `home_in`)* **advance to the target** `20/22` (or, `prev_mode == $2e`, chase entity `48(A1)` copying its live position; target gone → mode/prev `:= $2c`). `$164bc` for the step; **reached** → `$15302` (chase) / `$14fdc` (fixed — snap onto target); else probe up to `dwell` cells ahead along (12,13) with `$1648e` (`dbeq`) — blocked → mode `$4a`; else mode `:= $12` + run the `$14ff8` body |
+| `$10` | `$14f08` | **180** | *(Proven, movement-modes block; original `home_in`)* **advance to the target** `20/22` (or, `prev_mode == $2e`, chase entity `48(A1)` copying its live position; target gone → mode/prev `:= $2c`). `$164bc` for the step; **reached** → `$15302` (chase) / `$14fdc` (fixed — snap onto target); else probe the points `P + k·step` for k = 1..`dwell` (velocity steps, not cells) along (12,13) with `$1648e` (`dbeq`) — blocked → mode `$4a`; else mode `:= $12` + run the `$14ff8` body |
 | `$12` | `$14ff8` | **774** | **the moving leg between `$10` re-plans** (original `on_route`) *(Proven, dwell/upkeep block; the man moves every tick, it is not a halt)*: add the step `(12,13)` to the position, `subq.w #1,18(A1)`; at `<= 0` → mode `$10`. Its prev byte is the job mode that planned the leg (census in the note below the table) |
-| `$48` | `$158da` | 13 | **obstacle avoidance**: `12(A1)/13(A1)` from heading via `$12d56`; probe ahead (`dbeq` on `$1648e`); if blocked, add a growing ± sweep (`40(A1)` += 4, negate) to `17(A1)` and retry: the heading steps 8, −4, 12, …, 64, −60 (about ±90°, 256 units = 360°, one try per tick), probing `min(18(A1), $100)` steps; a failed fan (sweep word `$80`) costs `18 -= 8` and restarts from −60; with `18 < 0` any probe counts as open (mode `$12`, then `$10` re-plans). Only a terrain byte of 0 (water) or the map edge blocks; a man carrying a Boat skips the probe. No coast following or route memory: a man whose target lies across water oscillates at the shore (obj271 on k25 for all 40 chunks of 10G steps; 125 of 143 men stuck in the last chunk of six long runs have water on their straight line; `py/fsm/stuck_census.py`) |
+| `$48` | `$158da` | 13 | **obstacle avoidance**: `12(A1)/13(A1)` from heading via `$12d56`; probe ahead (`dbeq` on `$1648e`); if blocked, add a growing ± sweep (`40(A1)` += 4, negate) to `17(A1)` and retry: the heading steps 8, −4, 12, …, 64, −60 (about ±90°, 256 units = 360°, one try per tick), probing `min(18(A1), $100)` steps; a failed fan (sweep word `$80`) costs `18 -= 8` and restarts from −60; with `18 < 0` any probe counts as open (mode `$12`, then `$10` re-plans). Only a terrain byte of 0 (water) or the map edge blocks; a man carrying a Boat skips the probe. No coast following or route memory: a man whose target lies across water oscillates at the shore (obj271 on k25 for all 40 chunks of 10G steps). Over the six long runs `py/fsm/stuck_census.py` reports 4230 stuck pairs (345 men); classified per triangle with A* (`commander/classify_stuck.py`): 2417 pairs (112 men) have a land path whose straight line crosses water, and A* finds a walkable waypoint path for every one; 1540 target a point that is water or on another landmass; 34 carry a Boat; 239 (125 men) are not stuck but at their target or commuting, which the census's "same target, not closer" test admits. Poking a type-(b) man's target to the first waypoint brings him to it, where the unpoked control oscillates at the shore (`commander/live_check.py`, W5G_k80_c20 obj49) |
 | `$4a` | `$1597a` | 3 | set up mode `$48`: copy target from `28(A1)`, sweep = 8, clear low 2 bits of heading |
 
 **`$04`/`$06`.** Every man in `$06` is a group follower (flag bit 6) with a live leader in `28` and non-zero `(20,22)`
