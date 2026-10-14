@@ -121,6 +121,9 @@ that holds its worked example.
 - A hero pinned at one screen coordinate is usually a camera-follow trigger; a position reached is
   not proof the maneuver was safe (check health and status bytes across the run); a snapshot after
   a fixed hold may be a mid-motion frame.
+- "Never in state X" read from periodic snapshots is a sample, not a trace: `watch` the byte over the window. The
+  commander's rollout-win lead "never left `$34`" at 5M samples; a watch found a melee at 1457M that lasted under one
+  tick (`commander/leadkill/gate_leadkill.sh win`).
 - A cause read off the state at a failure needs the run's trajectory before it rules a remedy out: the commander
   handoff said the captain starved with its own lords at 0 food, so fetching food could not help; that was true at
   330M, but at 150M those lords held 327 food it never took, and taking it won land 1 in half the steps
