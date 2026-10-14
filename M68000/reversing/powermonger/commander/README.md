@@ -381,7 +381,7 @@ in one fight, not where he stands: the men he fought in the killing sequences pi
 (`gate_leadkill.sh win`, 315M..330M) caught a lone 3-health man and missed the 65-health fight after it. The odd death
 is rollout o5's: the lead never left `$34` and lost 82 = `$52` twice, 95 to 13 at 344.1M and to 0 at 346.1M,
 both written at `$5b4c` in the arrow loop `$596a` (ai.md, which tests no flags, so a lead can be shot) and then 0
-at `$5594`, the `$5590` kill (watch of `$53014` from `scratchpad/cmd11/arrow/at_343800000.snap`).
+at `$5594`, the `$5590` kill (`gate_standoff.sh arrow`).
 Of the 24 deaths, 11 are on a lord's cell (the attack target, or the captain's own capital (52,24) when side 2 came
 to it) and 13 in the field.
 
