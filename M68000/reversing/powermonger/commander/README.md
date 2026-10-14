@@ -337,19 +337,53 @@ owner `$ff`, category `$0c` and dwell `$a0` (killed, not routed), flags `$10` (l
 `$188` (side 1 group 0), and the attacker's lead is side 2's group 0 at posture 2; the land ends 1.2M steps later.
 His army did not lose: it still had 27 men, and in o1 it had already destroyed one of side 2's two groups.
 
-What decides it is whether an enemy man reaches the lead. A lead carries a bow (grade 6 from spawn) and in a fight
-stands off shooting: mode `$34`, the shot cool-down. Melee (`$32`) starts only when an enemy man reaches him (`$56a6`).
-From 190M to 205M on o1 (`cmd9/o1_health`) the captain's group fought side 2's groups and his lead stayed in `$34` at
-full health 95; from 208M he was in `$32` on (26,52), the lord he had been ordered to attack, against side 2's group
-at posture 2, his health falling 86, 74, 56, 28 a million steps apart, to 0 at 213M. In the rollout win the captain
-fought side 2's groups at posture 2 from 220M to 240M and from 305M to 315M and his lead never left `$34` (health 95 at
-every 5M sample, replay of `runs/l2_rollout`, `scratchpad/cmd8/r0rep`), so the enemy's posture alone does not kill him:
-it only turns a lead reached in melee from a rout into a kill. What brings an enemy man onto the lead is not found.
-Of the 24 deaths, 11 are on a lord's cell (the attack target, or the captain's own capital (52,24) when side 2 came
-to it) and 13 in the field; `$4f68`'s target weighing (ai.md, mode `$2c`) is where to read next.
+What decides it is whether a healthy enemy man reaches the lead. A lead carries a bow (grade 6 from spawn) and in a
+fight stands off shooting: mode `$34`, the shot cool-down. On o1 (`cmd9/o1_health`) the captain's lead was in `$34` at
+full health 95 from 190M to 205M; from 208M he was in `$32` on (26,52), the lord he had been ordered to attack, against
+side 2's group at posture 2, his health falling 86, 74, 56, 28 a million steps apart, to 0 at 213M. The enemy's
+posture only turns a lead beaten in melee from a rout into a kill. The chain that puts him in melee, traced on o1 from
+205M (`leadkill/gate_leadkill.sh`, its comment holds the recorded outputs):
 
-The rules tried against it all fail. A go to (`$02`) order to the fighting captain is consumed (the slot reads type 0) but the group stays in state 13
-and the lead in mode `$32` on the same cell until he dies (diseng o1, 210M; one case). Evading groups that outnumber
+- **Every enemy man who can pick the lead does.** When the two groups meet, `$4bc8` (through `$4dae`) gives each side's men class 4
+  (hunt a group) aimed at the other's lead, and each man's `$4f68` pick runs `$503c`: it weighs every live, unrouted
+  member of the hunted group's roster through `$548a`, then the lead, last. `$548a` skips a man already claimed this
+  tick (byte 32 = the tick `$57fed`; the winner is claimed at `$5340`) and accepts one only if the picker holds a bow
+  (weapon 6, `$e` or `$10`), a better weapon, at least the candidate's health, or has retry byte 39 = 2. The key it
+  keeps for the best candidate is the word D0, whose high byte is the high byte of the candidate's own record offset
+  and whose low byte is the last byte the gate compared, not the distance, so every acceptable candidate after the
+  first replaces the previous one: the last acceptable candidate in roster order wins, and the lead is weighed last.
+  Replaying `$503c`/`$548a` from the state at each of the 64 picks of 205.4M..208.5M (both sides) predicts the game's
+  target 64 of 64 (`leadkill/model_pick.py`); the captain's lead was picked 6 times, side 2's lead 4.
+- **The gate holds only while the lead's health is the highest.** Byte 39 counts failed picks and is not reset by a
+  success, so a man at 2 passes against anyone until his next failure. At 205.9M man `$521a6` (unarmed, health 79,
+  byte 39 = 2) picked the lead; poking only his byte 39 to 0 made him pick `$5301a`, and the next pick of the same tick,
+  `$5223c` (also 2), took the lead instead and reached him 0.7M steps earlier. Removing one hunter hands the lead to the
+  next.
+- **A chaser who arrives drags the lead into melee.** The arrival `$15302` engages a target only in a mode up to `$2c`
+  or with prev `$3c` and up, which a lead in `$34` is not, but the chaser is now in `$32` himself, and `$1533c` calls
+  `$56a6` on any target not in `$32`: the lead is stamped `$32` one melee tick later, at step 1,345,254,840.
+- **Melee is a health race the lead loses.** The melee drain is `(weapon < 6 ? weapon : 0) >> 1 + 1` (ai.md, the combat
+  block), so an unarmed man and the bow-armed lead both take 1 health per tick: one chaser of health 79 costs the lead
+  about 79 (inferred from the formula; the o1 trajectory fits). Once the lead's health falls below side 2's men (70 to
+  90), every one of them passes the gate and prefers him: the census of side-2 fighters passing against him went from 7
+  of 40 at 190M to 25 of 30 at 211M (`leadkill/census.py`).
+
+In the rollout win the lead was not spared by the gate: more side-2 fighters passed against him (8 to 21, almost all by
+byte 39) than on o1 before the melee, and chasers did pick him. He stood about 3 cells from the fight (a chaser 797
+units away at 310M against 129 on o1), and of the chasers aimed at him over 315M..330M (`chase_fate.py` over a watch of
+the win's replay) two were diverted by the captain's men engaging them and one arrived: a lone man of health 3, whom
+the lead killed in one tick (health 95 to 94). The 5M samples had missed that melee, so the lead did enter `$32` in
+the win. That the standoff distance is what differs is inferred from these two runs. Of the 24 deaths, 11 are on a
+lord's cell (the attack target, or the captain's own capital (52,24) when side 2 came to it) and 13 in the field.
+
+Moving the lead out does not work. A go to (23,49) or (26,47), 3 to 5 cells away from side 2's men, given while the
+lead was still in `$34` before any chaser arrived (`gate_leadkill.sh goto`): he moved about 40 units, was stamped `$32`
+0.5M steps later than the control, and ended the 2.6M-step window at health 5 against the control's 83, because a lead
+walking in `$10` is engaged by a chaser on arrival (`$15302`'s mode test passes). A go to (`$02`) order to a captain
+already in melee is consumed (the slot reads type 0) but the group stays in state 13 and the lead in mode `$32` on the
+same cell until he dies (diseng o1, 210M; one case).
+
+The other rules tried all fail as well. Evading groups that outnumber
 the captain, or every posture-2 group, only delays the meeting, because side 2's groups march on him and change
 posture after their own orders. Field fights are cheap otherwise: no group carries weapons (only the leads hold a
 bow, grade 6 from spawn), so men and health decide them, and the captain beat single groups while losing few men.
@@ -418,6 +452,10 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
 | `gate_posture.sh` | field-fight posture: kills against routs from the land-2 300M snapshot, one variable |
 | `seeds.sh <out> <snap> <side> "<offsets>" "<arms>" [par] [budget]` | one land played by several policies from starts a few million unpoked steps apart, so an outcome is a rate |
+| `leadkill/gate_leadkill.sh [pick] [r39] [goto]` | how an enemy man reaches the captain's lead (scripted o1, `runs/l2_scripted_o1`): the target-pick replay 64/64, the retry-byte poke, the go-to arms |
+| `leadkill/model_pick.py <out>` | `$503c`/`$548a` replayed from REPL dumps at each `bp 5350`, compared with the game's pick |
+| `leadkill/chase_fate.py <watch> [lead]` | each chaser aimed at a lead and what ends the chase (engaged, diverted, re-pick, dead), from a `wfilter.py 46-49` watch |
+| `leadkill/census.py <snap>...` | side 1's leads and how many side-2 fighters pass `$548a`'s gate against them |
 | `runs/l2_rollout/`, `runs/l2_scripted_prov/` | the land-2 rollout win and the scripted run the posture gate replays |
 | `move.py <snap> <side> <k> <gx> <gy>`, `ab.py [pair...]`, `prep.py`, `gate_move.sh` | A* legs as go-to orders, the direct-vs-legs gate, boat stripping |
 | `gate_win.sh [snap] [loop args]` | side 1 played to a won land (campaign land 0 by default), twice, then the victory routine |

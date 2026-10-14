@@ -775,8 +775,15 @@ civilian mode.
 - `$12`/`$14`/`$16`: `$5240`, group done: nobody engaged → `$539a` (conquest: `38 == $12` → `$550e`, economy.md §3), else
   `$3c08`.
 
-Each candidate is weighed by `$548a` (Chebyshev distance; stronger weapon or health, or a third retry; the best key
-stored is D0, not the distance: a game bug that changes 48 of 169 natural picks).
+Each candidate is weighed by `$548a`: Chebyshev distance within `$fff`; skipped if already claimed this tick (byte 32 =
+`$57fed`, which the winner gets at `$5340`); accepted if the picker holds a bow (weapon 6, `$e`, `$10`), a better
+weapon, at least the candidate's health, or retry byte 39 = 2 (bumped by `$535c` on each pick with no winner, wrapping
+after 2, never reset by a success). The best key stored is the word D0, not the distance (a game bug that changes 48 of
+169 natural picks): its high byte is whatever the caller left in D0 (in `$503c`, the candidate's record offset), its low
+byte is the last byte the gate compared, so in `$503c` every acceptable candidate after the first replaces the
+previous one and the last in walk order wins (the other arms' callers are not checked). `$503c` walks the roster and weighs the group's lead last, so a lead is the target of
+every man who passes the gate against him (live, 64 of 64 picks: commander README "How the captain dies",
+`commander/leadkill/model_pick.py`).
 
 **`$34`, evidence.** Counted: 400 snapshots hold men in it with the dwell high byte 5..20; bytes 30 and 31 are both
 `$34`, `48(A1)` is a live man of another side, and the shooters are all byte 7 `$10`. The countdown is a byte write: a
