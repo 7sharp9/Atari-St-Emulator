@@ -337,7 +337,7 @@ owner `$ff`, category `$0c` and dwell `$a0` (killed, not routed), flags `$10` (l
 `$188` (side 1 group 0), and the attacker's lead is side 2's group 0 at posture 2; the land ends 1.2M steps later.
 His army did not lose: it still had 27 men, and in o1 it had already destroyed one of side 2's two groups.
 
-What decides it is whether a healthy enemy man reaches the lead. A lead carries a bow (grade 6 from spawn) and in a
+**How the captain dies.** What decides it is whether a healthy enemy man reaches the lead. A lead carries a bow (grade 6 from spawn) and in a
 fight stands off shooting: mode `$34`, the shot cool-down. On o1 (`cmd9/o1_health`) the captain's lead was in `$34` at
 full health 95 from 190M to 205M; from 208M he was in `$32` on (26,52), the lord he had been ordered to attack, against
 side 2's group at posture 2, his health falling 86, 74, 56, 28 a million steps apart, to 0 at 213M. The enemy's
@@ -370,8 +370,7 @@ posture only turns a lead beaten in melee from a rout into a kill. The chain tha
 
 In the rollout win the lead was not spared by the gate: more side-2 fighters passed against him (8 to 21, almost all by
 byte 39) than on o1 before the melee, and chasers did pick him. He stood about 3 cells from the fight (a chaser 797
-units away at 310M against 129 on o1), and of the chasers aimed at him over 315M..330M (`chase_fate.py` over a watch of
-the win's replay) two were diverted by the captain's men engaging them and one arrived: a lone man of health 3, whom
+units away at 310M against 129 on o1), and of the chasers aimed at him over 315M..330M (`gate_leadkill.sh win`) two were diverted by the captain's men engaging them and one arrived: a lone man of health 3, whom
 the lead killed in one tick (health 95 to 94). The 5M samples had missed that melee, so the lead did enter `$32` in
 the win. That the standoff distance is what differs is inferred from these two runs. Of the 24 deaths, 11 are on a
 lord's cell (the attack target, or the captain's own capital (52,24) when side 2 came to it) and 13 in the field.
@@ -452,7 +451,7 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
 | `gate_posture.sh` | field-fight posture: kills against routs from the land-2 300M snapshot, one variable |
 | `seeds.sh <out> <snap> <side> "<offsets>" "<arms>" [par] [budget]` | one land played by several policies from starts a few million unpoked steps apart, so an outcome is a rate |
-| `leadkill/gate_leadkill.sh [pick] [r39] [goto]` | how an enemy man reaches the captain's lead (scripted o1, `runs/l2_scripted_o1`): the target-pick replay 64/64, the retry-byte poke, the go-to arms |
+| `leadkill/gate_leadkill.sh [pick] [r39] [goto] [win]` | how an enemy man reaches the captain's lead (scripted o1, `runs/l2_scripted_o1`): the target-pick replay 64/64, the retry-byte poke, the go-to arms; `win` the chases on the rollout win's lead over 315M..330M (`runs/l2_rollout`, about 4 minutes) |
 | `leadkill/model_pick.py <out>` | `$503c`/`$548a` replayed from REPL dumps at each `bp 5350`, compared with the game's pick |
 | `leadkill/chase_fate.py <watch> [lead]` | each chaser aimed at a lead and what ends the chase (engaged, diverted, re-pick, dead), from a `wfilter.py 46-49` watch |
 | `leadkill/census.py <snap>...` | side 1's leads and how many side-2 fighters pass `$548a`'s gate against them |

@@ -1,5 +1,5 @@
 #!/bin/bash
-# gate_leadkill.sh [pick] [r39] [goto]: how an enemy man reaches the captain's lead on land 2 (README "How the captain
+# gate_leadkill.sh [pick] [r39] [goto] [win]: how an enemy man reaches the captain's lead on land 2 (README "How the captain
 # dies"). Scripted seed o1 (runs/l2_scripted_o1, start rebuilt as seeds.sh does) replayed to 205M; the loop's two orders
 # at 205M and 205.4M (posture 4, attack (26,52)) are poked as the log applied them. Work dir ${CMD_WORK:-scratchpad/cmd10}/leadkill.
 #   pick  every $5350 target pick over 205.4M..208.5M (64 stops), state dumped, $503c/$548a replayed by model_pick.py:
@@ -9,6 +9,8 @@
 #         $521a6; poked, $521a6 picks $5301a and $5223c (retry 2, the next pick of that tick) takes the lead.
 #   goto  from the same state + 250k steps (lead in $34), control against a go to (23,49) and a go to (26,47) for the
 #         captain: recorded lead stamped at 1345254840, 1345780398, 1345780426; health after 2.6M steps 83, 5, 5.
+#   win   the land-2 rollout win (runs/l2_rollout) replayed to 315M, then 15M steps under a watch: chase_fate.py over the
+#         chasers aimed at the captain's lead: recorded engaged 1 ($52eee, health 3 at 315M), diverted 2; lead 95 -> 94.
 d=$(cd "$(dirname "$0")" && pwd); R=$d; while [ ! -f "$R/tools/rdis.py" ]; do R=$(dirname "$R"); done
 cd "$R"; L=${d#$R/}; C=$(dirname $L); W=${CMD_WORK:-scratchpad/cmd10}/leadkill; mkdir -p $W
 EMU() { ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll resume "$@"; }
@@ -24,7 +26,7 @@ P=$W/pre_pick.snap
 if [ ! -f $P ]; then
   printf "disk scratchpad/powermonger.st\n${POKE205}s 400000\n${POKE2054}bpc 5350 23 3100000\nsnap $P\nq\n" | EMU $S repl > /dev/null
 fi
-ARGS=${*:-pick r39 goto}
+ARGS=${*:-pick r39 goto}      # win is not in the default: its replay to 1120M takes minutes
 for a in $ARGS; do case $a in
 pick)
   { printf "disk scratchpad/powermonger.st\n${POKE205}s 400000\n${POKE2054}"
@@ -48,4 +50,12 @@ goto)
     s=$(grep -m1 -E 'pc=\$005702' $W/goto_$n.watch | sed -E 's/.*step=([0-9]+).*/\1/')
     h=$(grep -E '^e1 10' $W/goto_$n.out | awk '{print $46}')
     echo "== goto $n: lead stamped \$32 at $s, health \$$h after 2.6M steps"; done ;;
+win)
+  WS=$W/win/at_315000000.snap
+  [ -f $WS ] || python3 $C/loop.py $W/win --replay "$R/$C/runs/l2_rollout/decisions.jsonl" --snap-at 315000000 > /dev/null
+  printf "disk scratchpad/powermonger.st\nm 52fe8 50\nm 52eee 50\nwatch 51b66 25600\ns 15000000\nm 52fe8 50\nq\n" |
+    (EMU $WS repl 2> >(python3 $R/reversing/powermonger/py/fsm/wfilter.py 46-49 > $W/win.watch) > $W/win.out; wait)
+  echo "== win"; python3 $L/chase_fate.py $W/win.watch | tail -4
+  python3 -c "import re,sys; L=[l.split() for l in open(sys.argv[1]) if re.match(r'^[0-9a-f]{2}( [0-9a-f]{2}){49}', l)]
+print('health: lead at 315M', int(L[0][45],16), '| \$52eee at 315M', int(L[1][45],16), '| lead at 330M', int(L[2][45],16))" $W/win.out ;;
 esac; done
