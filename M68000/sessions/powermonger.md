@@ -1,17 +1,18 @@
 # PowerMonger: handoff
 
-Updated 2026-10-13 by the 160th session (`aa19f3b` .. `a0ddb87`; CLAUDE.md/skill `2fdf420`), after the 159th (`6fe45f6` .. `43eccbb`).
+Updated 2026-10-14 by the 161st session (`1fe36f6` .. `7cf36ab`; CLAUDE.md/skill `257a3ce`), after the 160th (`aa19f3b` .. `a0ddb87`).
 
 ## Resume point
 
-- Last commits of this workstream: `aa19f3b` (sound slot), `b69fa6e` (`$c5ee`), `fba2240` (ack pick), `57121c2` (click timing), `ae21d9e` (`$04` by pigeon), `6bf245a` (Stock rows), `5b00a2a` (dialog ids), `8c52729` (`$1ac88`), `a0ddb87` (digest), then the handoff commit.
-- `bin/Debug/net8.0/M68000.dll` is the 159th session's build (`a6eb21d`); no emulator change this session.
-- Working data: `M68000/scratchpad/pm160/` (gitignored): `snd/` (dispatcher censuses, `lit.txt` and `drawscan.txt`: snapshots with a lit fire and which draw it), `xfer/` (click-timing arms, the `from1*.repl` drives), `ui/` (`req_panels.out`), `dlg/` (`dlg_ids.out`). Older: `pm159/` (`tree/`, `net/`, `bomb/`, `wprot/`), `pm158/`, `pm157/`, `pm156/` (`BRIEF.md`, the reusable agent brief), `pm150..155/`, `pm148/` (the long chunk series), `pm142/`, `pm143/`, `pm123/`.
+- Last commits of this workstream: `1fe36f6` (bird seed), `60fe95e` (season after LOAD), `7cf36ab` (`$4342` arrival), then the handoff commit.
+- `bin/Debug/net8.0/M68000.dll` is the 159th session's build (`a6eb21d`); no emulator change since.
+- Working data: `M68000/scratchpad/pm161/` (gitignored): `seed/` (the seed watch, `end.snap` is post-game), `promoted/seed/` (the promoted rerun), `season/` (the two LOAD arms and their disks), `f4342/` and `fresh/f4342/` (arrival snapshots `arr_0..9`). Older: `pm160/` (`snd/`, `xfer/`, `ui/`, `dlg/`), `pm159/`, `pm156/BRIEF.md` (the reusable agent brief), `pm148/` (the long chunk series), `pm142/`, `pm143/`, `pm123/`.
 - Start from:
-  - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains (UI drives, dialog census).
-  - `scratchpad/pm148/arms/sheep/k120_tree_c1.snap`: lit camp fire in view, sound slot empty.
+  - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains; the land ends about 676M steps in.
+  - `scratchpad/pm97/pm97_map0.snap`: the forest-animator anchor (`py/fsm/diff_4342.py`, `gate_4342_arrive.py`).
+  - `scratchpad/pm148/arms/sheep/k120_tree_c1.snap`: lit camp fire in view.
   - `pm150/saveload/out/file.snap`: FILE panel open, slot A selected.
-  - `pm123/win/m1_ready.snap`: mission 1 conquered (`sndpost.repl`, `req_panels.py`).
+  - `pm123/win/m1_ready.snap`: mission 1 conquered.
   - `pm88_f1.snap`: mission 1 at the port's pose; clear its stuck `$2c993` first (Known traps).
 - Uncommitted work left behind: none from this workstream. Not this workstream's: `.obsidian/`, `Cadaver/`.
 
@@ -19,27 +20,24 @@ Updated 2026-10-13 by the 160th session (`aa19f3b` .. `a0ddb87`; CLAUDE.md/skill
 
 Older gates carry over unchanged; the list is in `strategy.md`, `ai.md`, `economy.md`, `system.md`, `graphics.md` and `port/SPEC.md`, with reruns from the `py/README.md` table (entity FSM `py/fsm/repro93..97.py`, `diff_pm99.py` 1847/1847, `gate_orders.py` 61143/61143, commander AI `py/cmdai/` 323/323 + 280/280, `gate_fsm15.py` 18452/18452, `gate_proj.py` 5082/5082, `py/season/gate_1abaa.py` 1084/1084, the overlay and xcheck runs of `py/xcheck/`).
 
-New in the 160th pass (Open 4 closed):
+New in the 161st pass:
 
-- **The sound slot** (`py/ui/snd_slot.sh`, strategy.md `$127e6`): one slot `$58058`, entries 5..63 scanned, the second-best never used; a same-id flag-`$20` sound is not restarted, and `$1ba3e` drops the flags, so it plays once. Event 17 (camp fire) pending and chosen 60/60, played once, 158 of 160 later dispatches skip it, replayed after event 20 displaced it. README bug list.
-- **`$c5ee`** (strategy.md panel table, `py/ui/req_panels.py` 8/8): D0 = the side that is not the local one, hooks `$c628`; "The alliance between A and B is broken may a million fleas infest your undergarments."
-- **Order-ack pick** (`py/ui/sndpost.repl`, strategy.md `$6e6e`): `31 + (state + first_man) mod 6`, so it keeps the state's parity; live 1/1 (state 7, object 47, event 36).
-- **Clicks seen twice** (`py/captain2/xfer_timing.sh`, strategy.md tick tail): the press stamp `$2df74` and the per-pass clock `$1302e` let a press landing before the UI sections act on two passes (about 177k of a pass's 177.5k steps); poked before `$130fc`: `$133d4` 2, `$04` then `$22` (dropped); at `$1373c`: 1, `$04` only. The game's, not the emulator's.
-- **`$04` from a subordinate goes by pigeon** (`py/captain2/xfer_pigeon.repl`): `$4562` takes the local slot, `$1c18` 9.99M steps later from the executor (`$6bba`) with 1, 2, 0.
-- **House Stock rows** (`py/ui/gate_panels.py`): 103/103 with Stock compared (19 houses with stock), 4/4 with poked goods; the model's item-name offset was wrong (+18, the code reads +19).
-- **Dialog buttons** (`py/ui/dlg_ids.py`): 17/17 by `callcap` through a frame stub; MULTI PLAY and PAUSE leave the panel open.
-- **`$1ac88` cannot divide by zero in play** (strategy.md, tree regrowth): every writer of `$4e512` and every caller of the clear listed.
+- **The bird seed `$2df84` is not a clock** (`py/xcheck/seed_watch.sh`, port/SPEC.md "Birds over a tree"): it moves only on `$12c9a` draws, 499 draws in 107 bursts over 674M steps of rand1 (median gap 2.7M steps); the first 80 are the fisherman's catch search (`$15cb8`, 50) and the shepherd's herd release (`$15f46`/`$15f5c`, 30). The port renders the state's seed; no per-tick advance. Reproduced twice, identical.
+- **A LOAD brings the slot's season** (`py/saveload/season_load.sh`, strategy.md "A LOAD replaces the land in play"): `$57fd0` is inside the LOAD region and comes from the slot; the live tileset (`$2e000`) does not, and no rebuild or season re-read runs, so the terrain keeps the destination's art until the dissolve repaints it. The old "season stays with the destination (inferred)" was wrong.
+- **Forest animator `$4342` on all 9 branches** (ai.md "the forest animator"): `diff_4342.py` 115/115 over 10 poked states; `gate_4342_arrive.py` 344/344 over 10 live arrival ticks of markers claimed through `$16808`. The model `call_4342` lacked the claim's idle-chain guard `$4390` (re-claimed on 8 of 10 ticks). The 113th pass's "hang" no longer reproduces (795 steps).
 
 ## Open, in priority order
 
-1. **Port residue.** The port tests `record[44] >= $e` unsigned where the game is signed (differs only for `>= $80`, never written). Natural byte6 18, 28 and the overlays are still unseen in play (36/38/42 crash the game). The camp-marker frame `$111` from `$117b0` has not been captured. The birds sit still in the port because its seed is a constant; whether the game's seed `$2df84` moves in long play decides whether the port should advance it: `watch 2df84 4` over a long run.
+1. **Port residue.** The port tests `record[44] >= $e` unsigned where the game is signed (differs only for `>= $80`, never written). Natural byte6 18, 28 and the overlays are still unseen in play (36/38/42 crash the game). The camp-marker frame `$111` from `$117b0` has not been captured (a lit fire in view: `pm160/snd/drawscan.txt` lists 20 snapshots that draw one; `bp 117b0` there and dump the frame).
 2. **Emulator gap: no bus error on an unmapped write** (not this workstream's alone). After the byte6 36 bombs the vector-4 entry stacks at SSP `$4e73203c`; a real ST should double-fault and halt (inferred). A fix belongs in `MMU.fs` behind the regression net; read the BusError history in `MMU.fs` first (it regressed cold boot once); Hatari could confirm.
-3. **Small checks.** `$4a7a` has no model gate, and opponent class `$a` is unseen. The season after a LOAD (`$57fd0` writers); natural winter snow under the `$1abaa` gate (a lineage one wrap before `pm143/run/rand1_s4`); posture 5 from `$67d0`; an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch (and whether `$3c12`'s `nop` is the crack's or the developers'); the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); `$4342`'s arrival branch; rout fates on a third land (`routrun.sh`). A natural `$66` needs an AI sheep chase across a narrow channel with a Boat chaser landing first (37 runs, 0 arrivals). The dialog buttons still code read: `$04`, `$08`'s `$71` (SELECT MAP) and `$131` (SEND MESSAGE).
+3. **Small checks.** `$4a7a` has no model gate, and opponent class `$a` is unseen. Natural winter snow under the `$1abaa` gate (a lineage one wrap before `pm143/run/rand1_s4`); posture 5 from `$67d0`; an exact water test in `stuck_census.py` (replay `$1648e`); an indexed-access scan for `$58054`; a pile record's words 8 and 28; the crack's `$b842` patch (and whether `$3c12`'s `nop` is the crack's or the developers'); the `$54` merchant loop `$15b0c`; health cap and food (`$5ccc`); rout fates on a third land (`routrun.sh`). A natural `$66` needs an AI sheep chase across a narrow channel with a Boat chaser landing first (37 runs, 0 arrivals). The dialog buttons still code read: `$04`, `$08`'s `$71` (SELECT MAP) and `$131` (SEND MESSAGE).
 4. **A player route to `$668c`.** Let a player lord fall to a drained AI side (`pm151/r1` side 2 took player lord 10 in chunk 2), then `bp 668c`. Low value: five natural hits prove the arm.
 5. **The stall on the original machine.** A Hatari run past clock 32768 with a camped group (low priority; Hatari through an agent has Dave's go-ahead).
 
 ## Known traps
 
+- **`pm142/rand1`'s land ends about 676M steps in.** From there the tick `$6522` never runs and the RAM is post-game, so a long census from rand1 reads 0 for everything after that (the seed watch's `end.snap`). Bound a long run with a `hits ... 6522` liveness count per window.
+- **`mk_savedisk.py` slot fills are `A=<ram>`**, not `slotA=`; the letter is the slot.
 - **An edited drive script can diverge.** Deleting the `hits` lines of `py/captain2/from1`-style drives removed their settles and the first click no longer selected the captain; a second edit that kept the step counts still posted no `$04` (cause not found). Keep a working drive verbatim and change only what follows its last action (`xfer_pigeon.repl` was made that way).
 - **The camp-fire sound needs a lit fire in view.** `pm143/run/rand1_s1.snap` draws none now (`$117b0` 0 hits); `pm148/arms/sheep/k120_tree_c1` and `pm150/small/camp/c12_*` do (`scratchpad/pm160/snd/drawscan.txt` lists the 20 that draw it out of 659 with a lit fire record).
 - **`callcap` into the dialog handlers needs the frame stub** (`py/ui/dlg_ids.py`): the shared exit `$7a22` pops 14 registers.
@@ -87,4 +85,4 @@ New in the 160th pass (Open 4 closed):
 
 ## Next session
 
-Open 4 is closed. Open 1's seed question is one long `watch 2df84 4` run and decides a port change; do it first. Then Open 3's small checks, each a single bounded REPL test (start with the season after a LOAD and `$4342`'s arrival branch). Open 2 is an `MMU.fs` change: read the BusError history first. Rerun `py/xcheck/run.sh` and `overlay/score_cases.sh` after any change to `port/godot/logic/`.
+Open 3's small checks, each a single bounded REPL test: start with posture 5 from `$67d0` and the `$54` merchant loop `$15b0c`, then the exact water test in `stuck_census.py`. Open 1's camp-marker frame `$111` is one `bp 117b0` on a `drawscan.txt` snapshot. Open 2 is an `MMU.fs` change: read the BusError history first and run the regression net. Rerun `py/xcheck/run.sh` and `overlay/score_cases.sh` after any change to `port/godot/logic/`.
