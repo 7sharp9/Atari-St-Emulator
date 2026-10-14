@@ -2,7 +2,10 @@
 # seeds.sh <out dir> <snap> <side> "<offsets, M steps>" "<arms>" [par] [budget]: one land played by several policies
 # from several starts, so a land's outcome is a rate, not one chaotic run (README "Evaluation across seeds").
 # Start k is <snap> advanced <offset k> million steps with no orders and the slot not taken (loop.py --policy none
-# --no-take), so the starts differ only by the game's own clock and RNG. An arm is a name and its loop.py flags,
+# --no-take), so the starts differ only by the game's own clock. That spreads a policy arm (its orders fall at other
+# ticks) but not an unpoked arm (--policy none --no-take), which then plays one trajectory shifted in time; startpoke.py
+# shows the RNG and the dice counter do not spread it either (README "Policies against the game's AI"), so score a
+# policy's starts against that one AI outcome with pairs.py. An arm is a name and its loop.py flags,
 # name=flags with commas for spaces ("scripted=--policy,scripted", "evade=--policy,scripted,--evade").
 # Each run is <out>/<arm>/o<offset>; `python3 commander/runstat.py <out>/*/o*` reads them all.
 # par (default 4) runs at once: a rollout arm starts --par 5 workers of its own, so count it as 6.
