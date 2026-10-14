@@ -904,8 +904,17 @@ bare `$0d`, which returns at `$116b4`) gets five birds after its own frame when 
 `$127 + ([$57fec] & 15) / 2` (the flapping bird at half rate) through `$11f82` at
 `(D0 + ((seed_hi + k) & 7), D1 + ((seed_lo + k) & 7))`, where seed_hi and seed_lo are the
 words of the RNG long `_seed` `$2df84`. The offsets are consecutive, so the five birds sit on
-a diagonal. The seed did not advance between `pm88_f1` and the overlay captures 2M steps
-later (both `$5ee0459d`), so over that span the birds hover in place. A raw scan of the
+a diagonal. The seed is not a clock: it moves only when the simulation draws from `$12c9a`, so
+the birds hover in place between draws and jump to a new diagonal at each one. In play the
+draws come in bursts. A `watch 2df84 4` from `pm142/rand1` (Play Random Land) saw 499 draws in
+107 bursts over the 674M steps until the land ended (median 4 draws per burst; median gap
+2.7M steps, about 15 ticks; longest 69M), and the first 80 came from the fisherman's catch
+search (`$15cb8`, mode `$5a`, 50) and the shepherd's herd release at the gate (`$15f46`/`$15f5c`,
+mode `$82`, two per animal, 30) (`../py/xcheck/seed_watch.sh`). `pm88_f1` and the overlay captures
+2M steps later share `$5ee0459d` because no draw fell between them. The port renders the seed of
+the state it is given, which is exact for that frame; it does not advance the seed itself, and a
+port that animated between states would advance it only where it ran one of those draws, not per
+tick. A raw scan of the
 `ctl_0` RAM finds 95 byte6 4 records with bit 7, and both exported asset sets have bird trees
 (7 and 9). Found as the overlay
 checks' control-frame miss: on `ctl` (camera (22,46)) a screen-word `watch` of rows 101 to 109 shows

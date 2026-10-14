@@ -1505,7 +1505,10 @@ rolls elsewhere.
   pure deterministic function of `$580a0` (and of `$5809c`, "Mission / world setup"). In
   play it feeds a few rolls outside the commander AI: the starvation-desertion roll of
   `$3e06` (`& 7`, "`$d322` + `$3e06`") and a new captain group's aggression (`rng & word 12`,
-  `$275c`); `ai.md` lists its other draws. The state is part of the RAM image, so a snapshot
+  `$275c`); `ai.md` lists its other draws. The commonest in a Play Random Land are the
+  fisherman's catch search (mode `$5a`) and the shepherd's herd release (mode `$82`): 80 of the
+  first 80 draws from `pm142/rand1`, in bursts a median 2.7M steps apart
+  (`py/xcheck/seed_watch.sh`, `port/SPEC.md` "Birds over a tree"). The state is part of the RAM image, so a snapshot
   replays identically.
 
 A modern reimplementation that wants PM's feel can keep the tick-counter trick
