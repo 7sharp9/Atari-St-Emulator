@@ -118,6 +118,8 @@ that holds its worked example.
   the mechanism fired. A `bp`/`bpc`/`watch` that finds nothing is bounded by its own budget, and by
   its input: show the precondition live in the same run (PowerMonger's "sound event 17 never plays" came
   from a view with no lit fire, its count 0 at every dispatch; with the fire in view it plays, `py/ui/snd_slot.sh`).
+  A count it does find is bounded the same way: "the rollout win's lead was engaged once" came from a 15M-step watch
+  of a 1120M run, and a whole-run sample found a 65-health fight 7M steps after the window (`commander/leadkill/gate_standoff.sh`).
 - A hero pinned at one screen coordinate is usually a camera-follow trigger; a position reached is
   not proof the maneuver was safe (check health and status bytes across the run); a snapshot after
   a fixed hold may be a mid-motion frame.
