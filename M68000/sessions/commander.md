@@ -40,25 +40,30 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
 
 ## Open, in priority order
 
-1. **A rule that keeps more than one healthy enemy man from reaching the captain.** He survives one man (less health
-   than his 95) and dies to two or more. Two leads to test, each as a `seeds.sh` arm against scripted 0/6 and rollout
-   1/6:
-   - *Interception.* evade o3 survived 5 men (150 health) because his own men took chasers off him. Run
-     `chase_fate.py` on a watch of that fight (replay `cmd9/evade/o3` with `--snap-at 367000000`) and of a killing
-     one, and count the chasers diverted against the ones that arrived, with his men's count and posture in each.
-     If his own men in contact are what diverts chasers, the rule is to fight only with the captain's men between
-     him and the enemy (march the group so the lead trails, or attack only with a men margin).
-   - *A second side-1 group.* None of the 30 runs ever had a side-1 group other than 0. strategy.md shows groups 1..5
-     come from `$5c2c` → `$25d6` (a lord's captain defects); find whether side 1 can get one on land 2 (a conquered
-     lord, an alliance) and whether it fights side 2 while the captain stays out of melee range.
-2. **Rollout food blindness** (unchanged): inside a 40M horizon food costs nothing until it hits 0; try a longer
+1. **The step-4 proof: the commander against the game's own AI, as a rate.** Plan step 4 asks for land outcomes
+   against the original AI on the same seeds. Land 2 cannot give it: the commander plays local side 1 there, which
+   the game never drives (README "The local side and the end of a land"), so it has no AI baseline. Side 3 on rand1
+   has one, and single runs already differ (side 3 lords / force at 300M: game AI 8 / 77, rollout 12 / 86, LLM 12 / 73;
+   README "Policies against the game's AI"). Run `seeds.sh` on `scratchpad/pm142/rand1.snap`, side 3, offsets 0..5,
+   arms `ai=--policy,none,--no-take`, `scripted=--policy,scripted`, `rollout=--policy,rollout`,
+   `llm=--policy,llm,--every,20e6` (the earlier LLM run's cadence; about $1.50 a run). The land ends when side 1's
+   captain is lost (about 490M to 680M in those runs), so score every arm at fixed steps, 300M and 450M
+   (`runstat.py --every`, or `--snap-at`), and report each policy against the AI as a per-start paired difference.
+   Six starts read only a large gap (0/6 and 1/6 are not distinguishable).
+2. **Land 2, one lever left: a second side-1 group.** The captain dies when two or more healthy men reach him
+   ("Across the seeds"), and every evade, pull-out and margin variant failed (README "Land 2 as a rate"; a rule
+   built from observe.py's per-group counts reduces to evade again). None of the 30 runs ever had a side-1 group
+   other than 0. strategy.md shows groups 1..5 come from `$5c2c` → `$25d6` (a lord's captain defects); find whether
+   side 1 can get one on land 2 and whether it fights side 2 while the captain stays out of reach. No more evade or
+   margin arms.
+3. **LLM prompt** for whichever testbed shows a gap: captain food against trip cost, enemy groups near the captain
+   and their men against the lead's health.
+4. **Rollout food blindness** (unchanged): inside a 40M horizon food costs nothing until it hits 0; try a longer
    horizon for get-food candidates or score food left against the eating rate.
-3. Seeds for land 1 and rand1 side 3 (`seeds.sh` on `pm123/win/l1_built.snap` and `pm142/rand1.snap`).
-4. **Why side 2 makes no new group** after losing both (`$26d0` hits over the rollout win's 315M..1120M).
-5. LLM prompt: captain food against trip cost, enemy groups near the captain, and how many healthy enemy men are within
-   reach of the lead; re-run on two seeds.
-6. Land 3: build it from the land-2 win (`cmd9/rollout/o0/final.snap`) and play it.
-7. Movement with rollouts; state-space forecaster (plan step 5); smaller items (side-0 peace bit from the `$c706`
+5. Seeds for land 1 (`seeds.sh` on `pm123/win/l1_built.snap`).
+6. **Why side 2 makes no new group** after losing both (`$26d0` hits over the rollout win's 315M..1120M).
+7. Land 3: build it from the land-2 win (`cmd9/rollout/o0/final.snap`) and play it.
+8. Movement with rollouts; state-space forecaster (plan step 5); smaller items (side-0 peace bit from the `$c706`
    clobber, sender-word readers, `$25d6` rebuilding slot 0, UI click with side 1's slot held, which callers of
    `$548a` other than `$503c` leave in D0's high byte).
 
@@ -96,8 +101,7 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 ## Next session
 
-Work Open 1, interception first: watch evade o3's survived fight (from 367M) and one killing fight (scripted o1 from
-205M is already in `cmd10/leadkill`), run `chase_fate.py` on both, and see whether his own men in contact are what
-diverts chasers. If so, write the rule (keep the captain's men between him and the enemy, or attack only with a men
-margin), add it to `seeds.sh` as an arm and compare with scripted 0/6 and rollout 1/6. The prompt that starts it is
+Work Open 1: `seeds.sh` on rand1 side 3 with the four arms (game AI, scripted, rollout, LLM), six starts, scored at
+300M and 450M as paired differences against the AI arm. That result decides where the commander stands on its
+headline goal; land 2 work waits for it and then takes only the second-group lever. The prompt that starts it is
 `/resume commander`.
