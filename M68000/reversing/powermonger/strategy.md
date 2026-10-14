@@ -2100,9 +2100,17 @@ needs the VBL), so both are run live from a natural FILE-panel drive
 **A LOAD replaces the land in play** (live). The round trip is exact, 101,376 of 101,376
 bytes. The region holds the terrain, the object array, the group table `$51538` and the
 link block, so a slot saved on another land replaces the live one: `k80`'s slot loaded
-into `rand1` swaps the minimap and the land runs on for 100M steps. Two things stay with the
-destination: the sim clock `$2df70`/`$2df72`, which lies outside the region and which LOAD
-neither restores nor resets, and the season (1 observation, inferred). Two saves of the
+into `rand1` swaps the minimap and the land runs on for 100M steps. The sim clock
+`$2df70`/`$2df72` lies outside the region, and LOAD neither restores nor resets it. The season
+word `$57fd0` (with the dissolve LCG `$57ff6` and its count `$57fec`) lies inside, so it comes
+from the slot, but the live tileset (`[$ff9e]+3712`, at `$2e000`) does not, and no land rebuild
+or season re-read follows (`$13d1a`, `$13bdc`: 0 calls in 20M steps). The terrain therefore
+keeps the destination's art while the season-keyed sprites and the winter gate use the slot's
+season at once (code read: both read `$57fd0` directly), and the dissolve repaints it pixel by pixel toward the slot's season, so the
+mismatch is gone within one full period after the next wrap. Live from `file.snap` (season 4,
+summer art) with two slots that differ only in that word: a season-0 slot reads 0 after the
+LOAD with the tileset still 0 of 4608 px from summer, then moves toward winter art and wraps
+to 2; the unchanged control wraps 4 to 6 (`py/saveload/season_load.sh`). Two saves of the
 same land made at clocks below and above 32768 (`lo.st`, `hi.st`) differ in 3 bytes of the
 slot and stall alike after a load.
 
