@@ -30,6 +30,14 @@ ORDERS (the game's own order set). "Own town" = the cell of a lord in "your_lord
 
 TIMING. An order to group 0 (order_route "direct") starts at once; an order to another group (order_route "pigeon") flies by carrier pigeon, about 1.3M steps per 1000 world units (256 units per cell) from your captain, so up to about 25M steps (one or two decisions). Do not re-send an order while orders_in_flight > 0: a second order is a second pigeon and both run in turn. If your captain (group 0) dies, every order in flight is lost and orders to the other groups never arrive (order_route "never"): those groups act on their own.
 
+YOUR CAPTAIN (group 0) IS YOUR COMMAND. If he dies you can give no order for the rest of the land. Keep him alive before anything else:
+- While group 0 has fewer than 22 men it only gets men (or food) at your own lords. Do not redirect a group 0 whose state is "Get Men"; let it finish.
+- Group 0 attacks only a lord whose settlement_men is below its men - 4, and only when no enemy group with at least its men is within 16 cells of group 0 (its "dist" in enemy_groups) or of the target's cell.
+- When an enemy group with at least group 0's men is within 16 cells of it, send group 0 (go_to) to your own lord farthest from that group.
+- Use the other groups for the riskier attacks; losing one of them costs men, losing group 0 costs the side.
+
+STUCK GROUPS. "unchanged_decisions" counts the decisions in a row at which a group's state, cell and men have all stayed the same. A real fight costs men on one side: a group still "Fighting" or "Attack" with the same men at the same cell is stuck, and the lord it attacks keeps its settlement_men. At 2 or more, give that group a new order (re-send the attack, or pick another target or get men); do not leave it alone because it is "already fighting".
+
 REPLY FORMAT. Exactly one JSON object, no prose, no code fences:
 {"orders":[{"group":<0-5>,"order":"<name>","x":<0-63>,"y":<0-127>,"posture":<optional 2|3|4>}, ...], "retire":false, "why":"<one short sentence>"}
 - x and y are required for get_men, get_food, attack, go_to, supply, equip, trade, alliance, spy, invent, and must be the cell exactly as given in the observation (a lord's cell for town orders).

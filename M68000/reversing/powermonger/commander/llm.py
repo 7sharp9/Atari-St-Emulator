@@ -184,7 +184,7 @@ def force(obs, s):
     return obs['sides'][s]['totals']['men_home'] + obs['sides'][s]['totals']['group_men']
 
 
-def compact_obs(W, history, every):
+def compact_obs(W, history, every, still=None):
     obs, side = W.obs, W.side
     forces = {s: force(obs, s) for s in obs['sides']}
     E = sum(v for s, v in forces.items() if s != side) + 1
@@ -204,6 +204,8 @@ def compact_obs(W, history, every):
             e['carrying'] = carried
         if k in history:
             e['your_last_order'] = history[k]
+        if still and still.get(k):
+            e['unchanged_decisions'] = still[k]
         gs.append(e)
     out['your_groups'] = gs
     live = [g for g in W.groups.values() if W.orderable(g)]
@@ -228,15 +230,23 @@ def compact_obs(W, history, every):
     # two lists, not one with a side field: with one list the model attacked its own lords (v2_probe, 2 of 2 orders)
     out['your_lords'] = [e for e in ls if e['side'] == side]
     out['enemy_lords'] = [e for e in ls if e['side'] != side]
-    out['enemy_groups'] = [dict(side=int(s), group=g['k'], men=g['men'], state=g['state_name'] or g['state'],
-                                cell=g['lead_obj']['cell'])
-                           for s, v in obs['sides'].items() if int(s) != side
-                           for g in v['groups'] if g['alive'] and 'lead_obj' in g]
+    eg = []
+    for s, v in obs['sides'].items():
+        if int(s) == side:
+            continue
+        for g in v['groups']:
+            if g['alive'] and 'lead_obj' in g:
+                e = dict(side=int(s), group=g['k'], men=g['men'], state=g['state_name'] or g['state'],
+                         cell=g['lead_obj']['cell'])
+                if live:    # without it the captain marched 12 men past three 11-13 man groups (r1s3 llm o5)
+                    e['dist'] = {o['k']: cheb(o['lead_obj']['cell'], g['lead_obj']['cell']) for o in live}
+                eg.append(e)
+    out['enemy_groups'] = eg
     return out
 
 
-def build_prompt(W, history, every):
-    o = compact_obs(W, history, every)
+def build_prompt(W, history, every, still=None):
+    o = compact_obs(W, history, every, still)
     user = ('Observation (JSON):\n' + json.dumps(o, separators=(',', ':')) +
             '\n\nReply with the JSON object only.')
     return SYSTEM, user
@@ -346,6 +356,7 @@ class LLM:
         self.side, self.mp, self.backend, self.every = side, mp, backend, every
         self.comps = mp.cell_components() if mp else None
         self.history = {}                          # k -> {order, cell, at_decision}
+        self.seen = {}                             # k -> ((state, cell, men), decisions unchanged), as Scripted.seen
         self.n = 0
         self.ram = ram_reader                      # () -> current RAM image, for the eat period
         self.dir = Path(logdir) if logdir else None
@@ -357,7 +368,13 @@ class LLM:
 
     def decide(self, obs, clock):
         W = World(obs, self.side, self.mp, self.comps, self.ram() if self.ram else None)
-        system, user = build_prompt(W, self.history, self.every)
+        for k, g in W.groups.items():           # a group 'Fighting' at one cell with no losses for 300M (cmd13 llm o2)
+            if not g['alive'] or 'lead_obj' not in g:
+                self.seen.pop(k, None); continue
+            key = (g['state'], tuple(g['lead_obj']['cell']), g['men'])
+            prev = self.seen.get(k)
+            self.seen[k] = (key, prev[1] + 1 if prev and prev[0] == key else 0)
+        system, user = build_prompt(W, self.history, self.every, {k: v[1] for k, v in self.seen.items()})
         ph = sha(system + '\n' + user)
         rec = dict(decision=self.n, step=clock, clock=obs['clock'], prompt_hash=ph, backend=self.backend.name)
         try:

@@ -426,7 +426,9 @@ is lost. Side 3's lords / force (men at home plus group men) per start:
 | the game's AI | 8/77 in all six | 9/71 (o5 9/70) | | 671M..676M |
 | scripted | 4/90 5/91 5/103 6/80 6/90 6/93 | 7/99 7/83 7/92 7/90 8/89 7/91 | -2.7 / -1.8, behind in 6/6 | three at 570..629M, three not by 700M |
 | rollout (K 5, N 40M, a decision per 5M) | 10/72 10/69 10/93 9/59 8/72 10/65 | 10/63 11/79 12/83 9/56 11/64 10/67 | +1.5 / +1.5, ahead in 5/6, one tie | 426M, 539M, 618M, three not by 700M |
-| LLM (sonnet, a decision per 20M) | 5/67 5/64 9/82 10/73 9/102 3/62 | 5/67 5/65 10/84 11/75 9/106 5/63 | -1.2 / -1.5, ahead in 3/6 | 374M, five not by 700M |
+| LLM v1 (sonnet, a decision per 20M; the rules digest) | 5/67 5/64 9/82 10/73 9/102 3/62 | 5/67 5/65 10/84 11/75 9/106 5/63 | -1.2 / -1.5, ahead in 3/6 | 374M, five not by 700M |
+| LLM v2 (+ the captain section, enemy-group distances) | 7/70 9/76 4/74 8/72 3/52 5/81 | 7/70 9/79 4/76 11/107 3/52 8/82 | -2.0 / -2.0, ahead in 1/6 and 2/6 | 581M, 686M, four not by 700M |
+| LLM v3 (v2 + `unchanged_decisions`) | 7/74 9/57 7/68 6/48 3/52 5/65 | 8/81 8/53 6/67 5/36 3/52 4/63 | -1.8 / -3.3, ahead in 1/6 and 0/6 | none by 700M |
 
 The game's AI has no spread to pair against: it plays one trajectory from rand1 under every perturbation available.
 An offset start leaves the unpoked game the same run shifted in time (its six runs end 1M apart, 676M to 671M), and
@@ -436,11 +438,34 @@ observation at all 60 decisions to 300M, and the per-tick dice counter `$57fec` 
 against one fixed AI outcome. The rollout policy holds more lords than the AI from five of six starts at both
 checkpoints and ties the sixth (a sign test over the five untied starts, 5 of 5, one-sided p about 0.03), with
 fewer men (mean -5.3 at 300M, -2.2 at 440M). The scripted baseline trades lords for men from every start (-1 to -4
-lords, +3 to +28 men). The LLM spreads from 3 to 10 lords at 300M and is not separable from the AI; its arm cost
-$11.80 for 194 calls, all parsed, 171 orders valid and none rejected. The earlier single runs (rollout 12/86 and
+lords, +3 to +28 men). The earlier single runs (rollout 12/86 and
 LLM 12/73 at 300M, `scratchpad/cmd2/`) predate later changes to `Scripted`, which the rollout uses as a candidate,
 and to the model, and are superseded by this table. A slot taken with no orders (one run) holds 4 lords / 65 at
 300M: taking the slot alone costs side 3 half its lords.
+
+The early ends are side 3's doing, by the AI's route. Side 1, the local side, gets no orders in any arm: its captain
+group's food reaches 0 between 260M and 400M, its 13 men desert one by one, and the land ends when side 3's men kill
+the lone lead in melee. A `--objs 1e5` replay of rollout o1, o3, o4 and the AI's o0 (`scratchpad/cmd13/so/`, each
+replay ending at the logged step and obs hash, 4/4) read by `leadkill/standoff.py --side 1` shows a side-3 engager in
+all four (o3 at 426M: one 90-health man; the AI at 676M: five men, 414 health); side 2's men chased him at 128M to
+142M and did not kill him. So the rollout ends the land the way the AI does, 58M to 250M sooner on three starts and
+not by 700M on the other three.
+
+The LLM is not separable from the AI under three prompts (`scratchpad/cmd12/r1s3/llm`, `cmd13/r1s3/llm`,
+`cmd13/r1s3b/llm`; about $12 to $13 and 194 to 210 calls each, 0 or 1 invalid orders). v1 lost its captain on o0 at
+100M and o5 at 40M, both times by sending the 12-man captain group to attack in its first decisions; on o5 he was
+already recruiting at his own Town and marched past three enemy groups of 11 to 13 men within 10 cells, which the
+observation did not show. After that every reply is "order_route never" and side 3 is frozen (3 and 5 lords at 300M).
+The rollout's captain gets men first in all six runs (35M to 40M) and attacks from 65M at 18 to 21 men. v2 added a
+captain section (get men to 22 first, do not redirect a Get Men, attack below men - 4 only with no enemy group of his
+men within 16 cells, retreat from one) and each enemy group's distance to each own group: the captain died once (o4
+at 120M, after the model broke its own rule and attacked at 15 men), but on o2 group 0 sat "Fighting" at its own
+Town's cell with 20 men for 21 decisions while the lord it was sent at kept its 14 settlement men, and every reply said
+"already fighting". No other arm holds a fight unchanged for more than 4 decisions at a 20M sample. v3 added
+`unchanged_decisions` per group (state, cell and men the same, as `Scripted`'s STALE) and a rule to re-order at 2: the
+longest such streak fell to 5, and the lords did not rise. Each start differs by up to 6 lords between prompt
+versions, the spread of one LLM run on a fixed start; at six starts per arm a prompt change of the size tried cannot
+be told from that spread.
 
 **The LLM policy (`llm.py`, `prompt_system.txt`).** The model is called through Claude Code's headless mode (no API key
 on this machine): `claude -p --output-format json --model sonnet --tools "" --system-prompt <digest>
@@ -457,7 +482,10 @@ dropped with its reason logged. Every prompt, reply and raw CLI output is stored
 One live run (side 3, rand1, a decision per 20M steps, 200M steps): 10 calls, all valid JSON, 12/12 orders valid,
 14.5 s and about $0.06 per call; replaying its log gives the same final snapshot. The model read a lord's men at home
 as his defence and attacked a lord it already owned; the prompt now lists residents and splits own and enemy lords
-(each fix checked by one or two calls, not by a run). Not yet measured against the game's AI.
+(each fix checked by one or two calls, not by a run). The prompt now also holds a captain section and a stuck-group
+rule, and the observation each enemy group's distance to each own group and `unchanged_decisions` per own group
+(v2 and v3 above). Every logged call names the model that answered (`model_usage`): `claude-sonnet-5-5` in all three
+arms; `--model sonnet` is an alias, so a later arm may get another model unless it is pinned.
 
 ## Plan and status
 
@@ -466,7 +494,7 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | `gate_inject.sh` 7/7 (above) | done |
 | 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`) | done |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
-| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable, scripted behind from 6 of 6 | rollout done; LLM in progress |
+| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable under three prompts, scripted behind from 6 of 6 | rollout done; LLM in progress |
 | 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 20/20) | in progress |
 
 ## Files
