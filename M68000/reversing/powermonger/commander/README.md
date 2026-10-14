@@ -404,20 +404,43 @@ Recruiting up to the strongest enemy group and attacking a lone group within 4/3
 tried, one land-2 run each, and did not help (`scratchpad/cmd8/l2`). The rollout policy wins land 2 at 1 in 6, the
 scripted baseline at 0 in 6; the one win is the run in the table above.
 
-**Policies against the game's AI** (side 3 from rand1, one run each, so a signal and not a rate; the land ends when
-local side 1's captain is lost):
+**A second side-1 group.** None of the 30 land-2 runs ever had a side-1 group other than 0. A new group comes only
+from the revolt chain: when a lord changes side, `$550e` looks for a leader-flag man in his settlements, and
+`$5c2c`/`$25d6` make him the lead of a new group on the new side if he is alive and leads no group that still has
+members (economy.md section 3). On land 2 there is one such man outside the two Bases (`captains.py` on
+`cmd3/l2build/l2_built.snap`): `$041a`, the captain of side 2's Capital (lord 2), who leads side 2's group 1. In the
+30 end states (`cmd11/so/*/o*/final.snap`) the Capital is side 2's in 29: he is alive in 13, dead in 13 (owner < 0,
+the dying-entity path, ai.md `$1623c`) and gone from its unit chain in 3. The one run that took the Capital, the
+rollout win, took it after he died, so no group came of it. The lever is therefore one timing: take the Capital
+while `$041a` lives and leads no group with members. Not yet tried; that he can be alive with his group gone is not
+checked (the 13 live end states do not say whether his group still has men).
 
-| policy | side 3 at 300M: lords / force | end of land | side 3 at the end |
-|---|---|---|---|
-| unpoked (the game's AI) | 8 / 77 | 676M | 13 lords, force 88 |
-| slot taken, no orders | 4 / 65 | not by 1G | 4 lords at 1G |
-| first scripted baseline | 7 / 54 | not by 1G | 1 lord, force 28 at 1G |
-| current scripted baseline | | 600M | 10 lords, 116 men |
-| rollout (K 5, N 40M, a decision per 5M) | 12 / 86 | 549M | 13 lords, force 70 |
-| LLM (`prompt_system.txt`, sonnet, a decision per 20M) | 12 / 73 | 491M | 13 lords (480M) |
+**Policies against the game's AI** (`seeds.sh scratchpad/cmd12/r1s3 scratchpad/pm142/rand1.snap 3 "0 1 2 3 4 5"
+"ai=--policy,none,--no-take scripted=--policy,scripted llm=--policy,llm,--every,20e6 rollout=--policy,rollout" 8
+700e6`, scored by `pairs.py scratchpad/cmd12/r1s3 3 --at 300,440`). Side 3 on rand1 is the testbed because the game
+drives it, so the unpoked run is the original AI's own play of that side; the land ends when local side 1's captain
+is lost. Side 3's lords / force (men at home plus group men) per start:
 
-The rollout run took 364 s for 549M steps (246 s in 25 rollout batches); the LLM run 395 s, 25 calls, $1.48, 22
-orders, all valid (`scratchpad/cmd2/llm500`, `rollout1g`).
+| policy | at 300M, o0..o5 | at 440M, o0..o5 | minus the AI, mean lords (300M / 440M) | end of land |
+|---|---|---|---|---|
+| the game's AI | 8/77 in all six | 9/71 (o5 9/70) | | 671M..676M |
+| scripted | 4/90 5/91 5/103 6/80 6/90 6/93 | 7/99 7/83 7/92 7/90 8/89 7/91 | -2.7 / -1.8, behind in 6/6 | three at 570..629M, three not by 700M |
+| rollout (K 5, N 40M, a decision per 5M) | 10/72 10/69 10/93 9/59 8/72 10/65 | 10/63 11/79 12/83 9/56 11/64 10/67 | +1.5 / +1.5, ahead in 5/6, one tie | 426M, 539M, 618M, three not by 700M |
+| LLM (sonnet, a decision per 20M) | 5/67 5/64 9/82 10/73 9/102 3/62 | 5/67 5/65 10/84 11/75 9/106 5/63 | -1.2 / -1.5, ahead in 3/6 | 374M, five not by 700M |
+
+The game's AI has no spread to pair against: it plays one trajectory from rand1 under every perturbation available.
+An offset start leaves the unpoked game the same run shifted in time (its six runs end 1M apart, 676M to 671M), and
+`startpoke.py` shows the chance sources do not move it either: the LCG seed advanced 1 or 2 draws gives the same
+observation at all 60 decisions to 300M, and the per-tick dice counter `$57fec` shifted by 1 to 5 the same totals at
+135 of 136 decisions (`scratchpad/cmd12/rngtest`, `ticktest`). So the comparison is each policy's six outcomes
+against one fixed AI outcome. The rollout policy holds more lords than the AI from five of six starts at both
+checkpoints and ties the sixth (a sign test over the five untied starts, 5 of 5, one-sided p about 0.03), with
+fewer men (mean -5.3 at 300M, -2.2 at 440M). The scripted baseline trades lords for men from every start (-1 to -4
+lords, +3 to +28 men). The LLM spreads from 3 to 10 lords at 300M and is not separable from the AI; its arm cost
+$11.80 for 194 calls, all parsed, 171 orders valid and none rejected. The earlier single runs (rollout 12/86 and
+LLM 12/73 at 300M, `scratchpad/cmd2/`) predate later changes to `Scripted`, which the rollout uses as a candidate,
+and to the model, and are superseded by this table. A slot taken with no orders (one run) holds 4 lords / 65 at
+300M: taking the slot alone costs side 3 half its lords.
 
 **The LLM policy (`llm.py`, `prompt_system.txt`).** The model is called through Claude Code's headless mode (no API key
 on this machine): `claude -p --output-format json --model sonnet --tools "" --system-prompt <digest>
@@ -443,7 +466,7 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | `gate_inject.sh` 7/7 (above) | done |
 | 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`) | done |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
-| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Built: `llm.py` policy, one replayed 200M-step run | in progress |
+| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable, scripted behind from 6 of 6 | rollout done; LLM in progress |
 | 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 20/20) | in progress |
 
 ## Files
@@ -465,6 +488,9 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
 | `gate_posture.sh` | field-fight posture: kills against routs from the land-2 300M snapshot, one variable |
 | `seeds.sh <out> <snap> <side> "<offsets>" "<arms>" [par] [budget]` | one land played by several policies from starts a few million unpoked steps apart, so an outcome is a rate |
+| `pairs.py <seeds out> <side> [--base ai] [--at 300,440]` | a seeds.sh result per start at fixed steps, each arm minus the base arm |
+| `startpoke.py <snap> <out> <k> [tick\|rng]` | a start with the dice counter `$57fec` or the RNG seed shifted; neither moves the game's AI on rand1 |
+| `captains.py <snap>...` | every leader-flag man in a settlement: the men a revolt can turn into a new group |
 | `leadkill/gate_leadkill.sh [pick] [r39] [goto] [win]` | how an enemy man reaches the captain's lead (scripted o1, `runs/l2_scripted_o1`): the target-pick replay 64/64, the retry-byte poke, the go-to arms; `win` the chases on the rollout win's lead over 315M..330M (`runs/l2_rollout`, about 4 minutes) |
 | `leadkill/model_pick.py <out>` | `$503c`/`$548a` replayed from REPL dumps at each `bp 5350`, compared with the game's pick |
 | `leadkill/chase_fate.py <watch> [lead]` | each chaser aimed at a lead and what ends the chase (engaged, diverted, re-pick, dead), from a `wfilter.py 46-49` watch |
