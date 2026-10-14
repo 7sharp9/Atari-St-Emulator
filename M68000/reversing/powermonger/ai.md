@@ -307,7 +307,7 @@ off. The dying-entity path `$1623c` is Proven below too.
 Modes `$28` and `$2e` (`$15302`) are covered by the `$15000`-page gate (the last
 Proven block; `$2e` calls the same `$56a6`).
 
-### [Proven, 8/9 branches] — the forest animator `$4342` (original `_do_fore...`), vs the real 68000
+### [Proven] — the forest animator `$4342` (original `_do_fore...`), vs the real 68000
 
 `$4342` (called from `$3e06`, once per sim tick) animates the on-screen forest markers. It is a no-op in every
 *natural* capture, including `pm97_map0` (every `tree_state`-bit-7 tree has `worker_obj == 0`; every `$4c5f4`
@@ -316,12 +316,25 @@ marker has `progress == 0`), so its gate uses a synthesised corpus built on `pm9
 trees, `$4c5f4` markers). Structure and field meanings: economy.md §2.
 
 The model is `tools/pm_fsm_ref.py` `call_4342` plus a leaf `call_16808` (bucket-chain insert, the CLAIM
-path's screen-record spawn; `bucket_unlink`/`$16778` is already Proven from the entity FSM). Differential test
-`py/fsm/diff_4342.py`: **110/110 tracked bytes identical over 9 states, 8 branch families**
-(natural idle; the CLAIM mechanism itself, its precondition-guard failure, and its "no empty op slot"
-fallback; both ramp-in sub-cases, unclamped and clamping to `+$30`; the dwell-not-yet-expired skip; a real
-`$164bc` step that doesn't arrive; and the owner-sync byte-14 write). Pre-registered bar (100% over >= 9
-states, >= 7 families): PASS.
+path's screen-record spawn; `bucket_unlink`/`$16778` is already Proven from the entity FSM). Two gates cover
+all nine branches. `py/fsm/diff_4342.py`: **115/115 tracked bytes identical over 10 poked states, 9 branch
+families** (natural idle; the CLAIM mechanism itself, its precondition-guard failure, and its "no empty op
+slot" fallback; both ramp-in sub-cases, unclamped and clamping to `+$30`; the dwell-not-yet-expired skip; a
+real `$164bc` step that doesn't arrive; a poked arrival; and the owner-sync byte-14 write). The poked arrival's
+marker was never `$16808`-inserted, so its unlink removes nothing; `py/fsm/gate_4342_arrive.py` gates the
+unlink of a really inserted marker: **344/344 tracked bytes over 10 live arrival ticks**. It applies
+`diff_4342`'s claim pokes, lets the game run, finds the 12 arrivals (`$44c6` and `$16778` 12 each between
+29.2M and 39.2M steps) and runs `callcap $4342` from the `$4342` entry of each arrival tick. The path a
+claimed marker takes: the claim snaps it to its tree's cell centre with dwell 0, it ramps in (`$d0` up by
+1 + the number of its op-mates that ramped before it that tick), and its first moving tick calls `$164bc` with a zero distance, which does not
+trap: for marker 0 it returned a velocity of (-26,-64), dwell 62 and byte 15 `$30`, so the marker flies
+away from its tree and arrives on the way back.
+
+That gate caught a guard the model had missed. After the worker-chain walk, the claim also requires every
+marker of the op's own chain to be idle (`$4390..$43a8`: any byte 15 non-zero skips the claim; an op whose
+marker_off is 0 tests the record at `$4c5f4`). Without it the model re-claimed on 8 of the 10 arrival ticks,
+where an arrival sets the tree's bit 7 again while the op's other markers are still in flight; `diff_4342`'s
+idle-marker corpus could not see it.
 
 Two properties of the model's leaf machinery (not of `$4342`) are general 68000-semantics traps for anyone
 extending the model:
@@ -342,16 +355,6 @@ model, which breaks the 675/675 and 1335/1335 bars. A `$4342` test therefore add
 `pm_fsm_ref.REGIONS = pm_fsm_ref.REGIONS + pm_fsm_ref.HERD_REGIONS` itself (process-local, never mutates the
 module for anyone else; see the top of `diff_4342.py`).
 
-**Not closed: the "arrived" branch** (bset the tree's bit 7 back on and `$16778`-unlink the marker). It reuses
-the proven `bucket_unlink`/`_objaddr` machinery in the remove direction (the claim path proves the insert
-direction extensively), so it is Corroborated rather than untested. But every synthesised poke that reaches
-it (an exact-target degenerate `$164bc` divide by zero, and a 1-unit-off normal division) reproducibly hangs
-the real emulator within ~3000 steps, parked in a timer-interrupt `rte` (`$14e4`) per the loop detector. The cause is not
-established: `bucket_unlink` alone cannot loop forever on these inputs (it is a bounded walk with no cycle
-risk from what was poked), so it is either a separate real-68000/game-state interaction that the synthetic
-state exposes, or a missing precondition (a marker that was never actually `$16808`-inserted at that cell,
-unlike a naturally claimed one). The repro is in `py/fsm/diff_4342.py`, excluded from the pass
-bar. Closing it needs a corpus state where the marker was claimed through `$16808` and then arrives.
 
 ### [Proven] — the regroup / return-home dispatcher `$3c08`, vs the real 68000
 

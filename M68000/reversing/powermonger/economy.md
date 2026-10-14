@@ -269,9 +269,11 @@ void pm_forest_service(void) {                    // $4342
   for (herd_op *op = $57f68; op->target_cell; op++) {   // <= 10 ops
     pm_tree *h = &$4d252[op->herd_off];
     if ((h->tree_state & 0x80) && h->category && h->worker_obj) {
-      // walk the worker object's bucket chain; find the op's $4c5f4 marker;
-      // if the marker is idle (byte15 == 0) claim it: byte15 := $d0, snap it to
-      // the tree's cell, spawn its screen record ($16808).
+      // walk the worker's object chain (word 2) to an entry with byte6 == 0;
+      // if every marker of the op's own chain is idle (byte15 == 0, $4390) claim:
+      // bclr bit 7, move the op's marker chain to the first op with none, and for
+      // each live marker byte15 := $d0, dwell := 0, snap it to the tree's cell,
+      // spawn its screen record ($16808).
       ...
     }
     // then, for each $4c5f4 marker in this op's chain (word20 link):
@@ -310,11 +312,12 @@ skipped) and every `$4c5f4` marker has `progress (byte15) == 0` (animate loop sk
 live, 8 forest ops, 68 markers, ~40 trees with a worker) is no exception: markers seed `byte15 := 0`
 and only `$4342`'s own claim head writes `byte15 := $d0`, and that head needs a bit-7 tree *with* a worker, which
 no natural state reaches. A differential test therefore needs a synthesised corpus (poke a marker's `byte15` and
-a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains), and that gate exists: **Proven for 8 of 9
-branches** (`tools/pm_fsm_ref.py` `call_4342`, `scratchpad/pm113/diff_4342.py`, 110/110 tracked bytes over 9 states;
-ai.md "the forest animator `$4342`" has the branch list, the two model bugs it caught in the bucket-link
-machinery, and the arrival/unlink branch that stays Corroborated because every synthesised poke that reaches it
-hangs the real emulator).
+a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains), and two gates now cover all nine branches:
+`py/fsm/diff_4342.py` (115/115 tracked bytes over 10 poked states) and `py/fsm/gate_4342_arrive.py` (344/344 over 10
+live arrival ticks of markers claimed through `$16808` after the claim pokes, the unlink of a really inserted marker),
+both against `tools/pm_fsm_ref.py` `call_4342`. ai.md "the forest animator `$4342`" has the branch list, the path a
+claimed marker takes, and the three model bugs the gates caught (two in the bucket-link machinery, and the claim's
+idle-chain guard `$4390`).
 
 **The claim transplants a chain.** The pseudocode above omits that the claim does **not** reuse the triggering
 op's *own* marker chain. It clears the op's own `marker_off`, scans the whole `$57f68` array from the start for
