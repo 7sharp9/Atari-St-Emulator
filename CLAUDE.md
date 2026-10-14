@@ -194,7 +194,8 @@ that are easy to forget:
 
 - `watch <addr>` on an odd byte misses a word or long write that covers it (`MMU.fs` `checkWatch`
   tests only the write's start address) and all FDC DMA writes. Also watch the even byte below, and
-  read the writers in the listing.
+  read the writers in the listing. Its `step=` is the snapshot's cumulative step counter, not steps
+  into the run (PowerMonger's rand1 starts near 828.75M): line it up with a `hits` first-hit inside the watch.
 - REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field clobbers the next
   three. Read the neighbouring fields and write the whole longword deliberately.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or `bp`
