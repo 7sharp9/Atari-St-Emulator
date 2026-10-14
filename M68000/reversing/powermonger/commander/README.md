@@ -329,9 +329,10 @@ loop are deterministic. Runs: `scratchpad/cmd9/<arm>/o<k>`, starts `cmd9/start/o
 | the same and evade posture-2 groups (dropped) | 0 | 6: 224M to 427M | |
 | rollout (K 5, N 40M) | 1: o0 at 1120M | 4: 347M to 417M | o3 alive at the 2G budget, ratio 0 |
 
-Every one of the losses ends the same way: the captain himself is killed in melee with a side-2 group at posture 2, and
-his group's dissolve posts `$2e` (strategy.md "How a land ends"). In all 24 lost final states the captain's lead has
-owner -1 and a side-2 group at posture 2 is fighting (state 13); the rest end by the no-lord retire. Traced on
+Of the 27 losses, 24 end the same way: the captain himself is killed, and his group's dissolve posts `$2e` (strategy.md
+"How a land ends"); the other three (scripted o0, which the pull-out arm repeats, and evade o3) end by the no-lord
+retire. In all 24 the captain's lead has owner -1 and a side-2 group at posture 2 is fighting (state 13); 23 of them
+die in melee and one (rollout o5) by two arrows ("How the captain dies"). Traced on
 scripted o1 from 212M (`bp 564e`, the `jsr $2776` in `$5590`'s kill tail): A0 is the captain's lead `$52fe8` with
 owner `$ff`, category `$0c` and dwell `$a0` (killed, not routed), flags `$10` (leader, not encircled), group word 42 =
 `$188` (side 1 group 0), and the attacker's lead is side 2's group 0 at posture 2; the land ends 1.2M steps later.
@@ -363,17 +364,30 @@ posture only turns a lead beaten in melee from a rout into a kill. The chain tha
   or with prev `$3c` and up, which a lead in `$34` is not, but the chaser is now in `$32` himself, and `$1533c` calls
   `$56a6` on any target not in `$32`: the lead is stamped `$32` one melee tick later, at step 1,345,254,840.
 - **Melee is a health race the lead loses.** The melee drain is `(weapon < 6 ? weapon : 0) >> 1 + 1` (ai.md, the combat
-  block), so an unarmed man and the bow-armed lead both take 1 health per tick: one chaser of health 79 costs the lead
-  about 79 (inferred from the formula; the o1 trajectory fits). Once the lead's health falls below side 2's men (70 to
-  90), every one of them passes the gate and prefers him: the census of side-2 fighters passing against him went from 7
-  of 40 at 190M to 25 of 30 at 211M (`leadkill/census.py`).
+  block), so an unarmed man and the bow-armed lead both take 1 health per tick, and the lead loses at most the health
+  of the men who reach him. Once his health falls below side 2's men (70 to 90), every one of them passes the gate and
+  prefers him: the census of side-2 fighters passing against him went from 7 of 40 at 190M to 25 of 30 at 211M
+  (`leadkill/census.py`).
 
-In the rollout win the lead was not spared by the gate: more side-2 fighters passed against him (8 to 21, almost all by
-byte 39) than on o1 before the melee, and chasers did pick him. He stood about 3 cells from the fight (a chaser 797
-units away at 310M against 129 on o1), and of the chasers aimed at him over 315M..330M (`gate_leadkill.sh win`) two were diverted by the captain's men engaging them and one arrived: a lone man of health 3, whom
-the lead killed in one tick (health 95 to 94). The 5M samples had missed that melee, so the lead did enter `$32` in
-the win. That the standoff distance is what differs is inferred from these two runs. Of the 24 deaths, 11 are on a
-lord's cell (the attack target, or the captain's own capital (52,24) when side 2 came to it) and 13 in the field.
+**Across the seeds** (`leadkill/gate_standoff.sh`: every land-2 run of "Land 2 as a rate" replayed with the object
+array sampled every 100k steps, about 0.6 tick; each replay ends at its logged step with its logged obs_hash, 30 of
+30). A sequence is the melees from one the lead enters at health 85 or more up to the next such entry. In all 39
+sequences of the 30 runs the lead's loss is at most the summed health of the men he fought, and close to it when they
+are few: in the rollout win, at 337M..347M, one man of health 65 took him from 94 to 30, and he was back at 95 by
+1003M. Every killing sequence fought 2 to 8 men with 120 to 553 health in all; every survived one at most 150 (evade
+o3, 94 to 3 against 5 men, rescued by his own men). What kills the captain is the number of healthy men who reach him
+in one fight, not where he stands: the men he fought in the killing sequences picked him from 0 to 4081 units (up to
+16 cells; scripted o2 551 to 1356), and the win's 65-health man from 1540 at 330.6M. The 15M-step watch of the win
+(`gate_leadkill.sh win`, 315M..330M) caught a lone 3-health man and missed the 65-health fight after it. The odd death
+is rollout o5's: the lead never left `$34` and lost 82 = `$52` twice, 95 to 13 at 344.1M and to 0 at 346.1M,
+both written at `$5b4c` in the arrow loop `$596a` (ai.md, which tests no flags, so a lead can be shot) and then 0
+at `$5594`, the `$5590` kill (watch of `$53014` from `scratchpad/cmd11/arrow/at_343800000.snap`).
+Of the 24 deaths, 11 are on a lord's cell (the attack target, or the captain's own capital (52,24) when side 2 came
+to it) and 13 in the field.
+
+Arming the captain's men is not a lever on land 2 inside the window where he dies: no lord of any side holds goods at
+the land-2 start or at 200M on scripted o1, and the few weapons there are by the long runs' ends (1120M to 2000M) are
+mostly side 2's (pikes, bows; five states read, a sample, not a trace).
 
 Moving the lead out does not work. A go to (23,49) or (26,47), 3 to 5 cells away from side 2's men, given while the
 lead was still in `$34` before any chaser arrived (`gate_leadkill.sh goto`): he moved about 40 units, was stamped `$32`
@@ -447,13 +461,14 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 | `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
 | `act.py <snap> gate` / `Poker` | order pokes; `gate` prints the injection gate's arms |
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
-| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout] [--move] [--evade] [--replay LOG]` | the decision loop |
+| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout] [--move] [--evade] [--replay LOG] [--snap-at N,...] [--objs EVERY]` | the decision loop; `--objs` samples the object array to `objs.bin` |
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
 | `gate_posture.sh` | field-fight posture: kills against routs from the land-2 300M snapshot, one variable |
 | `seeds.sh <out> <snap> <side> "<offsets>" "<arms>" [par] [budget]` | one land played by several policies from starts a few million unpoked steps apart, so an outcome is a rate |
 | `leadkill/gate_leadkill.sh [pick] [r39] [goto] [win]` | how an enemy man reaches the captain's lead (scripted o1, `runs/l2_scripted_o1`): the target-pick replay 64/64, the retry-byte poke, the go-to arms; `win` the chases on the rollout win's lead over 315M..330M (`runs/l2_rollout`, about 4 minutes) |
 | `leadkill/model_pick.py <out>` | `$503c`/`$548a` replayed from REPL dumps at each `bp 5350`, compared with the game's pick |
 | `leadkill/chase_fate.py <watch> [lead]` | each chaser aimed at a lead and what ends the chase (engaged, diverted, re-pick, dead), from a `wfilter.py 46-49` watch |
+| `leadkill/gate_standoff.sh [arm/o<k>...]`, `leadkill/standoff.py <run> <start snap> [-v]` | every land-2 seed run replayed with `loop.py --objs 1e5`: per run how the lead died, each melee sequence's loss against the health of the men he fought, arrow hits (`-v`: every chase with its distance, every melee) |
 | `leadkill/census.py <snap>...` | side 1's leads and how many side-2 fighters pass `$548a`'s gate against them |
 | `runs/l2_rollout/`, `runs/l2_scripted_prov/` | the land-2 rollout win and the scripted run the posture gate replays |
 | `move.py <snap> <side> <k> <gx> <gy>`, `ab.py [pair...]`, `prep.py`, `gate_move.sh` | A* legs as go-to orders, the direct-vs-legs gate, boat stripping |

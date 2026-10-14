@@ -2,6 +2,7 @@
 
     loop.py <work> [--snap S] [--budget N] [--every N] [--side K] [--policy scripted|none|llm] [--move] [--evade] [--no-take]
             [--gap N] [--read m|snap] [--replay LOG] [--backend cli|replay:<llm logdir>] [--model sonnet]
+            [--snap-at N,...] [--objs EVERY]
 
 Policy llm (llm.py) logs every prompt and reply under <work>/llm/.
 
@@ -27,6 +28,8 @@ actions}, one `applied` record per poke batch {step, actions, lines (the REPL `w
 step, clock, ratio, per-side totals, final obs_hash). --replay LOG re-issues the logged `applied` actions at their
 logged steps and observes at the logged decision steps without calling
 decide, writing its own log in the same format; the final snapshot is <work>/final.snap.
+--objs EVERY (proof) appends the object array ($51b66, 512 x 50 bytes) every EVERY steps to <work>/objs.bin, each
+sample a <step u64, length u32> header and the zlib-compressed bytes (leadkill/standoff.py reads it).
 
 Movement: orders are target-cell orders. A* (astar.Map.path) plugs in at Scripted.decide where tgt is chosen:
 replace the single cell order by one `$02` go order per waypoint, re-issued at each arrival (README "Design").
@@ -34,7 +37,7 @@ An order cell (cx, cy) becomes the lead's target (cx*256+128, cy*256+128), the c
 which astar's triangle rule samples as triangle B: snap each waypoint to its cell and prefer cells whose triangle B
 is land, or the order target is water. An attack on a cell holding only a foreign man targets that man's position.
 """
-import hashlib, json, os, struct, subprocess, sys, time
+import hashlib, json, os, struct, subprocess, sys, time, zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -427,6 +430,7 @@ def main(argv):
     rP = int(opt('--par', '5'))                     # rollout: processes at once (the loop's own emulator idles meanwhile)
     force = opt('--force', None)                    # proof: always take the candidate with this name if present
     snap_at = [int(float(x)) for x in opt('--snap-at', '').split(',') if x]   # proof: save <work>/at_<step>.snap
+    objs = int(float(opt('--objs', '0')))           # proof: object-array samples to <work>/objs.bin
     take = not flag('--no-take')
     move = flag('--move')
     evade = flag('--evade')
@@ -470,6 +474,7 @@ def main(argv):
         cmdr = Nobody()
 
     log = open(work / 'decisions.jsonl', 'w')
+    ofile = open(work / 'objs.bin', 'wb') if objs else None
     W = lambda r: (log.write(json.dumps(r, separators=(',', ':')) + '\n'), log.flush())
     W(dict(kind='start', snap=str(snap.relative_to(ROOT)), budget=budget, every=every, gap=gap, side=side,
            take=take, policy=policy, **(dict(move=True) if move else {}), **(dict(evade=True) if evade else {}), **(dict(backend=backend, model=model) if policy == 'llm' else {}),
@@ -489,6 +494,9 @@ def main(argv):
         while True:
             if clock in snap_at:
                 emu.save(work / f'at_{clock}.snap')
+            if objs and clock % objs == 0:
+                z = zlib.compress(emu.mem(0x51b66, 25600))
+                ofile.write(struct.pack('<QI', clock, len(z)) + z)
             if (dsteps is None and clock == nextd and clock < budget) or (dsteps and di < len(dsteps) and dsteps[di] == clock):
                 t = time.time(); R = emu.read(how, tmp); tread += time.time() - t; nread += 1
                 obs = observe(R)
@@ -550,6 +558,8 @@ def main(argv):
                 break
             cands = [budget] + [s0 for s0 in sched if s0 > clock]
             cands += [s0 for s0 in snap_at if s0 > clock]
+            if objs:
+                cands.append((clock // objs + 1) * objs)
             cands.append(nextd if dsteps is None else (dsteps[di] if di < len(dsteps) else budget))
             nxt = min(c for c in cands if c > clock)
             n, hit = emu.run(nxt - clock)
@@ -568,6 +578,8 @@ def main(argv):
     except Exception as e:
         fin = dict(error=str(e))
     emu.close()
+    if ofile:
+        ofile.close()
     W(dict(kind='end', step=clock, reason=reason, **fin))
     log.close()
     print(json.dumps(dict(work=str(work), step=clock, reason=reason, wall_s=round(wall, 1),

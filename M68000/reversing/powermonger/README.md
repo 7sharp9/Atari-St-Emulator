@@ -95,13 +95,16 @@ against every session's changes.
   he flee home (52 of 52 on two lands); a group member with nobody else on him walks back to his job. Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
   in its path (a man loses 82 health), and its end frees the archer to shoot again. A lead (every one holds a bow from
   spawn) stands off shooting in a fight; when an enemy man reaches him in melee and the winner's posture is 2 he is
-  killed, his group dissolves, and for the player's captain that loses the land whatever his army's men: every one of
-  24 commander land-2 losses ended this way, one traced at `$564e` (commander README "Land 2 as a rate"). The lead is the
+  killed, his group dissolves, and for the player's captain that loses the land whatever his army's men: 23 of the 24
+  commander land-2 captain deaths came this way, one traced at `$564e`, and the 24th from two arrows (commander README
+  "Land 2 as a rate"). The lead is the
   enemy's preferred target, through a bug: a man hunting a group weighs its roster and then its lead, and the weigher
   keeps the last acceptable candidate rather than the nearest, so every man able to take the lead on (a bow, at least
   his health, or a third failed pick in a row) aims at him, one per tick. A chaser who arrives drags him into melee,
   where each side loses 1 health a tick, so one healthy chaser costs the lead most of his health and the rest then
-  pass the health test (64 of 64 picks predicted, commander README "How the captain dies"). There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
+  pass the health test (64 of 64 picks predicted). Across 30 runs the lead never lost more than the summed health of
+  the men who reached him; the 23 killing fights brought 120 to 553, the survived ones at most 150, wherever he stood
+  (commander README "How the captain dies"). There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
   A "Natural runs on later lands", A "Arrows and carrier pigeons")
 - **Land changes hands two ways: conquest by the player, revolt by the game's own clock.**
 
