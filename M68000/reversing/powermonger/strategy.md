@@ -1160,8 +1160,9 @@ The routines that start and finish the player's targeted orders are proven again
 which imports `tools/pm_fsm_ref.py`). The gate compares every byte the real `callcap` changed with every byte the model changed over the whole of RAM except the stack and the screen
 (`$78000..$7fcff`: `$17a46` copies the local groups' mode icons into the HUD master, which the model leaves untracked), plus the returned registers. Result: **61143/61143 over 2273 states, 0
 mismatches**. The states are real groups of `m1_ready`, `k25_s4` and `k5_s4` with planted cell contents and poked fields, and 72 natural entries (player clicks from
-`m1_s0` captured with `py/orders/nat_capture.sh`, one of them the `$5fa0` arrival of a bulb-icon order; `$600a`/`$35f4` from land runs on the preview roll; `$3248`, `$38ce`, `$6128` and the other 26 `$5fa0` entries from Play Random Land lands, below). Per routine
-(states, bytes + registers, natural entries): `$3248` 52, 1793/1793, 10;
+`m1_s0` captured with `py/orders/nat_capture.sh`, one of them the `$5fa0` arrival of a bulb-icon order; `$600a`/`$35f4` from land runs on the preview roll; `$3248`, `$38ce`, `$6128` and the other 26 `$5fa0` entries from Play Random Land lands, below).
+
+**Per routine** (states, bytes + registers, natural entries): `$3248` 52, 1793/1793, 10;
 `$3888` 8, 916/916, 1; `$38ce` 9, 980/980, 2; `$390e` 8, 932/932, 1; `$3956` 36, 1195/1195, 1; `$39d4` 344, 1292/1292, 8; `$3bc8` 72, 216/216, 0; `$3da4` 15, 178/178, 1;
 `$4a7a` 58, 5079/5079, 1; `$5fa0` 161, 21008/21008, 27; `$6128` 25, 1763/1763, 1; `$311a` 72, 65/65, 0; `$35f4` (with `$3744`) 57, 6505/6505, 1. `$600a`, `$60dc`, `$61f8`,
 `$6352`, `$638c` and `$63f4` are in economy.md §2a/§2c; their rows make up the rest of the headline: `$600a` 632, 4491/4491, 16;
@@ -1826,7 +1827,9 @@ must go on to conquer the whole world" (`win_screen.png`), and
 resource `$f` (`$1bd0e`), fades in, draws two text lines (`$19c12` "AFTER A GLORIOUS VICTORY
 YOU MUST ...", `$19c36`), waits 2000 ticks of `$6f304` and fades out (`$1a2bc`
 reached 392,357 steps after the `$1a4da` hit, then it sits in the wait at `$1a580`; the
-rest is code read). When the verdict comes with `$2df6e == 4` and `$580a4 == $c2` (the last land) it
+rest is code read).
+
+**The finale.** When the verdict comes with `$2df6e == 4` and `$580a4 == $c2` (the last land) it
 calls `$1a486` instead, which reaches `$1a648` (741,627 steps after the fade, with `$2df6e = 4` and
 `$580a4 = $c2` poked), the finale animation: the lord being crowned (`finale_crown.png`,
 `graphics.md` "The finale"). Resources `$c` and `$d` are drawn, then 7 frames, each copying
@@ -1837,8 +1840,9 @@ with the text "AT LAST I RULE THE WORLD" (`$19c5a`, `$19c7e`) for 2000 ticks. Th
 comes with the resource. **Proven:** `py/season/finale_delta.py` rebuilds each frame from the
 previous page and the table, 7 of 7 frames with 0 of 32000 bytes different (snapshots from
 `py/season/finale_frames.sh`: the victory_run "final" pokes from `pm122/end/lose_d2c8.snap`
-with the disk mounted). A resumed
-snapshot has no disk in drive A: without `disk scratchpad/powermonger.st` the resource load fails
+with the disk mounted).
+
+**A disk must be mounted.** A resumed snapshot has no disk in drive A: without `disk scratchpad/powermonger.st` the resource load fails
 and `$1bd0e` loops in its retry prompt (`$1bd30`, 481,567 steps after `$1a4da`).
 
 **A natural defeat.** Land 60 run on from `pm121/run/k60_s4.snap` (where the
@@ -1863,7 +1867,8 @@ become 31 : 10, ratio 4. Options icon → GAME → RETIRE: `$d2c8` takes the
 victory branch, `$d304` writes `$3f2a0[0] := 1`, and the main menu follows.
 Continue Conquest (`$1120e` in 216,752 steps), then land 1 on the map:
 `$11414` with `$580a4 = 1`, and land 1 builds and runs at `$f898`.
-Control, the same settled state with no order for 50M steps: `$56a6`,
+
+**Control**: the same settled state with no order for 50M steps: `$56a6`,
 `$1623c` and `$550e` 0 hits, both lords stay on side 2 at loyalty 608, and the
 ratio stays at 2. So the attack caused the defection (both runs are
 deterministic, one run each). Loyalty 608 is already over the 600 threshold
@@ -2250,13 +2255,16 @@ snow with `$1a856` and counts the spell `$4bb42`/`$4bb44` down, or starts one vi
 
 - **Regrows one felled tree** (`$1ac92`): it pokes one `$4d252` (tree array)
   record, number `rng % (word[$4e512] / 12)` from one draw of `$12c9a` (record 0, the dummy, can be
-  picked). The divide at `$1ac88` would fault only with fewer than 12 bytes, and that cannot happen in play: `$4e512` is written only by the block clear `$10768` (to 0), by the forest builder `$4672` (`$4680`, := 12, the dummy) and per tree by `$4816` (+= 12, capped at `$12c0`), and every caller of the clear (`$13bce`, the set-up `$b386`, the campaign pick `$113c0`) goes on to `$4672` (`$13c42`, `$b3b2`) before the game loop, the only path to `$1abaa` (`$130b0`), runs again; a LOAD restores a built land's value (whole-image scan for `$4e512` and for callers of `$10768`, `$4672`, `$1abaa`; code read), and if its `byte7 == $d` (felled, the value mode `$44` writes at `$156d0`)
+  picked), and if its `byte7 == $d` (felled, the value mode `$44` writes at `$156d0`)
   the tree becomes `$e + (byte10 & 3)`, a standing tree again. Live: 2 of 2 season
   wraps regrew one tree with every tree felled (`py/season/tree_weather.py felled`);
   felled trees are present in 512 of 830 snapshots, up to 80 of 299
   (`py/season/felled_census.py`), so the regrowth is active in ordinary play (a single
-  watched wrap on an array with no felled tree changes 0 of 204 records, as it should). The weather
-  never reads the tree array (whole-image scan; felling every tree or emptying the array
+  watched wrap on an array with no felled tree changes 0 of 204 records, as it should).
+
+  **The divide cannot fault in play.** The divide at `$1ac88` would fault only with fewer than 12 bytes, and that cannot happen in play: `$4e512` is written only by the block clear `$10768` (to 0), by the forest builder `$4672` (`$4680`, := 12, the dummy) and per tree by `$4816` (+= 12, capped at `$12c0`), and every caller of the clear (`$13bce`, the set-up `$b386`, the campaign pick `$113c0`) goes on to `$4672` (`$13c42`, `$b3b2`) before the game loop, the only path to `$1abaa` (`$130b0`), runs again; a LOAD restores a built land's value (whole-image scan for `$4e512` and for callers of `$10768`, `$4672`, `$1abaa`; code read).
+
+  **Trees do not drive the weather.** The weather never reads the tree array (whole-image scan; felling every tree or emptying the array
   leaves spell starts, types and lengths unchanged over 125M steps, 3 arms): deforestation
   does not change the weather (`economy.md` "Weather and the season art").
 - **Rotates `$57fd0`**: `$57fd0 = ($57fd0 + 2) & 6`, cycling {0,2,4,6}
@@ -2325,7 +2333,9 @@ successor is 0, so the first call wraps.
   `watch 4bb44` shows `$40`, `$3f`, ..., 0, `$ffff`). Winter gets snow, spring and autumn
   rain, summer none (a summer start finds type 0 and retests on each call whose count has bits `$a0` set:
   counts 160-191, 224-255, 416-447 and 480-511, 128 of 512 calls; 128 in the `rand1` corpus). Second-season spells
-  also draw 65 times by `watch`; the 66 that `hits` reports for some of them is the counter's
+  also draw 65 times by `watch`.
+
+  **`hits` overcounts here.** The 66 that `hits` reports for some of them is the counter's
   overcount when an interrupt is taken at the counted address (live: `s 1` from a `bpc` stop at `$1abaa`
   enters the sample-player interrupt at `$1af32` with IPM 6, and on return `bpc` stops at `$1abaa` again 20
   steps later with `$57ff6` and `$57fec` unchanged; 4 such re-entries in the gate's corpus, exactly the
@@ -2786,7 +2796,11 @@ Live: an examine click on a goods pile held for 300,000 steps opened the same pi
 
 **The goods-pile panel** (`$9656` `click_st`, cjt[`$2c`]; template `$9712` 20 × 12 cells "Stockpile of:", formatter table `$9672` = words `$12`, then `$3c` × 8).
 
-What it shows. A `$2c` record is a pile of goods dropped by a group teardown (the block `$3a50..$3ae8`: it moves `1/2^D0` of the group's food `36(A3)` and goods `84 + 12i(A3)` and a lead's Catapult/Cannon byte 44 into the pile, then `move.b #$2c,6(A0)` at `$3ac8` and registers it with `$16808`; economy.md 2c is the consumer). A pile is not a `$51b66` object: it is a 28-byte record in its own pool `$4bb4e..$4bdee` (24 slots, a free slot has byte 6 `<= 0`, the scan `$3a34`), reached through the cell chains by its negative offset from `$51b66`. Words 0 and 2 are the chain links (`$16808`, `$16778`, the mover `$163ea`), byte 6 is `$2c`, word 8 is the pile's map cell `y*64 + x`, word 10 the food and words 12 to 26 the eight goods in `$a242` order (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon); nothing writes bytes 4, 5 or 7, and offset 28 is the next slot. `$3ad8` stores the lead's cell (`(word10 >> 2 & $1fc0) + byte 8`, `$39ec`) in word 8, and the panel's eye icon (cells `$18`/`$19`, scjt `$735e` to `$74d8`, `$ab34`'s `$2c` arm `$aba8`) reads it to move the camera `$4bb3a`/`$4bb3c` to `(word8 & $3f, word8 >> 6)`. Live: 6 natural piles in 600M steps of `pm142/rand1` match the group's food and goods and the lead's cell in 36/36 checks, and a watch of the pool saw word 8 written only at `$3ad8`; from `pm143/run/p0k0_s4.snap` the eye click moves the camera to word 8's cell, 4/4 with the natural and three poked values, and its no-click control leaves it alone (`py/pile/nat_capture.sh`, `nat_parse.py`, `open_pile.sh`, `goto_click.sh`). The catapult/cannon arm (`$3a8e..$3aa4`) and the add-to-an-existing-pile arm (`$3a18`) did not run in those 6.
+What it shows. A `$2c` record is a pile of goods dropped by a group teardown (the block `$3a50..$3ae8`: it moves `1/2^D0` of the group's food `36(A3)` and goods `84 + 12i(A3)` and a lead's Catapult/Cannon byte 44 into the pile, then `move.b #$2c,6(A0)` at `$3ac8` and registers it with `$16808`; economy.md 2c is the consumer).
+
+The record. A pile is not a `$51b66` object: it is a 28-byte record in its own pool `$4bb4e..$4bdee` (24 slots, a free slot has byte 6 `<= 0`, the scan `$3a34`), reached through the cell chains by its negative offset from `$51b66`. Words 0 and 2 are the chain links (`$16808`, `$16778`, the mover `$163ea`), byte 6 is `$2c`, word 8 is the pile's map cell `y*64 + x`, word 10 the food and words 12 to 26 the eight goods in `$a242` order (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon); nothing writes bytes 4, 5 or 7, and offset 28 is the next slot. `$3ad8` stores the lead's cell (`(word10 >> 2 & $1fc0) + byte 8`, `$39ec`) in word 8, and the panel's eye icon (cells `$18`/`$19`, scjt `$735e` to `$74d8`, `$ab34`'s `$2c` arm `$aba8`) reads it to move the camera `$4bb3a`/`$4bb3c` to `(word8 & $3f, word8 >> 6)`.
+
+Live record checks. 6 natural piles in 600M steps of `pm142/rand1` match the group's food and goods and the lead's cell in 36/36 checks, and a watch of the pool saw word 8 written only at `$3ad8`; from `pm143/run/p0k0_s4.snap` the eye click moves the camera to word 8's cell, 4/4 with the natural and three poked values, and its no-click control leaves it alone (`py/pile/nat_capture.sh`, `nat_parse.py`, `open_pile.sh`, `goto_click.sh`). The catapult/cannon arm (`$3a8e..$3aa4`) and the add-to-an-existing-pile arm (`$3a18`) did not run in those 6.
 
 Mechanism. Row 2 is `$9684`: it zeroes the item cursor `$970a`, prints the signed food word and " food" (nothing when 0). Rows 3 to 10 are `$96ae`, one call per run: it advances the cursor past zero words to the next non-zero good and prints "<signed n> <name>" where the name is `$a242`'s string without its "a " article, with the final NUL replaced by `s`, or by a space when n ≤ 1 (signed compare); after the last good it returns an empty string. So the panel lists only the goods present, with no gaps, and the display is the whole effect (it changes only `$7a36`, the grid and `$970a`).
 
@@ -2796,7 +2810,7 @@ Real click (`py/ui/click_pile.sh`; `vis_at.py` pokes the camera cell `$4bb3a` to
 
 **Dialog openers (code read; none of these four was run by a hits count).** `$affe` takes the id in D7, the template in A1 and the formatter table in A6, calls `$7b10`, and on success stores D7 in `$7a3c` and runs `$a91a`; with no free slot it frees the first slot whose id word is below 4 (an info panel) and retries, and returns silently when all four hold dialogs. The other three:
 
-- `$aeac` is the FILE panel. It first clears slot 0's word 0 (closing whatever was on top), sets the origin bytes `$7a38 = 8`, `$7a39 = $43`, opens id 6 with template `$b0ad` and table `$af06`, then marks the drive letter in `$e296` ('A' = `$41`) by turning the n-th `$1c` cell of the grid into `$1e`/`$1f`. Its table `$af06` (words 4 and `$1e`) holds two formatters whose labels read "SAVE" (`$af3e`, run 1, the `$47` button) and "FORMAT" (`$af43`, run 2, the `$77` button) when `$14e4e == $2c` and blank (`$af4a`) otherwise, so a land that failed the protection check shows both buttons blank (for the save button the dispatcher's own `$14e4e` test, in the panel table above, agrees). On screen (from `pm143/run/rand1_s1.snap`: options icon (71,138), then FILE (14,65)) the panel sits at 128,67 with the slot rows A..D at x 147, y 87/99/111/123, LOAD at (170,81) and SAVE at (170,99). A click on row B, C or D runs the row handler `$75c4` and `$75ce` once each and writes `$42`/`$43`/`$44` to `$e296` (live, `watch`); a click on the row already selected reaches neither (0 of 3 positions on row A), so it leaves `$e296` alone (`system.md` "The save-disk code"). Open: whether `$77` tests `$14e4e` was not read. The `$77` button's label is FORMAT, and a click on it at (170,117) runs `$1ba72` once (live, `py/saveload/format_proof.sh`; the routine is described in `system.md`).
+- `$aeac` is the FILE panel. It first clears slot 0's word 0 (closing whatever was on top), sets the origin bytes `$7a38 = 8`, `$7a39 = $43`, opens id 6 with template `$b0ad` and table `$af06`, then marks the drive letter in `$e296` ('A' = `$41`) by turning the n-th `$1c` cell of the grid into `$1e`/`$1f`. Its table `$af06` (words 4 and `$1e`) holds two formatters whose labels read "SAVE" (`$af3e`, run 1, the `$47` button) and "FORMAT" (`$af43`, run 2, the `$77` button) when `$14e4e == $2c` and blank (`$af4a`) otherwise, so a land that failed the protection check shows both buttons blank (for the save button the dispatcher's own `$14e4e` test, in the panel table above, agrees). On screen (from `pm143/run/rand1_s1.snap`: options icon (71,138), then FILE (14,65)) the panel sits at 128,67 with the slot rows A..D at x 147, y 87/99/111/123, LOAD at (170,81) and SAVE at (170,99). A click on row B, C or D runs the row handler `$75c4` and `$75ce` once each and writes `$42`/`$43`/`$44` to `$e296` (live, `watch`); a click on the row already selected reaches neither (0 of 3 positions on row A), so it leaves `$e296` alone (`system.md` "The save-disk code"). The `$77` button's label is FORMAT, and a click on it at (170,117) runs `$1ba72` once (live, `py/saveload/format_proof.sh`; the routine is described in `system.md`). Open: whether `$77` tests `$14e4e` (not read).
 - `$af52` is the GAME panel: it clears slot 0 and opens id 8 with template `$b160` and no formatter table (the template has no `@`).
 - `$af6c` is the options panel: it builds the game-speed slider by rewriting the template's `$14 .. $16` run from `$57fee`, then opens id 4 (template `$b03a`, table `$afd6`; one formatter prints a label when the local slot's byte 4 is 2). Its "already open" test compares `4` with D0, which the preceding loop loads from slot word 0 (the grid offset), not word 3 (the id), so it never fires: live, a second click on the options icon with the panel open opens a second id-4 slot.
 
