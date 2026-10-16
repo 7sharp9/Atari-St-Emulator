@@ -652,17 +652,18 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
 
     let ram = Array.create 0x100000 0uy
 
-    ///Real ST hardware only has `ram.Length` bytes of RAM physically installed, but the GLUE/MMU's
-    ///address decoding for that bank doesn't stop at the installed size - addresses between the top
-    ///of RAM and the start of cartridge/ROM space (cartStart) alias back into the same RAM chips
-    ///rather than going to an unmapped/bus-error bus. This is why TOS's own boot ROM can safely use
+    ///The ST's RAM decode covers $0..$3FFFFF (the 4MB the MMU can be configured for): an address
+    ///there past the installed RAM goes through `translateRamAddress` (MMU aliasing, or open bus
+    ///above the configured banks) and never faults. This is why TOS's own boot ROM can safely use
     ///the raw reset-vector SSP ($601E0100, masked to $1E0100 - well above `ram.Length`) as scratch
-    ///stack space for early hardware-probe code, before it sets up a real stack: on real hardware
-    ///that address mirrors back into installed RAM. Only applies below cartStart - genuinely
-    ///unmapped/unemulated peripheral gaps above ROM (e.g. mpf68901) still fall through to the 0/drop
-    ///default further down, since aliasing those into RAM would be a worse stub than a flat 0.
+    ///stack space for early hardware-probe code. Everything from $400000 up to the cartridge port
+    ///($FA0000) has no device and bus-errors (vector 2) on read and write, as do the unclaimed gaps
+    ///above it; this matches Hatari's ST map (src/cpu/memory.c `memory_map_Standard_RAM`: VoidMem
+    ///for $0..$3FFFFF, BusErrMem for $400000..$DFFFFF, and $E00000..$EFFFFF, $F00000 (no IDE) and
+    ///$F10000..$F9FFFF with TOS at $FC0000). A stack pointer left in that range therefore faults
+    ///on the next exception push and double-faults (Cpu.EnterGroup0OrHalt).
     let ramMask = uint32 (ram.Length - 1)
-    let aliasIntoRam (address: uint32) = address < cartStart
+    let aliasIntoRam (address: uint32) = address < 0x400000u
 
     ///Real STF hardware's MMU decodes RAM addresses using the *configured* bank sizes from
     ///`memConfigByte` ($FF8001), not a flat modulus - each bank's CAS/RAS address lines are reused
@@ -1075,7 +1076,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             store ram (int address + 1) (byte (input &&& 0xffs))
         else
         match address with
-        | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
+        | a when a < 8u -> raise (BusError (a, true)) //ROM shadow of the reset vectors: a CPU write bus-errors (Hatari SysMem_*put)
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
         | Cart -> () //no cartridge present; writes go nowhere, matching the read side's fixed $ff(ff) stub
         | VideoDisplayRegister ->
@@ -1123,7 +1124,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         if flatBus then flatMem.[address] <- input else
         if ramDirect address then store ram (int address) input else
         match address with
-        | a when a < 8u -> failwithf "Memory error:$%08x, %i, %s" address address address.toBits
+        | a when a < 8u -> raise (BusError (a, true)) //ROM shadow of the reset vectors: a CPU write bus-errors (Hatari SysMem_*put)
         | Rom -> () //real ROM chips can't be written; ignored rather than a bus error
         | Cart -> () //no cartridge present; writes go nowhere, matching the read side's fixed $ff(ff) stub
         | VideoDisplayRegister ->

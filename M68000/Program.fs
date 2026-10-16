@@ -440,7 +440,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             loopAnchorPhase <- currentPhase
             loopPower <- 1
             loopLambda <- 0
-        elif state.SameAs loopAnchor && stepCount - loopLastAckStep >= instructionsPerFrame then
+        //A halted CPU (double bus fault) is a final state, not a stuck loop: Cpu.EnterGroup0OrHalt
+        //has already reported it, so let the run use up its budget and stop normally.
+        elif not cpu.Halted && state.SameAs loopAnchor && stepCount - loopLastAckStep >= instructionsPerFrame then
             //Now a genuine proof, not a heuristic: identical CPU state, `mmu.Mutations` unchanged
             //AND `mmu.PeripheralPhase` unchanged (so no latent device counter - Timer B prescaler,
             //FDC INTRQ countdown, DMA sector count - has moved toward an event either), and no
@@ -858,7 +860,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 A0=regs.[8]; A1=regs.[9]; A2=regs.[10]; A3=regs.[11]; A4=regs.[12]; A5=regs.[13]; A6=regs.[14]; A7=regs.[15]
                 USP=regs.[16]
                 SSP=(if version >= 5uy then regs.[17] else 0)
-                PC=regs.[regCount-1]; CCR=ccr; Stopped=false }
+                PC=regs.[regCount-1]; CCR=ccr; Stopped=false; Halted=false }
         let readArr() =
             let len = r.ReadInt32()
             r.ReadBytes(len)

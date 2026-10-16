@@ -739,6 +739,10 @@ type Cpu =
      //Deliberately NOT in the snapshot format (a snapshot taken on the exact STOP idle would just
      //re-run one iteration of a wait loop on resume - negligible, and it keeps the format stable).
      Stopped: bool
+     //Set by a double bus fault (EnterGroup0OrHalt): a bus or address error while stacking a
+     //bus/address-error frame halts the 68000 until reset. Step() then does nothing - no fetch, no
+     //interrupt. Not in the snapshot format, like Stopped.
+     Halted: bool
      MMU: MMU }
 
     static member Create(mmu: MMU) =
@@ -746,7 +750,7 @@ type Cpu =
         { D0=0; D1=0; D2=0; D3=0; D4=0; D5=0; D6=0; D7=0
           A0=0; A1=0; A2=0; A3=0; A4=0; A5=0; A6=0; A7=0
           USP=0; SSP=0
-          PC=0; CCR=0s; Stopped=false; MMU=mmu}
+          PC=0; CCR=0s; Stopped=false; Halted=false; MMU=mmu}
           
     member x.C = not (x.CCR &&& 0x1s = 0s)
     member x.V = not (x.CCR &&& 0x2s = 0s)
@@ -850,6 +854,21 @@ type Cpu =
         x.MMU.WriteLong (uint32 (frameBase + 10))  stackedPC
         let newPC = x.MMU.ReadLong (uint32 (vectorNumber * 4))
         {switched with A7 = frameBase; PC = newPC}
+
+    ///EnterGroup0Vector, or a double bus fault: on the 68000 a bus or address error during the
+    ///exception processing of a bus error, address error or reset halts the CPU (only an external
+    ///reset restarts it). The usual way in is a stack pointer left in bus-error space: the first
+    ///exception's push faults, the bus-error frame's push at the same SSP faults again. Hatari
+    ///reports this as "Detected double bus error ... CPU halted". The halted Cpu is `x` (the state
+    ///the frame push started from) with Halted set; the partial frame words that did land stay in
+    ///memory, as on the real chip.
+    member x.EnterGroup0OrHalt (vectorNumber: int) (faultAddress: uint32) (isWrite: bool) (opcode: int) (stackedPC: int) : Cpu =
+        try x.EnterGroup0Vector vectorNumber faultAddress isWrite opcode stackedPC
+        with
+        | BusError (a, _) | AddressError (a, _) ->
+            eprintfn "double bus fault: stacking vector %d (fault at $%08x) faulted at $%08x, SSP $%08x, PC $%08x: CPU halted"
+                     vectorNumber faultAddress a (if x.S then x.A7 else x.SSP) x.PC
+            { x with Halted = true }
 
     ///Real 68000 group-0 fault on an *instruction prefetch* to an odd address - the odd-target
     ///case of every control transfer (JMP / JSR / BSR / Bcc / DBcc taken / RTS / RTE / RTR). The
@@ -1379,7 +1398,11 @@ type Cpu =
     //TODO implement prefetch ops
         let pendingLevel = x.MMU.PendingInterruptLevel
         let takeable = pendingLevel > 0 && int16 (pendingLevel <<< 8) > x.InterruptMask
-        if x.Stopped && not takeable then
+        if x.Halted then
+            //Double bus fault (EnterGroup0OrHalt): the 68000 stays halted until reset, deaf to
+            //interrupts.
+            x
+        elif x.Stopped && not takeable then
             //STOP #imm is in effect and nothing outranks the mask yet - idle, exactly as the real
             //CPU would between instruction boundaries. Interrupt acks still tick (Timer C etc.), so
             //the loop detector sees this as "waiting on a scheduled interrupt", not a stuck spin.
@@ -1393,7 +1416,14 @@ type Cpu =
             x.MMU.AcknowledgeInterrupt()
             if Trace.enabled then
                 printfn "interrupt: level %d -> vector %d" pendingLevel vector
-            (if x.Stopped then { x with Stopped = false } else x).EnterInterrupt pendingLevel vector
+            let woken = if x.Stopped then { x with Stopped = false } else x
+            //A fault pushing the interrupt frame (SSP in bus-error space, or odd) is a bus/address
+            //error taken in its place; its own frame goes to the same stack, so EnterGroup0OrHalt
+            //normally halts.
+            try woken.EnterInterrupt pendingLevel vector
+            with
+            | BusError (a, w) -> woken.EnterGroup0OrHalt 2 a w 0 woken.PC
+            | AddressError (a, w) -> woken.EnterGroup0OrHalt 3 a w 0 woken.PC
         else
         try
             //Fresh per instruction - ResolveEa fills these in as it forms each EA so the group-0
@@ -1483,7 +1513,7 @@ type Cpu =
                 ||> List.fold (fun (c: Cpu) (r, v) -> c.WithAddressRegister (byte r) v)
             //MOVE's CCR update (see MMU.FaultCcr) survives a faulting destination write.
             let faulted = match x.MMU.FaultCcr with ValueSome c -> { faulted with CCR = c } | ValueNone -> faulted
-            let newCpu = faulted.EnterGroup0Vector 3 faultAddress isWrite opcode stackedPC
+            let newCpu = faulted.EnterGroup0OrHalt 3 faultAddress isWrite opcode stackedPC
             if Trace.enabled then
                 printfn "address error: misaligned %s at $%08x -> vector 3 ($%08x)"
                         (if isWrite then "write" else "read") faultAddress newCpu.PC
@@ -1502,7 +1532,7 @@ type Cpu =
                 ||> List.fold (fun (c: Cpu) (r, v) -> c.WithAddressRegister (byte r) v)
             //MOVE's CCR update (see MMU.FaultCcr) survives a faulting destination write.
             let faulted = match x.MMU.FaultCcr with ValueSome c -> { faulted with CCR = c } | ValueNone -> faulted
-            let newCpu = faulted.EnterGroup0Vector 2 faultAddress isWrite opcode stackedPC
+            let newCpu = faulted.EnterGroup0OrHalt 2 faultAddress isWrite opcode stackedPC
             if Trace.enabled then
                 printfn "bus error: unmapped %s at $%08x -> vector 2 ($%08x)"
                         (if isWrite then "write" else "read") faultAddress newCpu.PC
