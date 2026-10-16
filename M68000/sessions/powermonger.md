@@ -1,12 +1,12 @@
 # PowerMonger: handoff
 
-Updated 2026-10-16 by the 164th session (`7717ca9`; CLAUDE.md `cb7de6e`), after the 163rd (`5e7b2cd` .. `2a08938`).
+Updated 2026-10-16 by the 165th session (`a8e23a4` and the handoff commit; the doc cleanup `aa6f998` .. `a5c1914` ran alongside), after the 164th (`7717ca9`).
 
 ## Resume point
 
-- Last commits of this workstream: `7717ca9` (the port follows the game for byte 44 >= `$80`), then the handoff commit.
+- Last commits of this workstream: `a8e23a4` (the `$84`/`$92` melee frame in the real trade run; the word blitter), then the handoff commit (promotes `sheet_mask_scan.py`, `melee_window.py`, `real_melee84.sh WINDOW=1`). Master is pushed to origin.
 - `bin/Debug/net8.0/M68000.dll` is built from master `d6e6646`, which includes the bus-error change `90ea349` (`$400000..$f9ffff` and writes to `$0..$7` bus-error; a fault while stacking a group-0 frame halts the CPU). Dave merged it via `origin/master`; this session fast-forwarded and rebuilt.
-- Working data: `M68000/scratchpad/pm156/overlay/cap/{siege84,msiege84,msiege92}_*` (the new overlay captures) and `pm164/xcheck/` (the `run.sh` output). `M68000/scratchpad/pm163/` (gitignored): `p5fwd/` (the `trade5_fwd.sh` 2x2: `x_<arm>.out`, `x_<arm>_{30,60}.snap/.ram`, `drain.out`; `fwd.sh` with `p5x.fwd`/`p3x.fwd`, the plain arms over 100M), `p5fwd_first/` (the first 2x2, identical), `old/`. `pm156/overlay/cap/b6_NN_halt.snap` are the new bomb_check end states. Older: `pm162/` (`posture/trade/at63f4.snap`, the trade state), `pm161/`, `pm160/`, `pm156/`, `pm148/`, `pm142/`, `pm143/`, `pm123/`.
+- Working data: `M68000/scratchpad/pm165/real84/` (the first capture `mb_0/1`, the 60M men watch `watch.err`), `pm165/gate/` and `pm165/gate2/` (the promoted gate's reruns, `gate2` with `WINDOW=1`). Older: `M68000/scratchpad/pm156/overlay/cap/{siege84,msiege84,msiege92}_*` (the new overlay captures) and `pm164/xcheck/` (the `run.sh` output). `M68000/scratchpad/pm163/` (gitignored): `p5fwd/` (the `trade5_fwd.sh` 2x2: `x_<arm>.out`, `x_<arm>_{30,60}.snap/.ram`, `drain.out`; `fwd.sh` with `p5x.fwd`/`p3x.fwd`, the plain arms over 100M), `p5fwd_first/` (the first 2x2, identical), `old/`. `pm156/overlay/cap/b6_NN_halt.snap` are the new bomb_check end states. Older: `pm162/` (`posture/trade/at63f4.snap`, the trade state), `pm161/`, `pm160/`, `pm156/`, `pm148/`, `pm142/`, `pm143/`, `pm123/`.
 - Start from:
   - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains; the land ends about 676M steps in.
   - `scratchpad/pm162/posture/trade/at63f4.snap`: side 3 group 0 at the trade `$63f4` (A3 = `$51938`); the posture-5 arms start here.
@@ -19,7 +19,12 @@ Updated 2026-10-16 by the 164th session (`7717ca9`; CLAUDE.md `cb7de6e`), after 
 
 Older gates carry over unchanged; the list is in `strategy.md`, `ai.md`, `economy.md`, `system.md`, `graphics.md` and `port/SPEC.md`, with reruns from the `py/README.md` table. The 162nd pass's (camp markers, exact water, `$54`, posture-5 writers, piles, `$58054`, `$4a7a`) are in those docs.
 
-New in the 164th pass:
+New in the 165th pass:
+
+- **The `$84`/`$92` melee frame matches in the real posture-5 trade run** (port/SPEC.md §6 "Men", `py/xcheck/overlay/real_melee84.sh`; `WINDOW=1` reproduces the window): from `at63f4.snap` the 12 men fight (byte 31 `$32`, 37 writes) from 864.84M to 866.61M cumulative steps, byte 44 never rewritten. One frame (camera poke only) has six in melee, three `$84` and three `$92`; on the pixels that depend on byte 44 the true render is the game's 35/35 (byte 44 + 1), 43/43 and 33/33 (aligned weapon-0 frame), every altered render 0. `diff.fsx` takes `WRONG_SIDE=ctl` to score one capture against itself.
+- **The word blitter ORs its planes unmasked too, with no effect** (port/SPEC.md "Frame index per category"): every row loop (`$123ac`, `$1241a`, `$12460`, `$124a8`, `$12576`, `$12628`) writes `plane | (screen & mask)`, but no frame of `$312a0`/`$37c7c`/`$3af1c` has a plane bit under the mask (`py/xcheck/sheet_mask_scan.py`, 0 rows on `at63f4` and `pm88_f1`; control frame `$ab` found), so `decodeFrameWord` needs no change.
+
+The 164th pass's:
 
 - **The port follows the game for byte 44 >= `$80`** (port/SPEC.md §6 "Men" and "The mini-sprite blitter"): the siege test is signed (`$11cb4`, `$11e78`); `$11f82` makes the frame a byte offset with `mulu #$37 / adda.w` (16-bit wrap, sign-extended, so a `$84`/`$92` melee frame reads 55 misaligned bytes, below `$33000` into the `$312a0` sheet's tail for side-2 `$84`); the planes are ORed in unmasked, so a mask-1 pixel with plane bits k draws `background | k` (one pixel of the real sheet, frame `$ab`). Labelled pokes on `pm88_f1`: walk `$84` 0/0, melee `$84` 32/32 and `$92` 35/35 (before: 3/32, 3/35; wrong-frame control 9/32, 22/35); the 16 earlier cases unchanged (`py/xcheck/overlay/run_cases.sh`, `score_cases.sh`); `py/xcheck/run.sh` at the documented scores, synthetic blits 17/17 with `blit_py.py` mirroring the OR.
 
@@ -27,13 +32,17 @@ The 163rd pass's (byte6 36/38/42 halt, posture-5 trade codes decide the next fig
 
 ## Open, in priority order
 
-1. **Port residue.** The `$84`/`$92` melee frame is proven only under labelled pokes on `pm88_f1`; capture one from the real trade run (`pm163/p5fwd/x_P5B84_*`: find a mid-melee tick with a `$84` man in view, `poke_capture.sh`-style state + next `$f898`, score with `overlay/diff.fsx`). The 16 x 16 word blitter (`decodeFrameWord`, `$12326`/`$124a8`) may OR its planes unmasked too: check its loop and scan the `$312a0`/`$37c7c`/`$3af1c` sheets for plane bits under the mask. Natural byte6 18 and 28 are unseen in play. The camp-marker screen pixel match of `$111`/`$112..$115` (blit position from `$11f78`'s D0/D1 on `M2G_k118_c1`) is not done.
-2. **Posture 5 downstream, the rest.** The trade's clear of object 6 bytes 6..7 (`00 04` to 0 via `84(A3, 12 x $41)`) and of object 7 bytes 40..41 not followed; no natural posture-5 reader in about 444k steps; `$150f2`, `$1ce6`, `$3110`, `$90fe`, `$c77e` at posture 5 code read only.
-3. **Small checks.** `$4a7a`'s foreign-man arm has no natural entry (a sword click on a lone enemy man via `capture_clicks.sh`); natural class `$a` (click a forest marker mid-walk, `bp 4eca`); what ends the class-`$a` shoot (`bp 35f4` from `classa/p16_c1`); the pile's catapult/cannon arm `$3a8e..$3aa4` and add-to-pile arm `$3a18`; a generic `8(An)` reader of chain records; whether anything writes 0 to a lord's nation while his town has merchants (the `$54` hang); the M2G_k90 empty lord slot 12 (`bp 2eac` at world build); natural winter snow under the `$1abaa` gate; a pile/`$58054` LOAD differing slot; the crack's `$b842` patch and `$3c12`'s `nop`; health cap and food (`$5ccc`); rout fates on a third land; a natural `$66`; the dialog buttons `$04`, `$08`'s `$71` and `$131`.
-4. **No current check exercises vector 4 on the unassigned `ImmediateToEa`/`BitOp` encodings** (README "Bug 7"): byte6 36-42 now bus-error first. An emulator-workstream item; a poke of `$0608` at a live PC would do.
-5. **A player route to `$668c`** (low value) and **the stall on the original machine** (a Hatari run past clock 32768 with a camped group; Dave's go-ahead given).
+1. **Port residue.** Natural byte6 18 and 28 are unseen in play. The camp-marker screen pixel match of `$111`/`$112..$115` (blit position from `$11f78`'s D0/D1 on `M2G_k118_c1`) is not done.
+2. **Two open flags in `fig/clock_stall.facts.md`** (left by the doc cleanup, need a run): whether `$13baa` runs only at land build (`hits` over a land build and a long play window), and whether "1500 and 1843 per chunk" holds for every chunk or one (rerun its census per chunk).
+3. **Posture 5 downstream, the rest.** The trade's clear of object 6 bytes 6..7 (`00 04` to 0 via `84(A3, 12 x $41)`) and of object 7 bytes 40..41 not followed; no natural posture-5 reader in about 444k steps; `$150f2`, `$1ce6`, `$3110`, `$90fe`, `$c77e` at posture 5 code read only.
+4. **Small checks.** `$4a7a`'s foreign-man arm has no natural entry (a sword click on a lone enemy man via `capture_clicks.sh`); natural class `$a` (click a forest marker mid-walk, `bp 4eca`); what ends the class-`$a` shoot (`bp 35f4` from `classa/p16_c1`); the pile's catapult/cannon arm `$3a8e..$3aa4` and add-to-pile arm `$3a18`; a generic `8(An)` reader of chain records; whether anything writes 0 to a lord's nation while his town has merchants (the `$54` hang); the M2G_k90 empty lord slot 12 (`bp 2eac` at world build); natural winter snow under the `$1abaa` gate; a pile/`$58054` LOAD differing slot; the crack's `$b842` patch and `$3c12`'s `nop`; health cap and food (`$5ccc`); rout fates on a third land; a natural `$66`; the dialog buttons `$04`, `$08`'s `$71` and `$131`.
+5. **No current check exercises vector 4 on the unassigned `ImmediateToEa`/`BitOp` encodings** (README "Bug 7"): byte6 36-42 now bus-error first. An emulator-workstream item; a poke of `$0608` at a live PC would do.
+6. **A player route to `$668c`** (low value) and **the stall on the original machine** (a Hatari run past clock 32768 with a camped group; Dave's go-ahead given).
 
 ## Known traps
+
+- **The trade run's 30M/60M snapshots show no melee.** `pm163/p5fwd/x_P5B84_{30,60}` hold all 12 men at byte 31 `$2c`/`$10`; the fight is the 864.84M..866.61M window between them, found only by watching the records (`real_melee84.sh WINDOW=1`). Run `real_melee84.sh` (it lands at about 865.5M) rather than a fixed-offset snapshot.
+- **`SendMessage` to a session started with `start_session` takes its id or its `ListAgents` title**, not the short `name` the start returned ("No agent named 'pm-doc-cleanup' is reachable").
 
 - **A port frame past its sheet draws nothing, silently.** `blitEntity` drops an out-of-range frame, so a divergence predicted from reading the code can score 0/0 by accident: SPEC said a `$84` man "would draw the siege overlay in the port", but the port's struct frame `$1b + ($84-$e)*4` was off the sheet and dropped. Run the labelled poke before writing such a prediction.
 - **`py/xcheck/blit_{fs.fsx,py.py}` is a mirror check.** Its random-byte sheet puts plane bits under the mask everywhere, so any blit-semantics change moves both halves or breaks it (3/17 after the OR change until `blit_py.py` mirrored it). It proves port = Python model, not port = game; the game-side proof is an overlay capture.
@@ -95,4 +104,4 @@ The 163rd pass's (byte6 36/38/42 halt, posture-5 trade codes decide the next fig
 
 ## Next session
 
-Take Open 1's real-trade capture of a `$84` melee man from `pm163/p5fwd/x_P5B84_*`, then check whether the word blitter ORs its planes unmasked as `$11f82` does. Then a batch of Open 3's small checks through parallel agents with `scratchpad/pm162/BRIEF.md` (one emulator each; spot-check one claim per report and rerun every gate from its promoted path).
+A batch of Open 4's small checks through parallel agents with `scratchpad/pm162/BRIEF.md` (one emulator each; spot-check one claim per report and rerun every gate from its promoted path), plus Open 2's two clock-stall flags as one more agent. The docs were just cleaned of diary framing: merges write current-state prose only (CLAUDE.md "Docs").

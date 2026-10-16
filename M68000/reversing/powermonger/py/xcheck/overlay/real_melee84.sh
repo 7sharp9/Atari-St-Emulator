@@ -14,6 +14,15 @@ while [ ! -f "$d/tools/rdis.py" ]; do d=$(dirname "$d"); [ "$d" = / ] && { echo 
 cd "$d"
 O=$d/${PM_WORK:-scratchpad/pm165}/real84; mkdir -p "$O"
 PY="uv run python"
+# WINDOW=1: first watch the 12 men's records over 60M steps (about 4 min) and print the melee window
+if [ -n "${WINDOW:-}" ]; then
+  { echo 'disk scratchpad/powermonger.st'; echo 'w 51974 00050002'; echo 'w 4e6f4 03000000'; echo 'w 4e6ec 00050000'
+    echo 'bp 6500 400000'; echo 'watch 53b6e 600'; for i in 1 2 3 4 5 6; do echo 'hits 10000000 6522'; done; echo q; } |
+    ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll resume scratchpad/pm162/posture/trade/at63f4.snap repl \
+    > "$O/watch.out" 2> "$O/watch.err" || true
+  grep -A1 'hits over' "$O/watch.out" | grep 6522
+  $PY "$here/melee_window.py" "$O/watch.err" | tail -3
+fi
 { echo 'disk scratchpad/powermonger.st'; echo 'w 51974 00050002'; echo 'w 4e6f4 03000000'; echo 'w 4e6ec 00050000'
   echo 'bp 6500 400000'; echo 's 18300000'; echo 'w 4bb3a 0026004a'; echo 's 2000000'; echo 'u f898 5000000'
   echo "snap $O/mb_0.snap"; echo 'bpc f898 1 5000000'; echo "snap $O/mb_1.snap"; echo q; } > "$O/mb.cmds"
