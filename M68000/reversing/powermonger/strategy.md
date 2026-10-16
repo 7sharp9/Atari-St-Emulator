@@ -638,7 +638,9 @@ issues over 4 start snapshots, every one a table pair (`$d`→6 ×15, 2→8 ×9,
 179 `$67b4` hits in the 29-snapshot census.
 
 **Posture 5.** The `$a` row's posture is drawn at `$67a2..$67b0`, `($57fec & 3) + 2`, so the
-invention order is the one natural source of posture 5, which no player icon sets. Ten
+invention order is the one natural source of posture 5, which no player icon sets.
+
+**Who writes the posture, and what posture 5 does in play.** Ten
 instructions write the posture word (a whole-image listing plus an every-even-address decode
 of the text segment, both frames): `$2466` and `$2760` (3, when a group is filled or created),
 `$35e4` (the parameter of order `$16`, the player's icons), `$6522`'s arms (2 at `$65c8`,
@@ -649,14 +651,17 @@ posture 5 lasted one commander pass (176,105 and 267,880 steps, until `$65c8` wr
 `$6638` wrote 4), and in both windows none of the posture readers (`$3110`, `$644c`, `$53c0`,
 `$90fe`, `$c77e`, `$35b4`, `$3d52`, `$150f2`, `$1ce6`, `$6cc6`) ran, so the value has had no
 observed effect. The readers index 3-entry tables with `posture - 2`, so posture 5 reads one
-past each. Forced into the trade (labelled pokes: the posture word at `$63f4`'s entry, with a
+past each.
+
+**Posture 5 forced into the trade.** Forced into the trade (labelled pokes: the posture word at `$63f4`'s entry, with a
 posture-3 control from the same state), the buy row `$650a + 24` is `$6522`'s own code bytes,
 goods `$48`, `$41`, 0, 5: with the usual zeros past the lord's goods the army sells everything
 and buys nothing (+144 food, where the control buys its 12 goods back); with non-zero bytes at
 lord `+$60`/`+$59` it consumes them, clears another object's bytes 6..7 through
 `84(A3, 12 x $41)` and writes equipment codes `$84` (9 men) and `$92` (3) into 12 men's
-byte 44 at `$63e8` (valid codes are 2..16). Those codes, not the posture, decide the group's next
-fight. The melee drain at `$1533c` compares byte 44 signed (`cmp.b #6 / blt`), so a code of `$80` or
+byte 44 at `$63e8` (valid codes are 2..16).
+
+**Those codes, not the posture, decide the group's next fight.** The melee drain at `$1533c` compares byte 44 signed (`cmp.b #6 / blt`), so a code of `$80` or
 more takes the weapon arm and drains `(code >> 1) + 1` (`lsr.b`): `$43` and `$4a` a tick where a pike
 drains 2. Run 60M steps forward as a 2x2 from the trade state (posture 5 or 3, crossed with byte 44 as
 the trade left it or poked to the other arm's values at the trade's `rts`), both arms with the codes
@@ -666,7 +671,9 @@ end their melee with those 12 men at health `$56..$5a` and none dead, and both w
 `$4a` 5 times from the 12 men, `$01` 29 times from the others. The code table itself is never written
 (`py/cmdai/posture/`: `posture_watch.sh`, `posture5_issue.sh`, `posture5_issue2.sh`, `trade5.sh`,
 `raw_scan.py`, `trade5_fwd.sh`). The other readers at posture 5 are code read only; a man with such a
-code in melee also asks `$11c8a` for frame `$80 + code * 8 + (side - 1) * 4` (code read, not rendered).
+code in melee also asks `$11c8a` for frame `$80 + code * 8 + (side - 1) * 4`, which the blit wraps to a
+misaligned frame; that frame matches the game under labelled pokes and in the real trade run
+(`port/SPEC.md` §6 "Men", `py/xcheck/overlay/real_melee84.sh`).
 
 The routine as C (transcribed in `py/cmdai/cmdai_ref.py` `call_6762`, proven there):
 
