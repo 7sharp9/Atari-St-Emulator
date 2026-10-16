@@ -391,8 +391,11 @@ write-protect tab.
 
 **Fixes.** `68k.fs` `ImmediateToEa` (commit `0687622`) and `BitOp` (`dcac71b`) trap to vector 4 on
 every destination the 68000 does not assign. Selftest stays 0 wrong (its vectors hold only legal
-encodings), so the trap path is checked by `py/xcheck/overlay/bomb_check.sh`: TOS's four bombs 3/3,
-then `$08fc` at `$20` re-enters vector 4 instead of throwing. `MMU.fs` (`a6eb21d`) adds drive A's
+encodings). The poked records first drove that trap path (TOS's four bombs, then `$08fc` at `$20`
+re-entering vector 4); since the bus-error model of `90ea349` (`$400000..$f9ffff` and writes to
+`$0..$7` bus-error, a fault while stacking a group-0 frame halts the CPU) they bus-error at `$1162e`
+before reaching `$11640`, and `py/xcheck/overlay/bomb_check.sh` checks that double fault instead
+(3/3), so no current check exercises vector 4 on these encodings. `MMU.fs` (`a6eb21d`) adds drive A's
 write-protect tab, REPL `wprot on|off`, which refuses Write Sector and Write Track with WPRT as
 Hatari's `fdc.c` does (`py/saveload/format_wprot.sh`, `system.md` "The save-disk code"). Both changes
 leave the diskless 30M boot and `rand1` +30M byte-identical.
