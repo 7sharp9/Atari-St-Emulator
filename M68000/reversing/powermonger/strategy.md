@@ -145,7 +145,9 @@ test the protocol against.
 
 **The lower side's block wins.** In the merge, when the peer's side number is below the own one, the 64 name bytes of the merged table are patched into the received copy and the whole 712-byte copy replaces `$580a0..$58368`, so both machines build the same land from the same seed; otherwise the own block stays.
 
-**Differential gate (`py/link/link_gate.py`).** The real routine is run in `m1_ready` with a scripted peer, because there is no USART: at every stop after the UDR write the script clears the busy flag `$5836c` and appends one peer byte to the ring. Four scenarios, all PASS: the sent stream is `'?'`, `'?'`, the 712 block bytes, the checksum (715 of 715 bytes, four times); peer side 2 against own 1 and own 2 against peer 1 (adopt) leave `$57ff0..$58367` identical to the Python model (0 differing bytes of 888); equal sides give `$71fd = $74` and a bad checksum `$71fd = $62`. `$13d1a` after the merge runs live in scenario A (`py/link/link_rebuild.py`, `link_gate.py` extended past `$7198`): it rebuilds the land through `$4788` (766 hits) without `$10d1e` (0 hits), then waits at the serial send `$1c39e`. The rebuilt land differs from `m1_s0` by one road: the peer's side now has a slot state (8) but no start record in the stored land script `$58152`, so `$2266` appends a start at a random cell, (39,15) here, and a road from it to the land's first site (records `(39,15,2,$10)`, `(39,15,0,$11)`, `(22,45,0,$63)`, writer `$2310`, watch 1 of 1), and the road painter `$10910` lays it across the sea as an 81-cell causeway (altitude 0 to 5..7). The control, REPLAY MAP (order `$28`) from `m1_ready` with no link, takes the same route (`$4788` 765 hits, `$10d1e` 0), appends nothing and changes no altitude cell (`py/link/link_rebuild.py A`, `py/link/alt_diff.py`; control drive in `scratchpad/pm150/small/replay/`). That the start cell is random rather than fixed is code read (`$12c9a`); one link run was made. Not run: the delays' real length, a cancel mid-exchange.
+**Differential gate (`py/link/link_gate.py`).** The real routine is run in `m1_ready` with a scripted peer, because there is no USART: at every stop after the UDR write the script clears the busy flag `$5836c` and appends one peer byte to the ring. Four scenarios, all PASS: the sent stream is `'?'`, `'?'`, the 712 block bytes, the checksum (715 of 715 bytes, four times); peer side 2 against own 1 and own 2 against peer 1 (adopt) leave `$57ff0..$58367` identical to the Python model (0 differing bytes of 888); equal sides give `$71fd = $74` and a bad checksum `$71fd = $62`.
+
+**The land rebuild after the merge.** `$13d1a` after the merge runs live in scenario A (`py/link/link_rebuild.py`, `link_gate.py` extended past `$7198`): it rebuilds the land through `$4788` (766 hits) without `$10d1e` (0 hits), then waits at the serial send `$1c39e`. The rebuilt land differs from `m1_s0` by one road: the peer's side now has a slot state (8) but no start record in the stored land script `$58152`, so `$2266` appends a start at a random cell, (39,15) here, and a road from it to the land's first site (records `(39,15,2,$10)`, `(39,15,0,$11)`, `(22,45,0,$63)`, writer `$2310`, watch 1 of 1), and the road painter `$10910` lays it across the sea as an 81-cell causeway (altitude 0 to 5..7). The control, REPLAY MAP (order `$28`) from `m1_ready` with no link, takes the same route (`$4788` 765 hits, `$10d1e` 0), appends nothing and changes no altitude cell (`py/link/link_rebuild.py A`, `py/link/alt_diff.py`; control drive in `scratchpad/pm150/small/replay/`). That the start cell is random rather than fixed is code read (`$12c9a`); one link run was made. Not run: the delays' real length, a cancel mid-exchange.
 
 ### `$51538` — group-order table
 
@@ -349,66 +351,72 @@ the next"):
   `$3e06` skips a pigeon whose owner is not positive (`tst.b 5(A1); ble` at `$417a`), so the
   pigeon never flies and the word never clears. This is why side 4's two captains on `rand1_s1`
   stay pending through 150M steps (`watch` on the five words: 0 writes, 12 pigeons launched).
-  `py/arms/pending_census.py` classifies the set pending words of non-lead groups in the snapshots
-  whose chunk still ran the commander AI. Over the census list (every
-  `pm148/arms/long/*_c[2468].snap` (325) and `pm150/arms/pig/r1_c*.snap` (15)) that is 183
-  snapshots and 357 words: 70 with a live pigeon in flight (the first group alive in every one), 142
-  waiting on a dead sender's pigeon (141 with the first group dead), 141 with no pigeon left (138
-  with the first group dead) and 4 with the side's pending record queued. The other 157 snapshots
-  were taken after the game had returned to the main menu (no `$6522` in the chunk that ended
-  there, `stuck_classes.frozen()`), so their words and pigeons are left-over RAM, not play;
-  `--all` counts them too (595 words: 182, 187, 219 and 7).
 
-  **A re-used group slot inherits the pending word** (a second game bug; watch-proven).
-  `py/arms/stuck_classes.py` classifies every dead-sender and orphan word by cause. Over all 340
-  snapshots the 19 on sides whose first group is alive are 12 inherited (three groups, each seen in
-  four chunks), 6 orders still in the command slot and 1 dead-sender leak, but only 4 of them are in
-  chunks where the AI still ran (1 inherited, 2 in slot, 1 dead-sender); those live chunks hold 8
-  more inherited words on sides whose first group is dead. Inheritance: `$2776`
+  **Census of the set words.** `py/arms/pending_census.py` classifies the set pending words of
+  non-lead groups in the snapshots whose chunk still ran the commander AI. The census list is every
+  `pm148/arms/long/*_c[2468].snap` (325) and `pm150/arms/pig/r1_c*.snap` (15). 183 of those
+  snapshots are live play, with 357 words: 70 with a live pigeon in flight (the first group alive in
+  every one), 142 waiting on a dead sender's pigeon (141 with the first group dead), 141 with no
+  pigeon left (138 with the first group dead) and 4 with the side's pending record queued. The other
+  157 snapshots were taken after the game had returned to the main menu (no `$6522` in the chunk that
+  ended there, `stuck_classes.frozen()`), so their words and pigeons are left-over RAM, not play;
+  `--all` counts them too (595 words: 182, 187, 219 and 7). `py/arms/pend_pigeons.py` lists the
+  pigeons of one snapshot.
+
+  **A re-used group slot inherits the pending word** (a second game bug; watch-proven). `$2776`
   dissolves a group by clearing its owner word (`clr.w -48(A3)` at `$28ae`) and freeing the pigeons
   riding to its lead (`$283a`), but leaves the pending word `-72(A3)`; `$25d6` then builds the next
   captain's group in the first slot whose owner is 0 (lead `$2696`, sender `$269a`, owner `$26d0`,
   words 72 and 60) and does not clear it either. The only writers of `-72(Ax)` in the text segment
   are the clears `$4220` and `$6b20`. With no pigeon riding to the new lead the word never clears,
-  and `$6564` never offers the group to the arms again. On k98 (`watch 51a28 316` from
-  `pm148/arms/lands2/k98.snap`, 250M steps) `$683e` sets group 2's word `$51a30` to 4 at step
-  767,342,654, `$28ae` dissolves the group at 788,237,869, `$25d6` refills the slot at 793,842,718,
-  and the word takes 0 writes over the remaining 80M live AI steps; k118 shows the same refill
-  (`$6564` 2905 hits, 0 writes to `$51a2e`). Six are orders still waiting in the side's command slot
-  (`$58016 + 6*side + 1` non-zero, `$58042[side]` naming the group): two clear later in their
-  lineage, and the k52 four are frozen there because the game ended about 1M steps after `$655c`
-  queued the order. One is the dead-sender leak above on a side whose first slot `$25d6` has since
-  refilled with a new commander (k104: `$28ae` dissolves group 0 at 791,791,448, `$27c6` frees the
-  side's pigeons, `$25d6` makes a new group 0 at 829,665,988, and group 1's sender word `$51aa6`
-  still names the old commander). The census's "first group alive" test cannot see that refill.
-  A `watch 4c146 26` from `pm143/lands/k104.snap` shows that leak live: the next order to group 1
-  is launched with the corpse `$53dc6` as sender, and `$45a8` writes `$fc` into the pigeon's owner
-  byte `$4c14b` at step 794,192,700. On k4 the slot `$25d6` refills at step 871,145,825 already
-  holds pending 2, and the word takes 0 writes in 170M steps (`watch 51a28 316`).
+  and `$6564` never offers the group to the arms again.
 
-  The remaining 99 words, all on sides whose first group is gone, are the first-group-dissolve
-  case with the sender revived. On every one the first group's owner word is 0 and the group's
-  sender word is that group's stale lead word, the dead commander, but the record it names is
-  alive: the slot-0 pigeon landing `$4244` later brought the corpse back as an ordinary man
-  (`neg.b 5(A0)` at `$4258`, byte 7 bits 4..6 cleared, then side := his home settlement's side at
-  `$42ac`), so the dead-sender test sees a live record. Revival does not release the receivers.
-  `stuck_classes.py` counts these as `revived`: 51 words, all in live play, whose sender is dead in
-  an earlier snapshot of the lineage, and 48 (30 live, 18 frozen) where the death and the revival
-  fall inside one 250M-step chunk. All nine lineages of the second kind are watched
+  **Every word by cause.** `py/arms/stuck_classes.py` classifies every dead-sender and orphan word
+  by cause. Over all 340 snapshots the 19 on sides whose first group is alive are 12 inherited (three
+  groups, each seen in four chunks), 6 orders still in the command slot and 1 dead-sender leak; only
+  4 of them are in chunks where the AI still ran (1 inherited, 2 in slot, 1 dead-sender), and those
+  live chunks hold 8 more inherited words on sides whose first group is dead. No word in the census
+  is left unexplained:
+  - **Inherited.** On k98 (`watch 51a28 316` from `pm148/arms/lands2/k98.snap`, 250M steps) `$683e`
+    sets group 2's word `$51a30` to 4 at step 767,342,654, `$28ae` dissolves the group at
+    788,237,869, `$25d6` refills the slot at 793,842,718, and the word takes 0 writes over the
+    remaining 80M live AI steps. k118 shows the same refill (`$6564` 2905 hits, 0 writes to
+    `$51a2e`). On k4 the slot `$25d6` refills at step 871,145,825 already holds pending 2, and the
+    word takes 0 writes in 170M steps (`watch 51a28 316`).
+  - **Still in the command slot (6).** `$58016 + 6*side + 1` is non-zero and `$58042[side]` names
+    the group: two clear later in their lineage, and the k52 four are frozen there because the game
+    ended about 1M steps after `$655c` queued the order.
+  - **The dead-sender leak after a refill (1).** The side's first slot has been refilled by `$25d6`
+    with a new commander, which the census's "first group alive" test cannot see. On k104 `$28ae`
+    dissolves group 0 at 791,791,448, `$27c6` frees the side's pigeons, `$25d6` makes a new group 0
+    at 829,665,988, and group 1's sender word `$51aa6` still names the old commander. A
+    `watch 4c146 26` from `pm143/lands/k104.snap` shows the leak live: the next order to group 1 is
+    launched with the corpse `$53dc6` as sender, and `$45a8` writes `$fc` into the pigeon's owner
+    byte `$4c14b` at step 794,192,700.
+  - **The sender revived (the remaining 99 words, all on sides whose first group is gone).** On
+    every one the first group's owner word is 0 and the group's sender word is that group's stale
+    lead word, the dead commander, but the record it names is alive: the slot-0 pigeon landing
+    `$4244` later brought the corpse back as an ordinary man (`neg.b 5(A0)` at `$4258`, byte 7 bits
+    4..6 cleared, then side := his home settlement's side at `$42ac`), so the dead-sender test sees a
+    live record. Revival does not release the receivers. `stuck_classes.py` counts these as
+    `revived`: 51 words, all in live play, whose sender is dead in an earlier snapshot of the
+    lineage, and 48 (30 live, 18 frozen) where the death and the revival fall inside one 250M-step
+    chunk.
+
+  **The revivals, watched.** All nine lineages of the second kind are watched
   (`py/arms/revived/watches.sh`: k32, k124, k25, k60, M2G_k138, M2G_k22, M2G_k86, and k112 and k96,
   whose games end inside their first chunk, so their 18 frozen words are copies of three live ones:
-  k112 side 2 group 1, k96 side 4 groups 1 and 2): in each, `$55f2` kills the commander, `$2776`
+  k112 side 2 group 1, k96 side 4 groups 1 and 2). In each, `$55f2` kills the commander, `$2776`
   clears the first group's owner word at `$28ae` within 8,400 steps (`revived/g0own.sh`), the corpse
-  becomes category `$0a`, and `$4258`/`$42ac` revive it 55M to 211M steps later, in five of the ten
-  watched revivals on another side (k25 and k22 from side 4 to 2, k138 and k112 from 2 to 3, and
-  M2G_k6, a first-kind case, from 3 to 4). The revival takes the side of the man's home
-  settlement (`$42ac` copies byte 5 of `$4f916 + word 34`), which need not be his old side: k25's
+  becomes category `$0a`, and `$4258`/`$42ac` revive it 55M to 211M steps later. Five of the ten
+  watched revivals land on another side (k25 and k22 from side 4 to 2, k138 and k112 from 2 to 3, and
+  M2G_k6, a first-kind case, from 3 to 4), because the revival takes the side of the man's home
+  settlement (`$42ac` copies byte 5 of `$4f916 + word 34`), which need not be his old side. k25's
   home settlement `$50468` revolted from 4 to 2 (`$5538`, step 787.6M) before the revival at 933.4M.
   It revolted again, to 3, at 960.65M, and he adopted 3 at `$16874` (the `$16848` reconcile)
   7.6M steps later; his word 34 is unchanged throughout (`revived/home_side.sh`). He then lives as
   anyone else and joins side 3's commander's army (`$1b78` writes his word 28 := the lead's offset
-  `$4204`, and `$1b7c` sets byte 7 bit 6). No word in the census is left unexplained.
-  `py/arms/pend_pigeons.py` lists the pigeons of one snapshot.
+  `$4204`, and `$1b7c` sets byte 7 bit 6).
 
   The group's state `76()` selects the path:
 
