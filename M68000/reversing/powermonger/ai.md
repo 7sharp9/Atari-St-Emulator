@@ -2037,7 +2037,9 @@ mechanism is closed keep a pointer to the doc that holds the proof.
   `$157e6`, `$1394c`, `$10d1e`).
 - **`$5778` / combat (closed).** The mechanism is closed (this file's combat block
   plus `strategy.md` "Combat"). `group.field60` is the posture: the player's
-  posture icons (order `$16`) and the AI's `$6638`/`$6762` set it.
+  posture icons (order `$16`, `$35e4`), the group builders `$2466`/`$2760` (3) and the commander
+  AI (`$6522`'s 2/4 stamps and `$6762`'s table write `$67b0`, 2 to 5) set it; strategy.md
+  "Posture 5" lists the ten sites.
 - **Mouse commands (closed).** The "move / attack / fully engage" commands reach
   the group state through the order-to-state table `$6888` (strategy.md "The
   player's commands" and "`$6822`: issuing an order"); the order table's remaining

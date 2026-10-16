@@ -250,7 +250,7 @@ typedef struct pm_side_groups {       // base = $51538 + side*$13c
 /* +88*/  s16  eat_timer  [6];        // [12]  $3e06: counts to $580a6[side].word0 (doubled in state 6)
 /* +100*/ s16  target     [6];        // [24]  target link: a lord, settlement or object ($3154, $68fe/$6762)
 /* +112*/ s16  food       [6];        // [36]  captain panel "Food"; -= men/8+1 per eat tick; AI groups seeded $5fff
-/* +136*/ s16  posture    [6];        // [60]  2/3/4 aggressive/neutral/passive; the AI writes it per decision (`$6522`: 2, 4, or the `$67d0` entry's posture)
+/* +136*/ s16  posture    [6];        // [60]  2/3/4 aggressive/neutral/passive, 5 transiently from `$67b0`; writers in "The follow-up table" 
 /* +160*/ s16  carrying   [6][8];     // [84+12i] goods carried, i = pike..cannon (interleaved: stride 12 per item)
 /* +256*/ s16  camp_since  [6];       // tick the group went back to camp ($3720); $6522 waits $14 ticks past it
 /* +268*/ s16  prev_state  [6];       // the state before that ($3728); $6762 looks it up in the table $67d0
@@ -628,6 +628,28 @@ returns 1 even when `$6822` refused the order. **Proven**: `py/cmdai/gate_cmdai.
 follow-up states in the whole-call gate, 28 active synthetic leaf states). **Live**: `py/cmdai/campaign_census.py`, 34 natural
 issues over 4 start snapshots, every one a table pair (`$d`→6 ×15, 2→8 ×9, 3→`$10` ×6, `$a`→`$e` ×4);
 179 `$67b4` hits in the 29-snapshot census.
+
+**Posture 5.** The `$a` row's posture is drawn at `$67a2..$67b0`, `($57fec & 3) + 2`, so the
+invention order is the one natural source of posture 5, which no player icon sets. Ten
+instructions write the posture word (a whole-image listing plus an every-even-address decode
+of the text segment, both frames): `$2466` and `$2760` (3, when a group is filled or created),
+`$35e4` (the parameter of order `$16`, the player's icons), `$6522`'s arms (2 at `$65c8`,
+`$65f4`, `$666c`, `$668c`, `$672e`; 4 at `$6638`) and `$67b0`. A watch of the five sides'
+posture words over the whole 676M-step land of `pm142/rand1` saw 2,046 writes with values
+{2, 3, 4, 5}; `$67b0` wrote 35 of them, and its five rng-arm issues wrote 5, 2, 2, 3, 5. Each
+posture 5 lasted one commander pass (176,105 and 267,880 steps, until `$65c8` wrote 2 and
+`$6638` wrote 4), and in both windows none of the posture readers (`$3110`, `$644c`, `$53c0`,
+`$90fe`, `$c77e`, `$35b4`, `$3d52`, `$150f2`, `$1ce6`, `$6cc6`) ran, so the value has had no
+observed effect. The readers index 3-entry tables with `posture - 2`, so posture 5 reads one
+past each. Forced into the trade (labelled pokes: the posture word at `$63f4`'s entry, with a
+posture-3 control from the same state), the buy row `$650a + 24` is `$6522`'s own code bytes,
+goods `$48`, `$41`, 0, 5: with the usual zeros past the lord's goods the army sells everything
+and buys nothing (+144 food, where the control buys its 12 goods back); with non-zero bytes at
+lord `+$60`/`+$59` it consumes them, clears another object's bytes 6..7 through
+`84(A3, 12 x $41)` and writes equipment codes `$92`/`$84` (valid codes are 2..16) into 12 men's
+byte 44. The code table itself is never written (`py/cmdai/posture/`: `posture_watch.sh`,
+`posture5_issue.sh`, `posture5_issue2.sh`, `trade5.sh`, `raw_scan.py`). The other readers at
+posture 5 are code read only.
 
 The routine as C (transcribed in `py/cmdai/cmdai_ref.py` `call_6762`, proven there):
 
@@ -1302,7 +1324,8 @@ void pm_kill_or_rout(obj *A1 /*attacker*/, obj *A3 /*loser*/) {
 ```
 
 The `group.field_60` term is the group's **posture** (2 aggressive, 3 neutral,
-4 passive; the player's three posture icons, "What each order does"). The AI stamps posture 4 on every group
+4 passive; the player's three posture icons, "What each order does"; 5 transiently from the
+follow-up table's `$67b0`, "Posture 5", which `$30fe` maps to the parity roll like 3, inferred from its body). The AI stamps posture 4 on every group
 it sends to attack (`$6638`), so `pm_30fe` returns `2` and the roll is pinned to
 **rout**: ten routs, zero kills in the re-armed fight. Posture 2 always kills;
 posture 3 rolls (the player's mission-1 army: 5 kills, 5 routs in the win run,
