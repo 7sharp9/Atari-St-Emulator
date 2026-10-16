@@ -312,7 +312,7 @@ skipped) and every `$4c5f4` marker has `progress (byte15) == 0` (animate loop sk
 live, 8 forest ops, 68 markers, ~40 trees with a worker) is no exception: markers seed `byte15 := 0`
 and only `$4342`'s own claim head writes `byte15 := $d0`, and that head needs a bit-7 tree *with* a worker, which
 no natural state reaches. A differential test therefore needs a synthesised corpus (poke a marker's `byte15` and
-a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains), and two gates now cover all nine branches:
+a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains), and two gates cover all nine branches:
 `py/fsm/diff_4342.py` (115/115 tracked bytes over 10 poked states) and `py/fsm/gate_4342_arrive.py` (344/344 over 10
 live arrival ticks of markers claimed through `$16808` after the claim pokes, the unlink of a really inserted marker),
 both against `tools/pm_fsm_ref.py` `call_4342`. ai.md "the forest animator `$4342`" has the branch list, the path a
