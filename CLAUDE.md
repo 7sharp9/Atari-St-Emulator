@@ -58,6 +58,11 @@ know they existed.
 
 - Every emulator change goes behind the regression net in the skill's section 6 (verify, 30M-step
   snapshot compare, build, selftest 0 wrong).
+- An emulator change can be delegated to an `isolation: "worktree"` agent: it builds and runs the net in
+  its worktree's own `bin/`, so the shared DLL stays untouched (give it absolute paths to the main
+  checkout's untracked `TOS100UK.IMG`, `tests/680x0` and disk images). Merge with `git diff --binary`
+  per worktree; a second patch touching the same files applies with `git apply --3way` only after the
+  first is staged ("does not match index" otherwise); then build into `bin/` and re-run the net.
 - Hot path (`M68000/DEVELOPING.md`, "Performance"): a new decoder's `printfn`/`sprintf` goes behind
   `if Trace.enabled`, per-step constants stay literals, new active patterns are struct
   `ValueOption`. `selftest` runs the flat bus and does not exercise the MMU RAM fast path, so an
