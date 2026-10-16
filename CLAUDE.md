@@ -89,7 +89,10 @@ know they existed.
 - Before writing a new interpretive claim, grep the topic doc for whether a later section already
   retired that framing. Before disassembling a routine to decode it, grep the topic docs (including
   other games' `ai.md`/`economy.md`, for shared engine code) for its hex address: it may already be
-  pseudocoded.
+  pseudocoded. When a correction lands, grep every doc for the routine's address and the old wording and
+  fix each copy in the same edit: PowerMonger's melee drain was corrected in `ai.md` ("a hard `moveq #0`, not
+  `min(44,6)`") while `economy.md` and two `strategy.md` pseudocode blocks kept `min(v,6)`, and SPEC's
+  "no writer produces `>= $80`" outlived `strategy.md`'s forced `$84`/`$92` writes.
 - A graphics asset decoded for the first time well enough to render is committed as a PNG next to the
   doc that proves the format and table-indexed in `graphics.md` or the README's files table.
 
