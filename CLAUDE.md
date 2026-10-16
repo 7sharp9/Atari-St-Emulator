@@ -195,9 +195,11 @@ that are easy to forget:
 
 ## Emulator behaviours that look like input bugs
 
-- `watch <addr>` on an odd byte misses a word or long write that covers it (`MMU.fs` `checkWatch`
-  tests only the write's start address) and all FDC DMA writes. Also watch the even byte below, and
-  read the writers in the listing. Its `step=` is the snapshot's cumulative step counter, not steps
+- `watch <addr> [len]` reports every CPU write whose bytes overlap the range (a word write at `$1000`
+  covers a watched `$1001`) and every FDC DMA sector landing in it (a `DMA read sector` line); it cannot name
+  the PC of a REPL `w` poke (it is reported with the last step's `step=`/`pc=`). One region at a time: a
+  second `watch` replaces the first.
+  Its `step=` is the snapshot's cumulative step counter, not steps
   into the run (PowerMonger's rand1 starts near 828.75M): line it up with a `hits` first-hit inside the watch.
 - REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field clobbers the next
   three. Read the neighbouring fields and write the whole longword deliberately.
@@ -208,17 +210,18 @@ that are easy to forget:
 - `hits` on a routine every side runs (PowerMonger's executor `$6b38`, attack `$6c32`) counts all sides' calls, so a
   count after a poke is not the poked side's: attribute each call by its own data (`bp`, then the packet's side byte at
   A0). Side 2's 26 orders after side 3's captain died read as side 3's stale pigeons until `bp 6b38` showed byte 0 = 2.
-- `hits` and `bpc` count an address again when an interrupt is taken at it: the handler returns to the
-  same PC, which counts as a second arrival. PowerMonger's `$1abaa` was seen doing this (`s 1` from the stop
-  enters the level-6 sample-player handler; `bpc` stops there again 20 steps later with the routine's state
-  unchanged; 4 re-entries were the whole excess of `hits` over distinct calls, `py/season/gate_1abaa.py`).
-  When an exact count matters, count a `watch` of the routine's write, not `hits`; a `bpc` corpus drops a
-  stop that arrives a few steps after the previous one with the same state.
+- `hits`, `bp` and `bpc` count instruction starts: an interrupt taken at a counted address and its RTE
+  back there count once, also when the interrupt was entered by an `s` before the command (`AtartSt.CensusStep`).
+  Corpora captured before this change hold those duplicates: PowerMonger's `$1abaa` corpus has stops ~20 steps
+  apart with the routine's state unchanged, which `py/season/gate_1abaa.py` dedupes (`REENTRY`). They and
+  `until` compare 24-bit addresses, so a PC with junk upper bits (TOS 1.00's handlers run at `$04fc0a1a`)
+  matches.
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event. A pulse shorter than
-  the game's poll cycle can fall between two polls and never register: hold at least one full VBL
-  frame (`instructionsPerFrame`: about 12,000 to 15,000 steps on an idle screen, about 24,000 in
-  Impossamole's gameplay rooms, so 30,000 is the safe hold) and check for a per-object busy flag that
-  skips the per-frame input read. Details: skill, section 2.
+  the game's poll cycle can fall between two polls and never register: hold longer than the game's
+  poll cycle. The VBL is raised every 12,000 steps exactly (`instructionsPerFrame`, a literal in
+  `Program.fs`); a game loop that runs every second VBL, as Impossamole's gameplay rooms do, polls
+  every 24,000, so 30,000 is the safe hold. Check for a per-object busy flag that skips the per-frame
+  input read. Details: skill, section 2.
 - A game that polls the keyboard ACIA data register directly (`cmpi.b #$39,$fc02.w` / `bne` back)
   never sees a key here: `MMU.fs` pops the FIFO on a read of `$fffc02` and returns 0 when it is
   empty, so TOS's keyboard ISR (still installed at `$118`) takes the byte first; a real 6850 keeps
