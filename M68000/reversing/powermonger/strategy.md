@@ -185,7 +185,7 @@ is group 0's state word and its `24` target link (below).
 save/load sectors. The scan covers literal displacements 204/280 on any register and indexed accesses from the table base, over `$1000..$1c600`
 (the method of `py/aggr/scan_group_field.py`, retargeted to these displacements). The writers:
 - `$4a7a` (`_send_at`, the attack order's cell resolver) writes 2 for a foreign settlement (its lord becomes the target), 6 for a foreign man, 8 for an animal (categories 8, `$14`, `$16`) and `$c` for a category-4 record, then state 8.
-- `$4bc8` (`$4d68`/`$4d76`) writes the class that `$4de2` returns for the opponent and its offset into `292()`. `$4de2` returns 2 for a lord, or for a man without a group standing within 8 cells of his home settlement (who stands for his lord). It returns 4 for a group lead or follower; a group that is neither marching to attack (8) nor fighting (`$d`) is first broken out of camp by `$37c2`. It returns 6 for a lone man away from home, 8, `$a` and `$c` for animals and category-4 records, and 0 otherwise.
+- `$4bc8` (`$4d68`/`$4d76`) writes the class that `$4de2` returns for the opponent and its offset into `292()`. `$4de2` returns 2 for a lord, or for a man without a group standing within 8 cells of his home settlement (who stands for his lord). It returns 4 for a group lead or follower; a group that is neither marching to attack (8) nor fighting (`$d`) is first broken out of camp by `$37c2`. It returns 6 for a lone man away from home, 8 for a category-8 animal, `$a` for a carrier pigeon or forest marker (category `$14` or `$16`, `$4ebe..$4ed0`), `$c` for a category-4 record (each with side 0), and 0 otherwise. Class `$a` has no natural occurrence: 0 of 521 `$4de2` calls in 54 live Play Random Land runs (3.44G steps, `py/orders/census.sh`). With the sheep of a sword-click target poked to category `$16` or `$14` (one byte, same snapshot and budget as an unpoked control), the group fights with `204 = $a` and its men shoot the record (`$5150`, mode `$34`: 22 calls and 15 arrows in 2M steps) instead of chasing and slaughtering it; there is no carcass, and the group is camped again within 4M steps, where the control chases, slaughters and camps after 10M (`py/orders/class_a.sh`, 1/1 per arm).
 - `$5778` (below) writes 4 and then the attacker's entity offset.
 
 The readers are the escort arm `$65ec`, the posture rule `$6726` and the follow-up table (`$677c`).
@@ -1165,8 +1165,13 @@ and `31 := $10` (advance).
   The first match on the chain wins.
 - **`$4a7a`** (`_send_at`, order `$0c`) picks its target by scanning the cell's whole chain: a building (byte6 2 or `$10`) of another side ends the scan at once and the target is its
   leader's cell (`204(A3) := 2`); otherwise the **last** enemy man (byte6 0 or `$e`, owner > 0 and not ours) wins (`204 := 6`), else the last byte6 `8`/`$14`/`$16` record
-  (`204 := 8`), else the last byte6 4 record, whose `10(rec)` is its cell (`204 := $c`); nothing: no change. `204(A3)` is the campaign phase array (`+280`). The group goes to state 8
-  with `24(A3)` = the target's offset, the lead to mode `$30` heading for the target's x/y. Natural: sword icon on lord 0's town, `m1_s0`.
+  (`204 := 8`), else the last byte6 4 record, whose `10(rec)` is its cell (`204 := $c`); nothing: no change. `204(A3)` is the opponent-class word (`280()`, "The opponent class `280()`"). The group goes to state 8
+  with `24(A3)` = the target's offset, the lead to mode `$30` heading for the target's x/y. Natural: every arm except the foreign man is
+  gated on natural entries by `py/orders/gate_4a7a_nat.py`, **1614/1614** bytes over 22 states (8 foreign settlements: 6 AI calls on
+  `pm142/rand1`, 1 on k25, the `m1_s0` click; 3 sheep clicks on k120, k25, k56; the k120 tree click; 7 AI re-issues on a cell holding only
+  the attacker's own records and 3 on an empty cell, which change nothing), against a mutant that writes class `$a` for the animal arm at
+  0 of 3. Over 54 live Play Random Land runs (3.44G steps, `py/orders/census.sh`) the AI made 1956 calls: 88 settlements, 1844 cells with
+  no target (the livelock above), 24 empty cells, and no man, animal or tree; the foreign-man arm is gated on synthetic states only.
 - **`$3bc8`** (`_get_lar...`): scans the 160 leader slots `$4e514..$4f914` (the slot test is byte0 == side, `$3bc8` does not stop at an empty slot). `A0` is the matching slot with the strictly
   largest signed word at `D3`, the first on a tie; while the best is 0 `A0` follows every match, so an all-zero side returns its last leader; no match: `A0 = 0`; it leaves `D4 = $20`.
 - **`$3956`** (`_at_supp...`, mode `$74` arrival of order `$1a`): `$39d4` with `D7 = 1` (drop only the army's food, `D0` = posture - 2), then `$3bc8(side, 6)` (the own leader with the most
