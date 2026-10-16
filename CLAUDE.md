@@ -173,7 +173,7 @@ that are easy to forget:
     words that contain `<` or `>`.
   - fails `echo =====` (`=word` expands to a command path): quote it.
   - aborts a whole `for f in a/*.md a/*.sh; do ...` when one glob matches nothing: run such loops
-    with `bash`, or `setopt nonomatch`. An unquoted `grep --include=*.fs` fails the same way ("no matches found"): quote it.
+    with `bash`, or `setopt nonomatch`. An unquoted `grep --include=*.fs` or `ps aux | grep [d]otnet` fails the same way ("no matches found"), and the pipe then prints nothing, which reads as "no process": quote it.
 - A waiter `until ! pgrep -f 'run.sh x'` matches its own shell's command line and never exits: bracket one
   character (`pgrep -f 'run[.]sh x'`), or wait on the background task's own notification.
 - macOS has no `timeout`: `... | timeout 60 dotnet ...` fails before running, and a following
