@@ -216,6 +216,8 @@ class Harness:
         p = subprocess.run(
             argv, input=script, capture_output=True, text=True,
             cwd=self.m68, timeout=400, env=dict(os.environ, ATARI_NOTRACE="1"))
+        if p.returncode != 0:   # a REPL error (bad line) or an emulator abort: never parse a truncated drive
+            raise RuntimeError(f"REPL exited {p.returncode}: {p.stderr.strip()[-2000:]}")
         return p.stdout + p.stderr
 
     # ----------------------------------------------------------- corpus loop

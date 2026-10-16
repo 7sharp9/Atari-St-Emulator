@@ -20,6 +20,8 @@ def run_repl(snap, script, env_extra=None, log=None):
     if log:
         os.makedirs(os.path.dirname(log), exist_ok=True)
         with open(log, "w") as f: f.write(out)
+    if p.returncode != 0:   # a REPL error (bad line) or an emulator abort: never parse a truncated drive
+        raise RuntimeError("REPL exited %d: %s" % (p.returncode, p.stderr.strip()[-2000:]))
     return out
 
 def ram_from_snap(path):

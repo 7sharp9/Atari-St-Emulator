@@ -20,6 +20,8 @@ def repl(snap, cmds, timeout=600):
     env = dict(os.environ, ATARI_NOTRACE='1')
     r = subprocess.run(['dotnet', 'exec', str(DLL), 'resume', str(snap), 'repl', '--disk-a', str(DISK)],
                        input='\n'.join(cmds) + '\nq\n', capture_output=True, text=True, env=env, cwd=ROOT, timeout=timeout)
+    if r.returncode != 0:   # a REPL error (bad line) or an emulator abort: never parse a truncated drive
+        raise RuntimeError('REPL exited %d: %s' % (r.returncode, r.stderr.strip()[-2000:]))
     return r.stdout + r.stderr
 
 def parse_callcaps(out):

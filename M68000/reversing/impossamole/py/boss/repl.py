@@ -18,8 +18,18 @@ class Repl:
                                    '--disk-a', DISK], cwd=ROOT, env=env, text=True, bufsize=1,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.err = []   # stderr lines (the REPL's `watch` reports go here)
-        threading.Thread(target=lambda: [self.err.append(l.rstrip()) for l in self.p.stderr], daemon=True).start()
+        self._t = threading.Thread(target=lambda: [self.err.append(l.rstrip()) for l in self.p.stderr], daemon=True)
+        self._t.start()
         self.run('s 1')
+
+    def _closed(self):
+        """message for a REPL that ended mid-command: exit code plus the stderr tail (a `REPL error:` line names the bad command)"""
+        try:
+            rc = self.p.wait(timeout=10)
+        except Exception:
+            rc = None
+        self._t.join(timeout=5)   # the drain thread may not have read the final stderr line yet
+        return 'repl closed (exit %s): %s' % (rc, '\n'.join(self.err[-20:]))
 
     def run(self, *cmds):
         for c in cmds:
@@ -29,7 +39,7 @@ class Repl:
         while True:
             l = self.p.stdout.readline()
             if not l:
-                raise RuntimeError('repl closed')
+                raise RuntimeError(self._closed())
             if l.startswith('  $00fb98'):
                 return [x.rstrip() for x in out if not x.startswith(('enqueued', '---'))]
             out.append(l)

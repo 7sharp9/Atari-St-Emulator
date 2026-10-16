@@ -64,6 +64,8 @@ def main():
                        text=True, cwd=M68, env=env)
     log = p.stdout + p.stderr
     (M68 / out / f"{name}.log").write_text(log)
+    if p.returncode != 0:   # a REPL error (bad --pre line) or an emulator abort: the corpus would be truncated
+        sys.exit(f"REPL exited {p.returncode}: {p.stderr.strip()[-2000:]}")
 
     # one block per bpc: "--- breakpoint $... hit (k/k) ..." or "--- gave up ..."
     blocks = re.split(r"(?=^--- (?:breakpoint|gave up))", log, flags=re.M)[1:]

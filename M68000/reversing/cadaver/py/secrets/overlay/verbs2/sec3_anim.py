@@ -2,6 +2,7 @@
 from lib2 import *
 import lib2
 
+
 def anim_addr(h, oid): a = h.obj(oid); return a + h.r.b(a + 14)
 def move_addr(h, oid): a = h.obj(oid); return a + h.r.b(a + 13)
 
@@ -27,13 +28,13 @@ def run():
         chk('verb 4  STOPANI #144 with anim byte $%02x: byte -> $%02x, +15 bit 0 set by $b166 (%02x -> %02x)' % (v, afterb(h, d, ea), r.b(a144 + 15), afterb(h, d, a144 + 15)),
             d['ret'] and d['da1'] == 2 and afterb(h, d, ea) == 0xff and afterb(h, d, a144 + 15) == r.b(a144 + 15) | 1 and a5l(h, 380, d) == a144)
     d = h.call(3, [0, 60])
-    chk('verb 3  GOANI on #60 (template+12 bit 2 clear): assert "GOANI A NONANI OBJECT"', bool(d['thrown']) and not d['ret'])
+    chk('verb 3  GOANI on #60 (template+12 bit 2 clear): assert "GOANI A NONANI OBJECT"', asserted(d))
     d = h.call(4, [0, 60])
-    chk('verb 4  STOPANI on #60 (not animated): assert "STOPANI A NONANI OBJECT"', bool(d['thrown']) and not d['ret'])
+    chk('verb 4  STOPANI on #60 (not animated): assert "STOPANI A NONANI OBJECT"', asserted(d))
     d = h.call(3, [0x03, 0xde])
-    chk('verb 3  GOANI on the absent id 990: assert "GOANI A NON-EXISTANT OBJECT"', bool(d['thrown']) and not d['ret'])
+    chk('verb 3  GOANI on the absent id 990: assert "GOANI A NON-EXISTANT OBJECT"', asserted(d))
     d = h.call(11, [0x03, 0xde])
-    chk('verb 11 GOMOVE on the absent id 990: assert', bool(d['thrown']) and not d['ret'])
+    chk('verb 11 GOMOVE on the absent id 990: assert', asserted(d))
     h.close()
     # ---------------- level 1: #341 (anim byte $fe, ext = fe 00 00 04), #126 (movable, state byte 01)
     h = H(SNAP1); r = h.r

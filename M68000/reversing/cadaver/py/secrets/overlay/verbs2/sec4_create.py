@@ -56,7 +56,7 @@ def run():
     chk('verb 41 ... in the current room: room byte +10 = %d, x,y,z = (%d,%d,%d), sprite word +8 %s -> %s' % (afterb(h, dcur, a + 10), afterb(h, dcur, a), afterb(h, dcur, a + 1), afterb(h, dcur, a + 2), r.mem(a + 8, 2).hex(), after(h, dcur, a + 8, 2).hex()),
         afterb(h, dcur, a + 10) == 0 and (afterb(h, dcur, a), afterb(h, dcur, a + 1)) == (0x10, 0x11) and 16 in t5_list(h, 0, dcur)[0])
     d = h.call(41, [0, 237, 0x21, 0x10, 0x10, 0])
-    chk('verb 41 PLACE #237 (template class 3 = creature): assert "CANT PUT CREATURE IN ROOM"', bool(d['thrown']) and not d['ret'])
+    chk('verb 41 PLACE #237 (template class 3 = creature): assert "CANT PUT CREATURE IN ROOM"', asserted(d))
     # ---------------- 73: the SECOND operand moves to the position (and room) of the FIRST
     for first, second in ((16, 60), (60, 16)):
         p1 = r.mem(h.obj(first), 3); rm1 = r.b(h.obj(first) + 10); a2 = h.obj(second)

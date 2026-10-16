@@ -190,11 +190,11 @@ module Instructions =
     /// 68000 silicon has no special case for it and traps it through the same generic
     /// undefined-opcode path as any other unassigned line-0100 encoding, i.e. vector 4. Seen in
     /// the wild as a CPU-detection probe (`reversing/cadaver`'s Rob Northen loader): call it, and
-    /// a genuine 68000 lands in the illegal-instruction handler while a 68010+ wouldn't. Narrow
-    /// and explicit rather than a catch-all for every undecoded opcode, matching TAS's own
-    /// exclusion - most of "unimplemented" opcode space is real, valid 68000 instructions this
-    /// project hasn't implemented yet and must keep failing loudly (selftest's `unimpl` count),
-    /// not silently start illegal-trapping.
+    /// a genuine 68000 lands in the illegal-instruction handler while a 68010+ wouldn't. These
+    /// are the encodings known to be illegal, decoded silently. Any other undecoded encoding
+    /// also takes vector 4 (the decoders raise `IllegalEncoding`, `Cpu.Step` enters the vector),
+    /// but prints an `ILLEGAL:` stderr line, because it may be a legal instruction this core
+    /// lacks, and selftest still counts it as `unimpl`.
     [<return: Struct>]
     let (|Illegal|_|) data =
         if data = 0x4AFC || data = 0x4E7A || data = 0x4E7B then ValueSome() else ValueNone

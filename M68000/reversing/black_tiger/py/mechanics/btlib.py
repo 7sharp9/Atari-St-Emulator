@@ -34,6 +34,8 @@ def repl(snap, lines, maxout=None):
     script = "\n".join(lines) + "\nq\n"
     p = subprocess.run(["dotnet", "exec", DLL, "resume", snap, "repl", "--disk-a", DISK],
                        input=script, capture_output=True, text=True, cwd=ROOT, env=env)
+    if p.returncode != 0:   # a REPL error (bad line) or an emulator abort: never parse a truncated drive
+        raise RuntimeError("REPL exited %d: %s" % (p.returncode, p.stderr.strip()[-2000:]))
     return p.stdout + p.stderr
 
 

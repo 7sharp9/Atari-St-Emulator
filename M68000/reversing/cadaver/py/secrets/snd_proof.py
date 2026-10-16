@@ -25,6 +25,8 @@ env = dict(os.environ, ATARI_NOTRACE='1')
 def repl(cmds, timeout=3600):
     p = subprocess.run(['dotnet', 'exec', 'bin/Debug/net8.0/M68000.dll', 'resume', SNAP, 'repl', '--disk-a', DISK],
                        input='\n'.join(cmds) + '\nq\n', text=True, capture_output=True, cwd=M68, env=env, timeout=timeout)
+    if p.returncode != 0:   # a REPL error (bad line) or an emulator abort: 0 PSG frames must not read as a match
+        raise RuntimeError('REPL exited %d: %s' % (p.returncode, p.stderr.strip()[-2000:]))
     return p.stdout, p.stderr
 REG = [(0x158f0, 0x16400), (A5 + 2400, A5 + 2600)]
 def inreg(a): return any(lo <= a < hi for lo, hi in REG)

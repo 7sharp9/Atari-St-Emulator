@@ -63,7 +63,7 @@ def run():
     case(69, [0, 60, 9, 8, 7], {m60 + 3: 9, m60 + 4: 8, m60 + 5: 7}, 'MOVE #60: mover block (rec+rec[13]) bytes +3,+4,+5 := 9,8,7', extra_ok=False)
     # wake/sleep: sub-block byte +5 bit 7, and the awake-creature list 396(A5)
     h.poke(s60 + 5, [0x00]); d = h.call(75, [0, 60])
-    chk('verb 75 SLEEP #60 (not in the list 396(A5)): assert (creature-list unregister $00e172 finds no entry)', bool(d['thrown']) and not d['ret'])
+    chk('verb 75 SLEEP #60 (not in the list 396(A5)): assert (creature-list unregister $00e172 finds no entry)', asserted(d))
     r.cmd('w %x %08x' % (A5 + 396, 0x0001003c))    # list: count 1, id 60
     d = h.call(75, [0, 60])
     chk('verb 75 SLEEP #60 with 396(A5) = {count 1, id 60}: sub-block +5 bit 7 set; list count %d -> %d, id slot -> %d' % (r.w(A5 + 396), afterw(h, d, A5 + 396), afterw(h, d, A5 + 398)), d['ret'] and d['da1'] == 2 and afterb(h, d, s60 + 5) & 0x80 and afterw(h, d, A5 + 398) == 0)
@@ -74,7 +74,7 @@ def run():
     r.cmd('w %x %08x' % (A5 + 396, 0x0001003d)); d = h.call(8, [0, 61])
     chk('verb 8  UNREGISTER id 61 (listed): 396(A5) entry -> %d' % afterw(h, d, A5 + 398), d['ret'] and afterw(h, d, A5 + 398) == 0)
     r.cmd('w %x %08x' % (A5 + 396, 0)); d = h.call(8, [0, 61])
-    chk('verb 8  UNREGISTER id 61 (not listed): assert', bool(d['thrown']) and not d['ret'])
+    chk('verb 8  UNREGISTER id 61 (not listed): assert', asserted(d))
     r.cmd('w %x %08x' % (A5 + 396, 0))
     # ---- KILL queues event 23
     q0 = r.l(A5 + 304); n0 = r.w(A5 + 1154); d = h.call(50, [0, 60]); e = after(h, d, q0, 6)

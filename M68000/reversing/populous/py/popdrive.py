@@ -259,8 +259,8 @@ def run(snap_in, lines, snap_out, extra=()):
         os.remove(snap_out)
     p = subprocess.run(['dotnet', 'exec', DLL, 'resume', snap_in, 'repl', '--disk-a', DISK],
                        input=script, capture_output=True, text=True, cwd=R, env=env)
-    if not os.path.exists(snap_out):
-        raise RuntimeError(p.stdout[-2000:] + p.stderr[-2000:])
+    if p.returncode != 0 or not os.path.exists(snap_out):
+        raise RuntimeError('REPL exited %d: %s' % (p.returncode, p.stdout[-2000:] + p.stderr[-2000:]))
     return p.stdout
 
 

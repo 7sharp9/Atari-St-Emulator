@@ -125,6 +125,18 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let mutable loopLastAckCount = 0UL
     let mutable loopLastAckStep = 0UL
 
+    //Where the last few interrupts were taken: the 24-bit PC of the instruction that had not yet
+    //run, and A7 before the frame push. bp/bpc/hits (see `CensusStep`) use it to tell an RTE
+    //back to an interrupted instruction from a new arrival there, also when the interrupt was
+    //taken during an `s` before the command. A 4-entry ring, so nested interrupts keep the
+    //outer departure; an entry is removed when its return is matched, and a stale one (its
+    //return ran outside a census) can hide at most one later RTE arrival at that PC with the
+    //same A7. Debug state: not in snapshots, cleared by Reset/LoadState.
+    let intDepartPc : uint32[] = Array.zeroCreate 4
+    let intDepartSp : int[] = Array.zeroCreate 4
+    let intDepartLive : bool[] = Array.zeroCreate 4
+    let mutable intDepartNext = 0
+
     // --- Emulated time --------------------------------------------------------
     //
     // There is still no per-instruction cycle counting here (every 68000 opcode
@@ -330,6 +342,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         //principle; there stepCount is 0 so it is harmless, but keeping the two in step is simplest.
         loopLastAckStep <- stepCount
         loopLastAckCount <- mmu.InterruptAcks
+        Array.fill intDepartLive 0 intDepartLive.Length false
 
     member x.Reset() =
         cpu <- cpu.Reset()
@@ -529,7 +542,15 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                     | None -> ()
             with _ -> ()
         try
+            let preCpu = cpu
             cpu <- cpu.Step()
+            if mmu.InterruptAcks <> preEventsAcks then
+                //This step entered an interrupt instead of running the instruction at preCpu.PC.
+                let i = intDepartNext
+                intDepartPc.[i] <- uint32 preCpu.PC &&& 0xFFFFFFu
+                intDepartSp.[i] <- preCpu.A7
+                intDepartLive.[i] <- true
+                intDepartNext <- (i + 1) &&& 3
             if TraceEvents.enabled then
                 TraceEvents.record stepCount preEventsPc preEventsOpcode cpu.PC (mmu.InterruptAcks <> preEventsAcks)
             match pexecStack with
@@ -681,10 +702,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///Mechanics: push a sentinel return address ($00DEAD00 - even, never a real code target) onto
     ///the live stack, set PC = target, single-step until PC == sentinel (the routine's matching
     ///RTS pops it), or `maxSteps` elapse, or a step throws. The sentinel is never fetched - the
-    ///loop exits the instant PC reaches it. Interrupts are NOT masked: a Timer/VBL ISR that fires
-    ///mid-call runs faithfully and its writes appear in the memory delta, so keep calls short and
-    ///prefer comparing memory at or above the entry SP (persistent state, not transient stack
-    ///scratch below it). The 4-byte sentinel slot itself is excluded from the delta.
+    ///loop exits the instant PC reaches it. The entry SR has the interrupt mask raised to 7, so no
+    ///Timer/VBL ISR runs mid-call and scribbles into the delta; a routine that waits on a flag an
+    ///ISR clears (a sound or VBL wait) therefore spins until the loop detector or the step cap
+    ///stops it (THREW / STEP CAP). Prefer comparing memory at or above the entry SP (persistent
+    ///state, not transient stack scratch below it). The 4-byte sentinel slot itself is excluded
+    ///from the delta. Disk-A sector writes are rolled back with RAM (MMU `diskLog`).
     ///`regPresets` are (name, value) pairs applied to the synthesized entry state - "D0".."D7",
     ///"A0".."A6", "PC". This is how a differential-test corpus varies "the relevant registers +
     ///the table/record fields the routine reads": many PM routines take a base pointer in an
@@ -837,6 +860,22 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         w.Write(snap.MouseAbsX); w.Write(snap.MouseAbsY); w.Write(snap.MouseAbsMaxX); w.Write(snap.MouseAbsMaxY)
         w.Write(snap.MouseLeftDown); w.Write(snap.MouseRightDown); w.Write(snap.MousePrevReadButtons)
         w.Write(snap.JoyState0); w.Write(snap.JoyState1)
+        //Optional trailing section, after the v11 block and without a version bump: "DSKA", u8 1,
+        //u64 FNV-1a of the disk-A image as mounted, i32 count, then per sector i32 byte offset +
+        //512 bytes (its current contents). Written only when the run wrote to the disk, so every
+        //other snapshot stays byte-identical to the plain v11 layout. An older build stops reading
+        //before it (LoadState never checks for end of file) and resumes with the unwritten image.
+        match mmu.DiskWrites() with
+        | Some (baseHash, sectors) ->
+            w.Write("DSKA".ToCharArray())
+            w.Write(1uy)
+            w.Write(baseHash)
+            w.Write(sectors.Length)
+            for (o, d) in sectors do
+                w.Write(o)
+                w.Write(d)
+            Diag.result "--- state includes %d written disk-A sector(s) ---" sectors.Length
+        | None -> ()
         Diag.result "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
@@ -964,7 +1003,17 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
               MouseAbsMaxX = lat.MouseAbsMaxX; MouseAbsMaxY = lat.MouseAbsMaxY
               MouseLeftDown = lat.MouseLeftDown; MouseRightDown = lat.MouseRightDown
               MousePrevReadButtons = lat.MousePrevReadButtons
-              JoyState0 = lat.JoyState0; JoyState1 = lat.JoyState1 }
+              JoyState0 = lat.JoyState0; JoyState1 = lat.JoyState1
+              DiskLogLength = mmu.DiskLogLength }
+        //Optional "DSKA" section (see SaveState): the disk-A sectors the saved run had written.
+        if fs.Length - fs.Position >= 4L && String(r.ReadChars(4)) = "DSKA" then
+            let _sectionVersion = r.ReadByte()
+            let baseHash = r.ReadUInt64()
+            let n = r.ReadInt32()
+            let sectors = [| for _ in 1 .. n -> let o = r.ReadInt32() in o, r.ReadBytes(512) |]
+            match mmu.ApplyDiskWrites baseHash sectors with
+            | Ok () -> Diag.result "--- %d written disk-A sector(s) restored from the snapshot ---" n
+            | Error e -> eprintfn "WARNING: %s; resuming with the image as mounted" e
         resetLoopDetector()
         Diag.result "--- state loaded from %s: PC=$%08x ---" path cpu.PC
 
@@ -978,7 +1027,8 @@ CPU Registers
     member x.Cpu = cpu
 
     member x.DumpMemory (addr: uint32) (length: int) =
-        String.concat " " [ for i in 0 .. length - 1 -> sprintf "%02x" (cpu.MMU.ReadByte (addr + uint32 i)) ]
+        //PeekBytes: no device side effects on the I/O page (MMU.PeekBytes).
+        cpu.MMU.PeekBytes addr length |> Array.map (sprintf "%02x") |> String.concat " "
 
     ///Steps until PC reaches `target` or `maxSteps` real steps have run, whichever first - lets
     ///you get straight to a known address of interest (e.g. "right before the instruction I'm
@@ -986,12 +1036,16 @@ CPU Registers
     ///hardcoded entry step count and rebuilding just to inspect one spot (the previous workflow).
     ///maxSteps is a safety cap, not a target - if PC never reaches `target` this stops with a
     ///clear message rather than spinning indefinitely.
+    ///PCs and targets compare as 24 bits, the 68000 address bus: a PC with junk upper bits (TOS
+    ///1.00's exception vectors carry the vector number in the top byte, so its handlers run at
+    ///$04fc0a1a and the like) still matches `bp fc0a1a`.
     member x.Until (target: uint32) (maxSteps: int) =
+        let target = target &&& 0xFFFFFFu
         let mutable stepsRun = 0
-        while stepsRun < maxSteps && uint32 cpu.PC <> target do
+        while stepsRun < maxSteps && (uint32 cpu.PC &&& 0xFFFFFFu) <> target do
             x.Step()
             stepsRun <- stepsRun + 1
-        if uint32 cpu.PC = target then
+        if (uint32 cpu.PC &&& 0xFFFFFFu) = target then
             Diag.result "--- reached PC=$%08x after %d step(s) ---" cpu.PC stepsRun
         else
             Diag.result "--- gave up after %d step(s), PC=$%08x never reached (still at $%08x) ---" stepsRun target cpu.PC
@@ -1004,13 +1058,39 @@ CPU Registers
     ///registers on exit either way (hit or step-cap), matching a real debugger's break/stop
     ///dance - the motivating case (the $1ae40 FDC/DMA busy-wait hang) needs the registers even
     ///when the cap is hit, to see what state it's stuck in.
+    ///One step for bp/bpc/hits. Returns the post-step PC (24 bits) when the step is a new arrival
+    ///at an instruction start there, and $FFFFFFFF otherwise. Not an arrival: a step that left the
+    ///CPU halted or STOPped in place, a step that entered an interrupt (the instruction at the old
+    ///PC did not run; the handler's first PC is an arrival), and an RTE back to the PC where one
+    ///of the recorded interrupts (intDepartPc) was taken with the same A7, since that instruction
+    ///was counted when the PC first reached it and has still not run. So an interrupt taken at a
+    ///counted address no longer counts it twice.
+    member private x.CensusStep() : uint32 =
+        let pre = cpu
+        let acks0 = mmu.InterruptAcks
+        x.Step()
+        let entered = mmu.InterruptAcks <> acks0
+        if pre.Halted || (pre.Stopped && not entered) then 0xFFFFFFFFu
+        elif entered then uint32 cpu.PC &&& 0xFFFFFFu
+        else
+            let pc = uint32 cpu.PC &&& 0xFFFFFFu
+            let mutable isReturn = false
+            if Array.contains true intDepartLive
+               && (try int (uint16 (mmu.ReadWord (uint32 pre.PC))) = 0x4E73 with _ -> false) then
+                for i in 0 .. 3 do
+                    if not isReturn && intDepartLive.[i] && intDepartPc.[i] = pc && intDepartSp.[i] = cpu.A7 then
+                        intDepartLive.[i] <- false
+                        isReturn <- true
+            if isReturn then 0xFFFFFFFFu else pc
+
     member x.RunToBreakpoint (target: uint32) (hitCount: int) (maxSteps: int) =
+        let target = target &&& 0xFFFFFFu
         let mutable stepsRun = 0
         let mutable hits = 0
         while stepsRun < maxSteps && hits < hitCount do
-            x.Step()
+            let arrived = x.CensusStep()
             stepsRun <- stepsRun + 1
-            if uint32 cpu.PC = target then hits <- hits + 1
+            if arrived = target then hits <- hits + 1
         if hits = hitCount then
             Diag.result "--- breakpoint $%08x hit (%d/%d) after %d step(s) ---" cpu.PC hits hitCount stepsRun
         else
@@ -1023,16 +1103,15 @@ CPU Registers
     ///routines ran at all in this stretch" in one pass instead of one `bp` run per address.
     member x.Hits (steps: int) (targets: uint32[]) =
         let counts = Collections.Generic.Dictionary<uint32, int * int * int>()
-        for t in targets do counts.[t] <- (0, -1, -1)
+        for t in targets do counts.[t &&& 0xFFFFFFu] <- (0, -1, -1)
         for i in 1 .. steps do
-            x.Step()
-            let pc = uint32 cpu.PC
+            let pc = x.CensusStep()
             match counts.TryGetValue pc with
             | true, (n, first, _) -> counts.[pc] <- (n + 1, (if first < 0 then i else first), i)
             | _ -> ()
         Diag.result "--- hits over %d step(s), now PC=$%08x ---" steps cpu.PC
         for t in targets do
-            let n, first, last = counts.[t]
+            let n, first, last = counts.[t &&& 0xFFFFFFu]
             Diag.result "  $%06x %10d  first %d  last %d" t n first last
 
     ///A bt-style caller readout at a breakpoint. Level 0 is always the plain JSR/BSR return
@@ -1180,7 +1259,12 @@ module SelfTest =
                 A7 = (if supervisor then ini.Ssp else ini.Usp)
                 USP = ini.Usp; SSP = ini.Ssp
                 PC = ini.Pc; CCR = int16 ini.Sr }
+        let illegal0 = IllegalEncodings.taken
         match (try Choice1Of2 (cpu0.Step()) with e -> Choice2Of2 e) with
+        | Choice1Of2 _ when IllegalEncodings.taken <> illegal0 ->
+            // Step took vector 4 for an encoding the decoders do not handle (IllegalEncoding):
+            // the same class as a throw, so it stays in the `unimpl` lane, not `wrong`/`frame`.
+            Fail (Unimplemented, sprintf "Cpu.Step took vector 4 (undecoded): %s" IllegalEncodings.lastMessage)
         | Choice2Of2 e ->
             // A raised exception here is the emulator refusing to decode this opcode/EA-mode
             // combination (ROM-driven scope - many modes simply aren't implemented yet), not a
@@ -1262,6 +1346,8 @@ module SelfTest =
     /// `pathArg` = a directory of `*.json` / `*.json.gz` vector files, or a single such file.
     /// `filter` (may be "") keeps only files whose name contains it, case-insensitively.
     let run (pathArg: string) (filter: string) (maxReport: int) : int =
+        // runCase reports undecoded encodings itself (the `unimpl` lane), so no ILLEGAL: lines.
+        IllegalEncodings.report <- false
         let keep (name: string) =
             filter = "" || name.ToLowerInvariant().Contains(filter.ToLowerInvariant())
         let files =
@@ -1301,16 +1387,44 @@ module SelfTest =
 
 module Main =
 
+    ///A REPL line the loop cannot run: unknown command, wrong argument count, or a bad `mouse`/
+    ///`callcap` operand. Carries the reason; runRepl reports it with the line number and exits 1.
+    exception ReplError of string
+
+    ///One usage line per command, for the wrong-argument-count error. A name missing here is
+    ///reported as an unknown command.
+    let private replUsage =
+        dict [ "help", "help"; "h", "h"; "step", "step [n]"; "s", "s [n]"; "peek", "peek <n>"; "p", "p <n>"
+               "detcheck", "detcheck <n>"; "callcap", "callcap <hexaddr> [maxSteps] [out|-] [Rn=hexval ...]"
+               "until", "until <hexaddr> [maxSteps]"; "u", "u <hexaddr> [maxSteps]"
+               "bp", "bp <hexaddr> [maxSteps]"; "bpc", "bpc <hexaddr> <n> [maxSteps]"
+               "hits", "hits <steps> <hexaddr>..."; "bt", "bt [depth]"; "registers", "registers"; "r", "r"
+               "m", "m <hexaddr> <len>"; "w", "w <hexaddr> <hexvalue>"; "snap", "snap <path>"; "disk", "disk <path>"
+               "wprot", "wprot on|off"; "watch", "watch <hexaddr> [len]"; "unwatch", "unwatch"
+               "kbd", "kbd <hexbyte>..."; "key", "key <hexbyte>..."
+               "mouse", "mouse move <dx> <dy> | mouse down|up l|r"; "quit", "quit"; "q", "q" ]
+
     ///Interactive REPL command loop - factored out so both the plain entry (`repl`, Reset()+N
     ///steps) and the snapshot-resuming entry (`resume <path> repl`, LoadState() instead) can share
-    ///it instead of duplicating the command dispatch.
-    let runRepl (st: AtartSt) =
+    ///it instead of duplicating the command dispatch. A blank line or a `#` comment line is
+    ///skipped; EOF or `q` returns 0. Any other line that does not run (unknown command, wrong
+    ///argument count, an operand that does not parse) prints `REPL error: <line no>: <line>:
+    ///<reason>` to stderr and returns 1, so a typo stops a piped drive script instead of
+    ///truncating it silently.
+    let runRepl (st: AtartSt) : int =
+        let lineNo = ref 0
+        let lastLine = ref ""
         let rec loop() =
             let input = Console.ReadLine()
+            if not (isNull input) then
+                lineNo.Value <- lineNo.Value + 1
+                lastLine.Value <- input
             let parts =
                 if isNull input then [||]
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
+            | _ when isNull input -> ()
+            | _ when String.IsNullOrWhiteSpace input || input.TrimStart().StartsWith "#" -> loop()
             | [| "help" |] | [| "h" |] ->
                 Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8), hits <steps> <hexaddr>... = run steps and count PC hits (first/last step) per address - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, wprot on|off = drive A's write-protect tab (not in a snapshot), watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
@@ -1344,7 +1458,7 @@ module Main =
                     presetToks |> List.choose (fun t ->
                         match t.Split('=') with
                         | [| n; v |] -> Some (n, Convert.ToUInt32(v, 16))
-                        | _ -> Diag.result "--- callcap: bad preset '%s' (want Rn=hexval) ---" t; None)
+                        | _ -> raise (ReplError (sprintf "bad preset '%s' (want Rn=hexval)" t)))
                 st.CallCapture(addr, maxSteps, outPath, presets)
                 loop()
             | [| "until"; addr |] | [| "u"; addr |] ->
@@ -1439,13 +1553,27 @@ module Main =
                     st.Cpu.MMU.EnqueueMouseButton isLeft (ud = "down")
                     Diag.result "mouse %s %s (buttons-as-keys=%b)" ud (if isLeft then "left" else "right") st.Cpu.MMU.MouseButtonsReportAsKeys
                 | _ ->
-                    Diag.result "usage: mouse move <dx> <dy> | mouse down|up l|r"
+                    raise (ReplError ("wrong arguments, usage: " + replUsage.["mouse"]))
                 loop()
             | [| "quit" |] | [| "q" |] ->
                 ()
             | _ ->
-                ()
-        loop()
+                match replUsage.TryGetValue parts.[0] with
+                | true, usage -> raise (ReplError ("wrong arguments, usage: " + usage))
+                | _ -> raise (ReplError (sprintf "unknown command '%s'" parts.[0]))
+        //The handler sits outside the recursion so `loop` keeps its tail calls. Format/Overflow
+        //exceptions here can only come from the arms' operand parsing (`int`, Convert.ToUInt32
+        //etc.): the emulator core parses no text, so they are reported as REPL errors too.
+        try
+            loop()
+            0
+        with
+        | ReplError reason ->
+            eprintfn "REPL error: %d: %s: %s" lineNo.Value lastLine.Value reason
+            1
+        | :? FormatException | :? OverflowException as e ->
+            eprintfn "REPL error: %d: %s: bad operand (%s)" lineNo.Value lastLine.Value e.Message
+            1
 
     ///Pulls `--disk-a <path>` / `--disk-a=<path>` out of the raw argv, returning the value (last
     ///wins) and argv with those tokens removed so the positional subcommand matching below is
@@ -1615,7 +1743,6 @@ module Main =
             //the full replay cost first.
             st.LoadState(path)
             runRepl st
-            0
         | [| "teartest"; snapPath; framesArg |] ->
             //Headless reproduction of the live window's mouse-cursor path, for the cursor-tearing
             //investigation (see atari-st-emulator-next-instructions). Mirrors Video.run's frame
@@ -1682,5 +1809,4 @@ module Main =
                 | _ -> 20000
             (try for _ in 1..entrySteps do st.Step() with _ -> ())
             runRepl st
-            0
 #endif

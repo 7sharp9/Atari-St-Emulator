@@ -37,7 +37,10 @@ type MmuSnapshot =
       IkbdMouseMode: byte; IkbdMouseButtonAction: byte; IkbdJoystickReports: bool
       MouseAbsX: int; MouseAbsY: int; MouseAbsMaxX: int; MouseAbsMaxY: int
       MouseLeftDown: bool; MouseRightDown: bool; MousePrevReadButtons: int
-      JoyState0: byte; JoyState1: byte }
+      JoyState0: byte; JoyState1: byte
+      ///Length of the disk-A write journal (`diskLog`) at the snapshot: RestoreRam undoes the
+      ///sector writes after it. The image itself is not copied.
+      DiskLogLength: int }
 
 ///Real 68000 hardware cannot perform a word/long-sized bus access to an odd address - it traps
 ///to the Address Error vector (vector 3) instead of completing the access. Raised by
@@ -257,11 +260,30 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///MMU has no other need to know the PC, so this stays a plain debug aid.
     let mutable watchPc = 0
     let mutable watchStep = 0UL
-    let checkWatch (address: uint32) (label: string) (value: uint32) =
+    ///Fires when any byte of the write [address, address+size-1] lies in [lo,hi], so a word
+    ///write at $1000 reports a watch on the odd byte $1001 (a long is two WriteWord calls, each
+    ///tested). Unarmed, it costs the one `watchRange` test it always did.
+    let checkWatch (address: uint32) (size: uint32) (label: string) (value: uint32) =
         match watchRange with
-        | Some(lo, hi) when address >= lo && address <= hi ->
+        | Some(lo, hi) when address <= hi && address + size - 1u >= lo ->
             eprintfn "WATCH: step=%d pc=$%06x %s $%08x <- $%x" watchStep watchPc label address value
         | _ -> ()
+    ///FDC DMA's RAM writes (tryReadSector) bypass WriteByte/WriteWord, so they are tested here,
+    ///once per sector: one `WATCH: ... DMA` line naming the sector's range and the bytes it left
+    ///in the watched part of it (at most 16 shown).
+    let checkWatchDma (start: uint32) (len: int) (what: string) (byteAt: uint32 -> byte) =
+        match watchRange with
+        | Some(lo, hi) ->
+            let first = start &&& 0xFFFFFFu
+            let last = first + uint32 len - 1u
+            if first <= hi && last >= lo then
+                let a0 = max first lo
+                let a1 = min last hi
+                let shown = min (int (a1 - a0) + 1) 16
+                let bytes = String.concat " " [ for i in 0 .. shown - 1 -> sprintf "%02x" (byteAt (a0 + uint32 i)) ]
+                eprintfn "WATCH: step=%d pc=$%06x DMA %s [$%06x,$%06x] covers $%06x..$%06x: %s%s"
+                    watchStep watchPc what first last a0 a1 bytes (if int (a1 - a0) + 1 > shown then " ..." else "")
+        | None -> ()
 
     let store (arr: byte[]) (i: int) (v: byte) =
         if arr.[i] <> v then
@@ -316,9 +338,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///live SDL window, the REPL `kbd` command) always injected one hardcoded packet format. This
     ///models only the state the target programs set: the active mouse report mode, whether the two
     ///mouse buttons are reported as keycodes $74/$75 (command $07 bit 2), and whether joystick
-    ///auto-reporting is on. Nothing here is read back by the CPU (no new $FFFC00/$FFFC02 read
-    ///values), so it is deliberately NOT in MmuSnapshot and cannot perturb the diskless boot
-    ///snapshot - it only changes what the mouse/joystick input synthesis produces. Command
+    ///auto-reporting is on. Nothing here is read back by the CPU directly (no new $FFFC00/$FFFC02
+    ///read values); it changes what the mouse/joystick input synthesis produces, so it is in
+    ///MmuSnapshot (format v9) and a restore replays the same reports. A diskless TOS boot sends
+    ///only $08, so the golden boot snapshot is unaffected. Command
     ///lengths are transcribed from Hatari src/ikbd.c KeyboardCommands[].
     let mutable ikbdMouseMode = 0uy            // 0 = relative (power-on default), 1 = absolute, 2 = keycode, 3 = disabled
     let mutable ikbdMouseButtonAction = 0uy    // $07 param: bit2 set => buttons report as keys $74 (left) / $75 (right)
@@ -334,8 +357,8 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///button-up on the first interrogation", matching Hatari ikbd.c ABS_PREVBUTTONS). joyState0/1
     ///hold the last joystick-0/1 state byte seen, for the $16 "interrogate joystick" reply. All of
     ///this is populated only by injected input, never by a diskless TOS boot (which sends $08 and
-    ///never interrogates), so like the rest of the IKBD state it is deliberately NOT in MmuSnapshot
-    ///and cannot perturb the 30M diskless boot snapshot.
+    ///never interrogates). Like the rest of the IKBD reporting state it is in MmuSnapshot (v9).
+    ///The diskless boot leaves it at its initial values, so the 30M boot snapshot is unaffected.
     let mutable mouseAbsX = 0
     let mutable mouseAbsY = 0
     let mutable mouseAbsMaxX = 320   // ABS_MAX_X_ONRESET (Hatari ikbd.c); $09 absolute-mouse-mode overrides
@@ -509,10 +532,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///scanline by HblTick - the HBLANK clock source the coarse read-driven `tbdr`/`tbdrReadCount`
     ///pair (kept for the ROM's MFP-presence check) can't model. 0 = "not seeded yet"; the first
     ///HblTick after Timer B is armed loads it from `tbdrReload`, and each underflow reloads and
-    ///raises the Timer B interrupt. In MmuSnapshot as of the 91st pass - it stays 0 on the diskless
-    ///path (TOS never arms event-count Timer B) so the golden regression snapshot is unchanged, but
-    ///a game that DOES arm it needs the counter phase preserved across a Preview/detcheck restore
-    ///or the same N steps replay differently.
+    ///raises the Timer B interrupt. In MmuSnapshot: it stays 0 on the diskless path (TOS never arms
+    ///event-count Timer B), but a game that does arm it needs the counter phase preserved across a
+    ///Preview/detcheck restore or the same N steps replay differently.
     let mutable tbCounter = 0
 
     ///WD1772 FDC + DMA mode-select emulation. Real hardware accesses all 4 FDC registers (status-
@@ -575,8 +597,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///    register, not the command register - `$fc0518` set `$8606` bit 4 first), so that Restore's
     ///    slow bucket is what times the self-test out every iteration. Verified: `$fc04cc` (the
     ///    boot-sector re-exec) is reached 0 times, the loop exits at `$fc04d4`.
-    ///Not in MmuSnapshot: a settled machine read its status register (INTRQ cleared) long ago, like
-    ///Timer B's tbCounter.
+    ///Both are in MmuSnapshot (v9), so a restore mid-command keeps the INTRQ countdown's phase.
     let mutable fdcIrq = false            //true = INTRQ asserted = GPIP bit 5 reads 0
     let mutable fdcIrqPending = 0         //steps until INTRQ asserts; 0 = not counting
     //The slow bucket must exceed the self-test's per-poll deadline (`_hz_200`+10 ticks, ~30000
@@ -603,7 +624,8 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///and GEMDOS write the count here (verified against a live Hatari `--trace fdc` run - see
     ///[[atari-st-emulator-reversing-goal]]) before every Read/Write Sector command, then the WD1772
     ///transfers that many consecutive sectors when the command's multi-record (`m`) bit is set.
-    ///Not in MmuSnapshot: it is re-written before every command, so a resumed snapshot re-derives it.
+    ///In MmuSnapshot (v9) with `dmaScSelected`, so a restore between the count write and the command
+    ///keeps the count.
     ///`dmaScSelected` tracks the last $FF8606 bit-4 state so the next $FF8604 write is routed right.
     let mutable dmaSectorCount = 0uy
     let mutable dmaScSelected = false
@@ -619,9 +641,23 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable diskASides = 1
     ///The write-protect tab of the disk in drive A (default off) - see SetWriteProtectA. With it
     ///on and a disk in A, Write Sector and Write Track move no data and end with WPRT (status bit
-    ///6) and INTRQ, and a Type I command reports WPRT, as Hatari's fdc.c does. External state like
-    ///diskA: not part of MmuSnapshot.
+    ///6) and INTRQ, and a Type I command reports WPRT, as Hatari's fdc.c does. External state, like
+    ///which image is mounted: not in MmuSnapshot or a .snap file (REPL `wprot` sets it).
     let mutable diskAWriteProtected = false
+
+    ///Undo journal of the sector writes to `diskA` since it was mounted: (byte offset, the 512
+    ///bytes it held before the write). Write Sector and Write Track append to it; LoadDiskA clears
+    ///it. `MmuSnapshot.DiskLogLength` records its length, so RestoreRam (callcap, Preview, detcheck)
+    ///rolls back the disk writes made after the snapshot along with RAM. SaveState writes the
+    ///sectors it names as an optional trailing `DSKA` section and LoadState re-applies them onto
+    ///the mounted image (Program.fs SaveState/LoadState).
+    let diskLog = ResizeArray<struct (int * byte[])>()
+    let logDiskSector (bytes: byte[]) (offset: int) = diskLog.Add(struct (offset, Array.sub bytes offset 512))
+    ///FNV-1a 64 over an image.
+    let fnv64 (b: byte[]) =
+        let mutable h = 14695981039346656037UL
+        for x in b do h <- (h ^^^ uint64 x) * 1099511628211UL
+        h
 
     ///Real hardware resets this to 0 on cold boot (stMemory.c: "0xFF8001 is set to 0 on cold reset
     ///but keep its value on warm reset") - this emulator only ever cold-boots, so 0 is always the
@@ -770,6 +806,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                             match translateRamAddress (dmaAddr + uint32 i) with
                             | Some idx -> store ram (int idx) bytes.[offset + i]
                             | None -> ()
+                        if watchRange.IsSome then
+                            checkWatchDma dmaAddr 512 (sprintf "read sector t%d s%d" (int track) s)
+                                (fun a -> match translateRamAddress a with Some idx -> ram.[int idx] | None -> 0uy)
                         true
         fdcLog (sprintf "read  drive=%d track=%d side=%d sector=%d dma=$%06x -> %s"
                     fdcDrive (int track) fdcSide (int sector) dmaAddr (if r then "OK" else "no data"))
@@ -804,6 +843,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     let offset = logicalSector * 512
                     if offset < 0 || offset + 512 > bytes.Length then false
                     else
+                        logDiskSector bytes offset
                         for i in 0 .. 511 do
                             match translateRamAddress (dmaAddr + uint32 i) with
                             | Some idx -> bytes.[offset + i] <- ram.[int idx]
@@ -853,6 +893,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                         let offset = logical * 512
                         if dam >= 0 && dam + size < streamLen && size = 512 && idTrack = track
                            && sector >= 1 && sector <= diskASectorsPerTrack && offset + 512 <= bytes.Length then
+                            logDiskSector bytes offset
                             for k in 0 .. 511 do bytes.[offset + k] <- at (dam + 1 + k)
                             written <- written + 1
                         else
@@ -1067,7 +1108,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         //Un-masked EA for the odd check and the group-0 fault address - see ReadWord.
         if addr % 2u <> 0u then raise (AddressError (addr, true))
         let address = addr &&& maxMemory //clip to the 24-bit address bus
-        checkWatch address "WriteWord" (uint32 (uint16 input))
+        checkWatch address 2u "WriteWord" (uint32 (uint16 input))
         if flatBus then
             flatMem.[address] <- byte (int input >>> 8)
             flatMem.[(address + 1u) &&& maxMemory] <- byte input
@@ -1120,7 +1161,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
 
     member x.WriteByte (addr: uint32) (input: byte) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
-        checkWatch address "WriteByte" (uint32 input)
+        checkWatch address 1u "WriteByte" (uint32 input)
         if flatBus then flatMem.[address] <- input else
         if ramDirect address then store ram (int address) input else
         match address with
@@ -1446,12 +1487,12 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///above. Reads the image's own boot-sector BPB for its real sectors-per-track (offset 24-25,
     ///little-endian - Hatari's src/floppy.c Floppy_FindDiskDetails and src/createBlankImage.c
     ///both use this exact offset), falling back to the standard 9 if the image is too short or
-    ///the field looks invalid, rather than trusting arbitrary image content. Deliberately NOT
-    ///part of MmuSnapshot/SaveState - like `rom` itself, which disk is in a drive is external,
-    ///physical-world state, not something a state save should capture or a state load should
-    ///disturb.
+    ///the field looks invalid, rather than trusting arbitrary image content. Which image is in the
+    ///drive is external state, like `rom`: a snapshot does not name it (pass `--disk-a` on resume).
+    ///What the run wrote to it is in the snapshot: see `diskLog`. Mounting clears the journal.
     member x.LoadDiskA (data: byte[] option) =
         diskA <- data
+        diskLog.Clear()
         //Geometry: Hatari's Floppy_FindDiskDetails / Floppy_DoubleCheckFormat (src/floppy.c). The
         //BPB (sectors per track at 24, heads at 26) is trusted only when its total-sector count at
         //19 matches the image size and its fields are in range; otherwise the geometry is guessed
@@ -1483,6 +1524,38 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Sets the write-protect tab of the disk in drive A - see `diskAWriteProtected`. It stays set
     ///across a `disk` hot-swap, like a drive whose next floppy has the same tab.
     member x.SetWriteProtectA (on: bool) = diskAWriteProtected <- on
+
+    ///See `diskLog`. The journal's current length (an MmuSnapshot built outside SnapshotRam, as
+    ///LoadState's, passes it to make the disk roll-back a no-op).
+    member x.DiskLogLength = diskLog.Count
+    ///For SaveState's `DSKA` section: FNV-1a 64 of the image as mounted (current image with the
+    ///journal undone on a copy) and each written sector's offset and current 512 bytes, in
+    ///ascending offset order. None when no disk is mounted or nothing was written.
+    member x.DiskWrites() : (uint64 * (int * byte[])[]) option =
+        match diskA with
+        | Some bytes when diskLog.Count > 0 ->
+            let orig = Array.copy bytes
+            for i in diskLog.Count - 1 .. -1 .. 0 do
+                let struct (off, old) = diskLog.[i]
+                Array.blit old 0 orig off 512
+            let offs = diskLog |> Seq.map (fun (struct (o, _)) -> o) |> Seq.distinct |> Seq.sort |> Seq.toArray
+            Some (fnv64 orig, offs |> Array.map (fun o -> o, Array.sub bytes o 512))
+        | _ -> None
+    ///For LoadState: re-applies a `DSKA` section's sectors onto the mounted image, through the
+    ///journal (so a later roll-back still works), when the mounted image hashes to `baseHash`.
+    ///Returns an error line otherwise and leaves the image unchanged.
+    member x.ApplyDiskWrites (baseHash: uint64) (sectors: (int * byte[])[]) : Result<unit, string> =
+        match diskA with
+        | None -> Error (sprintf "%d written disk sector(s) in the snapshot, but no disk is mounted (--disk-a)" sectors.Length)
+        | Some bytes when fnv64 bytes <> baseHash ->
+            Error (sprintf "%d written disk sector(s) in the snapshot, but the mounted image is not the one they were written to (FNV $%016x, snapshot wants $%016x)" sectors.Length (fnv64 bytes) baseHash)
+        | Some bytes when sectors |> Array.exists (fun (o, d) -> o < 0 || o + 512 > bytes.Length || d.Length <> 512) ->
+            Error "the snapshot's disk section does not fit the mounted image"
+        | Some bytes ->
+            for (o, d) in sectors do
+                logDiskSector bytes o
+                Array.blit d 0 bytes o 512
+            Ok ()
 
     ///Selects the monitor type reported through MFP GPIP bit 7 - see `colourMonitor`. `true` =
     ///colour (the default and Hatari's default), `false` = monochrome. Like LoadDiskA this is
@@ -1760,7 +1833,25 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
           MouseAbsMaxX = mouseAbsMaxX; MouseAbsMaxY = mouseAbsMaxY
           MouseLeftDown = mouseLeftDown; MouseRightDown = mouseRightDown
           MousePrevReadButtons = mousePrevReadButtons
-          JoyState0 = joyState0; JoyState1 = joyState1 }
+          JoyState0 = joyState0; JoyState1 = joyState1
+          DiskLogLength = diskLog.Count }
+
+    ///Debugger read (REPL `m`): `len` bytes from `addr` with no device side effects. RAM and ROM
+    ///reads have none, so they go through ReadByte as before. A range that touches the I/O page
+    ///($ff8000-$ffffff) is read inside a SnapshotRam/RestoreRam pair (the restore `detcheck`
+    ///proves an identity operation), plus the `mutations` counter, so reading the keyboard ACIA
+    ///data register no longer pops its FIFO, an FDC status read no longer clears INTRQ, and an
+    ///MFP timer-data read no longer advances its read counter. A bus error propagates as before.
+    member x.PeekBytes (addr: uint32) (len: int) : byte[] =
+        let touchesIo = Seq.exists (fun i -> ((addr + uint32 i) &&& maxMemory) >= 0xFF8000u) (seq { 0 .. len - 1 })
+        if not touchesIo then Array.init len (fun i -> x.ReadByte (addr + uint32 i))
+        else
+            let saved = x.SnapshotRam()
+            let mut0 = mutations
+            try Array.init len (fun i -> x.ReadByte (addr + uint32 i))
+            finally
+                x.RestoreRam saved
+                mutations <- mut0
 
     member x.RestoreRam(snapshot: MmuSnapshot) =
         Array.blit snapshot.Ram 0 ram 0 snapshot.Ram.Length
@@ -1820,6 +1911,15 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         mousePrevReadButtons <- snapshot.MousePrevReadButtons
         joyState0 <- snapshot.JoyState0
         joyState1 <- snapshot.JoyState1
+        //Undo the disk-A sector writes made after the snapshot, newest first. A journal shorter
+        //than the snapshot's (the image was swapped since) cannot be rolled back and is left alone.
+        match diskA with
+        | Some bytes when snapshot.DiskLogLength <= diskLog.Count ->
+            while diskLog.Count > snapshot.DiskLogLength do
+                let struct (off, old) = diskLog.[diskLog.Count - 1]
+                Array.blit old 0 bytes off 512
+                diskLog.RemoveAt(diskLog.Count - 1)
+        | _ -> ()
         //Restoring bypasses every write path above, so none of it bumped `mutations` on the way in
         //- that's correct (a rollback isn't itself a "real" forward mutation to prove anything
         //against), but it does mean the loop detector's anchor may now describe a state from the

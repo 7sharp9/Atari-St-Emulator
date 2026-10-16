@@ -40,8 +40,8 @@ class Repl2:
         out = []
         while True:
             line = s.p.stdout.readline()
-            if not line:
-                raise EOFError('\n'.join(out[-20:]))
+            if not line:   # stderr is merged here, so out[-20:] holds the `REPL error:` line if that is why it ended
+                raise EOFError('repl closed (exit %s): %s' % (s.p.wait(timeout=10), '\n'.join(out[-20:])))
             line = line.rstrip('\r\n')
             if line.strip() == SENT:
                 break

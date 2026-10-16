@@ -14,7 +14,7 @@ Poked commands (health `w bb74 12120300`) are logged too, and tagged with a `;PO
 Poked (labelled): the start room itself (`stage_room299.repl`, a block-283 top-exit poke from room188.snap) and
 health, `w bb74 12120300`, at every segment start and whenever a tick reads health < 10.
 """
-import os, subprocess, sys
+import collections, os, subprocess, sys, threading
 
 ROOT = os.environ.get('M68000_ROOT', os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..')))
 DISK = 'scratchpad/impossamole/impossamole cr replicants - emotion cr replicants.st'
@@ -26,7 +26,11 @@ class Driver:
         env = dict(os.environ, ATARI_NOTRACE='1')
         self.p = subprocess.Popen(['dotnet', 'exec', 'bin/Debug/net8.0/M68000.dll', 'resume', snap, 'repl',
                                    '--disk-a', DISK], cwd=ROOT, env=env, text=True, bufsize=1,
-                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # stderr is drained (a `watch` can write a lot) and its tail kept for the error on EOF
+        self._errtail = collections.deque(maxlen=50)
+        self._t = threading.Thread(target=lambda: [self._errtail.append(l.rstrip()) for l in self.p.stderr], daemon=True)
+        self._t.start()
         self.repl = open(seg_repl, 'w') if seg_repl else None
         self.log = open(seg_log, 'w') if seg_log else None
         self.verbose = verbose
@@ -48,8 +52,13 @@ class Driver:
         out = []
         while True:
             l = self.p.stdout.readline()
-            if not l:
-                raise RuntimeError('repl closed')
+            if not l:   # exit code plus the stderr tail: a `REPL error:` line names the bad command
+                try:
+                    rc = self.p.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    rc = None
+                self._t.join(timeout=5)
+                raise RuntimeError('repl closed (exit %s): %s' % (rc, '\n'.join(self._errtail)))
             if l.startswith('  $00fb98'):
                 return [x.rstrip() for x in out if not x.startswith(('enqueued', '---'))]
             out.append(l)

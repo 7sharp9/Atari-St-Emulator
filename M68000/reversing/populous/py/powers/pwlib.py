@@ -5,7 +5,7 @@ get_regs(snap): registers at the snapshot (A7 = callcap entry SP).
 Poker: tracks a RAM image, emits `w` lines for changed longwords.
 load_cc(path): callcap JSON -> (outcome, {addr: new byte}).
 """
-import json, os, re, struct, subprocess, sys
+import collections, json, os, re, struct, subprocess, sys, threading
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(HERE, '..')))  # reversing/populous/py
 from popcfg import R, WORK, DLL, DISK
@@ -20,6 +20,8 @@ def repl_batch(snap, lines, timeout=3600):
     p = subprocess.run(['dotnet', 'exec', DLL, 'resume', snap, 'repl', '--disk-a', DISK],
                        input='\n'.join(list(lines) + ['q']) + '\n', capture_output=True, text=True,
                        cwd=R, env=env, timeout=timeout)
+    if p.returncode != 0:   # a REPL error (bad line) or an emulator abort: never parse a truncated drive
+        raise RuntimeError('REPL exited %d: %s' % (p.returncode, p.stderr.strip()[-2000:]))
     return p.stdout + p.stderr
 
 
@@ -59,8 +61,21 @@ class Repl2:
     def __init__(self, snap):
         env = dict(os.environ, ATARI_NOTRACE='1')
         self.p = subprocess.Popen(['dotnet', 'exec', DLL, 'resume', snap, 'repl', '--disk-a', DISK],
-                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   text=True, cwd=R, env=env, bufsize=1)
+        # stderr is drained (a `watch` can write a lot) and its tail kept for the error on EOF
+        self._errtail = collections.deque(maxlen=50)
+        self._t = threading.Thread(target=lambda: [self._errtail.append(l.rstrip()) for l in self.p.stderr], daemon=True)
+        self._t.start()
+
+    def _closed(self, out):
+        """message for a REPL that ended mid-command: exit code plus the stderr tail (a `REPL error:` line names the bad command)"""
+        try:
+            rc = self.p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            rc = None
+        self._t.join(timeout=5)
+        return 'repl closed (exit %s): %s\n%s' % (rc, '\n'.join(self._errtail), '\n'.join(out[-20:]))
 
     def cmd(self, c):
         c = c.rstrip('\n')                                 # `r` itself: do not send a second one
@@ -70,7 +85,7 @@ class Repl2:
         while need:
             line = self.p.stdout.readline()
             if not line:
-                raise EOFError('\n'.join(out[-20:]))
+                raise EOFError(self._closed(out))
             line = line.rstrip('\n'); out.append(line)
             if line.startswith('PC: '):
                 need -= 1

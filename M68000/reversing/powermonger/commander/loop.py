@@ -59,6 +59,7 @@ RAMSIZE = 0x100000
 
 class Emu:
     def __init__(self, snap, errpath):
+        self.errpath = errpath
         self.err = open(errpath, 'w')
         self.p = subprocess.Popen(['dotnet', 'exec', str(DLL), 'resume', str(snap), 'repl'], cwd=ROOT,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.err, text=True,
@@ -73,11 +74,17 @@ class Emu:
     def _line(self):
         l = self.p.stdout.readline()
         if not l:
-            raise EOFError(f'emulator exited (rc {self.p.poll()})')
+            try:
+                rc = self.p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                rc = None
+            with open(self.errpath) as f:   # the stderr tail: a `REPL error:` line names the bad command
+                tail = f.read()[-2000:]
+            raise EOFError(f'emulator exited (rc {rc}): {tail}')
         return l.rstrip('\n')
 
     def send(self, line):
-        assert line.strip(), 'an empty line ends the REPL'
+        assert line.strip(), 'an empty line gets no reply from the REPL'
         self.p.stdin.write(line + '\n')
         self.p.stdin.flush()
 

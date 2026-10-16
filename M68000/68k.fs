@@ -40,6 +40,32 @@ module Diag =
 module Trace =
     let mutable enabled = true
 
+///An opcode word, or opcode + EA combination, that this core does not decode: a genuinely
+///illegal 68000 encoding (MOVE.B to An, LEA Dn, an EXG opmode Motorola never assigned) or a legal
+///one not implemented yet. The decoders raise it through `IllegalEncodings.raisef`; `Cpu.Step`
+///catches it and takes the illegal-instruction exception (vector 4, M68000PRM Table B-1) with the
+///offending opcode's own address stacked, as real hardware does for an unassigned encoding. Line-A
+///($Axxx, vector 10) and line-F ($Fxxx, vector 11) are separate traps taken in `Step` itself.
+exception IllegalEncoding of string
+
+///Keeps vector-4 entries for undecoded encodings findable: real hardware takes the trap silently,
+///but here it can also mean a gap in this core. Every entry bumps `taken` (selftest reads it to
+///keep classing such cases as `unimpl`) and prints one `ILLEGAL:` stderr line per distinct PC
+///(survives ATARI_NOTRACE, like `watch`), capped at 64 PCs per process. Copy protections and
+///CPU probes that take vector 4 on purpose in a loop therefore print once, not per hit.
+module IllegalEncodings =
+    let mutable taken = 0L
+    let mutable lastMessage = ""
+    let mutable report = true
+    let private seen = Collections.Generic.HashSet<int>()
+    let raisef fmt = Printf.ksprintf (fun (s: string) -> raise (IllegalEncoding s)) fmt
+    let note (pc: int) (opcode: int) (msg: string) =
+        taken <- taken + 1L
+        lastMessage <- msg
+        if report && seen.Count < 64 && seen.Add pc then
+            eprintfn "ILLEGAL: pc=$%06x opcode=$%04x not decoded (%s) -> vector 4%s"
+                (pc &&& 0xFFFFFF) opcode msg (if seen.Count = 64 then " (further PCs not reported)" else "")
+
 ///Structured, machine-readable execution trace for program analysis (control-flow reconstruction,
 ///basic blocks, call graphs, coverage) - a compact binary alternative to the 221 per-instruction
 ///`printfn` disassembly sites, which are meant for a human reading a text trace, not for tooling.
@@ -1064,7 +1090,7 @@ type Cpu =
     ///    `-(An)` decrements exactly once.
     ///This is the replacement for the per-instruction hand-decoded `match eamode, eareg` ladders;
     ///migrate instruction buckets onto it one at a time (the 30M diskless boot must stay
-    ///byte-identical after each). Unknown modes still `failwithf`, same as before.
+    ///byte-identical after each). An unknown mode raises `IllegalEncoding` (vector 4 in `Step`).
     member x.ResolveEa (size: OperandSize) (mode: byte) (reg: byte) (extAddr: int) : EaResolved * int * string * (Cpu -> Cpu) =
         let readW a = x.MMU.ReadWord (uint32 a)
         let readL a = x.MMU.ReadLong (uint32 a)
@@ -1110,7 +1136,7 @@ type Cpu =
               | OperandSize.Byte -> EaImm (readW extAddr &&& 0xff), 2, (if tr then sprintf "#$%x" (readW extAddr &&& 0xff) else ""), id
               | OperandSize.Word -> EaImm (readW extAddr &&& 0xffff), 2, (if tr then sprintf "#$%x" (readW extAddr &&& 0xffff) else ""), id
               | _ -> EaImm (readL extAddr), 4, (if tr then sprintf "#$%x" (readL extAddr) else ""), id
-          | _ -> failwithf "ResolveEa: unimplemented addressing mode %d reg %d" mode reg
+          | _ -> IllegalEncodings.raisef "ResolveEa: unimplemented addressing mode %d reg %d" mode reg
         // How far into this instruction the decoder has now read - for the 68000 group-0
         // exception frame's stacked PC if the operand access that follows faults. `extAddr` is
         // the address of this EA's first extension word, so `extAddr - (PC + 2)` is whatever was
@@ -1479,7 +1505,7 @@ type Cpu =
                          if Trace.enabled then
                              printfn "line-f $%04x" instruction
                          newCpu
-                | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+                | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
             //Real 68000 trace exception (vector 9, $024): fires after an instruction completes
             //normally while T1 was set throughout it. `result.T1` (rather than unconditionally
             //firing whenever `tracing` is true) is the guard against double-tracing an instruction
@@ -1494,6 +1520,19 @@ type Cpu =
             //this project has needed to run yet.
             if tracing && result.T1 then result.EnterVector 9 result.PC else result
         with
+        | IllegalEncoding msg ->
+            //An encoding the decoders do not handle (see IllegalEncoding): take vector 4 with the
+            //opcode's own address stacked, like the explicit ILLEGAL case in DecodeBucket4. The
+            //frame push can itself fault (odd or unmapped SSP); that is a group-0 fault taken
+            //in its place, as for an interrupt entry.
+            let opcode = try int (uint16 (x.MMU.ReadWord (uint32 x.PC))) with _ -> 0
+            IllegalEncodings.note x.PC opcode msg
+            if Trace.enabled then
+                printfn "illegal encoding $%04x (%s) -> vector 4" opcode msg
+            try x.EnterVector 4 x.PC
+            with
+            | BusError (a, w) -> x.EnterGroup0OrHalt 2 a w opcode x.PC
+            | AddressError (a, w) -> x.EnterGroup0OrHalt 3 a w opcode x.PC
         | AddressError (faultAddress, isWrite) ->
             //Real 68000 hardware traps to the Address Error vector (vector 3, at address $C)
             //instead of performing a word/long access to an odd address. Found via a
@@ -1671,7 +1710,7 @@ type Cpu =
             let bitnumber = x.MMU.ReadWord (uint32 (x.PC + 2)) &&& 0xff
             x.BitOp "btst" 0b00uy bitnumber eamode eareg (x.PC + 4)
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     ///MOVE / MOVEA, every size and every addressing-mode combination, through the shared EA decoder.
     ///Source EA is resolved at `x.PC + 2`; its post-increment / pre-decrement writeback is applied
@@ -1686,7 +1725,7 @@ type Cpu =
             //MOVE.B with an address register as source or destination is an illegal encoding on the
             //68000 - keep it an explicit failure rather than silently executing it.
             if size = OperandSize.Byte && (sMode = 0b001uy || dMode = 0b001uy) then
-                failwithf "MOVE.B with An operand is illegal (instruction 0x%x)" instruction
+                IllegalEncodings.raisef "MOVE.B with An operand is illegal (instruction 0x%x)" instruction
 
             let srcLoc, srcExt, srcDesc, srcUpdate = x.ResolveEa size sMode sReg (x.PC + 2)
             let rawSource = x.ReadEa size srcLoc
@@ -1772,7 +1811,7 @@ type Cpu =
                     printfn "move.%s %s,%s" sizeChar srcDesc dstDesc
                 { written with PC = newPC; CCR = ccr }
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucket4 (instruction: int) : Cpu =
         match instruction with
@@ -1781,7 +1820,7 @@ type Cpu =
             //S/T/interrupt-mask (the CCR's upper byte) are left untouched, and no WithSR/A7
             //swap applies since this can never change the S bit.
             //An-direct is not a legal MOVE source EA (same restriction CHK enforces on its <ea>).
-            if mode = 0b001uy then failwithf "move ccr: An source is illegal (register %x)" register
+            if mode = 0b001uy then IllegalEncodings.raisef "move ccr: An source is illegal (register %x)" register
             //Bound fetch through the shared EA decoder (Dn/#imm/every memory mode, including
             //(d8,An,Xn) and both PC-relative forms, none of which the old hand-rolled ladder had) -
             //ResolveEa already carries the Api/Aipi register-update-commits-on-fault and
@@ -1807,7 +1846,7 @@ type Cpu =
             let mode = byte mode
             let register = byte register
             //An-direct is not a legal MOVE source EA (same restriction CHK enforces on its <ea>).
-            if mode = 0b001uy then failwithf "move sr: An source is illegal (register %x)" register
+            if mode = 0b001uy then IllegalEncodings.raisef "move sr: An source is illegal (register %x)" register
             let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word mode register (x.PC + 2)
             let newCcr = int16 (x.ReadEa OperandSize.Word loc &&& 0xA71F)
             //The EA's register side effect (Api/Aipi predecrement/postincrement, e.g. MOVE
@@ -1824,9 +1863,9 @@ type Cpu =
             //never called with those mode/reg pairs - guard them the same way CHK/LEA guard their
             //own illegal EAs, rather than letting WriteEa's generic EaImm failwith stand in.
             match eamode with
-            | 0b001uy -> failwithf "move sr: An destination is illegal (eareg %x)" eareg
+            | 0b001uy -> IllegalEncodings.raisef "move sr: An destination is illegal (eareg %x)" eareg
             | 0b111uy when eareg = 0b010uy || eareg = 0b011uy || eareg = 0b100uy ->
-                failwithf "move sr: illegal destination mode %x reg %x" eamode eareg
+                IllegalEncodings.raisef "move sr: illegal destination mode %x reg %x" eamode eareg
             | _ ->
                 let loc, extBytes, desc, regUpdate = x.ResolveEa OperandSize.Word eamode eareg (x.PC + 2)
                 //68000 (cpu_level 0, gencpu.c i_MVSR2): for a memory destination, a dummy read of
@@ -1855,7 +1894,7 @@ type Cpu =
             //68000 core): Z = (Dn.w == 0) always, V = C = 0 always, X untouched; N is left alone
             //when in range, else set to (Dn.w < 0). The stacked PC is the address of the next
             //instruction (CHK completes before trapping).
-            if eamode = 0b001uy then failwithf "chk.w: An source is illegal (eareg %x)" eareg
+            if eamode = 0b001uy then IllegalEncodings.raisef "chk.w: An source is illegal (eareg %x)" eareg
             let src = int (int16 (x.DataRegister dn))
             //Bound fetch through the shared EA decoder: a plain word read of any data/immediate
             //mode, with the (An)+ / -(An) writeback carried in regUpdate. Replaces the old
@@ -1888,8 +1927,8 @@ type Cpu =
                     if Trace.enabled then
                         printfn "lea %s,a%i" desc a_reg
                     { x.WithAddressRegister a_reg (int addr) with PC = x.PC + 2 + extBytes }
-                | _ -> failwithf "lea: EA did not resolve to memory (%x/%x)" eamode eareg
-            | _ -> failwithf "lea: illegal addressing mode %x/%x" eamode eareg
+                | _ -> IllegalEncodings.raisef "lea: EA did not resolve to memory (%x/%x)" eamode eareg
+            | _ -> IllegalEncodings.raisef "lea: illegal addressing mode %x/%x" eamode eareg
 
         | NEGX(size, eamode, eareg) ->
             //Negate with extend: dest = 0 - dest - X. CCR: N/V from the result, C+X set on borrow
@@ -2093,7 +2132,7 @@ type Cpu =
                 let baseAddr =
                     match loc with
                     | EaMem a -> a
-                    | other -> failwithf "movem: EA %A is not a valid list operand (mode %x)" other eamode
+                    | other -> IllegalEncodings.raisef "movem: EA %A is not a valid list operand (mode %x)" other eamode
                 match direction with
                 | 0uy -> //reglist -> control-mode memory, ascending
                     let mutable addr = baseAddr
@@ -2163,8 +2202,8 @@ type Cpu =
                     if Trace.enabled then
                         printfn "pea %s == $%x" desc addr
                     {x with PC = x.PC + 2 + extBytes; A7 = newSP}
-                | _ -> failwithf "pea: EA did not resolve to memory (%x/%x)" eamode eareg
-            | _ -> failwithf "pea: illegal addressing mode %x/%x" eamode eareg
+                | _ -> IllegalEncodings.raisef "pea: EA did not resolve to memory (%x/%x)" eamode eareg
+            | _ -> IllegalEncodings.raisef "pea: illegal addressing mode %x/%x" eamode eareg
 
         | RTS ->
             let returnAddr = x.MMU.ReadLong(uint32 x.A7)
@@ -2290,7 +2329,7 @@ type Cpu =
                     let newSP = x.A7 - 4
                     x.MMU.WriteLong (uint32 newSP) returnAddr
                     {x with PC = int target; A7 = newSP}
-            | _ -> failwithf "JSR not implemented for eamode %u reg %u" eamode eareg
+            | _ -> IllegalEncodings.raisef "JSR not implemented for eamode %u reg %u" eamode eareg
 
         | JMP(eamode, eareg) ->
             let loc, _, desc, _ = x.ResolveEa OperandSize.Long eamode eareg (x.PC + 2)
@@ -2299,7 +2338,7 @@ type Cpu =
                 if Trace.enabled then
                     printfn "jmp %s == $%x" desc jump
                 x.FetchTargetOrFault {x with PC = int jump} instruction
-            | _ -> failwithf "JMP not implemented for mode %u reg %u" eamode eareg
+            | _ -> IllegalEncodings.raisef "JMP not implemented for mode %u reg %u" eamode eareg
         | _ when instruction &&& 0xFFFF = 0x4E72 ->
             //STOP #imm: load the immediate word into SR, then halt until an interrupt of level
             //higher than the new mask (or reset). Privileged. The idle spin and the wake live in
@@ -2315,7 +2354,7 @@ type Cpu =
                 if Trace.enabled then
                     printfn "stop #$%04x" (uint16 imm)
                 { x.WithSR imm with PC = x.PC + 4; Stopped = true }
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucket5 (instruction: int) : Cpu =
         match instruction with
@@ -2353,7 +2392,7 @@ type Cpu =
                 //word already decremented. So fault on `newCpu`, not a pre-decrement copy.
                 x.FetchTargetOrFault newCpu instruction
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucket6 (instruction: int) : Cpu =
         match instruction with
@@ -2427,7 +2466,7 @@ type Cpu =
                         printfn "b%s.s $%x (%b)" (conditionName cond) newPC takeBranch
                     x.FetchTargetOrFault {x with PC = newPC} instruction
         
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucket7 (instruction: int) : Cpu =
         match instruction with
@@ -2446,7 +2485,7 @@ type Cpu =
                 printfn "reserved (bit8) - illegal"
             x.EnterVector 4 x.PC
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucket8 (instruction: int) : Cpu =
         match instruction with
@@ -2546,7 +2585,7 @@ type Cpu =
                 x.RegEaOp "or" opmode register eamode eareg true
                     (fun sz dest source -> let r = dest ||| source in r, x.LogicalCcr sz r)
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucket9 (instruction: int) : Cpu =
         match instruction with
@@ -2597,7 +2636,7 @@ type Cpu =
                         r, ccr)
 
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucketB (instruction: int) : Cpu =
         match instruction with
@@ -2689,12 +2728,12 @@ type Cpu =
                         if Trace.enabled then
                             printfn "cmpm.l (a%u)+,(a%u)+" eareg register
                         {newCpu with PC = x.PC+2; CCR = ccr}
-                    | _ -> failwithf "cmpm: opmode %x not a valid CMPM size" opmode
+                    | _ -> IllegalEncodings.raisef "cmpm: opmode %x not a valid CMPM size" opmode
                 | _ ->
                     x.RegEaOp "eor" opmode register eamode eareg true
                         (fun sz dest source -> let r = dest ^^^ source in r, x.LogicalCcr sz r)
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucketC (instruction: int) : Cpu =
         match instruction with
@@ -2721,7 +2760,7 @@ type Cpu =
                 if Trace.enabled then
                     printfn "exg D%u,A%u" rx ry
                 newCpu
-            | _ -> failwithf "exg: unknown mode %x" mode
+            | _ -> IllegalEncodings.raisef "exg: unknown mode %x" mode
 
         | MULU(register, eamode, eareg) ->
             //16x16 -> 32 unsigned multiply. Source is any data-addressing mode (Dn, memory,
@@ -2760,7 +2799,7 @@ type Cpu =
                 x.RegEaOp "and" opmode register eamode eareg true
                     (fun sz dest source -> let r = dest &&& source in r, x.LogicalCcr sz r)
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucketD (instruction: int) : Cpu =
         match instruction with
@@ -2799,7 +2838,7 @@ type Cpu =
                             | _ -> CCR.Add x.CCR dest source
                         r, ccr)
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.DecodeBucketE (instruction: int) : Cpu =
         match instruction with
@@ -3176,7 +3215,7 @@ type Cpu =
                 if Trace.enabled then
                     printfn "rol.%s #%u,D%u" sizeChar amount register
                 newCpu
-            | _ -> failwithf "shift/rotate not implemented for direction %x size %x useRegCount %x type %x" direction size useRegisterCount shiftType
+            | _ -> IllegalEncodings.raisef "shift/rotate not implemented for direction %x size %x useRegCount %x type %x" direction size useRegisterCount shiftType
 
         | MemoryShiftRotate(shiftType, direction, eamode, eareg) ->
             //Always word-size, always exactly 1 bit - the count/register-size variation only
@@ -3199,7 +3238,7 @@ type Cpu =
                 | 0b010uy, false -> (v >>> 1) ||| (xIn <<< 15), lsb, true, "roxr"              // ROXR
                 | 0b011uy, true  -> ((v <<< 1) ||| (if msb then 1 else 0)) &&& 0xffff, msb, false, "rol" // ROL
                 | 0b011uy, false -> (v >>> 1) ||| (if lsb then 0x8000 else 0), lsb, false, "ror"         // ROR
-                | _ -> failwithf "memory shift/rotate: bad type %x" shiftType
+                | _ -> IllegalEncodings.raisef "memory shift/rotate: bad type %x" shiftType
             //V is only ever set by ASL (MSB changed during the shift); for a 1-bit shift that is
             //bit15 != bit14 of the original. Every other form clears V.
             let overflow = shiftType = 0b000uy && left && (msb <> (v &&& 0x4000 <> 0))
@@ -3214,7 +3253,7 @@ type Cpu =
                 printfn "%s.w %s" mnem desc
             { after with PC = x.PC + 2 + extBytes; CCR = ccr }
 
-        | _ -> failwithf "unknown instruction:\n0x%x\n%s\n%A" instruction instruction.toBits x
+        | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
     member x.Run(cycles: int) =
         //TODO

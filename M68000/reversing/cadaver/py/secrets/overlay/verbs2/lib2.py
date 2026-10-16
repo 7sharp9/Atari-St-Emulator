@@ -60,3 +60,10 @@ def a5b(h, off, n=1, d=None):
     return after(h, d, A5 + off, n)
 def a5w(h, off, d=None): return int.from_bytes(a5b(h, off, 2, d), 'big')
 def a5l(h, off, d=None): return int.from_bytes(a5b(h, off, 4, d), 'big')
+
+
+# An engine assert ends in the fatal handler's `bra $117c4` spin (fatal_screen.py); callcap runs with interrupts
+# masked, so the loop detector stops it there: "THREW after N steps: Loop detected at PC=$000117c4". Any other THREW
+# (an undecoded opcode, a VBL wait, a loop elsewhere) is not an assert.
+ASSERT_SPIN = 'Loop detected at PC=$000117c4'
+def asserted(d): return not d['ret'] and any(ASSERT_SPIN in l for l in d['thrown'])

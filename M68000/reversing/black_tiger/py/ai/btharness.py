@@ -63,6 +63,8 @@ class Harness:
                             os.path.relpath(self.snap, ROOT), "repl", "--disk-a", DISK],
                            input=script, capture_output=True, text=True, cwd=ROOT, env=env,
                            timeout=3000)
+        if p.returncode != 0:   # a REPL error (bad line) or an emulator abort: later states' JSON would be stale or missing
+            raise RuntimeError("REPL exited %d: %s" % (p.returncode, p.stderr.strip()[-2000:]))
         res = {}
         for st in states:
             out = os.path.join(self.outdir, "o_%s.json" % st["name"])

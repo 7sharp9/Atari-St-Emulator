@@ -1,8 +1,8 @@
 # Developing the emulator
 
 Working notes for the ROM-driven debugging loop. The emulator (`M68000/`, F#)
-runs the real TOS 1.00 ROM until it hits an unimplemented instruction or a wrong
-answer, and each pass closes the next gap.
+runs the real TOS 1.00 ROM until it hits an undecoded instruction (an `ILLEGAL:` line on
+stderr, see "Undecoded encodings") or a wrong answer, and each pass closes the next gap.
 
 ## Build and run
 
@@ -32,6 +32,23 @@ for the full subcommand list.
 The raw form still works: `dotnet exec bin/Debug/net8.0/M68000.dll <argv>` where
 `<argv>` is any of the modes in `Program.fs`'s `main`. It traces every instruction to stdout
 (tens of MB a minute) unless `ATARI_NOTRACE=1` is set; the Python drivers set it.
+
+The REPL (`repl`, `resume <snap> repl`) reads one command per line from stdin; `help` lists them. A
+blank line and a whole-line `#` comment (leading spaces allowed) are skipped. EOF or `q` ends it with exit
+code 0. Any other line that does not run (an unknown command, a wrong argument count, an operand that does
+not parse, a bad `callcap` preset or `mouse`/`wprot` operand) prints `REPL error: <line no>: <line>: <reason>`
+to stderr and exits 1 without running the rest of the input, so a typo stops a piped drive script instead
+of truncating it while the caller reads the snapshot taken so far. A driver must check the exit code and
+show stderr. The shared drivers raise with the exit code and the stderr tail: `tools/pm_fsm_diff.py`,
+`tools/capture_hits.py`, and under `reversing/` cadaver's `secrets/repl.py`, impossamole's `boss/repl.py` and
+both `route_driver.py`, supersprint's `repl.py` and `ai_econ/aiutil.py`, populous's `popdrive.py`,
+`powers/pwlib.py`, `endgame/eg.py` and `ai/livelib.py`, black tiger's `btcommon.py`, `btlib.py`, `btsec.py`,
+`graphics/drive.py`, `sound/verify_psg.py` and `ai/btharness.py`, and powermonger's `ui/uilib.py` and
+`commander/loop.py`. A one-off script with its own `subprocess.run` needs the same `returncode` check. A
+persistent driver that pairs each command with a reply must still not send a blank line: it gets no reply.
+An exception from the emulator itself (an unimplemented instruction, a missing `disk` file) or from a
+negative hex operand (`ArgumentException`) still aborts the process with the .NET stack trace and a
+non-zero code.
 
 ### macOS
 
@@ -217,42 +234,54 @@ Output is one line per opcode with the failures split three ways -
 `fail (N wrong  N frame  N unimpl)` - plus up to 5 sample `FAIL` lines
 (**wrong-answers first** - those are the actionable ones), a `TOTAL` with the
 same breakdown, and a **`wrong-answer files (chase these)`** digest listing every
-file that still has a genuine flag/register bug, worst first. An empty digest
-means all that is left is the two known structural classes. Non-zero exit if
+file that still has a genuine flag/register bug, worst first. Non-zero exit if
 anything failed.
 
-The wrong-answer lane is **clean** (0 wrong across all 124 files); the residual
-fails are all `frame` (169k, the 14-byte group-0 frame) and `unimpl` (33k,
-undecoded opcodes/modes). The gate is 0 wrong and 9 skip; the pass total drifts up
-with coverage, so do not gate on it. `skip` includes two corrupt `ASL.b.json`
-vectors (opcode `$E502` expects a byte shift to rewrite all 32 bits of D2; see
-`isCorruptVector` in `Program.fs`).
+All 124 files pass: `TOTAL 1000051 pass 0 fail 9 skip`, 0 in every lane. The gate is
+0 wrong and 9 skip; the pass total moves when vectors are added or skip rules change,
+so do not gate on it. `runCase` skips by three rules: two corrupt `ASL.b.json` vectors
+(opcode `$E502` expects a byte shift to rewrite all 32 bits of D2; `isCorruptVector` in
+`Program.fs`), DIVS cases whose undefined flags the vectors disagree on
+(`isUndefinedDivByZeroFlags`), and a PC or RAM address below 8.
 
 The three failure classes:
 - **`wrong`** - a real flag / register / memory divergence. Fix these.
-- **`frame`** - the vectors expect the instruction to fault and push a frame; we
-  push the simplified 6-byte frame (not the real 14-byte group-0 one) or do not
-  fault. One fix (a real exception frame) clears the whole class.
-- **`unimpl`** - `Cpu.Step` threw: opcode / EA-mode not decoded yet (ROM-driven
-  scope). Add the mode when a real target needs it.
+- **`frame`** - the vectors expect the instruction to fault and push a frame and the
+  stacked words differ. Group-0 faults (bus and address error) push the real 14-byte
+  frame (`EnterGroup0Vector`), so this lane is empty; a new fault path that pushes the
+  wrong frame shows up here.
+- **`unimpl`** - an encoding `Cpu.Step` does not decode: it raised `IllegalEncoding` and
+  took vector 4 (see "Undecoded encodings" below), or threw. Add the mode when a target
+  needs it.
 
 What it does and does not cover:
 
-- **Modelled:** the low 1 MB of address space, as flat identity-mapped RAM
-  (`memConfig = $05`). A case whose PC or listed RAM addresses fall outside
-  `[$8, $100000)` is **skipped** - that is most absolute-addressing cases, but
-  nearly all register / immediate / near-stack cases run.
-- **Real failures it surfaces** (the `wrong` count - fix these):
-  - unimplemented opcode / addressing-mode combinations (the `unimpl` count) -
-    expected while scope is ROM-driven, add the mode when a target needs it;
-  - wrong flag / register / memory results in an implemented instruction.
-- **Known harness-side imprecision** (also shows as `fail`, lower priority):
-  - no prefetch queue, so `pc` is compared as "next instruction address" -
-    right for this interpreter, off by the real prefetch amount for a few
-    instruction classes;
-  - exception entry uses the project's simplified 6-byte frame, so
-    TRAP / CHK / privilege / address-error cases mismatch on the stacked frame
-    (the `frame` count).
+- **Modelled:** the whole 24-bit space as flat RAM (`MMU(flatTestBus = true)`), so only a
+  case whose PC or listed RAM address is below 8 is skipped. It never reaches the MMU's
+  RAM fast path or any device, so an MMU change is gated by the 30M snapshot compare and a
+  game snapshot compare, not by `selftest`.
+- **Not modelled:** the prefetch queue. `pc` is compared as "next instruction address",
+  right for this interpreter and off by the prefetch amount for a few instruction classes
+  the vectors happen not to exercise.
+
+### Undecoded encodings
+
+An opcode word or EA combination the decoders do not handle (an illegal 68000 encoding
+such as `MOVE.B An,Dn` or MOVES `$0Exx`, or a legal one not implemented yet) takes the
+illegal-instruction exception, vector 4, with the opcode's own address stacked (M68000PRM
+Table B-1; line-A `$Axxx` is vector 10 and line-F `$Fxxx` vector 11, handled in `Step`
+itself). Real hardware does the same for an unassigned encoding, so a game's CPU probe or
+copy protection runs on. Because it can also be a gap in this core, the first entry at each
+PC prints one stderr line (survives `ATARI_NOTRACE`, at most 64 PCs a process), and the
+trace shows `illegal encoding $xxxx (...) -> vector 4`:
+
+```
+ILLEGAL: pc=$020000 opcode=$1008 not decoded (MOVE.B with An operand is illegal (instruction 0x1008)) -> vector 4
+```
+
+A run used to abort at that point with `Step failed at PC=...`; it now continues into the
+program's (or TOS's) vector-4 handler, and a `callcap` reports the handler's run (usually a
+`STEP CAP` or a loop) instead of `THREW`. Grep stderr for `ILLEGAL:` when a run goes wrong.
 
 ## Snapshot / preview fidelity: `detcheck`
 
@@ -290,6 +319,18 @@ What makes a restore an identity operation:
   Residual: an armed self-reloading event-count timer keeps `PeripheralPhase`
   churning, which *suppresses* the check rather than firing it falsely: a missed
   detection, never a false positive.
+
+Disk A: which image is mounted is external state (pass `--disk-a` on resume, as on the
+first run), but what the run wrote to it is not. `MMU.fs` journals every Write Sector and
+Write Track sector (`diskLog`, the 512 bytes each one replaced): `MmuSnapshot` records the
+journal's length, so `callcap`, `Preview` and `detcheck` roll disk writes back with RAM, and
+`SaveState` appends an optional `DSKA` section (FNV-1a of the image as mounted, then each
+written sector's offset and contents) after the v11 block, without a version bump.
+`LoadState` re-applies it when the mounted image hashes the same, and warns and resumes with
+the image as mounted otherwise (wrong or no `--disk-a`). A run that never wrote to the disk
+writes no section, so its snapshot is byte-identical to the plain v11 layout; an older build
+reads up to the section and ignores it (it never checks for end of file), resuming with the
+unwritten image as before. The write-protect tab (`wprot`) is not saved.
 
 `mutations` / `interruptAcks` are deliberately NOT restored (nothing reads their
 absolute value; the loop detector re-baselines them each epoch) - `detcheck`
@@ -590,11 +631,11 @@ A typed poke of the VBL second sub-counter to 1 made the game's own interrupt ca
   against about 240 for `dotnet exec`, and 207 to 257 with workstation GC. Tiered-JIT switches did not help. Noise on a loaded machine is about +-20%: use interleaved runs.
 - Startup is about 1.7 s for a no-op script (fsi itself, not the core: construct plus `LoadState` is 15 ms). Use fsi for scripts with logic, not for one `s <n>` the REPL does in a second.
 - The core prints a line per instruction unless `Trace.enabled <- false` (`ATARI_NOTRACE`'s switch) and `Console.SetOut(IO.TextWriter.Null)`; its `--- state loaded/saved ---` lines go to stderr and cannot be silenced.
-- **No public write callback.** The options are `MMU.SetWatch lo hi` (what the REPL's `watch` uses; its `WATCH` lines go to stderr, capture them as `fsi_drive.fsx` does; the odd-address blind spot of `watch` applies)
+- **No public write callback.** The options are `MMU.SetWatch lo hi` (what the REPL's `watch` uses; its `WATCH` lines go to stderr, capture them as `fsi_drive.fsx` does; it reports every CPU write whose bytes overlap the range and every FDC DMA sector that lands in it)
   or polling reads after each `Step()`: a per-step hook of four byte reads cost about 1.1 s per million steps, sees value changes only (not a same-value rewrite) and attributes a change to the PC before the
   step (the `WATCH` label is the same; its step number is post-increment). What a hook gives that `watch` does not is arbitrary typed state at the hit (registers, the stack, other memory).
 - A resume that writes an end snapshot is only possible through the REPL or `SaveState` here: the raw `<N> resume <snap>` argv runs and exits without saving. `run.ps1`'s `rrepl` and `snap` are aliases, not argv.
-- The ROM path is cwd-relative (`AtartSt("TOS100UK.IMG")` from `M68000/`); the disk image is not in a snapshot, so pass the same `--disk` the snapshot was taken with.
+- The ROM path is cwd-relative (`AtartSt("TOS100UK.IMG")` from `M68000/`); a snapshot does not name its disk image, so pass the same `--disk` the snapshot was taken with (the sectors the run wrote are in the snapshot: see "Snapshot / preview fidelity").
 - Not checked: a `Release` build (the `Debug` one is already built with `Optimize=true`, see "Build and run"), a second game's snapshot, a hook on a field that is rewritten with the same value. The core is the Atari ST only: the arcade games (Final Fight, Crude Buster) run under MAME and
   are scripted in Lua (`reversing/finalfight/README.md`, "Harness facts").
 
@@ -655,7 +696,7 @@ least once by a session that did not know it existed.
 | `tools/rdis.py [--rom img] [--base <hex>] <lo> <hi> <root>...` | recursive-descent lister: follows branches from the roots, resolves `move.w N(PC,Dn.w) / jmp M(PC,D1.w)` word-offset tables (signed), marks data gaps. Use it instead of `--all` for a handler that interleaves jump tables and animation data (`--all` loses sync there: Final Fight's `$389b8` was not an instruction line in the linear listing). **It does not follow longword state tables** (`jsr (A0)` after `movea.l 0(A0,D0.w),A0`): handlers behind them are not listed, so it is no basis for a "no caller / no writer" claim (Crudebuster: 67 of 94 callers missed); scan the raw image or the `--all` linear listing |
 | `tools/disassemble.py --snap <snap> --all <lo> <hi>` | whole-image listing that carries on past jump-table stops; grep it for callers and field writers (`,44(A[0-7])$`) before trusting any "who writes X" claim |
 | `tools/find_ram_callers.py <snap> <addr>...` | whole-RAM scan for direct `bsr`/`bcc`/`jsr`/`jmp` instructions whose own decoded text names one of the given target addresses (`disassemble.py --callers` only covers the TOS ROM) |
-| `tools/find_field_writers.py <snap> "<field text>"` | whole-RAM scan for every decoded instruction whose operand text names a given field/displacement string (e.g. `"2518(A5)"`), to find its writers/readers directly |
+| `tools/find_field_writers.py <snap> "<N(An) or $addr>" [--width N] [--all]` | whole-RAM census of the decoded instructions that write (with `--all`, also read) a field: operands are matched by the bytes they cover (a `move.l` to `2516(A5)` writes `2518(A5)`; `2518(A5)` no longer matches `12518(A5)`), split by instruction boundary from a linear sweep, plus indexed writes through the same base and `lea`/`pea` of addresses just below the field (block-clear bases). It cannot see writes through computed pointers, code outside the image or DMA: a clean result is a lead, `watch` is the check (header) |
 | `tools/find_literal_ptr.py <snap> <addr>` | whole-RAM raw-bytes scan for an address appearing as **data** (4-byte or 2-byte, any alignment) — finds abs-long `jsr`/jump-table references `find_ram_callers.py` can't see, since those encode the target as a literal operand rather than a PC-relative displacement; doesn't catch a displacement-style jump table (use `find_jump_table_hit.py` for that) (cadaver mechanics.md section 14) |
 | `tools/find_jump_table_hit.py <snap> <addr>` | does any `table_base + entry` jump table (this game's own dispatch idiom, cadaver mechanics.md section 9) resolve to a target address — collects every literal absolute address any instruction names as a candidate table base, then checks each one's entries for `target - base` (cadaver mechanics.md section 2) |
 | `tools/pm_export.py`, `tools/pm_render_ref.py`, `tools/pm_fsm_ref.py` | PowerMonger: asset export, the Python reference renderer, the from-disassembly entity/AI reconstruction |
@@ -664,7 +705,12 @@ least once by a session that did not know it existed.
 | `reversing/powermonger/py/` | PowerMonger working scripts: build any of the 144 lands, capture frame runs, score the port pixel for pixel, `hits` census runs (its README lists them) |
 
 The REPL's `hits <steps> <addr>...` counts how often each address runs over a stretch (first and
-last step too): the quick answer to "which of these routines fire at all" before any `bp`.
+last step too): the quick answer to "which of these routines fire at all" before any `bp`. `hits`, `bp`
+and `bpc` count instruction starts: an interrupt taken at a counted address and its RTE back to it do not
+count it twice, and a STOPped or halted CPU idling at an address does not count at all. They, and `until`,
+compare 24-bit addresses, so a PC with junk upper bits (TOS 1.00's handlers run at `$04fc0a1a`: its vectors
+carry the vector number in the top byte) matches `bp fc0a1a`. `m` reads the I/O page ($ff8000 up) without
+side effects (the ACIA data register is not popped, an FDC status read does not clear INTRQ).
 
 Snapshots (`*.snap`) are session-local working data, keyed to a ROM + opcode-coverage
 point - not committed, retake per session.

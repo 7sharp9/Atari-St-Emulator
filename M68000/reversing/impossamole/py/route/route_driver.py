@@ -26,7 +26,7 @@ records. The hero is pinned at screen x=192 while the camera scrolls, so always 
 
 Joystick bits: 01 up, 02 down, 04 left, 08 right, 80 fire (`kbd ff` then `kbd <bits>`).
 """
-import json, os, subprocess, sys, time
+import collections, json, os, subprocess, sys, threading, time
 from dataclasses import dataclass
 
 ROOT = os.environ.get('M68000_ROOT', os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..')))
@@ -80,7 +80,11 @@ class Driver:
         env = dict(os.environ, ATARI_NOTRACE='1')
         self.p = subprocess.Popen(['dotnet', 'exec', 'bin/Debug/net8.0/M68000.dll', 'resume', snap, 'repl',
                                    '--disk-a', disk], cwd=ROOT, env=env, text=True, bufsize=1,
-                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # stderr is drained (a `watch` can write a lot) and its tail kept for the error on EOF
+        self._errtail = collections.deque(maxlen=50)
+        self._t = threading.Thread(target=lambda: [self._errtail.append(l.rstrip()) for l in self.p.stderr], daemon=True)
+        self._t.start()
         self.start_snap = snap
         self.logf = open(self.name + '.log', 'w')
         self._raw('s 1')      # bring the emulator up (the first command after resume)
@@ -96,8 +100,13 @@ class Driver:
         out = []
         while True:
             l = self.p.stdout.readline()
-            if not l:
-                raise RuntimeError('repl closed')
+            if not l:   # exit code plus the stderr tail: a `REPL error:` line names the bad command
+                try:
+                    rc = self.p.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    rc = None
+                self._t.join(timeout=5)
+                raise RuntimeError('repl closed (exit %s): %s' % (rc, '\n'.join(self._errtail)))
             if l.startswith('  $00fb98'):
                 return [x.rstrip() for x in out if not x.startswith(('enqueued', '---'))]
             out.append(l)
@@ -291,6 +300,8 @@ def replay(snap, repl, out_snap):
     env = dict(os.environ, ATARI_NOTRACE='1')
     r = subprocess.run(['dotnet', 'exec', 'bin/Debug/net8.0/M68000.dll', 'resume', snap, 'repl', '--disk-a', DISK],
                        cwd=ROOT, env=env, input='\n'.join(lines) + '\n', text=True, capture_output=True)
+    if r.returncode != 0:   # a REPL error (bad line) or an emulator abort: the replayed snapshot would be wrong
+        raise RuntimeError('REPL exited %d: %s' % (r.returncode, r.stderr.strip()[-2000:]))
     return r.stdout
 
 

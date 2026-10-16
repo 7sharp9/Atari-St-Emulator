@@ -75,9 +75,9 @@ def run():
             int.from_bytes(qe[:2], 'big') == 0 and int.from_bytes(qe[2:6], 'big') == h.obj(oid) and afterl(h, d, A5 + 304) == q0 + 8 and afterw(h, d, A5 + 1154) == n0 + 1)
         chk(lab + ': 1164(A5) = %d, 104(A5) := record $%06x' % (afterw(h, d, A5 + 1164), a5l(h, 104, d)), afterw(h, d, A5 + 1164) == oid and a5l(h, 104, d) == h.obj(oid))
     h.poke(A5 + 2438, [cap & 0xff]); d = h.call(35, [0, 16])
-    chk('verb 35 with the ruck full (2438(A5) = %d = 2148(A5)): assert "PUT IN RUCK RTN. RUCK FULL"' % cap, bool(d['thrown']) and not d['ret'])
+    chk('verb 35 with the ruck full (2438(A5) = %d = 2148(A5)): assert "PUT IN RUCK RTN. RUCK FULL"' % cap, asserted(d))
     h.poke(A5 + 2438, [0]); d = h.call(35, [0x03, 0xde])
-    chk('verb 35 on the absent id 990: assert "PUT IN RUCK AN OBJECT THAT DOSNT EXIST"', bool(d['thrown']) and not d['ret'])
+    chk('verb 35 on the absent id 990: assert "PUT IN RUCK AN OBJECT THAT DOSNT EXIST"', asserted(d))
     h.close()
     # natural: PUT IN RUCK #27 through the consumer; the queued event 0 runs #27's own block (5 = XP += 26)
     lib2.noise = None

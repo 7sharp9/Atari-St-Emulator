@@ -177,7 +177,8 @@ class Disassembler:
                 ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, size)
                 return f"tst{SIZES.get(size, '?')} {ea}", nxt
             if (op & 0xffc0) == 0x4ac0:
-                return (f"tas D{op & 7}" if ((op >> 3) & 7) == 0 else "tas ea?"), nxt
+                ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, 0)
+                return f"tas {ea}", nxt
             if (op & 0xf1c0) == 0x41c0:  # LEA
                 reg = (op >> 9) & 7
                 ea, nxt = ea_str((op >> 3) & 7, op & 7, nxt, 2)

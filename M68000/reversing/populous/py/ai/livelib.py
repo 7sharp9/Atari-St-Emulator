@@ -1,5 +1,5 @@
 """livelib.py - persistent REPL session + snapshot helpers for the live AI checks."""
-import json, os, re, struct, subprocess
+import collections, json, os, re, struct, subprocess, threading
 from aicfg import *
 import popmem
 
@@ -20,12 +20,33 @@ class Sess:
     """one emulator REPL process. cmd() sends lines + 'r' and returns the text up to the register dump."""
     def __init__(self, snap, errfile=None):
         env = dict(os.environ, ATARI_NOTRACE='1')
-        self.err = open(errfile, 'w') if errfile else subprocess.DEVNULL
+        self.errfile = errfile
+        self.err = open(errfile, 'w') if errfile else subprocess.PIPE   # PIPE: drained below, tail kept for the EOF error
         self.p = subprocess.Popen(['dotnet', 'exec', DLL, 'resume', os.path.abspath(snap), 'repl', '--disk-a', DISK],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.err,
                                   text=True, cwd=R, env=env, bufsize=1)
+        self._errtail = collections.deque(maxlen=50)
+        self._t = None
+        if not errfile:
+            self._t = threading.Thread(target=lambda: [self._errtail.append(l.rstrip()) for l in self.p.stderr], daemon=True)
+            self._t.start()
         self.steps = 0          # steps run since the snapshot (u / s only; callcap restores)
         self.cmd('')
+
+    def _closed(self, out):
+        """message for a REPL that ended mid-command: exit code plus the stderr tail (a `REPL error:` line names the bad command)"""
+        try:
+            rc = self.p.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            rc = None
+        if self._t:
+            self._t.join(timeout=5)
+            tail = '\n'.join(self._errtail)
+        else:
+            self.err.flush()
+            with open(self.errfile) as f:
+                tail = f.read()[-2000:]
+        return 'repl closed (exit %s): %s\n%s' % (rc, tail, '\n'.join(out[-30:]))
 
     def cmd(self, c):
         self.p.stdin.write((c.rstrip('\n') + '\n' if c else '') + 'r\n'); self.p.stdin.flush()
@@ -33,7 +54,7 @@ class Sess:
         while True:
             line = self.p.stdout.readline()
             if not line:
-                raise EOFError('\n'.join(out[-30:]))
+                raise EOFError(self._closed(out))
             line = line.rstrip('\n'); out.append(line)
             if line.startswith('PC: '):
                 self.p.stdout.readline(); break
