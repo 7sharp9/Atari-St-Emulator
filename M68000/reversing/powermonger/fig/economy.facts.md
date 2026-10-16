@@ -27,17 +27,12 @@
 | shift = posture - 2 (`$30fe`) | | | economy.md 1 flows, 2c |
 | `$7c` park needs `$57fd0 == 0`, entered from `$16`, `$4e`, `$5e` | | proven (heartbeat block) | economy.md 3a |
 
-## Flags (look contradictory; not resolved)
+## Notes
 
-- Order `$06` loyalty: economy.md 1 flows row `$150f2` says live "loyalty 0 -> 8"; economy.md 3a ("What order `$06` moves") says
-  "`loyalty_pressure` 0 -> 16, corroborated live". The figure shows the formula `+16 >> shift` only.
-
-- ai.md `$5590` outcomes: the KILL tail `$567e` does "`leader.population -= 1`". economy.md 1 ("Pigeon landing"): `$567e` takes an
-  ungrouped man off the home lord's `troops_field`. Same field, two names; the figure uses troops_field.
-- economy.md section 1 struct and `powermonger.sym` disagree on `+6`: the doc says the sym still names it `troops_reserve` and that
-  it is food (the doc itself says so; the sym entries `$163b8`, `$15042` still say troops_reserve).
-- economy.md 1 flows row `$3bc0` is labelled "Corroborated" in the doc while the header table calls orders `$06`/`$12` "Proven". The
-  figure shows `$12` as live (one run, 22 -> 147).
-- Loyalty arithmetic: the struct comment reads "+2 (field*4 >= food: hunger) / -1"; the pm_fsm_ref `h_mode7c` note says
-  "`troops_field*4`: ==0 -> epilogue / >= reserve -> +2 / < reserve -> -1", where "reserve" is the old name of food. Consistent once
-  the rename is applied; the figure omits the `== 0` exit.
+- Order `$06` loyalty: `loyalty_pressure` 0 -> 16 at posture 2 and 0 -> 8 at posture 3 (economy.md 1, `$150f2` row; 3a). The
+  figure shows the formula `+16 >> shift` only.
+- The KILL tail `$567e` takes the man off the home lord's `troops_field` (ai.md `$5590` outcomes, economy.md 1 "Pigeon landing").
+- `+6` of the lord record is food; `powermonger.sym` still names it `troops_reserve` (entries `$163b8`, `$15042`), as does
+  the pm_fsm_ref `h_mode7c` note ("`troops_field*4`: ==0 -> epilogue / >= reserve -> +2 / < reserve -> -1"). The figure
+  omits the `== 0` exit.
+- Order `$12` (`$3bc0`) is shown as live (one run, town 22 -> 147).

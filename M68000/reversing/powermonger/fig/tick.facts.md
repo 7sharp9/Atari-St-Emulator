@@ -19,8 +19,9 @@
 
 Evidence colours: proven = gated routines; live = the four routines counted in the trace; code read = the rest of the call listing.
 
-## Flags
+## Notes
 
-- The assignment names the iterator `$1622c`. The code and ai.md: the iterator is `$14b62`; `$1622c` is its loop tail (next record).
-- README "The simulation: entities, scheduler, combat" says every man, boat, **animal, projectile** and pending order is a 50-byte object record. ai.md (scope, "What the loop actually is", the animals/pigeons block) says animals (`$4ccd6`), arrows (`$4be00`) and pigeons (`$4c112`) are separate pools moved by `$3e06`. The figure follows ai.md. README needs the correction.
+- The iterator is `$14b62`; `$1622c` is its loop tail (next record).
+- Animals (`$4ccd6`), arrows (`$4be00`) and pigeons (`$4c112`) are separate pools moved by `$3e06`, not 50-byte object
+  records (ai.md "What the loop actually is"; README "The simulation: entities, scheduler, combat").
 - Steps per tick is quoted as "about 200k" (ai.md `$2a`), "~216k" (ai.md `$34` watch) and "~231k" (economy.md, `$1abaa` period / 512). Not contradictory (different lands and phases), but no doc states the range; the figure says 200k to 230k.
