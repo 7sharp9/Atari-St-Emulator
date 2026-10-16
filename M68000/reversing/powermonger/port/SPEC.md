@@ -74,11 +74,10 @@ graphics cross-check of the port and prints its result: the synthetic quadrant w
 (`quad_fs.fsx`/`quad_py.py`, 4 of 4 identical), the synthetic blits (`blit_fs.fsx`/`blit_py.py`, 12 of
 13), the real record stream (`ent_fs.fsx`/`ent_py.py`, 3061/3061), the renderer baseline
 (`baseline.fsx` against `baseline.txt`, 162 lines), the draw-order table (`order_test.fsx`), `score.fsx`
-on every frame and `zoom_check.fsx`. The RAMs sit in `scratchpad/` (the frames of the 118th and 119th
-passes, on the Mac since the 154th). The experiments that settled a question once and are not
+on every frame and `zoom_check.fsx`. The RAMs sit in `scratchpad/` (the `pm118` and `pm119` frames, also on the Mac). The experiments that settled a question once and are not
 re-run stay in `scratchpad/` as a record: `pm118/phase_test.fsx`, `pm118b/lastrow_fix.fsx` (its own
 copy of the rasteriser), `pm119/pan_check.fsx`, `jitter_check.fsx` and `tick_check.fsx` (the first two
-were brought up to date and run in the 154th session with the results quoted below), and
+are kept current; the results quoted below are theirs), and
 `pm121/allpairs.txt`. The labelled-poke checks of the men's overlays and of `byte6` 18, 28, 34 and 36-42 rerun with `../py/xcheck/overlay/run_cases.sh` (captures from `pm88_f1`) then `score_cases.sh` (each case against the no-poke control, plus wrong-frame controls); `bomb_check.sh` follows 36-42 into the double bus fault that halts the CPU. A scratch path cited below is a record of what was run.
 
 ---

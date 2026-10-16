@@ -956,7 +956,7 @@ and `$1373c` is the per-tick tail (below). Position choice: with a left or right
    usually handled on two passes of the loop (the tick tail, below): the first posts `$04` and turns
    the mode off, the second finds the click still pending and posts `$22`, which `$6d90` drops because
    the tail has cleared the flag by then. The game does this, not the emulator: with the click poked as a
-   latched click on the same snapshot and budget, a click visible before this pass's UI sections
+   latched click on the same snapshot and budget, a click visible before the loop pass's UI sections
    (`$130fc`) gives `$133d4` 2 hits, `$04` then `$22`, `$6d90` 1 and `$3ce8` 0; one poked at the tail
    (`$1373c`) gives `$133d4` 1 hit and `$04` only (`py/captain2/xfer_timing.sh`).
 
