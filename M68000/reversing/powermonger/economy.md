@@ -269,9 +269,11 @@ void pm_forest_service(void) {                    // $4342
   for (herd_op *op = $57f68; op->target_cell; op++) {   // <= 10 ops
     pm_tree *h = &$4d252[op->herd_off];
     if ((h->tree_state & 0x80) && h->category && h->worker_obj) {
-      // walk the worker object's bucket chain; find the op's $4c5f4 marker;
-      // if the marker is idle (byte15 == 0) claim it: byte15 := $d0, snap it to
-      // the tree's cell, spawn its screen record ($16808).
+      // walk the worker's object chain (word 2) to an entry with byte6 == 0;
+      // if every marker of the op's own chain is idle (byte15 == 0, $4390) claim:
+      // bclr bit 7, move the op's marker chain to the first op with none, and for
+      // each live marker byte15 := $d0, dwell := 0, snap it to the tree's cell,
+      // spawn its screen record ($16808).
       ...
     }
     // then, for each $4c5f4 marker in this op's chain (word20 link):
@@ -310,11 +312,12 @@ skipped) and every `$4c5f4` marker has `progress (byte15) == 0` (animate loop sk
 live, 8 forest ops, 68 markers, ~40 trees with a worker) is no exception: markers seed `byte15 := 0`
 and only `$4342`'s own claim head writes `byte15 := $d0`, and that head needs a bit-7 tree *with* a worker, which
 no natural state reaches. A differential test therefore needs a synthesised corpus (poke a marker's `byte15` and
-a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains), and that gate exists: **Proven for 8 of 9
-branches** (`tools/pm_fsm_ref.py` `call_4342`, `scratchpad/pm113/diff_4342.py`, 110/110 tracked bytes over 9 states;
-ai.md "the forest animator `$4342`" has the branch list, the two model bugs it caught in the bucket-link
-machinery, and the arrival/unlink branch that stays Corroborated because every synthesised poke that reaches it
-hangs the real emulator).
+a tree's `worker_obj`, wire the `$57f68`/`$4c5f4`/`$4d252` chains), and two gates now cover all nine branches:
+`py/fsm/diff_4342.py` (115/115 tracked bytes over 10 poked states) and `py/fsm/gate_4342_arrive.py` (344/344 over 10
+live arrival ticks of markers claimed through `$16808` after the claim pokes, the unlink of a really inserted marker),
+both against `tools/pm_fsm_ref.py` `call_4342`. ai.md "the forest animator `$4342`" has the branch list, the path a
+claimed marker takes, and the three model bugs the gates caught (two in the bucket-link machinery, and the claim's
+idle-chain guard `$4390`).
 
 **The claim transplants a chain.** The pseudocode above omits that the claim does **not** reuse the triggering
 op's *own* marker chain. It clears the op's own `marker_off`, scans the whole `$57f68` array from the start for
@@ -392,7 +395,8 @@ encoded, both ends are nearly always the merchant's own home lord, so the mercha
 move a good to another lord only through one stale register.
 
 **The cycle (code read, `$15a0e..$15b5a`).** `$54`'s lord-selection loop never leaves the home lord (`lea 32(A3),A0` at
-`$15b0c`, A3 never advances; proven, `py/fsm15/gate_fsm15.py`, ai.md `$54` row), so the destination `46(A1)` is the
+`$15b0c`, A3 never advances; it exits after max(`14(A1) & 7`, 1) passes on all 904 natural entries counted and its wrap
+at `$15b14` is never taken; proven, `py/fsm15/gate_fsm15.py` and `gate54.py`, ai.md `$54` row), so the destination `46(A1)` is the
 home lord in 404 of 404 men in `$52/$50`. `$54` then picks up (`$159de` at `$15b54`) from the stale A0: the home lord
 when `14(A1) & 7 < 2`, the record after it otherwise. `$50` deposits into lord `46(A1)` (`$15a6a`), `$52` picks up
 from the same lord after its 50-tick dwell (`$15ac8`), and `$4e` deposits at the home lord on arrival (`$15a24`).
@@ -461,13 +465,16 @@ offer(man, n, code):                      // $638c
 ```
 
 **The trade (`$63f4`).** Every carried unit is sold into the lord's stock (byte `24+i`, saturating at `$ff`) at `2 * price[i]` (prices 5, 10, 20, 4, 6, 2, 100, 200 at `$6502`),
-so the credit is `army food + sum(sold * 2 * price)`.
+so the credit is `C = army food F0 + sum(sold * 2 * price)`; units lost to the `$ff` cap are still paid for.
 
-Then, in the posture's row of `$650a` (row `posture - 2`; the `$ff` pads are skipped, not terminators:
+Then, in the posture's row of `$650a` (row `posture - 2`, posture 0 reads row 0; the `$ff` pads are skipped, not terminators:
 aggressive cannon, catapult, bow, sword, pike, boat; neutral boat, pike, plough, sword, bow, catapult, cannon; passive plough, boat, pot, pike, sword, bow, catapult, cannon),
-it buys as much of each stocked item as the credit pays (the last one partially, `credit / (2*price)`), each through `$6352`. The credit left becomes the army's food
-(its low word, **inferred** to wrap above 65535, no state reaches it), the food spent is added to the lord's food (`6(lord)`), `loyalty_pressure` (`14(lord)`, §3a)
-moves by `-8` for the group's own side and `+8` otherwise, `$311a` adds 2 to the relation byte (strategy.md "Diplomacy") and `$35f4` ends the contact.
+it buys each stocked item through `$6352`: the whole stock when the credit covers it, otherwise `C / (2*price)` units with `C mod (2*price)` carried on, so a cheaper item later in the row can still be bought.
+The credit left becomes the army's food (its low word, **inferred** to wrap above 65535, no state reaches it). The lord's food (`6(lord)`) gains `F0 - C`, the food actually spent, only when
+`F0 >= C` (signed word compare at `$64c8`, `blt $64d0`): when the sale outweighs the purchases (goods the posture row does not buy back) the army keeps the surplus and the lord's food is untouched,
+and when nothing is spent `$64cc` adds 0. `loyalty_pressure` (`14(lord)`, §3a) moves by `-8` when the lord's side equals the group's and `+8` otherwise, `$311a` adds 2 to the relation byte
+(strategy.md "Diplomacy") and `$35f4` ends the contact. Proven by `callcap` of `$63f4` over 67 forced states (group food, carried goods, posture 0/2/3/4, lord food and stock): 268/268 fields
+(group food, lord food, lord stock, loyalty), every branch covered (spent > 0, = 0, < 0) (`py/gate_trade.py --run`). Posture 1 (its row index wraps before the table) is not tested.
 
 Two more modes close the loop:
 

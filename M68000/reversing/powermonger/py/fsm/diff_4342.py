@@ -143,22 +143,12 @@ def build_corpus():
     return states
 
 
-# NOTE (113th pass): "step_expire_arrive" (the bset-animal-bit7 + $16778-unlink
-# arrival branch) reproducibly hangs the REAL emulator - the loop detector
-# fires within ~3000 steps, parked in a timer-interrupt RTE ($14e4), for both
-# an exact-target poke (a degenerate DIVU-by-zero in $164bc) AND a 1-unit-off
-# poke (a normal division).  Not yet root-caused - bucket_unlink's own walk
-# terminates fine in isolation (bounded, no cycle risk from these pokes), so
-# this is either a genuinely separate emulator/game-state interaction or a
-# still-missing precondition for a clean arrival test (the marker was never
-# actually $16808-inserted into this cell in the anchor, only claimed
-# markers are).  8 of 9 OTHER branches (claim + its guard/fallback, both
-# ramp-in cases, dwell-skip, step-not-arrived, owner-sync) are clean
-# 100%-identical proofs; the arrival branch stays Corroborated (transcribed,
-# reuses the same bucket_unlink/_objaddr machinery the claim path already
-# proves in the insert direction) rather than Proven.  Left in the corpus,
-# excluded from the pass bar, for whoever picks this up next.
-states_ = [s for s in build_corpus() if s.name != "step_expire_arrive"]
+# "step_expire_arrive" takes the arrival branch, but its marker was never $16808-inserted, so the
+# $16778 unlink finds nothing to remove (5 tracked bytes, all in the marker). The 113th pass saw it
+# stall at its 3000-step cap in a timer `rte` ($14e4); on the current build it returns in 795 steps
+# (cause of the old stall not established). The unlink of a really inserted marker is gated by
+# gate_4342_arrive.py from markers claimed live.
+states_ = build_corpus()
 for st in states_:
     st.target = "4342"
     st.recon = lambda m: pm_fsm_ref.call_4342(m)

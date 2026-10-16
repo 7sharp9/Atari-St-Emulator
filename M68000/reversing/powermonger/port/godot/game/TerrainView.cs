@@ -57,7 +57,7 @@ public partial class TerrainView : Node2D
     private byte[] _sheetProp = System.Array.Empty<byte>();   // 32x24, zoom 4-5
     private byte[] _sheetProp32 = System.Array.Empty<byte>(); // 32x32, zoom 1-3
     private byte[] _sheetProp16 = System.Array.Empty<byte>(); // 16x16, zoom 6-7
-    private int _entCamX, _entCamY, _entYaw, _entRotPhase, _entSelGroup;
+    private int _entCamX, _entCamY, _entYaw, _entRotPhase, _entSelGroup, _entSeed;
     // word[$57fd0] / 2 in the capture: the season entities.json's tree frames
     // belong to
     private int _entSeason;
@@ -151,6 +151,8 @@ public partial class TerrainView : Node2D
         _entAnim = ctx.GetProperty("anim").GetInt32() != 0;
         _entSelGroup = ctx.GetProperty("sel_group").GetInt32();
         _entRotPhase = ctx.GetProperty("rot_phase").GetInt32();
+        // the RNG long $2df84 (the tree birds' jitter); older exports lack it
+        _entSeed = ctx.TryGetProperty("seed", out var seed) ? unchecked((int)seed.GetInt64()) : 0;
         _sheet33 = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet33").GetString()}");
         _sheetProp = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet_prop").GetString()}");
         _sheetProp32 = FileAccess.GetFileAsBytes($"{AssetsDir}/{ctx.GetProperty("sheet_prop32").GetString()}");
@@ -204,7 +206,7 @@ public partial class TerrainView : Node2D
         // terrain and sprites together.
         var ectx = new Sprites.EntityCtx(
             _yawSteps * 16, _entAnim, _entSelGroup, Season.treeTileOffset(_season), _entRotPhase,
-            proj.Half, _sheet33, _sheetProp, _sheetProp32, _sheetProp16, System.Array.Empty<byte>());
+            proj.Half, _sheet33, _sheetProp, _sheetProp32, _sheetProp16, _entSeed, System.Array.Empty<byte>());
         Scene.render(buf, dither, 0, ectx, corners, _map, _camX, _camY, _yawSteps, _entRecs);
 
         // Fill.Buffer is in RAW $3f364 coordinates (0..255, same space $ef62's

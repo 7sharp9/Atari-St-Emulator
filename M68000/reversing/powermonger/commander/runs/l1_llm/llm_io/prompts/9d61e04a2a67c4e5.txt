@@ -1,0 +1,43 @@
+You command one side in PowerMonger (Atari ST, 1990). You issue orders to your side's groups (armies), each led by a captain. You see the whole map. Reply with ONE JSON object and nothing else.
+
+MAP. Cells x 0..63, y 0..127. Distance is Chebyshev (max(|dx|,|dy|)) in cells. Groups walk straight at their target; the game has no pathfinding. A group carrying boats can cross water; for groups without boats, "reachable_by" lists the lords they can reach on foot. An order targets the centre of the cell you give.
+
+LORDS AND SIDES. Each settlement cluster belongs to a lord (a Village, Hamlet, Town, City, Capital or Base) at a cell. A lord holds food and "men at home" (men not in an army). Sides 1..4. Men are never created: they only move between lords' homes and armies, and change side when their lord is conquered.
+
+SCORE. force(side) = men at home of its lords + men in its groups. ratio = min(4, (2*mine + E/4) / E), E = sum of the other sides' force + 1. A side wins the land when ratio is 4 (about 65% of all counted men) and it then retires (only the local side can retire; the observation says whether you may). Grow your men, take enemy lords.
+
+ARMIES EAT. Every eat period (given in the observation, in sim ticks; doubled while the group is in camp) a group's food drops by men/8 + 1. At 0 food each man deserts with chance 1/8 per meal (back to his home lord). Big armies eat fast. One decision interval is about the stated number of ticks.
+
+POSTURE 2 aggressive, 3 neutral, 4 passive. Every amount an order moves is amount >> (posture - 2): aggressive moves all, neutral half, passive a quarter.
+
+ORDERS (the game's own order set). "Own town" = the cell of a lord in "your_lords"; "enemy town" = the cell of a lord in "enemy_lords". Never attack a lord in your_lords.
+- get_men (own town): the group marches to the lord; up to (lord men_home >> (posture-2)) of his men join. The lord's men_home falls by that many. Use it when the group is small and the lord has men at home.
+- get_food (own town): takes (lord food >> (posture-2)) into the group's food. Raises the lord's discontent (+16 >> (posture-2)); a lord whose loyalty pressure reaches 600 revolts to another side.
+- attack (enemy town): the group marches on the lord and fights the men living in his settlements ("settlement_men"). Only when none of them can still fight do the lord, his settlements and his men at home change to your side. men_home is NOT the defence: a lord with men_home 0 can still have many settlement men. Fights are man against man; attack only when your men clearly outnumber his settlement_men. The game's own AI attacks only a lord with men_home < group men - 4, and only with food for the trip.
+- go_to (any land cell): march there and camp.
+- home: march back to the captain's home lord and camp.
+- supply (any cell): food supply line: drop food at the cell, fetch more from your best food lord, repeat.
+- drop_food: drop the group's food (>> shift) at its current cell, into a town there if any.
+- dismiss: (men >> shift) leave the group and go home to their lords.
+- posture: set posture (field "posture": 2, 3 or 4). Instant. Any other order may also carry "posture": it is set just before that order.
+- ATTACK AT POSTURE 4. At posture 4 the garrison is routed instead of killed, so the conquered lord's captain survives and defects to you, founding a new group of yours; at posture 2 the garrison dies and you gain no group. A side that never attacks at posture 4 loses its groups one by one. Get men at posture 2 (the whole home force joins).
+- transfer: move (men >> shift) from this group to group "to_group".
+- equip (own town): take the lord's goods (weapons, boats) and hand them to the men.
+- trade (any town): sell carried goods, buy weapons with food.
+- alliance (enemy town): offer alliance; needs carried goods as tribute, otherwise silently refused.
+- spy (enemy town): the captain walks in alone, all his men are dismissed. Rarely useful.
+- invent (own town with a WorkShop): sets the town's men to work on goods. USELESS here: the game throttles deliveries so hard that it credits nothing in a land's lifetime. Do not use it.
+
+TIMING. An order to group 0 (order_route "direct") starts at once; an order to another group (order_route "pigeon") flies by carrier pigeon, about 1.3M steps per 1000 world units (256 units per cell) from your captain, so up to about 25M steps (one or two decisions). Do not re-send an order while orders_in_flight > 0: a second order is a second pigeon and both run in turn. If your captain (group 0) dies, every order in flight is lost and orders to the other groups never arrive (order_route "never"): those groups act on their own.
+
+REPLY FORMAT. Exactly one JSON object, no prose, no code fences:
+{"orders":[{"group":<0-5>,"order":"<name>","x":<0-63>,"y":<0-127>,"posture":<optional 2|3|4>}, ...], "retire":false, "why":"<one short sentence>"}
+- x and y are required for get_men, get_food, attack, go_to, supply, equip, trade, alliance, spy, invent, and must be the cell exactly as given in the observation (a lord's cell for town orders).
+- posture needs "posture":2|3|4; transfer needs "to_group":<k>; home, drop_food, dismiss take no cell.
+- At most one order per group. Omit a group to leave it alone. "orders":[] is valid.
+- Only order your own groups that are alive and whose order_route is not "never". An invalid order is discarded.
+
+Observation (JSON):
+{"you":1,"local_side":1,"may_retire":true,"force":{"1":21,"2":2,"3":90,"4":0},"your_ratio":0,"eat_period_ticks":26,"ticks_per_decision":113,"your_groups":[{"group":0,"men":21,"food":246,"state":"In Camp","posture":3,"cell":[16,98],"order_route":"direct","orders_in_flight":0}],"your_lords":[{"lord":6,"side":1,"kind":"Base","cell":[16,98],"men_home":0,"food":22,"loyalty":0,"settlement_men":22,"dist":{"0":0},"reachable_by":[0]}],"enemy_lords":[{"lord":1,"side":2,"kind":"Hamlet","cell":[55,74],"men_home":2,"food":28,"loyalty":0,"settlement_men":2,"dist":{"0":39},"reachable_by":[0]},{"lord":0,"side":3,"kind":"Capital","cell":[44,69],"men_home":34,"food":94,"loyalty":0,"settlement_men":34,"dist":{"0":29},"reachable_by":[0]},{"lord":2,"side":3,"kind":"City","cell":[35,56],"men_home":18,"food":66,"loyalty":0,"settlement_men":18,"workshop":true,"dist":{"0":42},"reachable_by":[0]},{"lord":3,"side":3,"kind":"City","cell":[20,65],"men_home":18,"food":56,"loyalty":0,"settlement_men":18,"workshop":true,"dist":{"0":33},"reachable_by":[0]},{"lord":4,"side":3,"kind":"Town","cell":[13,81],"men_home":10,"food":34,"loyalty":0,"settlement_men":10,"workshop":true,"dist":{"0":17},"reachable_by":[0]},{"lord":5,"side":3,"kind":"Town","cell":[14,92],"men_home":10,"food":38,"loyalty":0,"settlement_men":10,"workshop":true,"dist":{"0":6},"reachable_by":[0]}],"enemy_groups":[]}
+
+Reply with the JSON object only.

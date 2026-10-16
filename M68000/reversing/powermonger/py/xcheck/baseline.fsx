@@ -40,6 +40,7 @@ let ctx : Sprites.EntityCtx =
       SheetProp32 = [||]; SheetProp16 = [||]
       Sheet33 = File.ReadAllBytes(Path.Combine(assets, ctxj.GetProperty("sheet33").GetString()))
       SheetProp = File.ReadAllBytes(Path.Combine(assets, ctxj.GetProperty("sheet_prop").GetString()))
+      Seed = (match ctxj.TryGetProperty "seed" with | true, v -> int (v.GetInt64()) | _ -> 0)
       Ram = [||] }
 let recs =
     [| for e in doc.RootElement.GetProperty("render_entities").EnumerateArray() ->

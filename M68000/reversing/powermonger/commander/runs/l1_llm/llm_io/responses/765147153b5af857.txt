@@ -1,0 +1,1 @@
+{"orders":[],"retire":false,"why":"Group 0 (57 men, posture 4) is already fighting the 18 settlement men of lord 2 at (35,56), so I let the attack finish; group 1 has no men and no lord has men at home."}

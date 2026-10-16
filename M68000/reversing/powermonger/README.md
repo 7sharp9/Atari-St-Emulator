@@ -16,7 +16,7 @@ below is the overview by topic. The scripts are indexed in [`py/README.md`](py/R
 
 | document | covers | proof |
 |---|---|---|
-| [`ai.md`](ai.md) | the entity/commander decision loop: the `$14b62` per-tick iterator, the 75-entry mode table, the 50-byte object record, spatial buckets, the mode catalogue and the per-mode handler pseudocode, target selection, the regroup/dissolve/forest-animator dispatch, the revolt chain `$550e`, `$5c2c`, `$25d6`, shepherds, animals and carrier pigeons, arrows, the `$15000` page of mode bodies; the evidence taxonomy | differential tests vs the real 68000: entity FSM core **675/1335/413/85/99** tracked bytes over 154 states; regroup `$3c08` **71/71** (22 states) + its group-teardown subtree **1847/1847** (13 states); contact reconcile `$4bc8` **51/51** + **20/20**; dying-entity `$1623c` **275/275** (23 states); group dissolve `$2776` **4119/4119** (28 states); lord's work order `$5cde` **768/768** + **85/85** returns (47 states); the revolt chain **1778/1778** over 49 states (all 27 natural `$550e` calls on 4 lands); conquest target pick `$4f68` **1804/1804** (192 states, 170 natural); shepherd cycle **1043/1043** (198 states), animal update **45094/45094** (55 snapshots); arrow loop `$596a` **4210/4210** (456 states), order pigeon `$4562` **1567/1567** (125 states); the `$15000` mode bodies **18452/18452** (1889 states); forest animator `$4342` 8 of 9 branches |
+| [`ai.md`](ai.md) | the entity/commander decision loop: the `$14b62` per-tick iterator, the 75-entry mode table, the 50-byte object record, spatial buckets, the mode catalogue and the per-mode handler pseudocode, target selection, the regroup/dissolve/forest-animator dispatch, the revolt chain `$550e`, `$5c2c`, `$25d6`, shepherds, animals and carrier pigeons, arrows, the `$15000` page of mode bodies; the evidence taxonomy | differential tests vs the real 68000: entity FSM core **675/1335/413/85/99** tracked bytes over 154 states; regroup `$3c08` **71/71** (22 states) + its group-teardown subtree **1847/1847** (13 states); contact reconcile `$4bc8` **51/51** + **20/20**; dying-entity `$1623c` **275/275** (23 states); group dissolve `$2776` **4119/4119** (28 states); lord's work order `$5cde` **768/768** + **85/85** returns (47 states); the revolt chain **1778/1778** over 49 states (all 27 natural `$550e` calls on 4 lands); conquest target pick `$4f68` **1804/1804** (192 states, 170 natural); shepherd cycle **1043/1043** (198 states), animal update **45094/45094** (55 snapshots); arrow loop `$596a` **4210/4210** (456 states), order pigeon `$4562` **1567/1567** (125 states); the `$15000` mode bodies **18452/18452** (1889 states); forest animator `$4342` all 9 branches (115/115 over 10 poked states, arrival 344/344 over 10 live ticks) |
 | [`economy.md`](economy.md) | the goods ledger (felling trees, invention, army-supply upgrades), the separate food/manpower ledger and every writer of it, the settlement record, the world-build population and job pick, the settlement heartbeat and the loyalty/revolt accumulator, weapon-grade "invention", buildings and town layouts | shares `ai.md`'s FSM and revolt-chain proofs; settlement heartbeat `$157e6` **99/99** natural (27 states, 12 branch families) + **85/85** synthesised; every `food`/`troops_field` writer enumerated from a ~1B-step watch and cross-checked against the player's own order paths; `troops_field` equals the live men on 416 lord instances (378 exact, 416 within 1); job pick `$2a98` **3310/3310** (146 states), population `$2984` **29860/29860** (8 lands, 1026 men; 41760/41760 over 8 Play Random Land builds); equipment exchange `$160f8`/`$16892` **385/385** (201 states) |
 | [`strategy.md`](strategy.md) | the sim tick + measured cadence, the order executor pipeline (`$6522` decide, `$58016` command buffer, `$6a3a` execute, `$4b80` stamp), the player's commands and what each order does, force accounting, the 195-land campaign, diplomacy, combat, RNG/determinism, the world build, how a land ends, the developers' symbol names and the game's own text | driven live through the real UI and the emulator's REPL: mission 1 won and lost both ways (retire + natural defeat), every player order but `$04` and a real `$0e` exercised at least once, diplomacy's envoy/tribute/break traced end to end, and 4 lands' natural `$6522`/`$661a` decisions captured over 200M steps each and matched against the disassembly; gates: commander AI **323/323** natural + **280/280** synthetic states, executor **288** natural states + **80/80** synthetic, order senders and arrival executors **57039/57039** bytes over 2234 states, world build (`$10d1e` **22501/22501**, `$4672` **114947/114947**, `$238c` **44963/44963**, `$2eac`, `$2906`, `$1073c`), info panels (`_getname` 80/80 seeds, person 247/247, house 103/103, captain 12/12) |
 | [`graphics.md`](graphics.md) | asset formats, the software heightmap rasteriser (projection, DDA span walker, dither), all 4 yaw quadrants, the 4 sprite sheets and their blitters, the sprite pick, camera control, zoom, the land build (colour bake, roads, land script), the minimap and the conquest map, palettes and fades | frame-pixel scoring against the real emulator's own composited buffer: **100.00%** match on 27 captures across every drawn category; the projection `$fec6`/`$fecc` Proven vs the real 68000 (**3240/3240** vertices, byte-identical corner buffer); the rasteriser maths (`$ef62`/`$e420`) byte-exact vs a live single-step; blitters **450/450**, minimap **512000/512000** bytes, land build `$10058` **125219/125219**, `$10410` **45779/45779**, `$10910` **2561/2561**, `$10638` **260/260**, `$ac20` **14539/14539** |
@@ -50,8 +50,12 @@ against every session's changes.
   alliance, dismiss men, go home, a posture level ...) and clicks a target on the map; the order goes
   to the captain's group, whose lead walks there with the men following in formation. The first
   captain's own group acts at once; an order for any other captain is carried to him by a pigeon from the
-  first captain's position and takes effect when it lands (live once for the player from `pm142/rand1`, `py/captain2/drive_order.sh`: the posture order lands about 9.97M steps after the click; 95 natural launches for the AI). The
-  opponent lords issue orders through the same command slots and the same executor. (S "The
+  first captain's position and takes effect when it lands (live once for the player from `pm142/rand1`, `py/captain2/drive_order.sh`: the posture order lands about 9.97M steps after the click, and a men transfer from a selected subordinate, `py/captain2/xfer_pigeon.repl`, about 9.99M; 95 natural launches for the AI). The
+  opponent lords issue orders through the same command slots and the same executor, which never tests the local
+  side: every player order written into an AI side's slot runs for that side (`commander/gate_orders.sh` 57/57). A second
+  order sends a second pigeon and both run in turn; when the first captain's group dissolves every pigeon of its side is
+  freed, and later orders to the other captains copy the dead sender and never fly, each holding one of the 47 pigeon
+  records all sides share (a bug; `commander/README.md` "Orders by carrier pigeon", 7/7). (S "The
   player's commands", S "`$6a3a` / `$6ac6` / `$6b38` — the order executor", A "Arrows and carrier pigeons", A "What each entity decides per tick")
 - **Every man is an individual in one table.** Each runs a small per-tick state machine: step
   toward the lead's target, check the ground, turn around an obstacle, fight a neighbouring enemy,
@@ -83,10 +87,24 @@ against every session's changes.
   indices 8 and up. There is no research timer. (E 2a, E 2b, E 2c, E 4)
 - **Combat is a health grind.** Units in contact lock into melee; each tick the attacker takes 1 to 3
   (weapon grade 0, 2, 4; grade 6 and above takes 1) off the target's health (byte 45, the value the captain panel prints as "Very Sickly" ... "Very Strong", "Dead"). At zero the loser is killed or
-  routed by a roll that the attacking group's posture can pin; a rout scatters the loser's
-  group, which re-forms. A routed group member loses the routed mark as he is unlinked, so his attacker
-  keeps fighting him and routs him a second time; only then does he flee home (52 of 52 on two lands). Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
-  in its path (a man loses 82 health), and its end frees the archer to shoot again. There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
+  routed by a roll that the winning group's posture can pin (posture 2 kills, posture 4 routs, posture 3 rolls); a rout
+  sends the man home, where his lord can field him again (from one land-2 fight, 34 kills and 34 routs at posture 4
+  against 49 and 4 at posture 2, `commander/gate_posture.sh`); a rout scatters the loser's
+  group, which re-forms. A routed group member loses the routed mark as he is unlinked; the man who struck the blow
+  always breaks off, but another man already locked on him (one he struck, or one who chased him) re-engages him and routs him a second time, and only then does
+  he flee home (52 of 52 on two lands); a group member with nobody else on him walks back to his job. Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
+  in its path (a man loses 82 health), and its end frees the archer to shoot again. A lead (every one holds a bow from
+  spawn) stands off shooting in a fight; when an enemy man reaches him in melee and the winner's posture is 2 he is
+  killed, his group dissolves, and for the player's captain that loses the land whatever his army's men: 23 of the 24
+  commander land-2 captain deaths came this way, one traced at `$564e`, and the 24th from two arrows (commander README
+  "Land 2 as a rate"). The lead is the
+  enemy's preferred target, through a bug: a man hunting a group weighs its roster and then its lead, and the weigher
+  keeps the last acceptable candidate rather than the nearest, so every man able to take the lead on (a bow, at least
+  his health, or a third failed pick in a row) aims at him, one per tick. A chaser who arrives drags him into melee,
+  where each side loses 1 health a tick, so one healthy chaser costs the lead most of his health and the rest then
+  pass the health test (64 of 64 picks predicted). Across 30 runs the lead never lost more than the summed health of
+  the men who reached him; the 23 killing fights brought 120 to 553, the survived ones at most 150, wherever he stood
+  (commander README "How the captain dies"). There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
   A "Natural runs on later lands", A "Arrows and carrier pigeons")
 - **Land changes hands two ways: conquest by the player, revolt by the game's own clock.**
 
@@ -119,7 +137,8 @@ against every session's changes.
   S "`$d322` + `$3e06`")
 - **Winning is a ratio, not annihilation.** The score is `(2·mine + enemy/4) / enemy`, clamped to
   0..4; a land is won only by retiring while it reads 4, and lost by retiring earlier or by the
-  captain's group dissolving. (S "`$d322` + `$3e06` → ... `$57fce`", S "How a land ends")
+  captain's group dissolving; a side left with no lord and no man but an empty captain group never ends the land.
+  (S "`$d322` + `$3e06` → ... `$57fce`", S "How a land ends")
 - **A campaign of 195 lands on a 13 × 15 map.** A land can be picked only next to a conquered one;
   each land's parameters come from a fixed table, and only the conquest map carries over. (S "The
   campaign")
@@ -128,6 +147,8 @@ against every session's changes.
   the ally's settlements valid for friendly orders, and any contact between the two sides breaks
   it. Only the player ever offers. Driven end to end on land 25 with real clicks and no register pokes (5 pots to an ungarrisoned
   lord whose attitude is -8 are accepted, 3 pots are refused; only those two outcomes were observed); an envoy to a garrisoned lord dies to contact first.
+  An envoy injected from an AI side opens the player's accept panel; the panel routine clobbers A0, so the offer is also
+  judged for side 0 and the tribute is spent before the player answers (a bug; S "Who proposes").
   Afterwards take-food and take-equipment on the ally's town are accepted and a second offer is refused at
   the pointer test.
   (S "Diplomacy")
@@ -135,7 +156,12 @@ against every session's changes.
 
   **Marching.** Each commander marches at the nearest enemy lord when its army has
   the food for the trip (an army eats `men/8 + 1` per period, so big armies spend food fast). AI
-  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it.
+  armies start with so much food (`$5fff`, losing about 96 per 50M steps) that the test never binds in any run: it would take about 13G steps by arithmetic and no run of 12G reached it. The player's captain group gets no such
+  store (about 240 at the start of campaign lands 1 and 2), so food is a constraint only on the player: on land 2 the
+  captain ran out in 3 of 5 commander runs and starved to the land's end, though the side's own lords had held 327
+  food it never took, much of it later conquered by side 2. Taking each own lord's whole store at posture 2 kept the
+  scripted captain above 117 food on land 2 and won land 1 at 215M instead of 455M (`commander/README.md` "The
+  campaign", one run per policy).
 
   **Transfer order.** A small captain group handing its men to group 0 is natural but rare: 5 hits in 75 lands, all executed, by two routes: a small group left by a defection (k25, k8) or a large group whose side has no enemy lord it can take (k106, k34, k50). The order refusal cannot happen from any shipped call site (S "Natural coverage").
 
@@ -166,8 +192,9 @@ against every session's changes.
   game its deliberate pace. (S "Measured cadence")
 - **No pathfinding.** A lead steps straight at its target and probes half the way ahead, turning
   through a fixed fan of headings around what blocks it, with no coast following or memory, so a man whose target
-  lies across water stays at the shore (one man for 10G steps; 125 of 143 stuck men have water on their line,
-  `py/fsm/stuck_census.py`). (A "What each entity decides per tick", A mode `$48`)
+  lies across water stays at the shore (one man for 10G steps). In six long runs 2417 of the 4230 stuck pairs
+  have a land path whose straight line crosses water, and a triangle-level A* finds a walkable waypoint path for
+  each (`commander/classify_stuck.py`). (A "What each entity decides per tick", A mode `$48`)
 - **Weather is a seasonal roll, not ecology.** One spell per season from the season clock; nothing on the weather
   path reads the trees, and felling or emptying the forest leaves every spell unchanged (3 arms, 125M steps,
   `py/season/tree_weather.py`). Felled trees regrow one per season. (E "Weather and the season art")
@@ -179,7 +206,7 @@ against every session's changes.
 ### Bugs and accidents a new design should drop
 
 - The captain panel's loyalty line is a constant: its selector loads index 3 unconditionally, so it always reads "trusting" whatever the lord's loyalty is (the house panel does print it). The group aggression rank the panel prints (group word 72, 0 PowerMonger to 7 Wimp; the posture is the other half of that line and is read) is read by nothing but the panel (a whole-image scan, and 0 differing RAM bytes over 50M steps with all 30 words poked; the land build's block clear `$10768` also writes it). (S "The game's own text", S "`$51538` — group-order table")
-- An order for a subordinate captain compares the sender's cell with record 0 (all zero) instead of the target lead's cell, so it always goes by pigeon; a pigeon shot down by an arrow keeps its record until its target group dissolves, and the pool of 47 order pigeons has no other reclaim. When a side's first group dissolves, its pigeons are freed but the receivers' pending words are not cleared, and a later pigeon sent in the dead commander's name carries a negative owner byte that the pigeon loop skips: it never lands and the receiver's pending word stays set (watch on `pm142/rand1`; 142 dead-sender pigeons among the 357 pending words of the census's 183 snapshots of live play, `py/arms/pending_census.py`). A dissolved group's pending word is not cleared either, so the next captain's group built in that slot inherits it and is never ordered again (watch on k98 and k118; 9 inherited words in the census's live play, `py/arms/stuck_classes.py`). The dead commander's corpse can later be revived as an ordinary man by the slot-0 pigeon (`$4244`), which hides the dead sender but does not release the receivers (99 such words in the census, 81 in live play; seven lineages watched, `py/arms/revived/watches.sh`). (A "Arrows and carrier pigeons", S "The pending word")
+- An order for a subordinate captain compares the sender's cell with record 0 (all zero) instead of the target lead's cell, so it always goes by pigeon; a pigeon shot down by an arrow keeps its record until its target group dissolves, and the pool of 47 order pigeons has no other reclaim. When a side's first group dissolves, its pigeons are freed but the receivers' pending words are not cleared, and a later pigeon sent in the dead commander's name carries a negative owner byte that the pigeon loop skips: it never lands and the receiver's pending word stays set (watch on `pm142/rand1`; 142 dead-sender pigeons among the 357 pending words of the census's 183 snapshots of live play, `py/arms/pending_census.py`). A dissolved group's pending word is not cleared either, so the next captain's group built in that slot inherits it and is never ordered again (watch on k98 and k118; 9 inherited words in the census's live play, `py/arms/stuck_classes.py`). The dead commander's corpse can later be revived as an ordinary man by the slot-0 pigeon (`$4244`), which hides the dead sender but does not release the receivers (99 such words in the census, 81 in live play; the 18 others are post-game copies of three live words; nine lineages watched, `py/arms/revived/watches.sh`). (A "Arrows and carrier pigeons", S "The pending word")
 - `$5778`, the contact bookkeeping of a group already fighting, writes the opponent class 4 into group word 204 and then overwrites it with the attacker's entity offset (216 is the offset word): 237 of 2403 fighting groups in 896 snapshots hold an offset; in an A/B over 8 natural cases one group's posture changed (`py/cmdai/ab_5778.py`). On a group 0 it turns off the escort arm, and the side's free groups attack instead (reverse A/B, 2 of 3 cases; no natural case seen). (A `$5778` row, S "The opponent class `280()`")
 - The arrow's damage test (`subi.b #$52`, then `bgt`) misreads a health byte of `$80` or more as already dead; play keeps health below `$80`. The type-`$12` area effect of the arrow loop has no producer. (A "Arrows and carrier pigeons")
 - The starting job pick bounds the farmer's search row with a stale register (the cell index the failed fisherman search left behind), so a man whose fisherman draw fails can never become a
@@ -212,6 +239,11 @@ against every session's changes.
   practice). (S "Open threads")
 - Starting a new conquest clears only 62 of the 195 conquered-land flags (the clear loop's count is `move.w #$c3,D0` then `neg.b D0`, which leaves `$3d`): the flags of lands 62 and up survive.
   Live: 240 bytes poked to 1, then YES left exactly the first 62 zero. (S "The campaign", the panel `$18` row)
+- Ambient sounds play once. The sound table marks most events with flag `$20`, the driver's loop bit, and the dispatcher
+  refuses to restart a `$20` sound already on its one slot, but `$1ba3e` drops the flags and starts every sequence unlooped:
+  a lit camp fire in view crackles once, then 158 of 160 dispatches skip it until another sound takes the slot
+  (`py/ui/snd_slot.sh`; the looping intent is inferred). The dispatcher also computes a second-best event it never plays.
+  (S "`$127e6` — the sound-event dispatcher")
 
 ## Drive recipe: cold boot to the isometric view ([cr Replicants])
 
@@ -346,6 +378,23 @@ used only when its total-sector count matches the file, otherwise the size decid
 in the tree only PowerMonger save disks change). Write Track parses the track stream's ID and data
 fields and writes each 512-byte sector into the in-memory image. FORMAT, SAVE, OVERWRITE? and LOAD
 then run on a zeroed disk (`py/saveload/format_proof.sh`, `system.md` "The save-disk code").
+
+## Bug 7: unassigned encodings threw, and no write-protect tab
+
+A record poked to byte6 36, 38 or 42 sends `$115e0` into its own dispatch table, which runs as code
+(`port/SPEC.md` §6, the category table). Two of the words it meets are unassigned encodings on the
+68000: `$0608` (`addi.b` to an address register) and `$08fc` (`bset` to an immediate). The emulator
+decoded the first as an `addi` and threw on the second, where a 68000 takes the illegal-instruction
+trap. FORMAT's "IS IT WRITE PROTECTED ?" branch could not be reached because the FDC had no
+write-protect tab.
+
+**Fixes.** `68k.fs` `ImmediateToEa` (commit `0687622`) and `BitOp` (`dcac71b`) trap to vector 4 on
+every destination the 68000 does not assign. Selftest stays 0 wrong (its vectors hold only legal
+encodings), so the trap path is checked by `py/xcheck/overlay/bomb_check.sh`: TOS's four bombs 3/3,
+then `$08fc` at `$20` re-enters vector 4 instead of throwing. `MMU.fs` (`a6eb21d`) adds drive A's
+write-protect tab, REPL `wprot on|off`, which refuses Write Sector and Write Track with WPRT as
+Hatari's `fdc.c` does (`py/saveload/format_wprot.sh`, `system.md` "The save-disk code"). Both changes
+leave the diskless 30M boot and `rand1` +30M byte-identical.
 
 ## Driving a later land
 
@@ -492,7 +541,7 @@ $788a  cmpi.w #$2b1,D3 ; bne $7896     ; right OK
 $7890  jsr $b814
 ```
 
-**Dialog buttons by id.** After the click sound, `$7658` jumps through the word table at `$76fa + id` (ids below 4 are ignored; `D3` is the clicked button's grid offset, row * width + column of its `$80` corner). A grid with a text-entry field (cell `$89`) is also handled at the top of `$7658` (`$d03e`, `$d038..$d046`). All rows below are code read except id `$18`, which was clicked live (`py/clicks_ui/dlg_click.sh`, `pm142/yes_dlg.snap`; strategy.md "Panel slots and dialogs").
+**Dialog buttons by id.** After the click sound, `$7658` jumps through the word table at `$76fa + id` (ids below 4 are ignored; `D3` is the clicked button's grid offset, row * width + column of its `$80` corner). A grid with a text-entry field (cell `$89`) is also handled at the top of `$7658` (`$d03e`, `$d038..$d046`). Seventeen buttons are proven by `callcap` from `pm142/rand1` (`py/ui/dlg_ids.py`, **17/17**: the five order buttons of id `$08`, `$0c`, `$0e`, `$10`, `$12`, `$18` NO and `$1a`; each entered at `$76f0` through a stub that pushes the 14-register frame `$7a22` pops), id `$18` was also clicked live (`py/clicks_ui/dlg_click.sh`, `pm142/yes_dlg.snap`; strategy.md "Panel slots and dialogs"), and the FILE (`$06`), briefing (`$0a`) and login CONNECT drives are in `system.md` and strategy.md; `$04`, `$08`'s `$71` and `$131` are code read. Every button frees the dialog's slot (`clr.w $7a36`, or `$abcc` for REPLAY MAP and RANDOM MAP) except MULTI PLAY and PAUSE, which leave the panel open.
 
 | id | handler | buttons (`D3`) and effect |
 |----|---------|---------------------------|
@@ -644,8 +693,8 @@ reconstructions (corpora, scripts and the branch lists are in the cited sections
   returns (47 states, `py/diff_5cde.py`); revolt chain `$550e` to `$5c2c` to `$25d6` 1778/1778
   (49 states, all 27 natural `$550e` calls on four lands, `py/diff_revolt.py`); conquest target
   pick `$4f68` 1804/1804 (192 states, 170 natural, `py/diff_4f68.py`).
-- Forest animator `$4342`: 8 of 9 branches proven; the arrival/unlink branch stays
-  Corroborated (`ai.md` "the forest animator").
+- Forest animator `$4342`: all 9 branches, 115/115 over 10 poked states (`py/fsm/diff_4342.py`) and the
+  arrival/unlink 344/344 over 10 live arrival ticks (`py/fsm/gate_4342_arrive.py`; `ai.md` "the forest animator").
 - Shepherd cycle 1043/1043 (198 states, `py/gate_shepherd.py`; 1010/1010 over 215 on the Play Random Land roll), animals and pigeons 45094/45094
   (55 snapshots, `py/gate_animals.py`; 49178/49178 over 60 on that roll), arrows `$596a` 5082/5082 (473 states; 4509/4509 over 464 without the 9 synthetic lead kills,
   `py/gate_proj.py`), order pigeon `$4562` 1567/1567 (125 states, `py/gate_pigeon_send.py`);

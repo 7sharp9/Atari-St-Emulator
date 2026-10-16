@@ -184,7 +184,7 @@ def terrain_sample(m, D6, D7):
     A4 = (TERRAIN + s16(D0)) & 0xfffff      # adda.w D0,A4
     if m.bs(A4 + 8257) < 0:                 # tst.b 8257(A4) ; bpl $164b2
         lo = (D6 & 0xff) + (D7 & 0xff)      # move.b D6,D0 ; add.b D7,D0
-        if lo > 0xff:                       # bcc $164b6  (carry -> take colour plane A)
+        if lo > 0xff:                       # bcc $164b6  (carry -> take colour plane B $438ee)
             return m.bu(A4)                 # $164ac  move.b 0(A4),D0
         return m.bu((A4 - 8257) & 0xfffff)  # $164b6  move.b -8257(A4),D0
     else:
@@ -1314,7 +1314,10 @@ def call_4342(m):
     category:breed_state word is nonzero, and it has a shepherd_obj): walk
     the shepherd's own small-object chain (word2 links) until an entry with
     byte6==0 is found - a pure precondition guard, its landing address is
-    never used - and only then proceed.  Clear the animal's bit7.  Then scan
+    never used - then require every marker of this op's own word20 chain to
+    be idle (byte15 == 0, $4390..$43a8; the guard the 113th pass missed,
+    caught by gate_4342_arrive.py when a marker arrives while its op-mates
+    still fly), and only then proceed.  Clear the animal's bit7.  Then scan
     the WHOLE op array from the start for the first op whose OWN marker_off
     is still 0 (an "empty" op); transplant the ORIGINAL op's marker_off into
     that empty op and clear the original op's own slot (markers effectively
@@ -1364,6 +1367,15 @@ def call_4342(m):
                         d0 = m.wu(OBJ + d0 + 2)
                         if d0 == 0:
                             break
+            if claimed:                              # $4390..$43a8: every marker of this op's
+                d0 = m.wu(A0 + 6)                    # chain must be idle (byte15 == 0); an op
+                while True:                          # with marker_off 0 tests the record at $4c5f4
+                    if m.bu(HERD_MARKERS + d0 + 15) != 0:
+                        claimed = False
+                        break
+                    d0 = m.wu(HERD_MARKERS + d0 + 20)
+                    if d0 == 0:
+                        break
             if claimed:
                 m.wb(A1 + 7, m.bu(A1 + 7) & ~0x80)   # bclr #7,7(A1)
                 a2 = HERD_OPS

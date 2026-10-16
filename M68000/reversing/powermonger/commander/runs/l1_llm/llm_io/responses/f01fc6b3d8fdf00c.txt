@@ -1,0 +1,1 @@
+{"orders":[{"group":0,"order":"attack","x":20,"y":65,"posture":4}],"retire":false,"why":"41 men against 18 settlement men at the nearest enemy city; attacking at posture 4 wins the lord and gains his captain's group."}

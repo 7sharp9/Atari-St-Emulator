@@ -1,0 +1,48 @@
+disk scratchpad/powermonger.st
+mouse move -400 -400
+s 300000
+mouse move 0 0
+s 300000
+mouse move 135 35
+s 300000
+mouse move 0 0
+s 300000
+mouse down l
+mouse move 0 0
+hits 300000 133d4 6d90 3ce8
+mouse up l
+mouse move 0 0
+s 600000
+m 57fd2 2
+m 58042 10
+mouse move -32 151
+s 300000
+mouse move 0 0
+s 300000
+mouse down l
+mouse move 0 0
+s 300000
+mouse up l
+mouse move 0 0
+s 600000
+m 57fd6 2
+mouse move -13 -136
+s 300000
+mouse move 0 0
+s 300000
+mouse down l
+mouse move 0 0
+watch 5801d 1
+hits 300000 133d4 6ac6 6b2e 6b38 4562 1c18
+mouse up l
+mouse move 0 0
+unwatch
+m 516a8 4
+bp 1c18 15000000
+bt 6
+m 516a8 4
+u 6b38 3000000
+m 516a8 4
+m 57fd2 2
+m 58042 10
+q

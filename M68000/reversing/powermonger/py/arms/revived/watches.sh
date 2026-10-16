@@ -5,6 +5,8 @@
 #   k4     the k4 inheritance: the refilled slot's pending word $51a2e takes no write in 170M steps
 #   k32 k124 k25a k25b k60 k138 k22 k86   the revived/unseen lineages: commander record bytes 4..7 (kill at $55f2,
 #          revival at $4258/$42ac); k25 watches 26 bytes to also catch word 28 (the group link written at $1b78)
+#   k112 k96  the lineages whose words were classified from frozen post-game chunks only (both games end in chunk 1):
+#          k112 side 2 group 1 (sender $5417c, bytes 4..7 at $54180), k96 side 4 groups 1 and 2 (sender $54d66, $54d6a); 190M steps covers chunk 1's live play
 #   k6     a revived/seen case (M2G_k6_c1, record already dead in the start snapshot)
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=${M68000_ROOT:-$HERE}
 while [ ! -f "$ROOT/tools/rdis.py" ]; do ROOT=$(dirname "$ROOT"); [ "$ROOT" = / ] && { echo "no repo root"; exit 1; }; done
@@ -40,10 +42,14 @@ hits 250000000 $H" ;;
 hits 250000000 $H" ;;
   k86)  echo "$L/lands2/k86.snap|watch 54f5e 4
 hits 250000000 $H" ;;
+  k112) echo "scratchpad/pm143/lands/k112.snap|watch 54180 4
+hits 190000000 $H" ;;
+  k96)  echo "scratchpad/pm143/lands/k96.snap|watch 54d6a 4
+hits 190000000 $H" ;;
   k6)   echo "$L/long/M2G_k6_c1.snap|watch 5459a 4
 hits 250000000 $H" ;;
   esac; }
-names=${*:-k104a k4 k32 k124 k25a k25b k60 k138 k22 k86 k6}
+names=${*:-k104a k4 k32 k124 k25a k25b k60 k138 k22 k86 k112 k96 k6}
 for n in $names; do
   s=$(spec $n); snap=${s%%|*}; body=${s#*|}
   printf 'disk scratchpad/powermonger.st\n%s\nq\n' "$body" > "$D/$n.repl"

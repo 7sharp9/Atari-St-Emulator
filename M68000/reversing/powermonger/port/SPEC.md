@@ -55,8 +55,7 @@ Evidence levels (Proven, Corroborated, Observed, Hypothesis) are defined in `../
 
 **Open.**
 
-- The frame a `byte6` 6 camp marker draws (`$111` by the shared `$117b0` formula) has not been
-  captured, and per-category frame counts are not tabulated. Categories 18, 28 and 34 were never seen
+- Per-category frame counts are not tabulated. Categories 18, 28 and 34 were never seen
   in natural play on 37 lands (§6 gives the reasons for 18 and 28), nor were the men's plough and
   siege-engine overlays; under labelled pokes the port matches the game on all five (§6, "Men" and
   the category table). 36, 38 and 42 cannot be drawn in this build.
@@ -80,7 +79,7 @@ passes, on the Mac since the 154th). The experiments that settled a question onc
 re-run stay in `scratchpad/` as a record: `pm118/phase_test.fsx`, `pm118b/lastrow_fix.fsx` (its own
 copy of the rasteriser), `pm119/pan_check.fsx`, `jitter_check.fsx` and `tick_check.fsx` (the first two
 were brought up to date and run in the 154th session with the results quoted below), and
-`pm121/allpairs.txt`. The labelled-poke checks of the men's overlays and of `byte6` 18, 28, 34 and 36-42 rerun with `../py/xcheck/overlay/run_cases.sh` (captures from `pm88_f1`) then `score_cases.sh` (each case against the no-poke control, plus wrong-frame controls). A scratch path cited below is a record of what was run.
+`pm121/allpairs.txt`. The labelled-poke checks of the men's overlays and of `byte6` 18, 28, 34 and 36-42 rerun with `../py/xcheck/overlay/run_cases.sh` (captures from `pm88_f1`) then `score_cases.sh` (each case against the no-poke control, plus wrong-frame controls); `bomb_check.sh` follows 36-42 into the crash. A scratch path cited below is a record of what was run.
 
 ---
 
@@ -736,7 +735,7 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 | 0 | `$11c8a` / `$11f78` | man | walk or melee frame; plough and siege-engine overlays; flags bit 5 → the boat of 26 | walk, melee, boat (lands 0, 5, 25, 60); plough and siege engine (walk and melee) under labelled pokes on `pm88_f1` (`../py/xcheck/overlay/`) |
 | 2 | `$117d8` / – | settlement building | building frame `record[7]` | all |
 | 4 | `$1168c` / – | tree, building | `record[7]` + season offset | all |
-| 6, 24 | `$117b0` (`a_object`) / `$11f78` | 24: the fishermen's catch marker; 6: a group's camp marker, placed by `$3744` (same drawer, `record[7] = $11`) | `record[7] + $100` (a catch marker has `record[7] = $10`, frame `$110` = a rowboat on the pond; a camp marker, formula only, `$111`) | 24: all; 6: not captured |
+| 6, 24 | `$117b0` (`a_object`) / `$11f78` | 24: the fishermen's catch marker; 6: a group's camp marker, written lit (`record[7] = $12`) by `$35f4` through `$3744` and put out (`$11`) by `$37c2` or `$5778` (same drawer) | `record[7] + $100`, plus `$57fec & 3` when that is `$112` (a catch marker `$110`, a rowboat on the pond; a lit fire `$112..$115`; a put-out fire `$111`, an ash pile) | 24: all; 6: lit 80/80 and 38/38, out 82/82 (`py/xcheck/campframe/`) |
 | 8 | `$11a86` / `$11f78` | animal | 16 facings | all |
 | 10 | `$11772` / – | dropped equipment (a dead man's `record[33]`/`[44]` once `$1623c` finishes) | `$10f + (r33 − 8) >> 1`, `$142 + r44 >> 1` | land 5 |
 | 12 | `$11bbc` / `$11f78` | dead man (`$5590` kill: side negated, `word[18] := $a0`) | body `$103 + (−record[5] & $ff)`; figure `$100 + record[32]` lifted `$a0 − word[18]` | land 5 |
@@ -750,7 +749,7 @@ port's frame equals the game's, pixel for pixel (see "Scoring a capture" below).
 | 30 | `$1198a` / – | building going up (`$5e3a`) | frame `$0c`, top rows cut off while `word[8]` counts down from `$10` | land 25 |
 | 32 | `$1168a` / `$1168a` | nothing: `rts` in both passes (the end state of a dead man without goods) | – | – |
 | 34 | `$11ab8` / `$11f78` | – | f = `$100 + ((($57fec & 2) + record[7]) & $ff) + (((record[14] + yaw + $10) & $e0) >> 4) * 2` at the lerp, then f + 1 eight pixels right | never seen naturally; poked: 19/19 px |
-| 36, 38, 42 | prepare word 0 / `$12258`, `$12258`, `$12244` | – | none: `$115e0` jumps to `$1162e` + 0, into the table itself, which runs as code through `(A4)+`, `(A6)+` and `(A0)+` writes to `$0608` at `$11640`, an illegal instruction on a 68000 (inferred from the encoding) | cannot be drawn: a poked record stops the emulator at `$11644` (3 of 3) |
+| 36, 38, 42 | prepare word 0 / `$12258`, `$12258`, `$12244` | – | none: `$115e0` jumps to `$1162e` + 0, into the table itself, which runs as code through `(A4)+`, `(A6)+` and `(A0)+` writes to the word `$0608` at `$11640` (`addi.b` to `A0`, an unassigned encoding), which takes the illegal-instruction trap | crashes the game: a poked record reaches `$11640` 108,268 steps after the frame driver and takes vector 4 into TOS's bomb handler, which stores its crash record (`$380 = $12345678`, `$3c4 = 4`) and draws four bombs on the game's screen at row 100; 2,025 steps later the handler's exit returns into the vector table at `$20` with a garbage stack (SSP `$4e73203c`). The word there, `$08fc` (`bset` to an immediate, unassigned), takes vector 4 again, whose entry is now the garbage `$04fc0a1a` (ROM `$fc0a1a` on the 24-bit bus); the emulator returns to `$20` 148 steps later and loops. On a real ST that exception's stacking at `$73203c`, past the 1 MB of RAM, should bus-error into a double fault that halts the CPU (inferred: the emulator raises no bus error there). 3 of 3, end states equal apart from the poked byte (`../py/xcheck/overlay/bomb_check.sh`) |
 | 40 | `$11c64` / – | projectile (`$57f0`, weapon tier in `D1`) | one colour-0 pixel (`$e6ee`) | land 25 |
 | 44 | `$1184e` / – | dropped goods pile (`$3ac8`) | a goods icon per non-zero word at `record + 10 + 2e` | lands 5, 25 |
 
@@ -856,7 +855,7 @@ use.
 | 0 | man | `$33000` | `(side−1)*16 + (((heading + YAW + 0x10) & 0xff) >> 5)*2` `[+0x40 armed, +1 anim]`. side = record[5], heading = record[17], **YAW = `[$ff9a]` ⇒ facing is camera-relative** (8 steps). Melee, plough and siege-engine overlays and the boat: "Men" above. |
 | 2 | settlement building | `$37c7c` | `record[7]`, centroid (see "Settlement buildings" below) |
 | 4 | tree / building | `$37c7c` | **(live-verified, D2 at `$12288`)** `r7 = record[7]`: `r7 == 0x0d` → `0x0d`; `(r7 & 0x7f) == 0x0e` → `0x0e`; else `(r7 & 0x7f) + word[$11746 + word[$57fd0]]`. `word[$57fd0] = ($58146 & 3)*2` (per-mission tile-set selector); table `$11746 = {0:0, 2:3, 4:6, 6:9}`. Mission 1 (`$57fd0`==4) → `+6`, so `r7` 0x11/0x10/0x0f → frame 0x17/0x16/0x15. **Position: `$11f1a` sub-cell lerp** (like the men) with an *address-jitter* `fx/fy` = `fx = (((A2+A3)&0xffff)<<3)&0xff`, `fy = (((A2+A3)&0xffff)+(A0&0xffff))&0xff` where `A2 = &$47970[cellY*64+cellX]`, `A3 = record`, `A0 = &$3f364[row*64+col*4]`; then `$12272` `−4/−8` → raw anchor `(lerpX+0x38, lerpY−16)`. |
-| 6, 24 | 24: the fishermen's catch marker (`a_object` `$117b0`; planted on shore cells by `$2984`, `../economy.md` 5a; side in `record[5]`, `record[7] = $10`); 6: a camp marker (`$35f4` calls `$3744`, which writes it into the pool slots after the fishermen's markers, `record[5]` an AI side, `record[7] = $11`; evidence under the table) | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Centroid (`$1182a`). A catch marker (`r7 == 0x10`) draws frame 0x110, a rowboat on the pond (`../catch_marker_boats.png`; live: `bp 1182a`, 30 of 30 marker records had `D4` low word `$0110`). `$61f8` turns the marker into one boat for the group that takes it (`../economy.md`, `../strategy.md`). |
+| 6, 24 | 24: the fishermen's catch marker (`a_object` `$117b0`; planted on shore cells by `$2984`, `../economy.md` 5a; side in `record[5]`, `record[7] = $10`); 6: a camp marker (`$35f4` calls `$3744`, which writes it into the pool slots after the fishermen's markers, `record[5]` the side (1 to 4 seen), `record[7] = $12` when placed, `$11` once put out; evidence under the table) | `$33000` | `record[7] + 0x100`; if `== 0x112` add `[$57fec] & 3` (4-frame anim). Centroid (`$1182a`). A catch marker (`r7 == 0x10`) draws frame 0x110, a rowboat on the pond (`../catch_marker_boats.png`; live: `bp 1182a`, 30 of 30 marker records had `D4` low word `$0110`). `$61f8` turns the marker into one boat for the group that takes it (`../economy.md`, `../strategy.md`). |
 | 8 | animal (sheep) | `$33000` | `(((record[14] + YAW) & 0xff) >> 5)*2 + 0x117` `[+1 anim]` — 16 frames, camera-relative facing. **Live-verified:** D2 = 0x123/0x124 at `$11ab6`. Sub-cell lerp. |
 | 10 | dropped equipment | `$33000` | `$10f + ((record[33] − 8) >> 1)` if `record[33] != 0`, then `$142 + (record[44] >> 1)` if `record[44] != 0`, same place |
 | 12 | dead man | `$33000` | body `$103 + (−record[5] & $ff)`; figure `$100 + record[32]` at `screenY − ($a0 − word[18])` |
@@ -870,10 +869,22 @@ use.
 | 40 | projectile | `$e6ee` | one pixel, colour 0 |
 | 44 | dropped goods | icons | the goods icons |
 
-**Camp markers (byte6 6).** The camp marker is created by `$35f4` through
-`$3744`. Evidence that `$3744` is the writer: 2 of 2 new records between two
-snapshots of one land matched 2 `$3744` hits, and 4 of 4 records read on two lands
-(0 and 60) sit at pool slots 30 to 32 with byte 7 `$11` and sides 2 to 4. A camp
+**Camp markers (byte6 6).** `$35f4` creates a camp marker lit: it calls `$3744`
+with `D3 = $12` (`$3666`), which writes byte 6 `6` (`$3796`), byte 7 `D3` (`$379c`)
+and the cell word into a free slot of the marker pool `$4cff8..$4d250` (10-byte
+records), or into a put-out (`$11`) slot (the scan `$375c`). Two routines put the
+fire out by writing `$11` to byte 7: `$37c2`, the prologue of the order senders,
+when the group is camped (state 6) and its lead's word 46 points into the pool
+(`$3874`), and `$5778` when a camped group is engaged (`$57b0`). Over 6.8M steps
+from `pm148/arms/long/M2G_k118_c1.snap` a watch of the whole pool saw only two `$12`
+writes at `$379c` and two `$11` writes at `$3874` (`$5778` did not run). The drawer
+`$117b0` draws a lit marker as `$112 + ($57fec & 3)` and a put-out one as `$111`;
+`$57fec` advances by 1 between consecutive draws of a record, so the flame steps one
+frame per view redraw. Live (`py/xcheck/campframe/capture.sh` and `parse.py`, no
+pokes): from `pm150/small/camp/c12_0.snap` one lit record drew `$112..$115` 20 times
+each (80 of 80 by the formula, `$57fec` +1 between draws 79 of 79); from
+`M2G_k118_c1` two put-out records drew `$111` 40 of 40 each, and a third drew
+`$112..$115` 38 times until `$37c2` put it out, then `$111`. A camp
 marker occurs only after the build: it is present in 17 of 37 Play Random Land
 lands settled 30M steps, and the preview-roll screen under "Census of the
 categories" did not list it.
@@ -896,6 +907,34 @@ the score on the clean captures. `pm78_settle` gains nothing inline (94.62% agai
 terrain only) and loses drawn sprites-last (86.90%), and not from a formula error: its two compose buffers disagree on the entity layer by ~14.6 k px
 (`$115e0` redraws a *subset* of entities per frame, double buffered), so neither reference
 buffer holds all 25 trees, and it stays at 94.62% (§9 "Ruled-out causes").
+
+**Birds over a tree.** A byte6 4 record whose `record[7]` has bit 7 set (and is not the
+bare `$0d`, which returns at `$116b4`) gets five birds after its own frame when the zoom
+`$57ffc` is 5 or less (`$116d6..$1173c`). `$116bc` pushes the `$11f1a` point (D0, D1) before
+`$12244`; the loop lifts it 8 rows and, for k = 4 down to 0, blits the `$33000` frame
+`$127 + ([$57fec] & 15) / 2` (the flapping bird at half rate) through `$11f82` at
+`(D0 + ((seed_hi + k) & 7), D1 + ((seed_lo + k) & 7))`, where seed_hi and seed_lo are the
+words of the RNG long `_seed` `$2df84`. The offsets are consecutive, so the five birds sit on
+a diagonal. The seed is not a clock: it moves only when the simulation draws from `$12c9a`, so
+the birds hover in place between draws and jump to a new diagonal at each one. In play the
+draws come in bursts. A `watch 2df84 4` from `pm142/rand1` (Play Random Land) saw 499 draws in
+107 bursts over the 674M steps until the land ended (median 4 draws per burst; median gap
+2.7M steps, about 15 ticks; longest 69M), and the first 80 came from the fisherman's catch
+search (`$15cb8`, mode `$5a`, 50) and the shepherd's herd release at the gate (`$15f46`/`$15f5c`,
+mode `$82`, two per animal, 30) (`../py/xcheck/seed_watch.sh`). `pm88_f1` and the overlay captures
+2M steps later share `$5ee0459d` because no draw fell between them. The port renders the seed of
+the state it is given, which is exact for that frame; it does not advance the seed itself, and a
+port that animated between states would advance it only where it ran one of those draws, not per
+tick. A raw scan of the
+`ctl_0` RAM finds 95 byte6 4 records with bit 7, and both exported asset sets have bird trees
+(7 and 9). Found as the overlay
+checks' control-frame miss: on `ctl` (camera (22,46)) a screen-word `watch` of rows 101 to 109 shows
+the last writes there are `$11f82` blits returning to `$1173a` (the bird loop) with A3 = tree
+`$4d762` (`record[7] = $8d`), which leave colour 5 on 22 px the port drew as tree. `Sprites.fs` draws them
+(`EntityCtx.Seed`, `seedOf`; `pm_export.py` exports `seed`), as does `pm_render_ref.py`:
+the control frame's misses go from 22 to 0, a seed off by one in either word or a flap frame
+off by 1 or 2 gives 24 to 31, and `pan_w` scores 99.64 -> 99.78% (`../py/xcheck/run.sh`; the other
+13 frames score unchanged).
 
 **The per-cell entity pass in F#.** It lives in `Sprites.fs` (`EntityRec` /
 `EntityCtx` / `entityFrame` / `blitEntity` / `drawEntities`) and is

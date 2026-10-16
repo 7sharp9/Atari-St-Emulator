@@ -199,7 +199,7 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
 | `blit_fs.fsx` / `blit_py.py` | 17 of 17, five melee men among them |
 | `overlay/run_cases.sh`, `overlay/score_cases.sh` | the labelled-poke checks of the plough and siege-engine overlays and of `byte6` 18, 28 and 34 (`SPEC.md` §6) |
 | `ent_fs.fsx` / `ent_py.py` | 3061/3061 |
-| `score.fsx`, 14 frames | 99.64-99.99% (`pm78_settle` 94.62%) |
+| `score.fsx`, 14 frames | 99.69-99.99% (`pm78_settle` 94.62%) |
 | stepper `--selfcheck` | 23/23 on `assets` and `assets_k60` |
 | walkthrough `showboat verify` | clean |
 | logic, stepper and Godot builds | build |

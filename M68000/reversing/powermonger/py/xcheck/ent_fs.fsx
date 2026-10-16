@@ -32,7 +32,7 @@ let sheetProp = File.ReadAllBytes(assets + "/sprites/prop_sheet_raw.bin")
 let ctx : Sprites.EntityCtx =
     { Yaw = gi ctxj "yaw"; Anim = (gi ctxj "anim" <> 0); SelGroup = gi ctxj "sel_group"
       TileOff = Season.treeTileOffset (gi ctxj "season"); RotPhase = gi ctxj "rot_phase"
-      Sheet33 = sheet33; SheetProp = sheetProp; Ram = [||]; Zoom = 4; SheetProp32 = [||]; SheetProp16 = [||] }
+      Sheet33 = sheet33; SheetProp = sheetProp; Ram = [||]; Seed = (match ctxj.TryGetProperty "seed" with | true, v -> int (v.GetInt64()) | _ -> 0); Zoom = 4; SheetProp32 = [||]; SheetProp16 = [||] }
 
 let mkRec (e: JsonElement) : Sprites.EntityRec =
     { Addr = gi e "addr"; B6 = gi e "b6"; B5 = gi e "b5"; B7 = gi e "b7"; B14 = gi e "b14"

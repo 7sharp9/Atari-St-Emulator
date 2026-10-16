@@ -115,10 +115,23 @@ that holds its worked example.
   called under `callcap`. A door graph or dataflow chain is a hypothesis until each leg is driven.
 - A trial that varies more than one thing proves no cause. An input test needs a same-snapshot,
   same-budget control, a hold longer than the game's poll cycle, and a signal that changes only if
-  the mechanism fired. A `bp`/`bpc`/`watch` that finds nothing is bounded by its own budget.
+  the mechanism fired. A `bp`/`bpc`/`watch` that finds nothing is bounded by its own budget, and by
+  its input: show the precondition live in the same run (PowerMonger's "sound event 17 never plays" came
+  from a view with no lit fire, its count 0 at every dispatch; with the fire in view it plays, `py/ui/snd_slot.sh`).
+  A count it does find is bounded the same way: "the rollout win's lead was engaged once" came from a 15M-step watch
+  of a 1120M run, and a whole-run sample found a 65-health fight 7M steps after the window (`commander/leadkill/gate_standoff.sh`).
 - A hero pinned at one screen coordinate is usually a camera-follow trigger; a position reached is
   not proof the maneuver was safe (check health and status bytes across the run); a snapshot after
   a fixed hold may be a mid-motion frame.
+- "Never in state X" read from periodic snapshots is a sample, not a trace: `watch` the byte over the window. The
+  commander's rollout-win lead "never left `$34`" at 5M samples; a watch found a melee at 1457M that lasted under one
+  tick (`commander/leadkill/gate_leadkill.sh win`).
+- A cause read off the state at a failure needs the run's trajectory before it rules a remedy out: the commander
+  handoff said the captain starved with its own lords at 0 food, so fetching food could not help; that was true at
+  330M, but at 150M those lords held 327 food it never took, and taking it won land 1 in half the steps
+  (`reversing/powermonger/commander/README.md` "The campaign"). A variable that sets the losses apart is checked in a
+  win too: every land-2 captain death was against a posture-2 group, but the win fought posture-2 groups as well; the
+  lead's own melee mode is what differed ("Land 2 as a rate").
 
 ## Proving routines with parallel subagents
 
@@ -132,7 +145,9 @@ that are easy to forget:
 - Tell agents to derive the repo root by walking up to the directory holding `tools/rdis.py` (or
   `M68000_ROOT`), never a literal path or fixed `../` count, and to keep temp files in one named
   scratchpad dir.
-- Re-run every gate from fresh callcaps, from the promoted location, before merging. Name a promoted
+- Re-run every gate from fresh callcaps, from the promoted location, before merging.
+  Give each promoted gate its own output subdirectory: two gates that both name an arm `ctl` in one directory overwrite
+  each other, and one then checks the other's run (commander `gate_local.sh` and `gate_retire.sh` did). Name a promoted
   directory anything but `build/`: `.gitignore` ignores it.
 - `callcap` runs with interrupts masked, so a routine that plays a sound waits forever on a flag the
   interrupt clears (PowerMonger: poke `$2c993` to 0 in the state). Corpus capture:
@@ -155,7 +170,9 @@ that are easy to forget:
     words that contain `<` or `>`.
   - fails `echo =====` (`=word` expands to a command path): quote it.
   - aborts a whole `for f in a/*.md a/*.sh; do ...` when one glob matches nothing: run such loops
-    with `bash`, or `setopt nonomatch`.
+    with `bash`, or `setopt nonomatch`. An unquoted `grep --include=*.fs` fails the same way ("no matches found"): quote it.
+- A waiter `until ! pgrep -f 'run.sh x'` matches its own shell's command line and never exits: bracket one
+  character (`pgrep -f 'run[.]sh x'`), or wait on the background task's own notification.
 - macOS has no `timeout`: `... | timeout 60 dotnet ...` fails before running, and a following
   `grep -c` prints 0, the same as "no hits". Print the raw output and a positive control before
   counting, and bound runs with step counts.
@@ -177,13 +194,17 @@ that are easy to forget:
 
 - `watch <addr>` on an odd byte misses a word or long write that covers it (`MMU.fs` `checkWatch`
   tests only the write's start address) and all FDC DMA writes. Also watch the even byte below, and
-  read the writers in the listing.
+  read the writers in the listing. Its `step=` is the snapshot's cumulative step counter, not steps
+  into the run (PowerMonger's rand1 starts near 828.75M): line it up with a `hits` first-hit inside the watch.
 - REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field clobbers the next
   three. Read the neighbouring fields and write the whole longword deliberately.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or `bp`
   before the down, or the census misses the handler. `hits <n> <addrs>` after a `bp` that stopped
   the run counts only what happens after the stop, so a routine that ran earlier reads 0 and looks
   uncalled: run `hits` from the end of the click, before any `bp`.
+- `hits` on a routine every side runs (PowerMonger's executor `$6b38`, attack `$6c32`) counts all sides' calls, so a
+  count after a poke is not the poked side's: attribute each call by its own data (`bp`, then the packet's side byte at
+  A0). Side 2's 26 orders after side 3's captain died read as side 3's stale pigeons until `bp 6b38` showed byte 0 = 2.
 - `hits` and `bpc` count an address again when an interrupt is taken at it: the handler returns to the
   same PC, which counts as a second arrival. PowerMonger's `$1abaa` was seen doing this (`s 1` from the stop
   enters the level-6 sample-player handler; `bpc` stops there again 20 steps later with the routine's state

@@ -1,0 +1,1 @@
+{"orders":[{"group":0,"order":"attack","x":13,"y":81,"posture":4}],"retire":false,"why":"31 men outnumber the 10 settlement men at the nearby Town (13,81); attacking at posture 4 should win it and bring its captain over as a new group."}

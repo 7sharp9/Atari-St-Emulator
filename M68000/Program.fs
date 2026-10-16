@@ -1310,7 +1310,7 @@ module Main =
                 else input.Split(' ') |> Array.filter (fun s -> s <> "")
             match parts with
             | [| "help" |] | [| "h" |] ->
-                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8), hits <steps> <hexaddr>... = run steps and count PC hits (first/last step) per address - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8), hits <steps> <hexaddr>... = run steps and count PC hits (first/last step) per address - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, wprot on|off = drive A's write-protect tab (not in a snapshot), watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (default len 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
@@ -1393,6 +1393,11 @@ module Main =
                 //loader mid-load asking for "disk 2") without needing a fresh cold boot.
                 st.Cpu.MMU.LoadDiskA (Some (IO.File.ReadAllBytes path))
                 Diag.result "Disk A swapped to %s" path
+                loop()
+            | [| "wprot"; onOff |] when onOff = "on" || onOff = "off" ->
+                //Drive A's write-protect tab (MMU.SetWriteProtectA); not saved in a snapshot.
+                let on = onOff = "on" in st.Cpu.MMU.SetWriteProtectA on
+                Diag.result "Disk A write protect %s" onOff
                 loop()
             | [| "watch"; addr |] ->
                 let a = Convert.ToUInt32(addr, 16)
