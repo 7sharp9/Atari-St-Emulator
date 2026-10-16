@@ -254,8 +254,8 @@ typedef struct pm_side_groups {       // base = $51538 + side*$13c
 /* +160*/ s16  carrying   [6][8];     // [84+12i] goods carried, i = pike..cannon (interleaved: stride 12 per item)
 /* +256*/ s16  camp_since  [6];       // tick the group went back to camp ($3720); $6522 waits $14 ticks past it
 /* +268*/ s16  prev_state  [6];       // the state before that ($3728); $6762 looks it up in the table $67d0
-/* +280*/ s16  obj_camp_ph [6];       // campaign phase / sub-order
-/* +292*/ s16  obj_escort  [6];       // escort-target object offset
+/* +280*/ s16  opp_class   [6];       // [204] opponent class: 2 lord, 4 group, 6 man, 8/$a animal, $c cat-4 record ("The opponent class 280()")
+/* +292*/ s16  opponent    [6];       // [216] opponent's record offset at the last $4bc8 ($4d6c); the escort target
           // ... $13c total
 } pm_side_groups;
 // $30fe returns  group.field_60 - 2  (posture - 2) as the kill/rout shift and the slice shift of every player order.

@@ -1558,7 +1558,7 @@ loose animals), shows the loop at rest:
 | routine | hits | reading |
 |---------|-----:|---------|
 | `$6522` decide | 276 | once/tick |
-| `$661a` the attack arm of the decide chain | **2** | re-arming `byte4` mostly does *not* re-trip `$661a`: the objective slot's `active`/`force` fields stop qualifying after the first order. Only 2 autonomous primary decisions in 276 ticks |
+| `$661a` the attack arm of the decide chain | **2** | re-arming `byte4` mostly does *not* re-trip `$661a`: after the first order the group no longer meets the attack arm's conditions (strategy.md "The exact arm conditions"). Only 2 autonomous primary decisions in 276 ticks |
 | `$68fe` / `$68ee` | 2 / 2 | the two decisions; both scored in budget |
 | `$15302` reached-enemy | 41 | men closing on enemy positions |
 | `$56a6` engage | 9 | contacts made |
@@ -2014,14 +2014,11 @@ The natural `$36`/`$38` snapshots are made with `py/arms/repro_nat36.sh` and `py
 Each item says what is open, why, and how it would be proven. Items whose
 mechanism is closed keep a pointer to the doc that holds the proof.
 
-- **Group-record array `+280` (open).** `strategy.md` has the `$51538` stride
-  (`$13c`), the header (pending long / type / param) and the six groups' parallel
-  arrays (the old "objective slots" and "execution sub-records" are the side's
-  groups; field table in strategy.md "`$51538`"). `+280` is the least explained
-  array there (campaign phase / sub-order). It is open because its role is not
-  settled; it would be proven the way the other fields were: list its writers and
-  readers over the whole image, then confirm each under `callcap`/`hits` on a
-  snapshot where the value changes (the evidence rules in `CLAUDE.md`).
+- **Group-record array `+280` (closed).** It is the class of the group's opponent
+  or attack target, written by `$4a7a`, `$4bc8` (through `$4de2`) and `$5778`, read
+  by the escort arm, the posture rule and the follow-up table; proven by
+  `py/cmdai/gate_party_class.py` (468/468) and the 896-snapshot census
+  `py/cmdai/phase_census.py` (strategy.md "The opponent class `280()`").
 - **Projectile type `$12` (no writer produces it).** The projectile type
   is `$28` for a bow (6) and `$12` for `$e`/`$10`. `field44` is written only by
   the world build (`$2452`/`$2500`, from the side block) and the equip paths
