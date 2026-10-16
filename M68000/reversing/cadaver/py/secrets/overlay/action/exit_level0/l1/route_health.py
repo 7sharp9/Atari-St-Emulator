@@ -54,7 +54,8 @@ LEGS = [
 def item_icon(inp, out, oid, icon, ks=range(1, 9)):
     """Return grid, k RIGHT pulses, FIRE (the item's panel), then icon `icon`.  k is searched on fresh loads of `inp` (so the kept run has the same reload as the
     trial): the first k whose panel holds `oid` and answers the joystick.  With 4 items in the rucksack a panel opened with k = 0 ignored every pulse
-    (12 of 12 lost, from 12_back1 of this route), so k = 0 is not tried; k past the last slot wraps to slot 0."""
+    (12 of 12 lost, from 12_back1 of this route), so k = 0 is not tried; the Return grid is four cells wide and RIGHT pulses cycle its first row only (k = 4 gives cell 3, then cell 0 again), so an item in
+    cell 4 or later needs a DOWN (route_pocket.py's SEQS: `RD` is cell 4, `RDR` cell 5)."""
     from drv import cur_icon
     for k in ks:
         r = Repl(inp); t = Tally(r); tap(r, t, 0x1c)
