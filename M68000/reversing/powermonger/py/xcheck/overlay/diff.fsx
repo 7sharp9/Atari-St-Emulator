@@ -47,11 +47,14 @@ let load (arg: string) =
                B15 = g "b15"; B32 = g "b32"; W18 = g "w18"; Icons = g "icons"; B33 = g "b33"; B44 = g "b44"
                B16 = go "b16"; W12 = go "w12" } : Sprites.EntityRec) ]
     // WRONG=<field>:<delta>:<addr,addr..> (wrong-frame control): add delta to
-    // one field of the named records, on the case side only (the first pair)
+    // one field of the named records, on the case side only (the first pair);
+    // WRONG_SIDE=ctl puts it on the control side instead, so one capture given
+    // twice scores the true render against an altered one (real_melee84.sh)
+    let wrongArg = if Environment.GetEnvironmentVariable "WRONG_SIDE" = "ctl" then 3 else 2
     let recs =
         match Environment.GetEnvironmentVariable "WRONG" with
         | null | "" -> recs
-        | _ when arg <> fsi.CommandLineArgs.[2] -> recs
+        | _ when arg <> fsi.CommandLineArgs.[wrongArg] -> recs
         | w ->
             let parts = w.Split(':')
             let d = int parts.[1]

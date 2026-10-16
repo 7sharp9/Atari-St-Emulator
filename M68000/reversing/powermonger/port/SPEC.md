@@ -803,8 +803,15 @@ negative offset reads the tail of the 16 x 16 `$312a0` sheet, which ends at `$33
 plane bits under mask-1 pixels, and the blit ORs them in unmasked (below, "The mini-sprite
 blitter"). The port follows all three (`Sprites.frameOffset`, `decodeFrameAt`, `blitEntity`).
 Labelled pokes on `pm88_f1` (two men at side 2, `../py/xcheck/overlay/run_cases.sh`): walking at
-`$84`, 0/0 changed px in both; melee at `$84` 32/32 and at `$92` 35/35, where the port before this
-scored 3/32 and 3/35, and a wrong-frame control (`$85`/`$93`) 9/32 and 22/35.
+`$84`, 0/0 changed px in both; melee at `$84` 32/32 and at `$92` 35/35, against 3/32 and 3/35 for
+a port that drops the frame, and 9/32 and 22/35 for a wrong-frame control (`$85`/`$93`). The real
+trade run matches too (`../py/xcheck/overlay/real_melee84.sh`): from `at63f4.snap` at posture 5 the
+12 side-3 men fight with byte 31 = `$32` from about 864.8M to 866.6M cumulative steps, byte 44
+unwritten after the trade. One frame of that window (camera poked onto their cells, nothing else)
+holds six in melee, three at `$84` and three at `$92`. Scored on the one capture, the pixels where
+the true render differs from an altered one are the game's in every case and the altered render's in
+none: byte 44 + 1 on all six 35/35 (altered 0/35), the `$84` men drawn with the aligned weapon-0
+frame 43/43 (0/43), the `$92` men likewise 33/33 (0/33).
 
 ### Position — bilinear over the projected cell corners (`$11f1a`)
 
@@ -847,7 +854,15 @@ sprite sits at `raw + 0x3c` while its terrain cell sits at `raw + 64`, i.e. the
 per-category frame formula; the important ones follow the sheet table.
 
 There are **four sprite sheets** (all 4-bitplane + AND-mask, MSB-first, opaque
-where the mask bit is 0):
+where the mask bit is 0). Both blitters OR the planes in unmasked: every row loop of the word
+blitter (`$123ac`, `$1241a`, `$12460` for 16 px wide; `$124a8`, `$12576`, `$12628` for 32), reached
+from the clip and dispatch code at `$122b6` and `$12326`, writes
+`plane | (screen & mask)` exactly as `$11f82` does (below, "The mini-sprite blitter"). No frame of
+`$312a0`, `$37c7c` or `$3af1c` has a plane bit under a mask-1 pixel (0 rows in all 47 + 27 + 27
+frames, on `at63f4` and `pm88_f1`; the same scan of `$33000` finds the one pixel of frame `$ab`), so
+`decodeFrameWord` dropping mask-1 pixels draws what the game draws. Its frame offset is also
+`mulu` / `adda.w` and would wrap past frame 204, 68 and 51 of the three sheets; no caller indexes that
+high.
 
 | sheet | frame | geom | blitter | positioning | categories |
 |-------|-------|------|---------|-------------|------------|
