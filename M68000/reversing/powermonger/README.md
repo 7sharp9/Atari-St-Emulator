@@ -50,10 +50,12 @@ against every session's changes.
   alliance, dismiss men, go home, a posture level ...) and clicks a target on the map; the order goes
   to the captain's group, whose lead walks there with the men following in formation. The first
   captain's own group acts at once; an order for any other captain is carried to him by a pigeon from the
-  first captain's position and takes effect when it lands (live once for the player from `pm142/rand1`, `py/captain2/drive_order.sh`: the posture order lands about 9.97M steps after the click, and a men transfer from a selected subordinate, `py/captain2/xfer_pigeon.repl`, about 9.99M; 95 natural launches for the AI). The
-  opponent lords issue orders through the same command slots and the same executor, which never tests the local
-  side: every player order written into an AI side's slot runs for that side (`commander/gate_orders.sh` 57/57). A second
-  order sends a second pigeon and both run in turn; when the first captain's group dissolves every pigeon of its side is
+  first captain's position and takes effect when it lands (live once for the player from `pm142/rand1`, `py/captain2/drive_order.sh`: the posture order lands about 9.97M steps after the click, and a men transfer from a selected subordinate, `py/captain2/xfer_pigeon.repl`, about 9.99M; 95 natural launches for the AI).
+
+  **The AI uses the same path.** The opponent lords issue orders through the same command slots and the same executor, which never tests the local
+  side: every player order written into an AI side's slot runs for that side (`commander/gate_orders.sh` 57/57).
+
+  **Pigeons can leak.** A second order sends a second pigeon and both run in turn; when the first captain's group dissolves every pigeon of its side is
   freed, and later orders to the other captains copy the dead sender and never fly, each holding one of the 47 pigeon
   records all sides share (a bug; `commander/README.md` "Orders by carrier pigeon", 7/7). (S "The
   player's commands", S "`$6a3a` / `$6ac6` / `$6b38` — the order executor", A "Arrows and carrier pigeons", A "What each entity decides per tick")
@@ -86,25 +88,34 @@ against every session's changes.
   better item reaches the lord. The hand-back has a stale-register bug that credits it to another lord's slot for lord
   indices 8 and up. There is no research timer. (E 2a, E 2b, E 2c, E 4)
 - **Combat is a health grind.** Units in contact lock into melee; each tick the attacker takes 1 to 3
-  (weapon grade 0, 2, 4; grade 6 and above takes 1) off the target's health (byte 45, the value the captain panel prints as "Very Sickly" ... "Very Strong", "Dead"). At zero the loser is killed or
+  (weapon grade 0, 2, 4; grade 6 and above takes 1) off the target's health (byte 45, the value the captain panel prints as "Very Sickly" ... "Very Strong", "Dead").
+
+  **Kill or rout.** At zero the loser is killed or
   routed by a roll that the winning group's posture can pin (posture 2 kills, posture 4 routs, posture 3 rolls); a rout
   sends the man home, where his lord can field him again (from one land-2 fight, 34 kills and 34 routs at posture 4
   against 49 and 4 at posture 2, `commander/gate_posture.sh`); a rout scatters the loser's
   group, which re-forms. A routed group member loses the routed mark as he is unlinked; the man who struck the blow
   always breaks off, but another man already locked on him (one he struck, or one who chased him) re-engages him and routs him a second time, and only then does
-  he flee home (52 of 52 on two lands); a group member with nobody else on him walks back to his job. Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
-  in its path (a man loses 82 health), and its end frees the archer to shoot again. A lead (every one holds a bow from
+  he flee home (52 of 52 on two lands); a group member with nobody else on him walks back to his job.
+
+  **Arrows.** Bows fire arrows: an arrow flies 20 ticks and ends on the first enemy man, pigeon or marker
+  in its path (a man loses 82 health), and its end frees the archer to shoot again.
+
+  **The lead.** A lead (every one holds a bow from
   spawn) stands off shooting in a fight; when an enemy man reaches him in melee and the winner's posture is 2 he is
   killed, his group dissolves, and for the player's captain that loses the land whatever his army's men: 23 of the 24
   commander land-2 captain deaths came this way, one traced at `$564e`, and the 24th from two arrows (commander README
-  "Land 2 as a rate"). The lead is the
-  enemy's preferred target, through a bug: a man hunting a group weighs its roster and then its lead, and the weigher
+  "Land 2 as a rate").
+
+  **The lead is the enemy's preferred target, through a bug.** A man hunting a group weighs its roster and then its lead, and the weigher
   keeps the last acceptable candidate rather than the nearest, so every man able to take the lead on (a bow, at least
   his health, or a third failed pick in a row) aims at him, one per tick. A chaser who arrives drags him into melee,
   where each side loses 1 health a tick, so one healthy chaser costs the lead most of his health and the rest then
   pass the health test (64 of 64 picks predicted). Across 30 runs the lead never lost more than the summed health of
   the men who reached him; the 23 killing fights brought 120 to 553, the survived ones at most 150, wherever he stood
-  (commander README "How the captain dies"). There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
+  (commander README "How the captain dies").
+
+  There is no battle resolver. (S "Combat" 0, 1, 3, A "the combat path (mode `$32` melee)" for the gated drain, A "`$5590`, outcomes" for the rout;
   A "Natural runs on later lands", A "Arrows and carrier pigeons")
 - **Land changes hands two ways: conquest by the player, revolt by the game's own clock.**
 
@@ -383,7 +394,7 @@ then run on a zeroed disk (`py/saveload/format_proof.sh`, `system.md` "The save-
 ## Bug 7: unassigned encodings threw, and no write-protect tab
 
 A record poked to byte6 36, 38 or 42 sends `$115e0` into its own dispatch table, which runs as code
-(`port/SPEC.md` §6, the category table). Two of the words it meets are unassigned encodings on the
+(`port/SPEC.md` §6, the category table). Two of the words in its path are unassigned encodings on the
 68000: `$0608` (`addi.b` to an address register) and `$08fc` (`bset` to an immediate). The emulator
 decoded the first as an `addi` and threw on the second, where a 68000 takes the illegal-instruction
 trap. FORMAT's "IS IT WRITE PROTECTED ?" branch could not be reached because the FDC had no
@@ -391,11 +402,10 @@ write-protect tab.
 
 **Fixes.** `68k.fs` `ImmediateToEa` (commit `0687622`) and `BitOp` (`dcac71b`) trap to vector 4 on
 every destination the 68000 does not assign. Selftest stays 0 wrong (its vectors hold only legal
-encodings). The poked records first drove that trap path (TOS's four bombs, then `$08fc` at `$20`
-re-entering vector 4); since the bus-error model of `90ea349` (`$400000..$f9ffff` and writes to
-`$0..$7` bus-error, a fault while stacking a group-0 frame halts the CPU) they bus-error at `$1162e`
-before reaching `$11640`, and `py/xcheck/overlay/bomb_check.sh` checks that double fault instead
-(3/3), so no current check exercises vector 4 on these encodings. `MMU.fs` (`a6eb21d`) adds drive A's
+encodings). The poked records do not reach that trap path: under the bus-error model of `90ea349`
+(`$400000..$f9ffff` and writes to `$0..$7` bus-error, a fault while stacking a group-0 frame halts the
+CPU) they bus-error at `$1162e` before reaching `$11640` or `$20`, and `py/xcheck/overlay/bomb_check.sh`
+checks that double fault (3/3), so no current check exercises vector 4 on these encodings. `MMU.fs` (`a6eb21d`) adds drive A's
 write-protect tab, REPL `wprot on|off`, which refuses Write Sector and Write Track with WPRT as
 Hatari's `fdc.c` does (`py/saveload/format_wprot.sh`, `system.md` "The save-disk code"). Both changes
 leave the diskless 30M boot and `rand1` +30M byte-identical.
