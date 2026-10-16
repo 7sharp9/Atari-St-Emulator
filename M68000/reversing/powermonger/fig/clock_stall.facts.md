@@ -21,7 +21,7 @@ From `reversing/powermonger/strategy.md` unless marked.
 Code read added here (scan of `scratchpad/pm123/win/m1_map.ram` bytes `$0..$40000` for the long literal):
 `$2df72` in the instructions at `$3720` and `$65a0`; `$2df70` in the instructions at `$12f6`/`$1352`
 (`move.l $2df70,$2df74`), `$1302e` (the tick increment), `$1373c` (`move.l $2df70,D0`, then `cmp.l $2df74,D0`),
-`$13baa` (`clr.l $2df70`). (The first version listed operand addresses, two bytes later; corrected.) The 2,140-tick and 60-tick wait
+`$13baa` (`clr.l $2df70`); these are instruction addresses, not operand addresses. The 2,140-tick and 60-tick wait
 figures are the doc's. The chunk-to-step mapping (chunk n covers 2G + (n-1) x 250M ..) is my arithmetic from
 "2G + 5G steps, 20 chunks of 250M"; it reproduces the doc's 4.5..4.75G and 5.5..5.75G windows.
 

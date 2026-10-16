@@ -24,7 +24,7 @@ Generated: `py/fsm/mode_edges.py` (code read of `scratchpad/pm123/win/m1_ready.r
 | `$35f4`: each member `$10`/prev `$20` (`$36ec`, A0), the lead `$6868` (`$371a`) | text.lst; pm_fsm_ref `call_35f4` |
 | `$34f2`: town's men `$10`/prev `$14` (`$3578`); `$1d70`: followers `$08`/`$08` (`$1e56`) | text.lst |
 | `$56a6`: target `$32`/`$32` (`$5702`, A3); `$5590`: target prev `$3c` (`$561c`, A3); `$4bc8` via `$4dae`: other party `$2c`/`$2c` | text.lst |
-| whole-image check: every mode-byte write in `$1050..$1d000` lies in a walked routine except `$2d04` (`init_dum`, `$92`), `$3c74` (unreached) and `$161f0` (the `$161c4` water veto, mode `$00`, common to every mode ending there; not drawn) | ad-hoc scan in this pass over `out/text.lst` |
+| whole-image check: every mode-byte write in `$1050..$1d000` lies in a walked routine except `$2d04` (`init_dum`, `$92`), `$3c74` (unreached) and `$161f0` (the `$161c4` water veto, mode `$00`, common to every mode ending there; not drawn) | ad-hoc scan over `out/text.lst` (`py/fsm/mode_write_scan.py` is the rerunnable form) |
 
 Lanes: job bits of byte 7 (bit 0 farmer, 1 merchant, 2 fisher, 3 shepherd): ai.md object record row 7, `$3c08`.
 Labels: ai.md mode tables, economy.md 2a, strategy.md orders table, `powermonger_orig.sym` (`pottery_` at `$156e0` = mode `$6a`).

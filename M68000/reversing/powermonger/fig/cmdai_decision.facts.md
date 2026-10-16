@@ -16,30 +16,19 @@ All from `reversing/powermonger/strategy.md` unless marked. Branch addresses wer
 | `$68ee` score formula `(d/2)((men-4)/8+1) + d/2` | decide item 3; The lord scans |
 | food fallback `$66a4`: `$69b4(6)`, `$06`, no posture write; 15/15 poked; natural 0; seed `$5fff` | Food fallback `$66a4` |
 | arm 4 `$666c` via head `$664c`: `$69b4(8)` then `$68fe(men + T)`; posture 2; `$08` | decide item 4; The exact arm conditions |
-| transfer `$668c`: D7 != 0, men != 0; `$04`, `D7 << 8`; k25, k8, k106 executed; k34, k50 not examined | decide item 5; Transfer `$664c`, `$668c` |
+| transfer `$668c`: D7 != 0, men != 0; `$04`, `D7 << 8`; all five natural hits (k25, k8, k106, k34, k50) executed; `py/arms/gate_nat_arms.py` 6/6 states, 28/28 changed bytes (the five plus k143's arm-4 decision) | decide item 5; "Transfer `$668c`: natural, all five hits examined, all executed" |
 | group 0 / empty group falls to `$66c8` (at `$6684` / `$6686`) | The exact arm conditions |
 | 75-land counts: `$65c8` 3507, `$65f4` 2286, `$6638` 31122, `$666c` 145, `$668c` 5, `$664c` 6913, `$66a4` 0, `$6884` 0 | Natural coverage |
 | short census (29 snapshots x 150M): `$69b4` 95, escort 2, attack 77, `$6762` 179, `$66e8` 137 | Natural coverage |
-| arm 4 split 140 k143, 5 k106 and k50 | Transfer ..., "Arm 4 (`$666c`) is natural too" |
+| arm 4 split 140 k143, 5 k106 and k50 | "Arm 4 (`$666c`) is natural too" |
 | refusal `$6884`: 5 call sites, 25 triples, 0 refuse | Refusal `$6884` cannot hold from any caller |
 | gate_cmdai.py 323/323 natural, 280/280 synthetic | Proof of the commander AI |
 | predicate_check.py 5724/5724 | The exact arm conditions |
 
 ## Flags
 
-- "Natural coverage" calls `$664c` "the transfer head"; "The exact arm conditions" puts arm 4 `$666c` "in `$664c`'s head".
-  The code makes `$664c` the head of arm 4 (`$69b4(8)`, then `$68fe(men + T)`); the transfer `$668c` sits after the
+- The code makes `$664c` the head of arm 4 (`$69b4(8)`, then `$68fe(men + T)`); the transfer `$668c` sits after the
   fall-through at `$6680`. The figure labels `$664c` as arm 4's predicate.
-- (Resolved by the merged strategy.md) 65 deciding = the 24 first groups + 41 of the 394 non-lead groups; the figure
-  now says so.
+- 65 deciding groups = the 24 first groups + 41 of the 394 non-lead groups; the figure says so.
 - The short census counts `$69b4` calls (95) and the 75-land census counts `$65c8` issues (3507): different addresses, not
   comparable. The figure labels each.
-
-## Revision
-
-- Arm 2 now reads "group 0 is fighting another group (state `$d`, opponent class `280(group 0) == 4`)", and the escort
-  goes to group 0's opponent (`292`). Source: the coordinator, from the sim_unread agent (`280` = opponent class, 4 = a
-  group; `292` = the opponent's record, written by `$4d6c`); see group_soa.facts.md.
-- Transfer: all five natural `$668c` hits examined and executed (k25, k8, k106, k34, k50);
-  `py/arms/gate_nat_arms.py` 6/6 states, 28/28 changed bytes (the five plus k143's arm-4 decision). Section:
-  "Transfer `$668c`: natural, all five hits examined, all executed".
