@@ -432,7 +432,7 @@ research timer. It is the moment a higher-tier item first reaches a lord's
 
 `pm_object` carries the unit's equipment in two bytes, each holding an **item code** `2*(i+1)` (pike 2, sword 4, bow 6, plough 8, boat `$a`, pot `$c`,
 catapult `$e`, cannon `$10`): **byte 44** is the weapon tier (pike, sword, bow, and catapult/cannon for a man with flag bit 4) and **byte 33** the tool tier
-(plough, boat). The world build stamps a boat (`$0a`) on the AI sides' lead, followers and lord-chain records (`strategy.md` "Original names": 26 of 26 on `k0`); a man who carries nothing has byte 33 `0`. A pot is never accepted by `$638c`. `$1533c` (melee) reads byte 44 as `damage = (min(v,6) >> 1) + 1`;
+(plough, boat). The world build stamps a boat (`$0a`) on the AI sides' lead, followers and lord-chain records (`strategy.md` "Original names": 26 of 26 on `k0`); a man who carries nothing has byte 33 `0`. A pot is never accepted by `$638c`. `$1533c` (melee) reads byte 44 as `damage = ((s8(v) < 6 ? v : 0) >> 1) + 1`;
 `$52fc` reads it for the projectile type.
 
 The distribution is two player-order arrival executors, not the commander AI: `$61f8` (mode `$6e`, order `$10` "take equipment", its only caller `$1574a`) takes goods from a
@@ -952,7 +952,7 @@ slots 3-5, `$1616c` for the plough: the lord's `goods[3]` is decremented there, 
 
 | site | reads byte 44 as | effect |
 |------|------------------|--------|
-| `$1533c` (melee, mode `$32`) | tier | `damage = (min(grade, 6) >> 1) + 1` per tick → 1..4 |
+| `$1533c` (melee, mode `$32`) | tier | `damage = ((s8(grade) < 6 ? grade : 0) >> 1) + 1` per tick (`lsr.b`): pike 2, sword 3, bow and none 1; a code of `$80` or more passes the signed test and drains `$41..$80` (the forced posture-5 trade's `$84`/`$92` drain `$43`/`$4a`, `strategy.md` "Posture 5") |
 | `$52fc` / `$5318` (projectile spawn) | tier | projectile **type** (its byte6): `$12` when `byte44` is `$e` or `$10`, `$28` when it is `$6` (a bow: the arrows the renderer draws as one pixel); any other value takes the melee branch `$5334` and fires nothing. No writer ever stores `$e`/`$10` in byte 44 (the build forces a lead's to 6, followers get 0/2/4/6, the equip paths 2/4/6), so type `$12` is unreachable (`port/SPEC.md` "Why 18 and 28 are missing") |
 | `$3ffc` (`$3e06` speed calc) | `byte44 >= $e` → `+$10` force bonus | speed term |
 | `$9846` / `$9dc6` (`$a242`) | index | the "carrying …" clause in the unit description |

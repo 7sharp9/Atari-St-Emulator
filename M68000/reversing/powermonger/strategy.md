@@ -646,10 +646,19 @@ posture-3 control from the same state), the buy row `$650a + 24` is `$6522`'s ow
 goods `$48`, `$41`, 0, 5: with the usual zeros past the lord's goods the army sells everything
 and buys nothing (+144 food, where the control buys its 12 goods back); with non-zero bytes at
 lord `+$60`/`+$59` it consumes them, clears another object's bytes 6..7 through
-`84(A3, 12 x $41)` and writes equipment codes `$92`/`$84` (valid codes are 2..16) into 12 men's
-byte 44. The code table itself is never written (`py/cmdai/posture/`: `posture_watch.sh`,
-`posture5_issue.sh`, `posture5_issue2.sh`, `trade5.sh`, `raw_scan.py`). The other readers at
-posture 5 are code read only.
+`84(A3, 12 x $41)` and writes equipment codes `$84` (9 men) and `$92` (3) into 12 men's
+byte 44 at `$63e8` (valid codes are 2..16). Those codes, not the posture, decide the group's next
+fight. The melee drain at `$1533c` compares byte 44 signed (`cmp.b #6 / blt`), so a code of `$80` or
+more takes the weapon arm and drains `(code >> 1) + 1` (`lsr.b`): `$43` and `$4a` a tick where a pike
+drains 2. Run 60M steps forward as a 2x2 from the trade state (posture 5 or 3, crossed with byte 44 as
+the trade left it or poked to the other arm's values at the trade's `rts`), both arms with the codes
+end their melee with those 12 men at health `$56..$5a` and none dead, and both without them at
+`$1e..$58` with 1 and 2 dead; the melee counts per 10M chunk follow byte 44 (48/865/221 and
+54/903/232 against 1336/1849/203 and 1404/1807/157), and 60 sampled drains are `$43` 26 times and
+`$4a` 5 times from the 12 men, `$01` 29 times from the others. The code table itself is never written
+(`py/cmdai/posture/`: `posture_watch.sh`, `posture5_issue.sh`, `posture5_issue2.sh`, `trade5.sh`,
+`raw_scan.py`, `trade5_fwd.sh`). The other readers at posture 5 are code read only; a man with such a
+code in melee also asks `$11c8a` for frame `$80 + code * 8 + (side - 1) * 4` (code read, not rendered).
 
 The routine as C (transcribed in `py/cmdai/cmdai_ref.py` `call_6762`, proven there):
 
@@ -1292,8 +1301,8 @@ void h_melee(obj *A1 /*attacker*/) {              // $1533c
     }
     T->heading = A1->heading + 0x80;              // face the attacker
     if (T->mode != 0x32) pm_engage(T /*A3*/, A1); // drag the target into the fight
-    int dmg = min((u8)A1->msg_code, 6) >> 1;      // 0..3
-    dmg += 1;                                     // 1..4 per tick
+    int8_t c = A1->msg_code;                      // byte 44, compared signed
+    int dmg = ((c < 6 ? (u8)c : 0) >> 1) + 1;     // lsr.b: pike 2, sword 3, bow/none 1; >= $80: $41..$80
     T->health -= dmg;                             // <<< byte 45 is the melee HP (the panel's healthnames)
     if (T->health <= 0) { pm_kill_or_rout(A1, T); return; }  // -> $5590
     A1->link_into(T);  T->mode = 0x32;            // keep grinding
@@ -2413,7 +2422,8 @@ Combat, in full (`ai.md` + "Combat" above):
 def melee_tick(attacker):                          # entity mode $32 / $1533c
     T = attacker.target
     if T.dead: attacker.mode = FIGHT_HOLD; return
-    dmg = (min(attacker.msg_code, 6) >> 1) + 1     # 1..4 per tick
+    c = attacker.msg_code                          # byte 44, compared signed
+    dmg = ((c if s8(c) < 6 else 0) >> 1) + 1       # pike 2, sword 3, bow/none 1
     T.health -= dmg
     if T.health <= 0:                              # $5590
         roll = attacker.group.posture - 2          # field_60 - 2

@@ -792,7 +792,7 @@ the plough 16/16 px (and no plough when `record[7] ≠ 1`, 0/0 in both); the sie
 `record[44]` = `$e`, `$f`, `$10`, `$11` 98/98, 22/22, 38/38 and 50/50 px walking, 65/65 and 32/32
 in melee; the melee frame alone 30/30. A wrong-frame control (`record[44] + 1`) scores 0 to 3 of
 the same pixels. The game tests `record[44]` signed (`cmp.b #$e / blt`) and the port unsigned,
-which differs only for values ≥ `$80`, which no writer produces.
+which differs only for values ≥ `$80`. No natural writer produces one; the forced posture-5 trade does (`$63e8` writes `$84`/`$92` into 12 men, `../strategy.md` "Posture 5"), and such a man would draw the siege overlay in the port but not in the game.
 
 ### Position — bilinear over the projected cell corners (`$11f1a`)
 
