@@ -78,8 +78,8 @@ against every session's changes.
   group that delivered the invention order (aggressive Bow or Catapult, neutral Pike, passive Plough or Boat; E 2a).
 
   **Merchants.** Merchants, the men the starting job lottery could place nowhere else (E 5a), are meant to carry goods between a nation's lords
-  but the goods mostly churn by one at the home lord (`k5_s4`, 100M steps: 10 taken, 8 banked; 1 of 10 sampled pickups took the next lord record's Plough, `py/merch_moves.py`). A merchant's trip walks a table that never advances, so the destination is his home lord (leader 0 when the home lord is the last record), and the goods he banks on
-  arrival come from the record after his home lord (a stale-register bug, proven by `py/fsm15/gate_fsm15.py` over 119 states of mode `$54`; A `$54` row, E 2b).
+  but the goods mostly churn by one at the home lord (`k5_s4`, 100M steps: 10 taken, 8 banked; 1 of 10 sampled pickups took the next lord record's Plough, `py/merch_moves.py`). A merchant's trip walks a table that never advances, so the destination is his home lord (its wrap to leader 0 needs a home on an unallocated slot and was never taken in 904 natural trips), and the goods he banks on
+  arrival come from the record after his home lord (a stale-register bug, proven by `py/fsm15/gate_fsm15.py` over 119 states of mode `$54` and `py/fsm15/gate54.py` over 167 natural entries; a home lord with nation 0 would hang the loop, never seen; A `$54` row and evidence, E 2b).
 
   **"Invention" is supply.** A man who walks to his lord's cell hands back his weapon
   and takes the best in stock (bow, then sword, then pike; a farmer also takes a Plough), so a weapon improves only when a
@@ -232,6 +232,7 @@ against every session's changes.
   rarely lasts that long. A LOAD restores the camp stamps but keeps the destination's clock, a second way into the same wait (`py/saveload/camp_stamps.py`). (S "Natural coverage", the signed-clock stall, S "What the campaign keeps between lands")
 - An attack on a lord whose cell holds only the attacker's own records is re-issued every tick and never starts (`$4a7a` returns without `$4b80`): 9,660 and 13,594 attack decisions in 2G steps on two
   lands. (S "Natural coverage", the livelock bullet)
+- The invention follow-up draws a posture of 2 to 5, and every posture reader indexes a 3-entry table with `posture - 2`, so posture 5 reads one past each (a trade at posture 5 takes the AI's own code bytes as its buy list). No effect has been observed: posture 5 was drawn twice in a whole land and overwritten by the next decision before any reader ran. (S "Posture 5")
 - The AI's follow-up table `$67d0` is live (34 natural issues, food to men to equipment to invention);
   the invention order reaches its arrival `$5fa0` in 26 of 30 natural cases on the Play Random Land roll, and the chain ends there.
   (S "The follow-up table", S "What an AI invention order does")

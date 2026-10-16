@@ -185,7 +185,7 @@ is group 0's state word and its `24` target link (below).
 save/load sectors. The scan covers literal displacements 204/280 on any register and indexed accesses from the table base, over `$1000..$1c600`
 (the method of `py/aggr/scan_group_field.py`, retargeted to these displacements). The writers:
 - `$4a7a` (`_send_at`, the attack order's cell resolver) writes 2 for a foreign settlement (its lord becomes the target), 6 for a foreign man, 8 for an animal (categories 8, `$14`, `$16`) and `$c` for a category-4 record, then state 8.
-- `$4bc8` (`$4d68`/`$4d76`) writes the class that `$4de2` returns for the opponent and its offset into `292()`. `$4de2` returns 2 for a lord, or for a man without a group standing within 8 cells of his home settlement (who stands for his lord). It returns 4 for a group lead or follower; a group that is neither marching to attack (8) nor fighting (`$d`) is first broken out of camp by `$37c2`. It returns 6 for a lone man away from home, 8, `$a` and `$c` for animals and category-4 records, and 0 otherwise.
+- `$4bc8` (`$4d68`/`$4d76`) writes the class that `$4de2` returns for the opponent and its offset into `292()`. `$4de2` returns 2 for a lord, or for a man without a group standing within 8 cells of his home settlement (who stands for his lord). It returns 4 for a group lead or follower; a group that is neither marching to attack (8) nor fighting (`$d`) is first broken out of camp by `$37c2`. It returns 6 for a lone man away from home, 8 for a category-8 animal, `$a` for a carrier pigeon or forest marker (category `$14` or `$16`, `$4ebe..$4ed0`), `$c` for a category-4 record (each with side 0), and 0 otherwise. Class `$a` has no natural occurrence: 0 of 521 `$4de2` calls in 54 live Play Random Land runs (3.44G steps, `py/orders/census.sh`). With the sheep of a sword-click target poked to category `$16` or `$14` (one byte, same snapshot and budget as an unpoked control), the group fights with `204 = $a` and its men shoot the record (`$5150`, mode `$34`: 22 calls and 15 arrows in 2M steps) instead of chasing and slaughtering it; there is no carcass, and the group is camped again within 4M steps, where the control chases, slaughters and camps after 10M (`py/orders/class_a.sh`, 1/1 per arm).
 - `$5778` (below) writes 4 and then the attacker's entity offset.
 
 The readers are the escort arm `$65ec`, the posture rule `$6726` and the follow-up table (`$677c`).
@@ -1165,8 +1165,13 @@ and `31 := $10` (advance).
   The first match on the chain wins.
 - **`$4a7a`** (`_send_at`, order `$0c`) picks its target by scanning the cell's whole chain: a building (byte6 2 or `$10`) of another side ends the scan at once and the target is its
   leader's cell (`204(A3) := 2`); otherwise the **last** enemy man (byte6 0 or `$e`, owner > 0 and not ours) wins (`204 := 6`), else the last byte6 `8`/`$14`/`$16` record
-  (`204 := 8`), else the last byte6 4 record, whose `10(rec)` is its cell (`204 := $c`); nothing: no change. `204(A3)` is the campaign phase array (`+280`). The group goes to state 8
-  with `24(A3)` = the target's offset, the lead to mode `$30` heading for the target's x/y. Natural: sword icon on lord 0's town, `m1_s0`.
+  (`204 := 8`), else the last byte6 4 record, whose `10(rec)` is its cell (`204 := $c`); nothing: no change. `204(A3)` is the opponent-class word (`280()`, "The opponent class `280()`"). The group goes to state 8
+  with `24(A3)` = the target's offset, the lead to mode `$30` heading for the target's x/y. Natural: every arm except the foreign man is
+  gated on natural entries by `py/orders/gate_4a7a_nat.py`, **1614/1614** bytes over 22 states (8 foreign settlements: 6 AI calls on
+  `pm142/rand1`, 1 on k25, the `m1_s0` click; 3 sheep clicks on k120, k25, k56; the k120 tree click; 7 AI re-issues on a cell holding only
+  the attacker's own records and 3 on an empty cell, which change nothing), against a mutant that writes class `$a` for the animal arm at
+  0 of 3. Over 54 live Play Random Land runs (3.44G steps, `py/orders/census.sh`) the AI made 1956 calls: 88 settlements, 1844 cells with
+  no target (the livelock above), 24 empty cells, and no man, animal or tree; the foreign-man arm is gated on synthetic states only.
 - **`$3bc8`** (`_get_lar...`): scans the 160 leader slots `$4e514..$4f914` (the slot test is byte0 == side, `$3bc8` does not stop at an empty slot). `A0` is the matching slot with the strictly
   largest signed word at `D3`, the first on a tie; while the best is 0 `A0` follows every match, so an all-zero side returns its last leader; no match: `A0 = 0`; it leaves `D4 = $20`.
 - **`$3956`** (`_at_supp...`, mode `$74` arrival of order `$1a`): `$39d4` with `D7 = 1` (drop only the army's food, `D0` = posture - 2), then `$3bc8(side, 6)` (the own leader with the most
@@ -2273,7 +2278,12 @@ successor is 0, so the first call wraps.
   stop sequence (`$5896a`) as the id-0 cues; in autumn it is sample 3 (`$596fc`), and the last cue is
   sample 9 (`$59f96`) (gated).
   `$58054` toggles between 1 and 4, and its only use is as the second argument of `$1ba3e`, which
-  ignores that argument, so the toggle has no effect (code read; a literal scan, indexed accesses not checked).
+  ignores that argument, so the toggle has no effect. No indexed or block access in the text reaches
+  it: the tables below it (`$58042 + 2*side`, `$58016 + 6*side`, `$57fd8 + 2k`, `$57fba + 4*side`) stop
+  at `$5804b` or below, and the land build's clear `$10768` ends at `$57ff8`; a LOAD's DMA restores it
+  from the slot (inside `$3f768..$58368`). Live: a 600M-step watch of `$58052..$58055` from `pm142/rand1`
+  saw 7 writes, all at `$1acdc`, and 44 samples of the `$58042` table's index read 4 to 8
+  (`py/sound/scan_58054.py`, `w58054.sh`, `sample_idx.sh`).
   Id 0 stops the sound sequence (system.md "The sound driver is a sample player"), so only the last cue is
   probably audible *(inferred)*.
 - **One weather spell per season.** `$1ad74` can start a spell only while
@@ -2744,7 +2754,7 @@ Live: an examine click on a goods pile held for 300,000 steps opened the same pi
 
 **The goods-pile panel** (`$9656` `click_st`, cjt[`$2c`]; template `$9712` 20 × 12 cells "Stockpile of:", formatter table `$9672` = words `$12`, then `$3c` × 8).
 
-What it shows. A `$2c` record is a pile of goods dropped by a group teardown (the block `$3a50..$3ae8`, code read: it moves `1/2^D0` of the group's food `36(A3)` and goods `84 + 12i(A3)` and a lead's Catapult/Cannon byte 44 into the pile, then `move.b #$2c,6(A0)` at `$3ac8` and registers it with `$16808`; economy.md 2c is the consumer). Its fields: word 10 the food, words 12 to 26 the eight goods in `$a242` order (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon), words 8 and 28 not read by the panel.
+What it shows. A `$2c` record is a pile of goods dropped by a group teardown (the block `$3a50..$3ae8`: it moves `1/2^D0` of the group's food `36(A3)` and goods `84 + 12i(A3)` and a lead's Catapult/Cannon byte 44 into the pile, then `move.b #$2c,6(A0)` at `$3ac8` and registers it with `$16808`; economy.md 2c is the consumer). A pile is not a `$51b66` object: it is a 28-byte record in its own pool `$4bb4e..$4bdee` (24 slots, a free slot has byte 6 `<= 0`, the scan `$3a34`), reached through the cell chains by its negative offset from `$51b66`. Words 0 and 2 are the chain links (`$16808`, `$16778`, the mover `$163ea`), byte 6 is `$2c`, word 8 is the pile's map cell `y*64 + x`, word 10 the food and words 12 to 26 the eight goods in `$a242` order (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon); nothing writes bytes 4, 5 or 7, and offset 28 is the next slot. `$3ad8` stores the lead's cell (`(word10 >> 2 & $1fc0) + byte 8`, `$39ec`) in word 8, and the panel's eye icon (cells `$18`/`$19`, scjt `$735e` to `$74d8`, `$ab34`'s `$2c` arm `$aba8`) reads it to move the camera `$4bb3a`/`$4bb3c` to `(word8 & $3f, word8 >> 6)`. Live: 6 natural piles in 600M steps of `pm142/rand1` match the group's food and goods and the lead's cell in 36/36 checks, and a watch of the pool saw word 8 written only at `$3ad8`; from `pm143/run/p0k0_s4.snap` the eye click moves the camera to word 8's cell, 4/4 with the natural and three poked values, and its no-click control leaves it alone (`py/pile/nat_capture.sh`, `nat_parse.py`, `open_pile.sh`, `goto_click.sh`). The catapult/cannon arm (`$3a8e..$3aa4`) and the add-to-an-existing-pile arm (`$3a18`) did not run in those 6.
 
 Mechanism. Row 2 is `$9684`: it zeroes the item cursor `$970a`, prints the signed food word and " food" (nothing when 0). Rows 3 to 10 are `$96ae`, one call per run: it advances the cursor past zero words to the next non-zero good and prints "<signed n> <name>" where the name is `$a242`'s string without its "a " article, with the final NUL replaced by `s`, or by a space when n ≤ 1 (signed compare); after the last good it returns an empty string. So the panel lists only the goods present, with no gaps, and the display is the whole effect (it changes only `$7a36`, the grid and `$970a`).
 

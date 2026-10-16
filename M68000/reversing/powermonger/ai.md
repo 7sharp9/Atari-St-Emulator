@@ -776,7 +776,7 @@ civilian mode.
 - 4: `$503c` hunts a group (roster of `obj[46]`'s group).
 - 6: `$50b2` one target `obj[46]`.
 - 8: `$50da` follows it (mode `$36`, prev `$66`).
-- `$a`: `$5150` shoots it (mode `$34`, `$57f0` type `$28`).
+- `$a`: `$5150` shoots it (mode `$34`, `$57f0` type `$28`); live only under a category poke (strategy.md "The opponent class `280()`", `py/orders/class_a.sh`: 22 `$5150` calls and 15 arrows in 2M steps).
 - `$c`: `$519a` walks to its cell (mode `$10`, prev `$3a`).
 - `$e`/`$10`: `$51dc` helps allies of my lord, else `$5402` sends my lord's idle men home (`$3c08`).
 - `$12`/`$14`/`$16`: `$5240`, group done: nobody engaged → `$539a` (conquest: `38 == $12` → `$550e`, economy.md §3), else
@@ -802,7 +802,7 @@ found it once from the AI (below), and a player's sword click on a lone sheep re
 writer is `move.b #$36,31(A1)` at `$5100` (single-writer paragraph below). `38 := 8` comes from
 `$4dae` with the class `D7 = 8` of a category-8 (animal) record that engages the party. Who gets there (`py/arms/`):
 `$4bc8` is entered from `$1518a` when a group's march `$0c` ends (mode `$30` arrival), and `$4a7a`, which resolves the
-order's target cell, takes a foreign settlement (kind 2 or `$10`, other owner) first, then a foreign man, then the first
+order's target cell, takes a foreign settlement (kind 2 or `$10`, other owner) first, then the last foreign man, then the last
 animal-class record (kinds 8, `$14`, `$16`; it sets `204(group) := 8`), then a tree (`$c`). A cell with none of the
 first two but a sheep therefore sends the whole party after the sheep.
 
