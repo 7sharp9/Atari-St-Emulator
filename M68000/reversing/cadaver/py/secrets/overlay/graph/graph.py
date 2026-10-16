@@ -179,7 +179,7 @@ KINDS = [('flag', 'FLAGS AND DOORS (type-4 record +2 word)'), ('var', 'SCRIPT VA
 NATIVE = {
     ('flag', None): ['native R: portal crossing ($00716e): word 0 opens, $ffff blocks (sound cue only), a positive word is an item OBJECT id looked up by $011256 in the rucksack; descriptor byte +7 bit 1 consumes the key and clears the word, bit 2 clears it and keeps the key',
                      'native W: overlay spell 8 UNLOCK DOOR (word := 0 unless descriptor +7 bit 5) and spell 16 LOCK DOOR (word := $ffff); the key-consume path above'],
-    ('var', 17): ['native W: timer-expiry handler 7 (`addq.b #1,2299(A5)` at $04d0a2 in the level-1 overlay) increments var 17 (unused by any level-1 script)'],
+    ('var', 17): ['native W: timer-expiry handler 7 (`addq.b #1,2299(A5)` at $04d0a2 in the level-1 overlay) increments var 17 (unused by any level-1 script); level 0\'s overlay has the same handler at $04d124, which ends object 70\'s 100-tick wait'],
     ('timer', None): ['native R: timer tick $00904e dispatches the overlay table-3 handler: 0 poison end, 1 poison tick, 2-5 clear shield bit n, 6 clear all shields, 7 var 17 += 1'],
     ('item', None): ['native W: TAKE icon 2 ($00c42a) appends the record [object id][template idx]; DROP/THROW and icon $c apply ($00c3d4) remove it; event-18 on a class-8 container moves the id into the container'],
     ('state0', None): ['native R/W: operate icons toggle bit 0 of the record (+3) of levers/chests; class handlers read it'],

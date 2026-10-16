@@ -12,9 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gfxview import load_ram  # noqa: E402
-from world_map import SLOT_COUNT, read_room  # noqa: E402
-from door_walk import read_door_slots, resolve_descriptor  # noqa: E402
+from gfxview import load_ram, snapshot_regs  # noqa: E402
+from world_map import SLOT_COUNT, ROOM_TYPE, resource_type, read_room  # noqa: E402
+from door_walk import DOOR_TYPE, read_door_slots, resolve_descriptor  # noqa: E402
 
 TYPE6_INDEX = 0x4b596
 TYPE6_DATA = 0x6eb92
@@ -44,14 +44,17 @@ def read_type6(ram, base, obj_id):
 def main():
     snap = sys.argv[1]
     ram, base = load_ram(snap)
-    rooms = [r for s in range(SLOT_COUNT) if (r := read_room(ram, base, s)) is not None]
+    a5 = snapshot_regs(snap)[0]["a5"] & 0xFFFFFF
+    room_index, room_data, _ = resource_type(ram, base, a5, ROOM_TYPE)
+    door_index, door_data, _ = resource_type(ram, base, a5, DOOR_TYPE)
+    rooms = [r for s in range(SLOT_COUNT) if (r := read_room(ram, base, room_index, room_data, s)) is not None]
 
     seen = {}
     for r in rooms:
         for door_id in read_door_slots(ram, base, r["rec"]):
             if door_id in seen:
                 continue
-            desc = resolve_descriptor(ram, base, door_id)
+            desc = resolve_descriptor(ram, base, door_index, door_data, door_id)
             seen[door_id] = (r["slot"], desc)
 
     for door_id, (owner, desc) in sorted(seen.items()):

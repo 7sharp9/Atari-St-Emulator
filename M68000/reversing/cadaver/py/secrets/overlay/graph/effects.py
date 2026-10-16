@@ -18,7 +18,7 @@ EVENT = {
     7:  ('proximity: facing this object, every frame ($0095d8)', 'P'),
     9:  ('contact/touch of this object ($0095c0, $008a34)', 'P'),
     10: ('producer $009286 (region test) unread', '?'),
-    11: ('producer $00f69c unread', '?'),
+    11: ('a mover reaches z 0 by a descending step ($00f69c; driven for urns 198, 452, 453 and the thrown bottle 465)', '?'),
     12: ('producer $00f9a2 unread; gate byte', '?'),
     13: ('producer $00b0f0 unread; gate byte', '?'),
     14: ('room tick ($0090aa, byte 2 timer)', 'E'),
