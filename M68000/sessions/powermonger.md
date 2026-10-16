@@ -1,12 +1,12 @@
 # PowerMonger: handoff
 
-Updated 2026-10-16 by the 163rd session (`5e7b2cd` .. `2a08938`; CLAUDE.md `f2c6019`), after the 162nd (`fc5956a` .. `f87aa4f`).
+Updated 2026-10-16 by the 164th session (`7717ca9`; CLAUDE.md `cb7de6e`), after the 163rd (`5e7b2cd` .. `2a08938`).
 
 ## Resume point
 
-- Last commits of this workstream: `5e7b2cd` (byte6 36/38/42 under the bus-error model), `604403d` (posture-5 trade forward, melee formula fix), `2a08938` (design digest), then the handoff commit.
+- Last commits of this workstream: `7717ca9` (the port follows the game for byte 44 >= `$80`), then the handoff commit.
 - `bin/Debug/net8.0/M68000.dll` is built from master `d6e6646`, which includes the bus-error change `90ea349` (`$400000..$f9ffff` and writes to `$0..$7` bus-error; a fault while stacking a group-0 frame halts the CPU). Dave merged it via `origin/master`; this session fast-forwarded and rebuilt.
-- Working data: `M68000/scratchpad/pm163/` (gitignored): `p5fwd/` (the `trade5_fwd.sh` 2x2: `x_<arm>.out`, `x_<arm>_{30,60}.snap/.ram`, `drain.out`; `fwd.sh` with `p5x.fwd`/`p3x.fwd`, the plain arms over 100M), `p5fwd_first/` (the first 2x2, identical), `old/`. `pm156/overlay/cap/b6_NN_halt.snap` are the new bomb_check end states. Older: `pm162/` (`posture/trade/at63f4.snap`, the trade state), `pm161/`, `pm160/`, `pm156/`, `pm148/`, `pm142/`, `pm143/`, `pm123/`.
+- Working data: `M68000/scratchpad/pm156/overlay/cap/{siege84,msiege84,msiege92}_*` (the new overlay captures) and `pm164/xcheck/` (the `run.sh` output). `M68000/scratchpad/pm163/` (gitignored): `p5fwd/` (the `trade5_fwd.sh` 2x2: `x_<arm>.out`, `x_<arm>_{30,60}.snap/.ram`, `drain.out`; `fwd.sh` with `p5x.fwd`/`p3x.fwd`, the plain arms over 100M), `p5fwd_first/` (the first 2x2, identical), `old/`. `pm156/overlay/cap/b6_NN_halt.snap` are the new bomb_check end states. Older: `pm162/` (`posture/trade/at63f4.snap`, the trade state), `pm161/`, `pm160/`, `pm156/`, `pm148/`, `pm142/`, `pm143/`, `pm123/`.
 - Start from:
   - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains; the land ends about 676M steps in.
   - `scratchpad/pm162/posture/trade/at63f4.snap`: side 3 group 0 at the trade `$63f4` (A3 = `$51938`); the posture-5 arms start here.
@@ -19,21 +19,24 @@ Updated 2026-10-16 by the 163rd session (`5e7b2cd` .. `2a08938`; CLAUDE.md `f2c6
 
 Older gates carry over unchanged; the list is in `strategy.md`, `ai.md`, `economy.md`, `system.md`, `graphics.md` and `port/SPEC.md`, with reruns from the `py/README.md` table. The 162nd pass's (camp markers, exact water, `$54`, posture-5 writers, piles, `$58054`, `$4a7a`) are in those docs.
 
-New in the 163rd pass:
+New in the 164th pass:
 
-- **Byte6 36/38/42 halt the CPU** (port/SPEC.md §6, README "Bug 7"): `$1162e`'s first word `$065c` (`addi.w #$01aa,(A4)+`, A4 = `$fff95600`) bus-errors; the game's vector-2 handler `$112a` (`clr.l $2c1ba / rte`) pops the 14-byte frame as a 6-byte one and re-faults (235 laps at `$f95600`, 663 at `$f90000`), SSP walks onto the handler by step 113,936, and the push to `$6` double-faults at step 145,342. `$11640` and `$20` 0 hits, no TOS bombs; 3/3, end RAM equal but the poked byte `$51c98` (`py/xcheck/overlay/bomb_check.sh`, rewritten).
-- **The forced posture-5 trade's byte-44 codes decide the next fight** (strategy.md "Posture 5"): `$63e8` writes `$84` (9 men) / `$92` (3); the signed `cmp.b #6 / blt` at `$1533c` passes them and `lsr.b` drains `$43`/`$4a`. 2x2 over 60M (posture 5/3 by codes kept/poked): with the codes the 12 men end at health `$56..$5a`, 0 dead, at either posture; without, `$1e..$58` with 1-2 dead; 60 sampled drains 26 x `$43`, 5 x `$4a`, 29 x `$01` (`py/cmdai/posture/trade5_fwd.sh`, deterministic over two runs).
-- **Melee drain formula fixed in economy.md and strategy.md**: `((s8(v) < 6 ? v : 0) >> 1) + 1`, so a bow drains 1, not 4 (`ai.md` had it right).
+- **The port follows the game for byte 44 >= `$80`** (port/SPEC.md §6 "Men" and "The mini-sprite blitter"): the siege test is signed (`$11cb4`, `$11e78`); `$11f82` makes the frame a byte offset with `mulu #$37 / adda.w` (16-bit wrap, sign-extended, so a `$84`/`$92` melee frame reads 55 misaligned bytes, below `$33000` into the `$312a0` sheet's tail for side-2 `$84`); the planes are ORed in unmasked, so a mask-1 pixel with plane bits k draws `background | k` (one pixel of the real sheet, frame `$ab`). Labelled pokes on `pm88_f1`: walk `$84` 0/0, melee `$84` 32/32 and `$92` 35/35 (before: 3/32, 3/35; wrong-frame control 9/32, 22/35); the 16 earlier cases unchanged (`py/xcheck/overlay/run_cases.sh`, `score_cases.sh`); `py/xcheck/run.sh` at the documented scores, synthetic blits 17/17 with `blit_py.py` mirroring the OR.
+
+The 163rd pass's (byte6 36/38/42 halt, posture-5 trade codes decide the next fight, melee formula fix) are in port/SPEC.md §6, README "Bug 7" and strategy.md "Posture 5".
 
 ## Open, in priority order
 
-1. **Port residue.** The port tests `record[44] >= $e` unsigned where the game is signed: a forced posture-5 trade now produces `$84`/`$92` (no natural writer), and such a man draws the siege overlay in the port but not the game; decide whether the port follows the game (signed) and gate it on `x_P3B84_30` with a frame capture. Natural byte6 18 and 28 are unseen in play. The camp-marker screen pixel match of `$111`/`$112..$115` (blit position from `$11f78`'s D0/D1 on `M2G_k118_c1`) is not done.
-2. **Posture 5 downstream, the rest.** The melee frame `$80 + code * 8 + (side-1) * 4` for a `$84` man (`$11c8a`, code read; capture a frame from `x_P5B84` mid-melee, chunk 4); the trade's clear of object 6 bytes 6..7 (`00 04` to 0 via `84(A3, 12 x $41)`) and of object 7 bytes 40..41 not followed; no natural posture-5 reader in about 444k steps; `$150f2`, `$1ce6`, `$3110`, `$90fe`, `$c77e` at posture 5 code read only.
+1. **Port residue.** The `$84`/`$92` melee frame is proven only under labelled pokes on `pm88_f1`; capture one from the real trade run (`pm163/p5fwd/x_P5B84_*`: find a mid-melee tick with a `$84` man in view, `poke_capture.sh`-style state + next `$f898`, score with `overlay/diff.fsx`). The 16 x 16 word blitter (`decodeFrameWord`, `$12326`/`$124a8`) may OR its planes unmasked too: check its loop and scan the `$312a0`/`$37c7c`/`$3af1c` sheets for plane bits under the mask. Natural byte6 18 and 28 are unseen in play. The camp-marker screen pixel match of `$111`/`$112..$115` (blit position from `$11f78`'s D0/D1 on `M2G_k118_c1`) is not done.
+2. **Posture 5 downstream, the rest.** The trade's clear of object 6 bytes 6..7 (`00 04` to 0 via `84(A3, 12 x $41)`) and of object 7 bytes 40..41 not followed; no natural posture-5 reader in about 444k steps; `$150f2`, `$1ce6`, `$3110`, `$90fe`, `$c77e` at posture 5 code read only.
 3. **Small checks.** `$4a7a`'s foreign-man arm has no natural entry (a sword click on a lone enemy man via `capture_clicks.sh`); natural class `$a` (click a forest marker mid-walk, `bp 4eca`); what ends the class-`$a` shoot (`bp 35f4` from `classa/p16_c1`); the pile's catapult/cannon arm `$3a8e..$3aa4` and add-to-pile arm `$3a18`; a generic `8(An)` reader of chain records; whether anything writes 0 to a lord's nation while his town has merchants (the `$54` hang); the M2G_k90 empty lord slot 12 (`bp 2eac` at world build); natural winter snow under the `$1abaa` gate; a pile/`$58054` LOAD differing slot; the crack's `$b842` patch and `$3c12`'s `nop`; health cap and food (`$5ccc`); rout fates on a third land; a natural `$66`; the dialog buttons `$04`, `$08`'s `$71` and `$131`.
 4. **No current check exercises vector 4 on the unassigned `ImmediateToEa`/`BitOp` encodings** (README "Bug 7"): byte6 36-42 now bus-error first. An emulator-workstream item; a poke of `$0608` at a live PC would do.
 5. **A player route to `$668c`** (low value) and **the stall on the original machine** (a Hatari run past clock 32768 with a camped group; Dave's go-ahead given).
 
 ## Known traps
+
+- **A port frame past its sheet draws nothing, silently.** `blitEntity` drops an out-of-range frame, so a divergence predicted from reading the code can score 0/0 by accident: SPEC said a `$84` man "would draw the siege overlay in the port", but the port's struct frame `$1b + ($84-$e)*4` was off the sheet and dropped. Run the labelled poke before writing such a prediction.
+- **`py/xcheck/blit_{fs.fsx,py.py}` is a mirror check.** Its random-byte sheet puts plane bits under the mask everywhere, so any blit-semantics change moves both halves or breaks it (3/17 after the OR change until `blit_py.py` mirrored it). It proves port = Python model, not port = game; the game-side proof is an overlay capture.
 
 - **Bus errors are real now.** Since `90ea349`, a read or write of `$400000..$f9ffff` bus-errors and a fault while stacking a group-0 frame halts the CPU (stderr `double bus fault: ... CPU halted`); `hits` then keeps counting the halted PC every step, and `u`/`bp` give up "still at" it. Find the halting step by bisecting on that stderr line (`bomb_check.sh`). A poke that sends the game off the rails may now halt where it used to loop.
 - **Pairing grep'd register dumps from a `bp` series picks up the stop before it.** `grep -E '^D0|^A0' | paste - -` over a REPL log pairs the `bp 6500` dump with the first `bp 15380` line; `grep -A8 'breakpoint $<addr>'` first (`trade5_fwd.sh`).
@@ -92,4 +95,4 @@ New in the 163rd pass:
 
 ## Next session
 
-Take Open 1: decide the port's signed `record[44]` test (likely follow the game), change `port/godot/logic/` if so, gate it with a frame capture from `x_P3B84_30` (or a `pm88_f1` poke of `$84`), and rerun `py/xcheck/run.sh` and `overlay/score_cases.sh`. Then Open 2's `$84` melee frame capture, and a batch of Open 3's small checks through parallel agents with `scratchpad/pm162/BRIEF.md` (one emulator each; spot-check one claim per report and rerun every gate from its promoted path).
+Take Open 1's real-trade capture of a `$84` melee man from `pm163/p5fwd/x_P5B84_*`, then check whether the word blitter ORs its planes unmasked as `$11f82` does. Then a batch of Open 3's small checks through parallel agents with `scratchpad/pm162/BRIEF.md` (one emulator each; spot-check one claim per report and rerun every gate from its promoted path).
