@@ -395,7 +395,8 @@ encoded, both ends are nearly always the merchant's own home lord, so the mercha
 move a good to another lord only through one stale register.
 
 **The cycle (code read, `$15a0e..$15b5a`).** `$54`'s lord-selection loop never leaves the home lord (`lea 32(A3),A0` at
-`$15b0c`, A3 never advances; proven, `py/fsm15/gate_fsm15.py`, ai.md `$54` row), so the destination `46(A1)` is the
+`$15b0c`, A3 never advances; it exits after max(`14(A1) & 7`, 1) passes on all 904 natural entries counted and its wrap
+at `$15b14` is never taken; proven, `py/fsm15/gate_fsm15.py` and `gate54.py`, ai.md `$54` row), so the destination `46(A1)` is the
 home lord in 404 of 404 men in `$52/$50`. `$54` then picks up (`$159de` at `$15b54`) from the stale A0: the home lord
 when `14(A1) & 7 < 2`, the record after it otherwise. `$50` deposits into lord `46(A1)` (`$15a6a`), `$52` picks up
 from the same lord after its 50-tick dwell (`$15ac8`), and `$4e` deposits at the home lord on arrival (`$15a24`).
