@@ -660,11 +660,11 @@ and `score.fsx`, run by `run.sh`). With the port's own records, terrain away fro
 the game's screen at 99.78-99.95% at every zoom and sprite pixels at 100% (zooms 1, 2, 3, 5) and
 98.2/98.8% (zooms 6, 7) with `$12244`'s sheet, against 19-78% at zooms 1-3 and 6-7 with the
 32 x 24 sheet forced. Drawing each capture's own records, `score.fsx` matches 99.79-99.95% of the
-whole frame at every zoom. Two exporter gaps had held these scores down: `dump_frame.py` did not
-export the 32 x 32 sheet (zoom 1-3 buildings were not drawn: 95.02-99.06% before, 99.79-99.91%
-after, same frames), and `pm_render_ref.load_ram` walked a fixed 11 x 11 cell window, which drops
-the near rows of the 12- and 14-cell windows of zooms 6 and 7 (95.86% at zoom 7 before, 99.89%
-after); both now follow `[$fdec]`. The float
+whole frame at every zoom. The scores depend on two exporter details: `dump_frame.py` exports the
+32 x 32 sheet (without it zoom 1-3 buildings are not drawn and the same frames score 95.02-99.06%
+against 99.79-99.91%), and `pm_render_ref.load_ram` follows the zoom's cell window `[$fdec]` (a fixed
+11 x 11 window drops the near rows of the 12- and 14-cell windows of zooms 6 and 7: 95.86% at zoom 7
+against 99.89%). The float
 `Projection.projectGrid` agrees with the game's own corners to within one pixel
 at 78-95% of vertices (zoom 4: 73 of 81); the terrain scores use the game's
 corners.
@@ -802,6 +802,7 @@ that is not a multiple of 55. For a side-2 man that is `+6129` for `$92` and `âˆ
 negative offset reads the tail of the 16 x 16 `$312a0` sheet, which ends at `$33000`. Misaligned rows put
 plane bits under mask-1 pixels, and the blit ORs them in unmasked (below, "The mini-sprite
 blitter"). The port follows all three (`Sprites.frameOffset`, `decodeFrameAt`, `blitEntity`).
+
 Labelled pokes on `pm88_f1` (two men at side 2, `../py/xcheck/overlay/run_cases.sh`): walking at
 `$84`, 0/0 changed px in both; melee at `$84` 32/32 and at `$92` 35/35, against 3/32 and 3/35 for
 a port that drops the frame, and 9/32 and 22/35 for a wrong-frame control (`$85`/`$93`). The real
@@ -943,8 +944,9 @@ bare `$0d`, which returns at `$116b4`) gets five birds after its own frame when 
 `(D0 + ((seed_hi + k) & 7), D1 + ((seed_lo + k) & 7))`, where seed_hi and seed_lo are the
 words of the RNG long `_seed` `$2df84`. The offsets are consecutive, so the five birds sit on
 a diagonal. The seed is not a clock: it moves only when the simulation draws from `$12c9a`, so
-the birds hover in place between draws and jump to a new diagonal at each one. In play the
-draws come in bursts. A `watch 2df84 4` from `pm142/rand1` (Play Random Land) saw 499 draws in
+the birds hover in place between draws and jump to a new diagonal at each one.
+
+In play the draws come in bursts. A `watch 2df84 4` from `pm142/rand1` (Play Random Land) saw 499 draws in
 107 bursts over the 674M steps until the land ended (median 4 draws per burst; median gap
 2.7M steps, about 15 ticks; longest 69M), and the first 80 came from the fisherman's catch
 search (`$15cb8`, mode `$5a`, 50) and the shepherd's herd release at the gate (`$15f46`/`$15f5c`,
@@ -952,10 +954,11 @@ mode `$82`, two per animal, 30) (`../py/xcheck/seed_watch.sh`). `pm88_f1` and th
 2M steps later share `$5ee0459d` because no draw fell between them. The port renders the seed of
 the state it is given, which is exact for that frame; it does not advance the seed itself, and a
 port that animated between states would advance it only where it ran one of those draws, not per
-tick. A raw scan of the
-`ctl_0` RAM finds 95 byte6 4 records with bit 7, and both exported asset sets have bird trees
-(7 and 9). Found as the overlay
-checks' control-frame miss: on `ctl` (camera (22,46)) a screen-word `watch` of rows 101 to 109 shows
+tick.
+
+**Evidence.** A raw scan of the `ctl_0` RAM finds 95 byte6 4 records with bit 7, and both exported
+asset sets have bird trees (7 and 9). On the overlay checks' control frame `ctl` (camera (22,46)) a
+screen-word `watch` of rows 101 to 109 shows
 the last writes there are `$11f82` blits returning to `$1173a` (the bird loop) with A3 = tree
 `$4d762` (`record[7] = $8d`), which leave colour 5 on 22 px the port drew as tree. `Sprites.fs` draws them
 (`EntityCtx.Seed`, `seedOf`; `pm_export.py` exports `seed`), as does `pm_render_ref.py`:
@@ -975,11 +978,10 @@ pass in `walkQ3` cell order (same approximation `pm_render_ref` uses); `byte6
 the `entities.json` records and the `$3f364` corners of `pm88_f1.ram`, the F#
 output is byte-identical to `pm_render_ref.draw_entities` on the same RAM:
 3061/3061 covered pixels, `byte6 âˆˆ {0, 4, 6, 8, 14, 24}` (`../py/xcheck/ent_fs.fsx` /
-`ent_py.py`). Both sides have moved on since the first run of this check gave
-2881/2881: on `pm88_f1`'s own screen the current output matches 1889 of its 3061
-pixels where the old matched 1182 of 2881, and of the 588 pixels whose colour
-changed, the new colour is the game's at 502 and the old at 11. The 1172 pixels
-the current output misses are as many as the pixels where the two draw orders
+`ent_py.py`). On `pm88_f1`'s own screen this output matches 1889 of its 3061
+pixels; an earlier version of both renderers (identical to each other on 2881/2881) matched 1182
+of 2881, and of the 588 pixels whose colour differs between the two, the current colour is the
+game's at 502 and the earlier one at 11. The 1172 pixels the current output misses are as many as the pixels where the two draw orders
 differ on `pm88_f1` (table below): inferred to be nearer terrain that the inline
 order draws over the sprite and this sprites-last path does not.
 
