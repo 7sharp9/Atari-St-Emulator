@@ -154,8 +154,8 @@ The `byte6` dispatch, the frame formulas and the positions are in `SPEC.md` §6.
   armed gate, props with the `r7 ∈ {0x0d, 0x0e}` special cases and the tile-set offset, animals,
   banners, the `$1182a` centroid markers and five melee men `$11c8a`; `../py/xcheck/blit_{fs.fsx,py.py}`).
 - **Real record stream.** On `entities.json` with the `$3f364` corners of `pm88_f1.ram`: 3061/3061
-  covered pixels, `byte6 ∈ {0,4,6,8,14,24}` (`../py/xcheck/ent_{fs.fsx,py.py}`; `SPEC.md` §6 for why
-  the first run's 2881 is superseded).
+  covered pixels, `byte6 ∈ {0,4,6,8,14,24}` (`../py/xcheck/ent_{fs.fsx,py.py}`; `SPEC.md` §6 compares the output with the game's own
+  screen: 1889 of 3061 pixels, against 1182 of 2881 for both renderers' earlier output).
 - **Entity export.** `tools/pm_export.py` `export_entities` writes `assets/entities.json`:
   `render_entities[]` (the whole map's `$47970` bucket walk with the signed `$51b66` offset and the
   record address, 276 records) and `entity_ctx` (the per-frame constants). `byte6 == 4` jitter depends on

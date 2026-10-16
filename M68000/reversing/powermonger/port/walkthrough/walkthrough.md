@@ -438,7 +438,7 @@ sed -n '/$e420 — two 16.16 X accumulators/,/^        abortRow/p' ../godot/logi
 Three behaviours to notice:
 
 - **It clips per row.** Rows off the top or bottom are stepped but not drawn, and x stops at 255, the right edge of the isometric window. Nothing earlier in the pipeline clips.
-- **It stops one row short.** The loop runs `row < totalRows`: each edge's run counter is decremented per row, and a count reaching zero ends the walk before that row is drawn. So the bottom vertex's own scanline is never filled; the next triangle down covers it. (The port used to draw that row too, which left a one-pixel line of wrong colour under every triangle; comparing against the game's frames found it.)
+- **It stops one row short.** The loop runs `row < totalRows`: each edge's run counter is decremented per row, and a count reaching zero ends the walk before that row is drawn. So the bottom vertex's own scanline is never filled; the next triangle down covers it. (Drawing that row too leaves a one-pixel line of wrong colour under every triangle, which a comparison against the game's frames shows.)
 - **It can give up.** If the right accumulator ever lands left of the left one, the rest of the triangle is abandoned (`$e468`).
 - **It can change the colour.** If the corners arrive with reversed winding (the middle vertex turns out to be on the left), `$ef62` swaps the edges and forces colour byte `$1c`, a dark pattern. SPEC.md records this as an override whose purpose is still open.
 
@@ -633,7 +633,7 @@ first cell with sprites, in draw order:
 
 (`byte6` is the record's category byte; 4 is a building or tree. SPEC.md §6 lists the categories.)
 
-The obvious simplification, drawing all the terrain first and then all the sprites on top, gives a different picture, and the port did it that way before this document was written. The test is to render a captured frame both ways and compare each with the game's own screen at the pixels where the two orders disagree. On six captures, three of them rotated to other camera angles inside the emulator, the game sides with the inline order almost every time:
+The obvious simplification, drawing all the terrain first and then all the sprites on top, gives a different picture. The test is to render a captured frame both ways and compare each with the game's own screen at the pixels where the two orders disagree. On six captures, three of them rotated to other camera angles inside the emulator, the game sides with the inline order almost every time:
 
 ```bash
 grep -A 7 '| capture | terrain only' ../SPEC.md
