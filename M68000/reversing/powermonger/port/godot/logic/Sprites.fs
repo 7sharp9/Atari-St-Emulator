@@ -60,7 +60,10 @@ module Sprites =
     let FrameStride = 55
 
     /// One decoded 8x11 four-bitplane (16-colour) sprite frame.
-    /// Pixel = -1 for "transparent" (mask bit set -> background shows through).
+    /// Pixel = -1 for "transparent" (mask bit set -> background shows through);
+    /// -1 - k for a transparent pixel whose plane bits k are not 0 ($11f82 ORs
+    /// the planes in unmasked, so it draws background ||| k: one pixel of frame
+    /// $ab, and several in a misaligned frame from `frameOffset`).
     type Frame = { Pixels: int[] }               // FrameWidth * FrameHeight, row-major
 
     /// Men (category 0) frame index — $11c8a, camera-yaw-relative facing.
@@ -139,32 +142,41 @@ module Sprites =
         let x, y = lerp (fst top) (fst bot) fy, lerp (snd top) (snd bot) fy
         x + 0x3c, y - 8
 
+    /// $11f82's byte offset of frame `index` in the $33000 sheet: `mulu #$37`
+    /// then `adda.w`, so the product wraps to 16 bits and is sign-extended.
+    /// Equal to `index * 55` for every frame in the sheet; a melee frame past it
+    /// (a `$84`/`$92` byte 44 from the posture-5 trade) lands back inside at
+    /// a byte offset that is not a multiple of 55.
+    let frameOffset (index: int) : int = int (int16 ((index * FrameStride) &&& 0xFFFF))
+
     /// Decode frame `index` from the raw sheet (assets/sprites/sheet_raw.bin).
     /// Ports $11f82's row layout: [AND-mask, plane0, plane1, plane2, plane3],
     /// mask/plane bytes are read as the high byte of a byte-wide row (8px);
     /// a pixel is opaque where the mask bit is 0, and its 4-bit palette index
     /// is plane0..plane3's bit at that column (msb-first, matching the
     /// $11fe4..$12034 rol.w decode).
-    let decodeFrame (sheet: byte[]) (index: int) : Frame =
-        let baseOff = index * FrameStride
+    let decodeFrameAt (byteAt: int -> byte) (baseOff: int) : Frame =
         let pixels = Array.create (FrameWidth * FrameHeight) -1
         for row in 0 .. FrameHeight - 1 do
             let o = baseOff + row * 5
-            let mask = sheet.[o]
-            let p0 = sheet.[o + 1]
-            let p1 = sheet.[o + 2]
-            let p2 = sheet.[o + 3]
-            let p3 = sheet.[o + 4]
+            let mask = byteAt o
+            let p0 = byteAt (o + 1)
+            let p1 = byteAt (o + 2)
+            let p2 = byteAt (o + 3)
+            let p3 = byteAt (o + 4)
             for x in 0 .. FrameWidth - 1 do
                 let bit = 7 - x
-                if (int mask >>> bit) &&& 1 = 0 then             // opaque where mask bit is 0
-                    let idx =
-                        ((int p0 >>> bit) &&& 1)
-                        ||| (((int p1 >>> bit) &&& 1) <<< 1)
-                        ||| (((int p2 >>> bit) &&& 1) <<< 2)
-                        ||| (((int p3 >>> bit) &&& 1) <<< 3)
-                    pixels.[row * FrameWidth + x] <- idx
+                let idx =
+                    ((int p0 >>> bit) &&& 1)
+                    ||| (((int p1 >>> bit) &&& 1) <<< 1)
+                    ||| (((int p2 >>> bit) &&& 1) <<< 2)
+                    ||| (((int p3 >>> bit) &&& 1) <<< 3)
+                // opaque where the mask bit is 0; else the background ORed with idx
+                pixels.[row * FrameWidth + x] <- if (int mask >>> bit) &&& 1 = 0 then idx else -1 - idx
         { Pixels = pixels }
+
+    let decodeFrame (sheet: byte[]) (index: int) : Frame =
+        decodeFrameAt (fun o -> sheet.[o]) (frameOffset index)
 
     /// Decode a word-plane frame ($3af1c 32x32 / $37c7c 32x24 / $312a0 16x16).
     /// Rows of `w / 16` groups of five big-endian words [mask, p0, p1, p2, p3];
@@ -353,7 +365,7 @@ module Sprites =
     let carryOffset = [| 0, -4; 6, -2; 8, 0; 6, 2; 0, 4; -6, 2; -8, 0; -6, -2 |]
     let carryFrame = [| 0x109; 0x10A; 0x10B; 0x10C; 0x10D; 0x10E; 0x10F; 0x110 |]
 
-    /// $11ebc: a man hauling a siege engine (record[44] >= $e: $e catapult,
+    /// $11ebc: a man hauling a siege engine (record[44] >= $e signed: $e catapult,
     /// $10 cannon) gets the 16x16 $312a0 frame $1b + (record[44] - $e) * 4 + k
     /// at siegeOffset[k] from his blit corner, drawn before him ($12258).
     let siegeOffset = [| 0, -4; 6, -2; 8, 0; 6, 2; 0, 4; -6, 2; -8, 0; -6, -2 |]
@@ -425,14 +437,17 @@ module Sprites =
                 { Sheet = Struct16; Frame = 0x1B + ((r.B44 - 0x0E) <<< 2) + k; Skip = 0
                   AnchorX = lx; AnchorY = ly; Rule = rule; X = x0 + dx; Y = y0 + dy; W = 16; H = 16 }
             let bit4 = r.B7 &&& 0x10 <> 0
+            // byte 44 >= $e as a SIGNED byte (`cmp.b #$e / blt`): a $84 or $92
+            // draws no siege engine, and in melee keeps its value as the weapon
+            let hauls = int (sbyte (byte r.B44)) >= 0x0E
             if r.B31 = 0x32 || r.B31 = 0x34 then
-                let weapon = if r.B44 >= 0x0E then 0 else r.B44
+                let weapon = if hauls then 0 else r.B44
                 let mutable f = (weapon <<< 3) + ((r.B5 - 1) <<< 2) + 0x80
                 if r.B44 = 6 then (if (r.W18 >>> 8) = 0x14 then f <- f + 1)
                 else f <- f + (ctx.RotPhase &&& 1)
                 f <- f + ((((r.B17 + ctx.Yaw + 0x40) &&& 0xFF) >>> 7) <<< 1)
                 if bit4 then f <- f + 0x40
-                [ if r.B44 >= 0x0E then yield siege ((r.B44 &&& 0x0F) >>> 1)
+                [ if hauls then yield siege ((r.B44 &&& 0x0F) >>> 1)
                   yield mini f lx ly rule x0 y0 ]
             else
                 let f0 = (r.B5 - 1) * 16 + ((((r.B17 + ctx.Yaw + 0x10) &&& 0xFF) >>> 5) <<< 1)
@@ -441,7 +456,7 @@ module Sprites =
                       let k = f0 &&& 7
                       let dx, dy = carryOffset.[k]
                       yield mini carryFrame.[k] lx ly rule (x0 + dx) (y0 + dy)
-                  if r.B44 >= 0x0E then yield siege ((f0 &&& 0x0F) >>> 1)
+                  if hauls then yield siege ((f0 &&& 0x0F) >>> 1)
                   yield mini f lx ly rule x0 y0 ]
         | 0 | 26 ->
             // $1174e (byte6 26, and a man with flags bit 5): frame
@@ -593,8 +608,13 @@ module Sprites =
         for p in placeEntity ctx c00 c10 c01 c11 row col r do
             let pixels =
                 match p.Sheet with
-                | Mini when (p.Frame + 1) * FrameStride > ctx.Sheet33.Length -> [||]   // past the sheet: draw nothing
-                | Mini -> (decodeFrame ctx.Sheet33 p.Frame).Pixels
+                | Mini ->
+                    // a negative offset reads below $33000: the $312a0 sheet
+                    // (SheetProp16, 47 x 160 B) ends exactly there
+                    let off = frameOffset p.Frame
+                    let lo = ctx.SheetProp16
+                    if off < -lo.Length || off + FrameStride > ctx.Sheet33.Length then [||]   // outside both: draw nothing
+                    else (decodeFrameAt (fun o -> if o < 0 then lo.[lo.Length + o] else ctx.Sheet33.[o]) off).Pixels
                 | Prop ->
                     let sheet, bytes = propSheet ctx
                     let pix, _, _ = decodeFrameWord bytes p.Frame sheet.W sheet.H sheet.Stride
@@ -608,7 +628,12 @@ module Sprites =
                 if yy >= 0 && yy < Fill.ScreenHeight then
                     for dx in 0 .. p.W - 1 do
                         let i = (dy + p.Skip) * p.W + dx
-                        if i < pixels.Length && pixels.[i] >= 0 then buf.Set(p.X + dx, yy, byte pixels.[i])
+                        if i < pixels.Length then
+                            let v = pixels.[i]
+                            let x = p.X + dx
+                            if v >= 0 then buf.Set(x, yy, byte v)
+                            elif v < -1 && x >= 0 && x < Fill.ScreenWidth then
+                                buf.Set(x, yy, buf.Index.[yy * Fill.ScreenWidth + x] ||| byte (-1 - v))
 
     /// Replay $115e0 as a post-terrain far->near pass in fixed q3 (planQ3) cell
     /// order. Kept for the pm_render_ref.py cross-check; the game draws each

@@ -778,21 +778,33 @@ i + 1 for each non-zero goods byte i of its leader
 exporter computes the mask (`pm_export.render_icons`).
 
 **Men (`$11c8a`).** Flags bit 5 (in a boat) → `$1174e`. Melee modes `$32`/`$34`:
-frame `$80 + weapon * 8 + (side − 1) * 4`, weapon = `record[44]` (0 if `>= $e`),
+frame `$80 + weapon * 8 + (side − 1) * 4`, weapon = `record[44]` (0 if `>= $e` as a signed byte),
 `+1` on tick parity `$57fec & 1` (with weapon 6, only when byte 18 is `$14`),
 `+2` when facing away (`((heading + yaw + $40) & $ff) >> 7`), `+$40` if flags
 bit 4. Otherwise `(side − 1) * 16 + facing * 2` (8 facings), `+$40` armed, `+1` on
 `[$4bb41] & 1`. A man carrying a plough (`record[33] == 8`, `record[7] == 1`)
 first draws `$109 + k` at `$11e40/$11e50[k]`, k = frame & 7; a man hauling a
-siege engine (`record[44] >= $e`) first draws the 16 x 16 `$312a0` frame
+siege engine (`record[44] >= $e`, signed: `cmp.b #$e / blt` at `$11cb4` and `$11e78`) first draws the 16 x 16 `$312a0` frame
 `$1b + (record[44] − $e) * 4 + k` at the same offsets (`$11ebc`), k = facing
 (melee: `(record[44] & $f) >> 1`). Natural play never sets `record[44] ≥ $e` (below), and
 no plough was seen carried. Both overlays match the game under labelled pokes on `pm88_f1` (`../py/xcheck/overlay/`), camera on (22,46):
 the plough 16/16 px (and no plough when `record[7] ≠ 1`, 0/0 in both); the siege engine at
 `record[44]` = `$e`, `$f`, `$10`, `$11` 98/98, 22/22, 38/38 and 50/50 px walking, 65/65 and 32/32
 in melee; the melee frame alone 30/30. A wrong-frame control (`record[44] + 1`) scores 0 to 3 of
-the same pixels. The game tests `record[44]` signed (`cmp.b #$e / blt`) and the port unsigned,
-which differs only for values ≥ `$80`. No natural writer produces one; the forced posture-5 trade does (`$63e8` writes `$84`/`$92` into 12 men, `../strategy.md` "Posture 5"), and such a man would draw the siege overlay in the port but not in the game.
+the same pixels.
+
+The signed test matters only for `record[44] >= $80`, which no natural writer produces; the forced
+posture-5 trade does (`$63e8` writes `$84`/`$92` into 12 men, `../strategy.md` "Posture 5"). Such a
+man draws no siege engine, and in melee keeps `$84`/`$92` as the weapon, so the frame number runs
+past the sheet (`$4a0..$4ef`, `$510..$55f`). `$11f82` makes it a byte offset with `mulu #$37` and
+`adda.w`, so the product wraps to 16 bits and is sign-extended: the blit reads 55 bytes at an offset
+that is not a multiple of 55. For a side-2 man that is `+6129` for `$92` and `−31` for `$84`; a
+negative offset reads the tail of the 16 x 16 `$312a0` sheet, which ends at `$33000`. Misaligned rows put
+plane bits under mask-1 pixels, and the blit ORs them in unmasked (below, "The mini-sprite
+blitter"). The port follows all three (`Sprites.frameOffset`, `decodeFrameAt`, `blitEntity`).
+Labelled pokes on `pm88_f1` (two men at side 2, `../py/xcheck/overlay/run_cases.sh`): walking at
+`$84`, 0/0 changed px in both; melee at `$84` 32/32 and at `$92` 35/35, where the port before this
+scored 3/32 and 3/35, and a wrong-frame control (`$85`/`$93`) 9/32 and 22/35.
 
 ### Position — bilinear over the projected cell corners (`$11f1a`)
 
@@ -1127,7 +1139,7 @@ From the aligned `$11fe4`–`$12034` loop: each frame is an
 **5 bytes: `[AND-mask, plane0, plane1, plane2, plane3]`**:
 
 ```
-A1 = $33000 + frame*0x37
+A1 = $33000 + (int16)(frame*0x37)              // mulu, then adda.w: wraps and sign-extends
 D0 = 8 - (screenX & 15)                         // sub-word rotate ($11fe4 case, X&15<8;
                                                 //  $12036 handles ==8, $12070 handles >8)
 per row:
@@ -1138,7 +1150,10 @@ per row:
     A0 += 0x98                                  // + 152 = 160 (screen row) - 8 already stepped
 ```
 
-`dst = (dst & mask) | data`, so a pixel is **opaque where the mask bit is 0**.
+`dst = (dst & mask) | data`, so a pixel is **opaque where the mask bit is 0**. The planes are not
+masked, so a mask-1 pixel with plane bits k draws `background | k`. One pixel of the sheet has one
+(frame `$ab`, a side-3 sword melee pose); the misaligned frames of a `$84`/`$92` melee man ("Men"
+above) have several.
 The 4 planes are the 4 interleaved screen words of one 16-px group → a real
 16-colour sprite, not a silhouette. Anchor: the entity's projected
 `(screenX, screenY)` from §3, drawn up-left of the anchor (foot at the cell).

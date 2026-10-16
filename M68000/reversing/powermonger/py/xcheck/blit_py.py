@@ -12,6 +12,26 @@ def lcg(seed, n):
     for i in range(n):
         x = (x*1103515245 + 12345) & 0xffffffff; a[i] = (x >> 16) & 0xff
     return bytes(a)
+def decode33(sheet, idx):
+    """$11f82 on the $33000 sheet: the mask is ANDed in and the planes ORed in
+    unmasked, so a transparent pixel with plane bits k reads -1 - k (the screen
+    ORed with k), as Sprites.decodeFrameAt. pm_render_ref._decode_frame_byte
+    drops k, which only real sheets (k = 0 under the mask) agree with."""
+    o = idx * 55
+    px = [[-1] * 8 for _ in range(11)]
+    if o + 55 > len(sheet):
+        return px
+    for r in range(11):
+        m, p0, p1, p2, p3 = sheet[o + r * 5: o + r * 5 + 5]
+        for x in range(8):
+            bit = 7 - x
+            k = (((p0 >> bit) & 1) | (((p1 >> bit) & 1) << 1) |
+                 (((p2 >> bit) & 1) << 2) | (((p3 >> bit) & 1) << 3))
+            px[r][x] = k if not ((m >> bit) & 1) else -1 - k
+    return px
+def put(idxbuf, cov, i, v):
+    if v >= 0: idxbuf[i] = v; cov[i] = 1
+    elif v < -1: idxbuf[i] |= -1 - v; cov[i] = 1
 sheet33 = lcg(1, 0x160*55); sheetProp = lcg(2, 28*480)
 W, Hh = P.W, P.H
 c00, c10, c01, c11 = (120, 80), (150, 78), (122, 111), (151, 109)
@@ -42,9 +62,8 @@ for k, (b6,b5,b7,b14,b17,b31,fx,fy,_,_,grp) in enumerate(cases):
                 yy = sy + r
                 if not (0 <= yy < Hh): continue
                 for cc, v in enumerate(rowpx):
-                    if v < 0: continue
                     xx = sx + cc
-                    if 0 <= xx < W: i = yy*W+xx; idxbuf[i] = v; cov[i] = 1
+                    if 0 <= xx < W: put(idxbuf, cov, yy*W+xx, v)
         if kind == "33":
             if b6 in (6, 24):
                 cx = (c00[0]+c10[0]+c01[0]+c11[0]) >> 2
@@ -52,7 +71,7 @@ for k, (b6,b5,b7,b14,b17,b31,fx,fy,_,_,grp) in enumerate(cases):
                 pxp, pyp = cx-8+4, cy-8+8
             else:
                 pxp, pyp = P._packed_lerp(c00, c10, c01, c11, o["fx"], o["fy"])
-            blit(P._decode_frame_byte(ent["sheet33"], fi), pxp-4, pyp-8)
+            blit(decode33(ent["sheet33"], fi), pxp-4, pyp-8)
         else:
             pxp, pyp = P._packed_lerp(c00, c10, c01, c11, o["fx4"], o["fy4"])
             blit(P._decode_frame_word(ent["sheet_prop"], fi, w, h, 480), pxp-8, pyp-16)
@@ -68,12 +87,12 @@ for (b5, b7, b17, b31, b44, w18) in [(1, 0x00, 0x00, 0x32, 2, 0), (2, 0x10, 0x90
     fr = P._entity_frame(o, ent, yaw)
     if fr is not None:
         pxp, pyp = P._packed_lerp(c00, c10, c01, c11, 100, 120)
-        for r, rowpx in enumerate(P._decode_frame_byte(ent["sheet33"], fr[1])):
+        for r, rowpx in enumerate(decode33(ent["sheet33"], fr[1])):
             yy = pyp - 8 + r
             if not (0 <= yy < Hh): continue
             for cc, v in enumerate(rowpx):
                 xx = pxp - 4 + cc
-                if v >= 0 and 0 <= xx < W: idxbuf[yy*W+xx] = v; cov[yy*W+xx] = 1
+                if 0 <= xx < W: put(idxbuf, cov, yy*W+xx, v)
     px = [f"{x},{y},{idxbuf[y*W+x]}" for y in range(Hh) for x in range(W) if cov[y*W+x]]
     out.append(f"MELEE b5={b5} b7={b7} b17={b17} b31={b31} b44={b44} w18={w18} | " + " ".join(px))
 open(OUT / "blit_py.txt", "w").write("\n".join(out) + "\n")

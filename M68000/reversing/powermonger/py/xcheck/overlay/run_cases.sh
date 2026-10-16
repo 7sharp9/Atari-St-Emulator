@@ -31,6 +31,9 @@ cases=(
   "msiege0e 51cbe=0e 51cb1=32 51bc4=0e 51bb7=34"
   "msiege10 51cbe=10 51cb1=32 51bc4=10 51bb7=34"
   "melee 51cb1=32 51bb7=34"
+  "siege84 51cbe=84 51bc4=84 51d86=84 51bf6=84"
+  "msiege84 51cbe=84 51cb1=32 51bc4=84 51bb7=34"
+  "msiege92 51cbe=92 51cb1=32 51bc4=92 51bb7=34"
 )
 only=${ONLY:-}
 for c in "${cases[@]}"; do
