@@ -2273,7 +2273,12 @@ successor is 0, so the first call wraps.
   stop sequence (`$5896a`) as the id-0 cues; in autumn it is sample 3 (`$596fc`), and the last cue is
   sample 9 (`$59f96`) (gated).
   `$58054` toggles between 1 and 4, and its only use is as the second argument of `$1ba3e`, which
-  ignores that argument, so the toggle has no effect (code read; a literal scan, indexed accesses not checked).
+  ignores that argument, so the toggle has no effect. No indexed or block access in the text reaches
+  it: the tables below it (`$58042 + 2*side`, `$58016 + 6*side`, `$57fd8 + 2k`, `$57fba + 4*side`) stop
+  at `$5804b` or below, and the land build's clear `$10768` ends at `$57ff8`; a LOAD's DMA restores it
+  from the slot (inside `$3f768..$58368`). Live: a 600M-step watch of `$58052..$58055` from `pm142/rand1`
+  saw 7 writes, all at `$1acdc`, and 44 samples of the `$58042` table's index read 4 to 8
+  (`py/sound/scan_58054.py`, `w58054.sh`, `sample_idx.sh`).
   Id 0 stops the sound sequence (system.md "The sound driver is a sample player"), so only the last cue is
   probably audible *(inferred)*.
 - **One weather spell per season.** `$1ad74` can start a spell only while
@@ -2744,7 +2749,7 @@ Live: an examine click on a goods pile held for 300,000 steps opened the same pi
 
 **The goods-pile panel** (`$9656` `click_st`, cjt[`$2c`]; template `$9712` 20 × 12 cells "Stockpile of:", formatter table `$9672` = words `$12`, then `$3c` × 8).
 
-What it shows. A `$2c` record is a pile of goods dropped by a group teardown (the block `$3a50..$3ae8`, code read: it moves `1/2^D0` of the group's food `36(A3)` and goods `84 + 12i(A3)` and a lead's Catapult/Cannon byte 44 into the pile, then `move.b #$2c,6(A0)` at `$3ac8` and registers it with `$16808`; economy.md 2c is the consumer). Its fields: word 10 the food, words 12 to 26 the eight goods in `$a242` order (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon), words 8 and 28 not read by the panel.
+What it shows. A `$2c` record is a pile of goods dropped by a group teardown (the block `$3a50..$3ae8`: it moves `1/2^D0` of the group's food `36(A3)` and goods `84 + 12i(A3)` and a lead's Catapult/Cannon byte 44 into the pile, then `move.b #$2c,6(A0)` at `$3ac8` and registers it with `$16808`; economy.md 2c is the consumer). A pile is not a `$51b66` object: it is a 28-byte record in its own pool `$4bb4e..$4bdee` (24 slots, a free slot has byte 6 `<= 0`, the scan `$3a34`), reached through the cell chains by its negative offset from `$51b66`. Words 0 and 2 are the chain links (`$16808`, `$16778`, the mover `$163ea`), byte 6 is `$2c`, word 8 is the pile's map cell `y*64 + x`, word 10 the food and words 12 to 26 the eight goods in `$a242` order (Pike, Sword, Bow, Plough, Boat, Pot, Catapult, Cannon); nothing writes bytes 4, 5 or 7, and offset 28 is the next slot. `$3ad8` stores the lead's cell (`(word10 >> 2 & $1fc0) + byte 8`, `$39ec`) in word 8, and the panel's eye icon (cells `$18`/`$19`, scjt `$735e` to `$74d8`, `$ab34`'s `$2c` arm `$aba8`) reads it to move the camera `$4bb3a`/`$4bb3c` to `(word8 & $3f, word8 >> 6)`. Live: 6 natural piles in 600M steps of `pm142/rand1` match the group's food and goods and the lead's cell in 36/36 checks, and a watch of the pool saw word 8 written only at `$3ad8`; from `pm143/run/p0k0_s4.snap` the eye click moves the camera to word 8's cell, 4/4 with the natural and three poked values, and its no-click control leaves it alone (`py/pile/nat_capture.sh`, `nat_parse.py`, `open_pile.sh`, `goto_click.sh`). The catapult/cannon arm (`$3a8e..$3aa4`) and the add-to-an-existing-pile arm (`$3a18`) did not run in those 6.
 
 Mechanism. Row 2 is `$9684`: it zeroes the item cursor `$970a`, prints the signed food word and " food" (nothing when 0). Rows 3 to 10 are `$96ae`, one call per run: it advances the cursor past zero words to the next non-zero good and prints "<signed n> <name>" where the name is `$a242`'s string without its "a " article, with the final NUL replaced by `s`, or by a space when n ≤ 1 (signed compare); after the last good it returns an empty string. So the panel lists only the goods present, with no gaps, and the display is the whole effect (it changes only `$7a36`, the grid and `$970a`).
 
