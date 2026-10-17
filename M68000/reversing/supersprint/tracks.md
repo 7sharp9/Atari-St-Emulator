@@ -98,23 +98,77 @@ The planes are 1 bit per pixel, 320x200, 40-byte stride, 8000 bytes each, MSB le
 |---|---|---|
 | 0 | `-94` | car draw mask: 1 unless the art colour is 3, 4 or 7 (the meaning of those colours is inferred) |
 | 1 | `-94 + 8000` | **solid**: wall, infield and outside. The only plane collision uses |
-| 2 | `-94 + 16000` | foreground/occlusion mask for level-0 cars (role inferred) |
+| 2 | `-94 + 16000` | occlusion mask: 0 where a level-0 car is drawn behind the art (bridges, tunnels, grandstand edges; HUD digit masks are stamped into rows 7-17 later) |
 
 The **surface map** `[-1910(A4)]` (`$671f6`) is 40x25 bytes, one per 8x8 cell, directly after the planes, built from
 4-byte stroke records `(x, y, length | bit 7 = horizontal, value)` OR-ed in. It holds lap sectors, tripwires, pickups
 and hazard markers (mechanics.md lists the values), not road-versus-grass. Gates re-blit their own mask words every
-animation frame (`$142b2`), so collision is partly dynamic. The README's earlier statement that the game flood-fills
+animation frame (`$142b2`), and the flashing sign group (`$b24e`, `$1432e`) writes into planes 1 and 2, so the planes are
+partly dynamic (mechanics.md). The README's earlier statement that the game flood-fills
 "the track bitmap" is wrong: the input is a vector outline.
 
-A data bug on **Track 8**: its stroke list holds an out-of-range stroke `(34, 30, 5 cells, mask 0x80)` (probably meant
-for row 5). `$15550` ORs `0x80` into five bytes beyond the 1000-byte map, and the intended tripwire strip on row 5 is
-missing (live: the byte at `$671f6+1234` reads `bf` where Track 1 reads `3f`).
+### Plane 2 records (`$15182`)
+
+The table at `-1154(A4)` holds a byte pair `[count, start]` per track; the 6-byte records start at `-1154 + 16 + 6*start`.
+A record is `[x16, y, ws, h, cs_lo, cs_hi]`: `x16` the 16-pixel group column, `y` the pixel row, `ws = (groups << 4) | edge`,
+`h` the row count, `cs` a 16-bit colour set. For every (group, row) the record visits, the plane-2 word is first set to
+`$ffff` (a later record replaces what an earlier one wrote), then the bits of the pixels whose art colour is in `cs` are
+cleared. `groups` whole groups are visited, plus one more when `edge != 0`, in which only the leftmost bits given by the mask
+word `[0, 8000, c000, ... fffe][edge]` (table at `$152ae`) take part. A rectangle running past column 19 continues on the next
+pixel row. The art read is the tile composition before the scenery sprites. Track 1 has 4 records, the others 7-15.
+`png/collide/plane2_all_tracks.png` shows the cleared pixels.
+
+### Tripwire counter (`-3842(A4)`)
+
+Cells with bit 7 set (137 pure `0x80` cells on Track 1, 125-166 on the others, plus a few bit-7 payload cells) are tripwire
+strips. `$b798` counts a car's entry into one: if either probe cell has bit 7, the car's F1 bit 2 is clear and its latch
+(bit 7 of the byte at `-3834+car*2+1`) is clear, the latch is set and `-3842[car]` is incremented; with neither probe on a
+bit-7 cell the latch is cleared. `$bcc4` zeroes the counter when the ordered sector counter `-3850` advances, `$c04c`/`$cccc`
+initialise it and `$ca84` sets it to 99 for cars demoted at the race end. There are exactly two readers: `$13b34` (the
+HUD leader, below) and the winner's-circle rank key `$1a64a` (`laps*100000 + sector*10000 + tripwires`, `winner_diff.py`
+30/30). Nothing else reads it, so it is a progress meter, not a hit zone.
+
+`$13b34` returns the index of the car with the largest 16-bit key `(laps << 13) + (sector << 10) + tripwires` (ties go to the
+lowest index; `collide/leader_fuzz.py` 300/300). Its only caller is the HUD refresh `$13bbe`, which every fourth pass of
+`R % 6 == 0` stores the result in `-4812(A4)` and then blanks the leader's panel digits (`$13c50`) on alternate six-frame
+cycles; cars 0-2 have a panel, car 3 none.
+
+A data bug on **Track 8**: its stroke list holds an out-of-range stroke `(34, 30, 5 cells, mask 0x80)`. `$15550` ORs
+`0x80` into five bytes beyond the 1000-byte map, at `[-4940(A4)] + 234..238` (the HUD patch buffer). Only one byte changes
+(`3f` to `bf`) and the byte copy `$fb5c` overwrites the range before the first `$df18`, so the overrun has no effect. Where
+the stroke was meant to go is not known.
 
 ## Race setup content
 
 Hazards and pickups are placed from the per-track 20-cell candidate list by the routines listed in mechanics.md;
 every placement seen live was inside the list. The wrench cell `0x0d` spans two adjacent cells (16x8 px, sprite id
 `0x13`); the bonus cell is `0x11`.
+
+## Live collision on every track
+
+`collide/traj_track.py` runs the physics port (`physics/ssport.py` plus `collide/gateanim.py`, `signanim.py`) against live play
+from each `agents/tracks/snaps/race_T.snap` and compares 35 car fields x 4 cars, the surface map, the gate arrays and
+collision planes 0-2 each frame. A frame matches only if everything is identical; the only exclusions are a wrench or bonus
+cell appearing or expiring (RNG spawn, bonus life about 584 frames). All eight tracks match:
+
+| run | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 |
+|---|---|---|---|---|---|---|---|---|
+| random joystick, 700 frames | 700 | 700 | 700 | 700 | 700 | 700 | 700 | 700 |
+| chase bot, 1500 frames | 1500 | 1500 | 1500 | 1500 | 1500 | 1500 | 1500 | 1500 |
+| chase bot, 2500 frames (T1, T5 stop at the race end) | 2194 | 2500 | 2500 | 2500 | 2500 | 2500 | 2500 | 2500 |
+| R = 8 hazards, 1500 frames, sign group ported | 1500 | 1500 | 1500 | 1500 | 1500 | 1500 | 1500 | 1500 |
+| R = 17 hazards, 2500 frames, sign group ported | 1850 | 2500 | 2500 | 2500 | 2244 | 2500 | 2500 | 2500 |
+| control, gate animator off, 1500 frames | 1500 | 1500 | 1042 | 1500 | 81 | 1500 | 1500 | 1042 |
+
+The control shows what the animator `$aa60` contributes: Tracks 3, 5 and 8 have gates (1, 3, 1), and on Track 3 the drone
+waypoint reads the gate route value `-1832(A4)` (record 2 of 90; Track 5 records 2, 26, 50; Track 8 record 66), so without
+the animator the drone diverges at frame 46. Without the sign port, R = 8 and R = 17 runs lose 63 frames per 1500 on plane 1
+and 2 only (no car field differs). The race-end rule (control phase stops five iterations after the first car reaches 4
+laps) is in mechanics.md. Level-toggle cells (kinds 0 and 3) were crossed on Tracks 2, 4, 6 and 8, oil, cones and pickups
+in the R = 17 runs.
+
+Driving Track 6 with no player joined (`collide/t6_nojoin.py`) reaches `$be40` and the race loop `$df18`; the earlier garbage PC
+was the emulator's MFP bug (fixed in 6a1d544, secrets.md).
 
 ## Images
 
@@ -140,10 +194,11 @@ approximate), `cell_sprites.png`, `gate_frames.png`, `hazards_track5_race0_5_17.
 | INIT.DAT split vs live RAM | `tracks/initmap.py` | 5133/5139 |
 | every drone waypoint transition on all 8 tracks is a decoded successor | `tracks/check_lap.py T` | 58-127 per car, none outside |
 | the lane joins close within 1 px on every track | `tracks/trackpath.py` | max gap 3-8 units |
+| plane 2 record decode vs `-94 + 16000`, all 8 tracks | `collide/plane2_decode.py` | 64000/64000 each (512000/512000) |
+| HUD leader `$13b34` vs the key model | `collide/leader_fuzz.py` | 300/300 |
+| port vs live, all 8 tracks | `collide/traj_track.py` | table above |
 
 ## Open
 
-- Plane 2's record decode (`physics/rebuild_planes02.py` is unfinished: 7583 pixels are cleared in RAM).
-- Live comparison of tracks other than Track 1 against collision behaviour (only rendering is proved for 2-8).
-- The consumer of the tripwire strips (`-3842`). Re-driving Track 6 with no player joined ends in a garbage PC (see
-  `sessions/supersprint.md`, Known traps).
+- The wrench/bonus spawn and expiry (`$abd4`, `$ae0e`), the tornado position update `$b100`, and the banner and ramp
+  animators are not ported; the live comparison excludes only the wrench/bonus cell appearing or expiring.

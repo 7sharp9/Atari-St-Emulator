@@ -32,4 +32,4 @@ file                                              source (SUPER.DAT file offset 
 10d_B8_*.png                                      B8 @169086 (2000 B)                       winner's-circle effect sprites, $17146/$170f8/$1718c   read
 10e_B7_HUD_digit_sets_6x10.png                    B7 @165566 (3520 B)                       6 sets x 10 digits                         set 5 proved ($15e5a: screen/stash/layer 960000/960000)
 10f_steering_wheel_16_frames_64x44_B2.png         B2 @12608 (7190 B)                        5 stored + 11 derived frames, $16926/$16962  proved (15488/15488)
-Not decoded here: B6 @162566 (3000 B, per-track wall polylines + flood seeds, $14cd4 - tracks agent), B11 @183866 (7100 B, track tables), B2 header (150 B).
+Not decoded here: B6 @162566 (3000 B, per-track wall polylines + flood seeds, $14cd4 - tracks agent), B11 @183866 (7100 B, track tables), B2 header (150 B) is a 48x25 one-bit arc mask for the shop ring (graphics.md); see ../unused/ for the old-credits font and annotated sheets.

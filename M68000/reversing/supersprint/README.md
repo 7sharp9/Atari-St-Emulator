@@ -7,8 +7,8 @@ intro/credits sequence and double-buffered attract loop, and — with IKBD input
 (injected 55th pass, wired to the live window's arrow keys 56th pass) — leaves
 attract, walks its track-select / "PREPARE TO RACE" menu, starts an actual Track 1
 race, and lets a window player drive the joystick car a full lap. No instruction
-wall. One open fragility: holding almost any key on the PREPARE-TO-RACE screen, or re-driving
-Track 6 with no player joined, can end in a wild jump during race-start init (`secrets.md`; unresolved, possibly an emulator artefact).
+wall. A race-start crash seen after holding a key on the PREPARE-TO-RACE screen was an emulator MFP bug, fixed in commit `6a1d544`
+(`secrets.md`, "Prepare-screen crash").
 
 ## Topic docs
 
@@ -26,8 +26,8 @@ proved against the emulator with differential tests (every count is in the doc's
 
 **No cheat codes, hidden tracks or hidden modes exist** (`secrets.md`). What is unusual: walls are a vector outline flood-filled at
 race start, collision is a by-product of drawing the car, drones follow rails whose table carries its own control language, difficulty
-escalates across races (no in-race change measured with the human behind; not tested with the human leading), and the art is a tile-dedup codec. Also found: a removed `BOOT.DAT` protection check
-with a cracker tag, a never-played 59.5-second tune, an unshown credits text, a Track 8 data bug and a sound-driver bug.
+escalates across races (no in-race change with the human behind or leading), and the art is a tile-dedup codec. Also found: a removed `BOOT.DAT` protection check
+with a cracker tag, a never-played 64.5-second tune, an unshown credits text, a Track 8 data bug and a sound-driver bug.
 
 ## Decompile
 
@@ -306,8 +306,8 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 ## Not exercised in the emulator
 
 The game is silent (the emulator never raises Timer D), the warm-reset hook and the real-hardware Timer B band heights were not run, the
-high-score file was never saved at the end of a real session, a human leading the pack (rubber-band test), gates closing on
-Tracks 3/5/8 and the tornado/cone placement distributions (one RNG state) were not tested live, and only Track 1's collision geometry
+high-score file was never saved at the end of a real session, a human was never driven into a lead (the leading test pokes counters
+and position), and only Track 1's collision geometry
 was compared against live play (Tracks 2-8 are proved as renderings). `sessions/supersprint.md` has the open list.
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.

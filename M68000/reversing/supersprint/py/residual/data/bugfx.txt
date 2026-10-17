@@ -1,0 +1,24 @@
+entry               sec | steps where the chC volume written differs / chC writes | max |dVolC| | first diff tick | other regs differing | PCM rms(actual-fixed)/rms(actual)
+A_0                1.51 |    0 /   40 (same count writes in the two runs) |  0 | None | none | 0.000
+B_316              0.16 |    0 /    4 (same count writes in the two runs) |  0 | None | none | 0.000
+C_28               2.90 |    0 /   77 (same count writes in the two runs) |  0 | None | none | 0.000
+D_166              3.57 |    0 /   95 (same count writes in the two runs) |  0 | None | none | 0.000
+E_88               5.00 |    0 /  133 (same count writes in the two runs) |  0 | None | none | 0.000
+F_180              1.85 |    0 /   49 (same count writes in the two runs) |  0 | None | none | 0.000
+G_302              1.96 |    0 /   52 (same count writes in the two runs) |  0 | None | none | 0.000
+H_14               0.31 |    0 /    8 (same count writes in the two runs) |  0 | None | none | 0.000
+I_74               0.31 |    0 /    8 (same count writes in the two runs) |  0 | None | none | 0.000
+J_194_208_222      4.70 |  107 /  125 (same count writes in the two runs) |  8 | 134 | none | 0.251
+K_242              3.20 |   74 /   85 (same count writes in the two runs) |  5 | 17 | none | 0.142
+L_272              3.57 |   84 /   95 (same count writes in the two runs) |  6 | 17 | none | 0.144
+M_ch1_322          0.27 |    0 /    7 (same count writes in the two runs) |  0 | None | none | 0.000
+N_336              8.12 |   68 /  216 (same count writes in the two runs) | 10 | 1304 | none | 0.148
+O_236              0.16 |    0 /    4 (same count writes in the two runs) |  0 | None | none | 0.000
+P0_3398           41.04 |  513 / 1093 (same count writes in the two runs) |  4 | 26 | none | 0.266
+P1_4488           33.12 |  565 /  882 (same count writes in the two runs) |  5 | 26 | none | 0.231
+P2_5302           31.16 |  211 /  830 (same count writes in the two runs) |  6 | 26 | none | 0.192
+P3_5916           41.94 |  824 / 1117 (same count writes in the two runs) |  7 | 26 | none | 0.201
+P4_6794           40.77 | 1016 / 1086 (same count writes in the two runs) |  7 | 26 | none | 0.168
+Q_906             64.65 |   60 / 1722 (same count writes in the two runs) |  3 | 17 | none | 0.049
+R_7780            37.77 |  612 / 1006 (same count writes in the two runs) |  7 | 26 | none | 0.195
+S_2580            24.18 |  508 /  644 (same count writes in the two runs) |  4 | 17 | none | 0.188

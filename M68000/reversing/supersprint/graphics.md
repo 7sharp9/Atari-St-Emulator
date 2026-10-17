@@ -41,8 +41,18 @@ B5 and is decoded by the blitters' own code:
 - **Text**: a 42-glyph 5x6 font (digits, `.`, `!`, A-Z, blank, `-`, `'`, block) and a 12x12 A-Z font; the glyph blitter is
   `$16528` (not a car draw). Cells are opaque 6x6 with explicit foreground and background colours and a 6-pixel
   advance. `$1b522` formats tenths as `[hundreds] tens . units`.
-- **HUD digits** (B7 set 5) are 32x11; car 0 draws in colour 1, car 1 in 10, car 2 in 12. Sets 0-4 are pre-shifted
-  variants; only set 5 is pixel-proven.
+- **HUD panels.** B7 holds six digit sets: sets 0-3 and the big sets 4 and 5. Each car's panel (rows 7-17, 48 bytes wide, `+$38` per car) is
+  three 32x11 strips over the pristine crowd saved in `-4940(A4)` by `$16132`. The lap digit is B7 set 5 (`$15e5a`; car 0 draws in colour 1,
+  car 1 in 10, car 2 in 12). The other two strips (`$158ea`) show the car's **score**: six decimal digit bytes (`$80` = leading blank) staged
+  at `-4846(A4)` and latched into `-4870(A4)` on even frames, each digit stitched from a 16-px set image (sets 3, 1 / 2, 0) and a big
+  32-px image (sets 5 / 4); a blank digit b2 trims the set-1 image. The routine keeps its screen argument in a code cell at `$15e52`.
+  The HUD driver `$13bbe` refreshes panel `(frame % 6) >> 1` and, every four six-frame cycles, recomputes the race leader (`$13b34`: key
+  `lap*$2000 + (-3850)*$400 + (-3842)` in 16 bits, first strict maximum). **The leader's panel blinks**: `$13c50` restores its crowd for 2 of
+  every 4 cycles (24-frame period). The whole HUD band (rows 0-29) rebuilds pixel-exact from the tile crowd, the captions, the icons and
+  these two routines (`residual/hud_rebuild.py`).
+- **Shop ring.** B2's 150-byte header is the top-left quadrant (48x25, 1 bit per pixel) of the ring around the shop's steering wheel:
+  `$162f2` draws it into plane 0 at screen `+$3918`, `$16424` mirrors it horizontally into plane 1 of the right half and `$16466` mirrors it
+  vertically (skewed 4 bytes, so the lower arcs land in planes 2 and 3).
 - B9 is 16 frames of the pit-mechanic animation; B0 the big red hi-score car; B2 the steering wheel (5 stored plus 11
   derived frames).
 
@@ -71,7 +81,7 @@ the first ~3,660 are the ROM Setscreen and Vsync wait, about 8,100 are game work
 | 4803 | `$d4fa` | human control |
 | 4810 | `$105a0` | input |
 | 5108 | `$12450` | engine sound |
-| 5922 | `$13bbe` | HUD (`$158ea`, `$15e5a`); one of the three panels per frame, `(frame % 6) >> 1` |
+| 5922 | `$13bbe` | HUD (`$158ea`, `$15e5a`); one of the three panels per frame, `(frame % 6) >> 1`; the leader's panel blinks |
 | 7459 | `$df18` | physics and draw |
 | 7467-7594 | `$e8e6` x6 pairs, `$e84c` | car-car collision, depth sort |
 | 7696 | `$149b8` x4 | render |
@@ -113,6 +123,11 @@ helicopters/HUD captions and icons, both fonts, B7 HUD digits, B8-B10, the steer
 | wrench-count icon `$1453a` | `engine/proof_sprites2.py` | 1920000/1920000 (screen + stash) |
 | text glyphs `$16528`, number formatter `$1b522` | `engine/proof_text.py`, `proof_numfmt.py` | 1280000/1280000 each (40 trials) |
 | HUD big digits `$15e5a` | `engine/proof_hud.py` | 960000 screen, 960000 stash, 23040 depth |
+| lap-panel composer `$158ea` | `residual/proof_lap.py 60` | 1920000 screen, 1920000 stash, 1013760 depth, 60/60 trials |
+| whole HUD band rows 0-29 vs live (natural, poked, leader blink at `$13bbe` entry and rts) | `residual/hud_rebuild.py`, `proof_hud_poke.py`, `proof_blink_sweep.py` | 9600/9600 px in 4/4 and 12/12; 240/240 snapshots, 2304000/2304000 px |
+| leader key `$13b34` | `residual/proof_rank.py` | 80/80 |
+| smoke puffs `$afc6`, spawner `$b6f8`, blitter `$143ca` | `residual/proof_smoke.py 40` | 1280000 screen, 6400 state, 40/40 each |
+| shop ring `$162f2 $16424 $16466` | `residual/proof_ring.py` | 256000 bytes each, 8/8 trials; 136/136 plane words in the live shop screen |
 | steering wheel `$16926/$16962` | `engine/proof_wheel.py` | 15488/15488 |
 | layer 0 builder `$154d2` | `engine/proof_layer0.py` | 32000/32000 |
 | dirty rectangles `$14a4a` write, `$14972` restore | `engine/proof_dirty.py` | 20/20, 960000/960000 |
@@ -120,8 +135,6 @@ helicopters/HUD captions and icons, both fonts, B7 HUD digits, B8-B10, the steer
 
 ## Open
 
-- The lap-panel composition `$158ea` with B7 sets 0-4 is not reproduced (1627 pixels of the top HUD rows still differ
-  from the rebuilt background); B5 barriers and posts, B8, B9, B10, B0 and the big font are read from the blitters, not
-  diffed.
-- The 150-byte header of B2 and the real-hardware band heights of the Timer B screens.
-- Seven 4 KB blocks of `SUPER.DAT` (28,672 bytes) that no tested flow consumed (`secrets.md`).
+- B5 barriers and posts, B8, B9, B10, B0 and the big font are read from the blitters, not diffed; the real-hardware band heights of
+  the Timer B screens.
+- All of `SUPER.DAT` is consumed; the only unread bytes are zero padding (B1 `[0x2f1c, 0x3140)`, B5's 464-byte tail, B9's 12-byte tail; the consumer table is in `secrets.md`, "Data files").

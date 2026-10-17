@@ -118,14 +118,19 @@ advance:
 | heading-word bits | effect on `wp` |
 |---|---|
 | `0x100` fork | odd car index `+= 2`, even car index `+= 3` (the two lanes) |
-| `0x200` gate branch | `wp += -1832(A4)[hd & 3]` (2 or 3; the value flips as a gate opens, `$aa60`) |
+| `0x200` gate branch | `wp += -1832(A4)[hd & 3]`: 2 stays in the same-parity lane (the road that avoids the gate), 3 hops to the other lane, which runs through the gate. The value is 3 from the moment the gate starts opening until 5 ticks before it starts closing, and 2 otherwise (`$aa60`) |
 | `0x400` merge/skip | `wp += hd & 0xff` |
 
 On Track 1 slots 0 and 2 take the odd lane at record 10 (38 real records per lap), slots 1 and 3 the
 even lane (34 per lap); slot 3 is the only drone on the even lane. The 4-lap race times come out of
 this model exactly (`sim_lap.py`: 506/612/535 frames for three drones' laps 2-4, matching the game's
-own stamps, 9 of 9). Gate-closed routing on Tracks 3, 5 and 8 is inferred from the table and the gate
-counts (`-1294(A4)` = 0,0,1,0,3,0,0,1); the branch arithmetic is tested (62 branch events).
+own stamps, 9 of 9). Tracks 3, 5 and 8 carry the gates (`-1294(A4)` = 0,0,1,0,3,0,0,1). Live, 40 natural
+branch events on those tracks all follow `n + route[g]` (route 3 only with the gate open or opening, 2 only with it
+closed or closing), and a same-snapshot A/B that flips or holds the gate state changes the lane taken in 7 of 7 events
+while the null poke changes nothing (`livetests/gate_nat.py`, `gate_ab.py`). The route is latched when the branch
+record is crossed: a drone that chose the gate lane just before the gate closes drives into the barrier and bounces
+(5-frame stuns) until it reopens (Track 5, gate 1: 267 frames, `gate_ab.py 4 1271 2 5 220`: 84 stun frames, none with
+the gate flipped or held), so lap times on gate tracks are not a pure function of the table.
 
 ## Difficulty, speed caps and the race counter
 
@@ -134,9 +139,13 @@ turn counter and stun timer was enumerated across the whole listing (`ai_econ/ac
 a live 25M-step watch from the race-start initialiser shows the cap written 7 times in the first ~1300
 steps and never again. In a same-snapshot A/B (human idle vs holding fire and crashing, 14M steps, 4667
 samples) two of the three drones are bit-identical for every sample; the third differs only after
-physical contact. A human who is actually *leading* was not tested (static proof only).
+physical contact. With the human leading (counters set to the pack leader's value 1000 frames ahead, optionally also
+moved there and holding fire, same snapshot, frame-aligned samples) no cap or divisor is written in 1000 frames and all
+three drones equal the control in 3000/3000 drone-frames per arm; no reader of the lap, sector or tile counters lies
+in the drone control path (`livetests/lead_ab.py`, `lead_cmp.py`).
 
-Caps are set once per race by `$be40` from the track `T` (0..7), the race counter `R`
+Caps are set once per race by `$be40` (the attract-demo initialiser `$caa8` writes the only other caps, `110 - 4*T + 4*slot`
+at D = 40 for all four slots, with the drone flags 0; `livetests/demo_caps.py`) from the track `T` (0..7), the race counter `R`
 (`-1748(A4)`), the slot and the car's upgrade levels `u0 u1 u2`:
 
 ```
@@ -147,9 +156,9 @@ drone:  cap = 60 - 4*T + 4*slot + R                        # D = 40
 (`ai_econ/upgrade_diff.py`, 96/96; track-by-track `select_track.py` for T = 0..7.)
 
 **The one catch-up is across races.** `R` is cleared at session start (`$13a86`), incremented after each
-race (`$13b00`, cap 50) and decremented in the winner's circle if a drone won (`$1a7d2`). It raises every
-drone cap by 1 per race and gates the hazards (below). The increment on a human win is inferred from the
-code; the decrement was seen live (0 -> 65535 -> 0).
+race (`$13b00`, unconditional, cap 50) and decremented in the winner's circle if a drone won (`$1a7d2`), so it rises by 1
+after a human win and a drone win nets 0 (live at R = 0, 5, 49, 50 each way, 8/8; 0 passes through 65535;
+`livetests/r_inc.py`). It raises every drone cap by 1 and gates the hazards (below).
 
 The four select-screen labels are **track tiers**, not AI settings: a 16-position dial, `dial >> 1` is the
 track and `dial >> 2` the tier: easy (Tracks 1, 2; 0 starting wrenches), "medium 1 wrench" (3, 4),
@@ -166,7 +175,7 @@ and `$199de` raises an item's level (max 5). Items (carousel order `-8794` = 1,3
 | 0 traction | turn-delay threshold `-3890` = `trunc(cap*8/11) + trunc(4*u0*D/40)`; slower coast-down |
 | 1 top speed | `cap += trunc(u1*5*D/40)`; top velocity 22 + u1 units/frame vs 12-14 for an R=0 drone |
 | 2 turbo acceleration | `D = 40 - 5*u2`: same top velocity in `D/40` of the time (u2 = 5 is about 2.7x); coast rule |
-| 3 "increase score level taken" | stored and drawn; *no consumer found* in the program (static scan of every `lea -4074(A4)`) |
+| 3 "increase score level taken" | the level has no consumer: over a 1500-frame race and the winner's circle the whole global area differs from a level-0 control only in the level word, against 18, 102 and 90 words for items 0, 1, 2 (`livetests/items_ab.py`). The purchase itself pays: each of the 4 wrenches spent calls `$16084` with 750, so +3000 score, whatever the level |
 
 Throttle released, each frame: `speed -= 1` if `row[u2][phase] == 0` and `speed -= 1` if `row[u0][phase]
 != 0` (rows at `-8476(A4)`, 6 rows x 7 words), so the net coast-down is `(7 - u2 + u0)/7` per frame
@@ -219,8 +228,14 @@ There is no grip or grass model: off the road is the wall plane.
 
 ## Race rules, lap counting, end and scoring
 
-- A race is **4 laps**. The first car to finish lap 4 starts a 170-frame countdown; other cars also at 4 are
-  demoted to (laps 3, checkpoint 5, tiles 99) for the ranking.
+- A race is **4 laps** (`-3906(A4)[car]` is the lap counter, 4 = finished). The race loop in `$be40` (`$c6f6..$ca02`) works as
+  follows. A car at lap 3 whose HUD digit `-4822` is not yet 3 triggers the final-lap banner once (`$b34c(1)`: `-1802 := 1`, banner frame
+  12, 180 frames animated by `$b36a`). The first car at lap 4 whose HUD digit is not yet 4 sets the finish latch (`$b34c(2)`, the three
+  PSG channels silenced, `-8072` saved). Then **170 further passes** run; the control routines (`$d4fa` human, `$eaea` drone) run in
+  only 5 passes (the latch pass and the first four), so the cars coast. At the end the frame counter is restored, every other car at lap 4
+  is demoted to (laps 3, checkpoint `-3850` = 5, tiles `-3842` = 99) for the ranking, and the loop returns 0 (F10 returns 1 and skips the
+  session tail). Live: one finisher gave 171 loop passes after the latch pass included, `$d4fa` 5 and `$eaea` 15 calls; two finishers
+  demoted the second to (3, 5, 99) (`residual/live_raceend.py one|two`). The loop never tests whether a human is still racing.
 - Lap counting is the ordered four-sector check above, which is why a human cannot shortcut (the human lap
   counter stays 0 until the sectors are hit in order).
 - **Winner's circle (`$1a4ca`).** Rank key = `laps*100000 + checkpoint*10000 + tile count`
@@ -228,8 +243,17 @@ There is no grip or grass model: off the road is the wall plane.
   the stamps by descending subtraction; best and average use the first `n` laps (`n = 1` with the race timer
   if no lap was completed). A human best beats the session record `-8066(A4)[T]`. The par time is
   `(T + 15)*50` ticks; the two bars show `par - average` and `par - best` (0 if negative), rounded down to
-  10. The prizes 1000/500/250/0 by rank are display counters only; no persistent total exists (inferred
-  from a write scan), so the game has no points score beyond the lap records.
+  10. The prizes 1000/500/250/0 by rank count up into the car's persistent score (next item).
+- **Score.** Each car has a 6-digit decimal score (digit bytes, `$80` = leading blank; staging `-4846(A4)`, shown via `-4870(A4)`; the same
+  digit-byte form as the `SSPRINT.HSC` records), added by `$16084(car, amount)`. It gains +10 (`-4876(A4)` = `80 80 80 80 01 00`) for every
+  car on each 64th frame while no car has finished, pickups add the amount at `-4900(A4) + 6*kind` (`$abd4`), and the winner's circle adds
+  +10 per bar step. Live: 130/130/380 became 150/150/550 over 125 frames with `$16084` called 9 times (8 time ticks and one 150 pickup).
+  Whether it feeds the high-score table is inferred from the shared format and the entry screen's "non-zero score" test.
+- **Protection flags.** `-150(A4)` (failed) and `-148(A4)` (check ran) belong to the removed `BOOT.DAT` check: the patched `$101bc` leaves
+  `-150 = 0`, `-148 = 1` (and a stray `D5 = 8` nothing reads). `$1000e` forces `-150 = 1` if `-148` is 0 and writes the high-score file
+  only when `-150 == 0`; the session loop `$13a5e` ends after one race when `-150 != 0`. Live A/B, human finishing first: `-150 = 0` starts
+  the next race, `-150 = 1` ends the session through `$13b2c`/`$1000e` with no second `$be40` (`residual/live_raceend.py tail0|tail1`).
+  The campaign end is the AND of the drone flags `-3914..-3910`; `-1748` is the race counter `R`, capped at 50.
 - **Elimination.** Scan ranks 0..2; the first drone and every lower rank become drones; every drone slot
   0..2 then gets wrenches = 0 and all four upgrade levels = 0. A human keeps playing only by finishing ahead
   of every drone; the session ends when slots 0..2 are all drones. If rank 0 is a drone, `R` drops by 1.
@@ -244,14 +268,17 @@ All keyed on the race counter `R` (tracks.md lists the placement tables):
 | oil-class cells | from `R = 6`, `rand(R/6 + 1)` capped at 3 | blue puddle and yellow slick: speed 40 → 19; black oil: no speed change, spin set from code (not observed) |
 | roaming tornado | `R > 3`, `rand(2) != 0` | random-walk roam; hit box ±7 px in x, ±8 in y around `(x, y+12)`; contact sets the spin flag `0x10` |
 | cones | from `R = 16`, 50% | four cones; speed to 0, cell cleared |
-| flashing 3-sign group | every third race, `(R+1) % 3 == 0` | cosmetic (only its own animator reads the flag) |
-| gates | fixed per track (3, 5, 8) | 48x16 sliding barrier, about 216 frame-counter ticks per cycle; changes the drone route value |
+| flashing 3-sign group | every third race, `(R+1) % 3 == 0` | three white discs on the road, one lit at a time by `$b24e`; `$1432e` writes each disc's pixels into the solid plane 1 (and plane 2), so a car on a lit disc bounces (T1 blob at x 22-26, y 92-95; `collide/sign_solid.py`: bounce only with the bits set) |
+| gates | fixed per track (3, 5, 8) | 48x16 sliding barrier (a 5-row wall strip, 190 px, when closed); cycle 216 frames (gate 0), 396 and 576 (Track 5 gates 1, 2); `$aa60` animates gate `(R % 6) >> 1` once per frame before the control phase, re-blits the gate into planes 0-2 and sets the drone route value `-1832(A4)` read by the 0x200 waypoint records (port `collide/gateanim.py`; without it Track 3 diverges at frame 46) |
 | wrench | one at a time, respawn 275-524 ticks after a pickup | cell `0x0d`, one of 20 candidate cells per track |
 | bonus | first 15 candidate cells, appears 250 ticks in | worth 100/150/200/250 by growth stage; live: score 30 → 180 |
 
 The roaming hazard's code (`$b094/$b100/$ea56`) has a scratch-register bug: the sound call in its per-car
 loop clobbers A0, so with sound on it spins at most one car per frame (found by a 2-in-600 fuzz mismatch).
-Placement values are from one RNG state, so the threshold lines are proved but not the random distributions.
+The hazard counts follow the rules above under varying RNG seeds: 7 values of R x 50 seeds poked into the Random seed at `$29b8`,
+every roving, tile-count and blocking decision equals the rule applied to its own logged `$a666` call, 1400/1400
+(`livetests/hazard_seeds.py`). With 50 seeds: roving 28 of 50, tiles at R = 12 split 16/18/16, at R = 50 29 of 50 reach the cap of 3,
+blocking tiles 26 and 21 of 50 at R = 17 and 50.
 
 ## Is any of this novel?
 
@@ -291,10 +318,5 @@ directory). Counts are N matching of N.
 
 ## Open
 
-- The race-end control phase (what runs after a winner finishes) and the per-frame thunks `$13bbe`,
-  `$afc6` are not ported.
-- A human who leads the pack (rubber-band test with the human in front), the live gate-closed routing on
-  Tracks 3, 5, 8, the live wrench increment and item 3 having no consumer, and the human-win increment of
-  `R` are read from code but not exercised live.
-- The exact hazard-count distributions need differing RNG seeds.
-- `$1000e`/`$101bc` and the `-150/-148` campaign-end flags, and the tripwire strips' consumer (`-3842`).
+- The leading-human test pokes counters and position rather than driving a lead with a steering bot.
+- The tripwire strips (bit-7 cells) are counted into `-3842(A4)`, a per-car progress counter reset at each sector crossing and read only by the HUD leader function `$13b34` and the winner's-circle key (tracks.md); they are not a hit zone.

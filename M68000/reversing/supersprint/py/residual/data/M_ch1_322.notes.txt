@@ -1,0 +1,5 @@
+# M_ch1_322 (trigger $12ac2) script entries [(1, 322)], noise period 5; times are from the sequencer model (step = 9 ISR ticks = 37.5 ms)
+  0.033 s  step    0  L1  NOTE-ON  psg B  inst 21  base period   200 (  625.0 Hz  D#5 +8c)  init level 255  tone-only True
+  0.033 s  step    0  L1  WAIT 2 steps (0.113 s)
+  0.146 s  step    3  L1  NOTE-ON  psg B  inst 15  base period     0 (    0.0 Hz  -)  init level 0  tone-only True
+  0.146 s  step    3  L1  END
