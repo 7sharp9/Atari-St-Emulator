@@ -176,7 +176,7 @@ that are easy to forget:
     `cbmame.sh` changes into the run directory, so its script argument must be an absolute path.
   - reads an unquoted `GR:x>=24` as a redirect to a file named `24`: quote REPL and `explore.py`
     words that contain `<` or `>`.
-  - fails `echo =====` (`=word` expands to a command path): quote it.
+  - fails `echo =====` and a script argument like `=x23` (`=word` expands to a command path, "x23 not found"): quote it.
   - aborts a whole `for f in a/*.md a/*.sh; do ...` when one glob matches nothing: run such loops
     with `bash`, or `setopt nonomatch`. An unquoted `grep --include=*.fs` or `ps aux | grep [d]otnet` fails the same way ("no matches found"), and the pipe then prints nothing, which reads as "no process": quote it.
 - A waiter `until ! pgrep -f 'run.sh x'` matches its own shell's command line and never exits: bracket one
