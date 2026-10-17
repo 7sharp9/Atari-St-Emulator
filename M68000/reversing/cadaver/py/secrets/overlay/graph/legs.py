@@ -40,7 +40,7 @@ def plan_nodes(sm, rx, facts, w):
 
 
 def leg(sm, S0, name, goal, specs, spells=False, maxdepth=26, maxstates=1_200_000, extra_nodes=(), verbose=True):
-    rx = Relaxed(sm, start=S0, spells=spells)
+    rx = Relaxed(sm, start=S0, spells=spells, no_doors=sm.no_doors)
     rx.run()
     facts = [rx.reached(sp) for sp in specs]
     if not all(facts):

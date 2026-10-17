@@ -54,6 +54,8 @@ class Sim:
         self.health_floor = health_floor
         self.unmodelled = collections.Counter()
         self.spells = False                                    # native UNLOCK DOOR (scroll 407): set by the caller
+        self.cast_max = 15                                     # UNLOCK DOOR 407's charges
+        self.no_doors = set()                                  # doors no walk crosses (geometry, e.g. room 4's high doors $07/$08): set by the caller
 
     # ------------------------------------------------------------------ state
     def initial(self, room=None):
@@ -66,7 +68,7 @@ class Sim:
     @staticmethod
     def key(S):
         return (S['room'], tuple(sorted(S['flags'].items())), tuple(sorted(S['vars'].items())), S['ruck'], tuple(sorted(S['od'].items())),
-                S['spent'], S['gold'], S['pending'], S['visited'], S['level'], S['dead'])
+                S['spent'], S['gold'], S['pending'], S['visited'], S['level'], S['dead'], S.get('casts', 0))
 
     @staticmethod
     def copy(S):
@@ -274,7 +276,7 @@ class Sim:
         for d in w.rooms[room]['doors']:
             word = self.flag(S, d)
             ow = self.door_owner[d]
-            if len(ow) != 2 or room not in ow: continue
+            if len(ow) != 2 or room not in ow or d in self.no_doors: continue
             other = ow[0] if ow[1] == room else ow[1]
             if word == 0: acts.append(('walk', d, other))
             elif word < 0x8000 and self.in_ruck(S, word): acts.append(('walk', d, other))
@@ -308,7 +310,7 @@ class Sim:
             if b.event == 14: acts.append(('tick',))
             if b.event == 24: acts.append(('cast', b.gate[0]))
         if S['pending'] is not None: acts.append(('wait', S['pending']))
-        if self.spells and self.in_ruck(S, 407):
+        if self.spells and self.in_ruck(S, 407) and S.get('casts', 0) < self.cast_max:
             for d in w.rooms[room]['doors']:
                 if self.flag(S, d) != 0 and not (w.flags[d]['b7'] & 0x20): acts.append(('cast8', d))
         return sorted(set(acts))
@@ -355,7 +357,7 @@ class Sim:
             self.fire(T, 20, ('room', T['room']), word=g)
         elif kind == 'cast': self.fire(T, 24, ('room', T['room']), word=act[1])
         elif kind == 'cast8':
-            T['flags'][act[1]] = 0
+            T['flags'][act[1]] = 0; T['casts'] = T.get('casts', 0) + 1
             self.fire(T, 24, ('room', T['room']), word=8)
         T.pop('_cnt', None)
         return T

@@ -1,10 +1,13 @@
-"""plan_full.py [outdir]: A1 (Cadaver 91st pass) the answer chains, from room 90 (lineage snapshot), as exact leg-wise plans.
+"""plan_full.py [outdir] [--nodoors=7,8]: A1 (Cadaver 91st pass) the answer chains, from the lineage snapshot ($CAD_LINEAGE_SNAP, default room 90), as exact leg-wise plans.
 
 Part 1: the delete-relaxed closure (relax.py) without and with the native UNLOCK DOOR scroll: which goals are reachable at all (dead ends).
 Part 2: leg-wise exact search (legs.py / sim.py): each leg is a breadth-first search from the exact end state of the previous leg, over the actions of
 the blocks that regress from the leg's goal (the support facts of the relaxed plan, closed under 'writes a relevant node'); the hand-built legs of part C
 (the six captain objects, room 88) use mfilter.py action lists.  Each leg is minimal within its action set; the concatenation is replayable in
 sim.py, not a proof of global minimality.  A player action = a door crossing, TAKE, OPERATE, APPLY, a hero step into a room region, a THROW, a wait or a spell cast.
+With --nodoors the listed doors are never walked (part 1 and 2), and the scroll 407 legs run before the gems: without room 4's high doors $07/$08
+gem 718 (room 8) is reached only by UNLOCK DOOR at door $10 in room 1, and the three gems in one leg exceed the search bounds, so 718 is its own leg;
+each leg is first searched without casts, because a greedy leg spends charges a key or lever would save and the scroll has 15 (sim.cast_max).
 Writes <outdir>/chains.txt.  Numbers are decimal.
 Run from M68000/:  .venv/bin/python reversing/cadaver/py/secrets/overlay/graph/plan_full.py [outdir]"""
 import sys, time
@@ -14,15 +17,15 @@ sys.path.insert(0, str(HERE))
 from legs import *
 from relax import setup
 from mfilter import mfilter
-from model import OUTDIR
+from model import OUTDIR, LINEAGE
 
 GOALS = [('a1 key 690', 'ruck:690'), ('a2 door $79 (keyhole 720 + key 690)', 'flag:121'), ('b1 emerald 731 or 730', 'ruck:731'),
          ('b2 door $74 (17 -> 87)', 'flag:116'), ('c  START LEVEL 2', 'level:2')]
 
 
-def part1(out):
+def part1(out, no_doors=()):
     for spells in (False, True):
-        sm, rx = setup(spells=spells); rx.run()
+        sm, rx = setup(spells=spells, no_doors=no_doors); rx.run()
         rooms = sorted(f[1] for f in rx.prov if f[0] == 'room')
         out.append('RELAXED CLOSURE from the lineage state, %s: %d rooms reachable; never reached: %s' % (
             'scripts + UNLOCK DOOR scroll 407' if spells else 'scripts only', len(rooms), sorted(set(sm.w.rooms) - set(rooms))))
@@ -33,8 +36,8 @@ def part1(out):
     out.append('')
 
 
-def run_legs(out):
-    sm = Sim(); sm.spells = True
+def run_legs(out, no_doors=()):
+    sm = Sim(); sm.spells = True; sm.no_doors = set(no_doors)
     S = sm.initial()
     H = lambda *ids: (lambda S: all(sm.in_ruck(S, i) for i in ids))
     LEGS = [('gems 716, 717, 718 in the rucksack', H(716, 717, 718), ['ruck:716', 'ruck:717', 'ruck:718'], True),
@@ -48,13 +51,18 @@ def run_legs(out):
             ('GOAL b1: emerald 731 in the rucksack (room 90)', H(731), ['ruck:731'], True),
             ('GOAL b2: door $74 open, scripts only (region 1 of room 17 with 731)', lambda S: sm.flag(S, 116) == 0, ['flag:116'], False),
             ('urn 611 warm (ashes 227 applied)', lambda S: sm.ost(S, 611)[2] == 1, ['b0:611'], True)]
+    if no_doors:
+        first = [l for l in LEGS if l[0].startswith(('hero in room 93', 'GOAL a1', 'UNLOCK DOOR scroll'))]
+        rest = [l for l in LEGS if l not in first]
+        LEGS = first + [('gem 718 in the rucksack', H(718), ['ruck:718'], True)] + rest
     total = []; marks = {}
     def emit(name, path, S):
         n_script = sum(1 for a, t in path if a[0] != 'walk')
         out.append('  LEG %s: %d actions (%d walks, %d script actions)' % (name, len(path), len(path) - n_script, n_script))
         for a, tr in path: out.append('      %-76s %s' % (sm.describe(a), ('fires ' + ' '.join(tr)) if tr else ''))
     for name, goal, specs, spl in LEGS:
-        r, err = leg(sm, S, name, goal, specs, spells=spl, maxdepth=28, verbose=False)
+        r, err = leg(sm, S, name, goal, specs, spells=False, maxdepth=28, verbose=False) if no_doors else (None, None)
+        if not r: r, err = leg(sm, S, name, goal, specs, spells=spl, maxdepth=28, verbose=False)
         if not r: out.append('  LEG %s: FAILED (%s)' % (name, err)); return total, S
         path, S = r; total += path; emit(name, path, S)
         out.append('      [cumulative %d actions; room %d, health ledger %d, gold %d]' % (len(total), S['room'], S['health'], S['gold']))
@@ -86,12 +94,16 @@ def run_legs(out):
 
 
 def main():
-    outdir = Path(sys.argv[1]) if len(sys.argv) > 1 else OUTDIR
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    nd = tuple(int(x, 16) for a in sys.argv[1:] if a.startswith('--nodoors=') for x in a.split('=')[1].split(',') if x)
+    outdir = Path(args[0]) if args else OUTDIR
     outdir.mkdir(exist_ok=True)
-    out = ['CHAINS from room 90 (lineage snapshot: health 60, gold 0, rucksack [(680, 93)], VAR 6 = 1, 7 = 2, 13 = 1, lever 225 armed, 3 non-keep blocks spent)', '']
-    part1(out)
+    L = Sim().w.lineage
+    out = ['CHAINS from %s (room %d, health %d, gold %d, rucksack %s)%s' % (LINEAGE, L['room'], L['health'], L['gold'], L['ruck'],
+           ', doors never walked: %s' % ' '.join('$%02x' % d for d in nd) if nd else ''), '']
+    part1(out, nd)
     t = time.time()
-    run_legs(out)
+    run_legs(out, nd)
     out.append('(search time %.0fs)' % (time.time() - t))
     (outdir / 'chains.txt').write_text('\n'.join(out) + '\n')
     print('\n'.join(out))
