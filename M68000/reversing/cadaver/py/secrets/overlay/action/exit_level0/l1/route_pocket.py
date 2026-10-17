@@ -1,10 +1,11 @@
 """route_pocket.py <start.snap> <OUTDIR> [--upto=<leg>] [--from=<leg>]: Cadaver level 1, room 43 back to room 89, the four tokens on the slot 206, rooms 9 and 10,
-the shelf of room 89, lever 27 and door $01 into the pocket (room 4), by natural joystick input.  Nothing poked.
+the shelf of room 89, lever 27 and door $01 into room 4, and room 4's lift pushed over the pit and raised to the high door $08 into room 6, by natural joystick input.  Nothing poked.
 
 Start: route_tokenL.py's 42_take709.snap (room 43, health 89, poison 0, tokens L 709, W 224, U 338 held, F applied: VAR 9 = 1).
-End: 29_ride2.snap, room 4 on the raised lift 2 at z 64 (health 89, poison 0, VAR 9 = 4, 380's bit 0 set).  Legs 26-29 walk into a one-way trap: room 4's entry block
-r4.0@6 shuts $01 again and its only opener, lever 27, is in room 89, while the high doors $07/$08 need a walk at bottom z 63..82 with x inside 60..82 that nothing in
-room 4 gives (mechanics.md section 12).  Continue other routes from 25_drop89.snap (room 89, $01 open).
+End: 33_to6.snap, room 6 at bottom z 64 (health 89, poison 0, VAR 9 = 4, 380's bit 0 set).  Room 4's entry block r4.0@6 shuts $01 again (its opener, lever 27,
+is in room 89); the high doors $07/$08 (x 60..83, z 64..111) are crossed by a walk only with x wholly inside 60..83 and bottom z 63..82, which the lift gives once it has
+been pushed east over the pit while lowered (legs 29-32; mechanics.md section 12, "Room 4 and the pocket").  25_drop89.snap (room 89, $01 open) is the branch point
+for routes that avoid room 4.
 Legs are explore.py commands (one snapshot reload per leg) plus three words of this script, each run as its own reload segment:
   I<oid>:<icon hex>   the item panel through the Return grid (route_tokenL.py's item_icon, with the grid's second row: see SEQS)
   =<axis><n>          tap until the bbox axis (x, y, X, Y as in explore.py's goto) reads exactly n
@@ -62,17 +63,22 @@ LEGS = [
     ('drop89',    ['GR:x>=27', '=x28', 'GD:y>=30', 'S600000', 'N', 'A89:89']),   # off 17's south edge in the one 7-wide gap x 22..28 (675 at 19..21, 775 at 29..31); the fall costs nothing
     ('to4',       ['Z01', 'N', 'A4:89']),                                         # room 4's entry block sets $01 back to ffff
     # room 4 (80 x 24): the pit region 1 (66..78, 10..22, z 2..4; TELEPORT to room 94) fills the east half, the doors on (high $07, $08 at x 60..83, z 64) are above it;
-    # the lift 2 (40..55, 8..23) is at z 56..63 and each operate of 231 or 232 runs one leg of its mover program: down to z 6..13, up again (about 1.25M steps each)
+    # the lift 2 (40..55, 8..23) is at z 56..63 and each operate of 231 or 232 runs one leg of its mover program (z only): down to z 6..13, up again (about 1.25M steps each);
+    # lowered, it is pushed like any block, and over the pit (64..79, the floor mark 381) it stays out of the pit region's z 2..4
     ('stand231',  ['GR:x>=31', 'HU', 'HL', 'N', 'A4:89']),                         # (24..30, 7..13) facing west: 231 (19..23, 4..7, icons 7 11 6) in front
     ('lower2',    ['O7', 'S1200000', 'N', 'A4:89']),                              # the lift down to z 6..13
-    ('ride2',     ['o7:20000', 'GR:x>=33', 'JR:30', 'S1500000', 'N', 'A4:89']),   # operate again (lift rising 4 z per 100,000) and jump east from x lead 33: lands on the rising lift (34 and 35 fall short), rides to z 64
+    ('push2',     ['GD:y>=18', 'GR:x>=63', 'N', 'A4:89']),                        # push the lowered lift east from (24..30, 13..19) to x 64..79 over the pit; the hero stops at (57..63), outside the pit region
+    ('onlift',    ['GL:x<=55', 'JR:30', 'N', 'A4:89']),                           # an 8-cell run-up, RIGHT jump onto the lift top (bottom z 14)
+    ('at232',     ['GU:y<=13', 'GR:x>=79', 'N', 'A4:89']),                        # to the north wall; east until lever 232 (75..79, 4..7, z 16..35) stops the hero at x lead 74
+    ('raise232',  ['WR:2:20000', 'O7', 'S1500000', 'N', 'A4:89']),                # face 232, operate it: the lift rises to z 56..63 with the hero on it (bottom z 64, x 68..74)
+    ('to6',       ['HD', 'N', 'A6:89']),                                          # south along the lift through $08 (60..83, y 24..30, z 64..111) into room 6; HU from raise232 goes through $07 to room 5
 ]
 HAVE = {'take391': [391]}
 GONE = {'applyW': [224], 'applyU': [224, 338], 'applyL': [224, 338, 709]}
 VAR9 = {'to44': 1, 'stand206': 1, 'applyW': 2, 'applyU': 3, 'applyL': 4}
 OPEN = {'applyL': [0x0b], 'lever27': [0x01]}
 BIT0 = {'drink480': [380]}                 # record +3 bit 0 set
-ZMIN = {'to9high': 56, 'take391': 56, 'drink480': 56, 'to89high': 56, 'ride2': 64}   # hero bottom z at least (on the raised block / the shelf)
+ZMIN = {'to9high': 56, 'take391': 56, 'drink480': 56, 'to89high': 56, 'onlift': 14, 'raise232': 64, 'to6': 64}   # hero bottom z at least (on the raised block / the shelf)
 
 
 # The Return grid is 4 cells wide: with 7 items RIGHT pulses only cycle the first row (cells 0-3: 709, 570, 680, 491 here) and a DOWN reaches the second row
