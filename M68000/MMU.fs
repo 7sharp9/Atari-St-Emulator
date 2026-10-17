@@ -1223,6 +1223,17 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             store mfpRegisters (int (address - mpf68901)) input
             tcdrReadCount <- 0u
             tddrReadCount <- 0u
+        | a when a = 0xFFFA07u || a = 0xFFFA09u ->
+            //IERA / IERB. On the MC68901 (and in Hatari's MFP_EnableA/B_WriteByte, `IPRx &= IERx`) clearing an
+            //enable bit also clears that channel's pending bit, so a request raised and not yet taken cannot be
+            //delivered after the program disabled the source. Without this the Timer A/B/C slots below stay
+            //latched and fire the moment the CPU mask drops, through a vector the program has just restored
+            //(Super Sprint's race-start Supexec raster uninstall, `$f956`: Timer B -> junk `$120`).
+            store mfpRegisters (int (address - mpf68901)) input
+            if a = 0xFFFA07u then
+                if input &&& 0x01uy = 0uy then timerBPending <- false
+                if input &&& 0x20uy = 0uy then timerAPending <- false
+            elif input &&& 0x20uy = 0uy then timerCPending <- false
         | Mfp -> store mfpRegisters (int (address - mpf68901)) input
         | a when a = fdcModeSelect ->
             let selected = (input >>> 1) &&& 0x3uy
