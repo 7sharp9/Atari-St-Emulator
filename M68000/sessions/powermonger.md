@@ -1,12 +1,12 @@
 # PowerMonger: handoff
 
-Updated 2026-10-16 by the 165th session (`a8e23a4` and the handoff commit; the doc cleanup `aa6f998` .. `a5c1914` ran alongside), after the 164th (`7717ca9`).
+Updated 2026-10-17 by the 166th session (seven parallel agents on the small checks; commit below), after the 165th (`a8e23a4`).
 
 ## Resume point
 
-- Last commits of this workstream: `a8e23a4` (the `$84`/`$92` melee frame in the real trade run; the word blitter), then the handoff commit (promotes `sheet_mask_scan.py`, `melee_window.py`, `real_melee84.sh WINDOW=1`). Master is pushed to origin.
+- Last commits of this workstream: the 166th pass's docs-and-scripts commit (`git log --oneline -3 -- sessions/powermonger.md`), after `a8e23a4`. Not pushed.
 - `bin/Debug/net8.0/M68000.dll` is built from master `d6e6646`, which includes the bus-error change `90ea349` (`$400000..$f9ffff` and writes to `$0..$7` bus-error; a fault while stacking a group-0 frame halts the CPU). Dave merged it via `origin/master`; this session fast-forwarded and rebuilt.
-- Working data: `M68000/scratchpad/pm165/real84/` (the first capture `mb_0/1`, the 60M men watch `watch.err`), `pm165/gate/` and `pm165/gate2/` (the promoted gate's reruns, `gate2` with `WINDOW=1`). Older: `M68000/scratchpad/pm156/overlay/cap/{siege84,msiege84,msiege92}_*` (the new overlay captures) and `pm164/xcheck/` (the `run.sh` output). `M68000/scratchpad/pm163/` (gitignored): `p5fwd/` (the `trade5_fwd.sh` 2x2: `x_<arm>.out`, `x_<arm>_{30,60}.snap/.ram`, `drain.out`; `fwd.sh` with `p5x.fwd`/`p3x.fwd`, the plain arms over 100M), `p5fwd_first/` (the first 2x2, identical), `old/`. `pm156/overlay/cap/b6_NN_halt.snap` are the new bomb_check end states. Older: `pm162/` (`posture/trade/at63f4.snap`, the trade state), `pm161/`, `pm160/`, `pm156/`, `pm148/`, `pm142/`, `pm143/`, `pm123/`.
+- Working data: `M68000/scratchpad/pm166/` (`reports/<area>.md` summaries of the seven agents, raw runs under `clockA/ clockB/ orders/ piles/ lords/ posture5/ camp/`; `apply_docs.py` is the doc-edit record); `pm162/g4a7a/nat/` now also holds the `n4a7a_man_*` corpus. Older: `M68000/scratchpad/pm165/real84/` (the first capture `mb_0/1`, the 60M men watch `watch.err`), `pm165/gate/` and `pm165/gate2/` (the promoted gate's reruns, `gate2` with `WINDOW=1`). Older: `M68000/scratchpad/pm156/overlay/cap/{siege84,msiege84,msiege92}_*` (the new overlay captures) and `pm164/xcheck/` (the `run.sh` output). `M68000/scratchpad/pm163/` (gitignored): `p5fwd/` (the `trade5_fwd.sh` 2x2: `x_<arm>.out`, `x_<arm>_{30,60}.snap/.ram`, `drain.out`; `fwd.sh` with `p5x.fwd`/`p3x.fwd`, the plain arms over 100M), `p5fwd_first/` (the first 2x2, identical), `old/`. `pm156/overlay/cap/b6_NN_halt.snap` are the new bomb_check end states. Older: `pm162/` (`posture/trade/at63f4.snap`, the trade state), `pm161/`, `pm160/`, `pm156/`, `pm148/`, `pm142/`, `pm143/`, `pm123/`.
 - Start from:
   - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains; the land ends about 676M steps in.
   - `scratchpad/pm162/posture/trade/at63f4.snap`: side 3 group 0 at the trade `$63f4` (A3 = `$51938`); the posture-5 arms start here.
@@ -19,7 +19,16 @@ Updated 2026-10-16 by the 165th session (`a8e23a4` and the handoff commit; the d
 
 Older gates carry over unchanged; the list is in `strategy.md`, `ai.md`, `economy.md`, `system.md`, `graphics.md` and `port/SPEC.md`, with reruns from the `py/README.md` table. The 162nd pass's (camp markers, exact water, `$54`, posture-5 writers, piles, `$58054`, `$4a7a`) are in those docs.
 
-New in the 165th pass:
+New in the 166th pass (all in the topic docs; reruns from the `py/README.md` rows):
+
+- **`$13baa` runs only at land build** (`fig/clock_stall.facts.md`): once in a build, 0 in 200M play steps and 0 in 750M of `rand1`; a LOAD and the land-end flow not measured. **`$65b4` per chunk** is 1467..1503 (k80) and 1836..1851 (k108), so 1500/1843 are chunk-1 values (`W5G_*` logs; chunk 15 re-executed).
+- **Foreign-man arm of `$4a7a` entered by a natural click** (k56 (29,35), 99/99); the gate is 2030/2030 over 26 states. **Class `$a`** is reached by a click after a labelled `worker_obj` poke; its shoot ends only by an arrow's `neg.b 5(A3)` at `$5b7e`, and an arrived marker is never hit (`strategy.md` "The opponent class").
+- **Piles:** neither the `$3a8e` nor the `$3a18` arm has a natural entry (25 `$39d4` calls, 17 piles); both match under labelled pokes. `$ab34` is the generic offset-8 reader (callcap 64/64); a LOAD restores the pile pool and `$58054` by DMA (3/3).
+- **`$54` hang has no natural path:** only `$2ef4` and `$5516` write a lord's byte 0, always 1..4 (code census plus 1,600M watched steps). **Lord slot 12 on k90** is `$2eac`'s `add.b` corner test wrapping on four `$40` corners (`strategy.md` world build).
+- **Posture 5:** the trade's clear of object 6 bytes 6..7 turns a fisherman's job 4 to 0, `$3c08` then gives prev `$7e` for `$5e` (2/2); object 7's clear was already 0; per-reader behaviour in `strategy.md` "Posture 5 forced into the trade".
+- **Camp markers:** the port's blit matches the game's screen, 88/88 pixels in 35 draws (`port/SPEC.md`).
+
+The 165th pass's:
 
 - **The `$84`/`$92` melee frame matches in the real posture-5 trade run** (port/SPEC.md §6 "Men", `py/xcheck/overlay/real_melee84.sh`; `WINDOW=1` reproduces the window): from `at63f4.snap` the 12 men fight (byte 31 `$32`, 37 writes) from 864.84M to 866.61M cumulative steps, byte 44 never rewritten. One frame (camera poke only) has six in melee, three `$84` and three `$92`; on the pixels that depend on byte 44 the true render is the game's 35/35 (byte 44 + 1), 43/43 and 33/33 (aligned weapon-0 frame), every altered render 0. `diff.fsx` takes `WRONG_SIDE=ctl` to score one capture against itself.
 - **The word blitter ORs its planes unmasked too, with no effect** (port/SPEC.md "Frame index per category"): every row loop (`$123ac`, `$1241a`, `$12460`, `$124a8`, `$12576`, `$12628`) writes `plane | (screen & mask)`, but no frame of `$312a0`/`$37c7c`/`$3af1c` has a plane bit under the mask (`py/xcheck/sheet_mask_scan.py`, 0 rows on `at63f4` and `pm88_f1`; control frame `$ab` found), so `decodeFrameWord` needs no change.
@@ -32,16 +41,18 @@ The 163rd pass's (byte6 36/38/42 halt, posture-5 trade codes decide the next fig
 
 ## Open, in priority order
 
-1. **Port residue.** Natural byte6 18 and 28 are unseen in play. The camp-marker screen pixel match of `$111`/`$112..$115` (blit position from `$11f78`'s D0/D1 on `M2G_k118_c1`) is not done.
-2. **Two open flags in `fig/clock_stall.facts.md`** (left by the doc cleanup, need a run): whether `$13baa` runs only at land build (`hits` over a land build and a long play window), and whether "1500 and 1843 per chunk" holds for every chunk or one (rerun its census per chunk).
-3. **Posture 5 downstream, the rest.** The trade's clear of object 6 bytes 6..7 (`00 04` to 0 via `84(A3, 12 x $41)`) and of object 7 bytes 40..41 not followed; no natural posture-5 reader in about 444k steps; `$150f2`, `$1ce6`, `$3110`, `$90fe`, `$c77e` at posture 5 code read only.
-4. **Small checks.** `$4a7a`'s foreign-man arm has no natural entry (a sword click on a lone enemy man via `capture_clicks.sh`); natural class `$a` (click a forest marker mid-walk, `bp 4eca`); what ends the class-`$a` shoot (`bp 35f4` from `classa/p16_c1`); the pile's catapult/cannon arm `$3a8e..$3aa4` and add-to-pile arm `$3a18`; a generic `8(An)` reader of chain records; whether anything writes 0 to a lord's nation while his town has merchants (the `$54` hang); the M2G_k90 empty lord slot 12 (`bp 2eac` at world build); natural winter snow under the `$1abaa` gate; a pile/`$58054` LOAD differing slot; the crack's `$b842` patch and `$3c12`'s `nop`; health cap and food (`$5ccc`); rout fates on a third land; a natural `$66`; the dialog buttons `$04`, `$08`'s `$71` and `$131`.
+1. **Port residue.** Natural byte6 18 and 28 are unseen in play. The camp-marker catch marker `$110` and other zooms are not pixel-matched (needs a snapshot with a drawn byte6 24 record, `pm160/snd/drawscan.txt`).
+2. **Posture 5 downstream.** Whether the fisherman-to-job-0 change has a lasting effect (watch `51cb0` past 892M, `hits` `$157e6` against `$15b5e`/`$15b94` by A1); name `$5f78` from its body; `$1ce6` needs a player dismiss order; render the `$90fe`/`$c77e` panel text at posture 5; a whole-image `7(An)` read census.
+3. **Residue of this pass's checks.** A LOAD and the land-end flow for `$13baa` and for a zeroed lord side; the conquest path `$53f6` with a zero side and the `$158b6` `divu` quotient (`bp`); a census over the 144 lands of `$4f914/32` against filled lord slots (how many lose a lord to the `$2eac` wrap); whether an arrow can hit a still-walking class-`$a` marker; a natural `worker_obj` writer (`watch` tree word 2 over a Play Random Land run); a natural add-to-pile (drive `$12`/`$18` twice on one cell); the byte 44 `>= $12` overrun, the `$ab34` categories `$12 $16 $1a $1c $22`, and a per-site run of the chain walkers with a pile in the chain; the natural `$3aee` arm (once at 98M steps of `p0k60_s1`); the chunk-end clock values `$2df72` in `W5G_*_cN.snap`.
+4. **Small checks.** Natural winter snow under the `$1abaa` gate; the crack's `$b842` patch and `$3c12`'s `nop`; health cap and food (`$5ccc`); rout fates on a third land; a natural `$66`; the dialog buttons `$04`, `$08`'s `$71` and `$131`.
 5. **No current check exercises vector 4 on the unassigned `ImmediateToEa`/`BitOp` encodings** (README "Bug 7"): byte6 36-42 now bus-error first. An emulator-workstream item; a poke of `$0608` at a live PC would do.
 6. **A player route to `$668c`** (low value) and **the stall on the original machine** (a Hatari run past clock 32768 with a camped group; Dave's go-ahead given).
 
 ## Known traps
 
 - **The trade run's 30M/60M snapshots show no melee.** `pm163/p5fwd/x_P5B84_{30,60}` hold all 12 men at byte 31 `$2c`/`$10`; the fight is the 864.84M..866.61M window between them, found only by watching the records (`real_melee84.sh WINDOW=1`). Run `real_melee84.sh` (it lands at about 865.5M) rather than a fixed-offset snapshot.
+- **A subagent's gate needs a promoted corpus path.** `gate_4a7a_nat.py` reads `${PM_WORK:-scratchpad/pm162}/g4a7a/nat/`; the foreign-man corpus was copied there by hand (gitignored), so a fresh checkout rebuilds it with `py/orders/man_click.sh`. `py/xcheck/campframe/pixels/cmp.fsx` needs `PmLogic.dll` built.
+- **Agent reports carry the doc prose; the harness does not save them.** Save each report's summary under `scratchpad/pm166/reports/` when it arrives and apply the edits with one exact-match script (`apply_docs.py` fails if a quoted old string is not unique), not by hand across docs.
 - **`SendMessage` to a session started with `start_session` takes its id or its `ListAgents` title**, not the short `name` the start returned ("No agent named 'pm-doc-cleanup' is reachable").
 
 - **A port frame past its sheet draws nothing, silently.** `blitEntity` drops an out-of-range frame, so a divergence predicted from reading the code can score 0/0 by accident: SPEC said a `$84` man "would draw the siege overlay in the port", but the port's struct frame `$1b + ($84-$e)*4` was off the sheet and dropped. Run the labelled poke before writing such a prediction.
@@ -104,4 +115,4 @@ The 163rd pass's (byte6 36/38/42 halt, posture-5 trade codes decide the next fig
 
 ## Next session
 
-A batch of Open 4's small checks through parallel agents with `scratchpad/pm162/BRIEF.md` (one emulator each; spot-check one claim per report and rerun every gate from its promoted path), plus Open 2's two clock-stall flags as one more agent. The docs were just cleaned of diary framing: merges write current-state prose only (CLAUDE.md "Docs").
+Open 2 (posture 5's lasting effect, `$5f78`) and the cheapest of Open 3 (`bp 158b6`, `bp 53f6` drive, the 144-land `$2eac` census) through parallel agents with `scratchpad/pm166/BRIEF.md` (one emulator each; spot-check one claim per report and rerun the gate from its promoted path). Merges write current-state prose only (CLAUDE.md "Docs").

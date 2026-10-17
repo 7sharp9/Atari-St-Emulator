@@ -971,11 +971,11 @@ Random Land roll (the legs of that walk).
 the home lord's record (whose nation byte is non-zero) and exits after max(D2, 1) passes with A3, and so `46(A1)`, the home
 lord. Natural entries agree: 167 of 167 `$15ada` entries, 113,470 bytes, against a mutant with A3 advancing at 0 of 47
 (`py/fsm15/gate54.py`; `pm142/rand1` and four pm148 chunks). The wrap at `$15b14` (A3 == A4 sets A3 to leader 0) is not
-a last-lord case: A4 = `$4e514 + ($4f914)` is the first free lord slot (`$2eac`'s high-water mark), so the wrap needs a
+a last-lord case: A4 = `$4e514 + ($4f914)` is the first free lord slot (`$2eac`'s high-water mark; one slot higher when a `$2eac` call failed, land 90), so the wrap needs a
 settlement whose lord word names that unallocated slot, and over 750M natural steps it was never taken (904 loop entries,
 904 exits, `$15b14` 0 hits). Poked, it sends the merchant to leader 0; a home lord on the last allocated record behaves
 like any other; and a home lord whose nation byte is 0 never exits (480,957 passes in 3M steps), a hang no merchant met in
-4238 men over 523 live snapshots (`py/fsm15/poke54.py`, `census54.py`). `$159de` at `$15b54` runs with that stale A0, i.e. the record after A3
+4238 men over 523 live snapshots (`py/fsm15/poke54.py`, `census54.py`) and no code produces: the only per-record writers of a lord's byte 0 are `$2ef4` (`$2eac`, sides 1..4) and `$5516` (`$550e`: revolt side `$158b6` 1..4, conquest side `5(A1)`), the wholesale clears `$10768` and `$10a6` also wipe every merchant, and four 400M-step watches with 8 to 42 live merchants saw 12 byte-0 writes, all `$5516`, all 2..4. `$159de` at `$15b54` runs with that stale A0, i.e. the record after A3
 (`A3 + 32`) whenever `14(A1) & 7 >= 2` (A3 itself for 0 and 1): 48 of 48 states with goods only on the next record took
 the good from it.* A game defect: `$159de` at `$15abe` (mode `$52`) reloads A0 from `46(A1)`, this one does not.
 

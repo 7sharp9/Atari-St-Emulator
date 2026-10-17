@@ -947,7 +947,7 @@ record (byte6 `$1e`, the building going up). The chain link of the lord's settle
 for item types 1..6 on a combat unit; and a transient *carried-item* tag on a
 merchant (§2b). Bytes 44 and 33 both hold an item code `2 * (goods slot + 1)`: 44 a
 weapon (2 pike, 4 sword, 6 bow; `$e` catapult and `$10` cannon are never
-written), byte **33** a tool (8 plough, `$a` boat, `$c` pot: `$159de` for goods
+written, so the pile's catapult/cannon arm `$3a8e` is reached only by a poked byte 44), byte **33** a tool (8 plough, `$a` boat, `$c` pot: `$159de` for goods
 slots 3-5, `$1616c` for the plough: the lord's `goods[3]` is decremented there, the only live Plough source seen).
 
 | site | reads byte 44 as | effect |

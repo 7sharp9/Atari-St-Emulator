@@ -911,7 +911,7 @@ frame per view redraw. Live (`py/xcheck/campframe/capture.sh` and `parse.py`, no
 pokes): from `pm150/small/camp/c12_0.snap` one lit record drew `$112..$115` 20 times
 each (80 of 80 by the formula, `$57fec` +1 between draws 79 of 79); from
 `M2G_k118_c1` two put-out records drew `$111` 40 of 40 each, and a third drew
-`$112..$115` 38 times until `$37c2` put it out, then `$111`. A camp
+`$112..$115` 38 times until `$37c2` put it out, then `$111`. The port's blit matches the game's screen: the cell centroid minus (8, 8) is the game's own `$11f78` D0/D1 ((197,113) for the lit fire of `c12_0`; (230,80) for the lit and put-out fires of one cell and (223,90) for a third on `M2G_k118_c1`), and over 7 consecutive frames of each snapshot the port's 8 x 11 rectangle equals the game's screen in 88 of 88 pixels in all 35 marker draws (footprint 83/83 and 192/192, against 0 with the marker dropped). In the game's compose buffer at the return of `$11f78` the opaque pixels of frame `$111` or `$112..$115` equal the `$33000` decode (221/221, 126/126, 126/126, 215/215) and every masked pixel is unchanged; in the final screen a later-drawn sprite or a second marker in the same cell can cover it (`py/xcheck/campframe/pixels/`). Only side-4 markers at one zoom level were matched; the catch marker `$110` was not on screen. A camp
 marker occurs only after the build: it is present in 17 of 37 Play Random Land
 lands settled 30M steps, and the preview-roll screen under "Census of the
 categories" did not list it.

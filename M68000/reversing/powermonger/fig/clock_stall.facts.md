@@ -29,6 +29,12 @@ figures are the doc's. The chunk-to-step mapping (chunk n covers 2G + (n-1) x 25
 
 ## Flags
 
-- Whether `$13baa` runs only at land build is not checked.
-- "Decisions per 250M-step chunk are 1500 and 1843" does not say whether that is every pre-crossing chunk or one
-  chunk. The figure draws it flat and says so.
+- `$13baa` (`clr.l $2df70`) is the third instruction of the world-build dispatcher `$13b9a`, whose only call site in the
+  image is the briefing-OK path at `$b878`. It ran once in a build from `pm67_ok_pre.snap` and never in the 1134 ticks
+  over 200M further steps of that land, nor in the 4093 ticks over 750M steps of `pm142/rand1.snap`. A land clears the
+  long clock `$2df70` only at its build; during play it is only incremented (`$1302e`). The count is bounded by those
+  windows: a LOAD and the land-end flow were not measured.
+- Decisions per 250M-step chunk (`$65b4` hits, `W5G_k80` / `W5G_k108`): 1467..1503 in chunks 1..14 of k80 (chunk 1 is
+  1499) and 1836..1851 in chunks 1..10 of k108 (chunk 1 is 1841), so 1500 and 1843 are the chunk-1 values and the
+  pre-crossing rate is flat to about 2%, as the figure draws it. `$6522` stays at 1468..1507 / 1838..1866 in every
+  chunk, post-stall included. Chunk 15 of k80 re-executed from `W5G_k80_c14.snap` reproduces 1505 / 168.
