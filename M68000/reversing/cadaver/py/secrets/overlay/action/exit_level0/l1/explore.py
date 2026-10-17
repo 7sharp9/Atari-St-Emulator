@@ -4,8 +4,12 @@ snapshot reload, the discipline of lib/route_chain.py (a hold's outcome depends 
 Commands (one argv word each; a leg is a list of them; `run(inp, out, cmds)` is the same thing as a function):
   H<U|D|L|R>            hold until the hero bbox stalls (6 chunks) or the room changes (then +100,000 steps of the arrival block)
   G<dir>:<axis><op><n>  goto: hold `dir` in 5,000-step chunks until the bbox axis (x lead, y lead, X trail, Y trail) is >= / <= n, e.g. GR:x>=36, GU:y<=17
+  P<dirs>:<oid>:<axis><op><n>  push: hold `dirs` (one or two of U D L R: a diagonal pushes a block in both axes) until object <oid>'s placement rect axis
+                        meets the condition, e.g. PDL:380:y>=40 (room 6's post, pushed south-west from its north-east corner); 400 chunks of 5,000 at most
   W<dir>:<n>[:chunk]    trace: hold `dir` n chunks (default 10,000) printing room, bbox, z and health at each (diagnostic)
   S<n>                  run n steps
+  =<axis><n>            tap (50,000-step holds) until the bbox axis reads exactly n: a goto overshoots by a cell, which a push cannot afford (a block is pushed
+                        only with the hero wholly inside its span on the other axis, $8b6e/$8b54)
   J<dir|->[:n[:settle]] jump: hold FIRE|dir for n x 10,000 steps (default 30), release, settle (default 700,000).  The takeoff direction fixes the arc:
                         a direction added after takeoff does nothing; a jump needs a run-up gap (an adjacent takeoff does not move)
   O<icon hex>           open the object panel in front (FIRE hold) and pick that icon (7/4 operate, 2 take, 9 drink); runs 200,000 steps after
@@ -26,6 +30,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE + '/../g2')
 os.environ.setdefault('ATARI_NOTRACE', '1')
 from lib import *        # Repl, A5, K, goto, hold, probe, Tally, pulse, tap, pick_icon_id, open_panel, icons, portals, dump, door, live_rec, hp, zz, st, ...
+
+
+def orect(r, oid):
+    """placement rect (x lead, y lead, x trail, y trail) of object oid in the current room, or None"""
+    tbl = r.l(A5 + 56); n = r.w(A5 + 1152)
+    for i in range(n):
+        e = r.mem(tbl + 0x46 * i, 0x46); t = int.from_bytes(e[10:14], 'big')
+        if 0x1000 < t < 0x7ffff and r.w(t + 4) == oid: return tuple(e[0:4])
+    return None
 
 
 def zdoor(r, c, log=print):
@@ -66,9 +79,17 @@ def run(inp, out, cmds, log=print, tmp=None):
             if room != room0: r.cmd('s 100000')
             log('%s -> %s' % (c, st(r)))
         elif c[0] == 'S': r.cmd('s %d' % int(c[1:])); log('%s %s' % (c, st(r)))
+        elif c[0] == '=':
+            i = 'xyXY'.index(c[1]); n = int(c[2:])
+            for _ in range(12):
+                v = pos(r)[i]
+                if v == n: break
+                d = (RIGHT if v < n else LEFT) if i in (0, 2) else (DOWN if v < n else UP)
+                joy(r, d); r.cmd('s 50000'); joy(r, 0); r.cmd('s 40000')
+            assert pos(r)[i] == n, ('exact', c, pos(r)); log('%s %s' % (c, st(r)))
         elif c == 'P': portals(r)
         elif c == 'D': dump(r)
-        elif c == 'T': log('%s ruck %s' % (st(r), slot_map(r)))
+        elif c == 'T': log('%s gold %d xp %d ruck %s' % (st(r), r.w(A5 + 1188), r.l(A5 + 1192), slot_map(r)))
         elif c[0] == 'O':
             t = Tally(r); open_panel(r, t); pick_icon_id(r, t, int(c[1:], 16)); t.run(200000); log('%s %s' % (c, st(r)))
         elif c[0] == 'J':
@@ -146,6 +167,18 @@ def run(inp, out, cmds, log=print, tmp=None):
             ax = {'x': 0, 'y': 1, 'X': 2, 'Y': 3}[cond[0]]; op = '>=' if '>=' in cond else '<='; n = int(cond.split(op)[1])
             f = (lambda p, ax=ax, n=n: p[ax] >= n) if op == '>=' else (lambda p, ax=ax, n=n: p[ax] <= n)
             goto(r, K[d], f, maxn=1200); log('%s -> %s' % (c, st(r)))
+        elif c[0] == 'P':
+            dirs, oid, cond = c[1:].split(':'); oid = int(oid); bits = 0
+            for ch in dirs: bits |= K[ch]
+            ax = {'x': 0, 'y': 1, 'X': 2, 'Y': 3}[cond[0]]; op = '>=' if '>=' in cond else '<='; n = int(cond.split(op)[1])
+            f = (lambda q: q[ax] >= n) if op == '>=' else (lambda q: q[ax] <= n)
+            joy(r, bits); same = 0; last = None
+            for _ in range(400):
+                r.cmd('s 5000'); q = orect(r, oid)
+                if q and 255 not in q and f(q): break         # a rect holding 255 is the engine's transient while the block moves: not a reading
+                same = same + 1 if pos(r) == last else 0; last = pos(r)
+                if same >= 30: break                            # the hero has stalled for 150,000 steps (startup is about 120,000)
+            joy(r, 0); r.cmd('s 30000'); log('%s -> %s obj %d at %s' % (c, st(r), oid, orect(r, oid)))
         elif c == 'N': assert r.b(A5 + 2434) == 0, ('poison pending', r.b(A5 + 2434))
         elif c[0] == 'A':
             a = c[1:].split(':'); room = r.w(ROOM)
