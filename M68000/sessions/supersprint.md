@@ -1,63 +1,47 @@
 # Super Sprint: handoff
 
-Updated 2026-09-30 by the session that ended at commit `bbe86c9`.
+Updated 2026-10-17 by the session that ended at commit `81af442`.
 
 ## Resume point
 
-- Last commit of this workstream: `bbe86c9` supersprint: topic docs (mechanics, tracks, graphics, sound, secrets), 65-name sym, proof scripts, asset PNGs.
-- Working data: `M68000/scratchpad/supersprint/` (game files, `ss.img`, `ss.c` decompile, `ss.asm`, snapshots, each area's scratch under `agents/<area>/`).
-  Rebuild recipe: `reversing/supersprint/py/README.md`, "Rebuild the work directory" (about 3 minutes plus the two snapshot runs).
-  The Mac source of the game is `~/Library/CloudStorage/Dropbox/Daves/ST games/Super Sprint.zip` (sha256 in the README).
-- Start from: `scratchpad/supersprint/ss_prep.snap` (a live Track-1 race just started, one joystick player joined; `sscfg.SNAP_RACE`). Others:
-  `ss_attract.snap`, `ss_select.snap`, `ss_race0.snap` (winner's circle), `agents/tracks/snaps/race_0..7.snap` (each track).
-- Uncommitted work left behind: none from this workstream. (`M68000/sessions/README.md` also carries another session's line re-wrap; only the
-  `supersprint.md` row is committed.)
+- Last commit of this workstream: `81af442` supersprint: round 2 (docs, promoted scripts, PNGs). Emulator fix `6a1d544` (MFP IERA/IERB write clears the latched pending slot) is on master and built into `bin/`.
+- Working data: `M68000/scratchpad/supersprint/` (rebuild recipe: `reversing/supersprint/py/README.md`, "Rebuild the work directory"). Round-2 agent scratch and reports (`report.md`, condensed) are under `agents/{unused,fragile,livetests,collide,residual}/`; snapshots in `agents/*/snap`.
+- Start from: `scratchpad/supersprint/ss_prep.snap` (live Track-1 race just started, one joystick player joined; `sscfg.SNAP_RACE`). `agents/tracks/snaps/race_0..7.snap` are paused at `$beb2` inside `$be40`: run about 3M more steps before sampling a race.
+- Uncommitted work left behind: none from this workstream.
 
 ## Proven so far
 
-Detail and scripts in `reversing/supersprint/{mechanics,tracks,graphics,sound,secrets}.md` (each ends with a proof table) and `py/README.md`.
+Detail and scripts in `reversing/supersprint/{mechanics,tracks,graphics,sound,secrets}.md` (each ends with a proof table) and `py/README.md` (areas table, one row per directory incl. the round-2 `collide/ livetests/ residual/ unused/`).
 
-- The program is compiled C; Ghidra decompiles 288 functions (`README.md`, "Decompile").
-- Car model reproduced exactly: 700/700 frames, 35 fields x 4 cars (`py/physics/test_trajectory.py 700 3`); `$df18`, human and drone control, `$bda4`,
-  `$b798`, the collision window, car-car and depth sort each differential-tested (`test_df18.py`, `test_ctl.py`, `test_samplers.py`).
-- Drone AI: 8-byte waypoint records with a fork/gate/jump control language, rails, 576/576 (`py/ai_econ/drone_diff.py`), 9 of 9 lap times exact.
-- No rubber-banding in a race: caps are written once per race from track, race counter, slot and upgrades (live watch, 7 writes in the first ~1300 steps,
-  none after; A/B with the human idle vs crashing, 4667 samples bit-identical for two drones). The cross-race catch-up is the race counter `-1748(A4)`.
-- Winner's circle ranking and elimination 46/46 (`winner_diff.py 40 6`); upgrade formulas 96/96; coast rules 60/60.
-- All 8 tracks rebuilt from `SUPER.DAT`/`INIT.DAT` and equal the game's buffers (`py/tracks/prove_all.py`): 62080/62080 background, 64000/64000 per collision plane, 1000/1000 attribute map.
-- Art and blitters: 20 routines differential-tested on whole screens (`py/engine/run_proofs.py`); tile pack format; word-RLE depacker.
-- Sound: Timer D three-voice tracker, 7200/7200 ticks tick for tick; a missing `rts` at `$13308` doubles channel C's envelope.
-- Secrets: none. One hidden hook (F5 on the winner's circle, `py/secrets/f5_winner.py`), F8/F10/ESC conveniences, dead code (keypad tuner `$e74a`, `BOOT.DAT` check `$101d2`,
-  `$f1dc`, `$155ce`), an unused 59.5 s tune, an unshown credits text in `SUPER1.DAT`, a Track 8 stroke that writes past the attribute map.
+- Round 1: car model 700/700 frames; drone AI 576/576; winner's circle 46/46; all 8 tracks rebuilt exactly; 20 blitters; Timer D tracker 7200/7200.
+- Prepare-screen crash: an emulator bug (MFP pending latch survived an IER disable, Timer B taken into the junk `$120` at the `$f956` Supexec). Fixed in `6a1d544`; ten key-phase offsets reach `$df18`, held ESC 6.25M vs 9.74M steps (`secrets.md`).
+- Collision on all 8 tracks matches live play (700/700 random, 1500 and 2500 chase, R=8/17 with signs) once the gate animator `$aa60`, the sign group `$b24e` (solid in plane 1) and the race-end freeze are ported; plane 2 records decoded 512000/512000 (`py/collide/`).
+- Gates: route 3 = open, 2 = closed, a lane hop; 40/40 natural, 7/7 flip A/B; a drone can be trapped at a closed gate (T5, 267 frames). A human leading changes nothing in the drones (0 cap writes, 3000/3000 drone-frames) (`py/livetests/`).
+- Economy: per-car 6-digit score exists (+10/64 frames, pickups, bars; shop item 3 pays +3000, its level has no consumer); wrench cost 4, gate `> 3`, one item per visit; race counter +1 on a human win, drone win nets 0 (8/8); hazard rules 1400/1400 over 50 seeds.
+- HUD: lap panel `$158ea` and the whole band pixel-exact; the leader's panel blinks (240/240); race-end phase pseudocoded with live counts; smoke `$afc6` ported (`py/residual/`).
+- All seven "unused" `SUPER.DAT` blocks are consumed (select, shop, tracks 5-8 start, crash helicopter, winner's circle); real unread bytes are zero pads; the green human car is drawn only in the attract demo (`py/unused/`).
+- Unused tune 906 runs 64.49 s (waits hold w+1 steps), register stream 15559/15559 ISR ticks; `-150/-148` are protection flags (`sound.md`, `secrets.md`).
 
 ## Open, in priority order
 
-1. **The prepare-screen / race-start fragility** (unblocks reliable driving, and may be an emulator bug). In `agents/secrets/snap/prep_kbd.snap` a held make of almost any key (116/117) or an
-   ESC tap ends with the game dying in race-start init (Line-F exception through a wild jump, ROM bomb loop at `$fca8xx`); the last game function entered is `$f8d0`/`$f91e`
-   (the Supexec raster uninstall). `drive_track.py 5` (Track 6, no player joined) also ends in a garbage PC. Make+break taps of the other keys are fine, so it looks like IKBD
-   delivery phase, not a key function. Prove: run the same drive under real Hatari (`tools/hatari_trace.py`) as an oracle; log `$70`, the saved VBL vector at `$fa8c`, and the MFP
-   registers around `Supexec($f956)`; bisect to the faulting PC. If it is an emulator bug, fix it behind the regression net (skill section 6).
-2. **Live tests the docs list as inferred**: a human *leading* the pack (rubber-band test with the human in front), gate-closed routing on Tracks 3, 5, 8 (select cursors 4/5, 8/9, 14/15), the wrench
-   increment, item 3 of the shop ("increase score level taken") having no consumer, the human-win increment of the race counter, and hazard-count distributions under differing RNG seeds. Each is
-   a same-snapshot A/B with a match count; `py/ai_econ/` has the harness.
-3. **Collision on Tracks 2-8**: only rendering is proved for them. Run the `py/physics/test_trajectory.py` model against live play on each track (needs `drive_track.py` snapshots with a player joined).
-4. **Unused content**: render the seven never-consumed `SUPER.DAT` blocks (28,672 bytes) and the `SUPER1.DAT` tail cells; 1 KB poison on them; decode the unused 59.5 s tune (script 906) via
-   `py/engine/sound_model.py`, or add Timer D delivery to the emulator so the game is audible (an emulator change: regression net, and message live sessions before building).
-5. **Residual decode**: collision plane 2's record format (`py/physics/rebuild_planes02.py` unfinished, 7583 pixels), the lap-panel composition `$158ea` (1627 differing HUD pixels), the 150-byte B2 header,
-   the tripwire strips' consumer (`-3842`), `$1000e`/`$101bc` and the `-150/-148` campaign-end flags, the race-end control phase (`$13bbe`, `$afc6` not ported).
-6. **Doc tidy**: the README's "What it needed from the emulator" and pass-numbered sections are history; fold them into normal prose when next touched.
+1. **Drive a human that actually leads** (steering bot), not poked counters; run the drone A/B on a full lap. Proof: `py/livetests/lead_ab.py` extended with a bot arm; drones equal to a control in every frame.
+2. **Score to hi-score hand-off**: trace `$17b32-$17ccc` to `-7956(A4)`; `$174a6` clears slot 1's score after the winner's circle, so check whether "entry needs a non-drone with a non-zero score" (`secrets.md`) holds in a real session end; also prove the `SSPRINT.HSC` save now that bin is fixed (emulator may not persist disk writes).
+3. **Unported race pieces**: spawn/expiry `$abd4`/`$ae0e` (wrench and bonus cells, RNG), tornado position `$b100`, banner/ramp `$b36a`/`$b5f8`, smoke spawn condition `$a65c` and status bit `$800`.
+4. **Undecoded SUPER1.DAT chunks**: `0x2e5e-0x2ee0`, `0x38e0-0x3a98`, `0x3d60-0x4280`; the "never read" claim for that range is round 1's, re-poison it with a snapshot taken before boot-time consumers.
+5. **Coverage not yet run**: natural (unforced) crashes, spin-outs, hazards and pickups on every track for the helicopter sheets; 2- and 3-human winner's circle; anim 3 frame 15; slot-3 word `-3954[3]` reading 1 in every race.
+6. **Audible game**: Timer D delivery in the emulator (regression net; message live sessions before building). Rendered tune WAVs exist only as scratchpad.
+7. Gate-trap frequency over full races and its effect on `sim_lap` T5 lap times.
 
 ## Known traps
 
-- `$15080` is a code address inside the flood-fill routine, not a collision map (the old README said so); the collision planes are at `$61436`, and `-3682(A4)` is a 48-byte window, not a pointer.
-- The emulator never raises Timer D: the game is silent and any sound proof needs the tick injection in `py/engine/psg_capture.py`.
-- Re-driving the same input from a snapshot is deterministic, but two separate cold-boot drives of the same track differed in 634 of 1 MB bytes (`agents/tracks/snaps`): compare behaviour, not snapshot bytes, across re-drives.
-- `ss_attract.snap` takes about 75 s (0.5M steps/s); a race plus results is about 20M steps; a same-snapshot scancode scan is 2-3 minutes per screen on 6 cores. Budget long audits (the `secrets` agent ran two hours).
-- Every area's scripts write scratch under `scratchpad/supersprint/agents/<area>/`; promoted scripts derive paths from `sscfg.py`. A script that hard-codes `agents/<area>/py` fails after promotion.
-- Slot labels: 0 blue (keyboard), 1 red (joystick 0), 2 yellow (joystick 1), 3 green and always a drone (colour names read from sprites).
-- Agent reports are in `scratchpad/supersprint/agents/<area>/report.md` (untracked); their contradiction lists are already folded into the docs.
+- The emulator never raises Timer D: the game is silent; sound proofs use the tick injection in `py/engine/psg_capture.py` (`py/residual/liveproof.py`).
+- Re-driving the same input from a snapshot is deterministic, but two cold-boot drives of one track differ in bytes: compare behaviour, not snapshot bytes.
+- `ss_attract.snap` takes about 75 s; a race plus results about 20M steps; a same-snapshot scancode scan 2-3 minutes per screen.
+- Scripts write scratch under `scratchpad/supersprint/agents/<area>/`; promoted ones derive paths from `sscfg.py`.
+- Slot labels: 0 blue (keyboard), 1 red (joystick 0), 2 yellow (joystick 1), 3 green, a drone in real races.
+- Round-1 "never consumed" and "key X crashes the prepare screen" findings are suspect unless re-checked after `6a1d544` and with a before-consumer snapshot.
+- Condensed agent reports are in `scratchpad/supersprint/agents/<area>/report.md` (untracked); their contradiction lists are already folded into the docs.
 
 ## Next session
 
-Start with open item 1: resume `agents/secrets/snap/prep_kbd.snap`, reproduce the crash with a held key, and find out whether Hatari survives the same input. If it is an emulator bug, fix it; if it
-is the game's, document it in `secrets.md`. Then take item 2 (the live rubber-band test with the human leading), which closes the last claim in the headline finding. The prompt that starts it is `/resume supersprint`.
+Take open item 1 (a bot-driven lead) and item 2 (score to hi-score, real session end, save). Both are same-snapshot A/Bs on the existing harness (`py/livetests/`, `py/ai_econ/`). Then item 3 if a complete game model is wanted. The prompt that starts it is `/resume supersprint`.
