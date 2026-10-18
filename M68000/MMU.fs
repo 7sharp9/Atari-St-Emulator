@@ -250,6 +250,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable vblPending = false
     let mutable mfpPending = false
     let mutable mfpVector = 0
+    ///Set when the CPU reads the video address counter ($ff8205-$ff8209); HblTick bumps `mutations`
+    ///when it changes a counter byte only if this is set, so a counter-polling loop is not
+    ///"provably stuck" while an unpolled counter does not re-anchor the loop detector.
+    let mutable beamCounterRead = false
     let mutable timerCPending = false
     let mutable timerBPending = false
     let mutable timerAPending = false
@@ -920,6 +924,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | Cart ->
             0xffuy //no cartridge present
         | VideoDisplayRegister ->
+            if address >= 0xFF8205u && address <= 0xFF8209u then beamCounterRead <- true
             videoDisplayRegisterMemory.[int (address - videoDisplayRegisterStart)]
         | ShifterVoid -> 0xFFuy //undecoded shifter slice - no bus error, reads as open-bus $FF
         | YM2149 ->
@@ -1057,6 +1062,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             BigEndian.readWord rom (address &&& 0x3ffffu)
         | Cart -> 0xffff //no cartridge present
         | VideoDisplayRegister ->
+            if address >= 0xFF8204u && address <= 0xFF8209u then beamCounterRead <- true
             let indexIntoVReg = address - videoDisplayRegisterStart
             BigEndian.readWord videoDisplayRegisterMemory indexIntoVReg
         | ShifterVoid ->
@@ -1620,7 +1626,23 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Impossamole's attract animation all use TBCR=$08). Gated identically to RaiseTimerB (mode +
     ///IERA/IMRA bit 0), so TOS - Timer B off - never sees a tick and the diskless boot stays
     ///byte-identical.
-    member x.HblTick() =
+    ///`line` is the emulated scanline within the frame (0-299). The video address counter
+    ///($ff8205/07/09, read-only on an ST) is the video base plus 160 bytes per displayed line,
+    ///held at the end of the screen after line 199 and reloaded from the base at line 0. Line
+    ///resolution only: Lemmings' Timer B handler (`$28ac`) syncs to the beam by polling the mid
+    ///byte's bit 0 and the low byte (`reversing/lemmings/`), which needs the counter to move.
+    member x.HblTick(line: int) =
+        let bas = (uint32 videoDisplayRegisterMemory.[1] <<< 16) ||| (uint32 videoDisplayRegisterMemory.[3] <<< 8)
+        let c = bas + uint32 (if line < 200 then line else 200) * 160u
+        let b5, b7, b9 = byte (c >>> 16), byte (c >>> 8), byte c
+        if videoDisplayRegisterMemory.[7] <> b7 || videoDisplayRegisterMemory.[9] <> b9
+           || videoDisplayRegisterMemory.[5] <> b5 then
+            videoDisplayRegisterMemory.[5] <- b5
+            videoDisplayRegisterMemory.[7] <- b7
+            videoDisplayRegisterMemory.[9] <- b9
+            if beamCounterRead then
+                beamCounterRead <- false
+                mutations <- mutations + 1UL
         if tbcr &&& 0x0Fuy = 0x08uy then
             let iera = mfpRegisters.[int (0xFFFA07u - mpf68901)]
             let imra = mfpRegisters.[int (0xFFFA13u - mpf68901)]
@@ -1678,12 +1700,15 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | 5 -> 0    // nothing asserted
         | 4 -> 4    // VBL is autovector level 4
         | _ -> 6    // every MFP source is level 6
+    ///MFP sources take the vector base from the Vector Register's high nibble ($fffa17; TOS
+    ///sets $48, so base $40). A game that writes VR=$00 (Lemmings) has its Timer B at vector 8.
     member x.PendingInterruptVector =
+        let mfpBase = int (mfpRegisters.[int (0xFFFA17u - mpf68901)] &&& 0xF0uy)
         match x.TopPendingInterrupt with
-        | 0 -> 0x4D
-        | 1 -> mfpVector
-        | 2 -> 0x48
-        | 3 -> 0x45
+        | 0 -> mfpBase ||| 0x0D
+        | 1 -> mfpBase ||| (mfpVector &&& 0x0F)
+        | 2 -> mfpBase ||| 0x08
+        | 3 -> mfpBase ||| 0x05
         | 4 -> 28
         | _ -> 0
     ///Called by `Cpu.Step()` once it has decided to actually take the pending interrupt (i.e. it

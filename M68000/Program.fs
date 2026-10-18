@@ -412,7 +412,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                     frameSeq <- frameSeq + 1
             | None -> ()
         if instructionsPerLine > 0UL && stepCount % instructionsPerLine = 0UL then
-            mmu.HblTick()
+            mmu.HblTick(int ((stepCount % instructionsPerFrame) / instructionsPerLine))
             mmu.FdcTick(int instructionsPerLine)
             match frameDir with
             | Some _ ->
