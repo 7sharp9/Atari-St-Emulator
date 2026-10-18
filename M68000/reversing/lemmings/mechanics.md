@@ -62,9 +62,9 @@ bit each click sets, and the handler body. **Proven** means driven in the emulat
 | 11 | 11 | `$880a` | unnamed |
 | 12 | 9 | `$851c` | builder: `$1d6e` sets bit 9 (read) |
 | 13 | 7 | `$89a4` | **blocker, proven** ("Collisions" below) |
-| 14 | 6 | `$81d0` | basher: `$1cd6` sets bit 6; handler cycles `andi.w #$1f` = 32 frames (read) |
+| 14 | 6 | `$81d0` | **basher, proven** ("Basher and miner" below) |
 | 15 | 5 | `$7f06` | unnamed |
-| 16 | 4 | `$7b88` | miner: `$1c2a` sets bit 4 (read) |
+| 16 | 4 | `$7b88` | **miner, proven** ("Basher and miner" below) |
 | 17 | 0 | `$86be` | unnamed |
 | none | : | `$797c` | walk |
 
@@ -140,8 +140,40 @@ blocker stays at (732, 76) with `+14 = $80`. A bomber assigned to it (index 2, c
 apart) later `+14 = $400` and all nine cells read 0 (restored from the saved bytes by `$8a06`, from `$8156` frame 1).
 The handler `$89a4` also releases the blocker if the ground pixel under it clears (`bclr #7`, `bsr $8a06`; read).
 
+## Basher and miner
+
+Both erase terrain by AND-ing a mask from a table into the bitmap at `(x + dir + 4(A0), y + 6(A0))` (`$8218`-`$8256`
+and `$7bd8`-`$7bfc`: a mask is 6 rows of a long, shifted by `x & 15` across the 16-pixel groups). Basher masks are
+at `$14cc2` (4 frames of `$28` bytes, mirrored `+160` for dir < 0), miner masks at `$14e02` (2 frames of `$34`,
+mirrored `+104`). A game tick is 36,000 steps (3 VBL: `hits` on `$81d0` is 17 calls in 600,000 steps, 16 gaps of
+35,900 on average). The driver is `py/skilldrive.py` (pokes the skill index and count, clicks lemming 0, dumps the
+bitmap window as ASCII each sample) and `py/terrain_diff.py` (cleared and set pixels against the first frame);
+`--wall gx0,gx1,y0,y1` pokes a solid block into the bitmap and `--cells c0,r0,r1,val` pokes object-map cells.
+
+**Basher (index 5, count `+36` = `$26c28`), proven.** Click: `+14 = $40` (bit 6), count 5 to 4. The handler runs a
+32-tick cycle (`10(A0)` is the tick, `& $1f`; the low nibble is the phase). Phases 2 to 5 erase one mask frame each
+(read from the code; the diff only brackets the ticks), phases 11 to 15 move `x += dir` one a tick
+(`hits`: `$8422` runs 5 times, 4 ticks apart, per half cycle), and the 32-tick cycle holds two such erase-and-advance halves: against a poked wall (`--wall 46,48,56,74`, solid from x = 736) lemming 0 stays at x = 732, then 733, 734,
+736, 737 over the first half cycle (+5), and after 40 samples of 36,000 steps the wall's left face has moved from x = 736 to
+x = 746 over rows 70 to 75, the tunnel being the body height (about 9 rows above the feet row). With nothing to bash
+(flat ground) it erases the few pixels of the shallow hill in front and then drops `+14` back to 0 after one cycle
+(10 pixels cleared, `--samples 30` run): a swing at open ground ends. At the end of each half cycle `$84b4` tests the
+cell under the lemming and the cell two rows up and two columns ahead (`25`/`26(A0)` as in "Collisions"): code 9
+(steel) refuses, and codes 7 and 8 refuse when the lemming faces the matching way; a refusal calls `$1f18` and turns the lemming round
+(`neg 8(A0)`, `bclr #6`). **Proven for steel:** with cells 186..193 poked to 9 (rows 14 to 24) the basher
+quits at x = 735 and walks left (`dir = -1`, `+14 = 0`) at sample 15; the run without them keeps bashing to
+x = 742 and beyond.
+
+**Miner (index 6, count `+40` = `$26c2c`), proven.** Click: `+14 = $10` (bit 4), count 5 to 4. A 24-tick cycle
+(`cmp #$18`): phase 0 steps `y + 1` and gives up at `y >= $b0`; phases 1 and 2 erase the two mask frames and step
+`x += dir`, `y + 1` (read); phase 3 steps again with a ground test; phase 15 steps `x += 2*dir` after the wall
+test (the steel and one-way cell test `$7e68`, same codes as the basher). Result from the click at (734, 78): after
+four cycles the lemming is at (750, 86): +4 columns and +2 rows a cycle, i.e. a 2:1 slope (a tunnel of 17 columns for 9
+rows in the dumped bitmap, rows 76 to 85, about 9 rows tall). **Proven for steel:** with the same poke the
+miner stops and turns at x = 736 in the first cycle; without it the run above goes on to x = 750.
+
 ## Still open
 
-Names for bits 0, 2, 3, 5, 8, 11 beyond the readings above; the terrain thresholds (step, ledge, wall, fall,
-splat) are read, not driven; the cell codes 1, 4, 5, 6 need their level objects (exit, traps) driven; the blocker's
+Names for bits 0, 2, 3, 5, 8, 11 beyond the readings above; the builder (bit 9, the `$851c` stair) and the climber and floater are undriven; the
+terrain thresholds (step, ledge, wall, fall, splat) are read, not driven; the exact basher and miner erase ticks need a per-tick (`watch`) trace, the diff only brackets them; the cell codes 1, 4, 5, 6 need their level objects (exit, traps) driven; the blocker's
 refusal test (`$1b60`-`$1b94`, cells with codes 1, 2, 3, `$a` under the target) and the ground-loss release.
