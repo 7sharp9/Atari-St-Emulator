@@ -1,0 +1,202 @@
+  0 Fun     1 slot147 f18.1   rate 50 n 10 save  1 t 5 sk[0, 0, 0, 0, 0, 0, 0, 10] gs0 sp0  Just dig!
+  1 Fun     2 slot155 f19.1   rate 50 n 10 save  1 t 5 sk[0, 10, 0, 0, 0, 0, 0, 0] gs3 sp0  Only floaters can survive this
+  2 Fun     3 slot157 f19.2   rate 50 n 50 save  5 t 5 sk[0, 0, 0, 10, 0, 0, 0, 0] gs3 sp0  Tailor-made for blockers
+  3 Fun     4 slot149 f18.2   rate  1 n 10 save 10 t 5 sk[10, 0, 0, 0, 0, 0, 1, 0] gs2 sp0  Now use miners and climbers
+  4 Fun     5 slot151 f18.3   rate 50 n 50 save  5 t 5 sk[0, 0, 0, 0, 0, 50, 0, 0] gs4 sp0  You need bashers this time
+  5 Fun     6 slot153 f19.0   rate 50 n 50 save 10 t 5 sk[0, 0, 5, 5, 0, 0, 0, 0] gs1 sp0  A task for blockers and bombers
+  6 Fun     7 slot159 f19.3   rate 50 n 50 save 25 t 5 sk[0, 0, 0, 0, 20, 0, 0, 0] gs2 sp0  Builders will help you here
+  7 Fun     8 slot 14 f01.2 O rate 88 n100 save 95 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs3 sp0  Not as complicated as it looks
+  8 Fun     9 slot 22 f02.2 O rate 99 n100 save 90 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs2 sp0  As long as you try your best
+  9 Fun    10 slot 54 f06.2 O rate 50 n 20 save 10 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs3 sp0  Smile if you love lemmings
+ 10 Fun    11 slot 70 f08.2 O rate 50 n 60 save 50 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs2 sp0  Keep your hair on Mr. Lemming
+ 11 Fun    12 slot 16 f01.3 O rate 99 n 80 save 40 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs3 sp0  Patience
+ 12 Fun    13 slot 29 f03.2   rate  1 n 20 save 20 t 3 sk[0, 0, 0, 0, 0, 0, 0, 20] gs1 sp0  We all fall down
+ 13 Fun    14 slot 32 f03.3 O rate 20 n 80 save 60 t 6 sk[20, 20, 20, 20, 20, 20, 20, 20] gs3 sp0  Origins and Lemmings
+ 14 Fun    15 slot 38 f04.2 O rate 40 n100 save 80 t 8 sk[20, 20, 20, 20, 20, 20, 20, 20] gs3 sp0  Don't let your eyes deceive you
+ 15 Fun    16 slot 42 f05.0 O rate  1 n 80 save 50 t 8 sk[20, 20, 20, 20, 20, 20, 20, 20] gs1 sp0  Don't do anything too hasty
+ 16 Fun    17 slot 48 f05.3 O rate 99 n 50 save 20 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs2 sp0  Easy when you know how
+ 17 Fun    18 slot 72 f08.3 O rate 80 n 70 save 50 t 5 sk[0, 0, 20, 20, 0, 0, 0, 0] gs1 sp0  Let's block and blow
+ 18 Fun    19 slot 84 f10.1 O rate 20 n100 save 70 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs2 sp0  Take good care of my Lemmings
+ 19 Fun    20 slot104 f12.3 O rate 10 n 50 save 30 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs2 sp0  We are now at LEMCON ONE
+ 20 Fun    21 slot138 f17.0 O rate 50 n100 save 60 t 8 sk[20, 20, 20, 20, 20, 20, 20, 20] gs0 sp0  You Live and Lem
+ 21 Fun    22 slot 23 f02.3   rate 50 n100 save 80 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs0 sp4  A Beast of a level
+ 22 Fun    23 slot 68 f08.1 O rate 50 n 80 save 20 t 8 sk[20, 20, 20, 20, 20, 20, 20, 20] gs1 sp0  I've lost that Lemming feeling
+ 23 Fun    24 slot 96 f11.3 O rate 99 n 30 save 20 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs2 sp0  Konbanwa Lemming san
+ 24 Fun    25 slot 98 f12.0 O rate 99 n100 save 50 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs4 sp0  Lemmings Lemmings everywhere
+ 25 Fun    26 slot116 f14.1 O rate 30 n  2 save  2 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs3 sp0  Nightmare on Lem street
+ 26 Fun    27 slot 78 f09.2 O rate  1 n 50 save 25 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs2 sp0  Let's be careful out there
+ 27 Fun    28 slot100 f12.1 O rate 80 n100 save 60 t 5 sk[30, 30, 30, 30, 30, 30, 30, 30] gs1 sp0  If only they could fly
+ 28 Fun    29 slot108 f13.1 O rate 90 n100 save 60 t 8 sk[30, 30, 30, 30, 30, 30, 30, 30] gs3 sp0  worra lorra lemmings
+ 29 Fun    30 slot134 f16.2 O rate 10 n 60 save 40 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs1 sp0  Lock up your Lemmings
+ 30 Tricky  1 slot  1 f00.0   rate 50 n100 save 50 t 4 sk[10, 10, 10, 10, 10, 10, 10, 10] gs0 sp0  This should be a doddle!
+ 31 Tricky  2 slot 30 f03.2 O rate  1 n 40 save 40 t 3 sk[0, 0, 0, 0, 0, 0, 0, 40] gs1 sp0  We all fall down
+ 32 Tricky  3 slot 36 f04.1 O rate 50 n100 save 50 t 6 sk[20, 20, 20, 20, 40, 20, 20, 20] gs0 sp0  A ladder would be handy
+ 33 Tricky  4 slot 50 f06.0 O rate 55 n100 save 20 t 8 sk[40, 40, 40, 40, 40, 40, 40, 40] gs0 sp0  Here's one I prepared earlier
+ 34 Tricky  5 slot 52 f06.1 O rate 20 n100 save 20 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs4 sp0  Careless clicking costs lives
+ 35 Tricky  6 slot 56 f06.3 O rate 50 n  5 save  4 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs1 sp0  Lemmingology
+ 36 Tricky  7 slot 58 f07.0 O rate 20 n 75 save 55 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs3 sp0  Been there, seen it, done it
+ 37 Tricky  8 slot 80 f09.3 O rate 40 n100 save 60 t 8 sk[0, 0, 0, 20, 50, 0, 0, 0] gs1 sp0  Lemming sanctuary in sight
+ 38 Tricky  9 slot102 f12.2 O rate 50 n 75 save 70 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs0 sp0  They just keep on coming
+ 39 Tricky 10 slot120 f14.3 O rate 60 n100 save 94 t 8 sk[20, 20, 20, 20, 20, 20, 20, 20] gs1 sp0  There's a lot of them about
+ 40 Tricky 11 slot128 f15.3 O rate 20 n 50 save 42 t 8 sk[20, 20, 20, 20, 50, 20, 20, 20] gs2 sp0  Lemmings in the attic
+ 41 Tricky 12 slot130 f16.0 O rate  1 n 50 save 40 t 8 sk[50, 50, 20, 20, 50, 20, 20, 20] gs2 sp0  Bitter Lemming
+ 42 Tricky 13 slot136 f16.3 O rate  1 n100 save 70 t 8 sk[20, 20, 20, 20, 50, 20, 20, 20] gs3 sp0  Lemming Drops
+ 43 Tricky 14 slot  5 f00.2   rate 50 n 80 save 70 t 6 sk[10, 10, 15, 10, 15, 15, 15, 15] gs0 sp2  MENACING !!
+ 44 Tricky 15 slot148 f18.1 O rate 50 n 10 save  6 t 5 sk[0, 0, 5, 0, 0, 0, 0, 0] gs0 sp0  Ozone friendly Lemmings
+ 45 Tricky 16 slot152 f18.3 O rate 76 n 50 save 40 t 5 sk[0, 0, 10, 0, 0, 1, 1, 0] gs4 sp0  Luvly Jubly
+ 46 Tricky 17 slot154 f19.0 O rate 50 n 50 save 48 t 5 sk[0, 0, 2, 0, 0, 0, 0, 0] gs1 sp0  Diet Lemmingaid
+ 47 Tricky 18 slot156 f19.1 O rate 50 n 10 save  9 t 5 sk[0, 1, 1, 0, 2, 0, 0, 1] gs3 sp0  It's Lemmingentry Watson
+ 48 Tricky 19 slot160 f19.3 O rate 50 n 50 save 50 t 5 sk[10, 10, 0, 0, 1, 1, 1, 1] gs2 sp0  Postcard from Lemmingland
+ 49 Tricky 20 slot  7 f00.3   rate 60 n100 save 95 t 4 sk[3, 3, 6, 2, 2, 4, 2, 2] gs1 sp0  One way digging to freedom
+ 50 Tricky 21 slot 11 f01.1   rate 66 n 66 save 44 t 6 sk[66, 66, 66, 66, 66, 66, 66, 66] gs1 sp0  All the 6`s ........
+ 51 Tricky 22 slot 13 f01.2   rate 88 n100 save 90 t 5 sk[0, 1, 15, 0, 20, 1, 0, 0] gs3 sp0  Turn around young lemmings!
+ 52 Tricky 23 slot 15 f01.3   rate 99 n100 save 60 t 5 sk[10, 10, 0, 0, 1, 2, 1, 1] gs3 sp0  From The Boundary Line
+ 53 Tricky 24 slot 17 f02.0   rate 85 n 80 save 75 t 2 sk[5, 5, 5, 5, 3, 5, 5, 5] gs2 sp0  Tightrope City
+ 54 Tricky 25 slot 19 f02.1   rate 99 n100 save 10 t 5 sk[1, 10, 5, 0, 10, 1, 1, 5] gs3 sp0  Cascade
+ 55 Tricky 26 slot 21 f02.2   rate 99 n100 save100 t 5 sk[2, 0, 5, 10, 20, 2, 2, 2] gs2 sp0  I have a cunning plan
+ 56 Tricky 27 slot 25 f03.0   rate 60 n100 save 90 t 5 sk[5, 0, 5, 5, 5, 5, 5, 5] gs0 sp0  The Island of the Wicker people
+ 57 Tricky 28 slot 27 f03.1   rate 70 n100 save 90 t 5 sk[10, 10, 10, 10, 10, 10, 10, 10] gs0 sp0  Lost something?
+ 58 Tricky 29 slot 33 f04.0   rate 70 n100 save 99 t 4 sk[10, 10, 10, 10, 10, 10, 10, 10] gs2 sp0  Rainbow Island
+ 59 Tricky 30 slot 31 f03.3   rate 20 n100 save 90 t 4 sk[10, 10, 10, 10, 10, 0, 10, 10] gs3 sp0  The Crankshaft
+ 60 Taxing  1 slot 37 f04.2   rate 40 n100 save 99 t 4 sk[2, 2, 2, 2, 8, 2, 2, 2] gs3 sp0  If at first you don`t succeed..
+ 61 Taxing  2 slot 39 f04.3   rate 70 n100 save 80 t 5 sk[10, 5, 5, 10, 10, 5, 5, 5] gs0 sp0  Watch out, there`s traps about
+ 62 Taxing  3 slot 41 f05.0   rate  1 n100 save100 t 2 sk[30, 30, 30, 0, 30, 30, 30, 30] gs1 sp0  Heaven can wait (we hope!!!!)
+ 63 Taxing  4 slot 43 f05.1   rate 50 n 40 save 30 t 7 sk[0, 0, 5, 4, 20, 2, 2, 2] gs3 sp0  Lend a helping hand....
+ 64 Taxing  5 slot 45 f05.2   rate 50 n 60 save 45 t 5 sk[0, 0, 5, 4, 20, 10, 0, 3] gs1 sp0  The Prison!
+ 65 Taxing  6 slot 47 f05.3   rate 99 n 50 save 30 t 3 sk[0, 0, 3, 3, 0, 5, 0, 1] gs2 sp0  Compression Method 1
+ 66 Taxing  7 slot 49 f06.0   rate 55 n100 save 98 t 3 sk[1, 0, 5, 1, 6, 1, 0, 0] gs0 sp0  Every Lemming for himself!!!
+ 67 Taxing  8 slot 51 f06.1   rate 20 n100 save100 t 4 sk[10, 10, 10, 0, 10, 10, 0, 0] gs4 sp0  The Art Gallery
+ 68 Taxing  9 slot 53 f06.2   rate 50 n 20 save 20 t 4 sk[2, 1, 1, 2, 2, 1, 1, 2] gs3 sp0  Perseverance
+ 69 Taxing 10 slot 55 f06.3   rate 50 n  5 save  5 t 5 sk[0, 0, 5, 5, 15, 5, 5, 5] gs1 sp0  Izzie Wizzie lemmings get busy
+ 70 Taxing 11 slot 57 f07.0   rate 20 n 50 save 50 t 4 sk[2, 1, 0, 0, 20, 5, 5, 5] gs3 sp0  The ascending pillar scenario
+ 71 Taxing 12 slot 59 f07.1   rate  1 n 10 save  8 t 5 sk[10, 10, 10, 2, 10, 10, 10, 10] gs1 sp0  Livin` On The Edge
+ 72 Taxing 13 slot 61 f07.2   rate 40 n100 save 99 t 6 sk[1, 0, 10, 1, 2, 3, 4, 2] gs0 sp0  Upsidedown World
+ 73 Taxing 14 slot 63 f07.3   rate 30 n100 save 95 t 8 sk[0, 0, 10, 10, 30, 2, 1, 1] gs0 sp0  Hunt the Nessy....
+ 74 Taxing 15 slot  3 f00.1   rate 50 n100 save 80 t 6 sk[20, 20, 20, 20, 20, 20, 20, 20] gs0 sp1  What an AWESOME level
+ 75 Taxing 16 slot 65 f08.0   rate 50 n100 save 97 t 3 sk[0, 4, 3, 3, 20, 0, 0, 0] gs1 sp0  Mary Poppins` land
+ 76 Taxing 17 slot 67 f08.1   rate 50 n100 save 90 t 7 sk[5, 0, 5, 0, 20, 5, 6, 0] gs1 sp0  X marks the spot
+ 77 Taxing 18 slot 69 f08.2   rate 50 n 75 save 65 t 5 sk[0, 1, 15, 0, 15, 1, 0, 0] gs2 sp0  Tribute to M.C.Escher
+ 78 Taxing 19 slot 71 f08.3   rate 80 n 70 save 64 t 2 sk[0, 0, 15, 0, 0, 0, 0, 0] gs1 sp0  Bomboozal
+ 79 Taxing 20 slot 73 f09.0   rate 50 n 90 save 80 t 5 sk[20, 20, 20, 20, 20, 20, 20, 20] gs4 sp0  Walk the web rope
+ 80 Taxing 21 slot 75 f09.1   rate 70 n 20 save 20 t 2 sk[3, 3, 3, 3, 4, 3, 3, 3] gs1 sp0  Feel the heat!
+ 81 Taxing 22 slot 77 f09.2   rate  1 n 50 save 50 t 3 sk[0, 2, 0, 1, 10, 1, 1, 2] gs2 sp0  Come on over to my place
+ 82 Taxing 23 slot 79 f09.3   rate 40 n100 save 95 t 5 sk[0, 0, 0, 0, 20, 0, 0, 0] gs1 sp0  King of the castle
+ 83 Taxing 24 slot 81 f10.0   rate 50 n100 save 99 t 3 sk[0, 0, 0, 0, 30, 0, 0, 0] gs1 sp0  Take a running jump.....
+ 84 Taxing 25 slot 83 f10.1   rate 20 n100 save 90 t 4 sk[0, 0, 10, 0, 7, 5, 0, 0] gs2 sp0  Follow the leader...
+ 85 Taxing 26 slot 85 f10.2   rate 80 n100 save 99 t 5 sk[10, 10, 10, 10, 10, 10, 10, 10] gs1 sp0  Triple Trouble
+ 86 Taxing 27 slot 87 f10.3   rate 10 n100 save 60 t 5 sk[0, 0, 10, 10, 10, 0, 0, 0] gs3 sp0  Call in the bomb squad
+ 87 Taxing 28 slot 89 f11.0   rate  1 n100 save 70 t 5 sk[1, 1, 4, 4, 8, 3, 1, 0] gs4 sp0  POOR WEE CREATURES!
+ 88 Taxing 29 slot 35 f04.1   rate 80 n100 save 95 t 4 sk[10, 10, 10, 10, 5, 10, 10, 10] gs0 sp0  How do I dig up the way?
+ 89 Taxing 30 slot111 f13.3   rate  1 n 60 save 60 t 3 sk[0, 0, 0, 0, 0, 0, 0, 60] gs1 sp0  We all fall down
+ 90 Mayhem  1 slot 91 f11.1   rate 15 n100 save 90 t 8 sk[0, 5, 10, 5, 30, 0, 0, 5] gs0 sp0  Steel Works
+ 91 Mayhem  2 slot 93 f11.2   rate 30 n100 save 90 t 6 sk[10, 5, 10, 10, 30, 0, 0, 0] gs1 sp0  The Boiler Room
+ 92 Mayhem  3 slot 95 f11.3   rate 99 n 30 save 30 t 1 sk[1, 1, 1, 1, 1, 1, 1, 1] gs2 sp0  It`s hero time!
+ 93 Mayhem  4 slot 97 f12.0   rate 99 n100 save100 t 1 sk[0, 0, 10, 0, 0, 10, 0, 0] gs4 sp0  The Crossroads
+ 94 Mayhem  5 slot 99 f12.1   rate 80 n 80 save 60 t 5 sk[2, 2, 10, 10, 5, 1, 0, 5] gs1 sp0  Down, along, up. In that order
+ 95 Mayhem  6 slot101 f12.2   rate 50 n 75 save 75 t 4 sk[0, 0, 10, 0, 15, 0, 5, 5] gs0 sp0  One way or another
+ 96 Mayhem  7 slot103 f12.3   rate 50 n 50 save 45 t 5 sk[1, 10, 0, 0, 6, 4, 0, 4] gs2 sp0  Poles Apart
+ 97 Mayhem  8 slot105 f13.0   rate 55 n100 save 90 t 5 sk[5, 0, 5, 5, 10, 0, 5, 5] gs1 sp0  Last one out is a rotten egg!
+ 98 Mayhem  9 slot107 f13.1   rate 90 n100 save 99 t 4 sk[0, 0, 20, 1, 12, 5, 0, 1] gs3 sp0  Curse of the Pharaohs
+ 99 Mayhem 10 slot109 f13.2   rate  1 n 75 save 50 t 5 sk[2, 3, 4, 2, 20, 4, 0, 2] gs2 sp0  Pillars of Hercules
+100 Mayhem 11 slot112 f13.3 O rate  1 n 80 save 80 t 3 sk[0, 0, 0, 0, 0, 0, 0, 80] gs1 sp0  We all fall down
+101 Mayhem 12 slot113 f14.0   rate 50 n 75 save 75 t 4 sk[2, 1, 0, 0, 20, 5, 5, 5] gs0 sp0  The Far Side
+102 Mayhem 13 slot115 f14.1   rate 50 n  2 save  2 t 5 sk[1, 1, 2, 2, 2, 10, 10, 10] gs3 sp0  The Great Lemming Caper
+103 Mayhem 14 slot117 f14.2   rate 70 n 80 save 75 t 5 sk[0, 0, 10, 10, 30, 0, 0, 21] gs2 sp0  Pea Soup
+104 Mayhem 15 slot119 f14.3   rate 60 n100 save 96 t 2 sk[10, 10, 10, 10, 10, 10, 10, 10] gs1 sp0  The Fast Food Kitchen...
+105 Mayhem 16 slot121 f15.0   rate 10 n 50 save 50 t 1 sk[0, 1, 5, 0, 0, 5, 0, 5] gs2 sp0  Just a Minute...
+106 Mayhem 17 slot123 f15.1   rate 50 n 80 save 70 t 4 sk[5, 2, 0, 2, 10, 5, 5, 5] gs2 sp0  Stepping Stones
+107 Mayhem 18 slot125 f15.2   rate  1 n100 save 90 t 9 sk[2, 0, 20, 10, 30, 1, 2, 1] gs0 sp0  And then there were four....
+108 Mayhem 19 slot127 f15.3   rate 20 n 50 save 46 t 5 sk[2, 0, 4, 0, 20, 0, 0, 0] gs2 sp0  Time to get up!
+109 Mayhem 20 slot150 f18.2 O rate 85 n 50 save 50 t 5 sk[2, 0, 0, 1, 1, 1, 2, 0] gs2 sp0  No added colours or Lemmings
+110 Mayhem 21 slot129 f16.0   rate  1 n 50 save 50 t 5 sk[1, 50, 0, 0, 4, 1, 0, 1] gs2 sp0  With a twist of lemming please
+111 Mayhem 22 slot  9 f01.0   rate 75 n100 save 85 t 5 sk[10, 10, 10, 10, 15, 10, 10, 10] gs0 sp3  A BeastII of a level
+112 Mayhem 23 slot131 f16.1   rate 70 n100 save 80 t 9 sk[0, 1, 20, 20, 30, 5, 0, 0] gs4 sp0  Going up.......
+113 Mayhem 24 slot133 f16.2   rate 99 n 50 save 50 t 1 sk[0, 0, 0, 0, 0, 3, 0, 0] gs1 sp0  All or Nothing
+114 Mayhem 25 slot135 f16.3   rate  1 n100 save 90 t 5 sk[2, 2, 0, 2, 25, 1, 1, 1] gs3 sp0  Have a nice day!
+115 Mayhem 26 slot137 f17.0   rate 50 n100 save 90 t 8 sk[0, 0, 10, 10, 10, 0, 0, 0] gs0 sp0  The Steel Mines of Kessel
+116 Mayhem 27 slot139 f17.1   rate 10 n 50 save 50 t 1 sk[1, 1, 5, 0, 0, 5, 0, 5] gs2 sp0  Just a Minute (Part Two)
+117 Mayhem 28 slot141 f17.2   rate  1 n  1 save  1 t 7 sk[0, 0, 0, 0, 25, 10, 0, 15] gs2 sp0  Mind the step.....
+118 Mayhem 29 slot143 f17.3   rate 50 n100 save 80 t 5 sk[0, 0, 0, 6, 15, 2, 0, 2] gs3 sp0  Save Me
+119 Mayhem 30 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+120 ??      1 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+121 ??      2 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+122 ??      3 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+123 ??      4 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+124 ??      5 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+125 ??      6 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+126 ??      7 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+127 ??      8 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+128 ??      9 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+129 ??     10 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+130 ??     11 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+131 ??     12 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+132 ??     13 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+133 ??     14 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+134 ??     15 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+135 ??     16 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+136 ??     17 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+137 ??     18 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+138 ??     19 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+139 ??     20 slot145 f18.0   rate 20 n 80 save 60 t 9 sk[10, 1, 10, 10, 30, 10, 10, 4] gs0 sp0  Rendezvous at the Mountain
+---- two-player (160+)
+160 slot161 f20.0   There can be only one
+161 slot165 f20.2   Still everything to play for
+162 slot171 f21.1   In the thick of the fray
+163 slot175 f21.3   Game on!  Choose your tactics.
+164 slot183 f22.3   Good game! Good game!
+165 slot191 f23.3   The Rubbish Dump
+166 slot169 f21.0   and the winner is.....
+167 slot181 f22.2   Any chance of a truce?
+168 slot187 f23.1   The Pipe Room...
+169 slot195 f24.1   The Rope Bridge
+170 slot173 f21.2   Just for fun or to the death?
+171 slot193 f24.0   The Crystal Cavern Mark II
+172 slot199 f24.3   Cross-over Point
+173 slot177 f22.0   The Passing Place
+174 slot179 f22.1   Take what you can, when you can
+175 slot185 f23.0   The Hammock...
+176 slot189 f23.2   Graffiti
+177 slot197 f24.2   Islands in the Sky
+178 slot167 f20.3   May the craftiest player win
+179 slot163 f20.1   We`re in this one together
+---- unused slots
+slot  2 f00.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot  4 f00.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp1  This is a non-used duplicate
+slot  6 f00.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp2  This is a non-used duplicate
+slot  8 f00.3 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot 10 f01.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp3  This is a non-used duplicate
+slot 12 f01.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot 18 f02.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs2 sp0  This is a non-used duplicate
+slot 20 f02.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs3 sp0  This is a non-used duplicate
+slot 24 f02.3 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp4  This is a non-used duplicate
+slot 26 f03.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot 28 f03.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot 34 f04.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs2 sp0  This is a non-used duplicate
+slot 40 f04.3 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot 44 f05.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs3 sp0  This is a non-used duplicate
+slot 46 f05.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot 60 f07.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot 62 f07.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot 64 f07.3 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot 66 f08.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot 74 f09.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs4 sp0  This is a non-used duplicate
+slot 76 f09.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot 82 f10.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot 86 f10.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot 88 f10.3 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs3 sp0  This is a non-used duplicate
+slot 90 f11.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs4 sp0  This is a non-used duplicate
+slot 92 f11.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot 94 f11.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot106 f13.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs1 sp0  This is a non-used duplicate
+slot110 f13.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs2 sp0  This is a non-used duplicate
+slot114 f14.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot118 f14.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs2 sp0  This is a non-used duplicate
+slot122 f15.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs2 sp0  This is a non-used duplicate
+slot124 f15.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs2 sp0  This is a non-used duplicate
+slot126 f15.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot132 f16.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs4 sp0  This is a non-used duplicate
+slot140 f17.1 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs2 sp0  This is a non-used duplicate
+slot142 f17.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs2 sp0  This is a non-used duplicate
+slot144 f17.3 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs3 sp0  This is a non-used duplicate
+slot146 f18.0 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs0 sp0  This is a non-used duplicate
+slot158 f19.2 O rate 99 n 99 save 99 t99 sk[99, 99, 99, 99, 99, 99, 99, 99] gs3 sp0  This is a non-used duplicate

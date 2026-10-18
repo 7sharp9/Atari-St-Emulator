@@ -1,7 +1,9 @@
 # Lemmings: behaviour
 
 Addresses are runtime absolute, from `scratchpad/lemmings/lvl1.snap` (made by `drive.txt`), whose
-whole-image listing is `disassemble.py --snap <snap> --all 0x2000 0x27000`. Globals live at
+whole-image listing is `disassemble.py --snap <snap> --all 0x2000 0x27000`. That listing misses the code
+below `$2000` (it starts at `$400`: input, click dispatch, hit test); list `0x400 0x27000` for a whole-program
+claim. `A5` is `$272d4` in game code but `lvl1_a.snap` stops in the cracktro with `A5 = $c822`: set it before a `callcap`. Globals live at
 `A5 = $272d4`. Every claim below is labelled **proven** (emulator check with its count) or **read**
 (from the listing, not yet driven under `callcap`).
 
