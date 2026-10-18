@@ -138,11 +138,11 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
       <table>
         <tr><th>Probe</th><th>Result</th></tr>
         <tr><td>3 rows below clear</td><td>falls (bit 15)</td></tr>
-        <tr><td>1 to 3 rows up clear</td><td>steps up the slope</td></tr>
-        <tr><td>4 to 6 rows up clear</td><td>ledge hop (bit 13)</td></tr>
-        <tr><td>7 rows solid</td><td>wall: turn, or climb with climber set</td></tr>
+        <tr><td>a step 1 to 2 rows high</td><td>steps up at once</td></tr>
+        <tr><td>a step 3 to 6 rows high</td><td>ledge hop (bit 13), 2 rows a tick</td></tr>
+        <tr><td>a step 7 rows or more</td><td>wall: turn, or climb with climber set</td></tr>
       </table>
-      <p class="cap">All four rows read from the walker at <code>$797c</code>. The fall and the climb were driven; the step and hop thresholds were not.</p>
+      <p class="cap">Read from the walker at <code>$797c</code>; the three step rows and the fall were driven, see the step sweep below.</p>
     </div>
     <div class="panel">
       <h3>Object map</h3>
@@ -153,12 +153,32 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
         <tr><td>3</td><td>turns a lemming walking left</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>9</td><td>steel: refuses bash and mine</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>7, 8</td><td>one-way walls for bash and mine</td><td><span class="tag r">read</span></td></tr>
-        <tr><td>1</td><td>exit</td><td><span class="tag r">read</span></td></tr>
-        <tr><td>4</td><td>object contact, lemming vanishes</td><td><span class="tag r">read</span></td></tr>
-        <tr><td>5, 6</td><td>trap deaths (bits 3 and 2)</td><td><span class="tag r">read</span></td></tr>
+        <tr><td>1</td><td>exit: 8 ticks, saved count +1</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>4</td><td>lemming vanishes at once</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>5</td><td>trap death, bit 3, 16 ticks</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>6</td><td>trap death, bit 2, 14 ticks</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>$a</td><td>centre of a blocker, no effect</td><td><span class="tag p">driven</span></td></tr>
       </table>
     </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="eyebrow">Steps and objects</div><h2>How high is a step, and what the cells do</h2>
+  <p class="lede">Flat ground, a solid step of 0 to 8 rows put in front of lemming 0, one sample per tick. Then the same lemming set down on level 1's own exit, with the exit cells swapped for each other code.</p></div>
+  <div class="two">
+    <div class="panel"><h3>Step sweep</h3><div><svg id="steps" role="img" aria-label="Lemming 0 meeting a step of 0 to 8 rows" width="100%"></svg></div>
+      <p class="cap">The step is poked into the bitmap at x = 752 (an input). Dots are the lemming's y on each tick it moved; orange ticks have bit 13 set.</p></div>
+    <div class="panel"><h3>The exit and the traps</h3>
+      <table>
+        <tr><th>Cells</th><th>Lemming at x = 888</th><th></th></tr>
+        <tr><td>1</td><td>bit 1, 8 ticks, then gone; saved count 0 to 1</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>2 / 3</td><td>turns round; only one heading the matching way</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>4</td><td>vanishes, no state bit</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>5</td><td>bit 3, keeps moving 16 ticks, dead</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>6</td><td>bit 2, frozen 14 ticks, dead</td><td><span class="tag p">driven</span></td></tr>
+      </table>
+      <p class="cap">Level 1's exit is two cells at column 222, rows 33 and 34 (world x 888, y 132 to 139). The lemming is placed at x = 870 on the ground beside it (a position poke); the pen it normally paces in ends at x = 853.</p></div>
   </div>
 </section>
 
@@ -177,7 +197,7 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
 <section class="foot">
   <h3>How this was checked</h3>
   <p>Every plate comes from a snapshot of the game after level 1 starts. The skill index and count were set directly, then the pointer was aimed at lemming 0 and a click sent to the game's own handler. A control from the same snapshot, with no click or without the poked feature, is the comparison. Walls, pits and steel cells in the plates for climber, floater, basher and the steel tests were written into memory to give the skill something to meet; the level itself does not contain them.</p>
-  <p>Still read from the code only: the ledge hop, the walker's step and wall thresholds, the exit and trap cells, who calls the crater eraser, and the exact tick inside a basher or miner swing at which pixels leave. Source notes and scripts: <code>reversing/lemmings/mechanics.md</code>.</p>
+  <p>The exit and trap runs place lemming 0 beside the exit by writing its x and y, and the step sweep writes the step into the bitmap. Still open: the exact tick inside a basher or miner swing at which pixels leave, the object table behind a cell's high nibble, and the blocker's refusal test. Source notes and scripts: <code>reversing/lemmings/mechanics.md</code>.</p>
 </section>
 </main>
 
@@ -200,8 +220,8 @@ document.getElementById("rec").innerHTML = REC.map(row => '<div class="rec-row">
 
 /* state bits */
 const BITS = [
- [16,"Oh no","bomber's 16-tick shout","p"],[3,"trap","cell 5 contact, unnamed","r"],[8,"splat","fell more than 60 rows","p"],[10,"explosion","crater, releases blocker","p"],
- [15,"falling","3 rows a tick","p"],[13,"ledge hop","wall 4 to 6 rows","r"],[1,"exit","8 ticks, counts as saved","r"],[2,"trap","cell 6 contact, unnamed","r"],
+ [16,"Oh no","bomber's 16-tick shout","p"],[3,"trap","cell 5 contact, 16 ticks","p"],[8,"splat","fell more than 60 rows","p"],[10,"explosion","crater, releases blocker","p"],
+ [15,"falling","3 rows a tick","p"],[13,"ledge hop","step 3 to 6 rows","p"],[1,"exit","8 ticks, counts as saved","p"],[2,"trap","cell 6 contact, 14 ticks","p"],
  [14,"digger","1 row per ~8 ticks","p"],[12,"climbing","up a wall","p"],[11,"over the top","after the climb","p"],[9,"builder","12 bricks","p"],
  [7,"blocker","stamps cells 2, a, 3","p"],[6,"basher","32-tick swing","p"],[5,"floater","parachute open","p"],[4,"miner","24-tick swing","p"],[0,"out of bricks","after the 12th brick","p"]
 ];
@@ -244,8 +264,8 @@ const PLATES = [
   notes:["Falling is bit 15 at 3 rows a tick. A counter at +19 gains 3 each tick.","With a floater, bit 5 appears once the counter passes $10, about 6 ticks in. It lands at y = 140 and walks on.","Without one the lemming falls 64 rows, past the $3c limit, and splats: bit 8, then dead."],
   how:["pit poked in","x 752 to 767"],ctl:"Pit 64 rows deep poked into the bitmap. Control is the same snapshot with no click."},
  {i:2,name:"Bomber",bit:"16, then 10",cnt:"+26",runs:[["bomber","crater at the explosion"]],phase:[["countdown, walking",79],["Oh no",16],["explosion",52]],
-  notes:["A countdown at +21 starts at $4f and runs one a tick while the lemming keeps walking. Here it covered 79 pixels.","At zero x freezes for 16 ticks (bit 16), then bit 10 starts and a mask blitter wipes a crater in one frame: 113 pixels.","The same step releases a blocker the lemming was holding."],
-  how:["natural ground","(810, 84)"],ctl:"No terrain was poked. The window follows the lemming to x 768 to 863."},
+  notes:["A countdown at +21 starts at $4f and runs one a tick while the lemming keeps walking. Here it covered 79 pixels.","At zero x freezes for 16 ticks (bit 16), then bit 10 starts. The next frame the main loop, at <code>$55b6</code>, ANDs a 16 by 22 disc mask into the terrain at (x - 8, y - 14): 113 pixels here, all of them predicted by the mask.","It refuses on steel, an exit or a trap cell under the lemming. The same step releases a blocker the lemming was holding."],
+  how:["natural ground","(810, 84)"],ctl:"No terrain was poked. The window follows the lemming to x 768 to 863. Steel poked under it: 0 pixels cleared in 100 ticks."},
  {i:3,name:"Blocker",bit:"7",cnt:"+34",custom:"blocker",
   notes:["It stamps a 3 by 3 patch into the object map: columns 2, a, 3 on each of three rows, so two cells wide at the sides and one in the middle.","A walker whose own cell is 2 turns round if heading right; one on a 3 turns round if heading left. The blocker never moves.","The nine cells it overwrote are saved in its record and restored when it explodes or loses its ground."],
   how:["click on lemming 0","hits on $8bce, $8bdc"],ctl:"1,800,000 steps, 10 lemmings. Control: the turn handlers run 0 and 0 times. Blocker: once each."},
@@ -307,6 +327,24 @@ function blockerPanel() {
     <text x="0" y="${H - 6}"></text></svg><div class="cap">horizontal: world x · down: time, 0 to 50 ticks · lemmings 1 and 5</div></div></div>`;
 }
 blockerPanel();
+
+/* step sweep: a step of H rows, the lemming's y per tick */
+function stepSweep() {
+  const svg = document.getElementById("steps"), cw = 54, gh = 96, top = 14, base = top + gh, W = 9 * cw + 8;
+  svg.setAttribute("viewBox", `0 0 ${W} ${base + 52}`);
+  let g = "";
+  D.steps.forEach((s, H) => {
+    const ox = 4 + H * cw, u = 8, gy = base;
+    g += `<rect x="${ox}" y="${gy}" width="${cw - 6}" height="2" fill="var(--soil)"/>`;
+    if (H) g += `<rect x="${ox + 30}" y="${gy - H * u}" width="${cw - 36}" height="${H * u}" fill="var(--soil)"/>`;
+    s.ys.forEach((v, i) => { const top_ = !s.turn && H && i === s.ys.length - 1; g += `<circle cx="${ox + (top_ ? 42 : 18)}" cy="${gy - (80 - v[0]) * u - 3}" r="3.2" fill="${v[1] & 0x2000 ? "var(--cut)" : "var(--body)"}"/>`; });
+    const hops = s.ys.filter(v => v[1] & 0x2000).length;
+    const kind = s.turn ? "turns" : hops ? "hop" : H ? "step" : "flat", sub = hops ? hops + " tick" + (hops > 1 ? "s" : "") : "";
+    g += `<text x="${ox}" y="${base + 18}" style="fill:var(--ink)">H = ${H}</text><text x="${ox}" y="${base + 32}">${kind}</text><text x="${ox}" y="${base + 45}">${sub}</text>`;
+  });
+  svg.innerHTML = g;
+}
+stepSweep();
 
 /* redraw on theme change */
 const redraw = () => cards.forEach(c => c.upd());

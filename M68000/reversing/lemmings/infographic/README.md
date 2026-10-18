@@ -1,17 +1,18 @@
 # Inside Lemmings infographic
 
-`gather.py` turns the `py/skilldrive.py` runs (output under `scratchpad/lemmings/blk/<run>/frames.txt`, plus the
-blocker trajectories `outB.txt`/`outC.txt`) into `data.json`; `template.html` is the page, with `/*DATA*/` replaced by
-that JSON. Run from `M68000/`: `python3 reversing/lemmings/infographic/gather.py` (it reads and writes under
-`scratchpad/lemmings/`), then substitute the data into the template. Published as an artifact.
+`build.sh` rebuilds the page from the emulator in one step (from `M68000/`, with `scratchpad/lemmings/sel.snap` and
+`lemmings.st` in place): `runs.sh` re-runs every `py/skilldrive.py` run the plates use plus `py/stepsweep.sh` into
+`scratchpad/lemmings/info/runs/`, `blockerarms.py` writes the two blocker arms, and `gather.py` turns them into
+`data.json` and substitutes it for `/*DATA*/` in `template.html`, writing `scratchpad/lemmings/info/inside_lemmings.html`.
+The eight skill runs and both blocker arms regenerate byte for byte from `sel.snap` (the emulator is deterministic).
 
 ## Keeping it current
 
-The page is a point-in-time rendering of `mechanics.md`: its plate text, the state-bit list and the proven/read
-labels are written by hand in `template.html`, and its data comes from runs under `scratchpad/lemmings/blk/`, which
-are not committed. When a skill, a bit role or a collision claim changes, edit the matching plate, regenerate the
-data (re-run the `skilldrive.py` command for that skill, then `gather.py`) and republish the artifact (URL below) with
-the same file path so the link survives. A future step is to make the page build entirely locally: `gather.py` writing
-`inside_lemmings.html` itself, with the run commands in one script, so no hand step sits between a run and the page.
+The plate text, the state-bit list and the driven/read labels are written by hand in `template.html`; only the frames,
+the blocker trajectories and the step sweep are data. When a skill, a bit role or a collision claim changes in
+`mechanics.md`, edit the matching plate, rebuild, and republish the file with the artifact URL below so the link
+survives. The exit and trap table is static text from `py/objdrive.py` runs. Checked only in light mode at a desktop
+width; the preview pane renders local files as static light snapshots, so dark mode and phone width are unchecked
+(the new step-sweep SVG scales with its panel, so its labels shrink on a phone).
 
 Published: https://claude.ai/artifact/3M9FDun4B75R8QL7mofGaC (private; share from the page's Share menu).

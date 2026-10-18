@@ -64,4 +64,5 @@ diskless snapshot differs from HEAD in the two counter bytes only (`cmp -l`: 2 b
 | `click_digger.txt` | `lvl1_a.snap` to a digger assigned to lemming 0 (REPL script) |
 | `click_blocker.txt` | `sel.snap` to a blocker assigned to lemming 0, its object-map stamp and the two turn handlers' hit counts (REPL script) |
 | `py/skilldrive.py`, `py/terrain_diff.py` | drive a skill on lemming 0 from `sel.snap` and print/diff the terrain bitmap window (basher, miner; `--wall`, `--cells` poke terrain and object-map cells) |
+| `py/objdrive.py`, `py/stepsweep.sh` | object-map cell codes (exit, traps, reversals) on lemming 0 beside level 1's exit; the walker's step, hop and wall thresholds by step height |
 | `infographic/` | `gather.py` + `template.html` build the "Inside Lemmings" artifact from the `skilldrive.py` runs; it is a snapshot of `mechanics.md` and goes stale when that changes (`infographic/README.md`) |

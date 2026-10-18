@@ -16,7 +16,7 @@ ap.add_argument('--rows', type=int, default=40); ap.add_argument('--snap', defau
 ap.add_argument('--noclick', action='store_true')
 ap.add_argument('--cells', default='', help='c0,r0,r1,val: poke object-map cells (8 columns from c0, rows r0..r1) to val (one byte, e.g. 9 steel)')
 ap.add_argument('--wallval', default='ffffffff', help='longword poked by --wall (00000000 clears instead of fills)')
-ap.add_argument('--wall', default='', help='gx0,gx1,y0,y1: fill the 16-px groups gx0..gx1 (plane 0 and 1 words) for rows y0..y1 before the run')
+ap.add_argument('--wall', action='append', default=[], help='gx0,gx1,y0,y1[,val]: fill (or, with val 00000000, clear) the 16-px groups gx0..gx1 for rows y0..y1 before the run; repeatable, applied in order')
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
 g0 = a.x0 // 16
@@ -26,11 +26,13 @@ def dump_cmds():
         c.append('m %x 48' % (0x41806 + (a.y0 + r) * 0x330 + g0 * 8))
     return c
 s = []
-if a.wall:
-    gx0, gx1, wy0, wy1 = map(int, a.wall.split(','))
+for spec in a.wall:
+    f = spec.split(',')
+    gx0, gx1, wy0, wy1 = map(int, f[:4])
+    val = f[4] if len(f) > 4 else a.wallval
     for y in range(wy0, wy1 + 1):
         for gx in range(gx0, gx1 + 1):
-            s.append('w %x %s' % (0x41806 + y * 0x330 + gx * 8, a.wallval))
+            s.append('w %x %s' % (0x41806 + y * 0x330 + gx * 8, val))
 if a.cells:
     c0, cr0, cr1, cv = map(lambda t: int(t, 0), a.cells.split(','))
     for r in range(cr0, cr1 + 1):
