@@ -51,21 +51,21 @@ bit each click sets, and the handler body. **Proven** means driven in the emulat
 |---|---|---|---|
 | 1 | 16 | `$8064` | the 16-frame "Oh no" phase after the bomber countdown: sound at frame 5, `bsr $8134` at the end turns it into bit 10 (**proven** transition below) |
 | 2 | 3 | `$8a62` | probes terrain a lemming-width ahead (`8(A0)*8`): unnamed |
-| 3 | 8 | `$81ba` | 16 frames then `st 24(A0)` (record dead): read as a splat or similar death |
+| 3 | 8 | `$81ba` | splat: 16 ticks, then `st 24(A0)` (record dead): **proven** (floater control below) |
 | 4 | 10 | `$8156` | the explosion: frame 1 plays sound `$14` and releases a blocker (`bclr #7`, `bsr $8a06`: **proven**), dead at frame `$34` |
-| 5 | 15 | `$7a9a` | fall (set by the walker `$797c` when 4 rows below are clear; 4-frame cycle): read |
-| 6 | 13 | `$801c` | ledge hop: the walker `$7a88` sets it when the wall in front is 4 to 6 rows high (read) |
+| 5 | 15 | `$7a9a` | fall: **proven**, 3 rows a tick (below) |
+| 6 | 13 | `$801c` | ledge hop: the walker `$7a88` sets it when the wall in front is 4 to 6 rows high (read, not observed) |
 | 7 | 1 | `$8aca` | 8 frames, then `addq.w #1,20(A3)` and the record dies: read as the exit (the saved counter at `$26c18`) |
 | 8 | 2 | `$8b5c` | 14 frames then dead: a trap death, unnamed |
 | 9 | 14 | `$8850` | **digger, proven** (below) |
-| 10 | 12 | `$86f2` | climber: `$8194` sets it from the walker when a wall 7 rows high blocks a lemming with `+22` set (read) |
-| 11 | 11 | `$880a` | unnamed |
-| 12 | 9 | `$851c` | builder: `$1d6e` sets bit 9 (read) |
+| 10 | 12 | `$86f2` | **climbing, proven** (below) |
+| 11 | 11 | `$880a` | over the top of a wall, after the climb: **proven** transition (below) |
+| 12 | 9 | `$851c` | **builder, proven** (below) |
 | 13 | 7 | `$89a4` | **blocker, proven** ("Collisions" below) |
 | 14 | 6 | `$81d0` | **basher, proven** ("Basher and miner" below) |
-| 15 | 5 | `$7f06` | unnamed |
+| 15 | 5 | `$7f06` | floating (floater's open parachute): **proven** (below) |
 | 16 | 4 | `$7b88` | **miner, proven** ("Basher and miner" below) |
-| 17 | 0 | `$86be` | unnamed |
+| 17 | 0 | `$86be` | the builder's "out of bricks" shrug before it walks on: observed after the 12th brick (below) |
 | none | : | `$797c` | walk |
 
 ## Skill assignment (the click path)
@@ -172,8 +172,33 @@ four cycles the lemming is at (750, 86): +4 columns and +2 rows a cycle, i.e. a 
 rows in the dumped bitmap, rows 76 to 85, about 9 rows tall). **Proven for steel:** with the same poke the
 miner stops and turns at x = 736 in the first cycle; without it the run above goes on to x = 750.
 
+## The other skills (all driven from `sel.snap` with `py/skilldrive.py`, one tick = 36,000 steps)
+
+Each run pokes the skill index and count (the click path is proven), clicks lemming 0, and dumps the bitmap window.
+Where a control is named it is the same snapshot with `--noclick`. Pokes of terrain (`--wall`, `--wallval 0`) are
+inputs, not findings, and are named in each line.
+
+- **Builder** (index 4, count `$26c24`): `+14 = $200` (bit 9). The hill ahead of lemming 0 refuses it at once (it
+  turned round after one tick, the head-clearance tests at `$85d0`/`$8602`), so rows 70 to 75 of groups 45 to 49
+  were cleared first. Then 12 bricks (`20(A0)` counts `$c` down), a brick every 16 ticks: 6 pixels set per brick (72 set in all), the lemming climbing
+  one row and two columns per brick, (732, 76) to (756, 64), then bit 0 (`$86be`, the shrug) when the count runs out.
+  A solid pixel in front at head height, or one three cells ahead, ends the stair early (`$866a`: turn round).
+- **Climber** (index 0, count `$26c22`): against a 19-row wall (`--wall 46,48,56,74`, face at x = 736) the walker
+  reaches x = 736 and `+14` becomes `$1000` (bit 12): y 75 to 58 over about 28 ticks, then `$800` (bit 11) for the
+  pull-over (y 58 to 56), then `+14 = 0` and it walks on along the top at 1 pixel a tick.
+- **Floater** (index 1, count `$26c2a`): a pit (`--wall 47,47,76,139 --wallval 00000000`, x 752 to 767, rows 76 to 139)
+  makes lemming 0 fall: `+14 = $8000` (bit 15), 3 rows a tick, `19(A0)` counting up by 3. With the floater, bit 5 (`$20`)
+  appears about 6 ticks later (y 79 to 97, `19(A0) > $10`), the fall slows to about 2 rows a tick, it lands at y = 140 with
+  `+14 = 0` and walks on. Control (no click): the fall continues at 3 rows a tick, lands at y = 140 with `+14 = $8100`
+  (bits 15 and 8: the splat) and the record is dead (`+24`), 64 rows fallen.
+- **Bomber** (index 2, count `$26c1e`): `21(A0)` counts down from `$4f` once a tick while the lemming keeps walking
+  (731 to 810 in 79 ticks). At zero `+14 = $10000` (bit 16) for 16 ticks with x frozen (the "Oh no"), then `$400` (bit 10).
+  The crater is erased at that change: 113 pixels in one sample (a bowl about 19 pixels wide and 8 rows deep under the feet at
+  (810, 84)); the writer is a mask-AND blitter (`$aae8` to `$ac70`, a `watch` on a crater byte stops at pc `$ac60`; its
+  caller is not identified). The record stays in bit 10 for 52 ticks, then it is dead (`$8156`).
+- **Digger** and **blocker**: above.
+
 ## Still open
 
-Names for bits 0, 2, 3, 5, 8, 11 beyond the readings above; the builder (bit 9, the `$851c` stair) and the climber and floater are undriven; the
-terrain thresholds (step, ledge, wall, fall, splat) are read, not driven; the exact basher and miner erase ticks need a per-tick (`watch`) trace, the diff only brackets them; the cell codes 1, 4, 5, 6 need their level objects (exit, traps) driven; the blocker's
+Names for bits 0, 2, 3, 5, 8, 11 beyond the readings above; the ledge hop (bit 13) is read, not observed; the step and wall thresholds of the walker are read; the crater caller and mask are unidentified; the exact basher and miner erase ticks need a per-tick (`watch`) trace, the diff only brackets them; the cell codes 1, 4, 5, 6 need their level objects (exit, traps) driven; the blocker's
 refusal test (`$1b60`-`$1b94`, cells with codes 1, 2, 3, `$a` under the target) and the ground-loss release.

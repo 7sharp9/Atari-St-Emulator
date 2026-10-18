@@ -15,6 +15,7 @@ ap.add_argument('--x0', type=int, default=688); ap.add_argument('--y0', type=int
 ap.add_argument('--rows', type=int, default=40); ap.add_argument('--snap', default='scratchpad/lemmings/sel.snap')
 ap.add_argument('--noclick', action='store_true')
 ap.add_argument('--cells', default='', help='c0,r0,r1,val: poke object-map cells (8 columns from c0, rows r0..r1) to val (one byte, e.g. 9 steel)')
+ap.add_argument('--wallval', default='ffffffff', help='longword poked by --wall (00000000 clears instead of fills)')
 ap.add_argument('--wall', default='', help='gx0,gx1,y0,y1: fill the 16-px groups gx0..gx1 (plane 0 and 1 words) for rows y0..y1 before the run')
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
@@ -29,7 +30,7 @@ if a.wall:
     gx0, gx1, wy0, wy1 = map(int, a.wall.split(','))
     for y in range(wy0, wy1 + 1):
         for gx in range(gx0, gx1 + 1):
-            s.append('w %x ffffffff' % (0x41806 + y * 0x330 + gx * 8))
+            s.append('w %x %s' % (0x41806 + y * 0x330 + gx * 8, a.wallval))
 if a.cells:
     c0, cr0, cr1, cv = map(lambda t: int(t, 0), a.cells.split(','))
     for r in range(cr0, cr1 + 1):
