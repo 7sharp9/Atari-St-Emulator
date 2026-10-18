@@ -46,6 +46,9 @@ know they existed.
   pattern and silently falls through to a disk-less cold boot that sits forever in an early ROM wait
   loop. That looks exactly like a stuck or corrupt snapshot (blank `snap_render.py` output, a `bpc`
   that never hits); check the argv against the switch block first.
+- **`resume <snap>` does not remount the disk: pass `--disk-a` again.** Without it every FDC read logs
+  `no data` (Record Not Found) and a custom loader fails with its own timeout screen, which reads as an
+  emulator FDC bug (Lemmings' `$70000` loader).
 - **Another Claude session is often working in this checkout.** Before `taskkill` on dotnet,
   `dotnet build`, or editing a file with uncommitted changes you did not make, check
   (`git status`, `tasklist | grep dotnet`, `ListAgents`) and ask: message a live session with
