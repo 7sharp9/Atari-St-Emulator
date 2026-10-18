@@ -1,0 +1,315 @@
+<title>Inside Lemmings</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+/* Layout: a specimen sheet. Header facts, the record, two collision layers, eight skill plates with scrubbable terrain, the state-bit map. */
+:root {
+  --bg: #e9eff2; --surface: #fbfdfe; --ink: #12202c; --muted: #546576; --line: #c5d3db;
+  --sky: #d3e6f2; --soil: #8b6844; --soil-top: #b08a5d; --cut: #e0480f; --add: #d99a00;
+  --hair: #1f9d3a; --body: #2755d1; --proof: #1f9d3a; --read: #a8601a;
+  --f-display: "Pixelify Sans", "Courier New", monospace;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1620; --surface: #142230; --ink: #e5eef4; --muted: #92a5b4; --line: #27394a;
+  --sky: #1b3043; --soil: #a8825a; --soil-top: #c9a374; --cut: #ff8a4c; --add: #ffd43b;
+  --hair: #59d36f; --body: #7aa2ff; --proof: #59d36f; --read: #e8a35a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0d1620; --surface: #142230; --ink: #e5eef4; --muted: #92a5b4; --line: #27394a;
+  --sky: #1b3043; --soil: #a8825a; --soil-top: #c9a374; --cut: #ff8a4c; --add: #ffd43b;
+  --hair: #59d36f; --body: #7aa2ff; --proof: #59d36f; --read: #e8a35a; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 56px }
+main { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: .01em }
+h1 { font-size: clamp(38px, 7vw, 68px); line-height: 1 }
+h2 { font-size: clamp(24px, 3.4vw, 32px); line-height: 1.1 }
+h3 { font-size: 24px; line-height: 1.1 }
+p { margin: 0 }
+.lede { max-width: 62ch; color: var(--muted); font-size: 17px }
+.mono, code { font-family: var(--f-mono); font-size: .88em }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted) }
+section { display: flex; flex-direction: column; gap: 20px; min-width: 0 }
+.sec-head { display: flex; flex-direction: column; gap: 8px; max-width: 70ch }
+
+.hero { display: flex; flex-direction: column; gap: 22px }
+.hero h1 span { color: var(--hair) }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px }
+.fact { background: var(--surface); border: 1px solid var(--line); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0 }
+.fact b { font-family: var(--f-display); font-size: 34px; line-height: 1; font-weight: 700 }
+.fact span { color: var(--muted); font-size: 13px }
+
+.scroll-x { overflow-x: auto; max-width: 100% }
+.rec { display: flex; flex-direction: column; gap: 4px; min-width: 760px }
+.rec-row { display: grid; grid-template-columns: repeat(22, 1fr); gap: 3px }
+.f { min-height: 54px; padding: 6px 7px; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between;
+  font-family: var(--f-mono); font-size: 11px; line-height: 1.25; min-width: 0; overflow: hidden }
+.f small { color: var(--muted); font-size: 10px }
+.f.k { border-color: var(--hair); box-shadow: inset 0 -3px 0 var(--hair) }
+.f.u { border-style: dashed; color: var(--muted) }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 13px }
+.sw { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--line); background: var(--surface) }
+.sw.k { border-color: var(--hair); background: var(--hair) }
+.sw.u { border-style: dashed }
+
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px }
+.panel { background: var(--surface); border: 1px solid var(--line); padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+.panel h3 { font-size: 20px }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em }
+th, td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top }
+td:first-child { font-family: var(--f-mono); white-space: nowrap }
+.tag { display: inline-block; font-family: var(--f-mono); font-size: 11px; padding: 1px 7px; border: 1px solid currentColor; border-radius: 2px; white-space: nowrap }
+.tag.p { color: var(--proof) } .tag.r { color: var(--read) }
+
+.plates { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 20px }
+.plate { background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0 }
+.plate header { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap }
+.idx { font-family: var(--f-display); font-size: 40px; line-height: 1; width: 44px; height: 44px; display: grid; place-items: center; background: var(--hair); color: var(--bg) }
+.plate header h3 { flex: 1 1 auto }
+.chips { display: flex; gap: 6px; flex-wrap: wrap }
+.chip { font-family: var(--f-mono); font-size: 11.5px; padding: 2px 8px; border: 1px solid var(--line); color: var(--muted) }
+.chip b { color: var(--ink); font-weight: 500 }
+.stage { display: flex; gap: 10px; padding: 14px 16px 6px; flex-wrap: wrap }
+.cv { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 4px }
+.cv canvas { width: 100%; height: auto; display: block; image-rendering: pixelated; border: 1px solid var(--line); background: var(--sky) }
+.cv figcaption, .cap { font-family: var(--f-mono); font-size: 11px; color: var(--muted) }
+figure { margin: 0 }
+.ctl { display: flex; align-items: center; gap: 10px; padding: 8px 16px 0 }
+.ctl button { font-family: var(--f-mono); font-size: 12px; padding: 5px 12px; border: 1px solid var(--ink); background: var(--surface); color: var(--ink); cursor: pointer }
+.ctl button:hover { background: var(--ink); color: var(--bg) }
+.ctl input[type=range] { flex: 1; min-width: 0; accent-color: var(--hair) }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--body); outline-offset: 2px }
+.read { padding: 8px 16px 12px; font-family: var(--f-mono); font-size: 12px; min-height: 2.6em; color: var(--ink) }
+.read em { font-style: normal; color: var(--hair); font-weight: 500 }
+.phase { display: flex; height: 18px; margin: 0 16px 12px; border: 1px solid var(--line); position: relative; font-family: var(--f-mono); font-size: 10px }
+.phase div { display: flex; align-items: center; padding-left: 6px; overflow: hidden; white-space: nowrap; border-right: 1px solid var(--line) }
+.phase i { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--cut) }
+.notes { list-style: none; margin: 0; padding: 12px 16px 4px; display: flex; flex-direction: column; gap: 7px; border-top: 1px solid var(--line); font-size: 14px }
+.notes li { padding-left: 14px; position: relative }
+.notes li::before { content: ""; position: absolute; left: 0; top: .6em; width: 6px; height: 6px; background: var(--hair) }
+.how { margin-top: auto; padding: 10px 16px 14px; color: var(--muted); font-size: 12.5px; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline }
+
+.bits { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px }
+.bit { background: var(--surface); border: 1px solid var(--line); padding: 8px 10px; min-width: 0; display: flex; flex-direction: column; gap: 2px }
+.bit b { font-family: var(--f-mono); font-weight: 500; font-size: 12px; color: var(--muted) }
+.bit span { font-size: 13.5px }
+.bit.p { border-color: var(--proof) }
+.bit.r { border-style: dashed }
+.bit i { font-style: normal; font-family: var(--f-mono); font-size: 10.5px; color: var(--muted) }
+.cells { display: inline-grid; grid-template-columns: repeat(3, 44px); gap: 3px }
+.cells div { height: 44px; display: grid; place-items: center; background: var(--sky); border: 1px solid var(--line); font-family: var(--f-mono); font-size: 18px }
+.cells div.c2 { color: var(--cut) } .cells div.ca { color: var(--muted) } .cells div.c3 { color: var(--body) }
+svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
+.foot { color: var(--muted); font-size: 13.5px; max-width: 78ch; display: flex; flex-direction: column; gap: 8px }
+@media (max-width: 560px) { .idx { width: 38px; height: 38px; font-size: 32px } }
+</style>
+
+<main>
+<section class="hero">
+  <div class="eyebrow">Atari ST, Psygnosis 1991 · read from the running game</div>
+  <h1>Inside <span>Lemmings</span></h1>
+  <p class="lede">Every skill in the game is a bit in one 32-bit word, and every collision is one of two lookups: a one-bit terrain bitmap or a map of 4-pixel cells. We booted the original disk in an emulator, handed lemming 0 each skill, and watched what the memory did.</p>
+  <div class="facts">
+    <div class="fact"><b>44</b><span>bytes per lemming record, up to 10 live in level 1</span></div>
+    <div class="fact"><b>17</b><span>state bits; the highest-priority set bit picks the handler</span></div>
+    <div class="fact"><b>36,000</b><span>CPU steps per game tick (3 video frames)</span></div>
+    <div class="fact"><b>8 / 8</b><span>skills driven in the emulator, most against a control</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="eyebrow">The record</div><h2>One lemming is 44 bytes</h2>
+  <p class="lede">The array starts at <code>$23484</code>. Each tick a loop at <code>$7802</code> loads x, y and the state word, tests the bits in a fixed order, and jumps to that bit's handler. A word of zero means walk.</p></div>
+  <div class="scroll-x"><div class="rec" id="rec"></div></div>
+  <div class="legend"><span><i class="sw k"></i>field used by a skill or a collision we drove</span><span><i class="sw"></i>read from the code</span><span><i class="sw u"></i>role not yet established</span></div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="eyebrow">Two ways to collide</div><h2>The ground is a bitmap, everything else is a cell</h2>
+  <p class="lede">Walking, falling, digging and bashing all test or edit the terrain bitmap. Walls for turning, exits, traps and steel live in a separate map, checked after every move.</p></div>
+  <div class="two">
+    <div class="panel">
+      <h3>Terrain bitmap</h3>
+      <p>One bit per pixel, plane 0 of the level image at <code>$41806</code>, row stride <code>$330</code>. Set means solid. The walker reads the pixel it stands on, then looks down and up from there.</p>
+      <table>
+        <tr><th>Probe</th><th>Result</th></tr>
+        <tr><td>3 rows below clear</td><td>falls (bit 15)</td></tr>
+        <tr><td>1 to 3 rows up clear</td><td>steps up the slope</td></tr>
+        <tr><td>4 to 6 rows up clear</td><td>ledge hop (bit 13)</td></tr>
+        <tr><td>7 rows solid</td><td>wall: turn, or climb with climber set</td></tr>
+      </table>
+      <p class="cap">All four rows read from the walker at <code>$797c</code>. The fall and the climb were driven; the step and hop thresholds were not.</p>
+    </div>
+    <div class="panel">
+      <h3>Object map</h3>
+      <p>One byte per 4 by 4 pixels, <code>$62f80</code>, stride <code>$198</code>. After every update, <code>$8b6e</code> reads the cell under the lemming and acts on its low nibble.</p>
+      <table>
+        <tr><th>Code</th><th>Effect</th><th></th></tr>
+        <tr><td>2</td><td>turns a lemming walking right</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>3</td><td>turns a lemming walking left</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>9</td><td>steel: refuses bash and mine</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>7, 8</td><td>one-way walls for bash and mine</td><td><span class="tag r">read</span></td></tr>
+        <tr><td>1</td><td>exit</td><td><span class="tag r">read</span></td></tr>
+        <tr><td>4</td><td>object contact, lemming vanishes</td><td><span class="tag r">read</span></td></tr>
+        <tr><td>5, 6</td><td>trap deaths (bits 3 and 2)</td><td><span class="tag r">read</span></td></tr>
+        <tr><td>$a</td><td>centre of a blocker, no effect</td><td><span class="tag p">driven</span></td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="eyebrow">The eight skills</div><h2>What each one does to the world</h2>
+  <p class="lede">Each plate replays a real run: the pixels are the game's own terrain bitmap, sampled from the emulator. Orange marks terrain the skill removed, gold marks terrain it added. Drag the slider or press play.</p></div>
+  <div class="plates" id="plates"></div>
+</section>
+
+<section>
+  <div class="sec-head"><div class="eyebrow">The state word</div><h2>Seventeen bits, in priority order</h2>
+  <p class="lede">When several bits are set, the one nearest the top of this list runs. A solid outline means we watched the bit set and its handler move the lemming; a dashed one is read from the code or unnamed.</p></div>
+  <div class="bits" id="bits"></div>
+</section>
+
+<section class="foot">
+  <h3>How this was checked</h3>
+  <p>Every plate comes from a snapshot of the game after level 1 starts. The skill index and count were set directly, then the pointer was aimed at lemming 0 and a click sent to the game's own handler. A control from the same snapshot, with no click or without the poked feature, is the comparison. Walls, pits and steel cells in the plates for climber, floater, basher and the steel tests were written into memory to give the skill something to meet; the level itself does not contain them.</p>
+  <p>Still read from the code only: the ledge hop, the walker's step and wall thresholds, the exit and trap cells, who calls the crater eraser, and the exact tick inside a basher or miner swing at which pixels leave. Source notes and scripts: <code>reversing/lemmings/mechanics.md</code>.</p>
+</section>
+</main>
+
+<script>
+const D = /*DATA*/;
+const BITN = {16:"Oh no",15:"falling",14:"digging",13:"ledge hop",12:"climbing",11:"over the top",10:"exploding",9:"building",8:"splat",7:"blocking",6:"bashing",5:"floating",4:"mining",1:"exit",0:"out of bricks",3:"trap",2:"trap"};
+const hex = n => "$" + n.toString(16);
+
+/* record */
+const REC = [
+ [[2,"x"],[2,"y"],[2,"hot x"],[2,"hot y"],[2,"dir","±1"],[2,"frame"],[2,"?",0,"u"],[4,"state mask","+14","k"],[1,"?",0,"u"],[1,"fall","+19","k"],[1,"bricks","+20","k"],[1,"bomb","+21","k"]],
+ [[1,"clmb","+22","k"],[1,"flt","+23","k"],[1,"dead","+24","k"],[1,"cell","+25","k"],[1,"ahd","+26","k"],[9,"cells saved by a blocker","+27..35","k"],[1,"dir","+36"],[1,"?",0,"u"],[4,"animation pointer","+38"],[2,"?","+42","u"]]
+];
+let off = 0;
+document.getElementById("rec").innerHTML = REC.map(row => '<div class="rec-row">' + row.map(f => {
+  const o = off; off += f[0];
+  const lab = f[1] === "x" ? "x" : f[1];
+  return `<div class="f ${f[3] || ""}" style="grid-column:span ${f[0]}" title="+${o}: ${f[1]}"><span>${lab}</span><small>${f[2] === 0 || f[2] === undefined ? "+" + o : f[2]}</small></div>`;
+}).join("") + "</div>").join("");
+
+/* state bits */
+const BITS = [
+ [16,"Oh no","bomber's 16-tick shout","p"],[3,"trap","cell 5 contact, unnamed","r"],[8,"splat","fell more than 60 rows","p"],[10,"explosion","crater, releases blocker","p"],
+ [15,"falling","3 rows a tick","p"],[13,"ledge hop","wall 4 to 6 rows","r"],[1,"exit","8 ticks, counts as saved","r"],[2,"trap","cell 6 contact, unnamed","r"],
+ [14,"digger","1 row per ~8 ticks","p"],[12,"climbing","up a wall","p"],[11,"over the top","after the climb","p"],[9,"builder","12 bricks","p"],
+ [7,"blocker","stamps cells 2, a, 3","p"],[6,"basher","32-tick swing","p"],[5,"floater","parachute open","p"],[4,"miner","24-tick swing","p"],[0,"out of bricks","after the 12th brick","p"]
+];
+document.getElementById("bits").innerHTML = BITS.map((b, i) => `<div class="bit ${b[3]}"><b>${i + 1}. bit ${b[0]} · ${hex(1 << b[0])}</b><span>${b[1]}</span><i>${b[2]}</i></div>`).join("");
+
+/* canvases */
+const S = 4;
+function tokens() { const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+  return {sky: g("--sky"), soil: g("--soil"), top: g("--soil-top"), cut: g("--cut"), add: g("--add"), hair: g("--hair"), body: g("--body"), ink: g("--ink")}; }
+function stateName(s) {
+  if (!s) return "walking";
+  const n = []; for (const b of [16,15,14,13,12,11,10,9,8,7,6,5,4,1,0,2,3]) if (s & (1 << b)) n.push(BITN[b] + " (bit " + b + ")");
+  return n.join(" + ");
+}
+function drawRun(cv, run, fi, T) {
+  const c = cv.getContext("2d"), W = run.W, H = run.H, f = run.frames[fi];
+  c.fillStyle = T.sky; c.fillRect(0, 0, W * S, H * S);
+  const cur = new Uint8Array(W * H), tag = new Uint8Array(W * H);
+  for (let r = 0; r < H; r++) for (let q = 0; q < W; q++) cur[r * W + q] = run.base[r][q] === "#" ? 1 : 0;
+  for (const [q, r, v] of f.diff) { const i = r * W + q; if (v) { cur[i] = 1; tag[i] = 2; } else { cur[i] = 0; tag[i] = 1; } }
+  for (let r = 0; r < H; r++) for (let q = 0; q < W; q++) {
+    const i = r * W + q;
+    if (tag[i] === 1) { c.globalAlpha = .55; c.fillStyle = T.cut; c.fillRect(q * S, r * S, S, S); c.globalAlpha = 1; }
+    else if (cur[i]) { c.fillStyle = tag[i] === 2 ? T.add : (r > 0 && !cur[i - W] ? T.top : T.soil); c.fillRect(q * S, r * S, S, S); }
+  }
+  c.fillStyle = T.ink; c.globalAlpha = .28;
+  for (let k = 0; k <= fi; k++) { const g = run.frames[k]; c.fillRect((g.x - run.x0) * S, (g.y - run.y0 - 4) * S, S, S); }
+  c.globalAlpha = 1;
+  const lx = (f.x - run.x0) * S, ly = (f.y - run.y0) * S, dead = false;
+  c.fillStyle = T.body; c.fillRect(lx - 2 * S, ly - 6 * S, 4 * S, 6 * S);       // body
+  c.fillStyle = T.ink; c.fillRect(lx - S, ly - 8 * S, 2 * S + 1, 2 * S);          // head
+  c.fillStyle = T.hair; c.fillRect(lx - 2 * S, ly - 10 * S, 4 * S, 2 * S);        // hair
+}
+
+const PLATES = [
+ {i:0,name:"Climber",bit:"12, then 11",cnt:"+30",runs:[["climber","wall 19 rows high"]],
+  notes:["Walking into a wall the climber sets bit 12: 17 rows up in about 28 ticks, then bit 11 for the last two rows over the edge.","Then the state clears and it walks along the top at one pixel a tick.","Without the climber flag a wall that high turns the lemming round (read from the walker, not run)."],
+  how:["wall poked in","x = 736 face"],ctl:"Wall of 19 rows poked into the bitmap at x 736 to 783."},
+ {i:1,name:"Floater",bit:"5",cnt:"+38",runs:[["floater","with floater"],["floater_ctl","no click"]],
+  notes:["Falling is bit 15 at 3 rows a tick. A counter at +19 gains 3 each tick.","With a floater, bit 5 appears once the counter passes $10, about 6 ticks in. It lands at y = 140 and walks on.","Without one the lemming falls 64 rows, past the $3c limit, and splats: bit 8, then dead."],
+  how:["pit poked in","x 752 to 767"],ctl:"Pit 64 rows deep poked into the bitmap. Control is the same snapshot with no click."},
+ {i:2,name:"Bomber",bit:"16, then 10",cnt:"+26",runs:[["bomber","crater at the explosion"]],phase:[["countdown, walking",79],["Oh no",16],["explosion",52]],
+  notes:["A countdown at +21 starts at $4f and runs one a tick while the lemming keeps walking. Here it covered 79 pixels.","At zero x freezes for 16 ticks (bit 16), then bit 10 starts and a mask blitter wipes a crater in one frame: 113 pixels.","The same step releases a blocker the lemming was holding."],
+  how:["natural ground","(810, 84)"],ctl:"No terrain was poked. The window follows the lemming to x 768 to 863."},
+ {i:3,name:"Blocker",bit:"7",cnt:"+34",custom:"blocker",
+  notes:["It stamps a 3 by 3 patch into the object map: columns 2, a, 3 on each of three rows, so two cells wide at the sides and one in the middle.","A walker whose own cell is 2 turns round if heading right; one on a 3 turns round if heading left. The blocker never moves.","The nine cells it overwrote are saved in its record and restored when it explodes or loses its ground."],
+  how:["click on lemming 0","hits on $8bce, $8bdc"],ctl:"1,800,000 steps, 10 lemmings. Control: the turn handlers run 0 and 0 times. Blocker: once each."},
+ {i:4,name:"Builder",bit:"9",cnt:"+32",runs:[["builder","12 bricks"]],
+  notes:["A brick every 16 ticks, 6 pixels wide, twelve in all: 72 pixels laid.","Each brick lifts the lemming one row and two columns: from (732, 76) to (756, 64).","Anything solid at head height ahead ends it early and turns the lemming; after the 12th brick it sets bit 0, shrugs, and walks on."],
+  how:["hill cleared","rows 70 to 75"],ctl:"A hill in front refused the skill at once, so rows 70 to 75 ahead were cleared in the bitmap first."},
+ {i:5,name:"Basher",bit:"6",cnt:"+36",runs:[["basher","into a wall"]],
+  notes:["A 32-tick cycle in two halves. Each half erases a mask frame, then moves 5 pixels forward, one a tick.","The tunnel is body height. Against open ground it swings once and gives up.","Steel (cell 9) two cells ahead stops it and turns the lemming: x = 735 against 742 and still going in the control."],
+  how:["wall poked in","x 736 to 783"],ctl:"Solid wall poked in from x = 736. Steel test: cells 186 to 193 set to 9."},
+ {i:6,name:"Miner",bit:"4",cnt:"+40",runs:[["miner","40 ticks"]],
+  notes:["A 24-tick cycle. Two mask frames erase the diagonal, and the lemming steps forward and down between them.","Each cycle moves 4 columns right and 2 rows down: a 2 to 1 slope, 17 columns for 9 rows in the dump.","Steel stops it at the first cycle (x = 736); the control runs on to x = 750."],
+  how:["natural ground","(734, 78) to (750, 86)"],ctl:"No terrain poked for the main run. Steel test: cells 186 to 193 set to 9."},
+ {i:7,name:"Digger",bit:"14",cnt:"+28",runs:[["digger","straight down"]],
+  notes:["Straight down at about one row every 8 ticks: 7 rows in 59 ticks here.","The click sets bit 14; x stays at 732 for the whole run.","Nine other lemmings in the same run kept a state of zero."],
+  how:["natural ground","x = 732 throughout"],ctl:"No terrain poked."}
+];
+
+const root = document.getElementById("plates"), cards = [];
+for (const p of PLATES) {
+  const el = document.createElement("article"); el.className = "plate";
+  let stage = "";
+  if (p.custom) stage = '<div class="stage"><div class="cv" id="blk"></div></div>';
+  else stage = '<div class="stage">' + p.runs.map((r, k) => `<figure class="cv"><canvas width="${D[r[0]].W * S}" height="${D[r[0]].H * S}" data-run="${r[0]}"></canvas><figcaption>${r[1]} · x ${D[r[0]].x0}…${D[r[0]].x0 + D[r[0]].W - 1}, y ${D[r[0]].y0}…${D[r[0]].y0 + D[r[0]].H - 1}</figcaption></figure>`).join("") + "</div>";
+  const phase = p.phase ? '<div class="phase">' + p.phase.map((s, k) => `<div style="flex:${s[1]};${k ? "" : ""}">${s[0]}</div>`).join("") + '<i style="left:0"></i></div>' : "";
+  el.innerHTML = `<header><div class="idx">${p.i}</div><h3>${p.name}</h3><div class="chips"><span class="chip">state <b>bit ${p.bit}</b></span><span class="chip">count <b>${p.cnt}</b></span></div></header>`
+    + stage + (p.custom ? "" : `<div class="ctl"><button type="button">play</button><input type="range" min="0" value="0" aria-label="${p.name} timeline"></div><div class="read" aria-live="off"></div>`) + phase
+    + `<ul class="notes">${p.notes.map(n => "<li>" + n + "</li>").join("")}</ul><div class="how"><span class="tag p">driven</span><span>${p.ctl}</span></div>`;
+  root.appendChild(el);
+  if (!p.custom) {
+    const run = D[p.runs[0][0]], n = run.frames.length, sl = el.querySelector("input"), rd = el.querySelector(".read"), pb = el.querySelector("button");
+    sl.max = n - 1; sl.value = n - 1;
+    const card = {p, el, sl, rd, pb, cvs: [...el.querySelectorAll("canvas")], n};
+    cards.push(card);
+    const upd = () => { const T = tokens(), fi = +sl.value; card.cvs.forEach(cv => { const r = D[cv.dataset.run]; drawRun(cv, r, Math.min(fi, r.frames.length - 1), T); });
+      const f = run.frames[fi]; rd.innerHTML = `tick <em>${f.tick}</em> · lemming 0 at (${f.x}, ${f.y}) · ${stateName(f.s)}` + (p.runs[1] ? ` · control: ${stateName(D[p.runs[1][0]].frames[Math.min(fi, D[p.runs[1][0]].frames.length - 1)].s)}` : "");
+      const ph = el.querySelector(".phase i"); if (ph) { const tot = p.phase.reduce((a, s) => a + s[1], 0); ph.style.left = Math.min(100, f.tick / tot * 100) + "%"; } };
+    card.upd = upd; sl.addEventListener("input", upd);
+    let timer = null;
+    pb.addEventListener("click", () => { if (timer) { clearInterval(timer); timer = null; pb.textContent = "play"; return; }
+      if (+sl.value >= n - 1) sl.value = 0; pb.textContent = "pause";
+      timer = setInterval(() => { sl.value = +sl.value + 1; upd(); if (+sl.value >= n - 1) { clearInterval(timer); timer = null; pb.textContent = "play"; } }, 90); });
+    upd();
+  }
+}
+
+/* blocker panel: the stamp and the two trajectories */
+function blockerPanel() {
+  const el = document.getElementById("blk"), W = 520, H = 170, x0 = 690, x1 = 780, tmax = 30 * 60000 / 36000;
+  const px = x => 34 + (x - x0) / (x1 - x0) * (W - 44), py = t => 14 + t / tmax * (H - 34);
+  const lines = (arm, col) => ["l1", "l5"].map(k => `<polyline fill="none" stroke="${col}" stroke-width="2" points="${D.blocker[arm][k].map((x, i) => px(x) + "," + py(i * 60000 / 36000)).join(" ")}"/>`).join("");
+  const panel = (arm, title, ox) => `<g transform="translate(${ox},0)"><text x="34" y="9">${title}</text>
+    ${arm === "blocker" ? `<rect x="${px(728)}" y="14" width="${px(740) - px(728)}" height="${H - 34}" fill="var(--cut)" opacity=".16"/>` : ""}
+    <line x1="34" y1="14" x2="34" y2="${H - 20}" stroke="var(--line)"/>${[700,720,740,760].map(x => `<text x="${px(x) - 9}" y="${H - 6}">${x}</text><line x1="${px(x)}" y1="${H - 20}" x2="${px(x)}" y2="${H - 24}" stroke="var(--line)"/>`).join("")}
+    ${lines(arm, arm === "blocker" ? "var(--hair)" : "var(--muted)")}</g>`;
+  el.innerHTML = `<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+    <div><div class="cells" aria-label="object map cells after assignment"><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div><div class="c2">2</div><div class="ca">a</div><div class="c3">3</div></div>
+    <div class="cap" style="margin-top:6px">cells 182 to 184,<br>rows 17 to 19</div></div>
+    <div class="scroll-x" style="flex:1 1 300px;min-width:0"><svg viewBox="0 0 ${W * 2 + 20} ${H}" width="100%" style="min-width:560px" role="img" aria-label="Lemming x against time, with and without a blocker">${panel("control", "no blocker: two walkers cross", 0)}${panel("blocker", "blocker at x 728 to 739: both turn", W + 20)}
+    <text x="0" y="${H - 6}"></text></svg><div class="cap">horizontal: world x · down: time, 0 to 50 ticks · lemmings 1 and 5</div></div></div>`;
+}
+blockerPanel();
+
+/* redraw on theme change */
+const redraw = () => cards.forEach(c => c.upd());
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+new MutationObserver(redraw).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+</script>
