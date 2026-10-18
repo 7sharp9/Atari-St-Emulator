@@ -62,3 +62,4 @@ diskless snapshot differs from HEAD in the two counter bytes only (`cmp -l`: 2 b
 | `py/` | `codes.py` (generate/check codes), `ice.py` (Pack-Ice depacker), `levels.py` (run from `M68000/` with `PYTHONPATH=reversing/lemmings/py`; writes `levels.txt`) |
 | `endpic.png` | the ending screen (`ENDPIC.IMG`, grey) |
 | `click_digger.txt` | `lvl1_a.snap` to a digger assigned to lemming 0 (REPL script) |
+| `click_blocker.txt` | `sel.snap` to a blocker assigned to lemming 0, its object-map stamp and the two turn handlers' hit counts (REPL script) |

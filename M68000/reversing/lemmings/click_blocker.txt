@@ -1,0 +1,30 @@
+# Lemmings: blocker proof. From M68000/ with ATARI_NOTRACE=1:
+#   dotnet exec bin/Debug/net8.0/M68000.dll resume scratchpad/lemmings/sel.snap repl --disk-a scratchpad/lemmings/lemmings.st < reversing/lemmings/click_blocker.txt
+# sel.snap is click_digger.txt's snapshot. The icon click is proven there, so the skill index (+22 of $26c04) and the
+# blocker count (+34) are poked: w is a longword, so +22 writes 00030000 (skill 3, +24 = 0) and +34 writes 00050000 (+36, the basher count, is 0).
+# Aim at world (lx-8, ly-13) of lemming 0 (lx 731, scroll $240 after the corner pin: screen 149, 65).
+w 26c1a 00030000
+w 26c26 00050000
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move 127 65
+s 12000
+mouse move 22 0
+s 12000
+mouse down l
+s 60000
+mouse up l
+s 12000
+# +14 = $80, count 5 to 4, cells at columns 182..184, rows 17..19: ((732-4)/4, (76-6)/4)
+m 26c04 48
+m 23484 44
+m 64b46 16
+m 64cde 16
+m 64e76 16
+# turn handlers: expect $8bce once (lemming 1, x 728) and $8bdc once (lemming 5, x 739); a run without the click gives 0 and 0
+hits 1800000 8bce 8bdc
+q

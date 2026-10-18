@@ -49,19 +49,19 @@ bit each click sets, and the handler body. **Proven** means driven in the emulat
 
 | `btst` order | bit | handler | role |
 |---|---|---|---|
-| 1 | 16 | `$8064` | 16-frame cycle, sound at frame 5, `bsr $8134` at the end: read as the explosion (unproven) |
+| 1 | 16 | `$8064` | the 16-frame "Oh no" phase after the bomber countdown: sound at frame 5, `bsr $8134` at the end turns it into bit 10 (**proven** transition below) |
 | 2 | 3 | `$8a62` | probes terrain a lemming-width ahead (`8(A0)*8`): unnamed |
 | 3 | 8 | `$81ba` | 16 frames then `st 24(A0)` (record dead): read as a splat or similar death |
-| 4 | 10 | `$8156` | 52 frames then dead; frame 1 plays sound `$14` and clears a blocker (`bclr #7`, `bsr $8a06`): read as the "Oh no" countdown before the explosion |
+| 4 | 10 | `$8156` | the explosion: frame 1 plays sound `$14` and releases a blocker (`bclr #7`, `bsr $8a06`: **proven**), dead at frame `$34` |
 | 5 | 15 | `$7a9a` | fall (set by the walker `$797c` when 4 rows below are clear; 4-frame cycle): read |
-| 6 | 13 | `$801c` | climb (set by the walker `$7a88` at a wall when `+22` is set): read |
+| 6 | 13 | `$801c` | ledge hop: the walker `$7a88` sets it when the wall in front is 4 to 6 rows high (read) |
 | 7 | 1 | `$8aca` | 8 frames, then `addq.w #1,20(A3)` and the record dies: read as the exit (the saved counter at `$26c18`) |
 | 8 | 2 | `$8b5c` | 14 frames then dead: a trap death, unnamed |
 | 9 | 14 | `$8850` | **digger, proven** (below) |
-| 10 | 12 | `$86f2` | unnamed |
+| 10 | 12 | `$86f2` | climber: `$8194` sets it from the walker when a wall 7 rows high blocks a lemming with `+22` set (read) |
 | 11 | 11 | `$880a` | unnamed |
 | 12 | 9 | `$851c` | builder: `$1d6e` sets bit 9 (read) |
-| 13 | 7 | `$89a4` | blocker: `$1b9c`-`$1c26` sets bit 7 and stamps cells into the object map (read) |
+| 13 | 7 | `$89a4` | **blocker, proven** ("Collisions" below) |
 | 14 | 6 | `$81d0` | basher: `$1cd6` sets bit 6; handler cycles `andi.w #$1f` = 32 frames (read) |
 | 15 | 5 | `$7f06` | unnamed |
 | 16 | 4 | `$7b88` | miner: `$1c2a` sets bit 4 (read) |
@@ -102,9 +102,46 @@ snapshots (`sel.snap`), then clicks lemming 0: its `+14` reads `$4000` (bit 14) 
 at 732 and `y` goes 77 to 81 over 1.2M steps (a longer run of the same clicks: 77, 78, 80, 83 over 1.9M); the nine
 others keep `+14 = 0` in the 160k-step samples.
 
+## Collisions
+
+Two independent layers, both read by the per-lemming update.
+
+**Terrain bitmap** (`A1 = $41806`, one plane, row stride `D7 = $330`; a pixel is the bit `7 - (x & 7)` of the
+byte `y*$330 + (x & $fff0)/2 + ((x >> 3) & 1)`). The walker `$797c` moves `x += dir`, then, all **read**:
+pixel `(x, y)` clear: probe `y+1..y+3`; all three clear is a fall (sets bit 15, `19(A0) = 3`), otherwise `y` follows the
+ground down. Pixel set: probe upward `y-1..y-7`: a clear row within 3 steps up is a smooth step (`y` rises 1 to 3); a
+clear row 4 to 6 up is the ledge hop (bit 13); seven solid rows is a wall, which turns the lemming (`neg 8(A0)`) or, with
+`+22` set, starts the climb (bit 12, `$8194`). The fall handler `$7a9a` drops 3 rows a tick and adds 3 to `19(A0)`;
+landing with `19(A0) > $3c` and no floater sets the splat bit 8 (`$7b28`), and `> $10` with a floater opens it (bit 5).
+
+**Object map** (`A2 = $62f80`, 4-pixel cells, one byte each, row stride `$198`; the lemming's cell is
+`(x/4, y/4)`). After every update `$8b6e` stores that cell in `25(A0)` and the cell two columns ahead in the row two
+above in `26(A0)` (the miner and basher steel and one-way tests), then dispatches on the cell's low nibble (the high
+nibble indexes the `$23044` object table, stride `$22`):
+
+| low nibble | effect (`$8b6e`) |
+|---|---|
+| 1 | state bit 1 (`$8aca`, the exit), sound `$11`; skipped if bit 1 or 15 is already set |
+| 2 | reverse a lemming walking right (`8(A0) >= 0`) |
+| 3 | reverse a lemming walking left |
+| 4 | marks object bit 1 and `st 24(A0)`: the lemming vanishes |
+| 5 / 6 | state bit 3 / bit 2 (the `$8a62` / `$8b5c` death handlers), skipped if already set |
+| `$a`, 7, 8, 9 | nothing here (`$a` is the blocker's centre; 7, 8 are the one-way and 9 the steel tests of the digging skills) |
+
+**Proven (blocker)**, `reversing/lemmings/click_blocker.txt` from `sel.snap` with the skill index (`$26c1a`) poked to 3 and
+the count (`$26c26`) to 5: clicking lemming 0 at (732, 76) gives `+14 = $80`, `+38 = $1d808`, count 5 to 4, and
+stamps a 3 by 3 patch of cells, rows `02 0a 03`, at columns 182..184 and rows 17..19, i.e. `((x-4)/4, (y-6)/4)` upward
+(`$1b9c`-`$1c26`; the cells it overwrites are saved in `27..35(A0)`). Ten lemmings, 1,800,000 steps: the control arm (no
+click) executes neither turn handler (`hits` on `$8bce`, `$8bdc`: 0 and 0) and its lemmings 1 and 5 walk on to x 755 and 717; with the
+blocker `$8bce` runs once, for lemming 1 at x = 728 (the first column of cell 182, step 794,809) and `$8bdc` once, for
+lemming 5 at x = 739 (the last column of cell 184, step 975,053); both then walk back (727 to 701, 740 to 761). The
+blocker stays at (732, 76) with `+14 = $80`. A bomber assigned to it (index 2, count poked) counts `21(A0)` down from
+`$4f`, about 35,000 steps a tick; at 0 `+14` is `$00010080` with the cells still stamped, 9 samples (60,000 steps
+apart) later `+14 = $400` and all nine cells read 0 (restored from the saved bytes by `$8a06`, from `$8156` frame 1).
+The handler `$89a4` also releases the blocker if the ground pixel under it clears (`bclr #7`, `bsr $8a06`; read).
+
 ## Still open
 
-Names for bits 0, 2, 3, 5, 8, 10, 11, 12, 16 beyond the readings above, the terrain bitmap format (the
-walker tests one plane at `$41806`, row stride `$330`, 8 bytes per 16 pixels, `btst` bit `7 - (x & 7)`
-of the byte `x/16*8 + ((x >> 3) & 1)`), and the object map at `$62f80` (4-pixel cells, stride `$198`; cell
-low nibbles 1, 2, 3 and $a block a blocker or builder placement).
+Names for bits 0, 2, 3, 5, 8, 11 beyond the readings above; the terrain thresholds (step, ledge, wall, fall,
+splat) are read, not driven; the cell codes 1, 4, 5, 6 need their level objects (exit, traps) driven; the blocker's
+refusal test (`$1b60`-`$1b94`, cells with codes 1, 2, 3, `$a` under the target) and the ground-loss release.
