@@ -53,7 +53,8 @@ know they existed.
   `dotnet build`, or editing a file with uncommitted changes you did not make, check
   (`git status`, `tasklist | grep dotnet`, `ListAgents`) and ask: message a live session with
   `SendMessage`, otherwise ask Dave. Subagents are told: no build, no git, no taskkill, write only
-  under their own directory. If the other session holds `bin/Debug/net8.0/M68000.dll`, the build
+  under their own directory, and tools that write to the cwd (`make_blank_disk.py` overwrote the tracked
+  `M68000/blank_80ss.st`) are run with an explicit output path there; read `git status` after the agent returns. If the other session holds `bin/Debug/net8.0/M68000.dll`, the build
   fails only at the copy step: confirm your change compiles with
   `dotnet build -c Debug M68000.fsproj -o <scratch dir>` and leave its process alone.
 
