@@ -57,4 +57,5 @@ diskless snapshot differs from HEAD in the two counter bytes only (`cmp -l`: 2 b
 | file | contents |
 |---|---|
 | `drive.txt` | cold-boot snapshot to level 1 gameplay (REPL script) |
-| `mechanics.md` | the lemming record and the per-frame update dispatch |
+| `mechanics.md` | the lemming record, the per-frame update dispatch, skill assignment and the state bits |
+| `click_digger.txt` | `lvl1_a.snap` to a digger assigned to lemming 0 (REPL script) |

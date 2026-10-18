@@ -1,0 +1,36 @@
+# Lemmings: select the digger and click lemming 0 (skill-assignment proof). Run from M68000/ with ATARI_NOTRACE=1:
+#   dotnet exec bin/Debug/net8.0/M68000.dll resume scratchpad/lemmings/lvl1_a.snap repl --disk-a scratchpad/lemmings/lemmings.st < reversing/lemmings/click_digger.txt
+# Pointer is relative: pin to the corner (scrolls the view left), then move. Digger icon is at x 144..159, y >= 176.
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move 127 127
+s 30000
+mouse move 25 61
+s 30000
+mouse down l
+s 60000
+mouse up l
+s 30000
+snap scratchpad/lemmings/sel.snap
+# Now the lemming: record 0 was at world (731,75), scroll $250; aim at world (lx-8, ly-13) = screen (131..134, 62..64).
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move 124 64
+s 30000
+mouse move 10 0
+s 6000
+m 26c04 24
+mouse down l
+s 60000
+mouse up l
+s 240000
+m 23484 44
+s 960000
+m 23484 44
+q
