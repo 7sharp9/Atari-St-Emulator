@@ -12,6 +12,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `crudebuster.md` | Crude Buster reversing, Data East arcade under MAME (`reversing/crudebuster/`) |
 | `final_fight.md` | Final Fight reversing, CPS1 arcade under MAME (`reversing/finalfight/`) |
 | `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
+| `lemmings.md` | Lemmings reversing, lemming behaviour first (`reversing/lemmings/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
 | `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |
 | `supersprint.md` | Super Sprint reversing (`reversing/supersprint/`) |
