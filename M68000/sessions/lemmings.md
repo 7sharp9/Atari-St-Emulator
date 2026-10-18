@@ -1,54 +1,64 @@
 # Lemmings: handoff
 
-Updated 2026-10-18 by the setup session (nothing committed yet by this workstream).
+Updated 2026-10-18 by the first working session (boot to gameplay, lemming array found).
 
 ## Resume point
 
-- Last commit of this workstream: none; `reversing/lemmings/README.md` is the first file.
-- Working data: `scratchpad/lemmings/` (`lemmings.st` copied from Dropbox, `files/` extracted with
-  `tools/extract_disk.py lemmings.st files`, `boot.log` GEMDOS/OS trace of a 300M-step cold boot).
+- Last commit of this workstream: the one that adds `reversing/lemmings/drive.txt` and `mechanics.md`
+  (`git log --oneline -- M68000/reversing/lemmings`). The emulator fix is `8b6c474`.
+- Working data: `scratchpad/lemmings/`: `lemmings.st`, `files/` (extracted), `b300000000.snap` (cold boot,
+  300M steps, in the cracktro), `lvl1_a.snap` (level 1 gameplay, all 10 lemmings out, PC `$a61c`),
+  `lvl1.asm` (whole-image listing `$2000`-`$27000` of `lvl1_a.snap`), `f0..f3.snap` (four snapshots 24,000
+  steps apart). Rebuild any of it with `reversing/lemmings/drive.txt` (recipe in its header).
 - Disk: `~/Library/CloudStorage/Dropbox/Daves/ST games/Lemmings (1990)(Psygnosis)[cr BBC][a].st`,
-  839,680 bytes, sha256 `118f33d900ad089dde85104f3635dc0a483f02944d55502d218de695ccb1a45d`.
-- Start from: no snapshot yet. Next step is a drive to a playable level and a snapshot.
-- Uncommitted work left behind: this file, `reversing/lemmings/README.md`, the `sessions/README.md` row.
+  sha256 `118f33d9...a1d` (full in the README).
+- Uncommitted work left behind: none from this workstream (`Cadaver/` untracked is another session's).
 
 ## Focus
 
-Lemming behaviour first: the per-lemming record, the skill/state machine (walker, faller, floater,
-climber, blocker, builder, basher, miner, digger, bomber, splat, exit), the terrain collision it
-reads, and the per-frame update order. Graphics, level format and sound come after, and only as far
-as behaviour needs them (terrain bitmap, level object list).
+Lemming behaviour first: the per-lemming record, the skill/state machine, the terrain collision it reads,
+the per-frame update order. Graphics, level format and sound only as far as behaviour needs them.
 
-## Proven so far (setup facts, not behaviour)
+## Proven so far
 
-- Boot: BBC crack boot sector prints an anti-virus message, then `Pexec` of `\AUTO\LEMMINGS.PRG`
-  (text `$a304`+`$dad8`, data/bss 0), `boot.log`. After `Super` the game calls XBIOS `Random()` ~50 times
-  and `Vsync`, then makes no further GEMDOS/BIOS calls in 300M steps.
-- `LEMMINGS.PRG`: `$601a` header, no symbols, 1 `4e56` word, so not compiled C; its text is mostly
-  high-entropy bytes, so it is an encrypted or packed stub (inferred, not yet read).
-- `CODE` (80,660 B) and `MAIN` (105,236 B) start with the packer magic `Ice!`: the real game code and
-  main data, to be depacked. `LEVEL000-024`, `LEMMING1-3`, `TIM1-10`, `MENACE`... start `20 13 00 10 ..`
-  (a shared compressed or tabular header, unidentified). `GROUND1-5`, `OBJECTS1-5`, `SPECIAL0-3`, `ODDTABLE`,
-  `LEVELDAT`, `INTROPAR` are not yet classified.
-- No `Fopen`/`Fread` after the Pexec, so the game loads from the disk itself (own FDC loader, inferred).
+- Boot to gameplay, deterministic: `drive.txt` run twice from `b300000000.snap`, `cmp` identical
+  (`README.md` "Boot to gameplay"). Needs a NOP of the cracktro's ACIA poll at `$a438` and `--disk-a` on
+  every `resume`.
+- Two emulator walls fixed and committed behind the net (VR vector base; line-resolution video address
+  counter): `README.md` "What it needed from the emulator".
+- Lemming array: `$23484`, stride `$2c`, 10 of 10 records in level 1 (`mechanics.md`, "The lemming array").
+- The code is already depacked in RAM at `$2000`-`$27000` once the menu is up, so the `Ice!` depacker is
+  not needed to read it.
 
 ## Open, in priority order
 
-1. Reach gameplay: find how the stub gets to `CODE`/`MAIN` (trace FDC DMA with `watch`, or snapshot
-   after the Vsync loop), then drive the menu with mouse to level 1. Snapshot it.
-2. Depack `CODE` (`Ice!` format; write or find `tools/` unpacker, check `DEVELOPING.md` "Other tools"
-   first) and diff against RAM to find the game's load address.
-3. Find the lemming array: poke-and-`watch` while a lemming spawns (entrance trapdoor releases at the
-   release rate), then read the per-frame update loop and the skill dispatch table.
-4. Collision: how terrain is read (bitmap pixel tests vs a mask) for walk/fall/dig/bash/mine/build.
-5. Prove each skill's state machine with `callcap` corpora from natural hits (`capture_hits.py`).
+1. Name the state bits. `$7802` dispatches on the bits of the long at record `+14` (17 bit tests, handler
+   table in `mechanics.md`). Read each handler's body to its first branch, find which bit each skill icon
+   click sets (watch `+14` of one record through a click), then `callcap` one handler per bit from a
+   snapshot with a lemming holding it (`capture_hits.py` for natural hits of `$7802`'s handlers).
+2. Terrain collision: the handlers read a level bitmap; find the pixel-test routine (`$80ea` and the
+   subroutines the handlers call), the bitmap's address and format (`$41800`/`$43800` buffers are
+   written during level build), and prove walk/fall/dig/bash/mine/build against it.
+3. Fields: +10 (a per-tick counter, probably the animation frame), +21 (countdown, bomber?), +36, +38
+   (`$1af30`), +42 (`$21c`). Name from the handlers that write them.
+4. Tick rate: how often `$7802` runs per VBL (`hits`), and what `72(A5)`/`58(A5)` (release rate) do.
+5. Level format (`LEVEL000-024`, `LEVELDAT`, `GROUND*`, `OBJECTS*`) as far as the entrance table `136(A5)`
+   and terrain need. The `20 13 00 10` headers are probably a compressed level container; unread.
 
 ## Known traps
 
-- `ATARI_NOTRACE=1` on every raw `dotnet exec`. Run from `M68000/`.
-- The original game is known to run the lemming update on a fixed tick; the VBL is 12,000 steps here.
-  Confirm the tick rate from the code, not from this note (recalled, not checked).
+- `ATARI_NOTRACE=1` on every raw `dotnet exec`; run from `M68000/`. `resume <snap> repl --disk-a <st>`.
+- `mouse down l` / `mouse up l` (the side argument is required). The pointer is the game's own at
+  `$272f6`/`$272f8`, clamped at 0.
+- Colours in `snap_render.py` are wrong on menu and briefing screens (per-scanline Timer B palette
+  splits): read the logic from RAM, not from those renders.
+- The emulator's video counter is line-resolution only; a game that needs sub-line beam position
+  would still loop. Timer B itself is scanline-accurate (`HblTick`).
+- Do not poll a value this game changes with `snap` over a few frames and call it "stuck": it runs its
+  update on a tick, and the minimap/dispatch loops skip `+24 != 0` records.
 
 ## Next session
 
-`/resume lemmings`. Do open items 1 and 2 first: get a gameplay snapshot, then depack `CODE`.
+`/resume lemmings`. Start from `lvl1_a.snap`: item 1. Watch `+14` of the first lemming while selecting a
+skill and clicking it (the skill panel is at the bottom of the screen; find its pointer hit-test the way
+the menu's was found), and name the dispatch bits from that.

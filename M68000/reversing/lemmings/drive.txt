@@ -1,0 +1,33 @@
+# Lemmings: cold boot to level 1 gameplay. Run from M68000/ (ATARI_NOTRACE=1):
+#   dotnet exec bin/Debug/net8.0/M68000.dll 300000000 snapshot scratchpad/lemmings/b300000000.snap --disk-a scratchpad/lemmings/lemmings.st
+#   dotnet exec bin/Debug/net8.0/M68000.dll resume scratchpad/lemmings/b300000000.snap repl --disk-a scratchpad/lemmings/lemmings.st < reversing/lemmings/drive.txt
+# Writes scratchpad/lemmings/lvl1.snap. `resume` needs --disk-a again: the snapshot does not mount the disk.
+
+# The BBC cracktro (LEMMINGS.PRG) polls the ACIA directly: `cmpi.b #$b9,$fc02.w` / `bne` at $a432 waits for
+# a space break code, but MMU.fs pops the FIFO in TOS's ISR first, so the key is never seen. NOP the 4-byte bne.
+w a438 4e714e71
+# Cracktro exits, the $70000 FDC loader runs, intro animation and title; the main menu is up after ~130M steps.
+s 130000000
+# Pointer is the game's own (x,y) at $272f6/$272f8, clamped at 0: pin to the corner, then move to the
+# 1 PLAYER icon at (30,155).
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move 30 100
+s 60000
+mouse move 0 60
+s 120000
+# Click 1 PLAYER (hold well past the poll cycle), then the briefing's "Press mouse button to continue".
+mouse down l
+s 60000
+mouse up l
+s 25000000
+mouse down l
+s 60000
+mouse up l
+s 40000000
+snap scratchpad/lemmings/lvl1.snap
+q
