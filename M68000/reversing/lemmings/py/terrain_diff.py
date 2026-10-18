@@ -8,7 +8,7 @@ for l in open(sys.argv[1]):
     elif cur is not None and l.strip():
         cur[1].append(l.rstrip('\n')[4:]); cur.append(int(l[:3])) if len(cur) == 2 else None
 base = fr[0][1]
-for i, (h, rows) in enumerate(fr):
+for i, (h, rows, *_) in enumerate(fr):
     clr = sum(1 for r in range(len(rows)) for c in range(len(rows[r])) if base[r][c] == '#' and rows[r][c] == '.')
     st = sum(1 for r in range(len(rows)) for c in range(len(rows[r])) if base[r][c] == '.' and rows[r][c] == '#')
     print('%2d %-60s cleared %4d set %3d' % (i, h[3:63], clr, st))
