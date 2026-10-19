@@ -40,7 +40,7 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 - Basher, miner, builder, climber, floater, bomber, fall and splat driven, with steel refusal for basher and miner
   (`py/skilldrive.py`, `py/terrain_diff.py`). Bits 16 and 10 and bits 12 and 13 were mis-assigned in the earlier doc and are corrected.
 - Walker thresholds (`py/stepsweep.sh`): step 1 to 2 rows smooth, 3 to 6 rows ledge hop (bit 13, 2 rows a tick), 7 or more a wall.
-- Basher erase ticks (`py/maskwatch.py`): `$81d0` increments the tick, then post-increment 2 to 5 (and 18 to 21) erase one 10-row mask frame each, 12 bursts of 80 word writes, one a tick.
+- Basher erase ticks (`py/maskwatch.py`): `$81d0` increments the tick, then post-increment 2 to 5 (and 18 to 21) erase one 10-row mask frame each, 12 bursts of 80 word writes, one a tick. Miner (`--miner`): post-increment ticks 1 and 2 of 24, 13-row frames, 104 words each, 4 of 4.
 - Exit, trap and reversal cells (`py/objdrive.py`): codes 1 (exit, 8 ticks, saved counter +1), 2, 3, 4, 5, 6 each driven.
 - The crater: `$8156` frame 1 stores the record in `152(A5)`, `$55b6` (main loop `$109a`) ANDs the 16 by 22 mask `$14fd2` at
   `(x-8, y-14)` through the blitter `$8cf8`; 113 of 113 pixels predicted; refused by cell codes 9, 5, 1.
@@ -48,13 +48,12 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 
 ## Open, in priority order
 
-1. The miner's exact erase ticks: the same `watch` as the basher's (`py/maskwatch.py`, adapt the rows and the 24-tick cycle).
-2. The object table behind a cell's high nibble (`$23044`, stride `$22`): exit and trap animations and sounds; level 1's other
+1. The object table behind a cell's high nibble (`$23044`, stride `$22`): exit and trap animations and sounds; level 1's other
    object cells (`$20` at (217..218, 31)).
-3. Fields +10 (frame), +20, +36/+38/+42; the release rate (`72(A5)`/`58(A5)`); the blocker's refusal test (`$1b60`) and
+2. Fields +10 (frame), +20, +36/+38/+42; the release rate (`72(A5)`/`58(A5)`); the blocker's refusal test (`$1b60`) and
    ground-loss release.
-4. Walls and one-way cells 7 and 8 (read only); a level with a real trap (not a poked cell) and a climber or digger path to the exit.
-5. Optional: table of all 140 codes, `BasicFX`/`FullFX`; dark-mode and phone check of the published infographic.
+3. Walls and one-way cells 7 and 8 (read only); a level with a real trap (not a poked cell) and a climber or digger path to the exit.
+4. Optional: table of all 140 codes, `BasicFX`/`FullFX`; dark-mode and phone check of the published infographic.
 
 ## Known traps
 
@@ -75,5 +74,5 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 
 ## Next session
 
-`/resume lemmings`. Item 1 (miner ticks via `py/maskwatch.py` adapted), then item 2. Fold any change into
+`/resume lemmings`. Item 1 (object table `$23044`), then rebuild and republish the infographic (it still lists the basher/miner ticks as open). Fold any change into
 `mechanics.md` and the matching infographic plate, then `infographic/build.sh` and republish.

@@ -195,7 +195,9 @@ x = 742 and beyond.
 
 **Miner (index 6, count `+40` = `$26c2c`), proven.** Click: `+14 = $10` (bit 4), count 5 to 4. A 24-tick cycle
 (`cmp #$18`): phase 0 steps `y + 1` and gives up at `y >= $b0`; phases 1 and 2 erase the two mask frames and step
-`x += dir`, `y + 1` (read); phase 3 steps again with a ground test; phase 15 steps `x += 2*dir` after the wall
+`x += dir`, `y + 1` (**timed with `watch`**: `$7b88` increments `10(A0)` first, then post-increment ticks 1 and 2 of each cycle AND
+a 13-row mask frame (`$34` bytes, 104 word writes in one burst), the second a row lower than the first because `$7bcc`-`$7bd0`
+step `x`, `y` between them; bursts at tick intervals 23, 24, 47, 48 in a 60-tick run, 4 of 4 with 104 words, `py/maskwatch.py --miner`); phase 3 steps again with a ground test; phase 15 steps `x += 2*dir` after the wall
 test (the steel and one-way cell test `$7e68`, same codes as the basher). Result from the click at (734, 78): after
 four cycles the lemming is at (750, 86): +4 columns and +2 rows a cycle, i.e. a 2:1 slope (a tunnel of 17 columns for 9
 rows in the dumped bitmap, rows 76 to 85, about 9 rows tall). **Proven for steel:** with the same poke the
@@ -237,5 +239,5 @@ inputs, not findings, and are named in each line.
 
 ## Still open
 
-The miner's exact erase ticks need the same `watch` trace as the basher's; the object table behind the high nibble of a cell (`$23044`, stride `$22`: the animations and sounds of exits and traps) is unread; fields +10 (frame), +20, +36/+38/+42 beyond the readings above, and the release rate; the blocker's
+The object table behind the high nibble of a cell (`$23044`, stride `$22`: the animations and sounds of exits and traps) is unread; fields +10 (frame), +20, +36/+38/+42 beyond the readings above, and the release rate; the blocker's
 refusal test (`$1b60`-`$1b94`, cells with codes 1, 2, 3, `$a` under the target) and the ground-loss release.

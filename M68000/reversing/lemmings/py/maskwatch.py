@@ -1,19 +1,20 @@
 """Time the basher's mask erases with `watch`: which game ticks write the terrain bitmap, and how many words.
-Run from M68000/:  uv run python reversing/lemmings/py/maskwatch.py <out dir> [--ticks 40]
-Builds on skilldrive.py's drive script (basher, wall poked at groups 46..48 rows 56..74), watches group 46 rows 62..76
-and steps one game tick (36,000 steps) at a time, dumping lemming 0's record (+10 is the tick) before each.
+Run from M68000/:  uv run python reversing/lemmings/py/maskwatch.py <out dir> [--ticks 40] [--miner]
+Builds on skilldrive.py's drive script (basher, wall poked at groups 46..48 rows 56..74; --miner: miner on open ground),
+watches group 46 from row R0 for N rows (basher 62, 15; miner 58, 42) and steps one game tick (36,000 steps) at a time, dumping lemming 0's record (+10 is the tick) before each.
 Prints the write bursts (step offset, word count, rows) and the tick samples; the burst at offset k*36000 is the
 handler run that takes the tick from sample k to k+1 ($81d0 increments before it erases).
 """
 import os, re, struct, subprocess, sys
+miner = '--miner' in sys.argv
+skill, cnt, state, r0, nr = ('6', '26c2c', 0x10, 58, 42) if miner else ('5', '26c28', 0x40, 62, 15)
 out = sys.argv[1]; ticks = int(sys.argv[sys.argv.index('--ticks') + 1]) if '--ticks' in sys.argv else 40
 os.makedirs(out, exist_ok=True)
-subprocess.run([sys.executable, '-c', 'pass'])
-subprocess.run(['uv', 'run', 'python', 'reversing/lemmings/py/skilldrive.py', '5', '26c28', out + '/base', '--samples', '1',
-                '--wall', '46,48,56,74', '--x0', '704'], check=True, capture_output=True)
+subprocess.run(['uv', 'run', 'python', 'reversing/lemmings/py/skilldrive.py', skill, cnt, out + '/base', '--samples', '1', '--x0', '704']
+                + ([] if miner else ['--wall', '46,48,56,74']), check=True, capture_output=True)
 L = open(out + '/base/drive.txt').read().splitlines()
 i = next(k for k, l in enumerate(L) if l == 'mouse down l')
-cmds = L[:i + 4] + ['watch %x %d' % (0x41806 + 62 * 0x330 + 46 * 8, 15 * 0x330)]
+cmds = L[:i + 4] + ['watch %x %d' % (0x41806 + r0 * 0x330 + 46 * 8, nr * 0x330)]
 for _ in range(ticks): cmds += ['m 23484 44', 's 36000']
 cmds.append('q')
 open(out + '/watch.txt', 'w').write('\n'.join(cmds) + '\n')
@@ -27,7 +28,7 @@ for l in r.stdout.splitlines():
     t = l.split()
     if len(t) >= 44 and all(len(s) == 2 for s in t[:44]):
         b = bytes(int(s, 16) for s in t[:44])
-        if b[14:18] == b'\0\0\0\x40': recs.append(struct.unpack('>H', b[10:12])[0])
+        if b[14:18] == bytes([0, 0, 0, state]): recs.append(struct.unpack('>H', b[10:12])[0])
 s0, bursts, cur = w[0][0], [], []
 for x in w:
     if cur and x[0] - cur[-1][0] > 200: bursts.append(cur); cur = []
