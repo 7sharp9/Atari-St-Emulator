@@ -1,6 +1,6 @@
 # Lemmings: handoff
 
-Updated 2026-10-19 by the fifth working session.
+Updated 2026-10-19 by the sixth working session (a secrets hunt with two agents, then the handoff).
 
 ## Resume point
 
@@ -45,6 +45,10 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 - The crater: `$8156` frame 1 stores the record in `152(A5)`, `$55b6` (main loop `$109a`) ANDs the 16 by 22 mask `$14fd2` at
   `(x-8, y-14)` through the blitter `$8cf8`; 113 of 113 pixels predicted; refused by cell codes 9, 5, 1.
 - Access codes and the level catalogue, 260/260 generator cases and 18/18 typed codes (`extras.md`, `py/codes.py`).
+- Secrets: none. A whole-listing scan of every keyboard reader, a single-key sweep of codes `$01`-`$7f` in four contexts, 25 menu probe
+  points and a disk/FAT audit found no cheat, debug or hidden level (`extras.md` "Keys and engine", "Leftovers"). Undocumented but ordinary:
+  F9 = ESC, Space skips the intro, the two-player keys, right-button scroll. One real quirk, driven: a code with `n` 120..159 plays on past
+  level 120 into the two-player maps, and `n = 180` replays the previous record garbled (`py/overrun.py`). Agent evidence: `scratchpad/lemmings/secretsA/`, `secretsB/`, `secretsC/` (gitignored).
 
 ## Open, in priority order
 
@@ -74,5 +78,5 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 
 ## Next session
 
-`/resume lemmings`. Item 1 (object table `$23044`), then rebuild and republish the infographic (it still lists the basher/miner ticks as open). Fold any change into
+`/resume lemmings`. Item 1 (object table `$23044`; the secrets hunt did not touch it), then rebuild and republish the infographic (it still lists the basher/miner ticks as open). Fold any change into
 `mechanics.md` and the matching infographic plate, then `infographic/build.sh` and republish.
