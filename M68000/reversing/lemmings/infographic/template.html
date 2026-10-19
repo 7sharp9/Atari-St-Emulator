@@ -197,7 +197,7 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
 <section class="foot">
   <h3>How this was checked</h3>
   <p>Every plate comes from a snapshot of the game after level 1 starts. The skill index and count were set directly, then the pointer was aimed at lemming 0 and a click sent to the game's own handler. A control from the same snapshot, with no click or without the poked feature, is the comparison. Walls, pits and steel cells in the plates for climber, floater, basher and the steel tests were written into memory to give the skill something to meet; the level itself does not contain them.</p>
-  <p>The exit and trap runs place lemming 0 beside the exit by writing its x and y, and the step sweep writes the step into the bitmap. Still open: the exact tick inside a basher or miner swing at which pixels leave, the object table behind a cell's high nibble, and the blocker's refusal test. Source notes and scripts: <code>reversing/lemmings/mechanics.md</code>.</p>
+  <p>The exit and trap runs place lemming 0 beside the exit by writing its x and y, and the step sweep writes the step into the bitmap. Still open: the exact tick inside a miner swing at which pixels leave, the object table behind a cell's high nibble, and the blocker's refusal test. Source notes and scripts: <code>reversing/lemmings/mechanics.md</code>.</p>
 </section>
 </main>
 

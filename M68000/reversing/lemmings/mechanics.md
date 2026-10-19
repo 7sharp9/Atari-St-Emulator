@@ -169,7 +169,7 @@ The exit also needs the lemming to arrive: on level 1 as shipped, lemming 0 pace
 ## Basher and miner
 
 Both erase terrain by AND-ing a mask from a table into the bitmap at `(x + dir + 4(A0), y + 6(A0))` (`$8218`-`$8256`
-and `$7bd8`-`$7bfc`: a mask is 6 rows of a long, shifted by `x & 15` across the 16-pixel groups). Basher masks are
+and `$7bd8`-`$7bfc`: a basher mask frame is 10 rows of a long (`$28` bytes), shifted by `x & 15` across two 16-pixel groups; the miner's frame is `$34` bytes). Basher masks are
 at `$14cc2` (4 frames of `$28` bytes, mirrored `+160` for dir < 0), miner masks at `$14e02` (2 frames of `$34`,
 mirrored `+104`). A game tick is 36,000 steps (3 VBL: `hits` on `$81d0` is 17 calls in 600,000 steps, 16 gaps of
 35,900 on average). The driver is `py/skilldrive.py` (pokes the skill index and count, clicks lemming 0, dumps the
@@ -177,8 +177,11 @@ bitmap window as ASCII each sample) and `py/terrain_diff.py` (cleared and set pi
 `--wall gx0,gx1,y0,y1` pokes a solid block into the bitmap and `--cells c0,r0,r1,val` pokes object-map cells.
 
 **Basher (index 5, count `+36` = `$26c28`), proven.** Click: `+14 = $40` (bit 6), count 5 to 4. The handler runs a
-32-tick cycle (`10(A0)` is the tick, `& $1f`; the low nibble is the phase). Phases 2 to 5 erase one mask frame each
-(read from the code; the diff only brackets the ticks), phases 11 to 15 move `x += dir` one a tick
+32-tick cycle (`10(A0)` is the tick, `& $1f`; the low nibble is the phase). Phases 2 to 5 erase one mask frame each,
+**timed with `watch`**: `$81d0` increments `10(A0)` first (`& $1f`), then a post-increment low nibble of 2 to 5 selects mask
+frame `nibble - 2` (`$8210`-`$8216`) and `$8246`-`$8352` ANDs its 10 rows by 8 words into the bitmap; a `watch` on rows 66 to 75
+of group 46 saw 8 bursts of exactly 80 word writes (10 rows by 8, 125 steps each) at the ticks 2, 3, 4, 5 and 18, 19, 20, 21, one
+burst a tick, and the next at tick 34 (= 2 of the next cycle) (`py/maskwatch.py`, 960 writes); phases 11 to 15 move `x += dir` one a tick
 (`hits`: `$8422` runs 5 times, 4 ticks apart, per half cycle), and the 32-tick cycle holds two such erase-and-advance halves: against a poked wall (`--wall 46,48,56,74`, solid from x = 736) lemming 0 stays at x = 732, then 733, 734,
 736, 737 over the first half cycle (+5), and after 40 samples of 36,000 steps the wall's left face has moved from x = 736 to
 x = 746 over rows 70 to 75, the tunnel being the body height (about 9 rows above the feet row). With nothing to bash
@@ -234,5 +237,5 @@ inputs, not findings, and are named in each line.
 
 ## Still open
 
-The exact basher and miner erase ticks need a per-tick (`watch`) trace, the diff only brackets them; the object table behind the high nibble of a cell (`$23044`, stride `$22`: the animations and sounds of exits and traps) is unread; fields +10 (frame), +20, +36/+38/+42 beyond the readings above, and the release rate; the blocker's
+The miner's exact erase ticks need the same `watch` trace as the basher's; the object table behind the high nibble of a cell (`$23044`, stride `$22`: the animations and sounds of exits and traps) is unread; fields +10 (frame), +20, +36/+38/+42 beyond the readings above, and the release rate; the blocker's
 refusal test (`$1b60`-`$1b94`, cells with codes 1, 2, 3, `$a` under the target) and the ground-loss release.

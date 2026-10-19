@@ -1,6 +1,6 @@
 # Lemmings: handoff
 
-Updated 2026-10-18 by the fourth working session, which ended at the commit that adds this file.
+Updated 2026-10-19 by the fifth working session.
 
 ## Resume point
 
@@ -21,7 +21,7 @@ Lemming behaviour (record, state machine, terrain collision, update order). `ext
 
 ## Infographic
 
-`reversing/lemmings/infographic/` builds the "Inside Lemmings" artifact (published, private:
+`reversing/lemmings/infographic/` builds the "Inside Lemmings" artifact (published, private, still says the basher tick is open until republished:
 https://claude.ai/artifact/3M9FDun4B75R8QL7mofGaC, version 2). `infographic/build.sh` now rebuilds it entirely locally
 (runs, blocker arms, data, page); the eight skill runs and both blocker arms regenerate byte for byte. Plate text and
 the driven/read labels are hand-written in `template.html`: update them when `mechanics.md` changes, rebuild, and
@@ -40,6 +40,7 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 - Basher, miner, builder, climber, floater, bomber, fall and splat driven, with steel refusal for basher and miner
   (`py/skilldrive.py`, `py/terrain_diff.py`). Bits 16 and 10 and bits 12 and 13 were mis-assigned in the earlier doc and are corrected.
 - Walker thresholds (`py/stepsweep.sh`): step 1 to 2 rows smooth, 3 to 6 rows ledge hop (bit 13, 2 rows a tick), 7 or more a wall.
+- Basher erase ticks (`py/maskwatch.py`): `$81d0` increments the tick, then post-increment 2 to 5 (and 18 to 21) erase one 10-row mask frame each, 12 bursts of 80 word writes, one a tick.
 - Exit, trap and reversal cells (`py/objdrive.py`): codes 1 (exit, 8 ticks, saved counter +1), 2, 3, 4, 5, 6 each driven.
 - The crater: `$8156` frame 1 stores the record in `152(A5)`, `$55b6` (main loop `$109a`) ANDs the 16 by 22 mask `$14fd2` at
   `(x-8, y-14)` through the blitter `$8cf8`; 113 of 113 pixels predicted; refused by cell codes 9, 5, 1.
@@ -47,7 +48,7 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 
 ## Open, in priority order
 
-1. The exact basher and miner erase ticks: a per-tick `watch` on the mask writes (the diff only brackets them).
+1. The miner's exact erase ticks: the same `watch` as the basher's (`py/maskwatch.py`, adapt the rows and the 24-tick cycle).
 2. The object table behind a cell's high nibble (`$23044`, stride `$22`): exit and trap animations and sounds; level 1's other
    object cells (`$20` at (217..218, 31)).
 3. Fields +10 (frame), +20, +36/+38/+42; the release rate (`72(A5)`/`58(A5)`); the blocker's refusal test (`$1b60`) and
@@ -74,6 +75,5 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 
 ## Next session
 
-`/resume lemmings`. Item 1: from `sel.snap` start `watch` on a basher mask destination row and read the PCs and steps to
-fix which tick erases (phases 2 to 5 of the 32-tick cycle are read, not timed per pixel). Then item 2. Fold any change into
+`/resume lemmings`. Item 1 (miner ticks via `py/maskwatch.py` adapted), then item 2. Fold any change into
 `mechanics.md` and the matching infographic plate, then `infographic/build.sh` and republish.
