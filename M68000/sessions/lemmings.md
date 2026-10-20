@@ -8,7 +8,7 @@ Updated 2026-10-19 by the sixth working session (a secrets hunt with two agents,
   The emulator fix is `8b6c474`.
 - Working data: `scratchpad/lemmings/`: `lemmings.st`, `files/`, `b300000000.snap` (cold boot, cracktro),
   `lvl1_a.snap` (level 1, all 10 out; stops in the cracktro frame, `A5 = $c822`: set `A5 = 272d4` before a
-  `callcap`), `sel.snap` (digger selected; every skill run starts here), `blk/post.snap` (blocker placed),
+  `callcap`), `interesting/menu.snap` (title menu; `py/overrun.py` starts here), `sel.snap` (digger selected; every skill run starts here), `blk/post.snap` (blocker placed),
   `blk/<run>/` (each `skilldrive.py` run: `drive.txt`, `raw.txt`, `frames.txt`), `info/` (infographic build),
   `interesting/full.asm` (whole program, `$400`-`$27000`). Rebuild with `reversing/lemmings/drive.txt`, then `click_digger.txt`.
 - Disk: `~/Library/CloudStorage/Dropbox/Daves/ST games/Lemmings (1990)(Psygnosis)[cr BBC][a].st`.
@@ -61,6 +61,11 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 
 ## Known traps
 
+- A5-relative offsets in the docs are decimal: `54(A5)` is `$2730a` (A5 = `$272d4`), not `$27308`; a poke at the wrong
+  hex sum looks like a game that ignores it (the overrun run zeroed `52(A5)`, the lemming count, and the level still needed 75%).
+- The REPL's save command is `snap <path>` (`snapshot` is only the argv form); an unknown REPL word is silently ignored, so check
+  the file exists. Forcing a win: `w 2730a 00000000` (saved and required percent) then ESC (`py/overrun.py`).
+- In the intro program any `kbd` takes the TOS ACIA ISR into the loader and looks like a hang: `extras.md` "Keys and engine".
 - `ATARI_NOTRACE=1`; `resume <snap> repl --disk-a <st>`; `mouse down l` / `mouse up l`; `m <addr> <len>` takes a decimal length.
 - Pinning the pointer to the corner scrolls the level left; read the scroll `+2` of `$26c04` after the last move
   and aim at world `(lx - 8, ly - 13)` (`skilldrive.py` does this for lemming 0 at its fixed offset).
