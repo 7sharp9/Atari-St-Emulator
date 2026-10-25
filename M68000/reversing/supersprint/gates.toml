@@ -1,0 +1,48 @@
+# Super Sprint's promoted proofs, for tools/gates.py (`uv run python tools/gates.py run supersprint`).
+# Commands and expected counts are the headline proofs py/README.md and the topic docs record; a count goes here only
+# when a doc records it for exactly this command line. All run from M68000/ and read the work directory
+# scratchpad/supersprint/ (py/README.md "Rebuild the work directory"); drone_diff and winner_diff also need
+# ai_econ/prerace.py and pre_winner.py to have been run once, hazard_seeds the hz_*.snap from hazard_by_R.py.
+
+[[gate]]
+name = "trajectory"
+cmd = "{python} reversing/supersprint/py/physics/test_trajectory.py 700 3"
+expect = ["re:frames compared: 700 +\\(all fields of all 4 cars identical in 700 frames\\)"]
+cite = "py/README.md physics/ (700/700 frames)"
+minutes = 3
+
+[[gate]]
+name = "drone_diff"
+cmd = "{python} reversing/supersprint/py/ai_econ/drone_diff.py --samples 24 --variants 012345"
+expect = ["576/576"]
+cite = "py/README.md ai_econ/"
+minutes = 5
+
+[[gate]]
+name = "winner_diff"
+cmd = "{python} reversing/supersprint/py/ai_econ/winner_diff.py 40 6"
+expect = ["46/46"]
+cite = "py/README.md ai_econ/"
+minutes = 3
+
+[[gate]]
+name = "plane2"
+cmd = "{python} reversing/supersprint/py/collide/plane2_decode.py"
+expect = ["512000/512000"]
+cite = "py/README.md collide/"
+minutes = 1
+# reads the saved tracks race_N.snap and runs no emulator: it guards the decode, not an emulator change
+
+[[gate]]
+name = "hazard_seeds"
+cmd = "{python} reversing/supersprint/py/livetests/hazard_seeds.py 50"
+expect = ["1400/1400"]
+cite = "py/README.md livetests/"
+minutes = 5
+
+[[gate]]
+name = "liveproof"
+cmd = "{python} reversing/supersprint/py/residual/liveproof.py"
+expect = ["15559/15560", "1187/1187", "125/125"]
+cite = "sound.md (live ISR differential table); py/README.md residual/"
+minutes = 5

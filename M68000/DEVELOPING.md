@@ -758,6 +758,60 @@ write there, and a word write at `$189cc` reaches a watch on `$189cd` alone. `lo
 The MCP handshake and `tools/list` (25 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
 The REPL `watch 189ca 4` output is identical before and after the change (25 lines).
 
+### Record and replay (designed, not built)
+
+The questions it answers: "which instruction last wrote X before step S" and "where do two runs first differ", over runs
+of hundreds of millions of steps, without having set the right watch before the run. A watch is bounded by its window
+(`CLAUDE.md`, "Evidence rules"); a recording moves the window choice to after the run.
+
+What exists already. The machine is deterministic between inputs: `detcheck` shows a `Restore` is an identity on
+everything a later `Step()` reads, and `fork`/`restore` replays give byte-identical end snapshots (`server/smoke.py`).
+PowerMonger's commander has a game-level recorder: `commander/loop.py` logs every poke batch with its step in
+`decisions.jsonl`, `--replay` re-issues them and `--snap-at` saves checkpoints, which is how `gate_leadkill.sh win`
+re-watches a window of the rollout win. What is missing is a recorder below the driver, so any REPL script or
+`stserver` client gets one, and queries that search the recording instead of a hand-placed window.
+
+**A recording** is a base checkpoint, an input journal and a checkpoint every `every` steps (default 10M).
+
+- The journal holds only what enters from outside the step loop, each entry tagged with the step count it was applied
+  at (between steps, as every REPL and server command is): host writes (REPL `w`, `poke`; a write hook filtered on
+  `Source = Host` already sees address, width and value), register sets (`set_reg`, the `Cpu` setter), IKBD bytes
+  (`kbd`), mouse moves and buttons (`MMU.MoveMouse`, `EnqueueMouseButton`), disk swaps (`LoadDiskA`, recorded as the
+  path plus the image's FNV hash, which replay checks) and the write-protect tab. It is kept in `AtartSt`, with one
+  journal call at each of those entry points, so the REPL and the server record the same way. `callcap`, `Preview`
+  and `detcheck` roll back their own effects and are not inputs.
+- A checkpoint is `AtartSt.Capture()`: mostly the RAM copy in `MmuSnapshot` (1 MB, `MMU.fs` `ram`), so
+  150 checkpoints cover a 1.5G-step run in memory. Past a budget they spill to `SaveState` files in the recording
+  directory (`base.snap`, `journal.jsonl`, `ck_<step>.snap`), which is also the saved form of a recording.
+- **Prerequisite:** `MachineCheckpoint` does not carry `keyInjectGroups` (the `ATARI_KEY_INPUT` schedule, popped as
+  each group fires), so a `Restore` to before a fired group never re-injects it. Add it to the checkpoint first, behind
+  the section 6 net; REPL `kbd` is unaffected (it goes into the IKBD FIFO, which `MmuSnapshot` holds).
+
+**Queries**, as `stserver` methods (`record_start {every, dir?}`, `record_stop`, `record_load`, then):
+
+- `replay_to S`: restore the last checkpoint at or before S, re-apply the journal entries between it and S at their
+  steps, step to S. The machine is then where the recorded run was at S, with watches and breakpoints free to set.
+- `last_writer lo hi S`: replay the checkpoint interval holding S with a write hook on `lo..hi` up to S; if it saw
+  no write, the interval before, and so on back to the base. Returns the last event (step, PC, width, value, source).
+  The cost is one interval per interval searched; a DMA write is reported as such (its PC means nothing).
+- `first_divergence A B`: two recordings from the same base. Compare their journals (the first differing entry bounds
+  the answer and is usually its cause) and the fingerprints of their checkpoints at equal steps (FNV of RAM, `Cpu` and
+  `PeripheralPhase`). From the last equal checkpoint step both runs in lockstep, comparing `detcheck`'s per-step
+  fingerprint, and report the first differing step, both PCs, and the first RAM bytes that differ.
+
+**Proof (pre-registered).** The handoff's earlier target, reproducing the rollout win's melee from outside the watched
+window, is what `loop.py --replay` already does, so passing it would show nothing new. These have known answers and
+run in minutes from PowerMonger's `commander/leadkill` `pre_pick.snap`:
+
+- `replay_to` is exact: for 10 steps S between checkpoints, and one just after a journalled poke, the replayed machine's
+  `SaveState` is byte-identical to the recording run's at S. Falsifier: any byte differs.
+- `last_writer`: record the `goto ctl` arm (2.6M steps, checkpoints every 500k) and, in a separate run, its full
+  `watch 53006 2` list; `last_writer 53006 53007 S` for 20 steps S spread over the run, including S before the first
+  write (expect none), must equal the last watch line before each S. Falsifier: any of 20 differs.
+- `first_divergence`: run A plain, run B with the `r39` poke `w 521cc 04000000` journalled 1M steps in; expect the
+  divergence at the poke's step with `$521cc..$521cf` the first differing bytes, and none in a pair of identical runs.
+  Falsifier: an earlier divergence (a determinism hole) or none.
+
 ## MAME as a second oracle for the ST core (`tools/mame_st/`)
 
 MAME 0.289's `st_uk` driver boots TOS 1.00 UK: `mame -listroms st_uk` wants `tos100uk.bin` (196,608 bytes, CRC `1a586c64`), which `TOS100UK.IMG` equals, plus the IKBD ROM (`keyboard.u1`). The zips are in `~/GitHub/mame/roms`
