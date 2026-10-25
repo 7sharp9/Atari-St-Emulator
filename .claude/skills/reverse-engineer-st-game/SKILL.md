@@ -234,6 +234,7 @@ Build the corpus with `tools/capture_hits.py <start.snap> <addr> <n,...> <out>`:
 2. `./run.ps1 -NoBuild snap 30000000 after.snap`, `cmp` against a diskless baseline. A diff is a gate decision, not an automatic failure: investigate before accepting or reverting.
 3. `dotnet build -c Debug` as its own tool call, read it, `&&` never `;`.
 4. Full `./run.ps1 selftest tests/680x0`: the gate is 0 wrong and 9 skip; the pass total drifts up with coverage, so do not gate on it.
+5. `uv run python tools/gates.py run all` (run in the background; Black Tiger and PowerMonger alone take about 14 min): every gate PASS. It re-runs each game's promoted proofs listed in `reversing/<game>/gates.toml` against the built DLL. A CHANGED gate is the same decision as a snapshot diff; an ERROR is usually a missing work directory or prerequisite snapshot in this checkout (the manifest header names them), which is not a pass. From a worktree, add `--root` pointing at the main checkout's `M68000/`.
 
 On the Mac (no `run.ps1`), or while another session holds `bin/`, build both sides with `-o <dir>` and run `bash tools/regress_net.sh <base.dll> <new.dll> <outdir>`: steps 1, 2 and 4 as an A/B, plus the game compare below with `CADAVER_SNAP`/`CADAVER_ST` set.
 

@@ -61,7 +61,7 @@ know they existed.
 ## Emulator changes
 
 - Every emulator change goes behind the regression net in the skill's section 6 (verify, 30M-step
-  snapshot compare, build, selftest 0 wrong).
+  snapshot compare, build, selftest 0 wrong, `tools/gates.py run all` every gate PASS).
 - An emulator change can be delegated to an `isolation: "worktree"` agent: it builds and runs the net in
   its worktree's own `bin/`, so the shared DLL stays untouched (give it absolute paths to the main
   checkout's untracked `TOS100UK.IMG`, `tests/680x0` and disk images). Merge with `git diff --binary`
