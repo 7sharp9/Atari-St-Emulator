@@ -17,6 +17,8 @@ Each game lists its gates in `reversing/<game>/gates.toml`:
 A count goes in `expect` only when a doc records it for exactly this command line: no invented counts. A gate passes
 when every expected `a/b` (or `re:` pattern) appears in its output; otherwise it is CHANGED (with the counts it did print) or ERROR (no
 count, a non-zero exit with no count, a timeout). Never put a `reuse` argument in `cmd`: the point is fresh callcaps.
+A gate that only reads saved snapshots (Super Sprint's `plane2`, 1 s) runs no emulator and cannot catch an emulator
+change: say so in a comment on its entry.
 
 The gates read their corpora from `scratchpad/`, which is per checkout, so `--root` runs them in another checkout's
 M68000 dir (its scripts, its scratchpad, its `bin/` DLL; the manifests are always this checkout's): from a worktree
