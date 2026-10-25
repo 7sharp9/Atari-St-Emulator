@@ -235,6 +235,8 @@ Build the corpus with `tools/capture_hits.py <start.snap> <addr> <n,...> <out>`:
 3. `dotnet build -c Debug` as its own tool call, read it, `&&` never `;`.
 4. Full `./run.ps1 selftest tests/680x0`: the gate is 0 wrong and 9 skip; the pass total drifts up with coverage, so do not gate on it.
 
+On the Mac (no `run.ps1`), or while another session holds `bin/`, build both sides with `-o <dir>` and run `bash tools/regress_net.sh <base.dll> <new.dll> <outdir>`: steps 1, 2 and 4 as an A/B, plus the game compare below with `CADAVER_SNAP`/`CADAVER_ST` set.
+
 An MMU change also needs a game snapshot compare, since `selftest` never reaches the RAM fast path. Pre-register the falsifier (the result that would mean the change is wrong) before running any of this.
 
 ## 7. Write the README

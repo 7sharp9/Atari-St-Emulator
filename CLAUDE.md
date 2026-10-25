@@ -67,6 +67,10 @@ know they existed.
   checkout's untracked `TOS100UK.IMG`, `tests/680x0` and disk images). Merge with `git diff --binary`
   per worktree; a second patch touching the same files applies with `git apply --3way` only after the
   first is staged ("does not match index" otherwise); then build into `bin/` and re-run the net.
+  A worktree is not always cut from master's tip: check `git merge-base master <branch>` first. Its
+  own net and its "behaviour change" notes compare against that base, not master (the stserver
+  branch, cut 40 commits back, re-did master's overlap/DMA `watch` change and called it new), so the
+  net is re-run on the merge against a pre-merge master build: `tools/regress_net.sh`.
 - Hot path (`M68000/DEVELOPING.md`, "Performance"): a new decoder's `printfn`/`sprintf` goes behind
   `if Trace.enabled`, per-step constants stay literals, new active patterns are struct
   `ValueOption`. `selftest` runs the flat bus and does not exercise the MMU RAM fast path, so an
