@@ -234,11 +234,10 @@ frames), island runs **12932/12932** (703 frames).
   `$11006` joins; same side -> `$feca` merge (falls through to the settle/step tail below); enemy,
   not fighting -> `$10e7e` starts a fight and **returns immediately**, skipping the tail entirely.
 - Fight start `$10e7e(s, j)`: s (the walker) gets flags = 8 exactly; j keeps
-  its low 3 bits and gains bit 3; t6 becomes each other's index; both get `$101a0` (not modelled
-  anywhere in this repo -- no fighter-case model exists, only `powers_ref.anim_settlement` for
-  flags==1). j releases its *own* stale occupancy marks (on its previous cell and its current
-  cell -- not s's). If j was a
-  settlement (its old flags bit 0), s's own cell is marked occupied by s; otherwise j snaps onto
+  its low 3 bits and gains bit 3; t6 becomes each other's index; then `$101a0` animates s, then j
+  (its fighting branch, section 3.5: `powers_ref.anim_advance`, the same code a combat round runs).
+  j releases its *own* stale occupancy marks (on its previous cell and its current cell -- not
+  s's). If j was a settlement (its old flags bit 0), s's own cell is marked occupied by s; otherwise j snaps onto
   s's cell ("they share one cell") and that cell is marked occupied by s.
 - Merge `$feca(i, j)` (walker i into entity j):
   ```
@@ -263,10 +262,17 @@ frames), island runs **12932/12932** (703 frames).
 
 Verified: `py/walker/postdecide_diff.py` -- the real `$ef4c` via `callcap` against `choose()` (already
 proven above) feeding `apply_decision()`, full memory delta compared except the god-record window
-(covered by `ai/fdiff.py` above) and, for a fight-start case only, the two un-modelled `$101a0`
-fighter-anim bytes: **1600/1600** over two seeds, covering none/self/inert/join/merge/fight-start
-occupant cases and pause/dead/settle/step outcomes (settle only 7/1600 -- rare by construction, not
-independently stress-tested here beyond that).
+(covered by `ai/fdiff.py` above): **1600/1600** over seeds 8080 and 77, covering none/self/inert/
+join/merge/fight-start occupant cases (199 fight starts, their anim words included) and pause/dead/
+settle/step outcomes (settle only 10/1600 -- rare by construction, not independently stress-tested
+here beyond that). Dropping j's `$101a0` call from the model fails 55 of 400 cases, so the anim
+words are exercised, not matched by default.
+Live (`py/powers/live.py <snap> <frames> fightstart join`, every natural call compared on the full
+state to its return): fight start **34/34** from `fight1` and `gather1` (frames 2665..4165; 16 into a
+walker, 18 into a town), **70/70** over 4000 frames of the same two runs, and **47/47** behind a
+UI-cast knight (below: 21 of them with the knight); join **2/2** in the 4000-frame runs, one into its
+own side and one into the opponent, plus 1/1 behind the knight. Joins are rare in play: one per
+trajectory in 4000 frames.
 
 ### 3.4 Water and swamp
 - On a step, standing on swamp ($35) kills the walker (`$10068`); the swamp cell reverts to $0f unless
@@ -293,7 +299,8 @@ Verified live on every natural call, full memory delta over $21464..$3d560 again
 `powers_ref.combat_round` (`py/powers/live.py <snap> <frames> fight`): from `fight1.snap` (frame
 2665, 1500 frames) rounds **85/85**, attacker lost **5/5**, attacker won **5/5**, attacker won and
 took a town over **7/7**; from `M1.snap` (the Armageddon brawl to GAME LOST) rounds **12/12**,
-attacker lost **1/1**, won **1/1**. No call had both sides die. The compare leaves out the sample
+attacker lost **1/1**, won **1/1**. Behind the 1500-frame knight run below, rounds **102/102**, won
+8/8, lost 6/6, took a town 6/6, and the one round where both sides died **1/1** (`$10068` on O, then S). The compare leaves out the sample
 player's state `$24952..$24963`, which the Timer A handler `$17140` advances while a sampled sound
 plays across the call (it is the only byte that differed before the exclusion).
 
@@ -330,6 +337,14 @@ the full state. Without the corridor that knight walks its heading into the shor
 and starves by frame ~720. Take-overs by an ordinary walker (`live.py fight1.snap 1500 resolve`):
 **7/7** on the full state, each one a winner settling on its cell (the "stays a walker" branch did
 not occur), with walker losers **10/10** in the same run.
+A knight cast through the UI in the middle of the `fight1` battle (`knight_fight.py`; the leader's
+str poked to 3000 at the `$12ba0` entry so it survives, the cast itself 37824/37824 bytes) was
+followed for 2000 frames: fight starts with the knight **21/21**, knight wins over walkers **13/13**,
+razes **7/7**, and in the same run take-overs 12/12, walker losers 15/15, merges 391/391. Without the
+poke (`knight_fight.py`, str unchanged) it died at frame ~2913 after 3 wins and a raze. In neither run
+did the knight step onto a friendly walker (no `$feca` call had a knight as the mover), and none of
+the 25 take-overs over these runs left the winner a walker: both stay callcap-only (`pw_diff.py`,
+116 knight-pointer moves and 44 staying walkers).
 
 ## 4. Settlements
 
@@ -540,22 +555,14 @@ from game_start is the evidence used here).
   and `$108b8`; `pw_diff.py 40 2026` + `pw_diff.py 40 77` the callcap corpus (2670/2670); `cast.py`
   and `knight_scn.py` the UI casts (entry/exit snapshots compared on the full state); `live.py <snap>
   1100 retarget merge resolve` the knight's natural calls, `live.py <snap> <frames> fight` every
-  `$1063a` call (`combat_round`); `ktrack.py` prints knights and targets.
+  `$1063a` call (`combat_round`), `fightstart` and `join` every `$10e7e` and `$11006` call
+  (`walker_ref.fight_start`, `join_fight`); `knight_fight.py [STR]` casts a knight from `fight1`;
+  `ktrack.py` prints knights and targets.
 
 ## 10. Open questions
-- The `$ef4c` writes after the decision (settle, merge, fight start, occupancy and visit counts) are
-  diff-tested on their own (section 3.3, `postdecide_diff.py`, 1600/1600), but only through callcap: the
-  fight-start and join-fight branches have not been checked against live play (the live counts in the
-  decision-scan proof above confirm `choose()`'s *return value* and the walker cells, not the
-  post-decision code's own writes). The lower request on a `$42` cell is proven separately
-  (`ai.md` 3.3, `ai/fdiff.py`, 1200/1200 + live 7767/7767).
-- $10e7e's and $11006's two `$101a0` fighter-animation calls (entity+12, the anim byte low-order:
-  base $46/$82/$86/$8a per whether either combatant has a knight pointer, mechanics.md 3.5) have no
-  Python model anywhere in this repo; `postdecide_diff.py` excludes those two bytes from its
-  fight-start comparison rather than predict them.
-- A knight merging into a friendly walker never happened in play (proven by `callcap` only). Of the
-  take-over, only the "winner settles" branch ran live; "winner stays a walker" (`$18206` = 0 on its
-  cell), a castle claimed by `$10366`, and `$10068` killing a settlement outside a fight are modelled
-  (`powers_ref.claim_land`, `entity_kill`) but not yet compared.
-- Fight mode drew only 5 human "attack enemy" decisions in the live run (the bridge brought walkers
-  mostly into contact with their own side).
+- Never seen in play, so proven by `callcap` only (section 3.5): a knight merging into a friendly
+  walker (the pointer move), the take-over where the winner stays a walker (`$18206` = 0 on its
+  cell), a castle claimed by `$10366` after a take-over, and `$10068` killing a settlement outside a
+  fight (`powers_ref.claim_land`, `entity_kill`). Getting them live needs a staged scene: a friendly
+  walker on a knight's path, or a winner standing next to another building.
+- Joins (`$11006`) are rare in play (3 live calls): the opponent branch ran once.

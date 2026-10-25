@@ -264,16 +264,17 @@ def fight_start(m, s, j):
     walking, so it's j's leftover claims being cleaned up here, not s's -- confirmed against
     postdecide_diff.py: an earlier draft compared against s's index and under-cleared).
 
-    Not modelled: the real routine's two `$101a0(entity)` calls right after the flag writes --
-    the fighter-animation branch of $101a0 (entity+12) has no Python model anywhere in this repo
-    (only powers_ref.anim_settlement, for flags==1); a real code re-store of $3c4c6 to its own
-    value (only fires when it's already equal, so it never changes memory) is omitted too."""
+    The two `$101a0` calls ($010f04/$010f10, s then j) come right after the flag and t6 writes:
+    powers_ref.anim_advance's fighting branch, the one combat_round uses. Omitted: a re-store of
+    $3c4c6 to its own value (it fires only when already equal, so it never changes memory)."""
     se, je = ENT + s * ESZ, ENT + j * ESZ
     was_settlement = rb(m, je) & 1
     wb(m, se, 8)
     wb(m, je, 8 | (rb(m, je) & 7))
     ww(m, se + 6, j)
     ww(m, je + 6, s)
+    P.anim_advance(m, se)
+    P.anim_advance(m, je)
     jpc = (sw(m, je + 8) - sw(m, je + 10)) & 0xffff
     o = rb(m, OCC + jpc)
     if o and o - 1 == j:

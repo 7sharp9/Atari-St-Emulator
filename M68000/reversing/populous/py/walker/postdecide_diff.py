@@ -124,18 +124,9 @@ def main():
                 oc = W.apply_decision(mm, e, i, off)
             except Exception as ex:
                 oc = 'EXC:%s' % ex
-            skip = set()
-            if oc == 'fight' and occ2:
-                j = occ2 - 1
-                # $10e7e's two `$101a0` fighter-animation calls (entity+12 anim word) have no
-                # model anywhere in this repo (fight_start's docstring); excluded here, not
-                # silently -- tracked separately as "fight (anim excl)" in the coverage line.
-                for idx2 in (i, j):
-                    skip.add(W.ENT + idx2 * W.ESZ + 12)
-                    skip.add(W.ENT + idx2 * W.ESZ + 13)
             model = {a: mm[a] for a in range(len(mm))
-                     if mm[a] != pre[a] and not (GOD_LO <= a < GOD_HI) and a not in skip}
-            real2 = {a: v for a, v in real.items() if a not in skip}
+                     if mm[a] != pre[a] and not (GOD_LO <= a < GOD_HI)}
+            real2 = real
             good = ok_run and model == real2
             cov.setdefault(oc, 0); cov[oc] += 1
             t = tot.setdefault(snap, [0, 0]); t[0 if good else 1] += 1

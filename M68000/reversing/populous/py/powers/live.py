@@ -12,16 +12,23 @@ kinds:
             resolution (both die, or $108b8 for the survivor); full compare. A resolution that took a
             town over is tagged _takeover. Any address the model wrote through a stale entity index
             (powers_ref.STRAY) is compared too, wherever it is.
+  fightstart bp $10e7e .. its return: walker_ref.fight_start(s, j), the fight a walker starts on
+            stepping onto an enemy's cell (both $101a0 animations included); full compare.
+  join      bp $11006 .. its return: walker_ref.join_fight(s, j), a walker joining a fight already
+            under way; full compare, tagged by whether it joined its own side or the opponent's.
 Each kind is a separate pass over the same deterministic trajectory (breakpoints do not change it).
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pwlib import *
 import powers_ref as P
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'walker'))
+import walker_ref as WR
 
 LO, HI = 0x21464, 0x3d560
 TMP = os.path.join(PD, 'snaps', 'tmp')
-KINDS = {'retarget': (0xf6ca, 0xf716), 'merge': (0xfeca, 0x10066), 'resolve': (0x108b8, 0x10e7c), 'fight': (0x1063a, None)}
+KINDS = {'retarget': (0xf6ca, 0xf716), 'merge': (0xfeca, 0x10066), 'resolve': (0x108b8, 0x10e7c), 'fight': (0x1063a, None),
+         'fightstart': (0x10e7e, None), 'join': (0x11006, None)}
 
 
 def keep(a, a7):
@@ -91,6 +98,18 @@ def run(start, frames, kind):
                 continue
             if tag != 'fight_round':
                 events.append((fr, si, P.ruw(pre, P.ent(si) + 6), tag))
+        elif kind == 'fightstart':
+            si, j = P.rw(pre, a7 + 4), P.rw(pre, a7 + 6)
+            tag = 'fightstart_town' if P.rb(pre, P.ent(j)) & 1 else 'fightstart_walker'
+            if P.rl(pre, P.ent(si) + 14) or P.rl(pre, P.ent(j) + 14):
+                tag += '_knight'
+            WR.fight_start(mm, si, j)
+            events.append((fr, si, j, tag))
+        elif kind == 'join':
+            si, j = P.rw(pre, a7 + 4), P.rw(pre, a7 + 6)
+            tag = 'join_own' if P.rb(pre, P.ent(si) + 1) == P.rb(pre, P.ent(j) + 1) else 'join_opponent'
+            WR.join_fight(mm, si, j)
+            events.append((fr, si, j, tag))
         else:
             w, l = P.rw(pre, a7 + 4), P.rw(pre, a7 + 6)
             W, L = P.ent(w), P.ent(l)
