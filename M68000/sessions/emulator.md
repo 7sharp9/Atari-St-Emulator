@@ -1,15 +1,14 @@
 # Emulator and tooling: handoff
 
-Updated 2026-10-25 by the session that ended at commit `7a689c0`.
+Updated 2026-10-25 by the session that ended at commit `19914a2`.
 
 ## Resume point
 
-- Last commit of this workstream: `249562d` Merge stserver and MMU memory hooks (claude/confident-mendel-bbbb10).
+- Last commit of this workstream: `19914a2`, the merge of the doc address lint and gate runner (`232e9f3`), after `249562d`, the
+  merge of stserver and the MMU memory hooks.
 - Working data: none kept; the net and smoke outputs were session scratch (rebuild with `tools/regress_net.sh`, `server/smoke.py`).
 - Start from: master; `bin/` and `server/bin/` built from `249562d`.
-- Uncommitted work left behind: none. Branch `refs/heads/claude/determined-jones-79730f` (`232e9f3`: `tools/doc_addrs.py`,
-  `tools/gates.py`, `reversing/{black_tiger,powermonger}/gates.toml`, two `DEVELOPING.md` tool rows) is not merged; Dave has not
-  said to merge it.
+- Uncommitted work left behind: none. Nothing pushed.
 
 ## Proven so far
 
@@ -21,14 +20,17 @@ Updated 2026-10-25 by the session that ended at commit `7a689c0`.
   snapshot, its 25 `WATCH` lines and a cold-boot DMA watch (11 lines) all byte-identical; selftest 1000051 pass, 0 wrong,
   9 skip (`tools/regress_net.sh`).
 - No-hook speed cost within noise (interleaved A/B, 5 pairs: boot 6.94 vs 6.97 s median, Cadaver 10M 2.29 vs 2.29 s; DEVELOPING.md "Hot path").
-- Game-level check of the merge: the 35 gates seeded on the unmerged `determined-jones` branch (Black Tiger 15, PowerMonger 20) all
-  pass on `bin/` built from `249562d`, as they did on the pre-merge DLL (its `tools/gates.py run all --root <this M68000>`, run from
-  that worktree; each gate drives the REPL, the 0-1 s ones are short `callcap`s).
+- Game-level check of the hooks merge: `tools/gates.py run all` (manifests `reversing/{black_tiger,powermonger}/gates.toml`)
+  passes all 35 gates (Black Tiger 15, PowerMonger 20) on `bin/` built from `249562d`, as on the pre-merge DLL; each gate drives
+  the REPL, the 0-1 s ones are short `callcap`s. After the second merge, `run black_tiger` 15/15 again from master.
+- `tools/doc_addrs.py` (every doc mention of an address or `N(An)` field; `--check <game>` against the `.sym`). Its PowerMonger
+  findings (`graphics.md:617` `$14bba` vs `$14bb4`, `strategy.md:1365` `pm_30fe` vs `pm_get_posture`, `ai.md:705` 74 vs 75 FSM
+  entries) are for the powermonger workstream, unchecked.
 
 ## Open, in priority order
 
-1. Merge `claude/determined-jones-79730f` (doc address lint and gate runner), on Dave's word; then `gates.py run all` becomes the
-   game-level part of the net for every emulator change.
+1. Make `gates.py run all` part of the section 6 net (skill) and seed manifests for the other games (Cadaver, Populous, Lemmings,
+   Impossamole, Super Sprint) from the counts their docs cite.
 2. Record and replay on top of the hooks: checkpoints every N steps plus inputs, replayed to answer "last writer of X before step S"
    and "first divergence of two runs". Proven when it reproduces a known `watch` result outside a recorded window
    (PowerMonger's `commander/leadkill/gate_leadkill.sh win` melee at 1457M).
@@ -46,5 +48,4 @@ Updated 2026-10-25 by the session that ended at commit `7a689c0`.
 
 ## Next session
 
-Ask Dave whether to merge `claude/determined-jones-79730f`. If yes, merge, run `uv run python tools/gates.py run all` and record the
-counts. Then design record/replay (Open 2) as a DEVELOPING.md section before code, using the hook API and `AtartSt.Capture/Restore`.
+Add `gates.py run all` to the skill's section 6 and seed one more game's manifest (Open 1). Then design record/replay (Open 2) as a DEVELOPING.md section before code, using the hook API and `AtartSt.Capture/Restore`.
