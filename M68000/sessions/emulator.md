@@ -1,6 +1,6 @@
 # Emulator and tooling: handoff
 
-Updated 2026-10-25 by the session that ended at commit `<HANDOFF>`.
+Updated 2026-10-25 by the session that ended at commit `7a689c0`.
 
 ## Resume point
 
