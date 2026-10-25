@@ -10,6 +10,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `cadaver.md` | Cadaver spike (`reversing/cadaver/`) |
 | `commander.md` | an LLM commander for PowerMonger with A* movement and a rollout/SSM forecaster (`reversing/powermonger/commander/`) |
 | `crudebuster.md` | Crude Buster reversing, Data East arcade under MAME (`reversing/crudebuster/`) |
+| `emulator.md` | emulator core and tooling not driven by one game (memory hooks, `stserver`, regression net, coverage/replay plans) |
 | `final_fight.md` | Final Fight reversing, CPS1 arcade under MAME (`reversing/finalfight/`) |
 | `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
 | `lemmings.md` | Lemmings reversing, lemming behaviour first (`reversing/lemmings/`) |

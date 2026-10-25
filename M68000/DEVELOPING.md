@@ -798,6 +798,7 @@ least once by a session that did not know it existed.
 |---|---|
 | `server/` (`stserver.dll`) | long-lived JSON-RPC / MCP process around one `AtartSt`: load with a required disk, step, run with a budget, breakpoints, typed peek/poke, multi-range read/write watches with writer PC and source, in-memory fork/restore, PNG render (section "Memory hooks and the `stserver` process"; `server/smoke.py` is its check) |
 | `tools/fsi_drive.fsx`, `tools/fsi_prep.sh` | F# Interactive driver: load a snapshot, run N steps, optionally `--watch` a range (the REPL's WATCH lines) or `--poke` a byte, save an end snapshot; a template for typed per-step scripts (section "F# Interactive" above; needs `DOTNET_gcServer=0`) |
+| `tools/regress_net.sh <base.dll> <new.dll> <outdir>` | the skill's section 6 regression net as an A/B of two builds (verify, 30M snapshot cmp, selftest; with `CADAVER_SNAP`/`CADAVER_ST`, a game snapshot, REPL `watch` and DMA-`watch` compare); for the Mac and for when another session holds `bin/` (header) |
 | `tools/mame_st/` | MAME `st_uk` as a second oracle for the F# core: diskless boot dump and state compare, executed-PC trace and loop-reduced comparison (section "MAME as a second oracle" above) |
 | `reversing/finalfight/py/gdbstub/` | MAME's gdbstub for gdb, a Python RSP client and Ghidra's Debugger (headless), with a 600-stop gate against the Lua harness (its README) |
 | `tools/snap_render.py snap png` | the live screen of a snapshot as a PNG (base, rez and palette from the shifter registers, so double-buffered games come out right) |
