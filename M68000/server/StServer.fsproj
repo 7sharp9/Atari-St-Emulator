@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- stserver: a long-lived JSON-RPC / MCP process wrapping one AtartSt (M68000/DEVELOPING.md,
+       "Memory hooks and the stserver process"). Optimized in Debug for the same reason as
+       M68000.fsproj: the core runs inside this process. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>stserver</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Server.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../M68000.fsproj" />
+  </ItemGroup>
+
+</Project>

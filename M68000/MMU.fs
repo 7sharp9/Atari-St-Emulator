@@ -58,6 +58,25 @@ exception AddressError of address: uint32 * isWrite: bool
 ///straight into an opcode-decode failure instead of a hardware fault.
 exception BusError of address: uint32 * isWrite: bool
 
+///Who made a hooked memory access: the CPU (an instruction, including its fetches and exception
+///frame pushes), FDC DMA (`tryReadSector`), or the host (a debugger poke made with `HostAccess` set).
+type AccessSource =
+    | Cpu = 0
+    | Dma = 1
+    | Host = 2
+
+///One hooked bus access. `Pc`/`Step` are `WatchPc`/`WatchStep` (the instruction about to run when
+///the access happened); `Value` is the value read or written, zero-extended to `Width` bytes.
+[<Struct>]
+type MemAccess =
+    { Address: uint32; Width: int; Value: uint32; IsWrite: bool
+      Pc: int; Step: uint64; Source: AccessSource }
+
+///A memory hook (see `MMU.AddHook`): fires `Fire` for every read and/or write whose bytes
+///`[Address, Address+Width)` overlap `[Lo, Hi]` (inclusive). Id 0 is the REPL `watch`.
+type MemHook =
+    { Id: int; Lo: uint32; Hi: uint32; OnRead: bool; OnWrite: bool; Fire: MemAccess -> unit }
+
 /// `flatTestBus` (default false) turns the MMU into a plain big-endian 24-bit RAM (sparse -
 /// unwritten addresses read 0) with no I/O regions, no ROM, no address aliasing and no bus errors
 /// - ONLY for the `selftest` harness, whose 680x0 ProcessorTests vectors place operands anywhere
@@ -208,12 +227,6 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             psgReadData <- input                            //raw value, like hatari's PSGRegisterReadData
             if reg = 14 then updateDriveSide ()
 
-    ///Ad-hoc debug watchpoint (REPL `watch`/`unwatch`, see Program.fs) - prints via eprintfn (so it
-    ///survives ATARI_NOTRACE) whenever a write touches [lo,hi]. Added after repeatedly hand-editing
-    ///WriteByte/WriteWord with a temporary eprintfn to answer "does anything ever write $4C2" -
-    ///style questions (see [[atari-st-emulator-next-instructions]]'s seventeenth-pass finding) -
-    ///promoted to a permanent, always-available tool instead of re-adding and reverting the same
-    ///throwaway edit next time the same kind of question comes up.
     ///Pending-interrupt line, modeling the CPU's IPL2-0 input pins: 0 = no interrupt asserted.
     ///Raised by a peripheral-timing source (currently just the VBL trigger in Program.fs's step
     ///loop - see [[atari-st-emulator-next-instructions]]'s twenty-eighth pass). Real, necessary
@@ -251,17 +264,30 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     let mutable timerBPending = false
     let mutable timerAPending = false
 
-    let mutable watchRange : (uint32 * uint32) option = None
     ///PC of the instruction currently executing, pushed in from Program.fs's Step() before each
-    ///cpu.Step(). Only used to annotate WATCH lines with the offending instruction address - the
-    ///MMU has no other need to know the PC, so this stays a plain debug aid.
+    ///cpu.Step(). Only used to attribute hooked accesses (and so WATCH lines) to an instruction -
+    ///the MMU has no other need to know the PC, so this stays a plain debug aid.
     let mutable watchPc = 0
     let mutable watchStep = 0UL
-    let checkWatch (address: uint32) (label: string) (value: uint32) =
-        match watchRange with
-        | Some(lo, hi) when address >= lo && address <= hi ->
-            eprintfn "WATCH: step=%d pc=$%06x %s $%08x <- $%x" watchStep watchPc label address value
-        | _ -> ()
+
+    ///Memory hooks (`AddHook`), split by direction. `null` when none are set, so the hot path pays
+    ///one field test: the RAM fast path in ReadByte/Word/Long and the write entry points test these
+    ///before anything else hook-related (DEVELOPING.md, "Memory hooks").
+    let mutable hooks : MemHook list = []
+    let mutable readHooks : MemHook[] = null
+    let mutable writeHooks : MemHook[] = null
+    let mutable hostAccess = false
+    let rebuildHooks () =
+        let pick f = match hooks |> List.filter f |> List.toArray with [||] -> null | a -> a
+        readHooks <- pick (fun h -> h.OnRead)
+        writeHooks <- pick (fun h -> h.OnWrite)
+    let fire (hs: MemHook[]) (address: uint32) (width: int) (value: uint32) (isWrite: bool) (source: AccessSource) =
+        let last = address + uint32 width - 1u
+        for h in hs do
+            if address <= h.Hi && last >= h.Lo then
+                h.Fire { Address = address; Width = width; Value = value; IsWrite = isWrite
+                         Pc = watchPc; Step = watchStep; Source = source }
+    let busSource () = if hostAccess then AccessSource.Host else AccessSource.Cpu
 
     let store (arr: byte[]) (i: int) (v: byte) =
         if arr.[i] <> v then
@@ -767,6 +793,8 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     if offset < 0 || offset + 512 > bytes.Length then false
                     else
                         for i in 0 .. 511 do
+                            if not (isNull writeHooks) then
+                                fire writeHooks ((dmaAddr + uint32 i) &&& maxMemory) 1 (uint32 bytes.[offset + i]) true AccessSource.Dma
                             match translateRamAddress (dmaAddr + uint32 i) with
                             | Some idx -> store ram (int idx) bytes.[offset + i]
                             | None -> ()
@@ -866,7 +894,18 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                     fdcDrive (int track) fdcSide dmaAddr (fst result) (snd result))
         result
 
+    ///A bus read: `PeekByte` plus the read hooks. The RAM fast path is repeated here so an unhooked
+    ///RAM read pays one null test and no call.
     member x.ReadByte (address: uint32) =
+        let address = address &&& maxMemory
+        if flatBus then flatGet address else
+        if isNull readHooks then (if ramDirect address then ram.[int address] else x.PeekByte address) else
+        let v = x.PeekByte address
+        fire readHooks address 1 (uint32 v) false (busSource ())
+        v
+
+    ///ReadByte without the read hooks (a device read still has its side effects).
+    member x.PeekByte (address: uint32) =
         let address = address &&& maxMemory
         if flatBus then flatGet address else
         if ramDirect address then ram.[int address] else
@@ -1000,7 +1039,18 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 | None -> 0uy //open bus, no device backs this address
             else raise (BusError (address, false))
 
+    ///A bus read: `PeekWord` plus the read hooks (see ReadByte).
     member x.ReadWord (address: uint32) =
+        if address % 2u <> 0u then raise (AddressError (address, false))
+        let a = address &&& maxMemory
+        if isNull readHooks && not flatBus && ramDirect a then (int ram.[int a] <<< 8) ||| int ram.[int a + 1] else
+        if isNull readHooks then x.PeekWord address else
+        let v = x.PeekWord address
+        if not flatBus then fire readHooks a 2 (uint32 (uint16 v)) false (busSource ())
+        v
+
+    ///ReadWord without the read hooks.
+    member x.PeekWord (address: uint32) =
         //Oddness check (and the stacked fault address) uses the un-masked EA: the 68000
         //group-0 frame records the full computed address, not the 24-bit bus-truncated one,
         //and the SingleStepTests are generated that way.
@@ -1067,7 +1117,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         //Un-masked EA for the odd check and the group-0 fault address - see ReadWord.
         if addr % 2u <> 0u then raise (AddressError (addr, true))
         let address = addr &&& maxMemory //clip to the 24-bit address bus
-        checkWatch address "WriteWord" (uint32 (uint16 input))
+        if not (isNull writeHooks) then fire writeHooks address 2 (uint32 (uint16 input)) true (busSource ())
         if flatBus then
             flatMem.[address] <- byte (int input >>> 8)
             flatMem.[(address + 1u) &&& maxMemory] <- byte input
@@ -1120,7 +1170,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
 
     member x.WriteByte (addr: uint32) (input: byte) =
         let address = addr &&& maxMemory //clip to the 24-bit address bus
-        checkWatch address "WriteByte" (uint32 input)
+        if not (isNull writeHooks) then fire writeHooks address 1 (uint32 input) true (busSource ())
         if flatBus then flatMem.[address] <- input else
         if ramDirect address then store ram (int address) input else
         match address with
@@ -1434,9 +1484,32 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         mix (uint64 (uint32 mfpVector))
         h
 
-    ///REPL `watch <hexaddr> [len]` - see `checkWatch` above. `hi` is inclusive.
-    member x.SetWatch (lo: uint32) (hi: uint32) = watchRange <- Some(lo, hi)
-    member x.ClearWatch() = watchRange <- None
+    ///Adds a memory hook, replacing any with the same `Id` (see `MemHook`; DEVELOPING.md, "Memory
+    ///hooks"). The callback runs before a write lands and after a read completes.
+    member x.AddHook (h: MemHook) =
+        hooks <- (hooks |> List.filter (fun k -> k.Id <> h.Id)) @ [ h ]
+        rebuildHooks ()
+    member x.RemoveHook (id: int) =
+        hooks <- hooks |> List.filter (fun k -> k.Id <> id)
+        rebuildHooks ()
+    member x.ClearHooks() =
+        hooks <- []
+        rebuildHooks ()
+    ///Set while the host (a debugger poke) writes, so its hooked accesses report `Source = Host`.
+    member x.HostAccess with get () = hostAccess and set v = hostAccess <- v
+
+    ///Ad-hoc debug watchpoint (REPL `watch`/`unwatch`): hook id 0, printing a `WATCH:` line to stderr
+    ///(survives ATARI_NOTRACE) for every write overlapping [lo,hi] (inclusive), DMA included.
+    member x.SetWatch (lo: uint32) (hi: uint32) =
+        let label (a: MemAccess) =
+            match a.Source, a.Width with
+            | AccessSource.Dma, _ -> "DmaByte"
+            | _, 1 -> "WriteByte"
+            | _ -> "WriteWord"
+        x.AddHook
+            { Id = 0; Lo = lo; Hi = hi; OnRead = false; OnWrite = true
+              Fire = fun a -> eprintfn "WATCH: step=%d pc=$%06x %s $%08x <- $%x" a.Step a.Pc (label a) a.Address a.Value }
+    member x.ClearWatch() = x.RemoveHook 0
     ///See `watchPc` - Program.fs pushes the executing instruction's PC here so WATCH lines can name it.
     member x.WatchPc with get () = watchPc and set v = watchPc <- v
     ///See `watchStep` - Program.fs pushes the current emulated step count here for WATCH lines.
@@ -1826,7 +1899,21 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         //just-reverted speculative branch. AtartSt.Preview resets the detector's epoch right after
         //calling this, for exactly that reason.
 
+    ///A bus read: `PeekLong` plus the read hooks (see ReadByte); one event of width 4.
     member x.ReadLong (address: uint32) =
+        if address % 2u <> 0u then raise (AddressError (address, false))
+        let a = address &&& maxMemory
+        if isNull readHooks && not flatBus && ramDirect a then
+            let i = int a
+            (int ram.[i] <<< 24) ||| (int ram.[i + 1] <<< 16) ||| (int ram.[i + 2] <<< 8) ||| int ram.[i + 3]
+        else
+        if isNull readHooks then x.PeekLong address else
+        let v = x.PeekLong address
+        if not flatBus then fire readHooks a 4 (uint32 v) false (busSource ())
+        v
+
+    ///ReadLong without the read hooks.
+    member x.PeekLong (address: uint32) =
         //Un-masked EA for the odd check and the group-0 fault address - see ReadWord.
         if address % 2u <> 0u then raise (AddressError (address, false))
         let address = address &&& maxMemory //clip to the 24-bit address bus, matching Read/WriteByte/Word

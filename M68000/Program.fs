@@ -63,6 +63,9 @@ type MachineState =
         && a.A0 = b.A0 && a.A1 = b.A1 && a.A2 = b.A2 && a.A3 = b.A3
         && a.A4 = b.A4 && a.A5 = b.A5 && a.A6 = b.A6
 
+///See `AtartSt.Capture`.
+type MachineCheckpoint = { Cpu: Cpu; StepCount: uint64; Mmu: MmuSnapshot }
+
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let rom = IO.File.ReadAllBytes(romPath)
@@ -591,6 +594,17 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///untouched. With that fixed and MmuSnapshot now carrying the latent device state (pending
     ///IRQs, tbCounter, FDC INTRQ countdown, ...), Preview is a verified identity operation - see
     ///`DeterminismCheck`, which asserts exactly that.
+    ///An in-memory checkpoint of everything a later Step() reads (what Preview saves privately);
+    ///`Restore` puts it back and resets the loop detector, as Preview does. A checkpoint can be
+    ///restored any number of times.
+    member x.Capture() : MachineCheckpoint =
+        { Cpu = cpu; StepCount = stepCount; Mmu = mmu.SnapshotRam() }
+    member x.Restore(c: MachineCheckpoint) =
+        cpu <- c.Cpu
+        stepCount <- c.StepCount
+        mmu.RestoreRam c.Mmu
+        resetLoopDetector()
+
     member x.Preview(n: int) =
         let savedCpu = cpu
         let savedStepCount = stepCount
@@ -975,7 +989,8 @@ CPU Registers
 %A
 -------------""" cpu
 
-    member x.Cpu = cpu
+    ///Settable for a debugger's register writes (stserver's `set_reg`).
+    member x.Cpu with get () = cpu and set v = cpu <- v
 
     member x.DumpMemory (addr: uint32) (length: int) =
         String.concat " " [ for i in 0 .. length - 1 -> sprintf "%02x" (cpu.MMU.ReadByte (addr + uint32 i)) ]
@@ -1384,7 +1399,9 @@ module Main =
                 //Direct memory-write for debugging (e.g. patching a resumed snapshot's system
                 //variables to test a hypothesis without needing a fresh cold boot to produce them).
                 //Writes a longword via the same MMU path real 68k code would use.
-                st.Cpu.MMU.WriteLong (Convert.ToUInt32(addr, 16)) (Convert.ToInt32(value, 16))
+                st.Cpu.MMU.HostAccess <- true
+                (try st.Cpu.MMU.WriteLong (Convert.ToUInt32(addr, 16)) (Convert.ToInt32(value, 16))
+                 finally st.Cpu.MMU.HostAccess <- false)
                 loop()
             | [| "snap"; path |] ->
                 st.SaveState path

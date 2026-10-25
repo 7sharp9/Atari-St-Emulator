@@ -161,6 +161,8 @@ Rules that keep it there:
 - `ramDirect` (`MMU.fs`) only covers `memConfigByte` low nibble 5 and `[$8, $100000)`; everything
   else takes the original dispatch. `selftest` runs the flat test bus and never reaches it, so an
   MMU change is gated by the 30M snapshot compare and a game snapshot compare, not by `selftest`.
+- With no memory hooks set, an unhooked RAM read or write is one `null` test plus `ramDirect` and no
+  call; anything hook-related goes behind that test (section "Memory hooks").
 
 What remains is allocation in the CPU core: the immutable `Cpu` record is copied (104 B) two or
 three times per instruction, about 250 B and several objects per step, and macOS's slow
@@ -590,25 +592,22 @@ A typed poke of the VBL second sub-counter to 1 made the game's own interrupt ca
   against about 240 for `dotnet exec`, and 207 to 257 with workstation GC. Tiered-JIT switches did not help. Noise on a loaded machine is about +-20%: use interleaved runs.
 - Startup is about 1.7 s for a no-op script (fsi itself, not the core: construct plus `LoadState` is 15 ms). Use fsi for scripts with logic, not for one `s <n>` the REPL does in a second.
 - The core prints a line per instruction unless `Trace.enabled <- false` (`ATARI_NOTRACE`'s switch) and `Console.SetOut(IO.TextWriter.Null)`; its `--- state loaded/saved ---` lines go to stderr and cannot be silenced.
-- **No public write callback.** The options are `MMU.SetWatch lo hi` (what the REPL's `watch` uses; its `WATCH` lines go to stderr, capture them as `fsi_drive.fsx` does; the odd-address blind spot of `watch` applies)
-  or polling reads after each `Step()`: a per-step hook of four byte reads cost about 1.1 s per million steps, sees value changes only (not a same-value rewrite) and attributes a change to the PC before the
-  step (the `WATCH` label is the same; its step number is post-increment). What a hook gives that `watch` does not is arbitrary typed state at the hit (registers, the stack, other memory).
+- **Memory callbacks:** `mmu.AddHook` (section "Memory hooks" below) calls an F# function on every read or write overlapping a range, with the PC, step, width, value and source, so a script can
+  read arbitrary typed state at the hit (registers, the stack, other memory, through `PeekXxx`). `fsi_drive.fsx --watch` still uses `MMU.SetWatch` (hook id 0) and captures its `WATCH` lines from stderr.
+  Polling reads after each `Step()` instead costs about 1.1 s per million steps for four bytes and sees value changes only.
 - A resume that writes an end snapshot is only possible through the REPL or `SaveState` here: the raw `<N> resume <snap>` argv runs and exits without saving. `run.ps1`'s `rrepl` and `snap` are aliases, not argv.
 - The ROM path is cwd-relative (`AtartSt("TOS100UK.IMG")` from `M68000/`); the disk image is not in a snapshot, so pass the same `--disk` the snapshot was taken with.
 - Not checked: a `Release` build (the `Debug` one is already built with `Optimize=true`, see "Build and run"), a second game's snapshot, a hook on a field that is rewritten with the same value. The core is the Atari ST only: the arcade games (Final Fight, Crude Buster) run under MAME and
   are scripted in Lua (`reversing/finalfight/README.md`, "Harness facts").
 
-## Memory hooks and the `stserver` process (design, not built)
+## Memory hooks and the `stserver` process
 
-Status: proposed. Nothing in this section exists yet; the measured numbers it calls for are filled
-in when it is built.
-
-Two linked additions. The stdin REPL is a fragile agent interface: an alias passed as argv falls
-through to a disk-less cold boot, a forgotten `ATARI_NOTRACE` writes gigabytes, a `resume` without
-`--disk-a` runs with no disk, zsh does not word-split a variable of REPL tokens, and a malformed line
-silently ends the session (`runRepl`'s `| _ -> ()`). `watch` is one range, writes only, tests only the
-write's start address, misses FDC DMA, and cannot tell a REPL `w` poke from a CPU write. The core gets
-a multi-range read/write hook API; a long-lived JSON-RPC server wraps `AtartSt` and exposes it.
+The stdin REPL is a fragile interface for an agent: an alias passed as argv falls through to a
+disk-less cold boot, a forgotten `ATARI_NOTRACE` writes gigabytes, a `resume` without `--disk-a` runs
+with no disk, zsh does not word-split a variable of REPL tokens, and an unrecognised line silently ends
+the session (`runRepl`'s `| _ -> ()`). Its `watch` is one write-only range. Two pieces replace that
+for scripted work: memory hooks in the core (`MMU.fs`), and `stserver`, a long-lived JSON-RPC and MCP
+process around one `AtartSt` (`server/`). The REPL and `fsi_drive.fsx` keep working unchanged.
 
 ### Core: `MMU` memory hooks
 
@@ -619,94 +618,104 @@ type AccessSource = Cpu = 0 | Dma = 1 | Host = 2
       Pc: int; Step: uint64; Source: AccessSource }
 type MemHook = { Id: int; Lo: uint32; Hi: uint32; OnRead: bool; OnWrite: bool; Fire: MemAccess -> unit }
 
-mmu.AddHook   : MemHook -> unit          // several at once; Lo..Hi inclusive
-mmu.RemoveHook: int -> unit
-mmu.ClearHooks: unit -> unit
-mmu.HostAccess: bool with get, set       // set by a host poke; tags Source = Host
+mmu.AddHook h          // any number at once; Lo..Hi inclusive; replaces a hook with the same Id
+mmu.RemoveHook id; mmu.ClearHooks()
+mmu.HostAccess <- true // around a debugger write: its events report Source = Host
+mmu.PeekByte/PeekWord/PeekLong   // ReadXxx without the read hooks (device side effects still happen)
+st.Capture() / st.Restore(c)     // in-memory checkpoint (Cpu, step count, MmuSnapshot); reusable
+st.Cpu <- { st.Cpu with D0 = 5 } // the Cpu property is settable
 ```
 
-- **Matching is by overlap**, `[Address, Address+Width) ∩ [Lo, Hi]`, so a word write at `$189c8` is
-  seen by a hook on `$189c9`. This removes `watch`'s odd-byte blind spot.
-- **Granularity is the bus access the MMU sees.** `WriteLong` is two `WriteWord`s and reports as two
-  word events (as the 68000 bus does); a long read reports once, width 4.
-- **Pc and Step** are the existing `WatchPc`/`WatchStep`, which `AtartSt.Step` already pushes before
-  each instruction. An interrupt or exception frame push is attributed to the PC of the instruction
-  that was about to run, the same label `WATCH` gives it today.
-- **Reads include instruction fetch.** Opcode and extension-word fetches and the decoder's look-ahead
-  (`TryFastForwardTbdrPoll` reads PC+2, PC+4) go through `ReadWord`, so a read hook on code sees them.
-  Read hooks are for data ranges; the core does not separate fetch from data reads (that needs a
-  function-code argument on every read, a hot-path change this does not make).
-- **FDC DMA** writes (`tryReadSector`, which stores straight into `ram`) fire write hooks with
-  `Source = Dma`, one event per byte inside a hook's range. Sector-rate, off the instruction path.
-- **The predicate is the callback.** In F# a hook's `Fire` decides for itself; the server compiles its
-  JSON filter (PC range, value/mask, source) into the closure.
-- **Not fired:** the flat test bus (`selftest`) and `RestoreRam`/`LoadState` bulk copies.
-- **Hot-path cost.** Hooks live in two arrays, `readHooks` and `writeHooks`, `null` when empty. The
-  write path swaps `checkWatch`'s option match for one null test (same cost). The read path is new:
-  the `ramDirect` line becomes `if ramDirect address && isNull readHooks then ram.[...] else`, so an
-  unhooked RAM read pays one field load and compare and no call; with hooks set, the read goes through
-  a non-inlined `ReadXxxBus` (the old body) and the fire loop. Gated by an interleaved A/B (below).
-- The REPL's `watch`/`unwatch` and `MMU.SetWatch`/`ClearWatch` become one hook (id 0) that prints the
-  existing `WATCH:` line, so `fsi_drive.fsx` and every script that greps `WATCH` keep working. The only
-  output change is the overlap rule: a watch whose `lo` is odd now also reports the word write that
-  covers it.
+- **An access matches when its bytes overlap the range**: `[Address, Address+Width) ∩ [Lo, Hi]`. A
+  word write at `$189cc` is seen by a hook on `$189cd`, which the old start-address-only `watch` missed.
+- **Granularity is the bus access the MMU sees.** `WriteLong` is two `WriteWord` events; a long read is
+  one event of width 4. A word write to the YM2149 or the MFP is delegated byte by byte and reports as
+  a word event plus one or two byte events.
+- **`Pc` and `Step`** are `WatchPc`/`WatchStep`, which `AtartSt.Step` sets before each instruction (the
+  step number is post-increment, as in `WATCH` lines). An interrupt or exception frame push is
+  attributed to the PC of the instruction that was about to run. A DMA event carries the previous
+  instruction's PC, which means nothing.
+- **Reads include instruction fetches.** Opcode and extension-word fetches and the decoder's look-ahead
+  (`TryFastForwardTbdrPoll` reads PC+2 and PC+4) go through `ReadWord`, so a read hook on code sees them.
+  Use read hooks on data. Separating fetch from data would need a function-code argument on every read.
+- **FDC DMA** sector reads (`tryReadSector`, which stores straight into `ram`) fire write hooks with
+  `Source = Dma`, one byte event each. The REPL `watch` therefore now reports DMA writes too, labelled
+  `DmaByte`.
+- **The callback is the predicate**: it runs before a write lands and after a read completes, and does
+  whatever filtering it likes. It must not read memory through `ReadXxx` (that re-enters the read hooks);
+  use `PeekXxx`.
+- **Not hooked:** the flat test bus (`selftest`) and the bulk copies in `RestoreRam`/`LoadState`.
+- **REPL `watch`** is hook id 0 printing the unchanged `WATCH:` line, so one REPL watch at a time,
+  as before, and `MMU.SetWatch`/`ClearWatch` keep their signatures. REPL `w` sets `HostAccess` around its
+  write.
+- **Hot path.** The hooks sit in two arrays, `null` when empty. Writes replaced `checkWatch`'s option
+  match with one null test. Unhooked RAM reads pay one more field test before the existing
+  `ramDirect` fast path and no call; device reads and any read with hooks set go through the
+  non-inlined `PeekXxx` body. Interleaved A/B with no hooks set against the pre-change build (five pairs each, order alternated
+  per pair, load average 6.6 to 11.2 on the Xeon Mac): 30M diskless boot, base median 6.94 s (min
+  6.83), hooked 6.97 s (min 6.86), pair gaps +4.0, +5.2, +1.6, +0.3 and -1.2% (the two largest under
+  the highest load); Cadaver `gameplay_empire.snap` 10M-step resume, base median 2.29 s (min 2.26),
+  hooked 2.29 s (min 2.23). Both are within noise: no measurable cost. The pre-registered falsifier,
+  hooked slower by more than 3% in every pair, was not met, and every boot pair's end snapshots were
+  byte-identical.
 
-### Server: `server/StServer.fsproj` (`stserver`)
+### `stserver` (`server/StServer.fsproj`)
 
-A separate executable project referencing `M68000.fsproj` (its `[<EntryPoint>]` must be in the last
-compiled file, so it cannot live inside `Program.fs`'s `Main`), with its own `bin/`. One process holds
-one `AtartSt`. Newline-delimited JSON-RPC 2.0 on stdin/stdout; everything else (core diagnostics,
-`Diag.result`, `--- state loaded ---`) goes to stderr. Trace is off at startup (`Trace.enabled <-
-false`, `Console.Out` to null) with no environment variable involved. The ROM defaults to
-`TOS100UK.IMG` found by walking up from the server's own directory, not the cwd.
+A separate executable referencing `M68000.fsproj` (the entry point must be in the last compiled file,
+so it cannot live inside `Program.fs`'s `Main`), building to `server/bin/Debug/net8.0/stserver.dll`.
+Build it with `dotnet build -c Debug server/StServer.fsproj`, which also builds the core into
+`bin/`, so the same shared-`bin/` rule applies (`sessions/README.md`). It reads newline-delimited
+JSON-RPC 2.0 from stdin and writes only responses to stdout. Core diagnostics, `Diag.result` and the
+`--- state loaded/saved ---` lines go to stderr. Trace is off with no environment variable. The ROM is
+`--rom <path>`, else `TOS100UK.IMG` found by walking up from the cwd and then from the server's own
+directory, so it runs from any cwd.
 
-With `--mcp` the same method table is served as MCP tools over the same transport (`initialize`,
-`tools/list` generated from the table, `tools/call` returning the result JSON as text), so a Claude
-session can register it in `.mcp.json` and call `peek`/`run` as tools.
+The same process answers MCP (`initialize`, `tools/list` built from the method table with JSON schemas,
+`tools/call` returning the result JSON as text, `isError` on failure). The repo's `.mcp.json`
+registers it as `stserver` (`dotnet exec M68000/server/bin/Debug/net8.0/stserver.dll` from the repo
+root), so a Claude session in a checkout where it has been built can call the methods as tools; Claude
+Code asks once to approve a project MCP server. Build it first: in a fresh checkout the DLL is missing
+and the server fails to start.
 
-Addresses are JSON numbers or `"$hex"`/`"0xhex"` strings; results give addresses as `"$hex"`.
+Addresses and values are JSON integers (decimal) or hex strings (`"$189ca"`, `"0x189ca"`, `"189ca"`);
+results give them as `"$hex"`.
 
 | method | params | result |
 |---|---|---|
-| `load` | `snapshot`, `disk` (**required key**: a path, or `null` for a disk-less snapshot), `rom?` | `pc`, `step` |
+| `load` | `snapshot`, `disk` (required key: a path, or `null` for a disk-less snapshot), `rom?` | `pc`, `step` |
+| `boot` | `disk` (required key), `rom?` | cold reset |
 | `save` | `path` | |
-| `regs` / `set_reg` | / `name`, `value` | D0-D7, A0-A7, USP, SSP, PC, SR, step |
-| `peek` | `addr`, `width` 1/2/4, `count?` | values (does not fire read hooks) |
-| `read` | `addr`, `len` | hex string (does not fire read hooks) |
-| `poke` | `addr`, `width` 1/2/4, `value` | fires write hooks with `source: "host"` |
-| `step` | `n` | `pc`, `step`, `events` (new watch events, capped) |
-| `run` | `max_steps` (required), `until_pc?` [addrs], `count?` | `reason` (`breakpoint`/`watch`/`until`/`max_steps`/`halted`/`error`), `steps`, `pc` |
-| `bp_set` / `bp_clear` / `bp_list` | `addrs` | persistent PC breakpoints `run` stops on |
-| `watch_add` | `lo`, `hi`, `kind` (`r`/`w`/`rw`), `stop?`, `pc_lo?`/`pc_hi?`, `value?`/`mask?`, `source?`, `max_events?` | `id` |
-| `watch_remove` / `watch_events` | `id` / `id?`, `clear?` | buffered events `{step, pc, addr, width, value, write, source}`, `dropped` |
-| `hits` | `steps`, `addrs` | count, first, last per address |
-| `fork` / `restore` / `drop` | / `id` / `id` | in-memory checkpoint: `Cpu` record, step count, `MmuSnapshot` |
-| `render` | `path` | PNG of the live screen, shifter base and palette (as `snap_render.py`) |
-| `kbd` / `mouse` / `disk` | as the REPL | |
-| `shutdown` | | |
+| `regs` / `set_reg` | / `name`, `value` | D0-A7, USP, SSP, PC, SR, step, stopped, halted |
+| `peek` | `addr`, `width` 1/2/4, `count?` | values; no read hooks |
+| `read` | `addr`, `len` | hex string; no read hooks |
+| `poke` | `addr`, `width` 1/2/4, `value` | write hooks fire with `source: "host"` |
+| `step` | `n` | `pc`, `step`, `watch_hits` (new events per watch id); stops nothing |
+| `run` | `max_steps` (required), `until_pc?`, `count?` | `reason` (`breakpoint`, `watch`, `until`, `halted`, `max_steps`, `error`), `steps`, `watch_hits` |
+| `bp_set` / `bp_clear` / `bp_list` | `addrs` | breakpoints `run` stops at (it steps at least once first, like `bp`) |
+| `watch_add` | `lo`, `hi?`, `kind` `r`/`w`/`rw` (default `w`), `stop?`, `pc_lo?`, `pc_hi?`, `value?`, `mask?`, `source?` (`cpu`/`dma`/`host`), `max_events?` (default 10000) | `id` |
+| `watch_remove` / `watch_list` / `watch_events` | `id` / / `id?`, `clear?` (default true) | events `{step, pc, addr, width, value, write, source}`; overflow counted in `dropped` |
+| `hits` | `steps`, `addrs` | count, first and last step per address |
+| `fork` / `restore` / `drop` | / `id` / `id` | in-memory checkpoint (`AtartSt.Capture`); a fork restores any number of times |
+| `render` | `path` | PNG at native resolution: shifter base `$ff8201/3`, `$ff8260`, palette (as `snap_render.py`) |
+| `kbd` / `mouse` / `disk` | `bytes` / `action` `move`+`dx`/`dy` or `down`/`up`+`button` / `path` or `null` | as the REPL |
+| `shutdown` | | ends the process |
 
-What this rules out: argv aliases (there is no argv beyond `--rom`/`--mcp`), a forgotten disk
-(`load` fails without the `disk` key), trace output (off with no switch), shell word splitting (JSON
-values), a malformed command ending the session (it returns a JSON-RPC error and the process lives),
-and unattributed pokes (`source: "host"`). `run` always takes a step budget, so a bounded search stays
-bounded, and its `reason` says which bound ended it.
+A watch with `stop: true` ends `run` after the instruction that made the matching access. Watches
+and breakpoints persist across `load`, `restore` and `step`. An unknown method, a bad parameter or an
+exception in the core comes back as a JSON-RPC error and the process stays up. This makes the REPL
+pitfalls above impossible: there is no argv to mistype beyond `--rom`, `load` refuses a call without
+the `disk` key, nothing traces, values are JSON, and `run` always has a step budget and names the
+bound that ended it.
 
-Core additions besides the hooks, both outside `Step`: `AtartSt.Capture() / Restore(s)` (what
-`Preview` already does privately: `cpu`, `stepCount`, `mmu.SnapshotRam()`, then
-`resetLoopDetector()`), and `MMU.HostAccess`.
-
-### Gates for the build
-
-- Regression net (skill section 6): `verify 5000000`, 30M diskless snapshot byte-compare, build,
-  `selftest` 0 wrong. MMU is touched, so also a game snapshot compare (Cadaver `gameplay_empire.snap`,
-  `s 2000000` end snapshot `cmp` against the pre-change build).
-- Hot-path cost: interleaved A/B of the pre-change and hooked builds, no hooks set, 30M diskless boot
-  and the Cadaver 10M-step resume, five pairs each, `uptime` per run, median and min. Falsifier: the
-  hooked build slower by more than 3% in every pair.
-- Smoke test through the server: `load` Cadaver `gameplay_empire.snap` with the one-disk Empire image,
-  `watch_add 189ca-189cd w`, `step 300000`: 25 events, writer PC `$01529c`, values `$1e` down to `$06`,
-  the same steps as `fsi_drive.fsx --watch 189ca-189cd` (section above). Also: `fork`, step, `restore`,
-  step again gives an identical end snapshot; a `poke` fires the watch with `source: "host"`.
+Checked (`server/smoke.py <stserver.dll> <gameplay_empire.snap> <one-disk Empire .st> <outdir>`, all
+pass): from Cadaver's `gameplay_empire.snap`, `watch_add 189ca-189cd w` and `step 300000` give 25
+events at the same steps as the REPL's `watch 189ca 4` (writer PC `$01529c`, values `$1e` down to
+`$06`, first at step 53,304,004). The server's end snapshot is byte-identical to the pre-change REPL's
+`s 300000` / `snap`, and a `fork`/`restore` replay gives an identical end snapshot and event list. A
+`poke` reports `source: "host"`; a stop watch on the odd byte `$189cd` stops `run` on the first byte
+write there, and a word write at `$189cc` reaches a watch on `$189cd` alone. `load` without `disk` is refused, a malformed line is answered and the server stays up.
+The MCP handshake and `tools/list` (25 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
+The REPL `watch 189ca 4` output is identical before and after the change (25 lines).
 
 ## MAME as a second oracle for the ST core (`tools/mame_st/`)
 
@@ -746,6 +755,7 @@ least once by a session that did not know it existed.
 
 | tool | use |
 |---|---|
+| `server/` (`stserver.dll`) | long-lived JSON-RPC / MCP process around one `AtartSt`: load with a required disk, step, run with a budget, breakpoints, typed peek/poke, multi-range read/write watches with writer PC and source, in-memory fork/restore, PNG render (section "Memory hooks and the `stserver` process"; `server/smoke.py` is its check) |
 | `tools/fsi_drive.fsx`, `tools/fsi_prep.sh` | F# Interactive driver: load a snapshot, run N steps, optionally `--watch` a range (the REPL's WATCH lines) or `--poke` a byte, save an end snapshot; a template for typed per-step scripts (section "F# Interactive" above; needs `DOTNET_gcServer=0`) |
 | `tools/mame_st/` | MAME `st_uk` as a second oracle for the F# core: diskless boot dump and state compare, executed-PC trace and loop-reduced comparison (section "MAME as a second oracle" above) |
 | `reversing/finalfight/py/gdbstub/` | MAME's gdbstub for gdb, a Python RSP client and Ghidra's Debugger (headless), with a 600-stop gate against the Lua harness (its README) |
