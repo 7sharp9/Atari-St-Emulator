@@ -1,0 +1,144 @@
+# PowerMonger's promoted callcap gates, for tools/gates.py (`uv run python tools/gates.py run powermonger`).
+# Each expected count is the one py/README.md (and the topic doc it cites) records for exactly this command line;
+# gates whose doc count needs a corpus built by hand first (the PM_SERIES / PM_POP_CORPUS rolls) are not listed.
+# `minutes` is the runtime measured by the first gates.py run (it only sets the timeout).
+
+[[gate]]
+name = "jobs"
+cmd = "{python} reversing/powermonger/py/gate_jobs.py"
+expect = ["3310/3310"]
+cite = 'py/README.md gate_jobs.py; economy.md 5a'
+minutes = 2
+
+[[gate]]
+name = "pop"
+cmd = "{python} reversing/powermonger/py/gate_pop.py"
+expect = ["29860/29860"]
+cite = 'py/README.md gate_pop.py (default corpus pm139/corpus_2984)'
+minutes = 1
+
+[[gate]]
+name = "trade"
+cmd = "{python} reversing/powermonger/py/gate_trade.py --run"
+expect = ["re:'fields_ok': 268, 'fields': 268"]   # prints a dict, not a/b
+cite = 'py/README.md gate_trade.py; economy.md "The trade"'
+minutes = 1
+
+[[gate]]
+name = "shepherd"
+cmd = "{python} reversing/powermonger/py/gate_shepherd.py"
+expect = ["1043/1043"]
+cite = 'py/README.md gate_shepherd.py; ai.md "Shepherds, animals and carrier pigeons"'
+minutes = 1
+
+[[gate]]
+name = "animals"
+cmd = "{python} reversing/powermonger/py/gate_animals.py"
+expect = ["45094/45094"]
+cite = 'py/README.md gate_animals.py'
+minutes = 1
+
+[[gate]]
+name = "equip"
+cmd = "{python} reversing/powermonger/py/gate_equip.py"
+expect = ["385/385", "201/201"]
+cite = 'py/README.md gate_equip.py; economy.md section 3'
+minutes = 1
+
+[[gate]]
+name = "proj"
+cmd = "{python} reversing/powermonger/py/gate_proj.py synth noscreen"
+expect = ["5082/5082"]
+cite = 'py/README.md gate_proj.py; ai.md "Arrows and carrier pigeons"'
+minutes = 4
+
+[[gate]]
+name = "fecc"
+cmd = "{python} reversing/powermonger/py/proj/gate_fecc.py"
+expect = ["3240/3240"]
+cite = 'py/README.md proj/gate_fecc.py; graphics.md projection'
+minutes = 1
+
+[[gate]]
+name = "pigeon_send"
+cmd = "{python} reversing/powermonger/py/gate_pigeon_send.py synth"
+expect = ["1567/1567"]
+cite = 'py/README.md gate_pigeon_send.py (95 natural + 30 synthetic)'
+minutes = 2
+
+[[gate]]
+name = "getname"
+cmd = "{python} reversing/powermonger/py/ui/gate_getname.py"
+expect = ["80/80"]
+cite = 'py/README.md ui/; strategy.md "How a panel opens"'
+minutes = 1
+
+[[gate]]
+name = "stockpile"
+cmd = "{python} reversing/powermonger/py/ui/gate_stockpile.py scratchpad/pm143/run/p0k0_s4.snap scratchpad/pm143/run/p0k25_s4.snap scratchpad/pm143/run/p0k60_s4.snap"
+expect = ["99/99"]
+cite = 'py/README.md ui/gate_stockpile.py; strategy.md "The goods-pile panel" (three pm143 snapshots, unnamed there: the _s4 set gives 99/99; the default, p0k0_s4 alone, 44/44)'
+minutes = 1
+
+[[gate]]
+name = "mine"
+cmd = "{python} reversing/powermonger/py/ui/gate_mine.py"
+expect = ["27/27"]
+cite = 'py/README.md ui/gate_mine.py'
+minutes = 1
+
+[[gate]]
+name = "between"
+cmd = "{python} reversing/powermonger/py/ui/gate_between.py"
+expect = ["147/147", "4/4"]
+cite = 'py/README.md ui/gate_between.py'
+minutes = 1
+
+[[gate]]
+name = "b892"
+cmd = "{python} reversing/powermonger/py/link/gate_b892.py"
+expect = ["25/25"]
+cite = 'py/README.md link/gate_b892.py; strategy.md "The land set-up `$b2d4`"'
+minutes = 1
+
+[[gate]]
+name = "d1623c"
+cmd = "{python} reversing/powermonger/py/diff_1623c.py"
+expect = ["275/275"]
+cite = 'py/README.md diff_1623c.py'
+minutes = 1
+
+[[gate]]
+name = "d2776"
+cmd = "{python} reversing/powermonger/py/diff_2776.py"
+expect = ["4119/4119"]
+cite = 'py/README.md diff_2776.py'
+minutes = 1
+
+[[gate]]
+name = "d5cde"
+cmd = "{python} reversing/powermonger/py/diff_5cde.py"
+expect = ["768/768", "85/85"]
+cite = 'py/README.md diff_5cde.py'
+minutes = 1
+
+[[gate]]
+name = "revolt"
+cmd = "{python} reversing/powermonger/py/diff_revolt.py"
+expect = ["1778/1778"]
+cite = 'py/README.md diff_revolt.py'
+minutes = 1
+
+[[gate]]
+name = "d4f68"
+cmd = "{python} reversing/powermonger/py/diff_4f68.py"
+expect = ["1804/1804"]
+cite = 'py/README.md diff_4f68.py'
+minutes = 1
+
+[[gate]]
+name = "party_class"
+cmd = "{python} reversing/powermonger/py/cmdai/gate_party_class.py"
+expect = ["468/468", "10985/10985"]
+cite = 'py/README.md cmdai/gate_party_class.py'
+minutes = 1

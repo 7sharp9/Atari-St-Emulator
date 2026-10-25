@@ -1,0 +1,123 @@
+# Black Tiger's promoted callcap gates, for tools/gates.py (`uv run python tools/gates.py run black_tiger`).
+# Commands, expected counts and runtimes are the ones py/ai/README.md, py/mechanics/README.md, ai.md section 13
+# and mechanics.md record; a count goes here only when a doc records it for exactly this command line.
+
+[[gate]]
+name = "dbde"
+cmd = "{python} gate_dbde.py 2500 11"
+cwd = "py/ai"
+expect = ["2500/2500"]
+cite = "ai.md section 13; py/ai/README.md"
+minutes = 5
+
+[[gate]]
+name = "spawn"
+cmd = "{python} gate_spawn.py"
+cwd = "py/ai"
+expect = ["9/9"]
+cite = "ai.md section 13; py/ai/README.md"
+minutes = 1
+
+[[gate]]
+name = "amb"
+cmd = "{python} gate_amb.py 800 5"
+cwd = "py/ai"
+expect = ["800/800"]
+cite = "ai.md section 13; py/ai/README.md"
+minutes = 2
+
+[[gate]]
+name = "window"
+cmd = "{python} gate_window.py 2"
+cwd = "py/ai"
+expect = ["160/160"]
+cite = "ai.md section 13; py/ai/README.md"
+minutes = 1
+
+[[gate]]
+name = "ai_urn"
+cmd = "{python} gate_urn.py 12"
+cwd = "py/ai"
+expect = ["96/96"]
+cite = "ai.md section 13; py/ai/README.md"
+minutes = 1
+
+[[gate]]
+name = "events"
+cmd = "{python} gate_events.py 600 4"
+cwd = "py/ai"
+expect = ["600/600"]
+cite = "ai.md section 13; py/ai/README.md"
+minutes = 1
+
+[[gate]]
+name = "loader"
+cmd = "{python} gate_loader.py"
+cwd = "py/mechanics"
+expect = ["8/8"]
+cite = "mechanics.md level files table; py/mechanics/README.md"
+minutes = 1
+
+[[gate]]
+name = "vertical_s7"
+cmd = "{python} gate_vertical.py 400 7"
+cwd = "py/mechanics"
+expect = ["393/393"]
+cite = "py/mechanics/README.md (seed 7, N = 400; death 7/7 is printed as a count, not a/b)"
+minutes = 1
+
+[[gate]]
+name = "vertical_s11"
+cmd = "{python} gate_vertical.py 400 11"
+cwd = "py/mechanics"
+expect = ["391/391"]
+cite = "py/mechanics/README.md (seed 11, N = 400)"
+minutes = 1
+
+[[gate]]
+name = "vertical_s23"
+cmd = "{python} gate_vertical.py 400 23"
+cwd = "py/mechanics"
+expect = ["396/396"]
+cite = "py/mechanics/README.md (seed 23, N = 400)"
+minutes = 1
+
+[[gate]]
+name = "weapon"
+cmd = "{python} gate_weapon.py"
+cwd = "py/mechanics"
+expect = ["25/25"]
+cite = "mechanics.md; py/mechanics/README.md"
+minutes = 1
+
+[[gate]]
+name = "mech_urn"
+cmd = "{python} gate_urn.py"
+cwd = "py/mechanics"
+expect = ["160/160"]
+cite = "mechanics.md; py/mechanics/README.md"
+minutes = 1
+
+[[gate]]
+name = "shop"
+cmd = "{python} gate_shop.py"
+cwd = "py/mechanics"
+expect = ["200/200"]
+cite = "mechanics.md; py/mechanics/README.md"
+minutes = 1
+
+[[gate]]
+name = "bonus"
+cmd = "{python} gate_bonus.py"
+cwd = "py/mechanics"
+expect = ["8/8"]
+cite = "mechanics.md; py/mechanics/README.md"
+minutes = 1
+
+[[gate]]
+name = "rng"
+cmd = "{python} gate_rng.py"
+cwd = "py/mechanics"
+expect = ["300/300"]
+cite = "mechanics.md; py/mechanics/README.md"
+minutes = 1
