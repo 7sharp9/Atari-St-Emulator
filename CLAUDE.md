@@ -207,7 +207,9 @@ that are easy to forget:
 - `watch <addr> [len]` reports every CPU write whose bytes overlap the range (a word write at `$1000`
   covers a watched `$1001`) and every FDC DMA sector landing in it (a `DMA read sector` line); it cannot name
   the PC of a REPL `w` poke (it is reported with the last step's `step=`/`pc=`). One region at a time: a
-  second `watch` replaces the first.
+  second `watch` replaces the first. For several ranges, read watches, writer-PC or value filters, or a stop
+  on a hit, use `stserver` (`M68000/DEVELOPING.md`, "Memory hooks and the `stserver` process"), which also
+  avoids every pitfall in "Running".
   Its `step=` is the snapshot's cumulative step counter, not steps
   into the run (PowerMonger's rand1 starts near 828.75M): line it up with a `hits` first-hit inside the watch.
 - REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field clobbers the next

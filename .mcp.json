@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "stserver": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["exec", "M68000/server/bin/Debug/net8.0/stserver.dll"]
+    }
+  }
+}

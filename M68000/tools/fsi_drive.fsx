@@ -2,7 +2,7 @@
 //   sh tools/fsi_prep.sh                      # once per build: copies bin/ to scratchpad/fsi/dll
 //   DOTNET_gcServer=0 dotnet fsi tools/fsi_drive.fsx --snap <snap> --steps <N> [--disk <.st>] [--out <snap>] [--rom <img>]
 //                                          [--watch <lo>[-<hi>]] [--poke <addr>=<byte>]...        (addresses are hex)
-// --watch prints the REPL's WATCH lines (the core's own MMU.SetWatch; odd addresses miss word writes, watch the even byte below).
+// --watch prints the REPL's WATCH lines (the core's own MMU.SetWatch); for several ranges, reads, or a callback use mmu.AddHook.
 // --poke writes a byte before the run. Copy this file and edit the loop for anything the flags do not cover: `st.Step()`, `st.Cpu.PC`,
 // `st.Cpu.MMU.ReadByte/ReadWord/ReadLong/WriteByte/WriteWord/WriteLong` are all typed. See DEVELOPING.md "F# Interactive".
 #r "../scratchpad/fsi/dll/M68000.dll"
