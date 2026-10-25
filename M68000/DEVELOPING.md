@@ -598,6 +598,116 @@ A typed poke of the VBL second sub-counter to 1 made the game's own interrupt ca
 - Not checked: a `Release` build (the `Debug` one is already built with `Optimize=true`, see "Build and run"), a second game's snapshot, a hook on a field that is rewritten with the same value. The core is the Atari ST only: the arcade games (Final Fight, Crude Buster) run under MAME and
   are scripted in Lua (`reversing/finalfight/README.md`, "Harness facts").
 
+## Memory hooks and the `stserver` process (design, not built)
+
+Status: proposed. Nothing in this section exists yet; the measured numbers it calls for are filled
+in when it is built.
+
+Two linked additions. The stdin REPL is a fragile agent interface: an alias passed as argv falls
+through to a disk-less cold boot, a forgotten `ATARI_NOTRACE` writes gigabytes, a `resume` without
+`--disk-a` runs with no disk, zsh does not word-split a variable of REPL tokens, and a malformed line
+silently ends the session (`runRepl`'s `| _ -> ()`). `watch` is one range, writes only, tests only the
+write's start address, misses FDC DMA, and cannot tell a REPL `w` poke from a CPU write. The core gets
+a multi-range read/write hook API; a long-lived JSON-RPC server wraps `AtartSt` and exposes it.
+
+### Core: `MMU` memory hooks
+
+```fsharp
+type AccessSource = Cpu = 0 | Dma = 1 | Host = 2
+[<Struct>] type MemAccess =
+    { Address: uint32; Width: int; Value: uint32; IsWrite: bool
+      Pc: int; Step: uint64; Source: AccessSource }
+type MemHook = { Id: int; Lo: uint32; Hi: uint32; OnRead: bool; OnWrite: bool; Fire: MemAccess -> unit }
+
+mmu.AddHook   : MemHook -> unit          // several at once; Lo..Hi inclusive
+mmu.RemoveHook: int -> unit
+mmu.ClearHooks: unit -> unit
+mmu.HostAccess: bool with get, set       // set by a host poke; tags Source = Host
+```
+
+- **Matching is by overlap**, `[Address, Address+Width) ∩ [Lo, Hi]`, so a word write at `$189c8` is
+  seen by a hook on `$189c9`. This removes `watch`'s odd-byte blind spot.
+- **Granularity is the bus access the MMU sees.** `WriteLong` is two `WriteWord`s and reports as two
+  word events (as the 68000 bus does); a long read reports once, width 4.
+- **Pc and Step** are the existing `WatchPc`/`WatchStep`, which `AtartSt.Step` already pushes before
+  each instruction. An interrupt or exception frame push is attributed to the PC of the instruction
+  that was about to run, the same label `WATCH` gives it today.
+- **Reads include instruction fetch.** Opcode and extension-word fetches and the decoder's look-ahead
+  (`TryFastForwardTbdrPoll` reads PC+2, PC+4) go through `ReadWord`, so a read hook on code sees them.
+  Read hooks are for data ranges; the core does not separate fetch from data reads (that needs a
+  function-code argument on every read, a hot-path change this does not make).
+- **FDC DMA** writes (`tryReadSector`, which stores straight into `ram`) fire write hooks with
+  `Source = Dma`, one event per byte inside a hook's range. Sector-rate, off the instruction path.
+- **The predicate is the callback.** In F# a hook's `Fire` decides for itself; the server compiles its
+  JSON filter (PC range, value/mask, source) into the closure.
+- **Not fired:** the flat test bus (`selftest`) and `RestoreRam`/`LoadState` bulk copies.
+- **Hot-path cost.** Hooks live in two arrays, `readHooks` and `writeHooks`, `null` when empty. The
+  write path swaps `checkWatch`'s option match for one null test (same cost). The read path is new:
+  the `ramDirect` line becomes `if ramDirect address && isNull readHooks then ram.[...] else`, so an
+  unhooked RAM read pays one field load and compare and no call; with hooks set, the read goes through
+  a non-inlined `ReadXxxBus` (the old body) and the fire loop. Gated by an interleaved A/B (below).
+- The REPL's `watch`/`unwatch` and `MMU.SetWatch`/`ClearWatch` become one hook (id 0) that prints the
+  existing `WATCH:` line, so `fsi_drive.fsx` and every script that greps `WATCH` keep working. The only
+  output change is the overlap rule: a watch whose `lo` is odd now also reports the word write that
+  covers it.
+
+### Server: `server/StServer.fsproj` (`stserver`)
+
+A separate executable project referencing `M68000.fsproj` (its `[<EntryPoint>]` must be in the last
+compiled file, so it cannot live inside `Program.fs`'s `Main`), with its own `bin/`. One process holds
+one `AtartSt`. Newline-delimited JSON-RPC 2.0 on stdin/stdout; everything else (core diagnostics,
+`Diag.result`, `--- state loaded ---`) goes to stderr. Trace is off at startup (`Trace.enabled <-
+false`, `Console.Out` to null) with no environment variable involved. The ROM defaults to
+`TOS100UK.IMG` found by walking up from the server's own directory, not the cwd.
+
+With `--mcp` the same method table is served as MCP tools over the same transport (`initialize`,
+`tools/list` generated from the table, `tools/call` returning the result JSON as text), so a Claude
+session can register it in `.mcp.json` and call `peek`/`run` as tools.
+
+Addresses are JSON numbers or `"$hex"`/`"0xhex"` strings; results give addresses as `"$hex"`.
+
+| method | params | result |
+|---|---|---|
+| `load` | `snapshot`, `disk` (**required key**: a path, or `null` for a disk-less snapshot), `rom?` | `pc`, `step` |
+| `save` | `path` | |
+| `regs` / `set_reg` | / `name`, `value` | D0-D7, A0-A7, USP, SSP, PC, SR, step |
+| `peek` | `addr`, `width` 1/2/4, `count?` | values (does not fire read hooks) |
+| `read` | `addr`, `len` | hex string (does not fire read hooks) |
+| `poke` | `addr`, `width` 1/2/4, `value` | fires write hooks with `source: "host"` |
+| `step` | `n` | `pc`, `step`, `events` (new watch events, capped) |
+| `run` | `max_steps` (required), `until_pc?` [addrs], `count?` | `reason` (`breakpoint`/`watch`/`until`/`max_steps`/`halted`/`error`), `steps`, `pc` |
+| `bp_set` / `bp_clear` / `bp_list` | `addrs` | persistent PC breakpoints `run` stops on |
+| `watch_add` | `lo`, `hi`, `kind` (`r`/`w`/`rw`), `stop?`, `pc_lo?`/`pc_hi?`, `value?`/`mask?`, `source?`, `max_events?` | `id` |
+| `watch_remove` / `watch_events` | `id` / `id?`, `clear?` | buffered events `{step, pc, addr, width, value, write, source}`, `dropped` |
+| `hits` | `steps`, `addrs` | count, first, last per address |
+| `fork` / `restore` / `drop` | / `id` / `id` | in-memory checkpoint: `Cpu` record, step count, `MmuSnapshot` |
+| `render` | `path` | PNG of the live screen, shifter base and palette (as `snap_render.py`) |
+| `kbd` / `mouse` / `disk` | as the REPL | |
+| `shutdown` | | |
+
+What this rules out: argv aliases (there is no argv beyond `--rom`/`--mcp`), a forgotten disk
+(`load` fails without the `disk` key), trace output (off with no switch), shell word splitting (JSON
+values), a malformed command ending the session (it returns a JSON-RPC error and the process lives),
+and unattributed pokes (`source: "host"`). `run` always takes a step budget, so a bounded search stays
+bounded, and its `reason` says which bound ended it.
+
+Core additions besides the hooks, both outside `Step`: `AtartSt.Capture() / Restore(s)` (what
+`Preview` already does privately: `cpu`, `stepCount`, `mmu.SnapshotRam()`, then
+`resetLoopDetector()`), and `MMU.HostAccess`.
+
+### Gates for the build
+
+- Regression net (skill section 6): `verify 5000000`, 30M diskless snapshot byte-compare, build,
+  `selftest` 0 wrong. MMU is touched, so also a game snapshot compare (Cadaver `gameplay_empire.snap`,
+  `s 2000000` end snapshot `cmp` against the pre-change build).
+- Hot-path cost: interleaved A/B of the pre-change and hooked builds, no hooks set, 30M diskless boot
+  and the Cadaver 10M-step resume, five pairs each, `uptime` per run, median and min. Falsifier: the
+  hooked build slower by more than 3% in every pair.
+- Smoke test through the server: `load` Cadaver `gameplay_empire.snap` with the one-disk Empire image,
+  `watch_add 189ca-189cd w`, `step 300000`: 25 events, writer PC `$01529c`, values `$1e` down to `$06`,
+  the same steps as `fsi_drive.fsx --watch 189ca-189cd` (section above). Also: `fork`, step, `restore`,
+  step again gives an identical end snapshot; a `poke` fires the watch with `source: "host"`.
+
 ## MAME as a second oracle for the ST core (`tools/mame_st/`)
 
 MAME 0.289's `st_uk` driver boots TOS 1.00 UK: `mame -listroms st_uk` wants `tos100uk.bin` (196,608 bytes, CRC `1a586c64`), which `TOS100UK.IMG` equals, plus the IKBD ROM (`keyboard.u1`). The zips are in `~/GitHub/mame/roms`
