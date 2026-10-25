@@ -1,15 +1,15 @@
 # Populous: handoff
 
-Updated 2026-10-02 by the docs-accuracy and cleanup session: all six docs audited against the code
-(three read-only agents, about 320 claims), about 60 corrections applied, the truncated
-`pop_ad58.asm` replaced, scratchpad leftovers removed. No emulator source changed.
+Updated 2026-10-25 by the session that ended at commit `e77989a` (post-decision branches live).
 
 ## Resume point
 
-- Last commits of this workstream: the docs-accuracy commit of this session, `509283d` (landscape
-  infographic), `a2e901b` (CHEAT hooks have writers), `014c25c` ($ef4c post-decision writes proven).
-- `bin/` is built from HEAD on macOS; no `*.fs` has changed since `5c32af8`, so it is the same
-  emulator every earlier count ran on.
+- Last commits of this workstream: `e77989a` (fight start / join live, knight cast from `fight1`),
+  `564f233`..`c0b9ad7` (the swamp-monster edge measured on real Hatari), `a74f2ae` (docs audit).
+- `bin/` is built from HEAD (`249562d`, 2026-10-25). The emulator changed a lot since `a74f2ae` (MFP
+  vector base and pending-clear, bus errors above `$400000`, `hits`/`bpc` count instruction starts,
+  stserver). Re-checked on it this session: `postdecide_diff.py 400 8080` 800/800, `fight1`/`gather1`
+  and the `knight_fight.py` cast all run; other counts were taken on the older emulator and not re-run.
 - Working data: `$POP_WORK` = `M68000/scratchpad/pop/`, rebuilt on this Mac. Source files:
   `~/Library/CloudStorage/Dropbox/Daves/ST games/` (the Populous zip, hash in the README;
   `hatari-v2.6.1-480/tos100uk.img` copied to `M68000/TOS100UK.IMG`). Present: `files/`,
@@ -19,9 +19,9 @@ Updated 2026-10-02 by the docs-accuracy and cleanup session: all six docs audite
   `late1..4.snap`, `walker/snaps/near`, `front`, `gather1`, `fight1`. Everything else in
   `ANCHORS.md` (drive/A, ai/cg1, cg2, M1, g40, powers/snaps, systems/spawn, swamp208, endgame) is
   **not** rebuilt here yet; `ai_diff.py` lists `g40.snap` and `agents/` captures that are absent.
-- Start from: `walker/snaps/fight1.snap` (frame 2665) for combat and take-overs.
-- Uncommitted work left behind: none from this workstream (`M68000/sessions/README.md` and
-  `Cadaver/`, `.obsidian/` belong to other sessions).
+- Start from: `walker/snaps/fight1.snap` (frame 2665) for combat and take-overs;
+  `powers/snaps/knight_s3000_after.snap` (`knight_fight.py 3000`) for a long-lived knight.
+- Uncommitted work left behind: none from this workstream (`Cadaver/` belongs to another session).
 
 ## Proven so far
 
@@ -35,9 +35,14 @@ Five topic docs, each count in the table at the top of `reversing/populous/READM
   154/154 live; combat `$1063a` rounds 97/97, resolutions 19/19; town take-over live 7/7, callcap
   240/240; **`$ef4c`'s post-decision writes (settle, merge, fight start `$10e7e`, join `$11006`,
   occupancy) callcap 1600/1600** over two seeds (`py/walker/postdecide_diff.py`, model in
-  `walker_ref.apply_decision`; two `$101a0` fighter-animation bytes excluded, no model). Armageddon
-  brawl 441/441; score.
+  `walker_ref.apply_decision`), nothing excluded now that `fight_start` runs `powers_ref.anim_advance`
+  for its two `$101a0` calls (dropping one fails 55/400). Live (`py/powers/live.py <snap> <frames>
+  fightstart join`): fight start **117/117**, join **3/3**; a UI-cast knight (`py/powers/knight_fight.py
+  3000`, 2000 frames) **41/41** fight starts, wins and razes, plus the first both-die round 1/1
+  (`mechanics.md` 3.3, 3.5). Armageddon brawl 441/441; score.
 - AI: 4800/4800 decision routines; natural runs 1854/1854, 2766/2766; flood/armageddon casts.
+- Swamp-monster entry edge: south on 75.9% of frames over ten Hatari cold boots against 69-70% here;
+  the gap is interrupt timing (`systems.md` 1.3, `py/systems/hatari_edges.py`).
 - Systems: trails 400/400 + 400/400 callcaps, 394/394 live; the pop-208 swamp spawn 400/400 and
   237/238 frames (`systems.md` 1.3).
 - Hidden hooks (`graphics.md` Scrolling, `mechanics.md` section 7; all code-read, none run live):
@@ -59,19 +64,20 @@ Five topic docs, each count in the table at the top of `reversing/populous/READM
 
 ## Open, in priority order
 
-1. **Post-decision branches live** (`mechanics.md` 10): fight start, join fight and a knight merging
-   into a friendly walker have only run under callcap; take-over "winner stays a walker"
-   (`$18206` = 0), a castle claimed by `$10366`, `$10068` killing a settlement outside a fight are
-   modelled but never compared live. Live pass from `fight1`/`gather1` with `py/powers/live.py`,
-   and a model of `$101a0`'s two fighter-animation bytes to drop the exclusion.
-2. **Trigger the hidden hooks live**: in a paint-map session press F6/F7 and watch `bp 1fbc4`-style
+1. **Trigger the hidden hooks live**: in a paint-map session press F6/F7 and watch `bp 1fbc4`-style
    hits on `$1f0fa` (subs 9/10 are keyboard-reachable); find what posts sub 15 (`$1d996` does not;
    scan every writer of `$21e0c+0..2` with `find_field_writers.py`); poke `$37eae = $66` with the
    latched click at x>310, 10<=y<=20 and query mode to confirm the `$b9fa` branch only prints.
-3. **The swamp208 237/238 frame**: `trail_ref.py` skips a settlement on a marked cell because
+2. **The swamp208 237/238 frame**: `trail_ref.py` skips a settlement on a marked cell because
    `$10366` was not modelled; `powers_ref.claim_land` now is. Wire it in and re-run
    `py/systems/trailrun.py` from `swamp208/p_spawn.snap` (needs `swamp208.py poke` on this Mac
    first) for 238/238; same for the `$12f84` corpus exclusion (`systems.md` 1.4).
+3. **Staged scenes for the callcap-only branches** (`mechanics.md` 10): a knight merging into a
+   friendly walker, a take-over whose winner stays a walker, a castle claimed after a take-over,
+   `$10068` killing a settlement outside a fight. Natural play did not reach them (0 of 391 merges
+   with a knight mover, 0 of 25 take-overs). Stage with labelled pokes: a friendly walker placed on
+   the `knight_s3000` knight's next cell; a building overlay next to a take-over winner. Low value:
+   `pw_diff.py` already covers them on the full state.
 4. Smaller loose ends: sounds 5/6 and the `$37e78` bits (`systems.md` 6); `$135fc`'s second call
    site `$e580` live; the `$f6b2` swamp raise live; a full SAVE/LOAD round trip on a disk with
    space; PAINT MAP, RESTART/NEXT MAP; SPR_320 frames 9 and 11 live; a pop-208 spawn on edge 1 or a
@@ -110,6 +116,8 @@ functions (`$ae14`, `$13dce`, `$188b0`, `$192ea`, `$20a66`, `$21244`), README no
 - `pop_ad58.asm` was a strict prefix of the real listing; any other `<game>_ad58.asm` should be
   checked against the PRG header's text size before a "no writer" claim.
 - Scripts spawn the emulator with cwd `M68000/`: pass absolute snapshot paths.
+- `live.py` prints only the first 60 events per kind: to count a rare case (a knight mover, an
+  entity index) add a tag in its kind branch rather than reading the event list.
 - On this Mac the emulator runs about 28M steps a minute; `live.py fight` and `resolve` over 1500
   frames run fine as two parallel processes.
 - A fresh checkout's `fight1` chain: drive recipe -> `repro`; one REPL `s 60000000` x4 -> late1..4;
@@ -121,8 +129,7 @@ functions (`$ae14`, `$13dce`, `$188b0`, `$192ea`, `$20a66`, `$21244`), README no
 
 ## Next session
 
-Item 1: a live pass for the post-decision branches from `fight1.snap`/`gather1.snap` (fight start,
-join fight, knight merge, take-over "winner stays"), plus a `$101a0` fighter-animation model to drop
-the two excluded bytes. If Dave wants the hidden-feature question answered first, item 2.
-Rebuild any other `ANCHORS.md` snapshot on demand from its recipe.
+Item 1, the hidden hooks: drive a paint-map session, press F6/F7 and count `$1f0fa` sub 9/10 hits
+with the mana change; then the writer scan for sub 15. If Dave prefers closing proof gaps, item 2
+(swamp208 238/238). Rebuild any other `ANCHORS.md` snapshot on demand from its recipe.
 Prompt: `/resume populous`.
