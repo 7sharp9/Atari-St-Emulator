@@ -13,6 +13,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `emulator.md` | emulator core and tooling not driven by one game (memory hooks, `stserver`, regression net, coverage/replay plans) |
 | `final_fight.md` | Final Fight reversing, CPS1 arcade under MAME (`reversing/finalfight/`) |
 | `impossamole.md` | Impossamole reversing (`reversing/impossamole/`) |
+| `midwinter.md` | Midwinter reversing, first 3D game (`reversing/midwinter/`) |
 | `lemmings.md` | Lemmings reversing, lemming behaviour first (`reversing/lemmings/`) |
 | `populous.md` | Populous reversing (`reversing/populous/`) |
 | `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |

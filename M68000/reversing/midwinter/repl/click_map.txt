@@ -1,0 +1,8 @@
+mouse move 55 3
+s 100000
+kbd fa 00 00
+s 40000
+kbd f8 00 00
+s 60000000
+snap scratchpad/midwinter/agents/static/s_map.snap
+q

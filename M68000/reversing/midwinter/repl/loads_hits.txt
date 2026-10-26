@@ -1,0 +1,7 @@
+mouse move -30 0
+s 100000
+kbd fa 00 00
+s 40000
+kbd f8 00 00
+hits 4000000 500 10e1c 10e40 10f1a 11066 110ba 11128 5ee 642 5dc fc4cee 12514 1498a 14e00
+q

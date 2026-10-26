@@ -1,0 +1,46 @@
+mouse move -30 0
+s 100000
+kbd fa 00 00
+s 40000
+kbd f8 00 00
+bp 500 30000000
+m 2c4c6 4
+m 2c4d2 2
+bt 2
+s 1
+bp 500 30000000
+m 2c4c6 4
+m 2c4d2 2
+bt 2
+s 1
+bp 500 30000000
+m 2c4c6 4
+m 2c4d2 2
+bt 2
+s 1
+bp 500 30000000
+m 2c4c6 4
+m 2c4d2 2
+bt 2
+s 1
+bp 500 30000000
+m 2c4c6 4
+m 2c4d2 2
+bt 2
+s 1
+bp 500 30000000
+m 2c4c6 4
+m 2c4d2 2
+bt 2
+s 1
+bp 500 30000000
+m 2c4c6 4
+m 2c4d2 2
+bt 2
+s 1
+bp 500 30000000
+m 2c4c6 4
+m 2c4d2 2
+bt 2
+s 1
+q

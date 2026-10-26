@@ -1,0 +1,18 @@
+mouse move -30 0
+s 100000
+kbd fa 00 00
+s 40000
+kbd f8 00 00
+s 5000000
+snap scratchpad/midwinter/agents/static/s_3d_1.snap
+s 5000000
+snap scratchpad/midwinter/agents/static/s_3d_2.snap
+s 5000000
+snap scratchpad/midwinter/agents/static/s_3d_3.snap
+s 5000000
+snap scratchpad/midwinter/agents/static/s_3d_4.snap
+s 5000000
+snap scratchpad/midwinter/agents/static/s_3d_5.snap
+s 5000000
+snap scratchpad/midwinter/agents/static/s_3d_6.snap
+q
