@@ -78,7 +78,8 @@ the VBL work (census: nothing but the 9 VBL/timer routines over 1.2M steps on d_
 
 Two screens have a real frame loop:
 
-**Map screen** `$14ce map_screen` (loads 28/29/27, mode 1, copies picture $4a104 -> $60000). Loop at $1546:
+**Map screen** `$14ce map_screen` (loads numbers 28/29/27, files 38.2/39.2/37.2; mode 1; copies the height grid
+$4a104 -> $60000 and subdivides it once to draw the map, `terrain.md` section 5). Loop at $1546:
 `bsr $2122 / bsr $18e8 / jsr $bdec flip / bsr $6840 wait_vbl`, then click dispatch via rects $23fc8 -> table $24fc8
 (`jmp`). `hits_s_map.log` (s_map.snap, 1.2M steps): once per VBL = 100: $1546 $18e8 $19bc $1b22 $1dba $2122 $217a
 $2786 $6840 $bdec $df48; 200: $2258 $2272 $308a $867a $86f4 $a99c $a9aa $aa3e; 1300: $a36c $ab40.
@@ -138,8 +139,11 @@ $fc4cee 0 hits).
 
 - Call convention: file number in 348(A6) (word), destination in 336(A6), `jsr $10cd2` -> `jmp $500`.
 - `$500 res_load_numbered_file` (resident low RAM, below the load base): points $114/$70/$68 at an `rte` stub $5dc
-  (555 hits during the loads: timer C and VBL are swallowed), builds the name "NN.2" at $5d6 from 348(A6)
-  (+10 when $258a2 != $258a6, inferred disk-set switch), size from the 10-byte entry at $258a8 -> $2db02, calls
+  (555 hits during the loads: timer C and VBL are swallowed), builds the name "NN.2" at $5d6 from the number in
+  348(A6), size from a 10-byte table entry -> $2db02. The longword $258a2 is the original loader's table pointer:
+  when it is not $258a6 the number gets +10 and the entry comes from the table at $258a8. It is 0 on `cold20.snap`
+  and $2590c on every milestone from `d_title` to `d_ski`, so every load during play opens number+10 (number $1b
+  opens `37.2`: the name buffer $5d6 reads "37.2" at `$19962`, and the 10,000 bytes at $4a104 equal depacked 37.2). Calls
   `$10e1c fat_load_file`, then `$5ee`: if the destination starts `LSD!` it moves the data down 128 bytes and depacks in
   place with `$642 res_lsd_depack` (the backward bit-stream depacker; `cmpi.l #$4c534421,(A1)` at $5ee). It then
   depacks two fixed blobs, $77d70 -> $215e4 and $7fd80 -> $21be4, and restores the vectors.
@@ -150,13 +154,16 @@ $fc4cee 0 hits).
   $11184/$1119e/$111b6), `$110ba fdc_read_sector` (DMA address $ff8609/b/d, command $80, poll GPIP5 at $fa01,
   retries), `$11128 fdc_seek` (command $13).
 - Census (`loads_hits.log`): $500 4, $10e1c 4, $10e40 4, $10f1a 4, $11066 27, $110ba 82, $11128 5, $5ee 4, $642 12.
-- Breakpoint log (`repl/loads_ski.txt` -> `loads_ski.log`) on the ski click, 348(A6)/336(A6) at each `$500`:
-  34.2 -> $4f1e0 (from $d910), 35.2 -> $53254 ($d946), 37.2 -> $7a000 ($1bc6c), 27.2 -> $4a104 ($19cc8).
-- Static map from the listing (`tables/loadcalls.txt`): 47.2 -> [$2c35e] (=$404c4), 30.2 -> $4f1e0, 31.2/33.2 -> packed after
-  it, 28.2 -> $4f1e0, 27.2 -> $4a104 (map picture source, copied to $60000 by $15d6; inferred from that copy), 29.2,
-  34.2 -> $4f1e0, 35.2, 42.2 -> $4f1e0, 45.2 -> $404c4, 49.2 -> 8(A6) (a screen buffer), 48.2 -> $2a14c,
-  06.2 -> $3167c, 03.2 -> $4c878, 01/02/04/05.2 computed, plus five computed numbers ($da92, $daba, $1b9d8, $1ba40,
-  $1bc66). The two runtime rows with a static number (34.2, 27.2) match.
+- Breakpoint log (`repl/loads_ski.txt` -> `loads_ski.log`) on the ski click, number in 348(A6) -> 336(A6) at each
+  `$500`, with the file it opens: 34 (44.2) -> $4f1e0 (from $d910), 35 (45.2) -> $53254 ($d946), 37 (47.2) -> $7a000
+  ($1bc6c), 27 (37.2) -> $4a104 ($19cc8). At `$19962` the RAM at $4f1e0, $53254 and $4a104 equals depacked 44.2, 45.2
+  and 37.2 byte for byte; $7a000 has been overwritten by then (47.2 there is inferred).
+- Static map from the listing (`tables/loadcalls.txt`, which also lists numbers; add 10 for the file opened in play):
+  47 -> [$2c35e] (=$404c4), 30 -> $4f1e0, 31/33 -> packed after it, 28 -> $4f1e0, 27 -> $4a104 (the island's
+  50 x 50 height grid, which the map screen copies to $60000 at $15d6 and subdivides: `terrain.md`), 29,
+  34 -> $4f1e0, 35, 42 -> $4f1e0, 45 -> $404c4, 49 -> 8(A6) (a screen buffer), 48 -> $2a14c,
+  06 -> $3167c, 03 -> $4c878, 01/02/04/05 computed, plus five computed numbers ($da92, $daba, $1b9d8, $1ba40,
+  $1bc66). The two runtime rows with a static number (34, 27) match.
 
 The loader is a crack patch, not Rainbird's. The depacked file `unpacked/1.1` (`mw_1_1_at800.img` = 1.1's text
 placed at $800) differs from RAM in 2512 bytes (comparison against d_team.snap), and the main blocks are code:

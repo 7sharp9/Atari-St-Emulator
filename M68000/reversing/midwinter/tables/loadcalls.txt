@@ -1,3 +1,4 @@
+# 'file NN.2' is the number the call passes in 348(A6); during play the loader opens NN+10 (architecture.md section 5)
 $004152 file 32.2 dest $2c35a.l
 $00d7a6 file 47.2 dest $2c35e.l
 $00d7ca file 30.2 dest #$4f1e0

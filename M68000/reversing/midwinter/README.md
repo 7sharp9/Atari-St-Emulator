@@ -1,8 +1,8 @@
 # midwinter: Midwinter (Rainbird / Maelstrom Games, 1989)
 
 Mike Singleton's Midwinter: a war on a frozen island, played through 32 characters who ski,
-hang-glide, drive snow buggies and ride cable cars across fractal-looking terrain drawn as
-filled 3D polygons. It is the repo's first 3D game. The emulator boots it from a French
+hang-glide, drive snow buggies and ride cable cars across fractal terrain (generated from a coarse
+height grid, `terrain.md`) drawn as filled 3D polygons. It is the repo's first 3D game. The emulator boots it from a French
 compilation disk, runs the menu, the title, the team and character screens and the first-person
 ski view with an enemy plane attacking, all unmodified apart from one poke that stubs the menu's fullscreen VBL handler (below).
 
@@ -66,6 +66,13 @@ snapshots byte for byte. Against the earlier drive, which poked the two ACIA loo
 and ski screens pixel for pixel; options and the character screen differ by 34 pixels each, the mouse pointer caught
 at another point of its redraw.
 
+## Documents
+
+| document | covers | proof |
+|---|---|---|
+| `architecture.md` | vectors, VBL, screen graph, map and 3D frame loops, the cracked loader | census counts per routine |
+| `terrain.md` | the island's height field: file 37.2's 50 x 50 grid refined by five diamond-square subdivisions with a hash displacement into a 100 x 100 grid around the player, then heights, building pads and triangle shading | `py/terrain/gate_terrain.py`: generator 70000/70000 cells over 7 windows, post-passes 10000/10000 |
+
 ## Architecture
 
 `architecture.md` holds the program skeleton with its census counts:
@@ -105,11 +112,14 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `tables/` | icon/action tables, indirect jump sites, static file-load calls |
 | `py/vectors.py` | lists the non-TOS vectors in a snapshot |
 | `py/bk_stub.py` | unpacks the menu's ByteKiller-style self-extracting stub |
+| `terrain.md`, `py/terrain/` | terrain model `terrain_gen.py`, its gate `gate_terrain.py`, `render_terrain.py` |
+| `terrain_island.png`, `terrain_local.png` | the whole island after the first subdivision; the shaded local grid of `d_ski.snap` |
+| `gates.toml` | the promoted gates for `tools/gates.py` |
 | `*.png` | milestone screenshots |
 
 `tools/lsd_depack.py` (the game-file depacker) is in the shared tools.
 
 ## Not exercised yet
 
-The 3D renderer and terrain, any vehicle other than skis, the enemy AI, recruitment, the other game on the disk,
+The 3D renderer (projection, draw list, polygon fill), the map render from the height grid, any vehicle other than skis, the enemy AI, recruitment, the other game on the disk,
 and anything after the first bomber attack.
