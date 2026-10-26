@@ -163,7 +163,9 @@ $fc4cee 0 hits).
   50 x 50 height grid, which the map screen copies to $60000 at $15d6 and subdivides: `terrain.md`), 29,
   34 -> $4f1e0, 35, 42 -> $4f1e0, 45 -> $404c4, 49 -> 8(A6) (a screen buffer), 48 -> $2a14c,
   06 -> $3167c, 03 -> $4c878, 01/02/04/05 computed, plus five computed numbers ($da92, $daba, $1b9d8, $1ba40,
-  $1bc66). The two runtime rows with a static number (34, 27) match.
+  $1bc66). The two runtime rows with a static number (34, 27) match. Loads made before the pointer switches open the
+  plain number: $4c878 holds 03.2 whole, and 01/04/05.2 sit whole at $4d530/$4d6c8/$4dd98
+  (`tools/find_files_in_ram.py` on the `$19962` snapshot).
 
 The loader is a crack patch, not Rainbird's. The depacked file `unpacked/1.1` (`mw_1_1_at800.img` = 1.1's text
 placed at $800) differs from RAM in 2512 bytes (comparison against d_team.snap), and the main blocks are code:
