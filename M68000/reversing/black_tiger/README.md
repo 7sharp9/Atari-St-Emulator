@@ -34,12 +34,11 @@ routines `$10026/$1008e/$100f6` are potions/armour/weapon).
 
 ## What it needed from the emulator
 
-No instruction or addressing-mode wall. One fidelity divergence, not fixed (needs the full regression
-net and a coordinated `MMU.fs` change):
+No instruction or addressing-mode wall. One fidelity divergence, now fixed:
 
 | wall | where | status |
 |---|---|---|
-| The keyboard ACIA data register returns 0 when its FIFO is empty and pops the FIFO on read; a real 6850 keeps the last received byte in its data register. TOS's keyboard ISR consumes a SPACE press before the loader's two polling loops (`cmpi.b #$39,$fc02.w` at `$a562` and the trainer menu `$c658/$c662`) read it, so they never match | `MMU.fs` ~913 (read) and ~295 (status) | bypassed with two labelled pokes in `drive.txt`: `w a568 4e714e75` (nop the `bne`) and `w c65e 601e0c38` (`beq` -> `bra`: choose NORMAL). The game proper reads keys through TOS (`system.md` 8) and the joystick through the IKBD joystick vector, so nothing else depends on retention |
+| The keyboard ACIA data register returned 0 when its FIFO was empty and popped the FIFO on read; a real 6850 keeps the last received byte in its data register. TOS's keyboard ISR consumed a SPACE press before the loader's two polling loops (`cmpi.b #$39,$fc02.w` at `$a562`, and the trainer stub's `$c658` SPACE = NORMAL / `$c65e` `$14` = trainer) read it, so they never matched | `MMU.fs`, `$FFFC02` read (`kbdAciaRdr`) | fixed: the data register keeps the last byte (`DEVELOPING.md`, "IKBD command interpreter"). `drive.txt` presses SPACE at each loop with no pokes. The game proper reads keys through TOS (`system.md` 8) and the joystick through the IKBD joystick vector |
 
 Also: an `\AUTO\` entry needs a valid 8.3 name. `AUTO_BL_TIGER.PRG` is silently not found by TOS 1.00
 (the AUTO scan runs, finds nothing, boots the desktop).
@@ -57,10 +56,13 @@ dotnet exec bin/Debug/net8.0/M68000.dll 20000000 snapshot scratchpad/black_tiger
 dotnet exec bin/Debug/net8.0/M68000.dll resume scratchpad/black_tiger/boot20M.snap repl --disk-a scratchpad/black_tiger/bt_auto.st < reversing/black_tiger/drive.txt
 ```
 
-`drive.txt` runs the two pokes, lets the attract mode reach the title screen (240M steps after the
-trainer menu), presses joystick-1 fire (`kbd ff 80`, 100,000 steps, `kbd ff 00`) and writes
-`scratchpad/black_tiger/play_start.snap`: a fresh game, level 1, 5 lives, score 0, hero controllable. The scripted run is
-byte-identical (`cmp`) to the snapshot first reached by hand-driven steps. Joystick 1 is `kbd ff <state>`: bit 0 up, 1 down, 2 left, 3 right, 7 fire; hold
+`drive.txt` presses SPACE at the cracktro (`u a562`; `boot20M.snap` already sits there) and again at the trainer
+stub (`u c658`, 1.5M steps later; NORMAL), lets the attract mode reach the title screen (240M steps), presses
+joystick-1 fire (`kbd ff 80`, 100,000 steps, `kbd ff 00`) and writes `scratchpad/black_tiger/play_fresh.snap`: a
+fresh game, level 1, 5 lives, score 0, time 2:52, hero controllable (a 600,000-step hold of right scrolls the room
+against a no-input control). Every gate and script reads `play_start.snap` instead, which the earlier drive made by
+poking both loops (`git show 8359734:M68000/reversing/black_tiger/drive.txt`); the two reach the same screen but not
+the same bytes (an enemy is on a different animation frame), so keep `play_start.snap` and do not overwrite it. Joystick 1 is `kbd ff <state>`: bit 0 up, 1 down, 2 left, 3 right, 7 fire; hold
 every packet at least 30,000 steps. Later levels: the game's own level skip (hold up+left+fire on joystick
 1, press ClrHome, then Return per level; `py/systems/drive_levels.py`). Boss, shop and ending states:
 `py/systems/drive_boss.py`, `drive_shop.py`, `drive_ending.py` (each poke is labelled in the script).

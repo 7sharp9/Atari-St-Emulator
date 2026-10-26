@@ -23,8 +23,10 @@ read from the code and checked by running it:
 
 1. **BBC cracktro** (a scroller over a starfield, code at `$a000`-`$bb00`). Its exit test at `$a432` is
    `cmpi.b #$b9,$fc02.w` / `bne` after the scroll pointer `$beba` passes `$bed2`: a direct ACIA poll
-   for the space break code, which the emulator never delivers (TOS's ISR pops the FIFO first; CLAUDE.md,
-   "Emulator behaviours"). `drive.txt` NOPs the 4-byte `bne` at `$a438`.
+   for the space break code. The emulator did not deliver it while a read of an empty ACIA FIFO returned 0
+   (TOS's ISR takes the byte first); the data register now keeps the last byte, as a 6850 does (`DEVELOPING.md`,
+   "IKBD command interpreter"). `drive.txt` still NOPs the 4-byte `bne` at `$a438`; it has not been re-driven
+   with a space press instead.
 2. The cracktro copies a loader to `$70000` (`$a46a`-`$a488`). It is a FAT reader that drives the
    WD1772 and the DMA directly (`$8604`/`$8606`, INTRQ polled on MFP GPIP bit 5), loads the game by
    file name, and flashes the screen on a timeout. It reads the disk's own boot sector and root

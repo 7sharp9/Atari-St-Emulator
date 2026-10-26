@@ -4,8 +4,7 @@ Mike Singleton's Midwinter: a war on a frozen island, played through 32 characte
 hang-glide, drive snow buggies and ride cable cars across fractal-looking terrain drawn as
 filled 3D polygons. It is the repo's first 3D game. The emulator boots it from a French
 compilation disk, runs the menu, the title, the team and character screens and the first-person
-ski view with an enemy plane attacking, all unmodified apart from two input-bypass pokes in the
-menu (below).
+ski view with an enemy plane attacking, all unmodified apart from one poke that stubs the menu's fullscreen VBL handler (below).
 
 ## Provenance
 
@@ -51,18 +50,21 @@ ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll 20000000 snapshot scratc
 ATARI_NOTRACE=1 dotnet exec bin/Debug/net8.0/M68000.dll resume scratchpad/midwinter/cold20.snap repl --disk-a scratchpad/midwinter/zuul067.st < reversing/midwinter/drive.txt
 ```
 
-Three emulator gaps had to be worked around, all in input or timing, none in the game:
+Three emulator gaps, all in input or timing and none in the game, affect the drive. Two are fixed in the emulator;
+the third is bypassed by a labelled poke:
 
-| where | what the code does | why it stalls here | bypass in `drive.txt` |
+| where | what the code does | gap | `drive.txt` |
 |---|---|---|---|
-| boot-sector ticker `$172c` | `cmpi.b #$39,$fc02.w / bne $1704`: polls the ACIA data register for space | `MMU.fs` pops the FIFO on a read and returns 0 when empty, and TOS's ISR takes the byte first (the Black Tiger gap) | `w 1732 4e714dfa`: the `bne` becomes a `nop` |
-| menu key loop `$a4e4` | reads `$fc02` twice per pass (`cmpi.b #$3d` then `cmpi.b #$3b`) for F1..F3 | the second read always sees 0 after the first popped the byte | the loop is replaced by `move.b #$3b,$a404.l / bra $a500` (F1 stored as the choice) |
-| menu VBL `$a5e0` | a fullscreen border-removal routine, mostly timed `nop`s | the emulator raises the VBL every 12,000 instructions, not every 160,256 cycles; the handler runs about 36,000 instructions, so the next VBL is pending when it returns and the main loop never runs (55 handler runs and 0 main-loop hits in 2M steps) | `w a5e0 4e730001`: the handler is an `rte` (no fullscreen menu art) |
+| boot-sector ticker `$172c` | `cmpi.b #$39,$fc02.w / bne $1704`: polls the ACIA data register for space | fixed: the data register used to return 0 once TOS's ISR had taken the byte; it now keeps the last byte, as a 6850 does | `u 172c`, then SPACE (`kbd 39`, `kbd b9`) |
+| menu key loop `$a4e4` | reads `$fc02` three times per pass (`cmpi.b #$3d / bgt`, `cmpi.b #$3b / blt`, then `move.b $fc02.w,$a404.l`) for F1..F3 | fixed by the same change: every read now sees the same key | `u a4e4`, then F1 (`kbd 3b`, `kbd bb`) |
+| menu VBL `$a5e0` | a fullscreen border-removal routine, mostly timed `nop`s | open: the emulator raises the VBL every 12,000 instructions, not every 160,256 cycles; the handler runs about 36,000 instructions, so the next VBL is pending when it returns and the main loop never runs (55 handler runs and 0 main-loop hits in 2M steps) | `w a5e0 4e730001`: the handler is an `rte` (no fullscreen menu art) |
 
-A fourth gap affects every mouse-driven game: the REPL's `mouse down l` sends no packet in relative mouse mode,
-it only updates the 6301's internal button state. A real IKBD sends a relative packet when a button changes,
-and Midwinter reads buttons only from the packet header (`$664a`). `drive.txt` sends raw packets instead:
-`kbd fa 00 00` (left down) and `kbd f8 00 00` (release).
+Clicks are `mouse down l` / `mouse up l`: in relative mouse mode a button change sends a zero-motion packet
+(`$F8|buttons 00 00`), and Midwinter reads buttons only from the packet header (`$664a`). Before that emulator fix
+the REPL sent no packet and the drive injected `kbd fa 00 00` / `kbd f8 00 00`; those runs give the same six
+snapshots byte for byte. Against the earlier drive, which poked the two ACIA loops, today's gives the same title, team, decisions
+and ski screens pixel for pixel; options and the character screen differ by 34 pixels each, the mouse pointer caught
+at another point of its redraw.
 
 ## Architecture
 
@@ -98,7 +100,7 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 |---|---|
 | `architecture.md` | vectors, VBL, screen graph, map and 3D frame loops, the cracked loader |
 | `midwinter.sym` | routine names (`tools/merge_sym.py` format) |
-| `drive.txt` | cold boot (20M) to the ski view, REPL script with the labelled pokes above |
+| `drive.txt` | cold boot (20M) to the ski view, REPL script with the labelled VBL poke above |
 | `repl/` | the REPL scripts behind `architecture.md`'s counts |
 | `tables/` | icon/action tables, indirect jump sites, static file-load calls |
 | `py/vectors.py` | lists the non-TOS vectors in a snapshot |

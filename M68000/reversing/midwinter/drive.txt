@@ -1,11 +1,13 @@
 u 172c 400000000
-w 1732 4e714dfa
+kbd 39
+s 300000
+kbd b9
 s 60000000
-m a4e4 8
-w a4e4 13fc003b
-w a4e8 0000a404
-w a4ec 6012003b
 w a5e0 4e730001
+u a4e4 100000000
+kbd 3b
+s 300000
+kbd bb
 s 150000000
 snap scratchpad/midwinter/d_title.snap
 kbd 39
@@ -19,32 +21,32 @@ mouse move 80 80
 s 100000
 mouse move 0 75
 s 2000000
-kbd fa 00 00
+mouse down l
 s 300000
-kbd f8 00 00
+mouse up l
 s 150000000
 snap scratchpad/midwinter/d_team.snap
 mouse move -124 -107
 s 1000000
-kbd fa 00 00
+mouse down l
 s 300000
-kbd f8 00 00
+mouse up l
 s 100000000
 snap scratchpad/midwinter/d_stark.snap
 mouse move 127 125
 s 100000
 mouse move 12 12
 s 600000
-kbd fa 00 00
+mouse down l
 s 600000
-kbd f8 00 00
+mouse up l
 s 150000000
 snap scratchpad/midwinter/d_decisions.snap
 mouse move -31 -2
 s 600000
-kbd fa 00 00
+mouse down l
 s 600000
-kbd f8 00 00
+mouse up l
 s 10000000
 snap scratchpad/midwinter/d_ski.snap
 q

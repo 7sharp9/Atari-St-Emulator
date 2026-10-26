@@ -1,10 +1,15 @@
-w a568 4e714e75
-s 80000000
-w c65e 601e0c38
+u a562 80000000
+kbd 39
+s 300000
+kbd b9
+u c658 240000000
+kbd 39
+s 300000
+kbd b9
 s 240000000
 kbd ff 80
 s 100000
 kbd ff 00
 s 8000000
-snap scratchpad/black_tiger/play_start.snap
+snap scratchpad/black_tiger/play_fresh.snap
 quit

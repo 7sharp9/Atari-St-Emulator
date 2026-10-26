@@ -103,13 +103,11 @@ host input back to the emulator as IKBD serial packets:
   row, Help/Undo. F12 or closing the window quits.
 - **mouse** - relative mode; motion is accumulated and flushed as `$F8`-header
   relative packets once per frame (front-loaded, to avoid catching a half-drawn
-  VDI cursor at the VBL). Button edges send immediately. When the program put the
-  IKBD in absolute mode (`$09`), no packet is sent: the motion only moves the
-  6301's cursor, which the program reads with `$0D` (`MMU.MoveMouse`). If the running program
-  put the IKBD into "buttons report as keycodes" mode (command `$07` bit 2, e.g.
-  Electronic Pool), a left/right button edge is *also* delivered as key
-  `$74`/`$F4` / `$75`/`$F5` via `MMU.EnqueueMouseButton` - a no-op in every other
-  mode, so no existing target is affected.
+  VDI cursor at the VBL). When the program put the IKBD in absolute mode (`$09`),
+  no packet is sent: the motion only moves the 6301's cursor, which the program
+  reads with `$0D` (`MMU.MoveMouse`). A button edge flushes pending motion and goes
+  through `MMU.EnqueueMouseButton`, the same path as the REPL `mouse down`/`up`
+  (below).
 - **joystick 0** - the arrow cluster is also mapped to a joystick-0 state byte
   (`joyBitMap`): Up = fire bit `$80`, Down = `$02`, Left = `$04`, Right = `$08`.
   Emitted as a `$FE` + state-byte report on any key edge, coalesced to one packet
@@ -125,8 +123,22 @@ command lengths transcribed from Hatari `src/ikbd.c`). It tracks only what targe
 programs set: the mouse report mode (`$08`/`$09`/`$0A`/`$12`), the mouse
 button-action mode (`$07` - bit 2 = "buttons report as keycodes `$74`/`$75`",
 what Electronic Pool uses), the joystick auto-report flag (`$14`/`$15`/`$1A`),
-and `$80 $01` reset. Nothing here is read back by the CPU, so it is **not** in
-`MmuSnapshot` and the 30M diskless boot stays byte-identical.
+and `$80 $01` reset. This state, the 6301's absolute mouse position and button
+state, are in `MmuSnapshot` (format v9); a diskless boot never changes them.
+
+A button edge reports as Hatari's `IKBD_SendAutoKeyboardCommands` does (`MMU.EnqueueMouseButton`):
+a press or release that does not change the button state sends nothing; otherwise, in
+buttons-as-keys mode, `$74`/`$F4` (left) or `$75`/`$F5` (right), then, in relative mode, a
+zero-motion packet `$F8|buttons 00 00` (Midwinter reads clicks only from that header). Cursor-keycode
+mode (`$0A`) sends the `$74`/`$75` codes; absolute and disabled (`$12`) modes send nothing. The `$07`
+bits 0/1 (an absolute report on press/release) are not modelled.
+
+The receive data register latches as on the MC6850: a read of `$FFFC02` takes the next byte of the
+IKBD FIFO into the register and returns it, and a read with the FIFO empty returns the last byte
+again (Hatari `src/acia.c` `ACIA_Read_RDR`); RDRF (status bit 0) is set only while the FIFO holds
+an unread byte. A game that polls `$fc02` directly while TOS's ISR is installed therefore sees the
+key the ISR already took (Black Tiger `$a562`, Midwinter `$172c`/`$a4e4`). The register is in the
+snapshot (format v12).
 
 `ATARI_TRACE_IKBD=1` logs every completed command and every state change to
 stderr (survives `ATARI_NOTRACE`) - use it to see which input mode a program
@@ -136,7 +148,8 @@ mode-aware synthesis the live window uses:
 ```
 mouse move <dx> <dy>     relative motion -> $F8 dx dy packet; in absolute mode ($09) only
                          the 6301's cursor moves (the program reads it with $0D), no packet
-mouse down l|r           button press    -> $74/$75 keycode in buttons-as-keys mode, else nothing
+mouse down l|r           button press    -> $F8|buttons 00 00 in relative mode; $74/$75 in
+                         buttons-as-keys or keycode mode; nothing if the state did not change
 mouse up   l|r           button release
 ```
 

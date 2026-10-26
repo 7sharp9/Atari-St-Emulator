@@ -616,12 +616,11 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   re-verified this pass and does not reproduce; treat it as retracted pending re-derivation (see
   `verify-visual-claims-with-frame-diffs` in project memory — this is exactly that failure mode).
 - **8th pass, cont. — mouse clicks currently send *zero bytes* at all, a separate, harder gap.**
-  `mouse down l` / `mouse up l` only synthesize a keycode-style byte (`$74`/`$75`) when the IKBD is
-  in "buttons report as keys" mode (`MouseButtonsReportAsKeys`, gated on `ikbdMouseButtonAction`
-  bit 2, set only by a `$07` IKBD command the *game* would have to send). Checked live: this mode is
-  `false` in `gameplay_empire.snap`'s state, and the REPL confirms it (`mouse down left
-  (buttons-as-keys=false)`), so a `mouse down`/`up` pair enqueues nothing — no bytes, no interrupt,
-  no memory change at all. Whether the game ever sends that `$07` command (at some other point in
+  `mouse down l` / `mouse up l` report in the IKBD mode the game set: a zero-motion relative packet in
+  relative mode, `$74`/`$75` in buttons-as-keys mode (`$07` bit 2), nothing with the mouse disabled.
+  Cadaver sends `$12` (mouse disabled) at boot (below) and buttons-as-keys is `false` in
+  `gameplay_empire.snap`'s state (`mouse down left (buttons-as-keys=false)`), so a `mouse down`/`up`
+  pair enqueues nothing — no bytes, no interrupt, no memory change at all. Whether the game ever sends that `$07` command (at some other point in
   its lifecycle) is unknown — needs an `ATARI_TRACE_IKBD` cold-boot trace (see next steps).
 - **8th pass, cont. — joystick `$FE` (port 0) direction packets: byte-write mechanism verified, but
   zero downstream effect.** Sent `kbd fe 08` (header `$FE` + direction byte, bit3="right" in
