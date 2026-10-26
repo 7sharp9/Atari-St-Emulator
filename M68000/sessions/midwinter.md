@@ -1,6 +1,6 @@
 # Midwinter: handoff
 
-Updated 2026-10-26 by the first Midwinter session.
+Updated 2026-10-26 by the first Midwinter session, after the IKBD/ACIA emulator merge (`7e5b688`).
 
 ## Resume point
 
@@ -9,13 +9,15 @@ Updated 2026-10-26 by the first Midwinter session.
   `~/Library/CloudStorage/Dropbox/Daves/ST games/Zuul #67.zip`, `tools/msa2st.py ZUUL067.MSA zuul067.st`,
   `tools/extract_disk.py zuul067.st files`, `tools/lsd_depack.py --all files unpacked`, then the README's two commands
   (cold boot 20M, `drive.txt`).
-- Start from: `scratchpad/midwinter/run1/d_ski.snap` (first-person ski view, Capt Stark, 06:00) or `d_decisions.snap`.
+- Start from: `scratchpad/midwinter/d_ski.snap` (first-person ski view, Capt Stark, 06:00) or `d_decisions.snap`: the
+  current `drive.txt` on the merged build (snapshot v12). `run1/` holds the same milestones from the old poked drive (v11, still loads).
   Every resume needs `--disk-a scratchpad/midwinter/zuul067.st` (the game loads files during play).
 - Uncommitted work left behind: none of this workstream.
 
 ## Proven so far
 
-- Boot to the 3D view, deterministic (`drive.txt`, six milestones byte-identical over two runs).
+- Boot to the 3D view, deterministic (`drive.txt`, six milestones byte-identical over two runs). Keys and clicks are real
+  input since the emulator merge; the only poke left is the menu VBL stub `$a5e0`.
 - `tools/lsd_depack.py` decodes all 63 files; `1.1` equals RAM at entry except 14 crack-patch runs (README "Packing").
 - Architecture skeleton with census counts (`architecture.md`): vectors, VBL fan-out, screen graph, map loop, 3D frame
   `$14e00` (7 frames per 100 emulator VBLs on `d_ski`, 5 on `s_3d_6`), cracked FAT12 loader.
