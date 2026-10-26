@@ -210,7 +210,8 @@ that are easy to forget:
 
 ## Emulator behaviours that look like input bugs
 
-- `watch <addr> [len]` reports every CPU write whose bytes overlap the range (a word write at `$1000`
+- `watch <addr> [len]`: the address is hex and `len` decimal (`watch 40000 41984`; a hex `len` such as `a400` is a
+  "bad operand" that ends the REPL run). It reports every CPU write whose bytes overlap the range (a word write at `$1000`
   covers a watched `$1001`) and every FDC DMA sector landing in it (a `DMA read sector` line); it cannot name
   the PC of a REPL `w` poke (it is reported with the last step's `step=`/`pc=`). One region at a time: a
   second `watch` replaces the first. For several ranges, read watches, writer-PC or value filters, or a stop
