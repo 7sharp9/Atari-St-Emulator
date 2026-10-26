@@ -32,13 +32,13 @@ Updated 2026-10-26 by the first Midwinter session.
 3. **People and AI**: the character records (inferred: `$2b194`, stride `$4a`, indexed by the current character `96(A6)` at `$3192`), relationships and recruitment,
    enemy movement. Name fields from the bio screen text.
 4. Decisions icons 3 (snipe `$3dd2`) and 5 (`$5062`), S.O.S, other vehicles; the computed file numbers (`bp 500` log).
-5. Emulator: the REPL `mouse down` gap and the ACIA re-read gap (Known traps); the instruction-counted VBL.
+5. Emulator: the instruction-counted VBL (the menu's `$a5e0` stub is the last poke in `drive.txt`).
 
 ## Known traps
 
-- `mouse down l` sends no packet in relative mouse mode; use `kbd fa 00 00` / `kbd f8 00 00`.
-- The ACIA data register is popped on read: the boot ticker and the menu key loop never see a key (poked in `drive.txt`).
 - The menu's fullscreen VBL outruns the instruction-counted VBL and starves the main loop (poked to `rte`).
+- Options and character-screen snapshots catch the pointer mid-redraw: compare them with a 34-pixel tolerance, the
+  other four milestones exactly.
 - A `u <addr>` into the menu stops inside its packer stub before the depacked code exists: the drive pokes after a
   fixed `s 60000000` instead.
 - `--all` listings lose sync at `$10840`, `$1fa0a`, `$19ce2`.
