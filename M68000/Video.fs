@@ -183,20 +183,20 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
             mmu.EnqueueIkbd [| 0xFEuy; joyState |]
             joyDirty <- false
 
-    // `force` = a button-state change happened, so a packet must reach TOS even with zero motion;
-    // the per-frame flush passes false so an idle mouse produces no traffic (the real IKBD only
-    // reports on movement or a button edge - a 50Hz stream of F8 00 00 packets is not hardware
-    // behaviour and needlessly wakes the ISR + MFP interrupt every frame).
-    let sendMousePacket (force: bool) =
+    // Motion only: an idle mouse produces no traffic (the real IKBD reports on movement or a
+    // button edge - a 50Hz stream of F8 00 00 packets is not hardware behaviour and needlessly
+    // wakes the ISR + MFP interrupt every frame). A button edge's packet comes from
+    // mmu.EnqueueMouseButton.
+    let sendMousePacket () =
         if mmu.IkbdMouseMode = 1uy then
             // Absolute mode: no packets on real hardware; MoveMouse only moves the 6301's cursor.
             if mdx <> 0 || mdy <> 0 then mmu.MoveMouse mdx mdy
             mdx <- 0
             mdy <- 0
-        elif mdx <> 0 || mdy <> 0 || force then
+        elif mdx <> 0 || mdy <> 0 then
             let mutable rx = mdx
             let mutable ry = mdy
-            // Always emit at least one packet (that is the point of `force`); then keep emitting
+            // Emit at least one packet; then keep emitting
             // while either axis still has delta that didn't fit in the -128..127 byte range.
             let mutable first = true
             while first || rx <> 0 || ry <> 0 do
@@ -238,19 +238,20 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
             | EventType.Mousebuttondown ->
                 let isLeft = int ev.Button.Button = int Sdl.ButtonLeft
                 let isRight = int ev.Button.Button = int Sdl.ButtonRight
+                // Flush pending motion under the old button state; EnqueueMouseButton then
+                // reports the edge in the form the program's IKBD mode asks for (a zero-motion
+                // relative packet, or the $74/$75 key codes).
+                sendMousePacket ()
                 if isLeft then mouseButtons <- mouseButtons ||| 0x02
                 elif isRight then mouseButtons <- mouseButtons ||| 0x01
-                sendMousePacket true
-                // Programs that asked for "buttons as keycodes" (IKBD $07 bit 2, e.g. Electronic
-                // Pool) also need the $74/$75 key code on the edge - a no-op in every other mode.
                 if isLeft then mmu.EnqueueMouseButton true true
                 elif isRight then mmu.EnqueueMouseButton false true
             | EventType.Mousebuttonup ->
                 let isLeft = int ev.Button.Button = int Sdl.ButtonLeft
                 let isRight = int ev.Button.Button = int Sdl.ButtonRight
+                sendMousePacket ()
                 if isLeft then mouseButtons <- mouseButtons &&& ~~~0x02
                 elif isRight then mouseButtons <- mouseButtons &&& ~~~0x01
-                sendMousePacket true
                 if isLeft then mmu.EnqueueMouseButton true false
                 elif isRight then mmu.EnqueueMouseButton false false
             | _ -> ()
@@ -280,7 +281,7 @@ let run (step: unit -> unit) (stepCount: unit -> uint64) (instructionsPerFrame: 
         // stepCount is not frame-aligned - the first frame is just short).
         let target = (stepCount() / ipf + 1UL) * ipf
         pollEvents ()
-        sendMousePacket false // front-loaded: see the tearing note above
+        sendMousePacket () // front-loaded: see the tearing note above
         sendJoyPacket ()      // at most one joystick-0 report per frame, only on a state change
         while running && stepCount() < target do
             pollEvents ()

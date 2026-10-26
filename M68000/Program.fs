@@ -1557,7 +1557,8 @@ module Main =
                 //Headless mouse events through the same IKBD path the live window uses, honouring
                 //the mode the running program set (see MMU's IKBD command interpreter):
                 //  mouse move <dx> <dy>   relative motion  -> $F8 dx dy packet
-                //  mouse down l|r         button press     -> $F4/$74 keycode in buttons-as-keys mode
+                //  mouse down l|r         button press     -> $F8|buttons 0 0 in relative mode, and/or
+                //                                              $74/$75 in buttons-as-keys or keycode mode
                 //  mouse up   l|r         button release
                 match parts.[1..] with
                 | [| "move"; dxs; dys |] ->

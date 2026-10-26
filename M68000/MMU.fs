@@ -1884,15 +1884,31 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
 
     ///Feed one mouse-button edge to the IKBD. Always updates the live button state that the $0D
     ///interrogation reply and the relative-packet header carry (PowerMonger's menus read the mouse
-    ///buttons only through $0D). In buttons-as-keys mode ($07 bit 2) it additionally enqueues
-    ///$74/$F4 (left) or $75/$F5 (right) - make on press, break on release - which is how Electronic
-    ///Pool reads a click.
+    ///buttons only through $0D). A press or release that does not change the state sends nothing.
+    ///A change then reports as a real 6301 does, transcribed from Hatari src/ikbd.c
+    ///IKBD_SendAutoKeyboardCommands: first IKBD_SendOnMouseAction, which in buttons-as-keys mode
+    ///($07 bit 2) sends $74/$F4 (left) or $75/$F5 (right), make on press, break on release (how
+    ///Electronic Pool reads a click); then, in relative mode, IKBD_SendRelMousePacket, which sends
+    ///a zero-motion packet ($F8|buttons, 0, 0) whenever the buttons differ from the last report
+    ///(how Midwinter reads a click, from the packet header at $664a); in cursor-keycode mode
+    ///IKBD_SendCursorMousePacket sends the $74/$75 codes instead (once here; Hatari sends them a
+    ///second time when $07 bit 2 is also set, because SendOnMouseAction leaves the old-button state
+    ///for the cursor pass to see, which reads as a Hatari artefact, inferred, not checked on
+    ///hardware). Absolute and disabled modes send no packet; the $07 bits 0/1
+    ///"report absolute position on press/release" are not modelled.
     ///Split out from EnqueueIkbd so the live window and the REPL `mouse` command share one policy.
     member x.EnqueueMouseButton (isLeft: bool) (pressed: bool) =
+        let changed = (if isLeft then mouseLeftDown else mouseRightDown) <> pressed
         if isLeft then mouseLeftDown <- pressed else mouseRightDown <- pressed
-        if x.MouseButtonsReportAsKeys then
+        if changed then
             let code = if isLeft then 0x74uy else 0x75uy
-            x.EnqueueIkbd [| (if pressed then code else code ||| 0x80uy) |]
+            let key = if pressed then code else code ||| 0x80uy
+            if x.MouseButtonsReportAsKeys then x.EnqueueIkbd [| key |]
+            if ikbdMouseMode = 0uy then
+                let header = 0xF8uy ||| (if mouseRightDown then 0x01uy else 0uy) ||| (if mouseLeftDown then 0x02uy else 0uy)
+                x.EnqueueIkbd [| header; 0uy; 0uy |]
+            elif ikbdMouseMode = 2uy && not x.MouseButtonsReportAsKeys then
+                x.EnqueueIkbd [| key |]
 
     ///Read-only peeks at Timer B's registers, for the CPU-level busy-wait fast-forward (see
     ///Cpu.TryFastForwardTbdrPoll) - unlike ReadByte's TBDR case, these have no side effects, so
