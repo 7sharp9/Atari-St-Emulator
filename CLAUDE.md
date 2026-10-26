@@ -239,12 +239,15 @@ that are easy to forget:
   `Program.fs`); a game loop that runs every second VBL, as Impossamole's gameplay rooms do, polls
   every 24,000, so 30,000 is the safe hold. Check for a per-object busy flag that skips the per-frame
   input read. Details: skill, section 2.
-- A game that polls the keyboard ACIA data register directly (`cmpi.b #$39,$fc02.w` / `bne` back)
-  never sees a key here: `MMU.fs` pops the FIFO on a read of `$fffc02` and returns 0 when it is
-  empty, so TOS's keyboard ISR (still installed at `$118`) takes the byte first; a real 6850 keeps
-  the last byte. Black Tiger's cracktro `$a562` and trainer menu `$c658` both stall this way. Bypass
-  with a labelled `w` poke of the branch in the drive script (`reversing/black_tiger/drive.txt`); the
-  real fix is an emulator change behind the regression net.
+- The keyboard ACIA data register `$fffc02` holds the last byte the CPU took, as on a real 6850, so a
+  game polling it directly (`cmpi.b #$39,$fc02.w` / `bne` back) sees the key TOS's ISR already took.
+  The byte stays there until the next IKBD byte arrives: a `kbd` make with no break, or a mouse packet
+  after it, decides what the next poll reads. Snapshots older than format v12 resume with it 0
+  (`DEVELOPING.md`, "IKBD command interpreter").
+- `mouse down`/`mouse up` report in the mode the game set: a zero-motion `$F8|buttons` packet in
+  relative mode, `$74`/`$75` in buttons-as-keys or keycode mode, nothing in absolute or disabled (`$12`)
+  mode, and nothing when the button is already in that state. `ATARI_TRACE_IKBD=1` shows the mode; an
+  absolute-mode game reads clicks only through `$0D` interrogation.
 - `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps"; step past it first (`s 2000000`, then `u`), as `capture.sh` does.
 - Appending to a game's ring-queue input at its read pointer is overwritten by the game's own
   pushes: append at the write pointer (Cadaver `304(A5)`, advance by 8, `1154(A5)` += 1).
