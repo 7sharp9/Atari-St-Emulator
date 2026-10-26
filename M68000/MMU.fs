@@ -27,7 +27,7 @@ type MmuSnapshot =
       FdcSelectedReg: byte; FdcStatus: byte; FdcTrack: byte; FdcSector: byte; FdcData: byte
       DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte
       MemConfig: byte
-      KbdAciaControl: byte; IkbdRxFifo: byte[]
+      KbdAciaControl: byte; IkbdRxFifo: byte[]; KbdAciaRdr: byte
       // --- 91st pass: latent future-determining device state (see the type doc above) ---
       VblPending: bool; MfpPending: bool; MfpVector: int
       TimerCPending: bool; TimerBPending: bool; TimerAPending: bool
@@ -345,6 +345,13 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///one). Callers inject real make/break scancodes and 3-byte mouse packets via EnqueueIkbd.
     let ikbdRxFifo = System.Collections.Generic.Queue<byte>()
     let mutable kbdAciaControl = 0uy //last value written to $FFFC00; bit 7 = RX interrupt enable
+    ///The 6850's receive data register: the last byte the CPU took from the FIFO. A real MC6850
+    ///keeps returning it on every read of $FFFC02 until the next byte arrives; a read clears only
+    ///RDRF (Hatari src/acia.c ACIA_Read_RDR returns pACIA->RDR unconditionally, and its master
+    ///reset leaves RDR alone). Games that poll the data register directly while TOS's ISR is
+    ///installed depend on it: the ISR takes the byte first, then the poll still reads it (Black
+    ///Tiger `cmpi.b #$39,$fc02.w` at $a562, Midwinter's boot ticker $172c and menu loop $a4e4).
+    let mutable kbdAciaRdr = 0uy
 
     ///Status byte the CPU reads at $FFFC00. TDRE (bit 1) is always set - nothing holds the
     ///transmitter here. RDRF (bit 0) tracks the FIFO. IRQ (bit 7) = RDRF AND RX-interrupt-enabled,
@@ -1057,9 +1064,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         | a when a = dmaAddrLow -> dmaAddrLowByte
         | a when a = memConfig -> memConfigByte
         | a when a = 0xFFFC00u -> keyboardAciaStatus () //keyboard ACIA control/status
-        | a when a = 0xFFFC02u -> //keyboard ACIA receive data - pop one byte from the IKBD FIFO
+        | a when a = 0xFFFC02u -> //keyboard ACIA receive data - pop one byte from the IKBD FIFO into RDR
             if ikbdRxFifo.Count > 0 then
                 let b = ikbdRxFifo.Dequeue()
+                kbdAciaRdr <- b
                 mutations <- mutations + 1UL
                 //The 6850 keeps its IRQ line asserted while RDRF stays set. On real hardware IKBD
                 //bytes arrive ~1.28 ms apart so each is its own MFP channel-6 edge; EnqueueIkbd
@@ -1072,7 +1080,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 if ikbdRxFifo.Count > 0 && kbdAciaControl &&& 0x80uy <> 0uy then
                     x.RaiseInterrupt 6 0x46
                 b
-            else 0uy
+            else kbdAciaRdr //RDRF clear: the register still holds the last byte (see kbdAciaRdr)
         | Acia ->
             //MIDI ACIA (and any other address in range) - see ioStubs above.
             match ioStubs.TryFind address with
@@ -1948,7 +1956,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
           FdcSector = fdcSector; FdcData = fdcData
           DmaAddrHigh = dmaAddrHighByte; DmaAddrMid = dmaAddrMidByte; DmaAddrLow = dmaAddrLowByte
           MemConfig = memConfigByte
-          KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo.ToArray()
+          KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo.ToArray(); KbdAciaRdr = kbdAciaRdr
           VblPending = vblPending; MfpPending = mfpPending; MfpVector = mfpVector
           TimerCPending = timerCPending; TimerBPending = timerBPending; TimerAPending = timerAPending
           TbCounter = tbCounter
@@ -2012,6 +2020,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
         dmaAddrLowByte <- snapshot.DmaAddrLow
         memConfigByte <- snapshot.MemConfig
         kbdAciaControl <- snapshot.KbdAciaControl
+        kbdAciaRdr <- snapshot.KbdAciaRdr
         ikbdRxFifo.Clear()
         for b in snapshot.IkbdRxFifo do ikbdRxFifo.Enqueue b
         vblPending <- snapshot.VblPending

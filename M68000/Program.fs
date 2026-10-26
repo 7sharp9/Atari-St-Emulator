@@ -821,7 +821,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         use fs = IO.File.Create(path)
         use w = new IO.BinaryWriter(fs)
         w.Write("A68S".ToCharArray())
-        w.Write(11uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end, v9 appends the latent future-determining device state (pending-IRQ slots, tbCounter, FDC INTRQ countdown, DMA sector count, IKBD reporting mode, absolute mouse, joystick) - see MmuSnapshot, v10 adds the Timer A live-decrement state (Tacr/Tadr/TadrReload/TadrReadCount) after TbdrReadCount, v11 adds Timer C+D live-decrement state (Tcdr/TcdrReload/TcdrReadCount/Tddr/TddrReload/TddrReadCount) after that
+        w.Write(12uy) //format version - v2 adds the 5 FDC state bytes after TbdrReadCount, v3 adds the 3 DMA address counter bytes after those, v4 adds the MMU memory-config byte after those, v5 adds SSP after USP, v6 adds stepCount after MemConfig, v7 adds the keyboard ACIA control byte + IKBD RX FIFO after stepCount, v8 makes the Ym2149 array the 16-register PSG file and adds the PSG select + read-data bytes at the end, v9 appends the latent future-determining device state (pending-IRQ slots, tbCounter, FDC INTRQ countdown, DMA sector count, IKBD reporting mode, absolute mouse, joystick) - see MmuSnapshot, v10 adds the Timer A live-decrement state (Tacr/Tadr/TadrReload/TadrReadCount) after TbdrReadCount, v11 adds Timer C+D live-decrement state (Tcdr/TcdrReload/TcdrReadCount/Tddr/TddrReload/TddrReadCount) after that, v12 appends the keyboard ACIA receive data register (KbdAciaRdr) after JoyState1
         for v in [| cpu.D0; cpu.D1; cpu.D2; cpu.D3; cpu.D4; cpu.D5; cpu.D6; cpu.D7
                     cpu.A0; cpu.A1; cpu.A2; cpu.A3; cpu.A4; cpu.A5; cpu.A6; cpu.A7
                     cpu.USP; cpu.SSP; cpu.PC |] do w.Write(v: int)
@@ -874,10 +874,11 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         w.Write(snap.MouseAbsX); w.Write(snap.MouseAbsY); w.Write(snap.MouseAbsMaxX); w.Write(snap.MouseAbsMaxY)
         w.Write(snap.MouseLeftDown); w.Write(snap.MouseRightDown); w.Write(snap.MousePrevReadButtons)
         w.Write(snap.JoyState0); w.Write(snap.JoyState1)
-        //Optional trailing section, after the v11 block and without a version bump: "DSKA", u8 1,
+        w.Write(snap.KbdAciaRdr) //v12
+        //Optional trailing section, after the v12 byte and without a version bump: "DSKA", u8 1,
         //u64 FNV-1a of the disk-A image as mounted, i32 count, then per sector i32 byte offset +
         //512 bytes (its current contents). Written only when the run wrote to the disk, so every
-        //other snapshot stays byte-identical to the plain v11 layout. An older build stops reading
+        //other snapshot stays byte-identical to the plain v12 layout. An older build stops reading
         //before it (LoadState never checks for end of file) and resumes with the unwritten image.
         match mmu.DiskWrites() with
         | Some (baseHash, sectors) ->
@@ -994,6 +995,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                    MouseAbsX = 0; MouseAbsY = 0; MouseAbsMaxX = 320; MouseAbsMaxY = 200
                    MouseLeftDown = false; MouseRightDown = false; MousePrevReadButtons = 0x0A
                    JoyState0 = 0uy; JoyState1 = 0uy |}
+        //v1-v11 snapshots predate the ACIA receive data register - default to 0, what a read of
+        //an empty FIFO returned when they were captured.
+        let kbdAciaRdr = if version >= 12uy then r.ReadByte() else 0uy
         mmu.RestoreRam
             { Ram = ramArr; VideoDisplayRegisters = vidArr; Ym2149 = ymArr; MfpRegisters = mfpArr
               PsgSelectedReg = psgSelectedReg; PsgReadData = psgReadData
@@ -1005,7 +1009,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
               FdcSector = fdcSector; FdcData = fdcData
               DmaAddrHigh = dmaAddrHigh; DmaAddrMid = dmaAddrMid; DmaAddrLow = dmaAddrLow
               MemConfig = memConfig
-              KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo
+              KbdAciaControl = kbdAciaControl; IkbdRxFifo = ikbdRxFifo; KbdAciaRdr = kbdAciaRdr
               VblPending = lat.VblPending; MfpPending = lat.MfpPending; MfpVector = lat.MfpVector
               TimerCPending = lat.TimerCPending; TimerBPending = lat.TimerBPending; TimerAPending = lat.TimerAPending
               TbCounter = lat.TbCounter
