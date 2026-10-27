@@ -1,0 +1,5 @@
+kbd 39
+hits 3000000 11700 11710 ed44 c136 2d74 2e6e 10840
+kbd b9
+hits 200000000 11700 11710 ed44 c136 2d74 2e6e 10840
+snap scratchpad/midwinter/sabotage/p88_end3.snap

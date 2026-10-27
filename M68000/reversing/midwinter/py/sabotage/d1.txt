@@ -1,0 +1,8 @@
+mouse move 1 -1
+s 600000
+hits 3000000 5062 51d4 5292 310c
+mouse down l
+s 600000
+mouse up l
+s 100000000
+snap scratchpad/midwinter/sabotage/s1_enter.snap

@@ -119,7 +119,7 @@ mismatch loops forever cycling $ff8240: a code checksum (inferred protection; th
 | Game Options | $10840 | `jsr` from $c52 / $c96, `jmp` from $2e6e | icons $25094 -> $250d2 (6 x `jsr` toggles $10944..$10996); rect $250c6 (78,134..243,197) -> seed RNG from pointer ($d598), $bfc8, $ee30, copy options $24b7e.. -> $2c176.., $675e, `jmp $2d74` |
 | The Team | $2d74 | options, bio, decisions | icons $23e10 -> $242f8; portrait rects $240f8 -> sets 96(A6) (current character), `jmp $30a0` |
 | character bio | $30a0 | team portrait | icons $23e5c -> $24214: map `jsr $14ce`, face `jmp $310c`, team `jmp $2d74`, $3054, $3024, SOS `jmp $5784` |
-| Decisions | $310c | bio face icon | icons $24534 -> $2422c: map `jsr $14ce`, bio `jmp $30a0`, team `jmp $2d74`, $3dd2 (snipe), $3d86 (ski), $5062 |
+| Decisions | $310c | bio face icon | built per visit: `$ca8` runs 17 tests and `$de2` appends icon `$245fe[k]` and action `$24284[k]` to the live table `$24238` (on s_view.snap: map `jsr $14ce`, bio `jmp $30a0`, team `jmp $2d74`, $3dd2 (snipe), $3d86 (ski), $5062 (ENTER a building)); sabotage `$3f98` and resupply `$563a` appear when their tests pass (`ai.md` section 7) |
 | map | $14ce | `jsr` from bio/decisions/other screens | rects $23fc8 -> $24fc8 (`jmp`, 23 entries) |
 | 3D travel | $12514 | `$3d86` ($24482=2, $24f3c=4, `$12d76=$12d7a`) and `$3dd2` ($24482=0, `$12d76=$12e28`) | in-loop keys only |
 
@@ -184,4 +184,4 @@ The patcher is not identified (inferred: PACT.PRG after it loads 1.1). The remai
 - The writer of the junk MFP vectors $100..$13c, and which code clears the 80(A6)/84(A6) tables.
 - Roles of the map loop's per-frame routines ($18e8, $2122, $1b22 ...) and of the 3D inner routines ($19f20, $17fa0, $1b0e4).
 - The computed file numbers (01, 02, 04, 05.2 and the five unnamed calls) need a `bp 500` log in the screens that use them.
-- Decisions icons 3 ($3dd2) and 5 ($5062) and the bio SOS icon were not driven.
+- The snipe icon ($3dd2) and the bio SOS icon were not driven (ENTER `$5062` is, `ai.md` section 7).

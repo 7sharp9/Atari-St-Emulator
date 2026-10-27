@@ -1,11 +1,11 @@
 # Midwinter: handoff
 
-Updated 2026-10-27 by the session that proved the attacks and the period end (work `788ed13`, `7a07a84`; lessons
-`b2d4e0e`).
+Updated 2026-10-27 by the session that proved the player's weapons and sabotage (two subagents, folded into
+`ai.md` sections 6 and 7).
 
 ## Resume point
 
-- Last commit of this workstream: `7a07a84` (period end proven; the handoff commit follows it).
+- Last commit of this workstream: the weapons-and-sabotage commit after `347e745` (it carries this handoff).
 - Working data: `M68000/scratchpad/midwinter/` (indexed in `scratchpad/ANCHORS.md`). Rebuild: unzip
   `~/Library/CloudStorage/Dropbox/Daves/ST games/Zuul #67.zip`, `tools/msa2st.py ZUUL067.MSA zuul067.st`,
   `tools/extract_disk.py zuul067.st files`, `tools/lsd_depack.py --all files unpacked`, then the README's two commands
@@ -33,24 +33,26 @@ Updated 2026-10-27 by the session that proved the attacks and the period end (wo
   blown up or 20 days win, no free Heat Mines loses) and the radio reward (no enemy Radio Station: full team).
   `py/army/gate_period.py`: natural 6/6, poked 200/200 per routine, the report's 14 numbers 14/14; three broken models
   fail.
-- All five gates in `tools/gates.py run midwinter` (about 90 s). Design digest in the README covers all of the above.
+- The player's weapons and the kill (`ai.md` 6): engagement, five launchers, three shot scripts, the tumble, the
+  sniping pick, the vehicle's odds and fire. `py/attack/gate_shot.py`: 400/400, 36/36 x5, 798/798 x3, 48/48, 21/21,
+  9/9, 300/300, 144/144; nine controls fail. `py/attack/drive_kill.py`: a driven grenade kill of unit 27's command
+  vehicle against a no-fire control (labelled position poke).
+- Sabotage (`ai.md` 7): Decisions' per-visit icon list, ENTER, resupply, PLANT EXPLOSIVES, charges, the blast, its
+  effects (supply, HQ win, radio reward; never a site or a unit). `py/sabotage/gate_sabotage.py` on the snapshots
+  `py/sabotage/drive_sabotage.sh` writes to `scratchpad/midwinter/sabotage/`: every leg N/N, eight controls fail;
+  driven at a village (natural), a held Warehouse and the HQ (labelled position pokes) and the three Radio Stations.
+- All seven gates in `tools/gates.py run midwinter` (about 2 minutes). Design digest in the README covers all of the above.
 
 ## Open, in priority order
 
-1. **The player's side of combat**: which slot becomes engaged (`$ca7e`/`$cb2e`, within 32 of the camera), the
-   engaged vehicle's script `$20ce2` and its missile odds `$1faa6` (reads character +72), the player's shot
-   (`$1fd96` on object `$1cd7e`, ammunition `$2513e`; `$14220` calls the kill `$cbbe`), and the radio message
-   `$d048` (needs interrupts: drive it). Prove with stclient calls from `d_ski.snap`, as `gate_attack.py` does, and
-   one driven kill.
-2. **Sabotage**: planting and removing explosives, the blast `$41e2..$4272` (`$4340`, the building word's bit 6, the
-   Ruin type `$10`, the Cable Car Station's linked building, `$2c188` counts, the HQ flag `$24e8c`), and the ending
-   screens `$115ae`/`$1137a`. It is the player's only lever on sites, the radio reward and the HQ win. Drive one
-   sabotage from `d_team.snap` (a character inside a building) and gate the blast against a model.
-3. **Relationships and recruitment one by one**: the team list `$2b16c` writers other than `$f8d8`, S.O.S / recruit
+1. **Combat and sabotage leftovers** (`ai.md` Open): a sniping kill driven ('S' at speed 0, then Space); a kill of
+   an ordinary vehicle and one with no position poke; the glider's hit that never reaches `$cbbe`; the surrender
+   screen `$1137a`; a ruined cable car's travel.
+2. **Relationships and recruitment one by one**: the team list `$2b16c` writers other than `$f8d8`, S.O.S / recruit
    paths (`$5784`, bio icons `$3054`/`$3024`).
-4. **3D pipeline**: `$18304` -> `$16d9c`, draw list `$19ce2`/`$1d5a6`, polygon fill; proof by rendering a frame. Also
+3. **3D pipeline**: `$18304` -> `$16d9c`, draw list `$19ce2`/`$1d5a6`, polygon fill; proof by rendering a frame. Also
    matches encounter slots and attackers to on-screen objects.
-5. Leftovers: character +72's name, `$13f28` (missile 1-in-5), `$14774` (driving mask skip), record +0 bit 7 after a
+4. Leftovers: character +72's name, `$13f28` (missile 1-in-5), `$14774` (driving mask skip), record +0 bit 7 after a
    hit, travel mode 1 (mask 0, inferred cable car), the Bomber's drop rule and the missile's detonation (read, not
    gated); unit +12's reader, the non-spread branch and `$2bb2e`, node names; terrain leftovers; Decisions icons 3/5.
 
@@ -67,11 +69,12 @@ Updated 2026-10-27 by the session that proved the attacks and the period end (wo
 - From `d_ski.snap` a missile from the engaged vehicle hits at frame 170 (`$14dfc` by `$2061a`) and the trip ends: bound
   natural 3D runs below that, or steer, or poke the missile object `$1ce02` +38 busy.
 - Unit coordinates (and the feature list) are twice the terrain target's (`$19cd4`): poke the target to `unit / 2`.
-- `$cbbe`'s unit-kill path ends in `$d048`, which waits on an interrupt: under `call`, stop it with `stops=[0xcd6e]`.
+- `$cbbe`'s unit-kill path ends in the radio message `$d048`, which polls the key byte `$2c324` at `$d0f4`: under
+  `call`, stop it with `stops=[0xcd6e]`; in a run, send a key.
 - `$f374` loops 65536 times on a record with kind `$80` (held, no buildings): never poke one.
 
 ## Next session
 
-`/resume midwinter`. Start on item 1. From `d_ski.snap`, read `$ca7e`/`$cb2e` and `$1fa0a`/`$1faa6` (engagement and
-missile odds), then the player's shot `$1fd96` and its hit test up to `$14220` -> `$cbbe`. Gate them with stclient
-calls in `py/attack/`, keeping a broken-model control per rule and a corpus that straddles every threshold.
+`/resume midwinter`. Run `py/sabotage/drive_sabotage.sh` once if `scratchpad/midwinter/sabotage/` is missing, then
+start on item 2 (relationships and recruitment): find the team list `$2b16c`'s writers other than `$f8d8` and drive
+the bio icons `$3054`/`$3024` and S.O.S `$5784`. Item 1's sniping kill is the quick win if a shorter task is wanted.

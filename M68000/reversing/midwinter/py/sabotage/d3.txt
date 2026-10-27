@@ -1,0 +1,7 @@
+mouse move 128 120
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 150000000
+snap scratchpad/midwinter/sabotage/s3_resup.snap

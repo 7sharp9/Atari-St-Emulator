@@ -1,5 +1,5 @@
 # Midwinter's promoted gates, for tools/gates.py (`uv run python tools/gates.py run midwinter`).
-# Needs scratchpad/midwinter/d_decisions.snap, d_options.snap, d_team.snap, d_stark.snap, d_ski.snap and zuul067.st (indexed in scratchpad/ANCHORS.md); the gate makes its own snapshots.
+# Needs scratchpad/midwinter/d_decisions.snap, d_options.snap, d_team.snap, d_stark.snap, d_ski.snap and zuul067.st (indexed in scratchpad/ANCHORS.md); the gates make their own snapshots, except sabotage, which reads the driven snapshots py/sabotage/drive_sabotage.sh writes to scratchpad/midwinter/sabotage/.
 
 [[gate]]
 name = "terrain"
@@ -39,4 +39,20 @@ cmd = "{python} gate_period.py"
 cwd = "py/army"
 expect = ["6/6", "200/200", "14/14"]
 cite = "ai.md section 5 (proof paragraph)"
+minutes = 1
+
+[[gate]]
+name = "shot"
+cmd = "{python} gate_shot.py"
+cwd = "py/attack"
+expect = ["400/400", "36/36", "798/798", "48/48", "21/21", "9/9", "300/300", "144/144", "re:(?m)^PASS$"]
+cite = "ai.md section 6 (proof paragraph)"
+minutes = 1
+
+[[gate]]
+name = "sabotage"
+cmd = "{python} gate_sabotage.py"
+cwd = "py/sabotage"
+expect = ["3/3", "4/4", "1/1", "400/400", "1500/1500", "100/100", "1700/1700", "300/300", "110/110", "re:(?m)^PASS$"]
+cite = "ai.md section 7 (proof paragraph); needs py/sabotage/drive_sabotage.sh run once first"
 minutes = 1

@@ -1,0 +1,5 @@
+mouse move 154 50
+s 600000
+mouse down l
+u 41f6 300000000
+snap scratchpad/midwinter/sabotage/n73_41f6.snap

@@ -1,0 +1,18 @@
+mouse move -73 -154
+s 600000
+s 600000
+mouse up l
+s 20000000
+mouse move 48 0
+s 600000
+s 600000
+mouse up l
+s 20000000
+snap scratchpad/midwinter/sabotage/c5_noplant.snap
+mouse move 154 50
+s 600000
+mouse down l
+hits 300000000 4106 416e 41f2 4220 4234 4244 4266 4272 42ca 437a 2d74 310c
+mouse up l
+s 100000000
+snap scratchpad/midwinter/sabotage/c6_noblast.snap

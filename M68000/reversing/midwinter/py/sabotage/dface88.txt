@@ -1,0 +1,9 @@
+mouse move 127 125
+s 100000
+mouse move 12 12
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 150000000
+snap scratchpad/midwinter/sabotage/p88_dec.snap

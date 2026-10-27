@@ -1,0 +1,7 @@
+mouse move -160 -120
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 100000000
+snap scratchpad/midwinter/sabotage/s2_store.snap

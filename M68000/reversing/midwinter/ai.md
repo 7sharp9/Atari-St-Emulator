@@ -12,7 +12,9 @@ that it moves nine ticks each time the player ends a 2-hour period from The Team
 the army one unit at a time: the unit inside a window around the player brings its vehicles into the 3D view, loses
 them for good when they are destroyed, and dies when its strength runs out; destroying one of six leaders destroys
 its whole group (section 3). The enemy's aircraft (Bomber, Spotter) and the encounter's missiles attack only the
-player in the 3D view, never a site (section 4).
+player in the 3D view, never a site (section 4). The player fights back in two ways: by shooting the engaged
+vehicle, the only way to destroy a unit (section 6), and by sabotage, which turns buildings into Ruins and so cuts
+the enemy's supply and can win the game, but never takes a site back (section 7).
 
 Proof: `py/army/gate_army.py` (also `tools/gates.py run midwinter`, about 5 s). It runs the game's own routines in
 `stserver` and checks `py/army/army_model.py` against every call:
@@ -44,7 +46,9 @@ screen `$3288` reads them, and Stark is record 14. Names come from three pointer
 | +34, +38 | position, longwords in 1/256 units; `$35d0` names the place under it ("Little Plains") | read from the code |
 | +52 | the feature record of the site the character is at (`$f78e` sets it to the nearest site whose first building is not a Pylon; `$52b2` reads building types through it) | read from the code |
 | +63, +64 | the type of the building the character is inside (negative: outside) and which building of the site it is | the seven characters in a Police Station of a held site are the report's PRISONERS 7 (section 5) |
-| +72 | a byte that lowers the odds of air attacks on the character (section 4) | name not found |
+| +60 | explosives (live copy `$2446c`, loaded by `$4f54`, stored by `$4ec4`); a Magazine fills it to 47, a Store adds 12 up to 47 (section 7) | driven |
+| +65..+70 | rounds for the sniping rifle, the ski grenades, the glider's weapon, the driving gun, anti-aircraft weapon and rocket, loaded into `$25132..$25146` by `$3e38` and written back by `$3eae` (section 6) | gated |
+| +72 | a byte that lowers the odds of air attacks on the character (section 4) and raises the engaged vehicle's odds and wait (section 6); at `$c8` or more the character may enter an enemy-held building (`$517a..$51d0`) and Decisions does not treat it as a prisoner in a held Police Station (`$d0e..$d30`) | name not found |
 
 The period end `$ec8c` (section 2, "When it runs") walks the team list `$2b16c` (character numbers ending with a
 negative byte). It takes `$24b7c` off each member's Morale (+1, floored at 0), the amount `$ed88` computes from the
@@ -60,11 +64,11 @@ Relationships (the bio's "nearest friends", "hatred of") and recruitment are not
 
 | where | what |
 |---|---|
-| `$2bb96` | 32 units of 16 bytes: +0/+2 x, y (words, in the same units as the node table); +4 bit 7 active, bits 0-6 the node it last reached; +5 bit 7 spread mode, bit 6 set once the unit has no command vehicle of its own, bits 0-5 an index the loss message uses (the unit number on units 0..29); +6..+10 its vehicles: Snow bulls, Tankers, Snow wolves, Snow cats, Snow foxes (section 3), +6 also the weight in the supply sums; +11 speed; +12 a second supply sum (reader not found); +13 the target node (0 = choose, negative = stationary); +14 strength (section 3); +15 its group (section 3) |
+| `$2bb96` | 32 units of 16 bytes: +0/+2 x, y (words, in the same units as the node table); +4 bit 7 active, bits 0-6 the node it last reached; +5 bit 7 spread mode, bit 6 set once the unit has no command vehicle of its own, bits 0-5 an index the loss message uses (the unit number on units 0..29); +6..+10 its vehicles: Snow bulls, Tankers, Snow wolves, Snow cats, Snow foxes (section 3), +6 also the weight in the supply sums; +11 speed; +12 a second supply sum, which divides the engaged vehicle's odds (`$1faa6`, section 6); +13 the target node (0 = choose, negative = stationary); +14 strength (section 3); +15 its group (section 3) |
 | `$25b4a` | node coordinates, (x.w, y.w) for 96 nodes; they equal the x, y words of feature record #n at `$2a150` on 93 of 95 nodes; the two that differ, 59 and 81, have no roads |
 | `$25cca` | four road bytes per node, 0 = no road. Nodes 59, 60, 70, 76 and 81 have no roads |
 | `$2bb36` | a state byte per node: bit 7 enemy held; bits 0-6 the road a unit last left it by (the trail) |
-| `$2a150` | the feature list: a kind byte (bit 7 enemy held, bits 0-6 the building count n), a byte, x.w, y.w, then n words whose first byte & `$1f` is a building type. `$14a8` returns record #node |
+| `$2a150` | the feature list: a kind byte (bit 7 enemy held, bits 0-6 the building count n), a byte, x.w, y.w, then n words whose first byte holds the building: bits 0-4 the type, bit 5 used (a Store or Magazine emptied, a Garage's vehicle taken at `$3f50`, the second station of a cable-car pair), bit 6 a sabotage charge planted, bit 7 ENEMY HELD (named from the ENTER screen's refusal, `$26531`; only a site's key buildings carry it). `$14a8` returns record #node (1-based) |
 | `$2624e` | building names by type (read at `$1c06`, `$52c4`): 0 Mountain Hut, 1 Cable Car Station, 2 Pylon, 3 Garage, 4 Bunker, 5 House, 6 Church, 7 Store, 8 Police Station, 9 Magazine, `$a` Heat Mine, `$b` Warehouse, `$c` Synthesis Plant, `$d` Factory, `$e` Radio Station, `$f` Headquarters, `$10` Ruin |
 
 On `d_stark.snap`, 25 units move, each with 5 Snow bulls, 20 Tankers and 10 each of wolves, cats and foxes, and
@@ -117,7 +121,8 @@ Warehouse at weight 5 gains 100 a tick from it alone, while one 450 units away g
   `$eeb4` 1, then the team screen `$2d74` 1. The run ends byte-identical to `d_team.snap`.
 - **During play** the player ends each period. `$ec8c` is not called from code: it is the `jsr` entry
   (`$8000ec8c`) of icon 2 of The Team's action table `$23e10`, the clock icon at x 288, y 32 (`team.png`), and of
-  icon 3 of `$2494e` and icon 7 of `$249be` (`tables/action_tables.txt`). It runs the period end for the team
+  two more action-table entries whose screens are not identified (`tables/action_tables.txt` lists them under the
+  rect lists `$2494e` and `$249be`, which are PLANT EXPLOSIVES' and ENTER's building cells, section 7). It runs the period end for the team
   (section 1), the supply update, the counts and end tests of section 5, then the SITUATION REPORT `$ef36`
   (`situation_report.png`: "Watches synchronized! Your team has two hours before the next situation report is due",
   and the counts of section 5). Dismissing the report runs nine ticks and
@@ -131,8 +136,8 @@ and 90 by tick 400. The five nodes it never takes are the ones with no roads: 60
 with a Mountain Hut) that `$ee88` marks enemy held at PLAY, which are the 3 Radio Stations of the report's enemy
 column; 76 is a fourth Radio Station; 59 is a Mountain Hut. Nothing else captures a site, and nothing during
 play releases one: the held bit has no writer outside the walk and the head start but an uncalled reset (section
-4), so a site once taken stays taken. The player's counter-moves on the army are the encounters (section 3);
-sabotage ("PLANT EXPLOSIVES", "REMOVE EXPLOSIVES" in the text) is not read.
+4), so a site once taken stays taken. The player's counter-moves on the army are the encounters (sections 3 and 6)
+and sabotage of its supply buildings (section 7).
 
 ## 3. Encounters and losses
 
@@ -155,7 +160,8 @@ Proof: `py/army/gate_encounter.py` (also `tools/gates.py run midwinter`, about 4
 
 Four broken models fall short: no random turn (92/9600 frames), tankers drawn before bulls (`$c2f0` 40/96, frames
 9101/9600), every kind costing 1 strength (384/512), no group cascade (464/512). The gate does not cover a
-full slot table, the end of a script for an engaged object, or the radio message `$d048` (it waits for an interrupt).
+full slot table or the end of a script for an engaged object; it stops each unit kill before the radio message
+`$d048`, which waits for a key (section 6 drives it).
 
 ### The vehicles
 
@@ -202,8 +208,16 @@ chance 1 in 16 and steps unless the cell ahead is blocked or outside the window.
 
 Slots are 16 bytes: +0 the route pointer (convoy) or the heading word (wanderer), -1 when free; +4/+6 x, y; +8 the
 kind; +10 1 for a convoy, -1 for a wanderer; +12 -1 once engaged; +14 a latch the engagement test `$cb2e` uses.
-`$ca7e` (from `$12a64`) engages the first slot within 32 units of the camera and builds the object `$1cdaa` from its
-shape (read, not gated).
+`$ca7e` (from `$12a64`, and only while `$2baec` holds a unit) decides which slot the player can fight. It converts the
+camera to the 100 x 100 grid (`$1d074`) and scans slots 40 down to 0, skipping free and already-engaged (+12 set)
+ones; `$cb2e` puts a slot inside when it lies in the 32 x 32 cells from 16 below the camera's cell on both axes. A
+slot inside with its latch +14 clear sets the latch and asks to be engaged; a slot outside clears its latch. A
+request when nothing is engaged (`$2bae0` negative) engages the slot: `$2bae0` = slot, `$2bae2` = unit, `$2bb22` =
+kind, the object `$1cdaa` built from the shape `$316e4[kind]` and placed through `$1d048`, and +12 = -1. So the
+highest-numbered slot to enter the box is the one engaged, each slot at most once, and a slot that entered while
+another was engaged has to leave the box and come back. After an engagement D0 still holds kind * 4 instead of the
+camera's x cell, so the lower slots of that scan are boxed against the wrong x, fall outside and lose their latches
+(a bug). Gated, section 6.
 
 ### Losses: `$cbbe` and `$cdd0`
 
@@ -220,7 +234,11 @@ the counters, MOBILE UNITS goes down and ENEMY UNITS up, and +15 bit 7 marks it 
 0..5 hold their group number `g`, units 6..29 hold `8 + g` (four per leader: 6..9 under unit 0, ..., 26..29 under
 unit 5), and units 30 and 31 hold `$ff`. Killing a leader destroys every unit of its group, including the stationary
 garrisons 6, 10, 14, 18 and 22, and a member already dead is not counted twice (`$d57a`). Killing a member destroys
-that unit alone. The radio message `$d048` then reports the losses.
+that unit alone. The radio message `$d048` then reports the losses and polls the key byte `$2c324` at `$d0f4` until
+a key arrives ("PRESS ANY KEY TO CONTINUE"). The game's own text calls a unit a squadron and its command vehicle's
+crew its captain: killing unit 27's command vehicle gives "REUBENS'S SQUADRON DESTROYED !", "Captain Reubens has been
+killed in action. The rest of the squadron has fled", initial strength 56 vehicles, losses 1, deserted 55
+(`radio_kill.png`, section 6).
 
 Two oddities. The placement draws its count before it looks for a free slot, so with all 40 slots in use the drawn
 vehicle is lost from the encounter (not seen: 38 objects at most). A draw with all five working counts at 0 divides
@@ -297,8 +315,7 @@ within 200 of the point 180 ahead of the camera on both axes. A mortar shell (`$
 200 of the camera. A missile (`$20594`) runs out when its range word `$200e2` goes negative and then hits within 90 of
 its aim point, and when `$13f28` is set only 1 time in 5 (read, not gated). A hit sets `$14dfc`, which the 3D loop
 `$14ac0` tests: the trip ends, and the travel return (`$3b12`, `$4ede`) sets bit 7 of the character's record byte
-+0 (meaning not read). The engaged vehicle's own missile odds `$1fb9e` come from `$1faa6`, which also reads the
-character's +72 (read, not gated).
++0 (meaning not read). When the engaged vehicle fires its missile is section 6.
 
 The unsteered skier of `d_ski.snap` does not crash: at frame 170 a missile from the engaged vehicle hits
 (`$14dfc` written by `$2061a`), and the game returns to Decisions with Stark's clock at 06:08 (`ski_crash.png`).
@@ -333,15 +350,19 @@ over, `$118f6` and `$f8d8`, then the report `$ef36`.
   set by the sabotage code at `$4234` when the destroyed building is type `$f`): "The enemy HQ has been destroyed and
   General Masters with it!"; or when the game clock reaches `$7080` minutes (20 days): "General Masters' troops are
   tired of fighting and have deserted him!". Otherwise, when no Heat Mine is left outside the enemy's hands,
-  `$24e90` is set: "The Free Villages have no heat mines left and have surrendered to General Masters!". The first
-  two are wins and the third the loss (inferred from the text; the screens `$115ae` and `$1137a` are not read).
+  `$24e90` is set: "The Free Villages have no heat mines left and have surrendered to General Masters!". The
+  Headquarters ending is driven (section 7): dismissing the report shows the win screen `$115ae`, and a key there
+  still runs the period's nine ticks before `$2e6e` returns to Game Options. That the 20-day ending is also a win and
+  the surrender the loss is inferred from the text; the surrender screen `$1137a` (it sets `$24e90` itself and is the
+  action of icon 0 of `$117b6`) is not driven.
 - **Radio** (`$f8d8`). Once, when the enemy holds no Radio Station, `$2c186` goes from 0 to 1, every character
   joins the team (the team list `$2b16c` becomes 0..31) and every character's clock is set to the game clock; the
   report then draws the Radio Stations line in another colour, prints "Radio communications restored - You now have a full team !" and sets
-  `$2c186` to -1 (`$f25e`, `$f2cc`; read, not gated). Since no site is
-  ever released (section 4), the enemy's Radio Stations can only go by sabotage. This is the game's general
-  recruitment: the three Radio Stations held at PLAY sit at sites with no roads (section 2), so the player must reach
-  and blow up each one.
+  `$2c186` to -1 (`$f25e`, `$f2cc`). Since no site is ever released (section 4), the enemy's Radio Stations can only
+  go by sabotage. This is the game's general recruitment: the three Radio Stations held at PLAY sit at sites with no
+  roads (section 2), so the player must reach and blow up each one. Driven with the game's own blast on all three
+  (section 7): the next period end gives the full team and the message (`rad_report.png`), against a control with
+  the same clicks that keeps the team at Stark alone.
 
 **The report** (`$ef8c`) writes the numbers into its text lines: in the FVPF column, HEATMINES is the free Heat
 Mines (`$24ba4` + 10) and DESTROYED Factories, Synth Plants, Warehouses and Radio Stations are `$2c188` by type
@@ -358,16 +379,189 @@ or every Heat Mine's site taken in some): **200/200** each, with every branch ta
 the Headquarters 74, the surrender 34, the radio 40). Three broken models fail: the weights 2 and 10 swapped
 (57/200), prisoners at any site (13/200, natural 5/6), the 20-day test as `>` (171/200).
 
+## 6. The player's weapons and the kill
+
+The player can destroy only the engaged vehicle (section 3), and only by hitting it with a weapon of the current
+travel mode. Each mode's frame code reads the key through `$12ac6` (scancode `$2c324` to ASCII `$12afc` through the
+table `$24846`: Space `$39` is `$20`, `S` `$1f` is `'S'`) and the mouse buttons from `$24fba`:
+
+| mode (frame code) | input | launcher | rounds (record) | shot: script; launch heading; speed; height |
+|---|---|---|---|---|
+| ski `$131ae` | Space (`$1321e`) | `$1fc6e` | `$25136` (+66) | `$208d6`; heading + `$100`; player's speed + 300; 40 |
+| sniping `$13f34` | Space (`$13f7c`) | none: a screen pick | `$25132` (+65) | sets `$14136`; the next frame's pick goes to `$14150` |
+| driving `$1359a` | Space | `$1fbbe` | `$25146` (+70) | `$207c4`; + `$100`; + 400; 0 |
+| driving | `$24fba` bit 0 | `$1fe56` | `$25142` (+69) | `$20b0a`, aircraft only (read, not gated) |
+| driving | bit 1, when bit 0 is clear | `$1fd96` | `$2513e` (+68) | `$20a52`; heading - `$100`; + 200; 20 |
+| gliding `$13790` | bit 1 | `$1ff16` | `$2513a` (+67, set to 25 at `$3b76`) | `$20be6` (read, not gated) |
+
+Which mouse button each bit is follows from the IKBD packet layout (inferred). The ski weapon's HUD icon (sprite
+`$49`, drawn by `$b7a6`, one per 5 rounds and at most 4) is a hand grenade; the name is from the picture. Stark starts
+with 50 sniping and 20 ski rounds and nothing else. Every launcher works the same way: with a round left it clears
+the engaged vehicle's fire wait `$1fba0`, even when the shot object is busy; when the shot object `$1cd7e` is free
+(+38 negative) it spends the round and places the shot 50 to the side of the camera (radius 200 through `$145b4`).
+The shot moves along its heading at speed / 4 a frame.
+
+**Hits.** Each shot script steers toward the engaged vehicle `$1cdaa` while that object's state is not negative, and
+tests a box on both axes (`$1f884`, radius in `$1f8bc`):
+
+- the grenade `$208d6` loses 4 height a frame and lands without a hit when the height is exactly 0, so it lives 10
+  frames, about 750 units; it steers within 1000 (`$1f808` = 8) and kills within 150;
+- the gun shot `$20a52` is freed at 5000 or more from the camera (`$1f71a`), gains 200 speed a frame up to `$640`,
+  and within 800 drops to speed 500 and steers at rate `$40`; it kills within 75;
+- the rocket `$207c4` is freed at 5000, loses 100 speed a frame down to 450, steers at rate `$10` within 2000 and then
+  takes a second step that frame (`$20866`); it kills within 100.
+
+The steering (`$1f756`, rotation `$1f6dc`) snaps onto the aim when the aim is ahead and the sine of the angle left is
+below the rate's, and otherwise turns by the rate. A kill sets the flag `$14138` and the shot's state to 0. Sniping
+has no projectile: the renderer stores in `$14134` the +0 id of the drawn object whose span straddles the crosshair
+column `$17218` (`$19ec4`, read, not gated), and `$14150` acts on it: -2 (the engaged vehicle) sets the kill flag, -3
+or -4 zero the aircraft's or the projectile's state, each with the explosion `$1fba4`/`$20728`. The glider's script
+`$20be6` zeroes its target's state directly and never sets `$14138`, so a glider hit would not reach `$cbbe` (read,
+not gated). `$131c6` tests `$1353c`, whose only other reference in `$800..$261a2` is the clear at `$13210` (inferred
+dead).
+
+**The kill.** `$141ce` (called by `$13244` on skis, `$13638` driving, `$14108` sniping) tumbles the vehicle while the
+kill flag is set: +18 += `$40` and +20 += `$80` a frame. On the call that finds +18 exactly `$200` it frees the object
+(+38 = -1), clears the flag, calls `$cbbe` (`$14220`, its only caller; section 3), sets `$2bae0` = -1 and `$6368` =
+`$6ed2`. A +18 that is not a multiple of `$40` never reaches `$200`.
+
+**The engaged vehicle fires back.** On each new engagement `$1fa0a` calls `$1faa6`, with c the character's +72:
+
+```
+q    = $12d6c / (unit[+12] + 1)                      (a divu overflow leaves the dividend)
+n    = ((((rand mod q) + c) >> 1) + $12d6e + c) >> 2   -> $1fb9e
+wait = ($12d70 * c + 100) >> 2                         -> $1fba0
+```
+
+then by kind: the command vehicle n = 5 and wait = 30; a bull or tanker n + 10000; a wolf + 5, a cat + 10, a fox +
+15; and 1 time in 11 the wait becomes 10. `$20cfe` (the tail of the vehicle's script `$20ce2`) counts the wait down
+and then fires the missile `$201e0` (section 4) when `rand mod n` is 0. Since every launch of the player's clears the
+wait, firing invites an immediate reply. A unit whose +12 supply sum falls (section 7) gets a larger q and so, on
+average, larger odds n: it fires less often (follows from the two gated rules, not driven).
+
+Proof: `py/attack/gate_shot.py` (also `tools/gates.py run midwinter`, about 10 s) pokes `d_ski.snap`'s state and
+checks `py/attack/shot_model.py` against one call of the game's routine each: the engagement `$ca7e` **400/400**; the
+five launchers **36/36** each (rounds 0, 1 and 20, the shot object free, done or running); the three shot scripts
+**798/798** each, at offsets straddling 75, 100, 150, 800, 1000, 2000 and 5000 on both axes, speeds straddling `$1c2`
+and `$640`, grenade heights 2 and 6; the tumble `$141ce` **48/48**; the sniping pick **21/21**; the explosion **9/9**;
+the odds `$1faa6` **300/300** (107 overflowing); the vehicle's fire `$20cfe` **144/144**. Nine broken models fail:
+the engagement without the D0 clobber (157/400) or with a 33-cell box (251/400), a grenade radius of 160 (703/798), a
+launch that ignores the rounds (24/36) or keeps the fire wait (12/36), a grenade landing at height <= 0 (655/798), no
+steering snap (794, 765 and 790 of 798), a tumble ending at >= `$200` (39/48), and odds that give the command vehicle no fixed n and wait
+(254/300).
+
+`py/attack/drive_kill.py` drives a kill. Two arms from `d_ski.snap`, each with the same labelled pokes (the engaged
+vehicle moved 300 straight ahead of the camera, TRAINING on so no missile ends the trip) and a 40-frame budget; the
+fire arm presses Space at frame 2. Fire arm: the game's own calls match the model (launch 1/1, shot 6/6, tumble
+17/17), `$cbbe` and `$cdd0` run once, the command vehicle's loss destroys unit 27 (ENEMY UNITS 0 to 1, MOBILE UNITS
+32 to 31, ENEMY VEHICLES 0 to 56, MOBILE VEHICLES 4067 to 4011) and the run stops at the radio message's key wait
+after 18 frames. Control: 40 frames, no call of `$cbbe`, every counter unchanged. `py/attack/radio_after_kill.py`
+renders the message (`radio_kill.png`) and, after a key, the ski view again with 19 rounds left.
+
+## 7. Sabotage
+
+**Where it is offered.** Decisions builds its icon list on every visit: `$ca8` runs 17 tests and `$de2` appends icon
+`$245fe[k]` and action `$24284[k]` to the live table `$24238`. It offers nothing when the character's clock +32 has
+reached the game clock (`$cf6..$d00`), the condition byte +15 is 0 (`$d08`), or the character sits in a Police
+Station of a held site with +72 below `$c8` (`$d0e..$d30`). Three of the actions matter here:
+
+- k = 9, ENTER `$5062`: choose a building of the site; 1 minute, sets +63/+64. A held site's building with bit 7
+  (ENEMY HELD) refuses a character whose +72 is below `$c8` (`$517a..$51d0`, "ENEMY HELD" `$26531`).
+- k = 4, resupply `$563a`, offered inside a Magazine or inside a Store whose bit 5 is clear (`$10ca`): a Magazine sets
+  the explosives +60 to 47, a Store adds 12 up to 47 and sets its bit 5; 5 minutes. It also sets +65 = 50 and +66 =
+  20, the sniping and ski rounds.
+- k = 1, sabotage `$3f98`, offered (`$fe4`) when the character is fit enough (bit 1 of 264(A6) and one of bits 2/3
+  and one of bits 4/5, each set by `$1296` when its body-part byte +16..+21 is at least 84), stands at a site (+52)
+  whose first building is not a Pylon (`$100e`), and carries explosives. It need not be inside a building.
+
+**PLANT EXPLOSIVES** `$3f98` shows the site's buildings in ten cells and a plunger (rect list `$2494e`, the plunger
+at (256,53)-(292,111); the building count `$24470` is the site's kind & `$f`); its one icon is the back icon `$482e`.
+On entry `$44fc` works out the charges each type needs from the Sabotage skill +14 (category 0 of `$22fda`, through
+`$4d6e`/`$4dee` into 136(A6)):
+
+```
+charges[t] = weight[t] / (perf + 70) + 1          weight $2490a, minutes $248c6
+```
+
+| type | Hut | Cable | Pylon | Garage | Bunker | House | Church | Store | Police | Magazine | Heat Mine | Warehouse | Synth | Factory | Radio | HQ | Ruin |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| weight | 0 | 400 | 0 | 50 | 300 | 100 | 300 | 100 | 250 | 0 | 500 | 300 | 200 | 400 | 200 | 400 | 0 |
+| minutes | 15 | 60 | 15 | 15 | 30 | 15 | 45 | 15 | 30 | 15 | 120 | 75 | 60 | 90 | 45 | 120 | 15 |
+
+Stark's performance is 61, so a Warehouse costs him 3 charges. A click on a cell (`$404e..$40cc`) flips the
+building's bit 6: planting adds one to `$24468`, the minutes to the clock `$2446a` and takes the charges from the
+explosives, undoing the plant at once (`$40a8`) if that leaves them negative (exactly 0 is allowed); removing refunds
+both. Any building can be planted, a Heat Mine, Hut, Pylon or Ruin included. The back icon `$482e` takes every
+planted charge back, refunding charges and minutes. The "REMOVE EXPLOSIVES." title (`$4808`/`$481a`, `$26550`) and its
+flag `$24466` are unused: no caller in a raw scan of the image and no reader of the flag.
+
+**The blast.** The plunger `$4106` (with `$24468` above 0) blows every planted building at once; there is no timer.
+For each, `$41f6..$4272`:
+
+1. Morale `$2553c` += 5, + 5 more at a held site, + 5 more for a Warehouse, Synthesis Plant, Factory or Radio Station
+   (`$4340`), capped at (Optimism + 500) / 3 (`$5816`);
+2. `$2c188[type]` += 1, the report's DESTROYED counts;
+3. the Headquarters sets `$24e8c` = -1 (`$4234`), the win at the next period end (section 5);
+4. a Cable Car Station also ruins its pair (`(b & $20) | $10`): the next 8-byte record, or the previous one when bit 5
+   marks it the second of the pair (cable-car records come in pairs, nodes 273..300);
+5. the building byte becomes `(b & $60) | $10`: a Ruin, ENEMY HELD dropped.
+
+Then `$437a` redraws it, `$42be` clears bit 6, and `$42d4` stores the character back. The blast touches no kind byte,
+no unit `$2bb96`, no node state `$2bb36` and not the random seed `$d5d8`: sabotage never changes a site's owner and
+never harms a unit.
+
+**What it changes.** The supply sums (section 2) list held sites by their Warehouse or Synthesis Plant (`$f656`) and
+Warehouse or Factory (`$f6a8`), so a Ruin drops out: from the next period end, ruining a held site's last Warehouse
+or Synthesis Plant lowers every unit's speed +11, and its last Warehouse or Factory lowers +12 (section 6). Ruining a
+free site's buildings changes neither. The counts `$f374` move the building to the Ruin column, so a held Radio
+Station ruined counts toward the radio reward and the HQ toward the win (section 5). Inferred, not driven: a free Heat
+Mine ruined is one fewer for the surrender test `$118f6`; a ruined Cable Car Station no longer passes `$fc6`'s
+cable-car icon test (+63 = 1), at either end of the pair.
+
+Proof, driven through the REPL with a same-snapshot, same-budget control for every leg
+(`py/sabotage/drive_sabotage.sh`, about 15 minutes, writes `scratchpad/midwinter/sabotage/`):
+
+- **Node 74 (Little Plains), natural from `d_decisions.snap`:** ENTER the Store, resupply (explosives 0 to 12, the
+  Store `$07` to `$27`), sabotage, plant the Church and the House, plunger. The Church `$46ae` and House `$455f`
+  become `$10ae` and `$105f`, `$2c188` +5 and +6 become 1, the clock goes 366 to 426, the explosives 12 to 8 (Morale
+  stays 228, at its cap). The control (no plants) changes nothing, and a diff of the data range finds only those
+  bytes, Stark's +32/+60 and their live copies: units, node states and the seed are identical.
+- **Node 48 (Otter Valley), a held Warehouse,** after a labelled poke of Stark's position, +52 and 47 explosives on
+  `d_stark.snap`: the Warehouse `$8b76` becomes `$1076`; then The Team's clock. At the report all 32 units are slower
+  (+11 lower by 1 to 14) and +12 is lower by 0 to 8; after the nine ticks 17 of 32 units stand elsewhere, both arms
+  holding the same 39 nodes; the report reads DESTROYED WAREHOUSES 1, HELD WAREHOUSES 4 against the control's 5.
+- **Node 88, the Headquarters,** the same pokes: `$24e8c` = -1, the report's "The enemy HQ has been destroyed and
+  General Masters with it!", the win screen `$115ae` (`hq_win.png`), then Game Options.
+- **The three held Radio Stations** (nodes 60, 70, 81), blown up by the game's own blast and clear in `stserver`
+  (`py/sabotage/radio_setup.py`, then a REPL period end): `$2c186` = -1, the team 0..31, DESTROYED RADIO STATIONS 3,
+  HELD 0 and the full-team message (`rad_report.png`); the control from `d_team.snap` keeps the team at Stark.
+
+`py/sabotage/gate_sabotage.py` (also `tools/gates.py run midwinter`, about 20 s, on the driven snapshots) checks
+`py/sabotage/sabotage_model.py` and `army_model.supply` against the game's routines: the natural toggles **3/3**,
+blasts **4/4**, clears **4/4**, cancel **1/1** and untouched units and nodes **4/4**; poked, the charges `$4516`
+**400/400**, clicks `$404e` **1500/1500**, the blast **100/100** for each of the 17 types, the clear **1700/1700**,
+units, nodes and kind bytes untouched **1700/1700**, cancels **300/300**, and the supply update after blowing up each
+Warehouse, Synthesis Plant and Factory at held and free sites **110/110**. Eight broken models fail: no cable-car
+pair (0/100), a Ruin keeping ENEMY HELD (2/4, 902/1700), no held-site Morale bonus (1312/1700), no Morale cap (0/4,
+867/1700), explosives at exactly 0 counted short (1223/1500), charges without the + 1 (0/400), a cancel that refunds
+no minutes (0/1, 123/300), and a Ruin still counted as supply (56/110).
+
 ## Open
 
-- Sabotage (`$41e2`..`$4272`, read, not gated or driven): the blast, `$4340`, the Cable Car Station's linked
-  building, and the endings' screens `$115ae`/`$1137a`.
-- Who reads unit +12.
 - The non-spread branch and `$2bb2e` (no unit uses it on these snapshots).
 - Relationships and recruitment: the bio's friend and enemy text is prose, so the data behind it is elsewhere.
-- The encounter's objects on screen: match a frame with objects in view against the slots (needs the 3D pipeline),
-  and gate the engagement `$ca7e`/`$cb2e` and the radio message `$d048`.
-- The attacks' loose ends (section 4): the character byte +72 that scales the odds, the missile odds `$1faa6`, the
-  missile's 1-in-5 flag `$13f28`, the driving setup's `$14774`, record byte +0 bit 7 after a hit, and the Bomber's
-  drop and the missile's detonation (read, not gated).
+- The encounter's objects on screen: match a frame with objects in view against the slots (needs the 3D pipeline).
+- The attacks' loose ends (section 4): the name of the character byte +72, the missile's 1-in-5 flag `$13f28`, the
+  driving setup's `$14774`, record byte +0 bit 7 after a hit, and the Bomber's drop and the missile's detonation
+  (read, not gated).
+- The player's weapons (section 6): the anti-aircraft and glider scripts `$20b0a`/`$20be6` and the glider hit that
+  never reaches `$cbbe`; the renderer's pick `$19ec4` and a driven sniping kill (`S` at speed 0, `$131d8`, then
+  Space); `$1fa0a`'s object setup, `$1f8be` and the vehicle's re-aim `$1f852`; a driven kill of an ordinary vehicle,
+  and one with no position poke (on `d_ski.snap` the vehicle stays about 5700 away); the names of the projectile
+  shapes `$18`, `$19`, `$1b`.
+- Sabotage (section 7): the surrender screen `$1137a` and The Team's `$11712` path; a ruined cable car's travel
+  (`$fc6`) and a free Heat Mine ruined hastening the surrender (both inferred); the blast animation `$4498`; a
+  whole-image census of the exits that could leave bit 6 set, of the other readers of bit 7, and of Ruin writers
+  (the `ori.b #$10` scan used the `--all` listing, which loses sync).
+- `morale_to_cap` `$57fe`, called on entering a Church (`$5208`; read, not driven).
 - Node names: `$35d0`/`$217a` name a position; map each node to its place name.

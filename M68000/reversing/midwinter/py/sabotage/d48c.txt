@@ -1,0 +1,20 @@
+mouse move 1 -1
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 100000000
+snap scratchpad/midwinter/sabotage/p48c_sab.snap
+mouse move -160 -154
+s 600000
+s 600000
+mouse up l
+s 20000000
+snap scratchpad/midwinter/sabotage/p48c_noplant.snap
+mouse move 258 50
+s 600000
+mouse down l
+hits 300000000 4106 416e 4220 4234 4244 4266 42ca
+mouse up l
+s 100000000
+snap scratchpad/midwinter/sabotage/p48c_noblast.snap

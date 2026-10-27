@@ -1,0 +1,11 @@
+mouse move -288 136
+s 600000
+mouse down l
+hits 150000000 115ae 1137a c136 2d74
+mouse up l
+s 1000000
+mouse down l
+hits 150000000 115ae 1137a c136 2d74 10840 2e6e
+mouse up l
+s 150000000
+snap scratchpad/midwinter/sabotage/p88_end2.snap

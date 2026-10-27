@@ -10,9 +10,9 @@ ski view with a Bomber attacking, all unmodified apart from one poke that stubs 
 
 The game's rules restated for re-use in another design, without addresses. Each line names the section that proves
 it (T = `terrain.md`, A = `ai.md`); anything not proven there is labelled inferred. It covers what is decoded so far:
-the island, the enemy army, the encounters, the attacks on the player, the period end and the endings. The 3D
-renderer, the vehicles' handling, sabotage itself, and the characters' relationships and recruitment one by one are
-not decoded yet.
+the island, the enemy army, the encounters, the attacks on the player, the player's weapons, sabotage, the period
+end and the endings. The 3D renderer, the vehicles' handling, and the characters' relationships and recruitment one
+by one are not decoded yet.
 
 ### What carries the game
 
@@ -31,6 +31,11 @@ not decoded yet.
   vehicle counts (Snow bulls, Tankers, Snow wolves, Snow cats, Snow foxes) feed objects into the view one every five
   frames, each kind in proportion to what is left, at most 38 per encounter. Bulls and tankers drive in convoy along
   the unit's route to its next site; wolves, cats and foxes wander. (A 3)
+- **You fight one vehicle at a time.** Of the encounter's vehicles, the highest-numbered one to come within 16 grid
+  cells of the player is engaged, once each, and only it can be hit. Each travel mode has its own weapons and rounds
+  carried by the character: on skis Space throws a grenade that homes within 1000 and kills within 150; driving has
+  a rocket, a gun and an anti-aircraft weapon; sniping destroys whatever is drawn under the crosshair. Every shot
+  resets the engaged vehicle's wait, so firing invites its missile at once. (A 3, A 6)
 - **Attrition is permanent.** A destroyed vehicle comes off the unit's own counts and its strength (1, or 2 for a cat
   or fox); at 0 the unit is destroyed. Destroying a unit's command vehicle destroys the unit at once. (A 3)
 - **Decapitation.** Six units are leaders of four units each. Destroying a leader destroys its whole group wherever it
@@ -41,6 +46,12 @@ not decoded yet.
   The options' BOMBERS, MORTARS and TRAINING switches and each vehicle's own mask decide which can come (no missiles
   while gliding, nothing in one mode, inferred to be the cable car). A hit within 200 ends the trip. Sites change hands only by the army's
   walk. (A 4)
+- **Sabotage ruins buildings, never sites.** A character at a site with explosives (from a Magazine or a Store)
+  marks buildings on the PLANT EXPLOSIVES screen, each costing charges (fewer with more Sabotage skill) and minutes,
+  and the plunger turns them all into Ruins at once, raising Morale. The site's owner and the army's units are
+  untouched; what changes is everything that counts buildings: a held site's ruined Warehouse or Synthesis Plant
+  slows every unit from the next period end, a ruined HQ wins, and ruined Radio Stations bring the full team.
+  (A 7)
 - **The situation report is the scoreboard.** Every number on it is a live count: free Heat Mines, buildings the
   player has blown up by type, units and vehicles destroyed, prisoners (characters inside a Police Station of an
   enemy-held site), and the enemy's held Factories, Synthesis Plants, Warehouses and Radio Stations and its mobile
@@ -49,7 +60,7 @@ not decoded yet.
 - **Three endings and one reward.** Blowing up the enemy Headquarters wins; so does lasting 20 days, when General
   Masters' troops desert; losing every Heat Mine to the enemy makes the Free Villages surrender. When the enemy holds
   no Radio Station (only sabotage can bring that about, since sites are never released), every character joins the
-  team at once. (A 5)
+  team at once. (A 5, A 7)
 - **Deterministic.** One generator, `s' = (s * k + k) mod 65537 - 1`, drives the army's choices and every encounter;
   the terrain uses no random numbers at all. That is what lets the gates replay the game's routines exactly. (A 2, A 3,
   T 2)
@@ -80,6 +91,10 @@ not decoded yet.
   two kinds are skipped differently. (A 3)
 - An object's count is taken before a free slot is found, so with every slot full the drawn vehicle is lost from the
   encounter. (A 3)
+- The engagement scan keeps the vehicle's kind in the register that held the camera's x cell, so after an
+  engagement the rest of that scan tests the wrong box and clears the latches of vehicles that were in range. (A 3)
+- A glider's shot destroys its target's object without calling the kill, so a glider hit would not count against
+  the unit (read, not gated). (A 6)
 - A draw with all five counts at 0 divides by zero and survives only because the zero-divide vector is a bare `rte`
   (read, not driven). (A 3)
 
@@ -148,7 +163,7 @@ at another point of its redraw.
 | document | covers | proof |
 |---|---|---|
 | `architecture.md` | vectors, VBL, screen graph, map and 3D frame loops, the cracked loader | census counts per routine |
-| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon); encounters: the unit nearest the player and its five vehicle kinds placed around the player, losses, strength and the six leader groups; the period end's counts, prisoners, Morale loss, the report's numbers, the three endings and the radio recruitment; attacks on the player: Bomber, Spotter and missile launches by options switch and vehicle mask, their odds, bomb and shell hits; nothing but the walk takes a site | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; `py/army/gate_encounter.py`: search 96/96 poked and 1/1 natural, frames 9600/9600 poked and 329/329 natural, kills 512/512; `py/attack/gate_attack.py`: launches 768/768 and 768/768, odds 1452/1452, missile 128/128 poked and 5/5 natural, bomb 1494/1494, shell 361/361, 0 feature-list writes over a 170-frame natural run; `py/army/gate_period.py`: natural 6/6, 200/200 per routine, the report's 14 numbers 14/14; Stark's 14 bio ratings 14/14 |
+| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon); encounters: the unit nearest the player and its five vehicle kinds placed around the player, losses, strength and the six leader groups; the period end's counts, prisoners, Morale loss, the report's numbers, the three endings and the radio recruitment; attacks on the player: Bomber, Spotter and missile launches by options switch and vehicle mask, their odds, bomb and shell hits; nothing but the walk takes a site; the player's weapons, the engagement and the kill; sabotage, its blast and what it changes | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; `py/army/gate_encounter.py`: search 96/96 poked and 1/1 natural, frames 9600/9600 poked and 329/329 natural, kills 512/512; `py/attack/gate_attack.py`: launches 768/768 and 768/768, odds 1452/1452, missile 128/128 poked and 5/5 natural, bomb 1494/1494, shell 361/361, 0 feature-list writes over a 170-frame natural run; `py/army/gate_period.py`: natural 6/6, 200/200 per routine, the report's 14 numbers 14/14; `py/attack/gate_shot.py`: engagement 400/400, launchers 36/36 each, shots 798/798 each, tumble 48/48, odds 300/300, vehicle fire 144/144, and a driven kill against a no-fire control; `py/sabotage/gate_sabotage.py`: natural blasts 4/4, clicks 1500/1500, blasts 100/100 per type, 1700/1700 with units and nodes untouched, supply after a blast 110/110, and driven sabotages at a village, a held Warehouse, the HQ and the Radio Stations, each against a control; Stark's 14 bio ratings 14/14 |
 | `terrain.md` | the island's height field: file 37.2's 50 x 50 grid refined by five diamond-square subdivisions with a hash displacement into a 100 x 100 grid around the player, then heights, building pads and triangle shading | `py/terrain/gate_terrain.py`: generator 70000/70000 cells over 7 windows, post-passes 10000/10000 |
 
 ## Architecture
@@ -178,6 +193,9 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `map.png` | the full island map with its legend (huts, bunkers, cable cars, heat mines, ...) |
 | `decisions.png` | Decisions: the travel and action choices |
 | `ski.png` | first-person skiing through the goggles: terrain, a building, the HUD (speed, compass, map) |
+| `radio_kill.png` | the radio message after the player's grenade kills unit 27's command vehicle (`ai.md` section 6) |
+| `hq_win.png` | the win screen `$115ae` after the Headquarters is blown up (`ai.md` section 7) |
+| `rad_report.png` | the SITUATION REPORT after the three held Radio Stations are blown up: "You now have a full team !" (`ai.md` section 7) |
 | `ski_crash.png` | 40M steps later: frame 170, when a missile from the engaged vehicle hits (`$14dfc` set by `$2061a`, `ai.md` section 4) and the game returns to Decisions with Stark's clock moved from 06:00 to 06:08 |
 
 ## Files
@@ -192,7 +210,8 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `py/vectors.py` | lists the non-TOS vectors in a snapshot |
 | `py/bk_stub.py` | unpacks the menu's ByteKiller-style self-extracting stub |
 | `ai.md`, `py/army/` | army model `army_model.py` and its gate `gate_army.py`; encounter model `encounter_model.py` and its gate `gate_encounter.py`; period-end model `period_model.py` and its gate `gate_period.py` (all run the game's routines in `stserver`) |
-| `py/attack/` | attack model `attack_model.py` (launches, odds, hits) and its gate `gate_attack.py`, with five broken-model controls (`gate_attack.py <control>`) |
+| `py/attack/` | attack model `attack_model.py` (launches, odds, hits) and its gate `gate_attack.py`, with five broken-model controls (`gate_attack.py <control>`); the player's weapons `shot_model.py` and `gate_shot.py` (nine controls), `drive_kill.py` (a driven kill and its control), `radio_after_kill.py` |
+| `py/sabotage/` | sabotage model `sabotage_model.py` and its gate `gate_sabotage.py` (eight controls); `drive_sabotage.sh` and its REPL scripts `*.txt` rebuild the driven snapshots in `scratchpad/midwinter/sabotage/` (run it before the gate); `poke_snap.py`, `radio_setup.py`, `repl.py`, `diff.py`, `state.py` |
 | `terrain.md`, `py/terrain/` | terrain model `terrain_gen.py`, its gate `gate_terrain.py`, `render_terrain.py` |
 | `terrain_island.png`, `terrain_local.png` | the whole island after the first subdivision; the shaded local grid of `d_ski.snap` |
 | `gates.toml` | the promoted gates for `tools/gates.py` |
@@ -202,7 +221,8 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 
 ## Not exercised yet
 
-The 3D renderer (projection, draw list, polygon fill), the map render from the height grid, any vehicle other than skis, the
-sabotage (planting explosives, the blast and the endings' screens), the encounter's objects on screen and the engagement itself,
-relationships and recruitment, the other game on the disk, a bomb or mortar barrage reaching the player in a natural
-run (both are gated only from poked states), the Bomber's drop rule and the missile's detonation.
+The 3D renderer (projection, draw list, polygon fill), the map render from the height grid, travel by any vehicle other
+than skis (the driving and gliding weapons are gated from poked states only), a sniping kill, a kill with no position
+poke, the surrender screen, the encounter's objects on screen, relationships and recruitment one by one, the other
+game on the disk, a bomb or mortar barrage reaching the player in a natural run (both are gated only from poked
+states), the Bomber's drop rule and the missile's detonation.

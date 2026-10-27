@@ -1,0 +1,48 @@
+mouse move 1 -1
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 100000000
+snap scratchpad/midwinter/sabotage/p88_sab.snap
+mouse move -160 -154
+s 600000
+mouse down l
+hits 600000 4056 406a 4072 40cc
+mouse up l
+s 20000000
+snap scratchpad/midwinter/sabotage/p88_planted.snap
+mouse move 258 50
+s 600000
+mouse down l
+hits 300000000 4106 416e 4220 4234 4244 4266 42ca
+mouse up l
+s 100000000
+snap scratchpad/midwinter/sabotage/p88_blast.snap
+mouse move -258 104
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 100000000
+mouse move 64 0
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 150000000
+snap scratchpad/midwinter/sabotage/p88_team.snap
+mouse move 224 -136
+s 600000
+mouse down l
+hits 150000000 ec8c 118ba ef36 115ae 1137a 10840 c136
+mouse up l
+s 1000000
+snap scratchpad/midwinter/sabotage/p88_report.snap
+mouse move -288 136
+s 600000
+mouse down l
+hits 150000000 c136 f56e 2d74
+mouse up l
+s 1000000
+snap scratchpad/midwinter/sabotage/p88_after.snap

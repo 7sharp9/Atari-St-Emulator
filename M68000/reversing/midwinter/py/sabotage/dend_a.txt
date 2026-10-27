@@ -1,0 +1,27 @@
+mouse move -258 104
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 100000000
+mouse move 64 0
+s 600000
+mouse down l
+s 600000
+mouse up l
+s 150000000
+snap scratchpad/midwinter/sabotage/p48_team.snap
+mouse move 224 -136
+s 600000
+mouse down l
+hits 150000000 ec8c f56e f5e2 f374 f8d8 118ba ef36 c136
+mouse up l
+s 1000000
+snap scratchpad/midwinter/sabotage/p48_report.snap
+mouse move -288 136
+s 600000
+mouse down l
+hits 150000000 c136 f56e 2d74
+mouse up l
+s 1000000
+snap scratchpad/midwinter/sabotage/p48_after.snap

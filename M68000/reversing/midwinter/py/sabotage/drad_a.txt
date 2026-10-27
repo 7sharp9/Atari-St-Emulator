@@ -1,0 +1,16 @@
+mouse move 70 -55
+s 100000
+mouse move 70 -55
+s 2000000
+mouse down l
+hits 150000000 ec8c f374 f8d8 f25e f2cc ef36 c136
+mouse up l
+s 1000000
+snap scratchpad/midwinter/sabotage/rad_report.snap
+mouse move -288 136
+s 600000
+mouse down l
+hits 150000000 c136 2d74
+mouse up l
+s 1000000
+snap scratchpad/midwinter/sabotage/rad_after.snap

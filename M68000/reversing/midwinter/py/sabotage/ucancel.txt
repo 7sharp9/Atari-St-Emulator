@@ -1,0 +1,8 @@
+mouse move -104 154
+s 600000
+mouse down l
+u 482e 300000000
+snap scratchpad/midwinter/sabotage/n73_482e.snap
+mouse up l
+s 100000000
+snap scratchpad/midwinter/sabotage/n73_cancelled.snap
