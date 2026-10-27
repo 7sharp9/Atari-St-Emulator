@@ -7,6 +7,7 @@ counts.
     s('load', snapshot=snap, disk=disk)      # any method from the DEVELOPING.md table, params as keywords
     s.read(addr, n) -> bytes; s.reg('a7') -> int
     s.call(entry, ret=0x800)                 # run one routine from a planted return address, interrupts masked
+    s.call(entry, stops=[pc])                # ... or until it reaches pc (before an interrupt wait)
     s.close()
 
 `call` pushes `ret` below the snapshot's stack (`sp` is fixed at the first call: SSP - 64), sets SR = $2700 and the
@@ -44,7 +45,9 @@ class StServer:
     def reg(self, name):
         return int(str(self('regs')[name.lower()]).lstrip('$'), 16)
 
-    def call(self, entry, ret=0x800, max_steps=400000, **regs):
+    def call(self, entry, ret=0x800, max_steps=400000, stops=(), **regs):
+        """`stops`: more PCs that end the call (for a routine that would go on to wait on an interrupt); the
+        result's PC says which was reached."""
         if self.sp is None:
             self.sp = self.reg('a7') - 64
         self('poke', addr=self.sp, width=4, value=ret)
@@ -53,7 +56,7 @@ class StServer:
             self('set_reg', name=name, value=value)
         self('set_reg', name='sr', value=0x2700)
         self('set_reg', name='pc', value=entry)
-        r = self('run', max_steps=max_steps, until_pc=ret)
+        r = self('run', max_steps=max_steps, until_pc=[ret, *stops] if stops else ret)
         if r['reason'] != 'until':
             sys.exit(f'${entry:x} did not return to ${ret:x} ({r})')
         return r

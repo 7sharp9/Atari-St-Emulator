@@ -162,6 +162,7 @@ def kills(s):
     """`$cbbe` for every unit: its own object (slot 0) and a vehicle of each kind at strengths 1, 2 and 36, stopped
     at the radio message `$cd6e` or the return. Also checks the live-vehicle counter against the unit table."""
     s('load', snapshot=os.path.join(WORK, 'd_ski.snap'), disk=DISK)
+    s.sp = None
     base = s('fork')
     base = base['id'] if isinstance(base, dict) else base
     units = s.read(am.UNITS, 512)
@@ -183,12 +184,8 @@ def kills(s):
             m = am.Mem(bytes(0x48000))
             for a, ln in KILL_REGIONS + [(0x2c132, 128)]:
                 m.b[a:a + ln] = s.read(a, ln)
-            sp = s.reg('a7') - 64
-            s('poke', addr=sp, width=4, value=0x800)
-            for r, v in (('a7', sp), ('a6', 0x2c376), ('sr', 0x2700), ('pc', 0xcbbe)):
-                s('set_reg', name=r, value=v)
-            r = s('run', max_steps=400000, until_pc=[0x800, 0xcd6e])
-            got = 'message' if s.reg('pc') == 0xcd6e else 'return' if s.reg('pc') == 0x800 else r
+            s.call(0xcbbe, stops=[0xcd6e], a6=0x2c376)
+            got = 'message' if s.reg('pc') == 0xcd6e else 'return'
             exp = em.kill(m)
             diffs = [] if got == exp else [('stop', exp, got)]
             for a, ln in KILL_REGIONS:
