@@ -234,7 +234,9 @@ that are easy to forget:
   Corpora captured before this change hold those duplicates: PowerMonger's `$1abaa` corpus has stops ~20 steps
   apart with the routine's state unchanged, which `py/season/gate_1abaa.py` dedupes (`REENTRY`). They and
   `until` compare 24-bit addresses, so a PC with junk upper bits (TOS 1.00's handlers run at `$04fc0a1a`)
-  matches.
+  matches. `stserver`'s `run` `until_pc` and `bp_set` compare all 32 bits (`server/Server.fs`, `run`): code entered
+  through a flagged action-table `jsr` keeps the top bit in every `bsr` target (Midwinter's `$ec8c` runs at
+  `$8000ec8c`), so pass both `a` and `a | 0x80000000` (`reversing/midwinter/py/army/gate_period.py`).
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event. A pulse shorter than
   the game's poll cycle can fall between two polls and never register: hold longer than the game's
   poll cycle. The VBL is raised every 12,000 steps exactly (`instructionsPerFrame`, a literal in
