@@ -4,14 +4,14 @@ Mike Singleton's Midwinter: a war on a frozen island, played through 32 characte
 hang-glide, drive snow buggies and ride cable cars across fractal terrain (generated from a coarse
 height grid, `terrain.md`) drawn as filled 3D polygons. It is the repo's first 3D game. The emulator boots it from a French
 compilation disk, runs the menu, the title, the team and character screens and the first-person
-ski view with an enemy plane attacking, all unmodified apart from one poke that stubs the menu's fullscreen VBL handler (below).
+ski view with a Bomber attacking, all unmodified apart from one poke that stubs the menu's fullscreen VBL handler (below).
 
 ## Design digest
 
 The game's rules restated for re-use in another design, without addresses. Each line names the section that proves
 it (T = `terrain.md`, A = `ai.md`); anything not proven there is labelled inferred. It covers what is decoded so far:
-the island, the enemy army and the encounters. The 3D renderer, the vehicles other than skis, the characters'
-relationships and recruitment, the endings and the enemy's aircraft are not decoded yet.
+the island, the enemy army, the encounters and the attacks on the player. The 3D renderer, the vehicles' handling,
+the characters' relationships and recruitment, and the endings are not decoded yet.
 
 ### What carries the game
 
@@ -34,6 +34,12 @@ relationships and recruitment, the endings and the enemy's aircraft are not deco
   or fox); at 0 the unit is destroyed. Destroying a unit's command vehicle destroys the unit at once. (A 3)
 - **Decapitation.** Six units are leaders of four units each. Destroying a leader destroys its whole group wherever it
   is, including stationary garrisons that would otherwise take 255 strength to wear down. (A 3)
+- **The air war is aimed at the player, not the map.** In the 3D view a Bomber or a Spotter (whose arrival brings a
+  five-shell mortar barrage) is launched at the player with odds of 1 in n per frame, n growing with the distance from
+  a fixed point beyond the island's corner nearest the enemy headquarters, and with a per-character byte; the engaged vehicle fires missiles.
+  The options' BOMBERS, MORTARS and TRAINING switches and each vehicle's own mask decide which can come (no missiles
+  while gliding, nothing in one mode, inferred to be the cable car). A hit within 200 ends the trip. Sites change hands only by the army's
+  walk. (A 4)
 - **The situation report is the scoreboard.** Its unit and vehicle counts (mobile, and destroyed by the player) are
   the live counters the simulation keeps; its site counts are not matched yet. (A 3)
 - **Deterministic.** One generator, `s' = (s * k + k) mod 65537 - 1`, drives the army's choices and every encounter;
@@ -53,8 +59,13 @@ relationships and recruitment, the endings and the enemy's aircraft are not deco
 
 ### Bugs and accidents a new design should drop
 
-- Five sites have no roads, so the walk never reaches them; three of them are handed to the enemy at the start. Whether
-  anything else can take or attack them (bombers) is not decoded. (A 2)
+- Five sites have no roads, so the walk never reaches them; three of them are handed to the enemy at the start, and
+  the other two can never fall: nothing else takes a site. (A 2, A 4)
+- The attack odds measure the player's distance from the Enemy Headquarters' map coordinates read at terrain scale,
+  a point off the island beyond its far corner, so "attacks grow near the headquarters" survives only as a direction
+  (inferred intent). (A 4)
+- A missile is given the launching vehicle's heading after its aim at the player has been computed, so the
+  computed aim is thrown away and the missile has to steer onto the player's path. (A 4)
 - When no road leads to an unheld site, the unit picks among roads 0 to 2 only, so a site whose fourth road is its
   only way out never sends a unit that way from this branch. (A 2)
 - A bull drawn for a unit that is not moving places nothing, while a tanker drawn falls through to the wolf test: the
@@ -129,7 +140,7 @@ at another point of its redraw.
 | document | covers | proof |
 |---|---|---|
 | `architecture.md` | vectors, VBL, screen graph, map and 3D frame loops, the cracked loader | census counts per routine |
-| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon); encounters: the unit nearest the player and its five vehicle kinds placed around the player, losses, strength and the six leader groups | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; `py/army/gate_encounter.py`: search 96/96 poked and 1/1 natural, frames 9600/9600 poked and 329/329 natural, kills 512/512; Stark's 14 bio ratings 14/14 |
+| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon); encounters: the unit nearest the player and its five vehicle kinds placed around the player, losses, strength and the six leader groups; attacks on the player: Bomber, Spotter and missile launches by options switch and vehicle mask, their odds, bomb and shell hits; nothing but the walk takes a site | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; `py/army/gate_encounter.py`: search 96/96 poked and 1/1 natural, frames 9600/9600 poked and 329/329 natural, kills 512/512; `py/attack/gate_attack.py`: launches 768/768 and 768/768, odds 1452/1452, missile 128/128 poked and 5/5 natural, bomb 1494/1494, shell 361/361, 0 feature-list writes over a 170-frame natural run; Stark's 14 bio ratings 14/14 |
 | `terrain.md` | the island's height field: file 37.2's 50 x 50 grid refined by five diamond-square subdivisions with a hash displacement into a 100 x 100 grid around the player, then heights, building pads and triangle shading | `py/terrain/gate_terrain.py`: generator 70000/70000 cells over 7 windows, post-passes 10000/10000 |
 
 ## Architecture
@@ -159,7 +170,7 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `map.png` | the full island map with its legend (huts, bunkers, cable cars, heat mines, ...) |
 | `decisions.png` | Decisions: the travel and action choices |
 | `ski.png` | first-person skiing through the goggles: terrain, a building, the HUD (speed, compass, map) |
-| `ski_crash.png` | 40M steps later: a hit (inferred: by the enemy plane seen approaching in the frames before), after which the game returns to Decisions with Stark's clock moved from 06:00 to 06:08 |
+| `ski_crash.png` | 40M steps later: frame 170, when a missile from the engaged vehicle hits (`$14dfc` set by `$2061a`, `ai.md` section 4) and the game returns to Decisions with Stark's clock moved from 06:00 to 06:08 |
 
 ## Files
 
@@ -173,6 +184,7 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `py/vectors.py` | lists the non-TOS vectors in a snapshot |
 | `py/bk_stub.py` | unpacks the menu's ByteKiller-style self-extracting stub |
 | `ai.md`, `py/army/` | army model `army_model.py` and its gate `gate_army.py`; encounter model `encounter_model.py` and its gate `gate_encounter.py` (both run the game's routines in `stserver`) |
+| `py/attack/` | attack model `attack_model.py` (launches, odds, hits) and its gate `gate_attack.py`, with five broken-model controls (`gate_attack.py <control>`) |
 | `terrain.md`, `py/terrain/` | terrain model `terrain_gen.py`, its gate `gate_terrain.py`, `render_terrain.py` |
 | `terrain_island.png`, `terrain_local.png` | the whole island after the first subdivision; the shaded local grid of `d_ski.snap` |
 | `gates.toml` | the promoted gates for `tools/gates.py` |
@@ -184,4 +196,5 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 
 The 3D renderer (projection, draw list, polygon fill), the map render from the height grid, any vehicle other than skis, the
 period end's own tests (`$f374`, `$f3be`, the endings), the encounter's objects on screen and the engagement itself,
-relationships and recruitment, the other game on the disk, and anything after the first bomber attack.
+relationships and recruitment, the other game on the disk, a bomb or mortar barrage reaching the player in a natural
+run (both are gated only from poked states), the Bomber's drop rule and the missile's detonation.

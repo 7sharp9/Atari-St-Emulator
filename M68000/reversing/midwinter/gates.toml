@@ -24,3 +24,11 @@ cwd = "py/army"
 expect = ["1/1", "164/164", "165/165", "96/96", "9600/9600", "2/2", "512/512"]
 cite = "ai.md section 3 (proof list)"
 minutes = 1
+
+[[gate]]
+name = "attack"
+cmd = "{python} gate_attack.py"
+cwd = "py/attack"
+expect = ["768/768", "1452/1452", "128/128", "5/5", "1494/1494", "361/361", "re:feature-list writes 0;"]
+cite = "ai.md section 4 (proof paragraph)"
+minutes = 1

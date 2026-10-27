@@ -11,7 +11,8 @@ speeds up as it takes supply buildings. Before the player's first turn the army 
 that it moves nine ticks each time the player ends a 2-hour period from The Team screen's clock icon. The player meets
 the army one unit at a time: the unit inside a window around the player brings its vehicles into the 3D view, loses
 them for good when they are destroyed, and dies when its strength runs out; destroying one of six leaders destroys
-its whole group (section 3).
+its whole group (section 3). The enemy's aircraft (Bomber, Spotter) and the encounter's missiles attack only the
+player in the 3D view, never a site (section 4).
 
 Proof: `py/army/gate_army.py` (also `tools/gates.py run midwinter`, about 5 s). It runs the game's own routines in
 `stserver` and checks `py/army/army_model.py` against every call:
@@ -127,10 +128,10 @@ Warehouse at weight 5 gains 100 a tick from it alone, while one 450 units away g
 Unopposed, the model alone takes the army from 33 held nodes to 80 by tick 80 (about 18 game hours, nine reports)
 and 90 by tick 400. The five nodes it never takes are the ones with no roads: 60, 70 and 81 are Radio Stations (each
 with a Mountain Hut) that `$ee88` marks enemy held at PLAY, which are the 3 Radio Stations of the report's enemy
-column; 76 is a fourth Radio Station; 59 is a Mountain Hut. "Never taken by the walk" is all the tick says about
-them: whether anything else captures or attacks them (encounters, bombers) is not read. The player's counter-moves
-are not modelled either: sabotage ("PLANT EXPLOSIVES", "REMOVE EXPLOSIVES" in the text), freeing a site, the
-encounters.
+column; 76 is a fourth Radio Station; 59 is a Mountain Hut. Nothing else captures a site, and nothing during
+play releases one: the held bit has no writer outside the walk and the head start but an uncalled reset (section
+4), so a site once taken stays taken. The player's counter-moves on the army are the encounters (section 3);
+sabotage ("PLANT EXPLOSIVES", "REMOVE EXPLOSIVES" in the text) is not read.
 
 ## 3. Encounters and losses
 
@@ -145,7 +146,7 @@ Proof: `py/army/gate_encounter.py` (also `tools/gates.py run midwinter`, about 4
 
 - the natural 3D entry, the ski icon clicked on `d_decisions.snap` (in the REPL): `$c2f0` **1/1**, and the 164 frames
   of `$c4f2` after it **164/164**;
-- 165 natural frames from `d_ski.snap` (unit 27 in the window), up to the crash of the unsteered skier: **165/165**;
+- 165 natural frames from `d_ski.snap` (unit 27 in the window), up to the missile hit that ends the trip at frame 170 (section 4): **165/165**;
 - every active unit put in the window by a poked target at three offsets: `$c2f0` **96/96**, and 100 chained frames
   after each, **9600/9600** (with the natural legs, 1926 objects placed); a window with no unit: **2/2**;
 - the kill `$cbbe` for every unit, of its command vehicle and of one vehicle of each kind at strengths 1, 2 and 36,
@@ -225,6 +226,92 @@ vehicle is lost from the encounter (not seen: 38 objects at most). A draw with a
 by zero in `$d57e`; the zero-divide vector is a bare `rte`, so the draw reads 0 and places nothing (read, not
 driven).
 
+## 4. Attacks on the player, and who takes a site
+
+Nothing but the army's walk takes a site. The enemy's aircraft and the encounter's vehicles attack the player in the 3D
+view, never a site: a hit ends the trip. The five road-less sites are therefore safe from everything, and the three
+of them `$ee88` marks at PLAY are the only ones the enemy holds without having walked there.
+
+**Who changes a site's held bit.** Two censuses of the resident image `$800..$261a2`. Every instruction that sets or
+clears bit 7 of a byte in memory (`bset`/`bclr`/`bchg #7`, `ori.b #$80`, `andi.b #$7f`, decoded at every even
+address and kept on instruction boundaries of the `--all` listing) gives 24 hits; five touch the feature list, the
+tick's arrival (`$c05c`, `$c1fc` in `$c136`) and the head start `$ee88` (`$ee92..$eeae`). The other 19 are the
+character records (`$3b12`..`$4eec`: the trip end, below), the unit's +4/+15 (`$cdf8`, `$ce26`), sound flags
+`$6a34`/`$6a35`, the 3D clipper's vertex marks (`$1e674..$1e9fc`) and one data word (`$12c52`). The ten literal
+loads of `$2a150` cover every routine that walks the list: the record search `$1352` and `$14a8`, the map plot
+`$24b6`, the counts `$f374`, the supply sums `$f656`/`$f6a8`, the nearest site `$f78e`, the map markers `$19b50` and
+the 3D object list `$1cf1c` only read it; `$ef1c` clears bit 7 on every record through a register (`andi.b #$7f,D0`
+/ `move.b D0,(A0)`) and has no caller in the image (no `bsr`/`jsr`, no literal, no displacement-table entry). The
+node state bytes `$2bb36` are loaded as a base only by `$bfc8`, the new-game setup PLAY calls (`$1090e`), which
+clears them, and by the tick. Neither census sees a write through a record pointer kept elsewhere (the character's
++52); the live check covers that for a ski run. From `d_ski.snap` until the trip ends, 170 frames with the bomber's script running every
+frame and five calls of the missile launcher (two launches), the feature list `$2a150..$2b169` sees **0** writes.
+
+**The attackers.** The 3D frame `$14e00` calls `$202c6`, `$200e8`, `$1ffe0` and `$1fa0a`, then `$20d52` runs four
+44-byte objects through their script pointers (+40): `$1cd7e` the player's shot, `$1cdaa` the engaged vehicle,
+`$1cdd6` the attacking aircraft, `$1ce02` a bomb, missile or mortar shell. Each aircraft and projectile gets its shape
+from the table `$31698` by type, the same table the identification screen names (section 3):
+
+| attacker | launched by | switch, mask bit | shape | what it does |
+|---|---|---|---|---|
+| Bomber (`$1d`) | `$1ffe0` | BOMBERS `$2c17c`, bit 0 | `$3170c` | appears `$4650` ahead of the camera on the player's heading and flies at a point ahead of the player (`$2040e`), dropping a bomb (`$1fd1e`) when its aim distance `$200e2` is 500 and that point is within 700 of it but not within 120 (read, not gated) |
+| Spotter (`$1a`) | `$200e8` | MORTARS `$2c17e`, bit 1 | `$31700` | flies in the same way at a point 3000 ahead of the player (`$20524`); within 200 of that point it starts a barrage (`$2040c` = 1): `$202c6` puts five shells at random points around the player's path, one every four frames |
+| missile (`$19`) | `$201e0`, from the engaged vehicle's script `$20ce2` | TRAINING `$2c180` off, bit 2 | `$316fc` | leaves the engaged vehicle along the vehicle's own heading (the aim direction `$1f6f8` computes is overwritten) and steers at a point ahead of the player that moves closer each time the missile reaches it (`$20594`) |
+
+The options screen's six labels name the three words (`$10a7a..$10ab4` print MORTARS, BOMBERS, TRAINING over them, and
+icons 3 to 5 of `$250d2` flip them, `$10986..$10996`); each has exactly one reader, the launcher above. `$1fa08` is
+the vehicle's attack mask, written by each travel mode's setup routine. The icon puts the mode's vehicle record in
+`$12d76`; `$12d0e` copies it to `$12d3a`, and `$12eae` calls the setup through the copy's `$12d62`:
+
+| travel mode `$24482` | icon | record | setup | skill category (`$22fda`) | mask |
+|---|---|---|---|---|---|
+| 0 | `$3dd2` (Decisions, snipe) | `$12e28` | `$13eb4` | Sniping | 7 |
+| 1 | `$3a4a` | `$12e62` | `$13c5c` | none (6) | 0 (inferred: the cable car) |
+| 2 | `$3d86` (ski) | `$12d7a` | `$1314c` | Skiing | 7 |
+| 3 | `$3b5a` | `$12dee` | `$136f8` | Gliding | 3: no missiles |
+| 4, 5, 6 | `$3bc8`, `$3c22`, `$3c7c` | `$12db4` | `$1354e` | Driving | 7, left unchanged when `$14774` is negative (role not read) |
+
+The category is the travel mode's `138(A6)`; `$22fda` maps it to a character byte (Sniping +13, Skiing +10, Gliding
++11, Driving +12), whose rating `$4d24` turns into the setup's performance word.
+
+**When an aircraft comes.** Bomber and Spotter share the object `$1cdd6`, so one is in the air at a time. Each frame
+the object is free, its launcher draws: with odds n at -1 it first draws new odds with `$20db4`, then launches when
+`rand mod n` is 0, and sets n back to -1. So a launch comes on average n frames after the aircraft is free, and n is
+
+```
+q = ((2 * (dx^2 + dy^2)) >> 16) * (c[+72] + 50) / v[$12d72]      dx, dy = terrain target - (2688, 2616)
+n = rand mod (q + 50) + q / 8 + 20                                   (n = $7d00 if that is negative as a word)
+```
+
+with `c[+72]` a byte of the current character's record (Stark 10; 255 for characters 21, 22 and 31; not named) and
+`$12d72` a word of the vehicle record (30 on skis). The further from (2688, 2616), the rarer the attacks, and the
+higher the character's +72, the rarer too. (2688, 2616) is the Enemy Headquarters' position (feature record 88)
+taken in map units, while the terrain target is in half those units (section 3), so the point the code measures from
+is off the 1600-cell island, beyond its far corner in x and y; the nearest the player gets is that corner, close to
+the headquarters (terrain (1344, 1308)). Inferred: a units slip that keeps "nearer the headquarters, more attacks" in
+direction only.
+
+**Hits.** A bomb falls faster each frame (+12 per frame on `$20a50`); on landing (`$209a0`) it hits when it is
+within 200 of the point 180 ahead of the camera on both axes. A mortar shell (`$20776`) lands at once and hits within
+200 of the camera. A missile (`$20594`) runs out when its range word `$200e2` goes negative and then hits within 90 of
+its aim point, and when `$13f28` is set only 1 time in 5 (read, not gated). A hit sets `$14dfc`, which the 3D loop
+`$14ac0` tests: the trip ends, and the travel return (`$3b12`, `$4ede`) sets bit 7 of the character's record byte
++0 (meaning not read). The engaged vehicle's own missile odds `$1fb9e` come from `$1faa6`, which also reads the
+character's +72 (read, not gated).
+
+The unsteered skier of `d_ski.snap` does not crash: at frame 170 a missile from the engaged vehicle hits
+(`$14dfc` written by `$2061a`), and the game returns to Decisions with Stark's clock at 06:08 (`ski_crash.png`).
+
+Proof: `py/attack/gate_attack.py` (also `tools/gates.py run midwinter`, about 15 s) runs the routines in `stserver`
+and checks `py/attack/attack_model.py` against every call: launches with every switch, mask, object state, odds and
+four seeds, `$1ffe0` **768/768** and `$200e8` **768/768**; the odds `$20db4` over 121 positions, four characters and
+three divisors, 51 of them overflowing the `divu`, **1452/1452**; the missile `$201e0` poked **128/128** and the
+game's own five calls (two launches) **5/5**; the bomb's landing and fall `$209a0` **1494/1494** (484 hits); the shell `$20776`
+**361/361** (121 hits); and the natural run above (0 feature-list writes, the trip ended by `$2061a`). Five broken
+models fail: launches that ignore the mask (704/768 each), odds without the character's +72 (0/1452), a missile aimed
+at the player (112/128, natural 3/5), a hit radius of 180 (bomb 1110/1494, shell 265/361) and a shell aimed 180 ahead
+like the bomb (0/361).
+
 ## Open
 
 - `$f374`, `$f3be` and the end-of-game tests `$118ba`/`$118f6` in the period end; the report's counts against their
@@ -234,6 +321,7 @@ driven).
 - Relationships and recruitment: the bio's friend and enemy text is prose, so the data behind it is elsewhere.
 - The encounter's objects on screen: match a frame with objects in view against the slots (needs the 3D pipeline),
   and gate the engagement `$ca7e`/`$cb2e` and the radio message `$d048`.
-- What else attacks a site: the Bomber, Spotter and Snow witch types and the options' MORTARS/BOMBERS switches. Until
-  then, whether a site off the road graph (Radio Station 76, Mountain Hut 59) is safe is not settled.
+- The attacks' loose ends (section 4): the character byte +72 that scales the odds, the missile odds `$1faa6`, the
+  missile's 1-in-5 flag `$13f28`, the driving setup's `$14774`, record byte +0 bit 7 after a hit, and the Bomber's
+  drop and the missile's detonation (read, not gated).
 - Node names: `$35d0`/`$217a` name a position; map each node to its place name.

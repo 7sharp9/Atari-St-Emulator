@@ -6,8 +6,8 @@ Needs $MIDWINTER_WORK (default <root>/scratchpad/midwinter) holding d_decisions.
 - entry: the ski icon clicked on d_decisions.snap (drive.txt's click, made in the REPL: stserver's `mouse` does
   not register in this game), stopped at the 3D entry's `$c2f0`; that call and the `$c4f2` calls after it;
 - natural: from d_ski.snap (3D view, unit 27 in the window, slot 0 engaged) the game's own calls of `$c2f0` and
-  `$c4f2` over `frames` calls, each compared from its entry state (the unsteered skier crashes after 170 frames,
-  so `frames` <= 165; slot 23 becomes the engaged one on the way);
+  `$c4f2` over `frames` calls, each compared from its entry state (a missile from the engaged vehicle hits the
+  skier at frame 170 and ends the trip, ai.md section 4, so `frames` <= 165; slot 23 becomes the engaged one on the way);
 - poked (labelled poke): for every active unit, the terrain target `$19cd4/$19cd6` is set so the unit lies in the
   window (three offsets), with `$2bae0` (engaged slot) -1, then `$c2f0` is called and `chain` calls of `$c4f2`
   follow, each from a planted return address with interrupts masked.
