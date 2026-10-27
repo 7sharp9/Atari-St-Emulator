@@ -6,6 +6,64 @@ height grid, `terrain.md`) drawn as filled 3D polygons. It is the repo's first 3
 compilation disk, runs the menu, the title, the team and character screens and the first-person
 ski view with an enemy plane attacking, all unmodified apart from one poke that stubs the menu's fullscreen VBL handler (below).
 
+## Design digest
+
+The game's rules restated for re-use in another design, without addresses. Each line names the section that proves
+it (T = `terrain.md`, A = `ai.md`); anything not proven there is labelled inferred. It covers what is decoded so far:
+the island, the enemy army and the encounters. The 3D renderer, the vehicles other than skis, the characters'
+relationships and recruitment, the endings and the enemy's aircraft are not decoded yet.
+
+### What carries the game
+
+- **An island generated, not stored.** A 50 x 50 grid of heights covers the whole island. Wherever the player is, five
+  rounds of diamond-square subdivision refine it into a 100 x 100 grid around the player at 32 times the resolution.
+  Each new point's displacement is a hash of its four parents, not a random number, so the same place always has the
+  same hills. (T intro, T 2, T 3)
+- **The war is a walk on a road graph.** 32 enemy units move over 96 sites joined by up to four roads each. A unit
+  steps a fixed distance toward its next site and captures it on arrival, then picks a road at random among those
+  leading to sites the enemy does not hold yet. There is no planner. (A 2)
+- **Supply is speed.** Every game hour each unit's speed is recomputed from the Warehouses and Synthesis Plants the
+  enemy holds, weighted by distance, so each supply building taken speeds the advance near it. (A 2)
+- **The enemy moves between the player's turns.** It gets a 42-tick head start, then nine ticks each time the player
+  ends a 2-hour period from The Team screen; it does not move while a character travels. (A 2)
+- **One unit at a time comes to life.** Only the unit inside a window around the player is materialised. Its five
+  vehicle counts (Snow bulls, Tankers, Snow wolves, Snow cats, Snow foxes) feed objects into the view one every five
+  frames, each kind in proportion to what is left, at most 38 per encounter. Bulls and tankers drive in convoy along
+  the unit's route to its next site; wolves, cats and foxes wander. (A 3)
+- **Attrition is permanent.** A destroyed vehicle comes off the unit's own counts and its strength (1, or 2 for a cat
+  or fox); at 0 the unit is destroyed. Destroying a unit's command vehicle destroys the unit at once. (A 3)
+- **Decapitation.** Six units are leaders of four units each. Destroying a leader destroys its whole group wherever it
+  is, including stationary garrisons that would otherwise take 255 strength to wear down. (A 3)
+- **The situation report is the scoreboard.** Its unit and vehicle counts (mobile, and destroyed by the player) are
+  the live counters the simulation keeps; its site counts are not matched yet. (A 3)
+- **Deterministic.** One generator, `s' = (s * k + k) mod 65537 - 1`, drives the army's choices and every encounter;
+  the terrain uses no random numbers at all. That is what lets the gates replay the game's routines exactly. (A 2, A 3,
+  T 2)
+
+### Limits that became features
+
+- **No stored map detail.** 2,500 heights and a hash give the whole island at 32 times their resolution, with the
+  same ground on every visit. (T)
+- **The 3D view never simulates the army.** The strategic layer stays a cheap graph walk run between turns, and the
+  view only has to animate one unit's vehicles near the player, using simple rules (follow a route, or wander and
+  turn with chance 1 in 16). (A 2, A 3)
+- **No strategic pathfinding.** The road graph is the path. Locally, convoys take a randomised greedy route with
+  wall-following through the 100 x 100 blocked-cell grid, ending at the window's edge. (A 2, A 3)
+- **Fixed tables.** 32 units, 96 sites, 41 object slots and an encounter cap of 38 objects. (A 2, A 3)
+
+### Bugs and accidents a new design should drop
+
+- Five sites have no roads, so the walk never reaches them; three of them are handed to the enemy at the start. Whether
+  anything else can take or attack them (bombers) is not decoded. (A 2)
+- When no road leads to an unheld site, the unit picks among roads 0 to 2 only, so a site whose fourth road is its
+  only way out never sends a unit that way from this branch. (A 2)
+- A bull drawn for a unit that is not moving places nothing, while a tanker drawn falls through to the wolf test: the
+  two kinds are skipped differently. (A 3)
+- An object's count is taken before a free slot is found, so with every slot full the drawn vehicle is lost from the
+  encounter. (A 3)
+- A draw with all five counts at 0 divides by zero and survives only because the zero-divide vector is a bare `rte`
+  (read, not driven). (A 3)
+
 ## Provenance
 
 | item | value |
