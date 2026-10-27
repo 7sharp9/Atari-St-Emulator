@@ -169,7 +169,9 @@ that are easy to forget:
   each other, and one then checks the other's run (commander `gate_local.sh` and `gate_retire.sh` did). Name a promoted
   directory anything but `build/`: `.gitignore` ignores it.
 - `callcap` runs with interrupts masked, so a routine that plays a sound waits forever on a flag the
-  interrupt clears (PowerMonger: poke `$2c993` to 0 in the state). Corpus capture:
+  interrupt clears (PowerMonger: poke `$2c993` to 0 in the state). A routine that polls a key byte hangs the same
+  way: read the polled address before naming what it waits for (Midwinter's radio message `$d048`, written up as an
+  interrupt wait, polls the key byte `$2c324` at `$d0f4` and returns on a key). Corpus capture:
   `tools/capture_hits.py`.
 
 ## Shell pitfalls on this machine
