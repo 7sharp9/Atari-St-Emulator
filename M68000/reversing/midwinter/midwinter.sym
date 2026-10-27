@@ -91,8 +91,8 @@
 00c4f2	army_encounter_update
 00d57e	rand_mod
 00d598	rand16
-00ec8c	night_update
-00ed88	night_morale_loss
+00ec8c	period_end_clock_icon
+00ed88	period_morale_loss
 00ee30	army_head_start
 00ee88	army_seed_bases
 00eeb4	place_stark_at_unit
@@ -101,3 +101,5 @@
 00f656	held_warehouse_synth_sites
 00f6a8	held_warehouse_factory_sites
 00f6fa	supply_falloff
+00ef36	situation_report_screen
+0118ba	end_of_game_tests

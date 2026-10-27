@@ -71,7 +71,7 @@ at another point of its redraw.
 | document | covers | proof |
 |---|---|---|
 | `architecture.md` | vectors, VBL, screen graph, map and 3D frame loops, the cracked loader | census counts per routine |
-| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY | `py/army/gate_army.py`: natural ticks 42/42, supply 10/10, chained ticks 1000/1000, supply 284/284; Stark's 14 bio ratings 14/14 |
+| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon) | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; Stark's 14 bio ratings 14/14 |
 | `terrain.md` | the island's height field: file 37.2's 50 x 50 grid refined by five diamond-square subdivisions with a hash displacement into a 100 x 100 grid around the player, then heights, building pads and triangle shading | `py/terrain/gate_terrain.py`: generator 70000/70000 cells over 7 windows, post-passes 10000/10000 |
 
 ## Architecture
@@ -97,6 +97,7 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `options.png` | Game Options (mouse, joystick, mortars, bombers, ...) and PLAY |
 | `team.png` | The Team, Capt Stark only at the start |
 | `stark.png` | character screen: biography, qualities and skills, icon bar |
+| `situation_report.png` | the SITUATION REPORT after The Team's clock icon (`ai.md` section 2) |
 | `map.png` | the full island map with its legend (huts, bunkers, cable cars, heat mines, ...) |
 | `decisions.png` | Decisions: the travel and action choices |
 | `ski.png` | first-person skiing through the goggles: terrain, a building, the HUD (speed, compass, map) |
@@ -124,5 +125,5 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 ## Not exercised yet
 
 The 3D renderer (projection, draw list, polygon fill), the map render from the height grid, any vehicle other than skis, the
-night routine `$ec8c` in play (the army tick is proven only from the PLAY head start and chained calls), the encounters, relationships
+the period end's own tests (`$f374`, `$f3be`, the endings), the encounters, relationships
 and recruitment, the other game on the disk, and anything after the first bomber attack.

@@ -7,13 +7,16 @@ The enemy's strategy is not a planner. Its army is 32 unit records walking a fix
 tick, a unit either steps a fixed distance toward the site it is heading for or, once there, captures that site and
 picks the next one at random among the roads that lead to sites it does not hold yet. How fast a unit moves is
 recomputed every game hour from the Warehouses and Synthesis Plants the enemy already holds near it, so the advance
-speeds up as it takes supply buildings. Before the player's first turn the army gets a 42-tick head start.
+speeds up as it takes supply buildings. Before the player's first turn the army gets a 42-tick head start; after
+that it moves nine ticks each time the player ends a 2-hour period from The Team screen's clock icon.
 
 Proof: `py/army/gate_army.py` (also `tools/gates.py run midwinter`, about 5 s). It runs the game's own routines in
 `stserver` and checks `py/army/army_model.py` against every call:
 
 - the 42 natural calls of the PLAY head start: **42/42** ticks, 104580/104580 bytes;
 - 10 natural supply updates: **10/10**; between the 52 calls no other code writes the army or node state (31008/31008 bytes unchanged);
+- the 9 natural calls after one situation report, driven from `d_team.snap`: **9/9**, 22410/22410 bytes (4864/4864
+  unchanged between the calls);
 - 1000 chained ticks from `d_stark.snap`, 5875 arrivals: **1000/1000**;
 - 284 chained supply updates: **284/284**.
 
@@ -37,11 +40,11 @@ screen `$3288` reads them, and Stark is record 14. Names come from three pointer
 | +34, +38 | position, longwords in 1/256 units; `$35d0` names the place under it ("Little Plains") | read from the code |
 | +52 | a pointer to a feature record (`$52b2` reads building types through it) | inferred: the site the character is at |
 
-The night routine `$ec8c` walks the team list `$2b16c` (character numbers ending with a negative byte). It takes
-`$24b7c` off each member's Morale (+1, floored at 0); `$ed88` computes that amount from the change in four bytes of
-`$24bb8`, weighted 2, and one byte, weighted 10. It then brings each member's clock up to the game clock. Nothing
-calls `$ec8c` directly (`find_ram_callers`, `find_literal_ptr`), so how it is reached is open, and so is everything
-in it except the order of its calls.
+The period end `$ec8c` (section 2, "When it runs") walks the team list `$2b16c` (character numbers ending with a
+negative byte). It takes `$24b7c` off each member's Morale (+1, floored at 0); `$ed88` computes that amount from the
+rise in four bytes of `$24bb8`, weighted 2, and one byte, weighted 10, since the last report (inferred: enemy gains
+shown on the report). It then brings each member's clock up to the game clock, calling `$f854` for the minutes
+skipped. On the driven turn Stark's clock went from 06:00 to 08:00 and his Morale stayed 228 (the amount was 0).
 
 Relationships (the bio's "nearest friends", "hatred of") and recruitment are not located yet.
 
@@ -105,12 +108,25 @@ Warehouse at weight 5 gains 100 a tick from it alone, while one 450 units away g
   `$2c172`. `$1396` follows, then `$eeb4`, which puts Stark (record 14) at the unit with the smallest x + y + rand
   mod 200, and the clock gets another +120. Census over the PLAY click from `d_options.snap`: `$ee30` 1, `$c136` 42,
   `$eeb4` 1, then the team screen `$2d74` 1. The run ends byte-identical to `d_team.snap`.
-- **During play**, `$ec8c` runs nine ticks per 2 hours (+120 minutes, `$ed7a`) after the supply update and four
-  other routines (`$f374`, `$f3be`, `$118ba`, the report screen `$ef36`). How `$ec8c` is reached is open (section 1).
+- **During play** the player ends each period. `$ec8c` is not called from code: it is the `jsr` entry
+  (`$8000ec8c`) of icon 2 of The Team's action table `$23e10`, the clock icon at x 288, y 32 (`team.png`), and of
+  icon 3 of `$2494e` and icon 7 of `$249be` (`tables/action_tables.txt`). It runs the period end for the team
+  (section 1), the supply update, `$f374`, `$f3be`, the end-of-game tests `$118ba`/`$118f6` (`$118d6`: game clock
+  `>= $7080`, 20 days, sets an ending message), then the SITUATION REPORT `$ef36` (`situation_report.png`: "Watches
+  synchronized! Your team has two hours before the next situation report is due", and the enemy's held Factories,
+  Synthesis Plants, Warehouses, Radio Stations, mobile units and vehicles). Dismissing the report runs nine ticks and
+  +120 minutes (`$ed7a`), back to The Team. Driven from `d_team.snap` (game clock 08:00): the clock click gives
+  `$ec8c` 1, `$f56e` 1, `$f5e2` 1, `$ef36` 1 and no tick; the report's icon (x 0, y 168) gives `$c136` 9 and
+  `$2d74` 1; the game clock goes 480 to 600 and held nodes 33 to 39. So the army moves only when the player ends a
+  period, not while a character travels.
 
-Unopposed, the model alone takes the army from 33 held nodes to 80 by tick 80 (about 18 game hours at nine ticks per
-2 hours) and 90 by tick 400. The other five nodes are the ones with no roads. The player's counter-moves are not
-modelled: sabotage ("PLANT EXPLOSIVES", "REMOVE EXPLOSIVES" in the text), freeing a site, and the encounters.
+Unopposed, the model alone takes the army from 33 held nodes to 80 by tick 80 (about 18 game hours, nine reports)
+and 90 by tick 400. The five nodes it never takes are the ones with no roads: 60, 70 and 81 are Radio Stations (each
+with a Mountain Hut) that `$ee88` marks enemy held at PLAY, which are the 3 Radio Stations of the report's enemy
+column; 76 is a fourth Radio Station; 59 is a Mountain Hut. "Never taken by the walk" is all the tick says about
+them: whether anything else captures or attacks them (encounters, bombers) is not read. The player's counter-moves
+are not modelled either: sabotage ("PLANT EXPLOSIVES", "REMOVE EXPLOSIVES" in the text), freeing a site, the
+encounters.
 
 ## 3. Encounters `$c2f0` (read, not proven)
 
@@ -123,7 +139,8 @@ matched).
 
 ## Open
 
-- How `$ec8c` is reached, and the four routines it runs besides the tick (`$f374`, `$f3be`, `$118ba`, `$ef36`).
+- `$f374`, `$f3be` and the end-of-game tests `$118ba`/`$118f6` in the period end; the report's counts against their
+  tables (`$ef8c`).
 - Who reads unit +12, and what +6..+10 count.
 - The non-spread branch and `$2bb2e` (no unit uses it on these snapshots).
 - Relationships and recruitment: the bio's friend and enemy text is prose, so the data behind it is elsewhere.
