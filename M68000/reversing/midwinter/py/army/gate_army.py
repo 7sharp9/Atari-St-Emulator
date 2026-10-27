@@ -12,46 +12,24 @@ and in the chained run one pair after every seventh tick, as `$ee30` orders them
 42/42, natural supply 10/10, unchanged between calls 31008/31008; after one situation report (d_team.snap, the
 clock icon and the report's icon) 9/9 and 4864/4864; chained ticks 1000/1000, chained supply 284/284.
 """
-import json, os, subprocess, sys
+import os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 root = os.environ.get('M68000_ROOT') or HERE
 while not os.path.exists(os.path.join(root, 'tools', 'rdis.py')):
     root = os.path.dirname(root)
 WORK = os.environ.get('MIDWINTER_WORK') or os.path.join(root, 'scratchpad', 'midwinter')
-SERVER = os.path.join(root, 'server', 'bin', 'Debug', 'net8.0', 'stserver.dll')
 DLL = os.path.join(root, 'bin', 'Debug', 'net8.0', 'M68000.dll')
 DISK = os.path.join(WORK, 'zuul067.st')
 OUT = os.path.join(WORK, 'army', 'gate')
 sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(root, 'tools'))
 import army_model as am  # noqa: E402
+from stclient import StServer  # noqa: E402
 
 # regions the tick may write; the feature list is the 96 records from $2a150
 REGIONS = [(am.UNITS, 512), (am.STATE, 96), (am.SEED, 2), (0x2bae4, 4), (0x2bb2e, 4), (0x2a150, 0x2a8a0 - 0x2a150)]
 RET = 0x800
-
-
-class Server:
-    def __init__(self):
-        self.p = subprocess.Popen(['dotnet', 'exec', SERVER], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  text=True, cwd=root)
-        self.seq = 0
-
-    def __call__(self, method, **params):
-        self.seq += 1
-        self.p.stdin.write(json.dumps({'jsonrpc': '2.0', 'id': self.seq, 'method': method, 'params': params}) + '\n')
-        self.p.stdin.flush()
-        r = json.loads(self.p.stdout.readline())
-        if 'error' in r:
-            sys.exit(f'{method}: {r["error"]["message"]}')
-        return r['result']
-
-    def read(self, a, n):
-        return bytes.fromhex(self('read', addr=a, len=n))
-
-    def close(self):
-        self.p.stdin.close()
-        self.p.wait()
 
 
 def snapshot_mem(s):
@@ -123,12 +101,12 @@ def natural(s, leg):
         first = False
         if r['reason'] != 'until':
             sys.exit(f'natural run: stopped after {ticks} ticks ({r})')
-        pc = int(s('regs')['pc'].lstrip('$'), 16)
+        pc = s.reg('pc')
         pre = snapshot_mem(s)
         if last is not None:
             between += sum(1 for a, ln in REGIONS[:2] for j in range(ln) if pre.b[a + j] != last.b[a + j])
             compared += sum(ln for _, ln in REGIONS[:2])
-        ret = int.from_bytes(s.read(int(s('regs')['a7'].lstrip('$'), 16), 4), 'big')
+        ret = int.from_bytes(s.read(s.reg('a7'), 4), 'big')
         r = s('run', max_steps=400000, until_pc=ret)
         if r['reason'] != 'until':
             sys.exit(f'natural call at ${pc:x}: no return to ${ret:x} ({r})')
@@ -147,18 +125,9 @@ def natural(s, leg):
 def chained(s, n, start):
     """n back-to-back calls of $c136 from `start`, each from a planted return address."""
     s('load', snapshot=start, disk=DISK)
-    sp = int(str(s('regs')['a7']).lstrip('$'), 16) - 64
     sc, sup = Score(), Score()
-
-    def call(entry):
-        s('poke', addr=sp, width=4, value=RET)
-        s('set_reg', name='a7', value=sp)
-        s('set_reg', name='a6', value=0x2c376)
-        s('set_reg', name='sr', value=0x2700)
-        s('set_reg', name='pc', value=entry)
-        r = s('run', max_steps=400000, until_pc=RET)
-        if r['reason'] != 'until':
-            sys.exit(f'${entry:x} did not return ({r})')
+    s.sp = None
+    call = lambda entry: s.call(entry, ret=RET, a6=0x2c376)
 
     for i in range(n):
         pre = snapshot_mem(s)
@@ -177,7 +146,7 @@ def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 1000
     start = sys.argv[2] if len(sys.argv) > 2 else os.path.join(WORK, 'd_stark.snap')
     os.makedirs(OUT, exist_ok=True)
-    s = Server()
+    s = StServer(root)
     natural(s, PLAY)
     natural(s, REPORT)
     chained(s, n, start)
