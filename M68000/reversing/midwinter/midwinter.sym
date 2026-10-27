@@ -89,6 +89,16 @@
 00c2cc	army_next_road
 00c2f0	army_find_encounter
 00c4f2	army_encounter_update
+00c730	encounter_route
+00c922	encounter_obj_follow
+00c9c6	encounter_obj_turn
+00ca00	encounter_obj_walk
+00ca7e	encounter_engage
+00cbbe	encounter_kill
+00cd9e	encounter_slot_clear
+00cdd0	unit_destroyed
+00ce8c	unit_msg_index
+00d026	encounter_slots_clear
 00d57e	rand_mod
 00d598	rand16
 00ec8c	period_end_clock_icon

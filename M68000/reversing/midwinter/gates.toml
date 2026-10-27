@@ -1,5 +1,5 @@
 # Midwinter's promoted gates, for tools/gates.py (`uv run python tools/gates.py run midwinter`).
-# Needs scratchpad/midwinter/d_decisions.snap, d_options.snap, d_team.snap, d_stark.snap and zuul067.st (indexed in scratchpad/ANCHORS.md); the gate makes its own snapshots.
+# Needs scratchpad/midwinter/d_decisions.snap, d_options.snap, d_team.snap, d_stark.snap, d_ski.snap and zuul067.st (indexed in scratchpad/ANCHORS.md); the gate makes its own snapshots.
 
 [[gate]]
 name = "terrain"
@@ -15,4 +15,12 @@ cmd = "{python} gate_army.py 1000"
 cwd = "py/army"
 expect = ["42/42", "10/10", "31008/31008", "9/9", "4864/4864", "1000/1000", "284/284"]
 cite = "ai.md (opening proof list)"
+minutes = 1
+
+[[gate]]
+name = "encounter"
+cmd = "{python} gate_encounter.py 165 100"
+cwd = "py/army"
+expect = ["1/1", "164/164", "165/165", "96/96", "9600/9600", "2/2", "512/512"]
+cite = "ai.md section 3 (proof list)"
 minutes = 1
