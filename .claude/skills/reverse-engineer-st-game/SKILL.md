@@ -265,6 +265,22 @@ Once enough is known, add a short architecture thread to the README or `mechanic
 
 Not built; build the one a task actually needs: call-depth or step prefix and jsr/rts target on the live `-Trace` line; `.sym` symbolication of that trace; a mouse "move to absolute x,y" (read the game's pointer variables and compute deltas by hand); a windowed or call-subtree trace; `trace_cfg.py` ingesting the text `-Trace` dump (it reads only the binary event log). `disassemble.py` still has gaps in rarer families: if a listing looks wrong (an `ori` or `subi` on an address register, a pointless immediate), check the opcode bits before believing it (`movep.l` printed as `subi` and hid what `$e6ee` did).
 
+## Context budget
+
+A session's context is spent mostly on tool output, and a full context ends the session before the work does.
+
+- Read a topic doc by section: `grep -n '^#' <doc>` first, then the sections the plan touches. Reading
+  Midwinter's three docs whole at resume (33 KB) bought nothing for the AI pass that followed.
+- Disassemble in windows of 40 to 80 instructions and widen only when a routine runs off the end. For callers and
+  field readers, write the whole-image listing to a scratchpad file once and `grep` it; never print it.
+- A verification that runs a routine many times belongs in a script that prints only counts. Use `tools/stclient.py`
+  (`stserver` over JSON-RPC), not one MCP tool call or REPL dump per call: Midwinter's army gate checks 1345 calls in
+  about 5 s and prints seven lines.
+- Filter emulator output to the lines that answer the question (`grep -E 'hits|\$0'` after a `hits` census, `WATCH:`
+  for a watch), after one unfiltered run has shown what the lines look like.
+- Look for an address in the game's own `tables/` and docs before scanning code for it (`CLAUDE.md`, "Docs").
+- Hand a broad sweep (many files, every caller of many addresses) to a subagent that returns the conclusion.
+
 ## Discipline
 
 - Transcribe hardware and OS semantics from source (Hatari's `src/*.c`, `M68000PRM.pdf`), not from memory.

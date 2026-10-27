@@ -102,7 +102,8 @@ know they existed.
 - Before writing a new interpretive claim, grep the topic doc for whether a later section already
   retired that framing. Before disassembling a routine to decode it, grep the topic docs (including
   other games' `ai.md`/`economy.md`, for shared engine code) for its hex address: it may already be
-  pseudocoded. Grep the game's `py/` models for it too before writing "not modelled": Populous's
+  pseudocoded. Grep the game's `tables/` dumps too before hunting a caller: Midwinter's `$ec8c` had no code caller in RAM
+  or the original image, and `tables/action_tables.txt` already listed it as The Team's clock icon. Grep the game's `py/` models for it too before writing "not modelled": Populous's
   docs and `postdecide_diff.py` excluded `$101a0`'s fighter case as unmodelled while
   `powers_ref.anim_advance` modelled it, already proven live. When a correction lands, grep every doc for the routine's address and the old wording and
   fix each copy in the same edit: PowerMonger's melee drain was corrected in `ai.md` ("a hard `moveq #0`, not

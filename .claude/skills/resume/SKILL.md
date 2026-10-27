@@ -5,7 +5,8 @@ description: Start-of-session procedure for this repo. Reads M68000/sessions/<wo
 
 # /resume <workstream>
 
-1. Read `M68000/sessions/README.md` and `M68000/sessions/<workstream>.md`. If the handoff does not
+1. Read `M68000/sessions/README.md` and `M68000/sessions/<workstream>.md`. Read the topic docs by section, not whole
+   (`grep -n '^#'`, then what the plan or Dave's question needs: reverse-engineer-st-game skill, "Context budget"). If the handoff does not
    exist, list `M68000/sessions/` and ask which workstream is meant; do not guess from old notes.
    If the argument is a cross-cutting task (docs, tools, the emulator) rather than a game, there is
    no workstream handoff to resume: do steps 3 and 4 against the shared resources the task touches,
