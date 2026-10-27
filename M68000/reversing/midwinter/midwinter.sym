@@ -141,3 +141,8 @@
 020ce2	engaged_vehicle_script
 020d52	run_attack_objects
 020db4	attack_odds
+00f374	count_buildings_free_held
+00f3be	count_prisoners
+0118f6	heat_mines_surrender_test
+00f8d8	radio_full_team
+00ef8c	report_numbers

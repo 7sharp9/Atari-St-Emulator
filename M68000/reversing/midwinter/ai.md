@@ -42,12 +42,14 @@ screen `$3288` reads them, and Stark is record 14. Names come from three pointer
 | +16..+21, +22..+27 | six pairs that `$3704` maps to the six coloured parts of the body figure (+16.. as `v * 3 / 250`, +22.. overriding with colour 1 or 5) | inferred: injuries per body part |
 | +32 | the character's own clock in minutes (`$168` = 06:00). The bio draws it beside the game clock `$2c172` (`$33f4`) | read from the code |
 | +34, +38 | position, longwords in 1/256 units; `$35d0` names the place under it ("Little Plains") | read from the code |
-| +52 | a pointer to a feature record (`$52b2` reads building types through it) | inferred: the site the character is at |
+| +52 | the feature record of the site the character is at (`$f78e` sets it to the nearest site whose first building is not a Pylon; `$52b2` reads building types through it) | read from the code |
+| +63, +64 | the type of the building the character is inside (negative: outside) and which building of the site it is | the seven characters in a Police Station of a held site are the report's PRISONERS 7 (section 5) |
+| +72 | a byte that lowers the odds of air attacks on the character (section 4) | name not found |
 
 The period end `$ec8c` (section 2, "When it runs") walks the team list `$2b16c` (character numbers ending with a
-negative byte). It takes `$24b7c` off each member's Morale (+1, floored at 0); `$ed88` computes that amount from the
-rise in four bytes of `$24bb8`, weighted 2, and one byte, weighted 10, since the last report (inferred: enemy gains
-shown on the report). It then brings each member's clock up to the game clock, calling `$f854` for the minutes
+negative byte). It takes `$24b7c` off each member's Morale (+1, floored at 0), the amount `$ed88` computes from the
+enemy's gains: 2 per Factory, Synthesis Plant, Warehouse or Radio Station and 10 per Heat Mine it holds beyond the
+last high mark (section 5). It then brings each member's clock up to the game clock, calling `$f854` for the minutes
 skipped. On the driven turn Stark's clock went from 06:00 to 08:00 and his Morale stayed 228 (the amount was 0).
 
 Relationships (the bio's "nearest friends", "hatred of") and recruitment are not located yet.
@@ -116,10 +118,9 @@ Warehouse at weight 5 gains 100 a tick from it alone, while one 450 units away g
 - **During play** the player ends each period. `$ec8c` is not called from code: it is the `jsr` entry
   (`$8000ec8c`) of icon 2 of The Team's action table `$23e10`, the clock icon at x 288, y 32 (`team.png`), and of
   icon 3 of `$2494e` and icon 7 of `$249be` (`tables/action_tables.txt`). It runs the period end for the team
-  (section 1), the supply update, `$f374`, `$f3be`, the end-of-game tests `$118ba`/`$118f6` (`$118d6`: game clock
-  `>= $7080`, 20 days, sets an ending message), then the SITUATION REPORT `$ef36` (`situation_report.png`: "Watches
-  synchronized! Your team has two hours before the next situation report is due", and the enemy's held Factories,
-  Synthesis Plants, Warehouses, Radio Stations, mobile units and vehicles). Dismissing the report runs nine ticks and
+  (section 1), the supply update, the counts and end tests of section 5, then the SITUATION REPORT `$ef36`
+  (`situation_report.png`: "Watches synchronized! Your team has two hours before the next situation report is due",
+  and the counts of section 5). Dismissing the report runs nine ticks and
   +120 minutes (`$ed7a`), back to The Team. Driven from `d_team.snap` (game clock 08:00): the clock click gives
   `$ec8c` 1, `$f56e` 1, `$f5e2` 1, `$ef36` 1 and no tick; the report's icon (x 0, y 168) gives `$c136` 9 and
   `$2d74` 1; the game clock goes 480 to 600 and held nodes 33 to 39. So the army moves only when the player ends a
@@ -312,10 +313,55 @@ models fail: launches that ignore the mask (704/768 each), odds without the char
 at the player (112/128, natural 3/5), a hit radius of 180 (bomb 1110/1494, shell 265/361) and a shell aimed 180 ahead
 like the bomb (0/361).
 
+## 5. The period end's counts, the report and the endings
+
+At each period end (`$ec8c`, section 2) the game recounts the island and tests for the end of the game, in this order:
+the Morale loss `$ed88`, the supply update, the counts `$f374` and `$f3be`, then `$118ba` and, unless the game is
+over, `$118f6` and `$f8d8`, then the report `$ef36`.
+
+- **Counts** (`$f374`). Two tables of 20 bytes count the buildings of every site by type: `$24ba4` over the sites the
+  enemy does not hold, `$24bb8` over those it holds. A blown-up building is a Ruin (type `$10`) and drops out of its
+  type's count.
+- **Prisoners** (`$f3be`). A character inside a Police Station (+63 not negative, the building +64 of the site +52
+  of type 8) of a site the enemy holds is a prisoner; `$24be6` counts them.
+- **Morale loss** (`$ed88`). The held Factories, Synthesis Plants, Warehouses and Radio Stations are summed; a rise
+  above the mark `$2c184` costs 2 Morale per building and raises the mark, a fall only lowers the mark. Held Heat
+  Mines do the same against `$2c182` at 10 each. It runs before the counts and nothing else calls `$f374`, so it
+  reads the counts of the previous period end: a gain costs Morale one period late. The amount `$24b7c` comes off
+  every team member (section 1).
+- **Endings** (`$118ba`, `$118f6`). The game is over (`$24e8e`) when the Headquarters has been blown up (`$24e8c`,
+  set by the sabotage code at `$4234` when the destroyed building is type `$f`): "The enemy HQ has been destroyed and
+  General Masters with it!"; or when the game clock reaches `$7080` minutes (20 days): "General Masters' troops are
+  tired of fighting and have deserted him!". Otherwise, when no Heat Mine is left outside the enemy's hands,
+  `$24e90` is set: "The Free Villages have no heat mines left and have surrendered to General Masters!". The first
+  two are wins and the third the loss (inferred from the text; the screens `$115ae` and `$1137a` are not read).
+- **Radio** (`$f8d8`). Once, when the enemy holds no Radio Station, `$2c186` goes from 0 to 1, every character
+  joins the team (the team list `$2b16c` becomes 0..31) and every character's clock is set to the game clock; the
+  report then draws the Radio Stations line in another colour, prints "Radio communications restored - You now have a full team !" and sets
+  `$2c186` to -1 (`$f25e`, `$f2cc`; read, not gated). Since no site is
+  ever released (section 4), the enemy's Radio Stations can only go by sabotage. This is the game's general
+  recruitment: the three Radio Stations held at PLAY sit at sites with no roads (section 2), so the player must reach
+  and blow up each one.
+
+**The report** (`$ef8c`) writes the numbers into its text lines: in the FVPF column, HEATMINES is the free Heat
+Mines (`$24ba4` + 10) and DESTROYED Factories, Synth Plants, Warehouses and Radio Stations are `$2c188` by type
+(the sabotage code counts each blast there), with ENEMY UNITS and ENEMY VEHICLES destroyed (`$2bad8`, `$2badc`); in
+the ENEMY column, PRISONERS `$24be6`, then HELD Factories, Synth Plants, Warehouses and Radio Stations (`$24bb8` +
+13, 12, 11, 14) and the mobile units and vehicles (`$2bada`, `$2bade`). The 14 numbers of `situation_report.png`
+(17; 0, 0, 0, 0, 0, 0; 7; 9, 8, 5, 3, 32, 4067) equal these tables after the driven period end: **14/14**.
+
+Proof: `py/army/gate_period.py` (also `tools/gates.py run midwinter`, about 7 s) clicks The Team's clock on
+`d_team.snap` in the REPL, then in `stserver` checks `py/army/period_model.py` against the game's own call of each
+of the six routines (**6/6**) and against each routine on 200 poked states (sites' held bits flipped, buildings
+turned to Ruins, characters moved into random buildings, the marks, clock and flags set, every held Radio Station
+or every Heat Mine's site taken in some): **200/200** each, with every branch taken (the 20-day ending 77 times,
+the Headquarters 74, the surrender 34, the radio 40). Three broken models fail: the weights 2 and 10 swapped
+(57/200), prisoners at any site (13/200, natural 5/6), the 20-day test as `>` (171/200).
+
 ## Open
 
-- `$f374`, `$f3be` and the end-of-game tests `$118ba`/`$118f6` in the period end; the report's counts against their
-  tables (`$ef8c`).
+- Sabotage (`$41e2`..`$4272`, read, not gated or driven): the blast, `$4340`, the Cable Car Station's linked
+  building, and the endings' screens `$115ae`/`$1137a`.
 - Who reads unit +12.
 - The non-spread branch and `$2bb2e` (no unit uses it on these snapshots).
 - Relationships and recruitment: the bio's friend and enemy text is prose, so the data behind it is elsewhere.

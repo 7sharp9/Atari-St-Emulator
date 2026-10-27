@@ -10,8 +10,9 @@ ski view with a Bomber attacking, all unmodified apart from one poke that stubs 
 
 The game's rules restated for re-use in another design, without addresses. Each line names the section that proves
 it (T = `terrain.md`, A = `ai.md`); anything not proven there is labelled inferred. It covers what is decoded so far:
-the island, the enemy army, the encounters and the attacks on the player. The 3D renderer, the vehicles' handling,
-the characters' relationships and recruitment, and the endings are not decoded yet.
+the island, the enemy army, the encounters, the attacks on the player, the period end and the endings. The 3D
+renderer, the vehicles' handling, sabotage itself, and the characters' relationships and recruitment one by one are
+not decoded yet.
 
 ### What carries the game
 
@@ -40,8 +41,15 @@ the characters' relationships and recruitment, and the endings are not decoded y
   The options' BOMBERS, MORTARS and TRAINING switches and each vehicle's own mask decide which can come (no missiles
   while gliding, nothing in one mode, inferred to be the cable car). A hit within 200 ends the trip. Sites change hands only by the army's
   walk. (A 4)
-- **The situation report is the scoreboard.** Its unit and vehicle counts (mobile, and destroyed by the player) are
-  the live counters the simulation keeps; its site counts are not matched yet. (A 3)
+- **The situation report is the scoreboard.** Every number on it is a live count: free Heat Mines, buildings the
+  player has blown up by type, units and vehicles destroyed, prisoners (characters inside a Police Station of an
+  enemy-held site), and the enemy's held Factories, Synthesis Plants, Warehouses and Radio Stations and its mobile
+  units and vehicles. Each period the team loses Morale for the enemy's gains: 2 per supply or radio building and 10
+  per Heat Mine above the previous high mark. (A 3, A 5)
+- **Three endings and one reward.** Blowing up the enemy Headquarters wins; so does lasting 20 days, when General
+  Masters' troops desert; losing every Heat Mine to the enemy makes the Free Villages surrender. When the enemy holds
+  no Radio Station (only sabotage can bring that about, since sites are never released), every character joins the
+  team at once. (A 5)
 - **Deterministic.** One generator, `s' = (s * k + k) mod 65537 - 1`, drives the army's choices and every encounter;
   the terrain uses no random numbers at all. That is what lets the gates replay the game's routines exactly. (A 2, A 3,
   T 2)
@@ -140,7 +148,7 @@ at another point of its redraw.
 | document | covers | proof |
 |---|---|---|
 | `architecture.md` | vectors, VBL, screen graph, map and 3D frame loops, the cracked loader | census counts per routine |
-| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon); encounters: the unit nearest the player and its five vehicle kinds placed around the player, losses, strength and the six leader groups; attacks on the player: Bomber, Spotter and missile launches by options switch and vehicle mask, their odds, bomb and shell hits; nothing but the walk takes a site | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; `py/army/gate_encounter.py`: search 96/96 poked and 1/1 natural, frames 9600/9600 poked and 329/329 natural, kills 512/512; `py/attack/gate_attack.py`: launches 768/768 and 768/768, odds 1452/1452, missile 128/128 poked and 5/5 natural, bomb 1494/1494, shell 361/361, 0 feature-list writes over a 170-frame natural run; Stark's 14 bio ratings 14/14 |
+| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon); encounters: the unit nearest the player and its five vehicle kinds placed around the player, losses, strength and the six leader groups; the period end's counts, prisoners, Morale loss, the report's numbers, the three endings and the radio recruitment; attacks on the player: Bomber, Spotter and missile launches by options switch and vehicle mask, their odds, bomb and shell hits; nothing but the walk takes a site | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; `py/army/gate_encounter.py`: search 96/96 poked and 1/1 natural, frames 9600/9600 poked and 329/329 natural, kills 512/512; `py/attack/gate_attack.py`: launches 768/768 and 768/768, odds 1452/1452, missile 128/128 poked and 5/5 natural, bomb 1494/1494, shell 361/361, 0 feature-list writes over a 170-frame natural run; `py/army/gate_period.py`: natural 6/6, 200/200 per routine, the report's 14 numbers 14/14; Stark's 14 bio ratings 14/14 |
 | `terrain.md` | the island's height field: file 37.2's 50 x 50 grid refined by five diamond-square subdivisions with a hash displacement into a 100 x 100 grid around the player, then heights, building pads and triangle shading | `py/terrain/gate_terrain.py`: generator 70000/70000 cells over 7 windows, post-passes 10000/10000 |
 
 ## Architecture
@@ -183,7 +191,7 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `tables/` | icon/action tables, indirect jump sites, static file-load calls |
 | `py/vectors.py` | lists the non-TOS vectors in a snapshot |
 | `py/bk_stub.py` | unpacks the menu's ByteKiller-style self-extracting stub |
-| `ai.md`, `py/army/` | army model `army_model.py` and its gate `gate_army.py`; encounter model `encounter_model.py` and its gate `gate_encounter.py` (both run the game's routines in `stserver`) |
+| `ai.md`, `py/army/` | army model `army_model.py` and its gate `gate_army.py`; encounter model `encounter_model.py` and its gate `gate_encounter.py`; period-end model `period_model.py` and its gate `gate_period.py` (all run the game's routines in `stserver`) |
 | `py/attack/` | attack model `attack_model.py` (launches, odds, hits) and its gate `gate_attack.py`, with five broken-model controls (`gate_attack.py <control>`) |
 | `terrain.md`, `py/terrain/` | terrain model `terrain_gen.py`, its gate `gate_terrain.py`, `render_terrain.py` |
 | `terrain_island.png`, `terrain_local.png` | the whole island after the first subdivision; the shaded local grid of `d_ski.snap` |
@@ -195,6 +203,6 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 ## Not exercised yet
 
 The 3D renderer (projection, draw list, polygon fill), the map render from the height grid, any vehicle other than skis, the
-period end's own tests (`$f374`, `$f3be`, the endings), the encounter's objects on screen and the engagement itself,
+sabotage (planting explosives, the blast and the endings' screens), the encounter's objects on screen and the engagement itself,
 relationships and recruitment, the other game on the disk, a bomb or mortar barrage reaching the player in a natural
 run (both are gated only from poked states), the Bomber's drop rule and the missile's detonation.
