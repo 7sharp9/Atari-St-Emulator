@@ -16,7 +16,8 @@ Each game lists its gates in `reversing/<game>/gates.toml`:
 
 A count goes in `expect` only when a doc records it for exactly this command line: no invented counts. A gate passes
 when every expected `a/b` (or `re:` pattern) appears in its output; otherwise it is CHANGED (with the counts it did print) or ERROR (no
-count, a non-zero exit with no count, a timeout). Never put a `reuse` argument in `cmd`: the point is fresh callcaps.
+count, a non-zero exit with no count, a timeout, or an `expect` entry that is neither: a bare word is never matched,
+so a gate's PASS line is `"re:(?m)^PASS$"`, since `re.search` runs without MULTILINE). Never put a `reuse` argument in `cmd`: the point is fresh callcaps.
 A gate that only reads saved snapshots (Super Sprint's `plane2`, 1 s) runs no emulator and cannot catch an emulator
 change: say so in a comment on its entry.
 
@@ -92,7 +93,12 @@ def run_one(root, game, gate, dry):
     got = norm(out)
     want = {f if f.startswith("re:") else f.replace(" ", "") for f in gate["expect"]}
     missing = sorted(f for f in want if not (re.search(f[3:], out) if f.startswith("re:") else f in got))
-    if rc is None:
+    # a bare word such as "PASS" is never in `got` (only a/b counts are): reject it rather than report CHANGED
+    bad = [f for f in gate["expect"] if not f.startswith("re:") and not norm(f)]
+    if bad:
+        status = "ERROR"
+        note = f"expect entries neither a/b nor re: {', '.join(bad)} (a word is 're:(?m)^PASS$')"
+    elif rc is None:
         status = "ERROR"
         note = f"timeout after {timeout // 60} min"
     elif not missing:
