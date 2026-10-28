@@ -23,7 +23,7 @@ description: Start-of-session procedure for this repo. Reads M68000/sessions/<wo
      commit it as its own commit before continuing, rather than leaving it stranded.
    - `ListAgents`: which other sessions are live, and on what. Before touching a shared resource
      (sessions/README.md, "Shared resources"), message them.
-   - `tasklist | grep -i dotnet`: emulator processes that are running (possibly another session's).
+   - `tasklist | grep -i dotnet` (`ps aux | grep '[M]68000.dll'` on the Mac): emulator processes that are running (possibly another session's).
    - The working data and snapshot named in "Resume point" exist; if not, rebuild them with the
      recipe the handoff points to.
    - Before scoping a live test for a carried-over "Open" item, grep the topic doc for whether a

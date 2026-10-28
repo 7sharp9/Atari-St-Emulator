@@ -9,17 +9,18 @@ know they existed.
 ## Layout
 
 - `M68000/*.fs`: emulator. `Program.fs` holds the CLI and the stdin-driven REPL (`help` lists
-  the commands: breakpoints, `callcap`, `hits`, `watch`, `kbd`/`mouse`, ...).
+  every command except `kbd`/`key`/`mouse`, which only the usage table `replUsage` names).
 - `M68000/tools/`: disassembler, trace/CFG, graphics, disk-image, PRG-relocation and Ghidra
   decompile tools. Python deps (`numpy`, `pillow`) are managed with `uv`, not bare `pip`:
   `cd M68000 && uv sync` once per checkout, then `uv run python tools/foo.py ...` or activate
   `M68000/.venv` (`DEVELOPING.md` "Python tooling").
 - `M68000/reversing/<game>/`: one directory per analysed program (README + topic docs + `.sym`
   + scripts). Reverse-engineering a new game follows the `reverse-engineer-st-game` skill, which
-  holds the method and the evidence rules; this file holds the repo and machine rules.
+  holds the method and the reasoning behind each evidence rule; this file holds the repo and
+  machine rules and the one-line evidence rules.
 - `M68000/scratchpad/`: gitignored working data (snapshots, extracted disk files, decompiles).
   `scratchpad/ANCHORS.md` indexes the reusable snapshots. Scripts worth re-running go in
-  `reversing/<game>/py/` with a README table (`powermonger/py/`, `populous/py/`), writing
+  `reversing/<game>/py/` with a README table (`powermonger/py/`, `supersprint/py/`), writing
   their output under a scratchpad dir, not in `scratchpad/pmNNN/` where the next session
   cannot find them.
 
@@ -53,8 +54,9 @@ know they existed.
   `dotnet build`, or editing a file with uncommitted changes you did not make, check
   (`git status`, `tasklist | grep dotnet`, `ListAgents`) and ask: message a live session with
   `SendMessage`, otherwise ask Dave. Subagents are told: no build, no git, no taskkill, write only
-  under their own directory, and tools that write to the cwd (`make_blank_disk.py` overwrote the tracked
-  `M68000/blank_80ss.st`) are run with an explicit output path there; read `git status` after the agent returns. If the other session holds `bin/Debug/net8.0/M68000.dll`, the build
+  under their own directory, and tools that write to the cwd (`make_blank_disk.py` overwrote the
+  tracked `M68000/blank_80ss.st`) are run with an explicit output path there; read `git status`
+  after the agent returns. If the other session holds `bin/Debug/net8.0/M68000.dll`, the build
   fails only at the copy step: confirm your change compiles with
   `dotnet build -c Debug M68000.fsproj -o <scratch dir>` and leave its process alone.
 
@@ -68,17 +70,15 @@ know they existed.
   per worktree; a second patch touching the same files applies with `git apply --3way` only after the
   first is staged ("does not match index" otherwise); then build into `bin/` and re-run the net.
   A worktree is not always cut from master's tip: check `git merge-base master <branch>` first. Its
-  own net and its "behaviour change" notes compare against that base, not master (the stserver
-  branch, cut 40 commits back, re-did master's overlap/DMA `watch` change and called it new), so the
-  net is re-run on the merge against a pre-merge master build: `tools/regress_net.sh`.
-- Hot path (`M68000/DEVELOPING.md`, "Performance"): a new decoder's `printfn`/`sprintf` goes behind
-  `if Trace.enabled`, per-step constants stay literals, new active patterns are struct
-  `ValueOption`. `selftest` runs the flat bus and does not exercise the MMU RAM fast path, so an
-  MMU change is gated by the 30M snapshot compare plus a game snapshot compare.
-- A speed claim needs an interleaved A/B of two builds. Allocation counts and profile estimates are
-  hypotheses: a change that cut allocation 30% (struct `ResolveEa`) was 7% slower. Agents that time
-  an A/B share the machine with other sessions: record `uptime` per run, interleave the variants,
-  report median and min, and call a gap under about 5% noise unless it repeats in every pair.
+  net and "behaviour change" notes compare against that base, not master, so re-run the net on the
+  merge against a pre-merge master build: `tools/regress_net.sh`.
+- Hot-path rules (trace-gated `printfn`, literal per-step constants, struct active patterns) are in
+  `M68000/DEVELOPING.md`, "Performance". `selftest` runs the flat bus and never reaches the MMU RAM
+  fast path, so an MMU change is gated by the 30M snapshot compare plus a game snapshot compare.
+- A speed claim needs an interleaved A/B of two builds; allocation counts and profile estimates are
+  hypotheses (`DEVELOPING.md`, "Performance"). Agents share the machine with other sessions: record
+  `uptime` per run, report median and min, and call a gap under about 5% noise unless it repeats in
+  every pair.
 - A finding that the emulator "cannot do X" is re-checked from a fresh cold boot, not only against
   an existing snapshot lineage (skill, section 5).
 
@@ -86,29 +86,25 @@ know they existed.
 
 - Stage named files only, never `git add -A` (ROMs, game disks and cracked archives sit untracked in
   the tree); check `git diff --cached --stat` before committing. No `Co-Authored-By` trailers:
-  history was scrubbed of them.
+  history was scrubbed of them. The harness attribution reminder asks for one anyway; the untracked
+  `.git/hooks/commit-msg` (absent in a fresh clone) rejects it: drop the line and recommit, never
+  `--no-verify`.
 - Edits to `CLAUDE.md` and the skills go in their own small commit, never mixed into a workstream commit.
 
 ## Docs
 
-- Docs are definitive reference text: correct stale claims in place, no pass-by-pass diary. A new
-  finding is integrated into the surrounding prose (supersede, reconcile or fold in what it
-  changes), not appended as one more dated clause to a long paragraph or table cell. A section that
-  has become an unreadable run-on is rewritten into a normal narrative of current understanding in
-  the same edit. The "what changed this pass" framing lives in `git log` and
-  `M68000/sessions/<workstream>.md` only. This applies to `CLAUDE.md`, the skills and
-  `DEVELOPING.md` as much as to the topic docs: write the rule or the process as it is now, with a
-  pointer to the doc that holds the evidence, not the story of the pass that found it.
+- Docs are definitive reference text: correct stale claims in place and fold a new finding into
+  the surrounding prose (supersede, reconcile), never as one more dated clause; rewrite a section
+  that has become a run-on into a narrative of current understanding in the same edit. "What
+  changed this pass" lives in `git log` and `M68000/sessions/<workstream>.md` only. This applies to
+  `CLAUDE.md`, the skills and `DEVELOPING.md` too: write the rule as it is now, with a pointer to
+  the doc that holds the evidence, not the story of the pass that found it.
 - Before writing a new interpretive claim, grep the topic doc for whether a later section already
-  retired that framing. Before disassembling a routine to decode it, grep the topic docs (including
-  other games' `ai.md`/`economy.md`, for shared engine code) for its hex address: it may already be
-  pseudocoded. Grep the game's `tables/` dumps too before hunting a caller: Midwinter's `$ec8c` had no code caller in RAM
-  or the original image, and `tables/action_tables.txt` already listed it as The Team's clock icon. Grep the game's `py/` models for it too before writing "not modelled": Populous's
-  docs and `postdecide_diff.py` excluded `$101a0`'s fighter case as unmodelled while
-  `powers_ref.anim_advance` modelled it, already proven live. When a correction lands, grep every doc for the routine's address and the old wording and
-  fix each copy in the same edit: PowerMonger's melee drain was corrected in `ai.md` ("a hard `moveq #0`, not
-  `min(44,6)`") while `economy.md` and two `strategy.md` pseudocode blocks kept `min(v,6)`, and SPEC's
-  "no writer produces `>= $80`" outlived `strategy.md`'s forced `$84`/`$92` writes.
+  retired that framing. Before disassembling a routine, hunting its caller or writing "not
+  modelled", look its hex address up in the topic docs (other games' too, for shared engine code),
+  the game's `tables/` dumps and its `py/` models: `tools/doc_addrs.py --addr <hex>` covers the
+  docs. When a correction lands, search again for the address and the old wording and fix every
+  copy in the same edit (worked cases: skill, section 7).
 - A graphics asset decoded for the first time well enough to render is committed as a PNG next to the
   doc that proves the format and table-indexed in `graphics.md` or the README's files table.
 
@@ -125,53 +121,38 @@ that holds its worked example.
 - "Nothing writes X", "no caller" and "never reached" need a whole-image listing, every writer's
   full block, a block-clear check, and the address list and roll the census used. Confirm any
   pre-existing `.asm`/`.c` export reaches the end of the text segment before trusting a negative
-  from it. `tools/rdis.py` is not a whole-program listing: it does not follow
-  `lea T(PC),A0 / movea.l 0(A0,D0.w),A0 / jsr (A0)` longword state tables (they print as `ori.b`
-  garbage, so every handler behind one is missing). For "who writes X / who calls Y" use a raw scan
-  of the image or `tools/disassemble.py --rom <img> --base 0 --all <lo> <hi>` (code only: stop where
-  code ends).
+  from it. `tools/rdis.py` does not follow `movea.l 0(A0,D0.w),A0 / jsr (A0)` longword state
+  tables, so it is no basis for these claims: use a raw scan of the image or
+  `tools/disassemble.py --rom <img> --base 0 --all <lo> <hi>` (code only: stop where code ends).
 - A verb or opcode table named from reading its handlers is a hypothesis until each handler is
   called under `callcap`. A door graph or dataflow chain is a hypothesis until each leg is driven.
 - A trial that varies more than one thing proves no cause. An input test needs a same-snapshot,
   same-budget control, a hold longer than the game's poll cycle, and a signal that changes only if
-  the mechanism fired. A `bp`/`bpc`/`watch` that finds nothing is bounded by its own budget, and by
-  its input: show the precondition live in the same run (PowerMonger's "sound event 17 never plays" came
-  from a view with no lit fire, its count 0 at every dispatch; with the fire in view it plays, `py/ui/snd_slot.sh`).
-  A count it does find is bounded the same way: "the rollout win's lead was engaged once" came from a 15M-step watch
-  of a 1120M run, and a whole-run sample found a 65-health fight 7M steps after the window (`commander/leadkill/gate_standoff.sh`).
+  the mechanism fired. A `bp`/`bpc`/`watch` that finds nothing is bounded by its own budget and by
+  its input: show the precondition live in the same run (PowerMonger `py/ui/snd_slot.sh`). A count
+  it does find is bounded the same way (`commander/leadkill/gate_standoff.sh`).
 - A hero pinned at one screen coordinate is usually a camera-follow trigger; a position reached is
   not proof the maneuver was safe (check health and status bytes across the run); a snapshot after
   a fixed hold may be a mid-motion frame.
-- "Never in state X" read from periodic snapshots is a sample, not a trace: `watch` the byte over the window. The
-  commander's rollout-win lead "never left `$34`" at 5M samples; a watch found a melee at 1457M that lasted under one
-  tick (`commander/leadkill/gate_leadkill.sh win`).
-- A cause read off the state at a failure needs the run's trajectory before it rules a remedy out: the commander
-  handoff said the captain starved with its own lords at 0 food, so fetching food could not help; that was true at
-  330M, but at 150M those lords held 327 food it never took, and taking it won land 1 in half the steps
-  (`reversing/powermonger/commander/README.md` "The campaign"). A variable that sets the losses apart is checked in a
-  win too: every land-2 captain death was against a posture-2 group, but the win fought posture-2 groups as well; the
-  lead's own melee mode is what differed ("Land 2 as a rate").
+- "Never in state X" read from periodic snapshots is a sample, not a trace: `watch` the byte over
+  the window (snapshots every 5M steps missed a melee shorter than one tick,
+  `commander/leadkill/gate_leadkill.sh win`).
+- A cause read off the state at a failure needs the run's trajectory before it rules a remedy out,
+  and a variable that sets the losses apart is checked in a win too
+  (`reversing/powermonger/commander/README.md`, "The campaign" and "Land 2 as a rate").
 
 ## Proving routines with parallel subagents
 
-The brief, the hard rules, the promotion and merge steps are in the skill's section 3c. The ones
-that are easy to forget:
+The brief, the hard rules, the promotion and merge steps are in the skill's section 3c; read it
+before spawning agents. The ones most often missed:
 
-- Name the tool index in the brief (`M68000/DEVELOPING.md` "Other tools") and take addresses, strides
-  and struct offsets from the code, never from memory. Give addresses and symbol names, not roles:
-  "role unknown: name it from its body".
+- Name the tool index (`M68000/DEVELOPING.md` "Other tools") in the brief, and give addresses and
+  symbol names, not roles ("role unknown: name it from its body").
 - Subagents cannot write `report.md`: take the report as the final message and save it yourself.
-- Tell agents to derive the repo root by walking up to the directory holding `tools/rdis.py` (or
-  `M68000_ROOT`), never a literal path or fixed `../` count, and to keep temp files in one named
-  scratchpad dir.
-- Re-run every gate from fresh callcaps, from the promoted location, before merging.
-  Give each promoted gate its own output subdirectory: two gates that both name an arm `ctl` in one directory overwrite
-  each other, and one then checks the other's run (commander `gate_local.sh` and `gate_retire.sh` did). Name a promoted
-  directory anything but `build/`: `.gitignore` ignores it.
-- `callcap` runs with interrupts masked, so a routine that plays a sound waits forever on a flag the
-  interrupt clears (PowerMonger: poke `$2c993` to 0 in the state). A routine that polls a key byte hangs the same
-  way: read the polled address before naming what it waits for (Midwinter's radio message `$d048`, written up as an
-  interrupt wait, polls the key byte `$2c324` at `$d0f4` and returns on a key). Corpus capture:
+- Re-run every gate from fresh callcaps, from the promoted location, before merging. Each promoted
+  gate gets its own output subdirectory, never one named `build/` (`.gitignore` ignores it).
+- `callcap` runs with interrupts masked: a routine waiting on an interrupt-cleared flag or polling a
+  key byte never returns (skill, section 5, "Interrupt-masked calls"). Corpus capture:
   `tools/capture_hits.py`.
 
 ## Shell pitfalls on this machine
@@ -213,47 +194,42 @@ that are easy to forget:
 
 ## Emulator behaviours that look like input bugs
 
-- `watch <addr> [len]`: the address is hex and `len` decimal (`watch 40000 41984`; a hex `len` such as `a400` is a
-  "bad operand" that ends the REPL run). It reports every CPU write whose bytes overlap the range (a word write at `$1000`
-  covers a watched `$1001`) and every FDC DMA sector landing in it (a `DMA read sector` line); it cannot name
-  the PC of a REPL `w` poke (it is reported with the last step's `step=`/`pc=`). One region at a time: a
-  second `watch` replaces the first. For several ranges, read watches, writer-PC or value filters, or a stop
-  on a hit, use `stserver` (`M68000/DEVELOPING.md`, "Memory hooks and the `stserver` process"), which also
-  avoids every pitfall in "Running".
-  Its `step=` is the snapshot's cumulative step counter, not steps
-  into the run (PowerMonger's rand1 starts near 828.75M): line it up with a `hits` first-hit inside the watch.
+- `watch <addr> [len]`: the address is hex and `len` decimal (`watch 40000 41984`; a hex `len` such
+  as `a400` is a "bad operand" that ends the REPL run). One region at a time: a second `watch`
+  replaces the first. It reports every CPU write whose bytes overlap the range and every FDC DMA
+  sector landing in it (a `DMA read sector` line), and cannot name the PC of a REPL `w` poke. Its
+  `step=` is the snapshot's cumulative step counter, not steps into the run: line it up with a
+  `hits` first-hit inside the watch. For several ranges, read watches, writer-PC or value filters,
+  or a stop on a hit, use `stserver` (`M68000/DEVELOPING.md`, "Memory hooks and the `stserver`
+  process"), which also avoids every pitfall in "Running".
 - REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field clobbers the next
   three. Read the neighbouring fields and write the whole longword deliberately.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or `bp`
   before the down, or the census misses the handler. `hits <n> <addrs>` after a `bp` that stopped
   the run counts only what happens after the stop, so a routine that ran earlier reads 0 and looks
   uncalled: run `hits` from the end of the click, before any `bp`.
-- `hits` on a routine every side runs (PowerMonger's executor `$6b38`, attack `$6c32`) counts all sides' calls, so a
-  count after a poke is not the poked side's: attribute each call by its own data (`bp`, then the packet's side byte at
-  A0). Side 2's 26 orders after side 3's captain died read as side 3's stale pigeons until `bp 6b38` showed byte 0 = 2.
+- `hits` on a routine every side runs (PowerMonger's executor `$6b38`) counts all sides' calls, so
+  a count after a poke is not the poked side's: attribute each call by its own data (`bp`, then the
+  packet's side byte at A0).
 - `hits`, `bp` and `bpc` count instruction starts: an interrupt taken at a counted address and its RTE
-  back there count once, also when the interrupt was entered by an `s` before the command (`AtartSt.CensusStep`).
-  Corpora captured before this change hold those duplicates: PowerMonger's `$1abaa` corpus has stops ~20 steps
-  apart with the routine's state unchanged, which `py/season/gate_1abaa.py` dedupes (`REENTRY`). They and
+  back there count once, also when the interrupt was entered by an `s` before the command
+  (`AtartSt.CensusStep`); corpora captured before that rule hold duplicates
+  (PowerMonger `py/season/gate_1abaa.py` dedupes them, `REENTRY`). They and
   `until` compare 24-bit addresses, so a PC with junk upper bits (TOS 1.00's handlers run at `$04fc0a1a`)
   matches. `stserver`'s `run` `until_pc` and `bp_set` compare all 32 bits (`server/Server.fs`, `run`): code entered
   through a flagged action-table `jsr` keeps the top bit in every `bsr` target (Midwinter's `$ec8c` runs at
   `$8000ec8c`), so pass both `a` and `a | 0x80000000` (`reversing/midwinter/py/army/gate_period.py`).
 - A `kbd`/`mouse` status byte is a raw level in RAM, not an edge-latched event. A pulse shorter than
-  the game's poll cycle can fall between two polls and never register: hold longer than the game's
-  poll cycle. The VBL is raised every 12,000 steps exactly (`instructionsPerFrame`, a literal in
-  `Program.fs`); a game loop that runs every second VBL, as Impossamole's gameplay rooms do, polls
-  every 24,000, so 30,000 is the safe hold. Check for a per-object busy flag that skips the per-frame
-  input read. Details: skill, section 2.
+  the game's poll cycle never registers. The VBL is raised every 12,000 steps exactly
+  (`instructionsPerFrame`, a literal in `Program.fs`), so a game that polls every second VBL needs
+  a 30,000-step hold. Busy flags that skip the input read: skill, section 2.
 - The keyboard ACIA data register `$fffc02` holds the last byte the CPU took, as on a real 6850, so a
   game polling it directly (`cmpi.b #$39,$fc02.w` / `bne` back) sees the key TOS's ISR already took.
   The byte stays there until the next IKBD byte arrives: a `kbd` make with no break, or a mouse packet
   after it, decides what the next poll reads. Snapshots older than format v12 resume with it 0
   (`DEVELOPING.md`, "IKBD command interpreter").
-- `mouse down`/`mouse up` report in the mode the game set: a zero-motion `$F8|buttons` packet in
-  relative mode, `$74`/`$75` in buttons-as-keys or keycode mode, nothing in absolute or disabled (`$12`)
-  mode, and nothing when the button is already in that state. `ATARI_TRACE_IKBD=1` shows the mode; an
-  absolute-mode game reads clicks only through `$0D` interrogation.
-- `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps"; step past it first (`s 2000000`, then `u`), as `capture.sh` does.
-- Appending to a game's ring-queue input at its read pointer is overwritten by the game's own
-  pushes: append at the write pointer (Cadaver `304(A5)`, advance by 8, `1154(A5)` += 1).
+- `mouse down`/`mouse up` report in the mode the game set and send nothing in absolute or disabled
+  (`$12`) mode or when the button is already in that state; an absolute-mode game reads clicks only
+  through `$0D` interrogation. `ATARI_TRACE_IKBD=1` shows the mode; the packet per mode is in
+  `DEVELOPING.md`, "IKBD command interpreter".
+- `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps"; step past it first (`s 2000000`, then `u`), as `reversing/powermonger/py/capture.sh` does.
