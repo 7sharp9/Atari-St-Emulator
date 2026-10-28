@@ -19,8 +19,7 @@ continuation record: the next-session prompt is always the one line `/resume <wo
 | `powermonger.md` | PowerMonger reversing and port (`reversing/powermonger/`) |
 | `supersprint.md` | Super Sprint reversing (`reversing/supersprint/`) |
 
-Add a row when a workstream gets its first handoff (for example `powermonger.md`,
-`emulator.md` for CPU/peripheral work that is not driven by one game).
+Add a row when a workstream gets its first handoff.
 
 ## Rules
 

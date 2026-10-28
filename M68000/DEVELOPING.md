@@ -124,7 +124,7 @@ programs set: the mouse report mode (`$08`/`$09`/`$0A`/`$12`), the mouse
 button-action mode (`$07` - bit 2 = "buttons report as keycodes `$74`/`$75`",
 what Electronic Pool uses), the joystick auto-report flag (`$14`/`$15`/`$1A`),
 and `$80 $01` reset. This state, the 6301's absolute mouse position and button
-state, are in `MmuSnapshot` (format v9); a diskless boot never changes them.
+state, are in `MmuSnapshot` (since format v9); a diskless boot never changes them.
 
 A button edge reports as Hatari's `IKBD_SendAutoKeyboardCommands` does (`MMU.EnqueueMouseButton`):
 a press or release that does not change the button state sends nothing; otherwise, in
@@ -209,7 +209,7 @@ fault handler and clones for `Preview` and for callers of `st.Cpu`). Tried and r
   `TieredCompilation=0`, `TC_QuickJitForLoops=0`, `TieredPGO=0`, `OSR_HitLimit=1` and two combinations all landed within about +-3% of the default, none won every pair, and 256M, `TieredPGO=0` and
   `TieredCompilation=0` leaned slower. `GCgen0size` is honoured (gen-0 collections fell from 66 to 8 on Cadaver) without any gain, so the cost is the allocation helper, not collection. Allocation is 287 B
   per step on Cadaver and 385 on Populous, with no zero-allocation step: a branch is exactly one 104 B `Cpu` copy, MOVEQ and shifts two, MOVE 400 to 600 B (`ResolveEa` returns a tuple with a boxed `EaResolved` and a
-  closure for `(An)+`/`-(An)`, `68k.fs:1049-1075`). `AtartSt.Step`'s `MachineState` is a struct and allocates nothing.
+  closure for `(An)+`/`-(An)`, `Cpu.ResolveEa` in `68k.fs`). `AtartSt.Step`'s `MachineState` is a struct and allocates nothing.
 - A 64K-entry opcode dispatch table: the sequential pattern chain costs about 0.7 ns per failed
   pattern, so the estimate is 1-2%; not worth the aliasing-order risk.
 
@@ -257,7 +257,7 @@ All 124 files pass: `TOTAL 1000051 pass 0 fail 9 skip`, 0 in every lane. The gat
 so do not gate on it. `runCase` skips by three rules: two corrupt `ASL.b.json` vectors
 (opcode `$E502` expects a byte shift to rewrite all 32 bits of D2; `isCorruptVector` in
 `Program.fs`), DIVS cases whose undefined flags the vectors disagree on
-(`isUndefinedDivByZeroFlags`), and a PC or RAM address below 8.
+(`isUndefinedDivByZeroFlags`), and an odd PC or a PC or RAM address below 8.
 
 The three failure classes:
 - **`wrong`** - a real flag / register / memory divergence. Fix these.
@@ -318,7 +318,7 @@ loses. It is byte-identical on diskless idle (100k), the PowerMonger boot loader
 through FDC reads (3M), live gameplay (2M) and queued IKBD input.
 
 What makes a restore an identity operation:
-- `MmuSnapshot` (and `SaveState`/`LoadState`, format v9) carries the latent
+- `MmuSnapshot` (and `SaveState`/`LoadState`, since format v9) carries the latent
   future-determining device state: the six pending-interrupt slots + `mfpVector`,
   `tbCounter` (Timer B's HBL prescaler), the FDC INTRQ countdown
   (`fdcIrq`/`fdcIrqPending`), the DMA sector counter, the IKBD reporting-mode
@@ -340,10 +340,10 @@ first run), but what the run wrote to it is not. `MMU.fs` journals every Write S
 Write Track sector (`diskLog`, the 512 bytes each one replaced): `MmuSnapshot` records the
 journal's length, so `callcap`, `Preview` and `detcheck` roll disk writes back with RAM, and
 `SaveState` appends an optional `DSKA` section (FNV-1a of the image as mounted, then each
-written sector's offset and contents) after the v11 block, without a version bump.
+written sector's offset and contents) after the v12 block, without a version bump.
 `LoadState` re-applies it when the mounted image hashes the same, and warns and resumes with
 the image as mounted otherwise (wrong or no `--disk-a`). A run that never wrote to the disk
-writes no section, so its snapshot is byte-identical to the plain v11 layout; an older build
+writes no section, so its snapshot is byte-identical to the plain v12 layout; an older build
 reads up to the section and ignores it (it never checks for end of file), resuming with the
 unwritten image as before. The write-protect tab (`wprot`) is not saved.
 
@@ -658,8 +658,8 @@ A typed poke of the VBL second sub-counter to 1 made the game's own interrupt ca
 
 The stdin REPL is a fragile interface for an agent: an alias passed as argv falls through to a
 disk-less cold boot, a forgotten `ATARI_NOTRACE` writes gigabytes, a `resume` without `--disk-a` runs
-with no disk, zsh does not word-split a variable of REPL tokens, and an unrecognised line silently ends
-the session (`runRepl`'s `| _ -> ()`). Its `watch` is one write-only range. Two pieces replace that
+with no disk, zsh does not word-split a variable of REPL tokens, and a rejected line stops the whole
+script with exit 1 (`ReplError` in `Program.fs`). Its `watch` is one write-only range. Two pieces replace that
 for scripted work: memory hooks in the core (`MMU.fs`), and `stserver`, a long-lived JSON-RPC and MCP
 process around one `AtartSt` (`server/`). The REPL and `fsi_drive.fsx` keep working unchanged.
 
@@ -891,10 +891,15 @@ least once by a session that did not know it existed.
 | `tools/find_field_writers.py <snap> "<N(An) or $addr>" [--width N] [--all]` | whole-RAM census of the decoded instructions that write (with `--all`, also read) a field: operands are matched by the bytes they cover (a `move.l` to `2516(A5)` writes `2518(A5)`; `2518(A5)` no longer matches `12518(A5)`), split by instruction boundary from a linear sweep, plus indexed writes through the same base and `lea`/`pea` of addresses just below the field (block-clear bases). It cannot see writes through computed pointers, code outside the image or DMA: a clean result is a lead, `watch` is the check (header) |
 | `tools/find_literal_ptr.py <snap> <addr> [ctx] [--max N]` | whole-RAM raw-bytes scan for an address appearing as **data** (4-byte with any top byte, so a flagged table entry such as Midwinter's `$8000ec8c` `jsr` action counts; or 2-byte; any alignment; prints 40 hits and says how many more) — finds abs-long `jsr`/jump-table references `find_ram_callers.py` can't see, since those encode the target as a literal operand rather than a PC-relative displacement; doesn't catch a displacement-style jump table (use `find_jump_table_hit.py` for that) (cadaver mechanics.md section 14) |
 | `tools/find_jump_table_hit.py <snap> <addr>` | does any `table_base + entry` jump table (this game's own dispatch idiom, cadaver mechanics.md section 9) resolve to a target address — collects every literal absolute address any instruction names as a candidate table base, then checks each one's entries for `target - base` (cadaver mechanics.md section 2) |
-| `tools/pm_export.py`, `tools/pm_render_ref.py`, `tools/pm_fsm_ref.py` | PowerMonger: asset export, the Python reference renderer, the from-disassembly entity/AI reconstruction |
+| `tools/pm_export.py`, `tools/pm_render_ref.py`, `tools/pm_fsm_ref.py`, `tools/pm_common.py` | PowerMonger: asset export, the Python reference renderer, the from-disassembly entity/AI reconstruction; `pm_common.py` holds the memory-map constants they share (object array, stride, terrain base) |
+| `tools/bisect_boot.py <n>... \| --range LO HI [--step N]` | register samples (PC, CCR, D0-D7, A0-A7) at chosen step counts from a fresh cold boot, one row each: bisects where the interrupt mask changes or PC first reaches a region (run from `M68000/` after a build) |
+| `tools/fetch_680x0_tests.py [--only NAME...] [--out dir] [--force]` | download the CC0 SingleStepTests 68000 vectors to `tests/680x0/` (git-ignored, about 190 MB) for `selftest` ("Regression tests: `selftest`") |
+| `tools/dump_vector.py <file\|family> [--frame] [--skip] [--name s] [--regs] [--raw] [--count] [-n K]` | decode the raw `selftest` fixtures: group-0 exception frames, one named case with its changed registers, or a frame/skip/other tally; shows what a `frame` or `wrong` bucket should contain |
+| `tools/frames_to_video.py <dir> [--out x.mp4] [--fps N] [--scale N] [--no-video]` | turn an `ATARI_FRAME_DIR` frame-dump directory into PNGs and an mp4 through ffmpeg ("Recording a video") |
+| `tools/emutos_mouse.c`, `tools/emutos_vdi_mouse.c` | EmuTOS GPL sources of the XBIOS mouse vector and the VDI mouse handler, kept as reference text for reading TOS's mouse code; not built |
 | `tools/merge_sym.py <game.sym> <sym.txt>... [addr=name] [--write]` | merge subagent `sym.txt` files into a game's `.sym`, reporting addresses named differently (settle each in the code; `addr=name` overrides); `--write` keeps the target's existing lines and comments and appends the new names |
 | `tools/doc_addrs.py --addr <hex> \| --field "44(A5)" \| --check <game>` | every mention of one address (or `N(An)` field) across all games' `reversing/**/*.md`, with file:line and the sentence: run it after a correction lands so every copy is fixed in the same edit. `--check` lists, against the game's `.sym` files, entry-like mentions a few bytes off a symbol, address/name pairings that disagree with the `.sym`, `pm_`-style names no `.sym` holds, and the most-cited unnamed addresses: a review list, settle each in the code |
-| `tools/gates.py list\|run <game\|all> [-k substr] [--root dir]` | re-runs the promoted callcap gates of `reversing/<game>/gates.toml` (command, cwd, the match counts the docs record) and reports every count that moved; logs and `last_run.json` under `<root>/scratchpad/gates/<game>/`. Run it after any emulator change, beside the selftest and the snapshot compare. `--root` runs in another checkout's M68000 dir (the main one, from a worktree whose scratchpad is empty). A new promoted gate adds its manifest entry with the count its doc records |
+| `tools/gates.py list\|run <game\|all> [-k substr] [-j N] [--root dir] [--dry-run]` | re-runs the promoted callcap gates of `reversing/<game>/gates.toml` (command, cwd, the match counts the docs record) and reports every count that moved; logs and `last_run.json` under `<root>/scratchpad/gates/<game>/`. Run it after any emulator change, beside the selftest and the snapshot compare. `--root` runs in another checkout's M68000 dir (the main one, from a worktree whose scratchpad is empty). A new promoted gate adds its manifest entry with the count its doc records |
 | `reversing/populous/py/popdrive.py` | Populous: plan exact mouse clicks (icons, land corners, minimap) from a snapshot; a worked example of driving a game through its own hit-test code |
 | `reversing/powermonger/py/` | PowerMonger working scripts: build any of the 144 lands, capture frame runs, score the port pixel for pixel, `hits` census runs (its README lists them) |
 
