@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "tritone": {
+      "source": {
+        "source": "github",
+        "repo": "7sharp9/claude_plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "continuity@tritone": true,
+    "evidence@tritone": true
+  }
+}

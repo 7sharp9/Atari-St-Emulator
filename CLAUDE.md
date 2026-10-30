@@ -26,8 +26,9 @@ know they existed.
 
 ## Sessions and handoff
 
-- Start a session with `/resume <workstream>` and end it with `/handoff <workstream>` (skills in
-  `.claude/skills/`). `M68000/sessions/<workstream>.md` is the only continuation record: not
+- Start a session with `/resume <workstream>` and end it with `/handoff <workstream>` (wrappers in
+  `.claude/skills/` over the `continuity` plugin; this repo's session rules are in `.claude/continuity.md`).
+  `M68000/sessions/<workstream>.md` is the only continuation record: not
   scratchpad notes, not a root `next_session.md`, not a memory RESUME block. A session writes only
   its own workstream's handoff.
 - Shared resources (the `bin/` DLL, `*.fs`, `CLAUDE.md`, skills, `tools/`) and how to coordinate on
