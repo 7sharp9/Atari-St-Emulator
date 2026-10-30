@@ -1,7 +1,6 @@
 # Continuity profile
 
-Repo-specific data for `continuity:session-resume` and `continuity:session-handoff`. Rules that apply outside
-sessions (shell pitfalls, git, running the emulator) stay in `CLAUDE.md`; this file points at them.
+Repo data for the `continuity` skills; repo-wide rules stay in `CLAUDE.md` and are cited from here.
 
 ## Paths
 
@@ -22,6 +21,16 @@ sessions (shell pitfalls, git, running the emulator) stay in `CLAUDE.md`; this f
 - Cross-cutting tasks (docs, tools, an emulator fix outside a workstream) have no session file: check the shared
   resources they touch and write no handoff unless Dave asks for one.
 
+## Working rules
+
+- For a game workstream, follow the `reverse-engineer-st-game` skill during the session.
+- `M68000/scratchpad/` is a persistent, gitignored repo folder, not the session scratchpad: its data is kept
+  but never committed, and reusable snapshots are indexed in `M68000/scratchpad/ANCHORS.md`.
+
+## Handoff triggers
+
+- When the context is getting too full to work efficiently.
+
 ## Resume checks
 
 - Emulator processes, possibly another session's: `tasklist | grep -i dotnet` on Windows,
@@ -30,7 +39,8 @@ sessions (shell pitfalls, git, running the emulator) stay in `CLAUDE.md`; this f
   the recipe the file points to before any live test.
 - Before scoping a live test for a carried-over "Open" item, grep the game's topic docs for a numbered section
   that already answers it: an Open item goes stale when a later section settles it.
-- Dropped pass (uncommitted files and no live session on this workstream in `ListAgents`): commit it as its own
+- Dropped pass (overrides the plugin's "offer to commit"; uncommitted files and no live session on this
+  workstream in `ListAgents`): commit it as its own
   commit only if the diff is coherent, finished-looking prose (not a half-written fragment) and every tool or
   script it names exists in `M68000/tools/` or `reversing/<game>/py/`; verify, commit, and say so in the report.
   Otherwise leave it and tell Dave.
@@ -49,21 +59,12 @@ sessions (shell pitfalls, git, running the emulator) stay in `CLAUDE.md`; this f
   with its rebuild recipe, and the snapshot to start from. "Proven so far" is short, each line with its match
   count and script, pointing at the topic-doc section. "Open, in priority order" gives each item how it would be
   proven (script, snapshot, match count to reach), ordered by what unblocks the most, not by what is easiest.
+- The plugin's mechanical diff checks apply with this repo's paths: a script cited only from a scratchpad is
+  promoted into `reversing/<game>/py/` (with its README row) or the result labelled a record, and the tool index is `M68000/DEVELOPING.md`.
 - Older continuation notes to fold in and delete: a scratchpad `NEXT_SESSION.md`, a root `next_session.md`, a
   memory RESUME block.
 
 ## Handoff: extra checks
-
-### Mechanical diff checks
-
-Over the session's diff (`git diff <start>..HEAD`, `<start>` = the session file's last commit when the session
-began):
-
-- docs that cite a script only under `scratchpad/`: promote the script into `reversing/<game>/py/` or label the
-  result a record;
-- scripts touched that hard-code a machine (`py -3`, `C:/...`, a literal repo path, a fixed `../` count);
-- tools written this session that duplicate one in `M68000/DEVELOPING.md` "Other tools", and new `tools/`
-  scripts missing their row there.
 
 ### Design digest
 
@@ -86,7 +87,8 @@ what carries the game, what limits became features, what are bugs), check it aga
 | a step in reverse-engineering a game | `.claude/skills/reverse-engineer-st-game/SKILL.md` |
 | a tool missing or rewritten ad hoc, or a helper written inline | the tool in `M68000/tools/` (or the game's `py/`), plus its row in `M68000/DEVELOPING.md` "Other tools" |
 | a fact about a game | that game's topic doc, as definitive text (`CLAUDE.md` "Docs") |
-| a repo-wide rule or shell/tool pitfall | `CLAUDE.md`, one line per rule |
+| a repo-wide rule or shell/tool pitfall | `CLAUDE.md`, one line per rule, written as the rule is now, never a dated clause (`CLAUDE.md` "Docs") |
+| a correction of how you worked | a `feedback` entry in Claude's auto memory (this repo has no `memory/`) |
 
 Write each rule as it is now, with one worked example and a pointer to the doc that proves it. Before adding a
 line, grep `CLAUDE.md` and the skill for one that already covers it.
@@ -103,7 +105,8 @@ line, grep `CLAUDE.md` and the skill for one that already covers it.
 
 ## Agent rules
 
-Every reviewer or runner brief carries these; most live in `CLAUDE.md`, cited by section.
+The `evidence` agents read this section themselves; briefs for other agent types must carry these rules. Most live
+in `CLAUDE.md`, cited by section.
 
 - No build, no git, no `taskkill`; write only under the agent's own directory (`CLAUDE.md` "Running";
   `reverse-engineer-st-game` skill 3c "HARD RULES" for the `agents/<area>/` and `$<GAME>_WORK/<area>/` layout).
