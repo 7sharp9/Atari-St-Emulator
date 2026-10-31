@@ -1075,10 +1075,14 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 //remain so a handler that reads exactly one byte per interrupt - Super Sprint's own
                 //IKBD ISR at $104b6, which does not loop like TOS's - still sees every byte of a
                 //multi-byte packet ($FE/$FF + joystick state, 3-byte mouse packets). The final
-                //byte leaves the FIFO empty, so at most one extra interrupt follows a burst and it
-                //hits the handler's "no data" guard.
+                //byte leaves the FIFO empty and withdraws a request still pending: the 6850's IRQ
+                //is a level that drops when RDRF clears, so a handler that loops on GPIP bit 4 and
+                //drains the burst in one entry (Cadaver's $1535a, which reads $FFFC02 with no
+                //status test) is not entered again to read the latched last byte as a new key.
                 if ikbdRxFifo.Count > 0 && kbdAciaControl &&& 0x80uy <> 0uy then
                     x.RaiseInterrupt 6 0x46
+                elif ikbdRxFifo.Count = 0 && mfpPending && mfpVector = 0x46 then
+                    mfpPending <- false
                 b
             else kbdAciaRdr //RDRF clear: the register still holds the last byte (see kbdAciaRdr)
         | Acia ->
@@ -1624,6 +1628,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Sets the write-protect tab of the disk in drive A - see `diskAWriteProtected`. It stays set
     ///across a `disk` hot-swap, like a drive whose next floppy has the same tab.
     member x.SetWriteProtectA (on: bool) = diskAWriteProtected <- on
+    member x.WriteProtectedA = diskAWriteProtected
 
     ///See `diskLog`. The journal's current length (an MmuSnapshot built outside SnapshotRam, as
     ///LoadState's, passes it to make the disk roll-back a no-op).

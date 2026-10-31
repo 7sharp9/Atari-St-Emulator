@@ -1,56 +1,86 @@
 # Emulator and tooling: handoff
 
-Updated 2026-10-25 by the session that ended at commit `6824746` (this handoff is the commit after it).
+Updated 2026-10-31 by the session that ended at commit `4e10c03` on branch `claude/emulator-keyinject-journal-7765eb`
+(a worktree; not merged, not pushed).
 
 ## Resume point
 
-- Last work commit of this workstream: `6824746`, Super Sprint `gates.toml` and the record/replay design in DEVELOPING.md;
-  before it `1f90b6f`, `gates.py run all` as step 5 of the skill's section 6 net.
-- Working data: none kept. Gate logs are under `scratchpad/gates/<game>/` (rebuild: `uv run python tools/gates.py run <game>`).
-- Start from: master; `bin/` and `server/bin/` built from `249562d` (no core change since).
-- Uncommitted work left behind: none. Nothing pushed.
+- Last work commits of this workstream, on `claude/emulator-keyinject-journal-7765eb` (base `367ece7`, master's tip
+  when cut): `dabdd67` the checkpoint carries the unfired `ATARI_KEY_INPUT` groups; `cac70ad` record and replay
+  (journal, `replay_to`, `last_writer`, `first_divergence`); `4e10c03` the IKBD burst phantom key. Dave merges; after the merge, build into `bin/` and
+  `server/bin/` and re-run the net against a pre-merge master build (`tools/regress_net.sh`).
+- Working data: none kept in the repo. The worktree's `M68000/scratchpad/` is an APFS clone (`cp -cR`) of the main
+  checkout's, made so `gates.py run all` could run against the worktree's own `bin/`; it is disposable.
+- Start from: master once the branch is merged; the proofs start from PowerMonger's
+  `scratchpad/cmd10/leadkill/pre_pick.snap` (made by `reversing/powermonger/commander/leadkill/gate_leadkill.sh`).
+- Uncommitted work left behind: none.
 
 ## Proven so far
 
-- MMU memory hooks and `stserver` (JSON-RPC and MCP): DEVELOPING.md "Memory hooks and the `stserver` process"; `server/smoke.py`
-  12 of 12; REPL `watch` output, verify, 30M snapshot, Cadaver snapshot and DMA watch byte-identical to pre-merge master;
-  selftest 1000051 pass, 0 wrong, 9 skip (`tools/regress_net.sh`). No-hook speed cost within noise (5-pair interleaved A/B).
-- Section 6 of the skill now ends with `tools/gates.py run all` (every gate PASS); CLAUDE.md's net summary says the same.
-- Gate manifests: Black Tiger 15, PowerMonger 20 (35/35 pass on `249562d`), Super Sprint 6 (`reversing/supersprint/gates.toml`:
-  trajectory 700 frames, drone_diff 576/576, winner_diff 46/46, plane2 512000/512000, hazard_seeds 1400/1400, liveproof
-  Q 15559/15560, J 1187/1187, M 125/125), 6/6 pass at `7302198` in about 5 min. `plane2` runs no emulator (reads saved snaps).
-  Black Tiger plus PowerMonger take about 14 min at `-j 1`.
-- Record/replay is designed (DEVELOPING.md "Record and replay (designed, not built)"): an input journal in `AtartSt`,
-  checkpoints every N steps, `replay_to`/`last_writer`/`first_divergence` as `stserver` methods, three pre-registered proofs
-  from PowerMonger's `commander/leadkill/pre_pick.snap`. The old proof target (the 1457M melee) was dropped: `loop.py --replay`
-  already reproduces it.
-- Found, not fixed: `MachineCheckpoint` lacks `keyInjectGroups` (`Program.fs:180`, popped at `:439-441`), so `Restore`,
-  `Preview` and `detcheck` across a fired `ATARI_KEY_INPUT` group do not re-inject it. REPL `kbd` is unaffected.
+- MMU memory hooks and `stserver` (JSON-RPC and MCP): DEVELOPING.md "Memory hooks and the `stserver` process";
+  `server/smoke.py` all pass (11 checks), 31 tools in `tools/list`.
+- The in-memory checkpoint (`Capture`/`Restore`, so `Preview`, `detcheck`, `fork`; `callcap` alongside) carries the
+  unfired `ATARI_KEY_INPUT` groups: `detcheck 100000` across a fired group diverged before and passes after
+  (DEVELOPING.md "Snapshot / preview fidelity"). Net and `gates.py run all` 48/48 on that build.
+- Record and replay (DEVELOPING.md "Record and replay"), all from `pre_pick.snap`: `server/replay_proof.py` 12/12
+  byte-identical snapshots (9/12 with the journal re-apply removed); `server/last_writer_proof.py` 20/20 against a REPL
+  `watch 53006 2` (16/20 without the backward search); `server/divergence_proof.py` 8/8 (the `r39` poke found at its
+  step, `$521cd` the only differing byte; identical runs equal; 4 fail with an off-by-one search). Net against the
+  Open 1 build identical; REPL input commands (`w`, `kbd`, `mouse`, `wprot`, `disk`) give identical results.
+- A `$FFFC02` read that empties the IKBD FIFO withdraws the pending ACIA interrupt (DEVELOPING.md "IKBD command
+  interpreter"): Cadaver's `kbd ff 08` from `scratchpad/cadaver/s96/r6/s3_flask.snap` moves the hero x 29 -> 41
+  again (29 -> 29 before; the split-byte control 29 -> 41 on both). Net identical, gates 48/48, proofs unchanged.
+- Gate manifests: Black Tiger 15, Midwinter 7, PowerMonger 20, Super Sprint 6 (48 in all).
+
+## Running
+
+Nothing running.
 
 ## Open, in priority order
 
-1. Add `keyInjectGroups` to `MachineCheckpoint` (Capture/Restore), behind the section 6 net including `gates.py run all`.
-   Proven by a `detcheck` across an armed `ATARI_KEY_INPUT` schedule that fails before the change and passes after.
-2. Build record/replay as designed; proven by the three pre-registered tests in that section (replay_to byte-identical at
-   11 steps, last_writer 20/20 against a full `watch 53006 2` list, first_divergence at the journalled `w 521cc` step).
-3. Seed gate manifests for Cadaver, Populous, Lemmings, Impossamole from counts their docs record (check each work dir
+1. Recording on disk: checkpoints past a memory budget spill to `SaveState` files (`base.snap`, `journal.jsonl` with a
+   disk swap as path plus FNV hash, `ck_<step>.snap`), `record_load` reads it back, so a recording outlives the
+   process and a 1G-step run fits. Proven by `replay_proof.py` passing on a saved-then-loaded recording, and a
+   `first_divergence` between two recordings from different processes.
+2. Seed gate manifests for Cadaver, Populous, Lemmings, Impossamole from counts their docs record (check each work dir
    exists on this machine first; an ERROR for a missing prerequisite is not a pass).
-4. Executed-PC coverage per game (16M-bit set merged across runs) to seed `rdis.py`/Ghidra roots past longword state tables;
-   proven when it recovers Crudebuster's 67 callers `rdis.py` missed. A recording (item 2) can produce it by replay.
-5. Ghidra import of snapshot RAM + `.sym` + coverage behind pyghidra-mcp (not installed or checked).
-6. Model gaps from the MAME comparison (no HBL, coarse FDC, no IKBD power-up traffic) and the ACIA FIFO pop on read
+3. Executed-PC coverage per game (16M-bit set merged across runs) to seed `rdis.py`/Ghidra roots past longword state
+   tables; proven when it recovers Crudebuster's 67 callers `rdis.py` missed. A recording can now produce it by replay.
+4. Ghidra import of snapshot RAM + `.sym` + coverage behind pyghidra-mcp (not installed or checked).
+5. Model gaps from the MAME comparison (no HBL, coarse FDC, no IKBD power-up traffic) and the ACIA FIFO pop on read
    (CLAUDE.md "Emulator behaviours"), each an emulator change behind the net.
 
 ## Known traps
 
 - `stserver.dll` is not built by `dotnet build M68000.fsproj`; each checkout needs `dotnet build -c Debug M68000/server/StServer.fsproj`
-  before the `.mcp.json` entry works, and a running Claude session does not pick it up.
-- `dotnet build ... -o <scratch>` of `StServer.fsproj` (a ProjectReference to the core) did not touch `bin/` here (mtime checked).
+  before the `.mcp.json` entry works, and a running Claude session does not pick it up. The main checkout's
+  `server/bin/` predated snapshot format v12 on 2026-10-31 (its snapshots are one byte short).
+- A worktree has no untracked inputs: link `TOS100UK.IMG`, `tests` and `checkpoint.txt` from the main checkout's
+  `M68000/` (`verify` fails with "No checkpoint.txt found" otherwise), and clone the scratchpad with `cp -cR` (APFS,
+  no space used) before `gates.py run all`, since every gate script reads `<root>/bin/` and `<root>/scratchpad/`.
+  The worktree already holds a tracked `scratchpad/ANCHORS.md`, so `cp -cR <main>/scratchpad ./scratchpad` nests the
+  copy one level down; copy its contents instead.
+- Two `Debug` builds of one source were byte-identical once (`-o` dirs `open1bin` and `new`) and differed another time
+  (`rec3` against `bin/`, same size, with mutant builds sharing `obj/` in between and no source edit this session
+  tracked): tie every result to the DLL actually run, and re-run the proofs on the build that is gated.
 - For the supersprint workstream, not fixed here: `sound.md:58` and `secrets.md:97` give liveproof's Q as 15559/15559, while the
   script prints 15559/15560 over 15560 ISR invocations (as `sound.md:82` says).
 
+## Waiting on Dave
+
+- Merge `claude/emulator-keyinject-journal-7765eb` (three work commits and this handoff on `367ece7`); then rebuild
+  `bin/` and `server/bin/` in the main checkout, which the game sessions share.
+- After the merge, for the Cadaver workstream: master's `reversing/cadaver/mechanics.md:421`, both `send_joy`
+  docstrings (`py/secrets/overlay/action/drv.py`, `exit_level0/lib/drv.py`) and `exit_level0/README.md:57` describe the
+  burst lock-up as current behaviour; it was the emulator's (fixed in `4e10c03`). The two-enqueue `send_joy` stays
+  harmless; the text should say the lock-up was an emulator artefact.
+- Proposed CLAUDE.md line for "Emulator changes" (not made: other sessions were live): "A worktree runs `gates.py run
+  all` against its own `bin/` after linking `TOS100UK.IMG`, `tests` and `checkpoint.txt` from the main `M68000/` and
+  cloning the scratchpad's contents with `cp -cR` (APFS, no space); `--root` would run the main checkout's DLL."
+  The trap is under "Known traps" until then.
+
 ## Next session
 
-Do Open 1 (`keyInjectGroups` in the checkpoint) as a small emulator change behind the full net, which is also the first real use
-of step 5. Then start Open 2 in an `isolation: "worktree"` agent or here: the journal in `AtartSt` first, then `replay_to` and
-its byte-identity proof before the two search queries.
+After the merge, rebuild `bin/` and `server/bin/` and re-run the net against pre-merge master (master has 27 commits
+past `367ece7`). Then Open 1: the saved form of a recording (spill and `record_load`), proven by `replay_proof.py` on a loaded recording. A game session can
+already use `record_start`/`last_writer` through `stserver` for "who wrote X" questions.

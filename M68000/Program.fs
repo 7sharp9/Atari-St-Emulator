@@ -64,7 +64,37 @@ type MachineState =
         && a.A4 = b.A4 && a.A5 = b.A5 && a.A6 = b.A6
 
 ///See `AtartSt.Capture`.
-type MachineCheckpoint = { Cpu: Cpu; StepCount: uint64; Mmu: MmuSnapshot }
+type MachineCheckpoint = { Cpu: Cpu; StepCount: uint64; Mmu: MmuSnapshot; KeyInject: (uint64 * byte[]) list }
+
+///One input from outside the step loop (`AtartSt.Input`): what a recording's journal holds.
+type MachineInput =
+    | HostWrite of addr: uint32 * width: int * value: uint32
+    | SetCpu of Cpu
+    | Ikbd of byte[]
+    | MouseMove of dx: int * dy: int
+    | MouseButton of left: bool * down: bool
+    | DiskA of path: string option
+    | WriteProtectA of bool
+
+///A journal entry: the input and the step count it was applied at (between steps).
+type JournalEntry = { At: uint64; Input: MachineInput }
+
+///A recording checkpoint: the machine at step `At`, after the first `Index` journal entries.
+///The write-protect tab is not in a snapshot (`MMU.SetWriteProtectA`), so it is kept here.
+type RecordCheckpoint = { At: uint64; Index: int; Machine: MachineCheckpoint; WriteProtectA: bool }
+
+///See `AtartSt.RecordStart`.
+type Recording =
+    { Every: uint64
+      Journal: ResizeArray<JournalEntry>
+      Checkpoints: ResizeArray<RecordCheckpoint>
+      mutable Active: bool
+      mutable End: uint64 }
+
+///See `AtartSt.FirstDivergence`: the first step at which two recordings' machines differ, their
+///PCs there, the first differing RAM bytes (address, A's byte, B's byte; at most 16), and the step
+///of the first journal entry that differs, if any.
+type Divergence = { At: uint64; PcA: int; PcB: int; Bytes: (uint32 * byte * byte) list; JournalAt: uint64 option }
 
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
@@ -178,6 +208,11 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///burst would be drained by the ISR in one go and the ROM would only ever see the final state.
     ///Empty (the default) injects nothing.
     let mutable keyInjectGroups : (uint64 * byte[]) list = []
+
+    ///The current recording (`RecordStart`), and the step at which Step() takes its next
+    ///checkpoint: `UInt64.MaxValue` when none is active, so the per-step cost is one compare.
+    let mutable recording : Recording option = None
+    let mutable nextRecordCheckpoint = UInt64.MaxValue
 
     ///Pexec / basepage hook (gated on ATARI_TRACE_GEMDOS, like the GEMDOS_CALL trace it extends).
     ///When a `trap #1` with function $4B (Pexec) is about to execute, we stash the mode, the
@@ -376,6 +411,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     member x.InstructionsPerFrame = int instructionsPerFrame
 
     member x.Step() =
+        if stepCount >= nextRecordCheckpoint then x.TakeRecordCheckpoint()
         stepCount <- stepCount + 1UL
         if stepCount % instructionsPerFrame = 0UL then
             mmu.RaiseInterrupt 4 28
@@ -617,28 +653,204 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///`DeterminismCheck`, which asserts exactly that.
     ///An in-memory checkpoint of everything a later Step() reads (what Preview saves privately);
     ///`Restore` puts it back and resets the loop detector, as Preview does. A checkpoint can be
-    ///restored any number of times.
+    ///restored any number of times. It includes the unfired `ATARI_KEY_INPUT` groups, which Step()
+    ///pops as they fire: without them a group fired after the capture is lost on restore.
     member x.Capture() : MachineCheckpoint =
-        { Cpu = cpu; StepCount = stepCount; Mmu = mmu.SnapshotRam() }
+        { Cpu = cpu; StepCount = stepCount; Mmu = mmu.SnapshotRam(); KeyInject = keyInjectGroups }
     member x.Restore(c: MachineCheckpoint) =
         cpu <- c.Cpu
         stepCount <- c.StepCount
         mmu.RestoreRam c.Mmu
-        resetLoopDetector()
+        keyInjectGroups <- c.KeyInject
+        resetLoopDetector() //the anchor may describe a state from the reverted branch
+
+    ///Applies one input from outside the step loop and, while a recording is active, journals it
+    ///at the current step. The REPL and stserver route every host poke, register set, IKBD byte,
+    ///mouse event, disk swap and write-protect change through here, so both record alike.
+    member x.Input(i: MachineInput) =
+        x.Perform i
+        match recording with
+        | Some r when r.Active -> r.Journal.Add { At = stepCount; Input = i }
+        | _ -> ()
+
+    member private x.Perform(i: MachineInput) =
+        match i with
+        | HostWrite (a, w, v) ->
+            mmu.WatchStep <- stepCount //a hook's Step for the write, also right after a restore
+            mmu.HostAccess <- true
+            try
+                match w with
+                | 1 -> mmu.WriteByte a (byte v)
+                | 2 -> mmu.WriteWord a (int16 v)
+                | _ -> mmu.WriteLong a (int v)
+            finally mmu.HostAccess <- false
+        | SetCpu c -> cpu <- c
+        | Ikbd b -> mmu.EnqueueIkbd b
+        | MouseMove (dx, dy) -> mmu.MoveMouse dx dy
+        | MouseButton (l, d) -> mmu.EnqueueMouseButton l d
+        | DiskA p -> mmu.LoadDiskA (p |> Option.map IO.File.ReadAllBytes)
+        | WriteProtectA on -> mmu.SetWriteProtectA on
+
+    member x.TakeRecordCheckpoint() =
+        match recording with
+        | Some r ->
+            r.Checkpoints.Add { At = stepCount; Index = r.Journal.Count; Machine = x.Capture(); WriteProtectA = mmu.WriteProtectedA }
+            nextRecordCheckpoint <- stepCount + r.Every
+        | None -> nextRecordCheckpoint <- UInt64.MaxValue
+
+    ///Starts a recording at the current state: a base checkpoint, then one every `every` steps
+    ///(taken by Step() before the step), and a journal of every `Input`. The checkpoints are in
+    ///memory (about 1 MB each, mostly `MmuSnapshot`'s RAM copy).
+    member x.RecordStart(every: uint64) =
+        if every = 0UL then failwith "record: every must be > 0"
+        recording <- Some { Every = every; Journal = ResizeArray(); Checkpoints = ResizeArray(); Active = true; End = stepCount }
+        x.TakeRecordCheckpoint()
+
+    member x.RecordStop() =
+        match recording with
+        | Some r when r.Active ->
+            r.Active <- false
+            r.End <- stepCount
+            nextRecordCheckpoint <- UInt64.MaxValue
+        | _ -> failwith "record_stop: no active recording"
+
+    ///The current recording. Setting it (stserver keeps several stopped ones) is refused while one
+    ///is active, since its checkpoints would stop.
+    member x.Recording
+        with get () = recording
+        and set (v: Recording option) =
+            match recording with
+            | Some r when r.Active -> failwith "a recording is active; stop it first"
+            | _ -> recording <- v
+
+    ///Puts the machine where the stopped recording was at step `target`, after the inputs
+    ///journalled at that step: restores the last checkpoint at or before it, then steps forward
+    ///re-applying the journal at the steps it was recorded at. A disk swap journalled after that
+    ///checkpoint is refused: the drive's image and its write log are not in a checkpoint.
+    member x.ReplayTo(target: uint64) =
+        let r = x.StoppedRecording "replay_to" target
+        let ck = r.Checkpoints |> Seq.filter (fun c -> c.At <= target) |> Seq.last
+        x.ReplayFrom(r, ck, target)
+        ck.At
+
+    ///The last write overlapping `[lo, hi]` at or before step `target` of the stopped recording
+    ///(CPU, DMA or a journalled host write; `MemAccess.Step` as a REPL `watch` line gives it), or
+    ///None back to the base. Replays the checkpoint interval holding `target` with a write hook,
+    ///then each interval before it until one saw a write. The machine is left at the end of the
+    ///last interval replayed: follow with `ReplayTo` to continue from a chosen step.
+    member x.LastWriter(lo: uint32, hi: uint32, target: uint64) : MemAccess option * int =
+        let r = x.StoppedRecording "last_writer" target
+        let mutable last = None
+        mmu.AddHook { Id = Int32.MinValue; Lo = lo; Hi = hi; OnRead = false; OnWrite = true
+                      Fire = fun a -> if a.Step <= target then last <- Some a }
+        try
+            let mutable k = (r.Checkpoints |> Seq.findIndexBack (fun c -> c.At <= target))
+            let mutable searched = 0
+            let mutable stop = false
+            while not stop do
+                let ck = r.Checkpoints.[k]
+                let upto = if k + 1 < r.Checkpoints.Count then min target r.Checkpoints.[k + 1].At else target
+                x.ReplayFrom(r, ck, upto)
+                searched <- searched + 1
+                if last.IsSome || k = 0 then stop <- true else k <- k - 1
+            last, searched
+        finally mmu.RemoveHook Int32.MinValue
+
+    member private x.StoppedRecording (verb: string) (target: uint64) =
+        let r =
+            match recording with
+            | Some r when r.Active -> failwithf "%s: stop the recording first" verb
+            | Some r -> r
+            | None -> failwithf "%s: no recording" verb
+        let b = r.Checkpoints.[0].At
+        if target < b || target > r.End then
+            failwithf "%s: step %d is outside the recording (%d..%d)" verb target b r.End
+        r
+
+    ///FNV-1a of RAM, the CPU registers and `PeripheralPhase`: equal fingerprints at one step mean
+    ///equal machines, up to a hash collision and the device state `PeripheralPhase` folds.
+    member private x.Fingerprint() =
+        let mutable h = 1469598103934665603UL
+        let mix (v: uint64) = h <- (h ^^^ v) * 1099511628211UL
+        for v in mmu.SnapshotRam().Ram do mix (uint64 v)
+        for r in [| cpu.D0;cpu.D1;cpu.D2;cpu.D3;cpu.D4;cpu.D5;cpu.D6;cpu.D7
+                    cpu.A0;cpu.A1;cpu.A2;cpu.A3;cpu.A4;cpu.A5;cpu.A6;cpu.A7;cpu.USP;cpu.SSP;cpu.PC |] do
+            mix (uint64 (uint32 r))
+        mix (uint64 (uint16 cpu.CCR)); mix mmu.PeripheralPhase
+        h
+
+    ///Where two stopped recordings from the same base first differ, or None up to the shorter's end.
+    ///The first differing journal entry bounds the answer from above; the machines are compared
+    ///(`Fingerprint`) at each checkpoint step both hold and at that entry's step, which brackets the
+    ///divergence between the last equal and the first unequal one; a binary search inside the
+    ///bracket finds the step. It assumes a divergence persists to the end of its bracket: one undone
+    ///before the next compared step is not seen. The machine is left at an arbitrary point.
+    member x.FirstDivergence(a: Recording, b: Recording) : Divergence option =
+        if a.Active || b.Active then failwith "first_divergence: stop both recordings first"
+        if a.Checkpoints.[0].At <> b.Checkpoints.[0].At then failwith "first_divergence: the recordings start at different steps"
+        let endAt = min a.End b.End
+        let stateAt (r: Recording) (t: uint64) =
+            let ck = r.Checkpoints |> Seq.filter (fun c -> c.At <= t) |> Seq.last
+            x.ReplayFrom(r, ck, t)
+        let fpAt r t = stateAt r t; x.Fingerprint()
+        let differ t = fpAt a t <> fpAt b t
+        let journalAt =
+            let n = min a.Journal.Count b.Journal.Count
+            match Seq.init n id |> Seq.tryFind (fun i -> a.Journal.[i] <> b.Journal.[i]) with
+            | Some i -> Some (min a.Journal.[i].At b.Journal.[i].At)
+            | None when a.Journal.Count <> b.Journal.Count ->
+                Some ((if a.Journal.Count > n then a.Journal.[n] else b.Journal.[n]).At)
+            | None -> None
+        let common = set [ for c in a.Checkpoints -> c.At ] |> Set.intersect (set [ for c in b.Checkpoints -> c.At ])
+        let probes =
+            Set.add endAt (match journalAt with Some j when j <= endAt -> Set.add j common | _ -> common)
+            |> Set.filter (fun t -> t <= endAt) |> Set.toList
+        match probes |> List.tryFind differ with
+        | None -> None
+        | Some hi ->
+            let mutable lo = probes |> List.filter (fun t -> t < hi) |> List.tryLast |> Option.defaultValue a.Checkpoints.[0].At
+            let mutable hi = hi
+            //Invariant: machines equal at lo, unequal at hi.
+            while hi - lo > 1UL do
+                let m = lo + (hi - lo) / 2UL
+                if differ m then hi <- m else lo <- m
+            stateAt a hi
+            let pcA, ramA = cpu.PC, mmu.SnapshotRam().Ram
+            stateAt b hi
+            let pcB, ramB = cpu.PC, mmu.SnapshotRam().Ram
+            let bytes =
+                [ for i in 0 .. ramA.Length - 1 do if ramA.[i] <> ramB.[i] then yield (uint32 i, ramA.[i], ramB.[i]) ]
+                |> List.truncate 16
+            Some { At = hi; PcA = pcA; PcB = pcB; Bytes = bytes; JournalAt = journalAt }
+
+    ///Restores `ck` and steps to `target`, re-applying the journal at its recorded steps.
+    member private x.ReplayFrom(r: Recording, ck: RecordCheckpoint, target: uint64) =
+        match r.Journal |> Seq.skip ck.Index |> Seq.tryFind (fun e -> match e.Input with DiskA _ -> true | _ -> false) with
+        | Some e -> failwithf "replay: a disk swap at step %d lies after the checkpoint at %d" e.At ck.At
+        | None -> ()
+        x.Restore ck.Machine
+        mmu.SetWriteProtectA ck.WriteProtectA
+        let mutable i = ck.Index
+        let applyDue () =
+            while i < r.Journal.Count && r.Journal.[i].At = stepCount do
+                x.Perform r.Journal.[i].Input
+                i <- i + 1
+        applyDue ()
+        while stepCount < target do
+            x.Step()
+            applyDue ()
 
     member x.Preview(n: int) =
-        let savedCpu = cpu
-        let savedStepCount = stepCount
-        let savedRam = mmu.SnapshotRam()
+        let saved = x.Capture()
+        let savedNext = nextRecordCheckpoint //speculative steps take no recording checkpoints
+        nextRecordCheckpoint <- UInt64.MaxValue
         Diag.result "--- preview: up to %d step(s), state will be restored afterward ---" n
         (try
             for _ in 1 .. n do x.Step()
          with e ->
             Diag.result "--- preview stopped early: %s ---" e.Message)
-        cpu <- savedCpu
-        stepCount <- savedStepCount
-        mmu.RestoreRam savedRam
-        resetLoopDetector() //the anchor may describe a state from the just-reverted speculative branch
+        x.Restore saved
+        nextRecordCheckpoint <- savedNext
         Diag.result "--- preview done, state restored to PC=$%08x ---" cpu.PC
 
     ///Substrate self-check (91st pass, the "trustworthy experimental instrument" review): proves
@@ -650,9 +862,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///Run this specifically with active FDC I/O, an armed Timer B, queued IKBD input and live
     ///Powermonger gameplay - the cases the old MmuSnapshot silently dropped. Returns true on match.
     member x.DeterminismCheck(n: int) : bool =
-        let savedCpu = cpu
-        let savedStepCount = stepCount
-        let saved = mmu.SnapshotRam()
+        let saved = x.Capture()
+        let savedNext = nextRecordCheckpoint
+        nextRecordCheckpoint <- UInt64.MaxValue
         let steps = ResizeArray<uint64 * int * uint64 * uint64>(n)
         let runTrace () =
             steps.Clear()
@@ -676,15 +888,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                     steps.Add(stepCount, cpu.PC, mmu.Mutations - mut0, mmu.PeripheralPhase)
              with _ -> stopped <- 1)
             h, stopped, steps.ToArray()
-        let restore () =
-            cpu <- savedCpu
-            stepCount <- savedStepCount
-            mmu.RestoreRam saved
-            resetLoopDetector()
+        let restore () = x.Restore saved
         let h1, s1, t1 = runTrace ()
         restore ()
         let h2, s2, t2 = runTrace ()
         restore ()
+        nextRecordCheckpoint <- savedNext
         let ok = h1 = h2 && s1 = s2
         if ok then
             Diag.result "--- detcheck: %d steps replayed identically (trace hash $%016x, %s) ---"
@@ -732,6 +941,9 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let sentinel = 0x00DEAD00u
         let savedCpu = cpu
         let savedStepCount = stepCount
+        let savedKeys = keyInjectGroups
+        let savedNext = nextRecordCheckpoint
+        nextRecordCheckpoint <- UInt64.MaxValue
         let saved = mmu.SnapshotRam()
         let sp0 = uint32 savedCpu.A7
         let retSlot = sp0 - 4u
@@ -786,6 +998,8 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         cpu <- savedCpu
         stepCount <- savedStepCount
         mmu.RestoreRam saved
+        keyInjectGroups <- savedKeys
+        nextRecordCheckpoint <- savedNext
         resetLoopDetector()
         Diag.result "--- callcap $%06x: %s, trace hash $%016x, %d byte(s) changed, entrySP=$%06x exitSP=$%06x ---"
             target outcome h muts.Count sp0 spN
@@ -1517,9 +1731,7 @@ module Main =
                 //Direct memory-write for debugging (e.g. patching a resumed snapshot's system
                 //variables to test a hypothesis without needing a fresh cold boot to produce them).
                 //Writes a longword via the same MMU path real 68k code would use.
-                st.Cpu.MMU.HostAccess <- true
-                (try st.Cpu.MMU.WriteLong (Convert.ToUInt32(addr, 16)) (Convert.ToInt32(value, 16))
-                 finally st.Cpu.MMU.HostAccess <- false)
+                st.Input (HostWrite (Convert.ToUInt32(addr, 16), 4, Convert.ToUInt32(value, 16)))
                 loop()
             | [| "snap"; path |] ->
                 st.SaveState path
@@ -1528,12 +1740,12 @@ module Main =
             | [| "disk"; path |] ->
                 //Hot-swap drive A's mounted image - models a real physical floppy swap (e.g. a
                 //loader mid-load asking for "disk 2") without needing a fresh cold boot.
-                st.Cpu.MMU.LoadDiskA (Some (IO.File.ReadAllBytes path))
+                st.Input (DiskA (Some path))
                 Diag.result "Disk A swapped to %s" path
                 loop()
             | [| "wprot"; onOff |] when onOff = "on" || onOff = "off" ->
                 //Drive A's write-protect tab (MMU.SetWriteProtectA); not saved in a snapshot.
-                let on = onOff = "on" in st.Cpu.MMU.SetWriteProtectA on
+                st.Input (WriteProtectA (onOff = "on"))
                 Diag.result "Disk A write protect %s" onOff
                 loop()
             | [| "watch"; addr |] ->
@@ -1554,7 +1766,7 @@ module Main =
                 //channel-6 interrupt) - e.g. `kbd 1f 9f` = press+release the 'A' key ($1f make,
                 //$9f break), `kbd fa 05 00` = a mouse-move-right packet. See MMU.EnqueueIkbd.
                 let bytes = parts.[1..] |> Array.map (fun s -> Convert.ToByte(s, 16))
-                st.Cpu.MMU.EnqueueIkbd bytes
+                st.Input (Ikbd bytes)
                 Diag.result "enqueued %d IKBD byte(s): %s" bytes.Length (bytes |> Array.map (sprintf "%02x") |> String.concat " ")
                 loop()
             | _ when parts.Length >= 2 && parts.[0] = "mouse" ->
@@ -1568,11 +1780,11 @@ module Main =
                 | [| "move"; dxs; dys |] ->
                     let dx = int dxs
                     let dy = int dys
-                    st.Cpu.MMU.MoveMouse dx dy
+                    st.Input (MouseMove (dx, dy))
                     Diag.result "mouse move dx=%d dy=%d" dx dy
                 | [| ("down"|"up") as ud; ("l"|"r"|"left"|"right") as lr |] ->
                     let isLeft = lr.StartsWith "l"
-                    st.Cpu.MMU.EnqueueMouseButton isLeft (ud = "down")
+                    st.Input (MouseButton (isLeft, (ud = "down")))
                     Diag.result "mouse %s %s (buttons-as-keys=%b)" ud (if isLeft then "left" else "right") st.Cpu.MMU.MouseButtonsReportAsKeys
                 | _ ->
                     raise (ReplError ("wrong arguments, usage: " + replUsage.["mouse"]))
