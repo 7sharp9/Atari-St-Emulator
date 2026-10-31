@@ -338,6 +338,21 @@ owner `$ff`, category `$0c` and dwell `$a0` (killed, not routed), flags `$10` (l
 `$188` (side 1 group 0), and the attacker's lead is side 2's group 0 at posture 2; the land ends 1.2M steps later.
 His army did not lose: it still had 27 men, and in o1 it had already destroyed one of side 2's two groups.
 
+At 30 starts (`seeds.sh scratchpad/cmd14/l2s30 scratchpad/cmd3/l2build/l2_built.snap 1 "0 .. 29"
+"scripted=--policy,scripted llm_haiku=--policy,llm,--every,20e6,--model,claude-haiku-5-5" 2 2000e6`; starts 1M apart,
+o1..o5 the same game state as `cmd9/start`, and scripted o0..o5 ending at the same steps as `cmd9`):
+
+| policy | won | lost: captain killed | lost: no-lord retire | alive at 2000M | loss step, median (range) |
+|---|---|---|---|---|---|
+| scripted | 0 | 27 | 3 | 0 | 228M (202M..1470M) |
+| LLM v3 on Haiku, a decision per 20M | 0 | 20 | 3 | 7, ratio 0 or 1 | 320M (228M..935M) |
+
+Neither wins land 2 (0 of 30 each; the 95% upper bound on either win rate is 12%). The LLM keeps the captain alive
+longer: its run outlasts scripted's from 25 of 30 starts (one-sided sign test p = 0.0002), and its seven survivors are
+stalemates, not near wins. A loss with the captain alive is the no-lord retire (side 1 holds no lord at the end), as in
+scripted o0 and evade o3 above. The arm cost $3.36 for 1137 calls; 105 orders were dropped as a go to or supply aimed
+at a water cell, 2 as an attack on a cell that is not an enemy lord, and one reply did not parse.
+
 **How the captain dies.** What decides it is whether a healthy enemy man reaches the lead. A lead carries a bow (grade 6 from spawn) and in a
 fight stands off shooting: mode `$34`, the shot cool-down. On o1 (`cmd9/o1_health`) the captain's lead was in `$34` at
 full health 95 from 190M to 205M; from 208M he was in `$32` on (26,52), the lord he had been ordered to attack, against
@@ -495,6 +510,17 @@ model sees no earlier reply and no outcome, so it cannot learn within a land tha
 next snapshot's counts. The rollout tests each candidate 40M steps ahead in the emulator before it commits, so the
 comparison so far is a one-shot reader of the rules against a policy that tries its moves.
 
+**The hybrid (`loop.py --policy hybrid [--lcad 20e6]`).** The rollout policy with the LLM as one more proposer: every
+`lcad` steps the LLM is asked as above, and its valid group orders join the rollout's candidates as `llm`, after
+Scripted's and outside K, so no rollout candidate is pushed out; where the rollout would not fork, the LLM's orders
+fork against `none`. A decision where the LLM proposes nothing, or loses, issues what the plain rollout issues, so the
+arm differs from the rollout only through decisions the LLM won, and the LLM's `your_last_order` records what was
+issued from any source. With an empty backend (`--backend stub0`) it repeats the logged plain rollout on rand1 side 3
+o0 to 100M: 20 of 20 decisions with the same observation hash and actions, the same best candidate at 9 of 9 forks
+(`scratchpad/cmd14/hybgate/stub0`). Live on Haiku over the same 100M (5 calls, about $0.02) the `llm` candidate won
+at 0M (a tie on score broken on lords) and at 20M, where the rollout would not have forked (0.953 against `none`'s
+0.816), and lost at 60M and 80M; `--replay` of its log ends byte-identical (`cmd14/hybgate/haiku`).
+
 **Evaluation design.** What the measurements above say about how to run the next ones:
 
 - Size an arm before funding it. One LLM run moves a start by up to 6 lords at 300M (paired v1 - v2 differences
@@ -544,7 +570,7 @@ comparison so far is a one-shot reader of the rules against a policy that tries 
 | `gate_cellpt.py` | an order's target cell to the lead's target point (the cell centre), 16/16 |
 | `act.py <snap> gate` / `Poker` | order pokes; `gate` prints the injection gate's arms |
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
-| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout] [--move] [--evade] [--replay LOG] [--snap-at N,...] [--objs EVERY]` | the decision loop; `--objs` samples the object array to `objs.bin` |
+| `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout\|hybrid] [--lcad N] [--model M] [--move] [--evade] [--replay LOG] [--snap-at N,...] [--objs EVERY]` | the decision loop; `--objs` samples the object array to `objs.bin` |
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
 | `gate_posture.sh` | field-fight posture: kills against routs from the land-2 300M snapshot, one variable |
 | `seeds.sh <out> <snap> <side> "<offsets>" "<arms>" [par] [budget]` | one land played by several policies from starts a few million unpoked steps apart, so an outcome is a rate |

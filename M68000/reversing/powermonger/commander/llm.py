@@ -366,7 +366,7 @@ class LLM:
             self.log = open(self.dir / 'llm.jsonl', 'a')
         self.last = None
 
-    def decide(self, obs, clock):
+    def decide(self, obs, clock, record=True):
         W = World(obs, self.side, self.mp, self.comps, self.ram() if self.ram else None)
         for k, g in W.groups.items():           # a group 'Fighting' at one cell with no losses for 300M (cmd13 llm o2)
             if not g['alive'] or 'lead_obj' not in g:
@@ -399,13 +399,22 @@ class LLM:
             if raw:
                 (self.dir / 'responses' / f'{ph}.cli.json').write_text(raw)
             self.log.write(json.dumps(rec, separators=(',', ':')) + '\n'); self.log.flush()
-        for a in acts:
-            if 'group' in a:
-                name = next(n for n, (t, _) in ORDERS.items() if t == a['type'])
-                self.history[a['group']] = dict(order=name, x=a['x'], y=a['y'], at_decision=self.n)
+        if record:
+            self.note(acts)
         self.n += 1
         self.last = rec
         return acts
+
+
+    def note(self, acts, at=None):
+        """Record issued orders as each group's your_last_order. decide(record=False) leaves this to a caller that
+        issues something else (loop.py --policy hybrid, where the rollout may pick another candidate)."""
+        for a in acts:
+            if 'group' in a and 'x' in a:
+                name = next((n for n, (t, _) in ORDERS.items() if t == a['type']), None)
+                if name:
+                    self.history[a['group']] = dict(order=name, x=a['x'], y=a['y'],
+                                                    at_decision=self.n if at is None else at)
 
 
 # ------------------------------------------------------------------ CLI

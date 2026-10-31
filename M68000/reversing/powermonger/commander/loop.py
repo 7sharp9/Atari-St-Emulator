@@ -1,7 +1,7 @@
 """loop.py: the commander's decision loop with replay logging (commander README plan step 3).
 
-    loop.py <work> [--snap S] [--budget N] [--every N] [--side K] [--policy scripted|none|llm] [--move] [--evade] [--no-take]
-            [--gap N] [--read m|snap] [--replay LOG] [--backend cli|replay:<llm logdir>] [--model sonnet]
+    loop.py <work> [--snap S] [--budget N] [--every N] [--side K] [--policy scripted|none|llm|rollout|hybrid] [--lcad N] [--move] [--evade] [--no-take]
+            [--gap N] [--read m|snap] [--replay LOG] [--backend cli|replay:<llm logdir>|stub0] [--model sonnet]
             [--snap-at N,...] [--objs EVERY]
 
 Policy llm (llm.py) logs every prompt and reply under <work>/llm/.
@@ -419,6 +419,39 @@ class RolloutPolicy(Scripted):
         return ded[:self.K]
 
 
+class HybridPolicy(RolloutPolicy):
+    """The rollout policy with one more candidate: every LCAD steps the LLM (llm.py, its prompt and observation) is
+    asked for orders, and its valid group orders join the rollout's candidates as 'llm' (after Scripted's, not counted
+    in K, so no rollout candidate is pushed out). When the rollout would not fork at that decision, the LLM's orders
+    fork against 'none' alone. A decision where the LLM proposes nothing, or where its candidate does not score best,
+    issues what RolloutPolicy issues, so the arm differs from plain rollout only through decisions the LLM won; an empty
+    backend (--backend stub0) replays plain rollout. The LLM's your_last_order records what was issued, from any source."""
+
+    def __init__(self, side, mp, K, llmpol, lcad):
+        super().__init__(side, mp, K)
+        self.llm, self.lcad, self.last = llmpol, lcad, None
+
+    def candidates(self, obs, pol, clock=None):
+        cands = super().candidates(obs, pol, clock)
+        self.last = None
+        if clock is None or clock % self.lcad or any('group' not in a for a in pol):
+            return cands                 # off the LLM's cadence, or Scripted retires
+        la = [a for a in self.llm.decide(obs, clock, record=False) if 'group' in a]
+        self.last = self.llm.last
+        if not la:
+            return cands
+        fix = [a for a in pol if a.get('fix')]
+        if not cands:                    # the rollout would issue pol as it is: fork it against the LLM
+            cands = [('scripted', pol) if pol else ('none', [])]
+        out = cands[:1] + [('llm', fix + la)] + cands[1:]
+        seen, ded = set(), []
+        for n, a in out:
+            key = json.dumps(a, sort_keys=True)
+            if key not in seen:
+                seen.add(key); ded.append((n, a))
+        return ded
+
+
 # ------------------------------------------------------------------ the loop
 def main(argv):
     a = list(argv)
@@ -435,6 +468,7 @@ def main(argv):
     rK = int(opt('--K', '5'))                       # rollout: candidates per decision (incl. scripted and none)
     rN = int(float(opt('--N', '40e6')))             # rollout: horizon in steps
     rP = int(opt('--par', '5'))                     # rollout: processes at once (the loop's own emulator idles meanwhile)
+    lcad = int(float(opt('--lcad', '20e6')))         # hybrid: steps between LLM proposals (a multiple of --every)
     force = opt('--force', None)                    # proof: always take the candidate with this name if present
     snap_at = [int(float(x)) for x in opt('--snap-at', '').split(',') if x]   # proof: save <work>/at_<step>.snap
     objs = int(float(opt('--objs', '0')))           # proof: object-array samples to <work>/objs.bin
@@ -470,6 +504,18 @@ def main(argv):
         from astar import Map
         mp = Map(load(snap))   # terrain from the start snapshot (inferred static during a land)
         cmdr = Scripted(side, mp, move, evade)
+    elif policy == 'hybrid':
+        assert not move and lcad % every == 0, '--policy hybrid: no --move, --lcad a multiple of --every'
+        sys.path.insert(1, str(HERE))
+        from astar import Map
+        from rollout import rollout
+        import llm
+        mp = Map(load(snap))
+        be = (llm.Stub(lambda s, u: '{"orders":[],"retire":false,"why":"stub"}') if backend == 'stub0' else
+              llm.ClaudeCLI(model) if backend == 'cli' else llm.Replay(ROOT / backend.split(':', 1)[1]))
+        holder = {}
+        cmdr = HybridPolicy(side, mp, rK, llm.LLM(side, mp, be, work / 'llm', every=lcad,
+                                                  ram_reader=lambda: holder['emu'].ram), lcad)
     elif policy == 'llm':
         from astar import Map
         import llm
@@ -484,10 +530,11 @@ def main(argv):
     ofile = open(work / 'objs.bin', 'wb') if objs else None
     W = lambda r: (log.write(json.dumps(r, separators=(',', ':')) + '\n'), log.flush())
     W(dict(kind='start', snap=str(snap.relative_to(ROOT)), budget=budget, every=every, gap=gap, side=side,
-           take=take, policy=policy, **(dict(move=True) if move else {}), **(dict(evade=True) if evade else {}), **(dict(backend=backend, model=model) if policy == 'llm' else {}),
-           **(dict(K=rK, N=rN, par=rP, force=force) if policy == 'rollout' else {})))
+           take=take, policy=policy, **(dict(move=True) if move else {}), **(dict(evade=True) if evade else {}), **(dict(backend=backend, model=model) if policy in ('llm', 'hybrid') else {}),
+           **(dict(K=rK, N=rN, par=rP, force=force) if policy in ('rollout', 'hybrid') else {}),
+           **(dict(lcad=lcad) if policy == 'hybrid' else {})))
     emu = Emu(snap, work / 'emu.err')
-    if policy == 'llm':
+    if policy in ('llm', 'hybrid'):
         holder['emu'] = emu
     tmp = work / 'read.snap'
     clock, reason, t0, tread, nread = 0, 'budget', time.time(), 0.0, 0
@@ -516,7 +563,7 @@ def main(argv):
                     acts = list(cmdr.decide(obs, clock, R) if isinstance(cmdr, Scripted) else cmdr.decide(obs, clock))
                     if getattr(cmdr, 'events', None):
                         rec['moves'] = cmdr.events
-                    if getattr(cmdr, 'last', None):
+                    if policy != 'hybrid' and getattr(cmdr, 'last', None):   # hybrid's is set in candidates()
                         L = cmdr.last
                         rec['llm'] = dict(prompt=L['prompt_hash'], response=L['response_hash'], parse=L['parse'],
                                           n_orders=L['n_orders'], valid=L['valid'], invalid=len(L['invalid']),
@@ -527,7 +574,12 @@ def main(argv):
                         pre = [dict(side=side, take=True)]
                     if take and clock == 0:
                         pre = sched.pop(0, [])
-                    cands = cmdr.candidates(obs, acts, clock) if policy == 'rollout' else []
+                    cands = cmdr.candidates(obs, acts, clock) if policy in ('rollout', 'hybrid') else []
+                    if policy == 'hybrid' and cmdr.last:
+                        L = cmdr.last
+                        rec['llm'] = dict(prompt=L['prompt_hash'], response=L['response_hash'], parse=L['parse'],
+                                          n_orders=L['n_orders'], valid=L['valid'], invalid=len(L['invalid']),
+                                          latency_s=L.get('latency_s'))
                     if cands:
                         dsnap = work / 'dec' / f'{clock}.snap'      # the decision point, before this decision's pokes
                         dsnap.parent.mkdir(exist_ok=True)
@@ -545,6 +597,8 @@ def main(argv):
                                                                      v['force']] for s, v in r['sides'].items()},
                                                           actions=r['actions'][len(pre):]) for r in res])
                         trollout += time.time() - t; nroll += 1
+                    if policy == 'hybrid':
+                        cmdr.llm.note(acts, cmdr.llm.n - 1)
                     acts = pre + acts
                     for i, ac in enumerate(acts):
                         sched.setdefault(clock + i * gap, []).append(ac)
