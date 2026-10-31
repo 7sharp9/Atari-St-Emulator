@@ -189,7 +189,7 @@
 01008e	hud_armour
 0100f6	hud_weapon
 010160	hud_vitality_bar
-0101b0	boss_hp_bar_draw_INFERRED
+0101b0	boss_hp_bar_draw
 0101fc	strcpy
 010222	utoa_word_right_to_left
 01025c	level_clear_bonus_screen

@@ -200,7 +200,19 @@ machine; "phases" are only the state cycle.
   (`$ca48`); y follows the hero but never above `scrolly+$41`.
 - Files 4, 6, type 19 (BTB demon): stands (floor probe, `$dcd6`), walks to ~48 px from the hero then repeats
   state 3 every ~7 frames, one aimed P type 0 per cycle (up to 7 shots alive); P type 1 = the shot exploding.
-Not exercised: killing a boss, the level-clear sequence, the boss HP bar (`$101b0`, called with `hp>>4`).
+Killing a boss (level 1 only; `py/ai/boss_fight.py 0`, joystick input only, no pokes, two runs with identical
+logs and identical `kill.snap` / `next_level.snap`): from `boss0_fight.snap` the hero walks to 20..52 px from the
+boss and alternates fire and release every 60,000 steps (one game frame). Fire both swings and throws knives;
+the boss record lost all 16 hp to 17 knife hits (`$e6c2`, section 7: the 17th takes the byte below 0, `$e6cc..$e6de`
+clear it and set state 4); the one melee hit through `$e930` (`$e9b2`) landed on an escort. The dying animation ran about
+two frames, then `$e4ac` cleared the type byte, `$c642` passed (`$c656`) on the same frame with the escort still
+alive at hp 2, `$1025c` paid the 300 bonus 22 frames later behind the "Please insert Disk B" prompt, and SPACE
+loaded level index 1 (`img/ai/boss1_real_kill.png`). The hero ended with armour 0, vitality 1. The boss HP bar
+is `$101b0(hp>>4)` (caller `$e7c6..$e7d2`): it calls the HUD draw `$f2a4` once per segment, the column argument
+running `$a, $c, ...` (other arguments `$14`, `$28`, 0), so the level-1 boss (hp 16) shows one segment until
+its first hit and none after; on screen the segment vanished within two frames of hp falling to 15. Bosses 2-8 are unkilled: in `boss2_fight.snap` and
+`boss3_fight.snap` the boss is hundreds of pixels away vertically (y `$989` vs hero `$e0`, `$399` vs `$150`), out
+of reach of a policy that steers only in x (600 frames each, no hp write).
 
 ## 10. The attract-demo player is a recorded joystick stream (live check)
 

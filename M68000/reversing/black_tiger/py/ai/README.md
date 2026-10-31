@@ -20,5 +20,6 @@ All gates start from `play_start.snap` and need `bt_auto.st`; `drive_boss.py` al
 | `census.py` | per-level actor / object census from the level files (`spawn_census.txt`) | 8 levels | seconds |
 | `type_table.py` | actor type table (`type_table.txt`) and `img/ai/actor_types.png` | 19 rows + PNG | seconds |
 | `drive_boss.py [250000]` | boss snapshots `boss0..7.snap` (labelled pokes: hero x:y and camera onto the exit cell) | 8 lines, `$1eeb8=1`, hp 16*(L+1) | ~1 min |
+| `boss_fight.py [L=0] [chunks] [hold=60000]` | a boss fought with joystick input only from `boss<L>_fight.snap`: hp writers by PC (`$e9b2` melee, `$e6c2` knife), slot cleared at `$e4ac`, `$c656` / `$1025c`, then SPACE to the next level; uses `tools/stclient.py` (`server/.../stserver.dll`) | L=0: `$00e6c2 hp: 19`, `$00e9b2 hp: 1`, kill chunk 160, bonus chunk 182, level index 0 -> 1 | ~1 min |
 | `boss_watch.py LEVEL` | per-frame boss state / position / shot-table samples (`boss/watch<N>.txt`) | one line per sample | ~15 s |
 | `lst.py LO HI` | print a range of the static listing `bt_c470.asm` | | |

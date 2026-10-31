@@ -24,7 +24,7 @@ The disk image and the cracked archive are not committed.
 | [system.md](system.md) | boot chain, the 556-byte trainer wrapper, role of every file, memory map, frame structure (main loop `$c574`, 5 VBL per frame), state machine, the 32 `trap #3` services of the resident part, input, boss/shop/ending drives, copy protection | `py/systems/gates.py all`: frame gaps 49/49, Timer A 5348=5348=5348, demo stream 65/65/65, container windows 52/60 |
 | [graphics.md](graphics.md) | drawing engine (software scroll, full tile redraw per frame), tilesets, maps, actor sprite banks, boss banks, picture banks, shop/intro/ending screens, palettes and fades | tiles 94.5-96.3% of 40,960 playfield pixels on 15 snapshots over all 8 levels; hero attack frames 100%; 10 pictures at 100%; bosses 71/132 instances exact; title 64000/64000 |
 | [mechanics.md](mechanics.md) | level file format and marker scanner `$cd58`, collision (per-tile class table), hero movement, damage/vitality/death, map-object kinds, urns/chests/drops, shop and old men, score and money tables, level exit, boss, level clear | scanner 8/8, vertical step 393/393 + 391/391 + 396/396, weapon 25/25, urn 160/160, shop 200/200, bonus 8/8, rng 300/300, chest 30/30, drops 18/18 |
-| [ai.md](ai.md) | object tables, spawner, activation window (the level is a horizontal ring), AI step `$dbde` for all 19 types, P/E/H shot tables, ambient hazards, bosses, the attract-demo player (a recorded joystick stream) | `$dbde` 2500/2500, spawner 9/9, window 160/160, ambient+boss fire 800/800, urn 96/96, events 600/600 |
+| [ai.md](ai.md) | object tables, spawner, activation window (the level is a horizontal ring), AI step `$dbde` for all 19 types, P/E/H shot tables, ambient hazards, bosses, the attract-demo player (a recorded joystick stream) | `$dbde` 2500/2500, spawner 9/9, window 160/160, ambient+boss fire 800/800, urn 96/96, events 600/600; level-1 boss killed by input alone, 2 runs identical |
 | [sound.md](sound.md) | the sound system: no sequencer, every sound is an 8-bit sample played through the PSG volume registers by Timer A; the BTSND container, volume table, request path, which event requests which id, rendering | PSG writes 23,813/23,813 (8 sounds) and 52,887/52,887 (natural attract run); WAV numeric checks |
 | [secrets.md](secrets.md) | cheats, hidden features, input census, dead code: level skip, pause, invisible dungeon doors, checkpoint, ending, trainer, immortal Spinning Skull, no extra life | `py/secrets/run_all.py`: 9 drives, each run twice, snapshots identical 9/9 |
 
@@ -93,7 +93,7 @@ every packet at least 30,000 steps. Later levels: the game's own level skip (hol
 ## Not exercised
 
 No level was played through naturally (levels 2-8, every boss and the shop were reached by the built-in
-level skip plus a labelled hero-position poke); no boss was killed by weapon hits (state poked); the
+level skip plus a labelled hero-position poke); only the level-1 boss was killed by hits (`py/ai/boss_fight.py`), bosses 2-8 not; the
 old men's dialogues were not driven on screen; the hostile-projectile handlers `$10e94 $10b84 $10894`
 are read, not gated; the real Timer A rate and the real-hardware moment the title sample's tail is
 overwritten are not observable in the emulator; boss names by level are inferred from the order in

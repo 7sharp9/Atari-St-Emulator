@@ -267,6 +267,9 @@ tick (live: `$2196,$2195,...` once per 12,000 steps). It is set to 9000 (3:00) a
 * **Live** (`drive_exit.py`, labelled pokes: hero to the exit cell (1864,304), both boss records to state 4 / animation `$30`, one key press): exit flag 1 and a boss of type 1 with hp 16 at (2032,304) (anchor C); kills pay
   100 each; money 200 -> 500 (the level-1 bonus 300) with the disk prompt on screen (`img/mechanics/level_clear_bonus_prompt.png`); after `kbd 39` / `kbd b9`: level index 1, map 128x64 (file `1`), hero at (160,944) = level 2 anchor A.
   The boss was killed by the state poke, not by weapon hits; the clear logic after the kill is the code's own.
+* **Real kill** (`py/ai/boss_fight.py 0`, input only): the level-1 boss died to 17 knife hits, the clear test passed
+  on the frame its slot emptied, with the second type-1 record still alive, so the clear needs only the first
+  record dead, not the whole group. Bonus, disk prompt and level 2 load as above (`ai.md` section 9).
 
 ## 14. Ambient hazards `$c972`
 
