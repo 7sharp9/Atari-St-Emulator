@@ -67,7 +67,7 @@ labelled inferred or read (from code, not run). `/handoff` re-checks this list a
 - **A boss ends the level.** One 60-hit-point boss per world in a dead-end room; a flag, a 125-frame count, a fade and reload lead to world select
   with the world crossed out. The Amazon boss is vulnerable only in an open-mouth phase and only to a jumping hero; other worlds add a
   hit-ignoring flag (Klondike) or a shielded phase (Bermuda). The Amazon boss answers with an aimed 1-damage shot and a 7-damage lob that flies toward the
-  hero's side, so a 16-point hero that dodges only the lob beat it in one start timing of twelve. (R "Boss", "Unpoked, the whole Amazon", "How a level ends"; W "Bosses")
+  hero's side, so a 16-point hero that dodges only the lob beat it in one start timing of twelve, and one that also jumps the aimed shot in about half. (R "Boss", "Unpoked, the whole Amazon", "How a level ends"; W "Bosses")
 - **Progress is one run.** Death goes Game Over, title, and all progress and score are lost; Bermuda unlocks when the other four are won; the fifth
   world's win goes to the ending and high-score entry. (R "How a level ends")
 - **One hidden shop per level**, entered by finding the mole in a pit and pressing down on it; coins (dropped by monkeys, 25 each) buy heals (proven for the worm can),
@@ -1469,8 +1469,18 @@ process to the same snapshot, and the live route was run twice from scratch with
     15.65M steps), the other eleven die with the boss at 30, 3, 27, 18, 48, 18, 12, 42, 30, 60 and 30 hit points. From health 9 (no shop) the same policy
     never killed in 18 runs (best: 9 hit points left; without the retreat, 36 to 39 in all six delays, dead within 3.7M steps). The 140 costs 7; the
     aimed 139 and the boss's contact cost 1 each, roughly one per 1.5M steps (read from the damage logs) that this policy does not dodge. The fight is therefore feasible unpoked and
-    marginal, as the earlier "2 of 12" with a poked weapon and full health suggested; a controller that also dodges the 139 (a flat shot aimed at the hero's
-    position at spawn, 3 px per frame) and fights the boss's left position from the right side would raise the rate.
+    marginal, as the earlier "2 of 12" with a poked weapon and full health suggested.
+  - **Dodging the 139 and a longer retreat make it about an even chance** (`py/boss/boss_dodge139.py`, a subclass of the same fight, from the same snapshot; 24
+    start delays, 0 to 1,150,000 in steps of 50,000, each run capped at 12,000 loop iterations). Two changes: the retreat reach is 100 px instead of 80 (with
+    80 the lob still hit for 7 at hero x 152-154 during the retreat, where the floor left of the platform step is 8 px lower and the shot falls further), and a
+    grounded hero jumps straight up when a 139, extrapolated from its last two positions, would overlap the hero's box in 4 to 10 frames. Result: 13 kills in
+    24 (health 1 to 6 left), against 3 in 24 for the old policy at the same cap (the subclass with both changes off reproduces `boss_unpoked.py` run for
+    run). Each change alone does little (reach 100: 2 of 12; dodge at reach 80: 0 of 12); reach 110 gives 6 of 24 and a 3-10 window 11 of 24. The 4-10
+    window scored 9 of 12 on the first delay set and 4 of 12 on the second, so the rate is about one half, not three quarters. Of the 266 health drops read in
+    those 24 runs, 254 are 1-point hits (143 in the air, 111 grounded) and 12 are lob hits (4 or 7 points). One kill (delay 700,000, health 6) is recorded as 5141 commands and replays byte-identically. Fighting the boss's left position
+    (x 64) from its right side does not work: a hero walking left stops at x 118 against a step, from where a left-facing swipe misses the boss box by 2 px,
+    and the up+left hop's latched push lands it at x 84, inside the boss's contact box, where it takes repeated contact hits (4 kills of 12 with it, 9 without,
+    on the same delays).
 - **Controls learned.** The jump starts on the game's next joystick poll, 24-30k steps after up is pressed, so the driver holds up+direction until
   the state reads jump and then the direction only (apex is always 40 px); a full jump and fall takes about 1M steps; stairs and bead platforms
   are one-way (a hop from below lands on top); holding up+right on stairs re-jumps at every landing, so use single hops; read an obstacle's height
@@ -1526,7 +1536,7 @@ process to the same snapshot, and the live route was run twice from scratch with
   records in the Amazon at blocks 27 and 134); there is no ammo (`$bb73` is a separate item counter, `$13044` adds 25, `$fd4c`
   subtracts 5). Weapon and health pokes were used in most runs; with health unpoked and the weapon poked to 3, 2 of 12
   phase-varied runs killed the boss (finishing at health 1), with weapon 2 none of 6. With no poke at all and a retreat from the 140 the fight was won
-  in 1 of 12 timings ("Unpoked, the whole Amazon", below), so it is feasible and marginal.
+  in 1 of 12 timings, and in 13 of 24 with a jump over the aimed 139 as well ("Unpoked, the whole Amazon", below).
   The boss attacks with contact damage 1 while open (`104(A0)`; measured 18 to 17 with no shot alive) and two projectiles from its script:
   byte 3 spawns type 139 (`$15f5a`, handler `$14790`, 12x12, damage 1, aimed at the hero's position at spawn, about (-3, +1) per
   frame) and byte 4 type 140 (`$15f76`, handler `$16184`, 16x12, damage 7, a lob toward the hero's side, path in "Unpoked, the whole Amazon"). An idle hero at x=32 dies
@@ -1890,7 +1900,8 @@ Current open items, in the order `sessions/impossamole.md` ranks them (everythin
 - **Natural play, unpoked.** From `pass103/room188.snap` (weapon 3, 25 coins) the Amazon is played with no health, weapon or shot poke: hop 3, hop 4 with
   the shop's worm can, and the boss (previous section, one recorded file of 12,032 commands). Still poked or staged: hops 1 and 2 (`118..137`, `160..173`) and
   the start room (a labelled poke into `118..137`, health refilled per segment), plus the two type-4 upgrades (blocks 27 and 134) that `room188.snap` already
-  carries; the boss kill is 1 of 12 timings and needs a controller that also dodges the aimed 139. The other four worlds have cold-boot, warp and boss-kill
+  carries. From a cold boot (`py/route/coldboot_start_room.repl`, `route_hop1_2.py`) the start room's first 600 px cost 6 hp with weapon 1, whatever the start
+  delay, so the whole room needs the hop-3 search treatment and its heal (type 5, block 46) on the way. The boss kill is about one timing in two. The other four worlds have cold-boot, warp and boss-kill
   proofs only, no played route.
 - **Damage sources:** the water tiles and room `299..318`'s drain are pinned (previous section); the type-2 enemies met in segments 2-5 are identified by handler
   but their approach paths are not modelled.

@@ -23,6 +23,7 @@ from boss_fight import Fight, FRAME, STEP_X, ROOM_X, slot, w, sw, OUT
 from repl import Repl
 
 SHOT140 = 0x16184
+REACH = 80     # px from the 140's spawn point (boss x + 7) inside which a grounded hero retreats
 
 
 class DodgeFight(Fight):
@@ -41,7 +42,7 @@ class DodgeFight(Fight):
                 out.append((n, sw(b, 2), sw(b, 4)))
         if hx is not None:
             bx = sw(slot(self.r, 7), 2)
-            out = [o for o in out if abs(hx - (bx + 7)) < 80]
+            out = [o for o in out if abs(hx - (bx + 7)) < REACH]
         return out
 
     def key(self, bits, n):
@@ -84,9 +85,9 @@ class DodgeFight(Fight):
             if not self.shots140(st['hx']):
                 break
             if st['st'] in (0, 1):
-                if goleft and st['hx'] > sx0 - 80:
+                if goleft and st['hx'] > sx0 - REACH:
                     self.key(0x04, 6000)
-                elif not goleft and st['hx'] < sx0 + 80:
+                elif not goleft and st['hx'] < sx0 + REACH:
                     self.key(0x08, 6000)
                 else:
                     self.key(0, 6000)
