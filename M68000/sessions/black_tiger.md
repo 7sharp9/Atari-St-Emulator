@@ -1,85 +1,77 @@
 # Black Tiger: handoff
 
-Updated 2026-10-04 by the session that ended at commit `3de9413`.
+Updated 2026-10-31 by the session that ended at commit `8718607`.
 
 ## Resume point
 
-- Last commit of this workstream: `3de9413` black_tiger: first pass (six parallel agents). Lessons for
-  `CLAUDE.md` and the skill are in `a2cbcd4`.
-- Working data: `M68000/scratchpad/black_tiger/` (about 540 MB, gitignored; indexed in
-  `scratchpad/ANCHORS.md`). Rebuild recipe: `reversing/black_tiger/README.md` "How it was run"
-  (unzip, `extract_disk.py`, `add_file_to_disk.py` with the 8.3 name `BLTIGER.PRG`, cold boot 20M, then
-  `drive.txt`). Every gate script reads/writes under `$BT_WORK/agents/<area>/` (default that directory).
-- Start from: `scratchpad/black_tiger/play_start.snap` (level 1, 5 lives, controllable; byte-identical to
-  the scripted `drive.txt` run). Levels 2-8: `agents/systems/lvl1..7.snap`. Bosses/shop/ending:
-  `agents/systems/boss/`. Attract demo: `tl/t01..t30.snap`.
-- Uncommitted work left behind: none of this workstream. `M68000/sessions/README.md` carries another
-  session's unrelated line-rewrap, left in the working tree; only the Black Tiger row is staged/committed.
+- Last commit of this workstream: `8718607` black_tiger: level-1 boss killed by joystick input alone.
+- Working data: `M68000/scratchpad/black_tiger/` (about 540 MB, gitignored; indexed in `scratchpad/ANCHORS.md`).
+  Rebuild recipe: `reversing/black_tiger/README.md` "How it was run". Gate scripts read/write under
+  `$BT_WORK/agents/<area>/` (default that directory). Boss-fight output: `agents/bossfight/L<L>/` (fight.log,
+  per-frame PNGs, `kill.snap`, `prompt.snap`, `next_level.snap`; L0 complete, L2/L3 failed runs).
+- Start from: `scratchpad/black_tiger/play_start.snap` (level 1, controllable; every gate reads it). Levels 2-8:
+  `agents/systems/lvl1..7.snap`. Bosses/shop/ending: `agents/systems/boss/` (its README has the boss table).
+  Level 2 reached through a real boss kill: `agents/bossfight/L0/next_level.snap`.
+- Uncommitted work left behind: none of this workstream. `scratchpad/ANCHORS.md` carries another session's
+  uncommitted edit, so the `agents/bossfight/` snapshots are not indexed there yet.
 
 ## Proven so far
 
 Detail and scripts in `reversing/black_tiger/*.md` (README has the table of proofs and counts).
 
-- Boot chain, file roles, frame driver (main loop `$c574`, 5 VBL per frame, 49/49), 32 `trap #3`
-  services of the resident BL_TIGER library, Timer A = sample player, demo = recorded stream
+- Boot chain, frame driver (5 VBL per frame), 32 `trap #3` services, Timer A sample player, demo stream
   (`py/systems/gates.py all`, 8 PASS).
-- Graphics: software scroll with full tile redraw; tiles 94.5-96.3% of 40,960 pixels on 15 snapshots over
-  8 levels; hero attack frames 100%; 10 pictures 100%; bosses 71/132 instances exact; title 64000/64000
-  (`py/graphics/*_check.py`).
-- Mechanics: level files and marker scanner 8/8; class table collision; hero vertical step 393/393,
-  391/391, 396/396; weapon 25/25; urn 160/160; shop 200/200; bonus 8/8; rng 300/300; chest 30/30; drops
-  18/18; vitality 0 is not a death condition (`py/mechanics`).
-- AI: `$dbde` 2500/2500 over all 19 types; spawner 9/9; activation window 160/160; ambient + boss fire
-  800/800; urn 96/96; event attacks 600/600 (`py/ai`).
-- Sound: 8-bit samples through PSG volume registers, 23,813/23,813 and 52,887/52,887 ticks
-  (`py/sound/verify_psg.py`, `verify_natural.py`).
-- Secrets: built-in level skip, invisible dungeon doors `$1b/$1c`, checkpoint `$1f`, pause, ending by
-  level-8 clear, trainer = 1000 lives + 14336 zenny; no cheat word, debug key or extra life; 9 drives
-  twice each md5-identical (`py/secrets/run_all.py`).
+- Graphics: tiles 94.5-96.3%, hero attack frames 100%, pictures 100%, bosses 71/132, title 64000/64000.
+- Mechanics: scanner 8/8, vertical step 393/391/396, weapon 25/25, urn 160/160, shop 200/200, bonus 8/8, rng
+  300/300, chest 30/30, drops 18/18 (`py/mechanics`).
+- AI: `$dbde` 2500/2500, spawner 9/9, window 160/160, ambient + boss fire 800/800, urn 96/96, events 600/600.
+- Level-1 boss killed by joystick input alone (`py/ai/boss_fight.py 0`, two runs, logs and snapshots identical):
+  17 knife hits (`$e6c2`), clear on the frame the first record empties with an escort alive, bonus, disk
+  prompt, level 2 loads; HP bar `$101b0(hp>>4)` (`ai.md` section 9, `mechanics.md` section 13).
+- Sound: 23,813/23,813 and 52,887/52,887 ticks. Secrets: 9 drives twice md5-identical (`py/secrets/run_all.py`).
+- Keyboard ACIA retention (old open item 3) is fixed in the emulator and `drive.txt` needs no pokes (`7e5b688`).
+
+## Running
+
+Nothing running.
 
 ## Open, in priority order
 
-1. Fight a boss for real: no hero has killed a boss by weapon hits (the state was poked to 4); boss
-   death/dissolve frames, the boss HP bar `$101b0`, the level-clear flow from a real kill are unexercised.
-   Prove with a scripted fight from `boss<L>_fight.snap` (hero position poke is labelled), checking a
-   signal that only changes when the weapon-hit path fires (`$e930`).
-2. Walk levels 2-8 naturally (all were reached by the level skip plus a hero-position poke): route scripts
-   like Cadaver's `route_*.py` would also give the real item/enemy pacing and let `$1d`/`$1e` traps,
-   old-men dialogues and the second advice text be seen on screen.
-3. Emulator: make the keyboard ACIA data register retain the last received byte (`MMU.fs` ~913, ~295)
-   behind the full regression net, then delete the two pokes from `drive.txt`. Falsifier: `verify`,
-   30M snapshot compare and a game snapshot compare must not change for games that read through the
-   ISR; Black Tiger's cracktro must pass on a real SPACE press with no poke.
-4. Gate the remaining AI/graphics code: hostile-projectile handlers `$10e94 $10b84 $10894`, the
-   animation engine inside `$e19e` and the animation-script data (frame banks via `$1eea2`); actor types
-   15 and 12 do not match any sprite within +-10 px; BTOBJ pictures named by look; width codes 3,5,6,7
-   exist in no shipped bank.
-5. Names still inferred: boss names by level (order of `BTIGER.DOC`), actor types 4/11/16, flail/
-   lantern names, `$17712`. Hi-score and game-over screens use the systems agent's snapshots, not
-   graphics-agent captures.
-6. If a port or pixel-for-pixel renderer is wanted (the PowerMonger route, skill section 4b): tiles,
-   sprites, HUD and palettes are decoded; the missing part is a full-frame renderer scored per category
-   against consecutive snapshots paired as state i with screen i+1.
+1. Kill bosses 2-8: `boss_fight.py` steers only in x. In `boss2_fight.snap` and `boss3_fight.snap` the boss is far
+   off vertically (y `$989` vs hero `$e0`; `$399` vs `$150`, dormant), so first read where each boss actually
+   sits (the marker positions in `ai.md` section 9 differ from the fight snapshots), then add y steering
+   (ladders/jumps) or start from a snapshot taken after the boss comes on screen. Proven when a run reaches
+   `$1025c` with no pokes, twice identical. A melee kill (`$e9b2` writes on the boss) is still unseen: try
+   standing inside 64 px with knives on cooldown.
+2. Walk levels 2-8 naturally (all were reached by the level skip plus a hero-position poke); start level 2 from
+   `agents/bossfight/L0/next_level.snap`. Route scripts like Cadaver's `route_*.py` would show the `$1d`/`$1e`
+   traps, old-men dialogues and the second advice text on screen.
+3. Gate the remaining AI/graphics code: hostile-projectile handlers `$10e94 $10b84 $10894`, the animation engine
+   inside `$e19e`, animation scripts (frame banks via `$1eea2`); actor types 15 and 12 match no sprite within
+   +-10 px; width codes 3,5,6,7 in no shipped bank.
+4. Names still inferred: boss names by level (order of `BTIGER.DOC`), actor types 4/11/16, flail/lantern names,
+   `$17712`.
+5. Port or pixel renderer only if wanted (skill section 4b): a full-frame renderer scored per category.
 
 ## Known traps
 
-- `\AUTO\` name must be 8.3 (`AUTO_BL_TIGER.PRG` is silently not found); `add_file_to_disk.py` accepts it.
-- Keyboard: the game proper reads keys through TOS services; only `$a562` and the trainer poll
-  `$c658/$c662` read the ACIA directly (stalled by the emulator divergence, bypassed by pokes).
-  Joystick 1 is `kbd ff <state>`, hold >= 30,000 steps; `kbd fe` (joystick 0) is read nowhere.
-- `play_start.snap` is mid tile-blit (PC `$b2fa`): a callcap from it begins mid-redraw (harmless for the
-  gates). "Please insert Disk A/B" prompts block on any key (`kbd 39` then `kbd b9`).
-- Reaching a boss with the hero-position poke also needs the camera poked, else the boss is pushed to
-  the old camera position by `y >= scrolly+$21` at `$e7b4..$e7c0` (`py/ai/drive_boss.py`).
-- `$cf20` is the map-object kind table (kinds `$11..$16` share `$d194`), not an actor table; `BTCLIPS`
-  and `BTOBJ` are picture banks, not collision data (collision is the tile class byte at tileset `+$40`).
-- The sound renderer reads Hatari's measured YM2149 table at render time from `$HATARI_YM_TABLE` or
-  `$HATARI_SRC` (not copied into the repo); gates do not depend on it.
+- `\AUTO\` name must be 8.3 (`AUTO_BL_TIGER.PRG` is silently not found).
+- One game frame is 5 VBL = 60,000 steps. A 30,000-step `kbd ff` packet followed by a release can fall between
+  two joystick reads: the hero moved one step per about 2.4 such packets. `boss_fight.py` holds 60,000.
+- Fire at weapon level 0 swings and throws knives; knives (1 hp each, `$e6c2`) do almost all the damage, so a
+  signal on `$e930`/`$e9b2` alone undercounts hits: watch the hp byte with the writer PC.
+- The level is a ring of width `$1effe` (2048 px on level 1): bosses wrap in x, so take dx modulo the width.
+- `stserver` results: `watch_events` returns a list (one entry per watch), `hits` returns `{"hits": [...]}`.
+- Reaching a boss with the hero-position poke also needs the camera poked (`py/ai/drive_boss.py`).
+- `$cf20` is the map-object kind table, not an actor table; `BTCLIPS`/`BTOBJ` are picture banks.
 - Always `export ATARI_NOTRACE=1`; `w <addr> <8 hex>` writes a longword.
+
+## Waiting on Dave
+
+Nothing.
 
 ## Next session
 
-Pick open item 1 or 3. For item 1: `/resume black_tiger`, start `agents/systems/boss/boss0_fight.snap`
-(level 1 boss, type 1, hp 16), script weapon hits with `kbd ff 80` bursts held >= 30,000 steps, watch
-`$e930` and the boss record at `$1f020`. For item 3: coordinate with any live session before touching
-`MMU.fs` or `bin/` (`sessions/README.md` "Shared resources").
+`/resume black_tiger`, then open item 1: load `boss2_fight.snap` in `stserver`, step until the boss record at
+`$1f020` comes within the screen (or read its y path), add y steering to `boss_fight.py` and re-run L2..L7.
+Index `agents/bossfight/` in `scratchpad/ANCHORS.md` once the other session's edit there is committed.
