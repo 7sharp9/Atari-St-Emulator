@@ -1,16 +1,18 @@
 """brain_probs.py: exact next-state probabilities of the shared brain $2438a, decoded from the ROM tables and the leaf code (no sampling).
 
 The brain (`$2438a`, 40 call sites) picks a table from the player's lane (case A: my y in (py-$20, py+$60]; B: more than $60 below; C: above), then
-[type][dx >> 4] (16 buckets, dx = |px - x|, dx >= $100 forces state 7), and in case A also [player action +46 & 15][player sub-action +47]. The entry is a *leaf*
+[type][dx >> 4] (16 buckets, dx = |px - x|, dx >= $100 forces state 7), and in case A also [player pose & 15][player variant] (the brain's +46 and +47 are
+copies of the player's pose +24 and variant +25 made by `$22bd0`; a standing player is pose 0, variant 0). The entry is a *leaf*
 routine. A leaf is one of
   - a setter: `move.b #N,3(A6)` (plus a velocity preamble `move.w #v,D7 / jsr $2280c|$22844` for the jump setters, `$256fc`, `$25740`): state N;
   - a random chooser: `btst #7,1(A6) / beq end / jsr $ea44 / andi.w #m,D0 / lsl.w #2,D0 / lea T(PC),A0 / movea.l 0(A0,D0.w),A1 / jsr (A1)`:
     nothing happens until the animation has finished (+1 bit 7), then one of the m+1 setters in T is taken with equal probability;
   - a forwarder: `jsr X(PC) / nop / rts`.
-The result for every (type, case, bucket, player action, player sub-action) is a distribution over the next state, `wait` meaning "no change this frame".
-Usage: brain_probs.py [type ...]              text table (case A summed over the player's actions and sub-actions, plus the idle-player row)
+The result for every (type, case, bucket, player pose, player variant) is a distribution over the next state, `wait` meaning "no change this frame".
+Usage: brain_probs.py [type ...]              text table (case A for a standing player: pose 0, variant 0)
        brain_probs.py --json                  every type as JSON on stdout (used by infographic/build_data.py)
-Conditional leaves are shown as `N*`: state N when the player is not held, not blinking and on the ground (y + $10 >= mine, action < $a), otherwise state 6.
+Conditional leaves are shown as `N*`: state N when the player is not held and on the ground (y + $10 >= mine, pose < $a), otherwise the leaf's fallback:
+state 6 for `$24de6`, the jump attack f (with its arc set up) for `$26d7a`, the grab leaf of types 16 and 36 (enemies1.md 4.3).
 Needs scratchpad/crudebuster/all_lin.txt (linear listing, see ../../../sessions/crudebuster.md "Known traps") and the decrypted image."""
 import collections, json, os, re, struct, sys
 ROOT = os.environ.get("M68000_ROOT")
@@ -80,6 +82,8 @@ def _leaf(a, depth):
     if states and 6 in states and len(set(states)) == 2:
         other = [x for x in states if x != 6][0]
         return {"%x*" % other: 1.0}
+    if len(states) == 2 and states[0] != states[1]:  # `$26d7a`: the first setter on the conditions, the second (f) as the fallback
+        return {"%x*" % states[0]: 1.0}
     return {"unk": 1.0}
 
 def gated(a):
@@ -93,11 +97,12 @@ def dist(a):
     d = dict(leaf(a))
     return d, gated(a)
 
-BRAIN = {t: L(0x24508 + 4 * t) for t in range(80)}
+# 79 types: entry 79 of the case C table `$24780` is not a pointer (`$70007e00`, the next table's data), so the tables end at type 78
+BRAIN = {t: L(0x24508 + 4 * t) for t in range(79)}
 DEFAULT = 0x26550
 
 def bucket_tables(t):
-    """-> {case: {bucket: leaf or {action: {sub: leaf}}}}"""
+    """-> {case: {bucket: leaf or {pose: {variant: leaf}}}}"""
     out = {"A": {}, "B": {}, "C": {}}
     t1 = L(0x24508 + 4 * t)
     for b in range(16):
@@ -120,8 +125,8 @@ def case_dist(leaf_addr):
     d, g = dist(leaf_addr)
     return d, g
 
-def summarise(t, idle_action=8):
-    """probabilities per bucket for the player idle (action 8, sub 0): dict case -> bucket -> (dist, gated)"""
+def summarise(t, idle_action=0):
+    """probabilities per bucket for a standing player (pose 0, variant 0): dict case -> bucket -> (dist, gated)"""
     tabs = bucket_tables(t)
     res = {}
     for case in "ABC":
@@ -143,18 +148,18 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     if args[:1] == ["--json"]:
         out = {}
-        for t in range(80):
+        for t in BRAIN:
             if BRAIN[t] == DEFAULT: continue
             s = summarise(t)
             out[t] = {c: {b: {"gated": g, "p": {str(k): v for k, v in d.items()}} for b, (d, g) in s[c].items()} for c in s}
         json.dump(out, sys.stdout)
         sys.exit(0)
-    types = [int(a) for a in args] or [t for t in range(80) if BRAIN[t] != DEFAULT]
+    types = [int(a) for a in args] or [t for t in BRAIN if BRAIN[t] != DEFAULT]
     for t in types:
         print("type %d (table %06x)" % (t, BRAIN[t]))
         s = summarise(t)
         for case in "ABC":
-            print(" case %s, player idle:" % case)
+            print(" case %s, player standing:" % case)
             for b in range(16):
                 d, g = s[case][b]
                 print("  dx %02x-%02x %s %s" % (b * 16, b * 16 + 15, "[on anim end]" if g else "[at once]   ", fmt(d)))

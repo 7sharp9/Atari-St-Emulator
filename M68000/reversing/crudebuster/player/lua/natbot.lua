@@ -52,6 +52,7 @@ local tries, wasgrab, grabtarget = {}, false, nil -- grab attempts per pool B re
 local cleared, started, over = false, false, false
 local nstall, ladoff, hop, hopreal = nil, 0, -1, false
 local landf, wasbelt = 0, false
+local bossjk = -100 -- start frame of the current boss jump kick
 local anchor, stagnant = nil, 0
 local useban = os.getenv("CB_BAN") == "1" -- CB_BAN=1: skip records that took no damage through 360 frames of fighting (it also skips bosses that are only hurt at times: off by default)
 local track, ban = {}, {} -- per pool A record: last hp and the frame it last changed; records that took no damage for 450 frames of fighting are ignored for 1200 frames
@@ -213,7 +214,23 @@ local function policy(f)
       return mdesc, px, py, face, hold, #en
     end
   end
-  if stuckf > 700 then -- watchdog: wiggle and mash for a while
+  -- level 2 final boss (type 16, then type 36 at hp 16): it grabs only from its brain leaf $26d7a, at the end of an animation in state 6, with the player
+  -- within 64 px on its lane, on the ground and in pose (+24) 0-3, 5 or 6 (standing and jabbing are pose 0); enemies1.md 4.3. A grounded fighter is
+  -- therefore grabbable, and the throw is vertical: a player thrown beside the boss at a screen clamp lands within reach, is safe while rising (pose $13:
+  -- state 6 skips the brain for poses >= $d) and is grabbed on the first standing frame (the standing-jab bot: 9,000 frames of it). Repeated jump kicks toward the boss (b2 edge every 7 grounded frames, b1 at air
+  -- frame 10) keep the player airborne, which fails the grab's y test: lua/bosslab.lua policy jk clears the level 4,064 frames after boss1 with no grab,
+  -- 2,087 after boss2 and 2,618 after the clamp loop state loop1 (standing jab pulses: 5,585, 3,343, never).
+  local lboss = nil
+  if want == 2 then for _, e in ipairs(E) do if (e.type == 16 or e.type == 36) and e.state ~= 2 and e.state ~= 4 then lboss = e end end end
+  if lboss and not hold then
+    mdesc = "boss"; stuckf = 0
+    local dx = lboss.x - px
+    if m:read_u8(p + 57) & 0x80 == 0 and m:read_u8(p + 5) ~= 3 and f - bossjk > 6 then bossjk = f end
+    local k = f - bossjk
+    b2 = k < 2
+    b1 = k == 10 or k == 11
+    if k < 40 then r, l = dx >= 0, dx < 0 end
+  elseif stuckf > 700 then -- watchdog: wiggle and mash for a while
     local k = (f // 9) % 8
     r = k == 0 or k == 1 or k == 6; l = k == 3; u = k == 2; d = k == 4
     b1 = f % 6 < 2; b3 = k == 5 and f % 4 < 2
