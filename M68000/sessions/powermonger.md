@@ -111,7 +111,7 @@ Nothing running.
 
 ## Waiting on Dave
 
-- The blog session (archived before the reply could land) asked which figures Paint It Black should quote. The per-capture table is `port/walkthrough/walkthrough.md` "Draw order" (inline render 94.62% to 99.99%, pm78_settle the low one; terrain only 84.8 to 94.6%); `port/SPEC.md` quotes terrain away from sprites at 99.7-99.96% and whole frames at zooms 1-7 at 99.79-99.99%. A "99.7-99.99%" headline mixes those measures.
+- The blog session (archived before the reply could land) asked which figures Paint It Black should quote. The per-capture table is `port/walkthrough/walkthrough.md` §7 "Sprites go inside the walk" (inline render 94.62% to 99.99%, pm78_settle the low one; terrain only 84.8 to 94.6%); `port/SPEC.md` quotes terrain away from sprites at 99.7-99.96% and whole frames at zooms 1-7 at 99.79-99.99%. A "99.7-99.99%" headline mixes those measures.
 
 ## Next session
 
