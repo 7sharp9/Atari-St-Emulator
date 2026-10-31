@@ -1,13 +1,13 @@
 # Emulator and tooling: handoff
 
-Updated 2026-10-31 by the session that ended at commit `cac70ad` on branch `claude/emulator-keyinject-journal-7765eb`
+Updated 2026-10-31 by the session that ended at commit `4e10c03` on branch `claude/emulator-keyinject-journal-7765eb`
 (a worktree; not merged, not pushed).
 
 ## Resume point
 
 - Last work commits of this workstream, on `claude/emulator-keyinject-journal-7765eb` (base `367ece7`, master's tip
   when cut): `dabdd67` the checkpoint carries the unfired `ATARI_KEY_INPUT` groups; `cac70ad` record and replay
-  (journal, `replay_to`, `last_writer`, `first_divergence`). Dave merges; after the merge, build into `bin/` and
+  (journal, `replay_to`, `last_writer`, `first_divergence`); `4e10c03` the IKBD burst phantom key. Dave merges; after the merge, build into `bin/` and
   `server/bin/` and re-run the net against a pre-merge master build (`tools/regress_net.sh`).
 - Working data: none kept in the repo. The worktree's `M68000/scratchpad/` is an APFS clone (`cp -cR`) of the main
   checkout's, made so `gates.py run all` could run against the worktree's own `bin/`; it is disposable.
@@ -27,6 +27,9 @@ Updated 2026-10-31 by the session that ended at commit `cac70ad` on branch `clau
   `watch 53006 2` (16/20 without the backward search); `server/divergence_proof.py` 8/8 (the `r39` poke found at its
   step, `$521cd` the only differing byte; identical runs equal; 4 fail with an off-by-one search). Net against the
   Open 1 build identical; REPL input commands (`w`, `kbd`, `mouse`, `wprot`, `disk`) give identical results.
+- A `$FFFC02` read that empties the IKBD FIFO withdraws the pending ACIA interrupt (DEVELOPING.md "IKBD command
+  interpreter"): Cadaver's `kbd ff 08` from `scratchpad/cadaver/s96/r6/s3_flask.snap` moves the hero x 29 -> 41
+  again (29 -> 29 before; the split-byte control 29 -> 41 on both). Net identical, gates 48/48, proofs unchanged.
 - Gate manifests: Black Tiger 15, Midwinter 7, PowerMonger 20, Super Sprint 6 (48 in all).
 
 ## Running
@@ -35,24 +38,16 @@ Nothing running.
 
 ## Open, in priority order
 
-1. Phantom key after a multi-byte IKBD burst (regression from `5636dc5`, on master; reported by the Cadaver session,
-   mechanism read in `MMU.fs`'s `$FFFC02` read, not yet driven here). The read re-raises channel 6 while bytes remain
-   (for Super Sprint's one-byte-per-interrupt ISR `$104b6`); an ISR that loops on GPIP bit 4 (Cadaver `$1535a`) drains
-   the burst in one entry, the pending re-raise re-enters it with the FIFO empty, and the empty read now returns the
-   latched last byte (it returned 0 before v12), stored as a make. Evidence: `scratchpad/cadaver/s96/r6/s3_flask.snap`,
-   `kbd ff 08` + `s 300000` moves the hero x 29->41 on `0b92317` and 29->29 on current `bin/`. Fix candidate: drop the
-   re-raised request at interrupt acknowledge when the FIFO has emptied (level-triggered, as a 6850 IRQ is). Proven by
-   that Cadaver test moving the hero again, Super Sprint's gates still 6/6 (its burst ISR), and the full net.
-2. Recording on disk: checkpoints past a memory budget spill to `SaveState` files (`base.snap`, `journal.jsonl` with a
+1. Recording on disk: checkpoints past a memory budget spill to `SaveState` files (`base.snap`, `journal.jsonl` with a
    disk swap as path plus FNV hash, `ck_<step>.snap`), `record_load` reads it back, so a recording outlives the
    process and a 1G-step run fits. Proven by `replay_proof.py` passing on a saved-then-loaded recording, and a
    `first_divergence` between two recordings from different processes.
-3. Seed gate manifests for Cadaver, Populous, Lemmings, Impossamole from counts their docs record (check each work dir
+2. Seed gate manifests for Cadaver, Populous, Lemmings, Impossamole from counts their docs record (check each work dir
    exists on this machine first; an ERROR for a missing prerequisite is not a pass).
-4. Executed-PC coverage per game (16M-bit set merged across runs) to seed `rdis.py`/Ghidra roots past longword state
+3. Executed-PC coverage per game (16M-bit set merged across runs) to seed `rdis.py`/Ghidra roots past longword state
    tables; proven when it recovers Crudebuster's 67 callers `rdis.py` missed. A recording can now produce it by replay.
-5. Ghidra import of snapshot RAM + `.sym` + coverage behind pyghidra-mcp (not installed or checked).
-6. Model gaps from the MAME comparison (no HBL, coarse FDC, no IKBD power-up traffic) and the ACIA FIFO pop on read
+4. Ghidra import of snapshot RAM + `.sym` + coverage behind pyghidra-mcp (not installed or checked).
+5. Model gaps from the MAME comparison (no HBL, coarse FDC, no IKBD power-up traffic) and the ACIA FIFO pop on read
    (CLAUDE.md "Emulator behaviours"), each an emulator change behind the net.
 
 ## Known traps
@@ -73,8 +68,12 @@ Nothing running.
 
 ## Waiting on Dave
 
-- Merge `claude/emulator-keyinject-journal-7765eb` (two commits on `367ece7`); then rebuild `bin/` and `server/bin/`
-  in the main checkout, which the 13 game sessions share.
+- Merge `claude/emulator-keyinject-journal-7765eb` (three work commits and this handoff on `367ece7`); then rebuild
+  `bin/` and `server/bin/` in the main checkout, which the game sessions share.
+- After the merge, for the Cadaver workstream: master's `reversing/cadaver/mechanics.md:421`, both `send_joy`
+  docstrings (`py/secrets/overlay/action/drv.py`, `exit_level0/lib/drv.py`) and `exit_level0/README.md:57` describe the
+  burst lock-up as current behaviour; it was the emulator's (fixed in `4e10c03`). The two-enqueue `send_joy` stays
+  harmless; the text should say the lock-up was an emulator artefact.
 - Proposed CLAUDE.md line for "Emulator changes" (not made: other sessions were live): "A worktree runs `gates.py run
   all` against its own `bin/` after linking `TOS100UK.IMG`, `tests` and `checkpoint.txt` from the main `M68000/` and
   cloning the scratchpad's contents with `cp -cR` (APFS, no space); `--root` would run the main checkout's DLL."
@@ -82,6 +81,6 @@ Nothing running.
 
 ## Next session
 
-After the merge, rebuild `bin/` and `server/bin/` and re-run the net against pre-merge master. Then Open 1 (the IKBD burst phantom key, a regression on master), then Open 2: the saved
-form of a recording (spill and `record_load`), proven by `replay_proof.py` on a loaded recording. A game session can
+After the merge, rebuild `bin/` and `server/bin/` and re-run the net against pre-merge master (master has 27 commits
+past `367ece7`). Then Open 1: the saved form of a recording (spill and `record_load`), proven by `replay_proof.py` on a loaded recording. A game session can
 already use `record_start`/`last_writer` through `stserver` for "who wrote X" questions.
