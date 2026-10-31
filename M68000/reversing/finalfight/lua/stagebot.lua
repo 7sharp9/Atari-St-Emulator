@@ -20,6 +20,8 @@
 --   FF_BOT_SCRIPT  stop (and save FF_SAVE) when the stage-script pointer long at $ffb1ee reaches this value
 --   FF_BOT_DUMP    comma list of frames at which every live record of the pools is written to the log ("D" lines)
 --   FF_BOT_HOLD    comma list "frame:field:level" extra inputs applied after the bot (rarely needed)
+--   FF_BOT_ARMDX   when a pool-6 weapon is held (+66 = 2), close on a fighter only to |dx| = this value and step back inside it - 12 (off by default; test of the stage 4 stalls, py/stage/README.md)
+--   FF_BOT_REC     per-frame dump file in py/boss/dd.py's format (u32 frame, then the ranges FF_BOT_RECR, default ff8000-ffb300) from frame FF_BOT_RECLO (default START), written before the god poke
 -- stagebot_opt.lua: same decisions, log and RAM as stagebot.lua. m:read_u8(a) costs 0.85 us (userdata method lookup), the cached function ru8(m, a) 0.25 us:
 -- every per-frame access below goes through cached functions, fields are read only for records in use, and no table is created per frame.
 local L = dofile(os.getenv("FF_DIR") .. "/lib.lua")
@@ -37,6 +39,7 @@ local LURE = os.getenv("FF_BOT_LURE") == "1"
 local lure_since
 local UNSTICK = os.getenv("FF_BOT_UNSTICK") == "1"
 local PROPRANGE = tonumber(os.getenv("FF_BOT_PROPRANGE") or "60") -- swing at a prop only within this dx; walking stops at 45, so a value above it can swing out of reach for ever (stage 3: whiffing at dx 58)
+local ARMDX = tonumber(os.getenv("FF_BOT_ARMDX") or "")
 local unstick_x, unstick_still, unstick_until, unstick_dir = nil, 0, -1, "up"
 local STAGESTOP = tonumber(os.getenv("FF_BOT_STAGE") or "")
 local LEAVE = tonumber(os.getenv("FF_BOT_LEAVE") or "")
@@ -100,12 +103,20 @@ local DUMPS = {}
 for n in string.gmatch(os.getenv("FF_BOT_DUMP") or "", "%d+") do DUMPS[tonumber(n)] = true end
 local last_b1 = -100
 local NP = #pools
+local recf = os.getenv("FF_BOT_REC") and io.open(os.getenv("FF_BOT_REC"), "wb")
+local reclo = tonumber(os.getenv("FF_BOT_RECLO") or "") or START
+local recr = {}
+for a, b in string.gmatch(os.getenv("FF_BOT_RECR") or "ff8000-ffb300", "(%x+)-(%x+)") do recr[#recr + 1] = { tonumber(a, 16), tonumber(b, 16) } end
 local fmt, concat = string.format, table.concat
 emu.register_frame_done(function()
   local f = frame_number(scr_dev)
   if f < START then return end
   local cam = ru16(m, 0xff8412)
   local scr = ru32(m, 0xffb1ee)
+  if recf and f >= reclo then
+    recf:write(string.pack(">I4", f))
+    for _, r in ipairs(recr) do recf:write(L.region(r[1], r[2] - r[1])) end
+  end
   if GOD then
     local mx = ru16(m, P1 + 28)
     if ru16(m, P1 + 24) < mx and ru8(m, P1 + 2) == 2 then wu16(m, P1 + 24, mx) end
@@ -128,13 +139,17 @@ emu.register_frame_done(function()
     else
       if dy > 5 then down = 1 elseif dy < -5 then up = 1 end
     end
-    if abs(dx) > (ne_prop and 45 or 40) then if dx > 0 then right = 1 else left = 1 end end
+    local armed = false
+    if ARMDX and not ne_prop then for i = 0, 5 do local w = 0xff90a8 + 0xc0 * i; if ru8(m, w) ~= 0 and ru8(m, w + 66) == 2 then armed = true end end end
+    if armed then
+      if abs(dx) > ARMDX then if dx > 0 then right = 1 else left = 1 end elseif abs(dx) < ARMDX - 12 then if dx > 0 then left = 1 else right = 1 end end
+    elseif abs(dx) > (ne_prop and 45 or 40) then if dx > 0 then right = 1 else left = 1 end end
     -- a prop does not walk to the bot: swing only when the lane is aligned (a swing at |dy| 6..12 whiffs and its animation blocks the lane change for ever: stage 3 area 0, a DRUMCAN 12 px off);
     -- if the lane has not moved for 40 frames while misaligned (terrain row, stage 2 area 2's door at dy 9) swing from where the bot stands
     if ne_prop and abs(dy) > 5 and py == lane_py then lane_still = lane_still + 1 else lane_still = 0 end
     lane_py = py
     local ry = (ne_prop and UNSTICK) and (lane_still >= 40 and 12 or 5) or 8
-    if abs(dx) <= (ne_prop and PROPRANGE or 60) and abs(dy) <= ry and f - last_b1 >= 14 then last_b1 = f end
+    if abs(dx) <= (ne_prop and PROPRANGE or (armed and ARMDX + 12 or 60)) and abs(dy) <= ry and f - last_b1 >= 14 then last_b1 = f end
   else
     right = 1
   end
@@ -193,6 +208,7 @@ emu.register_frame_done(function()
   local stg = ru8(m, 0xff80be)
   if (CAMSTOP and cam >= CAMSTOP) or (SCRSTOP and scr >= SCRSTOP) or (STAGESTOP and stg >= STAGESTOP) or (LEAVE and stg ~= LEAVE and f > 1) or (STOPFRAME and f >= STOPFRAME) then
     if LOGF then LOGF:write(string.format("STOP %d cam=%04x scr=%06x stage=%d\n", f, cam, scr, stg)); LOGF:close() end
+    if recf then recf:close() end
     local sname = SAVEPFX and (SAVEPFX .. ((LEAVE and stg == LEAVE) and ("stuck" .. stg) or stg)) or os.getenv("FF_SAVE") -- a run that hit the frame limit never overwrites the state it started from
     if sname then
       L.write(string.format("%s/%s_ram.bin", out, sname), L.ram())

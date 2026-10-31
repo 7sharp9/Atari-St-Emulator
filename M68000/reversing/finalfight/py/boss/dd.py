@@ -1,8 +1,10 @@
 """dd.py: reader for the per-frame dumps written by dm.lua (DM_DUMP): per frame a u32 frame number then the ranges of DM_RANGES (default ff8000-ffb300).
-usage (module): D = Dump(path, ranges=[(0xff8000,0xffb300)]); D.n, D.frame(i), D.u8(i,addr), D.u16(i,addr), D.rec(i,addr,n)"""
+usage (module): D = Dump(path, ranges=[(0xff8000,0xffb300)]); DD_RANGES="ff8000-ff8d00,ff9528-ff9b28,..." sets the default ranges (py/stage/bossrec.sh dumps); D.n, D.frame(i), D.u8(i,addr), D.u16(i,addr), D.rec(i,addr,n)"""
 import numpy as np, os, sys
+_env = os.environ.get('DD_RANGES')
+DEFAULT = tuple((int(a, 16), int(b, 16)) for a, b in (r.split('-') for r in _env.split(','))) if _env else ((0xff8000, 0xffb300),)
 class Dump:
-    def __init__(self, path, ranges=((0xff8000, 0xffb300),)):
+    def __init__(self, path, ranges=DEFAULT):
         self.ranges = ranges
         self.sz = 4 + sum(b - a for a, b in ranges)
         raw = np.memmap(path, dtype=np.uint8, mode='r')

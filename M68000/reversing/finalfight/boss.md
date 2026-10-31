@@ -35,17 +35,57 @@ Live for DAMND (run from `a_area2`, frame 7807): the area byte is 2 at 7808, the
 | kind | handler | HUD name (`$5b640`) | trigger inside the handler [R] | health 1P / 2P | kill award code |
 |---|---|---|---|---|---|
 | 0 | `$3d3d6` | DAMND | camera x >= `$aa0` (`$3d3fe`) | 300 / 450 [L] | 4 = 10,000 [L] |
-| 1 | `$40c6e` | SODOM (rows for `+20` = 0 and 1) | camera x >= `$1300` (`+20` = 0) or `$2230` | 300 / 450 (300 live) | `$1a` = 20,000 |
-| 2 | `$45f8c` | EDI.E | on screen (`$3264`) | 300 / 450 (300 live) | `$1b` = 30,000 |
-| 3 | `$48a76` | ROLENTO | camera y `1116(A5)` >= `$ac0` after init | from the character record by level (300 live at level 13) | `$1e` = 40,000 |
-| 4 | `$4be66` | ABIGAIL | camera x >= `$2280` | 500 / 650 (500 live) | `$1c` = 50,000 |
-| 5 | `$4ea40` | BELGER | camera x >= `$3240`, sets x := `$3200` | 600 / 900 (600 live) | `$1f` = 100,000 |
+| 1 | `$40c6e` | SODOM (rows for `+20` = 0 and 1) | camera x >= `$1300` (`+20` = 0) or `$2230` [L natural] | 300 / 450 [L natural 300] | `$1a` = 20,000 [L] |
+| 2 | `$45f8c` | EDI.E | on screen (`$3264`: x - camera x <= `$1b0`) [L natural] | 300 / 450 [L natural 300] | `$1b` = 30,000 [L] |
+| 3 | `$48a76` | ROLENTO | camera y `1116(A5)` >= `$ac0` after init [L natural] | from the character record by level (300 live at levels 13 and 24) | `$1e` = 40,000 [L], paid on entering `+2` = 6 |
+| 4 | `$4be66` | ABIGAIL | camera x >= `$2280` [L natural] | 500 / 650 [L natural 500] | `$1c` = 50,000 [L] |
+| 5 | `$4ea40` | BELGER | camera x >= `$3240`, sets x := `$3200` [L natural] | 600 / 900 [L natural 600]; reset to 300 / 450 once (`$5077e`) | `$1f` = 100,000 [L] |
 | 6 | `$511ac` | BOSSTEST | none | 10 (live) | none |
 | 7 | `$513f8` | none (blank rows) | enters at camera x - `$48` | none | none |
 
-The name row is `$5b682 + word[$5b682 + tag] + word[... + 2 * kind] + 32 * (+20)` (`$5b640`, `py/boss/names.py`: 16 tile words after a 6-word header); each kind has one name row except SODOM, which has two. Health, trigger and award columns are [R]; "live" marks a value read from a hand-spawned record (below), the 2P values are [R] except DAMND's 450 [L]. The award codes are entries of the `$1b26` table (`player.md` "Score"); only DAMND's was seen paid live. Kind 6 is a developer's dummy: it has no placement entry, and its death sets `297(A5)` := 1 (`+20` = 0) or `$ff` (`+20` != 0 with `140(A5)` = 0), the stage-over and game-over flags. Kind 7 spawns from `$f1ca`, carries the nearest player off to the left (`64/66(A4)` = `$ff`/2) and is not a fighter; its caller is a player-state block that was not read [I]. Per-kind character records (`92(A6)` bases `$40572/$40632`, `$45d8c/$45e8c`, `$48956/$489d6`, `$4e800/$4e920`, `$510ec/$5114c`): `py/boss/chars4.py`.
+The name row is `$5b682 + word[$5b682 + tag] + word[... + 2 * kind] + 32 * (+20)` (`$5b640`, `py/boss/names.py`: 16 tile words after a 6-word header); each kind has one name row except SODOM, which has two. Health, trigger and award columns are [R]; [L natural] marks a value measured in a played fight ("Natural fights" below; the hand-spawned values were the same), the 2P values are [R] except DAMND's 450 [L]. The award codes are entries of the `$1b26` table (`player.md` "Score"); kinds 0 to 5 were each seen paid once. Kind 6 is a developer's dummy: it has no placement entry, and its death sets `297(A5)` := 1 (`+20` = 0) or `$ff` (`+20` != 0 with `140(A5)` = 0), the stage-over and game-over flags. Kind 7 spawns from `$f1ca`, carries the nearest player off to the left (`64/66(A4)` = `$ff`/2) and is not a fighter; its caller is a player-state block that was not read [I]. Per-kind character records (`92(A6)` bases `$40572/$40632`, `$45d8c/$45e8c`, `$48956/$489d6`, `$4e800/$4e920`, `$510ec/$5114c`): `py/boss/chars4.py`.
 
 Hand spawns (`py/boss/dm.lua` `DM_SPAWN`: the `$390a` pop plus the `$61f8` field writes, level `169(A5)`, into `sb_boss` with DAMND removed, camera poked where a trigger needs it): kind 1 reads hp 300 and runs to x `$125c` after the camera poke to `$1300`; kind 4 hp 500 after the poke to `$2280`; kind 5 hp 600 after `$3240` (x `$3200`); kind 3 hp 300 and waits; kind 6 hp 10 and stands; kind 7 enters at x `$a58` and grabs Cody; kind 2 initialised (hp 300) and the machine then reset about 350 frames later (boot screen in the 8700 screenshot) [L, one run each]. The reset was the harness: `spawn4` zeroed `+78`, the effect-group handle that `$3a52` reads to allocate the death debris (`$44d0`), so the pointer was garbage and the move at `$44fc` took an address error (`$ff167e` = `$01ff`, handler `$719c6`, trap #8 restart). With `+0..+127` zeroed except `+78` (fixed in `dm.lua`, `py/engine/dmk.lua` adds an hp kill) EDI.E, killed by an hp poke and Cody's hits, dies normally: `$477bc` runs once, the shaker starts and the stage clear follows, no reset (checked with the fixed `dm.lua` itself and with `dmk.lua`).
+
+### Natural fights (stages 1 to 5)
+
+Each boss was also fought where the game places him: `py/stage/bossrec.sh <kind>` replays his stage from the whole-game state with the stage 2 to 5 bot options (god mode, `py/stage/README.md`), saves a state one frame before his record appears and records work RAM `$ff8000-$ffb300` and the shaker flag per frame; `py/boss/natural.py` and the two damage gates read the recording (`py/boss/README.md`). One played fight per kind, so every count below is from one run. Records and triggers:
+
+| kind | record appears | waits in | trigger met | `+2` = 2 | health then |
+|---|---|---|---|---|---|
+| 1 SODOM | 38,980, x `$1448`, stage 1 area 3 | `+3` = 2 from 38,982 | camera x >= `$1300` at 39,273 | 39,304 (`+3` = 4 at 39,274, then 30 frames) | 300 |
+| 2 EDI.E | 56,823 in the old lineage, already in the `sb_s2a2` state | `+2` = 0 | `$3264` visible (x - camera x <= `$1b0`) at 60,303 | 60,304 | 300 |
+| 3 ROLENTO | 79,161, x `$d74`, y `$100` | `+3` = 2 from 79,162 | camera y >= `$ac0` at 79,480 | 79,563 (`+3` = 4, 6, 8 at 79,481, 79,543, 79,553) | 300 (level 24) |
+| 4 ABIGAIL | 87,005 (stage 4 start), x `$2430` | `+2`/`+3` = 0, health 0 | camera x >= `$2280` at 193,605 | 193,606 | 500 |
+| 5 BELGER | before the stage 5 state | `+2` = 0 | camera x >= `$3240` at 285,957 | 285,958, x := `$3200` | 600 |
+
+Every trigger acts on the frame after it is met. At its first frame in use each record of kinds 1, 3 and 4 holds only what a hand spawn writes: `+0..+127` are zero except `+0`, x, y, `+18`, `+19`, `+20`, `+96` and `+78` (= `$ce90`), and `+128..+191` are zero (3 of 3). A hand spawn differs only in leaving `+128..+191` stale, so the inert hand spawns of "Not proven" lacked the trigger, not a field: kinds 4 and 5 wait at health 0 in state 0 in the played stage too, and kind 1 is still in `+2` = 0 (no hit reaction) until the camera arrives.
+
+The end of each fight:
+
+| kind | death (`+2` = 4) | `299(A5)` := 1 | award paid | `297(A5)` := 1 | shaker |
+|---|---|---|---|---|---|
+| 1 SODOM | 42,283 | 42,358 | +20,000 at 42,566, in `+2/+3` = 4/4 | 42,566 | 28 frames from 42,566 |
+| 2 EDI.E | 63,277 | 63,278 | +30,000 at 63,471, in 4/4 | 63,471 | 28 frames from 63,471 |
+| 3 ROLENTO | 84,431 | 84,484 | +40,000 at 84,483, on entering `+2` = 6 | 84,595 | none |
+| 4 ABIGAIL | 202,394 | 202,395 | +50,000 at 202,522, in 4/4 | 202,522 | 28 frames from 202,522 |
+| 5 BELGER | 288,887 | 288,888 | +100,000 at 288,888, in 4/0 | 288,933 | none |
+
+In all five `297(A5)` goes from 1 to `$ff` 84 frames later; the stage byte changes 238 frames after that for kinds 1 to 4 and 17 frames after it for BELGER (to 8, the ending, `transitions.md`). The shaker column counts frames with a pool-8 kind 3 record in use (and the flag `-27916(A5)` set, the same frames) and agrees by its timing with the death sites of `frame.md` "The screen shaker" (SODOM `$426d8`, EDI.E `$477bc`, ABIGAIL `$4d550`; ROLENTO and BELGER have none); no breakpoint was set on the sites. ROLENTO is the one boss whose record leaves through `+2` = 6: it is in state 6 for 142 frames and free at 84,625. DAMND's state 6 (`$3ed30`, below) stays unreached.
+
+BELGER's health is not monotonic. The routine at `$5075c`, `+3` = 0 (`$5077e`), sets health to 300 (450 with both players active) when `163(A6)` is 0, and `$507da` then sets `163(A6)` := 1 [R]; in the played fight that happened on the frame Cody's grab link formed (286,020), and his health went from 600 to 300 with no attack box on Cody. A BELGER already below 300 would gain health there [I]. He hurts Cody only at range: no drop of Cody's health came from his own box, and each of 43 drops (39 of 53, 3 of 40, 1 of 87) came on a frame where a pool-6 kind 5 record entered its state 4, which supports reading kind 5 as his arrow (`player.md`, "Weapons").
+
+Damage, by the gates of "Damage and health" below (`gate_dmg_cody.py`, `gate_dmg_boss.py`):
+
+| kind | Cody's drops from the boss's box | from a lone pool-2 box | boss drops from Cody's box | other boss drops |
+|---|---|---|---|---|
+| 1 SODOM | 29 of 29 | none | 9 of 9 | 1 thrown landing (40) |
+| 2 EDI.E | 6 of 6 | 19 of 20 | 20 of 22 | 1 landing; the 2 misses (8 and 34) left attack id 0 in `+22`, so [I] not Cody's blow |
+| 3 ROLENTO | 5 of 5 | 7 of 7 | 20 of 20 | 5 grapple strikes (9, 16, 28) |
+| 4 ABIGAIL | 20 of 20 | 16 of 16 | 54 of 54 | 6 grapple strikes, 1 unexplained (12) |
+| 5 BELGER | none | 10 of 13 | 35 of 36 | 2 landings, the health reset, 1 unexplained (16) |
+
+SODOM's defence class is 26: a scaled hit loses most of its damage (a raw 30 becomes 5), and all 9 of his drops from Cody's box were 30-point knockdowns, which take `$74aa` and are not scaled (`frame.md` "Damage dispatch"). The gate applies that rule; DAMND's count with it is 31 of 32, as before.
 
 ## DAMND (`$3d3d6`)
 
@@ -114,7 +154,7 @@ Box 5 is also active in the last 10 ticks of the ledge landing (list `$3ff3e`). 
 
 ### Damage and health
 
-Damage on Cody is `byte[92(A6) + word(attack box +8)]`, unscaled (`$7a04`); 127 of 127 drops of Cody's health word attributed to DAMND's box matched (runs e3 11, e4 81, e5 35; by box: row `$00` 51, row `$20` type 0 56, row `$20` type 3 1, row `$40` 19) [L]. Another 267 drops in those runs belong to pool-2 fighters and are not counted. Damage on DAMND is `$79d8`: `dmg = byte[92(P1) + row]`, then `word[$cea74 + (dmg << 6) + 2 * def]` with `def` = `+55`; 31 of 32 drops matched (Cody's raw 10, 10, 16 became 8, 8, 13 at level 13 and 7, 7, 12 from level 15) [L]; the 32nd is the thrown-body landing: -40 at hp 242 (rule of `$3f7a`, holder `+20` = 1: 18/62/40, hp > 80 so a flat 40; 1 of 1 [L]). The level is the difficulty rank `168(A5)` (13 to 18 in the runs); the defence class by level is 1, 3, 4, 6, 7, 8, 8, 9, 11 at levels 0, 4, 8, 12, 16, 20, 24, 28, 31.
+Damage on Cody is `byte[92(A6) + word(attack box +8)]`, unscaled (`$7a04`); 127 of 127 drops of Cody's health word attributed to DAMND's box matched (runs e3 11, e4 81, e5 35; by box: row `$00` 51, row `$20` type 0 56, row `$20` type 3 1, row `$40` 19) [L]. Of the other 267 drops in those runs, 232 came on a frame where exactly one pool-2 fighter had an attack box, and 230 of them equal that fighter's byte by the same rule; 35 had several boxes or none. Damage on DAMND is `$79d8`: `dmg = byte[92(P1) + row]`, then `word[$cea74 + (dmg << 6) + 2 * def]` with `def` = `+55`; 31 of 32 drops matched (Cody's raw 10, 10, 16 became 8, 8, 13 at level 13 and 7, 7, 12 from level 15) [L]; the 32nd is the thrown-body landing: -40 at hp 242 (rule of `$3f7a`, holder `+20` = 1: 18/62/40, hp > 80 so a flat 40; 1 of 1 [L]). The level is the difficulty rank `168(A5)` (13 to 18 in the runs); the defence class by level is 1, 3, 4, 6, 7, 8, 8, 9, 11 at levels 0, 4, 8, 12, 16, 20, 24, 28, 31.
 
 Health is a constant: `$12c` = 300, or `$1c2` = 450 when both players are active at init (`21610(A5)` poked to 3 before the init: hp 450, `163(A6)` = 3, `92` = `$4069f`, 1 of 1; the live mask brings `92` back to the 1P table at the next 16-frame refresh). It does not depend on rank: with `168(A5)` poked to 0 and to 31 before the init the health was 300 both times, `+96` 0 and 31, `+55` 1 and 11, `92` = `$405d2` and `$405f1` [L]. Rank changes only his damage column and his defence class. DAMND dies at health < 0; at exactly 0 he is alive.
 
@@ -161,12 +201,15 @@ State 6 (`$3ed30`: `1078(A5)` := `$b30`, a pool-8 kind 4 record, `297` := 1, `jm
 | claim | count | gate |
 |---|---|---|
 | damage on Cody equals the ROM byte | 127 of 127 (e3 11, e4 81, e5 35) | `gate_dmg_cody.py` |
-| damage on DAMND equals the scaled table value | 31 of 32 (the 32nd is the thrown landing, 40, `$3f7a`) | `gate_dmg_boss.py` |
+| damage on DAMND equals the scaled table value (knockdown boxes unscaled) | 31 of 32 (the 32nd is the thrown landing, 40, `$3f7a`) | `gate_dmg_boss.py` |
 | attack pick index, byte and script | 160 of 160 | `gate_pick.py` |
 | retreat latches at hp 165 and 99, angry at 111 (110 after the poke) | 1 of 1 each | `thresh.py` |
 | two-player health 450, ranks 0 and 31 give 300 | 1 of 1 each | `thresh.py`, `rank.py` |
 | `$390a` once from `$6278`; `$5ebc`, `$3ed30`, `$38f0` 0; `$5f9e` 2 | one run from `a_area2` | `runs.sh` s1, s2 |
 | pause release, restart branch, early kill | 2 of 2, 1 of 1, 1 of 1 | `exe.py` |
+| kinds 1 to 5 played: health, trigger, award, shaker, death sequence | 1 fight each, all equal the tables ("Natural fights") | `natural.py` on `py/stage/bossrec.sh 1`..`5` |
+| kinds 1 to 5 played: damage on Cody, on the boss | 60 of 60; 138 of 141 (knockdowns unscaled) | `gate_dmg_cody.py`, `gate_dmg_boss.py` with `DD_RANGES` |
+| natural record at spawn equals the hand-spawn field set | 3 of 3 (kinds 1, 3, 4) | `natural.py` (`spawn` line) |
 
 Saved states: `a_area2` (frame 7807, work RAM sha256 `d594bed6...eed4`, identical over two cold boots) and `a_boss_mid` (frame 8850, DAMND at hp 194, `867747b9...9dac`, identical over two runs); both come from `py/boss/states.sh` and `runs.sh` (`sb_boss` is `py/stage/run.sh boss`).
 
@@ -174,6 +217,6 @@ Saved states: `a_area2` (frame 7807, work RAM sha256 `d594bed6...eed4`, identica
 
 - Attack A2 (box 2) and hit types 2 and 4 to 8 never occurred live. Prove by poking `63(A6)` in state 2 and forcing `153(A6)` := 0.
 - Two-player behaviour beyond the init health: the `$12c` and `$4b` thresholds, the 2P damage rows, the random target `$40922`. Needs player 2.
-- Kinds 1 to 5: only init, health and the camera triggers were checked; their handlers, attacks and awards are [R] only. Kind 7 is the carrier of `placement.md`. The shaker `$1b428` is `frame.md` "The screen shaker" (death sites: DAMND `$3ed0e` [L], SODOM `$426d8` and ABIGAIL `$4d550` [R], EDI.E `$477bc` [L]; ROLENTO and BELGER do not call it). The `-27896(A5)` flag set in DAMND's jumps and the pool-8 kind `$1e` he creates are unnamed. Hand spawns of kinds 1, 3, 4 and 5 into `sb_boss` with `+78` kept but no camera poke for their trigger stay inert (kind 1 ignores hp -1, kind 3 falls through the floor, kinds 4 and 5 stay at state 0 with maximum hp 0), so their deaths were not run [L, one run each]; `$466a` asks for `word[$459c]` + 1 = 6 pool-`$14` records per call but 4 were live in total.
+- Kinds 1 to 5: health, triggers, damage, awards, the death sequence and the shaker are [L] from one played fight each ("Natural fights"); their attack picks, hit reactions and hp thresholds are [R] only or unread, and so is the state BELGER enters at `$5075c`. Kind 7 is the carrier of `placement.md`. The `-27896(A5)` flag set in DAMND's jumps and the pool-8 kind `$1e` he creates are unnamed. Hand spawns of kinds 1, 3, 4 and 5 into `sb_boss` with `+78` kept but no camera poke for their trigger stay inert (kind 1 ignores hp -1, kind 3 falls through the floor, kinds 4 and 5 stay at state 0 with maximum hp 0) [L, one run each]: the trigger is what they lack, not a record field ("Natural fights"); `$466a` asks for `word[$459c]` + 1 = 6 pool-`$14` records per call but 4 were live in total.
 - The branch taken at each reaction end (`$3e46c`, `$3e4d2`, `$3e57a`, `$3e760`, `$3e522`, `$3e5c2`) was read, not enumerated; the grab-release states `+3` = 6 and 8 were not analysed.
 - Whether anything other than `$3e8d2` calls `$5f9e` indirectly.

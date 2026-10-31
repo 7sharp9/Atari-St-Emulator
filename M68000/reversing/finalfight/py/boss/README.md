@@ -15,10 +15,11 @@ dumps under `scratchpad/finalfight/boss/out`), then `sh gates.sh`.
 | `states.sh` | builds `sb_boss` (`run.sh boss`, work RAM `a0cb6b52...4837`) and `a_area2` (`run.sh custom`, `FF_BOT_CAM=2304`, frame 7807, `d594bed6...eed4`) | `sh states.sh` |
 | `runs.sh` | all runs behind `boss.md`: e3 (bot fight to the stage change), e4 (idle Cody), e5 (hp poked to 110), e6 (`21610(A5)` = 3), e7 (idle scripts), e8 (pause flag cleared), e9 (early kill), g1/g2 (pick breakpoints), s1 (spawn and death breakpoint counts), s2 (writers of the boss in-use byte), s3 (write taps on `+2` of all pool-4 records), d1 (saves `a_boss_mid`), r0/r31 (rank poke) | `sh runs.sh` |
 | `gates.sh` | runs every gate below and prints the counts | `sh gates.sh` |
-| `dd.py` | reader of the per-frame dumps (`DM_BOSS` selects the record, default `$ff9a68`) | import |
-| `gate_dmg_cody.py` | drops of Cody's health word equal `byte[92(A6) + word(box +8)]` of DAMND: 127 of 127 (e3 11, e4 81, e5 35) | `gate_dmg_cody.py <dump>` |
-| `gate_dmg_boss.py` | drops of DAMND's health equal the `$79d8` scaled value: 31 of 32 (the 32nd is the 40-point thrown landing, `$3f7a`) | `gate_dmg_boss.py <dump>` |
+| `dd.py` | reader of the per-frame dumps (`DM_BOSS` selects the record, default `$ff9a68`; `DD_RANGES=ff12e0-ff1300,ff8000-ffb300` for the `py/stage/bossrec.sh` recordings) | import |
+| `gate_dmg_cody.py` | drops of Cody's health word equal `byte[92(A6) + word(box +8)]` of the boss: 127 of 127 for DAMND (e3 11, e4 81, e5 35); a drop with one pool-2 box and no boss box is checked against that fighter (230 of 232 in e3 to e5) | `gate_dmg_cody.py <dump>` |
+| `gate_dmg_boss.py` | drops of the boss's health equal the `$79d8` scaled value, or the raw byte for a knockdown box (type bit 7, `$74aa`): 31 of 32 for DAMND (the 32nd is the 40-point thrown landing, `$3f7a`); grapple strikes and landings are classed, not matched | `gate_dmg_boss.py <dump>` |
 | `gate_pick.py` | attack pick index, byte and script: 160 of 160 | `gate_pick.py <hits> <dump>` |
+| `natural.py` | a played boss (kinds 1 to 5) against the kind table: health and trigger at the first `+2` change, the award frame, shaker frames, `+2` = 6, the record at spawn against a hand spawn (`boss.md` "Natural fights"; counts there) | `natural.py <rec.bin> <kind>` on a `../stage/bossrec.sh` recording |
 | `thresh.py` | changes of the hp flags (retreat 165/164/168, angry 148/169, mask 163) with hp: 165 and 99 for the retreats, 111 for the angry flag, 450 for two players | `thresh.py <dump>` |
 | `rank.py` | health, level, defence class and damage table 30 frames in, after a rank poke (300, 0/31, 1/11) | `rank.py <dump>` |
 | `attacks.py`, `chain.py` | attack pick distribution against the tables; chain roll outcomes against the mask bit density (15 of 24, 11.7 expected) | `attacks.py <dump>...` |

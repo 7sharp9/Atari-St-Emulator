@@ -14,7 +14,7 @@ run=${FFS_RUN:-$root/scratchpad/finalfight/stage/run}
 out=${FFS_OUT:-$root/scratchpad/finalfight/stage/out}
 mkdir -p "$run/cfg" "$run/nvram" "$run/sta" "$run/snap" "$out/tmp"
 export FF_DIR="$ff/lua" FF_OUT="$out" SDL_VIDEODRIVER=dummy
-export FF_SAVE_FRAME=99999 FF_STOP=${FF_STOP:-1000000}
+export FF_SAVE_FRAME=${FF_SAVE_FRAME:-99999} FF_STOP=${FF_STOP:-1000000}
 step=${1:-boss}
 case "$step" in
   boss)   export FF_PLAN="$ff/lua/plans/plan1.lua" FF_BOT_START=2450 FF_BOT_CAM=2720 FF_SAVE=sb_boss FF_BOT_LOG="$out/boss.log" ;;
