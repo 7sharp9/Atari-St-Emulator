@@ -10,6 +10,7 @@ AI = os.path.join(sscfg.WORK, 'agents', 'ai_econ', 'data')   # read-only inputs 
 LT = os.path.join(sscfg.WORK, 'agents', 'livetests')
 DATA = os.path.join(LT, 'data')
 os.makedirs(DATA, exist_ok=True)
+# 'qy'/'qx' are historical names: -3738 is Q x and -3746 Q y (mechanics.md, "Units"); bot.py reads them by offset
 F = {'lap': -3906, 'drone': -3914, 'stun': -3810, 'wp': -3802, 'qy': -3738, 'qx': -3746, 'spd': -3730, 'cap': -3874,
      'hd': -3706, 'thd': -3714, 'acc': -3866, 'sx': -3690, 'sy': -3698, 'flags': -3826, 'div': -3882, 'chk': -3850,
      'tiles': -3842, 'wr': -3954, 'flag': -3778}

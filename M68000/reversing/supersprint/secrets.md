@@ -72,14 +72,28 @@ the shipped top score is 106050 and #30 is 028730; the last digit is always 0 an
 is `$100a4` (via `$10002`, from main); the writer `$1000e` (guard `-148 == 0` sets `-150 = 1`; if `-150 == 0` it does
 `Fcreate` + three `Fwrite` + `Fclose`) is called only from the session tail `$13b2c`, so an F10 abort never saves. A stored
 initial is the letter index + `$0b` (A = `$0c` ... Z = `$25`, blank = `$26`). The shipped table decodes (checked against the rendered
-attract screen) to placeholder initials (DDN DDU DDX DDJ ... AAA ...), no meaningful text. The entry screen `$172f0` (called
-at the end of every `$18024`) is only for players who are not drones and have a non-zero score; left/right change the letter
-(auto-repeat, A..Z, blank), fire accepts, three letters, **no name or word checks**. Live with a poked score the new row appears at
-rank 1 and the others shift (`hiscore_entry.py`). The per-car HUD score is a 6-digit digit-byte array (`$80` = blank), the same form as the
-`SSPRINT.HSC` records: +10 every 64 frames per car, pickup amounts from `-4900(A4)`, +10 per winner's-circle bar step, and a shop item 3
-purchase adds 3000 (`mechanics.md`). That the end-of-session entry compares exactly this array is inferred from the format (`$17b32-$17ccc`
-not traced to `-7956(A4)`). Unproved: a save at the end of a real session (the emulator did not persist
-writes to the host image in these runs).
+attract screen) to placeholder initials (DDN DDU DDX DDJ ... AAA ...), no meaningful text.
+
+The entry screen `$172f0` runs after every race (thunk `0x22e` -> `$18024`, whose last call it is) and handles slots 0..2 in turn. A
+slot whose drone flag `-3914(A4)[slot]` is 0 (still racing) is skipped. For a flagged slot `$17cb4(car)` sums the score digits with
+bit 7 masked: a zero sum draws the text at `222(A4)` (`$17d00`); otherwise `$17c02(car, rank)` compares the score digit by digit with table row
+`rank` for rank 30 down to 1 (1 = the score is greater) and keeps the highest row it beats. With a row, `$17a76` shifts rows `rank..29` down one, the copy at
+`$17b32` writes the car's per-car score `-4846(A4)+6*car` (bit 7 masked) into `-7956(A4)+6*rank`, and `$17eb8` takes the initials;
+with none, `$17dba` draws the text at `254(A4)` and `$15ffe(car)` blanks the score to "     0". The initials entry: left/right change
+the letter (auto-repeat, A..Z, blank), fire accepts, three letters, **no name or word checks**; the loop runs a countdown of 1500 (`$5dc`), and with no input it ends
+with the initials AAA (live, below). The per-car score is the HUD score of `mechanics.md` ("Race rules, lap counting, end and
+scoring"): +10 every 64 frames, pickups, +10 per winner's-circle bar step, 3000 per shop item 3.
+
+Live, a real session end (`livetests/session_end.py nat|hi`, from the bot-driven race-1 win of `livetests/bot_ab.py`, stick then
+released so a drone wins race 2): at `$172f0` all four drone flags are set, the human (slot 1) holds 2760 and the other slots 0.
+Natural arm: `$17cb4` 3 calls, `$17c02` 30 (2760 beats no row), `$17dba` 1, `$17a76` 0, then the session tail `$13b2c` and the save
+`$1000e` once each; the game writes 4 disk sectors and the saved `SSPRINT.HSC` equals the shipped file in all 295 bytes. Same snapshot
+with slot 1's score poked to 050000: `$17a76` and `$17eb8` once each, 50310 (the poke plus the race-2 accrual) enters at row 18 with
+initials AAA, and the saved file has rows 1-17 unchanged, the old rows 18-29 at 19-30 (row 30, 028730, drops out) and the lap
+records unchanged (64 differing bytes). The written sectors come from the snapshot's `DSKA` journal (`DEVELOPING.md`, "Disk A"),
+applied to a copy of the image and read back with `tools/extract_disk.py`; the emulator never writes the host `.ST`. An earlier
+poked-score drive of the entry alone is `secrets/hiscore_entry.py`. The eight lap records can never change from the shipped zeros
+(`mechanics.md`, "Race rules").
 
 ## Dead and unreferenced code
 
@@ -167,8 +181,7 @@ the wrench counter. Tracks: every table has 8 entries; the dial wraps both ways.
 - The three undecoded `SUPER1.DAT` chunks (Data files); a 2- and 3-human winner's circle, natural (unforced) crashes, and the
   hi-score and game-over screens were not poisoned for the candidate blocks (by static closure no reader of B2, B4, B5 or B9 is reachable
   from the last two).
-- A screen-level proof of the F5 animation (count the ticks of frames 1 and 2 with and without F5), and a positive proof of the
-  high-score save at the end of a session.
+- A screen-level proof of the F5 animation (count the ticks of frames 1 and 2 with and without F5).
 
 ## Prepare-screen crash (resolved: an emulator bug)
 

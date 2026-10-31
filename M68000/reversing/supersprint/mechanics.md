@@ -33,8 +33,8 @@ register convention:
 
 ## Units, headings and the direction tables
 
-Positions are fixed point. The accumulators `Q` (`-3738/-3746(A4)`, y/x) hold 1/8 pixel; the screen
-position (`-3698/-3690`) is `Q/8` with truncating `divs`. `P` (`-3786/-3794`) is the previous position.
+Positions are fixed point. The accumulators `Q` (`-3738/-3746(A4)`, x/y: `$f3c2` loads a record's x into `-3738`, and live `-3738/8` is the screen X) hold 1/8 pixel; the screen
+position (`-3690/-3698`) is `Q/8` with truncating `divs`. `P` (`-3786/-3794`) is the previous position.
 There are 16 headings; heading 0 is up, 4 right, 8 down, 12 left. The direction vectors are
 **hand-tuned integer tables from INIT.DAT**, not computed:
 
@@ -139,10 +139,16 @@ turn counter and stun timer was enumerated across the whole listing (`ai_econ/ac
 a live 25M-step watch from the race-start initialiser shows the cap written 7 times in the first ~1300
 steps and never again. In a same-snapshot A/B (human idle vs holding fire and crashing, 14M steps, 4667
 samples) two of the three drones are bit-identical for every sample; the third differs only after
-physical contact. With the human leading (counters set to the pack leader's value 1000 frames ahead, optionally also
-moved there and holding fire, same snapshot, frame-aligned samples) no cap or divisor is written in 1000 frames and all
-three drones equal the control in 3000/3000 drone-frames per arm; no reader of the lap, sector or tile counters lies
-in the drone control path (`livetests/lead_ab.py`, `lead_cmp.py`).
+physical contact. A human that really leads changes nothing either: a steering bot (`livetests/bot.py`, which follows
+the game's own racing line for car index 1 and sends one joystick packet per frame) wins the 4-lap Track 1 race from
+the idle-start snapshot, ahead of every drone on the winner's-circle rank key in 1151 of the 1277 frames to its finish
+(from frame 110; the drones end on lap 2). Against a control sending `fe 00` every frame (same snapshot, same frame
+count, samples at `$df18`), no cap or divisor is written before the finish in either arm; drone 2, which never comes
+within 87 units of the human, equals the control in 1277/1277 frames, and drones 0 and 3 diverge first on the frame
+of a car-car bump (`BUMP` = 25 on both cars), with their caps and divisors still equal to the control's in every frame
+(`livetests/bot_ab.py ctl|bot 2400`, `bot_cmp.py`; the run is deterministic, a repeat gives the same counts). The
+earlier poked-counter arms agree (3000/3000 drone-frames, `livetests/lead_ab.py`, `lead_cmp.py`), and no reader of
+the lap, sector or tile counters lies in the drone control path.
 
 Caps are set once per race by `$be40` (the attract-demo initialiser `$caa8` writes the only other caps, `110 - 4*T + 4*slot`
 at D = 40 for all four slots, with the drone flags 0; `livetests/demo_caps.py`) from the track `T` (0..7), the race counter `R`
@@ -241,14 +247,17 @@ There is no grip or grass model: off the road is the wall plane.
 - **Winner's circle (`$1a4ca`).** Rank key = `laps*100000 + checkpoint*10000 + tile count`
   (`-3906/-3850/-3842`), bubble-sorted descending; on an exact tie a human beats a drone. Lap times come from
   the stamps by descending subtraction; best and average use the first `n` laps (`n = 1` with the race timer
-  if no lap was completed). A human best beats the session record `-8066(A4)[T]`. The par time is
+  if no lap was completed). A human best replaces the lap record `-8066(A4)[T]` only when it is smaller, by a signed
+  compare (`$1aa0a`; the store `$1aa2a` is the record's only writer). The shipped `SSPRINT.HSC` holds 0 in all eight records, so no
+  lap record is ever set: live, a bot-driven human win runs the compare once and the store never, and the same race with the
+  records poked to `$7fff` stores the human's best (301 for Track 1) (`livetests/lap_record.py ship|max`). The par time is
   `(T + 15)*50` ticks; the two bars show `par - average` and `par - best` (0 if negative), rounded down to
   10. The prizes 1000/500/250/0 by rank count up into the car's persistent score (next item).
 - **Score.** Each car has a 6-digit decimal score (digit bytes, `$80` = leading blank; staging `-4846(A4)`, shown via `-4870(A4)`; the same
   digit-byte form as the `SSPRINT.HSC` records), added by `$16084(car, amount)`. It gains +10 (`-4876(A4)` = `80 80 80 80 01 00`) for every
   car on each 64th frame while no car has finished, pickups add the amount at `-4900(A4) + 6*kind` (`$abd4`), and the winner's circle adds
   +10 per bar step. Live: 130/130/380 became 150/150/550 over 125 frames with `$16084` called 9 times (8 time ticks and one 150 pickup).
-  Whether it feeds the high-score table is inferred from the shared format and the entry screen's "non-zero score" test.
+  This is the array the high-score table takes at the session end (`secrets.md`, "High scores and `SSPRINT.HSC`").
 - **Protection flags.** `-150(A4)` (failed) and `-148(A4)` (check ran) belong to the removed `BOOT.DAT` check: the patched `$101bc` leaves
   `-150 = 0`, `-148 = 1` (and a stray `D5 = 8` nothing reads). `$1000e` forces `-150 = 1` if `-148` is 0 and writes the high-score file
   only when `-150 == 0`; the session loop `$13a5e` ends after one race when `-150 != 0`. Live A/B, human finishing first: `-150 = 0` starts
@@ -315,8 +324,9 @@ directory). Counts are N matching of N.
 | caps written only at race start | `ai_econ/watch_caps.py fire|idle` | 7 writes in first ~1300 steps, none after |
 | drone transitions on all 8 tracks | `tracks/check_lap.py T` | every transition in the decoded set |
 | speed vs heading | `physics/speed_vs_heading.py` | 16/16 |
+| a bot-driven human leading changes no drone | `livetests/bot_ab.py ctl\|bot 2400`, `bot_cmp.py` | 0 cap/divisor writes; untouched drone 1277/1277 frames |
+| lap record never set from the shipped file | `livetests/lap_record.py ship\|max` | store `$1aa2a` 0 vs 1 |
 
 ## Open
 
-- The leading-human test pokes counters and position rather than driving a lead with a steering bot.
 - The tripwire strips (bit-7 cells) are counted into `-3842(A4)`, a per-car progress counter reset at each sector crossing and read only by the HUD leader function `$13b34` and the winner's-circle key (tracks.md); they are not a hit zone.

@@ -305,9 +305,8 @@ the attract-mode logic (the `$153xx` and `$165xx`–`$167xx` clusters).
 
 ## Not exercised in the emulator
 
-The game is silent (the emulator never raises Timer D), the warm-reset hook and the real-hardware Timer B band heights were not run, the
-high-score file was never saved at the end of a real session, a human was never driven into a lead (the leading test pokes counters
-and position), and only Track 1's collision geometry
-was compared against live play (Tracks 2-8 are proved as renderings). `sessions/supersprint.md` has the open list.
+The game is silent (the emulator never raises Timer D) and the warm-reset hook and the real-hardware Timer B band heights were not run.
+The high-score save at a real session end and a bot-driven human lead were run (`secrets.md`, "High scores and `SSPRINT.HSC`";
+`mechanics.md`, "Difficulty, speed caps and the race counter"). `sessions/supersprint.md` has the open list.
 
 The game binary and `Super Sprint.ST` are **not** included; see above to rebuild.
