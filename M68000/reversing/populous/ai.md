@@ -246,8 +246,8 @@ over capacity the castle then emits a walker (child str - 152, parent 152; `mech
 AI castle is emptied into walkers once it holds more than 305, one castle per decision slot. Verified:
 every busy write from `$e638` fell on a frame%8 == 0 frame with busy 0 before it, **332/332** over the
 two runs of section 5. The same block caps the capacity at 50 for side `$3c4e4 - 1`; `$3c4e4` is set by
-a `$1f0fa` case (`$1fbbe`, arg+1) and cleared every 8th frame (`$ef42`); command 14 sub 15 sets it
-(`mechanics.md` 7); not reproduced live.
+a `$1f0fa` case (`$1fbbe`, arg+1) and cleared every 8th frame (`$ef42`); command 14 sub 15 sets it,
+run live from a poked command record (`mechanics.md` 7, `py/hooks/sub15_poke.py`).
 
 ## 4. Strategy notes (derived from the code)
 
@@ -389,5 +389,6 @@ parallel; `join.py` alone replays the recorded logs in `$POP_WORK/ai/live/` in m
   menu shows HUMAN VS ATARI but both sides are computer-controlled (side 0 posted a command at 100 of
   the next 100 frames). The second write was surely meant for `ctrl[other]`, as HUMAN VS ATARI
   `$1b8b2` does.
-- `$3c4e4` is set by command 14 sub 15 (`mechanics.md` 7); what posts that sub is not found. Not run: the conquest route to a rating-1 world (the
+- `$3c4e4` is set by command 14 sub 15 (`mechanics.md` 7); no code on one machine posts that sub, only a
+  serial peer's record could (`$183b4`). Not run: the conquest route to a rating-1 world (the
   custom route gives the same god record).

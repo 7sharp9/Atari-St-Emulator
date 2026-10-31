@@ -503,17 +503,42 @@ fields over 7 real end states: win and loss by zeroing one side's strengths, a n
 - `$3c4e4` (`emit_cap50_side` in `populous.sym`), a hidden hook in `$db4c` (`$e63e/$e64e`,
   `$ef1c..$ef42`): while it equals an entity's side+1, that side's settlements use capacity 50 (`$32`,
   `move.w #$32,-12(A6)` at `$e65e`) instead of their land value, so each emits a walker once its str
-  exceeds 50 (section 4.2). Every 8th frame (`$3c4c8 & 7 == 0`) at the function's tail, if it is still
-  non-zero, `$db4c` prints `$2147e` "CHEAT" at (0,0) and clears it (a one-shot flash), immediately
-  before falling into the walker step-decision routine (section 3.2, `$ef4c`). The only writer is
-  `$01fbc4`, `case 0xf` (entry `$1fbbe`) of `cmd_misc` (`$1f0fa`, command 14, `terrain.md` 2): sub 15
-  stores `sub_arg + 1`. The same dispatcher's `case 10` sets side 1's mana (`player1_mana`, `$3b242`)
-  to `mana*2 + 500` while it is below 100000 when its sub-arg is 0, and halves it otherwise (decompile
-  read, not run); `terrain.md`'s command-14 sub-command table lists neither. In paint-map mode
-  (`$3b276`) the key handler `$1d996` posts command 14 sub 9 for F6 and sub 10 for F7 (arg = shift
-  state `$3d538`), so the mana subs are keyboard-reachable there (code-read, not run). Nothing found
-  posts sub 15: the `$66` branch of the scroll handler (`graphics.md` Scrolling) leaves the command
-  byte 0, which `$1e712` skips. Not triggered live.
+  exceeds 50 (section 4.2; the emission itself is code-read). Every 8th frame (`$3c4c8 & 7 == 0`) at
+  the function's tail `$db4c` prints `$2147e` "CHEAT" at (0,0) if it is non-zero and then clears it
+  unconditionally at `$ef42` (a one-shot flash of at most 8 frames), immediately before falling into
+  the walker step-decision routine (section 3.2, `$ef4c`). The only writer is `$01fbc4`, `case 0xf`
+  (entry `$1fbbe`) of `cmd_misc` (`$1f0fa`, command 14, `terrain.md` 2): sub 15 stores `sub_arg + 1`,
+  so the arg, not the posting record, picks the side. Run live from a labelled poke of a command record
+  at `$1e712` (`py/hooks/sub15_poke.py`, game_start, 23 frames): each of three pokes (side 0's record
+  with arg 0 and arg 1, side 1's record with arg 0) dispatches sub 15 once, writes `$3c4e4` = arg+1 at
+  `$1fbc4`, prints "CHEAT" once and is cleared at `$ef42` three frames later; `$e65e` runs 3 times
+  for side 0 (3 settlements) and 4 for side 1 (4 settlements). The no-poke control gives 0 of each.
+  - **No code on one machine posts sub 15.** Census of every byte store to offset 2 of a command
+    record (`$21e0c + $2e*side`) in the whole text segment ($ad58..$21464, `pop_ad58.asm`; word, long
+    and block copies are not in it, such as the OPTIONS CANCEL restore `$1c6d0` of a whole record): the
+    cmd-14 sites (panel `$c500..$ca54`, AI `$13ad6..$1429a`, paint keys `$1da20..$1da96`) all store
+    a constant sub of 1..13 next to the cmd byte; every variable store (`$c89c`, `$c8e6`,
+    `$e0c4`, `$f138`, `$fba4`, `$fcc6`, `$11d36..$11f5e`, `$1371c..$13a0c`, `$13d52`, `$13dce`'s
+    `$13e7a`/`$13ed2`, `$140a4..$14266`) is a cell coordinate paired with cmd 1..6; `$1e7a2` clamps
+    +2 to `$3f`, `$1ef60` clears it, and `$ba8c` (the keypad-`*` branch, `graphics.md` Scrolling)
+    stores 15 but has just cleared the cmd byte. The paint-key prologue `$1d9b6` writes +2 from
+    `$36e76` without touching the cmd byte, but it runs before the click handler and the dispatch in
+    the same frame and `$1e712` clears both records every frame (`$219b0` only skips the serial block),
+    so no cmd 14 is waiting for it. The one path left is the serial link: `$1e712` sends its own
+    record packed into a word by `$1837c` (cmd 4 bits, arg 6, sub 6) and unpacks the peer's with
+    `$183b4` into the other side's record, which it then dispatches. An unmodified peer has the same
+    writers, so only a modified program on the other machine could send it (inferred; the link is not
+    emulated).
+  - **Subs 9 and 10, mana.** `case 9` (`$1fabc`) and `case 10` (`$1fb16`) set side 0's or side 1's
+    mana (`$3b232`, `$3b242`) to `2*mana + 500` while it is below 100000 when the arg is 0, and halve it
+    (`$206e6`, truncating) otherwise. In paint-map mode (`$3b276`) the key handler `$1d996` posts sub 9
+    for F6 and sub 10 for F7 with arg = shift state `$3d538`. Live (`py/hooks/paint_mana.py`, from
+    game_start through GAME SETUP > CUSTOM GAME > PAINT MAP > OK, the state saved as
+    `$POP_WORK/hooks/paint1.snap`): **52/52** calls match the model over F6, F7, shift+F6 and shift+F7
+    held 1.2M steps each (13 calls each; F6 from 543 reaches 133004 and stays there, past the 100000
+    cap; shift+F6 halves 543 to 0). A held key posts once per main-loop frame (`$16ed8`, `$1d996`,
+    `$1fabc` 6 each in 600000 steps). The no-key control and F6 with `$3b276` poked to 0 give no call.
+    PAINT MAP is item 4 of GAME SETUP, so it needs CUSTOM GAME first (`$1b3de`, `ai.md`).
 - Key checks, not checksums: at entity index $14 `$db4c` compares `$3c4c0` with `$21d4c+$14725836`,
   at index $12 the trace vector (read by the supervisor peek `$15fe2`) with `2*$21d54`; a mismatch sets
   `$3d524` (Armageddon) and both sides' ctrl = 1. Both constants equal the crack loader's key
@@ -558,6 +583,11 @@ from game_start is the evidence used here).
   `$1063a` call (`combat_round`), `fightstart` and `join` every `$10e7e` and `$11006` call
   (`walker_ref.fight_start`, `join_fight`); `knight_fight.py [STR]` casts a knight from `fight1`;
   `ktrack.py` prints knights and targets.
+- `hooks/` (data in `$POP_WORK/hooks/`): the hidden hooks of section 7, each with its control.
+  `paint_mana.py [hold]` enters paint-map mode through GAME SETUP (saves `paint1.snap`) and checks every
+  F6/F7 `cmd_misc` sub 9/10 call against the mana model (52/52 at hold 1200000); `sub15_poke.py` runs
+  sub 15 from a poked command record; `star_key.py` drives the keypad-`*` branch (`graphics.md`
+  Scrolling). Run from `M68000/` with `ATARI_NOTRACE=1`; each starts one `stserver`.
 
 ## 10. Open questions
 - Never seen in play, so proven by `callcap` only (section 3.5): a knight merging into a friendly

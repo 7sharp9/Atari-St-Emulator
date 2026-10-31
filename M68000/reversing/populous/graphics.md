@@ -304,32 +304,30 @@ is always fully on the 64x64 map. Keypad scan codes in `$37eae` step it by one c
 | `$6e` | cx+1, cy+1 |
 | `$6f` | cx+1 |
 
-There is no sub-cell scrolling. `$66` (unused by any physical keypad direction in the table above) goes
-to `$b9fa` instead of a scroll: if the latched click position (`$3c518/$3c51c`) is at x>310, 10<=y<=20 *and* the cursor tool is query mode
-(`$21d50` bit 0, "Command panel" below), it prints `$21478` "CHEAT" at (0,10) and clears the acting
-side's god\_rec AI-request fields (`mechanics.md` 2.3 +0/+1/+2), then sets +1/+2 to (side, 15).
+There is no sub-cell scrolling. `$66`, keypad `*` (TOS 1.00 key table), goes to `$b9fa` instead of a scroll: if `$3c518/$3c51c`
+is at x>310, 10<=y<=20 *and* the cursor tool is query mode (`$21d50` bit 0, "Command panel" below), it
+prints `$21478` "CHEAT" at (0,10), clears the human side's command byte (`$ba68`) and writes +1 = side,
++2 = 15 (`mechanics.md` 2.3). `$3c518/$3c51c` is the button latch position, which the VBL (`$16c8e`,
+`$16cd2`) refreshes from the pointer whenever a latch is armed, so with no click pending it is the live
+pointer: query mode, pointer in the top-right corner, keypad `*`. `$37eae` is written at `$02004e` inside
+`ikbd_read_byte` (`$01ffb4`), the central IKBD-byte dispatcher: for any byte that is not a mouse-motion
+byte, a shift make/break ($2a/$36, $aa/$b6) or a status header (>$f5), it stores the byte if it is a make
+code and 0 if it is a break, so a held key repeats its branch every main-loop frame.
 
-The `$66` branch is real code, not a dead stub: `$37eae` has a writer at `$02004e` inside
-`ikbd_read_byte` (`$01ffb4`), the central IKBD-byte dispatcher every keyboard and mouse byte passes
-through. For any byte that is not a mouse-motion byte, a shift make/break ($2a/$36 press, $aa/$b6
-release) or an IKBD status header (>$f5), it stores the byte into `key_scancode` and `$37eae` if it
-is a make code (top bit clear), or 0 if it is a break code, so `$37eae` holds the last non-shift
-key event and 0 once released. The `$b9fa` guard reads the latched click position
-(`$3c518/$3c51c`), not the live pointer. The branch clears the acting side's command byte
-(`$ba68`) and writes +1 = side, +2 = 15, but `$1e712` treats command 0 as "no command" and `$1eef4`
-zeroes the record after each dispatch, so it only draws "CHEAT" and flushes the record (code-read;
-not run). It cannot cause command 14 sub 15.
+Driven live (`py/hooks/star_key.py`, game_start, the query icon clicked, keypad `*` held 3 frames): with
+the pointer at (316,15) the guard passes on all 4 entries to `$b9fa` and the record is written by `$ba68`
+(cmd 0), `$ba8c` (+2 = 15) and `$bab8` (+1 = 0), then cleared by `$1eef4`; `cmd_misc` is never called
+and `$3c4e4` is not set. With the pointer at (200,100) the guard passes 0 of 4. So the branch only draws
+"CHEAT" and flushes the record: it cannot cause command 14 sub 15, because `$1e712` skips command 0.
 
 A second "CHEAT" sits inside `entity_update` `$db4c`, gated on `$3c4e4` (`mechanics.md` 7, `ai.md`
 3.4). Its only writer is `$01fbc4`, `case 0xf` (entry `$1fbbe`) of `cmd_misc` (`$1f0fa`, jump table
-`$21632`, command 14's sub-command handler), which stores `sub_arg + 1`. The same dispatcher's `case
-9` and `case 10` act on side 0's and side 1's mana (`$3b232`, `$3b242`): `2*mana + 500` for arg 0
-while below 100000, half otherwise. `terrain.md`'s sub-command table (`terrain.md` 2) lists both.
-In paint-map mode (`$3b276`) the key handler `$1d996` posts command 14 sub 9 for F6 and sub 10 for
-F7 (arg = shift state `$3d538`), and F1..F5, F8 and Delete post the other paint commands, so the
-mana subs are reachable from the keyboard there (code-read). What would post sub 15 was not found;
-the two-player serial menu `FUN_0001a01e` calls `edit_text_field` and `FUN_0001daf6` (a delay
-loop) but never `cmd_misc`.
+`$21632`, command 14's sub-command handler), which stores `sub_arg + 1`. No code on one machine posts
+sub 15; only the serial link's record unpack `$183b4` could carry one from a modified peer
+(`mechanics.md` 7, with the census). The same dispatcher's `case 9` and `case 10` double-plus-500 or
+halve side 0's and side 1's mana, and in paint-map mode (`$3b276`) the key handler `$1d996` posts them
+from F6 and F7 (arg = shift state `$3d538`), as F1..F5, F8 and Delete post the other paint commands
+(run live, 52/52, `mechanics.md` 7).
 
 `QAZ.PIC` (the 320x200 panel and border backdrop, `qaz.png`, loaded at `$014b50` and modelled by
 `py/pop_render.py`, `$3afd8`, composited with the minimap at `$c27a`) is unrelated to either hook:
