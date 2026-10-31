@@ -806,7 +806,8 @@ and a checkpoint every `every` steps, all in memory.
   their own effects, are not inputs, and take no checkpoints while they run. The live window's input is not journalled.
 - A checkpoint is `AtartSt.Capture()` plus the journal length and the write-protect tab (not in a snapshot), taken
   by `Step()` before the step once `stepCount` reaches the next multiple: one `uint64` compare per step, against
-  `UInt64.MaxValue` when nothing records. Each is about 1 MB, mostly `MmuSnapshot`'s RAM copy, so 150 cover a
+  `UInt64.MaxValue` when nothing records. Its cost on a 30M diskless boot, 5-pair interleaved A/B (load average
+  about 6): median 7.35 s against 7.31 s without it (min 7.32 and 7.28), slower in 4 pairs and tied in one, so under 1%. Each is about 1 MB, mostly `MmuSnapshot`'s RAM copy, so 150 cover a
   1.5G-step run.
 - While a recording is active, `stserver` refuses `load`, `boot` and `restore`: a jump to another state is not an
   input and would make the journal meaningless. `record_stop` ends it at the current step.
