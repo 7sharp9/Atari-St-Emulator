@@ -5,6 +5,7 @@
 # Ground row is 80 after the flatten (rows 50..79 cleared), the step fills rows 80-H..79 of group 47.
 out=${1:?out dir}; mkdir -p "$out"
 for h in 0 1 2 3 4 5 6 7 8; do
+  while [ "$(jobs -rp | wc -l)" -ge "${JOBS:-99}" ]; do sleep 1; done   # JOBS caps the emulators at once
   args=(--noclick --samples 34 --step 36000 --rows 24 --y0 62 --wall 45,52,50,79,00000000)
   [ $h -gt 0 ] && args+=(--wall 47,47,$((80-h)),79,ffffffff)
   python3 "$(dirname "$0")/skilldrive.py" 0 26c22 "$out/h$h" "${args[@]}" >/dev/null &

@@ -146,7 +146,7 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
     </div>
     <div class="panel">
       <h3>Object map</h3>
-      <p>One byte per 4 by 4 pixels, <code>$62f80</code>, stride <code>$198</code>. After every update, <code>$8b6e</code> reads the cell under the lemming and acts on its low nibble.</p>
+      <p>One byte per 4 by 4 pixels, <code>$62f80</code>, stride <code>$198</code>. After every update, <code>$8b6e</code> reads the cell under the lemming and acts on its low nibble; the high nibble names the level object that stamped the cell.</p>
       <table>
         <tr><th>Code</th><th>Effect</th><th></th></tr>
         <tr><td>2</td><td>turns a lemming walking right</td><td><span class="tag p">driven</span></td></tr>
@@ -154,7 +154,7 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
         <tr><td>9</td><td>steel: refuses bash and mine</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>7, 8</td><td>one-way walls for bash and mine</td><td><span class="tag r">read</span></td></tr>
         <tr><td>1</td><td>exit: 8 ticks, saved count +1</td><td><span class="tag p">driven</span></td></tr>
-        <tr><td>4</td><td>lemming vanishes at once</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>4</td><td>trap: vanishes at once, unless the trap is still animating</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>5</td><td>trap death, bit 3, 16 ticks</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>6</td><td>trap death, bit 2, 14 ticks</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>$a</td><td>centre of a blocker, no effect</td><td><span class="tag p">driven</span></td></tr>
@@ -174,11 +174,12 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
         <tr><th>Cells</th><th>Lemming at x = 888</th><th></th></tr>
         <tr><td>1</td><td>bit 1, 8 ticks, then gone; saved count 0 to 1</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>2 / 3</td><td>turns round; only one heading the matching way</td><td><span class="tag p">driven</span></td></tr>
-        <tr><td>4</td><td>vanishes, no state bit</td><td><span class="tag p">driven</span></td></tr>
+        <tr><td>4</td><td>vanishes, no state bit; a second lemming walks through while the trap animates</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>5</td><td>bit 3, keeps moving 16 ticks, dead</td><td><span class="tag p">driven</span></td></tr>
         <tr><td>6</td><td>bit 2, frozen 14 ticks, dead</td><td><span class="tag p">driven</span></td></tr>
       </table>
-      <p class="cap">Level 1's exit is two cells at column 222, rows 33 and 34 (world x 888, y 132 to 139). The lemming is placed at x = 870 on the ground beside it (a position poke); the pen it normally paces in ends at x = 853.</p></div>
+      <p class="cap">Level 1's exit is two cells at column 222, rows 33 and 34 (world x 888, y 132 to 139). The lemming is placed at x = 870 on the ground beside it (a position poke); the pen it normally paces in ends at x = 853.</p>
+      <p class="cap">Each object keeps a 34-byte copy of its type at <code>$23044</code>: frame, frame count, size and trigger cells. A trap is a one-shot: the first lemming starts its 15 frames, one a tick, and a lemming arriving during them walks through (driven: the second lemming crossed at frame 9 and lived; one arriving 10 ticks after the end died).</p></div>
   </div>
 </section>
 
@@ -197,7 +198,7 @@ svg text { font-family: var(--f-mono); font-size: 10.5px; fill: var(--muted) }
 <section class="foot">
   <h3>How this was checked</h3>
   <p>Every plate comes from a snapshot of the game after level 1 starts. The skill index and count were set directly, then the pointer was aimed at lemming 0 and a click sent to the game's own handler. A control from the same snapshot, with no click or without the poked feature, is the comparison. Walls, pits and steel cells in the plates for climber, floater, basher and the steel tests were written into memory to give the skill something to meet; the level itself does not contain them.</p>
-  <p>The exit and trap runs place lemming 0 beside the exit by writing its x and y, and the step sweep writes the step into the bitmap. Still open: the object table behind a cell's high nibble, and the blocker's refusal test. Source notes and scripts: <code>reversing/lemmings/mechanics.md</code>.</p>
+  <p>The exit and trap runs place lemming 0 beside the exit by writing its x and y, and the step sweep writes the step into the bitmap. The trap runs also copy a trap's type record over the decoration above the exit. Still open: the object pictures, and the blocker's refusal test. Source notes and scripts: <code>reversing/lemmings/mechanics.md</code>.</p>
 </section>
 </main>
 

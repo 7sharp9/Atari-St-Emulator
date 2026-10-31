@@ -122,14 +122,14 @@ landing with `19(A0) > $3c` and no floater sets the splat bit 8 (`$7b28`), and `
 **Object map** (`A2 = $62f80`, 4-pixel cells, one byte each, row stride `$198`; the lemming's cell is
 `(x/4, y/4)`). After every update `$8b6e` stores that cell in `25(A0)` and the cell two columns ahead in the row two
 above in `26(A0)` (the miner and basher steel and one-way tests), then dispatches on the cell's low nibble (the high
-nibble indexes the `$23044` object table, stride `$22`):
+nibble is the level object that stamped the cell, its slot in the `$23044` table: "Objects" below):
 
 | low nibble | effect (`$8b6e`) |
 |---|---|
 | 1 | state bit 1 (`$8aca`, the exit), sound `$11`; skipped if bit 1 or 15 is already set (**proven**) |
 | 2 | reverse a lemming walking right (`8(A0) >= 0`); a left-walker passes (**proven**) |
 | 3 | reverse a lemming walking left; a right-walker passes (**proven**) |
-| 4 | marks object bit 1 and `st 24(A0)`: the lemming vanishes at once, no state bit (**proven**) |
+| 4 | a one-shot trap (`$8bea`): if its object is idle (bit 1 of slot +0 clear) it sets bit 1 and `st 24(A0)`, the lemming vanishes at once with no state bit, sound `$10`; a busy trap lets the lemming through (**proven**) |
 | 5 / 6 | state bit 3 / bit 2 (the `$8a62` / `$8b5c` death handlers), skipped if already set (**proven**) |
 | `$a`, 7, 8, 9 | nothing here (`$a` is the blocker's centre; 7, 8 are the one-way and 9 the steel tests of the digging skills) |
 
@@ -165,6 +165,51 @@ position poke, an input), the other nine are untouched. Each arm is the same pla
 
 The exit also needs the lemming to arrive: on level 1 as shipped, lemming 0 paces between x = 686 and 853 (a walled pen,
 60 samples of 360,000 steps) and never reaches the exit at 888 without a skill, so the position poke stands in for walking there.
+
+## Objects
+
+**The records, read.** A level's objects are a list at `$de90`: 32 entries of 8 bytes, x, y, type and draw flags (`+6`,
+`& $fffe` to the blitter); an entry with x = 0 is skipped. The graphics set's type list is `212(A5)+112`
+(`212(A5)` = `$2752c + $590 *` the set number at `$de70+26`, `$377e`), 34-byte records. At level start `$39ce` copies each
+object's type record into its slot of `$23044` (stride `$22`, the same index as the list), so the slot is the object's own
+live copy: `+0` flags (bit 1 animating, bit 0 one-shot), `+2` frame, `+4` frame count, `+6`/`+8` width and height in pixels,
+`+10` bytes a frame, `+12` the mask's offset in a frame, `+16`/`+18` the trigger area's offset from the object in cells,
+`+20`/`+22` its width and height in cells, `+24` its cell code, `+26` the graphics' base and `+30` the current frame's
+address (both from `$67270`). `$33d0` stamps the trigger area of the first 16 objects into the object map with the byte
+`(slot << 4) | code`, which is why a cell's high nibble names the object; `$3450` then fills the steel rectangles
+(`$e5d0`, 32 longwords) with 9. `$3364` (and `$3932` into the level picture) blits each object's current frame through
+`$8cf8`. **The animator** `$32a6` runs once a tick (`hits`: 10 in 360,000 steps), and for each object with bit 1 set advances
+the frame and points `+30` at it; at the last frame it wraps to 0 and, with bit 0 set, clears bit 1, so a one-shot runs
+once and stops. An object of type 1 (the entrance) also waits for `21(A5)`, which the level-start counter `$14d0` sets at
+its 35th count, with sound 0.
+
+Level 1 (graphics set 0) has three objects: 0 the entrance (type 1, at (720, 36), 10 frames, one-shot: flags 1 once it has
+opened), 1 the exit (type 0, at (864, 116), one static frame, trigger 1 by 2 cells at (+6, +4) with code 1: the `$11` cells
+at (222, 33..34)), and 2 a 48 by 8 object of type 7 eight pixels above the exit (6 frames, looping, trigger 2 by 1 cells
+at (+1, +4) with code 0: the `$20` cells at (217..218, 31), which `$8b6e` ignores, so it is decoration only). Set 0's type
+list holds 12 types, by their records (the roles are inferred from the code and size, not from the pictures): 0 exit, 1
+entrance, 2 and 9 16 by 16 loops with no trigger, 3 and 4 32 by 32 loops with 8 by 8 triggers of code 7 and 8 (the
+one-way walls), 5 a 64 by 16 loop with a 16 by 2 trigger of code 5 (the drowning death), 6, 8 and 10 one-shots
+(15, 17 and 12 frames) with code 4 (the traps), 11 a 16 by 10 loop with code `$b`, which `$8b6e` does not dispatch. No
+type in set 0 uses code 6.
+
+**Proven, the animator:** level 1's slot 2 sampled each tick from `sel.snap` reads flags 2 and frames 5, 0, 1, 2, 3, 4, 5,
+0, ... (14 of 14 samples one frame on, modulo 6), and its `+30` is `+26` plus 5 times `+10` at frame 5
+(`$1d4c + 5 * $f0 = $21fc`).
+
+**Proven, the trap is busy while it animates** (`py/trapbusy.py`): slot 2 is overwritten with set 0's type 6 record (a
+15-frame one-shot, the game's own bytes), the exit cells (222, 33..34) are poked to `$24` (object 2, code 4), and lemmings
+0 and 1 are set down facing right on the ground left of them (position pokes). 48 ticks per arm, `hits` on the kill
+(`$8c0a`) over the same 1,728,000 steps:
+
+| arm | lemming 0 / 1 start x | result | kills |
+|---|---|---|---|
+| control (cells 0) | 880 / 872 | both walk on past 920; slot 2 stays at flags 1, frame 0 | 0 |
+| alone | 880 / (in the pen) | tick 8 at x = 888: dead; slot 2 flags 3, frames 1 to 14 on ticks 8 to 21, flags 1 at tick 22 | 1 |
+| busy | 880 / 872 | lemming 0 dead at tick 8; lemming 1 crosses x = 888 to 891 on ticks 16 to 19 (frames 9 to 12) and walks on | 1 |
+| rearmed | 880 / 856 | lemming 0 dead at tick 8; lemming 1 reaches 888 at tick 32, ten ticks after the trap went idle: dead, a second 15-frame run | 2 |
+
+The trap's sound (`$8c16`) runs 0 times in every arm: `14(A5)`, the effects switch it tests, is 0 in this snapshot.
 
 ## Basher and miner
 
@@ -239,5 +284,6 @@ inputs, not findings, and are named in each line.
 
 ## Still open
 
-The object table behind the high nibble of a cell (`$23044`, stride `$22`: the animations and sounds of exits and traps) is unread; fields +10 (frame), +20, +36/+38/+42 beyond the readings above, and the release rate; the blocker's
+The object graphics (the frame layout of `$67270`, which would name the types from their pictures), code `$b`, and the
+types of graphics sets other than 0; fields +10 (frame), +20, +36/+38/+42 beyond the readings above, and the release rate; the blocker's
 refusal test (`$1b60`-`$1b94`, cells with codes 1, 2, 3, `$a` under the target) and the ground-loss release.

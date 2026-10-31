@@ -5,7 +5,9 @@
 set -e
 O=scratchpad/lemmings/info/runs; mkdir -p $O
 SD=reversing/lemmings/py/skilldrive.py
-go() { n=$1; idx=$2; cnt=$3; shift 3; python3 $SD $idx $cnt $O/$n "$@" >/dev/null & }
+# JOBS caps the emulators running at once (default: all eight).
+throttle() { while [ "$(jobs -rp | wc -l)" -ge "${JOBS:-99}" ]; do sleep 1; done; }
+go() { n=$1; idx=$2; cnt=$3; shift 3; throttle; python3 $SD $idx $cnt $O/$n "$@" >/dev/null & }
 go climb   0 26c22 --samples 80 --step 36000 --x0 688 --y0 40 --rows 56  --wall 46,48,56,74
 go float   1 26c2a --samples 70 --step 36000 --x0 688 --y0 56 --rows 100 --wall 47,47,76,139,00000000
 go ctl     1 26c2a --samples 70 --step 36000 --x0 688 --y0 56 --rows 100 --wall 47,47,76,139,00000000 --noclick
