@@ -327,6 +327,13 @@ What makes a restore an identity operation:
 - `Preview` restores `stepCount` too. It is the phase clock for the VBL/HBL/Timer
   raises and scheduled IKBD injection, so a `p 10000` that did not would shift the
   machine's temporal phase permanently while PC and RAM looked untouched.
+- The checkpoint (`AtartSt.Capture`, which `Preview`, `detcheck` and `stserver`'s `fork` use;
+  `callcap` saves it alongside) carries the unfired `ATARI_KEY_INPUT` groups, which `Step()`
+  pops as they fire. Without them a group fired after the capture is gone after the restore:
+  `detcheck 100000` at step 2,990,000 of a cold boot (`1 repl`, `s 2989999`) with
+  `ATARI_KEY_INPUT='39;b9' ATARI_KEY_DELAY=3000000` diverged at step 3,000,000, the injection;
+  it now passes, and the same run with no schedule passed before and after.
+  A `.snap` file does not hold the schedule: it comes from the environment on each run.
 - The loop detector folds `mmu.PeripheralPhase` (a fingerprint of those latent
   counters) into its recurrence gate, so "provably stuck" is a real proof: same CPU
   state + unchanged mutation counter + unchanged latent device phase + no interrupt

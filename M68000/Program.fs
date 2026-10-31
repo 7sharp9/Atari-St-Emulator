@@ -64,7 +64,7 @@ type MachineState =
         && a.A4 = b.A4 && a.A5 = b.A5 && a.A6 = b.A6
 
 ///See `AtartSt.Capture`.
-type MachineCheckpoint = { Cpu: Cpu; StepCount: uint64; Mmu: MmuSnapshot }
+type MachineCheckpoint = { Cpu: Cpu; StepCount: uint64; Mmu: MmuSnapshot; KeyInject: (uint64 * byte[]) list }
 
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
@@ -617,28 +617,25 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///`DeterminismCheck`, which asserts exactly that.
     ///An in-memory checkpoint of everything a later Step() reads (what Preview saves privately);
     ///`Restore` puts it back and resets the loop detector, as Preview does. A checkpoint can be
-    ///restored any number of times.
+    ///restored any number of times. It includes the unfired `ATARI_KEY_INPUT` groups, which Step()
+    ///pops as they fire: without them a group fired after the capture is lost on restore.
     member x.Capture() : MachineCheckpoint =
-        { Cpu = cpu; StepCount = stepCount; Mmu = mmu.SnapshotRam() }
+        { Cpu = cpu; StepCount = stepCount; Mmu = mmu.SnapshotRam(); KeyInject = keyInjectGroups }
     member x.Restore(c: MachineCheckpoint) =
         cpu <- c.Cpu
         stepCount <- c.StepCount
         mmu.RestoreRam c.Mmu
-        resetLoopDetector()
+        keyInjectGroups <- c.KeyInject
+        resetLoopDetector() //the anchor may describe a state from the reverted branch
 
     member x.Preview(n: int) =
-        let savedCpu = cpu
-        let savedStepCount = stepCount
-        let savedRam = mmu.SnapshotRam()
+        let saved = x.Capture()
         Diag.result "--- preview: up to %d step(s), state will be restored afterward ---" n
         (try
             for _ in 1 .. n do x.Step()
          with e ->
             Diag.result "--- preview stopped early: %s ---" e.Message)
-        cpu <- savedCpu
-        stepCount <- savedStepCount
-        mmu.RestoreRam savedRam
-        resetLoopDetector() //the anchor may describe a state from the just-reverted speculative branch
+        x.Restore saved
         Diag.result "--- preview done, state restored to PC=$%08x ---" cpu.PC
 
     ///Substrate self-check (91st pass, the "trustworthy experimental instrument" review): proves
@@ -650,9 +647,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///Run this specifically with active FDC I/O, an armed Timer B, queued IKBD input and live
     ///Powermonger gameplay - the cases the old MmuSnapshot silently dropped. Returns true on match.
     member x.DeterminismCheck(n: int) : bool =
-        let savedCpu = cpu
-        let savedStepCount = stepCount
-        let saved = mmu.SnapshotRam()
+        let saved = x.Capture()
         let steps = ResizeArray<uint64 * int * uint64 * uint64>(n)
         let runTrace () =
             steps.Clear()
@@ -676,11 +671,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                     steps.Add(stepCount, cpu.PC, mmu.Mutations - mut0, mmu.PeripheralPhase)
              with _ -> stopped <- 1)
             h, stopped, steps.ToArray()
-        let restore () =
-            cpu <- savedCpu
-            stepCount <- savedStepCount
-            mmu.RestoreRam saved
-            resetLoopDetector()
+        let restore () = x.Restore saved
         let h1, s1, t1 = runTrace ()
         restore ()
         let h2, s2, t2 = runTrace ()
@@ -732,6 +723,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         let sentinel = 0x00DEAD00u
         let savedCpu = cpu
         let savedStepCount = stepCount
+        let savedKeys = keyInjectGroups
         let saved = mmu.SnapshotRam()
         let sp0 = uint32 savedCpu.A7
         let retSlot = sp0 - 4u
@@ -786,6 +778,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         cpu <- savedCpu
         stepCount <- savedStepCount
         mmu.RestoreRam saved
+        keyInjectGroups <- savedKeys
         resetLoopDetector()
         Diag.result "--- callcap $%06x: %s, trace hash $%016x, %d byte(s) changed, entrySP=$%06x exitSP=$%06x ---"
             target outcome h muts.Count sp0 spN
