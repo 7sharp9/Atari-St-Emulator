@@ -1,10 +1,10 @@
 # Populous: handoff
 
-Updated 2026-10-25 by the session that ended at commit `e77989a` (post-decision branches live).
+Updated 2026-10-31 by the session that ended at commit `30cb24f` (hidden hooks run live).
 
 ## Resume point
 
-- Last commits of this workstream: `e77989a` (fight start / join live, knight cast from `fight1`),
+- Last commits of this workstream: `30cb24f` (hidden hooks live, `py/hooks/`), `e77989a` (fight start / join live, knight cast from `fight1`),
   `564f233`..`c0b9ad7` (the swamp-monster edge measured on real Hatari), `a74f2ae` (docs audit).
 - `bin/` is built from HEAD (`249562d`, 2026-10-25). The emulator changed a lot since `a74f2ae` (MFP
   vector base and pending-clear, bus errors above `$400000`, `hits`/`bpc` count instruction starts,
@@ -16,7 +16,9 @@ Updated 2026-10-25 by the session that ended at commit `e77989a` (post-decision 
   `pop_ad58.img`, `pop_ad58.asm` (now the whole text segment $ad58..$21464, regenerated with
   `disassemble.py --rom pop_ad58.img --base ad58 --all ad58 21464`; the old file stopped at $1d462 and
   `py/fieldxref.py` and `py/ai/asm.py` read it), `pop_ad58.c` (Ghidra 12.1.4, in `ghidra121/`), `pop_auto.st`, `repro`/`game_start`/`g90`/
-  `late1..4.snap`, `walker/snaps/near`, `front`, `gather1`, `fight1`. Everything else in
+  `late1..4.snap`, `walker/snaps/near`, `front`, `gather1`, `fight1`, `hooks/paint1.snap` (paint-map
+  mode in a custom game, built by `py/hooks/paint_mana.py`; not yet in `ANCHORS.md`, which holds another
+  session's uncommitted edit). Everything else in
   `ANCHORS.md` (drive/A, ai/cg1, cg2, M1, g40, powers/snaps, systems/spawn, swamp208, endgame) is
   **not** rebuilt here yet; `ai_diff.py` lists `g40.snap` and `agents/` captures that are absent.
 - Start from: `walker/snaps/fight1.snap` (frame 2665) for combat and take-overs;
@@ -45,12 +47,12 @@ Five topic docs, each count in the table at the top of `reversing/populous/READM
   the gap is interrupt timing (`systems.md` 1.3, `py/systems/hatari_edges.py`).
 - Systems: trails 400/400 + 400/400 callcaps, 394/394 live; the pop-208 swamp spawn 400/400 and
   237/238 frames (`systems.md` 1.3).
-- Hidden hooks (`graphics.md` Scrolling, `mechanics.md` section 7; all code-read, none run live):
-  `$37eae` has a writer in `ikbd_read_byte` (`$02004e`); `$3c4e4` caps a side's settlement capacity at
-  50 and is set by command 14 sub 15 (`$01fbc4`); subs 9 and 10 of the same `cmd_misc` (`$1f0fa`)
-  set side 0's and side 1's mana to `2*mana + 500` (arg 0) or halve it, and in paint-map mode the key
-  handler `$1d996` posts them from F6 and F7. The `$66` scroll branch cannot post sub 15 (it leaves
-  command 0, which `$1e712` skips).
+- Hidden hooks (`mechanics.md` 7, `graphics.md` Scrolling), run live with controls: F6/F7 in paint-map
+  mode post `cmd_misc` subs 9/10, **52/52** calls match the mana model (`py/hooks/paint_mana.py 1200000`);
+  sub 15 from a poked record sets `$3c4e4` = arg+1, CHEAT once, capacity-50 line 3/4 hits, control 0
+  (`py/hooks/sub15_poke.py`); the keypad-`*` branch passes its guard 4/4 with the pointer at (316,15),
+  0/4 at (200,100), never reaches `cmd_misc` (`py/hooks/star_key.py`). No code on one machine posts sub
+  15 (byte-store census, `mechanics.md` 7); only the serial unpack `$183b4` could carry it.
 - Docs audit: the three audits' "checked and sound" lists are the evidence for everything not
   corrected; `postdecide_diff.py 400 <seed>` reproduced on this Mac, 800/800 for each of seeds 8080 and
   77 (1600/1600). `landscape_infographic.py --check` gives 375/375 here.
@@ -62,28 +64,29 @@ Five topic docs, each count in the table at the top of `reversing/populous/READM
 - The emulator is deterministic across Windows and macOS on the recipe path: `repro` frame 285 and
   late1..4 frames 835/1328/1763/2161, evil mana 7485.
 
+## Running
+
+Nothing running.
+
 ## Open, in priority order
 
-1. **Trigger the hidden hooks live**: in a paint-map session press F6/F7 and watch `bp 1fbc4`-style
-   hits on `$1f0fa` (subs 9/10 are keyboard-reachable); find what posts sub 15 (`$1d996` does not;
-   scan every writer of `$21e0c+0..2` with `find_field_writers.py`); poke `$37eae = $66` with the
-   latched click at x>310, 10<=y<=20 and query mode to confirm the `$b9fa` branch only prints.
-2. **The swamp208 237/238 frame**: `trail_ref.py` skips a settlement on a marked cell because
+1. **The swamp208 237/238 frame**: `trail_ref.py` skips a settlement on a marked cell because
    `$10366` was not modelled; `powers_ref.claim_land` now is. Wire it in and re-run
    `py/systems/trailrun.py` from `swamp208/p_spawn.snap` (needs `swamp208.py poke` on this Mac
    first) for 238/238; same for the `$12f84` corpus exclusion (`systems.md` 1.4).
-3. **Staged scenes for the callcap-only branches** (`mechanics.md` 10): a knight merging into a
+2. **Staged scenes for the callcap-only branches** (`mechanics.md` 10): a knight merging into a
    friendly walker, a take-over whose winner stays a walker, a castle claimed after a take-over,
    `$10068` killing a settlement outside a fight. Natural play did not reach them (0 of 391 merges
    with a knight mover, 0 of 25 take-overs). Stage with labelled pokes: a friendly walker placed on
    the `knight_s3000` knight's next cell; a building overlay next to a take-over winner. Low value:
    `pw_diff.py` already covers them on the full state.
-4. Smaller loose ends: sounds 5/6 and the `$37e78` bits (`systems.md` 6); `$135fc`'s second call
+3. Smaller loose ends: sounds 5/6 and the `$37e78` bits (`systems.md` 6); `$135fc`'s second call
    site `$e580` live; the `$f6b2` swamp raise live; a full SAVE/LOAD round trip on a disk with
-   space; PAINT MAP, RESTART/NEXT MAP; SPR_320 frames 9 and 11 live; a pop-208 spawn on edge 1 or a
+   space; the paint-map edits (F1..F5, F8, Delete, from `hooks/paint1.snap`), RESTART/NEXT MAP; SPR_320 frames 9 and 11 live; a pop-208 spawn on edge 1 or a
    stale cell (poke `$3f418`). Infographic: the minimap colour of shapes above `$2e` (rocks,
    swamp, ruins) has no traced table entry, so the page draws them as plain land.
-5. Lowest: the serial link (`$19652`, needs a second emulated machine); the LORD/MOUTHS speech.
+4. Lowest: the serial link (`$19652`, needs a second emulated machine; it would also show sub 15
+   arriving through `$183b4`); the LORD/MOUTHS speech.
 
 For the emulator workstream: Timer A is a stub (64 interrupts per frame), so sampled sound plays at
 the wrong rate (`systems.md` 6.2).
@@ -127,9 +130,21 @@ functions (`$ae14`, `$13dce`, `$188b0`, `$192ea`, `$20a66`, `$21244`), README no
 - The infographic's dark theme is unverified visually (the pane renders local files light only); its
   tokens are copied from PowerMonger's `dither_infographic.html`.
 
+- GAME SETUP and OPTIONS items are hit only on their 8-pixel square (`x+16..x+24`, `y+16..y+24` of the
+  `$22286` record, width field +4 = 8), not on the text; PAINT MAP needs CUSTOM GAME first.
+- `$3c518/$3c51c` is the live pointer while a button latch is armed (VBL `$16c8e`), so a poke of it is
+  overwritten within one VBL: move the pointer instead (`py/hooks/star_key.py`).
+- `stserver`'s `mouse` clicks register in Populous (the menu drive in `paint_mana.py`), unlike Midwinter.
+
+## Waiting on Dave
+
+- Proposed skill line (`reverse-engineer-st-game`, naming rules): name a key scan code from the TOS key
+  table in the ROM (TOS 1.00 UK file offset `$2034`, unshifted ASCII by scan code), not from memory. The
+  docs called `$66` "unused by any physical key"; it is keypad `*`.
+
 ## Next session
 
-Item 1, the hidden hooks: drive a paint-map session, press F6/F7 and count `$1f0fa` sub 9/10 hits
-with the mana change; then the writer scan for sub 15. If Dave prefers closing proof gaps, item 2
-(swamp208 238/238). Rebuild any other `ANCHORS.md` snapshot on demand from its recipe.
+Item 1, swamp208 238/238: run `swamp208.py poke` on this Mac to make `swamp208/p_spawn.snap`, wire
+`powers_ref.claim_land` into `trail_ref.py`, re-run `py/systems/trailrun.py`; then the `$12f84` corpus
+exclusion (`systems.md` 1.4). Rebuild any other `ANCHORS.md` snapshot on demand from its recipe.
 Prompt: `/resume populous`.
