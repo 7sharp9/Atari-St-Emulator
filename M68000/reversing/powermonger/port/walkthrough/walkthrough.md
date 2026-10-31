@@ -248,7 +248,7 @@ yaw 7 -> handler q1; visit order laid out by grid (row down, col across):
 
 The order is not strictly far to near. At yaw 15, cell 8 (bottom right, near) is drawn before cell 9 (top of the next column, far). What holds is weaker and enough: every cell is drawn after every cell that is farther along **both** grid axes.
 
-The projection says why. Depth is `ry = row * cos(yaw) + col * sin(yaw)`. For yaw 12 to 15, cos is positive and sin is negative, so a cell gets nearer as its row goes up and as its column goes down. `planQ3` runs columns from high to low and, within a column, rows from low to high, so any cell that is nearer in both directions comes later. The other three handlers do the same for their quarter turn, and `quadrant` switches at yaw 0, 4, 8 and 12, the angles where cos or sin is zero. Within a quarter turn the signs never change, so one grid order serves all four angles.
+The projection says why. Depth is `ry = row * cos(yaw) + col * sin(yaw)`. For yaw 12 to 15, cos is non-negative and sin is negative, so a cell gets nearer as its row goes up and as its column goes down. `planQ3` runs columns from high to low and, within a column, rows from low to high, so any cell that is nearer in both directions comes later. The other three handlers do the same for their quarter turn, and `quadrant` switches at yaw 0, 4, 8 and 12, the angles where cos or sin is zero. Within a quarter turn the signs never change, so one grid order serves all four angles.
 
 Cells that are not ordered this way, like 8 and 9, sit side by side across the view. The walk relies on those not overlapping on screen; the port has not tested that beyond matching the game's frames. One pass of the outer loop, `2 * zoom` cells, is what the viewer calls a **strip**.
 
@@ -541,7 +541,7 @@ sed -n '/The dither phase. $e3e6 reads/,/else Array.init dith.Length/p' ../godot
 
 On captures rotated inside the emulator, modelling the phase takes the port's terrain match from 43-47% to 85-94%. The stepper and the Godot view flip it on every camera change, as the game does.
 
-**Seasons.** The table is not fixed either. The grass and slope slots, colour bytes `$1d` to `$2e`, are a working copy, and the table also holds three source versions of them. `word[$57fd0]` is the season, and it picks the source. At world build `$1ab60` copies the season's source over the working slots. After that, every game tick, `$1abaa` copies 16 more pixels from the source, in an order set by a 13-bit random-number generator. When the generator has been round all 8192 values, every pixel has been copied: the season advances and the next fade begins. So the landscape changes colour gradually, a speckle at a time, over 512 ticks:
+**Seasons.** The table is not fixed either. The grass and slope slots, colour bytes `$1d` to `$2e`, are a working copy, and the table also holds three source versions of them. `word[$57fd0]` is the season, and it picks the source. At world build `$1ab60` copies the season's source over the working slots. After that, every game tick, `$1abaa` takes 16 more steps through the source (a step copies one pixel only when it lands in the 18 slots, about 9 a tick), in an order set by a 13-bit random-number generator. When the generator has been round all 8192 values, every pixel has been copied: the season advances and the next fade begins. So the landscape changes colour gradually, a speckle at a time, over 512 ticks:
 
 ```bash
 sed -n '/let fading/,/^        t$/p' ../godot/logic/Season.fs
@@ -576,7 +576,7 @@ season 2  source $2e000+$1780  trees +6  palette: 12:17% 13:15% 6:15% 7:13% 1:13
 season 3  source $2e000+$2080  trees +9  palette: 12:31% 13:28% 11:20% 1:13% 6:3% 2:2% 10:0%
 ```
 
-Winter is khaki and grey with no green at all, spring and autumn share a green source, and summer mixes in brown and gold. The trees change too, but all at once: the tree frame adds `{0, 3, 6, 9}` by season, which picks bare, blossoming, leafy or brown trees, and it reads the season word directly. For 512 ticks after the season changes, the game shows last season's grass under this season's trees. The mission-1 captures behind this port are from exactly such a moment, one tick into summer.
+Winter is khaki and grey with no green at all, spring and autumn share a green source, and summer mixes in brown and gold. The trees change too, but all at once: the tree frame adds `{0, 3, 6, 9}` by season, which picks bare, blossoming, leafy or brown trees, and it reads the season word directly. For 512 ticks after the season changes, the game shows last season's grass under this season's trees. `pm88_f1` is from such a moment, one tick into summer; `pm74_late`, the source of the colour table, is near the end of a fade (`../SPEC.md` "The fill: 4bpp pattern table").
 
 ![The four seasons at the mission-1 start pose, in the frame stepper (Y cycles them)](../assets/reference/stepper_seasons_119th.png)
 

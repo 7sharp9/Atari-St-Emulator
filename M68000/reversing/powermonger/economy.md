@@ -841,7 +841,8 @@ void h_mode7c_settlement(pm_object *M) {           // $157e6
             if ((M->anim /*+14*/ & 3) != 3) settlement_workorder_5cde(L);
         }
         if (L->loyalty_pressure >= 0x258) {                     // >= 600, $158ae
-            int side = M->world_x_lo % 4 + 1;                   // byte 8 (x) mod 4, + 1: $158b6..$158c0
+            int side = M->world_x_lo % 4 + 1;                   // byte 8 (x) mod 4, + 1: $158b6..$158c0, unless the
+                                                                // divu overflows ("The hunger revolt", below)
             int keep = M->owner;  M->owner = side;              // $158c4/$158c8
             revolt_550e(L, M);                                  // $158cc
             M->owner = keep;                                    // $158d2
@@ -1142,6 +1143,21 @@ of his settlements not already on that side defect, `loyalty_pressure` resets
 to 300, and one captain is reconciled (§3 "How a settlement changes
 hands", Proven). On the run lands this fired naturally 10 times in 1G steps
 (four lands at 200M each and a second land-5 run), at loyalty 600-608.
+
+The side is computed with `move.b 8(A1),D0` / `divu #4,D0`, which sets only D0's
+low byte and divides all 32 bits. On the heartbeat's path D0's high word is 0
+(`mulu` at `$15806`; `$163b8` touches only the low word) except where the Ruin
+rebuild `$15846` runs in the same pulse and leaves `cell / 10` there (its own
+`divu #$a`, building word 12). A high word of 4 or more overflows the quotient,
+the 68000 leaves D0 as it was, and the side becomes `(cell / 10 + 1) & $ff`: from
+`pm142/rand1` 90,080,900 steps in, with the Ruin flag, the counter at `$77`, man byte 14
+and the lord's loyalty poked, lord 12 and his settlement go to side `$c4` (cell 4513),
+and with only the counter at `$70` instead to side 2 (`py/revolt_divu.sh`; the game runs
+on 20M steps either way). All 10 natural heartbeat revolts entered with the high word 0
+(`py/revolt_callers.py`). A rebuild takes 120 pulses and none completes in a normal run
+(port/SPEC.md "The rebuild"), so the defect is latent; a Ruin cell in 2550..2559,
+5110..5119 or 7670..7679 would give side 0, the lord byte that hangs a merchant's mode
+`$54` loop (ai.md `$54`).
 
 **Mission 1.** Both enemy lords are built at 608 and revolt to their own side on the
 first pulse of the first winter, about 200M steps after `m1_s0` (§3). After that the
