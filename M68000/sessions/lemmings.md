@@ -1,32 +1,31 @@
 # Lemmings: handoff
 
-Updated 2026-10-19 by the sixth working session (a secrets hunt with two agents, then the handoff).
+Updated 2026-10-31 by the seventh working session (the object table `$23044`, infographic republished).
 
 ## Resume point
 
-- Last commit of this workstream: `git log --oneline -- M68000/reversing/lemmings` (the handoff and infographic commit).
+- Last commit of this workstream: `d202acb` lemmings: object table `$23044` ... (`git log --oneline -- reversing/lemmings`).
   The emulator fix is `8b6c474`.
 - Working data: `scratchpad/lemmings/`: `lemmings.st`, `files/`, `b300000000.snap` (cold boot, cracktro),
   `lvl1_a.snap` (level 1, all 10 out; stops in the cracktro frame, `A5 = $c822`: set `A5 = 272d4` before a
-  `callcap`), `interesting/menu.snap` (title menu; `py/overrun.py` starts here), `sel.snap` (digger selected; every skill run starts here), `blk/post.snap` (blocker placed),
-  `blk/<run>/` (each `skilldrive.py` run: `drive.txt`, `raw.txt`, `frames.txt`), `info/` (infographic build),
-  `interesting/full.asm` (whole program, `$400`-`$27000`). Rebuild with `reversing/lemmings/drive.txt`, then `click_digger.txt`.
+  `callcap`), `interesting/menu.snap` (title menu; `py/overrun.py` starts here), `sel.snap` (digger selected; every skill
+  and object run starts here), `blk/post.snap` (blocker placed), `trapbusy/` (the four trap arms), `info/` (infographic
+  build; `runs.prev/` is the previous build's runs, byte-identical to the current ones), `interesting/full.asm` (whole
+  program, `$400`-`$27000`). Rebuild with `reversing/lemmings/drive.txt`, then `click_digger.txt`.
 - Disk: `~/Library/CloudStorage/Dropbox/Daves/ST games/Lemmings (1990)(Psygnosis)[cr BBC][a].st`.
-- Uncommitted work left behind: none (`Cadaver/` is another session's).
+- Uncommitted work left behind: none (other sessions' files in the tree are theirs).
 
 ## Focus
 
-Lemming behaviour (record, state machine, terrain collision, update order). `extras.md` holds the side findings
+Lemming behaviour (record, state machine, terrain collision, objects, update order). `extras.md` holds the side findings
 (codes, levels, ending, crack).
 
 ## Infographic
 
-`reversing/lemmings/infographic/` builds the "Inside Lemmings" artifact (published, private, still says the basher tick is open until republished:
-https://claude.ai/artifact/3M9FDun4B75R8QL7mofGaC, version 2). `infographic/build.sh` now rebuilds it entirely locally
-(runs, blocker arms, data, page); the eight skill runs and both blocker arms regenerate byte for byte. Plate text and
-the driven/read labels are hand-written in `template.html`: update them when `mechanics.md` changes, rebuild, and
-republish to the same URL. Only light mode at desktop width was looked at (the preview pane cannot emulate dark or
-phone for a local file): check dark mode and phone width on the published page.
+`reversing/lemmings/infographic/` builds "Inside Lemmings", published private at
+https://claude.ai/artifact/3M9FDun4B75R8QL7mofGaC (version 3, current with `mechanics.md` at `d202acb`).
+`JOBS=2 infographic/build.sh` rebuilds it locally; plate text is hand-written in `template.html`: update it when
+`mechanics.md` changes, rebuild, and ask Dave before republishing to the same URL. Dark mode and phone width are unchecked.
 
 ## Proven so far
 
@@ -35,29 +34,31 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 - Boot to gameplay, deterministic (`drive.txt`). Two emulator walls fixed behind the net.
 - Lemming array `$23484`, stride `$2c`, 10 of 10; skill click path, hit test `$1540`, digger (`click_digger.txt`).
 - Collisions: terrain bitmap `$41806`/`$330` and object map `$62f80`/`$198`; the cell dispatch `$8b6e`.
-- Blocker: stamp `02 0a 03`, turn handlers `$8bce`/`$8bdc` once each against 0 and 0 in the control, restored at the
-  explosion (`click_blocker.txt`).
-- Basher, miner, builder, climber, floater, bomber, fall and splat driven, with steel refusal for basher and miner
-  (`py/skilldrive.py`, `py/terrain_diff.py`). Bits 16 and 10 and bits 12 and 13 were mis-assigned in the earlier doc and are corrected.
-- Walker thresholds (`py/stepsweep.sh`): step 1 to 2 rows smooth, 3 to 6 rows ledge hop (bit 13, 2 rows a tick), 7 or more a wall.
-- Basher erase ticks (`py/maskwatch.py`): `$81d0` increments the tick, then post-increment 2 to 5 (and 18 to 21) erase one 10-row mask frame each, 12 bursts of 80 word writes, one a tick. Miner (`--miner`): post-increment ticks 1 and 2 of 24, 13-row frames, 104 words each, 4 of 4.
-- Exit, trap and reversal cells (`py/objdrive.py`): codes 1 (exit, 8 ticks, saved counter +1), 2, 3, 4, 5, 6 each driven.
-- The crater: `$8156` frame 1 stores the record in `152(A5)`, `$55b6` (main loop `$109a`) ANDs the 16 by 22 mask `$14fd2` at
-  `(x-8, y-14)` through the blitter `$8cf8`; 113 of 113 pixels predicted; refused by cell codes 9, 5, 1.
-- Access codes and the level catalogue, 260/260 generator cases and 18/18 typed codes (`extras.md`, `py/codes.py`).
-- Secrets: none. A whole-listing scan of every keyboard reader, a single-key sweep of codes `$01`-`$7f` in four contexts, 25 menu probe
-  points and a disk/FAT audit found no cheat, debug or hidden level (`extras.md` "Keys and engine", "Leftovers"). Undocumented but ordinary:
-  F9 = ESC, Space skips the intro, the two-player keys, right-button scroll. One real quirk, driven: a code with `n` 120..159 plays on past
-  level 120 into the two-player maps, and `n = 180` replays the previous record garbled (`py/overrun.py`). Agent evidence: `scratchpad/lemmings/secretsA/`, `secretsB/`, `secretsC/` (gitignored).
+- Blocker: stamp `02 0a 03`, turn handlers once each against 0 and 0 in the control (`click_blocker.txt`).
+- All eight skills, fall and splat driven, steel refusal for basher and miner (`py/skilldrive.py`, `py/terrain_diff.py`).
+- Walker thresholds (`py/stepsweep.sh`); basher and miner erase ticks (`py/maskwatch.py`).
+- Exit, trap and reversal cell codes 1 to 6 (`py/objdrive.py`); the bomber's crater 113/113 pixels.
+- Objects ("Objects"): `$23044` holds each level object's 34-byte copy of its type record (`$39ce`); the cell high nibble
+  is the slot (`$33d0`); animator `$32a6` once a tick, 14/14 frames of level 1's loop; code 4 traps are one-shots that
+  let a lemming through while animating, four arms, kills 0/1/1/2 as predicted (`py/trapbusy.py`). Set 0's 12 type roles inferred.
+- Access codes 260/260 and 18/18, level catalogue, no secrets, the overrun past level 120 (`extras.md`, `py/codes.py`, `py/overrun.py`).
+
+## Running
+
+Nothing running.
 
 ## Open, in priority order
 
-1. The object table behind a cell's high nibble (`$23044`, stride `$22`): exit and trap animations and sounds; level 1's other
-   object cells (`$20` at (217..218, 31)).
-2. Fields +10 (frame), +20, +36/+38/+42; the release rate (`72(A5)`/`58(A5)`); the blocker's refusal test (`$1b60`) and
-   ground-loss release.
-3. Walls and one-way cells 7 and 8 (read only); a level with a real trap (not a poked cell) and a climber or digger path to the exit.
-4. Optional: table of all 140 codes, `BasicFX`/`FullFX`; dark-mode and phone check of the published infographic.
+1. Object graphics at `$67270` (frame = 4 planes then mask, `+12` the mask offset; plane order unproven): render level 1's
+   three objects and set 0's types to PNGs from `sel.snap` memory, match against a screen frame, and name the types
+   from the pictures (commit the PNGs, index them in the README).
+2. Fields +10 (frame), +20, +36/+38/+42; the release rate (`72(A5)`/`58(A5)`, `$34ac`); the blocker's refusal test
+   (`$1b60`) and ground-loss release: drive each against a control from `sel.snap`.
+3. Code `$b` (set 0 type 11, not dispatched by `$8b6e`: grep the other readers of `25(A0)`/`26(A0)`); one-way cells 7 and 8
+   driven; a level with real traps (find one in `levels.txt` whose objects include set-0 types 6, 8 or 10) to confirm the
+   trap with no pokes.
+4. Optional: table of all 140 codes, `BasicFX`/`FullFX` (the effects switch `14(A5)` is 0 in `sel.snap`, so trap sound
+   `$10` is unproven); dark-mode and phone check of the published infographic.
 
 ## Known traps
 
@@ -77,11 +78,21 @@ Detail and match counts are in `reversing/lemmings/mechanics.md`.
 - Inside the blitter `$8cf8` `A5` is the blit block `$c822`, not `$272d4`, and `bt` throws AddressError down the `A6` chain there: read
   the caller from the stack yourself (`m <A7+56> 4` after its `movem.l` of 14 registers).
 - Stop a `hits` or `bp` census at the exact phase: a `hits` first-step is relative to the run's own start, not the snapshot's.
+- A poked object-map cell's high nibble picks the object slot whose `$23044` busy bit code 4 tests: `objdrive.py`'s `$04` used slot 0 (the
+  entrance, idle), so its "vanishes at once" held only because that slot was idle. Poke `(slot << 4) | code` deliberately (`py/trapbusy.py`).
+- `infographic/runs.sh` and `py/stepsweep.sh` start every emulator at once; on a shared machine run `JOBS=2 infographic/build.sh`.
 - macOS `head -n -1` fails; write the script out in full instead of trimming another.
 - The listing at `$2000` misses the input and click code below it; use `$400`.
 - An agent's output files go in its own directory only: `make_blank_disk.py` deleted the tracked `blank_80ss.st` (restored).
 
+## Waiting on Dave
+
+- `/resume` and `/handoff` cannot be invoked by a session started from another session (the wrappers are
+  `disable-model-invocation`): this session's resume was skipped and the handoff ran only when Dave typed it. If side
+  sessions are meant to run them, the wrappers in `.claude/skills/` need that flag dropped.
+
 ## Next session
 
-`/resume lemmings`. Item 1 (object table `$23044`; the secrets hunt did not touch it), then rebuild and republish the infographic (it still lists the basher/miner ticks as open). Fold any change into
-`mechanics.md` and the matching infographic plate, then `infographic/build.sh` and republish.
+`/resume lemmings`. Item 1: decode one object frame (level 1's exit, slot 1, 48 by 17, 510 bytes at `$67270 + $22ec`) to
+a PNG and match it against a screen render of that area; then the other types. Fold results into `mechanics.md`
+"Objects" and the infographic, `JOBS=2 infographic/build.sh`, and ask Dave before republishing.
