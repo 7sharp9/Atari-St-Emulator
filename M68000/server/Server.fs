@@ -137,6 +137,7 @@ let mutable nextWatchId = 1
 let mutable stopRequest : int option = None
 let breakpoints = HashSet<uint32>()
 let forks = Dictionary<int, MachineCheckpoint>()
+let recordings = Dictionary<int, Recording>()
 let mutable nextForkId = 1
 
 let installWatch (mmu: MMU) (w: Watch) =
@@ -175,8 +176,15 @@ let status (s: AtartSt) extra =
 
 // ---- methods ------------------------------------------------------------------------------------
 
+///A recording's journal holds only inputs, so a jump to another state would break it.
+let notRecording (verb: string) =
+    match machine |> Option.bind (fun s -> s.Recording) with
+    | Some r when r.Active -> fail "%s: a recording is active; call record_stop first" verb
+    | _ -> ()
+
 ///The machine for `load`/`boot`, with drive A set from the required `disk` key.
 let prepare (verb: string) (p: JsonObject) =
+    notRecording verb
     if not (p.ContainsKey "disk") then
         fail "%s: 'disk' is required: the .st the snapshot was taken with, or null for none" verb
     let disk = if isNull p.["disk"] then None else Some (str p "disk")
@@ -189,6 +197,7 @@ let prepare (verb: string) (p: JsonObject) =
         | _ ->
             let s = AtartSt(rom)
             forks.Clear()
+            recordings.Clear()
             for w in watches.Values do installWatch s.Cpu.MMU w
             machine <- Some s
             romPath <- Some rom
@@ -234,7 +243,7 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
         let s = need ()
         let v = int (addr p "value")
         let c = s.Cpu
-        s.Cpu <-
+        s.Input (SetCpu <|
             match (str p "name").ToLowerInvariant() with
             | "d0" -> { c with D0 = v } | "d1" -> { c with D1 = v } | "d2" -> { c with D2 = v } | "d3" -> { c with D3 = v }
             | "d4" -> { c with D4 = v } | "d5" -> { c with D5 = v } | "d6" -> { c with D6 = v } | "d7" -> { c with D7 = v }
@@ -242,7 +251,7 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
             | "a4" -> { c with A4 = v } | "a5" -> { c with A5 = v } | "a6" -> { c with A6 = v } | "a7" -> { c with A7 = v }
             | "usp" -> { c with USP = v } | "ssp" -> { c with SSP = v } | "pc" -> { c with PC = v }
             | "sr" -> { c with CCR = int16 v }
-            | n -> fail "set_reg: unknown register %s" n
+            | n -> fail "set_reg: unknown register %s" n)
         status s []
 
     "peek", "Read 'count' values of 'width' bytes (1, 2 or 4) from addr. Does not fire read watches.",
@@ -269,17 +278,10 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
     "poke", "Write a value of 'width' bytes (1, 2 or 4). Fires write watches with source 'host'.",
     [ "addr", "addr", true, "address"; "width", "int", true, "1, 2 or 4"; "value", "addr", true, "value" ],
     fun p ->
-        let mmu = (need ()).Cpu.MMU
-        let a = addr p "addr"
-        let v = addr p "value"
-        mmu.HostAccess <- true
-        try
-            match int' p "width" with
-            | 1 -> mmu.WriteByte a (byte v)
-            | 2 -> mmu.WriteWord a (int16 v)
-            | 4 -> mmu.WriteLong a (int v)
-            | _ -> fail "poke: width must be 1, 2 or 4"
-        finally mmu.HostAccess <- false
+        let s = need ()
+        let w = int' p "width"
+        if w <> 1 && w <> 2 && w <> 4 then fail "poke: width must be 1, 2 or 4"
+        s.Input (HostWrite (addr p "addr", w, addr p "value"))
         obj [ "watch_hits", newHits () ]
 
     "step", "Run exactly n instructions (breakpoints and stop watches are not checked).",
@@ -420,6 +422,7 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
     "restore", "Return the machine to a fork (the fork stays usable).", [ "id", "int", true, "fork id" ],
     fun p ->
         let s = need ()
+        notRecording "restore"
         match forks.TryGetValue (int' p "id") with
         | true, c -> s.Restore c; status s []
         | _ -> fail "restore: no fork %d" (int' p "id")
@@ -432,24 +435,77 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
     fun p -> let w, h = Render.png (need ()).Cpu.MMU (str p "path") in obj [ "width", jint (int64 w); "height", jint (int64 h) ]
 
     "kbd", "Queue raw IKBD bytes (make/break scancodes, packets).", [ "bytes", "addr[]", true, "hex bytes" ],
-    fun p -> (need ()).Cpu.MMU.EnqueueIkbd [| for b in addrList p "bytes" -> byte b |]; obj []
+    fun p -> (need ()).Input (Ikbd [| for b in addrList p "bytes" -> byte b |]); obj []
 
     "mouse", "Mouse: action 'move' with dx/dy, or 'down'/'up' with button 'l'/'r'.",
     [ "action", "string", true, "move, down or up"; "dx", "int", false, "move x"; "dy", "int", false, "move y"; "button", "string", false, "l or r" ],
     fun p ->
-        let mmu = (need ()).Cpu.MMU
+        let s = need ()
         match str p "action" with
-        | "move" -> mmu.MoveMouse (optInt p "dx" 0) (optInt p "dy" 0)
-        | "down" | "up" as ud -> mmu.EnqueueMouseButton ((str p "button").StartsWith "l") (ud = "down")
+        | "move" -> s.Input (MouseMove (optInt p "dx" 0, optInt p "dy" 0))
+        | "down" | "up" as ud -> s.Input (MouseButton ((str p "button").StartsWith "l", (ud = "down")))
         | a -> fail "mouse: action %s" a
         obj []
 
     "disk", "Swap drive A's image (null ejects).", [ "path", "string|null", true, "a .st, or null" ],
     fun p ->
-        let mmu = (need ()).Cpu.MMU
+        let s = need ()
         if not (p.ContainsKey "path") then fail "disk: 'path' is required (or null)"
-        mmu.LoadDiskA (if isNull p.["path"] then None else Some (File.ReadAllBytes (str p "path")))
-        obj [] ]
+        s.Input (DiskA (if isNull p.["path"] then None else Some (str p "path")))
+        obj []
+
+    "record_start", "Start a recording here: a base checkpoint, one every 'every' steps, and a journal of every input (poke, set_reg, kbd, mouse, disk). load, boot and restore are refused until record_stop.",
+    [ "every", "int", true, "steps between checkpoints" ],
+    fun p ->
+        let s = need ()
+        s.RecordStart (uint64 (toInt64 "every" (req p "every")))
+        status s []
+
+    "record_stop", "End the recording and keep it under the returned id; replay_to and last_writer then work on it (record_use picks another).", [],
+    fun _ ->
+        let s = need ()
+        s.RecordStop ()
+        let r = s.Recording.Value
+        let id = recordings.Count + 1
+        recordings.[id] <- r
+        status s [ "id", jint (int64 id); "base", jint (int64 r.Checkpoints.[0].At); "end", jint (int64 r.End)
+                   "checkpoints", jint (int64 r.Checkpoints.Count); "inputs", jint (int64 r.Journal.Count) ]
+
+    "record_use", "Make a stopped recording the one replay_to and last_writer work on.", [ "id", "int", true, "recording id" ],
+    fun p ->
+        let s = need ()
+        match recordings.TryGetValue (int' p "id") with
+        | true, r -> s.Recording <- Some r; obj []
+        | _ -> fail "record_use: no recording %d" (int' p "id")
+
+    "first_divergence", "The first step at which two stopped recordings from the same base differ (RAM, registers, device phase), both PCs and the first differing RAM bytes; null if none up to the shorter's end. Assumes a divergence persists to the next checkpoint. The machine is left at an arbitrary point.",
+    [ "a", "int", true, "recording id"; "b", "int", true, "recording id" ],
+    fun p ->
+        let s = need ()
+        let get k = match recordings.TryGetValue (int' p k) with | true, r -> r | _ -> fail "first_divergence: no recording %d" (int' p k)
+        match s.FirstDivergence (get "a", get "b") with
+        | None -> obj [ "divergence", null ]
+        | Some d ->
+            obj [ "divergence",
+                  obj [ "step", jint (int64 d.At); "pc_a", hx (uint32 d.PcA); "pc_b", hx (uint32 d.PcB)
+                        "journal_step", (match d.JournalAt with Some j -> jint (int64 j) | None -> null)
+                        "bytes", jarr [ for (ad, va, vb) in d.Bytes -> obj [ "addr", hx ad; "a", jstr (sprintf "$%02x" va); "b", jstr (sprintf "$%02x" vb) ] ] ] ]
+
+    "replay_to", "Put the machine where the stopped recording was at step 'step' (after the inputs journalled there): restore the last checkpoint at or before it and re-apply the journal. Watches fire during the replay.",
+    [ "step", "int", true, "absolute step count" ],
+    fun p ->
+        let s = need ()
+        let from = s.ReplayTo (uint64 (toInt64 "step" (req p "step")))
+        status s [ "from_checkpoint", jint (int64 from); "watch_hits", newHits () ]
+
+    "last_writer", "The last write overlapping [lo,hi] at or before step 'step' of the stopped recording (event as watch_events gives it, or null), found by replaying checkpoint intervals backwards. The machine is left at the end of the last interval replayed; replay_to to continue.",
+    [ "lo", "addr", true, "first address"; "hi", "addr", false, "last address (default lo)"; "step", "int", true, "absolute step count" ],
+    fun p ->
+        let s = need ()
+        let lo = addr p "lo"
+        let ev, searched = s.LastWriter (lo, defaultArg (optAddr p "hi") lo, uint64 (toInt64 "step" (req p "step")))
+        status s [ "event", (match ev with Some a -> eventJson a | None -> null); "intervals", jint (int64 searched)
+                   "watch_hits", newHits () ] ]
 
 let table = dict [ for (n, _, _, f) in methods -> n, f ]
 

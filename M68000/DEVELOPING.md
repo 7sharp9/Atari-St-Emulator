@@ -757,6 +757,10 @@ results give them as `"$hex"`.
 | `watch_remove` / `watch_list` / `watch_events` | `id` / / `id?`, `clear?` (default true) | events `{step, pc, addr, width, value, write, source}`; overflow counted in `dropped` |
 | `hits` | `steps`, `addrs` | count, first and last step per address |
 | `fork` / `restore` / `drop` | / `id` / `id` | in-memory checkpoint (`AtartSt.Capture`); a fork restores any number of times |
+| `record_start` / `record_stop` / `record_use` | `every` / / `id` | start a recording here (section "Record and replay"); `record_stop` keeps it and returns its `id`, `base`, `end`, `checkpoints`, `inputs`; `record_use` makes a kept one current |
+| `replay_to` | `step` | the current recording's machine at that step; `from_checkpoint`, `watch_hits` |
+| `last_writer` | `lo`, `hi?`, `step` | the last write to `[lo,hi]` at or before `step` (an event as `watch_events` gives it, or null), `intervals` replayed |
+| `first_divergence` | `a`, `b` (recording ids) | `divergence`: `step`, `pc_a`, `pc_b`, `journal_step`, the first differing RAM `bytes`; null if none |
 | `render` | `path` | PNG at native resolution: shifter base `$ff8201/3`, `$ff8260`, palette (as `snap_render.py`) |
 | `kbd` / `mouse` / `disk` | `bytes` / `action` `move`+`dx`/`dy` or `down`/`up`+`button` / `path` or `null` | as the REPL |
 | `shutdown` | | ends the process |
@@ -775,62 +779,83 @@ events at the same steps as the REPL's `watch 189ca 4` (writer PC `$01529c`, val
 `s 300000` / `snap`, and a `fork`/`restore` replay gives an identical end snapshot and event list. A
 `poke` reports `source: "host"`; a stop watch on the odd byte `$189cd` stops `run` on the first byte
 write there, and a word write at `$189cc` reaches a watch on `$189cd` alone. `load` without `disk` is refused, a malformed line is answered and the server stays up.
-The MCP handshake and `tools/list` (25 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
+The MCP handshake and `tools/list` (31 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
 The REPL `watch 189ca 4` output is identical before and after the change (25 lines).
 
-### Record and replay (designed, not built)
+### Record and replay
 
 The questions it answers: "which instruction last wrote X before step S" and "where do two runs first differ", over runs
 of hundreds of millions of steps, without having set the right watch before the run. A watch is bounded by its window
-(`CLAUDE.md`, "Evidence rules"); a recording moves the window choice to after the run.
+(`CLAUDE.md`, "Evidence rules"); a recording moves the window choice to after the run. Built: the journal, the
+checkpoints, `replay_to`, `last_writer` and `first_divergence`. Not built: spilling checkpoints to disk and the saved
+form of a recording.
 
-What exists already. The machine is deterministic between inputs: `detcheck` shows a `Restore` is an identity on
-everything a later `Step()` reads, and `fork`/`restore` replays give byte-identical end snapshots (`server/smoke.py`).
-PowerMonger's commander has a game-level recorder: `commander/loop.py` logs every poke batch with its step in
-`decisions.jsonl`, `--replay` re-issues them and `--snap-at` saves checkpoints, which is how `gate_leadkill.sh win`
-re-watches a window of the rollout win. What is missing is a recorder below the driver, so any REPL script or
-`stserver` client gets one, and queries that search the recording instead of a hand-placed window.
+The machine is deterministic between inputs: `detcheck` shows a `Restore` is an identity on everything a later
+`Step()` reads, and `fork`/`restore` replays give byte-identical end snapshots (`server/smoke.py`). PowerMonger's
+commander has a game-level recorder (`commander/loop.py` logs every poke batch with its step in `decisions.jsonl`,
+`--replay` re-issues them), which is how `gate_leadkill.sh win` re-watches a window of the rollout win. The recorder
+below sits under the driver, so any `stserver` client gets one.
 
-**A recording** is a base checkpoint, an input journal and a checkpoint every `every` steps (default 10M).
+**A recording** (`AtartSt.RecordStart`, `stserver` `record_start {every}`) is a base checkpoint, a journal of inputs
+and a checkpoint every `every` steps, all in memory.
 
-- The journal holds only what enters from outside the step loop, each entry tagged with the step count it was applied
-  at (between steps, as every REPL and server command is): host writes (REPL `w`, `poke`; a write hook filtered on
-  `Source = Host` already sees address, width and value), register sets (`set_reg`, the `Cpu` setter), IKBD bytes
-  (`kbd`), mouse moves and buttons (`MMU.MoveMouse`, `EnqueueMouseButton`), disk swaps (`LoadDiskA`, recorded as the
-  path plus the image's FNV hash, which replay checks) and the write-protect tab. It is kept in `AtartSt`, with one
-  journal call at each of those entry points, so the REPL and the server record the same way. `callcap`, `Preview`
-  and `detcheck` roll back their own effects and are not inputs.
-- A checkpoint is `AtartSt.Capture()`: mostly the RAM copy in `MmuSnapshot` (1 MB, `MMU.fs` `ram`), so
-  150 checkpoints cover a 1.5G-step run in memory. Past a budget they spill to `SaveState` files in the recording
-  directory (`base.snap`, `journal.jsonl`, `ck_<step>.snap`), which is also the saved form of a recording.
-- **Prerequisite:** `MachineCheckpoint` does not carry `keyInjectGroups` (the `ATARI_KEY_INPUT` schedule, popped as
-  each group fires), so a `Restore` to before a fired group never re-injects it. Add it to the checkpoint first, behind
-  the section 6 net; REPL `kbd` is unaffected (it goes into the IKBD FIFO, which `MmuSnapshot` holds).
+- An input is anything that enters from outside the step loop, applied between steps: a host write (REPL `w`,
+  `poke`), a register set (`set_reg`), IKBD bytes (`kbd`), a mouse move or button, a disk swap (`disk`) and the
+  write-protect tab (`wprot`). Each is a `MachineInput` applied through `AtartSt.Input`, which the REPL and `stserver`
+  both call, and journalled with the step count it was applied at. `callcap`, `Preview` and `detcheck` roll back
+  their own effects, are not inputs, and take no checkpoints while they run. The live window's input is not journalled.
+- A checkpoint is `AtartSt.Capture()` plus the journal length and the write-protect tab (not in a snapshot), taken
+  by `Step()` before the step once `stepCount` reaches the next multiple: one `uint64` compare per step, against
+  `UInt64.MaxValue` when nothing records. Each is about 1 MB, mostly `MmuSnapshot`'s RAM copy, so 150 cover a
+  1.5G-step run.
+- While a recording is active, `stserver` refuses `load`, `boot` and `restore`: a jump to another state is not an
+  input and would make the journal meaningless. `record_stop` ends it at the current step.
 
-**Queries**, as `stserver` methods (`record_start {every, dir?}`, `record_stop`, `record_load`, then):
+**`replay_to S`** (`AtartSt.ReplayTo`) restores the last checkpoint at or before S, then steps to S re-applying each
+journal entry at the step it was recorded at. The machine is then where the recorded run was at S after the inputs
+journalled at S, with watches and breakpoints free to set (watches fire during the replay too). S must lie between
+the base and the step `record_stop` was called at. A disk swap journalled after the chosen checkpoint is refused:
+the drive's image and its write log (`diskLog`) are not in a checkpoint, so the restore cannot put the old disk back. For
+the same reason a kept recording replays against whatever disk is mounted now: after a `load` or `boot` with another
+`disk`, its replays are wrong.
 
-- `replay_to S`: restore the last checkpoint at or before S, re-apply the journal entries between it and S at their
-  steps, step to S. The machine is then where the recorded run was at S, with watches and breakpoints free to set.
-- `last_writer lo hi S`: replay the checkpoint interval holding S with a write hook on `lo..hi` up to S; if it saw
-  no write, the interval before, and so on back to the base. Returns the last event (step, PC, width, value, source).
-  The cost is one interval per interval searched; a DMA write is reported as such (its PC means nothing).
-- `first_divergence A B`: two recordings from the same base. Compare their journals (the first differing entry bounds
-  the answer and is usually its cause) and the fingerprints of their checkpoints at equal steps (FNV of RAM, `Cpu` and
-  `PeripheralPhase`). From the last equal checkpoint step both runs in lockstep, comparing `detcheck`'s per-step
-  fingerprint, and report the first differing step, both PCs, and the first RAM bytes that differ.
+Proof: `server/replay_proof.py <stserver.dll> <pre_pick.snap> <powermonger.st> <outdir>`, from PowerMonger's
+`scratchpad/cmd10/leadkill/pre_pick.snap` (made by `commander/leadkill/gate_leadkill.sh`). It records 2.6M steps
+with a checkpoint every 500,000 and three inputs (a mouse move on a checkpoint step, the `r39` poke
+`w 521cc 04000000` and an IKBD pair mid-interval), saves the recording run at 12 steps (on and next to checkpoints,
+at and after each input, the end), then replays each in a shuffled order: 12 of 12 snapshots byte-identical. A run
+without the inputs differs at the step after the poke, and the 12 are pairwise distinct. With the journal re-apply
+removed from `ReplayTo` the same script reports 9 of 12, the three points after a mid-interval input, so it detects
+a replay that drops inputs.
 
-**Proof (pre-registered).** The handoff's earlier target, reproducing the rollout win's melee from outside the watched
-window, is what `loop.py --replay` already does, so passing it would show nothing new. These have known answers and
-run in minutes from PowerMonger's `commander/leadkill` `pre_pick.snap`:
+**`last_writer lo hi S`** (`AtartSt.LastWriter`) replays the checkpoint interval holding S with a write hook on
+`lo..hi` up to S; if it saw no write, the interval before, and so on back to the base. It returns the last write at or
+before S (step, PC, address, width, value, source; the step as a REPL `watch` line gives it), or null, and the number
+of intervals replayed. A DMA write is reported as such (its PC means nothing); a journalled host write is one too.
+The machine is left at the end of the last interval replayed. Proof: `server/last_writer_proof.py <stserver.dll>
+<M68000.dll> <pre_pick.snap> <powermonger.st> <outdir>` runs the `goto ctl` arm of `gate_leadkill.sh` (2,607,722
+steps, no pokes) under a REPL `watch 53006 2` (19 writes) and as a recording (checkpoints every 500,000), then asks
+for 20 steps S (the base, before and at the first write, at a write's step and one before it, 15 spread to the end):
+20 of 20 equal the last watch line at or before S, four of them found in the interval before S's. With the backward
+search removed it reports 16 of 20.
 
-- `replay_to` is exact: for 10 steps S between checkpoints, and one just after a journalled poke, the replayed machine's
-  `SaveState` is byte-identical to the recording run's at S. Falsifier: any byte differs.
-- `last_writer`: record the `goto ctl` arm (2.6M steps, checkpoints every 500k) and, in a separate run, its full
-  `watch 53006 2` list; `last_writer 53006 53007 S` for 20 steps S spread over the run, including S before the first
-  write (expect none), must equal the last watch line before each S. Falsifier: any of 20 differs.
-- `first_divergence`: run A plain, run B with the `r39` poke `w 521cc 04000000` journalled 1M steps in; expect the
-  divergence at the poke's step with `$521cc..$521cf` the first differing bytes, and none in a pair of identical runs.
-  Falsifier: an earlier divergence (a determinism hole) or none.
+**`first_divergence A B`** (`AtartSt.FirstDivergence`) takes two stopped recordings from the same base step (`stserver`
+keeps each under the id `record_stop` returns). The first differing journal entry bounds the answer and is usually its
+cause. The machines are compared by fingerprint (FNV of RAM, the registers and `PeripheralPhase`) at every checkpoint
+step both hold and at that entry's step, which brackets the divergence between the last equal and the first unequal
+step; a binary search inside the bracket finds the step, and the result gives both PCs and the first 16 differing RAM
+bytes there. A per-step fold of registers, as `detcheck` uses, would not do: a RAM write on the fast path changes no
+register and no `Mutations` count, so a poke would show only when the game reads it. The search assumes a divergence
+persists to the end of its bracket: one undone before the next compared step is not seen. Proof:
+`server/divergence_proof.py <stserver.dll> <pre_pick.snap> <powermonger.st> <outdir>` records 2.6M steps four times
+(plain twice, the `r39` poke `w 521cc 04000000` at 1,000,000 steps in, a checkpoint step, and at 1,234,567,
+mid-interval): both poked runs diverge from the plain one at the poke's step with `$521cd` ($02 against $00, the retry
+byte) the only differing byte and the journal bound at the same step, and the two plain runs do not diverge (8 of 8
+checks). Reporting the step before the bracket's end fails 4 of them.
+
+**Still to build**: checkpoints past a memory budget spill to `SaveState` files in a recording directory
+(`base.snap`, `journal.jsonl` with a disk swap as its path plus the image's FNV hash, `ck_<step>.snap`), which is also
+the saved form of a recording (`record_load`), so a recording outlives the `stserver` process.
 
 ## MAME as a second oracle for the ST core (`tools/mame_st/`)
 
@@ -870,7 +895,7 @@ least once by a session that did not know it existed.
 
 | tool | use |
 |---|---|
-| `server/` (`stserver.dll`) | long-lived JSON-RPC / MCP process around one `AtartSt`: load with a required disk, step, run with a budget, breakpoints, typed peek/poke, multi-range read/write watches with writer PC and source, in-memory fork/restore, PNG render (section "Memory hooks and the `stserver` process"; `server/smoke.py` is its check) |
+| `server/` (`stserver.dll`) | long-lived JSON-RPC / MCP process around one `AtartSt`: load with a required disk, step, run with a budget, breakpoints, typed peek/poke, multi-range read/write watches with writer PC and source, in-memory fork/restore, recordings (`replay_to`, `last_writer`, `first_divergence`), PNG render (section "Memory hooks and the `stserver` process"; `server/smoke.py` is its check; `server/replay_proof.py`, `last_writer_proof.py` and `divergence_proof.py` the recording's) |
 | `tools/stclient.py` | Python client for `stserver` (`StServer(root)`: any method as a call, `read`, `reg`, and `call(entry, ret, stops=[...])` to run one routine from a planted return address with interrupts masked, `stops` ending it early at a PC such as a call that waits on an interrupt): for a gate that runs a routine thousands of times and prints only counts (`reversing/midwinter/py/army/gate_army.py`; `stops`: `gate_encounter.py`'s kill leg, which stops at the radio message) |
 | `tools/fsi_drive.fsx`, `tools/fsi_prep.sh` | F# Interactive driver: load a snapshot, run N steps, optionally `--watch` a range (the REPL's WATCH lines) or `--poke` a byte, save an end snapshot; a template for typed per-step scripts (section "F# Interactive" above; needs `DOTNET_gcServer=0`) |
 | `tools/regress_net.sh <base.dll> <new.dll> <outdir>` | the skill's section 6 regression net as an A/B of two builds (verify, 30M snapshot cmp, selftest; with `CADAVER_SNAP`/`CADAVER_ST`, a game snapshot, REPL `watch` and DMA-`watch` compare); for the Mac and for when another session holds `bin/` (header) |

@@ -1624,6 +1624,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Sets the write-protect tab of the disk in drive A - see `diskAWriteProtected`. It stays set
     ///across a `disk` hot-swap, like a drive whose next floppy has the same tab.
     member x.SetWriteProtectA (on: bool) = diskAWriteProtected <- on
+    member x.WriteProtectedA = diskAWriteProtected
 
     ///See `diskLog`. The journal's current length (an MmuSnapshot built outside SnapshotRam, as
     ///LoadState's, passes it to make the disk roll-back a no-op).
