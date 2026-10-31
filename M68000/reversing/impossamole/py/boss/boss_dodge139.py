@@ -4,7 +4,7 @@
         [--reach PX] [--t-lo F] [--t-hi F] [--no-dodge] [--left-fight] [--max-iter N]
 
 Best setting: `--reach 100 --t-lo 4 --t-hi 10 --max-iter 12000` from `agents/unpoked/hop4s/none/shop/seg5_pit_exit.snap` (health 16): 13 kills in 24 start
-delays (0..1,100,000 and 50,000..1,150,000 in steps of 100,000), against 3 of 24 for `--no-dodge` at reach 80 (= `boss_unpoked.py`, which it reproduces
+delays (0..1,100,000 and 50,000..1,150,000 in steps of 100,000; `sweep_delays.sh`, `D0=50000` for the second set), against 3 of 24 for `--no-dodge` at reach 80 (= `boss_unpoked.py`, which it reproduces
 run for run). Reach 100 alone gives 2 of 12, the dodge alone at reach 80 0 of 12, reach 110 6 of 24, window 3-10 11 of 24. `--left-fight` (fight the boss at
 x 64 from its right) loses: a hero walking left stops at x 118, 2 px short of a left swipe reaching the boss, and the up+left hop's latched push lands it at
 x 84, inside the boss's contact box, where it takes repeated contact hits (4 of 12 on the first delay set, against 9 without it). `--delay 700000 --record` gives a kill with health 6 that replays byte-identically (5141 commands).

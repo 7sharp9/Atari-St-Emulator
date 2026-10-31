@@ -7,7 +7,7 @@ handoff.
 
 - Working data: `M68000/scratchpad/impossamole/` (gitignored, indexed in `scratchpad/ANCHORS.md`): `pass99/`, `pass103/`, `agents/<area>/`, `agents/unpoked/` (hop 3 stages, `hop4/`, `hop4s/`
   with the shop branch, `boss/`), `agents/secrets/data/`, and `pass108/` (not yet in `ANCHORS.md`: another session had that file uncommitted): `start_install.snap` (rebuilt in 17 s by
-  `py/route/coldboot_start_room.repl`), `route/` and `nohop/` (start-room segments), `sweep/`, and `boss/` (every sweep's `.out` per delay, `sweep.sh`, `kill_d700000.repl` and its snapshots). Real Hatari v2.6.1 at `~/Downloads/hatari-snapshot/Hatari.app`, source `~/GitHub/hatari/`. TOS ROM `M68000/TOS100UK.IMG`.
+  `py/route/coldboot_start_room.repl`), `route/` and `nohop/` (start-room segments), `sweep/`, and `boss/` (every sweep's `.out` per delay from `py/boss/sweep_delays.sh`, `kill_d700000.repl` and its snapshots). Real Hatari v2.6.1 at `~/Downloads/hatari-snapshot/Hatari.app`, source `~/GitHub/hatari/`. TOS ROM `M68000/TOS100UK.IMG`.
 - Start from: `pass108/start_install.snap` for the start room (hero not yet placed; `route_hop1_2.py` waits for it), `pass108/nohop/BEST/seg3_pit_a.snap` for its furthest point (wx 692, health 12);
   `pass103/room188.snap` for the whole recorded run (`agents/unpoked/amazon_unpoked_room188_to_boss_dead.repl`, 3 min 19 s to the dead boss);
   `agents/unpoked/hop4s/none/shop/seg5_pit_exit.snap` for the boss room with health 16; `agents/unpoked/s11/seg11_shaft_exit.snap` for hop 4; `agents/world12/{klondike,orient}_gameplay.snap`
