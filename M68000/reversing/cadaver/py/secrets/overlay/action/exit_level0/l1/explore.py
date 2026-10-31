@@ -186,6 +186,7 @@ def run(inp, out, cmds, log=print, tmp=None):
             if len(a) > 1: assert hp(r) >= int(a[1]), ('health', hp(r), c)
         else:
             raise SystemExit('unknown command ' + c)
+    log('steps %d strength %d' % (r.steps, r.w(A5 + 2144)))      # 2144(A5) = strength: 50, or 199 while the STRENGTH potion lasts (pushes need the summed weight to fit)
     res = (r.w(ROOM), pos(r), hp(r), r.b(A5 + 2434))      # 2434(A5) = poison strength: non-zero means a POISON bite whose ticks (-strength each) are still to come
     r.snap(out); r.close()
     return res

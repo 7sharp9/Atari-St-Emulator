@@ -11,9 +11,20 @@ START = 'scratchpad/cadaver/gameplay_empire.snap'
 PUSH = {0xa418: 16, 0xa486: 5, 0xa59c: 5, 0xa5d2: 5, 0xa6f4: 18, 0xa72e: 27, 0xa7a4: 26, 0xa7ce: 5, 0xa184: 0}
 PUSHNAME = {0xa418: 'ex16', 0xa486: 'use5a', 0xa59c: 'use5b', 0xa5d2: 'use5c', 0xa6f4: 'pick18', 0xa72e: 'sel27', 0xa7a4: 'sel26', 0xa7ce: 'use5d', 0xa184: 'take0'}
 
+def send_joy(r, bits, run):
+    """the $ff header, then the state byte only once the ACIA's receive buffer is empty (status bit 0 of $fffc00, a side-effect-free read).
+    Both bytes in the FIFO at once make a burst: the game's ISR $1535a drains it in one entry, the emulator's re-raised channel-6 interrupt
+    enters it again with the FIFO empty, and the ACIA's latched last byte (the state byte) is stored as a keyboard make that blocks the
+    joystick until a break code arrives (mechanics.md section 14).  300 steps when the header is taken at once, as the old one-enqueue form."""
+    r.cmd('kbd ff'); n = 0
+    while n < 20000:
+        run(100); n += 100
+        if not r.mem(0xfffc00, 1)[0] & 1: break
+    r.cmd(f'kbd {bits:02x}'); run(max(300 - n, 100))
+
 def joy(r, bits):
     """joystick port 1 (header $ff) state byte; bits 1 up 2 down 4 left 8 right 0x80 fire; persists until changed"""
-    r.cmd(f'kbd ff {bits:02x}', 's 300')
+    send_joy(r, bits, lambda n: r.cmd('s %d' % n))
 
 def pos(r):
     return tuple(r.mem(0x38338, 4))  # player bbox [x_lead,y_lead,x_trail,y_trail]
@@ -56,7 +67,7 @@ class Tally:
         for k, v in self.r.hits(n, *sites).items(): self.tot[k] = self.tot.get(k, 0) + v
     def joy(self, bits):
         """joystick packet, then the 300 settle steps counted in the tally (a bare joy() hides them from `hits`: the consumer starts ~300 steps after a fire release)"""
-        self.r.cmd(f'kbd ff {bits:02x}'); self.run(300)
+        send_joy(self.r, bits, self.run)
     def show(self): return {hex(k): v for k, v in sorted(self.tot.items()) if v}
     def reset(self): self.tot = {}
 
