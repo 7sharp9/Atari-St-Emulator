@@ -429,6 +429,7 @@ is lost. Side 3's lords / force (men at home plus group men) per start:
 | LLM v1 (sonnet, a decision per 20M; the rules digest) | 5/67 5/64 9/82 10/73 9/102 3/62 | 5/67 5/65 10/84 11/75 9/106 5/63 | -1.2 / -1.5, ahead in 3/6 | 374M, five not by 700M |
 | LLM v2 (+ the captain section, enemy-group distances) | 7/70 9/76 4/74 8/72 3/52 5/81 | 7/70 9/79 4/76 11/107 3/52 8/82 | -2.0 / -2.0, ahead in 1/6 and 2/6 | 581M, 686M, four not by 700M |
 | LLM v3 (v2 + `unchanged_decisions`) | 7/74 9/57 7/68 6/48 3/52 5/65 | 8/81 8/53 6/67 5/36 3/52 4/63 | -1.8 / -3.3, ahead in 1/6 and 0/6 | none by 700M |
+| LLM v3 on Haiku (`claude-haiku-5-5`) | 10/107 5/65 5/54 3/49 7/64 6/66 | 13/122 7/76 7/50 7/47 9/66 8/85 | -2.0 / -0.5, ahead in 1/6 and 1/6 | 558M, 615M, 621M, three not by 700M |
 
 The game's AI has no spread to pair against: it plays one trajectory from rand1 under every perturbation available.
 An offset start leaves the unpoked game the same run shifted in time (its six runs end 1M apart, 676M to 671M), and
@@ -463,12 +464,13 @@ at 120M, after the model broke its own rule and attacked at 15 men), but on o2 g
 Town's cell with 20 men for 21 decisions while the lord it was sent at kept its 14 settlement men, and every reply said
 "already fighting". No other arm holds a fight unchanged for more than 4 decisions at a 20M sample. v3 added
 `unchanged_decisions` per group (state, cell and men the same, as `Scripted`'s STALE) and a rule to re-order at 2: the
-longest such streak fell to 5, and the lords did not rise. Each start differs by up to 6 lords between prompt
+longest such streak fell to 5, and the lords did not rise. The v3 prompt on Haiku (`scratchpad/cmd14/r1s3h`,
+196 calls, $0.67, 0 invalid orders) plays like Sonnet: start by start Haiku minus Sonnet v3 is +3 -4 -2 -3 +4 +1
+lords at 300M (mean -0.2). Each start differs by up to 6 lords between prompt
 versions, the spread of one LLM run on a fixed start; at six starts per arm a prompt change of the size tried cannot
 be told from that spread.
 
-**The LLM policy (`llm.py`, `prompt_system.txt`).** The model is called through Claude Code's headless mode (no API key
-on this machine): `claude -p --output-format json --model sonnet --tools "" --system-prompt <digest>
+**The LLM policy (`llm.py`, `prompt_system.txt`).** The model is called through Claude Code's headless mode: `claude -p --output-format json --model sonnet --tools "" --system-prompt <digest>
 --no-session-persistence --strict-mcp-config --max-budget-usd 1.00`, the observation on stdin, from an empty working
 directory; in CLI 2.1.292 `--output-format json` prints a list of events and the reply is the `result` event. The
 system prompt is a rules digest written from these docs (order set, posture, eating and desertion, the ratio and the
@@ -486,6 +488,36 @@ as his defence and attacked a lord it already owned; the prompt now lists reside
 rule, and the observation each enemy group's distance to each own group and `unchanged_decisions` per own group
 (v2 and v3 above). Every logged call names the model that answered (`model_usage`): `claude-sonnet-5-5` in all three
 arms; `--model sonnet` is an alias, so a later arm may get another model unless it is pinned.
+
+The policy is open loop and memoryless: each decision is one fresh call holding the rules digest and the current
+snapshot, and the only state carried between calls is each group's last order and its `unchanged_decisions`. The
+model sees no earlier reply and no outcome, so it cannot learn within a land that an attack failed except from the
+next snapshot's counts. The rollout tests each candidate 40M steps ahead in the emulator before it commits, so the
+comparison so far is a one-shot reader of the rules against a policy that tries its moves.
+
+**Evaluation design.** What the measurements above say about how to run the next ones:
+
+- Size an arm before funding it. One LLM run moves a start by up to 6 lords at 300M (paired v1 - v2 differences
+  -2 -4 +5 +2 +6 -2, SD 4.1), so a 2-lord shift needs about 30 starts per arm (inferred from those six pairs). Six
+  starts resolve only an effect as large as the rollout's, and no prompt change tried came close. Measure the spread
+  with the cheapest policy on about ten starts first, then pick the start count.
+- The unpoked AI has no spread on rand1 (above): one AI run is the whole baseline, and a policy's starts are scored
+  against it, never paired with "AI seeds".
+- Develop prompts on the cheapest model and confirm on the expensive one. A Sonnet call costs about $0.06 and a Haiku
+  call about $0.0034 (`cost_usd` in `llm.jsonl`; $13.01 for 210 calls against $0.67 for 196), and on the v3 prompt
+  the two models are not told apart (table above), so a 30-start Haiku arm costs about a quarter of one six-start Sonnet arm.
+- Score the outcome a reader cares about. Lords on rand1 side 3 at 300M is a proxy chosen because the unpoked side 3 is
+  the AI's own play; the land ends when local side 1, which no policy commands there, starves. Side 1 is the player's
+  seat, and its outcome (land won, lost, step of the end) against the three AI sides is the score to report; land 1
+  is winnable from it ("The first won land", "The campaign").
+- Give the LLM a role that search does not already fill: propose candidates that `rollout.py` scores, or see its
+  last orders and what they did. The question worth measuring is whether the model adds to search, not whether a
+  memoryless reader can replace it.
+- Read what decides a land before building policies for it. "How the captain dies" and "A second side-1 group" came
+  after three policies had lost land 2; read first, they bound the levers to keeping the captain out of melee and to
+  the one second-group source.
+- Emulator rollouts (15 to 40 minutes per land-2 run) cap the number of seeds everywhere; a cheap forward model
+  (step 5) is what makes 30-start arms of search policies affordable.
 
 ## Plan and status
 
