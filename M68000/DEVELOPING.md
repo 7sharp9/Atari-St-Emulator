@@ -140,6 +140,16 @@ an unread byte. A game that polls `$fc02` directly while TOS's ISR is installed 
 key the ISR already took (Black Tiger `$a562`, Midwinter `$172c`/`$a4e4`). The register is in the
 snapshot (format v12).
 
+`EnqueueIkbd` drops a whole packet in at once, where real bytes arrive 1.28 ms apart, so the channel-6
+interrupt is treated as the 6850's level: a read of `$FFFC02` that leaves bytes in the FIFO raises it
+again (Super Sprint's one-byte-per-interrupt ISR `$104b6` sees every byte of a packet), and a read that
+empties the FIFO withdraws a request still pending. Without the second half, an ISR that loops on GPIP
+bit 4 and drains the packet in one entry was entered once more with the FIFO empty and read the
+latched last byte as a new key: Cadaver's `$1535a`, which reads `$FFFC02` with no status test, took the
+state byte of a `kbd ff 08` joystick report as a make code, and the hero did not move (from
+`scratchpad/cadaver/s96/r6/s3_flask.snap`, `kbd ff 08` then `s 300000`: x lead 29 stayed 29, against
+41 with the two bytes enqueued 300 steps apart; 41 both ways after the fix).
+
 `ATARI_TRACE_IKBD=1` logs every completed command and every state change to
 stderr (survives `ATARI_NOTRACE`) - use it to see which input mode a program
 actually asks for. The REPL gets a `mouse` command that goes through the same
