@@ -11,8 +11,7 @@ ski view with a Bomber attacking, all unmodified apart from one poke that stubs 
 The game's rules restated for re-use in another design, without addresses. Each line names the section that proves
 it (T = `terrain.md`, A = `ai.md`); anything not proven there is labelled inferred. It covers what is decoded so far:
 the island, the enemy army, the encounters, the attacks on the player, the player's weapons, sabotage, the period
-end and the endings. The 3D renderer, the vehicles' handling, and the characters' relationships and recruitment one
-by one are not decoded yet.
+end and the endings, and recruitment. The 3D renderer and the vehicles' handling are not decoded yet.
 
 ### What carries the game
 
@@ -61,6 +60,11 @@ by one are not decoded yet.
   Masters' troops desert; losing every Heat Mine to the enemy makes the Free Villages surrender. When the enemy holds
   no Radio Station (only sabotage can bring that about, since sites are never released), every character joins the
   team at once. (A 5, A 7)
+- **Recruitment is face to face and scripted.** A character inside a building can ask any non-member within 8
+  position units each way who is in the same building. A fixed 32 x 32 table holds every answer: yes or no, one of
+  32 replies and one of 8 verbs, so the cast's friendships and feuds (which the bios describe) are fixed per pair,
+  and nothing writes the table, so asking again gets the same answer. A join brings the recruit to the asker's
+  clock. One character, Kristiansen, can also call up a random non-member three times from a Radio Station. (A 8)
 - **Deterministic.** One generator, `s' = (s * k + k) mod 65537 - 1`, drives the army's choices and every encounter;
   the terrain uses no random numbers at all. That is what lets the gates replay the game's routines exactly. (A 2, A 3,
   T 2)
@@ -97,6 +101,9 @@ by one are not decoded yet.
   the unit (read, not gated). (A 6)
 - A draw with all five counts at 0 divides by zero and survives only because the zero-divide vector is a bare `rte`
   (read, not driven). (A 3)
+- A join's Morale gain is looked up with the whole answer byte instead of its reply number, and added unsigned: the
+  two grudging replies' -20 become the largest gains, and most answers read whatever data or text follows the
+  14-byte table (A 8).
 
 ## Provenance
 
@@ -163,7 +170,7 @@ at another point of its redraw.
 | document | covers | proof |
 |---|---|---|
 | `architecture.md` | vectors, VBL, screen graph, map and 3D frame loops, the cracked loader | census counts per routine |
-| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon); encounters: the unit nearest the player and its five vehicle kinds placed around the player, losses, strength and the six leader groups; the period end's counts, prisoners, Morale loss, the report's numbers, the three endings and the radio recruitment; attacks on the player: Bomber, Spotter and missile launches by options switch and vehicle mask, their odds, bomb and shell hits; nothing but the walk takes a site; the player's weapons, the engagement and the kill; sabotage, its blast and what it changes | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; `py/army/gate_encounter.py`: search 96/96 poked and 1/1 natural, frames 9600/9600 poked and 329/329 natural, kills 512/512; `py/attack/gate_attack.py`: launches 768/768 and 768/768, odds 1452/1452, missile 128/128 poked and 5/5 natural, bomb 1494/1494, shell 361/361, 0 feature-list writes over a 170-frame natural run; `py/army/gate_period.py`: natural 6/6, 200/200 per routine, the report's 14 numbers 14/14; `py/attack/gate_shot.py`: engagement 400/400, launchers 36/36 each, shots 798/798 each, tumble 48/48, odds 300/300, vehicle fire 144/144, and a driven kill against a no-fire control; `py/sabotage/gate_sabotage.py`: natural blasts 4/4, clicks 1500/1500, blasts 100/100 per type, 1700/1700 with units and nodes untouched, supply after a blast 110/110, and driven sabotages at a village, a held Warehouse, the HQ and the Radio Stations, each against a control; Stark's 14 bio ratings 14/14 |
+| `ai.md` | the character records (qualities and skills, clocks, position) and the enemy army: 32 units random-walking a 96-node road graph, capturing sites, with speed from held Warehouses and Synthesis Plants; the 42-tick head start at PLAY and nine ticks per situation report (the team screen's clock icon); encounters: the unit nearest the player and its five vehicle kinds placed around the player, losses, strength and the six leader groups; the period end's counts, prisoners, Morale loss, the report's numbers, the three endings and the radio recruitment; attacks on the player: Bomber, Spotter and missile launches by options switch and vehicle mask, their odds, bomb and shell hits; nothing but the walk takes a site; the player's weapons, the engagement and the kill; sabotage, its blast and what it changes; recruitment: presence, the offer, the 32 x 32 answer table, Kristiansen's radio | `py/army/gate_army.py`: natural ticks 42/42 and 9/9, supply 10/10, chained ticks 1000/1000, supply 284/284; `py/army/gate_encounter.py`: search 96/96 poked and 1/1 natural, frames 9600/9600 poked and 329/329 natural, kills 512/512; `py/attack/gate_attack.py`: launches 768/768 and 768/768, odds 1452/1452, missile 128/128 poked and 5/5 natural, bomb 1494/1494, shell 361/361, 0 feature-list writes over a 170-frame natural run; `py/army/gate_period.py`: natural 6/6, 200/200 per routine, the report's 14 numbers 14/14; `py/attack/gate_shot.py`: engagement 400/400, launchers 36/36 each, shots 798/798 each, tumble 48/48, odds 300/300, vehicle fire 144/144, and a driven kill against a no-fire control; `py/sabotage/gate_sabotage.py`: natural blasts 4/4, clicks 1500/1500, blasts 100/100 per type, 1700/1700 with units and nodes untouched, supply after a blast 110/110, and driven sabotages at a village, a held Warehouse, the HQ and the Radio Stations, each against a control; `py/recruit/gate_recruit.py`: 500/500 for each of six routines and 427/427 for the radio's pick, and a driven join against a one-byte control; Stark's 14 bio ratings 14/14 |
 | `terrain.md` | the island's height field: file 37.2's 50 x 50 grid refined by five diamond-square subdivisions with a hash displacement into a 100 x 100 grid around the player, then heights, building pads and triangle shading | `py/terrain/gate_terrain.py`: generator 70000/70000 cells over 7 windows, post-passes 10000/10000 |
 
 ## Architecture
@@ -196,6 +203,7 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `radio_kill.png` | the radio message after the player's grenade kills unit 27's command vehicle (`ai.md` section 6) |
 | `hq_win.png` | the win screen `$115ae` after the Headquarters is blown up (`ai.md` section 7) |
 | `rad_report.png` | the SITUATION REPORT after the three held Radio Stations are blown up: "You now have a full team !" (`ai.md` section 7) |
+| `recruit.png` | RESISTANCE: Rudzinski answers Stark, "If you're against them, so am I," and joins (`ai.md` section 8) |
 | `ski_crash.png` | 40M steps later: frame 170, when a missile from the engaged vehicle hits (`$14dfc` set by `$2061a`, `ai.md` section 4) and the game returns to Decisions with Stark's clock moved from 06:00 to 06:08 |
 
 ## Files
@@ -212,6 +220,7 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 | `ai.md`, `py/army/` | army model `army_model.py` and its gate `gate_army.py`; encounter model `encounter_model.py` and its gate `gate_encounter.py`; period-end model `period_model.py` and its gate `gate_period.py` (all run the game's routines in `stserver`) |
 | `py/attack/` | attack model `attack_model.py` (launches, odds, hits) and its gate `gate_attack.py`, with five broken-model controls (`gate_attack.py <control>`); the player's weapons `shot_model.py` and `gate_shot.py` (nine controls), `drive_kill.py` (a driven kill and its control), `radio_after_kill.py` |
 | `py/sabotage/` | sabotage model `sabotage_model.py` and its gate `gate_sabotage.py` (eight controls); `drive_sabotage.sh` and its REPL scripts `*.txt` rebuild the driven snapshots in `scratchpad/midwinter/sabotage/` (run it before the gate); `poke_snap.py`, `radio_setup.py`, `repl.py`, `diff.py`, `state.py` |
+| `py/recruit/` | recruitment model `recruit_model.py` and its gate `gate_recruit.py` (seven controls); `drive_recruit.sh` and its REPL scripts `*.txt` drive a join and its control into `scratchpad/midwinter/recruit/` |
 | `terrain.md`, `py/terrain/` | terrain model `terrain_gen.py`, its gate `gate_terrain.py`, `render_terrain.py` |
 | `terrain_island.png`, `terrain_local.png` | the whole island after the first subdivision; the shaded local grid of `d_ski.snap` |
 | `gates.toml` | the promoted gates for `tools/gates.py` |
@@ -223,6 +232,6 @@ team, previous, next and S.O.S, and Decisions' ski icon (x 128) starts the first
 
 The 3D renderer (projection, draw list, polygon fill), the map render from the height grid, travel by any vehicle other
 than skis (the driving and gliding weapons are gated from poked states only), a sniping kill, a kill with no position
-poke, the surrender screen, the encounter's objects on screen, relationships and recruitment one by one, the other
+poke, the surrender screen, the encounter's objects on screen, Kristiansen's radio recruitment (gated only), the other
 game on the disk, a bomb or mortar barrage reaching the player in a natural run (both are gated only from poked
 states), the Bomber's drop rule and the missile's detonation.

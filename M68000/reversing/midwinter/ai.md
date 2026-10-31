@@ -14,7 +14,9 @@ them for good when they are destroyed, and dies when its strength runs out; dest
 its whole group (section 3). The enemy's aircraft (Bomber, Spotter) and the encounter's missiles attack only the
 player in the 3D view, never a site (section 4). The player fights back in two ways: by shooting the engaged
 vehicle, the only way to destroy a unit (section 6), and by sabotage, which turns buildings into Ruins and so cuts
-the enemy's supply and can win the game, but never takes a site back (section 7).
+the enemy's supply and can win the game, but never takes a site back (section 7). The team grows one character at a
+time only face to face: inside a building with someone, the player asks, and a fixed 32 x 32 table of answers says
+yes or no and with which reply (section 8).
 
 Proof: `py/army/gate_army.py` (also `tools/gates.py run midwinter`, about 5 s). It runs the game's own routines in
 `stserver` and checks `py/army/army_model.py` against every call:
@@ -56,7 +58,8 @@ enemy's gains: 2 per Factory, Synthesis Plant, Warehouse or Radio Station and 10
 last high mark (section 5). It then brings each member's clock up to the game clock, calling `$f854` for the minutes
 skipped. On the driven turn Stark's clock went from 06:00 to 08:00 and his Morale stayed 228 (the amount was 0).
 
-Relationships (the bio's "nearest friends", "hatred of") and recruitment are not located yet.
+Who joins whom, one by one, is a fixed 32 x 32 answer table read when one character asks another (section 8); the
+bio's friendships and hatreds are prose that this table agrees with.
 
 ## 2. The enemy army
 
@@ -546,10 +549,84 @@ pair (0/100), a Ruin keeping ENEMY HELD (2/4, 902/1700), no held-site Morale bon
 867/1700), explosives at exactly 0 counted short (1223/1500), charges without the + 1 (0/400), a cancel that refunds
 no minutes (0/1, 123/300), and a Ruin still counted as supply (56/110).
 
+## 8. Recruitment
+
+The team list `$2b16c` (character numbers, ending with a negative byte, 40 bytes padded with `$ff`) has three
+writers besides the radio's full team `$f8d8` (section 5): the answer `$4b16`, Kristiansen's radio `$fa78`, and a
+fill with 0..31 at `$6208` in the VBL handler's debug branch (`architecture.md` section 2: only when `$2a14c` holds
+`$acdc`, 0 on every snapshot here, and byte `$2c2d5` is set). That is every `lea $2b16c` in the image
+(`tools/find_field_writers.py d_stark.snap '$2b16c' --width 40`, sweep `$0..$2b000`: 18 sites, no absolute-operand
+writer). The other sites only read it: the period end `$ec9a`, Decisions' tests, the bio's arrows `$3024` (next
+member) and `$3054` (previous member), which set the current character `96(A6)` and call `$c9e`, The Team screen
+(`$2614`, `$26b4`, `$2724`) and the map (`$1c6a`, `$1d66`). The bio's S.O.S icon `$5784` is not a recruit path: it
+sets the character's record +0 bit 2, calls `$f76e` and returns to Decisions (read, not driven; its role is open).
+
+**Asking someone to join.** A character recruits only face to face:
+
+- *Who is present* (`$12f2`, from `$12be` under `$c9e`, which runs when a character is selected: the bio's arrows,
+  The Team, the map): every other character within 8 of the current one in x and in y (positions `>> 8`) goes into
+  `$22da6` and gets the current character's site pointer +52. `$4ade` keeps those not in the team in `$22dc8`.
+  A poke of positions alone leaves the list stale until the next selection.
+- *The offer* (`$1142`, Decisions test k = 6): the recruit icon, action `$489c`, appears when the flags word
+  `264(A6)` has bit 1, the current character is inside a building (+63 >= 0), and someone in `$22dc8` has the same
+  building number +64.
+- *The RESISTANCE screen* (`$489c`): "Captain Stark explains about the invasion of the Free Villages and asks for help
+  in resisting General Masters' army." above a portrait per present non-member; a click on portrait n runs `$496c`
+  on character `$24474`.
+- *The answer* (`$496c`) is the byte `$29d4b[candidate * 32 + asker]`. Bit 7 clear joins, bit 7 set refuses; bits
+  3-7 pick one of 32 replies at `$29c80` (0-15 accepting, "Of course I'll help you," to "I have no choice, have
+  I?"; 16-31 refusing, "Team up with you? Get lost!" to "Sort your own mess out,"), bits 0-2 one of 8 verbs at
+  `$29d00` ("says" ... "snarls"), and `$29d2b[candidate]` which of title, first name and surname follow. The line
+  is built at `$2db3a` and shown under the portrait. The diagonal is 0. A join appends the candidate (`$4b16`), gives
+  it the asker's clock (`$ee08`), adds 40 to `$2553c` capped at 249 and then at (asker's Optimism + 500) / 3
+  (`$5816`, whose `$2c3d6` is `96(A6)`), and adds a Morale gain to the candidate, floored at 0 and capped at 249.
+- *The Morale gain* is the byte at `$24b84` + the answer byte, unsigned. The first 14 bytes there pair with replies
+  0-13 (+10, +10, 0, +40, 0, -20, +70, 0, +20, +20, +50, 0, -10, -20: "For you, dear, I'd do anything!" is reply 6
+  and +70; inferred to be indexed by reply), but the code indexes by the whole byte and adds without sign: answers
+  0-13 hit the table (a -20 becomes +236, so the grudging replies 5 and 13 give the most Morale), and every other
+  answer reads past it: answers `$20`-`$47` read the period end's free and held counts `$24ba4`/`$24bb8`
+  (section 5; all 0 before the first period end), `$48`-`$65` other data, and `$66`-`$7f` the SITUATION REPORT's
+  text. On `d_decisions.snap` 27 of the table's 61 distinct accepting bytes (diagonal excluded) read a non-zero gain,
+  from 1 to 244; Rudzinski's `$46` for Stark reads 0.
+
+The answers agree with the bios where these name a feeling: Stark's "nearest friends" Courtenay and Rudzinski
+accept him (`$4e`, `$46`); Kristiansen, who "dislikes Stark and Courtenay", refuses both (`$ef`, `$fc`) and accepts
+his friend Flint (`$56`); Grazzini's "jealous hatred of Rudzinski" is mutual (`$af`, `$84`); Chabrun refuses Pringle,
+who blames him (`$87`). The bio text itself is fixed prose (`$269d2`); the answer table has one reader, `$496c`
+(`find_field_writers.py` over `$29d2b..$2a14b`: the `lea`s at `$4986`, `$4a46` and `$4c08` only).
+
+**Kristiansen's radio.** Decisions test k = 23 (`$1102`) offers RADIO MESSAGE (`$f94c`) when the flags word has bit 1,
+calls are left in `$2c174`, the team has fewer than 31 members, the current character is 12 (Olaf Kristiansen) and
+he is inside a building of type 14 (Radio Station). `$2c174` is 3 from the title screen on (no instruction sets it:
+loaded with the game's data) and each call takes one. `$fa78` lists the non-members (`$fab4`, at `$70000`), takes
+number (random `& 31`) mod their count, so with fewer than 32 the low-numbered characters come up more often, and
+appends it with the asker's clock; "... has been contacted by Prof..." and 10 minutes on Kristiansen's clock follow.
+Gated, not driven.
+
+`py/recruit/gate_recruit.py` (also `tools/gates.py run midwinter`, about 15 s) runs each routine on 500 poked states
+of `d_decisions.snap` (the asker, the team, positions near the asker, buildings, the flags word, the radio's calls,
+answer bytes and the Morale table in some states) against `py/recruit/recruit_model.py`: `$12f2`, `$4ade`, `$1142`,
+`$1102`, `$fab4` and `$496c` **500/500** each and `$fa78` **427/427** (the states with a non-member). Seven broken
+models fail (`gate_recruit.py 500 <control>`): `signed`, the gain signed and indexed by reply (`$496c` 357/500);
+`nocap`, no Optimism cap (358/500); `transpose`, the table read as [asker][candidate] (183/500); `radius9`, presence
+within 9 (`$12f2` 276/500 and every routine after it); `anybuilding`, the offer in any building (`$1142` 433/500);
+`radioany`, the radio in any building (`$1102` 452/500); `pickfull`, the radio's pick from the whole random word
+(`$fa78` 137/427).
+`py/recruit/drive_recruit.sh` drives it from `d_stark.snap` with one labelled poke, Stark moved into Karl
+Rudzinski's building: the bio's next-member arrow rebuilds the presence list (`$3024`, `$c9e`, `$12be`, `$12f2` once
+each), Decisions offers `$489c`, and Rudzinski's portrait runs `$496c`, `$4b16`, `$ee08` and `$5816` once each: the
+team becomes Stark and Rudzinski and the screen shows "If you're against them, so am I," smiles Rudzinski.
+(`recruit.png`), every compared region equal to the model's. The control, the same clicks with only Rudzinski's
+answer to Stark (`$29db9`) poked from `$46` to `$f8`, calls `$496c` but not `$4b16`: the team stays Stark and the
+line is "Sort your own mess out," says Rudzinski.
+
 ## Open
 
 - The non-spread branch and `$2bb2e` (no unit uses it on these snapshots).
-- Relationships and recruitment: the bio's friend and enemy text is prose, so the data behind it is elsewhere.
+- Recruitment's leftovers (section 8): Kristiansen's radio driven (pokes: 12 as the current character, in a team, inside
+  a Radio Station); what `$2553c` is (+40 per join, capped by the asker's Optimism; it reads like a team-spirit
+  score); Decisions' k = 20 screen `$5c84`, whose list `$22dea` holds present team members in the same building that
+  pass a test on their body values +16.. (`$5e1c`; role not read); the Morale gains past the 14-byte table after a period end, when they read live counts.
 - The encounter's objects on screen: match a frame with objects in view against the slots (needs the 3D pipeline).
 - The attacks' loose ends (section 4): the name of the character byte +72, the missile's 1-in-5 flag `$13f28`, the
   driving setup's `$14774`, record byte +0 bit 7 after a hit, and the Bomber's drop and the missile's detonation

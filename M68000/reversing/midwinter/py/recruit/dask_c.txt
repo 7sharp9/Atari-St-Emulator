@@ -1,0 +1,10 @@
+# from r3_screen.snap (RESISTANCE, pointer 175,185): click the first portrait (16..63, 130..177)
+mouse move -127 -35
+s 100000
+mouse move -8 0
+s 600000
+mouse down l
+hits 600000 496c 4b16 ee08 5816 4ade
+mouse up l
+s 100000000
+snap scratchpad/midwinter/recruit/r3c_asked.snap

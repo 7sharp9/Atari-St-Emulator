@@ -1,0 +1,6 @@
+# from r3_dec.snap (Decisions, pointer 175,185 on the recruit icon $489c): open the recruit screen
+mouse down l
+hits 600000 489c 48a0 4ade
+mouse up l
+s 100000000
+snap scratchpad/midwinter/recruit/r3_screen.snap

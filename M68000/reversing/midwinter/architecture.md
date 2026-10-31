@@ -118,7 +118,7 @@ mismatch loops forever cycling $ff8240: a code checksum (inferred protection; th
 | title "press any key" | $101c6 | `jsr` from $bc4 | waits for any scancode in $2c324, `addq.l #1,$4ba` each pass (PC $10234 in d_title.snap) |
 | Game Options | $10840 | `jsr` from $c52 / $c96, `jmp` from $2e6e | icons $25094 -> $250d2 (6 x `jsr` toggles $10944..$10996); rect $250c6 (78,134..243,197) -> seed RNG from pointer ($d598), $bfc8, $ee30, copy options $24b7e.. -> $2c176.., $675e, `jmp $2d74` |
 | The Team | $2d74 | options, bio, decisions | icons $23e10 -> $242f8; portrait rects $240f8 -> sets 96(A6) (current character), `jmp $30a0` |
-| character bio | $30a0 | team portrait | icons $23e5c -> $24214: map `jsr $14ce`, face `jmp $310c`, team `jmp $2d74`, $3054, $3024, SOS `jmp $5784` |
+| character bio | $30a0 | team portrait | icons $23e5c -> $24214: map `jsr $14ce`, face `jmp $310c`, team `jmp $2d74`, previous member $3054, next member $3024 (both via `$c9e`, `ai.md` section 8), SOS `jmp $5784` |
 | Decisions | $310c | bio face icon | built per visit: `$ca8` runs 17 tests and `$de2` appends icon `$245fe[k]` and action `$24284[k]` to the live table `$24238` (on s_view.snap: map `jsr $14ce`, bio `jmp $30a0`, team `jmp $2d74`, $3dd2 (snipe), $3d86 (ski), $5062 (ENTER a building)); sabotage `$3f98` and resupply `$563a` appear when their tests pass (`ai.md` section 7) |
 | map | $14ce | `jsr` from bio/decisions/other screens | rects $23fc8 -> $24fc8 (`jmp`, 23 entries) |
 | 3D travel | $12514 | `$3d86` ($24482=2, $24f3c=4, `$12d76=$12d7a`) and `$3dd2` ($24482=0, `$12d76=$12e28`) | in-loop keys only |

@@ -1,0 +1,16 @@
+# from r3_stark.snap (bio, pointer at 36,48): the next-member arrow $3024 (256..287, 168..199), then the face (Decisions)
+mouse move 127 125
+s 100000
+mouse move 107 12
+s 600000
+mouse down l
+hits 600000 3024 c9e 12be 12f2
+mouse up l
+s 50000000
+mouse move -95 0
+s 600000
+mouse down l
+hits 600000 310c ca8 4ade 1142
+mouse up l
+s 150000000
+snap scratchpad/midwinter/recruit/r3_dec.snap

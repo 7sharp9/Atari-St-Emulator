@@ -56,3 +56,11 @@ cwd = "py/sabotage"
 expect = ["3/3", "4/4", "1/1", "400/400", "1500/1500", "100/100", "1700/1700", "300/300", "110/110", "re:(?m)^PASS$"]
 cite = "ai.md section 7 (proof paragraph); needs py/sabotage/drive_sabotage.sh run once first"
 minutes = 1
+
+[[gate]]
+name = "recruit"
+cmd = "{python} gate_recruit.py 500"
+cwd = "py/recruit"
+expect = ["500/500", "427/427", "re:(?m)^PASS$"]
+cite = "ai.md section 8 (proof paragraph)"
+minutes = 1
