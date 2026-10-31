@@ -1,6 +1,6 @@
 # Impossamole: handoff
 
-Updated 2026-10-31 by the 108th-pass session (boss reliability 13 of 24; cold-boot start room segments 1-3); the work commit is `9650ffe`, the one before this
+Updated 2026-10-31 by the 108th-pass session (boss reliability 13 of 24; cold-boot start room segments 1-3); the work commits are `9650ffe` and `d1c8bfc` (the delay-sweep script), before this
 handoff.
 
 ## Resume point
