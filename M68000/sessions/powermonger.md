@@ -1,59 +1,50 @@
 # PowerMonger: handoff
 
-Updated 2026-10-25 by the 167th session (posture 5's lasting effect; commits below), after the 166th (`0a719ba`).
+Updated 2026-10-31 by the 168th session (Open 3's cheap checks and Open 2's residue).
 
 ## Resume point
 
-- Last commits of this workstream: `8250d1e` (posture 5 costs a fisherman) and this handoff, after `0a719ba`. Not pushed.
-- `bin/Debug/net8.0/M68000.dll` was rebuilt 2026-10-25 by the emulator workstream from current master (bus errors, `stserver`, MMU hooks); this session ran it unchanged.
-- Working data: `M68000/scratchpad/pm167/p5job/` (the `p5_fisher.sh` run: `p{5,3}_{mode,job}.{out,err}`). Older: `M68000/scratchpad/pm166/` (`reports/<area>.md` summaries of the seven agents, raw runs under `clockA/ clockB/ orders/ piles/ lords/ posture5/ camp/`; `apply_docs.py` is the doc-edit record); `pm162/g4a7a/nat/` now also holds the `n4a7a_man_*` corpus. Older: `M68000/scratchpad/pm165/real84/` (the first capture `mb_0/1`, the 60M men watch `watch.err`), `pm165/gate/` and `pm165/gate2/` (the promoted gate's reruns, `gate2` with `WINDOW=1`). Older: `M68000/scratchpad/pm156/overlay/cap/{siege84,msiege84,msiege92}_*` (the new overlay captures) and `pm164/xcheck/` (the `run.sh` output). `M68000/scratchpad/pm163/` (gitignored): `p5fwd/` (the `trade5_fwd.sh` 2x2: `x_<arm>.out`, `x_<arm>_{30,60}.snap/.ram`, `drain.out`; `fwd.sh` with `p5x.fwd`/`p3x.fwd`, the plain arms over 100M), `p5fwd_first/` (the first 2x2, identical), `old/`. `pm156/overlay/cap/b6_NN_halt.snap` are the new bomb_check end states. Older: `pm162/` (`posture/trade/at63f4.snap`, the trade state), `pm161/`, `pm160/`, `pm156/`, `pm148/`, `pm142/`, `pm143/`, `pm123/`.
+- Last commit of this workstream: `5867b7d` (the 168th pass: divu overflow, conquest side, lord-slot census, posture-5 panels, dismiss and roster). Not pushed.
+- `bin/Debug/net8.0/M68000.dll` as built 2026-10-26 by the emulator workstream; this session ran it unchanged.
+- Working data: `M68000/scratchpad/pm168/` (gitignored): `divu/` (`revolt_divu.sh`: `p15826.snap`, the stop state, and the arms), `lordslots/` and `lordslots0/` (the census dumps, paged and Play Random Land rolls), `dismiss/` (`p5_dismiss.sh`), `roster/` (`p5_roster.sh`: `p{5,3}_100M.snap`, the two p5_fisher arms 100M steps in, and the dismiss watches); `apply_docs.py` is the doc-edit record. Older: `pm167/p5job/`, `pm166/` (`reports/`, `BRIEF.md`), `pm165`, `pm163`, `pm162`, `pm156`; earlier ones as the 167th handoff listed (git history of this file).
 - Start from:
   - `scratchpad/pm142/rand1.snap`: Play Random Land with two player captains; the land ends about 676M steps in.
-  - `scratchpad/pm162/posture/trade/at63f4.snap`: side 3 group 0 at the trade `$63f4` (A3 = `$51938`); the posture-5 arms start here.
-  - `scratchpad/pm150/small/camp/c12_0.snap`: a lit camp fire in view; `pm148/arms/long/M2G_k118_c1.snap`: lit and put-out fires.
-  - `scratchpad/pm162/g4a7a/nat/n4a7a_k120_a_1.snap`: the k120 sword click at `$4a7a`'s entry.
-  - `scratchpad/pm97/pm97_map0.snap` (forest animator), `pm150/saveload/out/file.snap` (FILE panel), `pm123/win/m1_ready.snap` (mission 1 conquered), `pm88_f1.snap` (clear `$2c993` first).
-- Uncommitted work left behind: none from this workstream. Not this workstream's: `.obsidian/`, `Cadaver/`.
+  - `scratchpad/pm162/posture/trade/at63f4.snap`: side 3 group 0 at the trade `$63f4`; `pm168/roster/p5_100M.snap`: its posture-5 arm 100M steps on (object 6 on side 2, group 0, flag bit 2 lost).
+  - `scratchpad/pm150/small/camp/c12_0.snap` (lit camp fire), `pm148/arms/long/M2G_k118_c1.snap` (lit and put out), `pm162/g4a7a/nat/n4a7a_k120_a_1.snap` (`$4a7a` entry), `pm97/pm97_map0.snap`, `pm150/saveload/out/file.snap`, `pm123/win/m1_ready.snap`, `pm88_f1.snap` (clear `$2c993` first).
+- Uncommitted work left behind: none from this workstream. Not this workstream's: `scratchpad/ANCHORS.md`, `Cadaver/`, other sessions' game files.
 
 ## Proven so far
 
-Older gates carry over unchanged; the list is in `strategy.md`, `ai.md`, `economy.md`, `system.md`, `graphics.md` and `port/SPEC.md`, with reruns from the `py/README.md` table. The 162nd pass's (camp markers, exact water, `$54`, posture-5 writers, piles, `$58054`, `$4a7a`) are in those docs.
+Older gates carry over; the lists are in `strategy.md`, `ai.md`, `economy.md`, `system.md`, `graphics.md` and `port/SPEC.md`, reruns from the `py/README.md` table.
 
-New in the 167th pass:
+New in the 168th pass:
 
-- **Posture 5 costs the side a fisherman for good** (`strategy.md` "Posture 5 forced into the trade", `py/cmdai/posture/p5_fisher.sh`, 200M steps per arm from `at63f4.snap`): after the trade's clear no writer restores flag bit 2 (377 byte-7 writes, all `$00`/`$20`/`$40`; the control's 509 all keep it). Both men finish the trip they are on; at the next `$3c08` the posture-5 man gets `$7e`, the control `$5e`; home again the control fishes (`$15b8a` writes `$56`, 1) and the posture-5 man is stamped a gatherer by the work order (`$5f78` writes `$3e`, 2; control 0). Both are later taken into a group roster (`$1b7c` sets bit 6) and run the same soldier modes. `$5f78` was already named: it is the stamp in `$5ec6`, `$5cde`'s tail (economy.md §2a).
+- **The heartbeat revolt's side can overflow** (`economy.md` §3 "The hunger revolt", `py/revolt_divu.sh`): `$158b6` divides all 32 bits of D0 after setting its low byte; the Ruin rebuild `$15846` in the same pulse leaves `cell / 10` in the high word, the quotient overflows and the side is `(cell / 10 + 1) & $ff` (`$c4` for cell 4513, control 2; 0 for cells 2550..2559, 5110..5119, 7670..7679). Latent: 10/10 natural revolts had high word 0 (`py/revolt_callers.py`), and a rebuild never completes in a normal run.
+- **The conquest side is never 0** (`ai.md` `$54`): `$14b72` skips a side-0 record and nothing on mode `$2c`'s path to `$53f6` writes `5(A1)`; 17/17 natural conquests gave sides 2..4.
+- **Lord slots lost to the `$2eac` corner test:** none on the briefing-preview roll (0/144 lands); on the Play Random Land roll 3/144 (k27, k69, k90), one slot each, the highest consumed (`strategy.md` "Towns, ranks and water", `py/worldbuild/lord_slots.sh`/`.py`).
+- **Posture-5 panel text** (`strategy.md` "Posture 5 forced into the trade", `py/ui/posture5_panels.py`, 4/4): the captain panel reads "PowerMonger but sting", the alliance offer "dave, .. allian an".
+- **Posture-5 dismiss lets one man in eight go** (`py/cmdai/posture/p5_dismiss.sh`): 1/6/12 of 12 at postures 5/3/2, shift 3/1/0 at `$1cec`.
+- **The lost fisher flag outlasts the roster** (`py/cmdai/posture/p5_roster.sh`): dismissed from side 2's group 0, the posture-5 man gets prev `$7e`, the same snapshot with bit 2 put back `$5e` and one fishing trip in 60M steps.
 
-The 166th pass's (all in the topic docs; reruns from the `py/README.md` rows):
+## Running
 
-- **`$13baa` runs only at land build** (`fig/clock_stall.facts.md`): once in a build, 0 in 200M play steps and 0 in 750M of `rand1`; a LOAD and the land-end flow not measured. **`$65b4` per chunk** is 1467..1503 (k80) and 1836..1851 (k108), so 1500/1843 are chunk-1 values (`W5G_*` logs; chunk 15 re-executed).
-- **Foreign-man arm of `$4a7a` entered by a natural click** (k56 (29,35), 99/99); the gate is 2030/2030 over 26 states. **Class `$a`** is reached by a click after a labelled `worker_obj` poke; its shoot ends only by an arrow's `neg.b 5(A3)` at `$5b7e`, and an arrived marker is never hit (`strategy.md` "The opponent class").
-- **Piles:** neither the `$3a8e` nor the `$3a18` arm has a natural entry (25 `$39d4` calls, 17 piles); both match under labelled pokes. `$ab34` is the generic offset-8 reader (callcap 64/64); a LOAD restores the pile pool and `$58054` by DMA (3/3).
-- **`$54` hang has no natural path:** only `$2ef4` and `$5516` write a lord's byte 0, always 1..4 (code census plus 1,600M watched steps). **Lord slot 12 on k90** is `$2eac`'s `add.b` corner test wrapping on four `$40` corners (`strategy.md` world build).
-- **Posture 5:** the trade's clear of object 6 bytes 6..7 turns a fisherman's job 4 to 0, `$3c08` then gives prev `$7e` for `$5e` (2/2); object 7's clear was already 0; per-reader behaviour in `strategy.md` "Posture 5 forced into the trade".
-- **Camp markers:** the port's blit matches the game's screen, 88/88 pixels in 35 draws (`port/SPEC.md`).
-
-The 165th pass's:
-
-- **The `$84`/`$92` melee frame matches in the real posture-5 trade run** (port/SPEC.md §6 "Men", `py/xcheck/overlay/real_melee84.sh`; `WINDOW=1` reproduces the window): from `at63f4.snap` the 12 men fight (byte 31 `$32`, 37 writes) from 864.84M to 866.61M cumulative steps, byte 44 never rewritten. One frame (camera poke only) has six in melee, three `$84` and three `$92`; on the pixels that depend on byte 44 the true render is the game's 35/35 (byte 44 + 1), 43/43 and 33/33 (aligned weapon-0 frame), every altered render 0. `diff.fsx` takes `WRONG_SIDE=ctl` to score one capture against itself.
-- **The word blitter ORs its planes unmasked too, with no effect** (port/SPEC.md "Frame index per category"): every row loop (`$123ac`, `$1241a`, `$12460`, `$124a8`, `$12576`, `$12628`) writes `plane | (screen & mask)`, but no frame of `$312a0`/`$37c7c`/`$3af1c` has a plane bit under the mask (`py/xcheck/sheet_mask_scan.py`, 0 rows on `at63f4` and `pm88_f1`; control frame `$ab` found), so `decodeFrameWord` needs no change.
-
-The 164th pass's:
-
-- **The port follows the game for byte 44 >= `$80`** (port/SPEC.md §6 "Men" and "The mini-sprite blitter"): the siege test is signed (`$11cb4`, `$11e78`); `$11f82` makes the frame a byte offset with `mulu #$37 / adda.w` (16-bit wrap, sign-extended, so a `$84`/`$92` melee frame reads 55 misaligned bytes, below `$33000` into the `$312a0` sheet's tail for side-2 `$84`); the planes are ORed in unmasked, so a mask-1 pixel with plane bits k draws `background | k` (one pixel of the real sheet, frame `$ab`). Labelled pokes on `pm88_f1`: walk `$84` 0/0, melee `$84` 32/32 and `$92` 35/35 (before: 3/32, 3/35; wrong-frame control 9/32, 22/35); the 16 earlier cases unchanged (`py/xcheck/overlay/run_cases.sh`, `score_cases.sh`); `py/xcheck/run.sh` at the documented scores, synthetic blits 17/17 with `blit_py.py` mirroring the OR.
-
-The 163rd pass's (byte6 36/38/42 halt, posture-5 trade codes decide the next fight, melee formula fix) are in port/SPEC.md §6, README "Bug 7" and strategy.md "Posture 5".
+Nothing running.
 
 ## Open, in priority order
 
 1. **Port residue.** Natural byte6 18 and 28 are unseen in play. The camp-marker catch marker `$110` and other zooms are not pixel-matched (needs a snapshot with a drawn byte6 24 record, `pm160/snd/drawscan.txt`).
-2. **Posture 5 residue.** `$1ce6` needs a player dismiss order; render the `$90fe`/`$c77e` panel text at posture 5; whether the lost fisher flag matters once the man is in a roster (a `$3c08` after bit 6 is set did not occur in 200M steps: a labelled dismiss would drive it).
-3. **Residue of this pass's checks.** A LOAD and the land-end flow for `$13baa` and for a zeroed lord side; the conquest path `$53f6` with a zero side and the `$158b6` `divu` quotient (`bp`); a census over the 144 lands of `$4f914/32` against filled lord slots (how many lose a lord to the `$2eac` wrap); whether an arrow can hit a still-walking class-`$a` marker; a natural `worker_obj` writer (`watch` tree word 2 over a Play Random Land run); a natural add-to-pile (drive `$12`/`$18` twice on one cell); the byte 44 `>= $12` overrun, the `$ab34` categories `$12 $16 $1a $1c $22`, and a per-site run of the chain walkers with a pile in the chain; the natural `$3aee` arm (once at 98M steps of `p0k60_s1`); the chunk-end clock values `$2df72` in `W5G_*_cN.snap`.
-4. **Small checks.** Natural winter snow under the `$1abaa` gate; the crack's `$b842` patch and `$3c12`'s `nop`; health cap and food (`$5ccc`); rout fates on a third land; a natural `$66`; the dialog buttons `$04`, `$08`'s `$71` and `$131`.
-5. **No current check exercises vector 4 on the unassigned `ImmediateToEa`/`BitOp` encodings** (README "Bug 7"): byte6 36-42 now bus-error first. An emulator-workstream item; a poke of `$0608` at a live PC would do.
-6. **A player route to `$668c`** (low value) and **the stall on the original machine** (a Hatari run past clock 32768 with a camped group; Dave's go-ahead given).
+2. **Consequences of a garbage lord side** (the `$158b6` overflow): what a lord and settlement of side `$c4` (or 0) do to the readers that index side tables (`side * $13c`, `$580a6[side]`), and whether men copying their home settlement's side (`$42ac`, `$16874`) can take side 0 (never stepped, `$14b72`) or a negative one. Labelled from `pm168/divu/p15826.snap` with the `revolt_divu.sh` pokes; a `watch` on the side bytes and `hits` on the side-indexed readers over 50M steps against the control.
+3. **Residue of the 166th pass's checks.** A LOAD and the land-end flow for `$13baa` and for a zeroed lord side; whether an arrow can hit a still-walking class-`$a` marker; a natural `worker_obj` writer (`watch` tree word 2 over a Play Random Land run); a natural add-to-pile (drive `$12`/`$18` twice on one cell); the byte 44 `>= $12` overrun, the `$ab34` categories `$12 $16 $1a $1c $22`, and a per-site run of the chain walkers with a pile in the chain; the natural `$3aee` arm (once at 98M steps of `p0k60_s1`); the chunk-end clock values `$2df72` in `W5G_*_cN.snap`.
+4. **Posture 5 residue.** Whether any AI issue site posts the dismiss `$14` (a whole-image scan of the slot writers' type bytes); the true-screen render of the alliance offer's `$f0 $e6` bytes at posture 5 (a frame capture after a labelled offer, `py/ui/req_panels.py` route).
+5. **Small checks.** Natural winter snow under the `$1abaa` gate; the crack's `$b842` patch and `$3c12`'s `nop`; health cap and food (`$5ccc`); rout fates on a third land; a natural `$66`; the dialog buttons `$04`, `$08`'s `$71` and `$131`.
+6. **No current check exercises vector 4 on the unassigned `ImmediateToEa`/`BitOp` encodings** (README "Bug 7"): an emulator-workstream item; a poke of `$0608` at a live PC would do.
+7. **A player route to `$668c`** (low value) and **the stall on the original machine** (a Hatari run past clock 32768 with a camped group; Dave's go-ahead given).
 
 ## Known traps
 
+- **Lands named `M2G_k<n>` are Play Random Land builds (`PAGES0=1`, `$5809c = 0`), not `build_land.sh`'s default paged roll.** A census of k90 on the paged roll found 9 lord slots and none empty where the doc's land 90 (`M2G_k90`) has 13 with slot 12 empty: run a positive control on the land a claim was made on before trusting a 144-land negative (`py/worldbuild/lord_slots.sh`, both rolls).
+- **A group's men word read long after an order is not the order's result.** Forty million steps after the dismiss the group had refilled (12 -> 11 at posture 3 where 6 went); read it at the routine's exit (`p5_dismiss.sh` stops 400K steps after `$1cec`).
+- **A bash heredoc inside `$( ... )` breaks on an apostrophe in the heredoc body** ("unexpected EOF while looking for matching"), even with a quoted delimiter: put the Python in its own file (`p5_roster.py`).
 - **The REPL `watch` labelled a `move.b` as `WriteWord`.** `move.b #$e,6(A1)` at `$15180` (and `move.b #0,6(A1)` at `$3cdc`) printed `WriteWord $00051c98`; `stserver` reports the same step as width 1 and byte 7 unchanged, and byte 7's later values confirm it. Count watch lines by address, and check a surprising width with `stserver` `watch_add`. Not yet reported to the emulator workstream as a bug (the label code in `MMU.fs` `SetWatch` looks right, so the cause is unknown).
 - **The trade run's 30M/60M snapshots show no melee.** `pm163/p5fwd/x_P5B84_{30,60}` hold all 12 men at byte 31 `$2c`/`$10`; the fight is the 864.84M..866.61M window between them, found only by watching the records (`real_melee84.sh WINDOW=1`). Run `real_melee84.sh` (it lands at about 865.5M) rather than a fixed-offset snapshot.
 - **A subagent's gate needs a promoted corpus path.** `gate_4a7a_nat.py` reads `${PM_WORK:-scratchpad/pm162}/g4a7a/nat/`; the foreign-man corpus was copied there by hand (gitignored), so a fresh checkout rebuilds it with `py/orders/man_click.sh`. `py/xcheck/campframe/pixels/cmp.fsx` needs `PmLogic.dll` built.
@@ -118,6 +109,10 @@ The 163rd pass's (byte6 36/38/42 halt, posture-5 trade codes decide the next fig
   - A full `pm_export.py` rerun regresses `entities.json`.
   - Do not reopen the SingleStepTests track.
 
+## Waiting on Dave
+
+- The blog session (archived before the reply could land) asked which figures Paint It Black should quote. The per-capture table is `port/walkthrough/walkthrough.md` "Draw order" (inline render 94.62% to 99.99%, pm78_settle the low one; terrain only 84.8 to 94.6%); `port/SPEC.md` quotes terrain away from sprites at 99.7-99.96% and whole frames at zooms 1-7 at 99.79-99.99%. A "99.7-99.99%" headline mixes those measures.
+
 ## Next session
 
-The cheapest of Open 3 (`bp 158b6`, a `bp 53f6` drive, the 144-land `$2eac` census) through parallel agents with a fresh `scratchpad/pm168/BRIEF.md` copied from `pm166/BRIEF.md` (one emulator each; spot-check one claim per report and rerun the gate from its promoted path), then Open 2's residue. Merges write current-state prose only (CLAUDE.md "Docs").
+Open 2 first (the consequences of a garbage lord side, from `pm168/divu/p15826.snap`), then the cheapest of Open 3 (the arrow on a walking class-`$a` marker, the natural add-to-pile drive). One emulator per agent, at most two agents while other sessions share the machine; spot-check one claim per report and rerun each gate from its promoted path. Merges write current-state prose only (CLAUDE.md "Docs").
