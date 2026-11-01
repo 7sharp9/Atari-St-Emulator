@@ -12,8 +12,8 @@ Updated 2026-11-01 by the session that merged the worktree branch (merge `7df69a
   30M snapshot, Cadaver game snapshot, 25 watch lines and 11 DMA lines identical, selftest 0 wrong 9 skip. Installed
   into `bin/` (byte-identical to the netted build), then `gates.py run all -j 2` 49/49 PASS. Logs were in the
   session scratchpad and are not kept.
-- `server/bin/stserver.dll` is not rebuilt: the merge changed `server/Server.fs`, but an `stserver` process (another
-  session's or Dave's) was running from it. Until rebuilt it lacks record/replay and writes v11 snapshots.
+- `server/bin/` rebuilt from master after the merge: `server/smoke.py` ALL PASS (11 checks) and `server/replay_proof.py`
+  12/12 on it. `bin/` and `server/bin/` both hold the gated `M68000.dll` (copied from the netted build: see Known traps).
 - Working data: none. Proofs start from PowerMonger's `scratchpad/cmd10/leadkill/pre_pick.snap` (made by
   `reversing/powermonger/commander/leadkill/gate_leadkill.sh`).
 - Uncommitted work left behind: none.
@@ -63,6 +63,9 @@ Nothing running.
   no space used) before `gates.py run all`, since every gate script reads `<root>/bin/` and `<root>/scratchpad/`.
   The worktree already holds a tracked `scratchpad/ANCHORS.md`, so `cp -cR <main>/scratchpad ./scratchpad` nests the
   copy one level down; copy its contents instead.
+- `dotnet build StServer.fsproj` also rebuilds `M68000.fsproj` and installs it into `bin/`: after the merge that build
+  differed from the gated one in 28,575 bytes with no source change, so the gated DLL was copied back over both.
+  Build the server before gating, or re-gate after it.
 - Two `Debug` builds of one source were byte-identical once (`-o` dirs `open1bin` and `new`) and differed another time
   (`rec3` against `bin/`, same size, with mutant builds sharing `obj/` in between and no source edit this session
   tracked): tie every result to the DLL actually run, and re-run the proofs on the build that is gated.
@@ -71,8 +74,6 @@ Nothing running.
 
 ## Waiting on Dave
 
-- Rebuild `server/bin/` (`dotnet build -c Debug M68000/server/StServer.fsproj` from the repo root) once no `stserver`
-  is running (`pgrep -fl stserver`), then restart any session that uses the `stserver` MCP tools.
 - For the Cadaver workstream: `reversing/cadaver/mechanics.md:421`, both `send_joy` docstrings
   (`py/secrets/overlay/action/drv.py`, `exit_level0/lib/drv.py`) and `exit_level0/README.md:57` describe the burst
   lock-up as current behaviour; it was the emulator's, fixed in `4e10c03`. Whether the old `route_pocket.py` replays
@@ -83,6 +84,6 @@ Nothing running.
 
 ## Next session
 
-Check `server/bin/` was rebuilt (above). Then Open 1: the saved form of a recording (spill and `record_load`), proven
+Open 1: the saved form of a recording (spill and `record_load`), proven
 by `replay_proof.py` on a loaded recording. A game session can already use `record_start`/`last_writer` through
-`stserver` for "who wrote X" questions once `server/bin/` is rebuilt.
+`stserver` for "who wrote X" questions.
