@@ -16,7 +16,7 @@ parse, valid, invalid:[{order, why}], actions}; the texts in <logdir>/prompts/<h
 Replay(logdir) answers a prompt from that log by its hash without calling the model, so a whole run re-decides
 identically (the prompt depends only on the observation and on this policy's own order history).
 """
-import hashlib, json, os, re, subprocess, sys, time
+import hashlib, json, os, random, re, subprocess, sys, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -114,6 +114,31 @@ class Stub:
 
     def __call__(self, system, user):
         return (self.replies(system, user) if callable(self.replies) else next(self.replies)), dict(latency_s=0.0)
+
+
+def placebo(system, user):
+    """Offline backend for the hybrid's placebo arm (--backend rand): random orders drawn to match the Haiku hybrid's
+    valid-order mix on land 2 (cmd14/l2s30/hybrid_haiku, 1143 calls: 0, 1, 2 orders in 400, 605, 138; get_men 269,
+    go_to 227, attack 193, get_food 48; a posture on 138 of the 420 attacks and go-tos, 4 in 78, 2 in 59), with targets
+    picked from the observation's lord cells. Seeded by the prompt, so a run is deterministic and replays."""
+    o = json.loads(user.split('\n', 1)[1].split('\n\nReply', 1)[0])
+    rng = random.Random(sha(system + '\n' + user))
+    gs = [g['group'] for g in o['your_groups']]
+    own = [l['cell'] for l in o['your_lords']]
+    enemy = [l['cell'] for l in o['enemy_lords']]
+    n = min(len(gs), rng.choices([0, 1, 2], [400, 605, 138])[0])
+    orders = []
+    for k in rng.sample(gs, n):
+        name = rng.choices(['get_men', 'go_to', 'attack', 'get_food'], [269, 227, 193, 48])[0]
+        cells = own if name in ('get_men', 'get_food') else enemy if name == 'attack' else own + enemy
+        if not cells:
+            continue
+        x, y = rng.choice(cells)
+        od = dict(group=k, order=name, x=x, y=y)
+        if name in ('go_to', 'attack') and rng.random() < 138 / 420:
+            od['posture'] = rng.choices([4, 2], [78, 59])[0]
+        orders.append(od)
+    return json.dumps(dict(orders=orders, retire=False, why='placebo'))
 
 
 # ------------------------------------------------------------------ observation

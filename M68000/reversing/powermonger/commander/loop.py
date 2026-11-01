@@ -1,7 +1,7 @@
 """loop.py: the commander's decision loop with replay logging (commander README plan step 3).
 
     loop.py <work> [--snap S] [--budget N] [--every N] [--side K] [--policy scripted|none|llm|rollout|hybrid] [--lcad N] [--move] [--evade] [--no-take]
-            [--gap N] [--read m|snap] [--replay LOG] [--backend cli|replay:<llm logdir>|stub0] [--model sonnet]
+            [--gap N] [--read m|snap] [--replay LOG] [--backend cli|replay:<llm logdir>|stub0|rand] [--model sonnet]
             [--snap-at N,...] [--objs EVERY]
 
 Policy llm (llm.py) logs every prompt and reply under <work>/llm/.
@@ -512,6 +512,7 @@ def main(argv):
         import llm
         mp = Map(load(snap))
         be = (llm.Stub(lambda s, u: '{"orders":[],"retire":false,"why":"stub"}') if backend == 'stub0' else
+              llm.Stub(llm.placebo) if backend == 'rand' else
               llm.ClaudeCLI(model) if backend == 'cli' else llm.Replay(ROOT / backend.split(':', 1)[1]))
         holder = {}
         cmdr = HybridPolicy(side, mp, rK, llm.LLM(side, mp, be, work / 'llm', every=lcad,
