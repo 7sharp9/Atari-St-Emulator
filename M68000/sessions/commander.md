@@ -2,15 +2,15 @@
 
 ## Resume point
 
-- Last commit of this workstream: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
+- Last commit of this workstream: `52a1013` rollout at the LLM's 20M cadence wins land 2 7/30. Before it: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
   hybrid's 8/30; merged build repeats scripted o0..o5 exactly. Earlier this pass: `52ef030` (search arms at 30 starts,
   `outcomes.py`), `ce7cc93` (`--policy hybrid`), `6783242` (evaluation design, Haiku on rand1).
-- Builds: scripted, llm_haiku and hybrid_haiku (cmd14) ran before merge 7df69a2; rollout o9..o29 and hybrid_rand
-  (cmd15) on 7df69a2; rollout o6..o8 crossed the switch at 23:10 (midwinter's build replaced `bin/` mid-run).
+- Builds: scripted, llm_haiku and hybrid_haiku (cmd14) ran before merge 7df69a2; rollout o9..o29, hybrid_rand and
+  rollout_e20 (cmd15) on 7df69a2; rollout o6..o8 crossed the switch at 23:10 (midwinter's build replaced `bin/` mid-run).
   `cmd15/rebase` shows the merge does not move these games (665/665 decision hashes, 6/6 end steps). `bin/` is 7df69a2.
-- Working data: `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all five arms linked), `cmd14/` (README),
+- Working data: `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all six arms linked), `cmd14/` (README),
   `cmd12/r1s3`, `cmd13/r1s3b`, `cmd9/`. Tables: `outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout
-  hybrid_haiku hybrid_rand`; `pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`.
+  rollout_e20 hybrid_haiku hybrid_rand`; `pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`.
 - Start from: rand1 `scratchpad/pm142/rand1.snap` (side 3 testbed); land 2 `scratchpad/cmd3/l2build/l2_built.snap`,
   30 perturbed starts `cmd14/l2s30/start/o<k>/final.snap`; land 1 `pm123/win/l1_built.snap`. Land 3 is not built:
   `campaign_next.sh scratchpad/cmd9/rollout/o0/final.snap 3`.
@@ -38,7 +38,10 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
   the cost ($0.0034 against $0.062 a call).
 - **Land 2 side 1 at 30 starts** (README "Land 2 as a rate", `outcomes.py`): won / captain killed / no-lord / alive
   at 2000M: scripted 0/27/3/0, Haiku LLM 0/20/3/7, rollout 4/18/2/6, hybrid 8/18/1/3, placebo (random proposer)
-  7/21/1/1. All search arms beat scripted 28/30 (p < 1e-6); no two search arms separable (sign p = 1.0 for every pair).
+  7/21/1/1, rollout deciding per 20M 7/17/1/5. All search arms beat scripted 28/30 or more (p < 1e-6); no two search
+  arms separable.
+- **The LLM's 20M order interval is not why it never wins**: the rollout at the LLM's cadence wins 7/30 (5M: 4/30) and
+  beats the LLM from 24/30 (p = 0.001); the difference is the 40M look-ahead. Build 7df69a2.
 - **The LLM adds nothing over a random proposer** on land 2: its candidates win the rollout's 40M score more often
   (207/712 against 92/633) but the outcomes do not differ (8 against 7 wins).
 - **Land 2's only second-group source** (README "A second side-1 group", `captains.py`): `$041a`, alive in 13 of 30.
