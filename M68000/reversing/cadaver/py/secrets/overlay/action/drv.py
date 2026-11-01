@@ -13,9 +13,9 @@ PUSHNAME = {0xa418: 'ex16', 0xa486: 'use5a', 0xa59c: 'use5b', 0xa5d2: 'use5c', 0
 
 def send_joy(r, bits, run):
     """the $ff header, then the state byte only once the ACIA's receive buffer is empty (status bit 0 of $fffc00, a side-effect-free read).
-    Both bytes in the FIFO at once make a burst: the game's ISR $1535a drains it in one entry, the emulator's re-raised channel-6 interrupt
-    enters it again with the FIFO empty, and the ACIA's latched last byte (the state byte) is stored as a keyboard make that blocks the
-    joystick until a break code arrives (mechanics.md section 14).  300 steps when the header is taken at once, as the old one-enqueue form."""
+    Emulator builds 5636dc5 to 4e10c03 turned a two-byte burst into a phantom key make that blocked the joystick (an emulator artefact,
+    mechanics.md section 14); a fixed build takes the burst correctly, and this split form is kept because promoted routes replay with
+    its timing.  300 steps when the header is taken at once, as the old one-enqueue form."""
     r.cmd('kbd ff'); n = 0
     while n < 20000:
         run(100); n += 100

@@ -5,7 +5,7 @@ Updated 2026-10-31 by the session that ended at the commit of this handoff.
 ## Resume point
 
 - Last commit of this workstream: `86b7d47` (push rule, `route_pocket2.py`, `send_joy`, room 7's drain).
-- The shared `bin/` DLL now includes `5636dc5` (ACIA keeps its last byte). Under it a joystick packet sent as one `kbd ff XX` burst leaves a phantom key in `$18b34` that blocks the joystick (mechanics.md section 14). The drivers' `send_joy()` works around it. The emulator fix was reported to ws-emulator, not checked: the re-raised channel-6 interrupt should be dropped once the FIFO has emptied.
+- The phantom key from a one-command `kbd ff XX` burst (`$18b34` set, joystick blocked) was an emulator artefact of builds `5636dc5` to `4e10c03`; the fix is on master from `7df69a2` and in the shared `bin/` (mechanics.md section 14). The drivers' `send_joy()` stays, because the routes promoted with it replay with its timing.
 - End snapshot: `scratchpad/cadaver/s97/fullA/10_to1.snap` (room 1 at (41..47, 30..36), health 189, poison 0, key 251 used, `$10` open; rucksack 391, 570, 680, 491, 493). Rebuild (about 4 minutes from `M68000/` with `export M68000_ROOT=$PWD ATARI_NOTRACE=1`): `uv run python reversing/cadaver/py/secrets/overlay/action/exit_level0/l1/route_pocket2.py scratchpad/cadaver/s95/pocket/full/33_to6.snap <OUT>`. Run B (`s97/fullB/`) is byte-identical (11 of 11).
 - `33_to6.snap` and the rest of the s95 lineage are records from the old input timing. Replaying `route_pocket.py` with `send_joy` passes legs 1-24 and then fails leg 25 (`drop89`: `=x28` ends at 30). Its 24 snapshots match none of the old ones (`s97/pocket_new/`). So the chain before room 6 does not rebuild today (Open 1).
 - Records of this session: `s97/push/`, `s97/pushgate/north.snap` (push A/B), `s97/r3/` (the forks the route came from), `s97/build0b9/` (emulator built at `0b92317`, for input A/Bs).
@@ -24,7 +24,7 @@ This session:
 
 ## Open, in priority order
 
-1. **Re-promote the chain before room 6 under `send_joy`.** First fix `route_pocket.py` leg 25 (`=x28` on room 89's shelf now ends at 30: try a shorter `tapn`, or tap from the other side). Then run legs 25-33 and route_pocket2 on top, two runs each, every snapshot `cmp`. Do the same for `route_tokenL.py`/`route_health.py` if anything upstream is to be rebuilt. If ws-emulator fixes the interrupt instead, re-check whether the old one-enqueue drivers reproduce the s95 snapshots byte for byte.
+1. **Re-promote the chain before room 6 under `send_joy`.** First fix `route_pocket.py` leg 25 (`=x28` on room 89's shelf now ends at 30: try a shorter `tapn`, or tap from the other side). Then run legs 25-33 and route_pocket2 on top, two runs each, every snapshot `cmp`. Do the same for `route_tokenL.py`/`route_health.py` if anything upstream is to be rebuilt. The emulator fix has landed (`7df69a2`): first check whether the old one-enqueue drivers reproduce the s95 snapshots byte for byte, which would make the re-promotion unnecessary.
 2. **Room 7's gems.** This needs the way from room 1 to room 5: room 4's lift raised and `$07`, key 245 off cap 12, `$06`. Read 570's remaining charges from its record (casts so far: rooms 1, 21, 22). Cast SLEEP in room 7 and check that 634's bit 0 gets set and the drain stops on the same walk as `r7probe.snap` (control: no cast). Then take gems 716 and 717 and put 716, 717, 718 on gem lock 719 in room 2.
 3. **Room 8's chests** with scroll 458 (Unlock Chest, *inferred*): select it, FIRE at a chest, for two moneybags, wand 478 and flask 475. Also find the gold word (`1188(A5)` read 0 after the sack).
 4. **The 91st-pass chain from room 1**: `graph/plan_full.py` with `CAD_LINEAGE_SNAP=s97/fullA/10_to1.snap`, covering key 538, lever 275 and rooms 50, 70, 71, 93, 82 (key 690) and 52 (scroll 407).
@@ -32,7 +32,7 @@ This session:
 
 ## Known traps
 
-- **Hero ignores the joystick**: read `$18b34` (the game's key byte). Non-zero means a phantom key from a burst. Send a lone break byte or rebuild with `send_joy`, and never `kbd ff XX` in one command.
+- **Hero ignores the joystick**: read `$18b34` (the game's key byte). Non-zero in a snapshot made on builds `5636dc5` to `4e10c03` means a phantom key from a burst: send a lone break byte, or rebuild the snapshot on the current build.
 - **The strength window is about 7M steps from `33_to6.snap`** and is the binding constraint in room 6. Every new leg there prints `steps`/`strength`; keep pushes first.
 - **A `G` goto that meets an obstacle holds for 1,200 chunks (6M steps)**: use exact taps (`=`) or `H` where an overshoot can touch the post, the keyhole or a wall object.
 - **The post's band must not cover an item's landing row** (flask y 57..59, key y 74..76), and for the key it must be exactly y 64..72. `P` stops on the condition; the 30,000-step settle sometimes adds one cell.
@@ -41,4 +41,4 @@ This session:
 
 ## Next session
 
-`/resume cadaver`. If ws-emulator has landed the channel-6 fix, run the old one-enqueue drivers on `33_to6.snap` first to see whether old snapshots reproduce. Otherwise do Open 1: fix `route_pocket.py` leg 25 under `send_joy` and re-promote legs 25-33 plus `route_pocket2.py` (two runs, `cmp`). Then room 7's SLEEP cast (Open 2) on a fork from room 5.
+`/resume cadaver`. The channel-6 fix is on master (`7df69a2`): run the old one-enqueue drivers on `33_to6.snap` first to see whether old snapshots reproduce. If they do not, do Open 1: fix `route_pocket.py` leg 25 under `send_joy` and re-promote legs 25-33 plus `route_pocket2.py` (two runs, `cmp`). Then room 7's SLEEP cast (Open 2) on a fork from room 5.
