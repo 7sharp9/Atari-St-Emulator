@@ -2,14 +2,15 @@
 
 ## Resume point
 
-- Last commit of this workstream: `52ef030` search arms on land 2 at 30 starts (rollout 4 won, hybrid 8, not
-  separable); `outcomes.py`. Earlier this pass: `6783242` (evaluation design, Haiku on rand1), `ce7cc93` (land 2 at
-  30 starts for scripted and the Haiku LLM; `--policy hybrid`).
-- Every arm in the README so far ran on the emulator build before merge 7df69a2 (midwinter's IKBD fix, record/replay).
-  `bin/` now holds, or will hold, the merged build: see Open 1 before comparing a new run with these.
-- Working data: `M68000/scratchpad/cmd14/` (README there: `r1s3h` Haiku on rand1, `hybgate`, `l2s30` four arms by
-  30 starts), `cmd12/r1s3`, `cmd13/r1s3b`, `cmd9/`. Tables: `outcomes.py scratchpad/cmd14/l2s30 1 scripted llm_haiku
-  rollout hybrid_haiku`; `pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`.
+- Last commit of this workstream: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
+  hybrid's 8/30; merged build repeats scripted o0..o5 exactly. Earlier this pass: `52ef030` (search arms at 30 starts,
+  `outcomes.py`), `ce7cc93` (`--policy hybrid`), `6783242` (evaluation design, Haiku on rand1).
+- Builds: scripted, llm_haiku and hybrid_haiku (cmd14) ran before merge 7df69a2; rollout o9..o29 and hybrid_rand
+  (cmd15) on 7df69a2; rollout o6..o8 crossed the switch at 23:10 (midwinter's build replaced `bin/` mid-run).
+  `cmd15/rebase` shows the merge does not move these games (665/665 decision hashes, 6/6 end steps). `bin/` is 7df69a2.
+- Working data: `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all five arms linked), `cmd14/` (README),
+  `cmd12/r1s3`, `cmd13/r1s3b`, `cmd9/`. Tables: `outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout
+  hybrid_haiku hybrid_rand`; `pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`.
 - Start from: rand1 `scratchpad/pm142/rand1.snap` (side 3 testbed); land 2 `scratchpad/cmd3/l2build/l2_built.snap`,
   30 perturbed starts `cmd14/l2s30/start/o<k>/final.snap`; land 1 `pm123/win/l1_built.snap`. Land 3 is not built:
   `campaign_next.sh scratchpad/cmd9/rollout/o0/final.snap 3`.
@@ -36,10 +37,10 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
 - **Haiku = Sonnet on rand1** (v3 prompt, six starts, Haiku minus Sonnet mean -0.2 lords) at about a twentieth of
   the cost ($0.0034 against $0.062 a call).
 - **Land 2 side 1 at 30 starts** (README "Land 2 as a rate", `outcomes.py`): won / captain killed / no-lord / alive
-  at 2000M: scripted 0/27/3/0, Haiku LLM 0/20/3/7, rollout 4/18/2/6, hybrid 8/18/1/3. Both search arms beat scripted
-  28/30 (p < 1e-6); hybrid beats the LLM 21/30 (p = 0.04); hybrid against rollout 15 above, 14 below (p = 1.0), wins
-  8 against 4 on disjoint starts (McNemar p = 0.39): not separable. The LLM's candidate won 207 of the 712 rollout
-  decisions it was offered at. Haiku $3.36 and $3.33 for the two LLM arms.
+  at 2000M: scripted 0/27/3/0, Haiku LLM 0/20/3/7, rollout 4/18/2/6, hybrid 8/18/1/3, placebo (random proposer)
+  7/21/1/1. All search arms beat scripted 28/30 (p < 1e-6); no two search arms separable (sign p = 1.0 for every pair).
+- **The LLM adds nothing over a random proposer** on land 2: its candidates win the rollout's 40M score more often
+  (207/712 against 92/633) but the outcomes do not differ (8 against 7 wins).
 - **Land 2's only second-group source** (README "A second side-1 group", `captains.py`): `$041a`, alive in 13 of 30.
 
 ## Running
@@ -48,26 +49,20 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **Re-baseline on the merged build** before any new arm: run scripted on land-2 starts o0..o5 into a new
-   `scratchpad/cmd15/` with the 7df69a2 build in `bin/` (after midwinter has installed it and run `gates.py`) and
-   compare end steps with `cmd14/l2s30/scripted`. Identical: the new runs pool with cmd14. Not identical: every arm
-   compared later re-runs on the new build. The commander pokes orders through the REPL, not the IKBD, so identical
-   is expected (inferred, not checked).
-2. **Whether hybrid beats rollout** needs about 130 starts per arm (13% against 27%, 80% power, unpaired; inferred
-   from the 30-start rates). Waiting on Dave (cost below). A cheaper question first: does the LLM candidate matter
-   where it wins? Re-run the hybrid from the decisions where `llm` was best with that candidate removed (a fork of
-   the logged run) and see whether the outcome changes.
-3. **Land 2, a second side-1 group** (`$041a`, alive in 13 of 30 cmd9-era end states): read whether his group still
+1. **Land 2, a second side-1 group** (`$041a`, alive in 13 of 30 cmd9-era end states): read whether his group still
    has men; if he can be alive and groupless, aim the captain at the Capital then and `watch` `28(group)` of side 1's
-   slot 1 for the `$26d0` write. If he never is, land 2 has no second-group lever.
-4. **Water-cell orders from the LLM**: 105 dropped in the land-2 LLM arm. Give the prompt the land mask near each
-   target, or snap a water target to the nearest land cell in `llm.py`'s validation; measure the drop count.
-5. **Rollout food blindness**: inside a 40M horizon food costs nothing until it hits 0; try a longer horizon for
-   get-food candidates or score food left against the eating rate.
-6. Seeds for land 1; why side 2 makes no new group (`$26d0` hits over the rollout win's 315M..1120M); who rewrites
+   slot 1 for the `$26d0` write. If he never is, land 2 has no second-group lever. This is the lever the search arms
+   lack: every loss is still the lone captain killed or the no-lord retire.
+2. **Rollout food blindness**: inside a 40M horizon food costs nothing until it hits 0; try a longer horizon for
+   get-food candidates or score food left against the eating rate. The placebo result says the 40M score picks
+   locally better moves that do not win more, so the horizon or the score is the search's weak point.
+3. **Does breadth help?** Hybrid and placebo pooled win 15/60 against rollout's 4/30 (not significant). A rollout
+   with K 6 or 7 against K 5 on the same 30 starts tests it without an LLM (about 3 hours, no API cost).
+4. **Water-cell orders from the LLM** (105 dropped in the land-2 LLM arm): only matters if the LLM arm is revived.
+5. Seeds for land 1; why side 2 makes no new group (`$26d0` hits over the rollout win's 315M..1120M); who rewrites
    the RNG seed in play (`watch 2df84 4` from `cmd12/rngtest/start/o1/final.snap`; candidates `$10d22`, `$ffd8`,
    `$a9da`/`$a9e6`, `$718e`); land 3; movement with rollouts; the state-space forecaster (plan step 5), which is what
-   makes 130-start search arms affordable.
+   makes many-start search arms affordable.
 
 ## Known traps
 
@@ -114,7 +109,10 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
   `obs_hash` and clock, not file hashes (cmd9 against cmd14 starts: 5/5 identical state).
 - In the hybrid, an LLM proposal identical to the rollout's first candidate is deduplicated away, and one with no
   valid group order is not offered: 1143 calls gave 712 offers on land 2. Count offers from `rollout.cands`, not calls.
-- Land-2 wins at 30 starts fall on disjoint starts between rollout and hybrid: a single start's outcome is a
+- A random-proposer control is the test of an LLM proposer, not removing its picks: one changed decision redirects a
+  land-2 trajectory, so any removal changes the outcome. `--backend rand` (`llm.placebo`) is matched to the Haiku
+  hybrid's order mix; refit its weights if the prompt or model changes.
+- Land-2 wins at 30 starts fall on mostly different starts between rollout and hybrid: a single start's outcome is a
   trajectory property, so a per-start "this start is winnable" reading is wrong.
 - Six starts per LLM arm cannot resolve a prompt change: across v1/v2/v3 one start moves by up to 6 lords at 300M
   (paired differences v1 - v2: -2 -4 +5 +2 +6 -2, SD 4.1).
@@ -122,13 +120,13 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 ## Waiting on Dave
 
-- **Fund a 130-start hybrid against rollout comparison, or close step 4.** At the cmd14 medians (rollout 17 minutes a
-  run, hybrid 24, three runs at a time at par 5), 100 more starts per arm is about 23 hours of this machine (rollout
-  about 9.5, hybrid about 13) and about $11 of Haiku. Recommendation: do
-  Open 2's cheaper ablation first; fund the large run only if removing the LLM's winning candidates changes outcomes.
+- **Close step 4 on the LLM?** Recommendation: yes, recorded as "the LLM adds nothing over a random proposer on
+  land 2; search wins 4 to 8 of 30". The 130-start Haiku comparison is not worth funding after the placebo.
+- **CLAUDE.md, "Running"**: `dotnet build -c Debug M68000.fsproj -o <scratch dir>` run from the main checkout also
+  rewrote `bin/Debug/net8.0/M68000.dll` and `obj/` (midwinter's build at 23:10:04, mid-run). The line that recommends
+  it as safe while another session holds `bin/` needs checking and correcting; midwinter owns the evidence.
 
 ## Next session
 
-Message midwinter (or check `ListAgents`) that the merged build is in `bin/` and gated, then do Open 1 (six scripted
-runs, about 20 minutes). Then Open 2's ablation unless Dave has decided on the large run. The prompt that starts it
-is `/resume commander`.
+Open 1 (land 2's second group) from `cmd11/so/` end states and `captains.py`, unless Dave wants Open 3's K sweep
+first. Any new arm records its build (`bin/` is 7df69a2). The prompt that starts it is `/resume commander`.
