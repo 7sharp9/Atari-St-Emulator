@@ -59,7 +59,9 @@ know they existed.
   tracked `M68000/blank_80ss.st`) are run with an explicit output path there; read `git status`
   after the agent returns. If the other session holds `bin/Debug/net8.0/M68000.dll`, the build
   fails only at the copy step: confirm your change compiles with
-  `dotnet build -c Debug M68000.fsproj -o <scratch dir>` and leave its process alone.
+  `dotnet build -c Debug M68000.fsproj -o <scratch dir>` (it leaves `bin/` alone) and leave its process alone.
+  `bin/`'s DLL keeps `obj/`'s compile-time mtime when a later build installs it, so its mtime does not date a
+  swap: `cmp` it against the candidate builds instead.
 
 ## Emulator changes
 
