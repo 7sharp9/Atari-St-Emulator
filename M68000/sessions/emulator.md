@@ -1,18 +1,21 @@
 # Emulator and tooling: handoff
 
-Updated 2026-10-31 by the session that ended at commit `4e10c03` on branch `claude/emulator-keyinject-journal-7765eb`
-(a worktree; not merged, not pushed).
+Updated 2026-11-01 by the session that merged the worktree branch (merge `7df69a2`) and ran the net on master.
 
 ## Resume point
 
-- Last work commits of this workstream, on `claude/emulator-keyinject-journal-7765eb` (base `367ece7`, master's tip
-  when cut): `dabdd67` the checkpoint carries the unfired `ATARI_KEY_INPUT` groups; `cac70ad` record and replay
-  (journal, `replay_to`, `last_writer`, `first_divergence`); `4e10c03` the IKBD burst phantom key. Dave merges; after the merge, build into `bin/` and
-  `server/bin/` and re-run the net against a pre-merge master build (`tools/regress_net.sh`).
-- Working data: none kept in the repo. The worktree's `M68000/scratchpad/` is an APFS clone (`cp -cR`) of the main
-  checkout's, made so `gates.py run all` could run against the worktree's own `bin/`; it is disposable.
-- Start from: master once the branch is merged; the proofs start from PowerMonger's
-  `scratchpad/cmd10/leadkill/pre_pick.snap` (made by `reversing/powermonger/commander/leadkill/gate_leadkill.sh`).
+- Last commit of this workstream: `7df69a2` Merge branch `claude/emulator-keyinject-journal-7765eb` (`dabdd67` the
+  checkpoint carries the unfired `ATARI_KEY_INPUT` groups; `cac70ad` record and replay; `4e10c03` the IKBD burst
+  phantom key), cut from `367ece7`.
+- Net on the merge against pre-merge master `ce7cc93` (`tools/regress_net.sh`, both sides built with `-o`,
+  `CADAVER_SNAP=scratchpad/cadaver/s96/r6/s3_flask.snap`, `CADAVER_ST=../Cadaver/*[one disk].st`): verify PASS both,
+  30M snapshot, Cadaver game snapshot, 25 watch lines and 11 DMA lines identical, selftest 0 wrong 9 skip. Installed
+  into `bin/` (byte-identical to the netted build), then `gates.py run all -j 2` 49/49 PASS. Logs were in the
+  session scratchpad and are not kept.
+- `server/bin/stserver.dll` is not rebuilt: the merge changed `server/Server.fs`, but an `stserver` process (another
+  session's or Dave's) was running from it. Until rebuilt it lacks record/replay and writes v11 snapshots.
+- Working data: none. Proofs start from PowerMonger's `scratchpad/cmd10/leadkill/pre_pick.snap` (made by
+  `reversing/powermonger/commander/leadkill/gate_leadkill.sh`).
 - Uncommitted work left behind: none.
 
 ## Proven so far
@@ -30,7 +33,7 @@ Updated 2026-10-31 by the session that ended at commit `4e10c03` on branch `clau
 - A `$FFFC02` read that empties the IKBD FIFO withdraws the pending ACIA interrupt (DEVELOPING.md "IKBD command
   interpreter"): Cadaver's `kbd ff 08` from `scratchpad/cadaver/s96/r6/s3_flask.snap` moves the hero x 29 -> 41
   again (29 -> 29 before; the split-byte control 29 -> 41 on both). Net identical, gates 48/48, proofs unchanged.
-- Gate manifests: Black Tiger 15, Midwinter 7, PowerMonger 20, Super Sprint 6 (48 in all).
+- Gate manifests: Black Tiger 15, Midwinter 8, PowerMonger 20, Super Sprint 6 (49 in all).
 
 ## Running
 
@@ -68,19 +71,18 @@ Nothing running.
 
 ## Waiting on Dave
 
-- Merge `claude/emulator-keyinject-journal-7765eb` (three work commits and this handoff on `367ece7`); then rebuild
-  `bin/` and `server/bin/` in the main checkout, which the game sessions share.
-- After the merge, for the Cadaver workstream: master's `reversing/cadaver/mechanics.md:421`, both `send_joy`
-  docstrings (`py/secrets/overlay/action/drv.py`, `exit_level0/lib/drv.py`) and `exit_level0/README.md:57` describe the
-  burst lock-up as current behaviour; it was the emulator's (fixed in `4e10c03`). The two-enqueue `send_joy` stays
-  harmless; the text should say the lock-up was an emulator artefact.
-- Proposed CLAUDE.md line for "Emulator changes" (not made: other sessions were live): "A worktree runs `gates.py run
-  all` against its own `bin/` after linking `TOS100UK.IMG`, `tests` and `checkpoint.txt` from the main `M68000/` and
-  cloning the scratchpad's contents with `cp -cR` (APFS, no space); `--root` would run the main checkout's DLL."
-  The trap is under "Known traps" until then.
+- Rebuild `server/bin/` (`dotnet build -c Debug M68000/server/StServer.fsproj` from the repo root) once no `stserver`
+  is running (`pgrep -fl stserver`), then restart any session that uses the `stserver` MCP tools.
+- For the Cadaver workstream: `reversing/cadaver/mechanics.md:421`, both `send_joy` docstrings
+  (`py/secrets/overlay/action/drv.py`, `exit_level0/lib/drv.py`) and `exit_level0/README.md:57` describe the burst
+  lock-up as current behaviour; it was the emulator's, fixed in `4e10c03`. Whether the old `route_pocket.py` replays
+  again on `7df69a2` is unchecked.
+- Proposed CLAUDE.md line for "Emulator changes": "A worktree runs `gates.py run all` against its own `bin/` after
+  linking `TOS100UK.IMG`, `tests` and `checkpoint.txt` from the main `M68000/` and cloning the scratchpad's contents
+  with `cp -cR` (APFS, no space); `--root` would run the main checkout's DLL." The trap is under "Known traps" until then.
 
 ## Next session
 
-After the merge, rebuild `bin/` and `server/bin/` and re-run the net against pre-merge master (master has 27 commits
-past `367ece7`). Then Open 1: the saved form of a recording (spill and `record_load`), proven by `replay_proof.py` on a loaded recording. A game session can
-already use `record_start`/`last_writer` through `stserver` for "who wrote X" questions.
+Check `server/bin/` was rebuilt (above). Then Open 1: the saved form of a recording (spill and `record_load`), proven
+by `replay_proof.py` on a loaded recording. A game session can already use `record_start`/`last_writer` through
+`stserver` for "who wrote X" questions once `server/bin/` is rebuilt.
