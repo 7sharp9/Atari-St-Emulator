@@ -122,8 +122,9 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 ## Waiting on Dave
 
-- **Fund a 130-start hybrid against rollout comparison, or close step 4.** At 15 to 40 minutes a land-2 run, three at
-  a time, 100 more starts per arm is about 2 to 3 days of this machine and about $11 of Haiku. Recommendation: do
+- **Fund a 130-start hybrid against rollout comparison, or close step 4.** At the cmd14 medians (rollout 17 minutes a
+  run, hybrid 24, three runs at a time at par 5), 100 more starts per arm is about 23 hours of this machine (rollout
+  about 9.5, hybrid about 13) and about $11 of Haiku. Recommendation: do
   Open 2's cheaper ablation first; fund the large run only if removing the LLM's winning candidates changes outcomes.
 
 ## Next session
