@@ -58,11 +58,6 @@ Nothing running.
 - `stserver.dll` is not built by `dotnet build M68000.fsproj`; each checkout needs `dotnet build -c Debug M68000/server/StServer.fsproj`
   before the `.mcp.json` entry works, and a running Claude session does not pick it up. The main checkout's
   `server/bin/` predated snapshot format v12 on 2026-10-31 (its snapshots are one byte short).
-- A worktree has no untracked inputs: link `TOS100UK.IMG`, `tests` and `checkpoint.txt` from the main checkout's
-  `M68000/` (`verify` fails with "No checkpoint.txt found" otherwise), and clone the scratchpad with `cp -cR` (APFS,
-  no space used) before `gates.py run all`, since every gate script reads `<root>/bin/` and `<root>/scratchpad/`.
-  The worktree already holds a tracked `scratchpad/ANCHORS.md`, so `cp -cR <main>/scratchpad ./scratchpad` nests the
-  copy one level down; copy its contents instead.
 - `dotnet build StServer.fsproj` also rebuilds `M68000.fsproj` and installs it into `bin/`: after the merge that build
   differed from the gated one in 28,575 bytes with no source change, so the gated DLL was copied back over both.
   Build the server before gating, or re-gate after it.
@@ -74,13 +69,7 @@ Nothing running.
 
 ## Waiting on Dave
 
-- For the Cadaver workstream: `reversing/cadaver/mechanics.md:421`, both `send_joy` docstrings
-  (`py/secrets/overlay/action/drv.py`, `exit_level0/lib/drv.py`) and `exit_level0/README.md:57` describe the burst
-  lock-up as current behaviour; it was the emulator's, fixed in `4e10c03`. Whether the old `route_pocket.py` replays
-  again on `7df69a2` is unchecked.
-- Proposed CLAUDE.md line for "Emulator changes": "A worktree runs `gates.py run all` against its own `bin/` after
-  linking `TOS100UK.IMG`, `tests` and `checkpoint.txt` from the main `M68000/` and cloning the scratchpad's contents
-  with `cp -cR` (APFS, no space); `--root` would run the main checkout's DLL." The trap is under "Known traps" until then.
+Nothing.
 
 ## Next session
 

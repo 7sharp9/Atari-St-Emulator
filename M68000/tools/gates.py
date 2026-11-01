@@ -22,8 +22,9 @@ A gate that only reads saved snapshots (Super Sprint's `plane2`, 1 s) runs no em
 change: say so in a comment on its entry.
 
 The gates read their corpora from `scratchpad/`, which is per checkout, so `--root` runs them in another checkout's
-M68000 dir (its scripts, its scratchpad, its `bin/` DLL; the manifests are always this checkout's): from a worktree
-with an empty scratchpad, point it at the main checkout. Logs go to `<root>/scratchpad/gates/<game>/<name>.log` and the summary to `.../last_run.json`.
+M68000 dir (its scripts, its scratchpad, its `bin/` DLL; the manifests are always this checkout's). To gate a worktree's
+own build, run in the worktree after linking its inputs and cloning the scratchpad (CLAUDE.md "Emulator changes"):
+pointing `--root` at the main checkout runs the main checkout's DLL. Logs go to `<root>/scratchpad/gates/<game>/<name>.log` and the summary to `.../last_run.json`.
 Every run sets `ATARI_NOTRACE=1` and `M68000_ROOT=<root>`. The exit status is 1 when any gate did not pass.
 
 Default `-j 1`: gates share the machine with other sessions' runs and some share scratch output dirs.
