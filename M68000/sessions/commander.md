@@ -58,9 +58,12 @@ Nothing running.
    lack: every loss is still the lone captain killed or the no-lord retire.
 2. **Rollout food blindness**: inside a 40M horizon food costs nothing until it hits 0; try a longer horizon for
    get-food candidates or score food left against the eating rate. The placebo result says the 40M score picks
-   locally better moves that do not win more, so the horizon or the score is the search's weak point.
+   locally better moves that do not win more, so the horizon or the score is the search's weak point. Deciding every
+   20M wins as often as every 5M (7 against 4 of 30) at about 70% of the run time, so a longer horizon can be
+   bought by cutting cadence: `--every 20e6` with N 80M against the 5M/40M arm on the same 30 starts.
 3. **Does breadth help?** Hybrid and placebo pooled win 15/60 against rollout's 4/30 (not significant). A rollout
-   with K 6 or 7 against K 5 on the same 30 starts tests it without an LLM (about 3 hours, no API cost).
+   with K 6 or 7 against K 5 on the same 30 starts tests it without an LLM (no API cost; at `--every 20e6` about
+   2 hours, the 20M arm's measured 1h47 scaled by K).
 4. **Water-cell orders from the LLM** (105 dropped in the land-2 LLM arm): only matters if the LLM arm is revived.
 5. Seeds for land 1; why side 2 makes no new group (`$26d0` hits over the rollout win's 315M..1120M); who rewrites
    the RNG seed in play (`watch 2df84 4` from `cmd12/rngtest/start/o1/final.snap`; candidates `$10d22`, `$ffd8`,
@@ -117,6 +120,8 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
   hybrid's order mix; refit its weights if the prompt or model changes.
 - Land-2 wins at 30 starts fall on mostly different starts between rollout and hybrid: a single start's outcome is a
   trajectory property, so a per-start "this start is winnable" reading is wrong.
+- A seeds arm's wall time is set by its slowest runs, not median x starts / par: the 20M rollout (median 12 minutes,
+  longest 39, par 4) took 1h47 against an estimate of 1h. Estimate from the previous arm's measured wall time.
 - Six starts per LLM arm cannot resolve a prompt change: across v1/v2/v3 one start moves by up to 6 lords at 300M
   (paired differences v1 - v2: -2 -4 +5 +2 +6 -2, SD 4.1).
 
@@ -124,7 +129,7 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 ## Waiting on Dave
 
 - **Close step 4 on the LLM?** Recommendation: yes, recorded as "the LLM adds nothing over a random proposer on
-  land 2; search wins 4 to 8 of 30". The 130-start Haiku comparison is not worth funding after the placebo.
+  land 2, and its 20M order rate is not the limit (the rollout at 20M wins 7 of 30); search wins 4 to 8 of 30". The 130-start Haiku comparison is not worth funding after the placebo.
 - **CLAUDE.md, "Running"**: `dotnet build -c Debug M68000.fsproj -o <scratch dir>` run from the main checkout also
   rewrote `bin/Debug/net8.0/M68000.dll` and `obj/` (midwinter's build at 23:10:04, mid-run). The line that recommends
   it as safe while another session holds `bin/` needs checking and correcting; midwinter owns the evidence.
