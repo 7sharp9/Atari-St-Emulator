@@ -1,20 +1,17 @@
 # Commander: handoff
 
-Updated 2026-10-31 by a session that resumed at `367ece7`, found Open 1 and Open 2 already settled by `6a9294d`
-(committed without a handoff), recomputed its tables and launched nothing.
-
 ## Resume point
 
-- Last commit of this workstream: `6a9294d` LLM not separable from the game's AI under three prompts; the
-  rollout's early land ends are side 3 killing side 1's starved lone captain.
-- Working data: `M68000/scratchpad/cmd12/r1s3/<arm>/o<k>` (ai, scripted, llm v1, rollout; six starts, 700M),
-  `cmd13/r1s3/llm` (v2), `cmd13/r1s3b/{llm,llm_v1,llm_v2}` (v3, with v1 and v2 linked in for one table),
-  `cmd13/so/` (the `--objs` replays of rollout o1, o3, o4 and AI o0), `cmd12/rngtest`, `cmd12/ticktest`,
-  `cmd11/so/`, `cmd9/`. Tables: `python3 reversing/powermonger/commander/pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`
-  (recomputed this session; matches the README table). Rebuild recipe: `seeds.sh` header, README "Policies against
-  the game's AI".
-- Start from: `scratchpad/pm142/rand1.snap` (rand1, side 3 is the AI testbed); land 2 `scratchpad/cmd3/l2build/l2_built.snap`
-  with perturbed starts `cmd9/start/o<k>/final.snap`; land 1 `pm123/win/l1_built.snap`. Land 3 is not built:
+- Last commit of this workstream: `52ef030` search arms on land 2 at 30 starts (rollout 4 won, hybrid 8, not
+  separable); `outcomes.py`. Earlier this pass: `6783242` (evaluation design, Haiku on rand1), `ce7cc93` (land 2 at
+  30 starts for scripted and the Haiku LLM; `--policy hybrid`).
+- Every arm in the README so far ran on the emulator build before merge 7df69a2 (midwinter's IKBD fix, record/replay).
+  `bin/` now holds, or will hold, the merged build: see Open 1 before comparing a new run with these.
+- Working data: `M68000/scratchpad/cmd14/` (README there: `r1s3h` Haiku on rand1, `hybgate`, `l2s30` four arms by
+  30 starts), `cmd12/r1s3`, `cmd13/r1s3b`, `cmd9/`. Tables: `outcomes.py scratchpad/cmd14/l2s30 1 scripted llm_haiku
+  rollout hybrid_haiku`; `pairs.py scratchpad/cmd13/r1s3b 3 --at 300,440`.
+- Start from: rand1 `scratchpad/pm142/rand1.snap` (side 3 testbed); land 2 `scratchpad/cmd3/l2build/l2_built.snap`,
+  30 perturbed starts `cmd14/l2s30/start/o<k>/final.snap`; land 1 `pm123/win/l1_built.snap`. Land 3 is not built:
   `campaign_next.sh scratchpad/cmd9/rollout/o0/final.snap 3`.
 - Uncommitted work left behind: none.
 
@@ -36,6 +33,13 @@ All in `reversing/powermonger/commander/README.md`; every gate re-run from its p
   194, 205, 210 calls). The game's AI is one trajectory on rand1 (`startpoke.py`).
 - **The rollout's early ends** (README, same section): side 1 gets no orders, its captain starves alone, and side 3's
   men kill him, as the AI does; `standoff.py --side 1` on 4/4 `--objs` replays (`cmd13/so/`).
+- **Haiku = Sonnet on rand1** (v3 prompt, six starts, Haiku minus Sonnet mean -0.2 lords) at about a twentieth of
+  the cost ($0.0034 against $0.062 a call).
+- **Land 2 side 1 at 30 starts** (README "Land 2 as a rate", `outcomes.py`): won / captain killed / no-lord / alive
+  at 2000M: scripted 0/27/3/0, Haiku LLM 0/20/3/7, rollout 4/18/2/6, hybrid 8/18/1/3. Both search arms beat scripted
+  28/30 (p < 1e-6); hybrid beats the LLM 21/30 (p = 0.04); hybrid against rollout 15 above, 14 below (p = 1.0), wins
+  8 against 4 on disjoint starts (McNemar p = 0.39): not separable. The LLM's candidate won 207 of the 712 rollout
+  decisions it was offered at. Haiku $3.36 and $3.33 for the two LLM arms.
 - **Land 2's only second-group source** (README "A second side-1 group", `captains.py`): `$041a`, alive in 13 of 30.
 
 ## Running
@@ -44,20 +48,26 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **Land 2, a second side-1 group.** In the 13 end states where `$041a` lives, read whether his group (side 2
-   group 1) still has men; if he can be alive and groupless, aim the captain at the Capital then (a `Scripted` rule
-   gated on his group's men = 0) and `watch` `28(group)` of side 1's slot 1 for the `$26d0` write. If he never is,
-   land 2 has no second-group lever.
-2. **Rollout food blindness**: inside a 40M horizon food costs nothing until it hits 0; try a longer horizon for
-   get-food candidates or score food left against the eating rate (rand1 seeds, `pairs.py` against `cmd12` rollout).
-3. Seeds for land 1 (`seeds.sh` on `pm123/win/l1_built.snap`).
-4. **Why side 2 makes no new group** after losing both (`$26d0` hits over the rollout win's 315M..1120M).
-5. **Who rewrites the RNG seed in play**: whole-300M `watch 2df84 4` from `cmd12/rngtest/start/o1/final.snap`;
-   candidates `$10d22`, `$ffd8`, `$a9da`/`$a9e6`, `$718e`.
-6. Land 3: build it from `cmd9/rollout/o0/final.snap` and play it.
-7. Movement with rollouts; state-space forecaster (plan step 5); smaller items (side-0 peace bit from the `$c706`
-   clobber, sender-word readers, `$25d6` rebuilding slot 0, UI click with side 1's slot held, callers of `$548a`
-   other than `$503c` and D0's high byte).
+1. **Re-baseline on the merged build** before any new arm: run scripted on land-2 starts o0..o5 into a new
+   `scratchpad/cmd15/` with the 7df69a2 build in `bin/` (after midwinter has installed it and run `gates.py`) and
+   compare end steps with `cmd14/l2s30/scripted`. Identical: the new runs pool with cmd14. Not identical: every arm
+   compared later re-runs on the new build. The commander pokes orders through the REPL, not the IKBD, so identical
+   is expected (inferred, not checked).
+2. **Whether hybrid beats rollout** needs about 130 starts per arm (13% against 27%, 80% power, unpaired; inferred
+   from the 30-start rates). Waiting on Dave (cost below). A cheaper question first: does the LLM candidate matter
+   where it wins? Re-run the hybrid from the decisions where `llm` was best with that candidate removed (a fork of
+   the logged run) and see whether the outcome changes.
+3. **Land 2, a second side-1 group** (`$041a`, alive in 13 of 30 cmd9-era end states): read whether his group still
+   has men; if he can be alive and groupless, aim the captain at the Capital then and `watch` `28(group)` of side 1's
+   slot 1 for the `$26d0` write. If he never is, land 2 has no second-group lever.
+4. **Water-cell orders from the LLM**: 105 dropped in the land-2 LLM arm. Give the prompt the land mask near each
+   target, or snap a water target to the nearest land cell in `llm.py`'s validation; measure the drop count.
+5. **Rollout food blindness**: inside a 40M horizon food costs nothing until it hits 0; try a longer horizon for
+   get-food candidates or score food left against the eating rate.
+6. Seeds for land 1; why side 2 makes no new group (`$26d0` hits over the rollout win's 315M..1120M); who rewrites
+   the RNG seed in play (`watch 2df84 4` from `cmd12/rngtest/start/o1/final.snap`; candidates `$10d22`, `$ffd8`,
+   `$a9da`/`$a9e6`, `$718e`); land 3; movement with rollouts; the state-space forecaster (plan step 5), which is what
+   makes 130-start search arms affordable.
 
 ## Known traps
 
@@ -100,20 +110,24 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
   the watch's step counter is the emulator's absolute count, not the REPL command's.
 - `llm.py` passes `--model sonnet`, an alias: all three arms so far were answered by `claude-sonnet-5-5` (`model_usage`
   in `llm.jsonl`), but a later arm may get another model. Pin the full id before an arm that is compared with them.
+- Snapshots from before format v12 differ byte-wise from new ones of the same game state (one ACIA byte): compare
+  `obs_hash` and clock, not file hashes (cmd9 against cmd14 starts: 5/5 identical state).
+- In the hybrid, an LLM proposal identical to the rollout's first candidate is deduplicated away, and one with no
+  valid group order is not offered: 1143 calls gave 712 offers on land 2. Count offers from `rollout.cands`, not calls.
+- Land-2 wins at 30 starts fall on disjoint starts between rollout and hybrid: a single start's outcome is a
+  trajectory property, so a per-start "this start is winnable" reading is wrong.
 - Six starts per LLM arm cannot resolve a prompt change: across v1/v2/v3 one start moves by up to 6 lords at 300M
   (paired differences v1 - v2: -2 -4 +5 +2 +6 -2, SD 4.1).
 
 
 ## Waiting on Dave
 
-- **Whether the LLM arm continues, and in what form.** Another prompt revision at six starts (about $12) cannot be
-  read: the per-start spread between LLM runs is up to 6 lords, and resolving a 2-lord shift needs about 30 starts
-  per arm (inferred from the six v1 - v2 pairs, SD 4.1), about $60 an arm. Recommendation: no v4 prompt run. Either
-  close step 4 as "rollout ahead, LLM not separable", or fund one design change that could plausibly move it by more
-  than the spread (for example the LLM proposing candidates that the rollout scores), with `--model` pinned.
+- **Fund a 130-start hybrid against rollout comparison, or close step 4.** At 15 to 40 minutes a land-2 run, three at
+  a time, 100 more starts per arm is about 2 to 3 days of this machine and about $11 of Haiku. Recommendation: do
+  Open 2's cheaper ablation first; fund the large run only if removing the LLM's winning candidates changes outcomes.
 
 ## Next session
 
-Unless Dave funds an LLM arm, work Open 1 (land 2's second group) from `cmd11/so/` end states and `captains.py`.
-If he does, pin the model in `llm.py`, copy `seeds.sh` aside, run only the llm arm into a new `scratchpad/cmd14/`
-dir, and score it with `pairs.py` against `cmd12/r1s3`. The prompt that starts it is `/resume commander`.
+Message midwinter (or check `ListAgents`) that the merged build is in `bin/` and gated, then do Open 1 (six scripted
+runs, about 20 minutes). Then Open 2's ablation unless Dave has decided on the large run. The prompt that starts it
+is `/resume commander`.
