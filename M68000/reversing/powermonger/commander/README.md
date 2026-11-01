@@ -339,19 +339,37 @@ owner `$ff`, category `$0c` and dwell `$a0` (killed, not routed), flags `$10` (l
 His army did not lose: it still had 27 men, and in o1 it had already destroyed one of side 2's two groups.
 
 At 30 starts (`seeds.sh scratchpad/cmd14/l2s30 scratchpad/cmd3/l2build/l2_built.snap 1 "0 .. 29"
-"scripted=--policy,scripted llm_haiku=--policy,llm,--every,20e6,--model,claude-haiku-5-5" 2 2000e6`; starts 1M apart,
-o1..o5 the same game state as `cmd9/start`, and scripted o0..o5 ending at the same steps as `cmd9`):
+"scripted=--policy,scripted llm_haiku=--policy,llm,--every,20e6,--model,claude-haiku-5-5" 2 2000e6`, and the search
+arms with `"hybrid_haiku=--policy,hybrid,--model,claude-haiku-5-5,--par,5 rollout=--policy,rollout,--par,5" 3`;
+starts 1M apart, o1..o5 the same game state as `cmd9/start`, and scripted o0..o5 ending at the same steps as `cmd9`.
+Rollout o0..o5 are `cmd9`'s runs, linked rather than re-run; every arm ran on the build before merge 7df69a2):
 
 | policy | won | lost: captain killed | lost: no-lord retire | alive at 2000M | loss step, median (range) |
 |---|---|---|---|---|---|
 | scripted | 0 | 27 | 3 | 0 | 228M (202M..1470M) |
 | LLM v3 on Haiku, a decision per 20M | 0 | 20 | 3 | 7, ratio 0 or 1 | 320M (228M..935M) |
+| rollout (K 5, N 40M) | 4 | 18 | 2 | 6 | 469M (294M..1663M) |
+| hybrid: rollout + Haiku proposer per 20M | 8 | 18 | 1 | 3 | 509M (310M..998M) |
 
-Neither wins land 2 (0 of 30 each; the 95% upper bound on either win rate is 12%). The LLM keeps the captain alive
-longer: its run outlasts scripted's from 25 of 30 starts (one-sided sign test p = 0.0002), and its seven survivors are
-stalemates, not near wins. A loss with the captain alive is the no-lord retire (side 1 holds no lord at the end), as in
-scripted o0 and evade o3 above. The arm cost $3.36 for 1137 calls; 105 orders were dropped as a go to or supply aimed
-at a water cell, 2 as an attack on a cell that is not an enemy lord, and one reply did not parse.
+Scripted and the LLM never win land 2 (0 of 30 each; the 95% upper bound on either win rate is 12%). The LLM keeps the
+captain alive longer: its run outlasts scripted's from 25 of 30 starts (one-sided sign test p = 0.0002), and its seven
+survivors are stalemates, not near wins. A loss with the captain alive is the no-lord retire (side 1 holds no lord at
+the end), as in scripted o0 and evade o3 above. The arm cost $3.36 for 1137 calls; 105 orders were dropped as a go to
+or supply aimed at a water cell, 2 as an attack on a cell that is not an enemy lord, and one reply did not parse.
+
+The two search arms are the only ones that win: rollout 4 of 30 (95% interval 4% to 31%), hybrid 8 of 30 (12% to
+46%), each with side 1 holding 4 to 9 lords at the end. Ranking each start's runs as a win (earlier is better), then
+alive at the budget, then a loss (later is better), both beat scripted from 28 of 30 starts (two-sided sign test
+p < 1e-6); the hybrid beats the LLM alone from 21 of 30 (p = 0.04), the rollout from 19 of 28 untied (p = 0.09). The
+hybrid is not told apart from the plain rollout: it ranks above it from 15 starts and below from 14 (p = 1.0), and of
+the starts only one arm won, 8 are the hybrid's and 4 the rollout's (exact McNemar p = 0.39). The two arms' wins fall
+on disjoint starts (hybrid o6 o8 o15 o20..o23 o28, rollout o0 o10 o11 o13), so a win is not a property of the start
+but of a trajectory one changed decision can redirect. Telling 13% from 27% at 80% power needs about 130 starts per
+arm (normal approximation, unpaired). The LLM's candidate was offered at 712 of the hybrid's 2043 rollout decisions
+(the other 431 calls proposed no valid group order, or one the rollout already had) and scored best at 207 of them
+(29%); `none` won 429.
+The arm cost $3.33 for 1143 Haiku calls, 47 orders dropped as invalid. Runs: `scratchpad/cmd14/l2s30/<arm>/o<k>`;
+scored by `outcomes.py scratchpad/cmd14/l2s30 1 scripted llm_haiku rollout hybrid_haiku`.
 
 **How the captain dies.** What decides it is whether a healthy enemy man reaches the lead. A lead carries a bow (grade 6 from spawn) and in a
 fight stands off shooting: mode `$34`, the shot cool-down. On o1 (`cmd9/o1_health`) the captain's lead was in `$34` at
@@ -519,7 +537,8 @@ issued from any source. With an empty backend (`--backend stub0`) it repeats the
 o0 to 100M: 20 of 20 decisions with the same observation hash and actions, the same best candidate at 9 of 9 forks
 (`scratchpad/cmd14/hybgate/stub0`). Live on Haiku over the same 100M (5 calls, about $0.02) the `llm` candidate won
 at 0M (a tie on score broken on lords) and at 20M, where the rollout would not have forked (0.953 against `none`'s
-0.816), and lost at 60M and 80M; `--replay` of its log ends byte-identical (`cmd14/hybgate/haiku`).
+0.816), and lost at 60M and 80M; `--replay` of its log ends byte-identical (`cmd14/hybgate/haiku`). On land 2 side 1 over 30
+starts it wins 8 against the plain rollout's 4, a gap these starts cannot separate from chance ("Land 2 as a rate").
 
 **Evaluation design.** What the measurements above say about how to run the next ones:
 
@@ -552,7 +571,7 @@ at 0M (a tie on score broken on lords) and at 20M, where the rollout would not h
 | 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | `gate_inject.sh` 7/7 (above) | done |
 | 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`) | done |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
-| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable under three prompts, scripted behind from 6 of 6 | rollout done; LLM in progress |
+| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable under three prompts, scripted behind from 6 of 6. On land 2 side 1 over 30 starts ("Land 2 as a rate"): scripted and the Haiku LLM win 0, the rollout 4, the hybrid (LLM proposes, rollout scores) 8, hybrid and rollout not separable | rollout done; LLM and hybrid measured, not separable from rollout |
 | 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 20/20) | in progress |
 
 ## Files
@@ -575,6 +594,7 @@ at 0M (a tie on score broken on lords) and at 20M, where the rollout would not h
 | `gate_posture.sh` | field-fight posture: kills against routs from the land-2 300M snapshot, one variable |
 | `seeds.sh <out> <snap> <side> "<offsets>" "<arms>" [par] [budget]` | one land played by several policies from starts a few million unpoked steps apart, so an outcome is a rate |
 | `pairs.py <seeds out> <side> [--base ai] [--at 300,440]` | a seeds.sh result per start at fixed steps, each arm minus the base arm |
+| `outcomes.py <seeds out> <side> <arm> ...` | finished seeds.sh runs by land outcome (won, captain killed, no-lord retire, alive at budget), LLM cost, per-start sign and McNemar tests between arms |
 | `startpoke.py <snap> <out> <k> [tick\|rng]` | a start with the dice counter `$57fec` or the RNG seed shifted; neither moves the game's AI on rand1 |
 | `captains.py <snap>...` | every leader-flag man in a settlement: the men a revolt can turn into a new group |
 | `leadkill/gate_leadkill.sh [pick] [r39] [goto] [win]` | how an enemy man reaches the captain's lead (scripted o1, `runs/l2_scripted_o1`): the target-pick replay 64/64, the retry-byte poke, the go-to arms; `win` the chases on the rollout win's lead over 315M..330M (`runs/l2_rollout`, about 4 minutes) |
