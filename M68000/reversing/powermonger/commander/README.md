@@ -341,10 +341,10 @@ His army did not lose: it still had 27 men, and in o1 it had already destroyed o
 At 30 starts (`seeds.sh scratchpad/cmd14/l2s30 scratchpad/cmd3/l2build/l2_built.snap 1 "0 .. 29"
 "scripted=--policy,scripted llm_haiku=--policy,llm,--every,20e6,--model,claude-haiku-5-5" 2 2000e6`, the search
 arms with `"hybrid_haiku=--policy,hybrid,--model,claude-haiku-5-5,--par,5 rollout=--policy,rollout,--par,5" 3`, and
-the placebo with `"hybrid_rand=--policy,hybrid,--backend,rand,--par,5" 3` into `cmd15/l2s30`, which links the others
-in). Starts are 1M apart, o1..o5 the same game state as `cmd9/start`, and scripted o0..o5 end at the same steps as
+the placebo with `"hybrid_rand=--policy,hybrid,--backend,rand,--par,5" 3` and the slow rollout with
+`"rollout_e20=--policy,rollout,--every,20e6,--par,4" 4` into `cmd15/l2s30`, which links the others in). Starts are 1M apart, o1..o5 the same game state as `cmd9/start`, and scripted o0..o5 end at the same steps as
 `cmd9`; rollout o0..o5 are `cmd9`'s runs, linked rather than re-run. Builds: scripted, the LLM and the hybrid ran on
-the build before merge 7df69a2; rollout o9..o29 and the placebo on 7df69a2, and rollout o6..o8 crossed the switch.
+the build before merge 7df69a2; rollout o9..o29, the placebo and the slow rollout on 7df69a2, and rollout o6..o8 crossed the switch.
 The merge does not move these games: scripted o0..o5 re-run on 7df69a2 from the same starts (`cmd15/rebase`) repeat
 all 665 decisions' observation hashes and all six end steps.
 
@@ -355,6 +355,7 @@ all 665 decisions' observation hashes and all six end steps.
 | rollout (K 5, N 40M) | 4 | 18 | 2 | 6 | 470M (294M..1664M) |
 | hybrid: rollout + Haiku proposer per 20M | 8 | 18 | 1 | 3 | 510M (311M..999M) |
 | placebo: rollout + random proposer per 20M | 7 | 21 | 1 | 1 | 467M (274M..1461M) |
+| rollout deciding per 20M (`--every 20e6`) | 7 | 17 | 1 | 5 | 540M (332M..722M) |
 
 Scripted and the LLM never win land 2 (0 of 30 each; the 95% upper bound on either win rate is 12%). The LLM keeps the
 captain alive longer: its run outlasts scripted's from 25 of 30 starts (one-sided sign test p = 0.0002), and its seven
@@ -377,11 +378,17 @@ with targets from the observation's lord cells, through the same validation, can
 proposals are better moves by the rollout's own 40M score: its candidate scored best at 207 of the 712 decisions it was
 offered at (29%), the random one at 92 of 633 (15%). The land outcomes do not follow: placebo 7 wins against Haiku's 8.
 Whatever the hybrid gains over the rollout, if anything, comes from an extra candidate outside the generator, not from
-the model choosing it, and a locally better move at the 40M horizon does not make a land-2 win more likely. Telling 13%
+the model choosing it, and a locally better move at the 40M horizon does not make a land-2 win more likely. 
+
+The LLM decides every 20M (about 113 ticks) and the rollout every 5M, so the rollout deciding every 20M tests whether
+the LLM's order rate is what keeps it from winning. It is not: the slow rollout wins 7 of 30 (o2 o14 o19 o22 o23 o25
+o26), against 4 at 5M (above the 5M rollout from 17 starts, below from 12, sign p = 0.46; starts only one won: 7
+against 4, McNemar p = 0.55), and beats the LLM alone from 24 of 30 (p = 0.001). At the same cadence the difference
+between 0 wins and 7 is the 40M look-ahead, not how often orders are given. Telling 13%
 from 27% at 80% power would need about 130 starts per arm (normal approximation, unpaired). The hybrid arm cost $3.33
 for 1143 Haiku calls (47 orders dropped as invalid); the placebo made 968 calls to its generator (3 invalid). Runs:
 `scratchpad/cmd15/l2s30/<arm>/o<k>`; scored by
-`outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout hybrid_haiku hybrid_rand`.
+`outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout rollout_e20 hybrid_haiku hybrid_rand`.
 
 **How the captain dies.** What decides it is whether a healthy enemy man reaches the lead. A lead carries a bow (grade 6 from spawn) and in a
 fight stands off shooting: mode `$34`, the shot cool-down. On o1 (`cmd9/o1_health`) the captain's lead was in `$34` at
@@ -584,7 +591,7 @@ starts can see ("Land 2 as a rate").
 | 1 | Injection gate: an order written into a state-2 slot of an AI side runs like a natural one, and `$6522` issues nothing for that side | `gate_inject.sh` 7/7 (above) | done |
 | 2 | A* reachability tool over the terrain planes | sampler port 4128/4128 against `$1648e` (`gate_sampler.py`); the census's 4230 stuck pairs classified (`classify_stuck.py`): 2417 reachable with water on the line, each with a verified waypoint path; one waypoint followed live where the control stays stuck (`live_check.py`) | done |
 | 3 | Observe/act harness driving the REPL, scripted baseline commander | observe/act/step built and gated; every player order gated from an AI or the local slot (`gate_orders.sh` 57/57, `gate_ungated.sh` 52/52, `gate_local.sh`); `loop.py` deterministic and replayable, a land played to its verdict on side 1 twice with identical logs and snapshots (`gate_loop.sh`, `gate_loop_side1.sh`) | done |
-| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable under three prompts, scripted behind from 6 of 6. On land 2 side 1 over 30 starts ("Land 2 as a rate"): scripted and the Haiku LLM win 0, the rollout 4, the hybrid (LLM proposes, rollout scores) 8, the same with a random proposer 7; none of the three search arms separable | rollout done; LLM measured: adds nothing over a random proposer on land 2 |
+| 4 | LLM commander | land outcomes against the original AI on the same seeds, sides swapped. Measured on rand1 side 3 over six starts ("Policies against the game's AI"): rollout ahead of the AI on lords from 5 of 6 starts, the LLM not separable under three prompts, scripted behind from 6 of 6. On land 2 side 1 over 30 starts ("Land 2 as a rate"): scripted and the Haiku LLM win 0, the rollout 4, the hybrid (LLM proposes, rollout scores) 8, the same with a random proposer 7, the rollout deciding only as often as the LLM 7; no two search arms separable | rollout done; LLM measured: adds nothing over a random proposer on land 2 |
 | 5 | State-space forecaster | prediction error against rollouts and against the rule recurrence. Built: exact rollouts (`rollout.py`, `gate_rollout.sh` 20/20) | in progress |
 
 ## Files
