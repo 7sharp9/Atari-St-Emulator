@@ -5,8 +5,9 @@
 - Last commit of this workstream: `52a1013` rollout at the LLM's 20M cadence wins land 2 7/30. Before it: `24cc325` hybrid placebo (`--backend rand`) wins land 2 7/30 against the Haiku
   hybrid's 8/30; merged build repeats scripted o0..o5 exactly. Earlier this pass: `52ef030` (search arms at 30 starts,
   `outcomes.py`), `ce7cc93` (`--policy hybrid`), `6783242` (evaluation design, Haiku on rand1).
-- Builds: scripted, llm_haiku and hybrid_haiku (cmd14) ran before merge 7df69a2; rollout o9..o29, hybrid_rand and
-  rollout_e20 (cmd15) on 7df69a2; rollout o6..o8 crossed the switch at 23:10 (midwinter's build replaced `bin/` mid-run).
+- Builds: scripted, llm_haiku, hybrid_haiku and rollout o6..o29 (cmd14, last final snapshot 01:29) ran before merge
+  7df69a2, which went into `bin/` after 01:39; hybrid_rand and rollout_e20 (cmd15) on 7df69a2. `bin/`'s mtime
+  (23:10:04) is the obj/ compile time, kept by the copy, not the install time.
   `cmd15/rebase` shows the merge does not move these games (665/665 decision hashes, 6/6 end steps). `bin/` is 7df69a2.
 - Working data: `M68000/scratchpad/cmd15/` (README: `rebase`, `l2s30` with all six arms linked), `cmd14/` (README),
   `cmd12/r1s3`, `cmd13/r1s3b`, `cmd9/`. Tables: `outcomes.py scratchpad/cmd15/l2s30 1 scripted llm_haiku rollout
@@ -130,9 +131,6 @@ The PowerMonger traps in `sessions/powermonger.md` apply.
 
 - **Close step 4 on the LLM?** Recommendation: yes, recorded as "the LLM adds nothing over a random proposer on
   land 2, and its 20M order rate is not the limit (the rollout at 20M wins 7 of 30); search wins 4 to 8 of 30". The 130-start Haiku comparison is not worth funding after the placebo.
-- **CLAUDE.md, "Running"**: `dotnet build -c Debug M68000.fsproj -o <scratch dir>` run from the main checkout also
-  rewrote `bin/Debug/net8.0/M68000.dll` and `obj/` (midwinter's build at 23:10:04, mid-run). The line that recommends
-  it as safe while another session holds `bin/` needs checking and correcting; midwinter owns the evidence.
 
 ## Next session
 

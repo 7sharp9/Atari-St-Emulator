@@ -343,8 +343,8 @@ At 30 starts (`seeds.sh scratchpad/cmd14/l2s30 scratchpad/cmd3/l2build/l2_built.
 arms with `"hybrid_haiku=--policy,hybrid,--model,claude-haiku-5-5,--par,5 rollout=--policy,rollout,--par,5" 3`, and
 the placebo with `"hybrid_rand=--policy,hybrid,--backend,rand,--par,5" 3` and the slow rollout with
 `"rollout_e20=--policy,rollout,--every,20e6,--par,4" 4` into `cmd15/l2s30`, which links the others in). Starts are 1M apart, o1..o5 the same game state as `cmd9/start`, and scripted o0..o5 end at the same steps as
-`cmd9`; rollout o0..o5 are `cmd9`'s runs, linked rather than re-run. Builds: scripted, the LLM and the hybrid ran on
-the build before merge 7df69a2; rollout o9..o29, the placebo and the slow rollout on 7df69a2, and rollout o6..o8 crossed the switch.
+`cmd9`; rollout o0..o5 are `cmd9`'s runs, linked rather than re-run. Builds: scripted, the LLM, the hybrid and the rollout ran on
+the build before merge 7df69a2; the placebo and the slow rollout on 7df69a2.
 The merge does not move these games: scripted o0..o5 re-run on 7df69a2 from the same starts (`cmd15/rebase`) repeat
 all 665 decisions' observation hashes and all six end steps.
 
