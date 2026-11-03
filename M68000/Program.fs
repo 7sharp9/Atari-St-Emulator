@@ -96,15 +96,93 @@ type Recording =
 ///of the first journal entry that differs, if any.
 type Divergence = { At: uint64; PcA: int; PcB: int; Bytes: (uint32 * byte * byte) list; JournalAt: uint64 option }
 
+///The provenance sidecar `<snap>.prov.json` that SaveState writes beside every snapshot and
+///LoadState reads back: the SHA-256 of the M68000.dll file that wrote it, the git commit that DLL
+///was built from (the SDK's SourceRevisionId in AssemblyInformationalVersion: HEAD at build time,
+///blind to uncommitted edits, so the DLL hash is the identity), disk A's full path and FNV-1a 64
+///(`ImageHash`, the same hash as the `DSKA` section), the snapshot this run was loaded from, and
+///the snapshot file's own SHA-256, so a sidecar left beside a snapshot that something else since
+///overwrote is ignored. A sidecar rather than a snapshot section: a build hash inside the `.snap`
+///would make every cross-build `cmp` (tools/regress_net.sh, the gates) differ.
+module Provenance =
+    open System.Reflection
+    open System.Security.Cryptography
+    open System.Text.Json
+    open System.Text.Json.Nodes
+
+    type Record =
+        { DllSha256: string option; GitCommit: string option
+          DiskPath: string option; DiskFnv64: uint64 option; Parent: string option }
+
+    let sidecarPath (snapPath: string) = snapPath + ".prov.json"
+    let fileSha256 (path: string) =
+        use s = IO.File.OpenRead path
+        Convert.ToHexString(SHA256.HashData s).ToLowerInvariant()
+    let private core = typeof<MmuSnapshot>.Assembly
+    let dllPath = match core.Location with null | "" -> None | p -> Some p
+    let dllSha256 = lazy (dllPath |> Option.map fileSha256)
+    let gitCommit =
+        lazy (match core.GetCustomAttribute<AssemblyInformationalVersionAttribute>() with
+              | null -> None
+              | a ->
+                  match a.InformationalVersion.IndexOf '+' with
+                  | -1 -> None
+                  | i -> Some (a.InformationalVersion.Substring(i + 1)))
+
+    let private jstr (v: string option) : JsonNode =
+        match v with Some s -> JsonValue.Create s | None -> null
+
+    ///Writes the sidecar for the snapshot just written to `snapPath`.
+    let write (snapPath: string) (r: Record) (step: uint64) =
+        let o = JsonObject()
+        o.["format"] <- JsonValue.Create 1
+        o.["snapshot_sha256"] <- jstr (Some (fileSha256 snapPath))
+        o.["step"] <- JsonValue.Create step
+        o.["dll_path"] <- jstr dllPath
+        o.["dll_sha256"] <- jstr r.DllSha256
+        o.["git_commit"] <- jstr r.GitCommit
+        o.["disk_a"] <- jstr r.DiskPath
+        o.["disk_a_fnv64"] <- jstr (r.DiskFnv64 |> Option.map (sprintf "%016x"))
+        o.["parent"] <- jstr r.Parent
+        IO.File.WriteAllText(sidecarPath snapPath, o.ToJsonString(JsonSerializerOptions(WriteIndented = true)) + "\n")
+
+    ///The sidecar of `snapPath`: None when there is none, Error when it cannot be read or was
+    ///written for a different file than the one now at `snapPath`.
+    let tryRead (snapPath: string) : Result<Record, string> option =
+        let side = sidecarPath snapPath
+        if not (IO.File.Exists side) then None
+        else
+            try
+                let o = JsonNode.Parse(IO.File.ReadAllText side).AsObject()
+                let s (k: string) =
+                    match o.TryGetPropertyValue k with
+                    | true, v when not (isNull v) -> Some (v.GetValue<string>())
+                    | _ -> None
+                if s "snapshot_sha256" <> Some (fileSha256 snapPath) then
+                    Error (sprintf "%s does not describe %s (its snapshot_sha256 differs): ignored" side snapPath)
+                else
+                    Ok { DllSha256 = s "dll_sha256"; GitCommit = s "git_commit"; DiskPath = s "disk_a"
+                         DiskFnv64 = s "disk_a_fnv64" |> Option.map (fun h -> Convert.ToUInt64(h, 16)); Parent = s "parent" }
+                |> Some
+            //A malformed sidecar is reported and ignored, never fatal: the snapshot itself is intact.
+            with e -> Some (Error (sprintf "%s unreadable (%s): ignored" side e.Message))
+
 [<StructuredFormatDisplay("{Debug}")>]
 type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     let rom = IO.File.ReadAllBytes(romPath)
     let mmu = MMU(rom)
+    ///Full path of the image in drive A, for the provenance sidecar (see `Provenance`); None
+    ///with no disk. Set wherever a disk is mounted: here, MountDiskA, a sidecar remount.
+    let mutable diskAFullPath : string option = None
+    ///The snapshot this machine was last loaded from (LoadState), for the sidecar; Reset clears it.
+    let mutable parentSnapshot : string option = None
     do
         //Optional real floppy image for drive A (see MMU.LoadDiskA) - mirrors romPath's own
         //"load bytes from a path supplied by the caller" shape exactly.
         match diskAPath with
-        | Some p when not (String.IsNullOrEmpty p) -> mmu.LoadDiskA (Some (IO.File.ReadAllBytes p))
+        | Some p when not (String.IsNullOrEmpty p) ->
+            mmu.LoadDiskA (Some (IO.File.ReadAllBytes p))
+            diskAFullPath <- Some (IO.Path.GetFullPath p)
         | _ -> ()
         //Monitor type for MFP GPIP bit 7 (see MMU.SetMonitor). Anything other than "mono"
         //(case-insensitive) is treated as colour, which is also the default when unset.
@@ -385,7 +463,14 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     member x.Reset() =
         cpu <- cpu.Reset()
         stepCount <- 0UL
+        parentSnapshot <- None
         resetLoopDetector()
+
+    ///Mounts (or ejects, on None) the image at `path` in drive A and remembers its path for the
+    ///provenance sidecar. The `DiskA` input and stserver's `load`/`boot` mount through here.
+    member x.MountDiskA (path: string option) =
+        mmu.LoadDiskA (path |> Option.map IO.File.ReadAllBytes)
+        diskAFullPath <- path |> Option.map IO.Path.GetFullPath
 
     ///Flush the structured trace outputs on shutdown: close the JSON array in the basepage
     ///sidecar (it is written incrementally with AppendAllText) and the flow-event BinaryWriter.
@@ -688,7 +773,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         | Ikbd b -> mmu.EnqueueIkbd b
         | MouseMove (dx, dy) -> mmu.MoveMouse dx dy
         | MouseButton (l, d) -> mmu.EnqueueMouseButton l d
-        | DiskA p -> mmu.LoadDiskA (p |> Option.map IO.File.ReadAllBytes)
+        | DiskA p -> x.MountDiskA p
         | WriteProtectA on -> mmu.SetWriteProtectA on
 
     member x.TakeRecordCheckpoint() =
@@ -1105,13 +1190,56 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 w.Write(d)
             Diag.result "--- state includes %d written disk-A sector(s) ---" sectors.Length
         | None -> ()
+        w.Flush()
+        fs.Close()
+        //The provenance sidecar (see `Provenance`). A failure to write it is reported, not raised:
+        //the snapshot itself is complete, and losing it over an advisory file would cost more.
+        try
+            let diskHash = mmu.DiskImageHash()
+            Provenance.write path
+                { DllSha256 = Provenance.dllSha256.Value; GitCommit = Provenance.gitCommit.Value
+                  DiskPath = (if diskHash.IsSome then diskAFullPath else None)
+                  DiskFnv64 = diskHash; Parent = parentSnapshot } stepCount
+        with e -> eprintfn "WARNING: provenance sidecar %s not written: %s" (Provenance.sidecarPath path) e.Message
         Diag.result "--- state saved to %s: PC=$%08x ---" path cpu.PC
 
     ///Inverse of SaveState - replaces the current CPU/MMU state wholesale (does NOT call Reset()
     ///first; the caller decides whether to Reset() or LoadState(), never both). Resets the loop
     ///detector's epoch afterward for the same reason Preview does: the saved anchor would
     ///otherwise describe a state from outside this run.
-    member x.LoadState(path: string) =
+    ///With a provenance sidecar (see `Provenance`) it also warns on stderr when the snapshot was
+    ///written by a different M68000.dll or with a different disk A than the one mounted, and,
+    ///when no disk is mounted and `remountDisk` (default true) is set, remounts the recorded disk
+    ///if that file still hashes the same, before the `DSKA` section is applied. Without a
+    ///sidecar it behaves as it always has.
+    member x.LoadState(path: string, ?remountDisk: bool) =
+        match Provenance.tryRead path with
+        | None -> ()
+        | Some (Error e) -> eprintfn "WARNING: provenance sidecar %s" e
+        | Some (Ok p) ->
+            let commit (c: string option) = defaultArg c "unknown"
+            match p.DllSha256, Provenance.dllSha256.Value with
+            | Some theirs, Some ours when theirs <> ours ->
+                eprintfn "WARNING: %s was written by a different build: M68000.dll sha256 %s (commit %s); this process runs %s (commit %s)"
+                    path theirs (commit p.GitCommit) ours (commit Provenance.gitCommit.Value)
+            | _ -> ()
+            match p.DiskFnv64, mmu.DiskImageHash() with
+            | Some want, None when defaultArg remountDisk true ->
+                match p.DiskPath with
+                | Some d when IO.File.Exists d ->
+                    let bytes = IO.File.ReadAllBytes d
+                    let have = ImageHash.fnv64 bytes
+                    if have = want then
+                        mmu.LoadDiskA (Some bytes)
+                        diskAFullPath <- Some d
+                        eprintfn "--- disk A remounted from the provenance sidecar: %s (FNV $%016x) ---" d want
+                    else
+                        eprintfn "WARNING: %s was taken with disk A %s (FNV $%016x), which now hashes $%016x: not remounted; pass --disk-a" path d want have
+                | d ->
+                    eprintfn "WARNING: %s was taken with disk A %s (FNV $%016x), which does not exist: no disk mounted; pass --disk-a" path (defaultArg d "(path not recorded)") want
+            | Some want, Some have when want <> have ->
+                eprintfn "WARNING: %s was taken with disk A %s (FNV $%016x); the mounted image hashes $%016x" path (defaultArg p.DiskPath "(path not recorded)") want have
+            | _ -> ()
         use fs = IO.File.OpenRead(path)
         use r = new IO.BinaryReader(fs)
         let magic = String(r.ReadChars(4))
@@ -1247,6 +1375,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             | Ok () -> Diag.result "--- %d written disk-A sector(s) restored from the snapshot ---" n
             | Error e -> eprintfn "WARNING: %s; resuming with the image as mounted" e
         resetLoopDetector()
+        parentSnapshot <- Some (IO.Path.GetFullPath path)
         Diag.result "--- state loaded from %s: PC=$%08x ---" path cpu.PC
 
     member x.Debug =
@@ -1824,6 +1953,26 @@ module Main =
             | s -> rest.Add s; i <- i + 1
         v, rest.ToArray()
 
+    ///The argv forms `main` accepts, printed with exit code 2 for any other argv. An argv that
+    ///matched nothing used to cold-boot 20,000 steps into the REPL, so a run.ps1 alias passed to
+    ///the raw binary (`rrepl x.snap`) sat in a disk-less boot that looked like a broken snapshot.
+    let private usage = """usage: dotnet exec M68000.dll <argv> [--disk-a <image.st>]   (run.ps1's subcommands are aliases for these)
+  (no argv)                  cold boot 20000 steps, then the REPL on stdin
+  <n> repl                   cold boot n steps, then the REPL
+  resume <snap> repl         load a snapshot, then the REPL
+  <n>                        cold boot n steps and exit
+  <n> snapshot <snap>        cold boot n steps, save a snapshot
+  <n> resume <snap>          load a snapshot, run n steps
+  <n> verify | <n> checkpoint
+  selftest <dir-or-file> [name-substring] [fail-samples]
+  window | window resume <snap>
+  teartest <snap> <frames>"""
+
+    ///True when `int` (which the step-count arms use, and which also takes `0x` hex) parses `s`.
+    let private isSteps (s: string) =
+        try int s |> ignore; true
+        with :? FormatException | :? OverflowException -> false
+
     [<EntryPoint>]
     let main rawArgv =
         let diskASwitch, argv = extractDiskA rawArgv
@@ -1904,7 +2053,7 @@ module Main =
             SelfTest.run pathArg filter 5
         | [| "selftest"; pathArg; filter; n |] ->
             SelfTest.run pathArg filter (int n)   // 3rd arg = per-file FAIL sample lines to print
-        | [| stepsArg |] ->
+        | [| stepsArg |] when isSteps stepsArg ->
             //Non-interactive mode, e.g. `dotnet run --no-build -- 20000`: run N steps (or until
             //an unimplemented instruction fails - Step() prints diagnostics and reraises) then
             //exit. No stdin required, so this can be driven from a plain shell command with no
@@ -2030,17 +2179,18 @@ module Main =
                     f (rw 0x27E2u) (rw 0x27E4u) (rw 0x27F0u) (mmu.ReadByte 0x27F6u) mcsAddr
             Diag.result "teartest: wrote %d frames to %s/" frames outDir
             0
-        | args ->
+        | [||] | [| _; "repl" |] when argv.Length = 0 || isSteps argv.[0] ->
             //Interactive REPL. Entry step count defaults to 20000 (`dotnet run --no-build`) but
             //can be overridden with `dotnet run --no-build -- <n> repl` - previously this required
             //hand-editing the hardcoded `20000` below and rebuilding just to inspect state at a
             //specific point, then editing it back afterward (an easy step to forget, and a real
             //time sink across past debugging sessions).
             st.Reset()
-            let entrySteps =
-                match args with
-                | [| stepsArg; "repl" |] -> int stepsArg
-                | _ -> 20000
+            let entrySteps = if argv.Length = 0 then 20000 else int argv.[0]
             (try for _ in 1..entrySteps do st.Step() with _ -> ())
             runRepl st
+        | args ->
+            eprintfn "unrecognised arguments: %s" (String.Join(" ", args))
+            eprintfn "%s" usage
+            2
 #endif

@@ -202,18 +202,20 @@ let prepare (verb: string) (p: JsonObject) =
             machine <- Some s
             romPath <- Some rom
             s
-    s.Cpu.MMU.LoadDiskA (disk |> Option.map File.ReadAllBytes)
+    s.MountDiskA disk
     s
 
 let methods : (string * string * (string * string * bool * string) list * (JsonObject -> JsonNode)) list =
-  [ "load", "Load a snapshot. 'disk' is required: the .st it was taken with, or null if it had none.",
-    [ "snapshot", "string", true, "snapshot path"; "disk", "string|null", true, ".st image for drive A, or null"
+  [ "load", "Load a snapshot. 'disk' is required unless the snapshot has a provenance sidecar (<snap>.prov.json), which remounts the disk it records: the .st it was taken with, or null if it had none.",
+    [ "snapshot", "string", true, "snapshot path"; "disk", "string|null", false, ".st image for drive A, or null; omit to use the sidecar's"
       "rom", "string", false, "TOS ROM (default: TOS100UK.IMG found from the cwd or the server's directory)" ],
     fun p ->
         let snap = str p "snapshot"
         if not (File.Exists snap) then fail "load: no such snapshot %s" snap
+        let fromSidecar = not (p.ContainsKey "disk") && (match Provenance.tryRead snap with Some (Ok _) -> true | _ -> false)
+        if fromSidecar then p.["disk"] <- null
         let s = prepare "load" p
-        s.LoadState snap
+        s.LoadState(snap, remountDisk = fromSidecar)
         status s []
 
     "boot", "Cold boot (reset) with a disk in drive A or none; then 'run' or 'step'.",

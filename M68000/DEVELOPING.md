@@ -31,7 +31,10 @@ for the full subcommand list.
 
 The raw form still works: `dotnet exec bin/Debug/net8.0/M68000.dll <argv>` where
 `<argv>` is any of the modes in `Program.fs`'s `main`. It traces every instruction to stdout
-(tens of MB a minute) unless `ATARI_NOTRACE=1` is set; the Python drivers set it.
+(tens of MB a minute) unless `ATARI_NOTRACE=1` is set; the Python drivers set it. An argv that
+matches no mode (a `run.ps1` alias such as `rrepl x.snap`, or a lone word that is not a step
+count) prints the usage table to stderr and exits 2; only no argv and `<n> repl` enter the
+REPL from a cold boot.
 
 The REPL (`repl`, `resume <snap> repl`) reads one command per line from stdin; `help` lists them. A
 blank line and a whole-line `#` comment (leading spaces allowed) are skipped. EOF or `q` ends it with exit
@@ -352,8 +355,8 @@ What makes a restore an identity operation:
   churning, which *suppresses* the check rather than firing it falsely: a missed
   detection, never a false positive.
 
-Disk A: which image is mounted is external state (pass `--disk-a` on resume, as on the
-first run), but what the run wrote to it is not. `MMU.fs` journals every Write Sector and
+Disk A: which image is mounted is external state that the `.snap` does not hold (its
+provenance sidecar, below, does), but what the run wrote to it is not. `MMU.fs` journals every Write Sector and
 Write Track sector (`diskLog`, the 512 bytes each one replaced): `MmuSnapshot` records the
 journal's length, so `callcap`, `Preview` and `detcheck` roll disk writes back with RAM, and
 `SaveState` appends an optional `DSKA` section (FNV-1a of the image as mounted, then each
@@ -363,6 +366,23 @@ the image as mounted otherwise (wrong or no `--disk-a`). A run that never wrote 
 writes no section, so its snapshot is byte-identical to the plain v12 layout; an older build
 reads up to the section and ignores it (it never checks for end of file), resuming with the
 unwritten image as before. The write-protect tab (`wprot`) is not saved.
+
+Provenance sidecar: every snapshot written through `SaveState` (CLI `<n> snapshot`, REPL `snap`,
+`stserver` `save`) also gets `<snap>.prov.json` (`Provenance` in `Program.fs`): the snapshot
+file's SHA-256, the step count, the path and SHA-256 of the `M68000.dll` that wrote it, the git
+commit that DLL was built from (the SDK's `SourceRevisionId`: HEAD at build time, blind to
+uncommitted edits, so the DLL hash is the identity), disk A's full path and FNV-1a 64 (the same
+hash as the `DSKA` section, of the image as mounted), and the snapshot this run was loaded from
+(`parent`, null after a cold boot). It is a separate file because a build hash inside the `.snap`
+would make every cross-build `cmp` (`tools/regress_net.sh`, the gates) differ. `LoadState` reads
+it before the snapshot: it warns when the DLL hash differs from the running one, warns when the
+mounted disk hashes differently from the recorded one, and, when no disk is mounted (no
+`--disk-a`, no `ATARI_DISK_A`; `stserver` `load` with no `disk` key), remounts the recorded image
+if that file still hashes the same, saying so on stderr (`--- disk A remounted from the
+provenance sidecar ---`), before the `DSKA` section is applied. A sidecar whose
+`snapshot_sha256` does not match the file beside it (the snapshot was overwritten by something
+else since) is reported and ignored. A snapshot with no sidecar loads exactly as before. The
+sidecar is advisory: a failure to write it is a stderr warning, not a failed save.
 
 `mutations` / `interruptAcks` are deliberately NOT restored (nothing reads their
 absolute value; the loop detector re-baselines them each epoch) - `detcheck`
@@ -673,9 +693,8 @@ A typed poke of the VBL second sub-counter to 1 made the game's own interrupt ca
 
 ## Memory hooks and the `stserver` process
 
-The stdin REPL is a fragile interface for an agent: an alias passed as argv falls through to a
-disk-less cold boot, a forgotten `ATARI_NOTRACE` writes gigabytes, a `resume` without `--disk-a` runs
-with no disk, zsh does not word-split a variable of REPL tokens, and a rejected line stops the whole
+The stdin REPL is a fragile interface for an agent: a forgotten `ATARI_NOTRACE` writes gigabytes,
+a `resume` without `--disk-a` of a snapshot with no provenance sidecar runs with no disk, zsh does not word-split a variable of REPL tokens, and a rejected line stops the whole
 script with exit 1 (`ReplError` in `Program.fs`). Its `watch` is one write-only range. Two pieces replace that
 for scripted work: memory hooks in the core (`MMU.fs`), and `stserver`, a long-lived JSON-RPC and MCP
 process around one `AtartSt` (`server/`). The REPL and `fsi_drive.fsx` keep working unchanged.
@@ -753,7 +772,7 @@ results give them as `"$hex"`.
 
 | method | params | result |
 |---|---|---|
-| `load` | `snapshot`, `disk` (required key: a path, or `null` for a disk-less snapshot), `rom?` | `pc`, `step` |
+| `load` | `snapshot`, `disk` (a path, or `null` for none; required unless the snapshot has a provenance sidecar, whose disk is then remounted), `rom?` | `pc`, `step` |
 | `boot` | `disk` (required key), `rom?` | cold reset |
 | `save` | `path` | |
 | `regs` / `set_reg` | / `name`, `value` | D0-A7, USP, SSP, PC, SR, step, stopped, halted |
@@ -779,7 +798,7 @@ A watch with `stop: true` ends `run` after the instruction that made the matchin
 and breakpoints persist across `load`, `restore` and `step`. An unknown method, a bad parameter or an
 exception in the core comes back as a JSON-RPC error and the process stays up. This makes the REPL
 pitfalls above impossible: there is no argv to mistype beyond `--rom`, `load` refuses a call without
-the `disk` key, nothing traces, values are JSON, and `run` always has a step budget and names the
+the `disk` key unless a provenance sidecar names the disk, nothing traces, values are JSON, and `run` always has a step budget and names the
 bound that ended it.
 
 Checked (`server/smoke.py <stserver.dll> <gameplay_empire.snap> <one-disk Empire .st> <outdir>`, all
@@ -788,7 +807,7 @@ events at the same steps as the REPL's `watch 189ca 4` (writer PC `$01529c`, val
 `$06`, first at step 53,304,004). The server's end snapshot is byte-identical to the pre-change REPL's
 `s 300000` / `snap`, and a `fork`/`restore` replay gives an identical end snapshot and event list. A
 `poke` reports `source: "host"`; a stop watch on the odd byte `$189cd` stops `run` on the first byte
-write there, and a word write at `$189cc` reaches a watch on `$189cd` alone. `load` without `disk` is refused, a malformed line is answered and the server stays up.
+write there, and a word write at `$189cc` reaches a watch on `$189cd` alone. `load` without `disk` of a snapshot with no sidecar is refused, a malformed line is answered and the server stays up.
 The MCP handshake and `tools/list` (31 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
 The REPL `watch 189ca 4` output is identical before and after the change (25 lines).
 

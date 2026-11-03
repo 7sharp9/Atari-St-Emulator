@@ -80,6 +80,14 @@ type MemAccess =
 type MemHook =
     { Id: int; Lo: uint32; Hi: uint32; OnRead: bool; OnWrite: bool; Fire: MemAccess -> unit }
 
+///FNV-1a 64 over a disk image: the hash a snapshot's `DSKA` section and its `.prov.json` sidecar
+///(Program.fs `Provenance`) both record for the image as mounted.
+module ImageHash =
+    let fnv64 (b: byte[]) =
+        let mutable h = 14695981039346656037UL
+        for x in b do h <- (h ^^^ uint64 x) * 1099511628211UL
+        h
+
 /// `flatTestBus` (default false) turns the MMU into a plain big-endian 24-bit RAM (sparse -
 /// unwritten addresses read 0) with no I/O regions, no ROM, no address aliasing and no bus errors
 /// - ONLY for the `selftest` harness, whose 680x0 ProcessorTests vectors place operands anywhere
@@ -690,11 +698,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///the mounted image (Program.fs SaveState/LoadState).
     let diskLog = ResizeArray<struct (int * byte[])>()
     let logDiskSector (bytes: byte[]) (offset: int) = diskLog.Add(struct (offset, Array.sub bytes offset 512))
-    ///FNV-1a 64 over an image.
-    let fnv64 (b: byte[]) =
-        let mutable h = 14695981039346656037UL
-        for x in b do h <- (h ^^^ uint64 x) * 1099511628211UL
-        h
+    let fnv64 = ImageHash.fnv64
 
     ///Real hardware resets this to 0 on cold boot (stMemory.c: "0xFF8001 is set to 0 on cold reset
     ///but keep its value on warm reset") - this emulator only ever cold-boots, so 0 is always the
@@ -1592,7 +1596,8 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///little-endian - Hatari's src/floppy.c Floppy_FindDiskDetails and src/createBlankImage.c
     ///both use this exact offset), falling back to the standard 9 if the image is too short or
     ///the field looks invalid, rather than trusting arbitrary image content. Which image is in the
-    ///drive is external state, like `rom`: a snapshot does not name it (pass `--disk-a` on resume).
+    ///drive is external state, like `rom`: the `.snap` does not name it; its provenance sidecar
+    ///does, and LoadState remounts it from there when no `--disk-a` is given (Program.fs `Provenance`).
     ///What the run wrote to it is in the snapshot: see `diskLog`. Mounting clears the journal.
     member x.LoadDiskA (data: byte[] option) =
         diskA <- data
@@ -1639,13 +1644,21 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     member x.DiskWrites() : (uint64 * (int * byte[])[]) option =
         match diskA with
         | Some bytes when diskLog.Count > 0 ->
+            let offs = diskLog |> Seq.map (fun (struct (o, _)) -> o) |> Seq.distinct |> Seq.sort |> Seq.toArray
+            Some (x.DiskImageHash().Value, offs |> Array.map (fun o -> o, Array.sub bytes o 512))
+        | _ -> None
+    ///FNV-1a 64 of the disk-A image as mounted (the current image with the write journal undone
+    ///on a copy), or None with no disk: the `DSKA` base hash, and the sidecar's disk hash.
+    member x.DiskImageHash() : uint64 option =
+        match diskA with
+        | Some bytes when diskLog.Count > 0 ->
             let orig = Array.copy bytes
             for i in diskLog.Count - 1 .. -1 .. 0 do
                 let struct (off, old) = diskLog.[i]
                 Array.blit old 0 orig off 512
-            let offs = diskLog |> Seq.map (fun (struct (o, _)) -> o) |> Seq.distinct |> Seq.sort |> Seq.toArray
-            Some (fnv64 orig, offs |> Array.map (fun o -> o, Array.sub bytes o 512))
-        | _ -> None
+            Some (fnv64 orig)
+        | Some bytes -> Some (fnv64 bytes)
+        | None -> None
     ///For LoadState: re-applies a `DSKA` section's sectors onto the mounted image, through the
     ///journal (so a later roll-back still works), when the mounted image hashes to `baseHash`.
     ///Returns an error line otherwise and leaves the image unchanged.
