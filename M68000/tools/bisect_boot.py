@@ -3,8 +3,7 @@
 counts from a fresh cold boot, printing one row per sample. Automates a pattern this project's
 debugging repeatedly needed by hand: "run to step N, dump registers, repeat for several N to
 bisect where some transition happens" (e.g. finding exactly when the interrupt mask changes, or
-when PC first reaches a region of interest) - see [[atari-st-emulator-next-instructions]]'s
-twenty-eighth pass, which did this by hand five separate times.
+when PC first reaches a region of interest).
 
 Each sample is a fresh `dotnet run --no-build -- <n> snapshot <tmp>` (ATARI_NOTRACE=1, fast) then
 a brief `resume <tmp> repl` issuing `r`/`q` to read registers back - the same two-step dance used

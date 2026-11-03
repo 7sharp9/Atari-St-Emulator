@@ -1,6 +1,6 @@
 """Standalone 68000 disassembler for TOS100UK.IMG, used to hand-verify what the real ROM says at
-a given address before implementing/debugging an opcode - see the atari-st-emulator-next-instructions
-memory entry's "decode from code, not memory" discipline: bitfield layouts here are cross-checked
+a given address before implementing/debugging an opcode ("decode from code, not memory"):
+bitfield layouts here are cross-checked
 against the actual active patterns in ../Instructions.fs (not recalled from the 68000 ISA manual),
 so this tool's decode and the emulator's decode can't silently drift apart.
 
@@ -513,7 +513,7 @@ class Disassembler:
 
 def find_callers(rom, rom_base, target):
     """Scans the whole ROM for absolute-long JSR ($4EB9) and JMP ($4EF9) references to `target` -
-    added in the thirty-third pass of atari-st-emulator-next-instructions after doing exactly this
+    written after doing exactly this
     by hand (a raw byte search for 4E B9 + the 4-byte target) to find who calls the shared
     Bconstat/Bconin console-check utility at $fca612. Real, not speculative: this is the only way
     this ROM's cross-module shared-subroutine calls were findable at all, short of a full linear

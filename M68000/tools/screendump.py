@@ -1,8 +1,7 @@
 """Render an Atari ST framebuffer dump to a PNG.
 
-Added in the thirty-fourth pass of atari-st-emulator-next-instructions, once a diskless
-cold boot was confirmed to reach the GEM desktop and paint it into screen RAM - there was
-no way to actually *look* at the emulator's video output before this.
+A diskless cold boot reaches the GEM desktop and paints it into screen RAM; this is the way to
+actually *look* at the emulator's video output from a raw dump.
 
 Feed it the raw bytes of screen RAM (32000 bytes starting at _v_bas_ad / $44e, which the
 REPL's `m <base> 32000` prints as space-separated hex), plus the shifter resolution byte

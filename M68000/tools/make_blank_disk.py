@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Create a blank, valid .ST floppy image: real BPB, formatted FAT12 + empty
 root directory, but no files (so no \\AUTO\\*.PRG can ever be found) - the
-"valid disk, no AUTO program" milestone image described in
-atari-st-emulator-next-instructions memory.
+"valid disk, no AUTO program" milestone image.
 
 Byte layout ported directly from Hatari's own src/createBlankImage.c
 (CreateBlankImage_CreateFile) - not guessed - so the produced image matches

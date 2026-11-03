@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Run the real Hatari emulator headlessly against this project's own TOS ROM and capture a
 trace - ground truth for comparing against this project's own emulator, instead of guessing at
-undocumented ROM/AES internals. See [[atari-st-emulator-next-instructions]]'s twenty-eighth pass
-for how this was discovered and why it matters.
+undocumented ROM/AES internals.
 
 Windows note: tools/hconsole/hconsole.py's live control-socket mode does NOT work here - Hatari's
 --control-socket/--cmd-fifo are compiled out on Windows (HAVE_UNIX_DOMAIN_SOCKETS), and hconsole.py
