@@ -132,7 +132,7 @@ observations in 20 Play Random Land snapshots, where 11 of 372 lord records hold
 request (side byte negative, byte 6 `$0a` or `$20`, 6 of 6 launches). On landing `$4244` makes it live again
 (`neg.b 5`, byte-7 bits 4..6 cleared, byte 14 `:= $c`, repositioned to the pigeon's landing point, mode by `$3c08`),
 `5(A0) :=` its home settlement's side, then `$42be` adds 1 to that settlement's lord. Counted at 6 of 6 hits
-(`scratchpad/pm137/B_42be/probe42be.py`): live persons +1 and one entity record changed at every hit. The `+1`
+(`py/probe42be.py`): live persons +1 and one entity record changed at every hit. The `+1`
 restores a count the death had already removed: the KILL tail `$567e` takes an ungrouped man off the home lord's
 `troops_field` (section 6), and in all 5 landings captured on `k5_s4` and `m1_ready` every lord's `troops_field`
 equals the live-man rule count both before and after, the home lord's `+1` the only change (`py/pigeon_ledger.py`).
@@ -518,7 +518,7 @@ in the synthetic states).
 
 **Natural occurrence.** Of 48 natural men in `k5_s4`, `k25_s3` and the `pm136` e1/e2 snapshots, 3 carry a weapon and
 belong to a lord >= 8 (the model and the 68000 agree their weapon is credited past the lord). `k5_s4` run in 12
-stretches of 10M steps (`scratchpad/pm136/equip/run1.sh`, output `k5/out.txt`): `$16892` 0, 0, 3, 61, 66, 81, 41, 15, 51, 5, 82, 6 hits per
+stretches of 10M steps (the `py/runland.sh` census with `EXTRA="16892 160f2 1616c"`, run then by a one-off variant): `$16892` 0, 0, 3, 61, 66, 81, 41, 15, 51, 5, 82, 6 hits per
 stretch; `$160f2` 1 (stretch 4); `$1616c` 1 (stretch 4) and 2 (stretch 11); `m1_s0` 0 (every lord's goods are zero).
 
 **Port.** The port has it as `port/godot/logic/Equipment.fs` (`tail`, `arriveFight`, `arriveGoods`, `goodsRegroup`) with a `CreditMode`: `Original` keeps the stale D0 and is identical to the
@@ -811,7 +811,7 @@ construction), leaders at `loyalty_pressure` 316 / 318.
 The reconstruction (the one in the C block below), unchanged, is differential-tested against the real 68000 via
 `callcap 14b62` on this corpus: **99/99 tracked bytes over 27 states, all 12
 branch families**, construction exercised naturally, and the 5 negative
-controls of `hostile.py` all bite. The same reconstruction also passes on a *synthesised* corpus (poke
+controls of the hostile re-check (script not kept) all bite. The same reconstruction also passes on a *synthesised* corpus (poke
 `$57fd0 := 0` on pm78_settle, repurpose inert records into fake `$7c` markers): 85/85 over 25 states; `scratchpad/pm96/`.
 
 ```c

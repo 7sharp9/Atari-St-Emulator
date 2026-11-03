@@ -74,11 +74,9 @@ graphics cross-check of the port and prints its result: the synthetic quadrant w
 (`quad_fs.fsx`/`quad_py.py`, 4 of 4 identical), the synthetic blits (`blit_fs.fsx`/`blit_py.py`, 12 of
 13), the real record stream (`ent_fs.fsx`/`ent_py.py`, 3061/3061), the renderer baseline
 (`baseline.fsx` against `baseline.txt`, 162 lines), the draw-order table (`order_test.fsx`), `score.fsx`
-on every frame and `zoom_check.fsx`. The RAMs sit in `scratchpad/` (the `pm118` and `pm119` frames, also on the Mac). The experiments that settled a question once and are not
-re-run stay in `scratchpad/` as a record: `pm118/phase_test.fsx`, `pm118b/lastrow_fix.fsx` (its own
-copy of the rasteriser), `pm119/pan_check.fsx`, `jitter_check.fsx` and `tick_check.fsx` (the first two
-are kept current; the results quoted below are theirs), and
-`pm121/allpairs.txt`. The labelled-poke checks of the men's overlays and of `byte6` 18, 28, 34 and 36-42 rerun with `../py/xcheck/overlay/run_cases.sh` (captures from `pm88_f1`) then `score_cases.sh` (each case against the no-poke control, plus wrong-frame controls); `bomb_check.sh` follows 36-42 into the double bus fault that halts the CPU. A scratch path cited below is a record of what was run.
+on every frame and `zoom_check.fsx`. The RAMs sit in `scratchpad/` (the `pm118` and `pm119` frames, also on the Mac). The one-off experiments are `../py/xcheck/phase_test.fsx` and `pan_check.fsx` (kept current; the results
+quoted below are theirs). The last-row bound, the record-jitter and the tick experiments were run against
+earlier record layouts and are not kept; their results are stated where they are used. The labelled-poke checks of the men's overlays and of `byte6` 18, 28, 34 and 36-42 rerun with `../py/xcheck/overlay/run_cases.sh` (captures from `pm88_f1`) then `score_cases.sh` (each case against the no-poke control, plus wrong-frame controls); `bomb_check.sh` follows 36-42 into the double bus fault that halts the CPU. A scratch path cited below is a record of what was run.
 
 ---
 
@@ -329,7 +327,7 @@ slot, and moves back on the next camera change: phase = `([$ffa2]>>1) - [$ff9e]`
 `Fill.withPhase dith phase` (each slot rotated by the phase); the viewer and
 `TerrainView.cs` flip it on every camera change. Evidence: `pm88_f1.snap` with
 `w ff9a 00YY0015` then 2M steps, three yaws (`scratchpad/pm118/rot{40,90,c0}`,
-`phase_test.fsx`), terrain exact-index 43.5 / 46.7 / 47.1% without the phase and
+`../py/xcheck/phase_test.fsx`), terrain exact-index 43.5 / 46.7 / 47.1% without the phase and
 93.8 / 84.6 / 91.1% with it (phase 0 at the unrotated `pm88_f1`: 93.9% either way).
 
 **Per scanline the roll advances `+8` but wraps modulo 128 inside the colour's
@@ -439,7 +437,7 @@ The port's `Season.fs` has `table` (`$1ab60`), `fading` (`$1abaa`) and
 `treeTileOffset`. Evidence: `Season.fading(dither.bin, season, steps)` equals
 the whole 16 KB `$2e000` table byte for byte on `pm88_f1`, `pm78_settle`,
 `pm74_late`, `pm73_fight` and the three `rot*` captures, with steps = 16 x
-`[$57fec]` in each (`scratchpad/pm119/season_check.fsx`, scratch only). On land 5 built in
+`[$57fec]` in each (`../py/season_check.fsx`). On land 5 built in
 seasons 0, 2 and 3 and on land 60, still inside the first fade, the RAM table
 equals `Season.table(dither.bin, season)` byte for byte, mission 1's `dither.bin`
 included, and the tree offset matches `$11746` (`../py/season_check.fsx`). Two Hatari
@@ -579,7 +577,7 @@ that row is drawn (`$e42a`/`$e43e`; the run stream ends on a zero word, `$f12c` 
 Evidence: drawing that extra row puts a one-pixel line of wrong colour at the bottom of
 every triangle (21-22 px per triangle where the game shows what is behind),
 29 px per `pm88_f1` frame; with the bound `row < totalRows` all of them match
-(`scratchpad/pm118b/`, `lastrow_fix.fsx`, scratch only).
+(measured on `pm88_f1`; the experiment drew the rows both ways with a copy of the rasteriser and is not kept).
 
 The span is written with two partial-word masks: `$ec62[ixL & 15]` clears the
 leftmost `ixL&15` bits of the left cluster, `$eca2[ixR & 15]` keeps the leftmost
@@ -1000,7 +998,7 @@ jitters `load_ram` computes.
 
 With the records from the whole map, the port draws sprites at every camera cell.
 At two cells panned in the emulator from `pm88_f1.snap` (`w 4bb3a`, 2M steps;
-`scratchpad/pm119/pan_{e,w}`, `pan_check.fsx`), drawing the exported records gives
+`scratchpad/pm119/pan_{e,w}`, `../py/xcheck/pan_check.fsx`), drawing the exported records gives
 the same frame as drawing each capture's own records (identical at `pan_e`; at
 `pan_w` one man had moved), and the inline order beats sprites-last there too.
 
@@ -1055,7 +1053,7 @@ sequence, `score.fsx a.json+b.json` pairs them). Scored that way at the RAM's ow
 water tick, 27 frames from 12 views on lands 0, 5, 25 and 60 (including winter
 snow, autumn rain, a fight, a projectile and boats) match the game pixel for
 pixel, 100.00%, with every category in view at 100% of its visible pixels
-(`scratchpad/pm121/allpairs.txt`). Scoring land 60 with tick − 1 is the same
+(`../py/score.fsx` on consecutive-frame pairs, as `../py/xcheck/run.sh` runs it). Scoring land 60 with tick − 1 is the same
 pairing seen from the other side: that tick is the previous frame's tick.
 
 **Settlement buildings, `byte6 == 2` (`$117d8`).** Frame `record[7]` with no tile-set

@@ -1,4 +1,4 @@
-# Facts behind `tick.svg` (generator `py/build_tick.py`)
+# Facts behind `tick.svg` (generator `py/fsm/build_tick.py`)
 
 | label | source |
 |---|---|

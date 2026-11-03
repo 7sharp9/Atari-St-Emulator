@@ -292,7 +292,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   in `cadaver.sym`) set/countdown small per-entity fields (`52`/`53`), re-point the script cursor
   from a per-entity table at `+16`, or jump the whole entity to a new script via
   `ActionScriptPointerTable` (`$163aa`). This is the same shape as PowerMonger's regroup FSM
-  (see `[[atari-st-emulator-next-instructions]]`, 92nd–99th passes) and is the right target for a
+  (`../powermonger/ai.md`, the `$14b62` mode handlers and their differential tests) and is the right target for a
   `callcap` differential-test pass once a creature entity exists in the table.
 - **Input → action pipeline**: the custom IKBD ISR (`$1535a`, vector `$118`) stores raw scancodes
   into a cell polled elsewhere; `IkbdKeyDispatch_ScanTable1616c` (`$158f6`) scans
@@ -355,8 +355,8 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
 - **4th pass — the "vanishing sprite" doesn't reproduce; it's a short interact/dig gesture, not a
   disappearance.** The 3rd pass's single 3M-step sample was misleading. Bisecting the same `kbd 50`
   (Down make) / `kbd d0` (Down break) sequence at 25k/50k/75k/100k/150k/200k/300k/400k/500k/1M/1.5M/
-  2M/3M steps and rendering+diffing each checkpoint against the base frame (script:
-  `scratchpad/cadaver_bisect.py` this session, not yet copied into `tools/` — reads a `.snap`'s live
+  2M/3M steps and rendering+diffing each checkpoint against the base frame (the
+  throwaway script was not kept; it read a `.snap`'s live
   shifter video-base + palette directly, same ground truth `gfxview.py` uses, so it isn't fooled by
   the `ScreenBufferA`/`B` role-swap that caused earlier false negatives) shows: the character plays
   a ~5-6-frame animation peaking around 200k-300k steps — crouch, then an arm/implement raised
@@ -1296,7 +1296,7 @@ buffers, `snap`-diff before/after) — not read off static disassembly alone. Sy
   a real negative: unlike those targets, the table is only ever reached through a pointer loaded
   from the resource-table row, never as a literal operand, so that technique structurally cannot
   find this writer. Switched to a whole-image BSR/JSR caller sweep instead (new
-  `scratchpad/cadaver18/find_callers_ram.py`), fully disassembling all three consumer primitives
+  `tools/find_ram_callers.py`), fully disassembling all three consumer primitives
   (`$c52c` row-resolve, `$c628`/`$c660` forward/backward populated-slot scan) and the table
   allocator/clearer (`$c696`/`$c6d0`) plus all 14 of their real call sites in the whole image —
   every one is read-only (enumerate/ID-match/iterate), none write a new entry. Separately found

@@ -91,7 +91,7 @@ New in levels 3 to 5 relative to levels 0 to 2 (the ENEMIES1 range): types $12, 
 Type $05 variant 1 differs from variant 0 only in its entry (health 6 in both; var 0 goes state `$c` then 9, a forward jump; var 1 goes `$b` (an immune in-place hop of 32 frames), `$15`, `$16`, then the normal AI; proven, `special34/out/t5v0`, `t5v1`).
 Types $01, $04, $06, $08, $14 appear in levels 3 and 4 with variants already seen in levels 0 to 2; they are named by address only (`$10778`, `$11322`, `$121a4`, `$12c5e`, `$179ca`) and belong to ENEMIES1.
 
-List B (`$6d000`, pool B props) has 34, 28 and 6 entries in levels 3, 4, 5; tables are in `out/census_tables_B.md`. Pool B types in these levels: $10/$40/$19 (props), $9b/$9c (bit 7 set: spawned from record 24), $08/$0f/$11/$0d, $24/$25/$2c, $3b/$3d/$41/$3f in level 3 and 4; the level 5 entries are the
+List B (`$6d000`, pool B props) has 34, 28 and 6 entries in levels 3, 4, 5; `py/census_table.py B <level>` prints the tables. Pool B types in these levels: $10/$40/$19 (props), $9b/$9c (bit 7 set: spawned from record 24), $08/$0f/$11/$0d, $24/$25/$2c, $3b/$3d/$41/$3f in level 3 and 4; the level 5 entries are the
 camera-holding crates $46 and $47 (`$c7` is $47 with bit 7), three glass tubes $48 and a machine $4a (section 7).
 
 Arrival behaviour of list A (proven, `spawn_gate.py` of the kernel pass and `py/census.py`): an entry spawns when the horizontal scroll counter `$8040a` reaches its trigger (all 47 level 5 triggers are horizontal; vertical movement is camera only), one entry per frame,

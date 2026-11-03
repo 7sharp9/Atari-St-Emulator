@@ -28,7 +28,7 @@ List A (`$6c000`, enemies) and list B (`$6d000`, props and items), counts per ty
 | 8 / 0 | | | 7 | 28 / 1 | | | 1 |
 
 The variant of types 0, 1 and 2 is always equal to the type in levels 0-2 (variants 3-6 of these types exist only as spawned helpers, section 4). List B (props) holds 38 type/variant
-combinations (`out/census_static.md`); types 152-159 carry bit 7 of the type byte, which makes the list-B spawner search the records from 24 instead of 0 (read, `architecture.md`). Pool B types
+combinations (`py/census_static.py` prints them); types 152-159 carry bit 7 of the type byte, which makes the list-B spawner search the records from 24 instead of 0 (read, `architecture.md`). Pool B types
 are outside this document except the two thrown objects the enemies use (section 3).
 
 Observed order (nat, `py/census.py`): in level 0 a bot run saw **42 of 42** list A entries spawn, in script order, one per frame, in the frame the scroll counter `$8040a` reached the entry's trigger

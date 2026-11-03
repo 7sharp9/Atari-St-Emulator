@@ -203,7 +203,7 @@ source, up to 16 pixels per tick (about 9: steps past the 18 slots copy nothing)
 512 ticks (about 118M emulator steps in mission 1, 86M on a Play Random Land; the tick count is fixed, the cost per tick is not) and its end rotates
 `$57fd0 = ($57fd0 + 2) & 6` (`strategy.md` "What `$1abaa` actually is").
 **Proven** (SPEC §4): the port's `Season.fading` equals the whole 16 KB table byte for byte on seven
-captures, with steps = 16 × `$57fec`. `scratchpad/pm136/season/tilediff.py` shows the
+captures, with steps = 16 × `$57fec`. `py/season_tilediff.py` shows the
 dissolve live (half summer and half autumn art at count 255, 98% the new art at 496).
 
 **The trees.** `$116c6` adds `word[$11746 + $57fd0]` = {0, 3, 6, 9} to the tree and

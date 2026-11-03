@@ -14,4 +14,4 @@ Run from `M68000/` with `source .venv/bin/activate`; paths come from `btcommon.p
 | `evt_stats.py`, `evt_frame.py`, `frame_census.py` | call/interrupt/trap census and one-frame call tree from an `ATARI_TRACE_EVENTS` log | see `system.md` section 6 | seconds |
 | `sheet.py out.png in...` | labelled contact sheet | PNG | - |
 
-Boss/shop/ending table: `$BT_WORK/agents/systems/boss/README.md`.
+Boss/shop/ending results: `../../system.md` section 9; snapshots under `$BT_WORK/agents/systems/boss/`.

@@ -4,8 +4,7 @@ Run from `M68000/` with `export ATARI_NOTRACE=1` and `source .venv/bin/activate`
 from `__file__` (override `M68000_ROOT`), read inputs from `$BT_WORK` (default `scratchpad/black_tiger`) and
 write under `$BT_WORK/agents/ai/`. They use `dotnet exec bin/Debug/net8.0/M68000.dll` and never build.
 All gates start from `play_start.snap` and need `bt_auto.st`; `drive_boss.py` also needs
-`agents/systems/lvl1..7.snap`; `type_table.py` needs the graphics decoder (`py/graphics/sprites.py` or
-`agents/graphics/py/sprites.py`).
+`agents/systems/lvl1..7.snap`; `type_table.py` needs the graphics decoder (`py/graphics/sprites.py`).
 
 | script | what it proves | expected output | runtime |
 |---|---|---|---|

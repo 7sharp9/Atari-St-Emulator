@@ -29,7 +29,7 @@ Contents (section titles, in file order):
 **Method and sources.** Reverse-engineered from the live isometric battle view, driven from
 `scratchpad/pm68_isoview.snap` (first mission, "Between Pages 1-5": one player island plus neutral villages).
 Every address is a RAM address in the relocated game image (base `$1050`), disassembled from the snapshot RAM
-(`scratchpad/pm70_iso.ram`, via `scratchpad/extract_ram.py`). Method: a 25M-step traced resume
+(`scratchpad/pm70_iso.ram`, via `py/snap2ram.py`). Method: a 25M-step traced resume
 (`ATARI_TRACE_EVENTS`), `trace_cfg.py --blocks`, and `watch` on individual object-record fields to catch the
 writing PC; the Proven sections add differential tests of the routines against `callcap` of the real 68000
 (`tools/pm_fsm_ref.py` is the from-disassembly model, `tools/pm_fsm_diff.py` the harness). The developers'
@@ -169,11 +169,11 @@ and reads everything else from fixed memory, so `callcap 14b62` runs the whole
 iterator over all 511 records and returns cleanly (4554 steps; identical trace
 hash + 84-byte delta on repeat = deterministic).
 
-The model (`scratchpad/pm93/fsm_ref.py`, an integer reconstruction from disassembly) covers the **prologue**,
+The model (`tools/pm_fsm_ref.py`, an integer reconstruction from disassembly) covers the **prologue**,
 **modes `$12` / `$68` / `$8a`**, **`$5c80`**, the epilogue **`$161c4`**, **`$1648e`**
 and **`$163ea`** (+ the `$16778` unlink-at-head branch). It matches the real 68000
 **byte-for-byte over the full changed-memory delta**: **675/675 tracked bytes
-across 22 differential-test states** (`diff_fsm.py`).
+across 22 differential-test states** (`py/fsm/repro93.py`).
 
 The corpus is the `pm88_f1` / `pm78_settle` / `pm74_late` / `pm73_fight` naturals with every non-target record
 disabled, plus poked variants forcing each branch: dwell → `mode := $10`, world-Y
@@ -185,7 +185,7 @@ Asserted **off**: the `$5c80` wear-death path (`$5bd2`), because `anim_wear` max
 
 ### [Proven] — the movement modes, vs the real 68000
 
-`scratchpad/pm94/fsm_ref.py` extends the model with the four movement
+`tools/pm_fsm_ref.py` extends the model with the four movement
 modes **`$06`** (`$14d32` walk-until-blocked), **`$08`** (`$14d7c` escort/orbit),
 **`$0e`** (`$14e70` farmer path spline) and **`$10`** (`$14f08` advance/chase), plus
 their leaves **`$164bc`** (step-toward, the DIVU steerer), **`$14262`**
@@ -193,7 +193,7 @@ their leaves **`$164bc`** (step-toward, the DIVU steerer), **`$14262`**
 line-for-line from raw-byte-verified disassembly and the lookup tables
 (`tbl_heading_14360.bin` 2048 B, `tbl_trig_13f8a.bin`, `tbl_spline_168ee.bin`).
 
-Same isolate-by-disabling differential test (`diff_fsm.py`): **1335/1335 tracked
+Same isolate-by-disabling differential test (`py/fsm/repro94.py`): **1335/1335 tracked
 bytes identical over 32 states**. The corpus is `pm73_fight`'s 26 `$06` + 5 `$08` + 4 `$0e`
 records and the `$10` records of all four captures (reached / not-reached / probe),
 plus poked variants: `$0e` spline advance and all three terminators (`$7d01`
@@ -218,11 +218,11 @@ tracking a live entity), the `$2c` dead-target conversion, `$06` dwell→`mode $
 
 ### [Proven] — the combat path (mode `$32` melee), vs the real 68000
 
-`scratchpad/pm95/fsm_ref.py` extends the model with **mode `$32`**
+`tools/pm_fsm_ref.py` extends the model with **mode `$32`**
 (`$1533c` melee) and its leaves **`$56a6`** (engage bookkeeping), **`$5590`**
 (kill/rout roll) and **`$30fe`** (`word[group + 60] − 2`). All are transcribed
 line-for-line from raw-byte-verified disassembly. Same isolate-by-disabling
-differential test (`diff_fsm.py`): **413/413 tracked bytes identical over 48
+differential test (`py/fsm/repro95.py`): **413/413 tracked bytes identical over 48
 states, 6 branch families.**
 
 The corpus is a **natural** capture: `pm73_fight` driven forward 10.6 M steps until
@@ -256,7 +256,7 @@ the `$5590` tail calls `$2776` / `$1b8c`.
 
 ### [Proven] — the settlement heartbeat (mode `$7c`), vs the real 68000 (synthesised corpus, then a natural one)
 
-`scratchpad/pm96/fsm_ref.py` extends the model with **mode `$7c`**
+`tools/pm_fsm_ref.py` extends the model with **mode `$7c`**
 (`$157e6`, the per-settlement heartbeat) and its leaves **`$16848`** (side ↔
 settlement-owner reconcile) and **`$163b8`** (the manpower drain, economy.md
 §3a). Isolate-by-disabling differential test (obj / `$4e514` leader / `$4f916` settlement / `$47970` bucket regions compared):
@@ -368,9 +368,9 @@ The model is `tools/pm_fsm_ref.py` `call_3c08` + `call_16892` + `h_mode7c_regrou
 Differential test `py/fsm/diff_pm98.py`: **71/71 tracked bytes identical
 over 22 states, 11 branch families** (`callcap 3c08` direct with `A1` preset for
 16, `callcap 14b62` end-to-end through the `$157ba` dispatch for 5). Pre-registered
-falsifier / bar (100% over ≥ 15 states, ≥ 8 families): PASS. `hostile.py`'s 5
-negative controls (prev-mode table entry, `w22` low byte, the byte-6 guard, the
-`$4c` bit-4 prev-mode, the `$16892` gate) all bite; two `callcap 3c08` byte-identical.
+falsifier / bar (100% over ≥ 15 states, ≥ 8 families): PASS. The 5
+negative controls of the hostile re-check (prev-mode table entry, `w22` low byte, the byte-6 guard, the
+`$4c` bit-4 prev-mode, the `$16892` gate; script not kept) all bite; two `callcap 3c08` byte-identical.
 
 - **`$157ba` dispatch:** `word[$57fd0] == 0` → `$157e6` (the heartbeat, above);
   else `jsr $12c9a` (RNG, reseeds `$580a0`, outside every tracked region),
@@ -482,7 +482,7 @@ offset), `callcap 1d70` (`A3` = group record), `callcap 1b8c` (`A0`/`A1`/`D1`),
 `scratchpad/pm97/pm97_map1`: its one natural grouped record, slot 21 (flags
 `$10`, group 392, `group.state 6`), drives `$3c08` bit-4 → `$37c2` (bit-7 clear)
 → `$1d70` over all 26 roster members (slots 22..47). Pre-registered falsifier /
-bar (100% over ≥ 12 states, ≥ 7 families): PASS. `scratchpad/pm99/hostile.py`:
+bar (100% over ≥ 12 states, ≥ 7 families): PASS. `py/fsm/hostile_pm99.py`:
 5 negative controls (`$382a` `troops_field −= 1`, `$1d70` member mode, `$1d70`
 `asl.w #6` target, `$37c2` owner re-parent, `$1b8c` `troops_field += 1`) all
 bite; per-family delta address classes are exactly the disasm's fields; two
@@ -834,7 +834,7 @@ men) had been ordered to attack lord 8 (nation 1, 0 men at home) at cell (20,42)
 and a kind-`$10` record, so `$4a7a` found a sheep. `hits`: `$5100` 32, `$153cc` 71, `$1547e` 222. 3M steps later the
 sheep is category `$1c`, owner -7, and the group's food went 24493 → 24669.
 
-**`$36`, poke-driven, 3 of 3.** `k5_s4`, chaser `30/31 = $66 $36`, `48` = a man (`scratchpad/pm137/C_modes/drive36.py`):
+**`$36`, poke-driven, 3 of 3.** `k5_s4`, chaser `30/31 = $66 $36`, `48` = a man (`py/drive36.py`):
 the target's byte 7 -> `$10`, side negated, category `$1c`; the lord's food rises `+$b2` against the code's `+$b4` (2
 unattributed); the group branch left the lord's food unchanged.
 

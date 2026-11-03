@@ -6,9 +6,9 @@ Setup: `export M68000_ROOT=<M68000 dir>`; Python is `$M68000_ROOT/.venv/bin/pyth
 | file | what |
 |---|---|
 | `py/scripts_dump.py` | parses list A (`$6c000`) and list B (`$6d000`), every entry of the six levels and a type/variant count per level (`out/scripts.txt`); `entries(base, level)` is imported by the other scripts |
-| `py/type_by_level.py` | the type/variant by level count table (`out/type_by_level.md`) |
+| `py/type_by_level.py` | the type/variant by level count table, printed as markdown on stdout |
 | `py/census.py <objlog> <level>` | pool A activations of a run against the script entries (type, variant, x and y within 2), dynamic spawns, flag/scroll events |
-| `py/census_table.py A\|B <level> [names.json]` | markdown census table with the scroll at which each entry was first seen in `out/l<level>/objlog.txt` (`out/census_tables_A.md`, `_B.md`, `out/names.json`) |
+| `py/census_table.py A\|B <level> [names.json]` | markdown census table with the scroll at which each entry was first seen in `out/l<level>/objlog.txt` printed on stdout; the optional `names.json` argument maps entries to names |
 | `py/lockmap.py` | the camera cell maps of the six levels with the meaning of the words (`out/lockmap.txt`) |
 | `py/flag_setters.py` | every writer of `$80040` bits 2 to 4, `$80041` bit 7, `$80400` bits 5 to 7 with its owner handler (`out/flag_setters.txt`) |
 | `py/spawn_graph.py A\|B\|C` | static spawn graph of `$21eb6` / `$21efa` / `$21e72` callers (`out/spawn_graph_A.txt`) |

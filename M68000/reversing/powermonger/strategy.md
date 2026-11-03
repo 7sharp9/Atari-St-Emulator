@@ -1364,8 +1364,8 @@ The `group.field_60` term is the group's **posture** (2 aggressive, 3 neutral,
 follow-up table's `$67b0`, "Posture 5", which `$30fe` maps to the parity roll like 3, inferred from its body). The AI stamps posture 4 on every group
 it sends to attack (`$6638`), so `pm_30fe` returns `2` and the roll is pinned to
 **rout**: ten routs, zero kills in the re-armed fight. Posture 2 always kills;
-posture 3 rolls (the player's mission-1 army: 5 kills, 5 routs in the win run,
-`scratchpad/pm124/conquest/REPORT.md`); an encircled loser (`flags.bit5`) is
+posture 3 rolls (the player's mission-1 army: 5 kills (`$55f2`), 5 routs (`$561c`)
+in the win run); an encircled loser (`flags.bit5`) is
 killed whatever the posture.
 
 ### 1. Contact → engage (`$56a6`, from mode `$32`)
@@ -1555,7 +1555,7 @@ rolls elsewhere.
   no seeding, no entropy, and a save/restore at the same tick replays identically.
 - **`$57ff6`** — a genuine 13-bit LCG, `x = (x * $24a1 + $24df) & $1fff`,
   stepped 16× per `$1abaa` call (`$1abc0`). It is the **pixel-order generator of the season tileset
-  dissolve** (each step copies one pixel of the new season's art into the live tileset at `[$ff9e]+3712`; `scratchpad/pm136/season/tilediff.py`:
+  dissolve** (each step copies one pixel of the new season's art into the live tileset at `[$ff9e]+3712`; `py/season_tilediff.py`:
   half summer and half autumn art at count 255, 98% the new art at 496); full period 8192 = 512 calls, and its **wrap** to 0 rotates `$57fd0`, plays a season
   sound and nudges one `$4d252` tree record (see "What `$1abaa` actually is"). Never the AI or combat.
 - **`$12c9a` / `$2df84`** (`_newrand`, `_seed`) — a 32-bit LCG (`state = state * $bb40e62d + …`,
@@ -1889,7 +1889,7 @@ the complete writer set is `$2458` (world build: the side's own bit), `$34a8`
 (two `bset`, alliance forged), `$4c2a` (`$4c64`/`$4c7a`, two `bclr`, alliance
 broken) and `$311a` (the relation bytes). The set comes from searching the image for
 every absolute longword in `$580a0..$58145` (74 sites, the same set as the
-listing); the table with each site is in `scratchpad/pm123/diplo/` (saved as `REPORT.md`).
+listing); the table with each site is in `scratchpad/pm123/diplo/`.
 
 **Proposing.** Order `$1e` (icon `$1e`, then a settlement): `$3154` (D3 = `$e`,
 D4 = `$76`, D5 = −commander) takes a settlement that is not the proposer's,
@@ -1967,9 +1967,8 @@ and 50M/100M ticks in, `pm121/run/k5_s1.snap`/`k5_s2.snap`, with
 envoy anyway: order `$0c` (march & engage) aimed at an empty cell never commits (`$57fd4`
 stays armed, the group never leaves home, tested at the death cell); it commits only
 against a cell holding something the game already tracks, such as a settlement (the same
-click against lord 4's town at (28,14) committed within 5M steps). Details, commands and
-snapshots: `scratchpad/pm128a/REPORT.md`, `scratchpad/pm128b/REPORT.md` (indexed in
-`ANCHORS.md`).
+click against lord 4's town at (28,14) committed within 5M steps). The snapshots
+are indexed in `scratchpad/ANCHORS.md`.
 
 By the time a settled world has accumulated enough goods for a natural tribute, its territory
 is also contested enough that an unescorted envoy rarely completes the walk to a garrisoned

@@ -170,7 +170,7 @@ Per-frame counts at level 1: service 3 x4, 4 x2, 8 x1..3, 11 x3, 12 x1, 10 x1, 2
    `08` x92, `80` x51, `0a` x38, `04` x36, `01` x34 ...). Gate `demo`: 65 frames give hits `$f358` = hits `$f37c` = index delta = 65. The game state (RNG seed, HUD time and score) is not reset
    between cycles, so each cycle plays slightly differently.
 
-## 9. Boss, shop, ending drives (snapshots: `agents/systems/boss/README.md`)
+## 9. Boss, shop, ending drives (snapshots under `$BT_WORK/agents/systems/boss/`, made by `py/systems/drive_boss.py`)
 
 1. Boss: poke the hero position longword `w 1f014 <x><y>` onto the level-exit cell (kind `$20`); `$cfa4` fires within one frame on all 8 levels (30,000 to 90,000 steps,
    `drive_boss.py`; 16 snapshots identical on a second run). Bank files read at the trigger: none (levels 1, 2, 4), `bta` (3, 6, 8), `btb` (5, 7). Boss record types at `$1f020`: `$01`

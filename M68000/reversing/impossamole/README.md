@@ -1736,7 +1736,7 @@ Added by the 104th pass (parallel route, boss, shop, level-end and world passes)
 - **Take a sprite bank's extent from the LSD! header, not from the last non-zero frame:** Klondike's bank 2 ends at frame 159 and frames 160-171 are noise.
   Bank 1 frames 0-159 and bank 2 frames 0-99 are common to all worlds; the rest is per world (`worlds.md`).
 - **`spawn_list.py` prints garbage on a snapshot that is not mid-level** (world-select, Game Over, `klondike_plus_30M.snap`): `$27200` is not a spawn list
-  there, and a "kind-2 record" printed from it is nothing. Use a mid-level snapshot such as `klondike_p9M.snap`, or `agents/wsel/py/spawn_kind2.py`.
+  there, and a "kind-2 record" printed from it is nothing. Use a mid-level snapshot such as `klondike_p9M.snap`, or `py/level_end/spawn_kind2.py`.
 - **World-select**: once the cursor has settled (`$227f3 = 1`) the lock test at `$17e2c` is skipped, so poking `$bb79` afterwards does not move it; fire pressed
   while the cursor is still travelling (`$227f3 = 0`) is lost (Bermuda's icon needs about 4M steps).
 - **`hits` output piped through `tail` lost its first lines** and made `$b0ca` look unhit: read the whole output. `bt` at `$17c9c` raises an unhandled

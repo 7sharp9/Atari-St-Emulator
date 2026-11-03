@@ -1,4 +1,4 @@
-# Facts behind `economy.svg` (generator `py/build_economy.py`)
+# Facts behind `economy.svg` (generator `py/fsm/build_economy.py`)
 
 | flow | amount | evidence | source |
 |---|---|---|---|
