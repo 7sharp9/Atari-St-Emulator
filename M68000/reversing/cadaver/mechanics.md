@@ -439,6 +439,7 @@ All paths are under `reversing/cadaver/` unless they begin with `tools/`. Snapsh
 | file | what it does or proves |
 |---|---|
 | `mechanics.md` | this file |
+| `layout.toml`, `py/snapdiff_proof.sh` | the memory schema for `tools/layout.py` and `tools/snapdiff.py` (globals of sections 1-10, the object array, the rucksack, the display buffers; every field cites its section); the proof diffs `kbd ff 08` from `s96/r6/s3_flask.snap` and a no-input control (`objects[0:hero].x_lead 29 -> 41` against no named change) |
 | `py/world_map.py`, `world_map.png` | the type-3 table to every room's rectangle and the adjacency graph (resolves the table pointers from each snapshot) |
 | `py/door_walk.py` | every room's seven door slots through the type-4 table and `$de5e`'s own point-in-rectangle scan; marks sound-cue-only doors |
 | `py/door_id_words.py` | the positive id words of five doors resolved as type-6 objects (they are the keys of section 11) |

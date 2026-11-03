@@ -1,0 +1,211 @@
+# Cadaver memory schema (tools/layout.py, tools/snapdiff.py; format: DEVELOPING.md "Memory layouts and the semantic
+# snapshot diff"). One-disk Empire build only: the two-disk Replicants build moves A5 and the object array $100 higher
+# (mechanics.md, Conventions), so change symbols.A5 for it. Widths were read off the instructions that touch each
+# field (`tools/find_field_writers.py <snap> "N(A5)" --all` on s96/r6/s3_flask.snap) where the cited doc names only
+# the field.
+
+[layout]
+game = "cadaver"
+build = "one-disk Empire"
+
+[symbols.A5]
+value = 0x018152
+reg = "a5"
+cite = "mechanics.md Conventions (A5 = $018152 in the one-disk Empire build)"
+
+# ---------------------------------------------------------------------------------------------------------------------
+[globals.room]
+addr = "A5+1166"
+width = 2
+cite = "mechanics.md §1 Rooms and the world grid ((A5)+1166 holds the live room's slot number, a word)"
+
+[globals.room_record]
+addr = "A5+164"
+width = 4
+fmt = "hex"
+cite = "mechanics.md §1 Rooms and the world grid (the live room is the one (A5)+164 points at); §5 Activation"
+
+[globals.health]
+addr = "A5+1174"
+width = 2
+cite = "mechanics.md §10 Health, hazards and throwing (1174(A5) is health); secrets.md \"The stats scroll and the rank table\""
+
+[globals.max_health]
+addr = "A5+2516"
+width = 2
+cite = "mechanics.md §10 Health, hazards and throwing (the maximum 2516(A5), 100 in level 0 and 200 in level 1)"
+
+[globals.strength]
+addr = "A5+2144"
+width = 2
+cite = "mechanics.md §3 Movement and collision, \"Pushing\" (the push budget is loaded from the hero's strength 2144(A5))"
+
+[globals.poison]
+addr = "A5+2434"
+width = 1
+cite = "mechanics.md §9 verb 90 bullet (POISON writes 2434(A5) := strength; cleared when the duration ends); §14 (read 2434(A5) for a bite)"
+
+[globals.shield]
+addr = "A5+2436"
+width = 1
+bits = { 1 = "fire_shield" }
+cite = "mechanics.md §10 \"Poison and shields\" (FIRE SHIELD sets bit 1 of 2436(A5))"
+
+[globals.shield_power]
+addr = "A5+2437"
+width = 1
+cite = "mechanics.md §10 \"Poison and shields\" (power 100 in 2437)"
+
+[globals.gold]
+addr = "A5+1188"
+width = 4
+cite = "secrets.md \"Saving costs gold\" (gold 1188(A5), a longword)"
+note = "mechanics.md §12 records one TAKE of a sack that left 1188(A5) at 0 (open there)"
+
+[globals.xp]
+addr = "A5+1192"
+width = 4
+cite = "secrets.md \"The stats scroll and the rank table\" (XP 1192(A5), compared with long thresholds)"
+
+[globals.level]
+addr = "A5+2524"
+width = 1
+cite = "secrets.md \"Saving costs gold\" (level = 2524(A5), a byte, 0 for the first level)"
+
+[globals.day]
+addr = "A5+2166"
+width = 1
+cite = "secrets.md \"The day\" (2166(A5)++ is the day byte the status bar shows as DAY n+1)"
+
+[globals.object_count]
+addr = "A5+1152"
+width = 2
+cite = "mechanics.md §3 \"Object scan\" (count (A5)+1152)"
+
+[globals.event_count]
+addr = "A5+1154"
+width = 2
+cite = "mechanics.md §7 The event queue (ring at (A5)+304, count 1154(A5), 200 entries)"
+
+[globals.rucksack_count]
+addr = "A5+2438"
+width = 1
+cite = "secrets.md \"The player's action panel\" (the rucksack count 2438(A5); a TAKE adds one)"
+
+[globals.selected_item]
+addr = "A5+1262"
+width = 2
+cite = "mechanics.md §10 \"Throwing and dropping\" (1262(A5) receives the selected item's object id)"
+
+# ---------------------------------------------------------------------------------------------------------------------
+[structs.entry]
+size = 70
+cite = "mechanics.md §3 \"Object scan\" (stride $46, 70 bytes)"
+
+[structs.entry.fields.x_lead]
+off = 0
+width = 1
+cite = "mechanics.md Conventions (a bounding box is [x lead, y lead, x trail, y trail]); §3 \"Object scan\" (bytes 0-3)"
+
+[structs.entry.fields.y_lead]
+off = 1
+width = 1
+cite = "mechanics.md Conventions; §3 \"Object scan\""
+
+[structs.entry.fields.x_trail]
+off = 2
+width = 1
+cite = "mechanics.md Conventions; §3 \"Object scan\""
+
+[structs.entry.fields.y_trail]
+off = 3
+width = 1
+cite = "mechanics.md Conventions; §3 \"Object scan\""
+
+[structs.entry.fields.z_top]
+off = 4
+width = 1
+cite = "mechanics.md §3 \"Object scan\" (bytes 4-5 the z range) and \"Call and footprint\" (the hero is z 0 to 29 on the floor)"
+note = "order: the hero on the floor reads byte 4 = 29, byte 5 = 0 (s96/r6/s3_flask.snap)"
+
+[structs.entry.fields.z_base]
+off = 5
+width = 1
+cite = "mechanics.md §3 \"Object scan\" (bytes 4-5 the z range); see z_top for the order"
+
+[structs.entry.fields.live_rec]
+off = 6
+width = 4
+fmt = "hex"
+cite = "mechanics.md §8 \"An object's displayed name\" (live_rec = u32(slot_addr + 6), 23 of 23 objects)"
+
+[structs.entry.fields.type6_rec]
+off = 10
+width = 4
+fmt = "hex"
+cite = "mechanics.md §3 \"Object scan\" (the object's type-6 record, the sprite entry's +10 pointer); §2 (the lever's entry points at its record)"
+
+[structs.entry.fields.object_id]
+addr = "[.+10]+4"
+width = 2
+cite = "mechanics.md §3 \"Object scan\" (the touch cache is keyed on the two +4 id words of the type-6 records)"
+
+[structs.entry.fields.name_idx]
+addr = "[.+6]+10"
+width = 2
+cite = "mechanics.md §8 \"An object's displayed name\" (name_idx = u16(live_rec + 10))"
+
+[structs.entry.fields.solid]
+off = 24
+width = 1
+bits = { 7 = "solid" }
+cite = "mechanics.md §3 \"Object scan\" (solid when byte 24 has its top bit set, or +15 bit 2 of the type-6 record)"
+
+[structs.entry.fields.state]
+off = 42
+width = 1
+cite = "graphics.md §3 The full sprite-object-array catalog (state byte +42: player 0, sconce 4, the rest 5)"
+
+[arrays.objects]
+struct = "entry"
+base = "[A5+56]"
+stride = 0x46
+count = "w[A5+1152]"
+max = 95
+labels = { 0 = "hero" }
+cite = "mechanics.md §3 \"Object scan\" (array (A5)+56, count (A5)+1152); §5 (95 slots); README.md and graphics.md §3 (slot 0 is the player)"
+
+# ---------------------------------------------------------------------------------------------------------------------
+[structs.ruck]
+size = 4
+cite = "mechanics.md §2 The resource manager (type 8, the rucksack, records [object id][template idx])"
+
+[structs.ruck.fields.object_id]
+off = 0
+width = 2
+cite = "mechanics.md §9 (a rucksack record is [object id][template idx]; type-8 ids are object ids, record word +0)"
+
+[structs.ruck.fields.template_idx]
+off = 2
+width = 2
+cite = "mechanics.md §9 (only verb 82 uses the template word +2)"
+
+[arrays.rucksack]
+struct = "ruck"
+# row 8 of the ten 18-byte resource rows at (A5)+96; +4 of a row is its data area
+base = "[[A5+96]+148]"
+stride = 4
+count = "b[A5+2438]"
+max = 64
+cite = "mechanics.md §2 The resource manager (rows of 18 bytes, +4 the data area; type 8 data $7550a); secrets.md \"The player's action panel\" (descriptor 96(A5) + 8*$12, records at $07550a)"
+
+# ---------------------------------------------------------------------------------------------------------------------
+[regions.display]
+addr = "0x19100"
+len = 64000
+cite = "mechanics.md §5 Room activation and the screen ((A5) and (A5)+$7d00, $19100 and $20f00, are one 64,000-byte double buffer)"
+
+[regions.screen_cache]
+addr = "[A5+120]"
+len = 32000
+cite = "mechanics.md §5 Room activation and the screen (120(A5), $2de08, a resident 32,000-byte buffer)"

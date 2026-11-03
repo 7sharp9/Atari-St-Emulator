@@ -1851,6 +1851,7 @@ Added by the 104th pass (parallel route, boss, shop, level-end and world passes)
 | file | what |
 |------|------|
 | `README.md` | this file |
+| `layout.toml` | the memory schema for `tools/layout.py` and `tools/snapdiff.py`: the 108-byte object slots (`$1a2ea`, 16 slots; shots `$1a9aa`, 4) and the globals `$bb6e`-`$bb75`, `$227f3`-`$22803`, each field citing its section here; `py/boss/layout_crosscheck.py` checks it against `py/boss/repl.py` |
 | `trainer_menu.png` | crack trainer-menu screen, reached via F1 from the boot menu |
 | `title_logo.png` | the real game's title screen, reached by skipping the trainer |
 | `world_select.png` | the world-select screen, reached by sending a joystick-1 fire packet at the title screen (see above) |

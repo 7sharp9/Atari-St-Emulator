@@ -965,6 +965,75 @@ Three F# model gaps found (each from the MAME log or trace plus the F# source; n
 One divergence is unexplained: at `$fc03b6` (`move #$2300,SR`) MAME takes the pending Timer C interrupt at once and F# one instruction later (a step-clock effect, unverified). Gotchas: `-debugscript` does not run under `-debugger none` (use `machine.debugger:command(...)`),
 the `trace` action's `pc` is prefetch-advanced (use `curpc`), and a diskless MAME boot spends minutes in FDC timeouts, so use it for questions about one interrupt or device read, not whole-game runs.
 
+## Memory layouts and the semantic snapshot diff (`tools/layout.py`, `tools/snapdiff.py`)
+
+A game's memory map lives in one machine-readable file, `reversing/<game>/layout.toml`, so a snapshot diff, a driver
+or an agent brief says `objects[0:hero].x_lead 29 -> 41` instead of a raw byte at a hard-coded address. A schema
+holds only what its game's docs prove: every entry carries a `cite` naming the doc and section, and a field the docs
+do not prove stays out (a decoder in a driver script is not a citation). Schemas exist for Cadaver (one-disk Empire
+build) and Impossamole (Replicants crack).
+
+```toml
+[symbols.A5]                      # a fixed base; `reg` makes the tools warn when the snapshot's register differs
+value = 0x018152
+reg = "a5"
+cite = "mechanics.md Conventions"
+
+[globals.health]                  # addr is an expression; width 1, 2 or 4; signed, fmt = "hex", enum, bits optional
+addr = "A5+1174"
+width = 2
+cite = "mechanics.md §10 Health, hazards and throwing"
+
+[structs.entry]                   # a record: size, then fields at `off`, or at `addr` relative to the slot (`.`)
+size = 70
+cite = "mechanics.md §3"
+[structs.entry.fields.solid]
+off = 24
+bits = { 7 = "solid" }
+cite = "mechanics.md §3 \"Object scan\""
+[structs.entry.fields.object_id]
+addr = "[.+10]+4"                 # the word 4 bytes into the record that the slot's +10 longword points at
+width = 2
+cite = "..."
+
+[arrays.objects]                  # base and count are expressions too; `max` caps a count read from RAM
+struct = "entry"
+base = "[A5+56]"                  # the longword at 56(A5)
+stride = 0x46
+count = "w[A5+1152]"              # the word at 1152(A5)
+max = 95
+labels = { 0 = "hero" }           # printed as objects[0:hero]
+cite = "..."
+
+[regions.display]                 # a named raw block: snapdiff reports its changed byte count, not its bytes
+addr = "0x19100"
+len = 64000
+cite = "..."
+```
+
+An address expression is terms joined by `+` and `-`: a number (`0x1a2ea`, `$1a2ea`, `1174`), a symbol, `.` (the
+slot's own address, inside a struct field), `[e]` the longword at `e`, `w[e]` the word, `b[e]` the byte (24-bit
+addresses: a pointer's top byte is ignored). A field whose pointer chain leaves RAM decodes as `?`. `layout.py
+--check` validates a schema: every entry has a `cite` whose file exists beside the schema, widths are 1, 2 or 4,
+offsets fit the struct, expressions parse. When a doc correction moves or renames a field, fix the schema in the
+same edit as the doc.
+
+- `uv run python tools/layout.py reversing/cadaver/layout.toml <snap> [--array objects] [--all-slots] [--cite]`
+  prints every named value with its address. As a module, `layout.load(path)` and `layout.decode_snap(L, snap)`
+  return `Value(name, addr, width, raw, text, cite)` rows for a driver or a gate.
+- `uv run python tools/snapdiff.py <layout.toml> <a.snap> <b.snap> [--gap 16] [--max-ranges 40] [--regs]` prints
+  the named fields that changed (a slot present in one snapshot only says so), each region's changed byte count, then
+  the changed bytes no field or region covers as merged ranges with byte counts, and the total changed in all, so "no
+  named field changed" is told apart from "nothing changed". The raw section is where the next field to document is
+  found.
+
+Both read the `.snap` through `gfxview.py`'s `load_ram`/`snapshot_regs` (the int16 CCR, "Other tools"). Worked
+checks: `reversing/cadaver/py/snapdiff_proof.sh` (Cadaver's `kbd ff 08` from `s96/r6/s3_flask.snap`: the input diff
+names `objects[0:hero].x_lead 29 -> 41`, the same-budget control names no field) and
+`reversing/impossamole/py/boss/layout_crosscheck.py` (39 of 39 slot values of the boss-room snapshot equal
+`boss/repl.py`'s decoder on a REPL `m` dump and on its live `Repl`; a slot-swapped control mismatches). Both take
+`DATA=<main checkout's M68000>` when run from a worktree whose scratchpad is empty.
+
 ## Other tools
 
 Check this list before writing a one-off helper; each of these has been rewritten ad hoc at
@@ -980,6 +1049,8 @@ least once by a session that did not know it existed.
 | `tools/regress_net.sh <base.dll> <new.dll> <outdir>` | the skill's section 6 regression net as an A/B of two builds (verify, 30M snapshot cmp, selftest; with `CADAVER_SNAP`/`CADAVER_ST`, a game snapshot, REPL `watch` and DMA-`watch` compare); for the Mac and for when another session holds `bin/` (header) |
 | `tools/mame_st/` | MAME `st_uk` as a second oracle for the F# core: diskless boot dump and state compare, executed-PC trace and loop-reduced comparison (section "MAME as a second oracle" above) |
 | `reversing/finalfight/py/gdbstub/` | MAME's gdbstub for gdb, a Python RSP client and Ghidra's Debugger (headless), with a 600-stop gate against the Lua harness (its README) |
+| `tools/layout.py <layout.toml> <snap>` | decode a snapshot through a game's memory schema `reversing/<game>/layout.toml` (globals, struct arrays, regions, each entry with a doc citation; `--check` validates one); `load`/`decode_snap` for scripts (section "Memory layouts and the semantic snapshot diff") |
+| `tools/snapdiff.py <layout.toml> <a.snap> <b.snap>` | the snapshot differ: named field changes (`objects[0:hero].x_lead 29 -> 41`), changed bytes per named region, then the changed RAM no field covers as ranges with byte counts (same section) |
 | `tools/snap_render.py snap png` | the live screen of a snapshot as a PNG (base, rez and palette from the shifter registers, so double-buffered games come out right) |
 | `tools/sprite_array_export.py` | game-agnostic struct-driven sprite/object-array batch export (`--base`/`--array-ptr-field` + `--stride --count --w-off --h-off --ptr-off`) or fixed-stride sheet export (`--sequence BASE STRIDE COUNT W H`) or a one-off region (`--region ADDR W H`); st-interleaved 4bpp decode, `--palette` for a live 16-word `$0RGB` table (cadaver `graphics.md` §3/§5) |
 | `tools/disassemble.py` | 68000 disassembler; `--snap` for a loaded program, `--rom img --base <hex>` for a relocated image, `--jumptable` |

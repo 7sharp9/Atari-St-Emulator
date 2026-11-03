@@ -1,0 +1,189 @@
+# Impossamole memory schema (tools/layout.py, tools/snapdiff.py; format: DEVELOPING.md "Memory layouts and the semantic
+# snapshot diff"). Replicants crack, absolute addresses. The object array is 20 slots of 108 bytes at $1a2ea: slots
+# 0-15 are `objects` (0-5 kind-0 props, 6 the hero, 7-11 kind-1 enemies, the boss in 7 in a boss room, 12-15 spawned
+# children) and slots 16-19, $1a9aa, are `shots` (the fire handler's swipe rows), one struct for both. Widths of the
+# globals were read off the instructions that touch them (`tools/find_field_writers.py <snap> '$bb74' --all` on
+# agents/unpoked/hop4s/none/shop/seg5_pit_exit.snap) where the cited doc names only the address.
+
+[layout]
+game = "impossamole"
+build = "Replicants crack (impossamole cr replicants - emotion cr replicants.st)"
+
+# ---------------------------------------------------------------------------------------------------------------------
+[globals.score]
+addr = "0xbb6e"
+width = 4
+cite = "secrets.md \"Other routines read\" (the score is a plain decimal longword $bb6e); README.md \"Spawn types\" (a kill adds 106(A0))"
+
+[globals.weapon]
+addr = "0xbb72"
+width = 1
+cite = "README.md \"Boss\" (the equipped-weapon index $bb72, which is also a shot's damage 104(A1))"
+
+[globals.coins]
+addr = "0xbb73"
+width = 1
+cite = "README.md \"The route to the boss room on real input\" (`$bb72..75` `03 64 09 12` to `03 19 10 12`: weapon 3, coins 100 to 25, health 9 to 16 of 18)"
+
+[globals.health]
+addr = "0xbb74"
+width = 1
+cite = "README.md \"Past the first screen\" (pending damage applied to the hero's health $bb74; death at <= 0); same shop bullet as coins"
+
+[globals.max_health]
+addr = "0xbb75"
+width = 1
+cite = "README.md \"The route to the boss room on real input\" (the shop bullet: $bb75 reads $12 for health 16 of 18)"
+note = "named from that one byte pairing; its reader `move.b $bb75.l,$bb74` (a refill) agrees"
+
+[globals.hero_state]
+addr = "0x227f3"
+width = 1
+enum = { 0 = "idle", 1 = "walking", 3 = "falling", 4 = "climbing" }
+cite = "README.md \"Gameplay input\" (the hero's state byte $227f3: 0 idle, 1 walking, 3 falling, 4 climbing; 2/4 other moves)"
+
+[globals.pending_damage]
+addr = "0x227f6"
+width = 1
+cite = "README.md \"Past the first screen\" (move.b 104(A0),$227f6.l copies a contact's damage into the pending-damage cell)"
+
+[globals.fire_cooldown]
+addr = "0x227fd"
+width = 1
+cite = "README.md \"Boss\", natural aim (the cooldown $227fd, set to 6, one count per frame; the swipe lives until it reaches 0)"
+
+[globals.boss_alive]
+addr = "0x22803"
+width = 1
+enum = { 1 = "alive", 255 = "dead" }
+cite = "README.md \"Boss\" ($22803 := 1 boss alive, written by the kind-2 allocator); the level-end bullets ($22803 := $ff at each boss death)"
+
+# ---------------------------------------------------------------------------------------------------------------------
+[structs.obj]
+size = 108
+cite = "README.md \"Past the first screen\" (the 20-slot, 108-byte-stride array $1a2ea + N*108)"
+
+[structs.obj.fields.type]
+off = 0
+width = 2
+enum = { 1 = "bank1", 2 = "bank2" }
+cite = "README.md \"Gameplay input\" (type word at offset 0, the draw stubs $1b25a for type 1 and $1b3ec for type 2); \"Spawn types\" (1: bank 1, 16x16; 2: bank 2, 32x24)"
+
+[structs.obj.fields.x]
+off = 2
+width = 2
+signed = true
+cite = "README.md \"Gameplay input\" (2(A0)/4(A0) is the object's on-screen pixel position); \"Spawn types\" (a slot is cleared outside x 0..$130, y -16..$c8)"
+
+[structs.obj.fields.y]
+off = 4
+width = 2
+signed = true
+cite = "README.md \"Gameplay input\"; \"Spawn types\""
+
+[structs.obj.fields.hit_dx]
+off = 8
+width = 2
+signed = true
+cite = "README.md \"Spawn types\" (kind-1 descriptor +10/+12 words to 8/10(A0), the hit-box offsets); \"Boss\" ($b71a tests x+8(A), y+10(A))"
+
+[structs.obj.fields.hit_dy]
+off = 10
+width = 2
+signed = true
+cite = "README.md \"Spawn types\"; \"Boss\""
+
+[structs.obj.fields.hit_w]
+off = 12
+width = 1
+cite = "README.md \"Spawn types\" (+1/+2 to 12/13(A0), the hit-box radii); \"Boss\" ($b71a widths 12(A), 13(A))"
+
+[structs.obj.fields.hit_h]
+off = 13
+width = 1
+cite = "README.md \"Spawn types\"; \"Boss\""
+
+[structs.obj.fields.rows]
+off = 14
+width = 1
+cite = "README.md \"Spawn types\" (+12 plus +2 is also the row count 14(A0)); \"Boss\" (the boss's hit box 12-14(A0) = $20/$30/$18)"
+
+[structs.obj.fields.speed_x]
+off = 16
+width = 2
+cite = "README.md \"Spawn types\" (+14/+16 words to 16/18(A0), speeds in pixels per frame; the generic pass moves x by 16(A0))"
+
+[structs.obj.fields.speed_y]
+off = 18
+width = 2
+cite = "README.md \"Spawn types\""
+
+[structs.obj.fields.dir_x]
+off = 20
+width = 1
+bits = { 0 = "right" }
+cite = "README.md \"Spawn types\" (x moves by 16(A0) in the direction of bit 0 of 20(A0), 0 = left)"
+
+[structs.obj.fields.dir_y]
+off = 21
+width = 1
+bits = { 0 = "down" }
+cite = "README.md \"Spawn types\" (y moves by 18(A0) by bit 0 of 21(A0), 0 = up)"
+
+[structs.obj.fields.hitbox_flag]
+off = 30
+width = 2
+fmt = "hex"
+cite = "README.md \"Boss\" (the damage path skips a shot slot whose flag word 30(A1) is not $ff; only slot 16 is a hit box)"
+
+[structs.obj.fields.special_fire]
+off = 79
+width = 1
+cite = "README.md \"Spawn types\" (a spent shot is skipped unless 79(A1) = 1, the special-fire shots)"
+
+[structs.obj.fields.handler]
+off = 86
+width = 4
+fmt = "hex"
+cite = "README.md \"Spawn types\" (kind-1 descriptor +20 long = per-frame handler to 86(A0))"
+
+[structs.obj.fields.dead]
+off = 101
+width = 1
+cite = "README.md \"Spawn types\" (handlers of slots 7-11 run while 101 = 0; the lethal path sets 101 := 1; a spent shot has 101(A1) != 0)"
+
+[structs.obj.fields.invuln]
+off = 102
+width = 1
+cite = "README.md \"Spawn types\" (a non-lethal hit sets 102(A0) = max(3, $227fd); the damage path returns while it is set)"
+
+[structs.obj.fields.hp]
+off = 103
+width = 1
+cite = "README.md \"Boss\" (103(A0) = hit points, sub.b 104(A1) at $013b20); \"Spawn types\" (254/255, bit 7 set, mean immune)"
+
+[structs.obj.fields.damage]
+off = 104
+width = 1
+cite = "README.md \"Boss\" (104(A0) = contact damage; a shot's 104(A1) = $bb72); \"Past the first screen\" (copied to $227f6)"
+
+[structs.obj.fields.score]
+off = 106
+width = 2
+cite = "README.md \"Spawn types\" (descriptor +18 word to 106(A0), the score awarded on a kill)"
+
+[arrays.objects]
+struct = "obj"
+base = "0x1a2ea"
+stride = 0x6c
+count = 16
+labels = { 6 = "hero" }
+cite = "README.md \"Gameplay input\" (hero slot 6, $1a572); \"Spawn types\" (kind 0 slots 0-5, kind 1 slots 7-11, kind 3 slots 12-15); \"Boss\" (boss in slot 7, $1a5de)"
+
+[arrays.shots]
+struct = "obj"
+base = "0x1a9aa"
+stride = 0x6c
+count = 4
+labels = { 0 = "swipe" }
+cite = "README.md \"Boss\" (projectile slots 16-19 at $1a9aa; only slot 16 is a hit box, 17-19 are decoration)"
