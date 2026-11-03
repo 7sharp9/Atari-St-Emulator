@@ -789,6 +789,7 @@ results give them as `"$hex"`.
 | `record_start` / `record_stop` / `record_use` | `every` / / `id` | start a recording here (section "Record and replay"); `record_stop` keeps it and returns its `id`, `base`, `end`, `checkpoints`, `inputs`; `record_use` makes a kept one current |
 | `replay_to` | `step` | the current recording's machine at that step; `from_checkpoint`, `watch_hits` |
 | `last_writer` | `lo`, `hi?`, `step` | the last write to `[lo,hi]` at or before `step` (an event as `watch_events` gives it, or null), `intervals` replayed |
+| `last_reg_change` | `reg`, `step`, `mask?` | the last step at or before `step` at which `reg` (`d0`-`a7`, `usp`, `ssp`, `sr`) changed in the bits of `mask`: `step`, `pc`, `value`, `previous`, `source` (`cpu`, `exception`, `host`), or null; `intervals` replayed |
 | `first_divergence` | `a`, `b` (recording ids) | `divergence`: `step`, `pc_a`, `pc_b`, `journal_step`, the first differing RAM `bytes`; null if none |
 | `render` | `path` | PNG at native resolution: shifter base `$ff8201/3`, `$ff8260`, palette (as `snap_render.py`) |
 | `kbd` / `mouse` / `disk` | `bytes` / `action` `move`+`dx`/`dy` or `down`/`up`+`button` / `path` or `null` | as the REPL |
@@ -808,15 +809,16 @@ events at the same steps as the REPL's `watch 189ca 4` (writer PC `$01529c`, val
 `s 300000` / `snap`, and a `fork`/`restore` replay gives an identical end snapshot and event list. A
 `poke` reports `source: "host"`; a stop watch on the odd byte `$189cd` stops `run` on the first byte
 write there, and a word write at `$189cc` reaches a watch on `$189cd` alone. `load` without `disk` of a snapshot with no sidecar is refused, a malformed line is answered and the server stays up.
-The MCP handshake and `tools/list` (31 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
+The MCP handshake and `tools/list` (32 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
 The REPL `watch 189ca 4` output is identical before and after the change (25 lines).
 
 ### Record and replay
 
-The questions it answers: "which instruction last wrote X before step S" and "where do two runs first differ", over runs
-of hundreds of millions of steps, without having set the right watch before the run. A watch is bounded by its window
-(`CLAUDE.md`, "Evidence rules"); a recording moves the window choice to after the run. Built: the journal, the
-checkpoints, `replay_to`, `last_writer` and `first_divergence`. Not built: spilling checkpoints to disk and the saved
+The questions it answers: "which instruction last wrote X before step S", "where did that value come from" and "where
+do two runs first differ", over runs of hundreds of millions of steps, without having set the right watch before the
+run. A watch is bounded by its window (`CLAUDE.md`, "Evidence rules"); a recording moves the window choice to after the
+run. Built: the journal, the checkpoints, `replay_to`, `last_writer`, `last_reg_change`, `first_divergence` and the
+backward slicer `tools/provenance.py` over them. Not built: spilling checkpoints to disk and the saved
 form of a recording.
 
 The machine is deterministic between inputs: `detcheck` shows a `Restore` is an identity on everything a later
@@ -868,6 +870,51 @@ steps, no pokes) under a REPL `watch 53006 2` (19 writes) and as a recording (ch
 for 20 steps S (the base, before and at the first write, at a write's step and one before it, 15 spread to the end):
 20 of 20 equal the last watch line at or before S, four of them found in the interval before S's. With the backward
 search removed it reports 16 of 20.
+
+**`last_reg_change reg S [mask]`** (`stserver` only, over `AtartSt.ReplayTo` and `Step`) steps the checkpoint interval
+holding S one instruction at a time, re-applying the journal as `ReplayTo` does, and keeps the last step whose
+instruction (or journalled `set_reg`) changed `reg` in the bits of `mask`; if none, the interval before, and so on back
+to the base. The step is numbered as `last_writer`'s (the instruction that took S-1 to S), the PC is that
+instruction's, and `source` is `cpu`, `exception` (the step entered an interrupt: `MMU.InterruptAcks` moved) or `host`.
+It finds the last *change*: an instruction that rewrites the value a register already holds is not reported. Proof:
+`server/last_reg_change_proof.py <stserver.dll> <pre_pick.snap> <powermonger.st> <outdir>` records 1.2M steps from
+`pre_pick.snap` (checkpoints every 250,000, one `set_reg d7` at 700,000) and lists every change of all 19 registers with
+a second process stepping one instruction per call; 412 of 412 queries (every register at the base, at and after each
+checkpoint and the input, the end and 5 spread steps, three masked variants, and 16 at interrupt entries the brute force
+finds by the handler PC) equal its answer, source included. 161 answers lie in an interval before S's own; with the
+backward search removed the script reports 251 of 412 (161 wrong).
+
+**`tools/provenance.py`** slices backwards from a memory range (or, as a library, a register's bits) at step S: the
+writer from `last_writer` or `last_reg_change`, its instruction decoded by `tools/disassemble.py` from the code bytes
+at W-1, the registers at `replay_to W-1`, every effective address computed from them with the instruction's own
+`(An)+`/`-(An)` effects, then the source operand sliced in turn: a memory source at W-1, a register source through
+`last_reg_change` at W-1, both inputs of a two-operand value (`add d1,d0`), and the tracked bytes or bits the
+instruction did not write as a separate branch. It stops at an immediate (or a value the code fixes: `clr`, `moveq`, an
+absolute `lea`, a return address), an input (DMA, a journalled host write or `set_reg`), an interrupt entry, a hardware
+register or ROM read, and the recording's base. Each link's value is checked against the decode (the immediate's
+bytes, the source register or memory at W-1); a mismatch, an opcode with no rule (flag inputs such as `Scc`, `addx`,
+`move SR`; `movep`, memory shifts, `rte`/`trap` stack swaps) and a writer whose decoded destination misses the written
+bytes (an exception frame) stop with the reason. Arithmetic dependencies are conservative (add/sub: the tracked bits
+and every lower one; shifts, multiplies: the whole operand). Proof: `server/provenance_proof.py <stserver.dll>
+<M68000.dll> <pre_pick.snap> <powermonger.st> <outdir>` slices `$53006..$53007` at the 19 steps a REPL `watch 53006 2`
+lists and six words of the same object (`$52ff8 $52ffa $53008 $53014 $53016 $53018`) at the end of the
+`last_writer_proof.py` run: 78 of 78 memory links equal the last line of a REPL `watch` on their range at or before
+their step (21 watches), 19 of 19 stops at the base have no such line, and 100 of 100 register links match a REPL
+`bp <pc> 1` from W-2 (PC at W-1, the old value there, the new one after `s 1`; two writers are reached by an RTE, which
+`bp` does not count, so their PC comes from bp's register dump). Every `$53006` chain ends at an immediate equal to the
+byte written (37 of 37: `move.b #$32,31(A3)` and its kin). Controls on a second recording with a `set_reg d0` and a
+`poke $53015` at one step: the slice of the next `move.w D0,48(A3)` stops at the `set_reg` and the slice of `$53015`
+at the next `sub.b D0,45(A3)` stops at the poke, both at the input's step. The first hop of a slice is `last_writer`'s
+and cannot fail this way, so two falsifiers aim at the decode: with d16(An) addresses made to drop the displacement,
+every slice stops at its first link with "decoded destination does not cover the write" and the script fails (no
+immediate reached, both controls fail); with a register source followed as the next register (`d0` as `d1`), every
+link still passes its REPL check (each is a true last write or change of what was followed) but 28 value checks fail
+and so does the `set_reg` control. The value check is what proves an edge, so a link whose rule makes no prediction
+(arithmetic, 50 of the 178 here) is proven as a last write but its edge only by the decode. The proof's slices use
+only `move`, `addi`, `sub`, `subi`, `lea` and `adda`. A wider exercise (120 words sampled from the run's first 60,000
+writes, sliced to depth 20) reached `movem.l`/`.w`, `movea`, `swap`, `exg`, `and`/`or`/`not`, `addq`/`subq`, `clr`,
+`divu`, `muls`, `neg`, `ext`, shifts, `dbf`, `jsr`/`bsr` and others with 845 value checks passing and none failing, but
+its links were not scored against the REPL.
 
 **`first_divergence A B`** (`AtartSt.FirstDivergence`) takes two stopped recordings from the same base step (`stserver`
 keeps each under the id `record_stop` returns). The first differing journal entry bounds the answer and is usually its
@@ -925,7 +972,8 @@ least once by a session that did not know it existed.
 
 | tool | use |
 |---|---|
-| `server/` (`stserver.dll`) | long-lived JSON-RPC / MCP process around one `AtartSt`: load with a required disk, step, run with a budget, breakpoints, typed peek/poke, multi-range read/write watches with writer PC and source, in-memory fork/restore, recordings (`replay_to`, `last_writer`, `first_divergence`), PNG render (section "Memory hooks and the `stserver` process"; `server/smoke.py` is its check; `server/replay_proof.py`, `last_writer_proof.py` and `divergence_proof.py` the recording's) |
+| `server/` (`stserver.dll`) | long-lived JSON-RPC / MCP process around one `AtartSt`: load with a required disk, step, run with a budget, breakpoints, typed peek/poke, multi-range read/write watches with writer PC and source, in-memory fork/restore, recordings (`replay_to`, `last_writer`, `last_reg_change`, `first_divergence`), PNG render (section "Memory hooks and the `stserver` process"; `server/smoke.py` is its check; `server/replay_proof.py`, `last_writer_proof.py`, `last_reg_change_proof.py`, `divergence_proof.py` and `provenance_proof.py` the recording's) |
+| `tools/provenance.py <stserver.dll> <snap> <disk> <steps> <hexaddr>[:<len>] <step\|end>` | backward slice over a recording: where the bytes at an address (or, from Python, a register's bits) came from, as a tree of (step, PC, instruction, value) links found by `last_writer` / `last_reg_change`, each value-checked against the decoded instruction, down to an immediate, an input, DMA or the recording's base (section "Record and replay"; the opcodes it has no rule for stop with the reason) |
 | `tools/stclient.py` | Python client for `stserver` (`StServer(root)`: any method as a call, `read`, `reg`, and `call(entry, ret, stops=[...])` to run one routine from a planted return address with interrupts masked, `stops` ending it early at a PC such as a call that waits on an interrupt): for a gate that runs a routine thousands of times and prints only counts (`reversing/midwinter/py/army/gate_army.py`; `stops`: `gate_encounter.py`'s kill leg, which stops at the radio message) |
 | `tools/fsi_drive.fsx`, `tools/fsi_prep.sh` | F# Interactive driver: load a snapshot, run N steps, optionally `--watch` a range (the REPL's WATCH lines) or `--poke` a byte, save an end snapshot; a template for typed per-step scripts (section "F# Interactive" above; needs `DOTNET_gcServer=0`) |
 | `tools/regress_net.sh <base.dll> <new.dll> <outdir>` | the skill's section 6 regression net as an A/B of two builds (verify, 30M snapshot cmp, selftest; with `CADAVER_SNAP`/`CADAVER_ST`, a game snapshot, REPL `watch` and DMA-`watch` compare); for the Mac and for when another session holds `bin/` (header) |

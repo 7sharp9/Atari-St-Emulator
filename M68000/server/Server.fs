@@ -507,7 +507,73 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
         let lo = addr p "lo"
         let ev, searched = s.LastWriter (lo, defaultArg (optAddr p "hi") lo, uint64 (toInt64 "step" (req p "step")))
         status s [ "event", (match ev with Some a -> eventJson a | None -> null); "intervals", jint (int64 searched)
-                   "watch_hits", newHits () ] ]
+                   "watch_hits", newHits () ]
+
+    "last_reg_change", "The last step at or before 'step' of the stopped recording at which register 'reg' (d0-d7, a0-a7, usp, ssp, sr) changed in the bits of 'mask': step (as last_writer gives it: the instruction that took step-1 to step), pc (that instruction's address), value, previous, source (cpu, exception for an interrupt entry, host for a journalled set_reg), or null back to the base. Found by stepping checkpoint intervals backwards. A write that leaves the value unchanged is not a change. The machine is left at the end of the last interval replayed.",
+    [ "reg", "string", true, "register"; "step", "int", true, "absolute step count"; "mask", "addr", false, "bits that count (default $ffffffff)" ],
+    fun p ->
+        let s = need ()
+        let target = uint64 (toInt64 "step" (req p "step"))
+        let mask = defaultArg (optAddr p "mask") 0xffffffffu
+        let name = (str p "reg").ToLowerInvariant()
+        let names = [| "d0"; "d1"; "d2"; "d3"; "d4"; "d5"; "d6"; "d7"; "a0"; "a1"; "a2"; "a3"; "a4"; "a5"; "a6"; "a7"; "usp"; "ssp"; "sr" |]
+        let ri = match Array.tryFindIndex ((=) name) names with Some i -> i | None -> fail "last_reg_change: unknown register %s" name
+        let get (c: Cpu) : uint32 =
+            match ri with
+            | 0 -> uint32 c.D0 | 1 -> uint32 c.D1 | 2 -> uint32 c.D2 | 3 -> uint32 c.D3
+            | 4 -> uint32 c.D4 | 5 -> uint32 c.D5 | 6 -> uint32 c.D6 | 7 -> uint32 c.D7
+            | 8 -> uint32 c.A0 | 9 -> uint32 c.A1 | 10 -> uint32 c.A2 | 11 -> uint32 c.A3
+            | 12 -> uint32 c.A4 | 13 -> uint32 c.A5 | 14 -> uint32 c.A6 | 15 -> uint32 c.A7
+            | 16 -> uint32 c.USP | 17 -> uint32 c.SSP | _ -> uint32 (uint16 c.CCR)
+        let r =
+            match s.Recording with
+            | Some r when r.Active -> fail "last_reg_change: stop the recording first"
+            | Some r -> r
+            | None -> fail "last_reg_change: no recording"
+        if target < r.Checkpoints.[0].At || target > r.End then
+            fail "last_reg_change: step %d is outside the recording (%d..%d)" target r.Checkpoints.[0].At r.End
+        let mmu = s.Cpu.MMU
+        //Interval k covers changes at steps (ck.At, upto]: a change at ck.At itself needs the state at
+        //ck.At-1, which the interval before holds. The journal is re-applied as ReplayTo does
+        //(AtartSt.ReplayFrom): after the step it was recorded at, and `Input` does not journal into a
+        //stopped recording. A disk swap is refused by ReplayTo itself.
+        let scan (k: int) =
+            let ck = r.Checkpoints.[k]
+            let upto = if k + 1 < r.Checkpoints.Count then min target r.Checkpoints.[k + 1].At else target
+            s.ReplayTo ck.At |> ignore
+            let mutable j = ck.Index
+            while j < r.Journal.Count && r.Journal.[j].At <= ck.At do j <- j + 1
+            let mutable last = None
+            while s.StepCount < upto do
+                let pre = s.Cpu
+                let acks = mmu.InterruptAcks
+                s.Step()
+                let v = get s.Cpu
+                if (v ^^^ get pre) &&& mask <> 0u then
+                    last <- Some (s.StepCount, uint32 pre.PC, v, get pre, (if mmu.InterruptAcks <> acks then "exception" else "cpu"))
+                while j < r.Journal.Count && r.Journal.[j].At = s.StepCount do
+                    let before = get s.Cpu
+                    s.Input r.Journal.[j].Input
+                    j <- j + 1
+                    let v = get s.Cpu
+                    if (v ^^^ before) &&& mask <> 0u then
+                        last <- Some (s.StepCount, uint32 s.Cpu.PC, v, before, "host")
+            last
+        let mutable k = r.Checkpoints |> Seq.findIndexBack (fun c -> c.At <= target)
+        let mutable found = None
+        let mutable searched = 0
+        let mutable stop = false
+        while not stop do
+            found <- scan k
+            searched <- searched + 1
+            if found.IsSome || k = 0 then stop <- true else k <- k - 1
+        let ev =
+            match found with
+            | None -> null
+            | Some (at, pc, v, prev, src) ->
+                obj [ "step", jint (int64 at); "pc", hx pc; "reg", jstr name; "value", jstr (sprintf "$%08x" v)
+                      "previous", jstr (sprintf "$%08x" prev); "source", jstr src ]
+        status s [ "event", ev; "intervals", jint (int64 searched); "watch_hits", newHits () ] ]
 
 let table = dict [ for (n, _, _, f) in methods -> n, f ]
 
