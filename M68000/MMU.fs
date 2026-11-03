@@ -6,14 +6,13 @@ open Bits
 ///(tbcr/tbdr/tbdrReload/tbdrReadCount). A Preview that touched the MFP would permanently corrupt
 ///the real run's timer state on "rollback", contradicting Preview's own "state restored" claim.
 ///
-///91st pass (the "trustworthy experimental substrate" review): the record now also carries every
-///remaining piece of *future-determining* device state that a forward Step() consumes but that was
-///not captured here - the pending-interrupt slots, `tbCounter` (Timer B's HBL-driven prescaler),
-///the FDC INTRQ countdown, the DMA sector counter, the IKBD reporting-mode latches, and the
-///absolute-mouse / joystick registers. Before this, a `Preview` (or a `detcheck` replay) that let
-///an FDC seek complete, a Timer B tick land, or the mouse move would leave those counters advanced
-///after "rollback", so the same N steps run twice from one snapshot could diverge. The rule this
-///type now upholds: `machineHash(before) = machineHash(after)` for a restore, where the hash
+///The record also carries every remaining piece of *future-determining* device state that a
+///forward Step() consumes: the pending-interrupt slots, `tbCounter` (Timer B's HBL-driven
+///prescaler), the FDC INTRQ countdown, the DMA sector counter, the IKBD reporting-mode latches,
+///and the absolute-mouse / joystick registers. Without them a `Preview` (or a `detcheck` replay)
+///that let an FDC seek complete, a Timer B tick land, or the mouse move would leave those counters
+///advanced after "rollback", so the same N steps run twice from one snapshot could diverge. The
+///rule this type upholds: `machineHash(before) = machineHash(after)` for a restore, where the hash
 ///includes *all* state a later Step() can read, not merely RAM + CPU registers. Debug-only scalars
 ///(watch range/pc/step) and monotonic bookkeeping counters (`mutations`, `interruptAcks`) are
 ///deliberately excluded - nothing in Step()'s result depends on them.
@@ -28,7 +27,7 @@ type MmuSnapshot =
       DmaAddrHigh: byte; DmaAddrMid: byte; DmaAddrLow: byte
       MemConfig: byte
       KbdAciaControl: byte; IkbdRxFifo: byte[]; KbdAciaRdr: byte
-      // --- 91st pass: latent future-determining device state (see the type doc above) ---
+      // --- latent future-determining device state (see the type doc above) ---
       VblPending: bool; MfpPending: bool; MfpVector: int
       TimerCPending: bool; TimerBPending: bool; TimerAPending: bool
       TbCounter: int
@@ -47,18 +46,16 @@ type MmuSnapshot =
 ///ReadWord/WriteWord/ReadLong (WriteLong composes from two WriteWord calls, so it's covered
 ///for free) so Cpu.Step() can catch it and push an exception frame the way TRAP does, instead of
 ///the previous behavior of silently performing the misaligned access and continuing with
-///corrupted state - see [[atari-st-emulator-next-instructions]]'s nineteenth pass, found via a
-///differential comparison against a real 68000 core (dmcoles/estyjs).
+///corrupted state. Found via a differential comparison against a real 68000 core
+///(dmcoles/estyjs).
 exception AddressError of address: uint32 * isWrite: bool
 
 ///Real 68000 hardware bus-errors (vector 2) on any access to an address no device claims -
 ///DTACK never asserts, so the bus controller aborts the cycle rather than letting it complete.
 ///Raised by the genuinely-unmapped fallback case in ReadByte/ReadWord/ReadLong/WriteByte/WriteWord
-///(previously: reads silently returned 0 and writes were silently dropped, both explicitly
-///commented "genuinely unmapped bus" - a real gap, not a typo, dating back to the earliest
-///out-of-range-RAM-aliasing work) - see [[atari-st-emulator-next-instructions]]'s twentieth pass,
-///found by tracing a garbage `rte` target ($56780000, well outside ROM/RAM/cart/peripheral space)
-///straight into an opcode-decode failure instead of a hardware fault.
+///(otherwise reads would silently return 0 and writes be dropped). Found by tracing a garbage
+///`rte` target ($56780000, well outside ROM/RAM/cart/peripheral space) straight into an
+///opcode-decode failure instead of a hardware fault.
 exception BusError of address: uint32 * isWrite: bool
 
 ///Who made a hooked memory access: the CPU (an instruction, including its fetches and exception
@@ -112,14 +109,14 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///github.com/hatari/hatari for a ground-truth check since the local progref.txt's table for
     ///this register is column-garbled). Bits 2-3 = bank 0 size, bits 0-1 = bank 1 size, each 2 bits
     ///decoding 00=128KB 01=512KB 10=2048KB 11=reserved. TOS's own cold-boot RAM-sizing routine
-    ///writes a candidate value here and probes real RAM to see what actually holds - previously
-    ///unmapped (fell through to BusError, added in the twentieth pass), which crashed cold boot
-    ///almost immediately at `$fc00e2: move.b #$a,$ffff8001.l` (confirmed via `tools/disassemble.py`)
-    ///before TOS could even begin that probe - see [[atari-st-emulator-next-instructions]].
+    ///writes a candidate value here and probes real RAM to see what actually holds. It must be
+    ///mapped: an unmapped register falls through to BusError, which crashed cold boot almost
+    ///immediately at `$fc00e2: move.b #$a,$ffff8001.l` (confirmed via `tools/disassemble.py`)
+    ///before TOS could even begin that probe.
     let memConfig = 0xFF8001u
 
     let videoDisplayRegisterStart = 0xFF8200u
-    let videoDisplayRegisterEnd =  0xFF8261u //$FF8200-$FF825F video-base/counter/sync/palette, then $FF8260 (GLUE+shifter res) and $FF8261 (shifter-only res, Video_ResShifter). Video.fs only ever reads $FF8260 - a program that sets the mode via $FF8261 alone (GLUE/shifter sync trick) stores here but the renderer ignores it, which is still better than the pre-64th-pass bus error.
+    let videoDisplayRegisterEnd =  0xFF8261u //$FF8200-$FF825F video-base/counter/sync/palette, then $FF8260 (GLUE+shifter res) and $FF8261 (shifter-only res, Video_ResShifter). Video.fs only ever reads $FF8260 - a program that sets the mode via $FF8261 alone (GLUE/shifter sync trick) stores here but the renderer ignores it, which is still better than a bus error.
     //Size derived from the range so a later end bump can't leave the index math (address - start) short.
     let videoDisplayRegisterMemory = Array.create (int (videoDisplayRegisterEnd - videoDisplayRegisterStart) + 1) 0uy
 
@@ -127,13 +124,11 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///no register here, so accesses are harmless - "No bus errors here" in Hatari's IoMemTable_ST
     ///($FF8262, size 30, IoMem_VoidRead/IoMem_VoidWrite): reads return $FF bytes, writes are dropped.
     ///PowerMonger's Replicants cracktro does `move.l #$00078000,$ffff8260.w`, whose low word lands on
-    ///$FF8262 - which used to fall through to BusError, derailing the CPU into the vector table
-    ///(PC=$20). See [[atari-st-emulator-next-instructions]].
+    ///$FF8262 - which would fall through to BusError, derailing the CPU into the vector table
+    ///(PC=$20).
     let shifterVoidStart = 0xFF8262u
     let shifterVoidEnd =   0xFF827Fu
 
-    let reserved = 0xFF8400u
-    let dma_diskcontroller = 0xFF8600u
     let fdcAccess = 0xFF8604u //WD1772 register access byte - which of its 4 registers this hits is selected via fdcModeSelect
     let fdcModeSelect = 0xFF8606u //DMA mode register; bits 1-2 select status/cmd, track, sector, or data register
     let dmaAddrHigh = 0xFF8609u //DMA Address Counter, high byte - real, documented, byte-wide-only (odd address) register
@@ -238,36 +233,19 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             psgReadData <- input                            //raw value, like hatari's PSGRegisterReadData
             if reg = 14 then updateDriveSide ()
 
-    ///Pending-interrupt line, modeling the CPU's IPL2-0 input pins: 0 = no interrupt asserted.
-    ///Raised by a peripheral-timing source (currently just the VBL trigger in Program.fs's step
-    ///loop - see [[atari-st-emulator-next-instructions]]'s twenty-eighth pass). Real, necessary
-    ///infrastructure on its own merits (any future keyboard/IKBD work needs real interrupt
-    ///delivery to reach TOS's own ISRs at all) - but NOT, on its own, the fix for the IPL=7 lock
-    ///that motivated adding it: level 4 (VBL) and level 6 (MFP) requests are mechanically incapable
-    ///of preempting an IPL=7 mask (only a genuine level-7/NMI request could, and none exists on
-    ///this hardware), confirmed directly by instrumenting this exact mechanism - interrupts fire
-    ///and get taken correctly right up until the mask locks to 7, then sit pending forever exactly
-    ///as real 68000 semantics require. The real recovery mechanism, found via a Hatari instruction
-    ///trace of the same ROM, is an ordinary (non-exception) instruction TOS itself executes shortly
-    ///after the point where this project's own emulation currently diverges - see the twenty-eighth
-    ///pass's final entry for the precise divergence point and next step. `Cpu.Step()` checks this
-    ///each step against the live interrupt mask and, if unmasked, consumes it via
-    ///AcknowledgeInterrupt and enters it as a real autovectored exception (`Cpu.EnterInterrupt`).
-    ///Real hardware would let a higher-priority request preempt a lower still-pending one and hold multiple sources
-    ///independently (per-source pending bits with priority arbitration) - this collapses to "the
-    ///single highest level asserted right now, whatever raised it last," a deliberate
-    ///simplification since only one source (VBL) exists yet; revisit if/when the MFP's own
-    ///independent interrupt sources (timers, ACIA) are added.
-    ///Three independent pending-interrupt slots, replacing the earlier single "highest level
-    ///asserted" scalar (per that comment's own TODO). Real hardware holds a pending bit per
-    ///source with priority arbitration; the sources that exist here are the VBL (autovectored
-    ///level 4, vector 28), the keyboard ACIA (MFP channel 6, level 6, vector $46) and MFP Timer C
-    ///(channel 5, level 6, vector $45 -> the 200Hz system tick that drives etv_timer and, through
-    ///it, the AES's double-click / click-release timeout countdown). A separate slot each is
-    ///needed so a periodic tick never silently displaces a still-pending keystroke: when both MFP
-    ///channels are asserted the ACIA (higher channel number) is taken first, matching the 68901's
-    ///own priority order. `PendingInterruptLevel`/`Vector` report the highest asserted;
-    ///`AcknowledgeInterrupt` clears only that one.
+    ///Pending-interrupt state, modeling the CPU's IPL2-0 input pins. One pending slot per source,
+    ///with priority arbitration (`TopPendingInterrupt` is the single place the order is written
+    ///down): the VBL (autovectored level 4, vector 28), the keyboard ACIA (`mfpPending`, MFP
+    ///channel 6, level 6, vector $46) and MFP Timers A, B and C (level 6; Timer C is channel 5,
+    ///vector $45, the 200Hz system tick that drives etv_timer and, through it, the AES's
+    ///double-click / click-release timeout countdown). A separate slot each is needed so a periodic
+    ///tick never silently displaces a still-pending keystroke. `PendingInterruptLevel`/`Vector`
+    ///report the highest asserted source; `AcknowledgeInterrupt` clears only that one.
+    ///`Cpu.Step()` checks the level each step against the live interrupt mask and, if unmasked,
+    ///consumes it via AcknowledgeInterrupt and enters it as a real autovectored exception
+    ///(`Cpu.EnterInterrupt`). A pending request does not preempt an IPL=7 mask (level 4 VBL and
+    ///level 6 MFP requests cannot outrank it, and no level-7/NMI source exists on this hardware):
+    ///it stays pending until software lowers the mask, as on a real 68000.
     let mutable vblPending = false
     let mutable mfpPending = false
     let mutable mfpVector = 0
@@ -333,14 +311,13 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///report transmitter-ready (TDRE, bit1); anything else in the Acia range (data registers)
     ///falls through to the 0 default below since there's never real data waiting. If future ROM
     ///code waits to *receive* a byte (keyboard input, MIDI data) this needs real ACIA emulation,
-    ///not more table entries - see [[atari-st-emulator-next-instructions]] memory for the note.
+    ///not more table entries.
     let ioStubs : Map<uint32, byte> =
         Map.ofList [
             0xFFFC04u, 0x02uy //MIDI ACIA control/status - no receive path (nothing generates MIDI in)
         ]
 
-    ///Keyboard ACIA (MC6850) receive path - see [[atari-st-emulator-next-instructions]] pass 34
-    ///step 2. Real ST wiring: the IKBD's 7812.5-baud serial output feeds the keyboard ACIA at
+    ///Keyboard ACIA (MC6850) receive path. Real ST wiring: the IKBD's 7812.5-baud serial output feeds the keyboard ACIA at
     ///$FFFC00 (control/status) / $FFFC02 (data). A received byte sets RDRF (status bit 0); with
     ///the RX interrupt enabled (control bit 7, which TOS sets via its `move.b #$96,$fffc00`
     ///write) that also drives the ACIA IRQ output (status bit 7) low, which is MFP GPIP bit 4,
@@ -596,8 +573,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///bit reaching TOS's boot-device check) - that was the initial hypothesis, but a later same-session
     ///trace comparison (with this fix in place vs without) showed the reset-cycle boundaries were
     ///byte-for-byte identical either way, disproving it. This fix is still correct and worth keeping
-    ///(a status of 0 is genuinely wrong for an empty drive), just not the explanation for that bug -
-    ///see [[atari-st-emulator-next-instructions]]'s fifteenth-pass section for the actual finding.
+    ///(a status of 0 is genuinely wrong for an empty drive), just not the explanation for that bug.
     let mutable fdcSelectedReg = 0uy //bits 1-2 of the last fdcModeSelect write: 0=status/cmd, 1=track, 2=sector, 3=data
     let mutable fdcStatus = 0uy
     let mutable fdcTrack = 0uy
@@ -623,9 +599,9 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///    so it can prove the FDC is merely present without a formatted disk;
     ///  - the real GEMDOS read/write paths ($fc15e6 / $fc16d4 / $fc1be2) poll a bare `$40000`+
     ///    software loop, which on real hardware easily outlasts a real command.
-    ///Before the 63rd pass GPIP bit 5 was hardwired 0 ("INTRQ always pending"): the self-test's
-    ///polls returned success instantly, its `jsr (A0)` re-ran the boot sector, and a crack whose
-    ///boot sector checksums to $1234 (PowerMonger `[cr Replicants]`) looped forever. Now INTRQ is
+    ///GPIP bit 5 must not be hardwired 0 ("INTRQ always pending"): the self-test's
+    ///polls would return success instantly, its `jsr (A0)` would re-run the boot sector, and a crack whose
+    ///boot sector checksums to $1234 (PowerMonger `[cr Replicants]`) would loop forever. So INTRQ is
     ///idle-high and re-raises on a coarse delay after a command (FdcTick counts it down). This
     ///emulator has no per-command WD1772 state machine (Hatari's src/fdc.c does; that is the
     ///re-architecture this project has not built), so the delay is bucketed by command:
@@ -666,8 +642,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
 
     ///The DMA sector-count register. On real hardware $FF8606 bit 4 (`$x90` vs `$x80`) switches the
     ///$FF8604 access between "an FDC/HDC register" and "the DMA sector-count register"; the boot ROM
-    ///and GEMDOS write the count here (verified against a live Hatari `--trace fdc` run - see
-    ///[[atari-st-emulator-reversing-goal]]) before every Read/Write Sector command, then the WD1772
+    ///and GEMDOS write the count here (verified against a live Hatari `--trace fdc` run) before every Read/Write Sector command, then the WD1772
     ///transfers that many consecutive sectors when the command's multi-record (`m`) bit is set.
     ///In MmuSnapshot (v9) with `dmaScSelected`, so a restore between the count write and the command
     ///keeps the count.
@@ -739,7 +714,6 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///for $0..$3FFFFF, BusErrMem for $400000..$DFFFFF, and $E00000..$EFFFFF, $F00000 (no IDE) and
     ///$F10000..$F9FFFF with TOS at $FC0000). A stack pointer left in that range therefore faults
     ///on the next exception push and double-faults (Cpu.EnterGroup0OrHalt).
-    let ramMask = uint32 (ram.Length - 1)
     let aliasIntoRam (address: uint32) = address < 0x400000u
 
     ///Real STF hardware's MMU decodes RAM addresses using the *configured* bank sizes from
@@ -750,7 +724,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///to discover the real installed size - the previous flat `address &&& ramMask` scheme masked
     ///identically regardless of `memConfigByte`, so that probe could never observe a real mismatch
     ///and TOS ended up believing whatever the largest candidate it tried ($0A = 2048KB+2048KB) was
-    ///correct - see [[atari-st-emulator-next-instructions]]'s twenty-third pass.
+    ///correct.
     ///Ported directly from Hatari's `STMemory_MMU_Translate_Addr`/`_STF` (github.com/hatari/hatari,
     ///src/stMemory.c) - this project only ever has 512KB physical RAM per bank (`ram.Length` = 1MB
     ///total), so only the "RAM bank = 512KB" row of Hatari's full 128/512/2048-by-128/512/2048
@@ -782,8 +756,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///Returns `None` for addresses beyond the MMU's configured total - genuinely open bus, no
     ///device backs them - rather than the old flat mirror.
     ///
-    ///Traced (twenty-third pass) exactly how TOS's own cold-boot phystop probe works, and it's
-    ///simpler than first guessed: `$fc0166`-`$fc0186` writes a 43-word evolving pattern at the
+    ///How TOS's own cold-boot phystop probe works (traced): `$fc0166`-`$fc0186` writes a 43-word evolving pattern at the
     ///current candidate top-of-RAM address, then immediately reads it back and compares - a plain,
     ///in-band software self-consistency check, NOT a CPU-level Bus Error trap (the vector-2 handler
     ///it installs a few instructions earlier is for something else; this loop never faults on real
@@ -792,11 +765,10 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
     ///starts at `$120000` (`$100000+$20000`) - well below the `$1E0100`-ish region the raw
     ///reset-vector SSP still uses as scratch stack at this point in boot (confirmed via a fresh
     ///trace: no instruction writes `A7` anywhere in the first 200,000 steps), so making this
-    ///specific range open-bus doesn't collide with that stack use, unlike the earlier same-pass
-    ///attempt that raised a real `BusError` here (which regressed cold boot - see
-    ///[[atari-st-emulator-next-instructions]] - because the CPU's OWN exception-frame push for that
-    ///fault used the same not-yet-relocated stack, a genuine fault-during-fault-handling case this
-    ///emulator doesn't model). No exception needed this time: open-bus reads just return a fixed
+    ///specific range open-bus doesn't collide with that stack use. Raising a real `BusError` here
+    ///would regress cold boot, because the CPU's OWN exception-frame push for that fault would use
+    ///the same not-yet-relocated stack, a genuine fault-during-fault-handling case this emulator
+    ///doesn't model. So no exception: open-bus reads just return a fixed
     ///value that can never match an evolving write pattern, and open-bus writes are no-ops.
     let translateRamAddress (address: uint32) =
         let conf = int memConfigByte
@@ -1152,8 +1124,7 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             //two independently byte-addressable registers at `address`/`address+1` like the Mfp
             //case above. The old byte-by-byte split put the real status byte in the HIGH half of
             //the word instead, so every ROM `move.w $ffff8604.l,Dn` / `btst #n,Dn` check (which
-            //only ever tests the low byte) always saw zero - see [[atari-st-emulator-next-instructions]]'s
-            //seventeenth-pass finding for the full trace-verified diagnosis.
+            //only ever tests the low byte) always saw zero.
             0xFF00 ||| int (x.ReadByte address)
         | a when a = fdcModeSelect ->
             //Same low-byte-device reasoning as fdcAccess above, minus the "upper bits read as 1"
@@ -1218,11 +1189,8 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
             x.WriteByte address (byte input)
         | Acia ->
             //No real ACIA write emulation (see ioStubs' comment on the read side) - a real, mapped
-            //device, so writes are accepted and ignored rather than bus-erroring. Previously this
-            //fell through to the generic "genuinely unmapped, write ignored" default, which had the
-            //same observable effect (silently ignored) but for the wrong reason - now raises
-            //BusError instead, so it needs its own case. See [[atari-st-emulator-next-instructions]]'s
-            //twentieth pass.
+            //device, so writes are accepted and ignored rather than bus-erroring. The generic
+            //unmapped default below raises BusError, so this needs its own case.
             ()
         | _ ->
             if aliasIntoRam address then

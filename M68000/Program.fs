@@ -357,7 +357,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///*next* VBL (frameRowRecs is written across the frame that follows the grab). Without this
     ///hold, file(N) carried screen(N) beside frame (N-1)'s palettes - fine for a static screen,
     ///wrong for anything that animates its palette every frame (it mis-diagnosed Super Sprint's
-    ///raster split in the 61st pass). Cost: the final frame at exit is never flushed.
+    ///raster split). Cost: the final frame at exit is never flushed.
     let mutable pendingFrame : (byte[] * int) option = None
     ///Per-scanline palette + screen-base snapshots for the frame recorder. 200 visible lines x a
     ///34-byte row-record ([baseHi:1][baseLo:1][palette:32]), captured on each HBL crossing and
@@ -688,7 +688,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 if basepageCapturedFor = retpc then basepageCapturedFor <- -1
             | (retpc, mode, fname, parentPd) :: _ when (mode = 0 || mode = 1) && basepageCapturedFor <> retpc ->
                 //Load-and-run: GEMDOS keeps the running process's basepage pointer at act_pd
-                //($602C - see [[atari-st-emulator-next-instructions]]). Sample it until it moves
+                //($602C). Sample it until it moves
                 //off the caller's own basepage to a valid one (the child), then stop.
                 let actpd = mmu.ReadLong 0x602Cu
                 if actpd <> parentPd && dumpBasepage stepCount mode fname actpd then basepageCapturedFor <- retpc
@@ -730,11 +730,11 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     ///execution isn't left stuck at the failing instruction). Useful from the REPL to look ahead
     ///without disturbing the real run.
     ///
-    ///91st pass: `stepCount` was previously NOT restored - every x.Step() below bumps it, and it
-    ///is the phase clock for the VBL/HBL/Timer-A/B/C raises and scheduled IKBD injection, so a
-    ///`p 10000` used to shift the machine's temporal phase permanently while PC and RAM looked
-    ///untouched. With that fixed and MmuSnapshot now carrying the latent device state (pending
-    ///IRQs, tbCounter, FDC INTRQ countdown, ...), Preview is a verified identity operation - see
+    ///`stepCount` is restored too: every x.Step() below bumps it, and it is the phase clock for
+    ///the VBL/HBL/Timer-A/B/C raises and scheduled IKBD injection, so leaving it advanced would
+    ///shift the machine's temporal phase permanently while PC and RAM looked untouched. With that
+    ///and MmuSnapshot carrying the latent device state (pending IRQs, tbCounter, FDC INTRQ
+    ///countdown, ...), Preview is a verified identity operation - see
     ///`DeterminismCheck`, which asserts exactly that.
     ///An in-memory checkpoint of everything a later Step() reads (what Preview saves privately);
     ///`Restore` puts it back and resets the loop detector, as Preview does. A checkpoint can be
@@ -938,7 +938,7 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         nextRecordCheckpoint <- savedNext
         Diag.result "--- preview done, state restored to PC=$%08x ---" cpu.PC
 
-    ///Substrate self-check (91st pass, the "trustworthy experimental instrument" review): proves
+    ///Substrate self-check: proves
     ///that a snapshot restore is an identity operation on *all* future-determining state, by
     ///running the same N steps twice from one captured state and asserting the two step-by-step
     ///traces are byte-identical. Trace element per step = FNV-1a fold of (stepCount, PC, CCR,
@@ -999,10 +999,10 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
                 Diag.result "--- detcheck: traces identical for the first %d steps then one run stopped early ---" m
         ok
 
-    ///RIDER 3b substrate (92nd pass): call a subroutine in isolation from the *current* machine
+    ///RIDER 3b substrate: call a subroutine in isolation from the *current* machine
     ///state and capture its full effect - the D0-7/A0-7 delta, every byte of memory it changed,
     ///and a per-step trace hash - then snapshot-restore so the REPL session is unperturbed. Uses
-    ///the same save/restore path Preview and DeterminismCheck use, which the 91st pass proved is a
+    ///the same save/restore path Preview and DeterminismCheck use, which DeterminismCheck proves is a
     ///verified identity operation. Built to differential-test the PowerMonger routine
     ///reconstructions against the real 68000: real $XXXXX(capturedState) vs reconstructed
     ///step(capturedState) over a corpus of states, full changed-memory comparison.
@@ -1508,8 +1508,8 @@ for _ in 1..100 do
 ///(github.com/SingleStepTests/ProcessorTests, `680x0/68000/v1/*.json.gz` - one file per opcode,
 ///~8000 randomised cases each carrying an initial machine state and the expected final
 ///registers / SR / memory) straight against `Cpu.Step`. This is the regression net the project
-///has never had: the silent-for-many-passes shift bug (`LSR.L`/`ROR.L` smearing bit 31 down via
-///F#'s arithmetic `>>>`, only found on the 39th pass) would have failed thousands of `LSR.l` /
+///has never had: a shift bug that once went unnoticed (`LSR.L`/`ROR.L` smearing bit 31 down via
+///F#'s arithmetic `>>>`) would have failed thousands of `LSR.l` /
 ///`ROR.l` cases the instant it was written.
 ///
 ///Usage: `dotnet exec M68000.dll selftest <dir-or-file> [name-substring] [fail-samples]`. `<dir>`
@@ -1590,7 +1590,7 @@ module SelfTest =
     /// handler at $14e4 needs it - see the DIVU comment in 68k.fs), so skipping the whole vector
     /// covers that disagreement too. Keyed on
     /// the opcode plus the structural negative-dividend/expected-N-clear mismatch, not a magic
-    /// register value - see [[atari-st-emulator-next-instructions]]'s 112th pass.
+    /// register value.
     let private isUndefinedDivByZeroFlags (ini: St) (fin: St) =
         ini.Prefetch.Length > 0 && ini.Prefetch.[0] = 0x80ef
         && ini.Ssp - fin.Ssp = 6   // the short 3-word group-2 trap frame - the actual fault path
@@ -1984,7 +1984,7 @@ module Main =
         //including the reraise path when an unimplemented instruction aborts the run.
         AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> TraceEvents.close())
         //Every executed instruction prints a PC-tagged disassembly line (printfn in 68k.fs) that
-        //this project's debugging workflow depends on - see atari-st-emulator-efficiency-tooling.
+        //this project's debugging workflow depends on.
         //That's the right default, but building the text costs more than executing the
         //instruction, so ATARI_NOTRACE=1 clears Trace.enabled (call sites skip the formatting) and
         //redirects Console.Out to a null sink for the few prints that are not gated.
@@ -2128,7 +2128,7 @@ module Main =
             runRepl st
         | [| "teartest"; snapPath; framesArg |] ->
             //Headless reproduction of the live window's mouse-cursor path, for the cursor-tearing
-            //investigation (see atari-st-emulator-next-instructions). Mirrors Video.run's frame
+            //investigation. Mirrors Video.run's frame
             //loop exactly - front-load one coalesced IKBD mouse packet at frame start, run to the
             //next VBL boundary, decode the framebuffer - but drives a synthetic per-frame pointer
             //drift instead of host input and writes each decoded frame as a 24-bit BMP. The white

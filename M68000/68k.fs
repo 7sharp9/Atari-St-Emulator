@@ -14,8 +14,8 @@ type ActiveStack =
 
 module Diag =
     ///`ATARI_TRACE_GEMDOS=1` prints every GEMDOS trap#1 call's PC and function code to stderr
-    ///(survives ATARI_NOTRACE, like `watch` - see [[atari-st-emulator-efficiency-tooling]]). Added
-    ///after this exact print, added ad-hoc, was what cracked a real bug (TOS's own boot-supervisor
+    ///(survives ATARI_NOTRACE, like `watch`). This
+    ///print, added ad-hoc, was what cracked a real bug (TOS's own boot-supervisor
     ///restarting the whole Pexec/Pterm0 desktop-launch cycle every ~650,000 steps, something a
     ///per-instruction disasm trace alone was too noisy to spot) - kept as a permanent, opt-in tool
     ///instead of being thrown away, since "which GEMDOS calls happened, in what order, how often"
@@ -25,7 +25,7 @@ module Diag =
     ///Result output (REPL replies, `verify`/`selftest` verdicts, snapshot/until status lines) goes
     ///through `result` so it survives `ATARI_NOTRACE`. That env var redirects `Console.Out` to a
     ///null sink to skip the per-instruction trace's formatting cost - which also silenced the
-    ///output you actually asked for, a recurring foot-gun (see [[atari-st-emulator-efficiency-tooling]]).
+    ///output you actually asked for, a recurring foot-gun.
     ///`captureResultOut` is called once at the very top of `main`, before the redirect, so the
     ///captured writer is the real stdout regardless of when this module's initializer ran.
     let mutable private resultOut : IO.TextWriter = Console.Out
@@ -512,7 +512,6 @@ module CCR =
 
     ///Calculate CCR
     let IgnoreX_ZeroV_And_ZeroC currentCCR (input:int16) =
-        //TODO: Expand logic as more variations of flag ignorance is needed
         let mutable ccr = currentCCR &&& ~~~0xFs
         //set N,Z 
         if (input &&& 0x8000s) <> 0s then ccr <- ccr ||| 0x8s //N
@@ -753,9 +752,8 @@ type Cpu =
      //switching") - that simplification broke down once real ROM code (GEMDOS's trap#1 handler)
      //relied on the hardware swap to bridge from its own supervisor stack back to the caller's:
      //it does `move usp,An` expecting USP to hold the value A7 had the instant before the trap,
-     //which is only true if trap entry actually performed the swap. See
-     //[[atari-st-emulator-next-instructions]]'s twenty-fifth pass for the live trace that caught
-     //this (cmpi comparing a function-code word against stale/zero data at the "wrong" address).
+     //which is only true if trap entry actually performed the swap. Without it the handler's
+     //cmpi compared a function-code word against stale/zero data at the "wrong" address.
      USP: int
      SSP: int
      PC: int
@@ -772,7 +770,6 @@ type Cpu =
      MMU: MMU }
 
     static member Create(mmu: MMU) =
-        //TODO review MMU creation / ownership
         { D0=0; D1=0; D2=0; D3=0; D4=0; D5=0; D6=0; D7=0
           A0=0; A1=0; A2=0; A3=0; A4=0; A5=0; A6=0; A7=0
           USP=0; SSP=0
@@ -823,7 +820,7 @@ type Cpu =
 
     ///Real 68000 autovectored interrupt entry (levels 1-7, vector = 24+level - e.g. VBL is level 4
     ///= vector 28, the MFP is level 6 = vector 30, matching Hatari's own exception trace for this
-    ///same ROM - see [[atari-st-emulator-next-instructions]]'s twenty-eighth pass). Unlike
+    ///same ROM). Unlike
     ///EnterVector's software traps (TRAP/Line-A/Line-F), a real interrupt exception ALSO raises the
     ///CCR's own interrupt-priority mask to `level` (masking further same-or-lower-priority
     ///interrupts until software explicitly lowers it again) and clears the trace bit - both are
@@ -1421,7 +1418,6 @@ type Cpu =
         | _ -> None
 
     member x.Step() =
-    //TODO implement prefetch ops
         let pendingLevel = x.MMU.PendingInterruptLevel
         let takeable = pendingLevel > 0 && int16 (pendingLevel <<< 8) > x.InterruptMask
         if x.Halted then
@@ -1485,8 +1481,7 @@ type Cpu =
                          //exception frame for this trap points AT the offending opcode so the installed
                          //handler can re-fetch and decode it (TOS's own $a30e dispatcher does exactly
                          //that via `move.w (a0)+,d1`, using the opcode's own low 12 bits as a function
-                         //number) - confirmed via a direct Hatari cpu_disasm trace of $a30e live, see
-                         //[[atari-st-emulator-next-instructions]]'s twenty-ninth pass.
+                         //number) - confirmed via a direct Hatari cpu_disasm trace of $a30e live.
                          let newCpu = x.EnterVector 10 x.PC
                          if Trace.enabled then
                              printfn "line-a $%04x" instruction
@@ -1536,12 +1531,11 @@ type Cpu =
         | AddressError (faultAddress, isWrite) ->
             //Real 68000 hardware traps to the Address Error vector (vector 3, at address $C)
             //instead of performing a word/long access to an odd address. Found via a
-            //differential comparison against a real 68000 core (dmcoles/estyjs) - see
-            //[[atari-st-emulator-next-instructions]]'s nineteenth pass: without this, a
-            //misaligned access was silently performed instead of trapping. This is a group-0
-            //exception - EnterGroup0Vector builds the real 14-byte frame (100th pass; earlier
-            //passes stacked EnterVector's simplified 6-byte one, which diverged from the
-            //SingleStepTests on ssp + every stacked word). `opcode` re-reads the faulting
+            //differential comparison against a real 68000 core (dmcoles/estyjs): without this, a
+            //misaligned access would be silently performed instead of trapping. This is a group-0
+            //exception - EnterGroup0Vector builds the real 14-byte frame (EnterVector's simplified
+            //6-byte one diverged from the SingleStepTests on ssp + every stacked word).
+            //`opcode` re-reads the faulting
             //instruction's own first word (guarded: if that fetch itself faulted we are here
             //because of it, so fall back to 0); `FaultPcAdvance` is how far ResolveEa had
             //walked into the instruction when the operand access threw.
@@ -1559,9 +1553,8 @@ type Cpu =
             newCpu
         | BusError (faultAddress, isWrite) ->
             //Real 68000 hardware traps to the Bus Error vector (vector 2, at address $8) when an
-            //access hits an address no device claims (DTACK never asserted). See
-            //[[atari-st-emulator-next-instructions]]'s twentieth pass: previously an unmapped
-            //access silently read 0 / dropped the write instead of trapping. Same real 14-byte
+            //access hits an address no device claims (DTACK never asserted); otherwise an unmapped
+            //access would silently read 0 / drop the write instead of trapping. Same real 14-byte
             //group-0 frame as the address error above (EnterGroup0Vector). A diskless TOS boot
             //never takes a bus error, so this path stays cold in the 30M-snapshot regression.
             let opcode = try int (x.MMU.ReadWord (uint32 x.PC)) with _ -> 0
@@ -1733,8 +1726,7 @@ type Cpu =
             //overwrites MMU.FaultRegFixup for an Api/Aipi destination - the source's own commit
             //(its read already completed, so its register update is real on actual hardware
             //regardless of what later happens to the destination) must be merged back in, not
-            //discarded (107th pass - "mem->mem double-register-update-lost-on-fault", 104th's
-            //characterisation).
+            //discarded (otherwise a mem->mem MOVE loses the first register update on a fault).
             let srcFaultFixup = x.MMU.FaultRegFixup
             let x = srcUpdate x
             x.MMU.FaultRegFixup <- []
@@ -1742,8 +1734,8 @@ type Cpu =
             let dstOwnFaultFixup = x.MMU.FaultRegFixup
             let newPC = x.PC + 2 + srcExt + dstExt
             //Three destination-addressing-mode quirks in the group-0 frame a faulting MOVE write
-            //stacks, all verified against real dump_vector.py MOVE.w/.l --frame samples (104th
-            //pass) rather than reconstructed from memory:
+            //stacks, all verified against real dump_vector.py MOVE.w/.l --frame samples rather
+            //than reconstructed from memory:
             (match dMode, dReg, srcLoc with
              //abs.l dest + a source that performs a real bus read: the source cycle delays the
              //prefetch queue by one word, so at fault time only the FIRST of the abs.l dest's two
@@ -1783,8 +1775,8 @@ type Cpu =
                 //the high word writes at An-4 (`a`). A fault on that FIRST write leaves An at
                 //An-2, not the fully-decremented An-4 our ResolveEa/FaultRegFixup convention
                 //assumes for every other predecrement - verified against dump_vector.py MOVE.l
-                //--frame samples (104th pass's characterisation, landed 107th). CLR/NOT/TAS's own
-                //-(An) faults never exposed this (0 residual, 103rd pass) because a -(An) LONG
+                //--frame samples. CLR/NOT/TAS's own
+                //-(An) faults never exposed this (0 residual) because a -(An) LONG
                 //READ commits the full -4 in one bus cycle on real hardware; only a WRITE splits
                 //it into two.
                 let ccr = CCR.IgnoreX_ZeroV_And_ZeroC_Long x.CCR rawSource
@@ -1835,7 +1827,6 @@ type Cpu =
             { regUpdate x with PC = x.PC + 2 + extBytes; CCR = newCcr }
 
         | Move2SR(mode, register) ->
-            //Hack, not sure about this
             //Goes through WithSR (not a plain `CCR = newCcr`) because this instruction can change
             //the S bit directly, without going through TRAP/RTE - real TOS's own boot code does
             //exactly this as its very first instruction (`move #$2700,sr`), which must swap A7
@@ -1872,7 +1863,7 @@ type Cpu =
                 //the destination happens and is discarded before the real write (Dn has no such
                 //bus cycle, but a register read here is side-effect-free). On an odd EA the dummy
                 //read is what faults, so the group-0 frame's R/W bit reads READ, not WRITE - the
-                //same reason CLR reads-before-writing (103rd pass).
+                //same reason CLR reads-before-writing.
                 x.ReadEa OperandSize.Word loc |> ignore
                 let written = x.WriteEa OperandSize.Word loc (int x.CCR) x
                 let newCpu = { regUpdate written with PC = x.PC + 2 + extBytes }
@@ -2086,8 +2077,8 @@ type Cpu =
             //`#,-(An)` fault vectors whose `changed` set never lists the address register at all.
             //(An)+->reglist (a READ) DOES commit on a first-word fault, but always by exactly one
             //word (2), never by `step` even at .l size - a long register load is two word-sized
-            //bus cycles (matches genmovemel_ce's srcw(srca)/srcw(srca+2) shape and the 104th
-            //pass's MOVE.l -(An) write-split finding), and since a fault can only ever land on the
+            //bus cycles (matches genmovemel_ce's srcw(srca)/srcw(srca+2) shape and the
+            //MOVE.l -(An) write split), and since a fault can only ever land on the
             //very first of those two words, the address register never advances past +2.
             match direction, eamode with
             | 0uy, 0b100uy -> //reglist,-(An) : predecrement, mask order reversed (bit0 = A7 .. bit15 = D0)
@@ -2103,7 +2094,7 @@ type Cpu =
                             //A LONG -(An) write splits into two word-sized bus cycles on real
                             //hardware: the low word writes FIRST at addr+2 (a 2-byte decrement),
                             //the high word SECOND at addr (the full 4-byte decrement) - same
-                            //split MOVE.l -(An) needed (107th pass). A fault on the first (low)
+                            //split MOVE.l -(An) needs. A fault on the first (low)
                             //word therefore stacks addr+2 as the fault address, not addr -
                             //confirmed against real MOVEM.l `#,-(An)` vectors (the stacked fault
                             //address's low byte was 2 off before this fix). No FaultRegFixup
@@ -2713,7 +2704,7 @@ type Cpu =
                         //follows faults (the same Aipi convention ResolveEa's shared path already
                         //uses everywhere else), so prime MMU.FaultRegFixup before each read; the
                         //second priming merges in the first read's already-completed update, same
-                        //shape as the 107th pass's mem->mem MOVE fixup merge.
+                        //shape as the mem->mem MOVE fixup merge.
                         let srcAddr = x.AddressRegister eareg
                         x.MMU.FaultRegFixup <- [(int eareg, srcAddr + 4)]
                         let source = x.MMU.ReadLong(uint32 srcAddr)
@@ -3255,12 +3246,6 @@ type Cpu =
 
         | _ -> IllegalEncodings.raisef "unknown instruction $%04x" (instruction &&& 0xFFFF)
 
-    member x.Run(cycles: int) =
-        //TODO
-        //while cycles left
-        //get instruction
-        //execute
-        ()
     member x.DisplayRegisters =
         sprintf """
 D0:%08x D1:%08x D2:%08x D3:%08x
