@@ -222,3 +222,6 @@ docs/content/release-notes.md
 docs/tools/FSharp.Formatting.svclog
 /hatari-v2.6.1-480
 /scratchpad
+
+# Cadaver disk images: the cadaver repl.py scripts load them from here (untracked, copyrighted)
+/Cadaver/
