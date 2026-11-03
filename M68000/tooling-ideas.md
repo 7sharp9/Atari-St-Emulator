@@ -29,8 +29,10 @@ no pattern exits with an error instead of booting into the REPL.
 - **Cost.** Hours. No hot path. A sidecar rather than a snapshot section, because a build hash inside
   the `.snap` would make every cross-build `cmp` in `regress_net.sh` and the gates differ. The argv
   change is an interface change: scripts that pass odd argv need checking.
-- **First experiment.** The argv error and the sidecar only; `gates.py run all` stays 49/49 and
-  `regress_net.sh` identical.
+- **Built** (`Provenance` in `Program.fs`; DEVELOPING.md, Disk A and provenance paragraphs). Net
+  identical against the base build and `gates.py run all` 49/49; a resume without `--disk-a`
+  remounts the recorded disk, and a raw alias argv exits 2. `gates.py` still records no DLL hash
+  (`sessions/emulator.md` Open 4).
 
 ## 2. One driver library over `stserver` with the evidence rules as defaults
 
@@ -104,7 +106,7 @@ entry (Redqueen's input-to-state correspondence). Unconventional.
 - **Evidence.** The skill, section 2, prescribes a manual census of comparisons after the key-read
   service. Black Tiger's level skip (`black_tiger/secrets.md`), Impossamole's cheat names, Populous's
   F6/F7 hooks (`30cb24f`) and the Lemmings secrets hunt (`81e2ed5`) were each found by reading consumers.
-- **Exists.** `hits` on named addresses; read watches. Coverage as a set is `sessions/emulator.md` Open 3.
+- **Exists.** `hits` on named addresses; read watches. This idea is `sessions/emulator.md` Open 2.
 - **Cost.** Medium. A per-instruction hook on the hot path, behind a null test like the memory hooks;
   needs an interleaved A/B with no hook set (falsifier: slower by more than 3% in every pair).
 - **First experiment.** Rediscover blind Black Tiger's `$85` plus ClrHome flag `$17826` and
