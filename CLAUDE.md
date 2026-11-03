@@ -45,12 +45,16 @@ know they existed.
 - **`run.ps1`'s subcommands are aliases, not real argv** (its `switch` block is the source of
   truth): `rrepl <snap>` is raw argv `resume <snap> repl`, `snap <N> <path>` is `<N> snapshot <path>`,
   `resume <snap> [N]` is `<N> resume <snap>`. An alias name passed to the raw binary matches no argv
-  pattern and silently falls through to a disk-less cold boot that sits forever in an early ROM wait
-  loop. That looks exactly like a stuck or corrupt snapshot (blank `snap_render.py` output, a `bpc`
-  that never hits); check the argv against the switch block first.
-- **`resume <snap>` does not remount the disk: pass `--disk-a` again.** Without it every FDC read logs
-  `no data` (Record Not Found) and a custom loader fails with its own timeout screen, which reads as an
-  emulator FDC bug (Lemmings' `$70000` loader).
+  pattern: it prints the usage table and exits 2 (`DEVELOPING.md`, "Build and run"). A build older
+  than that rule instead fell through to a disk-less cold boot that sat in an early ROM wait loop and
+  looked like a stuck or corrupt snapshot.
+- **`resume <snap>` remounts the disk only from a provenance sidecar.** A snapshot written by a current
+  build has `<snap>.prov.json` (DLL hash, git commit, disk path and hash, parent snapshot), and
+  `resume` without `--disk-a` remounts the recorded disk when it still hashes the same and says so on
+  stderr; it also warns when the snapshot came from a different DLL (`DEVELOPING.md`, "Snapshot /
+  preview fidelity"). A snapshot with no sidecar does not remount: pass `--disk-a` again. Without it
+  every FDC read logs `no data` (Record Not Found) and a custom loader fails with its own timeout
+  screen, which reads as an emulator FDC bug (Lemmings' `$70000` loader).
 - **Another Claude session is often working in this checkout.** Before `taskkill` on dotnet,
   `dotnet build`, or editing a file with uncommitted changes you did not make, check
   (`git status`, `tasklist | grep dotnet`, `ListAgents`) and ask: message a live session with
