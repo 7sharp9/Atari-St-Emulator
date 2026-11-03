@@ -34,7 +34,10 @@ class StServer:
         self.seq += 1
         self.p.stdin.write(json.dumps({'jsonrpc': '2.0', 'id': self.seq, 'method': method, 'params': params}) + '\n')
         self.p.stdin.flush()
-        r = json.loads(self.p.stdout.readline())
+        line = self.p.stdout.readline()
+        if not line:
+            sys.exit(f'stserver {method}: the server exited (rc {self.p.poll()}); check the dll path')
+        r = json.loads(line)
         if 'error' in r:
             sys.exit(f'stserver {method}: {r["error"]["message"]}')
         return r['result']
