@@ -81,13 +81,24 @@ type JournalEntry = { At: uint64; Input: MachineInput }
 
 ///A recording checkpoint: the machine at step `At`, after the first `Index` journal entries.
 ///The write-protect tab is not in a snapshot (`MMU.SetWriteProtectA`), so it is kept here.
-type RecordCheckpoint = { At: uint64; Index: int; Machine: MachineCheckpoint; WriteProtectA: bool }
+///`Machine` is the in-memory copy, None once the checkpoint lives only in `File` (a SaveState
+///snapshot, see `AtartSt.RecordStart`). A snapshot leaves out the CPU's `Stopped` and `Halted`
+///flags, so they are kept here too and put back after a file restore.
+type RecordCheckpoint =
+    { At: uint64; Index: int; mutable Machine: MachineCheckpoint option; File: string option
+      WriteProtectA: bool; Stopped: bool; Halted: bool }
 
-///See `AtartSt.RecordStart`.
+///See `AtartSt.RecordStart`. With `Dir`, every checkpoint is also a snapshot file there and only
+///the newest `Keep` stay in memory. `DiskLog0` is disk A's write-log length at the base:
+///`DiskWritten` is set once a checkpoint sees it grown, which stops the spilling (see RecordStart).
 type Recording =
     { Every: uint64
       Journal: ResizeArray<JournalEntry>
       Checkpoints: ResizeArray<RecordCheckpoint>
+      Dir: string option
+      Keep: int
+      DiskLog0: int
+      mutable DiskWritten: bool
       mutable Active: bool
       mutable End: uint64 }
 
@@ -95,6 +106,106 @@ type Recording =
 ///PCs there, the first differing RAM bytes (address, A's byte, B's byte; at most 16), and the step
 ///of the first journal entry that differs, if any.
 type Divergence = { At: uint64; PcA: int; PcB: int; Bytes: (uint32 * byte * byte) list; JournalAt: uint64 option }
+
+///A recording on disk (`AtartSt.RecordStart` with a directory): the checkpoint snapshots it wrote
+///as it ran, `journal.jsonl` (one input per line, with the step it was applied at) and
+///`recording.json` (every, end, keep, disk_written, and per checkpoint its step, journal index,
+///file name, write-protect tab and the CPU's stopped/halted flags). File names are relative to
+///the directory, so it can be moved. A `set_cpu` entry holds every register; `read` builds the
+///`Cpu` from `template` (the loading machine's, for its MMU) with those registers.
+module RecordingFile =
+    open System.Text.Json.Nodes
+
+    let private u64 (n: JsonNode) = n.GetValue<uint64>()
+    let private i32 (n: JsonNode) = n.GetValue<int>()
+    let private bln (n: JsonNode) = n.GetValue<bool>()
+    let private regNames = [| "d0";"d1";"d2";"d3";"d4";"d5";"d6";"d7";"a0";"a1";"a2";"a3";"a4";"a5";"a6";"a7";"usp";"ssp";"pc" |]
+    let private regs (c: Cpu) =
+        [| c.D0;c.D1;c.D2;c.D3;c.D4;c.D5;c.D6;c.D7;c.A0;c.A1;c.A2;c.A3;c.A4;c.A5;c.A6;c.A7;c.USP;c.SSP;c.PC |]
+
+    let private inputJson (e: JournalEntry) =
+        let o = JsonObject()
+        o.["at"] <- JsonValue.Create e.At
+        let kind (k: string) = o.["kind"] <- JsonValue.Create k
+        match e.Input with
+        | HostWrite (a, w, v) -> kind "host_write"; o.["addr"] <- JsonValue.Create a; o.["width"] <- JsonValue.Create w; o.["value"] <- JsonValue.Create v
+        | SetCpu c ->
+            kind "set_cpu"
+            Array.iter2 (fun (n: string) (v: int) -> o.[n] <- JsonValue.Create v) regNames (regs c)
+            o.["ccr"] <- JsonValue.Create c.CCR
+            o.["stopped"] <- JsonValue.Create c.Stopped
+            o.["halted"] <- JsonValue.Create c.Halted
+        | Ikbd b -> kind "ikbd"; o.["bytes"] <- JsonArray([| for x in b -> JsonValue.Create x :> JsonNode |])
+        | MouseMove (dx, dy) -> kind "mouse_move"; o.["dx"] <- JsonValue.Create dx; o.["dy"] <- JsonValue.Create dy
+        | MouseButton (l, d) -> kind "mouse_button"; o.["left"] <- JsonValue.Create l; o.["down"] <- JsonValue.Create d
+        | DiskA p -> kind "disk_a"; o.["path"] <- (match p with Some s -> JsonValue.Create s :> JsonNode | None -> null)
+        | WriteProtectA on -> kind "write_protect_a"; o.["on"] <- JsonValue.Create on
+        o.ToJsonString()
+
+    let private inputOf (template: Cpu) (o: JsonObject) : JournalEntry =
+        let input =
+            match o.["kind"].GetValue<string>() with
+            | "host_write" -> HostWrite (o.["addr"].GetValue<uint32>(), i32 o.["width"], o.["value"].GetValue<uint32>())
+            | "set_cpu" ->
+                let r = regNames |> Array.map (fun n -> i32 o.[n])
+                SetCpu { template with
+                           D0 = r.[0]; D1 = r.[1]; D2 = r.[2]; D3 = r.[3]; D4 = r.[4]; D5 = r.[5]; D6 = r.[6]; D7 = r.[7]
+                           A0 = r.[8]; A1 = r.[9]; A2 = r.[10]; A3 = r.[11]; A4 = r.[12]; A5 = r.[13]; A6 = r.[14]; A7 = r.[15]
+                           USP = r.[16]; SSP = r.[17]; PC = r.[18]; CCR = o.["ccr"].GetValue<int16>()
+                           Stopped = bln o.["stopped"]; Halted = bln o.["halted"] }
+            | "ikbd" -> Ikbd [| for x in o.["bytes"].AsArray() -> x.GetValue<byte>() |]
+            | "mouse_move" -> MouseMove (i32 o.["dx"], i32 o.["dy"])
+            | "mouse_button" -> MouseButton (bln o.["left"], bln o.["down"])
+            | "disk_a" -> DiskA (match o.["path"] with null -> None | p -> Some (p.GetValue<string>()))
+            | "write_protect_a" -> WriteProtectA (bln o.["on"])
+            | k -> failwithf "journal: unknown input kind %s" k
+        { At = u64 o.["at"]; Input = input }
+
+    let write (dir: string) (r: Recording) =
+        IO.File.WriteAllLines(IO.Path.Combine(dir, "journal.jsonl"), r.Journal |> Seq.map inputJson)
+        let m = JsonObject()
+        m.["format"] <- JsonValue.Create 1
+        m.["every"] <- JsonValue.Create r.Every
+        m.["end"] <- JsonValue.Create r.End
+        m.["keep"] <- JsonValue.Create r.Keep
+        m.["inputs"] <- JsonValue.Create r.Journal.Count
+        m.["disk_written"] <- JsonValue.Create r.DiskWritten
+        m.["checkpoints"] <-
+            JsonArray([| for c in r.Checkpoints ->
+                           let o = JsonObject()
+                           o.["at"] <- JsonValue.Create c.At
+                           o.["index"] <- JsonValue.Create c.Index
+                           o.["file"] <- JsonValue.Create (IO.Path.GetFileName c.File.Value)
+                           o.["write_protect_a"] <- JsonValue.Create c.WriteProtectA
+                           o.["stopped"] <- JsonValue.Create c.Stopped
+                           o.["halted"] <- JsonValue.Create c.Halted
+                           o :> JsonNode |])
+        IO.File.WriteAllText(IO.Path.Combine(dir, "recording.json"), m.ToJsonString(Text.Json.JsonSerializerOptions(WriteIndented = true)))
+
+    ///Refuses a recording whose run wrote to disk A (see `AtartSt.RecordStart`) and one whose
+    ///journal line count disagrees with the manifest (a truncated copy).
+    let read (dir: string) (template: Cpu) : Recording =
+        let dir = IO.Path.GetFullPath dir
+        let mpath = IO.Path.Combine(dir, "recording.json")
+        if not (IO.File.Exists mpath) then failwithf "record_load: no recording.json in %s (was record_stop called?)" dir
+        let m = JsonNode.Parse(IO.File.ReadAllText mpath).AsObject()
+        if i32 m.["format"] <> 1 then failwithf "record_load: %s has format %d, this build reads 1" mpath (i32 m.["format"])
+        if bln m.["disk_written"] then
+            failwithf "record_load: the recorded run wrote to disk A, which checkpoint files cannot undo; it replays only in the process that made it"
+        let journal =
+            IO.File.ReadAllLines(IO.Path.Combine(dir, "journal.jsonl"))
+            |> Array.filter (fun l -> l.Trim() <> "")
+            |> Array.map (fun l -> inputOf template (JsonNode.Parse(l).AsObject()))
+        if journal.Length <> i32 m.["inputs"] then
+            failwithf "record_load: journal.jsonl has %d inputs, recording.json says %d" journal.Length (i32 m.["inputs"])
+        let cks =
+            [| for n in m.["checkpoints"].AsArray() ->
+                 let f = IO.Path.Combine(dir, n.["file"].GetValue<string>())
+                 if not (IO.File.Exists f) then failwithf "record_load: checkpoint file %s is missing" f
+                 { At = u64 n.["at"]; Index = i32 n.["index"]; Machine = None; File = Some f
+                   WriteProtectA = bln n.["write_protect_a"]; Stopped = bln n.["stopped"]; Halted = bln n.["halted"] } |]
+        { Every = u64 m.["every"]; Journal = ResizeArray journal; Checkpoints = ResizeArray cks
+          Dir = Some dir; Keep = i32 m.["keep"]; DiskLog0 = 0; DiskWritten = false; Active = false; End = u64 m.["end"] }
 
 ///The provenance sidecar `<snap>.prov.json` that SaveState writes beside every snapshot and
 ///LoadState reads back: the SHA-256 of the M68000.dll file that wrote it, the git commit that DLL
@@ -779,16 +890,45 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
     member x.TakeRecordCheckpoint() =
         match recording with
         | Some r ->
-            r.Checkpoints.Add { At = stepCount; Index = r.Journal.Count; Machine = x.Capture(); WriteProtectA = mmu.WriteProtectedA }
+            let file =
+                r.Dir |> Option.map (fun d ->
+                    let p = IO.Path.Combine(d, if r.Checkpoints.Count = 0 then "base.snap" else sprintf "ck_%d.snap" stepCount)
+                    let parent = parentSnapshot //a checkpoint file is not this run's parent
+                    x.SaveState p
+                    parentSnapshot <- parent
+                    p)
+            r.Checkpoints.Add { At = stepCount; Index = r.Journal.Count; Machine = Some (x.Capture()); File = file
+                                WriteProtectA = mmu.WriteProtectedA; Stopped = cpu.Stopped; Halted = cpu.Halted }
+            if mmu.DiskLogLength <> r.DiskLog0 then r.DiskWritten <- true
+            //Evict the checkpoint that has just fallen out of the newest `Keep`, unless the run has
+            //written to disk A: a file restore re-applies its DSKA section on top of the image as it
+            //is then, which cannot undo a later write, while an in-memory one can (DiskLogLength).
+            let old = r.Checkpoints.Count - 1 - r.Keep
+            if r.Dir.IsSome && not r.DiskWritten && old >= 0 then r.Checkpoints.[old].Machine <- None
             nextRecordCheckpoint <- stepCount + r.Every
         | None -> nextRecordCheckpoint <- UInt64.MaxValue
 
     ///Starts a recording at the current state: a base checkpoint, then one every `every` steps
     ///(taken by Step() before the step), and a journal of every `Input`. The checkpoints are in
-    ///memory (about 1 MB each, mostly `MmuSnapshot`'s RAM copy).
-    member x.RecordStart(every: uint64) =
+    ///memory (about 1 MB each, mostly `MmuSnapshot`'s RAM copy). With `dir`, each checkpoint is
+    ///also written there as a snapshot when it is taken (`base.snap`, then `ck_<step>.snap`, each
+    ///with its provenance sidecar, so any one can be `resume`d), only the newest `keep` stay in
+    ///memory, and `RecordStop` writes `journal.jsonl` and `recording.json` so that `RecordLoad`
+    ///can read the recording back in another process. Not spilled: unfired `ATARI_KEY_INPUT`
+    ///groups (refused here) and disk-A writes (a run that writes the disk keeps its checkpoints in
+    ///memory from then on, and its manifest says so).
+    member x.RecordStart(every: uint64, ?dir: string, ?keep: int) =
         if every = 0UL then failwith "record: every must be > 0"
-        recording <- Some { Every = every; Journal = ResizeArray(); Checkpoints = ResizeArray(); Active = true; End = stepCount }
+        let keep = defaultArg keep 16
+        if keep < 0 then failwith "record: keep must be >= 0"
+        dir |> Option.iter (fun d ->
+            if not keyInjectGroups.IsEmpty then failwith "record: unfired ATARI_KEY_INPUT groups cannot be saved with a recording"
+            IO.Directory.CreateDirectory d |> ignore
+            if IO.File.Exists(IO.Path.Combine(d, "recording.json")) || IO.File.Exists(IO.Path.Combine(d, "base.snap")) then
+                failwithf "record: %s already holds a recording" d)
+        recording <- Some { Every = every; Journal = ResizeArray(); Checkpoints = ResizeArray()
+                            Dir = dir |> Option.map IO.Path.GetFullPath; Keep = keep; DiskLog0 = mmu.DiskLogLength
+                            DiskWritten = false; Active = true; End = stepCount }
         x.TakeRecordCheckpoint()
 
     member x.RecordStop() =
@@ -797,7 +937,12 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
             r.Active <- false
             r.End <- stepCount
             nextRecordCheckpoint <- UInt64.MaxValue
+            r.Dir |> Option.iter (fun d -> RecordingFile.write d r)
         | _ -> failwith "record_stop: no active recording"
+
+    ///Reads back a recording `RecordStop` wrote to `dir`, every checkpoint on file. The machine is
+    ///not changed: load `dir/base.snap` (with the disk the recording was made with) before replaying.
+    member x.RecordLoad(dir: string) : Recording = RecordingFile.read dir cpu
 
     ///The current recording. Setting it (stserver keeps several stopped ones) is refused while one
     ///is active, since its checkpoints would stop.
@@ -913,7 +1058,15 @@ type AtartSt(romPath: string, ?diskAPath: string, ?monitor: string) =
         match r.Journal |> Seq.skip ck.Index |> Seq.tryFind (fun e -> match e.Input with DiskA _ -> true | _ -> false) with
         | Some e -> failwithf "replay: a disk swap at step %d lies after the checkpoint at %d" e.At ck.At
         | None -> ()
-        x.Restore ck.Machine
+        match ck.Machine, ck.File with
+        | Some m, _ -> x.Restore m
+        | None, Some f ->
+            let parent = parentSnapshot
+            x.LoadState(f, false)
+            parentSnapshot <- parent
+            cpu <- { cpu with Stopped = ck.Stopped; Halted = ck.Halted }
+            keyInjectGroups <- [] //a spilling recording starts with none (RecordStart)
+        | None, None -> failwithf "replay: the checkpoint at %d has neither a machine nor a file" ck.At
         mmu.SetWriteProtectA ck.WriteProtectA
         let mutable i = ck.Index
         let applyDue () =

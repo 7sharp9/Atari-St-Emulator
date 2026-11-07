@@ -786,7 +786,7 @@ results give them as `"$hex"`.
 | `watch_remove` / `watch_list` / `watch_events` | `id` / / `id?`, `clear?` (default true) | events `{step, pc, addr, width, value, write, source}`; overflow counted in `dropped` |
 | `hits` | `steps`, `addrs` | count, first and last step per address |
 | `fork` / `restore` / `drop` | / `id` / `id` | in-memory checkpoint (`AtartSt.Capture`); a fork restores any number of times |
-| `record_start` / `record_stop` / `record_use` | `every` / / `id` | start a recording here (section "Record and replay"); `record_stop` keeps it and returns its `id`, `base`, `end`, `checkpoints`, `inputs`; `record_use` makes a kept one current |
+| `record_start` / `record_stop` / `record_use` / `record_load` | `every`, `dir?`, `keep?` / / `id` / `dir`, `disk?` | start a recording here, with `dir` written to disk as it runs (section "Record and replay"); `record_stop` keeps it and returns its `id`, `base`, `end`, `checkpoints`, `inputs`, `dir`, `disk_written`; `record_use` makes a kept one current; `record_load` loads a recording's `base.snap` and makes the recording current under a new `id` |
 | `replay_to` | `step` | the current recording's machine at that step; `from_checkpoint`, `watch_hits` |
 | `last_writer` | `lo`, `hi?`, `step` | the last write to `[lo,hi]` at or before `step` (an event as `watch_events` gives it, or null), `intervals` replayed |
 | `last_reg_change` | `reg`, `step`, `mask?` | the last step at or before `step` at which `reg` (`d0`-`a7`, `usp`, `ssp`, `sr`) changed in the bits of `mask`: `step`, `pc`, `value`, `previous`, `source` (`cpu`, `exception`, `host`), or null; `intervals` replayed |
@@ -809,7 +809,7 @@ events at the same steps as the REPL's `watch 189ca 4` (writer PC `$01529c`, val
 `s 300000` / `snap`, and a `fork`/`restore` replay gives an identical end snapshot and event list. A
 `poke` reports `source: "host"`; a stop watch on the odd byte `$189cd` stops `run` on the first byte
 write there, and a word write at `$189cc` reaches a watch on `$189cd` alone. `load` without `disk` of a snapshot with no sidecar is refused, a malformed line is answered and the server stays up.
-The MCP handshake and `tools/list` (32 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
+The MCP handshake and `tools/list` (33 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
 The REPL `watch 189ca 4` output is identical before and after the change (25 lines).
 
 ### Record and replay
@@ -818,8 +818,7 @@ The questions it answers: "which instruction last wrote X before step S", "where
 do two runs first differ", over runs of hundreds of millions of steps, without having set the right watch before the
 run. A watch is bounded by its window (`CLAUDE.md`, "Evidence rules"); a recording moves the window choice to after the
 run. Built: the journal, the checkpoints, `replay_to`, `last_writer`, `last_reg_change`, `first_divergence` and the
-backward slicer `tools/provenance.py` over them. Not built: spilling checkpoints to disk and the saved
-form of a recording.
+backward slicer `tools/provenance.py` over them, and the recording on disk that outlives the `stserver` process.
 
 The machine is deterministic between inputs: `detcheck` shows a `Restore` is an identity on everything a later
 `Step()` reads, and `fork`/`restore` replays give byte-identical end snapshots (`server/smoke.py`). PowerMonger's
@@ -930,9 +929,25 @@ mid-interval): both poked runs diverge from the plain one at the poke's step wit
 byte) the only differing byte and the journal bound at the same step, and the two plain runs do not diverge (8 of 8
 checks). Reporting the step before the bracket's end fails 4 of them.
 
-**Still to build**: checkpoints past a memory budget spill to `SaveState` files in a recording directory
-(`base.snap`, `journal.jsonl` with a disk swap as its path plus the image's FNV hash, `ck_<step>.snap`), which is also
-the saved form of a recording (`record_load`), so a recording outlives the `stserver` process.
+**A recording on disk** (`record_start {every, dir, keep}`): every checkpoint is also written to `dir` as an ordinary
+snapshot when it is taken (`base.snap`, then `ck_<step>.snap`, each with its provenance sidecar, so any one can be
+`resume`d), and only the newest `keep` (default 16) stay in memory; an evicted one is restored with `LoadState`.
+`record_stop` writes `journal.jsonl` (one input per line with its step; a `set_reg` as every register, a disk swap as
+its path) and `recording.json` (every, end, and per checkpoint its step, journal index, file, write-protect tab and the
+CPU's `Stopped`/`Halted` flags, which a snapshot leaves out). `record_load {dir}` in any process loads `base.snap` as
+`load` does (the sidecar remounts the disk unless `disk` is given) and makes the recording current under a new id, all
+its checkpoints on file, so `replay_to`, `last_writer`, `last_reg_change` and `first_divergence` work on it, including
+between recordings made in different processes. Two things are not saved. A run with unfired `ATARI_KEY_INPUT` groups
+is refused at `record_start`. A run that writes to disk A after the base keeps its checkpoints in memory from then on
+(a file restore re-applies the snapshot's `DSKA` section on top of the image as it is, which cannot undo a later write;
+an in-memory one can, through `DiskLogLength`), and its manifest says `disk_written`, which `record_load` refuses.
+Proof: `server/record_disk_proof.py <stserver.dll> <pre_pick.snap> <powermonger.st> <outdir>` records replay_proof's
+run (2.6M steps, checkpoints every 500,000, its three inputs) into a directory with `keep=2`, so four of six
+checkpoints are evicted. The same process replays its 12 points 12 of 12 byte-identical (from the files: the stderr
+shows the checkpoint loads), and a fresh process that `record_load`s the directory does too, 12 of 12. A copy with one
+RAM byte flipped in the checkpoint at 1,500,000 changes the replay at 1,700,000 and none of the 8 before it, so the
+replays read the files. A second recording without the poke, made in another process, diverges from the first at the
+poke's step with `$521cd` the first differing byte, as `divergence_proof.py` finds in memory (9 of 9 checks).
 
 ## MAME as a second oracle for the ST core (`tools/mame_st/`)
 

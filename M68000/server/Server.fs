@@ -456,11 +456,14 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
         s.Input (DiskA (if isNull p.["path"] then None else Some (str p "path")))
         obj []
 
-    "record_start", "Start a recording here: a base checkpoint, one every 'every' steps, and a journal of every input (poke, set_reg, kbd, mouse, disk). load, boot and restore are refused until record_stop.",
-    [ "every", "int", true, "steps between checkpoints" ],
+    "record_start", "Start a recording here: a base checkpoint, one every 'every' steps, and a journal of every input (poke, set_reg, kbd, mouse, disk). load, boot and restore are refused until record_stop. With 'dir', every checkpoint is also written there as a snapshot (base.snap, ck_<step>.snap), only the newest 'keep' stay in memory, and record_stop writes journal.jsonl and recording.json for record_load.",
+    [ "every", "int", true, "steps between checkpoints"
+      "dir", "string", false, "directory to write the recording to (new or empty of a recording)"
+      "keep", "int", false, "with dir: checkpoints kept in memory, default 16" ],
     fun p ->
         let s = need ()
-        s.RecordStart (uint64 (toInt64 "every" (req p "every")))
+        let every = uint64 (toInt64 "every" (req p "every"))
+        if has p "dir" then s.RecordStart (every, str p "dir", optInt p "keep" 16) else s.RecordStart every
         status s []
 
     "record_stop", "End the recording and keep it under the returned id; replay_to and last_writer then work on it (record_use picks another).", [],
@@ -470,6 +473,26 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
         let r = s.Recording.Value
         let id = recordings.Count + 1
         recordings.[id] <- r
+        status s [ "id", jint (int64 id); "base", jint (int64 r.Checkpoints.[0].At); "end", jint (int64 r.End)
+                   "checkpoints", jint (int64 r.Checkpoints.Count); "inputs", jint (int64 r.Journal.Count)
+                   "dir", (match r.Dir with Some d -> jstr d | None -> null); "disk_written", jbool r.DiskWritten ]
+
+    "record_load", "Load a recording record_start wrote to 'dir': loads its base.snap as 'load' does (the sidecar remounts the disk unless 'disk' is given), then keeps the recording under the returned id and makes it the current one. Refused for a run that wrote to disk A.",
+    [ "dir", "string", true, "the recording's directory"; "disk", "string|null", false, ".st image for drive A, or null; omit to use the base snapshot's sidecar"
+      "rom", "string", false, "TOS ROM" ],
+    fun p ->
+        let dir = str p "dir"
+        let snap = Path.Combine(dir, "base.snap")
+        if not (File.Exists snap) then fail "record_load: no base.snap in %s" dir
+        let fromSidecar = not (p.ContainsKey "disk") && (match Provenance.tryRead snap with Some (Ok _) -> true | _ -> false)
+        if fromSidecar then p.["disk"] <- null
+        let s = prepare "record_load" p
+        let r = s.RecordLoad dir
+        s.LoadState(snap, remountDisk = fromSidecar)
+        if s.StepCount <> r.Checkpoints.[0].At then fail "record_load: base.snap is at step %d, the manifest's base at %d" s.StepCount r.Checkpoints.[0].At
+        let id = recordings.Count + 1
+        recordings.[id] <- r
+        s.Recording <- Some r
         status s [ "id", jint (int64 id); "base", jint (int64 r.Checkpoints.[0].At); "end", jint (int64 r.End)
                    "checkpoints", jint (int64 r.Checkpoints.Count); "inputs", jint (int64 r.Journal.Count) ]
 
