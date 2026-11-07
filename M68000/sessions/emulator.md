@@ -72,7 +72,8 @@ Nothing running.
 
 - `stserver.dll` is not built by `dotnet build M68000.fsproj`: build `M68000/server/StServer.fsproj` per checkout. That
   build also reinstalls `M68000.fsproj` into `bin/`, so build the server first and gate the DLL left in `bin/`
-  (cmp `bin/` against `server/bin/`). A running Claude session's MCP `stserver` keeps the build it started with:
+  (cmp `bin/` against `server/bin/`). A later `M68000.fsproj`-only build leaves `server/bin/` behind, so a handoff's
+  "same DLL" line goes stale: cmp the two at resume (they differed after `70c05c1`). A running Claude session's MCP `stserver` keeps the build it started with:
   restart the session after a server rebuild to see new tools (`record_load`).
 - Two `Debug` builds of one source have differed with no source edit: tie every result to the DLL actually run
   (its SHA-256; a sidecar now records it per snapshot).
@@ -88,6 +89,6 @@ Nothing running.
 
 ## Next session
 
-`/resume emulator`. Restart the Claude session first if the MCP `stserver` predates `7993e58` (it lacks `record_load`).
+`/resume emulator`. An MCP `stserver` without a `record_load` tool predates `7993e58`: restart the session.
 Then Open 1 (executed-PC coverage), which needs its hot-path A/B first; Open 2 (stdrive recording to disk) is small and
 can go before it if a slicing question is waiting.
