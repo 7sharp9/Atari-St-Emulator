@@ -14,9 +14,7 @@ Updated 2026-11-07 by the session that built recordings on disk (Open 1 of the p
   scratchpad and are not kept.
 - Working data: none. Proofs start from PowerMonger's `scratchpad/cmd10/leadkill/pre_pick.snap` (made by
   `reversing/powermonger/commander/leadkill/gate_leadkill.sh`) with `scratchpad/powermonger.st`.
-- Uncommitted work left behind: none. Two agent worktrees remain (Dave to remove or keep): `agent-a6ad815bd9bc05d59`
-  holds `893d133`, an earlier draft of master's `6cc74e9` (12 wording lines differ; master's is final), and
-  `agent-af7707af89a8b6449` holds only the net run above (linked `tests`, cloned scratchpad, gate logs).
+- Uncommitted work left behind: none. The agent worktrees and branches are removed.
 
 ## Proven so far
 
@@ -85,8 +83,6 @@ Nothing running.
 
 ## Waiting on Dave
 
-- Push: master is ahead of origin.
-- The two leftover agent worktrees (Resume point): remove or keep.
 - For the impossamole workstream (not edited here): `sessions/impossamole.md` "Known traps" says the boss `Repl` does not
   record and a fight takes 40 s; `boss_stdrive.py` journals every input and a fight takes about 8 s.
 
