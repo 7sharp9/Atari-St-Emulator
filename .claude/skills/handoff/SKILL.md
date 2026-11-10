@@ -9,6 +9,5 @@ disable-model-invocation: true
 Call the Skill tool with skill `continuity:session-handoff` and args `$ARGUMENTS`, then follow it, using this repo's
 profile `.claude/continuity.md`. This wrapper carries no rules of its own.
 
-If `continuity:session-handoff` is unavailable, tell Dave the continuity plugin is not installed, give the install
-command `/plugin install continuity@tritone` (marketplace `7sharp9/claude_plugins`, declared in
-`.claude/settings.json`), and stop. Do not improvise a handoff procedure.
+If `continuity:session-handoff` is unavailable, tell Dave the continuity plugin is not installed, give the one-time install for this machine (`/plugin marketplace add 7sharp9/claude_plugins`, then
+`/plugin install continuity@tritone`, `evidence@tritone` and `academic@tritone`, then restart the session), and stop. Do not improvise a handoff procedure.
