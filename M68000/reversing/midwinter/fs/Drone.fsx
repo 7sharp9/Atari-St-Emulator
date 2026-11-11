@@ -117,6 +117,14 @@ let route =
     [ -80.0f, 840.0f; 100.0f, 820.0f; 260.0f, 800.0f; 420.0f, 820.0f; 600.0f, 860.0f; 780.0f, 880.0f
       900.0f, 800.0f; 980.0f, 680.0f; 1000.0f, 540.0f; 960.0f, 400.0f; 900.0f, 240.0f; 880.0f, 60.0f ]
 
+/// The heading at each point: towards the point `lead` samples ahead, smoothed as unit vectors so it never wraps.
+let private headings (lead: int) (pts: (float32 * float32)[]) =
+    let ahead i = pts.[min (pts.Length - 1) (i + lead)]
+    pts |> Array.mapi (fun i (x, y) -> let ax, ay = ahead i in MathF.Atan2(ay - y, ax - x))
+    |> Array.map (fun a -> MathF.Cos a, MathF.Sin a)
+    |> fun v -> Array.zip (smooth 20 (Array.map fst v)) (smooth 20 (Array.map snd v))
+    |> Array.map (fun (c, s) -> MathF.Atan2(s, c))
+
 let cameras (t: Terrain) (frames: int) : Camera[] =
     let pts = path frames route
     let ahead i k = pts.[min (pts.Length - 1) (i + k)]
@@ -125,11 +133,7 @@ let cameras (t: Terrain) (frames: int) : Camera[] =
         pts |> Array.mapi (fun i _ ->
             [ 0 .. 4 .. 60 ] |> List.map (fun k -> let x, y = ahead i k in groundAt t x y) |> List.max)
     let alt = ground |> smooth 25 |> Array.map (fun g -> g + 6.0f)
-    let yaw =
-        pts |> Array.mapi (fun i (x, y) -> let ax, ay = ahead i 40 in MathF.Atan2(ay - y, ax - x))
-        |> Array.map (fun a -> MathF.Cos a, MathF.Sin a)
-        |> fun v -> Array.zip (smooth 20 (Array.map fst v)) (smooth 20 (Array.map snd v))
-        |> Array.map (fun (c, s) -> MathF.Atan2(s, c))
+    let yaw = headings 40 pts
     Array.init frames (fun i ->
         let x, y = pts.[i]
         { X = x; Y = y; Alt = alt.[i]; Yaw = yaw.[i]; Pitch = 0.16f })
@@ -143,6 +147,53 @@ let private film (t: Terrain) (cams: Camera[]) (out: string) =
         frame t Lens.drone Air.cold w h cam)
     |> encode w h fps (sprintf "-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart \"%s\"" out)
     eprintfn "%d frames in %d ms" cams.Length sw.ElapsedMilliseconds
+
+/// The skier's eye over the snow: the game's camera sits 8 height units above the ground under it (660 over 652 on
+/// `d_ski`, `$1721c`), which is 8/256 of a cell.
+let skierEye = 8.0f / finestCell
+
+/// The same route on skis: the eye is `skierEye` over the ground at every frame, with no smoothing, so the camera
+/// rides every bump; it looks along the slope two cells ahead (smoothed a little, or the view shakes). The run is the
+/// longest stretch of `route` that stays above the shore step ($1991a lifts land of height 10 and over by 250), so it
+/// never crosses the sea or the beach below the step.
+let skiCameras (t: Terrain) (frames: int) : Camera[] =
+    let dense = path (frames * 2) route
+    let onLand (x, y) = groundAt t x y >= 1.0f
+    let first, last =
+        dense |> Array.mapi (fun i p -> i, onLand p)
+        |> Array.fold (fun (runs, start) (i, land) ->
+            match land, start with
+            | true, None -> runs, Some i
+            | false, Some s -> (s, i - 1) :: runs, None
+            | _ -> runs, start) ([], None)
+        |> fun (runs, start) -> match start with Some s -> (s, dense.Length - 1) :: runs | None -> runs
+        |> List.maxBy (fun (a, b) -> b - a)
+    let pts = dense.[first .. last]
+    let pts = Array.init frames (fun i -> pts.[i * (pts.Length - 1) / (frames - 1)])
+    let yaw = headings 20 pts
+    let pitch =
+        Array.init frames (fun i ->
+            let x, y = pts.[i]
+            let ax, ay = x + 2.0f * MathF.Cos yaw.[i], y + 2.0f * MathF.Sin yaw.[i]
+            MathF.Atan2(groundAt t x y - groundAt t ax ay, 2.0f))
+        |> smooth 6
+    // a steep face just ahead would fill the screen: tilt up at least far enough to keep the next three cells' rise
+    // a little below the top edge (`Lens.drone` is 70 degrees across 16:9, so about 20 degrees above the centre)
+    let lookUp i =
+        let x, y = pts.[i]
+        let eye = groundAt t x y + skierEye
+        seq { for k in 1 .. 12 do
+                let d = 0.25f * float32 k
+                yield MathF.Atan2(groundAt t (x + d * MathF.Cos yaw.[i]) (y + d * MathF.Sin yaw.[i]) - eye, d) }
+        |> Seq.max
+    Array.init frames (fun i ->
+        let x, y = pts.[i]
+        { X = x; Y = y; Alt = groundAt t x y + skierEye; Yaw = yaw.[i]; Pitch = min pitch.[i] (0.25f - lookUp i) })
+
+/// The coast-to-coast run on skis.
+let ski (finest: Grid) (out: string) (seconds: float) =
+    let t = terrain finestCell finest
+    film t (skiCameras t (int (seconds * 30.0))) out
 
 /// The coast-to-coast flight along `route`.
 let fly (finest: Grid) (out: string) (seconds: float) =
@@ -240,6 +291,37 @@ let skier (finest: Grid) (ram: byte[]) (palette: int[]) (out: string) =
     let sky = stColour palette.[2]
     let colours = [| sky; dark; level; lit |]
     frame t Lens.midwinter (Air.flat sky) 320 200 cam |> quantise colours 0.2f |> savePng out
+
+// ---------------------------------------------------------------- every level of the whole island
+
+/// The whole island at each level, file 37.2's 50 x 50 to the finest 1600 x 1600, each drawn `size` pixels square
+/// (a coarse level's cells blown up, a fine level's averaged down) and laid out three to a row. Each level loses the
+/// same south and east band, 64 finest cells, as the map does.
+let levelsFigure (levels: Grid list) (size: int) (out: string) =
+    let panel k (level: Grid) =
+        let per = 1 <<< (5 - k)
+        let n = Array2D.length1 level - 64 / per
+        let src = topDown (terrain (finestCell * float32 per) level.[0 .. n - 1, 0 .. n - 1])
+        let img = image size size
+        for y in 0 .. size - 1 do
+            for x in 0 .. size - 1 do
+                let x0, x1 = x * n / size, max (x * n / size + 1) ((x + 1) * n / size)
+                let y0, y1 = y * n / size, max (y * n / size + 1) ((y + 1) * n / size)
+                let mutable r, g, b = 0, 0, 0
+                for sy in y0 .. y1 - 1 do
+                    for sx in x0 .. x1 - 1 do
+                        let i = 3 * (sy * n + sx)
+                        r <- r + int src.Pixels.[i]; g <- g + int src.Pixels.[i + 1]; b <- b + int src.Pixels.[i + 2]
+                let count = float32 ((x1 - x0) * (y1 - y0)) * 255.0f
+                setPixel img x y (float32 r / count, float32 g / count, float32 b / count)
+        img
+    let panels = levels |> List.mapi panel
+    let rows = panels |> List.chunkBySize 3 |> List.map (row 8)
+    let w = rows.Head.Width
+    let h = (rows |> List.sumBy _.Height) + 8 * (rows.Length - 1)
+    let img = { image w h with Pixels = Array.create (w * h * 3) 255uy }
+    rows |> List.iteri (fun i r -> Array.blit r.Pixels 0 img.Pixels (3 * w * i * (r.Height + 8)) r.Pixels.Length)
+    savePng out img
 
 // ---------------------------------------------------------------- the zoom, as a figure
 

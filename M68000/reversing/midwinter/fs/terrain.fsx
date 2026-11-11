@@ -7,9 +7,11 @@
 //   dotnet fsi terrain.fsx gate <gatedir> [--break]   Faithful against the game: every cell of 7 windows
 //   dotnet fsi terrain.fsx domain <gatedir>           Island against the game, inside a 2-cell margin
 //   dotnet fsi terrain.fsx same <gatedir>             overlapping game windows agree (terrain.md section 6)
-//   dotnet fsi terrain.fsx map <gatedir> <out.png>    the whole island at the finest level, from above
+//   dotnet fsi terrain.fsx map <gatedir> <out.png>    the island at the finest level, from above, less the south/east 64-cell edge band
+//   dotnet fsi terrain.fsx levels <gatedir> <out.png> the whole island at every level, file 37.2 to 1600 x 1600
 //   dotnet fsi terrain.fsx zoom <gatedir> <out.png>   the five levels around the ski entry
 //   dotnet fsi terrain.fsx drone <gatedir> <out.mp4> [seconds]      coast to coast
+//   dotnet fsi terrain.fsx ski <gatedir> <out.mp4> [seconds]        coast to coast at the skier's eye height
 //   dotnet fsi terrain.fsx reveal <gatedir> <out.mp4> [seconds]     rise on a locked focus, then orbit
 //   dotnet fsi terrain.fsx skier <gatedir> <ski.snap> <out.png>     the game's own camera, lens and palette, 320 x 200
 //
@@ -142,11 +144,17 @@ match fsi.CommandLineArgs |> Array.toList |> List.tail with
     exit (if inside then 0 else 1)
 | [ "map"; dir; out ] ->
     let finest = List.last (islandFrom dir)
-    Render.savePng out (Render.topDown (Render.terrain Drone.finestCell finest))
+    // without the south and east 64 cells: there the model refines against `Cell.outside` and grows false land,
+    // and the game reads whatever follows its grid (terrain.md section 6)
+    let n = Array2D.length1 finest - 64
+    Render.savePng out (Render.topDown (Render.terrain Drone.finestCell finest.[0 .. n - 1, 0 .. n - 1]))
     exit 0
+| [ "levels"; dir; out ] -> Drone.levelsFigure (islandFrom dir) 400 out; exit 0
 | [ "zoom"; dir; out ] -> Drone.zoomFigure (islandFrom dir) (368, 1176) out; exit 0
 | [ "drone"; dir; out ] -> Drone.fly (List.last (islandFrom dir)) out 20.0; exit 0
 | [ "drone"; dir; out; secs ] -> Drone.fly (List.last (islandFrom dir)) out (float secs); exit 0
+| [ "ski"; dir; out ] -> Drone.ski (List.last (islandFrom dir)) out 60.0; exit 0
+| [ "ski"; dir; out; secs ] -> Drone.ski (List.last (islandFrom dir)) out (float secs); exit 0
 | [ "reveal"; dir; out ] -> Drone.reveal (List.last (islandFrom dir)) out 30.0; exit 0
 | [ "reveal"; dir; out; secs ] -> Drone.reveal (List.last (islandFrom dir)) out (float secs); exit 0
 | [ "skier"; dir; snap; out ] -> Drone.skier (List.last (islandFrom dir)) (Heritage.loadRam snap) (Heritage.loadPalette snap) out; exit 0
