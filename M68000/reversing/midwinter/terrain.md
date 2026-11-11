@@ -13,6 +13,11 @@ ski entry and 6 poked targets, no two grids alike), post-passes **10000/10000**.
 calls; over the whole 1 MB RAM the generator model differs from the game only at the system timer `$4bc`, a VBL byte
 `$637f` and the stack below A7. Dropping the building pads from the model breaks 475 cells.
 
+The F# port `fs/terrain.fsx` (`dotnet fsi fs/terrain.fsx gate $MIDWINTER_WORK/terrain/gate`, run after
+`gate_terrain.py` has built the snapshots) matches the same snapshots on the same counts, generator **70000/70000** and
+post-passes **10000/10000**, in about 70 ms. Its negative control, `--break` (the seed word without the XOR with the
+first parent's seed), drops the generator to 1126/70000.
+
 | picture | what |
 |---|---|
 | `terrain_island.png` | file 37.2 after the first subdivision (`$1999a`): the whole island at 100 x 100, sea blue, land by height. Same coastline as the game's own map screen (`map.png`; visual check) |
@@ -125,6 +130,17 @@ In the order `$1498a`, `$14cc0` and `$152c0` call them:
 - The map screen (`$14ce`) copies 37.2 to `$60000` with a zero row below it (`$15d6`), subdivides once with `$2c60`
   and draws the result with `$2bc2` (per-row handler `[$22d50]`): the map is drawn from the height grid, not stored as a
   picture (inferred from the code; the render is not matched).
+
+## 6. The same place, the same hills
+
+Because every displacement is a function of the parent cells and the window only selects which parents to refine, two
+windows that overlap give the overlapping ground the same heights, except along the grid's edge, where the stale reads
+of section 2 enter. Measured on the F# port (`fs/terrain.fsx same <gatedir>`, which keys each final cell by its world
+position, the final origin `$19cda/$19cdc` plus its column and row): over 40 targets within 60 finest cells of
+(800, 800), 327,264 overlapping cell pairs agree and none differ once the outer 2 cells of each grid are dropped; with
+1 cell dropped 7,091 differ, with none 26,402. Over 40 targets spread across (200..1400)², the same: 34,884 agree and
+none differ at a 2-cell margin, 792 differ at 1, 3,282 at 0. This is the model, not the game: the port matches the game on
+every cell of the 7 gated windows (section 1's proof), but the 80 windows here were not run in the emulator.
 
 ## Open
 
