@@ -37,10 +37,12 @@ let private sample (t: Terrain) (x: float32) (y: float32) : float32 * Colour =
     else
         let c, r = int x, int y
         let fx, fy = x - float32 c, y - float32 r
-        // close up, straight-line blending shows every cell edge as a crease: ease it for the textured surface
-        let fx, fy = if t.Grain > 0.0f then fx * fx * (3.0f - 2.0f * fx), fy * fy * (3.0f - 2.0f * fy) else fx, fy
         let blend (a: float32) b c' d = lerp (lerp a b fx) (lerp c' d fx) fy
         let h = blend t.Height.[r, c] t.Height.[r, c + 1] t.Height.[r + 1, c] t.Height.[r + 1, c + 1]
+        // close up, straight-line blending shows every cell edge as a crease in the shading: ease the colour (only the
+        // colour, so the ground keeps the game's shape) for the textured surface
+        let fx, fy = if t.Grain > 0.0f then fx * fx * (3.0f - 2.0f * fx), fy * fy * (3.0f - 2.0f * fy) else fx, fy
+        let blend (a: float32) b c' d = lerp (lerp a b fx) (lerp c' d fx) fy
         let k (sel: Colour -> float32) = blend (sel t.Colour.[r, c]) (sel t.Colour.[r, c + 1]) (sel t.Colour.[r + 1, c]) (sel t.Colour.[r + 1, c + 1])
         h, (k (fun (a, _, _) -> a), k (fun (_, b, _) -> b), k (fun (_, _, c) -> c))
 
@@ -100,9 +102,11 @@ let frame (t: Terrain) (lens: Lens) (air: Air) (w: int) (h: int) (cam: Camera) :
             let sy = horizon + (cam.Alt - height / finestCell) / z * focal
             if sy < float32 top then
                 let colour =
-                    if t.Grain = 0.0f || z > 6.0f || height = 0.0f then colour
+                    // the ripples are 1/48 cell apart: past about 0.4 cell a screen row spans several, so fade them out
+                    // there or they shimmer
+                    if t.Grain = 0.0f || z > 1.5f || height = 0.0f then colour
                     else
-                        let k = 1.0f - t.Grain * MathF.Exp(-z / 2.0f) * (grain gx gy + 0.5f)     // shade only: snow is at white
+                        let k = 1.0f - t.Grain * MathF.Exp(-z / 0.25f) * (grain gx gy + 0.5f)    // shade only: snow is at white
                         let r, g, b = colour in r * k, g * k, b * k
                 let c = mix colour air.Horizon (1.0f - MathF.Exp(-z / air.Thickness))
                 let y0 = max 0 (int sy)
@@ -246,45 +250,56 @@ let skierEye = 8.0f / finestCell
 /// states no unit.
 let cellMetres = 1.7f / skierEye
 
-/// A run down the slope from just below the island's central peak, as physics: gravity along the slope, sliding
-/// friction and air drag on the speed, and S-turns carved across the fall line (32 degrees each side, one turn every
-/// 2 s; the turn rate the skis allow is 70 degrees a second). The camera is at `skierEye` over the ground, looks a
-/// down the slope by half its angle, as a skier's head does, banks into each turn as the turn's sideways acceleration asks, and never tilts
-/// down so far that the ground just ahead rises off the top of the screen.
+/// A run down from just below the island's central peak, as simple physics: gravity along the slope against sliding
+/// friction and air drag, S-turns carved across the fall line (32 degrees each side, one turn every 2 s, and wider on ground steeper than 30
+/// degrees, so the skis drop at about 30 there: speed control, as a skier does it), the turn rate
+/// limited to 70 degrees a second and to 1.2 g of sideways pull, so a fast skier turns wider. The camera is at
+/// `skierEye` over the ground, looks down the slope by half its angle, leans into each turn by half the body's lean
+/// (a skier's head stays more level than the body: ours), and never tilts down so far that the ground just ahead
+/// rises off the top of the screen. Above 18 m/s the skier skids the turns, braking in proportion to the excess, as
+/// a skier controls speed (ours). Not modelled: the speed a clean carved turn costs.
 let skiCameras (t: Terrain) (frames: int) : Camera[] =
-    let dt, gravity, friction, drag = 1.0f / 30.0f, 9.81f, 0.06f, 0.0045f       // drag per metre: about 22 m/s on 15 degrees
+    let dt, gravity, friction, drag = 1.0f / 30.0f, 9.81f, 0.06f, 0.0045f       // drag per metre: about 21 m/s on 15 degrees
     let slope x y =                                                    // height gain per cell, east and south
         (groundAt t (x + 0.5f) y - groundAt t (x - 0.5f) y), (groundAt t x (y + 0.5f) - groundAt t x (y - 0.5f))
     let tx, ty = focus t
-    let rec start r =                                                  // down the peak's west flank to steady ground
+    let rec start r =                                                  // out from the peak to the first ground over 7 degrees
         let x, y = tx - r, ty + 0.3f * r
         let gx, gy = slope x y
         if MathF.Sqrt(gx * gx + gy * gy) > 0.12f || r > 60.0f then x, y else start (r + 1.0f)
     let x0, y0 = start 4.0f
     let fallLine x y = let gx, gy = slope x y in MathF.Atan2(-gy, -gx)
     let mutable x, y, speed, heading = x0, y0, 4.0f, fallLine x0 y0
-    let mutable roll = 0.0f
+    let mutable roll, pitch = 0.0f, 0.0f
     Array.init frames (fun i ->
         let time = float32 i * dt
         let gx, gy = slope x y
-        let wanted = fallLine x y + 0.55f * MathF.Sin(MathF.PI * time / 2.0f)
+        // on ground steeper than 30 degrees, swing far enough across the fall line that the skis drop at about 30
+        let fall = MathF.Sqrt(gx * gx + gy * gy)
+        let across = if fall > 0.577f then max 0.55f (MathF.Acos(0.577f / fall)) else 0.55f
+        let wanted = fallLine x y + across * MathF.Sin(MathF.PI * time / 2.0f)
         let turn = MathF.Atan2(MathF.Sin(wanted - heading), MathF.Cos(wanted - heading))
-        let rate = Math.Clamp(turn / dt, -1.2f, 1.2f)
+        let maxRate = min 1.2f (1.2f * gravity / speed)
+        let rate = Math.Clamp(turn / dt, -maxRate, maxRate)
         heading <- heading + rate * dt
         let fx, fy = MathF.Cos heading, MathF.Sin heading
         let down = -(gx * fx + gy * fy)                                // drop per cell along the skis
-        let along = down / MathF.Sqrt(1.0f + down * down)
-        speed <- max 3.0f (speed + (gravity * (along - friction) - drag * speed * speed) * dt)
-        x <- x + fx * speed / cellMetres * dt
-        y <- y + fy * speed / cellMetres * dt
-        roll <- lerp roll (MathF.Atan(speed * rate / gravity) |> fun r -> Math.Clamp(r, -0.35f, 0.35f)) 0.1f
+        let cos = 1.0f / MathF.Sqrt(1.0f + down * down)
+        let skid = 2.0f * max 0.0f (speed - 18.0f)                    // skidding the turns to hold about 18 m/s
+        speed <- max 3.0f (speed + (gravity * (down * cos - friction * cos) - drag * speed * speed - skid) * dt)
+        let ground = speed * cos / cellMetres * dt                     // the speed is along the slope; the map sees its level part
+        x <- x + fx * ground
+        y <- y + fy * ground
+        roll <- lerp roll (0.5f * MathF.Atan(speed * rate / gravity)) 0.1f
         let eye = groundAt t x y + skierEye
         let lookUp =
             seq { for k in 1 .. 16 do
                     let d = 0.01f * float32 k
                     yield MathF.Atan2(groundAt t (x + d * fx) (y + d * fy) - eye, d) } |> Seq.max
-        let pitch = min (0.5f * MathF.Atan down + 0.05f) (0.3f - lookUp)
-        if i % 300 = 0 then eprintfn "t %4.1fs at (%.1f, %.1f) speed %.1f m/s slope %.1f deg roll %.1f deg" time x y speed (MathF.Atan down * 57.3f) (roll * 57.3f)
+        pitch <- lerp pitch (min (0.5f * MathF.Atan down + 0.05f) (0.3f - lookUp)) 0.15f
+        if i % 150 = 0 then
+            let fall = MathF.Atan fall * 57.3f
+            eprintfn "t %4.1fs at (%.1f, %.1f) speed %.1f m/s, along the skis %.1f deg, fall line %.1f deg, roll %.1f deg" time x y speed (MathF.Atan down * 57.3f) fall (roll * 57.3f)
         { X = x; Y = y; Alt = eye; Yaw = heading; Pitch = pitch; Roll = roll })
 
 /// The ski run, at the ski lens with the snow's grain.
