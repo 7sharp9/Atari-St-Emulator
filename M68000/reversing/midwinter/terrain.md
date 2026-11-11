@@ -135,7 +135,17 @@ In the order `$1498a`, `$14cc0` and `$152c0` call them:
 
 - The landscape render `$18304` -> `$16d9c` starts at the camera's cell `[$12c80]` (`$4521c` on `d_ski`: row 49,
   col 50, the centre), reads each cell's height `(A0)` and its two shading bytes `2(A0)`, and steps a row with `lea -400(A0)`.
-  The projection and polygon fill are item 2 of the handoff, not decoded here.
+  The projection and polygon fill are not decoded, but the vertex transform at the top of `$16d9c` fixes the
+  vertical scale. Each vertex starts from a camera-space position (`D0..D2`, 16.16) that steps by 64.0 per cell: the
+  row step (`lea -400(A0)`) adds `$171fc/$17204/$1720c` (0, -0.25, 64.0 on `d_ski`), the column step (`lea 4(A0)`)
+  adds `$171f8/$17200/$17208` (64.0, about 0, about 0). The cell's height minus the camera height `$1721c` (660 on
+  `d_ski`, over ground 652) is multiplied by `$17212` (16384) into Y and `$17210` (64) into Z and added before the
+  `swap`, so a height unit is 0.25 camera units and a cell is as wide as 256 height units are tall. The 2 x 2 matrix
+  `$17216/$17214` (163, 0) carries the focal length, and the projection is `x * 163 / z + $17218` (160),
+  `-y * 163 / z + $1721a` (132). Checked live in `stserver` from `d_ski.snap`: at `$16e28` the first vertex has
+  `D4 = -326` (= -2 x 163) and `D5.w = -1`; at `$16ee8`, one row ahead, `D1/D2` are `$ffffc000/$00400000` and
+  `D4 = -489` (= -3 x 163), `D5.w = 63`, as the arithmetic gives. Read from one ski frame only: the other vehicles'
+  matrices are not read.
 - The map screen (`$14ce`) copies 37.2 to `$60000` with a zero row below it (`$15d6`), subdivides once with `$2c60`
   and draws the result with `$2bc2` (per-row handler `[$22d50]`): the map is drawn from the height grid, not stored as a
   picture (inferred from the code; the render is not matched).

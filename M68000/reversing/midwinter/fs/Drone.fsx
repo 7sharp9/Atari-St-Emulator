@@ -8,8 +8,10 @@ open System.Threading.Tasks
 open Island
 open Render
 
-/// Height units one finest cell spans. The game's 3D view is not decoded, so the vertical scale is a choice.
-let finestCell = 110.0f
+/// Height units one finest cell spans: the game's own ratio. Its landscape routine $16d9c steps 64 camera units per
+/// cell (row step $1720c, column step $171f8, 16.16) and multiplies a height by 16384/65536 = 0.25 ($17212), so a
+/// cell is as wide as 256 height units are tall (terrain.md section 5).
+let finestCell = 256.0f
 
 type Camera = { X: float32; Y: float32; Alt: float32; Yaw: float32; Pitch: float32 }   // X column, Y row, in cells
 
@@ -102,7 +104,7 @@ let cameras (t: Terrain) (frames: int) : Camera[] =
     let ground =
         pts |> Array.mapi (fun i _ ->
             [ 0 .. 4 .. 60 ] |> List.map (fun k -> let x, y = ahead i k in groundAt t x y) |> List.max)
-    let alt = ground |> smooth 25 |> Array.map (fun g -> g + 12.0f)
+    let alt = ground |> smooth 25 |> Array.map (fun g -> g + 6.0f)
     let yaw =
         pts |> Array.mapi (fun i (x, y) -> let ax, ay = ahead i 40 in MathF.Atan2(ay - y, ax - x))
         |> Array.map (fun a -> MathF.Cos a, MathF.Sin a)
