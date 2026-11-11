@@ -42,19 +42,28 @@ let groundAt (t: Terrain) x y = fst (sample t x y) / finestCell
 
 // ---------------------------------------------------------------- one frame
 
-let skyTop: Colour = 0.33f, 0.50f, 0.78f
-let haze: Colour = 0.82f, 0.87f, 0.94f
+/// The air between the camera and the ground: the sky's colour overhead and at the horizon, and the distance in
+/// cells over which the ground fades to the horizon colour.
+type Air = { Zenith: Colour; Horizon: Colour; Thickness: float32 }
+
+module Air =
+    /// Air at well below freezing holds almost no water, so there is little haze: a deep blue sky that pales only
+    /// near the horizon, and distance tints the ground blue rather than greying it.
+    let cold = { Zenith = (0.04f, 0.22f, 0.60f); Horizon = (0.66f, 0.82f, 0.98f); Thickness = 2200.0f }
+
+    /// One flat colour and no fade, as the game draws its sky.
+    let flat (sky: Colour) = { Zenith = sky; Horizon = sky; Thickness = infinityf }
 
 /// Pitch shears the view (the horizon moves, verticals stay vertical), as height-field renderers of the time did:
 /// fine for a gimbal tilted a few tens of degrees, wrong for looking straight down.
-let frame (t: Terrain) (lens: Lens) (w: int) (h: int) (cam: Camera) : Image =
+let frame (t: Terrain) (lens: Lens) (air: Air) (w: int) (h: int) (cam: Camera) : Image =
     let img = image w h
     let fov = lens.Fov
     let focal = float32 w / 2.0f / MathF.Tan(fov / 2.0f)
     let horizon = float32 h * lens.CentreY - focal * MathF.Tan cam.Pitch
     let fx, fy = MathF.Cos cam.Yaw, MathF.Sin cam.Yaw
     let rx, ry = -fy, fx                                               // rows run south, so right is (-fy, fx)
-    let far, fogDistance = lens.Far, 650.0f
+    let far = lens.Far
     Parallel.For(0, w, fun col ->
         let u = (2.0f * (float32 col + 0.5f) / float32 w - 1.0f) * MathF.Tan(fov / 2.0f)
         let dx, dy = fx + rx * u, fy + ry * u
@@ -64,15 +73,14 @@ let frame (t: Terrain) (lens: Lens) (w: int) (h: int) (cam: Camera) : Image =
             let height, colour = sample t (cam.X + dx * z) (cam.Y + dy * z)
             let sy = horizon + (cam.Alt - height / finestCell) / z * focal
             if sy < float32 top then
-                let fog = 1.0f - MathF.Exp(-z / fogDistance)
-                let c = mix colour haze fog
+                let c = mix colour air.Horizon (1.0f - MathF.Exp(-z / air.Thickness))
                 let y0 = max 0 (int sy)
                 for y in y0 .. top - 1 do setPixel img col y c
                 top <- y0
             z <- z + max 0.02f (z * 0.004f)
         for y in 0 .. top - 1 do                                       // sky
             let t' = Math.Clamp((horizon - float32 y) / (0.6f * float32 h), 0.0f, 1.0f)
-            setPixel img col y (mix haze skyTop t')) |> ignore
+            setPixel img col y (mix air.Horizon air.Zenith (MathF.Sqrt t'))) |> ignore
     img
 
 // ---------------------------------------------------------------- the flight
@@ -132,7 +140,7 @@ let private film (t: Terrain) (cams: Camera[]) (out: string) =
     cams
     |> Seq.mapi (fun i cam ->
         if i % 60 = 0 then eprintfn "frame %d/%d (%d ms)" i cams.Length sw.ElapsedMilliseconds
-        frame t Lens.drone w h cam)
+        frame t Lens.drone Air.cold w h cam)
     |> encode w h fps (sprintf "-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart \"%s\"" out)
     eprintfn "%d frames in %d ms" cams.Length sw.ElapsedMilliseconds
 
@@ -193,19 +201,45 @@ let reveal (finest: Grid) (out: string) (seconds: float) =
     eprintfn "focus (%.0f, %.0f), ground %.1f cells" tx ty (groundAt t tx ty)
     film t (revealCameras t (int (seconds * 30.0)) 0.4f) out
 
-// ---------------------------------------------------------------- the skier's own view
+// ---------------------------------------------------------------- the skier's own view, in the game's colours
+
+/// A $0RGB shifter word as a colour: 3 bits a gun, 7 is full.
+let stColour (w: int) : Colour = float32 ((w >>> 8) &&& 7) / 7.0f, float32 ((w >>> 4) &&& 7) / 7.0f, float32 (w &&& 7) / 7.0f
+
+/// Reduce an image to a few colours with a 4 x 4 ordered dither, the way the game shades its snow (alternate pixels
+/// of two palette colours). `spread` is how far the dither may push a pixel towards a neighbouring colour.
+let quantise (palette: Colour[]) (spread: float32) (img: Image) : Image =
+    let bayer = [| 0; 8; 2; 10; 12; 4; 14; 6; 3; 11; 1; 9; 15; 7; 13; 5 |]
+    let out = image img.Width img.Height
+    for y in 0 .. img.Height - 1 do
+        for x in 0 .. img.Width - 1 do
+            let i = 3 * (y * img.Width + x)
+            let d = (float32 bayer.[(y % 4) * 4 + x % 4] + 0.5f) / 16.0f - 0.5f
+            let r, g, b = (float32 img.Pixels.[i] / 255.0f + d * spread), (float32 img.Pixels.[i + 1] / 255.0f + d * spread), (float32 img.Pixels.[i + 2] / 255.0f + d * spread)
+            let dist ((pr, pg, pb): Colour) = (pr - r) ** 2.0f + (pg - g) ** 2.0f + (pb - b) ** 2.0f
+            setPixel out x y (Array.minBy dist palette)
+    out
 
 /// The ski view of a snapshot, as the game's projection places it: eye at the camera height `$1721c` over the
-/// camera cell `$12c80`, facing north (a row step is +64 in camera Z), level, the game's lens, 320 x 200.
-let skier (finest: Grid) (ram: byte[]) (out: string) =
-    let t = terrain finestCell finest
+/// camera cell `$12c80`, facing north (a row step is +64 in camera Z), level, the game's lens, 320 x 200. The
+/// picture is in the game's own colours, read from the snapshot's shifter palette: the flat sky (colour 2, $157)
+/// and the three snow colours the goggle view uses (colours 5, 6 and 1: $245, $467, $777), level snow in the
+/// middle one as on the game's screen. Which colour the game gives each slope is not decoded; the ramp is ours.
+let skier (finest: Grid) (ram: byte[]) (palette: int[]) (out: string) =
+    let dark, level, lit = stColour palette.[5], stColour palette.[6], stColour palette.[1]
+    let ramp (light: float32) (_: float32) =
+        if light < 1.0f then mix dark level (Math.Clamp((light - 0.4f) / 0.5f, 0.0f, 1.0f))
+        else mix level lit (Math.Clamp((light - 1.1f) / 0.3f, 0.0f, 1.0f))
+    let t = terrainWith ramp finestCell finest
     let ox, oy = Heritage.sword ram Heritage.Addr.origin, Heritage.sword ram (Heritage.Addr.origin + 2)
     let cell = (Heritage.long ram Heritage.Addr.camCell - Heritage.Addr.grid) / 4
     let row, col = cell / 100, cell % 100
     let eye = float32 (Heritage.sword ram Heritage.Addr.camHeight) / finestCell
     eprintfn "camera cell row %d col %d, world (%d, %d), eye %.2f cells over ground %.2f" row col (ox + col) (oy + row) eye (groundAt t (float32 (ox + col)) (float32 (oy + row)))
     let cam = { X = float32 (ox + col); Y = float32 (oy + row); Alt = eye; Yaw = -MathF.PI / 2.0f; Pitch = 0.0f }
-    savePng out (frame t Lens.midwinter 320 200 cam)
+    let sky = stColour palette.[2]
+    let colours = [| sky; dark; level; lit |]
+    frame t Lens.midwinter (Air.flat sky) 320 200 cam |> quantise colours 0.2f |> savePng out
 
 // ---------------------------------------------------------------- the zoom, as a figure
 

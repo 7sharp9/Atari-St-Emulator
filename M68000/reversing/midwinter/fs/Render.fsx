@@ -25,14 +25,15 @@ let mix ((r1, g1, b1): Colour) ((r2, g2, b2): Colour) t : Colour = lerp r1 r2 t,
 /// A level as heights the renderer can sample: ground height (sea flat at 0) per cell.
 type Terrain = { Size: int; Height: float32[,]; Colour: Colour[,] }
 
-let sea: Colour = 0.10f, 0.22f, 0.42f
-let snow: Colour = 0.96f, 0.97f, 1.0f
-let rock: Colour = 0.42f, 0.45f, 0.52f
-let shadow: Colour = 0.36f, 0.44f, 0.62f       // snow in shadow goes blue, not grey
+let sea: Colour = 0.04f, 0.16f, 0.36f
+let snow: Colour = 1.0f, 1.0f, 1.0f
+let rock: Colour = 0.30f, 0.33f, 0.40f
+let shadow: Colour = 0.46f, 0.62f, 0.90f       // snow out of the sun is lit by a clear sky: blue, not grey
 
-/// Light the ground from a low sun in the north-west: snow by slope, rock where it is steep.
+/// Ground coloured by `shade light steep`: `light` is the low north-west sun on the slope, 1 on level ground, more on
+/// a slope facing the sun, 0 on one turned away; `steep` runs from 0 (level) to 1 (a cliff). The sea is flat at 0.
 /// `cellSize` is how many height units one cell spans, so slopes come out the same at every level.
-let terrain (cellSize: float32) (level: Grid) : Terrain =
+let terrainWith (shade: float32 -> float32 -> Colour) (cellSize: float32) (level: Grid) : Terrain =
     let n = Array2D.length1 level
     let h = Array2D.init n n (fun r c -> float32 (Cell.groundHeight level.[r, c]))
     let at r c = h.[Math.Clamp(r, 0, n - 1), Math.Clamp(c, 0, n - 1)]
@@ -44,11 +45,15 @@ let terrain (cellSize: float32) (level: Grid) : Terrain =
             let dy = (at (r + 1) c - at (r - 1) c) / (2.0f * cellSize)
             let len = MathF.Sqrt(dx * dx + dy * dy + 1.0f)
             let nx, ny, nz = -dx / len, -dy / len, 1.0f / len
-            let light = max 0.0f (nx * sx + ny * sy + nz * sz) / 0.85f
-            let steep = Math.Clamp((1.0f - nz - 0.25f) * 3.0f, 0.0f, 1.0f)
-            let ground = mix snow rock steep
-            mix shadow ground (Math.Clamp(light, 0.0f, 1.0f))
+            shade (max 0.0f (nx * sx + ny * sy + nz * sz) / sz) (Math.Clamp((1.0f - nz - 0.25f) * 3.0f, 0.0f, 1.0f))
     { Size = n; Height = h; Colour = Array2D.init n n colour }
+
+/// Snow under a clear, dry sky: level snow is full white (snow reflects most of the light and the air takes little
+/// of it), slopes turned away from the sun fall towards the sky's blue, and steep ground shows rock.
+let coldSnow (light: float32) (steep: float32) : Colour =
+    mix shadow (mix snow rock steep) (Math.Clamp(light, 0.0f, 1.0f))
+
+let terrain = terrainWith coldSnow
 
 /// The terrain from above, one pixel per cell.
 let topDown (t: Terrain) : Image =

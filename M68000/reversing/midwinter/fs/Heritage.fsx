@@ -22,6 +22,15 @@ let sword (ram: byte[]) (a: int) = int (int16 (word ram a))
 
 let long (ram: byte[]) (a: int) = (word ram a <<< 16) ||| word ram (a + 2)
 
+/// The 16 colours the shifter is scanning out ($ff8240..$ff825e), from the video-register bank stored after the RAM
+/// (tools/gfxview.py load_video_regs). Each is a $0RGB word with 3 bits a gun.
+let loadPalette (path: string) : int[] =
+    let d = File.ReadAllBytes path
+    let regCount = if d.[4] >= 5uy then 19 else 18
+    let ramOff = 5 + regCount * 4 + 2
+    let vidOff = ramOff + 4 + BitConverter.ToInt32(d, ramOff) + 4
+    Array.init 16 (fun k -> word d (vidOff + 0x40 + 2 * k))
+
 module Addr =
     let file372 = 0x4a104          // the 50 x 50 island
     let grid = 0x404c4             // the 100 x 100 working grid around the player
