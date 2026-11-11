@@ -20,8 +20,12 @@ let word (ram: byte[]) (a: int) = (int ram.[a] <<< 8) ||| int ram.[a + 1]
 /// A signed 68000 word.
 let sword (ram: byte[]) (a: int) = int (int16 (word ram a))
 
+let long (ram: byte[]) (a: int) = (word ram a <<< 16) ||| word ram (a + 2)
+
 module Addr =
     let file372 = 0x4a104          // the 50 x 50 island
     let grid = 0x404c4             // the 100 x 100 working grid around the player
     let target = 0x19cd4           // ($19cd4, $19cd6): where the player is, in finest cells
     let origin = 0x19cda           // ($19cda, $19cdc): the working grid's top-left after $19962
+    let camCell = 0x12c80          // longword: the grid cell the 3D view starts from
+    let camHeight = 0x1721c        // the camera's height, in the grid's height units

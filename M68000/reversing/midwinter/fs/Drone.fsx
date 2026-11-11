@@ -15,6 +15,16 @@ let finestCell = 256.0f
 
 type Camera = { X: float32; Y: float32; Alt: float32; Yaw: float32; Pitch: float32 }   // X column, Y row, in cells
 
+/// Field of view across the screen, where the view's centre sits down it (0.5 is the middle), and how far it draws.
+type Lens = { Fov: float32; CentreY: float32; Far: float32 }
+
+module Lens =
+    let drone = { Fov = 70.0f * MathF.PI / 180.0f; CentreY = 0.5f; Far = 1400.0f }
+
+    /// The game's ski view ($16d9c): focal length 163 ($17216) on a 320-pixel screen, centre (160, 132) of 200. It can
+    /// draw only the 100 x 100 window it holds, and the camera sits at row 49, so it sees at most 49 cells ahead.
+    let midwinter = { Fov = 2.0f * MathF.Atan(160.0f / 163.0f); CentreY = 132.0f / 200.0f; Far = 49.0f }
+
 // ---------------------------------------------------------------- sampling the ground
 
 let private sample (t: Terrain) (x: float32) (y: float32) : float32 * Colour =
@@ -35,14 +45,16 @@ let groundAt (t: Terrain) x y = fst (sample t x y) / finestCell
 let skyTop: Colour = 0.33f, 0.50f, 0.78f
 let haze: Colour = 0.82f, 0.87f, 0.94f
 
-let frame (t: Terrain) (w: int) (h: int) (cam: Camera) : Image =
+/// Pitch shears the view (the horizon moves, verticals stay vertical), as height-field renderers of the time did:
+/// fine for a gimbal tilted a few tens of degrees, wrong for looking straight down.
+let frame (t: Terrain) (lens: Lens) (w: int) (h: int) (cam: Camera) : Image =
     let img = image w h
-    let fov = 70.0f * MathF.PI / 180.0f
+    let fov = lens.Fov
     let focal = float32 w / 2.0f / MathF.Tan(fov / 2.0f)
-    let horizon = float32 h / 2.0f - focal * MathF.Tan cam.Pitch
+    let horizon = float32 h * lens.CentreY - focal * MathF.Tan cam.Pitch
     let fx, fy = MathF.Cos cam.Yaw, MathF.Sin cam.Yaw
     let rx, ry = -fy, fx                                               // rows run south, so right is (-fy, fx)
-    let far, fogDistance = 1400.0f, 650.0f
+    let far, fogDistance = lens.Far, 650.0f
     Parallel.For(0, w, fun col ->
         let u = (2.0f * (float32 col + 0.5f) / float32 w - 1.0f) * MathF.Tan(fov / 2.0f)
         let dx, dy = fx + rx * u, fy + ry * u
@@ -114,17 +126,86 @@ let cameras (t: Terrain) (frames: int) : Camera[] =
         let x, y = pts.[i]
         { X = x; Y = y; Alt = alt.[i]; Yaw = yaw.[i]; Pitch = 0.16f })
 
-let fly (finest: Grid) (out: string) (seconds: float) =
-    let t = terrain finestCell finest
+let private film (t: Terrain) (cams: Camera[]) (out: string) =
     let fps, w, h = 30, 1280, 720
-    let cams = cameras t (int (seconds * float fps))
     let sw = Diagnostics.Stopwatch.StartNew()
     cams
     |> Seq.mapi (fun i cam ->
         if i % 60 = 0 then eprintfn "frame %d/%d (%d ms)" i cams.Length sw.ElapsedMilliseconds
-        frame t w h cam)
+        frame t Lens.drone w h cam)
     |> encode w h fps (sprintf "-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart \"%s\"" out)
     eprintfn "%d frames in %d ms" cams.Length sw.ElapsedMilliseconds
+
+/// The coast-to-coast flight along `route`.
+let fly (finest: Grid) (out: string) (seconds: float) =
+    let t = terrain finestCell finest
+    film t (cameras t (int (seconds * 30.0))) out
+
+// ---------------------------------------------------------------- the reveal: rise on a locked focus, then orbit
+
+let private smoothstep (u: float32) = let u = Math.Clamp(u, 0.0f, 1.0f) in u * u * (3.0f - 2.0f * u)
+
+/// The highest ground near the island's centre, smoothed over 9 x 9 cells so a single spike does not win.
+let focus (t: Terrain) : float32 * float32 =
+    let smoothed x y = Seq.average (seq { for dy in -4 .. 4 do for dx in -4 .. 4 -> groundAt t (x + float32 dx) (y + float32 dy) })
+    seq { for y in 600.0f .. 4.0f .. 1000.0f do for x in 600.0f .. 4.0f .. 1000.0f -> (x, y), smoothed x y }
+    |> Seq.maxBy snd |> fst
+
+/// A camera at (x, y, alt) looking at the point (tx, ty, th).
+let lookAt (tx: float32, ty: float32, th: float32) (x: float32, y: float32, alt: float32) : Camera =
+    let dx, dy = tx - x, ty - y
+    let dist = MathF.Sqrt(dx * dx + dy * dy)
+    { X = x; Y = y; Alt = alt; Yaw = MathF.Atan2(dy, dx); Pitch = MathF.Atan2(alt - th, dist) }
+
+/// Rise and pull back with the gimbal locked on the peak, hold, then a full orbit at that height, eased at both
+/// ends. `riseShare` of the frames rise, the rest orbit.
+let revealCameras (t: Terrain) (frames: int) (riseShare: float32) : Camera[] =
+    let tx, ty = focus t
+    let th = groundAt t tx ty
+    let a0 = 0.75f * MathF.PI                                            // come in from the south-west
+    let r0, r1 = 45.0f, 190.0f
+    let at a r = tx + r * MathF.Cos a, ty + r * MathF.Sin a
+    // the orbit's height: above the target and clear of everything on the circle
+    let circleMax = Seq.max (seq { for k in 0 .. 359 -> let x, y = at (float32 k * MathF.PI / 180.0f) r1 in groundAt t x y })
+    let alt1 = max (th + 45.0f) (circleMax + 15.0f)
+    // the lowest height at (x, y) that still sees the focus over the ground between (to 85% of the way)
+    let clear (x, y) =
+        seq { for k in 0 .. 40 do
+                let f = 0.85f * float32 k / 40.0f
+                let g = groundAt t (lerp x tx f) (lerp y ty f) + 0.5f
+                yield (g - th * f) / (1.0f - f) }
+        |> Seq.max
+    let alt0 = clear (at a0 r0)
+    let rise = int (float32 frames * riseShare)
+    Array.init frames (fun i ->
+        if i < rise then
+            let u = smoothstep (float32 i / float32 (rise - 1))
+            let x, y = at a0 (lerp r0 r1 u)
+            lookAt (tx, ty, th) (x, y, max (lerp alt0 alt1 u) (clear (x, y)))
+        else
+            let u = smoothstep (float32 (i - rise) / float32 (frames - rise - 1))
+            let x, y = at (a0 + 2.0f * MathF.PI * u) r1
+            lookAt (tx, ty, th) (x, y, alt1))
+
+let reveal (finest: Grid) (out: string) (seconds: float) =
+    let t = terrain finestCell finest
+    let tx, ty = focus t
+    eprintfn "focus (%.0f, %.0f), ground %.1f cells" tx ty (groundAt t tx ty)
+    film t (revealCameras t (int (seconds * 30.0)) 0.4f) out
+
+// ---------------------------------------------------------------- the skier's own view
+
+/// The ski view of a snapshot, as the game's projection places it: eye at the camera height `$1721c` over the
+/// camera cell `$12c80`, facing north (a row step is +64 in camera Z), level, the game's lens, 320 x 200.
+let skier (finest: Grid) (ram: byte[]) (out: string) =
+    let t = terrain finestCell finest
+    let ox, oy = Heritage.sword ram Heritage.Addr.origin, Heritage.sword ram (Heritage.Addr.origin + 2)
+    let cell = (Heritage.long ram Heritage.Addr.camCell - Heritage.Addr.grid) / 4
+    let row, col = cell / 100, cell % 100
+    let eye = float32 (Heritage.sword ram Heritage.Addr.camHeight) / finestCell
+    eprintfn "camera cell row %d col %d, world (%d, %d), eye %.2f cells over ground %.2f" row col (ox + col) (oy + row) eye (groundAt t (float32 (ox + col)) (float32 (oy + row)))
+    let cam = { X = float32 (ox + col); Y = float32 (oy + row); Alt = eye; Yaw = -MathF.PI / 2.0f; Pitch = 0.0f }
+    savePng out (frame t Lens.midwinter 320 200 cam)
 
 // ---------------------------------------------------------------- the zoom, as a figure
 
