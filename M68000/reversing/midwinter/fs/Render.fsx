@@ -23,7 +23,8 @@ let mix ((r1, g1, b1): Colour) ((r2, g2, b2): Colour) t : Colour = lerp r1 r2 t,
 // ---------------------------------------------------------------- the ground
 
 /// A level as heights the renderer can sample: ground height (sea flat at 0) per cell.
-type Terrain = { Size: int; Height: float32[,]; Colour: Colour[,] }
+/// `Grain` is the strength of a fine texture fixed to the snow (wind ripples, sub-cell), 0 for none.
+type Terrain = { Size: int; Height: float32[,]; Colour: Colour[,]; Grain: float32 }
 
 let sea: Colour = 0.04f, 0.16f, 0.36f
 let snow: Colour = 1.0f, 1.0f, 1.0f
@@ -46,7 +47,7 @@ let terrainWith (shade: float32 -> float32 -> Colour) (cellSize: float32) (level
             let len = MathF.Sqrt(dx * dx + dy * dy + 1.0f)
             let nx, ny, nz = -dx / len, -dy / len, 1.0f / len
             shade (max 0.0f (nx * sx + ny * sy + nz * sz) / sz) (Math.Clamp((1.0f - nz - 0.25f) * 3.0f, 0.0f, 1.0f))
-    { Size = n; Height = h; Colour = Array2D.init n n colour }
+    { Size = n; Height = h; Colour = Array2D.init n n colour; Grain = 0.0f }
 
 /// Snow under a clear, dry sky: level snow is full white (snow reflects most of the light and the air takes little
 /// of it), slopes turned away from the sun fall towards the sky's blue, and steep ground shows rock.

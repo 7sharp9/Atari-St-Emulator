@@ -13,17 +13,21 @@ open Render
 /// cell is as wide as 256 height units are tall (terrain.md section 5).
 let finestCell = 256.0f
 
-type Camera = { X: float32; Y: float32; Alt: float32; Yaw: float32; Pitch: float32 }   // X column, Y row, in cells
+type Camera = { X: float32; Y: float32; Alt: float32; Yaw: float32; Pitch: float32; Roll: float32 }   // X column, Y row, in cells
 
-/// Field of view across the screen, where the view's centre sits down it (0.5 is the middle), and how far it draws.
-type Lens = { Fov: float32; CentreY: float32; Far: float32 }
+/// Field of view across the screen, where the view's centre sits down it (0.5 is the middle), and the nearest and
+/// farthest ground it draws, in cells.
+type Lens = { Fov: float32; CentreY: float32; Near: float32; Far: float32 }
 
 module Lens =
-    let drone = { Fov = 70.0f * MathF.PI / 180.0f; CentreY = 0.5f; Far = 1400.0f }
+    let drone = { Fov = 70.0f * MathF.PI / 180.0f; CentreY = 0.5f; Near = 0.5f; Far = 1400.0f }
+
+    /// At a skier's eye height the ground under the bottom of the screen is a few metres ahead, so start there.
+    let ski = { Fov = 75.0f * MathF.PI / 180.0f; CentreY = 0.5f; Near = 0.01f; Far = 600.0f }
 
     /// The game's ski view ($16d9c): focal length 163 ($17216) on a 320-pixel screen, centre (160, 132) of 200. It can
     /// draw only the 100 x 100 window it holds, and the camera sits at row 49, so it sees at most 49 cells ahead.
-    let midwinter = { Fov = 2.0f * MathF.Atan(160.0f / 163.0f); CentreY = 132.0f / 200.0f; Far = 49.0f }
+    let midwinter = { Fov = 2.0f * MathF.Atan(160.0f / 163.0f); CentreY = 132.0f / 200.0f; Near = 0.5f; Far = 49.0f }
 
 // ---------------------------------------------------------------- sampling the ground
 
@@ -33,12 +37,30 @@ let private sample (t: Terrain) (x: float32) (y: float32) : float32 * Colour =
     else
         let c, r = int x, int y
         let fx, fy = x - float32 c, y - float32 r
+        // close up, straight-line blending shows every cell edge as a crease: ease it for the textured surface
+        let fx, fy = if t.Grain > 0.0f then fx * fx * (3.0f - 2.0f * fx), fy * fy * (3.0f - 2.0f * fy) else fx, fy
         let blend (a: float32) b c' d = lerp (lerp a b fx) (lerp c' d fx) fy
         let h = blend t.Height.[r, c] t.Height.[r, c + 1] t.Height.[r + 1, c] t.Height.[r + 1, c + 1]
         let k (sel: Colour -> float32) = blend (sel t.Colour.[r, c]) (sel t.Colour.[r, c + 1]) (sel t.Colour.[r + 1, c]) (sel t.Colour.[r + 1, c + 1])
         h, (k (fun (a, _, _) -> a), k (fun (_, b, _) -> b), k (fun (_, _, c) -> c))
 
 let groundAt (t: Terrain) x y = fst (sample t x y) / finestCell
+
+/// Value noise in 0..1 on a unit lattice, from a hash of the lattice point: the same place always has the same grain.
+let private noise (x: float32) (y: float32) =
+    let hash (i: int) (j: int) =
+        let h = i * 374761393 + j * 668265263
+        let h = (h ^^^ (h >>> 13)) * 1274126177
+        float32 ((h ^^^ (h >>> 16)) &&& 0xffff) / 65535.0f
+    let i, j = int (MathF.Floor x), int (MathF.Floor y)
+    let fx, fy = x - float32 i, y - float32 j
+    let sx, sy = fx * fx * (3.0f - 2.0f * fx), fy * fy * (3.0f - 2.0f * fy)
+    lerp (lerp (hash i j) (hash (i + 1) j) sx) (lerp (hash i (j + 1)) (hash (i + 1) (j + 1)) sx) sy
+
+/// Brightness of the snow's grain at (x, y) in cells: ripples drawn out along the wind (west to east, ours), about a
+/// metre across at the ski scale, under a coarser mottle.
+let private grain (x: float32) (y: float32) =
+    0.65f * noise (x * 12.0f) (y * 48.0f) + 0.35f * noise (x * 5.0f + 17.0f) (y * 5.0f + 31.0f) - 0.5f
 
 // ---------------------------------------------------------------- one frame
 
@@ -61,23 +83,32 @@ let frame (t: Terrain) (lens: Lens) (air: Air) (w: int) (h: int) (cam: Camera) :
     let fov = lens.Fov
     let focal = float32 w / 2.0f / MathF.Tan(fov / 2.0f)
     let horizon = float32 h * lens.CentreY - focal * MathF.Tan cam.Pitch
+    let tilt = -MathF.Tan cam.Roll                                     // roll as a shear, as the voxel engines did;
+                                                                       // positive Roll leans right
     let fx, fy = MathF.Cos cam.Yaw, MathF.Sin cam.Yaw
     let rx, ry = -fy, fx                                               // rows run south, so right is (-fy, fx)
     let far = lens.Far
     Parallel.For(0, w, fun col ->
         let u = (2.0f * (float32 col + 0.5f) / float32 w - 1.0f) * MathF.Tan(fov / 2.0f)
         let dx, dy = fx + rx * u, fy + ry * u
+        let horizon = horizon + (float32 col - float32 w / 2.0f) * tilt
         let mutable top = h                                            // everything below `top` is drawn
-        let mutable z = 0.5f
+        let mutable z = lens.Near
         while z < far && top > 0 do
-            let height, colour = sample t (cam.X + dx * z) (cam.Y + dy * z)
+            let gx, gy = cam.X + dx * z, cam.Y + dy * z
+            let height, colour = sample t gx gy
             let sy = horizon + (cam.Alt - height / finestCell) / z * focal
             if sy < float32 top then
+                let colour =
+                    if t.Grain = 0.0f || z > 6.0f || height = 0.0f then colour
+                    else
+                        let k = 1.0f - t.Grain * MathF.Exp(-z / 2.0f) * (grain gx gy + 0.5f)     // shade only: snow is at white
+                        let r, g, b = colour in r * k, g * k, b * k
                 let c = mix colour air.Horizon (1.0f - MathF.Exp(-z / air.Thickness))
                 let y0 = max 0 (int sy)
                 for y in y0 .. top - 1 do setPixel img col y c
                 top <- y0
-            z <- z + max 0.02f (z * 0.004f)
+            z <- z + max (min 0.02f (lens.Near * 0.5f)) (z * 0.004f)
         for y in 0 .. top - 1 do                                       // sky
             let t' = Math.Clamp((horizon - float32 y) / (0.6f * float32 h), 0.0f, 1.0f)
             setPixel img col y (mix air.Horizon air.Zenith (MathF.Sqrt t'))) |> ignore
@@ -136,7 +167,7 @@ let cameras (t: Terrain) (frames: int) : Camera[] =
     let yaw = headings 40 pts
     Array.init frames (fun i ->
         let x, y = pts.[i]
-        { X = x; Y = y; Alt = alt.[i]; Yaw = yaw.[i]; Pitch = 0.16f })
+        { X = x; Y = y; Alt = alt.[i]; Yaw = yaw.[i]; Pitch = 0.16f; Roll = 0.0f })
 
 let private film (t: Terrain) (cams: Camera[]) (out: string) =
     let fps, w, h = 30, 1280, 720
@@ -147,53 +178,6 @@ let private film (t: Terrain) (cams: Camera[]) (out: string) =
         frame t Lens.drone Air.cold w h cam)
     |> encode w h fps (sprintf "-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart \"%s\"" out)
     eprintfn "%d frames in %d ms" cams.Length sw.ElapsedMilliseconds
-
-/// The skier's eye over the snow: the game's camera sits 8 height units above the ground under it (660 over 652 on
-/// `d_ski`, `$1721c`), which is 8/256 of a cell.
-let skierEye = 8.0f / finestCell
-
-/// The same route on skis: the eye is `skierEye` over the ground at every frame, with no smoothing, so the camera
-/// rides every bump; it looks along the slope two cells ahead (smoothed a little, or the view shakes). The run is the
-/// longest stretch of `route` that stays above the shore step ($1991a lifts land of height 10 and over by 250), so it
-/// never crosses the sea or the beach below the step.
-let skiCameras (t: Terrain) (frames: int) : Camera[] =
-    let dense = path (frames * 2) route
-    let onLand (x, y) = groundAt t x y >= 1.0f
-    let first, last =
-        dense |> Array.mapi (fun i p -> i, onLand p)
-        |> Array.fold (fun (runs, start) (i, land) ->
-            match land, start with
-            | true, None -> runs, Some i
-            | false, Some s -> (s, i - 1) :: runs, None
-            | _ -> runs, start) ([], None)
-        |> fun (runs, start) -> match start with Some s -> (s, dense.Length - 1) :: runs | None -> runs
-        |> List.maxBy (fun (a, b) -> b - a)
-    let pts = dense.[first .. last]
-    let pts = Array.init frames (fun i -> pts.[i * (pts.Length - 1) / (frames - 1)])
-    let yaw = headings 20 pts
-    let pitch =
-        Array.init frames (fun i ->
-            let x, y = pts.[i]
-            let ax, ay = x + 2.0f * MathF.Cos yaw.[i], y + 2.0f * MathF.Sin yaw.[i]
-            MathF.Atan2(groundAt t x y - groundAt t ax ay, 2.0f))
-        |> smooth 6
-    // a steep face just ahead would fill the screen: tilt up at least far enough to keep the next three cells' rise
-    // a little below the top edge (`Lens.drone` is 70 degrees across 16:9, so about 20 degrees above the centre)
-    let lookUp i =
-        let x, y = pts.[i]
-        let eye = groundAt t x y + skierEye
-        seq { for k in 1 .. 12 do
-                let d = 0.25f * float32 k
-                yield MathF.Atan2(groundAt t (x + d * MathF.Cos yaw.[i]) (y + d * MathF.Sin yaw.[i]) - eye, d) }
-        |> Seq.max
-    Array.init frames (fun i ->
-        let x, y = pts.[i]
-        { X = x; Y = y; Alt = groundAt t x y + skierEye; Yaw = yaw.[i]; Pitch = min pitch.[i] (0.25f - lookUp i) })
-
-/// The coast-to-coast run on skis.
-let ski (finest: Grid) (out: string) (seconds: float) =
-    let t = terrain finestCell finest
-    film t (skiCameras t (int (seconds * 30.0))) out
 
 /// The coast-to-coast flight along `route`.
 let fly (finest: Grid) (out: string) (seconds: float) =
@@ -214,7 +198,7 @@ let focus (t: Terrain) : float32 * float32 =
 let lookAt (tx: float32, ty: float32, th: float32) (x: float32, y: float32, alt: float32) : Camera =
     let dx, dy = tx - x, ty - y
     let dist = MathF.Sqrt(dx * dx + dy * dy)
-    { X = x; Y = y; Alt = alt; Yaw = MathF.Atan2(dy, dx); Pitch = MathF.Atan2(alt - th, dist) }
+    { X = x; Y = y; Alt = alt; Yaw = MathF.Atan2(dy, dx); Pitch = MathF.Atan2(alt - th, dist); Roll = 0.0f }
 
 /// Rise and pull back with the gimbal locked on the peak, hold, then a full orbit at that height, eased at both
 /// ends. `riseShare` of the frames rise, the rest orbit.
@@ -252,6 +236,66 @@ let reveal (finest: Grid) (out: string) (seconds: float) =
     eprintfn "focus (%.0f, %.0f), ground %.1f cells" tx ty (groundAt t tx ty)
     film t (revealCameras t (int (seconds * 30.0)) 0.4f) out
 
+// ---------------------------------------------------------------- on skis
+
+/// The skier's eye over the snow: the game's camera sits 8 height units above the ground under it (660 over 652 on
+/// `d_ski`, `$1721c`), which is 8/256 of a cell.
+let skierEye = 8.0f / finestCell
+
+/// Metres in a cell, if the game's camera height over the snow is a person's eye, 1.7 m: an inference, the game
+/// states no unit.
+let cellMetres = 1.7f / skierEye
+
+/// A run down the slope from just below the island's central peak, as physics: gravity along the slope, sliding
+/// friction and air drag on the speed, and S-turns carved across the fall line (32 degrees each side, one turn every
+/// 2 s; the turn rate the skis allow is 70 degrees a second). The camera is at `skierEye` over the ground, looks a
+/// down the slope by half its angle, as a skier's head does, banks into each turn as the turn's sideways acceleration asks, and never tilts
+/// down so far that the ground just ahead rises off the top of the screen.
+let skiCameras (t: Terrain) (frames: int) : Camera[] =
+    let dt, gravity, friction, drag = 1.0f / 30.0f, 9.81f, 0.06f, 0.0045f       // drag per metre: about 22 m/s on 15 degrees
+    let slope x y =                                                    // height gain per cell, east and south
+        (groundAt t (x + 0.5f) y - groundAt t (x - 0.5f) y), (groundAt t x (y + 0.5f) - groundAt t x (y - 0.5f))
+    let tx, ty = focus t
+    let rec start r =                                                  // down the peak's west flank to steady ground
+        let x, y = tx - r, ty + 0.3f * r
+        let gx, gy = slope x y
+        if MathF.Sqrt(gx * gx + gy * gy) > 0.12f || r > 60.0f then x, y else start (r + 1.0f)
+    let x0, y0 = start 4.0f
+    let fallLine x y = let gx, gy = slope x y in MathF.Atan2(-gy, -gx)
+    let mutable x, y, speed, heading = x0, y0, 4.0f, fallLine x0 y0
+    let mutable roll = 0.0f
+    Array.init frames (fun i ->
+        let time = float32 i * dt
+        let gx, gy = slope x y
+        let wanted = fallLine x y + 0.55f * MathF.Sin(MathF.PI * time / 2.0f)
+        let turn = MathF.Atan2(MathF.Sin(wanted - heading), MathF.Cos(wanted - heading))
+        let rate = Math.Clamp(turn / dt, -1.2f, 1.2f)
+        heading <- heading + rate * dt
+        let fx, fy = MathF.Cos heading, MathF.Sin heading
+        let down = -(gx * fx + gy * fy)                                // drop per cell along the skis
+        let along = down / MathF.Sqrt(1.0f + down * down)
+        speed <- max 3.0f (speed + (gravity * (along - friction) - drag * speed * speed) * dt)
+        x <- x + fx * speed / cellMetres * dt
+        y <- y + fy * speed / cellMetres * dt
+        roll <- lerp roll (MathF.Atan(speed * rate / gravity) |> fun r -> Math.Clamp(r, -0.35f, 0.35f)) 0.1f
+        let eye = groundAt t x y + skierEye
+        let lookUp =
+            seq { for k in 1 .. 16 do
+                    let d = 0.01f * float32 k
+                    yield MathF.Atan2(groundAt t (x + d * fx) (y + d * fy) - eye, d) } |> Seq.max
+        let pitch = min (0.5f * MathF.Atan down + 0.05f) (0.3f - lookUp)
+        if i % 300 = 0 then eprintfn "t %4.1fs at (%.1f, %.1f) speed %.1f m/s slope %.1f deg roll %.1f deg" time x y speed (MathF.Atan down * 57.3f) (roll * 57.3f)
+        { X = x; Y = y; Alt = eye; Yaw = heading; Pitch = pitch; Roll = roll })
+
+/// The ski run, at the ski lens with the snow's grain.
+let ski (finest: Grid) (out: string) (seconds: float) =
+    let t = { terrain finestCell finest with Grain = 0.20f }
+    let cams = skiCameras t (int (seconds * 30.0))
+    let fps, w, h = 30, 1280, 720
+    cams
+    |> Seq.map (frame t Lens.ski Air.cold w h)
+    |> encode w h fps (sprintf "-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart \"%s\"" out)
+
 // ---------------------------------------------------------------- the skier's own view, in the game's colours
 
 /// A $0RGB shifter word as a colour: 3 bits a gun, 7 is full.
@@ -287,7 +331,7 @@ let skier (finest: Grid) (ram: byte[]) (palette: int[]) (out: string) =
     let row, col = cell / 100, cell % 100
     let eye = float32 (Heritage.sword ram Heritage.Addr.camHeight) / finestCell
     eprintfn "camera cell row %d col %d, world (%d, %d), eye %.2f cells over ground %.2f" row col (ox + col) (oy + row) eye (groundAt t (float32 (ox + col)) (float32 (oy + row)))
-    let cam = { X = float32 (ox + col); Y = float32 (oy + row); Alt = eye; Yaw = -MathF.PI / 2.0f; Pitch = 0.0f }
+    let cam = { X = float32 (ox + col); Y = float32 (oy + row); Alt = eye; Yaw = -MathF.PI / 2.0f; Pitch = 0.0f; Roll = 0.0f }
     let sky = stColour palette.[2]
     let colours = [| sky; dark; level; lit |]
     frame t Lens.midwinter (Air.flat sky) 320 200 cam |> quantise colours 0.2f |> savePng out
