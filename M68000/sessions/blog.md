@@ -1,46 +1,49 @@
 # Blog: handoff
 
-Updated 2026-10-31 by the session that ended at commit `41734eb` (no repo commits of this workstream).
+Updated 2026-11-11 by the session that ended at commit `8a2138c`.
 
 The blog workstream curates and extends posts for 7sharp9.dev from the game research. Each game is
 reversed in its own workstream; this one reads their docs, checks the claims a post would rest on
 (on real Hatari where the claim depends on our emulator), and feeds corrections back to the game
 docs. A fix to a game doc is committed as that game's commit; the game's own handoff is not edited
-here.
+here. Dave's direction (2026-11-11): posts explain algorithms the games use and their relevance
+today, not emulator bug fixes.
 
 ## Resume point
 
-- Last commits of this workstream: `65eb65b` + `564f233` (Populous swamp edge re-measured, chart
-  `reversing/populous/swamp_edge.svg`).
-- Blog repo: `~/GitHub/7sharp9.github.io` (Hugo, Blowfish theme). Post ideas live in `IDEAS.md` there.
-  Paint It Black is `content/Programming/2026-09-22-paint-it-black.md`, still `draft: true`.
-- Working data: `M68000/scratchpad/pop/hatari_edges/` (Populous swamp edge; rebuild recipe in
-  `reversing/populous/systems.md` 1.3 and `py/systems/hatari_edges.py`).
-- Uncommitted work left behind in the blog repo, all deliberate (nothing committed or pushed there
-  without Dave's say):
-  - `content/Programming/2026-09-22-paint-it-black.md`: the PowerMonger session's earlier figure
-    updates (99.7-99.99% inline table) plus this session's fact-check fixes. This workstream now owns
-    the file (the PowerMonger session was told; no reply yet).
-  - `static/images/posts/powermonger/walk_cells.gif` (65 frames, 8 fps) and `walk_strips.gif`
-    (9 frames, 2 fps), now live figures in the post. Rebuild: copy `reversing/powermonger/port` without
-    `bin/obj` to a scratch dir, `cd stepper && dotnet run -c Release -- --export <dir> cell|strip`,
-    then ffmpeg with `palettegen=max_colors=32 / paletteuse=dither=none`.
-  - `IDEAS.md` untracked by Dave's decision (2026-10-12: post notes stay private); `ideas/` is the
-    Cadaver session's.
+- Last commit of this workstream: `8a2138c` (Midwinter `fs/` renders; the terrain port is `974d739`..`8a2138c`).
+  Pushed up to `9e58e9e`; `c9071c1` and `8a2138c` are local only.
+- Blog repo `~/GitHub/7sharp9.github.io`: `2fa425c` commits the Midwinter post
+  `content/Programming/2026-11-11-mountains-of-the-moon.md` (`draft: true`) and its media in
+  `static/images/posts/midwinter/` (levels, zoom, map, reveal.mp4, skier_vs_game). Not pushed.
+- Working data: `M68000/scratchpad/midwinter/terrain/gate/` (gate snapshots; rebuild with
+  `reversing/midwinter/py/terrain/gate_terrain.py`), renders in `M68000/scratchpad/midwinter/terrain/fs/`,
+  every one rebuilt by a `reversing/midwinter/fs/terrain.fsx` command (header lists them). `d_ski.snap` for the
+  skier still and the live checks.
+- Uncommitted work left behind in the blog repo, all deliberate:
+  - `content/Programming/2026-09-22-paint-it-black.md` and `static/images/posts/powermonger/walk_*.gif`:
+    Paint It Black's fact-check fixes and figures, waiting on Dave's writing (rebuild recipe for the GIFs:
+    previous handoff in git, `git show 41734eb:M68000/sessions/blog.md`).
+  - `IDEAS.md` untracked by Dave's decision (post notes stay private); entry 8 is the Midwinter post. `ideas/`
+    is the Cadaver session's.
 
 ## Proven so far
 
-- Paint It Black: about 55 claims (counts, addresses, the six-capture table, every F# snippet) match
-  `reversing/powermonger/port/SPEC.md`, `README.md`, `walkthrough/walkthrough.md` and the port source.
-  Fixed: the headline 99.7-99.99% now carries the `pm78_settle` 94.6% caveat (README "inline scores"),
-  the Godot section's sourceless "94-98%" replaced by `walkthrough.md`'s figure, the season fade is
-  16 LCG steps per tick and about 9 pixels (SPEC.md "season" table), "one tick into summer" holds for
-  `pm88_f1` only, and at yaw 12 cos is 0 rather than positive.
-- Populous swamp-monster entry edge: south 75.9% on real Hatari over ten cold boots vs 70.0% ours
-  (`populous/systems.md` 1.3; chart by `hatari_edges.py chart`).
-- Super Sprint walls and collision, PowerMonger `SPRITE40.DAT` symbol table: see the post sources
-  `supersprint/` (tracks/prove_all.py, physics/test_trajectory.py) and `powermonger/strategy.md`
-  "Original names".
+- Midwinter post: the F# port reproduces the game's generator 70000/70000 cells over 7 windows and the post-passes
+  10000/10000 (`fs/terrain.fsx gate`; `--break` control 1126/70000); the domain model matches every interior cell
+  except the south/east 64-cell edge band, 63002/64512 inside a 2-cell margin (`domain`); overlapping game windows
+  agree inside 2 cells (`same`): `terrain.md` sections 1 and 6. Shift per level is 4,4,5,6,7 (section 2).
+- Vertical scale 256 height units per cell from `$16d9c`, checked live; the ski view is double-buffered and drawn from
+  the RAM camera; goggle palette `$157/$467/$777/$245`; our render of the snapshot's view is about 10 px high on the
+  ridges, not explained by draw distance (`terrain.md` section 5; `skier`, `skier --far`).
+- Decided with Dave: the post's visuals show the game's own content. The reveal (rise then orbit of the central
+  peak, cold clear grade) is the one video; the levels figure carries the subdivision, the post's main point. The
+  ski run was cut on purpose (2026-11-11): nearly all of it was ours (inferred metre scale, skier physics, line
+  planning, snow grain) over 54 m cells of smooth slope; the code stays (`ski`, `skiline`) but the post does not use it.
+- PowerMonger LLM commander: no better than a random proposer (Haiku 8/30 vs placebo 7/30, McNemar not significant);
+  a heuristic follow-up was proposed as its own session card ("Commander: captain-exposure term in rollout score").
+- Earlier: Paint It Black's ~55 claims checked; Populous swamp edge on Hatari 75.9% vs ours 70.0%
+  (`populous/systems.md` 1.3).
 
 ## Running
 
@@ -48,48 +51,38 @@ Nothing running.
 
 ## Open, in priority order
 
-1. **Paint It Black: Dave's TODOs.** All that remains is his writing: the hook (A/B/C, line 11), the
-   personal-context paragraph, five asides (zoom, the extra-row bug, the 43-47% phase bug, the 2689
-   wasted pixels, what the stepper showed), the Godot verdict, "Where to next", and whether to weave
-   in or cut the weather/new sprite categories TODO. Link [2] is fine to keep: the repo is public.
-   Before publishing, check `walkthrough.md` on `origin/master` has the wording the post cites.
-2. **IDEAS.md candidates** (file stays untracked): add the ones Dave picks, each checked against its
-   topic doc first: Cadaver depth bitsets ("Stand Back"), packers across six games ("Under
-   Pressure"), emulator performance ("Faster", re-measure before quoting), the DAC fold-in under
-   entry 4, the stale-register bug class (PowerMonger farmer search), determinism ("Deja Vu").
-3. **Entry 3, "God Only Knows"** (Populous): port the world generator to F# first (byte-identical on
-   3 worlds against `reversing/populous/terrain.md`); the swamp-edge figure is ready.
-4. **Super Sprint post gaps** (entry 5): live collision on more tracks or scope to Track 1; a sampler
-   negative control; the staged-fill figure. Blocked by the race-start crash (supersprint handoff).
-5. **PowerMonger symbol leftovers** (the PowerMonger workstream's unless the post needs them): five
-   unclear labels (`$37c2`, `$11f78`, `$fe8e`, `$16892`, `$3c08`), `g_mission_descriptor` `$5809c`,
-   the `.sym` header's "backed by disassembly" claim, a fifth bare `rts` at `$1ba70`.
+1. **Midwinter post: Dave's writing.** Hook (A/B/C), the TODOs in each section, the real `terrain.fsx domain`
+   output pasted in, the edge-band verdict, and the "today's relevance" paragraph (find a source before naming
+   any game or engine). Hatari was not run: the generator is pure arithmetic, so the post says so rather than
+   claims it. Then push the emulator repo (`c9071c1`, `8a2138c`) so links [3] and [4] resolve, and render-check.
+2. **Paint It Black: Dave's TODOs** (hook, asides, Godot verdict, "Where to next"); then commit it and the GIFs.
+3. **Stale claims seen, not fixed:** `IDEAS.md` entry 1 says Black Tiger is unfixed (fixed in `5636dc5`), and
+   `reversing/black_tiger/secrets.md:48` says the same; fix both once Dave agrees.
+4. **IDEAS.md candidates** (Cadaver depth bitsets, packers, determinism, Populous world generator "God Only
+   Knows": port to F# byte-identical on 3 worlds against `populous/terrain.md`).
+5. **Super Sprint post gaps** (blocked by the race-start crash, supersprint handoff).
 
 ## Known traps
 
-- The local Hugo is v0.148.1; the site's modules need 0.162 or later, so `hugo --buildDrafts` fails on
-  every page (`can't evaluate field Locale`). A render check needs a newer Hugo (a system change:
-  Dave's call) or the GitHub Pages build.
-- Posts inherit the walkthrough's wording, and the walkthrough is looser than SPEC.md and the port
-  README (the fade's "16 pixels", "one tick into summer"). Check a post's figures against SPEC.md
-  and README, not only the walkthrough. Wording fixes for `walkthrough.md` went to the PowerMonger
-  session (lines 544, 579, the yaw sentence); it owns that file.
-- `IDEAS.md` is untracked; hand agents its current state or they propose duplicate entries.
-- Build the PowerMonger stepper from a copy, not in place: the PowerMonger session builds the same
-  `obj/`.
-- The Hatari binary used for Populous is another session's build under `/private/tmp/...`; it can
-  vanish. Rebuild per `DEVELOPING.md` "macOS" and set `HATARI`.
-- A chart shown as an `<img>` cannot follow Blowfish's dark toggle: give the SVG an opaque surface.
-- README summaries can be stronger than the topic docs: quote the topic doc in a post.
+- The local Hugo is v0.148.1; the site's modules need 0.162 or later, so `hugo --buildDrafts` fails. A render
+  check needs a newer Hugo (Dave's call) or the GitHub Pages build.
+- `dotnet fsi` compiles every `#load`ed file per command, so a compile error in `Drone.fsx` fails every
+  `terrain.fsx` command, including `gate`; a render command that fails leaves its old output file in place.
+- `Drone.fsx` names `row` locally (grid rows) and `Render.row` (images side by side): qualify the latter.
+- The reveal and drone clips are judged from contact sheets in-session; motion faults (judder, shimmer) only show
+  in playback: ask Dave to watch before calling a clip done.
+- Posts inherit looser wording than the specs (PowerMonger walkthrough vs SPEC.md); quote the topic doc.
+- `IDEAS.md` is untracked; hand agents its current state.
 
 ## Waiting on Dave
 
-- Paint It Black's hook and personal TODOs (Open 1); then whether to commit the post and GIFs in the
-  blog repo, and when to publish.
-- Upgrading Hugo locally so drafts can be render-checked.
+- The Midwinter and Paint It Black writing (Open 1, 2), and when to push the blog repo and publish.
+- The Black Tiger stale-claim fixes (Open 3).
+- The commander experiment card (start it or dismiss it).
+- Upgrading Hugo locally.
 
 ## Next session
 
-`/resume blog`. If Dave has filled the Paint It Black TODOs, re-check every changed passage against
-SPEC.md and the port README, check `walkthrough.md` on `origin/master` for the cited wording, and ask
-before committing in the blog repo. Otherwise ask Dave which IDEAS.md candidate (Open 2) to check next.
+`/resume blog`. If Dave has written into the Midwinter post, re-check every changed passage against `terrain.md`
+(sections 1, 2, 5, 6) and the `fs/` code, paste the real `terrain.fsx domain` output, and push the emulator repo
+when he agrees so the post's links resolve. Otherwise ask which of Open 2-4 to take next.
