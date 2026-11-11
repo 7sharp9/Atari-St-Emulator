@@ -13,10 +13,17 @@ ski entry and 6 poked targets, no two grids alike), post-passes **10000/10000**.
 calls; over the whole 1 MB RAM the generator model differs from the game only at the system timer `$4bc`, a VBL byte
 `$637f` and the stack below A7. Dropping the building pads from the model breaks 475 cells.
 
-The F# port `fs/terrain.fsx` (`dotnet fsi fs/terrain.fsx gate $MIDWINTER_WORK/terrain/gate`, run after
-`gate_terrain.py` has built the snapshots) matches the same snapshots on the same counts, generator **70000/70000** and
-post-passes **10000/10000**, in about 70 ms. Its negative control, `--break` (the seed word without the XOR with the
-first parent's seed), drops the generator to 1126/70000.
+The F# port in `fs/` has two models, driven by `fs/terrain.fsx` against the same snapshots (run `gate_terrain.py`
+first to build them). `Faithful.fsx` transcribes the routines on a copy of the RAM, as the Python does:
+`terrain.fsx gate $MIDWINTER_WORK/terrain/gate` gives generator **70000/70000** and post-passes **10000/10000**, in
+about 70 ms, and its negative control `--break` (the seed word without the XOR with the first parent's seed) drops the
+generator to 1126/70000. `Island.fsx` is the same generator without the RAM: a cell is a height and a seed, `refine` is
+a pure function from one level's whole grid to the next, and the five levels of the whole island (1600 x 1600 at the
+finest) build in about 120 ms. `terrain.fsx domain` compares each game window with the finest level at the window's
+origin: inside a 2-cell margin, 6 of the 7 windows match on every cell (9216/9216 each) and the window at (1500, 1500)
+on 7706/9216; all 1510 of its mismatches lie within 64 finest cells of the island's south or east edge (x or y from
+1536). There the game's first zoom copies level-1 cells 68 to 117 out of the 100-cell working grid (section 3: the
+offset is not clamped), so it refines the memory after the grid, where `Island.fsx` uses an outside cell of `$ffffffff`.
 
 | picture | what |
 |---|---|
@@ -61,8 +68,10 @@ height'= avg + disp                     16-bit wrap throughout
 ```
 
 The displacement scales with the height of the point (higher ground gets rougher) and with a pseudo-random factor
-that is the seed sum, so it is a pure function of the parents. `shift` is 4 on the first round and grows by one per
-zoom, halving the amplitude each level: a fractal (diamond-square) refinement whose noise comes from the data.
+that is the seed sum, so it is a pure function of the parents. `shift` is 4 for the whole-island round and for the
+first zoom, then one more for each later zoom (4, 4, 5, 6, 7): `$199ec` refines before it increments it. Each step halves
+the amplitude: a fractal (diamond-square) refinement whose noise comes from the data. A model with 4 to 8 matches the
+game's first level and only 633 of 64,512 interior cells of the final windows.
 
 The grid's edges read past the data on purpose or by omission, and the model reproduces it by working on a RAM copy:
 `H[49]` is the cleared `-1`, `C[49]` is whatever the centre buffer held from the row before last, `V[-1]` is `$66190`'s
@@ -135,12 +144,13 @@ In the order `$1498a`, `$14cc0` and `$152c0` call them:
 
 Because every displacement is a function of the parent cells and the window only selects which parents to refine, two
 windows that overlap give the overlapping ground the same heights, except along the grid's edge, where the stale reads
-of section 2 enter. Measured on the F# port (`fs/terrain.fsx same <gatedir>`, which keys each final cell by its world
+of section 2 enter. Measured on the faithful F# port (`fs/terrain.fsx same <gatedir>`, which keys each final cell by its world
 position, the final origin `$19cda/$19cdc` plus its column and row): over 40 targets within 60 finest cells of
 (800, 800), 327,264 overlapping cell pairs agree and none differ once the outer 2 cells of each grid are dropped; with
 1 cell dropped 7,091 differ, with none 26,402. Over 40 targets spread across x and y from 200 to 1400, the same: 34,884 agree and
 none differ at a 2-cell margin, 792 differ at 1, 3,282 at 0. This is the model, not the game: the port matches the game on
-every cell of the 7 gated windows (section 1's proof), but the 80 windows here were not run in the emulator.
+every cell of the 7 gated windows (section 1's proof), but the 80 windows here were not run in the emulator. In
+`Island.fsx` the property holds by construction away from the edges: a window is a slice of one whole-island grid.
 
 ## Open
 
