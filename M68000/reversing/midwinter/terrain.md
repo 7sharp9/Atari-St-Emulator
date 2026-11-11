@@ -146,6 +146,15 @@ In the order `$1498a`, `$14cc0` and `$152c0` call them:
   `D4 = -326` (= -2 x 163) and `D5.w = -1`; at `$16ee8`, one row ahead, `D1/D2` are `$ffffc000/$00400000` and
   `D4 = -489` (= -3 x 163), `D5.w = 63`, as the arithmetic gives. Read from one ski frame only: the other vehicles'
   matrices are not read.
+- The ski view is double-buffered: over five frames from `d_ski.snap` the shifter base alternates `$78000` and
+  `$68000` while the camera cell (`$4521c`) and height (660) stay put (the skier stands still there), and the visible
+  view changes in under 100 pixels, so the snapshot's screen is drawn from the camera state in its RAM. The goggle view
+  uses four colours of the live palette (`$ff8240`): sky colour 2 (`$157`), snow colours 6 (`$467`, level ground), 1
+  (`$777`) and 5 (`$245`), with lit far ridges dithered between `$467` and `$777` (read off the screen; which colour
+  a triangle gets from its shading bytes is not decoded). A height-field render of the domain model from that camera,
+  with the lens above and the 49-cell window, places the horizon and the ridge line's shape as the game does, with
+  the ridges about 10 pixels higher; a draw distance of 12, 20, 30 or 49 cells does not change that, so the offset is
+  in the undecoded fill (`fs/terrain.fsx skier`, compared by eye against the snapshot's screen).
 - The map screen (`$14ce`) copies 37.2 to `$60000` with a zero row below it (`$15d6`), subdivides once with `$2c60`
   and draws the result with `$2bc2` (per-row handler `[$22d50]`): the map is drawn from the height grid, not stored as a
   picture (inferred from the code; the render is not matched).
