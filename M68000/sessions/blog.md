@@ -12,7 +12,7 @@ today, not emulator bug fixes.
 ## Resume point
 
 - Last commit of this workstream: `8a2138c` (Midwinter `fs/` renders; the terrain port is `974d739`..`8a2138c`).
-  Pushed up to `9e58e9e`; `c9071c1` and `8a2138c` are local only.
+  All pushed to origin.
 - Blog repo `~/GitHub/7sharp9.github.io`: `2fa425c` commits the Midwinter post
   `content/Programming/2026-11-11-mountains-of-the-moon.md` (`draft: true`) and its media in
   `static/images/posts/midwinter/` (levels, zoom, map, reveal.mp4, skier_vs_game). Not pushed.
@@ -54,7 +54,7 @@ Nothing running.
 1. **Midwinter post: Dave's writing.** Hook (A/B/C), the TODOs in each section, the real `terrain.fsx domain`
    output pasted in, the edge-band verdict, and the "today's relevance" paragraph (find a source before naming
    any game or engine). Hatari was not run: the generator is pure arithmetic, so the post says so rather than
-   claims it. Then push the emulator repo (`c9071c1`, `8a2138c`) so links [3] and [4] resolve, and render-check.
+   claims it. Links [3] and [4] resolve (the emulator repo is pushed); render-check before publishing.
 2. **Paint It Black: Dave's TODOs** (hook, asides, Godot verdict, "Where to next"); then commit it and the GIFs.
 3. **Stale claims seen, not fixed:** `IDEAS.md` entry 1 says Black Tiger is unfixed (fixed in `5636dc5`), and
    `reversing/black_tiger/secrets.md:48` says the same; fix both once Dave agrees.
@@ -84,5 +84,5 @@ Nothing running.
 ## Next session
 
 `/resume blog`. If Dave has written into the Midwinter post, re-check every changed passage against `terrain.md`
-(sections 1, 2, 5, 6) and the `fs/` code, paste the real `terrain.fsx domain` output, and push the emulator repo
-when he agrees so the post's links resolve. Otherwise ask which of Open 2-4 to take next.
+(sections 1, 2, 5, 6) and the `fs/` code, paste the real `terrain.fsx domain` output, and ask before
+pushing the blog repo. Otherwise ask which of Open 2-4 to take next.
