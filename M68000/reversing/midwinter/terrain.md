@@ -138,7 +138,7 @@ windows that overlap give the overlapping ground the same heights, except along 
 of section 2 enter. Measured on the F# port (`fs/terrain.fsx same <gatedir>`, which keys each final cell by its world
 position, the final origin `$19cda/$19cdc` plus its column and row): over 40 targets within 60 finest cells of
 (800, 800), 327,264 overlapping cell pairs agree and none differ once the outer 2 cells of each grid are dropped; with
-1 cell dropped 7,091 differ, with none 26,402. Over 40 targets spread across (200..1400)², the same: 34,884 agree and
+1 cell dropped 7,091 differ, with none 26,402. Over 40 targets spread across x and y from 200 to 1400, the same: 34,884 agree and
 none differ at a 2-cell margin, 792 differ at 1, 3,282 at 0. This is the model, not the game: the port matches the game on
 every cell of the 7 gated windows (section 1's proof), but the 80 windows here were not run in the emulator.
 
