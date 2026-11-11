@@ -11,7 +11,8 @@
 //   dotnet fsi terrain.fsx levels <gatedir> <out.png> the whole island at every level, file 37.2 to 1600 x 1600
 //   dotnet fsi terrain.fsx zoom <gatedir> <out.png>   the five levels around the ski entry
 //   dotnet fsi terrain.fsx drone <gatedir> <out.mp4> [seconds]      coast to coast
-//   dotnet fsi terrain.fsx ski <gatedir> <out.mp4> [seconds]        a descent from the central peak, at the skier's eye
+//   dotnet fsi terrain.fsx ski <gatedir> <out.mp4> [seconds]        a planned descent from the central peak, at the skier's eye
+//   dotnet fsi terrain.fsx skiline <gatedir> <out.png>  the planned line and the track from above, by steepness
 //   dotnet fsi terrain.fsx reveal <gatedir> <out.mp4> [seconds]     rise on a locked focus, then orbit
 //   dotnet fsi terrain.fsx skier <gatedir> <ski.snap> <out.png>     the game's own camera, lens and palette, 320 x 200
 //
@@ -153,7 +154,8 @@ match fsi.CommandLineArgs |> Array.toList |> List.tail with
 | [ "zoom"; dir; out ] -> Drone.zoomFigure (islandFrom dir) (368, 1176) out; exit 0
 | [ "drone"; dir; out ] -> Drone.fly (List.last (islandFrom dir)) out 20.0; exit 0
 | [ "drone"; dir; out; secs ] -> Drone.fly (List.last (islandFrom dir)) out (float secs); exit 0
-| [ "ski"; dir; out ] -> Drone.ski (List.last (islandFrom dir)) out 40.0; exit 0
+| [ "ski"; dir; out ] -> Drone.ski (List.last (islandFrom dir)) out 24.0; exit 0
+| [ "skiline"; dir; out ] -> Drone.skiFigure (List.last (islandFrom dir)) 24.0 out; exit 0
 | [ "ski"; dir; out; secs ] -> Drone.ski (List.last (islandFrom dir)) out (float secs); exit 0
 | [ "reveal"; dir; out ] -> Drone.reveal (List.last (islandFrom dir)) out 30.0; exit 0
 | [ "reveal"; dir; out; secs ] -> Drone.reveal (List.last (islandFrom dir)) out (float secs); exit 0
