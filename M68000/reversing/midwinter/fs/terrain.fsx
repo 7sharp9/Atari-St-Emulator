@@ -14,7 +14,8 @@
 //   dotnet fsi terrain.fsx ski <gatedir> <out.mp4> [seconds]        a planned descent from the central peak, at the skier's eye
 //   dotnet fsi terrain.fsx skiline <gatedir> <out.png>  the planned line and the track from above, by steepness
 //   dotnet fsi terrain.fsx reveal <gatedir> <out.mp4> [seconds]     rise on a locked focus, then orbit
-//   dotnet fsi terrain.fsx skier <gatedir> <ski.snap> <out.png>     the game's own camera, lens and palette, 320 x 200
+//   dotnet fsi terrain.fsx skier <gatedir> <ski.snap> <out.png>     the game's own camera, lens and palette, 320 x 200;
+//                                                       --far: draw distances 12, 20, 30, 49 side by side
 //
 // <gatedir> is what py/terrain/gate_terrain.py writes ($MIDWINTER_WORK/terrain/gate/): gen_in.snap (the CPU
 // at $19962, file 37.2 loaded), the game's grid after $19962 returns for each target (gen_out.snap for the
@@ -159,5 +160,7 @@ match fsi.CommandLineArgs |> Array.toList |> List.tail with
 | [ "ski"; dir; out; secs ] -> Drone.ski (List.last (islandFrom dir)) out (float secs); exit 0
 | [ "reveal"; dir; out ] -> Drone.reveal (List.last (islandFrom dir)) out 30.0; exit 0
 | [ "reveal"; dir; out; secs ] -> Drone.reveal (List.last (islandFrom dir)) out (float secs); exit 0
-| [ "skier"; dir; snap; out ] -> Drone.skier (List.last (islandFrom dir)) (Heritage.loadRam snap) (Heritage.loadPalette snap) out; exit 0
+| [ "skier"; dir; snap; out ] -> Drone.skier (List.last (islandFrom dir)) (Heritage.loadRam snap) (Heritage.loadPalette snap) [ 49.0f ] out; exit 0
+| [ "skier"; dir; snap; out; "--far" ] ->
+    Drone.skier (List.last (islandFrom dir)) (Heritage.loadRam snap) (Heritage.loadPalette snap) [ 12.0f; 20.0f; 30.0f; 49.0f ] out; exit 0
 | _ -> eprintfn "usage: see the header of terrain.fsx"; exit 2

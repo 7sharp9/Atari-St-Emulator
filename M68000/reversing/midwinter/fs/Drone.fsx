@@ -461,7 +461,9 @@ let quantise (palette: Colour[]) (spread: float32) (img: Image) : Image =
 /// picture is in the game's own colours, read from the snapshot's shifter palette: the flat sky (colour 2, $157)
 /// and the three snow colours the goggle view uses (colours 5, 6 and 1: $245, $467, $777), level snow in the
 /// middle one as on the game's screen. Which colour the game gives each slope is not decoded; the ramp is ours.
-let skier (finest: Grid) (ram: byte[]) (palette: int[]) (out: string) =
+/// `draws` lists the draw distances in cells, one picture each, side by side: `[ 49.0f ]` is the game's window; a
+/// shorter one tests whether far ground shapes the view (terrain.md section 5: 12 to 49 look the same).
+let skier (finest: Grid) (ram: byte[]) (palette: int[]) (draws: float32 list) (out: string) =
     let dark, level, lit = stColour palette.[5], stColour palette.[6], stColour palette.[1]
     let ramp (light: float32) (_: float32) =
         if light < 1.0f then mix dark level (Math.Clamp((light - 0.4f) / 0.5f, 0.0f, 1.0f))
@@ -475,7 +477,9 @@ let skier (finest: Grid) (ram: byte[]) (palette: int[]) (out: string) =
     let cam = { X = float32 (ox + col); Y = float32 (oy + row); Alt = eye; Yaw = -MathF.PI / 2.0f; Pitch = 0.0f; Roll = 0.0f }
     let sky = stColour palette.[2]
     let colours = [| sky; dark; level; lit |]
-    frame t Lens.midwinter (Air.flat sky) 320 200 cam |> quantise colours 0.2f |> savePng out
+    draws
+    |> List.map (fun far -> frame t { Lens.midwinter with Far = far } (Air.flat sky) 320 200 cam |> quantise colours 0.2f)
+    |> Render.row 4 |> savePng out
 
 // ---------------------------------------------------------------- every level of the whole island
 

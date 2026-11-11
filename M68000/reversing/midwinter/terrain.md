@@ -154,7 +154,8 @@ In the order `$1498a`, `$14cc0` and `$152c0` call them:
   a triangle gets from its shading bytes is not decoded). A height-field render of the domain model from that camera,
   with the lens above and the 49-cell window, places the horizon and the ridge line's shape as the game does, with
   the ridges about 10 pixels higher; a draw distance of 12, 20, 30 or 49 cells does not change that, so the offset is
-  in the undecoded fill (`fs/terrain.fsx skier`, compared by eye against the snapshot's screen).
+  in the undecoded fill (`fs/terrain.fsx skier`, and `skier ... --far` for the four draw distances, compared by eye
+  against the snapshot's screen).
 - The map screen (`$14ce`) copies 37.2 to `$60000` with a zero row below it (`$15d6`), subdivides once with `$2c60`
   and draws the result with `$2bc2` (per-row handler `[$22d50]`): the map is drawn from the height grid, not stored as a
   picture (inferred from the code; the render is not matched).
