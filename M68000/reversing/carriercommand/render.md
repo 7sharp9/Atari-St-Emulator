@@ -125,9 +125,25 @@ polygon counts agreeing with the leaf structure and the renders looking right; t
 compared with the game's. Models 1, 2, 3 and 38 (animated builders) and the 21 models using the non-BSP draw
 routines `$8fac`, `$9514`, `$9516`, `$9540` do not decode yet.
 
+Which object uses which model: the type record at `$8660 + 16 t` names three model ids (words at +8, +10 and +12), and for
+most types all three are `t` itself. The Manta's entity (`$5df5a`) has type 5 in
+`scratchpad/carrier/manta/m_takeoff.snap`, so the Manta is model 5, the swept-wing craft with the red fuselage (that
+the entity's +2 word is the type `$7624` reads is inferred from the record layout of section 1). Several missiles share
+one model by keeping byte-identical copies: models 17, 18, 28 and 29 are four copies of the same 322 bytes (type 17 is
+the homing missile of `vehicles.md` section 4, type `$1c` the command centre's missile of `ai.md` section 6), and 19
+and 34 are two copies of a larger missile (types `$13`, the enemy carrier's, and `$22`, the missile site's).
+
+`py/render/subdivide.py <id>` takes a decoded model into a modern mesh: every BSP polygon with its colour (a dither
+averaged), written as OBJ, then Catmull-Clark subdivision with semi-sharp creases on edges whose faces meet at more
+than 35 degrees, and optionally a least-squares fit of the control cage so the subdivided surface lies on the game's
+polygons. It scores each result by silhouette IoU against the game polygons over 72 orthographic views (worst view and
+mean; the game mesh refined without smoothing is the control, 0.985 worst view at 600 px). For the Manta: plain
+Catmull-Clark 0.560, creased 0.763, creased with the cage refined once and fitted 0.932, refined twice 0.961. The
+subdivision is ours, not the game's.
+
 ## 7. Open
 
 - Compare the decoded BSP order with the game's own colour sequence (`watch 9de 2` during one model).
 - The animated builders, the non-BSP draw routines, the near-clip path `$9098`, and the line and disc drawers.
   (`$1ff46`, 600 calls per 1.2M steps, is not graphics: it steps the six sound channels from the VBL.)
-- Which model ids are the carrier, Manta and Walrus.
+- Which model ids are the carrier and the Walrus (the Manta is model 5, section 6).
