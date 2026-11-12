@@ -791,6 +791,7 @@ results give them as `"$hex"`.
 | `last_writer` | `lo`, `hi?`, `step` | the last write to `[lo,hi]` at or before `step` (an event as `watch_events` gives it, or null), `intervals` replayed |
 | `last_reg_change` | `reg`, `step`, `mask?` | the last step at or before `step` at which `reg` (`d0`-`a7`, `usp`, `ssp`, `sr`) changed in the bits of `mask`: `step`, `pc`, `value`, `previous`, `source` (`cpu`, `exception`, `host`), or null; `intervals` replayed |
 | `first_divergence` | `a`, `b` (recording ids) | `divergence`: `step`, `pc_a`, `pc_b`, `journal_step`, the first differing RAM `bytes`; null if none |
+| `profile_start` / `profile_stop` | `max_pairs?` (default 256) / `path` | an execution profile over the instructions `step`, `run` and `hits` execute (section "Execution profile"); `profile_stop` writes it as JSON and returns `steps`, `skipped`, `pcs`, `compare_pcs`, `pairs`, `overflow_pcs`, `flag_checks`, `flag_mismatches`, `mismatch_pcs` |
 | `render` | `path` | PNG at native resolution: shifter base `$ff8201/3`, `$ff8260`, palette (as `snap_render.py`) |
 | `kbd` / `mouse` / `disk` | `bytes` / `action` `move`+`dx`/`dy` or `down`/`up`+`button` / `path` or `null` | as the REPL |
 | `shutdown` | | ends the process |
@@ -809,7 +810,7 @@ events at the same steps as the REPL's `watch 189ca 4` (writer PC `$01529c`, val
 `s 300000` / `snap`, and a `fork`/`restore` replay gives an identical end snapshot and event list. A
 `poke` reports `source: "host"`; a stop watch on the odd byte `$189cd` stops `run` on the first byte
 write there, and a word write at `$189cc` reaches a watch on `$189cd` alone. `load` without `disk` of a snapshot with no sidecar is refused, a malformed line is answered and the server stays up.
-The MCP handshake and `tools/list` (33 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
+The MCP handshake and `tools/list` (35 tools) work, as does `tools/call` for `boot`, `run` and `peek`.
 The REPL `watch 189ca 4` output is identical before and after the change (25 lines).
 
 ### Record and replay
@@ -949,6 +950,55 @@ RAM byte flipped in the checkpoint at 1,500,000 changes the replay at 1,700,000 
 replays read the files. A second recording without the poke, made in another process, diverges from the first at the
 poke's step with `$521cd` the first differing byte, as `divergence_proof.py` finds in memory (9 of 9 checks).
 
+### Execution profile
+
+`profile_start` begins a profile over every instruction the server's `step`, `run` and `hits` execute
+until `profile_stop` writes it to a JSON file: each executed instruction start (24-bit PC) with its
+count, and for each compare-class instruction (`cmp`, `cmpa`, `cmpi`, `cmpm`, `tst`) the distinct
+(source, destination) operand pairs it ran with, up to `max_pairs` per PC (the rest are counted as
+`overflow`). It is the input-to-state correspondence of Redqueen: run an input and a same-snapshot,
+same-budget control from one fork, profile both, and `tools/profdiff.py A.json B.json --value <hex>
+... | --text <typed string>` prints the code only one run reached and ranks the compares with an
+operand equal to the injected byte, word or long (or, for `--text`, whose bytes occur in the string).
+The rank puts a pair the control never ran at that PC first, then a matched compare (source =
+destination), then PCs with few distinct pairs.
+
+- **Operands are read before the instruction runs**, through `Peek` (no read hooks). An operand in I/O
+  space (`$ff8000` and up, 24-bit) or at an odd word or long address is never read, since a device
+  read has side effects; the pair records it as `null`. `cmpa.w` is logged at size 4 with the source
+  sign-extended, as the CPU compares it. `sub`/`subq` followed by a branch is not logged.
+- **A step that ran no instruction is not counted**: one that took an interrupt (the instruction at
+  the old PC did not run), or idled STOPped or halted. These are `skipped`.
+- **Self-check.** After each logged compare whose operands were both read, the server compares the
+  N, Z, V and C flags the CPU left with the ones the recorded operands give, and counts
+  `flag_mismatches` (with up to 32 `mismatch_pcs`). A non-zero count means a misread operand: a build
+  that read `cmpi.b`'s immediate one byte early gave 329 in Black Tiger's input run, the correct one 0.
+- **The profile follows the server, not the machine**: it keeps accumulating across `restore` and
+  `load`, so start it after the restore of each arm. The REPL, `fsi_drive.fsx` and the server's replay
+  methods (`replay_to`, `last_writer`, ...) never profile.
+- **Cost.** With no profile running, a server step pays one option test: an interleaved A/B of 10M
+  `step`s from Black Tiger's `play_start.snap` against the previous server on the same core DLL (five
+  pairs, load average 30 to 38) gave base median 6.15 s (min 5.18), new 5.82 s (min 4.96), the gaps
+  alternating in sign with the order of the pair (+11 to +12% when the new build ran first, -5 to -13%
+  when it ran second), and byte-identical end snapshots in all five pairs; the falsifier, slower by
+  more than 3% in every pair, was not met. With a profile running a step costs about 1.5x (5M steps
+  3.57 to 3.67 s against 2.31 to 2.61 s).
+
+Proofs. `server/profile_proof.py [--dll <stserver.dll>] [--out <dir>]` (5/5): from Black Tiger's
+`play_start.snap`, the level-skip input (`secrets.md` row 1) against a no-input control of the same
+500,000 steps. The input sets the word `$17826` and the control does not; the profiled and unprofiled
+input runs end byte-identical; 245,325 checked compares give 0 flag mismatches; the control profiled
+twice writes identical JSON; and the blind rank with `--value 47 --value 85` puts `cmp.b #$47`
+(`$c6c8`) first and `cmp.b #$85` (`$c6d6`) second, both in the main loop's `$c6ac..$c706`. The
+coverage diff lists `$c6b8..$c6e6` (with `$c6de`, which sets the flag) and the joystick packet handler
+`$a624` as input-only. `reversing/impossamole/py/secrets/cheat_profile.py [--dll ...]`: the 8th pick
+of the high-score name `LUMBAJAK` against `QWERTYXZ`, 1.8M steps each from snapshots the REPL
+name-entry driver makes; `$bb7d` 1 against 0, 0 mismatches in 1,285,839 checks, and `--text LUMBAJAK`
+ranks the two `cmp.l` halves of the name compare (`$18358` "LUMB", `$18364` "AJAK") first and
+second. A byte-valued `--value` for each letter does not find them (the name is compared four letters
+at a time). The coverage diff alone also names the match path `$1835e..$18368` and the store at
+`$183ae`. The control run's `$18358` pairs list the first four letters of every name the loop tests.
+
 ## MAME as a second oracle for the ST core (`tools/mame_st/`)
 
 MAME 0.289's `st_uk` driver boots TOS 1.00 UK: `mame -listroms st_uk` wants `tos100uk.bin` (196,608 bytes, CRC `1a586c64`), which `TOS100UK.IMG` equals, plus the IKBD ROM (`keyboard.u1`). The zips are in `~/GitHub/mame/roms`
@@ -1056,7 +1106,8 @@ least once by a session that did not know it existed.
 
 | tool | use |
 |---|---|
-| `server/` (`stserver.dll`) | long-lived JSON-RPC / MCP process around one `AtartSt`: load with a required disk, step, run with a budget, breakpoints, typed peek/poke, multi-range read/write watches with writer PC and source, in-memory fork/restore, recordings (`replay_to`, `last_writer`, `last_reg_change`, `first_divergence`; saved to a directory and read back with `record_load`), PNG render (section "Memory hooks and the `stserver` process"; `server/smoke.py` is its check; `server/replay_proof.py`, `last_writer_proof.py`, `last_reg_change_proof.py`, `divergence_proof.py`, `provenance_proof.py` and `record_disk_proof.py` the recording's) |
+| `server/` (`stserver.dll`) | long-lived JSON-RPC / MCP process around one `AtartSt`: load with a required disk, step, run with a budget, breakpoints, typed peek/poke, multi-range read/write watches with writer PC and source, in-memory fork/restore, recordings (`replay_to`, `last_writer`, `last_reg_change`, `first_divergence`; saved to a directory and read back with `record_load`), PNG render (section "Memory hooks and the `stserver` process"; `server/smoke.py` is its check; `server/replay_proof.py`, `last_writer_proof.py`, `last_reg_change_proof.py`, `divergence_proof.py`, `provenance_proof.py` and `record_disk_proof.py` the recording's), execution profiles (`profile_start`/`profile_stop`; `server/profile_proof.py`) |
+| `tools/profdiff.py A.json B.json [--value <hex>...] [--text <s>]` | diff of two `stserver` execution profiles, an input run and its same-budget control: the PCs only one ran, grouped into runs, and the compares whose operand equals an injected value or whose bytes occur in typed text, ranked (section "Execution profile") |
 | `tools/provenance.py <stserver.dll> <snap> <disk> <steps> <hexaddr>[:<len>] <step\|end>` | backward slice over a recording: where the bytes at an address (or, from Python, a register's bits) came from, as a tree of (step, PC, instruction, value) links found by `last_writer` / `last_reg_change`, each value-checked against the decoded instruction, down to an immediate, an input, DMA or the recording's base (section "Record and replay"; the opcodes it has no rule for stop with the reason) |
 | `tools/stclient.py` | Python client for `stserver` (`StServer(root)`: any method as a call, `read`, `reg`, and `call(entry, ret, stops=[...])` to run one routine from a planted return address with interrupts masked, `stops` ending it early at a PC such as a call that waits on an interrupt; `call_resume` does the same and then restores every register, so a command handler run in mid-play leaves the game running, `reversing/carriercommand/py/units/takeoff_proof.py`): for a gate that runs a routine thousands of times and prints only counts (`reversing/midwinter/py/army/gate_army.py`; `stops`: `gate_encounter.py`'s kill leg, which stops at the radio message) |
 | `tools/stdrive.py` | game driver library over `stclient.py` (`Drive(root, journal=, fields={name: (addr, width)}, period=)`): `hold(input, polls=k)` and `tap()` from a VBL boundary (step a multiple of 12,000), refusing a hold shorter than the game's poll period; `wait_until(addr, value, mask, width, budget)` on a stop watch, exact to the writing instruction; `ab(fn, budget)`, the same-snapshot, same-budget input/control pair on a fork with a diff of named ranges; `Joy`/`Key`/`Raw` inputs; a read cache cleared by every input or step; an always-on JSONL journal of every load, input, step, fork, restore and save that `replay()` (or `uv run python tools/stdrive.py <journal> <dir>`) re-runs and `cmp`s. `tools/stdrive_check.py <snap> <st> <dir>` is its check (5 of 5 on Impossamole's boss room); `reversing/impossamole/py/boss/boss_stdrive.py` the worked port of a REPL driver (byte-identical to the REPL script's kill). Not built: a closed-loop replay (the journal is open-loop: replayed inputs do not react), stserver recordings inside a forking drive (`restore` is refused while one is active) |

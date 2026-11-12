@@ -106,11 +106,17 @@ entry (Redqueen's input-to-state correspondence). Unconventional.
 - **Evidence.** The skill, section 2, prescribes a manual census of comparisons after the key-read
   service. Black Tiger's level skip (`black_tiger/secrets.md`), Impossamole's cheat names, Populous's
   F6/F7 hooks (`30cb24f`) and the Lemmings secrets hunt (`81e2ed5`) were each found by reading consumers.
-- **Exists.** `hits` on named addresses; read watches. This idea is `sessions/emulator.md` Open 2.
-- **Cost.** Medium. A per-instruction hook on the hot path, behind a null test like the memory hooks;
-  needs an interleaved A/B with no hook set (falsifier: slower by more than 3% in every pair).
-- **First experiment.** Rediscover blind Black Tiger's `$85` plus ClrHome flag `$17826` and
-  Impossamole's `LUMBAJAK`; measure the rank of the real compare.
+- **Exists.** `hits` on named addresses; read watches.
+- **Cost.** Medium. Built in `stserver`'s own step loops, so the core's `AtartSt.Step` is unchanged and
+  the cost with no profile is one option test per server step.
+- **Built** (`stserver` `profile_start`/`profile_stop`, `tools/profdiff.py`; DEVELOPING.md "Execution
+  profile"). Blind ranks: Black Tiger's level skip puts `cmp.b #$47` (`$c6c8`) first and `cmp.b #$85`
+  (`$c6d6`) second, and its coverage diff names the flag-setting block `$c6b8..$c6e6`
+  (`server/profile_proof.py`, 5/5); Impossamole's `LUMBAJAK` puts the two `cmp.l` halves of the name
+  compare (`$18358`, `$18364`) first and second with `--text`, and no byte value finds them
+  (`reversing/impossamole/py/secrets/cheat_profile.py`). Every compare's operands are checked against
+  the flags the instruction left: 0 mismatches in 245,325 checks (`profile_proof.py`) and 1,285,839
+  (`cheat_profile.py`), 329 in the input run with a deliberately misread `cmpi.b` immediate. `sub` then branch is not logged.
 
 ## 6. Cross-game routine fingerprints
 

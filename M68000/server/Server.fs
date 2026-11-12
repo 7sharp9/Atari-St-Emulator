@@ -174,6 +174,202 @@ let newHits () =
 let status (s: AtartSt) extra =
     obj ([ "pc", hx (uint32 s.Cpu.PC); "step", jint (int64 s.StepCount) ] @ extra)
 
+// ---- execution profile: coverage and compare log ------------------------------------------------
+
+///An execution profile over the steps 'step', 'run' and 'hits' take: every executed instruction
+///start (24-bit PC) with its count, and for each compare-class instruction (cmp, cmpa, cmpi, cmpm,
+///tst) the distinct operand pairs it ran with. Operands are read before the instruction runs, with
+///Peek (no read hooks). An operand in I/O space ($ff8000 and up, 24-bit) or at an odd word address
+///is not read, since a device read has side effects: it is recorded as unknown (None). A step that
+///takes an interrupt, or idles STOPped or halted, ran no instruction and is not counted. DEVELOPING.md,
+///"Execution profile".
+module Profile =
+    [<Struct; CustomEquality; NoComparison>]
+    type CmpKey =
+        { Pc: uint32; Size: int; Src: uint32; Dst: uint32; SrcOk: bool; DstOk: bool }
+        override k.GetHashCode() = HashCode.Combine(k.Pc, k.Size, k.Src, k.Dst, k.SrcOk, k.DstOk)
+        override k.Equals(o) = match o with :? CmpKey as b -> k.Same b | _ -> false
+        member k.Same (b: CmpKey) =
+            k.Pc = b.Pc && k.Size = b.Size && k.Src = b.Src && k.Dst = b.Dst && k.SrcOk = b.SrcOk && k.DstOk = b.DstOk
+        interface IEquatable<CmpKey> with member k.Equals b = k.Same b
+
+    type State =
+        { Coverage: Dictionary<uint32, int64>
+          Pairs: Dictionary<CmpKey, int64>
+          PairsAt: Dictionary<uint32, int>
+          Overflow: Dictionary<uint32, int64>
+          Kind: Dictionary<uint32, string>
+          MaxPairs: int
+          BaseStep: uint64
+          mutable Steps: int64
+          mutable Skipped: int64
+          mutable FlagChecks: int64
+          mutable FlagMismatches: int64
+          MismatchPcs: HashSet<uint32> }
+
+    let mask sz = match sz with 1 -> 0xffu | 2 -> 0xffffu | _ -> 0xffffffffu
+
+    let create maxPairs baseStep =
+        { Coverage = Dictionary(); Pairs = Dictionary(); PairsAt = Dictionary(); Overflow = Dictionary()
+          Kind = Dictionary(); MaxPairs = maxPairs; BaseStep = baseStep; Steps = 0L; Skipped = 0L
+          FlagChecks = 0L; FlagMismatches = 0L; MismatchPcs = HashSet() }
+
+    ///N, Z, V, C (CCR bits 3..0) that `kind` sets from these operands: dst - src, or tst of src.
+    let flags (kind: string) sz (src: uint32) (dst: uint32) =
+        let m = mask sz
+        let msb = (m >>> 1) + 1u
+        let src, dst = src &&& m, dst &&& m
+        if kind = "tst" then (if src &&& msb <> 0u then 8 else 0) ||| (if src = 0u then 4 else 0)
+        else
+            let r = (dst - src) &&& m
+            (if r &&& msb <> 0u then 8 else 0) ||| (if r = 0u then 4 else 0)
+            ||| (if (dst ^^^ src) &&& (dst ^^^ r) &&& msb <> 0u then 2 else 0) ||| (if src > dst then 1 else 0)
+
+    let private dreg (c: Cpu) n =
+        match n with 0 -> c.D0 | 1 -> c.D1 | 2 -> c.D2 | 3 -> c.D3 | 4 -> c.D4 | 5 -> c.D5 | 6 -> c.D6 | _ -> c.D7
+    let private areg (c: Cpu) n =
+        match n with 0 -> c.A0 | 1 -> c.A1 | 2 -> c.A2 | 3 -> c.A3 | 4 -> c.A4 | 5 -> c.A5 | 6 -> c.A6 | _ -> c.A7
+
+    let private peek (mmu: MMU) (a: uint32) sz =
+        match sz with
+        | 1 -> uint32 (mmu.PeekByte a)
+        | 2 -> uint32 (uint16 (mmu.PeekWord a))
+        | _ -> uint32 (mmu.PeekLong a)
+
+    ///Memory operand at `a`, or None for I/O space, an odd word/long address or a bus error.
+    let private mem (mmu: MMU) (a: int) sz =
+        let a = uint32 a &&& 0xffffffu
+        if a >= 0xff8000u || (sz > 1 && a % 2u <> 0u) then ValueNone
+        else try ValueSome (peek mmu a sz) with _ -> ValueNone
+
+    ///Brief-format index extension word (the only one the 68000 has): Xn.w/.l + d8.
+    let private index (c: Cpu) (ext: int) =
+        let r = (ext >>> 12) &&& 7
+        let v = if ext &&& 0x8000 <> 0 then areg c r else dreg c r
+        (if ext &&& 0x0800 <> 0 then v else int (int16 v)) + int (sbyte (byte ext))
+
+    ///The value of effective address (mode, reg) of size `sz`, its extension words starting at `x`.
+    let private ea (c: Cpu) (mmu: MMU) mode reg sz (x: uint32) : uint32 voption =
+        let w (a: uint32) = int (int16 (mmu.PeekWord a))
+        match mode with
+        | 0 -> ValueSome (uint32 (dreg c reg))
+        | 1 -> ValueSome (uint32 (areg c reg))
+        | 2 | 3 -> mem mmu (areg c reg) sz
+        | 4 -> mem mmu (areg c reg - (if sz = 1 && reg = 7 then 2 else sz)) sz
+        | 5 -> mem mmu (areg c reg + w x) sz
+        | 6 -> mem mmu (areg c reg + index c (w x)) sz
+        | 7 ->
+            match reg with
+            | 0 -> mem mmu (w x) sz
+            | 1 -> mem mmu (mmu.PeekLong x) sz
+            | 2 -> mem mmu (int x + w x) sz
+            | 3 -> mem mmu (int x + index c (w x)) sz
+            | 4 -> ValueSome (peek mmu (if sz = 1 then x + 1u else x) sz)
+            | _ -> ValueNone
+        | _ -> ValueNone
+
+    ///A compare-class instruction at the CPU's PC: kind, operand size, source, destination (the
+    ///flags are those of destination - source; tst compares its operand with 0).
+    let decode (c: Cpu) : struct (string * int * uint32 voption * uint32 voption) voption =
+        let mmu = c.MMU
+        let pc = uint32 c.PC
+        let op = int (uint16 (mmu.PeekWord pc))
+        let mode, reg = (op >>> 3) &&& 7, op &&& 7
+        let szOf b = match b with 0 -> 1 | 1 -> 2 | _ -> 4
+        if op &&& 0xf000 = 0xb000 then
+            let rn = (op >>> 9) &&& 7
+            match (op >>> 6) &&& 7 with
+            | 0 | 1 | 2 as om ->
+                let sz = szOf om
+                ValueSome (struct ("cmp", sz, ea c mmu mode reg sz (pc + 2u), ValueSome (uint32 (dreg c rn))))
+            | 3 ->
+                let src = ea c mmu mode reg 2 (pc + 2u) |> ValueOption.map (fun v -> uint32 (int (int16 v)))
+                ValueSome (struct ("cmpa", 4, src, ValueSome (uint32 (areg c rn))))
+            | 7 -> ValueSome (struct ("cmpa", 4, ea c mmu mode reg 4 (pc + 2u), ValueSome (uint32 (areg c rn))))
+            | om when mode = 1 ->
+                let sz = szOf (om - 4)
+                ValueSome (struct ("cmpm", sz, mem mmu (areg c reg) sz, mem mmu (areg c rn) sz))
+            | _ -> ValueNone
+        elif op &&& 0xff00 = 0x0c00 && (op >>> 6) &&& 3 <> 3 then
+            let sz = szOf ((op >>> 6) &&& 3)
+            let imm = peek mmu (if sz = 1 then pc + 3u else pc + 2u) sz
+            ValueSome (struct ("cmpi", sz, ValueSome imm, ea c mmu mode reg sz (pc + (if sz = 4 then 6u else 4u))))
+        elif op &&& 0xff00 = 0x4a00 && (op >>> 6) &&& 3 <> 3 then
+            let sz = szOf ((op >>> 6) &&& 3)
+            ValueSome (struct ("tst", sz, ea c mmu mode reg sz (pc + 2u), ValueSome 0u))
+        else ValueNone
+
+    let private bump (d: Dictionary<'k, int64>) (k: 'k) =
+        match d.TryGetValue k with
+        | true, n -> d.[k] <- n + 1L
+        | _ -> d.[k] <- 1L
+
+    ///One machine step, profiled.
+    let step (p: State) (s: AtartSt) =
+        let c = s.Cpu
+        if c.Stopped || c.Halted then
+            s.Step()
+            p.Skipped <- p.Skipped + 1L
+        else
+            let mmu = c.MMU
+            let pc = uint32 c.PC &&& 0xffffffu
+            let acks = mmu.InterruptAcks
+            let cmp = if pc >= 0xff8000u then ValueNone else (try decode c with _ -> ValueNone)
+            s.Step()
+            if mmu.InterruptAcks <> acks then p.Skipped <- p.Skipped + 1L
+            else
+                p.Steps <- p.Steps + 1L
+                bump p.Coverage pc
+                match cmp with
+                | ValueSome (struct (kind, sz, src, dst)) ->
+                    let m = mask sz
+                    let k = { Pc = pc; Size = sz; Src = (src |> ValueOption.defaultValue 0u) &&& m; SrcOk = src.IsSome
+                              Dst = (dst |> ValueOption.defaultValue 0u) &&& m; DstOk = dst.IsSome }
+                    p.Kind.[pc] <- kind
+                    //Self-check of the operand reads: the flags the instruction left must be the
+                    //ones these operands give.
+                    if src.IsSome && dst.IsSome then
+                        p.FlagChecks <- p.FlagChecks + 1L
+                        if int s.Cpu.CCR &&& 0xf <> flags kind sz src.Value dst.Value then
+                            p.FlagMismatches <- p.FlagMismatches + 1L
+                            if p.MismatchPcs.Count < 32 then p.MismatchPcs.Add pc |> ignore
+                    match p.Pairs.TryGetValue k with
+                    | true, n -> p.Pairs.[k] <- n + 1L
+                    | _ ->
+                        let have = match p.PairsAt.TryGetValue pc with | true, n -> n | _ -> 0
+                        if have < p.MaxPairs then
+                            p.Pairs.[k] <- 1L
+                            p.PairsAt.[pc] <- have + 1
+                        else bump p.Overflow pc
+                | ValueNone -> ()
+
+    let toJson (p: State) (endStep: uint64) : JsonNode =
+        let v (ok: bool) (x: uint32) = if ok then jstr (sprintf "$%x" x) else null
+        let byPc = p.Pairs |> Seq.groupBy (fun kv -> kv.Key.Pc) |> Map.ofSeq
+        let cmpPcs = Seq.append byPc.Keys p.Overflow.Keys |> Seq.distinct |> Seq.sort
+        obj [ "base_step", jint (int64 p.BaseStep); "end_step", jint (int64 endStep)
+              "steps", jint p.Steps; "skipped", jint p.Skipped
+              "flag_checks", jint p.FlagChecks; "flag_mismatches", jint p.FlagMismatches
+              "mismatch_pcs", jarr [ for pc in Seq.sort p.MismatchPcs -> hx pc ]
+              "coverage", jarr [ for kv in p.Coverage |> Seq.sortBy (fun kv -> kv.Key) ->
+                                    obj [ "pc", hx kv.Key; "count", jint kv.Value ] ]
+              "compares",
+              jarr [ for pc in cmpPcs ->
+                      let pairs = match byPc.TryFind pc with Some xs -> List.ofSeq xs | None -> []
+                      obj [ "pc", hx pc; "kind", jstr p.Kind.[pc]
+                            "size", jint (match pairs with kv :: _ -> int64 kv.Key.Size | [] -> 0L)
+                            "overflow", jint (match p.Overflow.TryGetValue pc with | true, n -> n | _ -> 0L)
+                            "pairs", jarr [ for kv in pairs |> List.sortByDescending (fun kv -> kv.Value) ->
+                                              obj [ "src", v kv.Key.SrcOk kv.Key.Src; "dst", v kv.Key.DstOk kv.Key.Dst
+                                                    "count", jint kv.Value ] ] ] ] ]
+
+///The active profile; None costs the step loops one test per step.
+let mutable profile : Profile.State option = None
+let stepOne (s: AtartSt) =
+    match profile with
+    | None -> s.Step()
+    | Some p -> Profile.step p s
+
 // ---- methods ------------------------------------------------------------------------------------
 
 ///A recording's journal holds only inputs, so a jump to another state would break it.
@@ -295,7 +491,7 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
         let err =
             try
                 while i < n do
-                    s.Step()
+                    stepOne s
                     i <- i + 1
                 None
             with e -> Some e.Message
@@ -317,7 +513,7 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
         let mutable extra = []
         (try
             while reason = "" && n < maxSteps do
-                s.Step()
+                stepOne s
                 n <- n + 1
                 let pc = uint32 s.Cpu.PC
                 match stopRequest with
@@ -404,7 +600,7 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
         let counts = Dictionary<uint32, int64 * int64 * int64>()
         for t in targets do counts.[t] <- (0L, -1L, -1L)
         for i in 1L .. int64 (int' p "steps") do
-            s.Step()
+            stepOne s
             match counts.TryGetValue (uint32 s.Cpu.PC) with
             | true, (n, f, _) -> counts.[uint32 s.Cpu.PC] <- (n + 1L, (if f < 0L then i else f), i)
             | _ -> ()
@@ -412,6 +608,28 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
                                     let n, f, l = counts.[t]
                                     obj [ "addr", hx t; "count", jint n; "first", jint f; "last", jint l ] ]
                    "watch_hits", newHits () ]
+
+    "profile_start", "Start an execution profile over the instructions 'step', 'run' and 'hits' execute from now: each executed PC with its count, and each compare (cmp, cmpa, cmpi, cmpm, tst) with the distinct operand pairs it ran with (up to max_pairs per PC; the rest are counted as overflow). Replaces a running profile. The profile follows the server, not the machine: stop it before a restore or load you do not want in it.",
+    [ "max_pairs", "int", false, "distinct operand pairs kept per compare PC (default 256)" ],
+    fun p ->
+        let s = need ()
+        profile <- Some (Profile.create (optInt p "max_pairs" 256) s.StepCount)
+        status s []
+
+    "profile_stop", "End the profile and write it to 'path' as JSON (coverage and compares; diff two with tools/profdiff.py). Returns the counts.",
+    [ "path", "string", true, "output .json" ],
+    fun p ->
+        let s = need ()
+        match profile with
+        | None -> fail "profile_stop: no profile running"
+        | Some pr ->
+            profile <- None
+            File.WriteAllText(str p "path", (Profile.toJson pr s.StepCount).ToJsonString())
+            status s [ "steps", jint pr.Steps; "skipped", jint pr.Skipped; "pcs", jint (int64 pr.Coverage.Count)
+                       "compare_pcs", jint (int64 pr.Kind.Count); "pairs", jint (int64 pr.Pairs.Count)
+                       "overflow_pcs", jint (int64 pr.Overflow.Count)
+                       "flag_checks", jint pr.FlagChecks; "flag_mismatches", jint pr.FlagMismatches
+                       "mismatch_pcs", jarr [ for pc in Seq.sort pr.MismatchPcs -> hx pc ] ]
 
     "fork", "Checkpoint the whole machine in memory; returns an id for 'restore'.", [],
     fun _ ->
