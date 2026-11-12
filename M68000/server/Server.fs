@@ -471,7 +471,8 @@ let methods : (string * string * (string * string * bool * string) list * (JsonO
     fun p ->
         let mmu = (need ()).Cpu.MMU
         let a = addr p "addr"
-        jstr (String.Join("", [| for i in 0 .. int' p "len" - 1 -> sprintf "%02x" (mmu.PeekByte (a + uint32 i)) |]))
+        let buf = Array.init (int' p "len") (fun i -> mmu.PeekByte (a + uint32 i))
+        jstr (Convert.ToHexString(buf).ToLowerInvariant())
 
     "poke", "Write a value of 'width' bytes (1, 2 or 4). Fires write watches with source 'host'.",
     [ "addr", "addr", true, "address"; "width", "int", true, "1, 2 or 4"; "value", "addr", true, "value" ],
