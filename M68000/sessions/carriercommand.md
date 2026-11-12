@@ -1,35 +1,32 @@
 # Carrier Command: handoff
 
-Updated 2026-11-12 by the session that ended at commit `29413e4`.
+Updated 2026-11-12 by the session that ended at commit `b8c8312`.
 
 ## Resume point
 
-- Last commit of this workstream: `29413e4` carriercommand: vehicles, enemy combat and defences, game modes, the
-  crack's stack time bomb.
+- Last commit of this workstream: `b8c8312` carriercommand: digest launch line carries its proof labels.
 - Working data: `M68000/scratchpad/carrier/` (rebuild recipe: `reversing/carriercommand/README.md` "Running it"
-  and "Snapshots"; indexed in `scratchpad/ANCHORS.md`). The first- and second-wave agent dirs are under
-  `scratchpad/carrier/agents/<area>/` with `BRIEF.md`; their final reports were folded into the topic docs and not
-  saved as `report.md`.
-- Start from: `scratchpad/carrier/c_s30.snap` (Strategy game, carrier at Vulcan). Apply `w 126c 00ff0001` before
-  any run longer than about 1G steps (Known traps).
+  and "Snapshots"; indexed in `scratchpad/ANCHORS.md`). Manta snapshots in `scratchpad/carrier/manta/`, rebuilt by
+  `py/units/manta_snaps.py`; meshes in `scratchpad/carrier/mesh/`, rebuilt by `py/render/subdivide.py 5`.
+- Start from: `scratchpad/carrier/manta/m_takeoff.snap` (Manta 0's first airborne tick, +28 = 3, from `c_s30` with
+  `w 126c 00ff0001` applied). `c_s30.snap` for anything else; apply `w 126c 00ff0001` before runs over about 1G steps.
 - Uncommitted work left behind: none.
 
 ## Proven so far
 
-Gates: `uv run python tools/gates.py run carriercommand`, 5/5 PASS at `29413e4`.
+Gates: `uv run python tools/gates.py run carriercommand`, 5/5 PASS at `e0f53c9` (render, economy, target, units,
+difficulty).
 
-- Enemy target choice `$2337a`: 1344/1344 score words, 21/21 decisions, ten of eleven constants load-bearing
-  (`py/ai/gate_score.py`; `ai.md` section 2).
-- Missile-site range set by difficulty, signed-compare wrap at `$8000`: launches 0/2/0 at 0/`$6000`/`$c000`
-  (`py/ai2/gate_difficulty.sh`; `ai.md` section 6). Combat states 10/11 driven state by state (`ai.md` section 5).
-- Economy: production 175/175, line cost and steps 14/14 each, packet landings 4/4, RNG 1/1
-  (`py/world/gate_economy.sh`; `economy.md` sections 2, 4).
-- Renderer: sine 4096/4096, rotations 360/360 and 120/120, projection 480/480, face test 120/120, spans 780/780
-  (`py/render/gate_render.sh`; `render.md`).
-- Vehicles: carrier 150/150 and 600/600 ticks (1950/1950 full), arctangent 529/529, repair 10/10 and 12/12,
-  flares 5/5 (`py/units/gate_units.sh`; `vehicles.md`).
-- The 640M-step double bus fault is the crack's protection stack leak, not the emulator (README "Provenance").
-- Packer: `LSD!` in-place depack, minimum gap 218 bytes on six files (`py/autopack_depack.py --gap`; `packer.md`).
+- Enemy target choice `$2337a`: 1344/1344 score words, 21/21 decisions (`py/ai/gate_score.py`; `ai.md` section 2).
+- Missile-site range by difficulty, wrap at `$8000`: launches 0/2/0 (`py/ai2/gate_difficulty.sh`; `ai.md` section 6).
+- Economy: production 175/175, lines 14/14, landings 4/4, RNG 1/1 (`py/world/gate_economy.sh`; `economy.md`).
+- Renderer: sine, rotations, projection, face test, spans (`py/render/gate_render.sh`; `render.md`).
+- Vehicles: carrier 150/150 and 600/600, atan 529/529, repair 10/10 and 12/12, flares 5/5, Manta take-off 42/42 at
+  rest and 42/42 with the carrier turning, controls 11/13 (`py/units/gate_units.sh`; `vehicles.md` sections 1-5).
+- The Manta is model 5; missiles share byte-identical model copies (`render.md` section 6).
+- Model 5 subdivided with a fitted cage: silhouette IoU 0.961 worst view against the game polygons (control 0.985)
+  (`py/render/subdivide.py 5`; `render.md` section 6).
+- Design digest in the README, fact-checked by a fresh-context reviewer.
 
 ## Running
 
@@ -37,35 +34,37 @@ Nothing running.
 
 ## Open, in priority order
 
-1. Launch a Manta and a Walrus (drive the launch UI from `c_s30`, or poke a slot to state 3 with a destination),
-   snapshot them in flight, then model their flight and driving the way `carrier_proof.py` does (per-tick match
-   count over a few hundred ticks). Unblocks craft fuel, terrain following and the command-centre missiles.
-2. An attack run to capture: `ai/atk2.txt` held state 3 for 144M steps; run longer with the time-bomb poke and
-   check the round formula of `ai.md` section 4 against the structure HP watch, round by round.
-3. Drone launcher `$25` and the command centre's missiles: find an enemy island with a `$25` (census the structure
-   blocks), put the player carrier in range, A/B on difficulty as `gate_difficulty.sh` does.
-4. 3D drawing order: `watch 9de 2` during one model's draw against `py/render/model.py`'s BSP order.
-5. Production priorities and fuel screens (`$22770`, `$228d2`, "Set Fuel Priorities"): click them and diff.
+1. Manta airborne flight `$1d354` (+28 = 3): model climb to the target altitude (+34), turn to the destination,
+   arrival and circling per tick from `m_takeoff.snap`, as `takeoff_proof.py` does; promote into the units gate.
+   Unblocks craft fuel (+10, falls about 1.2 a tick airborne) and terrain following.
+2. Walrus launch (`$1201a`, type 6, dock rather than lift) and driving, same method.
+3. An attack run to capture: `ai/atk2.txt` with the time-bomb poke, round by round against `ai.md` section 4.
+4. Drone launcher `$25` and the command centre's missiles: an enemy island with a `$25`, A/B on difficulty.
+5. 3D drawing order: `watch 9de 2` during one model's draw against `py/render/model.py`'s BSP order.
+6. Production priorities and fuel screens (`$22770`, `$228d2`).
 
 ## Known traps
 
-- The crack's stack leak kills every run about 1.55G steps after `c_s30`; `w 126c 00ff0001` stops it (README
-  "Provenance"). Snapshots after the halt (`agents/ai/nat/d3..d6`) are dead states.
-- The main frame is not a fixed 72,000 steps once combat is on screen (48,000 to 72,000): count ticks with `bp`
-  on `$1ac8c`, not steps.
+- The crack's stack leak kills every run about 1.55G steps after `c_s30`; `w 126c 00ff0001` stops it.
+- The main frame is not a fixed 72,000 steps once combat is on screen: count ticks with a `bp`, not steps.
+- Calling a command handler mid-play: use `StServer.call_resume`, not `call` (which leaves the CPU parked at its
+  return address with SR `$2700`). The launch handler refuses while the lift moves (`$dca` nonzero): wait for 0.
+- `subdivide.py`'s silhouette IoU needs 600 px: at 200 px the edge-on views cost about 5% from rasterization alone.
 
 ## Waiting on Dave
 
-- Emulator fix for mouse input: model the MFP in-service register (software end-of-interrupt mode), so a game
-  that lowers its IPL in the ACIA handler gets one packet byte per interrupt. Its own change behind the
-  regression net; `drive.txt` would then work with plain `mouse move`.
-- Optional, low priority: instruction-fetch bus errors build their frame with the data function code and opcode
-  0 (`68k.fs` `EnterGroup0Vector`, line ~1447); Hatari uses the program code and the IR.
-- Push: master is ahead of origin by the commits of this session.
+- Emulator fix for mouse input: model the MFP in-service register so a game that lowers its IPL in the ACIA
+  handler gets one packet byte per interrupt (README "Running it").
+- Optional, low priority: instruction-fetch bus errors build their frame with the data function code and opcode 0
+  (`68k.fs` `EnterGroup0Vector`); Hatari uses the program code and the IR.
+- Which subdivided Manta to keep for a modern version: fit1 (0.932, softer) or fit2 (0.961, near the original).
+- Push: master is ahead of origin by 12 commits, this handoff included.
+- Blog: `7sharp9.github.io/IDEAS.md` entry 9 (algorithm infographics, seven Carrier Command candidates) is in an
+  untracked file there.
 
 ## Next session
 
-1. `/resume carriercommand`; check `scratchpad/carrier/c_s30.snap` and the disk exist, then run the five gates.
-2. Pick Open item 1: read the launch command path (`$1201a` Walrus launch, Manta launch near it) and get a craft
-   airborne in a snapshot.
-3. Model the craft per tick against the emulator; promote the script into `py/units/` with a gate.
+1. `/resume carriercommand`; run the five gates.
+2. Read the airborne state `$1d354` to its first branch, then the steering and altitude code it calls.
+3. Model it per tick from `m_takeoff.snap` (`py/units/manta_snaps.py` rebuilds it), with the carrier at rest and turning.
+4. Promote the proof into `gate_units.sh` with labelled `re:` expects.
