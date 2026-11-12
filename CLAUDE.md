@@ -189,6 +189,8 @@ before spawning agents. The ones most often missed:
 - macOS has no `timeout`: `... | timeout 60 dotnet ...` fails before running, and a following
   `grep -c` prints 0, the same as "no hits". Print the raw output and a positive control before
   counting, and bound runs with step counts.
+- `grep` in the Bash tool is a shell function running ugrep: a BRE backreference (`\(...\) ... \1`) is an
+  "invalid escape" error, and a `grep -q`/`-c` after it reads as no match. Do such checks in Python.
 - `grep -r` from `M68000/` walks the multi-GB `scratchpad/` and blows the 120 s tool timeout: name
   the directories (`reversing/ tools/ sessions/`) or pass `--exclude-dir=scratchpad`.
 - A long-running driver script (a bot) edited in place loses the versions that worked (Crude Buster's
@@ -243,4 +245,9 @@ before spawning agents. The ones most often missed:
   (`$12`) mode or when the button is already in that state; an absolute-mode game reads clicks only
   through `$0D` interrogation. `ATARI_TRACE_IKBD=1` shows the mode; the packet per mode is in
   `DEVELOPING.md`, "IKBD command interpreter".
+- A whole `mouse move`/`mouse down` packet is queued at once and the next IKBD interrupt is raised as soon as
+  a byte is read; the MFP in-service register is not modelled. A game whose ACIA handler lowers the mask on
+  entry (Carrier Command's `$1794c`, `move #$2500,sr`) nests one handler per byte and parses the packet last
+  byte first, so the pointer never moves. Send each byte on its own `kbd` with `s 3000` between (`kbd f8`,
+  `kbd <dx>`, `kbd <dy>`; `$fa` = left down): `reversing/carriercommand/drive.txt`, README "Running it".
 - `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps"; step past it first (`s 2000000`, then `u`), as `reversing/powermonger/py/capture.sh` does.
