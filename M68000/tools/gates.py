@@ -28,10 +28,15 @@ pointing `--root` at the main checkout runs the main checkout's DLL. Logs go to 
 `expect` is matched as a set: two runs in one gate that print the same count (`42/42` twice) need labelled
 `re:` patterns (`"re:takeoff at rest 42/42"`, carriercommand `units`), or one of them can stop printing unnoticed.
 Every run sets `ATARI_NOTRACE=1` and `M68000_ROOT=<root>`. The exit status is 1 when any gate did not pass.
+The header line and every result in `last_run.json` carry the SHA-256 of `<root>/bin/Debug/net8.0/M68000.dll` and
+`<root>/server/bin/Debug/net8.0/stserver.dll` (`dll`, `server_dll`; the first 16 hex digits), hashed before the first
+gate and again after the last: a rebuild in between (another session's) marks every result `dll_changed`, since the
+run then tested two builds.
 
 Default `-j 1`: gates share the machine with other sessions' runs and some share scratch output dirs.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -126,6 +131,16 @@ def head(root):
         return "?"
 
 
+def dll_hashes(root):
+    def h(p):
+        try:
+            return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
+        except OSError:
+            return None
+    return dict(dll=h(root / "bin" / "Debug" / "net8.0" / "M68000.dll"),
+                server_dll=h(root / "server" / "bin" / "Debug" / "net8.0" / "stserver.dll"))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("action", choices=["list", "run"])
@@ -142,7 +157,9 @@ def main():
             print(f"{g:12} {x['name']:16} ~{x.get('minutes', '?')} min  expect {', '.join(x['expect'])}  "
                   f"[{x.get('cwd', '.')}] {x['cmd']}  ({x.get('cite', '')})")
         return
-    print(f"# {len(gates)} gates in {root} at {head(root)}", flush=True)
+    dlls = dll_hashes(root)
+    print(f"# {len(gates)} gates in {root} at {head(root)}, M68000.dll {dlls['dll']}, stserver.dll {dlls['server_dll']}",
+          flush=True)
     results = []
 
     def go(gx):
@@ -155,6 +172,9 @@ def main():
         results = list(ex.map(go, gates))
     if a.dry_run:
         return
+    changed = dll_hashes(root) != dlls
+    if changed:
+        print(f"# WARNING: a DLL changed during the run ({dlls} -> {dll_hashes(root)}): the gates tested more than one build")
     by = {}
     for r in results:
         by.setdefault(r["game"], []).append(r)
@@ -167,7 +187,7 @@ def main():
                 old = {r["name"]: r for r in json.loads(f.read_text())["results"]}
             except (ValueError, KeyError):      # a corrupt summary is rewritten from this run
                 old = {}
-        old.update({r["name"]: dict(r, when=when, head=head(root)) for r in rs})
+        old.update({r["name"]: dict(r, when=when, head=head(root), **dlls, dll_changed=changed) for r in rs})
         f.write_text(json.dumps(dict(when=when, results=list(old.values())), indent=1))
     bad = [r for r in results if r["status"] != "PASS"]
     print(f"# {len(results) - len(bad)}/{len(results)} pass" + (f"; not passing: {', '.join(r['game'] + '/' + r['name'] for r in bad)}" if bad else ""))
