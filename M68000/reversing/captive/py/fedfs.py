@@ -13,7 +13,7 @@ making the 32-bit sum of header, decoded data and checksum zero. The keys are th
 occupies `count` consecutive tracks on one side (units unit, unit+2, ...), 5112 data bytes each;
 in the last unit the checksum sits right after the file's last long, so a full-track decode of it
 fails the checksum while its data is right. The directory (20-byte entries: name[12], start unit
-word, unit count byte, pad, length long) is in the volume block, unit 1 (`read_dir`).
+word, unit count byte, file type byte, length long) is in the volume block, unit 1 (`read_dir`).
 
 Most files are packed with the game's own packer, magic "RNC\\x01" but not Rob Northen's format:
 header magic, unpacked length, packed length, then the packed bytes, read backwards. `depack` is a
@@ -55,7 +55,7 @@ def read_dir(img, unit=1):
     while i + 20 <= len(data) and data[i]:
         e = data[i:i + 20]
         name = e[:12].split(b'\0')[0].decode('latin-1')
-        u, count, _pad, length = struct.unpack('>HBBI', e[12:20])
+        u, count, _ftype, length = struct.unpack('>HBBI', e[12:20])
         ents.append((name, u, count, length))
         i += 20
     return ents
