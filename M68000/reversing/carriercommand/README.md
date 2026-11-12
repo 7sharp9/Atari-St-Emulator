@@ -105,8 +105,9 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   repair (10/10, 12/12). (V 3)
 - **A launch is a short deck sequence.** A Manta goes up the lift to the deck, then takes off in three phases
   in the carrier's own frame: it rises off the lift, rolls along the deck accelerating to a fixed speed, then pitches
-  up and climbs off the bow, leaving with the carrier's speed added to its own. With no destination it is sent to
-  a point 6000 behind the carrier (42/42 ticks with the carrier at rest and turning). (V 5)
+  up and climbs off the bow, leaving with the carrier's speed added to its own (the take-off 42/42 ticks with the carrier at rest and 42/42
+  turning). With no destination it is sent to a holding point 6000 behind the carrier (from code, matching the one
+  launch observed). (V 5)
 - **Missiles home and flares decoy.** A missile re-targets every 5 calls to any of the (at most two) flares within
   6000 of it (5/5 cases); its guidance slews yaw and pitch by at most 11.25 degrees a call (inferred). (V 4)
 - **Two games from one engine.** Strategy starts from the player's home island against an enemy holding eight;
