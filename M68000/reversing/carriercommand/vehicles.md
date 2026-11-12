@@ -16,7 +16,7 @@ with pokes (REPL, or `stserver` for the take-off).
 | repair calls, three systems at HIGH while the repair system itself is repaired | `repair_proof.py` | 10/10 |
 | repair calls, HIGH finishing and repair moving to MEDIUM | `repair_proof.py` | 12/12 |
 | flare capture: 6000 captures, 6001 does not, the later slot wins, no flare keeps the carrier | `flare_test.py` | 5/5 cases |
-| Manta take-off per tick (phase, speed, altitude, pitch, heading, deck offset, world x and z, the hand-off to flight), carrier at rest and carrier turning; eleven of thirteen constants break when nudged | `takeoff_proof.py` | 42/42 and 42/42, controls 11/13 |
+| Manta take-off per tick (phase, speed, altitude, pitch, heading, deck offset, world x and z, the hand-off to flight), carrier at rest and carrier turning; eleven of thirteen constants break when nudged in the turning run | `takeoff_proof.py` | 42/42 and 42/42, controls 11/13 |
 
 ## 1. Carrier motion `$1e4a0`
 
@@ -160,10 +160,12 @@ phase 2: pitch = max(pitch - 240, -1655);  altitude += 10;  deck z += speed     
                             deck freed ($dcc), entity +1 bit 2 cleared, flag bit 0 cleared if +51 is set
 ```
 
-From `c_s30` the take-off takes 42 ticks (9 rising, 10 rolling, 23 climbing off the bow) and leaves the deck at
-altitude 430, pitch -1655 and speed 60 plus the carrier's. The model matches 42/42 ticks with the carrier at rest
-and 42/42 with it turning and accelerating (speed 48 at take-off, so the Manta leaves at 108). Each constant nudged
-by one breaks at least one tick, except the two deck thresholds: the Manta moves 60 a tick, so the data pins 650 to
+From `c_s30` the take-off takes 43 ticks from the launch command (10 rising, 10 rolling, 23 climbing off the bow;
+`scratchpad/carrier/manta/manta_snaps.log`, `launch` to `T42`) and leaves the deck at
+altitude 430, pitch -1655 and speed 60 plus the carrier's. The model matches the 42 ticks `takeoff_proof.py` checks, which start
+after the first update, 42/42 with the carrier at rest and 42/42 with it turning and accelerating (speed 48 at take-off, so the Manta leaves at 108). In the turning run each
+constant nudged by one breaks at least one tick, except the two deck thresholds (at rest 9 of 13 break: the
+carrier-speed and carrier-heading terms cannot): the Manta moves 60 a tick, so the data pins 650 to
 (594, 654] and 2000 to (1974, 2034], and the values are read from code. In the observed flight the Manta then climbed
 to 781, turned back to the point behind the carrier, cleared its destination flag about 200 ticks after take-off and
 circled (one run of `py/units/manta_snaps.py`, not modelled).

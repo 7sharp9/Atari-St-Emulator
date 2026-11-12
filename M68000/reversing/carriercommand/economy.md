@@ -13,6 +13,8 @@ Proof labels as in `ai.md`. Gate: `py/world/gate_economy.sh` (`gates.toml` "econ
 | production rule `$2205a`, every stock write at `$220b0` in 60M steps | 175/175 |
 | production-line cost writes `$226a8` and step decrements `$226ac` | 14/14, 14/14 |
 | packet landings `$22490` | 4/4 |
+| distance matrix before every `$21e8a` call against the port, ownership as in `c_s30` and with every free island poked to the player (`py/infographics/gen_routing.py drive`) | 41/41 and 129/129 dumps, 4096/4096 entries each |
+| a pool-2 packet's hops `$22192` and dwell times, OBSIDIAN to VULCAN, poked ownership, with and without STAVROS | 14/14 and 14/14 hops, dwell = edge cost 14/14 each, both landed |
 | RNG `$192bc`, one call from a set state | 1/1 |
 
 ## 1. Islands
@@ -67,13 +69,25 @@ as `py/world/rng.py` computes.
 ## 3. The supply graph
 
 Each island has an adjacency list at `$22afa` (32 bytes per island: a count, then pairs of edge cost and
-neighbour, bit 15 set when the edge is disabled); most islands have two or three links, and SPLINTER (38)
-hangs alone off ENDYMION (36). `$21f9e` enables an edge only between two islands of the same owner, so taking
+neighbour; bit 15 of the neighbour word is set when the edge is disabled, and the index is masked with `$3fff`).
+There are 84 links of cost 8 to 69; 44 of the 64 islands have two or three, nine have one (SPLINTER (38) hangs
+off ENDYMION (36) by the dearest link, 69). Two links are one-way, 15 to 16 and 51 to 52, and TREASURE (51)'s only
+link is its own one-way link out, so nothing can route to it. `$21f9e` enables an edge only between two islands of the same owner, so taking
 an island cuts the other side's routes through it.
 
-`$67b40` is a 64 x 64 word distance matrix (rows of 128 bytes). `$21e16` resets it and `$21e8a` relaxes 8
-rows per call, an all-pairs shortest-path computation spread over many frames; `$122f` is set while it is
-incomplete and packets wait on it. Row 0 is the player's distances, read by the island panel as "DISTANCE TO
+`$67b40` is a 64 x 64 word distance matrix (rows of 128 bytes). `$21e16` refills it with `$ffff` (diagonal 0)
+when ownership changes, and `$21e8a` relaxes 8 rows per call in place, one call per main-loop pass:
+`M[i][k] = min(M[i][k], M[j][k] + c)` over each enabled link (c, j) of row i; after a full sweep of 64 rows it
+sweeps again if anything changed, otherwise it clears `$122f`, which packets wait on. It is distance-vector
+routing (Bellman-Ford, as in RIP) with islands for routers. Proven call by call against the port in two
+ownerships (proof table); with every free island the player's, the last entry changes at call 113 and `$122f`
+clears at call 128.
+
+**A stray write (inferred bug).** The island tick at `$18170` reloads A0 with row 63 (`$69ac0`) to test an enemy
+island's entry, then stores 500 at `8(A0)` (`$1817e`), which is `M[63][4]`, not the island record's +8 it used two
+instructions earlier. The emulator shows the write live between the 7th and 8th relaxation calls, and the port
+matches `c_s30`'s stored matrix only with it: the enemy block then sees a 500-cost route to CHARISSA (4). Whether
+that moves the enemy's choices (`ai.md` section 2) is not checked. Row 0 is the player's distances, read by the island panel as "DISTANCE TO
 BASE" (and the `$d46` column as "DISTANCE TO STOCKPILE", with "ISOLATED" and "RE-ROUTING" when no route
 exists, inferred from `$b698..$b844`); row 63 at `$69ac0` is the enemy base's, which the enemy AI scores with
 (`ai.md` section 2). The panel's km figure is the edge sum times 65536 / 1573 (inferred).
@@ -105,7 +119,11 @@ production, which is why its stock looks flat when sampled per tick.
 **Packets.** Pool 1 at `$66bc0` (128 x 6 bytes: node, timer, amount, destination) carries resource lots of 200
 units from RESOURCE islands to BASE or FACTORY islands (`$22204`, `$22256..$2238e`, inferred). Pool 2 at
 `$66710` (200 x 6 bytes: node, timer, item, quantity, destination) carries manufactured items. Each step
-`$22192` moves a packet to the next hop on the shortest route from the distance matrix. On arrival, a
+`$22192` moves a packet to the enabled neighbour j strictly closer to its destination t with the least
+`M[j][t] + c`, and sets its timer to the edge cost c, so a hop lasts as many economy ticks as it costs (proven,
+proof table). With no hop an item packet is lost and a resource lot dumped; in the pool-1 path
+(`$2214e..$22154`), when stock plus lot exceeds the cap the code stores the packet's destination (`4(A0)`) as the
+stock where the cap (`4(A1)`) is expected, which looks like a second bug (from code, not driven). On arrival, a
 destination of -1 means the stockpile island `$d46`: items below `$f` add to the counters at `$d74[item]`
 (capped at 999), items `$f..$11` add `quantity << 8` to the longs at `$d5c` (capped at `$1fffc0`); item `$12`
 to a concrete island adds to its materials, `+8 = min(+8 + quantity, cap(+10))` (proven: 4 landings of 255 on

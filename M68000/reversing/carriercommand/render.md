@@ -71,7 +71,15 @@ Three methods are stacked:
 2. Each model is a BSP tree. `$940a` computes a side flag per plane from three of the model's vertices
    (`$ff` when the eye is on the positive side, using the face test below); `$8e8c` walks the tree, a node
    being `[plane < $80][offset][subtree A][subtree B at A + offset]`, drawing the far subtree first; a leaf is
-   `[$ff][item count]`. (Inferred; the 60 decoded models in `models.png` overlap correctly.)
+   `[$ff][item count]`. Flag `$ff` walks subtree A then B, otherwise B then A (`$8e98..$8ece`). Matched in the
+   emulator for the far routine `$8e68`: over 1264 draws of models 1, 5, 37, 88, 95 and 96 (31 runs from seven
+   snapshots, 24 of them the Manta turned through 8 x 3 poked angles), the game's leaf items, polygons and
+   back-face signs come in `py/render/model.py`'s order, 12314/12314, 6189/6189 and 12228/12228, and its side
+   flags agree 684/684; walking B before A differs in all 228 draws that have planes
+   (`py/infographics/bsp_order_all.sh`). Not covered: the Manta's P1 and P2 flags were always equal (4 of 8
+   patterns), and no polygon took the clipping path `$8f14`. Node planes 64 and 65 are pseudo-planes, not
+   geometry: `$940a` forces flag 64 to `$ff` (`st 64(A2)`, `$9412`) and model 2's builder `$a60a` sets 65
+   (`$a644`/`$a650`) (from code; model 1 matches in all 43 of its draws with flag 64 taken from the game).
 3. Each leaf item can carry three test vertices, and `$9426` drops it when it faces away: with `n` the cross
    product of the halved edge vectors and `d` the vector from the vertex to the eye, it returns `d . n` and the
    caller skips on negative. Proven 120/120.
@@ -90,12 +98,19 @@ move.l A5,(A4)+` entered by a computed jump (A0 holds planes 0-1, A5 planes 2-3)
 
 **It is rewritten for each colour.** `$494c` takes a colour code, looks it up in the 64 byte pairs at `$1544`
 (codes 0..15 solid, 16..63 two-colour dithers) and patches the filler: the branch opcode at `$46c0` (`bvs`
-for solid, `bvc` for dither), the edge instructions at `$46e8..$46ee` and `$4758..$475e`, and the dither
+for solid, `bvc` for dither), the edge instructions at `$46e8..$46ef` and `$4758..$475f`, and the dither
 immediates at `$47b4..$47c8` built from the `$aaaa`/`$5555` rows at `$4ae4`/`$4b64`. A dither is a one-pixel
-checkerboard whose phase flips each scanline (bit 0 of the line counter in D7's high word).
+checkerboard whose phase flips each scanline (bit 0 of the line counter in D7's high word, which `$4598`/`$45b4`
+load with the screen row, so the pattern is anchored to the screen, not the polygon: from code). The branch
+patch is a switch, not a test: the `add.w (A3),D3` before it adds the viewport offset to an x already clamped to
+the viewport and cannot overflow, so `bvc` always jumps to the dither path and `bvs` never does. Proven: the
+patched bytes for all 64 codes match the tables (64/64), and the filler matches the model on 2183/2183 rows
+across all 64 codes, against 531/2183 with the phase flipped and the widening dropped
+(`py/infographics/gen_span.py`).
 
-**Spans are widened to overlap the previous one.** `$9ee`/`$9f0` hold the previous span's ends; the new span
-becomes `xr = max(xr, prev_xl)`, `xl = min(xl, prev_xr)`, which closes the gaps a steep edge would leave
+**Spans are widened to overlap the previous one.** `$9ee`/`$9f0` hold the previous span's widened ends (`$494c`
+resets them to `$7fff`/`$8001` for each polygon, so its first row is unchanged); the new span becomes
+`xr = max(xr, prev_xl)`, `xl = min(xl, prev_xr)`, which closes the gaps a steep edge would leave
 between scanlines (the rule is proven; the purpose is inferred). Spans are then clamped to the 256-pixel
 viewport offset by 32. Proven 780/780 rows, 0 mismatches in the `$9ee/$9f0` updates; the gate's first models
 failed on exactly these details, so it discriminates.
@@ -120,9 +135,10 @@ jump to the model's own draw routine (`$8e68` far, `$9066` near):
 
 `models.png` is every table entry decoded and drawn with the engine's own formulas at one orientation
 (`py/render/sheet.py`): conifers (24..27), lattice towers built from lines (42, 91), a house (43, 94),
-an airstrip (36), a hexagonal pad (21), flat island tops (37 and others). The decode is checked only by
-polygon counts agreeing with the leaf structure and the renders looking right; the drawing order has not been
-compared with the game's. Models 1, 2, 3 and 38 (animated builders) and the 21 models using the non-BSP draw
+an airstrip (36), a hexagonal pad (21), flat island tops (37 and others). The decode is checked by
+polygon counts agreeing with the leaf structure, and the drawing order by the emulator match of section 4.
+Models 1, 2, 3 and 38 (animated builders, whose trees also name the pseudo-planes 64 and 65 that `model.py`
+does not handle: section 4) and the 21 models using the non-BSP draw
 routines `$8fac`, `$9514`, `$9516`, `$9540` do not decode yet.
 
 Which object uses which model: the type record at `$8660 + 16 t` names three model ids (words at +8, +10 and +12), and for
@@ -143,7 +159,11 @@ subdivision is ours, not the game's.
 
 ## 7. Open
 
-- Compare the decoded BSP order with the game's own colour sequence (`watch 9de 2` during one model).
+- The BSP order on the near routine `$9066` and the clipping path `$8f14`, and a draw that splits the Manta's P1
+  and P2 flags. (`$9de` cannot serve as the probe: the direct polygon path `$8f9e` -> `$44a6` reads the colour
+  without storing it; `$9de` is written at `$8f46`, `$91b6`, `$20e14` and `$20e5c`.)
+- `model.py`'s face `dot` does not halve to 16 bits as `$9426` does (`face_gate.py`'s model does); the signs
+  agreed in every draw checked.
 - The animated builders, the non-BSP draw routines, the near-clip path `$9098`, and the line and disc drawers.
   (`$1ff46`, 600 calls per 1.2M steps, is not graphics: it steps the six sound channels from the VBL.)
 - Which model ids are the carrier and the Walrus (the Manta is model 5, section 6).

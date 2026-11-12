@@ -10,9 +10,9 @@ assembly (1 `LINK` frame, about 920 `RTS`), so it is analysed from traces and ca
 |---|---|---|
 | `ai.md` | the enemy carrier's state machine, how it picks its next island, capture and attack, fighting the player's carrier and retreat, island defences, difficulty, the cheat mode, the two games | target choice 1344/1344 score words and 21/21 decisions, with constant-by-constant controls; difficulty A/B/C 3/3 arms; combat states driven state by state |
 | `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots, the Manta lift, launch and take-off | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5, take-off 42/42 twice |
-| `economy.md` | the fixed island tables, world creation, the RNG, the supply graph and distance matrix, production, production lines and packets, island building | production 175/175, line cost and steps 14/14 each, landings 4/4, RNG 1/1 |
-| `render.md` | the 3D engine: sine table, chained 2D rotations, projection, depth tree plus BSP plus back-face culling, the self-modifying span filler, the model format | sine 4096/4096, rotations 360/360 and 120/120, projection 480/480, face test 120/120, spans 780/780 |
-| `packer.md` | Automation Packer V2.3r: the `LSD!` LZ77 format, the backwards in-place depack and its safety margin, ratios against modern compressors | depacker output identical to `tools/lsd_depack.py`; minimum read/write gap 218 bytes on all six packed files |
+| `economy.md` | the fixed island tables, world creation, the RNG, the supply graph and distance matrix, production, production lines and packets, island building | production 175/175, line cost and steps 14/14 each, landings 4/4, RNG 1/1, matrix per call 41/41 and 129/129 dumps, packet hops 14/14 twice |
+| `render.md` | the 3D engine: sine table, chained 2D rotations, projection, depth tree plus BSP plus back-face culling, the self-modifying span filler, the model format | sine 4096/4096, rotations 360/360 and 120/120, projection 480/480, face test 120/120, spans 780/780 (2183/2183 over all 64 colour codes), BSP draw order 1264/1264 draws |
+| `packer.md` | Automation Packer V2.3r: the `LSD!` LZ77 format, the backwards in-place depack and its safety margin, ratios against modern compressors | depacker output identical to `tools/lsd_depack.py`; final read/write gap 218 bytes on all six packed files; margin while input remains 218 to 220 (219 for Carrier Command) |
 
 Gates: `uv run python tools/gates.py run carriercommand` (`gates.toml`, five gates, all PASS).
 
@@ -49,7 +49,8 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   link); a link carries goods
   only between two islands of the same owner, so taking an island severs the other side's routes through it
   (from code). Goods travel as packets, one hop at a time, along shortest routes from an all-pairs distance
-  matrix (the routing from code; four landings proven, all on the island that made them). (E 3, E 4)
+  matrix (the relaxation and the next-hop rule proven call by call and hop by hop under poked ownership; four
+  landings proven, all on the island that made them). (E 3, E 4)
 - **Production is per island type.** Each economy pass adds to an island's stock: 100 for the base and 25 per
   production line for a factory (proven 175/175); 100 per supported building for a resource island, 0 for a
   defence island, capped at twice the island's area (from code). A production line pays its cost
@@ -135,7 +136,8 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
 - **A 3D world with no 3D matrix and no terrain.** Rotations are chains of 2D rotations by stored sine and cosine
   pairs; islands, buildings and trees are ordinary models over a single sea-and-sky half-plane. Hidden surfaces
   are three cheap layers stacked: objects sorted by depth, each model a precompiled BSP tree, and a back-face test
-  per leaf item that carries test vertices (the arithmetic proven, the orders read from code). (R 1, R 2, R 4)
+  per leaf item that carries test vertices (the arithmetic proven, the BSP order matched in the emulator on the far draw path, the depth order read
+  from code). (R 1, R 2, R 4)
 - **Colour by rewriting the filler.** The span filler patches its own instructions per colour, giving 16 solid
   colours and 48 one-pixel checkerboard dithers whose phase flips each scanline; each span is widened to overlap
   the previous one (780/780 rows), inferred to close gaps on steep edges. (R 5)
@@ -159,6 +161,8 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   nearer flare (proven). (V 4)
 - The arctangent pins its result to a fixed angle when either input is exactly -32768, where `neg` leaves the
   value unchanged: up to 45 degrees wrong, 90 on an axis (proven in the grid, 27 of 529 cases). (V 2)
+- The island tick stores 500 into the distance matrix's row 63 (`M[63][4]`, `$1817e`) instead of an island field,
+  giving the enemy block a 500-cost route to CHARISSA (inferred from code; the write is seen live). (E 3)
 - The random-number generator is also stepped by the sound interrupt, so its sequence depends on interrupt timing,
   not only on the game state (inferred from code). (E 2)
 
@@ -277,4 +281,4 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 
 The Manta's airborne flight and landing, the Walrus launch and driving, a drone launcher or command
 centre firing, the island-capture end of an attack, the production-priority and fuel screens, saving and
-loading. The decoded 3D model drawing order has not been compared with the game's.
+loading. The 3D model drawing order matches the game on the far draw path only (`render.md` section 4).

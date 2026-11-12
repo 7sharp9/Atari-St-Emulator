@@ -40,7 +40,7 @@ x was the island centre plus 29,384 (11000 + `$4000` + 2000) with heading `$4000
 | State | Entry | What it does |
 |---|---|---|
 | 0 | `$1acd0` | init: hull `$2000`, air units 8, missiles 0; state 1 |
-| 1 | `$1acf0` | pick a target (section 2); `$11c0 = octdist(carrier, target) / 250`; state 5. Waits while the supply-distance matrix is being recomputed (`$122f`, inferred) |
+| 1 | `$1acf0` | pick a target (section 2); `$11c0 = octdist(carrier, target) / 250`, with the octagonal distance `max + min/2` written inline (`$1ad14`; also `$233d2`, `$23402`, `$234b6` in `$2337a`, not a shared routine); state 5. Waits while the supply-distance matrix is being recomputed (`$122f`, inferred) |
 | 5 | `$1ae2e` | travel: `$11c0--`; at 0 the carrier is placed on the target island and the arrival dispatch runs (section 3) |
 | 2 | `$1ad44` | at its own island: hull +4 per tick (proven over 40 ticks) |
 | 3 | `$1ad8a` | attack a player island (section 4) |
@@ -82,7 +82,9 @@ islands near its base and its own islands far from it.
 
 **Proof (proven, `py/ai/gate_score.py`).** The model reproduces 1344/1344 score words and the target in 21/21
 snapshots taken at the return of `$2337a` (`bp $1ad02`): 13 natural decisions from `c_s30.snap` (`ai/nat/`,
-`ai/nat2/`) and 8 single-variable pokes (`ai/s1..s6b`). Each constant is then nudged in turn; ten of the
+`ai/nat2/`; `nat/d1` and `d2` have the same 64 score words as `nat2/e2` and `e3`, so 11 are distinct; each `nat2` leg forces
+the arrival with `w 11c0 00012000`, countdown 1 and hull `$2000`, neither of which `$2337a` reads) and 8
+single-variable pokes (`ai/s1..s6b`). Each constant is then nudged in turn; ten of the
 eleven terms break all 21 snapshots, so each is load-bearing in the corpus. Two terms are weakly covered:
 the small-player-island +1000 breaks 0/21 (no small player island in the corpus: it is inferred from code)
 and the home-island +5000 breaks 2/21.

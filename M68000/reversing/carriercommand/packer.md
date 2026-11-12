@@ -21,7 +21,7 @@ stub's depack loop `$a4ce..$a61c`; transcribed in `py/autopack_depack.py`.
   next byte is loaded and `roxl.b` shifts a fresh sentinel into bit 0. One shift both returns a bit
   and tests for empty. Literal bytes come from the same backwards byte stream.
 - **Tokens**: a flag bit says whether a literal run follows. Then:
-  - Literal count, 1..1,039 (`$a53a`): bit 0 means one literal; otherwise tiers of 2, 2, 3 and 10
+  - Literal count, 1..1,038 (`$a53a`): bit 0 means one literal; otherwise tiers of 2, 2, 3 and 10
     bits with bases 1, 4, 7 and 14, where an all-ones value escapes to the next tier.
   - Match length, 2..1,033 (table at `$a594`): unary prefix `0` = 2, `10` = 3, `110` = 4 + 1 bit,
     `1110` = 6 + 2 bits, `1111` = 10 + 10 bits.
@@ -44,21 +44,28 @@ It does not depack onto its own start. Three regions matter, all relative to `tb
 1. **The depack writes backwards into a buffer that overlaps the stream.** The destination is
    `tbase+$400` (`$a31c`), and both pointers start at the top and move down: output from
    `dest+size` with `move.b -(A2),-(A1)`, input from the stream end. At the start the write pointer
-   is 188,762 bytes above the read pointer. Each token consumes fewer bytes than it produces, so
-   the gap shrinks, but the write pointer only ever lands on stream bytes already consumed. The
+   is 188,766 bytes above the read pointer. A match usually consumes fewer bytes than it produces and
+   closes the gap (36,575 of PACT2's 39,743 matches); a literal run never does (20,737 of 20,737 widen it or
+   keep it), and overall the write pointer only ever lands on stream bytes already consumed. The
    condition is that every prefix of the file compresses to no more than its own length plus the
    final gap: the bytes still unread at any moment are the encoding of the part of the file still
    to be written below the write pointer.
-   - Measured (`py/autopack_depack.py --gap`): on all six packed files on the disk the closest
-     approach is 218 bytes, and it occurs at the very end of the depack: `$400 - ($31a + 12)`, the
-     destination start minus the stream start. No earlier point comes closer, because none of these
+   - Measured (`py/autopack_depack.py --gap`; `py/infographics/gen_depack.py` for the live margin): on all
+     six packed files on the disk the pointers end 218 bytes apart, `$400 - ($31a + 12)`, the destination
+     start minus the stream start, and that is their closest approach. It comes after the last read, though;
+     the margin that binds is the closest approach while stream bytes are still unread: 218 for PACT1, PACT4,
+     STRAID and FRODON.STA, 219 for PACT2 (Carrier Command) and 220 for PACT3, each a few bytes from the end
+     of the file. Lowering PACT2's destination by 219 still depacks it exactly; by 220 corrupts 5 bytes. No
+     earlier point comes closer (PACT2 stays above 3,414 until its last 4,096 bytes), because none of these
      programs has an incompressible prefix. A file whose opening bytes expanded under compression
      would close the gap below zero and corrupt its own unread input. Whether the packer refuses or
      pads such a file is not known; nothing in the stub checks.
 2. **Relocation runs on the depacked copy** (`$a3a4..$a3fa`). The fixup table follows the unpacked
    image at `dest + $1c + text + data + symbols`; each fixup adds the final `tbase` (from the
    basepage, not the destination address) to a long in the destination copy and clears the table
-   entry as it goes. The basepage's text, data and bss fields are filled from the unpacked header
+   entry as it goes (read from the stub. For PACT2 it does not fit: the unpacked PACT2 header has absflag `$ffff` and no fixup table
+   follows its 323,196 bytes, and `c80.snap` holds the image at `$296` + file offset, not at `tbase`, so how
+   this program reaches its final address is not traced). The basepage's text, data and bss fields are filled from the unpacked header
    (`$a3fc..$a430`).
 3. **A 39-byte mover runs from screen memory** (`$a43c..$a46e`). The image must end at `tbase`,
    which is where the stub's own code is, so the stub copies the mover (`$a470..$a494`) to
@@ -74,14 +81,16 @@ the stub restores afterwards (`$a392`). There is no checksum or self-check.
 
 ## Ratios against modern compressors
 
-Carrier Command's unpacked PRG, 323,196 bytes (sha256 `0d3938982b8a909de79b52d26824ba05b42980cbcdcd94ce790b912bcfe20448`):
+Carrier Command's unpacked PRG, 323,196 bytes (sha256 `0d3938982b8a909de79b52d26824ba05b42980cbcdcd94ce790b912bcfe20448`),
+each compressor fed on stdin (no stored filename); the Automation row is the `LSD!` payload alone, 135,486
+bytes (41.9%) as the whole packed PRG (`py/infographics/gen_depack.py`):
 
 | Compressor | Bytes | Ratio |
 |---|---|---|
 | lz4 -9 | 143,721 | 44.5% |
 | Automation 2.3r (`LSD!` payload) | 134,660 | 41.7% |
-| gzip -9 | 119,933 | 37.1% |
-| zstd -19 | 110,371 | 34.1% |
+| gzip -9 | 119,914 | 37.1% |
+| zstd -19 | 110,368 | 34.1% |
 | xz -9e | 97,100 | 30.0% |
 
 Packed file against unpacked for the rest of the disk: PACT1 117,918 / 359,194 (32.8%), PACT3
@@ -89,7 +98,7 @@ Packed file against unpacked for the rest of the disk: PACT1 117,918 / 359,194 (
 
 It sits between lz4 and deflate. The gap to gzip is the missing entropy stage and the 4 KB window
 against deflate's 32 KB. What it buys is a ~330-byte decoder that needs no buffer beyond the
-program's own memory and 218 bytes of slack; zstd and LZMA need kilobytes of decoder and tables
+program's own memory and about 218 bytes of slack (219 binding for this file); zstd and LZMA need kilobytes of decoder and tables
 and a separate output buffer. Structurally it belongs with Pack-Ice, LZ4 and the Amiga and C64
 crunchers (LZ77, Elias-style tiered lengths, backwards in-place decode); the Pack-Ice relation is
 inferred from the shared bitstream, not from any record of who derived what.
