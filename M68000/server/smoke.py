@@ -9,10 +9,12 @@ sees the word write covering it, a missing 'disk' key is refused, and a malforme
 server alive. Exit status 0 = all pass.
 """
 import json
+import os
 import subprocess
 import sys
 
 dll, snap, disk, out = sys.argv[1:5]
+os.makedirs(out, exist_ok=True)
 proc = subprocess.Popen(["dotnet", "exec", dll], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 seq = 0
 

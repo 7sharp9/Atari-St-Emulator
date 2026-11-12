@@ -120,7 +120,11 @@ entry (Redqueen's input-to-state correspondence). Unconventional.
   compare (`$18358`, `$18364`) first and second with `--text`, and no byte value finds them
   (`reversing/impossamole/py/secrets/cheat_profile.py`). Every compare's operands are checked against
   the flags the instruction left: 0 mismatches in 245,325 checks (`profile_proof.py`) and 1,285,839
-  (`cheat_profile.py`), 329 in the input run with a deliberately misread `cmpi.b` immediate. `sub` then branch is not logged.
+  (`cheat_profile.py`), 329 in the input run with a deliberately misread `cmpi.b` immediate. `sub` then branch is not logged. Not done: the PowerMonger control planned for coverage, a
+  handler reached only through a longword table that `rdis.py` misses. PowerMonger's image has no
+  `jsr (An)` table (the one `jmp (A0)`, `$12d34`, is the long-multiply return), and the one table form
+  `rdis.py` does not resolve, `lea $11886,A1 / jsr 0(A1,D2.w)` at `$11970` (`a_worksh`'s goods icons,
+  `graphics.md`), did not run in 3M steps from `pre_pick.snap`.
 
 ## 6. Cross-game routine fingerprints
 

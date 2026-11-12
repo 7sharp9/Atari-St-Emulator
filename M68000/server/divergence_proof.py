@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from stclient import StServer  # noqa: E402
 
 dll, snap, disk, out = sys.argv[1:5]
+os.makedirs(out, exist_ok=True)
 N = 2_600_000
 s = StServer(os.getcwd(), dll=dll)
 fails = []
