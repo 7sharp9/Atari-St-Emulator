@@ -54,7 +54,9 @@ both; and an always-on journal so every drive replays. Per-game wrappers shrink 
   a subclass of `boss_unpoked.py`'s fight; `--policy unpoked` reproduces the parent). The port's end
   snapshot is byte-identical to `pass108/boss/kill_d700000_end.snap`, its journal replays to the
   same bytes, and one fight takes about 8 s for both the original and the port (5 interleaved rounds).
-  Reads go through a cache: uncached `stserver` reads made the fight about 3x slower.
+  Reads go through a cache: uncached `stserver` reads made the fight about 3x slower. With
+  `record=<dir>` a drive also leaves on-disk recording segments that `provenance.py --recording`
+  slices after it ends (`tools/stdrive_record_check.py`, 5/5).
 
 ## 3. Backward slice: where a byte came from
 

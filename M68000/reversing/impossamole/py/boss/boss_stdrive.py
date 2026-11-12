@@ -2,6 +2,7 @@
 
     uv run python reversing/impossamole/py/boss/boss_stdrive.py <boss-room snap> [--delay N] [--policy dodge139|unpoked]
         [--reach PX] [--t-lo F] [--t-hi F] [--max-iter N] [--out-dir DIR] [--tag NAME] [--dll stserver.dll] [--no-cache]
+        [--record DIR]
 
 The same policy, transliterated: `boss_fight.Fight` (swipe geometry, jump-and-fire `air_phase`), `boss_unpoked.DodgeFight` (retreat from
 the type-140 lob, wait on the platform when the boss is at its left position) and `boss_dodge139.Dodge139Fight` (jump over a type-139 due
@@ -354,6 +355,7 @@ def main():
     ap.add_argument('--tag', default='boss')
     ap.add_argument('--dll', help='stserver.dll (default <root>/server/bin/Debug/net8.0/stserver.dll)')
     ap.add_argument('--no-cache', action='store_true')
+    ap.add_argument('--record', help='record the fight to this directory (stdrive "Recordings": segments for provenance.py)')
     ap.add_argument('--joy-onecall', action='store_true', help='send each joystick packet as one kbd call (not the REPL form)')
     a = ap.parse_args()
     global SPLIT
@@ -364,7 +366,7 @@ def main():
     os.makedirs(a.out_dir, exist_ok=True)
     t0 = time.time()
     D = NoCacheDrive if a.no_cache else sd.Drive
-    d = D(ROOT, dll=a.dll, journal=os.path.join(a.out_dir, a.tag + '.jsonl'), fields=FIELDS, period=FRAME)
+    d = D(ROOT, dll=a.dll, journal=os.path.join(a.out_dir, a.tag + '.jsonl'), fields=FIELDS, period=FRAME, record=a.record)
     d.load(a.snap, a.disk)
     d.note(f'boss_stdrive policy={a.policy} reach={reach} t_lo={a.t_lo} t_hi={a.t_hi} delay={a.delay} max_iter={max_iter}')
     f = Fight(d, reach=reach, t_lo=a.t_lo, t_hi=a.t_hi, dodge=dodge)

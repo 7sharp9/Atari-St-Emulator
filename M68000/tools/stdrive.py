@@ -36,9 +36,13 @@ a `run` that stopped early (stop watch, breakpoint, until_pc) is journalled as t
 needs no watch. `replay()` re-issues the ops, checks every `at` against the journal (a mismatch raises), and writes each
 `save` into its own output directory, never over the original path.
 
-What stserver already does and this does not duplicate: `stserver`'s own recordings (`record_start`) are in memory, have
-no saved form and refuse `restore` while active, so they cannot be the journal of a drive that forks; call
-`d.rpc('record_start', every=...)` yourself on a linear stretch to get `replay_to`/`last_writer` on it.
+Recordings (`Drive(..., record=<dir>, every=500_000, keep=16)`): stserver's recordings refuse `load` and `restore`
+while active, so the Drive records each linear stretch as its own segment: it starts `record_start` (with `dir`, so
+the checkpoints and journal go to disk) after every `load` and `restore`, stops it before the next one and at `close`,
+and lists the segments in `d.segments` (`dir`, `base`, `end`, server `id`) and in `<dir>/segments.json`. A segment is
+a directory `record_load` reads back in a fresh process, so `last_writer`, `replay_to` and `tools/provenance.py
+--recording <seg dir>` slice the drive after it has ended. A segment that wrote to disk A is kept in memory only and
+cannot be loaded back (`record_load` refuses it). The journal notes each segment; `replay()` does not record.
 """
 import hashlib
 import json
@@ -126,10 +130,12 @@ class AB:
 # ---- the driver ---------------------------------------------------------------------------------------------------
 
 class Drive:
-    def __init__(self, root, dll=None, journal=None, fields=None, period=None, frame=FRAME):
+    def __init__(self, root, dll=None, journal=None, fields=None, period=None, frame=FRAME, record=None, every=500_000,
+                 keep=16):
         """root: the M68000 dir (stserver's cwd; the ROM is found from it). journal: path, or None for the default
         location (journalling cannot be turned off). fields: {name: (addr, width)}. period: the game's poll period in
-        steps (default: one frame)."""
+        steps (default: one frame). record: a directory to record each linear stretch into (module docstring,
+        "Recordings"), with a checkpoint every `every` steps and `keep` checkpoints in memory."""
         self.root = os.path.abspath(root)
         self.s = StServer(self.root, dll=dll)
         self.fields_map = dict(fields or {})
@@ -141,6 +147,10 @@ class Drive:
         self._pending = 0               # coalesced steps not yet written to the journal
         self._pending_at = None
         self._fork_ids = []
+        self.record_root = os.path.abspath(record) if record else None
+        self.every, self.keep = every, keep
+        self.segments = []
+        self._recording = False
         if journal is None:
             journal = os.path.join(os.getcwd(), 'scratchpad', 'stdrive', 'journal',
                                    time.strftime('%Y%m%d-%H%M%S') + f'-{os.getpid()}.jsonl')
@@ -172,6 +182,26 @@ class Drive:
         self._gen += 1
         self._cache = []
 
+    def _rec_start(self):
+        if not self.record_root:
+            return
+        seg = os.path.join(self.record_root, f'seg{len(self.segments):03d}')
+        self.s('record_start', every=self.every, dir=seg, keep=self.keep)
+        self._recording = True
+        self.segments.append({'dir': seg, 'base': self.step_count, 'end': None, 'id': None})
+        self._log('note', text=f'record_start {seg}')
+
+    def _rec_stop(self):
+        if not self._recording:
+            return
+        self._flush_steps()
+        r = self.s('record_stop')
+        self._recording = False
+        self.segments[-1].update(end=int(r['end']), id=int(r['id']), disk_written=bool(r['disk_written']))
+        self._log('note', text=f'record_stop {self.segments[-1]["dir"]} end {r["end"]}')
+        with open(os.path.join(self.record_root, 'segments.json'), 'w') as f:
+            json.dump(self.segments, f, indent=1)
+
     def rpc(self, method, **params):
         """Any stserver method that does not change machine state (watches, breakpoints, regs, peek, render, ...)."""
         if method in _STATEFUL:
@@ -191,12 +221,14 @@ class Drive:
     def load(self, snapshot, disk):
         snapshot = os.path.abspath(snapshot)
         disk = os.path.abspath(disk) if disk else None
+        self._rec_stop()
         r = self.s('load', snapshot=snapshot, disk=disk)
         self._dirty()
         self._flush_steps()
         self._j.write(json.dumps({'op': 'load', 'at': None, 'snapshot': snapshot, 'snapshot_sha1': _sha1(snapshot),
                                   'disk': disk, 'disk_sha1': _sha1(disk), 'step': int(r['step'])}) + '\n')
         self.step_count = int(r['step'])
+        self._rec_start()
         return r
 
     def step(self, n):
@@ -267,10 +299,12 @@ class Drive:
         return int(r['id'])
 
     def restore(self, fid):
+        self._rec_stop()
         r = self.s('restore', id=fid)
         self._log('restore', id=fid)
         self.step_count = int(r['step'])
         self._dirty()
+        self._rec_start()
 
     def drop(self, fid):
         self.s('drop', id=fid)
@@ -284,6 +318,7 @@ class Drive:
         return path
 
     def close(self):
+        self._rec_stop()
         self.flush()
         self._j.close()
         try:

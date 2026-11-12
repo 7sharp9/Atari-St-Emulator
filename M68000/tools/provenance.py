@@ -2,9 +2,12 @@
 
     python3 tools/provenance.py <stserver.dll> <snap> <disk.st|-> <steps> <hexaddr>[:<len>] <step|end> [--every N]
                                 [--depth D] [--nodes K] [--json out.json]
+    python3 tools/provenance.py --recording <dir> <stserver.dll> <hexaddr>[:<len>] <step|end> [--depth D] ...
 
 The CLI records `<steps>` steps from `<snap>` (a checkpoint every `--every`, default 500,000) and slices
-`<len>` bytes (default 1) at `<hexaddr>` as they stood at `<step>` (an absolute step count, or `end`). As a library,
+`<len>` bytes (default 1) at `<hexaddr>` as they stood at `<step>` (an absolute step count, or `end`). With
+`--recording`, it slices a recording already on disk (`record_start` with `dir`, or a `stdrive.Drive(record=...)`
+segment), loaded with `record_load`; `end` is the recording's last step. As a library,
 `Slicer(s).slice_mem(lo, hi, step)` / `.slice_reg(name, mask, step)` work on any stserver `s` (tools/stclient.py)
 holding a stopped recording, and return the tree of links that `show` prints.
 
@@ -636,19 +639,27 @@ def main():
     import argparse
     from stclient import StServer
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('dll'); ap.add_argument('snap'); ap.add_argument('disk'); ap.add_argument('steps', type=int)
+    rec = '--recording' in sys.argv
+    if rec:
+        ap.add_argument('--recording', required=True)
+        ap.add_argument('dll')
+    else:
+        ap.add_argument('dll'); ap.add_argument('snap'); ap.add_argument('disk'); ap.add_argument('steps', type=int)
     ap.add_argument('target'); ap.add_argument('at')
     ap.add_argument('--every', type=int, default=500_000); ap.add_argument('--depth', type=int, default=12)
     ap.add_argument('--nodes', type=int, default=60); ap.add_argument('--json')
     a = ap.parse_args()
     s = StServer(os.getcwd(), dll=a.dll)
-    B = s('load', snapshot=a.snap, disk=None if a.disk == '-' else a.disk)['step']
-    s('record_start', every=a.every)
-    s('step', n=a.steps)
-    s('record_stop')
+    if rec:
+        end = s('record_load', dir=os.path.abspath(a.recording))['end']
+    else:
+        B = s('load', snapshot=a.snap, disk=None if a.disk == '-' else a.disk)['step']
+        s('record_start', every=a.every)
+        s('step', n=a.steps)
+        end = s('record_stop')['end']
     addr, _, ln = a.target.partition(':')
     lo = int(addr, 16)
-    at = B + a.steps if a.at == 'end' else int(a.at)
+    at = int(end) if a.at == 'end' else int(a.at)
     tree = Slicer(s, a.depth, a.nodes).slice_mem(lo, lo + (int(ln) if ln else 1) - 1, at)
     show(tree)
     if a.json:
