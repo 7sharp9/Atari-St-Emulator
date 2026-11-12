@@ -1,45 +1,36 @@
 # Emulator and tooling: handoff
 
-Updated 2026-11-07 by the session that built recordings on disk (Open 1 of the previous handoff).
+Updated 2026-11-12 by the session that built execution profiles, drive recordings to disk, gate DLL hashes and a
+faster `stserver` `read` (Open 1, 2, 4 and 5 of the previous handoff).
 
 ## Resume point
 
-- Last commit of this workstream: `7993e58` record: recordings on disk (record_start dir/keep, record_load). Commits
-  `70c05c1`/`0ca35a5` (comment and dead-code cleanup, Dave's) were netted in worktree `agent-af7707af89a8b6449`: its
-  `scratchpad/gates/*/last_run.json` read 49/49 PASS at 18:06 on 2026-11-03.
-- Net on `7993e58` against a build of `0ca35a5` (`tools/regress_net.sh`, `CADAVER_SNAP=scratchpad/cadaver/s96/r6/s3_flask.snap`,
-  `CADAVER_ST` = the root `Cadaver/` one-disk Empire `.st`): verify PASS both, 30M snapshot, game snapshot, 25 watch and
-  11 DMA lines identical, selftest 1,000,051 pass 0 wrong 9 skip; `gates.py run all -j 1` 49/49. `bin/` and
-  `server/bin/` hold the same `M68000.dll` (SHA-256 `8ec1f644…`), server built first. Logs were in the session
-  scratchpad and are not kept.
-- Working data: none. Proofs start from PowerMonger's `scratchpad/cmd10/leadkill/pre_pick.snap` (made by
-  `reversing/powermonger/commander/leadkill/gate_leadkill.sh`) with `scratchpad/powermonger.st`.
-- Uncommitted work left behind: none. The agent worktrees and branches are removed.
+- Last commit of this workstream: `1cd2453` server: bench_ab.py ...; the work is `1428261` (profiles), `b4a68cd`
+  (stdrive recordings), `4067b77` (gates.py hashes), `019669a` (read).
+- Installed build: `bin/` and `server/bin/` `M68000.dll` SHA-256 `a2dd7af2…` (source of `7993e58`, embedding commit
+  `5b9c6a3`), `stserver.dll` `1924f4dd…` (HEAD's `Server.fs`). `uv run python tools/gates.py run all -j 1` 54/54 on
+  `a2dd7af2…` with `stserver.dll` `94d3c74f…` (HEAD minus the read change; Super Sprint's two gates re-run under `uv`);
+  on `1924f4dd…`: `smoke.py` ALL PASS, `profile_proof.py` 5/5, `stdrive_check.py` 5/5, `stdrive_record_check.py` 5/5,
+  `record_disk_proof.py` 9/9, `provenance_proof.py` 178/178, gate `midwinter/period` PASS. 30M boot and a 10M Black
+  Tiger resume byte-identical between `8ec1f644…` and `a2dd7af2…`.
+- Working data: none. Proofs start from Black Tiger `scratchpad/black_tiger/play_start.snap` (`bt_auto.st`),
+  Impossamole `agents/unpoked/hop4s/none/shop/seg5_pit_exit.snap` and `agents/secrets/data/name_entry.snap`, PowerMonger
+  `scratchpad/cmd10/leadkill/pre_pick.snap` with `scratchpad/powermonger.st`.
+- Uncommitted work left behind: none. `master` is 17 commits ahead of `origin/master` before this file's commit (5 of them this session's), not pushed.
 
 ## Proven so far
 
-- MMU memory hooks and `stserver`: DEVELOPING.md "Memory hooks and the `stserver` process"; `server/smoke.py` all pass,
-  32 tools in `tools/list`.
-- Record and replay (DEVELOPING.md "Record and replay"), from `pre_pick.snap`: `server/replay_proof.py` 12/12,
-  `last_writer_proof.py` 20/20, `divergence_proof.py` 8/8 (agent run; on the merge the last three checks were captured, all PASS).
-- `last_reg_change`: `server/last_reg_change_proof.py` 412/412 against a per-step brute force (251/412 with the backward
-  search removed). `tools/provenance.py` backward slice: `server/provenance_proof.py` 178/178 links against REPL
-  `watch`/`bp`, `set_reg` and poke controls reach "input". Value rules REPL-scored only for `move`, `addi`, `sub`,
-  `subi`, `lea`, `adda`; 50 arithmetic links carry no value check.
-- Snapshot provenance sidecar (DEVELOPING.md, Disk A and provenance paragraphs): a resume without `--disk-a` remounts
-  the recorded disk (DMA reads succeed; the same snapshot without a sidecar gets `no data`); a raw alias argv exits 2.
-- `tools/stdrive.py`: Impossamole's `py/boss/boss_stdrive.py --delay 700000` ends byte-identical to
-  `pass108/boss/kill_d700000_end.snap` and its journal replays to the same bytes (re-run by this session);
-  `tools/stdrive_check.py` 5/5 (agent run); one fight about 8 s, same as the REPL script.
-- `tools/layout.py`/`snapdiff.py` (DEVELOPING.md "Memory layouts and the semantic snapshot diff"):
-  `reversing/cadaver/py/snapdiff_proof.sh` names hero x 29 -> 41 with input and no field in the control;
-  `reversing/impossamole/py/boss/layout_crosscheck.py` 39/39 twice, control 8/13 mismatch.
-- Recording on disk (DEVELOPING.md "Record and replay", "A recording on disk"): `server/record_disk_proof.py` 9/9:
-  12/12 replays in-process with 4 of 6 checkpoints evicted to file, 12/12 after `record_load` in a fresh process, a
-  flipped RAM byte in one checkpoint file changes only the replay after it, and recordings from two processes diverge
-  at the poke step (`$521cd`). Not exercised: a checkpoint taken while the CPU is `Stopped` (the manifest carries the
-  flag) and a run that writes disk A (refused by `record_load` by design).
-- Gate manifests: Black Tiger 15, Midwinter 8, PowerMonger 20, Super Sprint 6 (49).
+- Execution profiles (DEVELOPING.md "Execution profile"; tooling-ideas.md idea 5): `server/profile_proof.py` 5/5
+  (Black Tiger level skip, `cmp.b #$47` `$c6c8` rank 1, `cmp.b #$85` `$c6d6` rank 2; 0 flag mismatches in 245,325);
+  `reversing/impossamole/py/secrets/cheat_profile.py` (`--text LUMBAJAK`: `cmp.l` `$18358`/`$18364` ranks 1 and 2).
+  No-profile cost within noise (`server/bench_ab.py step`), profile running about 1.5x.
+- Drive recordings: `tools/stdrive_record_check.py` 5/5 (slice of `$1a645` = the REPL watch's last 12 writes).
+- `stserver` `read`: `server/bench_ab.py read` 0.946 s -> 0.071 s median for 20 x 64 KB, same bytes.
+- Earlier, unchanged: memory hooks and `stserver` (`smoke.py`), record and replay (`replay_proof.py` 12/12,
+  `last_writer_proof.py` 20/20, `divergence_proof.py` 8/8, `record_disk_proof.py` 9/9), `last_reg_change` 412/412,
+  `provenance.py` 178/178, snapshot provenance sidecar, `stdrive.py` (`stdrive_check.py` 5/5), `layout.py`/`snapdiff.py`
+  (`snapdiff_proof.sh`, `layout_crosscheck.py` 39/39). DEVELOPING.md sections of the same names.
+- Gate manifests: Black Tiger 15, Carrier Command 5, Midwinter 8, PowerMonger 20, Super Sprint 6 (54).
 
 ## Running
 
@@ -47,36 +38,27 @@ Nothing running.
 
 ## Open, in priority order
 
-1. Executed-PC coverage and comparison log (`tooling-ideas.md` idea 5, which replaces the old coverage item: that one's
-   proof used Crude Buster, a MAME game this emulator cannot run). Positive controls: a PowerMonger longword-table
-   handler `rdis.py` misses; blind rank of Black Tiger's `$85`/`$17826` compare and Impossamole's `LUMBAJAK`. Hot path:
-   null-checked hook, interleaved A/B with no hook set (falsifier: slower by more than 3% in every pair).
-2. `tools/stdrive.py` records to disk: pass `dir` to `record_start` so a drive's journal and checkpoints feed
-   `last_writer`/`provenance.py` after the drive ends (`restore` is still refused while a recording is active, so a
-   drive that forks must stop and restart its recording). Proven by slicing a byte at the end of
-   `boss_stdrive.py --delay 700000` from the loaded recording against a REPL `watch`.
-3. Gate manifests for Cadaver, Populous, Lemmings, Impossamole from counts their docs record (check each work dir
-   exists first; an ERROR for a missing prerequisite is not a pass). Candidates already scripted: `snapdiff_proof.sh`,
-   `layout_crosscheck.py`, `boss_stdrive.py --delay 700000` (cmp against `kill_d700000_end.snap`); the `server/*_proof.py`
-   scripts (including `record_disk_proof.py`) are not gates yet.
-4. `gates.py` records the DLL's SHA-256 in its summary, so a gate run is tied to its build like a sidecar snapshot.
-5. `stserver` `read` cost: uncached reads made the boss fight about 3x slower than REPL `m`; the per-byte `sprintf` in
-   `Server.fs` `read` is a hypothesis. Prove with an interleaved A/B of a 64 KB read loop before and after.
-6. Go-Explore over forks (idea 7), now unblocked by recordings on disk, from
-   `scratchpad/impossamole/pass108/nohop/BEST/seg3_pit_a.snap`; route repair (idea 8) belongs to the cadaver
-   workstream's leg-25 item and uses `stdrive` plus `layout.toml`.
-7. Ghidra import of snapshot RAM + `.sym` + coverage (not installed or checked); MAME model gaps (no HBL, coarse FDC,
+1. Gate manifests for Cadaver, Populous, Lemmings, Impossamole from counts their docs record (check each work dir
+   exists first; an ERROR for a missing prerequisite is not a pass). Scripted candidates: `snapdiff_proof.sh`,
+   `layout_crosscheck.py`, `boss_stdrive.py --delay 700000` (cmp `kill_d700000_end.snap`), `cheat_profile.py`; and a
+   home for the `server/*_proof.py` and `tools/stdrive*_check.py` scripts, which are not gates yet.
+2. Go-Explore over forks (idea 7) from `scratchpad/impossamole/pass108/nohop/BEST/seg3_pit_a.snap`, now with profiles
+   (coverage as the novelty signal) and drive recordings; route repair (idea 8) belongs to the cadaver workstream.
+3. Coverage against a static listing: a snapshot where PowerMonger's `a_worksh` `$1192e` runs (its `jsr 0(A1,D2.w)`
+   table at `$11970` is the one form `rdis.py` misses); show covered handlers `$11898..$1191e` absent from `rdis.py`.
+4. `sub`/`subq` then branch is not in the compare log; add it only when a hunt needs it.
+5. Ghidra import of snapshot RAM + `.sym` + coverage (not installed or checked); MAME model gaps (no HBL, coarse FDC,
    no IKBD power-up traffic), each an emulator change behind the net.
 
 ## Known traps
 
-- `stserver.dll` is not built by `dotnet build M68000.fsproj`: build `M68000/server/StServer.fsproj` per checkout. That
-  build also reinstalls `M68000.fsproj` into `bin/`, so build the server first and gate the DLL left in `bin/`
-  (cmp `bin/` against `server/bin/`). A later `M68000.fsproj`-only build leaves `server/bin/` behind, so a handoff's
-  "same DLL" line goes stale: cmp the two at resume (they differed after `70c05c1`). A running Claude session's MCP `stserver` keeps the build it started with:
-  restart the session after a server rebuild to see new tools (`record_load`).
-- Two `Debug` builds of one source have differed with no source edit: tie every result to the DLL actually run
-  (its SHA-256; a sidecar now records it per snapshot).
+- `stserver.dll` is not built by `dotnet build M68000.fsproj`: build `server/StServer.fsproj`, which also reinstalls
+  the core into `bin/`; cmp `bin/` against `server/bin/` at resume. A running session's MCP `stserver` keeps the build
+  it started with: restart the session to get new tools (`profile_start`).
+- `M68000.dll` embeds HEAD's commit (`1.0.0+<sha>`), so a rebuild after any commit changes its SHA-256 (and about 29k
+  bytes) with no source edit. Tie results to the DLL run, and settle "same source?" from `git log -- '*.fs'` plus a
+  30M boot snapshot compare.
+- Run `tools/gates.py` with `uv run python`: under the system `python3` the Super Sprint gates ERROR on `numpy`.
 - A worktree's `checkpoint.txt` is a symlink to the main checkout's: `N checkpoint` there writes through to MAIN.
 - `stdrive.replay` and `stdrive_check.py` need `--dll` in a checkout without its own `server/bin/`.
 - For the supersprint workstream, not fixed here: `sound.md:58` and `secrets.md:97` give liveproof's Q as 15559/15559,
@@ -84,11 +66,12 @@ Nothing running.
 
 ## Waiting on Dave
 
+- Push: `master` is 18 commits ahead of `origin/master` (with this file's commit), only on this Mac.
 - For the impossamole workstream (not edited here): `sessions/impossamole.md` "Known traps" says the boss `Repl` does not
-  record and a fight takes 40 s; `boss_stdrive.py` journals every input and a fight takes about 8 s.
+  record and a fight takes 40 s; `boss_stdrive.py` journals every input, records with `--record`, and a fight takes
+  about 8 s on an idle machine (13 to 16 s at load average 20 to 30).
 
 ## Next session
 
-`/resume emulator`. An MCP `stserver` without a `record_load` tool predates `7993e58`: restart the session.
-Then Open 1 (executed-PC coverage), which needs its hot-path A/B first; Open 2 (stdrive recording to disk) is small and
-can go before it if a slicing question is waiting.
+`/resume emulator`; restart first if the MCP `stserver` lacks `profile_start`. Then Open 1 (gate manifests), which
+turns this session's proofs into gates; Open 2 next if a search workload is waiting.
