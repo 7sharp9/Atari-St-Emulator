@@ -8,6 +8,7 @@ counts.
     s.read(addr, n) -> bytes; s.reg('a7') -> int
     s.call(entry, ret=0x800)                 # run one routine from a planted return address, interrupts masked
     s.call(entry, stops=[pc])                # ... or until it reaches pc (before an interrupt wait)
+    s.call_resume(entry, d2=2)               # ... then restore every register, so play carries on
     s.close()
 
 `call` pushes `ret` below the snapshot's stack (`sp` is fixed at the first call: SSP - 64), sets SR = $2700 and the
@@ -62,6 +63,17 @@ class StServer:
         r = self('run', max_steps=max_steps, until_pc=[ret, *stops] if stops else ret)
         if r['reason'] != 'until':
             sys.exit(f'${entry:x} did not return to ${ret:x} ({r})')
+        return r
+
+    def call_resume(self, entry, **kw):
+        """`call`, then every register put back as it was, so the game carries on from where it stopped (a
+        command handler run in the middle of play). `call` alone leaves the CPU at `ret` with SR = $2700."""
+        saved = self('regs')
+        r = self.call(entry, **kw)
+        val = lambda k: int(str(saved[k]).lstrip('$'), 16)
+        self('set_reg', name='sr', value=val('sr'))
+        for k in ['usp', 'ssp'] + [f'd{i}' for i in range(8)] + [f'a{i}' for i in range(8)] + ['pc']:
+            self('set_reg', name=k, value=val(k))
         return r
 
     def close(self):

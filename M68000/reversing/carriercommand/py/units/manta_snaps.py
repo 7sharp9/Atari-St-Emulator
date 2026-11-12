@@ -23,15 +23,6 @@ s('load', snapshot=str(ANCHOR))
 s('poke', addr=0x126c, width=4, value=0x00ff0001)          # the crack's stack leak (README "Provenance")
 
 
-def callkeep(entry, **regs):
-    """stclient.call, then the game's registers put back so it carries on."""
-    saved = s('regs')
-    s.call(entry, **regs)
-    val = lambda k: int(str(saved[k]).lstrip('$'), 16)
-    s('set_reg', name='sr', value=val('sr'))
-    for k in ['usp', 'ssp'] + [f'd{i}' for i in range(8)] + [f'a{i}' for i in range(8)] + ['pc']:
-        s('set_reg', name=k, value=val(k))
-
 
 def w(a): return struct.unpack('>h', s.read(a, 2))[0]
 
@@ -49,7 +40,7 @@ def show(tag):
 def tick(): s('run', max_steps=200000)
 
 
-callkeep(0x11386, d2=2)
+s.call_resume(0x11386, d2=2)
 show('lift')
 s('bp_set', addrs=[0x1ac8c])
 for k in range(3000):
@@ -58,7 +49,7 @@ for k in range(3000):
     if sl[28] == 1 and w(0xdca) == 0:
         break
 s('save', path=str(OUT / 'm_deck.snap'))
-callkeep(0x11af6, d2=2)
+s.call_resume(0x11af6, d2=2)
 show('launch')
 for k in range(3000):
     tick()

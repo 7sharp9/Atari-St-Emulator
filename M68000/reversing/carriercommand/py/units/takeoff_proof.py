@@ -105,16 +105,8 @@ def main():
         val, width = rest.split(':')
         s('poke', addr=int(addr, 16), width=int(width), value=int(val, 16))
 
-    def callkeep(entry, **regs):
-        saved = s('regs')
-        s.call(entry, **regs)
-        val = lambda k: int(str(saved[k]).lstrip('$'), 16)
-        s('set_reg', name='sr', value=val('sr'))
-        for k in ['usp', 'ssp'] + [f'd{i}' for i in range(8)] + [f'a{i}' for i in range(8)] + ['pc']:
-            s('set_reg', name=k, value=val(k))
-
     w = lambda a: struct.unpack('>h', s.read(a, 2))[0]
-    callkeep(0x11386, d2=2)                                    # Manta 0 up the lift
+    s.call_resume(0x11386, d2=2)                                    # Manta 0 up the lift
     s('bp_set', addrs=[0x1cab4])
     for k in range(400):
         r = s('run', max_steps=400000)
@@ -125,7 +117,7 @@ def main():
         sys.exit('the Manta never reached the deck')
     print(f'on deck after {k + 1} ticks')
     s('bp_clear', addrs=[0x1cab4])
-    callkeep(0x11af6, d2=2)                                    # launch
+    s.call_resume(0x11af6, d2=2)                                    # launch
     s('bp_set', addrs=[0x1cab4])
     S = []
     for k in range(200):
