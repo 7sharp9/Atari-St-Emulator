@@ -1298,12 +1298,18 @@ type MMU(rom: byte array, ?flatTestBus: bool) =
                 //this a later Read Sector reads the stale Track register (usually 0), not the track
                 //TOS sought to. Step-rate / settle / verify flags don't matter to this synchronous
                 //model; every command reports "not busy, TR00" like the other stub commands.
+                //Step-in is %010u and Step-out %011u (WD1772 command summary), u = bit 4 the update
+                //flag, so the step commands are told apart under mask $E0, not $F0. Track register
+                //and head are one value here, so a Step without u (which moves the head but leaves
+                //the register) is left unmoved, as is Step ($2x/$3x, repeat last direction): no
+                //direction is kept. Captive's loader ($5x after a Restore) needs Step-in.
+                let update = input &&& 0x10uy <> 0uy
                 let newTrack =
-                    match input &&& 0xF0uy with
-                    | 0x00uy -> 0uy                                          //Restore -> track 0
-                    | 0x10uy -> fdcData                                      //Seek -> Data register
-                    | 0x40uy when input &&& 0x10uy <> 0uy -> fdcTrack + 1uy  //Step-in with update
-                    | 0x60uy when input &&& 0x10uy <> 0uy && fdcTrack > 0uy -> fdcTrack - 1uy
+                    match input &&& 0xF0uy, input &&& 0xE0uy with
+                    | 0x00uy, _ -> 0uy                                       //Restore -> track 0
+                    | 0x10uy, _ -> fdcData                                   //Seek -> Data register
+                    | _, 0x40uy when update -> fdcTrack + 1uy                //Step-in with update
+                    | _, 0x60uy when update && fdcTrack > 0uy -> fdcTrack - 1uy  //Step-out with update
                     | _ -> fdcTrack
                 let newStatus = fdcCommandStatus input ||| (if writeProtectedA () then 0x40uy else 0uy)
                 //Restore ($0x) takes the slow bucket the boot FDC self-test relies on timing out;
