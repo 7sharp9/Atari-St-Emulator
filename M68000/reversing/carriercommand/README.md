@@ -22,9 +22,140 @@ defences, and past `$8000` a signed compare turns it back to the easiest setting
 as a physical object while it is fighting; captured islands get a random type; the carrier's autopilot steers
 in a straight line and runs aground; repair shares a fixed capacity among the systems at the top priority; a
 missile is decoyed by whichever flare its scan meets last within 6000 units; the economy routes goods as packets over an all-pairs distance
-matrix relaxed 8 rows per frame; the renderer patches its own span filler per colour and uses three layers of
+matrix relaxed 8 rows per call; the renderer patches its own span filler per colour and uses three layers of
 hidden-surface removal with no 3D matrix anywhere; and the cheat phrase is "GROW OLD ALONG WITH ME", typed
 while paused.
+
+## Design digest
+
+The game's rules restated for re-use in another design, without addresses. Each line names the section that proves
+it (A = `ai.md`, E = `economy.md`, V = `vehicles.md`, R = `render.md`); anything not proven there is labelled
+inferred. It covers what is decoded so far: the
+world and its economy, the enemy carrier, the island defences, the player's carrier, repair and countermeasures,
+and the renderer. The Manta and Walrus flight models, drone launchers and command-centre missiles in action, the
+end of an island assault, the production-priority and fuel screens are not decoded yet. The crack's stack leak
+and the Automation Packer belong to this copy, not the game ("Provenance", `packer.md`).
+
+### What carries the game
+
+- **A fixed map with a grown starting state.** The 64 islands' names, positions and sizes are fixed tables. The
+  buildings each island starts with are not laid out by hand: the ordinary island tick is run 500 times at
+  instant-build speed (the tables proven, the 500 ticks read from code). (E 1, E 2)
+- **Islands are bases of three kinds besides the two home bases.** Capturing a neutral island plants a command
+  centre; when it completes the island becomes RESOURCE, FACTORY or DEFENCE, and for the enemy that type is a
+  random pick of the three, not a choice (from code; four captures observed, types 1, 1, 2, 1). An island falls when no command centre is
+  left on it (inferred). (A 3, A 4)
+- **Supply is a graph that ownership cuts.** Most islands link to two or three neighbours (one hangs off a single
+  link); a link carries goods
+  only between two islands of the same owner, so taking an island severs the other side's routes through it
+  (from code). Goods travel as packets, one hop at a time, along shortest routes from an all-pairs distance
+  matrix (the routing from code; four landings proven, all on the island that made them). (E 3, E 4)
+- **Production is per island type.** Each economy pass adds to an island's stock: 100 for the base and 25 per
+  production line for a factory (proven 175/175); 100 per supported building for a resource island, 0 for a
+  defence island, capped at twice the island's area (from code). A production line pays its cost
+  from the stock every pass, counts down its steps and then sends a packet of its item to its destination
+  (14/14). (E 4)
+- **The enemy's whole strategy is one score per island.** At each decision it scores all 64 islands and goes to
+  the first maximum: a penalty growing with distance from the carrier, a bonus for neutral islands (more for large
+  ones), a smaller one for the player's, a penalty for its own, a large bonus for islands touching its connected
+  supply network, a small term of distance from its base (added for its own islands, subtracted for others, so it
+  favours others' islands near its base and its own far from it), a bonus for the player's home island, and
+  never the island it is at. So it grows its network from the nearest worthwhile island outward and hops through
+  its own islands only when nothing better is in reach. There is no lookahead (1344/1344 score words, 21/21 targets, ten of eleven
+  constants load-bearing). (A 2)
+- **The enemy carrier is abstract until it fights.** Travel is a countdown of octagonal distance / 250 ticks with
+  no physical object at sea; on arrival it resupplies at its own island (hull +4 a tick), captures a neutral one, or
+  attacks a player island if its hull is high enough. Only when a player unit comes within 150,000 of it at an
+  island is it placed in the world, beside the island, as a vessel that can be fought. (A 1, A 3, A 5)
+- **Carrier combat is a short script.** Engaged beyond 30,000, the enemy carrier launches an aircraft every 30
+  ticks while it has aircraft left and one of its four slots is free; inside 30,000 it turns to the reverse bearing and, when lined up,
+  fires a missile at most every 200 ticks, launching aircraft only straight after one. Below 3000 hull or out of missiles it retreats along its stored heading and goes back to choosing an
+  island once nothing is within 150,000 (thresholds and retreat proven; the missile cooldown and the
+  aircraft-after-missile rule from code). (A 5)
+- **An assault on an island is a dice round** every 250 ticks: the enemy's attack (aircraft up to four, plus half
+  its hull) against the sum of the island's defence structures, each hit costing a random building health or the
+  carrier hull, an aircraft or a missile (inferred; two structures destroyed and one missile lost in a 144M-step
+  run). (A 4)
+- **Difficulty is the island defences, not the planner.** One number, raised by destroy events and higher from the
+  start of the Action game, sets how many drones a launcher keeps up, drone speed, drone and structure armour,
+  missile speed and turn rate, the missile-site range, and whether command centres shoot at aircraft. The target score and the
+  state machine never read it (the missile-site range proven, 0, 2, 0 launches at 0, `$6000`, `$c000`; the
+  other parameters, the rises and the planner never reading it from code). (A 6)
+- **Only the islands near the action are simulated in full.** Two structure blocks hold the live islands, loaded
+  when the player's carrier or a craft comes within 130,000 and dropped when nothing refers to them (a switch
+  proven); one island's building tick runs per frame, in an order the RNG reshuffles every 64 ticks (from code). (A 6, E 5)
+- **Islands build themselves.** Each island ticked builds the highest-weight structure its class allows, at most
+  two at once; the class is the island type, plus a second tier when the area is at least 2000. Scenery has a 1 in
+  4 chance a tick to vanish. This rule grows the starting world and every captured island (from code). (E 5)
+- **The defences are a few timers.** A missile site fires at an opposing carrier within its range on a random
+  128..255-tick timer; a drone launcher puts up a drone every 100 ticks to the difficulty's limit; a drone has
+  1000 fuel, wanders within 24,000 of home and attacks an opposing unit within 25,000 (all from code; only the
+  missile site seen firing). (A 6)
+- **The player's carrier is a point mass.** Speed eases toward a target speed by a 32nd of the gap each tick, the
+  heading turns by a sixth of the yaw rate, and the ship moves twice as fast in open sea away from islands and its
+  own craft; fuel burns with speed every 16 ticks (1950/1950 ticks). Engine damage caps the speed. (V 1)
+- **The autopilot turns, then goes.** It steers straight at the destination; above about 1.4 degrees of error it
+  drops to a crawl and turns nearly on the spot, then accelerates, capping cruise speed inside 2000 and
+  declaring arrival and braking inside 1000, then coasting (the proven run ended about 2400 past the destination).
+  (V 1)
+- **Damage degrades systems, and repair is a priority queue.** Each of ten systems has a health and a priority.
+  Engines and laser give nothing below half health; the switch systems work above half; the repair systems and
+  superstructure scale linearly. Repair shares one capacity equally among the damaged systems at the highest
+  priority present, and that capacity scales with the repair system's own health, so damage to it slows every
+  repair (10/10, 12/12). (V 3)
+- **Missiles home and flares decoy.** A missile re-targets every 5 calls to any of the (at most two) flares within
+  6000 of it (5/5 cases); its guidance slews yaw and pitch by at most 11.25 degrees a call (inferred). (V 4)
+- **Two games from one engine.** Strategy starts from the player's home island against an enemy holding eight;
+  Action drops the player into a war already under way, 15 islands against 37, at a higher difficulty (proven).
+  (A 8)
+- **A cheat phrase typed while paused** unlocks invulnerability, refuelling, repair and a teleport for craft on
+  autopilot (the phrase proven, the keys inferred). (A 7)
+
+### Limits that became features
+
+- **Cheap distances shape the game.** Every range decoded so far is octagonal (`max + min / 2`) or a
+  Chebyshev box, so no multiply is needed; the target score's distance term uses the same octagon. (A 2, A 5, V 1,
+  V 4)
+- **No lookahead, so the enemy is readable.** Being an argmax re-run at each arrival, its next island can be
+  predicted from the map, and the network bonus makes it creep along its own supply chain. (A 2)
+- **No obstacle avoidance, so the player navigates.** The autopilot reads only its destination; islands are
+  handled after the move, and a carrier that comes within 10000 of an island's box is stopped, thrown into reverse and locked out of control
+  for 50 ticks (grounding proven; the absence of avoidance from code). (V 1)
+- **One graph, several uses.** The supply network's distance matrix routes goods, drives the enemy's network bonus,
+  and gives the island panel its DISTANCE TO BASE, ISOLATED and RE-ROUTING readouts. It is relaxed 8 rows a call,
+  spread over many frames, and packets and the enemy's next choice wait while it is incomplete (inferred).
+  (E 3, A 1, A 2)
+- **Fixed slot counts are the rules.** Four Mantas and four Walruses, four enemy aircraft aloft, two flares, two
+  live islands, 128 drawn objects (all from code). (V 4, V 5, A 5, A 6, R 1)
+- **A 3D world with no 3D matrix and no terrain.** Rotations are chains of 2D rotations by stored sine and cosine
+  pairs; islands, buildings and trees are ordinary models over a single sea-and-sky half-plane. Hidden surfaces
+  are three cheap layers stacked: objects sorted by depth, each model a precompiled BSP tree, and a back-face test
+  per leaf item that carries test vertices (the arithmetic proven, the orders read from code). (R 1, R 2, R 4)
+- **Colour by rewriting the filler.** The span filler patches its own instructions per colour, giving 16 solid
+  colours and 48 one-pixel checkerboard dithers whose phase flips each scanline; each span is widened to overlap
+  the previous one (780/780 rows), inferred to close gaps on steep edges. (R 5)
+- **An arctangent from one table.** The angle is the octant ratio divided by a tabulated ratio-to-angle factor, no
+  polynomial or CORDIC, within 0.15 degrees (529/529). (V 2)
+
+### Bugs and accidents a new design should drop
+
+- A fixed-address write marks island 4 as connected to the enemy's network whenever any connected enemy island is
+  ticked, so its neighbours (3 and 12) always get the network bonus (the effect proven by two pokes; that it
+  is a bug is inferred). (A 2)
+- The enemy is drawn to the player's home island by a bonus, but that island cannot be captured, so the result is
+  a visit and an immediate re-target (observed once). (A 2)
+- Difficulty is raised unsigned and compared signed, so past half scale the drone count, missile-site range and
+  command-centre missiles fall back to the easiest setting (0 launches at `$c000` against 2 at `$6000`). (A 6)
+- The retreat speed ramp has its operands swapped: the carrier jumps to full retreat speed on the first tick (248
+  on all 238 ticks; the intended ramp inferred). (A 5)
+- The enemy's aircraft-aloft counter is decremented but never incremented, so the real limit is the four slots
+  (from a raw scan). (A 5)
+- A flare captures a missile without comparing the carrier's distance, and the later flare slot wins over the
+  nearer flare (proven). (V 4)
+- The arctangent returns a 90-degree error for an input of exactly -32768, where `neg` leaves the value
+  unchanged (proven in the grid). (V 2)
+- The random-number generator is also stepped by the sound interrupt, so its sequence depends on interrupt timing,
+  not only on the game state (inferred from code). (E 2)
 
 ## Provenance
 

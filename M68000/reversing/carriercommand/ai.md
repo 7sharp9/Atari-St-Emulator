@@ -77,7 +77,8 @@ target $11ba = first index of the maximum
 
 The enemy goes for the nearest worthwhile island, prefers large unowned ones, strongly prefers islands that
 touch its connected supply network, and hops through its own islands (at -4000) only when nothing better is
-within reach. Islands near its own base are favoured if it owns them and penalised otherwise.
+within reach. The base-distance term adds for its own islands and subtracts for others, so it favours other
+islands near its base and its own islands far from it.
 
 **Proof (proven, `py/ai/gate_score.py`).** The model reproduces 1344/1344 score words and the target in 21/21
 snapshots taken at the return of `$2337a` (`bp $1ad02`): 13 natural decisions from `c_s30.snap` (`ai/nat/`,
