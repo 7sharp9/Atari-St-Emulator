@@ -25,6 +25,8 @@ The gates read their corpora from `scratchpad/`, which is per checkout, so `--ro
 M68000 dir (its scripts, its scratchpad, its `bin/` DLL; the manifests are always this checkout's). To gate a worktree's
 own build, run in the worktree after linking its inputs and cloning the scratchpad (CLAUDE.md "Emulator changes"):
 pointing `--root` at the main checkout runs the main checkout's DLL. Logs go to `<root>/scratchpad/gates/<game>/<name>.log` and the summary to `.../last_run.json`.
+`expect` is matched as a set: two runs in one gate that print the same count (`42/42` twice) need labelled
+`re:` patterns (`"re:takeoff at rest 42/42"`, carriercommand `units`), or one of them can stop printing unnoticed.
 Every run sets `ATARI_NOTRACE=1` and `M68000_ROOT=<root>`. The exit status is 1 when any gate did not pass.
 
 Default `-j 1`: gates share the machine with other sessions' runs and some share scratch output dirs.
