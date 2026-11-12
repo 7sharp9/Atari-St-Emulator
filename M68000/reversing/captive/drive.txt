@@ -1,0 +1,11 @@
+s 39999999
+kbd 02
+s 30000
+kbd 82
+s 170000000
+kbd 39
+s 60000
+kbd b9
+s 90000000
+snap scratchpad/captive/mission1.snap
+q
