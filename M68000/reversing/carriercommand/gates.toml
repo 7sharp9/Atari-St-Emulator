@@ -1,0 +1,27 @@
+# Carrier Command's promoted gates, for tools/gates.py (`uv run python tools/gates.py run carriercommand`).
+# Needs scratchpad/carrier/c_s30.snap and c_mv.snap, the carrier_auto.st disk they remount, and the AI corpus
+# under scratchpad/carrier/ai/ (all indexed in scratchpad/ANCHORS.md; how they were made: README "Snapshots").
+
+[[gate]]
+name = "render"
+cmd = "bash gate_render.sh"
+cwd = "py/render"
+expect = ["4096 / 4096", "360 / 360", "120 / 120", "480 / 480", "780 / 780"]
+cite = "render.md (proof table)"
+minutes = 1
+
+[[gate]]
+name = "economy"
+cmd = "bash gate_economy.sh"
+cwd = "py/world"
+expect = ["175/175", "14/14", "4/4", "1/1"]
+cite = "economy.md (proof table)"
+minutes = 3
+
+[[gate]]
+name = "target"
+cmd = "{python} gate_score.py"
+cwd = "py/ai"
+expect = ["1344/1344", "21/21"]
+cite = "ai.md section 2"
+minutes = 1
