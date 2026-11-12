@@ -1,0 +1,8 @@
+w 1ef90 ff000004
+u b5c2 20000000
+r
+snap scratchpad/captive/agents/ai/req4_mg.snap
+u b5c6 5000000
+r
+s 30000000
+snap scratchpad/captive/agents/ai/req4.snap

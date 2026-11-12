@@ -6,6 +6,18 @@ procedurally generated bases on a series of planets. The ST version is an Amiga 
 file on the disk is an Amiga hunk executable, loaded by the game's own file system and OS (`trap #9`).
 The reason to reverse it is the base generator, which the game keeps as its own module, `fed_MapGen`.
 
+## Topic docs
+
+| doc | what it holds |
+|---|---|
+| `mapgen.md` | the base generator: floors packed into one 64x32 grid as 16x8-cell blocks, lifts that join floors by a fixed block offset, a turtle digger under the perfect-maze rule, rooms, the field of arrows back along the dig order that creatures follow, seeds and output encoding |
+| `ai.md` | the creatures: groups scheduled by timer, a decision rule with sight along a row or column only, tracking by breadcrumbs the party writes into the map, the generator's dig-order arrows where the party has not been, 3x3 formations |
+| `world.md` | the universe (50 planets, 100 moons and a station from one 16-bit LCG seeded by the mission number, syllable names), the main loop and raster list, the first-person view cone of pre-drawn mirrored pieces, the picture sheets, `Case.pic` |
+| `system.md` | the `trap #9` OS in the low-RAM loader (files, heap, per-unit RLE), the volume block, the module launcher, the resident monitor, the Copylock in `fed_MapGen`, the Medway Boys crack, the READ TRACK emulator gap |
+
+Every generator in the game uses the same LCG, `x = x*$5e5 + $29` mod 65536, with its own state and output
+rotation: the universe (`world.md` section 1), the bases (`mapgen.md`) and the creatures (`ai.md`).
+
 ## Provenance
 
 | item | value |
@@ -27,8 +39,9 @@ Captive's own boot code. That code copies the loader into low RAM (`$206`-`$1200
 | compilation menu | cold boot, 40M steps | `menu.png` |
 | Captive intro ("Federation") | `1` at the menu, released after 30,000 steps | `intro.png` |
 | planet screen, "CAPTIVE MISSION 0001" | Space during the intro | `mission1.png` |
-| in orbit of star 14 | click the star on the map, then ORBIT | - |
+| in orbit of planet 14 (PLANET-PAICKOT) | click the planet on the map, then ORBIT | - |
 | on the planet surface | LAND | `landed.png` |
+| inside a base | labelled poke of the request word `14788(A6)` = 4 from the surface (`py/ai/enter_base.repl`; the in-game route is not found) | - |
 
 `drive.txt` does all three from a cold boot (about 300M steps) and writes `scratchpad/captive/mission1.snap`;
 two runs give byte-identical snapshots.
@@ -64,9 +77,11 @@ packed file depacks to exactly its directory length.
 - A **file** runs along consecutive tracks of one side (units u, u+2, ...). In its last unit the
   checksum follows the file's last long. Side 0 holds the program modules and level pictures, side 1
   the credits, demo, main program, sounds and animation pictures.
-- **Unit 1** is the volume block: its length in longs (`$15b`), `1ce2 0047`, the name `fed1`, a 176-byte
-  table (role not known) and from byte 188 the directory, 20-byte entries of name[12], start unit,
-  unit count, pad and length.
+- **Unit 1** is the volume block: its length in longs (`$15b`), the volume-name hash `1ce2 0047`
+  (`hash("FED1")`), the name `fed1`, six type words and a 164-unit allocation map, and from byte 188 the
+  directory, 20-byte entries of name[12], start unit, unit count, file type and length (`system.md` section 3).
+- A unit whose data starts `PACK` is also run-length decoded as the loader copies it, a second packer below
+  the file-level one (`system.md` section 1).
 - **Packing.** Files start `RNC\x01` but are not Rob Northen ProPack: the header is only magic, unpacked
   length and packed length, and the data is a byte-oriented LZ read backwards and unpacked in place.
   `fedfs.depack` transcribes the game's depacker (`$303c`-`$31c2`, inside `fed_BootFile`).
@@ -76,44 +91,43 @@ hunk against RAM at mission 1:
 
 | file | role (from where it runs) | loaded at | bytes equal to RAM |
 |---|---|---|---|
-| `fed_BootFile` | loader, `trap #9` OS, depacker | `$1236` | 9,261 / 9,264 |
-| `federation` | main program | `$369a` | 97,619 / 97,808 (the rest are its variables) |
-| `fed_MapView` | planet map screen | `$2f3f0` | 10,180 / 10,180 |
-| `Case.pic` | code hunk, 288 KB, role unknown | `$1f62c` | 132,973 / 288,388 |
-| `fed_MapGen` | base generator (below) | not loaded by mission 1 | - |
+| `fed_BootFile` | module launcher, depacker, resident monitor | `$1236` | 9,261 / 9,264 |
+| `federation` | main program | `$369a` | 97,619 / 97,808 (its variables, and the 12 bytes at `$b514` the crack patches) |
+| `fed_MapView` | planet map screen and universe generator | `$2f3f0` | 10,180 / 10,180 |
+| `fed_MapGen` | base and surface generator (`mapgen.md`) | not loaded by mission 1 | - |
 
-All are single position-independent code hunks with no relocations.
+All are single position-independent code hunks with no relocations. The `trap #9` OS itself is not in
+`fed_BootFile`: it is in the low-RAM loader at `$206`-`$1180`, decoded from track 0 (`system.md` section 1).
+
+`Case.pic` is also a hunk executable, but not a picture: a 388-byte player and nine full-screen frames of the
+briefcase opening, run as a program between `Fed_Demo` and `federation` (`world.md` section 5, `system.md`
+section 2). The `.pic` files proper are four separate 8,000-byte bitplanes, Amiga layout, not ST screen format
+(`world.md` section 4).
 
 ## The base generator, `fed_MapGen`
 
 `federation` loads it at `$b510` (into the buffer at `15770(A6)`) and calls it at `$b5c2` with
 `jsr 32(A4)`: offset 32 skips the 32-byte hunk header, so the call enters code offset 0. Arguments:
-A0 = `9242(A6)`, A1 = `$b532` (a table in `federation`), D0 = `32(A6)`, D1 = `14790(A6)`,
-D2 = 1, 2, 6 or 14 from the mode word `13564(A6)`, D3 = `14776(A6)`, D4 = -1. It returns D0
-(`13402(A6)`), D5 and D6 (`13556(A6)`, `13560(A6)`), and the callers copy D5 or D6 to the position
-`26(A6)`. The callers (`$8836`, `$8852`-`$88a0`, `$bd6a`) set the mode from a request word `14788(A6)`
-and re-run it when the position equals the returned entry position, and `$8804` steps `14776(A6)`:
-inferred to be entering, moving between and leaving a base's levels.
+A0 = `9242(A6)` (the 64x32 tile layer; the second layer is at +2080), A1 = `$b532` (a table of output
+pointers in `federation`), D0 = `32(A6)` = mission x 11 + target number, D1 = `14790(A6)` = (mission & `$1ff`)
+x 150 + object number, or `$ffff` for none (`$2f636`-`$2f65a`, read), D2 from the mode word `13564(A6)`: 0, 1,
+2, 6 or 14, D3 = `14776(A6)`, D4 = -1. D2 = 0 or 1 builds a base, seeded by D0 alone; 2, 6 and 14 build a
+planet surface, seeded by D1. It returns in D0 the mask of creature sheets `fed6-A`..`G` to load, and the
+entry column in `9238(A6)`; the base path returns D5 = D6 = 0. The same arguments give byte-identical output.
+The algorithm is in `mapgen.md`.
 
-It runs on landing: from `scratchpad/captive/go_1.snap` (in orbit), LAND calls it once from `$b5c2` (module at
-`$1f7b0`, entry `$1f7d0`) with D0 = 1, D1 = `$ffff`, D2 = 14, D3 = 0, A0 = `$1d9e8`, A2 = `$303c` (the
-depacker), and it returns after 841,721 steps with D0 = 48, D1 = 30, D2 = 20. `callcap $1f7d0` from the call
-matches that natural return on every returned register and on all 4,096 changed bytes callcap prints (of 8,919;
-the natural run changes 8,949, the difference starting with interrupt-side counters). Its output from `$1d9e8`
-is one value, `$1e`, repeated: the landing call builds a uniform planet surface, not a base. It also changes
-the loader's state block (`$117c`-`$11b3`), so it reads the disk itself.
-
-Code offset 0 is not the generator: it calls `trap #9` (functions 60 and 96), points the illegal
-instruction vector `$10` at itself, executes `illegal` and then `movec` (`$4e7a`), the opening of a Rob
-Northen Copylock. `$0`-`$1000` holds that prologue and a high-entropy (encrypted) block, `$1000`-`$4000` is
-zeros, and `$4000`-`$719c` is plain code. The call returns normally under the emulator; what the prologue
-checks, and whether the Medway crack disarmed it, is not read yet.
+Code offset 0 is a Rob Northen Copylock (`system.md` section 5). It reads the disk, adds its key into
+`15538(A6)`, and feeds the generator nothing: calling the plain entry `$20054` with the caller's registers
+reproduces the natural landing call on every output region (`mapgen.md`). On landing (`go_1.snap`, LAND) it is
+called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in 841,721 steps.
 
 ## Not yet exercised
 
-- Entering a base, so `fed_MapGen` building one. Its protection prologue runs to completion on landing.
+- The in-game route into a base: the request word `14788(A6)` has no direct writer other than its clear at
+  `$885e`, so the base was entered by a labelled poke (`ai.md`, "Getting into a base").
+- The roughly 25 generator stages after the digger (`$24f4c`-`$268f8`): objects, doors, generators.
+- What the six `15538(A6)` tests in `federation` gate on an uncracked copy (`system.md` section 5).
 - The intro's top band and smeared figures (`intro.png`): intended animation or a rendering fault, unchecked.
-- Everything in `federation` beyond the generator's callers.
 
 ## Files
 
@@ -123,3 +137,7 @@ checks, and whether the Medway crack disarmed it, is not read yet.
 | `menu.png`, `intro.png`, `mission1.png`, `landed.png` | milestone screenshots |
 | `py/fedfs.py` | disk decode, directory, extract, depack |
 | `py/hunks.py` | hunk parser and RAM alignment |
+| `mapgen.md`, `ai.md`, `world.md`, `system.md` | topic docs (table at the top) |
+| `mapgen_*.png` | generated bases, one colour per floor (`mapgen.md`) |
+| `world_case_strip.png`, `world_sheets_surface.png`, `world_fed7E_walls.png`, `world_map_fit.png` | the briefcase frames, the surface picture sheets, the wall sheet, the generated planets over the map screen (`world.md`) |
+| `py/mapgen/`, `py/ai/`, `py/world/`, `py/system/` | the scripts behind each topic doc, each with a README table of command and expected output |
