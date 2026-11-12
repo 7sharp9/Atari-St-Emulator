@@ -157,8 +157,8 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   (from a raw scan). (A 5)
 - A flare captures a missile without comparing the carrier's distance, and the later flare slot wins over the
   nearer flare (proven). (V 4)
-- The arctangent returns a 90-degree error for an input of exactly -32768, where `neg` leaves the value
-  unchanged (proven in the grid). (V 2)
+- The arctangent pins its result to a fixed angle when either input is exactly -32768, where `neg` leaves the
+  value unchanged: up to 45 degrees wrong, 90 on an axis (proven in the grid, 27 of 529 cases). (V 2)
 - The random-number generator is also stepped by the sound interrupt, so its sequence depends on interrupt timing,
   not only on the game state (inferred from code). (E 2)
 

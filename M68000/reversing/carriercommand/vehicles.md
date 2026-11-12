@@ -68,12 +68,16 @@ inputs until they fit in a signed word. It folds the vector into one octant, for
 with `divs`, and divides `r << 8` by an entry of the 128-word table at `$3864`, which holds about
 `4096 pi r / atan(r)` (inferred by fitting; within -45/+28 of the stored values). So the angle is the ratio
 divided by a tabulated ratio-to-angle factor: no polynomial and no CORDIC. Proven 529/529 over a grid; within
-0.15 degrees of the exact angle over 200,000 random inputs. About twenty routines call it, including the
+0.15 degrees of the exact angle over 200,000 random inputs. The final `lsl #4` makes every result a multiple of
+16, so the angle has 4096 steps to the turn (0.088 degrees each). Of the worst error, 27 units at radius 30000,
+up to 16 is that rounding and at most 13.7 the table: one factor serves each 1/128 of the ratio range
+(`py/infographics/gen_atan.py` computes both from the port). About twenty routines call it, including the
 autopilot and missile guidance.
 
-A game bug falls out of the 68000: `neg.w` of -32768 is still -32768, so an input of exactly -32768 lands in
-the wrong octant and returns `$a000` or `$e000` (the 90-degree outliers in the grid's error report; the port
-reproduces them).
+A game bug falls out of the 68000: `neg.w` of -32768 is still -32768, so when either input is exactly -32768 the
+fold goes wrong and the result is pinned at `$6000`, `$a000` or `$e000` whatever the other input, or `$8000` and
+`$c000` when the other is 0. The error is up to 45 degrees off the axes and 90 degrees on them: 27 of the grid's
+529 cases, each matched by the port.
 
 ## 3. Repair `$1713c`
 
