@@ -9,7 +9,7 @@ assembly (1 `LINK` frame, about 920 `RTS`), so it is analysed from traces and ca
 | Doc | Covers | Proof |
 |---|---|---|
 | `ai.md` | the enemy carrier's state machine, how it picks its next island, capture and attack, fighting the player's carrier and retreat, island defences, difficulty, the cheat mode, the two games | target choice 1344/1344 score words and 21/21 decisions, with constant-by-constant controls; difficulty A/B/C 3/3 arms; combat states driven state by state |
-| `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5 |
+| `vehicles.md` | the player's carrier motion and autopilot, the arctangent, repair priorities, missiles and flares, the craft slots, the Manta lift, launch and take-off | carrier 150/150 and 600/600 ticks (1950/1950 in the full run), arctangent 529/529, repair 10/10 and 12/12, flares 5/5, take-off 42/42 twice |
 | `economy.md` | the fixed island tables, world creation, the RNG, the supply graph and distance matrix, production, production lines and packets, island building | production 175/175, line cost and steps 14/14 each, landings 4/4, RNG 1/1 |
 | `render.md` | the 3D engine: sine table, chained 2D rotations, projection, depth tree plus BSP plus back-face culling, the self-modifying span filler, the model format | sine 4096/4096, rotations 360/360 and 120/120, projection 480/480, face test 120/120, spans 780/780 |
 | `packer.md` | Automation Packer V2.3r: the `LSD!` LZ77 format, the backwards in-place depack and its safety margin, ratios against modern compressors | depacker output identical to `tools/lsd_depack.py`; minimum read/write gap 218 bytes on all six packed files |
@@ -103,6 +103,10 @@ and the Automation Packer belong to this copy, not the game ("Provenance", `pack
   superstructure scale linearly. Repair shares one capacity equally among the damaged systems at the highest
   priority present, and that capacity scales with the repair system's own health, so damage to it slows every
   repair (10/10, 12/12). (V 3)
+- **A launch is a short deck sequence.** A Manta goes up the lift to the deck, then takes off in three phases
+  in the carrier's own frame: it rises off the lift, rolls along the deck accelerating to a fixed speed, then pitches
+  up and climbs off the bow, leaving with the carrier's speed added to its own. With no destination it is sent to
+  a point 6000 behind the carrier (42/42 ticks with the carrier at rest and turning). (V 5)
 - **Missiles home and flares decoy.** A missile re-targets every 5 calls to any of the (at most two) flares within
   6000 of it (5/5 cases); its guidance slews yaw and pitch by at most 11.25 degrees a call (inferred). (V 4)
 - **Two games from one engine.** Strategy starts from the player's home island against an enemy holding eight;
@@ -265,11 +269,11 @@ drones and island structures (`$193dc`, a jump table by type), and the 3D frame 
 | `py/ai/` | `score.py` (target-choice model), `gate_score.py` |
 | `py/world/` | `rng.py`, `prove_production.py`, `prove_line.py`, `prove_transfer.py`, `gate_economy.sh`, `render_map.py` |
 | `py/ai2/` | `drive.py` (state-change log for the enemy carrier), `defence.py` (structure launch census with a difficulty poke), `menu.py`, `gate_difficulty.sh` |
-| `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `gate_units.sh` |
+| `py/units/` | `carrier_proof.py` (per-tick carrier model against the emulator), `atan_port.py`, `atan_grid.py`, `repair_proof.py`, `flare_test.py`, `takeoff_proof.py` (per-tick Manta take-off model), `manta_snaps.py` (the Manta anchor snapshots), `gate_units.sh` |
 | `py/render/` | `rig.py` (REPL and callcap driver), the five gates, `gate_render.sh`, `model.py`, `sheet.py`, `views.py`, `show.py`, `seq.py` |
 
 ## Not exercised in the emulator
 
-The Manta and Walrus flight and driving models (no snapshot has a launched craft), a drone launcher or command
+The Manta's airborne flight and landing, the Walrus launch and driving, a drone launcher or command
 centre firing, the island-capture end of an attack, the production-priority and fuel screens, saving and
 loading. The decoded 3D model drawing order has not been compared with the game's.

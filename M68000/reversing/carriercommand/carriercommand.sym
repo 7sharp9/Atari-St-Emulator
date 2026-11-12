@@ -60,6 +60,9 @@
 00aae6	atan2_word
 00f254	main_frame_econ_every_4th
 00f82c	pause_button_handler
+011386	manta_lift_to_deck_cmd
+011af6	manta_launch_cmd
+011b74	manta_default_destination
 012f06	launch_flare
 01713c	repair_step
 0171d4	system_effects_update
@@ -128,6 +131,10 @@
 01bc5e	manta_take_damage
 01ca60	per_frame_vehicles
 01cab4	manta_update_all
+01cf94	manta_deck_state_dispatch
+01d200	manta_on_deck
+01d22c	manta_takeoff
+01d908	craft_deck_to_world
 01da24	walrus_update_all
 01e490	decay_by_eighth
 01e4a0	carrier_update

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Gate for vehicles.md: carrier motion (manual rudder with a grounding, and autopilot), arctangent grid, repair
-# scheduler, flare decoy capture. Every run resumes c_s30.snap with REPL pokes; no snapshot is written.
+# scheduler, flare decoy capture, Manta take-off. Every run resumes c_s30.snap with REPL pokes; no snapshot is written.
 here=$(cd "$(dirname "$0")" && pwd)
 root=$here; while [ ! -f "$root/tools/rdis.py" ]; do root=$(dirname "$root"); done
 work=${CARRIER_WORK:-$root/scratchpad/carrier}
@@ -26,3 +26,10 @@ chk 7000 5000 2 0005f35a
 chk 3000 5000 2 0005f35a
 chk none none 14 0005e95a
 echo "flare cases $ok/5"
+# Manta take-off ($1d22c): lift and launch through the game's own handlers, then the model per tick, with the
+# carrier at rest and with it turning and accelerating (the run that exercises the heading and the speed hand-off)
+$py "$here/takeoff_proof.py" "$S" | grep '^takeoff ticks' | awk '{printf "takeoff at rest %d/%d\n", $5, $3}'
+$py "$here/takeoff_proof.py" "$S" 644=00400000:4 648=00300000:4 > "${TMPDIR:-/tmp}/cc_takeoff.$$" 2>&1
+grep '^takeoff ticks' "${TMPDIR:-/tmp}/cc_takeoff.$$" | awk '{printf "takeoff carrier turning %d/%d\n", $5, $3}'
+grep '^controls broken' "${TMPDIR:-/tmp}/cc_takeoff.$$" | awk '{printf "takeoff controls %s\n", $3}'
+rm -f "${TMPDIR:-/tmp}/cc_takeoff.$$"

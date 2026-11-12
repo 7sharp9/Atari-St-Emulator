@@ -6,7 +6,7 @@ capacity equally among the damaged systems at the highest priority level. An inc
 whichever flare its scan meets last within 6000 units, not by the nearest.
 
 Proof labels as in `ai.md`. Gate: `py/units/gate_units.sh` (`gates.toml` "units"); every run resumes `c_s30.snap`
-with REPL pokes.
+with pokes (REPL, or `stserver` for the take-off).
 
 | Proof | Script | Count |
 |---|---|---|
@@ -16,6 +16,7 @@ with REPL pokes.
 | repair calls, three systems at HIGH while the repair system itself is repaired | `repair_proof.py` | 10/10 |
 | repair calls, HIGH finishing and repair moving to MEDIUM | `repair_proof.py` | 12/12 |
 | flare capture: 6000 captures, 6001 does not, the later slot wins, no flare keeps the carrier | `flare_test.py` | 5/5 cases |
+| Manta take-off per tick (phase, speed, altitude, pitch, heading, deck offset, world x and z, the hand-off to flight), carrier at rest and carrier turning; eleven of thirteen constants break when nudged | `takeoff_proof.py` | 42/42 and 42/42, controls 11/13 |
 
 ## 1. Carrier motion `$1e4a0`
 
@@ -127,11 +128,44 @@ carrier at altitude 500 on a random heading.
 After the carrier, `$1ca7c` updates the Mantas (`$1cab4`: 4 slots of 52 bytes at `$498`, paired with entities
 `$5df5a + 320 i`), the Walruses (`$1da24`: 4 slots at `$572`, paired with `$5e45a + 320 i`) and the flares
 (`$1ef5c`). The pairing is proven by the cheat teleport at `$3ec2..$3f48`, which moves each craft whose slot
-says autopilot and destination to its slot destination. The rest is inferred:
+says autopilot and destination to its slot destination, and by the launch below.
 
-- Slots: +0 flags (bit 0 autopilot, bit 1 destination set, the carrier's convention), +1 state (1 being
-  repaired, 3 and up active, 8 launching), +20 hull (`$fa0`); Manta +2/+4 stick, +30 destination; Walrus +28
-  destination. Manta +10 and Walrus +8 (set to `$7fff` by the cheat) are probably fuel.
+Manta slot fields: +0 flags (bit 0 autopilot, bit 1 destination set, the carrier's convention), +1 state (0 in the
+hangar, 3 on the lift, 8 from the deck on, observed), +6 speed, +10 probably fuel (`$7fff` at start; it fell 12 on the
+one tick on deck and 356 over the first 300 airborne ticks, unmodelled), +20 hull (`$fa0`), +28 deck state, +29 its
+phase, +30/+38 destination x and z, +34 target altitude. The Manta update dispatches on +28 at `$1cf94`: 0 hangar
+and lift, 1 on deck (`$1d200`), 2 take-off (`$1d22c`), 3 airborne (`$1d354`), 4 to 6 not yet seen. `$dcc` is the
+Manta on the deck (negative when empty) and `$dca` the lift's state.
+
+**Lift and launch (proven by driving them).** The lift command `$11386` (Manta index from `$dc8`) needs a working
+LIFT, an idle slot, an empty deck and the lift at rest; it sets +1 to 3 and starts the lift. From `c_s30` the Manta
+rose from altitude 20 to 180 and was on deck with the lift stopped after 21 main ticks. The launch command `$11af6`
+refuses while the lift is moving (`$dca` nonzero, "No aircraft available for launch"). With no destination set it
+gives one (`$11b74`): 6000 units behind the carrier along its heading, at target altitude `300 (i + 1) + 500`
+(computed (-570, -5973) from the carrier for heading `$3e8`, as the snapshot holds). It then sets +28 to 2.
+
+**Take-off `$1d22c` (proven, `takeoff_proof.py`).** While on the deck and taking off, the Manta's position is a
+deck offset (+28/+30 of the entity) rotated by the carrier's heading and added to the carrier's position
+(`$1d908`, the inverse rotation of `render.md` section 2), and its heading is the carrier's. Per tick:
+
+```
+phase 0: altitude += 2;  at altitude >= 200: phase 1, speed = 0           # rise off the lift
+phase 1: speed = min(speed + 8, 60);  deck z += speed;  at deck z >= 650: phase 2     # roll
+phase 2: pitch = max(pitch - 240, -1655);  altitude += 10;  deck z += speed            # rotate and climb
+         at deck z >= 2000: airborne (+28 = 3), slot pitch = pitch / -14, speed += carrier speed,
+                            deck freed ($dcc), entity +1 bit 2 cleared, flag bit 0 cleared if +51 is set
+```
+
+From `c_s30` the take-off takes 42 ticks (9 rising, 10 rolling, 23 climbing off the bow) and leaves the deck at
+altitude 430, pitch -1655 and speed 60 plus the carrier's. The model matches 42/42 ticks with the carrier at rest
+and 42/42 with it turning and accelerating (speed 48 at take-off, so the Manta leaves at 108). Each constant nudged
+by one breaks at least one tick, except the two deck thresholds: the Manta moves 60 a tick, so the data pins 650 to
+(594, 654] and 2000 to (1974, 2034], and the values are read from code. In the observed flight the Manta then climbed
+to 781, turned back to the point behind the carrier, cleared its destination flag about 200 ticks after take-off and
+circled (one run of `py/units/manta_snaps.py`, not modelled).
+
+Inferred from code:
+
 - Manual flight takes the stick from the mouse deltas `$1262`/`$1264`, clamped to +/-255; the throttle keys
   change +8 by 16.
 - A Manta more than 200,000 from the carrier, and not within 200,000 of the relay drone `$ddc` while COMMS
@@ -140,11 +174,12 @@ says autopilot and destination to its slot destination. The rest is inferred:
 - Hits (`$1bc1c` Walrus, `$1bc5e` Manta) subtract `$752` from the hull, skipped while cheat invulnerability
   `$1186` is set.
 - Entities are created by `$18f9a` (type at +2, collision half-extents at +48..+54 from the 4-word table at
-  `$19092`); the Walrus launch (`$1201a`) uses type 6.
+  `$19092`); the Walrus launch (`$1201a`) uses type 6. Walrus slot +28 is its destination.
 
 ## 6. Open
 
-- The Manta flight model and terrain following (`$1ccb0` on) and the Walrus equivalents: no snapshot has a
-  launched craft yet.
+- The Manta's airborne flight (`$1d354`, +28 = 3) and terrain following: `scratchpad/carrier/manta/m_takeoff.snap`
+  is the first airborne tick. The landing states 4 to 6, and the lift's own motion.
+- The Walrus launch and driving.
 - An autopilot run with an island across the course, to show the carrier grounding instead of steering round.
 - Craft fuel (Manta +10, Walrus +8) and the "Fuel Transfer" / "Set Fuel Priorities" screens.
