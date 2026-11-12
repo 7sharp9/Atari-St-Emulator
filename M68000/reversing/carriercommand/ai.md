@@ -9,9 +9,10 @@ Gate: `py/ai/gate_score.py` (`gates.toml` "target").
 
 ## 1. The state machine `$1ac8c`
 
-`$1ac8c` runs once per main frame (called from `$3a04`; one main frame is 6 VBLs, 72,000 steps) and is
-skipped while the game is paused (`$464 == 0`, the branch at `$39fe`). Proven: the travel countdown `$11c0`
-fell `$17f8 -> $1794 -> $1730` over two 7.2M-step stretches, exactly 100 ticks each.
+`$1ac8c` runs once per main frame (called from `$3a04`) and is skipped while the game is paused (`$464 == 0`,
+the branch at `$39fe`). A main frame is usually 6 VBLs (72,000 steps; the travel countdown `$11c0` fell
+`$17f8 -> $1794 -> $1730` over two 7.2M-step stretches, exactly 100 ticks each), but it is not fixed: with
+combat on screen ticks came every 48,000 to 72,000 steps, so durations below are in ticks.
 
 `$11be` indexes the 12-long jump table at `$1aca0` (`add.w D0,D0` twice, `movea.l 0(A0,D0.w),A0`, `jmp (A0)`);
 entries 6..9 are `rts`. The string "Enemy state " at `$1ac7d` has no reader: a leftover debug label.
@@ -22,24 +23,30 @@ entries 6..9 are `rts`. The string "Enemy state " at `$1ac7d` has no reader: a l
 | `$11ba` | target island |
 | `$11bc` | current island |
 | `$11c0` | countdown (travel, waits) |
-| `$11c2` | hull, `$2000` at start |
-| `$11c4` | air-unit stock, 8 at start |
-| `$11cc` | missile stock |
-| `$11ce`, `$11c6` | missile and launch cooldowns |
-| `$11c8` | enemy aircraft in the air |
+| `$11c2` | hull, `$2000` at start, repaired to at most 12000 |
+| `$11c4` | aircraft stock, 8 at start |
+| `$11cc` | missile stock (12 in `c_s30`) |
+| `$11ce`, `$11c6` | missile cooldown (200 ticks), aircraft cooldown (30 ticks) |
+| `$11c8` | meant to count aircraft out; never incremented (below) |
+| `$11ca`, `$11d0` | retreat flag (read by the enemy aircraft at `$1a902`), retreat speed |
 
-The carrier itself is the entity at `$5f49a` (x long at +10, z long at +18).
+The carrier itself is the entity at `$5f49a` (x long at +10, z long at +18). **It only exists physically while
+it is fighting.** In states 1 to 5 the entity's active bit is clear: travel is just the countdown, and on
+arrival the island's position is copied in (`$1ae4c`). On entering state 10 (`$1af20`) it is placed beside the
+island, at the island's half-width plus `$456` plus 2000 on one of four sides chosen by the RNG, heading away
+from the island, and made active. Proven: the active bit stayed 0 through every travel run, and at engagement
+x was the island centre plus 29,384 (11000 + `$4000` + 2000) with heading `$4000`.
 
 | State | Entry | What it does |
 |---|---|---|
 | 0 | `$1acd0` | init: hull `$2000`, air units 8, missiles 0; state 1 |
 | 1 | `$1acf0` | pick a target (section 2); `$11c0 = octdist(carrier, target) / 250`; state 5. Waits while the supply-distance matrix is being recomputed (`$122f`, inferred) |
 | 5 | `$1ae2e` | travel: `$11c0--`; at 0 the carrier is placed on the target island and the arrival dispatch runs (section 3) |
-| 2 | `$1ad44` | resupply at its own island (inferred) |
+| 2 | `$1ad44` | at its own island: hull +4 per tick (proven over 40 ticks) |
 | 3 | `$1ad8a` | attack a player island (section 4) |
 | 4 | `$1ae18` | wait 400 ticks after starting a capture; state 1 |
-| 10 | `$1afa2` | engage player units within 150,000 (`$1b1cc` over the 9 entities at `$5df5a`) (inferred) |
-| 11 | `$1b16e` | retreat (inferred) |
+| 10 | `$1afa2` | fight player units within 150,000 (section 5) |
+| 11 | `$1b16e` | retreat (section 5) |
 
 Proven: the travel time. From `scratchpad/carrier/ai/nat/d2.snap`, `$11c0 = $2775` = 10101 = `octdist / 250` for
 target 48.
@@ -134,37 +141,94 @@ Proven in part: with island 56 made player-owned and the carrier forced to arriv
 held for 144M steps, the island's `$28` and `$26` structures were destroyed at about 78M and 96M steps and
 the missile stock fell 12 to 11 at about 114M. The run did not reach a capture; the formulas are inferred.
 
-## 5. Island defences and difficulty
+## 5. Fighting the player's carrier (states 10 and 11)
 
-Structures on islands are also entities. The dispatcher `$193dc..$1943a` walks 64-byte entities and calls
-the table at `$19440` by the type word at +2 (inferred from code throughout this section):
+A player unit (any active entity of the 9 at `$5df5a`) within Chebyshev 150,000 of the enemy carrier while it
+sits at an island moves it to state 10 (`$1b1cc`). Proven: from `ai2/st2.snap` (enemy repairing at island 56)
+with the player carrier poked to 100,000 away the state went 2 to 10 on the first tick; at 200,000 it stayed in
+state 2 for 40 ticks, repairing +4 per tick.
+
+State 10 (`$1afa2`), proven in its parts as listed:
+
+```
+if no player unit within 150,000: back to the arrival logic ($1ae6c)
+if hull < 3000 or missiles == 0:  state = 11, $11ca = $ff, $11d0 = 0
+count down the missile and aircraft cooldowns
+d = Chebyshev(player carrier, enemy carrier)
+if d <= 30,000:
+    turn toward bearing + $8000 at up to 200 per tick
+    if within $800 of it, missiles left, cooldown 0 and a free missile slot:
+        fire a missile (type $13) 200 ahead at altitude 140; missiles--; cooldown 200
+        then try an aircraft launch
+    else stop here: no aircraft inside 30,000 except straight after a missile
+else: turn toward the stored heading
+launch an aircraft (type $21, fuel 2000) if stock, cooldown 0 and one of the 4 slots at $5f5da is free;
+    stock--; cooldown 30
+```
+
+Observed: at 100,000 two aircraft were launched 31 ticks apart and no missiles; at a placed distance of 29,384
+one missile was fired 21 ticks after engagement with an aircraft in the same tick, missiles 12 to 11, and the
+player carrier was destroyed ("GAME OVER / Aircraft Carrier Destroyed!") about 11.8M steps in (what killed it
+was not attributed).
+
+`$11c8`, the aircraft-in-the-air counter tested against 4 at `$1b0e0`, is cleared and decremented (fuel out
+`$1a924`, docked `$1ab04`, destroyed `$1c1fc`) but never incremented: a raw scan of `$3900..$23600` finds 7
+references and no increment, so the real limit is the 4 slots (inferred from the scan).
+
+State 11, retreat (`$1b16e`, proven): entered with hull 2999 or no missiles (both within one tick; at hull 3000
+it stayed in 10 and launched an aircraft). The carrier turns to its stored heading at 200 per tick and then
+moves along it. When no player unit is within 150,000 it returns to state 1 and becomes inactive: with the
+player at 184,384 that happened on the next tick and it set off for island 55 with the hull still 2999; at
+140,000 it stayed in state 11 for 5 of 5 ticks. Its speed is set by `$19e54` (`D1 += clamp(D0 - D1, +/-D2)`)
+called with the target in D0 and 250 in D1, so it jumps to 248 on the first tick and stays there (248 on all
+238 ticks of a run): by appearance swapped operands for a ramp of 2 per tick (the intent is inferred).
+
+## 6. Island defences and difficulty
+
+Only two islands' structures are live at a time. Each island's structures are kept in one of two blocks,
+`$62cda` and `$63cec` (stride `$1012`: +1 island index, +2/+6/+10 position, then 64 records of 64 bytes), loaded
+when the player's carrier or a craft comes within Chebyshev 130,000 (`$1fbd0`, `$1b550`) and dropped by `$17f64`
+when nothing refers to it. Proven: block `$62cda` switched from island 0 to island 56 within 2.4M steps of the
+player moving there. `$1930a` sets the context per block: `$a28` the island record, `$a41` neutral (all
+structures inert), `$a40` player-owned (structures aim at the enemy), `$a3e` an opposing unit is present.
+
+The dispatcher `$193dc` walks a block's 64-byte records and calls the table at `$19440` by type:
 
 | Type | Handler | Behaviour |
 |---|---|---|
-| `$25` | `$19bcc` | every 100 ticks launches a defence drone if the island's active drones are fewer than `$448` |
-| `$28` | `$19c56` | every 128..255 ticks fires a missile at the opposing carrier when it is on this island and within `$456` |
-| `$29` | `$1980c` | command centre: fires only when difficulty `$446 >= $4000` and a target is within `$fa0` |
-| `$16` | `$19912` | the drone: five states (idle, chase, orbit, attack, retreat), speeds from `$44c`/`$44e` |
+| `$28` | `$19c56` | missile site: a timer reloaded with 128..255 ticks; fires (type `$22`, launch at `$19cc6`) at the opposing carrier when it is near this island and within `$456` |
+| `$25` | `$19bcc` | drone launcher: every 100 ticks, with an opposing unit present and fewer than `$448` drones out, launches a drone (inferred) |
+| `$29` | `$1980c` | command centre: only when difficulty is at least `$4000`, fires a missile (type `$1c`) at the nearest opposing aircraft within 4000 and below altitude 1500 (inferred) |
+| `$16` | `$19912` | the drone: fuel 1000, wanders within +/-24,000, attacks an opposing unit within 25,000 (inferred) |
 
-Difficulty is one word, `$446`. It starts at 0 in the small campaign and `$2000` in the large one (`$3bee`),
-and rises with player achievements through `$18d96` (clamped at `$ffff`): `$800` per destroy event at
-`$1c042`, `$400` after an ACCB drop (`$1f9e6`), `$2000` at `$fe06`, `$aa4` at `$1c1a0` (inferred). `$18da6`
-derives the defence parameters from it:
+Difficulty is one word, `$446`. It is 0 at the start of the Strategy game and `$2000` in the Action game
+(`$3be6`; proven, section 8), and rises in play through `$18d96`, an unsigned add clamped at `$ffff`: `$800` per
+destroy event at `$1c042`, `$400` after an ACCB drop (`$1f9e6`), `$aa4` at `$1c1a0`, `$2000` at `$fe06` in the
+Action game (inferred). `$18da6` derives the defence parameters:
 
 | Parameter | Formula | Use |
 |---|---|---|
-| `$448` | 2, or 3 when `$446 >= $4000` | drones per launcher |
-| `$44a` | 3, plus `($446 - $8000) / 10000` above `$8000` | drone parameter (+38) |
+| `$448` | 3 if signed `$446 >= $4000`, else 2 | drones per launcher |
+| `$44a` | 3, plus `($446 - $8000) / 10000` when bit 15 is set | drone parameter (+38) |
 | `$44c` | `1.5 * ($446 >> 10) + $96` | drone speed |
 | `$44e` | `0.75 * (($446 >> 6) + $400)` | drone speed |
 | `$450` | `($446 >> 4) + $200` | drone and structure armour; `$450 + $800` is patched into code at `$18a1c`/`$18a74` |
-| `$452`, `$454` | `($446 >> 10) + $c8`, `($446 >> 6) + $400` | |
-| `$456` | `max($446, $4000)` | missile turret engagement range |
+| `$452`, `$454` | `($446 >> 10) + $c8`, `($446 >> 6) + $400` | missile speed limit and turn rate |
+| `$456` | `$446` if signed `$446 >= $4000`, else `$4000` | missile site range |
 
-The scoring function and the state machine never read `$446`: **difficulty changes how hard the islands
-fight back, not how the enemy plans.**
+**Proven A/B/C** (`ai2/st56.snap`, player carrier 20,000 from island 56's missile site, the same 16M steps, only
+`$446` and its derived values changed): difficulty 0 gives 0 launches (range 16384), `$6000` gives 2 (range
+24576), `$c000` gives 0. A positive control at difficulty 0 with the carrier 6,536 from the site gave 1 launch.
 
-## 6. Cheat mode
+**Difficulty wraps.** `$446` is raised with an unsigned add but `$448`, `$456` and the command centre's gate
+compare it signed (`blt`/`bge` at `$18db2`, `$18e08`), so a difficulty of `$8000` or more reads as the lowest
+setting for drones, missile range and the command-centre missiles, while `$44a` (a `bpl` test) does rise. From
+the Action game's `$2000` that is about 12 destroy events away; whether a real game reaches it is open.
+
+The scoring function and the state machine never read `$446`: **difficulty changes how hard the islands fight
+back, not how the enemy plans.**
+
+## 7. Cheat mode
 
 Proven: typing **GROW OLD ALONG WITH ME** while the game is paused sets `$1185 = $ff` and shows "Cheat Mode
 active" (`cheat.png`). The phrase is stored bit-inverted at `$116e` (pointer `$116a`); keys are turned into
@@ -174,14 +238,27 @@ clicked.
 
 With cheat mode on, `$3f88` reads keypad keys from the key-state table at `$794` (inferred, none pressed):
 keypad + and - set and clear invulnerability `$1186` (read at `$1bbd4` Walrus damage, `$1bc62` Manta damage,
-`$1d88e`); keypad 9 prints "Difficulty level is" and `$446`; keypad 1 sets `$7fff` into two fields of each of
-the 4 aircraft and 4 amphibious-vehicle slots (`$498+10`, `$572+8`); keypad 2 sets `20(slot) = $fa0` in both
-arrays; keypad 3 moves each active aircraft to its target position.
+`$1d88e`); keypad 9 prints "Difficulty level is" and `$446`; keypad 1 sets `$7fff` into the field of each of
+the 4 Manta and 4 Walrus slots that is probably fuel (`$498+10`, `$572+8`); keypad 2 sets every craft's hull
+(+20) to full, `$fa0`; keypad 3 (`$3ec2..$3f48`) teleports each craft on autopilot to its destination, and the
+carrier to its own (`vehicles.md` section 5).
 
-## 7. Open
+## 8. The two games
 
-- States 10 and 11 (fighting the player's units and retreat), and the defence handlers, have not been driven.
-- `$1244` selects the small (8 enemy islands, `$18c8a`) or large (about 40 enemy, 15 player, `$18cc4`)
-  starting layout; `c_s30` is the small one. Which title-menu item sets it is not confirmed.
-- A plain run from `ai/nat/d2.snap` stops with a double bus fault about 640M steps later, during travel
-  (fault at `$004147ea`, PC `$0202049c`), reproduced twice. Emulator or game: not yet known.
+The title menu's two start buttons differ only in `$1244` and the starting state (proven by clicking each from
+`c_mv.snap`, `ai2/menu_0.snap` and `menu_15.snap`):
+
+| Button | `$1244` | Difficulty `$446` | Start | Islands |
+|---|---|---|---|---|
+| Start Strategy Game | `$ff` (`$fe7e`) | 0 | Vulcan, -4415,-4288 | player 0; enemy 49, 50, 52..56, 63 (`$18c8a`) |
+| Start Action Game | 0 (`$fe72`) | `$2000` | Thermopylae, -999,-958 (`$3bc6`) | player 15 (0..8, 10, 12, 14, 18, 25, 26); enemy 37 (`$18cc4`) |
+
+`c_s30.snap` is the Strategy game. The Action game drops the player into the middle of a war already under way,
+at a higher difficulty.
+
+## 9. Open
+
+- What destroyed the player's carrier in the state-10 run (missile or aircraft).
+- A drone launcher and the command centre's missiles in action: island 56 has neither a launcher nor player
+  aircraft near it.
+- What structure types `$26` and `$27` do.

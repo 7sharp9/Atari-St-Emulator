@@ -25,3 +25,19 @@ cwd = "py/ai"
 expect = ["1344/1344", "21/21"]
 cite = "ai.md section 2"
 minutes = 1
+
+[[gate]]
+name = "units"
+cmd = "bash gate_units.sh"
+cwd = "py/units"
+expect = ["150/150", "600/600", "529/529", "10/10", "12/12", "5/5"]
+cite = "vehicles.md (proof table)"
+minutes = 2
+
+[[gate]]
+name = "difficulty"
+cmd = "bash gate_difficulty.sh"
+cwd = "py/ai2"
+expect = ["3/3"]
+cite = "ai.md section 6 (A/B/C)"
+minutes = 3

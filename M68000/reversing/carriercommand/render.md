@@ -128,6 +128,6 @@ routines `$8fac`, `$9514`, `$9516`, `$9540` do not decode yet.
 ## 7. Open
 
 - Compare the decoded BSP order with the game's own colour sequence (`watch 9de 2` during one model).
-- The animated builders, the non-BSP draw routines, the near-clip path `$9098`, the line and disc drawers, and
-  `$1ff46` (600 calls per 1.2M steps).
+- The animated builders, the non-BSP draw routines, the near-clip path `$9098`, and the line and disc drawers.
+  (`$1ff46`, 600 calls per 1.2M steps, is not graphics: it steps the six sound channels from the VBL.)
 - Which model ids are the carrier, Manta and Walrus.
