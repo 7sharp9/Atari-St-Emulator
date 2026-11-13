@@ -1,11 +1,11 @@
 """Search a Populous II snapshot's RAM for a 65x65 corner-height grid (byte or word, every
 even base $2000..$80000) whose Populous 1 cell derivation (terrain.md section 1, without
 the shore rule, as corners.py shows Populous II uses it) reproduces byte 1 of the cell records at $3979e. Prints the best five candidates; a
-real grid matches every non-rock cell; the all-sea cells alone give about 2870. Run beside corners.py, which shows the
+real grid matches every cell outside the settlement codes $2f/$3f; the all-sea cells alone give about 2870. Run beside corners.py, which shows the
 heights are implied by the cells themselves.
 
 --control plants the corner grid corners.py builds as bytes at $70000 first (the positive
-control: it must come out on top with every non-rock cell).
+control: it must come out on top with every such cell).
 
 usage: uv run python reversing/populous2/py/find_corner_grid.py <snap> [--control]
 """
@@ -41,4 +41,4 @@ for es in (1,2):
         bits,s=derive(h)
         m=int(((bits==shape)&mask).sum())
         best.append((m,hex(base),es,int(h.max())))
-best.sort(reverse=True); print('non-rock cells',int(mask.sum()),'candidates',len(best)); print('best (matched cells, base, element size, max height):',best[:5])
+best.sort(reverse=True); print('cells outside $2f/$3f',int(mask.sum()),'candidates',len(best)); print('best (matched cells, base, element size, max height):',best[:5])

@@ -12,8 +12,8 @@ cell's bit 1, 3 or 2 instead ($1f1cc..$1f1e4).
 Checks, on one snapshot:
   shared   every one of the 65x65 corners reads the same height from each cell that touches it
   derive   Populous 1's cell derivation ($c0ee, reversing/populous/terrain.md section 1) applied
-           to that corner grid gives back b0 & 7 and b1 for every cell that is not rock
-           ($2f/$3f), without Populous 1's shore rule (+$10 on a slope at sea level); the
+           to that corner grid gives back b0 & 7 and b1 for every cell not coded $2f/$3f
+           (land held by a settlement), without Populous 1's shore rule (+$10 on a slope at sea level); the
            variant with the shore rule is printed as the control
   callcap  (with --callcap) $1f176 under callcap at every non-zero corner, 100 sea corners and
            three edge corners, against the grid; an altitude-only model is the control

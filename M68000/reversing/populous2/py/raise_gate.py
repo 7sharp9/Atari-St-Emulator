@@ -17,7 +17,7 @@ Lower on a cell (x, y) that holds a settled entity (type 4) of the commanding si
 stale corner count left in $3962c by the previous terrain command.
 
 Also checked on every call: every cell re-derives from the new corner grid by Populous 1's rule
-without the shore codes (rock cells excluded, as in corners.py), and the side's mana (long +0 of
+without the shore codes (settlement codes $2f/$3f excluded, as in corners.py), and the side's mana (long +0 of
 $46fc4 + side*$13a) is printed against the model's call count.
 
 Control: the same comparison against a model that only moves the clicked corner.
@@ -156,7 +156,7 @@ def main():
     print(f"cases {len(cases)}: corner grid equal to the model {good}/{len(cases)} "
           f"(control: clicked corner only {ctl}/{len(cases)}); corners changed in all {changed_total}")
     print(f"mana charged = 20 x corners changed (20 x stale $3962c when redirected): {mana_ok}/{len(cases)}")
-    print(f"cells re-derive from the new grid (rock excluded) in {derive_ok}/{len(cases)} cases")
+    print(f"cells re-derive from the new grid ($2f/$3f excluded) in {derive_ok}/{len(cases)} cases")
     if "--show" in sys.argv or good != len(cases):
         print("side cmd x y h0 changed model_changed model_calls $39788+ $3962c mana_spent match disagree derive")
         for r in rows:

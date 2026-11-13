@@ -42,3 +42,17 @@ cmd = "{python} reversing/populous2/py/gen_gate.py scratchpad/populous2/anchors/
 expect = ["re:equal to the model 30/30", "re:\\$3962c 30/30"]
 cite = "README.md \"World generator\"; py/README.md"
 minutes = 1
+
+[[gate]]
+name = "scatter_1f870"
+cmd = "bash reversing/populous2/py/build_passes.sh >/dev/null && {python} reversing/populous2/py/scatter_gate.py scratchpad/populous2/build/a_1f870.snap 30"
+expect = ["re:natural: scenery array, cell map and seed equal to the model 30/30", "re:poked \\$80: equal to the model 30/30", "re:no bonus 0/30"]
+cite = "README.md \"World generator\"; py/README.md"
+minutes = 1
+
+[[gate]]
+name = "scatter_1fa6c"
+cmd = "bash reversing/populous2/py/build_passes.sh scratchpad/populous2/build_fa6c >/dev/null && {python} reversing/populous2/py/scatter_gate.py scratchpad/populous2/build_fa6c/b_1fa6c.snap 30 --fa6c"
+expect = ["re:equal to the model 30/30"]
+cite = "README.md \"World generator\"; py/README.md"
+minutes = 1

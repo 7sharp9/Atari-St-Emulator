@@ -153,13 +153,14 @@ derived pair, and the corners follow from it.
 | check | `p2_game_start` | `p2_game_60m` |
 |---|---|---|
 | each of the 65x65 corners reads the same height from every cell that touches it | 4225/4225 | 4225/4225 |
-| Populous 1's `$c0ee` derivation applied to that corner grid gives back b0 & 7 and b1 (rock `$2f`/`$3f` excluded) | **4071/4071** | **4055/4055** |
+| Populous 1's `$c0ee` derivation applied to that corner grid gives back b0 & 7 and b1 (settlement codes `$2f`/`$3f` excluded) | **4071/4071** | **4055/4055** |
 | control: the same with Populous 1's shore rule (+`$10` on a slope at sea level) | 3334/4071 | 3318/4055 |
 | `$1f176` under `callcap` at every non-zero corner, 100 sea corners and 3 edge corners | **915/915** | **920/920** |
 | control: an altitude-only model (b0 & 7) | 357/915 | 356/920 |
 
 So the cell derivation is Populous 1's, minus the shore codes: byte 1 holds slopes 1..`$0e`, flat
-`$0f`, rock `$2f` and a further `$3f`, and no `$11..$1e`. `py/find_corner_grid.py` searches RAM
+`$0f`, `$2f` and `$3f` (flat land held by a settlement of side 1 or side 2, "Objects and
+entities"), and no `$11..$1e`. `py/find_corner_grid.py` searches RAM
 for a separate 65x65 grid (byte or word, every even base `$2000..$80000`) that derives the cells:
 the best real candidate matches 2875 of 4086 cells, the all-sea baseline, while a planted copy of
 the true grid (`--control`) matches 4071.
@@ -210,7 +211,7 @@ advances the animation index +10 through `$32902` and counts +20 down; at expiry
 loads +23 into +22 and re-dispatches through `$23100`, otherwise (`$233e2`) it adds the velocity to
 the position and calls `$2436e` when the cell changes. State 2 (`$23164`) calls `$24f3a`, which
 re-dispatches when it returns non-zero; otherwise it goes on and, on the path taken here, branches
-back into `$233b4` (`$2328a` or `$233ae`). State 6 is `$23580`. `hits` over the 2.4M-step window
+back into `$233b4` (`$2328a` or `$233ae`). State 6 is `$23580`; it calls `$25168` once per tick (377 = 13 x 29 below). `hits` over the 2.4M-step window
 (`py/entity_states.sh`), with 18 live entities throughout:
 
 | point | calls | accounted for |
@@ -226,6 +227,16 @@ back into `$233b4` (`$2328a` or `$233ae`). State 6 is `$23580`. `hits` over the 
 
 So in this window a walker's step countdown expires 13 times, each time into state 2, whose test
 `$24f3a` (unread) fails every time and sends it straight back to walking.
+
+**Settlement land, codes `$2f` and `$3f`.** The two cell shape codes above the slopes mark flat
+land held by side 1 (`$2f`) or side 2 (`$3f`). Every settled entity sits on its own side's code:
+4/4 at `p2_zeus`, 8/8 at `p2_game_start`, 13/13 at `p2_game_60m`, and 0 of them on the other
+side's code (control). Every `$2f`/`$3f` cell without a settlement on it lies within 2 cells
+(Chebyshev) of a settlement of the side its code names: 6/6, 17/17, 28/28 (`py/owned_cells.py`).
+The writer is `$25298` in `$25168`, the routine state 6 calls each tick: a `watch` on cell (8,32)
+after the world build catches it writing `$2f` there, and the one on the whole map from
+`p2_game_60m` caught it writing `$3f` at (48,54). How far a settlement claims, and from what, is
+not read yet (the counts suggest a radius that grows with byte 1).
 
 `update_scenery` `$1fcce` walks the 200 scenery records. Byte 1 is a counter: positive values
 count down every tick in which `$3979c & $30e86` is 0; when the record's cell has shape 0 (flag
@@ -266,10 +277,38 @@ cleared. Every write also clears byte 0 bits 3-7, the footfall count.
 | control: the corner written before the recursion (Populous 1's `raise_point`) | 0/30 |
 
 Worlds range from 475 to 1964 non-sea cells over the 30 seeds. With the natural seed, the
-model's world differs from `p2_zeus` (the end of the build, before play) at 10 cells, all
-flat cells turned into rock (`$2f` on 8, `$3f` on 2). `$1f870` and `$1fa6c` both scatter a
-random number of clusters at random cells through offset tables (read); they are where the rock
-comes from, not yet modelled. By `p2_game_start` 49 cells differ.
+model's corner heights are still those of `p2_zeus` (the Zeus question, before play): the 10 cells
+whose (b0 & 7, b1) differ are flat cells recoded `$2f` or `$3f` by the settlements' first ticks
+after the build (`$25298`, "Objects and entities").
+
+**Scenery scatter `$1f870` and `$1fa6c` (verified).** The next two passes scatter scenery records
+in clusters. `$1f870` draws `rand() mod N + N/2 + 1` clusters (N = `$30e8c`, 9). Each cluster has
+a random centre cell (`rand() & $3f3f`) and, from one more `rand()`, a frame index (mod 8) and an
+attempt count (mod M = `$30e8a`, 14, plus a bonus, + 1). Each attempt adds a random entry of the
+45-offset table `$30e96`, a diamond up to 4 cells out, to the centre. It places a type-`$16`
+record (side 3, counter `$18`, frame from `$30e8e`, or that table's first frame when a further
+`rand() mod $5a` is 0) on the cell unless the cell is off the map, sea, flagged `$40` in
+`$3697a`, or already occupied. A full array ends the cluster. The bonus is meant to come from a
+side record when D2 is a side. At this call D2 still holds `$ff9d`, the hill table's terminator,
+so the code reads byte `$3f6a9`, which is inside the scenery array (record 45, byte 9): once 46
+trees exist, each later cluster gets `$80 >> 4` = 8 more attempts. `$1fa6c` is the same scatter
+for type-`$18` records with its own tables (`$1fc65..$1fc72`), no bonus, and a full array skipping
+one attempt. On the natural seed it places nothing: all 29 of its on-map attempts land on sea
+(`hits` from `b_1fa6c`).
+
+`py/scatter_gate.py` callcaps each pass from the snapshot before it (`py/build_passes.sh`) with
+30 poked seeds and compares the scenery array, the cell map and the seed:
+
+| pass | equal to the model | control: occupied cells allowed | control: no bonus |
+|---|---|---|---|
+| `$1f870` | **30/30** | 10/30 | 30/30 |
+| `$1f870`, `$3f6a9` poked `$80` at entry | **30/30** | 2/30 | **0/30** |
+| `$1fa6c` (11 trees already placed) | **30/30** | 9/30 | n/a |
+
+On unpoked seeds the bonus never fired (at most 46 trees). The poked half proves the stale-D2
+read: with record 45 still free, the first clusters run with 8 extra attempts until a tree
+overwrites the byte. Then `$22986` places the entities and the two `$46f9a` records and fills the
+side records (writes listed from the snapshots, not yet modelled).
 
 ### Raise and lower (verified, from a click to the cell map)
 
@@ -318,7 +357,7 @@ sea, 4 on the map's edges and corners, the highest corner) it pokes a raise and 
 | corner grid after the call equals the model (own-settlement redirect included) | **76/76** | **76/76** |
 | control: only the clicked corner moves | 40/76 | 42/76 |
 | mana charged = 20 x corners changed (20 x the old `$3962c` when redirected) | **76/76** | **76/76** |
-| every non-rock cell re-derives from the new corner grid by the rule of "The landscape" | 76/76 | 76/76 |
+| every cell outside the settlement codes re-derives from the new corner grid by the rule of "The landscape" | 76/76 | 76/76 |
 
 Without the redirect rule the grid check is 75/76 on each anchor: lowering corner (12,33) under
 side 1's settlement `$01d4` changes no corner and sets its flag (`$400fb`, 0 to 4). The charge
@@ -390,6 +429,9 @@ count, the settlement flag bit 2 of entity +13, the experience discount of `powe
 | `gates.toml` | the promoted gates for `tools/gates.py run populous2` |
 | `py/gen_gate.py` | `gen_land` under callcap for 30 seeds against the literal model, byte for byte, with two controls |
 | `py/gen_entry.sh` | rebuilds `p2_gen_entry` (stopped at `gen_land`'s entry) from `p2_briefing` |
+| `py/owned_cells.py` | settlements against the `$2f`/`$3f` cell codes, with a swapped-code control |
+| `py/build_passes.sh` | snapshots between the passes of the world build, from `p2_gen_entry` |
+| `py/scatter_gate.py` | the scenery scatters `$1f870` and `$1fa6c` under callcap against the model, with the stale-D2 bonus forced |
 | `py/rand_gate.py` | `rand` `$215dc` against its model, 50 callcaps |
 | `py/fdc_files.py` | names the file behind each sector of an `ATARI_TRACE_FDC` log |
 | `compilation_menu.png`, `title.png`, `briefing.png`, `zeus.png`, `game_start.png`, `game_60m.png` | the milestones (`tools/snap_render.py` of the boot and the five anchors) |
