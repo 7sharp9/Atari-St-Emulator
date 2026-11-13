@@ -7,7 +7,7 @@ Each game lists its gates in `reversing/<game>/gates.toml`:
 
     [[gate]]
     name = "dbde"                          # unique within the game
-    cmd = "{python} gate_dbde.py 2500 11"  # {python}: this interpreter; {root}: the M68000 dir
+    cmd = "{python} gate_dbde.py 2500 11"  # {python}: M68000/.venv's interpreter; {root}: the M68000 dir
     cwd = "py/ai"                          # relative to reversing/<game>/ (default: M68000/)
     expect = ["2500/2500"]                 # the counts the docs record, as printed (spaces around / ignored);
                                            # "re:<regex>" for a script that prints no a/b (searched in the output)
@@ -78,15 +78,28 @@ def load(root, which):
     return out
 
 
+def venv_python():
+    """This checkout's uv venv interpreter (`M68000/.venv`, made by `uv sync`): gate scripts need its numpy and
+    pillow whichever python launched gates.py (the system python3 has neither)."""
+    venv = ROOT / ".venv"
+    for p in (venv / "bin" / "python", venv / "Scripts" / "python.exe"):
+        if p.exists():
+            return venv, p
+    sys.exit(f"gates.py: no project venv at {venv}; run `cd {ROOT} && uv sync` once (DEVELOPING.md \"Python tooling\")")
+
+
 def run_one(root, game, gate, dry):
     cwd = root / "reversing" / game / gate["cwd"] if "cwd" in gate else root
-    cmd = gate["cmd"].format(python=sys.executable, root=root)
+    venv, python = venv_python()
+    cmd = gate["cmd"].format(python=python, root=root)
     if dry:
         return dict(game=game, name=gate["name"], status="DRY", cmd=cmd, cwd=str(cwd))
     logdir = root / "scratchpad" / "gates" / game
     logdir.mkdir(parents=True, exist_ok=True)
     log = logdir / f"{gate['name']}.log"
-    env = dict(os.environ, ATARI_NOTRACE="1", M68000_ROOT=str(root))
+    # as `uv run` would: a bare `python` or `uv run` inside a gate's shell script resolves to the same venv
+    env = dict(os.environ, ATARI_NOTRACE="1", M68000_ROOT=str(root), VIRTUAL_ENV=str(venv),
+               PATH=os.pathsep.join([str(python.parent), os.environ.get("PATH", "")]))
     t0 = time.time()
     timeout = 60 * max(10, 4 * gate.get("minutes", 2))
     try:
@@ -157,6 +170,7 @@ def main():
             print(f"{g:12} {x['name']:16} ~{x.get('minutes', '?')} min  expect {', '.join(x['expect'])}  "
                   f"[{x.get('cwd', '.')}] {x['cmd']}  ({x.get('cite', '')})")
         return
+    venv_python()      # a missing venv stops here, before the header, not inside a worker thread
     dlls = dll_hashes(root)
     print(f"# {len(gates)} gates in {root} at {head(root)}, M68000.dll {dlls['dll']}, stserver.dll {dlls['server_dll']}",
           flush=True)
