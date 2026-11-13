@@ -1639,15 +1639,31 @@ CPU Registers
     ///chain (saved-A6 at 0(A6), its caller's return address at 4(A6)) - only meaningful for
     ///routines that actually link A6, and heuristic rather than authoritative for that reason; the
     ///walk stops itself on a non-increasing/zero saved-A6 rather than looping on code that doesn't.
+    ///Hand-written assembly (Populous II) uses A6 as a data register, so before any read the walk
+    ///checks that the frame pointer is even and its 8-byte frame lies inside physical RAM; a value
+    ///that fails ends the walk with a one-line note instead of an AddressError/BusError that would
+    ///take the REPL down.
     member x.Backtrace(depth: int) =
+        let ramTop = 0x100000u //MMU.fs `ram.Length`: the 1MB of physical RAM this machine models
+        let isFrame (a: uint32) = a <> 0u && a % 2u = 0u && a <= ramTop - 8u
         Diag.result "--- backtrace from PC=$%08x A7=$%08x A6=$%08x ---" (uint32 cpu.PC) (uint32 cpu.A7) (uint32 cpu.A6)
-        Diag.result "  [0] return address (A7) = $%08x" (uint32 (mmu.ReadLong (uint32 cpu.A7)))
-        let mutable a6 = uint32 cpu.A6
+        let a7 = uint32 cpu.A7 &&& 0xFFFFFFu
+        if a7 % 2u = 0u && a7 <= ramTop - 4u then
+            Diag.result "  [0] return address (A7) = $%08x" (uint32 (mmu.ReadLong a7))
+        else
+            Diag.result "  [0] A7=$%08x is odd or outside RAM: no return address read" a7
+        let mutable a6 = uint32 cpu.A6 &&& 0xFFFFFFu
         let mutable i = 1
         let mutable keepGoing = true
+        if depth > 1 && not (isFrame a6) then
+            Diag.result "  A6=$%08x is odd, zero or outside RAM: not a frame pointer, link-A6 chain not walked" a6
+            keepGoing <- false
         while keepGoing && i < depth do
-            let savedA6 = uint32 (mmu.ReadLong a6)
+            let savedA6 = uint32 (mmu.ReadLong a6) &&& 0xFFFFFFu
             if savedA6 = 0u || savedA6 <= a6 then
+                keepGoing <- false
+            elif not (isFrame savedA6) then
+                Diag.result "  [%d] saved A6=$%08x is odd or outside RAM: chain ends" i savedA6
                 keepGoing <- false
             else
                 Diag.result "  [%d] A6=$%08x return address = $%08x" i savedA6 (uint32 (mmu.ReadLong (savedA6 + 4u)))
@@ -1953,7 +1969,7 @@ module Main =
             | _ when isNull input -> ()
             | _ when String.IsNullOrWhiteSpace input || input.TrimStart().StartsWith "#" -> loop()
             | [| "help" |] | [| "h" |] ->
-                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run at least one step, then until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8), hits <steps> <hexaddr>... = run steps and count PC hits (first/last step) per address - return address at (A7), then the link-A6 chain if the routine uses one, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, wb <hexaddr> <hexbyte> = write a byte, ww <hexaddr> <hexword> = write a word, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, wprot on|off = drive A's write-protect tab (not in a snapshot), watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (len decimal, or hex as $a400 / 0xa400; default 1), unwatch = clear it, q = quit, help = this"
+                Diag.result "s [n] = step (n times, default 1), p <n> = preview n steps then roll back (state unchanged), detcheck <n> = run n steps twice from here and assert the traces match (snapshot-fidelity self-check), callcap <hexaddr> [maxSteps] [outfile.json] = call the subroutine at addr from the current state (sentinel-return single-step), print/dump its register+memory delta, then snapshot-restore, u <hexaddr> [maxSteps] = run at least one step, then until PC reaches address (default cap 200000), bp <hexaddr> [maxSteps] = like u, but auto-prints registers on stop (hit or cap), bpc <hexaddr> <n> [maxSteps] = like bp, but stops on the Nth time PC reaches addr, bt [depth] = backtrace from the current breakpoint (default depth 8) - return address at (A7), then the link-A6 chain if A6 is an even in-RAM frame pointer, hits <steps> <hexaddr>... = run steps and count PC hits (first/last step) per address, r = print registers, m <hexaddr> <len> = dump memory bytes, w <hexaddr> <hexvalue> = write a longword, wb <hexaddr> <hexbyte> = write a byte, ww <hexaddr> <hexword> = write a word, snap <path> = save current state to a snapshot file, disk <path> = hot-swap drive A's mounted .ST image, wprot on|off = drive A's write-protect tab (not in a snapshot), watch <hexaddr> [len] = print every write into [addr,addr+len) to stderr (len decimal, or hex as $a400 / 0xa400; default 1), unwatch = clear it, q = quit, help = this"
                 loop()
             | [| "step" |] | [| "s" |] ->
                 st.Step()
