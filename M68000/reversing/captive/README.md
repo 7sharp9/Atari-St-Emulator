@@ -154,4 +154,5 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 | `mapgen_*.png` | generated bases, one colour per floor, and the decorated wall pictures (`mapgen.md`) |
 | `world_case_strip.png`, `world_sheets_surface.png`, `world_fed7E_walls.png`, `world_map_fit.png` | the briefcase frames, the surface picture sheets, the wall sheet, the generated planets over the map screen (`world.md`) |
 | `py/mapgen/`, `py/ai/`, `py/world/`, `py/system/` | the scripts behind each topic doc, each with a README table of command and expected output |
+| `py/phoopel/` | the sealed-key bug behind the Phoopel hint: keys the generator drops on their own door cell, the clipboard number, the census over missions 1..100 (`mapgen.md` "Sealed keys") |
 | `py/infographics/` | the four figure scripts, a facts file per figure mapping each drawn fact to its source, and a README |

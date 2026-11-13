@@ -13,7 +13,8 @@
 - Every carved cell keeps the number of the dig step that made it. The generator turns those numbers into a flow
   field: from any cell, following the arrows walks back to the entrance.
 - Later stages prune dead ends (most of them in low-numbered bases, none from base 32 up) and paint rock rectangles.
-  Then they place creature groups, locked doors whose keys always lie on the entrance side of the door, coded doors,
+  Then they place creature groups, locked doors whose keys lie on the entrance side of the door (except about one key in 250, which the
+  generator drops on its own door cell, where the door seals it in), coded doors,
   traps, guarded dead ends, items, and the features the party meets: hand doors, valves, spinners, false walls,
   floor triggers and decorated walls.
 - An encoder turns the grids into federation's tile layer and plane 2.
@@ -669,7 +670,8 @@ bases, at most 32; traps 509 in 97 bases.
 ## Locks and keys
 
 `$25722` (through `$2584c`, `$25a3e`, `$25a00`) puts locked doors in front of dead ends, with a prize behind each and,
-for key kinds 2 and 3, a key object somewhere the party can reach without passing the door. **Proven**
+for key kinds 2 and 3, a key object at a cell dug no later than the door: on the entrance side, or on the door cell
+itself, where it is sealed in with the prize ("Why the key is reachable, and when it is not"). **Proven**
 (`full/cgate.py`): 80/80 and 44/44. Controls: a key accepted up to `$4000` steps after its door (`--break
 key_slack=0x4000`) 14/80; a lock kept when no key cell is found (`--break keep_keyless=True`) 29/80; the direction
 mask 7 (`--break lock_dirmask=7`) 2/80.
@@ -692,6 +694,9 @@ D0 = 1 and 32 from D0 = 9. For each picked dead end:
 7. **Key K** (key kinds 2 and 3 only, drawn before anything is written): up to 11 random plain cells (`$2664e`), and
    K is accepted when 2 ≤ G0(K) ≤ G0(D), G0 being the dig-step number (`$25882`-`$258b0`). K gets feature `$28`
    (`$29` on a `$14` cell) and an object `$5c` (key kind 2) or `$5d` (kind 3), both CLIPBOARD, whose word is the code.
+   The clipboard shows the code as a five-digit number, two LCG steps (× `$5e5` + `$29`) of code + base number
+   `32(A6)` (`$12d4e`; **proven** 301/301, control with `32(A6)` unpoked 0/50, `py/phoopel/shown_emu.py`), and as 8
+   or 16 marks of its bits (`$12e0e`/`$12e6e`, inferred).
    If all 11 tries fail the whole lock is abandoned (`$258b8`) and the dead end stays listed (1,021 times in the
    census below).
 8. **Written:** E gets feature `$0d` (`$34` on `$33`), item `$19` (the type `$26478` also places) with word (r & `$3ff`) + `$80`, and a class-0 group,
@@ -703,16 +708,20 @@ D0 = 1 and 32 from D0 = 9. For each picked dead end:
    door kind << 2 | `$10` when the RNG word is above `$7000`, then `$20`. The count is `13270`.
 
 Key kinds 0 and 1 have no key object. What opens those locks in play (W's wall object is the candidate), and what door
-kinds 1 and 2 look like, have not been checked.
+kind 1 looks like, have not been checked. Door kind 2 (tile `$26`) draws as a wall of flames across the cell and
+blocks the party from both sides (`py/phoopel/live13.py`: two forward presses from (6,9) facing the door and from
+(8,9) facing back leave the party in place; control facing away moves 2 cells).
 
-**Why the key is always reachable: dig order.** The key rule G0(K) ≤ G0(D) is the whole mechanism. Inferred: a cell dug no
-later than the door is on the entrance side of it or behind an earlier door, because the turtle reaches the far side
-of D only after carving D. The census confirms it. Census over the 400 chained bases of the gate (`full/chain_run.py locks <d2> <lo>
+**Why the key is reachable, and when it is not: dig order.** The key rule G0(K) ≤ G0(D) is the whole mechanism. Inferred: a cell dug
+before the door is on the entrance side of it or behind an earlier door, because the turtle reaches the far side of D
+only after carving D. The test is inclusive (`$2587c` adds 1 to G0(D) before the `bhi`/`bne` at `$258ac`), and D is
+still a plain corridor cell when K is drawn, so K = D passes; the door feature then overwrites the key's `$28`, but the
+clipboard stays in the object list at D, inside the closed door. The census confirms both. Census over the 400 chained bases of the gate (`full/chain_run.py locks <d2> <lo>
 <hi>` for the four ranges), passability being open cells by `$24efc`'s rule plus every arrow edge, so lifts and shafts
 count:
 - 11,723 locks; 8,617 with a key and 3,106 of key kinds 0 and 1 (no key object).
 - G0(K) ≤ G0(D): 8,617 of 8,617. G0(K) ≤ G0(E): 8,617 of 8,617.
-- 31 keys lie on the door cell itself. The other 8,586 are reachable from the entrance with D removed (8,586 of
+- 31 keys lie on the door cell itself and cannot be reached without opening that door (below). The other 8,586 are reachable from the entrance with D removed (8,586 of
   8,586), and their arrow path avoids D (8,586 of 8,586). The arrow path reaches the entrance for 8,615 of the 8,617
   keys; the other 2 are one key of D0 = 352 at both D2 values, caught in the arrow 2-cycle at (3,15)/(4,15).
 - The prize is never reachable without its door: E reachable with D removed in 0 of 11,723, and E's arrow path
@@ -721,6 +730,21 @@ count:
   G0(D_other) < G0(D_this), so the key-behind-door graph is ordered by the doors' dig numbers and has no cycle
   (0 of 400 bases). Doors can be opened in dig order.
 - 1,021 locks were abandoned for want of a key cell; the key-object census by kind is under "The object list".
+
+**Sealed keys: the Phoopel case.** A player hint sheet (credited to Lennart Wahl) reports that on "level 14", the
+moon Phoopel, a sign giving a door's code sits on the wrong side of a wall, and that the code is 15099. That is base
+D0 = 13 (mission 2, target 3; reading the sheet's level as D0 + 1 is inferred), D2 = 0, lock 4: door kind 2 at
+(7,9), key kind 3, code 34080, and its CLIPBOARD on the door cell (7,9), which reads 15099 (`py/phoopel/shown.py 13
+0`). In the emulator (`py/phoopel/enter13.repl`, labelled pokes `32(A6)` = 13 and request word 4 from `ld_1.snap`)
+the base matches the model (`emu_base13.py`: chain = emulator; `live13.py`: tile layer 2041/2048 cells, the 7 others
+model `$22` read as `$20`/`$21`, consistent with consumed mines, not traced), the object list holds the clipboard
+record at (7,9), and the flame door blocks the party from both sides. With the door closed the clipboard and 622 of
+the base's 1193 open cells, holding 22 other locks' prizes, are unreachable (`py/phoopel/sealed.py`, model).
+Over missions 1..100 (1,100 bases, D2 = 1 for the station), 100 of 24,603 keys sit on their own door, in 92 bases;
+Phoopel's is the first (`py/phoopel/keyondoor.py 0 100`). The region a sealed door cuts off runs from 1 cell to 1230
+(median 76), and 29 of the 100 cut off a quarter of the base or more (`sealed.py 0 100`). Whether a base can be
+finished without that region, and whether an item (the `$5a`/`$1a` branch at `$c194` on a `$26` cell) or the wall
+panel W opens the door without the code, are not checked.
 
 ## Output encoding
 

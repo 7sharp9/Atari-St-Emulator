@@ -1,0 +1,8 @@
+ww 1b5ee 000d
+w 1ef90 ff000004
+u b5c2 20000000
+r
+u b5c6 5000000
+r
+s 30000000
+snap scratchpad/captive/phoopel/base13.snap
