@@ -234,17 +234,42 @@ then counts toward `$30e89` (`$18`), where the record is freed and unlinked (`$2
 on a cell lowered into the sea dies after `$18` ticks (read; not yet driven). Type `$1e` records
 take a separate path through the animation table `$32902`.
 
-### World generator `$1ebee` (read)
+### World generator `$1ebee` (verified)
 
-`gen_land` clears the cell map and walks a hill table at `$30664` of 4-word records (`y range,
-y base, x range, x base`, giving `y = rand() mod range + base` and the same for x; the snapshot
-holds four, one per quadrant (ranges 6..34 and 35..57), ended by `$ff9d`). For each, `hill_walk`
-`$1ec38` seeds two LCG states from those two `rand` results and steps them as
+The conquest world is built by `$22942` after the briefing's OK: `$2d326`, then `$1ebe4` (copies
+the seed `$47382` to `$4737e` and falls into `gen_land`), then `$1f870` and `$1fa6c`, `$22986`,
+the load of file `$e` and the redraw (read). `gen_land` `$1ebee` clears the cell map and, for
+each 4-word record of the hill table `$30664` (`y range, y base, x range, x base`, ended by
+`$ff9d`), draws `r1 = rand()`, `y = r1 mod yrange + ybase`, `r2 = rand()`,
+`x = r2 mod xrange + xbase`, and runs `hill_walk` `$1ec38` from there. The table holds four
+records: (29,6,29,6), (23,35,23,35), (29,6,23,35), (23,35,29,6), one hill per quadrant.
+
+`hill_walk` keeps two 15-bit LCG states seeded with `r1` and `r2` and steps them as
 `s = (s*$24a1 + $24df) & $7fff`, the constants of Populous's PRNG `$16702` (`terrain.md`
-section 3), moving x and y by `s mod 7 - 3` and calling `raise_point` `$1ec8c` until it returns
-negative or a D4 it leaves is 8 or more (not yet pinned down). `raise_point` is the routine the
-player's raise uses, verified under "Raise and lower" below. Populous 1 had three walks stopping
-at height 6. The generator itself is not yet driven or callcapped.
+section 3). Each step moves x by `s1 mod 7 - 3` and y by `s2 mod 7 - 3`, then calls `raise_point`
+(so the start point itself is never raised). The walk ends at the first corner `raise_point`
+rejects (off the map, or already at 8; it returns D4 = −1 and the N flag) or raises to 8 (D4 is the
+new height). Populous 1 ran three walks that stopped at height 6. `raise_point` writes the corner
+into the four cells that share it: corner bit 4 of cell (x−1,y−1), 8 of (x,y−1), 2 of (x−1,y),
+1 of (x,y) in the mask `$36b7a[b1]`. A clear bit is added; a set bit means the corner is already
+one above the cell's base, so the base b0 goes up by one and the cell's other corner bits are
+cleared. Every write also clears byte 0 bits 3-7, the footfall count.
+
+`py/gen_gate.py` pokes 30 seeds (the natural `$10d7`, 0, 1, `$ffffffff` and 26 random) into
+`p2_gen_entry` (stopped at `$1ebee`, `py/gen_entry.sh`) and callcaps `gen_land`:
+
+| check | seeds |
+|---|---|
+| all `$4000` bytes of the cell map equal to the model | **30/30** |
+| the same, plus the final seed, `$39788` and `$3962c` | **30/30** |
+| control: the walk stops at height 6 (Populous 1) | 16/30 |
+| control: the corner written before the recursion (Populous 1's `raise_point`) | 0/30 |
+
+Worlds range from 475 to 1964 non-sea cells over the 30 seeds. With the natural seed, the
+model's world differs from `p2_zeus` (the end of the build, before play) at 10 cells, all
+flat cells turned into rock (`$2f` on 8, `$3f` on 2). `$1f870` and `$1fa6c` both scatter a
+random number of clusters at random cells through offset tables (read); they are where the rock
+comes from, not yet modelled. By `p2_game_start` 49 cells differ.
 
 ### Raise and lower (verified, from a click to the cell map)
 
@@ -363,6 +388,8 @@ count, the settlement flag bit 2 of entity +13, the experience discount of `powe
 | `py/raise_gate.py` | raise and lower through the command handler under callcap against the point-routine model, mana and re-derivation |
 | `py/click_ab.py` | a left and a right click on the land against a no-click control |
 | `gates.toml` | the promoted gates for `tools/gates.py run populous2` |
+| `py/gen_gate.py` | `gen_land` under callcap for 30 seeds against the literal model, byte for byte, with two controls |
+| `py/gen_entry.sh` | rebuilds `p2_gen_entry` (stopped at `gen_land`'s entry) from `p2_briefing` |
 | `py/rand_gate.py` | `rand` `$215dc` against its model, 50 callcaps |
 | `py/fdc_files.py` | names the file behind each sector of an `ATARI_TRACE_FDC` log |
 | `compilation_menu.png`, `title.png`, `briefing.png`, `zeus.png`, `game_start.png`, `game_60m.png` | the milestones (`tools/snap_render.py` of the boot and the five anchors) |
