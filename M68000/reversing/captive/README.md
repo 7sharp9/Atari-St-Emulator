@@ -152,8 +152,9 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 | `mapgen.md`, `ai.md`, `world.md`, `system.md` | topic docs (table at the top) |
 | `mapgen_*.png` | generated bases, one colour per floor, and the decorated wall pictures (`mapgen.md`) |
 | `world_case_strip.png`, `world_sheets_surface.png`, `world_fed7E_walls.png`, `world_map_fit.png` | the briefcase frames, the surface picture sheets, the wall sheet, the generated planets over the map screen (`world.md`) |
-| `py/mapgen/`, `py/ai/`, `py/world/`, `py/system/` | the scripts behind each topic doc, each with a README table of command and expected output |
+| `py/mapgen/`, `py/ai/`, `py/world/`, `py/system/`, `py/items/` | the scripts behind each topic doc, each with a README table of command and expected output |
 | `py/phoopel/` | the sealed-key bug behind the Phoopel hint: keys the generator drops on their own door cell, the clipboard number, the census over missions 1..100, the lock panel driven by clicks, explosives on a generator and leaving (`mapgen.md` "Sealed keys", `ai.md` "Finishing a base") |
 | `mapgen_lock_panel.png` | a lock's wall panel in play: cover, 16-segment grid with the lock's number, the code lit |
 | `mapgen_panel_kinds.png`, `mapgen_door_kinds.png` | the four key kinds' panels (cover, opened, code set) and the three door kinds shut and open (`py/phoopel/panels/`) |
+| `mapgen_panel_depths_kind3.png`, `mapgen_panel_depths_kind2.png` | a lock panel seen from depth 1, 2 and 3: live only in front (`py/phoopel/panel2/scene.py`, `figs.py`) |
 | `py/infographics/` | the four figure scripts, a facts file per figure mapping each drawn fact to its source, and a README |

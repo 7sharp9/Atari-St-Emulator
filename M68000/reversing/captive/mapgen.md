@@ -437,8 +437,9 @@ y = (r ror 6) & `$1f`. A "plain cell" is an open corridor cell with feature 7 (`
   the wrong size (`--break roomsize`) 11/1000; no overlap test (`--break nooverlap`) 770/1000.
 - **Census** (`full/shafts/shafts.py stats`, 1000 bases): 17,312 of 30,360 rooms changed the grid, painting 100,625
   cells, 27,869 of them on cells reserved before the digger.
-- Inferred: the reservations keep the maze out of rectangles that this pass later fills. What tile `$26` is in play
-  has not been checked; `$25d88` puts creature groups on these cells.
+- Inferred: the reservations keep the maze out of rectangles that this pass later fills. Tile `$26` draws as a wall
+  of flames, the same tile as door kind 2 ("Locks and keys"); that these painted rectangles are flame fields in play
+  is inferred from the shared tile, not driven from a painted cell. `$25d88` puts creature groups on these cells.
 
 ### Creature groups
 
@@ -648,8 +649,14 @@ stepped or made to click. `mine_step.py` is in `py/ai/`; `view_tiles.py` (which 
 - `$268f8` (D0 = 0 only; control `--break note_word=1` 78/80, the 2 bases where it acts): (30,1) gets feature `$0d`
   (`$34` on `$33`), item `$1b` with the second RNG word saved and restored around it, then item `$66` with word 0.
 - **Item `$66` (MESSAGE FROM RATT) has three writers:** `$2695e` (word 2, base 0, inside `$25c1e`), `$268f8` (word 0,
-  base 0) and `$26946` (word 1). `$26946`'s only `bsr`/`bra` caller is `$23f64` in the compound builder `$23e80`, so
-  word 1 is inferred to be the compound's note (a raw scan for `bsr`/`bra`; a `jsr` caller is not excluded).
+  base 0) and `$26946` (word 1). All three are in `fed_MapGen`; `federation` stores no item `$66`. `$26946`'s only
+  caller is `bsr` at `$23f64` in the compound builder `$23e80` (a linear listing of `$237b0..$2aafc` has no `jsr` or
+  computed caller), behind `tst.w 12408(A6)` (D0) at `$23f48`, so word 1 is the note in base D0 = 0's compound only.
+  **Proven** (`py/ai/ratt/gen_hits.py`, `base1/land_mg.snap`, the compound call D0 = 0, D2 = 2, 900,000 steps):
+  `$23f64`, `$26946` and the inserter `$26682` once each, one record at (21,20) holding `66 00 01 80`; with D0 set
+  to 1 or `$11` at the same stop (labelled `set_reg`), `$23e80` runs and the three others 0. In the base call
+  (`base1/in_mg.snap`, D0 = 0, D2 = 0) `$2695e` and `$268f8` run once each: word 2 at (19,2), word 0 at (30,1). How
+  the party picks them up: `ai.md`, "Door hints: the die and Ratt's message".
 
 **The object list** (`13724(A6)` = `$1bf3a`; `$26682`/`$26686`). Records of (x, y, size, then 4-byte items), with a
 header (`$800`, free). A second item on a cell is inserted first in that cell's record by shifting the rest of the
@@ -700,13 +707,25 @@ D0 = 1 and 32 from D0 = 9. For each picked dead end:
    If all 11 tries fail the whole lock is abandoned (`$258b8`) and the dead end stays listed (1,021 times in the
    census below).
 8. **Written:** E gets feature `$0d` (`$34` on `$33`), item `$19`, GOLD (the type `$26478` also places; name from the game's `$675c`/`$70b8`, `py/ai/item_names_emu.py
-   phoopel/base13.snap 19`) with word (r & `$3ff`) + `$80` (inferred: the amount), and a class-0 group,
+   phoopel/base13.snap 19`) with word (r & `$3ff`) + `$80`, and a class-0 group,
    with bit 7 of its feature set when the group was written. D, by door kind: 0 a door (feature `$15`, parameter 6
    or 14 from the wall mask), 1 feature 0, which encodes to tile 0 (drawn as a plain wall, below), 2 feature
    `$27` (tile `$26`). P gets feature `$0c`. W becomes a `$22` wall object with parameter = the direction and G0
    `$ffc3`.
 9. **Lock list** `13720(A6)` = `$1d782`, 10 bytes per lock: W (x, y), the code word, a zero word, D (x, y), key kind |
    door kind << 2 | `$10` when the RNG word is above `$7000`, then `$20`. The count is `13270`.
+
+**The gold word is the amount.** A GOLD item picked up in play shows its word as the piece count ("GOLD 1kg 537
+PIECES" for word 537), and the hand word equals the listed word for 3 of 3 pickups (537, 1097, 1013). The game keeps
+no party money counter: gold is an item stack. `$e7d0`, the pocket click, swaps the hand and the pocket item and,
+when both are type `$19`, adds the words: a sum up to `$ffdc` (65,500) goes to the hand and the pocket empties,
+anything above stays in the pocket. **Proven** (`py/phoopel/panel2/gold_stack.py 21,3 42,14 4,14`, `base13.snap`,
+live pickups; `$e7d0` called directly on a scratch pocket, because no droid inventory is open there): sums 537, 1,634,
+2,647 as predicted, and 65,488 + 100 gives 65,500 in the hand and 88 in the pocket. The shop's "PUT YOUR GOLD" slot
+(`$e9c2`, `1778/1780(A6)`) adds with the same cap (read, not driven). The generator formula is checked only as a
+range: the 34 GOLD items on prize cells of `base13.snap` lie in [`$83`, `$46f`] and the 21 wall items in [`$40`,
+`$13f`], inside the ranges of (r & `$3ff`) + `$80` and (r & `$ff`) + `$40`. Why there are 34 prize-cell GOLD items for
+24 locks is not settled.
 
 Door kind 2 (tile `$26`) draws as a wall of flames across the cell and blocks the party from both sides
 (`py/phoopel/live13.py`: two forward presses from (6,9) facing the door and from (8,9) facing back leave the party in
@@ -718,11 +737,24 @@ note of the setting. The panel faces one way, the side in its tile (`$10` + side
 its cover answers a click (`$dd96`) only for a party on the cell in front with (tile - facing) & 3 = 0. A click on
 the closed cover sets bit 2 of the tile (`$ddd2`, tile `$11` to `$15`; it also needs `13410(A6)` ≤ 1, the base not
 yet blown, and a test at `$ca60` that is not read). After that `$12a20` draws the switches and `$12b4c` handles clicks on them, both from the lock record
-found by W's cell (`$129f8`, list `fed 8628(A6)`). The record's word +4, zero from the generator, is the switch
+found by W's cell (`$129f8`, list `fed 8628(A6)`). `$12a20` gets the panel's wall slot in the three-deep view
+(`$ab08`, D0 = slot - 6: 6 the cell in front, 5..3 depth 2, 2..0 depth 3, nothing beyond), and its `cmp.w #5,D0`
+(`$12a7e` for key kind 3, `$12a92` for kind 2) draws the live panel, its label, segments or buttons from the state
+word, only at D0 = 6; every farther slot gets two fixed pieces. **Proven** (`py/phoopel/panel2/scan.py`, locks 16, 12
+and 19 of `base13.snap`): the near branch on 3 of 3 cells in front and on none of 14 farther cells; poking the state
+word changes 112 (lock 16) and 311 (lock 12) view pixels in front and none at depth 2 or 3. At depth 2 locks 16 and
+12 show the same stand-in label, not their own (`mapgen_panel_depths_kind3.png`, `_kind2.png`, below; two locks).
+With the cover shut `$12a20` is not called. The record's word +4, zero from the generator, is the switch
 state: a click toggles one bit, and `$12cb8` compares the state with the code word +2 after every click. On a match
 `$12cf2` opens the door at +6 and sets bit 5 of byte +8; for door kinds 1 and 2 it swaps D's tile with byte +9
 (`$20`, floor), for kind 0 it calls the door routine `$c420` (`$12d12`), which
-sets bit 4 of D's tile (`$46`/`$4e` to `$56`/`$5e`). If bit 4 of byte +8 is set (the RNG word above
+sets bit 4 of D's tile (`$46`/`$4e` to `$56`/`$5e`) at once and claims one of four animation slots (`88..103(A6)`:
+cell word, counter, saved tile; `$ca64` finds or claims one) that `$c670`/`$c890` step 0..3 and then free; doors of
+type 2..6 stay open, types 0 and 1 hold `$1e` frames and close again. Called on an open door, `$c420` reverses a
+running slot or claims a closing one that clears bit 4 when it runs out. Its other callers are a creature at a door
+(`$f68a`), a deferred open (`$c6ea`) and the combination door (`jmp` at `$e07a`). **Proven** (`py/phoopel/panel2/door.py
+17` and `9`, real clicks): the code opens with one `$c420` call, tile `$46` to `$56`, the slot counting 0..3 at 48k,
+114k and 180k steps and freed at 246k; the wrong-bit control makes no call. If bit 4 of byte +8 is set (the RNG word above
 `$7000`), a click that leaves the state unequal to the code clears bit 5 and toggles the door shut again (`$12cd6`),
 so such a door is open only while the panel holds the code; with bit 4 clear it stays open. The switch layout depends on the key kind
 (`$12ba6` dispatches on byte +8 & 3; screen x, y from `15152`/`15154(A6)`), matching the code masks 1, 7, `$ff` and
@@ -772,6 +804,10 @@ before the walk went through.
 
 ![the three door kinds, one per row (locks 9, 7, 1): shut, open](mapgen_door_kinds.png)
 
+![lock 16 (key kind 3) seen from depth 1, 2 and 3: only the panel in front is drawn live](mapgen_panel_depths_kind3.png)
+
+![lock 12 (key kind 2) seen from depth 1, 2 and 3](mapgen_panel_depths_kind2.png)
+
 **Why the key is reachable, and when it is not: dig order.** The key rule G0(K) ≤ G0(D) is the whole mechanism. Inferred: a cell dug
 before the door is on the entrance side of it or behind an earlier door, because the turtle reaches the far side of D
 only after carving D. The test is inclusive (`$2587c` adds 1 to G0(D) before the `bhi`/`bne` at `$258ac`), and D is
@@ -810,8 +846,11 @@ the panel, the lock's label and not something to enter; Phoopel's door opens on 
 `panel13.py`). Without the clipboard a kind-2 lock has 256 settings and a kind-3 lock 65,536, each click testing one,
 so a kind-3 sealed door is closed in practice. (The label is two LCG steps of code + base number, an invertible map,
 so the setting can be computed outside the game; inferred from `$12d4e`, not a route the game offers.) Items do not
-open a flame cell: the `$c194` branch on a `$26` cell only sets byte 2 of a dropped FLAMBOS (`$5a`) or BATTERY
-(`$1a`) to `$3c`, and bit 0 of the tile (from reading).
+open a flame cell: a FLAMBOS (`$5a`) or BATTERY (`$1a`) dropped into the flames (`$c194`, branch `$c1b0`) is
+recharged, its SHOTS byte set to 60, and the tile only gains its objects bit (`$26` to `$27`); the flames stay. ACID
+(`$59`) dropped on tile `$1e` gets 50 shots (`$c1c6`). **Proven** (`py/items/itemdrop.py`, `agents/curios/base30.snap`,
+labelled pokes of the party cell and the hand): `$c1b0` once for FLAMBOS and BATTERY on `$26`, 0 for EXPLOSIVES and
+ACID there and for both on a `$20` cell; the dropped FLAMBOS picked up again reads "60 SHOTS" where it read 17.
 
 **Can such a base be finished?** A base is finished by using EXPLOSIVES on one of its generator tiles and leaving
 by the entrance (`ai.md`, "Finishing a base"). Each base has one 3 × 3 block of generator tiles

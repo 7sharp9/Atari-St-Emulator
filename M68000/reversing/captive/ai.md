@@ -348,12 +348,12 @@ mission `14776(A6)` goes up by one, `14800(A6)` = -1 and the end screen `$134b8`
 on `base1/in.snap`): `$87d6` once at step 2,850,672, mode 3 -> 1, `14794` 0 -> 1, then `$8836` and `$90be` (the
 rebuild). With `13412(A6)` = 1 also poked: mission 0 -> 1, `14800` = -1, `$134b8` at step 2,850,693, and the screen
 "CONGRATULATIONS ... LEGEND OF TRILL ... FREEING THE CREATOR OF EVIL" with CALL IT A DAY / LET BATTLE COMMENCE
-(`ai_trill_end.png`). A final base left without the event sets 2.
+(`ai_trill_end.png`). A final base left without the event sets 2 (below).
 
 **The end screen.** `$134b8` takes the text from the word table at `$1378a` (offsets from `$1378a`, index
 2·(`14800` + 2)) and an animation sequence from the digit table at `$134b0` (index `14800` + 2, through the word
 table `$1372a`). It returns through `$13624`, which clears a negative `14800` and lets the caller go on (-2 from
-`$87ac`, back at the ship after a target; -1 from `$881a`, on to the next mission). A positive value is only latched:
+`$87ac`, back at the ship after a base exit; -1 from `$881a`, on to the next mission). A positive value is only latched:
 the main loop's test at `$56ae` shows the screen and, after a click, jumps to `$5608`, whose `$8570` clears the globals
 `A6+0`..`14915(A6)` (mission, visited count and base state with them): the game restarts at CAPTIVE MISSION 0001.
 
@@ -367,7 +367,26 @@ the main loop's test at `$56ae` shows the screen and, after a click, jumps to `$
 | 4 | `$fad6` | TRILL HAS BE KILLED! DROID'S ARE TO BE WASTED! | restart |
 
 The texts are read from RAM; the continue/restart split is read from `$13624` and `$56ae`. **Proven** for 3 (below,
-"Finishing a base") and for the -1 and 4 screens (`ai_trill_end.png`, `ai_trill_killed.png`).
+"Finishing a base"), for the -1 and 4 screens (`ai_trill_end.png`, `ai_trill_killed.png`), and for -2 and 2:
+
+- **-2 is the return to the ship after a base exit.** `$87de` sets `14880(A6)` at every base exit; the next level
+  event outside a base (mode not 3) shows -2. That event comes from `$9064`, which action 24 (`$902e`, the lift-up
+  icon) calls when the party stands on the landing pad, tile `$2e`. `14880` doubles as the end screen's frame counter
+  (`$13544`, `$13614`). **Proven by play** (`py/ai/ratt/minus2.py`, from `phoopel/revisit/exited.snap`: the
+  compound door by its code, a walk to the pad (23,18), the up icon): `$902e`, `$9064`, `$87a6` and `$134b8` once
+  each, "BASE HAS BEEN DESTROYED! / PRESS MOUSE TO CONTINUE"; a click returns to the ship map. Control, `14880` poked
+  to 0 before the icon: `$87a6` and `$134b8` 0, straight to the ship.
+- **2 is a final base left without Trill.** At `$87c0`-`$8834`, a final base (`13412(A6)`, the base call's D2, = 1)
+  left at state 2 or more with `14798(A6)` = 0 writes 2 (`$87d0`, `$882e`); with `14798` set, `$8804` writes -1.
+  **Proven with one labelled poke** (`py/ai/ratt/value2.py test`, from `phoopel/finish_base1_blast_state2.snap`, party
+  on the entrance facing N and `13412` = 1, then the real leave click): `$87d0`, `$882e` and `$134b8` once, `$8804`
+  0, "TRILL HAS BEEN LEFT TO DIE. DROID'S ARE TO BE WASTED" over an explosion, and a click restarts at mission 0.
+  Control without the `13412` poke: `$87d0`, `$882e` 0, `$8836` 1, the compound rebuilt. A final base reached by play
+  and left this way is not driven.
+
+The end screen ignores clicks for a while: a click registered 2.8M steps after it (value 2) and in under 3.0M
+(value -2); 150k steps in it never did (`state3.py leave`). The delay is not constant (inferred: it waits on the
+animation).
 
 **Trill's attack is the rescue.** `trill_attack.py` pokes only group 16's type to `$1f` in `g16_adj.snap` (group 16
 adjacent and facing the party): at period 16 it attacked 6 times in 6M steps, each attack set `14798` back to 1, and
@@ -548,9 +567,17 @@ dispatch `$702c`. **Proven** (`ratt_msg.py base1/in.snap agents/ai/req4.snap age
 0, 1, 2 reach `$bb4c` with A0 = `$138d8` "YOU WILL NEED THIS TO DESTROY THE GENERATORS.", `$13906` "TOP-LEFT,
 BOTTOM-LEFT, TOP-RIGHT, BOTTOM-RIGHT." and `$13936` "PUT PLANET-PROBE IN HOLAMAP.", the same in all three bases
 (door codes 8; 12, 8, 1; 19, 4, 19). No pointer or field writer reaches `$13906` (`tools/find_field_writers.py`,
-`tools/find_literal_ptr.py` on `base1/in.snap`: 0; the text is reached through the offset table). The corner text is code 8's order, the code of mission 1 target 1's compound door; code
-8 occurs in 3 of 40 generated compounds, so the note is right for that first door and, inferred, a fixed tutorial
-note. Which item parameter the party receives, and where, is open (`mapgen.md` lists the generator's `$66` writers).
+`tools/find_literal_ptr.py` on `base1/in.snap`: 0; the text is reached through the offset table). The corner text is code 8's order, the code of mission 1 target 1's compound door.
+
+The notes are floor items the generator leaves, and only in mission 1's first target: word 1 at (21,20) of base
+D0 = 0's compound, beside its door, and words 0 and 2 inside that base (`mapgen.md`, "Feature and item stages"). So
+the corner note is that one door's hint, right because it is generated for no other compound. Nothing hands a note
+over: the party picks it up with a click on the floor of the cell ahead. **Proven** (`py/ai/ratt/walk_to_note.py`
+then `clicks.py`, from `base1/outside.snap`: five key presses to (21,19) facing S, a click at (130,144)): hand
+`404(A6)` = `00 66 00 01`, the cell's pile 1 to 0, `$138ae` and `$702c` once, and the tray reads "MESSAGE FROM RATT
+12kg / TOP-LEFT, BOTTOM-LEFT, TOP-RIGHT, BOTTOM-RIGHT."; the same click from (22,19), an empty cell ahead, changes
+nothing. Word 0 at (30,1), one cell from the base entrance, is picked up the same way and reads "YOU WILL NEED THIS
+TO DESTROY THE GENERATORS." (`clicks.py base1/in.snap`).
 
 ### Entering by play
 
@@ -630,13 +657,14 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 
 ## Open
 
-- A lift follower reached by play alone: both lift runs start from a poked party position, because group 49 holds
-  the corridor to the lift side of `req4.snap`. The lift pair (2,4)-(18,4) and any `$30`/`$33` tile are not driven.
+- A lift follower reached by play alone: both lift runs start from a poked party position. In `req4.snap` the route
+  to the lift (8,3) is one cell wide, (12,2) to (10,0) and the coded door (9,0). Group 49 is not always on it (19 of
+  300 samples on the corridor cells over 60M steps, 80 counting (12,2) and (12,3)), but once group 16 is hostile it
+  camps at (13,3), the room's only exit, and a keypad autopilot found no free path in 45M steps (single runs,
+  `scratchpad/captive/agents/liftplay/report.md`). Untried: opening the door (14,2) before group 16 has seen the
+  party, or outrunning group 49. The lift pair (2,4)-(18,4) and any `$30`/`$33` tile are not driven.
 - The `$fc4e` clear, which needs RNG2 <= `$10b8` at a death.
-- `14800(A6)` values 2 (a final base left without Trill) and -2 (back at the ship) driven to their screens; the
-  end-screen click takes about 1.8M steps to register (input polled between animation frames, inferred).
-- What gives the party the `$66` item with `407(A6)` = 1: the generator's `$26946`, called only from the compound
-  builder at `$23f64` (raw scan for `bsr`/`bra`, not `jsr`), is the lead.
+- A final base reached by play and left without Trill (value 2 is driven only with `13412` poked).
 - A real use of the die reaching `$1207c`, and the `$e270` branch on D2 bit 4 (`$e312`, `$e34e`, inferred to be the
   open-door case).
 - A group the generator left not hostile turning hostile by coming into view in play.

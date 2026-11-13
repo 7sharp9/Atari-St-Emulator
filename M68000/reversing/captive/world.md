@@ -121,7 +121,19 @@ mission 1) is planet slot 1, PLANET-BUTRE. Target 9 of mission 1 is object 107, 
   (`$2f676`) with base seed `mission × 11 + 10`; since `14782(A6)` = 0, `$b5a0` builds it with D2 = 1. With 9 or less
   it branches to `$2f4f0` and writes no request (`$2f66e`-`$2f674`, read). The generator gives each mission ten targets
   on ten distinct objects (`$302fa`, the table above), and each can be finished once, so reaching the final base
-  needs every target finished. The station test itself is read, not driven.
+  needs every target finished. **Proven** (`py/world/station/station.py`, from `mission1.snap`: the station selected
+  by a click on the map, `14782` = 0, then ORBIT and LAND; a labelled poke of `14794(A6)` after the selection is the
+  only difference between arms, 25M steps each): with 10, `$2f676` once, `14788` written 4 there and cleared by
+  `$885e`, `32(A6)` = 10, and `fed_MapGen` entered at `$b5c2` with D0 = 10, D2 = 1; with 9 and with 0, `$2f66e` and
+  `$2f4f0` once, `$2f676` and `$b5c2` 0, nothing written to `14788`, and the ship stays in orbit ("DOCKING COMPLETE").
+  The final base has no compound: request 4 goes straight to mode 3, and the party is placed at (53,0), facing 2 (S), while
+  the modules load ("LOADING ..." for about 12M steps after LAND; 310 FDC reads, all completed, against 280 for a
+  target landing). The base view is up by 13M steps. Left without input, the party dies there: the group beside it
+  at (54,0) (`$1d33a`, type `$1d`, aware and hostile) attacks (`$10e4a`, then `$f884` and droid damage `$9a9a`), the
+  live-droid count `410(A6)` falls 4, 3, 1, 0 between 14.6M and 15.35M, and `$876a` sets `14800` = 1, "DROID'S HAVE
+  FAILED!" (`py/world/station/death.py`, `fdc.py`). A target landing left the same way loses no droid in 60M steps,
+  but it puts the party in a compound, not beside a guard. Whether a party that moves off (53,0) survives, and why a
+  group stands beside the entrance, are not tested.
 - **Seeds passed to `fed_MapGen`.** A target landing stores a base seed `32(A6) = mission × 11 + (k − 1)` and a body
   seed `14790(A6) = (mission & $1ff) × 150 + (slot − 1)`. These become MapGen's D0 and D1 (README, "The base
   generator").
