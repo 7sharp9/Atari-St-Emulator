@@ -111,7 +111,7 @@ in `CLAUDE.md`, cited by section.
 - No build, no git, no `taskkill`; write only under the agent's own directory (`CLAUDE.md` "Running";
   `reverse-engineer-st-game` skill 3c "HARD RULES" for the `agents/<area>/` and `$<GAME>_WORK/<area>/` layout).
   Tools that write to the cwd run with an explicit output path; read `git status` after the agent returns.
-- `ATARI_NOTRACE=1` on every raw `dotnet exec` (`CLAUDE.md` "Running"). Bound runs by step counts, not
+- The instruction trace is off unless `ATARI_TRACE=1` (`CLAUDE.md` "Running"). Bound runs by step counts, not
   `timeout` (absent on macOS; `CLAUDE.md` "Shell pitfalls").
 - Derive the repo root by walking up to the directory holding `tools/rdis.py` (or `M68000_ROOT`), never a
   literal path or a fixed `../` count; temp files in one named scratchpad dir (`CLAUDE.md` "Proving routines

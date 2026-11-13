@@ -38,9 +38,10 @@ know they existed.
 
 - Run through `M68000/run.ps1` or `dotnet exec M68000/bin/Debug/net8.0/M68000.dll` from
   `M68000/`. Addresses in docs are runtime absolute addresses.
-- **Set `ATARI_NOTRACE=1` on every raw `dotnet exec` invocation.** Without it the emulator traces
-  every instruction, including for `resume <snap> repl` with a REPL script on stdin, not just a cold
-  `boot`/`<N>`: a multi-hundred-million-step run writes a multi-GB log and takes vastly longer.
+- **The per-instruction text trace is opt-in: `ATARI_TRACE=1`.** `ATARI_NOTRACE=1` still forces it
+  off and wins when both are set, so older scripts that set it are unaffected; the `ATARI_TRACE_*`
+  variables are independent of both (`M68000/DEVELOPING.md`, "`ATARI_TRACE` / `ATARI_NOTRACE`").
+  A build older than that rule traces by default and writes a multi-GB log on a long run.
   On the Mac (no PowerShell) use `ps`/`pkill` for `tasklist`/`taskkill`: `M68000/DEVELOPING.md`, "macOS".
 - **`run.ps1`'s subcommands are aliases, not real argv** (its `switch` block is the source of
   truth): `rrepl <snap>` is raw argv `resume <snap> repl`, `snap <N> <path>` is `<N> snapshot <path>`,
@@ -207,16 +208,17 @@ before spawning agents. The ones most often missed:
 
 ## Emulator behaviours that look like input bugs
 
-- `watch <addr> [len]`: the address is hex and `len` decimal (`watch 40000 41984`; a hex `len` such
-  as `a400` is a "bad operand" that ends the REPL run). One region at a time: a second `watch`
+- `watch <addr> [len]`: the address is hex and `len` decimal or prefixed hex (`watch 40000 41984`,
+  `watch 40000 $a400`; a bare `a400` is a "bad operand"). A bad REPL line is reported and skipped, the
+  later lines still run against a state that lacks its effect, and the run exits 1. One region at a time: a second `watch`
   replaces the first. It reports every CPU write whose bytes overlap the range and every FDC DMA
   sector landing in it (a `DMA read sector` line), and cannot name the PC of a REPL `w` poke. Its
   `step=` is the snapshot's cumulative step counter, not steps into the run: line it up with a
   `hits` first-hit inside the watch. For several ranges, read watches, writer-PC or value filters,
   or a stop on a hit, use `stserver` (`M68000/DEVELOPING.md`, "Memory hooks and the `stserver`
   process"), which also avoids every pitfall in "Running".
-- REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field clobbers the next
-  three. Read the neighbouring fields and write the whole longword deliberately.
+- REPL `w <addr> <8 hex digits>` writes a 4-byte longword: poking a one-byte field with it clobbers
+  the next three. Use `wb <addr> <hexbyte>` or `ww <addr> <hexword>` for a byte or word field.
 - In a REPL drive the click is consumed during the settle after `mouse down`: start `hits` or `bp`
   before the down, or the census misses the handler. `hits <n> <addrs>` after a `bp` that stopped
   the run counts only what happens after the stop, so a routine that ran earlier reads 0 and looks
@@ -250,4 +252,4 @@ before spawning agents. The ones most often missed:
   entry (Carrier Command's `$1794c`, `move #$2500,sr`) nests one handler per byte and parses the packet last
   byte first, so the pointer never moves. Send each byte on its own `kbd` with `s 3000` between (`kbd f8`,
   `kbd <dx>`, `kbd <dy>`; `$fa` = left down): `reversing/carriercommand/drive.txt`, README "Running it".
-- `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps"; step past it first (`s 2000000`, then `u`), as `reversing/powermonger/py/capture.sh` does.
+- `u <addr>` from a snapshot already stopped at `<addr>` (a `$f898`-frame snapshot) returns at once with "reached after 0 steps": `u` aligns to an address and stays put when already there (`reversing/powermonger/py/track.sh` relies on it). For the next arrival use `bp <addr>`, which steps first, or step past it and then `u`, as `reversing/powermonger/py/capture.sh` does.
