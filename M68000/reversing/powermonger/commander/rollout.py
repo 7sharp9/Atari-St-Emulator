@@ -1,6 +1,7 @@
 """rollout.py: the exact-rollout forecaster (commander README "Forecaster", plan step 5's first half).
 
     rollout.py <snap> <cands.json|-> --side K --steps N [--gap G] [--par P] [--out DIR] [--keep]
+    rollout.py <snap> <cands.json|-> --side K --ticks T [--gap-ticks G] [--no-skip] [--stub hex,..] [--par P] [--out DIR]
 
 Given a snapshot (a decision point, e.g. one loop.py --policy rollout saved with `snap` before its pokes), a side and K candidate
 action lists (act.from_json format), each candidate runs in its own emulator process (`resume <snap> repl`, driven
@@ -35,6 +36,18 @@ Otherwise the score is F/E - CAP_W * (captain men lost / captain men at the star
 ends the horizon with men and no food. The weights are heuristics, not derived from the game: on campaign land 1 the
 F/E policy let the captain group sit idle until its food ran out and its men starved (cmd2/l1/rollout, 34 men at
 350M, food 0 at 450M, dissolved at 725M with side 1 ahead 57 to 44).
+
+Tick mode (--ticks T): the horizon and the action schedule count game ticks, and the renderer is stubbed. One
+`stserver` process per candidate (tools/stclient.py): after the load an `rts` is poked at the entry of each --stub
+routine (default `$f898`, the terrain and sprite draw, about 77% of a tick's steps), a breakpoint is set on `$d2c8`, and
+the run goes from arrival to arrival at the tick body `$13000`. Tick k is the sim clock `$2df70` minus its value at the
+first arrival after the load; action i is poked at the arrival of tick i*G (G = --gap-ticks, default 2), and the
+snapshot is saved at the arrival of tick T or at the land end. The simulation state at a tick does not depend on the
+stub (renderskip/README.md; `gate_ticks.sh` checks it for this code path), so the outcome is the unstubbed game's at
+the same tick for about a quarter of the steps or fewer. --no-skip runs the same schedule with nothing stubbed (the
+control). The saved snapshot's screen is stale under a stub: the outcome is read from RAM only. Limits: the camera
+must not move during the horizon, and a tick-mode run is not byte-comparable with the step-mode loop (its pokes land
+at tick arrivals, the loop's at step counts).
 """
 import json, os, struct, sys, time
 from concurrent.futures import ThreadPoolExecutor
@@ -47,11 +60,16 @@ CMD = ROOT / 'reversing' / 'powermonger' / 'commander'
 sys.path.insert(0, str(CMD))
 from observe import observe, load          # noqa: E402
 from act import from_json                  # noqa: E402
-from loop import Emu, obs_hash             # noqa: E402
+from loop import Emu, obs_hash, DISK, D2C8  # noqa: E402
+sys.path.insert(0, str(ROOT / 'tools'))
+from stclient import StServer              # noqa: E402
 
 F57FBA = 0x57fba                           # strategy.md: 5 x 4-byte per-side force totals, word0 = men
 WIN, LOSS = 10.0, -1.0                     # land end inside the horizon, local side only
 CAP_W, STARVE_W = 1.0, 0.5                 # captain men lost (fraction of the start), captain group starving
+TICK, CLOCK = 0x13000, 0x2df70             # tick body entry; sim clock long, +1 per tick at $1302e (strategy.md)
+STUBS = (0xf898,)                          # tick mode: routines given an `rts` at entry (renderskip/README.md "Arms")
+TICK_BUDGET = 20_000_000                   # steps allowed between two tick arrivals before the run is called stuck
 
 
 def captain(obs, side):
@@ -128,8 +146,56 @@ def run_one(snap, side, name, actions, steps, gap, out, keep=True, cap0=None):
                 steps_per_s=round(clock / max(wall - tstart, 1e-9)), **res, snap=str(sp) if keep else None)
 
 
-def rollout(snap, side, cands, steps, gap=400_000, par=4, out=None, keep=True, baseline=True):
-    """cands: list of {"name", "actions"}; returns the outcomes in candidate order plus the index of the best."""
+def run_one_ticks(snap, side, name, actions, ticks, gap_ticks, out, keep=True, cap0=None, stubs=STUBS):
+    """One candidate in tick mode (module docstring): returns its outcome dict, with `ticks` run and `stubs`."""
+    t0 = time.time()
+    s = StServer(str(ROOT))
+    try:
+        s('load', snapshot=str(snap), disk=str(ROOT / DISK))
+        for a in stubs:
+            s('poke', addr=a, width=2, value=0x4e75)
+        s('bp_set', addrs=[D2C8])
+        step0 = int(s('regs')['step'])
+        tstart = time.time() - t0
+        sched = {}
+        for i, ac in enumerate(actions):
+            sched.setdefault(i * gap_ticks, []).append(ac)
+        clock0, k, end = None, -1, False
+        while k < ticks:
+            r = s('run', max_steps=TICK_BUDGET, until_pc=TICK)
+            if r['reason'] == 'breakpoint':
+                end = True
+                break
+            assert r['reason'] == 'until', f'{name}: run ended {r} at tick {k}'
+            c = int.from_bytes(s.read(CLOCK, 4), 'big')
+            if clock0 is None:
+                clock0 = c
+            k = c - clock0
+            if k in sched:
+                ram = bytearray(0x100000)
+                ram[0x58000:0x58100] = s.read(0x58000, 0x100)
+                for line in from_json(ram, sched.pop(k)):
+                    _, ad, hx = line.split()
+                    s('poke', addr=int(ad, 16), width=4, value=int(hx, 16))
+        steps = int(s('regs')['step']) - step0
+        sp = out / f'{name}.snap'
+        s('save', path=str(sp))
+    finally:
+        s.close()
+    R = load(sp)
+    obs, res = summary(R, side, cap0, end)
+    if not keep:
+        sp.unlink()
+    wall = time.time() - t0
+    return dict(name=name, actions=actions, steps=steps, ticks=max(k, 0), stubs=[f'{a:x}' for a in stubs],
+                land_end=end, land_end_step=steps if end else None, wall_s=round(wall, 2), startup_s=round(tstart, 2),
+                steps_per_s=round(steps / max(wall - tstart, 1e-9)), **res, snap=str(sp) if keep else None)
+
+
+def rollout(snap, side, cands, steps, gap=400_000, par=4, out=None, keep=True, baseline=True,
+            ticks=None, gap_ticks=2, stubs=STUBS):
+    """cands: list of {"name", "actions"}; returns the outcomes in candidate order plus the index of the best.
+    With `ticks` the candidates run in tick mode (`steps` and `gap` are unused)."""
     out = Path(out); out.mkdir(parents=True, exist_ok=True)
     cands = [c if isinstance(c, dict) else dict(name=f'c{i}', actions=c) for i, c in enumerate(cands)]
     names = [c['name'] for c in cands]
@@ -138,7 +204,11 @@ def rollout(snap, side, cands, steps, gap=400_000, par=4, out=None, keep=True, b
         cands = cands + [dict(name='none', actions=[])]
     cap0 = captain(observe(load(snap)), side)
     with ThreadPoolExecutor(max_workers=par) as ex:
-        futs = [ex.submit(run_one, snap, side, c['name'], c['actions'], steps, gap, out, keep, cap0) for c in cands]
+        if ticks:
+            futs = [ex.submit(run_one_ticks, snap, side, c['name'], c['actions'], ticks, gap_ticks, out, keep, cap0,
+                              stubs) for c in cands]
+        else:
+            futs = [ex.submit(run_one, snap, side, c['name'], c['actions'], steps, gap, out, keep, cap0) for c in cands]
         res = [f.result() for f in futs]
     best = max(range(len(res)), key=lambda i: (res[i]['score'], res[i]['sides'][side]['lords'], -i))
     return res, best
@@ -152,13 +222,19 @@ def main(argv):
     steps = int(float(opt('--steps', '20e6')))
     gap = int(float(opt('--gap', '400e3')))
     par = int(opt('--par', '4'))
+    ticks = int(opt('--ticks', '0')) or None
+    gap_ticks = int(opt('--gap-ticks', '2'))
+    stubs = () if flag('--no-skip') else STUBS
+    st = opt('--stub', None)
+    if st is not None:
+        stubs = tuple(int(x, 16) for x in st.split(',') if x)
     out = opt('--out', None)
     keep = flag('--keep') or True
     snap = Path(a[0]).resolve()
     cands = json.load(sys.stdin if a[1] == '-' else open(a[1]))
     out = Path(out).resolve() if out else ROOT / os.environ.get('CMD_WORK', 'scratchpad/cmd1') / 'rollout_out' / snap.stem
     t = time.time()
-    res, best = rollout(snap, side, cands, steps, gap, par, out, keep)
+    res, best = rollout(snap, side, cands, steps, gap, par, out, keep, ticks=ticks, gap_ticks=gap_ticks, stubs=stubs)
     for r in res:
         print(json.dumps(r, separators=(',', ':')))
     print(json.dumps(dict(best=best, name=res[best]['name'], wall_s=round(time.time() - t, 2))))

@@ -142,3 +142,10 @@ cmd = "{python} reversing/powermonger/py/cmdai/gate_party_class.py"
 expect = ["468/468", "10985/10985"]
 cite = 'py/README.md cmdai/gate_party_class.py'
 minutes = 1
+
+[[gate]]
+name = "ticks"
+cmd = "{python} reversing/powermonger/commander/gate_ticks.py"
+expect = ["20/20", "re:control: stub \\$3e06 changes 5/5"]
+cite = 'commander/README.md "Rollouts", tick mode (needs the <CMD_WORK>/rollout/mid run of gate_rollout.sh)'
+minutes = 2

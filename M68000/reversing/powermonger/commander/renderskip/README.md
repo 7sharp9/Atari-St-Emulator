@@ -11,7 +11,7 @@ a tick from about 170,000 steps to about 39,000 on the two busy lands (4.2x to 4
 the quiet tutorial land (9.0x); stubbing all seven drawing and frame-sync calls gives 6.2x to 6.8x and 19.6x. Wall
 time follows the step count: through the rollout's own engine path (the REPL behind `loop.py`'s `Emu`), 1000 ticks
 take 40.2 s unstubbed against 8.7 s with `$f898` stubbed and 5.9 s with all seven (land 2, median of 3 interleaved
-runs). Nothing in `rollout.py` uses it yet: it counts steps, not ticks (see "Using it").
+runs). `rollout.py --ticks` uses the `$f898` stub (see "Using it").
 
 Checkout at commit `729e138` (scripts and docs read there); the emulators are the installed builds, not built for this
 run: `server/bin/Debug/net8.0/stserver.dll` sha256 `1924f4dd976e315f9732cb881285a661fe9b743e401675c71ce80a7eff4721b5`
@@ -161,15 +161,16 @@ Not covered:
   video counter `$ff8205` into the world seed `$580a0`, and a stub changes `$6f304`, so a stubbed run that went on into
   a new land's build would build a different land. A rollout stops at `$d2c8`, the verdict, before that.
 - Horizons beyond 1000 ticks, other lands, the serial link, and orders poked mid-tick at a step count rather than at a
-  tick arrival (as `rollout.py` does now).
+  tick arrival (as `rollout.py`'s step mode and the loop do).
 
 ## Using it
 
-`rollout.py` was not changed. To use the stub it would have to:
-- poke `$f898` (or the seven `drawall` entries) to `$4e75` after `resume`, as `repl_ab.py` does through `Emu`;
-- count ticks, not steps: a stubbed 40M steps is about 1000 ticks rather than 230, so N and `gap` become tick counts
-  (stop on the `$13000` arrival with `$2df70` = start + N, as `renderskip.py` does, or `bp` that address per tick);
-- keep scoring from the RAM: the screen in a stubbed rollout's end snapshot is stale.
+`rollout.py --ticks T` (and `loop.py --policy rollout --rticks T`) is the tick mode built on this: one `stserver`
+per candidate, `$f898` stubbed after the load, action i poked at the arrival of tick i x `--gap-ticks`, the run
+stopped at the arrival of tick T or at `$d2c8`, and the outcome read from RAM (the stubbed snapshot's screen is
+stale). `../gate_ticks.py` checks that code path: every candidate of three saved decision points at T = 120, and of
+one at T = 1000, gives the same outcome (clock, per-side totals, score, observation hash) stubbed and unstubbed,
+20/20, and a `$3e06` stub changes 5 of 5 (`../README.md` "Rollouts").
 
 On land 2, a 1000-tick lookahead then costs about 8.7 s (`f898`) or 5.9 s (`drawall`) against 40.2 s here (all
 measured by `repl_ab.py` on this machine; the 84 s in `../README.md` was measured at 2.1M steps/s on a loaded machine). The safest arm is `f898`: one routine, and the largest share of the gain. `drawall` adds about 1.5x more on the

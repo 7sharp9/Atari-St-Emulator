@@ -28,7 +28,9 @@ harness. Continuation record: `M68000/sessions/commander.md`.
   snapshot, inject a candidate order, run N steps and read the outcome (`rollout.py`, below). A 1000-tick lookahead
   (177M steps) costs about 84 s for one candidate and about 115 s each for six in parallel on a loaded machine
   (2.1M steps/s per process alone, 1.5M at six; process start 0.25 s): a handful of candidates per major decision,
-  too slow for tree search. A state-space model over per-side aggregates (men, food, loyalty pressure) trained on
+  too slow for tree search. With the renderer stubbed (`rollout.py --ticks`, "Rollouts" below) the same lookahead
+  costs about 37M steps, and five candidates run in parallel in 9.6 s against 41.1 s unstubbed on an idle machine
+  (`gate_ticks.py`), which makes a shallow search over orders affordable. A state-space model over per-side aggregates (men, food, loyalty pressure) trained on
   the rollout traces comes second, judged against the rollouts and against a hand-written recurrence of the proven
   rules.
 
@@ -250,6 +252,20 @@ snapshot with and without them. It does not combine with `--move`. Forking is ex
 candidates from rand1, and every chosen candidate of a 300M-step run against the loop's own snapshot N steps later,
 20/20 `cmp`-equal). An order to a group far from the captain changes nothing but the pigeon's payload for 20M steps
 or more, so N must exceed the flight time to score it; at N = 40M 14 of 25 decisions tied.
+
+**Tick mode (`rollout.py --ticks T`, `loop.py --policy rollout --rticks T`).** The horizon and the action schedule
+count game ticks and the renderer `$f898` is stubbed, so a rollout costs 4.0 to 4.9 times fewer steps for the same
+ticks (`renderskip/README.md` holds why the simulation does not depend on the draw). Each candidate runs in its own
+`stserver`: action i is poked at the arrival of tick i x `--gap-ticks` (default 2) at `$13000`, and the run stops at
+the arrival of tick T or at `$d2c8`. `gate_ticks.py` runs every candidate of the gate run's decisions at 40M, 80M and
+120M steps at T = 120, and of the 40M decision at T = 1000, with and without the stub: 20/20 outcomes equal (clock,
+per-side totals, score, observation hash), and a stub on `$3e06` changes 5 of 5. A tick-mode rollout is not the
+loop's own continuation byte for byte, as a step-mode one is: its pokes land at tick arrivals and its horizon ends
+on a tick, so `gate_rollout.sh` does not apply to it, and at a short horizon the two modes can disagree. At the 40M
+decision `attack_loose` scores 0.685 after 20M steps and 0.886 after 120 ticks (20.6M unstubbed steps), the best of
+the five in tick mode and the worst in step mode; at T = 1000 it is the worst again (0.747 against Scripted's 0.959).
+That is the horizon's doing, not the stub's (the unstubbed tick run gives the same 0.886): a short horizon that ends
+mid-fight ranks an attack by where the cut falls. The camera must not move during a tick-mode horizon.
 
 **The first won land** (`gate_win.sh`). On campaign land 0 (`pm123/win/m1_s0.snap`: side 1 26 men against side 2's 20,
 ratio 2) every policy wins as side 1: the scripted baseline sets posture 4, attacks lord 0 at (29,62), sees ratio 4
@@ -611,6 +627,7 @@ starts can see ("Land 2 as a rate").
 | `step.py <in> <out> <steps> [order.json] [--hits a,b] [--watch addr len]` | one decision step |
 | `loop.py <work> [--side K] [--budget N] [--every N] [--policy scripted\|none\|llm\|rollout\|hybrid] [--lcad N] [--model M] [--move] [--evade] [--replay LOG] [--snap-at N,...] [--objs EVERY]` | the decision loop; `--objs` samples the object array to `objs.bin` |
 | `rollout.py <snap> <cands.json\|-> --side K --steps N`, `gate_rollout.sh` | exact rollouts of candidate orders; fork determinism 20/20 |
+| `rollout.py <snap> <cands.json\|-> --side K --ticks T [--gap-ticks G] [--no-skip]`, `gate_ticks.py` | the same in tick mode with `$f898` stubbed; stubbed against unstubbed outcomes 20/20, `$3e06` control 5/5 (needs `gate_rollout.sh`'s `rollout/mid` run) |
 | `gate_posture.sh` | field-fight posture: kills against routs from the land-2 300M snapshot, one variable |
 | `seeds.sh <out> <snap> <side> "<offsets>" "<arms>" [par] [budget]` | one land played by several policies from starts a few million unpoked steps apart, so an outcome is a rate |
 | `pairs.py <seeds out> <side> [--base ai] [--at 300,440]` | a seeds.sh result per start at fixed steps, each arm minus the base arm |

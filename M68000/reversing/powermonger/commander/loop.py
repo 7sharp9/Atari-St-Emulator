@@ -467,6 +467,7 @@ def main(argv):
     replay = opt('--replay', None)
     rK = int(opt('--K', '5'))                       # rollout: candidates per decision (incl. scripted and none)
     rN = int(float(opt('--N', '40e6')))             # rollout: horizon in steps
+    rT = int(opt('--rticks', '0'))                  # rollout: horizon in game ticks, renderer stubbed (rollout.py tick mode); 0 = --N steps
     rP = int(opt('--par', '5'))                     # rollout: processes at once (the loop's own emulator idles meanwhile)
     lcad = int(float(opt('--lcad', '20e6')))         # hybrid: steps between LLM proposals (a multiple of --every)
     force = opt('--force', None)                    # proof: always take the candidate with this name if present
@@ -587,11 +588,11 @@ def main(argv):
                         emu.save(dsnap)
                         t = time.time()
                         res, best = rollout(dsnap, side, [dict(name=n, actions=pre + c) for n, c in cands],
-                                            rN, gap, rP, work / 'ro' / str(clock), baseline=False)
+                                            rN, gap, rP, work / 'ro' / str(clock), baseline=False, ticks=rT or None)
                         if force is not None and any(n == force for n, _ in cands):
                             best = [n for n, _ in cands].index(force)
                         acts = cands[best][1]
-                        rec['rollout'] = dict(N=rN, best=cands[best][0], wall_s=round(time.time() - t, 2),
+                        rec['rollout'] = dict(N=rN, ticks=rT or None, best=cands[best][0], wall_s=round(time.time() - t, 2),
                                               cands=[dict(name=r['name'], score=r['score'], steps=r['steps'],
                                                           land_end=r['land_end'], obs_hash=r['obs_hash'],
                                                           sides={s: [v['lords'], v['men_home'], v['group_men'],

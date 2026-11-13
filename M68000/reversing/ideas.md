@@ -90,8 +90,8 @@ Outside the game:
   1000 ticks on an idle machine (84 s on a loaded one, `commander/README.md`, "Forecaster"), too slow
   for search. With the renderer stubbed the simulation state is byte-identical and the same 1000
   ticks take about 9 s (`$f898` alone) or 6 s (all draw and frame-sync calls) on land 2
-  (`powermonger/commander/renderskip/README.md`; `rollout.py` does not use it yet: it schedules by
-  steps and must count ticks). That makes a shallow beam search over orders affordable on exact
+  (`powermonger/commander/renderskip/README.md`; `rollout.py --ticks` is that mode, `gate_ticks.py`
+  20/20). That makes a shallow beam search over orders affordable on exact
   rollouts. A learned state-space model is still the route to deep search; its error against the
   rollouts decides it, not the search algorithm.
 - **Negotiated alliances.** PowerMonger's alliance `$1e` and spy `$20` orders are fixed actions; an
