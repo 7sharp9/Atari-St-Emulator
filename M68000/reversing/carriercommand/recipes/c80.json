@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "name": "c80",
+  "about": "Carrier Command language menu: cold boot of carrier_auto.st (README 'Running it'), 80M steps, no input.",
+  "disk": {"file": "carrier_auto.st", "sha256": "54261b30545e9a354ada6f0a3e11b80000432029d769584938a36984d8ed9464"},
+  "parent": null,
+  "boot_steps": 80000000,
+  "repl": null,
+  "expect": {
+    "sha256": "edb69cce149f1627a55098aa0528befb10d6d20424211a1e3f63a73fc55bb607",
+    "step": 80000000,
+    "dll_path": "bin/Debug/net8.0/M68000.dll",
+    "dll_sha256": "d11a491e7b66f79a14e9fe79895897f53164a031e1984525207460ef021c1cae"
+  },
+  "also_produced_by_dll": ["8ec1f644fcbcb3c461309df0d5452c983e1846e6ac4e153cd3501af71d6874c7"],
+  "reference": "carrier/c80.snap"
+}

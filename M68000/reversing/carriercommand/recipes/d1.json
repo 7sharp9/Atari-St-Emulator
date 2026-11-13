@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "name": "d1",
+  "about": "Carrier Command: the first natural enemy target decision from c_s30, stopped at the return of $2337a (bp $1ad02); ANCHORS carrier/ai/nat/d1.snap.",
+  "disk": {"file": "carrier_auto.st", "sha256": "54261b30545e9a354ada6f0a3e11b80000432029d769584938a36984d8ed9464"},
+  "parent": "c_s30.json",
+  "repl": "d1.repl",
+  "repl_sha256": "1d05f21b128b95e9667a1ec04ca0f7bc1282cb2a9b171e8dbd161f5fa0fb443e",
+  "expect": {
+    "sha256": "2bb7f27498df410e2fa491173b6c84e3ef576bd83dd5254c8581f89fade30bc7",
+    "step": 713986053,
+    "dll_path": "bin/Debug/net8.0/M68000.dll",
+    "dll_sha256": "d11a491e7b66f79a14e9fe79895897f53164a031e1984525207460ef021c1cae"
+  },
+  "reference": "carrier/ai/nat/d1.snap"
+}

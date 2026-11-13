@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "name": "c_s30",
+  "about": "Carrier Command strategy game, carrier at Vulcan: c80 driven by drive.txt (English, title menu, Start Strategy Game, 30M steps).",
+  "disk": {"file": "carrier_auto.st", "sha256": "54261b30545e9a354ada6f0a3e11b80000432029d769584938a36984d8ed9464"},
+  "parent": "c80.json",
+  "repl": "../drive.txt",
+  "repl_sha256": "51275d564411f40adb2fe704d00dbbd9ae51d25739c3e7524e9e06fd7d3524b7",
+  "expect": {
+    "sha256": "0cf3bc5e02b98a32f94a069186347dd8765628258fe59e3bc827dda6f90e2d1c",
+    "step": 170918000,
+    "dll_path": "bin/Debug/net8.0/M68000.dll",
+    "dll_sha256": "d11a491e7b66f79a14e9fe79895897f53164a031e1984525207460ef021c1cae"
+  },
+  "also_produced_by_dll": ["8ec1f644fcbcb3c461309df0d5452c983e1846e6ac4e153cd3501af71d6874c7"],
+  "reference": "carrier/c_s30.snap"
+}
