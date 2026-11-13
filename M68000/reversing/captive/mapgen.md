@@ -699,9 +699,10 @@ D0 = 1 and 32 from D0 = 9. For each picked dead end:
    or 16 marks of its bits (`$12e0e`/`$12e6e`, inferred).
    If all 11 tries fail the whole lock is abandoned (`$258b8`) and the dead end stays listed (1,021 times in the
    census below).
-8. **Written:** E gets feature `$0d` (`$34` on `$33`), item `$19` (the type `$26478` also places) with word (r & `$3ff`) + `$80`, and a class-0 group,
+8. **Written:** E gets feature `$0d` (`$34` on `$33`), item `$19`, GOLD (the type `$26478` also places; name from the game's `$675c`/`$70b8`, `py/ai/item_names_emu.py
+   phoopel/base13.snap 19`) with word (r & `$3ff`) + `$80` (inferred: the amount), and a class-0 group,
    with bit 7 of its feature set when the group was written. D, by door kind: 0 a door (feature `$15`, parameter 6
-   or 14 from the wall mask), 1 feature 0, which encodes to tile 0 (inferred: a door that looks like rock), 2 feature
+   or 14 from the wall mask), 1 feature 0, which encodes to tile 0 (drawn as a plain wall, below), 2 feature
    `$27` (tile `$26`). P gets feature `$0c`. W becomes a `$22` wall object with parameter = the direction and G0
    `$ffc3`.
 9. **Lock list** `13720(A6)` = `$1d782`, 10 bytes per lock: W (x, y), the code word, a zero word, D (x, y), key kind |
@@ -709,7 +710,8 @@ D0 = 1 and 32 from D0 = 9. For each picked dead end:
 
 Door kind 2 (tile `$26`) draws as a wall of flames across the cell and blocks the party from both sides
 (`py/phoopel/live13.py`: two forward presses from (6,9) facing the door and from (8,9) facing back leave the party in
-place; control facing away moves 2 cells). What door kind 1 looks like has not been checked.
+place; control facing away moves 2 cells). Shut, door kind 1 draws exactly as a plain mesh wall, and door kind 0 as
+a hazard-striped sliding door (`mapgen_door_kinds.png`, below).
 
 **The panel in play.** W is what opens every lock: a bank of switches behind a cover, and the key object is only a
 note of the setting. The panel faces one way, the side in its tile (`$10` + side): it is drawn (`$aab2`-`$aac0`) and
@@ -719,11 +721,24 @@ yet blown, and a test at `$ca60` that is not read). After that `$12a20` draws th
 found by W's cell (`$129f8`, list `fed 8628(A6)`). The record's word +4, zero from the generator, is the switch
 state: a click toggles one bit, and `$12cb8` compares the state with the code word +2 after every click. On a match
 `$12cf2` opens the door at +6 and sets bit 5 of byte +8; for door kinds 1 and 2 it swaps D's tile with byte +9
-(`$20`, floor), for kind 0 it calls the door routine `$a420`. If bit 4 of byte +8 is set (the RNG word above
-`$7000`), changing a switch afterwards swaps the tile back (`$12cd6`). The switch layout depends on the key kind,
-matching the code masks 1, 7, `$ff` and `$ffff`: one switch, three, two rows of four, and for kind 3 sixteen line
-segments on a 3 × 3 grid of dots (5-pixel cells from (90,98), bit = `$12c12`[row × 5 + column] - 1). Under the kind-3
-grid the panel prints the same five-digit number as the clipboard (`$12d46`), so the number names the lock and the
+(`$20`, floor), for kind 0 it calls the door routine `$c420` (`$12d12`), which
+sets bit 4 of D's tile (`$46`/`$4e` to `$56`/`$5e`). If bit 4 of byte +8 is set (the RNG word above
+`$7000`), a click that leaves the state unequal to the code clears bit 5 and toggles the door shut again (`$12cd6`),
+so such a door is open only while the panel holds the code; with bit 4 clear it stays open. The switch layout depends on the key kind
+(`$12ba6` dispatches on byte +8 & 3; screen x, y from `15152`/`15154(A6)`), matching the code masks 1, 7, `$ff` and
+`$ffff`:
+
+| key kind | handler | switches | click zone, bit | settings (wrong ones) |
+|---|---|---|---|---|
+| 0 | `$12c9a` | one lever | x 98-108, y 100-120 | 2 (1) |
+| 1 | `$12c6a` | three in a row | y 100-120, bit (x - 89) / 10 for x 90-118 | 8 (7) |
+| 2 | `$12c2c` | two rows of four buttons | x 88-119, y 101-120: bit 4·((y - 101) / 10) + ((x - 88) >> 3) | 256 (255) |
+| 3 | `$12bc2` | sixteen line segments on a 3 × 3 grid of dots | 5-pixel cells from (90,98): bit `$12c12`[row × 5 + column] - 1 | 65,536 (65,535) |
+
+Kinds 0-2 toggle bits of byte +5 only (`bchg Dn,5(A2)`). The code is never 0, and since the compare runs after
+every click, a blind player stepping through the settings one bit at a time (a Gray code) tests one setting per
+click (inferred from `$12cb8`). Under the kind-2 and kind-3 panels (the draw paths end in `bra $12d46`; kinds 0 and 1
+do not) the panel prints the same five-digit number as the clipboard, so the number names the lock and the
 clipboard's marks are the setting.
 
 ![panel W of Phoopel's lock 4: closed cover, opened, and with the four code segments lit](mapgen_lock_panel.png)
@@ -732,8 +747,30 @@ clipboard's marks are the setting.
 cell and facing only, then mouse clicks): from (6,8) facing W, one click opens the cover (W `$11` to `$15`) and
 shows the grid and 15099; clicking bits 5, 8 and 10 of code `$8520` leaves D (7,9) at `$26`, and the fourth click
 (bit 15) makes the state `$8520`, byte +8 `$1b` to `$3b`, and D `$20`. Control: the same three clicks and then bit 0
-leave D at `$26`. With D open the party steps from (6,9) onto (7,9). The layouts for key kinds 0 to 2, the kind-0
-door call and the re-close on bit 4 are from reading.
+leave D at `$26`. With D open the party steps from (6,9) onto (7,9).
+
+**Proven** for every key kind and door kind (`py/phoopel/panels/panels.py 9 7 22 1 17 0 18 4`, `base13.snap`, the
+same pokes and clicks; two runs give identical click logs): the code opens 8 of 8 locks, D's tile changing on the last
+click and on no earlier one; the control (last bit wrong, or for kind 0 the cover only) leaves 8 of 8 shut; a forward
+press steps onto D in 8 of 8 open and 0 of 8 shut. The cover click leaves the state `$0000` in 16 of 16 arms. Turning
+one code bit off and on again: with byte +8 bit 4 set (locks 9, 22, 17, 0, 4) D shuts and reopens, 5 of 5; with it
+clear (7, 1, 18) D stays open, 3 of 3. On lock 18 a creature group stood on the opened door cell for 1.56M steps
+before the walk went through.
+
+| lock | key / door kind, bit 4 | code | D shut → open |
+|---|---|---|---|
+| 9 | 0 / 0, 1 | `$0001` | `$46` → `$56` |
+| 7 | 0 / 1, 0 | `$0001` | `$00` → `$20` |
+| 22 | 0 / 1, 1 | `$0001` | `$00` → `$20` |
+| 1 | 1 / 2, 0 | `$0001` | `$26` → `$20` |
+| 17 | 1 / 0, 1 | `$0003` | `$46` → `$56` |
+| 0 | 2 / 2, 1 | `$002e` | `$26` → `$20` |
+| 18 | 2 / 0, 0 | `$0025` | `$4e` → `$5e` |
+| 4 | 3 / 2, 1 | `$8520` | `$26` → `$20` |
+
+![the four key kinds, one per row (locks 9, 17, 0, 4): cover shut, opened, code set](mapgen_panel_kinds.png)
+
+![the three door kinds, one per row (locks 9, 7, 1): shut, open](mapgen_door_kinds.png)
 
 **Why the key is reachable, and when it is not: dig order.** The key rule G0(K) ≤ G0(D) is the whole mechanism. Inferred: a cell dug
 before the door is on the entrance side of it or behind an earlier door, because the turtle reaches the far side of D

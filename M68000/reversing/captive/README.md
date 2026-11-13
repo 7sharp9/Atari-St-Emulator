@@ -47,6 +47,7 @@ Captive's own boot code. That code copies the loader into low RAM (`$206`-`$1200
 | on the planet surface | LAND | `landed.png` |
 | inside a base | target 1's landing site selected at zoom 2, ORBIT, LAND, walk to the compound door, enter its corner code, step to the entrance cell (`py/ai/natural_base.repl`; `ai.md`, "Getting into a base") | `base1.png` |
 | a base finished, and the mission's end screen | the level event a Trill attack raises, set by labelled pokes from inside the base: the party returns to the compound entrance; at the final base the mission number advances and the end screen shows (`py/ai/level_event.py`; `ai.md`) | `ai_trill_end.png` |
+| a base blown up with the party inside | EXPLOSIVES on a generator, then stay until the fire reaches the entrance: "BASE HAS BEEN DESTROYED! WITH YOU IN IT!!!" in the same frame, and a click restarts at MISSION 0001 (`py/phoopel/state3/`; `ai.md`, "Finishing a base") | `ai_state3_end.png` |
 
 `drive.txt` does the first three from a cold boot (about 300M steps) and writes `scratchpad/captive/mission1.snap`;
 two runs give byte-identical snapshots.
@@ -135,8 +136,6 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 
 ## Not yet exercised
 
-- The generator's locks in play beyond the 16-segment panel and the flame door (`mapgen.md`, "The panel in play"):
-  the one-, three- and eight-switch panels and the door kind that draws as rock.
 - What the six `15538(A6)` tests in `federation` gate on an uncracked copy (`system.md` section 5).
 - The intro's top band and smeared figures (`intro.png`): intended animation or a rendering fault, unchecked.
 
@@ -147,7 +146,7 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 | `drive.txt` | REPL drive from cold boot to the mission 1 planet screen |
 | `menu.png`, `intro.png`, `mission1.png`, `landed.png`, `base1.png` | milestone screenshots |
 | `infographic_trail.png`, `infographic_digger.png`, `infographic_universe.png`, `infographic_lock.png` | explanatory figures: creature pursuit along the trail and the dig-order arrows (`ai.md`), the digger and its flow field (`mapgen.md`), the universe from the mission number (`world.md` section 1), the combination lock and the DIE (`ai.md`); made by `py/infographics/` |
-| `ai_*.png` | figures for `ai.md` (the DIE's hint faces, the Trill screens) |
+| `ai_*.png` | figures for `ai.md` (the DIE's hint faces, the Trill screens, the state-3 game-over screen) |
 | `py/fedfs.py` | disk decode, directory, extract, depack |
 | `py/hunks.py` | hunk parser and RAM alignment |
 | `mapgen.md`, `ai.md`, `world.md`, `system.md` | topic docs (table at the top) |
@@ -156,4 +155,5 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 | `py/mapgen/`, `py/ai/`, `py/world/`, `py/system/` | the scripts behind each topic doc, each with a README table of command and expected output |
 | `py/phoopel/` | the sealed-key bug behind the Phoopel hint: keys the generator drops on their own door cell, the clipboard number, the census over missions 1..100, the lock panel driven by clicks, explosives on a generator and leaving (`mapgen.md` "Sealed keys", `ai.md` "Finishing a base") |
 | `mapgen_lock_panel.png` | a lock's wall panel in play: cover, 16-segment grid with the lock's number, the code lit |
+| `mapgen_panel_kinds.png`, `mapgen_door_kinds.png` | the four key kinds' panels (cover, opened, code set) and the three door kinds shut and open (`py/phoopel/panels/`) |
 | `py/infographics/` | the four figure scripts, a facts file per figure mapping each drawn fact to its source, and a README |

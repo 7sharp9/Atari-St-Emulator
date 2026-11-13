@@ -343,13 +343,31 @@ the shop and messages, no other creature.
 `14798(A6)` up while it is nonzero and re-arms `15608(A6)`; once it passes `$28` (40 frames) `$87d6` (lvl_ExitBase)
 runs. It marks the target visited (byte 2 bit 1 of its `14170(A6)` entry, `14794(A6)` + 1). Outside the final base
 (`13412(A6)` = 0) it sets mode 1 and rebuilds, putting the party back at the compound entrance. In the final base the
-mission `14776(A6)` goes up by one, `14800(A6)` = -1 and the end screen `$134b8` runs. `$134b8` picks one of five end
-messages (`$137b0`-`$13860`) from `14800(A6)`. **Proven** (`level_event.py`, labelled pokes of what `$10eec` writes,
+mission `14776(A6)` goes up by one, `14800(A6)` = -1 and the end screen `$134b8` runs. `$134b8` is the end screen;
+`14800(A6)` selects its message (table below). **Proven** (`level_event.py`, labelled pokes of what `$10eec` writes,
 on `base1/in.snap`): `$87d6` once at step 2,850,672, mode 3 -> 1, `14794` 0 -> 1, then `$8836` and `$90be` (the
 rebuild). With `13412(A6)` = 1 also poked: mission 0 -> 1, `14800` = -1, `$134b8` at step 2,850,693, and the screen
 "CONGRATULATIONS ... LEGEND OF TRILL ... FREEING THE CREATOR OF EVIL" with CALL IT A DAY / LET BATTLE COMMENCE
-(`ai_trill_end.png`). The other end messages' `14800` values are **inferred**; a final base left without the event
-sets 2.
+(`ai_trill_end.png`). A final base left without the event sets 2.
+
+**The end screen.** `$134b8` takes the text from the word table at `$1378a` (offsets from `$1378a`, index
+2·(`14800` + 2)) and an animation sequence from the digit table at `$134b0` (index `14800` + 2, through the word
+table `$1372a`). It returns through `$13624`, which clears a negative `14800` and lets the caller go on (-2 from
+`$87ac`, back at the ship after a target; -1 from `$881a`, on to the next mission). A positive value is only latched:
+the main loop's test at `$56ae` shows the screen and, after a click, jumps to `$5608`, whose `$8570` clears the globals
+`A6+0`..`14915(A6)` (mission, visited count and base state with them): the game restarts at CAPTIVE MISSION 0001.
+
+| `14800` | written at | text (`py/phoopel/state3/msgs.py`) | after it |
+|---|---|---|---|
+| -2 | `$87a6` | BASE HAS BEEN DESTROYED! | play continues |
+| -1 | `$8814` | TRILL HAS BEEN RESCUED! ... BUT... | next mission |
+| 1 | `$876a` | DROID'S HAVE FAILED! | restart |
+| 2 | `$87d0`, `$882e` | TRILL HAS BEEN LEFT TO DIE. DROID'S ARE TO BE WASTED | restart |
+| 3 | `$bfaa` | BASE HAS BEEN DESTROYED! WITH YOU IN IT!!! | restart |
+| 4 | `$fad6` | TRILL HAS BE KILLED! DROID'S ARE TO BE WASTED! | restart |
+
+The texts are read from RAM; the continue/restart split is read from `$13624` and `$56ae`. **Proven** for 3 (below,
+"Finishing a base") and for the -1 and 4 screens (`ai_trill_end.png`, `ai_trill_killed.png`).
 
 **Trill's attack is the rescue.** `trill_attack.py` pokes only group 16's type to `$1f` in `g16_adj.snap` (group 16
 adjacent and facing the party): at period 16 it attacked 6 times in 6M steps, each attack set `14798` back to 1, and
@@ -367,7 +385,7 @@ A normal base is finished by blowing up its generators and getting out. The stat
 | 0 | untouched | - |
 | 1 | fuse: `13408(A6)` counts down from 100 main frames | `$beaa` |
 | 2 | burning: the fire advances one cell every 14 frames | `$bf88` |
-| 3 | the fire has reached the end of its path; `14800(A6)` = 3 | `$bfa4` |
+| 3 | the fire has reached the end of its path: `14800(A6)` = 3, game over in the same frame | `$bfa4` |
 | 4 | outside after leaving: the entrance explodes, every 8 frames after 90 | `$8840`, `$bf38` |
 
 - **Arming.** A click on the view with a generator tile (`$28`/`$29`) ahead, in mode 3, with EXPLOSIVES (item `$1b`)
@@ -406,10 +424,22 @@ A normal base is finished by blowing up its generators and getting out. The stat
   (22,18): `$107cc` 42, `$9a9a` 0, `$e6dc` 0, four droids alive.
 The same arming in the D0 = 13 base gives states 1 and 2, 9 of 9 generators to `$26`, and a fire that follows the
 arrows for 28 of 29 moves in 60M steps, the other being the lift move from (54,11) to (22,27) (`finish13.py`). What state 3
-does to a party still inside is not traced (a party poked onto the burning entrance in state 3 ended in mode 1 at
-(0,0) with the target cleared and none of the routines above hit; (0,0) is also what the party word reads during the
-rebuild after an ordinary exit, so that sample does not say where the party ended up). `$87c0` passes state 3 as well
-as 2 (`13410` > 1), so leaving after the fire has reached the entrance is not barred by that test (read).
+
+**State 3 is a game over, wherever the party stands.** In the frame where `$bfa4` writes 3, `$bfaa` sets `14800` = 3,
+and the main loop's `$56ae` test, which runs after the state handler, calls the end screen before the leave test
+`$8772`/`$87c0` runs again: "BASE HAS BEEN DESTROYED! WITH YOU IN IT!!!", then on a click the restart at MISSION 0001.
+So a base can be left only while the state is 2; nothing damages the party first. **Proven**
+(`py/phoopel/state3/`, from `finish_base1_blast_state2.snap`):
+- `state3.py reach`: `$bfa4` after 27,634,127 steps with the party at (18,8); `order.py` from that stop: `$bfaa` at
+  step 1, `$56ae` 79,652, `$134b8` 79,656, `$8772` and `$87c0` 0; 3M steps on, `$107cc`, `$9a9a`, `$e6dc` 0 and
+  `410(A6)` 4, the screen up (`ai_state3_end.png`);
+- `state3.py leave` (labelled pokes: party onto the entrance (30,0) facing N): over 30.18M steps `$134b8` 1 and
+  `$87c0`, `$87d6`, `$8836` 0; afterwards mode 3, `14794` 0, `14800` 3;
+- `state3.py after`: no click, the screen stays for 30.06M steps (`$13624`, `$5608` 0); a click, then `$13624`,
+  `$5608`, `$8570` once each and 30M steps on mode 1, `14776` 0, `14794` 0, `13410` 0 and the map at CAPTIVE MISSION
+  0001; `mission.py`, `14776` poked to 4 first: still 0 after the reset.
+The earlier sample of a party poked onto the burning entrance in state 3, mode 1 at (0,0) with the target cleared,
+fits this reset.
 
 ## Cell action (`$10732`)
 
@@ -573,6 +603,9 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 | `$107cc` | fx_Explode | a blast hit object on cell `68(A6)` resolved through `$f884` |
 | `$8710` | party_CountLive | count live droids into `410(A6)`; at 0 set `14800(A6)` = 1 |
 | `$e676` | droid_Dies | clear the droid's energy +42 and +38, +50 = 2 |
+| `$134b8` | end_Screen | message and animation from `14800(A6)`; returns through `$13624` |
+| `$13624` | end_Exit | clear a negative `14800`; a positive one is left for `$56ae` |
+| `$8570` | game_ClearGlobals | clear `A6+0`..`14915(A6)` before a restart (`$5608`) |
 | `$134b8` | msg_BaseEnd | end screen, message chosen by `14800(A6)` |
 | `$88b8` | party_LeaveCell | clear the party cell's occupancy bit, latch its tile, plane-2 byte and pointer `1766(A6)` |
 | `$88d6` | party_EnterCell | set the party cell's occupancy bit, then `$8694` |
@@ -600,8 +633,8 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 - A lift follower reached by play alone: both lift runs start from a poked party position, because group 49 holds
   the corridor to the lift side of `req4.snap`. The lift pair (2,4)-(18,4) and any `$30`/`$33` tile are not driven.
 - The `$fc4e` clear, which needs RNG2 <= `$10b8` at a death.
-- `14800(A6)` values 1 and 2 and the end messages (`$137b0`-`$13860`); value 3 is set when a base's fire burns out
-  ("Finishing a base"), and what happens to a party still inside is not traced; the 24-byte map at `$134b0`.
+- `14800(A6)` values 2 (a final base left without Trill) and -2 (back at the ship) driven to their screens; the
+  end-screen click takes about 1.8M steps to register (input polled between animation frames, inferred).
 - What gives the party the `$66` item with `407(A6)` = 1: the generator's `$26946`, called only from the compound
   builder at `$23f64` (raw scan for `bsr`/`bra`, not `jsr`), is the lead.
 - A real use of the die reaching `$1207c`, and the `$e270` branch on D2 bit 4 (`$e312`, `$e34e`, inferred to be the
