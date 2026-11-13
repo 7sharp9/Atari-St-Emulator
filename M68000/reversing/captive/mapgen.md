@@ -707,10 +707,33 @@ D0 = 1 and 32 from D0 = 9. For each picked dead end:
 9. **Lock list** `13720(A6)` = `$1d782`, 10 bytes per lock: W (x, y), the code word, a zero word, D (x, y), key kind |
    door kind << 2 | `$10` when the RNG word is above `$7000`, then `$20`. The count is `13270`.
 
-Key kinds 0 and 1 have no key object. What opens those locks in play (W's wall object is the candidate), and what door
-kind 1 looks like, have not been checked. Door kind 2 (tile `$26`) draws as a wall of flames across the cell and
-blocks the party from both sides (`py/phoopel/live13.py`: two forward presses from (6,9) facing the door and from
-(8,9) facing back leave the party in place; control facing away moves 2 cells).
+Door kind 2 (tile `$26`) draws as a wall of flames across the cell and blocks the party from both sides
+(`py/phoopel/live13.py`: two forward presses from (6,9) facing the door and from (8,9) facing back leave the party in
+place; control facing away moves 2 cells). What door kind 1 looks like has not been checked.
+
+**The panel in play.** W is what opens every lock: a bank of switches behind a cover, and the key object is only a
+note of the setting. The panel faces one way, the side in its tile (`$10` + side): it is drawn (`$aab2`-`$aac0`) and
+its cover answers a click (`$dd96`) only for a party on the cell in front with (tile - facing) & 3 = 0. A click on
+the closed cover sets bit 2 of the tile (`$ddd2`, tile `$11` to `$15`; it also needs `13410(A6)` ≤ 1, the base not
+yet blown, and a test at `$ca60` that is not read). After that `$12a20` draws the switches and `$12b4c` handles clicks on them, both from the lock record
+found by W's cell (`$129f8`, list `fed 8628(A6)`). The record's word +4, zero from the generator, is the switch
+state: a click toggles one bit, and `$12cb8` compares the state with the code word +2 after every click. On a match
+`$12cf2` opens the door at +6 and sets bit 5 of byte +8; for door kinds 1 and 2 it swaps D's tile with byte +9
+(`$20`, floor), for kind 0 it calls the door routine `$a420`. If bit 4 of byte +8 is set (the RNG word above
+`$7000`), changing a switch afterwards swaps the tile back (`$12cd6`). The switch layout depends on the key kind,
+matching the code masks 1, 7, `$ff` and `$ffff`: one switch, three, two rows of four, and for kind 3 sixteen line
+segments on a 3 × 3 grid of dots (5-pixel cells from (90,98), bit = `$12c12`[row × 5 + column] - 1). Under the kind-3
+grid the panel prints the same five-digit number as the clipboard (`$12d46`), so the number names the lock and the
+clipboard's marks are the setting.
+
+![panel W of Phoopel's lock 4: closed cover, opened, and with the four code segments lit](mapgen_lock_panel.png)
+
+**Proven** for key kind 3 and door kind 2 (`py/phoopel/panel13.py`, in `base13.snap`; labelled pokes of the party's
+cell and facing only, then mouse clicks): from (6,8) facing W, one click opens the cover (W `$11` to `$15`) and
+shows the grid and 15099; clicking bits 5, 8 and 10 of code `$8520` leaves D (7,9) at `$26`, and the fourth click
+(bit 15) makes the state `$8520`, byte +8 `$1b` to `$3b`, and D `$20`. Control: the same three clicks and then bit 0
+leave D at `$26`. With D open the party steps from (6,9) onto (7,9). The layouts for key kinds 0 to 2, the kind-0
+door call and the re-close on bit 4 are from reading.
 
 **Why the key is reachable, and when it is not: dig order.** The key rule G0(K) ≤ G0(D) is the whole mechanism. Inferred: a cell dug
 before the door is on the entrance side of it or behind an earlier door, because the turtle reaches the far side of D
@@ -742,9 +765,24 @@ record at (7,9), and the flame door blocks the party from both sides. With the d
 the base's 1193 open cells, holding 22 other locks' prizes, are unreachable (`py/phoopel/sealed.py`, model).
 Over missions 1..100 (1,100 bases, D2 = 1 for the station), 100 of 24,603 keys sit on their own door, in 92 bases;
 Phoopel's is the first (`py/phoopel/keyondoor.py 0 100`). The region a sealed door cuts off runs from 1 cell to 1230
-(median 76), and 29 of the 100 cut off a quarter of the base or more (`sealed.py 0 100`). Whether a base can be
-finished without that region, and whether an item (the `$5a`/`$1a` branch at `$c194` on a `$26` cell) or the wall
-panel W opens the door without the code, are not checked.
+(median 76), and 29 of the 100 cut off a quarter of the base or more (`sealed.py 0 100`).
+
+A sealed key does not lock the door for good, because the panel never asks for the clipboard ("The panel in play"):
+the right switches open it. What the player loses is the setting. The hint sheet's 15099 is the number printed on
+the panel, the lock's label and not something to enter; Phoopel's door opens on segments 5, 8, 10 and 15 (**proven**,
+`panel13.py`). Without the clipboard a kind-2 lock has 256 settings and a kind-3 lock 65,536, each click testing one,
+so a kind-3 sealed door is closed in practice. (The label is two LCG steps of code + base number, an invertible map,
+so the setting can be computed outside the game; inferred from `$12d4e`, not a route the game offers.) Items do not
+open a flame cell: the `$c194` branch on a `$26` cell only sets byte 2 of a dropped FLAMBOS (`$5a`) or BATTERY
+(`$1a`) to `$3c`, and bit 0 of the tile (from reading).
+
+**Can such a base be finished?** A base is finished by using EXPLOSIVES on one of its generator tiles and leaving
+before the fire reaches the entrance (`ai.md`, "Finishing a base"). Each base has one 3 × 3 block of generator tiles
+(`$28`; 8 or 9 cells in the 92 bases). With every sealed door of the base closed, no generator cell can be stood
+beside in 27 of the 92 bases with a sealed key in missions 1..100, Phoopel among them, and all of them can in the
+other 65 (`py/phoopel/finish.py 0 100`, model, other locks' doors taken as openable). Of the 27, 9 have only
+kind-2 sealed doors (256 settings) and 18 have a kind-3 one. So in 27 of 1,100 bases the target can be marked
+visited only by finding a panel setting blind. Whether a mission needs every target visited is not checked.
 
 ## Output encoding
 
@@ -836,6 +874,6 @@ types ("Creature groups").
 - The surface generator past `$23d94`, apart from the compound builder's door; the surface path is not ported.
 - What the Copylock prologue checks.
 - The instruction in `$2011e` that writes `12418` and `13274(A6)`.
-- In play: features `$12`, `$13`, `$0d` and `$23` (tile `$26`), door kinds 1 and 2 of the locks, what opens a lock of
-  key kind 0 or 1, the `$22` wall objects, items `$19` and `$1b`, member byte +4, wall picture 4, and what `$c570` does
-  after a floor trigger.
+- In play: features `$12`, `$13` and `$0d`, door kind 1 of the locks, the panels of key kinds 0 to 2 (read, not
+  driven), the `$22` wall objects that belong to no lock (traps, hidden items), item `$19`, member byte +4, wall
+  picture 4, and what `$c570` does after a floor trigger.

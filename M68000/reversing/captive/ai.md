@@ -21,7 +21,9 @@ that path changed floor. The party overwrites it as it walks: every cell the par
 went, and nothing fades a mark. Followed from any cell, footprints lead to the party; dig arrows lead to a lift cell,
 where a value of 4 or more makes the group forget the party, or into the party's footprints. A group is made hostile
 and told to tidy its formation whenever the party's view draws it or a shot hits it. Killing a member subtracts from
-its hit points; one creature, Trill (type `$1f`, only in the final base), has an "attack" that ends the base.
+its hit points; one creature, Trill (type `$1f`, only in the final base), has an "attack" that ends the base. A
+normal base ends by explosives on its generators, and the fire that follows runs down the same dig arrows to the
+entrance.
 
 ## Scheduling
 
@@ -203,8 +205,19 @@ member, aware and hostile) stood at (13,4) with the party at (14,5). Over five a
 value 0 at (13,4)), turned E (3 at (13,3)), stepped E to (14,3), turned S and stepped S to (14,4), next to the
 party, where it stayed for the remaining 124 of 200 frames. Replaying the gate model on each pre-move state gives the
 same five labels: the first three are trail moves on dig-tree values unchanged since `req4.snap`, and the last two
-are sight moves, both decided at (14,3) with the party 2 cells S (the step leaves it 1 away). This chase follows the dig tree into the party's catchment; it does
-not read a footprint.
+are sight moves, both decided at (14,3) with the party 2 cells S (the step leaves it 1 away). This chase follows the
+dig tree into the party's catchment; it does not read a footprint.
+
+**A chase that reads footprints**, keypad input only (**proven**, `footchase.py agents/ai/g16_adj.snap 16 12000000
+'0:6c;1:6e,6e,6c,6e'`): the party leaves group 16 by (14,5), (13,5), (13,4), (13,3), (12,3), (12,2), out of its row
+and column. The group takes 8 trail actions with a move (5 steps, 3 turns) and then 3 sight actions beside the
+party; the gate model's label matches all 11. All 8 trail moves follow bits 3-5 of the cell acted from, and 5 of
+them are on cells where bits 3-5 differ from bits 0-2. At (14,5), byte `$88` (footprint W over dig arrow N), the
+group turns W and steps W; at (13,3), `$8b` (footprint W over dig arrow E), it turns W. Control: the model replayed
+with bits 3-5 replaced by bits 0-2 predicts 2 of those 5 moves, against 5 of 5 with the byte as found. The other two
+cannot tell the fields apart, because a dig arrow pointing behind a group with the near flag set gives "step
+forward" (decision rule, step 4), the same step as the footprint ahead: a chase scored by step direction alone
+overstates the evidence.
 
 ## Wander and hostility (`$10464`-`$1051e`)
 
@@ -328,6 +341,43 @@ the count never passed 9, so the base was not left. With the period also poked t
 step 2,216,659 and `$87d6` at 4,555,866, mode 3 -> 1. The event completes only because Trill acts less often (every
 52 frames) than the 40-frame count. Killing Trill instead gives the "TRILL HAS BE KILLED" screen (section "Damage and
 death").
+
+## Finishing a base
+
+A normal base is finished by blowing up its generators and getting out. The state is the word `13410(A6)`:
+
+| `13410` | meaning | code |
+|---|---|---|
+| 0 | untouched | - |
+| 1 | fuse: `13408(A6)` counts down from 100 main frames | `$beaa` |
+| 2 | burning: the fire advances one cell every 14 frames | `$bf88` |
+| 3 | the fire has reached the end of its path; `14800(A6)` = 3 | `$bfa4` |
+| 4 | outside after leaving | `$8840` |
+
+- **Arming.** A click on the view with a generator tile (`$28`/`$29`) ahead, in mode 3, with EXPLOSIVES (item `$1b`)
+  in the hand slot `404(A6)`, stores the cell in `13406(A6)`, sets `13408`/`13410` = 100, 1 and empties the hand
+  (`$deb4`-`$deee`). The generators are one 3 × 3 block of `$28` tiles per base (the generator module's feature `$09`).
+- **The blast.** When the fuse ends, `$beb0` turns every `$28` tile in the 5 × 5 block around the cell into `$26`,
+  the flame tile, and marks the hand doors and four other tile types across the map (`$befa`-`$bf32`).
+- **The fire is a fuse along the dig tree.** Every 14 frames `$c036` reads bits 0-2 of the fire cell's plane-2 byte,
+  the generator's arrow toward the entrance (4 and 5 take the lift), and moves the fire one cell that way, lighting
+  cells as it goes; when there is no next cell the state becomes 3.
+- **Leaving.** A click on the view from the entrance cell facing N raises the leave flag (`$dd7e`-`$dd90`). The
+  frame test `$87c0` acts on it only when `13410` > 1; then `$87d6` marks the target visited (`14794(A6)` + 1), and
+  `$8836` sets mode 1 and rebuilds the compound. An untouched base cannot be left this way.
+
+**Proven** in the natural base `base1/in.snap` (labelled pokes: the party's cell and facing, and the hand slot =
+`$801b0000`; `py/phoopel/finish13.py` with `SNAP=base1/in.snap`, `py/phoopel/leave.py`):
+- the click sets `13410` = 1 with `13408` counting from 100; control with an empty hand: `13410` stays 0;
+- state 2 after 8.7M steps, 9 of 9 generator tiles now `$26`; the fire then walks (18,9) to the entrance (30,0), 21
+  of 21 moves equal to bits 0-2 of the cell it leaves, reaching the entrance 26.5M steps later; state 3 and
+  `14800` = 3 at 36.4M steps;
+- leaving from the entrance with the same view click: untouched base, `$dd90` 1 and `$87c0` 1 hit but `$87d6` 0,
+  mode stays 3; in state 2, `$87d6`, `$87f4` and `$8836` 1 hit each, visited 0 to 1, mode 3 to 1.
+The same arming in the D0 = 13 base gives states 1 and 2, 9 of 9 generators to `$26`, and a fire that follows the
+arrows for 28 of 29 moves in 60M steps, the other being the lift move from (54,11) to (22,27) (`finish13.py`). What state 3
+does to a party still inside is not traced (a party poked onto the burning entrance in state 3 ended in mode 1 at
+(0,0) with the target cleared and none of the routines above hit).
 
 ## Cell action (`$10732`)
 
@@ -507,10 +557,10 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 
 ## Open
 
-- A natural chase that reads a footprint: the one observed chase follows the dig tree and then sight.
 - A live lift escape: ride a lift with an aware group on the trail and watch it forget at the lift cell.
 - The `$fc4e` clear, which needs RNG2 <= `$10b8` at a death.
-- `14800(A6)` values 1-3 and their end messages (`$137b0`-`$13860`); the 24-byte map at `$134b0`.
+- `14800(A6)` values 1 and 2 and the end messages (`$137b0`-`$13860`); value 3 is set when a base's fire burns out
+  ("Finishing a base"), and what happens to a party still inside is not traced; the 24-byte map at `$134b0`.
 - What gives the party the `$66` item with `407(A6)` = 1: the generator's `$26946`, called only from the compound
   builder at `$23f64` (raw scan for `bsr`/`bra`, not `jsr`), is the lead.
 - A real use of the die reaching `$1207c`, and the `$e270` branch on D2 bit 4 (`$e312`, `$e34e`, inferred to be the

@@ -135,8 +135,8 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 
 ## Not yet exercised
 
-- The generator's locks in play: what opens a lock whose key kind has no key object, and the door kinds that draw
-  as rock or tile `$26` (`mapgen.md`); none has been met in play.
+- The generator's locks in play beyond the 16-segment panel and the flame door (`mapgen.md`, "The panel in play"):
+  the one-, three- and eight-switch panels and the door kind that draws as rock.
 - What the six `15538(A6)` tests in `federation` gate on an uncracked copy (`system.md` section 5).
 - The intro's top band and smeared figures (`intro.png`): intended animation or a rendering fault, unchecked.
 
@@ -154,5 +154,6 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 | `mapgen_*.png` | generated bases, one colour per floor, and the decorated wall pictures (`mapgen.md`) |
 | `world_case_strip.png`, `world_sheets_surface.png`, `world_fed7E_walls.png`, `world_map_fit.png` | the briefcase frames, the surface picture sheets, the wall sheet, the generated planets over the map screen (`world.md`) |
 | `py/mapgen/`, `py/ai/`, `py/world/`, `py/system/` | the scripts behind each topic doc, each with a README table of command and expected output |
-| `py/phoopel/` | the sealed-key bug behind the Phoopel hint: keys the generator drops on their own door cell, the clipboard number, the census over missions 1..100 (`mapgen.md` "Sealed keys") |
+| `py/phoopel/` | the sealed-key bug behind the Phoopel hint: keys the generator drops on their own door cell, the clipboard number, the census over missions 1..100, the lock panel driven by clicks, explosives on a generator and leaving (`mapgen.md` "Sealed keys", `ai.md` "Finishing a base") |
+| `mapgen_lock_panel.png` | a lock's wall panel in play: cover, 16-segment grid with the lock's number, the code lit |
 | `py/infographics/` | the four figure scripts, a facts file per figure mapping each drawn fact to its source, and a README |
