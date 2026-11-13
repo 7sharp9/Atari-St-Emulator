@@ -1,10 +1,10 @@
 # Populous II: handoff
 
-Updated 2026-11-13 by the session that ended at commit `cbe35b2`.
+Updated 2026-11-13 by the session that ended at commit `98206d4`.
 
 ## Resume point
 
-- Last commit of this workstream: `cbe35b2` populous2: gen_land byte for byte.
+- Last commit of this workstream: `98206d4` populous2: settlement land codes, scenery scatters, 8 gates.
 - Working data: `M68000/scratchpad/populous2/` (`src/WILD29.MSA` from the Dropbox `WILD! #29.zip`, `wild29.st`,
   `files/`, `anchors/`, `pop2_1770.bin` the depacked image, `pop2_all.asm` the whole-image listing). Rebuild:
   `reversing/populous2/README.md` "Provenance" and "Drive recipe".
@@ -36,6 +36,11 @@ Updated 2026-11-13 by the session that ended at commit `cbe35b2`.
 - `gen_land` `$1ebee` byte for byte: 30/30 seeds, cell map plus seed and counters (`py/gen_gate.py` on
   `anchors/p2_gen_entry.snap`, rebuilt by `py/gen_entry.sh`); walk stops at a rejected corner or height 8;
   controls 16/30 (stop at 6) and 0/30 (write before recursion). README "World generator".
+- Scenery scatters `$1f870` (trees, type `$16`) and `$1fa6c` (type `$18`): 30/30 each against the model
+  (`py/scatter_gate.py`); `$1f870`'s attempt bonus reads byte `$3f6a9` through the stale D2 `$ff9d`, proven with
+  the byte poked (30/30, no-bonus control 0/30).
+- Cell codes `$2f`/`$3f` are side 1/side 2 settlement land, not rock: 13/13 settlements on their code, swapped
+  0/13, unoccupied ones within 2 cells 28/28 (`py/owned_cells.py`); written by `$25298` in `$25168` (state 6).
 
 ## Running
 
@@ -47,15 +52,14 @@ Nothing running.
    `$470fe`), `$29c7e`, `$29226` (`$473b0` array), `$2a0b2`, `$2d4c8`, `$136ba`/`$14158` (current player's side record).
    The computer god is likely among them. Then the entity states beyond 2/4/6 (table `$2311c`) and `$24f3a`
    (state 2's test), `$24a92`; drive a walker into a settle or a fight so the other states run under `hits`.
-2. Model the rest of the world build `build_world` `$22942` after `gen_land`: the scatter passes `$1f870` and
-   `$1fa6c` (rock `$2f`/`$3f` on 10 flat cells for the natural seed; scenery records too?) and `$22986` (people).
-   Start from `p2_gen_entry`, `bp 2294e` (after gen_land) then callcap each pass; compare cells and the
-   `$3f42a`/`$3ff1a` arrays against `p2_zeus`.
-3. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
+2. People placement `$22986` (last pass of `build_world`): from `build/c_22986.snap` callcap it and model the
+   entity, `$46f9a` and side-record writes (listed by diffing `c_22986` and `d_after`).
+3. Settlement land claim `$25168`/`$25298`: radius against settlement size byte 1 (`owned_cells.py` gives the cells).
+4. Decrunch: port `$2246a` to Python and compare each `.PAK` against its RAM copy (QAZ.PAK's raw 32000 bytes too);
    then `BLOCKn`/`S16`/`S32` formats for `graphics.md`.
-4. What bit 2 of entity +13 does (set by a lower on your own settlement; state 2 tests bit 1): drive it from
+5. What bit 2 of entity +13 does (set by a lower on your own settlement; state 2 tests bit 1): drive it from
    `p2_game_60m` with `click_ab.py`'s pointer on cell (12,33) and a right click, then `hits` the entity states.
-5. Cell byte 0 bits 3-7 (footfall count, only `$2436e` writes it in play): find its reader; and what the
+6. Cell byte 0 bits 3-7 (footfall count, only `$2436e` writes it in play): find its reader; and what the
    `$4505a` array holds (empty on both anchors; `$26644` updates it).
 
 ## Known traps
@@ -76,7 +80,6 @@ None.
 
 ## Next session
 
-1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 6/6 PASS.
-2. Open item 2: the scatter passes `$1f870`/`$1fa6c` and the people placement `$22986`, to finish the world build.
-3. Then open item 1's remaining main-loop routines (`$25652`, which writes commands 2 and 4 itself, is the
-   likeliest computer-god routine).
+1. `/resume populous2`; `uv run python tools/gates.py run populous2` should print 8/8 PASS.
+2. Open item 2 (`$22986` people placement), which finishes the world build; then item 3 (land claim).
+3. Then open item 1's remaining main-loop routines (`$25652` is the likeliest computer god).
