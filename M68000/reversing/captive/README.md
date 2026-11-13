@@ -10,7 +10,7 @@ The reason to reverse it is the base generator, which the game keeps as its own 
 
 | doc | what it holds |
 |---|---|
-| `mapgen.md` | the base generator: floors packed into one 64x32 grid as 16x8-cell blocks, lifts that join floors by a fixed block offset, a turtle digger under the perfect-maze rule, rooms, the field of arrows back along the dig order that creatures follow, seeds and output encoding |
+| `mapgen.md` | the base generator: floors packed into one 64x32 grid as 16x8-cell blocks, lifts that join floors by a fixed block offset, a turtle digger under the perfect-maze rule, rooms, caves and shafts, the post-dig feature and door stages, the field of arrows back along the dig order that creatures follow, seeds and output encoding |
 | `ai.md` | the creatures: groups scheduled by timer, a decision rule with sight along a row or column only, tracking by breadcrumbs the party writes into the map, the generator's dig-order arrows where the party has not been, 3x3 formations |
 | `world.md` | the universe (50 planets, 100 moons and a station from one 16-bit LCG seeded by the mission number, syllable names), the main loop and raster list, the first-person view cone of pre-drawn mirrored pieces, the picture sheets, `Case.pic` |
 | `system.md` | the `trap #9` OS in the low-RAM loader (files, heap, per-unit RLE), the volume block, the module launcher, the resident monitor, the Copylock in `fed_MapGen`, the Medway Boys crack, the READ TRACK emulator gap |

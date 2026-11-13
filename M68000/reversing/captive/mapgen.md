@@ -6,12 +6,12 @@
 - The grid is cut into 16 blocks of 16x8 cells. Each block is given to one of up to five floors.
 - A random walk grows each floor over the blocks.
 - Lifts join consecutive floors by a fixed translation.
-- A turtle "digger" then carves single-width corridors that never break into another passage, and drops rooms and
-  lifts as it goes.
+- A turtle "digger" then carves single-width corridors that never break into another passage. As it goes it drops
+  rooms, looped caves and lifts, and opens pre-placed shafts between floors when a corridor reaches one.
 - Every carved cell keeps the number of the dig step that made it. The generator turns those numbers into a flow
   field: from any cell, following the arrows walks the dig backwards to the entrance.
-- Later stages prune dead ends (most of them in low-numbered bases, none from base 32 up), scatter features and decorated walls, and place
-  doors, including coded doors whose corner code is drawn at random.
+- Later stages prune dead ends (most of them in low-numbered bases, none from base 32 up), scatter features and
+  decorated walls, and place doors, including coded doors whose corner code is drawn at random.
 
 The whole base is a function of one 16-bit argument: the same argument gives the same base. Addresses are runtime
 addresses with the module loaded at `$1f7b0`, as on landing in `scratchpad/captive/mg_entry.snap`. The module's
@@ -131,50 +131,120 @@ is on a different floor, and 0 elsewhere.
 
 ## The digger and rooms
 
-**Proven by measurement.** `$244b6` (from `$23cb0`) is the bulk of the work: 1,708,805 of the 2,644,857 steps for
-D0 = 1, D2 = 1 (`stages.py`). It writes 891 of the G0 bytes; no other stage moves more than 64 (`stagedump.py`).
+`$244b6` (from `$23cb0`) does most of the work: 1,708,805 of the 2,644,857 steps for D0 = 1, D2 = 1 (`stages.py`).
+It writes 891 of the G0 bytes, and no other stage moves more than 64 (`stagedump.py`).
 
-**The digger (inferred from the code).** It is a turtle with:
-- a position (D1, D2);
-- a floor D3, starting on the entrance (`$244be`-`$244c4`);
-- a heading at `12424(A6)`: 0, 2, 4, 6 for N, E, S, W, with the dx, dy tables at `$248c4` and `$248cc`; it starts
-  facing E;
-- a counter D4 that starts at 1.
+**Proof.** `py/mapgen/digger/dig.py` is a register-level port of `$244b6` and every routine it calls. Its output
+equals the emulator's over the whole module variable block: G0, G1, G2, the room list, both RNG words `12404` and
+`13656(A6)`, every other variable, and D1-D7 at the return. The port starts from the emulator's state at `$23cb0`.
+- **Gate:** 1000/1000 for D2 = 1, D0 = 0..999, and 100/100 for D2 = 0, D0 = 0..99 (`digger/README.md`).
+- **Controls** on the same 1000 seeds:
+  - a carve rule that needs 2 uncarved neighbours instead of 3: 0/1000;
+  - rooms one cell narrower: 0/1000;
+  - no pillars: 24/1000.
 
-**Carving.** `$24f3c` writes D4 into G0 and increments it. The entrance is carved twice (`$244e6`, `$244f0`), so it
-holds 2 (observed in 4 of 4 bases, `bases.json`). In G0 a positive number is the dig order. 0 is rock, `$ffff` is a
-block wall, and `$ffc4`, `$fffd`, `$fffe` are markers written by the room and structure code.
+The rules below are what the gated port computes. Readings that the gate does not separate are marked inferred.
 
-**Each step (`$24872`)** draws a random word into `12426(A6)` and, from its low bits and size:
-- turns left or right;
-- places a lift up or down (`$248f0`/`$24902`, only when the word is above `$ccb0` and D4 > 4), carving the far end
-  on the next floor through the offsets;
-- builds a structure (`$24c5c`, word ≤ `$7ad`);
-- builds a room (`$249da`, word ≤ `$8f48`);
-- otherwise moves one cell forward.
+**The turtle.**
+- **State:**
+  - a position (D1, D2);
+  - a floor D3, starting on the entrance's floor (`$244be`-`$244c4`);
+  - a heading at `12424(A6)`: 0, 2, 4, 6 for N, E, S, W (dx, dy tables at `$248c4`/`$248cc`), starting east;
+  - a counter D4 that starts at 1.
+- **Carving:** `$24f3c` writes D4 into G0 and increments it. The entrance is carved twice (`$244e6`, `$244f0`), so it
+  holds 2.
+- **Uncarved:** a cell counts as uncarved (`$24efc`) when it is rock, outside the grid, or has G0 above `$ffce`.
+  That covers block walls, closed shaft doors (`$ffff`), the blob fence (`$fffe`) and the room reservations
+  (`$fffd`) written before the digger by `$263c2`. The tested cell itself must be rock, or its count is 0.
+- **Carve rule:** a corridor cell is dug only when exactly 3 of its 4 neighbours are uncarved (`$24e8c`,
+  `cmp.w #3,D6` at `$24514`). It touches nothing but the cell it is dug from, so a single corridor carve never merges
+  two passages: the perfect-maze condition. The whole base still has loops (below).
 
-**The carve rule.** A cell is dug only when exactly 3 of its 4 neighbours are uncarved (`$24e8c` counts them,
-`cmp.w #3,D6` at `$24514`). The cell must touch nothing but the cell it is dug from, so corridors never merge or loop:
-the classic perfect-maze condition.
-- **On failure** the digger restores its position (`$24d88`) and retries a random turn, 10 times (`$244f4`).
-- **Then** it tries up to 100 random cells (`$2452a`). When the second RNG exceeds `$a200` it restarts from a carved
-  room, lift or `$11` cell (features `$1f $35 $36 $04 $05 $33 $11`, `$24552`-`$24588`). Otherwise it restarts from
-  any uncarved cell that touches exactly one carved cell.
-- **Budgets:** 300 restarts (`12414(A6)`), 900 lifts (`12416(A6)`), and D4 ≤ `$3000`.
+**Each step (`$24872`)** draws a random word into `12426(A6)` and, from its low bits and size, does one of:
+- turn left or right, then move one cell forward in the same step;
+- a lift up or down (`$248f0`/`$24902`), only when the word is above `$ccb0` and D4 > 4. The far end must lie in a
+  block of the destination floor, at the floor pair's offset, with 4 uncarved neighbours. After a lift the turtle
+  stands on the far end and draws a new word without carving (D5 = -1, `$249c0`). Every in-bounds lift attempt adds 1
+  to the restart counter `12414` and takes 1 from the lift budget `12416`, whether or not it succeeds
+  (`$2491e`/`$24922`);
+- a blob (`$24c5c`, word ≤ `$7ad`);
+- a room (`$249da`, word ≤ `$8f48`);
+- otherwise one step forward.
+
+**Failure and restarts.**
+- **Retries:** when a carve fails, the turtle restores its position (`$24d88`) and retries up to 10 times. Each retry
+  re-draws only a 2-bit selector, D0 = rng & 3 (`$2451e`), and keeps the step word, so a room, blob or lift word is
+  retried with new directions.
+- **Restart:** after 10 failures it tries up to 100 random cells (`$2452a`).
+  - If the second RNG (`13656`) is above `$a200` and the cell is carved with feature `$1f $35 $36 4 5 $33 $11` (room
+    floor, lift ends, blob floor), the restart is a lift attempt from that cell (`$2458a`-`$245a4`). It sets D0 = 2
+    (3 when bit 4 of `12427(A6)` is set), forces the step word above `$ccb0`, takes one from the restart counter and
+    runs the step. If the lift fails it steps forward instead.
+  - Otherwise, and also when the drawn cell has none of those features, the restart takes any uncarved cell that
+    touches exactly one carved cell.
+- **End:** budgets of 300 restarts (`12414(A6)`) and 900 lifts (`12416(A6)`). D4 ≤ `$3000` is also tested but never
+  ends a dig. Over the gated runs, D2 = 1 ended on the restart budget in 874 of 1000 and on the lift budget in 126;
+  D2 = 0 in 89 and 11 of 100.
 
 **Rooms (`$249da`).**
-- **Size:** w × h. Let s = (r ror 6) & `$3f`, masked with `$1b` when r > `$3ff7`, where r is the step's random word.
-  Then w = (s & 7) + 1 and h = ((s >> 3) & 7) + 1 (`$249de`-`$24a6a`).
-- **Check, then carve:** every cell is first checked with the same neighbour test, and a failed check abandons the
-  room. Then the rows are carved.
-- **Pillars:** a room with w > 1 and h > 1 takes a pillar pattern from the bit table at `$24c1c` (row offset
-  r & `$38`). Pillar cells stay rock, with feature `13652(A6)`: 0, or `$20` when r rol 2 exceeds
-  `$eeff` - 8·min(D0, `$7f7`) (`$23bc6`, `$24a06`-`$24a18`).
+- **Size:** let s = (r ror 6) & `$3f`, masked with `$1b` when r > `$3ff7`, where r is the step word. The room is
+  ((s & 7) + 2) × (((s >> 3) & 7) + 2) cells. The check loops at `$24a88`-`$24ae2` are `dbf` loops on the stored
+  w - 1 and h - 1, so each runs once more than the stored count. **Proven** over 25,771 rooms in the 1000 gated bases:
+  every bounding box has that size (`digger/rooms.py`).
+- **Check, then carve:** the room's first cell (the one ahead of the turtle) needs 3 uncarved neighbours and every
+  other cell 4, so a room touches the maze only at its entry. A failed check makes the step a plain forward move
+  (`$24bde`-`$24bea`).
+- **Pillars:** a room wider and taller than one cell takes a pillar pattern from the bit table at `$24c1c` (row
+  offset r & `$38`). Pillar cells stay rock, with feature `13652(A6)`: 0, or `$20` when r rol 2 exceeds
+  `$eeff` - 8·min(D0, `$7f7`) (`$23bc6`, `$24a06`-`$24a18`). 20,578 of the 25,771 rooms have none. A 9-row room reads
+  its ninth pattern byte past the table, from the code at `$24c5c` (`$61`). That is harmless because the last row
+  never takes pillars, but the port has to copy it.
+- **Numbering:** room cells are not dig order. Row r starts at D4 + 8r, each cell adds 2 and each pillar 8. After the
+  room, D4 grows by 8(h + 1) + `$48`.
 - **Floor feature:** `$1f`, or `$33` for some rooms when D0 > 4 (`$24a22`-`$24a3e`).
-- **Room list:** up to 63 rooms are recorded at `12952(A6)` as (x, y, floor, feature), counting down from `13208(A6)`.
+- **Room list:** up to 63 rooms at `12952(A6)`, counting down from `13208(A6)`. Each entry is (x, y, floor, s), where
+  (x, y) is the room's last carved cell and s its size byte (`12436(A6)`). **Proven** (`rooms.py`): 25,588 of 25,771
+  entries match, and the other 183 are cells that later became lift ends; none is unexplained.
 
-What the rule produces is visible in the PNGs: single-width winding corridors with no loops, rectangular rooms, and
-lifts between floors. The tree property itself is not counted.
+**Blobs (`$24c5c`).**
+- **Fence:** `$24d2c` marks with `$fffe` every rock cell next to a carved cell, and the turtle's own cell.
+- **Walk:** the blob carves the cell ahead with feature `$11` (`$14` when rol(r, 8) ≤ `$2710` and D0 ≠ 0), then walks
+  50 random steps (`$24cd4`). It carves rock, walks over carved cells, and turns back at `$fffd`-`$ffff` or the grid
+  edge.
+- **Clear:** `$24d60` clears the fence afterwards.
+- **Result:** a looped cave joined to the maze only through its first cell.
+- **Side effect:** the blob's step `$2484e` overwrites the saved position `48`-`52(A6)`, so the next restore
+  (`$2451a`) lands on the blob's last cell, not the turtle's.
+
+**Shafts.** Before the digger, `$245e2` (through `$24606`/`$2465e`) lays out up to 5 groups of shaft entries, one entry
+per floor. That `$245e2` writes them is inferred from the code; the layout is read from the emulator's state at
+`$23cb0`.
+- **Entry:** a cell with feature `$1c` and G0 = 2, a cell with feature `$18` and G0 = 1, and a closed door (G0 `$ffff`,
+  feature `$0f`) walled with `$ffff`.
+- **Lists:** doors at `13360(A6)`, `$1c` cells at `13410(A6)`, `$18` cells at `13460(A6)`. Each is 5 groups of 5 (x, y)
+  pairs, with `$ffff` for unused.
+- **Placement:** consecutive floors' entries sit at the lift offsets `16`/`24(A6)`. Seed 2 has (18,4), (50,4) and
+  (34,12), with offsets (+32, 0) and (-16, +8).
+- **Opening** (`$24d96`/`$24dda`, after every room, lift and blob cell): when a door has exactly 2 uncarved
+  neighbours, that is, a passage has reached it:
+  - that floor's door, `$18` and `$1c` cells are carved, and the `$1c` becomes `$1d`;
+  - every other floor's door that touches exactly one carved cell is carved too;
+  - the turtle moves to the last door opened (`13286`/`13288(A6)`, `$24dc2`-`$24dd0`) and digs on from there.
+- **Routing:** the flow field's 4/5 values at `13410` (`$2503c`) are the way through these shafts.
+- **Inferred:** the `$18` cells' G0 = 1 accounts for the carve number 1 seen away from the entrance.
+
+**Loops** (`digger/dig.py tree`, over the 1000 gated bases). A cell counts as carved when 0 < G0 < `$ff00`. Edges join
+orthogonally adjacent carved cells on one floor. A base is a forest when E - V + C = 0.
+- **Raw cells:** 0 of 1000 are forests, because rooms and blobs are open areas.
+- **Rooms and blobs contracted to one node each:** 819 of 1000 are forests. The 232 cycle-closing edges in the other
+  181 all touch a shaft:
+  - 228 between a blob and a shaft cell;
+  - 3 between a corridor and a shaft cell;
+  - 1 corridor-to-corridor edge (seed 958), dug beside a door while it was closed.
+- **With lifts and shafts as edges:** every base is one connected component, and 503 of 1000 are forests (925
+  cycles), because shafts and lifts give alternative routes between floors.
+
+So the corridors are a perfect maze per floor, and the loops in a base come from its blobs and its shafts.
 
 ## The flow field (plane 2)
 
@@ -304,8 +374,8 @@ object each feature is has not been matched.
   writes it anywhere else.
 
 **Not ported.**
-- `$263fa`, a second dig pass: `$2640a`(D0) + 1 calls of the room builder `$249da` in mode `13584` = 2. It needs a
-  digger model.
+- `$263fa`, a second dig pass: `$2640a`(D0) + 1 calls of the room builder `$249da` in mode `13584` = 2. The room
+  builder is ported in `digger/dig.py`, so this stage can reuse it.
 - `$2419a`, the doors (read, not ported):
   - first a plain door on each of the 25 cells of `13712(A6)`;
   - then 300 tries on corridor cells walled on both sides, with the kind from the byte table `$24228`;
@@ -375,9 +445,7 @@ surface.
 
 - The unported post-dig stages listed at the end of "After the flow field". `stagedump.py` gives the bytes each one
   changes.
-- `$24c5c`: features `$11` and `$14`, with a marker `$fffe`.
+- The shaft layout `$245e2`/`$24606`/`$2465e` and the room reservations `$263c2`: read in part, not ported.
 - The tile list's game meaning: no tile or feature has been matched to a picture or object.
 - The surface generator past `$23d94`.
 - What the Copylock prologue checks.
-- Whether the digger's corridor network is a strict tree: implied by the carve rule, not counted.
-- Why a carve number 1 occurs away from the entrance in some bases (2 of 4 in `bases.json`).

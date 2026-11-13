@@ -21,3 +21,4 @@ the only part that reads the disk. They therefore do not depend on stserver's FD
 | `stages.py`, `evt.py` | steps per stage from an `ATARI_TRACE_EVENTS` log of the call | REPL `callcap 20054 4000000 D0=1 D1=0 D2=1 D3=0 D4=ffffffff A0=1d9e8 A1=b532 A2=303c` from `mg_ret.snap` with `ATARI_NOTRACE=1 ATARI_TRACE_EVENTS=base.evt`, then `stages.py base.evt 2` | `023cb0 -> 0244b6 ... steps 1708805` (the digger) |
 | `basemap.py` | renders bases (`mapgen_base_*.png`) | `gen.py bases.json 1,0,1,0 5,0,1,0 12,0,1,0` then `basemap.py bases.json png` | one PNG path per case |
 | `stages/` | the post-dig stages: 17 calls ported and gated 80/80 each, the coded-door list writer | `stages/README.md` | `stages/gate.py 0 40`: 17 lines of `exact 80/80` |
+| `digger/` | a register-level port of the digger `$244b6`, byte-exact against the emulator; room sizes, room list, loop census | `digger/README.md` | `digger/dig.py gate ...`: `match 1000/1000` (D2 = 1), `match 100/100` (D2 = 0) |
