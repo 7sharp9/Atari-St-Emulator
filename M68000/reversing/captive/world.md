@@ -23,14 +23,32 @@ steps in order, passing the RNG state in D0 from one step to the next (`$302ca`-
 
 | step | routine | output | rule |
 |---|---|---|---|
-| map dots | `$30430` | `13566(A6)` = `$1eacc`: 51 longs (x.w, y.w) | two RNG steps are discarded, then each dot takes x = D1 & 31 and y = (D1 >> 5) & 31. A value of 0 is rejected. Each value is mapped through the 32-byte table `$3047c` = {0,1,2,3,5,6,7,8,10,...,38}, and a duplicate dot is rejected. |
+| map dots | `$30430` | `13566(A6)` = `$1eacc`: 51 longs (x.w, y.w) | two RNG steps are discarded, and `$3043a` clears 301 longs from `13566(A6)`: the dot, moon and object tables (51 + 100 + 150) together. Each dot then takes x = D1 & 31 and y = (D1 >> 5) & 31; a draw with either field 0 is rejected (`beq $30446`). Each field is mapped through the 32-byte table `$3047c` = {0,1,2,3,5,6,7,8,10,...,38}, and a duplicate dot is rejected. |
 | moons | `$303f6` | `13770(A6)` = `$1eb98`: 100 longs | parent planet = dot 1 + (D1 × 50 >> 16), orbit slot = D1 & 7 (byte 2). A duplicate (planet, slot) pair is rejected. |
 | map units | `$3037a`, `$3039e` | in place | `c × 512 − $2600`; a moon adds its slot's offset from `$303d6`: the 8 compass points at ±160 units |
-| targets | `$302fa` | byte 3 of `14170(A6)` = `$1ed28` (150 longs) | numbers 1..10 go to random free objects (D0 × 150 >> 16). Mission 0 forces object 0 first. |
-| object bytes 0, 1 | `$3032c` | bytes 0, 1 of the 150 objects | objects 0..49 get (D0 & 31, D0 >> 5 & 31); objects 50..149 get ((D0 & 15) + 7, (D0 >> 5 & 15) + 7). They are the landing site on the body: (b − 15) map units from its centre, doubled for a planet (`$2fffc`; "Targets and landing seeds" below). |
+| targets | `$302fa` | byte 3 of `14170(A6)` = `$1ed28` (150 longs) | numbers 1..10 go to random free objects (D0 × 150 >> 16); an object already holding a number is redrawn (`tst.l` at `$3031c`, which relies on the clear at `$3043a`). Mission 0 forces object 0 first. |
+| object bytes 0, 1 | `$3032c` | bytes 0, 1 of the 150 objects | objects 0..49 get (D0 & 31, D0 >> 5 & 31); objects 50..149 get ((D0 & 15) + 7, (D0 >> 5 & 15) + 7). They are the landing site on the body: (b − 15) map units from its centre, doubled for a planet (`$2fffc`; "Targets and landing seeds" below). This step reads the raw D0, not the rotated D1, so the sites inherit the LCG's short low-bit periods (below). |
 
-The coordinate table skips every value that is 4 mod 5. The map grid has a line every 5 units, so
-a dot can never lie on a grid line.
+**The coordinate table and the grid.** The map screen draws a dot for cell c at pixel `(66,73) + 2 × c`
+and a grid line every 5 cells, at cells −1, 4, 9, ..., 39 (pixel x 64..144 and y 71..151, measured on the
+rendered `mission1.snap`). The table `$3047c` skips every value that is 4 mod 5, so a dot never lies on a
+line: each of the 8 grid squares on an axis holds 4 positions, and 8 × 4 = 32 entries fill the 5-bit field
+exactly. Because a field of 0 is rejected, entry 0 is never used: 31 of the 32 values are reachable, and
+the first row and column of the first square stay empty. Proven for the line positions and the dots:
+0 of the 306 dot coordinates of missions 1, 2 and 8 are 4 mod 5 (`py/infographics/gen_universe.py`).
+
+**Draws per step.** The step counts of each mission follow from the rejections. For mission 1 (index 0):
+2 discards, 55 dot draws (3 with a zero field, 1 duplicate), 107 moon draws (7 duplicates), 9 target draws
+(object 0 forced, no redraw) and 150 site draws, 323 in all, leaving D0 = `$0057`. Mission 2 takes 328
+draws (55 dot, 111 moon, 10 target) and ends at `$c159`; mission 8 takes 331 (56, 113, 10) and ends at `$079a`. **Proven:**
+`py/infographics/gen_universe.py` counts the draws in a second copy of the chain and asserts that its tables
+equal `universe.py` and RAM and that its final D0 equals D0 at the return of each `callcap 302c6` re-run.
+
+**Short periods in the raw state.** With a power-of-two modulus, bit k of D0 repeats with period 2^(k+1)
+(bits 0..4: 2, 4, 8, 16, 32). The dots and moons use the rotated D1 and avoid this; the site bytes use D0.
+On the mission 1 table the low nibble of site byte 0 repeats every 16 objects (134/134), its low bit
+alternates (149/149), and a planet's byte 0 repeats every 32 objects (18/18). Proven on RAM
+(`gen_universe.py`); whether the repetition shows in play is not checked.
 
 **Proven.** `py/world/universe.py` reimplements every step and compares the result with RAM.
 
@@ -40,6 +58,10 @@ a dot can never lie on a grid line.
 - On screen, `py/world/starscreen.py` finds 50 white pixels inside the grid of the rendered `mission1.snap`. The 50 generated planets land on exactly those pixels under `pixel = (66,73) + 2 × cell`, and no white pixel is left unexplained. The one generated dot not drawn as a pixel is slot 0, the station. (`world_map_fit.png`: red boxes are generated planets on white pixels, the yellow box is the station's cell.)
 
 ![generated planets over the mission 1 map](world_map_fit.png)
+
+`infographic_universe.png` (`py/infographics/gen_universe.py`) draws the whole chain: the LCG and its bit
+periods, the steps with mission 1's draw counts, the fit to the screen, the coordinate table against the
+grid, a name worked through, and the maps of missions 1, 2 and 8.
 
 **Names for the bodies, from the game's own text.** `$2ff6e` labels the selected object by its number
 D6 (stored in `14782(A6)`). Numbers 1..50 print `PLANET-`, 51..150 print `MOON-` and 0 prints
@@ -55,13 +77,16 @@ the branch; the station's own drawing path (`$2f7e2`, D3 = `$96`) is inferred.
 **Body names** come from `$3066e`. It seeds with `mission × 150 + object index`, applies three LCG
 steps with a byte swap after the first, and then uses four 4-bit fields to pick one syllable each
 from four 16-entry tables (`$30706`, `$30726`, `$30746`, `$30766`, 1 or 2 letters per entry). A
-seed argument of 150 gives `STATION`. **Proven for one name:** `star.snap` has object 14 selected
+seed argument of 150 gives `STATION`. The names are recomputed from that seed whenever a body is
+labelled (inferred from the code); they do not come from the generator chain above, which only shares the LCG
+constants. **Proven for one name:** `star.snap` has object 14 selected
 (`14782(A6)` = `$e`), and the screen reads `PLANET-PAICKOT`. `universe.py --names`
 gives index 13 = PAICKOT. The other names are inferred.
 
 **Targets and landing seeds** (`$2ff62`-`$2ffe6`, `$2f5f4`-`$2f69c`, `$87d6`-`$8814`). Map slot 0 is the station
 and slots 1..150 are the bodies; body slot s owns object record s − 1, so universe.py's "object 0" (target 1 at
-mission 1) is planet slot 1, PLANET-BUTRE.
+mission 1) is planet slot 1, PLANET-BUTRE. Target 9 of mission 1 is object 107, PHUPET, one of BUTRE's own moons
+(moon table entry 57), so two targets share one planet on the map (computed from the model, which equals RAM).
 
 - **Selecting a site.** A click on the map moves the cursor (`$2feb0`, one pixel = 2^zoom units, zoom `14770(A6)`
   from 8 down to 0 with the two ladder icons, `$2f70a` in and `$2f72e` out) and clears the selection words
@@ -78,7 +103,10 @@ mission 1) is planet slot 1, PLANET-BUTRE.
   byte 2 bit 1 is set (mode 2).
 - **Revealed targets.** A target number k is shown on the map only if bit k−1 of the mask `14796(A6)` is set. The
   mask starts at 1 (`$30280`). Landing does not test the mask.
-- **Visited targets.** `$87d6` sets bit 1 of the target object's byte 2 and increments `14794(A6)` (inferred).
+- **Visited targets.** `$87d6`, which ends a base (`ai.md`), sets bit 1 of the target object's byte 2 and increments
+  `14794(A6)`. The increment is proven by `py/ai/level_event.py` on `base1/in.snap` (labelled pokes `14798(A6)` = 1,
+  `15608(A6)` = `$ffff`): `$87d6` runs once, `14794(A6)` goes from 0 to 1 and the mode from 3 to 1. The byte-2 bit is
+  inferred.
 - **Final target.** The station (slot 0) has no site. Landing there with `14794(A6)` above 9 writes request 4
   (`$2f676`) with base seed `mission × 11 + 10`; since `14782(A6)` = 0, `$b5a0` builds it with D2 = 1. Inferred:
   ten targets per mission plus a final one at the station.
@@ -120,7 +148,9 @@ Each 8-byte slot holds dx.w, dy.w, a piece number, a kind, and an index into a l
 surrounding cells at `15382(A6)`. The slots cover dx −2..2 and dy −4..0 and are ordered by depth,
 farthest row first, outer columns before inner. Kind 2 is a cell's front face, kinds 1 and 3 its
 left and right faces, and kinds with bit 3 set (`$8`-`$d`) are the cell contents. `$a1c4` reads the
-cell's code and dispatches on it to the wall, door, object and party handlers (`$a1fc`-`$a302`).
+cell's code and dispatches on it to the wall, door, object and party handlers (`$a1fc`-`$a302`). What
+each generator feature tile is when seen and entered (hand-operated door, valve, floor trap, spinner,
+false wall, decorated rock face) is in `mapgen.md`, "After the flow field".
 `$a848` draws the other droids standing in a visible cell from the four (x, y, facing) entries at
 `176(A6)`. **Proven** as counts: on the surface `$9d86` runs 20 times and `$a1c4` 752 times in 1.2M
 steps (20 × 38 = 760; why the count is 8 short is not checked). The cone and dispatch are
@@ -269,7 +299,6 @@ of the match is therefore fed4 sitting where Case.pic's frame 0 would be, not a 
 
 ## Open questions
 
-- The role of object bytes 0 and 1 (5-bit values for planets, 7..22 for moons).
 - How the station is drawn at the full-map zoom.
 - Who calls `$460a`.
 - How the view buffer is copied to the screen.

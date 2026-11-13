@@ -10,13 +10,17 @@ The reason to reverse it is the base generator, which the game keeps as its own 
 
 | doc | what it holds |
 |---|---|
-| `mapgen.md` | the base generator: floors packed into one 64x32 grid as 16x8-cell blocks, lifts that join floors by a fixed block offset, a turtle digger under the perfect-maze rule, rooms, caves and shafts, the post-dig feature and door stages, the field of arrows back along the dig order that creatures follow, seeds and output encoding |
-| `ai.md` | the creatures: groups scheduled by timer, a decision rule with sight along a row or column only, tracking by breadcrumbs the party writes into the map, the generator's dig-order arrows where the party has not been, 3x3 formations |
-| `world.md` | the universe (50 planets, 100 moons and a station from one 16-bit LCG seeded by the mission number, syllable names), the main loop and raster list, the first-person view cone of pre-drawn mirrored pieces, the picture sheets, `Case.pic` |
+| `mapgen.md` | the base generator, ported whole: floors packed into one 64x32 grid as 16x8-cell blocks, lifts that join floors by a fixed block offset, a turtle digger under the perfect-maze rule, rooms, caves and shafts, the field of arrows back along the dig order, dead ends, features and what each is in play, locked doors with keys placed earlier in the dig order, coded doors, item and creature placement, seeds and output encoding |
+| `ai.md` | the creatures: groups scheduled by timer, a decision rule with sight along a row or column only, tracking by breadcrumbs the party writes into the map, the generator's dig-order arrows where the party has not been, 3x3 formations tidied while the group is in view, hit points and death, Trill and the end of a base; getting into a base, the combination lock and the DIE that shows a door's next corner |
+| `world.md` | the universe (50 planets, 100 moons and a station from one 16-bit LCG seeded by the mission number, a coordinate table that keeps dots off the map grid, syllable names, targets and landing sites), the main loop and raster list, the first-person view cone of pre-drawn mirrored pieces, the picture sheets, `Case.pic` |
 | `system.md` | the `trap #9` OS in the low-RAM loader (files, heap, per-unit RLE), the volume block, the module launcher, the resident monitor, the Copylock in `fed_MapGen`, the Medway Boys crack, the READ TRACK emulator gap |
 
 Every generator in the game uses the same LCG, `x = x*$5e5 + $29` mod 65536, with its own state and output
 rotation: the universe (`world.md` section 1), the bases (`mapgen.md`) and the creatures (`ai.md`).
+
+`py/infographics/` draws one explanatory figure per algorithm (the creature trail, the digger, the universe, the
+combination lock) from the proven models and the game's own captured values; its README gives each script and the
+evidence it re-runs.
 
 ## Provenance
 
@@ -42,8 +46,9 @@ Captive's own boot code. That code copies the loader into low RAM (`$206`-`$1200
 | in orbit of planet 14 (PLANET-PAICKOT) | click the planet on the map, then ORBIT | - |
 | on the planet surface | LAND | `landed.png` |
 | inside a base | target 1's landing site selected at zoom 2, ORBIT, LAND, walk to the compound door, enter its corner code, step to the entrance cell (`py/ai/natural_base.repl`; `ai.md`, "Getting into a base") | `base1.png` |
+| a base finished, and the mission's end screen | the level event a Trill attack raises, set by labelled pokes from inside the base: the party returns to the compound entrance; at the final base the mission number advances and the end screen shows (`py/ai/level_event.py`; `ai.md`) | `ai_trill_end.png` |
 
-`drive.txt` does all three from a cold boot (about 300M steps) and writes `scratchpad/captive/mission1.snap`;
+`drive.txt` does the first three from a cold boot (about 300M steps) and writes `scratchpad/captive/mission1.snap`;
 two runs give byte-identical snapshots.
 
 ```
@@ -117,6 +122,12 @@ base (`ai.md`, "Getting into a base"). It returns in D0 the mask of creature she
 entry column in `9238(A6)`; the base path returns D5 = D6 = 0. The same arguments give byte-identical output.
 The algorithm is in `mapgen.md`.
 
+The base path runs entirely in Python from (D0, D2): every stage from the blocks and the digger through the doors,
+locks, item and creature placement to the output encoding is ported and chained, and the result matches the
+emulator's returned output (the whole module block, the federation tables and layers, and D0, D5, D6) in 400/400
+cases, D2 = 0 and 1 with D0 = 0..99 and the out-of-sample D0 = 300..399. The gates, controls and the chain's start
+state are in `mapgen.md`.
+
 Code offset 0 is a Rob Northen Copylock (`system.md` section 5). It reads the disk, adds its key into
 `15538(A6)`, and feeds the generator nothing: calling the plain entry `$20054` with the caller's registers
 reproduces the natural landing call on every output region (`mapgen.md`). On landing (`go_1.snap`, LAND) it is
@@ -124,9 +135,8 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 
 ## Not yet exercised
 
-- Where the game tells the player a door's corner code (`ai.md`, "Getting into a base").
-- The generator's door stage `$2419a` and its creature and object placement stages (`mapgen.md`, "After the flow
-  field", "Not ported"); the other 17 post-dig stage calls are ported and gated.
+- The generator's locks in play: what opens a lock whose key kind has no key object, and the door kinds that draw
+  as rock or tile `$26` (`mapgen.md`); none has been met in play.
 - What the six `15538(A6)` tests in `federation` gate on an uncracked copy (`system.md` section 5).
 - The intro's top band and smeared figures (`intro.png`): intended animation or a rendering fault, unchecked.
 
@@ -136,9 +146,12 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 |---|---|
 | `drive.txt` | REPL drive from cold boot to the mission 1 planet screen |
 | `menu.png`, `intro.png`, `mission1.png`, `landed.png`, `base1.png` | milestone screenshots |
+| `infographic_trail.png`, `infographic_digger.png`, `infographic_universe.png`, `infographic_lock.png` | explanatory figures: creature pursuit along the trail and the dig-order arrows (`ai.md`), the digger and its flow field (`mapgen.md`), the universe from the mission number (`world.md` section 1), the combination lock and the DIE (`ai.md`); made by `py/infographics/` |
+| `ai_*.png` | figures for `ai.md` (the DIE's hint faces, the Trill screens) |
 | `py/fedfs.py` | disk decode, directory, extract, depack |
 | `py/hunks.py` | hunk parser and RAM alignment |
 | `mapgen.md`, `ai.md`, `world.md`, `system.md` | topic docs (table at the top) |
-| `mapgen_*.png` | generated bases, one colour per floor (`mapgen.md`) |
+| `mapgen_*.png` | generated bases, one colour per floor, and the decorated wall pictures (`mapgen.md`) |
 | `world_case_strip.png`, `world_sheets_surface.png`, `world_fed7E_walls.png`, `world_map_fit.png` | the briefcase frames, the surface picture sheets, the wall sheet, the generated planets over the map screen (`world.md`) |
 | `py/mapgen/`, `py/ai/`, `py/world/`, `py/system/` | the scripts behind each topic doc, each with a README table of command and expected output |
+| `py/infographics/` | the four figure scripts, a facts file per figure mapping each drawn fact to its source, and a README |
