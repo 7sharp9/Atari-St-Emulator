@@ -21,7 +21,7 @@ Updated 2026-11-13 by the session that ended at commit `9fd979c`.
   915/915 callcaps (`py/corners.py --callcap`; README "The landscape").
 - No separate 65x65 grid in RAM: best 2875/4086 vs planted 4071 (`py/find_corner_grid.py --control`).
 - `rand` `$215dc`: 32-bit LCG `$bb40e62d` on `$47382`, 50/50 (`py/rand_gate.py`).
-- Main loop `$12524`, one tick per about 7 VBLs: 23 call targets at 29 calls in 200 VBLs (`py/call_census.py`).
+- Main loop `$12524`, one tick per about 7 VBLs: 23 call targets at 29 calls in 200 VBLs (`tools/call_census.py`).
 - Loader `$2cc98` + file table `$2cdb6`: 11 of 13 files at their table address (`py/fdc_files.py`).
 
 ## Running
@@ -51,8 +51,7 @@ Nothing running.
 
 ## Waiting on Dave
 
-- `py/call_census.py` is game-agnostic (call/interrupt counts from `trace_cfg.load`); promote it to `tools/` with a
-  "Other tools" row? It touches the shared tool index, so it was left in the game's `py/`.
+None.
 
 ## Next session
 

@@ -1210,6 +1210,7 @@ least once by a session that did not know it existed.
 | `tools/prg2img.py prg img <text>` | relocate a GEMDOS executable to its runtime TEXT address (TEXT+DATA+zeroed BSS), so image addresses equal trace/snapshot addresses |
 | `tools/ghidra/DecompileAll.java` | headless Ghidra decompile of a `prg2img` image to one C file, with `.sym` names applied; for compiled-C programs (usage in the file header) |
 | `tools/trace_cfg.py` | call graph / CFG / block map from an `ATARI_TRACE_EVENTS` log (above) |
+| `tools/call_census.py <events.bin> [min]` | call and interrupt counts from an `ATARI_TRACE_EVENTS` log: routines run once per game tick share one count, which finds a main loop's body and its tick rate; the interrupt line names the live handlers (Populous II: 23 targets at 29 calls in 200 VBLs, `reversing/populous2/README.md` "Main loop") |
 | `tools/add_file_to_disk.py` | put a file on a FAT12 image, `--auto` into `\AUTO\`; `--from-disk NAME --remove NAME...` turns a desktop-launched game into a headless-booting disk |
 | `tools/make_blank_disk.py`, `tools/make_test_prg.py` | blank images, test programs |
 | `tools/extract_disk.py image.st outdir` | dump every file of a FAT12 `.ST` image, recursing into directories (the reverse of `add_file_to_disk.py`) |

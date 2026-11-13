@@ -132,7 +132,7 @@ cells, which suggests Populous's 8x8 close-up view), then `$1334a`, `$2309a`, `$
 `$27faa`, `$1fcce`, `$29c7e`, `$2a0b2`, `$1bfe`, `$2d4c8`, `$29226`, and the key handling on
 `$392f4`. An event trace of 2.4M steps (200 VBLs) from `p2_game_60m` runs the loop **29 times**,
 one game tick per about 7 VBLs: every routine named here is called exactly 29 times, among 23 call
-targets at that count (`py/call_census.py ev60.bin`; the census is
+targets at that count (`tools/call_census.py ev60.bin`; the census is
 `scratchpad/populous2/calls60.txt`). None of them is named yet.
 
 ### The landscape (verified)
@@ -227,7 +227,6 @@ a battle. Unread: every routine of the main loop by name, Timer A, the sprite an
 | `py/corners.py` | the corner-height model, its re-derivation and the `$1f176` callcap gate |
 | `py/find_corner_grid.py` | the RAM search for a separate corner grid, with a planted control |
 | `py/rand_gate.py` | `rand` `$215dc` against its model, 50 callcaps |
-| `py/call_census.py` | call and interrupt counts from an event log (the main-loop census) |
 | `py/fdc_files.py` | names the file behind each sector of an `ATARI_TRACE_FDC` log |
 | `compilation_menu.png`, `title.png`, `briefing.png`, `zeus.png`, `game_start.png`, `game_60m.png` | the milestones (`tools/snap_render.py` of the boot and the five anchors) |
 
