@@ -565,9 +565,9 @@ item's hints are described) is written by the generator.
 In stage order. Feature numbers are G1 features; "Output encoding" gives their tiles, and the meanings marked
 **proven in play** were checked by walking or clicking in a D0 = 30 base (`base30.repl`; the live map equals
 `gen.py 30,0,0,0` on 2047/2048 bytes ignoring bit 7). The party was poked beside each feature (labelled pokes) and
-stepped or made to click. `mine_step.py` is in `py/ai/`; the other scripts (`view_tiles.py`, which makes `mine_step.py`'s input
-snapshots, `step_diff.py`, `picwatch.py`, the `spin/` runs and `base30.repl`) are not promoted and stay in
-`scratchpad/captive/agents/curios/`, with their views under `views/` and `pics/` there.
+stepped or made to click. `mine_step.py` is in `py/ai/`; `view_tiles.py` (which makes `mine_step.py`'s input snapshots), `step_diff.py`,
+`picwatch.py` and `base30.repl` are in `py/mapgen/`. The `spin/` runs and the views (`views/`, `pics/`) stay in
+`scratchpad/captive/agents/curios/`.
 
 - `$25240` places a 3x3 patch of feature 9 (tile `$28`).
   - Site: the first room-list entry (`12952(A6)`) whose kind byte has both bit fields 0-2 and 3-5 non-zero.

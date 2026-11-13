@@ -17,7 +17,7 @@ What the emulator gives (cached in scratchpad/captive/infographics/data/lock_emu
           6144 sequences, 24576 calls of $e270; state word after each press and whether $c420 (open) was reached.
     die:  labelled pokes: door tile $44 -> $42 (kind 2), party (22,20) facing S, 120,000 steps; then for each code and
           each pressed set (low nibble 0..14), $1207c called 3 times. Control: the same with the tile left at $44.
-  the curios helper scripts (HELPERS, default scratchpad/captive/agents/curios; only --emu needs them), re-run
+  the helper scripts in py/ai (HELPERS overrides the directory; only --emu needs them), re-run
   into lock_runs/: die_all.py (req4.snap), die_hint.py and DIE_TILE=42 die_hint.py
   (base1/outside.snap), ratt_msg.py (three snapshots), doorcodes.py compound.json, die_faces.py req4.snap.
 Facts and sources: lock.facts.md."""
@@ -41,7 +41,7 @@ from gfxview import load_ram  # noqa: E402
 args = [a for a in sys.argv[1:] if a != '--emu']
 EMU = '--emu' in sys.argv[1:]
 W = os.path.join(R, 'scratchpad', 'captive')
-CUR = os.environ.get('HELPERS') or os.path.join(W, 'agents', 'curios')   # --emu only
+CUR = os.environ.get('HELPERS') or os.path.join(R, 'reversing', 'captive', 'py', 'ai')   # --emu only
 OUT = args[0] if args else os.path.join(W, 'infographics')
 DATA = os.path.join(W, 'infographics', 'data')
 RUNS = os.path.join(DATA, 'lock_runs')
@@ -160,7 +160,7 @@ if EMU or not os.path.exists(CACHE):
     run(py + [os.path.join(CUR, 'die_hint.py')], 'die_hint.txt')
     run(py + [os.path.join(CUR, 'die_hint.py')], 'die_hint_42.txt', env=dict(os.environ, DIE_TILE='42'))
     run(py + [os.path.join(CUR, 'ratt_msg.py'), os.path.join(W, 'base1', 'in.snap'), REQ4,
-              os.path.join(CUR, 'base30.snap')], 'ratt.txt')
+              os.path.join(W, 'agents', 'curios', 'base30.snap')], 'ratt.txt')
     run(py + [os.path.join(CUR, 'doorcodes.py'), COMPOUND], 'doorcodes.txt')
     run(py + [os.path.join(CUR, 'die_faces.py'), REQ4, os.path.join(RUNS, 'die_faces.png')], 'die_faces.txt')
     json.dump(census(), open(CACHE, 'w'))

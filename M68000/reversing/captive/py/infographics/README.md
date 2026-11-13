@@ -7,8 +7,8 @@ figure to its doc section or computation and flags what the work found wrong or 
 paragraph and gives every panel a "How to read" and a "Takeaway", with a "How we know" strip that explains the proof
 labels, gates and snapshot names; the facts file's "Explanatory text" table sources each of those sentences. Cached
 emulator results and helper inputs live in `scratchpad/captive/infographics/data/`. gen_trail, gen_digger and
-gen_lock recreate a missing cache themselves (gen_lock's `--emu` also needs the curios helper scripts, `HELPERS`,
-default `scratchpad/captive/agents/curios/`); gen_universe's three callcap deltas are made by the command in its
+gen_lock recreate a missing cache themselves (gen_lock's `--emu` runs the helper scripts in `py/ai/`, or in the directory
+`HELPERS` names, and reads `scratchpad/captive/agents/curios/base30.snap`); gen_universe's three callcap deltas are made by the command in its
 docstring and `universe.facts.md`.
 PNG: `cd M68000/scratchpad/captive/infographics && rsvg-convert -z 2 <name>.svg -o <name>.png`; the committed copies
 are `reversing/captive/infographic_<name>.png`.

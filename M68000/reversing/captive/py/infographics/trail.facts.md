@@ -13,7 +13,7 @@ natural base `base1/in.snap`.
 |---|---|
 | base map: 579 open cells in rows 0-14 of the 64 x 32 grid `$1d9e8`; block floor table `9206(A6)` = 1,2,2,2 / 6,2,2,6 / 6...; entrance column word `9238(A6)` = 12 | read from req4 (mapgen.md "Floors and lifts"; 6 = outside) |
 | arrows in A = plane-2 `$1e208` bits 0-2 (dig tree); colour = where the walk ends: lift (24,3) value 5: 449, lift (2,4) value 4: 11, entrance (12,0): 74, a wall: 45; longest walk 68 | per-cell walk in gen_trail.py, asserted equal to `field.py req4.snap`'s Counter (exec'd) and to 449/11/74 |
-| dashed rings: lift partners (24,3)-(8,3) and (2,4)-(18,4); through the lifts all 534 reach the entrance | **inferred**: partner = the cell at a block offset on the other floor with lift tile `$31`/`$34`, one candidate each (mapgen.md "Lift offsets"); the through-lift walk is the dig path, not creature behaviour (a creature forgets on 4/5) |
+| dashed rings: lift partners (24,3)-(8,3) and (2,4)-(18,4); through the lifts all 534 reach the entrance | **inferred**: partner = the cell at a block offset on the other floor with lift tile `$31`/`$34`, one candidate each (mapgen.md "Floors and lifts", paragraph "Lift offsets"); the through-lift walk is the dig path, not creature behaviour (a creature forgets on 4/5) |
 | bits 3-5 equal bits 0-2 except 22 bytes, all with bits 3-5 = 0, 13 of them open | computed on req4 (ai.md "Map planes": 2026 of 2048) |
 | party path (12,0) E E S S S S S to (14,5); footprints p14 = 3,3,2, p2 adds 2 at (14,1)..(14,4) | plane-2 diff req4/p14/p2; party `26/28(A6)`; ai.md "The trail" (proven there by `walk.py`, writers `$9332`/`$9336`) |
 | 5 of the 6 footprints off the entrance are the dig arrow reversed | computed: footprint = (bits 0-2 + 2) & 3 |

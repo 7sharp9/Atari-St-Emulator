@@ -1,0 +1,8 @@
+w 1ef90 ff000004
+ww 1b5ee 001e
+u b5c2 20000000
+r
+u b5c6 6000000
+r
+s 30000000
+snap scratchpad/captive/agents/curios/base30.snap
