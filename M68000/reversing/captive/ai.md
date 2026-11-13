@@ -19,7 +19,8 @@ That second map plane starts as the level generator's dig tree: each open cell p
 earlier, so the arrows lead back along the digger's path toward the entrance, with "take the lift" (4 or 5) where
 that path changed floor. The party overwrites it as it walks: every cell the party leaves records the direction it
 went, and nothing fades a mark. Followed from any cell, footprints lead to the party; dig arrows lead to a lift cell,
-where a value of 4 or more makes the group forget the party, or into the party's footprints. A group is made hostile
+where a value of 4 or more makes the group forget the party (a hostile one soon becomes aware again and loiters
+there), or into the party's footprints. A group is made hostile
 and told to tidy its formation whenever the party's view draws it or a shot hits it. Killing a member subtracts from
 its hit points; one creature, Trill (type `$1f`, only in the final base), has an "attack" that ends the base. A
 normal base ends by explosives on its generators, and the fire that follows runs down the same dig arrows to the
@@ -174,9 +175,24 @@ The party writes the trail; creatures only read it.
   **Proven**: `walk.py` (E, E, S from `req4.snap`) finds the writers `$9332`/`$9336`; after E, E, S (`p14.snap`) the
   cells left read 3, 3, 2, and the party faced S (`30(A6)` = 2) for both E marks, which were strafes; after four more
   steps S (`p2.snap`), (14,1) to (14,4) read 2. The code path is from reading.
-- **Lifts.** The lift path `$9768`/`$977c` calls `$88b8`, then `$90d0` or `$90e2`, then `$88d6`, and writes no
-  footprint. The lift cell the party rode from keeps its 4 or 5, so a group that follows the party's trail to a lift
-  forgets it there; creatures have no lift action. **Inferred**: no lift ride was driven.
+- **Lifts.** The party rides a lift from its tile with keypad 1 or the left lattice icon (up, `$902e`) or keypad 3
+  or the right one (down, `$906a`); these go to `$90e2` (up) or `$90d0` (down), which find the partner cell through
+  the block-floor table `9206(A6)` and the lift offsets (`$863a`, `$8652`/`$867e`) and store the new position. A
+  ride writes no footprint. **Proven** (`py/ai/lift/ride.py`; labelled poke: the party placed at (8,0) from
+  `req4.snap`, then input only): the ride (8,3) to (24,3) hits `$902e`, `$90e2`, `$8652` once each and `$9332`/`$9336`
+  0 times, by key and by icon, and changes bits 3-5 in 0 of 2048 cells; the ordinary steps before it hit
+  `$9332`/`$9336` once each, and the step off the arrival lift changes 1 of 2048 ((24,3), 5 to 1). `$9768`/`$977c`,
+  which reach the same two routines from tiles `$30`/`$33` and add a `$f884` hit, were not reached (0 hits; a fall
+  through a floor, inferred).
+- **A follower at the lift.** A lift end keeps its dig value, and only two of this base's four ends hold 4 or 5:
+  (24,3) = 5 and (2,4) = 4, against (8,3) = 0 and (18,4) = 3. What a group does at the cell the party rode from
+  depends on that value (**proven**, `py/ai/lift/follow.py`, one row per `$10304` action, the gate's rule matching
+  every row). At (24,3), party gone down: group 42 forgets on 4 of its 4 actions there and 0 of 10 elsewhere, but
+  being hostile it becomes aware again by wander (in the same action on 2 of the 4) and its neighbours' arrows point
+  back into the lift, so it loiters around the lift end for the 137 frames watched. At (8,3), party gone up: group
+  20 never forgets (aware in 15 of 15 rows) and walks between (8,3), whose arrow points N, and (8,2), whose
+  footprint points S, for 254 frames; the rule read from bits 0-2 instead of bits 3-5 matches 11 of those 15. No
+  group changed floor in either window; that none can is inferred.
 - **No fading.** 0 of 2048 bits-3-5 values change over 200 frames (12M steps) from `p2.snap` with the party standing
   still (`p2.snap` against `g16_adj.snap` and `track.py`'s end state). No code that clears or ages a mark is known.
 
@@ -197,7 +213,7 @@ every non-wall cell:
 The 75 cells are the dig tree's catchment of the entrance (bits 0-2: `field.py req4.snap` ends 74 walks at the
 entrance (12,0), whose value 0 points off the top edge, and 449 and 11 at the two lifts). The party starts on the
 entrance, and as it walks its footprints carry that whole catchment with it: every cell that drained to the entrance
-now drains to the party. The other cells drain to a lift, where a group forgets. In the natural base, with no lift
+now drains to the party. The other cells drain to a lift end holding 4 or 5, where a group forgets. In the natural base, with no lift
 cell and the party still near the entrance, 263 of 300 cells lead to the party.
 
 **A natural chase**, with no pokes after base entry (**proven**, `track.py p2.snap 200 7`): group 16 (one type-`$e`
@@ -512,6 +528,9 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 
 | address | name | role (from its body) |
 |---|---|---|
+| `$902e`, `$906a` | lift_KeyUp, lift_KeyDown | test the party's own tile `15416(A6)` for a lift end and branch to `$90e2` / `$90d0` |
+| `$90e2`, `$90d0` | lift_Up, lift_Down | partner cell on the floor above / below (`$8652` / `$867e`), store the new position, `$10f20` |
+| `$863a` | map_BlockFloor | floor of a cell's 16 × 8 block from `9206(A6)` |
 | `$102a0` | cr_UpdateAll | frame RNG step, group list walk, per-group timer |
 | `$10304` | cr_GroupThink | decision rule, move, attack dispatch |
 | `$10534` | cr_Regroup | clear +5 bit 2 and move at most one member toward the facing's formation |
@@ -557,7 +576,8 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 
 ## Open
 
-- A live lift escape: ride a lift with an aware group on the trail and watch it forget at the lift cell.
+- A lift follower reached by play alone: both lift runs start from a poked party position, because group 49 holds
+  the corridor to the lift side of `req4.snap`. The lift pair (2,4)-(18,4) and any `$30`/`$33` tile are not driven.
 - The `$fc4e` clear, which needs RNG2 <= `$10b8` at a death.
 - `14800(A6)` values 1 and 2 and the end messages (`$137b0`-`$13860`); value 3 is set when a base's fire burns out
   ("Finishing a base"), and what happens to a party still inside is not traced; the 24-byte map at `$134b0`.
