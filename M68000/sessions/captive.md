@@ -1,15 +1,18 @@
 # Captive: handoff
 
-Updated 2026-11-13 by the session that ended at commit `0efae1d` (a mission needs every target; the entrance blast after an exit).
+Updated 2026-11-13 by the session that ended at commit `d44fc05` (every target needed; entrance blast; state 3 game over; all panels).
 
 ## Resume point
 
-- Last commit of this workstream: `0efae1d` captive: a mission needs all ten targets; state 4 blows up the entrance.
+- Last commit of this workstream: `d44fc05` captive: state 3 game over, end-message table, every key and door kind
+  (`0efae1d` every target needed, entrance blast).
 - Working data: `M68000/scratchpad/captive/` (rows in `scratchpad/ANCHORS.md`). Disk `tmb097.st` (README
   "Provenance"). Generator captures `mapgen_full/` (`py/mapgen/full/README.md` rebuilds them byte-identical).
   Sealed-key and panel work `phoopel/` (`base13.snap`, `panel_*.snap/png`, `finish_base1_*`, `finish_m1_100.txt`,
   `sealed_m1_100.txt`); `phoopel/revisit/exited.snap` (3M steps after a real exit of the natural base, rebuild still
-  running; `revisit.py exit` remakes it). Lift and footprint states `agents/ai/lift/`, `agents/ai/footchase/` (rebuilt by the commands
+  running; `revisit.py exit` remakes it); `phoopel/state3/pre3.snap` (one instruction before state 3, `state3.py
+  reach` remakes it); `phoopel/panels/lock<N>/` (per-lock snapshots and renders, `panels.py` remakes them). Agent
+  reports `agents/{state3,panels}/report.md`. Lift and footprint states `agents/ai/lift/`, `agents/ai/footchase/` (rebuilt by the commands
   in `py/ai/README.md`). Saved agent reports: `agents/{footprint,lift}/report.md` and the older
   `agents/{placement,shafts,chain,ai2,curios,info_*}/`.
 - Start from: `base1/in.snap` (natural base, party at the entrance (30,0), facing S), `phoopel/base13.snap` (D0 = 13,
@@ -27,7 +30,13 @@ Detail and commands in the topic docs; scripts under `reversing/captive/py/<area
   and keys", `lockcensus.py`).
 - The lock panel: W is a bank of switches behind a cover, compared with the code on every click; Phoopel's lock 4
   opens on segments 5, 8, 10, 15, control with one wrong stays shut; 15099 is the panel's printed label (`mapgen.md`
-  "The panel in play", `py/phoopel/panel13.py`). Key kinds 0-2 layouts from reading.
+  "The panel in play", `py/phoopel/panel13.py`).
+- Every key kind (1, 3, 8, 16 switches; 2, 8, 256, 65,536 settings) and door kind (sliding door, plain wall, flames):
+  code opens 8/8, last-bit-wrong control 8/8 shut, walk 8/8 vs 0/8; with byte +8 bit 4 the door shuts again on any
+  mismatch 5/5, without it stays open 3/3 (`mapgen.md` "The panel in play", `py/phoopel/panels/`).
+- State 3 (fire at the entrance) is a game over in the same frame, wherever the party is: `$134b8` 79,656 steps after
+  the write, no leave test runs; a click restarts at MISSION 0001 via `$8570`. End-message table for `14800` -2..4
+  (`ai.md` "Finishing a base", "Trill and leaving a base", `py/phoopel/state3/`).
 - Finishing a base: EXPLOSIVES on a generator tile, `13410(A6)` 0 -> 1 -> 2 -> 3, 9/9 generators to flame, the fire
   follows the dig arrows 21/21 to the entrance; an untouched base cannot be left (`$87d6` 0 hits), in state 2 the
   entrance click marks the target visited 0 -> 1 (`ai.md` "Finishing a base", `py/phoopel/finish13.py`, `leave.py`).
@@ -53,22 +62,17 @@ Nothing running.
 
 ## Open, in priority order
 
-1. State 3 with the party inside: `14800(A6)` = 3 and what happens to a party still in the base when the fire reaches
-   the entrance; whether leaving in state 3 works (`$87c0` passes it, read). `watch` the mode word `13564(A6)` and
-   `410(A6)` from `finish_base1_blast_after` (re-make with `finish13.py`); also settles `14800` value 3's end message
-   (`$137b0`). Value 1 is now known (all droids dead, `$876a`).
-2. The other panels and door kinds: key kinds 0, 1, 2 (1, 3, 8 switches) and door kinds 0 and 1, in `base13.snap`
-   (`panel13.py <lock>` takes a lock number; locks 0, 1, 3, 6 cover them; the switch geometry for kinds 0-2 needs
-   adding to the script from `$12c2c`-`$12cb2`). The re-close on byte +8 bit 4. Items `$19`. Decides how blind the
-   panel search in the 23 blocked missions is.
-3. The station landing driven: select slot 0 on the map with `14794` = 9 and 10 (labelled poke) and LAND; expect
-   request 4 only with 10 (`$2f66e`, read). Needs the station's map position (`universe.py`).
-4. A lift follower reached by play alone (both runs start from a poked party cell; the lift agent reports group 49
+1. The station landing driven: select slot 0 on the map with `14794` = 9 and 10 (labelled poke) and LAND; expect
+   request 4 only with 10 (`$2f66e`, read). Needs the station's map position (`universe.py`). The last unproven link
+   in "a mission needs every target".
+2. A lift follower reached by play alone (both runs start from a poked party cell; the lift agent reports group 49
    holding the corridor in `req4.snap`, not re-checked); the pair (2,4)-(18,4); tiles `$30`/`$33` (`$9768`/`$977c`).
-5. What gives the party a `$66` MESSAGE FROM RATT with word 1 (`$26946` via `$23f64`); `14800` value 2 (final base
-   left without Trill, `$87d0`/`$882e`, read) and -2 (`$87a6`, back at the ship after a target, read) driven.
-6. The `$c194` item branch live: drop a FLAMBOS or BATTERY on a `$26` cell and read byte 2 (from reading: `$3c`).
-7. The six `15538(A6)` tests on an uncracked copy (`system.md` 7; needs READ TRACK `$e0`). `cold_watch.sh b514 12` not
+3. What gives the party a `$66` MESSAGE FROM RATT with word 1 (`$26946` via `$23f64`); `14800` values 2 and -2 driven
+   to their screens (table read in `ai.md`).
+4. The `$c194` item branch live: drop a FLAMBOS or BATTERY on a `$26` cell and read byte 2 (from reading: `$3c`).
+5. Panels: the `cmp.w #5,D0` branch at `$12a7e`/`$12a92` (near/far draw?); `$c420`'s full body; whether the gold
+   word (r & `$3ff`) + `$80` is the amount; the end screen's 1.8M-step click delay.
+6. The six `15538(A6)` tests on an uncracked copy (`system.md` 7; needs READ TRACK `$e0`). `cold_watch.sh b514 12` not
    re-run from the promoted location.
 
 ## Known traps
@@ -77,6 +81,9 @@ Nothing running.
   compound; read them after the rebuild (30M steps on: `13410` = 4, party on the entrance).
 - A party left on the compound entrance after an exit dies about 13M steps later (state-4 blast); a drive that waits
   there reads "DROID'S HAVE FAILED" and a stopped level loop (`$bd6a` 0 hits). Open the door by its code and walk off.
+- A panel with a creature on the cell in front of it cannot be driven by a party poke there (locks 3, 6, 12 of
+  `base13.snap`); a creature can also stand in an opened doorway for over 1.5M steps (lock 18): wait on the
+  occupancy bit 7, as `panels.py` does.
 - Panel W took switch clicks from (5,9) facing N with its cover shut and nothing drawn (`$dd96` sends any facing
   with (tile - facing) & 3 != 0 to the switch handler); it is drawn only from the cell it faces. Render the view
   before calling a click drive proven.
@@ -112,7 +119,6 @@ Nothing running.
 
 ## Next session
 
-`/resume captive`. Open 1 (state 3 with the party inside) and Open 2 (the other panels) are independent drives from
-existing snapshots and suit one agent each (`finish13.py`/`revisit.py` and `panel13.py` are the starting scripts);
-Open 2 sets how blind the search in the 23 blocked missions is. Do Open 6 here; it is a few REPL lines in
-`base13.snap`.
+`/resume captive`. The sealed-key work is complete except Open 1 (the station landing, a short drive with one
+labelled poke). After it, the workstream is at a natural end: decide with Dave whether Captive continues (Open 2-6
+are small) or the blog figures in "Waiting on Dave" come first.
