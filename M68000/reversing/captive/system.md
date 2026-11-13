@@ -30,7 +30,7 @@ code (-2 file not found, -4 unit checksum, -10 no `:` in the name, -13 volume no
 code is set by `moveq` / `bra $9d2` at the cited site).
 
 **Function table** (table from `trap9_table.py mg_entry.snap`; "traced" rows are calls seen with their
-registers in `trap9_log.py --boot`, 49 calls from cold boot to the mission 1 screen):
+registers in `trap9_log.py --boot`, 48 calls from cold boot to the mission 1 screen):
 
 | fn | entry | what it does | label |
 |---|---|---|---|
