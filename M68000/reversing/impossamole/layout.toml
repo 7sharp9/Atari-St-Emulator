@@ -187,3 +187,48 @@ stride = 0x6c
 count = 4
 labels = { 0 = "swipe" }
 cite = "README.md \"Boss\" (projectile slots 16-19 at $1a9aa; only slot 16 is a hit box, 17-19 are decoration)"
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Overlay projection (tools/overlay.py). Positions are screen pixels: the blitter bodies of the draw stubs ($1b266 for
+# type 1, offset installed at $1b2e8; $1b3f8 for types 2 and 3, at $1b47a) build the screen offset from 2(A0), 4(A0)
+# and 14(A0) alone and add it to the draw-buffer base $1a2e4; no scroll term enters. The level scroll counter $227b6
+# is used by the tile lookup $be2c, not by the draw, so camera and origin are 0. The sprite passes of the gameplay loop
+# are $bafc (type 3, slots 7-11 only, $1b3f8) and then $bada (all 20 slots, $1b25a for type 1, $1b3ec for type 2);
+# `tools/find_ram_callers.py` finds no other direct caller of the stubs, so a type-3 slot outside 7-11 is not drawn by
+# them. Measured: py/overlay_proof.py (each live slot's box against the pixels that change when that slot alone is
+# not drawn, three snapshots, with a camera = $227b6 and an origin + 4 control).
+[overlay.sprites]
+array = "objects"
+x = "x"
+y = "y"
+camera_x = 0
+camera_y = 0
+w = { field = "type", map = { 1 = 16, 2 = 32 } }
+h = "rows"
+live = ["type in 1,2"]
+label = ["type", "hp"]
+cite = "graphics.md \"Sprites\" (screen address y*160 + (x & ~15)/2: 2(A0)/4(A0) are literal screen x/y and 14(A0) the row count; bank 1 = type 1, 16 px wide; bank 2 = type 2, 32 px wide); README.md \"Gameplay input\" ($bada runs $1b25a for type 1 and $1b3ec for type 2 on every slot; bpc $1b47a: D0 = 4(A0)*160 + (2(A0)&$fff0)/2 added to $1a2e4; the $be96 paragraph: $227b6 is the scroll counter of the tile lookup)"
+
+[overlay.type3]
+array = "objects"
+x = "x"
+y = "y"
+camera_x = 0
+camera_y = 0
+w = 32
+h = "rows"
+live = ["type == 3", "slot in 7,8,9,10,11"]
+label = ["type", "hp"]
+cite = "README.md \"Past the first screen\" ($bafc, a type-3 draw scan of slots 7-11 through the type-2 body $1b3f8, so 32 px wide as bank 2); graphics.md \"Sprites\" (bank 2 frames are 32x24)"
+note = "the Amazon boss's two halves are type 3 in slots 7 and 8 (boss_room.snap)"
+
+[overlay.shots]
+x = "x"
+y = "y"
+camera_x = 0
+camera_y = 0
+w = { field = "type", map = { 1 = 16, 2 = 32 } }
+h = "rows"
+live = ["type in 1,2"]
+label = ["type", "hitbox_flag"]
+cite = "graphics.md \"Sprites\" (as overlay.sprites); README.md \"Gameplay input\" ($bada's loop runs over all 20 slots, so slots 16-19 draw through the same stubs)"
