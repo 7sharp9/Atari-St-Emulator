@@ -51,7 +51,8 @@ The mode is computed as follows:
 The module stores D0 at `12408(A6)` and as the RNG seed at `12404(A6)`, D2 at `12412(A6)`, D2 & ~1 at `13276(A6)`,
 D1 at `13280(A6)` and D3 at `13278(A6)` (`$2006a`-`$2008a`).
 
-`fed_MapView` sets the seeds (`$2f636`-`$2f65a`; inferred, not driven in play):
+`fed_MapView` sets the seeds (`$2f636`-`$2f65a`; driven for mission 1, target 1: D0 = 0, D1 = 0, `world.md`
+"Targets and landing seeds"):
 - D0 = `fed 14776(A6)` × 11 + the target index. The index is 10 for the special target at `$2f67c`.
 - D1 = (`fed 14776(A6)` & `$1ff`) × 150 + the object index, or `$ffff` when there is none.
 - `fed 14776(A6)` is stepped by `$8804`: inferred to be the mission number.
@@ -60,7 +61,9 @@ D1 at `13280(A6)` and D3 at `13278(A6)` (`$2006a`-`$2008a`).
 - **Base (D2 = 0 or 1):** depends on D0 alone. Proven with `cmpcases.py`: D1 = `$1234` and D3 = 7 give a result
   byte-identical to D1 = 0 and D3 = 0, and two runs with the same arguments differ in 0 bytes. D2 = 1 adds the stage
   `$2676c` (`$23cde`), a 39-byte difference in the tile layer for D0 = 1.
-- **Surface (D2 = 2, 6, 14):** re-seeds the RNG from D1 (`$23d58`). D1 = `$ffff` builds the uniform landing surface:
+- **Surface (D2 = 2, 6, 14):** re-seeds the RNG from D1 (`$23d58`). D2 = 2 is a target's compound, the walled area
+  around the base entrance: in play (`py/ai/natural_base.repl`, D0 = 0, D1 = 0) it returns D0 = 48, D5 = the
+  entrance cell (22,22) and D6 = the start (23,18) (`ai.md`, "Getting into a base"). D1 = `$ffff` builds the uniform landing surface:
   tile `$1e` everywhere, start (32, 16) in D6 (`$23d82`-`$23d86`). D1 = 164 and 165 differ in 406 tile bytes; at
   D2 = 14, D3 = 1 and 2 give identical output (`cmpcases.py --all`). D3 is read only by `$23e36` and `$23e80`; the
   surface generator past `$23d94` is not read.

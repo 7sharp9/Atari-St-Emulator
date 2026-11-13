@@ -213,17 +213,42 @@ map mode `13564(A6)`:
 | 3 | 0 |
 | 4 and above | 3 |
 
-It then calls `$90be`, which reaches the `fed_MapGen` call at `$b5c2`. Mode 2 is the planet surface, and mode 3 the
-base level the creature code checks for (`$10432`). Mode 3 calls the generator with D2 = 0 (`$b584`-`$b58c`), and
-D2 = 1 when `14782(A6)` is 0.
+It then calls `$90be`, which reaches the `fed_MapGen` call at `$b5c2` (D2 per mode: `mapgen.md`, "Call interface and
+seeds"). The request word is written only by `fed_MapView` (`$2f61a`, `$2f630`, `$2f676`, `$2f68e`), when the landing
+sequence on the body chosen on the map ends (`world.md`, "Targets and landing seeds"). A base takes two levels:
 
-**Proven**: `py/ai/enter_base.repl` from `scratchpad/captive/ld_1.snap` pokes the request word to 4 (a labelled
-poke; the longword write keeps `14786(A6)` at `$ff00`). It stops at `$b5c2` after 798,539 steps with D2 = 0,
-D3 = 0, A0 = `$1d9e8`. The generator returns 3,254,901 steps later with D0 = 3, and 30M steps on the party stands in
-a base room at (12,0) facing a grate. A re-run gives a byte-identical `req4.snap`.
+1. **The compound (mode 1).** Landing on a target's site writes request 1. The generator runs with D2 = 2, the
+   surface branch reseeded from the body seed D1, and returns two cells: D6 = the party's start (`13560(A6)`, put
+   in `26(A6)` by `$888c`) and D5 = the entrance (`13556(A6)`). For mission 1, target 1, the start is (23,18) and
+   the entrance (22,22), inside a box of tile `$2c` walls behind a door tile `$44` at (22,21).
+2. **The base (mode 3).** Every main frame `$bd6a`-`$bd8a` tests: mode 1, `13410(A6)` not 4, and the party's cell
+   `26(A6)` (longword x, y) equal to `13556(A6)`. Then it sets mode 3 and calls `$90be`, which builds the base with
+   D2 = 0 (D2 = 1 at the station's final target). Mode 3 is the level the creature code checks for (`$10432`).
+   Leaving puts the party back on the entrance cell in mode 1 (`$8836`-`$884a`).
 
-The party's own way in is not found. The only direct writer of `14788(A6)` is the clear at `$885e`, so the game sets
-it through a pointer.
+**The entrance door is a combination lock** (`$e0b8`-`$e356`). A click on a cell ahead with tile `$40`-`$5f` and
+low bits 4 reaches `$e270`, which looks the cell (`68(A6)`, x·256 + y) up in an 8-entry list at `2330(A6)` (4 bytes:
+cell word, state word). A click inside one of four corner zones of the view (x `$42`-`$4c` or `$82`-`$8c`, y `$4c`-`$55`
+or `$8b`-`$97`, the four triangles drawn on the door) gives a corner index c = 2·bottom + right. It sets bit c of
+the state's low nibble, and ORs c into the high byte at bit 2n, where n counts the corners set including this one.
+When all four are set, `$e31a` compares that byte & `$fc` with a 24-byte table at `$e358`, one byte per order of the
+four corners. The door opens through `$c420` (tile `$44` to `$54`) only when the matching index equals the door's
+code, (state >> 4) & `$1f`; any other order clears the sequence (`$e348`). The door at (22,21) has code 8, table byte
+`$63`: top left, bottom left, top right, bottom right. **Proven** (stserver, `base1_site.snap` lineage): the order
+TL, TR, BR, BL left state `$0080` (cleared), and TL, BL, TR, BR set `$6087` and reached `$c420`. Where the game
+gives the player the code is not found; 24 orders can be tried by hand.
+
+**Proven, no poke**: `py/ai/natural_base.repl` from `scratchpad/captive/mission1.snap` (with `--disk-a`: that
+snapshot has no sidecar) selects target 1's site, orbits, lands, walks to (22,20), enters the door code and steps
+through to (22,22). The landing call has D0 = 0, D1 = 0, D2 = 2 and returns D0 = 48 after 873,002 steps. The base
+call has D0 = 0, D1 = 0, D2 = 0, mode 3, and returns D0 = 3 after 3,590,553 steps; 30M steps on, the party stands at
+(30,0) in a base room. Two runs give a byte-identical `base1/in.snap`.
+
+`py/ai/enter_base.repl` reaches a base faster by a labelled poke of the request word to 4 from `ld_1.snap` (the
+longword write keeps `14786(A6)` at `$ff00`; D2 = 0, D0 = 1, returns D0 = 3 after 3,254,901 steps, party at
+(12,0)). Natural play never writes request 4 with `14782(A6)` nonzero, so that level has no compound and its mode
+history is not one the game produces; the generator's base output depends on D0 alone (`mapgen.md`), so the
+layout is the natural base for seed 1. The AI results above were measured there.
 
 Moving in the base (**proven**, `keys.py`, `click.py`):
 - Keypad `$68` steps forward, `$67`/`$69` turn, `$6a`/`$6c` strafe.
@@ -247,10 +272,13 @@ Moving in the base (**proven**, `keys.py`, `click.py`):
 | `$8694` | party_MarkSeen | plane-2 bit 7 on the party's cell and its neighbours |
 | `$8852` | lvl_HandleRequest | request word to map mode, rebuild |
 | `$90be` | lvl_Rebuild | level rebuild through the `fed_MapGen` call |
+| `$e270` | door_ComboLock | door-list lookup by the cell ahead, corner-zone click, order check against `$e358` |
+| `$2f5f4` | mv_LandDone (fed_MapView) | selection to request word `14788(A6)` and seeds when the landing sequence ends |
+| `$2fffc` | mv_SiteHit (fed_MapView) | cursor within 4 units of the body's landing site |
 
 ## Open
 
-- The party's way in: who writes `14788(A6)` (`watch 1ef92 2` while walking the surface).
+- Re-check the AI rules in the natural base (`base1/in.snap`): `gate_decide.py` there.
 - The setter of flag bit 2, and a live regroup.
 - What the 74 walks that end at the entry cell (12,0) mean.
 - Difficulty: the AI code reads no mission or level number. Speed (+7), skill (+5), member word +2 and the hostile

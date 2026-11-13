@@ -1,0 +1,125 @@
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move -127 -127
+s 30000
+mouse move 102 93
+s 200000
+mouse down l
+s 60000
+mouse up l
+s 12000000
+mouse move 127 21
+s 30000
+mouse move 22 0
+s 30000
+mouse down l
+s 60000
+mouse up l
+s 1000000
+mouse down l
+s 60000
+mouse up l
+s 1000000
+mouse down l
+s 60000
+mouse up l
+s 1000000
+mouse down l
+s 60000
+mouse up l
+s 1000000
+mouse down l
+s 60000
+mouse up l
+s 1000000
+mouse down l
+s 60000
+mouse up l
+s 1000000
+mouse move -100 -8
+s 30000
+mouse move -49 0
+s 30000
+mouse down l
+s 60000
+mouse up l
+s 12000000
+snap scratchpad/captive/base1/site.snap
+mouse move 100 -34
+s 30000
+mouse down l
+s 60000
+mouse up l
+s 30000000
+mouse move 49 -2
+s 30000
+mouse down l
+s 60000
+mouse up l
+u b5c2 20000000
+r
+snap scratchpad/captive/base1/land_mg.snap
+u b5c6 5000000
+r
+s 30000000
+snap scratchpad/captive/base1/outside.snap
+kbd 6c
+s 60000
+kbd ec
+s 300000
+kbd 68
+s 60000
+kbd e8
+s 300000
+kbd 68
+s 60000
+kbd e8
+s 300000
+kbd 68
+s 60000
+kbd e8
+s 300000
+mouse move -127 10
+s 30000
+mouse move -54 0
+s 30000
+mouse down l
+s 60000
+mouse up l
+s 600000
+mouse move 0 65
+s 30000
+mouse down l
+s 60000
+mouse up l
+s 600000
+mouse move 64 -65
+s 30000
+mouse down l
+s 60000
+mouse up l
+s 600000
+mouse move 0 65
+s 30000
+mouse down l
+s 60000
+mouse up l
+s 2000000
+snap scratchpad/captive/base1/open.snap
+kbd 68
+s 60000
+kbd e8
+s 300000
+kbd 68
+s 60000
+kbd e8
+u b5c2 5000000
+r
+snap scratchpad/captive/base1/in_mg.snap
+u b5c6 10000000
+r
+s 30000000
+snap scratchpad/captive/base1/in.snap
+q

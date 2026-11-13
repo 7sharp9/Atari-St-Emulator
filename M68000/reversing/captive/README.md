@@ -41,7 +41,7 @@ Captive's own boot code. That code copies the loader into low RAM (`$206`-`$1200
 | planet screen, "CAPTIVE MISSION 0001" | Space during the intro | `mission1.png` |
 | in orbit of planet 14 (PLANET-PAICKOT) | click the planet on the map, then ORBIT | - |
 | on the planet surface | LAND | `landed.png` |
-| inside a base | labelled poke of the request word `14788(A6)` = 4 from the surface (`py/ai/enter_base.repl`; the in-game route is not found) | - |
+| inside a base | target 1's landing site selected at zoom 2, ORBIT, LAND, walk to the compound door, enter its corner code, step to the entrance cell (`py/ai/natural_base.repl`; `ai.md`, "Getting into a base") | `base1.png` |
 
 `drive.txt` does all three from a cold boot (about 300M steps) and writes `scratchpad/captive/mission1.snap`;
 two runs give byte-identical snapshots.
@@ -109,10 +109,11 @@ section 2). The `.pic` files proper are four separate 8,000-byte bitplanes, Amig
 `federation` loads it at `$b510` (into the buffer at `15770(A6)`) and calls it at `$b5c2` with
 `jsr 32(A4)`: offset 32 skips the 32-byte hunk header, so the call enters code offset 0. Arguments:
 A0 = `9242(A6)` (the 64x32 tile layer; the second layer is at +2080), A1 = `$b532` (a table of output
-pointers in `federation`), D0 = `32(A6)` = mission x 11 + target number, D1 = `14790(A6)` = (mission & `$1ff`)
+pointers in `federation`), D0 = `32(A6)` = mission x 11 + target number - 1, D1 = `14790(A6)` = (mission & `$1ff`)
 x 150 + object number, or `$ffff` for none (`$2f636`-`$2f65a`, read), D2 from the mode word `13564(A6)`: 0, 1,
 2, 6 or 14, D3 = `14776(A6)`, D4 = -1. D2 = 0 or 1 builds a base, seeded by D0 alone; 2, 6 and 14 build a
-planet surface, seeded by D1. It returns in D0 the mask of creature sheets `fed6-A`..`G` to load, and the
+planet surface, seeded by D1; D2 = 2 is a target's compound, whose entrance cell (returned in D5) leads into the
+base (`ai.md`, "Getting into a base"). It returns in D0 the mask of creature sheets `fed6-A`..`G` to load, and the
 entry column in `9238(A6)`; the base path returns D5 = D6 = 0. The same arguments give byte-identical output.
 The algorithm is in `mapgen.md`.
 
@@ -123,8 +124,7 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 
 ## Not yet exercised
 
-- The in-game route into a base: the request word `14788(A6)` has no direct writer other than its clear at
-  `$885e`, so the base was entered by a labelled poke (`ai.md`, "Getting into a base").
+- Where the game tells the player a door's corner code (`ai.md`, "Getting into a base").
 - The roughly 25 generator stages after the digger (`$24f4c`-`$268f8`): objects, doors, generators.
 - What the six `15538(A6)` tests in `federation` gate on an uncracked copy (`system.md` section 5).
 - The intro's top band and smeared figures (`intro.png`): intended animation or a rendering fault, unchecked.
@@ -134,7 +134,7 @@ called once with D1 = `$ffff` and builds a uniform surface, every cell `$1e`, in
 | file | what |
 |---|---|
 | `drive.txt` | REPL drive from cold boot to the mission 1 planet screen |
-| `menu.png`, `intro.png`, `mission1.png`, `landed.png` | milestone screenshots |
+| `menu.png`, `intro.png`, `mission1.png`, `landed.png`, `base1.png` | milestone screenshots |
 | `py/fedfs.py` | disk decode, directory, extract, depack |
 | `py/hunks.py` | hunk parser and RAM alignment |
 | `mapgen.md`, `ai.md`, `world.md`, `system.md` | topic docs (table at the top) |

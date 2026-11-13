@@ -27,7 +27,7 @@ steps in order, passing the RNG state in D0 from one step to the next (`$302ca`-
 | moons | `$303f6` | `13770(A6)` = `$1eb98`: 100 longs | parent planet = dot 1 + (D1 × 50 >> 16), orbit slot = D1 & 7 (byte 2). A duplicate (planet, slot) pair is rejected. |
 | map units | `$3037a`, `$3039e` | in place | `c × 512 − $2600`; a moon adds its slot's offset from `$303d6`: the 8 compass points at ±160 units |
 | targets | `$302fa` | byte 3 of `14170(A6)` = `$1ed28` (150 longs) | numbers 1..10 go to random free objects (D0 × 150 >> 16). Mission 0 forces object 0 first. |
-| object bytes 0, 1 | `$3032c` | bytes 0, 1 of the 150 objects | objects 0..49 get (D0 & 31, D0 >> 5 & 31); objects 50..149 get ((D0 & 15) + 7, (D0 >> 5 & 15) + 7). Their role is not known. |
+| object bytes 0, 1 | `$3032c` | bytes 0, 1 of the 150 objects | objects 0..49 get (D0 & 31, D0 >> 5 & 31); objects 50..149 get ((D0 & 15) + 7, (D0 >> 5 & 15) + 7). They are the landing site on the body: (b − 15) map units from its centre, doubled for a planet (`$2fffc`; "Targets and landing seeds" below). |
 
 The coordinate table skips every value that is 4 mod 5. The map grid has a line every 5 units, so
 a dot can never lie on a grid line.
@@ -59,12 +59,37 @@ seed argument of 150 gives `STATION`. **Proven for one name:** `star.snap` has o
 (`14782(A6)` = `$e`), and the screen reads `PLANET-PAICKOT`. `universe.py --names`
 gives index 13 = PAICKOT. The other names are inferred.
 
-**Targets and landing seeds** (inferred, `$2f5fe`-`$2f69c`, `$87d6`-`$8814`):
+**Targets and landing seeds** (`$2ff62`-`$2ffe6`, `$2f5f4`-`$2f69c`, `$87d6`-`$8814`). Map slot 0 is the station
+and slots 1..150 are the bodies; body slot s owns object record s − 1, so universe.py's "object 0" (target 1 at
+mission 1) is planet slot 1, PLANET-BUTRE.
 
-- **Revealed targets.** A target number k is shown only if bit k−1 of the mask `14796(A6)` is set. The mask starts at 1 (`$30280`).
-- **Visited targets.** Visiting a target object sets bit 1 of its byte 2 and increments `14794(A6)`.
-- **Final target.** Once `14794(A6)` exceeds 9, the request mode becomes 4 with base seed `mission × 11 + 10`. This reads as ten targets per mission plus a final one.
-- **Seeds passed to `fed_MapGen`.** Selecting a body stores a base seed `32(A6) = mission × 11 + (k − 1)` and a body seed `14790(A6) = (mission & $1ff) × 150 + object index`. These become MapGen's D0 and D1 (README, "The base generator").
+- **Selecting a site.** A click on the map moves the cursor (`$2feb0`, one pixel = 2^zoom units, zoom `14770(A6)`
+  from 8 down to 0 with the two ladder icons, `$2f70a` in and `$2f72e` out) and clears the selection words
+  `14782`-`14786(A6)` to −1. `$30042` snaps the cursor to a body slot, which goes to `14782(A6)`. For a body,
+  `$2fffc` then tests the cursor against the site: object bytes 0, 1 give an offset of (b − 15) units from the
+  body's centre, doubled for a planet (slot 50 or below), and the cursor must lie within 4 units of it on both
+  axes. On a hit, `14786(A6)` = 0 and `14784(A6)` = the object's target number (byte 3), or stays −1 for a body
+  with no target. At zoom 2 the site is drawn as a dot inside the body's circle.
+- **Landing.** LAND (`$2f542`, in orbit only, ship state `14858(A6)` = 6) copies the selection to
+  `14816`/`14818(A6)` and starts the landing sequence (`14820(A6)` = 1). When that sequence reaches 2 (`$2f4d4`),
+  `$2f5f4` writes the request word `14788(A6)`, which `$8852` turns into the map
+  mode `13564(A6)`: no site selected gives request 3 (mode 0, the uniform landing surface, D1 = `$ffff`); a site
+  with no target gives request 3 with a body seed; a target gives request 1 (mode 1), or 2 when the object's
+  byte 2 bit 1 is set (mode 2).
+- **Revealed targets.** A target number k is shown on the map only if bit k−1 of the mask `14796(A6)` is set. The
+  mask starts at 1 (`$30280`). Landing does not test the mask.
+- **Visited targets.** `$87d6` sets bit 1 of the target object's byte 2 and increments `14794(A6)` (inferred).
+- **Final target.** The station (slot 0) has no site. Landing there with `14794(A6)` above 9 writes request 4
+  (`$2f676`) with base seed `mission × 11 + 10`; since `14782(A6)` = 0, `$b5a0` builds it with D2 = 1. Inferred:
+  ten targets per mission plus a final one at the station.
+- **Seeds passed to `fed_MapGen`.** A target landing stores a base seed `32(A6) = mission × 11 + (k − 1)` and a body
+  seed `14790(A6) = (mission & $1ff) × 150 + (slot − 1)`. These become MapGen's D0 and D1 (README, "The base
+  generator").
+
+**Proven** by `py/ai/natural_base.repl` from `mission1.snap` (no poke): planet slot 1 selected at zoom 2 with the
+cursor at (`$208`, `$1214`) gives `14784(A6)` = 1, `14786(A6)` = 0. ORBIT, then LAND writes request 1 at `$2f61a`
+(stserver watch on `$1ef92`: that write, then the clear at `$885e`), and the generator is called with D0 = 0,
+D1 = 0, D2 = 2. The base itself is entered from that level (`ai.md`, "Getting into a base").
 
 ## 2. Main loop and interrupts
 
