@@ -91,6 +91,10 @@ Nothing running.
   nothing at all (`leave.py <snap> poke`).
 - A poked request-word base (`base13.snap`, `req4.snap`) has no compound and no target: do leave and visited tests in
   `base1/in.snap`.
+- Print a stretch of `federation.asm` with `tools/disassemble.py --snap <snap> --linear <addr> <n>` or a numeric
+  address filter: an `awk '/$a:/,/$b:/'` range whose end is not an instruction start prints the rest of the file.
+- The end screen `$134b8` ignores a click for over a million steps (a click 150k steps in never registered,
+  `state3.py leave`); a drive past it holds the click later or waits on `$13624`.
 - `federation` calls far routines by `move.l #imm,Rn` / `jsr -8(PC,Rn.l)`: a grep of the listing for the target finds
   nothing. Use `py/system/pcrel_calls.py`.
 - stserver reports watch-event addresses and values as `'$hex'` strings.
@@ -109,7 +113,7 @@ Nothing running.
 
 - Leftover worktree `agent-a528a4455254d699f` (uncommitted edits to `68k.fs`, `MMU.fs`, `Program.fs`, `run.ps1`,
   `DEVELOPING.md`): keep or remove. `modest-dirac-449d9c` is gone.
-- Push: master is well ahead of origin (75 commits at this session's start).
+- Push: master is 79 commits ahead of origin.
 - Skill proposal (`reverse-engineer-st-game`, section 3): for position-independent code, resolve computed long calls
   (`move.l #imm` + `jsr d(PC,Rn.l)`) before any "no caller" claim; worked case Captive `$12b4c`, tool
   `reversing/captive/py/system/pcrel_calls.py`. Not edited: two other sessions were live on shared files.
